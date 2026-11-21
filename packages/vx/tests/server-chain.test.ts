@@ -11,7 +11,7 @@ import { addProject, makeWorkspace } from './helpers/workspace.js'
 import { type Logger } from '../src/report/index.js'
 import { planRun, run } from './helpers/orchestrator.js'
 
-process.env['VX_TEST_KILL_GRACE'] = '200ms'
+process.env['VX_RUN_KILL_GRACE'] = '200ms'
 
 const silent: Logger = { status() {}, taskStdout() {}, taskStderr() {}, taskComplete() {} }
 let root: string | undefined

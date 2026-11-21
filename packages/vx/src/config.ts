@@ -65,6 +65,25 @@ export interface RunSettings {
   /** Re-runs of a failed task, for tasks without their own `exec.retries`. Omitted → 0. */
   retries?: number
   /**
+   * How long a process may take to exit after SIGTERM (a timeout, a stop,
+   * the run's end) before vx sends SIGKILL. Omitted → `'2s'`.
+   */
+  killGrace?: Duration
+  /**
+   * How long one plugin's end-of-run flush or teardown may take; `'0ms'`
+   * waits for nothing not already done. Omitted → `'3s'`.
+   */
+  pluginTimeout?: Duration
+  /**
+   * How long vx reads a task's output after its shell exits, while a
+   * process it left running holds the pipe. Omitted → `'250ms'`.
+   */
+  drainGrace?: Duration
+  /** How long one output stream waits on the other's open line. Omitted → `'50ms'`. */
+  lineWait?: Duration
+  /** How long a persistent task waits on `readyWhen` before vx says so. Omitted → `'10s'`. */
+  readyNotice?: Duration
+  /**
    * What a failed task takes down: `never` stops the run, `deps-ok` (the
    * default) skips its dependents, `always` runs them too.
    */

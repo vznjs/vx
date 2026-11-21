@@ -4,27 +4,31 @@
 // vx now says once, after a while, what it is waiting for.
 
 import { rm } from 'node:fs/promises'
+import path from 'node:path'
 import { afterAll, afterEach, beforeAll, expect, it } from 'bun:test'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 import { type Logger } from '../src/report/index.js'
 import { run } from './helpers/orchestrator.js'
+import { workspaceWith } from './helpers/local-workspace.js'
 
 let notice: string | undefined
 beforeAll(() => {
-  notice = process.env['VX_TEST_READY_NOTICE']
-  process.env['VX_TEST_READY_NOTICE'] = '200ms'
+  notice = process.env['VX_RUN_READY_NOTICE']
+  process.env['VX_RUN_READY_NOTICE'] = '200ms'
 })
 afterAll(() => {
-  if (notice === undefined) delete process.env['VX_TEST_READY_NOTICE']
-  else process.env['VX_TEST_READY_NOTICE'] = notice
+  if (notice === undefined) delete process.env['VX_RUN_READY_NOTICE']
+  else process.env['VX_RUN_READY_NOTICE'] = notice
 })
 let root: string | undefined
 afterEach(async () => {
   if (root !== undefined) await rm(root, { recursive: true, force: true })
 })
 
-const runWith = async (command: string, timeout?: number) => {
+const runWith = async (command: string, timeout?: number, workspaceRun?: string) => {
   root = await makeWorkspace({ prefix: 'vx-ready-notice-' })
+  if (workspaceRun !== undefined)
+    await Bun.write(path.join(root, '.vx/workspace.mjs'), workspaceWith(`run: { ${workspaceRun} }`))
   const bound = timeout === undefined ? '' : `, timeout: '${timeout}ms'`
   await addProject(
     root,
@@ -55,6 +59,22 @@ it('an unbounded wait says no exec.timeout bounds it', async () => {
   // Ready at 800 ms: past the notice, so the run ends on its own.
   expect(await runWith('echo listening; sleep 0.8; echo ready; exec sleep 30')).toEqual([
     'vx: app#dev not ready after 200 ms: waiting for a line matching /ready/ (readyWhen), with no exec.timeout',
+  ])
+}, 30_000)
+
+// `run.readyNotice` in .vx/workspace sets the mark; the variable beats it.
+it('.vx/workspace run.readyNotice sets the notice, under its variable', async () => {
+  const held = process.env['VX_RUN_READY_NOTICE']
+  delete process.env['VX_RUN_READY_NOTICE']
+  try {
+    expect(await runWith('echo listening; exec sleep 30', 1500, "readyNotice: '300ms'")).toEqual([
+      'vx: app#dev not ready after 300 ms: waiting for a line matching /ready/ (readyWhen)',
+    ])
+  } finally {
+    process.env['VX_RUN_READY_NOTICE'] = held
+  }
+  expect(await runWith('echo listening; exec sleep 30', 1500, "readyNotice: '1s'")).toEqual([
+    'vx: app#dev not ready after 200 ms: waiting for a line matching /ready/ (readyWhen)',
   ])
 }, 30_000)
 
@@ -102,14 +122,14 @@ it('a task waiting on two servers names each one not ready', async () => {
 // out the kill grace after the timeout gave up, and the notice landed in
 // that grace: "not ready after 10 s" after a 9 s timeout, as a warning.
 it('a server the readiness timeout gave up on is not said to be waiting', async () => {
-  const saved = [process.env['VX_TEST_READY_NOTICE'], process.env['VX_TEST_KILL_GRACE']]
-  process.env['VX_TEST_READY_NOTICE'] = '500ms'
-  process.env['VX_TEST_KILL_GRACE'] = '2s'
+  const saved = [process.env['VX_RUN_READY_NOTICE'], process.env['VX_RUN_KILL_GRACE']]
+  process.env['VX_RUN_READY_NOTICE'] = '500ms'
+  process.env['VX_RUN_KILL_GRACE'] = '2s'
   try {
     expect(await runWith('trap "echo got-term" TERM; while :; do sleep 0.1; done', 100)).toEqual([])
   } finally {
-    process.env['VX_TEST_READY_NOTICE'] = saved[0]
-    if (saved[1] === undefined) delete process.env['VX_TEST_KILL_GRACE']
-    else process.env['VX_TEST_KILL_GRACE'] = saved[1]
+    process.env['VX_RUN_READY_NOTICE'] = saved[0]
+    if (saved[1] === undefined) delete process.env['VX_RUN_KILL_GRACE']
+    else process.env['VX_RUN_KILL_GRACE'] = saved[1]
   }
 }, 30_000)

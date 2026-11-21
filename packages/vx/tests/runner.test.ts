@@ -237,7 +237,7 @@ describe('runCommand', () => {
       { stdio: ['ignore', 'ignore', 'inherit'] },
     )
     let live = ''
-    process.env['VX_TEST_POST_EXIT_DRAIN'] = '600000ms'
+    process.env['VX_RUN_DRAIN_GRACE'] = '600000ms'
     const result = await runCommand({
       command: '(read _ < go; echo TAIL) & exec 3> gone; echo HEAD',
       cwd,
@@ -245,7 +245,7 @@ describe('runCommand', () => {
       onStdout: (chunk) => {
         live += chunk
       },
-    }).finally(() => delete process.env['VX_TEST_POST_EXIT_DRAIN'])
+    }).finally(() => delete process.env['VX_RUN_DRAIN_GRACE'])
     expect(await release.exited).toBe(0)
     expect(result.exitCode).toBe(0)
     expect(result.stdout).toBe('HEAD\nTAIL\n')
@@ -841,8 +841,8 @@ describe('armTimeout — what settle() disarms and what it reaps', () => {
     // outlived the run under init (nx#11782's sibling, reproduced on vx
     // 2026-09-24). settle() waits out the grace for the GROUP and SIGKILLs
     // whoever is left.
-    const prev = process.env['VX_TEST_KILL_GRACE']
-    process.env['VX_TEST_KILL_GRACE'] = '200ms'
+    const prev = process.env['VX_RUN_KILL_GRACE']
+    process.env['VX_RUN_KILL_GRACE'] = '200ms'
     const proc = Bun.spawn(
       ['sh', '-c', `sh -c 'trap "" TERM; echo $$; exec sleep 30' & sleep 30`],
       { stdout: 'pipe', stderr: 'ignore', detached: true },
@@ -861,8 +861,8 @@ describe('armTimeout — what settle() disarms and what it reaps', () => {
       // reads as alive: CI's reaper took past 500 ms.
       expect(await waitForDead(gc, 3_000)).toBe(true)
     } finally {
-      if (prev === undefined) delete process.env['VX_TEST_KILL_GRACE']
-      else process.env['VX_TEST_KILL_GRACE'] = prev
+      if (prev === undefined) delete process.env['VX_RUN_KILL_GRACE']
+      else process.env['VX_RUN_KILL_GRACE'] = prev
       reader.releaseLock()
       try {
         process.kill(gc, 'SIGKILL')
@@ -872,8 +872,8 @@ describe('armTimeout — what settle() disarms and what it reaps', () => {
   it('settle() lets a grandchild that traps the SIGTERM finish inside the grace', async () => {
     // The grace is the time a TERM handler is promised; settle() SIGKILLs
     // only what is left when it runs out, never at once.
-    const prev = process.env['VX_TEST_KILL_GRACE']
-    process.env['VX_TEST_KILL_GRACE'] = '600ms'
+    const prev = process.env['VX_RUN_KILL_GRACE']
+    process.env['VX_RUN_KILL_GRACE'] = '600ms'
     const dir = await mkdtemp(path.join(os.tmpdir(), 'vx-grace-'))
     const marker = path.join(dir, 'done')
     const proc = Bun.spawn(
@@ -892,8 +892,8 @@ describe('armTimeout — what settle() disarms and what it reaps', () => {
       await handle.settle()
       expect(await Bun.file(marker).exists()).toBe(true)
     } finally {
-      if (prev === undefined) delete process.env['VX_TEST_KILL_GRACE']
-      else process.env['VX_TEST_KILL_GRACE'] = prev
+      if (prev === undefined) delete process.env['VX_RUN_KILL_GRACE']
+      else process.env['VX_RUN_KILL_GRACE'] = prev
       reader.releaseLock()
       try {
         process.kill(gc, 'SIGKILL')
@@ -1752,8 +1752,8 @@ describe('runPersistent — the rows its sweep asked for', () => {
   })
 
   it('a readyWhen timeout sends SIGTERM first, and SIGKILL to what ignores it', async () => {
-    const prev = process.env['VX_TEST_KILL_GRACE']
-    process.env['VX_TEST_KILL_GRACE'] = '300ms'
+    const prev = process.env['VX_RUN_KILL_GRACE']
+    process.env['VX_RUN_KILL_GRACE'] = '300ms'
     const heard = path.join(dir, 'heard')
     // Each shell sets its trap before the deadline only if the window
     // outlasts its start: a SIGTERM that came first killed the polite one
@@ -1784,8 +1784,8 @@ describe('runPersistent — the rows its sweep asked for', () => {
       ])
       expect(died).toBe('SIGKILL')
     } finally {
-      if (prev === undefined) delete process.env['VX_TEST_KILL_GRACE']
-      else process.env['VX_TEST_KILL_GRACE'] = prev
+      if (prev === undefined) delete process.env['VX_RUN_KILL_GRACE']
+      else process.env['VX_RUN_KILL_GRACE'] = prev
       polite.child!.kill('SIGKILL')
       deaf.child!.kill('SIGKILL')
     }
@@ -1888,8 +1888,8 @@ describe('runCommand — the rows its sweep asked for', () => {
     // the 100 ms timeout on a slow macOS runner and the group died at 142.
     // The outer shell's own trap raced it too (a 300 ms start: 106 ms,
     // M-23), so the deadline is one a shell's start meets.
-    const prev = process.env['VX_TEST_KILL_GRACE']
-    process.env['VX_TEST_KILL_GRACE'] = '400ms'
+    const prev = process.env['VX_RUN_KILL_GRACE']
+    process.env['VX_RUN_KILL_GRACE'] = '400ms'
     try {
       const r = await runCommand({
         command: `trap "" TERM; sleep 30 & trap - TERM; wait`,
@@ -1900,8 +1900,8 @@ describe('runCommand — the rows its sweep asked for', () => {
       expect(r.timedOut).toBe(true)
       expect(r.durationMs).toBeGreaterThanOrEqual(START_WINDOW_MS + 400)
     } finally {
-      if (prev === undefined) delete process.env['VX_TEST_KILL_GRACE']
-      else process.env['VX_TEST_KILL_GRACE'] = prev
+      if (prev === undefined) delete process.env['VX_RUN_KILL_GRACE']
+      else process.env['VX_RUN_KILL_GRACE'] = prev
     }
   }, 30_000)
 
@@ -2214,7 +2214,7 @@ describe('lineEnds — one stream never writes into the other’s open line', ()
       // back-to-back writes landed on CI. The bound is lengthened so the
       // hold, not its bound, is what is driven: on a loaded macOS runner
       // the two sleeps outlasted 50 ms and the line went unbroken.
-      process.env['VX_TEST_OPEN_LINE_WAIT'] = '5s'
+      process.env['VX_RUN_LINE_WAIT'] = '5s'
       const result = await runCommand({
         command:
           "printf 'sh: 1: ' >&2; sleep 0.01; printf 'NO-TTY\\n'; sleep 0.01; " +
@@ -2224,7 +2224,7 @@ describe('lineEnds — one stream never writes into the other’s open line', ()
         onStdout: (t) => got.push(['out', t]),
         onStderr: (t) => got.push(['err', t]),
       })
-      delete process.env['VX_TEST_OPEN_LINE_WAIT']
+      delete process.env['VX_RUN_LINE_WAIT']
       expect(result.exitCode).toBe(0)
       // Each line and the streams that wrote into it.
       const lines: { text: string; from: Set<string> }[] = [{ text: '', from: new Set() }]

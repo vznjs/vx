@@ -84,7 +84,7 @@ it(
   async () => {
     const r = await lock(
       'await new Promise(() => { setInterval(() => {}, 1000) })\nexport default {}\n',
-      { VX_CONFIG_WORKER_TIMEOUT: '1500ms', VX_TEST_CONFIG_EVAL_NOTICE: '300ms' },
+      { VX_CONFIG_WORKER_TIMEOUT: '1500ms', VX_CONFIG_EVAL_NOTICE: '300ms' },
     )
     expect({ code: r.code, out: r.out, err: r.err }).toEqual({
       code: 1,

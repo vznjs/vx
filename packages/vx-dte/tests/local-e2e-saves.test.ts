@@ -82,7 +82,7 @@ export default { plugins: [dte({ workers: { linux: { machines: { small: { max: 1
       NO_COLOR: '1',
       TMPDIR: tmp,
       PATH: `${bin}:${env['PATH']}`,
-      VX_TEST_TEARDOWN_TIMEOUT: '600000ms',
+      VX_RUN_PLUGIN_TIMEOUT: '600000ms',
     },
     stdout: 'ignore',
     stderr: 'ignore',

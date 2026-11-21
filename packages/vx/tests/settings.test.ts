@@ -9,6 +9,7 @@ import { readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import {
+  applyWorkspaceTimers,
   checkSettingsEnv,
   envName,
   kindHint,
@@ -20,6 +21,7 @@ import {
   settingEnv,
 } from '../src/settings.js'
 import { validateWorkspace } from '../src/workspace/index.js'
+import { killGraceMs, teardownTimeoutMs, timerSettingMs } from '../src/util/index.js'
 import { acceptedFlags } from '../src/cli/help.js'
 import { parseRunArgs } from '../src/cli/run.js'
 
@@ -352,4 +354,45 @@ it('docs/schema.md § Settings is the list, as a table', () => {
 
 it('docs/cli.md § Environment variables lists each variable, from the list', () => {
   holdTable('docs/cli.md', 'variables table', variablesTable())
+})
+
+describe('timer settings (M 11-21: every magic number configurable)', () => {
+  const vars = ['VX_RUN_KILL_GRACE', 'VX_RUN_PLUGIN_TIMEOUT', 'VX_RUN_READY_NOTICE']
+  const saved = vars.map((v) => process.env[v])
+  const reset = (): void => {
+    vars.forEach((v, i) => {
+      if (saved[i] === undefined) delete process.env[v]
+      else process.env[v] = saved[i]
+    })
+    applyWorkspaceTimers(undefined)
+  }
+
+  it('the workspace sets each timer, and its variable beats the workspace', () => {
+    for (const v of vars) delete process.env[v]
+    try {
+      expect(killGraceMs(2000)).toBe(2000)
+      expect(teardownTimeoutMs()).toBe(3000)
+      applyWorkspaceTimers({ run: { killGrace: '5s', pluginTimeout: '1m', readyNotice: '1s' } })
+      expect(killGraceMs(2000)).toBe(5000)
+      expect(teardownTimeoutMs()).toBe(60_000)
+      expect(timerSettingMs('VX_RUN_READY_NOTICE', 10_000)).toBe(1000)
+      process.env['VX_RUN_KILL_GRACE'] = '300ms'
+      expect(killGraceMs(2000)).toBe(300)
+      applyWorkspaceTimers({})
+      delete process.env['VX_RUN_KILL_GRACE']
+      expect(killGraceMs(2000)).toBe(2000)
+    } finally {
+      reset()
+    }
+  })
+
+  it('refuses a timer with no unit or zero, in the workspace and the variable', () => {
+    expect(() => validateWorkspace({ run: { killGrace: 5 as never } }, 'ws')).toThrow(
+      /run.killGrace/,
+    )
+    expect(() => validateWorkspace({ run: { killGrace: '0s' } }, 'ws')).toThrow(/more than 0/)
+    // Zero is a plugin timeout: wait for nothing not already done.
+    expect(() => validateWorkspace({ run: { pluginTimeout: '0s' } }, 'ws')).not.toThrow()
+    expect(() => checkSettingsEnv({ VX_RUN_DRAIN_GRACE: 'soon' })).toThrow(/VX_RUN_DRAIN_GRACE/)
+  })
 })

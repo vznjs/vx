@@ -809,7 +809,7 @@ describe('the evaluation deadline', () => {
 
   it('names a config still evaluating once, at the notice mark, before the budget', async () => {
     process.env[BUDGET_ENV] = '1500ms'
-    process.env['VX_TEST_CONFIG_EVAL_NOTICE'] = '200ms'
+    process.env['VX_CONFIG_EVAL_NOTICE'] = '200ms'
     let err = ''
     const spy = spyOn(process.stderr, 'write').mockImplementation((chunk: string | Uint8Array) => {
       err += String(chunk)
@@ -824,7 +824,7 @@ describe('the evaluation deadline', () => {
       })
     } finally {
       spy.mockRestore()
-      delete process.env['VX_TEST_CONFIG_EVAL_NOTICE']
+      delete process.env['VX_CONFIG_EVAL_NOTICE']
     }
   }, 30_000)
 
@@ -906,7 +906,7 @@ describe('the evaluation deadline', () => {
   it('a budget of 0 falls back to the default instead of firing on the next tick (D-157)', async () => {
     // `0` deadlined every repeat load instantly ("did not answer within 0ms"),
     // so `vx watch` failed each cycle. It is out of range for a bound, as it is
-    // for VX_TEST_KILL_GRACE, and falls back like the timer-ceiling case below:
+    // for VX_RUN_KILL_GRACE, and falls back like the timer-ceiling case below:
     // not "no deadline", which would let a wedged worker hang the watch loop.
     process.env[BUDGET_ENV] = '0ms'
     const file = await write('await Bun.sleep(400)\nexport default { tasks: { ok: {} } }\n')

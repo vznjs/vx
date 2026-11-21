@@ -96,7 +96,8 @@ export {
   POST_EXIT_DRAIN_MS,
   settleWithin,
   teardownTimeoutMs,
-  testTimerMs,
+  timerSettingMs,
+  setWorkspaceTimers,
 } from './settle.js'
 export { diskBytes, formatBytes, parseDuration, parseSize, treeBytes } from './size.js'
 export {

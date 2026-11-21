@@ -13,7 +13,7 @@ import { CYCLE_INTERRUPT, type HeldPersistent } from '../src/orchestrator/index.
 import { createEventBus, defaultLogger, type Logger } from '../src/report/index.js'
 import { run } from './helpers/orchestrator.js'
 
-process.env['VX_TEST_KILL_GRACE'] = '200ms'
+process.env['VX_RUN_KILL_GRACE'] = '200ms'
 
 // Interrupts once `id` is ready, not at a set time: a 500 ms timer fired
 // before the server was ready on a loaded CI runner, so nothing was held.

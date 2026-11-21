@@ -26,7 +26,7 @@ import {
   type ProjectMeta,
 } from '../workspace/index.js'
 import type { WorkspaceConfig } from '../config.js'
-import { atPath, SETTINGS } from '../settings.js'
+import { applyWorkspaceTimers, atPath, SETTINGS } from '../settings.js'
 import { lazyGitEnumeration, type LazyGitEnumeration, parseCachePolicy } from '../cache/index.js'
 import {
   checkIgnoreSync,
@@ -83,8 +83,10 @@ export async function loadWorkspacePlugins(
   const plugins = (loaded?.plugins ?? []) as readonly VxPlugin[]
   const branch: BranchFacts = {}
   const settingPlugins = new Map<string, string>()
-  if (loaded === null || !hasHook(plugins, 'config'))
+  if (loaded === null || !hasHook(plugins, 'config')) {
+    applyWorkspaceTimers(loaded)
     return { workspaceConfig: loaded, plugins, branch, settingPlugins }
+  }
   // Bun keeps one module per specifier, so the file's export is one object per
   // process, and each load's hooks edited the last load's result (`concurrency
   // *= 2` doubled per load). The hooks edit a copy.
@@ -138,6 +140,7 @@ export async function loadWorkspacePlugins(
       )
     }
   })
+  applyWorkspaceTimers(workspaceConfig)
   return { workspaceConfig, plugins, branch, settingPlugins }
 }
 

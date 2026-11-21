@@ -35,7 +35,7 @@
 // it names with the message the first load gives.
 
 import path from 'node:path'
-import { MAX_TIMEOUT_MS, notify, parseDuration, testTimerMs, UserError } from '../util/index.js'
+import { MAX_TIMEOUT_MS, notify, parseDuration, timerSettingMs, UserError } from '../util/index.js'
 import { nonJsonMessage, nonJsonPaths, type NonJsonValue } from './json-data.js'
 import { changedExports, exportState } from './module-state.js'
 
@@ -320,7 +320,7 @@ export function evalDeadline(
   expire: () => void,
   hold: boolean,
 ): () => void {
-  const noticeMs = testTimerMs('CONFIG_EVAL_NOTICE', EVAL_NOTICE_MS)
+  const noticeMs = timerSettingMs('VX_CONFIG_EVAL_NOTICE', EVAL_NOTICE_MS)
   let timer: ReturnType<typeof setTimeout>
   if (noticeMs < budget) {
     timer = setTimeout(() => {

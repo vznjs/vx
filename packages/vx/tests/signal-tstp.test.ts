@@ -10,7 +10,7 @@ import { waitForDead } from './helpers/alive.js'
 import { addProject, makeWorkspace as makeWorkspaceRoot } from './helpers/workspace.js'
 
 // As signal-handling.test.ts: 200 ms proves the escalation the 2 s default does.
-process.env['VX_TEST_KILL_GRACE'] = '200ms'
+process.env['VX_RUN_KILL_GRACE'] = '200ms'
 
 const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
 const TIMEOUT = 30_000

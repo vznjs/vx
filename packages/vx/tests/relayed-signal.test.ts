@@ -47,7 +47,7 @@ async function stopGroup(
   const p = Bun.spawn({
     cmd,
     cwd: path.dirname(path.dirname(dir)),
-    env: { ...process.env, VX_TEST_KILL_GRACE: '5000ms' },
+    env: { ...process.env, VX_RUN_KILL_GRACE: '5000ms' },
     stdin: 'ignore',
     stdout: 'ignore',
     stderr: 'ignore',
@@ -158,7 +158,7 @@ describe('a stop sent to the whole group through a relaying parent', () => {
         cmd: await launcher(),
         cwd: root,
         // A grace no test outlasts: only the second press can end the run.
-        env: { ...process.env, VX_TEST_KILL_GRACE: '600000ms' },
+        env: { ...process.env, VX_RUN_KILL_GRACE: '600000ms' },
         stdio: ['ignore', 'ignore', 'ignore'],
         detached: true,
       })

@@ -12,7 +12,7 @@ import {
   killGraceMs,
   OUT_OF_FDS_HINT,
   POST_EXIT_DRAIN_MS,
-  testTimerMs,
+  timerSettingMs,
   helperEnv,
   RawUtf8Decoder,
   type SecretMask,
@@ -609,7 +609,7 @@ export function lineEnds(
 } {
   // A test lengthens it to drive the hold itself on a loaded runner, where a
   // `sleep` between two writes outlasted 50 ms (macOS CI).
-  const waitMs = testTimerMs('OPEN_LINE_WAIT', OPEN_LINE_WAIT_MS)
+  const waitMs = timerSettingMs('VX_RUN_LINE_WAIT', OPEN_LINE_WAIT_MS)
   const sinks = [onStdout, onStderr]
   /** The stream whose line is open (0 stdout, 1 stderr). */
   let open: 0 | 1 | undefined
@@ -687,7 +687,7 @@ export async function drainOrAbort(
   const deadline = new Promise<'timeout'>((resolve) => {
     setTimeout(
       () => resolve('timeout'),
-      testTimerMs('POST_EXIT_DRAIN', POST_EXIT_DRAIN_MS),
+      timerSettingMs('VX_RUN_DRAIN_GRACE', POST_EXIT_DRAIN_MS),
     ).unref?.()
   })
   const winner = await Promise.race([streams.then(() => 'drained' as const), deadline])

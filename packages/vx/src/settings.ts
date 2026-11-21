@@ -5,6 +5,7 @@
 
 import {
   machineParallelism,
+  setWorkspaceTimers,
   MAX_TIMEOUT_MS,
   parseDecimalInt,
   parseDuration,
@@ -15,7 +16,8 @@ import {
 export type SettingKind =
   | { readonly type: 'int'; readonly min: number }
   | { readonly type: 'concurrency' }
-  | { readonly type: 'duration'; readonly timer?: true }
+  // `zero`: `'0ms'` is a value (wait for nothing not already done).
+  | { readonly type: 'duration'; readonly timer?: true; readonly zero?: true }
   // `off`: `false` is a value, 0 bytes (the thing the size bounds is off).
   | { readonly type: 'size'; readonly off?: true }
   | { readonly type: 'bool' }
@@ -108,6 +110,36 @@ export const SETTINGS: readonly Setting[] = [
     doc: 'Which task output the run prints. Chosen before the workspace loads, so flag and env only.',
     flag: { verb: 'run', name: '--output-logs' },
     config: false,
+  },
+  {
+    path: 'run.killGrace',
+    kind: { type: 'duration', timer: true },
+    default: "'2s'",
+    doc: "How long a task, server or plugin's process may take to exit after SIGTERM (a timeout, a stop, the run's end) before vx sends SIGKILL.",
+  },
+  {
+    path: 'run.pluginTimeout',
+    kind: { type: 'duration', timer: true, zero: true },
+    default: "'3s'",
+    doc: "How long one plugin's end-of-run flush or teardown may take before the run ends without it; `'0ms'` waits for nothing not already done.",
+  },
+  {
+    path: 'run.drainGrace',
+    kind: { type: 'duration', timer: true },
+    default: "'250ms'",
+    doc: "How long vx reads a task's output after its shell exits, while a process it left running holds the pipe.",
+  },
+  {
+    path: 'run.lineWait',
+    kind: { type: 'duration', timer: true },
+    default: "'50ms'",
+    doc: "How long one output stream waits on the other's open line before it prints, so stdout never lands inside a stderr line.",
+  },
+  {
+    path: 'run.readyNotice',
+    kind: { type: 'duration', timer: true },
+    default: "'10s'",
+    doc: 'How long a persistent task may wait on its `readyWhen` before vx says it is still waiting.',
   },
   {
     path: 'run.rules.exclusiveOutputs',
@@ -222,7 +254,14 @@ export const SETTINGS: readonly Setting[] = [
     path: 'config.workerTimeout',
     kind: { type: 'duration', timer: true },
     default: '30s',
-    doc: 'How long one config evaluation may await; at 5 s vx names the config still evaluating. A synchronous loop on the first load holds the thread the deadline needs, so it hangs until killed.',
+    doc: 'How long one config evaluation may await; at `config.evalNotice` vx names the config still evaluating. A synchronous loop on the first load holds the thread the deadline needs, so it hangs until killed.',
+    config: false,
+  },
+  {
+    path: 'config.evalNotice',
+    kind: { type: 'duration', timer: true },
+    default: "'5s'",
+    doc: 'How long one config evaluation may run before vx names the config still evaluating.',
     config: false,
   },
   {
@@ -329,7 +368,7 @@ export function parseSettingValue(kind: SettingKind, raw: unknown): unknown {
       return parseConcurrency(typeof raw === 'number' ? String(raw) : raw)
     case 'duration': {
       const n = typeof raw === 'string' ? parseDuration(raw) : null
-      if (n === null || n === 0) return null
+      if (n === null || (n === 0 && kind.zero !== true)) return null
       return kind.timer === true && n > MAX_TIMEOUT_MS ? null : n
     }
     case 'size':
@@ -378,7 +417,7 @@ export function settingRefusal(
     }
     // `'0s'` looks like the examples the generic refusal gives.
     const negative = typeof raw === 'string' && raw.startsWith('-') && parseDuration(raw.slice(1))
-    if (ms === 0 || (negative !== false && negative !== null)) {
+    if ((ms === 0 && kind.zero !== true) || (negative !== false && negative !== null)) {
       const none = kind.timer === true ? ' — omit it for no limit' : ''
       return `${where} must be more than 0${none} (got ${got})`
     }
@@ -472,4 +511,26 @@ export function resolveSetting(
 export function runRules(workspace: unknown): { exclusiveOutputs?: boolean } {
   const { value } = resolveSetting('run.rules.exclusiveOutputs', workspace)
   return value === undefined ? {} : { exclusiveOutputs: value as boolean }
+}
+
+/** The timer settings a run reads where the timer arms (util/settle.ts `timerSettingMs`). */
+const WORKSPACE_TIMERS = [
+  'run.killGrace',
+  'run.pluginTimeout',
+  'run.drainGrace',
+  'run.lineWait',
+  'run.readyNotice',
+] as const
+
+/**
+ * Hand `.vx/workspace`'s timer settings to the places that arm them, once
+ * per workspace load; a variable still beats each where it is read.
+ */
+export function applyWorkspaceTimers(workspace: unknown): void {
+  const values = new Map<string, number>()
+  for (const p of WORKSPACE_TIMERS) {
+    const v = atPath(workspace, p)
+    if (v !== undefined) values.set(envName(p), parseSettingValue(setting(p).kind, v) as number)
+  }
+  setWorkspaceTimers(values)
 }
