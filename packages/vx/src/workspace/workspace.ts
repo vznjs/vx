@@ -888,9 +888,12 @@ export function checkProjectNames(root: string, metas: ProjectMeta[]): ProjectMe
         .slice(i, end + 1)
         .map((m) => relPosix(root, m.dir) || '.')
         .sort()
+      const [last] = dirs.splice(-1)
       same.push(
         new UserError(
-          `${dirs.length === 2 ? 'two' : dirs.length} projects are named "${meta.name}": ${dirs.slice(0, -1).join(', ')} and ${dirs.at(-1)} — give ${dirs.length === 2 ? 'one' : 'each but one'} another \`name\` in its vx.config`,
+          dirs.length === 1
+            ? `two projects are named "${meta.name}": ${dirs[0]} and ${last} — give one another \`name\` in its vx.config`
+            : `${dirs.length + 1} projects are named "${meta.name}": ${dirs.join(', ')} and ${last} — give each but one another \`name\` in its vx.config`,
         ),
       )
     }

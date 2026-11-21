@@ -365,7 +365,13 @@ function everyGraphRefusal(
     return buildTaskGraph(options)
   } catch (first) {
     if (!isUserError(first)) throw first
-    const all = new Map<string, UserError>()
+    // One refusal however a build met it: a cycle or a pair of tasks is
+    // named from whichever end that task's build started at.
+    const keyOf = (err: UserError): string => {
+      const ids = err.message.match(/[^\s:'"`,]+#[^\s:'"`,]+/g)
+      return ids === null ? err.message : `${err.code}\0${[...new Set(ids)].sort().join('\0')}`
+    }
+    const all = new Map<string, UserError>([[keyOf(first), first]])
     const sound = new Set<string>()
     for (const one of options.requested) {
       if (sound.has(`${one.project}#${one.task}`)) continue
@@ -378,8 +384,7 @@ function everyGraphRefusal(
         refusals.push(err)
       }
       for (const err of refusals) {
-        const cycle = err.code === 'VX_E_CYCLE' && /^dependsOn cycle: (.+) — /s.exec(err.message)
-        const key = cycle ? [...new Set(cycle[1]!.split(' -> '))].sort().join('\0') : err.message
+        const key = keyOf(err)
         if (all.has(key)) continue
         const at = placed(err)
         all.set(key, at === undefined ? err : new UserError(at, err.code))
