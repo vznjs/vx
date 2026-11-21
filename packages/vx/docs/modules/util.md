@@ -1170,6 +1170,7 @@ Spans, accumulated per call:
 - `save: write temp`
 - `stable keys`
 - `task hash`
+- `upstream inputs sweep`
 
 ### Invariants
 

@@ -706,11 +706,11 @@ async function copyTree(
 async function dropUnchanged(
   ix: StoreIndex,
   hash: string,
-  rows: readonly OutputFileRow[],
+  rows: readonly OutputFileRow[] | undefined,
 ): Promise<boolean> {
   const aside: string[] = []
   const drop = ix.db.transaction(() => {
-    if (entryChanged(ix, hash, rows)) return false
+    if (rows !== undefined && entryChanged(ix, hash, rows)) return false
     for (const [from, to] of [
       [tarPath(ix, hash), tempPath(ix, hash)],
       [treePathOf(ix, hash), tempTreePath(ix, hash)],
@@ -736,6 +736,11 @@ async function dropUnchanged(
   }
   for (const a of aside) await rm(a, { recursive: true, force: true })
   return dropped
+}
+
+/** Remove `hash`'s entry and artifact, whatever they hold (`CacheLayer.discard`). */
+export async function discardEntry(ix: StoreIndex, hash: string): Promise<void> {
+  await dropUnchanged(ix, hash, undefined)
 }
 
 async function restoreOutputsOnce(

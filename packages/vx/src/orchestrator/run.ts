@@ -1162,6 +1162,7 @@ async function runOnBus(
       nodes,
       fsClockNow(cacheDir ?? path.join(workspaceRoot, '.vx')),
       Date.now(),
+      windows,
     )
     // An empty local cache misses every probe: each task derives its key as it
     // starts instead (~100 ms before a cold 1,090-package run's first spawn).
@@ -1686,6 +1687,8 @@ async function runOnBus(
     await trailing.settle()
     for (const l of trailing.lost)
       warnOf(log)(`[vx] ${l.id} ran, and its files did not come back to this machine: ${l.message}`)
+    // Every save has landed: the inputs under them, once more (upstream-inputs.ts).
+    await keyedTasks.sweep(scope, log)
     stop.graphDone()
     reprioritize = undefined
     graphOver = true

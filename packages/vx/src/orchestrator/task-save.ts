@@ -137,6 +137,7 @@ export async function applySave(
           state: stamp.state,
         }),
       )
+      args.run.keyedTasks?.saved(args, hash)
       // A run that settles the outcome on `landed` learns there whether the
       // entry is in; without one, the save is done (a `--force` save may
       // have kept the entry it found).
