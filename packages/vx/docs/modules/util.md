@@ -112,7 +112,7 @@ export const POST_EXIT_CUT_LINE: string
 export const OPEN_LINE_WAIT_MS = 50
 export const OPEN_LINE_HOLD_CHARS: number
 export function lineEnds(onStdout?, onStderr?): { onStdout?; onStderr?; own(text: string): string; end(): void }
-export function drainOrAbort(streams: Promise<unknown>, ac: AbortController, taken: StreamTally): Promise<boolean>
+export function drainOrAbort(streams: Promise<unknown>, ac: AbortController, taken: StreamTally, stop?: AbortSignal): Promise<boolean>
 export function spawnFailureText(err: unknown, cwd: string, what?: string, command?: string, env?: NodeJS.ProcessEnv): string // E2BIG with `command`: its size and the 128 KiB limit, or the environment's size and largest entry when that is the cause
 export function sandboxArgTooLongText(bytes: number): string // the E2BIG line for a sandboxed task's wrap
 export const SANDBOXED_TASK = 'sandboxed task' // `what` for runSandboxed, whose `command` is the wrap: the hint says the wrap counts
@@ -321,7 +321,9 @@ arriving extends nothing: a leftover logging every 50 ms would hold the
 run forever. A bound that ends with vx's own stdout still draining
 (`outputPaced()`) starts another too, until the readers took 8 MiB
 since the exit (`taken`, the readers' `StreamTally`): `vx run … |
-slow-tool` cut an exited task's last lines and its save. The caller
+slow-tool` cut an exited task's last lines and its save. Not once `stop`
+(the run's signal) aborted: Ctrl-C with `vx run … | less` paused held the
+run on the stopped task's readers. The caller
 then sends `POST_EXIT_CUT_LINE` through `onStderr` and appends it to the
 result's `stderr` (after a newline only when the output ended mid-line,
 `lineEnds`), so a cut is never silent (nx#35302 reproduced on vx,

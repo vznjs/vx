@@ -700,12 +700,15 @@ const PACED_DRAIN_CHARS = 8 * 1024 * 1024
  * draining (out-pace.ts holds the readers) is not judged either, until the
  * readers took `PACED_DRAIN_CHARS` since the exit: `vx run … | slow-tool`
  * cut an exited task's last lines and its save. Past that much, the text is
- * a leftover's. Unref'd, never cleared: a late resolve changes nothing.
+ * a leftover's, and a task the run stopped waits on no reader (Ctrl-C with
+ * `vx run … | less` paused held the run). Unref'd, never cleared: a late
+ * resolve changes nothing.
  */
 export async function drainOrAbort(
   streams: Promise<unknown>,
   ac: AbortController,
   taken: StreamTally,
+  stop?: AbortSignal,
 ): Promise<boolean> {
   const bound = testTimerMs('POST_EXIT_DRAIN', POST_EXIT_DRAIN_MS)
   const atExit = taken.chars
@@ -718,7 +721,8 @@ export async function drainOrAbort(
     }
     const due = (): void => {
       if (performance.now() - armedAt > bound * 1.5 && stalls++ < 5) return arm()
-      if (outputPaced() !== undefined && taken.chars - atExit < PACED_DRAIN_CHARS) return arm()
+      const held = outputPaced() !== undefined && stop?.aborted !== true
+      if (held && taken.chars - atExit < PACED_DRAIN_CHARS) return arm()
       resolve('timeout')
     }
     arm()
@@ -1265,7 +1269,7 @@ export async function runCommand(opts: RunOptions): Promise<RunResult> {
   await timeout.settle()
   let cut = false
   if (timeout.timedOut()) ac.abort()
-  else cut = await drainOrAbort(streams, ac, taken)
+  else cut = await drainOrAbort(streams, ac, taken, opts.signal)
   const [stdout, streamed] = await streams
   ends.end()
   // A leftover of a task the run stopped is vx's doing, not the task's.
@@ -1557,7 +1561,14 @@ export async function streamToString(
   const decoder = new RawUtf8Decoder()
   // On abort, cancel the read so a pending `reader.read()` returns: a
   // grandchild holding the pipe means EOF never comes after a timeout.
-  const onAbort = (): void => void reader.cancel().catch(() => {})
+  // The abort also ends a wait on vx's own stdout: a cut reader held there
+  // (`vx run … | less`, paused) kept the run until the reader read on.
+  let aborted!: () => void
+  const abort = new Promise<void>((resolve) => (aborted = resolve))
+  const onAbort = (): void => {
+    aborted()
+    void reader.cancel().catch(() => {})
+  }
   if (signal?.aborted) onAbort()
   else signal?.addEventListener('abort', onAbort, { once: true })
   try {
@@ -1569,7 +1580,8 @@ export async function streamToString(
       if (retain) full.push(chunk)
       onChunk?.(chunk)
       // The next chunk waits for vx's own stdout to take this one (out-pace.ts).
-      for (let p = outputPaced(); p !== undefined; p = outputPaced()) await p
+      for (let p = outputPaced(); p !== undefined && signal?.aborted !== true; p = outputPaced())
+        await Promise.race([p, abort])
     }
     const tail = decoder.decode()
     if (tail.length > 0) {
