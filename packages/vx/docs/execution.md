@@ -552,11 +552,11 @@ A one-shot task ends when its shell exits, not when its pipes close. A
 process the task left running (`server & echo up`) keeps stdout and
 stderr open, so vx reads on for 250 ms after the shell exits and then
 stops. That bound is what keeps a leftover server from hanging the run.
-It counts only time vx could read in: a 250 ms in which vx still took
-text, or spent blocked on other work (a cold run's saves), starts
-another, up to 32 MiB after the exit. Without that, a heavy task's last
-buffered chunks were cut as a leftover's and the task went unsaved
-(`tests/runner.test.ts` › "drainOrAbort").
+A 250 ms that vx spent blocked on other work (a cold run's saves)
+does not count and starts another, five at most: without that, a heavy
+task's last buffered chunks were cut as a leftover's and the task went
+unsaved. Text still arriving does not extend it: a leftover that logs
+every 50 ms is cut all the same (`tests/runner.test.ts` › "drainOrAbort").
 What the leftover writes after it is not captured — not in the frame,
 not in the cache entry — and the frame says so with one line on stderr:
 `[vx] output after the task's shell exited was cut: a process it left

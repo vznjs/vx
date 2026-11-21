@@ -2280,44 +2280,48 @@ describe('a stop that lands while the spawn is awaited', () => {
 // and cut it as a leftover: 11-14 of 16 tasks printing 0.3-5 MB went unsaved
 // on a cold run once the reader thread queued chunks (#5466).
 describe('drainOrAbort', () => {
-  const drain = async (stepMs: number, steps: number, flowing: boolean) => {
+  const withBound = async <T>(f: () => Promise<T>): Promise<T> => {
     process.env['VX_TEST_POST_EXIT_DRAIN'] = '40ms'
     try {
-      const progress = { chars: 0 }
-      const streams = (async () => {
-        for (let i = 0; i < steps; i++) {
-          await Bun.sleep(stepMs)
-          if (flowing) progress.chars += 4096
-        }
-      })()
-      const ac = new AbortController()
-      return [await drainOrAbort(streams, ac, progress), ac.signal.aborted]
+      return await f()
     } finally {
       delete process.env['VX_TEST_POST_EXIT_DRAIN']
     }
   }
-  it('waits past the bound while the readers keep taking text', async () => {
-    expect(await drain(10, 15, true)).toEqual([false, false])
-  })
-  it('does not judge a bound the scheduler spent blocked', async () => {
-    process.env['VX_TEST_POST_EXIT_DRAIN'] = '40ms'
-    try {
-      const progress = { chars: 0 }
+  it('does not judge a bound the scheduler spent blocked', () =>
+    withBound(async () => {
       const streams = (async () => {
         await Bun.sleep(5)
         const t = performance.now()
         while (performance.now() - t < 120);
-        for (let i = 0; i < 3; i++) {
-          await Bun.sleep(10)
-          progress.chars += 4096
-        }
+        await Bun.sleep(10)
       })()
-      expect(await drainOrAbort(streams, new AbortController(), progress)).toBe(false)
-    } finally {
-      delete process.env['VX_TEST_POST_EXIT_DRAIN']
-    }
-  })
-  it('cuts readers that took nothing for a whole bound', async () => {
-    expect(await drain(10, 15, false)).toEqual([true, true])
-  })
+      expect(await drainOrAbort(streams, new AbortController())).toBe(false)
+    }))
+  it('cuts readers still open a whole free bound later', () =>
+    withBound(async () => {
+      const ac = new AbortController()
+      expect(await drainOrAbort(Bun.sleep(400), ac)).toBe(true)
+      expect(ac.signal.aborted).toBe(true)
+    }))
+  // A first fix waited while text kept coming, and a leftover that logs
+  // every 50 ms held the run until vx was killed.
+  it.skipIf(process.platform !== 'linux')(
+    'a leftover that keeps printing is cut at the bound all the same',
+    () =>
+      withBound(async () => {
+        const t = performance.now()
+        const r = await runCommand({
+          command: '(for i in $(seq 1 100); do echo tick; sleep 0.02; done) & echo up',
+          cwd: os.tmpdir(),
+          env: { PATH: process.env['PATH'] ?? '' },
+        })
+        expect([r.exitCode, r.leftRunning, r.stderr.includes(POST_EXIT_CUT_LINE.trim())]).toEqual([
+          0,
+          true,
+          true,
+        ])
+        expect(performance.now() - t).toBeLessThan(1500)
+      }),
+  )
 })
