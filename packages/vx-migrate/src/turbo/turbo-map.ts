@@ -306,6 +306,11 @@ export interface MapTurboOptions {
    * keeps, relative to the package (`ownBuildInfo`). Absent, none.
    */
   ownBuildInfo?: (rel: string) => { info: string; outDir: string } | null
+  /**
+   * The TODO for a root-relative package's `command` whose `tsc -b` builds
+   * a package it does not depend on (`undeclaredTscTodo`). Absent, none.
+   */
+  tscReach?: (rel: string, command: string) => string | null
 }
 
 /**
@@ -2420,6 +2425,8 @@ function buildTask(
     return { name, todos, task, uses }
   }
   if (wild !== undefined) todos.push(wildcardCleanTodo(wild))
+  const reach = opts.tscReach?.(pkgDir, command)
+  if (reach != null) todos.push(reach)
   // tsc re-emits only what its buildinfo calls changed: outside the
   // outputs it survives the clean before a miss, and the miss caches a
   // partial `dist/` (`tsc-buildinfo.ts`).

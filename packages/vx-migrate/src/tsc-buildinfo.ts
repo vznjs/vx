@@ -219,19 +219,70 @@ export function tscBuildInfo(read: ReadText, dir: string, command: string): stri
   return [...out]
 }
 
+type Member = { name: string; dir: string; packageJson: object }
+
+const DEP_FIELDS = ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies']
+
 /**
- * The directories outside `dir` holding a tsconfig `command`'s `tsc -b`
- * builds through `references`: that build runs inside this command and
- * writes the other package's outputs.
+ * The TODO for a build whose `tsc -b` reaches, through tsconfig
+ * `references`, members `meta` does not reach through its manifests:
+ * `^build` orders none of them first, so tsc builds each inside this
+ * task, writing its outputs beside its own build (Effect's
+ * `@effect/ai-openrouter` referenced `../openai`). Null when none does.
  */
-export function tscBuiltElsewhere(read: ReadText, dir: string, command: string): string[] {
-  const out = new Set<string>()
-  for (const { file, build } of tscProjects(read, dir, command)) {
+export function undeclaredTscTodo(
+  read: ReadText,
+  meta: Member,
+  members: readonly Member[],
+  command: string,
+  rootDir: string | undefined,
+): string | null {
+  // The root's own `tsc -b packages` builds the members by design (nestjs/nest).
+  if (meta.dir === rootDir) return null
+  const dirs = new Set<string>()
+  for (const { file, build } of tscProjects(read, meta.dir, command)) {
     const at = path.dirname(file)
-    const rel = path.relative(dir, at)
-    if (build && (rel.startsWith('..') || path.isAbsolute(rel))) out.add(at)
+    const rel = path.relative(meta.dir, at)
+    if (build && (rel.startsWith('..') || path.isAbsolute(rel))) dirs.add(at)
   }
-  return [...out]
+  if (dirs.size === 0) return null
+  const byName = new Map(members.map((m) => [m.name, m]))
+  const reach = new Set<string>()
+  const queue = [meta.name]
+  while (queue.length > 0) {
+    const m = byName.get(queue.shift()!)
+    if (m === undefined) continue
+    // Peers too: pnpm, Bun and npm install a workspace package's peers, and
+    // the lockfile plugin's `^build` follows them (Effect's packages peer `effect`).
+    for (const field of DEP_FIELDS) {
+      const deps = (m.packageJson as Record<string, unknown>)[field]
+      if (typeof deps !== 'object' || deps === null) continue
+      for (const d of Object.keys(deps)) {
+        if (byName.has(d) && !reach.has(d)) {
+          reach.add(d)
+          queue.push(d)
+        }
+      }
+    }
+  }
+  const out = new Set<string>()
+  for (const dir of dirs) {
+    let owner: Member | undefined
+    for (const m of members) {
+      const inside = dir === m.dir || dir.startsWith(m.dir + path.sep)
+      if (inside && (owner === undefined || m.dir.length > owner.dir.length)) owner = m
+    }
+    // A workspace root is no package to depend on.
+    if (owner === undefined || owner === meta || owner.dir === rootDir) continue
+    if (!reach.has(owner.name)) out.add(owner.name)
+  }
+  if (out.size === 0) return null
+  const names = [...out].sort()
+  const one = names.length === 1
+  const list = names.map((n) => `\`${n}\``).join(', ')
+  return one
+    ? `\`tsc -b\` builds ${list} through tsconfig "references", but this package does not depend on it: that build runs inside this task, writing that package's outputs beside its own build, and this task's key misses its edits; add it to this package's devDependencies (\`workspace:*\`)`
+    : `\`tsc -b\` builds ${list} through tsconfig "references", but this package does not depend on them: those builds run inside this task, writing their outputs beside their own build, and this task's key misses their edits; add them to this package's devDependencies (\`workspace:*\`)`
 }
 
 /**

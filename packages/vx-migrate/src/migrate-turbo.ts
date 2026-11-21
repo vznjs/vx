@@ -27,7 +27,7 @@ import { DOTENV_GLOBS_HEAD, DOTENV_PROBE, DOTENV_PROBE_TOP } from './dotenv-prob
 import { adoptedToolNotes } from './workspace-notes.js'
 import { spelledNames } from './spelled-env.js'
 import { sealsConfig } from './sealed-tsconfig.js'
-import { onceReader, ownBuildInfo, tscBuildInfo } from './tsc-buildinfo.js'
+import { onceReader, ownBuildInfo, tscBuildInfo, undeclaredTscTodo } from './tsc-buildinfo.js'
 
 /** What a task's `npm_package_*` read: the manifest, so a bump reaches them. */
 const MANIFEST_IMPORT = "import pkg from './package.json' with { type: 'json' }"
@@ -51,7 +51,8 @@ export async function migrateTurbo(
 ): Promise<MigrationPlan> {
   const tracked = await trackedFiles(root)
   const tsc = onceReader()
-  const mapping = await mapTurboWorkspace(root, await withRootProject(root, metas), {
+  const members = await withRootProject(root, metas)
+  const mapping = await mapTurboWorkspace(root, members, {
     splice: (kind) => [{ raw: `...${PRESET_NAMES[kind]}` }],
     persistentTodo: PERSISTENT_TODO,
     manifestField: (key) => ({ raw: `pkg.${key}` }),
@@ -63,6 +64,10 @@ export async function migrateTurbo(
     ignoredUnder: (globs) => gitIgnoredUnder(root, globs),
     buildInfo: (rel, command) => tscBuildInfo(tsc.read, path.join(root, rel), command),
     ownBuildInfo: (rel) => ownBuildInfo(tsc.read, path.join(root, rel)),
+    tscReach: (rel, command) => {
+      const meta = members.find((m) => m.dir === path.join(root, rel))
+      return meta === undefined ? null : undeclaredTscTodo(tsc.read, meta, members, command, root)
+    },
   })
   // A reader whose `!` hides a committed file under another task's output
   // runs uncached, as under turbo().
