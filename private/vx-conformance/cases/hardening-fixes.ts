@@ -75,6 +75,65 @@ export default [
   }),
 
   defineCase({
+    id: 'cache/deep-dependency-input-edited-mid-run-not-replayed',
+    category: 'cache',
+    kind: 'correctness',
+    title:
+      'A source two packages down, edited and put back while a build reads it, is not replayed',
+    why: 'A task in one package can rewrite another package’s source for a moment, a code generator or a translation step, and put it back. A build two packages up that reads that source in the moment holds bytes no key describes. Stored, here or in a shared cache, it comes back on the next run or on a teammate’s machine as code nobody has on disk.',
+    from: ['upstream-input-moved'],
+    workspace: {
+      projects: {
+        lib: {
+          tasks: { build: { command: CONCAT, inputs: ['src/**'], outputs: ['dist/**'] } },
+          files: { 'src/a.txt': 'A\n', '.gitignore': 'dist/\n' },
+        },
+        mid: {
+          deps: ['lib'],
+          tasks: {
+            build: {
+              command: CONCAT,
+              dependsOn: ['^build'],
+              inputs: ['src/**'],
+              outputs: ['dist/**'],
+            },
+          },
+          files: { 'src/a.txt': 'm\n', '.gitignore': 'dist/\n' },
+        },
+        app: {
+          deps: ['mid'],
+          tasks: {
+            build: {
+              command: `mkdir -p ../../${MEET} dist && touch ../../${MEET}/started && ${waitFor('edited')} && cat ../lib/src/a.txt > dist/o.txt && touch ../../${MEET}/read`,
+              dependsOn: ['^build'],
+              inputs: ['src/**'],
+              outputs: ['dist/**'],
+            },
+          },
+          files: { 'src/a.txt': 'x\n', '.gitignore': 'dist/\n' },
+        },
+        editor: {
+          tasks: {
+            build: {
+              command: `mkdir -p ../../${MEET} && ${waitFor('started')} && printf 'B\\n' > ../lib/src/a.txt && touch ../../${MEET}/edited && ${waitFor('read')} && printf 'A\\n' > ../lib/src/a.txt`,
+              cache: false,
+            },
+          },
+        },
+      },
+    },
+    steps: [
+      { run: 'build', expect: { exit: 0, files: { [APP_OUT]: 'B\n', [LIB_A]: 'A\n' } } },
+      { write: { 'packages/app/dist': null } },
+      {
+        run: 'build',
+        projects: ['app'],
+        expect: { exit: 0, files: { [APP_OUT]: 'A\n' } },
+      },
+    ],
+  }),
+
+  defineCase({
     id: 'cache/dependency-output-changed-mid-run-not-replayed',
     category: 'cache',
     kind: 'correctness',

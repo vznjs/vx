@@ -284,8 +284,8 @@ The cache is not a single file. It is composed:
   S3-direct wire all plug in the same way. Read-through (local,
   then remote with hydrate-into-local; `prefetch` + an in-flight map
   guarantee at most one remote GET per key); write-through (local
-  sync; the remote upload is a fire-and-forget background task drained
-  at end of run, so PUT latency never sits on a task's critical path
+  sync; the remote upload is a background task started once the graph
+  is done and drained at end of run, so PUT latency never sits on a task's critical path
   and a remote outage never fails the build).
 - **`git-inputs.ts`** — git-backed input enumeration (`GitFilesCache`).
 - **`inputs.ts`** — glob resolution with hard project boundaries,
@@ -628,7 +628,7 @@ Reads try local first, then remote (hydrating local on remote hit);
 `run()` also fires a background **prefetch** pass over every
 stable-key task so remote latency overlaps execution — at most one
 GET per key. Writes go to local synchronously; the remote PUT is a
-fire-and-forget background upload drained before `cache.close()`, so
+background upload sent once the graph is done and drained before `cache.close()`, so
 upload latency never blocks the next task. Remote errors are warned
 but never thrown — no remote failure of any
 kind may fail the run. `--dry` use a lightweight remote

@@ -814,6 +814,7 @@ describe('LayeredCache', () => {
           outputFiles: [outFile],
           entry: { taskId: 'pkg#build', command: 'x', durationMs: 1, stdout: '' },
         })
+        void layered.uploaded(`h-pool-${i}`)
       }
       await Bun.sleep(0)
       expect(remote.puts).toBe(at)
@@ -822,6 +823,30 @@ describe('LayeredCache', () => {
       expect(remote.puts).toBe(at + 1)
     },
   )
+
+  it('save() holds its upload until the drain, and discard() drops it', async () => {
+    // The sweep once a run's graph is done may discard an entry: a remote
+    // that took it at save would serve another machine bytes no key names.
+    const layered = makeLayered()
+    const outFile = path.join(projectDir, 'dist', 'out.txt')
+    await mkdir(path.dirname(outFile), { recursive: true })
+    for (const hash of ['h-kept', 'h-dropped']) {
+      await writeFile(outFile, hash)
+      await layered.save({
+        hash,
+        projectDir,
+        outputFiles: [outFile],
+        entry: { taskId: 'pkg#build', command: 'x', durationMs: 1, stdout: '' },
+      })
+    }
+    await Bun.sleep(5)
+    expect(remote.puts).toBe(0)
+    await layered.discard('h-dropped')
+    await layered.drainUploads()
+    expect(remote.puts).toBe(1)
+    expect(await layered.uploaded('h-kept')).toBe(true)
+    expect(await layered.uploaded('h-dropped')).toBe(false)
+  })
 
   it('drainUploads() waits for an upload still running once the queue is empty', async () => {
     const gates = new Map<string, () => void>()
@@ -843,6 +868,7 @@ describe('LayeredCache', () => {
         outputFiles: [outFile],
         entry: { taskId: 'pkg#build', command: 'x', durationMs: 1, stdout: '' },
       })
+      void layered.uploaded(hash)
     }
     while (gates.size < 2) await Bun.sleep(1)
     let drained = false
@@ -1007,6 +1033,7 @@ describe('LayeredCache', () => {
       outputFiles: [outFile],
       entry: { taskId: 'pkg#build', command: 'c', durationMs: 1, stdout: '' },
     })
+    void layered.uploaded('h-slow-put')
     // Wait for the background job to fire the request rather than assuming
     // it fits in a fixed pause: under a loaded gate 20 ms did not, and the
     // assertion read as "the upload never started" (2026-09-05).
@@ -1138,6 +1165,7 @@ describe('LayeredCache', () => {
         })
       }
       await save(layered, 'first')
+      void layered.uploaded('h-resave')
       await reading
       expect(isInline(local, 'h-resave')).toBe(where === 'inline')
       const firstBytes = Buffer.from(storedArtifact(local, 'h-resave')!)

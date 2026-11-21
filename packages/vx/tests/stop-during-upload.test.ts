@@ -2,6 +2,8 @@
 // plugin's put cannot be cancelled, so the drain waited it out: a slow remote
 // held a SIGTERMed run past the signal's exit bound, which then exited with
 // no footer (bug hunt round 3, 2026-10-15). Queued uploads never start.
+// Uploads begin once the graph is done (after the upstream-inputs sweep), so
+// the stop lands in the drain: every task has finished, only uploads are cut.
 import { rm } from 'node:fs/promises'
 import { expect, it } from 'bun:test'
 import { addProject, makeWorkspace, silentLogger, TIMEOUT } from './helpers/orchestrator-fixture.js'
@@ -45,12 +47,13 @@ it(
         tasks: ['build'],
         log: silentLogger(fixture),
         remoteCache: layer,
+        uploadConcurrency: 2,
         signal: controller.signal,
       })
       expect(performance.now() - started).toBeLessThan(5_000)
-      expect(result.ok).toBe(false)
-      // Four upload slots: the queue behind the first never starts.
-      expect(puts).toBeLessThanOrEqual(4)
+      expect(result.outcomes.every((o) => o.status === 'success')).toBe(true)
+      // Two upload slots: the queue behind them never starts.
+      expect(puts).toBe(2)
     } finally {
       await rm(fixture.root, { recursive: true, force: true })
     }

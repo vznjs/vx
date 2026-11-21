@@ -813,11 +813,15 @@ Hard invariants of the remote prefetch:
 
 ### Remote uploads (background, drained at run end)
 
-Writes go to the local cache synchronously; the **remote PUT is a
-fire-and-forget background upload**. The task's outcome (and its
-dependents) never wait on upload latency — the uploads race alongside
-the rest of the run and are drained before `cache.close()`, so a
-short run still ships every artifact before the process exits. Upload
+Writes go to the local cache synchronously; the **remote PUT waits
+for the run's graph to be done**. The task's outcome (and its
+dependents) never wait on upload latency. The uploads start once the
+sweep of the inputs under every save has run (see below), and are drained
+before `cache.close()`: an entry that sweep drops never reaches a remote,
+so another machine cannot replay bytes its key does not name. An
+executor that asks for its task's upload (a DTE worker) sends it at once.
+An entry packed in memory (local writes off, a `--force` re-save) goes at
+once too, since holding it would hold the run's every artifact in memory. Upload
 failures are warned once per failure class and are otherwise ignored (the task
 already succeeded; the only loss is the remote entry).
 
@@ -996,7 +1000,8 @@ have written it. A write in that moment's own tick is judged by its
 bytes. A write no window covers (a task writing into another project, an
 editor) is found once the graph is done: one sweep `lstat`s every input
 under a save this run made, each file once, and drops each entry built
-over one that moved, naming it. A remote took such an entry already. A file
+over one that moved, naming it. Its remote upload waited for this sweep, so
+it is dropped too. A file
 whose ctime alone moved during the command, its bytes and mtime as the
 key found them (a hard link such as `cp -al src dist`, a chmod, a chown),
 is withheld too, since an edit undone with its mtime put back looks the

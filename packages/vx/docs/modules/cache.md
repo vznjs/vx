@@ -872,7 +872,10 @@ embedder via `RunOptions.remoteCache`. Core builds every
   `source: 'remote'`.
 - **Write-through with async upload**: write to local synchronously
   (packed once however many remotes), then PUT to every writable remote
-  in the background (bounded at 4 concurrent per remote;
+  in the background. A save's upload is held until `drainUploads()`,
+  after the graph and its upstream-inputs sweep, whose `discard()` drops
+  it, or until `uploaded()` (an executor plugin's save) asks for it; an
+  artifact packed in memory goes at once (bounded per remote;
   `run()` awaits `drainUploads()` before `cache.close()`, and before the
   telemetry summary, which reports them). A stopped run (Ctrl-C,
   SIGTERM, an embedder's abort) calls `stopUploads()`: queued uploads
