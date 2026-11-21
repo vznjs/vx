@@ -1,6 +1,6 @@
 // The `.env` probes were written inline, a shell line in every package's
 // inputs.runtime: create-turbo's own `inputs: [..., ".env*"]` put it
-// in each config. The preset names them, with why they exist.
+// in each config. Each config names the ones it uses at its top.
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -9,7 +9,6 @@ import { quoteTsLiteral } from '@vzn/vx'
 import type { PackageMeta } from '../src/packages.js'
 import { DOTENV_PROBE, DOTENV_PROBE_TOP, dotenvGlobsProbe } from '../src/dotenv-probe.js'
 import { migrateTurbo } from '../src/migrate-turbo.js'
-import { WRITTEN_BUILTINS, WRITTEN_DEFAULTS } from './helpers/turbo-own.js'
 
 let root: string
 beforeEach(async () => {
@@ -20,7 +19,7 @@ afterEach(async () => {
 })
 
 describe('migrateTurbo: the .env probes', () => {
-  it('are preset exports each config names', async () => {
+  it('are named once at the top of the config that uses them', async () => {
     await writeFile(
       path.join(root, 'turbo.json'),
       JSON.stringify({
@@ -44,26 +43,20 @@ describe('migrateTurbo: the .env probes', () => {
       }
       return [t.inputs.runtime, t.inputs.workspaceRuntime]
     }
-    const preset = p.extraFiles.find((f) => f.relPath === 'vx-preset.ts')!.contents
     expect({
       build: runtime('build'),
       test: runtime('test'),
-      imports: project.importLines,
-      exports: preset.split('\n').filter((l) => l.startsWith('export const')),
+      decls: project.importLines,
+      extraFiles: p.extraFiles,
     }).toEqual({
       build: [[{ raw: 'dotenvFiles' }], undefined],
       test: [[{ raw: 'dotenvFilesDeep' }], [{ raw: 'dotenvRootFiles' }]],
-      imports: [
-        'import { dotenvFiles, dotenvFilesDeep, dotenvRootFiles, globalEnvInputs, ' +
-          "globalPassThroughEnv } from '../../vx-preset.js'",
+      decls: [
+        `const dotenvFiles = ${quoteTsLiteral(DOTENV_PROBE_TOP)}`,
+        `const dotenvFilesDeep = ${quoteTsLiteral(DOTENV_PROBE)}`,
+        `const dotenvRootFiles = ${quoteTsLiteral(dotenvGlobsProbe(['.env'])!)}`,
       ],
-      exports: [
-        `export const globalEnvInputs = [${WRITTEN_DEFAULTS}]`,
-        `export const globalPassThroughEnv = [${WRITTEN_BUILTINS}]`,
-        `export const dotenvFiles = ${quoteTsLiteral(DOTENV_PROBE_TOP)}`,
-        `export const dotenvFilesDeep = ${quoteTsLiteral(DOTENV_PROBE)}`,
-        `export const dotenvRootFiles = ${quoteTsLiteral(dotenvGlobsProbe(['.env'])!)}`,
-      ],
+      extraFiles: [],
     })
   })
 })

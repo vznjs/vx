@@ -68,13 +68,8 @@ describe('migrateTurbo: a framework Turbo infers', () => {
       'NEXT_DEPLOYMENT_ID',
     ]
     expect(await env()).toEqual({
-      env: [{ raw: '...globalEnvInputs' }, ...names, 'VERCEL_DEPLOYMENT_ID'],
-      pass: [
-        { raw: '...globalEnvInputs' },
-        { raw: '...globalPassThroughEnv' },
-        ...names,
-        'VERCEL_DEPLOYMENT_ID',
-      ],
+      env: [...names, 'VERCEL_DEPLOYMENT_ID'],
+      pass: [...names, 'VERCEL_DEPLOYMENT_ID'],
       notes: [
         BUILTIN_FAMILIES_NOTE,
         'nextjs in web: Turbo passes NEXT_PUBLIC_*, NEXT_DEPLOYMENT_ID implicitly; the configs ' +
@@ -101,10 +96,6 @@ describe('migrateTurbo: a framework Turbo infers', () => {
   })
 
   it('without git lists only the literal names', async () => {
-    expect((await env()).env).toEqual([
-      { raw: '...globalEnvInputs' },
-      'NEXT_DEPLOYMENT_ID',
-      'VERCEL_DEPLOYMENT_ID',
-    ])
+    expect((await env()).env).toEqual(['NEXT_DEPLOYMENT_ID', 'VERCEL_DEPLOYMENT_ID'])
   })
 })

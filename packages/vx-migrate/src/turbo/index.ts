@@ -3,10 +3,10 @@
 // Fills the `project` stage: every package the workspace discovers is given
 // the tasks turbo.json + its package.json scripts define, mapped by the same
 // mapper `bunx @vzn/vx-migrate` renders files from — so what runs here is
-// what a migration would have written, minus the file. `vx lock` maps and
-// records it; a run reads the lock. An env wildcard expands over the
-// environment `vx lock` runs in. Turbo's global fields
-// are inlined into each task instead of imported from a generated preset.
+// what a migration would have written, plus Turbo's global fields and
+// implicit hash inputs, inlined into each task (a written config carries
+// none). `vx lock` maps and records it; a run reads the lock. An env
+// wildcard expands over the environment `vx lock` runs in.
 // A task the package's own vx.config already declares wins; the plugin never
 // overwrites a user's hand.
 
@@ -314,7 +314,7 @@ async function mapAll(
   // Only a mapping the kept one no longer holds loads the mapper.
   const { mapTurboWorkspace } = require('./turbo-map.js') as typeof TurboMap
   const mapped = await mapTurboWorkspace(root, metas, {
-    // Inline: the values themselves, where `bunx @vzn/vx-migrate` splices a preset import.
+    // Inline: the values themselves.
     splice: (_kind, values) => values,
     persistentTodo: PERSISTENT_NOTE,
     envNames,

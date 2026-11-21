@@ -243,8 +243,8 @@ upstream repos.
    compose: a shared preset imported and spread into each config IS the
    global-inputs/global-env mechanism (same rationale as the rejected
    named-inputs machinery — a schema field would duplicate the language).
-   The `@vzn/vx-migrate` Turbo path already emits a generated `vx-preset.ts`
-   for exactly this. Not a gap; will not be added.
+   `@vzn/vx-migrate` carries turbo.json's global block onto no task and
+   names each task that lost it (2026-11-21). Not a gap; will not be added.
    - Turbo `globalEnv`, `globalPassThroughEnv`.
 
 5. **`--cache-dir <path>` CLI flag — shipped.** Overrides the

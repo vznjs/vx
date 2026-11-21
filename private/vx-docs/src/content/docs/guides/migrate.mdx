@@ -59,8 +59,9 @@ what the workspace needs in `.vx/workspace.ts`: its lockfile plugin,
 ## Turborepo
 
 Beside `turbo.json` or `turbo.jsonc`, init writes one `vx.config.ts` per
-package, plus a `vx-preset.ts` when turbo.json has global fields or a task
-`env` several packages share.
+package. Each holds only what its tasks declare: turbo.json's global block
+(`globalDependencies`, `globalEnv`, `globalPassThroughEnv`) goes onto no
+task, and **every task that lost it gets a TODO**, so you list what it reads.
 
 ### Check the mapping first
 
@@ -120,9 +121,8 @@ bunx @vzn/vx-migrate
   [2mtasks   [0m  [38;2;34;197;94m3 clean[0m
   [2mfiles   [0m  packages/app/vx.config.ts
             packages/lib/vx.config.ts
-            vx-preset.ts
   [2mlock    [0m  2 project configs → .vx/projects.lock.json
-  [2mnote    [0m  Turbo passes every XDG_DATA_*, COREPACK_*, VSCODE_*, DOCKER_*, BUILDKIT_*, COMPOSE_*, JB_IDE_*, TURBO_*, VERCEL_*, NEXT_*, GITHUB_*, RUNNER_*, __NIXOS_*, NIX_* variable to each task; the configs pass its literal names only — add the ones a task reads to exec.env.passThrough
+  [2mnote    [0m  Turbo passes its builtin env (HOME, CI, PATH, VERCEL_* and the rest) to each task; vx passes the names a task lists — add the ones a task reads to exec.env.passThrough
 
   [2mnext    [0m  [1mvx run build --all[0m
 ```
@@ -131,21 +131,16 @@ bunx @vzn/vx-migrate
 
 ```ts
 import type { ProjectConfig } from '@vzn/vx/config'
-import { globalEnvInputs, globalPassThroughEnv } from '../../vx-preset.js'
 
 export default {
   tasks: {
     build: {
       exec: {
         command: 'mkdir -p dist && cp src/*.js dist/',
-        env: {
-          passThrough: [...globalEnvInputs, ...globalPassThroughEnv],
-        },
       },
       dependsOn: ['^build'],
       inputs: {
         files: ['src/**', 'package.json'],
-        env: [...globalEnvInputs],
       },
       outputs: {
         files: ['dist/**'],
@@ -171,7 +166,7 @@ vx run test --all      # local 3↑: lib#build, app#build, app#test
 vx run test --all      # local 3✓
 bunx @vzn/vx-migrate       # tasks 3 clean
 git add -A && git commit -m migrate
-vx run test --all      # local 3✓: the written configs derive the same keys
+vx run test --all      # local 3↑: the written configs leave out Turbo's own env
 echo "import { bun } from '@vzn/vx-lockfile'; export default { plugins: [bun()] }" > .vx/workspace.ts   # drop turbo(); bun() keeps the edges
 git add -A && git commit -m done
 vx run test --all      # local 3✓
@@ -198,14 +193,14 @@ vx run test --all      # local 3✓
 | `tags` | nothing: labels Turbo keeps out of the hash and the behaviour |
 | `experimentalCI` | nothing: Turbo reads it for external CI tooling and acts on nothing |
 | `outputLogs` (Turbo 1: `outputMode`)                        | `"new-only"` is the default; other values are the run's `--output-logs` |
-| `dotEnv` (Turbo 1), a `.env` input                          | `inputs.runtime`: a probe that prints every `.env` file's name and bytes, because a gitignored `.env` is invisible to a git glob (written configs name it from the preset: `dotenvFiles`, `dotenvFilesDeep`, and `dotenvRootFiles` for the root globs); a root one (`$TURBO_ROOT$/.env`, `globalDotEnv`) is `inputs.workspaceRuntime`, a probe of only the files its globs name |
-| the root `package.json`'s `engines`, which Turbo hashes into every task | `inputs.workspaceRuntime`: a probe that prints that value alone (`rootEngines` in `vx-preset.ts`), so raising `engines.node` re-runs every task and no other root edit does |
-| an input or `globalDependencies` path git ignores (`config.local.json`) | `inputs.workspaceRuntime`: a probe that prints the file's name and bytes, since core refuses a file input git ignores; a gitignored file a glob matches is not keyed |
+| `dotEnv` (Turbo 1), a `.env` input                          | `inputs.runtime`: a probe that prints every `.env` file's name and bytes, because a gitignored `.env` is invisible to a git glob (a written config names it at its top: `dotenvFiles`, `dotenvFilesDeep`, and `dotenvRootFiles` for the root globs); a task's root one (`$TURBO_ROOT$/.env`) is `inputs.workspaceRuntime`, a probe of only the files its globs name |
+| the root `package.json`'s `engines`, the root's dependencies and Turbo's own env, which Turbo hashes into every task | nothing: vx keys a task on what it declares |
+| an input path git ignores (`config.local.json`) | `inputs.workspaceRuntime`: a probe that prints the file's name and bytes, since core refuses a file input git ignores; a gitignored file a glob matches is not keyed |
 | `command` (Turbo 2.11) | `exec.command` (the argv, quoted); `null` or `[]` is no task |
 | `description` | `description` |
 | `extends`                                                   | nothing: a package task merges over the root's, field by field           |
 | `$TURBO_ROOT$/file`                                         | `inputs.workspaceFiles` / `outputs.workspaceFiles`                 |
-| `globalDependencies` / `globalEnv` / `globalPassThroughEnv` (and Turbo 1's `globalDotEnv`) | a generated `vx-preset.ts` each config imports as `vx-preset.js` (your `tsc` accepts it without `allowImportingTsExtensions`; Bun loads the `.ts`), except where a `tsconfig*.json` in the config's directory or above it (below the root) is a composite project or sets `rootDir` and takes the config in: there the config declares the values itself, as `tsc` refuses a file outside the package (TS6059); a wildcard env name is reported, not mapped |
+| `globalDependencies` / `globalEnv` / `globalPassThroughEnv` (and Turbo 1's `globalDotEnv`) | nothing: no task carries them, and each task with a command gets a TODO to list what it reads |
 
 The command itself comes from your `package.json` script, with its
 `pre<name>` / `post<name>` hooks added around it.
