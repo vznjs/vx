@@ -231,7 +231,8 @@ export interface RunSummary {
     run holding a requested server does this after the wait (step 16).
 15. **Drain + close.** Await background prefetches, uploads and the
     run bytes `RunKeeper` (`run-report.ts`) sent as each task ended,
-    then `reportOf` builds the `RunReport` plugin teardowns read;
+    then `frozenReport` gives the `RunReport` plugin teardowns read
+    (its `tasks` built and frozen on their first read);
     `cache.close()`, sandbox teardown.
 16. **Keep-alive block.** If the user requested a persistent task,
     block on its exit AFTER everything above (`sessionEnd` picks the
@@ -3353,7 +3354,9 @@ and every task (`id`, `status`, `durationMs`, `key`, and `log` /
 `outputs` names when kept). `ctx.cache.getRun(name)` reads one from the
 first readable remote. Core writes no manifest: a plugin that wants a
 run record writes one from the report with `ctx.cache.put`. The report
-is frozen, so every teardown reads the same one; a run a stop ended
+is frozen, so every teardown reads the same one, its `tasks` built on
+their first read (a teardown that reads none, vx-history's, cost a cold
+8,002-task run ~10 ms of building them); a run a stop ended
 (Ctrl-C, an embedder's `signal` aborted with a signal's name) passes none,
 as plugin.ts says.
 
