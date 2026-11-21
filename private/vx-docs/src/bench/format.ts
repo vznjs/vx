@@ -132,3 +132,37 @@ export function fill(text: string, table: Map<string, string>): string {
     return v
   })
 }
+
+const RACES = {
+  cold: 'cold build',
+  restore: 'nothing changed, outputs restored',
+  warm: 'nothing changed',
+} as const
+
+/**
+ * Every figure where vx loses to a rival: time on a cold build, a restore
+ * or nothing changed against any of them, and CPU against any but Vite
+ * Task. Main's Bench and the site's build fail on any (2026-11-21): vx
+ * is the fastest, or main is red until it is again.
+ */
+export function losses(d: BenchData): string[] {
+  const vx = overhead(d.runners.vx)
+  const out: string[] = []
+  for (const runner of RUNNERS) {
+    if (runner === 'vx') continue
+    const rival = overhead(d.runners[runner])
+    const races: [keyof typeof vx, string][] = Object.entries(RACES) as [keyof typeof vx, string][]
+    if (runner !== 'vite-task') races.push(['cpu', 'cold build CPU'])
+    for (const [k, label] of races)
+      if (vx[k] > rival[k])
+        out.push(`${label}: vx ${duration(vx[k])}, ${NAMES[runner]} ${duration(rival[k])}`)
+  }
+  return out
+}
+
+/** Throws naming every loss {@link losses} finds. */
+export function assertFastest(d: BenchData, who: string): void {
+  const lost = losses(d)
+  if (lost.length > 0)
+    throw new Error(`${who}: vx is not the fastest; make it faster:\n  ${lost.join('\n  ')}`)
+}
