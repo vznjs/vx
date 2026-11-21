@@ -76,3 +76,37 @@ describe('migrateNx: what .vx/workspace.ts still holds', () => {
     expect(await headerNotes({ '.vx/workspace.ts': 'export default {}\n' })).toEqual([])
   })
 })
+
+// CopilotKit's targets are all shell lines, yet the report said to keep Nx
+// and @vzn/vx-migrate installed for nx-exec, which init did not install.
+describe('migrateNx: the snapshot note names nx-exec only when a task runs it', () => {
+  async function first(targets: Record<string, unknown>): Promise<string> {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'vx-nx-header-'))
+    try {
+      await writeFile(path.join(root, 'package.json'), '{"name":"root","private":true}')
+      const g = { nodes: { a: { name: 'a', data: { root: 'libs/a', targets } } }, dependencies: {} }
+      await writeFile(path.join(root, 'graph.json'), JSON.stringify(g))
+      const metas: PackageMeta[] = [
+        {
+          name: 'a',
+          dir: path.join(root, 'libs', 'a'),
+          packageJson: { name: 'a' },
+          configPath: null,
+        },
+      ]
+      return (await migrateNx(root, metas, 'ts', path.join(root, 'graph.json'))).headerNotes[0]!
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  }
+
+  it('shell lines only: no nx-exec clause', async () => {
+    expect(await first({ build: { command: 'tsc' } })).not.toContain('nx-exec')
+  })
+
+  it('an executor target: the clause stays', async () => {
+    expect(
+      await first({ build: { executor: '@nx/js:tsc', options: { main: 'libs/a/index.ts' } } }),
+    ).toContain('keep Nx and @vzn/vx-migrate installed')
+  })
+})

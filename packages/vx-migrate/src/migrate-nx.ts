@@ -63,7 +63,8 @@ export async function migrateNx(
   if (bare) for (const p of mapped.projects) explicitOnly(p)
   return {
     headerNotes: [
-      bare
+      // CopilotKit maps every target to a shell line: no nx-exec to keep.
+      bare || binTasks(mapped.projects).length === 0
         ? 'migrating from the resolved project-graph snapshot — plugin-inferred targets ' +
           'are frozen as static config; `nx:run-commands` targets are their shell lines'
         : 'migrating from the resolved project-graph snapshot — plugin-inferred targets ' +
@@ -107,14 +108,18 @@ function explicitOnly(p: GeneratedProject): void {
   }
 }
 
-/** `nx-exec` and `nx-env` are this package's bins, and a repo with no package.json cannot install it. */
-function bareNotes(projects: readonly GeneratedProject[]): string[] {
-  const ids = projects.flatMap((p) =>
+/** The tasks that run `nx-exec` or `nx-env`, this package's bins. */
+const binTasks = (projects: readonly GeneratedProject[]): string[] =>
+  projects.flatMap((p) =>
     p.tasks.flatMap((t) => {
       const cmd = (t.task?.['exec'] as { command?: unknown } | undefined)?.command
       return typeof cmd === 'string' && /^nx-(exec|env) /.test(cmd) ? [`${p.name}#${t.name}`] : []
     }),
   )
+
+/** `nx-exec` and `nx-env` are this package's bins, and a repo with no package.json cannot install it. */
+function bareNotes(projects: readonly GeneratedProject[]): string[] {
+  const ids = binTasks(projects)
   if (ids.length === 0) return []
   return [
     `${ids.join(', ')} run${ids.length === 1 ? 's' : ''} through nx-exec or nx-env, @vzn/vx-migrate's bins, which a repo with no package.json cannot install: rewrite ${ids.length === 1 ? 'it' : 'them'} as commands`,
