@@ -223,7 +223,7 @@ export class Cache implements CacheLayer {
     repoDir?: string,
     /**
      * The largest decoded artifact this cache saves, ingests or restores.
-     * Lowered only by tests (`RunOptions.artifactCeiling`).
+     * `cache.artifactCeiling`.
      */
     artifactCeiling: number = MAX_DECOMPRESSED_ARTIFACT_BYTES,
     /**

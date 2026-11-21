@@ -299,7 +299,7 @@ export async function pinArtifact(
     if (plan.size > ix.artifactCeiling) {
       throw new Error(
         `not sent to a remote: its outputs pack to ${formatBytes(plan.size)}, past the ` +
-          `${formatBytes(ix.artifactCeiling)} artifact ceiling a remote hit enforces; this machine keeps it`,
+          `${formatBytes(ix.artifactCeiling)} cache.artifactCeiling a remote hit enforces; this machine keeps it`,
       )
     }
     if (plan.size <= STREAM_DECODE_FROM) {
@@ -449,7 +449,7 @@ async function planWithin(
   if (plan.size > ix.artifactCeiling) {
     throw new Error(
       `${args.entry.taskId} is not cached: its outputs pack to ${formatBytes(plan.size)}, past the ` +
-        `${formatBytes(ix.artifactCeiling)} artifact ceiling a restore enforces — narrow outputs.files`,
+        `${formatBytes(ix.artifactCeiling)} cache.artifactCeiling a restore enforces — narrow outputs.files or raise it`,
     )
   }
   return plan

@@ -1,10 +1,10 @@
-// An output set past the artifact ceiling (2 GiB decoded, zstd.ts) is
-// refused at save: the task's work ran, so the run stays green, one status
-// line names the task and the ceiling, and nothing lands in the cache for a
-// later run to hit — every restore enforces the same ceiling, so an entry
-// past it would be a hit that fails forever. The ceiling is lowered through
-// `RunOptions.artifactCeiling`: 2 GiB of output is out of a test's reach
-// (the upstream probe, a sparse 2.2 GB file, cost 6 to 14 s a run).
+// An output set past the artifact ceiling (`cache.artifactCeiling`, 1 GiB
+// decoded by default) is refused at save: the task's work ran, so the run
+// stays green, one status line names the task and the ceiling, and nothing
+// lands in the cache for a later run to hit — every restore enforces the
+// same ceiling, so an entry past it would be a hit that fails forever. The ceiling is lowered through
+// its variable: 1 GiB of output is out of a test's reach (the upstream probe,
+// a sparse 2.2 GB file, cost 6 to 14 s a run).
 
 import { readdir, rm } from 'node:fs/promises'
 import path from 'node:path'
@@ -17,6 +17,16 @@ import { storedKeys } from './helpers/stored-artifact.js'
 import { TAR_STORE } from './helpers/tar-store.js'
 
 const CEILING = 64 * 1024
+
+/** A run under `cache.artifactCeiling` lowered to `bytes`, through its variable. */
+async function runAt(bytes: number, opts: Parameters<typeof run>[0]): ReturnType<typeof run> {
+  process.env.VX_CACHE_ARTIFACT_CEILING = `${bytes}B`
+  try {
+    return await run(opts)
+  } finally {
+    delete process.env.VX_CACHE_ARTIFACT_CEILING
+  }
+}
 
 const collecting = (lines: string[]): Logger => ({
   status(m) {
@@ -66,27 +76,25 @@ describe('an output set past the artifact ceiling', () => {
   it('is refused at save with one status line, the run green, nothing cached', async () => {
     await workspace(CEILING)
     const lines: string[] = []
-    const miss = await run({
+    const miss = await runAt(CEILING, {
       cwd: root,
       tasks: ['build'],
       log: collecting(lines),
-      artifactCeiling: CEILING,
     })
     expect(miss.ok).toBe(true)
     expect(miss.outcomes.map((o) => o.status)).toEqual(['success'])
     // 64 KiB of output plus the tar's headers and stdout / sidecar / sum entries.
     expect(lines.filter((l) => l.includes('cache save failed'))).toEqual([
       '[vx] cache save failed: big#build is not cached: its outputs pack to 68 KB, past the ' +
-        '64 KB artifact ceiling a restore enforces — narrow outputs.files',
+        '64 KB cache.artifactCeiling a restore enforces — narrow outputs.files or raise it',
     ])
     // No artifact and no temp left behind it.
     expect(await artifactFiles(root)).toEqual([])
     expect(storedKeys(path.join(root, '.vx', 'cache'))).toEqual([])
-    const again = await run({
+    const again = await runAt(CEILING, {
       cwd: root,
       tasks: ['build'],
       log: collecting([]),
-      artifactCeiling: CEILING,
     })
     expect(again.outcomes.map((o) => o.status)).toEqual(['success'])
   })
@@ -94,20 +102,18 @@ describe('an output set past the artifact ceiling', () => {
   it('control: an output set under it is cached and hit, no line', async () => {
     await workspace(CEILING / 2)
     const lines: string[] = []
-    const miss = await run({
+    const miss = await runAt(CEILING, {
       cwd: root,
       tasks: ['build'],
       log: collecting(lines),
-      artifactCeiling: CEILING,
     })
     expect(miss.outcomes.map((o) => o.status)).toEqual(['success'])
     expect(lines.filter((l) => l.includes('cache save failed'))).toEqual([])
     expect((await artifactFiles(root)).map((f) => path.extname(f))).toEqual(['.zst'])
-    const hit = await run({
+    const hit = await runAt(CEILING, {
       cwd: root,
       tasks: ['build'],
       log: collecting([]),
-      artifactCeiling: CEILING,
     })
     expect(hit.outcomes.map((o) => o.status)).toEqual(['cache-hit'])
   })
@@ -121,18 +127,17 @@ describe('an output set past the artifact ceiling', () => {
       .byteLength
     await rm(cacheDir, { recursive: true, force: true })
     const under: string[] = []
-    await run({ cwd: root, tasks: ['build'], log: collecting(under), artifactCeiling: exact - 1 })
+    await runAt(exact - 1, { cwd: root, tasks: ['build'], log: collecting(under) })
     expect(under.filter((l) => l.includes('cache save failed'))).toHaveLength(1)
     expect(await artifactFiles(root)).toEqual([])
     expect(storedKeys(path.join(root, '.vx', 'cache'))).toEqual([])
     const at: string[] = []
-    await run({ cwd: root, tasks: ['build'], log: collecting(at), artifactCeiling: exact })
+    await runAt(exact, { cwd: root, tasks: ['build'], log: collecting(at) })
     expect(at.filter((l) => l.includes('cache save failed'))).toEqual([])
-    const hit = await run({
+    const hit = await runAt(exact, {
       cwd: root,
       tasks: ['build'],
       log: collecting([]),
-      artifactCeiling: exact,
     })
     expect(hit.outcomes.map((o) => o.status)).toEqual(['cache-hit'])
   })
@@ -144,16 +149,15 @@ describe('an output set past the artifact ceiling', () => {
     await run({ cwd: root, tasks: ['build'], log: collecting([]) })
     await rm(path.join(root, 'packages', 'big', 'dist'), { recursive: true, force: true })
     const status: string[] = []
-    const r = await run({
+    const r = await runAt(1024, {
       cwd: root,
       tasks: ['build'],
       log: collecting(status),
-      artifactCeiling: 1024,
     })
     expect(r.outcomes.map((o) => o.status)).toEqual(['success'])
     expect(status.filter((l) => l.includes('corrupt artifact'))).toEqual([
       expect.stringMatching(
-        /^\[vx\] big#build: cache: corrupt artifact for [0-9a-f]+: declares \d+ decompressed bytes \(> 1024 cap\); dropped it — running it$/,
+        /^\[vx\] big#build: cache: corrupt artifact for [0-9a-f]+: declares \d+ decompressed bytes, past cache\.artifactCeiling \(1024\); dropped it — running it$/,
       ),
     ])
     // The run's own save is refused by the same cap, so nothing is left.
@@ -179,7 +183,7 @@ describe('an output set past the artifact ceiling', () => {
       expect(err).toBeInstanceOf(CorruptArtifactError)
       expect((err as Error).message).toMatch(
         new RegExp(
-          `^cache: corrupt artifact for ${hash}: declares \\d+ decompressed bytes \\(> 1024 cap\\)$`,
+          `^cache: corrupt artifact for ${hash}: declares \\d+ decompressed bytes, past cache\\.artifactCeiling \\(1024\\)$`,
         ),
       )
       expect(await other.get(hash)).toBeNull()

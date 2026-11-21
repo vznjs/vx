@@ -19,9 +19,15 @@ misses once and saves again. The old entries stay on disk, never read
 again, until `vx cache clean --older-than <duration>` ages
 them out or `vx cache clean` clears the cache.
 
-## After v0.0.657
+## After v0.0.658
 
-### vx-dte: say a bad env input, record the new API, split a long line
+### cache: make the artifact ceiling a setting, 1 GiB by default
+
+the default artifact ceiling is 1 GiB, not 2 GiB, and RunOptions.artifactCeiling is removed.
+
+## v0.0.658
+
+### vx-dte: make the GitHub worker job one command
 
 the worker workflow's parent input, the run's RUNNER_TEMP list of worker runs and github()'s adopt of workers a step started are gone; run vx dte init again to rewrite both workflows.
 
@@ -29,13 +35,17 @@ the worker workflow's parent input, the run's RUNNER_TEMP list of worker runs an
 
 @vzn/vx no longer ships launcher.sh; bin.vx is ./launcher.cjs.
 
-### vx-dte: drop DteAdapter's late cancel and kept hook
+### vx-dte: wait on a late worker, never give up and ask again
 
 a DteAdapter's cancel() gets no late argument and kept() is no longer called; drop both from a custom adapter.
 
 ### vx-dte: plan a distributed run with one engine
 
 dte({ scheduler }) is removed.
+
+### vx-lockfile: keep a root-installed package the root's own
+
+a workspace package installed only by the root `package.json` no longer orders, keys or `--affected`-selects other projects; declare it in the `package.json` of each project that loads it.
 
 ### cache: put the vx version in every cache key
 
@@ -44,10 +54,6 @@ every cache key moves; each cached task misses once after the upgrade, and after
 ### vx-dte: start CI's workers when the run asks, not before
 
 No migration note.
-
-### vx-lockfile: keep a root-installed package the root's own
-
-a workspace package installed only by the root `package.json` no longer orders, keys or `--affected`-selects other projects; declare it in the `package.json` of each project that loads it.
 
 ### history: keep a run's cache hits as one packed row
 

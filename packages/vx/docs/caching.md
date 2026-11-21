@@ -1882,7 +1882,8 @@ its numeric fields off the bytes when they are plain octal (anything
 else takes the full parse): a 4-entry artifact's read 50–57 µs → 22–23
 (min of 15), and a 300-artifact, 20-file restore run's reader 224 → 92
 ms of main thread (2026-10-02).
-The 2 GiB decompression ceiling applies to both: declared size and
+The decompression ceiling, `cache.artifactCeiling` (default `'1GiB'`),
+applies to both: declared size and
 output length for the one-call decode, a running count for the stream.
 An ingest bounds the compressed body first: a remote body past the
 ceiling's zstd bound (a length header, a Blob's size, or a running count
@@ -1897,18 +1898,18 @@ expanded whole in memory (2 GiB from a 32 KB body) before its length was
 checked. The frame's blocks are walked by their own sizes to tell.
 The ceiling bounds bytes that are decoded. The default store keeps this
 machine's entries as plain files, never decoded, so it saves and
-restores an entry past 2 GiB: a Next.js `output: 'standalone'` build
-packs to 2.1 GB (formbricks, 2026-11-20) and was never cached before.
-Only its upload meets the ceiling, the bound every remote hit enforces:
-the remote warns `not sent to a remote: its outputs pack to …, past the
-2.0 GB artifact ceiling a remote hit enforces; this machine keeps it`
+restores an entry past the ceiling. Only its upload meets the ceiling,
+the bound every remote hit enforces: the remote warns `not sent to a
+remote: its outputs pack to …, past the 1.0 GB cache.artifactCeiling a
+remote hit enforces; this machine keeps it`
 (`tests/artifact-ceiling-tree.test.ts`). The `.tar.zst` store
 (`decompress: false`) decodes on restore, so its save meets the ceiling
 first: the pack plans the tar
-from one stat per output, and a tar past 2 GiB is refused before a byte
+from one stat per output, and a tar past the ceiling is refused before a byte
 is compressed — the run stays green, one status line names the task
 (`[vx] cache save failed: <task> is not cached: its outputs pack to …,
-past the 2.0 GB artifact ceiling a restore enforces`), and nothing is
+past the 1.0 GB cache.artifactCeiling a restore enforces — narrow
+outputs.files or raise it`), and nothing is
 stored for a later run to hit and fail to restore. Left to the scan, a
 2.2 GB output paid the whole compress and a decode (6 to 14 s) to learn
 the same thing and called the task's outputs a corrupt artifact.

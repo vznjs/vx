@@ -96,6 +96,7 @@ const OUTPUTS = ['clean', 'files', 'workspaceFiles'] as const satisfies readonly
 const WORKSPACE_INPUTS = ['stability'] as const satisfies readonly Keys<WorkspaceInputs>[]
 const WORKSPACE_OUTPUTS = ['clean'] as const satisfies readonly Keys<WorkspaceOutputs>[]
 const WORKSPACE_CACHE = [
+  'artifactCeiling',
   'concurrency',
   'dir',
   'download',
