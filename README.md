@@ -65,7 +65,7 @@ vx run build --all    # restored from the cache, not rebuilt
 
 ### When to run `vx lock`
 
-`init` also writes `.vx/projects.lock.json`, every project's config as it evaluated.
+`init` also writes `.vx/projects.lock.jsonl`, every project's config as it evaluated.
 Commit it. Every run reads its configs from the lock, so run
 `vx lock` and commit the lock again after you:
 

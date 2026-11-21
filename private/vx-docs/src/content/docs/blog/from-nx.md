@@ -21,7 +21,7 @@ $ bunx @vzn/vx-migrate
             apps/web/vx.config.ts
             .vx/workspace.ts
             .vx/.gitignore
-  lock      2 project configs → .vx/projects.lock.json
+  lock      2 project configs → .vx/projects.lock.jsonl
 
   next      vx run build --all
 

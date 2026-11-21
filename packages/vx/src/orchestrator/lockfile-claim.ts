@@ -7,7 +7,7 @@
 // the per-run gate, the fallback for a project the file does not list and
 // the `--affected` diff are one implementation here.
 //
-// A run's key reads each project's digest from `.vx/dependencies.lock.json`
+// A run's key reads each project's digest from `.vx/dependencies.lock`
 // (`KeyHookContext.locked`), never the file: only `vx lock` and
 // `--affected` digest it, and a run whose extra file (a local path
 // dependency, edited with no install) moved since the lock, as the record

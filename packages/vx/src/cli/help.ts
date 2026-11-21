@@ -311,7 +311,7 @@ export function helpText(pluginCommands: readonly string[] = []): string {
     'Config lock:',
     '  vx lock              Evaluate every vx.config in the current environment, check',
     '                       the graph rules (run.rules) and freeze the resolved objects',
-    '                       into .vx/projects.lock.json, the only place a run reads configs',
+    '                       into .vx/projects.lock.jsonl, the only place a run reads configs',
     '                       from. A run never evaluates one, never checks the rules',
     '                       and never writes the lock: with none it fails.',
     '  vx lock --check      Audit the lock: re-evaluate every config here and compare',

@@ -84,7 +84,7 @@ const ALWAYS_IGNORE = [
   '.git/**',
   // vx's machine-local state; the workspace config beside it is a source.
   '.vx/cache/**',
-  '.vx/projects.lock.json',
+  '.vx/projects.lock.jsonl',
   // `vx lock`'s review copy: the config is keyed already.
   'vx.lock.json',
   // What `vx lock` and `vx init` write beside the lock: a re-lock must not
@@ -93,12 +93,12 @@ const ALWAYS_IGNORE = [
   '.vx/.gitignore',
   // `vx lock`'s record of edges and digests: the key folds the digests through
   // `fingerprint`.
-  '.vx/dependencies.lock.json',
+  '.vx/dependencies.lock',
   // Where restores stage (archive.ts): vx's own, never an input.
   '.vx/tmp/**',
   // The temps a lock write renames from: a killed write leaves one.
-  '.vx/projects.lock.json.tmp-*',
-  '.vx/dependencies.lock.json.tmp-*',
+  '.vx/projects.lock.jsonl.tmp-*',
+  '.vx/dependencies.lock.tmp-*',
   'vx.lock.json.tmp-*',
 ]
 

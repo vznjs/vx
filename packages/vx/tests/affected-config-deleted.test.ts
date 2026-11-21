@@ -12,6 +12,7 @@ import { dry } from './helpers/parity.js'
 import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
 import { edgesSource, pluginSource } from './helpers/plugin.js'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
+import { lockedEdges, parseDependenciesLock } from '../src/workspace/dependencies-lock.js'
 
 const made: string[] = []
 afterEach(async () => {
@@ -71,14 +72,14 @@ it('deleting a whole project selects its dependants', async () => {
 })
 
 // The project's edges went with it, so selection reads them from the base
-// commit's `.vx/dependencies.lock.json`, which `vx lock` writes.
+// commit's `.vx/dependencies.lock`, which `vx lock` writes.
 async function dropLib(lockedAtBase: boolean): Promise<string> {
   const root = await makeWorkspace({ prefix: 'vx-affected-projdel-lock-', edges: { app: ['lib'] } })
   made.push(root)
   for (const name of ['app', 'lib', 'other'])
     await addProject(root, name, { config: config(['src/**']), files: { 'src/x': '1\n' } })
   if (lockedAtBase) await lock(root)
-  else await rm(path.join(root, '.vx/dependencies.lock.json'), { force: true })
+  else await rm(path.join(root, '.vx/dependencies.lock'), { force: true })
   const git = gitIn(root)
   git('add', '-A')
   git('commit', '-q', '-m', 'init')
@@ -91,12 +92,11 @@ async function dropLib(lockedAtBase: boolean): Promise<string> {
 
 it('a deleted project selects only the dependants the base dependencies lock records', async () => {
   const root = await dropLib(true)
-  const recorded = JSON.parse(gitIn(root)('show', 'HEAD~1:.vx/dependencies.lock.json')) as {
-    graph: (string | number)[]
-  }
-  const dirs = recorded.graph.filter((v): v is string => typeof v === 'string')
-  const app = recorded.graph.indexOf('packages/app')
-  expect(recorded.graph[app + 1]).toBe(dirs.indexOf('packages/lib'))
+  const shown = Bun.spawnSync(['git', 'show', 'HEAD~1:.vx/dependencies.lock'], { cwd: root })
+  const recorded = parseDependenciesLock(new Uint8Array(shown.stdout))!
+  expect(lockedEdges(recorded)[recorded.dirs.indexOf('packages/app')]!.deps).toEqual([
+    'packages/lib',
+  ])
   const tasks = await dry(root, ['build', '--affected=HEAD~1'])
   expect(tasks.map((t) => t.id)).toEqual(['app#build'])
   expect(tasks[0]!.affected).toMatchObject({ file: 'packages/lib/vx.config.mjs' })
@@ -153,8 +153,17 @@ it('a rewritten dependencies lock alone selects nothing', async () => {
   const git = gitIn(root)
   git('add', '-A')
   git('commit', '-q', '-m', 'init')
-  const file = path.join(root, '.vx/dependencies.lock.json')
-  await Bun.write(file, (await Bun.file(file).text()).replace('{', '{ '))
+  const file = path.join(root, '.vx/dependencies.lock')
+  // The same record, its tail JSON spaced: other bytes, still valid.
+  const bytes = new Uint8Array(await Bun.file(file).arrayBuffer())
+  const tailAt = bytes.length - new DataView(bytes.buffer).getUint32(24, true)
+  const tail = new TextEncoder().encode(' ' + new TextDecoder().decode(bytes.subarray(tailAt)))
+  const out = new Uint8Array(tailAt + tail.length)
+  out.set(bytes.subarray(0, tailAt))
+  out.set(tail, tailAt)
+  new DataView(out.buffer).setUint32(24, tail.length, true)
+  expect(parseDependenciesLock(out)).not.toBeNull()
+  await Bun.write(file, out)
   git('commit', '-qam', 'relock')
   const tasks = await dry(root, ['build', '--affected=HEAD~1'])
   expect(tasks.map((t) => t.id)).toEqual([])
@@ -171,7 +180,7 @@ it('a deleted project leaves the alike task it pooled with unselected', async ()
   const git = gitIn(root)
   git('add', '-A')
   git('commit', '-q', '-m', 'init')
-  expect(JSON.parse(git('show', 'HEAD:.vx/projects.lock.json')).pool.task).toHaveLength(1)
+  expect(JSON.parse(git('show', 'HEAD:.vx/projects.lock.jsonl')).pool.task).toHaveLength(1)
   await rm(path.join(root, 'packages/a'), { recursive: true })
   await lock(root)
   git('add', '-A')
@@ -189,9 +198,10 @@ it('a base whose dependencies lock a newer vx wrote is read, not refused', async
   await addProject(root, 'p', { config: config(['src/**']), files: { 'src/x': '1\n' } })
   await addProject(root, 'q', { config: config(['src/**']), files: { 'src/x': '1\n' } })
   await lock(root)
-  const file = path.join(root, '.vx', 'dependencies.lock.json')
-  const text = await Bun.file(file).text()
-  await Bun.write(file, text.replace('"version":4', '"version":5'))
+  const file = path.join(root, '.vx', 'dependencies.lock')
+  const bytes = new Uint8Array(await Bun.file(file).arrayBuffer())
+  new DataView(bytes.buffer).setUint32(4, 6, true)
+  await Bun.write(file, bytes)
   const git = gitIn(root)
   git('add', '-A')
   git('commit', '-q', '-m', 'base')

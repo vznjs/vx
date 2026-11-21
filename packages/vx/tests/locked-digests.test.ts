@@ -1,5 +1,5 @@
-// A run keys a claimed lockfile from `.vx/dependencies.lock.json`, as it
-// takes configs from `.vx/projects.lock.json`: the file's bytes must hash
+// A run keys a claimed lockfile from `.vx/dependencies.lock`, as it
+// takes configs from `.vx/projects.lock.jsonl`: the file's bytes must hash
 // to what `vx lock` recorded, and the recorded per-project digests are the
 // key; the file is never parsed. A file changed since, a lock with no
 // record of a present file, or no lock at all refuses with `vx lock` as
@@ -20,7 +20,7 @@ import { pluginSource } from './helpers/plugin.js'
 
 const TIMEOUT = 30_000
 const CLI = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
-const LOCK = '.vx/dependencies.lock.json'
+const LOCK = '.vx/dependencies.lock'
 const g = globalThis as { __vxParses?: number; __vxNoParse?: boolean }
 let root: string
 
@@ -83,6 +83,21 @@ function silent(): Logger {
   } as never
 }
 
+/** Rewrites one recorded digest in the binary lock's tail strings, as only a test would. */
+async function plant(from: string, to: string): Promise<void> {
+  const bytes = new Uint8Array(await readFile(path.join(root, LOCK)))
+  const view = new DataView(bytes.buffer, bytes.byteOffset)
+  const tailAt = bytes.length - view.getUint32(24, true)
+  const tail = new TextDecoder().decode(bytes.subarray(tailAt))
+  expect(tail).toContain(`"${from}"`)
+  const next = new TextEncoder().encode(tail.replace(`"${from}"`, `"${to}"`))
+  const out = new Uint8Array(tailAt + next.length)
+  out.set(bytes.subarray(0, tailAt))
+  out.set(next, tailAt)
+  new DataView(out.buffer).setUint32(24, next.length, true)
+  await writeFile(path.join(root, LOCK), out)
+}
+
 /** The claim's key part on a#build, from a run that may not parse unless told. */
 async function part(parse = false): Promise<string | undefined> {
   g.__vxNoParse = !parse
@@ -97,8 +112,7 @@ it(
     expect(g.__vxParses).toBeGreaterThan(0)
     expect(await part()).toBe('a1')
     // The record is what keys the task: the proof nothing was parsed.
-    const text = (await readFile(path.join(root, LOCK), 'utf8')).replace(',a1"', ',planted"')
-    await writeFile(path.join(root, LOCK), text)
+    await plant('a1', 'planted')
     expect(await part()).toBe('planted')
   },
   TIMEOUT,
@@ -158,8 +172,7 @@ it(
   'a file its digests read, changed since `vx lock`, is digested anew: the record is stale',
   async () => {
     await lock(root)
-    const text = (await readFile(path.join(root, LOCK), 'utf8')).replace(',a1"', ',planted"')
-    await writeFile(path.join(root, LOCK), text)
+    await plant('a1', 'planted')
     // CONTROL: unchanged, the record keys it.
     expect(await part()).toBe('planted')
     await writeFile(path.join(root, 'patches', 'p.patch'), 'two')
@@ -229,8 +242,7 @@ it(
     // upgrade, a hand edit) fails: a run keys from the record, not afresh.
     await claimed('packages/a=a1\nextra:patches/p.patch\n')
     expect(check()).toEqual([0, ''])
-    const text = (await readFile(path.join(root, LOCK), 'utf8')).replace(',a1"', ',planted"')
-    await writeFile(path.join(root, LOCK), text)
+    await plant('a1', 'planted')
     const [code, err] = check('--check')
     expect(code).toBe(1)
     expect(err).toContain(`${LOCK} is not what the dependencies resolve to here — run 'vx lock'`)

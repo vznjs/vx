@@ -62,7 +62,7 @@ it('vx lock freezes the discovered project, so lock --check && run succeeds', as
   const check = await vx(root, ['lock', '--check'])
   expect(`${check.code}\n${check.err}`).toStartWith('0\n')
   const locked = Object.keys(
-    (await Bun.file(path.join(root, '.vx/projects.lock.json')).json()).projects,
+    (await Bun.file(path.join(root, '.vx/projects.lock.jsonl')).json()).projects,
   )
   // By directory: a project with a config is locked whoever names it.
   expect(locked).toEqual(['packages/app', 'tools/gen'])
@@ -90,7 +90,7 @@ it('the bare-project note names only projects a plugin gives tasks', async () =>
   const lock = await vx(root, ['lock'])
   expect(`${lock.code}\n${lock.err}`).toStartWith('0\n')
   expect(lock.out).toBe(
-    '✓ vx lock  2 project configs → .vx/projects.lock.json (and the tasks a plugin maps for mapped)\n',
+    '✓ vx lock  2 project configs → .vx/projects.lock.jsonl, .vx/dependencies.lock (and the tasks a plugin maps for mapped)\n',
   )
   const check = await vx(root, ['lock', '--check'])
   expect(check.out).toBe('✓ vx lock --check  up to date (2 projects; mapped by a plugin: mapped)\n')

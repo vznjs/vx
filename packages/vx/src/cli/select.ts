@@ -140,7 +140,7 @@ export async function workspaceGlobOwners(
     const dir = lockKey(root, meta.dir)
     if (!Object.hasOwn(lock.projects, dir)) continue
     try {
-      if (declaresMatch(lock.projects[dir]!.config, meta.dir)) owners.push(meta.name)
+      if (declaresMatch(lock.projects[dir]!.config!, meta.dir)) owners.push(meta.name)
     } catch {
       // A hand-edited entry that will not read cannot be shown to declare a
       // matching glob; surfacing it here would fail a run the load tolerates.

@@ -343,10 +343,10 @@ describe('resolveInputs', () => {
     expect(got.files).toEqual([path.join(projectDir, 'src', 'index.ts')])
   })
 
-  it("the workspace's .vx/projects.lock.json never enters the input set; a project's own does", async () => {
+  it("the workspace's .vx/projects.lock.jsonl never enters the input set; a project's own does", async () => {
     await write(path.join(projectDir, 'src', 'index.ts'), 'src')
-    await write(path.join(projectDir, '.vx/projects.lock.json'), '{}')
-    await write(path.join(root, '.vx/projects.lock.json'), '{}')
+    await write(path.join(projectDir, '.vx/projects.lock.jsonl'), '{}')
+    await write(path.join(root, '.vx/projects.lock.jsonl'), '{}')
 
     const got = await resolveInputs({
       projectDir,
@@ -356,8 +356,8 @@ describe('resolveInputs', () => {
       ownOutputs: [],
       nestedProjectDirs: [],
     })
-    expect(got.files).toContain(path.join(projectDir, '.vx/projects.lock.json'))
-    expect(got.files).not.toContain(path.join(root, '.vx/projects.lock.json'))
+    expect(got.files).toContain(path.join(projectDir, '.vx/projects.lock.jsonl'))
+    expect(got.files).not.toContain(path.join(root, '.vx/projects.lock.jsonl'))
     expect(got.files).toContain(path.join(projectDir, 'src', 'index.ts'))
   })
 

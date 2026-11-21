@@ -605,20 +605,20 @@ describe('affectedProjects', () => {
     expect([...out]).toEqual([])
   })
 
-  it('a .vx/projects.lock.json change never marks a project affected, even the root project', async () => {
+  it('a .vx/projects.lock.jsonl change never marks a project affected, even the root project', async () => {
     // The root is a project here, so a root-level file edit WOULD map to
     // it — proving the exclusion is the lock filter, not "root isn't a
-    // project". A README edit at root still marks it; .vx/projects.lock.json never.
+    // project". A README edit at root still marks it; .vx/projects.lock.jsonl never.
     const withRoot: ProjectMeta[] = [...projects, { name: 'root', dir: root, configPath: null }]
     // Commit both root files so `git diff` (tracked changes only) can see
     // edits to them.
-    await Bun.write(path.join(root, '.vx/projects.lock.json'), '{"v":1}')
+    await Bun.write(path.join(root, '.vx/projects.lock.jsonl'), '{"v":1}')
     await writeFile(path.join(root, 'README.md'), 'v1')
     await git(root, 'add', '.')
     await git(root, 'commit', '-q', '-m', 'add lock + readme')
 
     // Editing only the lock → nothing affected.
-    await Bun.write(path.join(root, '.vx/projects.lock.json'), '{"v":2}')
+    await Bun.write(path.join(root, '.vx/projects.lock.jsonl'), '{"v":2}')
     expect([
       ...(await affectedProjects({ workspaceRoot: root, since: 'HEAD', projects: withRoot })),
     ]).toEqual([])
@@ -1232,27 +1232,27 @@ describe('affectedProjects', () => {
       expect([...out]).toEqual([])
     })
 
-    it('.vx/projects.lock.json still never widens, even though it sits at the root', async () => {
+    it('.vx/projects.lock.jsonl still never widens, even though it sits at the root', async () => {
       // vx's OWN lockfile is deliberately excluded from cache inputs, so
       // re-running `vx lock` must not rebuild the workspace.
       //
       // The root is a project here ON PURPOSE. Without it the assertion is
-      // VACUOUS — .vx/projects.lock.json maps to no project directory anyway, so `[]`
+      // VACUOUS — .vx/projects.lock.jsonl maps to no project directory anyway, so `[]`
       // comes back whether or not any guard exists (mutation-verified: with
       // only a/b in scope, deleting the exclusion filter still passed). With
       // root in scope, deleting the filter yields ['root'] and this fails.
       //
-      // What the filter, and ONLY the filter, enforces: adding '.vx/projects.lock.json'
+      // What the filter, and ONLY the filter, enforces: adding '.vx/projects.lock.jsonl'
       // to the widening set is inert, because the filter has already removed
       // it from `changed`. That mutation survives and no test can kill it —
       // recorded rather than papered over, so nobody adds a second guard here
       // believing it does something. The exclusion lives in exactly one place.
       const withRoot: ProjectMeta[] = [...projects, { name: 'root', dir: root, configPath: null }]
-      await Bun.write(path.join(root, '.vx/projects.lock.json'), '{"v":1}')
+      await Bun.write(path.join(root, '.vx/projects.lock.jsonl'), '{"v":1}')
       await git(root, 'add', '.')
       await git(root, 'commit', '-q', '-m', 'add vx lock')
 
-      await Bun.write(path.join(root, '.vx/projects.lock.json'), '{"v":2}')
+      await Bun.write(path.join(root, '.vx/projects.lock.jsonl'), '{"v":2}')
       const out = await affectedProjects({
         workspaceRoot: root,
         since: 'HEAD',

@@ -1,5 +1,5 @@
-// A run takes names and edges from the lock's `discoverStage`, so a record
-// that moved there moved keys though no config did: `--affected` selects
+// A run takes names from the config lock and edges from the dependencies
+// lock, so a record that moved there moved keys though no config did: `--affected` selects
 // at least every task whose key changed.
 import { mkdir, rm } from 'node:fs/promises'
 import path from 'node:path'
@@ -68,7 +68,7 @@ it('an edge the discover stage adds selects the project that gained it', async (
   const tasks = await dry(root, ['build', '--affected=HEAD~1'])
   // a#build runs as b's dependency; only b is affected.
   expect(tasks.map((t) => [t.id, t.affected ?? null])).toEqual([
-    ['b#build', { kind: 'workspace', file: '.vx/projects.lock.json' }],
+    ['b#build', { kind: 'workspace', file: '.vx/dependencies.lock' }],
     ['a#build', null],
   ])
 })

@@ -67,10 +67,10 @@ it('a second vx lock waits for the one writing, then writes what the configs say
     }
     reader.releaseLock()
     expect(err).toContain('[vx] waiting for another vx lock (pid ')
-    expect(await Bun.file(path.join(root, '.vx/projects.lock.json')).exists()).toBe(false)
+    expect(await Bun.file(path.join(root, '.vx/projects.lock.jsonl')).exists()).toBe(false)
   } finally {
     await release()
   }
   expect(await proc.exited).toBe(0)
-  expect(await Bun.file(path.join(root, '.vx/projects.lock.json')).exists()).toBe(true)
+  expect(await Bun.file(path.join(root, '.vx/projects.lock.jsonl')).exists()).toBe(true)
 }, 30_000)

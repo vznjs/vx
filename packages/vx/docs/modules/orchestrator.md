@@ -1324,7 +1324,7 @@ All are on the `@vzn/vx` façade.
 ### Construction rules
 
 - **A run's key never parses the lockfile.** `key` (project scope)
-  answers the digest `vx lock` recorded in `.vx/dependencies.lock.json`
+  answers the digest `vx lock` recorded in `.vx/dependencies.lock`
   (`ctx.locked(file)`, asked once per run), which core holds to the
   file's bytes ([`workspace.md`](./workspace.md#srcworkspacelockfilets--vxprojectslockjson), "A run's read"). Only
   when an extra file the record names moved since (a path dependency
@@ -1419,7 +1419,7 @@ path dependency beside the checkout is what a task reads.
 `--affected` sees an extra file move that git lists no change to: a
 file git ignores inside such a directory, or a directory outside the
 repository. Selection hashes each extra file the base's
-`.vx/dependencies.lock.json` records for a claimed file and hands one
+`.vx/dependencies.lock` records for a claimed file and hands one
 whose hash moved to `affected` in `change.extras`, so only the projects
 reaching it are selected. The hashes are the run's
 (`FingerprintClaims.hashExtra`): the key reads the same ones.
@@ -2968,7 +2968,7 @@ export function unlockedDir(
 ### Steps
 
 1. **Workspace discovery** — `findWorkspaceRoot`, then
-   `discoverProjects`: the directories `.vx/projects.lock.json` records
+   `discoverProjects`: the directories `.vx/projects.lock.jsonl` records
    with the plugin `discover` stage as `vx lock` recorded it (no hook
    runs; a run never walks for configs); the
    workspace config arrives evaluated and with the `config` stage
@@ -3081,12 +3081,13 @@ included. Before this, `show` read config files raw and printed
 `(no vx config)` for a project `turbo()` gives tasks to.
 
 Only `vx lock` runs the `project` stage's hooks (`lock: true`); it
-records what they left in the lock (`Lockfile.projectStage`), and every
+records what they left in the lock (each `LockedProject.config` is the
+config after the stage), and every
 other load reads that record and calls no hook, so a run reads nothing
 a mapping reads (turbo.json, a manifest, git, the environment). It
 follows the record blindly, whatever plugins the workspace declares now:
-a project the record holds loads its recorded config, any other its
-locked one, or `{ tasks: {} }` with no config file (2026-11-11: "we
+a project loads its recorded config, or `{ tasks: {} }` when the lock
+holds none (2026-11-11: "we
 never relock during runs ... it should always follow the lock blindly").
 `vx lock --check` names the drift.
 
@@ -3110,10 +3111,10 @@ export function loadWorkspacePlugins(
 ): Promise<{ workspaceConfig: WorkspaceConfig | null; plugins: readonly VxPlugin[] }>
 
 // The lock's directories (lockedProjects; a run never walks for configs),
-// with the `discover` stage `vx lock` recorded (Lockfile.discoverStage)
-// applied: added projects, names, deps and reach. No hook runs. An edge
-// to no project, a recorded name that clashes, or a `projectStage` config
-// for no project is refused as an invalid lock. Then checkProjectNames.
+// with what `vx lock` recorded applied: names and the adding plugin from
+// the lock, deps and reach from the dependencies lock. No hook runs. A
+// dependencies lock of other projects, or a recorded name that clashes, is
+// refused as an invalid lock. Then checkProjectNames.
 export function discoverProjects(
   workspaceRoot: string,
   lock: () => Promise<Lockfile>,
@@ -3121,16 +3122,17 @@ export function discoverProjects(
 ): Promise<ProjectMeta[]>
 // `vx lock`'s discovery, the one place a `discover` hook runs: the lock's
 // directories through the stage (skipped when no plugin has it), its edges
-// onto the metas (linkDiscoveredEdges), checkProjectNames, and what to record
-// (`stage`: each project the stage added, renamed or gave edges, with the
-// plugins that filled it; absent with no `discover` plugin).
+// onto the metas (linkDiscoveredEdges), then checkProjectNames. `vx lock`
+// records the result: names in the lock, edges in the dependencies lock.
 export function lockDiscovery(
   workspaceRoot: string,
   lock: () => Promise<Lockfile>,
   plugins: readonly VxPlugin[],
   cacheDir: string,
   warn: (m: string) => void,
-): Promise<{ projects: ProjectMeta[]; stage?: DiscoverStageLock }>
+): Promise<ProjectMeta[]>
+// The plugin whose `discover` entry added a project with no config file (`LockedProject.by`).
+export function addedByPlugin(meta: ProjectMeta): string | undefined
 // The enumeration a discovery registered, by the array it returned (G-75).
 export function gitOfDiscovery(projects: readonly ProjectMeta[]): LazyGitEnumeration | undefined
 // The run's extra-file hashes (`ExtraHashes`, lockfile-claim.md), by the same array:
@@ -3285,7 +3287,7 @@ names until 0.0.397; it is the kinds record since.
 | Capability             | Consulted by                         | Contract                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | ---------------------- | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `config(ws, ctx)`      | every verb, first                    | edit the workspace config in place before anything is derived from it (`cache.dir` too); re-validated after EACH plugin; `ctx.setBranch` names the branch's cache scope and base (below)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| `discover(ctx)`        | `vx lock`, after core's discovery    | return `DiscoveredProject[]` (`{ dir, name?, deps?, reach? }`): a `name`d directory that is not a project becomes one; an existing one keeps its name (another is refused). `deps` (order: `^task`; reach: `--filter`, `--affected`) and `reach` (reach only) are directories, unioned over plugins after the stage, the only project edges core has (with none returning `deps`, a `^task` is refused); a target that is no project is refused; `ctx.projects` is core's and earlier plugins', `ctx.cacheDir` the run's, `ctx.worktreeChanges()` the paths the run's own `git status` lists (null outside git), so a plugin keyed on the worktree walks it once with core. The lock records the result (`discoverStage`); every other verb reads that and calls no hook. Refusals name the plugin      |
+| `discover(ctx)`        | `vx lock`, after core's discovery    | return `DiscoveredProject[]` (`{ dir, name?, deps?, reach? }`): a `name`d directory that is not a project becomes one; an existing one keeps its name (another is refused). `deps` (order: `^task`; reach: `--filter`, `--affected`) and `reach` (reach only) are directories, unioned over plugins after the stage, the only project edges core has (with none returning `deps`, a `^task` is refused); a target that is no project is refused; `ctx.projects` is core's and earlier plugins', `ctx.cacheDir` the run's, `ctx.worktreeChanges()` the paths the run's own `git status` lists (null outside git), so a plugin keyed on the worktree walks it once with core. The lock records the result (names and the adding plugin in `.vx/projects.lock.jsonl`, edges in `.vx/dependencies.lock`); every other verb reads that and calls no hook. Refusals name the plugin      |
 | `project(cfg, ctx)`    | per loaded config                    | add/remove/edit a project's tasks in place; core re-validates after EACH plugin, by name; `ctx.lock` is true in `vx lock`'s pass, the place to report what a mapping could not say (a run checks nothing)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | `graph(nodes, ctx)`    | after graph build                    | edit `deps`/`requested`/`config` in place; the builder's checks run again (item 981), each task config is re-validated after EACH plugin                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | `key(task, ctx)`       | per task, at hash                    | a plain `{ name: value }` record folded into the key and named in `vx why`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |

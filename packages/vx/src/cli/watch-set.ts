@@ -193,7 +193,7 @@ export async function sweepConfigs(
     const dir = lockKey(workspaceRoot, p.dir)
     if (p.configPath === null || lock === null || !Object.hasOwn(lock.projects, dir)) continue
     try {
-      fold(p.dir, lock.projects[dir]!.config)
+      fold(p.dir, lock.projects[dir]!.config!)
     } catch {
       // malformed entry
     }

@@ -695,7 +695,7 @@ async function recordedMoves(
   if (now === undefined) return null
   const moved = new Set<string>()
   for (const p of diff.projects) {
-    const d = was.of(lockKey(diff.rootDir, p.dir))
+    const d = was.of(p.name)
     if (d === undefined || d !== now.projects[p.name]) moved.add(p.name)
   }
   return moved
@@ -775,6 +775,34 @@ async function pathOwners(
       lockMoved.push(p.name)
     }
   }
+  // Edges live in the dependencies lock: a project whose edges moved (a
+  // `discover` edge added, or its upstream gone) moved its keys. With no
+  // record on either side, the configs' paths say what changed.
+  const edgesMoved: string[] = []
+  if (diffed.paths.includes(DEPENDENCIES_LOCK_NAME) || untracked.includes(DEPENDENCIES_LOCK_NAME)) {
+    const edgesBy = (lock: DependenciesLock | null): Map<string, string> | null => {
+      if (lock === null) return null
+      return new Map(lock.names.map((n) => [n, JSON.stringify(lock.edges(n))]))
+    }
+    const before = edgesBy(await diff.baseDependencies())
+    const after = edgesBy(
+      await bytesOrNull(path.join(args.workspaceRoot, DEPENDENCIES_LOCK_NAME)).then((b) => {
+        try {
+          return parseDependenciesLock(b)
+        } catch (err) {
+          if (isUserError(err)) return null
+          throw err
+        }
+      }),
+    )
+    if (before !== null && after !== null)
+      for (const p of projects) {
+        if (!before.has(p.name) || before.get(p.name) === after.get(p.name)) continue
+        owned.add(p.name)
+        whole.add(p.name)
+        edgesMoved.push(p.name)
+      }
+  }
 
   // A config or manifest that makes an existing directory a project took
   // files from the project above it.
@@ -785,13 +813,16 @@ async function pathOwners(
     // dependants lost an upstream, which only the base's dependencies lock can
     // name. Without one, every project. A moved config (same bytes, new
     // project) is no loss.
-    const nameAt = new Map(projects.map((p) => [lockKey(rootDir, p.dir), p.name]))
+    const names = new Set(projects.map((p) => p.name))
+    let baseLock: Promise<Record<string, unknown> | null> | undefined
     for (const gone of await removedProjectConfigs(args.workspaceRoot, atBase, projects)) {
       const recorded = await diff.baseDependencies()
       if (recorded === null) return gone
-      const held = dependantsOf(recorded, path.posix.dirname(gone)).flatMap(
-        (d) => nameAt.get(d) ?? [],
-      )
+      // The base config lock names the project that directory was.
+      baseLock ??= gitBytesAt(args.workspaceRoot, base, LOCKFILE_NAME).then(lockEntries)
+      const entry = (await baseLock)?.[path.posix.dirname(gone)] as { name?: unknown } | undefined
+      if (typeof entry?.name !== 'string') return gone
+      const held = dependantsOf(recorded, entry.name).filter((n) => names.has(n))
       for (const name of held) {
         owned.add(name)
         whole.add(name)
@@ -804,6 +835,8 @@ async function pathOwners(
     }
   }
   for (const name of lockMoved) if (!claimedOwned.has(name)) claimedOwned.set(name, LOCKFILE_NAME)
+  for (const name of edgesMoved)
+    if (!claimedOwned.has(name)) claimedOwned.set(name, DEPENDENCIES_LOCK_NAME)
   return { owned, whole, paths, dirLinksIn, untrackedIn, untrackedSet }
 }
 

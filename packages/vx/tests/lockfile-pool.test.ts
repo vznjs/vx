@@ -1,4 +1,4 @@
-// `.vx/projects.lock.json` writes a task or task part that two places hold
+// `.vx/projects.lock.jsonl` writes a task or task part that two places hold
 // alike once, in `pool`, and a read puts it back.
 
 import { mkdtemp, rm } from 'node:fs/promises'
@@ -54,8 +54,8 @@ test('a task two projects declare alike is written once and read back shared', a
   expect(raw.pool.task).toHaveLength(1)
   expect(raw.projects.a.config.tasks.build).toBe(0)
   expect(raw.projects.b.config.tasks.build).toBe(0)
-  expect(read.projects['a']!.config.tasks!['build']).toBe(
-    read.projects['b']!.config.tasks!['build'],
+  expect(read.projects['a']!.config!.tasks!['build']).toBe(
+    read.projects['b']!.config!.tasks!['build'],
   )
   expect(Object.hasOwn(read, 'pool')).toBe(false)
 })

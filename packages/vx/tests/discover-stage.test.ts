@@ -43,7 +43,7 @@ const lockOf =
   })
 
 const discover = (plugins: VxPlugin[], extra?: Record<string, ProjectConfig>) =>
-  lockDiscovery(root, lockOf(extra), plugins, root, warn).then((r) => r.projects)
+  lockDiscovery(root, lockOf(extra), plugins, root, warn)
 
 const names = async (plugins: VxPlugin[], extra?: Record<string, ProjectConfig>) =>
   (await discover(plugins, extra)).map((p) => `${p.name}@${path.relative(root, p.dir) || '.'}`)
@@ -219,7 +219,7 @@ describe('discover stage', () => {
       try {
         await mkdir(path.join(root, 'widgets'))
         await symlink('../packages/a', path.join(root, 'widgets', 'a'))
-        const { projects } = await lockDiscovery(
+        const projects = await lockDiscovery(
           linked,
           lockOf(),
           [plugin('p', () => [{ dir: 'widgets/a', name: 'a' }])],

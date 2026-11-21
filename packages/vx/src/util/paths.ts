@@ -16,8 +16,11 @@ export function toPosix(p: string): string {
  */
 export const DOT_VX_GITIGNORE = '/cache\n/tmp\n'
 
-/** `.vx/.gitattributes`' text: GitHub collapses the machine lock in a diff. */
-export const DOT_VX_GITATTRIBUTES = 'projects.lock.json linguist-generated=true\n'
+/**
+ * `.vx/.gitattributes`' text: GitHub collapses the machine locks in a diff.
+ */
+export const DOT_VX_GITATTRIBUTES =
+  'projects.lock.jsonl linguist-generated=true\ndependencies.lock linguist-generated=true\n'
 
 /**
  * A path `path.relative` may rewrite: an empty, `.` or `..` component, a

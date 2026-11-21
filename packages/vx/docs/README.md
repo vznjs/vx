@@ -158,7 +158,7 @@ import { defineWorkspace } from '@vzn/vx/config'
 export default defineWorkspace({ plugins: [] })
 ```
 
-Then lock: runs read configs from `.vx/projects.lock.json`, so run
+Then lock: runs read configs from `.vx/projects.lock.jsonl`, so run
 `vx lock` after each config edit. Run things:
 
 ```bash

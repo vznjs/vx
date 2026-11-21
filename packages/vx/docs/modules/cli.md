@@ -390,12 +390,12 @@ export function gitFiles(
 ): { listed: Set<string>; tracked: Set<string>; links: Set<string>; dirty: Set<string> } | undefined // one `git ls-files -t -s` at the arm; links: the symlinks, whose targets watch arms
 export function gitSpeller(root: string): (p: string) => string // a path as git spells it: a symlinked dir below the root resolved
 export function gitTracks(workspaceRoot: string, abs: string): boolean // git tracks `abs` (spelled by gitSpeller) now: one `git ls-files --cached`
-export function lockedExtras(workspaceRoot: string): Set<string> // the files the recorded digests read besides a claimed file (.vx/dependencies.lock.json extras), absolute: watch arms them
+export function lockedExtras(workspaceRoot: string): Set<string> // the files the recorded digests read besides a claimed file (.vx/dependencies.lock extras), absolute: watch arms them
 export function makeRootEventFilter(
   workspaceRoot: string,
   projectDirs: readonly string[],
   workspaceInputs: readonly string[],
-  claimedRootFiles?: ReadonlySet<string>, // fingerprint plugins' claims and .vx/projects.lock.json
+  claimedRootFiles?: ReadonlySet<string>, // fingerprint plugins' claims and .vx/projects.lock.jsonl
   fenced?: (ownDir: string, abs: string) => boolean,
 ): (filename: string) => boolean
 export function makeFence(fenceDirs: readonly string[]): (ownDir: string, abs: string) => boolean // inside a configured project nested under ownDir, its own config aside
@@ -540,7 +540,7 @@ too: they format one run's result.
      `--poll` keeps per-project walks.
    - For the workspace root, `fs.watch(root, { recursive: false })`
      — only a file a plugin claims (a lockfile, an install setting),
-     `.vx/projects.lock.json`, `.gitignore` and the workspace config (`.vx/workspace.*`, `WORKSPACE_CONFIG_FILENAMES`)
+     `.vx/projects.lock.jsonl`, `.gitignore` and the workspace config (`.vx/workspace.*`, `WORKSPACE_CONFIG_FILENAMES`)
      trigger: the config is no task's input, and it shapes every cycle
      (plugins, `config` stage, concurrency); a cycle re-evaluates it
      since its import is keyed on its bytes. When any task declares
@@ -555,7 +555,7 @@ too: they format one run's result.
      cache-hit cycle) — and drops the rest of the tree, so a log
      written at the root or a `coverage/` run is not a cycle.
    - The projects are the lock's (`vx lock` finds them; a watch
-     never walks for configs), so `.vx/projects.lock.json` is the
+     never walks for configs), so `.vx/projects.lock.jsonl` is the
      event that changes the set: the cycle it starts re-reads the
      workspace before the run keys anything (`rediscover`: discovery,
      the sweep, the watched closure) and `rearm`s — new project dirs
@@ -630,7 +630,7 @@ git checkout packages`) was no event to its own arm, nor to the
      `tests/watch-loop.test.ts`). The outputs come from the run
      path's staged load (`sweepConfigs` → `loadProjects`), so an
      output a `project` plugin gave a config-less project is ignored
-     like a declared one, and each config is read from `.vx/projects.lock.json`;
+     like a declared one, and each config is read from `.vx/projects.lock.jsonl`;
      a config that fails to load drops the sweep to the
      files that do load. The sweep's load is also what
      `watchedProjects` reads the cross edges from, so a watch start is

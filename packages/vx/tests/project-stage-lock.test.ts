@@ -63,9 +63,10 @@ it('a run follows the mapping vx lock made, and calls no project hook', async ()
   const lock = await vx(root, ['lock'])
   expect(`${lock.code}\n${lock.err}`).toStartWith('0\n')
   expect(lock.out).toContain('and the tasks a plugin maps for mapped')
-  const locked = await Bun.file(path.join(root, '.vx/projects.lock.json')).json()
-  expect(locked.projectStage.plugins).toEqual(['org/mapper'])
-  expect(Object.keys(locked.projectStage.configs)).toEqual(['packages/app', 'packages/mapped'])
+  const locked = await Bun.file(path.join(root, '.vx/projects.lock.jsonl')).json()
+  // Only the final config: the plugin's mapping, not the steps that made it.
+  expect(locked.projectStage).toBeUndefined()
+  expect(JSON.stringify(locked.projects['packages/mapped'])).toContain('echo said-one')
   const afterLock = await visits()
 
   // Edited, not relocked: the run keeps the locked mapping and reads nothing new.
@@ -79,9 +80,7 @@ it('a run follows the mapping vx lock made, and calls no project hook', async ()
   // `--check` names the drift.
   const check = await vx(root, ['lock', '--check'])
   expect(check.code).toBe(1)
-  expect(check.err).toContain(
-    'packages/mapped: the `project` stage maps it differently from the lock here',
-  )
+  expect(check.err).toContain('packages/mapped: the plugins map it differently from the lock here')
 
   const relock = await vx(root, ['lock'])
   expect(`${relock.code}\n${relock.err}`).toStartWith('0\n')
@@ -102,7 +101,8 @@ it('a run follows the lock blindly when the plugins change: one added maps nothi
   expect(await visits()).toBe('')
   const check = await vx(root, ['lock', '--check'])
   expect(check.code).toBe(1)
-  expect(check.err).toContain("the lock holds no `project` stage of plugin 'org/mapper'")
+  expect(check.err).toContain('packages/mapped: the plugins map it differently from the lock here')
+  expect(check.err).toContain('(none) → {"tasks":{"show"')
 }, 60_000)
 
 it('and one dropped still runs what it mapped until vx lock', async () => {
@@ -113,9 +113,8 @@ it('and one dropped still runs what it mapped until vx lock', async () => {
   expect(run.out).toContain('said-one')
   const check = await vx(root, ['lock', '--check'])
   expect(check.code).toBe(1)
-  expect(check.err).toContain(
-    "the lock holds the `project` stage of 'org/mapper', which no plugin fills now",
-  )
+  expect(check.err).toContain('packages/mapped: the plugins map it differently from the lock here')
+  expect(check.err).toContain('"echo said-one"}}}} → (none)')
   expect((await vx(root, ['lock'])).code).toBe(0)
   const relocked = await vx(root, ['run', 'show', '--all', '--no-cache', '--output-logs', 'full'])
   expect(relocked.out).not.toContain('said-')

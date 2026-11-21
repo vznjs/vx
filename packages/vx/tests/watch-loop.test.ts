@@ -223,7 +223,7 @@ describe('vx watch loop (e2e)', () => {
     f.watch = startWatch(f.root)
     const w = f.watch
     await until(() => w.out().includes('watching '), 'the watching marker')
-    const lockFile = path.join(f.root, '.vx', 'projects.lock.json')
+    const lockFile = path.join(f.root, '.vx', 'projects.lock.jsonl')
     const locked = await readFile(lockFile, 'utf8')
     await rm(lockFile)
     await until(() => w.err().includes('cycle failed: no lock'), 'the failed cycle')

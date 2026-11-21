@@ -814,7 +814,7 @@ export function checkBracketLiterals(root: string, projects: Iterable<ProjectEnt
 
 `validateProjectConfig` is the one boundary three readers cross with the
 same object shape: the loader after evaluation, `lockfile.ts` on a frozen
-entry read back from `.vx/projects.lock.json` (a hand-editable file — the same
+entry read back from `.vx/projects.lock.jsonl` (a hand-editable file — the same
 boundary), and `orchestrator/projects.ts` after each plugin's `project`
 edit (a broken edit is refused naming the plugin; there `configPath` is
 that label and `ownConfig` the project's config file, or null with none). `validateWorkspace`
@@ -1309,14 +1309,15 @@ export function headBase(workspaceRoot: string, ref: string): string | undefined
    that asks for a partial clone asks `core.ignorecase` too: set true on
    a disk that tells case apart (`ignoreCaseLies`), the listing runs with
    `-c core.ignorecase=false`, else a new `a.txt` beside the tracked
-   `A.txt` selected nothing. `.vx/projects.lock.json` is
+   `A.txt` selected nothing. `.vx/projects.lock.jsonl` is
    no project's path: its entries are compared at the base and now (when
-   both have a lock that parses): an entry is a project's config, its
-   `project`-stage config and its `discoverStage` record (name, `deps`,
-   `reach`). A project whose entry changed is selected whole, the lock
-   named as the reason unless a deleted config names a closer one, so
-   an edge or name a `discover` plugin changed selects it, and a lock
-   rewritten over the same entries selects nothing. A changed path that is a link to a directory, or was a link (mode
+   both have a lock that parses): an entry is a project's final config,
+   its plugin-given name and the plugin that added it. A project whose
+   entry changed is selected whole, the lock named as the reason unless a
+   deleted config names a closer one, and a lock rewritten over the same
+   entries selects nothing. `.vx/dependencies.lock` alike: a project
+   whose edges differ at the base and now is selected whole, that file
+   named as the reason, so an edge a `discover` plugin added selects it. A changed path that is a link to a directory, or was a link (mode
    120000 on either side) and is no link to a file now, is a `dirLinks`
    entry: `declaresInput` matches it as a directory a glob may reach
    below, as the key does (`mayHoldMatch`), and a negation by the paths
@@ -1332,7 +1333,7 @@ export function headBase(workspaceRoot: string, ref: string): string | undefined
    a plugin claims `bun.lock`.
    An extra file a claimed file's record names (a `file:` directory, a
    patch) whose hash now differs from the one the base's
-   `.vx/dependencies.lock.json` records is a change to it too, though git
+   `.vx/dependencies.lock` records is a change to it too, though git
    lists none: a file git ignores inside it, or a directory outside the
    repository. With a claim plugin, every run with `--affected` checks
    them, through the hashes its key reads.
@@ -1823,7 +1824,7 @@ checkout, `../vendor/dep`) is read and hashed into the key like one
 inside it, and so is a gitignored file in a directory inside the root,
 which `hashDir` reads as the manager copies it. Git lists no change to
 either, so `--affected` hashes each extra file the base's
-`.vx/dependencies.lock.json` records (`FingerprintClaims.hashExtra`, the
+`.vx/dependencies.lock` records (`FingerprintClaims.hashExtra`, the
 run's own hashes, which its key reads too) and hands one that moved to
 the claimant as a changed directory: only the projects reaching it are
 selected.
@@ -1839,7 +1840,7 @@ directory; the same ones the key reads, since `--affected` asks about
 every changed path; `digests`: each project's digest now, the xxh3 of
 the bytes it came from and the other files it read
 (`FingerprintDigests`), which `vx lock` records in
-`.vx/dependencies.lock.json`: a run's key reads them back
+`.vx/dependencies.lock`: a run's key reads them back
 (`KeyHookContext.locked`) and refuses when a recorded file's bytes
 moved, and `--affected` never parses the base side). The schema refuses a
 second claimant for one file. `fingerprintClaims(plugins)` in
@@ -1884,36 +1885,37 @@ and a CI runner declaring `reapi()`.
 unclaimed file is not watched). `tests/affected.test.ts` pins the
 `--affected` half of a claim; `packages/vx-lockfile/tests` the key half.
 
-## `src/workspace/lockfile.ts` — .vx/projects.lock.json
+## `src/workspace/lockfile.ts` — .vx/projects.lock.jsonl
 
 ### Purpose
 
 `vx lock` finds every project (`findProjectConfigs`, then the plugin
 `discover` stage), freshly evaluates each config and freezes it, by
-directory, into `.vx/projects.lock.json`. Every run takes its project
+directory, into `.vx/projects.lock.jsonl`. Every run takes its project
 directories from the lock as well as their configs, so a config added
 since does not run until locked. Every run loads configs FROM the
 lock (zero eval, no staleness check, no schema validation);
 `vx lock --check` re-evaluates every config and reports one drift
-message per project that differs. With a plugin `project` stage, the
-lock also records what the stage left of every project, a config-less
-one included (`projectStage`): a run reads that and calls no hook
-(2026-11-11), and `--check` names each project the stage now maps
-otherwise. The plugin `discover` stage is recorded alike
-(`discoverStage`): each project it added, named or gave edges. A run
-applies it to the locked directories and calls no `discover` hook, so a
-plugin's live answer (an Nx graph, a manifest) never moves a run until
-`vx lock`.
+message per project that differs. The lock holds the final graph only,
+never the steps that made it (2026-11-21): each project's config after
+the plugin `project` stage, a config-less one included, its name when
+a plugin gave it one, and the plugin that added it when no config file
+did. Edges live only in `.vx/dependencies.lock`. A run reads both and
+calls no `project` or `discover` hook (2026-11-11), so a plugin's live
+answer (an Nx graph, a manifest) never moves a run until `vx lock`, and
+`--check` names each project the plugins now map, name or add otherwise.
 
 ### Public surface
 
 ```ts
-export const LOCKFILE_NAME = '.vx/projects.lock.json'
-export const LOCKFILE_VERSION = 6
+export const LOCKFILE_NAME = '.vx/projects.lock.jsonl'
+export const LOCKFILE_VERSION = 7
 
 export interface LockedProject {
-  file: string // the config file's name in the directory (`vx.config.ts`)
-  config: ProjectConfig // as `vx lock` evaluated it, JSON-normalized
+  file?: string // the config file's name in the directory (`vx.config.ts`); absent when a plugin made the project
+  name?: string // only when it differs from `config.name ?? the path name` (a plugin named it)
+  by?: string // the plugin that added it, on a project with no config file
+  config?: ProjectConfig // after the `project` stage, before the default build, JSON-normalized
 }
 export interface Lockfile {
   version: number
@@ -1923,25 +1925,7 @@ export interface Lockfile {
   // root-relative POSIX dirs holding their own `.vx/workspace.*`, where every
   // outer project's outputs stop; written only when there is one
   nestedWorkspaces?: string[]
-  // the `project` stage as `vx lock` ran it; absent when no plugin fills it
-  projectStage?: ProjectStageLock
-  // the `discover` stage as `vx lock` ran it; absent when no plugin fills it
-  discoverStage?: DiscoverStageLock
   validated?: string // the self-digest writeLockfile appends
-}
-export interface ProjectStageLock {
-  plugins: string[] // the plugins that filled it, in order; `--check` names another set
-  configs: Record<string, ProjectConfig> // by directory: each config after the stage, before the default build
-}
-export interface DiscoverStageLock {
-  plugins: string[] // the plugins that filled it, in order; `--check` names another set
-  projects: Record<string, DiscoveredLock> // by directory: each project the stage added, named or gave edges
-}
-export interface DiscoveredLock {
-  name: string
-  by?: string // the plugin that added it, on a project with no locked config
-  deps?: string[] // project names, as ProjectMeta.deps; present, even empty, makes an edge source
-  reach?: string[]
 }
 // On disk only: `pool` holds each task, exec, env, sandbox, inputs or cache
 // value two places hold alike, once; each place holds its index. A read
@@ -1951,18 +1935,20 @@ export function lockfilePath(root: string): string
 export const NO_LOCK = 'no lock: run `vx lock`' // a run's refusal when no lock exists
 export const EMPTY_LOCK =
   'The lock holds no project — write a vx.config (`vx init`), then run `vx lock`' // run and vx show, when it holds none
-export const LOCK_INVALID = '.vx/projects.lock.json is invalid, run `vx lock`'
+export const LOCK_INVALID = '.vx/projects.lock.jsonl is invalid, run `vx lock`'
 // On a run's crash path only: does the lock hold an entry `vx lock` could
 // not have written? A run validates no entry, so it pays nothing for this.
 export function lockEntryBroken(root: string): boolean
 export async function readLockfile(root: string): Promise<Lockfile | null>
+// The dependencies lock read beside it, parsed on first ask; null without a lock.
+// Refuses a missing (`no .vx/dependencies.lock: run \`vx lock\``) or invalid one.
+export function lockedDependencies(lock: Lockfile | null): DependenciesLock | null
 // The digest of the bytes a read lock came from: what its configs are a function of.
 export function lockDigest(lock: Lockfile): string | undefined
 export async function writeLockfile(root: string, lock: Lockfile): Promise<void>
 // The lock's file and bytes, for `writeAllOrNone` (util): `vx lock` writes it with the dependency lock.
 export function lockfileWrite(root: string, lock: Lockfile): PendingWrite
-// A lock's entries from its bytes, pool put back, each with its `project`-stage
-// config; null when they do not parse
+// A lock's entries from its bytes, pool put back; null when they do not parse
 export function lockEntries(bytes: Uint8Array | null): Record<string, unknown> | null
 export function frozenProjectConfigs(
   lock: Lockfile,
@@ -1974,17 +1960,14 @@ export function lockKey(root: string, dir: string): string
 ```
 
 `readLockfile` checks the JSON shape only: an object, this
-`LOCKFILE_VERSION`, `projects` an object of `{ file, config }` entries,
+`LOCKFILE_VERSION`, `projects` an object of `{ file?, name?, by?, config? }`
+entries (no other key; `by` only without `file`, `file` only with `config`),
 each keyed by a directory under the root as `lockKey` spells it (`.`, or
 a relative POSIX path with no empty, `.` or `..` segment: a run joins it
 onto the root, and `../x` ran a project outside the workspace), and the
 shapes a run walks: `name` a string, `tags` a list, `tasks` an object of
 objects, each `dependsOn` a list (a string one was walked per character),
-and `nestedWorkspaces`, when present, a list of such keys other than `.`;
-`projectStage`, when present, a list of plugin names and an object of
-such keys to configs of the same shapes; `discoverStage`, when present,
-a list of plugin names and an object of such keys to `{ name, by?,
-deps?, reach? }` of strings and lists of strings.
+and `nestedWorkspaces`, when present, a list of such keys other than `.`.
 Anything else, including a lock an earlier vx wrote (version 2 keyed
 by name), is a `UserError` asking to re-run `vx lock`; a lock a newer vx
 wrote (a higher version) asks to upgrade vx instead, as re-locking would
@@ -1992,8 +1975,8 @@ write the older version over it. `frozenProjectConfigs` is what a run's load ser
 of an evaluation: an entry missing for the project is a
 `UserError` naming the project and the remedy. `discoverProjects` refuses
 what its parse already holds and `vx lock` never writes, in
-`LOCK_INVALID`'s words with the reason (a `discoverStage` edge or a recorded name that clashes, a
-`projectStage` config for no project): followed blindly, the edge was
+`LOCK_INVALID`'s words with the reason (a recorded name that clashes, or
+a dependencies lock of other projects): followed blindly, an edge was
 dropped and the dependant ran without it. No entry is otherwise validated:
 `vx lock` validated what it wrote, and `--check` re-evaluates
 (2026-10-14). A hand-broken entry that then crashes a run is
@@ -2004,9 +1987,7 @@ or the CLI asks `lockEntryBroken` (which reads past a leading BOM, as
 in each place. Each slot is one the schema types as an object, so a number
 there can only be an index. Big workspaces repeat their tasks: 2,000
 projects of five tasks read in 0.71 ms against 2.62 ms, from a fifth of
-the bytes; this repo's lock went from 126 KB to 55 KB. The pool spans
-`projectStage`'s configs too, so a task the stage left as it was is
-held once. `readLockfile`
+the bytes; this repo's lock went from 126 KB to 55 KB. `readLockfile`
 puts each value back once, so projects share it; the `project` stage
 (under `vx lock`) and the `graph` stage, which edit a config in place,
 copy it first. An index with no
@@ -2019,20 +2000,19 @@ nothing staged starts reading the lock when it finds the workspace root,
 beside discovery; a missing lock still refuses at the config load, after
 any refusal that comes first.
 
-#### `.vx/dependencies.lock.json` (`dependencies-lock.ts`)
+#### `.vx/dependencies.lock` (`dependencies-lock.ts`)
 
 ```ts
-export const DEPENDENCIES_LOCK_NAME = '.vx/dependencies.lock.json'
+export const DEPENDENCIES_LOCK_NAME = '.vx/dependencies.lock'
 export interface DependenciesLock {
-  version: number // 4
-  // per project, sorted by directory: "dir[,digest…]" (its digest for each
-  // claimed file in `files` order, trailing empty slots left out), then the
-  // indexes of the projects it builds after, then -(index + 1) of each it
-  // reaches for selection only; an index counts the strings
-  graph: (string | number)[]
-  files: string[] // [file, hash, file, hash, …], sorted: each claimed file and its bytes' xxh3
-  // claimed file → each other file its digests read → its hash; absent when none
-  extras?: Record<string, Record<string, string>>
+  dirs: readonly string[] // project directories, sorted
+  edgeSource: boolean // a `discover` plugin gave `deps`: without, a `^task` is refused
+  edgeEnds: Uint32Array // where each project's edges end in `targets`
+  targets: Int32Array // a dep's index, or -(index + 1) for a reach
+  files: readonly string[] // each claimed file, sorted
+  extras: Readonly<Record<string, Readonly<Record<string, string>>>> // claimed file → each other file its digests read → hash
+  bytes: Uint8Array // as written
+  value(k: number): string // file f's hash is k = f; project i's digest of it k = F + i * F + f; '' for none
 }
 export function dependenciesLock(
   root: string,
@@ -2048,8 +2028,9 @@ export function dependenciesLock(
 ): DependenciesLock
 export function readDependenciesLock(root: string, reads?: LoadReads): Promise<Uint8Array | null>
 export function parseDependenciesLock(bytes: Uint8Array | null): DependenciesLock | null
+export function lockedEdges(lock: DependenciesLock): Array<{ deps: string[]; reach: string[] }> // directories, in `dirs` order
 export function dependantsOf(lock: DependenciesLock, dir: string): string[]
-export function liveRecords(read: DependenciesLock, fresh: DependenciesLock): DependenciesLock // `read` with a file's digests and extras from `fresh` where only its extras' hashes moved (`vx lock --check`)
+export function sameRecord(read: DependenciesLock, fresh: DependenciesLock): boolean // `vx lock --check`: a file whose only change is its extras' hashes skips its digests
 export function recordedDigests(
   lock: DependenciesLock,
   file: string,
@@ -2064,30 +2045,43 @@ export function recordedDigests(
 export function dependenciesLockWrite(root: string, lock: DependenciesLock): PendingWrite
 ```
 
-`vx lock` writes it beside the lock, minified (only vx reads it) and committed:
-each project's `discover` edges and each claimed file's
+`vx lock` writes it beside the lock, every time, and it is committed:
+the workspace's resolved graph (each project's directory and its
+`discover` edges, the only place edges live) and each claimed file's
 `FingerprintClaim.digests`, with the xxh3 of the file's bytes and the
-hash of each other file the digests read (`extras`: a `bun.lock`
-patch, a `file:` directory). A run keys from those digests and never
-parses the file (`orchestrator/locked-digests.ts`, below). Flat: each directory once, in a sorted
-`projects` list, and every edge and digest an index into it (a third
-the size of keying each by its directory, and a quarter of the parse
-and lookup time at 2,000 projects). Laid out for the parse first, then
-the size: one `graph` array, each project's digests inside its directory
-string (read by `indexOf` and `slice`, never `split`, and only for the
-project asked about), and nothing written for an empty slot. Against
-version 3's directory list, per-project `deps` and `reach` arrays and a
-digest array per file, it parses 2x faster. A digest may not hold a
-comma (`vx lock` refuses one); a directory may, and its row then keeps
-every slot, so it holds more commas than there are files. Every list
-is sorted, so the same
-workspace writes the same bytes. `--affected` reads the base commit's
-copy (`git show`): a deleted project's dependants are the projects
-whose edges hold its index, and a changed claimed file
-whose base bytes hash to the recorded `hash` takes its base digests
-from the record, never a parse. `parseDependenciesLock` answers null
-for a missing file, another version or another shape, and selection
-then falls back (every project for a deletion, the claimant's
+hash of each other file the digests read (`extras`: a `bun.lock` patch,
+a `file:` directory). A run takes its edges from here and keys from
+those digests, never parsing the file (`orchestrator/locked-digests.ts`,
+below).
+
+Binary (2026-11-21): only `vx lock` writes it and nobody edits it
+(`.vx/.gitattributes` marks it `-diff merge=binary`; a conflict is fixed
+by `vx lock`), so it is laid out for the parse first, then the size.
+Little-endian, each section 4-byte aligned: a header of eight u32
+(magic `VXDL`, version 5, projects N, files F, edges E, flags with bit 0
+the edge source, tail bytes, 0); each directory's end in the joined
+directory string (u32 × N); each project's edge end (u32 × N); the
+edges (i32 × E); a 2-bit kind per value (F file hashes, then N × F
+digests, project-major: none, sixteen hex digits, any other string);
+8 bytes per value (the hex digits' raw bytes, or a u32 index into the
+tail's strings); and a UTF-8 JSON tail `[joined directories, file
+names, other strings, extras or null]`. A parse reads typed-array views
+over the bytes and one small JSON; a digest is decoded only when asked.
+At 2,000 projects it parses in 10–15 µs, against 143–259 µs for
+version 4's JSON. Every list is sorted, so the same workspace writes the
+same bytes. A parse checks every part (directory ends, edge ends and
+targets in range, kinds, string indexes, the tail's shape), so a broken
+file reads as invalid, never a raw TypeError at a lookup.
+
+`--affected` reads the base commit's copy (`git show`): a project whose
+edges differ between the base and the working tree's copy moved its keys
+(a `discover` edge added, an upstream gone), a deleted project's
+dependants are the projects whose edges hold its index, and a changed
+claimed file whose base bytes hash to the recorded `hash` takes its base
+digests from the record, never a parse. `parseDependenciesLock` answers
+null for a missing file, another format or an older version (a newer
+one throws: re-locking would write the older version over it), and
+selection then falls back (every project for a deletion, the claimant's
 `affected` for a change). `vx lock --check` holds it to a fresh
 derivation once the lock itself holds.
 
@@ -2109,7 +2103,7 @@ file the lock records is checked first: its bytes (as the run read
 them) must hash to the record; one that moved, or a recorded file now
 gone, refuses the run (`VX_E_LOCK`: "bun.lock changed since `vx lock`:
 run `vx lock`"). A claimant that asks for a present file the lock does
-not record refuses too: with no lock ("no .vx/dependencies.lock.json:
+not record refuses too: with no lock ("no .vx/dependencies.lock:
 run `vx lock`"), an invalid one or another version, or a lock written
 before the file was there. A file absent and unrecorded answers
 `undefined`. The answer's `digest(projectDir)` refuses a project the
@@ -2158,7 +2152,7 @@ re-hashes them, as its memo did on every run before, and digests anew
 - A read lock's configs share each pooled value, so a reader never edits
   one in place: the `project` and `graph` stages copy first
   (`tests/plugin-pipeline.test.ts`, "an alike task").
-- `.vx/projects.lock.json` is globally excluded from cache inputs and
+- `.vx/projects.lock.jsonl` is globally excluded from cache inputs and
   `--affected` (it's vx's own metadata, never a task input).
 
 ## `src/workspace/migration.ts` — the plan → files seam

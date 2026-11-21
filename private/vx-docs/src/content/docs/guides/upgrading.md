@@ -205,11 +205,11 @@ No migration note.
 
 ### orchestrator: key runs from the dependencies lock
 
-a run refuses when a claimed lockfile changed since `vx lock` or .vx/dependencies.lock.json is missing; run `vx lock` after each install. The lock is version 3 (files record extras), and KeyHookContext gains locked(file), FingerprintDigests gains extras.
+a run refuses when a claimed lockfile changed since `vx lock` or .vx/dependencies.lock is missing; run `vx lock` after each install. The lock is version 3 (files record extras), and KeyHookContext gains locked(file), FingerprintDigests gains extras.
 
 ### workspace: write each repeated task in projects.lock once
 
-.vx/projects.lock.json is version 5 (repeated tasks written once, in pool). Run vx lock.
+.vx/projects.lock.jsonl is version 5 (repeated tasks written once, in pool). Run vx lock.
 
 ### ui: draw every line vx prints from one UI kit
 
@@ -603,7 +603,7 @@ No migration note.
 
 ### config: move inputs onto the task
 
-`tasks.<name>.cache.inputs` is now `tasks.<name>.inputs`; `cache` without `exec` is refused; a task depending on an uncached task with no `inputs` never hits; `.vx/projects.lock.json` is version 4.
+`tasks.<name>.cache.inputs` is now `tasks.<name>.inputs`; `cache` without `exec` is refused; a task depending on an uncached task with no `inputs` never hits; `.vx/projects.lock.jsonl` is version 4.
 
 ## v0.0.639
 
@@ -651,7 +651,7 @@ refusals on stderr no longer read `vx <verb>: <message>`; scripts should read --
 
 ### util: output components for every verb and plugin
 
-vx lock prints `✓ vx lock N project configs → .vx/projects.lock.json` and refuses as `✗ vx lock lock not written` with what, why and the fix under it. applyMigration's lock option returns { code, said }.
+vx lock prints `✓ vx lock N project configs → .vx/projects.lock.jsonl` and refuses as `✗ vx lock lock not written` with what, why and the fix under it. applyMigration's lock option returns { code, said }.
 
 ### orchestrator: name --affected's workspace file, policy as spec
 
@@ -715,9 +715,9 @@ the NamedProject type is now DiscoveredProject; a discover entry's name is optio
 
 index SCHEMA_VERSION v35 drops the config eval tables. Removed exports: ConfigEvalStore, LoadProjectConfigOptions, the Cache config-eval methods and loadProjectConfig's options. `vx info` loses its config errors row; `vx show` and `vx info` need a lock.
 
-### lock: runs read only .vx/projects.lock.json
+### lock: runs read only .vx/projects.lock.jsonl
 
---frozen, --no-frozen, run.frozen, VX_RUN_FROZEN and run({ frozen }) are removed. .vx/lock.json is renamed .vx/projects.lock.json.
+--frozen, --no-frozen, run.frozen, VX_RUN_FROZEN and run({ frozen }) are removed. .vx/lock.json is renamed .vx/projects.lock.jsonl.
 
 ### vx-lockfile: remove the vx prune verb
 

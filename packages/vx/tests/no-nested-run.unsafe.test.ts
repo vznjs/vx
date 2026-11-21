@@ -14,7 +14,7 @@ interface Lock {
 it('no task of this repo runs `vx run` in its own workspace', () => {
   const lock = JSON.parse(
     readFileSync(
-      path.resolve(import.meta.dir, '..', '..', '..', '.vx', 'projects.lock.json'),
+      path.resolve(import.meta.dir, '..', '..', '..', '.vx', 'projects.lock.jsonl'),
       'utf8',
     ),
   ) as Lock

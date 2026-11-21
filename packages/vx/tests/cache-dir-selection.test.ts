@@ -236,7 +236,7 @@ describe.skipIf(skipAsRoot('a cache directory this user cannot write into'))(
       'a read-only checkout with no cache yet says so in one line, and so does a verb writing the tree',
       async () => {
         // `.vx` stops being writable: the cache directory cannot be created
-        // under it, and neither can .vx/projects.lock.json.
+        // under it, and neither can .vx/projects.lock.jsonl.
         const { chmod } = await import('node:fs/promises')
         expect((await vx(['lock'], null)).code).toBe(0)
         await chmod(path.join(root, '.vx'), 0o555)

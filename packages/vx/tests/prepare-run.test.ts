@@ -90,7 +90,7 @@ function cfg(...tasks: string[]): string {
  */
 async function editLock(edit: (configs: Record<string, ProjectConfig>) => void): Promise<void> {
   await lock(root)
-  const file = path.join(root, '.vx', 'projects.lock.json')
+  const file = path.join(root, '.vx', 'projects.lock.jsonl')
   const held = (await Bun.file(file).json()) as {
     projects: Record<string, { config: ProjectConfig }>
   }
@@ -110,7 +110,7 @@ async function goneAfterLock(name: string): Promise<void> {
 
 /** What a run says when a config it reads is gone since the lock. */
 const gone = (name: string): string =>
-  `.vx/projects.lock.json locks packages/${name} ("${name}"), but its vx.config.mjs is gone — run \`vx lock\``
+  `.vx/projects.lock.jsonl locks packages/${name} ("${name}"), but its vx.config.mjs is gone — run \`vx lock\``
 
 /**
  * NB `prepareRun` takes an EXPLICIT project scope — resolving cwd to "the

@@ -95,7 +95,7 @@ time_arm() {
   # copy (astro's cold rep 1 exited 1 and its cause was lost, 2026-10-09).
   [ "$code" = 0 ] || cp ".vx-bench-$1-$2.log" ".vx-bench-$1-$2.fail-$t0.log"
 }
-# Every vx run loads configs only from `.vx/projects.lock.json`, taken once here
+# Every vx run loads configs only from `.vx/projects.lock.jsonl`, taken once here
 # before any arm; a config edited after it is re-locked by running this
 # script again, never inside a rep. A lock that fails ends the bench.
 "$VX" lock || exit 1

@@ -481,7 +481,7 @@ export interface FingerprintClaim {
   /**
    * Each project's digest of the claimed `file` now, by project, with `hash`
    * (xxh3 of its bytes) and `extras`. `vx lock` records them in
-   * `.vx/dependencies.lock.json`; a run keys from that
+   * `.vx/dependencies.lock`; a run keys from that
    * (`KeyHookContext.locked`), and `--affected` reads the base's copy instead
    * of parsing the base side when `hash` matches. `undefined`: nothing to
    * record.

@@ -1,5 +1,5 @@
 // A run keys a claimed file from what `vx lock` recorded of it in
-// `.vx/dependencies.lock.json`, as it takes configs from the config lock:
+// `.vx/dependencies.lock`, as it takes configs from the config lock:
 // the digests are read, never derived, so no run parses a lockfile for
 // its key. The record holds only while the file's bytes hash to what was
 // recorded: one that moved (an install) refuses the run before any key is
@@ -14,7 +14,6 @@ import {
   DEPENDENCIES_LOCK_NAME,
   type DependenciesLock,
   lockKey,
-  parseDependenciesLock,
   recordedDigests,
 } from '../workspace/index.js'
 import { UserError, xxh3hex } from '../util/index.js'
@@ -25,17 +24,21 @@ const refused = (message: string): UserError => new UserError(message, 'VX_E_LOC
 /**
  * `KeyHookContext.locked` for one run, over the claimed files' bytes as
  * the run read them (`readClaimedFiles`; absent ones are missing) and the
- * lock's bytes (null when there is none). Each recorded claimed file is
- * checked first: one whose bytes moved, or that is gone, throws here.
+ * dependencies lock the run's discovery read (`lockedDependencies`). Each
+ * recorded claimed file is checked first: one whose bytes moved, or that
+ * is gone, throws here.
  */
 export function lockedFiles(
   workspaceRoot: string,
   claimed: readonly string[],
   bytes: ReadonlyMap<string, Uint8Array>,
-  lockBytes: Uint8Array | null,
+  /** Null when the run claims no file. */
+  lock: DependenciesLock | null,
+  /** The run's projects, by which a project directory names its record. */
+  projects: readonly { name: string; dir: string }[],
 ): KeyHookContext['locked'] {
-  const lock: DependenciesLock | null = parseDependenciesLock(lockBytes)
   const records = new Map<string, LockedFile>()
+  const nameAt = new Map(projects.map((p) => [lockKey(workspaceRoot, p.dir), p.name]))
   for (const file of claimed) {
     const rec = lock === null ? undefined : recordedDigests(lock, file)
     if (rec === undefined) continue
@@ -47,17 +50,16 @@ export function lockedFiles(
       extras: rec.extras,
       digest(projectDir) {
         const dir = lockKey(workspaceRoot, projectDir)
-        if (!rec.has(dir))
+        const name = nameAt.get(dir)
+        if (name === undefined || !rec.has(name))
           throw refused(`${dir} is not in ${DEPENDENCIES_LOCK_NAME}: run \`vx lock\``)
-        return rec.of(dir)
+        return rec.of(name)
       },
     })
   }
   return async (file) => {
     const rec = records.get(file)
     if (rec !== undefined || !bytes.has(file)) return rec
-    if (lockBytes === null) throw refused(`no ${DEPENDENCIES_LOCK_NAME}: run \`vx lock\``)
-    if (lock === null) throw refused(`${DEPENDENCIES_LOCK_NAME} is invalid, run \`vx lock\``)
     throw refused(`${file} is not in ${DEPENDENCIES_LOCK_NAME}: run \`vx lock\``)
   }
 }

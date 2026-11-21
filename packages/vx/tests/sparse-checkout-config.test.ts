@@ -64,7 +64,7 @@ it('a run that does not need the excluded project proceeds', async () => {
 }, 30_000)
 
 it('vx lock and its --check refuse what the sparse checkout left out, the lock untouched', async () => {
-  const lockFile = path.join(root, '.vx/projects.lock.json')
+  const lockFile = path.join(root, '.vx/projects.lock.jsonl')
   const before = await Bun.file(lockFile).text()
   const said =
     'packages/lib is outside this sparse checkout, so vx lock cannot read its vx.config.mjs — run `git sparse-checkout add packages/lib`'

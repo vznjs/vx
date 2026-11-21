@@ -9,6 +9,16 @@ import { afterEach, beforeEach, expect, it } from 'bun:test'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
 import { pluginSource } from './helpers/plugin.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
+import { lockedEdges, parseDependenciesLock } from '../src/workspace/dependencies-lock.js'
+
+const edgesIn = async (root: string) => {
+  const bytes = new Uint8Array(
+    await Bun.file(path.join(root, '.vx/dependencies.lock')).arrayBuffer(),
+  )
+  const lock = parseDependenciesLock(bytes)!
+  const edges = lockedEdges(lock)
+  return Object.fromEntries(lock.dirs.map((d, i) => [d, edges[i]!.deps]))
+}
 
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 
@@ -73,15 +83,11 @@ const run = (...args: string[]) =>
 it('a run follows the discovery vx lock made, and calls no discover hook', async () => {
   const lock = await vx(root, ['lock'])
   expect(`${lock.code}\n${lock.err}`).toStartWith('0\n')
-  const locked = await Bun.file(path.join(root, '.vx/projects.lock.json')).json()
-  expect(locked.discoverStage).toEqual({
-    plugins: ['vx-test-packages', 'org/edges'],
-    projects: {
-      'packages/a': { name: 'a', deps: [] },
-      'packages/b': { name: 'b', deps: [] },
-      'tools/gen': { name: 'gen' },
-    },
-  })
+  const locked = await Bun.file(path.join(root, '.vx/projects.lock.jsonl')).json()
+  // The final graph only: names in the config lock, edges in the dependencies lock.
+  expect(locked.discoverStage).toBeUndefined()
+  expect(locked.projects['tools/gen'].name).toBe('gen')
+  expect(await edgesIn(root)).toEqual({ 'packages/a': [], 'packages/b': [], 'tools/gen': [] })
   const afterLock = await calls()
 
   // The answer changes, not relocked: the run keeps the locked edges and name.
@@ -99,8 +105,12 @@ it('a run follows the discovery vx lock made, and calls no discover hook', async
 
   const check = await vx(root, ['lock', '--check'])
   expect(check.code).toBe(1)
-  expect(check.err).toContain('packages/b: the `discover` stage finds it otherwise than the lock')
-  expect(check.err).toContain('tools/gen: the `discover` stage finds it otherwise than the lock')
+  expect(check.err).toContain('tools/gen: the lock names it "gen", the plugins here "generator"')
+  // An edge alone moved: the dependencies lock is what fails.
+  await Bun.write(path.join(root, 'edges.txt'), 'b-on-a gen\n')
+  const edges = await vx(root, ['lock', '--check'])
+  expect(edges.code).toBe(1)
+  expect(edges.err).toContain('.vx/dependencies.lock is not what the dependencies resolve to here')
 
   expect((await vx(root, ['lock'])).code).toBe(0)
   const fresh = await run('--filter', 'b')
@@ -128,9 +138,7 @@ it('a plugin swapped after vx lock discovers nothing until vx lock', async () =>
   const check = await vx(root, ['lock', '--check'])
   expect(check.code).toBe(1)
   // The fixture's workspace file declares `vx-test-packages` first.
-  expect(check.err).toContain(
-    "the lock holds the `discover` stage of 'vx-test-packages', 'org/flat', not of 'vx-test-packages', 'org/edges'",
-  )
+  expect(check.err).toContain('tools/gen: the lock names it null, the plugins here "gen"')
 }, 60_000)
 
 it('and one dropped still runs what it discovered until vx lock', async () => {
@@ -142,42 +150,39 @@ it('and one dropped still runs what it discovered until vx lock', async () => {
   expect(r.out).toContain('built-a')
   const check = await vx(root, ['lock', '--check'])
   expect(check.code).toBe(1)
-  expect(check.err).toContain(
-    "the lock holds the `discover` stage of 'vx-test-packages', 'org/edges', not of 'vx-test-packages'",
-  )
+  expect(check.err).toContain('tools/gen: the lock names it "gen", the plugins here null')
 }, 60_000)
 
 // A run follows the lock blindly, so a record no `vx lock` writes is
-// refused: an edge to no project was dropped, and b ran without a.
-it('a lock naming no project in an edge or a stage config is invalid', async () => {
+// refused: two projects of one name, or a dependencies lock of other
+// projects (an edge to no project cannot be written: edges are indexes).
+it('a lock naming two projects alike, or a dependencies lock of other projects, is invalid', async () => {
   await Bun.write(path.join(root, 'edges.txt'), 'b-on-a gen\n')
   expect((await vx(root, ['lock'])).code).toBe(0)
-  const file = path.join(root, '.vx/projects.lock.json')
+  const file = path.join(root, '.vx/projects.lock.jsonl')
   const good = await Bun.file(file).json()
-  const edit = async (change: (lock: any) => void) => {
-    const lock = structuredClone(good)
-    change(lock)
-    await Bun.write(file, JSON.stringify(lock))
-    return run('--filter', 'b')
-  }
-  const edge = await edit((l) => (l.discoverStage.projects['packages/b'].deps = ['lib']))
-  expect(edge.code).toBe(1)
-  expect(edge.err).toContain(
-    '.vx/projects.lock.json is invalid: packages/b depends on "lib", which no project is named — run `vx lock`',
-  )
-  expect(edge.out).not.toContain('built-b')
-  const reach = await edit((l) => (l.discoverStage.projects['packages/b'].reach = ['lib']))
-  expect(reach.err).toContain('packages/b reaches "lib", which no project is named')
-  const stage = await edit(
-    (l) => (l.projectStage = { plugins: ['org/x'], configs: { 'packages/c': { tasks: {} } } }),
-  )
-  expect(stage.code).toBe(1)
-  expect(stage.err).toContain(
-    '.vx/projects.lock.json is invalid: it holds a `projectStage` config for packages/c, which is no project — run `vx lock`',
-  )
-  const clash = await edit((l) => (l.discoverStage.projects['tools/gen'].name = 'a'))
+  const clashed = structuredClone(good)
+  clashed.projects['tools/gen'].name = 'a'
+  await Bun.write(file, JSON.stringify(clashed))
+  const clash = await run('--filter', 'b')
   expect(clash.code).toBe(1)
   expect(clash.err).toContain(
-    '.vx/projects.lock.json is invalid: two projects are named "a": packages/a and tools/gen — run `vx lock`',
+    '.vx/projects.lock.jsonl is invalid: two projects are named "a": packages/a and tools/gen — run `vx lock`',
   )
+  expect(clash.out).not.toContain('built-b')
+  await Bun.write(file, JSON.stringify(good))
+  const deps = path.join(root, '.vx/dependencies.lock')
+  const locked = await Bun.file(deps).arrayBuffer()
+  await addProject(root, 'c', { config: build('c') })
+  expect((await vx(root, ['lock'])).code).toBe(0)
+  const withC = await Bun.file(deps).arrayBuffer()
+  await rm(path.join(root, 'packages', 'c'), { recursive: true })
+  expect((await vx(root, ['lock'])).code).toBe(0)
+  await Bun.write(deps, withC)
+  const other = await run('--filter', 'b')
+  expect(other.code).toBe(1)
+  expect(other.err).toContain('.vx/dependencies.lock holds other projects')
+  expect(other.out).not.toContain('built-b')
+  await Bun.write(deps, locked)
+  expect((await run('--filter', 'b')).code).toBe(0)
 }, 60_000)

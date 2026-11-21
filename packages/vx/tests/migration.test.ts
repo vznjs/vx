@@ -663,8 +663,8 @@ describe('a repo formatted by prettier or oxfmt', () => {
   const IGNORED = [
     '.vx/cache',
     '.vx/tmp',
-    '.vx/projects.lock.json',
-    '.vx/dependencies.lock.json',
+    '.vx/projects.lock.jsonl',
+    '.vx/dependencies.lock',
     'vx.lock.json',
   ]
   const lines = () =>

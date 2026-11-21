@@ -375,7 +375,7 @@ describe('vx watch loop (e2e): the watched set', () => {
     // The poller's tick holds the event back the same way, every time.
     // The write below is not atomic: a cycle that read it half written
     // failed, and skipped the re-lock check with it (Linux CI, 2026-10-23).
-    const lock = path.join(f.root, '.vx/projects.lock.json')
+    const lock = path.join(f.root, '.vx/projects.lock.jsonl')
     const declares = `export default {
       tasks: {
         build: {
@@ -415,7 +415,7 @@ describe('vx watch loop (e2e): the watched set', () => {
     const outside = path.dirname(f.log)
     const go = path.join(outside, 'go')
     const next = path.join(outside, 'next.lock.json')
-    const lock = path.join(f.root, '.vx/projects.lock.json')
+    const lock = path.join(f.root, '.vx/projects.lock.jsonl')
     const RELOCK = pluginSource(
       'vx-test-relock-in-rearm',
       `{

@@ -1,4 +1,4 @@
-// `vx lock` writes each config as evaluated into .vx/projects.lock.json, which is
+// `vx lock` writes each config as evaluated into .vx/projects.lock.jsonl, which is
 // committed. A config that interpolated a secret from the environment
 // (`--token ${process.env.API_TOKEN}`) wrote the value there, and
 // masking it would freeze a `***` that every run then runs. The lock is
@@ -48,7 +48,7 @@ async function lock(
     root,
     code: r.exitCode,
     err: r.stderr.toString(),
-    written: existsSync(path.join(root, '.vx/projects.lock.json')),
+    written: existsSync(path.join(root, '.vx/projects.lock.jsonl')),
   }
 }
 

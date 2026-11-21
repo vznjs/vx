@@ -1,8 +1,8 @@
-// .vx/projects.lock.json — frozen resolved-config lockfile.
+// .vx/projects.lock.jsonl — frozen resolved-config lockfile.
 //
 // `vx lock` finds every project's vx.config.*, evaluates each in the CURRENT
-// environment and freezes the resolved objects, by directory, into
-// `.vx/projects.lock.json` at the workspace root. Every run loads configs from
+// environment and freezes the resolved objects into
+// `.vx/projects.lock.jsonl` at the workspace root. Every run loads configs from
 // it and never evaluates one; only `vx lock` writes it. See
 // docs/design/config-lock-2026-06.md.
 //
@@ -10,6 +10,16 @@
 //   - runs TRUST the lock: no staleness check, no schema validation,
 //     eval-free.
 //   - `vx lock --check` AUDITS it: full re-evaluation + deep equality.
+//
+// Text, one line per record, sorted, so a merge of two branches touches only
+// what each changed (2026-11-21):
+//   line 1   JSON: {"version":8,"nestedWorkspaces":[…]?}
+//   then     #<id>⇥<task JSON>: every task, once; its id is the xxh3 of the
+//            JSON, so two projects (or two branches) holding one task write
+//            one line
+//   then     <name>⇥{"path":…,"file"|"by":…,"config":…}: each project, its
+//            final config with each task as "#<id>"; a name a tab could break,
+//            or one starting with `#`, `"` or `{`, is written as a JSON string
 
 import { readFileSync, statSync } from 'node:fs'
 import path from 'node:path'
@@ -23,83 +33,48 @@ import {
   xxh3,
   xxh3hex,
 } from '../util/index.js'
-import { VERSION } from '../version.js'
 import { validateProjectConfig } from './config-schema.js'
 import { PROJECT_CONFIG_FILENAMES } from './workspace.js'
+import {
+  DEPENDENCIES_LOCK_NAME,
+  type DependenciesLock,
+  parseDependenciesLock,
+  readDependenciesLock,
+} from './dependencies-lock.js'
 
-export const LOCKFILE_NAME = '.vx/projects.lock.json'
-export const LOCKFILE_VERSION = 6
+export const LOCKFILE_NAME = '.vx/projects.lock.jsonl'
+const ENTRY_KEYS = new Set(['path', 'file', 'by', 'config'])
 
-/** One project as the lock holds it. */
+export const LOCKFILE_VERSION = 8
+
+/**
+ * One project as the lock holds it: where it ends up, not the steps there.
+ * Its edges are in `.vx/dependencies.lock`.
+ */
 export interface LockedProject {
-  /** The config file's name in the directory (`vx.config.ts`). */
-  file: string
-  /** Its resolved (post-evaluation) config, JSON-normalized. */
-  config: ProjectConfig
+  /** Its name: the line's key, unique in the workspace. */
+  name: string
+  /** The config file's name in the directory (`vx.config.ts`); absent for a project a plugin added. */
+  file?: string
+  /** The plugin whose `discover` entry added it: set only on a project with no config file. */
+  by?: string
+  /**
+   * Its config as a run reads it: evaluated, then through the plugin
+   * `project` stage, JSON-normalized, before core's default `build`.
+   * Absent for a config-less project no `project` plugin gave tasks.
+   */
+  config?: ProjectConfig
 }
 
 export interface Lockfile {
   version: number
-  /**
-   * Root-relative POSIX directory (`.` for the root) → its project. Keyed
-   * by directory, so a name a plugin gives never invalidates the lock.
-   */
+  /** Root-relative POSIX directory (`.` for the root) → its project. */
   projects: Record<string, LockedProject>
   /**
    * Root-relative POSIX directories holding their own `.vx/workspace.*`,
-   * where every outer project's outputs stop. Absent when there is none, so a
-   * workspace without one locks the bytes it always did.
+   * where every outer project's outputs stop. Absent when there is none.
    */
   nestedWorkspaces?: string[]
-  /**
-   * The plugin `project` stage as `vx lock` ran it. A run reads each recorded
-   * project's config from here and runs no hook, whatever plugins the workspace
-   * declares now: a mapping (`turbo()`, `nx()`) is made by `vx lock` only.
-   * Absent when no plugin fills the stage.
-   */
-  projectStage?: ProjectStageLock
-  /**
-   * The plugin `discover` stage as `vx lock` ran it: the projects it added, the
-   * names it gave and the edges it declared. A run applies this to the locked
-   * projects and runs no hook, whatever plugins the workspace declares now.
-   * Absent when no plugin fills the stage.
-   */
-  discoverStage?: DiscoverStageLock
-  /** Written by `writeLockfile` from the bytes; never read off the object. */
-  validated?: string
-}
-
-/** `Lockfile.projectStage`. */
-export interface ProjectStageLock {
-  /** The plugins that filled the stage, in order: `--check` names another set. */
-  plugins: string[]
-  /**
-   * Root-relative POSIX directory → its project's config after the stage,
-   * before core's default `build`: every project the stage visited, config
-   * file or not.
-   */
-  configs: Record<string, ProjectConfig>
-}
-
-/** `Lockfile.discoverStage`. */
-export interface DiscoverStageLock {
-  /** The plugins that filled the stage, in order: `--check` names another set. */
-  plugins: string[]
-  /**
-   * Root-relative POSIX directory → the project as the stage left it, for
-   * each project it added, renamed or gave edges.
-   */
-  projects: Record<string, DiscoveredLock>
-}
-
-/** One project in `DiscoverStageLock.projects`. */
-export interface DiscoveredLock {
-  name: string
-  /** The plugin that added it: set only on a project the lock holds no config for. */
-  by?: string
-  /** Project names, as `ProjectMeta.deps`: present, even empty, makes the workspace an edge source. */
-  deps?: string[]
-  reach?: string[]
 }
 
 export function lockfilePath(root: string): string {
@@ -115,24 +90,14 @@ export const LOCK_INVALID = `${LOCKFILE_NAME} is invalid, run \`vx lock\``
  * raw TypeError; asked only on that crash's path, so a run pays nothing.
  */
 export function lockEntryBroken(root: string): boolean {
-  let lock: Pooled
+  let lock: Decoded
   try {
     // As `readLockfile` reads it: `Bun.file().text()` drops a leading BOM.
-    lock = JSON.parse(readFileSync(lockfilePath(root), 'utf8').replace(/^\uFEFF/, '')) as Pooled
-  } catch {
-    return false
-  }
-  if (typeof lock?.projects !== 'object' || lock.projects === null) return false
-  try {
-    pooledIn(lock)
+    lock = decoded(readFileSync(lockfilePath(root), 'utf8').replace(/^\uFEFF/, ''))
   } catch {
     return true
   }
-  const configs = [
-    ...Object.entries(lock.projects).map(([dir, e]) => [dir, (e as LockedProject).config] as const),
-    ...Object.entries(lock.projectStage?.configs ?? {}),
-  ]
-  for (const [dir, config] of configs) {
+  for (const [dir, config] of configsOf(lock.projects)) {
     try {
       validateProjectConfig(config, `${LOCKFILE_NAME}: "${dir}"`, null)
     } catch {
@@ -152,18 +117,47 @@ export const NO_LOCK = 'no lock: run `vx lock`'
 /** Each read lock's bytes as a digest: every config a run loads from it is a function of them. */
 const digests = new WeakMap<Lockfile, string>()
 
+/** Each read lock's `.vx/dependencies.lock`, read beside it: its bytes, parsed on first ask. */
+const dependencies = new WeakMap<
+  Lockfile,
+  { bytes: Uint8Array | null; parsed?: DependenciesLock | null }
+>()
+
+/**
+ * The dependencies lock read beside `lock`: where a run's edges come from.
+ * Refused when there is none or it is not this vx's shape, as a project
+ * lock with no graph is one `vx lock` never wrote; undefined for a lock no
+ * read made.
+ */
+export function lockedDependencies(lock: Lockfile): DependenciesLock | undefined {
+  const read = dependencies.get(lock)
+  if (read === undefined) return undefined
+  read.parsed ??= parseDependenciesLock(read.bytes)
+  if (read.parsed === null)
+    throw new UserError(
+      read.bytes === null
+        ? `no ${DEPENDENCIES_LOCK_NAME}: run \`vx lock\``
+        : `${DEPENDENCIES_LOCK_NAME} is invalid, run \`vx lock\``,
+      'VX_E_LOCK',
+    )
+  return read.parsed
+}
+
 /** The digest of the bytes `lock` was read from; undefined for a lock no read made. */
 export function lockDigest(lock: Lockfile): string | undefined {
   return digests.get(lock)
 }
 
 /**
- * Read and shape-validate `.vx/projects.lock.json`. Returns `null` when no lock
+ * Read and shape-validate `.vx/projects.lock.jsonl`. Returns `null` when no lock
  * exists (the common case — the feature is opt-in). The lock is a
  * user-editable file, so this is a system boundary: malformed content
  * throws a `UserError` instead of crashing deeper in the run.
  */
 export async function readLockfile(root: string): Promise<Lockfile | null> {
+  // Read beside it, overlapping this read: the graph is there.
+  const graph = readDependenciesLock(root)
+  graph.catch(() => {})
   const file = Bun.file(lockfilePath(root))
   if (!(await file.exists())) {
     // A directory reads as no file: `--check` said "run `vx lock`", which cannot write over it.
@@ -175,34 +169,19 @@ export async function readLockfile(root: string): Promise<Lockfile | null> {
     }
     return null
   }
-  let parsed: unknown
   let text: string
+  let read: Decoded
   try {
     text = await file.text()
-    parsed = JSON.parse(text)
-  } catch {
+    read = decoded(text)
+  } catch (err) {
+    if (err instanceof UserError) throw err
     throw new UserError(
       `${LOCKFILE_NAME} is not valid JSON — re-run \`vx lock\` or delete it`,
       'VX_E_LOCK',
     )
   }
-  // `Array.isArray` is not redundant with the `typeof` check: `typeof [] ===
-  // 'object'` and `[] !== null`, so an array sails through and the NEXT check
-  // reports `unsupported version undefined` — a version diagnostic for what is
-  // actually a shape problem, sending the reader to re-run `vx lock` for a file
-  // that was never the right shape. `validateProjectConfig` one layer down
-  // already guards this explicitly, which is what makes the omission here an
-  // inconsistency rather than an oversight.
-  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-    throw new UserError(`${LOCKFILE_NAME} must be a JSON object — re-run \`vx lock\``, 'VX_E_LOCK')
-  }
-  const lock = parsed as {
-    version?: unknown
-    projects?: unknown
-    nestedWorkspaces?: unknown
-    projectStage?: unknown
-    discoverStage?: unknown
-  }
+  const lock = read.header
   if (lock.version !== LOCKFILE_VERSION) {
     // This vx's `vx lock` would write the older version over it.
     if (typeof lock.version === 'number' && lock.version > LOCKFILE_VERSION)
@@ -216,33 +195,6 @@ export async function readLockfile(root: string): Promise<Lockfile | null> {
       'VX_E_LOCK',
     )
   }
-  // Same trap, and this one is worse than a bad message: an ARRAY of entries is
-  // ACCEPTED, because `Object.entries` happily walks it — yielding a project
-  // at directory "0".
-  if (typeof lock.projects !== 'object' || lock.projects === null || Array.isArray(lock.projects)) {
-    throw new UserError(
-      `${LOCKFILE_NAME}: \`projects\` must be an object — re-run \`vx lock\``,
-      'VX_E_LOCK',
-    )
-  }
-  for (const [dir, entry] of Object.entries(lock.projects)) {
-    // A run joins the key onto the root: `../x` ran a project outside it.
-    if (!isLockKey(dir))
-      throw new UserError(
-        `${LOCKFILE_NAME}: "${dir}" is not a directory under the workspace root — re-run \`vx lock\``,
-      )
-    const { file, config } = (entry ?? {}) as { file?: unknown; config?: unknown }
-    if (
-      typeof entry !== 'object' ||
-      entry === null ||
-      Array.isArray(entry) ||
-      typeof file !== 'string' ||
-      !PROJECT_CONFIG_FILENAMES.includes(file) ||
-      !configShaped(config)
-    ) {
-      throw malformed(dir)
-    }
-  }
   const nested = lock.nestedWorkspaces
   if (
     nested !== undefined &&
@@ -254,50 +206,8 @@ export async function readLockfile(root: string): Promise<Lockfile | null> {
       'VX_E_LOCK',
     )
   }
-  const stage = lock.projectStage
-  if (stage !== undefined) {
-    const { plugins, configs } = (isObj(stage) ? stage : {}) as Obj
-    if (
-      !Array.isArray(plugins) ||
-      plugins.some((p) => typeof p !== 'string') ||
-      !isObj(configs) ||
-      Object.entries(configs).some(([dir, config]) => !isLockKey(dir) || !configShaped(config))
-    ) {
-      throw new UserError(
-        `${LOCKFILE_NAME}: \`projectStage\` is malformed — re-run \`vx lock\``,
-        'VX_E_LOCK',
-      )
-    }
-  }
-  const found = lock.discoverStage
-  if (found !== undefined) {
-    const { plugins, projects } = (isObj(found) ? found : {}) as Obj
-    const names = (v: unknown): boolean =>
-      v === undefined || (Array.isArray(v) && v.every((n) => typeof n === 'string'))
-    if (
-      !Array.isArray(plugins) ||
-      plugins.some((p) => typeof p !== 'string') ||
-      !isObj(projects) ||
-      Object.entries(projects).some(
-        ([dir, p]) =>
-          !isLockKey(dir) ||
-          !isObj(p) ||
-          typeof p['name'] !== 'string' ||
-          (p['by'] !== undefined && typeof p['by'] !== 'string') ||
-          !names(p['deps']) ||
-          !names(p['reach']),
-      )
-    ) {
-      throw new UserError(
-        `${LOCKFILE_NAME}: \`discoverStage\` is malformed — re-run \`vx lock\``,
-        'VX_E_LOCK',
-      )
-    }
-  }
-  pooledIn(parsed as Pooled)
-  // After the pool is put back, as a task may be an index into it. A
-  // string `dependsOn` was walked per character: "dependsOn b#a".
-  for (const [dir, config] of configsOf(parsed as Pooled)) {
+  // A string `dependsOn` was walked per character: "dependsOn b#a".
+  for (const [dir, config] of configsOf(read.projects)) {
     const tasks = config.tasks as Obj | undefined
     for (const name in tasks) {
       const t = tasks[name]
@@ -305,8 +215,14 @@ export async function readLockfile(root: string): Promise<Lockfile | null> {
         throw malformed(dir)
     }
   }
-  digests.set(parsed as Lockfile, xxh3hex(text))
-  return parsed as Lockfile
+  const out: Lockfile = {
+    version: LOCKFILE_VERSION,
+    projects: read.projects,
+    ...(nested === undefined ? {} : { nestedWorkspaces: nested as string[] }),
+  }
+  digests.set(out, xxh3hex(text))
+  dependencies.set(out, { bytes: await graph })
+  return out
 }
 
 /** A run trusts these shapes: an object with a string `name`, a `tags` list, a `tasks` object. */
@@ -326,192 +242,133 @@ const malformed = (dir: string): UserError =>
   )
 
 /**
- * The project entries of a lock's bytes with its pool put back, or null
- * for bytes that do not parse as a lock: an entry compares across two
- * locks only once both are read the same way.
+ * The project entries of a lock's bytes, each task in place, or null for
+ * bytes that do not parse as a lock: an entry compares across two locks
+ * only once both are read the same way.
  */
 export function lockEntries(bytes: Uint8Array | null): Record<string, unknown> | null {
   if (bytes === null) return null
   try {
-    const lock = JSON.parse(new TextDecoder().decode(bytes)) as Pooled
-    if (typeof lock?.projects !== 'object' || lock.projects === null) return null
-    pooledIn(lock)
-    // A project's `project`-stage config and `discover`-stage record (its
-    // name, its edges) are its entry too: a run reads them.
-    const staged = lock.projectStage?.configs ?? {}
-    const found = lock.discoverStage?.projects ?? {}
-    const dirs = new Set([
-      ...Object.keys(lock.projects),
-      ...Object.keys(staged),
-      ...Object.keys(found),
-    ])
-    const at = (o: Record<string, unknown>, dir: string): unknown =>
-      Object.hasOwn(o, dir) ? o[dir] : null
-    return Object.fromEntries(
-      [...dirs].map((dir) => [dir, [at(lock.projects, dir), at(staged, dir), at(found, dir)]]),
-    )
+    return decoded(new TextDecoder().decode(bytes)).projects
   } catch {
     return null
   }
 }
 
-/**
- * A task or task part that two places in the lock hold alike is written once,
- * in `pool`, and each place holds its index. Each slot is one the schema
- * types as an object, so a number there can only be an index. Big
- * workspaces repeat the same tasks: 2,000 projects of five tasks read in
- * 0.71 ms against 2.62 ms, a fifth of the bytes. A run reads them shared,
- * once; a stage that edits a config in place copies it first.
- */
-const POOLS = ['env', 'sandbox', 'exec', 'inputs', 'cache', 'task'] as const
-type PoolName = (typeof POOLS)[number]
-type Part = Exclude<PoolName, 'task'>
-type Pools = Partial<Record<PoolName, unknown[]>>
-type Pooled = {
-  pool?: Pools
-  projects: Record<string, LockedProject>
-  projectStage?: ProjectStageLock
-  discoverStage?: DiscoverStageLock
-}
 type Obj = Record<string, unknown>
 const isObj = (v: unknown): v is Obj => typeof v === 'object' && v !== null && !Array.isArray(v)
-const TASK_PARTS = ['exec', 'inputs', 'cache'] as const
-const EXEC_PARTS = ['env', 'sandbox'] as const
 
-/** `lock.projects` with every index replaced by the value it names, in place. */
-function pooledIn(lock: Pooled): void {
-  const pool = lock.pool
-  delete lock.pool
-  if (pool === undefined) return
-  if (!isObj(pool) || Object.values(pool).some((list) => !Array.isArray(list))) {
-    throw new UserError(
-      `${LOCKFILE_NAME}: \`pool\` must be an object of lists — re-run \`vx lock\``,
-      'VX_E_LOCK',
-    )
-  }
-  const at = (name: PoolName, i: number): unknown => {
-    const hit = pool[name]?.[i]
-    if (hit === undefined) {
-      throw new UserError(
-        `${LOCKFILE_NAME}: no ${name} ${i} in its pool — re-run \`vx lock\``,
-        'VX_E_LOCK',
-      )
-    }
-    return hit
-  }
-  const parts = (o: unknown, names: readonly Part[]): void => {
-    if (!isObj(o)) return
-    for (const n of names) if (typeof o[n] === 'number') o[n] = at(n, o[n])
-  }
-  const task = (t: unknown): void => {
-    parts(t, TASK_PARTS)
-    if (isObj(t)) parts(t['exec'], EXEC_PARTS)
-  }
-  // Inner pools first: a pooled task's exec may itself be pooled.
-  for (const e of pool.exec ?? []) parts(e, EXEC_PARTS)
-  for (const t of pool.task ?? []) task(t)
-  for (const [, config] of configsOf(lock)) {
-    const tasks = (config as { tasks?: unknown } | null | undefined)?.tasks
-    if (!isObj(tasks)) continue
-    for (const name of Object.keys(tasks)) {
-      const t = tasks[name]
-      if (typeof t === 'number') tasks[name] = at('task', t)
-      else task(t)
-    }
-  }
-}
-
-/** Every config a lock holds, by directory: each project's, then each `project`-stage one. */
-function configsOf(lock: Pooled): [dir: string, config: ProjectConfig][] {
-  return [
-    ...Object.entries(lock.projects).map(
-      ([dir, entry]) => [dir, (entry as LockedProject | null)?.config] as [string, ProjectConfig],
-    ),
-    ...Object.entries(lock.projectStage?.configs ?? {}),
-  ]
-}
-
-/** `projects` and the stage's configs as written: each value two slots hold alike, once in `pool`. */
-function pooledOut(projects: Record<string, LockedProject>, stage?: ProjectStageLock): Pooled {
-  const seen = new Map<string, number>()
-  const keyOf = (name: PoolName, v: Obj): string => `${name}\0${JSON.stringify(v)}`
-  const count = (name: PoolName, v: unknown): void => {
-    if (!isObj(v)) return
-    const k = keyOf(name, v)
-    seen.set(k, (seen.get(k) ?? 0) + 1)
-  }
-  const tasksOf = (config: ProjectConfig): Obj | undefined =>
-    isObj(config.tasks) ? config.tasks : undefined
-  const configs = [
-    ...Object.values(projects).map((p) => p.config),
-    ...Object.values(stage?.configs ?? {}),
-  ]
-  for (const config of configs) {
-    for (const t of Object.values(tasksOf(config) ?? {})) {
-      if (!isObj(t)) continue
-      count('task', t)
-      for (const n of TASK_PARTS) count(n, t[n])
-      if (isObj(t['exec'])) for (const n of EXEC_PARTS) count(n, t['exec'][n])
-    }
-  }
-  const pool: Pools = {}
-  const index = new Map<string, number>()
-  const out = (name: PoolName, v: unknown, inner: (v: Obj) => Obj): unknown => {
-    if (!isObj(v)) return v
-    const k = keyOf(name, v)
-    if ((seen.get(k) ?? 0) < 2) return inner(v)
-    let i = index.get(k)
-    if (i === undefined) {
-      const list = (pool[name] ??= [])
-      index.set(k, (i = list.length))
-      list.push(inner(v))
-    }
-    return i
-  }
-  const same = (v: Obj): Obj => v
-  const withParts = (o: Obj, names: readonly Part[]): Obj => {
-    const r = { ...o }
-    for (const n of names) if (n in o) r[n] = out(n, o[n], n === 'exec' ? exec : same)
-    return r
-  }
-  const exec = (e: Obj): Obj => withParts(e, EXEC_PARTS)
-  const task = (t: Obj): Obj => withParts(t, TASK_PARTS)
-  const pooled = (config: ProjectConfig): ProjectConfig => {
-    const tasks = tasksOf(config)
-    return tasks === undefined
-      ? config
-      : ({
-          ...config,
-          tasks: Object.fromEntries(
-            Object.entries(tasks).map(([name, t]) => [name, out('task', t, task)]),
-          ),
-        } as ProjectConfig)
-  }
-  // Entries, not assignment: a directory named `__proto__` set the prototype.
-  const written: Pooled = {
-    projects: Object.fromEntries(
-      Object.entries(projects).map(([dir, p]) => [dir, { ...p, config: pooled(p.config) }]),
-    ),
-  }
-  if (stage !== undefined)
-    written.projectStage = {
-      plugins: stage.plugins,
-      configs: Object.fromEntries(
-        Object.entries(stage.configs).map(([dir, config]) => [dir, pooled(config)]),
-      ),
-    }
-  const ordered: Pools = {}
-  for (const n of POOLS) if (pool[n] !== undefined) ordered[n] = pool[n]
-  return POOLS.some((n) => pool[n] !== undefined) ? { pool: ordered, ...written } : written
+interface Decoded {
+  header: { version?: unknown; nestedWorkspaces?: unknown }
+  projects: Record<string, LockedProject>
 }
 
 /**
- * `vx lock` evaluates and validates every config, then writes a digest of
- * the bytes it wrote, under vx's version, as the last field: the lock's
- * record of which vx validated it. No reader consults it.
+ * The lock in `text`: its header, and each project by directory with its
+ * tasks put back (one object per task id, shared by the projects that hold
+ * it; a stage that edits a config in place copies it first). A line a
+ * merge or a hand edit broke is a `UserError`; text that is no lock at all
+ * throws a SyntaxError.
  */
-function validatedDigest(body: string): string {
-  return xxh3(`vx-lock-valid-v3\0${VERSION}\0${body}`).toString(16)
+function decoded(text: string): Decoded {
+  const nl = text.indexOf('\n')
+  const header: unknown = JSON.parse(nl < 0 ? text : text.slice(0, nl))
+  if (!isObj(header))
+    throw new UserError(
+      `${LOCKFILE_NAME} must start with a JSON object — re-run \`vx lock\``,
+      'VX_E_LOCK',
+    )
+  const projects: Record<string, LockedProject> = {}
+  if (header['version'] !== LOCKFILE_VERSION || nl < 0) return { header, projects }
+  const taskAt = new Map<string, number>()
+  const tasks = new Map<string, unknown>()
+  const task = (ref: unknown, dir: string): unknown => {
+    if (typeof ref !== 'string' || ref.charCodeAt(0) !== 35) throw malformed(dir)
+    const id = ref.slice(1)
+    let t = tasks.get(id)
+    if (t === undefined) {
+      const at = taskAt.get(id)
+      if (at === undefined)
+        throw new UserError(`${LOCKFILE_NAME}: no task ${ref} — re-run \`vx lock\``, 'VX_E_LOCK')
+      t = JSON.parse(text.slice(at, text.indexOf('\n', at)))
+      tasks.set(id, t)
+    }
+    return t
+  }
+  const names = new Set<string>()
+  for (let a = nl + 1; a < text.length;) {
+    let end = text.indexOf('\n', a)
+    if (end < 0) end = text.length
+    const tab = text.indexOf('\t', a)
+    if (tab < 0 || tab > end) throw lineBroken()
+    if (text.charCodeAt(a) === 35) {
+      taskAt.set(text.slice(a + 1, tab), tab + 1)
+      a = end + 1
+      continue
+    }
+    const raw = text.slice(a, tab)
+    const name: unknown = raw.charCodeAt(0) === 34 ? JSON.parse(raw) : raw
+    const entry: unknown = JSON.parse(text.slice(tab + 1, end))
+    a = end + 1
+    if (typeof name !== 'string' || name === '' || names.has(name) || !isObj(entry))
+      throw lineBroken()
+    names.add(name)
+    const dir = entry['path']
+    if (typeof dir !== 'string' || !isLockKey(dir))
+      throw new UserError(
+        `${LOCKFILE_NAME}: "${String(dir)}" is not a directory under the workspace root — re-run \`vx lock\``,
+      )
+    if (Object.hasOwn(projects, dir)) throw malformed(dir)
+    const { file, by, config } = entry
+    if (
+      Object.keys(entry).some((k) => !ENTRY_KEYS.has(k)) ||
+      (file !== undefined &&
+        (typeof file !== 'string' || !PROJECT_CONFIG_FILENAMES.includes(file))) ||
+      (by !== undefined && (typeof by !== 'string' || file !== undefined)) ||
+      (file !== undefined && config === undefined) ||
+      (config !== undefined && !configShaped(config))
+    )
+      throw malformed(dir)
+    if (isObj(config) && isObj(config['tasks'])) {
+      const own = config['tasks']
+      for (const t of Object.keys(own)) own[t] = task(own[t], dir)
+    }
+    // Entries, not assignment: a directory named `__proto__` set the prototype.
+    Object.defineProperty(projects, dir, {
+      value: {
+        name,
+        ...(file === undefined ? {} : { file }),
+        ...(by === undefined ? {} : { by }),
+        ...(config === undefined ? {} : { config }),
+      } as LockedProject,
+      enumerable: true,
+      writable: true,
+      configurable: true,
+    })
+  }
+  return { header, projects }
+}
+
+const lineBroken = (): UserError =>
+  new UserError(
+    `${LOCKFILE_NAME} holds a line \`vx lock\` never writes — re-run \`vx lock\``,
+    'VX_E_LOCK',
+  )
+
+/** Every config a lock holds, by directory. */
+function configsOf(
+  projects: Record<string, LockedProject>,
+): [dir: string, config: ProjectConfig][] {
+  const out: [string, ProjectConfig][] = []
+  for (const [dir, entry] of Object.entries(projects)) {
+    if (entry.config !== undefined) out.push([dir, entry.config])
+  }
+  return out
+}
+
+/** A name as a line's key: as it is, unless a tab could break it or it reads as another line's. */
+function lineKey(name: string): string {
+  return /[\t\n\r]/.test(name) || /^[#"{]/.test(name) ? JSON.stringify(name) : name
 }
 
 /**
@@ -535,28 +392,52 @@ export function writeLockfile(root: string, lock: Lockfile): Promise<void> {
   return writeAllOrNone([lockfileWrite(root, lock)], root)
 }
 
-/** The lock's file and bytes, for `writeAllOrNone`. */
+/** The lock's file and text, for `writeAllOrNone`. */
 export function lockfileWrite(root: string, lock: Lockfile): PendingWrite {
-  // Minified: the file only vx reads, and it loads faster than pretty
-  // JSON (measured, 10k projects: 15.6 ms against 22.5 ms). `vx.lock.json`
-  // beside each config is the copy for people.
-  const sorted = JSON.parse(JSON.stringify(lock.projects, taskKeysSorted)) as Lockfile['projects']
-  const stage =
-    lock.projectStage === undefined
-      ? undefined
-      : (JSON.parse(JSON.stringify(lock.projectStage, taskKeysSorted)) as ProjectStageLock)
+  // `vx.lock.json` beside each config is the copy for people.
   const nested = lock.nestedWorkspaces ?? []
-  const body = JSON.stringify({
+  const header = JSON.stringify({
     version: lock.version,
     ...(nested.length > 0 ? { nestedWorkspaces: nested } : {}),
-    ...(lock.discoverStage !== undefined ? { discoverStage: lock.discoverStage } : {}),
-    ...pooledOut(sorted, stage),
   })
-  return {
-    file: lockfilePath(root),
-    text: `${body.slice(0, -1)},"validated":"${validatedDigest(body)}"}\n`,
-    shown: LOCKFILE_NAME,
+  const tasks = new Map<string, string>()
+  const rows: [string, string][] = []
+  for (const [dir, p] of Object.entries(lock.projects)) {
+    let config =
+      p.config === undefined
+        ? undefined
+        : (JSON.parse(JSON.stringify(p.config, taskKeysSorted)) as Obj)
+    if (config !== undefined && isObj(config['tasks'])) {
+      const refs: Obj = {}
+      for (const [name, t] of Object.entries(config['tasks'])) {
+        const json = JSON.stringify(t)
+        const id = xxh3(json).toString(36)
+        tasks.set(id, json)
+        Object.defineProperty(refs, name, {
+          value: `#${id}`,
+          enumerable: true,
+          writable: true,
+          configurable: true,
+        })
+      }
+      config = { ...config, tasks: refs }
+    }
+    const entry = {
+      path: dir,
+      ...(p.file === undefined ? {} : { file: p.file }),
+      ...(p.by === undefined ? {} : { by: p.by }),
+      ...(config === undefined ? {} : { config }),
+    }
+    rows.push([p.name, `${lineKey(p.name)}\t${JSON.stringify(entry)}`])
   }
+  const lines = [header]
+  for (const id of [...tasks.keys()].sort(cmp)) lines.push(`#${id}\t${tasks.get(id)!}`)
+  for (const [, line] of rows.sort((a, b) => cmp(a[0], b[0]))) lines.push(line)
+  return { file: lockfilePath(root), text: `${lines.join('\n')}\n`, shown: LOCKFILE_NAME }
+}
+
+function cmp(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0
 }
 
 /**
@@ -576,7 +457,7 @@ export function frozenProjectConfigs(
     const dir = lockKey(root, meta.dir)
     // Own entries only: `constructor` read Object's, "locked" at undefined.
     const entry = Object.hasOwn(lock.projects, dir) ? lock.projects[dir] : undefined
-    if (entry === undefined) {
+    if (entry?.config === undefined) {
       throw new UserError(
         `${LOCKFILE_NAME} has no entry for "${meta.name}" (${relPosix(root, meta.configPath)}) — ` +
           'run `vx lock`',

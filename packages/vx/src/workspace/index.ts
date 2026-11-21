@@ -23,6 +23,7 @@ export {
   LOCK_INVALID,
   EMPTY_LOCK,
   lockDigest,
+  lockedDependencies,
   lockEntryBroken,
   lockfilePath,
   lockKey,
@@ -31,8 +32,6 @@ export {
   lockfileWrite,
   writeLockfile,
   type Lockfile,
-  type DiscoveredLock,
-  type DiscoverStageLock,
   type LockedProject,
 } from './lockfile.js'
 export {
@@ -40,7 +39,7 @@ export {
   dependenciesLock,
   parseDependenciesLock,
   readDependenciesLock,
-  liveRecords,
+  sameRecord,
   recordedDigests,
   dependenciesLockWrite,
   type DependenciesLock,

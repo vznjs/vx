@@ -745,8 +745,8 @@ function withExcluded(text: string, name: string): string | undefined {
 const FORMATTER_IGNORED = [
   '.vx/cache',
   '.vx/tmp',
-  '.vx/projects.lock.json',
-  '.vx/dependencies.lock.json',
+  '.vx/projects.lock.jsonl',
+  '.vx/dependencies.lock',
   'vx.lock.json',
 ]
 

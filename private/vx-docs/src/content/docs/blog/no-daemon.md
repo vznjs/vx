@@ -45,7 +45,7 @@ check.
 flowchart LR
   G[git index] -->|file list + hashes| K[cache keys]
   S[git status] -->|dirty files| K
-  L[.vx/projects.lock.json] -->|resolved config| K
+  L[.vx/projects.lock.jsonl] -->|resolved config| K
   K --> R[run: stat outputs, write nothing]
 ```
 

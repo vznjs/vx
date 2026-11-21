@@ -33,7 +33,7 @@ terminal and a task succeeding or failing. Read it alongside
  │       starts step 12's git enumeration over the whole tree,
  │       overlapping steps 2–11; a scoped run waits, since its
  │       pathspecs depend on which projects the task graph holds.
- │    2. Read .vx/projects.lock.json: the project directories `vx lock`
+ │    2. Read .vx/projects.lock.jsonl: the project directories `vx lock`
  │       found (every directory holding a vx.config.*, git's ignore
  │       rules applied, none under node_modules) and their configs. Each locked config file is
  │       stat'ed; one gone is refused ("run `vx lock`").
@@ -56,7 +56,7 @@ terminal and a task succeeding or failing. Read it alongside
  │       transitive dependency closure load ('^task' frontier
  │       expansion never escapes the closure); one staged load,
  │       loadProjects, shared with every reading verb. A run's configs
- │       load from .vx/projects.lock.json — no evaluation, no staleness check
+ │       load from .vx/projects.lock.jsonl — no evaluation, no staleness check
  │       of its own (vx lock --check is the audit), frozen-env
  │       semantics; a missing lock or entry is a hard UserError. The
  │       verbs that evaluate (vx lock, the readers) use

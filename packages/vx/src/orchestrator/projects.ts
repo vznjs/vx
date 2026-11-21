@@ -1,7 +1,7 @@
 // The project-config load every reader of "what tasks exist" shares
 // (`prepareRun`, `vx show`), so `show` prints what a run sees, including the
-// plugin `project` stage. `vx lock` runs that stage and records what it left
-// (`Lockfile.projectStage`); others read the record.
+// plugin `project` stage. `vx lock` runs that stage and records only what it
+// left (`LockedProject.config`); others read the record.
 
 import { existsSync } from 'node:fs'
 import { stat } from 'node:fs/promises'
@@ -9,8 +9,10 @@ import path from 'node:path'
 import type { ProjectConfig } from '../config.js'
 import {
   checkProjectNames,
+  DEPENDENCIES_LOCK_NAME,
   frozenProjectConfigs,
   LOCKFILE_NAME,
+  lockedDependencies,
   lockedProjects,
   NO_LOCK,
   pathName,
@@ -18,8 +20,6 @@ import {
   lockKey,
   readLockfile,
   validateProjectConfig,
-  type DiscoveredLock,
-  type DiscoverStageLock,
   type Lockfile,
   type PackageGraph,
   type ProjectEntry,
@@ -278,51 +278,33 @@ export async function discoverProjects(
 ): Promise<ProjectMeta[]> {
   const read = await lock()
   const projects = lockedDiscovery(workspaceRoot, read, lock, git)
-  const recorded = read.discoverStage?.projects ?? {}
-  const byDir = new Map(projects.map((p) => [p.dir, p]))
-  const named = new Set<ProjectMeta>()
-  const atKey = (rel: string): string =>
-    rel === '.' ? workspaceRoot : path.join(workspaceRoot, rel)
-  for (const rel of Object.keys(recorded)) {
-    const rec = recorded[rel]!
-    const dir = atKey(rel)
-    let meta = byDir.get(dir)
-    if (meta === undefined) {
-      meta = { name: rec.name, dir, configPath: null }
-      projects.push(meta)
-      byDir.set(dir, meta)
-      if (rec.by !== undefined) addedBy.set(meta, rec.by)
-    } else meta.name = rec.name
-    named.add(meta)
-    if (rec.deps !== undefined) meta.deps = [...rec.deps]
-    if (rec.reach !== undefined) meta.reach = [...rec.reach]
+  const graph = lockedDependencies(read)!
+  const byDir = new Map(projects.map((p) => [lockKey(workspaceRoot, p.dir), p]))
+  for (const rel of Object.keys(read.projects)) {
+    const by = read.projects[rel]!.by
+    if (by !== undefined) addedBy.set(byDir.get(rel)!, by)
   }
-  // A run follows the lock blindly: `vx lock` writes no edge to a missing
-  // project, no orphan stage config, no name clash, so a run need not judge
-  // them.
+  // A run follows the locks blindly: `vx lock` writes both from one
+  // discovery, so a project one holds and the other does not is a lock
+  // `vx lock` never wrote.
+  const byName = new Map(projects.map((p) => [p.name, p]))
+  if (graph.names.length !== projects.length || graph.names.some((n) => !byName.has(n)))
+    throw lockInvalid(`${DEPENDENCIES_LOCK_NAME} holds other projects`)
+  for (const name of graph.names) {
+    const meta = byName.get(name)!
+    const { deps, reach } = graph.edges(name)!
+    // With an edge source every project is an edge source's leaf at least.
+    if (graph.edgeSource) meta.deps = [...deps]
+    if (reach.length > 0) meta.reach = [...reach]
+  }
   const names = new Map<string, ProjectMeta>()
   for (const p of projects) {
     const other = names.get(p.name)
-    if (other !== undefined && (named.has(p) || named.has(other))) {
+    if (other !== undefined) {
       const dirs = [other, p].map((m) => relPosix(workspaceRoot, m.dir) || '.').sort()
       throw lockInvalid(`two projects are named "${p.name}": ${dirs[0]} and ${dirs[1]}`)
     }
     names.set(p.name, p)
-  }
-  for (const rel of Object.keys(recorded)) {
-    const rec = recorded[rel]!
-    for (const [verb, edges] of [
-      ['depends on', rec.deps],
-      ['reaches', rec.reach],
-    ] as const) {
-      const unknown = edges?.find((n) => !names.has(n))
-      if (unknown !== undefined)
-        throw lockInvalid(`${rel} ${verb} "${unknown}", which no project is named`)
-    }
-  }
-  for (const rel of Object.keys(read.projectStage?.configs ?? {})) {
-    if (!byDir.has(atKey(rel)))
-      throw lockInvalid(`it holds a \`projectStage\` config for ${rel}, which is no project`)
   }
   return checkProjectNames(workspaceRoot, projects)
 }
@@ -333,8 +315,9 @@ function lockInvalid(why: string): UserError {
 
 /**
  * `vx lock`'s discovery: the locked projects through the plugin `discover`
- * hooks, and what they left to record (`Lockfile.discoverStage`), absent
- * when no plugin fills the stage. The one place a `discover` hook runs.
+ * hooks, with their names and edges, which `vx lock` records (names and
+ * `by` in the lock, edges in the dependencies lock). The one place a
+ * `discover` hook runs.
  */
 export async function lockDiscovery(
   workspaceRoot: string,
@@ -342,11 +325,10 @@ export async function lockDiscovery(
   plugins: readonly VxPlugin[],
   cacheDir: string,
   warn: (message: string) => void,
-): Promise<{ projects: ProjectMeta[]; stage?: DiscoverStageLock }> {
+): Promise<ProjectMeta[]> {
   const git = lazyGitEnumeration(workspaceRoot)
   const projects = lockedDiscovery(workspaceRoot, await lock(), lock, git)
-  if (!hasHook(plugins, 'discover')) return { projects: checkProjectNames(workspaceRoot, projects) }
-  const before = new Map(projects.map((p) => [p, p.name]))
+  if (!hasHook(plugins, 'discover')) return checkProjectNames(workspaceRoot, projects)
   const worktreeChanges = (): Promise<readonly string[] | null> =>
     git.start().then(
       (e) => e.changed,
@@ -371,34 +353,12 @@ export async function lockDiscovery(
   )
   checkProjectNames(workspaceRoot, projects)
   linkDiscoveredEdges(workspaceRoot, projects, edges)
-  const recorded: [string, DiscoveredLock][] = []
-  for (const meta of projects) {
-    const by = addedBy.get(meta)
-    if (
-      meta.name === before.get(meta) &&
-      by === undefined &&
-      meta.deps === undefined &&
-      meta.reach === undefined
-    )
-      continue
-    recorded.push([
-      lockKey(workspaceRoot, meta.dir),
-      {
-        name: meta.name,
-        ...(by !== undefined ? { by } : {}),
-        ...(meta.deps !== undefined ? { deps: [...meta.deps] } : {}),
-        ...(meta.reach !== undefined ? { reach: [...meta.reach] } : {}),
-      },
-    ])
-  }
-  recorded.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
-  return {
-    projects,
-    stage: {
-      plugins: plugins.filter((p) => typeof p.discover === 'function').map((p) => p.name),
-      projects: Object.fromEntries(recorded),
-    },
-  }
+  return projects
+}
+
+/** The plugin whose `discover` entry added `meta`, the project's `LockedProject.by`. */
+export function addedByPlugin(meta: ProjectMeta): string | undefined {
+  return addedBy.get(meta)
 }
 
 /** The projects the lock records, registered for the readers keyed on the discovery's array. */
@@ -496,14 +456,16 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
   const stage = hooks ? new Map<string, ProjectConfig>() : undefined
   // Asked only when a config is to be read: a run whose every project the
   // CLI's selection pass staged never parses the lock.
+  // A config-less project's config is the stage's record: read only when one is asked.
   const recorded =
-    !hooks && args.projectMetas.some((m) => args.staged?.get(m.name) === undefined)
-      ? (await lock()).projectStage?.configs
+    !hooks &&
+    args.projectMetas.some((m) => m.configPath === null && args.staged?.get(m.name) === undefined)
+      ? (await lock()).projects
       : undefined
   const recordedOf = (meta: ProjectMeta): ProjectConfig | undefined => {
-    if (recorded === undefined) return undefined
+    if (recorded === undefined || meta.configPath !== null) return undefined
     const dir = lockKey(workspaceRoot, meta.dir)
-    return Object.hasOwn(recorded, dir) ? recorded[dir] : undefined
+    return Object.hasOwn(recorded, dir) ? recorded[dir]!.config : undefined
   }
   // A hook that set one project's `dir` to another's moved it there: the
   // graph's directory guard read the moved entry, and its outputs clean

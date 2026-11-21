@@ -1,50 +1,70 @@
-// .vx/dependencies.lock.json — what the workspace's dependencies resolve
-// to, written by `vx lock` beside the config lock and committed.
+// .vx/dependencies.lock — the workspace's resolved graph and what its
+// dependencies resolve to, written by `vx lock` beside the config lock and
+// committed.
 //
-// Each project's edges (the `discover` stage's `deps` and `reach`), by
-// directory, and each claimed file's per-project digests
+// Each project's edges (the `discover` stage's `deps` and `reach`, which
+// live nowhere else), and each claimed file's per-project digests
 // (`FingerprintClaim.digests`) with the hash of the bytes they came from
-// and of each other file the digests read. A run keys from these digests
-// and never parses the file: one whose bytes moved since refuses
-// (orchestrator/locked-digests.ts). `--affected` reads the base commit's
-// copy with git: a deleted project's dependants are in its edges, and a
-// changed lockfile's base digests are there, so the base side is never
-// parsed. `vx lock --check` holds it to a fresh derivation.
+// and of each other file the digests read. A run takes its edges from here
+// and keys from these digests, never parsing a package manager's lockfile:
+// one whose bytes moved since refuses (orchestrator/locked-digests.ts).
+// `--affected` reads the base commit's copy with git: a project whose edges
+// moved, a deleted project's dependants and a changed lockfile's base
+// digests are there, so the base side is never parsed. `vx lock --check`
+// holds it to a fresh derivation.
+//
+// Text, one line per project, keyed by its name and sorted, so a merge of
+// two branches touches only the projects each changed. Laid out for the
+// parse first, then for size (2026-11-21):
+//   line 1   JSON: {"version":5,"files":[file,hash,…],"edges":true?,"extras":{…}?}
+//   then     name⇥deps⇥reach⇥digests, each list comma-separated, the
+//            digests in `files` order ("" for none), empty trailing fields
+//            dropped. A list with an element a comma or tab could break is
+//            written as a JSON array; a name a tab could break, as a JSON
+//            string. A hex digest is its 8 bytes in base64url; any other
+//            digest is `=` and the string.
 
 import path from 'node:path'
 import { type PendingWrite, UserError } from '../util/index.js'
 import type { ProjectMeta } from './workspace.js'
-import { lockKey } from './lockfile.js'
 import { type LoadReads, readOnce } from './load-reads.js'
 
-export const DEPENDENCIES_LOCK_NAME = '.vx/dependencies.lock.json'
-const DEPENDENCIES_LOCK_VERSION = 4
+export const DEPENDENCIES_LOCK_NAME = '.vx/dependencies.lock'
+const DEPENDENCIES_LOCK_VERSION = 5
+const HEX16 = /^[0-9a-f]{16}$/
+const B64 = /^[A-Za-z0-9_-]{11}$/
 
-// Laid out for the parse first, then the size, as every run parses it:
-// one `graph` array, each directory once and every edge an index, each
-// project's digests inside its own directory string (read by indexOf and
-// slice, never split, and only for the project asked about), and nothing
-// written for a slot that is empty.
-export interface DependenciesLock {
-  version: number
-  /**
-   * Per project, sorted by directory: a string, `dir[,digest…]`, its
-   * digest for each claimed file in `files` order with trailing empty
-   * slots left out (a directory holding a comma keeps every slot, so its
-   * row holds more commas than there are files); then the indexes of the
-   * projects it builds after, sorted; then `-(index + 1)` of each it
-   * reaches for selection only, sorted. An index counts the strings.
-   */
-  graph: (string | number)[]
-  /** Each claimed file, sorted, then the xxh3 of its bytes: `[file, hash, file, hash, …]`. */
-  files: string[]
-  /** Claimed file → each root-relative file besides it whose bytes its digests read → that file's hash (`hashExtra`); absent when none. */
-  extras?: Record<string, Record<string, string>>
+/** A project's edges, as names. */
+export interface LockedEdges {
+  readonly deps: readonly string[]
+  readonly reach: readonly string[]
 }
+
+/** The lock as read: each project's line found at once, decoded on ask. */
+export interface DependenciesLock {
+  /** Project names, sorted. */
+  readonly names: readonly string[]
+  /** Whether a `discover` plugin gave edges: with none, a `^task` has no edge source. */
+  readonly edgeSource: boolean
+  /** Each claimed file, sorted. */
+  readonly files: readonly string[]
+  /** Each claimed file's bytes' hash, in `files` order. */
+  readonly hashes: readonly string[]
+  /** Claimed file → each other file its digests read → its hash. */
+  readonly extras: Readonly<Record<string, Readonly<Record<string, string>>>>
+  /** The text, as written. */
+  readonly text: string
+  /** `name`'s edges; undefined for a project the lock does not hold. */
+  readonly edges: (name: string) => LockedEdges | undefined
+  /** `name`'s digest of file `f` ('' for none); undefined for a project the lock does not hold. */
+  readonly digest: (name: string, f: number) => string | undefined
+}
+
+const invalid = (): UserError =>
+  new UserError(`${DEPENDENCIES_LOCK_NAME} is invalid, run \`vx lock\``, 'VX_E_LOCK')
 
 /** The lock for `metas`, with `files` keyed by project name as the claims answer. */
 export function dependenciesLock(
-  root: string,
   metas: readonly ProjectMeta[],
   files: ReadonlyMap<
     string,
@@ -55,69 +75,73 @@ export function dependenciesLock(
     }
   >,
 ): DependenciesLock {
-  const dirOf = new Map(metas.map((m) => [m.name, lockKey(root, m.dir)]))
-  const dirs = [...new Set(dirOf.values())].sort(cmp)
-  const at = new Map(dirs.map((d, i) => [d, i]))
-  const byDir = new Map(metas.map((m) => [dirOf.get(m.name)!, m]))
-  const names = [...files.keys()].sort(cmp)
-  const digests = names.map(() => dirs.map(() => ''))
-  const flat: string[] = []
-  const extras: Record<string, Record<string, string>> = {}
-  names.forEach((file, f) => {
-    const { hash, projects: byName, extras: read } = files.get(file)!
-    flat.push(file, hash)
-    for (const [name, digest] of Object.entries(byName)) {
-      const i = at.get(dirOf.get(name) ?? '')
-      if (i === undefined) continue
-      if (digest.includes(','))
-        throw new UserError(
-          `${file}: the digest for ${dirs[i]} holds a comma, which ${DEPENDENCIES_LOCK_NAME} cannot record — the fingerprint plugin claiming it must answer without one`,
-          'VX_E_LOCK',
-        )
-      digests[f]![i] = digest
-    }
-    const rels = Object.keys(read ?? {}).sort(cmp)
-    if (rels.length > 0) extras[file] = Object.fromEntries(rels.map((r) => [r, read![r]!]))
-  })
-  const indexes = (list: readonly string[] | undefined): number[] => {
-    if (list === undefined || list.length === 0) return []
-    const to = new Set<number>()
-    for (const n of list) {
-      const j = at.get(dirOf.get(n) ?? '')
-      if (j !== undefined) to.add(j)
-    }
-    return [...to].sort((a, b) => a - b)
-  }
-  const graph: (string | number)[] = []
-  dirs.forEach((dir, i) => {
-    graph.push(
-      rowOf(
-        dir,
-        digests.map((d) => d[i]!),
-      ),
-    )
-    const meta = byDir.get(dir)!
-    for (const j of indexes(meta.deps)) graph.push(j)
-    for (const j of indexes(meta.reach)) graph.push(-1 - j)
-  })
-  return {
+  const known = new Set(metas.map((m) => m.name))
+  const fileNames = [...files.keys()].sort(cmp)
+  const header: Record<string, unknown> = {
     version: DEPENDENCIES_LOCK_VERSION,
-    graph,
-    files: flat,
-    ...(Object.keys(extras).length > 0 ? { extras } : {}),
+    files: fileNames.flatMap((f) => [f, packed(files.get(f)!.hash)]),
   }
+  if (metas.some((m) => m.deps !== undefined)) header['edges'] = true
+  const extras: Record<string, Record<string, string>> = {}
+  for (const f of fileNames) {
+    const read = files.get(f)!.extras ?? {}
+    const rels = Object.keys(read).sort(cmp)
+    if (rels.length > 0) extras[f] = Object.fromEntries(rels.map((r) => [r, read[r]!]))
+  }
+  if (Object.keys(extras).length > 0) header['extras'] = extras
+  const named = (list: readonly string[] | undefined): string[] =>
+    [...new Set((list ?? []).filter((n) => known.has(n)))].sort(cmp)
+  const lines = [JSON.stringify(header)]
+  for (const m of [...metas].sort((a, b) => cmp(a.name, b.name))) {
+    const digests = fileNames.map((f) => packed(files.get(f)!.projects[m.name] ?? ''))
+    while (digests.length > 0 && digests[digests.length - 1] === '') digests.pop()
+    const fields = [key(m.name), list(named(m.deps)), list(named(m.reach)), list(digests)]
+    while (fields.length > 1 && fields[fields.length - 1] === '') fields.pop()
+    lines.push(fields.join('\t'))
+  }
+  return parsed(`${lines.join('\n')}\n`)!
 }
 
-/** Minified, as the config lock: only vx reads it, and minified JSON parses faster. */
-function dependenciesLockText(lock: DependenciesLock): string {
-  return `${JSON.stringify(lock)}\n`
+/** A digest as written: base64url for a hex one, `=` and the string for any other. */
+function packed(v: string): string {
+  if (v === '') return ''
+  return HEX16.test(v) ? Buffer.from(v, 'hex').toString('base64url') : `=${v}`
 }
 
-/** The dependency lock's file and bytes, for `writeAllOrNone`. */
+function unpacked(v: string): string {
+  if (v === '') return ''
+  if (v.charCodeAt(0) === 61) return v.slice(1)
+  if (!B64.test(v)) throw invalid()
+  return Buffer.from(v, 'base64url').toString('hex')
+}
+
+/** A name as a line's key: as it is, unless a tab or newline could break it. */
+function key(name: string): string {
+  return /[\t\n\r]/.test(name) || name.startsWith('"') || name.startsWith('{')
+    ? JSON.stringify(name)
+    : name
+}
+
+/** A list as a field: comma-separated, unless an element could break it. */
+function list(values: readonly string[]): string {
+  return values.some((v) => /[,\t\n\r]/.test(v) || v.startsWith('['))
+    ? JSON.stringify(values)
+    : values.join(',')
+}
+
+function field(v: string | undefined): string[] {
+  if (v === undefined || v === '') return []
+  if (v.charCodeAt(0) !== 91) return v.split(',')
+  const out: unknown = JSON.parse(v)
+  if (!strings(out)) throw invalid()
+  return out
+}
+
+/** The dependency lock's file and text, for `writeAllOrNone`. */
 export function dependenciesLockWrite(root: string, lock: DependenciesLock): PendingWrite {
   return {
     file: path.join(root, DEPENDENCIES_LOCK_NAME),
-    text: dependenciesLockText(lock),
+    text: lock.text,
     shown: DEPENDENCIES_LOCK_NAME,
   }
 }
@@ -134,133 +158,115 @@ export function readDependenciesLock(root: string, reads?: LoadReads): Promise<U
  */
 export function parseDependenciesLock(bytes: Uint8Array | null): DependenciesLock | null {
   if (bytes === null) return null
-  let lock: Partial<DependenciesLock>
+  const text = new TextDecoder().decode(bytes)
+  const nl = text.indexOf('\n')
+  let version: unknown
   try {
-    lock = JSON.parse(new TextDecoder().decode(bytes)) as Partial<DependenciesLock>
+    version = (JSON.parse(text.slice(0, nl < 0 ? text.length : nl)) as { version?: unknown })
+      ?.version
   } catch {
     return null
   }
-  if (typeof lock?.version === 'number' && lock.version > DEPENDENCIES_LOCK_VERSION)
+  if (typeof version === 'number' && version > DEPENDENCIES_LOCK_VERSION)
     throw new UserError(
-      `${DEPENDENCIES_LOCK_NAME} was written by a newer vx (version ${lock.version}; this vx reads ${DEPENDENCIES_LOCK_VERSION}) — upgrade vx`,
+      `${DEPENDENCIES_LOCK_NAME} was written by a newer vx (version ${version}; this vx reads ${DEPENDENCIES_LOCK_VERSION}) — upgrade vx`,
       'VX_E_LOCK',
     )
-  if (lock.version !== DEPENDENCIES_LOCK_VERSION) return null
-  const read = shapeOf(lock)
-  if (read === null) return null
-  views.set(lock as DependenciesLock, read)
-  return lock as DependenciesLock
+  if (version !== DEPENDENCIES_LOCK_VERSION) return null
+  return parsed(text)
 }
 
-/** Each project's directory and row, in index order, and each claimed file's index. */
-interface View {
-  dirs: string[]
-  rows: string[]
-  slots: number
-  at?: Map<string, number>
-}
-
-const views = new WeakMap<DependenciesLock, View>()
-
-function viewOf(lock: DependenciesLock): View {
-  let view = views.get(lock)
-  if (view === undefined) {
-    view = shapeOf(lock)!
-    views.set(lock, view)
-  }
-  return view
-}
-
-// A committed file a merge or a hand edit can break inside, so every
-// entry is checked: one bad entry read on would throw a raw TypeError at
-// its first lookup instead of the "invalid, run `vx lock`" refusal. The
-// pass that checks the rows is the one that reads their directories.
-function shapeOf(lock: Partial<DependenciesLock>): View | null {
-  const { graph, files, extras } = lock
-  if (!Array.isArray(graph) || !Array.isArray(files) || files.length % 2 !== 0) return null
-  for (const f of files) if (typeof f !== 'string') return null
-  if (extras !== undefined) {
-    if (!isRecord(extras)) return null
-    for (const rec of Object.values(extras)) {
-      if (!isRecord(rec)) return null
-      for (const h of Object.values(rec)) if (typeof h !== 'string') return null
+// A committed file a merge or a bad checkout can break inside. The parse
+// checks the header and that each line's name is new and in order; a line's
+// fields are checked when decoded, which refuses as "invalid, run `vx lock`"
+// rather than a raw TypeError at a lookup.
+function parsed(text: string): DependenciesLock | null {
+  try {
+    const nl = text.indexOf('\n')
+    if (nl < 0 || !text.endsWith('\n')) return null
+    const header: unknown = JSON.parse(text.slice(0, nl))
+    if (!isRecord(header)) return null
+    const { files: pairs, edges, extras } = header
+    if (!strings(pairs) || pairs.length % 2 !== 0) return null
+    if (edges !== undefined && edges !== true) return null
+    if (extras !== undefined && !extrasShaped(extras)) return null
+    const files = pairs.filter((_, i) => i % 2 === 0)
+    const hashes = pairs.filter((_, i) => i % 2 === 1).map(unpacked)
+    const names: string[] = []
+    const at = new Map<string, number>()
+    for (let a = nl + 1; a < text.length;) {
+      const end = text.indexOf('\n', a)
+      let tab = text.indexOf('\t', a)
+      if (tab < 0 || tab > end) tab = end
+      const raw = text.slice(a, tab)
+      const name = raw.charCodeAt(0) === 34 ? (JSON.parse(raw) as unknown) : raw
+      if (typeof name !== 'string' || name === '' || at.has(name)) return null
+      if (names.length > 0 && cmp(names[names.length - 1]!, name) >= 0) return null
+      names.push(name)
+      at.set(name, a)
+      a = end + 1
     }
-  }
-  const slots = files.length / 2
-  const dirs: string[] = []
-  const rows: string[] = []
-  for (const v of graph) {
-    if (typeof v !== 'string') {
-      if (rows.length === 0) return null
-      continue
+    const decoded = new Map<string, { edges: LockedEdges; digests: string[] }>()
+    const line = (name: string) => {
+      let d = decoded.get(name)
+      if (d !== undefined) return d
+      const start = at.get(name)
+      if (start === undefined) return undefined
+      const parts = text.slice(start, text.indexOf('\n', start)).split('\t')
+      if (parts.length > 4) throw invalid()
+      const deps = field(parts[1])
+      const reach = field(parts[2])
+      for (const n of [...deps, ...reach]) if (!at.has(n)) throw invalid()
+      const digests = field(parts[3]).map(unpacked)
+      if (digests.length > files.length) throw invalid()
+      d = { edges: { deps, reach }, digests }
+      decoded.set(name, d)
+      return d
     }
-    const dir = dirIn(v, slots)
-    if (dir === '') return null
-    dirs.push(dir)
-    rows.push(v)
+    return {
+      names,
+      edgeSource: edges === true,
+      files,
+      hashes,
+      extras: (extras ?? {}) as Record<string, Record<string, string>>,
+      text,
+      edges: (name) => line(name)?.edges,
+      digest: (name, f) => {
+        const d = line(name)
+        return d === undefined ? undefined : (d.digests[f] ?? '')
+      },
+    }
+  } catch {
+    return null
   }
-  const n = dirs.length
-  for (const v of graph)
-    if (typeof v !== 'string' && !(Number.isInteger(v) && v >= -n && v < n)) return null
-  return { dirs, rows, slots }
 }
 
-// The directory a row starts with: up to its first comma, unless the row
-// holds more commas than there are slots (a directory with a comma in it,
-// written with every slot), then up to the last `slots` of them.
-function dirIn(row: string, slots: number): string {
-  const first = row.indexOf(',')
-  if (first < 0) return row
-  let commas = 1
-  for (let c = row.indexOf(',', first + 1); c >= 0; c = row.indexOf(',', c + 1)) commas++
-  if (commas <= slots) return row.slice(0, first)
-  let end = row.length
-  for (let k = 0; k < slots; k++) end = row.lastIndexOf(',', end - 1)
-  return row.slice(0, end)
+function strings(v: unknown): v is string[] {
+  return Array.isArray(v) && v.every((s) => typeof s === 'string')
 }
 
-// Slot `f` of a row whose directory is `dir`; '' when it was left out or empty.
-function slotIn(row: string, dir: string, f: number): string {
-  let start = dir.length + 1
-  if (start > row.length) return ''
-  for (let k = 0; k < f; k++) {
-    const c = row.indexOf(',', start)
-    if (c < 0) return ''
-    start = c + 1
+function extrasShaped(v: unknown): boolean {
+  if (!isRecord(v)) return false
+  for (const rec of Object.values(v)) {
+    if (!isRecord(rec)) return false
+    for (const h of Object.values(rec)) if (typeof h !== 'string') return false
   }
-  const end = row.indexOf(',', start)
-  return row.slice(start, end < 0 ? row.length : end)
-}
-
-// A directory and its digest slots, trailing empty ones left out unless
-// the directory holds a comma (`dirIn` then counts every slot).
-function rowOf(dir: string, slots: readonly string[]): string {
-  let last = dir.includes(',') ? slots.length - 1 : -1
-  for (let f = slots.length - 1; f > last; f--) if (slots[f] !== '') last = f
-  let row = dir
-  for (let f = 0; f <= last; f++) row += `,${slots[f]}`
-  return row
+  return true
 }
 
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v)
 }
 
-/** The project directories whose edges reach `dir`. */
-export function dependantsOf(lock: DependenciesLock, dir: string): string[] {
-  const { dirs } = viewOf(lock)
-  const i = dirs.indexOf(dir)
-  if (i < 0) return []
-  const out: string[] = []
-  let row = -1
-  for (const v of lock.graph) {
-    if (typeof v === 'string') row++
-    else if ((v < 0 ? -1 - v : v) === i && out[out.length - 1] !== dirs[row]) out.push(dirs[row]!)
-  }
-  return out
+/** The project names whose edges reach `name`. */
+export function dependantsOf(lock: DependenciesLock, name: string): string[] {
+  return lock.names.filter((n) => {
+    const e = lock.edges(n)!
+    return e.deps.includes(name) || e.reach.includes(name)
+  })
 }
 
-/** `file`'s recorded hashes and each project directory's digest (undefined when none). */
+/** `file`'s recorded hashes and each project's digest (undefined when none). */
 export function recordedDigests(
   lock: DependenciesLock,
   file: string,
@@ -268,68 +274,58 @@ export function recordedDigests(
   | {
       hash: string
       extras: Readonly<Record<string, string>>
-      has: (dir: string) => boolean
-      of: (dir: string) => string | undefined
+      has: (name: string) => boolean
+      of: (name: string) => string | undefined
     }
   | undefined {
-  let f = -1
-  for (let k = 0; k < lock.files.length; k += 2) if (lock.files[k] === file) f = k / 2
+  const f = lock.files.indexOf(file)
   if (f < 0) return undefined
-  const view = viewOf(lock)
-  view.at ??= new Map(view.dirs.map((d, i) => [d, i]))
-  const at = view.at
   return {
-    hash: lock.files[f * 2 + 1]!,
-    extras: (Object.hasOwn(lock.extras ?? {}, file) ? lock.extras![file] : undefined) ?? {},
-    has: (dir) => at.has(dir),
-    of: (dir) => {
-      const i = at.get(dir)
-      if (i === undefined) return undefined
-      const digest = slotIn(view.rows[i]!, dir, f)
-      return digest === '' ? undefined : digest
+    hash: lock.hashes[f]!,
+    extras: (Object.hasOwn(lock.extras, file) ? lock.extras[file] : undefined) ?? {},
+    has: (name) => lock.digest(name, f) !== undefined,
+    of: (name) => {
+      const d = lock.digest(name, f)
+      return d === '' ? undefined : d
     },
   }
 }
 
 /**
- * `read` with each file's record taken from `fresh` where only the files
- * its digests read moved (same bytes, same extra files, an extra's hash
- * changed): a run digests anew on such an edit (`lockfileClaim`'s
- * `lockedOnce`), and cli.md says it needs no `vx lock`, yet `--check`
- * failed every edit in a `file:` directory or a patch. With every hash
- * unchanged a run keys from the record, so its digests are compared.
+ * Whether `read` records what `fresh` derives here, but where a claimed
+ * file's only change is the hashes of the files its digests read (same
+ * bytes, same extra files, an extra's hash moved): a run digests anew on
+ * such an edit (`lockfileClaim`'s `lockedOnce`), and cli.md says it needs
+ * no `vx lock`, yet `--check` failed every edit in a `file:` directory or a
+ * patch. With every hash unchanged a run keys from the record, so its
+ * digests are compared.
  */
-export function liveRecords(read: DependenciesLock, fresh: DependenciesLock): DependenciesLock {
-  const extras = { ...read.extras }
-  const live = new Map<number, number>()
-  for (let k = 0; k < fresh.files.length; k += 2) {
-    const name = fresh.files[k]!
-    const r = read.files.indexOf(name)
-    if (r < 0 || r % 2 !== 0 || read.files[r + 1] !== fresh.files[k + 1]) continue
-    const was = read.extras?.[name] ?? {}
-    const now = fresh.extras?.[name] ?? {}
-    if (!Bun.deepEquals(Object.keys(was), Object.keys(now)) || Bun.deepEquals(was, now)) continue
-    extras[name] = now
-    live.set(r / 2, k / 2)
+export function sameRecord(read: DependenciesLock, fresh: DependenciesLock): boolean {
+  if (read.text === fresh.text) return true
+  const same = (a: readonly string[], b: readonly string[]): boolean =>
+    a.length === b.length && a.every((v, i) => v === b[i])
+  if (
+    read.edgeSource !== fresh.edgeSource ||
+    !same(read.names, fresh.names) ||
+    !same(read.files, fresh.files) ||
+    !same(read.hashes, fresh.hashes)
+  )
+    return false
+  for (const n of fresh.names) {
+    const a = read.edges(n)!
+    const b = fresh.edges(n)!
+    if (!same(a.deps, b.deps) || !same(a.reach, b.reach)) return false
   }
-  if (live.size === 0) return read
-  const theirs = viewOf(fresh)
-  const ours = viewOf(read)
-  // Another project list fails the comparison whatever the digests say.
-  if (!Bun.deepEquals(ours.dirs, theirs.dirs)) return { ...read, extras }
-  let row = -1
-  const graph = read.graph.map((v) => {
-    if (typeof v !== 'string') return v
-    row++
-    const dir = ours.dirs[row]!
-    const slots: string[] = []
-    for (let f = 0; f < ours.slots; f++) {
-      const from = live.get(f)
-      slots.push(from === undefined ? slotIn(v, dir, f) : slotIn(theirs.rows[row]!, dir, from))
-    }
-    return rowOf(dir, slots)
-  })
-  return { ...read, graph, extras }
+  for (let f = 0; f < fresh.files.length; f++) {
+    const name = fresh.files[f]!
+    const was = read.extras[name] ?? {}
+    const now = fresh.extras[name] ?? {}
+    if (!Bun.deepEquals(Object.keys(was), Object.keys(now))) return false
+    // Only the extras' hashes moved: a run digests anew, so the digests may differ.
+    if (!Bun.deepEquals(was, now)) continue
+    for (const n of fresh.names) if (read.digest(n, f) !== fresh.digest(n, f)) return false
+  }
+  return true
 }
 
 function cmp(a: string, b: string): number {

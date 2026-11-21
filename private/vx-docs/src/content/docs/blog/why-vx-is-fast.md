@@ -82,7 +82,7 @@ table), so the log comes back with one SQL read
 
 ## 5. Nothing runs that is not needed
 
-A run reads `.vx/projects.lock.json` and evaluates no config. No
+A run reads `.vx/projects.lock.jsonl` and evaluates no config. No
 telemetry plugin means no listener and no `git` spawn. A plugin that
 skips a task costs nothing.
 

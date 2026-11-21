@@ -1,0 +1,22 @@
+{"version":5,"files":["bun.lock","sAHw0IEGwps"],"edges":true}
+@vzn/vx			-S6GMf3V284
+@vzn/vx-bench	@vzn/vx,@vzn/vx-conformance,@vzn/vx-history,@vzn/vx-lockfile		IjDDhocjMto
+@vzn/vx-cache	@vzn/vx,@vzn/vx-cache-server,@vzn/vx-devtools		64_9XwIGxR4
+@vzn/vx-cache-server	@vzn/vx,@vzn/vx-devtools		8YQxBa-UyvA
+@vzn/vx-cache-service	@vzn/vx,@vzn/vx-cache-server,@vzn/vx-devtools		SAdclpRYv_A
+@vzn/vx-ci	@vzn/vx		SI4TyIFTjpk
+@vzn/vx-conformance	@vzn/vx,@vzn/vx-lockfile		hWRGMTuW4XM
+@vzn/vx-devtools	@vzn/vx		quvUuRulLoA
+@vzn/vx-docs	@vzn/vx,@vzn/vx-cache,@vzn/vx-ci,@vzn/vx-dte,@vzn/vx-history,@vzn/vx-lockfile,@vzn/vx-migrate,@vzn/vx-otel,@vzn/vx-reapi		VV7mko1RVuQ
+@vzn/vx-dte	@vzn/vx,@vzn/vx-devtools,@vzn/vx-dte-server		3XydOtZo8v0
+@vzn/vx-dte-server	@vzn/vx,@vzn/vx-devtools		ujd36cSt3MA
+@vzn/vx-dte-service	@vzn/vx,@vzn/vx-dte-server		PC3if_XRqwc
+@vzn/vx-history	@vzn/vx,@vzn/vx-devtools,@vzn/vx-history-server		hzsMc0zOtbA
+@vzn/vx-history-server	@vzn/vx,@vzn/vx-devtools		UTQfJmGp-ZY
+@vzn/vx-history-service	@vzn/vx,@vzn/vx-devtools,@vzn/vx-history-server		B5OpZ-X6E60
+@vzn/vx-lockfile	@vzn/vx		4I8eh2Jj57I
+@vzn/vx-migrate	@vzn/vx		HNQZkt2eepg
+@vzn/vx-otel	@vzn/vx		T8uhYOIt0aM
+@vzn/vx-plugin-examples	@vzn/vx		OMkIgjDWOhA
+@vzn/vx-reapi	@vzn/vx		jAECedAVsdQ
+@vzn/vx-servers	@vzn/vx		M1yPNH2szqg

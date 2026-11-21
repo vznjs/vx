@@ -119,7 +119,7 @@ describe('a run reads each root file once', () => {
         '.vx/workspace.ts': ['exists'],
         '.vx/workspace.mjs': ['exists', 'bytes'],
         // The projects and their configs come from the lock.
-        '.vx/projects.lock.json': ['exists', 'text'],
+        '.vx/projects.lock.jsonl': ['exists', 'text'],
         // A config the run reads is still there (X-144).
         'packages/a/vx.config.mjs': ['exists'],
         // No package file: the plugin's `discover` answer is the lock's
@@ -142,7 +142,7 @@ describe('a run reads each root file once', () => {
         p.cache.close()
         expect([...p.nodes.keys()]).toEqual(['a#build'])
       })
-      expect(ops['.vx/projects.lock.json']).toEqual(['exists', 'text'])
+      expect(ops['.vx/projects.lock.jsonl']).toEqual(['exists', 'text'])
     },
     TIMEOUT,
   )
@@ -162,7 +162,7 @@ describe('a run reads each root file once', () => {
         p.cache.close()
         expect([...p.nodes.keys()]).toEqual(['a#build'])
       })
-      expect(ops['.vx/projects.lock.json']).toEqual(['exists', 'text'])
+      expect(ops['.vx/projects.lock.jsonl']).toEqual(['exists', 'text'])
     },
     TIMEOUT,
   )

@@ -1463,7 +1463,7 @@ describe('turbo() under vx lock', () => {
     async () => {
       expect(vx('lock')).toEqual({
         code: 0,
-        out: '✓ vx lock  0 project configs → .vx/projects.lock.json (and the tasks a plugin maps for app, lib)\n',
+        out: '✓ vx lock  0 project configs → .vx/projects.lock.jsonl, .vx/dependencies.lock (and the tasks a plugin maps for app, lib)\n',
         err: '',
       })
       const first = vx('run', 'build', '--all')
@@ -1518,7 +1518,7 @@ describe('turbo() under vx lock', () => {
       expect(vx('lock').code).toBe(1)
       await writeFile(path.join(root, 'turbo.json'), JSON.stringify(TURBO_JSON))
       expect(vx('lock', '--check').err).toContain(
-        'packages/lib: the `project` stage maps it differently from the lock here',
+        'packages/lib: the plugins map it differently from the lock here',
       )
       expect(vx('lock').code).toBe(0)
       const fresh = vx('run', 'lib#build', '--no-cache')
