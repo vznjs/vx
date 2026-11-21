@@ -2300,6 +2300,21 @@ describe('drainOrAbort', () => {
       })()
       expect(await drainOrAbort(streams, new AbortController(), { chars: 0 })).toBe(false)
     }))
+  // Under load (load 17 on 4 cores) timers fired seconds late five times
+  // in a row: the old count of five re-arms ran out and a heavy task's
+  // last chunks were cut, unsaved, 1 run in 10.
+  it('does not judge eight blocked bounds in a row', () =>
+    withBound(async () => {
+      const streams = (async () => {
+        for (let i = 0; i < 8; i++) {
+          await Bun.sleep(5)
+          const t = performance.now()
+          while (performance.now() - t < 120);
+        }
+        await Bun.sleep(10)
+      })()
+      expect(await drainOrAbort(streams, new AbortController(), { chars: 0 })).toBe(false)
+    }))
   it('cuts readers still open a whole free bound later', () =>
     withBound(async () => {
       const ac = new AbortController()
