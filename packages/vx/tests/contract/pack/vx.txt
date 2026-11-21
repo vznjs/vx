@@ -248,6 +248,7 @@ src/util/index.ts
 src/util/memo-parts.ts
 src/util/notice.ts
 src/util/num.ts
+src/util/out-pace.ts
 src/util/paths.ts
 src/util/plain-text.ts
 src/util/procfs.ts
