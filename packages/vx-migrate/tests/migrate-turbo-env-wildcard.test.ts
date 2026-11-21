@@ -65,3 +65,43 @@ it('a task `*` env name lists what its package spells; one nothing spells stays 
     await rm(root, { recursive: true, force: true })
   }
 })
+
+// assistant-ui's turbo.json lists "ASSISTANT_*" twice under one task's env:
+// each package nothing matched got the same todo twice, and init's summary
+// named every such task twice.
+it('a `*` env name listed twice is one todo', async () => {
+  const root = await mkdtemp(path.join(tmpdir(), 'vx-migrate-envwild2-'))
+  try {
+    await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'ws', private: true }))
+    await writeFile(
+      path.join(root, 'turbo.json'),
+      JSON.stringify({ tasks: { build: { env: ['C_*', 'D', 'C_*', 'D'], outputs: [] } } }),
+    )
+    const dir = path.join(root, 'packages', 'a')
+    await mkdir(dir, { recursive: true })
+    await writeFile(path.join(dir, 'index.ts'), 'export const k = 1\n')
+    Bun.spawnSync(['git', 'init', '-q'], { cwd: root })
+    Bun.spawnSync(['git', 'add', '-A'], { cwd: root })
+    const metas: PackageMeta[] = [
+      {
+        name: 'a',
+        dir,
+        packageJson: { name: 'a', scripts: { build: 'tsc' } } as never,
+        configPath: null,
+      },
+    ]
+    const p = await migrateTurbo(root, metas)
+    const build = p.projects.find((x) => x.name === 'a')!.tasks.find((t) => t.name === 'build')!
+    expect({
+      todos: build.todos,
+      env: (build.task as { inputs: { env?: unknown } }).inputs.env,
+    }).toEqual({
+      todos: [
+        'env "C_*": wildcards are not supported in vx env names — list explicit names in inputs.env + exec.env.passThrough',
+      ],
+      env: [{ raw: '...globalEnvInputs' }, 'D'],
+    })
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
