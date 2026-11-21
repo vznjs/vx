@@ -2,7 +2,8 @@
 //
 // Read: local first; on a miss each readable remote in declared order, the
 // first hit streamed into local. Write: local at once, then a background upload
-// to every writable remote; an upload failure warns and never fails the run.
+// to every writable remote once the run drains; an upload failure warns and
+// never fails the run.
 // Each remote's boundary, pool and warnings are its `RemoteLane`. Local and
 // remote share the same `<hash>.tar.zst` bytes; metadata travels apart (`ctx`,
 // the remote's `durationMs`).
@@ -187,6 +188,8 @@ export class LayeredCache implements CacheLayer {
   private readonly lanes: readonly RemoteLane[]
   /** Each key `save` uploaded: whether a remote took it (`uploaded`). */
   private readonly sent = new Map<string, Promise<boolean>>()
+  /** Each key `save` stored whose upload waits for the run's drain: send (true) or drop it. */
+  private readonly held = new Map<string, (go: boolean) => void>()
   /** Each key whose stored entry `save` kept, until `kept` answers for it. */
   private readonly keptHere = new Set<string>()
 
@@ -508,6 +511,7 @@ export class LayeredCache implements CacheLayer {
   }
 
   discard(hash: string): Promise<void> {
+    this.release(hash, false)
     return this.local.discard(hash)
   }
 
@@ -559,16 +563,37 @@ export class LayeredCache implements CacheLayer {
       packed !== undefined
         ? Promise.resolve({ body: new Blob([packed]) })
         : this.local.pinArtifact(hash)
-    const sent = writable.map((lane) =>
-      lane.upload(hash, durationMs, body, this.local.uploads, args.absent === true),
-    )
-    this.sent.set(
-      hash,
-      Promise.all(sent).then((held) => held.includes(true)),
-    )
+    const send = (): Promise<boolean> =>
+      Promise.all(
+        writable.map((lane) =>
+          lane.upload(hash, durationMs, body, this.local.uploads, args.absent === true),
+        ),
+      ).then((held) => held.includes(true))
+    // Packed bytes go now: held, a run's every artifact would sit in memory.
+    if (packed !== undefined) {
+      this.sent.set(hash, send())
+      return
+    }
+    // Held until the run drains: the sweep once its graph is done may find an
+    // input under this entry written after its key was taken (a task writing
+    // into another project, an editor) and `discard` it, and another machine
+    // must never replay it. One that asks for its upload (`uploaded`) sends it.
+    this.release(hash, false)
+    let settle!: (sent: Promise<boolean>) => void
+    this.sent.set(hash, new Promise<boolean>((resolve) => (settle = resolve)))
+    this.held.set(hash, (go) => settle(go ? send() : Promise.resolve(false)))
+  }
+
+  /** Send the held upload of `hash` (`go`), or drop it. */
+  private release(hash: string, go: boolean): void {
+    const held = this.held.get(hash)
+    if (held === undefined) return
+    this.held.delete(hash)
+    held(go)
   }
 
   uploaded(hash: string): Promise<boolean | undefined> {
+    this.release(hash, true)
     return this.sent.get(hash) ?? Promise.resolve(undefined)
   }
 
@@ -606,11 +631,13 @@ export class LayeredCache implements CacheLayer {
    * `cache.close()`.
    */
   async drainUploads(): Promise<void> {
+    for (const hash of [...this.held.keys()]) this.release(hash, true)
     await Promise.all(this.lanes.map((l) => l.drain()))
   }
 
   /** A stopped run starts no more uploads and stops waiting on those in flight. */
   stopUploads(): void {
+    for (const hash of [...this.held.keys()]) this.release(hash, false)
     for (const lane of this.lanes) lane.stop()
   }
 
