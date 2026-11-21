@@ -398,3 +398,14 @@ claim or a timed test. Add a lesson here, not to CLAUDE.md.
   the child into a shell loop instead. `process.stdout.writableNeedDrain`
   is always false in Bun 1.4.4; only `write()`'s return says a pipe is
   full (2026-11-21).
+- A wait that grows while text keeps coming has no end. #5468 re-armed
+  the post-exit drain while a task's readers took text, to keep a busy
+  scheduler from cutting a heavy task's last chunks; a backgrounded
+  process logging every 50 ms then held its task open until vx was
+  killed. Every rule that extends a bound is tried against a leftover
+  that writes slowly forever before it merges; #5470 extends only a
+  bound the scheduler spent blocked (2026-11-21).
+- A probe run against the tree being edited judges the edit, not vx: a
+  watch fuzz seed diverged when a branch switch changed the source under
+  the running watch, and its rerun was clean. Long probes run a detached
+  worktree of main (2026-11-21).
