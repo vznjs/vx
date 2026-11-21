@@ -353,8 +353,9 @@ async function audit(root: string, warn: (message: string) => void): Promise<Gra
 
 /**
  * The task graph, or every refusal building it meets: the first build stops
- * at one, so each requested task is built alone to name the rest (a cycle
- * once, whichever task reached it). Only on the refused path.
+ * at one, so each requested task is built alone, every bad `dependsOn` entry
+ * collected, to name the rest (a cycle once, whichever task reached it).
+ * Only on the refused path.
  */
 function everyGraphRefusal(
   options: Parameters<typeof buildTaskGraph>[0],
@@ -368,10 +369,15 @@ function everyGraphRefusal(
     const sound = new Set<string>()
     for (const one of options.requested) {
       if (sound.has(`${one.project}#${one.task}`)) continue
+      const refusals: UserError[] = []
       try {
-        for (const id of buildTaskGraph({ ...options, requested: [one] }).keys()) sound.add(id)
+        const nodes = buildTaskGraph({ ...options, requested: [one], refusals })
+        if (refusals.length === 0) for (const id of nodes.keys()) sound.add(id)
       } catch (err) {
         if (!isUserError(err)) throw err
+        refusals.push(err)
+      }
+      for (const err of refusals) {
         const cycle = err.code === 'VX_E_CYCLE' && /^dependsOn cycle: (.+) — /s.exec(err.message)
         const key = cycle ? [...new Set(cycle[1]!.split(' -> '))].sort().join('\0') : err.message
         if (all.has(key)) continue

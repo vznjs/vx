@@ -653,7 +653,7 @@ describe('vx lock prints a config refusal with its frame', () => {
 
   // The graph build stops at its first refusal; a migrated workspace with a
   // cycle and two bad dependsOn took a lock per issue.
-  it('names every graph refusal, a cycle once', async () => {
+  it('names every graph refusal, each bad entry, a cycle once', async () => {
     const root = await realpath(await makeWorkspace({ prefix: 'vx-frame-graph-' }))
     try {
       const task = (name: string, deps: string) =>
@@ -661,13 +661,14 @@ describe('vx lock prints a config refusal with its frame', () => {
       const err = await lockIn(root, {
         a: task('a', "'b#build'"),
         b: task('b', "'a#build'"),
-        c: task('c', "'zz'"),
+        c: task('c', "'zz', 'gone#build'"),
         d: task('d', "'nope#build'"),
       })
-      expect(err.match(/^✗ vx lock {2}(lock not written|also refused)$/gm)).toHaveLength(3)
+      expect(err.match(/^✗ vx lock {2}(lock not written|also refused)$/gm)).toHaveLength(4)
       expect(err.match(/dependsOn cycle: /g)).toHaveLength(1)
       expect(err).toContain('c/vx.config.mjs:1:')
       expect(err).toContain('tasks.build.dependsOn names c#zz but no such task is declared')
+      expect(err).toContain('tasks.build.dependsOn names gone#build, but no project is named gone')
       expect(err).toContain('d/vx.config.mjs:1:')
       expect(err).toContain('no project is named nope')
     } finally {
