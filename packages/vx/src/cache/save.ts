@@ -891,6 +891,13 @@ export function flushIndex(ix: StoreIndex): void {
             failed.set(i, failed.values().next().value)
             continue
           }
+          // Alone in the batch, a throw rolls back the whole transaction,
+          // which holds only its own rows: no savepoint (two statements a
+          // save on a cold run, whose batches are mostly one).
+          if (batch.length === 1) {
+            batch[i]!.write()
+            continue
+          }
           try {
             // Nested: a savepoint, so one write's failure undoes only its own rows.
             ix.db.transaction(batch[i]!.write)()

@@ -4,7 +4,7 @@
 // erases the region first, writes its content, then redraws, so the region
 // never interleaves with what scrolls above it.
 
-import { rawBytes } from '../util/index.js'
+import { noteWrite, rawBytes } from '../util/index.js'
 import { dumbTerminal } from './theme.js'
 
 /** Erase the current line and return the cursor to column 0. */
@@ -103,10 +103,10 @@ function writeSliced(stream: StatusStream, text: string): void {
     // Never between the halves of a surrogate pair.
     const c = text.charCodeAt(end - 1)
     if (c >= 0xd800 && c <= 0xdbff) end--
-    stream.write(rawBytes(text.slice(at, end)))
+    noteWrite(stream, stream.write(rawBytes(text.slice(at, end))))
     at = end
   }
-  stream.write(rawBytes(at === 0 ? text : text.slice(at)))
+  noteWrite(stream, stream.write(rawBytes(at === 0 ? text : text.slice(at))))
 }
 
 export function createOutputWriter(

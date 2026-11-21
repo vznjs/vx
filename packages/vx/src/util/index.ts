@@ -28,6 +28,7 @@ export {
 } from './errors.js'
 export { configErrorFrame, configRefusal } from './config-frame.js'
 export { envFlagOn } from './env-flag.js'
+export { noteWrite, outputPaced } from './out-pace.js'
 export { decodeRaw, rawBytes, rawEncode, RawUtf8Decoder } from './raw-utf8.js'
 export { keysSorted, xxh3, xxh3hex } from './hash.js'
 export {
