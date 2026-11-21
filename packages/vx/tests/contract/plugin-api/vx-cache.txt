@@ -42,5 +42,6 @@ export interface VxCacheOptions {
   repository: string
   timeoutMs?: number
   uploadTimeoutMs?: number
+  retries?: number
   headers?: Record<string, string | undefined>
 }
