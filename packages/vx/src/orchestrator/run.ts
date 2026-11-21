@@ -1422,16 +1422,25 @@ async function runOnBus(
       (n) => n.config.exec?.command === undefined || shortCircuit.restoreTier.has(n.id),
     )
       ? new Map<string, number>()
-      : await prepared.priorities({
-          step,
-          refined: (merged) => {
-            if (reprioritize !== undefined) reprioritize(merged)
-            else if (!graphOver) refinedEarly = merged
-          },
-          flaky: (ids) => {
-            for (const id of ids) if (nodes.has(id)) sharedFlaky.add(id)
-          },
-        })
+      : // A stop ends the wait on a hook that never settles: a first Ctrl-C
+        // waited out the whole signal bound (7 s) for it. Unranked, the
+        // stopped graph then dispatches nothing and the run ends as stopped.
+        await Promise.race([
+          prepared.priorities({
+            step,
+            refined: (merged) => {
+              if (reprioritize !== undefined) reprioritize(merged)
+              else if (!graphOver) refinedEarly = merged
+            },
+            flaky: (ids) => {
+              for (const id of ids) if (nodes.has(id)) sharedFlaky.add(id)
+            },
+          }),
+          new Promise<ReadonlyMap<string, number>>((resolve) => {
+            if (stop.signal.aborted) resolve(new Map())
+            else stop.signal.addEventListener('abort', () => resolve(new Map()), { once: true })
+          }),
+        ])
     // The stats a thread took while git walked (`warmOutputs`): in by now,
     // it has had the stages since.
     await prepared.localCache.memo.warmSettled()
