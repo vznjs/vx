@@ -34,6 +34,7 @@ export interface WorkspaceConfig {
   outputs?: WorkspaceOutputs
   lock?: LockSettings
   watch?: WatchSettings
+  history?: HistorySettings
   /**
    * Plugins for this workspace, consulted in this order once per `vx run`:
    * each fills any of the stages and capabilities below, with core's
@@ -74,15 +75,6 @@ export interface RunSettings {
    * waits for nothing not already done. Omitted → `'3s'`.
    */
   pluginTimeout?: Duration
-  /**
-   * How long vx reads a task's output after its shell exits, while a
-   * process it left running holds the pipe. Omitted → `'250ms'`.
-   */
-  drainGrace?: Duration
-  /** How long one output stream waits on the other's open line. Omitted → `'50ms'`. */
-  lineWait?: Duration
-  /** How long a persistent task waits on `readyWhen` before vx says so. Omitted → `'10s'`. */
-  readyNotice?: Duration
   /** How much output vx keeps, in characters (a size: `'8MiB'`). */
   logs?: RunLogs
   secrets?: {
@@ -113,12 +105,6 @@ export interface RunLogs {
   failedHead?: string
   /** The end of a failed attempt's stored output. Omitted → `'56KiB'`. */
   failedTail?: string
-  /** The end of each task's output a telemetry plugin receives. Omitted → `'128KiB'`. */
-  telemetryTail?: string
-  /** All task output a telemetry plugin receives in one run. Omitted → `'4MiB'`. */
-  telemetryBudget?: string
-  /** The end of each stream a persistent task keeps in memory. Omitted → `'64KiB'`. */
-  persistentTail?: string
 }
 
 /** `WorkspaceConfig.inputs`. */
@@ -185,6 +171,16 @@ export interface LockSettings {
 export interface WatchSettings {
   /** Poll for changes from the start instead of the OS watcher. */
   poll?: boolean
+  /** Wait this long after the last change before re-running (at most 1 s after the first). Omitted → `'150ms'`. */
+  debounce?: Duration
+  /** How often a polling watch re-walks a tree. Omitted → `'250ms'`. */
+  pollInterval?: Duration
+}
+
+/** `WorkspaceConfig.history`: what runs leave behind on this machine. */
+export interface HistorySettings {
+  /** `vx cache clean` drops run history older than this. Omitted → `'30d'`. */
+  retention?: Duration
 }
 
 /** `WorkspaceConfig.run.rules`. */

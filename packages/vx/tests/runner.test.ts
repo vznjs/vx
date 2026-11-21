@@ -237,7 +237,7 @@ describe('runCommand', () => {
       { stdio: ['ignore', 'ignore', 'inherit'] },
     )
     let live = ''
-    process.env['VX_RUN_DRAIN_GRACE'] = '600000ms'
+    process.env['VX_TEST_POST_EXIT_DRAIN'] = '600000ms'
     const result = await runCommand({
       command: '(read _ < go; echo TAIL) & exec 3> gone; echo HEAD',
       cwd,
@@ -245,7 +245,7 @@ describe('runCommand', () => {
       onStdout: (chunk) => {
         live += chunk
       },
-    }).finally(() => delete process.env['VX_RUN_DRAIN_GRACE'])
+    }).finally(() => delete process.env['VX_TEST_POST_EXIT_DRAIN'])
     expect(await release.exited).toBe(0)
     expect(result.exitCode).toBe(0)
     expect(result.stdout).toBe('HEAD\nTAIL\n')
@@ -2214,7 +2214,7 @@ describe('lineEnds — one stream never writes into the other’s open line', ()
       // back-to-back writes landed on CI. The bound is lengthened so the
       // hold, not its bound, is what is driven: on a loaded macOS runner
       // the two sleeps outlasted 50 ms and the line went unbroken.
-      process.env['VX_RUN_LINE_WAIT'] = '5s'
+      process.env['VX_TEST_OPEN_LINE_WAIT'] = '5s'
       const result = await runCommand({
         command:
           "printf 'sh: 1: ' >&2; sleep 0.01; printf 'NO-TTY\\n'; sleep 0.01; " +
@@ -2224,7 +2224,7 @@ describe('lineEnds — one stream never writes into the other’s open line', ()
         onStdout: (t) => got.push(['out', t]),
         onStderr: (t) => got.push(['err', t]),
       })
-      delete process.env['VX_RUN_LINE_WAIT']
+      delete process.env['VX_TEST_OPEN_LINE_WAIT']
       expect(result.exitCode).toBe(0)
       // Each line and the streams that wrote into it.
       const lines: { text: string; from: Set<string> }[] = [{ text: '', from: new Set() }]

@@ -23,6 +23,7 @@ import { run } from './helpers/orchestrator.js'
 import { withSum } from './helpers/artifact-sum.js'
 import { isInline, removeStoredArtifact, storedArtifact } from './helpers/stored-artifact.js'
 import { TAR_STORE } from './helpers/tar-store.js'
+import { applyWorkspaceLimits } from '../src/settings.js'
 import * as saving from '../src/cache/save.js'
 
 /** How many key components `entry_inputs` holds (one row per entry, v34). */
@@ -3332,6 +3333,44 @@ describe('Cache.recordRunBundle (Tier 3)', () => {
       expect(db.query('SELECT run_id FROM run_ids').all()).toEqual([{ run_id: 'recent-run' }])
     } finally {
       reopened.close()
+    }
+  })
+
+  it('.vx/workspace history.retention sets what a prune keeps', async () => {
+    applyWorkspaceLimits({ history: { retention: '60d' } })
+    const cache = new Cache(
+      cacheDir,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      TAR_STORE,
+    )
+    try {
+      const endedAt = Date.now() - 40 * 24 * 60 * 60 * 1000
+      runHistory(cache).recordRunBundle({
+        runs: [
+          {
+            hash: 'h-old',
+            project: 'p',
+            task: 't',
+            status: 'success' as const,
+            exitCode: 0,
+            durationMs: 1,
+            startedAt: endedAt - 1,
+            endedAt,
+            runId: 'old-run',
+          },
+        ],
+        invocation: { ...invocation('old-run'), startedAt: endedAt - 100, endedAt },
+      })
+      await cache.prune({ olderThanMs: 0 })
+      const ids = indexDb(cache).query('SELECT run_id FROM invocations').all()
+      expect(ids).toEqual([{ run_id: 'old-run' }])
+    } finally {
+      cache.close()
+      applyWorkspaceLimits(undefined)
     }
   })
 

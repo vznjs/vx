@@ -6,6 +6,7 @@ import { isUtf8 } from 'node:buffer'
 import fs from 'node:fs'
 import path from 'node:path'
 import * as ui from '../ui/index.js'
+import { limitSetting } from '../util/index.js'
 
 /** Directories whose changes never trigger a re-run, wherever they appear. */
 export const IGNORED_SEGMENTS = ['node_modules', '.git']
@@ -45,6 +46,8 @@ export interface ArmedWatcher {
 
 /** How often the fallback re-walks a watched tree. */
 const POLL_INTERVAL_MS = 250
+/** `watch.pollInterval`, as set. */
+const pollIntervalMs = (): number => limitSetting('VX_WATCH_POLL_INTERVAL', POLL_INTERVAL_MS)
 
 /**
  * Directory names the fallback never descends into WHEN no better filter is
@@ -78,7 +81,7 @@ export function pollWatcher(
   dir: string,
   recursive: boolean,
   onEvent: (filename: string) => void,
-  intervalMs = POLL_INTERVAL_MS,
+  intervalMs = pollIntervalMs(),
   /**
    * Directories not worth descending into, by their path relative to `dir`.
    * The watch loop passes its own event filter, so the poller skips exactly
@@ -484,11 +487,11 @@ export class WatcherPool {
     private readonly skip: (dir: string, rel: string) => boolean,
     private readonly forcePoll = false,
   ) {
-    if (forcePoll) ui.say('info', `vx watch: polling every ${POLL_INTERVAL_MS} ms (watch.poll)\n`)
+    if (forcePoll) ui.say('info', `vx watch: polling every ${pollIntervalMs()} ms (watch.poll)\n`)
   }
 
   private poll(dir: string, recursive: boolean, onEvent: (filename: string) => void): WatchHandle {
-    return pollWatcher(dir, recursive, onEvent, POLL_INTERVAL_MS, (rel) => this.skip(dir, rel))
+    return pollWatcher(dir, recursive, onEvent, pollIntervalMs(), (rel) => this.skip(dir, rel))
   }
 
   // By slot, not by handle: an OS watcher that never proves delivery is
@@ -520,7 +523,7 @@ export class WatcherPool {
       watchers.push(this.poll(dir, recursive, onEvent))
       ui.say(
         'warn',
-        `vx watch: ${dir}: the OS watch limit is reached (${code}); polling every ${POLL_INTERVAL_MS} ms instead — raise it (Linux: sysctl fs.inotify.max_user_watches) to watch natively\n`,
+        `vx watch: ${dir}: the OS watch limit is reached (${code}); polling every ${pollIntervalMs()} ms instead — raise it (Linux: sysctl fs.inotify.max_user_watches) to watch natively\n`,
       )
       return handle
     }
@@ -537,7 +540,7 @@ export class WatcherPool {
         watchers[at] = this.poll(dir, recursive, onEvent)
         ui.say(
           'warn',
-          `vx watch: ${dir}: no OS watch events within ${WATCH_PROBE_TIMEOUT_MS} ms; polling every ${POLL_INTERVAL_MS} ms instead\n`,
+          `vx watch: ${dir}: no OS watch events within ${WATCH_PROBE_TIMEOUT_MS} ms; polling every ${pollIntervalMs()} ms instead\n`,
         )
       }),
     )

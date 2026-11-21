@@ -18,8 +18,6 @@
 // ready). It stays in `util` because `exec` cannot import `orchestrator`,
 // so a future second holder on that side has somewhere to import from.
 
-import { limitSetting } from './settle.js'
-
 /** Per-stream cap on retained output for a task that may never end. */
 export const PERSISTENT_TAIL_CHARS = 64 * 1024
 
@@ -34,11 +32,7 @@ export function createTail(): Tail {
   return { chunks: [], chars: 0, dropped: 0 }
 }
 
-export function appendTail(
-  t: Tail,
-  chunk: string,
-  cap = limitSetting('VX_RUN_LOGS_PERSISTENT_TAIL', PERSISTENT_TAIL_CHARS),
-): void {
+export function appendTail(t: Tail, chunk: string, cap = PERSISTENT_TAIL_CHARS): void {
   if (chunk.length === 0) return
   // Every bound below is `chars > limit`, which NaN never is: a NaN cap
   // kept everything, the unbounded heap this exists to prevent.

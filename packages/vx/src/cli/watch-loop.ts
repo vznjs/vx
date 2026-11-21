@@ -33,7 +33,7 @@ import {
 import { CLOSED, type WatchHandle, WatcherPool } from './watch-fs.js'
 import { ChangeJudge } from './watch-judge.js'
 import { type WatchCycle, watchCycle } from './watch-cycle.js'
-import { maskedLine, printable, restartTimings, untimed } from '../util/index.js'
+import { limitSetting, maskedLine, printable, restartTimings, untimed } from '../util/index.js'
 import * as ui from '../ui/index.js'
 import { sayNotice } from '../ui/index.js'
 import { isCacheHit } from '../graph/index.js'
@@ -84,6 +84,8 @@ const DEBOUNCE_MS = 150
  * server logging every 50 ms) reset the timer forever.
  */
 const DEBOUNCE_MAX_MS = 1_000
+/** `watch.debounce`, as set. */
+const debounceMs = (): number => limitSetting('VX_WATCH_DEBOUNCE', DEBOUNCE_MS)
 
 /** What the initial run's own writes are told from an edit by: no watcher was armed. */
 export interface InitialRun {
@@ -503,7 +505,7 @@ class WatchLoop {
       if (again) return
       this.interruptedBy = label
       c.interrupt()
-    }, DEBOUNCE_MS)
+    }, debounceMs())
   }
 
   private hasWorkspaceFile(): boolean {
@@ -537,7 +539,7 @@ class WatchLoop {
       if (this.running) return
       const first = changes.judge()
       if (first !== undefined) void this.cycle(first)
-    }, DEBOUNCE_MS)
+    }, debounceMs())
   }
 
   private async cycle(label: string): Promise<void> {
@@ -607,7 +609,7 @@ class WatchLoop {
           label = drifted
           continue
         }
-        await Bun.sleep(DEBOUNCE_MS)
+        await Bun.sleep(debounceMs())
         label = changes.judge()
       }
     } finally {

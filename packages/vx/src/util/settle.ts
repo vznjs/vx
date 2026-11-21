@@ -8,11 +8,12 @@ import { parseDuration } from './size.js'
 const DEFAULT_TIMEOUT_MS = 3000
 
 /**
- * A window only a test widens: `VX_TEST_<name>`, a duration. Undocumented
- * and in no settings table; a run's own timers are settings
- * (`timerSettingMs`).
+ * An internal timer a test shortens: `VX_TEST_<name>`, a duration.
+ * Undocumented and in no settings table: the suites that prove a deadline
+ * drive it instead of waiting the real one out. The user-facing timers are
+ * settings (`timerSettingMs`).
  */
-function testTimerMs(name: string, defaultMs: number): number {
+export function testTimerMs(name: string, defaultMs: number): number {
   const raw = process.env[`VX_TEST_${name}`]
   if (raw === undefined || raw === '') return defaultMs
   const n = parseDuration(raw)
@@ -54,7 +55,7 @@ export function limitSetting(variable: string, defaultValue: number): number {
  * A timer setting: its variable, else the workspace's, else `defaultMs`.
  * Zero only where `zero` allows it.
  */
-export function timerSettingMs(variable: string, defaultMs: number, zero = false): number {
+function timerSettingMs(variable: string, defaultMs: number, zero = false): number {
   const raw = process.env[variable]
   if (raw !== undefined && raw !== '') {
     const n = parseDuration(raw)

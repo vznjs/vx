@@ -125,24 +125,6 @@ export const SETTINGS: readonly Setting[] = [
     doc: "How long one plugin's end-of-run flush or teardown may take before the run ends without it; `'0ms'` waits for nothing not already done.",
   },
   {
-    path: 'run.drainGrace',
-    kind: { type: 'duration', timer: true },
-    default: "'250ms'",
-    doc: "How long vx reads a task's output after its shell exits, while a process it left running holds the pipe.",
-  },
-  {
-    path: 'run.lineWait',
-    kind: { type: 'duration', timer: true },
-    default: "'50ms'",
-    doc: "How long one output stream waits on the other's open line before it prints, so stdout never lands inside a stderr line.",
-  },
-  {
-    path: 'run.readyNotice',
-    kind: { type: 'duration', timer: true },
-    default: "'10s'",
-    doc: 'How long a persistent task may wait on its `readyWhen` before vx says it is still waiting.',
-  },
-  {
     path: 'run.logs.captureHead',
     kind: { type: 'size' },
     default: "'8MiB'",
@@ -165,24 +147,6 @@ export const SETTINGS: readonly Setting[] = [
     kind: { type: 'size' },
     default: "'56KiB'",
     doc: "The end of a failed attempt's output vx keeps when it stores that failure. Counted in characters.",
-  },
-  {
-    path: 'run.logs.telemetryTail',
-    kind: { type: 'size' },
-    default: "'128KiB'",
-    doc: "The end of each task's output a telemetry plugin receives. Counted in characters.",
-  },
-  {
-    path: 'run.logs.telemetryBudget',
-    kind: { type: 'size' },
-    default: "'4MiB'",
-    doc: 'All task output a telemetry plugin receives in one run; failures are kept over successes. Counted in characters.',
-  },
-  {
-    path: 'run.logs.persistentTail',
-    kind: { type: 'size' },
-    default: "'64KiB'",
-    doc: 'The end of each stream a persistent task (a dev server) keeps in memory, shown if it fails. Counted in characters.',
   },
   {
     path: 'run.secrets.minLength',
@@ -287,6 +251,12 @@ export const SETTINGS: readonly Setting[] = [
     env: false,
   },
   {
+    path: 'history.retention',
+    kind: { type: 'duration' },
+    default: "'30d'",
+    doc: '`vx cache clean` drops run history and hash memos older than this.',
+  },
+  {
     path: 'lock.reviewFiles',
     kind: { type: 'bool' },
     default: 'true',
@@ -300,17 +270,22 @@ export const SETTINGS: readonly Setting[] = [
     flag: { verb: 'watch', name: '--poll' },
   },
   {
+    path: 'watch.debounce',
+    kind: { type: 'duration', timer: true },
+    default: "'150ms'",
+    doc: '`vx watch` waits this long after the last change before it re-runs (at most 1 s after the first).',
+  },
+  {
+    path: 'watch.pollInterval',
+    kind: { type: 'duration', timer: true },
+    default: "'250ms'",
+    doc: 'How often a polling `vx watch` re-walks a watched tree.',
+  },
+  {
     path: 'config.workerTimeout',
     kind: { type: 'duration', timer: true },
     default: '30s',
-    doc: 'How long one config evaluation may await; at `config.evalNotice` vx names the config still evaluating. A synchronous loop on the first load holds the thread the deadline needs, so it hangs until killed.',
-    config: false,
-  },
-  {
-    path: 'config.evalNotice',
-    kind: { type: 'duration', timer: true },
-    default: "'5s'",
-    doc: 'How long one config evaluation may run before vx names the config still evaluating.',
+    doc: 'How long one config evaluation may await; at 5 s vx names the config still evaluating. A synchronous loop on the first load holds the thread the deadline needs, so it hangs until killed.',
     config: false,
   },
   {
@@ -344,7 +319,15 @@ export const SETTINGS: readonly Setting[] = [
 ]
 
 /** The `.vx/workspace` groups that hold settings; `baseBranch` and `plugins` are the other keys. */
-export const SETTING_GROUPS = ['run', 'cache', 'inputs', 'outputs', 'lock', 'watch'] as const
+export const SETTING_GROUPS = [
+  'run',
+  'cache',
+  'inputs',
+  'outputs',
+  'lock',
+  'watch',
+  'history',
+] as const
 
 const BY_PATH = new Map(SETTINGS.map((s) => [s.path, s]))
 
@@ -563,13 +546,7 @@ export function runRules(workspace: unknown): { exclusiveOutputs?: boolean } {
 }
 
 /** The timer settings a run reads where the timer arms (util/settle.ts `timerSettingMs`). */
-const WORKSPACE_TIMERS = [
-  'run.killGrace',
-  'run.pluginTimeout',
-  'run.drainGrace',
-  'run.lineWait',
-  'run.readyNotice',
-] as const
+const WORKSPACE_TIMERS = ['run.killGrace', 'run.pluginTimeout'] as const
 
 /**
  * Hand `.vx/workspace`'s timer settings to the places that arm them, once
@@ -584,16 +561,16 @@ export function applyWorkspaceTimers(workspace: unknown): void {
   setWorkspaceTimers(values)
 }
 
-/** The output budgets and counts a run reads once (util/settle.ts `limitSetting`). */
+/** The settings a reader takes once per workspace load (util/settle.ts `limitSetting`). */
 const WORKSPACE_LIMITS = [
   'run.logs.captureHead',
   'run.logs.captureTail',
   'run.logs.failedHead',
   'run.logs.failedTail',
-  'run.logs.telemetryTail',
-  'run.logs.telemetryBudget',
-  'run.logs.persistentTail',
   'run.secrets.minLength',
+  'watch.debounce',
+  'watch.pollInterval',
+  'history.retention',
 ] as const
 
 /**

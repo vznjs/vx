@@ -12,7 +12,7 @@ import {
 } from '../exec/index.js'
 import { releaseBridges, sandboxReads, wrapSandboxedCommand } from '../sandbox/index.js'
 import type { TaskOutcome } from '../graph/index.js'
-import { maskedStreams, secretMask, timerSettingMs } from '../util/index.js'
+import { maskedStreams, secretMask, testTimerMs } from '../util/index.js'
 import { warnOf } from '../report/index.js'
 import type { ExecuteArgs } from './execute-task.js'
 import {
@@ -295,7 +295,7 @@ export async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutc
   // whose `readyWhen` never matched showed nothing at all.
   const readyWhen = step.persistent.readyWhen
   // How long a server may take to match `readyWhen` before vx says it waits.
-  const noticeMs = timerSettingMs('VX_RUN_READY_NOTICE', READY_NOTICE_MS)
+  const noticeMs = testTimerMs('READY_NOTICE', READY_NOTICE_MS)
   const notice =
     readyWhen === undefined
       ? undefined

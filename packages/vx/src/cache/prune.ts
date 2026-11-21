@@ -11,7 +11,7 @@ import {
   isIndexFull,
   EXECUTED_RUNS_SQL,
 } from '../index-db/index.js'
-import { diskBytes } from '../util/index.js'
+import { diskBytes, limitSetting } from '../util/index.js'
 import {
   type CacheStats,
   type CacheStatsOptions,
@@ -267,7 +267,7 @@ async function pruneIndex(
   }
   // After the entries' release, so the shrink measured here is the history's
   // alone: a year of runs left 28k of 36k pages free in a 140 MB index.
-  const cutoff = now - HISTORY_RETENTION_MS
+  const cutoff = now - limitSetting('VX_HISTORY_RETENTION', HISTORY_RETENTION_MS)
   const historyRows =
     pruneHistoryRows(ix.db, cutoff) + ix.files.pruneOlderThan(cutoff) + ix.folds.prune(cutoff)
   const result = { evicted: victims.size, bytesFreed, ...orphans }

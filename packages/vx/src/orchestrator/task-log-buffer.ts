@@ -22,7 +22,6 @@
 
 import type { TaskStatus } from '../graph/index.js'
 import type { CacheSource } from '../graph/index.js'
-import { limitSetting } from '../util/index.js'
 
 /** Version of the drained-bundle shape below. It is the canonical drained
  *  logs format, not one transport's: every sink ships the same object. */
@@ -126,9 +125,6 @@ export class TaskLogBuffer {
   private readonly successes: Retained[] = []
   private successHead = 0
   private failures: Retained[] = []
-  /** `run.logs.telemetryTail` / `telemetryBudget`, as the run set them. */
-  private readonly tailCap = limitSetting('VX_RUN_LOGS_TELEMETRY_TAIL', TASK_LOG_TAIL_CHARS)
-  private readonly budget = limitSetting('VX_RUN_LOGS_TELEMETRY_BUDGET', RUN_LOG_BUDGET_CHARS)
 
   append(taskId: string, chunk: string): void {
     if (chunk.length === 0) return
@@ -144,9 +140,9 @@ export class TaskLogBuffer {
     // the one that straddles the cap is sliced to what still fits (the only
     // place we copy). Dropped whole, a 128 KiB chunk and a 7-char one after
     // it kept the 7 chars alone.
-    while (acc.chars > this.tailCap) {
+    while (acc.chars > TASK_LOG_TAIL_CHARS) {
       const head = acc.chunks[0]!
-      const excess = acc.chars - this.tailCap
+      const excess = acc.chars - TASK_LOG_TAIL_CHARS
       if (head.length <= excess) {
         acc.chunks.shift()
         acc.chars -= head.length
@@ -314,11 +310,11 @@ export class TaskLogBuffer {
     // guess. Failures go newest-first: when failures alone blow the budget,
     // the FIRST failure is usually the root cause and the later ones its
     // cascade, so it must be the last thing stubbed.
-    while (this.retainedChars > this.budget && this.successHead < this.successes.length) {
+    while (this.retainedChars > RUN_LOG_BUDGET_CHARS && this.successHead < this.successes.length) {
       const e = this.successes[this.successHead++]!
       if (this.evictable(e)) this.stub(e)
     }
-    while (this.retainedChars > this.budget && this.failures.length > 0) {
+    while (this.retainedChars > RUN_LOG_BUDGET_CHARS && this.failures.length > 0) {
       const e = this.failures.pop()!
       if (this.evictable(e)) this.stub(e)
     }

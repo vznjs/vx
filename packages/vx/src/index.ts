@@ -36,6 +36,7 @@ export type {
   CacheSettings,
   LockSettings,
   WatchSettings,
+  HistorySettings,
   Duration,
   ProjectConfig,
   TaskConfig,

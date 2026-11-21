@@ -1372,9 +1372,9 @@ await goes through (`plugin-host.ts`, `telemetry-host.ts`), and a
 plugin's `telemetry()` consultation before the run too (item 921).
 
 ```ts
-timerSettingMs(variable, defaultMs): number       // the variable, else .vx/workspace's, else defaultMs
+testTimerMs(name, defaultMs): number              // VX_TEST_<name>, else defaultMs: internal timers only
 setWorkspaceTimers(values): void                  // .vx/workspace's timers, by variable (settings.ts)
-limitSetting(variable, defaultValue): number      // run.logs.*, run.secrets.minLength as the workspace load resolved them
+limitSetting(variable, defaultValue): number      // run.logs.*, run.secrets.minLength, watch.*, history.retention as the workspace load resolved them
 setWorkspaceLimits(values): void                  // set once per workspace load (settings.ts applyWorkspaceLimits)
 teardownTimeoutMs(): number                       // default 3000, run.pluginTimeout
 settleWithin(p: Promise<unknown>, ms): Promise<boolean>
@@ -1385,18 +1385,19 @@ exitClaimedBySignal(): boolean
 dieOf(signal: 'SIGINT' | 'SIGTERM' | 'SIGHUP'): void // die of it, waiting (1 s bound) for it to land
 ```
 
-- `timerSettingMs` reads a run timer setting (`run.killGrace`,
-  `run.pluginTimeout`, `run.drainGrace`, `run.lineWait`,
-  `run.readyNotice`, `config.evalNotice`; M 11-21: every magic number is
-  configurable) where the timer arms: its `VX_*` variable, read per call
+- `timerSettingMs` (private) reads a user-facing timer setting
+  (`run.killGrace`, `run.pluginTimeout`) where the timer arms: its `VX_*` variable, read per call
   so a suite shortens it in process, else the `.vx/workspace` value
   `applyWorkspaceTimers` (settings.ts) set at the workspace load, else
   the default. The CLI refused a malformed variable at its start; here
   garbage, zero and a value past `MAX_TIMEOUT_MS` fall back to the
   default rather than clamping: this is a BOUND, not a duration —
   clamping would honour "wait 24.8 days", and past the ceiling the delay
-  becomes 1 ms and every flush times out. A private `testTimerMs`
-  (`VX_TEST_<name>`) is left for `SELF_SIGNAL_DELAY`, a test window only.
+  becomes 1 ms and every flush times out.
+- `testTimerMs` is how a test shortens an internal timer (the post-exit
+  drain, the open-line wait, the ready and config notices, the self-signal
+  window): `VX_TEST_<name>`, a duration, read per call; undocumented and
+  in no settings table.
 - `teardownTimeoutMs` is 3 s (`run.pluginTimeout`, `VX_RUN_PLUGIN_TIMEOUT`).
 - `settleWithin` returns true when `p` fulfilled before the deadline,
   false when the deadline won; the caller decides whether a lost result

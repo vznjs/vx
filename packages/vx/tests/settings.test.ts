@@ -22,14 +22,7 @@ import {
   settingEnv,
 } from '../src/settings.js'
 import { validateWorkspace } from '../src/workspace/index.js'
-import {
-  appendTail,
-  createTail,
-  killGraceMs,
-  secretMask,
-  teardownTimeoutMs,
-  timerSettingMs,
-} from '../src/util/index.js'
+import { killGraceMs, limitSetting, secretMask, teardownTimeoutMs } from '../src/util/index.js'
 import { BoundedCapture } from '../src/exec/index.js'
 import { acceptedFlags } from '../src/cli/help.js'
 import { parseRunArgs } from '../src/cli/run.js'
@@ -106,6 +99,7 @@ describe('the settings list', () => {
       ...fieldsOf('WorkspaceOutputs').map((f) => `outputs.${f}`),
       ...fieldsOf('LockSettings').map((f) => `lock.${f}`),
       ...fieldsOf('WatchSettings').map((f) => `watch.${f}`),
+      ...fieldsOf('HistorySettings').map((f) => `history.${f}`),
     ].sort()
     const listed = [
       ...new Set(
@@ -115,7 +109,15 @@ describe('the settings list', () => {
       ),
     ].sort()
     expect(declared).toEqual(listed)
-    expect([...SETTING_GROUPS]).toEqual(['run', 'cache', 'inputs', 'outputs', 'lock', 'watch'])
+    expect([...SETTING_GROUPS]).toEqual([
+      'run',
+      'cache',
+      'inputs',
+      'outputs',
+      'lock',
+      'watch',
+      'history',
+    ])
   })
 
   it('gives every flag on its verb', () => {
@@ -366,7 +368,7 @@ it('docs/cli.md § Environment variables lists each variable, from the list', ()
 })
 
 describe('timer settings (M 11-21: every magic number configurable)', () => {
-  const vars = ['VX_RUN_KILL_GRACE', 'VX_RUN_PLUGIN_TIMEOUT', 'VX_RUN_READY_NOTICE']
+  const vars = ['VX_RUN_KILL_GRACE', 'VX_RUN_PLUGIN_TIMEOUT']
   const saved = vars.map((v) => process.env[v])
   const reset = (): void => {
     vars.forEach((v, i) => {
@@ -381,10 +383,9 @@ describe('timer settings (M 11-21: every magic number configurable)', () => {
     try {
       expect(killGraceMs(2000)).toBe(2000)
       expect(teardownTimeoutMs()).toBe(3000)
-      applyWorkspaceTimers({ run: { killGrace: '5s', pluginTimeout: '1m', readyNotice: '1s' } })
+      applyWorkspaceTimers({ run: { killGrace: '5s', pluginTimeout: '1m' } })
       expect(killGraceMs(2000)).toBe(5000)
       expect(teardownTimeoutMs()).toBe(60_000)
-      expect(timerSettingMs('VX_RUN_READY_NOTICE', 10_000)).toBe(1000)
       process.env['VX_RUN_KILL_GRACE'] = '300ms'
       expect(killGraceMs(2000)).toBe(300)
       applyWorkspaceTimers({})
@@ -402,7 +403,7 @@ describe('timer settings (M 11-21: every magic number configurable)', () => {
     expect(() => validateWorkspace({ run: { killGrace: '0s' } }, 'ws')).toThrow(/more than 0/)
     // Zero is a plugin timeout: wait for nothing not already done.
     expect(() => validateWorkspace({ run: { pluginTimeout: '0s' } }, 'ws')).not.toThrow()
-    expect(() => checkSettingsEnv({ VX_RUN_DRAIN_GRACE: 'soon' })).toThrow(/VX_RUN_DRAIN_GRACE/)
+    expect(() => checkSettingsEnv({ VX_RUN_KILL_GRACE: 'soon' })).toThrow(/VX_RUN_KILL_GRACE/)
   })
 })
 
@@ -410,14 +411,11 @@ describe('output budgets (M 11-21: every magic number configurable)', () => {
   it('.vx/workspace run.logs and run.secrets reach the readers, under their variables', () => {
     try {
       applyWorkspaceLimits({
-        run: { logs: { captureHead: '1KiB', captureTail: '1KiB', persistentTail: '1KiB' } },
+        run: { logs: { captureHead: '1KiB', captureTail: '1KiB' } },
       })
       const cap = new BoundedCapture()
       cap.push('a'.repeat(4096))
       expect(cap.text()).toContain('vx keeps the first 1.0 KB and the last 1.0 KB')
-      const tail = createTail()
-      appendTail(tail, 'b'.repeat(4096))
-      expect(tail.chars).toBe(1024)
 
       applyWorkspaceLimits({ run: { secrets: { minLength: 3 } } })
       expect(secretMask([{ TOKEN: 'abc' }])?.mask('x abc y')).toBe('x *** y')
@@ -429,6 +427,21 @@ describe('output budgets (M 11-21: every magic number configurable)', () => {
       expect(secretMask([{ TOKEN: 'ab' }])?.mask('ab')).toBe('***')
     } finally {
       delete process.env['VX_RUN_SECRETS_MIN_LENGTH']
+      applyWorkspaceLimits(undefined)
+    }
+  })
+
+  it('.vx/workspace watch and history settings reach their readers', () => {
+    try {
+      expect(limitSetting('VX_WATCH_DEBOUNCE', 150)).toBe(150)
+      applyWorkspaceLimits({
+        watch: { debounce: '400ms', pollInterval: '1s' },
+        history: { retention: '7d' },
+      })
+      expect(limitSetting('VX_WATCH_DEBOUNCE', 150)).toBe(400)
+      expect(limitSetting('VX_WATCH_POLL_INTERVAL', 250)).toBe(1000)
+      expect(limitSetting('VX_HISTORY_RETENTION', 0)).toBe(7 * 86_400_000)
+    } finally {
       applyWorkspaceLimits(undefined)
     }
   })

@@ -809,7 +809,7 @@ describe('the evaluation deadline', () => {
 
   it('names a config still evaluating once, at the notice mark, before the budget', async () => {
     process.env[BUDGET_ENV] = '1500ms'
-    process.env['VX_CONFIG_EVAL_NOTICE'] = '200ms'
+    process.env['VX_TEST_CONFIG_EVAL_NOTICE'] = '200ms'
     let err = ''
     const spy = spyOn(process.stderr, 'write').mockImplementation((chunk: string | Uint8Array) => {
       err += String(chunk)
@@ -824,7 +824,7 @@ describe('the evaluation deadline', () => {
       })
     } finally {
       spy.mockRestore()
-      delete process.env['VX_CONFIG_EVAL_NOTICE']
+      delete process.env['VX_TEST_CONFIG_EVAL_NOTICE']
     }
   }, 30_000)
 
