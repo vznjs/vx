@@ -507,6 +507,10 @@ export class LayeredCache implements CacheLayer {
     return this.local.outputBytes(hash)
   }
 
+  discard(hash: string): Promise<void> {
+    return this.local.discard(hash)
+  }
+
   kept(hash: string): boolean {
     return this.keptHere.delete(hash) || this.local.kept(hash)
   }

@@ -312,11 +312,7 @@ export async function loadProjectConfigs(
   root?: string,
 ): Promise<ProjectConfig[]>
 
-// Thrown by the batch when more than one config refuses: the first's
-// message, and `all` of them, so `vx lock` names each.
-export class ConfigsRefused extends UserError {
-  readonly all: readonly UserError[]
-}
+// The batch throws util's ConfigsRefused when more than one config refuses.
 
 // The names a workspace config may take, in resolution order.
 export const WORKSPACE_CONFIG_FILENAMES = [

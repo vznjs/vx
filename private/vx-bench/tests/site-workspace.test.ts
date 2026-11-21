@@ -6,7 +6,21 @@ import { mkdtemp, readdir, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { workspace } from '../shape.js'
-import { generate, gitInit, linkRivals, RUNNER_ENV, rivalRuns } from '../site-workspace.js'
+import pkg from '../package.json'
+import {
+  generate,
+  gitInit,
+  linkRivals,
+  RIVAL_SPECS,
+  RUNNER_ENV,
+  rivalRuns,
+} from '../site-workspace.js'
+
+it('the rivals run at npm latest, never a pin', () => {
+  expect(RIVAL_SPECS).toEqual(['turbo@latest', 'nx@latest', 'vite-plus@latest'])
+  const deps: Record<string, string> = { ...pkg.devDependencies }
+  expect(Object.keys(deps).filter((d) => ['turbo', 'nx', 'vite-plus'].includes(d))).toEqual([])
+})
 
 it('Vite Task installs nothing before a run, from a fresh home', async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'vx-site-ws-'))

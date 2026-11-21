@@ -473,6 +473,11 @@ export interface CacheLayer {
    * entry (a `--force` run): nothing of this run's was saved; asked once.
    */
   kept?(hash: string): boolean
+  /**
+   * Remove the entry this machine holds for `hash`: one this run saved
+   * whose key turned out not to name the bytes it was built from.
+   */
+  discard?(hash: string): Promise<void>
   prune(options: PruneOptions): Promise<PruneResult>
   close(): void
 }

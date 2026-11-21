@@ -636,4 +636,62 @@ describe('vx lock prints a config refusal with its frame', () => {
       await rm(root, { recursive: true, force: true })
     }
   })
+  const lockIn = async (root: string, configs: Record<string, string>): Promise<string> => {
+    for (const [dir, config] of Object.entries(configs)) {
+      await mkdir(path.join(root, dir), { recursive: true })
+      await writeFile(path.join(root, dir, 'vx.config.mjs'), `export default ${config}\n`)
+    }
+    const r = Bun.spawnSync(['bun', BIN, 'lock'], {
+      cwd: root,
+      env: { ...process.env, NO_COLOR: '1' },
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+    expect(r.exitCode).toBe(1)
+    return r.stderr.toString()
+  }
+
+  // The graph build stops at its first refusal; a migrated workspace with a
+  // cycle and two bad dependsOn took a lock per issue.
+  it('names every graph refusal, each bad entry, a cycle once', async () => {
+    const root = await realpath(await makeWorkspace({ prefix: 'vx-frame-graph-' }))
+    try {
+      const task = (name: string, deps: string) =>
+        `{ name: '${name}', tasks: { build: { exec: { command: 'x' }, dependsOn: [${deps}] } } }`
+      const err = await lockIn(root, {
+        a: task('a', "'b#build'"),
+        b: task('b', "'a#build'"),
+        c: task('c', "'zz', 'gone#build'"),
+        d: task('d', "'nope#build'"),
+      })
+      expect(err.match(/^✗ vx lock {2}(lock not written|also refused)$/gm)).toHaveLength(4)
+      expect(err.match(/dependsOn cycle: /g)).toHaveLength(1)
+      expect(err).toContain('c/vx.config.mjs:1:')
+      expect(err).toContain('tasks.build.dependsOn names c#zz but no such task is declared')
+      expect(err).toContain('tasks.build.dependsOn names gone#build, but no project is named gone')
+      expect(err).toContain('d/vx.config.mjs:1:')
+      expect(err).toContain('no project is named nope')
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('names every pair of projects that share a name', async () => {
+    const root = await realpath(await makeWorkspace({ prefix: 'vx-frame-names-' }))
+    try {
+      const err = await lockIn(root, {
+        a: "{ name: 'x', tasks: {} }",
+        b: "{ name: 'x', tasks: {} }",
+        c: "{ name: 'y', tasks: {} }",
+        d: "{ name: 'y', tasks: {} }",
+        e: "{ name: 'y', tasks: {} }",
+      })
+      expect(err).toBe(
+        '✗ vx lock  lock not written\n\n  two projects are named "x": a and b — give one another `name` in its vx.config\n' +
+          '✗ vx lock  also refused\n\n  3 projects are named "y": c, d and e — give each but one another `name` in its vx.config\n',
+      )
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
 })

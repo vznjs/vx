@@ -366,6 +366,10 @@ export class Cache implements CacheLayer {
     return lookup.kept(this.ix, hash)
   }
 
+  async discard(hash: string): Promise<void> {
+    if (this.ix.write) await restoring.discardEntry(this.ix, hash)
+  }
+
   artifactSize(hash: string): number | undefined {
     return lookup.artifactSize(this.ix, hash)
   }

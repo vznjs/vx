@@ -50,6 +50,8 @@ export interface BuildGraphOptions {
   // Every project's config (absolute); with `workspaceRoot`, an
   // `outputs.workspaceFiles` glob covering one is refused (`vx lock`).
   projectConfigs?: ReadonlyArray<{ name: string; configPath: string }>
+  // A refused `vx lock`: each bad `dependsOn` entry is pushed here and skipped.
+  refusals?: UserError[]
 }
 
 // `locked`: a run, which never checks the rules; `vx lock` does.

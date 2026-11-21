@@ -2,7 +2,7 @@
 // compare.ts for the site and by pr-bench.ts for the per-PR check, so both
 // time the same tree.
 import { realpathSync } from 'node:fs'
-import { mkdir, symlink, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, symlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { benchEnv } from './bench-env.js'
@@ -312,18 +312,42 @@ export function gitInit(dir: string): void {
   )
 }
 
-// The rivals at this package's pins (package.json), linked in rather than
-// installed: a run needs no registry, and its key sees the versions through
-// the lockfile. node_modules itself is a directory of the workspace, so the
-// caches a tool keeps there (Vite Task's) stay in it.
+// The rivals at npm's latest, installed once per process right before a run
+// and never pinned (2026-11-21): the site compares vx with what a user gets
+// today. Each run starts from an empty install cache, so nothing older is
+// reused. node_modules itself is a directory of the workspace, so the caches
+// a tool keeps there (Vite Task's) stay in it.
 const RIVALS: Record<string, string> = { turbo: 'turbo', nx: 'nx', 'vite-plus': 'vp' }
+export const RIVAL_SPECS = Object.keys(RIVALS).map((pkg) => `${pkg}@latest`)
+let installed: Promise<string> | undefined
+function installRivals(): Promise<string> {
+  installed ??= (async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'vx-bench-rivals-'))
+    await writeFile(path.join(root, 'package.json'), '{ "private": true }\n')
+    const proc = Bun.spawn([process.execPath, 'add', ...RIVAL_SPECS], {
+      cwd: root,
+      env: { ...process.env, BUN_INSTALL_CACHE_DIR: path.join(root, '.bun-cache') },
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+    const [out, err, code] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ])
+    if (code !== 0) throw new Error(`bun add ${RIVAL_SPECS.join(' ')} failed:\n${out}${err}`)
+    return path.join(root, 'node_modules')
+  })()
+  return installed
+}
+
 export async function linkRivals(dir: string): Promise<void> {
-  await seedVitePlus()
+  const [rivals] = await Promise.all([installRivals(), seedVitePlus()])
   await mkdir(path.join(dir, 'node_modules', '.bin'), { recursive: true })
   for (const [pkg, binName] of Object.entries(RIVALS)) {
-    await symlink(realpathSync(path.join(modules, pkg)), path.join(dir, 'node_modules', pkg))
+    await symlink(realpathSync(path.join(rivals, pkg)), path.join(dir, 'node_modules', pkg))
     await symlink(
-      realpathSync(path.join(modules, '.bin', binName)),
+      realpathSync(path.join(rivals, '.bin', binName)),
       path.join(dir, 'node_modules', '.bin', binName),
     )
   }

@@ -210,8 +210,8 @@ perf-guard.ts, in the same task (`@vzn/vx-bench#check.perf`), so the
 two benchmarks never share a machine. It times this checkout's vx,
 compiled as released, against the base commit's vx (`VX_BENCH_BASE`: the
 PR's base, or main before a push, built in the same job from `git archive`
-of `packages/vx`), Turborepo, Nx and Vite Task (pinned in
-`private/vx-bench/package.json`). The task runs outside the sandbox, as
+of `packages/vx`), Turborepo, Nx and Vite Task (at npm latest,
+installed right before the run). The task runs outside the sandbox, as
 the site's bench does: the sandbox's tracer stops every runner at each
 traced call and would be timed. Traced, vx's cold run took 5.6 s against
 Vite Task's 5.3 s; untraced, 2.1 s against 2.8 s.
@@ -503,8 +503,9 @@ The workspace is git-committed with `node_modules`/`.turbo`/`.nx` ignored.
 measured **strictly one at a time**, daemons stopped between them, so they
 never fight for CPU.
 
-Turborepo, Nx and vite-plus are `private/vx-bench`'s pinned
-devDependencies, linked into the workspace, so a run needs no registry.
+Turborepo, Nx and vite-plus are never pinned: each run installs them at
+npm latest right before it starts and links them into the workspace. The
+page names the versions it measured.
 Cold is one run; nothing changed and restore are the median of 3.
 
 ```bash
