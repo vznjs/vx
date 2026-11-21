@@ -32,6 +32,7 @@ import {
   encodeHits,
   HitBatch,
   type RunHits,
+  type RunRecord,
   runHistory,
   keepRunNotes,
   createMissExplainer,
@@ -1501,6 +1502,37 @@ async function runOnBus(
       packHit(o as RecordedOutcome, hitContext(), rows)
       packed.add(o)
     }
+    // A green miss's row is whole when it finishes too: written while the
+    // run goes, ROWS_PER_WRITE at a time, so the run's end writes only the
+    // rest. A failure (it writes out kept hits first), a server (its outcome
+    // changes after) and forwarded args stay the bundle's. A refused write
+    // leaves its rows to the bundle.
+    const written = new Set<TaskOutcome>()
+    const writtenRows: RunRecord[] = []
+    const pendingRows: [TaskOutcome, RunRecord][] = []
+    let writing = keepsHits
+    const writeRow = (o: TaskOutcome): void => {
+      if (!writing || o.status !== 'success' || isGroupTask(o.node)) return
+      if (o.node.config.exec?.persistent !== undefined) return
+      if (o.timing?.startNs === undefined || o.timing?.endNs === undefined) return
+      if (forwards && o.node.requested) return
+      pendingRows.push([o, runRecordOf(o as RecordedOutcome, hitContext())])
+      if (pendingRows.length < ROWS_PER_WRITE) return
+      const rows = pendingRows.splice(0)
+      try {
+        runHistory(prepared.localCache).recordRuns(
+          rows.map(([, r]) => r),
+          gitContext,
+        )
+      } catch {
+        writing = false
+        return
+      }
+      for (const [done, r] of rows) {
+        written.add(done)
+        writtenRows.push(r)
+      }
+    }
     /** The run's packed hits, for the write that keeps its rows. */
     const keptHits = (): RunHits => ({
       runId,
@@ -1516,6 +1548,7 @@ async function runOnBus(
         : (o) => {
             keeper?.taskDone(o)
             keepHit(o)
+            writeRow(o)
           },
     )
     unfold = bus.subscribe(fold.subscriber)
@@ -1739,9 +1772,10 @@ async function runOnBus(
     // A `setup` hook may have written: what was stat'ed before it proves no hit.
     if (prepared.plugins.some((p) => p.setup !== undefined)) prepared.localCache.memo.dropWarm()
 
-    // A packed hit is kept with the bundle, not written as a row of it.
+    // A packed hit is kept with the bundle, and a written row is in: neither
+    // is a row of the bundle.
     unfold()
-    const landed = packed
+    const landed = written.size === 0 ? packed : new Set([...packed, ...written])
     prepared.localCache.memo.dropWarm()
     mark('run graph')
 
@@ -1930,6 +1964,7 @@ async function runOnBus(
           [
             ...records.runs,
             ...[...packed].map((o) => runRecordOf(o as RecordedOutcome, hitContext())),
+            ...writtenRows,
           ],
           runId,
         ),
@@ -2301,6 +2336,8 @@ async function planRestorable(
 
 /** Hits one packed batch holds: a small run allocates one small batch. */
 const HITS_PER_BATCH = 512
+/** Green misses' rows a run writes at once while it goes: ~2 ms of a free main thread. */
+const ROWS_PER_WRITE = 256
 const LOCK_HINT = ' A run reads the lock: after editing a vx.config, run `vx lock`.'
 
 /**
