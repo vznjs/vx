@@ -1,7 +1,8 @@
 // Saves that reach their index write in one turn commit in one transaction
 // (2026-11-03): a cold run's main thread spent half its index time on a
 // BEGIN and a COMMIT per save. Each save keeps its own savepoint, so one
-// refused write undoes only its own rows and artifact.
+// refused write undoes only its own rows and artifact; a save alone in its
+// batch takes none, and its refusal rolls the transaction back.
 
 import { existsSync, readdirSync } from 'node:fs'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
@@ -90,6 +91,41 @@ describe('saves in one turn', () => {
         1,
         [[1], [2], [3]],
       ])
+    } finally {
+      cache.close()
+    }
+  })
+
+  it('a lone refused write leaves none of its rows or artifact', async () => {
+    const cache = new Cache(cacheDir)
+    try {
+      // Refused after its entry row is in: the rollback must take that row too.
+      indexDb(cache).exec(
+        "CREATE TRIGGER refuse BEFORE INSERT ON entry_stdout WHEN NEW.hash = 'h1' BEGIN SELECT RAISE(ABORT, 'refused'); END",
+      )
+      const savepoints = { n: 0 }
+      const db = indexDb(cache)
+      const transaction = db.transaction.bind(db)
+      db.transaction = ((fn: (...a: unknown[]) => unknown) => {
+        const t = transaction(fn)
+        const nested = (...a: unknown[]) => {
+          savepoints.n++
+          return t(...a)
+        }
+        return Object.assign(nested, {
+          deferred: t.deferred,
+          exclusive: t.exclusive,
+          immediate: t.immediate,
+        })
+      }) as typeof db.transaction
+      await expect(save(cache, 1, true)).rejects.toThrow('refused')
+      expect(savepoints.n).toBe(0)
+      expect(await cache.get('h1')).toBeNull()
+      expect(db.prepare("SELECT count(*) AS n FROM entries WHERE hash = 'h1'").get()).toEqual({
+        n: 0,
+      })
+      expect(existsSync(cache.outputsPath('h1'))).toBe(false)
+      expect(readdirSync(cacheDir).filter((n) => n.includes('.tmp-'))).toEqual([])
     } finally {
       cache.close()
     }

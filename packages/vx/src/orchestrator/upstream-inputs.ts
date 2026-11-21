@@ -15,6 +15,7 @@
 // over one that moved.
 
 import { lstatSync } from 'node:fs'
+import { lstat } from 'node:fs/promises'
 import path from 'node:path'
 import { foldedDeps, type TaskNode } from '../graph/index.js'
 import { ABSENT_INPUT } from '../cache/index.js'
@@ -214,7 +215,15 @@ export class KeyedTasks {
       const node = this.nodes.get(id)
       if (node !== undefined) stack.push(...this.folded(node))
     }
-    const ctimes = new Map<string, number | undefined>()
+    const swept: Keyed[] = []
+    for (const id of under) {
+      const k = this.keyed.get(id)
+      const node = this.nodes.get(id)
+      if (k === undefined || node === undefined) continue
+      if (node.config.inputs === undefined || node.config.exec?.persistent !== undefined) continue
+      swept.push(k)
+    }
+    const ctimes = await ctimesOf(swept)
     const ctimeOf: CtimeOf = (file) => {
       if (ctimes.has(file)) return ctimes.get(file)
       const c = ctimeNow(file)
@@ -222,11 +231,8 @@ export class KeyedTasks {
       return c
     }
     const moved = new Map<string, { file: string; sinceMs: number }>()
-    for (const id of under) {
-      const k = this.keyed.get(id)
-      const node = this.nodes.get(id)
-      if (k === undefined || node === undefined) continue
-      if (node.config.inputs === undefined || node.config.exec?.persistent !== undefined) continue
+    for (const k of swept) {
+      const id = k.args.node.id
       const sweep = movedSince(k, k.args, ctimeOf)
       const file = typeof sweep === 'object' ? await sweep : sweep
       if (file !== undefined) moved.set(id, { file, sinceMs: k.atMs })
@@ -300,6 +306,31 @@ export class KeyedTasks {
     this.closureBits.set(node.id, bits)
     return bits
   }
+}
+
+/**
+ * Every file the sweep reads, each lstat'd once, on the thread pool: one
+ * at a time on the main thread, the site's 32,000 inputs held a cold run's
+ * end ~70 ms. A file found absent maps to undefined, as `ctimeNow` says.
+ */
+async function ctimesOf(swept: readonly Keyed[]): Promise<Map<string, number | undefined>> {
+  const files = new Set<string>()
+  for (const k of swept) {
+    if (k.facts !== undefined) for (const f of k.facts) files.add(f.path)
+    else for (const f of await (k.files ??= ownInputs(k.args))) files.add(f)
+  }
+  const list = [...files]
+  const found = await Promise.all(
+    list.map((f) =>
+      lstat(f).then(
+        (st) => st.ctimeMs,
+        () => undefined,
+      ),
+    ),
+  )
+  const ctimes = new Map<string, number | undefined>()
+  for (let i = 0; i < list.length; i++) ctimes.set(list[i]!, found[i])
+  return ctimes
 }
 
 function clockOf(run: RunContext): number {
