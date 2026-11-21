@@ -2346,7 +2346,7 @@ or one that is not valid JSON, is a problem the audit names (a
 `problems` entry under `--format json`, not a refusal) and asks for `vx lock`. Every config that does
 not load is named, as `vx lock` names them: each with its line and frame,
 and root-relative under `--format json`. It also checks the graph rules over the configs as they
-evaluate now, and that each `vx.lock.json` is what its project resolves to
+evaluate now (each broken `dependsOn` named, root-relative), and that each `vx.lock.json` is what its project resolves to
 here, and that none is left where a `vx.config` was deleted, the
 directory still a project or not (delete that one yourself: vx never
 deletes a committed file; `vx lock` names it too, as a warning; one

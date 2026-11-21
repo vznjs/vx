@@ -1101,7 +1101,10 @@ async function checkLock(root: string, json: boolean): Promise<number> {
       ...discoverDrift(lock, check.fresh, drifted),
       ...stageDrift(lock, check.fresh, drifted),
     )
-  if (broken !== null && check.loaded) failures.push(broken)
+  // Every graph refusal, root-relative as the rest of the audit.
+  if (broken !== null && check.loaded)
+    for (const m of [broken, ...(check.alsoBroken ?? []).map((e) => e.message)])
+      failures.push(m.startsWith(`${root}/`) ? m.slice(root.length + 1) : m)
   // What `vx lock` refuses to write here fails here too: a lock written
   // where the value was no secret passed in an env where it is one.
   if (check.loaded)
