@@ -42,20 +42,23 @@ the values it takes and each refusal's exact words are recorded in
 
 `.vx/workspace.ts`:
 
-| Level               | Fields                                                                           |
-| ------------------- | -------------------------------------------------------------------------------- |
-| (top)               | `baseBranch`, `cache`, `inputs`, `lock`, `outputs`, `plugins`, `run`, `watch`    |
-| `run`               | `concurrency`, `continue`, `retries`, `rules`, `schedule`, `timeout`             |
-| `lock`              | `reviewFiles`                                                                    |
-| `run.rules`         | `dependencies`, `exclusiveOutputs`                                               |
-| `cache`             | `artifactCeiling`, `concurrency`, `dir`, `download`, `policy`, `store`, `upload` |
-| `cache.concurrency` | `download`, `restore`, `upload`                                                  |
-| `cache.store`       | `decompress`, `embeddings`                                                       |
-| `cache.upload`      | `failures`                                                                       |
-| `watch`             | `poll`                                                                           |
-| `inputs`            | `stability`                                                                      |
-| `inputs.stability`  | `severity`, `strategy`                                                           |
-| `outputs`           | `clean`                                                                          |
+| Level               | Fields                                                                                                                |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| (top)               | `baseBranch`, `cache`, `history`, `inputs`, `lock`, `outputs`, `plugins`, `run`, `watch`                              |
+| `run`               | `concurrency`, `continue`, `killGrace`, `logs`, `pluginTimeout`, `retries`, `rules`, `schedule`, `secrets`, `timeout` |
+| `run.logs`          | `captureHead`, `captureTail`, `failedHead`, `failedTail`                                                              |
+| `run.secrets`       | `minLength`                                                                                                           |
+| `lock`              | `reviewFiles`                                                                                                         |
+| `run.rules`         | `dependencies`, `exclusiveOutputs`                                                                                    |
+| `cache`             | `artifactCeiling`, `concurrency`, `dir`, `download`, `policy`, `store`, `upload`                                      |
+| `cache.concurrency` | `download`, `restore`, `upload`                                                                                       |
+| `cache.store`       | `decompress`, `embeddings`                                                                                            |
+| `cache.upload`      | `failures`                                                                                                            |
+| `watch`             | `debounce`, `poll`, `pollInterval`                                                                                    |
+| `history`           | `retention`                                                                                                           |
+| `inputs`            | `stability`                                                                                                           |
+| `inputs.stability`  | `severity`, `strategy`                                                                                                |
+| `outputs`           | `clean`                                                                                                               |
 
 `vx.config.ts`:
 

@@ -34,6 +34,7 @@ export interface WorkspaceConfig {
   outputs?: WorkspaceOutputs
   lock?: LockSettings
   watch?: WatchSettings
+  history?: HistorySettings
   /**
    * Plugins for this workspace, consulted in this order once per `vx run`:
    * each fills any of the stages and capabilities below, with core's
@@ -65,6 +66,22 @@ export interface RunSettings {
   /** Re-runs of a failed task, for tasks without their own `exec.retries`. Omitted → 0. */
   retries?: number
   /**
+   * How long a process may take to exit after SIGTERM (a timeout, a stop,
+   * the run's end) before vx sends SIGKILL. Omitted → `'2s'`.
+   */
+  killGrace?: Duration
+  /**
+   * How long one plugin's end-of-run flush or teardown may take; `'0ms'`
+   * waits for nothing not already done. Omitted → `'3s'`.
+   */
+  pluginTimeout?: Duration
+  /** How much output vx keeps, in characters (a size: `'8MiB'`). */
+  logs?: RunLogs
+  secrets?: {
+    /** The shortest secret value vx masks in output. Omitted → 6. */
+    minLength?: number
+  }
+  /**
    * What a failed task takes down: `never` stops the run, `deps-ok` (the
    * default) skips its dependents, `always` runs them too.
    */
@@ -76,6 +93,18 @@ export interface RunSettings {
    * correctly but more slowly.
    */
   rules?: WorkspaceRules
+}
+
+/** `WorkspaceConfig.run.logs`: output vx keeps, counted in characters. */
+export interface RunLogs {
+  /** The start of a task's output kept for its entry and replay. Omitted → `'8MiB'`. */
+  captureHead?: string
+  /** The end of a task's output kept for its entry and replay. Omitted → `'8MiB'`. */
+  captureTail?: string
+  /** The start of a failed attempt's stored output. Omitted → `'8KiB'`. */
+  failedHead?: string
+  /** The end of a failed attempt's stored output. Omitted → `'56KiB'`. */
+  failedTail?: string
 }
 
 /** `WorkspaceConfig.inputs`. */
@@ -148,6 +177,16 @@ export interface LockSettings {
 export interface WatchSettings {
   /** Poll for changes from the start instead of the OS watcher. */
   poll?: boolean
+  /** Wait this long after the last change before re-running (at most 1 s after the first). Omitted → `'150ms'`. */
+  debounce?: Duration
+  /** How often a polling watch re-walks a tree. Omitted → `'250ms'`. */
+  pollInterval?: Duration
+}
+
+/** `WorkspaceConfig.history`: what runs leave behind on this machine. */
+export interface HistorySettings {
+  /** `vx cache clean` drops run history older than this. Omitted → `'30d'`. */
+  retention?: Duration
 }
 
 /** `WorkspaceConfig.run.rules`. */

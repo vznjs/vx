@@ -2,7 +2,7 @@
 // handler lives in a sibling `<name>.ts`; tests import its parsers there.
 
 import { VERSION } from '../version.js'
-import { checkSettingsEnv } from '../settings.js'
+import { applyWorkspaceLimits, checkSettingsEnv } from '../settings.js'
 import { cachePolicyEnvRefusal } from '../cache/index.js'
 import { CORE_VERBS, flagHint, printHelp, refuse, refusedWord, seeHelp } from './help.js'
 import {
@@ -60,6 +60,7 @@ export async function run(argv: readonly string[]): Promise<number> {
     checkSettingsEnv(process.env, rest)
     refuseCachePolicyEnv(rest)
   }
+  applyWorkspaceLimits(undefined)
 
   try {
     return await dispatch(command, rest)

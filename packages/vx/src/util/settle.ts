@@ -8,23 +8,68 @@ import { parseDuration } from './size.js'
 const DEFAULT_TIMEOUT_MS = 3000
 
 /**
- * A timer a test shortens: `VX_TEST_<name>`, a duration. Undocumented and
- * in no settings table: the suites that prove a deadline drive it instead
- * of waiting the real one out. Zero only where `zero` allows it.
+ * An internal timer a test shortens: `VX_TEST_<name>`, a duration.
+ * Undocumented and in no settings table: the suites that prove a deadline
+ * drive it instead of waiting the real one out. The user-facing timers are
+ * settings (`timerSettingMs`).
  */
-export function testTimerMs(name: string, defaultMs: number, zero = false): number {
+export function testTimerMs(name: string, defaultMs: number): number {
   const raw = process.env[`VX_TEST_${name}`]
   if (raw === undefined || raw === '') return defaultMs
   const n = parseDuration(raw)
-  return n !== null && (n > 0 || (zero && n === 0)) && n <= MAX_TIMEOUT_MS ? n : defaultMs
+  return n !== null && n > 0 && n <= MAX_TIMEOUT_MS ? n : defaultMs
 }
 
 /**
- * The bound on one end-of-run flush or teardown: a plugin's flush cannot
- * hold the run's exit hostage.
+ * The timer settings `.vx/workspace` gave, by variable name, set once a run
+ * loads it (`applyWorkspaceTimers` in settings.ts). The variable beats them,
+ * read where the timer arms, as the tests that shorten one drive it in
+ * process; the CLI refused a malformed one at its start.
+ */
+const workspaceTimers = new Map<string, number>()
+
+export function setWorkspaceTimers(values: ReadonlyMap<string, number>): void {
+  workspaceTimers.clear()
+  for (const [k, v] of values) workspaceTimers.set(k, v)
+}
+
+/**
+ * The output budgets and counts a run reads (`run.logs.*`,
+ * `run.secrets.minLength`), by variable, resolved once per workspace load
+ * from the variable, else `.vx/workspace` (`applyWorkspaceLimits` in
+ * settings.ts): a reader on a hot path pays one map read.
+ */
+const workspaceLimits = new Map<string, number>()
+
+export function setWorkspaceLimits(values: ReadonlyMap<string, number>): void {
+  workspaceLimits.clear()
+  for (const [k, v] of values) workspaceLimits.set(k, v)
+}
+
+/** A limit setting as the last workspace load resolved it, else `defaultValue`. */
+export function limitSetting(variable: string, defaultValue: number): number {
+  return workspaceLimits.get(variable) ?? defaultValue
+}
+
+/**
+ * A timer setting: its variable, else the workspace's, else `defaultMs`.
+ * Zero only where `zero` allows it.
+ */
+function timerSettingMs(variable: string, defaultMs: number, zero = false): number {
+  const raw = process.env[variable]
+  if (raw !== undefined && raw !== '') {
+    const n = parseDuration(raw)
+    if (n !== null && (n > 0 || (zero && n === 0)) && n <= MAX_TIMEOUT_MS) return n
+  }
+  return workspaceTimers.get(variable) ?? defaultMs
+}
+
+/**
+ * The bound on one end-of-run flush or teardown (`run.pluginTimeout`): a
+ * plugin's flush cannot hold the run's exit hostage.
  */
 export function teardownTimeoutMs(): number {
-  return testTimerMs('TEARDOWN_TIMEOUT', DEFAULT_TIMEOUT_MS, true)
+  return timerSettingMs('VX_RUN_PLUGIN_TIMEOUT', DEFAULT_TIMEOUT_MS, true)
 }
 
 /**
@@ -51,10 +96,10 @@ export const POST_EXIT_DRAIN_MS = 250
  * is generous for a real server's cleanup and is what every run waits when
  * a child wedges; the tests that prove the escalation used to wait the
  * full two seconds each, a third of the suite's wall time for a claim a
- * 200 ms grace proves too.
+ * 200 ms grace proves too. `run.killGrace` sets it.
  */
 export function killGraceMs(defaultMs: number): number {
-  return testTimerMs('KILL_GRACE', defaultMs)
+  return timerSettingMs('VX_RUN_KILL_GRACE', defaultMs)
 }
 
 /**

@@ -104,7 +104,7 @@ describe('foreground keep-alive ends when one requested server exits', () => {
           cwd: root,
           stdout: 'pipe',
           stderr: 'pipe',
-          env: { ...process.env, VX_TEST_KILL_GRACE: '200ms' },
+          env: { ...process.env, VX_RUN_KILL_GRACE: '200ms' },
         }),
       )
       const pid = await waitForPid(path.join(dir, 'pid.txt'), 10_000)
@@ -154,7 +154,7 @@ describe('foreground keep-alive ends when one requested server exits', () => {
   // printed "run history not recorded: ... another vx version".
   it('records the history after another vx version reset the index mid-session', async () => {
     const dir = await addProject(root, 'app', config(0))
-    const env = { ...process.env, VX_CACHE_DIR: '.vx/cache', VX_TEST_KILL_GRACE: '200ms' }
+    const env = { ...process.env, VX_CACHE_DIR: '.vx/cache', VX_RUN_KILL_GRACE: '200ms' }
     const proc = track(
       Bun.spawn([process.execPath, BIN, 'run', 'dev', 'other', '--all'], {
         cwd: root,
@@ -211,7 +211,7 @@ describe('foreground keep-alive ends when one requested server exits', () => {
         cwd: root,
         stdout: 'ignore',
         stderr: 'ignore',
-        env: { ...process.env, VX_TEST_KILL_GRACE: '5000ms' },
+        env: { ...process.env, VX_RUN_KILL_GRACE: '5000ms' },
       }),
     )
     await waitForPid(path.join(dir, 'pid.txt'), 10_000)
@@ -228,7 +228,7 @@ describe('foreground keep-alive ends when one requested server exits', () => {
         cwd: root,
         stdout: 'pipe',
         stderr: 'pipe',
-        env: { ...process.env, CI: '', GITHUB_ACTIONS: '', VX_TEST_KILL_GRACE: '200ms' },
+        env: { ...process.env, CI: '', GITHUB_ACTIONS: '', VX_RUN_KILL_GRACE: '200ms' },
       }),
     )
     let out = ''
@@ -285,7 +285,7 @@ describe('foreground keep-alive ends when one requested server exits', () => {
           cwd: root,
           stdout: 'pipe',
           stderr: 'pipe',
-          env: { ...process.env, CI: '', GITHUB_ACTIONS: '', VX_TEST_KILL_GRACE: '500ms' },
+          env: { ...process.env, CI: '', GITHUB_ACTIONS: '', VX_RUN_KILL_GRACE: '500ms' },
         }),
       )
       let out = ''
@@ -339,7 +339,7 @@ describe('foreground keep-alive ends when one requested server exits', () => {
         cwd: root,
         stdout: 'pipe',
         stderr: 'pipe',
-        env: { ...process.env, CI: '', GITHUB_ACTIONS: '', VX_TEST_KILL_GRACE: '200ms' },
+        env: { ...process.env, CI: '', GITHUB_ACTIONS: '', VX_RUN_KILL_GRACE: '200ms' },
       }),
     )
     let out = ''
@@ -414,7 +414,7 @@ describe('foreground keep-alive ends when one requested server exits', () => {
           cwd: root,
           stdout: 'pipe',
           stderr: 'pipe',
-          env: { ...process.env, CI: '', GITHUB_ACTIONS: '', VX_TEST_KILL_GRACE: '200ms' },
+          env: { ...process.env, CI: '', GITHUB_ACTIONS: '', VX_RUN_KILL_GRACE: '200ms' },
         }),
       )
       expect(await proc.exited).toBe(exitCode)
@@ -444,7 +444,7 @@ describe('foreground keep-alive ends when one requested server exits', () => {
         cwd: root,
         stdout: 'pipe',
         stderr: 'pipe',
-        env: { ...process.env, CI: '', GITHUB_ACTIONS: '', VX_TEST_KILL_GRACE: '200ms' },
+        env: { ...process.env, CI: '', GITHUB_ACTIONS: '', VX_RUN_KILL_GRACE: '200ms' },
       }),
     )
     let text = ''
@@ -480,7 +480,7 @@ describe('foreground keep-alive ends when one requested server exits', () => {
         cwd: root,
         stdout: 'pipe',
         stderr: 'pipe',
-        env: { ...process.env, CI: '', GITHUB_ACTIONS: '', VX_TEST_KILL_GRACE: '200ms' },
+        env: { ...process.env, CI: '', GITHUB_ACTIONS: '', VX_RUN_KILL_GRACE: '200ms' },
       }),
     )
     let out = ''
@@ -521,7 +521,7 @@ describe('foreground keep-alive ends when one requested server exits', () => {
         cwd: root,
         stdout: 'pipe',
         stderr: 'pipe',
-        env: { ...process.env, CI: '', GITHUB_ACTIONS: '', VX_TEST_KILL_GRACE: '200ms' },
+        env: { ...process.env, CI: '', GITHUB_ACTIONS: '', VX_RUN_KILL_GRACE: '200ms' },
       }),
     )
     let out = ''
@@ -570,7 +570,7 @@ describe('foreground keep-alive ends when one requested server exits', () => {
           cwd: root,
           stdout: 'ignore',
           stderr: 'ignore',
-          env: { ...process.env, VX_TEST_KILL_GRACE: '200ms' },
+          env: { ...process.env, VX_RUN_KILL_GRACE: '200ms' },
         }),
       )
       const pid = await waitForPid(path.join(dir, 'pid.txt'), 10_000)
@@ -590,7 +590,7 @@ describe('foreground keep-alive ends when one requested server exits', () => {
         cwd: root,
         stdout: 'pipe',
         stderr: 'pipe',
-        env: { ...process.env, CI: '', GITHUB_ACTIONS: '', VX_TEST_KILL_GRACE: '200ms' },
+        env: { ...process.env, CI: '', GITHUB_ACTIONS: '', VX_RUN_KILL_GRACE: '200ms' },
       }),
     )
     let out = ''
@@ -651,7 +651,7 @@ describe('a persistent server that dies before the run stops it', () => {
         cwd: dir,
         stdout: 'pipe',
         stderr: 'pipe',
-        env: { ...process.env, VX_TEST_KILL_GRACE: '200ms' },
+        env: { ...process.env, VX_RUN_KILL_GRACE: '200ms' },
       }),
     )
     const [out, err, code] = await Promise.all([
@@ -727,7 +727,7 @@ describe('a persistent server that dies before the run stops it', () => {
           ...process.env,
           CI: '',
           GITHUB_ACTIONS: '',
-          VX_TEST_KILL_GRACE: '200ms',
+          VX_RUN_KILL_GRACE: '200ms',
           NO_COLOR: '1',
         },
       }),
@@ -811,7 +811,7 @@ describe('a persistent server that dies before the run stops it', () => {
         cwd: root,
         stdout: 'pipe',
         stderr: 'pipe',
-        env: { ...process.env, VX_TEST_KILL_GRACE: '400ms' },
+        env: { ...process.env, VX_RUN_KILL_GRACE: '400ms' },
       }),
     )
     const text = Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()])
@@ -874,7 +874,7 @@ describe('a persistent server that dies before the run stops it', () => {
         cwd: root,
         stdout: 'pipe',
         stderr: 'pipe',
-        env: { ...process.env, VX_TEST_KILL_GRACE: '200ms' },
+        env: { ...process.env, VX_RUN_KILL_GRACE: '200ms' },
       }),
     )
     const [out, err, code] = await Promise.all([
@@ -972,7 +972,7 @@ describe('a persistent task keeps an open stdin', () => {
         cwd: root,
         stdout: 'pipe',
         stderr: 'pipe',
-        env: { ...process.env, VX_TEST_KILL_GRACE: '200ms' },
+        env: { ...process.env, VX_RUN_KILL_GRACE: '200ms' },
       }),
     )
     const out = Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()])
@@ -1011,7 +1011,7 @@ describe('a persistent task keeps an open stdin', () => {
         cwd: root,
         stdout: 'pipe',
         stderr: 'pipe',
-        env: { ...process.env, VX_TEST_KILL_GRACE: '200ms' },
+        env: { ...process.env, VX_RUN_KILL_GRACE: '200ms' },
       }),
     )
     const out = Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()])

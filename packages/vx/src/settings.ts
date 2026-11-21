@@ -5,6 +5,8 @@
 
 import {
   machineParallelism,
+  setWorkspaceLimits,
+  setWorkspaceTimers,
   MAX_TIMEOUT_MS,
   parseDecimalInt,
   parseDuration,
@@ -15,7 +17,8 @@ import {
 export type SettingKind =
   | { readonly type: 'int'; readonly min: number }
   | { readonly type: 'concurrency' }
-  | { readonly type: 'duration'; readonly timer?: true }
+  // `zero`: `'0ms'` is a value (wait for nothing not already done).
+  | { readonly type: 'duration'; readonly timer?: true; readonly zero?: true }
   // `off`: `false` is a value, 0 bytes (the thing the size bounds is off).
   | { readonly type: 'size'; readonly off?: true }
   | { readonly type: 'bool' }
@@ -108,6 +111,48 @@ export const SETTINGS: readonly Setting[] = [
     doc: 'Which task output the run prints. Chosen before the workspace loads, so flag and env only.',
     flag: { verb: 'run', name: '--output-logs' },
     config: false,
+  },
+  {
+    path: 'run.killGrace',
+    kind: { type: 'duration', timer: true },
+    default: '`2s`',
+    doc: "How long a task, server or plugin's process may take to exit after SIGTERM (a timeout, a stop, the run's end) before vx sends SIGKILL.",
+  },
+  {
+    path: 'run.pluginTimeout',
+    kind: { type: 'duration', timer: true, zero: true },
+    default: '`3s`',
+    doc: "How long one plugin's end-of-run flush or teardown may take before the run ends without it; `'0ms'` waits for nothing not already done.",
+  },
+  {
+    path: 'run.logs.captureHead',
+    kind: { type: 'size' },
+    default: '`8MiB`',
+    doc: "The start of a task's output vx keeps for its cache entry and replay; the live stream is never cut. Counted in characters.",
+  },
+  {
+    path: 'run.logs.captureTail',
+    kind: { type: 'size' },
+    default: '`8MiB`',
+    doc: "The end of a task's output vx keeps for its cache entry and replay. Counted in characters.",
+  },
+  {
+    path: 'run.logs.failedHead',
+    kind: { type: 'size' },
+    default: '`8KiB`',
+    doc: "The start of a failed attempt's output vx keeps when it stores that failure. Counted in characters.",
+  },
+  {
+    path: 'run.logs.failedTail',
+    kind: { type: 'size' },
+    default: '`56KiB`',
+    doc: "The end of a failed attempt's output vx keeps when it stores that failure. Counted in characters.",
+  },
+  {
+    path: 'run.secrets.minLength',
+    kind: { type: 'int', min: 1 },
+    default: '6',
+    doc: 'The shortest secret value vx masks in output; a shorter one (`KEY=1`) would mask every match in every line.',
   },
   {
     path: 'run.rules.exclusiveOutputs',
@@ -212,6 +257,12 @@ export const SETTINGS: readonly Setting[] = [
     env: false,
   },
   {
+    path: 'history.retention',
+    kind: { type: 'duration' },
+    default: '`30d`',
+    doc: '`vx cache clean` drops run history and hash memos older than this.',
+  },
+  {
     path: 'lock.reviewFiles',
     kind: { type: 'bool' },
     default: 'true',
@@ -223,6 +274,18 @@ export const SETTINGS: readonly Setting[] = [
     default: 'false',
     doc: 'Poll for changes from the start instead of the OS watcher.',
     flag: { verb: 'watch', name: '--poll' },
+  },
+  {
+    path: 'watch.debounce',
+    kind: { type: 'duration', timer: true },
+    default: '`150ms`',
+    doc: '`vx watch` waits this long after the last change before it re-runs (at most 1 s after the first).',
+  },
+  {
+    path: 'watch.pollInterval',
+    kind: { type: 'duration', timer: true },
+    default: '`250ms`',
+    doc: 'How often a polling `vx watch` re-walks a watched tree.',
   },
   {
     path: 'config.workerTimeout',
@@ -262,7 +325,15 @@ export const SETTINGS: readonly Setting[] = [
 ]
 
 /** The `.vx/workspace` groups that hold settings; `baseBranch` and `plugins` are the other keys. */
-export const SETTING_GROUPS = ['run', 'cache', 'inputs', 'outputs', 'lock', 'watch'] as const
+export const SETTING_GROUPS = [
+  'run',
+  'cache',
+  'inputs',
+  'outputs',
+  'lock',
+  'watch',
+  'history',
+] as const
 
 const BY_PATH = new Map(SETTINGS.map((s) => [s.path, s]))
 
@@ -335,7 +406,7 @@ export function parseSettingValue(kind: SettingKind, raw: unknown): unknown {
       return parseConcurrency(typeof raw === 'number' ? String(raw) : raw)
     case 'duration': {
       const n = typeof raw === 'string' ? parseDuration(raw) : null
-      if (n === null || n === 0) return null
+      if (n === null || (n === 0 && kind.zero !== true)) return null
       return kind.timer === true && n > MAX_TIMEOUT_MS ? null : n
     }
     case 'size':
@@ -389,7 +460,7 @@ export function settingRefusal(
     }
     // `'0s'` looks like the examples the generic refusal gives.
     const negative = typeof raw === 'string' && raw.startsWith('-') && parseDuration(raw.slice(1))
-    if (ms === 0 || (negative !== false && negative !== null)) {
+    if ((ms === 0 && kind.zero !== true) || (negative !== false && negative !== null)) {
       const none = kind.timer === true ? ' — omit it for no limit' : ''
       return `${where} must be more than 0${none} (got ${got})`
     }
@@ -486,4 +557,53 @@ export function resolveSetting(
 export function runRules(workspace: unknown): { exclusiveOutputs?: boolean } {
   const { value } = resolveSetting('run.rules.exclusiveOutputs', workspace)
   return value === undefined ? {} : { exclusiveOutputs: value as boolean }
+}
+
+/** The timer settings a run reads where the timer arms (util/settle.ts `timerSettingMs`). */
+const WORKSPACE_TIMERS = ['run.killGrace', 'run.pluginTimeout'] as const
+
+/**
+ * Hand `.vx/workspace`'s timer settings to the places that arm them, once
+ * per workspace load; a variable still beats each where it is read.
+ */
+export function applyWorkspaceTimers(workspace: unknown): void {
+  const values = new Map<string, number>()
+  for (const p of WORKSPACE_TIMERS) {
+    const v = atPath(workspace, p)
+    if (v !== undefined) values.set(envName(p), parseSettingValue(setting(p).kind, v) as number)
+  }
+  setWorkspaceTimers(values)
+}
+
+/** The settings a reader takes once per workspace load (util/settle.ts `limitSetting`). */
+const WORKSPACE_LIMITS = [
+  'run.logs.captureHead',
+  'run.logs.captureTail',
+  'run.logs.failedHead',
+  'run.logs.failedTail',
+  'run.secrets.minLength',
+  'watch.debounce',
+  'watch.pollInterval',
+  'history.retention',
+] as const
+
+/**
+ * Resolve `.vx/workspace`'s output budgets and counts, each under its
+ * variable, for the readers that run per chunk: at the CLI's start with
+ * no workspace (a verb that never loads one still honours the variable),
+ * then once per workspace load. A refused variable is skipped: the CLI
+ * refused it already, and `vx info` reports it.
+ */
+export function applyWorkspaceLimits(workspace: unknown): void {
+  const values = new Map<string, number>()
+  for (const p of WORKSPACE_LIMITS) {
+    let value: unknown
+    try {
+      value = resolveSetting(p, workspace).value
+    } catch {
+      continue
+    }
+    if (value !== undefined) values.set(envName(p), value as number)
+  }
+  setWorkspaceLimits(values)
 }

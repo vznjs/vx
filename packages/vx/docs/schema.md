@@ -2317,6 +2317,10 @@ export default defineWorkspace({
     timeout: '10m',
     schedule: 'most-work',
     continue: 'deps-ok',
+    killGrace: '10s',
+    pluginTimeout: '3s',
+    logs: { captureHead: '8MiB', captureTail: '8MiB', failedHead: '8KiB', failedTail: '56KiB' },
+    secrets: { minLength: 8 },
     rules: {
       exclusiveOutputs: true,
       dependencies: [{ from: 'tag:lib', deny: ['tag:app'] }],
@@ -2333,12 +2337,13 @@ export default defineWorkspace({
   inputs: { stability: { strategy: 'immutable', severity: 'warn' } },
   outputs: { clean: true },
   lock: { reviewFiles: true },
-  watch: { poll: false },
+  watch: { poll: false, debounce: '150ms', pollInterval: '250ms' },
+  history: { retention: '60d' },
   plugins: [otel()],
 })
 ```
 
-The workspace holds settings in groups (`run`, `cache`, `inputs`, `outputs`, `lock`, `watch`) and the
+The workspace holds settings in groups (`run`, `cache`, `inputs`, `outputs`, `lock`, `watch`, `history`) and the
 `plugins`. Every setting has one path, and its environment variable and
 flag derive from it: `run.timeout` is `VX_RUN_TIMEOUT` and
 `vx run --timeout`. A flag beats its variable (a variable its flag
@@ -2371,6 +2376,13 @@ default and where it came from.
 | `run.retries`                                  | `VX_RUN_RETRIES`                 | `--retries`                    | a non-negative integer                                                  | 0                                                                             | Re-runs of a failed task, for tasks without their own `exec.retries`. A task's own `exec.retries` beats it.                                                                                      |
 | `run.continue`                                 | `VX_RUN_CONTINUE`                | `--continue`                   | one of 'never', 'deps-ok', 'always'                                     | deps-ok                                                                       | What a failed task takes down: `never` stops the run, `deps-ok` skips its dependents, `always` runs them too.                                                                                    |
 | `run.outputLogs` (variable or flag only)       | `VX_RUN_OUTPUT_LOGS`             | `--output-logs`                | one of 'full', 'errors-only', 'hash-only', 'none'                       | `full` on CI, else by what the run selects                                    | Which task output the run prints. Chosen before the workspace loads, so flag and env only.                                                                                                       |
+| `run.killGrace`                                | `VX_RUN_KILL_GRACE`              | —                              | a duration like '500ms', '30s' or '5m', at most 24 days                 | `2s`                                                                          | How long a task, server or plugin's process may take to exit after SIGTERM (a timeout, a stop, the run's end) before vx sends SIGKILL.                                                           |
+| `run.pluginTimeout`                            | `VX_RUN_PLUGIN_TIMEOUT`          | —                              | a duration like '500ms', '30s' or '5m', at most 24 days                 | `3s`                                                                          | How long one plugin's end-of-run flush or teardown may take before the run ends without it; `'0ms'` waits for nothing not already done.                                                          |
+| `run.logs.captureHead`                         | `VX_RUN_LOGS_CAPTURE_HEAD`       | —                              | a size like '500MB' or '10GB'                                           | `8MiB`                                                                        | The start of a task's output vx keeps for its cache entry and replay; the live stream is never cut. Counted in characters.                                                                       |
+| `run.logs.captureTail`                         | `VX_RUN_LOGS_CAPTURE_TAIL`       | —                              | a size like '500MB' or '10GB'                                           | `8MiB`                                                                        | The end of a task's output vx keeps for its cache entry and replay. Counted in characters.                                                                                                       |
+| `run.logs.failedHead`                          | `VX_RUN_LOGS_FAILED_HEAD`        | —                              | a size like '500MB' or '10GB'                                           | `8KiB`                                                                        | The start of a failed attempt's output vx keeps when it stores that failure. Counted in characters.                                                                                              |
+| `run.logs.failedTail`                          | `VX_RUN_LOGS_FAILED_TAIL`        | —                              | a size like '500MB' or '10GB'                                           | `56KiB`                                                                       | The end of a failed attempt's output vx keeps when it stores that failure. Counted in characters.                                                                                                |
+| `run.secrets.minLength`                        | `VX_RUN_SECRETS_MIN_LENGTH`      | —                              | an integer ≥ 1                                                          | 6                                                                             | The shortest secret value vx masks in output; a shorter one (`KEY=1`) would mask every match in every line.                                                                                      |
 | `run.rules.exclusiveOutputs`                   | `VX_RUN_RULES_EXCLUSIVE_OUTPUTS` | —                              | true or false                                                           | true                                                                          | Refuse two tasks whose outputs overlap even when an edge orders them.                                                                                                                            |
 | `cache.dir`                                    | `VX_CACHE_DIR`                   | `--cache-dir`                  | a non-blank string                                                      | .vx/cache, entries in ~/.vx/<id>/cache                                        | Where the cache lives, relative to the workspace root; named, it holds the whole cache.                                                                                                          |
 | `cache.policy`                                 | `VX_CACHE_POLICY`                | `--cache-policy`               | a non-blank string                                                      | every layer reads and writes                                                  | Which layers a run reads and writes (`'local:rw,remote:r'`); `--no-cache` and `--force` apply on top.                                                                                            |
@@ -2386,8 +2398,11 @@ default and where it came from.
 | `cache.store.decompress`                       | `VX_CACHE_STORE_DECOMPRESS`      | —                              | true or false                                                           | true                                                                          | Keep a larger entry as its plain files, which a hit copies or clones out; off, as one `.tar.zst`.                                                                                                |
 | `cache.artifactCeiling`                        | `VX_CACHE_ARTIFACT_CEILING`      | —                              | a size like '500MB' or '10GB'                                           | '1GiB'                                                                        | The largest entry, unpacked, a remote stores or a hit unpacks; a larger one stays on this machine. A remote hit past it is a miss, so every machine sharing a remote needs the same value.       |
 | `cache.upload.failures`                        | —                                | —                              | one of 'ci', 'local', 'always'                                          | ci                                                                            | Where a failed task's log and outputs are kept in the remote: CI runs, local runs, or both.                                                                                                      |
+| `history.retention`                            | `VX_HISTORY_RETENTION`           | —                              | a duration like '45s', '12h' or '30d'                                   | `30d`                                                                         | `vx cache clean` drops run history and hash memos older than this.                                                                                                                               |
 | `lock.reviewFiles`                             | `VX_LOCK_REVIEW_FILES`           | —                              | true or false                                                           | true                                                                          | `vx lock` writes each project's resolved config, pretty, to `vx.lock.json` beside its `vx.config`, for review; vx never reads it.                                                                |
 | `watch.poll`                                   | `VX_WATCH_POLL`                  | `vx watch --poll`              | true or false                                                           | false                                                                         | Poll for changes from the start instead of the OS watcher.                                                                                                                                       |
+| `watch.debounce`                               | `VX_WATCH_DEBOUNCE`              | —                              | a duration like '500ms', '30s' or '5m', at most 24 days                 | `150ms`                                                                       | `vx watch` waits this long after the last change before it re-runs (at most 1 s after the first).                                                                                                |
+| `watch.pollInterval`                           | `VX_WATCH_POLL_INTERVAL`         | —                              | a duration like '500ms', '30s' or '5m', at most 24 days                 | `250ms`                                                                       | How often a polling `vx watch` re-walks a watched tree.                                                                                                                                          |
 | `config.workerTimeout` (variable or flag only) | `VX_CONFIG_WORKER_TIMEOUT`       | —                              | a duration like '500ms', '30s' or '5m', at most 24 days                 | 30s                                                                           | How long one config evaluation may await; at 5 s vx names the config still evaluating. A synchronous loop on the first load holds the thread the deadline needs, so it hangs until killed.       |
 | `debug.timing` (variable or flag only)         | `VX_DEBUG_TIMING`                | —                              | true or false                                                           | false                                                                         | Print the run's stage timings to stderr.                                                                                                                                                         |
 | `debug.watch` (variable or flag only)          | `VX_DEBUG_WATCH`                 | —                              | true or false                                                           | false                                                                         | `vx watch`: say on stderr each time the loop arms, with the projects it watches.                                                                                                                 |
@@ -2404,7 +2419,8 @@ interface WorkspaceConfig {
   outputs?: { clean?: boolean }
   cache?: CacheSettings
   lock?: LockSettings
-  watch?: { poll?: boolean }
+  watch?: { poll?: boolean; debounce?: Duration; pollInterval?: Duration }
+  history?: { retention?: Duration } // run history `vx cache clean` keeps; '30d'
   /** Run-level plugins (cache / executor / telemetry capabilities). */
   plugins?: readonly (Plugin | undefined | null | false)[]
 }
@@ -2415,6 +2431,14 @@ interface RunSettings {
   timeout?: Duration
   retries?: number
   continue?: 'never' | 'deps-ok' | 'always'
+  /** SIGTERM to SIGKILL, for a task, server or plugin process. Omitted → '2s'. */
+  killGrace?: Duration
+  /** One plugin's end-of-run flush or teardown; '0ms' waits for nothing. Omitted → '3s'. */
+  pluginTimeout?: Duration
+  /** Output vx keeps, in characters (a size: '8MiB'). */
+  logs?: { captureHead?: string; captureTail?: string; failedHead?: string; failedTail?: string } // '8MiB' '8MiB' '8KiB' '56KiB'
+  /** The shortest secret value vx masks in output. Omitted → 6. */
+  secrets?: { minLength?: number }
   /** Graph rules `vx lock` checks, never a run; each on unless set to false. */
   rules?: { exclusiveOutputs?: boolean; dependencies?: DependencyRule[] }
 }

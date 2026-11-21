@@ -72,7 +72,7 @@ describe('vx watch under a signal (e2e)', () => {
       cwd: root,
       stdout: 'pipe',
       stderr: 'pipe',
-      env: { ...process.env, VX_TEST_KILL_GRACE: '200ms' },
+      env: { ...process.env, VX_RUN_KILL_GRACE: '200ms' },
     })
     const pid = await waitForPid(path.join(dir, 'pid.txt'), 10_000)
     expect(isAlive(pid)).toBe(true)
@@ -113,7 +113,7 @@ describe('vx watch under a signal (e2e)', () => {
         cwd: root,
         stdout: 'pipe',
         stderr: 'pipe',
-        env: { ...process.env, VX_TEST_KILL_GRACE: '200ms' },
+        env: { ...process.env, VX_RUN_KILL_GRACE: '200ms' },
       })
       await waitForPid(path.join(dir, 'pid.txt'), 10_000)
       proc.kill(signal)
@@ -140,7 +140,7 @@ describe('vx watch under a signal (e2e)', () => {
         cwd: root,
         stdout: 'pipe',
         stderr: 'pipe',
-        env: { ...process.env, VX_TEST_KILL_GRACE: '200ms' },
+        env: { ...process.env, VX_RUN_KILL_GRACE: '200ms' },
       },
     )
     const pid = await waitForPid(path.join(dir, 'pid.txt'), 10_000)
@@ -195,7 +195,7 @@ describe('vx watch under a signal (e2e)', () => {
       cwd: root,
       stdout: 'pipe',
       stderr: 'pipe',
-      env: { ...process.env, VX_TEST_KILL_GRACE: '200ms', NO_COLOR: '1' },
+      env: { ...process.env, VX_RUN_KILL_GRACE: '200ms', NO_COLOR: '1' },
     })
     let out = ''
     const reader = (async () => {
@@ -228,7 +228,7 @@ describe('vx watch under a signal (e2e)', () => {
       cwd: root,
       stdout: 'pipe',
       stderr: 'pipe',
-      env: { ...process.env, VX_TEST_KILL_GRACE: '1s', NO_COLOR: '1' },
+      env: { ...process.env, VX_RUN_KILL_GRACE: '1s', NO_COLOR: '1' },
     })
     let out = ''
     const reader = (async () => {
@@ -267,7 +267,7 @@ describe('vx watch under a signal (e2e)', () => {
       cwd: root,
       stdout: 'pipe',
       stderr: 'pipe',
-      env: { ...process.env, ...NOT_CI, VX_TEST_KILL_GRACE: '5000ms', NO_COLOR: '1' },
+      env: { ...process.env, ...NOT_CI, VX_RUN_KILL_GRACE: '5000ms', NO_COLOR: '1' },
     })
     let out = ''
     const reader = (async () => {
@@ -362,7 +362,7 @@ describe('vx watch under a signal (e2e)', () => {
       cwd: root,
       stdout: 'pipe',
       stderr: 'pipe',
-      env: { ...process.env, VX_TEST_KILL_GRACE: '5000ms' },
+      env: { ...process.env, VX_RUN_KILL_GRACE: '5000ms' },
     })
     let out = ''
     const reader = (async () => {

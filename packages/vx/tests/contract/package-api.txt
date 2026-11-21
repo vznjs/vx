@@ -1002,6 +1002,10 @@ export interface HistoryProvider {
   loadFor(taskIds: readonly string[]): Promise<HistoryTable>
   p50sFor?(taskIds: readonly string[]): Promise<ReadonlyMap<string, number>>
 }
+== type HistorySettings (src/config.ts)
+export interface HistorySettings {
+  retention?: Duration
+}
 == type HistoryTable (src/history/history.ts)
 export type HistoryTable = ReadonlyMap<string, TaskHistory>
 == type HostContext (src/orchestrator/run-context.ts)
@@ -1748,6 +1752,13 @@ export type RunEvent =
   | { kind: 'run:done' }
 == type RunEventSubscriber (src/report/events.ts)
 export type RunEventSubscriber = (event: RunEvent) => void
+== type RunLogs (src/config.ts)
+export interface RunLogs {
+  captureHead?: string
+  captureTail?: string
+  failedHead?: string
+  failedTail?: string
+}
 == type RunOptions (src/orchestrator/options.ts)
 export interface RunOptions {
   cwd: string
@@ -1869,6 +1880,12 @@ export interface RunSettings {
   schedule?: 'most-work' | 'critical-path' | 'direct-dependents' | 'ready-order'
   timeout?: Duration
   retries?: number
+  killGrace?: Duration
+  pluginTimeout?: Duration
+  logs?: RunLogs
+  secrets?: {
+    minLength?: number
+  }
   continue?: 'never' | 'deps-ok' | 'always'
   rules?: WorkspaceRules
 }
@@ -2405,6 +2422,8 @@ export interface VxPlugin {
 == type WatchSettings (src/config.ts)
 export interface WatchSettings {
   poll?: boolean
+  debounce?: Duration
+  pollInterval?: Duration
 }
 == type WorkerAdvice (src/exec/executor.ts)
 export interface WorkerAdvice {
@@ -2449,6 +2468,7 @@ export interface WorkspaceConfig {
   outputs?: WorkspaceOutputs
   lock?: LockSettings
   watch?: WatchSettings
+  history?: HistorySettings
   plugins?: readonly (Plugin | undefined | null | false)[]
 }
 == type WorkspaceFilesCache (src/cache/inputs.ts)

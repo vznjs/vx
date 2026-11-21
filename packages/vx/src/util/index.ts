@@ -97,6 +97,9 @@ export {
   settleWithin,
   teardownTimeoutMs,
   testTimerMs,
+  setWorkspaceTimers,
+  limitSetting,
+  setWorkspaceLimits,
 } from './settle.js'
 export { diskBytes, formatBytes, parseDuration, parseSize, treeBytes } from './size.js'
 export {

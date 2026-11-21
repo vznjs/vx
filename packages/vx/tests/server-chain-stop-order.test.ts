@@ -13,7 +13,7 @@ import { run } from './helpers/orchestrator.js'
 import { serverUsers } from '../src/orchestrator/persistent.js'
 import type { TaskNode } from '../src/graph/index.js'
 
-process.env['VX_TEST_KILL_GRACE'] = '2s'
+process.env['VX_RUN_KILL_GRACE'] = '2s'
 
 const silent: Logger = { status() {}, taskStdout() {}, taskStderr() {}, taskComplete() {} }
 let root: string

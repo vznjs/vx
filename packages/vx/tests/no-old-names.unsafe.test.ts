@@ -12,10 +12,7 @@ const ROOT = path.resolve(import.meta.dir, '../../..')
 
 const OLD: ReadonlyArray<readonly [RegExp, string]> = [
   [/\bVX_TASK_TIMEOUT\b/, 'VX_RUN_TIMEOUT'],
-  [
-    /\bVX_(RUN_)?KILL_GRACE(_MS)?\b|\brun\.killGrace\b|(?<![\w-])--kill-grace\b/,
-    'nothing (the kill grace is a fixed 2 s)',
-  ],
+  [/\bVX_(TEST_)?KILL_GRACE_MS\b|(?<![\w-])--kill-grace\b/, 'run.killGrace / VX_RUN_KILL_GRACE'],
   [
     /\bVX_(RUN_)?TEARDOWN_TIMEOUT(_MS)?\b|\brun\.teardownTimeout\b|(?<![\w-])--teardown-timeout\b/,
     'nothing (the teardown bound is a fixed 3 s)',

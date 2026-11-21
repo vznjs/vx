@@ -973,6 +973,18 @@ export interface HistoryProvider {
 }
 ```
 
+## `HistorySettings`
+
+type · `src/config.ts`
+
+`WorkspaceConfig.history`: what runs leave behind on this machine.
+
+```ts
+export interface HistorySettings {
+  retention?: Duration
+}
+```
+
 ## `HistoryTable`
 
 type · `src/history/history.ts`
@@ -2486,6 +2498,12 @@ export interface RunSettings {
   schedule?: 'most-work' | 'critical-path' | 'direct-dependents' | 'ready-order'
   timeout?: Duration
   retries?: number
+  killGrace?: Duration
+  pluginTimeout?: Duration
+  logs?: RunLogs
+  secrets?: {
+    minLength?: number
+  }
   continue?: 'never' | 'deps-ok' | 'always'
   rules?: WorkspaceRules
 }
@@ -3330,6 +3348,8 @@ type · `src/config.ts`
 ```ts
 export interface WatchSettings {
   poll?: boolean
+  debounce?: Duration
+  pollInterval?: Duration
 }
 ```
 
@@ -3442,6 +3462,7 @@ export interface WorkspaceConfig {
   outputs?: WorkspaceOutputs
   lock?: LockSettings
   watch?: WatchSettings
+  history?: HistorySettings
   plugins?: readonly (Plugin | undefined | null | false)[]
 }
 ```

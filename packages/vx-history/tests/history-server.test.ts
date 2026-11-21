@@ -1038,7 +1038,7 @@ describe('vx run with vxHistory({ url })', () => {
       },
     })
     const other = await mkdtemp(path.join(tmpdir(), 'vx-history-slow-'))
-    Bun.env.VX_TEST_TEARDOWN_TIMEOUT = '300ms'
+    Bun.env.VX_RUN_PLUGIN_TIMEOUT = '300ms'
     try {
       await mkdir(path.join(other, 'pkg'), { recursive: true })
       await writeFile(
@@ -1058,7 +1058,7 @@ describe('vx run with vxHistory({ url })', () => {
         .catch(() => undefined)) as { tasks?: Record<string, number> } | undefined
       expect(Object.keys(written?.tasks ?? {})).toEqual(['pkg#build'])
     } finally {
-      delete Bun.env.VX_TEST_TEARDOWN_TIMEOUT
+      delete Bun.env.VX_RUN_PLUGIN_TIMEOUT
       await slow.stop(true)
       await rm(other, { recursive: true, force: true })
     }

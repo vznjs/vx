@@ -180,7 +180,7 @@ Bun.spawn = (cmd, opts) => {
     const proc = track(
       Bun.spawn([process.execPath, BIN, 'run', 'dev', '--all'], {
         cwd: root,
-        env: { ...process.env, VX_TEST_KILL_GRACE: '5000ms' },
+        env: { ...process.env, VX_RUN_KILL_GRACE: '5000ms' },
         stdout: 'ignore',
         stderr: 'ignore',
         detached: true,
@@ -212,7 +212,7 @@ Bun.spawn = (cmd, opts) => {
     const proc = track(
       Bun.spawn([process.execPath, BIN, 'run', 'dev', '--all'], {
         cwd: root,
-        env: { ...process.env, VX_TEST_KILL_GRACE: '5000ms' },
+        env: { ...process.env, VX_RUN_KILL_GRACE: '5000ms' },
         stdout: 'ignore',
         stderr: 'ignore',
         detached: true,
@@ -261,7 +261,7 @@ Bun.spawn = (cmd, opts) => {
     const proc = track(
       Bun.spawn([process.execPath, BIN, 'run', 'e2e', '--all'], {
         cwd: root,
-        env: { ...process.env, VX_TEST_KILL_GRACE: '5000ms' },
+        env: { ...process.env, VX_RUN_KILL_GRACE: '5000ms' },
         stdout: 'ignore',
         stderr: 'ignore',
       }),
@@ -302,7 +302,7 @@ Bun.spawn = (cmd, opts) => {
     const proc = track(
       Bun.spawn([process.execPath, BIN, 'run', 'dev', '--all'], {
         cwd: root,
-        env: { ...process.env, VX_TEST_KILL_GRACE: '5000ms' },
+        env: { ...process.env, VX_RUN_KILL_GRACE: '5000ms' },
         stdout: 'ignore',
         stderr: 'ignore',
       }),

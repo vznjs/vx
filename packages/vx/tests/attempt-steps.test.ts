@@ -153,7 +153,7 @@ describe('AttemptSignal: what aborts an attempt’s request', () => {
   })
 
   it('an executor that ignores the abort is abandoned after the grace', async () => {
-    process.env['VX_TEST_KILL_GRACE'] = '10ms'
+    process.env['VX_RUN_KILL_GRACE'] = '10ms'
     try {
       const stop = new AbortController()
       const said: string[] = []
@@ -167,7 +167,7 @@ describe('AttemptSignal: what aborts an attempt’s request', () => {
       expect(r.exitCode).toBe(143)
       expect(said.join('')).toContain('abandoned')
     } finally {
-      delete process.env['VX_TEST_KILL_GRACE']
+      delete process.env['VX_RUN_KILL_GRACE']
     }
   })
 

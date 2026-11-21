@@ -1,8 +1,31 @@
 {
   "workspace": {
     "levels": {
-      "": ["baseBranch", "cache", "inputs", "lock", "outputs", "plugins", "run", "watch"],
-      "run": ["concurrency", "continue", "retries", "rules", "schedule", "timeout"],
+      "": [
+        "baseBranch",
+        "cache",
+        "history",
+        "inputs",
+        "lock",
+        "outputs",
+        "plugins",
+        "run",
+        "watch"
+      ],
+      "run": [
+        "concurrency",
+        "continue",
+        "killGrace",
+        "logs",
+        "pluginTimeout",
+        "retries",
+        "rules",
+        "schedule",
+        "secrets",
+        "timeout"
+      ],
+      "run.logs": ["captureHead", "captureTail", "failedHead", "failedTail"],
+      "run.secrets": ["minLength"],
       "run.rules": ["dependencies", "exclusiveOutputs"],
       "cache": ["artifactCeiling", "concurrency", "dir", "download", "policy", "store", "upload"],
       "cache.upload": ["failures"],
@@ -12,7 +35,8 @@
       "inputs.stability": ["severity", "strategy"],
       "outputs": ["clean"],
       "lock": ["reviewFiles"],
-      "watch": ["poll"]
+      "watch": ["debounce", "poll", "pollInterval"],
+      "history": ["retention"]
     },
     "records": [],
     "fields": {
@@ -49,7 +73,7 @@
       },
       "run": {
         "ok": ["<absent>", "{}", "<seed>"],
-        "$CONFIG: `run` must be an object (fields: concurrency, schedule, timeout, retries, continue, rules)": [
+        "$CONFIG: `run` must be an object (fields: concurrency, schedule, timeout, retries, continue, killGrace, pluginTimeout, logs, secrets, rules)": [
           "null",
           "true",
           "false",
@@ -80,7 +104,7 @@
           "[\"A=B\"]",
           "[\"A*\"]"
         ],
-        "$CONFIG: `run` has unknown field \"x\" (allowed: concurrency, continue, retries, rules, schedule, timeout)": [
+        "$CONFIG: `run` has unknown field \"x\" (allowed: concurrency, continue, killGrace, logs, pluginTimeout, retries, rules, schedule, secrets, timeout)": [
           "{\"x\":\"y\"}"
         ]
       },
@@ -468,6 +492,617 @@
         ],
         "$CONFIG: `run.continue` must be one of 'never', 'deps-ok', 'always' (got {})": ["{}"],
         "$CONFIG: `run.continue` must be one of 'never', 'deps-ok', 'always' (got {\"x\":\"y\"})": [
+          "{\"x\":\"y\"}"
+        ]
+      },
+      "run.killGrace": {
+        "ok": ["<absent>", "\"2s\""],
+        "$CONFIG: `run.killGrace` must be a duration like '500ms', '30s' or '5m', at most 24 days (got null)": [
+          "null"
+        ],
+        "$CONFIG: `run.killGrace` must be a duration like '500ms', '30s' or '5m', at most 24 days (got true)": [
+          "true"
+        ],
+        "$CONFIG: `run.killGrace` must be a duration like '500ms', '30s' or '5m', at most 24 days (got false)": [
+          "false"
+        ],
+        "$CONFIG: `run.killGrace` must be a duration like '500ms', '30s' or '5m', at most 24 days (got 0)": [
+          "0"
+        ],
+        "$CONFIG: `run.killGrace` takes a duration with its unit, like '1s' or '1ms' (got 1)": [
+          "1"
+        ],
+        "$CONFIG: `run.killGrace` must be a duration like '500ms', '30s' or '5m', at most 24 days (got 1.5)": [
+          "1.5"
+        ],
+        "$CONFIG: `run.killGrace` must be a duration like '500ms', '30s' or '5m', at most 24 days (got -1)": [
+          "-1"
+        ],
+        "$CONFIG: `run.killGrace` takes a duration with its unit, like '65536ms' or '66s' (got 65536)": [
+          "65536"
+        ],
+        "$CONFIG: `run.killGrace` of 2147483648 exceeds the maximum timer delay (2147483647 ms, ~24.8 days): a longer timer fires at once, it does not mean \"no limit\"": [
+          "2147483648"
+        ],
+        "$CONFIG: `run.killGrace` must be a duration like '500ms', '30s' or '5m', at most 24 days (got \"\")": [
+          "\"\""
+        ],
+        "$CONFIG: `run.killGrace` must be a duration like '500ms', '30s' or '5m', at most 24 days (got \"x\")": [
+          "\"x\""
+        ],
+        "$CONFIG: `run.killGrace` must be a duration like '500ms', '30s' or '5m', at most 24 days (got \"(\")": [
+          "\"(\""
+        ],
+        "$CONFIG: `run.killGrace` of \"30d\" exceeds the maximum timer delay (2147483647 ms, ~24.8 days): a longer timer fires at once, it does not mean \"no limit\"": [
+          "\"30d\""
+        ],
+        "$CONFIG: `run.killGrace` must be a duration like '500ms', '30s' or '5m', at most 24 days (got \"10G\")": [
+          "\"10G\""
+        ],
+        "$CONFIG: `run.killGrace` takes a duration with its unit, like '10s' or '10ms' (got \"10\")": [
+          "\"10\""
+        ],
+        "$CONFIG: `run.killGrace` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [])": [
+          "[]"
+        ],
+        "$CONFIG: `run.killGrace` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"x\"])": [
+          "[\"x\"]"
+        ],
+        "$CONFIG: `run.killGrace` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"\"])": [
+          "[\"\"]"
+        ],
+        "$CONFIG: `run.killGrace` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [1])": [
+          "[1]"
+        ],
+        "$CONFIG: `run.killGrace` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [3000])": [
+          "[3000]"
+        ],
+        "$CONFIG: `run.killGrace` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"/x\"])": [
+          "[\"/x\"]"
+        ],
+        "$CONFIG: `run.killGrace` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"!/x\"])": [
+          "[\"!/x\"]"
+        ],
+        "$CONFIG: `run.killGrace` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"../x\"])": [
+          "[\"../x\"]"
+        ],
+        "$CONFIG: `run.killGrace` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"!x\"])": [
+          "[\"!x\"]"
+        ],
+        "$CONFIG: `run.killGrace` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"!!x\",\"y\"])": [
+          "[\"!!x\",\"y\"]"
+        ],
+        "$CONFIG: `run.killGrace` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\".\"])": [
+          "[\".\"]"
+        ],
+        "$CONFIG: `run.killGrace` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"**\"])": [
+          "[\"**\"]"
+        ],
+        "$CONFIG: `run.killGrace` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"A=B\"])": [
+          "[\"A=B\"]"
+        ],
+        "$CONFIG: `run.killGrace` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"A*\"])": [
+          "[\"A*\"]"
+        ],
+        "$CONFIG: `run.killGrace` must be a duration like '500ms', '30s' or '5m', at most 24 days (got {})": [
+          "{}"
+        ],
+        "$CONFIG: `run.killGrace` must be a duration like '500ms', '30s' or '5m', at most 24 days (got {\"x\":\"y\"})": [
+          "{\"x\":\"y\"}"
+        ]
+      },
+      "run.pluginTimeout": {
+        "ok": ["<absent>", "\"3s\""],
+        "$CONFIG: `run.pluginTimeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got null)": [
+          "null"
+        ],
+        "$CONFIG: `run.pluginTimeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got true)": [
+          "true"
+        ],
+        "$CONFIG: `run.pluginTimeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got false)": [
+          "false"
+        ],
+        "$CONFIG: `run.pluginTimeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got 0)": [
+          "0"
+        ],
+        "$CONFIG: `run.pluginTimeout` takes a duration with its unit, like '1s' or '1ms' (got 1)": [
+          "1"
+        ],
+        "$CONFIG: `run.pluginTimeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got 1.5)": [
+          "1.5"
+        ],
+        "$CONFIG: `run.pluginTimeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got -1)": [
+          "-1"
+        ],
+        "$CONFIG: `run.pluginTimeout` takes a duration with its unit, like '65536ms' or '66s' (got 65536)": [
+          "65536"
+        ],
+        "$CONFIG: `run.pluginTimeout` of 2147483648 exceeds the maximum timer delay (2147483647 ms, ~24.8 days): a longer timer fires at once, it does not mean \"no limit\"": [
+          "2147483648"
+        ],
+        "$CONFIG: `run.pluginTimeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got \"\")": [
+          "\"\""
+        ],
+        "$CONFIG: `run.pluginTimeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got \"x\")": [
+          "\"x\""
+        ],
+        "$CONFIG: `run.pluginTimeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got \"(\")": [
+          "\"(\""
+        ],
+        "$CONFIG: `run.pluginTimeout` of \"30d\" exceeds the maximum timer delay (2147483647 ms, ~24.8 days): a longer timer fires at once, it does not mean \"no limit\"": [
+          "\"30d\""
+        ],
+        "$CONFIG: `run.pluginTimeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got \"10G\")": [
+          "\"10G\""
+        ],
+        "$CONFIG: `run.pluginTimeout` takes a duration with its unit, like '10s' or '10ms' (got \"10\")": [
+          "\"10\""
+        ],
+        "$CONFIG: `run.pluginTimeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [])": [
+          "[]"
+        ],
+        "$CONFIG: `run.pluginTimeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"x\"])": [
+          "[\"x\"]"
+        ],
+        "$CONFIG: `run.pluginTimeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"\"])": [
+          "[\"\"]"
+        ],
+        "$CONFIG: `run.pluginTimeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [1])": [
+          "[1]"
+        ],
+        "$CONFIG: `run.pluginTimeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [3000])": [
+          "[3000]"
+        ],
+        "$CONFIG: `run.pluginTimeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"/x\"])": [
+          "[\"/x\"]"
+        ],
+        "$CONFIG: `run.pluginTimeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"!/x\"])": [
+          "[\"!/x\"]"
+        ],
+        "$CONFIG: `run.pluginTimeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"../x\"])": [
+          "[\"../x\"]"
+        ],
+        "$CONFIG: `run.pluginTimeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"!x\"])": [
+          "[\"!x\"]"
+        ],
+        "$CONFIG: `run.pluginTimeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"!!x\",\"y\"])": [
+          "[\"!!x\",\"y\"]"
+        ],
+        "$CONFIG: `run.pluginTimeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\".\"])": [
+          "[\".\"]"
+        ],
+        "$CONFIG: `run.pluginTimeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"**\"])": [
+          "[\"**\"]"
+        ],
+        "$CONFIG: `run.pluginTimeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"A=B\"])": [
+          "[\"A=B\"]"
+        ],
+        "$CONFIG: `run.pluginTimeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"A*\"])": [
+          "[\"A*\"]"
+        ],
+        "$CONFIG: `run.pluginTimeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got {})": [
+          "{}"
+        ],
+        "$CONFIG: `run.pluginTimeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got {\"x\":\"y\"})": [
+          "{\"x\":\"y\"}"
+        ]
+      },
+      "run.logs": {
+        "ok": ["<absent>", "{}", "<seed>"],
+        "$CONFIG: `run.logs` must be an object (fields: captureHead, captureTail, failedHead, failedTail)": [
+          "null",
+          "true",
+          "false",
+          "0",
+          "1",
+          "1.5",
+          "-1",
+          "65536",
+          "2147483648",
+          "\"\"",
+          "\"x\"",
+          "\"(\"",
+          "\"30d\"",
+          "\"10G\"",
+          "\"10\"",
+          "[]",
+          "[\"x\"]",
+          "[\"\"]",
+          "[1]",
+          "[3000]",
+          "[\"/x\"]",
+          "[\"!/x\"]",
+          "[\"../x\"]",
+          "[\"!x\"]",
+          "[\"!!x\",\"y\"]",
+          "[\".\"]",
+          "[\"**\"]",
+          "[\"A=B\"]",
+          "[\"A*\"]"
+        ],
+        "$CONFIG: `run.logs` has unknown field \"x\" (allowed: captureHead, captureTail, failedHead, failedTail)": [
+          "{\"x\":\"y\"}"
+        ]
+      },
+      "run.logs.captureHead": {
+        "ok": ["<absent>", "\"10G\"", "\"8MiB\""],
+        "$CONFIG: `run.logs.captureHead` must be a size like '500MB' or '10GB' (got null)": [
+          "null"
+        ],
+        "$CONFIG: `run.logs.captureHead` must be a size like '500MB' or '10GB' (got true)": [
+          "true"
+        ],
+        "$CONFIG: `run.logs.captureHead` must be a size like '500MB' or '10GB' (got false)": [
+          "false"
+        ],
+        "$CONFIG: `run.logs.captureHead` must be more than 0 (got 0)": ["0"],
+        "$CONFIG: `run.logs.captureHead` takes a size with its unit, like '1KiB' or '1B' (got 1)": [
+          "1"
+        ],
+        "$CONFIG: `run.logs.captureHead` must be a size like '500MB' or '10GB' (got 1.5)": ["1.5"],
+        "$CONFIG: `run.logs.captureHead` must be a size like '500MB' or '10GB' (got -1)": ["-1"],
+        "$CONFIG: `run.logs.captureHead` takes a size with its unit, like '65536B' (got 65536)": [
+          "65536"
+        ],
+        "$CONFIG: `run.logs.captureHead` takes a size with its unit, like '2147483648B' (got 2147483648)": [
+          "2147483648"
+        ],
+        "$CONFIG: `run.logs.captureHead` must be a size like '500MB' or '10GB' (got \"\")": [
+          "\"\""
+        ],
+        "$CONFIG: `run.logs.captureHead` must be a size like '500MB' or '10GB' (got \"x\")": [
+          "\"x\""
+        ],
+        "$CONFIG: `run.logs.captureHead` must be a size like '500MB' or '10GB' (got \"(\")": [
+          "\"(\""
+        ],
+        "$CONFIG: `run.logs.captureHead` must be a size like '500MB' or '10GB' (got \"30d\")": [
+          "\"30d\""
+        ],
+        "$CONFIG: `run.logs.captureHead` takes a size with its unit, like '10KiB' or '10B' (got \"10\")": [
+          "\"10\""
+        ],
+        "$CONFIG: `run.logs.captureHead` must be a size like '500MB' or '10GB' (got [])": ["[]"],
+        "$CONFIG: `run.logs.captureHead` must be a size like '500MB' or '10GB' (got [\"x\"])": [
+          "[\"x\"]"
+        ],
+        "$CONFIG: `run.logs.captureHead` must be a size like '500MB' or '10GB' (got [\"\"])": [
+          "[\"\"]"
+        ],
+        "$CONFIG: `run.logs.captureHead` must be a size like '500MB' or '10GB' (got [1])": ["[1]"],
+        "$CONFIG: `run.logs.captureHead` must be a size like '500MB' or '10GB' (got [3000])": [
+          "[3000]"
+        ],
+        "$CONFIG: `run.logs.captureHead` must be a size like '500MB' or '10GB' (got [\"/x\"])": [
+          "[\"/x\"]"
+        ],
+        "$CONFIG: `run.logs.captureHead` must be a size like '500MB' or '10GB' (got [\"!/x\"])": [
+          "[\"!/x\"]"
+        ],
+        "$CONFIG: `run.logs.captureHead` must be a size like '500MB' or '10GB' (got [\"../x\"])": [
+          "[\"../x\"]"
+        ],
+        "$CONFIG: `run.logs.captureHead` must be a size like '500MB' or '10GB' (got [\"!x\"])": [
+          "[\"!x\"]"
+        ],
+        "$CONFIG: `run.logs.captureHead` must be a size like '500MB' or '10GB' (got [\"!!x\",\"y\"])": [
+          "[\"!!x\",\"y\"]"
+        ],
+        "$CONFIG: `run.logs.captureHead` must be a size like '500MB' or '10GB' (got [\".\"])": [
+          "[\".\"]"
+        ],
+        "$CONFIG: `run.logs.captureHead` must be a size like '500MB' or '10GB' (got [\"**\"])": [
+          "[\"**\"]"
+        ],
+        "$CONFIG: `run.logs.captureHead` must be a size like '500MB' or '10GB' (got [\"A=B\"])": [
+          "[\"A=B\"]"
+        ],
+        "$CONFIG: `run.logs.captureHead` must be a size like '500MB' or '10GB' (got [\"A*\"])": [
+          "[\"A*\"]"
+        ],
+        "$CONFIG: `run.logs.captureHead` must be a size like '500MB' or '10GB' (got {})": ["{}"],
+        "$CONFIG: `run.logs.captureHead` must be a size like '500MB' or '10GB' (got {\"x\":\"y\"})": [
+          "{\"x\":\"y\"}"
+        ]
+      },
+      "run.logs.captureTail": {
+        "ok": ["<absent>", "\"10G\"", "\"8MiB\""],
+        "$CONFIG: `run.logs.captureTail` must be a size like '500MB' or '10GB' (got null)": [
+          "null"
+        ],
+        "$CONFIG: `run.logs.captureTail` must be a size like '500MB' or '10GB' (got true)": [
+          "true"
+        ],
+        "$CONFIG: `run.logs.captureTail` must be a size like '500MB' or '10GB' (got false)": [
+          "false"
+        ],
+        "$CONFIG: `run.logs.captureTail` must be more than 0 (got 0)": ["0"],
+        "$CONFIG: `run.logs.captureTail` takes a size with its unit, like '1KiB' or '1B' (got 1)": [
+          "1"
+        ],
+        "$CONFIG: `run.logs.captureTail` must be a size like '500MB' or '10GB' (got 1.5)": ["1.5"],
+        "$CONFIG: `run.logs.captureTail` must be a size like '500MB' or '10GB' (got -1)": ["-1"],
+        "$CONFIG: `run.logs.captureTail` takes a size with its unit, like '65536B' (got 65536)": [
+          "65536"
+        ],
+        "$CONFIG: `run.logs.captureTail` takes a size with its unit, like '2147483648B' (got 2147483648)": [
+          "2147483648"
+        ],
+        "$CONFIG: `run.logs.captureTail` must be a size like '500MB' or '10GB' (got \"\")": [
+          "\"\""
+        ],
+        "$CONFIG: `run.logs.captureTail` must be a size like '500MB' or '10GB' (got \"x\")": [
+          "\"x\""
+        ],
+        "$CONFIG: `run.logs.captureTail` must be a size like '500MB' or '10GB' (got \"(\")": [
+          "\"(\""
+        ],
+        "$CONFIG: `run.logs.captureTail` must be a size like '500MB' or '10GB' (got \"30d\")": [
+          "\"30d\""
+        ],
+        "$CONFIG: `run.logs.captureTail` takes a size with its unit, like '10KiB' or '10B' (got \"10\")": [
+          "\"10\""
+        ],
+        "$CONFIG: `run.logs.captureTail` must be a size like '500MB' or '10GB' (got [])": ["[]"],
+        "$CONFIG: `run.logs.captureTail` must be a size like '500MB' or '10GB' (got [\"x\"])": [
+          "[\"x\"]"
+        ],
+        "$CONFIG: `run.logs.captureTail` must be a size like '500MB' or '10GB' (got [\"\"])": [
+          "[\"\"]"
+        ],
+        "$CONFIG: `run.logs.captureTail` must be a size like '500MB' or '10GB' (got [1])": ["[1]"],
+        "$CONFIG: `run.logs.captureTail` must be a size like '500MB' or '10GB' (got [3000])": [
+          "[3000]"
+        ],
+        "$CONFIG: `run.logs.captureTail` must be a size like '500MB' or '10GB' (got [\"/x\"])": [
+          "[\"/x\"]"
+        ],
+        "$CONFIG: `run.logs.captureTail` must be a size like '500MB' or '10GB' (got [\"!/x\"])": [
+          "[\"!/x\"]"
+        ],
+        "$CONFIG: `run.logs.captureTail` must be a size like '500MB' or '10GB' (got [\"../x\"])": [
+          "[\"../x\"]"
+        ],
+        "$CONFIG: `run.logs.captureTail` must be a size like '500MB' or '10GB' (got [\"!x\"])": [
+          "[\"!x\"]"
+        ],
+        "$CONFIG: `run.logs.captureTail` must be a size like '500MB' or '10GB' (got [\"!!x\",\"y\"])": [
+          "[\"!!x\",\"y\"]"
+        ],
+        "$CONFIG: `run.logs.captureTail` must be a size like '500MB' or '10GB' (got [\".\"])": [
+          "[\".\"]"
+        ],
+        "$CONFIG: `run.logs.captureTail` must be a size like '500MB' or '10GB' (got [\"**\"])": [
+          "[\"**\"]"
+        ],
+        "$CONFIG: `run.logs.captureTail` must be a size like '500MB' or '10GB' (got [\"A=B\"])": [
+          "[\"A=B\"]"
+        ],
+        "$CONFIG: `run.logs.captureTail` must be a size like '500MB' or '10GB' (got [\"A*\"])": [
+          "[\"A*\"]"
+        ],
+        "$CONFIG: `run.logs.captureTail` must be a size like '500MB' or '10GB' (got {})": ["{}"],
+        "$CONFIG: `run.logs.captureTail` must be a size like '500MB' or '10GB' (got {\"x\":\"y\"})": [
+          "{\"x\":\"y\"}"
+        ]
+      },
+      "run.logs.failedHead": {
+        "ok": ["<absent>", "\"10G\"", "\"8KiB\""],
+        "$CONFIG: `run.logs.failedHead` must be a size like '500MB' or '10GB' (got null)": ["null"],
+        "$CONFIG: `run.logs.failedHead` must be a size like '500MB' or '10GB' (got true)": ["true"],
+        "$CONFIG: `run.logs.failedHead` must be a size like '500MB' or '10GB' (got false)": [
+          "false"
+        ],
+        "$CONFIG: `run.logs.failedHead` must be more than 0 (got 0)": ["0"],
+        "$CONFIG: `run.logs.failedHead` takes a size with its unit, like '1KiB' or '1B' (got 1)": [
+          "1"
+        ],
+        "$CONFIG: `run.logs.failedHead` must be a size like '500MB' or '10GB' (got 1.5)": ["1.5"],
+        "$CONFIG: `run.logs.failedHead` must be a size like '500MB' or '10GB' (got -1)": ["-1"],
+        "$CONFIG: `run.logs.failedHead` takes a size with its unit, like '65536B' (got 65536)": [
+          "65536"
+        ],
+        "$CONFIG: `run.logs.failedHead` takes a size with its unit, like '2147483648B' (got 2147483648)": [
+          "2147483648"
+        ],
+        "$CONFIG: `run.logs.failedHead` must be a size like '500MB' or '10GB' (got \"\")": ["\"\""],
+        "$CONFIG: `run.logs.failedHead` must be a size like '500MB' or '10GB' (got \"x\")": [
+          "\"x\""
+        ],
+        "$CONFIG: `run.logs.failedHead` must be a size like '500MB' or '10GB' (got \"(\")": [
+          "\"(\""
+        ],
+        "$CONFIG: `run.logs.failedHead` must be a size like '500MB' or '10GB' (got \"30d\")": [
+          "\"30d\""
+        ],
+        "$CONFIG: `run.logs.failedHead` takes a size with its unit, like '10KiB' or '10B' (got \"10\")": [
+          "\"10\""
+        ],
+        "$CONFIG: `run.logs.failedHead` must be a size like '500MB' or '10GB' (got [])": ["[]"],
+        "$CONFIG: `run.logs.failedHead` must be a size like '500MB' or '10GB' (got [\"x\"])": [
+          "[\"x\"]"
+        ],
+        "$CONFIG: `run.logs.failedHead` must be a size like '500MB' or '10GB' (got [\"\"])": [
+          "[\"\"]"
+        ],
+        "$CONFIG: `run.logs.failedHead` must be a size like '500MB' or '10GB' (got [1])": ["[1]"],
+        "$CONFIG: `run.logs.failedHead` must be a size like '500MB' or '10GB' (got [3000])": [
+          "[3000]"
+        ],
+        "$CONFIG: `run.logs.failedHead` must be a size like '500MB' or '10GB' (got [\"/x\"])": [
+          "[\"/x\"]"
+        ],
+        "$CONFIG: `run.logs.failedHead` must be a size like '500MB' or '10GB' (got [\"!/x\"])": [
+          "[\"!/x\"]"
+        ],
+        "$CONFIG: `run.logs.failedHead` must be a size like '500MB' or '10GB' (got [\"../x\"])": [
+          "[\"../x\"]"
+        ],
+        "$CONFIG: `run.logs.failedHead` must be a size like '500MB' or '10GB' (got [\"!x\"])": [
+          "[\"!x\"]"
+        ],
+        "$CONFIG: `run.logs.failedHead` must be a size like '500MB' or '10GB' (got [\"!!x\",\"y\"])": [
+          "[\"!!x\",\"y\"]"
+        ],
+        "$CONFIG: `run.logs.failedHead` must be a size like '500MB' or '10GB' (got [\".\"])": [
+          "[\".\"]"
+        ],
+        "$CONFIG: `run.logs.failedHead` must be a size like '500MB' or '10GB' (got [\"**\"])": [
+          "[\"**\"]"
+        ],
+        "$CONFIG: `run.logs.failedHead` must be a size like '500MB' or '10GB' (got [\"A=B\"])": [
+          "[\"A=B\"]"
+        ],
+        "$CONFIG: `run.logs.failedHead` must be a size like '500MB' or '10GB' (got [\"A*\"])": [
+          "[\"A*\"]"
+        ],
+        "$CONFIG: `run.logs.failedHead` must be a size like '500MB' or '10GB' (got {})": ["{}"],
+        "$CONFIG: `run.logs.failedHead` must be a size like '500MB' or '10GB' (got {\"x\":\"y\"})": [
+          "{\"x\":\"y\"}"
+        ]
+      },
+      "run.logs.failedTail": {
+        "ok": ["<absent>", "\"10G\"", "\"56KiB\""],
+        "$CONFIG: `run.logs.failedTail` must be a size like '500MB' or '10GB' (got null)": ["null"],
+        "$CONFIG: `run.logs.failedTail` must be a size like '500MB' or '10GB' (got true)": ["true"],
+        "$CONFIG: `run.logs.failedTail` must be a size like '500MB' or '10GB' (got false)": [
+          "false"
+        ],
+        "$CONFIG: `run.logs.failedTail` must be more than 0 (got 0)": ["0"],
+        "$CONFIG: `run.logs.failedTail` takes a size with its unit, like '1KiB' or '1B' (got 1)": [
+          "1"
+        ],
+        "$CONFIG: `run.logs.failedTail` must be a size like '500MB' or '10GB' (got 1.5)": ["1.5"],
+        "$CONFIG: `run.logs.failedTail` must be a size like '500MB' or '10GB' (got -1)": ["-1"],
+        "$CONFIG: `run.logs.failedTail` takes a size with its unit, like '65536B' (got 65536)": [
+          "65536"
+        ],
+        "$CONFIG: `run.logs.failedTail` takes a size with its unit, like '2147483648B' (got 2147483648)": [
+          "2147483648"
+        ],
+        "$CONFIG: `run.logs.failedTail` must be a size like '500MB' or '10GB' (got \"\")": ["\"\""],
+        "$CONFIG: `run.logs.failedTail` must be a size like '500MB' or '10GB' (got \"x\")": [
+          "\"x\""
+        ],
+        "$CONFIG: `run.logs.failedTail` must be a size like '500MB' or '10GB' (got \"(\")": [
+          "\"(\""
+        ],
+        "$CONFIG: `run.logs.failedTail` must be a size like '500MB' or '10GB' (got \"30d\")": [
+          "\"30d\""
+        ],
+        "$CONFIG: `run.logs.failedTail` takes a size with its unit, like '10KiB' or '10B' (got \"10\")": [
+          "\"10\""
+        ],
+        "$CONFIG: `run.logs.failedTail` must be a size like '500MB' or '10GB' (got [])": ["[]"],
+        "$CONFIG: `run.logs.failedTail` must be a size like '500MB' or '10GB' (got [\"x\"])": [
+          "[\"x\"]"
+        ],
+        "$CONFIG: `run.logs.failedTail` must be a size like '500MB' or '10GB' (got [\"\"])": [
+          "[\"\"]"
+        ],
+        "$CONFIG: `run.logs.failedTail` must be a size like '500MB' or '10GB' (got [1])": ["[1]"],
+        "$CONFIG: `run.logs.failedTail` must be a size like '500MB' or '10GB' (got [3000])": [
+          "[3000]"
+        ],
+        "$CONFIG: `run.logs.failedTail` must be a size like '500MB' or '10GB' (got [\"/x\"])": [
+          "[\"/x\"]"
+        ],
+        "$CONFIG: `run.logs.failedTail` must be a size like '500MB' or '10GB' (got [\"!/x\"])": [
+          "[\"!/x\"]"
+        ],
+        "$CONFIG: `run.logs.failedTail` must be a size like '500MB' or '10GB' (got [\"../x\"])": [
+          "[\"../x\"]"
+        ],
+        "$CONFIG: `run.logs.failedTail` must be a size like '500MB' or '10GB' (got [\"!x\"])": [
+          "[\"!x\"]"
+        ],
+        "$CONFIG: `run.logs.failedTail` must be a size like '500MB' or '10GB' (got [\"!!x\",\"y\"])": [
+          "[\"!!x\",\"y\"]"
+        ],
+        "$CONFIG: `run.logs.failedTail` must be a size like '500MB' or '10GB' (got [\".\"])": [
+          "[\".\"]"
+        ],
+        "$CONFIG: `run.logs.failedTail` must be a size like '500MB' or '10GB' (got [\"**\"])": [
+          "[\"**\"]"
+        ],
+        "$CONFIG: `run.logs.failedTail` must be a size like '500MB' or '10GB' (got [\"A=B\"])": [
+          "[\"A=B\"]"
+        ],
+        "$CONFIG: `run.logs.failedTail` must be a size like '500MB' or '10GB' (got [\"A*\"])": [
+          "[\"A*\"]"
+        ],
+        "$CONFIG: `run.logs.failedTail` must be a size like '500MB' or '10GB' (got {})": ["{}"],
+        "$CONFIG: `run.logs.failedTail` must be a size like '500MB' or '10GB' (got {\"x\":\"y\"})": [
+          "{\"x\":\"y\"}"
+        ]
+      },
+      "run.secrets": {
+        "ok": ["<absent>", "{}", "<seed>"],
+        "$CONFIG: `run.secrets` must be an object (fields: minLength)": [
+          "null",
+          "true",
+          "false",
+          "0",
+          "1",
+          "1.5",
+          "-1",
+          "65536",
+          "2147483648",
+          "\"\"",
+          "\"x\"",
+          "\"(\"",
+          "\"30d\"",
+          "\"10G\"",
+          "\"10\"",
+          "[]",
+          "[\"x\"]",
+          "[\"\"]",
+          "[1]",
+          "[3000]",
+          "[\"/x\"]",
+          "[\"!/x\"]",
+          "[\"../x\"]",
+          "[\"!x\"]",
+          "[\"!!x\",\"y\"]",
+          "[\".\"]",
+          "[\"**\"]",
+          "[\"A=B\"]",
+          "[\"A*\"]"
+        ],
+        "$CONFIG: `run.secrets` has unknown field \"x\" (allowed: minLength)": ["{\"x\":\"y\"}"]
+      },
+      "run.secrets.minLength": {
+        "ok": ["<absent>", "1", "65536", "2147483648", "6"],
+        "$CONFIG: `run.secrets.minLength` must be an integer ≥ 1 (got null)": ["null"],
+        "$CONFIG: `run.secrets.minLength` must be an integer ≥ 1 (got true)": ["true"],
+        "$CONFIG: `run.secrets.minLength` must be an integer ≥ 1 (got false)": ["false"],
+        "$CONFIG: `run.secrets.minLength` must be an integer ≥ 1 (got 0)": ["0"],
+        "$CONFIG: `run.secrets.minLength` must be an integer ≥ 1 (got 1.5)": ["1.5"],
+        "$CONFIG: `run.secrets.minLength` must be an integer ≥ 1 (got -1)": ["-1"],
+        "$CONFIG: `run.secrets.minLength` must be an integer ≥ 1 (got \"\")": ["\"\""],
+        "$CONFIG: `run.secrets.minLength` must be an integer ≥ 1 (got \"x\")": ["\"x\""],
+        "$CONFIG: `run.secrets.minLength` must be an integer ≥ 1 (got \"(\")": ["\"(\""],
+        "$CONFIG: `run.secrets.minLength` must be an integer ≥ 1 (got \"30d\")": ["\"30d\""],
+        "$CONFIG: `run.secrets.minLength` must be an integer ≥ 1 (got \"10G\")": ["\"10G\""],
+        "$CONFIG: `run.secrets.minLength` must be an integer ≥ 1 (got \"10\")": ["\"10\""],
+        "$CONFIG: `run.secrets.minLength` must be an integer ≥ 1 (got [])": ["[]"],
+        "$CONFIG: `run.secrets.minLength` must be an integer ≥ 1 (got [\"x\"])": ["[\"x\"]"],
+        "$CONFIG: `run.secrets.minLength` must be an integer ≥ 1 (got [\"\"])": ["[\"\"]"],
+        "$CONFIG: `run.secrets.minLength` must be an integer ≥ 1 (got [1])": ["[1]"],
+        "$CONFIG: `run.secrets.minLength` must be an integer ≥ 1 (got [3000])": ["[3000]"],
+        "$CONFIG: `run.secrets.minLength` must be an integer ≥ 1 (got [\"/x\"])": ["[\"/x\"]"],
+        "$CONFIG: `run.secrets.minLength` must be an integer ≥ 1 (got [\"!/x\"])": ["[\"!/x\"]"],
+        "$CONFIG: `run.secrets.minLength` must be an integer ≥ 1 (got [\"../x\"])": ["[\"../x\"]"],
+        "$CONFIG: `run.secrets.minLength` must be an integer ≥ 1 (got [\"!x\"])": ["[\"!x\"]"],
+        "$CONFIG: `run.secrets.minLength` must be an integer ≥ 1 (got [\"!!x\",\"y\"])": [
+          "[\"!!x\",\"y\"]"
+        ],
+        "$CONFIG: `run.secrets.minLength` must be an integer ≥ 1 (got [\".\"])": ["[\".\"]"],
+        "$CONFIG: `run.secrets.minLength` must be an integer ≥ 1 (got [\"**\"])": ["[\"**\"]"],
+        "$CONFIG: `run.secrets.minLength` must be an integer ≥ 1 (got [\"A=B\"])": ["[\"A=B\"]"],
+        "$CONFIG: `run.secrets.minLength` must be an integer ≥ 1 (got [\"A*\"])": ["[\"A*\"]"],
+        "$CONFIG: `run.secrets.minLength` must be an integer ≥ 1 (got {})": ["{}"],
+        "$CONFIG: `run.secrets.minLength` must be an integer ≥ 1 (got {\"x\":\"y\"})": [
           "{\"x\":\"y\"}"
         ]
       },
@@ -1663,7 +2298,7 @@
       },
       "watch": {
         "ok": ["<absent>", "{}", "<seed>"],
-        "$CONFIG: `watch` must be an object (fields: poll)": [
+        "$CONFIG: `watch` must be an object (fields: poll, debounce, pollInterval)": [
           "null",
           "true",
           "false",
@@ -1694,7 +2329,9 @@
           "[\"A=B\"]",
           "[\"A*\"]"
         ],
-        "$CONFIG: `watch` has unknown field \"x\" (allowed: poll)": ["{\"x\":\"y\"}"]
+        "$CONFIG: `watch` has unknown field \"x\" (allowed: debounce, poll, pollInterval)": [
+          "{\"x\":\"y\"}"
+        ]
       },
       "watch.poll": {
         "ok": ["<absent>", "true", "false"],
@@ -1727,6 +2364,324 @@
         "$CONFIG: `watch.poll` must be true or false (got [\"A*\"])": ["[\"A*\"]"],
         "$CONFIG: `watch.poll` must be true or false (got {})": ["{}"],
         "$CONFIG: `watch.poll` must be true or false (got {\"x\":\"y\"})": ["{\"x\":\"y\"}"]
+      },
+      "watch.debounce": {
+        "ok": ["<absent>", "\"150ms\""],
+        "$CONFIG: `watch.debounce` must be a duration like '500ms', '30s' or '5m', at most 24 days (got null)": [
+          "null"
+        ],
+        "$CONFIG: `watch.debounce` must be a duration like '500ms', '30s' or '5m', at most 24 days (got true)": [
+          "true"
+        ],
+        "$CONFIG: `watch.debounce` must be a duration like '500ms', '30s' or '5m', at most 24 days (got false)": [
+          "false"
+        ],
+        "$CONFIG: `watch.debounce` must be a duration like '500ms', '30s' or '5m', at most 24 days (got 0)": [
+          "0"
+        ],
+        "$CONFIG: `watch.debounce` takes a duration with its unit, like '1s' or '1ms' (got 1)": [
+          "1"
+        ],
+        "$CONFIG: `watch.debounce` must be a duration like '500ms', '30s' or '5m', at most 24 days (got 1.5)": [
+          "1.5"
+        ],
+        "$CONFIG: `watch.debounce` must be a duration like '500ms', '30s' or '5m', at most 24 days (got -1)": [
+          "-1"
+        ],
+        "$CONFIG: `watch.debounce` takes a duration with its unit, like '65536ms' or '66s' (got 65536)": [
+          "65536"
+        ],
+        "$CONFIG: `watch.debounce` of 2147483648 exceeds the maximum timer delay (2147483647 ms, ~24.8 days): a longer timer fires at once, it does not mean \"no limit\"": [
+          "2147483648"
+        ],
+        "$CONFIG: `watch.debounce` must be a duration like '500ms', '30s' or '5m', at most 24 days (got \"\")": [
+          "\"\""
+        ],
+        "$CONFIG: `watch.debounce` must be a duration like '500ms', '30s' or '5m', at most 24 days (got \"x\")": [
+          "\"x\""
+        ],
+        "$CONFIG: `watch.debounce` must be a duration like '500ms', '30s' or '5m', at most 24 days (got \"(\")": [
+          "\"(\""
+        ],
+        "$CONFIG: `watch.debounce` of \"30d\" exceeds the maximum timer delay (2147483647 ms, ~24.8 days): a longer timer fires at once, it does not mean \"no limit\"": [
+          "\"30d\""
+        ],
+        "$CONFIG: `watch.debounce` must be a duration like '500ms', '30s' or '5m', at most 24 days (got \"10G\")": [
+          "\"10G\""
+        ],
+        "$CONFIG: `watch.debounce` takes a duration with its unit, like '10s' or '10ms' (got \"10\")": [
+          "\"10\""
+        ],
+        "$CONFIG: `watch.debounce` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [])": [
+          "[]"
+        ],
+        "$CONFIG: `watch.debounce` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"x\"])": [
+          "[\"x\"]"
+        ],
+        "$CONFIG: `watch.debounce` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"\"])": [
+          "[\"\"]"
+        ],
+        "$CONFIG: `watch.debounce` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [1])": [
+          "[1]"
+        ],
+        "$CONFIG: `watch.debounce` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [3000])": [
+          "[3000]"
+        ],
+        "$CONFIG: `watch.debounce` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"/x\"])": [
+          "[\"/x\"]"
+        ],
+        "$CONFIG: `watch.debounce` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"!/x\"])": [
+          "[\"!/x\"]"
+        ],
+        "$CONFIG: `watch.debounce` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"../x\"])": [
+          "[\"../x\"]"
+        ],
+        "$CONFIG: `watch.debounce` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"!x\"])": [
+          "[\"!x\"]"
+        ],
+        "$CONFIG: `watch.debounce` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"!!x\",\"y\"])": [
+          "[\"!!x\",\"y\"]"
+        ],
+        "$CONFIG: `watch.debounce` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\".\"])": [
+          "[\".\"]"
+        ],
+        "$CONFIG: `watch.debounce` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"**\"])": [
+          "[\"**\"]"
+        ],
+        "$CONFIG: `watch.debounce` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"A=B\"])": [
+          "[\"A=B\"]"
+        ],
+        "$CONFIG: `watch.debounce` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"A*\"])": [
+          "[\"A*\"]"
+        ],
+        "$CONFIG: `watch.debounce` must be a duration like '500ms', '30s' or '5m', at most 24 days (got {})": [
+          "{}"
+        ],
+        "$CONFIG: `watch.debounce` must be a duration like '500ms', '30s' or '5m', at most 24 days (got {\"x\":\"y\"})": [
+          "{\"x\":\"y\"}"
+        ]
+      },
+      "watch.pollInterval": {
+        "ok": ["<absent>", "\"250ms\""],
+        "$CONFIG: `watch.pollInterval` must be a duration like '500ms', '30s' or '5m', at most 24 days (got null)": [
+          "null"
+        ],
+        "$CONFIG: `watch.pollInterval` must be a duration like '500ms', '30s' or '5m', at most 24 days (got true)": [
+          "true"
+        ],
+        "$CONFIG: `watch.pollInterval` must be a duration like '500ms', '30s' or '5m', at most 24 days (got false)": [
+          "false"
+        ],
+        "$CONFIG: `watch.pollInterval` must be a duration like '500ms', '30s' or '5m', at most 24 days (got 0)": [
+          "0"
+        ],
+        "$CONFIG: `watch.pollInterval` takes a duration with its unit, like '1s' or '1ms' (got 1)": [
+          "1"
+        ],
+        "$CONFIG: `watch.pollInterval` must be a duration like '500ms', '30s' or '5m', at most 24 days (got 1.5)": [
+          "1.5"
+        ],
+        "$CONFIG: `watch.pollInterval` must be a duration like '500ms', '30s' or '5m', at most 24 days (got -1)": [
+          "-1"
+        ],
+        "$CONFIG: `watch.pollInterval` takes a duration with its unit, like '65536ms' or '66s' (got 65536)": [
+          "65536"
+        ],
+        "$CONFIG: `watch.pollInterval` of 2147483648 exceeds the maximum timer delay (2147483647 ms, ~24.8 days): a longer timer fires at once, it does not mean \"no limit\"": [
+          "2147483648"
+        ],
+        "$CONFIG: `watch.pollInterval` must be a duration like '500ms', '30s' or '5m', at most 24 days (got \"\")": [
+          "\"\""
+        ],
+        "$CONFIG: `watch.pollInterval` must be a duration like '500ms', '30s' or '5m', at most 24 days (got \"x\")": [
+          "\"x\""
+        ],
+        "$CONFIG: `watch.pollInterval` must be a duration like '500ms', '30s' or '5m', at most 24 days (got \"(\")": [
+          "\"(\""
+        ],
+        "$CONFIG: `watch.pollInterval` of \"30d\" exceeds the maximum timer delay (2147483647 ms, ~24.8 days): a longer timer fires at once, it does not mean \"no limit\"": [
+          "\"30d\""
+        ],
+        "$CONFIG: `watch.pollInterval` must be a duration like '500ms', '30s' or '5m', at most 24 days (got \"10G\")": [
+          "\"10G\""
+        ],
+        "$CONFIG: `watch.pollInterval` takes a duration with its unit, like '10s' or '10ms' (got \"10\")": [
+          "\"10\""
+        ],
+        "$CONFIG: `watch.pollInterval` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [])": [
+          "[]"
+        ],
+        "$CONFIG: `watch.pollInterval` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"x\"])": [
+          "[\"x\"]"
+        ],
+        "$CONFIG: `watch.pollInterval` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"\"])": [
+          "[\"\"]"
+        ],
+        "$CONFIG: `watch.pollInterval` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [1])": [
+          "[1]"
+        ],
+        "$CONFIG: `watch.pollInterval` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [3000])": [
+          "[3000]"
+        ],
+        "$CONFIG: `watch.pollInterval` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"/x\"])": [
+          "[\"/x\"]"
+        ],
+        "$CONFIG: `watch.pollInterval` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"!/x\"])": [
+          "[\"!/x\"]"
+        ],
+        "$CONFIG: `watch.pollInterval` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"../x\"])": [
+          "[\"../x\"]"
+        ],
+        "$CONFIG: `watch.pollInterval` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"!x\"])": [
+          "[\"!x\"]"
+        ],
+        "$CONFIG: `watch.pollInterval` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"!!x\",\"y\"])": [
+          "[\"!!x\",\"y\"]"
+        ],
+        "$CONFIG: `watch.pollInterval` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\".\"])": [
+          "[\".\"]"
+        ],
+        "$CONFIG: `watch.pollInterval` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"**\"])": [
+          "[\"**\"]"
+        ],
+        "$CONFIG: `watch.pollInterval` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"A=B\"])": [
+          "[\"A=B\"]"
+        ],
+        "$CONFIG: `watch.pollInterval` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"A*\"])": [
+          "[\"A*\"]"
+        ],
+        "$CONFIG: `watch.pollInterval` must be a duration like '500ms', '30s' or '5m', at most 24 days (got {})": [
+          "{}"
+        ],
+        "$CONFIG: `watch.pollInterval` must be a duration like '500ms', '30s' or '5m', at most 24 days (got {\"x\":\"y\"})": [
+          "{\"x\":\"y\"}"
+        ]
+      },
+      "history": {
+        "ok": ["<absent>", "{}", "<seed>"],
+        "$CONFIG: `history` must be an object (fields: retention)": [
+          "null",
+          "true",
+          "false",
+          "0",
+          "1",
+          "1.5",
+          "-1",
+          "65536",
+          "2147483648",
+          "\"\"",
+          "\"x\"",
+          "\"(\"",
+          "\"30d\"",
+          "\"10G\"",
+          "\"10\"",
+          "[]",
+          "[\"x\"]",
+          "[\"\"]",
+          "[1]",
+          "[3000]",
+          "[\"/x\"]",
+          "[\"!/x\"]",
+          "[\"../x\"]",
+          "[\"!x\"]",
+          "[\"!!x\",\"y\"]",
+          "[\".\"]",
+          "[\"**\"]",
+          "[\"A=B\"]",
+          "[\"A*\"]"
+        ],
+        "$CONFIG: `history` has unknown field \"x\" (allowed: retention)": ["{\"x\":\"y\"}"]
+      },
+      "history.retention": {
+        "ok": ["<absent>", "\"30d\""],
+        "$CONFIG: `history.retention` must be a duration like '45s', '12h' or '30d' (got null)": [
+          "null"
+        ],
+        "$CONFIG: `history.retention` must be a duration like '45s', '12h' or '30d' (got true)": [
+          "true"
+        ],
+        "$CONFIG: `history.retention` must be a duration like '45s', '12h' or '30d' (got false)": [
+          "false"
+        ],
+        "$CONFIG: `history.retention` must be a duration like '45s', '12h' or '30d' (got 0)": ["0"],
+        "$CONFIG: `history.retention` takes a duration with its unit, like '1s' or '1ms' (got 1)": [
+          "1"
+        ],
+        "$CONFIG: `history.retention` must be a duration like '45s', '12h' or '30d' (got 1.5)": [
+          "1.5"
+        ],
+        "$CONFIG: `history.retention` must be a duration like '45s', '12h' or '30d' (got -1)": [
+          "-1"
+        ],
+        "$CONFIG: `history.retention` takes a duration with its unit, like '65536ms' or '66s' (got 65536)": [
+          "65536"
+        ],
+        "$CONFIG: `history.retention` takes a duration with its unit, like '2147483648ms' or '2147484s' (got 2147483648)": [
+          "2147483648"
+        ],
+        "$CONFIG: `history.retention` must be a duration like '45s', '12h' or '30d' (got \"\")": [
+          "\"\""
+        ],
+        "$CONFIG: `history.retention` must be a duration like '45s', '12h' or '30d' (got \"x\")": [
+          "\"x\""
+        ],
+        "$CONFIG: `history.retention` must be a duration like '45s', '12h' or '30d' (got \"(\")": [
+          "\"(\""
+        ],
+        "$CONFIG: `history.retention` must be a duration like '45s', '12h' or '30d' (got \"10G\")": [
+          "\"10G\""
+        ],
+        "$CONFIG: `history.retention` takes a duration with its unit, like '10s' or '10ms' (got \"10\")": [
+          "\"10\""
+        ],
+        "$CONFIG: `history.retention` must be a duration like '45s', '12h' or '30d' (got [])": [
+          "[]"
+        ],
+        "$CONFIG: `history.retention` must be a duration like '45s', '12h' or '30d' (got [\"x\"])": [
+          "[\"x\"]"
+        ],
+        "$CONFIG: `history.retention` must be a duration like '45s', '12h' or '30d' (got [\"\"])": [
+          "[\"\"]"
+        ],
+        "$CONFIG: `history.retention` must be a duration like '45s', '12h' or '30d' (got [1])": [
+          "[1]"
+        ],
+        "$CONFIG: `history.retention` must be a duration like '45s', '12h' or '30d' (got [3000])": [
+          "[3000]"
+        ],
+        "$CONFIG: `history.retention` must be a duration like '45s', '12h' or '30d' (got [\"/x\"])": [
+          "[\"/x\"]"
+        ],
+        "$CONFIG: `history.retention` must be a duration like '45s', '12h' or '30d' (got [\"!/x\"])": [
+          "[\"!/x\"]"
+        ],
+        "$CONFIG: `history.retention` must be a duration like '45s', '12h' or '30d' (got [\"../x\"])": [
+          "[\"../x\"]"
+        ],
+        "$CONFIG: `history.retention` must be a duration like '45s', '12h' or '30d' (got [\"!x\"])": [
+          "[\"!x\"]"
+        ],
+        "$CONFIG: `history.retention` must be a duration like '45s', '12h' or '30d' (got [\"!!x\",\"y\"])": [
+          "[\"!!x\",\"y\"]"
+        ],
+        "$CONFIG: `history.retention` must be a duration like '45s', '12h' or '30d' (got [\".\"])": [
+          "[\".\"]"
+        ],
+        "$CONFIG: `history.retention` must be a duration like '45s', '12h' or '30d' (got [\"**\"])": [
+          "[\"**\"]"
+        ],
+        "$CONFIG: `history.retention` must be a duration like '45s', '12h' or '30d' (got [\"A=B\"])": [
+          "[\"A=B\"]"
+        ],
+        "$CONFIG: `history.retention` must be a duration like '45s', '12h' or '30d' (got [\"A*\"])": [
+          "[\"A*\"]"
+        ],
+        "$CONFIG: `history.retention` must be a duration like '45s', '12h' or '30d' (got {})": [
+          "{}"
+        ],
+        "$CONFIG: `history.retention` must be a duration like '45s', '12h' or '30d' (got {\"x\":\"y\"})": [
+          "{\"x\":\"y\"}"
+        ]
       },
       "plugins": {
         "ok": ["<absent>", "[]"],

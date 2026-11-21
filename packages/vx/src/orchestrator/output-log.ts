@@ -5,7 +5,7 @@
 // a literal RS doubled. Output that never touched stderr is its own text.
 
 import { type BoundedCapture, type CapturedChunk, isDroppedOutputChunk } from '../exec/index.js'
-import { maskStreams, type SecretMask } from '../util/index.js'
+import { limitSetting, maskStreams, type SecretMask } from '../util/index.js'
 
 const RS = '\x1e'
 
@@ -74,8 +74,14 @@ export function decodeOutputLog(log: string): CapturedChunk[] {
 
 // What a failed task reports of its output (`vx last`, an agent): the
 // error is usually at the end, and a run's history keeps one per failure.
-export const FAILED_OUTPUT_HEAD_CHARS = 8 * 1024
-export const FAILED_OUTPUT_TAIL_CHARS = 56 * 1024
+const FAILED_OUTPUT_HEAD_CHARS = 8 * 1024
+const FAILED_OUTPUT_TAIL_CHARS = 56 * 1024
+
+/** `run.logs.failedHead` / `failedTail`: a failed attempt's kept head and tail, as set. */
+export const failedOutputHead = (): number =>
+  limitSetting('VX_RUN_LOGS_FAILED_HEAD', FAILED_OUTPUT_HEAD_CHARS)
+export const failedOutputTail = (): number =>
+  limitSetting('VX_RUN_LOGS_FAILED_TAIL', FAILED_OUTPUT_TAIL_CHARS)
 
 /** A failed attempt's capture, re-bounded to the failure's limits when it is the entry's. */
 export function failedOutputLog(
@@ -86,8 +92,6 @@ export function failedOutputLog(
   if (!entrySized) return encodeOutputLog(capture.chunks(), mask)
   // Masked before the re-bound: its cut must not split a value first.
   return encodeOutputLog(
-    capture
-      .rebound(FAILED_OUTPUT_HEAD_CHARS, FAILED_OUTPUT_TAIL_CHARS, (c) => maskStreams(c, mask))
-      .chunks(),
+    capture.rebound(failedOutputHead(), failedOutputTail(), (c) => maskStreams(c, mask)).chunks(),
   )
 }

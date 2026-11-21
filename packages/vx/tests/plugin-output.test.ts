@@ -183,7 +183,7 @@ describe('the output stage', () => {
     const root = await fixture([
       pluginSource('org/hang', `{ output() { return new Promise(() => {}) } }`),
     ])
-    const r = vxWith({ VX_TEST_TEARDOWN_TIMEOUT: '200ms' }, root)
+    const r = vxWith({ VX_RUN_PLUGIN_TIMEOUT: '200ms' }, root)
     expect(r.stderr).not.toContain('the run stopped before it finished')
     expect(r.code).toBe(0)
     expect(r.stderr).toContain(
@@ -197,8 +197,8 @@ describe('claimOutput, called directly', () => {
   it('an output hook that never settles is passed over within the bound, with a word', async () => {
     // Unbounded, it held the run before its first task for good, as the
     // telemetry hook did until item 921.
-    const prev = process.env['VX_TEST_TEARDOWN_TIMEOUT']
-    process.env['VX_TEST_TEARDOWN_TIMEOUT'] = '50ms'
+    const prev = process.env['VX_RUN_PLUGIN_TIMEOUT']
+    process.env['VX_RUN_PLUGIN_TIMEOUT'] = '50ms'
     try {
       const said: string[] = []
       const claimed = await claimOutput(
@@ -210,8 +210,8 @@ describe('claimOutput, called directly', () => {
         said: ["[vx] plugin 'org/hung' output: did not answer within 50 ms; vx renders the run"],
       })
     } finally {
-      if (prev === undefined) delete process.env['VX_TEST_TEARDOWN_TIMEOUT']
-      else process.env['VX_TEST_TEARDOWN_TIMEOUT'] = prev
+      if (prev === undefined) delete process.env['VX_RUN_PLUGIN_TIMEOUT']
+      else process.env['VX_RUN_PLUGIN_TIMEOUT'] = prev
     }
   })
 })

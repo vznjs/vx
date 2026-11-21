@@ -11,7 +11,7 @@ import { run } from './helpers/orchestrator.js'
 import { unneededServers } from '../src/orchestrator/persistent.js'
 import type { TaskNode } from '../src/graph/index.js'
 
-process.env['VX_TEST_KILL_GRACE'] = '200ms'
+process.env['VX_RUN_KILL_GRACE'] = '200ms'
 
 let root: string
 beforeEach(async () => {
