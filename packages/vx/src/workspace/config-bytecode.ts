@@ -173,10 +173,11 @@ let builds = 0
  * awaited here, the build was ~30 ms of `workspace config` on the run after a
  * cold one, which had no `.vx/cache` yet and so built nothing (solid's restore
  * 100 ms after a cold run against 67 after a restore). It starts now when
- * `.vx/cache` is there, overlapping the run, and otherwise once the verb has
- * answered, if the run made it. Either way the process waits for it before
- * exiting (`beforeExit`). A speed-up only: every failure leaves the next run
- * loading the source.
+ * `.vx/cache` is there, overlapping the run, and otherwise once a run that
+ * made it is under way (`startDeferredBuilds`), or the verb has answered:
+ * after the answer, a cold run's exit waited ~33 ms for it (8,002 tasks).
+ * Either way the process waits for it before exiting (`beforeExit`). A
+ * speed-up only: every failure leaves the next run loading the source.
  */
 export function buildCompiled(
   root: string,
@@ -197,16 +198,28 @@ export function buildCompiled(
     beforeExit(() => started)
     return
   }
-  beforeExit(async () => {
-    // A reading verb makes no `.vx/cache`, so it still writes nothing.
-    if (!existsSync(cacheDir)) return
-    try {
-      refuseForeignCacheDir(cacheDir, root)
-    } catch {
-      return
-    }
-    await build(root, configPath, bytes, loaded)
-  })
+  let started: Promise<void> | undefined
+  const start = (): Promise<void> =>
+    (started ??= (async () => {
+      // A reading verb makes no `.vx/cache`, so it still writes nothing.
+      if (!existsSync(cacheDir)) return
+      try {
+        refuseForeignCacheDir(cacheDir, root)
+      } catch {
+        return
+      }
+      await build(root, configPath, bytes, loaded)
+    })())
+  deferred.push(start)
+  beforeExit(start)
+}
+
+/** The builds `buildCompiled` left for a `.vx/cache` the run makes. */
+const deferred: (() => Promise<void>)[] = []
+
+/** Start each build left for `.vx/cache`: a run calls it once it made the cache and its tasks run. */
+export function startDeferredBuilds(): void {
+  for (const start of deferred.splice(0)) void start()
 }
 
 async function build(

@@ -11,6 +11,7 @@ import {
   lockEntryBroken,
   lockKey,
   readLockfile,
+  startDeferredBuilds,
 } from '../workspace/index.js'
 import { realpathSync } from 'node:fs'
 import path from 'node:path'
@@ -1433,6 +1434,9 @@ async function runOnBus(
     // it has had the stages since.
     await prepared.localCache.memo.warmSettled()
     mark('schedule')
+    // The config's bundle for the next run, built while the tasks run, not
+    // after the run answered.
+    startDeferredBuilds()
     // Judged as each task finishes, against history before this run's rows
     // land, so the row carries the verdict and nothing prints below the footer.
     // A hit or skip asks nothing; a green miss is one probe of the failed-row

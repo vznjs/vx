@@ -611,7 +611,15 @@ Every workspace load asks for it, so a repeat load in one process (the
 run after the CLI's selection pass) gets the same required module and
 plugin instances. The build is off the run's path (`beforeExit`,
 util-before-exit.md): it starts beside the run when `.vx/cache` exists,
-and otherwise once the verb has answered, if the run made `.vx/cache`.
+and otherwise once a run that made `.vx/cache` has scheduled its tasks
+(`startDeferredBuilds`), or the verb has answered: after the answer, a
+cold 8,002-task run's exit waited ~33 ms for it (2026-11-21).
+
+```ts
+/** Start the bundle builds left for a `.vx/cache` the run made: a run calls it as its tasks start. */
+export function startDeferredBuilds(): void
+```
+
 Awaited inside the load, it was ~30 ms of `workspace config` on the run
 after a cold one, which had no `.vx/cache` while it loaded and built
 nothing (solid, 2026-11-11). It is built only once `.vx/cache` exists,
