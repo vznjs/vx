@@ -116,7 +116,8 @@ function explicitEnv(
   const runs = (p: string): string[] => p.split(/(?<!\\)\*/).map((r) => r.replaceAll('\\*', '*'))
   const regex = (parts: readonly string[]): RegExp =>
     new RegExp(`^${parts.map(RegExp.escape).join('.*')}$`)
-  for (const e of entries) {
+  // A name listed twice (assistant-ui's "ASSISTANT_*") is one entry, so one todo.
+  for (const e of new Set(entries)) {
     if (e.startsWith('!') && e.length > 1) {
       excluded.push(regex(runs(e.slice(1))))
       continue
