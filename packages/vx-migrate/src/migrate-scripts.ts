@@ -44,7 +44,13 @@ import {
   readsLifecycleEvent,
   runsScriptHooks,
 } from './script-command.js'
-import { onceReader, RUNS_SCRIPT, tscBuildInfo, undeclaredTscTodo } from './tsc-buildinfo.js'
+import {
+  onceReader,
+  RUNS_SCRIPT,
+  tscBuildInfo,
+  tscOutDirs,
+  undeclaredTscTodo,
+} from './tsc-buildinfo.js'
 
 /**
  * Task names that conventionally never exit. Every mapper guesses the same
@@ -123,9 +129,11 @@ interface BuildInfo {
   files: readonly string[]
   /** Workspace-root-relative: a project's `files` never reach another project's. */
   workspaceFiles: readonly string[]
+  /** The package-relative dirs its `tsc` emits into (`tscOutDirs`). */
+  outDirs: readonly string[]
 }
 
-const NO_BUILD_INFO: BuildInfo = { files: [], workspaceFiles: [] }
+const NO_BUILD_INFO: BuildInfo = { files: [], workspaceFiles: [], outDirs: [] }
 
 /**
  * `rels` (relative to `dir`) split by owner: nestjs/nest's root `tsc -b
@@ -137,6 +145,7 @@ function placeBuildInfo(
   dir: string,
   members: readonly string[],
   workspaceRoot: string,
+  outDirs: readonly string[],
 ): BuildInfo {
   const files: string[] = []
   const workspaceFiles: string[] = []
@@ -148,7 +157,16 @@ function placeBuildInfo(
     if (inOther) workspaceFiles.push(path.relative(workspaceRoot, abs).split(path.sep).join('/'))
     else files.push(rel)
   }
-  return { files, workspaceFiles }
+  // An outDir in another member (nest's root `tsc -b packages`) is that
+  // member's; a project's outputs never reach it.
+  const own = outDirs.filter((rel) => {
+    const abs = path.join(dir, rel)
+    return !members.some(
+      (m) =>
+        m !== dir && m.startsWith(dir + path.sep) && (abs === m || abs.startsWith(m + path.sep)),
+    )
+  })
+  return { files, workspaceFiles, outDirs: own }
 }
 
 /**
@@ -163,7 +181,11 @@ export function cacheTodo(command: string, buildInfo: BuildInfo = NO_BUILD_INFO)
   // Padded, separators as spaces: `next build && …` and `(next build)` match.
   const words = ` ${command.replace(/[;&|()]/g, ' ')} `
   const hit = BUILD_OUTPUTS.find(([re]) => re.test(words))
-  const dirs = hit?.[1] ?? namedOutputs(command) ?? ['dist/**']
+  // `dist/**` is a guess; the outDir tsc emits into is not.
+  const dirs =
+    hit?.[1] ??
+    namedOutputs(command) ??
+    (buildInfo.outDirs.length > 0 ? buildInfo.outDirs.map((d) => `${d}/**`) : ['dist/**'])
   const outside = buildInfo.files.filter(
     (rel) => !dirs.some((d) => d.endsWith('/**') && rel.startsWith(d.slice(0, -2))),
   )
@@ -884,6 +906,7 @@ export function migrateScripts(
         meta.dir,
         metas.map((m) => m.dir),
         root?.dir ?? outsideDir ?? meta.dir,
+        tscOutDirs(tsc.read, meta.dir, command),
       )
     const runnable = Object.keys(scripts).filter(
       (n) => typeof scripts[n] === 'string' && scripts[n] !== '',

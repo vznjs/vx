@@ -19,6 +19,7 @@ interface Options {
   outDir?: unknown
   rootDir?: unknown
   outFile?: unknown
+  noEmit?: unknown
 }
 
 interface TsConfig {
@@ -72,7 +73,7 @@ function projectOf(
   read: ReadText,
   file: string,
   build: boolean,
-): { info: string; outDir: string | undefined } | null {
+): { info: string; outDir: string | undefined; noEmit: boolean } | null {
   const configDir = path.dirname(file)
   const opts: { [K in keyof Options]?: string | boolean } = {}
   const seen = new Set<string>()
@@ -83,7 +84,7 @@ function projectOf(
     const cfg = parse(read, at)
     if (cfg === null) return
     const o = cfg.compilerOptions ?? {}
-    for (const k of ['composite', 'incremental'] as const)
+    for (const k of ['composite', 'incremental', 'noEmit'] as const)
       if (opts[k] === undefined && typeof o[k] === 'boolean') opts[k] = o[k]
     for (const k of ['tsBuildInfoFile', 'outDir', 'rootDir', 'outFile'] as const) {
       const v = o[k]
@@ -106,9 +107,12 @@ function projectOf(
   // tsc 5.6+ writes a buildinfo for every project `-b` builds.
   if (!build && opts.incremental !== true && opts.composite !== true) return null
   const outDir = opts.outDir as string | undefined
-  if (typeof opts.tsBuildInfoFile === 'string') return { info: opts.tsBuildInfoFile, outDir }
+  const noEmit = opts.noEmit === true
+  if (typeof opts.tsBuildInfoFile === 'string')
+    return { info: opts.tsBuildInfoFile, outDir, noEmit }
   const bare = (p: string) => p.slice(0, p.length - path.extname(p).length)
-  if (typeof opts.outFile === 'string') return { info: `${bare(opts.outFile)}.tsbuildinfo`, outDir }
+  if (typeof opts.outFile === 'string')
+    return { info: `${bare(opts.outFile)}.tsbuildinfo`, outDir, noEmit }
   const config = bare(file)
   const rootDir = opts.rootDir as string | undefined
   const at =
@@ -117,7 +121,7 @@ function projectOf(
       : rootDir === undefined
         ? path.join(outDir, path.basename(config))
         : path.resolve(outDir, path.relative(rootDir, config))
-  return { info: `${at}.tsbuildinfo`, outDir }
+  return { info: `${at}.tsbuildinfo`, outDir, noEmit }
 }
 
 /** A project argument's tsconfig: a directory names its `tsconfig.json`. */
@@ -168,8 +172,8 @@ function tscProjects(
   read: ReadText,
   dir: string,
   command: string,
-): { file: string; build: boolean }[] {
-  const seen: { file: string; build: boolean }[] = []
+): { file: string; build: boolean; noEmit: boolean }[] {
+  const seen: { file: string; build: boolean; noEmit: boolean }[] = []
   for (const segment of withScripts(read, dir, command).split(/&&|\|\||[;|&()\n]/)) {
     const words = segment.trim().split(/\s+/)
     const at = words.findIndex((w) => TSC.test(w))
@@ -177,6 +181,7 @@ function tscProjects(
     const args = words.slice(at + 1)
     if (args.some((a) => /^(?:-w|--watch|--clean)$/.test(a))) continue
     const build = args[0] === '-b' || args[0] === '--build'
+    const noEmit = args.includes('--noEmit')
     const files: string[] = []
     if (build) {
       const named = args.slice(1).filter((a) => !a.startsWith('-'))
@@ -191,7 +196,7 @@ function tscProjects(
       const file = queue.shift()!
       if (visited.has(file)) continue
       visited.add(file)
-      seen.push({ file, build })
+      seen.push({ file, build, noEmit })
       if (!build) continue
       const refs = parse(read, file)?.references
       if (!Array.isArray(refs)) continue
@@ -215,6 +220,23 @@ export function tscBuildInfo(read: ReadText, dir: string, command: string): stri
     if (info === null) continue
     const rel = path.relative(dir, info).split(path.sep).join('/')
     if (!rel.startsWith('../') && !path.isAbsolute(rel)) out.add(rel)
+  }
+  return [...out]
+}
+
+/**
+ * The outDirs `command`'s `tsc` runs emit into, relative to the package
+ * `dir` (POSIX), each inside it: docusaurus's `tsc` emits into `lib/`
+ * (tsconfig.base.json's `${configDir}/lib`), not the `dist/` guessed for it.
+ */
+export function tscOutDirs(read: ReadText, dir: string, command: string): string[] {
+  const out = new Set<string>()
+  for (const { file, build, noEmit } of tscProjects(read, dir, command)) {
+    const p = noEmit ? null : projectOf(read, file, build)
+    const outDir = p?.noEmit === true ? undefined : p?.outDir
+    if (outDir === undefined) continue
+    const rel = path.relative(dir, outDir).split(path.sep).join('/')
+    if (rel !== '' && !rel.startsWith('../') && !path.isAbsolute(rel)) out.add(rel)
   }
   return [...out]
 }
