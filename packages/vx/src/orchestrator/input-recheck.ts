@@ -6,7 +6,7 @@ import { existsSync, lstatSync } from 'node:fs'
 import path from 'node:path'
 import { ABSENT_INPUT, type CacheLayer, declaresInput } from '../cache/index.js'
 import {
-  fsClockNow,
+  LINK_MODE,
   type OutputFileRow,
   racyWindowMs,
   stampGrainMs,
@@ -310,22 +310,16 @@ async function onlyCtimeMoved(fact: InputFact, from: number, cache: CacheLayer):
 }
 
 /**
- * By run, when each dependency's outputs were last found as its task left
- * them, on the file system's clock: a dependant whose command ended before
- * then needs them stat'd again for nothing.
- */
-const outputsHeldAt = new WeakMap<object, Map<string, number>>()
-
-/**
  * Did each dependency's outputs stay as its task left them while this one
  * ran? The key folds a dependency's input key, never its bytes: a checkout
  * or stash that put a dependency's committed output back mid-run, or a
  * sibling task or another process that rewrote an ignored one, let this
  * task build from bytes no key names, and the save filed them under one
  * that does, so every later hit replayed them under a green run. Held to
- * the rows the dependency's own save or restore stamped; one with none
- * stamped here (it ran elsewhere) is not checked. A stat per output per
- * save, skipped for a dependency found held after this command ended.
+ * the stamps the dependency's own save or restore left; one with none
+ * stamped here (it ran elsewhere) is not checked. On every miss's save, so
+ * kept to an lstat per stamped file: rows stamped in this process come from
+ * memory, and no directory, link or span is asked.
  */
 export function upstreamOutputsHeld(m: MissRun): boolean {
   const { args } = m
@@ -337,53 +331,25 @@ export function upstreamOutputsHeld(m: MissRun): boolean {
       deps.push(o)
   }
   args.upstream.forEach(add)
-  let at = outputsHeldAt.get(args.run)
-  if (at === undefined) outputsHeldAt.set(args.run, (at = new Map()))
-  const ended = m.endedAt
-  const exposed = ended === undefined ? deps : deps.filter((d) => (at.get(d.hash!) ?? -1) < ended)
-  if (exposed.length === 0) return true
+  if (deps.length === 0) return true
   const { memo } = args.run.cache
-  const endCheck = span('miss: recheck upstream outputs')
-  // Taken before the stats: a write after it is one they may have missed.
-  const now = fsClockNow(args.run.cacheDir ?? path.join(args.run.workspaceRoot, '.vx'))
-  // Rows a save or restore stamped here come from memory, not the index.
-  const rows = new Map<string, readonly OutputFileRow[]>()
-  const unread: string[] = []
-  for (const d of exposed) {
-    const own = memo.stampedRowsOf?.(d.hash!)
-    if (own === undefined) unread.push(d.hash!)
-    else rows.set(d.hash!, own)
-  }
-  if (unread.length > 0) for (const [h, r] of memo.loadOutputFilesBatch(unread)) rows.set(h, r)
-  // A file this task declares as its own output is its own to rewrite (an
-  // emitter over its build's `dist`): it is saved with this entry.
   const { node } = args
-  const claims = claimsOf(node, args.run.workspaceRoot)
-  const partly = new Set<string>()
-  const moved = exposed.find((d) => {
-    const all = rows.get(d.hash!)
-    if (all === undefined || all.length === 0) return false
-    let proj = all.filter((r) => !r.path.startsWith(WORKSPACE_OUTPUT_PREFIX))
-    let ws = all
-      .filter((r) => r.path.startsWith(WORKSPACE_OUTPUT_PREFIX))
-      .map((r) => ({ ...r, path: r.path.slice(WORKSPACE_OUTPUT_PREFIX.length) }))
-    if (claims !== undefined) {
-      const before = proj.length + ws.length
-      const inside = atOrUnder(d.node.projectDir, node.projectDir)
-      if (inside) proj = proj.filter((r) => !claims(path.join(d.node.projectDir, r.path)))
-      if (ws.length > 0) ws = ws.filter((r) => !claims(path.join(args.run.workspaceRoot, r.path)))
-      if (proj.length + ws.length < before) partly.add(d.hash!)
+  const root = args.run.workspaceRoot
+  let unread: TaskOutcome[] | undefined
+  let moved: TaskOutcome | undefined
+  for (const d of deps) {
+    const rows = memo.stampedRowsOf?.(d.hash!)
+    if (rows === undefined) (unread ??= []).push(d)
+    else if (outputMoved(rows, d.node.projectDir, root, node)) {
+      moved = d
+      break
     }
-    return !(
-      memo.isOutputsCurrent(d.node.projectDir, proj) &&
-      memo.isOutputsCurrent(args.run.workspaceRoot, ws)
-    )
-  })
-  endCheck()
-  if (moved === undefined) {
-    for (const d of exposed) if (!partly.has(d.hash!)) at.set(d.hash!, now)
-    return true
   }
+  if (moved === undefined && unread !== undefined) {
+    const read = memo.loadOutputFilesBatch(unread.map((d) => d.hash!))
+    moved = unread.find((d) => outputMoved(read.get(d.hash!) ?? [], d.node.projectDir, root, node))
+  }
+  if (moved === undefined) return true
   warnOf(args.log)(
     `[vx] ${args.node.id}: an output of ${moved.node.id} changed while it ran (a checkout, a stash, another process) — ` +
       'the result stands, but is not saved under a key that names the bytes it was built from',
@@ -391,6 +357,44 @@ export function upstreamOutputsHeld(m: MissRun): boolean {
   forgetUndeclaredWrites(args.node, args.run.gitFilesCache, 'workspace')
   return false
 }
+
+/**
+ * Whether a file of `rows` (a dependency's, under `projectDir`) is not the
+ * one its stamp names: another size, mtime, inode or ctime, gone, or never
+ * stamped. A file `node` declares as its own output is its own to rewrite
+ * (an emitter over its build's `dist`), saved with its entry.
+ */
+function outputMoved(
+  rows: readonly OutputFileRow[],
+  projectDir: string,
+  root: string,
+  node: TaskNode,
+): boolean {
+  if (rows.length === 0) return false
+  const claims = claimsOf(node, root)
+  const near = claims !== undefined && atOrUnder(projectDir, node.projectDir)
+  const base = projectDir.endsWith('/') ? projectDir : `${projectDir}/`
+  for (const r of rows as readonly StampedOutputRow[]) {
+    if (r.path.endsWith('/') || r.mode === LINK_MODE) continue
+    const ws = r.path.startsWith(WORKSPACE_OUTPUT_PREFIX)
+    const abs = ws ? path.join(root, r.path.slice(WORKSPACE_OUTPUT_PREFIX.length)) : base + r.path
+    if ((near || ws) && claims?.(abs) === true) continue
+    const s = lstatSync(abs, { throwIfNoEntry: false })
+    if (
+      s === undefined ||
+      r.ino === undefined ||
+      s.ino !== r.ino ||
+      Math.floor(s.ctimeMs) !== r.ctimeMs ||
+      s.size !== r.size ||
+      Math.abs(s.mtimeMs - (r.stampMtimeMs ?? r.mtimeMs)) >= 1
+    )
+      return true
+  }
+  return false
+}
+
+/** A row as `recordOutputStamps` leaves it: the mtime it stamped, beside the entry's. */
+type StampedOutputRow = OutputFileRow & { stampMtimeMs?: number }
 
 const claimsByNode = new WeakMap<TaskNode, ((abs: string) => boolean) | undefined>()
 
