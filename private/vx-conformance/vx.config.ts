@@ -17,16 +17,19 @@ export default defineProject({
     },
 
     // Every case against every tool: rewrites the site's conformance data.
-    // On demand, not in `ci`: run it after a case or a pin changes, and
-    // commit the data. No sandbox: the harness runs each tool in a
-    // bubblewrap sandbox of its own, which vx's sandbox cannot nest.
+    // Not in `ci`: weekly on its own runner (conformance.yml), and after a
+    // case changes. The rivals install at npm's latest inside the run
+    // (src/tools.ts), which no key sees. No sandbox: the harness runs each
+    // tool in a bubblewrap sandbox of its own, which vx's sandbox cannot
+    // nest, and the install needs the registry.
     conformance: {
       description:
         'bun src/cli.ts: every case against vx, Turborepo, Nx, Vite Task, Nix and moon → vx-docs/src/data/conformance.json',
       dependsOn: ['install'],
       exec: {
         command: 'bun src/cli.ts',
-        timeout: '30m',
+        // ~30 min on a 4-core runner (2026-11-21): room to grow.
+        timeout: '60m',
         env: { define: NO_TRANSPILER_CACHE },
       },
       inputs: { files: SUITE },

@@ -49,29 +49,38 @@ interface Artifact {
   workflow_run?: { id: number; head_branch: string }
 }
 
-/** The newest unexpired `bench-data` a run on main uploaded, and the run that did. */
-export async function newestBench(env: LiveEnv): Promise<{ run: number; json: string }> {
+/** `file` of the newest unexpired artifact `name` a run on main uploaded, and the run that did; none found is undefined. */
+export async function newestArtifact(
+  env: LiveEnv,
+  name: string,
+  file: string,
+): Promise<{ run: number; json: string } | undefined> {
   const api = env.GITHUB_API_URL ?? 'https://api.github.com'
   const headers = {
     authorization: `Bearer ${env.GITHUB_TOKEN}`,
     accept: 'application/vnd.github+json',
   }
   const res = await fetch(
-    `${api}/repos/${env.GITHUB_REPOSITORY}/actions/artifacts?name=bench-data&per_page=30`,
+    `${api}/repos/${env.GITHUB_REPOSITORY}/actions/artifacts?name=${name}&per_page=30`,
     { headers },
   )
   if (!res.ok) throw new Error(`live-bench: list artifacts: ${res.status} ${await res.text()}`)
   // The API lists the newest first.
   const { artifacts } = (await res.json()) as { artifacts: Artifact[] }
   const found = artifacts.find((a) => a.workflow_run?.head_branch === 'main' && !a.expired)
-  if (!found) throw new Error('live-bench: no bench-data artifact from main')
+  if (!found) return undefined
   const zip = await fetch(found.archive_download_url, { headers })
   if (!zip.ok) throw new Error(`live-bench: download: ${zip.status} ${await zip.text()}`)
-  const json = new TextDecoder().decode(
-    unzipOne(new Uint8Array(await zip.arrayBuffer()), 'bench.json'),
-  )
+  const json = new TextDecoder().decode(unzipOne(new Uint8Array(await zip.arrayBuffer()), file))
   JSON.parse(json)
   return { run: found.workflow_run!.id, json }
+}
+
+/** The newest numbers Bench measured on main: none fails, never the committed copy. */
+export async function newestBench(env: LiveEnv): Promise<{ run: number; json: string }> {
+  const found = await newestArtifact(env, 'bench-data', 'bench.json')
+  if (!found) throw new Error('live-bench: no bench-data artifact from main')
+  return found
 }
 
 if (import.meta.main) {

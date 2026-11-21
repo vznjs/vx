@@ -5,6 +5,7 @@ import { createHash } from 'node:crypto'
 import path from 'node:path'
 import type { Adapter } from './adapter.ts'
 import type { Outcome } from './harness.ts'
+import { pkgDir } from './tools.ts'
 import { INVENTORY, VERDICTS, type Verdict } from './inventory.ts'
 import type { Case, Category, Kind } from './spec.ts'
 
@@ -67,11 +68,9 @@ export function ref(id: string): string {
   return n.toString(36).padStart(6, '0')
 }
 
-const MODULES = path.join(import.meta.dir, '..', 'node_modules')
-
 export async function toolVersion(a: Adapter): Promise<string> {
   if (a.pkg === undefined) return a.version!()
-  const pkg = await Bun.file(path.join(MODULES, a.pkg, 'package.json')).json()
+  const pkg = await Bun.file(path.join(pkgDir(a.pkg), 'package.json')).json()
   // The workspace's own packages are this checkout.
   return pkg.version === '0.0.0' ? 'this commit' : String(pkg.version)
 }

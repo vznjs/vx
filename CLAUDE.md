@@ -109,7 +109,7 @@ packages/vx-dte-server  the reference relay of `@vzn/vx-dte` (PROTOCOL.md): pass
                         OIDC tokens; imports only @vzn/vx-devtools, not even core
 private/vx-bench        synthetic workspace generator + runners (vx / turbo / nx)
 private/vx-conformance  one neutral suite of task-runner outcomes (cases/), run sandboxed against vx, Turbo, Nx,
-                        Vite Task and Nix through thin adapters; `conformance` (on demand, not in `ci`) writes the results the
+                        Vite Task and Nix through thin adapters; `conformance` (weekly on the rivals' latest, conformance.yml; not in `ci`) writes the results the
                         site's conformance page renders. src/inventory.ts sorts every test file by whether a case can carry it
 private/vx-servers      compose.yaml: the dte, cache and history servers' images in one file
 skills/vx/SKILL.md      the agent skill, where `npx skills add vznjs/vx` finds it (.claude/skills are

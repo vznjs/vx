@@ -18,7 +18,7 @@
       ],
       "exec": {
         "command": "bun src/cli.ts",
-        "timeout": "30m",
+        "timeout": "60m",
         "env": {
           "define": {
             "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0"

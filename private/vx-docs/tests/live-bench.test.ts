@@ -143,7 +143,9 @@ it('renders the deploy from an empty content store of its own', () => {
     "cacheDir: process.env.VX_DOCS_BENCH ? './.astro/live' : './.astro/cache'",
   )
   const tasks = readFileSync(path.join(dir, 'vx.config.ts'), 'utf8')
-  expect(tasks).toContain('bun scripts/live-bench.ts && rm -rf .astro/live && ${ASTRO_BUILD}')
+  expect(tasks).toContain(
+    'bun scripts/live-bench.ts && bun scripts/live-conformance.ts && rm -rf .astro/live && ${ASTRO_BUILD}',
+  )
 })
 
 // The build's store too: a page whose figures come from data (the real
