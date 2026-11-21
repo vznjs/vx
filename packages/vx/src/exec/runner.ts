@@ -688,13 +688,22 @@ export interface StreamTally {
 const PACED_DRAIN_CHARS = 8 * 1024 * 1024
 
 /**
+ * How long after an exit blocked bounds keep re-arming: a leftover that
+ * prints forever on a machine too loaded to fire a timer on time still
+ * ends.
+ */
+const BLOCKED_DRAIN_MS = 30_000
+
+/**
  * After the child exits, wait for the readers' EOF, bounded: an orphaned
  * grandchild holding the pipe would hang the run. On expiry abort the readers
  * (returning what they captured) and resolve true, so the caller adds
  * `POST_EXIT_CUT_LINE`. A bound the scheduler spent blocked (its timer fired
- * 1.5x late) gave the readers no turn and starts another, five at most: a
- * cold run's saves held the scheduler past the bound while a heavy task's
- * last chunks waited, and it was cut as a leftover and went unsaved. Text
+ * 1.5x late) gave the readers no turn and starts another, for
+ * `BLOCKED_DRAIN_MS` after the exit at most: a cold run's saves held the
+ * scheduler past the bound while a heavy task's last chunks waited, and it
+ * was cut as a leftover and went unsaved. A count of five re-arms ran out
+ * under load (timers seconds late), and 1 run in 10 cut a task. Text
  * still coming is no reason to wait: a leftover that logs every 50 ms
  * kept the run forever. A bound that ends with vx's own stdout still
  * draining (out-pace.ts holds the readers) is not judged either, until the
@@ -712,15 +721,16 @@ export async function drainOrAbort(
 ): Promise<boolean> {
   const bound = testTimerMs('POST_EXIT_DRAIN', POST_EXIT_DRAIN_MS)
   const atExit = taken.chars
+  const exitAt = performance.now()
   const deadline = new Promise<'timeout'>((resolve) => {
     let armedAt = 0
-    let stalls = 0
     const arm = (): void => {
       armedAt = performance.now()
       setTimeout(due, bound).unref?.()
     }
     const due = (): void => {
-      if (performance.now() - armedAt > bound * 1.5 && stalls++ < 5) return arm()
+      const now = performance.now()
+      if (now - armedAt > bound * 1.5 && now - exitAt < BLOCKED_DRAIN_MS) return arm()
       const held = outputPaced() !== undefined && stop?.aborted !== true
       if (held && taken.chars - atExit < PACED_DRAIN_CHARS) return arm()
       resolve('timeout')

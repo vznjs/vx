@@ -314,9 +314,10 @@ The promise from `runCommand` always resolves (never rejects) with a
 backgrounded holds the pipes open, and a reader that waited for EOF
 hung the run. `drainOrAbort` gives the readers `POST_EXIT_DRAIN_MS`
 (250 ms) to reach EOF, then aborts them and resolves true. A bound the
-scheduler spent blocked (its timer fired 1.5x late) starts another, five
-at most: a cold run's saves held it past the bound while a heavy task's
-last chunks waited, and the task went unsaved as a leftover. Text still
+scheduler spent blocked (its timer fired 1.5x late) starts another,
+for 30 s after the exit at most: a cold run's saves held it past the
+bound while a heavy task's last chunks waited, and the task went unsaved
+as a leftover (a cap of five re-arms ran out under load). Text still
 arriving extends nothing: a leftover logging every 50 ms would hold the
 run forever. A bound that ends with vx's own stdout still draining
 (`outputPaced()`) starts another too, until the readers took 8 MiB
