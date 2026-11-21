@@ -72,7 +72,7 @@ export async function saveVerdict(
     noStateWritten(m, stamp) &&
     (await keyStillTrue(m, ran.result, check)) &&
     upstreamOutputsHeld(m) &&
-    (await upstreamInputsHeld(m)) &&
+    (await upstreamInputsHeld(m, check)) &&
     (await args.run.serverDiedUnder?.(args.node)) !== true
   ) {
     const own = await m.guard.own()
