@@ -2762,7 +2762,10 @@ describe('vx init declares the lockfile plugin', () => {
         // Listed and installed: nothing to install.
         await writeFile(
           path.join(root, 'package.json'),
-          JSON.stringify({ name: 'fixture-root', devDependencies: { '@vzn/vx-lockfile': '*' } }),
+          JSON.stringify({
+            name: 'fixture-root',
+            devDependencies: { '@vzn/vx': '*', '@vzn/vx-lockfile': '*' },
+          }),
         )
         const r = await vx(root, ['init'])
         expect({ code: r.code, err: r.err }).toEqual({ code: 0, err: '' })
@@ -2804,9 +2807,9 @@ describe('vx init declares the lockfile plugin', () => {
         expect((await Bun.file(path.join(root, 'argv')).text()).trim()).toBe(
           // Then a plain install: pnpm's `add` can leave a peer set linked that
           // its new lockfile no longer names.
-          `add -D -w @vzn/vx-lockfile${VERSION === '0.0.0' ? '' : `@${VERSION}`}\ninstall`,
+          `add -D -w ${['@vzn/vx', '@vzn/vx-lockfile'].map((p) => (VERSION === '0.0.0' ? p : `${p}@${VERSION}`)).join(' ')}\ninstall`,
         )
-        expect(row(out, 'ran')[0]).toStartWith('pnpm add -D -w @vzn/vx-lockfile')
+        expect(row(out, 'ran')[0]).toStartWith('pnpm add -D -w @vzn/vx')
         expect(await Bun.file(path.join(root, '.vx/workspace.ts')).text()).toContain('pnpm()')
       } finally {
         await rm(root, { recursive: true, force: true })
@@ -2838,9 +2841,7 @@ describe('vx init declares the lockfile plugin', () => {
         ])
         expect(code).toBe(1)
         expect(err).toContain('registry-blocked')
-        expect(row(out, 'failed')[0]).toStartWith(
-          'installing vx failed (pnpm add -D -w @vzn/vx-lockfile',
-        )
+        expect(row(out, 'failed')[0]).toStartWith('installing vx failed (pnpm add -D -w @vzn/vx')
         expect(await Bun.file(path.join(root, '.vx/workspace.ts')).text()).toContain('pnpm()')
       } finally {
         await rm(root, { recursive: true, force: true })
@@ -2857,7 +2858,7 @@ describe('vx init declares the lockfile plugin', () => {
       try {
         const r = await vx(root, ['init', '--dry'])
         expect(r.code).toBe(0)
-        expect(row(r.out, 'install')).toEqual(['@vzn/vx-lockfile'])
+        expect(row(r.out, 'install')).toEqual(['@vzn/vx @vzn/vx-lockfile'])
         expect(existsSync(path.join(root, 'node_modules', '@vzn', 'vx-lockfile'))).toBe(false)
       } finally {
         await rm(root, { recursive: true, force: true })
