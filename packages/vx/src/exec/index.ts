@@ -56,6 +56,7 @@ export {
 export {
   armTimeout,
   drainOrAbort,
+  type DrainProgress,
   POST_EXIT_CUT_LINE,
   SANDBOXED_TASK,
   sandboxArgTooLongText,
