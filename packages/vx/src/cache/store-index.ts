@@ -302,7 +302,7 @@ export class StoreIndex {
     repoDir?: string,
     /**
      * The largest decoded artifact this cache saves, ingests or restores.
-     * Lowered only by tests (`RunOptions.artifactCeiling`).
+     * `cache.artifactCeiling`.
      */
     readonly artifactCeiling: number = MAX_DECOMPRESSED_ARTIFACT_BYTES,
     /**

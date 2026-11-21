@@ -2384,6 +2384,7 @@ default and where it came from.
 | `outputs.clean`                                | —                                | —                              | true or false                                                           | true                                                                          | Remove a task's declared outputs before it runs on a miss, for tasks without their own. A task's own `outputs.clean` beats it.                                                                   |
 | `cache.store.embeddings`                       | `VX_CACHE_STORE_EMBEDDINGS`      | —                              | false, or a size like '32KiB'                                           | '32KiB'                                                                       | Keep an entry up to this size inside the cache index, one zstd tar, rather than as files; `false` keeps none.                                                                                    |
 | `cache.store.decompress`                       | `VX_CACHE_STORE_DECOMPRESS`      | —                              | true or false                                                           | true                                                                          | Keep a larger entry as its plain files, which a hit copies or clones out; off, as one `.tar.zst`.                                                                                                |
+| `cache.artifactCeiling`                        | `VX_CACHE_ARTIFACT_CEILING`      | —                              | a size like '500MB' or '10GB'                                           | '1GiB'                                                                        | The largest entry, unpacked, a remote stores or a hit unpacks; a larger one stays on this machine. A remote hit past it is a miss, so every machine sharing a remote needs the same value.       |
 | `cache.upload.failures`                        | —                                | —                              | one of 'ci', 'local', 'always'                                          | ci                                                                            | Where a failed task's log and outputs are kept in the remote: CI runs, local runs, or both.                                                                                                      |
 | `lock.reviewFiles`                             | `VX_LOCK_REVIEW_FILES`           | —                              | true or false                                                           | true                                                                          | `vx lock` writes each project's resolved config, pretty, to `vx.lock.json` beside its `vx.config`, for review; vx never reads it.                                                                |
 | `watch.poll`                                   | `VX_WATCH_POLL`                  | `vx watch --poll`              | true or false                                                           | false                                                                         | Poll for changes from the start instead of the OS watcher.                                                                                                                                       |
@@ -2432,6 +2433,7 @@ interface CacheSettings {
   download?: 'all' | 'toplevel' | 'none'
   upload?: { failures?: 'ci' | 'local' | 'always' }
   store?: { embeddings?: false | string; decompress?: boolean }
+  artifactCeiling?: string
   concurrency?: { download?: number; upload?: number; restore?: number }
 }
 ```
@@ -2528,6 +2530,12 @@ interface CacheSettings {
   plain files under `<hash>.tree/`, which a hit copies (or clones) out with
   no decode; off, it is one `<hash>.tar.zst`. A remote always gets the
   tar.zst.
+- **`cache.artifactCeiling`** (default `'1GiB'`) — the largest entry,
+  unpacked, that a remote stores or a hit unpacks. A bigger entry stays
+  cached on this machine and is not uploaded; the run stays green and
+  says so once. A remote hit past it is a miss, so every machine sharing
+  a remote sets the same value. It bounds what a bad remote entry can
+  make a restore write.
 - **`cache.upload.failures`** — which runs keep a failed task's log and
   the files its outputs left in the remote: CI runs (`'ci'`, the
   default), runs off CI (`'local'`), or both (`'always'`). Only a run

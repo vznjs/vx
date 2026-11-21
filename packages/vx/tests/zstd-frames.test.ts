@@ -136,7 +136,7 @@ describe('one frame (control)', () => {
     await Bun.write(f, frame)
     try {
       await expect(decode(f, 1_000_000)).rejects.toThrow(
-        `declares ${noise.length} decompressed bytes (> 1000000 cap)`,
+        `declares ${noise.length} decompressed bytes, past cache.artifactCeiling (1000000)`,
       )
     } finally {
       await f.delete()

@@ -4,13 +4,12 @@
 import { CorruptArtifactError } from './layer.js'
 
 /**
- * A decompressed artifact above this is refused as a bomb: it bounds what a
- * hostile remote can make a hit allocate. A real build can pass it (a Next.js
- * standalone build, 2.1 GB), so the plain-file store keeps such an entry on
- * this machine and only its upload is refused. Lowered only by tests
- * (`artifactCeiling`).
+ * `cache.artifactCeiling`'s default: a decompressed artifact above the
+ * ceiling is refused as a bomb, bounding what a hostile remote can make a hit
+ * allocate. The plain-file store keeps a larger entry on this machine and
+ * only its upload is refused.
  */
-export const MAX_DECOMPRESSED_ARTIFACT_BYTES = 2 * 1024 * 1024 * 1024
+export const MAX_DECOMPRESSED_ARTIFACT_BYTES = 1024 * 1024 * 1024
 
 /**
  * A zstd frame's declared Frame_Content_Size (RFC 8878 §3.1.1), without
@@ -85,7 +84,10 @@ async function zstdDecompressBounded(
   // above, Bun refuses a body that disagrees with it, and only one whole frame
   // comes here. It fires only if a decoder stops validating the declaration.
   if (out.length > cap) {
-    throw new CorruptArtifactError(hash, `decompressed to ${out.length} bytes (> ${cap} cap)`)
+    throw new CorruptArtifactError(
+      hash,
+      `decompressed to ${out.length} bytes, past cache.artifactCeiling (${cap})`,
+    )
   }
   return out
 }
@@ -98,7 +100,10 @@ function assertDeclaredSize(
 ): bigint | null {
   const declared = zstdContentSize(compressed)
   if (declared !== null && declared > BigInt(cap)) {
-    throw new CorruptArtifactError(hash, `declares ${declared} decompressed bytes (> ${cap} cap)`)
+    throw new CorruptArtifactError(
+      hash,
+      `declares ${declared} decompressed bytes, past cache.artifactCeiling (${cap})`,
+    )
   }
   return declared
 }
@@ -156,7 +161,7 @@ export async function decodedTarBytes(
 /**
  * The decoded tar as a stream: one call for a small artifact that declares its
  * size, a streamed decode otherwise. Bytes in memory are only ever small (a
- * Blob would copy a large source). The 2 GiB ceiling applies either way.
+ * Blob would copy a large source). The ceiling applies either way.
  */
 export async function decodedTar(
   source: Uint8Array | Bun.BunFile,
@@ -206,7 +211,12 @@ function zstdDecodeStream(
         transform(chunk, controller) {
           total += chunk.byteLength
           if (total > cap) {
-            controller.error(new CorruptArtifactError(hash, `decompresses past ${cap} bytes (cap)`))
+            controller.error(
+              new CorruptArtifactError(
+                hash,
+                `decompresses past ${cap} bytes, cache.artifactCeiling`,
+              ),
+            )
             return
           }
           controller.enqueue(chunk)

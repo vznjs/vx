@@ -203,9 +203,9 @@ export class Cache implements CacheLayer {
   // In a named cache dir it also keys the output stamps and directory
   // snapshots this handle reads and writes: clones sharing one keep their own.
   // artifactCeiling: the largest artifact this cache decodes (an ingest, a
-  // `.tar.zst` save or restore) or uploads — 2 GiB; a plain-file entry of
-  // this machine's own is not bounded. Lowered only by a test, through
-  // `RunOptions.artifactCeiling` (tests/artifact-ceiling*.test.ts).
+  // `.tar.zst` save or restore) or uploads — `cache.artifactCeiling`, 1 GiB
+  // by default; a plain-file entry of this machine's own is not bounded
+  // (tests/artifact-ceiling*.test.ts).
   constructor(
     cacheDir: string,
     localPolicy?: { read: boolean; write: boolean },
@@ -654,7 +654,7 @@ Reads via `get()` are non-blocking thanks to WAL.
   3 s copied and 1.6 s into an empty tree. A file that already holds
   the entry's bytes stays, its mtime with it, as the extractor keeps one.
 - Artifacts above 4 MiB compressed are decoded as a stream; smaller
-  ones in one call. Same reader, same extractor, same 2 GiB ceiling —
+  ones in one call. Same reader, same extractor, same ceiling —
   the one a save refuses past before it packs, so vx never stores an
   artifact its own restore would refuse.
 - Throws `ArtifactVanishedError` when the artifact is gone (removed

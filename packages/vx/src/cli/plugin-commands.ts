@@ -170,7 +170,7 @@ async function verbCache(
     ws.cacheDir,
     { read: true, write: false },
     ws.workspaceRoot,
-    undefined,
+    resolveSetting('cache.artifactCeiling', ws.workspaceConfig).value as number | undefined,
     'open',
     await ws.storeRoot(),
   )
@@ -250,7 +250,7 @@ async function verbArtifacts(
     ws.cacheDir,
     { read: policy.localRead, write: policy.localWrite },
     ws.workspaceRoot,
-    undefined,
+    resolveSetting('cache.artifactCeiling', ws.workspaceConfig).value as number | undefined,
     'open',
     await ws.storeRoot(),
   )
