@@ -356,6 +356,8 @@ export function holdCacheDir(
 ): Promise<() => void>
 // The files a store keeps its history in; undefined when it keeps none on disk.
 export function historyFiles(cache: Cache): { index: string; store?: string } | undefined
+// The run's output-dir snapshots and key folds so far, written now (memos: a refused write drops them).
+export function flushMemos(cache: Cache): void
 // An entry_stdout row's log, its zstd frame decoded (v52); null reads as ''.
 // `vx last --log` reads the row itself.
 export function storedLog(blob: Uint8Array | null): string
