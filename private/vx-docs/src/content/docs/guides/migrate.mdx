@@ -59,9 +59,10 @@ what the workspace needs in `.vx/workspace.ts`: its lockfile plugin,
 ## Turborepo
 
 Beside `turbo.json` or `turbo.jsonc`, init writes one `vx.config.ts` per
-package. Each holds only what its tasks declare: turbo.json's global block
-(`globalDependencies`, `globalEnv`, `globalPassThroughEnv`) goes onto no
-task, and **every task that lost it gets a TODO**, so you list what it reads.
+package. Each holds only what its tasks declare.
+
+turbo.json's global block goes onto no task. **Each task that lost it gets
+a TODO**, so you list what it reads.
 
 ### Check the mapping first
 
