@@ -845,6 +845,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'vx-migrate/turbo-global-takeback',
     'vx-migrate/turbo-ignored-inputs',
     'vx-migrate/turbo-ignored-output-dir',
+    'vx-migrate/turbo-map-empty-output',
     'vx-migrate/turbo-map-shell-names',
     'vx-migrate/turbo-map-spliced-dedupe',
     'vx-migrate/turbo-map-sweep',
