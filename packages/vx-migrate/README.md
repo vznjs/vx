@@ -377,7 +377,9 @@ for Nuxt, `build/**` for Remix, React Router, Create React App and
 Docusaurus, `public/**` for Gatsby, `storybook-static/**` for Storybook;
 for any other command, the directory it names with `--outDir` / `--out-dir`
 / `-d`, else the ones it cleans first (`del-cli distribution`, `rimraf lib
-types`), unless it makes one again with `mkdir` (D-90).
+types`), unless it makes one again with `mkdir` (D-90), else the outDir its
+incremental `tsc` emits into, read from the tsconfig (docusaurus's `lib/`,
+where `dist/**` restored only the buildinfo).
 A package in a cycle of builds (nuxt's `@nuxt/nitro-server` devDepends
 on `nuxt`, which depends on it; pnpm sorts it away) gets, instead of
 `^build`, an edge to each build outside its cycle that `^build` would

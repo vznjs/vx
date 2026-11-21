@@ -694,6 +694,12 @@ describe('migrateScripts', () => {
     expect(outputsOf({ rootDir: 'src', outDir: 'dist' })).toBe("'dist/**', 'tsconfig.tsbuildinfo'")
     // CONTROL: a buildinfo under `dist/` is one of its outputs already.
     expect(outputsOf({ outDir: 'dist', tsBuildInfoFile: 'dist/.tsbuildinfo' })).toBe("'dist/**'")
+    // docusaurus: tsc emits into `lib/`; the TODO named `dist/**` and the
+    // buildinfo, so a hit restored the buildinfo and no `lib/`.
+    expect(outputsOf({ rootDir: 'src', outDir: 'lib', tsBuildInfoFile: 'lib/.tsbuildinfo' })).toBe(
+      "'lib/**'",
+    )
+    expect(outputsOf({ rootDir: 'src', outDir: 'lib' })).toBe("'lib/**', 'tsconfig.tsbuildinfo'")
   })
 
   // nestjs/nest: the root's `tsc -b packages` writes each member's buildinfo
