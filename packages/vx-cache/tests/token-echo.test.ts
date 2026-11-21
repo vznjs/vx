@@ -28,6 +28,7 @@ function layer(fetchImpl: typeof fetch, lent?: string) {
       url: 'https://cache.example',
       timeoutMs: 5_000,
       uploadTimeoutMs: 5_000,
+      retries: 2,
       headers: {},
       issuer: 'https://token.actions.githubusercontent.com',
       repository: 'acme/app',

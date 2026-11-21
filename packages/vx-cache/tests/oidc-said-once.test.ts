@@ -21,6 +21,7 @@ it('says a token GitHub would not give once, to the requests waiting on it', asy
       repository: 'acme/app',
       timeoutMs: 5_000,
       uploadTimeoutMs: 5_000,
+      retries: 2,
       headers: {},
     },
     refusing,

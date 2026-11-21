@@ -151,6 +151,7 @@ export default defineWorkspace({
 | `repository` | required | the repository, `org/name`, as `ALLOW` names it |
 | `timeoutMs` | 30 000 | how long one read or check may wait for its answer, in ms (above 0, up to 2³¹−1); a download then brings at least 1 MiB a second over each |
 | `uploadTimeoutMs` | 60 000 | an upload sends at least 1 MiB a second over each, then is answered within one, in ms (above 0, up to 2³¹−1) |
+| `retries` | 2 | how many times a request answered 5xx or 429, or whose connection reset, is sent again, 1 s, 2 s, … apart (0 to 10) |
 | `headers` | none | headers sent on every request, for a proxy in front of the server |
 
 `github()` or `gitlab()` from `@vzn/vx-ci` tells the cache which branch

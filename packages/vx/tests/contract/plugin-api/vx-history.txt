@@ -40,4 +40,6 @@ export interface VxHistoryOptions {
   readonly headers?: Record<string, string | undefined>
   readonly issuer?: string
   readonly repository?: string
+  readonly timeoutMs?: number
+  readonly retries?: number
 }

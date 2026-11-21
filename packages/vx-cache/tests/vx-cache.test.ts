@@ -98,12 +98,19 @@ const byJson = (a: unknown, b: unknown) => JSON.stringify(a).localeCompare(JSON.
 const keysOf = (body: string) => (JSON.parse(body) as { hashes: string[] }).hashes
 
 /** A layer whose job's token is `token`, as GitLab's `VX_CACHE_TOKEN` carries it, reading `refs`. */
-function layer(url: string, token: string, refs: string[] = [MAIN], fetchImpl = fetch) {
+function layer(
+  url: string,
+  token: string,
+  refs: string[] = [MAIN],
+  fetchImpl = fetch,
+  retries = 2,
+) {
   const c = new VxCacheLayer(
     {
       url,
       timeoutMs: 5_000,
       uploadTimeoutMs: 5_000,
+      retries,
       headers: {},
       issuer: GITHUB,
       repository: REPO,
@@ -478,6 +485,7 @@ describe('VxCacheLayer', () => {
           url: moved.url.origin,
           timeoutMs: 5_000,
           uploadTimeoutMs: 5_000,
+          retries: 2,
           headers: { 'CF-Access-Client-Secret': 's' },
           issuer: GITHUB,
           repository: REPO,
@@ -618,7 +626,15 @@ describe('download deadline', () => {
   }
   const slowLayer = (url: string) => {
     const c = new VxCacheLayer(
-      { url, timeoutMs: 200, uploadTimeoutMs: 200, headers: {}, issuer: GITHUB, repository: REPO },
+      {
+        url,
+        timeoutMs: 200,
+        uploadTimeoutMs: 200,
+        retries: 2,
+        headers: {},
+        issuer: GITHUB,
+        repository: REPO,
+      },
       fetch,
       { VX_CACHE_TOKEN: 't' },
     )
@@ -678,6 +694,7 @@ it('a read with no answer is asked once more, and the remote stays on when that 
         url: `http://127.0.0.1:${slow.port}`,
         timeoutMs: 200,
         uploadTimeoutMs: 200,
+        retries: 2,
         headers: {},
         issuer: GITHUB,
         repository: REPO,
@@ -713,6 +730,7 @@ it('a read the server hangs on while it answers another is asked once more, then
         url: `http://127.0.0.1:${hung.port}`,
         timeoutMs: 300,
         uploadTimeoutMs: 300,
+        retries: 2,
         headers: {},
         issuer: GITHUB,
         repository: REPO,
@@ -754,6 +772,7 @@ it('a read with no answer within the deadline turns the remote off for the run, 
         url: `http://127.0.0.1:${mute.port}`,
         timeoutMs: 200,
         uploadTimeoutMs: 200,
+        retries: 2,
         headers: {},
         issuer: GITHUB,
         repository: REPO,
@@ -812,6 +831,7 @@ describe('upload deadline', () => {
         url: 'http://127.0.0.1:1',
         timeoutMs: 200,
         uploadTimeoutMs: 200,
+        retries: 2,
         headers: {},
         issuer: GITHUB,
         repository: REPO,
@@ -1124,6 +1144,7 @@ describe('config', () => {
       repository: REPO,
       timeoutMs: 30_000,
       uploadTimeoutMs: 60_000,
+      retries: 2,
       headers: {},
     })
     expect(() => resolveVxCacheConfig({ ...NAMED, url: 'c.example' }, {})).toThrow(
@@ -1388,6 +1409,42 @@ describe('config', () => {
     } finally {
       await srv.stop()
     }
+  })
+
+  it('asks no more than `retries` says', async () => {
+    const srv = server()
+    try {
+      const token = await srv.token(MAIN_JOB)
+      await layer(srv.url, token).put('ab17', new Blob(['xyzw']), { durationMs: 1 })
+      let asked = 0
+      const resetting: typeof fetch = Object.assign(
+        (input: string | URL | Request, init?: RequestInit) => {
+          if (
+            init?.method !== 'GET' ||
+            !(input instanceof Request ? input.url : input.toString()).includes(
+              '/v1/artifacts/ab17',
+            )
+          )
+            return fetch(input, init)
+          asked++
+          return Promise.reject(Object.assign(new Error('socket closed'), { code: 'ECONNRESET' }))
+        },
+        { preconnect: fetch.preconnect },
+      )
+      await layer(srv.url, token, [MAIN], resetting, 0)
+        .get('ab17')
+        .catch(() => undefined)
+      expect(asked).toBe(1)
+    } finally {
+      await srv.stop()
+    }
+  })
+
+  it('refuses a retries it cannot use', () => {
+    expect(() => vxCache({ ...NAMED, retries: -1 })).toThrow(
+      'vxCache() option "retries" must be a whole number from 0 to 10, got -1',
+    )
+    expect(() => vxCache({ ...NAMED, retries: 0 })).not.toThrow()
   })
 
   // A URL of a website answers any path 200 with its page: JSON.parse's

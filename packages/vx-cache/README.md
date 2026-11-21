@@ -27,7 +27,7 @@ export default {
 }
 ```
 
-`vxCache({ url?, issuer, repository, timeoutMs?, uploadTimeoutMs?, headers? })`:
+`vxCache({ url?, issuer, repository, timeoutMs?, uploadTimeoutMs?, retries?, headers? })`:
 
 - `url` is the server's base URL (`https://cache.example.com`, without `/v1`), or `VX_CACHE_URL`.
   It must be `https://`: every request carries the CI token, so `http://`
@@ -39,6 +39,9 @@ export default {
   (`org/name` there) are required: nothing guesses them. Every request
   names both by their hashes (`vx-issuer`, `vx-repository`), and the
   server refuses a token of another repository.
+- `retries` (default 2, 0 to 10) is how many times a request answered
+  with a 5xx or 429, or whose connection reset, is sent again, 1 s, 2 s, …
+  apart; GitHub's OIDC endpoint is asked again the same way.
 - `timeoutMs` (default 30 000) bounds each read and query, and
   `uploadTimeoutMs` (default 60 000) each upload. A download is bounded
   the same way until its answer, then must bring at least 1 MiB a second

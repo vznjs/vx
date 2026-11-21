@@ -48,8 +48,8 @@ export function outcomeOf(o: TaskOutcome, def: string): ServerOutcome | undefine
 
 /** Every request's deadline: a run never waits on history longer. */
 const DEADLINE_MS = 10_000
-/** Tries of a request, to the server or GitHub's OIDC endpoint, before it fails (`tried`). */
-const ATTEMPTS = 3
+/** Tries after the first of a request, to the server or GitHub's OIDC endpoint, before it fails (`tried`). */
+const RETRIES = 2
 
 /** The issuer and repository a workspace names, as a key holds them: the issuer's URL with no trailing slash, `org/name` lowercased. */
 export interface Named {
@@ -100,10 +100,10 @@ function aloneMs(o: TaskOutcome): number {
   return Math.round(d - (c / s - c) / Math.max(1, c / (d * s)))
 }
 
-/** {@link DEADLINE_MS}, or `stop` first. */
-const deadline = (stop?: AbortSignal): AbortSignal => {
+/** `ms`, or `stop` first. */
+const deadline = (ms: number, stop?: AbortSignal): AbortSignal => {
   const c = new AbortController()
-  setTimeout(() => c.abort(new Error(`no answer within ${DEADLINE_MS} ms`)), DEADLINE_MS).unref()
+  setTimeout(() => c.abort(new Error(`no answer within ${ms} ms`)), ms).unref()
   return stop === undefined ? c.signal : AbortSignal.any([c.signal, stop])
 }
 
@@ -244,6 +244,12 @@ function limitOf(res: Response, header: string): number | undefined {
   return Number.isSafeInteger(n) && n > 0 ? n : undefined
 }
 
+/** `vxHistory({ timeoutMs, retries })`: one request's deadline, and how many tries a failed one gets. */
+export interface ServerBounds {
+  readonly timeoutMs: number
+  readonly retries: number
+}
+
 export class HistoryServer {
   private token: Promise<string> | undefined
   private held: { jwt: string; exp: number } | undefined
@@ -276,7 +282,12 @@ export class HistoryServer {
     private readonly fetchImpl: typeof fetch = fetch,
     private readonly headers: Readonly<Record<string, string>> = {},
     private readonly wait: (ms: number) => Promise<void> = Bun.sleep,
-  ) {}
+    bounds: Partial<ServerBounds> = {},
+  ) {
+    this.bounds = { timeoutMs: DEADLINE_MS, retries: RETRIES, ...bounds }
+  }
+
+  private readonly bounds: ServerBounds
 
   /** Whether the run has a token to send: with none it reads only. */
   get writes(): boolean {
@@ -319,7 +330,7 @@ export class HistoryServer {
 
   /**
    * One answer, asked again while `again(status)` (`undefined`: no answer)
-   * holds, up to three tries, 1 s then 2 s apart: the upload is sent once, at
+   * holds, up to `retries` + 1 tries (3), 1 s then 2 s apart: the upload is sent once, at
    * the run's end, and one 503 there, or from GitHub's OIDC endpoint (as
    * vx-cache asks it), lost the run's timings.
    */
@@ -339,7 +350,7 @@ export class HistoryServer {
         if (res === undefined) throw failure
         return res
       }
-      if (attempt === ATTEMPTS) {
+      if (attempt > this.bounds.retries) {
         if (res === undefined) throw failure
         return res
       }
@@ -355,7 +366,7 @@ export class HistoryServer {
       () =>
         this.fetchImpl(ask, {
           headers: { authorization: `bearer ${this.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN ?? ''}` },
-          signal: deadline(signal),
+          signal: deadline(this.bounds.timeoutMs, signal),
         }),
       (status) => status === undefined || status === 429 || status >= 500,
     )
@@ -392,7 +403,7 @@ export class HistoryServer {
             ...(json === undefined ? {} : { 'content-type': 'application/json' }),
           },
           ...(json === undefined ? {} : { body: json }),
-          signal: deadline(signal),
+          signal: deadline(this.bounds.timeoutMs, signal),
           redirect: 'manual',
         }).then((r) => {
           answered?.(r.status)
