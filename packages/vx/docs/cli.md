@@ -2899,7 +2899,7 @@ exported Nx graph or Lerna on Nx —
 ```
 bunx @vzn/vx-migrate           # turbo.json, an Nx graph, vite-plus run.tasks, else package.json scripts → vx.config.ts (vx init hands it only Turbo and Nx)
 bunx @vzn/vx-migrate --dry     # print the generated files instead of writing
-bunx @vzn/vx-migrate --force   # overwrite existing vx.config.* / vx-preset.ts
+bunx @vzn/vx-migrate --force   # overwrite existing vx.config.*
 bunx @vzn/vx-migrate --from nx # disambiguate when several sources are checked in (turbo, nx, vite-task, scripts)
 ```
 

@@ -1,13 +1,13 @@
 // A task's env, stated once in the root turbo.json, was written inline in
 // every package's config: vercel/ai's 63 `build` names twice in each of
-// ~100 files. A list two or more configs share is one preset export.
+// ~100 files. A list two or more configs share is named once at the top
+// of each config, and globalEnv is carried onto no task.
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import type { PackageMeta } from '../src/packages.js'
 import { migrateTurbo } from '../src/migrate-turbo.js'
-import { WRITTEN_BUILTINS, WRITTEN_DEFAULTS } from './helpers/turbo-own.js'
 
 let root: string
 beforeEach(async () => {
@@ -43,7 +43,7 @@ async function plan() {
 }
 
 describe('migrateTurbo: a task env several configs share', () => {
-  it('is one preset export, spread where the names stood; a list of its own stays inline', async () => {
+  it('is named in the config, spread where the names stood; a list of its own stays inline', async () => {
     const p = await plan()
     const env = (name: string) => {
       const task = p.projects.find((x) => x.name === name)!.tasks.find((t) => t.name === 'build')!
@@ -53,36 +53,19 @@ describe('migrateTurbo: a task env several configs share', () => {
       }
       return [task.inputs.env, task.exec.env.passThrough]
     }
-    const preset = p.extraFiles.find((f) => f.relPath === 'vx-preset.ts')!.contents
     expect({
-      exports: preset.split('\n').filter((l) => l.startsWith('export const')),
       a: env('a'),
       c: env('c'),
-      imports: p.projects.map((x) => x.importLines),
+      decls: p.projects.map((x) => x.importLines),
+      extraFiles: p.extraFiles,
     }).toEqual({
-      exports: [
-        `export const globalEnvInputs = [${WRITTEN_DEFAULTS}, 'G']`,
-        `export const globalPassThroughEnv = [${WRITTEN_BUILTINS}]`,
-        "export const buildEnv = ['A', 'B', 'C']",
-      ],
-      a: [
-        [{ raw: '...globalEnvInputs' }, { raw: '...buildEnv' }],
-        [
-          { raw: '...globalEnvInputs' },
-          { raw: '...globalPassThroughEnv' },
-          { raw: '...buildEnv' },
-          'P',
-        ],
-      ],
+      a: [[{ raw: '...buildEnv' }], [{ raw: '...buildEnv' }, 'P']],
       c: [
-        [{ raw: '...globalEnvInputs' }, 'D', 'E', 'F'],
-        [{ raw: '...globalEnvInputs' }, { raw: '...globalPassThroughEnv' }, 'D', 'E', 'F', 'P'],
+        ['D', 'E', 'F'],
+        ['D', 'E', 'F', 'P'],
       ],
-      imports: [
-        ["import { buildEnv, globalEnvInputs, globalPassThroughEnv } from '../../vx-preset.js'"],
-        ["import { buildEnv, globalEnvInputs, globalPassThroughEnv } from '../../vx-preset.js'"],
-        ["import { globalEnvInputs, globalPassThroughEnv } from '../../vx-preset.js'"],
-      ],
+      decls: [["const buildEnv = ['A', 'B', 'C']"], ["const buildEnv = ['A', 'B', 'C']"], []],
+      extraFiles: [],
     })
   })
 })
