@@ -65,7 +65,7 @@ describe('git spawns on a cold run', () => {
     const past = new Date(Date.now() - 100_000)
     await utimes(path.join(root, '.git', 'index'), past, past)
     // A cold run that starts inside the index's racy window keys no
-    // verdict, so the warm run lists `--debug` again: an M-series Mac
+    // verdict, so the warm run asks cat-file again: an M-series Mac
     // started it inside the window and failed the warm assertion on every
     // full-file run, while slower CI runners never did. Wait it out.
     const { ctimeMs } = await stat(path.join(root, '.git', 'index'))
@@ -101,13 +101,11 @@ describe('git spawns on a cold run', () => {
         [
           ...ENUMERATION,
           '--no-optional-locks ls-files -s -v -z -- .',
-          // The recorded sizes a cold cache has no verdict for (A-60).
-          '--no-optional-locks ls-files -s -v -z --debug -- .',
           '--no-optional-locks status --porcelain -z -uall --ignored=matching --no-renames -- .',
         ].sort(),
       )
       // Warm, the index unchanged, its verdict comes from the cache and its
-      // refreshed copy is reused: no `--debug` listing, cat-file or refresh.
+      // refreshed copy is reused: no cat-file or refresh.
       await writeFile(log, '')
       expect(
         (await coldRun(['build', '--all'])).filter(
@@ -125,7 +123,6 @@ describe('git spawns on a cold run', () => {
         [
           ...ENUMERATION,
           '--no-optional-locks ls-files -s -v -z -- :(literal)packages/a',
-          '--no-optional-locks ls-files -s -v -z --debug -- :(literal)packages/a',
           '--no-optional-locks status --porcelain -z -uall --ignored=matching --no-renames -- :(literal)packages/a',
         ].sort(),
       )

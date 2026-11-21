@@ -207,8 +207,11 @@ add` under a clean filter (`core.autocrlf=true`, a `text` rule)
     entries; any other run checks every blob. That check's own listing
     reads the index again: one written since the enumeration's stamp
     (an add rewrote a resized entry to one whose size fits) trusts no
-    OID, as the enumeration does. A changed index spawns
-    `git ls-files -s -v -z --debug` for the recorded sizes, takes each
+    OID, as the enumeration does. A changed index has its recorded
+    sizes read from its own bytes (a v2 or v3 index, git's default;
+    `git ls-files -s -v -z --debug` for a v4, split or sparse one or a
+    path not UTF-8: that listing's text parse cost ~45 ms of a cold
+    9,603-task run's main thread before its first task), takes each
     still-trusted blob's size from `blob_sizes` (fixed for its OID),
     and asks `git cat-file --batch-check` for the ones not yet known,
     one per core (256 OIDs or more each), beside the listing rather
@@ -385,7 +388,7 @@ add` under a clean filter (`core.autocrlf=true`, a `text` rule)
     older mtime, made in the second the index recorded the file, also
     reads clean. So an entry whose recorded ctime, not its mtime,
     reaches the second its index was written is hashed instead
-    (2026-11-04). The stamps come from git's own `ls-files --debug`,
+    (2026-11-04). The stamps are git's own, from the index,
     read with the blob-size check below and kept in its verdict, so a
     warm run reads one row and does no extra work.
 

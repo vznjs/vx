@@ -98,8 +98,8 @@ terminal and a task succeeding or failing. Read it alongside
  │       `-c core.ignorecase=false`. A fifth, `check-attr`, runs only
  │       when an attributes file could rewrite bytes. An index the
  │       cache holds no blob-size verdict for (keyed by the index
- │       file's hash, A-60) adds `ls-files --debug` for the recorded
- │       sizes and `cat-file --batch-check` (one per core) for the
+ │       file's hash, A-60) reads the recorded sizes from the index
+ │       and asks `cat-file --batch-check` (one per core) for the
  │       blob sizes `blob_sizes` lacks: an OID whose blob is not the
  │       recorded size is not trusted. The run's HashCache is created
  │       after it.
