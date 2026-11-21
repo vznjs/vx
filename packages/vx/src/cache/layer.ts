@@ -310,6 +310,11 @@ export interface TaskMemo {
    * every hit restores). Skips a file that no longer matches.
    */
   recordOutputStamps?(hash: string, projectDir: string, workspaceRoot: string): void
+  /**
+   * Stamp `hash`'s files as a `--force` run wrote them, beside a kept entry
+   * whose rows name the last save's mtimes: for this process's checks only.
+   */
+  stampWritten?(hash: string, projectDir: string, workspaceRoot: string): void
   loadOutputDirsBatch?(hashes: readonly string[]): Map<string, OutputDirRow[]>
   outputDirsCurrent?(projectDir: string, rows: readonly OutputDirRow[]): boolean
   /**

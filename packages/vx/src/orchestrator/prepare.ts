@@ -520,7 +520,7 @@ async function openStore(
       cacheDir,
       { read: wanted.localRead, write: wanted.localWrite && !planReadOnly },
       workspaceRoot,
-      options.artifactCeiling,
+      resolveSetting('cache.artifactCeiling', workspaceConfig).value as number | undefined,
       planReadOnly ? 'preview' : 'open',
       resolvedStore,
       {

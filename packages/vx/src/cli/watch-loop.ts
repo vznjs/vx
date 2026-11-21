@@ -24,6 +24,7 @@ import { resolveSetting } from '../settings.js'
 import {
   isProjectConfigFile,
   isWorkspaceConfigFile,
+  gitDirty,
   gitFiles,
   makeFence,
   makeRootEventFilter,
@@ -1225,8 +1226,9 @@ class WatchLoop {
 
   /**
    * Files written since the initial run started by none of its commands, each
-   * judged a change. Only files git finds untracked or modified qualify, and
-   * `atArm` asked git already, so a start with no edit costs only stats. An
+   * judged a change. Only files git finds untracked or modified qualify:
+   * `atArm`'s, and git's answer again now the watchers are armed, since an
+   * edit between the two reached neither. An
    * edit before its task keyed it re-runs to a hit. `inWindow` is what the
    * keys must judge: a write inside a command's window, and a file gone.
    */
@@ -1234,7 +1236,10 @@ class WatchLoop {
     const { initialRun } = this.args
     let heard = false
     const inWindow: string[] = []
-    for (const abs of this.atArm?.dirty ?? []) {
+    const dirty = new Set(this.atArm?.dirty)
+    if (this.atArm !== undefined)
+      for (const abs of gitDirty(this.workspaceRoot) ?? []) dirty.add(abs)
+    for (const abs of dirty) {
       let t: number
       try {
         const st = fs.lstatSync(abs)

@@ -150,6 +150,12 @@ export interface CacheSettings {
    */
   store?: { embeddings?: false | string; decompress?: boolean }
   /**
+   * The largest entry, unpacked, a remote stores or a hit unpacks
+   * (default `'1GiB'`): a larger one stays on this machine only. A remote
+   * hit past it is a miss, so machines sharing a remote set the same value.
+   */
+  artifactCeiling?: string
+  /**
    * Cache transfers at once. `download` and `upload` (per remote) default
    * to min(96, max(cores × 3, 64)); `restore`, local hits writing their
    * outputs, to twice `run.concurrency`.

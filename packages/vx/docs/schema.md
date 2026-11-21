@@ -2317,6 +2317,10 @@ export default defineWorkspace({
     timeout: '10m',
     schedule: 'most-work',
     continue: 'deps-ok',
+    killGrace: '10s',
+    pluginTimeout: '3s',
+    logs: { captureHead: '8MiB', captureTail: '8MiB', failedHead: '8KiB', failedTail: '56KiB' },
+    secrets: { minLength: 8 },
     rules: {
       exclusiveOutputs: true,
       dependencies: [{ from: 'tag:lib', deny: ['tag:app'] }],
@@ -2333,12 +2337,13 @@ export default defineWorkspace({
   inputs: { stability: { strategy: 'immutable', severity: 'warn' } },
   outputs: { clean: true },
   lock: { reviewFiles: true },
-  watch: { poll: false },
+  watch: { poll: false, debounce: '150ms', pollInterval: '250ms' },
+  history: { retention: '60d' },
   plugins: [otel()],
 })
 ```
 
-The workspace holds settings in groups (`run`, `cache`, `inputs`, `outputs`, `lock`, `watch`) and the
+The workspace holds settings in groups (`run`, `cache`, `inputs`, `outputs`, `lock`, `watch`, `history`) and the
 `plugins`. Every setting has one path, and its environment variable and
 flag derive from it: `run.timeout` is `VX_RUN_TIMEOUT` and
 `vx run --timeout`. A flag beats its variable (a variable its flag
@@ -2391,6 +2396,7 @@ default and where it came from.
 | `outputs.clean`                                | —                                | —                              | true or false                                                           | true                                                                          | Remove a task's declared outputs before it runs on a miss, for tasks without their own. A task's own `outputs.clean` beats it.                                                                   |
 | `cache.store.embeddings`                       | `VX_CACHE_STORE_EMBEDDINGS`      | —                              | false, or a size like '32KiB'                                           | '32KiB'                                                                       | Keep an entry up to this size inside the cache index, one zstd tar, rather than as files; `false` keeps none.                                                                                    |
 | `cache.store.decompress`                       | `VX_CACHE_STORE_DECOMPRESS`      | —                              | true or false                                                           | true                                                                          | Keep a larger entry as its plain files, which a hit copies or clones out; off, as one `.tar.zst`.                                                                                                |
+| `cache.artifactCeiling`                        | `VX_CACHE_ARTIFACT_CEILING`      | —                              | a size like '500MB' or '10GB'                                           | '1GiB'                                                                        | The largest entry, unpacked, a remote stores or a hit unpacks; a larger one stays on this machine. A remote hit past it is a miss, so every machine sharing a remote needs the same value.       |
 | `cache.upload.failures`                        | —                                | —                              | one of 'ci', 'local', 'always'                                          | ci                                                                            | Where a failed task's log and outputs are kept in the remote: CI runs, local runs, or both.                                                                                                      |
 | `history.retention`                            | `VX_HISTORY_RETENTION`           | —                              | a duration like '45s', '12h' or '30d'                                   | `30d`                                                                         | `vx cache clean` drops run history and hash memos older than this.                                                                                                                               |
 | `lock.reviewFiles`                             | `VX_LOCK_REVIEW_FILES`           | —                              | true or false                                                           | true                                                                          | `vx lock` writes each project's resolved config, pretty, to `vx.lock.json` beside its `vx.config`, for review; vx never reads it.                                                                |
@@ -2430,12 +2436,7 @@ interface RunSettings {
   /** One plugin's end-of-run flush or teardown; '0ms' waits for nothing. Omitted → '3s'. */
   pluginTimeout?: Duration
   /** Output vx keeps, in characters (a size: '8MiB'). */
-  logs?: {
-    captureHead?: string // '8MiB'
-    captureTail?: string // '8MiB'
-    failedHead?: string // '8KiB'
-    failedTail?: string // '56KiB'
-  }
+  logs?: { captureHead?: string; captureTail?: string; failedHead?: string; failedTail?: string } // '8MiB' '8MiB' '8KiB' '56KiB'
   /** The shortest secret value vx masks in output. Omitted → 6. */
   secrets?: { minLength?: number }
   /** Graph rules `vx lock` checks, never a run; each on unless set to false. */
@@ -2456,6 +2457,7 @@ interface CacheSettings {
   download?: 'all' | 'toplevel' | 'none'
   upload?: { failures?: 'ci' | 'local' | 'always' }
   store?: { embeddings?: false | string; decompress?: boolean }
+  artifactCeiling?: string
   concurrency?: { download?: number; upload?: number; restore?: number }
 }
 ```
@@ -2552,6 +2554,12 @@ interface CacheSettings {
   plain files under `<hash>.tree/`, which a hit copies (or clones) out with
   no decode; off, it is one `<hash>.tar.zst`. A remote always gets the
   tar.zst.
+- **`cache.artifactCeiling`** (default `'1GiB'`) — the largest entry,
+  unpacked, that a remote stores or a hit unpacks. A bigger entry stays
+  cached on this machine and is not uploaded; the run stays green and
+  says so once. A remote hit past it is a miss, so every machine sharing
+  a remote sets the same value. It bounds what a bad remote entry can
+  make a restore write.
 - **`cache.upload.failures`** — which runs keep a failed task's log and
   the files its outputs left in the remote: CI runs (`'ci'`, the
   default), runs off CI (`'local'`), or both (`'always'`). Only a run

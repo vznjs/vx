@@ -1549,9 +1549,10 @@ vx watch build -- --sourcemap       # forwarded args carry through every cycle
    (its key no longer describes them), and the loop starts its first
    cycle on that, labelled `<task> inputs, edited during the first run`.
    Any other (an input of a task that already finished, a new lock) is
-   found as the loop arms: a file git lists as untracked or modified,
-   written since the run started by none of its commands, is a change,
-   and the first cycle runs on it. One written while a command of its
+   found as the loop arms: a file git lists as untracked or modified
+   (asked again once the watchers are up, so a save between the two is
+   not lost), written since the run started by none of its commands, is
+   a change, and the first cycle runs on it. One written while a command of its
    own project ran may be that command's: the keys are taken again, and
    it is a change when one moved. A loop that armed while the run
    waited on a server does both once the run returns, so an edit beside
@@ -4147,6 +4148,7 @@ what a TASK sees is `exec.env` in `docs/schema.md`.
 | `VX_INPUTS_STABILITY_SEVERITY`    | [`inputs.stability.severity`](schema.md#settings)  | Whether a skipped save warns or fails the task, for tasks without their own.                                                                                                                     |
 | `VX_CACHE_STORE_EMBEDDINGS`       | [`cache.store.embeddings`](schema.md#settings)     | Keep an entry up to this size inside the cache index, one zstd tar, rather than as files; `false` keeps none.                                                                                    |
 | `VX_CACHE_STORE_DECOMPRESS`       | [`cache.store.decompress`](schema.md#settings)     | Keep a larger entry as its plain files, which a hit copies or clones out; off, as one `.tar.zst`.                                                                                                |
+| `VX_CACHE_ARTIFACT_CEILING`       | [`cache.artifactCeiling`](schema.md#settings)      | The largest entry, unpacked, a remote stores or a hit unpacks; a larger one stays on this machine. A remote hit past it is a miss, so every machine sharing a remote needs the same value.       |
 | `VX_HISTORY_RETENTION`            | [`history.retention`](schema.md#settings)          | `vx cache clean` drops run history and hash memos older than this.                                                                                                                               |
 | `VX_LOCK_REVIEW_FILES`            | [`lock.reviewFiles`](schema.md#settings)           | `vx lock` writes each project's resolved config, pretty, to `vx.lock.json` beside its `vx.config`, for review; vx never reads it.                                                                |
 | `VX_WATCH_POLL`                   | [`watch.poll`](schema.md#settings)                 | Poll for changes from the start instead of the OS watcher.                                                                                                                                       |

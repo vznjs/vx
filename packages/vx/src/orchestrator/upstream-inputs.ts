@@ -184,9 +184,10 @@ export class KeyedTasks {
       const sweep = movedSince(k, args, ctimeNow)
       const file = typeof sweep === 'object' ? await sweep : sweep
       if (file !== undefined) return { task: id, file, sinceMs: k.atMs }
-      // Unmoved as of `at`, and nothing that may write there was open then:
-      // the next write in contract opens a window, which marks it again.
-      if (this.windows !== undefined && !this.windows.reachedSince(node.projectDir, at, at))
+      // Unmoved as of `at`, and nothing that may write there opened since,
+      // the await included (a window opening then marked it before this
+      // drop): the next write in contract opens a window, which marks it again.
+      if (this.windows !== undefined && !this.windows.reachedSince(node.projectDir, at, Date.now()))
         this.dirty.delete(id)
     }
     return undefined

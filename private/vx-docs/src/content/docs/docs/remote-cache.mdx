@@ -195,6 +195,27 @@ vx says what went wrong once, then runs on without the remote:
 - **`403`**: the token's repository or workflow is not in `ALLOW`, or
   the repository does not match `vxCache({ repository })`.
 
+## Entries over 1 GiB
+
+A remote takes an entry up to 1 GiB, unpacked. A bigger one stays cached
+on the machine that built it, and vx says once that it was not sent.
+
+To share bigger entries, raise `cache.artifactCeiling` for every machine:
+
+```ts title=".vx/workspace.ts" ins={4-6}
+import { defineWorkspace } from '@vzn/vx/config'
+
+export default defineWorkspace({
+  cache: {
+    artifactCeiling: '4GiB',
+  },
+})
+```
+
+A machine with a lower ceiling treats a bigger remote entry as a miss and
+runs the task. The ceiling stops a broken remote entry from filling the
+disk when it is restored.
+
 ---
 
 ## Other remote caches

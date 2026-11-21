@@ -654,6 +654,7 @@ export interface CacheSettings {
   download?: 'all' | 'toplevel' | 'none'
   upload?: { failures?: 'ci' | 'local' | 'always' }
   store?: { embeddings?: false | string; decompress?: boolean }
+  artifactCeiling?: string
   concurrency?: { download?: number; upload?: number; restore?: number }
 }
 == type CacheSource (src/graph/task-status.ts)
@@ -1793,7 +1794,6 @@ export interface RunOptions {
   telemetrySinks?: readonly TelemetrySink[]
   command?: string
   remoteCache?: RemoteCacheLayer
-  artifactCeiling?: number
 }
 == type RunPlan (src/orchestrator/plan.ts)
 export interface RunPlan {
@@ -2070,6 +2070,7 @@ export interface StoreMemo {
     holds?: (files: readonly string[]) => boolean,
   ): Promise<void>
   recordOutputStamps(hash: string, projectDir: string, workspaceRoot: string): void
+  stampWritten(hash: string, projectDir: string, workspaceRoot: string): void
   loadOutputDirsBatch(hashes: readonly string[]): Map<string, OutputDirRow[]>
   outputDirsCurrent(projectDir: string, rows: readonly OutputDirRow[]): boolean
   warmOutputs(
@@ -2199,6 +2200,7 @@ export interface TaskMemo {
     holds?: (files: readonly string[]) => boolean,
   ): Promise<void>
   recordOutputStamps?(hash: string, projectDir: string, workspaceRoot: string): void
+  stampWritten?(hash: string, projectDir: string, workspaceRoot: string): void
   loadOutputDirsBatch?(hashes: readonly string[]): Map<string, OutputDirRow[]>
   outputDirsCurrent?(projectDir: string, rows: readonly OutputDirRow[]): boolean
   dropWarm?(): void

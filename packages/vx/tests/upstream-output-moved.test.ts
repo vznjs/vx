@@ -110,3 +110,68 @@ it('a dependency output git ignores, rewritten mid-run, is not replayed', async 
   expect(await readFile(path.join(lib, 'dist/o'), 'utf8')).toBe('A\n')
   expect(await readFile(path.join(app, 'dist/o'), 'utf8')).toBe('A\n')
 }, 30_000)
+
+// `--force` re-runs a stored key and keeps its entry, whose rows name the
+// last save's mtimes. The dependency's own fresh write is not a move: before
+// the fix every forced chain warned here and saved no dependant.
+it('a --force run over a stored chain saves its dependants', async () => {
+  await addProject(root, 'lib', {
+    config: `export default { tasks: { build: {
+      exec: { command: 'mkdir -p dist && cat src/a > dist/o' },
+      inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
+    } } }`,
+    files: { 'src/a': 'A\n' },
+  })
+  await addProject(root, 'app', {
+    config: `export default { tasks: { build: {
+      exec: { command: 'mkdir -p dist && cat ../lib/dist/o > dist/o' },
+      dependsOn: ['^build'], inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
+    } } }`,
+    files: { 'src/a': 'x\n' },
+  })
+  await writeFile(path.join(root, '.gitignore'), '.vx/cache/\ndist/\n')
+  gitIn(root)('add', '-A')
+  gitIn(root)('commit', '-q', '-m', 'fixture')
+  expect((await run({ cwd: root, tasks: ['build'], log: logger })).ok).toBe(true)
+  // Past the mtime grain, so the forced write is another mtime.
+  await Bun.sleep(1_100)
+
+  status = []
+  expect(
+    (await run({ cwd: root, tasks: ['build'], log: logger, cacheFlags: { force: true } })).ok,
+  ).toBe(true)
+  expect(status.filter((l) => l.includes('changed while it ran'))).toEqual([])
+}, 30_000)
+
+it('a --force run still withholds a dependant whose dependency output moved', async () => {
+  const lib = await addProject(root, 'lib', {
+    config: `export default { tasks: { build: {
+      exec: { command: 'mkdir -p dist && cat src/a > dist/o' },
+      inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
+    } } }`,
+    files: { 'src/a': 'A\n' },
+  })
+  const app = await addProject(root, 'app', {
+    config: `export default { tasks: { build: {
+      exec: { command: 'touch ${marks}/started && while [ ! -f ${marks}/go ]; do sleep 0.01; done && mkdir -p dist && cat ../lib/dist/o > dist/o' },
+      dependsOn: ['^build'], inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
+    } } }`,
+    files: { 'src/a': 'x\n' },
+  })
+  await writeFile(path.join(root, '.gitignore'), '.vx/cache/\ndist/\n')
+  gitIn(root)('add', '-A')
+  gitIn(root)('commit', '-q', '-m', 'fixture')
+  await writeFile(path.join(marks, 'go'), '')
+  expect((await run({ cwd: root, tasks: ['build'], log: logger })).ok).toBe(true)
+  await rm(path.join(marks, 'go'))
+  await rm(path.join(marks, 'started'))
+  await rm(path.join(app, 'dist'), { recursive: true })
+
+  status = []
+  const running = run({ cwd: root, tasks: ['build'], log: logger, cacheFlags: { force: true } })
+  while (!existsSync(path.join(marks, 'started'))) await Bun.sleep(5)
+  await writeFile(path.join(lib, 'dist/o'), 'B\n')
+  await writeFile(path.join(marks, 'go'), '')
+  expect((await running).ok).toBe(true)
+  expect(status.filter((l) => l.includes('changed while it ran'))).toHaveLength(1)
+}, 30_000)

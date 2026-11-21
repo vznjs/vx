@@ -39,7 +39,7 @@ terminal and a task succeeding or failing. Read it alongside
  │       stat'ed; one gone is refused ("run `vx lock`").
  │    3. loadWorkspacePlugins — loadWorkspaceConfig reads the
  │       .vx/workspace.{ts,mts,js,mjs,cts,cjs} the root lookup found (baseBranch /
- │       run / cache / inputs / outputs / watch / plugins / lock),
+ │       run / cache / inputs / outputs / watch / history / plugins / lock),
  │       then the plugin `config` stage runs on it.
  │    4. The plugin `discover` stage: more directories, names and
  │       edges. A project is named by its config's `name`, else a

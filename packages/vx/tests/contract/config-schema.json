@@ -27,7 +27,7 @@
       "run.logs": ["captureHead", "captureTail", "failedHead", "failedTail"],
       "run.secrets": ["minLength"],
       "run.rules": ["dependencies", "exclusiveOutputs"],
-      "cache": ["concurrency", "dir", "download", "policy", "store", "upload"],
+      "cache": ["artifactCeiling", "concurrency", "dir", "download", "policy", "store", "upload"],
       "cache.upload": ["failures"],
       "cache.store": ["decompress", "embeddings"],
       "cache.concurrency": ["download", "restore", "upload"],
@@ -735,9 +735,7 @@
         "$CONFIG: `run.logs.captureHead` must be a size like '500MB' or '10GB' (got false)": [
           "false"
         ],
-        "$CONFIG: `run.logs.captureHead` takes a size with its unit, like '0KiB' or '0B' (got 0)": [
-          "0"
-        ],
+        "$CONFIG: `run.logs.captureHead` must be more than 0 (got 0)": ["0"],
         "$CONFIG: `run.logs.captureHead` takes a size with its unit, like '1KiB' or '1B' (got 1)": [
           "1"
         ],
@@ -818,9 +816,7 @@
         "$CONFIG: `run.logs.captureTail` must be a size like '500MB' or '10GB' (got false)": [
           "false"
         ],
-        "$CONFIG: `run.logs.captureTail` takes a size with its unit, like '0KiB' or '0B' (got 0)": [
-          "0"
-        ],
+        "$CONFIG: `run.logs.captureTail` must be more than 0 (got 0)": ["0"],
         "$CONFIG: `run.logs.captureTail` takes a size with its unit, like '1KiB' or '1B' (got 1)": [
           "1"
         ],
@@ -897,9 +893,7 @@
         "$CONFIG: `run.logs.failedHead` must be a size like '500MB' or '10GB' (got false)": [
           "false"
         ],
-        "$CONFIG: `run.logs.failedHead` takes a size with its unit, like '0KiB' or '0B' (got 0)": [
-          "0"
-        ],
+        "$CONFIG: `run.logs.failedHead` must be more than 0 (got 0)": ["0"],
         "$CONFIG: `run.logs.failedHead` takes a size with its unit, like '1KiB' or '1B' (got 1)": [
           "1"
         ],
@@ -974,9 +968,7 @@
         "$CONFIG: `run.logs.failedTail` must be a size like '500MB' or '10GB' (got false)": [
           "false"
         ],
-        "$CONFIG: `run.logs.failedTail` takes a size with its unit, like '0KiB' or '0B' (got 0)": [
-          "0"
-        ],
+        "$CONFIG: `run.logs.failedTail` must be more than 0 (got 0)": ["0"],
         "$CONFIG: `run.logs.failedTail` takes a size with its unit, like '1KiB' or '1B' (got 1)": [
           "1"
         ],
@@ -1269,7 +1261,7 @@
           "[\"A=B\"]",
           "[\"A*\"]"
         ],
-        "$CONFIG: `cache` has unknown field \"x\" (allowed: concurrency, dir, download, policy, store, upload)": [
+        "$CONFIG: `cache` has unknown field \"x\" (allowed: artifactCeiling, concurrency, dir, download, policy, store, upload)": [
           "{\"x\":\"y\"}"
         ]
       },
@@ -1684,6 +1676,87 @@
         "$CONFIG: `cache.store.decompress` must be true or false (got [\"A*\"])": ["[\"A*\"]"],
         "$CONFIG: `cache.store.decompress` must be true or false (got {})": ["{}"],
         "$CONFIG: `cache.store.decompress` must be true or false (got {\"x\":\"y\"})": [
+          "{\"x\":\"y\"}"
+        ]
+      },
+      "cache.artifactCeiling": {
+        "ok": ["<absent>", "\"10G\"", "\"1GiB\""],
+        "$CONFIG: `cache.artifactCeiling` must be a size like '500MB' or '10GB' (got null)": [
+          "null"
+        ],
+        "$CONFIG: `cache.artifactCeiling` must be a size like '500MB' or '10GB' (got true)": [
+          "true"
+        ],
+        "$CONFIG: `cache.artifactCeiling` must be a size like '500MB' or '10GB' (got false)": [
+          "false"
+        ],
+        "$CONFIG: `cache.artifactCeiling` must be more than 0 (got 0)": ["0"],
+        "$CONFIG: `cache.artifactCeiling` takes a size with its unit, like '1KiB' or '1B' (got 1)": [
+          "1"
+        ],
+        "$CONFIG: `cache.artifactCeiling` must be a size like '500MB' or '10GB' (got 1.5)": ["1.5"],
+        "$CONFIG: `cache.artifactCeiling` must be a size like '500MB' or '10GB' (got -1)": ["-1"],
+        "$CONFIG: `cache.artifactCeiling` takes a size with its unit, like '65536B' (got 65536)": [
+          "65536"
+        ],
+        "$CONFIG: `cache.artifactCeiling` takes a size with its unit, like '2147483648B' (got 2147483648)": [
+          "2147483648"
+        ],
+        "$CONFIG: `cache.artifactCeiling` must be a size like '500MB' or '10GB' (got \"\")": [
+          "\"\""
+        ],
+        "$CONFIG: `cache.artifactCeiling` must be a size like '500MB' or '10GB' (got \"x\")": [
+          "\"x\""
+        ],
+        "$CONFIG: `cache.artifactCeiling` must be a size like '500MB' or '10GB' (got \"(\")": [
+          "\"(\""
+        ],
+        "$CONFIG: `cache.artifactCeiling` must be a size like '500MB' or '10GB' (got \"30d\")": [
+          "\"30d\""
+        ],
+        "$CONFIG: `cache.artifactCeiling` takes a size with its unit, like '10KiB' or '10B' (got \"10\")": [
+          "\"10\""
+        ],
+        "$CONFIG: `cache.artifactCeiling` must be a size like '500MB' or '10GB' (got [])": ["[]"],
+        "$CONFIG: `cache.artifactCeiling` must be a size like '500MB' or '10GB' (got [\"x\"])": [
+          "[\"x\"]"
+        ],
+        "$CONFIG: `cache.artifactCeiling` must be a size like '500MB' or '10GB' (got [\"\"])": [
+          "[\"\"]"
+        ],
+        "$CONFIG: `cache.artifactCeiling` must be a size like '500MB' or '10GB' (got [1])": ["[1]"],
+        "$CONFIG: `cache.artifactCeiling` must be a size like '500MB' or '10GB' (got [3000])": [
+          "[3000]"
+        ],
+        "$CONFIG: `cache.artifactCeiling` must be a size like '500MB' or '10GB' (got [\"/x\"])": [
+          "[\"/x\"]"
+        ],
+        "$CONFIG: `cache.artifactCeiling` must be a size like '500MB' or '10GB' (got [\"!/x\"])": [
+          "[\"!/x\"]"
+        ],
+        "$CONFIG: `cache.artifactCeiling` must be a size like '500MB' or '10GB' (got [\"../x\"])": [
+          "[\"../x\"]"
+        ],
+        "$CONFIG: `cache.artifactCeiling` must be a size like '500MB' or '10GB' (got [\"!x\"])": [
+          "[\"!x\"]"
+        ],
+        "$CONFIG: `cache.artifactCeiling` must be a size like '500MB' or '10GB' (got [\"!!x\",\"y\"])": [
+          "[\"!!x\",\"y\"]"
+        ],
+        "$CONFIG: `cache.artifactCeiling` must be a size like '500MB' or '10GB' (got [\".\"])": [
+          "[\".\"]"
+        ],
+        "$CONFIG: `cache.artifactCeiling` must be a size like '500MB' or '10GB' (got [\"**\"])": [
+          "[\"**\"]"
+        ],
+        "$CONFIG: `cache.artifactCeiling` must be a size like '500MB' or '10GB' (got [\"A=B\"])": [
+          "[\"A=B\"]"
+        ],
+        "$CONFIG: `cache.artifactCeiling` must be a size like '500MB' or '10GB' (got [\"A*\"])": [
+          "[\"A*\"]"
+        ],
+        "$CONFIG: `cache.artifactCeiling` must be a size like '500MB' or '10GB' (got {})": ["{}"],
+        "$CONFIG: `cache.artifactCeiling` must be a size like '500MB' or '10GB' (got {\"x\":\"y\"})": [
           "{\"x\":\"y\"}"
         ]
       },

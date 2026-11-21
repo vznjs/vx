@@ -190,6 +190,24 @@ describe('a workspace', () => {
     )
   })
 
+  it('takes cache.artifactCeiling as a size, and refuses no unit or zero', () => {
+    expect(resolveSetting('cache.artifactCeiling', { cache: { artifactCeiling: '4GiB' } })).toEqual(
+      { value: 4 * 1024 ** 3, source: 'workspace' },
+    )
+    expect(() => validateWorkspace({ cache: { artifactCeiling: '1024' } } as never, 'w')).toThrow(
+      'w: `cache.artifactCeiling` takes a size with its unit, like \'1024B\' (got "1024")',
+    )
+    expect(() => validateWorkspace({ cache: { artifactCeiling: '0GB' } } as never, 'w')).toThrow(
+      'w: `cache.artifactCeiling` must be more than 0 (got "0GB")',
+    )
+    expect(() => validateWorkspace({ cache: { artifactCeiling: false } } as never, 'w')).toThrow(
+      "w: `cache.artifactCeiling` must be a size like '500MB' or '10GB' (got false)",
+    )
+    expect(() => settingEnv('cache.artifactCeiling', { VX_CACHE_ARTIFACT_CEILING: '0' })).toThrow(
+      'VX_CACHE_ARTIFACT_CEILING must be more than 0 (got 0)',
+    )
+  })
+
   it('refuses a flat key from before the groups as any unknown field, with no history', () => {
     expect(() => validateWorkspace({ concurrency: 1 } as never, 'w')).toThrow(
       'w has unknown field "concurrency"',

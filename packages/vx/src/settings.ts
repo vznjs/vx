@@ -244,6 +244,12 @@ export const SETTINGS: readonly Setting[] = [
     doc: 'Keep a larger entry as its plain files, which a hit copies or clones out; off, as one `.tar.zst`.',
   },
   {
+    path: 'cache.artifactCeiling',
+    kind: { type: 'size' },
+    default: "'1GiB'",
+    doc: 'The largest entry, unpacked, a remote stores or a hit unpacks; a larger one stays on this machine. A remote hit past it is a miss, so every machine sharing a remote needs the same value.',
+  },
+  {
     path: 'cache.upload.failures',
     kind: { type: 'enum', values: ['ci', 'local', 'always'] },
     default: 'ci',
@@ -407,7 +413,12 @@ export function parseSettingValue(kind: SettingKind, raw: unknown): unknown {
       if (kind.off === true && (raw === false || raw === 'false')) return 0
       // A size carries its unit, as a duration does: a bare `32` read as
       // bytes turns the store off without a word.
-      return typeof raw === 'string' && !/^\d+$/.test(raw) ? parseSize(raw) : null
+      if (typeof raw !== 'string' || /^\d+$/.test(raw)) return null
+      {
+        const n = parseSize(raw)
+        // Without `off`, nothing reads 0 as "none": a zero bound refuses everything.
+        return n === 0 && kind.off !== true ? null : n
+      }
     case 'bool':
       if (typeof raw === 'boolean') return raw
       return raw === 'true' || raw === '1' ? true : raw === 'false' || raw === '0' ? false : null
@@ -469,10 +480,13 @@ export function settingRefusal(
         : null
   if (kind.type === 'size' && bytes !== null && Number.isSafeInteger(bytes) && bytes >= 0) {
     if (bytes === 0 && kind.off === true) return `${where} is false to keep none (got ${got})`
+    if (bytes === 0) return `${where} must be more than 0 (got ${got})`
     // A small number most likely meant KiB (`32`): that reading leads.
     const like = bytes < 1024 ? `'${bytes}KiB' or '${bytes}B'` : `'${bytes}B'`
     return `${where} takes a size with its unit, like ${like} (got ${got})`
   }
+  if (kind.type === 'size' && kind.off !== true && typeof raw === 'string' && parseSize(raw) === 0)
+    return `${where} must be more than 0 (got ${got})`
   return `${where} must be ${kindHint(kind)} (got ${got})`
 }
 

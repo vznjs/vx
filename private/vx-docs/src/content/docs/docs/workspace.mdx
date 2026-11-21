@@ -103,6 +103,10 @@ setting is in [the settings table](../../schema/workspace/#settings).
 | `outputs.clean` | `false` keeps every task's declared outputs on a miss instead of removing them first; a task's own `outputs.clean` wins ([Schema](../../schema/outputs/)) |
 | `lock.reviewFiles` | `false` stops `vx lock` writing a pretty `vx.lock.json` (the project's resolved config, for review) beside each `vx.config` |
 | `watch.poll` | `vx watch` polls instead of using the OS watcher |
+| `run.killGrace`, `run.pluginTimeout` | SIGTERM to SIGKILL for a task (`'2s'`), and how long a plugin's end-of-run flush may take (`'3s'`) |
+| `run.logs`, `run.secrets.minLength` | how much output vx keeps with an entry and a failure, and the shortest value it masks as a secret (6) |
+| `watch.debounce`, `watch.pollInterval` | how long `vx watch` waits after a change, and how often a poll re-walks |
+| `history.retention` | how long `vx cache clean` keeps run history (`'30d'`) |
 
 For a timeout, the first one set wins: a task's `exec.timeout`, then
 `--timeout`, then `VX_RUN_TIMEOUT`, then `run.timeout`. Only

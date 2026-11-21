@@ -396,6 +396,7 @@ export interface CacheSettings {
   download?: 'all' | 'toplevel' | 'none'
   upload?: { failures?: 'ci' | 'local' | 'always' }
   store?: { embeddings?: false | string; decompress?: boolean }
+  artifactCeiling?: string
   concurrency?: { download?: number; upload?: number; restore?: number }
 }
 ```
@@ -2386,7 +2387,6 @@ export interface RunOptions {
   telemetrySinks?: readonly TelemetrySink[]
   command?: string
   remoteCache?: RemoteCacheLayer
-  artifactCeiling?: number
 }
 ```
 

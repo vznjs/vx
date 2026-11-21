@@ -562,6 +562,39 @@ export function gitFiles(
 }
 
 /**
+ * The untracked files and the tracked ones git finds modified, asked again
+ * once the watchers are armed: an edit after `gitFiles` answered and before
+ * an arm heard nothing reached neither. No `--cached`: only the dirty.
+ */
+export function gitDirty(workspaceRoot: string): Set<string> | undefined {
+  let proc: ReturnType<typeof Bun.spawnSync>
+  try {
+    proc = Bun.spawnSync({
+      cmd: [
+        executablePath('git'),
+        ...gitCaseArgs(workspaceRoot),
+        'ls-files',
+        '-z',
+        '--modified',
+        '--others',
+        '--exclude-standard',
+      ],
+      env: gitEnv(),
+      cwd: workspaceRoot,
+      stdout: 'pipe',
+      stderr: 'ignore',
+    })
+  } catch {
+    return undefined
+  }
+  if (proc.exitCode !== 0) return undefined
+  const out = new Set<string>()
+  for (const p of new TextDecoder('utf-8', { ignoreBOM: true }).decode(proc.stdout).split('\0'))
+    if (p.length > 0 && !p.endsWith('/')) out.add(path.join(workspaceRoot, p))
+  return out
+}
+
+/**
  * Whether git tracks `abs` now, `abs` spelled as `gitSpeller` spells it: a
  * file committed or checked out since the arm is tracked though
  * `gitFiles` did not say so then. One spawn, so asked only where the
