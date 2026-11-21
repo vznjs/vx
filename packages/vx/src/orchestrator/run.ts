@@ -14,6 +14,7 @@ import {
 } from '../workspace/index.js'
 import { realpathSync } from 'node:fs'
 import path from 'node:path'
+import { fsClockNow } from '../memo/index.js'
 import {
   historyFiles,
   indexDb,
@@ -222,6 +223,7 @@ import { createSaveLane } from './save-lane.js'
 import { commandWindows } from './command-windows.js'
 import type { CoreRunOptions, HeldPersistent, RunOptions, RunSummary } from './options.js'
 import { withRunSettings } from './run-settings.js'
+import { KeyedTasks } from './upstream-inputs.js'
 import { cacheFacts, taskArtifacts } from './task-artifacts.js'
 import { resolveSetting } from '../settings.js'
 
@@ -1155,6 +1157,12 @@ async function runOnBus(
     // ahead of their deps as slot backfill; execute reuses each probe. Off:
     // both maps are empty.
     let shortCircuit: ShortCircuit = emptyShortCircuit()
+    // Before any key: what an up-front key answers for from (upstream-inputs.ts).
+    const keyedTasks = new KeyedTasks(
+      nodes,
+      fsClockNow(cacheDir ?? path.join(workspaceRoot, '.vx')),
+      Date.now(),
+    )
     // An empty local cache misses every probe: each task derives its key as it
     // starts instead (~100 ms before a cold 1,090-package run's first spawn).
     const remote = cache.hasRemote === true
@@ -1273,6 +1281,7 @@ async function runOnBus(
       deferredSaves,
       trailingSaves,
       commandWindows: windows,
+      keyedTasks,
       projectTasks: projectTasksOf(prepared.projects),
       stopSignal: stop.signal,
       failFast: failFast.signal,
@@ -1371,7 +1380,9 @@ async function runOnBus(
       }
       const tainted = taint.judge(node, upstream)
       if (tainted) taintedRan.set(node.id, deadServer ?? taint.cause(node, upstream))
-      return argsOf(node, upstream, reuseProbe, tainted)
+      const a = argsOf(node, upstream, reuseProbe, tainted)
+      keyedTasks.dispatched(a)
+      return a
     }
 
     const executeWithDedup = admitTasks({

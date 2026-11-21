@@ -491,6 +491,23 @@ export function taskFilesToken(
   })
 }
 
+/**
+ * The input files a task's key folds, listed again from the run's memos: what
+ * a dependant's save re-checks of a task it depends on (upstream-inputs.ts).
+ * Env and runtime probes are not asked.
+ */
+export async function inputFilesOf(args: ComputeHashArgs): Promise<readonly string[]> {
+  const cfg = args.node.config.inputs
+  if (cfg === undefined) return []
+  const { files, workspaceFiles } = cfg
+  return (
+    await resolveInputs({
+      ...inputsArgs(args),
+      inputs: { files, ...(workspaceFiles !== undefined ? { workspaceFiles } : {}) },
+    })
+  ).files
+}
+
 /** What `resolveInputs` is asked for a task's key. */
 function inputsArgs(args: ComputeHashArgs): ResolveInputsArgs {
   const cfg = args.node.config

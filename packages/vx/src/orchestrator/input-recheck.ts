@@ -354,6 +354,40 @@ export function upstreamOutputsHeld(m: MissRun): boolean {
   return false
 }
 
+/**
+ * Did every task under this one keep the inputs its key folded while this
+ * one ran (upstream-inputs.ts)? A dependency's source edited mid-run, by an
+ * editor or a sibling task (documenso's remix build rewrites lib's `.po`
+ * files), was read by this command under a key that folds the old one.
+ */
+export async function upstreamInputsHeld(m: MissRun): Promise<boolean> {
+  const { args } = m
+  const keyed = args.run.keyedTasks
+  if (keyed === undefined || m.endedAt === undefined) return true
+  if (args.executor.capabilities?.remote === true) return true
+  const endCheck = span('miss: recheck upstream inputs')
+  const moved = await keyed.moved(args, m.endedAt)
+  endCheck()
+  if (moved === undefined) return true
+  const rel = printable(relPosix(args.run.workspaceRoot, moved.file))
+  const by = args.run.commandWindows?.writerDuring(
+    moved.task,
+    moved.file,
+    moved.sinceMs,
+    Date.now(),
+  )
+  warnOf(args.log)(
+    `[vx] ${args.node.id}: \`${rel}\`, an input of ${moved.task}, changed after that task's key was taken` +
+      (by === undefined ? '' : ` while ${by} ran`) +
+      ' — the result stands, but is not saved under a key that names the bytes it was built from' +
+      (by === undefined
+        ? ''
+        : `; if ${by} writes it, exclude it from ${moved.task}'s inputs or move the write into a task ${moved.task} depends on`),
+  )
+  forgetUndeclaredWrites(args.node, args.run.gitFilesCache, 'workspace')
+  return false
+}
+
 const seenByGit = new WeakMap<GitFilesCache, WeakMap<TaskNode, boolean>>()
 
 /**
