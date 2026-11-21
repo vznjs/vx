@@ -161,11 +161,15 @@ function withScripts(read: ReadText, dir: string, command: string): string {
 }
 
 /**
- * The buildinfo files `command`'s `tsc` runs write, relative to the
- * package `dir` (POSIX); one outside `dir` is another package's.
+ * Each tsconfig `command`'s `tsc` runs compile, the ones a `-b` reaches
+ * through `references` too (each built first, with its own buildinfo).
  */
-export function tscBuildInfo(read: ReadText, dir: string, command: string): string[] {
-  const out = new Set<string>()
+function tscProjects(
+  read: ReadText,
+  dir: string,
+  command: string,
+): { file: string; build: boolean }[] {
+  const seen: { file: string; build: boolean }[] = []
   for (const segment of withScripts(read, dir, command).split(/&&|\|\||[;|&()\n]/)) {
     const words = segment.trim().split(/\s+/)
     const at = words.findIndex((w) => TSC.test(w))
@@ -181,18 +185,13 @@ export function tscBuildInfo(read: ReadText, dir: string, command: string): stri
       const p = args.findIndex((a) => a === '-p' || a === '--project')
       files.push(projectFile(dir, p >= 0 && args[p + 1] !== undefined ? args[p + 1]! : '.'))
     }
-    // `-b` builds each referenced project first, each with its own buildinfo.
     const queue = [...files]
     const visited = new Set<string>()
     while (queue.length > 0) {
       const file = queue.shift()!
       if (visited.has(file)) continue
       visited.add(file)
-      const info = buildInfoOf(read, file, build)
-      if (info !== null) {
-        const rel = path.relative(dir, info).split(path.sep).join('/')
-        if (!rel.startsWith('../') && !path.isAbsolute(rel)) out.add(rel)
-      }
+      seen.push({ file, build })
       if (!build) continue
       const refs = parse(read, file)?.references
       if (!Array.isArray(refs)) continue
@@ -201,6 +200,36 @@ export function tscBuildInfo(read: ReadText, dir: string, command: string): stri
         if (typeof p === 'string') queue.push(projectFile(path.dirname(file), p))
       }
     }
+  }
+  return seen
+}
+
+/**
+ * The buildinfo files `command`'s `tsc` runs write, relative to the
+ * package `dir` (POSIX); one outside `dir` is another package's.
+ */
+export function tscBuildInfo(read: ReadText, dir: string, command: string): string[] {
+  const out = new Set<string>()
+  for (const { file, build } of tscProjects(read, dir, command)) {
+    const info = buildInfoOf(read, file, build)
+    if (info === null) continue
+    const rel = path.relative(dir, info).split(path.sep).join('/')
+    if (!rel.startsWith('../') && !path.isAbsolute(rel)) out.add(rel)
+  }
+  return [...out]
+}
+
+/**
+ * The directories outside `dir` holding a tsconfig `command`'s `tsc -b`
+ * builds through `references`: that build runs inside this command and
+ * writes the other package's outputs.
+ */
+export function tscBuiltElsewhere(read: ReadText, dir: string, command: string): string[] {
+  const out = new Set<string>()
+  for (const { file, build } of tscProjects(read, dir, command)) {
+    const at = path.dirname(file)
+    const rel = path.relative(dir, at)
+    if (build && (rel.startsWith('..') || path.isAbsolute(rel))) out.add(at)
   }
   return [...out]
 }
