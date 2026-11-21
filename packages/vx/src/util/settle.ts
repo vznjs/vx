@@ -80,9 +80,8 @@ export function teardownTimeoutMs(): number {
  * the pipe) never EOFs. On a clean exit with no lingering writer the pipe EOFs
  * at once, so the readers win this race immediately and normal tasks pay
  * nothing; only a stuck reader waits out the grace. Residual buffered output is
- * what the pipe and the reader thread hold, a few MiB; a bound in which the
- * readers still took text, or the scheduler was blocked, is re-armed
- * (`drainOrAbort`). What the leftover
+ * what the pipe and the reader thread hold, a few MiB; a bound the scheduler
+ * spent blocked is re-armed (`drainOrAbort`). What the leftover
  * process writes after the bound is lost, and `POST_EXIT_CUT_LINE`
  * (exec/runner.ts) says so.
  * A runtime probe's drain is bounded the same (cache/inputs.ts).

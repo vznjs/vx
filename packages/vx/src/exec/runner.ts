@@ -676,53 +676,32 @@ export function lineEnds(
 }
 
 /**
- * Text a drain may still read after the child's exit while it keeps coming:
- * what the pipe, the reader thread (`read-off.ts`) and the queue between them
- * hold is a few MiB a stream. A writer past it is a leftover.
- */
-const POST_EXIT_DRAIN_CHARS = 32 * 1024 * 1024
-
-/** Text a task's readers took so far (`streamToString`'s `progress`). */
-interface DrainProgress {
-  chars: number
-}
-
-/**
  * After the child exits, wait for the readers' EOF, bounded: an orphaned
  * grandchild holding the pipe would hang the run. On expiry abort the readers
  * (returning what they captured) and resolve true, so the caller adds
- * `POST_EXIT_CUT_LINE`. A bound in which `progress` moved, or the scheduler
- * was blocked, is re-armed, up to `POST_EXIT_DRAIN_CHARS`: a cold run's
- * saves blocked the scheduler past the bound while a heavy task's last chunks
- * waited, and it was cut as a leftover and went unsaved. Unref'd, never cleared: a late resolve
- * changes nothing.
+ * `POST_EXIT_CUT_LINE`. A bound the scheduler spent blocked (its timer fired
+ * 1.5x late) gave the readers no turn and starts another, five at most: a
+ * cold run's saves held the scheduler past the bound while a heavy task's
+ * last chunks waited, and it was cut as a leftover and went unsaved. Text
+ * still coming is no reason to wait: a leftover that logs every 50 ms
+ * kept the run forever. Unref'd, never cleared: a late resolve changes
+ * nothing.
  */
 export async function drainOrAbort(
   streams: Promise<unknown>,
   ac: AbortController,
-  progress?: DrainProgress,
 ): Promise<boolean> {
   const bound = testTimerMs('POST_EXIT_DRAIN', POST_EXIT_DRAIN_MS)
-  const from = progress?.chars ?? 0
   const deadline = new Promise<'timeout'>((resolve) => {
-    let seen = from
     let armedAt = 0
-    /** Blocked bounds in a row with nothing read: a leftover under a loaded scheduler is still cut. */
     let stalls = 0
     const arm = (): void => {
       armedAt = performance.now()
       setTimeout(due, bound).unref?.()
     }
     const due = (): void => {
-      const now = progress?.chars ?? 0
-      // A bound the scheduler spent blocked (a save, a collection) gave the
-      // readers no turn: judged only on one it was free for.
-      const stalled = performance.now() - armedAt > bound * 1.5
-      stalls = now === seen ? stalls + 1 : 0
-      if ((now === seen && (!stalled || stalls > 4)) || now - from > POST_EXIT_DRAIN_CHARS)
-        return resolve('timeout')
-      seen = now
-      arm()
+      if (performance.now() - armedAt > bound * 1.5 && stalls++ < 5) return arm()
+      resolve('timeout')
     }
     arm()
   })
@@ -1251,10 +1230,9 @@ export async function runCommand(opts: RunOptions): Promise<RunResult> {
   const ac = new AbortController()
   const [out, err] = pipes.streams(proc)
   const ends = lineEnds(opts.onStdout, opts.onStderr)
-  const progress: DrainProgress = { chars: 0 }
   const streams = Promise.all([
-    streamToString(out, ends.onStdout, ac.signal, opts.capture?.stdout ?? true, progress),
-    streamToString(err, ends.onStderr, ac.signal, opts.capture?.stderr ?? true, progress),
+    streamToString(out, ends.onStdout, ac.signal, opts.capture?.stdout ?? true),
+    streamToString(err, ends.onStderr, ac.signal, opts.capture?.stderr ?? true),
   ]).finally(() => pipes.close())
   // Gate on the child's exit, not stream EOF: an orphaned grandchild (`server &
   // echo up`, or after a timeout) keeps the pipe open. A timeout aborts the
@@ -1268,7 +1246,7 @@ export async function runCommand(opts: RunOptions): Promise<RunResult> {
   await timeout.settle()
   let cut = false
   if (timeout.timedOut()) ac.abort()
-  else cut = await drainOrAbort(streams, ac, progress)
+  else cut = await drainOrAbort(streams, ac)
   const [stdout, streamed] = await streams
   ends.end()
   // A leftover of a task the run stopped is vx's doing, not the task's.
@@ -1550,7 +1528,6 @@ export async function streamToString(
   onChunk?: (s: string) => void,
   signal?: AbortSignal,
   retain = true,
-  progress?: DrainProgress,
 ): Promise<string> {
   // Bun.spawn types stdout/stderr as `ReadableStream | number | undefined`;
   // a stream the child inherited (`terminal`) is not one, and holds nothing.
@@ -1568,7 +1545,6 @@ export async function streamToString(
       const { value, done } = await reader.read()
       if (done) break
       const chunk = decoder.decode(value, { stream: true })
-      if (progress !== undefined) progress.chars += chunk.length
       if (retain) full.push(chunk)
       onChunk?.(chunk)
     }

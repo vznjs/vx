@@ -3012,7 +3012,6 @@ async function awaitAttempt(args: SandboxedRunArgs, spawned: Spawned, tag: strin
   const errTail = new Tail()
   const [out, err] = pipes.streams(proc)
   const ends = lineEnds(args.onStdout, args.onStderr)
-  const progress = { chars: 0 }
   const streams = Promise.all([
     streamToString(
       out,
@@ -3022,7 +3021,6 @@ async function awaitAttempt(args: SandboxedRunArgs, spawned: Spawned, tag: strin
       },
       ac.signal,
       args.capture?.stdout ?? true,
-      progress,
     ),
     streamToString(
       err,
@@ -3040,7 +3038,6 @@ async function awaitAttempt(args: SandboxedRunArgs, spawned: Spawned, tag: strin
       },
       ac.signal,
       args.capture?.stderr ?? true,
-      progress,
     ),
   ]).finally(() => pipes.close())
   // See runCommand: gate on child exit; a lingering grandchild pipe (timeout
@@ -3052,7 +3049,7 @@ async function awaitAttempt(args: SandboxedRunArgs, spawned: Spawned, tag: strin
   await timeout.settle()
   let cut = false
   if (timeout.timedOut()) ac.abort()
-  else cut = await drainOrAbort(streams, ac, progress)
+  else cut = await drainOrAbort(streams, ac)
   const [stdout, streamed] = await streams
   ends.end()
   // As runCommand: a leftover of a task the run stopped is vx's doing.
