@@ -733,6 +733,57 @@ describe('migrateScripts', () => {
     }
   })
 
+  // Effect: `@effect/ai-openrouter`'s tsconfig references `../openai`, which
+  // its package.json does not name, so `tsc -b` built `@effect/ai-openai`
+  // inside openrouter's task, beside and unordered with openai's own build,
+  // and the next run found openai's outputs rewritten.
+  it('a `tsc -b` reaching a package this one does not depend on gets a TODO', () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), 'vx-scripts-tsc-'))
+    try {
+      const dir = (n: string) => path.join(root, 'packages', n)
+      for (const n of ['core', 'openai', 'router']) {
+        mkdirSync(dir(n), { recursive: true })
+        writeFileSync(
+          path.join(dir(n), 'tsconfig.json'),
+          JSON.stringify({
+            compilerOptions: { composite: true, outDir: 'dist' },
+            references: n === 'router' ? [{ path: '../core' }, { path: '../openai' }] : [],
+          }),
+        )
+      }
+      const meta = (n: string, extra: object = {}) => ({
+        name: n,
+        dir: dir(n),
+        packageJson: { name: n, scripts: { build: 'tsc -b' }, ...extra } as never,
+        configPath: null,
+      })
+      const todosOf = (peers: object) =>
+        migrateScripts([
+          { name: 'repo', dir: root, packageJson: { name: 'repo' } as never, configPath: null },
+          meta('core'),
+          meta('openai'),
+          meta('router', peers),
+        ])
+          .projects.find((p) => p.name === 'router')
+          ?.tasks.find((t) => t.name === 'build')
+          ?.todos.filter((d) => d.startsWith('`tsc -b` builds'))
+      expect(todosOf({ peerDependencies: { core: 'workspace:*' } })).toEqual([
+        expect.stringContaining(
+          '`tsc -b` builds `openai` through tsconfig "references", but this package does not depend on it',
+        ),
+      ])
+      // CONTROL: once it depends on both (a peer counts), `^build` orders them.
+      expect(
+        todosOf({
+          peerDependencies: { core: 'workspace:*' },
+          devDependencies: { openai: 'workspace:*' },
+        }),
+      ).toEqual([])
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
   it("the cache TODO names the framework's own build output", () => {
     const outputs = (scripts: Record<string, string>, task = 'build'): string | undefined => {
       const todo = project(scripts)

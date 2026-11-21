@@ -382,6 +382,11 @@ A package in a cycle of builds (nuxt's `@nuxt/nitro-server` devDepends
 on `nuxt`, which depends on it; pnpm sorts it away) gets, instead of
 `^build`, an edge to each build outside its cycle that `^build` would
 reach, and a TODO to order the cycle: `^build` there refuses the run.
+A build whose `tsc -b` reaches, through tsconfig `references`, a package
+its `package.json` does not name gets a TODO to add it (Effect's
+`@effect/ai-openrouter` referenced `../openai`): `^build` does not order
+that package's build first, so tsc builds it inside this task, writing
+its outputs beside its own build, and this task's key misses its edits.
 A script that runs a workspace package's bin the package gets only
 through the root's dependencies (vite's playgrounds run `vite` from the
 root's `vite: workspace:*`) also waits on that package's build
