@@ -42,6 +42,13 @@ export async function sampleTrees(
 ): Promise<Map<number, TreeUsage>> {
   const out = new Map<number, TreeUsage>()
   if (roots.length === 0) return out
+  if (process.platform === 'linux' && procfsIsOwn() && childrenListed()) {
+    for (const root of roots) {
+      const usage = linuxTree(root, skip)
+      if (usage !== undefined) out.set(root, usage)
+    }
+    return out
+  }
   const table = process.platform === 'linux' ? await linuxTable() : await psTable()
   if (table === undefined) return out
   const children = new Map<number, number[]>()
@@ -96,6 +103,75 @@ function readProc(file: string): string | undefined {
   }
 }
 
+/**
+ * `<pid> (<comm>) <state> <ppid> …`: comm may hold spaces and parens, so the
+ * fields start after the LAST ')': state is [0], ppid [1], utime [11], stime
+ * [12], cutime [13], cstime [14]. The reaped children's share keeps a tree's
+ * sum from dropping when a member exits: what a task's short-lived
+ * processes used stays counted. Undefined for a zombie or a dead one.
+ */
+function parseStat(stat: string): Proc | undefined {
+  const close = stat.lastIndexOf(')')
+  const f = stat.slice(close + 2).split(' ')
+  if (f[0] === 'Z' || f[0] === 'X') return undefined
+  return {
+    ppid: Number(f[1]),
+    cpuMs: (Number(f[11]) + Number(f[12]) + Number(f[13]) + Number(f[14])) * TICK_MS,
+    comm: stat.slice(stat.indexOf('(') + 1, close),
+  }
+}
+
+/** Whether this kernel lists a thread's children (`CONFIG_PROC_CHILDREN`); asked once. */
+let listsChildren: boolean | undefined
+function childrenListed(): boolean {
+  if (listsChildren === undefined) {
+    const self = String(process.pid)
+    try {
+      closeSync(openSync(`/proc/${self}/task/${self}/children`, 'r'))
+      listsChildren = true
+    } catch {
+      listsChildren = false
+    }
+  }
+  return listsChildren
+}
+
+/**
+ * One tree's use, read from its own members: the root's stat, then each
+ * thread's `children` down the tree. A look used to read every process's
+ * stat on the machine to find the few under its roots, four times a second
+ * for a whole run (~90 on an idle container, more on a CI runner).
+ */
+function linuxTree(root: number, skip?: ReadonlySet<string>): TreeUsage | undefined {
+  let cpuMs = 0
+  let rssKiB = 0
+  let found = false
+  const stack = [root]
+  while (stack.length > 0) {
+    const pid = stack.pop()!
+    const stat = readProc(`/proc/${pid}/stat`)
+    const p = stat === undefined ? undefined : parseStat(stat)
+    if (p === undefined) continue
+    found = true
+    if (skip === undefined || p.comm === undefined || !skip.has(p.comm)) {
+      cpuMs += p.cpuMs
+      rssKiB += linuxRssKiB(pid)
+    }
+    let tids: string[]
+    try {
+      tids = readdirSync(`/proc/${pid}/task`)
+    } catch {
+      continue // exited since its stat
+    }
+    for (const tid of tids) {
+      const kids = readProc(`/proc/${pid}/task/${tid}/children`)
+      if (kids === undefined) continue
+      for (const c of kids.split(' ')) if (c !== '' && c !== '\n') stack.push(Number(c))
+    }
+  }
+  return found ? { cpuMs, rssBytes: rssKiB * 1024 } : undefined
+}
+
 async function linuxTable(): Promise<Map<number, Proc> | undefined> {
   // Another namespace's /proc is a table of strangers: no answer beats a wrong one.
   if (!procfsIsOwn()) return undefined
@@ -110,20 +186,8 @@ async function linuxTable(): Promise<Map<number, Proc> | undefined> {
     const first = entry.charCodeAt(0)
     if (first < 48 || first > 57) continue
     const stat = readProc(`/proc/${entry}/stat`)
-    if (stat === undefined) continue
-    // `<pid> (<comm>) <state> <ppid> …` — comm may hold spaces and parens,
-    // so the fields start after the LAST ')': state is [0], ppid [1],
-    // utime [11], stime [12], cutime [13], cstime [14]. The reaped
-    // children's share keeps a tree's sum from dropping when a member
-    // exits: what a task's short-lived processes used stays counted.
-    const close = stat.lastIndexOf(')')
-    const f = stat.slice(close + 2).split(' ')
-    if (f[0] === 'Z' || f[0] === 'X') continue
-    table.set(Number(entry), {
-      ppid: Number(f[1]),
-      cpuMs: (Number(f[11]) + Number(f[12]) + Number(f[13]) + Number(f[14])) * TICK_MS,
-      comm: stat.slice(stat.indexOf('(') + 1, close),
-    })
+    const p = stat === undefined ? undefined : parseStat(stat)
+    if (p !== undefined) table.set(Number(entry), p)
   }
   return table
 }

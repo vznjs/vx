@@ -22,7 +22,9 @@
 //     absent (2026-11-07);
 //   - each save stat'ed the inputs of every task under it, so a file at
 //     the bottom of a chain was stat'ed once per task above it (a 9,603-
-//     task cold run went from 120 s to 288 s, 2026-11-21).
+//     task cold run went from 120 s to 288 s, 2026-11-21);
+//   - a look at a running task's tree read every process's stat on the
+//     machine, four times a second for the whole run (2026-11-21).
 //
 // Unsafe: strace ptraces its tracee, which a sandboxed shard cannot host.
 // Linux only — strace is Linux's. CI's Linux job installs strace for the
@@ -651,6 +653,31 @@ describe.skipIf(strace === null)('what vx asks the kernel once', () => {
       // Its own re-check, the first save above it, and the sweep once the
       // graph is done: 3. When every save above it asked again: 12.
       expect(stats.length).toBeLessThan(depth / 2)
+    },
+    TIMEOUT,
+  )
+
+  it(
+    "a look at a task's process tree reads that tree, not every process on the machine",
+    async () => {
+      const calls = await trace(
+        dir,
+        `
+        import { sampleTrees } from '$SRC/exec/index.ts'
+        const strangers = Array.from({ length: 30 }, () => Bun.spawn(['sleep', '3']))
+        const task = Bun.spawn(['sh', '-c', 'sleep 3 & wait'])
+        await Bun.sleep(300)
+        for (let i = 0; i < 4; i++) {
+          const seen = await sampleTrees([task.pid])
+          if (seen.get(task.pid) === undefined) throw new Error('no look at the task')
+        }
+        for (const p of [...strangers, task]) p.kill('SIGKILL')
+        `,
+      )
+      const stats = calls.filter((c) => /^\/proc\/\d+\/stat$/.test(c.path))
+      // Two processes, four looks: 8. Every process on the machine each
+      // look: 4 x (the 32 here and the machine's own).
+      expect(stats.length).toBeLessThanOrEqual(8)
     },
     TIMEOUT,
   )
