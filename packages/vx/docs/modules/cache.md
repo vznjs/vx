@@ -1952,7 +1952,8 @@ export async function startGitEnumeration(
   workspaceRoot: string,
   pathspecs: readonly string[],
 ): Promise<GitEnumeration>
-// The blob-size check, once per enumeration: started as the cache opens, awaited by applyGitEnumeration.
+// The blob-size check, once per enumeration: started as the cache opens, awaited by applyGitEnumeration,
+// which partitions while it runs and again only if it dropped an OID.
 export function checkBlobSizes(enumeration: GitEnumeration, memo?: BlobSizeMemo): Promise<void>
 export async function applyGitEnumeration(
   enumeration: GitEnumeration,
