@@ -201,14 +201,12 @@ it("`vx lock --check` passes where the injected copy differs from the lock's", a
   expect(check()).toBe(0)
   // CONTROL: a record that is not what the dependencies resolve to fails.
   const lockPath = path.join(root, '.vx/dependencies.lock')
-  const rec = await Bun.file(lockPath).bytes()
-  // Every value's 2-bit kind to "none": the record holds no hash or digest.
-  const bad = rec.slice()
-  const head = new DataView(bad.buffer)
-  const [n, f, e] = [head.getUint32(8, true), head.getUint32(12, true), head.getUint32(16, true)]
-  const kindsAt = 32 + 8 * n + 4 * e
-  bad.fill(0, kindsAt, kindsAt + Math.ceil(((f + n * f) * 2) / 8))
-  await writeFile(lockPath, bad)
+  const rec = await Bun.file(lockPath).text()
+  // Each project's digests column dropped: the record holds no digest.
+  const [head, ...lines] = rec.trimEnd().split('\n')
+  const bad = lines.map((l) => l.split('\t').slice(0, 3).join('\t').replace(/\t+$/, ''))
+  expect(bad.join('\n')).not.toBe(lines.join('\n'))
+  await writeFile(lockPath, `${[head, ...bad].join('\n')}\n`)
   expect(check()).toBe(1)
   await writeFile(lockPath, rec)
   await rm(path.join(root, COPY, 'dist'), { recursive: true })

@@ -1702,10 +1702,14 @@ describe('vx init — the generated build is not a cached no-op', () => {
       expect(row(r.out, 'lock')).toEqual([
         '3 project configs → .vx/projects.lock.jsonl, .vx/dependencies.lock',
       ])
-      const lock = (await Bun.file(path.join(root, '.vx/projects.lock.jsonl')).json()) as {
-        projects: Record<string, unknown>
-      }
-      expect(Object.keys(lock.projects)).toEqual([
+      const lock = await Bun.file(path.join(root, '.vx/projects.lock.jsonl')).text()
+      const dirs = lock
+        .trimEnd()
+        .split('\n')
+        .slice(1)
+        .filter((l) => !l.startsWith('#'))
+        .map((l) => (JSON.parse(l.slice(l.indexOf('\t') + 1)) as { path: string }).path)
+      expect(dirs.sort()).toEqual([
         'packages/app',
         'packages/lib',
         'packages/silent',

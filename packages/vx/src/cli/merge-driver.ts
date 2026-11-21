@@ -6,7 +6,7 @@
 import { executablePath, gitEnv } from '../util/index.js'
 
 /** The command git runs: this vx, as it was started, so a clone needs nothing on PATH. */
-export function mergeDriverCommand(): string {
+function mergeDriverCommand(): string {
   const quote = (s: string) => `'${s.replaceAll("'", `'\\''`)}'`
   // A compiled binary's entry is inside it.
   const self = Bun.main.startsWith('/$bunfs/') || Bun.main.startsWith('B:/~BUN/')
