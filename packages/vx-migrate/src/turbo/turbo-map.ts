@@ -2049,6 +2049,15 @@ function keyOnlyGroup(t: TurboMappedTask): TurboMappedTask {
   return { ...t, task: group, uses: new Set([...t.uses].filter((k) => k !== 'pass')) }
 }
 
+/**
+ * Turbo refuses a `dependsOn` naming a task turbo.json does not define
+ * (`^biuld`), whatever the packages' scripts hold. Dropped without a word,
+ * the typo left the task unordered and its key unfolded: a dependency's
+ * edit was a hit.
+ */
+const undefinedTaskTodo = (d: string): string =>
+  `dependsOn ${JSON.stringify(d)}: turbo.json defines no "${d.replace(/^\^/, '')}" task, which Turbo refuses — edge dropped`
+
 function buildTask(
   literals: {
     readonly tasks: Literals[]
@@ -2156,7 +2165,9 @@ function buildTask(
       if (d.startsWith('^')) {
         // A task no package runs gives `^name` no edges under turbo. Passed
         // through, core refuses it as a typo: no project declares the name.
-        if (emittedAnywhere.has(d.slice(1)) && !deps.includes(d)) deps.push(d)
+        if (emittedAnywhere.has(d.slice(1))) {
+          if (!deps.includes(d)) deps.push(d)
+        } else if (defFor(d.slice(1)) === undefined) todos.push(undefinedTaskTodo(d))
         continue
       }
       const hashAt = d.indexOf('#')
@@ -2201,11 +2212,12 @@ function buildTask(
         if (!deps.includes(d)) deps.push(d)
         continue
       }
-      const hop = through.has(d) ? undefined : defFor(d)
+      if (through.has(d)) continue
+      const hop = defFor(d)
       if (hop !== undefined) {
         through.add(d)
         walk(hop.dependsOn ?? [])
-      }
+      } else todos.push(undefinedTaskTodo(d))
     }
   }
   walk(def.dependsOn ?? [])
