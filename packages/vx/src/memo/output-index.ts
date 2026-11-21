@@ -141,6 +141,12 @@ export class OutputIndex {
    * a since-pruned entry serve a restore that finds no artifact.
    */
   private readonly held = new Map<string, readonly OutputFileRow[]>()
+  /**
+   * Each entry's rows as this process last stamped them, by hash: what a read
+   * after the stamp returns, so a dependant's save checks a dependency's
+   * outputs with no statement (input-recheck.ts). Dropped with the rows.
+   */
+  private readonly stamped = new Map<string, readonly OutputFileRow[]>()
   private rootKey: number | undefined
 
   /**
@@ -210,6 +216,7 @@ export class OutputIndex {
     for (const h of hashes) {
       this.pendingStamps.delete(h)
       this.pendingDirs.delete(h)
+      this.stamped.delete(h)
     }
     const { test, params } = inHashes(hashes)
     this.db.prepare(`DELETE FROM output_stamps WHERE entry_hash ${test}`).run(...params)
@@ -234,6 +241,7 @@ export class OutputIndex {
     this.held.delete(hash)
     this.warmed.delete(hash)
     this.pendingStamps.delete(hash)
+    this.stamped.delete(hash)
     this.deleteOutputFiles.run(hash)
     this.deleteStamps.run(hash)
     let bytes = 0
@@ -267,17 +275,21 @@ export class OutputIndex {
    */
   loadOutputFilesBatch(hashes: readonly string[], distinct?: string): Map<string, OutputFileRow[]> {
     if (hashes.length === 0) return new Map()
-    const warmed = this.warmed
-    if (warmed.size === 0) return this.readOutputFiles(hashes, distinct)
+    const { warmed, stamped } = this
+    if (warmed.size === 0 && stamped.size === 0) return this.readOutputFiles(hashes, distinct)
     const out = new Map<string, OutputFileRow[]>()
     const rest: string[] = []
     for (const h of hashes) {
+      // Warmed first: its stats ahead are keyed by that very array (`noteWarmStats`).
       const rows = warmed.get(h)
-      if (rows === undefined) rest.push(h)
-      else {
+      if (rows !== undefined) {
         warmed.delete(h)
         if (rows.length > 0) out.set(h, rows)
+        continue
       }
+      const own = stamped.get(h)
+      if (own === undefined) rest.push(h)
+      else if (own.length > 0) out.set(h, [...own])
     }
     if (rest.length > 0) for (const [h, rows] of this.readOutputFiles(rest)) out.set(h, rows)
     return out
@@ -578,6 +590,13 @@ export class OutputIndex {
       }
     }
     if (stamps.size > 0) this.pendingStamps.set(hash, stamps)
+    this.stamped.set(
+      hash,
+      rows.map((r): StampedRow => {
+        const t = stamps.get(r.path)
+        return t === undefined ? r : { ...r, ino: t[0], ctimeMs: t[1], stampMtimeMs: t[2] }
+      }),
+    )
   }
 
   /** Land every pending stamp and snapshot in one transaction each; a null snapshot clears its rows. */

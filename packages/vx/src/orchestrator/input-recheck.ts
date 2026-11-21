@@ -5,17 +5,11 @@
 import { existsSync, lstatSync } from 'node:fs'
 import path from 'node:path'
 import { ABSENT_INPUT, type CacheLayer, declaresInput } from '../cache/index.js'
-import {
-  fsClockNow,
-  type OutputFileRow,
-  racyWindowMs,
-  stampGrainMs,
-  WORKSPACE_OUTPUT_PREFIX,
-} from '../memo/index.js'
+import { fsClockNow, racyWindowMs, stampGrainMs, WORKSPACE_OUTPUT_PREFIX } from '../memo/index.js'
 import { type ExecuteResult } from '../exec/index.js'
-import type { TaskOutcome } from '../graph/index.js'
+import type { TaskNode, TaskOutcome } from '../graph/index.js'
 import { atOrUnder, MOUNT_WILDCARDS, toRealPath } from '../sandbox/index.js'
-import { printable, relPosix, span, taskGlobOf } from '../util/index.js'
+import { outputMatcher, printable, relPosix, span, taskGlobOf } from '../util/index.js'
 import { warnOf } from '../report/index.js'
 import type { ExecuteArgs } from './execute-task.js'
 import type { MissRun } from './miss-run.js'
@@ -310,15 +304,11 @@ async function onlyCtimeMoved(fact: InputFact, from: number, cache: CacheLayer):
 }
 
 /**
- * By run, each dependency's stamped output rows, read once (a save's rows do
- * not move within its run), and when its outputs were last found as its task
- * left them, on the file system's clock: a dependant whose command ended
- * before then needs them stat'd again for nothing.
+ * By run, when each dependency's outputs were last found as its task left
+ * them, on the file system's clock: a dependant whose command ended before
+ * then needs them stat'd again for nothing.
  */
-const outputsHeld = new WeakMap<
-  object,
-  { rows: Map<string, readonly OutputFileRow[]>; at: Map<string, number> }
->()
+const outputsHeldAt = new WeakMap<object, Map<string, number>>()
 
 /**
  * Did each dependency's outputs stay as its task left them while this one
@@ -341,9 +331,8 @@ export function upstreamOutputsHeld(m: MissRun): boolean {
       deps.push(o)
   }
   args.upstream.forEach(add)
-  let held = outputsHeld.get(args.run)
-  if (held === undefined) outputsHeld.set(args.run, (held = { rows: new Map(), at: new Map() }))
-  const { at } = held
+  let at = outputsHeldAt.get(args.run)
+  if (at === undefined) outputsHeldAt.set(args.run, (at = new Map()))
   const ended = m.endedAt
   const exposed = ended === undefined ? deps : deps.filter((d) => (at.get(d.hash!) ?? -1) < ended)
   if (exposed.length === 0) return true
@@ -351,18 +340,27 @@ export function upstreamOutputsHeld(m: MissRun): boolean {
   const endCheck = span('miss: recheck upstream outputs')
   // Taken before the stats: a write after it is one they may have missed.
   const now = fsClockNow(args.run.cacheDir ?? path.join(args.run.workspaceRoot, '.vx'))
-  const unread = exposed.map((d) => d.hash!).filter((h) => !held.rows.has(h))
-  if (unread.length > 0) {
-    const read = memo.loadOutputFilesBatch(unread)
-    for (const h of unread) held.rows.set(h, read.get(h) ?? [])
-  }
+  // Rows this run's save or restore stamped come from memory, not the index.
+  const rows = memo.loadOutputFilesBatch(exposed.map((d) => d.hash!))
+  // A file this task declares as its own output is its own to rewrite (an
+  // emitter over its build's `dist`): it is saved with this entry.
+  const { node } = args
+  const claims = claimsOf(node, args.run.workspaceRoot)
+  const partly = new Set<string>()
   const moved = exposed.find((d) => {
-    const own = held.rows.get(d.hash!)
-    if (own === undefined || own.length === 0) return false
-    const proj = own.filter((r) => !r.path.startsWith(WORKSPACE_OUTPUT_PREFIX))
-    const ws = own
+    const all = rows.get(d.hash!)
+    if (all === undefined || all.length === 0) return false
+    let proj = all.filter((r) => !r.path.startsWith(WORKSPACE_OUTPUT_PREFIX))
+    let ws = all
       .filter((r) => r.path.startsWith(WORKSPACE_OUTPUT_PREFIX))
       .map((r) => ({ ...r, path: r.path.slice(WORKSPACE_OUTPUT_PREFIX.length) }))
+    if (claims !== undefined) {
+      const before = proj.length + ws.length
+      const inside = atOrUnder(d.node.projectDir, node.projectDir)
+      if (inside) proj = proj.filter((r) => !claims(path.join(d.node.projectDir, r.path)))
+      if (ws.length > 0) ws = ws.filter((r) => !claims(path.join(args.run.workspaceRoot, r.path)))
+      if (proj.length + ws.length < before) partly.add(d.hash!)
+    }
     return !(
       memo.isOutputsCurrent(d.node.projectDir, proj) &&
       memo.isOutputsCurrent(args.run.workspaceRoot, ws)
@@ -370,7 +368,7 @@ export function upstreamOutputsHeld(m: MissRun): boolean {
   })
   endCheck()
   if (moved === undefined) {
-    for (const d of exposed) at.set(d.hash!, now)
+    for (const d of exposed) if (!partly.has(d.hash!)) at.set(d.hash!, now)
     return true
   }
   warnOf(args.log)(
@@ -379,6 +377,25 @@ export function upstreamOutputsHeld(m: MissRun): boolean {
   )
   forgetUndeclaredWrites(args.node, args.run.gitFilesCache, 'workspace')
   return false
+}
+
+const claimsByNode = new WeakMap<TaskNode, ((abs: string) => boolean) | undefined>()
+
+/** Whether `node` declares an absolute path its output; undefined when it declares none. */
+function claimsOf(node: TaskNode, workspaceRoot: string): ((abs: string) => boolean) | undefined {
+  if (claimsByNode.has(node)) return claimsByNode.get(node)
+  const own = node.config.outputs?.files ?? []
+  const ws = node.config.outputs?.workspaceFiles ?? []
+  let claims: ((abs: string) => boolean) | undefined
+  if (own.length > 0 || ws.length > 0) {
+    const ownOut = outputMatcher(own)
+    const wsOut = outputMatcher(ws)
+    claims = (abs) =>
+      (atOrUnder(abs, node.projectDir) && ownOut(relPosix(node.projectDir, abs))) ||
+      (ws.length > 0 && wsOut(relPosix(workspaceRoot, abs)))
+  }
+  claimsByNode.set(node, claims)
+  return claims
 }
 
 /**
