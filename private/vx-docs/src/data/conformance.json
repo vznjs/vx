@@ -1,6 +1,6 @@
 {
   "coverage": {
-    "ported": 244,
+    "ported": 247,
     "rest": {
       "pending": [
         "affected-clean-filters",
@@ -27,6 +27,7 @@
         "signal-tstp",
         "stale-hit-git-enumeration",
         "uncached-outputs",
+        "uncached-workspace-output-key",
         "unlistable-input-dir",
         "vx-lockfile/installed-layout",
         "vx-lockfile/sparse-checkout",
@@ -260,7 +261,6 @@
         "sandbox-mkdir-ancestor.unsafe",
         "sandbox-network-patterns.unsafe",
         "sandbox-network-per-task.unsafe",
-        "sandbox-node-modules-link.unsafe",
         "sandbox-noscan-dir.unsafe",
         "sandbox-noscan-gone.unsafe",
         "sandbox-observe.unsafe",
@@ -468,10 +468,12 @@
         "vx-migrate/migrate-turbo-env-wildcard",
         "vx-migrate/migrate-turbo-framework-env",
         "vx-migrate/migrate-turbo-framework-prefix",
+        "vx-migrate/migrate-turbo-group-preset",
         "vx-migrate/migrate-turbo-lockfile-note",
         "vx-migrate/migrate-turbo-preset-takeback",
         "vx-migrate/migrate-turbo-sealed-tsconfig",
         "vx-migrate/migrate-turbo-tracked-outputs",
+        "vx-migrate/migrate-turbo-tsc-reach",
         "vx-migrate/migrate-undecodable-member",
         "vx-migrate/migrate-vite-task",
         "vx-migrate/migration-member-link",
@@ -611,11 +613,14 @@
         "vx-migrate/turbo-env-switches",
         "vx-migrate/turbo-global-takeback",
         "vx-migrate/turbo-ignored-inputs",
+        "vx-migrate/turbo-ignored-output-dir",
+        "vx-migrate/turbo-map-empty-output",
         "vx-migrate/turbo-map-shell-names",
         "vx-migrate/turbo-map-spliced-dedupe",
         "vx-migrate/turbo-map-sweep",
         "vx-migrate/turbo-nested-inputs",
         "vx-migrate/turbo-negated-output-inputs",
+        "vx-migrate/turbo-nested-package-output",
         "vx-migrate/turbo-noop-node",
         "vx-migrate/turbo-noop-uncached",
         "vx-migrate/turbo-oidc",
@@ -635,6 +640,7 @@
         "vx-migrate/vite-task-env-wildcard",
         "vx-migrate/vite-task-glued-globstar",
         "vx-migrate/vite-task-nested-run",
+        "vx-migrate/workspace-imports-sorted",
         "vx-migrate/workspace-keys",
         "vx-migrate/yarn-berry-no-lock",
         "vx-otel/boolean-options",
@@ -749,6 +755,7 @@
         "capture-cap",
         "ci-env-readers",
         "ci-output",
+        "clean-deletes-upstream-writes",
         "cli-bare",
         "cli-cache-dir-stages",
         "cli-colors-e2e",
@@ -1108,19 +1115,19 @@
   "scores": {
     "vx": {
       "all": {
-        "pass": 1017,
-        "can": 1017,
-        "of": 1019
+        "pass": 1021,
+        "can": 1021,
+        "of": 1023
       },
       "correctness": {
-        "pass": 839,
-        "can": 839,
-        "of": 841
+        "pass": 842,
+        "can": 842,
+        "of": 844
       },
       "efficiency": {
-        "pass": 169,
-        "can": 169,
-        "of": 169
+        "pass": 170,
+        "can": 170,
+        "of": 170
       },
       "data": {
         "pass": 9,
@@ -1148,9 +1155,9 @@
         "of": 99
       },
       "cache": {
-        "pass": 43,
-        "can": 43,
-        "of": 43
+        "pass": 44,
+        "can": 44,
+        "of": 44
       },
       "inputs": {
         "pass": 309,
@@ -1163,9 +1170,9 @@
         "of": 33
       },
       "outputs": {
-        "pass": 233,
-        "can": 233,
-        "of": 233
+        "pass": 235,
+        "can": 235,
+        "of": 235
       },
       "report": {
         "pass": 9,
@@ -1173,9 +1180,9 @@
         "of": 9
       },
       "sandbox": {
-        "pass": 23,
-        "can": 23,
-        "of": 23
+        "pass": 24,
+        "can": 24,
+        "of": 24
       },
       "watch": {
         "pass": 37,
@@ -1185,19 +1192,19 @@
     },
     "turbo": {
       "all": {
-        "pass": 641,
-        "can": 929,
-        "of": 1019
+        "pass": 643,
+        "can": 932,
+        "of": 1023
       },
       "correctness": {
-        "pass": 518,
-        "can": 757,
-        "of": 841
+        "pass": 519,
+        "can": 759,
+        "of": 844
       },
       "efficiency": {
-        "pass": 119,
-        "can": 164,
-        "of": 169
+        "pass": 120,
+        "can": 165,
+        "of": 170
       },
       "data": {
         "pass": 4,
@@ -1226,8 +1233,8 @@
       },
       "cache": {
         "pass": 35,
-        "can": 43,
-        "of": 43
+        "can": 44,
+        "of": 44
       },
       "inputs": {
         "pass": 188,
@@ -1240,9 +1247,9 @@
         "of": 33
       },
       "outputs": {
-        "pass": 168,
-        "can": 230,
-        "of": 233
+        "pass": 170,
+        "can": 232,
+        "of": 235
       },
       "report": {
         "pass": 4,
@@ -1252,7 +1259,7 @@
       "sandbox": {
         "pass": 1,
         "can": 1,
-        "of": 23
+        "of": 24
       },
       "watch": {
         "pass": 31,
@@ -1262,19 +1269,19 @@
     },
     "nx": {
       "all": {
-        "pass": 655,
-        "can": 954,
-        "of": 1019
+        "pass": 656,
+        "can": 957,
+        "of": 1023
       },
       "correctness": {
         "pass": 495,
-        "can": 778,
-        "of": 841
+        "can": 780,
+        "of": 844
       },
       "efficiency": {
-        "pass": 156,
-        "can": 168,
-        "of": 169
+        "pass": 157,
+        "can": 169,
+        "of": 170
       },
       "data": {
         "pass": 4,
@@ -1303,8 +1310,8 @@
       },
       "cache": {
         "pass": 37,
-        "can": 40,
-        "of": 43
+        "can": 41,
+        "of": 44
       },
       "inputs": {
         "pass": 188,
@@ -1317,9 +1324,9 @@
         "of": 33
       },
       "outputs": {
-        "pass": 164,
-        "can": 230,
-        "of": 233
+        "pass": 165,
+        "can": 232,
+        "of": 235
       },
       "report": {
         "pass": 4,
@@ -1329,7 +1336,7 @@
       "sandbox": {
         "pass": 0,
         "can": 1,
-        "of": 23
+        "of": 24
       },
       "watch": {
         "pass": 28,
@@ -1339,19 +1346,19 @@
     },
     "vite-task": {
       "all": {
-        "pass": 507,
-        "can": 759,
-        "of": 1019
+        "pass": 508,
+        "can": 762,
+        "of": 1023
       },
       "correctness": {
         "pass": 418,
-        "can": 629,
-        "of": 841
+        "can": 631,
+        "of": 844
       },
       "efficiency": {
-        "pass": 87,
-        "can": 122,
-        "of": 169
+        "pass": 88,
+        "can": 123,
+        "of": 170
       },
       "data": {
         "pass": 2,
@@ -1380,8 +1387,8 @@
       },
       "cache": {
         "pass": 34,
-        "can": 35,
-        "of": 43
+        "can": 36,
+        "of": 44
       },
       "inputs": {
         "pass": 179,
@@ -1394,9 +1401,9 @@
         "of": 33
       },
       "outputs": {
-        "pass": 144,
-        "can": 230,
-        "of": 233
+        "pass": 145,
+        "can": 232,
+        "of": 235
       },
       "report": {
         "pass": 2,
@@ -1406,7 +1413,7 @@
       "sandbox": {
         "pass": 1,
         "can": 1,
-        "of": 23
+        "of": 24
       },
       "watch": {
         "pass": 0,
@@ -1416,19 +1423,19 @@
     },
     "nix": {
       "all": {
-        "pass": 487,
-        "can": 724,
-        "of": 1019
+        "pass": 488,
+        "can": 728,
+        "of": 1023
       },
       "correctness": {
         "pass": 419,
-        "can": 601,
-        "of": 841
+        "can": 604,
+        "of": 844
       },
       "efficiency": {
-        "pass": 66,
-        "can": 115,
-        "of": 169
+        "pass": 67,
+        "can": 116,
+        "of": 170
       },
       "data": {
         "pass": 2,
@@ -1457,8 +1464,8 @@
       },
       "cache": {
         "pass": 28,
-        "can": 35,
-        "of": 43
+        "can": 36,
+        "of": 44
       },
       "inputs": {
         "pass": 178,
@@ -1471,9 +1478,9 @@
         "of": 33
       },
       "outputs": {
-        "pass": 164,
-        "can": 228,
-        "of": 233
+        "pass": 165,
+        "can": 230,
+        "of": 235
       },
       "report": {
         "pass": 2,
@@ -1482,8 +1489,8 @@
       },
       "sandbox": {
         "pass": 18,
-        "can": 22,
-        "of": 23
+        "can": 23,
+        "of": 24
       },
       "watch": {
         "pass": 0,
@@ -1493,19 +1500,19 @@
     },
     "moon": {
       "all": {
-        "pass": 591,
-        "can": 911,
-        "of": 1019
+        "pass": 593,
+        "can": 914,
+        "of": 1023
       },
       "correctness": {
-        "pass": 459,
-        "can": 748,
-        "of": 841
+        "pass": 460,
+        "can": 750,
+        "of": 844
       },
       "efficiency": {
-        "pass": 127,
-        "can": 154,
-        "of": 169
+        "pass": 128,
+        "can": 155,
+        "of": 170
       },
       "data": {
         "pass": 5,
@@ -1534,8 +1541,8 @@
       },
       "cache": {
         "pass": 38,
-        "can": 42,
-        "of": 43
+        "can": 43,
+        "of": 44
       },
       "inputs": {
         "pass": 194,
@@ -1548,9 +1555,9 @@
         "of": 33
       },
       "outputs": {
-        "pass": 129,
-        "can": 233,
-        "of": 233
+        "pass": 131,
+        "can": 235,
+        "of": 235
       },
       "report": {
         "pass": 5,
@@ -1560,7 +1567,7 @@
       "sandbox": {
         "pass": 0,
         "can": 1,
-        "of": 23
+        "of": 24
       },
       "watch": {
         "pass": 0,
@@ -37078,6 +37085,152 @@
         },
         "nix": {
           "status": "pass"
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        }
+      }
+    },
+    {
+      "id": "cache/dependency-input-edited-mid-run-not-replayed",
+      "ref": "o2iy1u",
+      "category": "cache",
+      "kind": "correctness",
+      "title": "A dependency’s source edited while its dependant builds is not replayed once the edit is undone",
+      "why": "A bundler reads a workspace package’s source while it builds, and an editor or a sibling task can change that source mid-build. The dependant then holds bytes from the edited source, yet the run worked out its key from the source as it was. Stored under that key, the build comes back once the edit is undone: a green run that ships code nobody has on disk.",
+      "from": [
+        "upstream-input-moved"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 3,
+          "detail": "packages/app/dist/o.txt is \"B\\n\", expected \"A\\n\""
+        },
+        "nx": {
+          "status": "fail",
+          "step": 3,
+          "detail": "packages/app/dist/o.txt is \"B\\n\", expected \"A\\n\""
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 3,
+          "detail": "packages/app/dist/o.txt is \"B\\n\", expected \"A\\n\""
+        },
+        "nix": {
+          "status": "fail",
+          "step": 1,
+          "detail": "exited 100, expected success"
+        },
+        "moon": {
+          "status": "fail",
+          "step": 3,
+          "detail": "packages/app/dist/o.txt is \"B\\n\", expected \"A\\n\""
+        }
+      }
+    },
+    {
+      "id": "outputs/write-just-after-exit-cached-whole",
+      "ref": "avfiei",
+      "category": "outputs",
+      "kind": "correctness",
+      "title": "A build whose helper processes finish just after it exits is cached with what they wrote",
+      "why": "Bundlers such as Turbopack run pools of worker processes that are still closing for a moment after the main command returns. What they write in that moment belongs to the build. A tool that stores the outputs at the instant the command exits, or refuses to store the build at all, gives a partial result or rebuilds on every run.",
+      "from": [
+        "left-running-save"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 3,
+          "detail": "packages/a/dist/out.txt is \"\", expected \"a\\n\""
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 3,
+          "detail": "packages/a/dist/late.txt is missing, expected \"late\\n\""
+        },
+        "nix": {
+          "status": "fail",
+          "step": 3,
+          "detail": "packages/a/dist/late.txt is missing, expected \"late\\n\""
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "outputs/output-past-2-gib-cached",
+      "ref": "9ugdoe",
+      "category": "outputs",
+      "kind": "efficiency",
+      "title": "A build whose outputs pass 2 GiB is cached and comes back",
+      "why": "A Next.js standalone build with its traced dependencies can pass 2 GB. Kept on this machine, such a build costs only disk to store and replay. A tool that refuses outputs past a size limit rebuilds it on every run, which for a build this size is minutes each time.",
+      "from": [
+        "artifact-ceiling-tree"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "sandbox/node-modules-linked-outside-on-path",
+      "ref": "k93ef5",
+      "category": "sandbox",
+      "kind": "correctness",
+      "title": "An isolated task still runs a tool from its node_modules when that folder is a link out of the workspace",
+      "why": "A package store on another disk or a container volume often makes `node_modules` a link to a folder outside the workspace. The tools in its `.bin` are what the task runs, so isolation must keep the link itself reachable, not only the folder it points at. A sandbox that drops the link reports every installed tool as not found, and isolation gets turned off.",
+      "from": [
+        "sandbox-node-modules-link.unsafe"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "needs sandbox"
+        },
+        "nix": {
+          "status": "fail",
+          "step": 2,
+          "detail": "exited 100, expected success"
         },
         "moon": {
           "status": "n/a",
