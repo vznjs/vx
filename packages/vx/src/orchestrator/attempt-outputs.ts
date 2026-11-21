@@ -141,36 +141,15 @@ export class OutputGuard {
       // re-create would stay in a same-project consumer's input set, keeping
       // that consumer's key unchanged while the file is gone from disk.
       const endClean = span('miss: clean outputs')
-      const writers = attempt === 1 ? ranBefore(args) : []
-      const written = new Map<string, string[]>()
+      const watch = upstreamWrites(args, attempt, node.projectDir)
       const cleanedRels = await cleanOutputs({
         ...cleanArgs,
         beforeRun: true,
         kept: this.committedKept,
-        written:
-          writers.length === 0
-            ? undefined
-            : {
-                windows: writers.map((w) => w.window),
-                onWritten: (abs, i) => {
-                  const id = writers[i]!.id
-                  let files = written.get(id)
-                  if (files === undefined) written.set(id, (files = []))
-                  files.push(relPosix(node.projectDir, abs))
-                },
-              },
+        written: watch.written,
       })
       endClean()
-      for (const [id, files] of written) {
-        const shown =
-          files.length > 3
-            ? `${files.slice(0, 3).join(', ')} and ${files.length - 3} more`
-            : files.join(', ')
-        warnOf(args.log)(
-          `[vx] ${node.id}: its outputs' clean before it ran deleted ${shown}, which ${id} wrote earlier in this run ` +
-            `— declare ${files.length === 1 ? 'it' : 'them'} in ${id}'s outputs, or have ${id} write outside ${node.id}'s outputs`,
-        )
-      }
+      watch.say()
       args.run.gitFilesCache?.markOutputsChanged(node.projectDir, cleanedRels)
       this.committedBefore = this.checkCommitted(
         node.projectDir,
@@ -208,11 +187,14 @@ export class OutputGuard {
     } else if (clean && wsOutputs.length > 0) {
       // Root-anchored deletions can land in other projects' dirs; mark
       // them so stale per-project git snapshots can't survive the wipe.
+      const watch = upstreamWrites(args, attempt, args.run.workspaceRoot)
       const cleanedWsRels = await cleanWorkspaceOutputs({
         ...wsCleanArgs,
         beforeRun: true,
         kept: this.committedKept,
+        written: watch.written,
       })
+      watch.say()
       args.run.gitFilesCache?.markWorkspaceOutputsChanged(args.run.workspaceRoot, cleanedWsRels)
       this.wsCommittedBefore = this.checkCommitted(
         args.run.workspaceRoot,
@@ -333,6 +315,49 @@ export class OutputGuard {
     if (rels.length > 0)
       await cleanOutputPaths({ projectDir: root, rels, outputs: outs, committed })
     return rels
+  }
+}
+
+/**
+ * What a first attempt's clean deletes that a same-project dependency wrote
+ * earlier in this run, collected while it deletes and said after: the
+ * config is wrong, and the user is told which task to declare it on.
+ * Paths are shown relative to `base` (the project, or the workspace for a
+ * root-anchored output).
+ */
+function upstreamWrites(
+  args: ExecuteArgs,
+  attempt: number,
+  base: string,
+): { written: Parameters<typeof cleanOutputs>[0]['written']; say: () => void } {
+  const writers = attempt === 1 ? ranBefore(args) : []
+  const found = new Map<string, string[]>()
+  const { id: self } = args.node
+  return {
+    written:
+      writers.length === 0
+        ? undefined
+        : {
+            windows: writers.map((w) => w.window),
+            onWritten: (abs, i) => {
+              const id = writers[i]!.id
+              let files = found.get(id)
+              if (files === undefined) found.set(id, (files = []))
+              files.push(relPosix(base, abs))
+            },
+          },
+    say: () => {
+      for (const [id, files] of found) {
+        const shown =
+          files.length > 3
+            ? `${files.slice(0, 3).join(', ')} and ${files.length - 3} more`
+            : files.join(', ')
+        warnOf(args.log)(
+          `[vx] ${self}: its outputs' clean before it ran deleted ${shown}, which ${id} wrote earlier in this run ` +
+            `— declare ${files.length === 1 ? 'it' : 'them'} in ${id}'s outputs, or have ${id} write outside ${self}'s outputs`,
+        )
+      }
+    },
   }
 }
 

@@ -1915,6 +1915,8 @@ export async function cleanWorkspaceOutputs(args: {
   beforeRun?: boolean
   /** As `cleanOutputs`'s. */
   kept?: string[]
+  /** As `cleanOutputs`'s. */
+  written?: Parameters<typeof cleanOutputs>[0]['written']
 }): Promise<string[]> {
   const committed = committedPastLinks(
     args.workspaceRoot,
@@ -1926,13 +1928,13 @@ export async function cleanWorkspaceOutputs(args: {
       ? await resolveWorkspaceOutputTree({ ...args, special: true, clearing: true })
       : { files: args.resolved, emptyDirs: [], special: [] }
   const matched = tree.files
+  const doomed = [...matched, ...tree.special].filter(
+    (f) => !keptCommitted(f, committed, args.kept),
+  )
+  if (args.written !== undefined) reportWritten(doomed, args.written)
   await pruneEmptiedDirs(
     args.workspaceRoot,
-    await removeAll(
-      [...matched, ...tree.special].filter((f) => !keptCommitted(f, committed, args.kept)),
-      args.workspaceRoot,
-      args.beforeRun,
-    ),
+    await removeAll(doomed, args.workspaceRoot, args.beforeRun),
     pruneScope(args.workspaceRoot, args.outputs),
     undefined,
     tree.emptyDirs,

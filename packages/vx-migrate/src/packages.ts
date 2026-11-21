@@ -262,13 +262,6 @@ function excludedBy(rel: string, negative: readonly string[]): boolean {
   return false
 }
 
-/** Does a member glob list the directory `rel` (workspace-relative, POSIX)? */
-export function globLists(globs: readonly string[], rel: string): boolean {
-  const { positive, negative } = splitPackageGlobs(globs)
-  if (rel === '' || excludedBy(rel, negative)) return false
-  return positive.some((g) => g !== '.' && new Bun.Glob(g).match(rel))
-}
-
 /**
  * Package globs declared by `dir`, or `null` when `dir` is not a root
  * candidate. A bare `package.json` (no `workspaces`) is single-project mode:
