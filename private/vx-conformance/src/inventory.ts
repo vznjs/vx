@@ -1232,6 +1232,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'uncached-key-once',
     'unpassed-env',
     'upstream-input-moved',
+    'upstream-input-window-race',
     'upstream-output-moved',
     'user-error-classify',
     'util-hash',
