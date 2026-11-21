@@ -28,7 +28,7 @@ it('a node rooted outside the workspace plans no file', async () => {
     await writeFile(path.join(root, 'graph.json'), JSON.stringify(graph))
     const p = await migrateNx(root, [], 'ts', path.join(root, 'graph.json'))
     expect(p.projects.map((x) => path.relative(root, x.dir))).toEqual(['libs/in'])
-    expect(p.extraFiles.map((f) => f.relPath)).toEqual(['libs/in/package.json'])
+    expect(p.extraFiles).toEqual([])
   } finally {
     await rm(base, { recursive: true, force: true })
   }

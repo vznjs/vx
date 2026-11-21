@@ -1,7 +1,6 @@
 // `bunx @vzn/vx-migrate --from nx`: the resolved graph snapshot on disk,
 // through the mapper the `nx()` plugin runs live, as a migration plan.
 
-import { stat } from 'node:fs/promises'
 import path from 'node:path'
 import {
   type GeneratedProject,
@@ -9,11 +8,10 @@ import {
   type MigrationPlan,
   quoteTsLiteral,
 } from '@vzn/vx'
-import { globLists, type PackageMeta } from './packages.js'
+import type { PackageMeta } from './packages.js'
 import { mapNxWorkspace, parseNxGraph, readNxJson } from './nx/nx-map.js'
 import { spareTrackedOutputs, trackedFiles, trackedKinds } from './tracked-outputs.js'
 import { adoptedToolNotes } from './workspace-notes.js'
-import { relPosix } from './paths.js'
 
 /** What a task's `npm_package_*` read: the manifest, so a bump reaches them. */
 const MANIFEST_IMPORT = "import pkg from './package.json' with { type: 'json' }"
@@ -30,8 +28,6 @@ export async function migrateNx(
   writesWorkspace = false,
   /** No package.json anywhere: each config names its project and holds every edge. */
   bare = false,
-  /** The package manager's member globs. */
-  packageGlobs: readonly string[] = [],
 ): Promise<MigrationPlan> {
   const graph = parseNxGraph(await Bun.file(snapshot).text(), path.relative(root, snapshot))
   const tracked = await trackedFiles(root)
@@ -57,10 +53,8 @@ export async function migrateNx(
     runner: 'nx',
     keys: (lock) => `Nx keys each project on the npm packages it depends on in ${lock}`,
   })
-  const unlisted = bare
-    ? { manifests: [], notes: bareNotes(mapped.projects) }
-    : await unlistedProjects(root, metas, mapped.projects, packageGlobs)
   if (bare) for (const p of mapped.projects) explicitOnly(p)
+  else nameUnlisted(root, metas, mapped.projects)
   return {
     headerNotes: [
       // CopilotKit maps every target to a shell line: no nx-exec to keep.
@@ -79,10 +73,10 @@ export async function migrateNx(
         ? { ...p, importLines: [MANIFEST_IMPORT, ...(p.importLines ?? [])] }
         : p,
     ),
-    extraFiles: unlisted.manifests,
+    extraFiles: [],
     notes: [
       ...mapped.notes,
-      ...unlisted.notes,
+      ...(bare ? bareNotes(mapped.projects) : []),
       ...nxWorkspaceFields((await readNxJson(root).catch(() => null))?.json)
         .filter((f) => !writesWorkspace || f.source === undefined)
         .map((f) => f.note),
@@ -127,95 +121,25 @@ function bareNotes(projects: readonly GeneratedProject[]): string[] {
 }
 
 /**
- * Nx projects no workspace glob lists (an integrated repo's `project.json`
- * libraries): core finds a project only by a listed package.json, so a
- * config written there would never run. Each gets a package.json when it
- * has none, and one note names the globs to add — the root manifest is
- * the user's to edit, and `applyMigration` never overwrites a file. A
- * directory a glob already lists (analog's `apps/*` e2e projects) needs only
- * the package.json, and the manager's install after it (`relink`).
+ * Nx projects no member of the package manager's workspace holds (an
+ * integrated repo's `project.json` libraries): core finds a project by its
+ * vx.config, not by a package.json, so each config names the project as
+ * Nx does and its dependants spell it. A single-version repo lists no
+ * members on purpose: writing package.json files and asking for globs made
+ * the manager install each library's own ranges (transloco, angular-three)
+ * and hoist a slashed name into a library's source (ngxtension). Its
+ * dependencies resolve from the root, whose lockfile entry keys it.
  */
-async function unlistedProjects(
+function nameUnlisted(
   root: string,
   metas: readonly PackageMeta[],
-  projects: readonly { name: string; dir: string; writeName?: boolean }[],
-  packageGlobs: readonly string[],
-): Promise<{ manifests: { relPath: string; contents: string }[]; notes: string[] }> {
+  projects: readonly { dir: string; writeName?: boolean }[],
+): void {
   const listed = new Set(metas.map((m) => path.resolve(m.dir)))
-  const unlisted = projects.filter(
-    (p) => path.resolve(p.dir) !== path.resolve(root) && !listed.has(path.resolve(p.dir)),
-  )
-  if (unlisted.length === 0) return { manifests: [], notes: [] }
-  const outside = unlisted.filter((p) => !globLists(packageGlobs, relPosix(root, p.dir)))
-  const rels = outside.map((p) => relPosix(root, p.dir)).sort()
-  const manifests: { relPath: string; contents: string }[] = []
-  const taken = new Set([...metas.map((m) => m.name), ...projects.map((p) => p.name)])
-  for (const p of unlisted) {
-    const file = path.join(p.dir, 'package.json')
-    if (
-      await stat(file).then(
-        () => true,
-        () => false,
-      )
-    )
-      continue
-    const name = npmName(p.name, taken)
-    taken.add(name)
-    // The config keeps the Nx name the configs' dependsOn spell.
-    if (name !== p.name) p.writeName = true
-    manifests.push({
-      relPath: relPosix(root, file),
-      contents: `${JSON.stringify({ name, private: true }, null, 2)}\n`,
-    })
+  for (const p of projects) {
+    const dir = path.resolve(p.dir)
+    if (dir !== path.resolve(root) && !listed.has(dir)) p.writeName = true
   }
-  const exists = (f: string) =>
-    stat(path.join(root, f)).then(
-      () => true,
-      () => false,
-    )
-  const pnpmFile = await exists('pnpm-workspace.yaml')
-  // pnpm reads no package.json `workspaces`: spartan (an Nx repo on pnpm
-  // with no pnpm-workspace.yaml) was told to list its projects there, and
-  // they stayed outside the workspace.
-  const pnpm = pnpmFile || (await exists('pnpm-lock.yaml'))
-  const where = pnpm
-    ? `pnpm-workspace.yaml's \`packages\`${pnpmFile ? '' : ' (create the file: pnpm reads no package.json `workspaces`)'}`
-    : 'package.json `workspaces`'
-  const wrote = manifests.some((m) => rels.includes(path.posix.dirname(m.relPath)))
-    ? ' (a package.json is written where there was none)'
-    : ''
-  return {
-    manifests,
-    notes:
-      outside.length === 0
-        ? []
-        : [
-            `${outside.length} Nx project${outside.length === 1 ? ' is' : 's are'} in no workspace glob${wrote} — ` +
-              `vx finds a project by a package.json the workspace lists: add ${rels.map((r) => JSON.stringify(r)).join(', ')} to ${where}`,
-          ],
-  }
-}
-
-const NPM_NAME = /^(?:@[a-z0-9-~][a-z0-9-._~]*\/)?[a-z0-9-~][a-z0-9-._~]*$/
-
-/**
- * A package.json name the package manager takes for an Nx project's name.
- * An unscoped name with a slash is none: pnpm hoisted ngxtension's
- * `ngxtension/computed` to `node_modules/.pnpm/node_modules/ngxtension/computed`,
- * through the `ngxtension` link into the library's own source, and its
- * build failed on the dangling link it left there. `a/b` becomes `@a/b`.
- */
-function npmName(name: string, taken: ReadonlySet<string>): string {
-  if (NPM_NAME.test(name)) return name
-  const parts = name
-    .toLowerCase()
-    .replace(/^@/, '')
-    .split('/')
-    .map((x) => x.replace(/[^a-z0-9-._~]/g, '-').replace(/^[._]+/, '') || 'x')
-  const base = parts.length === 1 ? parts[0]! : `@${parts[0]}/${parts.slice(1).join('-')}`
-  let out = base
-  for (let i = 2; taken.has(out); i++) out = `${base}-${i}`
-  return out
 }
 
 /** A `.vx/workspace.ts` field nx.json's run settings call for. */

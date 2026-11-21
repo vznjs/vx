@@ -12,7 +12,6 @@ import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import { type Logger, loadProjectConfig } from '@vzn/vx'
-import { listPackages } from '../src/packages.js'
 import { planRun } from '../../vx/tests/helpers/orchestrator.js'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
 
@@ -99,6 +98,7 @@ async function migrate(shape: string): Promise<{
     const tasks: Record<string, string[]> = {}
     const configs: Record<string, Record<string, Record<string, unknown>>> = {}
     const tags: Record<string, readonly string[] | undefined> = {}
+    const named: string[] = []
     for (const [name, rel] of roots) {
       const file = path.join(root, rel, 'vx.config.ts')
       if (!(await Bun.file(file).exists())) continue
@@ -107,13 +107,10 @@ async function migrate(shape: string): Promise<{
       tags[name] = config.tags
       tasks[name] = Object.keys(loaded).sort()
       configs[name] = loaded
+      if (unlisted.has(name)) named.push((config as { name?: string }).name ?? `(${rel})`)
     }
-    let discovered: string[] | undefined
-    if (unlisted.size > 0) {
-      // Follow the note: list every member, as it says to.
-      await writeFile(path.join(root, 'package.json'), manifest(members.map(([, r]) => r)))
-      discovered = (await listPackages(root)).map((m) => m.name).sort()
-    }
+    // Core names a project its manifest does not by its config's `name`.
+    const discovered = unlisted.size > 0 ? named.sort() : undefined
     // Every written task plans: a config that loads can still be refused
     // when core builds the graph (a cycle, P2-22; a dropped key, P2-23).
     // The written workspace file imports plugins this fixture never
@@ -279,11 +276,10 @@ describe('vx-migrate on the Nx shapes real repos have: every written config load
       feature: ['build', 'inputs:default', 'lint'],
       '@acme/util': ['build', 'inputs:default'],
     })
-    expect(r.out).toContain(
-      '2 Nx projects are in no workspace glob (a package.json is written where there was none) — vx finds a project by a package.json the workspace lists: add "apps/shop", "libs/feature" to package.json `workspaces`',
-    )
-    // The written package.json files make them projects once listed.
-    expect(r.discovered).toEqual(['@acme/util', 'acme', 'feature', 'shop'])
+    // Core finds them by their vx.config, named as Nx names them: no
+    // package.json is written and no workspace glob asked for.
+    expect(r.out).not.toContain('workspace glob')
+    expect(r.discovered).toEqual(['feature', 'shop'])
   }, 30_000)
 
   it('a manifest cycle Nx breaks with `!a`, and a configuration named like another target', async () => {
