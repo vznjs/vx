@@ -141,6 +141,13 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
   // closing reaches the loop alone, and the loop passes it on — unless vx
   // was started with it ignored (nohup).
   if (!hangupIgnored()) process.on('SIGHUP', () => stop.abort('SIGHUP'))
+  // Bun ignores SIGPIPE: past its reader (`| head`, a quit `| less`) a write
+  // only raises EPIPE, and the watch, its server with it, ran on for nobody
+  // while the shell waited on the pipeline. It ends as a hang-up does. Off
+  // a write it cannot be seen: an idle watch ends at its next output.
+  process.stdout.on('error', (err: unknown) => {
+    if ((err as { code?: unknown } | null)?.code === 'EPIPE') stop.abort('SIGPIPE')
+  })
 
   // Enumerate projects-in-scope so we know what dirs to watch: the bare
   // tasks' scope (`opts.projects`; undefined means "every project", or
