@@ -2352,4 +2352,32 @@ describe('drainOrAbort', () => {
         ]).toEqual([0, false, true])
       }),
   )
+  // Ctrl-C with vx's own reader stopped (`vx run … | less`, paused): the
+  // stopped task's readers waited on the paced stdout, and the run with them.
+  it.skipIf(process.platform !== 'linux')('a stopped task does not wait on a paced stdout', () =>
+    withBound(async () => {
+      const stdout = new EventEmitter()
+      const stop = new AbortController()
+      const t = performance.now()
+      let pid = 0
+      const r = await runCommand({
+        command: 'seq 1 300000; sleep 10',
+        cwd: os.tmpdir(),
+        env: { PATH: process.env['PATH'] ?? '' },
+        signal: stop.signal,
+        onSpawn: (p) => (pid = p),
+        onStdout: () => {
+          noteWrite(stdout, false)
+          // As the run's stop does: abort, then signal the task's group.
+          setTimeout(() => {
+            stop.abort()
+            process.kill(-pid, 'SIGINT')
+          }, 100)
+        },
+      })
+      stdout.emit('close')
+      expect(r.exitCode).not.toBe(0)
+      expect(performance.now() - t).toBeLessThan(3000)
+    }),
+  )
 })
