@@ -384,9 +384,9 @@ waits only on `ci`. New numbers go live with the next main push.
 
 vx must win. Bench fails when vx is slower than any rival on a cold build,
 a restore or nothing changed, or burns more cold CPU than Turbo or Nx
-(`losses` in `private/vx-docs/src/bench/format.ts`). It still uploads
-those numbers, and `build.live` fails on them too, so main stays red
-until a change makes vx the fastest again.
+(`losses` in `private/vx-docs/src/bench/format.ts`), so CI on main is
+red until a change makes vx the fastest again. It still uploads those
+numbers, and the site always deploys the newest ones.
 
 No build depends on the
 benchmarks, so neither the DTE run, where a worker is packed beside

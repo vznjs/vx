@@ -1,4 +1,4 @@
-// Main's Bench and the site's build fail when vx loses any race
+// Main's Bench fails when vx loses any race
 // (2026-11-21): time on a cold build, a restore or nothing changed to any
 // rival, CPU to any but Vite Task.
 import { expect, it } from 'bun:test'
@@ -52,5 +52,5 @@ it('names each race vx loses, and to whom', () => {
     'nothing changed, outputs restored: vx 9 ms, Vite Task 8 ms',
     'nothing changed: vx 9 ms, Vite Task 8 ms',
   ])
-  expect(() => assertFastest(d, 'live-bench')).toThrow(/live-bench: vx is not the fastest/)
+  expect(() => assertFastest(d, 'bench-data')).toThrow(/bench-data: vx is not the fastest/)
 })
