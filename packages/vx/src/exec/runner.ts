@@ -683,7 +683,7 @@ export function lineEnds(
 const POST_EXIT_DRAIN_CHARS = 32 * 1024 * 1024
 
 /** Text a task's readers took so far (`streamToString`'s `progress`). */
-export interface DrainProgress {
+interface DrainProgress {
   chars: number
 }
 

@@ -49,7 +49,6 @@ import type { SandboxConfig } from '../config.js'
 import {
   armTimeout,
   drainOrAbort,
-  type DrainProgress,
   lineEnds,
   POST_EXIT_CUT_LINE,
   shellQuote,
@@ -3013,7 +3012,7 @@ async function awaitAttempt(args: SandboxedRunArgs, spawned: Spawned, tag: strin
   const errTail = new Tail()
   const [out, err] = pipes.streams(proc)
   const ends = lineEnds(args.onStdout, args.onStderr)
-  const progress: DrainProgress = { chars: 0 }
+  const progress = { chars: 0 }
   const streams = Promise.all([
     streamToString(
       out,
