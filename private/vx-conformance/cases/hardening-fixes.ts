@@ -5,17 +5,19 @@ import { CONCAT } from './shapes.ts'
 
 const LIB_A = 'packages/lib/src/a.txt'
 const APP_OUT = 'packages/app/dist/o.txt'
+const LIB_OUT = 'packages/lib/dist/out.txt'
 
 /** Waits up to 20 s for a mark in the shared directory: a tool that runs one task at a time still ends. */
 const waitFor = (mark: string) =>
   `i=0; while [ ! -e ../../${MEET}/${mark} ] && [ $i -lt 400 ]; do sleep 0.05; i=$((i+1)); done`
 
 /**
- * lib builds its source into `dist`; app, after it, reads lib's source as a
- * bundler does, once `editor` has rewritten it mid-run, as a sibling task or
- * an editor does while a dependant builds.
+ * lib builds its source into `dist`; app, after it, reads lib's `read` (its
+ * source, as a bundler does, or its built output) once `editor` has
+ * rewritten lib's `edit` mid-run, as a sibling task or an editor does while
+ * a dependant builds.
  */
-const editedUnderDependant = (): WorkspaceSpec => ({
+const editedUnderDependant = (read = 'src/a.txt', edit = read): WorkspaceSpec => ({
   projects: {
     lib: {
       tasks: { build: { command: CONCAT, inputs: ['src/**'], outputs: ['dist/**'] } },
@@ -25,7 +27,7 @@ const editedUnderDependant = (): WorkspaceSpec => ({
       deps: ['lib'],
       tasks: {
         build: {
-          command: `mkdir -p ../../${MEET} dist && touch ../../${MEET}/started && ${waitFor('edited')} && cat ../lib/src/a.txt > dist/o.txt`,
+          command: `mkdir -p ../../${MEET} dist && touch ../../${MEET}/started && ${waitFor('edited')} && cat ../lib/${read} > dist/o.txt`,
           dependsOn: ['^build'],
           inputs: ['src/**'],
           outputs: ['dist/**'],
@@ -36,7 +38,7 @@ const editedUnderDependant = (): WorkspaceSpec => ({
     editor: {
       tasks: {
         build: {
-          command: `mkdir -p ../../${MEET} && ${waitFor('started')} && printf 'B\\n' > ../lib/src/a.txt && touch ../../${MEET}/edited`,
+          command: `mkdir -p ../../${MEET} && ${waitFor('started')} && printf 'B\\n' > ../lib/${edit} && touch ../../${MEET}/edited`,
           cache: false,
         },
       },
@@ -68,6 +70,26 @@ export default [
         run: 'build',
         projects: ['app'],
         expect: { exit: 0, files: { [APP_OUT]: 'A\n' } },
+      },
+    ],
+  }),
+
+  defineCase({
+    id: 'cache/dependency-output-changed-mid-run-not-replayed',
+    category: 'cache',
+    kind: 'correctness',
+    title:
+      'A dependency’s output changed while its dependant builds is not replayed once it is put back',
+    why: 'A checkout, a stash or a sibling task can rewrite a package’s built files while a dependant reads them. The dependant then holds bytes no key describes, since a key follows the dependency’s inputs, not the files on disk. Stored, that build replays the changed files after the dependency’s own output is put back, and the dependant ships code that matches nothing.',
+    from: ['upstream-output-moved'],
+    workspace: editedUnderDependant('dist/out.txt', 'dist/out.txt'),
+    steps: [
+      { run: 'build', expect: { exit: 0, files: { [APP_OUT]: 'B\n' } } },
+      { write: { 'packages/lib/dist': null, 'packages/app/dist': null } },
+      {
+        run: 'build',
+        projects: ['app'],
+        expect: { exit: 0, files: { [LIB_OUT]: 'A\n', [APP_OUT]: 'A\n' } },
       },
     ],
   }),

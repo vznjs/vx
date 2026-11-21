@@ -5,12 +5,17 @@
 import { existsSync, lstatSync } from 'node:fs'
 import path from 'node:path'
 import { ABSENT_INPUT, type CacheLayer, declaresInput } from '../cache/index.js'
-import { racyWindowMs, stampGrainMs, WORKSPACE_OUTPUT_PREFIX } from '../memo/index.js'
+import {
+  fsClockNow,
+  type OutputFileRow,
+  racyWindowMs,
+  stampGrainMs,
+  WORKSPACE_OUTPUT_PREFIX,
+} from '../memo/index.js'
 import { type ExecuteResult } from '../exec/index.js'
-import type { TaskNode, TaskOutcome } from '../graph/index.js'
-import type { GitFilesCache } from '../cache/index.js'
+import type { TaskOutcome } from '../graph/index.js'
 import { atOrUnder, MOUNT_WILDCARDS, toRealPath } from '../sandbox/index.js'
-import { printable, relPosix, span, taskGlob, taskGlobOf } from '../util/index.js'
+import { printable, relPosix, span, taskGlobOf } from '../util/index.js'
 import { warnOf } from '../report/index.js'
 import type { ExecuteArgs } from './execute-task.js'
 import type { MissRun } from './miss-run.js'
@@ -305,16 +310,26 @@ async function onlyCtimeMoved(fact: InputFact, from: number, cache: CacheLayer):
 }
 
 /**
+ * By run, each dependency's stamped output rows, read once (a save's rows do
+ * not move within its run), and when its outputs were last found as its task
+ * left them, on the file system's clock: a dependant whose command ended
+ * before then needs them stat'd again for nothing.
+ */
+const outputsHeld = new WeakMap<
+  object,
+  { rows: Map<string, readonly OutputFileRow[]>; at: Map<string, number> }
+>()
+
+/**
  * Did each dependency's outputs stay as its task left them while this one
  * ran? The key folds a dependency's input key, never its bytes: a checkout
- * or stash that put a dependency's committed output back mid-run let this
+ * or stash that put a dependency's committed output back mid-run, or a
+ * sibling task or another process that rewrote an ignored one, let this
  * task build from bytes no key names, and the save filed them under one
  * that does, so every later hit replayed them under a green run. Held to
  * the rows the dependency's own save or restore stamped; one with none
- * stamped here (it ran elsewhere) is not checked, nor one whose outputs git
- * neither tracks nor lists, which no checkout or stash moves (a stat per
- * output and a read of its rows per save, ~1.4 ms at 600 outputs, paid only
- * where outputs are committed).
+ * stamped here (it ran elsewhere) is not checked. A stat per output per
+ * save, skipped for a dependency found held after this command ended.
  */
 export function upstreamOutputsHeld(m: MissRun): boolean {
   const { args } = m
@@ -326,14 +341,23 @@ export function upstreamOutputsHeld(m: MissRun): boolean {
       deps.push(o)
   }
   args.upstream.forEach(add)
-  const files = args.run.gitFilesCache
-  const exposed = deps.filter((d) => gitSees(d.node, files))
+  let held = outputsHeld.get(args.run)
+  if (held === undefined) outputsHeld.set(args.run, (held = { rows: new Map(), at: new Map() }))
+  const { at } = held
+  const ended = m.endedAt
+  const exposed = ended === undefined ? deps : deps.filter((d) => (at.get(d.hash!) ?? -1) < ended)
   if (exposed.length === 0) return true
   const { memo } = args.run.cache
   const endCheck = span('miss: recheck upstream outputs')
-  const rows = memo.loadOutputFilesBatch(exposed.map((d) => d.hash!))
+  // Taken before the stats: a write after it is one they may have missed.
+  const now = fsClockNow(args.run.cacheDir ?? path.join(args.run.workspaceRoot, '.vx'))
+  const unread = exposed.map((d) => d.hash!).filter((h) => !held.rows.has(h))
+  if (unread.length > 0) {
+    const read = memo.loadOutputFilesBatch(unread)
+    for (const h of unread) held.rows.set(h, read.get(h) ?? [])
+  }
   const moved = exposed.find((d) => {
-    const own = rows.get(d.hash!)
+    const own = held.rows.get(d.hash!)
     if (own === undefined || own.length === 0) return false
     const proj = own.filter((r) => !r.path.startsWith(WORKSPACE_OUTPUT_PREFIX))
     const ws = own
@@ -345,7 +369,10 @@ export function upstreamOutputsHeld(m: MissRun): boolean {
     )
   })
   endCheck()
-  if (moved === undefined) return true
+  if (moved === undefined) {
+    for (const d of exposed) at.set(d.hash!, now)
+    return true
+  }
   warnOf(args.log)(
     `[vx] ${args.node.id}: an output of ${moved.node.id} changed while it ran (a checkout, a stash, another process) — ` +
       'the result stands, but is not saved under a key that names the bytes it was built from',
@@ -389,31 +416,4 @@ export async function upstreamInputsHeld(m: MissRun, check: KeyCheck): Promise<b
   check.unkeyed = true
   check.drifted = moved.file
   return false
-}
-
-const seenByGit = new WeakMap<GitFilesCache, WeakMap<TaskNode, boolean>>()
-
-/**
- * Does git list a file under `node`'s declared outputs (tracked, or untracked
- * and not ignored), so a checkout or stash may move one? Asked of the run's
- * listing once per task; a workspace output, or a project the listing lacks,
- * is taken as seen.
- */
-function gitSees(node: TaskNode, files: GitFilesCache | undefined): boolean {
-  // No listing: a run outside git, which vx refuses; no checkout moves anything.
-  if (files === undefined) return false
-  let memo = seenByGit.get(files)
-  if (memo === undefined) seenByGit.set(files, (memo = new WeakMap()))
-  let seen = memo.get(node)
-  if (seen === undefined) {
-    const outputs = node.config.outputs
-    const listed = files.get(node.projectDir)
-    const globs = (outputs?.files ?? []).filter((g) => !g.startsWith('!')).map(taskGlob)
-    seen =
-      (outputs?.workspaceFiles?.length ?? 0) > 0 ||
-      listed === undefined ||
-      listed.some((f) => globs.some((g) => g.match(f)))
-    memo.set(node, seen)
-  }
-  return seen
 }
