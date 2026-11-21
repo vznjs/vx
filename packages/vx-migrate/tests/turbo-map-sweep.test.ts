@@ -770,15 +770,25 @@ describe('turbo-map: what the sweep found unheld', () => {
     expect(t.task!['cache']).toBeUndefined()
   })
 
-  it('a `pkg#task` edge to a package without that script is dropped with a todo', async () => {
-    const m = await map(
-      { tasks: { build: { dependsOn: ['b#gen'] } } },
-      { a: { scripts: { build: 'b' } }, b: { scripts: { build: 'x' } } },
-    )
-    const a = m.projects[0]!.tasks[0]!
-    expect(a.task!['dependsOn']).toBeUndefined()
-    expect(a.todos).toEqual(['dependsOn "b#gen": b declares no gen script — edge dropped'])
-  })
+  // Turbo refuses `b#gen` when turbo.json defines no `gen` task, script or
+  // not; "b declares no gen script" pointed at a script that is there.
+  it.each([
+    ['without', { build: 'x' }],
+    ['with', { build: 'x', gen: 'g' }],
+  ])(
+    'a `pkg#task` edge to a task turbo.json does not define, %s the script, says so',
+    async (_, scripts) => {
+      const m = await map(
+        { tasks: { build: { dependsOn: ['b#gen'] } } },
+        { a: { scripts: { build: 'b' } }, b: { scripts } },
+      )
+      const a = m.projects[0]!.tasks[0]!
+      expect(a.task!['dependsOn']).toBeUndefined()
+      expect(a.todos).toEqual([
+        'dependsOn "b#gen": turbo.json defines no "gen" task, which Turbo refuses — edge dropped',
+      ])
+    },
+  )
 
   // vercel/turborepo#3592: a root script turbo.json does not name `//#x` is
   // no task; "ws declares no x script" pointed at a script that is there.
