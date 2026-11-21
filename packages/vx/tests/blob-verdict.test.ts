@@ -282,3 +282,31 @@ it('a check started before the graph is the one the graph waits on', async () =>
     'f2.txt',
   ])
 })
+
+it('a project partitioned while the check runs is partitioned again once it drops an OID', async () => {
+  // The partition runs beside cat-file; its eager file digest folded the
+  // resized entry's OID, so a key named the LF blob for the CRLF bytes.
+  git('init', '-q')
+  const dir = path.join(root, 'p')
+  await mkdir(dir)
+  await writeFile(path.join(dir, 'keep.txt'), 'k\n')
+  await writeFile(path.join(dir, 'big.txt'), 'aa\n')
+  git('add', '-A')
+  git('commit', '-qm', 'init')
+  await writeFile(path.join(dir, 'big.txt'), 'aa\r\n')
+  const past = new Date(Date.now() - 10_000)
+  await utimes(path.join(dir, 'big.txt'), past, past)
+  await nextSecond()
+  git('-c', 'core.autocrlf=true', 'add', 'p/big.txt')
+  await Bun.sleep(150)
+  const enumeration = await startGitEnumeration(root, ['.'])
+  const during = new GitFilesCache()
+  await applyGitEnumeration(enumeration, root, [dir], during, false, memo())
+  // The same enumeration, its check done before the partition.
+  const after = new GitFilesCache()
+  await applyGitEnumeration(enumeration, root, [dir], after, false, memo())
+  const digest = (c: GitFilesCache) => c.filesDigest(dir, c.get(dir)!)
+  expect(digest(after)).toBeDefined()
+  expect(digest(during)).toBe(digest(after))
+  expect([...during.oidsFor(dir)!.keys()].map((p) => relPosix(root, p))).toEqual(['p/keep.txt'])
+})
