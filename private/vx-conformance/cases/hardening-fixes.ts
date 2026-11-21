@@ -134,6 +134,49 @@ export default [
   }),
 
   defineCase({
+    id: 'cache/forced-chain-saves-its-dependants',
+    category: 'cache',
+    kind: 'correctness',
+    title: 'A forced run over a cached chain saves the fresh result of a package that changed',
+    why: 'A forced run rewrites every output, a dependency’s included, with the same bytes at a later time. A runner that takes that fresh write for an outside edit refuses to save the dependant that changed, and the next run builds it again.',
+    from: ['upstream-output-moved'],
+    needs: ['force'],
+    workspace: {
+      projects: {
+        lib: {
+          // Past a whole second, so the forced write has another mtime.
+          tasks: {
+            build: { command: `sleep 1.1 && ${CONCAT}`, inputs: ['src/**'], outputs: ['dist/**'] },
+          },
+          files: { 'src/a.txt': 'A\n', '.gitignore': 'dist/\n' },
+        },
+        app: {
+          deps: ['lib'],
+          tasks: {
+            build: {
+              command: 'mkdir -p dist && cat src/a.txt ../lib/dist/out.txt > dist/o.txt',
+              dependsOn: ['^build'],
+              inputs: ['src/**'],
+              outputs: ['dist/**'],
+            },
+          },
+          files: { 'src/a.txt': 'x\n', '.gitignore': 'dist/\n' },
+        },
+      },
+    },
+    steps: [
+      { run: 'build', expect: { exit: 0, ran: ['lib#build', 'app#build'] } },
+      { write: { 'packages/app/src/a.txt': 'y\n' } },
+      { run: 'build', force: true, expect: { exit: 0, ran: ['lib#build', 'app#build'] } },
+      { write: { 'packages/app/dist': null } },
+      {
+        run: 'build',
+        expect: { exit: 0, notRan: ['lib#build', 'app#build'], files: { [APP_OUT]: 'y\nA\n' } },
+      },
+    ],
+  }),
+
+  defineCase({
     id: 'cache/dependency-output-changed-mid-run-not-replayed',
     category: 'cache',
     kind: 'correctness',

@@ -131,6 +131,7 @@ export interface TaskMemo {
     holds?: (files: readonly string[]) => boolean,
   ): Promise<void>
   recordOutputStamps?(hash: string, projectDir: string, workspaceRoot: string): void
+  stampWritten?(hash: string, projectDir: string, workspaceRoot: string): void
   loadOutputDirsBatch?(hashes: readonly string[]): Map<string, OutputDirRow[]>
   outputDirsCurrent?(projectDir: string, rows: readonly OutputDirRow[]): boolean
 }
