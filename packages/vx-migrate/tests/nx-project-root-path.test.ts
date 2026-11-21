@@ -47,11 +47,20 @@ async function mapped(target: Record<string, unknown>): Promise<unknown> {
   return { task: t.task, todos: t.todos }
 }
 
+// As `*` with `*/**`: core refuses `**` beside the default `**/*` inputs as
+// the task's own sources, which `vx lock` did for `{projectRoot}` (Nx 24
+// caches and restores the whole project for it).
 it('an output of the project dir is its whole tree', async () => {
   const tree = await mapped({ outputs: ['{projectRoot}/**'] })
   const files = (tree as { task: { outputs: { files: string[] }; cache: true } }).task.outputs.files
-  expect(files.slice(0, 2)).toEqual(['**', '!package.json'])
-  for (const o of ['{projectRoot}', '{projectRoot}/', 'packages/a', 'packages/a/'])
+  expect(files.slice(0, 3)).toEqual(['*', '*/**', '!package.json'])
+  for (const o of [
+    '{projectRoot}',
+    '{projectRoot}/',
+    '{projectRoot}/**/*',
+    'packages/a',
+    'packages/a/',
+  ])
     expect(await mapped({ outputs: [o] })).toEqual(tree)
 })
 

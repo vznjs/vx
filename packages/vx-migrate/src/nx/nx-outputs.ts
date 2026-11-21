@@ -192,12 +192,16 @@ export function mapNxOutputs(
       // project glob never reaches (core refuses one there).
       const own = rootWide ? null : underProject(gs, projectRel)
       if (own !== null) {
-        outFiles.push(gn + (own === '' ? '**' : withProjectDir(own, projectRel, true)))
+        // The whole project (`{projectRoot}`, `{projectRoot}/**`), as Nx caches
+        // it: core refuses `**` beside the default `**/*` inputs as the task's
+        // own sources, and takes `*` with `*/**`, the same files.
+        if (own === '' || own === '**' || own === '**/*') outFiles.push(`${gn}*`, `${gn}*/**`)
+        else outFiles.push(...withTrees(gn + withProjectDir(own, projectRel, true), own))
         continue
       }
       const m = path.posix.normalize(gs).replace(/^\.\//, '')
       const w = withProjectDir(m, projectRel, true)
-      wsOutFiles.push(gn + w)
+      wsOutFiles.push(...withTrees(gn + w, m))
       // An escaped brace makes a literal a glob, which core matches as the
       // path alone (`asTrees` adds the tree only to a literal).
       if (w !== withProjectDir(m, projectRel, false) && isLiteralPattern(m.replace(MASKED, '')))
@@ -205,6 +209,18 @@ export function mapNxOutputs(
     }
   }
   return { outFiles: takingBack(outFiles), wsOutFiles: takingBack(wsOutFiles) }
+}
+
+/**
+ * `glob`, and the trees under what it matches when it ends in a lone `*`
+ * (not `**\/*`, which reaches them already): Nx caches a matched directory
+ * whole, so `dist/*` restored `dist/sub/b.d.ts`, where core's `dist/*`
+ * matches files alone.
+ */
+function withTrees(glob: string, raw: string): string[] {
+  return raw === '*' || (raw.endsWith('/*') && !raw.endsWith('**/*'))
+    ? [glob, `${glob}/**`]
+    : [glob]
 }
 
 // Nx 24's tokens (`tasks-runner/tokens.js`): `{options.a.b}` walks the
