@@ -16,7 +16,7 @@ describe('extglob outputs', () => {
   it("Next's build: all of .next but its cache", () => {
     const r = map(['{projectRoot}/.next/!(cache)/**/*', '{projectRoot}/.next/!(cache)'])
     expect(r).toEqual({
-      outFiles: ['.next/*/**/*', '!.next/cache/**/*', '.next/*', '!.next/cache'],
+      outFiles: ['.next/*/**/*', '!.next/cache/**/*', '.next/*', '.next/*/**', '!.next/cache'],
       wsOutFiles: [],
       todos: [],
     })
@@ -52,6 +52,21 @@ describe('extglob outputs', () => {
     expect(r.outFiles).toEqual(['dist/*.{js,map}'])
     expect(r.todos).toEqual([
       'output "!{projectRoot}/dist/!(keep)" has a glob form vx cannot spell — dropped',
+    ])
+  })
+
+  // Nx 24 caches a directory a glob matches whole: `dist/*` restored
+  // `dist/sub/b.d.ts`, where core's `dist/*` matched files alone, so a hit
+  // dropped every nested directory of the build.
+  it('a glob ending in a lone `*` also takes the trees under its matches', () => {
+    expect(map(['{projectRoot}/dist/*', '{workspaceRoot}/out/*']).outFiles).toEqual([
+      'dist/*',
+      'dist/*/**',
+    ])
+    expect(map(['{workspaceRoot}/out/*']).wsOutFiles).toEqual(['out/*', 'out/*/**'])
+    expect(map(['{projectRoot}/dist/**/*', '{projectRoot}/dist/*.js']).outFiles).toEqual([
+      'dist/**/*',
+      'dist/*.js',
     ])
   })
 })
