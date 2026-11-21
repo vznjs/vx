@@ -11,6 +11,7 @@ export {
   mergeBaseWith,
 } from './affected.js'
 export { applyFilters, parseFilter } from './filter.js'
+export { mergeLock } from './lock-merge.js'
 export { readClaimedFiles } from './fingerprint.js'
 export { checkBracketLiterals } from './bracket-literal.js'
 export { checkDependencyRules } from './dependency-rules.js'

@@ -21,7 +21,6 @@ import {
   relPosix,
   sameDir,
   UserError,
-  xxh3hex,
 } from '../util/index.js'
 import { LOCKFILE_NAME, lockEntries, lockKey } from './lockfile.js'
 import {
@@ -151,9 +150,24 @@ export interface FingerprintClaims {
    */
   hashExtra?(rel: string): Promise<string>
   /** Each project's digest of a claimed file now (`FingerprintClaim.digests`); absent or undefined = none. */
-  digests?(
-    file: string,
-  ): Promise<{ hash: string; projects: Readonly<Record<string, string>> } | undefined>
+  digests?(file: string): Promise<
+    | {
+        hash: string
+        projects: Readonly<Record<string, string>>
+        extras?: Readonly<Record<string, string>>
+      }
+    | undefined
+  >
+}
+
+/** As a run checks it (locked-digests.ts): extras moved = `vx lock` re-records, no drift. */
+function drifted(
+  was: NonNullable<ReturnType<typeof recordedDigests>>,
+  now: { projects: Readonly<Record<string, string>>; extras?: Readonly<Record<string, string>> },
+  names: readonly string[],
+): boolean {
+  if (!Bun.deepEquals(now.extras ?? {}, was.extras)) return false
+  return names.some((n) => was.has(n) && (now.projects[n] || undefined) !== was.of(n))
 }
 
 /**
@@ -644,24 +658,34 @@ async function claimedOwners(
     const extras = extrasBy.get(file)
     const before = await gitBytesAt(args.workspaceRoot, base, file)
     const after = await bytesOrNull(path.join(args.workspaceRoot, file))
-    // As a run refuses it (locked-digests.ts): an install that adds a member
-    // no project is yet moves no digest, and "nothing affected" exited 0 on a
-    // lock the next keyed run refuses.
+    // As a run refuses it (locked-digests.ts): "nothing affected" must not
+    // exit 0 on a lock the next keyed run refuses.
     if (args.lockedClaims) {
       record ??= bytesOrNull(path.join(args.workspaceRoot, DEPENDENCIES_LOCK_NAME)).then(
         parseDependenciesLock,
       )
       const rec = (await record.catch(() => null)) ?? null
       const was = rec === null ? undefined : recordedDigests(rec, file)
-      if (was !== undefined && (after === null || xxh3hex(after) !== was.hash)) {
+      const now = was === undefined ? undefined : await claimed.digests?.(file)
+      if (
+        was !== undefined &&
+        (after === null ||
+          now === undefined ||
+          drifted(
+            was,
+            now,
+            diff.projects.map((p) => p.name),
+          ))
+      ) {
         throw new UserError(`${file} changed since \`vx lock\`: run \`vx lock\``, 'VX_E_LOCK')
       }
     }
-    const answer =
-      (extras === undefined
-        ? await recordedMoves(diff, claimed, file, before, after)
-        : undefined) ??
-      (await claimed.affected({ file, before, after, ...(extras !== undefined ? { extras } : {}) }))
+    const answer = await claimed.affected({
+      file,
+      before,
+      after,
+      ...(extras !== undefined ? { extras } : {}),
+    })
     const why =
       extras === undefined || changed.includes(file)
         ? file
@@ -670,35 +694,6 @@ async function claimedOwners(
     for (const name of answer) if (!claimedOwned.has(name)) claimedOwned.set(name, why)
   }
   return claimedOwned
-}
-
-/**
- * The projects whose digest of `file` moved, from the base's recorded digests
- * and the claimant's now; the base side is never parsed. Null when either side
- * has none: `affected` answers then.
- */
-async function recordedMoves(
-  diff: Diff,
-  asked: FingerprintClaims,
-  file: string,
-  before: Uint8Array | null,
-  after: Uint8Array | null,
-): Promise<ReadonlySet<string> | null> {
-  if (before === null || after === null || asked.digests === undefined) return null
-  const base = await diff.baseDependencies()
-  const was = base === null ? undefined : recordedDigests(base, file)
-  // Base digests that read another file are that file's at the base,
-  // which the record does not prove.
-  if (was === undefined || was.hash !== xxh3hex(before) || Object.keys(was.extras).length > 0)
-    return null
-  const now = await asked.digests(file)
-  if (now === undefined) return null
-  const moved = new Set<string>()
-  for (const p of diff.projects) {
-    const d = was.of(p.name)
-    if (d === undefined || d !== now.projects[p.name]) moved.add(p.name)
-  }
-  return moved
 }
 
 /**

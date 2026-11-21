@@ -22,15 +22,19 @@ const meta = (name: string, deps?: string[], reach?: string[]): ProjectMeta =>
     ...(reach ? { reach } : {}),
   }) as ProjectMeta
 
-const metas = [meta('web', ['ui', 'core']), meta('ui', ['core']), meta('core'), meta('docs', [], ['ui'])]
-const H = '0123456789abcdef'
+const metas = [
+  meta('web', ['ui', 'core']),
+  meta('ui', ['core']),
+  meta('core'),
+  meta('docs', [], ['ui']),
+]
 const D = 'fedcba9876543210'
-const files = new Map([['bun.lock', { hash: H, projects: { web: D, ui: 'du', core: D } }]])
+const files = new Map([['bun.lock', { projects: { web: D, ui: 'du', core: D } }]])
 const reread = (text: string) => parseDependenciesLock(new TextEncoder().encode(text))!
 
 it('writes a line per project, by name, sorted: deps, reach, digests', () => {
   expect(dependenciesLock(metas, files).text).toBe(
-    '{"version":5,"files":["bun.lock","ASNFZ4mrze8"],"edges":true}\n' +
+    '{"version":5,"files":["bun.lock"],"edges":true}\n' +
       'core\t\t\t_ty6mHZUMhA\n' +
       'docs\t\tui\n' +
       'ui\tcore\t\t=du\n' +
@@ -47,8 +51,7 @@ it('reads back what it wrote: edges, dependants and digests by name', () => {
   expect(lock.edges('gone')).toBeUndefined()
   expect(dependantsOf(lock, 'ui')).toEqual(['docs', 'web'])
   const rec = recordedDigests(lock, 'bun.lock')!
-  expect([rec.hash, rec.of('web'), rec.of('ui'), rec.of('docs'), rec.of('x')]).toEqual([
-    H,
+  expect([rec.of('web'), rec.of('ui'), rec.of('docs'), rec.of('x')]).toEqual([
     D,
     'du',
     undefined,
@@ -69,8 +72,8 @@ it('records no edge source when no plugin gave deps', () => {
 it('reads back names and digests a separator could break', () => {
   const odd = [meta('a,b', ['c\td']), meta('c\td'), meta('[x')]
   const two = new Map([
-    ['a.lock', { hash: 'ha', projects: { 'a,b': 'x,y' } }],
-    ['b.lock', { hash: 'hb', projects: { '[x': 'q' } }],
+    ['a.lock', { projects: { 'a,b': 'x,y' } }],
+    ['b.lock', { projects: { '[x': 'q' } }],
   ])
   const lock = reread(dependenciesLock(odd, two).text)
   expect(lock.names).toEqual(['[x', 'a,b', 'c\td'])
@@ -82,7 +85,7 @@ it('reads back names and digests a separator could break', () => {
 
 it('records the other files the digests read, sorted', () => {
   const withExtras = new Map([
-    ['bun.lock', { hash: H, projects: {}, extras: { 'patches/b.patch': 'hb', 'a/x': 'ha' } }],
+    ['bun.lock', { projects: {}, extras: { 'patches/b.patch': 'hb', 'a/x': 'ha' } }],
   ])
   const lock = reread(dependenciesLock(metas, withExtras).text)
   expect(JSON.stringify(recordedDigests(lock, 'bun.lock')!.extras)).toBe(
@@ -99,11 +102,13 @@ it('the same projects in another order write the same text', () => {
 it('compares records: an extra-only hash move skips that file digests', () => {
   const base = dependenciesLock(metas, files)
   expect(sameRecord(reread(base.text), base)).toBe(true)
-  const moved = new Map([['bun.lock', { hash: H, projects: { web: 'other', ui: 'du', core: D } }]])
+  const moved = new Map([['bun.lock', { projects: { web: 'other', ui: 'du', core: D } }]])
   expect(sameRecord(base, dependenciesLock(metas, moved))).toBe(false)
   const ex = (h: string, web: string) =>
-    new Map([['bun.lock', { hash: H, projects: { web }, extras: { p: h } }]])
-  expect(sameRecord(dependenciesLock(metas, ex('a', 'x')), dependenciesLock(metas, ex('b', 'y')))).toBe(true)
+    new Map([['bun.lock', { projects: { web }, extras: { p: h } }]])
+  expect(
+    sameRecord(dependenciesLock(metas, ex('a', 'x')), dependenciesLock(metas, ex('b', 'y'))),
+  ).toBe(true)
   expect(sameRecord(base, dependenciesLock(metas.slice(1), files))).toBe(false)
   const edged = [meta('web', ['ui']), ...metas.slice(1)]
   expect(sameRecord(base, dependenciesLock(edged, files))).toBe(false)
@@ -139,4 +144,17 @@ it('reads nothing from a lock whose lines are broken, and refuses a broken field
   expect(() => lock.edges('ui')).toThrow('.vx/dependencies.lock is invalid, run `vx lock`')
   const digest = parseDependenciesLock(text(lines[0]!, lines[1]!, 'ui\t\t\t!!', lines[3]!))!
   expect(() => recordedDigests(digest, 'bun.lock')!.of('ui')).toThrow('is invalid')
+})
+
+// A merge conflict git left (no merge driver, or both sides moved one
+// project): the marker lines have no tab, as a bare name has.
+it('reads nothing from a lock holding merge conflict markers', () => {
+  const [head, ...lines] = dependenciesLock(metas, files).text.trimEnd().split('\n')
+  // Sorted as names would be: only the markers say it is no lock.
+  const marked = [head, '<<<<<<< ours', '=======', '>>>>>>> theirs', ...lines]
+  expect(parseDependenciesLock(new TextEncoder().encode(`${marked.join('\n')}\n`))).toBeNull()
+  // CONTROL: a name with no fields is a line `vx lock` writes.
+  expect(
+    parseDependenciesLock(new TextEncoder().encode(`${[head, ...lines].join('\n')}\n`)),
+  ).not.toBeNull()
 })

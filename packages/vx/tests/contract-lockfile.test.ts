@@ -1,13 +1,11 @@
 // A committed `.vx/projects.lock.jsonl` is a 1.0 contract surface
 // (docs/design/versioning-1.0.md): users check it in, and CI runs
 // `vx lock --check && vx run …` against it. `tests/contract/
-// .vx/projects.lock.jsonl` is the lock this vx writes for one fixture workspace. A
+// lock.jsonl` is the lock this vx writes for one fixture workspace. A
 // later vx must write the same bytes (so a format change is a reviewed diff
 // of that file) and must accept the committed one: `--check` passes and
 // a run reads it. A change to the entry shape, or to
 // `LOCKFILE_VERSION`, fails here before it fails every user's CI.
-// The last field, `validated`, is a digest under vx's version: it is the
-// one line another vx writes differently, and a reader never requires it.
 //
 // Regenerate after a deliberate change, then review the diff:
 //   VX_UPDATE_CONTRACT=1 bun test tests/contract-lockfile.test.ts
@@ -20,7 +18,7 @@ import { addProject, makeWorkspace } from './helpers/workspace.js'
 
 // The real CLI: a run here must read the committed lock, not re-lock first.
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
-const RECORD = path.join(import.meta.dir, 'contract', 'lock.json')
+const RECORD = path.join(import.meta.dir, 'contract', 'lock.jsonl')
 
 let root: string
 
@@ -72,7 +70,7 @@ afterAll(async () => {
   await rm(root, { recursive: true, force: true })
 })
 
-it('vx lock writes tests/contract/lock.json byte for byte', () => {
+it('vx lock writes tests/contract/lock.jsonl byte for byte', () => {
   expect(vx('ci', 'lock').code).toBe(0)
   const live = readFileSync(path.join(root, '.vx/projects.lock.jsonl'), 'utf8')
   if (process.env['VX_UPDATE_CONTRACT'] === '1' && process.env['CI'] !== 'true') {

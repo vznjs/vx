@@ -1,11 +1,11 @@
 // A run keys a claimed lockfile from `.vx/dependencies.lock`, as it
-// takes configs from `.vx/projects.lock.jsonl`: the file's bytes must hash
-// to what `vx lock` recorded, and the recorded per-project digests are the
-// key; the file is never parsed. A file changed since, a lock with no
-// record of a present file, or no lock at all refuses with `vx lock` as
-// the fix. A file the digests read (a `link:` directory, edited with no
-// install) that moved since makes the record stale for the claimant, which
-// digests anew. The fixture's claim counts its parses on `globalThis` (the
+// takes configs from `.vx/projects.lock.jsonl`: the claimant's digests now,
+// memoized by the file's hash since `vx lock` wrote them, must be what the
+// lock records, so a warm run parses nothing. A digest that moved since, a
+// lock with no record of a present file, or no lock at all refuses with
+// `vx lock` as the fix. A file the digests read (a `link:` directory, edited
+// with no install) that moved since makes the record stale for the
+// claimant, which digests anew. The fixture's claim counts its parses on `globalThis` (the
 // workspace file evaluates in this process) and throws once told a run
 // must not parse.
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
@@ -83,19 +83,11 @@ function silent(): Logger {
   } as never
 }
 
-/** Rewrites one recorded digest in the binary lock's tail strings, as only a test would. */
+/** Rewrites one recorded digest in the lock, as only a hand edit would. */
 async function plant(from: string, to: string): Promise<void> {
-  const bytes = new Uint8Array(await readFile(path.join(root, LOCK)))
-  const view = new DataView(bytes.buffer, bytes.byteOffset)
-  const tailAt = bytes.length - view.getUint32(24, true)
-  const tail = new TextDecoder().decode(bytes.subarray(tailAt))
-  expect(tail).toContain(`"${from}"`)
-  const next = new TextEncoder().encode(tail.replace(`"${from}"`, `"${to}"`))
-  const out = new Uint8Array(tailAt + next.length)
-  out.set(bytes.subarray(0, tailAt))
-  out.set(next, tailAt)
-  new DataView(out.buffer).setUint32(24, next.length, true)
-  await writeFile(path.join(root, LOCK), out)
+  const text = await readFile(path.join(root, LOCK), 'utf8')
+  expect(text).toContain(`\t=${from}`)
+  await writeFile(path.join(root, LOCK), text.replace(`\t=${from}`, `\t=${to}`))
 }
 
 /** The claim's key part on a#build, from a run that may not parse unless told. */
@@ -111,9 +103,9 @@ it(
     await lock(root)
     expect(g.__vxParses).toBeGreaterThan(0)
     expect(await part()).toBe('a1')
-    // The record is what keys the task: the proof nothing was parsed.
+    // A record the file does not digest to refuses: the lock is checked, not trusted.
     await plant('a1', 'planted')
-    expect(await part()).toBe('planted')
+    await expect(part()).rejects.toThrow('deps.lock changed since `vx lock`: run `vx lock`')
   },
   TIMEOUT,
 )
@@ -123,19 +115,17 @@ it(
   async () => {
     await lock(root)
     await claimed('packages/a=a2\nextra:patches/p.patch\n')
-    await expect(part()).rejects.toThrow('deps.lock changed since `vx lock`: run `vx lock`')
-    g.__vxNoParse = false
+    await expect(part(true)).rejects.toThrow('deps.lock changed since `vx lock`: run `vx lock`')
     await lock(root)
     expect(await part()).toBe('a2')
   },
   TIMEOUT,
 )
 
-// An install that adds a member no project is yet (a new package before
-// `vx lock`) moves no project's digest: --affected said "nothing affected"
-// and exited 0, where any run that keys refuses.
+// --affected answered "nothing affected" and exited 0 where any run that
+// keys refuses; a change that moves no recorded digest, a run keys alike.
 it(
-  '--affected refuses a claimed file changed since `vx lock`, even when it moves no project',
+  '--affected refuses a claimed file whose digests moved since `vx lock`, as a run does',
   async () => {
     await lock(root)
     const git = (...args: string[]) =>
@@ -154,12 +144,17 @@ it(
       })
     git('add', '-A')
     git('commit', '-qm', 'init')
+    const affected = () =>
+      Bun.spawnSync({
+        cmd: [process.execPath, CLI, 'run', 'build', '--affected=HEAD'],
+        cwd: root,
+        env: { ...process.env, CI: '', GITHUB_ACTIONS: '', NO_COLOR: '1' },
+      })
+    // CONTROL: a member no project is moves no digest a run keys on.
     await claimed('packages/a=a1\npackages/z=z1\nextra:patches/p.patch\n')
-    const r = Bun.spawnSync({
-      cmd: [process.execPath, CLI, 'run', 'build', '--affected=HEAD'],
-      cwd: root,
-      env: { ...process.env, CI: '', GITHUB_ACTIONS: '', NO_COLOR: '1' },
-    })
+    expect(affected().exitCode).toBe(0)
+    await claimed('packages/a=a2\nextra:patches/p.patch\n')
+    const r = affected()
     expect(new TextDecoder().decode(r.stderr)).toContain(
       'deps.lock changed since `vx lock`: run `vx lock`',
     )
@@ -172,18 +167,13 @@ it(
   'a file its digests read, changed since `vx lock`, is digested anew: the record is stale',
   async () => {
     await lock(root)
-    await plant('a1', 'planted')
-    // CONTROL: unchanged, the record keys it.
-    expect(await part()).toBe('planted')
+    await claimed('packages/a=a2\nextra:patches/p.patch\n')
+    // CONTROL: extras unchanged, a moved digest refuses.
+    await expect(part(true)).rejects.toThrow('deps.lock changed since `vx lock`')
     await writeFile(path.join(root, 'patches', 'p.patch'), 'two')
-    const parses = g.__vxParses!
-    expect(await part(true)).toBe('a1')
-    expect(g.__vxParses).toBe(parses + 1)
+    expect(await part(true)).toBe('a2')
     // The parse is memoised like any: the next run reads the memo.
-    expect(await part()).toBe('a1')
-    // CONTROL: back as locked, the record keys it again.
-    await writeFile(path.join(root, 'patches', 'p.patch'), 'one')
-    expect(await part()).toBe('planted')
+    expect(await part()).toBe('a2')
   },
   TIMEOUT,
 )
@@ -235,7 +225,8 @@ it(
     expect(check('--check')).toEqual([0, ''])
     await writeFile(path.join(root, 'patches', 'p.patch'), 'two')
     expect(check('--check')).toEqual([0, ''])
-    // CONTROL: the claimed file itself moved still fails.
+    // CONTROL: a digest the claimed file moved, extras as locked, still fails.
+    await writeFile(path.join(root, 'patches', 'p.patch'), 'one')
     await claimed('packages/a=a2\nextra:patches/p.patch\n')
     expect(check('--check')[0]).toBe(1)
     // A digest that moved under unchanged file and extras hashes (a plugin

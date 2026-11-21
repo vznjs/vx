@@ -7,6 +7,7 @@ import path from 'node:path'
 import { afterEach, expect, it } from 'bun:test'
 import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
 import { noticed } from './helpers/notice.js'
+import { readLockfile } from '../src/workspace/lockfile.js'
 
 const BIN = path.join(import.meta.dir, '..', 'src', 'bin.ts')
 const CONFIG = `export default { tasks: { build: { exec: { command: 'true' } } } }\n`
@@ -32,23 +33,22 @@ const text = (p: string): Promise<string | null> =>
     .text()
     .catch(() => null)
 
-it('writes the lock minified, a pretty review copy per config, and .vx/.gitattributes', async () => {
+it('writes the lock a line per project, a pretty review copy per config, and .vx/.gitattributes', async () => {
   const r = (root = await makeWorkspace({ prefix: 'vx-lock-review-' }))
   const dir = await addProject(r, 'a', { config: CONFIG })
   expect(vx(r, 'lock').code).toBe(0)
   const lock = (await text(path.join(r, '.vx', 'projects.lock.jsonl')))!
-  expect(lock.split('\n')).toHaveLength(2)
-  expect(lock).toStartWith(
-    '{"version":7,"projects":{"packages/a":{"file":"vx.config.mjs","name":"a","config":',
+  // The header, the task's line, the project's line.
+  expect(lock.trimEnd().split('\n')).toHaveLength(3)
+  expect(lock).toContain(
+    '\na\t{"path":"packages/a","file":"vx.config.mjs","config":{"tasks":{"build":"#',
   )
   const review = (await text(path.join(dir, 'vx.lock.json')))!
-  const locked = (JSON.parse(lock) as { projects: Record<string, { config: object }> }).projects[
-    'packages/a'
-  ]!.config
+  const locked = (await readLockfile(r))!.projects['packages/a']!.config!
   expect(JSON.parse(review)).toMatchObject(locked)
   expect(review).toStartWith('{\n  "tasks": {')
   expect(await text(path.join(r, '.vx', '.gitattributes'))).toBe(
-    'projects.lock.jsonl linguist-generated=true\ndependencies.lock linguist-generated=true\n',
+    'projects.lock.jsonl linguist-generated=true merge=vx-lock\ndependencies.lock linguist-generated=true merge=vx-lock\n',
   )
   expect(vx(r, 'lock', '--check').code).toBe(0)
 })

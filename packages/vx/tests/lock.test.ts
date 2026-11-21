@@ -15,6 +15,7 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { addProject, makeWorkspace as makeWorkspaceRoot } from './helpers/workspace.js'
 import { noticed } from './helpers/notice.js'
+import { readLockfile } from '../src/workspace/lockfile.js'
 
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 const TIMEOUT = 30_000
@@ -105,12 +106,8 @@ describe('vx lock (e2e)', () => {
       await mkdir(path.join(root, '__proto__'))
       await writeFile(path.join(root, '__proto__', 'vx.config.mjs'), ENV_CONFIG)
       expect((await vx(root, ['lock'], { X: 'a' })).code).toBe(0)
-      const lockJson = JSON.parse(
-        await Bun.file(path.join(root, '.vx/projects.lock.jsonl')).text(),
-      ) as {
-        projects: object
-      }
-      expect(Object.keys(lockJson.projects)).toEqual(['__proto__'])
+      const read = (await readLockfile(root))!
+      expect(Object.keys(read.projects)).toEqual(['__proto__'])
       expect((await vx(root, ['lock', '--check'], { X: 'a' })).out).toBe(
         '✓ vx lock --check  up to date (1 project)\n',
       )
@@ -136,10 +133,8 @@ describe('vx lock (e2e)', () => {
         `export default { tasks: { ['__proto__']: { exec: { command: 'echo proto-ran' } } } }\n`,
       )
       expect((await vx(root, ['lock'], {})).code).toBe(0)
-      const lockJson = JSON.parse(
-        await Bun.file(path.join(root, '.vx/projects.lock.jsonl')).text(),
-      ) as { projects: Record<string, { config: { tasks: object } }> }
-      expect(Object.keys(lockJson.projects['packages/app']!.config.tasks)).toEqual(['__proto__'])
+      const read = (await readLockfile(root))!
+      expect(Object.keys(read.projects['packages/app']!.config!.tasks!)).toEqual(['__proto__'])
       const run = await vx(root, ['run', 'app#__proto__', '--output-logs', 'full'], {})
       expect(run.code).toBe(0)
       expect(run.out).toContain('proto-ran')
@@ -155,16 +150,10 @@ describe('vx lock (e2e)', () => {
       // Lock under X=a — the resolved command is frozen with 'a'.
       const lock = await vx(root, ['lock'], { X: 'a' })
       expect(lock.code).toBe(0)
-      const lockJson = (await Bun.file(path.join(root, '.vx/projects.lock.jsonl')).json()) as {
-        version: number
-        projects: Record<
-          string,
-          { file: string; config: { tasks: { build: { exec: { command: string } } } } }
-        >
-      }
-      expect(lockJson.version).toBe(7)
+      const lockJson = (await readLockfile(root))!
+      expect(lockJson.version).toBe(8)
       const app = lockJson.projects['packages/app']!
-      expect([app.file, app.config.tasks.build.exec.command]).toEqual([
+      expect([app.file, app.config!.tasks!['build']!.exec!.command]).toEqual([
         'vx.config.mjs',
         'echo flavor-a',
       ])
@@ -346,10 +335,9 @@ describe('vx lock (e2e)', () => {
           await writeFile(
             file,
             bom +
-              JSON.stringify({
-                version: 7,
-                projects: { 'packages/app': { file: 'vx.config.mjs', config: app } },
-              }),
+              `{"version":8}\n` +
+              `#t\t${JSON.stringify(app.tasks.build)}\n` +
+              `app\t${JSON.stringify({ path: 'packages/app', file: 'vx.config.mjs', config: { tasks: { build: '#t' } } })}\n`,
           )
           const run = await vx(root, ['run', 'build', '--all', '--no-cache'], { X: 'a' })
           expect(run.code).toBe(1)

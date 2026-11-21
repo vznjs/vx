@@ -209,7 +209,7 @@ describe('`^task` needs an edge source', () => {
         })
         expect([check.exitCode, check.stderr.toString().split('\n')[0]]).toEqual([
           1,
-          "✗ vx lock --check  packages/app: the `discover` stage finds it otherwise than the lock here; run 'vx lock'",
+          '✗ vx lock --check  app#build: ^build needs project edges; add pnpm()/bun()/npm()/yarn() and install so its lockfile exists, or a plugin that returns `deps`',
         ])
       } finally {
         await rm(root, { recursive: true, force: true })

@@ -4,19 +4,22 @@
 //
 // Each project's edges (the `discover` stage's `deps` and `reach`, which
 // live nowhere else), and each claimed file's per-project digests
-// (`FingerprintClaim.digests`) with the hash of the bytes they came from
-// and of each other file the digests read. A run takes its edges from here
-// and keys from these digests, never parsing a package manager's lockfile:
-// one whose bytes moved since refuses (orchestrator/locked-digests.ts).
+// (`FingerprintClaim.digests`) with the hash of each other file the digests
+// read. No hash of the claimed file itself: every change to it would rewrite
+// that one line, and two pull requests that each touched it would conflict
+// there on GitHub, which runs no merge driver. A run takes its edges from
+// here and keys from these digests; it proves them against the claimant's
+// own digests of the file as it is, which `lockfile_memos` keeps by the
+// file's hash, so a warm run parses nothing and a record that is not what
+// the file resolves to refuses (orchestrator/locked-digests.ts).
 // `--affected` reads the base commit's copy with git: a project whose edges
-// moved, a deleted project's dependants and a changed lockfile's base
-// digests are there, so the base side is never parsed. `vx lock --check`
+// moved and a deleted project's dependants are there. `vx lock --check`
 // holds it to a fresh derivation.
 //
 // Text, one line per project, keyed by its name and sorted, so a merge of
 // two branches touches only the projects each changed. Laid out for the
 // parse first, then for size (2026-11-21):
-//   line 1   JSON: {"version":5,"files":[file,hash,…],"edges":true?,"extras":{…}?}
+//   line 1   JSON: {"version":5,"files":[file,…],"edges":true?,"extras":{…}?}
 //   then     name⇥deps⇥reach⇥digests, each list comma-separated, the
 //            digests in `files` order ("" for none), empty trailing fields
 //            dropped. A list with an element a comma or tab could break is
@@ -33,6 +36,7 @@ export const DEPENDENCIES_LOCK_NAME = '.vx/dependencies.lock'
 const DEPENDENCIES_LOCK_VERSION = 5
 const HEX16 = /^[0-9a-f]{16}$/
 const B64 = /^[A-Za-z0-9_-]{11}$/
+const CONFLICT = /^(?:<{7}|={7}|>{7})(?: |$)/
 
 /** A project's edges, as names. */
 export interface LockedEdges {
@@ -48,8 +52,6 @@ export interface DependenciesLock {
   readonly edgeSource: boolean
   /** Each claimed file, sorted. */
   readonly files: readonly string[]
-  /** Each claimed file's bytes' hash, in `files` order. */
-  readonly hashes: readonly string[]
   /** Claimed file → each other file its digests read → its hash. */
   readonly extras: Readonly<Record<string, Readonly<Record<string, string>>>>
   /** The text, as written. */
@@ -68,18 +70,14 @@ export function dependenciesLock(
   metas: readonly ProjectMeta[],
   files: ReadonlyMap<
     string,
-    {
-      hash: string
-      projects: Readonly<Record<string, string>>
-      extras?: Readonly<Record<string, string>>
-    }
+    { projects: Readonly<Record<string, string>>; extras?: Readonly<Record<string, string>> }
   >,
 ): DependenciesLock {
   const known = new Set(metas.map((m) => m.name))
   const fileNames = [...files.keys()].sort(cmp)
   const header: Record<string, unknown> = {
     version: DEPENDENCIES_LOCK_VERSION,
-    files: fileNames.flatMap((f) => [f, packed(files.get(f)!.hash)]),
+    files: fileNames,
   }
   if (metas.some((m) => m.deps !== undefined)) header['edges'] = true
   const extras: Record<string, Record<string, string>> = {}
@@ -186,12 +184,10 @@ function parsed(text: string): DependenciesLock | null {
     if (nl < 0 || !text.endsWith('\n')) return null
     const header: unknown = JSON.parse(text.slice(0, nl))
     if (!isRecord(header)) return null
-    const { files: pairs, edges, extras } = header
-    if (!strings(pairs) || pairs.length % 2 !== 0) return null
+    const { files, edges, extras } = header
+    if (!strings(files)) return null
     if (edges !== undefined && edges !== true) return null
     if (extras !== undefined && !extrasShaped(extras)) return null
-    const files = pairs.filter((_, i) => i % 2 === 0)
-    const hashes = pairs.filter((_, i) => i % 2 === 1).map(unpacked)
     const names: string[] = []
     const at = new Map<string, number>()
     for (let a = nl + 1; a < text.length;) {
@@ -201,6 +197,8 @@ function parsed(text: string): DependenciesLock | null {
       const raw = text.slice(a, tab)
       const name = raw.charCodeAt(0) === 34 ? (JSON.parse(raw) as unknown) : raw
       if (typeof name !== 'string' || name === '' || at.has(name)) return null
+      // A conflict git's merge left: its marker lines would read as names.
+      if (CONFLICT.test(name)) return null
       if (names.length > 0 && cmp(names[names.length - 1]!, name) >= 0) return null
       names.push(name)
       at.set(name, a)
@@ -227,7 +225,6 @@ function parsed(text: string): DependenciesLock | null {
       names,
       edgeSource: edges === true,
       files,
-      hashes,
       extras: (extras ?? {}) as Record<string, Record<string, string>>,
       text,
       edges: (name) => line(name)?.edges,
@@ -266,13 +263,12 @@ export function dependantsOf(lock: DependenciesLock, name: string): string[] {
   })
 }
 
-/** `file`'s recorded hashes and each project's digest (undefined when none). */
+/** `file`'s recorded extra-file hashes and each project's digest (undefined when none). */
 export function recordedDigests(
   lock: DependenciesLock,
   file: string,
 ):
   | {
-      hash: string
       extras: Readonly<Record<string, string>>
       has: (name: string) => boolean
       of: (name: string) => string | undefined
@@ -281,7 +277,6 @@ export function recordedDigests(
   const f = lock.files.indexOf(file)
   if (f < 0) return undefined
   return {
-    hash: lock.hashes[f]!,
     extras: (Object.hasOwn(lock.extras, file) ? lock.extras[file] : undefined) ?? {},
     has: (name) => lock.digest(name, f) !== undefined,
     of: (name) => {
@@ -294,11 +289,11 @@ export function recordedDigests(
 /**
  * Whether `read` records what `fresh` derives here, but where a claimed
  * file's only change is the hashes of the files its digests read (same
- * bytes, same extra files, an extra's hash moved): a run digests anew on
+ * extra files, an extra's hash moved): a run digests anew on
  * such an edit (`lockfileClaim`'s `lockedOnce`), and cli.md says it needs
  * no `vx lock`, yet `--check` failed every edit in a `file:` directory or a
- * patch. With every hash unchanged a run keys from the record, so its
- * digests are compared.
+ * patch. With every extra's hash unchanged a run keys from the record, so
+ * its digests are compared.
  */
 export function sameRecord(read: DependenciesLock, fresh: DependenciesLock): boolean {
   if (read.text === fresh.text) return true
@@ -307,8 +302,7 @@ export function sameRecord(read: DependenciesLock, fresh: DependenciesLock): boo
   if (
     read.edgeSource !== fresh.edgeSource ||
     !same(read.names, fresh.names) ||
-    !same(read.files, fresh.files) ||
-    !same(read.hashes, fresh.hashes)
+    !same(read.files, fresh.files)
   )
     return false
   for (const n of fresh.names) {

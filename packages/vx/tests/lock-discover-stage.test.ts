@@ -8,6 +8,7 @@ import { afterEach, beforeEach, expect, it } from 'bun:test'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
 import { pluginSource } from './helpers/plugin.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
+import { readLockfile } from '../src/workspace/lockfile.js'
 
 const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
 const REAL_BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
@@ -61,9 +62,7 @@ it('vx lock freezes the discovered project, so lock --check && run succeeds', as
   expect(`${lock.code}\n${lock.err}`).toStartWith('0\n')
   const check = await vx(root, ['lock', '--check'])
   expect(`${check.code}\n${check.err}`).toStartWith('0\n')
-  const locked = Object.keys(
-    (await Bun.file(path.join(root, '.vx/projects.lock.jsonl')).json()).projects,
-  )
+  const locked = Object.keys((await readLockfile(root))!.projects)
   // By directory: a project with a config is locked whoever names it.
   expect(locked).toEqual(['packages/app', 'tools/gen'])
   const run = await vx(root, ['run', 'build', '--all'], REAL_BIN)

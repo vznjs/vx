@@ -8,6 +8,7 @@ import { afterEach, beforeEach, expect, it } from 'bun:test'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
 import { pluginSource } from './helpers/plugin.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
+import { readLockfile } from '../src/workspace/lockfile.js'
 
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 
@@ -63,9 +64,10 @@ it('a run follows the mapping vx lock made, and calls no project hook', async ()
   const lock = await vx(root, ['lock'])
   expect(`${lock.code}\n${lock.err}`).toStartWith('0\n')
   expect(lock.out).toContain('and the tasks a plugin maps for mapped')
-  const locked = await Bun.file(path.join(root, '.vx/projects.lock.jsonl')).json()
+  const text = await Bun.file(path.join(root, '.vx/projects.lock.jsonl')).text()
   // Only the final config: the plugin's mapping, not the steps that made it.
-  expect(locked.projectStage).toBeUndefined()
+  expect(text).not.toContain('projectStage')
+  const locked = (await readLockfile(root))!
   expect(JSON.stringify(locked.projects['packages/mapped'])).toContain('echo said-one')
   const afterLock = await visits()
 

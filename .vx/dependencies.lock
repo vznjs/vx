@@ -1,4 +1,4 @@
-{"version":5,"files":["bun.lock","sAHw0IEGwps"],"edges":true}
+{"version":5,"files":["bun.lock"],"edges":true}
 @vzn/vx			-S6GMf3V284
 @vzn/vx-bench	@vzn/vx,@vzn/vx-conformance,@vzn/vx-history,@vzn/vx-lockfile		IjDDhocjMto
 @vzn/vx-cache	@vzn/vx,@vzn/vx-cache-server,@vzn/vx-devtools		64_9XwIGxR4

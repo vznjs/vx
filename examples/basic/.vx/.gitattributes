@@ -1,2 +1,2 @@
-projects.lock.jsonl linguist-generated=true
-dependencies.lock linguist-generated=true
+projects.lock.jsonl linguist-generated=true merge=vx-lock
+dependencies.lock linguist-generated=true merge=vx-lock

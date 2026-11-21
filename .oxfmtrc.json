@@ -16,7 +16,7 @@
     "**/.vx/projects.lock.jsonl",
     "**/.vx/dependencies.lock",
     "**/vx.lock.json",
-    "packages/vx/tests/contract/lock.json",
+    "packages/vx/tests/contract/lock.jsonl",
     ".mcp.json",
     ".vscode",
     ".idea",

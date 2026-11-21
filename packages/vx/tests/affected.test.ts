@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { affectedProjects, defaultAffectedBase, headBase } from '../src/workspace/affected.js'
 import type { ProjectMeta } from '../src/workspace/workspace.js'
 import type { ProjectEntry } from '../src/workspace/index.js'
-import { LOCKFILE_NAME } from '../src/workspace/index.js'
+import { LOCKFILE_NAME, LOCKFILE_VERSION } from '../src/workspace/index.js'
 import { workspaceGlobOwners } from '../src/cli/select.js'
 import { discoverCliProjects, loadCliProjects } from '../src/cli/workspace-config.js'
 import { PLUGIN_IMPORT, packagesSource, pluginSource, testPlugin } from './helpers/plugin.js'
@@ -515,19 +515,20 @@ describe('affectedProjects', () => {
     // config evaluated under another env, a preset imported by package
     // name) moved its project's keys while no other path did: with the
     // review files off, the lock was the only change, and it was dropped.
-    const lockOf = (command: string) =>
-      JSON.stringify({
-        version: 6,
-        projects: Object.fromEntries(
-          ['a', 'b'].map((n) => [
-            `packages/${n}`,
-            {
-              file: 'vx.config.mjs',
-              config: { tasks: { t: { exec: { command: n === 'a' ? command : 'b' } } } },
-            },
-          ]),
-        ),
-      })
+    const lockOf = (command: string, spaced = false) =>
+      [
+        `{"version":${LOCKFILE_VERSION}}`,
+        `#a\t{"exec":{"command":${JSON.stringify(command)}}}`,
+        '#b\t{"exec":{"command":"b"}}',
+        ...['a', 'b'].map((n) => {
+          const e = JSON.stringify({
+            path: `packages/${n}`,
+            file: 'vx.config.mjs',
+            config: { tasks: { t: `#${n}` } },
+          })
+          return `${n}\t${spaced ? e.replaceAll(',', ', ') : e}`
+        }),
+      ].join('\n')
     const all = () =>
       affectedProjects({ workspaceRoot: root, since: 'HEAD', projects }).then((s) => [...s].sort())
     // Control: a lock the base did not have ran nothing there to compare.
@@ -536,7 +537,7 @@ describe('affectedProjects', () => {
     await git(root, 'add', '.')
     await git(root, 'commit', '-q', '-m', 'lock')
     // Control: the same entries, written again in another layout.
-    await Bun.write(path.join(root, LOCKFILE_NAME), `${lockOf('one')}\n\n`)
+    await Bun.write(path.join(root, LOCKFILE_NAME), `${lockOf('one', true)}\n`)
     expect(await all()).toEqual([])
     await Bun.write(path.join(root, LOCKFILE_NAME), lockOf('two'))
     expect(await all()).toEqual(['a'])

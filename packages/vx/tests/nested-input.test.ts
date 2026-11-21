@@ -164,10 +164,12 @@ describe('a nested workspace', () => {
     const root = await nestedWorkspace(['src/**'], ['out/**'])
     await lock(root)
     const file = path.join(root, LOCKFILE_NAME)
-    const locked = JSON.parse(await readFile(file, 'utf8')) as Record<string, unknown>
-    expect(locked['nestedWorkspaces']).toEqual(['packages/a/inner'])
-    delete locked['nestedWorkspaces']
-    await writeFile(file, JSON.stringify(locked))
+    const text = await readFile(file, 'utf8')
+    const nl = text.indexOf('\n')
+    const head = JSON.parse(text.slice(0, nl)) as Record<string, unknown>
+    expect(head['nestedWorkspaces']).toEqual(['packages/a/inner'])
+    delete head['nestedWorkspaces']
+    await writeFile(file, JSON.stringify(head) + text.slice(nl))
     const check = Bun.spawnSync({
       cmd: [process.execPath, BIN, 'lock', '--check'],
       cwd: root,

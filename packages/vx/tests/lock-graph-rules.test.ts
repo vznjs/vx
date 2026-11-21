@@ -8,6 +8,7 @@ import path from 'node:path'
 import { afterAll, describe, expect, it } from 'bun:test'
 import { checkGraph, type TaskNode } from '../src/graph/index.js'
 import { TIMEOUT } from './helpers/orchestrator-fixture.js'
+import { readLockfile, writeLockfile } from '../src/workspace/lockfile.js'
 
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 const roots: string[] = []
@@ -114,13 +115,10 @@ describe('a run', () => {
       const root = await workspace(`{ a: ${task(['dist/**'])} }`)
       expect(vx(root, ['lock']).code).toBe(0)
       // What `vx lock` would refuse, edited into the lock by hand.
-      const lockFile = path.join(root, '.vx/projects.lock.jsonl')
-      const lock = (await Bun.file(lockFile).json()) as {
-        projects: { 'packages/a': { config: { tasks: Record<string, unknown> } } }
-      }
-      const { tasks } = lock.projects['packages/a'].config
-      tasks['b'] = tasks['a']
-      await writeFile(lockFile, JSON.stringify(lock))
+      const lock = (await readLockfile(root))!
+      const tasks = lock.projects['packages/a']!.config!.tasks!
+      tasks['b'] = tasks['a']!
+      await writeLockfile(root, lock)
       // One run each: run together, the two raced on dist/o, and a's save
       // saw b's clean (`changed while it was saved`), which is no rule's.
       for (const t of ['a', 'b']) {

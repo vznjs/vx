@@ -71,6 +71,7 @@ import {
 import {
   applyKeyHooks,
   applyScheduleHooks,
+  claimedDigests,
   fingerprintClaims,
   hasHook,
   resolveCache,
@@ -1039,12 +1040,23 @@ async function applyKeyStages(
     }
   }
   if (hasHook(plugins, 'key')) {
-    const locked = lockedFiles(
+    const claims = fingerprintClaims(plugins)
+    const claimCtx = withExtraHashes(
+      {
+        workspaceRoot,
+        cacheDir,
+        warn: warnOf(log),
+        projects: projectMetas.map((p) => ({ name: p.name, dir: p.dir })),
+      },
+      extraHashesOfDiscovery(projectMetas),
+    )
+    const locked = await lockedFiles(
       workspaceRoot,
       store.claimed,
       store.claimedBytes,
       await store.dependenciesLock,
       projectMetas,
+      (file) => claimedDigests(claims.get(file)!, file, claimCtx),
     )
     await applyKeyHooks(
       plugins,

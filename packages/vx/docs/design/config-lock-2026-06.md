@@ -36,6 +36,10 @@ lock is the sound dependency story that rejection asked for:
 
 ## Format
 
+The format below is version 2's. Version 8 (2026-11-21) is
+`.vx/projects.lock.jsonl`, one line per project keyed by its name, each
+distinct task once on a `#id` line, no `validated` (docs/modules/workspace.md).
+
 `.vx/lock.json` at the workspace root:
 
 ```json

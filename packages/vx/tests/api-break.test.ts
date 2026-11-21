@@ -122,18 +122,13 @@ describe('contractBreaks', () => {
     ).toEqual(['- run: a task fails=1', '- info=0'])
   })
 
-  it("the lock's `validated` digest is no contract: it moves with any change", () => {
-    const record = 'tests/contract/lock.json'
-    const before = j({ version: 1, projects: { a: { tasks: { t: { c: 1 } } } }, validated: 'x' })
-    const added = j({
-      version: 1,
-      projects: { a: { tasks: { t: { c: 1 }, u: { c: 2 } } } },
-      validated: 'y',
-    })
-    expect(contractBreaks(record, before, added)).toEqual([])
-    expect(contractBreaks(record, before, j({ version: 2, validated: 'x' }))).toEqual([
-      '- version=1',
-      '- projects.a.tasks.t.c=1',
+  it('a lock loses what a project or a task it names lost, not a renamed task line', () => {
+    const record = 'tests/contract/lock.jsonl'
+    const lock = (...tasks: string[]) =>
+      `{"version":1}\n${tasks.map((t, i) => `#${i}${t}\t{"c":"${t}"}`).join('\n')}\na\t{"path":"a","config":{"tasks":{${tasks.map((t, i) => `"${t}":"#${i}${t}"`).join(',')}}}}\n`
+    expect(contractBreaks(record, lock('t'), lock('t', 'u'))).toEqual([])
+    expect(contractBreaks(record, lock('t', 'u'), lock('u'))).toEqual([
+      '- projects.a.config.tasks.t.c="t"',
     ])
   })
 
