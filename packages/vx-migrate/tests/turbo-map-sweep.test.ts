@@ -1758,6 +1758,22 @@ describe('turbo-map: `with`', () => {
     expect(m.projects.find((p) => p.name === 'lib')!.tasks.map((t) => t.name)).toEqual(['build'])
   })
 
+  // turbo 2.11.10's `turbo run deploy` ran `lib#test` and `lib#lint` through
+  // lib's script-less `deploy` node, though only app has `deploy` and lib is
+  // depended on; vx ran neither, as no `^` edge names them.
+  it("a no-script node's edges no `^` edge reaches run in a depended-on package", async () => {
+    const m = await map(
+      {
+        tasks: { deploy: { dependsOn: ['build', 'test', 'lint'] }, build: {}, test: {}, lint: {} },
+      },
+      {
+        lib: { scripts: { build: 'b', test: 't', lint: 'l' } },
+        app: { scripts: { build: 'b', deploy: 'd' }, dependencies: { lib: 'workspace:*' } },
+      },
+    )
+    expect(task(m, 'lib', 'deploy').task).toEqual({ dependsOn: ['build', 'lint', 'test'] })
+  })
+
   // vercel/ai: `turbo run type-check` built each example through its
   // script-less `type-check: [build]`, and nothing depends on an example,
   // so no `^build` reached it: vx built none. The root's dependency is no
