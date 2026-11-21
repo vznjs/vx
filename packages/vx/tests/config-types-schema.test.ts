@@ -11,6 +11,8 @@ import type {
   InputsConfig,
   CacheSettings,
   RunSettings,
+  RunLogs,
+  HistorySettings,
   WatchSettings,
   TaskOutputs,
   WorkspaceInputs,
@@ -40,6 +42,7 @@ type Exhaustive<T, L extends readonly string[]> = [Exclude<Keys<T>, L[number]>] 
 const WORKSPACE = [
   'baseBranch',
   'cache',
+  'history',
   'inputs',
   'lock',
   'outputs',
@@ -50,15 +53,29 @@ const WORKSPACE = [
 const RUN = [
   'concurrency',
   'continue',
+  'killGrace',
+  'logs',
+  'pluginTimeout',
   'retries',
   'rules',
   'schedule',
+  'secrets',
   'timeout',
 ] as const satisfies readonly Keys<RunSettings>[]
+const LOGS = [
+  'captureHead',
+  'captureTail',
+  'failedHead',
+  'failedTail',
+] as const satisfies readonly Keys<RunLogs>[]
+const SECRETS = ['minLength'] as const satisfies readonly Keys<
+  NonNullable<RunSettings['secrets']>
+>[]
+const HISTORY = ['retention'] as const satisfies readonly Keys<HistorySettings>[]
 const RULES = ['dependencies', 'exclusiveOutputs'] as const satisfies readonly Keys<
   NonNullable<RunSettings['rules']>
 >[]
-const WATCH = ['poll'] as const satisfies readonly Keys<WatchSettings>[]
+const WATCH = ['debounce', 'poll', 'pollInterval'] as const satisfies readonly Keys<WatchSettings>[]
 const LOCK = ['reviewFiles'] as const satisfies readonly Keys<LockSettings>[]
 const PROJECT = ['name', 'tags', 'tasks'] as const satisfies readonly Keys<ProjectConfig>[]
 const TASK = [
@@ -143,6 +160,9 @@ const exhaustive: [
   Exhaustive<RunSettings, typeof RUN>,
   Exhaustive<NonNullable<RunSettings['rules']>, typeof RULES>,
   Exhaustive<WatchSettings, typeof WATCH>,
+  Exhaustive<RunLogs, typeof LOGS>,
+  Exhaustive<NonNullable<RunSettings['secrets']>, typeof SECRETS>,
+  Exhaustive<HistorySettings, typeof HISTORY>,
   Exhaustive<LockSettings, typeof LOCK>,
   Exhaustive<ProjectConfig, typeof PROJECT>,
   Exhaustive<TaskConfig, typeof TASK>,
@@ -163,6 +183,9 @@ const exhaustive: [
   Exhaustive<SandboxDenials, typeof DENIALS>,
   Exhaustive<SandboxIgnore, typeof IGNORES>,
 ] = [
+  true,
+  true,
+  true,
   true,
   true,
   true,
@@ -258,6 +281,9 @@ describe('the config types and the validator agree on every level (D-71)', () =>
     ['run', RUN, () => validateWorkspace({ run: { ...X } } as never, 'w')],
     ['run.rules', RULES, () => validateWorkspace({ run: { rules: X } } as never, 'w')],
     ['watch', WATCH, () => validateWorkspace({ watch: { ...X } } as never, 'w')],
+    ['run.logs', LOGS, () => validateWorkspace({ run: { logs: X } } as never, 'w')],
+    ['run.secrets', SECRETS, () => validateWorkspace({ run: { secrets: X } } as never, 'w')],
+    ['history', HISTORY, () => validateWorkspace({ history: { ...X } } as never, 'w')],
     ['lock', LOCK, () => validateWorkspace({ lock: { ...X } } as never, 'w')],
     [
       'inputs.stability (workspace)',

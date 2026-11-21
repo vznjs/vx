@@ -115,37 +115,37 @@ export const SETTINGS: readonly Setting[] = [
   {
     path: 'run.killGrace',
     kind: { type: 'duration', timer: true },
-    default: "'2s'",
+    default: '`2s`',
     doc: "How long a task, server or plugin's process may take to exit after SIGTERM (a timeout, a stop, the run's end) before vx sends SIGKILL.",
   },
   {
     path: 'run.pluginTimeout',
     kind: { type: 'duration', timer: true, zero: true },
-    default: "'3s'",
+    default: '`3s`',
     doc: "How long one plugin's end-of-run flush or teardown may take before the run ends without it; `'0ms'` waits for nothing not already done.",
   },
   {
     path: 'run.logs.captureHead',
     kind: { type: 'size' },
-    default: "'8MiB'",
+    default: '`8MiB`',
     doc: "The start of a task's output vx keeps for its cache entry and replay; the live stream is never cut. Counted in characters.",
   },
   {
     path: 'run.logs.captureTail',
     kind: { type: 'size' },
-    default: "'8MiB'",
+    default: '`8MiB`',
     doc: "The end of a task's output vx keeps for its cache entry and replay. Counted in characters.",
   },
   {
     path: 'run.logs.failedHead',
     kind: { type: 'size' },
-    default: "'8KiB'",
+    default: '`8KiB`',
     doc: "The start of a failed attempt's output vx keeps when it stores that failure. Counted in characters.",
   },
   {
     path: 'run.logs.failedTail',
     kind: { type: 'size' },
-    default: "'56KiB'",
+    default: '`56KiB`',
     doc: "The end of a failed attempt's output vx keeps when it stores that failure. Counted in characters.",
   },
   {
@@ -253,7 +253,7 @@ export const SETTINGS: readonly Setting[] = [
   {
     path: 'history.retention',
     kind: { type: 'duration' },
-    default: "'30d'",
+    default: '`30d`',
     doc: '`vx cache clean` drops run history and hash memos older than this.',
   },
   {
@@ -272,13 +272,13 @@ export const SETTINGS: readonly Setting[] = [
   {
     path: 'watch.debounce',
     kind: { type: 'duration', timer: true },
-    default: "'150ms'",
+    default: '`150ms`',
     doc: '`vx watch` waits this long after the last change before it re-runs (at most 1 s after the first).',
   },
   {
     path: 'watch.pollInterval',
     kind: { type: 'duration', timer: true },
-    default: "'250ms'",
+    default: '`250ms`',
     doc: 'How often a polling `vx watch` re-walks a watched tree.',
   },
   {

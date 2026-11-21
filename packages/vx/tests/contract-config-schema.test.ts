@@ -28,6 +28,8 @@ import type {
   WorkspaceOutputs,
   CacheSettings,
   RunSettings,
+  RunLogs,
+  HistorySettings,
   LockSettings,
   WatchSettings,
   InputStability,
@@ -67,6 +69,7 @@ const LEVEL_TYPES: Record<'workspace' | 'project', Record<string, string[]>> = {
       outputs: true,
       lock: true,
       watch: true,
+      history: true,
       plugins: true,
     }),
     run: keys<RunSettings>({
@@ -75,8 +78,19 @@ const LEVEL_TYPES: Record<'workspace' | 'project', Record<string, string[]>> = {
       timeout: true,
       retries: true,
       continue: true,
+      killGrace: true,
+      pluginTimeout: true,
+      logs: true,
+      secrets: true,
       rules: true,
     }),
+    'run.logs': keys<RunLogs>({
+      captureHead: true,
+      captureTail: true,
+      failedHead: true,
+      failedTail: true,
+    }),
+    'run.secrets': keys<NonNullable<RunSettings['secrets']>>({ minLength: true }),
     'run.rules': keys<NonNullable<RunSettings['rules']>>({
       exclusiveOutputs: true,
       dependencies: true,
@@ -103,7 +117,8 @@ const LEVEL_TYPES: Record<'workspace' | 'project', Record<string, string[]>> = {
       decompress: true,
     }),
     lock: keys<LockSettings>({ reviewFiles: true }),
-    watch: keys<WatchSettings>({ poll: true }),
+    watch: keys<WatchSettings>({ poll: true, debounce: true, pollInterval: true }),
+    history: keys<HistorySettings>({ retention: true }),
   },
   project: {
     '': keys<ProjectConfig>({ name: true, tags: true, tasks: true }),
@@ -183,6 +198,10 @@ function workspaceSeed(): Record<string, unknown> {
       timeout: '1s',
       retries: 1,
       continue: 'deps-ok',
+      killGrace: '2s',
+      pluginTimeout: '3s',
+      logs: { captureHead: '8MiB', captureTail: '8MiB', failedHead: '8KiB', failedTail: '56KiB' },
+      secrets: { minLength: 6 },
       rules: {
         exclusiveOutputs: true,
         dependencies: [{ from: 'tag:app', allow: ['tag:lib'], deny: ['tag:e2e'] }],
@@ -199,7 +218,8 @@ function workspaceSeed(): Record<string, unknown> {
     inputs: { stability: { strategy: 'mutable', severity: 'error' } },
     outputs: { clean: false },
     lock: { reviewFiles: false },
-    watch: { poll: true },
+    watch: { poll: true, debounce: '150ms', pollInterval: '250ms' },
+    history: { retention: '30d' },
     plugins: [],
   }
 }
