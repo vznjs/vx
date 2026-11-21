@@ -159,6 +159,8 @@ const KNOWN = new Set([
   'e325b97cab7436e1732a73e5429056724e825725',
   // The turbo tsc -b reach TODO's, 76 chars; the branch takes no force push.
   '15b5fa0fec83c992aeb326c70951e938d6882cf6',
+  // #5445's, 72 chars; the branch takes no force push.
+  '57f44930de264d7744159dc8c3212e65c888b699',
 ])
 
 it('every commit the PR adds has a Conventional Commits subject', () => {
