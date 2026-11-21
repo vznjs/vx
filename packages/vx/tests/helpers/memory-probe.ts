@@ -7,7 +7,8 @@
 import { appendFileSync, readFileSync, writeFileSync } from 'node:fs'
 import { heapStats } from 'bun:jsc'
 
-const out = process.env['VX_TEST_MEMORY_PROBE']
+// Destructured: the harness sets it on every spawn; it gates no suite.
+const { VX_TEST_MEMORY_PROBE: out } = process.env
 if (out !== undefined) {
   const kib = (field: string): number =>
     Number(new RegExp(`${field}:\\s+(\\d+) kB`).exec(readFileSync('/proc/self/status', 'utf8'))![1])
