@@ -1185,6 +1185,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'shell-verdict-sandbox',
     'shell-verdict-secret-mask',
     'skipped-footer',
+    'read-off',
     'spawn-off',
     'sqlite-query-only.unsafe',
     'stable-keys',

@@ -3,6 +3,7 @@
 
 import type { Pointer } from 'bun:ffi'
 import { closeSync } from 'node:fs'
+import { readOff } from './read-off.js'
 
 const O_NONBLOCK = 0o4000
 const O_CLOEXEC = 0o2000000
@@ -98,6 +99,8 @@ export class TaskPipes {
   readonly stdio: readonly [number | 'pipe', number | 'pipe']
   readonly #read: readonly number[]
   readonly #stdinWrite: number | undefined
+  /** The read ends went to the reader thread, which closes each once its stream ends. */
+  #handed = false
 
   constructor(terminal?: boolean, held?: boolean) {
     const fds = terminal === true ? undefined : realPipes()
@@ -125,9 +128,9 @@ export class TaskPipes {
     ReadableStream<Uint8Array> | number | undefined,
   ] {
     const [out, err] = this.#read
-    return out === undefined
-      ? [child.stdout, child.stderr]
-      : [Bun.file(out).stream(), Bun.file(err!).stream()]
+    if (out === undefined) return [child.stdout, child.stderr]
+    this.#handed = true
+    return [readOff(out), readOff(err!)]
   }
 
   /**
@@ -137,7 +140,7 @@ export class TaskPipes {
    * the stream read THAT (probed, Bun 1.4.2).
    */
   close(): void {
-    for (const fd of this.#read) closeSync(fd)
+    if (!this.#handed) for (const fd of this.#read) closeSync(fd)
   }
 
   /**
