@@ -2306,34 +2306,12 @@ function buildTask(
     // an edit replayed a stale build.
     files.push('**/*')
   } else {
-    const withDefault = def.inputs.includes('$TURBO_DEFAULT$')
-    const ownTracked = withDefault ? opts.tracked?.(pkgDir).files : undefined
     for (const i of def.inputs.map(turboGlobstar)) {
       if (i === '$TURBO_DEFAULT$') {
         files.push('**/*')
         continue
       }
       const neg = i.startsWith('!')
-      // Beside `$TURBO_DEFAULT$`, Turbo matches a `!` against each file's
-      // path alone (2.11.10): `!src` or `!src/` takes back no file under
-      // `src/`, where a vx `!src` takes the tree, so an edit there was a hit
-      // Turbo misses. Such a `!` naming a directory (or, without git's list,
-      // any literal one) is dropped: the key widens, never narrows.
-      if (neg && withDefault && !i.includes('$TURBO_ROOT$')) {
-        const lit = collapseDots(i.slice(1).replace(/\/+$/, ''))
-        if (
-          isLiteral(lit) &&
-          (i.endsWith('/') ||
-            ownTracked === undefined ||
-            ownTracked.some((f) => f.startsWith(`${lit}/`)))
-        ) {
-          todos.push(
-            `input ${JSON.stringify(i)}: beside $TURBO_DEFAULT$, Turbo takes back only a file at that path, ` +
-              `not a directory's files — dropped; "!${lit}/**" takes back the tree`,
-          )
-          continue
-        }
-      }
       // Turbo's globs have extglobs and vx's do not, so `src/**/*.@(js|ts)`
       // keyed on nothing and an edit replayed the old build. A positive glob
       // with no safe form widens to every package file; a negation with none is
