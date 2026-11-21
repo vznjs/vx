@@ -1781,8 +1781,9 @@ blob-size check below answers for it and no `check-attr` is asked;
 among every listed path, untracked and modified ones too: git applies
 those, and a scan of the trusted paths alone never saw them (item 977),
 and an ignored one, which the status walk names with `--ignored=matching`
-(A-19). `ls-files --debug` gives the worktree size the index recorded
-for each entry, and a trusted OID whose blob is another size is dropped:
+(A-19). The index records each entry's worktree size (read from its
+bytes; `ls-files --debug` for a v4, split or sparse index or a non-UTF-8
+path), and a trusted OID whose blob is another size is dropped:
 a filter since removed left a stat-clean entry git never re-reads (A-60).
 A filter that kept the size passes the check; `caching.md` names it and
 the remedy, `git add --renormalize .`.
@@ -1790,7 +1791,7 @@ The verdict is kept by a hash of the index file, the pathspecs and the
 workspace's repo prefix (`blob_verdicts`; its paths are
 workspace-relative), so a
 warm run reads the file and one row and spawns nothing more; a changed
-index spawns the `--debug` listing, asks the cache's `blob_sizes` memo and
+index reads the recorded sizes, asks the cache's `blob_sizes` memo and
 `git cat-file --batch-check` per core for the unknown ones; `checkBlobSizes` runs the
 check once per enumeration (a run starts it as its cache opens) and
 `applyGitEnumeration` waits on it, so every caller of it gets it. Split from `inputs.ts` on 2026-09-10:
@@ -1846,7 +1847,7 @@ the status ends; an index written between them trusts no OID and every
 file hashes from disk. A `git reset` of a staged edit landing between the
 two made the file clean to `status` while `ls-files` had listed the staged
 blob, which then keyed the committed bytes. The blob-size check's
-`--debug` listing, spawned later, holds the same stamp: an index written
+read of the index, later, holds the same stamp: an index written
 since trusts no OID (A-60's check would judge entries the OIDs did not
 come from). The stamp needs the index
 path before the listing spawns, so `repoFacts` is asked first: one
@@ -1925,7 +1926,7 @@ export interface IndexBlobs {
 }
 export interface IndexBlobCheck {
   key: string | undefined // xxh3 of the index file, prefix and pathspecs: the verdict's key
-  blobs(): Promise<IndexBlobs | null> // the `--debug` listing, spawned on a miss
+  blobs(): Promise<IndexBlobs | null> // the index bytes (`indexBlobsOf`), or the `--debug` listing, on a miss
   rekey(): Promise<string | undefined> // the key now: a verdict is stored only for its index
 }
 export interface BlobSizeMemo {

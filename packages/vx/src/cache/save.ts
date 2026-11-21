@@ -794,6 +794,9 @@ export async function writeArtifactAndIndex(
       [finalPath, tempPath(ix, hash)],
       [treePath, tempTreePath(ix, hash)],
     ] as const) {
+      // Asked first: a rename refused ENOENT throws, ~25 µs a save on a
+      // cold run's main thread, where no key has an artifact yet.
+      if (!existsSync(from)) continue
       try {
         renameSync(from, to)
         moved.push(to)

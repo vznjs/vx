@@ -1056,6 +1056,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'hide-env.unsafe',
     'hit-rows',
     'home-guard',
+    'index-blobs',
     'index-schema-race',
     'index-write-wait',
     'inflight',

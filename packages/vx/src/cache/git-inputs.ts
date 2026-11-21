@@ -2340,6 +2340,74 @@ function hasRacyEntry(index: Uint8Array, mtimeSec: number, oidBytes: number): bo
 }
 
 /**
+ * `ls-files -s --debug`'s answers for the blob-size check, read from the
+ * index bytes themselves: the listing and its text parse sat on a cold
+ * 9,603-task run's main thread for ~45 ms before the first task. Only the
+ * layout git writes by default (v2 or v3, every entry a file, link or
+ * gitlink, every path UTF-8, no split or sparse index); anything else is
+ * undefined and the listing asks git. Paths as `ls-files` prints them from
+ * the workspace: below the repo→workspace `prefix`, within `pathspecs`.
+ */
+export function indexBlobsOf(
+  index: Uint8Array,
+  oidBytes: number,
+  prefix: string,
+  pathspecs: readonly string[],
+  writtenSec: number,
+): IndexBlobs | undefined {
+  const view = new DataView(index.buffer, index.byteOffset, index.byteLength)
+  if (index.length < 12 || view.getUint32(0) !== 0x44495243) return undefined
+  const version = view.getUint32(4)
+  if (version !== 2 && version !== 3) return undefined
+  const count = view.getUint32(8)
+  const whole = pathspecs.includes('.')
+  const blobs: IndexBlobs = { paths: [], oids: [], sizes: [], sameSecond: [] }
+  let at = 12
+  for (let i = 0; i < count; i++) {
+    const entry = at
+    const flagsAt = entry + 40 + oidBytes
+    if (flagsAt + 2 > index.length) return undefined
+    const mode = view.getUint32(entry + 24)
+    const regular = mode === 0o100644 || mode === 0o100755
+    if (!regular && mode !== 0o120000 && mode !== 0o160000) return undefined
+    const flags = view.getUint16(flagsAt)
+    let pathAt = flagsAt + 2
+    if (version === 3 && (flags & 0x4000) !== 0) pathAt += 2
+    const end = index.indexOf(0, pathAt)
+    if (end < 0) return undefined
+    let rel: string
+    try {
+      rel = FATAL_UTF8.decode(index.subarray(pathAt, end))
+    } catch {
+      return undefined
+    }
+    at = entry + ((end - entry + 8) & ~7)
+    // A stage above 0 is an unmerged path, which carries no OID.
+    if (!regular || (flags & 0x3000) !== 0) continue
+    if (prefix !== '') {
+      if (!rel.startsWith(prefix)) continue
+      rel = rel.slice(prefix.length)
+    }
+    if (!whole && !pathspecs.some((p) => rel === p || (rel.startsWith(p) && rel[p.length] === '/')))
+      continue
+    blobs.paths.push(rel)
+    blobs.oids.push(index.subarray(entry + 40, flagsAt).toHex())
+    blobs.sizes.push(view.getUint32(entry + 36))
+    if (sameSecond(view.getUint32(entry), view.getUint32(entry + 8), writtenSec))
+      blobs.sameSecond.push(rel)
+  }
+  // The extensions: a split index keeps its entries in another file, and a
+  // sparse one may fold a directory into one entry.
+  const trailer = index.length - oidBytes
+  while (at + 8 <= trailer) {
+    const sig = String.fromCharCode(index[at]!, index[at + 1]!, index[at + 2]!, index[at + 3]!)
+    if (sig === 'link' || sig === 'sdir') return undefined
+    at += 8 + view.getUint32(at + 4)
+  }
+  return blobs
+}
+
+/**
  * git compares a file's ctime to the second only, and its racy rule reads
  * mtime alone: a same-size rewrite that keeps (or restores) an older mtime,
  * made in the second the index recorded the file, keeps every stat git
@@ -2777,6 +2845,25 @@ export async function startGitEnumeration(
           if (listed !== undefined) writtenSec = Math.floor(lstatSync(listed).mtimeMs / 1000)
         } catch {
           return null
+        }
+        if (
+          listed !== undefined &&
+          !GIT_LOCATION_ENV.some((name) => process.env[name] !== undefined)
+        ) {
+          let bytes: Uint8Array | undefined
+          try {
+            bytes = readFileSync(listed)
+          } catch {
+            return null
+          }
+          const fromBytes = indexBlobsOf(
+            bytes,
+            facts!.objectFormat === 'sha256' ? 32 : 20,
+            gitPrefix,
+            pathspecs,
+            writtenSec,
+          )
+          if (fromBytes !== undefined) return indexStamp() === stampBefore ? fromBytes : null
         }
         const run = await spawnGit(
           ['ls-files', '-s', '-v', '-z', '--debug', '--', ...literal],

@@ -394,7 +394,7 @@ exec '${real}' "$@"
     TIMEOUT,
   )
   it(
-    'an add before the blob-size listing (A-60) trusts no OID',
+    'an add before the blob-size listing (A-60) trusts no OID (a v4 index, which git lists)',
     async () => {
       // The index holds the LF blob `core.autocrlf` wrote for a CRLF file,
       // stat-clean with autocrlf gone: only the blob-size check drops it.
@@ -411,6 +411,9 @@ exec '${real}' "$@"
       await utimes(file, past, past)
       await nextSecond()
       git('-c', 'core.autocrlf=true', 'add', file)
+      // The sizes of a v2 or v3 index are read from its bytes (no listing);
+      // a v4 one, path-compressed, asks git's `--debug` listing.
+      git('update-index', '--index-version', '4')
       const rel = path.relative(root, file)
       const lf = git('rev-parse', `HEAD:${rel}`).trim()
       expect(git('ls-files', '-s', file).split(' ')[1]).toBe(lf)
