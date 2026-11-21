@@ -134,7 +134,7 @@ describe('nx-map: what the sweep found unheld', () => {
   })
 
   // Nx 24 cached the whole workspace minus the negation; vx cached nothing, so a hit restored no file.
-  it.each([['!{projectRoot}/lib'], ['!{projectRoot}/dist/']])(
+  it.each([['!{projectRoot}/lib'], ['!{projectRoot}/dist/'], ['!{projectRoot}/**/*.map']])(
     'outputs of negations alone %p run uncached with a todo',
     async (o) => {
       const a = await meta('a', { build: 'tsc' })
