@@ -7,7 +7,7 @@
 
 import { indexDb, indexError, Cache } from '../cache/index.js'
 import { anchoredSpecError, flagHint, formatValue, seeHelp } from './help.js'
-import { buildTaskGraph, isDefaultBuild, isGroupTask, splitTaskId } from '../graph/index.js'
+import { buildTaskGraph, isDefaultBuild, isGroupTask } from '../graph/index.js'
 import {
   cacheKeyDiff,
   diffsOlderRun,
@@ -22,7 +22,7 @@ import {
   whyDidThisRerun,
 } from '../history/index.js'
 import { resolveRunId } from '../orchestrator/index.js'
-import { MASKED, nearMatches, printable, refusal, UserError } from '../util/index.js'
+import { MASKED, nearMatches, printable, refusal, splitTaskId, UserError } from '../util/index.js'
 import * as ui from '../ui/index.js'
 import type { InputWriter, RootCause } from '../history/index.js'
 import type { Style } from '../ui/index.js'

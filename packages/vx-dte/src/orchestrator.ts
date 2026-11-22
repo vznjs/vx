@@ -1126,14 +1126,6 @@ export class Orchestrator {
     return { cores: Math.max(booked.cores, cores), memory: Math.max(booked.memory, memory) }
   }
 
-  /**
-   * What `a`'s machine spends besides the run's tasks, where its machine is
-   * the size it was given (a bigger one's spare cores take it): as it said,
-   * or before its first frame, as its size's did. Booked on all 4 cores until
-   * it said, a small just joined took six shards the plan gave three; its
-   * machine ran busy for 50 s and they ran 1.7 times their history (main
-   * f2ddcb6, 2026-11-12).
-   */
   /** The labels of every worker that joined, online or gone. */
   private joinedLabels(): Set<string> {
     return new Set([...this.workers.values(), ...this.gone].map((a) => a.label))
@@ -1144,6 +1136,14 @@ export class Orchestrator {
     return !joined.has(id) && !this.unstarted.has(id) && !this.cancelled.has(id)
   }
 
+  /**
+   * What `a`'s machine spends besides the run's tasks, where its machine is
+   * the size it was given (a bigger one's spare cores take it): as it said,
+   * or before its first frame, as its size's did. Booked on all 4 cores until
+   * it said, a small just joined took six shards the plan gave three; its
+   * machine ran busy for 50 s and they ran 1.7 times their history (main
+   * f2ddcb6, 2026-11-12).
+   */
   private otherOf(a: Worker): number {
     if (a.cores !== a.reported.cores) return 0
     return wholeCores(a.other ?? this.sizeOther(a) ?? 0)
@@ -3377,9 +3377,9 @@ const bytes = (n: number): string =>
         ? `${Math.round(n / 1e3)} KB`
         : `${n} B`
 
-/** A machine is what its size says: the same cores, memory within a tenth. */
 /** A size naming no platform is this machine's, as `dte()` planned it. */
 const placeOf = (d: Declared): string => d.place ?? d.platform ?? hostPlatform()
+/** A machine is what its size says: the same cores, memory within a tenth. */
 const matches = (cores: number, memory: number, d: Declared): boolean =>
   cores === d.cpu && Math.abs(memory - d.memory) <= d.memory * 0.1
 

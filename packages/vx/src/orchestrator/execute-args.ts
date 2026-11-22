@@ -76,7 +76,8 @@ export function executeArgsOf(
 
 /**
  * The key derivation's arguments for a dispatch. `late` adds the run's
- * `probesAfterWrites`, which only a cached task's key takes.
+ * `probesAfterWrites`: a cached task's key and its miss description pass
+ * it, and must agree, or the described inputs drift from the key.
  */
 export function hashArgsOf(args: ExecuteArgs, late = false): ComputeHashArgs {
   const { run } = args

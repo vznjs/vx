@@ -6,7 +6,6 @@ export {
   compileTaskPattern,
   isTaskPattern,
   parseDependencySpec,
-  splitTaskId,
   type DependencySpec,
 } from '../util/index.js'
 export {

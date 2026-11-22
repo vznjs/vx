@@ -94,7 +94,8 @@ export type { Logger, OutputView } from './report/index.js'
 // with only `taskId()` to JOIN an id and nothing exported to SPLIT one,
 // consumers roll their own `split('#', 2)` and drift from the graph, which
 // splits on the FIRST '#'.
-export { criticalPath, outputsOverlap, splitTaskId, taskDefinitions } from './graph/index.js'
+export { criticalPath, outputsOverlap, taskDefinitions } from './graph/index.js'
+export { splitTaskId } from './util/index.js'
 // TaskOutcome is a union by status; its facts are grouped by concern.
 export type {
   AbortedOutcome,
