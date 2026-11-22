@@ -56,8 +56,6 @@ export interface ProjectConfigs {
 
 // A project's config file names, in the order discovery prefers them.
 export const PROJECT_CONFIG_FILENAMES: string[]
-// The root project's name when nothing names it (Turbo's spelling).
-export const ROOT_NAME: '//'
 
 // the directory of the nearest .vx/workspace.* up to the git top-level
 // (handoff.ts workspaceFile); VX_E_NO_WORKSPACE without one
