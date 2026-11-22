@@ -2,7 +2,7 @@
 // installed once per process right before a run and never pinned
 // (2026-11-21): the site scores what a user gets today. The install starts
 // from an empty cache, so nothing older is reused. vx is this checkout.
-import { realpathSync } from 'node:fs'
+import { realpathSync, rmSync } from 'node:fs'
 import { mkdir, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
@@ -10,8 +10,9 @@ export const LATEST = ['turbo', 'nx', 'vite-plus', '@moonrepo/cli']
 
 const LOCAL = path.join(import.meta.dir, '..', 'node_modules')
 // Inside this package: the sandbox mounts its own /tmp over the host's, so a
-// tool installed there would be no file to the runs that link it.
-const ROOT = path.join(LOCAL, '.latest')
+// tool installed there would be no file to the runs that link it. One
+// directory per process: two runs at once must not empty each other's tools.
+const ROOT = path.join(LOCAL, `.latest-${process.pid}`)
 let latest: string | undefined
 
 /** Install `pkgs` (some of {@link LATEST}) at npm's latest into an emptied directory. */
@@ -35,6 +36,7 @@ export async function installLatest(pkgs: string[]): Promise<void> {
   ])
   if (code !== 0) throw new Error(`bun add ${specs.join(' ')} failed:\n${out}${err}`)
   latest = path.join(root, 'node_modules')
+  process.on('exit', () => rmSync(root, { recursive: true, force: true }))
 }
 
 /** The node_modules directory `pkg` is installed in. */
