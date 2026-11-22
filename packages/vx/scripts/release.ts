@@ -340,17 +340,22 @@ async function assemble(os: Os, version: string): Promise<void> {
   console.log(`assembled ${path.relative(CORE, TREE)} at ${version}:\n  ${names.join('\n  ')}`)
 }
 
-async function publish(os: Os, version: string): Promise<void> {
-  await printOidcClaims()
+/** The assembled packages `publish <os>` sends, in publish order. */
+function assembled(os: Os): Array<{ name: string; dir: string; plugin: boolean }> {
   const pluginsDir = path.join(TREE, 'plugins')
   const plugins = existsSync(pluginsDir) ? readdirSync(pluginsDir) : []
-  const packages = publishOrder(os, plugins).map((rel) => {
+  return publishOrder(os, plugins).map((rel) => {
     const dir = path.join(TREE, rel)
     const { name } = JSON.parse(readFileSync(path.join(dir, 'package.json'), 'utf8')) as {
       name: string
     }
     return { name, dir, plugin: rel.startsWith('plugins/') }
   })
+}
+
+async function publish(os: Os, version: string): Promise<void> {
+  await printOidcClaims()
+  const packages = assembled(os)
   const npm = npmBin()
   const latest = Bun.spawnSync({
     cmd: [npm, 'view', '@vzn/vx', 'dist-tags.latest'],
@@ -383,43 +388,30 @@ async function publish(os: Os, version: string): Promise<void> {
     },
     // The darwin ones too: their job published them before this one ran.
     (platforms) =>
-      awaitServed(
+      awaitNpm(
         [...publishOrder('darwin', []), ...platforms].flatMap((n) => [
           versionUrl(n, version),
           tarballUrl(n, version),
         ]),
-        headStatus,
-        { tries: 90, sleep: () => Bun.sleep(10_000) },
-        (line) => console.log(line),
       ),
     (line) => console.log(line),
   )
 }
 
-const headStatus = async (url: string): Promise<number> => {
-  const res = await fetch(url, { method: 'HEAD' }).catch(() => undefined)
-  return res?.status ?? 0
-}
+/** `awaitServed` against the registry: a HEAD every 10 s, for 15 minutes. */
+const awaitNpm = (urls: readonly string[]): Promise<void> =>
+  awaitServed(
+    urls,
+    async (url) => (await fetch(url, { method: 'HEAD' }).catch(() => undefined))?.status ?? 0,
+    { tries: 90, sleep: () => Bun.sleep(10_000) },
+    (line) => console.log(line),
+  )
 
 // Every package both publish jobs sent: the linux job runs last, so
 // the darwin packages are already published.
 async function served(version: string): Promise<void> {
-  const pluginsDir = path.join(TREE, 'plugins')
-  const plugins = existsSync(pluginsDir) ? readdirSync(pluginsDir) : []
-  const names = [
-    ...publishOrder('darwin', []),
-    ...publishOrder('linux', plugins).map(
-      (rel) =>
-        (JSON.parse(readFileSync(path.join(TREE, rel, 'package.json'), 'utf8')) as { name: string })
-          .name,
-    ),
-  ]
-  await awaitServed(
-    names.map((n) => tarballUrl(n, version)),
-    headStatus,
-    { tries: 90, sleep: () => Bun.sleep(10_000) },
-    (line) => console.log(line),
-  )
+  const names = [...publishOrder('darwin', []), ...assembled('linux').map((p) => p.name)]
+  await awaitNpm(names.map((n) => tarballUrl(n, version)))
   console.log(`npm serves all ${names.length} tarballs at ${version}`)
 }
 
