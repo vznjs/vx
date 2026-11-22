@@ -1509,7 +1509,7 @@ export interface PreparedRun {
   priorities: (run?: ScheduleRun) => Promise<ReadonlyMap<string, number>>
   branch: () => string | null
   cacheFor: (plugin: string) => PluginCache
-  keepRunEntry: ((name: string, bytes: Uint8Array) => Promise<boolean>) | undefined
+  keepRunEntry: ((name: string, body: Blob) => Promise<boolean>) | undefined
   nodes: Map<string, TaskNode>
   keyOnly: ReadonlyMap<string, TaskNode>
   unresolvedTasks: readonly string[]

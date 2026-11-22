@@ -2242,12 +2242,12 @@ export function putRunEntry(
   remotes: readonly ResolvedRemote[],
   scope: string | undefined,
   name: string,
-  bytes: Uint8Array,
+  body: Blob,
 ): Promise<boolean>
 export function packRunOutputs(
   workspaceRoot: string,
   paths: readonly string[],
-): Promise<Uint8Array | null>
+): Promise<{ body: Blob; release: () => Promise<void> } | null>
 ```
 
 ### Rules
@@ -2289,8 +2289,12 @@ export function packRunOutputs(
 What a run that writes a remote keeps of itself (`docs/modules/orchestrator.md`
 § Run report and run bytes): `writesRunStore(remotes)` says whether any
 remote takes the run's writes, `runEntryName(runId, taskId, 'log' | 'outputs')`
-names an entry, `putRunEntry(remotes, scope, name, bytes)` writes it to
+names an entry, `putRunEntry(remotes, scope, name, body)` writes it to
 each writing remote once (a remote that fails it is said, as a remote
 cache fault is, and the others still keep it), and `packRunOutputs(root, paths)` makes the plain
-ustar of a failed task's outputs. Keys are `xxh3('vx-run\0' + name)`,
+ustar of a failed task's outputs: in memory up to 8 MiB, past that
+streamed to a file under `.vx/tmp/` that `release` removes once sent, so
+600 MiB of outputs cost a chunk, not their size
+(`tests/memory-ceiling-cache.unsafe.test.ts`); null when a file changed
+under the read. Keys are `xxh3('vx-run\0' + name)`,
 scoped as tasks are; `getRun` reads them. Never the local store.

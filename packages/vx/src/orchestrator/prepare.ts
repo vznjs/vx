@@ -151,7 +151,7 @@ export interface PreparedRun {
    * Keep `bytes` of this run under `name` (run-store.ts); undefined when no
    * remote takes the run's writes, and so core keeps nothing.
    */
-  keepRunEntry: ((name: string, bytes: Uint8Array) => Promise<boolean>) | undefined
+  keepRunEntry: ((name: string, body: Blob) => Promise<boolean>) | undefined
   nodes: Map<string, TaskNode>
   /**
    * The tasks `--exclude-dependencies` took out of the schedule: keyed as a
@@ -335,7 +335,7 @@ export async function prepareRunLocked(
       priorities: access.priorities,
       cacheFor: access.cacheFor,
       keepRunEntry: writesRunStore(layer.remotes)
-        ? (name, bytes) => putRunEntry(layer.remotes, ws.cacheScope, name, bytes)
+        ? (name, body) => putRunEntry(layer.remotes, ws.cacheScope, name, body)
         : undefined,
       nodes,
       keyOnly,

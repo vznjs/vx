@@ -21,13 +21,17 @@ them out or `vx cache clean` clears the cache.
 
 ## After v0.0.658
 
-### cache: make the artifact ceiling a setting, 1 GiB by default
+### cache: stream a failed task's outputs to the remote
 
-the default artifact ceiling is 1 GiB, not 2 GiB, and RunOptions.artifactCeiling is removed.
+PreparedRun.keepRunEntry takes (name, body: Blob), not (name, bytes: Uint8Array).
 
 ### workspace: text locks keyed by project name
 
 No migration note.
+
+### cache: make the artifact ceiling a setting, 1 GiB by default
+
+the default artifact ceiling is 1 GiB, not 2 GiB, and RunOptions.artifactCeiling is removed.
 
 ## v0.0.658
 

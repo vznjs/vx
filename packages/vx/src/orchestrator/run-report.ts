@@ -20,7 +20,7 @@ import { freezeDeep } from './read-only.js'
 import type { RunReport, RunReportTask } from './plugin.js'
 
 /** Stores one run entry; resolves whether a remote kept it. */
-export type KeepRunEntry = (name: string, bytes: Uint8Array) => Promise<boolean>
+export type KeepRunEntry = (name: string, body: Blob) => Promise<boolean>
 
 export interface RunKeeperArgs {
   readonly runId: string
@@ -65,6 +65,8 @@ export class RunKeeper {
   private readonly pending = new Set<Promise<void>>()
   private active = 0
   private stopped = false
+  /** Packed outputs not yet sent; a stopped run removes them. */
+  private readonly spools = new Set<() => Promise<void>>()
 
   constructor(private readonly args: RunKeeperArgs) {}
 
@@ -85,9 +87,9 @@ export class RunKeeper {
         .join('')
       if (text.length > 0) {
         const name = runEntryName(runId, id, 'log')
-        const bytes = new TextEncoder().encode(text)
+        const body = new Blob([text])
         this.enqueue(id, async () => {
-          if (!(await this.args.keep(name, bytes))) return false
+          if (!(await this.args.keep(name, body))) return false
           slot().log = name
           return true
         })
@@ -99,11 +101,26 @@ export class RunKeeper {
         o.node,
         workspaceRoot,
         this.args.nestedDirsByProject.get(o.node.projectName) ?? [],
-      ).then((paths) => packRunOutputs(workspaceRoot, paths))
+      )
+        .then((paths) => packRunOutputs(workspaceRoot, paths))
+        .then(async (out) => {
+          if (out === null || !this.stopped) {
+            if (out !== null) this.spools.add(out.release)
+            return out
+          }
+          await out.release()
+          return null
+        })
       const name = runEntryName(runId, id, 'outputs')
       this.enqueue(id, async () => {
-        const bytes = await packed
-        if (bytes === null || !(await this.args.keep(name, bytes))) return false
+        const out = await packed
+        if (out === null) return false
+        try {
+          if (!(await this.args.keep(name, out.body))) return false
+        } finally {
+          this.spools.delete(out.release)
+          await out.release()
+        }
         slot().outputs = name
         return true
       })
@@ -119,6 +136,8 @@ export class RunKeeper {
   stop(): void {
     this.stopped = true
     this.queue.length = 0
+    for (const release of this.spools) void release()
+    this.spools.clear()
   }
 
   /** What was kept of each task, by id, for `reportOf`. */

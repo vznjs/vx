@@ -36,7 +36,7 @@ export function scratch(dir: string): string {
 /** A committed, locked workspace of `projects` (name → vx.config.mjs source). */
 export async function workspace(
   projects: Record<string, string>,
-  opts: { plugins?: readonly string[]; edges?: Record<string, string[]> } = {},
+  opts: { plugins?: readonly string[]; fields?: string; edges?: Record<string, string[]> } = {},
 ): Promise<string> {
   const root = scratch(
     await makeWorkspace({
@@ -46,7 +46,10 @@ export async function workspace(
     }),
   )
   if (opts.plugins !== undefined)
-    await writeFile(path.join(root, '.vx', 'workspace.mjs'), localWorkspaceSource(opts.plugins))
+    await writeFile(
+      path.join(root, '.vx', 'workspace.mjs'),
+      localWorkspaceSource(opts.plugins, '', undefined, opts.fields),
+    )
   for (const [name, config] of Object.entries(projects))
     await addProject(root, name, { config, files: { 'src/a.txt': name } })
   gitInitCommit(root)
@@ -117,10 +120,10 @@ export function spawnVx(root: string, args: readonly string[], consumer?: string
   return { proc, probe, out: () => out, err: () => err, closed: () => closed }
 }
 
-/** The peak RSS of a spawned vx in MiB, once it exits 0. */
-export async function peakMib(s: Spawned): Promise<number> {
+/** The peak RSS of a spawned vx in MiB, once it exits `want`. */
+export async function peakMib(s: Spawned, want = 0): Promise<number> {
   const code = await s.proc.exited
-  if (code !== 0)
+  if (code !== want)
     throw new Error(`vx exited ${code}:\n${s.out().slice(-4000)}\n${s.err().slice(-4000)}`)
   const m = /peak_kib=(\d+)/.exec(await readFile(s.probe, 'utf8'))
   if (m === null) throw new Error('the probe wrote no peak')
@@ -131,9 +134,10 @@ export async function peakMib(s: Spawned): Promise<number> {
 export async function run(
   root: string,
   args: readonly string[],
+  exit = 0,
 ): Promise<{ peak: number; out: string }> {
   const s = spawnVx(root, ['run', ...args])
-  const peak = await peakMib(s)
+  const peak = await peakMib(s, exit)
   return { peak, out: s.out() }
 }
 

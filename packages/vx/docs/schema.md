@@ -2565,7 +2565,9 @@ interface CacheSettings {
   the files its outputs left in the remote: CI runs (`'ci'`, the
   default), runs off CI (`'local'`), or both (`'always'`). Only a run
   whose policy writes a remote keeps any, and it always keeps the log of
-  a task that saved no entry. `ctx.cache.getRun` reads them
+  a task that saved no entry. Outputs past 8 MiB stream to the remote
+  through a file under `.vx/tmp/`, never whole in memory.
+  `ctx.cache.getRun` reads them
   (`docs/modules/orchestrator.md` § Run report and run bytes).
 
 - **`cache.scope`** (`VX_CACHE_SCOPE` only, 2026-10-17) — the branch
