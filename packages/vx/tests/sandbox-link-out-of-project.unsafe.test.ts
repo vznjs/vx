@@ -4,6 +4,8 @@
 // file itself granted the read still failed, with no violation and no hint.
 // With the file granted and the project not, the hint named the granted
 // file again: applied as given, nothing changed, and it named it again.
+// The shell opens the file: uutils' cat (Ubuntu 26.04) stats it first, and
+// the observer does not watch stat.
 import { realpathSync, symlinkSync } from 'node:fs'
 import { readFile, rm } from 'node:fs/promises'
 import path from 'node:path'
@@ -12,7 +14,6 @@ import { run } from './helpers/orchestrator.js'
 import { sandboxAvailable } from './helpers/sandbox-gate.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 
-process.env['VX_TMP_DEBUG'] = '1'
 const available = await sandboxAvailable('sandbox link-out-of-project test')
 let said = ''
 const log = {
@@ -42,7 +43,7 @@ describe.skipIf(!available || process.platform !== 'linux')(
       const dir = await addProject(root, 'app', {
         config: `export default { tasks: { t: {
         exec: {
-          command: 'mkdir -p out && cat shared/s.json > out/r.txt',
+          command: 'mkdir -p out && cat < shared/s.json > out/r.txt',
           sandbox: { allow: { read: ${JSON.stringify(read)}, write: ['out/'] } },
         },
         inputs: { files: ['src/**'], workspaceFiles: ['packages/lib/shared/s.json'] },

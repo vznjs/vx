@@ -520,7 +520,6 @@ export async function parseStraceViolations(
   widened: ReadonlyMap<string, ReadonlySet<string>> = new Map(),
 ): Promise<SandboxViolation[]> {
   const text = typeof log === 'string' ? await Bun.file(log).text() : log.text
-  if (process.env['VX_TMP_DEBUG'] === '1') console.error('DBGTEXT', text.length, JSON.stringify(text.length < 3000 ? text : ''))
   if (text.length === 0) return []
 
   // Treat every baseAllow + sandbox.allowRead + allowWrite path as "this
@@ -594,11 +593,9 @@ export async function parseStraceViolations(
       : toRealPath(lexical)
     // Only report paths under the workspace-root deny anchor — system
     // libs / /proc / /sys / etc. probes are not interesting violations.
-    if (process.env['VX_TMP_DEBUG'] === '1' && rawPath.includes('s.json')) console.error('DBGPRE', JSON.stringify({ syscall, rawPath, dir, errno, lexical, abs, denyAnchors }))
     if (!denyAnchors.some((root) => atOrUnder(abs, root))) continue
     // Skip paths the user explicitly allowed (and their descendants).
     const via = lexical === abs ? undefined : hiddenLink(lexical, abs, mounted, denyAnchors)
-    if (process.env['VX_TMP_DEBUG'] === '1') console.error('DBGLINK', JSON.stringify({ syscall, rawPath, dir, errno, lexical, abs, via, mounted: [...mounted], denyAnchors, allowAbs }))
     if (isUnderAny(abs, allowAbs) && via === undefined) continue
     // A grant bound as its children around a wall still grants the
     // directory: a file missing there is the task's own missing file. A
