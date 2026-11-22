@@ -178,5 +178,11 @@ describe('vx pipeline <name>', () => {
       '--all: a pipeline runs every project already',
     )
     expect((await vx('pipeline', 'check', '--', 'x')).err).toContain('forwards nothing after --')
+    // A name the object's prototype holds is no pipeline: it was taken for
+    // one and crashed with a stack.
+    for (const name of ['constructor', '__proto__', 'toString']) {
+      const r = await vx('pipeline', name)
+      expect([r.code, r.err]).toEqual([1, expect.stringContaining(`no pipeline named ${name}`)])
+    }
   }, 30_000)
 })

@@ -44,7 +44,7 @@ export async function pipelineCmd(args: readonly string[]): Promise<number> {
   const root = await findWorkspaceRoot(process.cwd())
   const pipelines = (await loadWorkspaceConfig(root))?.pipelines ?? {}
   const names = Object.keys(pipelines)
-  const pipeline = pipelines[name]
+  const pipeline = Object.hasOwn(pipelines, name) ? pipelines[name] : undefined
   if (pipeline === undefined) {
     if (names.length === 0)
       return refuse(
