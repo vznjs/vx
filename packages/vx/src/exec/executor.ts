@@ -26,6 +26,12 @@ export interface ResolvedSandboxConfig {
    * no mount holds them. `scratchWrites` decides which still cover a write.
    */
   pendingWrites?: readonly string[]
+  /**
+   * Linux: every write glob, matched or not. Its directory is bound
+   * writable where a read grant shows it (`punchedWriteGlobs`), so a file
+   * it matches that the task creates lands.
+   */
+  writeGlobs?: readonly string[]
   /** Linux: write grants spelled through a link in the project, bound there too (`linkedWriteBinds`). */
   linkedWrites?: readonly { readonly link: string; readonly target: string }[]
   network?: true | readonly string[]

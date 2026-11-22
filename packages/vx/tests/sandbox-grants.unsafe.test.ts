@@ -1242,6 +1242,87 @@ describe.skipIf(!available || process.platform !== 'linux')(
   },
 )
 
+describe.skipIf(!available || process.platform !== 'linux')(
+  'a write glob binds its directory, so a file it matches that the task creates lands',
+  () => {
+    // A bind covers what exists when the task starts, so `dist/*.js` bound
+    // only the hits already there: a build writing a NEW match met `Read-only
+    // file system` (conformance growth, mined-sandbox). The glob's directory
+    // is bound writable now, as a file grant's is, and a write there the glob
+    // does not cover is reported.
+    let fixture: Fixture
+
+    beforeEach(async () => {
+      fixture = await makeWorkspace()
+    })
+    afterEach(async () => {
+      await rm(fixture.root, { recursive: true, force: true })
+    })
+
+    const project = (command: string, write: string, files: Record<string, string> = {}) =>
+      addProject(fixture.root, 'app', {
+        files: { 'src/x.txt': 'hi', ...files },
+        config: `
+          export default {
+            tasks: {
+              build: {
+                exec: {
+                  command: '${command}',
+                  sandbox: { allow: { read: ['.'], write: ['${write}'] } },
+                },
+                inputs: { files: ['src/**'] },
+              },
+            },
+          }
+        `,
+      })
+
+    for (const [write, file] of [
+      ['dist/*.js', 'dist/b.js'],
+      ['dist/**/*.js', 'dist/b.js'],
+      ['*.js', 'b.js'],
+      ['logs/*.log', 'logs/b.log'],
+    ] as const) {
+      it(
+        `${write}: a new ${file} lands on the host`,
+        async () => {
+          const dir = await project(`echo hi > ${file}`, write)
+          const r = await run({
+            cwd: fixture.root,
+            tasks: ['build'],
+            log: collectingLogger(fixture),
+          })
+          expectOk(r, fixture)
+          expect(await readFile(path.join(dir, file), 'utf8')).toBe('hi\n')
+        },
+        TIMEOUT,
+      )
+    }
+
+    it(
+      'beside a match already there, a new one lands too',
+      async () => {
+        const dir = await project('echo hi > dist/b.js', 'dist/*.js', { 'dist/a.js': 'a' })
+        const r = await run({ cwd: fixture.root, tasks: ['build'], log: collectingLogger(fixture) })
+        expectOk(r, fixture)
+        expect(await readFile(path.join(dir, 'dist/b.js'), 'utf8')).toBe('hi\n')
+      },
+      TIMEOUT,
+    )
+
+    it(
+      'reports a write in that directory the glob does not match',
+      async () => {
+        await project('echo hi > dist/b.js; echo x > dist/c.txt', 'dist/*.js')
+        const r = await run({ cwd: fixture.root, tasks: ['build'], log: collectingLogger(fixture) })
+        expect(r.outcomes[0]?.status).toBe('failed')
+        expect(r.outcomes[0]?.sandbox?.lines?.some((l) => l.includes('c.txt'))).toBe(true)
+      },
+      TIMEOUT,
+    )
+  },
+)
+
 describe.skipIf(!available)('the sandbox temp directory', () => {
   // SRT overrides TMPDIR so temp writers land where its filesystem policy
   // allows, and does not create the directory ("/tmp/claude may not exist",
@@ -1565,53 +1646,49 @@ describe('resolveSandboxConfig', () => {
   it.skipIf(process.platform !== 'linux')(
     'says so when a WRITE grant mounts nothing, and names the directory to grant instead',
     async () => {
-      // Item 496, measured before it existed: one task per grant spelling,
-      // each writing the files it declares. `g/**` and `g/a.txt` succeed —
-      // the first collapses to the directory, the second is a file-shaped
-      // grant widened to its directory. `g/*`, `g/*.txt`, `g/?.txt` and
-      // `g/[ab].txt` all FAILED with `bash: g/a.txt: Read-only file
-      // system`, because a bwrap bind covers what exists when the task
-      // STARTS and those matched nothing yet.
-      //
-      // That is the documented contract ("declare its directory instead"),
-      // not a defect — but the user learned it from their own tool, in a
-      // message naming neither vx nor the grant. So the grant reports
-      // itself, and the remedy it names is `staticPrefix`, the directory
-      // the user meant, NOT the scan's anchor one component above it.
-      //
-      // Linux only: `expandGrants` returns before the scan on every other
-      // platform, so there is nothing to report there.
+      // Item 496: a bind covers what exists when the task STARTS, so a glob
+      // that matched nothing failed its task with `bash: g/a.txt: Read-only
+      // file system`, a message naming neither vx nor the grant. A glob's
+      // directory a read grant shows is bound writable now (below); one the
+      // host's read-only root holds still mounts nothing, and says so, with
+      // the directory the pattern was IN as the remedy, not its parent.
       const root = await mkdtemp(path.join(os.tmpdir(), 'vx-sbx-empty-write-'))
+      const away = realpathSync(await mkdtemp(path.join(os.tmpdir(), 'vx-sbx-away-')))
       try {
         await mkdir(path.join(root, 'g'))
+        await mkdir(path.join(away, 'g'))
         const said: string[] = []
         const spy = spyOn(process.stderr, 'write').mockImplementation((chunk: unknown) => {
           said.push(String(chunk))
           return true
         })
+        let shown: ReturnType<typeof judged>
         try {
-          judged({ allow: { read: ['.'], write: ['g/*.txt'] } }, root)
+          judged({ allow: { write: [`${away}/g/*.txt`] } }, root)
           // CONTROL, in the same spy window: a grant that CAN be mounted
           // says nothing, so the row above cannot pass on a warning that
           // fires for every write grant.
           judged({ allow: { read: ['.'], write: ['g/**'] } }, root)
+          // A glob whose directory a read grant shows: bound, no warning.
+          shown = judged({ allow: { read: ['.'], write: ['g/*.txt'] } }, root)
           // CONTROL: a READ grant matching nothing is ordinary — an
           // optional file, a cache not yet populated — and must stay quiet.
           // A DIFFERENT pattern on purpose: the report is once per grant
-          // path, so reusing `g/*.txt` here would be silenced by the write
-          // call above and the control would pass whatever reads do. It
-          // did, first time — the mutation that reports reads as well
-          // survived it (item 496).
+          // path (item 496).
           judged({ allow: { read: ['g/r*.txt'] } }, root)
         } finally {
           spy.mockRestore()
         }
         expect(said.length).toBe(1)
         expect(said[0]).toContain('matches nothing yet')
-        // The remedy is the directory the pattern was IN, not its parent.
-        expect(said[0]).toContain("`allow: { write: ['g/'] }`")
+        expect(said[0]).toContain(`\`allow: { write: ['${away}/g/'] }\``)
+        expect(
+          buildCustomConfig({ config: shown }, { allowRead: [], denyRead: [root] })!.filesystem!
+            .allowWrite,
+        ).toContain(path.join(realpathSync(root), 'g'))
       } finally {
         await rm(root, { recursive: true, force: true })
+        await rm(away, { recursive: true, force: true })
       }
     },
   )
@@ -1643,21 +1720,26 @@ describe('resolveSandboxConfig', () => {
     async () => {
       const root = realpathSync(await mkdtemp(path.join(os.tmpdir(), 'vx-sbx-warn-')))
       try {
-        await mkdir(path.join(root, 'g'))
-        await writeFile(path.join(root, 'g', 'a.txt'), '')
+        // Outside the workspace, where the host's read-only root holds the
+        // directory: inside, a read grant's directory is bound (above).
+        const away = path.join(root, 'away')
+        await mkdir(path.join(away, 'g'), { recursive: true })
+        await writeFile(path.join(away, 'g', 'a.txt'), '')
+        const ws = path.join(root, 'ws')
+        await mkdir(ws)
         const said: string[] = []
         const spy = spyOn(process.stderr, 'write').mockImplementation((chunk: unknown) => {
           said.push(String(chunk))
           return true
         })
         try {
-          judged({ allow: { read: ['.'], write: ['g/*.txt'] } }, root)
-          judged({ allow: { read: ['.'], write: ['g/*.bin'] } }, root)
-          judged({ allow: { read: ['.'], write: ['g/*.bin'] } }, root)
+          judged({ allow: { write: [`${away}/g/*.txt`] } }, ws)
+          judged({ allow: { write: [`${away}/g/*.bin`] } }, ws)
+          judged({ allow: { write: [`${away}/g/*.bin`] } }, ws)
         } finally {
           spy.mockRestore()
         }
-        expect(said.map((l) => l.includes(`'g/*.bin' matches nothing yet`))).toEqual([true])
+        expect(said.map((l) => l.includes(`'${away}/g/*.bin' matches nothing yet`))).toEqual([true])
       } finally {
         await rm(root, { recursive: true, force: true })
       }

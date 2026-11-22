@@ -10,7 +10,7 @@ import path from 'node:path'
 import { repoFacts, repoRootOf } from '../cache/index.js'
 import type { ExecConfig } from '../config.js'
 import type { ExecuteRequest, ResolvedSandboxConfig, SandboxViolation } from '../exec/index.js'
-import { bindableWrites, punchWalls } from './binds.js'
+import { bindableWrites, globDir, punchWalls } from './binds.js'
 import {
   atOrUnder,
   grantAlternatives,
@@ -836,13 +836,15 @@ function wallOff(
   sealed: readonly string[],
 ): ResolvedSandboxConfig {
   const home = toRealPath(workspaceRoot)
-  for (const bind of bindableWrites(config.allowWrite)) {
-    // A bind outside the workspace is the user's own path (`/tmp/x`,
-    // `~/.cache/y`), spelled there on purpose; only one inside is judged,
-    // and one reaching the repository's git dir outside it (`outsideGit`).
-    const wall = atOrUnder(bind, home)
+  // A bind outside the workspace is the user's own path (`/tmp/x`,
+  // `~/.cache/y`), spelled there on purpose; only one inside is judged,
+  // and one reaching the repository's git dir outside it (`outsideGit`).
+  const wallOf = (bind: string): string | undefined =>
+    atOrUnder(bind, home)
       ? (walls.find((w) => atOrUnder(w, bind)) ?? sealed.find((w) => atOrUnder(bind, w)))
       : sealed.find((w) => !atOrUnder(w, home) && (atOrUnder(w, bind) || atOrUnder(bind, w)))
+  for (const bind of bindableWrites(config.allowWrite)) {
+    const wall = wallOf(bind)
     if (wall === undefined) continue
     throw new UserError(
       `exec.sandbox.allow.write: the grant binding ${bind} would make ${wall} writable — another ` +
@@ -856,7 +858,16 @@ function wallOff(
     if (cut.length !== 1 || cut[0] !== r) reads.push(r)
     return cut
   })
-  return { ...config, allowRead, ...(reads.length === 0 ? {} : { walled: { reads, walls } }) }
+  // A write glob's directory is bound only where that holds no wall: `*.log`
+  // in a root project would bind `.git` writable. Its matches then bind as
+  // they did, each at the start.
+  const writeGlobs = config.writeGlobs?.filter((g) => wallOf(globDir(g)) === undefined)
+  return {
+    ...config,
+    allowRead,
+    ...(writeGlobs === undefined ? {} : { writeGlobs }),
+    ...(reads.length === 0 ? {} : { walled: { reads, walls } }),
+  }
 }
 
 /**
