@@ -54,6 +54,7 @@ describe.skipIf(!available || process.platform !== 'linux')(
       const r = await run({ cwd: root, tasks: ['t'], log })
       const o = r.outcomes[0]!
       return {
+        sandbox: JSON.stringify(o.sandbox),
         status: o.status,
         fix: o.sandbox?.fix?.read,
         out: await readFile(path.join(dir, 'out', 'r.txt'), 'utf8').catch(() => ''),
@@ -67,7 +68,10 @@ describe.skipIf(!available || process.platform !== 'linux')(
 
     it('with the file granted, the fix grants the directory holding the link', async () => {
       const o = await outcome(['src/', '../lib/shared/s.json'])
-      expect([o.status, o.fix], said).toEqual(['failed', ['.', '../lib/shared/s.json']])
+      expect([o.status, o.fix], `${said}\n${o.sandbox}`).toEqual([
+        'failed',
+        ['.', '../lib/shared/s.json'],
+      ])
     })
 
     it('CONTROL: the link still grants nothing behind it beyond the grants', async () => {
