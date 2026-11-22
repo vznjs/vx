@@ -17,7 +17,6 @@ import type { ProjectConfig } from '../src/config.js'
 import type { ProjectEntry, ProjectMeta } from '../src/workspace/index.js'
 import { lock } from './helpers/orchestrator.js'
 import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
-import { noticed } from './helpers/notice.js'
 
 let root = ''
 let metas: ProjectMeta[] = []
@@ -121,9 +120,12 @@ describe('resolveFilters', () => {
           code: 'VX_E_LOCK',
         })
       }
-      // CONTROL: beside a filter that matched, the line is a warning.
-      const { stderr } = await quiet(() => resolveFilters(root, ['app', './packages/fresh']))
-      expect(stderr).toContain('packages/fresh/vx.config.mjs is not in the lock yet')
+      // Beside a filter that matched, the same refusal.
+      const beside = await quiet(() => resolveFilters(root, ['app', './packages/fresh']))
+      expect(beside.value).toEqual({
+        error: `filter "./packages/fresh": packages/fresh/vx.config.mjs is not in the lock yet — run \`vx lock\``,
+        code: 'VX_E_LOCK',
+      })
     } finally {
       await rm(fresh, { recursive: true, force: true })
     }
@@ -233,14 +235,12 @@ describe('resolveFilters', () => {
       error:
         'no projects matched filter(s): "app,lib". A filter is one pattern: --filter app --filter lib',
     })
-    // CONTROL: beside a filter that matched, the warning says the same.
+    // Beside a filter that matched, the same refusal.
     const beside = await quiet(() => resolveFilters(root, ['app', 'app,lib']))
-    expect(beside.stderr).toBe(
-      noticed(
-        'vx run: filter "app,lib" matched no projects. A filter is one pattern: --filter app --filter lib\n',
-        'warn',
-      ),
-    )
+    expect(beside.value).toEqual({
+      error:
+        'no projects matched filter(s): "app,lib". A filter is one pattern: --filter app --filter lib',
+    })
   })
 
   it('a braced directory list is named as one braced directory per --filter (vercel/turborepo#6955)', async () => {
@@ -284,9 +284,9 @@ describe('resolveFilters', () => {
     // `...apq` kept its dots and `!...apq` listed the projects instead.
     const plain = await quiet(() => resolveFilters(root, ['lib', '!apq']))
     const walked = await quiet(() => resolveFilters(root, ['lib', '!...apq']))
-    expect([plain.stderr, walked.stderr].map((e) => /fix {2}\S*app\n/.exec(e)?.[0])).toEqual([
-      'fix  !app\n',
-      'fix  !...app\n',
+    expect([plain.value, walked.value]).toEqual([
+      { error: 'no projects matched filter(s): "!apq". Did you mean !app?' },
+      { error: 'no projects matched filter(s): "!...apq". Did you mean !...app?' },
     ])
   })
 
@@ -296,25 +296,24 @@ describe('resolveFilters', () => {
       value: { names: ['app'], byDiff: true, staged: undefined, discovered: undefined },
       stderr: '',
     })
-    // CONTROL: a name that matched nothing beside one that did IS said.
+    // CONTROL: a name that matched nothing beside one that did refuses the
+    // run (M, 2026-11-22): running only app hid the typo.
     const typo = await quiet(() => resolveFilters(root, ['app', 'nosuch']))
-    expect(typo.stderr).toBe(
-      noticed('vx run: filter "nosuch" matched no projects. Projects: app, lib\n', 'warn'),
-    )
-    // A typo beside a match names the nearest project, as the all-missed error does.
+    expect(typo.value).toEqual({
+      error: 'no projects matched filter(s): "nosuch". Projects: app, lib',
+    })
     const near = await quiet(() => resolveFilters(root, ['app', 'apq']))
-    expect(near.stderr).toBe(
-      noticed('vx run: filter "apq" matched no projects. Did you mean app?\n', 'warn'),
-    )
+    expect(near.value).toEqual({
+      error: 'no projects matched filter(s): "apq". Did you mean app?',
+    })
   })
 
-  // `vx watch --filter app --filter apq` warned as `vx run`.
-  it('names the verb that read the filters', async () => {
+  it('vx watch refuses a filter that matched nothing beside one that matched', async () => {
     const parsed = parseRunArgs(['build', '--filter', 'app', '--filter', 'apq'], 'watch')
-    const { stderr } = await quiet(() => resolveRunOptions(parsed, root, ['build'], 'watch'))
-    expect(stderr).toBe(
-      noticed('vx watch: filter "apq" matched no projects. Did you mean app?\n', 'warn'),
-    )
+    const { value } = await quiet(() => resolveRunOptions(parsed, root, ['build'], 'watch'))
+    expect(value).toMatchObject({
+      error: 'no projects matched filter(s): "apq". Did you mean app?',
+    })
   })
 
   it('a `tag:` filter in a workspace with no tags says so, not a project name', async () => {
@@ -344,25 +343,18 @@ describe('an exclusion that matches nothing', () => {
     await rm(ws, { recursive: true, force: true })
   })
 
-  it('warns, naming the one project the name opens', async () => {
+  it('refuses, naming the one project the name opens', async () => {
     // `--filter '!@m/slow'` for `@m/slow-tests` excluded nothing, and the
-    // warning listed every project: six edits is past the typo budget.
-    const { value, stderr } = await quiet(() => resolveFilters(ws, ['!@m/slow']))
-    expect((value as { names: string[] }).names).toEqual(['@m/app', '@m/slow-tests'])
-    expect(stderr).toBe(
-      noticed(
-        'vx run: filter "!@m/slow" matched no projects. Did you mean !@m/slow-tests?\n',
-        'warn',
-      ),
-    )
+    // hint listed every project: six edits is past the typo budget.
+    const { value } = await quiet(() => resolveFilters(ws, ['!@m/slow']))
+    expect(value).toEqual({
+      error: 'no projects matched filter(s): "!@m/slow". Did you mean !@m/slow-tests?',
+    })
     // CONTROL: a name two projects open is no single guess.
     const both = await quiet(() => resolveFilters(ws, ['!@m/']))
-    expect(both.stderr).toBe(
-      noticed(
-        'vx run: filter "!@m/" matched no projects. Projects: @m/app, @m/slow-tests\n',
-        'warn',
-      ),
-    )
+    expect(both.value).toEqual({
+      error: 'no projects matched filter(s): "!@m/". Projects: @m/app, @m/slow-tests',
+    })
   })
 })
 

@@ -562,6 +562,27 @@ export async function resolveFilters(
       )
     },
   })
+  // A filter that matched nothing fails the run even when another matched
+  // (M, 2026-11-22): `--filter ui --filter nope` running only ui hid the typo.
+  if (unmatched.length > 0) {
+    // One line, not a warning per pattern then the same error: the patterns are
+    // in it, with the nearest project name as hint. Only patterns that matched
+    // nothing.
+    const unlocked = await unlockedFilter(root, parsed, unmatched, projects)
+    if (unlocked !== undefined) {
+      return {
+        error: `filter "${unlocked.filter}": ${relPosix(root, unlocked.config)} is not in the lock yet — run \`vx lock\``,
+        code: 'VX_E_LOCK',
+      }
+    }
+    const hint =
+      bracedHint(root, parsed, unmatched, projects, graph) ?? didYouMean(unmatched, projects, tags)
+    // Quoted: bare, `apq...` and the hint's
+    // full stop read `apq....` in the flat message `--format json` carries.
+    return {
+      error: `no projects matched filter(s): ${unmatched.map((f) => `"${f}"`).join(', ')}${hint}`,
+    }
+  }
   if (selected.size === 0) {
     // "Nothing changed" is legitimate: a docs-only commit must not fail
     // `--affected`. Error only when something named concretely failed to
@@ -572,11 +593,7 @@ export async function resolveFilters(
     const negations = parsed.filter((f) => f.negate).map((f) => f.raw)
     // With no include the base is every project: there is no "other filter".
     const excluded = `${negations.join(', ')} excluded every project${includes.length > 0 ? ' the other filters matched' : ''}`
-    if (
-      unmatched.length === 0 &&
-      includes.length > 0 &&
-      includes.every((f) => f.gitSince !== undefined)
-    ) {
+    if (includes.length > 0 && includes.every((f) => f.gitSince !== undefined)) {
       if (includes.every((f) => emptyDiffs.has(f))) {
         const refs = [...new Set(includes.map((f) => f.gitSince))].join(', ')
         // A base that is HEAD (a single-branch clone whose `origin/HEAD` is the
@@ -599,38 +616,14 @@ export async function resolveFilters(
         discovered: { root, projects },
       }
     }
-    if (unmatched.length === 0 && emptyWalks.length > 0) {
+    if (emptyWalks.length > 0) {
       return { error: `no projects selected: ${emptyWalks.join('; ')}` }
     }
-    if (unmatched.length === 0 && negations.length > 0) {
+    if (negations.length > 0) {
       return { error: `no projects selected: ${excluded}` }
     }
-    // One line, not a warning per pattern then the same error: the patterns are
-    // in it, with the nearest project name as hint. Only patterns that matched
-    // nothing.
-    const unlocked = await unlockedFilter(root, parsed, unmatched, projects)
-    if (unlocked !== undefined) {
-      return {
-        error: `filter "${unlocked.filter}": ${relPosix(root, unlocked.config)} is not in the lock yet — run \`vx lock\``,
-        code: 'VX_E_LOCK',
-      }
-    }
-    const hint =
-      bracedHint(root, parsed, unmatched, projects, graph) ?? didYouMean(unmatched, projects, tags)
-    // Quoted, as the warning below quotes it: bare, `apq...` and the hint's
-    // full stop read `apq....` in the flat message `--format json` carries.
-    return {
-      error: `no projects matched filter(s): ${unmatched.map((f) => `"${f}"`).join(', ')}${hint}`,
-    }
+    return { error: 'no projects selected' }
   }
-  // Something matched, so the run proceeds; a pattern that matched nothing
-  // alongside it is still worth a line — it is probably a typo.
-  for (const f of unmatched)
-    sayNotice(
-      'warn',
-      `vx ${verb}`,
-      `filter "${f}" matched no projects${(await unlockedHint(root, parsed, [f], projects)) ?? bracedHint(root, parsed, [f], projects, graph) ?? didYouMean([f], projects, tags)}`,
-    )
   // Each include is a union: `--filter other` runs its tasks whether or not the
   // `--affected` diff reaches them; an exclude still removes.
   const others = parsed.filter((f) => f.negate || f.raw !== affected?.filter)
@@ -798,19 +791,6 @@ async function unlockedFilter(
     if (config !== undefined) return { filter: f.raw, config }
   }
   return undefined
-}
-
-/** The same said beside a filter that matched, where the run goes on. */
-async function unlockedHint(
-  root: string,
-  parsed: readonly ReturnType<typeof parseFilter>[],
-  unmatched: readonly string[],
-  projects: readonly ProjectMeta[],
-): Promise<string | undefined> {
-  const found = await unlockedFilter(root, parsed, unmatched, projects)
-  return found === undefined
-    ? undefined
-    : `. ${relPosix(root, found.config)} is not in the lock yet — run \`vx lock\``
 }
 
 /**
