@@ -32,6 +32,7 @@ import { killTree, markStopped } from '../src/exec/kill-tree.js'
 import { noteWrite } from '../src/util/out-pace.js'
 import { watchedTrees } from '../src/exec/proc-sample.js'
 import { sparesSettled } from '../src/exec/warm-shell.js'
+import { TaskPipes } from '../src/exec/pipes.js'
 
 /**
  * A deadline a fresh shell's first command (an `echo`, a `trap`) meets on
@@ -2315,6 +2316,41 @@ describe('drainOrAbort', () => {
       })()
       expect(await drainOrAbort(streams, new AbortController(), { chars: 0 })).toBe(false)
     }))
+  // Under strace on CI the reader thread took the EOF of `true` past the
+  // bound: no process held the pipe, yet the task was cut as a leftover's
+  // and went unsaved (2026-11-22, read-once.unsafe.test.ts).
+  it('waits on a reader that is only behind: no writer is left', () =>
+    withBound(async () => {
+      const ac = new AbortController()
+      const left = async () => false
+      expect(await drainOrAbort(Bun.sleep(400), ac, { chars: 0 }, undefined, left)).toBe(false)
+      expect(ac.signal.aborted).toBe(false)
+    }))
+  it('cuts all the same while a writer is left', () =>
+    withBound(async () => {
+      const ac = new AbortController()
+      const left = async () => true
+      expect(await drainOrAbort(Bun.sleep(400), ac, { chars: 0 }, undefined, left)).toBe(true)
+    }))
+  it.skipIf(process.platform !== 'linux')(
+    "a task's pipes say whether a writer is left",
+    async () => {
+      const at = async (command: string): Promise<boolean> => {
+        const pipes = new TaskPipes()
+        const proc = Bun.spawn(['sh', '-c', command], {
+          stdio: ['ignore', ...(pipes.stdio as [number, number])],
+        })
+        pipes.spawned()
+        const streams = pipes.streams(proc) as ReadableStream<Uint8Array>[]
+        await proc.exited
+        const left = await pipes.writersLeft()
+        await Promise.all(streams.map((s) => s.cancel()))
+        return left
+      }
+      expect(await at('sleep 2 & exit 0')).toBe(true)
+      expect(await at('exec >&- 2>&-; exit 0')).toBe(false)
+    },
+  )
   it('cuts readers still open a whole free bound later', () =>
     withBound(async () => {
       const ac = new AbortController()

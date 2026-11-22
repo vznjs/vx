@@ -298,6 +298,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'config-types-schema',
     'config-umask',
     'config-umask-concurrent',
+    'config-vanished',
     'configless-fence',
     'contract-cli-surface',
     'contract-cli-wire',

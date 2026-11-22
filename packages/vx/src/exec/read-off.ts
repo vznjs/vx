@@ -19,12 +19,32 @@ const WORKER = `
 import { closeSync } from 'node:fs'
 const live = new Map()
 const wake = (l) => { const w = l.wake; l.wake = undefined; w?.() }
+// POLLHUP on a pipe's read end: no writer is left anywhere. libc's poll, bound at the first ask.
+let hup
+const writerLeft = async (fd) => {
+  if (hup === undefined) {
+    hup = null
+    try {
+      const { dlopen, FFIType, ptr } = await import('bun:ffi')
+      const { symbols } = dlopen('libc.so.6', { poll: { args: [FFIType.ptr, FFIType.u64, FFIType.i32], returns: FFIType.i32 } })
+      hup = (fd) => {
+        const p = new Int32Array(2)
+        p[0] = fd
+        p[1] = 0x1 // events POLLIN; revents is the high half
+        if (symbols.poll(ptr(p), 1, 0) < 0) return true
+        return ((p[1] >>> 16) & 0x10) === 0
+      }
+    } catch {}
+  }
+  return hup === null ? true : hup(fd)
+}
 self.onmessage = async (e) => {
   const m = e.data
+  if (m.probe !== undefined) { const l = live.get(m.probe); postMessage({ asked: m.ask, left: l === undefined ? false : await writerLeft(l.fd) }); return }
   if (m.more !== undefined) { const l = live.get(m.more); if (l) { l.credit++; wake(l) } return }
   if (m.cancel !== undefined) { const l = live.get(m.cancel); if (l) { l.r.cancel().catch(() => {}); l.credit = Infinity; wake(l) } return }
   const r = Bun.file(m.fd).stream().getReader()
-  const l = { r, credit: ${WINDOW}, wake: undefined }
+  const l = { r, credit: ${WINDOW}, wake: undefined, fd: m.fd }
   live.set(m.id, l)
   let error
   try {
@@ -60,7 +80,19 @@ function thread(): Worker {
   if (worker !== undefined) return worker
   const w = new Worker(URL.createObjectURL(new Blob([WORKER], { type: 'text/javascript' })))
   w.onmessage = (e: MessageEvent) => {
-    const m = e.data as { id: number; chunk?: Uint8Array; done?: true; error?: string }
+    const m = e.data as {
+      id: number
+      chunk?: Uint8Array
+      done?: true
+      error?: string
+      asked?: number
+      left?: boolean
+    }
+    if (m.asked !== undefined) {
+      asks.get(m.asked)?.(m.left === true)
+      asks.delete(m.asked)
+      return
+    }
     const o = open.get(m.id)
     if (o === undefined) return
     if (m.chunk !== undefined) {
@@ -79,6 +111,28 @@ function thread(): Worker {
   return w
 }
 
+const ids = new WeakMap<ReadableStream<Uint8Array>, number>()
+const asks = new Map<number, (left: boolean) => void>()
+let nextAsk = 0
+
+/**
+ * Whether anything still holds a write end of the pipe `stream` reads: false
+ * once every writer closed (POLLHUP), its bytes still in flight or not, or
+ * once the stream ended. Asked of the reader thread, which owns the
+ * descriptor until the stream ends, so the number is never another pipe's.
+ * True where it cannot tell.
+ */
+export function writerLeft(stream: ReadableStream<Uint8Array>): Promise<boolean> {
+  const id = ids.get(stream)
+  if (id === undefined || worker === undefined) return Promise.resolve(true)
+  const ask = nextAsk++
+  const w = worker
+  return new Promise((resolve) => {
+    asks.set(ask, resolve)
+    w.postMessage({ probe: id, ask })
+  })
+}
+
 /**
  * `fd`'s bytes as a stream read on the reader thread, which owns `fd` from
  * here and closes it once the stream ends. A cancel settles only once the
@@ -87,7 +141,7 @@ function thread(): Worker {
 export function readOff(fd: number): ReadableStream<Uint8Array> {
   const w = thread()
   const id = nextId++
-  return new ReadableStream<Uint8Array>(
+  const stream = new ReadableStream<Uint8Array>(
     {
       start(c) {
         open.set(id, { c })
@@ -107,4 +161,6 @@ export function readOff(fd: number): ReadableStream<Uint8Array> {
     },
     { highWaterMark: 0 },
   )
+  ids.set(stream, id)
+  return stream
 }

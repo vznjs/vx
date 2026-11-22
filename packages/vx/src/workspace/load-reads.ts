@@ -30,17 +30,28 @@ export function readOnce(reads: LoadReads | undefined, file: string): Promise<Ui
 
 async function readIfFile(file: string): Promise<Uint8Array | null> {
   const f = Bun.file(file)
-  return (await f.exists()) ? await f.bytes().catch((err: unknown) => unreadable(err, file)) : null
+  if (!(await f.exists())) return null
+  return f.bytes().catch((err: unknown) =>
+    // Deleted between the probe and the read: no file, as the probe after would say.
+    (err as NodeJS.ErrnoException).code === 'ENOENT' ? null : unreadable(err, file),
+  )
 }
 
 /**
  * A read the file system refused is the user's to fix, named as a read: a
  * config at mode 000 reached the user as "a path vx must write is not
- * writable". Anything else is rethrown as it came.
+ * writable". A file gone mid-command is named too. Anything else is rethrown
+ * as it came.
  */
 export function unreadable(err: unknown, file: string): never {
   if (isPermissionError(err)) {
     throw new UserError(`${file}: not readable by this user (${err.code})`)
+  }
+  // Found by discovery, gone by its read: a checkout or a delete mid-command.
+  if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+    throw new UserError(
+      `${file}: went away while vx read it; something moved or deleted it during this command — re-run`,
+    )
   }
   throw err
 }

@@ -60,13 +60,26 @@ export function starterProject(format: MigrationFormat): string {
 }
 
 /**
- * Whether `file` is `vx init`'s starter, untouched: a migration maps over it
- * as over no config, so the scripts `vx init` pointed at become tasks.
+ * Whether `file` is `vx init`'s starter, untouched: a project config with no
+ * task or a `.vx/workspace` file with no plugin. A migration maps over it as
+ * over no file, so the scripts `vx init` pointed at become tasks and the
+ * workspace file declares the lockfile plugin their `^build` needs. A CRLF
+ * checkout (`eol=crlf`, `core.autocrlf`) of one is the same starter.
  */
 export function isStarterConfig(file: string): boolean {
   try {
     // By extension: the mjs starter's text in a.ts file is a user's config.
-    return readFileSync(file, 'utf8') === starterProject(file.endsWith('.ts') ? 'ts' : 'mjs')
+    const format = file.endsWith('.ts') ? 'ts' : 'mjs'
+    let starter = starterProject(format)
+    if (
+      path.basename(path.dirname(file)) === '.vx' &&
+      path.basename(file).startsWith('workspace.')
+    ) {
+      // vx init writes only these two names.
+      if (!file.endsWith('.ts') && !file.endsWith('.mjs')) return false
+      starter = renderWorkspace(format, [])
+    }
+    return readFileSync(file, 'utf8').replaceAll('\r\n', '\n') === starter
   } catch {
     return false
   }
@@ -489,7 +502,12 @@ export async function writeMigration(
   // workspace file unless one exists in any extension: a `.ts` beside a
   // hand-written `.mts` would win by load order.
   const hasWorkspaceFile = (
-    await Promise.all(WORKSPACE_CONFIG_FILENAMES.map((n) => Bun.file(path.join(root, n)).exists()))
+    await Promise.all(
+      WORKSPACE_CONFIG_FILENAMES.map(async (n) => {
+        const f = path.join(root, n)
+        return (await Bun.file(f).exists()) && !isStarterConfig(f)
+      }),
+    )
   ).some(Boolean)
   // A plan may bring its own.
   if (!hasWorkspaceFile && !plan.extraFiles.some((f) => f.relPath === workspaceName)) {
@@ -562,6 +580,13 @@ export async function writeMigration(
     for (const n of PROJECT_CONFIG_FILENAMES) {
       const f = path.join(root, n)
       if (f !== target && !replaced.includes(f) && isStarterConfig(f)) replaced.push(f)
+    }
+  }
+  const workspaceTarget = path.join(root, workspaceName)
+  if (files.some((f) => f.abs === workspaceTarget)) {
+    for (const n of WORKSPACE_CONFIG_FILENAMES) {
+      const f = path.join(root, n)
+      if (f !== workspaceTarget && isStarterConfig(f)) replaced.push(f)
     }
   }
   if (!dry) {

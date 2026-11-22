@@ -1149,8 +1149,11 @@ export function isSecretUnavailable(err: unknown): err is SecretUnavailable
 
 function · `src/workspace/migration.ts`
 
-Whether `file` is `vx init`'s starter, untouched: a migration maps over it
-as over no config, so the scripts `vx init` pointed at become tasks.
+Whether `file` is `vx init`'s starter, untouched: a project config with no
+task or a `.vx/workspace` file with no plugin. A migration maps over it as
+over no file, so the scripts `vx init` pointed at become tasks and the
+workspace file declares the lockfile plugin their `^build` needs. A CRLF
+checkout (`eol=crlf`, `core.autocrlf`) of one is the same starter.
 
 ```ts
 export function isStarterConfig(file: string): boolean

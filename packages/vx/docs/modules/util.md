@@ -112,7 +112,7 @@ export const POST_EXIT_CUT_LINE: string
 export const OPEN_LINE_WAIT_MS = 50
 export const OPEN_LINE_HOLD_CHARS: number
 export function lineEnds(onStdout?, onStderr?): { onStdout?; onStderr?; own(text: string): string; end(): void }
-export function drainOrAbort(streams: Promise<unknown>, ac: AbortController, taken: StreamTally, stop?: AbortSignal): Promise<boolean>
+export function drainOrAbort(streams: Promise<unknown>, ac: AbortController, taken: StreamTally, stop?: AbortSignal, writersLeft?: () => Promise<boolean>): Promise<boolean>
 export function spawnFailureText(err: unknown, cwd: string, what?: string, command?: string, env?: NodeJS.ProcessEnv): string // E2BIG with `command`: its size and the 128 KiB limit, or the environment's size and largest entry when that is the cause
 export function sandboxArgTooLongText(bytes: number): string // the E2BIG line for a sandboxed task's wrap
 export const SANDBOXED_TASK = 'sandboxed task' // `what` for runSandboxed, whose `command` is the wrap: the hint says the wrap counts
@@ -317,7 +317,9 @@ hung the run. `drainOrAbort` gives the readers `POST_EXIT_DRAIN_MS`
 scheduler spent blocked (its timer fired 1.5x late) starts another,
 for 30 s after the exit at most: a cold run's saves held it past the
 bound while a heavy task's last chunks waited, and the task went unsaved
-as a leftover (a cap of five re-arms ran out under load). Text still
+as a leftover (a cap of five re-arms ran out under load). So does one
+that ends with no writer left on the pipes (`writersLeft`, POLLHUP asked
+of the reader thread): the reader is only behind. Text still
 arriving extends nothing: a leftover logging every 50 ms would hold the
 run forever. A bound that ends with vx's own stdout still draining
 (`outputPaced()`) starts another too, until the readers took 8 MiB

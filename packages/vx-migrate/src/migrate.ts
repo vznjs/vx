@@ -811,9 +811,11 @@ async function scripts(
     )
   }
   const unmapped = namelessNotes(root, nameless)
-  // Only a workspace file this run writes declares it; one already here is the user's.
-  const lockfile =
-    workspaceFileAt(root) === undefined ? lockfilePlugin(root, installer(root, args)) : undefined
+  // Only a workspace file this run writes declares it; one already here is
+  // the user's, unless it is `vx init`'s starter, which names no plugin.
+  const existing = workspaceFileAt(root)
+  const ownWorkspace = existing !== undefined && !isStarterConfig(path.join(root, existing))
+  const lockfile = ownWorkspace ? undefined : lockfilePlugin(root, installer(root, args))
   const plugins =
     lockfile === undefined ? [] : [{ pkg: '@vzn/vx-lockfile', factory: lockfile.factory }]
   const plan = migrateScripts(
@@ -826,7 +828,7 @@ async function scripts(
   // it drops them; a workspace is told what gives them. A lone package's
   // `^build` folds nothing whatever the workspace file declares: `vx init`'s,
   // written first, names no plugin, and the lock after refused it.
-  const edgeless = plugins.length === 0 && workspaceFileAt(root) === undefined
+  const edgeless = plugins.length === 0 && !ownWorkspace
   const lone = plan.projects.length === 1 && metas.every((m) => m.dir === root)
   if ((edgeless || lone) && plan.projects.length === 1) dropUpstreamEdges(plan.projects[0]!)
   else if (edgeless && plan.projects.some(readsUpstream))

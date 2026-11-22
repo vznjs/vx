@@ -100,7 +100,8 @@ it('names them where the workspace file is already there', async () => {
       dependencies: {},
     }),
   )
-  await Bun.write(path.join(root, '.vx/workspace.mjs'), 'export default { plugins: [] }\n')
+  // Not vx init's starter, which a migration replaces.
+  await Bun.write(path.join(root, '.vx/workspace.mjs'), 'export default { plugins: [] } // mine\n')
   const bin = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
   const proc = Bun.spawn([process.execPath, '--no-install', bin, '--no-install'], {
     cwd: root,
@@ -115,7 +116,7 @@ it('names them where the workspace file is already there', async () => {
     'nx.json `defaultBase` "master": add `baseBranch: "master"` to .vx/workspace.ts',
   )
   expect(await readFile(path.join(root, '.vx/workspace.mjs'), 'utf8')).toBe(
-    'export default { plugins: [] }\n',
+    'export default { plugins: [] } // mine\n',
   )
   expect(await Bun.file(path.join(root, '.vx/workspace.ts')).exists()).toBe(false)
 })

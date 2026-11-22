@@ -3054,7 +3054,7 @@ async function awaitAttempt(args: SandboxedRunArgs, spawned: Spawned, tag: strin
   await timeout.settle()
   let cut = false
   if (timeout.timedOut()) ac.abort()
-  else cut = await drainOrAbort(streams, ac, taken, args.signal)
+  else cut = await drainOrAbort(streams, ac, taken, args.signal, () => pipes.writersLeft())
   const [stdout, streamed] = await streams
   ends.end()
   // As runCommand: a leftover of a task the run stopped is vx's doing.

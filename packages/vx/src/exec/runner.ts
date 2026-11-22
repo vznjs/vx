@@ -710,34 +710,56 @@ const BLOCKED_DRAIN_MS = 30_000
  * readers took `PACED_DRAIN_CHARS` since the exit: `vx run … | slow-tool`
  * cut an exited task's last lines and its save. Past that much, the text is
  * a leftover's, and a task the run stopped waits on no reader (Ctrl-C with
- * `vx run … | less` paused held the run). Unref'd, never cleared: a late
- * resolve changes nothing.
+ * `vx run … | less` paused held the run). Nor a bound that ends with no
+ * writer left on the pipes (`writersLeft`): the reader thread is only
+ * behind. Cleared once the readers drain: an armed timer held the task's
+ * pipes and output until it fired.
  */
 export async function drainOrAbort(
   streams: Promise<unknown>,
   ac: AbortController,
   taken: StreamTally,
   stop?: AbortSignal,
+  writersLeft?: () => Promise<boolean>,
 ): Promise<boolean> {
   const bound = testTimerMs('POST_EXIT_DRAIN', POST_EXIT_DRAIN_MS)
   const atExit = taken.chars
   const exitAt = performance.now()
+  let timer: ReturnType<typeof setTimeout> | undefined
+  let drained = false
   const deadline = new Promise<'timeout'>((resolve) => {
     let armedAt = 0
     const arm = (): void => {
+      if (drained) return
       armedAt = performance.now()
-      setTimeout(due, bound).unref?.()
+      timer = setTimeout(() => void due(), bound)
+      timer.unref?.()
     }
-    const due = (): void => {
+    const due = async (): Promise<void> => {
       const now = performance.now()
       if (now - armedAt > bound * 1.5 && now - exitAt < BLOCKED_DRAIN_MS) return arm()
       const held = outputPaced() !== undefined && stop?.aborted !== true
       if (held && taken.chars - atExit < PACED_DRAIN_CHARS) return arm()
+      // No writer left: the reader thread is only behind (a loaded machine,
+      // a traced vx), and its EOF is coming. Cut, the task went unsaved as a
+      // leftover's (1 run in 200 under strace on CI). Not for readers vx's
+      // own stdout holds, nor a task the run stopped: those wait on no one.
+      if (
+        writersLeft !== undefined &&
+        outputPaced() === undefined &&
+        stop?.aborted !== true &&
+        now - exitAt < BLOCKED_DRAIN_MS &&
+        !(await writersLeft())
+      )
+        return arm()
       resolve('timeout')
     }
     arm()
   })
   const winner = await Promise.race([streams.then(() => 'drained' as const), deadline])
+  // A timer left armed held the task's pipes, and their output, until it fired.
+  drained = true
+  clearTimeout(timer)
   if (winner === 'timeout') ac.abort()
   return winner === 'timeout'
 }
@@ -1279,7 +1301,7 @@ export async function runCommand(opts: RunOptions): Promise<RunResult> {
   await timeout.settle()
   let cut = false
   if (timeout.timedOut()) ac.abort()
-  else cut = await drainOrAbort(streams, ac, taken, opts.signal)
+  else cut = await drainOrAbort(streams, ac, taken, opts.signal, () => pipes.writersLeft())
   const [stdout, streamed] = await streams
   ends.end()
   // A leftover of a task the run stopped is vx's doing, not the task's.
