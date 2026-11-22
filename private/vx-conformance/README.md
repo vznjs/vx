@@ -16,13 +16,17 @@ reused, or its ref would change.
 ```sh
 bun src/cli.ts                    # every case, every tool → the site's data
 bun src/cli.ts --tool nx --case outputs/ --verbose
+bun src/cli.ts --tool nx --shard 1/3 --out a.json   # one CI job's part
+bun src/merge.ts out.json a.json b.json c.json       # the parts → one result
 ```
 
 Turborepo, Nx, Vite Task and moon install at npm's latest at the start of
 each run, never pinned (`src/tools.ts`); Nix is the one on the PATH. The
 Conformance workflow (`.github/workflows/conformance.yml`) runs the whole
 suite weekly, after the Monday rival sweep dispatches it, with Nix from
-its installer's latest. Main's deploy shows the rivals' outcomes and
+its installer's latest. Each of its jobs runs one tool on a third of the
+cases (`--shard 2/3`), all at once, and `conformance.merge` joins their
+results (`src/merge.ts`). Main's deploy shows the rivals' outcomes and
 versions from its newest run and vx's from the commit
 (`private/vx-docs/scripts/live-conformance.ts`). A case vx fails fails
 the run.
@@ -154,9 +158,11 @@ mean the same thing, the adapter uses the one its docs teach:
   `retryCount`). Each dependency keys its dependant (`cacheStrategy: hash`;
   moon's own default keys only one with outputs), or not (`ignored`) when
   the case says so. A runtime input is a `fingerprint` check; a persistent
-  task is the `server` preset, and a dependant `wait`s on it. No toolchain
-  is configured, so every task runs on the system toolchain and moon
-  downloads nothing. Selectors are a `--query` over project fields,
+  task is the `server` preset, and a dependant `wait`s on it. Its JavaScript
+  and Bun toolchains are downloaded once, before the cases, and each case
+  loads them from those files (`plugin: file://…`), since a case has no
+  network; if the download or an offline test task fails, moon runs with
+  no toolchain and the results' `notes` say why. Selectors are a `--query` over project fields,
   `--continue` is `moon exec --on-failure continue`, affected is
   `--affected --base --downstream deep --include-relations`. The report is
   `.moon/cache/runReport.json`. It lacks project-graph walks in a selection, task patterns, a ready line, a

@@ -31,6 +31,20 @@ export default defineProject({
       inputs: { files: SUITE },
     },
 
+    // A sharded run's results (conformance.yml: one job per tool and third
+    // of the cases, each `conformance -- --tool <t> --shard <i>/3`), joined.
+    'conformance.merge': {
+      description: 'bun src/merge.ts: the shards in shards/ → conformance.json',
+      dependsOn: ['install'],
+      exec: {
+        command: 'bun src/merge.ts conformance.json shards/*/shard.json',
+        env: { define: NO_TRANSPILER_CACHE },
+        sandbox: { allow: { read: ['**/*'], write: ['conformance.json'] } },
+      },
+      inputs: { files: [...SUITE, 'shards/**'] },
+      outputs: { files: ['conformance.json'] },
+    },
+
     lint: {
       dependsOn: ['lint.oxlint', 'lint.oxfmt'],
     },
