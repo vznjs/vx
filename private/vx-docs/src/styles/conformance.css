@@ -147,8 +147,9 @@
   inset: 0 auto 0 0;
   border-radius: 3px;
 }
+/* The landing page's fail band (stage.css .col-can): one red for a tool's issues on both pages. */
 .vx-landing .cfm-bar > .cfm-can {
-  background: var(--cfm-fail);
+  background: rgba(200, 120, 120, 0.4);
 }
 .vx-landing .cfm-bar > .cfm-pass {
   background: var(--phosphor);
