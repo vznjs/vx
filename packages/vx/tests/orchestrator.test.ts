@@ -1319,7 +1319,7 @@ describe('orchestrator e2e — keys, inputs and invalidation', () => {
   )
 
   it(
-    'declared output that the task did not produce does not fail the run',
+    'a declared output the task did not produce fails it, and nothing is cached',
     async () => {
       await addProject(fixture.root, 'maybe', {
         config: `
@@ -1334,12 +1334,10 @@ describe('orchestrator e2e — keys, inputs and invalidation', () => {
         `,
       })
       const r = await run({ cwd: fixture.root, tasks: ['run'], log: silentLogger(fixture) })
-      expect(r.ok).toBe(true)
-      expect(r.outcomes[0]?.status).toBe('success')
-
-      // Second run still hits cache; nothing to restore is fine.
+      expect(r.ok).toBe(false)
+      expect(r.outcomes[0]?.status).toBe('failed')
       const r2 = await run({ cwd: fixture.root, tasks: ['run'], log: silentLogger(fixture) })
-      expect(r2.outcomes[0]?.status).toBe('cache-hit')
+      expect(r2.outcomes[0]?.status).toBe('failed')
     },
     TIMEOUT,
   )

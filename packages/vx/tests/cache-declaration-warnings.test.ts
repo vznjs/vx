@@ -1,7 +1,7 @@
 // A cache block whose globs match NOTHING is the quiet stale hit: an input
 // set that resolves to no files keeps the key still while the source moves,
-// and an output set that resolves to no files saves an artifact a later hit
-// "restores". Both are said once, on the miss, on the run's status line.
+// said once, on the miss, on the run's status line. An output set that
+// resolves to no files fails the task, said in its output.
 
 import { existsSync, realpathSync } from 'node:fs'
 import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
@@ -40,10 +40,17 @@ async function runTask(task: string, relock = true): Promise<string[]> {
     cwd: root,
     tasks: [task],
     projects: ['app'],
-    log: logger(lines),
+    log: {
+      ...logger(lines),
+      taskStderr: (_node: unknown, line: string) => {
+        lines.push(line.trim())
+      },
+    },
     handleSignals: false,
   })
-  expect(summary.ok).toBe(true)
+  // A declared output that matched nothing fails the task (missing-outputs.test.ts).
+  const failed = lines.some((l) => l.includes('outputs matched no files'))
+  expect(summary.ok).toBe(!failed)
   return lines.filter((l) => l.includes('matched no files'))
 }
 
@@ -76,18 +83,12 @@ describe('cache declarations that match nothing', () => {
         // A deliberate cached no-op: empty outputs say nothing.
         noop: { exec: { command: 'true' },
           inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true },
-        // Root-anchored outputs that match nothing. The warning counts
-        // BOTH output arrays on each side — declared and resolved — and
-        // every fixture above declares only \`files\`, so a task whose
-        // whole output declaration is root-anchored went unwarned.
+        // Root-anchored outputs that match nothing: every fixture above
+        // declares only \`files\`.
         wslost: { exec: { command: 'true' },
           inputs: { files: ['src/**'] },
           outputs: { files: [], workspaceFiles: ['nowhere/**'] },
           cache: true },
-        // The other side of the sum: \`files\` matches nothing but the
-        // root-anchored glob DOES match, so the outputs are not empty and
-        // there is nothing to warn about. Not \`build/**\`: the lock refuses
-        // two tasks declaring one output.
         // Its only input is a link to a directory: the glob reads through it.
         linked: { exec: { command: 'true' },
           inputs: { files: ['vendor/**'] }, outputs: { files: [] }, cache: true },
@@ -123,18 +124,19 @@ describe('cache declarations that match nothing', () => {
       handleSignals: false,
     })
     const all = lines.flatMap((l) => l.split('\n'))
-    expect(all.find((l) => l.startsWith('  warn'))).toBe('  warn      2 warnings above')
-    expect(all.filter((l) => l.includes('matched no files'))).toHaveLength(2)
+    expect(all.find((l) => l.startsWith('  warn'))).toBe('  warn      1 warning above')
+    // The output's line is the failure's, in the task's output, not a warning.
+    expect(all.filter((l) => l.includes('matched no files'))).toHaveLength(1)
   })
 
-  it('an input glob and an output glob that match nothing are each named once, on the miss only', async () => {
+  it('an input glob and an output glob that match nothing are each named once', async () => {
     const first = await runTask('lost')
     expect(first).toEqual([
       "[vx] app#lost: inputs matched no files (lib/**) — the key will not change when this project's source does",
-      '[vx] app#lost: outputs matched no files (build/**) — an empty artifact is saved; a later hit restores nothing',
+      '[vx] app#lost: outputs matched no files (build/**) — the command exited 0 but never wrote it, so the task fails and nothing is cached: write it, or fix the pattern',
     ])
-    // The hit says nothing: the warning belongs to the run that saved.
-    expect(await runTask('lost')).toEqual([])
+    // Nothing was saved, so the next run runs and fails again.
+    expect(await runTask('lost')).toEqual(first)
   })
 
   // The warning said a hit restores nothing, yet the hit made the directories.
@@ -162,11 +164,11 @@ describe('cache declarations that match nothing', () => {
 
   it('a wildcard output glob that matches nothing is named though a literal output matched', async () => {
     expect(await runTask('partial')).toEqual([
-      '[vx] app#partial: outputs matched no files (emit/**) — a later hit restores only the literal files (partial.info)',
+      '[vx] app#partial: outputs matched no files (emit/**) — the command exited 0 but never wrote it, so the task fails and nothing is cached: write it, or fix the pattern',
     ])
-    expect(await runTask('partial')).toEqual([])
+    expect(await runTask('partial')).toHaveLength(1)
     expect((await runTask('wspartial')).filter((l) => l.includes('outputs'))).toEqual([
-      '[vx] app#wspartial: outputs matched no files (wsgone/**) — a later hit restores only the literal files (stamp.info)',
+      '[vx] app#wspartial: outputs matched no files (wsgone/**) — the command exited 0 but never wrote it, so the task fails and nothing is cached: write it, or fix the pattern',
     ])
     expect(await runTask('partialok')).toEqual([])
   })
@@ -248,54 +250,6 @@ describe('cache declarations that match nothing', () => {
     }
   })
 
-  it('a hit with no rows is up-to-date while its globs still match nothing, and wipes a stray', async () => {
-    // The warned entry holds no rows. Before item 589 its every hit
-    // extracted the empty artifact and reported a restore; now the hit is
-    // a no-op when the globs match nothing — and still a clean when a
-    // stray sits under them, which strict ownership requires.
-    const outcomes = async (): Promise<Record<string, boolean | undefined>> => {
-      const summary = await run({
-        cwd: root,
-        tasks: ['lost'],
-        projects: ['app'],
-        log: logger([]),
-        handleSignals: false,
-      })
-      expect(summary.ok).toBe(true)
-      return Object.fromEntries(summary.outcomes.map((o) => [o.node.taskName, o.cache?.restored]))
-    }
-    await outcomes()
-    expect(await outcomes()).toEqual({ lost: false })
-    const stray = path.join(root, 'packages', 'app', 'build', 'stray.js')
-    await mkdir(path.dirname(stray), { recursive: true })
-    await writeFile(stray, 'x')
-    expect(await outcomes()).toEqual({ lost: true })
-    expect(await Bun.file(stray).exists()).toBe(false)
-  })
-
-  it('and the root-anchored twin: a stray under a workspaceFiles glob that saved nothing is wiped', async () => {
-    // The project glob still matches nothing here; only the root-anchored
-    // one sees the stray (C-24: the hit read the project side alone).
-    const outcomes = async (): Promise<Record<string, boolean | undefined>> => {
-      const summary = await run({
-        cwd: root,
-        tasks: ['wslost'],
-        projects: ['app'],
-        log: logger([]),
-        handleSignals: false,
-      })
-      expect(summary.ok).toBe(true)
-      return Object.fromEntries(summary.outcomes.map((o) => [o.node.taskName, o.cache?.restored]))
-    }
-    await outcomes()
-    expect(await outcomes()).toEqual({ wslost: false })
-    const stray = path.join(root, 'nowhere', 'stray.js')
-    await mkdir(path.dirname(stray), { recursive: true })
-    await writeFile(stray, 'x')
-    expect(await outcomes()).toEqual({ wslost: true })
-    expect(await Bun.file(stray).exists()).toBe(false)
-  })
-
   it('the output warning blames the sandbox only when there IS one', async () => {
     // `app#lost` is not sandboxed, so the cause clause added for sandboxed
     // tasks with no write grant (item 444) must not appear here. The
@@ -307,17 +261,16 @@ describe('cache declarations that match nothing', () => {
     expect(out).not.toContain('exec.sandbox.allow.write')
   })
 
-  it('counts BOTH output arrays, declared and resolved', async () => {
-    // Declared only as workspaceFiles, matching nothing: the warning names
-    // the root-anchored glob. Reading only `outputs.files` on the declared
-    // side leaves this task silent about an empty artifact.
+  it('checks BOTH output arrays', async () => {
+    // Declared only as workspaceFiles, matching nothing: the line names
+    // the root-anchored glob.
     expect((await runTask('wslost')).filter((l) => l.includes('outputs'))).toEqual([
-      '[vx] app#wslost: outputs matched no files (nowhere/**) — an empty artifact is saved; a later hit restores nothing',
+      '[vx] app#wslost: outputs matched no files (nowhere/**) — the command exited 0 but never wrote it, so the task fails and nothing is cached: write it, or fix the pattern',
     ])
-    // And the resolved side: `files` matched nothing, but the root-anchored
-    // glob did, so the artifact is NOT empty and nothing is said. Reading
-    // only `outputFiles` here would warn about a task that saved outputs.
-    expect((await runTask('wsfound')).filter((l) => l.includes('outputs'))).toEqual([])
+    // Each glob answers for itself: the root-anchored glob matched, `files` did not.
+    expect((await runTask('wsfound')).filter((l) => l.includes('outputs'))).toEqual([
+      '[vx] app#wsfound: outputs matched no files (out/**) — the command exited 0 but never wrote it, so the task fails and nothing is cached: write it, or fix the pattern',
+    ])
   })
 
   it('a bracket glob naming a file that exists says to escape it', async () => {
@@ -344,12 +297,12 @@ describe('cache declarations that match nothing', () => {
     expect(await runTask('route', false)).toEqual([
       "[vx] app#route: inputs matched no files (src/[id].txt) — the key will not change when this project's source does — " +
         '[ starts a character class and src/[id].txt exists: write src/\\[id\\].txt to name it',
-      '[vx] app#route: outputs matched no files (out/[slug]/**) — an empty artifact is saved; a later hit restores nothing — ' +
+      '[vx] app#route: outputs matched no files (out/[slug]/**) — the command exited 0 but never wrote it, so the task fails and nothing is cached: write it, or fix the pattern — ' +
         '[ starts a character class and out/[slug] exists: write out/\\[slug\\]/** to name it',
     ])
     expect(await runTask('cls', false)).toEqual([
       "[vx] app#cls: inputs matched no files (lib/[ab].txt) — the key will not change when this project's source does",
-      '[vx] app#cls: outputs matched no files (build/[ab]/**) — an empty artifact is saved; a later hit restores nothing',
+      '[vx] app#cls: outputs matched no files (build/[ab]/**) — the command exited 0 but never wrote it, so the task fails and nothing is cached: write it, or fix the pattern',
     ])
   })
 

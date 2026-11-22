@@ -333,20 +333,21 @@ it(
   TIMEOUT,
 )
 
-for (const outputs of [['public/uploads/**'], ['public/uploads/**', '**/*.map']]) {
+for (const outputs of [['public/uploads'], ['public/uploads', '**/*.map']]) {
   it(
-    `a hit makes an empty directory at an output glob's own root: ${outputs.join(' ')}`,
+    `a hit makes an empty directory an output names: ${outputs.join(' ')}`,
     async () => {
-      // `public/uploads/**` walked from `public/uploads` and never took the
-      // root itself, so an empty one was not saved and a hit left it out:
-      // the dependant's `test -d` failed after `rm -rf public`.
+      // An empty `public/uploads` was not saved and a hit left it out: the
+      // dependant's `test -d` failed after `rm -rf public`. Named as itself:
+      // an empty root does not satisfy `public/uploads/**`, which requires
+      // something under it.
       const root = await makeWorkspace({ prefix: 'vx-empty-root-' })
       made.push(root)
       const dir = await addProject(root, 'app', {
         config: `
         export default { tasks: { gen: {
-          exec: { command: 'mkdir -p public/uploads' },
-          inputs: { files: ['src/**'] }, outputs: { files: ${JSON.stringify(outputs)} }, cache: true,
+          exec: { command: 'mkdir -p public/uploads && echo m > app.map' },
+          inputs: { files: ['src/**'] }, outputs: { files: ${JSON.stringify([...outputs, 'app.map'])} }, cache: true,
         } } }`,
         files: { 'src/in.txt': 'v1\n' },
       })

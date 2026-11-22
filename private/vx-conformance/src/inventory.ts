@@ -102,6 +102,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'lock-edges',
     'may-hold-match',
     'member-cwd',
+    'missing-outputs',
     'negated-outputs',
     'nested-boundary',
     'nested-dirs',

@@ -8,7 +8,7 @@
 // Every build runs in Nix's sandbox, so an undeclared file is out of reach.
 import { writeFile } from 'node:fs/promises'
 import path from 'node:path'
-import type { Adapter } from '../adapter.ts'
+import { optionalAsOutputs, type Adapter } from '../adapter.ts'
 import { MEET, projectDir, type TaskReport, type WorkspaceSpec } from '../spec.ts'
 
 const RUN = path.join(import.meta.dir, 'nix-run.ts')
@@ -39,7 +39,7 @@ function nixStr(s: string): string {
 
 function nixValue(v: unknown): string {
   if (typeof v === 'string') return nixStr(v)
-  if (typeof v === 'boolean') return String(v)
+  if (typeof v === 'boolean' || typeof v === 'number') return String(v)
   if (Array.isArray(v)) return `[ ${v.map(nixValue).join(' ')} ]`
   return `{ ${Object.entries(v as Record<string, unknown>)
     .map(([k, x]) => `${nixStr(k)} = ${nixValue(x)};`)
@@ -184,6 +184,11 @@ function specs(ws: WorkspaceSpec) {
         outRe: results,
         outEx: outs.flatMap((o) => o.exc),
         binDir: spec.bin ? path.posix.join(dir, spec.bin) : '',
+        idle: spec.idleTimeout ?? 0,
+        // A pinned output is a fixed-output derivation: its $out holds the file at its workspace path.
+        hash: spec.checksum
+          ? narHash(path.posix.join(dir, spec.checksum.file), spec.checksum.text)
+          : '',
       }
     }
   }
@@ -329,8 +334,10 @@ const LIB = `
         binPath = builtins.concatStringsSep ":" (builtins.filter (b: b != "") (map (d: d.binDir) deps));
         outRe = builtins.concatStringsSep "\\n" s.outRe;
         outEx = builtins.concatStringsSep "\\n" s.outEx;
-      } // builtins.listToAttrs env // (if s.cache then { } else { nonce = r.nonce; }));
-    in drv // { inherit id deps; outRe = s.outRe; outEx = s.outEx; binDir = s.binDir; };
+      } // builtins.listToAttrs env // (if s.cache then { } else { nonce = r.nonce; })
+        # Fixed-output: Nix fails the build when the output hashes otherwise.
+        // (if s.hash == "" then { } else { outputHashAlgo = "sha256"; outputHashMode = "recursive"; outputHash = s.hash; }));
+    in drv // { inherit id deps; outRe = s.outRe; outEx = s.outEx; binDir = s.binDir; idle = s.idle; };
   tasks = builtins.mapAttrs mk specs;
   selected = map (id: builtins.getAttr id tasks) requested;
 `
@@ -350,7 +357,7 @@ let
 ${LIB}in {
   inherit selected;
   # What the run restores: each task the build reaches, its output and what its outputs match.
-  info = map (d: { inherit (d) id outRe outEx; drv = d.drvPath; out = d.outPath; }) (closure selected);
+  info = map (d: { inherit (d) id outRe outEx idle; drv = d.drvPath; out = d.outPath; }) (closure selected);
 }
 `
 }
@@ -367,6 +374,9 @@ export const nix: Adapter = {
     return out.trim().split(' ').at(-1)!
   },
   lacks: {
+    mutex:
+      'Nix has no setting that keeps two builds from running at the same time, only `--max-jobs` for all.',
+    'ready-port': 'A derivation is a build that ends: nothing waits for a port.',
     // nix-build builds the attributes it is named, and what a derivation needs first.
     affected: 'nix-build builds the attributes it is named: no git change selects them.',
     filter: 'nix-build builds the attributes it is named: no filter picks them.',
@@ -390,7 +400,8 @@ export const nix: Adapter = {
       'Nix reads no package.json or lockfile and installs nothing into node_modules: what a build depends on is written in Nix.',
   },
   env: { NO_COLOR: '1' },
-  async configure(dir, ws, command) {
+  async configure(dir, given, command) {
+    const ws = optionalAsOutputs(given)
     await writeFile(path.join(dir, 'default.nix'), nixFile(ws, command))
     return []
   },
@@ -405,6 +416,7 @@ export const nix: Adapter = {
       ...(opts.args ? { args: opts.args } : {}),
       ...(opts.concurrency !== undefined ? { concurrency: opts.concurrency } : {}),
       ...(opts.dry ? { dry: true } : {}),
+      ...(opts.verify ? { verify: true } : {}),
     }),
   ],
   affected: () => {
@@ -433,4 +445,43 @@ export function reportOf(last: {
   return Object.fromEntries(
     Object.entries(last.drvs).map(([id, drv]) => [id, { cache: built.has(drv) ? 'miss' : 'hit' }]),
   )
+}
+
+/**
+ * The SRI sha256 of the NAR of a tree holding one regular file, `text`, at
+ * `rel`: what a fixed-output derivation's recursive \`outputHash\` names.
+ */
+function narHash(rel: string, text: string): string {
+  const chunks: Uint8Array[] = []
+  const str = (v: string | Uint8Array): void => {
+    const bytes = typeof v === 'string' ? new TextEncoder().encode(v) : v
+    const len = new Uint8Array(8)
+    new DataView(len.buffer).setBigUint64(0, BigInt(bytes.length), true)
+    chunks.push(len, bytes, new Uint8Array((8 - (bytes.length % 8)) % 8))
+  }
+  const node = (parts: string[]): void => {
+    str('(')
+    if (parts.length === 0) {
+      str('type')
+      str('regular')
+      str('contents')
+      str(new TextEncoder().encode(text))
+    } else {
+      str('type')
+      str('directory')
+      str('entry')
+      str('(')
+      str('name')
+      str(parts[0]!)
+      str('node')
+      node(parts.slice(1))
+      str(')')
+    }
+    str(')')
+  }
+  str('nix-archive-1')
+  node(rel.split('/').filter((p) => p !== '' && p !== '.'))
+  const hasher = new Bun.CryptoHasher('sha256')
+  for (const c of chunks) hasher.update(c)
+  return `sha256-${hasher.digest('base64')}`
 }

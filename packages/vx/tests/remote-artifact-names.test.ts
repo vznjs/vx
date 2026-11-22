@@ -270,7 +270,7 @@ describe('a remote artifact names only what its task declares', () => {
 // workspace is what bounds a link; a link past the workspace is still refused.
 describe('a large remote artifact holding a link', () => {
   const LINK_CFG = `export default { tasks: { build: {
-  exec: { command: 'echo built > out.txt' },
+  exec: { command: 'echo built > out.txt && mkdir -p dist && echo l > dist/l' },
   inputs: { files: ['src/**'] }, outputs: { files: ['out.txt', 'dist/l'] }, cache: true } } }`
 
   /** A remote serving a 200 KB `out.txt` and `dist/l -> to`, packed from a link `depth` deep. */
@@ -343,7 +343,9 @@ describe('a large remote artifact holding a link', () => {
         const app = path.join(fx.root, 'packages', 'app')
         expect({
           statuses: [first, second].map((r) => r.outcomes.map((o) => o.status)),
-          link: lstatSync(path.join(app, 'dist', 'l'), { throwIfNoEntry: false }) !== undefined,
+          link:
+            lstatSync(path.join(app, 'dist', 'l'), { throwIfNoEntry: false })?.isSymbolicLink() ===
+            true,
           out: await readFile(path.join(app, 'out.txt'), 'utf8'),
           said: fx.log.some((l) =>
             l.includes(

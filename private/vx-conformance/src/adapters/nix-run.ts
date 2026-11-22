@@ -18,6 +18,8 @@ interface Info {
   out: string
   outRe: string[]
   outEx: string[]
+  /** The task's limit on printing nothing, in seconds; 0: none. */
+  idle: number
 }
 
 const req = JSON.parse(process.argv[2]!) as {
@@ -26,6 +28,7 @@ const req = JSON.parse(process.argv[2]!) as {
   args?: string[]
   concurrency?: number
   dry?: boolean
+  verify?: boolean
 }
 
 const SKIP = new Set(['.git', 'node_modules'])
@@ -111,6 +114,9 @@ const evaluated = Bun.spawnSync(
 if (evaluated.exitCode !== 0) process.exit(evaluated.exitCode)
 const info = JSON.parse(evaluated.stdout.toString()) as Info[]
 
+// `--max-silent-time` is one for the whole build: the tightest a task of it asks for.
+const idle = Math.min(...info.map((t) => t.idle).filter((n) => n > 0))
+
 const build = Bun.spawn(
   [
     'nix-build',
@@ -122,6 +128,8 @@ const build = Bun.spawn(
     '--max-jobs',
     req.concurrency !== undefined ? String(req.concurrency) : 'auto',
     ...(req.dry ? ['--dry-run'] : []),
+    ...(Number.isFinite(idle) ? ['--max-silent-time', String(idle)] : []),
+    ...(req.verify ? ['--check'] : []),
   ],
   { stdout: 'inherit', stderr: 'pipe' },
 )

@@ -2,7 +2,7 @@
 // `project#task` (a case may give two projects' tasks different inputs).
 import { readdir, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
-import { pnpmFilter, type Adapter } from '../adapter.ts'
+import { optionalAsOutputs, pnpmFilter, type Adapter } from '../adapter.ts'
 import { projectDir } from '../spec.ts'
 import { TURBO_FUTURE_FLAGS } from '../turbo-flags.ts'
 
@@ -21,6 +21,12 @@ export const turbo: Adapter = {
   // A task always keys on its dependencies' hashes, and nothing keeps a
   // command from the files, network or home it never declared.
   lacks: {
+    mutex:
+      'No Turborepo setting keeps two tasks from running at the same time; only `--concurrency`.',
+    'idle-timeout': 'Turborepo has no limit on how long a task may print nothing.',
+    'output-checksum': 'Turborepo has no way to pin an output’s bytes to a checksum.',
+    'determinism-check': 'No Turborepo run rebuilds a cached task to compare its bytes.',
+    'ready-port': 'Turborepo does not hold a task until a persistent one opens a port.',
     'dependency-bin': 'No Turborepo task puts a directory of programs on its dependants’ PATH.',
     'task-pattern': '`dependsOn` names tasks exactly: no pattern over task names.',
     timeout: 'Turborepo has no per-task time limit.',
@@ -33,7 +39,8 @@ export const turbo: Adapter = {
     'select-tag': 'A filter picks by name, directory or change; packages carry no tags.',
   },
   env: { TURBO_TELEMETRY_DISABLED: '1', DO_NOT_TRACK: '1', NO_COLOR: '1' },
-  async configure(dir, ws, command) {
+  async configure(dir, given, command) {
+    const ws = optionalAsOutputs(given)
     // Turbo names the root package `//`.
     const rootName = Object.entries(ws.projects).find(([n, p]) => projectDir(n, p) === '.')?.[0]
     const id = (name: string) => (name === rootName ? '//' : name)
