@@ -71,10 +71,16 @@ export const vx: Adapter = {
                       sandbox: {
                         ...(spec.sandbox.hermetic ? { hermetic: true } : {}),
                         allow: {
-                          read: [...(spec.inputs ?? []), ...(spec.sandbox.read ?? [])],
+                          // A root input or output is declared, so granted: by absolute path, as grants outside the project are.
+                          read: [
+                            ...(spec.inputs ?? []),
+                            ...(spec.rootInputs ?? []).map((g) => path.join(dir, g)),
+                            ...(spec.sandbox.read ?? []),
+                          ],
                           // The harness marks an isolated task's start and end there.
                           write: [
                             ...(spec.outputs ?? []),
+                            ...(spec.rootOutputs ?? []).map((g) => path.join(dir, g)),
                             ...(spec.sandbox.write ?? []),
                             `${path.dirname(path.join(dir, ISOLATED_RAN))}/`,
                           ],
