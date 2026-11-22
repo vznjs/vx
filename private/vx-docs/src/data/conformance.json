@@ -1124,7 +1124,8 @@
     "moon fetched no toolchain plugins (exit 1, found system-ad7abb72e596dcc556ad0fc2e87dcb23949f91d8280fc61c94cfec6224695c59.wasm), so it runs without them:\nError: plugin::loader::registry::load_failure\n\n  × Failed to load plugin from ghcr.io/moonrepo/bun_toolchain:1.0.5 registry.\n  ├─▶ error sending request for url (https://ghcr.io/v2/moonrepo/\n  │   bun_toolchain/blobs/\n  │   sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a)\n  ├─▶ client error (Connect)\n  ╰─▶ tunnel error: unsuccessful\n\n",
     "moon failed 1 of 1 cases; one: did not run a#build\n$ /home/user/vx/private/vx-conformance/node_modules/.latest/node_modules/@moonrepo/core-linux-x64-gnu/moon run :build\n▮▮▮▮ a:build (cached, 2ms, 478f8c0f)\n\nTasks: 1 completed (1 cached)\n Time: 13ms ❯❯❯❯ to the moon\n\n",
     "moon fetched no toolchain plugins (exit 1, found none), so it runs without them:\nError: plugin::loader::registry::load_failure\n\n  × Failed to load plugin from ghcr.io/moonrepo/bun_toolchain:1.0.5 registry.\n  ├─▶ error sending request for url (https://ghcr.io/v2/moonrepo/\n  │   bun_toolchain/blobs/\n  │   sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a)\n  ├─▶ client error (Connect)\n  ╰─▶ tunnel error: unsuccessful\n\n",
-    "moon failed 1 of 1 cases; one: exited 1, expected success\n$ /home/user/vx/private/vx-conformance/node_modules/.latest/node_modules/@moonrepo/core-linux-x64-gnu/moon run :build\n▮▮▮▮ a:build\nError: glob::create\n\n  × Failed to create glob from pattern packages/a/g/[x/-].\n  ╰─▶ failed to parse glob expression\n\n"
+    "moon failed 1 of 1 cases; one: exited 1, expected success\n$ /home/user/vx/private/vx-conformance/node_modules/.latest/node_modules/@moonrepo/core-linux-x64-gnu/moon run :build\n▮▮▮▮ a:build\nError: glob::create\n\n  × Failed to create glob from pattern packages/a/g/[x/-].\n  ╰─▶ failed to parse glob expression\n\n",
+    "moon fetched no toolchain plugins (exit 1, found system-ad7abb72e596dcc556ad0fc2e87dcb23949f91d8280fc61c94cfec6224695c59.wasm), so it runs without them:\nError: plugin::loader::registry::load_failure\n\n  × Failed to load plugin from ghcr.io/moonrepo/bun_toolchain:1.0.5 registry.\n  ├─▶ error sending request for url (https://ghcr.io/v2/moonrepo/\n  │   bun_toolchain/blobs/\n  │   sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a)\n  ├─▶ client error (Connect)\n  ╰─▶ tunnel error: unsuccessful\n\n"
   ],
   "tools": {
     "vx": "this commit",
@@ -1137,14 +1138,14 @@
   "scores": {
     "vx": {
       "all": {
-        "pass": 1217,
-        "can": 1217,
-        "of": 1229
+        "pass": 1220,
+        "can": 1220,
+        "of": 1232
       },
       "correctness": {
-        "pass": 1001,
-        "can": 1001,
-        "of": 1013
+        "pass": 1004,
+        "can": 1004,
+        "of": 1016
       },
       "efficiency": {
         "pass": 189,
@@ -1157,9 +1158,9 @@
         "of": 27
       },
       "graph": {
-        "pass": 166,
-        "can": 166,
-        "of": 168
+        "pass": 169,
+        "can": 169,
+        "of": 171
       },
       "config": {
         "pass": 9,
@@ -1214,14 +1215,14 @@
     },
     "turbo": {
       "all": {
-        "pass": 795,
-        "can": 1116,
-        "of": 1229
+        "pass": 798,
+        "can": 1119,
+        "of": 1232
       },
       "correctness": {
-        "pass": 652,
-        "can": 907,
-        "of": 1013
+        "pass": 655,
+        "can": 910,
+        "of": 1016
       },
       "efficiency": {
         "pass": 132,
@@ -1234,9 +1235,9 @@
         "of": 27
       },
       "graph": {
-        "pass": 106,
-        "can": 145,
-        "of": 168
+        "pass": 109,
+        "can": 148,
+        "of": 171
       },
       "config": {
         "pass": 5,
@@ -1291,14 +1292,14 @@
     },
     "nx": {
       "all": {
-        "pass": 800,
-        "can": 1140,
-        "of": 1229
+        "pass": 803,
+        "can": 1143,
+        "of": 1232
       },
       "correctness": {
-        "pass": 627,
-        "can": 928,
-        "of": 1013
+        "pass": 630,
+        "can": 931,
+        "of": 1016
       },
       "efficiency": {
         "pass": 169,
@@ -1311,9 +1312,9 @@
         "of": 27
       },
       "graph": {
-        "pass": 133,
-        "can": 155,
-        "of": 168
+        "pass": 136,
+        "can": 158,
+        "of": 171
       },
       "config": {
         "pass": 1,
@@ -1368,14 +1369,14 @@
     },
     "vite-task": {
       "all": {
-        "pass": 637,
-        "can": 929,
-        "of": 1229
+        "pass": 640,
+        "can": 932,
+        "of": 1232
       },
       "correctness": {
-        "pass": 534,
-        "can": 765,
-        "of": 1013
+        "pass": 537,
+        "can": 768,
+        "of": 1016
       },
       "efficiency": {
         "pass": 97,
@@ -1388,9 +1389,9 @@
         "of": 27
       },
       "graph": {
-        "pass": 101,
-        "can": 130,
-        "of": 168
+        "pass": 104,
+        "can": 133,
+        "of": 171
       },
       "config": {
         "pass": 4,
@@ -1445,14 +1446,14 @@
     },
     "nix": {
       "all": {
-        "pass": 674,
-        "can": 865,
-        "of": 1229
+        "pass": 677,
+        "can": 868,
+        "of": 1232
       },
       "correctness": {
-        "pass": 569,
-        "can": 719,
-        "of": 1013
+        "pass": 572,
+        "can": 722,
+        "of": 1016
       },
       "efficiency": {
         "pass": 99,
@@ -1465,9 +1466,9 @@
         "of": 27
       },
       "graph": {
-        "pass": 73,
-        "can": 74,
-        "of": 168
+        "pass": 76,
+        "can": 77,
+        "of": 171
       },
       "config": {
         "pass": 0,
@@ -1522,14 +1523,14 @@
     },
     "moon": {
       "all": {
-        "pass": 737,
-        "can": 1092,
-        "of": 1229
+        "pass": 740,
+        "can": 1095,
+        "of": 1232
       },
       "correctness": {
-        "pass": 578,
-        "can": 891,
-        "of": 1013
+        "pass": 581,
+        "can": 894,
+        "of": 1016
       },
       "efficiency": {
         "pass": 146,
@@ -1542,9 +1543,9 @@
         "of": 27
       },
       "graph": {
-        "pass": 101,
-        "can": 137,
-        "of": 168
+        "pass": 104,
+        "can": 140,
+        "of": 171
       },
       "config": {
         "pass": 3,
@@ -44216,6 +44217,102 @@
         "nix": {
           "status": "n/a",
           "detail": "Nix has no time limit of a build’s own (`timeout` is a setting for every build)."
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "graph/workspace-dir-without-manifest-skipped",
+      "ref": "9gvnyp",
+      "category": "graph",
+      "kind": "correctness",
+      "title": "A directory the workspace globs match that has no package.json is not a project",
+      "why": "Workspaces hold folders that are not packages: notes, fixtures, a package half deleted. Without a manifest there is no project to build. A tool that fails on such a folder blocks every run until someone deletes it; the run builds the real projects.",
+      "from": [
+        "discovery-refusals",
+        "package-json-bom"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "graph/manifest-inside-a-project-not-a-project",
+      "ref": "v389bb",
+      "category": "graph",
+      "kind": "correctness",
+      "title": "A package.json nested inside a project, outside the workspace globs, is not a second project",
+      "why": "Projects carry nested manifests: test fixtures, examples, a vendored package. Only the workspace globs say which directories are projects. A tool that finds every package.json reads the fixture, named like the project here, as a duplicate and fails a run that has one project.",
+      "from": [
+        "discovery-refusals",
+        "package-json-bom"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "graph/manifest-outside-workspace-globs-not-a-project",
+      "ref": "71azxc",
+      "category": "graph",
+      "kind": "correctness",
+      "title": "A package.json in a root folder the workspace globs do not list is not a project",
+      "why": "A docs site or a scripts folder can hold its own package.json without being part of the workspace. The globs leave it out on purpose. A tool that picks it up anyway sees two projects named alike and fails, or runs tasks nobody declared.",
+      "from": [
+        "discovery-refusals",
+        "package-json-bom"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
         },
         "moon": {
           "status": "pass"
