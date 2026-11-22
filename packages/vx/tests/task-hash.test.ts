@@ -59,8 +59,12 @@ it('keys a config whatever order it spells its keys in, all the way down', () =>
     exec: { env: { define: { B: '2', A: '1' } }, command: 'x' },
   }
   expect(hashTaskConfig(b as never)).toBe(hashTaskConfig(a as never))
-  // An array keeps its order: it says something.
-  const c = { ...a, outputs: { files: ['b', 'a'] }, cache: true }
-  const d = { ...a, outputs: { files: ['a', 'b'] }, cache: true }
+  // An array keeps its order where it may say something (`inputs.tasks`);
+  // one that is a set (globs, dependsOn, env names) is sorted.
+  const c = { ...a, inputs: { files: [], tasks: ['b', 'a'] } }
+  const d = { ...a, inputs: { files: [], tasks: ['a', 'b'] } }
   expect(hashTaskConfig(c as never)).not.toBe(hashTaskConfig(d as never))
+  const e = { ...a, outputs: { files: ['b', 'a'] } }
+  const f = { ...a, outputs: { files: ['a', 'b'] } }
+  expect(hashTaskConfig(e as never)).toBe(hashTaskConfig(f as never))
 })
