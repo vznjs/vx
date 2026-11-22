@@ -92,10 +92,8 @@ export interface RunArgs {
 // outright. A regex, so the doc-drift test does not count it as accepted.
 const RETIRED_EXCLUDE_DEPENDENCIES = /^--excludeDependencies(=|$)/
 
-/** `name` when `a` is it, bare or with `=`. */
-function flagOf(a: string | undefined, name: string): string | undefined {
-  return a === name || a?.startsWith(`${name}=`) ? name : undefined
-}
+/** Whether `a` is the flag `name`, bare or with `=`. */
+const isFlag = (a: string, name: string): boolean => a === name || a.startsWith(`${name}=`)
 
 // The settings parsed by their kind alone; the cache flags, `--fail-fast`
 // (a switch, no value) and `--cache-dir` keep their own branches above.
@@ -107,7 +105,7 @@ const GENERIC_FLAGS = SETTINGS.filter(
 function settingFlagOf(a: string): { s: Setting; name: string } | undefined {
   for (const s of GENERIC_FLAGS) {
     const name = s.flag!.name
-    if (flagOf(a, name) !== undefined) return { s, name }
+    if (isFlag(a, name)) return { s, name }
   }
   return undefined
 }
@@ -177,8 +175,8 @@ function parse(
   }
 
   for (let i = 0; i < before.length; i++) {
-    const a = before[i]
-    if (a === '--filter' || a?.startsWith('--filter=')) {
+    const a = before[i]!
+    if (a === '--filter' || a.startsWith('--filter=')) {
       const v = a === '--filter' ? before[++i] : a.slice('--filter='.length)
       // `--filter --dry` took `--dry` as the pattern; no filter opens with
       // `--`.
@@ -190,14 +188,14 @@ function parse(
       out.filters.push(v)
     } else if (a === '--all') {
       out.all = true
-    } else if (RETIRED_EXCLUDE_DEPENDENCIES.test(a ?? '')) {
+    } else if (RETIRED_EXCLUDE_DEPENDENCIES.test(a)) {
       return {
         ...out,
         error: `unknown flag: ${a} (the flag is --exclude-dependencies)`,
       }
     } else if (a === '--exclude-dependencies') {
       out.excludeDependencies = 'all'
-    } else if (a?.startsWith('--exclude-dependencies=')) {
+    } else if (a.startsWith('--exclude-dependencies=')) {
       const raw = a.slice('--exclude-dependencies='.length)
       // An empty value is ambiguous (drop every edge, or none), so both
       // explicit forms are named instead, as other value flags reject an empty
@@ -217,7 +215,7 @@ function parse(
       // edges ran; `--filter` adds up the same way.
       if (out.excludeDependencies !== 'all')
         out.excludeDependencies = [...new Set([...out.excludeDependencies, ...names])]
-    } else if (a === '--cache-dir' || a?.startsWith('--cache-dir=')) {
+    } else if (a === '--cache-dir' || a.startsWith('--cache-dir=')) {
       const v = a === '--cache-dir' ? before[++i] : a.slice('--cache-dir='.length)
       // Whitespace named a directory in spaces; `VX_CACHE_DIR` and `cache.dir` refuse it.
       if (v === undefined || v.trim() === '')
@@ -232,10 +230,10 @@ function parse(
         }
       }
       out.cacheDir = v
-    } else if (flagOf(a, '--cache-policy')) {
+    } else if (isFlag(a, '--cache-policy')) {
       cacheFlag = true
-      const name = flagOf(a, '--cache-policy')!
-      const v = a === name ? before[++i] : a!.slice(name.length + 1)
+      const name = '--cache-policy'
+      const v = a === name ? before[++i] : a.slice(name.length + 1)
       if (v === undefined)
         return {
           ...out,
@@ -262,7 +260,7 @@ function parse(
       forceFlag = true
     } else if (a === '--fail-fast') {
       out.failFast = true
-    } else if (a === '--verbosity' || a?.startsWith('--verbosity=')) {
+    } else if (a === '--verbosity' || a.startsWith('--verbosity=')) {
       const v = a === '--verbosity' ? before[++i] : a.slice('--verbosity='.length)
       if (v === undefined || v === '')
         return { ...out, error: `--verbosity requires a value: a non-negative integer` }
@@ -278,7 +276,7 @@ function parse(
         return { ...out, error: `--dry takes its format with '=': --dry=${next}` }
       }
       out.dry = 'pretty'
-    } else if (a?.startsWith('--dry=')) {
+    } else if (a.startsWith('--dry=')) {
       const fmt = a.slice('--dry='.length)
       if (fmt === '') {
         return {
@@ -294,21 +292,21 @@ function parse(
     } else if (a === '--profile') {
       out.profile = 'profile.json'
       spacedValue('--profile', before[i + 1])
-    } else if (a?.startsWith('--profile=')) {
+    } else if (a.startsWith('--profile=')) {
       // An empty `=` takes the bare form's default; resolved against cwd it
       // named the cwd directory and failed with EISDIR after the run.
       out.profile = a.slice('--profile='.length) || 'profile.json'
     } else if (a === '--affected') {
       out.affected = ''
       spacedValue('--affected', before[i + 1])
-    } else if (a?.startsWith('--affected=')) {
+    } else if (a.startsWith('--affected=')) {
       out.affected = a.slice('--affected='.length)
     } else if (a === '--poll') {
       // The edit-distance hint offered vx run `--all`, a different flag.
       if (verb === 'run')
         return { ...out, error: `unknown flag: --poll (a vx watch flag: vx watch --poll <task>)` }
       out.poll = true
-    } else if (a !== undefined && settingFlagOf(a) !== undefined) {
+    } else if (settingFlagOf(a) !== undefined) {
       const { s: set, name } = settingFlagOf(a)!
       const v = a === name ? before[++i] : a.slice(name.length + 1)
       if (v === undefined || v === '')
@@ -323,7 +321,7 @@ function parse(
       const value = parseSettingValue(set.kind, v)
       if (value === null) return { ...out, error: settingRefusal(set.path, name, v) }
       out.settings[set.path] = value
-    } else if (a !== undefined && a.startsWith('-')) {
+    } else if (a.startsWith('-')) {
       // vx takes no short flag, so one no hint claims (`vx run test -t adds`)
       // is the task's: it goes after `--`. A long one far from any vx flag gets
       // no guess: a vx typo sent to the task would be ignored unseen.
@@ -350,7 +348,7 @@ function parse(
           ? ''
           : ` (did you mean vx ${verb} ${forwarded.map(shellQuote).join(' ')}?)`
       return { ...out, error: `unknown flag: ${a}${hint}`, ...(forwarded ? { forwarded } : {}) }
-    } else if (a !== undefined) {
+    } else {
       // A config may not declare such a name (`taskNameProblem`); a pasted
       // newline was refused as an unknown task, printed raw.
       if (hasControl(a))

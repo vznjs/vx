@@ -50,23 +50,6 @@ const POLL_INTERVAL_MS = 250
 const pollIntervalMs = (): number => limitSetting('VX_WATCH_POLL_INTERVAL', POLL_INTERVAL_MS)
 
 /**
- * Directory names the fallback never descends into WHEN no better filter is
- * supplied. The justification is that `makeWatchIgnore` already drops their
- * EVENTS, so the walk buys nothing — a poller pays for it either way, and
- * `node_modules` is the difference between a cheap fallback and one that
- * re-stats 40 000 files four times a second.
- *
- * That justification is exactly `isIgnoredDir`, so this IS that test. It used
- * to carry a fourth name, `dist`, which the justification does NOT cover:
- * `dist` is dropped only when a project DECLARES it as an output, and a project
- * that does not declare it had its `dist/` sources silently invisible to `vx
- * watch` on every host the poller exists for — a macOS sandbox, a network
- * mount, a container bind — while the native watcher delivered them. Two
- * watchers disagreeing about what an edit is. The real per-project answer is
- * the caller's `skipDir`, below.
- */
-
-/**
  * A watcher built from `stat`, for when the OS one cannot deliver.
  *
  * `fs.watch` on macOS is FSEvents, which needs `mach-lookup` on
