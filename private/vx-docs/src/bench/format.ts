@@ -148,6 +148,17 @@ const RACES = {
 export function losses(d: BenchData): string[] {
   const vx = overhead(d.runners.vx)
   const out: string[] = []
+  // A runner's cold CPU under the bare commands' own is a measurement that
+  // lost its tasks (vx's helper died unreaped, 2026-11-22: vx read 19.9 s
+  // against the commands' 21.6 s, and the site drew every rival Infinity×).
+  for (const runner of RUNNERS) {
+    const { row, baseline } = d.runners[runner]
+    if (row.freshCpu < baseline.freshCpu)
+      out.push(
+        `cold build CPU: ${NAMES[runner]} ${duration(row.freshCpu)} is under the commands' own ` +
+          `${duration(baseline.freshCpu)}, so it was not measured`,
+      )
+  }
   for (const runner of RUNNERS) {
     if (runner === 'vx') continue
     const rival = overhead(d.runners[runner])

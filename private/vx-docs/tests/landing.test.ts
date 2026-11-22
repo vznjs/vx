@@ -411,6 +411,7 @@ describe('the landing page', () => {
     expect(ratioLabel(28_710, 16_030)).toBe('1.79×')
     expect(ratioLabel(62_000, 28_710)).toBe('2.2×')
     expect(ratioLabel(7460, 390)).toBe('19×')
+    expect(ratioLabel(80_000, 0)).toBe('—')
     // A tail follows its runner's speed, the same rule for every tool,
     // between a floor that always shows and a ceiling.
     expect(tailPct(TAIL_MS * 2)).toBe(TAIL_MAX)
