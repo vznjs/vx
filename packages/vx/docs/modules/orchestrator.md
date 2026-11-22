@@ -3182,6 +3182,14 @@ export function addedByPlugin(meta: ProjectMeta): string | undefined
 // loaded before it, so a run reusing the array runs the `config` stage no
 // second time. `graph`: the package graph a selection pass built over it whose
 // task edges added none, which a run reusing the discovery would build again.
+export interface DiscoveryFacts {
+  git?: LazyGitEnumeration
+  lock?: () => Promise<Lockfile>
+  hashes?: ExtraHashes
+  walls?: readonly string[]
+  workspace?: Awaited<ReturnType<typeof loadWorkspacePlugins>>
+  graph?: PackageGraph
+}
 export function discoveryOf(projects: readonly ProjectMeta[]): DiscoveryFacts
 // The refusal a task gets when it cannot spawn because its locked
 // project's directory is gone: run `vx lock`.
