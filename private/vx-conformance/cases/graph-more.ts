@@ -103,7 +103,7 @@ function behindReplay(): WorkspaceSpec {
   }
 }
 
-/** A server that writes the args it was started with, and a smoke test that copies them once they are there. */
+/** A server that writes the args it was started with. */
 function argsServer(ready: boolean): WorkspaceSpec {
   const write = `printf '<%s>' "$@" > got.tmp && mv got.tmp got.txt`
   return {
@@ -114,12 +114,6 @@ function argsServer(ready: boolean): WorkspaceSpec {
             command: ready ? `${write} && echo READY && sleep 60` : `${write} && sleep 60`,
             persistent: ready ? { ready: 'READY' } : true,
             takesArgs: true,
-          },
-          smoke: {
-            command: `${until('got.txt')} && cp got.txt seen.tmp && mv seen.tmp seen.txt`,
-            dependsOn: ['dev'],
-            takesArgs: true,
-            cache: false,
           },
         },
       },
@@ -135,19 +129,19 @@ function argsCase(slug: string, title: string, why: string, ready: boolean, args
     title,
     why,
     from: ['persistent'],
-    needs: ready ? ['persistent', 'ready', 'multi-task'] : ['persistent', 'multi-task'],
+    needs: ready ? ['persistent', 'ready'] : ['persistent'],
     workspace: argsServer(ready),
     steps: [
       {
-        run: 'smoke',
-        also: ['dev'],
+        // The server alone: args after `--` go to the one task named.
+        run: 'dev',
         projects: ['app'],
         args,
         // A server the run was asked for runs until stopped.
-        stop: { signal: 'SIGINT', when: 'packages/app/seen.txt' },
+        stop: { signal: 'SIGINT', when: 'packages/app/got.txt' },
         expect: {
-          ran: ['app#dev', 'app#smoke'],
-          files: { 'packages/app/seen.txt': args.map((a) => `<${a}>`).join('') },
+          ran: ['app#dev'],
+          files: { 'packages/app/got.txt': args.map((a) => `<${a}>`).join('') },
           within: 30,
           alone: true,
         },
@@ -155,6 +149,13 @@ function argsCase(slug: string, title: string, why: string, ready: boolean, args
     ],
   })
 }
+
+/** A task that writes the args it was started with to `file`. */
+const echoArgs = (file: string): TaskSpec => ({
+  command: `printf '<%s>' "$@" > ${file}`,
+  takesArgs: true,
+  cache: false,
+})
 
 /** lib, app (depends on lib) and e2e, whose test names app#build alone: no package dependency. */
 function taskEdge(): WorkspaceSpec {
@@ -761,6 +762,84 @@ export default [
           ran: ['app#build', 'top#build'],
           notRan: ['lib#build', 'base#build', 'tool#build'],
           files: { [out('app')]: 'lib\nbase2\napp\n', [out('top')]: 'tool2\ntop\n' },
+        },
+      },
+    ],
+  }),
+
+  defineCase({
+    id: 'graph/forwarded-args-refused-for-two-tasks',
+    category: 'graph',
+    kind: 'correctness',
+    title: 'Args forwarded to a run of two task names are refused',
+    why: 'Arguments after `--` are written for one command, such as `--port 3000` for a server or `--watch` for a test runner. Handing them to every task the run names starts the other task with flags it never expected, which fails it or, worse, changes what it does. The run has to refuse before any task starts, so the user names the one task the arguments are for.',
+    from: ['forward-args-one-task'],
+    needs: ['multi-task'],
+    workspace: { projects: { app: { tasks: { a: echoArgs('a.txt'), b: echoArgs('b.txt') } } } },
+    steps: [
+      {
+        run: 'a',
+        also: ['b'],
+        projects: ['app'],
+        args: ['--port', '3000'],
+        expect: {
+          exit: 'fail',
+          files: { 'packages/app/a.txt': null, 'packages/app/b.txt': null },
+          within: 30,
+        },
+      },
+    ],
+  }),
+
+  defineCase({
+    id: 'graph/forwarded-args-refused-for-many-projects',
+    category: 'graph',
+    kind: 'correctness',
+    title: 'Args forwarded to one task name in many projects are refused',
+    why: 'One task name across many projects is many commands, each its own tool with its own flags. Arguments after `--` meant for one of them reach all, so a flag one project’s test runner takes fails or changes every other project’s run. The run has to refuse before any task starts, so the user narrows it to the one project the arguments are for.',
+    from: ['forward-args-one-task'],
+    workspace: {
+      projects: {
+        one: { tasks: { t: echoArgs('got.txt') } },
+        two: { tasks: { t: echoArgs('got.txt') } },
+      },
+    },
+    steps: [
+      {
+        run: 't',
+        args: ['--port', '3000'],
+        expect: {
+          exit: 'fail',
+          files: { 'packages/one/got.txt': null, 'packages/two/got.txt': null },
+          within: 30,
+        },
+      },
+    ],
+  }),
+
+  defineCase({
+    id: 'graph/forwarded-args-reach-the-one-project-selected',
+    category: 'graph',
+    kind: 'correctness',
+    title: 'Args forwarded to a task selected in one project reach it',
+    why: 'Narrowing a run to one project is how a user names the one command the arguments after `--` are for. The rule that refuses them for many commands must not refuse them for one, or the user has no way to pass a flag to a task in a workspace of many projects.',
+    from: ['forward-args-one-task'],
+    workspace: {
+      projects: {
+        one: { tasks: { t: echoArgs('got.txt') } },
+        two: { tasks: { t: echoArgs('got.txt') } },
+      },
+    },
+    steps: [
+      {
+        run: 't',
+        projects: ['one'],
+        args: ['--port', '3000'],
+        expect: {
+          exit: 0,
+          ran: ['one#t'],
+          files: { 'packages/one/got.txt': '<--port><3000>', 'packages/two/got.txt': null },
+          within: 30,
         },
       },
     ],
