@@ -136,6 +136,7 @@ describe('vx pipeline <name>', () => {
           one: { tasks: ['build'], filter: ['a'] },
           env: { tasks: ['show'], filter: ['a'], env: { SHOWN: 'vx-only' } },
           quiet: { tasks: ['show'], filter: ['a'], env: { VX_RUN_OUTPUT_LOGS: 'none' } },
+          ghost: { tasks: ['nope'] },
           paths: { tasks: ['keep'], filter: ['a'], cacheDir: 'saved-cache', profile: 'saved.json' },
         }`,
       ),
@@ -193,7 +194,9 @@ describe('vx pipeline <name>', () => {
   it('refuses no name, an unknown one, a task and --all, naming the fix', async () => {
     expect((await vx('pipeline')).err).toContain('missing pipeline name')
     const typo = (await vx('pipeline', 'chek')).err
-    expect(typo).toContain('no pipeline named chek; pipelines: check, one, env, quiet, paths')
+    expect(typo).toContain(
+      'no pipeline named chek; pipelines: check, one, env, quiet, ghost, paths',
+    )
     expect(typo).toContain('fix  vx pipeline check')
     expect((await vx('pipeline', 'check', 'lint')).err).toContain(
       'vx pipeline runs one pipeline, whose tasks are its `tasks` (got lint)',
@@ -202,6 +205,10 @@ describe('vx pipeline <name>', () => {
       '--all: a pipeline runs every project already',
     )
     expect((await vx('pipeline', 'check', '--', 'x')).err).toContain('forwards nothing after --')
+    // A refusal past the flags is the pipeline's, not the `vx run` it stands for.
+    const ghost = (await vx('pipeline', 'ghost')).err
+    expect(ghost).toContain('vx pipeline  no projects declare task(s): nope')
+    expect(ghost).not.toContain('vx run ')
     // A name the object's prototype holds is no pipeline: it was taken for
     // one and crashed with a stack.
     for (const name of ['constructor', '__proto__', 'toString']) {
