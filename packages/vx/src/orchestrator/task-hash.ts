@@ -202,7 +202,9 @@ export async function keyOrDescribe(
   const { captureInto: _rows, ...unrowed } = args
   const token = folds === undefined ? undefined : filesToken(inputsArgs(unrowed))
   let probe: string | undefined
-  if (folds !== undefined && token !== undefined) {
+  // A task with no fold remembered (every task of a first run) resolves
+  // nothing apart for its probe: the description's own inputs give the head.
+  if (folds !== undefined && token !== undefined && folds.held(args.node.id)) {
     const head = foldHead((await resolveKeyInput(unrowed, true)).input)
     probe = FOLD_PARTS.token(FOLD_MEMO_VERSION, { head, files: token })!
     const known = folds.get(args.node.id, probe)
@@ -211,7 +213,12 @@ export async function keyOrDescribe(
   const end = span('task hash')
   try {
     const described = await describeTaskInputs(args)
-    if (probe !== undefined) folds!.set(args.node.id, probe, described.hash)
+    if (folds !== undefined && token !== undefined)
+      folds.set(
+        args.node.id,
+        probe ?? FOLD_PARTS.token(FOLD_MEMO_VERSION, { head: described.head(), files: token })!,
+        described.hash,
+      )
     return { hash: described.hash, described }
   } finally {
     end()
@@ -324,6 +331,8 @@ export async function describeTaskInputs(args: ComputeHashArgs): Promise<{
   readUpstream: () => Promise<void>
   /** An input file the key did not fold that exists now (see `addedInput`). */
   added: () => string | undefined
+  /** The fold up to the files (`foldHead`), for a fold memo's probe. */
+  head: () => bigint
 }> {
   const hashedAt = Date.now()
   const { input, listings } = await resolveKeyInput(args)
@@ -423,6 +432,10 @@ export async function describeTaskInputs(args: ComputeHashArgs): Promise<{
     facts,
     describedAt: hashedAt,
     readUpstream,
+    head: () => {
+      const { captureInto: _rows, ...bare } = input
+      return foldHead(bare)
+    },
     added: () => addedInput(listings, new Set(input.inputFiles), listedAt),
     inputs: {
       files,

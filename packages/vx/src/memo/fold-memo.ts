@@ -19,6 +19,8 @@ export interface FoldMemo {
   /** The key remembered for `taskId` under `probe`, if that is the probe it was folded under. */
   get(taskId: string, probe: string): string | undefined
   set(taskId: string, probe: string, key: string): void
+  /** Whether any probe of `taskId`'s is remembered: none, and no `get` can answer it. */
+  held(taskId: string): boolean
   /** The key each task was last folded to, whatever its probe: a guess at its next. A task never folded is absent. */
   lastKeys(taskIds: readonly string[]): Map<string, string>
 }
@@ -38,6 +40,10 @@ export class IndexFoldMemo implements FoldMemo {
   get(taskId: string, probe: string): string | undefined {
     const row = this.dirty.get(taskId) ?? this.readable(taskId)
     return row?.probe === probe ? row.key : undefined
+  }
+
+  held(taskId: string): boolean {
+    return (this.dirty.get(taskId) ?? this.readable(taskId)) != null
   }
 
   // A page SQLite cannot read reached `vx run` as a raw `SQLiteError` and a

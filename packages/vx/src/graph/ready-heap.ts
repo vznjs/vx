@@ -85,6 +85,16 @@ export class ReadyHeap {
       i = parent
     }
   }
+  /** The `n` highest-ranked ids, in rank order, left queued. */
+  top(n: number): string[] {
+    const taken: Array<[string, number]> = []
+    while (taken.length < n && this.ids.length > 0) {
+      const seq = this.peekSeq()
+      taken.push([this.pop()!, seq])
+    }
+    for (const [id, seq] of taken) this.push(id, seq)
+    return taken.map(([id]) => id)
+  }
   /** The head's enqueue seq (capture before `pop` for a possible repush). */
   peekSeq(): number {
     return this.seq[0] ?? -1

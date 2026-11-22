@@ -109,6 +109,7 @@ import {
   type SaveFacts,
   withSaveFacts,
 } from './miss-save.js'
+import { type PreparedKey, prepareKey } from './cached-task.js'
 import { admitTasks, taintTracker } from './admission.js'
 import {
   settleProbedHit,
@@ -1001,6 +1002,7 @@ async function runOnBus(
       )
     })
     const deferredSaves = new Map<string, Promise<SaveFacts>>()
+    const preparedKeys = new Map<string, Promise<PreparedKey>>()
     const trailingSaves = new Set<string>()
     // A server held from an earlier run (`vx watch`) runs through this one
     // too, so it may write a mutable input while it is described.
@@ -1290,6 +1292,7 @@ async function runOnBus(
       outputDirSnapshots,
       deferSave: saveLane.defer,
       deferredSaves,
+      preparedKeys,
       trailingSaves,
       commandWindows: windows,
       keyedTasks,
@@ -1609,6 +1612,18 @@ async function runOnBus(
       restoreConcurrency: options.restoreConcurrency ?? 2 * concurrency,
       reverseDeps: blocksNow,
       settledOf: (o) => deferredSaves.get(o.node.id)?.then((facts) => withSaveFacts(o, facts)),
+      prepare: (node, upstream) => {
+        if (
+          node.config.exec === undefined ||
+          node.config.exec.persistent !== undefined ||
+          isGroupTask(node) ||
+          shortCircuit.restoreTier.has(node.id) ||
+          heldBefore.kept.has(node.id) ||
+          platformSkip(node) !== undefined
+        )
+          return
+        prepareKey(argsOf(node, keyUpstream(node, upstream), true, false))
+      },
       trails: (o) => trailingSaves.has(o.node.id),
       ...(hasPooledExecutor(executors) ? { poolOf: poolOfPlacement(placements) } : {}),
       ...(admit !== undefined ? { admit } : {}),
