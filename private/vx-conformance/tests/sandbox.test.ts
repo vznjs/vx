@@ -46,6 +46,10 @@ describe.skipIf(!sandboxAvailable() && !process.env['VX_REQUIRE_SANDBOX'])('sand
     expect((await sh('stat -c %u /')).out.trim()).not.toBe('65534')
   })
 
+  test('nothing can be made at the root', async () => {
+    expect((await sh('touch /escaped')).exit).not.toBe(0)
+  })
+
   test('there is no network', async () => {
     const r = await sh('bun -e "await fetch(\'https://registry.npmjs.org\')"')
     expect(r.exit).not.toBe(0)

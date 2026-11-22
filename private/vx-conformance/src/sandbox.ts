@@ -146,6 +146,9 @@ export function spawnSandboxed(
     '--unshare-ipc',
     '--die-with-parent',
     '--new-session',
+    // bwrap's own `/` is a writable tmpfs; the host's was read-only.
+    '--remount-ro',
+    '/',
     '--chdir',
     cwd,
   ]
