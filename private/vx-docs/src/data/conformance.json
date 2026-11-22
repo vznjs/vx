@@ -3468,7 +3468,7 @@
       "category": "graph",
       "kind": "correctness",
       "title": "A `*` in a tag selects the projects carrying any tag it matches",
-      "why": "A pattern in a tag picks every tag it matches, as a pattern in a name picks every name. Users group tags by prefix, such as scope:web and scope:api, to select a family at once. Matching only the literal text selects nothing, so the run passes while it built none of them.",
+      "why": "A pattern in a tag picks every tag it matches, as a pattern in a name picks every name. Users group tags by prefix, such as scope/web and scope/api, to select a family at once. Matching only the literal text selects nothing, so the run passes while it built none of them.",
       "from": [
         "filter",
         "filter-properties"
