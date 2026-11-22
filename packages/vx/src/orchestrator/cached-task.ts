@@ -27,7 +27,7 @@ import { restoreHit } from './hit-restore.js'
 import { fingerprintMoved, type KeyCheck, type StateStamp } from './input-recheck.js'
 import { describeMiss } from './miss-inputs.js'
 import { missOutcome } from './miss-outcome.js'
-import type { SaveFacts } from './miss-save.js'
+import { type SaveFacts, withCheckFacts } from './miss-save.js'
 import type { MissRun } from './miss-run.js'
 import { getContext } from './remote-prefetch.js'
 import { forwardedSignal } from './signals.js'
@@ -185,7 +185,30 @@ export async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome>
     applySave(m, ran, await saveVerdict(m, ran, c, stamp), c, stamp)
   let save: { saved: boolean; unsavedBytes?: number }
   const saves = args.run.deferredSaves
-  if (landed === undefined || !policy.save || ran.exitCode !== 0) save = await saveBy(check)
+  if (
+    landed === undefined &&
+    saves !== undefined &&
+    policy.save &&
+    ran.exitCode === 0 &&
+    // A moved input fails the task: decided before it is done.
+    policy.stability.severity !== 'error' &&
+    // The sandbox's fix reads what the save leaves: built with the outcome.
+    !(m.sandbox.listedThere === true && m.sandbox.violations.length > 0)
+  ) {
+    // The command is done: its slot goes to the next task, and the re-checks
+    // and the save run after it. Its dependants still wait for them
+    // (`settledOf`); what they find rides the outcome when it settles.
+    const settled: Promise<SaveFacts> = new Promise<void>((r) => setImmediate(r)).then(async () => {
+      const now = await saveBy(check)
+      // A save on the run's lane parked its own settling here.
+      const lane = saves.get(node.id)
+      const facts: SaveFacts =
+        lane !== undefined && lane !== settled ? await lane : now.saved ? { saved: true } : {}
+      return withCheckFacts(facts, check, now.unsavedBytes)
+    })
+    saves.set(node.id, settled)
+    save = { saved: false }
+  } else if (landed === undefined || !policy.save || ran.exitCode !== 0) save = await saveBy(check)
   else if (
     saves === undefined ||
     // A moved input fails the task: decided before it is done.

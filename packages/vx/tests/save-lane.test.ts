@@ -9,11 +9,22 @@ import path from 'node:path'
 import { describe, expect, it, spyOn } from 'bun:test'
 import { Cache } from '../src/cache/index.js'
 import { createSaveLane } from '../src/orchestrator/save-lane.js'
+import { KeyedTasks } from '../src/orchestrator/upstream-inputs.js'
 import { run } from './helpers/orchestrator.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+const silentLog = {
+  runStart: () => undefined,
+  taskStart: () => undefined,
+  taskStdout: () => undefined,
+  taskStderr: () => undefined,
+  taskComplete: () => undefined,
+  runStatus: () => undefined,
+  runEnd: () => undefined,
+  status: () => undefined,
+}
 
 describe('createSaveLane', () => {
   it('runs up to `cap` saves at once and queues the rest in order', async () => {
@@ -122,17 +133,7 @@ describe('the save lane in a run', () => {
             } } }`,
         })
       }
-      const silent = {
-        runStart: () => undefined,
-        taskStart: () => undefined,
-        taskStdout: () => undefined,
-        taskStderr: () => undefined,
-        taskComplete: () => undefined,
-        runStatus: () => undefined,
-        runEnd: () => undefined,
-        status: () => undefined,
-      }
-      const first = await run({ cwd: root, tasks: ['build'], concurrency: 1, log: silent })
+      const first = await run({ cwd: root, tasks: ['build'], concurrency: 1, log: silentLog })
       expect(first.ok).toBe(true)
       expect(first.outcomes.filter((o) => o.status === 'success').length).toBe(4)
       const events = (await Bun.file(orderLog).text()).trim().split('\n')
@@ -146,7 +147,7 @@ describe('the save lane in a run', () => {
         else if (e.startsWith('exec-') && inFlight > 0) overlapped = true
       }
       expect(overlapped).toBe(true)
-      const second = await run({ cwd: root, tasks: ['build'], concurrency: 1, log: silent })
+      const second = await run({ cwd: root, tasks: ['build'], concurrency: 1, log: silentLog })
       expect(second.outcomes.map((o) => o.status)).toEqual([
         'cache-hit',
         'cache-hit',
@@ -155,6 +156,67 @@ describe('the save lane in a run', () => {
       ])
     } finally {
       afterSave()
+      await rm(root, { recursive: true, force: true })
+    }
+  }, 30_000)
+
+  it('a miss re-checks its inputs off the execution slot, and the entries still land', async () => {
+    // The re-checks a save makes (its inputs, its dependencies') ran in the
+    // slot: every miss held its slot ~0.4 ms past its command, 9,603 times on
+    // the site's cold run, where Vite Task won on Intel runners (2026-11-22).
+    // One slot, four independent tasks, a re-check that sleeps: the next
+    // execution starts while one is in flight. Then the second run hits.
+    const root = await makeWorkspace({ prefix: 'vx-recheck-lane-' })
+    const orderLog = path.join(root, 'order.log')
+    const moved = KeyedTasks.prototype.moved
+    const slow = spyOn(KeyedTasks.prototype, 'moved').mockImplementation(async function (
+      this: KeyedTasks,
+      args,
+    ) {
+      appendFileSync(orderLog, 'check-start\n')
+      await Bun.sleep(200)
+      const out = await moved.call(this, args)
+      appendFileSync(orderLog, 'check-end\n')
+      return out
+    })
+    try {
+      await Bun.write(path.join(root, '.vx/workspace.mjs'), localWorkspaceSource([]))
+      for (const name of ['a', 'b', 'c', 'd']) {
+        await addProject(root, name, {
+          files: { 'src/in.txt': name },
+          config: `export default { tasks: { build: {
+              exec: { command: 'echo exec-${name} >> ${orderLog} && cat src/in.txt > out.txt' },
+              inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] }, cache: true,
+            } } }`,
+        })
+      }
+      const first = await run({ cwd: root, tasks: ['build'], concurrency: 1, log: silentLog })
+      expect(first.outcomes.map((o) => [o.status, o.cache?.saved])).toEqual([
+        ['success', true],
+        ['success', true],
+        ['success', true],
+        ['success', true],
+      ])
+      const events = (await Bun.file(orderLog).text()).trim().split('\n')
+      expect(events.filter((e) => e === 'check-end').length).toBe(4)
+      let inFlight = 0
+      let overlapped = false
+      for (const e of events) {
+        if (e === 'check-start') inFlight++
+        else if (e === 'check-end') inFlight--
+        else if (e.startsWith('exec-') && inFlight > 0) overlapped = true
+      }
+      expect(overlapped).toBe(true)
+      slow.mockRestore()
+      const second = await run({ cwd: root, tasks: ['build'], concurrency: 1, log: silentLog })
+      expect(second.outcomes.map((o) => o.status)).toEqual([
+        'cache-hit',
+        'cache-hit',
+        'cache-hit',
+        'cache-hit',
+      ])
+    } finally {
+      slow.mockRestore()
       await rm(root, { recursive: true, force: true })
     }
   }, 30_000)
