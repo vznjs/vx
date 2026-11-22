@@ -35,7 +35,8 @@ import {
 } from './kill-tree.js'
 import { type TreeUsage, watchTree } from './proc-sample.js'
 import { TaskPipes } from './pipes.js'
-import { spawnOff } from './spawn-off.js'
+import { measureHelper } from './measure-helper.js'
+import { type OffChild, spawnOff } from './spawn-off.js'
 import { runOnSpare, spareScript, takeSpare } from './warm-shell.js'
 
 /** `sh` names itself in its errors. */
@@ -1267,6 +1268,10 @@ export async function runCommand(opts: RunOptions): Promise<RunResult> {
   const fullCommand = withForwardArgs(opts.command, opts.forwardArgs)
 
   let proc: Child
+  // Linux: `vx-measure` forks the shell, so its peak is its own
+  // (docs/design/peak-memory-exact-2026-11.md). Resolved before the spares
+  // start, which take it without waiting.
+  const measure = process.platform === 'linux' ? await measureHelper() : undefined
   // A spare shell takes the task when there is one (warm-shell.ts).
   const script =
     opts.terminal === true ? undefined : spareScript(opts.cwd, opts.env, execWrap(fullCommand))
@@ -1302,6 +1307,7 @@ export async function runCommand(opts: RunOptions): Promise<RunResult> {
                 cmd: argv(guard),
                 ...spawnOpts,
                 stdio: [...fds, ...(guard === undefined ? [] : [guard])],
+                measure,
               }),
             )) as unknown as Child)
           : spawnGuarded((guard) =>
@@ -1330,8 +1336,7 @@ export async function runCommand(opts: RunOptions): Promise<RunResult> {
   // live set without it, and the run waited out the command.
   if (opts.signal?.aborted === true) void stopLate(proc, stopSignal(opts.signal.reason))
   opts.onSpawn?.(proc.pid)
-  // Linux: the wait's peak includes vx's own, inherited at exec
-  // (`rssFloorFor`); the tree sampled while running has the task's own.
+  // Linux: the tree sampled while running has the task's own live sum.
   const watch = process.platform === 'linux' ? watchTree(proc.pid) : undefined
   const timeout = armTimeout(proc, opts.timeoutMs)
   const ac = new AbortController()
@@ -1401,12 +1406,20 @@ export async function runCommand(opts: RunOptions): Promise<RunResult> {
   }
 }
 
-/** The CPU and peak a task used: the wait's, and the peak the looks saw when the wait's is vx's own. */
+/**
+ * The CPU and peak a task used: the wait's, and the peak the looks saw. A
+ * shell `vx-measure` forked has its own peak in its wait; otherwise one at
+ * vx's own mark, inherited at exec, is dropped (`rssFloorFor`).
+ */
 function usageOf(
   proc: Child,
   looked: TreeUsage | undefined,
 ): { cpuMs?: number; peakRssBytes?: number } {
-  const usage = resourceUsageToCpuRss(proc.resourceUsage(), rssFloorFor)
+  const exact = (proc as unknown as Partial<OffChild>).measuredPeak?.()
+  const usage =
+    exact === undefined || exact <= 0
+      ? resourceUsageToCpuRss(proc.resourceUsage(), rssFloorFor)
+      : { ...resourceUsageToCpuRss(proc.resourceUsage(), Infinity), peakRssBytes: exact }
   if (looked === undefined || looked.rssBytes <= 0) return usage
   return { ...usage, peakRssBytes: Math.max(usage.peakRssBytes ?? 0, looked.rssBytes) }
 }

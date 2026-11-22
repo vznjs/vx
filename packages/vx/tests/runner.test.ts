@@ -40,6 +40,17 @@ import { TaskPipes } from '../src/exec/pipes.js'
  */
 const START_WINDOW_MS = 1_000
 
+/**
+ * A shell's peak, far under this process's mark: its own on Linux (it runs
+ * as a fork of `vx-measure`), none elsewhere, where a peak at the parent's
+ * mark is the parent's.
+ */
+function lightPeak(peak: number | undefined): void {
+  if (process.platform !== 'linux') return expect(peak).toBeUndefined()
+  expect(peak).toBeGreaterThan(0)
+  expect(peak!).toBeLessThan(Math.min(ownRssHighWater(), 32 * 1024 * 1024))
+}
+
 describe('runCommand', () => {
   let cwd: string
 
@@ -374,10 +385,12 @@ describe('runCommand', () => {
     expect([result.exitCode, lines, tail.endsWith('\n200000\n')]).toEqual([0, 200_000, true])
   })
 
-  it('reports cpuMs from rusage; a task lighter than this process has no peak on record', async () => {
+  it('reports cpuMs from rusage; a task lighter than this process has its own peak on record', async () => {
     // Burn a tiny bit of CPU so cpuMs is observably > 0. The shell loop
-    // peaks at ~2 MB, under this process's own mark, and Linux hands the
-    // parent's mark back as the child's — so the honest peak is unknown.
+    // peaks at ~2 MB, under this process's own mark. Linux hands the
+    // parent's mark back as a vforked child's, so the shell runs as a fork
+    // of `vx-measure`, whose wait reads its own; elsewhere the peak at the
+    // parent's mark is unknown.
     const result = await runCommand({
       command: 'i=0; while [ $i -lt 5000 ]; do i=$((i+1)); done; echo done',
       cwd,
@@ -386,7 +399,7 @@ describe('runCommand', () => {
     expect(result.exitCode).toBe(0)
     expect(result.cpuMs).toBeDefined()
     expect(result.cpuMs!).toBeGreaterThanOrEqual(0)
-    expect(result.peakRssBytes).toBeUndefined()
+    lightPeak(result.peakRssBytes)
   })
 
   // The wait's peak of a task lighter than vx is vx's own, so it was left
@@ -414,7 +427,7 @@ describe('runCommand', () => {
     })
     expect(result.exitCode).toBe(7)
     expect(result.cpuMs).toBeDefined()
-    expect(result.peakRssBytes).toBeUndefined()
+    lightPeak(result.peakRssBytes)
   })
 
   it('reports 128+signo for a SIGKILL-killed child (137)', async () => {
@@ -1500,7 +1513,7 @@ describe('resourceUsageToCpuRss — peak RSS is bytes', () => {
         const light = await runCommand({ command: 'true', cwd, env })
         expect(light.exitCode).toBe(0)
         expect(light.cpuMs).toBeDefined()
-        expect(light.peakRssBytes).toBeUndefined()
+        lightPeak(light.peakRssBytes)
         // Sized from the floor, as the row above is: the shard's files
         // before this one set it, and a fixed 600 MB read as no peak on a
         // macOS shard (M-2).
