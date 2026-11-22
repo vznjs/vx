@@ -132,29 +132,25 @@ describe('runGraph', () => {
 
   // turborepo#2887: after failures the limit was lost and every remaining
   // task started at once.
-  it('failing tasks keep the concurrency cap, under deps-ok and always alike', async () => {
-    for (const continueMode of ['deps-ok', 'always'] as const) {
-      let active = 0
-      let peak = 0
-      const ids = ['a', 'b', 'c', 'd', 'e', 'f'].map((s) => `${s}#run`)
-      const out = await runGraph({
-        nodes: nodes(...ids.map((id) => node(id))),
-        concurrency: 2,
-        continueMode,
-        execute: async (n) => {
-          active++
-          peak = Math.max(peak, active)
-          await new Promise((r) => setTimeout(r, 20))
-          active--
-          return failed(n)
-        },
-      })
-      expect({ continueMode, statuses: [...out.values()].map((o) => o.status), peak }).toEqual({
-        continueMode,
-        statuses: ids.map(() => 'failed'),
-        peak: 2,
-      })
-    }
+  it('failing tasks keep the concurrency cap', async () => {
+    let active = 0
+    let peak = 0
+    const ids = ['a', 'b', 'c', 'd', 'e', 'f'].map((s) => `${s}#run`)
+    const out = await runGraph({
+      nodes: nodes(...ids.map((id) => node(id))),
+      concurrency: 2,
+      execute: async (n) => {
+        active++
+        peak = Math.max(peak, active)
+        await new Promise((r) => setTimeout(r, 20))
+        active--
+        return failed(n)
+      },
+    })
+    expect({ statuses: [...out.values()].map((o) => o.status), peak }).toEqual({
+      statuses: ids.map(() => 'failed'),
+      peak: 2,
+    })
   })
 
   // turborepo#12251: a run deadlocked on a 96-core machine. The worker count
@@ -1115,20 +1111,6 @@ describe('runGraph restore-tier (local short-circuit)', () => {
     expect(out.get('p#deploy')?.status).toBe('skipped')
     expect(out.get('p#deploy')?.blockedBy).toBe('q#check')
     expect(ran).not.toContain('p#deploy')
-    // Control: under --continue=always the dependent runs.
-    const always = await runGraph({
-      nodes: nodes(node('q#check'), node('p#build', ['q#check']), node('p#deploy', ['p#build'])),
-      concurrency: 4,
-      continueMode: 'always',
-      restoreTier: new Set(['p#build']),
-      execute: async (n) =>
-        n.id === 'q#check'
-          ? { node: n, status: 'failed', exitCode: 1, durationMs: 0 }
-          : n.id === 'p#build'
-            ? hit(n)
-            : success(n),
-    })
-    expect(always.get('p#deploy')?.status).toBe('success')
   })
 
   it('exec-tier (misses) own the pool; restores backfill only idle slots', async () => {
@@ -1552,7 +1534,7 @@ describe('runGraph restore-tier (local short-circuit)', () => {
         nodes: new Map([...graph(), ['x#fail', node('x#fail')]]),
         concurrency: 4,
         restoreTier: tier,
-        continueMode: 'never',
+        failFast: true,
         execute: async (n) => {
           if (n.id === 'x#fail') return failed(n)
           if (n.id === 'db#migrate') await new Promise((r) => setTimeout(r, 20))
@@ -1869,8 +1851,8 @@ describe('runGraph — priorities override', () => {
   })
 })
 
-describe('runGraph — continueMode', () => {
-  it('deps-ok (default): a failure skips dependents, siblings run — unchanged pin', async () => {
+describe('runGraph — failFast', () => {
+  it('off (default): a failure skips dependents, siblings run', async () => {
     const a = node('p#a')
     const b = node('p#b', ['p#a'])
     const c = node('p#c')
@@ -1884,61 +1866,40 @@ describe('runGraph — continueMode', () => {
     expect(out.get('p#c')!.status).toBe('success')
   })
 
-  it('never: the first failure stops dispatch — queued tasks skip, in-flight finishes', async () => {
+  it('on: the first failure stops dispatch and calls onFailFast once', async () => {
     // concurrency 1 forces strict ordering: a (fails) → everything else
     // dequeues after the trip and must skip, including the dep-free c.
     const a = node('p#a')
     const b = node('p#b', ['p#a'])
     const c = node('p#c')
+    const d = node('p#d')
     const started: string[] = []
+    let tripped = 0
     const out = await runGraph({
-      nodes: nodes(a, b, c),
+      nodes: nodes(a, b, c, d),
       concurrency: 1,
-      continueMode: 'never',
+      failFast: true,
+      onFailFast: () => tripped++,
       onStart: (n) => started.push(n.id),
-      execute: async (n) => (n.id === 'p#a' ? failed(n) : success(n)),
+      execute: async (n) => (n.id === 'p#a' || n.id === 'p#c' ? failed(n) : success(n)),
     })
     expect(out.get('p#a')!.status).toBe('failed')
     expect(out.get('p#b')!.status).toBe('skipped')
     expect(out.get('p#c')!.status).toBe('skipped')
+    expect(out.get('p#d')!.status).toBe('skipped')
     expect(started).toEqual(['p#a'])
+    expect(tripped).toBe(1)
   })
 
-  it('always: dependents run even when an upstream failed', async () => {
-    const a = node('p#a')
-    const b = node('p#b', ['p#a'])
-    const seenUpstream: TaskOutcome[][] = []
-    const out = await runGraph({
-      nodes: nodes(a, b),
+  it('off: onFailFast is never called', async () => {
+    let tripped = 0
+    await runGraph({
+      nodes: nodes(node('p#a'), node('p#b')),
       concurrency: 2,
-      continueMode: 'always',
-      execute: async (n, upstream) => {
-        if (n.id === 'p#b') seenUpstream.push(upstream)
-        return n.id === 'p#a' ? failed(n) : success(n)
-      },
+      onFailFast: () => tripped++,
+      execute: async (n) => failed(n),
     })
-    expect(out.get('p#a')!.status).toBe('failed')
-    // b executed (not skipped) and saw the failed upstream outcome —
-    // its key includes the upstream's INPUT hash, which failed outcomes
-    // carry (computed before exec), so caching stays sound.
-    expect(out.get('p#b')!.status).toBe('success')
-    expect(seenUpstream[0]![0]!.status).toBe('failed')
-    expect(seenUpstream[0]![0]!.hash).toBe('h-p#a')
-  })
-
-  it('always: an aborted upstream still lets dependents run — documented, unchanged', async () => {
-    // `always` opts out of dep-status propagation entirely, aborted
-    // included. Same provenance argument as the failed case above.
-    const a = node('p#a')
-    const b = node('p#b', ['p#a'])
-    const out = await runGraph({
-      nodes: nodes(a, b),
-      concurrency: 2,
-      continueMode: 'always',
-      execute: async (n) => (n.id === 'p#a' ? aborted(n) : success(n)),
-    })
-    expect(out.get('p#a')!.status).toBe('aborted')
-    expect(out.get('p#b')!.status).toBe('success')
+    expect(tripped).toBe(0)
   })
 })
 

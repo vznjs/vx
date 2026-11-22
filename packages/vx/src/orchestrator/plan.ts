@@ -305,7 +305,7 @@ export async function plan(args: PlanArgs): Promise<RunPlan> {
 /**
  * What the run skips here, as its scheduler does: a task its `exec.platforms`
  * leave this machine out of, and every task that depends on one, named by
- * the root of the block. In every `--continue` mode: a skip is no failure.
+ * the root of the block. With or without `--fail-fast`: a skip is no failure.
  */
 function platformSkips(
   nodes: ReadonlyMap<string, TaskNode>,

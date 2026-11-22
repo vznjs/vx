@@ -3,7 +3,6 @@
 // import of index.ts — the module entry must stay cycle-free.
 
 import type { CacheFlags, CachePolicy, RemoteCacheLayer } from '../cache/index.js'
-import type { ContinueMode } from '../graph/index.js'
 import type { TaskOutcome } from '../graph/index.js'
 import type { AffectedReason } from './affected-tasks.js'
 import type { EventBus, Logger } from '../report/index.js'
@@ -95,13 +94,11 @@ export interface RunOptions {
    */
   timeout?: number
   /**
-   * 'never' stops dispatch on the first failure (in-flight tasks finish,
-   * queued ones skip), 'deps-ok' (default) skips only a failure's
-   * dependents, 'always' runs them anyway, sound under pure-input hashing (a
-   * failed outcome carries the upstream's input key). Bare `--continue` =
-   * 'always'.
+   * `--fail-fast`: the first failure kills the tasks still running (they end
+   * `aborted`) and skips the rest. Unset, `VX_RUN_FAIL_FAST`, then the
+   * workspace's; off, a failure skips only its dependents.
    */
-  continueMode?: ContinueMode
+  failFast?: boolean
   /** `--branch`; unset, `VX_RUN_BRANCH`, then git's, then the CI provider's. */
   branch?: string
   /** `run.schedule` from its flag; unset, `VX_RUN_SCHEDULE`, then the workspace's. */

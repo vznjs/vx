@@ -730,79 +730,6 @@ describe('cacheKeyDiff', () => {
       )
     })
   })
-  // A run past a failed dependency (--continue) passes and saves nothing:
-  // its successor blamed a prune and named no input, though the last saved
-  // entry still says what moved.
-  it('diffs against the last run that saved an entry when the previous one ran beside a failure', () => {
-    withCache((cache) => {
-      const run = (hash: string, runId: string, startedAt: number, failedCount = 0) =>
-        runHistory(cache).recordRunBundle({
-          runs: [mkRun({ hash, project: 'pkg', task: 'test', runId, startedAt })],
-          invocation: mkInvocation({
-            runId,
-            startedAt,
-            cachePolicy: 'local:rw,remote:',
-            failedCount,
-          }),
-        })
-      run('hA', 'r-1', 1000)
-      run('hB', 'r-2', 2000, 1)
-      run('hC', 'r-3', 3000)
-      seedEntryInputs(cache, 'hA', [{ kind: 'file', name: 'a.ts', hash: 'x' }])
-      seedEntryInputs(cache, 'hC', [{ kind: 'file', name: 'a.ts', hash: 'z' }])
-      const diff = cacheKeyDiff(indexDb(cache), 'r-3', 'pkg#test')
-      expect([diff.previousRunId, diff.entries.map((e) => e.name), diff.note]).toEqual([
-        'r-1',
-        ['a.ts'],
-        '1 cache-key component(s) changed since run r-1, the last that saved an entry (the previous run ran beside a failed task, so it was not saved)',
-      ])
-    })
-    // With no saved run before it, the cause is still named, not a prune.
-    withCache((cache) => {
-      for (const [hash, runId, startedAt, failedCount] of [
-        ['hB', 'r-2', 2000, 1],
-        ['hC', 'r-3', 3000, 0],
-      ] as const) {
-        runHistory(cache).recordRunBundle({
-          runs: [mkRun({ hash, project: 'pkg', task: 'test', runId, startedAt })],
-          invocation: mkInvocation({
-            runId,
-            startedAt,
-            cachePolicy: 'local:rw,remote:',
-            failedCount,
-          }),
-        })
-      }
-      seedEntryInputs(cache, 'hC', [{ kind: 'file', name: 'a.ts', hash: 'z' }])
-      expect(cacheKeyDiff(indexDb(cache), 'r-3', 'pkg#test').note).toBe(
-        'cache key changed but input fingerprints are unavailable — the previous run ran beside a failed task and saved no entry; only the key change is known',
-      )
-    })
-  })
-  // This run passed past a failed dependency (--continue) and saved nothing:
-  // the note blamed a prune for it.
-  it('names this run beside a failure, not a prune, when it saved no entry', () => {
-    withCache((cache) => {
-      for (const [hash, runId, startedAt, failedCount] of [
-        ['hA', 'r-1', 1000, 0],
-        ['hB', 'r-2', 2000, 1],
-      ] as const) {
-        runHistory(cache).recordRunBundle({
-          runs: [mkRun({ hash, project: 'pkg', task: 'test', runId, startedAt })],
-          invocation: mkInvocation({
-            runId,
-            startedAt,
-            cachePolicy: 'local:rw,remote:',
-            failedCount,
-          }),
-        })
-      }
-      seedEntryInputs(cache, 'hA', [{ kind: 'file', name: 'a.ts', hash: 'x' }])
-      expect(cacheKeyDiff(indexDb(cache), 'r-2', 'pkg#test').note).toBe(
-        'cache key changed but input fingerprints are unavailable — this run ran beside a failed task (--continue) and saved no entry; only the key change is known',
-      )
-    })
-  })
   // `--no-cache` / `--cache-policy=local:r` passes and saves nothing: the
   // note blamed a prune for it.
   it('names a run that did not write the cache, not a prune', () => {
@@ -1295,21 +1222,9 @@ describe('whyDidThisRerunQuery', () => {
     )
     // CONTROL: a previous run that was a hit saved nothing of its own.
     expect(verdict({ prevHit: true })).toBe(unknown)
-    // Both runs executed beside a failure and neither saved: the
-    // continue-taint, which blamed a flag nobody passed (J-74's lead).
-    expect(verdict({ failed: [1, 2] })).toBe(
-      'cache key unchanged — neither run saved it: each ran beside a failed task (2 failed in this one), and a task run past a failed dependency (--continue) is never cached',
-    )
-    // Only the previous run ran beside a failure, and this clean one saved
-    // the key: that blamed a prune, and no entry was ever pruned.
-    const prevTainted =
-      'cache key unchanged — the previous run on this key ran beside a failed task (1 failed in it) and was not saved: a task run past a failed dependency (--continue) is never cached, so there was nothing to hit'
-    expect([verdict({ failed: [1, 0], entryAt: 2500 }), verdict({ failed: [1, 0] })]).toEqual([
-      prevTainted,
-      prevTainted,
-    ])
-    // CONTROLS: one run without a failure, or an entry for the key, is not it.
-    expect([verdict({ failed: [0, 2] }), verdict({ failed: [1, 2], entryAt: 500 })]).toEqual([
+    // A task beside a failure saves (no run goes past a failed dependency),
+    // so a failure in either run explains no miss.
+    expect([verdict({ failed: [1, 2] }), verdict({ failed: [1, 2], entryAt: 500 })]).toEqual([
       unsaved,
       unknown,
     ])

@@ -1,6 +1,6 @@
 // The scheduler's invariants over seeded random graphs: restore tier,
 // demoted restores, groups, pools, an admission policy, failures, a stop,
-// all three `--continue` modes. Each run is checked against what the
+// with and without `failFast`. Each run is checked against what the
 // module promises (scheduler.md), not against a recorded order, so a
 // change that keeps them keeps this green. Seeded: a failure reproduces.
 // The taint tracker is checked against its definition the same way (C-70).
@@ -71,8 +71,8 @@ const yieldTurns = (k: number) =>
   )
 
 describe('the scheduler over random graphs', () => {
-  for (const mode of ['never', 'deps-ok', 'always'] as const) {
-    it(`keeps its promises under --continue=${mode}`, async () => {
+  for (const mode of ['fail-fast', 'default'] as const) {
+    it(`keeps its promises (${mode})`, async () => {
       const rnd = rng(mode.length * 7919)
       const broken: string[] = []
       for (let iter = 0; iter < 150; iter++) {
@@ -95,7 +95,7 @@ describe('the scheduler over random graphs', () => {
         const out = await runGraph({
           nodes: sc.nodes,
           concurrency: conc,
-          continueMode: mode,
+          failFast: mode === 'fail-fast',
           restoreTier: sc.restore,
           signal: ac.signal,
           ...(usePool
@@ -155,7 +155,7 @@ describe('the scheduler over random graphs', () => {
               if (!(finished.get(a)! < at)) bad(`${id} started before ${a} finished`)
             }
           }
-          if (stoppedAt === Infinity && mode === 'deps-ok' && !restoring && at !== undefined) {
+          if (stoppedAt === Infinity && mode === 'default' && !restoring && at !== undefined) {
             for (const a of ancestors(sc.nodes, id)) {
               const s = out.get(a)!.status
               if (s === 'failed' || s === 'skipped') bad(`${id} ran over ${a} ${s}`)
@@ -166,7 +166,7 @@ describe('the scheduler over random graphs', () => {
               const root = out.get(o.blockedBy)
               if (!ancestors(sc.nodes, id).has(o.blockedBy) || root?.status !== 'failed')
                 bad(`${id} blocked by ${o.blockedBy}`)
-            } else if (mode !== 'never') bad(`${id} skipped by nothing`)
+            } else if (mode !== 'fail-fast') bad(`${id} skipped by nothing`)
           }
         }
       }
@@ -182,12 +182,11 @@ describe('the taint tracker over random graphs', () => {
     for (let iter = 0; iter < 300; iter++) {
       const sc = scenario(rnd)
       const seeds = new Set([...sc.nodes.keys()].filter(() => rnd() < 0.05))
-      const tracker = taintTracker(true, seeds, sc.nodes)
+      const tracker = taintTracker(seeds, sc.nodes)
       const judged = new Map<string, boolean>()
       const out = await runGraph({
         nodes: sc.nodes,
         concurrency: 1 + Math.floor(rnd() * 3),
-        continueMode: 'always',
         restoreTier: sc.restore,
         onFinish: (o) => tracker.settled(o),
         execute: async (node, upstream) => {
@@ -198,17 +197,15 @@ describe('the taint tracker over random graphs', () => {
           return { node, status, exitCode: 0, durationMs: 0 } as TaskOutcome
         },
       })
-      // Tainted: a seed, or a dep that did not succeed, or a tainted dep.
+      // Tainted: a seed, or a settled dep that is tainted. A failure skips
+      // its dependants, so it taints nothing that runs.
       const memo = new Map<string, boolean>()
       const tainted = (id: string): boolean => {
         const known = memo.get(id)
         if (known !== undefined) return known
         const t =
           seeds.has(id) ||
-          sc.nodes.get(id)!.deps.some((d) => {
-            const s = out.get(d)!.status
-            return s === 'failed' || s === 'skipped' || s === 'aborted' || tainted(d)
-          })
+          sc.nodes.get(id)!.deps.some((d) => out.get(d) !== undefined && tainted(d))
         memo.set(id, t)
         return t
       }

@@ -119,21 +119,19 @@ describe('a flaky record on the history server', () => {
     expect((uploads.at(-1)?.outcomes ?? []).map((o) => o.outcome)).toEqual(['fail'])
   }, 30_000)
 
-  // A pass behind a failed dependency built on bytes its key never named:
-  // sent as a pass, a later healthy failure on the key read as a flake, and
-  // every fresh machine retried a real failure for thirty days.
-  it('sends nothing for a task that ran behind a failure, nor one with cache: false', async () => {
+  // A task skipped behind a failed dependency observed nothing of its key,
+  // and a task with no cache has no key to name.
+  it('sends nothing for a task skipped behind a failure, nor one with cache: false', async () => {
     flaky = false
     const before = uploads.length
     const r = await run({
       cwd: root,
       tasks: ['behind', 'uncached'],
-      continueMode: 'always',
       cacheFlags: { force: true },
       handleSignals: false,
     })
     const statuses = r.outcomes.map((o) => `${o.node.taskName} ${o.status}`).sort()
-    expect(statuses).toEqual(['behind success', 'broken failed', 'uncached failed'])
+    expect(statuses).toEqual(['behind skipped', 'broken failed', 'uncached failed'])
     expect(uploads.slice(before).flatMap((u) => u.outcomes ?? [])).toEqual([])
   }, 30_000)
 })

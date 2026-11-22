@@ -319,7 +319,7 @@ describe('defineWorkspace', () => {
         schedule: 'critical-path',
         timeout: '10m',
         retries: 1,
-        continue: 'deps-ok',
+        failFast: false,
         rules: { exclusiveOutputs: false },
       },
       cache: {

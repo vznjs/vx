@@ -1094,8 +1094,8 @@ goes back to the scheduler and runs once its deps are done. Until X-124
 that hit restored the old install's bytes.
 
 A miss that ran here and saves **nothing** — it failed, the cache
-policy writes nothing (`--cache-policy=local:r,remote:r`), an upstream failed
-under `--continue` — runs the same input re-check and, when an input
+policy writes nothing (`--cache-policy=local:r,remote:r`), it built on a
+dependency `--exclude-dependencies` left out — runs the same input re-check and, when an input
 moved, forgets the project as above; otherwise its declared outputs are
 resolved and marked in the git snapshot exactly as a save marks them.
 Before item 750 only a save marked them, so a same-run reader keyed

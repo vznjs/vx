@@ -5,6 +5,8 @@ import { handOff, localVx, upgradesOnlyItself, vxPath } from './handoff.js'
 import { takeSignalRelay } from './util/signal-relay.js'
 
 let settled = false
+/** A rejection nothing awaited was reported: the run fails whatever code its verb returns. */
+let rejected = false
 
 async function main(): Promise<void> {
   const argv = process.argv.slice(2)
@@ -16,6 +18,7 @@ async function main(): Promise<void> {
   // after an import: one reported in the turn the exit ends the streams
   // landed after stderr had ended and was dropped (exit 1, no word of why).
   process.on('unhandledRejection', (reason) => {
+    rejected = true
     process.exitCode = 1
     const ui = require('./ui/index.js') as typeof import('./ui/index.js')
     const { maskedLine } = require('./util/index.js') as typeof import('./util/index.js')
@@ -68,8 +71,10 @@ async function main(): Promise<void> {
     // Not `process.exit` here: Bun drops what a pipe has not yet taken when it
     // follows a large write (300 KB written, 64 KiB delivered; `vx history
     // --format json` was cut mid-string). The code is set, and
-    // `exitOnceFlushed` exits after both streams have ended.
-    process.exitCode = code
+    // `exitOnceFlushed` exits after both streams have ended. A rejection
+    // reported while the verb ran (a config's, in `vx lock`) still fails it:
+    // the verb's 0 overwrote the handler's 1.
+    process.exitCode = rejected && code === 0 ? 1 : code
   } catch (err) {
     const ui = await import('./ui/index.js')
     const { refusalNotice } = ui

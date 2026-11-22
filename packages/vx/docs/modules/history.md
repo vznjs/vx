@@ -418,11 +418,7 @@ case it is.
   why, from what the index holds: the previous run on the key failed
   (saving nothing), the invocation's `cache_policy` read no cache, or
   the key's entry was created by this run (none was there when it ran),
-  or the previous run was not saved because it ran beside a failed task
-  (a task run past a failed dependency under `--continue` is never
-  cached; ahead of the prune verdict, and "neither run saved it" when
-  this run ran beside one too and saved nothing either), or
-  the previous run executed and succeeded and no entry holds the key (its
+  or the previous run executed and succeeded and no entry holds the key (its
   save failed or was pruned: no row records a failed save, only this
   trace; a previous policy that wrote nothing is named instead, ahead of
   the prune verdict, and so
@@ -436,8 +432,7 @@ case it is.
   hashes and full-outer-joins the two `entry_inputs` fingerprint sets
   over `(kind, name)` — `changed` / `added` / `removed`, unchanged ones
   counted — with no config re-evaluation and no re-hash. A side with no
-  fingerprints is named for why: a run that failed, wrote no cache, or
-  passed beside a failed task (`--continue`),
+  fingerprints is named for why: a run that failed or wrote no cache,
   an entry a remote hit restored (a `cache-hit-remote` row of that key:
   the artifact carries none), and only then a prune. Values are
   digests, never the material (an env value can be a secret), and a

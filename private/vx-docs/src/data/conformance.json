@@ -17,6 +17,7 @@
         "key-not-derived",
         "lock-edges",
         "may-hold-match",
+        "prepared-key",
         "project-stage-lock",
         "raw-output-bytes",
         "restore-mtime",
@@ -724,7 +725,6 @@
       "internal": [
         "admit-warning-prefix",
         "alive-helper.unsafe",
-        "always-dead-server-taint",
         "archive-extract-meta",
         "archive-security",
         "artifact-checksum",
@@ -788,6 +788,7 @@
         "execute-task",
         "exit-codes-complete",
         "exit-held-loop",
+        "failure-cache-properties",
         "file-url-paths",
         "fixture-helpers",
         "fold-memo",
@@ -961,7 +962,6 @@
         "symlinks-in-repo.unsafe",
         "syscall-repeats.unsafe",
         "taint-properties",
-        "taint-tracker",
         "tar-numeric-fields",
         "tar-roundtrip-fuzz",
         "tar-stream",
@@ -1130,14 +1130,14 @@
   "scores": {
     "vx": {
       "all": {
-        "pass": 1022,
-        "can": 1022,
-        "of": 1032
+        "pass": 1021,
+        "can": 1021,
+        "of": 1033
       },
       "correctness": {
-        "pass": 843,
-        "can": 843,
-        "of": 853
+        "pass": 842,
+        "can": 842,
+        "of": 854
       },
       "efficiency": {
         "pass": 170,
@@ -1160,9 +1160,9 @@
         "of": 8
       },
       "failure": {
-        "pass": 76,
-        "can": 76,
-        "of": 78
+        "pass": 75,
+        "can": 75,
+        "of": 79
       },
       "affected": {
         "pass": 99,
@@ -1207,14 +1207,14 @@
     },
     "turbo": {
       "all": {
-        "pass": 644,
-        "can": 934,
-        "of": 1032
+        "pass": 645,
+        "can": 935,
+        "of": 1033
       },
       "correctness": {
-        "pass": 520,
-        "can": 761,
-        "of": 853
+        "pass": 521,
+        "can": 762,
+        "of": 854
       },
       "efficiency": {
         "pass": 120,
@@ -1237,9 +1237,9 @@
         "of": 8
       },
       "failure": {
-        "pass": 24,
-        "can": 48,
-        "of": 78
+        "pass": 25,
+        "can": 49,
+        "of": 79
       },
       "affected": {
         "pass": 67,
@@ -1285,13 +1285,13 @@
     "nx": {
       "all": {
         "pass": 659,
-        "can": 961,
-        "of": 1032
+        "can": 962,
+        "of": 1033
       },
       "correctness": {
         "pass": 498,
-        "can": 784,
-        "of": 853
+        "can": 785,
+        "of": 854
       },
       "efficiency": {
         "pass": 157,
@@ -1315,8 +1315,8 @@
       },
       "failure": {
         "pass": 37,
-        "can": 56,
-        "of": 78
+        "can": 57,
+        "of": 79
       },
       "affected": {
         "pass": 57,
@@ -1362,13 +1362,13 @@
     "vite-task": {
       "all": {
         "pass": 509,
-        "can": 764,
-        "of": 1032
+        "can": 765,
+        "of": 1033
       },
       "correctness": {
         "pass": 419,
-        "can": 633,
-        "of": 853
+        "can": 634,
+        "of": 854
       },
       "efficiency": {
         "pass": 88,
@@ -1392,8 +1392,8 @@
       },
       "failure": {
         "pass": 28,
-        "can": 36,
-        "of": 78
+        "can": 37,
+        "of": 79
       },
       "affected": {
         "pass": 0,
@@ -1438,14 +1438,14 @@
     },
     "nix": {
       "all": {
-        "pass": 523,
-        "can": 688,
-        "of": 1032
+        "pass": 524,
+        "can": 689,
+        "of": 1033
       },
       "correctness": {
-        "pass": 437,
-        "can": 575,
-        "of": 853
+        "pass": 438,
+        "can": 576,
+        "of": 854
       },
       "efficiency": {
         "pass": 84,
@@ -1468,9 +1468,9 @@
         "of": 8
       },
       "failure": {
-        "pass": 28,
-        "can": 39,
-        "of": 78
+        "pass": 29,
+        "can": 40,
+        "of": 79
       },
       "affected": {
         "pass": 0,
@@ -1516,13 +1516,13 @@
     "moon": {
       "all": {
         "pass": 596,
-        "can": 917,
-        "of": 1032
+        "can": 918,
+        "of": 1033
       },
       "correctness": {
         "pass": 463,
-        "can": 753,
-        "of": 853
+        "can": 754,
+        "of": 854
       },
       "efficiency": {
         "pass": 128,
@@ -1546,8 +1546,8 @@
       },
       "failure": {
         "pass": 42,
-        "can": 61,
-        "of": 78
+        "can": 62,
+        "of": 79
       },
       "affected": {
         "pass": 69,
@@ -25531,7 +25531,7 @@
       "from": [
         "parity-turbo",
         "parity-nx",
-        "continue-taint"
+        "scheduler"
       ],
       "outcomes": {
         "vx": {
@@ -25713,6 +25713,44 @@
         },
         "moon": {
           "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "failure/fail-fast-stops-running-tasks",
+      "ref": "sew898",
+      "category": "failure",
+      "kind": "correctness",
+      "title": "Asked to fail fast, a run stops its running tasks at the first failure",
+      "why": "Failing fast means the first error ends the run now: the developer or the CI job learns of it at once instead of waiting for every other task already started. A run that lets those tasks finish costs the whole wait it was asked to skip, and a task cut short must leave no output behind as if it had finished.",
+      "from": [
+        "fail-fast",
+        "parity-nx"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 1,
+          "detail": "did not finish within 20 s"
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 1,
+          "detail": "left running: /bin/sh -c printf '+%s\\n' 'app#build' >> ../../.ran && (touch started && sleep 30 && echo done > out.txt) && printf -- '-%s\\n' 'app#build' >> ../../.ran; sleep 30"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "fail",
+          "step": 1,
+          "detail": "left running: bash -c printf '+%s\\n' 'app#build' >> ../../.ran && (touch started && sleep 30 && echo done > out.txt) && printf -- '-%s\\n' 'app#build' >> ../../.ran; sleep 30"
         }
       }
     },
@@ -32642,12 +32680,12 @@
       "title": "Asked to continue, a run goes on past a failed task and still fails",
       "why": "Asked to continue, the run should go on with every task the failure does not block, so the user sees every error at once. The run as a whole still failed, though. A green exit would let a pipeline merge or deploy with a broken task the log mentions only in passing.",
       "from": [
-        "continue-taint",
         "parity-turbo"
       ],
       "outcomes": {
         "vx": {
-          "status": "pass"
+          "status": "n/a",
+          "detail": "Nothing runs on a failed dependency: a failure skips its dependents, and `--fail-fast` stops the run."
         },
         "turbo": {
           "status": "pass"
@@ -32679,12 +32717,13 @@
       "title": "A task that ran past its dependency’s failure is not replayed once the dependency is fixed",
       "why": "When the run continued past a failed dependency, the task after it ran on whatever the failure left, which is not a valid build. Saving that result lets it replay after the dependency is fixed. The task must run again on the fixed dependency, or the stale output outlives the fix.",
       "from": [
-        "continue-taint",
-        "continue-cache-properties"
+        "parity-turbo",
+        "taint-tracker"
       ],
       "outcomes": {
         "vx": {
-          "status": "pass"
+          "status": "n/a",
+          "detail": "Nothing runs on a failed dependency: a failure skips its dependents, and `--fail-fast` stops the run."
         },
         "turbo": {
           "status": "pass"

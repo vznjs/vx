@@ -50,7 +50,7 @@ const ARGV: Readonly<Record<string, readonly string[]>> = {
   '--cache-concurrency-upload': ['8'],
   '--cache-concurrency-restore': ['8'],
   '--poll': [],
-  '--continue': [],
+  '--fail-fast': [],
   '--output-logs': ['full'],
   '--verbosity': ['1'],
   '--dry': [],

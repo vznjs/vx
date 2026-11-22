@@ -64,7 +64,7 @@ describe('a skipped task', () => {
 
   // CONTROL: nothing skipped, no skipped row.
   it('prints no skipped row when the run skipped nothing', () => {
-    const r = vx(root, ['run', 'build', '--all', '--continue=always'])
+    const r = vx(root, ['run', 'lib#build'])
     expect(r.code).toBe(1)
     expect(r.text).not.toContain('skipped ')
   })

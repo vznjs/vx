@@ -1685,9 +1685,9 @@ describe('parseRunArgs', () => {
       '--cache-download',
       '--cache-policy',
       '--concurrency',
-      '--continue',
       '--dry',
       '--exclude-dependencies',
+      '--fail-fast',
       '--filter',
       '--force',
       '--no-cache',
@@ -2355,39 +2355,21 @@ describe('vx cache clean command', () => {
   })
 })
 
-describe('--continue parsing', () => {
-  it('bare --continue means always; explicit values parse; junk rejects', () => {
-    expect(parseRunArgs(['build', '--continue']).continueMode).toBe('always')
-    expect(parseRunArgs(['build', '--continue=never']).continueMode).toBe('never')
-    expect(parseRunArgs(['build', '--continue=deps-ok']).continueMode).toBe('deps-ok')
-    expect(parseRunArgs(['build', '--continue=sometimes']).error).toContain('--continue must be')
-    expect(parseRunArgs(['build']).continueMode).toBeUndefined()
-  })
-
-  it('a mode written with a space is refused with the = form, not read as a task', () => {
-    // `--continue never` used to run with `never` as a second task name and
-    // fail with "No projects declare task(s): never".
-    expect(parseRunArgs(['build', '--continue', 'never']).error).toBe(
-      "--continue takes its mode with '=': --continue=never",
-    )
-    // A task name after a bare --continue is still a task name.
-    const ok = parseRunArgs(['build', '--continue', 'test'])
+describe('--fail-fast parsing', () => {
+  it('is a switch; unset it is absent', () => {
+    expect(parseRunArgs(['build', '--fail-fast']).failFast).toBe(true)
+    expect(parseRunArgs(['build']).failFast).toBeUndefined()
+    // A task name after it is still a task name.
+    const ok = parseRunArgs(['build', '--fail-fast', 'test'])
     expect(ok.error).toBeUndefined()
-    expect(ok.continueMode).toBe('always')
     expect(ok.tasks).toEqual(['build', 'test'])
   })
 
-  it('EVERY mode is refused in the space form, not just the first one', () => {
-    // The row above spells the refusal with `never`, so the lookahead's
-    // other two members ride on it: drop either from the list and
-    // `--continue deps-ok` goes back to being parsed as a bare --continue
-    // plus a task named `deps-ok`, which is the exact "No projects declare
-    // task(s)" dead end the refusal exists to replace. One argv per member.
-    for (const mode of ['never', 'deps-ok', 'always'] as const) {
-      expect(parseRunArgs(['build', '--continue', mode]).error).toBe(
-        `--continue takes its mode with '=': --continue=${mode}`,
-      )
-    }
+  it('--continue is gone: an unknown flag', () => {
+    expect(parseRunArgs(['build', '--continue']).error).toStartWith('unknown flag: --continue')
+    expect(parseRunArgs(['build', '--continue=never']).error).toStartWith(
+      'unknown flag: --continue',
+    )
   })
 })
 
@@ -2442,9 +2424,8 @@ describe('unknown-flag hints reach three edits', () => {
     // The distance was capped at 3, so "three or more" read as three: the
     // same-stem budget offered `--concurrency` for `--continue-on-error`
     // (nine edits) and `--cache-policy` for `--cache-directory`.
-    // `--continue-on-error` is `--continue` a word too long, which is the hint.
     expect(parseRunArgs(['build', '--continue-on-error']).error).toBe(
-      'unknown flag: --continue-on-error (did you mean --continue?)',
+      'unknown flag: --continue-on-error',
     )
     expect(parseRunArgs(['build', '--cache-directory', 'd']).error).toBe(
       'unknown flag: --cache-directory',

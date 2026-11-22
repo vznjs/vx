@@ -1,5 +1,5 @@
 // The façade's boundary for the words and shapes the CLI parses (C-86). A
-// `continueMode` typo ran as `deps-ok`, losing fail-fast without a word; a
+// string `failFast` would lose fail-fast without a word; a
 // string `excludeDependencies` dropped nothing; a `projects` string and a
 // `signal` that is no AbortSignal died a TypeError inside the run.
 
@@ -25,10 +25,7 @@ const optionsWith = (opts: Record<string, unknown>) =>
 
 it('refuses a word or a shape the CLI would not pass, at run() and planRun()', async () => {
   const cases: Array<[Record<string, unknown>, string]> = [
-    [
-      { continueMode: 'sometimes' },
-      `continueMode is "sometimes": it must be one of 'never', 'deps-ok', 'always'`,
-    ],
+    [{ failFast: 'yes' }, `failFast is "yes": it must be true or false`],
     [
       { outputLogs: 'loud' },
       `outputLogs is "loud": it must be one of 'full', 'errors-only', 'none', 'hash-only'`,
@@ -61,7 +58,7 @@ it('refuses a word or a shape the CLI would not pass, at run() and planRun()', a
 
 it('takes each word the CLI passes', async () => {
   for (const opts of [
-    { continueMode: 'never' },
+    { failFast: true },
     { excludeDependencies: 'all' },
     { excludeDependencies: ['t'] },
     { signal: new AbortController().signal },

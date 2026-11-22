@@ -177,6 +177,8 @@ export type Step =
       concurrency?: number
       /** A failed task does not stop the run: what depends on it runs too. The run still fails. */
       continue?: true
+      /** Stop the run at the first failure: the tasks still running are stopped, nothing else starts. */
+      failFast?: true
       /** Run every task, ignoring the cache's entries, and save the results. */
       force?: true
       /** Replay from the cache but save nothing to it. */
@@ -307,6 +309,8 @@ export type Feature =
   | 'multi-task'
   /** A run that goes on past a failure, running what depends on it. */
   | 'continue'
+  /** A run that stops at the first failure. */
+  | 'fail-fast'
   /** A run that ignores cache entries and saves fresh ones. */
   | 'force'
   /** A run that reads the cache and writes nothing to it. */

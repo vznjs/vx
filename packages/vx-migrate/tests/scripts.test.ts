@@ -1062,8 +1062,12 @@ describe('migrateScripts', () => {
     expect(tasks['v']?.todos.filter((t) => t.includes('$npm_'))).toEqual([
       'the script reads $npm_config_x, which the package manager sets and vx does not: define it under exec.env.define or drop it',
     ])
-    // A folded hook ran under its own event name, which the task cannot give it.
-    expect(tasks['build']?.todos.some((t) => t.includes('$npm_lifecycle_event'))).toBe(true)
+    // A folded hook runs under its own event name, which its part sets: no todo.
+    expect(tasks['build']?.todos.some((t) => t.includes('$npm_lifecycle_event'))).toBe(false)
+    expect(tasks['build']?.task).toEqual({
+      exec: { command: foldScriptHooks('echo $npm_lifecycle_event', 'tsc', undefined, 'build') },
+      dependsOn: ['^build'],
+    })
     // CONTROL: a script reading none gets no env and imports nothing.
     expect(tasks['plain']?.task).toEqual({ exec: { command: 'echo hi' } })
     expect(project({ plain: 'echo hi' })?.importLines).toEqual([])
@@ -1399,7 +1403,7 @@ describe('migrateScripts', () => {
           'npm ran `postlint` around this script without being asked; folded into the command in that order',
         ],
         task: {
-          exec: { command: foldScriptHooks(undefined, 'eslint .', 'echo after') },
+          exec: { command: foldScriptHooks(undefined, 'eslint .', 'echo after', 'x') },
         },
       },
     ])
@@ -1531,14 +1535,14 @@ describe('migrateScripts', () => {
     })
     expect(Object.keys(tasks).sort()).toEqual(['pack', 'publish', 'version'])
     expect(tasks['version']).toEqual({
-      exec: { command: foldScriptHooks('echo pv', 'echo v', 'echo ppv') },
+      exec: { command: foldScriptHooks('echo pv', 'echo v', 'echo ppv', 'x') },
     })
     expect(tasks['pack']).toEqual({
-      exec: { command: foldScriptHooks('echo pk', 'echo mypack', undefined) },
+      exec: { command: foldScriptHooks('echo pk', 'echo mypack', undefined, 'x') },
     })
     // A hook keeps a delegation a command: a group would drop it.
     expect(tasks['publish']).toEqual({
-      exec: { command: foldScriptHooks('echo pp', 'npm run version', undefined) },
+      exec: { command: foldScriptHooks('echo pp', 'npm run version', undefined, 'x') },
     })
   })
 
@@ -1556,7 +1560,7 @@ describe('migrateScripts', () => {
     expect(tasks['loop']).toEqual({ exec: { command: 'npm run loop' } })
     // A group has no command, so a folded hook would be dropped silently.
     expect(tasks['hooked']).toEqual({
-      exec: { command: foldScriptHooks('echo pre', 'npm run b', undefined) },
+      exec: { command: foldScriptHooks('echo pre', 'npm run b', undefined, 'x') },
     })
     // A group over a lifecycle script or a folded hook names a task the
     // mapping never emits (D-12).
@@ -2617,10 +2621,10 @@ describe('vx init (package.json scripts)', () => {
       // `prepack` rides in `pack`, as `npm run pack` runs it.
       expect(Object.keys(tasks).sort()).toEqual(['build', 'pack', 'pretest'])
       expect(tasks['build']!.exec?.command).toBe(
-        foldScriptHooks('rimraf dist', 'tsc -b', 'cp -r assets dist/'),
+        foldScriptHooks('rimraf dist', 'tsc -b', 'cp -r assets dist/', 'x'),
       )
       expect(tasks['pack']!.exec?.command).toBe(
-        foldScriptHooks('echo pre pack', 'echo pack', undefined),
+        foldScriptHooks('echo pre pack', 'echo pack', undefined, 'x'),
       )
       const text = await Bun.file(path.join(hooked, 'packages', 'app', 'vx.config.ts')).text()
       expect(text).toContain(
@@ -2665,7 +2669,7 @@ describe('vx init (package.json scripts)', () => {
         expect(tasks['check']!.exec?.command).toBe('pnpm lint && pnpm typecheck') // a chain
         // Arguments make it a real command, and its hook folds in front.
         expect(tasks['release']!.exec?.command).toBe(
-          foldScriptHooks('echo pre-release', 'npm run build -- --prod', undefined),
+          foldScriptHooks('echo pre-release', 'npm run build -- --prod', undefined, 'x'),
         )
         // Delegating to a script that is itself hooked is still a plain group.
         expect(tasks['publishit']!.exec).toBeUndefined()

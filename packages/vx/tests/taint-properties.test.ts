@@ -1,8 +1,7 @@
 // The taint rule over seeded random graphs, against a brute-force
-// reference. A task is tainted when it is a seed (a dependency
-// `--exclude-dependencies` kept from running) or, under
-// `--continue=always`, when any dependency failed, aborted or skipped, or
-// is itself tainted. Outcomes settle in ANY order (a restore-tier hit
+// reference. A task is tainted when it is a seed (keyed on a dependency
+// `--exclude-dependencies` kept from running) or a dependency is tainted;
+// a failed, aborted or skipped dependency seeds nothing. Outcomes settle in ANY order (a restore-tier hit
 // settles before its deps), and partial asks come in between; an ask made
 // once every ancestor has settled — the scheduler's guarantee (item 963) —
 // must give the reference's answer, whatever the memo learned before
@@ -14,9 +13,8 @@ import { taintTracker } from '../src/orchestrator/admission.js'
 import { rng } from './helpers/rng.js'
 
 const STATUSES: TaskStatus[] = ['success', 'cache-hit', 'failed', 'skipped', 'aborted']
-const BAD = new Set<TaskStatus>(['failed', 'skipped', 'aborted'])
 
-function check(continueAlways: boolean, seed: number): string[] {
+function check(seed: number): string[] {
   const rnd = rng(seed)
   const broken: string[] = []
   for (let iter = 0; iter < 1500; iter++) {
@@ -28,16 +26,12 @@ function check(continueAlways: boolean, seed: number): string[] {
       nodes.set(`t${i}`, { id: `t${i}`, deps } as unknown as TaskNode)
     }
     const ids = [...nodes.keys()]
-    const seeds = new Set(ids.filter(() => rnd() < (continueAlways ? 0.1 : 0.25)))
+    const seeds = new Set(ids.filter(() => rnd() < 0.25))
     const status = new Map(ids.map((id) => [id, STATUSES[Math.floor(rnd() * STATUSES.length)]!]))
     const reference = new Map<string, boolean>()
     for (const id of ids) {
       const deps = nodes.get(id)!.deps
-      reference.set(
-        id,
-        seeds.has(id) ||
-          deps.some((d) => (continueAlways && BAD.has(status.get(d)!)) || reference.get(d)!),
-      )
+      reference.set(id, seeds.has(id) || deps.some((d) => reference.get(d)!))
     }
     const outcome = (id: string): TaskOutcome =>
       ({ node: nodes.get(id)!, status: status.get(id)! }) as TaskOutcome
@@ -52,7 +46,7 @@ function check(continueAlways: boolean, seed: number): string[] {
       }
       return out
     }
-    const t = taintTracker(continueAlways, seeds, nodes)
+    const t = taintTracker(seeds, nodes)
     const settled = new Set<string>()
     const order = [...ids].sort(() => rnd() - 0.5)
     const judged = new Set<string>()
@@ -86,10 +80,6 @@ function check(continueAlways: boolean, seed: number): string[] {
   return broken
 }
 
-it('under --continue=always, a task is tainted exactly when the reference says', () => {
-  expect(check(true, 23).slice(0, 3)).toEqual([])
-})
-
-it('with seeds alone, a task is tainted exactly when it reaches a seed', () => {
-  expect(check(false, 1019).slice(0, 3)).toEqual([])
+it('a task is tainted exactly when it reaches a seed', () => {
+  expect(check(1019).slice(0, 3)).toEqual([])
 })

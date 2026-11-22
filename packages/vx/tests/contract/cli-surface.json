@@ -63,9 +63,9 @@
       "--cache-download",
       "--cache-policy",
       "--concurrency",
-      "--continue",
       "--dry",
       "--exclude-dependencies",
+      "--fail-fast",
       "--filter",
       "--force",
       "--help",
@@ -88,9 +88,9 @@
       "--cache-download",
       "--cache-policy",
       "--concurrency",
-      "--continue",
       "--dry",
       "--exclude-dependencies",
+      "--fail-fast",
       "--filter",
       "--force",
       "--help",
@@ -126,8 +126,8 @@
       "--cache-download",
       "--cache-policy",
       "--concurrency",
-      "--continue",
       "--exclude-dependencies",
+      "--fail-fast",
       "--filter",
       "--force",
       "--help",
@@ -264,11 +264,6 @@
       "10",
       "2"
     ],
-    "pipeline --continue": [
-      "always",
-      "deps-ok",
-      "never"
-    ],
     "pipeline --dry": [
       "json",
       "pretty"
@@ -353,11 +348,6 @@
       "1",
       "10",
       "2"
-    ],
-    "run --continue": [
-      "always",
-      "deps-ok",
-      "never"
     ],
     "run --dry": [
       "json",
@@ -454,11 +444,6 @@
       "10",
       "2"
     ],
-    "watch --continue": [
-      "always",
-      "deps-ok",
-      "never"
-    ],
     "watch --exclude-dependencies": [
       "*"
     ],
@@ -525,7 +510,7 @@
     "VX_LOCK_REVIEW_FILES",
     "VX_RUN_BRANCH",
     "VX_RUN_CONCURRENCY",
-    "VX_RUN_CONTINUE",
+    "VX_RUN_FAIL_FAST",
     "VX_RUN_KILL_GRACE",
     "VX_RUN_LOGS_CAPTURE_HEAD",
     "VX_RUN_LOGS_CAPTURE_TAIL",

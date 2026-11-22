@@ -1,15 +1,14 @@
 // What a run behind a failure saves, over seeded random graphs, end to end:
 // the stale-hit property. Each graph runs three times. A healthy run warms
 // every entry; then some inputs change and some tasks fail (a flag outside
-// every key) under one `--continue` mode; then a healthy run with the same
+// every key), with or without `--fail-fast`; then a healthy run with the same
 // keys. That run must execute exactly the changed tasks the failing run did
 // not save, and every output must hold its healthy bytes: an output is its
 // input plus its deps' outputs, and a failure writes PARTIAL, so a saved
 // partial tree reads wrong. `g`'s tasks have no cache and a fixed key, and sit apart, so
 // their failure moves no key: a hit above one is restored ahead of it (the
-// shape of C-1). Under `always`, a task behind any failure, through hits
-// too, is not saved; otherwise a task that ran is saved, since every dep it
-// read passed (C-80).
+// shape of C-1). A task that ran is saved, since every dep it read passed
+// (C-80); one `--fail-fast` killed is aborted and saves nothing.
 
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
@@ -17,7 +16,6 @@ import path from 'node:path'
 import { afterAll, beforeAll, expect, it } from 'bun:test'
 import type { Logger } from '../src/report/index.js'
 import { run } from './helpers/orchestrator.js'
-import type { ContinueMode } from '../src/graph/index.js'
 import { gitInitCommit } from './helpers/workspace.js'
 import { rng } from './helpers/rng.js'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
@@ -35,7 +33,9 @@ beforeAll(async () => {
 })
 afterAll(() => rm(tmp, { recursive: true, force: true }))
 
-async function scenario(mode: ContinueMode, seed: number, iter: number): Promise<string[]> {
+type Mode = 'default' | 'fail-fast'
+
+async function scenario(mode: Mode, seed: number, iter: number): Promise<string[]> {
   const rnd = rng(seed)
   const root = path.join(tmp, `${mode}-${iter}`)
   const flags = `${root}.flags`
@@ -82,11 +82,11 @@ async function scenario(mode: ContinueMode, seed: number, iter: number): Promise
   for (const t of ps) await writeFile(path.join(p, 'src', `${t}.txt`), `${t}-v1\n`)
   gitInitCommit(root, 'init')
 
-  const runAll = (continueMode?: ContinueMode) =>
+  const runAll = (failFast = false) =>
     run({
       cwd: root,
       tasks: ps.map((t) => `p#${t}`),
-      ...(continueMode !== undefined ? { continueMode } : {}),
+      ...(failFast ? { failFast: true } : {}),
       log: silent,
       handleSignals: false,
     })
@@ -107,30 +107,9 @@ async function scenario(mode: ContinueMode, seed: number, iter: number): Promise
   const missed = new Set<string>()
   for (const t of ps) if (changed.has(t) || deps.get(t)!.some((d) => missed.has(d))) missed.add(t)
 
-  const first = await runAll(mode)
+  const first = await runAll(mode === 'fail-fast')
   const status = new Map(first.outcomes.map((o) => [o.node.id, o.status]))
-  const bad = (id: string): boolean => {
-    const s = status.get(id)
-    return s === 'failed' || s === 'skipped' || s === 'aborted'
-  }
-  const behindFailure = (t: string): boolean => {
-    const stack = [...deps.get(t)!]
-    const seen = new Set<string>()
-    while (stack.length > 0) {
-      const d = stack.pop()!
-      if (seen.has(d)) continue
-      seen.add(d)
-      const id = d.startsWith('g#') ? d : `p#${d}`
-      if (bad(id)) return true
-      if (!d.startsWith('g#')) stack.push(...deps.get(d)!)
-    }
-    return false
-  }
-  const saved = new Set(
-    ps.filter(
-      (t) => status.get(`p#${t}`) === 'success' && (mode !== 'always' || !behindFailure(t)),
-    ),
-  )
+  const saved = new Set(ps.filter((t) => status.get(`p#${t}`) === 'success'))
 
   for (const f of failing) await rm(path.join(flags, f))
   const second = await runAll()
@@ -162,14 +141,11 @@ async function scenario(mode: ContinueMode, seed: number, iter: number): Promise
   return broken
 }
 
-// `always` takes twice the graphs: it alone holds the release order a
-// restore-tier hit keeps (item 963), and its shape is the rarest.
 for (const [mode, seed, iterations] of [
-  ['always', 1, 12],
-  ['deps-ok', 2, 6],
-  ['never', 3, 6],
+  ['default', 2, 9],
+  ['fail-fast', 3, 9],
 ] as const) {
-  it(`a healthy run after a failing --continue=${mode} run replays no partial tree`, async () => {
+  it(`a healthy run after a failing ${mode} run replays no partial tree`, async () => {
     const broken: string[] = []
     for (let i = 0; i < iterations; i++) broken.push(...(await scenario(mode, seed * 1000 + i, i)))
     expect(broken.slice(0, 3)).toEqual([])

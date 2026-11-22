@@ -1307,9 +1307,9 @@ function reachesProducer(
  * The `$npm_*` variables a script body reads, which Nx's `<pm> run <name>` sets
  * and an inlined body does not: `echo $npm_package_version` printed nothing
  * under `nx()`. The name and version are the manifest's (a bump re-maps: the
- * mapping keys on every manifest), the event the script's own name unless hooks
- * are folded beside it (each has its own); any other is a todo, as core's `vx
- * init` does it.
+ * mapping keys on every manifest), the event the script's own name, which a
+ * folded command sets for each part itself (`foldScriptHooks`); any other is a
+ * todo, as core's `vx init` does it.
  */
 function npmScriptEnv(
   command: string,
@@ -1322,12 +1322,13 @@ function npmScriptEnv(
   const env: Record<string, unknown> = {}
   const unset = new Set<string>()
   for (const [, v] of command.matchAll(/\$\{?(npm_[A-Za-z0-9_]+)/g)) {
+    if (v === 'npm_lifecycle_event' && folded) continue
     const value =
       v === 'npm_package_name'
         ? manifest.name
         : v === 'npm_package_version'
           ? manifest.version
-          : v === 'npm_lifecycle_event' && !folded
+          : v === 'npm_lifecycle_event'
             ? script
             : undefined
     if (typeof value !== 'string') unset.add(v!)

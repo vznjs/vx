@@ -94,8 +94,9 @@ export function lockEntryBroken(root: string): boolean {
   try {
     // As `readLockfile` reads it: `Bun.file().text()` drops a leading BOM.
     lock = decoded(readFileSync(lockfilePath(root), 'utf8').replace(/^\uFEFF/, ''))
-  } catch {
-    return true
+  } catch (err) {
+    // No lock broke nothing: the crash is its own, `vx lock`'s included.
+    return (err as NodeJS.ErrnoException).code !== 'ENOENT'
   }
   for (const [dir, config] of configsOf(lock.projects)) {
     try {

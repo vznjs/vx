@@ -156,8 +156,8 @@ export interface RunSummary {
    present; its arguments from `executeArgsOf`, execute-args.ts, which
    hands every task the run's one `RunContext` by reference) through `admission.ts`: a service-supplied `inflight` map
    dedupes identical-hash tasks across concurrent delegated runs, and
-   under `continueMode: 'always'` the taint of an upstream failure is
-   tracked so the task's save is withheld.
+   a task built on a taint seed (a dependency `--exclude-dependencies`
+   left out, a server that died under it) has its save withheld.
 10. **Persistent cleanup** (`persistent.ts`, `disposeServers`). `selectKeepAlive` picks
     the persistent tasks the user REQUESTED (or that were surfaced), and
     every persistent task a kept one depends on (directly or through
@@ -289,7 +289,7 @@ from discovery/loader/graph/plugin-setup) are caught at
 `cli/run.ts:runCmd`. Before anything starts, `run()` and `planRun()`
 refuse, as a `UserError` naming the option and what it must be, an
 option the CLI would never pass: a number out of its bound (C-61), a
-word outside its set (`continueMode`, `outputLogs`, `download`, `flow`),
+word outside its set (`outputLogs`, `download`, `flow`), a `failFast` that is no boolean,
 a list that is not one of strings, an `excludeDependencies` that is
 neither `'all'` nor names, a `signal` that is no `AbortSignal` (C-86).
 
@@ -445,7 +445,7 @@ export interface RunOptions {
   flow?: 'focused' | 'broad'
   retries?: number // run.retries; a task's exec.retries beats it
   timeout?: number // run.timeout in ms; a task's exec.timeout beats it
-  continueMode?: ContinueMode
+  failFast?: boolean // --fail-fast: the first failure kills the running tasks
   branch?: string // --branch; unset, VX_RUN_BRANCH, git's, then CI's
   schedule?: NonNullable<RunSettings['schedule']> // run.schedule
   excludeDependencies?: 'all' | readonly string[]
@@ -627,7 +627,8 @@ one-shot handler mid-cleanup.
    (`KeyedTasks.keyedAt`). Its facts are dated then too, so a write in
    the wait (another task's) is a moved input at the re-check: the save
    is withheld, never filed under bytes the command did not read
-   (tests/prepared-key.test.ts).
+   (tests/prepared-key.test.ts). Its `cache.get` is asked in the wait
+   too, and step 3 awaits that answer.
 2. `cleanArgs = { projectDir, outputs, nestedProjectDirs }` is
    prepared once.
 3. **If caching is on**: `cache.get(hash)`.
@@ -2182,7 +2183,7 @@ the typo refusal under the flag; `tests/taint-tracker.test.ts` ›
   derives and whatever outputs the local index records under that key.
   The no-save rule is core's (`taintedUpstream` withholds core's save);
   an executor that keeps its own record of executions under the cache
-  key is not told, the same as for `--continue=always`'s taint.
+  key is not told, the same as for any taint.
 - Hide the dropped tasks from plugins. The `graph` and `key` stages see
   the whole graph, as a full run shows it; only the `schedule` stage
   and later see the narrowed one.
@@ -2760,28 +2761,24 @@ rules stand between them and neither changes what the task is:
   takes the barrier in turn, never two in one directory at once. A stateless `vx run` passes no
   registry and takes the untouched path: no key derivation before
   execute.
-- **Continue-taint.** Under `continueMode: 'always'` a task runs
-  although an upstream failed. Its key is the healthy one (pure-input
-  hashing) but its bytes are not, so its save is withheld
+- **Taint.** No run executes a task behind a failure, so a failure
+  seeds nothing. A seed is a task whose key is the healthy one (pure-input
+  hashing) but whose bytes nothing vouches for: its save is withheld
   (`taintedUpstream`) and the taint propagates through every success
   built on it — otherwise a grand-dependent would cache the same
-  partial tree one hop later. Only that mode executes a task behind a
-  failure; a default run carries no check. `--exclude-dependencies`
-  seeds the same taint (`seeds`): a task whose key folds a dependency
+  partial tree one hop later. A run with no seed carries no check.
+  `--exclude-dependencies` seeds it (`seeds`): a task whose key folds a dependency
   that did not run (`orchestrator.md`) has bytes nothing vouches for,
-  and so does everything built on it. Under `always`, `run()` also seeds
-  a task that starts while a server it depends on (through groups and
-  servers too, `deadServerBehind`) has died: the server's outcome says `success`
-  until the run ends, so no settled outcome holds that failure yet. In
-  any mode, a task such a server died UNDER (it was ready at dispatch)
+  and so does everything built on it. A task a server died UNDER (it was
+  ready at dispatch)
   is seeded just before its save (`ExecuteArgs.serverDiedUnder`), which
   withholds that save; a graph with a server therefore keeps the check on
   (`seedsLater`). So is a task whose shell left a process running
   (`RunContext.leftRunning`): its dependents read a tree it may still
   write. `run()` turns the check on at that first leftover, before the
   task settles, so the tracker it makes then has every outcome a
-  dependent's taint is read from. No seed, no server and no `always`
-  keeps the check off. A task's taint is read from its deps' SETTLED outcomes
+  dependent's taint is read from. No seed and no server keeps the check
+  off. A task's taint is read from its deps' SETTLED outcomes
   (the scheduler's `onFinish` feeds `settled`), not from what it saw at
   dispatch: a restore-tier hit dispatches before its deps settle, saw
   holes, and passed nothing on, so its dependent saved a failed dep's
@@ -2805,7 +2802,6 @@ export interface TaintTracker {
   settled: (outcome: TaskOutcome) => void // the scheduler's onFinish
 }
 export function taintTracker(
-  continueAlways: boolean,
   seeds: ReadonlySet<string>,
   nodes: ReadonlyMap<string, TaskNode>,
   seedsLater?: boolean, // seeds may be added while the run goes on
@@ -2862,12 +2858,10 @@ no lane, at once.
 once and leave it empty; the joiner hits; joiners behind a failed
 sibling run in turn; a restore-tier task, a
 write-only and a read-only run do not join),
-`tests/continue-taint.test.ts` (the tainted task runs and does not
-save; taint reaches the grand-dependent; a hit between the failure
-and the dependent carries it; so does an order-only edge),
-`tests/taint-tracker.test.ts` (each poisoning status, a seed with no
-failure upstream, a hit judged before its deps settled, a 50,000-deep
-chain of hits).
+`tests/taint-tracker.test.ts` (a failure seeds nothing; a seed taints
+its transitive dependents, through a hit judged before its deps settled
+and a 50,000-deep chain of hits), `tests/fail-fast.test.ts` (`--fail-fast`
+kills the running task, which saves nothing).
 
 ## `src/orchestrator/run-artifacts.ts` — `--profile` writer
 
@@ -4587,7 +4581,7 @@ export class DeferredOutputs {
 
 `tests/download-policy.test.ts` — no-local-entry, lazy materialisation,
 memoisation (two consumers, one fetch), convergence to a local hit,
-never-clean, fail-loud, the `--continue` interactions, and a producer
+never-clean, fail-loud, `--fail-fast`, and a producer
 50,000 tasks below its consumer. `tests/deferred-output-empty.test.ts` — the
 empty-fetch warning.
 

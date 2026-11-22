@@ -1685,7 +1685,7 @@ describe("the root's workspace dependencies", () => {
 // and a config reading `process.env.npm_package_version` built `undefined`.
 describe('the npm_* variables a package manager sets', () => {
   it(
-    'reach a script that names them, the event only where no hook is folded in',
+    "reach a script that names them, the event a folded part's own",
     async () => {
       await writeFile(path.join(root, 'turbo.json'), JSON.stringify({ tasks: { v: {}, w: {} } }))
       await writeFile(
@@ -1710,7 +1710,7 @@ describe('the npm_* variables a package manager sets', () => {
       expect(result.ok).toBe(true)
       const lib = path.join(root, 'packages', 'lib')
       expect(await Bun.file(path.join(lib, 'v.txt')).text()).toBe('lib 1.2.3 v\n')
-      expect(await Bun.file(path.join(lib, 'w.txt')).text()).toBe('1.2.3 \n')
+      expect(await Bun.file(path.join(lib, 'w.txt')).text()).toBe('1.2.3 w\n')
     },
     TIMEOUT,
   )

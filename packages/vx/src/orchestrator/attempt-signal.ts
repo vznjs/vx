@@ -51,7 +51,7 @@ export class AttemptSignal {
       run.addEventListener('abort', abort, { once: true })
       this.unlisten = () => run.removeEventListener('abort', abort)
     }
-    // `--continue=never` starts nothing after a failure: a task a plugin
+    // `--fail-fast` starts nothing after a failure: a task a plugin
     // executor still holds for a machine is not yet started.
     const failFast = args.run.failFast
     if (!local && failFast !== undefined && args.executor.distribution?.running !== undefined) {

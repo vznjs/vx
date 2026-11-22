@@ -31,8 +31,6 @@ import {
 /** Ready tasks prepared ahead of a free slot (`prepare`). */
 const PREPARE_AHEAD = 4
 
-export type ContinueMode = 'never' | 'deps-ok' | 'always'
-
 export interface ScheduleOptions {
   nodes: Map<string, TaskNode>
   concurrency: number
@@ -45,25 +43,20 @@ export interface ScheduleOptions {
    */
   signal?: AbortSignal
   /**
-   * Failure propagation:
-   * - 'deps-ok' (default): a failed, skipped or aborted upstream skips its
-   *   dependents; independent siblings keep running.
-   * - 'never': the first failure stops dispatch; in-flight tasks finish but
-   *   start no retry, and the rest (restore tier too) completes skipped.
-   * - 'always': dependents run anyway. Their keys are a healthy run's (a failed
-   *   outcome carries the upstream's input key), so their save is withheld:
-   *   bytes built on a partial tree would be the next clean run's stale hit
-   *   (`ExecuteArgs.taintedUpstream`).
+   * Failure propagation. Off (default): a failed, skipped or aborted upstream
+   * skips its dependents; independent siblings keep running. On: the first
+   * failure stops dispatch and calls `onFailFast`, whose caller kills what is
+   * in flight; the rest (restore tier too) completes skipped.
    */
-  continueMode?: ContinueMode
+  failFast?: boolean
   /**
    * A persistent task that died after it became ready: its outcome said
    * `success`, so this is how a dependant not yet started learns of it.
    */
   serverDied?: (id: string) => boolean
   /**
-   * Called once, when 'never' stops dispatch: a task in flight then
-   * finishes its attempt but starts no retry.
+   * Called once, when `failFast` stops dispatch: the caller kills what is
+   * in flight, and no retry starts.
    */
   onFailFast?: () => void
   execute: (node: TaskNode, upstream: TaskOutcome[]) => Promise<TaskOutcome>
@@ -213,8 +206,8 @@ type Parked = Array<[string, number]>
 /** One `runGraph` call: the graph's state as it runs, and the steps that move it. */
 class GraphRun {
   private readonly nodes: Map<string, TaskNode>
-  private readonly continueMode: ContinueMode
-  // 'never': set on the first failure; every dequeued task is then skipped.
+  private readonly failFast: boolean
+  // `failFast`: set on the first failure; every dequeued task is then skipped.
   private failFastTripped = false
   private readonly outcomes = new Map<string, TaskOutcome>()
   // Reverse adjacency and pending dep counts, built once: a task is ready when
@@ -276,7 +269,7 @@ class GraphRun {
   constructor(private readonly options: ScheduleOptions) {
     const nodes = options.nodes
     this.nodes = nodes
-    this.continueMode = options.continueMode ?? 'deps-ok'
+    this.failFast = options.failFast === true
     for (const node of nodes.values()) {
       this.pending.set(node.id, node.deps.length)
       for (const dep of node.deps) {
@@ -446,7 +439,7 @@ class GraphRun {
   }
 
   private finishOne(id: string, outcome: TaskOutcome, released = false): void {
-    if (this.continueMode === 'never' && outcome.status === 'failed') this.tripFailFast()
+    if (this.failFast && outcome.status === 'failed') this.tripFailFast()
     this.outcomes.set(id, outcome)
     // A dormant server is asked again: the dispatch settles it once its
     // last dependant is in.
@@ -480,7 +473,7 @@ class GraphRun {
     if (!this.inRestoreTier(id)) return
     for (const dep of (this.nodes.get(id) as TaskNode).deps) {
       const u = this.outcomes.get(dep)
-      if (this.continueMode !== 'always' && (u?.status === 'failed' || u?.status === 'aborted')) {
+      if (u?.status === 'failed' || u?.status === 'aborted') {
         this.blockedRestores.set(id, dep)
         break
       }
@@ -530,7 +523,7 @@ class GraphRun {
   }
 
   // True when the task would finish `skipped` without running (fail-fast
-  // tripped, or a failed upstream unless `continueMode` is 'always'). Shared by
+  // tripped, or a failed upstream). Shared by
   // the admission parker and the dispatch loop: a doomed task must never park
   // on a resource fit, or a too-big one would hang the run.
   //
@@ -538,18 +531,12 @@ class GraphRun {
   // success.
   private willSkip(id: string): boolean {
     if (this.failFastTripped || this.aborted()) return true
-    if (this.continueMode === 'never' && this.servers.some(this.serverDied)) {
+    if (this.failFast && this.servers.some(this.serverDied)) {
       this.tripFailFast()
       return true
     }
     if (this.inRestoreTier(id)) return false
     const node = this.nodes.get(id) as TaskNode
-    // `always` runs past a failed upstream, never past one that did not
-    // run on this platform: under it, a skip has no other cause.
-    if (this.continueMode === 'always')
-      return node.deps.some(
-        (d) => this.outcomes.get(d)?.status === 'skipped' || this.blockedRestores.has(d),
-      )
     return node.deps.some((d) => {
       const u = this.outcomes.get(d)
       // `aborted` propagates though it is counted nowhere: the upstream died
@@ -732,10 +719,9 @@ class GraphRun {
   private skip(id: string, node: TaskNode, upstream: TaskOutcome[]): void {
     // The root of the block: a failed or aborted upstream names
     // itself; a skipped one hands down its own root.
-    const blocker =
-      this.continueMode === 'always'
-        ? undefined
-        : upstream.find((u) => u !== undefined && (u.status === 'failed' || u.status === 'aborted'))
+    const blocker = upstream.find(
+      (u) => u !== undefined && (u.status === 'failed' || u.status === 'aborted'),
+    )
     const viaSkip = upstream.find((u) => u !== undefined && u.status === 'skipped')
     const viaRestore = node.deps.find((d) => this.blockedRestores.has(d))
     const blockedBy =

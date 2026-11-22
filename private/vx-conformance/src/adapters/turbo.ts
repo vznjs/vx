@@ -94,6 +94,7 @@ export const turbo: Adapter = {
     ...(opts.only ? ['--only'] : []),
     ...(opts.concurrency !== undefined ? [`--concurrency=${opts.concurrency}`] : []),
     ...(opts.continue ? ['--continue=always'] : []),
+    ...(opts.failFast ? ['--continue=never'] : []),
     ...(opts.force ? ['--force'] : []),
     ...(opts.readOnlyCache ? ['--cache=local:r'] : []),
     ...(opts.dry ? ['--dry=json'] : []),
