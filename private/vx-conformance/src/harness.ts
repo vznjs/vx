@@ -404,12 +404,12 @@ async function play(c: Case, adapter: Adapter, root: string, box: string): Promi
     }
     if ('install' in step) {
       await install()
-      for (const argv of refused === null ? (adapter.installed ?? []) : []) {
+      // A user locks again after installing: an earlier refusal (a manifest
+      // edited before its install) is judged afresh, not carried over.
+      for (const argv of adapter.installed ?? []) {
         const r = await sh(argv)
-        if (r.exit !== 0) {
-          refused = `$ ${argv.join(' ')}\n${r.out}`
-          break
-        }
+        refused = r.exit === 0 ? null : `$ ${argv.join(' ')}\n${r.out}`
+        if (refused !== null) break
       }
       continue
     }
