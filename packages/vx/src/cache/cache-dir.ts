@@ -323,34 +323,37 @@ export async function holdStore(
 ): Promise<() => void> {
   const file = path.join(storeDir, 'store.db')
   if (!existsSync(file)) return () => {}
-  let db: Database
-  try {
-    db = new Database(file)
-    db.exec('PRAGMA busy_timeout = 0')
-    db.exec('PRAGMA locking_mode = EXCLUSIVE')
-  } catch {
-    return () => {}
-  }
   const started = performance.now()
   let said = false
   for (;;) {
+    let db: Database
+    try {
+      // Never made here: a clean that won the store deletes it, and this
+      // one then has nothing to wait for.
+      db = new Database(file, { readwrite: true, create: false })
+      db.exec('PRAGMA busy_timeout = 0')
+      db.exec('PRAGMA locking_mode = EXCLUSIVE')
+    } catch {
+      return () => {}
+    }
     try {
       db.exec('BEGIN EXCLUSIVE')
-      break
+      return () => closeDb(db)
     } catch (err) {
-      if ((err as { code?: string }).code !== 'SQLITE_BUSY') {
-        // Not a store SQLite reads: nothing opens it to wait for.
-        closeDb(db)
-        return () => {}
-      }
+      // Closed before the next try: in exclusive locking mode a failed try
+      // keeps the shared lock it got, so two cleans waiting on one run each
+      // still saw the other once the run closed, and waited forever.
+      closeDb(db)
+      // Not a store SQLite reads: nothing opens it to wait for.
+      if ((err as { code?: string }).code !== 'SQLITE_BUSY') return () => {}
     }
     if (!said && performance.now() - started >= 1_000) {
       said = true
       log(`[vx] waiting for another vx process using the cache store ${storeDir} to finish…`)
     }
-    await Bun.sleep(50)
+    // Jittered: two waiters trying in step would each meet the other's try.
+    await Bun.sleep(25 + Math.random() * 50)
   }
-  return () => closeDb(db)
 }
 
 /**
