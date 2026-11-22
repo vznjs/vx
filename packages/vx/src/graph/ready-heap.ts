@@ -1,10 +1,8 @@
 /**
  * A binary max-heap of ready task ids, ordered by (priority DESC, enqueue-seq
- * ASC) so `pop()` returns the highest-priority task and equal-priority ties
- * break in enqueue order — the exact contract the prior sorted-array kept, but
- * O(log R) push/pop instead of O(R) splice/shift. On a wide ready frontier (the
- * 1000-package startup enqueue, or a fan-out completion), that turns the
- * queue's O(R²) maintenance into O(R log R).
+ * ASC): `pop()` returns the highest-priority task, equal priorities in enqueue
+ * order. O(log R) push/pop keeps a wide ready frontier (a 1000-package startup
+ * enqueue) from going quadratic.
  */
 export class ReadyHeap {
   private readonly ids: string[] = []
@@ -58,19 +56,9 @@ export class ReadyHeap {
     this.prio[j] = pi
   }
   /**
-   * `seq` defaults to a fresh monotonic counter. A parked-then-repushed
-   * task passes its ORIGINAL seq back in, which makes FIFO-among-equals a
-   * property of the heap rather than of the tick loop's shape.
-   *
-   * It is NOT the difference between correct and incorrect order today,
-   * and the comment here used to claim it was ("a fresh seq would demote
-   * it behind later arrivals"). It would not: `parked` is a subsequence
-   * of the tick's pop order, so it is already in ranking order, and every
-   * push that follows takes a later seq — so fresh seqs handed out in
-   * parked order reproduce the same ranking. Measured over 800 randomized
-   * scenarios (random DAGs, costs, budgets, concurrency, failures, all
-   * three continue modes): zero order differences. Kept because
-   * it holds without that argument.
+   * `seq` defaults to a fresh monotonic counter. A parked-then-repushed task
+   * passes its original seq back in, so FIFO-among-equals is a property of
+   * the heap, not of the tick loop's shape.
    */
   push(id: string, seq: number = this.next++): void {
     if (this.counts?.(id) === true) this.counted++

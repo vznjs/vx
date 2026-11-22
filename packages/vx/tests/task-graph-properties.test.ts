@@ -9,8 +9,8 @@
 
 import { expect, it } from 'bun:test'
 import type { ProjectConfig, TaskConfig } from '../src/config.js'
-import { buildTaskGraph, type ProjectEntry } from '../src/graph/task-graph.js'
-import type { PackageGraph } from '../src/workspace/index.js'
+import { buildTaskGraph } from '../src/graph/task-graph.js'
+import type { PackageGraph, ProjectEntry } from '../src/workspace/index.js'
 import { rng } from './helpers/rng.js'
 
 const NAMES = ['build', 'test', 'lint', 'build.a', 'build.b']

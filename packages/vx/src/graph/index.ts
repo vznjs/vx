@@ -6,6 +6,7 @@ export {
   compileTaskPattern,
   isTaskPattern,
   parseDependencySpec,
+  splitTaskId,
   type DependencySpec,
 } from '../util/index.js'
 export {
@@ -65,7 +66,6 @@ export {
   markSurfacedDeps,
   outputsOverlap,
   outputTakenBack,
-  splitTaskId,
   type TaskNode,
   undeclaredDepsError,
   unresolvedRequests,
