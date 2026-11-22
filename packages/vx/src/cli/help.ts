@@ -495,8 +495,6 @@ export function acceptedFlags(verb: string): string[] {
   return [...flags]
 }
 
-export { CORE_VERBS } from '../util/index.js'
-
 /**
  * A refusal a verb prints itself rather than throws: one line on stderr,
  * exit 1, and under `--format json` / `--dry=json` the same as the error

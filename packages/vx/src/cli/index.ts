@@ -4,8 +4,9 @@
 import { VERSION } from '../version.js'
 import { applyWorkspaceLimits, checkSettingsEnv } from '../settings.js'
 import { cachePolicyEnvRefusal } from '../cache/index.js'
-import { CORE_VERBS, flagHint, printHelp, refuse, refusedWord, seeHelp } from './help.js'
+import { flagHint, printHelp, refuse, refusedWord, seeHelp } from './help.js'
 import {
+  CORE_VERBS,
   errorDocument,
   hasControl,
   hideEnvFromTasks,
@@ -27,6 +28,8 @@ import { sayNotice, refusalNotice } from '../ui/index.js'
 // parsers for tests, which loaded every verb on every start. The specifiers are
 // string literals, so `bun build --compile` still embeds them.
 const plugins = () => import('./plugin-commands.js')
+
+const isCoreVerb = (verb: string): boolean => (CORE_VERBS as readonly string[]).includes(verb)
 
 export async function run(argv: readonly string[]): Promise<number> {
   refuseLossyArgs(argv)
@@ -103,7 +106,7 @@ function refuseLossyArgs(argv: readonly string[]): void {
  * the task's, a `--sql` query may span lines, and a plugin verb owns its own.
  */
 function refuseControlArgs(command: string, rest: readonly string[]): void {
-  if (!(CORE_VERBS as readonly string[]).includes(command)) return
+  if (!isCoreVerb(command)) return
   for (let i = 0; i < rest.length; i++) {
     const a = rest[i]!
     if (a === '--') return
@@ -126,7 +129,7 @@ function refuseControlArgs(command: string, rest: readonly string[]): void {
  */
 function forwardsNothing(command: string, rest: readonly string[]): boolean {
   if (command === 'run' || command === 'watch') return false
-  if (!(CORE_VERBS as readonly string[]).includes(command)) return false
+  if (!isCoreVerb(command)) return false
   for (let i = 0; i < rest.length; i++) {
     if (rest[i] === '--sql') i++
     else if (rest[i] === '--') return true
@@ -184,7 +187,7 @@ async function dispatch(command: string | undefined, rest: string[]): Promise<nu
           'VX_E_USAGE',
         )
       }
-      const core = verb !== undefined && (CORE_VERBS as readonly string[]).includes(verb)
+      const core = verb !== undefined && isCoreVerb(verb)
       if (verb !== undefined && !core) {
         // A name that is no verb here is the typo `vx rnu` is, not a request
         // for the whole reference: it printed 145 lines and no hint.
@@ -386,7 +389,7 @@ export { registerCoreAlias } from './core-alias.js'
  * why the scan stops at `--`, and why plugin verbs are excluded.
  */
 function wantsHelp(command: string, rest: readonly string[]): boolean {
-  if (!(CORE_VERBS as readonly string[]).includes(command)) return false
+  if (!isCoreVerb(command)) return false
   const sep = rest.indexOf('--')
   const own = sep === -1 ? rest : rest.slice(0, sep)
   return own.includes('--help') || own.includes('-h')

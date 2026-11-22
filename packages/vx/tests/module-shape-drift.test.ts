@@ -8,7 +8,7 @@
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
-import { formatBytes } from '../src/cli/format.js'
+import { formatBytes } from '../src/util/index.js'
 import { ulid } from '../src/util/ulid.js'
 import { moduleSection } from './helpers/module-page.js'
 
@@ -314,8 +314,8 @@ describe('cli-help.md names every section the help text has', () => {
 })
 
 describe('a module page shows what a formatter prints', () => {
-  it("cli-format.md's byte table is formatBytes, row for row", () => {
-    const doc = moduleSection('cli/format.ts')
+  it("util.md's byte table is formatBytes, row for row", () => {
+    const doc = moduleSection('util/size.ts')
     const rows = [...doc.matchAll(/^\| `([^`]+)`\s+\| `([^`]+)`\s+\|$/gm)].map((m) => [
       m[1]!,
       m[2]!,

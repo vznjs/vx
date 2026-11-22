@@ -5,8 +5,8 @@
 // project names are not (a completion that evaluates configs on every
 // Tab is the wrong price).
 
-import { acceptedFlags, CORE_VERBS, flagHint, refuse, seeHelp } from './help.js'
-import { nearest } from '../util/index.js'
+import { acceptedFlags, flagHint, refuse, seeHelp } from './help.js'
+import { CORE_VERBS, nearest } from '../util/index.js'
 import * as ui from '../ui/index.js'
 import { sayNotice } from '../ui/index.js'
 import { setting } from '../settings.js'

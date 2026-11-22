@@ -418,8 +418,6 @@ export function detectFlow(
     : 'focused'
 }
 
-/** `CI=0` / `CI=false` are not CI, as the output flow reads them. */
-
 /** The filters a run's scope comes from: `--filter`s, with `--affected` as its `...[<base>]`. */
 async function scopeFilters(
   parsed: RunArgs,
@@ -561,7 +559,7 @@ export async function resolveRunOptions(
     ...(parsed.remoteRequested ? { remoteRequested: parsed.remoteRequested } : {}),
     // A laptop reads the shared cache and never writes it (owner); naming the
     // remote in `--cache-policy` is asking to.
-    ...(!parsed.remoteRequested && !onCI(process.env['CI'])
+    ...(!parsed.remoteRequested && !envFlagOn(process.env['CI'])
       ? { remoteReadOnlyByDefault: true }
       : {}),
     ...(parsed.verbosity > 0 ? { summaryTable: true } : {}),
@@ -793,9 +791,4 @@ function profileProblem(cwd: string, target: string): string | undefined {
   if (statSync(path.resolve(cwd, target), { throwIfNoEntry: false })?.isDirectory() === true)
     return `--profile: ${target} is a directory — name a file, e.g. --profile=${path.join(target, 'profile.json')}`
   return undefined
-}
-
-/** Whether `CI` names a CI run, as detectCi reads it. */
-export function onCI(v: string | undefined): boolean {
-  return envFlagOn(v)
 }
