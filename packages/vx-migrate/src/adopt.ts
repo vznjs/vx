@@ -354,7 +354,7 @@ async function runManager(
  * `name@version` (core's `vx init` reads its installs the same way): a
  * release's platform tarball stays unserved for minutes after publish.
  */
-export function notServed(output: string): string | undefined {
+function notServed(output: string): string | undefined {
   for (const line of output.split('\n')) {
     if (!line.includes('404')) continue
     const m = /https?:\/\/\S+?\/((?:@[^/\s]+\/)?[^/\s]+)\/-\/[^/\s]+?-(\d[^/\s]*?)\.tgz/.exec(line)

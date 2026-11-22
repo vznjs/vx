@@ -260,7 +260,7 @@ function tagsEqual(expected: string, actual: string): boolean {
 }
 
 /** Where `turbo` itself sends a token with no `url`: Vercel's hosted Remote Cache. */
-export const VERCEL_API = 'https://vercel.com/api'
+const VERCEL_API = 'https://vercel.com/api'
 
 /** Resolve options over Turbo's environment; `undefined` = not configured. */
 export function resolveTurboCacheConfig(

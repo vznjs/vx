@@ -177,7 +177,7 @@ function placeBuildInfo(
  * lists: pasted as `src/**`, a Vite app's `index.html` and config were in no
  * key and an edit to either replayed the old build.
  */
-export function cacheTodo(command: string, buildInfo: BuildInfo = NO_BUILD_INFO): string {
+function cacheTodo(command: string, buildInfo: BuildInfo = NO_BUILD_INFO): string {
   // Padded, separators as spaces: `next build && …` and `(next build)` match.
   const words = ` ${command.replace(/[;&|()]/g, ' ')} `
   const hit = BUILD_OUTPUTS.find(([re]) => re.test(words))
