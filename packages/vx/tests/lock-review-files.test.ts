@@ -48,7 +48,7 @@ it('writes the lock a line per project, a pretty review copy per config, and .vx
   expect(JSON.parse(review)).toMatchObject(locked)
   expect(review).toStartWith('{\n  "tasks": {')
   expect(await text(path.join(r, '.vx', '.gitattributes'))).toBe(
-    'projects.lock.jsonl linguist-generated=true merge=vx-lock\ndependencies.lock linguist-generated=true merge=vx-lock\n',
+    'projects.lock.jsonl linguist-generated=true merge=vx-lock eol=lf\ndependencies.lock linguist-generated=true merge=vx-lock eol=lf\n',
   )
   expect(vx(r, 'lock', '--check').code).toBe(0)
 })
@@ -298,4 +298,23 @@ it('temps a killed vx lock left select no project under --affected', async () =>
     await Bun.write(path.join(r, f), '{}\n')
   await Bun.write(path.join(dir, 'vx.lock.json.tmp-123-abc'), '{}\n')
   expect(vx(r, 'show', '--affected=HEAD').err).toContain('nothing affected since HEAD')
+})
+
+// A repository whose own attributes check text out with CRLF (`* text=auto
+// eol=crlf`, or `core.autocrlf=true`) rewrote both locks on every checkout,
+// and a run refused them as stale until `vx lock` wrote them again.
+it('a checkout under eol=crlf leaves the locks as vx wrote them', async () => {
+  const r = (root = await makeWorkspace({ prefix: 'vx-lock-crlf-' }))
+  await addProject(r, 'a', { config: CONFIG })
+  await Bun.write(path.join(r, '.gitattributes'), '* text=auto eol=crlf\n')
+  expect(vx(r, 'lock').code).toBe(0)
+  const git = gitIn(r)
+  git('-c', 'core.autocrlf=true', 'add', '-A')
+  git('commit', '-q', '-m', 'init')
+  for (const f of ['projects.lock.jsonl', 'dependencies.lock']) await rm(path.join(r, '.vx', f))
+  git('-c', 'core.autocrlf=true', 'checkout', '-q', '--', '.')
+  for (const f of ['projects.lock.jsonl', 'dependencies.lock'])
+    expect(await text(path.join(r, '.vx', f))).not.toContain('\r')
+  expect(vx(r, 'lock', '--check')).toMatchObject({ code: 0 })
+  expect(vx(r, 'run', 'build', '--all').code).toBe(0)
 })

@@ -15,7 +15,7 @@ re-exported from `@vzn/vx`.
 │   ├── workspace.ts             (required: marks the root; workspace-wide settings)
 │   ├── projects.lock.jsonl      (`vx lock`: configs, a line per project; committed)
 │   ├── dependencies.lock        (`vx lock`: edges and digests, a line per project; committed)
-│   ├── .gitattributes           (both locks `linguist-generated merge=vx-lock`; written when missing)
+│   ├── .gitattributes           (both locks `linguist-generated merge=vx-lock eol=lf`; written when missing)
 │   ├── .gitignore               (`/cache`; written by `vx init` and the cache when missing)
 │   └── cache/                   (machine-local state; the only part git ignores)
 └── <any>/<dir>/
