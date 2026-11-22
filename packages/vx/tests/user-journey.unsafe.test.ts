@@ -12,6 +12,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { dropCi } from './helpers/env.js'
+import { freePort } from './helpers/free-port.js'
 
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 const LOCKFILE_PLUGIN = path.resolve(import.meta.dir, '..', '..', 'vx-lockfile')
@@ -54,13 +55,13 @@ async function lastTasks(): Promise<Record<string, { status: string; cacheHit: b
   )
 }
 
-async function install(): Promise<void> {
-  await ok([process.execPath, 'install'])
+async function install(at = root, args: string[] = []): Promise<void> {
+  await ok([process.execPath, 'install', ...args], at)
   // An install prunes node_modules to the lockfile: link the plugin again,
   // as a release's devDependency would stay.
-  await mkdir(path.join(root, 'node_modules', '@vzn'), { recursive: true })
-  await rm(path.join(root, 'node_modules', '@vzn', 'vx-lockfile'), { force: true })
-  await symlink(LOCKFILE_PLUGIN, path.join(root, 'node_modules', '@vzn', 'vx-lockfile'))
+  await mkdir(path.join(at, 'node_modules', '@vzn'), { recursive: true })
+  await rm(path.join(at, 'node_modules', '@vzn', 'vx-lockfile'), { force: true })
+  await symlink(LOCKFILE_PLUGIN, path.join(at, 'node_modules', '@vzn', 'vx-lockfile'))
 }
 
 async function pkg(name: string, deps: string[]): Promise<void> {
@@ -310,6 +311,112 @@ describe('a new user, end to end', () => {
     }
     expect(out).toContain('vx watch: stopped')
   }, 30_000)
+
+  it('a task file the configs share composes them, and vx lock --check sees its edit', async () => {
+    const shared = path.join(root, 'tools', 'tasks.ts')
+    await mkdir(path.dirname(shared), { recursive: true })
+    await writeFile(
+      shared,
+      BUILD.replace('export default {\n  tasks: {\n    build: ', 'export const build = ').replace(
+        /,\n  },\n}\n$/,
+        '\n',
+      ),
+    )
+    for (const name of ['utils', 'lib', 'app', 'web'])
+      await writeFile(
+        path.join(root, 'packages', name, 'vx.config.ts'),
+        "import { build } from '../../tools/tasks.ts'\n\nexport default { tasks: { build } }\n",
+      )
+    // The same config by another route: the lock, and so every key, holds.
+    const r = await vx(['lock'])
+    expect([r.code, r.out]).toEqual([0, expect.stringContaining('5 project configs')])
+    expect((await vx(['lock', '--check'])).code).toBe(0)
+    await writeFile(
+      shared,
+      (await readFile(shared, 'utf8')).replace("'src/**'", "'src/**', 'README.md'"),
+    )
+    const drift = await vx(['lock', '--check'])
+    expect([drift.code, drift.out]).toEqual([
+      1,
+      expect.stringContaining('packages/lib/vx.config.ts evaluates differently from the lock'),
+    ])
+    expect((await vx(['lock'])).code).toBe(0)
+    await ok(['git', 'add', '-A'])
+    await ok(['git', 'commit', '-qm', 'shared tasks'])
+  })
+
+  it('a dev server serves the task that needs it, and stops with the run', async () => {
+    const port = freePort()
+    const app = path.join(root, 'packages', 'app')
+    await writeFile(
+      path.join(app, 'server.ts'),
+      `const s = Bun.serve({ port: ${port}, fetch: () => new Response('served') })\nconsole.log('Local: http://localhost:' + s.port)\n`,
+    )
+    await writeFile(
+      path.join(app, 'vx.config.ts'),
+      `import { build } from '../../tools/tasks.ts'
+
+export default {
+  tasks: {
+    build,
+    dev: {
+      exec: { command: '${process.execPath} server.ts', persistent: { readyWhen: 'Local:' }, timeout: '20s' },
+      inputs: { files: ['server.ts'] },
+    },
+    e2e: {
+      dependsOn: ['dev'],
+      exec: { command: 'mkdir -p out && curl -sf http://127.0.0.1:${port} > out/page' },
+      inputs: { files: ['e2e/**'] },
+      outputs: { files: ['out/**'] },
+      cache: true,
+    },
+  },
+}
+`,
+    )
+    expect((await vx(['lock'])).code).toBe(0)
+    const r = await vx(['run', 'e2e'], app)
+    expect([r.code, r.out]).toEqual([0, expect.stringContaining('@acme/app#e2e')])
+    expect(await readFile(path.join(app, 'out', 'page'), 'utf8')).toBe('served')
+    // The server is gone with the run: its port is free again.
+    expect(() =>
+      Bun.listen({ hostname: '127.0.0.1', port, socket: { data() {} } }).stop(true),
+    ).not.toThrow()
+    // Unsandboxed, the server may write in its project, where e2e reads:
+    // it starts again, and e2e hits.
+    expect((await vx(['run', 'e2e'], app)).code).toBe(0)
+    expect((await lastTasks())['@acme/app#e2e']).toEqual({ status: 'cache-hit', cacheHit: true })
+    await ok(['git', 'add', '-A'])
+    await ok(['git', 'commit', '-qm', 'dev server'])
+  })
+
+  it('CI: a one-commit clone of the branch checks the lock and runs only what it changed', async () => {
+    const remote = path.join(root, '.home', 'remote.git')
+    const ci = path.join(root, '.home', 'ci')
+    await ok(['git', 'clone', '-q', '--bare', root, remote])
+    await ok(['git', 'symbolic-ref', 'HEAD', 'refs/heads/main'], remote)
+    await ok(['git', 'clone', '-q', '--depth', '1', '--branch', 'feat', `file://${remote}`, ci])
+    await install(ci, ['--frozen-lockfile'])
+    // A fresh runner: no store, no memo of what `vx lock` parsed.
+    const home = env['HOME']!
+    env['HOME'] = path.join(root, '.ci-home')
+    try {
+      const check = await vx(['lock', '--check'], ci)
+      expect([check.code, check.out]).toEqual([
+        0,
+        expect.stringContaining('up to date (5 projects)'),
+      ])
+      const dry = await vx(['run', 'build', '--affected', '--dry'], ci)
+      expect(dry.code).toBe(0)
+      // main..feat changed lib's source, added web and moved every config
+      // onto the shared file: each build is affected, and says why.
+      const affected = dry.out.split('\n').filter((l) => l.includes('affected:'))
+      expect(affected).toHaveLength(4)
+      expect((await vx(['run', 'build', '--affected'], ci)).code).toBe(0)
+    } finally {
+      env['HOME'] = home
+    }
+  })
 
   it('a failure skips its dependents, and vx last --failed names it', async () => {
     await writeFile(
