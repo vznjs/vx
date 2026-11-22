@@ -49,6 +49,7 @@ import {
   secretNamed,
   type SecretMask,
   refuseSymlink,
+  exitOnStop,
   writeAllOrNone,
   writeNoFollow,
 } from '../util/index.js'
@@ -191,17 +192,21 @@ export async function lockWorkspace(
   // One writer at a time: two at once left a review copy and the lock from
   // different evaluations. Taken before the evaluation, so the second
   // writes what the configs say after the first.
-  const release = await acquireRunLock(root, { log: warn, of: 'lock' })
-  try {
-    const check = await audit(root, warn)
-    if (check.broken !== null) {
-      notWritten(check.broken, check.brokenParts, check.alsoBroken)
-      return 1
+  // A stop ends vx through its exit hooks, which remove the temps it was
+  // writing and its run lock's entry.
+  return await exitOnStop(async () => {
+    const release = await acquireRunLock(root, { log: warn, of: 'lock' })
+    try {
+      const check = await audit(root, warn)
+      if (check.broken !== null) {
+        notWritten(check.broken, check.brokenParts, check.alsoBroken)
+        return 1
+      }
+      return await writeLock(root, check, say)
+    } finally {
+      await release()
     }
-    return await writeLock(root, check, say)
-  } finally {
-    await release()
-  }
+  })
 }
 
 /**
