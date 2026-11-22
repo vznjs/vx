@@ -51,6 +51,7 @@ export {
   span,
   stageTimes,
   type StageTime,
+  wallNow,
 } from './timing.js'
 export { clampInt, formatElapsed, isMeasure, MAX_TIMEOUT_MS, parseDecimalInt } from './num.js'
 export {
