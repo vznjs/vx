@@ -241,7 +241,7 @@ it(
     const first = await run(opts)
     expect(await readdir(path.join(app, 'dist'))).toEqual([])
     expect(first.outcomes.map((o) => [o.status, o.cache?.saved])).toEqual([['failed', undefined]])
-    expect(fx.err.join('\n')).toContain(
+    expect(fx.log.join('\n')).toContain(
       "app#build: outputs matched no files (dist/**) — the command exited 0 but never wrote it, so the task fails and nothing is cached: write it, or fix the pattern — state survived the clean, which the task declares neither input nor output: a tool that reads such a file back (an incremental build's state) may take the cleaned outputs as built; declare it in outputs.files ('state'), so a miss starts without it and a hit restores it",
     )
   },

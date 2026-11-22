@@ -8,6 +8,7 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { run } from './helpers/orchestrator.js'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
+import { defaultLogger } from '../src/report/logger.js'
 
 let root: string
 
@@ -120,6 +121,40 @@ describe('a declared output that matches no files', () => {
     const r = await runTask('emptyroot')
     expect(r.status).toBe('failed')
     expect(r.lines).toEqual([expect.stringContaining('(void/**)')])
+  })
+
+  // Said as a warning (the yellow `[vx]`, a dim body), as every other vx
+  // warning is: written into the task's stream it printed uncoloured in a
+  // focused run, red inside a frame.
+  it('is a warning: tagged in colour, plain without it, never task output', async () => {
+    const body =
+      ' app#lost: outputs matched no files (build/**) — the command exited 0 but never wrote it, so the task fails and nothing is cached: write it, or fix the pattern'
+    for (const enabled of [true, false]) {
+      const out: string[] = []
+      const err: string[] = []
+      const sink = (to: string[]) => ({
+        isTTY: false,
+        write: (c: string | Uint8Array) => to.push(String(c)),
+      })
+      await run({
+        cwd: root,
+        tasks: ['lost'],
+        projects: ['app'],
+        log: defaultLogger({ enabled }, { mode: 'focused' }, sink(out), {
+          err: sink(err),
+          env: {},
+        }),
+        handleSignals: false,
+      })
+      const said = err
+        .join('')
+        .split('\n')
+        .filter((l) => l.includes('matched no files'))
+      expect(said).toEqual([
+        enabled ? `\x1b[1m\x1b[38;2;234;179;8m[vx]\x1b[0m\x1b[2m${body}\x1b[0m` : `[vx]${body}`,
+      ])
+      expect(out.join('')).not.toContain('matched no files')
+    }
   })
 
   it('passes outputs that matched, only empty directories, or none declared', async () => {

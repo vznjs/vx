@@ -1206,9 +1206,11 @@ matched nothing under that arm and said so nowhere. A Windows spelling
 is refused the same way, with the forward-slash glob to write: a
 backslash separator (`src\**`, `src\*.ts`) or a drive (`C:\src\**`,
 `C:/src/**`). A backslash before a bracket, a brace, a `!` or a
-backslash stays an escape. One that starts a name before `*` or `?`
-(`src/\*x`) is refused with the class to write for the character,
-`src/[*]x`. A glob with surrounding whitespace
+backslash stays an escape, as does any inside a class (`g/[x\-]` names
+`g/-` and `g/x`) or before a comma inside a brace. One that starts a name
+before `*` or `?` (`src/\*x`) is refused with the class to write for the
+character, `src/[*]x`; one inside a name (`g/a\*b`) is refused naming
+both readings, `g/a/*b` or `g/a[*]b`. A glob with surrounding whitespace
 (`' src/**'`) or a control character (`'src/\n'`) is refused: the
 engine reads either as part of a name, so it matched nothing and the
 task keyed nothing for it.

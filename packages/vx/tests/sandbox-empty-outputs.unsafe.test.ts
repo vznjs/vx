@@ -33,8 +33,7 @@ describe.skipIf(!available)('the missing-output failure of a sandboxed task', ()
     const log = new Proxy(
       {},
       {
-        get: (_, k) =>
-          k === 'taskStderr' ? (_: unknown, l: string) => lines.push(l.trim()) : () => undefined,
+        get: (_, k) => (k === 'warn' ? (l: string) => lines.push(l.trim()) : () => undefined),
       },
     ) as Logger
     expect((await run({ cwd: root, tasks: ['build'], log, handleSignals: false })).ok).toBe(false)

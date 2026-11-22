@@ -630,7 +630,7 @@ describe('cacheKeyDiff', () => {
       const diff = cacheKeyDiff(indexDb(cache), 'r-2', 'pkg#test')
       expect(diff.entries).toEqual([])
       expect(diff.note).toBe(
-        'without `cache: true` it saves no entry, so no input fingerprints are kept to say which of its `inputs` moved its key; with no `inputs`, every run gives it a new key',
+        'without `cache: true` vx saves nothing for it, so it cannot say which of its `inputs` changed; with no `inputs`, it counts as changed on every run',
       )
     })
   })
@@ -1080,6 +1080,22 @@ describe('whyDidThisRerunQuery', () => {
       expect(result.thisRun!.hash).toBe('h2')
       expect(result.previousRun!.hash).toBe('h1')
       expect(result.hashChanged).toBe(true)
+    })
+  })
+
+  // "its key is folded by dependents only" named vx's mechanism, not what
+  // it means: the task runs every time, and its inputs still reach its
+  // dependents.
+  it('says in plain words what an uncached task with inputs means', () => {
+    withCache((cache) => {
+      runHistory(cache).recordRuns([
+        mkRun({ hash: 'h1', project: 'pkg', task: 'test', runId: 'r-1', startedAt: 1000 }),
+        mkRun({ hash: 'h2', project: 'pkg', task: 'test', runId: 'r-2', startedAt: 2000 }),
+      ])
+      indexDb(cache).query('UPDATE main.runs SET cached = 0').run()
+      expect(whyDidThisRerunQuery(indexDb(cache), 'r-2', 'pkg#test').note).toBe(
+        'this task declares no `cache: true` — it runs on every invocation; a change to its inputs still re-runs the tasks that depend on it',
+      )
     })
   })
 

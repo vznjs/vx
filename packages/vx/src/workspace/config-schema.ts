@@ -1709,17 +1709,63 @@ function isAbsoluteGlob(glob: string): boolean {
 const DRIVE = /(^|[{,])[A-Za-z]:[\\/]+/g
 
 /**
- * True when a backslash in the glob is a Windows separator. One before a
+ * What each backslash in a glob that is no escape reads as. One before a
  * bracket, a brace, a `!` or a backslash is an escape (`app/\[id\]`,
- * `\{b\}`); one before anything else is a separator — `a\*b` reads as
- * `a/*b` on Windows far more often than as a file named with a star, which
- * `a?b` still selects.
+ * `\{b\}`), and so is any one inside a class (`[x\-]`: a class matches one
+ * character, never a separator) or before a comma inside a brace
+ * (`{a\,b,c}`). One that starts a name before `*` or `?` (`src/\*x`)
+ * separates nothing: it meant the character. Any other is a separator:
+ * `a\*b` reads as `a/*b` on Windows far more often than as a file named
+ * with a star, so that one is refused naming both readings.
  */
-function hasBackslashSeparator(body: string): boolean {
-  for (let i = body.indexOf('\\'); i !== -1; i = body.indexOf('\\', i + 2)) {
-    if (!'[]{}!\\'.includes(body[i + 1] ?? '/')) return true
+function backslashRoles(body: string): Map<number, 'sep' | 'start'> {
+  const roles = new Map<number, 'sep' | 'start'>()
+  let classAt = -1
+  let braces = 0
+  for (let i = 0; i < body.length; i++) {
+    const c = body[i]!
+    if (classAt !== -1) {
+      if (c === '\\') i++
+      else if (c === ']' && i > classAt + 1 && !(i === classAt + 2 && body[classAt + 1] === '!'))
+        classAt = -1
+      continue
+    }
+    if (c === '[') classAt = i
+    else if (c === '{') braces++
+    else if (c === '}' && braces > 0) braces--
+    else if (c === '\\') {
+      const next = body[i + 1] ?? '/'
+      if ('[]{}!\\'.includes(next) || (next === ',' && braces > 0)) {
+        i++
+        continue
+      }
+      const atName = i === 0 || '/{,'.includes(body[i - 1]!)
+      roles.set(i, atName && (next === '*' || next === '?') ? 'start' : 'sep')
+    }
   }
-  return false
+  return roles
+}
+
+/**
+ * The glob with each non-escape backslash rewritten: a separator as `/`, a
+ * wildcard it escaped as its class (`[*]`). `literal` reads a separator
+ * before a `*` or `?` as that escape too.
+ */
+function rewriteBackslashes(
+  body: string,
+  roles: Map<number, 'sep' | 'start'>,
+  literal: boolean,
+): string {
+  let out = ''
+  for (let i = 0; i < body.length; i++) {
+    const role = roles.get(i)
+    const next = body[i + 1]
+    if (role === undefined) out += body[i]
+    else if (role === 'start' || (literal && (next === '*' || next === '?')))
+      out += `[${body[++i]}]`
+    else out += '/'
+  }
+  return out
 }
 
 /**
@@ -1731,21 +1777,25 @@ function assertPosixGlob(glob: string, where: string, base: string): void {
   const body = glob.slice(neg.length)
   DRIVE.lastIndex = 0
   const drive = DRIVE.test(body)
-  if (!drive && !hasBackslashSeparator(body)) return
-  // A backslash that starts a name separates nothing: before a `*` or `?`
-  // it meant the character, which a class names (`src/\*x` was told to
-  // write `src//*x`, a wildcard).
-  const classed = body.replace(DRIVE, '$1').replace(/(^|[/{,])\\([*?])/g, '$1[$2]')
-  const write = neg + classed.replace(/\\(?![[\]{}!\\])/g, '/')
-  if (!drive && !hasBackslashSeparator(classed)) {
+  const bare = body.replace(DRIVE, '$1')
+  const roles = backslashRoles(bare)
+  if (!drive && roles.size === 0) return
+  const seps = [...roles].filter(([, r]) => r === 'sep').map(([i]) => i)
+  // `src/\*x` was told to write `src//*x`, a wildcard and a doubled slash.
+  const write = neg + rewriteBackslashes(bare, roles, false)
+  if (!drive && seps.length === 0) {
     throw new UserError(
       `${where}: "${glob}" escapes a wildcard with a backslash, which task globs read as a ` +
         `path separator: write "${write}" for the character itself`,
     )
   }
+  const starred = !drive && seps.some((i) => bare[i + 1] === '*' || bare[i + 1] === '?')
   throw new UserError(
     `${where}: "${glob}" ${drive ? 'starts with a Windows drive' : 'uses a backslash as a path separator'} — ` +
-      `task globs are ${base}-relative with forward slashes: write "${write}"`,
+      `task globs are ${base}-relative with forward slashes: write "${write}"` +
+      (starred
+        ? `, or "${neg + rewriteBackslashes(bare, roles, true)}" for the character itself`
+        : ''),
   )
 }
 
