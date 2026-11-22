@@ -103,7 +103,7 @@ function behindReplay(): WorkspaceSpec {
   }
 }
 
-/** A server that writes the args it was started with, and a smoke test that copies them once they are there. */
+/** A server that writes the args it was started with. */
 function argsServer(ready: boolean): WorkspaceSpec {
   const write = `printf '<%s>' "$@" > got.tmp && mv got.tmp got.txt`
   return {
@@ -114,12 +114,6 @@ function argsServer(ready: boolean): WorkspaceSpec {
             command: ready ? `${write} && echo READY && sleep 60` : `${write} && sleep 60`,
             persistent: ready ? { ready: 'READY' } : true,
             takesArgs: true,
-          },
-          smoke: {
-            command: `${until('got.txt')} && cp got.txt seen.tmp && mv seen.tmp seen.txt`,
-            dependsOn: ['dev'],
-            takesArgs: true,
-            cache: false,
           },
         },
       },
@@ -135,19 +129,19 @@ function argsCase(slug: string, title: string, why: string, ready: boolean, args
     title,
     why,
     from: ['persistent'],
-    needs: ready ? ['persistent', 'ready', 'multi-task'] : ['persistent', 'multi-task'],
+    needs: ready ? ['persistent', 'ready'] : ['persistent'],
     workspace: argsServer(ready),
     steps: [
       {
-        run: 'smoke',
-        also: ['dev'],
+        // The server alone: args after `--` go to the one task named.
+        run: 'dev',
         projects: ['app'],
         args,
         // A server the run was asked for runs until stopped.
-        stop: { signal: 'SIGINT', when: 'packages/app/seen.txt' },
+        stop: { signal: 'SIGINT', when: 'packages/app/got.txt' },
         expect: {
-          ran: ['app#dev', 'app#smoke'],
-          files: { 'packages/app/seen.txt': args.map((a) => `<${a}>`).join('') },
+          ran: ['app#dev'],
+          files: { 'packages/app/got.txt': args.map((a) => `<${a}>`).join('') },
           within: 30,
           alone: true,
         },
