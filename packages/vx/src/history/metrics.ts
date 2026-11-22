@@ -601,9 +601,10 @@ export function whyDidThisRerun(db: Database, runId: string, taskId: string): Wh
       : this_.cached === 0
         ? // Not a cache decision at all: the task runs every time by design,
           // and its key is derived only so dependents can fold it. A keyless one's is new each run,
-          // so every dependent misses: "folded by dependents" read as if they could hit.
+          // so every dependent misses: "folded by dependents" read as if they could hit, and
+          // named the mechanism, not what it means for the user.
           this_.keylessBy === null
-          ? 'this task declares no `cache: true` — it runs on every invocation; its key is folded by dependents only'
+          ? 'this task declares no `cache: true` — it runs on every invocation; a change to its inputs still re-runs the tasks that depend on it'
           : this_.keylessBy === taskId
             ? 'this task declares no `cache: true` — it runs on every invocation; it declares no `inputs` either, so each run derives a new key and every task that depends on it misses; declare its `inputs` (and `outputs` with `cache: true` to cache it too)'
             : `this task declares no \`cache: true\` — it runs on every invocation; its key includes ${this_.keylessBy}, which declares no \`inputs\`, so each run derives a new key and every task that depends on it misses; declare inputs on ${this_.keylessBy}`
@@ -880,7 +881,7 @@ export function cacheKeyDiff(db: Database, runId: string, taskId: string): Cache
         this_.cached === 0
           ? // The verdict already says the task is uncached; this line says
             // why no input can be named.
-            'without `cache: true` it saves no entry, so no input fingerprints are kept to say which of its `inputs` moved its key; with no `inputs`, every run gives it a new key'
+            'without `cache: true` vx saves nothing for it, so it cannot say which of its `inputs` changed; with no `inputs`, it counts as changed on every run'
           : unsaved !== null
             ? `cache key changed but input fingerprints are unavailable — ${unsaved} and saved no entry; only the key change is known`
             : withheld !== undefined

@@ -376,7 +376,7 @@ describe('parseWhyArgs', () => {
         expect(why.out).toContain(
           'it declares no `inputs` either, so each run derives a new key and every task that depends on it misses; declare its `inputs` (and `outputs` with `cache: true` to cache it too)',
         )
-        expect(why.out).not.toContain('folded by dependents only')
+        expect(why.out).not.toContain('still re-runs the tasks that depend on it')
       } finally {
         await rm(root, { recursive: true, force: true })
       }
