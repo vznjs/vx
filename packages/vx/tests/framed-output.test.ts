@@ -11,8 +11,8 @@ import {
   formatTaskExecutedLine,
   formatTaskHitLine,
   formatTaskSkippedLine,
-  paintIdParts,
 } from '../src/report/framed-output.js'
+import { idParts } from '../src/ui/components.js'
 import type { TaskOutcome } from '../src/graph/outcome.js'
 import { paint, type Style } from '../src/ui/theme.js'
 import type { TaskNode } from '../src/graph/task-graph.js'
@@ -89,7 +89,7 @@ describe('a target hue is a function of its name', () => {
 
   it('every #build matches every other #build, across projects', () => {
     const builds = ['web', 'docs', '@scope/ui', 'api'].map((p) =>
-      taskPart(paintIdParts(p, p, 'build', on)),
+      taskPart(idParts(p, p, 'build', on)),
     )
     expect(new Set(builds).size).toBe(1)
     expect(builds[0]!.startsWith('\x1b[0m\x1b[38;2;')).toBe(true)
@@ -97,10 +97,10 @@ describe('a target hue is a function of its name', () => {
 
   it('targets of one project take their own hues, the # dim between', () => {
     const tasks = ['build', 'link', 'test', 'lint', 'typecheck'].map((t) =>
-      taskPart(paintIdParts('web', 'web', t, on)),
+      taskPart(idParts('web', 'web', t, on)),
     )
     expect(new Set(tasks.map((t) => /38;2;[0-9;]+m/.exec(t)![0])).size).toBeGreaterThan(1)
-    expect(paintIdParts('web', 'web', 'build', on)).toContain('\x1b[2m#\x1b[0m')
+    expect(idParts('web', 'web', 'build', on)).toContain('\x1b[2m#\x1b[0m')
   })
 })
 
@@ -112,7 +112,7 @@ describe('a project hue is a function of its name', () => {
   const names = ['web', 'docs', '@scope/ui', 'api', 'lib']
   const painted = (order: readonly string[]): Record<string, string> => {
     const out: Record<string, string> = {}
-    for (const n of order) out[n] = paintIdParts(n, n, 'build', on)
+    for (const n of order) out[n] = idParts(n, n, 'build', on)
     return out
   }
 
@@ -121,11 +121,11 @@ describe('a project hue is a function of its name', () => {
     expect(Object.values(here).every((s) => s.startsWith('\x1b[38;2;'))).toBe(true)
     expect(painted([...names].reverse())).toEqual(here)
 
-    const module = path.resolve(import.meta.dir, '..', 'src', 'report', 'framed-output.ts')
+    const module = path.resolve(import.meta.dir, '..', 'src', 'ui', 'components.ts')
     const script = `
-      const { paintIdParts } = await import(${JSON.stringify(module)})
+      const { idParts } = await import(${JSON.stringify(module)})
       const out = {}
-      for (const n of ${JSON.stringify(['zzz', ...[...names].reverse()])}) out[n] = paintIdParts(n, n, 'build', { enabled: true })
+      for (const n of ${JSON.stringify(['zzz', ...[...names].reverse()])}) out[n] = idParts(n, n, 'build', { enabled: true })
       console.log(JSON.stringify(out))
     `
     const p = Bun.spawnSync([process.execPath, '-e', script], { stdout: 'pipe', stderr: 'pipe' })

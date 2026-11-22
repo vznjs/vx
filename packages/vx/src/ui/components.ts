@@ -63,13 +63,8 @@ function paintId(text: string, c: ColorSupport, bold: boolean): string {
   const opts = bold ? { bold: true } : {}
   const hash = text.lastIndexOf('#')
   if (hash < 0) return paintHex(identityHue(text), text, c, opts)
-  const task = text.slice(hash + 1)
   const project = text.slice(0, hash)
-  return (
-    paintHex(identityHue(project), project, c, opts) +
-    paintHex('', '#', c, { dim: true }) +
-    paintHex(identityHue(task), task, c, opts)
-  )
+  return idParts(project, project, text.slice(hash + 1), c, opts)
 }
 
 /**

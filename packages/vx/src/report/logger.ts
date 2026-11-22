@@ -211,9 +211,7 @@ export function resolveOutputView(
     options.outputLogs ?? (settingEnv('run.outputLogs', env) as OutputView['mode'] | undefined)
   if (outputLogs !== undefined) return mk(outputLogs)
   // A CI log is read for what broke (M, 2026-11-22).
-  if (ci) return mk('errors-only')
-  if (options.flow !== undefined) return mk(options.flow)
-  return mk('full')
+  return mk(ci ? 'errors-only' : (options.flow ?? 'full'))
 }
 
 /** A run shorter than this never reads history for a forecast. */
@@ -617,7 +615,7 @@ export function defaultLogger(
     logWrite(chunk)
   }
   const logWrite = (chunk: string): void => {
-    if (panelOpen !== undefined && !inPanel && chunk.length > 0) closePanel()
+    if (!inPanel && chunk.length > 0) panelOpen = undefined
     if (chunk.length > 0) endsBlank = chunk.endsWith('\n\n')
     if (!logOpened && chunk.length > 0) {
       logOpened = true
@@ -639,17 +637,11 @@ export function defaultLogger(
   const panels = colors.enabled || writer.enabled
   let panelOpen: 'Tasks' | 'Warnings' | undefined
   let inPanel = false
-  function closePanel(): void {
-    const was = panelOpen
-    if (was === undefined) return
-    panelOpen = undefined
-  }
   const emitRow = (line: string): void => {
     if (!panels) {
       emitLine(line)
       return
     }
-    if (panelOpen === 'Warnings') closePanel()
     inPanel = true
     if (panelOpen !== 'Tasks') {
       emitLine(ui.panelTop('Tasks', colors, undefined, undefined, formatListHeader(colors)))
@@ -713,6 +705,32 @@ export function defaultLogger(
       ...(onPath.has(node.id) ? { critical: true } : {}),
     }) + flakyNote(outcome, colors)
 
+  const taskChunk = (node: TaskNode, chunk: string, err: boolean): void => {
+    if (discardsOutput) return
+    if (streamsLive(node)) {
+      streamWrite(chunk)
+      return
+    }
+    const tail = persistentTails.get(node.id)
+    if (tail !== undefined) {
+      if (printsKept(tail)) streamKept(node, chunk)
+      else appendTail(err ? tail.err : tail.out, chunk)
+      return
+    }
+    if (heldOver(node)) return streamKept(node, chunk)
+    pushChunk(node.id, chunk, err)
+  }
+  // Free a task's slot; the longest-waiting queued task (if any) takes it
+  // over, keeping lowest-index-first reuse.
+  const freeSlot = (id: string): void => {
+    const si = slots.findIndex((s) => s !== null && s.id === id)
+    if (si >= 0) slots[si] = slotQueue.shift() ?? null
+    else {
+      const qi = slotQueue.findIndex((s) => s.id === id)
+      if (qi >= 0) slotQueue.splice(qi, 1)
+    }
+  }
+
   return {
     showsSteps: writer.enabled,
     settle() {
@@ -727,7 +745,7 @@ export function defaultLogger(
       // A live-streamed server keeps writing after its frame closes, so a
       // summary row or "exited with code" can follow its partial line.
       endStreamLine()
-      closePanel()
+      panelOpen = undefined
       // A block's own trailing blank stands for the first blank status line; a second one is meant
       // (two before the Summary).
       if (line === '' && endsBlank) {
@@ -744,7 +762,6 @@ export function defaultLogger(
         writer.writeTo(errOut, `${ui.tagged('warn', line, colors)}\n`)
         return
       }
-      if (panelOpen === 'Tasks') closePanel()
       if (panelOpen !== 'Warnings') {
         writer.writeTo(errOut, `${ui.panelTop('Warnings', colors)}\n`)
         panelOpen = 'Warnings'
@@ -872,7 +889,7 @@ export function defaultLogger(
       // captured and bounded. Guarded: an embedder driving a renderer directly
       // may call runEnd twice.
       if (flushedPersistent) flushKept()
-      if (!flushedPersistent) {
+      else {
         flushedPersistent = true
         if (view.mode !== 'none') {
           for (const t of persistentTails.values()) {
@@ -905,41 +922,13 @@ export function defaultLogger(
         flushedFailures = true
         for (const block of deferredFailures) emitBlock(fenced(block))
       }
-      closePanel()
+      panelOpen = undefined
       // The summary and the CLI's own lines follow on the stream directly:
       // nothing may still be held, and nothing after this is.
       writer.settle()
     },
-    taskStdout(node, chunk) {
-      if (discardsOutput) return
-      if (streamsLive(node)) {
-        streamWrite(chunk)
-        return
-      }
-      const tail = persistentTails.get(node.id)
-      if (tail !== undefined) {
-        if (printsKept(tail)) streamKept(node, chunk)
-        else appendTail(tail.out, chunk)
-        return
-      }
-      if (heldOver(node)) return streamKept(node, chunk)
-      pushChunk(node.id, chunk, false)
-    },
-    taskStderr(node, chunk) {
-      if (discardsOutput) return
-      if (streamsLive(node)) {
-        streamWrite(chunk)
-        return
-      }
-      const tail = persistentTails.get(node.id)
-      if (tail !== undefined) {
-        if (printsKept(tail)) streamKept(node, chunk)
-        else appendTail(tail.err, chunk)
-        return
-      }
-      if (heldOver(node)) return streamKept(node, chunk)
-      pushChunk(node.id, chunk, true)
-    },
+    taskStdout: (node, chunk) => taskChunk(node, chunk, false),
+    taskStderr: (node, chunk) => taskChunk(node, chunk, true),
     taskComplete(node, outcome) {
       if (!statusDead) finished.add(node.id)
       // A persistent task's frame drains from its bounded tail, with how much
@@ -970,6 +959,21 @@ export function defaultLogger(
       // The pre-ready window closed either way: a failed task is over, and
       // a ready one starts a fresh post-ready tail below.
       persistentTails.delete(node.id)
+      const frame = (forceCommand: boolean): string =>
+        formatTaskBlock(
+          node,
+          outcome,
+          { output, ...dropped },
+          colors,
+          forceCommand,
+          forwardArgs,
+          links,
+        )
+      // The failed row now; its frame replays with the others at runEnd.
+      const deferFailure = (): void => {
+        emitRow(failureRow(node, outcome))
+        deferredFailures.push(frame(false))
+      }
       // An aborted task frees its slot and counts as the footer will: `aborted`
       // or `not run`.
       if (outcome.status === 'aborted') {
@@ -977,12 +981,7 @@ export function defaultLogger(
           if (neverStarted(outcome)) notRun++
           else stopped++
         }
-        const si = slots.findIndex((s) => s !== null && s.id === node.id)
-        if (si >= 0) slots[si] = slotQueue.shift() ?? null
-        else {
-          const qi = slotQueue.findIndex((s) => s.id === node.id)
-          if (qi >= 0) slotQueue.splice(qi, 1)
-        }
+        freeSlot(node.id)
         refresh(true)
         if (isGroupTask(node)) return
         // What it printed while stopping (a trap's cleanup) still reaches the
@@ -1005,32 +1004,10 @@ export function defaultLogger(
           // with the deferred failures above the summary.
           if (view.mode === 'broad' || view.mode === 'errors-only') {
             emitRow(formatTaskAbortedLine(node, outcome, colors, blocksOf(node.id)))
-            deferredFailures.push(
-              formatTaskBlock(
-                node,
-                outcome,
-                { output, ...dropped },
-                colors,
-                true,
-                forwardArgs,
-                links,
-              ),
-            )
+            deferredFailures.push(frame(true))
             return
           }
-          emitBlock(
-            fenced(
-              formatTaskBlock(
-                node,
-                outcome,
-                { output, ...dropped },
-                colors,
-                true,
-                forwardArgs,
-                links,
-              ),
-            ),
-          )
+          emitBlock(fenced(frame(true)))
           return
         }
         // Otherwise a row in the task list, in every view that lists a
@@ -1058,16 +1035,7 @@ export function defaultLogger(
             persistentTails.set(node.id, { node, outcome, out: createTail(), err: createTail() })
           }
         }
-        // Free the task's slot; the longest-waiting queued task
-        // (if any) takes it over, keeping lowest-index-first reuse.
-        if (!statusDead) {
-          const si = slots.findIndex((s) => s !== null && s.id === node.id)
-          if (si >= 0) slots[si] = slotQueue.shift() ?? null
-          else {
-            const qi = slotQueue.findIndex((s) => s.id === node.id)
-            if (qi >= 0) slotQueue.splice(qi, 1)
-          }
-        }
+        if (!statusDead) freeSlot(node.id)
         // Only a remote's traffic moves a bucket: without one, an entry per
         // task was held for the run and never read.
         const bucket = runContext?.cache?.remote === true ? cacheBucketOf(outcome) : undefined
@@ -1127,36 +1095,13 @@ export function defaultLogger(
             return
           }
           if (outcome.status !== 'failed') return
-          emitRow(failureRow(node, outcome))
-          deferredFailures.push(
-            formatTaskBlock(
-              node,
-              outcome,
-              { output, ...dropped },
-              colors,
-              false,
-              forwardArgs,
-              links,
-            ),
-          )
+          deferFailure()
           return
         case 'broad':
           // News only: executed work and skips get a line, failures the frame;
           // hits are silent, counted in the summary.
           if (outcome.status === 'failed') {
-            // failed row now; the full frame replays at runEnd.
-            emitRow(failureRow(node, outcome))
-            deferredFailures.push(
-              formatTaskBlock(
-                node,
-                outcome,
-                { output, ...dropped },
-                colors,
-                false,
-                forwardArgs,
-                links,
-              ),
-            )
+            deferFailure()
           } else if (outcome.status === 'success') {
             emitRow(
               formatTaskExecutedLine(
@@ -1189,35 +1134,12 @@ export function defaultLogger(
             // Several requested tasks: no live frame (it would interleave).
             // Failures defer to runEnd; the rest emit one block.
             if (outcome.status === 'failed') {
-              emitRow(failureRow(node, outcome))
-              deferredFailures.push(
-                formatTaskBlock(
-                  node,
-                  outcome,
-                  { output, ...dropped },
-                  colors,
-                  false,
-                  forwardArgs,
-                  links,
-                ),
-              )
+              deferFailure()
               return
             }
             // forceCommand: a requested task's frame shows `$ cmd`
             // whether it ran or was cached — same frame every run.
-            emitBlock(
-              fenced(
-                formatTaskBlock(
-                  node,
-                  outcome,
-                  { output, ...dropped },
-                  colors,
-                  true,
-                  forwardArgs,
-                  links,
-                ),
-              ),
-            )
+            emitBlock(fenced(frame(true)))
             return
           }
           // Dependency-pulled nodes: silent on success; a skip gets its
@@ -1225,18 +1147,7 @@ export function defaultLogger(
           if (outcome.status === 'skipped') {
             emitRow(formatTaskSkippedLine(node, colors, outcome, blocksOf(node.id)))
           } else if (outcome.status === 'failed') {
-            emitRow(failureRow(node, outcome))
-            deferredFailures.push(
-              formatTaskBlock(
-                node,
-                outcome,
-                { output, ...dropped },
-                colors,
-                false,
-                forwardArgs,
-                links,
-              ),
-            )
+            deferFailure()
           }
           return
         case 'full': {
@@ -1253,15 +1164,7 @@ export function defaultLogger(
             emitRow(formatTaskSkippedLine(node, colors, outcome, blocksOf(node.id)))
             return
           }
-          const block = formatTaskBlock(
-            node,
-            outcome,
-            { output, ...dropped },
-            colors,
-            false,
-            forwardArgs,
-            links,
-          )
+          const block = frame(false)
           if (block.length === 0) return
           if (view.gha) {
             // Fenced, so a task printing `::endgroup::` cannot close vx's
