@@ -11,6 +11,27 @@ import { pluginSource } from './helpers/plugin.js'
 import { floor, linux, MIB, run, scratch, TIMEOUT, workspace } from './helpers/memory-ceiling.js'
 
 let base = 0
+
+/** A directory the remote plugin below stores in. */
+async function fileStore(): Promise<string> {
+  const store = scratch(path.join(os.tmpdir(), `vx-mem-remote-${process.pid}-${Math.random()}`))
+  await mkdir(store, { recursive: true })
+  return store
+}
+
+/** A remote over `store` that streams both ways. */
+function fileRemote(store: string): string {
+  const at = (h: string) => `${JSON.stringify(store)} + '/' + ${h}`
+  return pluginSource(
+    'test/file-remote',
+    `{ cache: () => ({
+        endpoint: ${JSON.stringify(store)},
+        async has(h) { const f = Bun.file(${at('h')}); return (await f.exists()) ? { size: f.size } : null },
+        async get(h) { const f = Bun.file(${at('h')}); return (await f.exists()) ? { body: new Response(f.stream()), durationMs: 1 } : null },
+        async put(h, body) { await Bun.write(${at('h')}, body) },
+      }) }`,
+  )
+}
 beforeAll(async () => {
   if (linux) base = await floor()
 }, TIMEOUT)
@@ -21,18 +42,8 @@ describe.skipIf(!linux)('vx peak memory over big outputs', () => {
     async () => {
       // Half random, half zeros: measured +45 MiB saving, at the floor
       // restoring locally, +37 pulling from the remote.
-      const store = scratch(path.join(os.tmpdir(), `vx-mem-remote-${process.pid}`))
-      await mkdir(store, { recursive: true })
-      const at = (h: string) => `${JSON.stringify(store)} + '/' + ${h}`
-      const remote = pluginSource(
-        'test/file-remote',
-        `{ cache: () => ({
-        endpoint: ${JSON.stringify(store)},
-        async has(h) { const f = Bun.file(${at('h')}); return (await f.exists()) ? { size: f.size } : null },
-        async get(h) { const f = Bun.file(${at('h')}); return (await f.exists()) ? { body: new Response(f.stream()), durationMs: 1 } : null },
-        async put(h, body) { await Bun.write(${at('h')}, body) },
-      }) }`,
-      )
+      const store = await fileStore()
+      const remote = fileRemote(store)
       const command = `mkdir -p dist && head -c ${300 * MIB} /dev/urandom > dist/r.bin && head -c ${300 * MIB} /dev/zero > dist/z.bin`
       const root = await workspace(
         {
@@ -81,6 +92,33 @@ describe.skipIf(!linux)('vx peak memory over big inputs', () => {
       const miss = await run(root, ['a#out'])
       expect(miss.out).toContain('a#out')
       expect(miss.peak - base).toBeLessThan(160)
+    },
+    TIMEOUT,
+  )
+})
+
+describe.skipIf(!linux)('vx peak memory keeping a failed run', () => {
+  it(
+    "600 MiB of a failed task's outputs reach the remote in bounded memory",
+    async () => {
+      const store = await fileStore()
+      const command = `mkdir -p dist && head -c ${300 * MIB} /dev/urandom > dist/r.bin && head -c ${300 * MIB} /dev/zero > dist/z.bin && exit 1`
+      const root = await workspace(
+        {
+          a: `export default { tasks: { out: { exec: { command: ${JSON.stringify(command)} }, inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true } } }\n`,
+        },
+        { plugins: [fileRemote(store)], fields: "cache: { upload: { failures: 'always' } }" },
+      )
+      const failed = await run(root, ['a#out', '--cache-policy=local:rw,remote:rw'], 1)
+      const kept = await readdir(store)
+      expect(kept).toHaveLength(1)
+      const tar = path.join(store, kept[0]!)
+      // a header per file, then the end marker
+      expect((await stat(tar)).size).toBe(600 * MIB + 2 * 512 + 1024)
+      const list = Bun.spawnSync(['tar', '-tvf', tar]).stdout.toString()
+      expect(list).toContain('packages/a/dist/r.bin')
+      expect(list).toContain(`${300 * MIB} `)
+      expect(failed.peak - base).toBeLessThan(160)
     },
     TIMEOUT,
   )

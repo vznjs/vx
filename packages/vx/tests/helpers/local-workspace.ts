@@ -19,12 +19,13 @@ export function localWorkspaceSource(
   extra: readonly string[] = [],
   prelude = '',
   rules?: string,
+  fields?: string,
 ): string {
   const plugins = extra.some((p) => p.includes('/vx-test-packages"'))
     ? extra
     : [packagesSource(), ...extra]
   return `${PLUGIN_IMPORT}${prelude}
-export default { plugins: [${plugins.join(', ')}]${rules === undefined ? '' : `, run: { rules: ${rules} }`} }
+export default { plugins: [${plugins.join(', ')}]${rules === undefined ? '' : `, run: { rules: ${rules} }`}${fields === undefined ? '' : `, ${fields}`} }
 `
 }
 
