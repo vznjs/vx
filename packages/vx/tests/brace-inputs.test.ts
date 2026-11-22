@@ -156,3 +156,33 @@ it('a brace holding an escaped char keys what each alternative names', async () 
   writeFileSync(path.join(app, 'other/z.ts'), 'b')
   expect(await build()).toBe('cache-hit')
 })
+
+// `g/[x\-]` was refused as a backslash separator ("write g/[x/-]"): inside a
+// class the backslash escapes, so the glob names the files `-` and `x`.
+it('a class holding an escaped dash keys the files it names', async () => {
+  const app = await addProject(root, 'app', {
+    config: `
+      export default {
+        tasks: {
+          build: {
+            exec: { command: 'true' },
+            inputs: { files: ['g/[x\\\\-]'] }, outputs: { files: [] }, cache: true,
+          },
+        },
+      }
+    `,
+    files: { 'g/-': 'a', 'g/x': 'a', 'g/y': 'a' },
+  })
+  gitIn(root)('add', '-A')
+  gitIn(root)('commit', '-q', '-m', 'fixture')
+  const build = async () =>
+    (await run({ cwd: root, tasks: ['app#build'], log, handleSignals: false })).outcomes[0]!.status
+  expect(await build()).toBe('success')
+  writeFileSync(path.join(app, 'g/-'), 'b')
+  expect(await build()).toBe('success')
+  writeFileSync(path.join(app, 'g/x'), 'b')
+  expect(await build()).toBe('success')
+  // CONTROL: a file the class does not name stays out of the key.
+  writeFileSync(path.join(app, 'g/y'), 'b')
+  expect(await build()).toBe('cache-hit')
+})
