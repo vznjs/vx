@@ -51,6 +51,7 @@ export {
   type SandboxViolation,
 } from './executor.js'
 
+export { primeSpares } from './warm-shell.js'
 // The process primitives the sandbox runs a task with. `sandbox` is their
 // only reader outside this module (tests/module-boundaries.test.ts).
 export {

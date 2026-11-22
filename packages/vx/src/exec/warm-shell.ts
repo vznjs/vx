@@ -26,10 +26,10 @@ export interface Spare {
  * Spares kept waiting. Four: a cold run's slots free one at a time, but a
  * spawn under load takes 2-5 ms, and with two, 1 task in 12 waited for its
  * spare or spawned fresh (500 site-shape tasks on 4 cores: 37 waited 2.2 ms
- * each; with four, 13). A burst (the run's first tasks) spawns fresh while
- * the pool fills.
+ * each; with four, 13). A run keeps one per slot (`primeSpares`).
  */
 const SPARES = 4
+let pool = SPARES
 
 const spares: Spare[] = []
 /** A spare that could not start (no libc pipes, a refused spawn): no more are tried. */
@@ -82,7 +82,23 @@ let refilling: ReturnType<typeof setImmediate> | undefined
 
 function refill(): void {
   refilling = undefined
-  while (!off && spares.length < SPARES) {
+  topUp()
+}
+
+/**
+ * Keep `n` spares (at least `SPARES`) and start them now, before a run's
+ * first tasks: those start together, before any slot has freed, and a slot
+ * wave (tasks of one length ending together) took more than four. 500
+ * site-shape tasks at 10 slots: the first 10 spawned fresh at 13 ms each and
+ * 1 task in 25 after them; pre-spawn 0.33 -> 0.2 ms a task.
+ */
+export function primeSpares(n: number): void {
+  pool = Math.max(pool, n)
+  topUp()
+}
+
+function topUp(): void {
+  while (!off && spares.length < pool) {
     const s = start()
     if (s === undefined) {
       off = true
