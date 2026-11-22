@@ -395,17 +395,18 @@ describe('task refusals the sweep found unheld (item 653)', () => {
   // `printf '\ud800'` and `printf '\udfff'` held two keys and ran one command,
   // other bytes than the config said (key fuzzer, 2026-11-22).
   it('a command or define value holding a lone surrogate is refused', () => {
-    const tail = ', which UTF-8 cannot carry: the task would run U+FFFD in its place'
+    const tail =
+      ' holds a lone surrogate, which UTF-8 cannot carry: the task would run U+FFFD in its place'
     for (const bad of ['\ud800', 'a\udfffb', '\udc00\ud800']) {
       expect(taskRefusal({ exec: { command: `echo ${bad}` } })).toBe(
-        `${CFG}: tasks.t.exec.command holds a lone surrogate${tail}`,
+        `${CFG}: tasks.t.exec.command${tail}`,
       )
       expect(taskRefusal({ exec: { command: 'x', env: { define: { A: bad } } } })).toBe(
-        `${CFG}: tasks.t.exec.env.define.A holds a lone surrogate${tail}`,
+        `${CFG}: tasks.t.exec.env.define.A${tail}`,
       )
       for (const field of ['runtime', 'workspaceRuntime']) {
         expect(cacheRefusal({ files: [], [field]: [`echo ${bad}`] })).toBe(
-          `${CFG}: tasks.t.inputs.${field} holds a lone surrogate${tail}`,
+          `${CFG}: tasks.t.inputs.${field}${tail}`,
         )
       }
     }
