@@ -554,7 +554,7 @@ process the task left running (`server & echo up`) keeps stdout and
 stderr open, so vx reads on for 250 ms after the shell exits and then
 stops. That bound is what keeps a leftover server from hanging the run.
 A 250 ms that vx spent blocked on other work (a cold run's saves)
-does not count and starts another, five at most: without that, a heavy
+does not count and starts another, for 30 s after the exit at most: without that, a heavy
 task's last buffered chunks were cut as a leftover's and the task went
 unsaved. So does a 250 ms vx spent waiting for its own slow reader
 (`vx run … | slow-tool`), until 8 MiB came after the exit: the task
