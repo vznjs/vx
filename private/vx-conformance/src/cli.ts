@@ -66,6 +66,8 @@ const work = tools.flatMap((t) => cases.map((c) => ({ t, c })))
 const outcomes = new Map<string, Outcome>()
 let next = 0
 let done = 0
+/** Each tool's first failed run, its log kept: a sample, should the tool fail most cases. */
+const firstFail = new Map<string, Outcome>()
 await Promise.all(
   Array.from({ length: Math.min(jobs, work.length) }, async () => {
     while (next < work.length) {
@@ -75,6 +77,7 @@ await Promise.all(
         detail: `harness: ${String(err)}`,
       }))
       outcomes.set(`${t.name}\0${c.id}`, o)
+      if (o.status === 'fail' && o.log && !firstFail.has(t.name)) firstFail.set(t.name, { ...o })
       done++
       if (o.status === 'fail')
         console.error(
@@ -86,6 +89,16 @@ await Promise.all(
   }),
 )
 process.stderr.write('\n')
+// A tool failing most cases is more often the harness's setup than the tool:
+// the results say how one run failed, for a CI job whose output is gone.
+for (const t of tools) {
+  const fails = cases.filter((c) => outcomes.get(`${t.name}\0${c.id}`)?.status === 'fail')
+  const sample = firstFail.get(t.name)
+  if (fails.length * 2 > cases.length && sample?.log)
+    harnessNotes.push(
+      `${t.name} failed ${fails.length} of ${cases.length} cases; one: ${sample.detail}\n${sample.log.slice(-2000)}`,
+    )
+}
 
 const outcomeOf = (tool: string, id: string) => outcomes.get(`${tool}\0${id}`)!
 
