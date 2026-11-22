@@ -1197,6 +1197,11 @@ describe('withForwardArgs', () => {
       '(echo "$(echo "a)")" args:)',
       'a) args: --fix a b\n',
     ],
+    [
+      'a case in a case in a subshell',
+      '(case a in a) case b in b) echo args:;; esac;; esac)',
+      'args: --fix a b\n',
+    ],
     ['a negated case in a subshell', '(! case a in a) echo args:;; esac)', 'args: --fix a b\n'],
     [
       'control: case and in as arguments',

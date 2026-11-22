@@ -195,6 +195,8 @@ function shellShape(command: string): {
   // Per open `case`: reading its word, a pattern (whose `)` closes no paren)
   // or a body (`;;` returns to the patterns).
   const cases: Array<'word' | 'pattern' | 'body'> = []
+  // Just past the last pattern's `)`: a command starts there.
+  let bodyAt = -1
   let subshell = false
   let quote = ''
   let comment = -1
@@ -250,7 +252,10 @@ function shellShape(command: string): {
     if (atWordStart) {
       const word = /^(?:case|in|esac)(?=[\s;&|()<>]|$)/.exec(command.slice(i, i + 5))?.[0]
       const top = cases.at(-1)
-      if (word === 'case' && COMMAND_START.test(command.slice(Math.max(0, i - 8), i))) {
+      const opens =
+        COMMAND_START.test(command.slice(Math.max(0, i - 8), i)) ||
+        (bodyAt >= 0 && command.slice(bodyAt, i).trim() === '')
+      if (word === 'case' && opens) {
         cases.push('word')
       } else if (word === 'in' && top === 'word') cases[cases.length - 1] = 'pattern'
       else if (word === 'esac' && (top === 'pattern' || top === 'body')) cases.pop()
@@ -262,7 +267,10 @@ function shellShape(command: string): {
     }
     if (cases.at(-1) === 'pattern' && (c === '(' || c === ')')) {
       // `(a)` and `a)`: a pattern's parens open and close nothing.
-      if (c === ')') cases[cases.length - 1] = 'body'
+      if (c === ')') {
+        cases[cases.length - 1] = 'body'
+        bodyAt = i + 1
+      }
       atWordStart = true
       continue
     }
