@@ -51,7 +51,8 @@
     "lock": [
       "--check",
       "--format",
-      "--help"
+      "--help",
+      "--merge"
     ],
     "run": [
       "--affected",
@@ -197,6 +198,9 @@
     "lock --format": [
       "json",
       "pretty"
+    ],
+    "lock --merge": [
+      "*"
     ],
     "run --affected": [
       "*"

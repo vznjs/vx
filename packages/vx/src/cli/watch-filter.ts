@@ -446,7 +446,7 @@ export function isWorkspaceConfigFile(name: string): boolean {
 /**
  * The files the claimed files' recorded digests read besides them
  * (`FingerprintDigests.extras`: a `file:` dependency's directory, a patch),
- * absolute, from `.vx/dependencies.lock.json` as `vx lock` wrote it: a run
+ * absolute, from `.vx/dependencies.lock` as `vx lock` wrote it: a run
  * keys them from there. Empty when there is no readable lock.
  */
 export function lockedExtras(workspaceRoot: string): Set<string> {
@@ -458,8 +458,8 @@ export function lockedExtras(workspaceRoot: string): Set<string> {
   }
   const lock = parseDependenciesLock(bytes)
   const out = new Set<string>()
-  for (const rec of Object.values(lock?.files ?? {}))
-    for (const rel of Object.keys(rec.extras ?? {})) out.add(path.resolve(workspaceRoot, rel))
+  for (const rec of Object.values(lock?.extras ?? {}))
+    for (const rel of Object.keys(rec)) out.add(path.resolve(workspaceRoot, rel))
   return out
 }
 

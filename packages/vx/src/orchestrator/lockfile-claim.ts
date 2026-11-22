@@ -7,17 +7,17 @@
 // the per-run gate, the fallback for a project the file does not list and
 // the `--affected` diff are one implementation here.
 //
-// A run's key reads each project's digest from `.vx/dependencies.lock.json`
-// (`KeyHookContext.locked`), never the file: only `vx lock` and
-// `--affected` digest it, and a run whose extra file (a local path
-// dependency, edited with no install) moved since the lock, as the record
-// is stale for it then. What the `discover` and `project` stages read
-// (the links, the recorded names) is memoised in cache.db
-// (`lockfile_memos`, one row per lockfile and claimant) by the file's xxh3,
-// so a warm run pays one read + hash + one row read, never a parse; within
-// one process (a run, a watch cycle) the file's size, mtime, ctime and
-// inode gate even the read. A run's read leaves the digests out (most of
-// a parse), and `vx lock` adds them to the memo.
+// A run's key reads each project's digest from `.vx/dependencies.lock`
+// (`KeyHookContext.locked`), after core holds the record to `digests`
+// here (locked-digests.ts); a run whose extra file (a local path
+// dependency, edited with no install) moved since the lock digests anew,
+// as the record is stale for it then. The digests and what the
+// `discover` and `project` stages read (the links, the recorded names)
+// are memoised in cache.db (`lockfile_memos`, one row per lockfile and
+// claimant) by the file's xxh3, so a warm run pays one read + hash + one
+// row read, never a parse; within one process (a run, a watch cycle) the
+// file's size, mtime, ctime and inode gate even the read. `vx lock`
+// writes the digests' row, so the run after it parses nothing.
 
 import path from 'node:path'
 import { readdir, realpath, stat } from 'node:fs/promises'
@@ -538,8 +538,8 @@ export function lockfileClaim<L = unknown>(
         }
         return names
       },
-      // What `vx lock` commits, so `--affected` reads the base's digests
-      // instead of parsing the base's file.
+      // What `vx lock` commits and a run checks against: memoized by the
+      // file's hash, so a warm run parses nothing.
       async digests(_file: string, ctx: FingerprintContext) {
         if (scope === 'workspace') return undefined
         const digests = await load(ctx.workspaceRoot, ctx.cacheDir, true, extraHashesOf(ctx))

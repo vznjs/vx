@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { affectedProjects, defaultAffectedBase, headBase } from '../src/workspace/affected.js'
 import type { ProjectMeta } from '../src/workspace/workspace.js'
 import type { ProjectEntry } from '../src/workspace/index.js'
-import { LOCKFILE_NAME } from '../src/workspace/index.js'
+import { LOCKFILE_NAME, LOCKFILE_VERSION } from '../src/workspace/index.js'
 import { workspaceGlobOwners } from '../src/cli/select.js'
 import { discoverCliProjects, loadCliProjects } from '../src/cli/workspace-config.js'
 import { PLUGIN_IMPORT, packagesSource, pluginSource, testPlugin } from './helpers/plugin.js'
@@ -515,19 +515,20 @@ describe('affectedProjects', () => {
     // config evaluated under another env, a preset imported by package
     // name) moved its project's keys while no other path did: with the
     // review files off, the lock was the only change, and it was dropped.
-    const lockOf = (command: string) =>
-      JSON.stringify({
-        version: 6,
-        projects: Object.fromEntries(
-          ['a', 'b'].map((n) => [
-            `packages/${n}`,
-            {
-              file: 'vx.config.mjs',
-              config: { tasks: { t: { exec: { command: n === 'a' ? command : 'b' } } } },
-            },
-          ]),
-        ),
-      })
+    const lockOf = (command: string, spaced = false) =>
+      [
+        `{"version":${LOCKFILE_VERSION}}`,
+        `#a\t{"exec":{"command":${JSON.stringify(command)}}}`,
+        '#b\t{"exec":{"command":"b"}}',
+        ...['a', 'b'].map((n) => {
+          const e = JSON.stringify({
+            path: `packages/${n}`,
+            file: 'vx.config.mjs',
+            config: { tasks: { t: `#${n}` } },
+          })
+          return `${n}\t${spaced ? e.replaceAll(',', ', ') : e}`
+        }),
+      ].join('\n')
     const all = () =>
       affectedProjects({ workspaceRoot: root, since: 'HEAD', projects }).then((s) => [...s].sort())
     // Control: a lock the base did not have ran nothing there to compare.
@@ -536,7 +537,7 @@ describe('affectedProjects', () => {
     await git(root, 'add', '.')
     await git(root, 'commit', '-q', '-m', 'lock')
     // Control: the same entries, written again in another layout.
-    await Bun.write(path.join(root, LOCKFILE_NAME), `${lockOf('one')}\n\n`)
+    await Bun.write(path.join(root, LOCKFILE_NAME), `${lockOf('one', true)}\n`)
     expect(await all()).toEqual([])
     await Bun.write(path.join(root, LOCKFILE_NAME), lockOf('two'))
     expect(await all()).toEqual(['a'])
@@ -605,20 +606,20 @@ describe('affectedProjects', () => {
     expect([...out]).toEqual([])
   })
 
-  it('a .vx/projects.lock.json change never marks a project affected, even the root project', async () => {
+  it('a .vx/projects.lock.jsonl change never marks a project affected, even the root project', async () => {
     // The root is a project here, so a root-level file edit WOULD map to
     // it — proving the exclusion is the lock filter, not "root isn't a
-    // project". A README edit at root still marks it; .vx/projects.lock.json never.
+    // project". A README edit at root still marks it; .vx/projects.lock.jsonl never.
     const withRoot: ProjectMeta[] = [...projects, { name: 'root', dir: root, configPath: null }]
     // Commit both root files so `git diff` (tracked changes only) can see
     // edits to them.
-    await Bun.write(path.join(root, '.vx/projects.lock.json'), '{"v":1}')
+    await Bun.write(path.join(root, '.vx/projects.lock.jsonl'), '{"v":1}')
     await writeFile(path.join(root, 'README.md'), 'v1')
     await git(root, 'add', '.')
     await git(root, 'commit', '-q', '-m', 'add lock + readme')
 
     // Editing only the lock → nothing affected.
-    await Bun.write(path.join(root, '.vx/projects.lock.json'), '{"v":2}')
+    await Bun.write(path.join(root, '.vx/projects.lock.jsonl'), '{"v":2}')
     expect([
       ...(await affectedProjects({ workspaceRoot: root, since: 'HEAD', projects: withRoot })),
     ]).toEqual([])
@@ -1232,27 +1233,27 @@ describe('affectedProjects', () => {
       expect([...out]).toEqual([])
     })
 
-    it('.vx/projects.lock.json still never widens, even though it sits at the root', async () => {
+    it('.vx/projects.lock.jsonl still never widens, even though it sits at the root', async () => {
       // vx's OWN lockfile is deliberately excluded from cache inputs, so
       // re-running `vx lock` must not rebuild the workspace.
       //
       // The root is a project here ON PURPOSE. Without it the assertion is
-      // VACUOUS — .vx/projects.lock.json maps to no project directory anyway, so `[]`
+      // VACUOUS — .vx/projects.lock.jsonl maps to no project directory anyway, so `[]`
       // comes back whether or not any guard exists (mutation-verified: with
       // only a/b in scope, deleting the exclusion filter still passed). With
       // root in scope, deleting the filter yields ['root'] and this fails.
       //
-      // What the filter, and ONLY the filter, enforces: adding '.vx/projects.lock.json'
+      // What the filter, and ONLY the filter, enforces: adding '.vx/projects.lock.jsonl'
       // to the widening set is inert, because the filter has already removed
       // it from `changed`. That mutation survives and no test can kill it —
       // recorded rather than papered over, so nobody adds a second guard here
       // believing it does something. The exclusion lives in exactly one place.
       const withRoot: ProjectMeta[] = [...projects, { name: 'root', dir: root, configPath: null }]
-      await Bun.write(path.join(root, '.vx/projects.lock.json'), '{"v":1}')
+      await Bun.write(path.join(root, '.vx/projects.lock.jsonl'), '{"v":1}')
       await git(root, 'add', '.')
       await git(root, 'commit', '-q', '-m', 'add vx lock')
 
-      await Bun.write(path.join(root, '.vx/projects.lock.json'), '{"v":2}')
+      await Bun.write(path.join(root, '.vx/projects.lock.jsonl'), '{"v":2}')
       const out = await affectedProjects({
         workspaceRoot: root,
         since: 'HEAD',

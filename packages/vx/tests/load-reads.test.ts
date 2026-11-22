@@ -105,7 +105,7 @@ async function prepare(): Promise<string[]> {
 
 describe('a run reads each root file once', () => {
   it(
-    'core reads the workspace file and the lock, each once, and no package file',
+    'core reads the workspace file and the locks, each once, and no package file',
     async () => {
       const ops = await fileOps(async () => {
         expect(await prepare()).toEqual(['a#build'])
@@ -119,7 +119,9 @@ describe('a run reads each root file once', () => {
         '.vx/workspace.ts': ['exists'],
         '.vx/workspace.mjs': ['exists', 'bytes'],
         // The projects and their configs come from the lock.
-        '.vx/projects.lock.json': ['exists', 'text'],
+        '.vx/projects.lock.jsonl': ['exists', 'text'],
+        // The edges, which live only there, read beside it.
+        '.vx/dependencies.lock': ['exists', 'bytes'],
         // A config the run reads is still there (X-144).
         'packages/a/vx.config.mjs': ['exists'],
         // No package file: the plugin's `discover` answer is the lock's
@@ -142,7 +144,7 @@ describe('a run reads each root file once', () => {
         p.cache.close()
         expect([...p.nodes.keys()]).toEqual(['a#build'])
       })
-      expect(ops['.vx/projects.lock.json']).toEqual(['exists', 'text'])
+      expect(ops['.vx/projects.lock.jsonl']).toEqual(['exists', 'text'])
     },
     TIMEOUT,
   )
@@ -162,7 +164,7 @@ describe('a run reads each root file once', () => {
         p.cache.close()
         expect([...p.nodes.keys()]).toEqual(['a#build'])
       })
-      expect(ops['.vx/projects.lock.json']).toEqual(['exists', 'text'])
+      expect(ops['.vx/projects.lock.jsonl']).toEqual(['exists', 'text'])
     },
     TIMEOUT,
   )

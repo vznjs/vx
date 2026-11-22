@@ -1608,7 +1608,7 @@ describe('nx() under vx lock', () => {
     async () => {
       expect(vx('lock')).toEqual({
         code: 0,
-        out: '✓ vx lock  0 project configs → .vx/projects.lock.json (and the tasks a plugin maps for app, lib, ws)\n',
+        out: '✓ vx lock  0 project configs → .vx/projects.lock.jsonl, .vx/dependencies.lock (and the tasks a plugin maps for app, lib, ws)\n',
         err: '',
       })
       const first = vx('run', 'build', '--all')
@@ -1643,7 +1643,9 @@ describe('nx() under vx lock', () => {
       expect(await nxCalls(root)).toBe(1)
       const check = vx('lock', '--check')
       expect(check.code).toBe(1)
-      expect(check.err).toContain('packages/app: the `discover` stage finds it otherwise')
+      expect(check.err).toContain(
+        '.vx/dependencies.lock is not what the dependencies resolve to here',
+      )
       // `--check` exported; the lock reuses that snapshot.
       expect(vx('lock').code).toBe(0)
       expect(await nxCalls(root)).toBe(2)

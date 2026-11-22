@@ -467,7 +467,7 @@ describe("cli-watch.md's account of the watched set is the loop's", () => {
   it('says the lock re-reads the set, and names no package glob', () => {
     expect(src('cli/watch-filter.ts')).not.toContain('pnpm-workspace')
     const text = moduleSection('cli/watch.ts').split(/\s+/).join(' ')
-    expect(text).toContain('so `.vx/projects.lock.json` is the event that changes the set')
+    expect(text).toContain('so `.vx/projects.lock.jsonl` is the event that changes the set')
     expect(text).not.toContain('package glob')
     const at = text.indexOf('### What this does NOT do')
     expect(at).toBeGreaterThan(-1)

@@ -1,5 +1,5 @@
 // A run's selection reads the lock: the `--affected` owners a run selects
-// from are read from `.vx/projects.lock.json`, as the run's own configs are. Before,
+// from are read from `.vx/projects.lock.jsonl`, as the run's own configs are. Before,
 // they were evaluated live, so a `workspaceFiles` glob that depends on the
 // environment could select in one environment what the run then keyed by
 // the lock's other one.
@@ -89,10 +89,10 @@ describe('selection reads the lock', () => {
   it(
     'a run with no lock refuses and writes none',
     async () => {
-      await Bun.$`rm ${path.join(root, '.vx/projects.lock.json')}`.quiet()
+      await Bun.$`rm ${path.join(root, '.vx/projects.lock.jsonl')}`.quiet()
       const r = await vx(root, ['run', 'build', '--affected=HEAD~1'])
       expect([r.code, r.err]).toEqual([1, '✗ vx run  no lock: run `vx lock`\n'])
-      expect(await Bun.file(path.join(root, '.vx/projects.lock.json')).exists()).toBe(false)
+      expect(await Bun.file(path.join(root, '.vx/projects.lock.jsonl')).exists()).toBe(false)
     },
     TIMEOUT,
   )
@@ -112,7 +112,7 @@ describe('selection reads the lock', () => {
       // rejection below is the missing lock and not a broken fixture.
       const ok = await run({ cwd: root, tasks: ['build'], handleSignals: false })
       expect(ok.ok).toBe(true)
-      await Bun.$`rm ${path.join(root, '.vx/projects.lock.json')}`.quiet()
+      await Bun.$`rm ${path.join(root, '.vx/projects.lock.jsonl')}`.quiet()
       await expect(run({ cwd: root, tasks: ['build'], handleSignals: false })).rejects.toThrow(
         'no lock: run `vx lock`',
       )
@@ -126,7 +126,7 @@ describe('selection reads the lock', () => {
   it(
     'a workspace config refusal still comes before the missing lock',
     async () => {
-      await Bun.$`rm ${path.join(root, '.vx/projects.lock.json')}`.quiet()
+      await Bun.$`rm ${path.join(root, '.vx/projects.lock.jsonl')}`.quiet()
       await Bun.write(path.join(root, '.vx/workspace.mjs'), "throw new Error('ws-boom')\n")
       const { run } = await import('../src/orchestrator/index.js')
       const err = await run({ cwd: root, tasks: ['build'], handleSignals: false }).then(

@@ -11,10 +11,10 @@
         ]
       },
       "outputs": {
-          "files": [
-            "dist/**"
-          ]
-        },
+        "files": [
+          "dist/**"
+        ]
+      },
       "cache": true
     }
   }

@@ -2,7 +2,7 @@
 // with strace: the syscalls naming each path, in vx's own process (its git
 // children are dropped). `load-reads.test.ts` counts what vx ASKS for; this
 // counts what happens, Bun's module loader included. A run reads each
-// project's directory and config from `.vx/projects.lock.json` (owner,
+// project's directory and config from `.vx/projects.lock.jsonl` (owner,
 // 2026-10-14), so it never opens a `vx.config.*`, Bun's resolver never
 // visits the project, and core reads no package-manager file.
 //
@@ -15,7 +15,7 @@
 //     `npm_execpath` a task's shell gets;
 //   - `.vx/workspace.mjs` three times: a probe, vx's read and Bun's. Serving
 //     it measured 0.3 ms slower (the parser's first use), so Bun reads it;
-//   - `.vx/projects.lock.json` twice: `readLockfile`'s exists probe and its read.
+//   - `.vx/projects.lock.jsonl` twice: `readLockfile`'s exists probe and its read.
 // Linux only (strace). CI's Linux job sets VX_REQUIRE_SANDBOX and installs
 // strace for the sandbox; without strace there it fails instead of skipping.
 
@@ -153,7 +153,7 @@ describe.skipIf(strace === null)('one run touches each project file once, Bun in
         if (name === 'warm') expect(run('.vx/workspace.mjs')).toEqual(['newfstatat', 'openat'])
         expect(run('pnpm-workspace.yaml')).toEqual([])
         expect(run('package.json')).toEqual(['openat'])
-        expect(run('.vx/projects.lock.json')).toEqual(['newfstatat', 'openat'])
+        expect(run('.vx/projects.lock.jsonl')).toEqual(['newfstatat', 'openat'])
       }
     },
     TIMEOUT,
@@ -173,7 +173,7 @@ describe.skipIf(strace === null)('one run touches each project file once, Bun in
       // The selection's workspace-glob owners parsed it again only to learn
       // it exists, which the staged load had already proved (I-23); the run
       // parsed it again for configs the selection had staged (I-27).
-      expect(run('.vx/projects.lock.json').filter((c) => c === 'openat')).toEqual(['openat'])
+      expect(run('.vx/projects.lock.jsonl').filter((c) => c === 'openat')).toEqual(['openat'])
     },
     TIMEOUT,
   )

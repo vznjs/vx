@@ -1387,7 +1387,7 @@ A task's cache becomes invalid when any of these change:
 | Bump `CACHE_VERSION`                                                                                                                     | step 1 — orphans every entry                                                                                                                                                                            |
 | Change `exec.env.passThrough` _values_ alone                                                                                             | **NOT a trigger** by design — passThrough values are host-specific                                                                                                                                      |
 | Change a file not in `inputs.files` / `inputs.workspaceFiles`                                                                            | **NOT a trigger** by design — declare it explicitly                                                                                                                                                     |
-| Edit `.vx/projects.lock.json`                                                                                                            | **NOT a trigger** — globally excluded from inputs (v24); it's vx's own metadata, never a task input                                                                                                     |
+| Edit `.vx/projects.lock.jsonl`                                                                                                           | **NOT a trigger** — globally excluded from inputs (v24); it's vx's own metadata, never a task input                                                                                                     |
 | Change a file in a nested project's dir                                                                                                  | **NOT a trigger** for the parent's `files` globs — project boundaries are hard (workspaceFiles is the explicit exception)                                                                               |
 
 The cascade in step 8 is what makes monorepo caching work: edit a
@@ -1537,7 +1537,7 @@ exactly on `inputs.env`, and they share its asymmetry with the
 lockfile:
 
 - **The command _strings_ live in the resolved config**, so `vx lock`
-  freezes them into `.vx/projects.lock.json` (just as it freezes the env _names_
+  freezes them into `.vx/projects.lock.jsonl` (just as it freezes the env _names_
   a task declares).
 - **The command _output_ is resolved live at hash time on every run**
   — inside `resolveInputs`, the same place env _values_ are read from
@@ -2671,10 +2671,10 @@ moat.
   `inputs.workspaceFiles: ['golib/**']` beside its read grant. `go build`
   stamps the commit (`vcs.revision`) into the binary, which no input
   holds, so a hit replays the old one: build with `-buildvcs=false`.
-- **`.vx/projects.lock.json`** — globally excluded (v24); also filtered out of
+- **`.vx/projects.lock.jsonl`** — globally excluded (v24); also filtered out of
   `--affected` change sets. So are the files `vx lock` and `vx init`
   write beside it: each project's `vx.lock.json` review copy,
-  `.vx/.gitattributes`, `.vx/.gitignore` and `.vx/dependencies.lock.json`.
+  `.vx/.gitattributes`, `.vx/.gitignore` and `.vx/dependencies.lock`.
 - **`exec.remote`.** Pure PLACEMENT: it decides _where_ a task runs,
   never what it produces, so pinning a task to this machine does not
   bust its cache. It must not — the
@@ -3081,7 +3081,7 @@ breaking footer).
   so existing artifacts stay valid and `CACHE_VERSION` stays `v24`. The
   schema gate drops + recreates on the version mismatch (pre-alpha, no
   migration).
-- **v23 → v24**: exclude `.vx/projects.lock.json` from the input file set
+- **v23 → v24**: exclude `.vx/projects.lock.jsonl` from the input file set
   globally (`ALWAYS_IGNORE` in `cache/inputs.ts`). The lockfile is
   committed, so git enumerates it, but it's vx's own frozen-config
   metadata — never a task input. Without this, a `vx lock` re-write

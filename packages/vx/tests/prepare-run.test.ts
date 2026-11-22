@@ -24,6 +24,7 @@ import { lock, prepareRun } from './helpers/orchestrator.js'
 import { edgesSource, PLUGIN_IMPORT, pluginSource, writeEdges } from './helpers/plugin.js'
 import { computeReverseDepCount } from '../src/graph/index.js'
 import { UserError } from '../src/util/index.js'
+import { readLockfile, writeLockfile } from '../src/workspace/lockfile.js'
 
 const TIMEOUT = 30_000
 
@@ -90,16 +91,13 @@ function cfg(...tasks: string[]): string {
  */
 async function editLock(edit: (configs: Record<string, ProjectConfig>) => void): Promise<void> {
   await lock(root)
-  const file = path.join(root, '.vx', 'projects.lock.json')
-  const held = (await Bun.file(file).json()) as {
-    projects: Record<string, { config: ProjectConfig }>
-  }
+  const held = (await readLockfile(root))!
   edit(
     Object.fromEntries(
-      Object.entries(held.projects).map(([dir, e]) => [path.posix.basename(dir), e.config]),
+      Object.entries(held.projects).map(([dir, e]) => [path.posix.basename(dir), e.config!]),
     ),
   )
-  await Bun.write(file, JSON.stringify(held))
+  await writeLockfile(root, held)
 }
 
 /** Locks the workspace, then deletes `name`'s config file: a run that reads it refuses. */
@@ -110,7 +108,7 @@ async function goneAfterLock(name: string): Promise<void> {
 
 /** What a run says when a config it reads is gone since the lock. */
 const gone = (name: string): string =>
-  `.vx/projects.lock.json locks packages/${name} ("${name}"), but its vx.config.mjs is gone — run \`vx lock\``
+  `.vx/projects.lock.jsonl locks packages/${name} ("${name}"), but its vx.config.mjs is gone — run \`vx lock\``
 
 /**
  * NB `prepareRun` takes an EXPLICIT project scope — resolving cwd to "the

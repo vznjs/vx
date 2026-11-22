@@ -109,7 +109,7 @@ commit, everything hits.
 | `exec.env.passThrough`   | A `HOME` or `CI` that differs per machine would split a shared cache.      |
 | Undeclared tool versions | Add `node --version` under `inputs.runtime` when it matters.               |
 | `exec.remote`            | Where a task ran says nothing about what it made.                          |
-| `.vx/projects.lock.json` | `vx lock` itself must not re-key the world.                                |
+| `.vx/projects.lock.jsonl` | `vx lock` itself must not re-key the world.                                |
 | Ignored files            | `src/**` skips them. Name one outright (`.env.local`) to hash it.          |
 
 A variable that changes the output goes under `inputs.env`. A shared

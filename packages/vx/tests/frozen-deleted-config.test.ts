@@ -60,7 +60,7 @@ it('a deleted config the lock holds is refused, not silently dropped', async () 
   expect([r.code, r.out.includes('LIB'), r.err.trim()]).toEqual([
     1,
     false,
-    '✗ vx run  .vx/projects.lock.json locks packages/app ("app"), but its vx.config.mjs is gone — run `vx lock`',
+    '✗ vx run  .vx/projects.lock.jsonl locks packages/app ("app"), but its vx.config.mjs is gone — run `vx lock`',
   ])
 }, 30_000)
 
@@ -75,7 +75,7 @@ it('the root project is named as the root, not as `.`', async () => {
   const run = await vx(root, ['run', 'build', '--all'])
   expect([run.code, run.err.trim()]).toEqual([
     1,
-    '✗ vx run  .vx/projects.lock.json locks the workspace root project ("fixture-root"), but its vx.config.mjs is gone — run `vx lock`',
+    '✗ vx run  .vx/projects.lock.jsonl locks the workspace root project ("fixture-root"), but its vx.config.mjs is gone — run `vx lock`',
   ])
   const check = await vx(root, ['lock', '--check'])
   expect(check.code).toBe(1)
@@ -105,6 +105,6 @@ it('a locked config-less project whose directory is gone is refused with the sam
   const r = await vx(root, ['run', 'build', '--filter', 'svc', '--output-logs=full'])
   expect(r.code).toBe(1)
   expect(r.out + r.err).toContain(
-    '[vx] svc#build: .vx/projects.lock.json locks packages/svc ("svc"), but its directory is gone — run `vx lock`',
+    '[vx] svc#build: .vx/projects.lock.jsonl locks packages/svc ("svc"), but its directory is gone — run `vx lock`',
   )
 }, 30_000)

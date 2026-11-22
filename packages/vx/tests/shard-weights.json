@@ -356,7 +356,6 @@
   "locked-digests.test.ts": 1414,
   "lockfile-boundary.test.ts": 59,
   "lockfile-claim.test.ts": 789,
-  "lockfile-pool.test.ts": 14,
   "log-spacing.test.ts": 143,
   "logger-concurrency-slots.test.ts": 7,
   "markdown-anchors.test.ts": 43,

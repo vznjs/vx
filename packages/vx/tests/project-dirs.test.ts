@@ -279,11 +279,11 @@ describe('a project is a directory with a vx.config', () => {
     async () => {
       await write(path.join(root, 'a/vx.config.mjs'), config())
       await write(
-        path.join(root, '.vx/projects.lock.json'),
+        path.join(root, '.vx/projects.lock.jsonl'),
         JSON.stringify({ version: 2, projects: { a: { tasks: {} } } }),
       )
       expect(planned(root, 'hello', '--all')).toBe(
-        'exit 1: ✗ vx run  .vx/projects.lock.json has unsupported version 2 (this vx expects 6) — re-run `vx lock`',
+        'exit 1: ✗ vx run  .vx/projects.lock.jsonl has unsupported version 2 (this vx expects 8) — re-run `vx lock`',
       )
     },
     TIMEOUT,

@@ -56,7 +56,7 @@ it('a graph-rule refusal still names a gone project and a stray review copy', as
 it('a lock that is not valid JSON is a drift the audit names, in its own shape', async () => {
   const ws = await makeWorkspace({ prefix: 'vx-lock-check-corrupt-' })
   await addProject(ws, 'a', CONFIG)
-  await writeFile(path.join(ws, '.vx', 'projects.lock.json'), '{bad')
+  await writeFile(path.join(ws, '.vx', 'projects.lock.jsonl'), '{bad')
   const json = Bun.spawnSync({
     cmd: [process.execPath, BIN, 'lock', '--check', '--format', 'json'],
     cwd: ws,
@@ -68,11 +68,11 @@ it('a lock that is not valid JSON is a drift the audit names, in its own shape',
     upToDate: false,
     audited: 1,
     notAudited: 0,
-    problems: ['.vx/projects.lock.json is not valid JSON — re-run `vx lock` or delete it'],
+    problems: ['.vx/projects.lock.jsonl is not valid JSON — re-run `vx lock` or delete it'],
   })
   expect(pretty.exitCode).toBe(1)
   expect(pretty.stderr.toString()).toContain(
-    '✗ vx lock --check  .vx/projects.lock.json is not valid JSON',
+    '✗ vx lock --check  .vx/projects.lock.jsonl is not valid JSON',
   )
 })
 
@@ -81,17 +81,17 @@ it('a lock that is not valid JSON is a drift the audit names, in its own shape',
 it('a directory where the lock goes is one line from lock and --check', async () => {
   const ws = await makeWorkspace({ prefix: 'vx-lock-dir-' })
   await addProject(ws, 'a', CONFIG)
-  await mkdir(path.join(ws, '.vx', 'projects.lock.json'), { recursive: true })
+  await mkdir(path.join(ws, '.vx', 'projects.lock.jsonl'), { recursive: true })
   const lock = Bun.spawnSync({ cmd: [process.execPath, BIN, 'lock'], cwd: ws })
   const check = Bun.spawnSync({ cmd: [process.execPath, BIN, 'lock', '--check'], cwd: ws })
   await rm(ws, { recursive: true, force: true })
   expect([lock.exitCode, lock.stderr.toString()]).toEqual([
     1,
-    '✗ vx lock  cannot write .vx/projects.lock.json: a directory stands there; remove it and run again\n',
+    '✗ vx lock  cannot write .vx/projects.lock.jsonl: a directory stands there; remove it and run again\n',
   ])
   expect([check.exitCode, check.stderr.toString()]).toEqual([
     1,
-    '✗ vx lock --check  .vx/projects.lock.json is a directory — remove it and run `vx lock`\n',
+    '✗ vx lock --check  .vx/projects.lock.jsonl is a directory — remove it and run `vx lock`\n',
   ])
 })
 
@@ -101,10 +101,10 @@ it('a directory where the dependencies lock goes leaves the config lock as it wa
   const ws = await makeWorkspace({ prefix: 'vx-lock-deps-dir-' })
   const a = await addProject(ws, 'a', CONFIG)
   expect(Bun.spawnSync({ cmd: [process.execPath, BIN, 'lock'], cwd: ws }).exitCode).toBe(0)
-  const lockFile = path.join(ws, '.vx', 'projects.lock.json')
+  const lockFile = path.join(ws, '.vx', 'projects.lock.jsonl')
   const before = await Bun.file(lockFile).text()
   await writeFile(path.join(a, 'vx.config.mjs'), CONFIG.replace("'true'", "'echo 2'"))
-  const deps = path.join(ws, '.vx', 'dependencies.lock.json')
+  const deps = path.join(ws, '.vx', 'dependencies.lock')
   await rm(deps)
   await mkdir(deps)
   const lock = Bun.spawnSync({ cmd: [process.execPath, BIN, 'lock'], cwd: ws })
@@ -113,7 +113,7 @@ it('a directory where the dependencies lock goes leaves the config lock as it wa
   await rm(ws, { recursive: true, force: true })
   expect([lock.exitCode, lock.stderr.toString()]).toEqual([
     1,
-    '✗ vx lock  cannot write .vx/dependencies.lock.json: a directory stands there; remove it and run again\n',
+    '✗ vx lock  cannot write .vx/dependencies.lock: a directory stands there; remove it and run again\n',
   ])
   expect(after).toBe(before)
   expect(left).toEqual([])

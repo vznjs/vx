@@ -182,7 +182,7 @@ describe('a refusal under --format json', () => {
   // An agent's next step for each is `vx lock`: one code says so, where
   // VX_E_REFUSED named nothing to branch on (2026-10-28).
   it('a missing, broken or stale lock is VX_E_LOCK', async () => {
-    const lockFile = path.join(root, '.vx', 'projects.lock.json')
+    const lockFile = path.join(root, '.vx', 'projects.lock.jsonl')
     Bun.spawnSync([process.execPath, REAL_BIN, 'lock'], { cwd: root, stderr: 'pipe' })
     const kept = await Bun.file(lockFile).text()
     // The real bin: vx-locked.ts would write the lock this test breaks.

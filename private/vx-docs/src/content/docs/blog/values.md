@@ -72,7 +72,7 @@ pie showData title 148 tasks in this repo
   "not sandboxed, each with a reason" : 16
 ```
 
-<small>From this repo's `.vx/projects.lock.json`, 2026-10-23 · 714 core test files</small>
+<small>From this repo's `.vx/projects.lock.jsonl`, 2026-10-23 · 714 core test files</small>
 
 The 16 can't be sandboxed: test shards for the sandbox itself (a
 sandbox can't nest), the REAPI suites and their Docker services, one

@@ -110,10 +110,10 @@ describe('vx info reads the lock', () => {
   // the one fact a reader needed, why, was swallowed (2026-10-28).
   it('a lock a run would refuse is said, with the refusal', async () => {
     const root = await workspace()
-    await writeFile(path.join(root, '.vx', 'projects.lock.json'), '{')
+    await writeFile(path.join(root, '.vx', 'projects.lock.jsonl'), '{')
     const r = vx(root, 'info', '--format', 'json')
     const facts = JSON.parse(r.out) as Record<string, unknown>
-    const said = '.vx/projects.lock.json is not valid JSON — re-run `vx lock` or delete it'
+    const said = '.vx/projects.lock.jsonl is not valid JSON — re-run `vx lock` or delete it'
     expect([r.code, facts['lockfile'], facts['lockError']]).toEqual([0, true, said])
     const pretty = vx(root, 'info').out
     expect(pretty).toContain(`  projects lock     refused: ${said}`)

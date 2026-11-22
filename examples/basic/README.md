@@ -13,8 +13,8 @@ vx run ci --all      # nothing changed: local 3✓
 Edit `packages/lib/src/greet.js` and run again: all three re-run, since
 `app#build` depends on `^build` and `app#test` on `build`.
 
-A run reads each package's tasks from `.vx/projects.lock.json`, never from its
-`vx.config.ts`, and the dependency digests from `.vx/dependencies.lock.json`,
+A run reads each package's tasks from `.vx/projects.lock.jsonl`, never from its
+`vx.config.ts`, and the dependency digests from `.vx/dependencies.lock`,
 never from `bun.lock`: after editing a config or installing, run `vx lock`,
 then commit the locks and the `vx.lock.json` copy beside each config.
 

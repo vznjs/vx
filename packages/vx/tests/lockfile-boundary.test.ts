@@ -1,11 +1,11 @@
-// Unit tests for `src/workspace/lockfile.ts` — the `.vx/projects.lock.json` boundary and
+// Unit tests for `src/workspace/lockfile.ts` — the `.vx/projects.lock.jsonl` boundary and
 // the frozen-config trust model.
 //
 // `tests/lock.test.ts` drives `vx lock` end-to-end through the real CLI (three
 // tests). This file covers the layer underneath, which is where the rules
 // actually live, and it matters for two reasons:
 //
-//   1. `.vx/projects.lock.json` is a COMMITTED, HAND-EDITABLE file. That makes
+//   1. `.vx/projects.lock.jsonl` is a COMMITTED, HAND-EDITABLE file. That makes
 //      `readLockfile` a system boundary in this codebase's sense — the one
 //      place validation is not merely allowed but required. Its own docstring
 //      says so. Every rejection there is a message a user reads while their CI
@@ -27,6 +27,7 @@ import {
   frozenProjectConfigs,
   LOCKFILE_NAME,
   LOCKFILE_VERSION,
+  lockEntryBroken,
   lockfilePath,
   readLockfile,
   writeLockfile,
@@ -65,8 +66,16 @@ async function rejection(p: Promise<unknown>): Promise<Error> {
 
 const CONFIG: ProjectConfig = { tasks: { build: { exec: { command: 'echo hi' } } } }
 
-/** A lock entry: the directory's config file and its resolved config. */
-const entry = (config: ProjectConfig) => ({ file: 'vx.config.ts' as const, config })
+/** A lock entry: the project's name, its config file and its resolved config. */
+const entry = (config: ProjectConfig, name = 'pkg') => ({
+  name,
+  file: 'vx.config.ts' as const,
+  config,
+})
+
+/** A lock's lines as `vx lock` lays them out: the header, then one line each. */
+const jsonl = (...lines: string[]) =>
+  `${[JSON.stringify({ version: LOCKFILE_VERSION }), ...lines].join('\n')}\n`
 
 /** One project's frozen config, as a run of one would load it. */
 async function frozenProjectConfig(
@@ -86,11 +95,11 @@ function lock(over: Partial<Lockfile> = {}): Lockfile {
 }
 
 describe('lockfilePath', () => {
-  it('is .vx/projects.lock.json at the workspace root', () => {
+  it('is .vx/projects.lock.jsonl at the workspace root', () => {
     // The name is part of the user contract — it is committed, it appears in
     // .gitignore discussions, and a run's refusals name it.
-    expect(lockfilePath(root)).toBe(path.join(root, '.vx/projects.lock.json'))
-    expect(LOCKFILE_NAME).toBe('.vx/projects.lock.json')
+    expect(lockfilePath(root)).toBe(path.join(root, '.vx/projects.lock.jsonl'))
+    expect(LOCKFILE_NAME).toBe('.vx/projects.lock.jsonl')
   })
 })
 
@@ -127,7 +136,7 @@ describe('readLockfile — the boundary rejects malformed input loudly', () => {
     // explicitly alongside the scalars. An ARRAY is the case this guard does
     // NOT catch — see the finding below.
     await writeRaw(raw)
-    await expect(readLockfile(root)).rejects.toThrow(/must be a JSON object/)
+    await expect(readLockfile(root)).rejects.toThrow(/must start with a JSON object/)
   })
 
   it('a top-level ARRAY is a SHAPE error, not a misreported version error', async () => {
@@ -140,7 +149,7 @@ describe('readLockfile — the boundary rejects malformed input loudly', () => {
     // wrong shape. This file is committed and hand-editable, so its messages
     // are read while CI is red; a wrong one costs real time.
     await writeRaw('[]')
-    await expect(readLockfile(root)).rejects.toThrow(/must be a JSON object/)
+    await expect(readLockfile(root)).rejects.toThrow(/must start with a JSON object/)
   })
 
   it.each([
@@ -166,7 +175,7 @@ describe('readLockfile — the boundary rejects malformed input loudly', () => {
     await writeRaw(JSON.stringify({ version: LOCKFILE_VERSION + 1, projects: {} }))
     const err = await rejection(readLockfile(root))
     expect(err.message).toBe(
-      `.vx/projects.lock.json was written by a newer vx (version ${LOCKFILE_VERSION + 1}; this vx reads ${LOCKFILE_VERSION}) — upgrade vx`,
+      `.vx/projects.lock.jsonl was written by a newer vx (version ${LOCKFILE_VERSION + 1}; this vx reads ${LOCKFILE_VERSION}) — upgrade vx`,
     )
   })
 
@@ -175,41 +184,54 @@ describe('readLockfile — the boundary rejects malformed input loudly', () => {
     await expect(readLockfile(root)).rejects.toThrow(/unsupported version/)
   })
 
+  // A merge that kept both sides, or a hand edit that lost a tab: a line
+  // `vx lock` never writes says so, never a raw crash at a lookup.
   it.each([
-    ['missing', JSON.stringify({ version: LOCKFILE_VERSION })],
-    ['null', JSON.stringify({ version: LOCKFILE_VERSION, projects: null })],
-    ['a string', JSON.stringify({ version: LOCKFILE_VERSION, projects: 'pkg' })],
-    ['a number', JSON.stringify({ version: LOCKFILE_VERSION, projects: 3 })],
-  ])('rejects a `projects` field that is %s', async (_label, raw) => {
+    ['a line with no tab', jsonl('pkg {"path":"pkg"}')],
+    ['two lines of one name', jsonl('pkg\t{"path":"a"}', 'pkg\t{"path":"b"}')],
+    ['an entry that is no object', jsonl('pkg\tnull')],
+    ['an entry that is a list', jsonl('pkg\t[]')],
+    ['an empty name', jsonl('\t{"path":"pkg"}')],
+  ])('rejects %s', async (_label, raw) => {
     await writeRaw(raw)
-    await expect(readLockfile(root)).rejects.toThrow(/`projects` must be an object/)
+    await expect(readLockfile(root)).rejects.toThrow(/holds a line `vx lock` never writes/)
   })
 
   it.each([
-    ['null', null],
-    ['a string', 'pkg/vx.config.ts'],
-    ['a number', 42],
-    ['an array', [CONFIG]],
-    ['a bare config, as version 2 wrote', CONFIG],
+    ['a bare config, as version 2 wrote', { tasks: {} }],
     ['a file that is no vx.config', { file: 'package.json', config: {} }],
+    ['a file with no config', { file: 'vx.config.ts' }],
     ['a config that is no object', { file: 'vx.config.ts', config: [] }],
-    // Hand edits a run read as something else: a string `dependsOn` was
-    // walked per character ("dependsOn b#a"), a string `tasks` counted as
+    // Hand edits a run read as something else: a string `tasks` counted as
     // two tasks, and a number `name` ran silently.
     ['a name that is no string', { file: 'vx.config.ts', config: { name: 5 } }],
     ['tags that are no list', { file: 'vx.config.ts', config: { tags: 'web' } }],
     ['tasks that are no object', { file: 'vx.config.ts', config: { tasks: 'x' } }],
-    ['a task that is no object', { file: 'vx.config.ts', config: { tasks: { b: 'echo' } } }],
-    [
-      'a dependsOn that is no list',
-      { file: 'vx.config.ts', config: { tasks: { b: { dependsOn: 'a#build' } } } },
-    ],
+    ['a task that is no task line', { file: 'vx.config.ts', config: { tasks: { b: 'echo' } } }],
   ])('rejects an entry that is %s, naming the project', async (_label, entry) => {
     // Naming the project is the point: a monorepo lock has hundreds of
     // entries, and "something is malformed" without a name is unactionable.
-    await writeRaw(JSON.stringify({ version: LOCKFILE_VERSION, projects: { '@acme/api': entry } }))
-    await expect(readLockfile(root)).rejects.toThrow(/@acme\/api/)
-    await expect(readLockfile(root)).rejects.toThrow(/malformed/)
+    await writeRaw(jsonl(`@acme/api\t${JSON.stringify({ path: 'api', ...entry })}`))
+    await expect(readLockfile(root)).rejects.toThrow('entry for "api" is malformed')
+  })
+
+  it('a string dependsOn is refused, not walked per character ("dependsOn b#a")', async () => {
+    const config = { tasks: { b: '#t' } }
+    await writeRaw(
+      jsonl(
+        '#t\t{"dependsOn":"a#build"}',
+        `pkg\t${JSON.stringify({ path: 'pkg', file: 'vx.config.ts', config })}`,
+      ),
+    )
+    await expect(readLockfile(root)).rejects.toThrow('entry for "pkg" is malformed')
+  })
+
+  it('a task line no entry has refuses, naming it', async () => {
+    const config = { tasks: { b: '#gone' } }
+    await writeRaw(jsonl(`pkg\t${JSON.stringify({ path: 'pkg', file: 'vx.config.ts', config })}`))
+    await expect(readLockfile(root)).rejects.toThrow('no task #gone')
+    // What a crash path reads to tell "re-run `vx lock`" from a vx bug.
+    expect(lockEntryBroken(root)).toBe(true)
   })
 
   it('accepts a well-formed lock and round-trips it', async () => {
@@ -229,59 +251,62 @@ describe('readLockfile — the boundary rejects malformed input loudly', () => {
     expect((await readLockfile(root))?.projects).toEqual({})
   })
 
-  it('a `projects` ARRAY is refused rather than yielding a project named "0"', async () => {
-    // `typeof [] === 'object'` and it is not null, so an array used to slip
-    // through the `projects` check — `Object.entries` then yields entries keyed
-    // "0", "1", … and a lock shaped `projects: [ {...} ]` validated as a project
-    // literally NAMED "0".
-    //
-    // The loader explicitly guards this same class one layer down:
-    // `validateProjectConfig` rejects an array `tasks` with a comment about "a
-    // task literally named 0". The omission here was an inconsistency, not a
-    // considered difference.
-    //
-    // The old degradation was at least honest — a bogus "0" entry cannot satisfy
-    // a real lookup, so a run failed later at `frozenProjectConfig`
-    // with "has no entry for X" — but it named the wrong thing: the file was
-    // malformed, not missing an entry. Refusing at the boundary says so.
-    await writeRaw(
-      JSON.stringify({
-        version: LOCKFILE_VERSION,
-        projects: [CONFIG],
-      }),
-    )
-    await expect(readLockfile(root)).rejects.toThrow(/`projects` must be an object/)
-  })
-
   it('a directory key outside the root, or not as vx lock spells one, is refused', async () => {
     // A run joined `../evil` onto the root and ran a project outside the
     // workspace; `/tmp` read as a project `tmp` at `<root>/tmp`.
     for (const dir of ['../evil', 'a/../../x', '/tmp', 'a/', './a', 'a//b', '']) {
-      await writeRaw(
-        JSON.stringify({ version: LOCKFILE_VERSION, projects: { [dir]: entry(CONFIG) } }),
-      )
+      await writeRaw(jsonl(`pkg\t${JSON.stringify({ path: dir })}`))
       expect((await rejection(readLockfile(root))).message).toBe(
         `${LOCKFILE_NAME}: "${dir}" is not a directory under the workspace root — re-run \`vx lock\``,
       )
     }
     for (const dir of ['.', 'a', 'a/b', '.github/actions/x', 'a..b']) {
-      await writeRaw(
-        JSON.stringify({ version: LOCKFILE_VERSION, projects: { [dir]: entry(CONFIG) } }),
-      )
+      await writeRaw(jsonl(`pkg\t${JSON.stringify({ path: dir })}`))
       expect(Object.keys((await readLockfile(root))!.projects)).toEqual([dir])
     }
   })
 })
 
 describe('writeLockfile — the file is committed, so its shape is a contract', () => {
-  it('writes minified JSON with a trailing newline', async () => {
-    // The lock is the one file a run reads, and minified loads faster; the
-    // per-project `vx.lock.json` copies are what a reviewer reads. A missing
-    // trailing newline makes git and POSIX tools complain on every write.
-    await writeLockfile(root, lock())
-    const text = await Bun.file(lockfilePath(root)).text()
-    expect(text).toBe(`${JSON.stringify(JSON.parse(text))}\n`)
-    expect(text.startsWith(`{"version":${LOCKFILE_VERSION},`)).toBe(true)
+  it('writes a header, each task once, then a line per project by name', async () => {
+    // A line per project keyed by its name, sorted, so a merge touches only
+    // the projects each branch changed; a task two projects declare alike is
+    // one line. A missing trailing newline makes git complain on every write.
+    const build = { exec: { command: 'echo hi' } }
+    await writeLockfile(root, {
+      version: LOCKFILE_VERSION,
+      projects: {
+        web: entry({ tasks: { build } }, 'web'),
+        api: entry({ name: 'api', tasks: { build } }, 'api'),
+        docs: { name: 'docs', by: '@vzn/vx-migrate' },
+      },
+    })
+    const id = Bun.hash.xxHash3(JSON.stringify(build)).toString(36)
+    expect(await Bun.file(lockfilePath(root)).text()).toBe(
+      `{"version":${LOCKFILE_VERSION}}\n` +
+        `#${id}\t{"exec":{"command":"echo hi"}}\n` +
+        `api\t{"path":"api","file":"vx.config.ts","config":{"name":"api","tasks":{"build":"#${id}"}}}\n` +
+        `docs\t{"path":"docs","by":"@vzn/vx-migrate"}\n` +
+        `web\t{"path":"web","file":"vx.config.ts","config":{"tasks":{"build":"#${id}"}}}\n`,
+    )
+    const read = (await readLockfile(root))!
+    expect(read.projects['web']!.config!.tasks!['build']).toBe(
+      read.projects['api']!.config!.tasks!['build'],
+    )
+  })
+
+  it('a name a tab or another line could break reads back', async () => {
+    const names = ['a\tb', '#x', '"q', '{y']
+    await writeLockfile(root, {
+      version: LOCKFILE_VERSION,
+      projects: Object.fromEntries(names.map((n, i) => [`p${i}`, entry(CONFIG, n)])),
+    })
+    const read = (await readLockfile(root))!
+    expect(
+      Object.values(read.projects)
+        .map((p) => p.name)
+        .sort(),
+    ).toEqual([...names].sort())
   })
 
   // 2026-10-25: a key hashes a task's config JSON, so moving `cache` above
@@ -300,7 +325,7 @@ describe('writeLockfile — the file is committed, so its shape is a contract', 
       a: { exec: { command: 'y' } },
     })
     expect(b).toBe(a)
-    expect(Object.keys((await readLockfile(root))!.projects['pkg']!.config.tasks!)).toEqual([
+    expect(Object.keys((await readLockfile(root))!.projects['pkg']!.config!.tasks!)).toEqual([
       'z',
       'a',
     ])
@@ -331,17 +356,17 @@ describe('writeLockfile — the file is committed, so its shape is a contract', 
     expect(await Bun.file(other).text()).toBe(before)
     expect(Object.keys((await readLockfile(root))?.projects ?? {})).toEqual(['pkg'])
     expect((await readdir(root)).sort()).toEqual(['.vx', 'other.json'])
-    expect(await readdir(path.join(root, '.vx'))).toEqual(['projects.lock.json'])
+    expect(await readdir(path.join(root, '.vx'))).toEqual(['projects.lock.jsonl'])
   })
 
   it('a rename that fails leaves no temp behind and rejects (item 972)', async () => {
     // A directory where the lock goes: the rename onto it fails.
     await mkdir(path.join(lockfilePath(root), 'x'), { recursive: true })
     await expect(writeLockfile(root, lock())).rejects.toThrow()
-    expect(await readdir(path.join(root, '.vx'))).toEqual(['projects.lock.json'])
+    expect(await readdir(path.join(root, '.vx'))).toEqual(['projects.lock.jsonl'])
   })
 
-  it('a refused write names .vx/projects.lock.json, not its temp (item 972)', async () => {
+  it('a refused write names .vx/projects.lock.jsonl, not its temp (item 972)', async () => {
     // What a read-only checkout prints comes from this message. A root run
     // is refused no write for permissions, and `Bun.write` makes a missing
     // directory, so a FILE where the root should be stands in for it.
@@ -403,7 +428,7 @@ describe('frozenProjectConfig — the trust model', () => {
         ),
       )
       expect(err.message).toBe(
-        `.vx/projects.lock.json has no entry for "${name}" (${name}/vx.config.ts) — run \`vx lock\``,
+        `.vx/projects.lock.jsonl has no entry for "${name}" (${name}/vx.config.ts) — run \`vx lock\``,
       )
     }
   })
@@ -446,7 +471,7 @@ describe('frozenProjectConfig — the trust model', () => {
     // 2026-10-14), down to each task's `dependsOn`. A broken entry an edit
     // left below that is the audit's to catch.
     const shape = { tasks: { build: { exec: { command: 5 } } } } as unknown as ProjectConfig
-    await writeRaw(JSON.stringify(lock({ projects: { pkg: entry(shape) } })))
+    await writeLockfile(root, lock({ projects: { pkg: entry(shape) } }))
     const read = (await readLockfile(root))!
     expect(await frozenProjectConfig(read, metaFor('pkg/vx.config.ts'), root)).toEqual(shape)
   })
@@ -458,15 +483,5 @@ describe('frozenProjectConfig — the trust model', () => {
       projects: { pkg: entry({}) },
     })
     expect(await frozenProjectConfig(empty, metaFor('pkg/vx.config.ts'), root)).toEqual({})
-  })
-})
-
-describe("the lock's validated stamp", () => {
-  it('is the last field, written once when a read lock is written back', async () => {
-    await writeLockfile(root, lock())
-    await writeLockfile(root, (await readLockfile(root))!)
-    const text = await Bun.file(lockfilePath(root)).text()
-    expect(text.match(/"validated"/g)?.length).toBe(1)
-    expect(Object.keys(JSON.parse(text))).toEqual(['version', 'projects', 'validated'])
   })
 })

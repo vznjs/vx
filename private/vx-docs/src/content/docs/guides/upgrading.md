@@ -25,6 +25,10 @@ them out or `vx cache clean` clears the cache.
 
 the default artifact ceiling is 1 GiB, not 2 GiB, and RunOptions.artifactCeiling is removed.
 
+### workspace: text locks keyed by project name
+
+No migration note.
+
 ## v0.0.658
 
 ### vx-dte: make the GitHub worker job one command

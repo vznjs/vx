@@ -182,7 +182,7 @@ Owners: `cli/watch.ts`, `cli/watch-set.ts` (what is watched),
 settled paths are changes), `cli/watch-fs.ts` (watchers,
 and the stat poller where they fail). One recursive `fs.watch` per project dir plus a
 non-recursive watch of the workspace root, which fires for the
-root files a plugin claims (a lockfile), `.vx/projects.lock.json`
+root files a plugin claims (a lockfile), `.vx/projects.lock.jsonl`
 (the projects), `.vx/workspace.*` and `.gitignore`. When any task declares
 `inputs.workspaceFiles`, one recursive root watcher replaces them
 all; on macOS one recursive root watcher always does, handing each event

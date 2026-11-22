@@ -123,7 +123,11 @@ describe('docs/cli.md Flags table matches the run parser', () => {
 describe('docs/cli.md — `vx lock` names the lock version it writes', () => {
   it('matches LOCKFILE_VERSION', async () => {
     const doc = await Bun.file(new URL('../docs/cli.md', import.meta.url)).text()
-    const named = [...doc.matchAll(/post-evaluation objects, by directory\s+\(version (\d+);/g)]
+    const named = [
+      ...doc.matchAll(
+        /post-evaluation objects, one line per project keyed by its\s+name \(version (\d+);/g,
+      ),
+    ]
     expect(named.map((m) => Number(m[1]))).toEqual([LOCKFILE_VERSION])
   })
   // schema.md's error rows said 5 after the lock moved to 6.

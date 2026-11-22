@@ -11,7 +11,7 @@ root and a `vx.config.ts` in each project.
 <FileTree>
 - .vx/
   - workspace.ts the workspace: plugins and settings
-  - projects.lock.json written by `vx lock`, read by every run
+  - projects.lock.jsonl written by `vx lock`, read by every run
 - packages/
   - app/
     - vx.config.ts one per project: its tasks
@@ -35,7 +35,7 @@ name is the first of these that exists:
 
 ## The lock
 
-Runs read configs from `.vx/projects.lock.json`, never from the files.
+Runs read configs from `.vx/projects.lock.jsonl`, never from the files.
 After you add or edit a `vx.config.ts`, run `vx lock` and commit what it
 writes: the lock, and the `vx.lock.json` beside each config.
 
@@ -44,7 +44,7 @@ vx lock
 ```
 
 ```ansi
-[38;2;34;197;94m✓[0m [1mvx lock[0m  2 project configs → .vx/projects.lock.json
+[38;2;34;197;94m✓[0m [1mvx lock[0m  2 project configs → .vx/projects.lock.jsonl, .vx/dependencies.lock
 ```
 
 <Aside type="tip">

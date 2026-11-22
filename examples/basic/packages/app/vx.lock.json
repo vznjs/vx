@@ -14,10 +14,10 @@
         ]
       },
       "outputs": {
-          "files": [
-            "dist/**"
-          ]
-        },
+        "files": [
+          "dist/**"
+        ]
+      },
       "cache": true
     },
     "test": {
@@ -34,8 +34,8 @@
         ]
       },
       "outputs": {
-          "files": []
-        },
+        "files": []
+      },
       "cache": true
     },
     "ci": {

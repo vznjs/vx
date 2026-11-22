@@ -64,7 +64,7 @@ function directoryInTheWay(err: unknown, shown: string): unknown {
 /** A file to write: its path, its bytes, and the name a refusal shows. */
 export interface PendingWrite {
   file: string
-  text: string
+  text: string | Uint8Array
   shown: string
 }
 

@@ -1,5 +1,5 @@
 // A deleted project takes its edges with it, so `--affected` reads them
-// from the base commit's `.vx/dependencies.lock.json`, the edges this
+// from the base commit's `.vx/dependencies.lock`, the edges this
 // plugin's `discover` gave `vx lock`: only those projects are selected.
 
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'

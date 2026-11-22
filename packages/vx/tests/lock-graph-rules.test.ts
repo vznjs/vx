@@ -8,6 +8,7 @@ import path from 'node:path'
 import { afterAll, describe, expect, it } from 'bun:test'
 import { checkGraph, type TaskNode } from '../src/graph/index.js'
 import { TIMEOUT } from './helpers/orchestrator-fixture.js'
+import { readLockfile, writeLockfile } from '../src/workspace/lockfile.js'
 
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 const roots: string[] = []
@@ -65,7 +66,7 @@ describe('vx lock checks the graph rules', () => {
       expect({
         code: r.code,
         said: r.err.includes('lock not written') && r.err.includes('both write'),
-        written: existsSync(path.join(root, '.vx/projects.lock.json')),
+        written: existsSync(path.join(root, '.vx/projects.lock.jsonl')),
       }).toEqual({ code: 1, said: true, written: false })
     },
     TIMEOUT,
@@ -95,7 +96,7 @@ describe('a run', () => {
     'with no lock refuses and writes none, under CI or not',
     async () => {
       const root = await workspace(`{ a: ${task(['dist/**'])} }`)
-      const lockFile = path.join(root, '.vx/projects.lock.json')
+      const lockFile = path.join(root, '.vx/projects.lock.jsonl')
       for (const CI of ['', '1']) {
         const r = vx(root, ['run', 'a', '--all'], { CI })
         expect({ code: r.code, err: r.err, written: existsSync(lockFile) }).toEqual({
@@ -114,13 +115,10 @@ describe('a run', () => {
       const root = await workspace(`{ a: ${task(['dist/**'])} }`)
       expect(vx(root, ['lock']).code).toBe(0)
       // What `vx lock` would refuse, edited into the lock by hand.
-      const lockFile = path.join(root, '.vx/projects.lock.json')
-      const lock = (await Bun.file(lockFile).json()) as {
-        projects: { 'packages/a': { config: { tasks: Record<string, unknown> } } }
-      }
-      const { tasks } = lock.projects['packages/a'].config
-      tasks['b'] = tasks['a']
-      await writeFile(lockFile, JSON.stringify(lock))
+      const lock = (await readLockfile(root))!
+      const tasks = lock.projects['packages/a']!.config!.tasks!
+      tasks['b'] = tasks['a']!
+      await writeLockfile(root, lock)
       // One run each: run together, the two raced on dist/o, and a's save
       // saw b's clean (`changed while it was saved`), which is no rule's.
       for (const t of ['a', 'b']) {

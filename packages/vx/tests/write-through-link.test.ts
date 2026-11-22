@@ -165,7 +165,7 @@ it('vx lock refuses a .vx linked outside the workspace and writes no lock there'
   const r = vx('lock')
   expect(r.code).toBe(1)
   expect(r.err).toContain(
-    outsideRefused(path.join(root, '.vx', 'projects.lock.json'), path.join(root, '.vx')),
+    outsideRefused(path.join(root, '.vx', 'projects.lock.jsonl'), path.join(root, '.vx')),
   )
   expect(readdirSync(outside)).toEqual(['workspace.mjs'])
 })

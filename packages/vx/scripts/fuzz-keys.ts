@@ -79,7 +79,7 @@ writeFileSync(at('.vx/workspace.ts'), 'export default {}\n')
 // and so is the lock written from it, so a stash never splits the two.
 writeFileSync(
   at('.gitignore'),
-  '.vx/cache/\ndist/\nconf.mjs\nstamp.txt\n.vx/projects.lock.json\n.vx/vx.lock.json\n**/vx.lock.json\n',
+  '.vx/cache/\ndist/\nconf.mjs\nstamp.txt\n.vx/projects.lock.jsonl\n.vx/vx.lock.json\n**/vx.lock.json\n',
 )
 writeFileSync(at('conf.mjs'), "export const SUFFIX = 'v1'\n")
 writeFileSync(at('shared/s1'), 'x')

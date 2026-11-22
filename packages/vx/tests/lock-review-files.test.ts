@@ -7,6 +7,7 @@ import path from 'node:path'
 import { afterEach, expect, it } from 'bun:test'
 import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
 import { noticed } from './helpers/notice.js'
+import { readLockfile } from '../src/workspace/lockfile.js'
 
 const BIN = path.join(import.meta.dir, '..', 'src', 'bin.ts')
 const CONFIG = `export default { tasks: { build: { exec: { command: 'true' } } } }\n`
@@ -32,24 +33,22 @@ const text = (p: string): Promise<string | null> =>
     .text()
     .catch(() => null)
 
-it('writes the lock minified, a pretty review copy per config, and .vx/.gitattributes', async () => {
+it('writes the lock a line per project, a pretty review copy per config, and .vx/.gitattributes', async () => {
   const r = (root = await makeWorkspace({ prefix: 'vx-lock-review-' }))
   const dir = await addProject(r, 'a', { config: CONFIG })
   expect(vx(r, 'lock').code).toBe(0)
-  const lock = (await text(path.join(r, '.vx', 'projects.lock.json')))!
-  expect(lock.split('\n')).toHaveLength(2)
-  expect(lock).toStartWith(
-    '{"version":6,"discoverStage":{"plugins":["vx-test-packages"],"projects":{"packages/a":{"name":"a"}}},' +
-      '"projects":{"packages/a":{"file":"vx.config.mjs","config":',
+  const lock = (await text(path.join(r, '.vx', 'projects.lock.jsonl')))!
+  // The header, the task's line, the project's line.
+  expect(lock.trimEnd().split('\n')).toHaveLength(3)
+  expect(lock).toContain(
+    '\na\t{"path":"packages/a","file":"vx.config.mjs","config":{"tasks":{"build":"#',
   )
   const review = (await text(path.join(dir, 'vx.lock.json')))!
-  const locked = (JSON.parse(lock) as { projects: Record<string, { config: object }> }).projects[
-    'packages/a'
-  ]!.config
+  const locked = (await readLockfile(r))!.projects['packages/a']!.config!
   expect(JSON.parse(review)).toMatchObject(locked)
   expect(review).toStartWith('{\n  "tasks": {')
   expect(await text(path.join(r, '.vx', '.gitattributes'))).toBe(
-    'projects.lock.json linguist-generated=true\n',
+    'projects.lock.jsonl linguist-generated=true merge=vx-lock\ndependencies.lock linguist-generated=true merge=vx-lock\n',
   )
   expect(vx(r, 'lock', '--check').code).toBe(0)
 })
@@ -196,7 +195,7 @@ it('a review copy vx lock cannot write refuses the lock and leaves it as it was'
   const r = (root = await makeWorkspace({ prefix: 'vx-lock-review-blocked-' }))
   const dir = await addProject(r, 'a', { config: CONFIG })
   expect(vx(r, 'lock').code).toBe(0)
-  const lockPath = path.join(r, '.vx', 'projects.lock.json')
+  const lockPath = path.join(r, '.vx', 'projects.lock.jsonl')
   const before = await text(lockPath)
   await Bun.write(path.join(dir, 'vx.config.mjs'), CONFIG.replace("'true'", "'false'"))
   await rm(path.join(dir, 'vx.lock.json'))
@@ -292,8 +291,8 @@ it('temps a killed vx lock left select no project under --affected', async () =>
   gitIn(r)('add', '-A')
   gitIn(r)('commit', '-q', '-m', 'init')
   for (const f of [
-    '.vx/projects.lock.json.tmp-123-abc',
-    '.vx/dependencies.lock.json.tmp-123-abc',
+    '.vx/projects.lock.jsonl.tmp-123-abc',
+    '.vx/dependencies.lock.tmp-123-abc',
     'vx.lock.json.tmp-123-abc',
   ])
     await Bun.write(path.join(r, f), '{}\n')

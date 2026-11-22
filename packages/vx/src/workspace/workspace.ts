@@ -718,23 +718,28 @@ async function workspaceFileIn(root: string, rel: string): Promise<boolean> {
 const namedBy = new WeakMap<ProjectMeta, string>()
 
 /**
- * The projects a lock records, by directory: what a run starts from. Named by
- * the config's `name`, else by path; a `discover` plugin may rename a
- * path-named one.
+ * The projects a lock records, by directory: what a run starts from. Named as
+ * the lock records it (a `discover` plugin's name), else by the config's
+ * `name`, else by path. One with no config file is a plugin's.
  */
 export function lockedProjects(
   root: string,
-  locked: Readonly<Record<string, { readonly file: string; readonly config: ProjectConfig }>>,
+  locked: Readonly<
+    Record<
+      string,
+      { readonly file?: string; readonly name?: string; readonly config?: ProjectConfig }
+    >
+  >,
 ): ProjectMeta[] {
   const metas: ProjectMeta[] = []
   for (const rel of Object.keys(locked)) {
     const entry = locked[rel]!
     const dir = rel === '.' ? root : path.join(root, rel)
-    const name = entry.config.name
+    const name = entry.config?.name
     const meta: ProjectMeta = {
-      name: name ?? pathName(root, dir),
+      name: entry.name ?? name ?? pathName(root, dir),
       dir,
-      configPath: path.join(dir, entry.file),
+      configPath: entry.file === undefined ? null : path.join(dir, entry.file),
     }
     if (name !== undefined) namedBy.set(meta, 'config')
     metas.push(meta)

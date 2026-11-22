@@ -30,6 +30,7 @@ vx run [OPTIONS] [TASK | PKG#TASK ...] [-- forwarded-args...]
 vx watch [OPTIONS] [--poll] TASK [-- forwarded-args...]
 vx cache clean [--older-than <duration>] [--max-size <size>] [--global] [--dry] [--format pretty|json] [--cache-dir <path>]
 vx lock [--check] [--format pretty|json]
+vx lock --merge <base> <ours> <theirs> <path>
 vx init [--dry [--format pretty|json]] [--force] [--mjs] [--native|--keep] [--plugin <hook>]
 vx show [PROJECT[#TASK] | TASK] [--filter <pattern>] [--affected[=<ref>]] [--format pretty|json]
 vx info [--format pretty|json] [--cache-dir <path>]
@@ -459,12 +460,12 @@ What counts as a change:
 - A gitignored file a task names (`.env.local`, `dist/**`) never
   selects it, as in Nx. The key still hashes it, so the task misses when
   it changed.
-- What `vx lock` writes is left out (`.vx/projects.lock.json`,
-  `.vx/dependencies.lock.json`, `.vx/.gitattributes`, each project's `vx.lock.json`
+- What `vx lock` writes is left out (`.vx/projects.lock.jsonl`,
+  `.vx/dependencies.lock`, `.vx/.gitattributes`, each project's `vx.lock.json`
   review copy, and the `<name>.tmp-<pid>-<x>` temp a killed write left
   beside one), so `vx lock` never marks a project affected by itself. So
   is the `.vx/.gitignore` `vx init` writes.
-  `.vx/projects.lock.json` counts entry by entry when the base has
+  `.vx/projects.lock.jsonl` counts entry by entry when the base has
   one: a project whose locked config, name or edges changed is
   selected whole (a run reads them from there; the lock is the reason
   shown), and `vx lock` rewriting the same entries selects nothing.
@@ -488,13 +489,11 @@ directory. Only a plugin that cannot tell selects everything, as
 
 **A deleted project selects its dependants.** Their keys lost an
 upstream, and the edge that named them went with the project, so vx asks
-the base commit's `.vx/dependencies.lock.json` (written by `vx lock`)
+the base commit's `.vx/dependencies.lock` (written by `vx lock`)
 who linked to it and selects those, naming the deleted `vx.config` as
 the reason. With no such file at the base, it selects every project.
-The same file holds each claimed file's per-project digests and the
-hash of the bytes they came from, so a changed lockfile whose base
-bytes match the record is digested on the head side only (one whose
-digests read another file, a `bun.lock` patch, is digested on both). A project that moved is no deletion: its config, the same bytes
+A changed lockfile is digested on both sides (each memoized by its
+bytes' hash, so a side this machine has seen is not parsed again). A project that moved is no deletion: its config, the same bytes
 in its new directory, selects only it, by its files. A dependency a plugin's `discover` drops without deleting a
 project is the plugin's to claim (`VxPlugin.fingerprint`, as the
 lockfile plugins do).
@@ -1573,7 +1572,7 @@ vx watch build -- --sourcemap       # forwarded args carry through every cycle
    nested inside it, with a config or not (a root project's key leaves a nested
    project's files out, so an edit there is no cycle; X-42, X-57). The workspace root is
    watched (non-recursively) for a claimed file (a lockfile), for
-   `.vx/projects.lock.json` and for an edit to `.vx/workspace.*` — the one root file that
+   `.vx/projects.lock.jsonl` and for an edit to `.vx/workspace.*` — the one root file that
    shapes a run (plugins, `config` stage, concurrency) without being any
    task's input; the cycle after it re-evaluates the file. With the file
    removed a cycle fails, as `vx run` refuses, until it is back. A `.gitignore`
@@ -1581,7 +1580,7 @@ vx watch build -- --sourcemap       # forwarded args carry through every cycle
    repository's `.git/info/exclude`: inputs are
    gitignore-aware, so it changes what keys read (X-136). The files a
    claimed file's digests read besides it, as the lock recorded them in
-   `.vx/dependencies.lock.json` (a `file:` or `link:` dependency's
+   `.vx/dependencies.lock` (a `file:` or `link:` dependency's
    directory, inside the root or not, and a patch file), are watched too,
    and their edit is a cycle; a re-lock that changes the set re-arms it. A file a
    config imports from disk (relative, `#imports` or a tsconfig alias,
@@ -1592,7 +1591,7 @@ vx watch build -- --sourcemap       # forwarded args carry through every cycle
    process, so its edit is named with the restart it needs rather than
    run stale (item 949). An import whose file is gone stays on the list
    by the name it would have, so its return is a cycle (X-133). The
-   projects are the lock's: a new `.vx/projects.lock.json` is the
+   projects are the lock's: a new `.vx/projects.lock.jsonl` is the
    event that adds or drops one, and its directory is watched
    from before that cycle runs, so an edit made during it queues
    (X-138). A config added and not locked is no project yet. With no
@@ -1793,13 +1792,13 @@ change though its files keep times from before the arm.
 A root file a plugin claims — a lockfile or install setting under
 `@vzn/vx-lockfile` (`pnpm-lock.yaml`, `bun.lock`, `.npmrc`, …),
 `turbo.json` under `turbo()` (item 961) — triggers a cycle, and so does
-`.vx/projects.lock.json`. Watch mode hears them because it watches the
+`.vx/projects.lock.jsonl`. Watch mode hears them because it watches the
 workspace root (non-recursively); a plugin added to the workspace
 config mid-watch counts from the cycle that loads it. The keys then
 decide which projects actually re-run: core keys no package file, so a
 lockfile edit re-keys only through its claimant
 ([cache key derivation](./caching.md#cache-key-derivation)). Every
-cycle's configs come from `.vx/projects.lock.json`, so a config edit
+cycle's configs come from `.vx/projects.lock.jsonl`, so a config edit
 alone changes no command: the cycle it starts says so on stderr,
 `vx watch: packages/app/vx.config.ts changed; runs read the lock, so run
 \`vx lock\` to apply it` (a config import's edit too). A re-lock
@@ -1866,7 +1865,7 @@ re-runs itself and what it depends on.
   same `Did you mean` hint, and watch exits rather than re-run the
   refusal on every change.
 
-A cycle that throws — no `.vx/projects.lock.json`, or one that locks a
+A cycle that throws — no `.vx/projects.lock.jsonl`, or one that locks a
 config since removed — prints `vx watch: cycle failed: <reason>` once
 and watch keeps watching, the initial run included, so the `vx lock`
 that fixes it re-runs (item 1017).
@@ -2113,7 +2112,7 @@ listing the directories.
 
 Every run, `vx watch` cycle, `--affected` selection and the picker takes
 its projects and their configs only from the committed
-`.vx/projects.lock.json` (2026-10-14). A run never walks for
+`.vx/projects.lock.jsonl` (2026-10-14). A run never walks for
 configs, never evaluates one, never checks the graph rules
 (`run.rules`) and never writes the lock: only `vx lock` does. With no
 lock, a run fails with `no lock: run \`vx lock\``. A run trusts the
@@ -2124,38 +2123,45 @@ config and checks the rules.
 ## `vx lock`
 
 `vx lock` evaluates every `vx.config.*` and writes the resolved configs
-to `.vx/projects.lock.json`. Runs read the lock, never the configs:
+to `.vx/projects.lock.jsonl`. Runs read the lock, never the configs:
 after you edit one, run `vx lock` and commit the lock.
 
-Beside it, `.vx/dependencies.lock.json` records each project's edges and
-each claimed file's per-project digests (`FingerprintClaim.digests`)
-with the hash of the file and of each other file they read (a
-`bun.lock` patch), minified as the config lock is, since only vx reads
-it. Commit it too: a run keys each task from those digests and never
-parses the lockfile, so after an install, run `vx lock`; a run whose
-lockfile changed since refuses (`VX_E_LOCK`), `--affected` too when the
-change moves no project (an install adding a package not yet locked), and so does one with no
-dependencies lock while a plugin claims a lockfile that is there. An
+Beside it, `.vx/dependencies.lock` records the resolved graph (each
+project's edges, which live nowhere else) and each claimed file's
+per-project digests (`FingerprintClaim.digests`) with the hash of each
+other file they read (a `bun.lock` patch), one line per project keyed
+by its name. Only `vx lock` writes it; never edit it. Commit it too: a
+run keys each task from those digests, after checking them against the
+plugin's own digests of the lockfile as it is, which `cache.db` keeps
+by the lockfile's hash (one parse per lockfile change on a machine,
+none after). So after an install, run `vx lock`: a run whose recorded
+digests are not what the lockfile resolves to refuses (`VX_E_LOCK`),
+`--affected` too, and so does one with no dependencies lock while a
+plugin claims a lockfile that is there. An install that moves no
+project's digest (a package no project is yet) keys nothing, so it
+refuses nothing. An
 edit in a `link:` or `file:` directory the lockfile names needs no
 `vx lock`: the plugin digests anew, and `vx lock --check` accepts it.
 A digest that moved while the lockfile and those files did not (a
-plugin upgrade) fails `vx lock --check`: a run keys from the record. `--affected` reads the base commit's copy to find a deleted
-project's dependants and a changed lockfile's base digests, and `vx
-lock --check` fails when it is missing or stale.
+plugin upgrade) fails `vx lock --check` and refuses a run. `--affected`
+reads the base commit's copy to find a deleted project's dependants and
+the edges that moved, and `vx lock --check` fails when it is missing or
+stale.
 
 ### Usage
 
 ```
-vx lock              # Evaluate all vx.config.* now; write .vx/projects.lock.json.
+vx lock              # Evaluate all vx.config.* now; write .vx/projects.lock.jsonl and .vx/dependencies.lock.
 vx lock --check      # Audit: full re-evaluation vs the lock. Exit 1 on drift.
 vx lock --check --format json   # The audit as {upToDate, audited, notAudited, problems}.
+vx lock --merge %O %A %B %P     # git's merge driver for the locks; vx lock registers it.
 ```
 
 ### Example
 
 ```
 $ vx lock
-✓ vx lock  2 project configs → .vx/projects.lock.json
+✓ vx lock  2 project configs → .vx/projects.lock.jsonl, .vx/dependencies.lock
 $ vx lock --check
 ✓ vx lock --check  up to date (2 projects)
 ```
@@ -2175,7 +2181,7 @@ shows no file diff to find them by.
 
 ### When to run it
 
-Run `vx lock` and commit `.vx/projects.lock.json` after
+Run `vx lock` and commit `.vx/projects.lock.jsonl` after
 editing any `vx.config.*` or `.vx/workspace.*`, after updating
 dependencies or plugins, and after changing a file a config imports.
 Runs read their configs from the lock, so until then they keep the old
@@ -2184,15 +2190,16 @@ The full workflow: the site's CI guide and `examples/ci`.
 
 ### Options
 
-| Option          | Meaning                                                            |
-| --------------- | ------------------------------------------------------------------ |
-| `--check`       | re-evaluate every config and compare with the lock; writes nothing |
-| `--format json` | with `--check`, the audit as one document                          |
+| Option                    | Meaning                                                            |
+| ------------------------- | ------------------------------------------------------------------ |
+| `--check`                 | re-evaluate every config and compare with the lock; writes nothing |
+| `--format json`           | with `--check`, the audit as one document                          |
+| `--merge <O> <A> <B> <P>` | git's merge driver for the locks (below); git runs it, you do not  |
 
 ### What it writes
 
 `vx lock` finds every project and freezes each one's **resolved** config into
-`.vx/projects.lock.json` at the workspace root. A project is a directory
+`.vx/projects.lock.jsonl` at the workspace root. A project is a directory
 holding a `vx.config.*`, in any language: `vx lock` lists them with git
 (`git ls-files`, tracked and untracked, git's ignore rules applied; a
 nested repository's own configs too), or walks the tree outside git
@@ -2206,7 +2213,8 @@ never reach it (its inputs still key its files), and `--check` fails a
 lock that misses one.
 Configs are
 programs; `vx lock` evaluates them in the current environment and
-stores the post-evaluation objects, by directory (version 6; a lock an
+stores the post-evaluation objects, one line per project keyed by its
+name (version 8; a lock an
 earlier vx wrote is refused, "re-run `vx lock`"). A project is named by
 its config's `name`, else by a plugin's `discover` stage (vx-lockfile
 gives `package.json`'s `name`), else by its root-relative path (`//` for
@@ -2239,47 +2247,70 @@ brings), asked of git in one `check-ignore`, and a cached task's
 one line naming every task it holds for (`a#build, b#build and 76 more
 tasks: …`).
 
-`.vx/projects.lock.json` is minified: it is the one file vx reads, and it loads
-faster that way (10,000 projects: 15.6 ms against 22.5 ms pretty). For
-review, `vx lock` also writes each project's resolved config (plugins
+`.vx/projects.lock.jsonl` is laid out for the parse first, then for
+size, and for merges: a header line, `{"version":8}`, then each distinct
+task config once as `#<hash>⇥<task JSON>`, then one line per project,
+`<name>⇥{"path","file"|"by","config"}`, its tasks naming those lines
+(`"build":"#k2x0…"`), all sorted. A run that needs a few projects
+parses only their lines (2,016 projects: 0.7 ms for one, 5.4 ms for
+all). For review, `vx lock` also writes each project's resolved config (plugins
 applied), pretty, to `vx.lock.json` beside its `vx.config`; vx never reads
 it, it is no task's input, and `lock.reviewFiles: false`
 (`VX_LOCK_REVIEW_FILES`) turns it off. A copy left with no config beside
 it is named by `vx lock` and fails `--check`; when the config was renamed
 to a name vx does not read (`vx.config.json`, `.tsx`), the notice names
 that file. `vx lock` also writes
-`.vx/.gitattributes` (`projects.lock.json linguist-generated=true`) when it is
-missing, so GitHub collapses the machine lock in a diff; `vx init` does
-too, and an existing one is never edited.
+`.vx/.gitattributes` (both locks `linguist-generated merge=vx-lock`)
+when it is missing, so GitHub collapses the locks in a diff; `vx init`
+does too, and an existing one is never edited.
+
+### Merging
+
+Two branches that each ran `vx lock` merge as text: a line per project,
+so only a project both changed conflicts. `vx lock` also registers its
+merge driver in the clone's git config (`merge.vx-lock.driver`, this vx
+as it was started, then `lock --merge %O %A %B %P`; git reads drivers
+only from its own config, never a committed file). With it, git merges
+the locks by key: a project one side changed takes that side, task lines
+follow the projects that name them, and only a project both sides
+changed differently is a conflict, marked as git marks one. The merged
+lock is not trusted further than any: a run checks the merged digests
+against the merged lockfile and refuses with "run `vx lock`" when they
+differ, and `vx lock --check` audits the configs. A conflict is fixed
+by resolving the configs, then `vx lock`, which writes both anew. GitHub's
+merge button runs no driver: a conflict there is git's own, on the
+project both sides changed.
 
 A plugin's `project` stage (`turbo()` and `nx()` from
 `@vzn/vx-migrate`, `@vzn/vx-lockfile`) runs here and nowhere else: the
-lock records each project's config as the stage left it
-(`projectStage`, with the plugins that filled it), a project with no
-`vx.config.*` included, and a run reads that record and calls no hook.
-So a run never maps: an edited `turbo.json` or `package.json` script
-runs only after the next `vx lock`, and `--check` names the project the
-stage now maps otherwise (``packages/lib: the `project` stage maps it
-differently from the lock here``). A run follows the record blindly,
-whatever plugins the workspace declares now; `--check` names a plugin
-added or dropped since (2026-11-11). Both verbs name the projects
+lock records each project's final config as the stage left it (only
+the result, never the steps), a project with no `vx.config.*`
+included, and a run reads that record and calls no hook. So a run never
+maps: an edited `turbo.json` or `package.json` script runs only after
+the next `vx lock`, and `--check` names the project the plugins now map
+otherwise (`packages/lib: the plugins map it differently from the lock
+here`), a plugin added or dropped since included. A run follows the
+record blindly, whatever plugins the workspace declares now
+(2026-11-11). Both verbs name the projects
 with no config that the stage gives tasks (`0 project configs →
-.vx/projects.lock.json (and the tasks a plugin maps for app, lib)`, five
+.vx/projects.lock.jsonl, .vx/dependencies.lock (and the tasks a plugin
+maps for app, lib)`, five
 names then `and N more`), so a lock on a plugin-only workspace never
 reads like an audit of nothing. One with no task (core's default
 `build` aside) is not named.
 
-The `discover` stage is recorded the same way (`discoverStage`, with the
-plugins that filled it): each project it added, named or gave `deps` /
-`reach`. A run, `vx show`, `vx why`, `--affected` and each `vx watch`
+The `discover` stage is recorded the same way: each project's name and
+the plugin that added it in `.vx/projects.lock.jsonl`, every `deps` /
+`reach` edge in `.vx/dependencies.lock`, the only place edges live. A run, `vx show`, `vx why`, `--affected` and each `vx watch`
 cycle apply that record to the locked projects and call no `discover`
 hook, so an edge a plugin derives (a `package.json` dependency, an Nx
 `implicitDependencies` or import under `nx()`) orders and selects
-nothing until the next `vx lock`, and `--check` names the project
-(``packages/b: the `discover` stage finds it otherwise than the lock
-here``) or a plugin added or dropped since. A record `vx lock` never
-writes (an edge or a stage config naming no project, a recorded name
-another project has) is refused: ``.vx/projects.lock.json is invalid: … — run `vx lock` ``.
+nothing until the next `vx lock`, and `--check` names a name or an
+added project that moved (`tools/gen: the lock names it "gen", the
+plugins here "generator"`) or the edges (`.vx/dependencies.lock is not
+what the dependencies resolve to here`). A record `vx lock` never writes
+(a dependencies lock of other projects, a recorded name another project
+has) is refused: ``.vx/projects.lock.jsonl is invalid: … — run `vx lock` ``.
 
 The lock is committed, so `vx lock` refuses to write one that holds a
 secret: a config that evaluated to the value of a secret-named variable
@@ -2334,7 +2365,7 @@ around it, and so do `--filter ./c`, `--filter c`, `vx show c` and `vx show c#bu
 cwd's project or a `--filter` leaves unresolved while one of the
 selected projects holds such a config). An entry edited by
 hand into a shape `vx lock` could not write fails the run with
-`.vx/projects.lock.json is invalid, run \`vx lock\``, checked only once
+`.vx/projects.lock.jsonl is invalid, run \`vx lock\``, checked only once
 something has crashed, so a normal run pays nothing for it. The shapes a
 run walks are checked as it reads the lock: a `name`that is no string,`tags`no list,`tasks`no object, a task no object or its`dependsOn` no
 list is refused there (`entry for "b" is malformed — re-run \`vx lock\``),
@@ -2757,8 +2788,8 @@ $ vx init --dry
             vx.config.ts
             .vx/.gitignore
             .vx/.gitattributes
-  lock      .vx/projects.lock.json
-            .vx/dependencies.lock.json
+  lock      .vx/projects.lock.jsonl
+            .vx/dependencies.lock
             vx.lock.json beside each vx.config
 
   next      declare a task in vx.config.ts, then vx lock && vx run <task>
@@ -3007,14 +3038,14 @@ The task graph has a cycle. The message names the loop; drop one of its
 
 #### `VX_E_LOCK`
 
-A run reads its configs only from `.vx/projects.lock.json`, and that
+A run reads its configs only from `.vx/projects.lock.jsonl`, and that
 lock is missing, not one this vx reads (not JSON, another version, a
 hand-edited entry), holds no entry for a project the workspace has, has
 not seen a `vx.config` written since, or locks one that is gone. Or a
 plugin claims a lockfile (`bun()`, `pnpm()`, …) and
-`.vx/dependencies.lock.json` is missing, not one this vx reads, does not
-record that lockfile, or records bytes it no longer holds: it changed
-since `vx lock` (an install).
+`.vx/dependencies.lock` is missing, not one this vx reads, does not
+record that lockfile, or records digests it no longer resolves to: it
+changed since `vx lock` (an install).
 Run `vx lock`, then the verb again. Commit the lock; `vx lock --check`
 on CI fails one that no longer matches the configs.
 
@@ -3172,7 +3203,7 @@ product verb to it under a notice.
 
 `vx show` prints the workspace's **resolved configs**: what a run would
 see right now. Configs load through the same path a run uses: from
-`.vx/projects.lock.json`, plugin `config` and `project` stages applied,
+`.vx/projects.lock.jsonl`, plugin `config` and `project` stages applied,
 so a package a plugin gives tasks to (`turbo()` or `nx()` from
 `@vzn/vx-migrate`, a temporary start toward native config) shows them.
 `vx show` evaluates no config: an edit shows after `vx lock`, and with
@@ -4461,7 +4492,7 @@ share `TMPDIR`: a `nix develop` shell sets its own.
 Every verb: a path vx must write that this user cannot (`EACCES`,
 `EPERM`, `EROFS` — a read-only checkout, another user's files) or that
 the disk has no room for (`ENOSPC`, `EDQUOT`) exits 1 with one line
-naming the path, `vx: EACCES: permission denied, open '…/.vx/projects.lock.json'
+naming the path, `vx: EACCES: permission denied, open '…/.vx/projects.lock.jsonl'
 — a path vx must write is not writable by this user` (or `— the disk
 that path is on is full`), never a stack. A refused listing or stat
 (`scandir`, `stat`, `lstat`) is a read and says so: `— a path vx must

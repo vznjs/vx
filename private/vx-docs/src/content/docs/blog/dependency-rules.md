@@ -97,7 +97,7 @@ nothing. Fix the edge and the lock is written:
 
 ```sh frame="terminal"
 $ vx lock
-✓ vx lock  6 project configs → .vx/projects.lock.json
+✓ vx lock  6 project configs → .vx/projects.lock.jsonl
 
 $ vx lock --check
 ✓ vx lock --check  up to date (6 projects)

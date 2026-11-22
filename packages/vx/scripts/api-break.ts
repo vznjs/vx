@@ -98,6 +98,23 @@ const SUPPORT = ['supported', 'mapped', 'not-supported', 'not-applicable']
  * when it is one of them: nothing else under `src/` can be imported, so a
  * file moving inside it is internal (npm-pack.unsafe still pins the list).
  */
+/** A projects lock's text as one object: the header, then each project by name, tasks in place. */
+function lockObject(text: string): unknown {
+  const [head = '{}', ...rest] = text.split('\n').filter((l) => l !== '')
+  const tasks = new Map<string, unknown>()
+  const projects: Record<string, unknown> = {}
+  for (const l of rest) {
+    const tab = l.indexOf('\t')
+    const value = JSON.parse(l.slice(tab + 1)) as { config?: { tasks?: Record<string, unknown> } }
+    if (l.startsWith('#')) tasks.set(l.slice(0, tab), value)
+    else projects[l.slice(0, tab)] = value
+  }
+  for (const p of Object.values(projects) as { config?: { tasks?: Record<string, unknown> } }[])
+    for (const [t, ref] of Object.entries(p.config?.tasks ?? {}))
+      p.config!.tasks![t] = tasks.get(ref as string)
+  return { header: JSON.parse(head) as unknown, projects }
+}
+
 export function contractBreaks(
   record: string,
   before: string,
@@ -113,6 +130,11 @@ export function contractBreaks(
     const lost = gone(lines(before), lines(after))
     if (entries === undefined) return lost
     return lost.filter((l) => !l.startsWith('- src/') || entries.has(l.slice(2)))
+  }
+  if (name === 'lock.jsonl') {
+    // Each project's entry with its tasks in place: a task line's id is its
+    // content's hash, so any edit to a task renames its line.
+    return gone(leaves(lockObject(before)), leaves(lockObject(after)))
   }
   const parse = (t: string): unknown => (t === '' ? {} : JSON.parse(t))
   const [b, a] = [parse(before), parse(after)]
@@ -136,12 +158,6 @@ export function contractBreaks(
     const prose = (k: string, at: string): boolean =>
       ANNOTATIONS.has(k) && !at.endsWith('properties')
     return gone(leaves(b, '', [], prose), leaves(a, '', [], prose))
-  }
-  if (name === 'lock.json') {
-    // A digest of the body that no reader consults: any change to the lock,
-    // an added task included, moved it, and read as a lost leaf.
-    const digest = (k: string, at: string): boolean => k === 'validated' && at === ''
-    return gone(leaves(b, '', [], digest), leaves(a, '', [], digest))
   }
   if (name === 'config-schema-rules.json') {
     const keys = (v: unknown): string[] => leaves(v).map((l) => l.slice(0, l.indexOf('=')))

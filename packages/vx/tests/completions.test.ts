@@ -77,6 +77,7 @@ const ARGV: Readonly<Record<string, readonly string[]>> = {
 const VERB_ARGV: Readonly<Record<string, readonly string[]>> = {
   'last --branch': ['main', '--stats'],
   'last --follow': ['--live'],
+  'lock --merge': ['o', 'a', 'b', '.vx/projects.lock.jsonl'],
 }
 
 describe('verbFlags is what each verb accepts', () => {

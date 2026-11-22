@@ -258,7 +258,7 @@ describe('stale cache hits', () => {
       // run (21 ms). Nor does a `text` line, whose conversion the blob-size
       // check answers for. Control: an `ident` line in the same file does.
       await write(path.join(root, 'pkg/src/a.ts'), 'export const a = 1')
-      await write(path.join(root, 'pkg/.gitattributes'), 'projects.lock.json linguist-generated\n')
+      await write(path.join(root, 'pkg/.gitattributes'), 'projects.lock.jsonl linguist-generated\n')
       git(root, 'init', '-q')
       git(root, 'config', 'user.email', 'test@vx.local')
       git(root, 'config', 'user.name', 'vx test')

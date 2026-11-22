@@ -51,7 +51,7 @@ import {
   lockDigest,
   PROJECT_CONFIG_FILENAMES,
   readClaimedFiles,
-  readDependenciesLock,
+  lockedDependencies,
   resolveCacheDir,
   resolveStoreRoot,
   type ProjectEntry,
@@ -71,6 +71,7 @@ import {
 import {
   applyKeyHooks,
   applyScheduleHooks,
+  claimedDigests,
   fingerprintClaims,
   hasHook,
   resolveCache,
@@ -554,7 +555,9 @@ async function openStore(
   const claimed = [...fingerprintClaims(plugins).keys()]
   const claimedBytes = await readClaimedFiles(workspaceRoot, claimed, ws.reads)
   // What `vx lock` recorded of them: a run keys from it (locked-digests.ts).
-  const dependenciesLock = claimed.length > 0 ? readDependenciesLock(workspaceRoot, ws.reads) : null
+  // The discovery read it beside the lock (`lockedDependencies`).
+  const dependenciesLock =
+    claimed.length > 0 ? ws.readLock().then((lock) => lockedDependencies(lock)!) : null
   dependenciesLock?.catch(() => {})
   // A whole-tree run's blob-size check starts with the cache, beside config
   // load and graph build: after them, a cold 100-package run waited 40-50 ms
@@ -577,7 +580,7 @@ async function loadScope(
   localCache: Cache,
 ) {
   const { projectMetas, readLock } = ws
-  // Configs load from .vx/projects.lock.json with no evaluation; only `vx lock`
+  // Configs load from .vx/projects.lock.jsonl with no evaluation; only `vx lock`
   // evaluates (docs/design/config-lock-2026-06.md). Read once, and only if
   // needed: the CLI's selection may have staged every config already
   // (`handoff.staged`).
@@ -1037,11 +1040,23 @@ async function applyKeyStages(
     }
   }
   if (hasHook(plugins, 'key')) {
-    const locked = lockedFiles(
+    const claims = fingerprintClaims(plugins)
+    const claimCtx = withExtraHashes(
+      {
+        workspaceRoot,
+        cacheDir,
+        warn: warnOf(log),
+        projects: projectMetas.map((p) => ({ name: p.name, dir: p.dir })),
+      },
+      extraHashesOfDiscovery(projectMetas),
+    )
+    const locked = await lockedFiles(
       workspaceRoot,
       store.claimed,
       store.claimedBytes,
       await store.dependenciesLock,
+      projectMetas,
+      (file) => claimedDigests(claims.get(file)!, file, claimCtx),
     )
     await applyKeyHooks(
       plugins,

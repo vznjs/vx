@@ -1,4 +1,4 @@
-// `vx lock` — freeze every resolved vx.config.* into .vx/projects.lock.json, and
+// `vx lock` — freeze every resolved vx.config.* into .vx/projects.lock.jsonl, and
 // each one, pretty, into a `vx.lock.json` beside it for review.
 // `vx lock --check` — audit the lock against a fresh evaluation in the
 // current environment. Design: docs/design/config-lock-2026-06.md.
@@ -16,6 +16,7 @@ import {
 } from '../graph/index.js'
 import {
   acquireRunLock,
+  addedByPlugin,
   applyGraphStage,
   claimedDigests,
   lockDiscovery,
@@ -71,17 +72,24 @@ import {
   lockfileWrite,
   DEPENDENCIES_LOCK_NAME,
   dependenciesLock,
+  sameRecord,
+  mergeLock,
   parseDependenciesLock,
   dependenciesLockWrite,
   type DependenciesLock,
+  type LockedProject,
   type Lockfile,
   type ProjectMeta,
+  pathName,
 } from '../workspace/index.js'
 import { taskEdgesFrom } from './select.js'
+import { registerMergeDriver } from './merge-driver.js'
 import { loadCliWorkspace, warnToStderr } from './workspace-config.js'
 
 interface LockArgs {
   check: boolean
+  /** git's `%O %A %B %P`: base, ours (merged into), theirs, the lock's path. */
+  merge?: readonly string[]
   format: 'pretty' | 'json'
   error?: string
 }
@@ -91,7 +99,13 @@ export function parseLockArgs(args: readonly string[]): LockArgs {
   for (let i = 0; i < args.length; i++) {
     const a = args[i]!
     if (a === '--check') out.check = true
-    else if (a === '--format' || a.startsWith('--format=')) {
+    else if (a === '--merge') {
+      const files = args.slice(i + 1, i + 5)
+      if (files.length < 4)
+        return { ...out, error: `--merge takes git's %O %A %B %P${seeHelp('lock')}` }
+      out.merge = files
+      i += 4
+    } else if (a === '--format' || a.startsWith('--format=')) {
       const fv = formatValue(a === '--format' ? args[++i] : a.slice(9), 'lock')
       if (typeof fv === 'object') return { ...out, ...fv }
       out.format = fv
@@ -132,6 +146,7 @@ function placedDependsOn(
 export async function lockCmd(args: readonly string[]): Promise<number> {
   const parsed = parseLockArgs(args)
   if (parsed.error) return refuse('lock', args, parsed.error, 'VX_E_USAGE')
+  if (parsed.merge !== undefined) return await mergeLockFiles(parsed.merge)
   // Writing the lock prints one line; only the audit has an answer to shape.
   if (parsed.format === 'json' && !parsed.check)
     return refuse(
@@ -143,6 +158,14 @@ export async function lockCmd(args: readonly string[]): Promise<number> {
   const root = await findWorkspaceRoot(process.cwd())
   if (parsed.check) return await checkLock(root, parsed.format === 'json')
   return await lockWorkspace(root)
+}
+
+/** git's merge driver: the merge goes into ours; 1 leaves a conflict for git to report. */
+async function mergeLockFiles([base, ours, theirs, file]: readonly string[]): Promise<number> {
+  const [o, a, b] = await Promise.all([base!, ours!, theirs!].map((f) => Bun.file(f).text()))
+  const merged = mergeLock(file!, o!, a!, b!)
+  await Bun.write(ours!, merged.text)
+  return merged.clean ? 0 : 1
 }
 
 /**
@@ -241,6 +264,7 @@ async function audit(root: string, warn: (message: string) => void): Promise<Gra
       found.map((f, i) => [
         lockKey(root, f.dir),
         {
+          name: configs[i]!.name ?? pathName(root, f.dir),
           file: path.basename(f.configPath),
           config: JSON.parse(JSON.stringify(configs[i])) as ProjectConfig,
         },
@@ -251,11 +275,7 @@ async function audit(root: string, warn: (message: string) => void): Promise<Gra
     // The stages edit what they are handed; the lock keeps what the configs say.
     const view = structuredClone(out.fresh)
     const lock = async (): Promise<Lockfile> => view
-    const discovered = await lockDiscovery(root, lock, plugins, cacheDir, warn)
-    out.all = discovered.projects
-    // What the plugin `discover` stage found, recorded: a run reads it and
-    // runs no hook (2026-11-11).
-    if (discovered.stage !== undefined) out.fresh.discoverStage = discovered.stage
+    out.all = await lockDiscovery(root, lock, plugins, cacheDir, warn)
     for (const m of out.all) {
       const why = m.configPath === null ? ignoredConfigRefusal(root, m) : undefined
       if (why !== undefined) throw new UserError(why, 'VX_E_LOCK')
@@ -272,17 +292,11 @@ async function audit(root: string, warn: (message: string) => void): Promise<Gra
       lock: true,
     })
     for (const entry of projects.values()) resolved.set(entry.name, entry.config)
-    // What the plugin `project` stage left, recorded: a run reads it and
-    // runs no hook, so a mapping is made here and nowhere else.
-    if (stage !== undefined)
-      out.fresh.projectStage = {
-        plugins: plugins.filter((p) => typeof p.project === 'function').map((p) => p.name),
-        configs: Object.fromEntries(
-          [...stage]
-            .map(([dir, config]) => [lockKey(root, dir), config] as const)
-            .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)),
-        ),
-      }
+    // Each project as the stages left it, and nothing of the steps there: a
+    // run reads its name, its config after the `project` stage and its
+    // edges (in the dependencies lock) and runs no hook, so a mapping is made
+    // here and nowhere else (2026-11-21).
+    out.fresh.projects = finalProjects(root, out.all, out.fresh.projects, stage)
     out.loaded = true
     out.dependencies = await dependenciesOf(root, out.all, plugins, cacheDir, warn)
     checkBracketLiterals(root, projects.values())
@@ -440,7 +454,38 @@ async function dependenciesOf(
     const answer = await claimedDigests(plugin, file, ctx)
     if (answer !== undefined) files.set(file, answer)
   }
-  return dependenciesLock(root, all, files)
+  return dependenciesLock(all, files)
+}
+
+/**
+ * Each project's lock entry as the stages left it, sorted by directory:
+ * its name, its config file, the plugin that
+ * added it, and its config after the `project` stage (`evaluated` where no
+ * plugin fills it).
+ */
+function finalProjects(
+  root: string,
+  all: readonly ProjectMeta[],
+  evaluated: Lockfile['projects'],
+  stage: ReadonlyMap<string, ProjectConfig> | undefined,
+): Lockfile['projects'] {
+  const entries = all.map((meta): [string, LockedProject] => {
+    const dir = lockKey(root, meta.dir)
+    const held = Object.hasOwn(evaluated, dir) ? evaluated[dir] : undefined
+    const by = addedByPlugin(meta)
+    const config = stage?.get(meta.dir) ?? held?.config
+    return [
+      dir,
+      {
+        name: meta.name,
+        ...(held?.file !== undefined ? { file: held.file } : {}),
+        ...(by !== undefined ? { by } : {}),
+        ...(config !== undefined ? { config } : {}),
+      },
+    ]
+  })
+  entries.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+  return Object.fromEntries(entries)
 }
 
 function configured(all: readonly ProjectMeta[]): ConfiguredMeta[] {
@@ -580,7 +625,7 @@ async function writeLock(
   const bare = bareProjects(check.all, check.tasked)
   // By project name, as the refusal names them.
   const projects: Record<string, ProjectConfig> = Object.fromEntries(
-    metas.map((m) => [m.name, check.fresh.projects[lockKey(root, m.dir)]!.config]),
+    metas.map((m) => [m.name, check.fresh.projects[lockKey(root, m.dir)]!.config!]),
   )
   const reviews = check.reviewFiles ? reviewsOf(metas, check.resolved) : []
   const leaks = await lockLeaks(root, check, metas, projects, reviews)
@@ -623,15 +668,15 @@ async function writeLock(
     return 1
   }
   await writeAllOrNone(
-    [
-      lockfileWrite(root, check.fresh),
-      ...(check.dependencies === null ? [] : [dependenciesLockWrite(root, check.dependencies)]),
-    ],
+    [lockfileWrite(root, check.fresh), dependenciesLockWrite(root, check.dependencies!)],
     root,
   )
   await writeIfMissing(path.join(root, '.vx', '.gitattributes'), DOT_VX_GITATTRIBUTES)
+  registerMergeDriver(root)
   const n = metas.length
-  say(`${n} project config${n === 1 ? '' : 's'} → ${LOCKFILE_NAME}${bareNote(bare)}`)
+  say(
+    `${n} project config${n === 1 ? '' : 's'} → ${LOCKFILE_NAME}, ${DEPENDENCIES_LOCK_NAME}${bareNote(bare)}`,
+  )
   // A second config beside the one read was edited and nothing changed.
   warnShadowed(root, check, 'vx lock')
   // Named here too: a lock that wrote clean failed the `--check` after it.
@@ -735,94 +780,39 @@ function unkeyedReads(root: string, check: GraphCheck): string[] {
 }
 
 /**
- * Where the plugin `project` stage, run here, maps a project otherwise than
- * the lock records: a run follows the record, so an edited turbo.json or
- * script is drift until `vx lock`. A directory already in `drifted` is
- * named once.
+ * Where the plugins, run here, leave a project otherwise than the lock
+ * records: one a `discover` plugin adds, names or no longer finds, or a
+ * config-less one a `project` plugin maps. A run follows the record, so an
+ * edited turbo.json or `project.json` is drift until `vx lock`. A
+ * directory already in `drifted` (its config file's own drift) is named
+ * once.
  */
-function stageDrift(lock: Lockfile, fresh: Lockfile, drifted: ReadonlySet<string>): string[] {
-  const was = lock.projectStage
-  const now = fresh.projectStage
-  const named = (list: readonly string[]): string => list.map((p) => `'${p}'`).join(', ')
-  if (was === undefined && now === undefined) return []
-  if (was === undefined)
-    return [`the lock holds no \`project\` stage of plugin ${named(now!.plugins)} — run 'vx lock'`]
-  if (now === undefined)
-    return [
-      `the lock holds the \`project\` stage of ${named(was.plugins)}, which no plugin fills now — run 'vx lock'`,
-    ]
-  if (was.plugins.join('\0') !== now.plugins.join('\0'))
-    return [
-      `the lock holds the \`project\` stage of ${named(was.plugins)}, not of ${named(now.plugins)} — run 'vx lock'`,
-    ]
+function pluginDrift(lock: Lockfile, fresh: Lockfile, drifted: ReadonlySet<string>): string[] {
   const out: string[] = []
   const what = (dir: string): string => (dir === '.' ? 'the workspace root project' : dir)
-  for (const [dir, config] of Object.entries(now.configs)) {
+  for (const [dir, now] of Object.entries(fresh.projects)) {
     if (drifted.has(dir)) continue
-    const held = Object.hasOwn(was.configs, dir) ? was.configs[dir] : undefined
-    if (held === undefined)
-      out.push(`${what(dir)} is not in the lock's \`project\` stage — run 'vx lock'`)
-    else if (!Bun.deepEquals(config, held, true))
+    const held = Object.hasOwn(lock.projects, dir) ? lock.projects[dir] : undefined
+    if (held === undefined) {
+      if (now.file === undefined) out.push(`${what(dir)} is not in the lock — run 'vx lock'`)
+      continue
+    }
+    if (held.name !== now.name || held.by !== now.by)
       out.push(
-        `${what(dir)}: the \`project\` stage maps it differently from the lock here — a file ` +
-          `the plugin reads, or the environment, changed; run 'vx lock'` +
-          configDiff(held, config)
+        `${what(dir)}: the lock names it ${JSON.stringify(held.name ?? null)}${held.by === undefined ? '' : ` (added by '${held.by}')`}, the plugins here ${JSON.stringify(now.name ?? null)}${now.by === undefined ? '' : ` (added by '${now.by}')`} — run 'vx lock'`,
+      )
+    else if (now.file === undefined && !Bun.deepEquals(now.config, held.config, true))
+      out.push(
+        `${what(dir)}: the plugins map it differently from the lock here — a file ` +
+          `a plugin reads, or the environment, changed; run 'vx lock'` +
+          configDiff(held.config, now.config)
             .map((d) => `\n  ${maskedLine(d)}`)
             .join(''),
       )
   }
-  for (const dir of Object.keys(was.configs))
-    if (!Object.hasOwn(now.configs, dir))
-      out.push(
-        `the lock's \`project\` stage holds ${what(dir)}, which it does not map now — run 'vx lock'`,
-      )
-  return out
-}
-
-/**
- * Where the plugin `discover` stage, run here, finds the projects otherwise
- * than the lock records: a run follows the record, so a new edge or name
- * (an edited `project.json` under nx()) is drift until `vx lock`. A
- * directory already in `drifted` is named once.
- */
-function discoverDrift(lock: Lockfile, fresh: Lockfile, drifted: ReadonlySet<string>): string[] {
-  const was = lock.discoverStage
-  const now = fresh.discoverStage
-  const named = (list: readonly string[]): string => list.map((p) => `'${p}'`).join(', ')
-  if (was === undefined && now === undefined) return []
-  if (was === undefined)
-    return [`the lock holds no \`discover\` stage of plugin ${named(now!.plugins)} — run 'vx lock'`]
-  if (now === undefined)
-    return [
-      `the lock holds the \`discover\` stage of ${named(was.plugins)}, which no plugin fills now — run 'vx lock'`,
-    ]
-  if (was.plugins.join('\0') !== now.plugins.join('\0'))
-    return [
-      `the lock holds the \`discover\` stage of ${named(was.plugins)}, not of ${named(now.plugins)} — run 'vx lock'`,
-    ]
-  const out: string[] = []
-  const what = (dir: string): string => (dir === '.' ? 'the workspace root project' : dir)
-  for (const [dir, found] of Object.entries(now.projects)) {
-    if (drifted.has(dir)) continue
-    const held = Object.hasOwn(was.projects, dir) ? was.projects[dir] : undefined
-    if (held === undefined)
-      out.push(`${what(dir)} is not in the lock's \`discover\` stage — run 'vx lock'`)
-    else if (!Bun.deepEquals(found, held, true))
-      out.push(
-        `${what(dir)}: the \`discover\` stage finds it otherwise than the lock here; run 'vx lock'` +
-          configDiff(held, found)
-            .map((d) => `\n  ${d}`)
-            .join(''),
-      )
-  }
-  // A config gone is named as such below.
-  const gone = (dir: string): boolean =>
-    Object.hasOwn(lock.projects, dir) && !Object.hasOwn(fresh.projects, dir)
-  for (const dir of Object.keys(was.projects))
-    if (!drifted.has(dir) && !gone(dir) && !Object.hasOwn(now.projects, dir))
-      out.push(
-        `the lock's \`discover\` stage holds ${what(dir)}, which it does not find now — run 'vx lock'`,
-      )
+  for (const [dir, held] of Object.entries(lock.projects))
+    if (held.file === undefined && !Object.hasOwn(fresh.projects, dir))
+      out.push(`the lock holds ${what(dir)}, which no plugin adds now — run 'vx lock'`)
   return out
 }
 
@@ -904,8 +894,11 @@ async function lockLeaks(
   reviews: readonly Review[],
 ): Promise<Array<{ at: string; name: string }>> {
   const nameAt = new Map(check.all.map((m) => [lockKey(root, m.dir), m.name]))
-  const staged = Object.entries(check.fresh.projectStage?.configs ?? {}).map(
-    ([dir, config]) => [nameAt.get(dir) ?? dir, config] as const,
+  // A config-less project's config is the `project` stage's alone.
+  const staged = Object.entries(check.fresh.projects).flatMap(([dir, e]) =>
+    e.file === undefined && e.config !== undefined
+      ? [[nameAt.get(dir) ?? dir, e.config] as const]
+      : [],
   )
   const committed = Object.fromEntries([
     ...reviews.map((r) => [r.name, r.config] as const),
@@ -1011,29 +1004,6 @@ function warnShadowed(root: string, check: GraphCheck, verb: string): void {
 }
 
 /**
- * `read` with each file's record taken from `fresh` where only the files
- * its digests read moved (same bytes, same extra files, an extra's hash
- * changed): a run digests anew on such an edit (`lockfileClaim`'s
- * `lockedOnce`), and cli.md says it needs no `vx lock`, yet `--check`
- * failed every edit in a `file:` directory or a patch. With every hash
- * unchanged a run keys from the record, so its digests are compared.
- */
-function liveExtras(read: DependenciesLock, fresh: DependenciesLock): DependenciesLock {
-  const files = { ...read.files }
-  for (const [name, now] of Object.entries(fresh.files)) {
-    const was = files[name]
-    if (
-      was !== undefined &&
-      was.hash === now.hash &&
-      Bun.deepEquals(Object.keys(was.extras ?? {}), Object.keys(now.extras ?? {})) &&
-      !Bun.deepEquals(was.extras ?? {}, now.extras ?? {})
-    )
-      files[name] = now
-  }
-  return { ...read, files }
-}
-
-/**
  * Audit the lock: find and re-evaluate every config in the CURRENT
  * environment and deep-compare it with the locked object. That sees an
  * edit to the config, to a file it imports, and to the environment it
@@ -1078,10 +1048,11 @@ async function checkLock(root: string, json: boolean): Promise<number> {
   const failures: string[] = []
   const drifted = new Set<string>()
   for (const [dir, fresh] of Object.entries(check.fresh.projects)) {
+    if (fresh.file === undefined) continue
     const rel = dir === '.' ? fresh.file : `${dir}/${fresh.file}`
     const locked = Object.hasOwn(lock.projects, dir) ? lock.projects[dir] : undefined
     const problem =
-      locked === undefined
+      locked?.file === undefined
         ? `${rel} is not in the lock — run 'vx lock'`
         : locked.file !== fresh.file
           ? `${rel} is not the ${locked.file} the lock holds for ${dir === '.' ? 'the workspace root project' : dir} — run 'vx lock'`
@@ -1107,11 +1078,7 @@ async function checkLock(root: string, json: boolean): Promise<number> {
       failures.push(
         `the lock holds ${dir} as a nested workspace, which it is not now — run 'vx lock'`,
       )
-  if (check.loaded)
-    failures.push(
-      ...discoverDrift(lock, check.fresh, drifted),
-      ...stageDrift(lock, check.fresh, drifted),
-    )
+  if (check.loaded) failures.push(...pluginDrift(lock, check.fresh, drifted))
   // Every graph refusal, root-relative as the rest of the audit.
   if (broken !== null && check.loaded)
     for (const m of [broken, ...(check.alsoBroken ?? []).map((e) => e.message)])
@@ -1124,7 +1091,7 @@ async function checkLock(root: string, json: boolean): Promise<number> {
       check,
       metas,
       Object.fromEntries(
-        metas.map((m) => [m.name, check.fresh.projects[lockKey(root, m.dir)]!.config]),
+        metas.map((m) => [m.name, check.fresh.projects[lockKey(root, m.dir)]!.config!]),
       ),
       check.reviewFiles ? reviewsOf(metas, check.resolved) : [],
     ))
@@ -1171,7 +1138,7 @@ async function checkLock(root: string, json: boolean): Promise<number> {
   // A config that does not load evaluated none: every locked project
   // read as gone, the healthy ones too.
   for (const dir of check.loaded ? Object.keys(lock.projects) : []) {
-    if (!Object.hasOwn(check.fresh.projects, dir)) {
+    if (lock.projects[dir]!.file !== undefined && !Object.hasOwn(check.fresh.projects, dir)) {
       const what = dir === '.' ? 'the workspace root project' : dir
       failures.push(`the lock holds ${what}, which has no vx.config now — run 'vx lock'`)
     }
@@ -1181,12 +1148,8 @@ async function checkLock(root: string, json: boolean): Promise<number> {
     const text = await Bun.file(path.join(root, DEPENDENCIES_LOCK_NAME))
       .bytes()
       .catch(() => null)
-    // Compared as JSON: a formatter may lay the file out its own way.
     const read = parseDependenciesLock(text)
-    if (
-      read === null ||
-      !Bun.deepEquals(liveExtras(read, check.dependencies), check.dependencies, true)
-    )
+    if (read === null || !sameRecord(read, check.dependencies))
       failures.push(
         `${DEPENDENCIES_LOCK_NAME} ${text === null ? 'is missing' : 'is not what the dependencies resolve to here'} — run 'vx lock'`,
       )

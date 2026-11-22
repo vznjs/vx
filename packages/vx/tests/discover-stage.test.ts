@@ -33,17 +33,17 @@ const plugin = (name: string, discover: VxPlugin['discover']): VxPlugin =>
 const lockOf =
   (extra: Record<string, ProjectConfig> = {}) =>
   async (): Promise<Lockfile> => ({
-    version: 6,
+    version: 8,
     projects: Object.fromEntries(
-      Object.entries({ 'packages/a': {}, ...extra }).map(([d, config]) => [
+      Object.entries<ProjectConfig>({ 'packages/a': {}, ...extra }).map(([d, config]) => [
         d,
-        { file: 'vx.config.mjs', config },
+        { name: config.name ?? (d === '.' ? '//' : d), file: 'vx.config.mjs', config },
       ]),
     ),
   })
 
 const discover = (plugins: VxPlugin[], extra?: Record<string, ProjectConfig>) =>
-  lockDiscovery(root, lockOf(extra), plugins, root, warn).then((r) => r.projects)
+  lockDiscovery(root, lockOf(extra), plugins, root, warn)
 
 const names = async (plugins: VxPlugin[], extra?: Record<string, ProjectConfig>) =>
   (await discover(plugins, extra)).map((p) => `${p.name}@${path.relative(root, p.dir) || '.'}`)
@@ -219,7 +219,7 @@ describe('discover stage', () => {
       try {
         await mkdir(path.join(root, 'widgets'))
         await symlink('../packages/a', path.join(root, 'widgets', 'a'))
-        const { projects } = await lockDiscovery(
+        const projects = await lockDiscovery(
           linked,
           lockOf(),
           [plugin('p', () => [{ dir: 'widgets/a', name: 'a' }])],

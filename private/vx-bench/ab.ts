@@ -14,7 +14,7 @@
  * (`node_modules/@vzn/vx-migrate`) to the arm's checkout. The runs see git's
  * defaults: this container's global config (`core.checkStat=minimal`) makes
  * vx re-hash every input (A-6), which is the config, not the arm.
- * Every verb but `lock` runs from `.vx/projects.lock.json`, so each arm locks its own
+ * Every verb but `lock` runs from `.vx/projects.lock.jsonl`, so each arm locks its own
  * workspace with its own vx once, before the warm-up. Re-locking after a
  * config edit is the caller's, never a rep's.
  * Prints each arm's min and median, then every sample as one JSON line.

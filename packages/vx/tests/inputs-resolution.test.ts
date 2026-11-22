@@ -344,15 +344,15 @@ describe('ALWAYS_IGNORE matches where vx writes, and nowhere deeper', () => {
   const IGNORED_TOP = [
     '.git/HEAD',
     '.vx/cache/log',
-    '.vx/projects.lock.json',
+    '.vx/projects.lock.jsonl',
     'vx.lock.json',
     '.vx/.gitattributes',
     '.vx/.gitignore',
-    '.vx/dependencies.lock.json',
+    '.vx/dependencies.lock',
     '.vx/tmp/1z2-a/0',
     // Temps a killed write left (`<name>.tmp-<pid>-<x>`).
-    '.vx/projects.lock.json.tmp-123-abc',
-    '.vx/dependencies.lock.json.tmp-123-abc',
+    '.vx/projects.lock.jsonl.tmp-123-abc',
+    '.vx/dependencies.lock.tmp-123-abc',
     'vx.lock.json.tmp-123-abc',
   ]
   // A project's own files that only share a name with vx's (2026-10-17):
@@ -360,14 +360,14 @@ describe('ALWAYS_IGNORE matches where vx writes, and nowhere deeper', () => {
   // left out: git lists nothing under one.
   const KEPT_NESTED = [
     'a/b/.vx/cache/log',
-    'a/b/.vx/projects.lock.json',
+    'a/b/.vx/projects.lock.jsonl',
     'a/b/vx.lock.json',
     'a/b/.vx/.gitattributes',
     'a/b/.vx/.gitignore',
-    'a/b/.vx/dependencies.lock.json',
+    'a/b/.vx/dependencies.lock',
     'a/b/.vx/tmp/1z2-a/0',
-    'a/b/.vx/projects.lock.json.tmp-123-abc',
-    'a/b/.vx/dependencies.lock.json.tmp-123-abc',
+    'a/b/.vx/projects.lock.jsonl.tmp-123-abc',
+    'a/b/.vx/dependencies.lock.tmp-123-abc',
     'a/b/vx.lock.json.tmp-123-abc',
   ]
   // Names one character away from an ignored one. If any of these is excluded
@@ -387,11 +387,11 @@ describe('ALWAYS_IGNORE matches where vx writes, and nowhere deeper', () => {
     '.cd5e87e3246b0795-00000000.tmp/bun',
     'a/b/.18bf7d9ff3ffeffe-00000001.bun-build',
     'a/b/.cd5e87e3246b0795-00000000.tmp/bun',
-    '.vx/projects.lock.json.bak',
+    '.vx/projects.lock.jsonl.bak',
     'vx.lock.json.bak',
     '.gitattributes',
     '.vx/.gitignore.bak',
-    '.vx/dependencies.lock.json.bak',
+    '.vx/dependencies.lock.bak',
     '.vx/tmpl/x',
   ]
 
@@ -480,7 +480,7 @@ describe('ALWAYS_IGNORE matches where vx writes, and nowhere deeper', () => {
     // The two resolvers each build their own exclude list. A fix or a
     // regression applied to one does not reach the other, so the guarantee is
     // asserted on both paths.
-    await write(path.join(root, '.vx/projects.lock.json'), '{}')
+    await write(path.join(root, '.vx/projects.lock.jsonl'), '{}')
     await write(path.join(root, 'tsconfig.json'), '{}')
     Bun.spawnSync({ cmd: ['git', 'add', '-Af'], cwd: root, stdout: 'pipe', stderr: 'pipe' })
     // Untracked and not ignored: an install the enumeration drops.
@@ -497,7 +497,7 @@ describe('ALWAYS_IGNORE matches where vx writes, and nowhere deeper', () => {
     const seen = got.files.map((f) => relPosix(root, f))
     expect(seen).toContain('tsconfig.json')
     expect(seen).not.toContain(path.join('node_modules', 'dep', 'index.js'))
-    expect(seen).not.toContain('.vx/projects.lock.json')
+    expect(seen).not.toContain('.vx/projects.lock.jsonl')
   })
 })
 

@@ -11,6 +11,7 @@ export {
   mergeBaseWith,
 } from './affected.js'
 export { applyFilters, parseFilter } from './filter.js'
+export { mergeLock } from './lock-merge.js'
 export { readClaimedFiles } from './fingerprint.js'
 export { checkBracketLiterals } from './bracket-literal.js'
 export { checkDependencyRules } from './dependency-rules.js'
@@ -23,6 +24,7 @@ export {
   LOCK_INVALID,
   EMPTY_LOCK,
   lockDigest,
+  lockedDependencies,
   lockEntryBroken,
   lockfilePath,
   lockKey,
@@ -31,8 +33,6 @@ export {
   lockfileWrite,
   writeLockfile,
   type Lockfile,
-  type DiscoveredLock,
-  type DiscoverStageLock,
   type LockedProject,
 } from './lockfile.js'
 export {
@@ -40,6 +40,7 @@ export {
   dependenciesLock,
   parseDependenciesLock,
   readDependenciesLock,
+  sameRecord,
   recordedDigests,
   dependenciesLockWrite,
   type DependenciesLock,

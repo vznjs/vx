@@ -22,7 +22,7 @@ vulnerability), never in a public issue.
   must already be installed: vx runs Bun with `--no-install`, so an
   import no `node_modules` provides is refused, never fetched from the
   registry (L-22).
-- **Your projects lock.** A run executes `.vx/projects.lock.json` as
+- **Your projects lock.** A run executes `.vx/projects.lock.jsonl` as
   written and never re-evaluates or re-validates it, so the lock is code
   too. It is minified and marked generated, which collapses it in a
   pull request's diff: a change to it alone changes what runs while every

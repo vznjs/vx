@@ -314,7 +314,7 @@ have them, 73 tasks, both tools at nx.json's `parallel: 8`.
 
 Every run below predates 2026-09-29 and ran vx without a lock, each
 config evaluated per run. A vx run now loads configs only from
-`.vx/projects.lock.json`, so both scripts take `vx lock` once before the arms; a
+`.vx/projects.lock.jsonl`, so both scripts take `vx lock` once before the arms; a
 re-run says so.
 
 Box for every run below: this container — 4 cores, 16 GB of which the
