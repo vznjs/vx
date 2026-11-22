@@ -1566,6 +1566,7 @@ const cases: Case[] = [
     title: 'A stray file under an output glob the task never wrote to is gone after a replay',
     why: 'A replay must leave the output tree as the task left it, and here the task wrote nothing. A tool that skips the clean when the entry is empty leaves a stray file in place. That file then ships, or gets tested, as if this build had made it, and the next clean build disagrees.',
     from: ['cache-declaration-warnings'],
+    needs: ['optional-outputs'],
     workspace: one({ command: 'true', inputs: ['src/**'], outputs: ['build/**'] }),
     steps: [
       { run: 'build', expect: { exit: 0 } },
@@ -1582,6 +1583,7 @@ const cases: Case[] = [
     title: 'A stray file under a root output glob the task never wrote to is gone after a replay',
     why: 'A root output glob is cleaned on replay like a project one, even when the task wrote nothing under it. Otherwise a stray file, left by hand or by an older build, stays in a directory the task owns. Later steps then read it as if this build produced it.',
     from: ['cache-declaration-warnings'],
+    needs: ['optional-outputs'],
     workspace: one({
       command: 'true',
       inputs: ['src/**'],

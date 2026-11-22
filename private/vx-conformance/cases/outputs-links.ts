@@ -21,7 +21,8 @@ const REPO = { dirs: ['.git/objects', '.git/refs'] }
 const HEAD = { '.git/HEAD': 'ref: refs/heads/main\n' }
 
 const linkedHead = (outputs: string[]): TaskSpec => ({
-  command: 'mkdir -p build && cat src/a.txt > build/a.js',
+  // Every declared pattern must match a file the task wrote.
+  command: `mkdir -p build && cat src/a.txt > build/a.js${outputs.some((o) => o.includes('tsbuildinfo')) ? ' && : > a.tsbuildinfo' : ''}`,
   inputs: ['src/**'],
   outputs,
 })

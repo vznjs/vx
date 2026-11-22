@@ -1,11 +1,10 @@
 {
   "coverage": {
-    "ported": 381,
+    "ported": 388,
     "rest": {
       "pending": [
         "affected-diff-early",
         "affected-workspace-plugin",
-        "cache-dir-in-outputs",
         "clean-readonly-dir",
         "deferred-output-empty",
         "everyday-ops-differential",
@@ -17,7 +16,6 @@
         "peak-memory-exact",
         "prepared-key",
         "project-stage-lock",
-        "server-chain",
         "server-died-under-task",
         "signal-tstp",
         "uncached-workspace-output-key",
@@ -163,7 +161,6 @@
         "metrics",
         "migration",
         "near-miss",
-        "output-never-dotvx",
         "pipeline",
         "placement",
         "placement-async-hints",
@@ -647,7 +644,6 @@
         "workspace-config-purity",
         "workspace-guard-bun",
         "workspace-load-messages",
-        "workspace-root-file",
         "workspace-unreadable",
         "write-file-signal",
         "write-through-link"
@@ -656,7 +652,6 @@
         "admit-warning-prefix",
         "alive-helper.unsafe",
         "archive-extract-meta",
-        "archive-security",
         "artifact-pack-properties",
         "attempt-steps",
         "bin-reader-gone",
@@ -784,7 +779,6 @@
         "prune-inline-frees",
         "read-once.unsafe",
         "reading-verbs-git",
-        "ready-wait-notice",
         "real-path",
         "recursive-run",
         "refusal-notice",
@@ -792,7 +786,6 @@
         "rel-posix",
         "repo-facts-disk",
         "resave-aside",
-        "reserved-names",
         "resolve-cache",
         "restore-artifact-replaced",
         "restore-exdev",
@@ -1013,7 +1006,13 @@
     "moon failed 23 of 45 cases; one: succeeded, expected a failure\n$ /home/user/vx/private/vx-conformance/node_modules/.latest-16732/node_modules/@moonrepo/core-linux-x64-gnu/moon run :build\n▮▮▮▮ b:build (545ce2ac)\n▮▮▮▮ a:build (51d8f186)\n▮▮▮▮ b:build (566ms, 545ce2ac)\n▮▮▮▮ a:build (5s 14ms, 51d8f186)\n▮▮▮▮ c:build (ef0196dd)\n▮▮▮▮ c:build (4ms, ef0196dd)\n\nTasks: 3 completed\n Time: 5s 76ms\n\n",
     "moon fetched no toolchain plugins (exit 1, found system-ad7abb72e596dcc556ad0fc2e87dcb23949f91d8280fc61c94cfec6224695c59.wasm), so it runs without them:\nError: plugin::loader::registry::load_failure\n\n  × Failed to load plugin from ghcr.io/moonrepo/bun_toolchain:1.0.5 registry.\n  ├─▶ error sending request for url (https://ghcr.io/v2/moonrepo/\n  │   bun_toolchain/blobs/\n  │   sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a)\n  ├─▶ client error (Connect)\n  ╰─▶ tunnel error: unsuccessful\n\n",
     "moon fetched no toolchain plugins (exit 1, found system-ad7abb72e596dcc556ad0fc2e87dcb23949f91d8280fc61c94cfec6224695c59.wasm), so it runs without them:\nError: plugin::loader::registry::load_failure\n\n  × Failed to load plugin from ghcr.io/moonrepo/bun_toolchain:1.0.5 registry.\n  ├─▶ error sending request for url (https://ghcr.io/v2/moonrepo/\n  │   bun_toolchain/blobs/\n  │   sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a)\n  ├─▶ client error (Connect)\n  ╰─▶ tunnel error: unsuccessful\n\n",
-    "moon fetched no toolchain plugins (exit 1, found system-ad7abb72e596dcc556ad0fc2e87dcb23949f91d8280fc61c94cfec6224695c59.wasm), so it runs without them:\nError: plugin::loader::registry::load_failure\n\n  × Failed to load plugin from ghcr.io/moonrepo/bun_toolchain:1.0.5 registry.\n  ├─▶ error sending request for url (https://ghcr.io/v2/moonrepo/\n  │   bun_toolchain/blobs/\n  │   sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a)\n  ├─▶ client error (Connect)\n  ╰─▶ tunnel error: unsuccessful\n\n"
+    "moon fetched no toolchain plugins (exit 1, found system-ad7abb72e596dcc556ad0fc2e87dcb23949f91d8280fc61c94cfec6224695c59.wasm), so it runs without them:\nError: plugin::loader::registry::load_failure\n\n  × Failed to load plugin from ghcr.io/moonrepo/bun_toolchain:1.0.5 registry.\n  ├─▶ error sending request for url (https://ghcr.io/v2/moonrepo/\n  │   bun_toolchain/blobs/\n  │   sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a)\n  ├─▶ client error (Connect)\n  ╰─▶ tunnel error: unsuccessful\n\n",
+    "moon fetched no toolchain plugins (exit 1, found none), so it runs without them:\nError: plugin::loader::registry::load_failure\n\n  × Failed to load plugin from ghcr.io/moonrepo/bun_toolchain:1.0.5 registry.\n  ├─▶ error sending request for url (https://ghcr.io/v2/moonrepo/\n  │   bun_toolchain/blobs/\n  │   sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a)\n  ├─▶ client error (Connect)\n  ╰─▶ tunnel error: unsuccessful\n\n",
+    "moon failed 44 of 51 cases; one: exited 1, expected success\n$ /home/user/vx/private/vx-conformance/node_modules/.latest-16941/node_modules/@moonrepo/core-linux-x64-gnu/moon run :build\nError: plugin::wasm::failed_container\n\n  × Failed to load and create system plugin: failed to create cache\n  │ directory: /home/user/vx/private/vx-conformance/node_modules/.latest-\n  │ 16941/node_modules/.moon-plugins/wasm-cache\n  ├─▶ failed to create cache directory: /home/user/vx/private/vx-conformance/\n  │   node_modules/.latest-16941/node_modules/.moon-plugins/wasm-cache\n  ╰─▶ Read-only file system (os error 30)\n\n",
+    "moon fetched no toolchain plugins (exit 1, found none), so it runs without them:\nError: plugin::loader::registry::load_failure\n\n  × Failed to load plugin from ghcr.io/moonrepo/bun_toolchain:1.0.5 registry.\n  ├─▶ error sending request for url (https://ghcr.io/v2/moonrepo/\n  │   bun_toolchain/blobs/\n  │   sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a)\n  ├─▶ client error (Connect)\n  ╰─▶ tunnel error: unsuccessful\n\n",
+    "moon fetched no toolchain plugins (exit 1, found none), so it runs without them:\nError: plugin::loader::registry::load_failure\n\n  × Failed to load plugin from ghcr.io/moonrepo/bun_toolchain:1.0.5 registry.\n  ├─▶ error sending request for url (https://ghcr.io/v2/moonrepo/\n  │   bun_toolchain/blobs/\n  │   sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a)\n  ├─▶ client error (Connect)\n  ╰─▶ tunnel error: unsuccessful\n\n",
+    "moon failed 44 of 51 cases; one: exited 1, expected success\n$ /home/user/vx/private/vx-conformance/node_modules/.latest-16941/node_modules/@moonrepo/core-linux-x64-gnu/moon run :build\nError: plugin::wasm::failed_container\n\n  × Failed to load and create system plugin: failed to create cache\n  │ directory: /home/user/vx/private/vx-conformance/node_modules/.latest-\n  │ 16941/node_modules/.moon-plugins/wasm-cache\n  ├─▶ failed to create cache directory: /home/user/vx/private/vx-conformance/\n  │   node_modules/.latest-16941/node_modules/.moon-plugins/wasm-cache\n  ╰─▶ Read-only file system (os error 30)\n\n",
+    "moon fetched no toolchain plugins (exit 1, found none), so it runs without them:\nError: plugin::loader::registry::load_failure\n\n  × Failed to load plugin from ghcr.io/moonrepo/bun_toolchain:1.0.5 registry.\n  ├─▶ error sending request for url (https://ghcr.io/v2/moonrepo/\n  │   bun_toolchain/blobs/\n  │   sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a)\n  ├─▶ client error (Connect)\n  ╰─▶ tunnel error: unsuccessful\n\n"
   ],
   "tools": {
     "vx": "this commit",
@@ -1026,19 +1025,19 @@
   "scores": {
     "vx": {
       "all": {
-        "pass": 1957,
-        "can": 1957,
-        "of": 1999
+        "pass": 1983,
+        "can": 1983,
+        "of": 2028
       },
       "correctness": {
-        "pass": 1572,
-        "can": 1572,
-        "of": 1611
+        "pass": 1595,
+        "can": 1595,
+        "of": 1636
       },
       "efficiency": {
-        "pass": 296,
-        "can": 296,
-        "of": 298
+        "pass": 299,
+        "can": 299,
+        "of": 302
       },
       "data": {
         "pass": 89,
@@ -1046,44 +1045,44 @@
         "of": 90
       },
       "graph": {
-        "pass": 287,
-        "can": 287,
-        "of": 294
+        "pass": 292,
+        "can": 292,
+        "of": 299
       },
       "config": {
-        "pass": 84,
-        "can": 84,
-        "of": 84
+        "pass": 87,
+        "can": 87,
+        "of": 87
       },
       "failure": {
-        "pass": 141,
-        "can": 141,
-        "of": 154
+        "pass": 147,
+        "can": 147,
+        "of": 160
       },
       "affected": {
-        "pass": 175,
-        "can": 175,
-        "of": 175
+        "pass": 178,
+        "can": 178,
+        "of": 178
       },
       "cache": {
-        "pass": 90,
-        "can": 90,
-        "of": 96
+        "pass": 91,
+        "can": 91,
+        "of": 97
       },
       "inputs": {
-        "pass": 458,
-        "can": 458,
-        "of": 458
+        "pass": 462,
+        "can": 462,
+        "of": 463
       },
       "env": {
-        "pass": 103,
-        "can": 103,
-        "of": 105
+        "pass": 106,
+        "can": 106,
+        "of": 108
       },
       "outputs": {
-        "pass": 283,
-        "can": 283,
-        "of": 296
+        "pass": 284,
+        "can": 284,
+        "of": 299
       },
       "report": {
         "pass": 89,
@@ -1103,19 +1102,19 @@
     },
     "turbo": {
       "all": {
-        "pass": 1241,
-        "can": 1693,
-        "of": 1999
+        "pass": 1260,
+        "can": 1719,
+        "of": 2028
       },
       "correctness": {
-        "pass": 991,
-        "can": 1323,
-        "of": 1611
+        "pass": 1009,
+        "can": 1345,
+        "of": 1636
       },
       "efficiency": {
-        "pass": 220,
-        "can": 286,
-        "of": 298
+        "pass": 221,
+        "can": 290,
+        "of": 302
       },
       "data": {
         "pass": 30,
@@ -1123,44 +1122,44 @@
         "of": 90
       },
       "graph": {
-        "pass": 177,
-        "can": 246,
-        "of": 294
+        "pass": 178,
+        "can": 249,
+        "of": 299
       },
       "config": {
-        "pass": 52,
-        "can": 69,
-        "of": 84
+        "pass": 55,
+        "can": 72,
+        "of": 87
       },
       "failure": {
-        "pass": 52,
-        "can": 92,
-        "of": 154
+        "pass": 57,
+        "can": 98,
+        "of": 160
       },
       "affected": {
-        "pass": 138,
-        "can": 175,
-        "of": 175
+        "pass": 139,
+        "can": 178,
+        "of": 178
       },
       "cache": {
         "pass": 75,
-        "can": 90,
-        "of": 96
+        "can": 91,
+        "of": 97
       },
       "inputs": {
-        "pass": 306,
-        "can": 443,
-        "of": 458
+        "pass": 309,
+        "can": 447,
+        "of": 463
       },
       "env": {
-        "pass": 90,
-        "can": 94,
-        "of": 105
+        "pass": 93,
+        "can": 97,
+        "of": 108
       },
       "outputs": {
-        "pass": 218,
-        "can": 283,
-        "of": 296
+        "pass": 221,
+        "can": 286,
+        "of": 299
       },
       "report": {
         "pass": 30,
@@ -1180,19 +1179,19 @@
     },
     "nx": {
       "all": {
-        "pass": 1256,
-        "can": 1724,
-        "of": 1999
+        "pass": 1281,
+        "can": 1752,
+        "of": 2028
       },
       "correctness": {
-        "pass": 969,
-        "can": 1348,
-        "of": 1611
+        "pass": 990,
+        "can": 1372,
+        "of": 1636
       },
       "efficiency": {
-        "pass": 257,
-        "can": 293,
-        "of": 298
+        "pass": 261,
+        "can": 297,
+        "of": 302
       },
       "data": {
         "pass": 30,
@@ -1200,44 +1199,44 @@
         "of": 90
       },
       "graph": {
-        "pass": 214,
-        "can": 249,
-        "of": 294
+        "pass": 218,
+        "can": 253,
+        "of": 299
       },
       "config": {
-        "pass": 36,
-        "can": 72,
-        "of": 84
+        "pass": 39,
+        "can": 75,
+        "of": 87
       },
       "failure": {
-        "pass": 73,
-        "can": 102,
-        "of": 154
+        "pass": 78,
+        "can": 108,
+        "of": 160
       },
       "affected": {
-        "pass": 117,
-        "can": 175,
-        "of": 175
+        "pass": 120,
+        "can": 178,
+        "of": 178
       },
       "cache": {
-        "pass": 69,
-        "can": 79,
-        "of": 96
+        "pass": 70,
+        "can": 80,
+        "of": 97
       },
       "inputs": {
-        "pass": 319,
-        "can": 458,
-        "of": 458
+        "pass": 324,
+        "can": 463,
+        "of": 463
       },
       "env": {
-        "pass": 93,
-        "can": 103,
-        "of": 105
+        "pass": 95,
+        "can": 106,
+        "of": 108
       },
       "outputs": {
-        "pass": 211,
-        "can": 283,
-        "of": 296
+        "pass": 213,
+        "can": 286,
+        "of": 299
       },
       "report": {
         "pass": 30,
@@ -1257,19 +1256,19 @@
     },
     "vite-task": {
       "all": {
-        "pass": 908,
-        "can": 1318,
-        "of": 1999
+        "pass": 923,
+        "can": 1336,
+        "of": 2028
       },
       "correctness": {
-        "pass": 763,
-        "can": 1052,
-        "of": 1611
+        "pass": 778,
+        "can": 1068,
+        "of": 1636
       },
       "efficiency": {
         "pass": 136,
-        "can": 188,
-        "of": 298
+        "can": 190,
+        "of": 302
       },
       "data": {
         "pass": 9,
@@ -1277,44 +1276,44 @@
         "of": 90
       },
       "graph": {
-        "pass": 163,
-        "can": 207,
-        "of": 294
+        "pass": 164,
+        "can": 208,
+        "of": 299
       },
       "config": {
-        "pass": 47,
-        "can": 69,
-        "of": 84
+        "pass": 49,
+        "can": 72,
+        "of": 87
       },
       "failure": {
-        "pass": 54,
-        "can": 74,
-        "of": 154
+        "pass": 57,
+        "can": 77,
+        "of": 160
       },
       "affected": {
         "pass": 0,
         "can": 0,
-        "of": 175
+        "of": 178
       },
       "cache": {
         "pass": 60,
-        "can": 69,
-        "of": 96
+        "can": 70,
+        "of": 97
       },
       "inputs": {
-        "pass": 292,
-        "can": 444,
-        "of": 458
+        "pass": 295,
+        "can": 448,
+        "of": 463
       },
       "env": {
-        "pass": 90,
-        "can": 93,
-        "of": 105
+        "pass": 93,
+        "can": 96,
+        "of": 108
       },
       "outputs": {
-        "pass": 192,
-        "can": 283,
-        "of": 296
+        "pass": 195,
+        "can": 286,
+        "of": 299
       },
       "report": {
         "pass": 9,
@@ -1334,19 +1333,19 @@
     },
     "nix": {
       "all": {
-        "pass": 965,
-        "can": 1307,
-        "of": 1999
+        "pass": 977,
+        "can": 1323,
+        "of": 2028
       },
       "correctness": {
-        "pass": 823,
-        "can": 1061,
-        "of": 1611
+        "pass": 834,
+        "can": 1075,
+        "of": 1636
       },
       "efficiency": {
-        "pass": 132,
-        "can": 166,
-        "of": 298
+        "pass": 133,
+        "can": 168,
+        "of": 302
       },
       "data": {
         "pass": 10,
@@ -1356,42 +1355,42 @@
       "graph": {
         "pass": 96,
         "can": 103,
-        "of": 294
+        "of": 299
       },
       "config": {
-        "pass": 37,
-        "can": 63,
-        "of": 84
+        "pass": 39,
+        "can": 66,
+        "of": 87
       },
       "failure": {
-        "pass": 53,
-        "can": 84,
-        "of": 154
+        "pass": 56,
+        "can": 87,
+        "of": 160
       },
       "affected": {
         "pass": 0,
         "can": 0,
-        "of": 175
+        "of": 178
       },
       "cache": {
-        "pass": 63,
-        "can": 75,
-        "of": 96
+        "pass": 64,
+        "can": 76,
+        "of": 97
       },
       "inputs": {
-        "pass": 318,
-        "can": 404,
-        "of": 458
+        "pass": 320,
+        "can": 408,
+        "of": 463
       },
       "env": {
-        "pass": 80,
-        "can": 87,
-        "of": 105
+        "pass": 82,
+        "can": 89,
+        "of": 108
       },
       "outputs": {
-        "pass": 219,
-        "can": 291,
-        "of": 296
+        "pass": 221,
+        "can": 294,
+        "of": 299
       },
       "report": {
         "pass": 10,
@@ -1411,19 +1410,19 @@
     },
     "moon": {
       "all": {
-        "pass": 1154,
-        "can": 1632,
-        "of": 1999
+        "pass": 1184,
+        "can": 1658,
+        "of": 2028
       },
       "correctness": {
-        "pass": 902,
-        "can": 1290,
-        "of": 1611
+        "pass": 928,
+        "can": 1312,
+        "of": 1636
       },
       "efficiency": {
-        "pass": 217,
-        "can": 252,
-        "of": 298
+        "pass": 221,
+        "can": 256,
+        "of": 302
       },
       "data": {
         "pass": 35,
@@ -1431,44 +1430,44 @@
         "of": 90
       },
       "graph": {
-        "pass": 172,
-        "can": 224,
-        "of": 294
+        "pass": 173,
+        "can": 226,
+        "of": 299
       },
       "config": {
-        "pass": 58,
-        "can": 81,
-        "of": 84
+        "pass": 60,
+        "can": 84,
+        "of": 87
       },
       "failure": {
-        "pass": 83,
-        "can": 130,
-        "of": 154
+        "pass": 88,
+        "can": 136,
+        "of": 160
       },
       "affected": {
-        "pass": 138,
-        "can": 175,
-        "of": 175
+        "pass": 141,
+        "can": 178,
+        "of": 178
       },
       "cache": {
         "pass": 76,
-        "can": 84,
-        "of": 96
+        "can": 85,
+        "of": 97
       },
       "inputs": {
-        "pass": 325,
-        "can": 458,
-        "of": 458
+        "pass": 329,
+        "can": 463,
+        "of": 463
       },
       "env": {
-        "pass": 96,
-        "can": 103,
-        "of": 105
+        "pass": 98,
+        "can": 106,
+        "of": 108
       },
       "outputs": {
-        "pass": 171,
-        "can": 286,
-        "of": 296
+        "pass": 184,
+        "can": 289,
+        "of": 299
       },
       "report": {
         "pass": 35,
@@ -11189,7 +11188,8 @@
       ],
       "outcomes": {
         "vx": {
-          "status": "pass"
+          "status": "n/a",
+          "detail": "Every output vx declares is required: a pattern that matches no file fails the task."
         },
         "turbo": {
           "status": "fail",
@@ -11228,7 +11228,8 @@
       ],
       "outcomes": {
         "vx": {
-          "status": "pass"
+          "status": "n/a",
+          "detail": "Every output vx declares is required: a pattern that matches no file fails the task."
         },
         "turbo": {
           "status": "fail",
@@ -15979,9 +15980,7 @@
           "status": "pass"
         },
         "moon": {
-          "status": "fail",
-          "step": 1,
-          "detail": "exited 1, expected success"
+          "status": "pass"
         }
       }
     },
@@ -16012,9 +16011,7 @@
           "status": "pass"
         },
         "moon": {
-          "status": "fail",
-          "step": 1,
-          "detail": "exited 1, expected success"
+          "status": "pass"
         }
       }
     },
@@ -16045,9 +16042,7 @@
           "status": "pass"
         },
         "moon": {
-          "status": "fail",
-          "step": 1,
-          "detail": "exited 1, expected success"
+          "status": "pass"
         }
       }
     },
@@ -16078,9 +16073,7 @@
           "status": "pass"
         },
         "moon": {
-          "status": "fail",
-          "step": 1,
-          "detail": "exited 1, expected success"
+          "status": "pass"
         }
       }
     },
@@ -16111,9 +16104,7 @@
           "status": "pass"
         },
         "moon": {
-          "status": "fail",
-          "step": 1,
-          "detail": "exited 1, expected success"
+          "status": "pass"
         }
       }
     },
@@ -16145,9 +16136,7 @@
           "status": "pass"
         },
         "moon": {
-          "status": "fail",
-          "step": 1,
-          "detail": "exited 1, expected success"
+          "status": "pass"
         }
       }
     },
@@ -16178,9 +16167,7 @@
           "status": "pass"
         },
         "moon": {
-          "status": "fail",
-          "step": 1,
-          "detail": "exited 1, expected success"
+          "status": "pass"
         }
       }
     },
@@ -16213,9 +16200,7 @@
           "status": "pass"
         },
         "moon": {
-          "status": "fail",
-          "step": 1,
-          "detail": "exited 1, expected success"
+          "status": "pass"
         }
       }
     },
@@ -16246,9 +16231,7 @@
           "status": "pass"
         },
         "moon": {
-          "status": "fail",
-          "step": 1,
-          "detail": "exited 1, expected success"
+          "status": "pass"
         }
       }
     },
@@ -16279,9 +16262,7 @@
           "status": "pass"
         },
         "moon": {
-          "status": "fail",
-          "step": 1,
-          "detail": "exited 1, expected success"
+          "status": "pass"
         }
       }
     },
@@ -17252,9 +17233,7 @@
           "status": "pass"
         },
         "moon": {
-          "status": "fail",
-          "step": 1,
-          "detail": "exited 1, expected success"
+          "status": "pass"
         }
       }
     },
@@ -71248,6 +71227,999 @@
         },
         "nix": {
           "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "env/no-color-reaches-task-without-force-color",
+      "ref": "qm1t7i",
+      "category": "env",
+      "kind": "correctness",
+      "title": "A run under `NO_COLOR=1` hands the task `NO_COLOR` and no `FORCE_COLOR` it never set",
+      "why": "`NO_COLOR` is the user asking every program for plain text. A runner that passes the variable on but also invents a `FORCE_COLOR` for the task wins over it, since most color libraries check `FORCE_COLOR` first. The task should see exactly what the user’s environment holds: `NO_COLOR` set, `FORCE_COLOR` absent.",
+      "from": [
+        "colors",
+        "env"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 1,
+          "detail": "packages/a/color.txt is \"1 true\\n\", expected \"1 unset\\n\""
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "A variable reaches a build only as an attribute, which keys it."
+        },
+        "moon": {
+          "status": "fail",
+          "step": 1,
+          "detail": "packages/a/color.txt is \"true unset\\n\", expected \"1 unset\\n\""
+        }
+      }
+    },
+    {
+      "id": "failure/skipped-dependant-builds-its-new-sources-once-unblocked",
+      "ref": "6wz7gg",
+      "category": "failure",
+      "kind": "correctness",
+      "title": "A project skipped because its dependency failed builds its edited sources once the dependency is fixed",
+      "why": "A task skipped behind a failure never ran on its new sources, so nothing about that skip may stand for a result. Once the dependency is fixed, the next run has to build the edited project. A tool that recorded the skipped task as done under its new inputs replays the build of its old sources instead.",
+      "from": [
+        "failure-mode"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "failure/server-skipped-by-failed-build-starts-no-user",
+      "ref": "1j17at",
+      "category": "failure",
+      "kind": "correctness",
+      "title": "A test whose server was skipped behind a failed build does not run, and the rest still does",
+      "why": "A server that never started cannot serve the test that needs it. Skipping the server because its build failed has to skip the test too, or the test runs against nothing and fails with a confusing connection error, or passes against a stale server. Work that needs neither still runs, as with any failure.",
+      "from": [
+        "failure-mode"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 1,
+          "detail": "did not run docs#test"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "Vite Task has no long-running task it stops when the run ends."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "A derivation is a build that ends: Nix has no long-running task."
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "failure/stop-ends-two-servers-at-once",
+      "ref": "180s1b",
+      "category": "failure",
+      "kind": "correctness",
+      "title": "Ctrl-C with two dev servers running ends both, and leaves neither in the background",
+      "why": "Running two dev servers side by side, an API and a web app, is the usual reason to start a task runner in the morning. One Ctrl-C has to end both. A server left behind keeps its port, so the next start fails with the address in use and the user hunts for a process they cannot see.",
+      "from": [
+        "signal-handling"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "Vite Task has no long-running task it stops when the run ends."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "A derivation is a build that ends: Nix has no long-running task."
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "env/folders-named-like-the-shell-run-nothing",
+      "ref": "tn6ma8",
+      "category": "env",
+      "kind": "correctness",
+      "title": "Folders named `sh` and `bash` in the project and the root do not stop a command from running",
+      "why": "A `bash` folder of shell scripts, or an `sh` folder of helpers, is an ordinary thing to keep in a repository. The runner finds its shell on the PATH, not in the directory a task runs in. A runner that resolves `sh` against the working directory tries to execute the folder and fails every task of that project.",
+      "from": [
+        "task-shell"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "graph/server-reached-through-project-without-it",
+      "ref": "uvdv4p",
+      "category": "graph",
+      "kind": "correctness",
+      "title": "A test waiting on its dependencies’ servers waits for one reached through a project with no server",
+      "why": "`^serve` means the servers of everything the project builds on, as `^build` passes through a middle package that has no build. Here `app` uses `lib` only through `mid`, which serves nothing. A tool that stops at `mid` starts the test with no server up, and the test fails or hits whatever stale server holds the port.",
+      "from": [
+        "persistent"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "Turborepo does not hold a task until a persistent one prints a ready line."
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "Vite Task has no long-running task it stops when the run ends. Vite Task does not hold a task until another prints a ready line."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "A derivation is a build that ends: Nix has no long-running task. A derivation is a build that ends: nothing waits for a ready line."
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "A `wait` dependency waits for the persistent task to start, never for a line it prints."
+        }
+      }
+    },
+    {
+      "id": "failure/failing-task-last-line-without-newline-shows",
+      "ref": "7bf9h8",
+      "category": "failure",
+      "kind": "correctness",
+      "title": "The error a failing task prints with no newline after it still shows",
+      "why": "Plenty of programs end on a line with no newline: a `printf` error, a progress line cut short, a JSON blob. When the task fails, that last line is usually the reason. A tool that splits output on newlines and drops the unfinished tail hides the one line the developer needed.",
+      "from": [
+        "failed-output-whole"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "inputs/unix-socket-under-glob-no-hang",
+      "ref": "madb7m",
+      "category": "inputs",
+      "kind": "correctness",
+      "title": "A Unix socket left under an input glob neither hangs nor fails the run",
+      "why": "Dev servers, language servers and test runners leave socket files behind in the tree they work in. A socket has no bytes to hash; opening it to read blocks or fails. The run should key the real files around it and go on, and replay when nothing else changed.",
+      "from": [
+        "unlistable-input-dir"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "fail",
+          "step": 2,
+          "detail": "exited 1, expected success"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "affected/root-input-negation-selects-nothing",
+      "ref": "t8gt05",
+      "category": "affected",
+      "kind": "efficiency",
+      "title": "A change to a root file a task’s root inputs take back with `!` selects nothing",
+      "why": "Root inputs `config/**` with `!config/CHANGELOG.md` say the task reads the config folder except its changelog. Editing only the changelog cannot change the task’s result, and a plain run replays it. An affected run that matches the positive pattern and forgets the negation sends the whole task to CI for a notes edit.",
+      "from": [
+        "affected-workspace-files"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "Vite Task does not select tasks by what git says changed."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build builds the attributes it is named: no git change selects them."
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "affected/task-with-empty-inputs-not-selected",
+      "ref": "teknje",
+      "category": "affected",
+      "kind": "efficiency",
+      "title": "An edit in a project does not select its task that declares no inputs at all",
+      "why": "`inputs: []` says the task reads no file of the project: a deploy notifier, a check against a remote service. A plain run replays it after any edit. An affected run that treats an empty list as “everything” selects it on every change, the opposite of what the user wrote.",
+      "from": [
+        "affected-tasks"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 3,
+          "detail": "ran app#ping, expected it replayed or left out"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "Vite Task does not select tasks by what git says changed."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build builds the attributes it is named: no git change selects them."
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "inputs/project-and-root-file-of-one-name-both-key",
+      "ref": "nid1aq",
+      "category": "inputs",
+      "kind": "correctness",
+      "title": "A project input and a root input with the same name each key the task",
+      "why": "`settings.txt` in the project and `settings.txt` at the root are two files that happen to share a name. A task that reads both has to rerun when either changes. A tool that merges inputs by their written path keeps one of them, and an edit to the other replays a build of the old config.",
+      "from": [
+        "workspace-root-file"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "outputs/restore-leaves-no-temporary-files",
+      "ref": "ckt6h8",
+      "category": "outputs",
+      "kind": "correctness",
+      "title": "A replay into an emptied output folder leaves exactly the stored files, nothing named in between",
+      "why": "A tool may write each restored file under a scratch name and rename it into place. If a rename is skipped or fails, `dist` holds files no build ever made, and a bundler or a `files` glob in package.json ships them. After a replay the folder should list the stored names and no others.",
+      "from": [
+        "restore-staging"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "config/output-climb-and-return-restored-or-refused",
+      "ref": "ydyec3",
+      "category": "config",
+      "kind": "correctness",
+      "title": "An output `build/../dist/**` stores and restores `dist`, or is refused",
+      "why": "The pattern climbs into `build` and back out, so it names `dist/**` inside the project. A tool that matches it as text against the files it walks finds nothing, saves an empty entry and replays a hit that restores no file. Normalising it, or refusing the `..`, is right; a hit with `dist` missing is not.",
+      "from": [
+        "dot-slash-globs"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "fail",
+          "step": 3,
+          "detail": "a#build replayed and left packages/a/dist/out.txt missing, expected \"a\\n\""
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "inputs/run-leaves-the-git-index-alone",
+      "ref": "fowuue",
+      "category": "inputs",
+      "kind": "correctness",
+      "title": "A run over files whose timestamps changed leaves git’s index file as it was",
+      "why": "Asking git which files changed refreshes and rewrites `.git/index` when timestamps moved, as a checkout or a formatter leaves them. A runner that does that while the user runs `git commit` or a rebase in another terminal races them for `index.lock`, and their command fails. Reading the tree should leave the repository’s own files untouched.",
+      "from": [
+        "git-optional-locks"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "outputs/deleted-link-beside-intact-files-restored",
+      "ref": "f6j2sp",
+      "category": "outputs",
+      "kind": "correctness",
+      "title": "An output link deleted on its own comes back, though the files beside it are still there",
+      "why": "A tool that skips the restore when the output files it checks are already in place has to count links among them. Here only `dist/latest.js`, a link to `index.js`, is gone. Calling the outputs intact because `index.js` is there leaves the link missing, and whatever loads `latest.js` breaks after a green run.",
+      "from": [
+        "restore-in-place",
+        "output-links"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "fail",
+          "step": 4,
+          "detail": "packages/a/dist/latest.js is missing"
+        }
+      }
+    },
+    {
+      "id": "env/unusable-login-shell-still-runs-tasks",
+      "ref": "vw9miu",
+      "category": "env",
+      "kind": "correctness",
+      "title": "A `SHELL` naming a program that is not installed does not stop or hang a run",
+      "why": "`SHELL` is the user’s login shell, set by their account or left over from another machine in a container image. A task command is POSIX shell, run by `sh` from the PATH, whatever the user logs in with. A runner that starts tasks through `$SHELL` fails every one when it names nothing, or hangs probing for it.",
+      "from": [
+        "task-shell"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "cache/root-task-over-everything-replays-without-ignore-rules",
+      "ref": "foj7w1",
+      "category": "cache",
+      "kind": "efficiency",
+      "title": "A root task reading every file replays, though the repository ignores none of the runner’s files",
+      "why": "Not every repository lists a task runner’s state folder in `.gitignore`, and a root task such as a format check reads everything. The runner writes its cache, logs and lock files after each run. Counting its own writes as edits makes such a task miss on every run, forever.",
+      "from": [
+        "output-never-dotvx",
+        "cache-dir-in-outputs"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 2,
+          "detail": "ran root#check, expected it replayed or left out"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 2,
+          "detail": "ran root#check, expected it replayed or left out"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "fail",
+          "step": 2,
+          "detail": "ran root#check, expected it replayed or left out"
+        }
+      }
+    },
+    {
+      "id": "graph/server-reading-its-input-keeps-running",
+      "ref": "4380t8",
+      "category": "graph",
+      "kind": "correctness",
+      "title": "A dev server that quits when its input ends keeps running while the runner’s input stays open",
+      "why": "Tailwind’s watcher and esbuild’s server stop as soon as their input stream ends, so that closing the terminal ends them. Under a runner whose own input is still open, such a server must not see an end it was never sent. A runner that gives servers an empty input ends them at once, and the test that needs one runs against nothing.",
+      "from": [
+        "persistent",
+        "keep-alive"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 1,
+          "detail": "exited 1, expected success"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "Vite Task has no long-running task it stops when the run ends."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "A derivation is a build that ends: Nix has no long-running task."
+        },
+        "moon": {
+          "status": "fail",
+          "step": 1,
+          "detail": "did not finish within 20 s"
+        }
+      }
+    },
+    {
+      "id": "failure/failing-task-shows-both-streams-printed-as-it-exits",
+      "ref": "gvou21",
+      "category": "failure",
+      "kind": "correctness",
+      "title": "A task that prints one line to each stream and fails at once shows both lines",
+      "why": "A compiler or a linter prints its error and exits in the same breath, often on the error stream. A runner that takes the exit as the end of the task, before it has drained both pipes, loses exactly those last lines. The failure then shows no reason at all.",
+      "from": [
+        "failed-output-whole",
+        "raw-output-bytes"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "inputs/runtime-command-runs-at-the-root-from-any-folder",
+      "ref": "o3wt0s",
+      "category": "inputs",
+      "kind": "correctness",
+      "title": "A command that keys a task gives the same answer when the run starts inside the project",
+      "why": "A key command such as `cat tools/version.txt` is written against the workspace root. Run from wherever the user stands, it fails or reads another file, and the same task gets a different key in each folder. The run from inside the project should replay what the root run stored.",
+      "from": [
+        "runtime-inputs",
+        "member-cwd"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "Turborepo inputs are files and variables, never a command’s output."
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "Vite Task inputs are files and variables, never a command’s output."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "Evaluation reads files and variables, never a command’s output."
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "graph/select-dir-only-dependents",
+      "ref": "bantrr",
+      "category": "graph",
+      "kind": "correctness",
+      "title": "Only the dependents of a project picked by its folder leaves that project out",
+      "why": "Asking for the dependents of the project in `packages/utils`, without it, is how a user checks what a change could break after building the library by hand. Naming the project by its folder instead of its name must mean the same. A tool that drops the “without it” for a folder selector runs the library too, the one thing the user left out.",
+      "from": [
+        "filter",
+        "select"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 1,
+          "detail": "did not run ui#check, app#check"
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "Nx selects projects by name, pattern or tag; no selector adds their dependencies or dependents."
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build builds the attributes it is named: no filter picks them. nix-build builds the attributes it is named: no selector walks to dependents. nix-build builds the attributes it is named: no directory picks them."
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "`--upstream`/`--downstream` walk the task graph from the requested tasks, never the project graph, and never leave the matched projects out."
+        }
+      }
+    },
+    {
+      "id": "graph/ready-text-in-the-server-command-does-not-release",
+      "ref": "8zjd7z",
+      "category": "graph",
+      "kind": "correctness",
+      "title": "A ready text that also appears in the server’s own command does not release its dependants early",
+      "why": "A ready text is often a port, and the port is often in the command: `serve --port 3000`, ready on `3000`. A runner that prints the command line into the output it watches for the ready text finds it before the server has printed anything. The test then starts against a server that is not listening yet.",
+      "from": [
+        "ready-wait-notice",
+        "persistent"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "Turborepo does not hold a task until a persistent one prints a ready line."
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "Vite Task has no long-running task it stops when the run ends. Vite Task does not hold a task until another prints a ready line."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "A derivation is a build that ends: Nix has no long-running task. A derivation is a build that ends: nothing waits for a ready line."
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "A `wait` dependency waits for the persistent task to start, never for a line it prints."
+        }
+      }
+    },
+    {
+      "id": "failure/server-whose-backing-server-dies-is-stopped",
+      "ref": "ds9asj",
+      "category": "failure",
+      "kind": "correctness",
+      "title": "A dev server whose API server dies is stopped, and the run fails instead of running on",
+      "why": "A web dev server that proxies to an API server is useless once the API is gone. The API’s crash is the error the developer needs, and nothing else will ever end the web server. A runner that only marks the API failed keeps the web server up forever, and the run never ends.",
+      "from": [
+        "server-crash-fail-fast",
+        "server-chain"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 1,
+          "detail": "did not finish within 30 s"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "Vite Task has no long-running task it stops when the run ends."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "A derivation is a build that ends: Nix has no long-running task."
+        },
+        "moon": {
+          "status": "fail",
+          "step": 1,
+          "detail": "left running: sleep 60"
+        }
+      }
+    },
+    {
+      "id": "config/output-directory-with-negation-leaves-excluded-files",
+      "ref": "apbpin",
+      "category": "config",
+      "kind": "correctness",
+      "title": "An output naming a directory beside a `!` pattern under it never restores what the `!` takes back",
+      "why": "Outputs `target/classes` with `!target/classes/**/*.tmp` keep scratch files out of the cache. A tool that stores the folders it walks as whole folders stores the scratch files with them, and every replay brings them back. Restoring the directory without them, or refusing the pair, is right; restoring them is not.",
+      "from": [
+        "negated-outputs",
+        "output-dirs"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 3,
+          "detail": "a#build replayed and left packages/a/target/classes/com/A.class missing, expected \"a\\n\""
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "fail",
+          "step": 3,
+          "detail": "a#build replayed and left packages/a/target/classes/com/A.tmp \"scratch\\n\", expected none"
+        }
+      }
+    },
+    {
+      "id": "inputs/gitignored-file-without-git-replays",
+      "ref": "rlzwtc",
+      "category": "inputs",
+      "kind": "efficiency",
+      "title": "In a workspace that is not a git repository, an edit to a file `.gitignore` names replays the task",
+      "why": "A source tarball or a Docker build context often keeps its `.gitignore` but drops `.git`. The ignore file still says what is local state: logs, caches, editor files. A tool that keys every file once git is missing reruns the task whenever a log under its sources changes.",
+      "from": [
+        "no-git-on-path",
+        "ignored-inputs"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "n/a",
+          "detail": "vx finds the workspace root inside a git work tree and keys tracked files by git, so a folder that is not a repository is refused."
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 4,
+          "detail": "ran a#build, expected it replayed or left out"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 4,
+          "detail": "ran a#build, expected it replayed or left out"
+        },
+        "nix": {
+          "status": "fail",
+          "step": 4,
+          "detail": "ran a#build, expected it replayed or left out"
+        },
+        "moon": {
+          "status": "fail",
+          "step": 4,
+          "detail": "ran a#build, expected it replayed or left out"
+        }
+      }
+    },
+    {
+      "id": "affected/library-change-reaches-the-root-package-using-it",
+      "ref": "8it179",
+      "category": "affected",
+      "kind": "correctness",
+      "title": "A change in a library the root package depends on selects the root’s task, and not an unrelated project",
+      "why": "The root package is a project like any other: a root task that bundles or checks the libraries the root depends on is their dependent. A selection that treats the root as outside the graph leaves its task out, and the bundle ships the old library. Treating the change as touching everything goes too far the other way and rebuilds `docs`, which uses nothing that changed.",
+      "from": [
+        "affected-dependents",
+        "root-project"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 3,
+          "detail": "ran docs#build, expected it replayed or left out"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "Vite Task does not select tasks by what git says changed."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build builds the attributes it is named: no git change selects them."
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "outputs/setuid-bit-not-restored",
+      "ref": "59lbp2",
+      "category": "outputs",
+      "kind": "correctness",
+      "title": "A replay brings back a set-user-ID program as a plain executable, without the special bit",
+      "why": "A cache entry can come from another machine or another user, so what it restores must not grant privileges. A setuid bit on a restored program runs it as its owner, the user who restored it, whoever invokes it. The file and its executable bits come back; the set-user-ID bit does not.",
+      "from": [
+        "restore-umask",
+        "archive-security"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "fail",
+          "detail": "harness: Error: step 5 `[ ! -u packages/a/dist/tool ]` exited 1:\n"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "fail",
+          "step": 1,
+          "detail": "exited 100, expected success"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "config/task-name-starting-with-underscore",
+      "ref": "ei39kw",
+      "category": "config",
+      "kind": "correctness",
+      "title": "A task named `_prepare` runs when asked for, and a dependsOn naming it runs it first",
+      "why": "A leading underscore is a common way to mark a helper task nobody should run by hand, as `_` marks private names in code. It is still a plain name. A tool whose name rules demand a letter or digit first refuses the whole config, or drops the edge and builds before the preparation ran.",
+      "from": [
+        "cli-task-names",
+        "reserved-names"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "graph/unselected-servers-do-not-count-against-concurrency",
+      "ref": "im8a25",
+      "category": "graph",
+      "kind": "correctness",
+      "title": "Starting one project’s dev server at a concurrency of 2 works, though three projects have one",
+      "why": "Every app in a monorepo has a `dev` task, and a developer starts the one they work on. The servers of the other apps are not in the run, so they take no slot. A tool that counts every declared server against the limit refuses the run, or asks for a concurrency the run never needs.",
+      "from": [
+        "run-concurrency",
+        "persistent"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "Vite Task has no long-running task it stops when the run ends."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "A derivation is a build that ends: Nix has no long-running task."
         },
         "moon": {
           "status": "pass"

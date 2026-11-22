@@ -58,6 +58,19 @@ import rivalGlobs from './rival-globs.ts'
 import rivalModes from './rival-modes.ts'
 import rivalReport from './rival-report.ts'
 import rivalDiscovery from './rival-discovery.ts'
+import minedSandbox from './mined-sandbox.ts'
+import minedReport from './mined-report.ts'
+import minedConfig from './mined-config.ts'
+import minedPipeline from './mined-pipeline.ts'
+import minedWatch from './mined-watch.ts'
+import minedAffected from './mined-affected.ts'
+import minedSelect from './mined-select.ts'
+import minedEnv from './mined-env.ts'
+import minedInputs from './mined-inputs.ts'
+import minedLifecycle from './mined-lifecycle.ts'
+import minedVitenix from './mined-vitenix.ts'
+import minedMoon2 from './mined-moon2.ts'
+import minedIssues from './mined-issues.ts'
 import watch from './watch.ts'
 
 /** Every case, in the results' order. */
@@ -122,4 +135,17 @@ export const CASES: Case[] = [
   ...rivalModes,
   ...rivalReport,
   ...rivalDiscovery,
+  ...minedSandbox,
+  ...minedReport,
+  ...minedConfig,
+  ...minedPipeline,
+  ...minedWatch,
+  ...minedAffected,
+  ...minedSelect,
+  ...minedEnv,
+  ...minedInputs,
+  ...minedLifecycle,
+  ...minedVitenix,
+  ...minedMoon2,
+  ...minedIssues,
 ]

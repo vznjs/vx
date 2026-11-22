@@ -54,6 +54,8 @@ export async function fetchMoonPlugins(): Promise<void> {
   // compile cache, warmed here outside the sandbox, takes that off every run;
   // a case reads it and need not write it.
   const config = path.join(root, 'wasm-cache.toml')
+  // Made here: a case sees this directory read-only, and wasmtime refuses a cache it cannot create.
+  await mkdir(path.join(root, 'wasm-cache'), { recursive: true })
   await writeFile(config, `[cache]\ndirectory = ${JSON.stringify(path.join(root, 'wasm-cache'))}\n`)
   moon.env.EXTISM_CACHE_CONFIG = config
   const env = { ...process.env, ...moon.env, HOME: home }
