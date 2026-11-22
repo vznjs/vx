@@ -614,10 +614,10 @@ export interface ScheduleOptions {
   onError?: (node: TaskNode, line: string, err: unknown) => void
   /** What an outcome still owes before its dependents may start (the off-slot cache save). */
   settledOf?: (outcome: TaskOutcome) => Promise<Partial<TaskOutcome> | void> | undefined
-  /** True for an outcome whose dependents need nothing of what it still owes. */
-  trails?: (outcome: TaskOutcome) => boolean
   /** Told of the next ready tasks while no slot is free, once each: their keys are taken while they wait. */
   prepare?: (node: TaskNode, upstream: TaskOutcome[]) => void
+  /** True for an outcome whose dependents need nothing of what it still owes. */
+  trails?: (outcome: TaskOutcome) => boolean
   /** The outcome of an exec-tier task settled in place, or undefined to dispatch it. */
   settleNow?: (node: TaskNode, upstream: TaskOutcome[]) => (() => TaskOutcome) | undefined
   /** Optional per-node weight override (a scheduling policy's seam). */

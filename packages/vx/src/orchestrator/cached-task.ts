@@ -247,14 +247,6 @@ export async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome>
   return missOutcome(m, ran, check, save, { startNs: wallclockStartNs, endNs: wallclockEndNs })
 }
 
-/**
- * The key, taken mid-run, not at prepare time: a task whose `inputs.files`
- * matches a sibling's outputs (`'**\/*'` after a `codegen` step) needs those
- * on disk first. Taken WITHOUT capture, so a warm all-hit run allocates no
- * component array; a miss's rows are captured by the describe. An up-front
- * key is used verbatim: a restore-tier task may run before its deps finish,
- * so its live `upstream` is incomplete.
- */
 /** A key taken before the task's dispatch, and when (`KeyedTasks.keyedAt`). */
 export interface PreparedKey {
   readonly key: { hash: string; pre?: PreDescribed }
@@ -282,6 +274,15 @@ export function prepareKey(args: ExecuteArgs): void {
   prepared.set(args.node.id, taken)
 }
 
+/**
+ * The key, taken mid-run (once the task is ready: `prepareKey`), not at
+ * prepare time: a task whose `inputs.files`
+ * matches a sibling's outputs (`'**\/*'` after a `codegen` step) needs those
+ * on disk first. Taken WITHOUT capture, so a warm all-hit run allocates no
+ * component array; a miss's rows are captured by the describe. An up-front
+ * key is used verbatim: a restore-tier task may run before its deps finish,
+ * so its live `upstream` is incomplete.
+ */
 async function keyFor(
   args: ExecuteArgs,
   policy: TaskPolicy,

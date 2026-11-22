@@ -946,6 +946,7 @@ export interface FingerprintDigests {
 export interface FoldMemo {
   get(taskId: string, probe: string): string | undefined
   set(taskId: string, probe: string, key: string): void
+  held(taskId: string): boolean
   lastKeys(taskIds: readonly string[]): Map<string, string>
 }
 == type GeneratedProject (src/workspace/migration.ts)
