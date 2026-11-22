@@ -952,9 +952,11 @@ tracks the run live. Top to bottom:
 other persistent task`), and a non-zero exit makes the run exit 1
    and is what `vx last` records.
    A Ctrl-C prints no such line: the server ended because it was
-   stopped, and vx exits 130. A run with a failure elsewhere (a task
-   failed or skipped, a server never ready or crashed) holds nothing: it
-   stops its servers and exits 1; `vx watch`
+   stopped, and vx exits 130. A failure elsewhere (a task failed or
+   skipped, a server never ready or crashed) skips only its dependants:
+   the healthy servers stay up, and the run exits 1 when the session
+   ends; under `--fail-fast` the first failure stops them all and vx
+   exits 1 at once. `vx watch`
    keeps its server through a failed cycle. While vx holds them, what
    the servers write streams below the summary a line at a time under
    each one's id (`app#dev │ Local: http://localhost:5173`), except
