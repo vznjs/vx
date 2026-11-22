@@ -257,8 +257,7 @@ interface OutcomeBase {
    */
   groupUpstream?: readonly TaskOutcome[]
   /**
-   * It ran behind a failed dependency (`continueMode: 'always'`), one
-   * `--exclude-dependencies` dropped, or a server that died while it ran:
+   * It ran on the key of a dependency `--exclude-dependencies` dropped, or a server that died while it ran:
    * the task at the root of it. Its result is not its key's, so no flaky
    * verdict reads it.
    */

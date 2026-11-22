@@ -1,7 +1,7 @@
 // What a server's death mid-run does to the rest of the graph (C-88,
 // C-89), over seeded random graphs with groups and servers that die at
 // random points: a dependant that starts after its server died, directly
-// or through groups, is a defect under `deps-ok`; under `never` nothing
+// or through groups, is a defect; under `--fail-fast` nothing
 // starts after any death; a skip charged to a server names a dead one;
 // every task gets an outcome and the run ends. Seeded: a failure
 // reproduces. The walk through groups is held by
@@ -41,7 +41,7 @@ it('a dead server stops what depends on it, over random graphs', async () => {
         requested: true,
       } as TaskNode)
     }
-    const mode = (['never', 'deps-ok', 'always'] as const)[seed % 3]!
+    const mode = (['fail-fast', 'default'] as const)[seed % 2]!
     // A server dies once it has started and `after` more tasks finished.
     const dieAfter = new Map(
       [...servers].filter(() => rnd() < 0.5).map((s) => [s, Math.floor(rnd() * 6)]),
@@ -64,7 +64,7 @@ it('a dead server stops what depends on it, over random graphs', async () => {
       runGraph({
         nodes,
         concurrency: 1 + Math.floor(rnd() * 3),
-        continueMode: mode,
+        failFast: mode === 'fail-fast',
         execute,
         serverDied: (id) => diedAt.has(id),
       }),
@@ -83,9 +83,9 @@ it('a dead server stops what depends on it, over random graphs', async () => {
       for (const [s, died] of diedAt) {
         if (at < died) continue
         exercised++
-        if (mode === 'never') said(`${id} started after ${s} died`)
+        if (mode === 'fail-fast') said(`${id} started after ${s} died`)
         const via = (d: string) => deadServerBehind(nodes, (x) => x === s, d) === s
-        if (mode === 'deps-ok' && nodes.get(id)!.deps.some(via))
+        if (nodes.get(id)!.deps.some(via))
           said(`${id} started after ${s}, which it depends on, died`)
       }
     }
@@ -153,7 +153,6 @@ it('a graph with no server never asks whether one died', async () => {
   const out = await runGraph({
     nodes,
     concurrency: 2,
-    continueMode: 'deps-ok',
     execute: async (node) => ({ node, status: 'success', exitCode: 0, durationMs: 1 }),
     serverDied: (id) => {
       asked.push(id)

@@ -224,7 +224,7 @@ export interface ExecuteRequest {
   readonly cacheKey?: string
   /**
    * Core saves no entry under `cacheKey` after this attempt: the policy writes
-   * no layer, an upstream failed under `--continue=always` or is unkeyed, or a
+   * no layer, an upstream did not run (`--exclude-dependencies`) or is unkeyed, or a
    * remote is composed and the policy writes no remote (an executor's own
    * record is a remote store). An executor saving results for dependants keeps
    * them off that key too, or the next run hit an entry the user said not to
@@ -488,7 +488,7 @@ export interface Distribution {
   /**
    * Where a handed task runs (`small#2`), for the live row, per frame. `null`
    * while it waits for a machine: the row says `waiting` and its clock starts
-   * when a machine begins it. Under `--continue=never` a failure aborts each
+   * when a machine begins it. Under `--fail-fast` a failure aborts each
    * `null` task's `signal`, skipping it.
    */
   running?(taskId: string): string | null | undefined

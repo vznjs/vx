@@ -26,10 +26,10 @@ export interface Spare {
  * Spares kept waiting. Four: a cold run's slots free one at a time, but a
  * spawn under load takes 2-5 ms, and with two, 1 task in 12 waited for its
  * spare or spawned fresh (500 site-shape tasks on 4 cores: 37 waited 2.2 ms
- * each; with four, 13). A burst (the run's first tasks) spawns fresh while
- * the pool fills.
+ * each; with four, 13). A run keeps one per slot (`primeSpares`).
  */
 const SPARES = 4
+let pool = SPARES
 
 const spares: Spare[] = []
 /** A spare that could not start (no libc pipes, a refused spawn): no more are tried. */
@@ -82,7 +82,23 @@ let refilling: ReturnType<typeof setImmediate> | undefined
 
 function refill(): void {
   refilling = undefined
-  while (!off && spares.length < SPARES) {
+  topUp()
+}
+
+/**
+ * Keep `n` spares (at least `SPARES`), for a run whose first `n` tasks start
+ * together, before any slot has freed; with four, the rest spawned fresh in
+ * their slots, as did each wave of tasks ending together (500 site-shape
+ * tasks at 10 slots: 1 in 20 spawned fresh; pre-spawn 0.4 -> 0.26 ms a
+ * task). They start when the first task asks for one, so a
+ * run that spawns nothing (a warm one) starts no shell.
+ */
+export function primeSpares(n: number): void {
+  pool = Math.max(pool, n)
+}
+
+function topUp(): void {
+  while (!off && spares.length < pool) {
     const s = start()
     if (s === undefined) {
       off = true
@@ -96,9 +112,11 @@ function refill(): void {
  * A spare for the next task, or undefined; another starts in its place once
  * the turn is done, so the taken one gets its script, or a task with none its
  * own spawn, first: the spare's pipes and spawn message were 0.1 ms of every
- * hand-over, and its spawn queued a fresh one behind it.
+ * hand-over, and its spawn queued a fresh one behind it. An empty pool
+ * starts its spares now, this task's first.
  */
 export function takeSpare(): Spare | undefined {
+  if (spares.length === 0) topUp()
   const taken = spares.shift()
   refilling ??= setImmediate(refill)
   return taken

@@ -1,5 +1,5 @@
 // A server that dies while the graph runs is a failure to what has not
-// yet started: its dependants skip, and `--continue=never` stops dispatch,
+// yet started: its dependants skip, and `--fail-fast` stops dispatch,
 // as below a failed task. The run went on building against a dead server
 // and said so only at its end.
 
@@ -40,15 +40,15 @@ const workspace = async (): Promise<string> => {
   return dir
 }
 
-const runIn = (dir: string, continueMode: 'never' | 'deps-ok') =>
-  run({ cwd: dir, tasks: ['app#b', 'app#c'], continueMode, log: silent, handleSignals: false })
+const runIn = (dir: string, failFast: boolean) =>
+  run({ cwd: dir, tasks: ['app#b', 'app#c'], failFast, log: silent, handleSignals: false })
 
 const statusOf = (r: Awaited<ReturnType<typeof run>>) =>
   Object.fromEntries(r.outcomes.map((o) => [o.node.id, o.status]))
 
-it('a server that dies mid-run stops a --continue=never run from dispatching', async () => {
+it('a server that dies mid-run stops a --fail-fast run from dispatching', async () => {
   root = await workspace()
-  const result = await runIn(root, 'never')
+  const result = await runIn(root, true)
   expect(statusOf(result)).toEqual({
     'app#srv': 'failed',
     'app#a': 'success',
@@ -59,12 +59,12 @@ it('a server that dies mid-run stops a --continue=never run from dispatching', a
   expect(result.ok).toBe(false)
 }, 30_000)
 
-// Under the default mode a dependant of the dead server not yet started
+// By default a dependant of the dead server not yet started
 // is skipped, named for it, as below a failed task; one that does not
 // depend on it still runs.
-it('a deps-ok run skips what depends on a dead server, and only that', async () => {
+it('a default run skips what depends on a dead server, and only that', async () => {
   root = await workspace()
-  const result = await runIn(root, 'deps-ok')
+  const result = await runIn(root, false)
   expect(statusOf(result)).toEqual({
     'app#srv': 'failed',
     'app#a': 'success',

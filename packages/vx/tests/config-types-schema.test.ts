@@ -62,10 +62,10 @@ const PIPELINE = [
   'cacheDownload',
   'cachePolicy',
   'concurrency',
-  'continue',
   'dry',
   'env',
   'excludeDependencies',
+  'failFast',
   'filter',
   'force',
   'noCache',
@@ -79,7 +79,7 @@ const PIPELINE = [
 ] as const satisfies readonly Keys<Pipeline>[]
 const RUN = [
   'concurrency',
-  'continue',
+  'failFast',
   'killGrace',
   'logs',
   'pluginTimeout',

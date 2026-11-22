@@ -106,7 +106,7 @@ export async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome>
   // When the task started, as an offset from run start, for EVERY outcome
   // (hits included), so the timeline shows when each task actually ran.
   const taskStartNs = process.hrtime.bigint() - args.run.runStartHrTimeNs
-  const { hash, pre } = await keyFor(args, policy)
+  const { hash, pre, got } = await keyFor(args, policy)
 
   // The local no-op half of `exec.remote: 'only'`: no remote executor took
   // the task, so it succeeds without running. The hash was still computed:
@@ -122,7 +122,7 @@ export async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome>
     }
   }
 
-  const hit = await probe(args, policy, hash, taskStartNs)
+  const hit = await probe(args, policy, hash, taskStartNs, got)
   if (hit !== null) return hit
 
   const env = taskEnv(node, policy.exec, args.run.workspaceRoot)
@@ -247,8 +247,43 @@ export async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome>
   return missOutcome(m, ran, check, save, { startNs: wallclockStartNs, endNs: wallclockEndNs })
 }
 
+/** A key taken before the task's dispatch, and when (`KeyedTasks.keyedAt`). */
+export interface PreparedKey {
+  readonly key: { hash: string; pre?: PreDescribed }
+  readonly at: number
+  readonly atMs: number
+  /** The local-first lookup under it, asked while the task waited. */
+  readonly got?: Promise<CacheEntry | null>
+}
+
 /**
- * The key, taken mid-run, not at prepare time: a task whose `inputs.files`
+ * Take a ready task's key while it waits for a slot (`SchedulerOptions.prepare`),
+ * for its dispatch to read back: the key and the description it folds were
+ * most of what a cold miss did in its slot before its command. Their facts
+ * are dated now, so the re-check after the command sees any write since.
+ */
+export function prepareKey(args: ExecuteArgs): void {
+  const prepared = args.run.preparedKeys
+  if (prepared === undefined || args.preProbed !== undefined || args.upfrontKey !== undefined)
+    return
+  const policy = taskPolicy(args)
+  if (!policy.cacheable) return
+  const at = fsClockNow(args.run.cacheDir ?? path.join(args.run.workspaceRoot, '.vx'))
+  const atMs = Date.now()
+  const taken = derivedKey(args, policy).then((key): PreparedKey => {
+    if (!policy.read) return { key, at, atMs }
+    const got = args.run.cache.get(key.hash, getContext(args.node, policy.exec.command))
+    got.catch(() => {})
+    return { key, at, atMs, got }
+  })
+  // Read by its dispatch, which rethrows it; a run that stops first never asks.
+  taken.catch(() => {})
+  prepared.set(args.node.id, taken)
+}
+
+/**
+ * The key, taken mid-run (once the task is ready: `prepareKey`), not at
+ * prepare time: a task whose `inputs.files`
  * matches a sibling's outputs (`'**\/*'` after a `codegen` step) needs those
  * on disk first. Taken WITHOUT capture, so a warm all-hit run allocates no
  * component array; a miss's rows are captured by the describe. An up-front
@@ -258,10 +293,24 @@ export async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome>
 async function keyFor(
   args: ExecuteArgs,
   policy: TaskPolicy,
-): Promise<{ hash: string; pre?: PreDescribed }> {
+): Promise<{ hash: string; pre?: PreDescribed; got?: Promise<CacheEntry | null> }> {
   const known = args.preProbed?.hash ?? args.upfrontKey
   if (known !== undefined) return { hash: known }
+  const prepared = args.run.preparedKeys?.get(args.node.id)
+  if (prepared !== undefined) {
+    args.run.preparedKeys!.delete(args.node.id)
+    const { key, at, atMs, got } = await prepared
+    args.run.keyedTasks?.keyedAt(args, at, atMs)
+    return got === undefined ? key : { ...key, got }
+  }
   args.run.keyedTasks?.keyedNow(args)
+  return derivedKey(args, policy)
+}
+
+async function derivedKey(
+  args: ExecuteArgs,
+  policy: TaskPolicy,
+): Promise<{ hash: string; pre?: PreDescribed }> {
   const hashArgs = {
     node: args.node,
     upstream: args.upstream,
@@ -291,6 +340,8 @@ async function probe(
   policy: TaskPolicy,
   hash: string,
   taskStartNs: bigint,
+  /** A lookup made while the task waited for its slot (`prepareKey`). */
+  got?: Promise<CacheEntry | null>,
 ): Promise<TaskOutcome | null> {
   if (!policy.read) return null
   const preProbed = args.preProbed
@@ -300,7 +351,7 @@ async function probe(
   if (fingerprintMoved(args)) return null
   const cacheOpStart = performance.now()
   const endProbe = span('cache.get')
-  const hit = await args.run.cache.get(hash, getContext(args.node, policy.exec.command))
+  const hit = await (got ?? args.run.cache.get(hash, getContext(args.node, policy.exec.command)))
   endProbe()
   return hit ? restoreOrMiss(args, hash, hit, cacheOpStart, taskStartNs) : null
 }

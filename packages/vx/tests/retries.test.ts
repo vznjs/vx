@@ -183,7 +183,7 @@ describe('exec.retries — e2e', () => {
   // X-68: the retry loop asked only the run's stop, so a task in flight
   // when fail-fast tripped ran every retry it had left.
   it(
-    'continueMode never: a task in flight when another fails is not retried',
+    '--fail-fast: a task in flight when another fails is not retried',
     async () => {
       const dir = await addProject(
         fixture.root,
@@ -206,7 +206,7 @@ describe('exec.retries — e2e', () => {
         tasks: ['r', 'f'],
         projects: ['p'],
         concurrency: 2,
-        continueMode: 'never',
+        failFast: true,
         log: {
           ...capturingLogger(fixture),
           // The scheduler trips fail-fast before it reports the outcome, so
@@ -218,7 +218,7 @@ describe('exec.retries — e2e', () => {
       })
       expect(r.ok).toBe(false)
       const status = Object.fromEntries(r.outcomes.map((o) => [o.node.id, o.status]))
-      expect(status).toEqual({ 'p#r': 'failed', 'p#f': 'failed' })
+      expect(status).toEqual({ 'p#r': 'aborted', 'p#f': 'failed' })
       expect(lineCount(path.join(dir, 'attempts.txt'))).toBe(1)
       expect(fixture.err.join('')).not.toContain('vx: retrying')
     },

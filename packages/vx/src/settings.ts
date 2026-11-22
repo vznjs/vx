@@ -98,11 +98,11 @@ export const SETTINGS: readonly Setting[] = [
     task: 'exec.retries',
   },
   {
-    path: 'run.continue',
-    kind: { type: 'enum', values: ['never', 'deps-ok', 'always'] },
-    default: 'deps-ok',
-    doc: 'What a failed task takes down: `never` stops the run, `deps-ok` skips its dependents, `always` runs them too.',
-    flag: { verb: 'run', name: '--continue' },
+    path: 'run.failFast',
+    kind: { type: 'bool' },
+    default: 'false',
+    doc: 'Stop the run at the first failure, killing the tasks still running; off, a failure skips only its dependents.',
+    flag: { verb: 'run', name: '--fail-fast' },
   },
   {
     path: 'run.outputLogs',

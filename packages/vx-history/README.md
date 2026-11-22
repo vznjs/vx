@@ -92,8 +92,8 @@ naming where it pointed.
 
 The same upload carries the flaky record: each cached task the run
 ran, by definition and cache key, with how it ended (`pass`, `fail`,
-or `flaky` when it passed on a retry). A task that ran behind a failed
-dependency (`--continue=always`) is left out: its result is not its
+or `flaky` when it passed on a retry). A task built on a dependency
+`--exclude-dependencies` left out is left out: its result is not its
 key's. The server names a task flaky
 when one key failed and later passed, or a run saw it flake, on any
 branch of the repository. The run's query answers which of its tasks

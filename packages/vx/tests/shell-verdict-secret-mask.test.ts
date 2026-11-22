@@ -47,7 +47,7 @@ describe('the shell verdict line', () => {
     })
     expect(lock.stderr.toString()).toBe('')
     const run = Bun.spawnSync({
-      cmd: [process.execPath, BIN, 'run', 'a#bare', 'a#file', '--continue'],
+      cmd: [process.execPath, BIN, 'run', 'a#bare', 'a#file'],
       cwd: root,
       env: { ...process.env, API_TOKEN: SECRET },
       stdout: 'pipe',

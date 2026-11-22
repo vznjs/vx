@@ -451,11 +451,10 @@ describe('--exclude-dependencies keys on the dependency it skips', () => {
     TIMEOUT,
   )
 
-  // `--continue=always` taints a task behind a failed upstream, and the
-  // skipped dependency reaches the task as a synthetic outcome: one that
-  // reads as failed would withhold the save of a task that folds nothing.
+  // The skipped dependency reaches the task as a synthetic outcome: one that
+  // read as failed would withhold the save of a task that folds nothing.
   it(
-    'under --continue=always a task that folds no skipped key still saves',
+    'a task that folds no skipped key still saves',
     async () => {
       const { app } = await libApp()
       await write(
@@ -468,7 +467,7 @@ describe('--exclude-dependencies keys on the dependency it skips', () => {
       )
       git(root, 'add', '-A')
       git(root, 'commit', '-q', '-m', 'app folds no task')
-      const out = vx(root, 'run', 'app#build', '--exclude-dependencies', '--continue=always')
+      const out = vx(root, 'run', 'app#build', '--exclude-dependencies')
       expect([out.includes('1↑'), vx(root, 'run', 'app#build').includes('1✓')]).toEqual([
         true,
         true,

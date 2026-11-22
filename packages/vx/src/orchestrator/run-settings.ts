@@ -12,7 +12,7 @@ const FROM_OPTIONS = {
   schedule: 'run.schedule',
   timeout: 'run.timeout',
   retries: 'run.retries',
-  continueMode: 'run.continue',
+  failFast: 'run.failFast',
   download: 'cache.download',
   downloadConcurrency: 'cache.concurrency.download',
   uploadConcurrency: 'cache.concurrency.upload',

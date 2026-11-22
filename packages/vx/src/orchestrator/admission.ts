@@ -7,15 +7,13 @@
 //   `inflight` registry; a task whose key
 //   a sibling is already computing waits for it and cache-hits on what it
 //   saved. A stateless `vx run` passes none and takes the untouched path.
-// - Continue-taint: under `continueMode: 'always'` a task runs although an
-//   upstream failed. Its key is the healthy one (pure-input hashing) but
-//   its bytes are not, so the taint is tracked here and propagates through
-//   every success built on it — or a grand-dependent would cache the same
-//   partial tree one hop later. Only that mode ever executes a task behind
-//   a failure; the other modes skip it, so a default run carries no check.
-//   `--exclude-dependencies` seeds the same taint: a task whose key folds a
-//   dependency that did not run has bytes nothing vouches for
-//   (excluded-keys.ts).
+// - Taint: a task whose key folds a dependency that did not run
+//   (`--exclude-dependencies`, excluded-keys.ts), or one that ran beside a
+//   server that died or a process a task left running, has bytes nothing
+//   vouches for. Its key is the healthy one, so the taint is tracked here and
+//   propagates through every success built on it — or a grand-dependent
+//   would cache the same partial tree one hop later. A run with no seed
+//   carries no check.
 
 import type { CachePolicy } from '../cache/index.js'
 import { isGroupTask, RestoreDemoted, type TaskNode, type TaskOutcome } from '../graph/index.js'
@@ -32,7 +30,7 @@ export interface TaintTracker {
   judge: (node: TaskNode, upstream: TaskOutcome[]) => boolean
   /**
    * For a task `judge` called tainted: the task at the root of it, a
-   * failed one or a dependency `--exclude-dependencies` dropped. Its run
+   * seed or a dependency `--exclude-dependencies` dropped. Its run
    * row names it (`blocked_by`), so no reader counts the row on its key.
    */
   cause: (node: TaskNode, upstream: TaskOutcome[]) => string
@@ -47,34 +45,28 @@ const UNTAINTED: TaintTracker = {
 }
 
 /**
- * Records which tasks ran behind a failure, or on the key of a dependency
- * that did not run (`seeds`), and answers, per task, whether this one does.
- * Disabled (always `false`, nothing recorded) unless the run's
- * `continueMode` is `'always'`, there is a seed, or one may be added while
- * the run goes on (`seedsLater`: a server that dies under a running task).
+ * Records which tasks ran on bytes nothing vouches for (`seeds`, and what
+ * builds on them) and answers, per task, whether this one does. Disabled
+ * (always `false`, nothing recorded) unless there is a seed, or one may be
+ * added while the run goes on (`seedsLater`: a server that dies under a
+ * running task).
  *
  * A task's taint is read from its deps' SETTLED outcomes, not from what it saw
  * at dispatch: a restore-tier hit dispatches before its deps settle, so it saw
- * holes where the failure would be, and a dependent that asked "was that hit
- * tainted?" heard no. Under `--continue=always` the dependent then saved the
- * partial tree on its healthy key, and the next healthy run replayed it. A
- * dependent is released only once the hit's own deps have settled too
- * (scheduler.ts), so by the time anyone asks, the answer is complete.
+ * holes where the taint would be. A dependent is released only once the
+ * hit's own deps have settled too (scheduler.ts), so by the time anyone asks,
+ * the answer is complete.
  */
 export function taintTracker(
-  continueAlways: boolean,
   seeds: ReadonlySet<string>,
   nodes: ReadonlyMap<string, TaskNode>,
   seedsLater = false,
 ): TaintTracker {
-  if (!continueAlways && seeds.size === 0 && !seedsLater) return UNTAINTED
+  if (seeds.size === 0 && !seedsLater) return UNTAINTED
   const outcomes = new Map<string, TaskOutcome>()
   const memo = new Map<string, boolean>()
   const causes = new Map<string, string>()
-  const failed = (u: TaskOutcome): boolean =>
-    continueAlways && (u.status === 'failed' || u.status === 'aborted' || u.status === 'skipped')
-  const through = (u: TaskOutcome | undefined): boolean =>
-    u !== undefined && (failed(u) || taintOf(u.node.id))
+  const through = (u: TaskOutcome | undefined): boolean => u !== undefined && taintOf(u.node.id)
   // Post-order over the settled deps with an explicit stack: a chain of
   // restore-tier hits is judged in one ask, and a recursion would take a frame
   // per hop. Taint is final at once; a clean answer only once every dep has
@@ -95,7 +87,7 @@ export function taintTracker(
       const deps = seeds.has(id) ? [] : (nodes.get(id)?.deps ?? [])
       const next = deps.find((d) => {
         const u = outcomes.get(d)
-        return u !== undefined && !failed(u) && valueOf(d) === undefined
+        return u !== undefined && valueOf(d) === undefined
       })
       if (next !== undefined) {
         stack.push(next)
@@ -106,7 +98,7 @@ export function taintTracker(
         seeds.has(id) ||
         deps.some((d) => {
           const u = outcomes.get(d)
-          return u !== undefined && (failed(u) || valueOf(d) === true)
+          return u !== undefined && valueOf(d) === true
         })
       local.set(id, taint)
       if (taint || deps.every((d) => outcomes.has(d) && memo.has(d))) memo.set(id, taint)
@@ -130,13 +122,8 @@ export function taintTracker(
         const u = outcomes.get(d)
         if (u !== undefined) deps.push(u)
       }
-      const root =
-        deps.find(failed) ?? deps.find((u) => taintOf(u.node.id)) ?? node.excludedUpstream?.[0]
-      let c: string
-      if (root === undefined) c = node.id
-      else if (failed(root))
-        c = root.status === 'skipped' ? (root.blockedBy ?? root.node.id) : root.node.id
-      else c = causes.get(root.node.id) ?? root.node.id
+      const root = deps.find((u) => taintOf(u.node.id)) ?? node.excludedUpstream?.[0]
+      const c = root === undefined ? node.id : (causes.get(root.node.id) ?? root.node.id)
       causes.set(node.id, c)
       return c
     },

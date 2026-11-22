@@ -28,7 +28,8 @@ import {
   type TaskOutcome,
 } from './outcome.js'
 
-export type ContinueMode = 'never' | 'deps-ok' | 'always'
+/** Ready tasks prepared ahead of a free slot (`prepare`). */
+const PREPARE_AHEAD = 4
 
 export interface ScheduleOptions {
   nodes: Map<string, TaskNode>
@@ -42,25 +43,20 @@ export interface ScheduleOptions {
    */
   signal?: AbortSignal
   /**
-   * Failure propagation:
-   * - 'deps-ok' (default): a failed, skipped or aborted upstream skips its
-   *   dependents; independent siblings keep running.
-   * - 'never': the first failure stops dispatch; in-flight tasks finish but
-   *   start no retry, and the rest (restore tier too) completes skipped.
-   * - 'always': dependents run anyway. Their keys are a healthy run's (a failed
-   *   outcome carries the upstream's input key), so their save is withheld:
-   *   bytes built on a partial tree would be the next clean run's stale hit
-   *   (`ExecuteArgs.taintedUpstream`).
+   * Failure propagation. Off (default): a failed, skipped or aborted upstream
+   * skips its dependents; independent siblings keep running. On: the first
+   * failure stops dispatch and calls `onFailFast`, whose caller kills what is
+   * in flight; the rest (restore tier too) completes skipped.
    */
-  continueMode?: ContinueMode
+  failFast?: boolean
   /**
    * A persistent task that died after it became ready: its outcome said
    * `success`, so this is how a dependant not yet started learns of it.
    */
   serverDied?: (id: string) => boolean
   /**
-   * Called once, when 'never' stops dispatch: a task in flight then
-   * finishes its attempt but starts no retry.
+   * Called once, when `failFast` stops dispatch: the caller kills what is
+   * in flight, and no retry starts.
    */
   onFailFast?: () => void
   execute: (node: TaskNode, upstream: TaskOutcome[]) => Promise<TaskOutcome>
@@ -78,6 +74,12 @@ export interface ScheduleOptions {
    * other work. Resolves to the outcome with the save folded in.
    */
   settledOf?: (outcome: TaskOutcome) => Promise<TaskOutcome | void> | undefined
+  /**
+   * Told of the next ready tasks while no slot is free for them, once each,
+   * so what a task's dispatch needs before its command (its key) is learned
+   * while it waits, not in the slot it waits for.
+   */
+  prepare?: (node: TaskNode, upstream: TaskOutcome[]) => void
   /**
    * True for an outcome whose dependants need nothing of what it still owes
    * (its files are on their way to this machine, and none of them reads this
@@ -204,8 +206,8 @@ type Parked = Array<[string, number]>
 /** One `runGraph` call: the graph's state as it runs, and the steps that move it. */
 class GraphRun {
   private readonly nodes: Map<string, TaskNode>
-  private readonly continueMode: ContinueMode
-  // 'never': set on the first failure; every dequeued task is then skipped.
+  private readonly failFast: boolean
+  // `failFast`: set on the first failure; every dequeued task is then skipped.
   private failFastTripped = false
   private readonly outcomes = new Map<string, TaskOutcome>()
   // Reverse adjacency and pending dep counts, built once: a task is ready when
@@ -227,6 +229,8 @@ class GraphRun {
   // Held servers not yet answered, and those of them that became ready.
   private readonly unanswered: Set<string>
   private readonly heldReady = new Set<string>()
+  /** Ready tasks handed to `prepare` (true) and dispatched since (false). */
+  private readonly prepared = new Map<string, boolean>()
   private settledIdle = 0
   /** Outcomes in, dependants released, still to finish (`trails`). */
   private settling = 0
@@ -265,7 +269,7 @@ class GraphRun {
   constructor(private readonly options: ScheduleOptions) {
     const nodes = options.nodes
     this.nodes = nodes
-    this.continueMode = options.continueMode ?? 'deps-ok'
+    this.failFast = options.failFast === true
     for (const node of nodes.values()) {
       this.pending.set(node.id, node.deps.length)
       for (const dep of node.deps) {
@@ -435,7 +439,7 @@ class GraphRun {
   }
 
   private finishOne(id: string, outcome: TaskOutcome, released = false): void {
-    if (this.continueMode === 'never' && outcome.status === 'failed') this.tripFailFast()
+    if (this.failFast && outcome.status === 'failed') this.tripFailFast()
     this.outcomes.set(id, outcome)
     // A dormant server is asked again: the dispatch settles it once its
     // last dependant is in.
@@ -469,7 +473,7 @@ class GraphRun {
     if (!this.inRestoreTier(id)) return
     for (const dep of (this.nodes.get(id) as TaskNode).deps) {
       const u = this.outcomes.get(dep)
-      if (this.continueMode !== 'always' && (u?.status === 'failed' || u?.status === 'aborted')) {
+      if (u?.status === 'failed' || u?.status === 'aborted') {
         this.blockedRestores.set(id, dep)
         break
       }
@@ -519,7 +523,7 @@ class GraphRun {
   }
 
   // True when the task would finish `skipped` without running (fail-fast
-  // tripped, or a failed upstream unless `continueMode` is 'always'). Shared by
+  // tripped, or a failed upstream). Shared by
   // the admission parker and the dispatch loop: a doomed task must never park
   // on a resource fit, or a too-big one would hang the run.
   //
@@ -527,18 +531,12 @@ class GraphRun {
   // success.
   private willSkip(id: string): boolean {
     if (this.failFastTripped || this.aborted()) return true
-    if (this.continueMode === 'never' && this.servers.some(this.serverDied)) {
+    if (this.failFast && this.servers.some(this.serverDied)) {
       this.tripFailFast()
       return true
     }
     if (this.inRestoreTier(id)) return false
     const node = this.nodes.get(id) as TaskNode
-    // `always` runs past a failed upstream, never past one that did not
-    // run on this platform: under it, a skip has no other cause.
-    if (this.continueMode === 'always')
-      return node.deps.some(
-        (d) => this.outcomes.get(d)?.status === 'skipped' || this.blockedRestores.has(d),
-      )
     return node.deps.some((d) => {
       const u = this.outcomes.get(d)
       // `aborted` propagates though it is counted nowhere: the upstream died
@@ -593,6 +591,7 @@ class GraphRun {
     // Repush with original seqs so the next tick's order does not depend on
     // `parked`'s.
     for (const [id, seq] of parked) this.execReady.push(id, seq)
+    if (this.options.prepare !== undefined && this.execReady.size > 0) this.prepareNext()
 
     // The outcome count alone: a slot is released before its outcome lands, so
     // the lane counters add nothing here.
@@ -645,7 +644,33 @@ class GraphRun {
     return lanes.restoreRoom() ? this.restoreReady.pop() : undefined
   }
 
+  /**
+   * Hand the next ready tasks to `prepare`, after this turn: a slot that frees
+   * by then dispatches its task without waiting on it. A slot frees every
+   * few milliseconds on a cold run, so only the few next in line.
+   */
+  private prepareNext(): void {
+    for (const id of this.execReady.top(PREPARE_AHEAD)) {
+      if (this.prepared.has(id) || this.unanswered.has(id) || this.willSkip(id)) continue
+      if (this.idle.has(id) || this.options.exclusive?.has(id) === true) continue
+      this.prepared.set(id, true)
+      setImmediate(() => {
+        if (this.prepared.get(id) !== true || this.resolved) return
+        const node = this.nodes.get(id) as TaskNode
+        try {
+          this.options.prepare!(
+            node,
+            node.deps.map((d) => this.outcomes.get(d) as TaskOutcome),
+          )
+        } catch {
+          // Its dispatch learns what it needs, and says what failed.
+        }
+      })
+    }
+  }
+
   private dispatch(id: string): void {
+    this.prepared.set(id, false)
     const node = this.nodes.get(id) as TaskNode
 
     // For a restore-tier task running before its deps finish, `upstream`
@@ -694,10 +719,9 @@ class GraphRun {
   private skip(id: string, node: TaskNode, upstream: TaskOutcome[]): void {
     // The root of the block: a failed or aborted upstream names
     // itself; a skipped one hands down its own root.
-    const blocker =
-      this.continueMode === 'always'
-        ? undefined
-        : upstream.find((u) => u !== undefined && (u.status === 'failed' || u.status === 'aborted'))
+    const blocker = upstream.find(
+      (u) => u !== undefined && (u.status === 'failed' || u.status === 'aborted'),
+    )
     const viaSkip = upstream.find((u) => u !== undefined && u.status === 'skipped')
     const viaRestore = node.deps.find((d) => this.blockedRestores.has(d))
     const blockedBy =

@@ -124,7 +124,7 @@ projects over (`RunHandoff.discovered`), so the workspace is listed once.
 
 ```ts
 export interface RunArgs {
-  continueMode?: ContinueMode // --continue[=never|deps-ok|always]
+  failFast?: boolean // --fail-fast
   tasks: string[] // bare + `pkg#task` positionals
   filters: string[] // raw --filter values
   all: boolean
@@ -1101,7 +1101,7 @@ gap before its description.
   / `pkg#task`.
 - `Execution (for run)` — concurrency, `--schedule`,
   `--exclude-dependencies`, `--no-cache` / `--force`, `--cache-policy`,
-  `--continue`, `--retries`, `--timeout`, `--output-logs`,
+  `--fail-fast`, `--retries`, `--timeout`, `--output-logs`,
   `--cache-download`, `--verbosity`.
 - `Planning (for run — skips execution)` — `--dry`.
 - `Artifacts (for run)` — `--profile`.

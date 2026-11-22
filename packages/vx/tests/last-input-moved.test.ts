@@ -54,7 +54,7 @@ describe('vx last names the input that moved under a failed task', () => {
   it(
     'at the end of its row, as the run said it; another failure names none',
     async () => {
-      expect((await vx(root, ['run', 'app#self', 'app#boom', '--continue=always'])).code).toBe(1)
+      expect((await vx(root, ['run', 'app#self', 'app#boom'])).code).toBe(1)
       const rows = Object.fromEntries(
         (await vx(root, ['last'])).out
           .split('\n')

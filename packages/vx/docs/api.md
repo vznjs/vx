@@ -1770,7 +1770,7 @@ export interface Pipeline {
   env?: Readonly<Record<string, string>>
   concurrency?: number | `${number}%`
   schedule?: 'most-work' | 'critical-path' | 'direct-dependents' | 'ready-order'
-  continue?: 'never' | 'deps-ok' | 'always'
+  failFast?: boolean
   retries?: number
   timeout?: Duration
   branch?: string
@@ -2413,7 +2413,7 @@ export interface RunOptions {
   flow?: 'focused' | 'broad'
   retries?: number
   timeout?: number
-  continueMode?: ContinueMode
+  failFast?: boolean
   branch?: string
   schedule?: NonNullable<RunSettings['schedule']>
   excludeDependencies?: 'all' | readonly string[]
@@ -2546,7 +2546,7 @@ export interface RunSettings {
   secrets?: {
     minLength?: number
   }
-  continue?: 'never' | 'deps-ok' | 'always'
+  failFast?: boolean
   rules?: WorkspaceRules
 }
 ```

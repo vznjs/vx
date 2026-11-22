@@ -84,11 +84,12 @@ describe('module pages state what their file does since the fix', () => {
     expect(page('modules/index.md')).toMatch(/lone `--version`.{0,80}answered.{0,80}before/)
   })
 
-  it('metrics.md: an unchanged key names the continue-taint before --no-cache (#1928)', () => {
-    expect(src('history/metrics.ts')).toContain('each ran beside a failed task')
+  // No run executes a task behind a failure, so no verdict blames one.
+  it('metrics.md: an unchanged key never blames a failure beside the task', () => {
+    expect(src('history/metrics.ts')).not.toContain('beside a failed task')
     const why = blocks('modules/history.md', '`whyDidThisRerun` compares')
     expect(why.length).toBe(1)
-    expect(why[0]).toMatch(/beside a failed task.*Only when none applies/)
+    expect(why[0]).not.toContain('beside a failed task')
   })
 
   it('cli-watch.md: only the tasks the watch reaches keep a path from being dropped', () => {

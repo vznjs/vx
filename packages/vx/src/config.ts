@@ -70,7 +70,7 @@ export interface Pipeline {
   env?: Readonly<Record<string, string>>
   concurrency?: number | `${number}%`
   schedule?: 'most-work' | 'critical-path' | 'direct-dependents' | 'ready-order'
-  continue?: 'never' | 'deps-ok' | 'always'
+  failFast?: boolean
   retries?: number
   timeout?: Duration
   branch?: string
@@ -126,10 +126,10 @@ export interface RunSettings {
     minLength?: number
   }
   /**
-   * What a failed task takes down: `never` stops the run, `deps-ok` (the
-   * default) skips its dependents, `always` runs them too.
+   * Stop the run at the first failure, killing the tasks still running.
+   * Omitted → false: a failure skips only its dependents.
    */
-  continue?: 'never' | 'deps-ok' | 'always'
+  failFast?: boolean
   /**
    * Graph rules checked by `vx lock` and `vx lock --check`, never by a
    * run. Each is on

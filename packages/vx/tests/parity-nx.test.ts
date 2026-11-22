@@ -314,9 +314,9 @@ describe('Nx parity — cache control and failure handling', () => {
   )
 
   it(
-    '`--nxBail` (vx: `--continue=never`) still reds the run and skips what the failure blocks',
+    '`--nxBail` (vx: `--fail-fast`) still reds the run and skips what the failure blocks',
     async () => {
-      const r = await summarized(root, ['lib#after', '--continue=never'])
+      const r = await summarized(root, ['lib#after', '--fail-fast'])
       expect(r.code).toBe(1)
       expect(r.tasks.get('lib#after')?.['status']).toBe('skipped')
     },

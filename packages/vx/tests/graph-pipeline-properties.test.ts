@@ -6,19 +6,21 @@
 // what neither does: a refusal names a cycle the reference graph has, the
 // build and a serial run are the same twice, and a graph the builder
 // made is run each task at most once, after its deps, within the
-// worker limit, with a failure's dependents held per `--continue` mode.
+// worker limit, with a failure's dependents held, or everything after the
+// first failure under `failFast`.
 
 import { expect, it } from 'bun:test'
 import type { ProjectConfig, TaskConfig } from '../src/config.js'
 import type { TaskNode } from '../src/graph/index.js'
-import { runGraph, type ContinueMode } from '../src/graph/scheduler.js'
+import { runGraph } from '../src/graph/scheduler.js'
 import { type TaskOutcome } from '../src/graph/outcome.js'
 import { buildTaskGraph, type ProjectEntry } from '../src/graph/task-graph.js'
 import type { PackageGraph } from '../src/workspace/index.js'
 import { rng } from './helpers/rng.js'
 
 const NAMES = ['build', 'test', 'lint', 'pack']
-const MODES: ContinueMode[] = ['never', 'deps-ok', 'always']
+type Mode = 'default' | 'fail-fast'
+const MODES: Mode[] = ['fail-fast', 'default']
 
 interface Workspace {
   projects: Map<string, ProjectEntry>
@@ -165,7 +167,7 @@ async function run(
   nodes: Map<string, TaskNode>,
   fail: Set<string>,
   concurrency: number,
-  mode: ContinueMode,
+  mode: Mode,
   turns: (id: string) => number,
   bad: (m: string) => void,
 ): Promise<Run> {
@@ -176,14 +178,14 @@ async function run(
   const outcomes = await runGraph({
     nodes,
     concurrency,
-    continueMode: mode,
+    failFast: mode === 'fail-fast',
     onFinish: (o) => {
       finished.add(o.node.id)
       if (o.status === 'failed' && firstFailure < 0) firstFailure = starts.length
     },
     execute: async (node) => {
       if (starts.includes(node.id)) bad(`${node.id} ran twice`)
-      if (mode === 'never' && firstFailure >= 0) bad(`${node.id} started after a failure`)
+      if (mode === 'fail-fast' && firstFailure >= 0) bad(`${node.id} started after a failure`)
       for (const d of node.deps) if (!finished.has(d)) bad(`${node.id} started before ${d}`)
       starts.push(node.id)
       if (++active > concurrency) bad(`${active} running > ${concurrency}`)
@@ -261,8 +263,7 @@ it('builds, refuses and runs random workspaces as the reference says', async () 
     const anyFailed = [...outcomes.values()].some((o) => o.status === 'failed')
     for (const id of nodes.keys()) {
       const status = outcomes.get(id)?.status
-      const expected =
-        mode === 'always' ? true : mode === 'deps-ok' ? !failedAbove(id) : !anyFailed || ran.has(id)
+      const expected = mode === 'default' ? !failedAbove(id) : !anyFailed || ran.has(id)
       if (ran.has(id) !== expected) bad(`${mode}: ${id} ran=${ran.has(id)}`)
       if (ran.has(id) && status !== (fail.has(id) ? 'failed' : 'success'))
         bad(`${id} ran and reported ${status}`)

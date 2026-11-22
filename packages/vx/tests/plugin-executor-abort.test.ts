@@ -222,11 +222,12 @@ it('a timeout the executor reports on a task with none says so, and fails', asyn
   expect(stderr.join('')).toBe('[vx] timed out — as its executor reported\n')
 }, 30_000)
 
-// `--continue=never` starts nothing after a failure. A task a plugin
+// `--fail-fast` starts nothing after a failure. A task a plugin
 // executor still held for a machine (`running` answered `null`) is not
 // started, and vx-dte sent one to a worker after the failure (2026-11-06).
-// One the executor had begun finishes its attempt.
-it('fail-fast withdraws a task its executor holds unstarted; one begun finishes', async () => {
+// One the executor had begun is told to stop (its `signal` aborts) and ends
+// `aborted`, as a local task fail-fast kills does.
+it('fail-fast withdraws a task its executor holds unstarted and stops one begun', async () => {
   await Bun.write(
     path.join(root, '.vx/workspace.mjs'),
     localWorkspaceSource([
@@ -278,14 +279,14 @@ it('fail-fast withdraws a task its executor holds unstarted; one begun finishes'
     projects: ['app'],
     log: silent,
     handleSignals: false,
-    continueMode: 'never',
+    failFast: true,
   })
   expect(
     r.outcomes
       .map((o) => [o.node.id, o.status])
       .toSorted((a, b) => String(a[0]).localeCompare(String(b[0]))),
   ).toEqual([
-    ['app#begun', 'success'],
+    ['app#begun', 'aborted'],
     ['app#fail', 'failed'],
     ['app#held', 'skipped'],
   ])
