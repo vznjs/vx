@@ -1345,7 +1345,7 @@ All are on the `@vzn/vx` façade.
 - **A run's key reads the record, held to the file.** `key` (project
   scope) answers the digest `vx lock` recorded in `.vx/dependencies.lock`
   (`ctx.locked(file)`, asked once per run), which core first holds to
-  `digests` of the file as it is ([`workspace.md`](./workspace.md#srcworkspacelockfilets--vxprojectslockjsonl), "A run's read").
+  `digests` of the file as it is ([`workspace.md`](./workspace.md#srcworkspacelockfilets--vxprojectslock), "A run's read").
   `vx lock` writes the digests' memo row, so that check parses nothing
   until the file changes; a changed file costs one parse, then the row.
   When an extra file the record names moved since (a path dependency

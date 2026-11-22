@@ -131,7 +131,8 @@ export function contractBreaks(
     if (entries === undefined) return lost
     return lost.filter((l) => !l.startsWith('- src/') || entries.has(l.slice(2)))
   }
-  if (name === 'projects.lock') {
+  // `lock.jsonl` is the record's name before 0.0.660.
+  if (name === 'projects.lock' || name === 'lock.jsonl') {
     // Each project's entry with its tasks in place: a task line's id is its
     // content's hash, so any edit to a task renames its line.
     return gone(leaves(lockObject(before)), leaves(lockObject(after)))
