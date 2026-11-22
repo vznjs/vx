@@ -307,7 +307,7 @@ function shellShape(command: string): {
 
 // Where a command (and so a `case`) can start: after a separator, an opening
 // paren or brace, or a reserved word that takes a command.
-const COMMAND_START = /(?:^|[;&|({\n]|(?:^|\s)(?:then|do|else|elif|!))[ \t]*$/
+const COMMAND_START = /(?:^|[;&|({\n]|(?:^|[\s;&|({])(?:then|do|else|elif|!))[ \t]*$/
 
 // One redirection at the end of a command: an fd, an operator, and a
 // target word (quoted parts and `<(…)` / `>(…)` included).
