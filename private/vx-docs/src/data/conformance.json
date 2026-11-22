@@ -1122,7 +1122,9 @@
   "notes": [
     "moon fetched no toolchain plugins (exit 1, found system-ad7abb72e596dcc556ad0fc2e87dcb23949f91d8280fc61c94cfec6224695c59.wasm), so it runs without them:\nError: plugin::loader::registry::load_failure\n\n  × Failed to load plugin from ghcr.io/moonrepo/bun_toolchain:1.0.5 registry.\n  ├─▶ error sending request for url (https://ghcr.io/v2/moonrepo/\n  │   bun_toolchain/blobs/\n  │   sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a)\n  ├─▶ client error (Connect)\n  ╰─▶ tunnel error: unsuccessful\n\n",
     "moon fetched no toolchain plugins (exit 1, found system-ad7abb72e596dcc556ad0fc2e87dcb23949f91d8280fc61c94cfec6224695c59.wasm), so it runs without them:\nError: plugin::loader::registry::load_failure\n\n  × Failed to load plugin from ghcr.io/moonrepo/bun_toolchain:1.0.5 registry.\n  ├─▶ error sending request for url (https://ghcr.io/v2/moonrepo/\n  │   bun_toolchain/blobs/\n  │   sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a)\n  ├─▶ client error (Connect)\n  ╰─▶ tunnel error: unsuccessful\n\n",
-    "moon failed 1 of 1 cases; one: did not run a#build\n$ /home/user/vx/private/vx-conformance/node_modules/.latest/node_modules/@moonrepo/core-linux-x64-gnu/moon run :build\n▮▮▮▮ a:build (cached, 2ms, 478f8c0f)\n\nTasks: 1 completed (1 cached)\n Time: 13ms ❯❯❯❯ to the moon\n\n"
+    "moon failed 1 of 1 cases; one: did not run a#build\n$ /home/user/vx/private/vx-conformance/node_modules/.latest/node_modules/@moonrepo/core-linux-x64-gnu/moon run :build\n▮▮▮▮ a:build (cached, 2ms, 478f8c0f)\n\nTasks: 1 completed (1 cached)\n Time: 13ms ❯❯❯❯ to the moon\n\n",
+    "moon fetched no toolchain plugins (exit 1, found none), so it runs without them:\nError: plugin::loader::registry::load_failure\n\n  × Failed to load plugin from ghcr.io/moonrepo/bun_toolchain:1.0.5 registry.\n  ├─▶ error sending request for url (https://ghcr.io/v2/moonrepo/\n  │   bun_toolchain/blobs/\n  │   sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a)\n  ├─▶ client error (Connect)\n  ╰─▶ tunnel error: unsuccessful\n\n",
+    "moon failed 1 of 1 cases; one: exited 1, expected success\n$ /home/user/vx/private/vx-conformance/node_modules/.latest/node_modules/@moonrepo/core-linux-x64-gnu/moon run :build\n▮▮▮▮ a:build\nError: glob::create\n\n  × Failed to create glob from pattern packages/a/g/[x/-].\n  ╰─▶ failed to parse glob expression\n\n"
   ],
   "tools": {
     "vx": "this commit",
@@ -1135,14 +1137,14 @@
   "scores": {
     "vx": {
       "all": {
-        "pass": 1216,
-        "can": 1216,
-        "of": 1228
+        "pass": 1217,
+        "can": 1217,
+        "of": 1229
       },
       "correctness": {
-        "pass": 1000,
-        "can": 1000,
-        "of": 1012
+        "pass": 1001,
+        "can": 1001,
+        "of": 1013
       },
       "efficiency": {
         "pass": 189,
@@ -1180,9 +1182,9 @@
         "of": 58
       },
       "inputs": {
-        "pass": 385,
-        "can": 385,
-        "of": 385
+        "pass": 386,
+        "can": 386,
+        "of": 386
       },
       "env": {
         "pass": 67,
@@ -1212,14 +1214,14 @@
     },
     "turbo": {
       "all": {
-        "pass": 794,
-        "can": 1115,
-        "of": 1228
+        "pass": 795,
+        "can": 1116,
+        "of": 1229
       },
       "correctness": {
-        "pass": 651,
-        "can": 906,
-        "of": 1012
+        "pass": 652,
+        "can": 907,
+        "of": 1013
       },
       "efficiency": {
         "pass": 132,
@@ -1257,9 +1259,9 @@
         "of": 58
       },
       "inputs": {
-        "pass": 249,
-        "can": 375,
-        "of": 385
+        "pass": 250,
+        "can": 376,
+        "of": 386
       },
       "env": {
         "pass": 63,
@@ -1289,14 +1291,14 @@
     },
     "nx": {
       "all": {
-        "pass": 799,
-        "can": 1139,
-        "of": 1228
+        "pass": 800,
+        "can": 1140,
+        "of": 1229
       },
       "correctness": {
-        "pass": 626,
-        "can": 927,
-        "of": 1012
+        "pass": 627,
+        "can": 928,
+        "of": 1013
       },
       "efficiency": {
         "pass": 169,
@@ -1334,9 +1336,9 @@
         "of": 58
       },
       "inputs": {
-        "pass": 250,
-        "can": 385,
-        "of": 385
+        "pass": 251,
+        "can": 386,
+        "of": 386
       },
       "env": {
         "pass": 59,
@@ -1366,14 +1368,14 @@
     },
     "vite-task": {
       "all": {
-        "pass": 636,
-        "can": 928,
-        "of": 1228
+        "pass": 637,
+        "can": 929,
+        "of": 1229
       },
       "correctness": {
-        "pass": 533,
-        "can": 764,
-        "of": 1012
+        "pass": 534,
+        "can": 765,
+        "of": 1013
       },
       "efficiency": {
         "pass": 97,
@@ -1411,9 +1413,9 @@
         "of": 58
       },
       "inputs": {
-        "pass": 237,
-        "can": 376,
-        "of": 385
+        "pass": 238,
+        "can": 377,
+        "of": 386
       },
       "env": {
         "pass": 63,
@@ -1443,14 +1445,14 @@
     },
     "nix": {
       "all": {
-        "pass": 673,
-        "can": 864,
-        "of": 1228
+        "pass": 674,
+        "can": 865,
+        "of": 1229
       },
       "correctness": {
-        "pass": 568,
-        "can": 718,
-        "of": 1012
+        "pass": 569,
+        "can": 719,
+        "of": 1013
       },
       "efficiency": {
         "pass": 99,
@@ -1488,9 +1490,9 @@
         "of": 58
       },
       "inputs": {
-        "pass": 263,
-        "can": 336,
-        "of": 385
+        "pass": 264,
+        "can": 337,
+        "of": 386
       },
       "env": {
         "pass": 61,
@@ -1521,13 +1523,13 @@
     "moon": {
       "all": {
         "pass": 737,
-        "can": 1091,
-        "of": 1228
+        "can": 1092,
+        "of": 1229
       },
       "correctness": {
         "pass": 578,
-        "can": 890,
-        "of": 1012
+        "can": 891,
+        "of": 1013
       },
       "efficiency": {
         "pass": 146,
@@ -1566,8 +1568,8 @@
       },
       "inputs": {
         "pass": 254,
-        "can": 385,
-        "of": 385
+        "can": 386,
+        "of": 386
       },
       "env": {
         "pass": 62,
@@ -41534,6 +41536,40 @@
           "status": "fail",
           "step": 5,
           "detail": "did not run a#build"
+        }
+      }
+    },
+    {
+      "id": "inputs/glob-escaped-dash-in-class",
+      "ref": "9uhyxm",
+      "category": "inputs",
+      "kind": "correctness",
+      "title": "An input `g/[x\\-]` keys the file named `-`, and not `y`",
+      "why": "An escaped dash in a class is a dash, not a range. A user writes the pattern expecting the glob rules every shell and bundler share. A tool that reads it more narrowly never keys the file the task reads, and replays a build of its old content; one that reads it more widely reruns on files the task never touches.",
+      "from": [
+        "inputs-resolution",
+        "brace-inputs"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "fail",
+          "step": 1,
+          "detail": "exited 1, expected success"
         }
       }
     },

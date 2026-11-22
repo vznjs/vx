@@ -281,6 +281,15 @@ export default [
     'g/axb',
     true,
   ),
+  // "escaped dash match"
+  glob(
+    'escaped-dash-in-class',
+    'An input `g/[x\\-]` keys the file named `-`, and not `y`',
+    `An escaped dash in a class is a dash, not a range. ${WHY_MATCH}`,
+    'g/[x\\-]',
+    'g/-',
+    'g/y',
+  ),
   // "test path with dotdot segments"
   glob(
     'dotdot-segment-cleaned',
