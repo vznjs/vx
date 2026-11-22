@@ -228,13 +228,13 @@ it('a negated class output never reaches below a directory', async () => {
       export default {
         tasks: {
           build: {
-            exec: { command: 'printf A > genA.js' },
+            exec: { command: 'printf A > genA.js && printf m > a.map' },
             inputs: { files: ['src/**'] }, outputs: { files: ['**/*.map', 'gen[!.]*'] }, cache: true,
           },
         },
       }
     `,
-    files: { 'src/x.ts': 'x', '.gitignore': 'genA.js\n' },
+    files: { 'src/x.ts': 'x', '.gitignore': 'genA.js\na.map\n' },
   })
   gitIn(root)('add', '-A')
   gitIn(root)('commit', '-q', '-m', 'cls')

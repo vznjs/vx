@@ -51,8 +51,13 @@ async function matchesAny(
     // `dir/**` left empty matched nothing: the clean keeps the root, so an
     // empty one is no sign the command wrote. A literal `dir` is required
     // as itself, and the clean removes it.
-    for await (const rel of taskGlob(tree).scan({ ...SCAN, cwd: base })) {
-      if (rel !== '' && kept(rel)) return true
+    try {
+      for await (const rel of taskGlob(tree).scan({ ...SCAN, cwd: base })) {
+        if (rel !== '' && kept(rel)) return true
+      }
+    } catch {
+      // A directory it cannot list holds something: the save names it.
+      return true
     }
   }
   return false
