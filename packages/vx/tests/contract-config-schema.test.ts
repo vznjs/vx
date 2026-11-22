@@ -16,7 +16,7 @@
 //
 // Regenerate after a deliberate change, format, then review the diff:
 //   VX_UPDATE_CONTRACT=1 bun test tests/contract-config-schema.test.ts
-//   bun src/bin.ts run lint.oxfmt.fix
+//   bun src/bin.ts run format
 
 import { describe, expect, it } from 'bun:test'
 import { readFileSync } from 'node:fs'

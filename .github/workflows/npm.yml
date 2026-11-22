@@ -94,7 +94,7 @@ jobs:
       - name: Check npm can publish with provenance, and stamp the version
         run: bun packages/vx/src/bin.ts run release.npm release.stamp --filter @vzn/vx
       - name: Build the darwin binaries
-        run: bun packages/vx/src/bin.ts run build.bun.darwin-x64 build.bun.darwin-arm64 --filter @vzn/vx --concurrency 2
+        run: bun packages/vx/src/bin.ts run compile.bun.darwin-x64 compile.bun.darwin-arm64 --filter @vzn/vx --concurrency 2
       - name: Prove the darwin binaries launch and report the version
         run: bun packages/vx/src/bin.ts run release.prove.darwin --filter @vzn/vx
       - name: Assemble the darwin platform packages
@@ -159,7 +159,7 @@ jobs:
       # OOM a 7 GB runner. The darwin binaries come from the `darwin` job,
       # which can sign them.
       - name: Build the linux binaries
-        run: bun packages/vx/src/bin.ts run build.bun.linux-x64 build.bun.linux-arm64 --filter @vzn/vx --concurrency 2
+        run: bun packages/vx/src/bin.ts run compile.bun.linux-x64 compile.bun.linux-arm64 --filter @vzn/vx --concurrency 2
       - name: Prove the stamp took
         run: bun packages/vx/src/bin.ts run release.prove.linux --filter @vzn/vx
       - name: Assemble npm tree (linux platform packages, @vzn/vx, the plugins)

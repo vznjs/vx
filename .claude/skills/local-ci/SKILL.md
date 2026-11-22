@@ -51,7 +51,7 @@ bun test ./tests/
 ## If any step fails
 
 - **format**: `bunx oxfmt .` rewrites (or `bun src/bin.ts run
-lint.oxfmt.fix` through vx).
+format` through vx).
 - **lint**: fix by hand; tsgolint findings are real type errors.
 - **test**: usual triage; core e2e fixtures write heredoc-string
   `vx.config.mjs` files.

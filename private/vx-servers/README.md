@@ -23,5 +23,5 @@ each run in flight again. The timings keep their SQLite file in `history`.
 `DTE_PORT`, `CACHE_PORT` and `HISTORY_PORT` move the ports. Put TLS in
 front of each: CI tokens are bearer tokens.
 
-`tests/smoke.sh` (`test.live`) brings the file up, checks each server
+`tests/smoke.sh` (`test.docker`) brings the file up, checks each server
 answers, and stops it.

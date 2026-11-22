@@ -1,5 +1,5 @@
 // The conformance results main's deploy builds the site from
-// (build.live): the committed src/data/conformance.json, with every other
+// (deploy.pages.build): the committed src/data/conformance.json, with every other
 // tool's outcomes and version taken from the newest weekly run
 // (conformance.yml's `conformance-data` artifact), which scores the rivals
 // at npm's latest (2026-11-21). vx's column stays the committed one, the

@@ -19,8 +19,7 @@
     },
     "lint": {
       "dependsOn": [
-        "lint.oxlint",
-        "lint.oxfmt"
+        "lint.*"
       ]
     },
     "lint.oxlint": {
@@ -86,10 +85,10 @@
     },
     "test": {
       "dependsOn": [
-        "test.shard-*"
+        "test.*"
       ]
     },
-    "test.shard-1": {
+    "test.bun.shard-1": {
       "description": "bun test, shard 1 of 4",
       "exec": {
         "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 --shard=1/4 --timings=tests/timings.json",
@@ -147,7 +146,7 @@
       },
       "cache": true
     },
-    "test.shard-2": {
+    "test.bun.shard-2": {
       "description": "bun test, shard 2 of 4",
       "exec": {
         "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 --shard=2/4 --timings=tests/timings.json",
@@ -205,7 +204,7 @@
       },
       "cache": true
     },
-    "test.shard-3": {
+    "test.bun.shard-3": {
       "description": "bun test, shard 3 of 4",
       "exec": {
         "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 --shard=3/4 --timings=tests/timings.json",
@@ -263,7 +262,7 @@
       },
       "cache": true
     },
-    "test.shard-4": {
+    "test.bun.shard-4": {
       "description": "bun test, shard 4 of 4",
       "exec": {
         "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 --shard=4/4 --timings=tests/timings.json",
@@ -321,7 +320,7 @@
       },
       "cache": true
     },
-    "test.live": {
+    "test.bun.live": {
       "description": "bun test, the live Nx files, against the install in .nx-live",
       "exec": {
         "command": "bun test --only-failures --timeout=30000 ./tests/*-live.test.ts",
@@ -356,10 +355,10 @@
       },
       "dependsOn": [
         "install",
-        "nx.install"
+        "test.bun.live.nx"
       ]
     },
-    "nx.install": {
+    "test.bun.live.nx": {
       "description": "bun add nx@24 into .nx-live",
       "exec": {
         "command": "mkdir -p .nx-live && cd .nx-live && { [ -f package.json ] || echo '{\"private\":true}' > package.json; } && bun add nx@24 @nx/js@24 typescript@5 && echo installed",

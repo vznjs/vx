@@ -91,7 +91,7 @@ All vx servers at once, this relay with its state on a volume included:
 - `--no-auth` admits every request. Use it only to try `@vzn/vx-dte`
   locally: it listens on loopback only.
 
-CI builds this image and carries one run through it (`test.live`).
+CI builds this image and carries one run through it (`test.docker`).
 
 Runs live in memory. A restarted relay forgets the runs it was carrying,
 and vx-dte joins each again.

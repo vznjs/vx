@@ -44,7 +44,7 @@ it('holds nothing to a base the job did not time', () => {
 })
 
 it('passes the base commit to the bench and keys the check on it', () => {
-  const task = config.tasks?.['check.perf']
+  const task = config.tasks?.['perf.bench']
   expect(task?.exec?.env?.passThrough).toContain('VX_BENCH_BASE')
   expect(task?.inputs?.env).toContain('VX_BENCH_BASE')
 })
@@ -85,7 +85,7 @@ it('holds cold too, the overhead the site publishes', () => {
 it('times restore and nothing-changed on the site workspace, with no task sleeping', () => {
   expect(SITE_ARMS).toEqual(['restore', 'noop'])
   expect(SIGNIFICANCE).toBeLessThan(0.01)
-  expect(config.tasks?.['check.perf']?.exec?.env?.define?.BENCH_BUILD_MS).toBe('0')
+  expect(config.tasks?.['perf.bench']?.exec?.env?.define?.BENCH_BUILD_MS).toBe('0')
 })
 
 // A PR that changed only the bench timed core against the same core: a

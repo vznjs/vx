@@ -7,8 +7,7 @@
     },
     "lint": {
       "dependsOn": [
-        "lint.oxlint",
-        "lint.oxfmt"
+        "lint.*"
       ]
     },
     "lint.oxlint": {
@@ -75,6 +74,11 @@
       "cache": true
     },
     "test": {
+      "dependsOn": [
+        "test.*"
+      ]
+    },
+    "test.bun": {
       "description": "bun test",
       "exec": {
         "command": "bun test --only-failures --timeout=30000",

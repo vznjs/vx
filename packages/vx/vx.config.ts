@@ -67,7 +67,7 @@ const BUN_VERSION = ['bun --version']
 // hash a file being written, so every `**/*` leaves Bun's temps out too.
 const SOURCES = ['**/*', '!dist/**', '!**/*.bun-build', '!**/.????????????????-????????.tmp/**']
 // The same for the other packages `test.bun.unsafe` reads: what
-// @vzn/vx-docs' `build` and `import` write
+// @vzn/vx-docs' `build` tasks write
 // (private/vx-docs/vx.config.ts), all gitignored.
 const OTHER_OUTPUTS = [
   'packages/vx/dist/**',
@@ -180,7 +180,7 @@ const shards = <T>(name: string, n: number, task: (i: number, n: number) => T): 
   )
 const shardTasks = {
   ...shards('test.bun', SHARD_COUNT, (i, n) => shardTask(i, n, ` --shape ${SHARD_SHAPE}`)),
-  ...shards('test.platform', PLATFORM_SHARD_COUNT, (i, n) => shardTask(i, n, ' --platform')),
+  ...shards('test.bun.platform', PLATFORM_SHARD_COUNT, (i, n) => shardTask(i, n, ' --platform')),
 }
 
 // The unsafe suite (`tests/*.unsafe.test.ts`), dealt the same way: as one
@@ -243,10 +243,35 @@ const unsafeShardTask = (i: number, n: number, flags = '') => ({
 })
 const unsafeShardTasks = {
   ...shards('test.bun.unsafe', UNSAFE_SHARD_COUNT, (i, n) => unsafeShardTask(i, n)),
-  ...shards('test.platform.unsafe', PLATFORM_UNSAFE_SHARD_COUNT, (i, n) =>
+  ...shards('test.bun.platform-unsafe', PLATFORM_UNSAFE_SHARD_COUNT, (i, n) =>
     unsafeShardTask(i, n, ' --platform'),
   ),
 }
+
+const compileTasks = Object.fromEntries(
+  (['linux-x64', 'linux-arm64', 'darwin-x64', 'darwin-arm64'] as const).map((target) => [
+    `compile.bun.${target}`,
+    {
+      description: `compile the standalone binary (${target})`,
+      dependsOn: ['install'],
+      exec: {
+        command: `bun build --compile --no-compile-autoload-dotenv --compile-autoload-package-json --minify --bytecode --format=esm --splitting --target=bun-${target} src/bin.ts --outfile dist/vx-${target}`,
+        sandbox: {
+          allow: {
+            systemInfo: ['vfs.disk-space'],
+            read: ['.'],
+            write: [`dist/vx-${target}`, ...BUN_RUNTIME_WRITES],
+            network: BUN_RUNTIME_NETWORK,
+          },
+          ignore: { write: ['*.bun-build'] },
+        },
+      },
+      inputs: { files: SOURCES, runtime: BUN_VERSION },
+      outputs: { files: [`dist/vx-${target}`] },
+      cache: true,
+    },
+  ]),
+)
 
 // The release steps npm.yml, release.yml and auto-release.yml run
 // (scripts/release.ts, scripts/auto-release.ts). Uncached, since each has a
@@ -383,7 +408,7 @@ const releaseTasks = {
       ],
     ]),
   ),
-  // No sandbox: it drives the Docker daemon, as the servers' test.live do.
+  // No sandbox: it drives the Docker daemon, as the servers' test.docker do.
   'release.images': {
     description:
       'push the server images to ghcr.io/vznjs at VX_RELEASE_VERSION (scripts/release-images.ts)',
@@ -441,22 +466,6 @@ const releaseTasks = {
       },
     },
   },
-  'release.sync': {
-    description: 'give each GitHub release the body of its release post on the site',
-    exec: {
-      command: 'bun scripts/release-sync.ts',
-      env: {
-        passThrough: ['GITHUB_REPOSITORY', 'GH_TOKEN'],
-        secret: ['GH_TOKEN'],
-      },
-      sandbox: {
-        allow: {
-          read: ['.', '../../private/vx-docs/src/content/docs/releases'],
-          network: ['api.github.com'],
-        },
-      },
-    },
-  },
 }
 
 export default defineProject({
@@ -507,18 +516,45 @@ export default defineProject({
     // over that source, and every dependant's `install` folds it: an edit
     // to core re-keys the plugin suites (item 687; as an empty group the
     // key never moved, and a warm local cache replayed a plugin's pass
-    // over a core change). The four release targets are `build.bun`
-    // (release.yml), and `check.binary` proves the one this host can run.
+    // over a core change). The release binaries are `compile`, and
+    // `check.binary` proves the one this host can run.
     build: {
       description:
-        'nothing to build — core is consumed as source; the release binaries are build.bun',
+        'nothing to build — core is consumed as source; the release binaries are compile',
       inputs: { files: ['src/**', 'tsconfig.json'] },
+    },
+
+    deploy: {
+      dependsOn: ['deploy.*'],
+    },
+    // main's: release.yml publishes a release before its post lands.
+    'deploy.releases': {
+      description: 'give each GitHub release the body of its release post on the site',
+      exec: {
+        command: 'bun scripts/release-sync.ts',
+        env: {
+          passThrough: ['GITHUB_REPOSITORY', 'GH_TOKEN'],
+          secret: ['GH_TOKEN'],
+        },
+        sandbox: {
+          allow: {
+            read: ['.', '../../private/vx-docs/src/content/docs/releases'],
+            network: ['api.github.com'],
+          },
+        },
+      },
+    },
+
+    // What only main runs: each launches a release binary on its own
+    // platform's worker or drives this machine's sandbox, uncached.
+    canary: {
+      dependsOn: ['canary.*'],
     },
 
     // macOS CI's checks of this machine's own sandbox, as tasks so they run on
     // a Mac worker: nothing runs on a distributed run's orchestrator. Neither
     // is sandboxed, as each drives the sandbox itself, and neither is cached.
-    'check.sandbox-canary': {
+    'canary.sandbox': {
       description:
         'drive 20 leaky sandboxed runs through run() under this machine’s sandbox; one it did not enforce fails',
       dependsOn: ['install'],
@@ -527,40 +563,30 @@ export default defineProject({
     // A grant bwrap honoured by its mounts failed `@vzn/vx-docs#import` on
     // every Mac for a week (2026-10-17). No cache read: a hit would skip the
     // very tasks this runs. In a worktree: core refuses a nested run here.
-    'check.build-cold': {
+    'canary.build-cold': {
       description:
         'every package’s build under this machine’s sandbox, no cache, as a developer runs it',
       dependsOn: ['install'],
       exec: { command: 'bun scripts/build-cold.ts', platforms: MAC },
     },
 
+    check: {
+      dependsOn: ['check.*'],
+    },
+
     'check.binary': checkBinary(),
-    'check.binary.linux-arm64': checkBinary(['linux-arm64']),
-    'check.binary.darwin-arm64': checkBinary(MAC),
+    'canary.binary.linux-arm64': checkBinary(['linux-arm64']),
+    'canary.binary.darwin-arm64': checkBinary(MAC),
 
     lint: {
-      dependsOn: ['lint.oxlint', 'lint.oxfmt'],
+      dependsOn: ['lint.*'],
     },
 
     test: {
-      dependsOn: ['test.bun'],
-    },
-
-    'test.bun': {
-      description: 'bun test',
-      // The pattern form: the shards are generated above, so a spread cannot
-      // name them for the key check; `*` expands at graph build.
-      dependsOn: ['test.bun.shard-*', 'test.bun.unsafe'],
-    },
-
-    'test.bun.unsafe': {
-      description: 'bun test — the files a sandbox cannot host',
-      dependsOn: ['test.bun.unsafe.shard-*'],
-    },
-
-    'test.platform': {
-      description: 'bun test — only the files whose outcome is the platform’s (the macOS run)',
-      dependsOn: ['test.platform.shard-*', 'test.platform.unsafe.shard-*'],
+      // Every test.<x>: the shards are generated above, so a spread cannot
+      // name them for the key check; `*` expands at graph build. The
+      // platform shards run on a Mac worker and are skipped elsewhere.
+      dependsOn: ['test.*'],
     },
 
     'lint.oxlint': {
@@ -601,7 +627,11 @@ export default defineProject({
       cache: true,
     },
 
-    'lint.oxfmt.fix': {
+    format: {
+      dependsOn: ['format.*'],
+    },
+
+    'format.oxfmt': {
       description: 'oxfmt . — rewrite formatting in place',
       exec: {
         command: 'oxfmt .',
@@ -615,106 +645,10 @@ export default defineProject({
       },
     },
 
-    'build.bun': {
-      description: 'compile standalone binaries for every target',
-      dependsOn: [
-        'build.bun.linux-x64',
-        'build.bun.linux-arm64',
-        'build.bun.darwin-x64',
-        'build.bun.darwin-arm64',
-      ],
+    compile: {
+      description: 'the standalone release binaries, one per target',
+      dependsOn: ['compile.*'],
     },
-
-    'build.bun.linux-x64': {
-      description: 'compile standalone binary (linux x64)',
-      dependsOn: ['install'],
-      exec: {
-        command:
-          'bun build --compile --no-compile-autoload-dotenv --compile-autoload-package-json --minify --bytecode --format=esm --splitting --target=bun-linux-x64 src/bin.ts --outfile dist/vx-linux-x64',
-        sandbox: {
-          allow: {
-            systemInfo: ['vfs.disk-space'],
-            read: ['.'],
-            write: ['dist/vx-linux-x64', ...BUN_RUNTIME_WRITES],
-            network: BUN_RUNTIME_NETWORK,
-          },
-          ignore: {
-            write: ['*.bun-build'],
-          },
-        },
-      },
-      inputs: { files: SOURCES, runtime: BUN_VERSION },
-      outputs: { files: ['dist/vx-linux-x64'] },
-      cache: true,
-    },
-
-    'build.bun.linux-arm64': {
-      description: 'compile standalone binary (linux arm64)',
-      dependsOn: ['install'],
-      exec: {
-        command:
-          'bun build --compile --no-compile-autoload-dotenv --compile-autoload-package-json --minify --bytecode --format=esm --splitting --target=bun-linux-arm64 src/bin.ts --outfile dist/vx-linux-arm64',
-        sandbox: {
-          allow: {
-            systemInfo: ['vfs.disk-space'],
-            read: ['.'],
-            write: ['dist/vx-linux-arm64', ...BUN_RUNTIME_WRITES],
-            network: BUN_RUNTIME_NETWORK,
-          },
-          ignore: {
-            write: ['*.bun-build'],
-          },
-        },
-      },
-      inputs: { files: SOURCES, runtime: BUN_VERSION },
-      outputs: { files: ['dist/vx-linux-arm64'] },
-      cache: true,
-    },
-
-    'build.bun.darwin-x64': {
-      description: 'compile standalone binary (darwin x64)',
-      dependsOn: ['install'],
-      exec: {
-        command:
-          'bun build --compile --no-compile-autoload-dotenv --compile-autoload-package-json --minify --bytecode --format=esm --splitting --target=bun-darwin-x64 src/bin.ts --outfile dist/vx-darwin-x64',
-        sandbox: {
-          allow: {
-            systemInfo: ['vfs.disk-space'],
-            read: ['.'],
-            write: ['dist/vx-darwin-x64', ...BUN_RUNTIME_WRITES],
-            network: BUN_RUNTIME_NETWORK,
-          },
-          ignore: {
-            write: ['*.bun-build'],
-          },
-        },
-      },
-      inputs: { files: SOURCES, runtime: BUN_VERSION },
-      outputs: { files: ['dist/vx-darwin-x64'] },
-      cache: true,
-    },
-
-    'build.bun.darwin-arm64': {
-      description: 'compile standalone binary (darwin arm64)',
-      dependsOn: ['install'],
-      exec: {
-        command:
-          'bun build --compile --no-compile-autoload-dotenv --compile-autoload-package-json --minify --bytecode --format=esm --splitting --target=bun-darwin-arm64 src/bin.ts --outfile dist/vx-darwin-arm64',
-        sandbox: {
-          allow: {
-            systemInfo: ['vfs.disk-space'],
-            read: ['.'],
-            write: ['dist/vx-darwin-arm64', ...BUN_RUNTIME_WRITES],
-            network: BUN_RUNTIME_NETWORK,
-          },
-          ignore: {
-            write: ['*.bun-build'],
-          },
-        },
-      },
-      inputs: { files: SOURCES, runtime: BUN_VERSION },
-      outputs: { files: ['dist/vx-darwin-arm64'] },
-      cache: true,
-    },
+    ...compileTasks,
   },
 })

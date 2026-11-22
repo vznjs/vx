@@ -19,8 +19,7 @@
     },
     "lint": {
       "dependsOn": [
-        "lint.oxlint",
-        "lint.oxfmt"
+        "lint.*"
       ]
     },
     "lint.oxlint": {
@@ -87,20 +86,10 @@
     },
     "test": {
       "dependsOn": [
-        "test.wire",
-        "test.wire-faults",
-        "test.wire-dials",
-        "test.local-e2e",
-        "test.local-e2e-workers",
-        "test.local-e2e-saves",
-        "test.local-e2e-worktrees",
-        "test.units",
-        "test.gitlab",
-        "test.github",
-        "test.rest"
+        "test.*"
       ]
     },
-    "test.wire": {
+    "test.bun.wire": {
       "description": "bun test ./tests/wire.test.ts",
       "exec": {
         "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 ./tests/wire.test.ts",
@@ -144,7 +133,7 @@
       },
       "cache": true
     },
-    "test.wire-faults": {
+    "test.bun.wire-faults": {
       "description": "bun test ./tests/wire-faults.test.ts",
       "exec": {
         "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 ./tests/wire-faults.test.ts",
@@ -188,7 +177,7 @@
       },
       "cache": true
     },
-    "test.wire-dials": {
+    "test.bun.wire-dials": {
       "description": "bun test ./tests/wire-dials.test.ts",
       "exec": {
         "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 ./tests/wire-dials.test.ts",
@@ -232,7 +221,7 @@
       },
       "cache": true
     },
-    "test.local-e2e": {
+    "test.bun.local-e2e": {
       "description": "bun test ./tests/local-e2e.test.ts",
       "exec": {
         "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 ./tests/local-e2e.test.ts",
@@ -276,7 +265,7 @@
       },
       "cache": true
     },
-    "test.local-e2e-workers": {
+    "test.bun.local-e2e-workers": {
       "description": "bun test ./tests/local-e2e-workers.test.ts",
       "exec": {
         "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 ./tests/local-e2e-workers.test.ts",
@@ -320,7 +309,7 @@
       },
       "cache": true
     },
-    "test.local-e2e-saves": {
+    "test.bun.local-e2e-saves": {
       "description": "bun test ./tests/local-e2e-saves.test.ts",
       "exec": {
         "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 ./tests/local-e2e-saves.test.ts",
@@ -364,7 +353,7 @@
       },
       "cache": true
     },
-    "test.local-e2e-worktrees": {
+    "test.bun.local-e2e-worktrees": {
       "description": "bun test ./tests/local-e2e-worktrees.test.ts",
       "exec": {
         "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 ./tests/local-e2e-worktrees.test.ts",
@@ -408,7 +397,7 @@
       },
       "cache": true
     },
-    "test.units": {
+    "test.bun.units": {
       "description": "bun test ./tests/units.test.ts",
       "exec": {
         "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 ./tests/units.test.ts",
@@ -452,7 +441,7 @@
       },
       "cache": true
     },
-    "test.gitlab": {
+    "test.bun.gitlab": {
       "description": "bun test ./tests/gitlab.test.ts",
       "exec": {
         "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 ./tests/gitlab.test.ts",
@@ -496,7 +485,7 @@
       },
       "cache": true
     },
-    "test.github": {
+    "test.bun.github": {
       "description": "bun test ./tests/github.test.ts",
       "exec": {
         "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 ./tests/github.test.ts",
@@ -540,7 +529,7 @@
       },
       "cache": true
     },
-    "test.rest": {
+    "test.bun.rest": {
       "description": "bun test the files no other shard runs",
       "exec": {
         "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(ls tests/*.test.ts | grep -v -e /wire.test.ts -e /wire-faults.test.ts -e /wire-dials.test.ts -e /local-e2e.test.ts -e /local-e2e-workers.test.ts -e /local-e2e-saves.test.ts -e /local-e2e-worktrees.test.ts -e /units.test.ts -e /gitlab.test.ts -e /github.test.ts)",

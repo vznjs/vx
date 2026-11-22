@@ -16,7 +16,7 @@ export default defineProject({
     },
 
     lint: {
-      dependsOn: ['lint.oxlint', 'lint.oxfmt'],
+      dependsOn: ['lint.*'],
     },
 
     'lint.oxlint': {
@@ -48,6 +48,10 @@ export default defineProject({
     },
 
     test: {
+      dependsOn: ['test.*'],
+    },
+
+    'test.bun': {
       description: 'bun test',
       exec: {
         command: 'bun test --only-failures --timeout=30000',

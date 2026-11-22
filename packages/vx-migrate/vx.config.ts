@@ -68,7 +68,7 @@ export default defineProject({
     },
 
     lint: {
-      dependsOn: ['lint.oxlint', 'lint.oxfmt'],
+      dependsOn: ['lint.*'],
     },
 
     'lint.oxlint': {
@@ -103,17 +103,17 @@ export default defineProject({
     // main 2026-10-23): Bun deals the files by tests/timings.json, which
     // `bun test --timings=tests/timings.json --update-timings` refreshes.
     test: {
-      dependsOn: ['test.shard-*'],
+      dependsOn: ['test.*'],
     },
 
     ...Object.fromEntries(
-      Array.from({ length: TEST_SHARDS }, (_, i) => [`test.shard-${i + 1}`, testShard(i + 1)]),
+      Array.from({ length: TEST_SHARDS }, (_, i) => [`test.bun.shard-${i + 1}`, testShard(i + 1)]),
     ),
 
-    // Only the `*-live.test.ts` files, against the Nx `nx.install` puts in
+    // Only the `*-live.test.ts` files, against the Nx `test.bun.live.nx` puts in
     // `.nx-live`; `test` runs every file, these in skip mode. No cache: the
     // install is an unpinned `nx@24` the key cannot see.
-    'test.live': {
+    'test.bun.live': {
       description: 'bun test, the live Nx files, against the install in .nx-live',
       exec: {
         command: 'bun test --only-failures --timeout=30000 ./tests/*-live.test.ts',
@@ -126,16 +126,16 @@ export default defineProject({
         },
         sandbox: SUITE_SANDBOX,
       },
-      dependsOn: ['install', 'nx.install'],
+      dependsOn: ['install', 'test.bun.live.nx'],
     },
 
-    // Real Nx inside the package (gitignored), where test.live's read grant
+    // Real Nx inside the package (gitignored), where test.bun.live's read grant
     // covers it. Persistent, so a distributed run installs it on the agent
-    // that runs test.live; it is ready when it exits. No sandbox: it
+    // that runs test.bun.live; it is ready when it exits. No sandbox: it
     // downloads from the npm registry. Bun's install, not npm's: 21 s
     // against 4 s, on the critical path of every main run (2026-10-24),
     // the live files passing on both.
-    'nx.install': {
+    'test.bun.live.nx': {
       description: 'bun add nx@24 into .nx-live',
       exec: {
         command:

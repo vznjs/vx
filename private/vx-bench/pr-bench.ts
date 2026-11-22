@@ -7,7 +7,7 @@
 //
 // Both workspaces are the site's own (site-workspace.ts), every runner
 // configured as the site configures it, with the tasks' sleeps at
-// BENCH_BUILD_MS (check.perf sets 0). Restore and nothing-changed run on the
+// BENCH_BUILD_MS (perf.bench sets 0). Restore and nothing-changed run on the
 // whole of it (1,601 packages, 9,603 tasks): on a 100-package workspace a
 // per-task cost the site pays 9,603 times read as noise, and #4892 added
 // 17-35 ms to every site run and passed. Cold runs on its first two levels

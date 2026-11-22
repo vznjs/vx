@@ -22,6 +22,10 @@ export default defineProject({
       dependsOn: ['^build'],
     },
 
+    perf: {
+      dependsOn: ['perf.bench'],
+    },
+
     // The per-PR benchmarks, one task so they never share a machine with
     // each other: on #4323's CI the two ran side by side beside two test
     // shards and the Turbo ratio failed a commit its rerun passed. In no
@@ -31,7 +35,7 @@ export default defineProject({
     // commit's vx and Turborepo, restore and nothing-changed on the site's
     // workspace, from the pairs no other process disturbed (quiet.ts). Core's source
     // reaches the key through install's ^build.
-    'check.perf': {
+    'perf.bench': {
       description:
         'perf-guard.ts then pr-bench.ts: hot-path counts, and vx against the base commit and every rival',
       dependsOn: ['install'],
@@ -150,7 +154,7 @@ export default defineProject({
       },
     },
 
-    'site.numbers': {
+    'bench.site': {
       description: 'every runner of the head-to-head, the rows the site reads',
       // Named, not `bench.*`: that took bench.real, and the Bench job ran
       // the weekly real-repo clones before the site's rows.
@@ -163,7 +167,7 @@ export default defineProject({
     },
 
     lint: {
-      dependsOn: ['lint.oxlint', 'lint.oxfmt'],
+      dependsOn: ['lint.*'],
     },
 
     'lint.oxlint': {
@@ -200,6 +204,10 @@ export default defineProject({
     },
 
     test: {
+      dependsOn: ['test.*'],
+    },
+
+    'test.bun': {
       description: 'bun test',
       exec: {
         command: 'bun test --only-failures --timeout=30000',

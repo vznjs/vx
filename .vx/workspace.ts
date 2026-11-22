@@ -12,21 +12,11 @@ const cacheUrl = process.env['VX_CACHE_URL'] || 'https://vx-cache.exelord.worker
 const repo = { issuer: 'https://token.actions.githubusercontent.com', repository: 'vznjs/vx' }
 // A run over workers: dte() reads the relay when the run starts.
 const distributed = { VX_DTE_RELAY: 'https://vx-dte.exelord.workers.dev' }
-// Every change's checks. The platform's own tests and the arm64 builds run
-// on their workers, and on a Linux machine with no such worker are skipped
-// with a warning (a Mac-only test merged green and turned main red, #4293).
-const checks = [
-  'lint',
-  'lint.oxlint',
-  'lint.oxfmt',
-  'test',
-  'test.live',
-  'check.binary',
-  'test.platform',
-  'build.bun.linux-arm64',
-  'build.bun.darwin-arm64',
-  '@vzn/vx-docs#build',
-]
+// Every change's checks: groups only. A task of another platform (the Mac
+// test shards) runs on its worker.
+const checks = ['lint', 'test', 'check', 'build', 'compile']
+// pr, queue and main distribute over the relay their env names.
+const ci = { profile: 'profile.json', env: distributed }
 
 export default defineWorkspace({
   plugins: [
@@ -69,38 +59,17 @@ export default defineWorkspace({
       adapter: githubWorkers({ env: { VX_CACHE_URL: cacheUrl } }),
     }),
   ],
-  // What each ci.yml job runs. pr, queue and main distribute: their env
-  // names the relay (a PR's or main's run points it at the relay's
-  // Preview or deploy, which wins). Perf times the machine, so it names
-  // none and runs here.
   // Every task's time limit (M, 2026-11-22): a hang fails in 2 minutes
   // instead of holding the run to the job's 25. A task whose work is longer
-  // than that by nature (the benches, check.perf, conformance) says so itself.
+  // than that by nature (the benches, perf, conformance) says so itself.
   run: { timeout: '2m' },
+  // What each ci.yml job runs. main adds the main-only proofs and the
+  // deploys; perf times the machine, so it names no relay and runs here.
   pipelines: {
-    // A PR runs what its diff affects, inputs outside a project included
-    // (2026-10-23).
-    pr: { tasks: checks, affected: true, profile: 'profile.json', env: distributed },
-    // A merge queue, or a dispatch (whose cold run sets VX_CACHE_POLICY).
-    queue: { tasks: checks, profile: 'profile.json', env: distributed },
-    // main adds every release binary, each proven to launch on its
-    // platform, the sandbox canary, a cold build, the release notes and
-    // the site's deploy, with the newest numbers bench.yml measured.
-    main: {
-      tasks: [
-        ...checks,
-        'build.bun',
-        'check.binary.linux-arm64',
-        'check.binary.darwin-arm64',
-        'check.sandbox-canary',
-        'check.build-cold',
-        'release.sync',
-        'deploy.pages',
-      ],
-      profile: 'profile.json',
-      env: distributed,
-    },
-    'perf-pr': { tasks: ['check.perf'], affected: true },
-    perf: { tasks: ['check.perf'] },
+    pr: { tasks: checks, affected: true, ...ci },
+    queue: { tasks: checks, ...ci },
+    main: { tasks: [...checks, 'canary', 'deploy'], ...ci },
+    'perf-pr': { tasks: ['perf'], affected: true },
+    perf: { tasks: ['perf'] },
   },
 })

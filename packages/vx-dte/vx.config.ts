@@ -65,7 +65,7 @@ export default defineProject({
     },
 
     lint: {
-      dependsOn: ['lint.oxlint', 'lint.oxfmt'],
+      dependsOn: ['lint.*'],
     },
 
     'lint.oxlint': {
@@ -104,30 +104,9 @@ export default defineProject({
     },
 
     test: {
-      dependsOn: [
-        'test.wire',
-        'test.wire-faults',
-        'test.wire-dials',
-        'test.local-e2e',
-        'test.local-e2e-workers',
-        'test.local-e2e-saves',
-        'test.local-e2e-worktrees',
-        'test.units',
-        'test.gitlab',
-        'test.github',
-        'test.rest',
-      ],
+      dependsOn: ['test.*'],
     },
-    'test.wire': testTask('./tests/wire.test.ts'),
-    'test.wire-faults': testTask('./tests/wire-faults.test.ts'),
-    'test.wire-dials': testTask('./tests/wire-dials.test.ts'),
-    'test.local-e2e': testTask('./tests/local-e2e.test.ts'),
-    'test.local-e2e-workers': testTask('./tests/local-e2e-workers.test.ts'),
-    'test.local-e2e-saves': testTask('./tests/local-e2e-saves.test.ts'),
-    'test.local-e2e-worktrees': testTask('./tests/local-e2e-worktrees.test.ts'),
-    'test.units': testTask('./tests/units.test.ts'),
-    'test.gitlab': testTask('./tests/gitlab.test.ts'),
-    'test.github': testTask('./tests/github.test.ts'),
-    'test.rest': testTask(rest),
+    ...Object.fromEntries(HEAVY.map((f) => [`test.bun.${f}`, testTask(`./tests/${f}.test.ts`)])),
+    'test.bun.rest': testTask(rest),
   },
 })

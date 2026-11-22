@@ -400,12 +400,12 @@ task's result, not a shortcut.
 ## Tests
 
 `bun test` runs the unit suite anywhere. The round-trip suites need real
-servers, which `vx run test.live --filter @vzn/vx-reapi` brings with Docker:
-`services.cache` (bazel-remote on `:19092`) and `services.exec` (NativeLink on
+servers, which `vx run @vzn/vx-reapi#test` brings with Docker:
+`test.bun.live.cache` (bazel-remote on `:19092`) and `test.bun.live.exec` (NativeLink on
 `:51051`) run in the foreground until the run ends. CI runs it in the Linux
-DTE run, where they start on the agent that runs `test.live`.
+DTE run, where they start on the agent that runs `test.bun.live`.
 
-Without an endpoint those tests skip; `test.live` sets `VX_REQUIRE_REAPI=1` and
+Without an endpoint those tests skip; `test.bun.live` sets `VX_REQUIRE_REAPI=1` and
 `VX_REQUIRE_REAPI_EXEC=1`, which turn an absent endpoint into a failure so the
 suites cannot silently vanish.
 

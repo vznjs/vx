@@ -7,7 +7,7 @@ name: Conformance
 # when it ends, so the sweep's new cases count; the cron is the fallback
 # should the sweep not. It uploads the results as the `conformance-data`
 # artifact; main's next deploy shows the rivals' outcomes from it
-# (@vzn/vx-docs#build.live). A case vx fails turns the run red. Each job
+# (@vzn/vx-docs#deploy.pages.build). A case vx fails turns the run red. Each job
 # runs one tool on its share of the cases; `merge` joins them
 # (@vzn/vx-conformance#conformance.merge).
 

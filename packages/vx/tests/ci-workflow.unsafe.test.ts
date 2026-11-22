@@ -79,10 +79,17 @@ describe('ci.yml', () => {
     expect(perf.steps?.at(-1)?.run).toBe(
       "bun packages/vx/src/bin.ts pipeline ${{ github.event_name == 'pull_request' && 'perf-pr' || 'perf' }}",
     )
-    expect(pipelines['perf-pr']).toEqual({ tasks: ['check.perf'], affected: true })
-    expect(pipelines['perf']).toEqual({ tasks: ['check.perf'] })
-    for (const name of ['pr', 'queue', 'main'])
-      expect(pipelines[name]!.tasks).not.toContain('check.perf')
+    expect(pipelines['perf-pr']).toEqual({ tasks: ['perf'], affected: true })
+    expect(pipelines['perf']).toEqual({ tasks: ['perf'] })
+    for (const name of ['pr', 'queue', 'main']) expect(pipelines[name]!.tasks).not.toContain('perf')
+  })
+
+  // Our workspace is the example (M, 2026-11-22): a pipeline names groups
+  // only (`test`), never a `{group}.{technology}` task, which its group
+  // runs.
+  it('names only groups in every pipeline', () => {
+    for (const p of Object.values(pipelines))
+      expect(p.tasks.filter((t) => t.includes('.') || t.includes('#'))).toEqual([])
   })
 
   // A merged PR's run held its workers' runners until it ended, and the next
@@ -149,12 +156,12 @@ describe('ci.yml', () => {
     const steps = doc.jobs['linux']!.steps!
     expect(steps.filter((s) => /sandbox-canary\.ts|--cache-policy/.test(s.run ?? ''))).toEqual([])
     for (const name of ['pr', 'queue', 'main'])
-      expect(pipelines[name]!.tasks).toEqual(
-        expect.arrayContaining(['test.platform', 'check.binary']),
-      )
-    expect(pipelines['main']!.tasks).toEqual(
-      expect.arrayContaining(['check.sandbox-canary', 'check.build-cold', 'build.bun']),
-    )
+      expect(pipelines[name]!.tasks).toEqual(expect.arrayContaining(['test', 'check', 'compile']))
+    expect(pipelines['main']!.tasks).toContain('canary')
+    const core = readFileSync(path.join(dir, '../../packages/vx/vx.config.ts'), 'utf8')
+    expect(core).toContain("...shards('test.bun.platform', PLATFORM_SHARD_COUNT")
+    for (const task of ['canary.sandbox', 'canary.build-cold', 'canary.binary.darwin-arm64'])
+      expect(core).toContain(`'${task}':`)
   })
 
   // Every sandboxed task runs on a worker, which enforces it there.
@@ -177,10 +184,10 @@ describe('ci.yml', () => {
     expect(names.indexOf('Hand the Pages token to the run')).toBeLessThan(
       names.indexOf('vx pipeline'),
     )
-    expect(pipelines['main']!.tasks).toContain('deploy.pages')
+    expect(pipelines['main']!.tasks).toContain('deploy')
     const docs = readFileSync(path.join(dir, '../../private/vx-docs/vx.config.ts'), 'utf8')
     expect(docs).toContain('${ASTRO_BUILD} --outDir dist-live`')
-    expect(docs).toContain("dependsOn: ['lint', 'build', 'test', 'build.live']")
+    expect(docs).toContain("dependsOn: ['lint', 'build', 'test', 'deploy.pages.build']")
     expect(docs).toContain("command: 'bun scripts/deploy-pages.ts dist-live'")
     expect(run.steps!.some((s) => /deploy-pages|upload-pages-artifact/.test(s.uses ?? ''))).toBe(
       false,
@@ -255,8 +262,8 @@ describe('ci.yml', () => {
   // release-notes.yml was a workflow of its own for one task.
   it('syncs the release notes as a task of the Linux run, on a push', () => {
     const job = doc.jobs['linux']!
-    expect(pipelines['main']!.tasks).toContain('release.sync')
-    expect(pipelines['queue']!.tasks).not.toContain('release.sync')
+    expect(pipelines['main']!.tasks).toContain('deploy')
+    expect(pipelines['queue']!.tasks).not.toContain('deploy')
     expect([job.env?.['GH_TOKEN'], job.permissions?.['contents']]).toEqual([
       '${{ github.token }}',
       'write',
@@ -297,8 +304,8 @@ describe('bench.yml', () => {
   it('measures the site benchmark off the DTE run, one runner at a time', () => {
     expect(JSON.stringify(bench)).not.toContain('VX_DTE')
     expect(bench['runs-on']).toBe("${{ vars.BENCH_RUNNER || 'ubuntu-latest' }}")
-    expect(bench.steps?.find((s) => s.name === 'vx run bench.data')?.run).toBe(
-      'bun packages/vx/src/bin.ts run @vzn/vx-docs#bench.data --concurrency 1 --force',
+    expect(bench.steps?.find((s) => s.name === 'vx run bench')?.run).toBe(
+      'bun packages/vx/src/bin.ts run @vzn/vx-docs#bench --concurrency 1 --force',
     )
     expect(bench.steps?.at(-1)?.with).toEqual({
       name: 'bench-data',

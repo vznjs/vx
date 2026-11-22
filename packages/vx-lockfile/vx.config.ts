@@ -108,7 +108,7 @@ export default defineProject({
     },
 
     lint: {
-      dependsOn: ['lint.oxlint', 'lint.oxfmt'],
+      dependsOn: ['lint.*'],
     },
 
     'lint.oxlint': {
@@ -140,9 +140,11 @@ export default defineProject({
     },
 
     test: {
-      dependsOn: ['test.shard-*'],
+      dependsOn: ['test.*'],
     },
 
-    ...Object.fromEntries(SHARDS.map((files, k) => [`test.shard-${k + 1}`, shard(k + 1, files)])),
+    ...Object.fromEntries(
+      SHARDS.map((files, k) => [`test.bun.shard-${k + 1}`, shard(k + 1, files)]),
+    ),
   },
 })
