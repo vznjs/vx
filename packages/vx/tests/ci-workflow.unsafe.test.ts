@@ -133,7 +133,7 @@ describe('ci.yml', () => {
     expect(cache).toBeLessThan(steps.indexOf(run))
     expect(steps[cache]?.id).toBe('cache')
     expect(run.env).toEqual({
-      VX_DTE_RELAY: '${{ steps.relay.outputs.url || env.VX_DTE_RELAY }}',
+      VX_DTE_RELAY: '${{ steps.relay.outputs.url }}',
       VX_CACHE_URL: '${{ steps.cache.outputs.url || env.VX_CACHE_URL }}',
     })
   })
@@ -205,7 +205,11 @@ describe('ci.yml', () => {
       'bun packages/vx/src/bin.ts lock --check',
       run,
     ])
-    expect(job.env?.['VX_DTE_RELAY']).toMatch(/^https:\/\//)
+    // The pipelines name the relay (M, 2026-11-22: DTE through a pipeline's env).
+    expect(job.env?.['VX_DTE_RELAY']).toBeUndefined()
+    for (const name of ['pr', 'queue', 'main'])
+      expect(pipelines[name]!.env?.['VX_DTE_RELAY']).toMatch(/^https:\/\//)
+    for (const name of ['perf-pr', 'perf']) expect(pipelines[name]!.env).toBeUndefined()
   })
 
   // The remote cache serves every hit (2026-10-23: "we dont need

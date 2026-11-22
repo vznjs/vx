@@ -140,7 +140,7 @@ export interface DteOptions {
   readonly workers?: Readonly<Record<string, WorkerType>>
   /** Starts workers; absent, the run uses the workers that join it, which needs `relay`. */
   readonly adapter?: DteAdapter
-  /** The relay's URL; absent, the adapter's own. */
+  /** The relay's URL; absent, the adapter's own. `VX_DTE_RELAY`, read when the run starts, beats it. */
   readonly relay?: string
   /** The bearer token for the relay (default `VX_DTE_TOKEN`, else on GitHub Actions an OIDC token for the relay's URL). */
   readonly token?: () => string | undefined | Promise<string | undefined>
@@ -314,7 +314,7 @@ export function dte(options: DteOptions = {}) {
   const sent = new Map<string, number>()
   const runOf = (): string | undefined =>
     givenRun() ??
-    (options.relay === undefined
+    (relayOf() === undefined
       ? undefined
       : (made ??=
           adapter?.keyless === true && onGitHub() ? crypto.randomUUID() : adapter?.runId?.()))
@@ -331,16 +331,20 @@ export function dte(options: DteOptions = {}) {
     throw new UserError('dte(): with no adapter, set relay: the workers that join it run the tasks')
   }
   // With no scheme the run failed in the executor as a bare "Invalid URL".
-  if (options.relay !== undefined && !/^https?:\/\//.test(options.relay)) {
-    throw new UserError(
-      `dte() option "relay" must be an http(s) URL, got ${JSON.stringify(shown(options.relay))}`,
-    )
+  const checked = (relay: string, named: string): string => {
+    if (!/^https?:\/\//.test(relay))
+      throw new UserError(`${named} must be an http(s) URL, got ${JSON.stringify(shown(relay))}`)
+    const unrouted = unroutable(relay)
+    if (unrouted !== undefined)
+      throw new UserError(`${named} ${unrouted}, got ${JSON.stringify(shown(relay))}`)
+    return relay
   }
-  const unrouted = options.relay === undefined ? undefined : unroutable(options.relay)
-  if (unrouted !== undefined) {
-    throw new UserError(
-      `dte() option "relay" ${unrouted}, got ${JSON.stringify(shown(options.relay!))}`,
-    )
+  if (options.relay !== undefined) checked(options.relay, 'dte() option "relay"')
+  // Read when the run starts, so a pipeline's `env` (set after
+  // .vx/workspace.ts loaded) switches distribution on.
+  const relayOf = (): string | undefined => {
+    const given = process.env['VX_DTE_RELAY']
+    return given ? checked(given, 'VX_DTE_RELAY') : options.relay
   }
   // On GitHub Actions with none given, one for the relay's URL.
   const token = async (relay: string): Promise<string | undefined> =>
@@ -690,7 +694,7 @@ export function dte(options: DteOptions = {}) {
       await closing
       const run = runOf()
       if (run === undefined) return undefined
-      const relay = options.relay ?? (await adapter?.relay?.())
+      const relay = relayOf() ?? (await adapter?.relay?.())
       if (relay === undefined)
         throw new UserError('dte(): no relay: set relay, or use an adapter that has one')
       const [

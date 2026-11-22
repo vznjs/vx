@@ -5,12 +5,13 @@ import { dte, github as githubWorkers } from '@vzn/vx-dte'
 import { vxHistory } from '@vzn/vx-history'
 import { bun } from '@vzn/vx-lockfile'
 
-const relay = process.env['VX_DTE_RELAY']
 // A PR that changes the cache server runs on its Preview (ci.yml), and
 // hands it to the workers.
 const cacheUrl = process.env['VX_CACHE_URL'] || 'https://vx-cache.exelord.workers.dev'
 // What our servers' ALLOW names: every request names it, hashed.
 const repo = { issuer: 'https://token.actions.githubusercontent.com', repository: 'vznjs/vx' }
+// A run over workers: dte() reads the relay when the run starts.
+const distributed = { VX_DTE_RELAY: 'https://vx-dte.exelord.workers.dev' }
 // Every change's checks. The platform's own tests and the arm64 builds run
 // on their workers, and on a Linux machine with no such worker are skipped
 // with a warning (a Mac-only test merged green and turned main red, #4293).
@@ -37,9 +38,9 @@ export default defineWorkspace({
     vxCache({ url: cacheUrl, ...repo }),
     vxHistory({ url: 'https://vx-history.exelord.workers.dev', ...repo }),
     // CI's one run over workers (ci.yml `linux`, vx-worker.yml);
-    // a run with no VX_DTE_RUN, as on a laptop, is not distributed.
+    // a run whose pipeline names no relay (VX_DTE_RELAY), as on a laptop,
+    // is not distributed.
     dte({
-      ...(relay ? { relay } : {}),
       // One run, every platform (2026-10-23): ubuntu-latest on a
       // public repo for the Linux work; ubuntu-24.04-arm for the arm64
       // binary; macos-latest, whose account cap is 5, for the Mac tasks. A
@@ -68,14 +69,16 @@ export default defineWorkspace({
       adapter: githubWorkers({ env: { VX_CACHE_URL: cacheUrl } }),
     }),
   ],
-  // What each ci.yml job runs. The run job distributes (its VX_DTE_RELAY);
-  // Perf times the machine, so its job sets none and runs here.
+  // What each ci.yml job runs. pr, queue and main distribute: their env
+  // names the relay (a PR's or main's run points it at the relay's
+  // Preview or deploy, which wins). Perf times the machine, so it names
+  // none and runs here.
   pipelines: {
     // A PR runs what its diff affects, inputs outside a project included
     // (2026-10-23).
-    pr: { tasks: checks, affected: true, profile: 'profile.json' },
+    pr: { tasks: checks, affected: true, profile: 'profile.json', env: distributed },
     // A merge queue, or a dispatch (whose cold run sets VX_CACHE_POLICY).
-    queue: { tasks: checks, profile: 'profile.json' },
+    queue: { tasks: checks, profile: 'profile.json', env: distributed },
     // main adds every release binary, each proven to launch on its
     // platform, the sandbox canary, a cold build, the release notes and
     // the site's deploy, with the newest numbers bench.yml measured.
@@ -91,6 +94,7 @@ export default defineWorkspace({
         'deploy.pages',
       ],
       profile: 'profile.json',
+      env: distributed,
     },
     'perf-pr': { tasks: ['check.perf'], affected: true },
     perf: { tasks: ['check.perf'] },

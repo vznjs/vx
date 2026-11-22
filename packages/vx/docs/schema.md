@@ -2739,7 +2739,7 @@ export default defineWorkspace({
       filter: ['./apps/*'],
       affected: false,
       excludeDependencies: ['gen'],
-      env: { DEPLOY_REPORT: '1' },
+      env: { VX_DTE_RELAY: 'https://relay.example.com' },
       concurrency: '50%',
       schedule: 'critical-path',
       continue: 'always',
