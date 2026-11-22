@@ -520,7 +520,7 @@ export async function parseStraceViolations(
   widened: ReadonlyMap<string, ReadonlySet<string>> = new Map(),
 ): Promise<SandboxViolation[]> {
   const text = typeof log === 'string' ? await Bun.file(log).text() : log.text
-  if (process.env['VX_TMP_DEBUG'] === '1') console.error('DBGTEXT', text.length, JSON.stringify(text.split('\n').filter((l) => l.includes('s.json')).slice(0, 6)))
+  if (process.env['VX_TMP_DEBUG'] === '1') console.error('DBGTEXT', text.length, JSON.stringify(text.length < 3000 ? text : ''))
   if (text.length === 0) return []
 
   // Treat every baseAllow + sandbox.allowRead + allowWrite path as "this
