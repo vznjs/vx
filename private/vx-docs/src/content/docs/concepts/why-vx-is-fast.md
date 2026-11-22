@@ -3,137 +3,121 @@ title: Why vx is fast
 description: The engineering behind vx's speed and its correctness guarantees — git-OID hashing, bitset scheduling, strict output ownership, and a daemonless design — with measured numbers.
 ---
 
-vx's speed isn't a microbenchmark trick; it comes from a handful of
-structural decisions. This page explains them. The exhaustive,
-source-cited catalog lives in [Optimizations](../../optimizations/) and
-the raw numbers in [Benchmarks](../../benchmarks/).
+vx is fast because of a few design choices, listed here. Every choice
+with its source is in [Optimizations](../../optimizations/), and the raw
+numbers are in [Benchmarks](../../benchmarks/).
 
 ## The numbers
 
-These are reproducible on your own machine, not marketing figures:
+Each number below comes from a command you can run yourself.
 
-- **Runner overhead**, the number to read first: the time a runner adds
-  on top of the ideal run. On the synthetic %bench.tasks%-task workspace, with
-  nothing changed, vx adds %bench.vx.warm%, Turborepo %bench.turbo.warm%,
-  Vite Task %bench.vt.warm% and Nx %bench.nx.warm%. On a
-  cold build over its %bench.ideal.cold% ideal schedule, vx adds %bench.vx.cold%,
-  Turborepo %bench.turbo.cold%, Nx %bench.nx.cold% and Vite Task %bench.vt.cold%.
-  The workload: %bench.projects% projects in %bench.levels% dependency levels;
-  build %bench.task.build%, test and typecheck %bench.task.test%, lint
-  %bench.task.lint%, publish %bench.task.publish%.
-  %bench.provenance%
+- **Runner overhead** is the time a runner adds on top of the ideal run.
+  It is the number to read first.
 
-- **vx alone** — `bun private/vx-bench/run.ts [projects]` measures vx across
-  fresh / warm-no-restore / warm-restore, from a `vx lock` snapshot,
-  as every run reads one. A 100-project workspace
-  replayed fully-cached in **74 ms** whole-process (1,000 projects in
-  172 ms) on one macOS arm64 machine (2026-09-02); a 4-core Linux
-  container reads 271 ms at 1,000 projects. Its restore row deletes the outputs first and extracts
-  every artifact, so it costs more than the untouched tree; the
-  current floors are in [Benchmarks](../../benchmarks/).
-- **Head-to-head vs Turborepo, Nx and Vite Task** — `bun private/vx-bench/compare.ts` scaffolds
-  one repo (%bench.projects% projects, %bench.levels% dependency levels, %bench.tasks% tasks) and runs every runner cold,
-  with nothing changed and with outputs restored.
-  The site's figures are its latest run, on
-  [Benchmarks](../../benchmarks/). Run it yourself — every number here is
-  a command away.
+  On the synthetic %bench.tasks%-task workspace, with nothing changed: vx
+  adds %bench.vx.warm%, Turborepo %bench.turbo.warm%, Vite Task
+  %bench.vt.warm% and Nx %bench.nx.warm%.
+
+  On a cold build over its %bench.ideal.cold% ideal schedule: vx adds
+  %bench.vx.cold%, Turborepo %bench.turbo.cold%, Nx %bench.nx.cold% and
+  Vite Task %bench.vt.cold%.
+
+  The workload: %bench.projects% projects in %bench.levels% dependency
+  levels.
+
+  Build %bench.task.build%, test and typecheck %bench.task.test%, lint
+  %bench.task.lint%, publish %bench.task.publish%. %bench.provenance%
+
+- **vx alone.** A 100-project workspace replays fully cached in
+  **74 ms** for the whole process, and 1,000 projects in 172 ms. That is
+  one macOS arm64 machine on 2026-09-02.
+
+  A 4-core Linux container reads 271 ms at 1,000 projects. Its restore
+  row deletes the outputs first and extracts every artifact, so it costs
+  more than an untouched tree.
+
+- **Head to head.** One generated workspace (%bench.projects% projects,
+  %bench.tasks% tasks) runs under each tool: cold, with nothing changed,
+  and with outputs restored. The latest run is on
+  [Benchmarks](../../benchmarks/).
 
 ## What others don't have
 
-These are correctness *and* speed wins — they make the cache both safer
-and faster:
+Each of these makes the cache both safer and faster.
 
-1. **Sparse `^task` bridging.** `^build` walks *through* dependency
-   packages that don't declare the task to the nearest one that does, so
-   sparse task coverage doesn't need no-op filler tasks, and the graph
-   carries no placeholder nodes for the packages walked through.
-2. **Resolved-config hashing.** vx hashes the evaluated `vx.config.ts`
-   object, so imports, presets, and computed values participate in the
-   key. Static-JSON config can't see them.
-3. **Strict output ownership.** Declared outputs are wiped before exec,
-   and a restore removes what its entry does not hold, so the tree ends
-   as the cached snapshot, with no stale files. Two tasks whose outputs overlap are refused by default
-   (`rules.exclusiveOutputs`); with that rule off, a task that adds files
-   to an upstream task's outputs cleans nothing before exec and only the
-   files it recorded before a restore. Turborepo/Nx
-   restore additively.
-4. **Daemonless.** No background process, no staleness window, no socket
-   to corrupt, and the head-to-head benchmark shows what that costs on
-   a cached run.
+1. **Sparse `^task` bridging.** `^build` walks through packages that
+   don't declare `build` to the nearest one that does. You write no
+   filler tasks, and the graph holds no placeholder nodes.
+2. **Resolved-config hashing.** The key sees the evaluated
+   `vx.config.ts` object. Imports, presets and computed values all count.
+3. **Strict output ownership.** vx wipes declared outputs before a task
+   runs. A restore removes files the entry does not hold, so no stale
+   file survives.
+
+   Overlapping outputs are refused (`rules.exclusiveOutputs`). Turborepo
+   and Nx restore on top of what is there.
+4. **No daemon.** No background process, no stale state, no socket to
+   break. The head-to-head shows what that costs on a cached run.
 
 ## The mechanics under the hood
 
-- **Hashes come straight from git's index.** One `git ls-files -s` spawn
-  yields the tracked file list *and* every clean file's blob OID; a
-  concurrent `git status` prunes anything that diverges and lists untracked
-  files. Clean-tree key derivation
-  costs zero source-file reads, zero stats, zero database lookups. Dirty files get the
-  identical blob OID computed in-process, so a key never flips across a
-  commit boundary — a class of spurious miss the others accept.
-- **Bitset graph algorithms.** Scheduler priority and the package graph
-  use packed-bitset closures with popcount instead of set-union DFS. On a
-  3,270-task graph this turned an 8.5 s priority computation into
-  single-digit milliseconds.
-- **A scheduler tick that re-scans nothing.** Ready tasks come off an
-  exact most-blocked-first binary heap; a completion decrements its
-  direct dependents' counters and pushes the ones that reach zero, so
-  the run costs one pass over the edges plus an `O(log N)` heap
-  operation per task, never a re-scan of the graph per completion.
-- **Stat-check restore skips.** A warm-on-warm restore is N stats with
-  zero writes and zero decompression — fingerprints in SQLite tell vx the
-  tree is already current.
-- **One artifact format end to end.** Local and remote move the same
-  `tar.zst` bytes — metadata rides SQLite locally and the remote's own
-  record on the wire, so nothing is repacked at the boundary.
-- **In-process tar**, atomic publish, single-transaction SQL, and
-  collision-hardened xxh3 key derivation round it out.
+- **Hashes come from git's index.** One `git ls-files -s` lists the
+  tracked files and every clean file's blob ID. A `git status` beside it
+  finds edited and untracked files.
 
-## Things vx deliberately *didn't* build
+  Clean-tree key derivation costs zero source-file reads, stats or
+  database lookups. An edited file gets the same blob ID, computed in
+  process, so a commit never changes a key.
+- **Bitset graph algorithms.** Scheduler priority uses packed bitsets
+  instead of set unions. On a 3,270-task graph, 8.5 s became a few
+  milliseconds.
+- **A scheduler that never re-scans.** Ready tasks come off a heap,
+  most-blocked first. A finished task updates only its direct dependents.
+- **Restores that check first.** A restore over outputs already in place
+  is one stat per file: no writes, no decompression.
+- **One artifact format.** The local and remote caches move the same
+  `tar.zst` bytes, so nothing is repacked between them.
+- **Small things add up:** in-process tar, atomic writes, one SQL
+  transaction per save, hardened xxh3 keys.
 
-Speed by subtraction is still speed:
+## What vx leaves out on purpose
 
-- **No daemon / project-graph process** — the cold numbers say it isn't
-  needed.
-- **No config evaluation in a run** — configs are programs, and a run
-  evaluates none: it reads the resolved objects from `.vx/projects.lock`.
-  Only `vx lock` evaluates them.
-- **No filesystem-tracing auto-inputs.** Not a gap — a position. A
-  traced input set describes what the task read *that time*, on that
-  machine, which is not the same as what it depends on; and it cannot be
-  known before the task runs, which is exactly when the key is needed.
-  vx asks you to declare inputs and gives you a boundary to check them
-  against: inside the workspace, a task with `sandbox` reads only what
-  `allow.read` grants, plus `node_modules` and the linked packages it
-  depends on. Reads outside the workspace stay open, except the
-  credential stores under home (`~/.ssh`, `~/.aws`, …), and `inputs`
-  grants nothing, so the sandbox checks the input list only where
-  `allow.read` mirrors it. Guessing is replaced by a boundary.
+- **No daemon.** The cold numbers show it isn't needed.
+- **No config evaluation in a run.** A run reads the resolved configs from
+  `.vx/projects.lock`. Only `vx lock` evaluates them.
+- **No traced inputs.** A trace shows what a task read once, on one
+  machine, and only after it ran. The key is needed before.
+
+  You declare inputs instead. A task with `exec.sandbox` reads only what
+  `allow.read` grants inside the workspace, so the sandbox checks your
+  list ([Sandboxing](../../docs/sandboxing/)).
 
 ## See where the time goes
 
-`VX_DEBUG_TIMING=1` prints each stage of a run on stderr. A cached one-task
-run on a 4-core Linux container:
+`VX_DEBUG_TIMING=1` prints each stage of a run on stderr. A cached
+one-task run on a 4-core Linux container:
 
-```text
-$ VX_DEBUG_TIMING=1 vx run @demo/app#build
-[vx timing]  stage                    own   cumulative
-             startup                 58.9ms      58.9ms
-             workspace config         4.7ms      63.6ms
-             discover projects        4.6ms      68.2ms
-             load configs             5.7ms      81.9ms
-             build graph              3.3ms      85.2ms
-             git enumeration          8.8ms      93.9ms
-             classify + probe        15.7ms     109.8ms
-             run graph                8.5ms     118.3ms
-             close                    3.9ms     125.7ms
+```ansi
+$ VX_DEBUG_TIMING=1 vx run app#build
+[1m[38;2;6;182;212m[vx timing][0m[2m  stage                    own   cumulative[0m
+[2m             startup                 48.7ms      48.7ms[0m
+[2m             workspace config         5.5ms      54.2ms[0m
+[2m             discover projects        2.7ms      57.0ms[0m
+[2m             open cache               5.6ms      62.8ms[0m
+[2m             load configs             1.1ms      63.8ms[0m
+[2m             build graph              3.4ms      67.2ms[0m
+[2m             git enumeration         10.1ms      77.3ms[0m
+[2m             classify + probe         8.6ms      86.5ms[0m
+[2m             run graph                4.8ms      91.5ms[0m
+[2m             record history           2.7ms      94.2ms[0m
+[2m             close                    3.9ms      98.5ms[0m
 ```
 
-Rows under 1 ms are cut here. See
-[Timing](../../modules/util/#srcutiltimingts--vx_debug_timing-stage-table) for the full table.
+Rows under 1 ms are cut. The full table is on
+[Timing](../../modules/util/#srcutiltimingts--vx_debug_timing-stage-table).
 
 ## Go deeper
 
-- **[Optimizations](../../optimizations/)** — every decision with its
-  invariant and source.
-- **[Benchmarks](../../benchmarks/)** — methodology and full results.
-- **[vx vs Turborepo vs Nx](../../comparison/)** — feature-by-feature.
+- **[Optimizations](../../optimizations/)**: every choice, with its source.
+- **[Benchmarks](../../benchmarks/)**: method and full results.
+- **[vx vs Turborepo vs Nx](../../comparison/)**: feature by feature.
