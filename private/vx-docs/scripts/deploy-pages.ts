@@ -108,9 +108,14 @@ async function call(what: string, res: Response): Promise<any> {
 export async function deploy(
   tar: Uint8Array,
   env: DeployEnv,
-  opts: { every?: number; deadline?: number; log?: (line: string) => void } = {},
+  opts: { every?: number; deadline?: number; request?: number; log?: (line: string) => void } = {},
 ): Promise<void> {
   const log = opts.log ?? ((l) => console.log(l))
+  // A request the far end stops answering holds the deploy, and the run with
+  // it, until the job's own timeout (main's CI, 2026-11-22: 22 min): each has
+  // its own deadline, and a status read that times out is asked again.
+  const fetch = (url: string | URL, init: RequestInit = {}): Promise<Response> =>
+    globalThis.fetch(url, { ...init, signal: AbortSignal.timeout(opts.request ?? 60_000) })
   const api = env.GITHUB_API_URL ?? 'https://api.github.com'
   const { run, job } = backendIds(env.ACTIONS_RUNTIME_TOKEN)
   const ids = { workflowRunBackendId: run, workflowJobRunBackendId: job, name: 'github-pages' }

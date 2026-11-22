@@ -426,6 +426,8 @@ export default defineProject({
       dependsOn: ['lint', 'build', 'test', 'build.live'],
       exec: {
         command: 'bun scripts/deploy-pages.ts dist-live',
+        // Past the script's own 10-minute wait for the deployment to go live.
+        timeout: '12m',
         env: {
           passThrough: [
             'ACTIONS_RUNTIME_TOKEN',

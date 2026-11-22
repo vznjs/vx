@@ -71,6 +71,7 @@ function fake(statuses: string[]) {
       }
       if (url.pathname === '/repos/o/r/pages/deployments/sha1') {
         const status = statuses.shift()!
+        if (status === 'hang') return new Promise<Response>(() => {})
         return status === '502' ? new Response('bad', { status: 502 }) : Response.json({ status })
       }
       return new Response('no', { status: 404 })
@@ -109,6 +110,15 @@ it('uploads the artifact, deploys it and waits for it to go live', async () => {
   expect(deployed).toEqual({ artifact_id: 42, pages_build_version: 'sha1', oidc_token: 'oidc-jwt' })
   expect(lines.at(-1)).toBe('deploy-pages: live at https://o.github.io/r/')
   await f.server.stop()
+})
+
+it('asks again after a status read that never answers', async () => {
+  const f = fake(['hang', 'hang', 'succeed'])
+  const lines: string[] = []
+  await deploy(new Uint8Array(1), f.env, { every: 1, request: 100, log: (l) => lines.push(l) })
+  expect(lines.filter((l) => l.includes('asking again'))).toHaveLength(2)
+  expect(lines.at(-1)).toBe('deploy-pages: live at https://o.github.io/r/')
+  await f.server.stop(true)
 })
 
 it('fails on a final deployment status, naming it', async () => {
