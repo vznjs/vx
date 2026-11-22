@@ -27,6 +27,16 @@ export const vx: Adapter = {
   pkg: '@vzn/vx',
   bins: ['vx'],
   lacks: {
+    'optional-outputs':
+      'Every output vx declares is required: a pattern that matches no file fails the task.',
+    mutex:
+      'No vx setting keeps two tasks from running at the same time; only the run-wide concurrency limit.',
+    'idle-timeout':
+      'vx limits a task by wall-clock time only, never by how long it prints nothing.',
+    'output-checksum': 'vx has no way to pin an output’s bytes to a checksum.',
+    'determinism-check':
+      'No vx run rebuilds a cached task to compare its bytes with the stored ones.',
+    'ready-port': 'A server’s ready signal is a line it prints, never a port it opens.',
     'dependency-bin':
       'vx runs the tools the machine has and installs none, so no task puts programs on its dependants’ PATH.',
   },
@@ -76,9 +86,9 @@ export const vx: Adapter = {
                 ...(spec.persistent
                   ? {
                       persistent:
-                        spec.persistent === true
-                          ? {}
-                          : { readyWhen: escapeRegExp(spec.persistent.ready) },
+                        spec.persistent !== true && 'ready' in spec.persistent
+                          ? { readyWhen: escapeRegExp(spec.persistent.ready) }
+                          : {},
                     }
                   : {}),
               },

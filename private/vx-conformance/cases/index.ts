@@ -42,6 +42,7 @@ import persistentServers from './persistent-servers.ts'
 import hardeningFixes from './hardening-fixes.ts'
 import recentFixes from './recent-fixes.ts'
 import report from './report.ts'
+import runGuards from './run-guards.ts'
 import runModes from './run-modes.ts'
 import sandbox from './sandbox.ts'
 import viteTaskE2eA from './vite-task-e2e-a.ts'
@@ -90,6 +91,7 @@ export const CASES: Case[] = [
   ...affectedGit,
   ...affectedMore,
   ...runModes,
+  ...runGuards,
   ...report,
   ...sandbox,
   ...watch,

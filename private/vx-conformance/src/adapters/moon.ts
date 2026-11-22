@@ -7,7 +7,7 @@
 // report moon writes after each run, `.moon/cache/runReport.json`.
 import { mkdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
-import type { Adapter } from '../adapter.ts'
+import { optionalAsOutputs, type Adapter } from '../adapter.ts'
 import { pkgDir } from '../tools.ts'
 import { projectDir, type Selector, type TaskReport } from '../spec.ts'
 
@@ -60,6 +60,11 @@ export const moon: Adapter = {
   pkg: '@moonrepo/cli',
   bins: [],
   lacks: {
+    'idle-timeout': 'moon has no limit on how long a task may print nothing.',
+    'output-checksum': 'moon has no way to pin an output’s bytes to a checksum.',
+    'determinism-check': 'No moon run rebuilds a cached task to compare its bytes.',
+    'ready-port':
+      'A `wait` dependency waits for the persistent task to start, never for a port it opens.',
     'dependency-bin': 'No moon task puts a directory of programs on its dependants’ PATH.',
     'select-walk':
       '`--upstream`/`--downstream` walk the task graph from the requested tasks, never the project graph, and never leave the matched projects out.',
@@ -71,7 +76,8 @@ export const moon: Adapter = {
     'dry-run': '`moon action-graph` draws the graph; no run plans and runs nothing.',
   },
   env: { NO_COLOR: '1', DO_NOT_TRACK: '1' },
-  async configure(dir, ws, command) {
+  async configure(dir, given, command) {
+    const ws = optionalAsOutputs(given)
     const persistent = new Set(
       Object.entries(ws.projects).flatMap(([n, p]) =>
         Object.entries(p.tasks ?? {})
@@ -148,6 +154,7 @@ export const moon: Adapter = {
             ...(spec.cache === false ? { cache: false } : {}),
             ...(spec.timeout !== undefined ? { timeout: spec.timeout } : {}),
             ...(spec.retries !== undefined ? { retryCount: spec.retries } : {}),
+            ...(spec.mutex !== undefined ? { mutex: spec.mutex } : {}),
             // moon refuses a dependant on a server that does not run in CI; its docs enable it.
             // The command is its own shell (moon's fully qualified form), so moon wraps it in no other.
             ...(spec.takesArgs ? { shell: false } : {}),

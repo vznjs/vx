@@ -3,7 +3,7 @@
 // each `^task` in dependsOn adds the dependency's own inputs for that task.
 import { writeFile } from 'node:fs/promises'
 import path from 'node:path'
-import type { Adapter } from '../adapter.ts'
+import { optionalAsOutputs, type Adapter } from '../adapter.ts'
 import { projectDir, type Selector } from '../spec.ts'
 
 /** A project-relative glob as Nx spells it; a `!` stays in front. */
@@ -39,6 +39,9 @@ export const nx: Adapter = {
   // and nothing keeps a command from what it never declared. Every host
   // variable reaches a task, keying none it does not name.
   lacks: {
+    'idle-timeout': 'Nx has no limit on how long a task may print nothing.',
+    'output-checksum': 'Nx has no way to pin an output’s bytes to a checksum.',
+    'determinism-check': 'No Nx run rebuilds a cached task to compare its bytes.',
     'dependency-bin': 'No Nx task puts a directory of programs on its dependants’ PATH.',
     'select-walk':
       'Nx selects projects by name, pattern or tag; no selector adds their dependencies or dependents.',
@@ -58,7 +61,8 @@ export const nx: Adapter = {
     NO_COLOR: '1',
     DO_NOT_TRACK: '1',
   },
-  async configure(dir, ws, command) {
+  async configure(dir, given, command) {
+    const ws = optionalAsOutputs(given)
     // Each task's inputs are a named input, `<task>-inputs`, so a dependent
     // reaches the files its dependency's task keys on through `^<task>-inputs`,
     // as Nx's `^production` idiom does. A project without the task falls back
@@ -123,8 +127,15 @@ export const nx: Adapter = {
             cache: spec.cache !== false && !spec.persistent,
             ...(spec.persistent ? { continuous: true } : {}),
             ...(typeof spec.persistent === 'object'
-              ? { readyWhen: { logMatches: spec.persistent.ready } }
+              ? {
+                  readyWhen:
+                    'port' in spec.persistent
+                      ? { port: spec.persistent.port }
+                      : { logMatches: spec.persistent.ready },
+                }
               : {}),
+            // Nx's one way to keep a task from overlapping: it runs alone.
+            ...(spec.mutex !== undefined ? { parallelism: false } : {}),
           },
         ]),
       )
