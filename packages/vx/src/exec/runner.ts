@@ -189,6 +189,12 @@ function shellShape(command: string): {
   const pending: Array<{ delim: string; tabs: boolean }> = []
   // Per open `(`: does it open a subshell, not `$(`, `$((`, `<(` or `f()`.
   const parens: boolean[] = []
+  // Per `$(` opened inside double quotes: the paren depth it opened at. Its
+  // body is read unquoted, as sh reads it, and the quote resumes at its `)`.
+  const inQuotes: number[] = []
+  // Per open `case`: reading its word, a pattern (whose `)` closes no paren)
+  // or a body (`;;` returns to the patterns).
+  const cases: Array<'word' | 'pattern' | 'body'> = []
   let subshell = false
   let quote = ''
   let comment = -1
@@ -225,6 +231,11 @@ function shellShape(command: string): {
     }
     if (quote === '"') {
       if (c === '"') quote = ''
+      else if (c === '$' && command[i + 1] === '(') {
+        quote = ''
+        inQuotes.push(parens.length)
+        atWordStart = false
+      }
       continue
     }
     if (c === "'" || c === '"') {
@@ -234,6 +245,31 @@ function shellShape(command: string): {
     }
     if (c === '#' && atWordStart) {
       comment = i
+      continue
+    }
+    if (atWordStart) {
+      const word = /^(?:case|in|esac)(?=[\s;&|()<>]|$)/.exec(command.slice(i, i + 5))?.[0]
+      const top = cases.at(-1)
+      if (word === 'case' && COMMAND_START.test(command.slice(Math.max(0, i - 8), i))) {
+        cases.push('word')
+      } else if (word === 'in' && top === 'word') cases[cases.length - 1] = 'pattern'
+      else if (word === 'esac' && (top === 'pattern' || top === 'body')) cases.pop()
+      if (word !== undefined) {
+        i += word.length - 1
+        atWordStart = false
+        continue
+      }
+    }
+    if (cases.at(-1) === 'pattern' && (c === '(' || c === ')')) {
+      // `(a)` and `a)`: a pattern's parens open and close nothing.
+      if (c === ')') cases[cases.length - 1] = 'body'
+      atWordStart = true
+      continue
+    }
+    if (c === ';' && command[i + 1] === ';' && cases.at(-1) === 'body') {
+      cases[cases.length - 1] = 'pattern'
+      i++
+      atWordStart = true
       continue
     }
     if (c === '<' && command[i - 1] !== '<') {
@@ -258,11 +294,20 @@ function shellShape(command: string): {
     } else if (c === ')') {
       const opened = parens.pop()
       if (i === command.length - 1) subshell = opened === true
+      if (inQuotes.at(-1) === parens.length) {
+        inQuotes.pop()
+        quote = '"'
+        continue
+      }
     }
     atWordStart = /[\s;&|()<>]/.test(c)
   }
   return { comment, body, subshell, quoted: quote !== '' }
 }
+
+// Where a command (and so a `case`) can start: after a separator, an opening
+// paren or brace, or a reserved word that takes a command.
+const COMMAND_START = /(?:^|[;&|({\n]|(?:^|\s)(?:then|do|else|elif|!))[ \t]*$/
 
 // One redirection at the end of a command: an fd, an operator, and a
 // target word (quoted parts and `<(…)` / `>(…)` included).
