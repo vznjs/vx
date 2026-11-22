@@ -553,7 +553,6 @@ export interface ExecuteArgs {
 export function executeTask(args: ExecuteArgs): Promise<TaskOutcome>
 // the probed hit executeTask would restore, as a thunk when its tree is current (`currentHit`)
 export function settleProbedHit(args: ExecuteArgs): (() => TaskOutcome) | undefined
-export { restoreHit, type RestoreHitArgs } from './hit-restore.js'
 ```
 
 Cache-key derivation (`ComputeHashArgs`, `computeTaskHash`,

@@ -14,7 +14,7 @@ import { OUTPUT_DIRS_RACY_MS } from '../src/memo/output-index.js'
 import { localExecutor } from '../src/orchestrator/local-executor.js'
 import type { TaskNode, TaskOutcome } from '../src/graph/index.js'
 import type { Logger } from '../src/report/index.js'
-import { restoreHit } from '../src/orchestrator/execute-task.js'
+import { restoreHit } from '../src/orchestrator/hit-restore.js'
 
 interface Bench {
   root: string

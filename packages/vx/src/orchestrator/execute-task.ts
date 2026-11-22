@@ -12,8 +12,6 @@ import { type OutputDirSnapshot, type SaveFacts } from './miss-save.js'
 import type { FingerprintWatch } from './fingerprint-watch.js'
 import { currentHit } from './hit-restore.js'
 import type { MissExplainer } from '../history/index.js'
-// The hit path's entry stays importable from here (tests).
-export { restoreHit, type RestoreHitArgs } from './hit-restore.js'
 import type { DeferredOutputs } from './deferred-outputs.js'
 import type { TrailingOutputs } from './trailing-outputs.js'
 import { type TreeLoad } from './telemetry.js'
