@@ -70,14 +70,37 @@ it('a task names the tasks with a command it waited on, through a group, and the
   expect(summary!.stages!.map((s) => s.name)).toEqual(names)
   expect(summary!.stages![0]!.startedAt).toBeGreaterThanOrEqual(first.endedAt)
   const runGraph = first.stages!.find((s) => s.name === 'run graph')!
-  // The run's stamps are Date.now(), whole ms truncated; a stage's are the
-  // monotonic clock from the process's origin, with a fraction. Truncation
-  // is up to 1 ms, and the wall clock drifts from the monotonic one over a
-  // long process (an NTP slew): 1.04 ms late on main's CI 47 s into a shard,
-  // 0.13 ms early on a macOS runner. 5 ms holds both and still catches a
-  // stage stamped outside its run.
-  expect(runGraph.startedAt).toBeGreaterThan(first.startedAt - 5)
-  expect(runGraph.endedAt).toBeLessThan(first.endedAt + 5)
+  // The run and its stages read one clock (wallNow), so a stage lies
+  // inside its run however long the process has lived.
+  expect(runGraph.startedAt).toBeGreaterThanOrEqual(first.startedAt)
+  expect(runGraph.endedAt).toBeLessThanOrEqual(first.endedAt)
+}, 30_000)
+
+it("a run's stages lie inside its window when the wall clock slews from the monotonic one", async () => {
+  const root = await makeWorkspace({ prefix: 'vx-trace-' })
+  roots.push(root)
+  await addProject(root, 'p', `export default { tasks: { a: { exec: { command: 'true' } } } }\n`)
+  let summary: RunSummaryRecord | undefined
+  const quiet = { status() {}, taskStdout() {}, taskStderr() {}, taskComplete() {} }
+  const sinks = [{ onRunSummary: (s: RunSummaryRecord) => void (summary = s) }]
+  // NTP slews a long process's wall clock against the monotonic one: here
+  // each read of it falls 5 ms further behind.
+  await run({ cwd: root, tasks: ['a'], projects: ['p'], log: quiet, telemetrySinks: sinks })
+  const real = Date.now
+  let reads = 0
+  Date.now = () => real() - 5 * reads++
+  try {
+    await run({ cwd: root, tasks: ['a'], projects: ['p'], log: quiet, telemetrySinks: sinks })
+  } finally {
+    Date.now = real
+  }
+  // The stages marked wholly between the run's start and end stamps.
+  const inside = summary!.stages!.filter((s) => s.name === 'schedule' || s.name === 'run graph')
+  expect(inside).toHaveLength(2)
+  for (const s of inside) {
+    expect(s.startedAt).toBeGreaterThanOrEqual(summary!.startedAt)
+    expect(s.endedAt).toBeLessThanOrEqual(summary!.endedAt)
+  }
 }, 30_000)
 
 it('a cacheable task that ran counts the files its key read; a hit and an uncached task count none', async () => {

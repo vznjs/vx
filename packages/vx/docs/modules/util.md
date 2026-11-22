@@ -1180,7 +1180,11 @@ windows in epoch ms (`StageTime`: `name`, `startedAt`, `endedAt`),
 anchored to `Date.now()` read when the table starts, the clock task
 times use (`performance.timeOrigin` drifted 34 ms from it on macOS), which
 vx-otel draws as child spans of the run
-(`tests/telemetry-trace-facts.test.ts`).
+(`tests/telemetry-trace-facts.test.ts`). `wallNow()` reads that same
+clock (the monotonic one, mapped to the wall once), and the run's own
+start and end stamps take it, floored and ceiled to whole ms: NTP slews
+`Date.now()` against the monotonic clock over a long process, and a
+stage drew 1.04 ms past its run's end 47 s into a CI shard.
 
 A span's total is WALL summed per call, and the calls run under the
 scheduler's concurrency, so a span that overlaps other work reads far
