@@ -1,6 +1,6 @@
 // A persistent task (a dev server, a watcher): keyed like an uncached task,
 // spawned, and held until `readyWhen` matches. Never cached and never routed
-// through an executor. Moved out of execute-task.ts as pure code motion.
+// through an executor.
 
 import type { ExecConfig } from '../config.js'
 import {
@@ -11,7 +11,7 @@ import {
   withForwardArgs,
 } from '../exec/index.js'
 import { releaseBridges, sandboxReads, wrapSandboxedCommand } from '../sandbox/index.js'
-import type { TaskOutcome } from '../graph/index.js'
+import type { OutcomeTiming, TaskOutcome } from '../graph/index.js'
 import { maskedStreams, secretMask, testTimerMs } from '../util/index.js'
 import { warnOf } from '../report/index.js'
 import { hashArgsOf } from './execute-args.js'
@@ -69,14 +69,24 @@ export function serverKey(args: ExecuteArgs): Promise<string | undefined> | stri
  */
 export async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutcome> {
   const { node, log } = args
-  // Type narrowing: the dispatcher checks `exec.persistent` before
-  // calling us, so `exec` and `exec.persistent` are both present.
+  // The dispatcher checked `exec.persistent`.
   const step = node.config.exec as ExecConfig & {
     persistent: NonNullable<ExecConfig['persistent']>
   }
   const effectiveForwardArgs = node.requested ? (args.run.forwardArgs ?? []) : []
   const env = taskEnv(node, step, args.run.workspaceRoot)
   const wallclockStartNs = process.hrtime.bigint() - args.run.runStartHrTimeNs
+  const timing = (): OutcomeTiming => ({
+    startNs: wallclockStartNs,
+    endNs: process.hrtime.bigint() - args.run.runStartHrTimeNs,
+  })
+  const aborted = (exitCode: number, durationMs: number): TaskOutcome => ({
+    node,
+    status: 'aborted',
+    exitCode,
+    durationMs,
+    timing: timing(),
+  })
   const hash = await serverKey(args)
   // Carried to what folds this server's key, as a task's outcome carries it:
   // without it a dependant behind a keyed server saved under a key that
@@ -209,17 +219,8 @@ export async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutc
   if (args.run.stopSignal?.aborted === true) {
     if (bridgeTag !== undefined) releaseBridges(bridgeTag)
     await placeholderSweeper(placeholders)()
-    return {
-      node,
-      status: 'aborted',
-      // The signal a spawned server would have been sent (a hang-up forwards SIGTERM).
-      exitCode: signalExitCode(forwardedSignal(args.run.stopSignal.reason)),
-      durationMs: 0,
-      timing: {
-        startNs: wallclockStartNs,
-        endNs: process.hrtime.bigint() - args.run.runStartHrTimeNs,
-      },
-    }
+    // The signal a spawned server would have been sent (a hang-up forwards SIGTERM).
+    return aborted(signalExitCode(forwardedSignal(args.run.stopSignal.reason)), 0)
   }
   // A server's 127, 126 or signal death needs the line a one-shot task's gets
   // (execute-task.ts): a dev server whose tool sits in a sibling's bin said
@@ -255,16 +256,9 @@ export async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutc
   // The host side of a port bridge lives exactly as long as the server:
   // released on the child's exit, whether the run tore it down or it died. A
   // placeholder the server never wrote goes back the same way. ONE sweep,
-  // shared by the exit handler and the readiness failure below — whichever asks
-  // second must get the SAME list. A second sweep cannot produce it: the first
-  // one's `rm` already happened, so the file is gone and `sweepPlaceholders`
-  // skips it. Collecting both lists and unioning them does not close that,
-  // because the union only covers an exit handler that FINISHED; one still
-  // between its `rm` and its return has published nothing yet, and the
-  // readiness path then reports no placeholder at all. The failure then says
-  // only "File exists", which is the message the hint exists to explain (seen
-  // under the gate's parallel load, and reproduced deterministically by
-  // delaying each side).
+  // shared by the exit handler and the readiness failure below: whichever asks
+  // second must get the SAME list, and a second sweep finds the files already
+  // gone and reports none.
   const sweptUntouched = placeholderSweeper(placeholders)
   if (bridgeTag !== undefined || placeholders.length > 0) {
     const tag = bridgeTag
@@ -281,7 +275,6 @@ export async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutc
   // it fails, and with no `exec.timeout` the wait never ends, so a run
   // whose `readyWhen` never matched showed nothing at all.
   const readyWhen = step.persistent.readyWhen
-  // How long a server may take to match `readyWhen` before vx says it waits.
   const noticeMs = testTimerMs('READY_NOTICE', READY_NOTICE_MS)
   const notice =
     readyWhen === undefined
@@ -318,16 +311,7 @@ export async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutc
     // above narrows `aborted` to false, but the stop can land during
     // `spawn.ready`.
     if (isAborted(args.run.stopSignal)) {
-      return {
-        node,
-        status: 'aborted',
-        exitCode: err instanceof PersistentReadyError ? (err.exitCode ?? 1) : 1,
-        durationMs: spawn.readyMs(),
-        timing: {
-          startNs: wallclockStartNs,
-          endNs: process.hrtime.bigint() - args.run.runStartHrTimeNs,
-        },
-      }
+      return aborted(err instanceof PersistentReadyError ? (err.exitCode ?? 1) : 1, spawn.readyMs())
     }
     const message = err instanceof Error ? err.message : String(err)
     // The task's OWN stream, not the process's: the frame is where a
@@ -363,10 +347,7 @@ export async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutc
           : (ready?.exitCode ?? 1),
       durationMs: spawn.readyMs(),
       ...(ready !== undefined ? { notReady: ready.reason } : {}),
-      timing: {
-        startNs: wallclockStartNs,
-        endNs: process.hrtime.bigint() - args.run.runStartHrTimeNs,
-      },
+      timing: timing(),
     }
   }
 
@@ -375,16 +356,7 @@ export async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutc
   // `liveChildren`), and it served nobody, as a one-shot that exits 0 on the
   // stop is aborted.
   if (isAborted(args.run.stopSignal)) {
-    return {
-      node,
-      status: 'aborted',
-      exitCode: signalExitCode(forwardedSignal(args.run.stopSignal!.reason)),
-      durationMs: spawn.readyMs(),
-      timing: {
-        startNs: wallclockStartNs,
-        endNs: process.hrtime.bigint() - args.run.runStartHrTimeNs,
-      },
-    }
+    return aborted(signalExitCode(forwardedSignal(args.run.stopSignal!.reason)), spawn.readyMs())
   }
   // Ready, so it spawned: only a failed spawn has no child.
   const child = spawn.child!
@@ -408,9 +380,6 @@ export async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutc
     ...(exited === null ? {} : { serverExit: exited }),
     ...keyless,
     ...(hash !== undefined ? { hash } : {}),
-    timing: {
-      startNs: wallclockStartNs,
-      endNs: process.hrtime.bigint() - args.run.runStartHrTimeNs,
-    },
+    timing: timing(),
   }
 }
