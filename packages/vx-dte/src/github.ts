@@ -282,7 +282,9 @@ export function github(options: GithubOptions = {}): DteAdapter {
         }),
       )
         // A fault reading jobs costs a look, never the run.
-        .catch(() => {})
+        .catch((err: unknown) =>
+          failed('watching worker jobs', err instanceof Error ? err.message : String(err)),
+        )
         .then(() => {
           const next = Math.min(2 * ms, WATCH_MAX_MS)
           if (!closed && watched.size > 0) look(Math.max(next, held - Date.now()))
