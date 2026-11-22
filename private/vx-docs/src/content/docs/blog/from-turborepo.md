@@ -162,9 +162,10 @@ Three things you get that the JSON could not give you:
   `build` follows the filter and `web#lint` stays put.
 - No `--parallel`. Use `--concurrency 1` or
   `--exclude-dependencies[=<names>]`.
-- On failure, a vx run with no flag is `deps-ok`: only the failed task's
-  dependents skip. `--continue=never` is Turbo's default, and bare
-`--continue` is `always`, as in Turbo.
+- On failure, a vx run with no flag skips only the failed task's
+  dependents, as Turbo's `--continue=dependencies-successful` does. Turbo's
+  default lets running tasks finish; vx `--fail-fast` kills them. vx has no
+  `--continue`: nothing runs on a failed dependency.
 
 Guide: [Migrate from Turborepo](../../guides/migrate/#turborepo). More
 at [vznjs.github.io/vx](https://vznjs.github.io/vx/).

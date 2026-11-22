@@ -64,7 +64,7 @@ describe.skipIf(!available)('a sandboxed task and the host’s services', () => 
     )
     expect(Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: ws }).exitCode).toBe(0)
     const r = Bun.spawn({
-      cmd: [process.execPath, BIN, 'run', 'a#tcp', 'a#unix', '--output-logs', 'full', '--continue'],
+      cmd: [process.execPath, BIN, 'run', 'a#tcp', 'a#unix', '--output-logs', 'full'],
       cwd: ws,
       stdout: 'pipe',
       stderr: 'pipe',

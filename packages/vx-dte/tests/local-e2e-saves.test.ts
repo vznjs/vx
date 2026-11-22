@@ -237,7 +237,7 @@ it('saves no entry for a task that left a process running', async () => {
 // them: the worker took the refusal as its own fault, and two such faults
 // failed the run (2026-10-24).
 it('fails a task whose outputs link out of its project, not its worker', async () => {
-  const r = vx(['run', 'b#away', 'a#gen', '--continue'], 'away')
+  const r = vx(['run', 'b#away', 'a#gen'], 'away')
   const out = r.stdout.toString()
   expect(r.exitCode).toBe(1)
   // Its worker's result, not a fault: the line names the worker that ran it.

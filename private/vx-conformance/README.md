@@ -166,7 +166,8 @@ mean the same thing, the adapter uses the one its docs teach:
   edits: a run follows the lock, so a broken manifest is refused there),
   and its default cache store (in the case's home, so a linked worktree
   shares it). An isolated task is `exec.sandbox`. The report is
-  `vx last --format json`. Watch is `vx watch`.
+  `vx last --format json`. Watch is `vx watch`. It lacks continue (nothing
+  runs on a failed dependency) and a dependency's bins on the PATH.
 
 ## Sandbox
 

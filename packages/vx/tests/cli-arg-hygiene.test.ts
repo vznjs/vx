@@ -413,7 +413,7 @@ describe('value flags accept the = form', () => {
     )
   })
 
-  it('--cache-download= and --continue= echo the bad value', () => {
+  it('--cache-download= echoes the bad value', () => {
     expect(parseRunArgs(['build', '--cache-download=some']).error).toBe(
       "--cache-download must be one of 'all', 'toplevel', 'none' (got some)",
     )
@@ -422,12 +422,6 @@ describe('value flags accept the = form', () => {
     )
     expect(parseRunArgs(['build', '--cache-download=']).error).toBe(
       "--cache-download requires a value: one of 'all', 'toplevel', 'none'",
-    )
-    expect(parseRunArgs(['build', '--continue=sometimes']).error).toBe(
-      '--continue must be never, deps-ok, or always (got sometimes)',
-    )
-    expect(parseRunArgs(['build', '--continue=']).error).toBe(
-      '--continue= requires a mode: never, deps-ok, or always',
     )
   })
 

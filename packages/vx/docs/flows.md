@@ -155,7 +155,7 @@ plain schedule.
 
 Owner: `graph/scheduler.ts`. The scheduler distinguishes _transitive
 dependents_ (skipped) from _independent siblings_ (keep running) —
-Turbo's middle `--continue` setting.
+Turbo's `--continue=dependencies-successful`.
 
 ```mermaid
 flowchart TD

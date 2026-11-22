@@ -208,9 +208,7 @@ it("a task's bytes leave when it ends, not when the run does", async () => {
   gitInitCommit(root, 'slow')
   box.__vxPutSeen = path.join(root, 'put-seen')
   try {
-    expect((await runAs(true, ['lib#test', 'slow#test'], { continueMode: 'always' })).ok).toBe(
-      false,
-    )
+    expect((await runAs(true, ['lib#test', 'slow#test'])).ok).toBe(false)
     expect(await Bun.file(path.join(root, 'slow-saw-put')).exists()).toBe(true)
   } finally {
     delete box.__vxPutSeen

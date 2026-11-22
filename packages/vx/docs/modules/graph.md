@@ -588,18 +588,18 @@ export type TaskOutcome = SucceededOutcome | FailedOutcome | AbortedOutcome | Sk
 
 export function exitCodeOf(o: TaskOutcome): number // the exit a record writes: a skip's is 0 behind a platform skip, else 1
 
-export type ContinueMode = 'never' | 'deps-ok' | 'always'
-
 export interface ScheduleOptions {
   nodes: Map<string, TaskNode>
   concurrency: number
   restoreConcurrency?: number // restore-tier tasks at once; twice concurrency unset
   /** Aborted → nothing further dispatches; every task not yet started completes `aborted`. */
   signal?: AbortSignal
-  /** Failure propagation; default 'deps-ok'. */
-  continueMode?: ContinueMode
-  /** A ready server that died: its dependants not yet started skip (through groups too); under 'never' dispatch stops. */
+  /** Off (default): a failure skips its dependents. On: the first failure stops dispatch and calls `onFailFast`. */
+  failFast?: boolean
+  /** A ready server that died: its dependants not yet started skip (through groups too); under `failFast` dispatch stops. */
   serverDied?: (id: string) => boolean
+  /** Called once when `failFast` stops dispatch: the caller kills what is in flight. */
+  onFailFast?: () => void
   /** Called once, when 'never' stops dispatch: a task in flight starts no retry. */
   onFailFast?: () => void
   execute: (node: TaskNode, upstream: TaskOutcome[]) => Promise<TaskOutcome>
@@ -717,7 +717,7 @@ time set on it, not on a copy; no slot, no admission ask, no `execute`
 promise. A throw from either dispatches it instead, started
 once. The run passes it for unkeyed groups (they run nothing, X-192)
 and for restore-tier hits whose tree is current (`currentHit`), unless a
-taint or `--continue=always` needs the full path.
+taint needs the full path.
 
 A persistent task neither requested nor surfaced whose every dependant
 is in the restore tier is idle (X-59): due, it goes dormant instead of
@@ -870,12 +870,11 @@ dependents get `skipped`, through a restore-tier hit between them too
 the block down with the root); unrelated tasks continue; the promise
 resolves only after every task has _some_ outcome (an idle server
 and its groups excepted, above). This is Turbo's
-middle `--continue` setting, `deps-ok`, as the default; `never` stops
-dispatch at the first failure (in-flight tasks finish, everything not
-yet started — restores included — completes `skipped`); `always` runs
-dependents on a failed upstream, and the orchestrator withholds their
-save (`ExecuteArgs.taintedUpstream`), since a healthy key over bytes
-built on a partial tree would be the next clean run's stale hit. A
+`--continue=dependencies-successful`, and nothing ever runs on a failed
+upstream. `failFast` stops dispatch at the first failure and calls
+`onFailFast`, whose caller kills the tasks in flight (they end
+`aborted`); everything not yet started — restores included — completes
+`skipped`. A
 skipped outcome names the failed or aborted task at the root of its
 block (`blockedBy`); fail-fast's skips name nothing. A rejected
 `execute` promise becomes a `failed` outcome; a `UserError`, a
@@ -904,8 +903,8 @@ stay under 1.5 s; old code took 7.2 s), and the two-tier contract
 (restore-tier ready immediately / low priority / failed-dep bypass).
 `tests/scheduler-properties.test.ts` holds the promises over seeded
 random graphs (restores, demotions, groups, pools, an admission policy,
-failures, a stop, each `--continue` mode): one outcome per task, an
-exec task starts after everything above it finished, `deps-ok` never
+failures, a stop, with and without `failFast`): one outcome per task, an
+exec task starts after everything above it finished, nothing
 runs over a failure, a skip names a failed ancestor, nothing starts
 after the stop, every lane stays under its cap; and the taint tracker
 against its definition (C-70).
@@ -913,7 +912,7 @@ against its definition (C-70).
 output over random workspaces that sometimes cycle into `runGraph`: a
 refusal names a simple cycle of real edges, build and serial order
 repeat, each task runs at most once, after its deps, under the cap,
-and each `--continue` mode runs exactly the tasks it promises.
+and with and without `failFast` runs exactly the tasks it promises.
 
 ### Replacing this module
 

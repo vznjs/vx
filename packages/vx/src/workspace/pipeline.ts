@@ -13,7 +13,7 @@ export const PIPELINE_FLAGS: Readonly<Record<FlagKey, { flag: string; setting?: 
   excludeDependencies: { flag: '--exclude-dependencies' },
   concurrency: { flag: '--concurrency', setting: 'run.concurrency' },
   schedule: { flag: '--schedule', setting: 'run.schedule' },
-  continue: { flag: '--continue', setting: 'run.continue' },
+  failFast: { flag: '--fail-fast', setting: 'run.failFast' },
   retries: { flag: '--retries', setting: 'run.retries' },
   timeout: { flag: '--timeout', setting: 'run.timeout' },
   branch: { flag: '--branch', setting: 'run.branch' },

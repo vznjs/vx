@@ -578,35 +578,6 @@ describe('foreground keep-alive ends when one requested server exits', () => {
       expect(await waitForDead(pid, 1_000)).toBe(true)
     }, 30_000)
   }
-
-  it('CONTROL: under --continue=always the healthy server is held', async () => {
-    const dir = await addProject(
-      root,
-      'app',
-      failing(`bad: { exec: { command: 'exit 3', persistent: { readyWhen: 'READY' } } },`),
-    )
-    const proc = track(
-      Bun.spawn([process.execPath, BIN, 'run', 'dev', 'bad', '--all', '--continue=always'], {
-        cwd: root,
-        stdout: 'pipe',
-        stderr: 'pipe',
-        env: { ...process.env, CI: '', GITHUB_ACTIONS: '', VX_RUN_KILL_GRACE: '200ms' },
-      }),
-    )
-    let out = ''
-    const reading = (async () => {
-      for await (const chunk of proc.stdout) out += new TextDecoder().decode(chunk)
-    })()
-    const pid = await waitForPid(path.join(dir, 'pid.txt'), 10_000)
-    const deadline = Date.now() + 10_000
-    while (!out.includes('\n  Summary ') && Date.now() < deadline) await Bun.sleep(20)
-    expect(out).toContain('\n  Summary ')
-    expect(isAlive(pid)).toBe(true)
-    proc.kill('SIGINT')
-    expect(await proc.exited).toBe(130)
-    await reading
-    expect(await waitForDead(pid, 1_000)).toBe(true)
-  }, 30_000)
 })
 
 // Item 892: a persistent server that became ready and then died on its own

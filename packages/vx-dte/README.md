@@ -605,8 +605,8 @@ use your own instead.
   this machine over that copy, and the task runs again; once per entry.
 - A failed or uncached task is saved under a key of the run, the task and
   the send (a retry gets its own), so no later lookup ever hits it; so is one core would not save (a
-  `--no-cache` or read-only run, a dependant of a failure under
-  `--continue=always`, one that left a process running that may still
+  `--no-cache` or read-only run, one built on a dependency
+  `--exclude-dependencies` left out, one that left a process running that may still
   write its outputs, one a stopped run cancelled), and one that left a tracked file under its project
   changed on its worker (a formatter's input), or that found an untracked,
   unignored file under its project there (its outputs and its dependencies'

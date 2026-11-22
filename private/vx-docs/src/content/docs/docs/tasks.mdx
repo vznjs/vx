@@ -81,15 +81,16 @@ ci: { dependsOn: ['build', 'e2e'] },
 
 ## When a task fails
 
-| Flag | vx |
-| ---------------------------- | --------------------------------------------------------- |
-| `--continue=deps-ok` (default) | skips its transitive dependents and runs the rest       |
-| `--continue=never`           | stops at the first failure                                |
-| `--continue=always`          | runs the dependents, but saves none of them               |
+| Flag          | vx                                                          |
+| ------------- | ----------------------------------------------------------- |
+| (none)        | skips its transitive dependents and runs the rest           |
+| `--fail-fast` | kills the running tasks and stops the run at once           |
 
 ```sh
-vx run test --all --continue=never
+vx run test --all --fail-fast
 ```
+
+A killed task ends `aborted` and saves nothing.
 
 ---
 

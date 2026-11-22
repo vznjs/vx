@@ -205,7 +205,7 @@ describe('a task killed by a shutdown signal', () => {
          }`,
       )
       git(root, 'init', '-q')
-      const r = vx(root, 'run', 'selfkill', 'later', '--continue=never')
+      const r = vx(root, 'run', 'selfkill', 'later', '--fail-fast')
       expect(r.code).toBe(1)
       expect(
         (await Bun.file(path.join(root, 'attempts')).text()).split('\n').filter(Boolean),

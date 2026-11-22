@@ -1,7 +1,7 @@
 // Every run ends and leaves no child behind, over seeded random graphs of
 // one-shots and servers: servers that get ready, crash before or after it,
 // never get ready inside their timeout, or trap SIGTERM; one-shots that
-// pass, fail or take a while; each `--continue` mode, with and without
+// pass, fail or take a while; with and without `--fail-fast` and
 // `holdPersistent`, run to the end or stopped at a random moment. Probes
 // of 190 and 120 graphs found no hang and no orphan; this keeps them
 // (C-82). Unsafe: it judges liveness, which the sandbox's pid
@@ -82,7 +82,7 @@ async function scenario(seed: number, iter: number, stopAt?: number): Promise<st
     `export default { tasks: { ${tasks.join(',\n')} } }\n`,
   )
   gitInitCommit(root, 'init')
-  const mode = (['never', 'deps-ok', 'always'] as const)[Math.floor(rnd() * 3)]!
+  const mode = (['fail-fast', 'default'] as const)[Math.floor(rnd() * 2)]!
   const requested = Array.from({ length: n }, (_, i) => `p#t${i}`).filter(() => rnd() < 0.5)
   if (requested.length === 0) requested.push(`p#t${n - 1}`)
   const hold = rnd() < 0.3
@@ -95,7 +95,7 @@ async function scenario(seed: number, iter: number, stopAt?: number): Promise<st
   const r = await run({
     cwd: root,
     tasks: requested,
-    continueMode: mode,
+    failFast: mode === 'fail-fast',
     log: silent,
     handleSignals: false,
     handoff: { holdPersistent: hold },

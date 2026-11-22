@@ -39,8 +39,8 @@ describe('pipelines in .vx/workspace', () => {
     expect(refusal({ pr: { tasks: ['a'], concurrency: 0 } })).toContain(
       '`pipelines.pr.concurrency`',
     )
-    expect(refusal({ pr: { tasks: ['a'], continue: 'sometimes' } })).toContain(
-      '`pipelines.pr.continue`',
+    expect(refusal({ pr: { tasks: ['a'], failFast: 'sometimes' } })).toContain(
+      '`pipelines.pr.failFast`',
     )
     expect(refusal({ pr: { tasks: ['a'], env: { A: 1 } } })).toContain('`pipelines.pr.env`')
     expect(refusal({ pr: { tasks: ['a'], dry: 'yaml' } })).toContain('`pipelines.pr.dry`')
@@ -58,7 +58,7 @@ describe('pipelines in .vx/workspace', () => {
       affected: true,
       excludeDependencies: ['gen'],
       concurrency: '50%',
-      continue: 'always',
+      failFast: true,
       noCache: false,
       profile: 'p.json',
     }
@@ -71,10 +71,10 @@ describe('pipelines in .vx/workspace', () => {
       '--affected',
       '--exclude-dependencies=gen',
       '--concurrency=50%',
-      '--continue=always',
+      '--fail-fast',
       '--profile=p.json',
     ])
-    const typed = pipelineRunArgs(p, ['--continue=never', '--filter', 'c'], {
+    const typed = pipelineRunArgs(p, ['--fail-fast', '--filter', 'c'], {
       VX_RUN_CONCURRENCY: '2',
     })
     expect(typed).toEqual([

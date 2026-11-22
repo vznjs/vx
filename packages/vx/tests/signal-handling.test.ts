@@ -1038,16 +1038,13 @@ describe('signal handling during vx run (e2e)', () => {
           }
         `,
       )
-      const proc = Bun.spawn(
-        [process.execPath, BIN, 'run', 'lint', 'slow', '--all', '--continue'],
-        {
-          cwd: fixture.root,
-          // CI's grouped flow prints each frame as its task ends, by design.
-          env: { ...process.env, CI: '', GITHUB_ACTIONS: '' },
-          stdout: 'pipe',
-          stderr: 'pipe',
-        },
-      )
+      const proc = Bun.spawn([process.execPath, BIN, 'run', 'lint', 'slow', '--all'], {
+        cwd: fixture.root,
+        // CI's grouped flow prints each frame as its task ends, by design.
+        env: { ...process.env, CI: '', GITHUB_ACTIONS: '' },
+        stdout: 'pipe',
+        stderr: 'pipe',
+      })
       await waitForPid(path.join(dir, 'pid.txt'), 10_000)
       // The failure's row is out before the stop.
       const reader = proc.stdout.getReader()

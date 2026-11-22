@@ -44,28 +44,17 @@ failure at the root of its chain, so you fix one thing.
 ## Pick how far a failure reaches
 
 
-| `--continue=`               | On a failure                                 |
-| --------------------------- | -------------------------------------------- |
-| `deps-ok` (default)         | skip its dependents, run the rest            |
-| `never`                     | stop dispatch; running tasks finish          |
-| `always`, or bare `--continue` | run dependents anyway                     |
+| Flag          | On a failure                                       |
+| ------------- | -------------------------------------------------- |
+| (none)        | skip its dependents, run the rest                  |
+| `--fail-fast` | kill the running tasks and stop the run at once    |
 
 ```sh frame="terminal"
-$ vx run build test --all --continue=never --force
- ⏺︎    13ms success no-cache packages/e#codegen
- ◼︎     9ms failed  miss     packages/a#build
- ⊘         skipped          packages/c#test
- ⊘         skipped          packages/d#test
- ⊘         skipped          packages/b#test
- ⊘         skipped          packages/e#build
- ⊘         skipped          packages/c#build • blocked by packages/a#build
- ⏺︎    12ms success miss     packages/d#build
- ⏺︎    16ms success miss     packages/b#build
- ◼︎    10ms failed  miss     packages/a#test
+$ vx run build test --all --fail-fast
 ```
 
-Running tasks finished (`b#build`, `d#build`, `a#test`). Nothing new
-started. A skip with no blocker means the run stopped.
+A task killed this way ends `aborted` and saves nothing, so the next run
+executes it again.
 
 ## How many at once
 

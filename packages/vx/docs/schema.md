@@ -328,9 +328,8 @@ test: { exec: { command: 'bun test', retries: 1 } }
 
 - A retry fires after ANY failure, `timeout` kills included. A Ctrl-C
   teardown (`aborted`) is never retried — the run is tearing down.
-  Nor is a task in flight when `--continue=never` stops the run: its
-  attempt finishes, and its failure is the last, even when its retry
-  was already announced and preparing.
+  Nor is a task `--fail-fast` kills when it stops the run: it ends
+  `aborted`, even when its retry was already announced and preparing.
 - Declared outputs are re-cleaned before each retry, exactly like the
   first attempt — a failed attempt's partial outputs can't leak into
   the next. An [additive](caching.md#additive-outputs-two-tasks-one-tree-an-edge-between-them)
@@ -659,8 +658,8 @@ the run went on`), so a dependant failing against it reads why, with the line a 
   persistent tasks you requested, those a requested group stands for,
   and the persistent tasks they depend on: vx stays up after the summary
   until one of them exits or you press Ctrl-C, streaming what they write.
-  A run where anything else failed keeps none and exits 1, unless
-  `--continue=always` (`cli.md` § Output, "Pinned persistent tasks").
+  A run where anything else failed keeps none and exits 1 (`cli.md`
+  § Output, "Pinned persistent tasks").
 - **`cache` is rejected.** The config loader throws on
   `cache + persistent` — persistent tasks don't terminate, so there's
   no exit code to cache and no outputs to capture at a well-defined
@@ -2317,7 +2316,7 @@ export default defineWorkspace({
     concurrency: 8,
     timeout: '10m',
     schedule: 'most-work',
-    continue: 'deps-ok',
+    failFast: false,
     killGrace: '10s',
     pluginTimeout: '3s',
     logs: { captureHead: '8MiB', captureTail: '8MiB', failedHead: '8KiB', failedTail: '56KiB' },
@@ -2375,7 +2374,7 @@ default and where it came from.
 | `run.branch` (variable or flag only)           | `VX_RUN_BRANCH`                  | `--branch`                     | a non-blank string                                                      | git's branch, then the CI provider's                                          | The branch a run records in its history and forecasts from. Flag and env only: a committed branch would be wrong on every other branch.                                                          |
 | `run.timeout`                                  | `VX_RUN_TIMEOUT`                 | `--timeout`                    | a duration like '500ms', '30s' or '5m', at most 24 days                 | none                                                                          | A task's time limit, for tasks without their own `exec.timeout` (`'30m'`). A task's own `exec.timeout` beats it.                                                                                 |
 | `run.retries`                                  | `VX_RUN_RETRIES`                 | `--retries`                    | a non-negative integer                                                  | 0                                                                             | Re-runs of a failed task, for tasks without their own `exec.retries`. A task's own `exec.retries` beats it.                                                                                      |
-| `run.continue`                                 | `VX_RUN_CONTINUE`                | `--continue`                   | one of 'never', 'deps-ok', 'always'                                     | deps-ok                                                                       | What a failed task takes down: `never` stops the run, `deps-ok` skips its dependents, `always` runs them too.                                                                                    |
+| `run.failFast`                                 | `VX_RUN_FAIL_FAST`               | `--fail-fast`                  | true or false                                                           | false                                                                         | Stop the run at the first failure, killing the tasks still running; off, a failure skips only its dependents.                                                                                    |
 | `run.outputLogs` (variable or flag only)       | `VX_RUN_OUTPUT_LOGS`             | `--output-logs`                | one of 'full', 'errors-only', 'hash-only', 'none'                       | `errors-only` on CI, else by what the run selects                             | Which task output the run prints. Chosen before the workspace loads, so flag and env only.                                                                                                       |
 | `run.killGrace`                                | `VX_RUN_KILL_GRACE`              | —                              | a duration like '500ms', '30s' or '5m', at most 24 days                 | `2s`                                                                          | How long a task, server or plugin's process may take to exit after SIGTERM (a timeout, a stop, the run's end) before vx sends SIGKILL.                                                           |
 | `run.pluginTimeout`                            | `VX_RUN_PLUGIN_TIMEOUT`          | —                              | a duration like '500ms', '30s' or '5m', at most 24 days                 | `3s`                                                                          | How long one plugin's end-of-run flush or teardown may take before the run ends without it; `'0ms'` waits for nothing not already done.                                                          |
@@ -2433,7 +2432,7 @@ interface RunSettings {
   schedule?: 'most-work' | 'critical-path' | 'direct-dependents' | 'ready-order'
   timeout?: Duration
   retries?: number
-  continue?: 'never' | 'deps-ok' | 'always'
+  failFast?: boolean
   /** SIGTERM to SIGKILL, for a task, server or plugin process. Omitted → '2s'. */
   killGrace?: Duration
   /** One plugin's end-of-run flush or teardown; '0ms' waits for nothing. Omitted → '3s'. */
@@ -2476,9 +2475,9 @@ interface CacheSettings {
 - **`run.retries`** — re-runs of a failed task, for tasks without their
   own `exec.retries` (which beats it, `retries: 0` included); never a
   persistent one.
-- **`run.continue`** — what a failed task takes down: `never` stops
-  dispatch, `deps-ok` (the default) skips its dependents, `always` runs
-  them (`docs/cli.md` § Failure propagation).
+- **`run.failFast`** — off (the default), a failure skips only its
+  dependents; on, the first failure kills the tasks still running and
+  stops the run (`docs/cli.md` § Failure propagation).
 - **`run.rules`** — checked by `vx lock` and `vx lock --check` only;
   no run checks them.
 - **`cache.dir`** — unset, the workspace keeps its index and history in
@@ -2724,7 +2723,7 @@ import { defineWorkspace } from '@vzn/vx/config'
 
 export default defineWorkspace({
   pipelines: {
-    pr: { tasks: ['lint', 'test', 'build'], affected: true, continue: 'always' },
+    pr: { tasks: ['lint', 'test', 'build'], affected: true, failFast: true },
     main: { tasks: ['lint', 'test', 'build', 'release'] },
     fork: { tasks: ['lint', 'test'], affected: true, cachePolicy: 'remote:r' },
   },
@@ -2746,7 +2745,7 @@ export default defineWorkspace({
       env: { VX_DTE_RELAY: 'https://relay.example.com' },
       concurrency: '50%',
       schedule: 'critical-path',
-      continue: 'always',
+      failFast: true,
       retries: 1,
       timeout: '30m',
       branch: 'nightly',
@@ -2781,7 +2780,7 @@ interface Pipeline {
   env?: Readonly<Record<string, string>>
   concurrency?: number | `${number}%`
   schedule?: 'most-work' | 'critical-path' | 'direct-dependents' | 'ready-order'
-  continue?: 'never' | 'deps-ok' | 'always'
+  failFast?: boolean
   retries?: number
   timeout?: Duration
   branch?: string

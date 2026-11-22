@@ -34,7 +34,7 @@ export type FailureMode = 'stable' | 'flaky-recoverable' | 'flaky-fatal'
  * no `cache: true` keys on its config alone and runs every time, so its key
  * says nothing about its inputs: no reader counts it, as no run's row
  * calls it flaky. Nor is a row that names a `blocked_by`: it ran behind a
- * failure (`--continue=always`), on bytes its key never named, so its
+ * failure or on a dependency that did not run, on bytes its key never named, so its
  * pass or failure is not the key's. Every flakiness reader is a filter over this one
  * projection.
  */

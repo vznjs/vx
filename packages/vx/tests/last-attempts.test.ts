@@ -49,7 +49,7 @@ describe('vx last names a retried task’s attempts', () => {
   it(
     'in the row and in the JSON; a task run once says nothing',
     async () => {
-      await vx(root, ['run', 'app#flaky', 'app#boom', 'app#once', '--continue=always'])
+      await vx(root, ['run', 'app#flaky', 'app#boom', 'app#once'])
       const rows = (await vx(root, ['last'])).out
         .split('\n')
         .filter((l) => / (success|failed) /.test(l))

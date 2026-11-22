@@ -54,7 +54,7 @@ export interface RunContext {
    * terms.
    */
   stopSignal?: AbortSignal
-  /** `continueMode: 'never'` stopped dispatch: no further attempt starts. */
+  /** `--fail-fast` stopped the run: no further attempt starts. */
   failFast?: AbortSignal
   /**
    * Registry the orchestrator owns. For each persistent task we
@@ -256,8 +256,9 @@ export interface ExecuteArgs {
    */
   upfrontGroupKey?: UpfrontGroupKey
   /**
-   * `continueMode: 'always'` let this task run although an upstream —
-   * directly or through a chain of successes — failed or aborted. It still
+   * This task builds on bytes nothing vouches for: a dependency
+   * `--exclude-dependencies` kept from running, or a server that died under
+   * it, directly or through a chain of successes (admission.ts). It still
    * cleans its outputs and runs, and a cache HIT still restores (a hit is a
    * healthy run's bytes), but its own result is never saved: the key it
    * derives is the one a healthy run derives (pure-input hashing), while

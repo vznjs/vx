@@ -1113,13 +1113,13 @@
   "scores": {
     "vx": {
       "all": {
-        "pass": 1021,
-        "can": 1021,
+        "pass": 1019,
+        "can": 1019,
         "of": 1023
       },
       "correctness": {
-        "pass": 842,
-        "can": 842,
+        "pass": 840,
+        "can": 840,
         "of": 844
       },
       "efficiency": {
@@ -1143,8 +1143,8 @@
         "of": 8
       },
       "failure": {
-        "pass": 76,
-        "can": 76,
+        "pass": 74,
+        "can": 74,
         "of": 76
       },
       "affected": {
@@ -32630,7 +32630,8 @@
       ],
       "outcomes": {
         "vx": {
-          "status": "pass"
+          "status": "n/a",
+          "detail": "Nothing runs on a failed dependency: a failure skips its dependents, and `--fail-fast` stops the run."
         },
         "turbo": {
           "status": "pass"
@@ -32667,7 +32668,8 @@
       ],
       "outcomes": {
         "vx": {
-          "status": "pass"
+          "status": "n/a",
+          "detail": "Nothing runs on a failed dependency: a failure skips its dependents, and `--fail-fast` stops the run."
         },
         "turbo": {
           "status": "pass"
