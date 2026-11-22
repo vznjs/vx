@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import protobuf from 'protobufjs'
 import {
-  buildInputTree,
+  buildInputTree as buildTree,
   canDigest,
   concat,
   decodeDirectory,
@@ -22,6 +22,18 @@ import {
   hasherFor,
   sha256,
 } from '../src/merkle.js'
+
+/** The tree with every file blob held: these fixtures are small, under the by-path bound. */
+async function buildInputTree(args: Parameters<typeof buildTree>[0]) {
+  const tree = await buildTree(args)
+  return {
+    ...tree,
+    blobs: tree.blobs.map((b) => {
+      if ('file' in b) throw new Error(`${b.file} held by path`)
+      return b
+    }),
+  }
+}
 import type { Directory } from '../src/wire.js'
 
 const PROTOS = path.join(import.meta.dir, '..', 'protos')

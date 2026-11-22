@@ -7,12 +7,14 @@
 // key's digest cannot transfer, so the plugin hashes the worktree bytes itself,
 // from the bytes it reads for the upload anyway. A memo keyed by (path, size,
 // mtime) saved only that hash and served a stale digest for a same-size rewrite
-// within the mtime's resolution.
+// within the mtime's resolution. A big input is hashed as it streams past and
+// held by path: the upload reads it again and checks the bytes still carry the
+// digest (`wire.ts`, `FileBlob`).
 
 import { createHash, type Hash } from 'node:crypto'
-import { lstat, readlink } from 'node:fs/promises'
+import { lstat, open, readlink } from 'node:fs/promises'
 import path from 'node:path'
-import type { Digest, Directory, DirectoryNode, FileNode, SymlinkNode } from './wire.js'
+import type { Digest, Directory, DirectoryNode, FileBlob, FileNode, SymlinkNode } from './wire.js'
 
 // A default decoder strips a leading U+FEFF, which is part of a name.
 const PATH_UTF8 = new TextDecoder('utf-8', { ignoreBOM: true })
@@ -22,11 +24,15 @@ export interface Blob {
   data: Uint8Array
 }
 
+/** Inputs past this are hashed in `STREAM_CHUNK_BYTES` reads and held by path, not bytes. */
+const HOLD_MAX_BYTES = 1024 * 1024
+const STREAM_CHUNK_BYTES = 1024 * 1024
+
 interface InputTree {
   /** Digest of the root `Directory` — goes in `Action.input_root_digest`. */
   root: Digest
-  /** Every blob the server needs: file contents plus the Directory nodes. */
-  blobs: Blob[]
+  /** Every blob the server needs: file contents (a big one by path) plus the Directory nodes. */
+  blobs: (Blob | FileBlob)[]
   /** File count, for logging/metrics. */
   fileCount: number
   /**
@@ -50,6 +56,47 @@ function carriesOid(bytes: Uint8Array, oid: string): boolean {
   const bare = oid.slice(oid.lastIndexOf(':') + 1)
   const hash = createHash(bare.length === 64 ? 'sha256' : 'sha1')
   return hash.update(`blob ${bytes.byteLength}\0`).update(bytes).digest('hex') === bare
+}
+
+/** The hasher `carriesOid` would use for `oid`, fed the header for `size` bytes. */
+function oidHasher(oid: string, size: number): { hash: Hash; bare: string } {
+  const bare = oid.slice(oid.lastIndexOf(':') + 1)
+  const hash = createHash(bare.length === 64 ? 'sha256' : 'sha1').update(`blob ${size}\0`)
+  return { hash, bare }
+}
+
+/**
+ * `abs`'s sha256 and whether it carries `oid`, read a chunk at a time; null
+ * when it is not `size` bytes long now (it moved under the read).
+ */
+async function streamDigest(
+  abs: string,
+  size: number,
+  oid: string | undefined,
+): Promise<{ digest: Digest; carries: boolean } | null> {
+  const sha = createHash('sha256')
+  const git = oid === undefined ? undefined : oidHasher(oid, size)
+  const buf = Buffer.allocUnsafe(STREAM_CHUNK_BYTES)
+  const fh = await open(abs, 'r')
+  try {
+    let at = 0
+    for (;;) {
+      const { bytesRead } = await fh.read(buf, 0, buf.length, at)
+      if (bytesRead === 0) break
+      at += bytesRead
+      if (at > size) return null
+      const piece = buf.subarray(0, bytesRead)
+      sha.update(piece)
+      git?.hash.update(piece)
+    }
+    if (at !== size) return null
+    return {
+      digest: { hash: sha.digest('hex'), size_bytes: size },
+      carries: git === undefined || git.hash.digest('hex') === git.bare,
+    }
+  } finally {
+    await fh.close()
+  }
 }
 
 export function sha256(data: Uint8Array): Digest {
@@ -202,7 +249,7 @@ export async function buildInputTree(args: {
   const read =
     args.readFile ?? (async (abs: string) => new Uint8Array(await Bun.file(abs).arrayBuffer()))
   const root = emptyDir()
-  const blobs: Blob[] = []
+  const blobs: (Blob | FileBlob)[] = []
   const seen = new Set<string>()
   const moved: string[] = []
   let fileCount = 0
@@ -289,6 +336,10 @@ export async function buildInputTree(args: {
     }
     if (st.isSymbolicLink()) return { kind: 'link' as const, target: await readlink(abs) }
     if (!st.isFile()) return { kind: 'other' as const }
+    if (args.readFile === undefined && st.size > HOLD_MAX_BYTES) {
+      const streamed = await streamDigest(abs, st.size, args.expected?.get(rel))
+      if (streamed !== null) return { kind: 'big' as const, abs, ...streamed, mode: st.mode }
+    }
     return { kind: 'file' as const, data: await read(abs), mode: st.mode }
   })
   // A declared input is placed before the Tree grafts, which replace one
@@ -319,17 +370,27 @@ export async function buildInputTree(args: {
       if (args.expected?.has(rel) === true) moved.push(rel)
       continue
     }
-    const data = got.data
-    const want = args.expected?.get(rel)
-    if (want !== undefined && !carriesOid(data, want)) moved.push(rel)
-    // Hashed from the bytes just read, never memoised by (path, size, mtime): a
-    // same-size rewrite within the mtime's resolution kept the old digest while
-    // `expected` checked the new bytes, and the worker ran the old blob under a
-    // key naming the new one.
-    const digest = sha256(data)
-    if (!seen.has(digest.hash)) {
-      seen.add(digest.hash)
-      blobs.push({ digest, data })
+    let digest: Digest
+    if (got.kind === 'big') {
+      if (!got.carries) moved.push(rel)
+      digest = got.digest
+      if (!seen.has(digest.hash)) {
+        seen.add(digest.hash)
+        blobs.push({ digest, file: got.abs })
+      }
+    } else {
+      const data = got.data
+      const want = args.expected?.get(rel)
+      if (want !== undefined && !carriesOid(data, want)) moved.push(rel)
+      // Hashed from the bytes just read, never memoised by (path, size, mtime): a
+      // same-size rewrite within the mtime's resolution kept the old digest while
+      // `expected` checked the new bytes, and the worker ran the old blob under a
+      // key naming the new one.
+      digest = sha256(data)
+      if (!seen.has(digest.hash)) {
+        seen.add(digest.hash)
+        blobs.push({ digest, data })
+      }
     }
     // The owner-execute bit is what REAPI models; group/other add nothing a
     // worker can act on.
@@ -428,7 +489,7 @@ function utf8Sorted(xs: string[]): string[] {
  * Directory, and two orderings of the same tree would otherwise produce two
  * different action digests for identical inputs.
  */
-function serialise(node: DirNode, blobs: Blob[], seen: Set<string>): Digest {
+function serialise(node: DirNode, blobs: (Blob | FileBlob)[], seen: Set<string>): Digest {
   const directories: DirectoryNode[] = []
   const dirNames = utf8Sorted([...new Set([...node.dirs.keys(), ...node.rawDirs.keys()])])
   for (const name of dirNames) {

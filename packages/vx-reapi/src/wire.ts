@@ -6,6 +6,7 @@
 import * as grpc from '@grpc/grpc-js'
 import * as protoLoader from '@grpc/proto-loader'
 import { AsyncLocalStorage } from 'node:async_hooks'
+import { createHash, type Hash } from 'node:crypto'
 import path from 'node:path'
 import {
   canDigest,
@@ -81,6 +82,32 @@ export function assertBunSupportsChunking(version: string = Bun.version): void {
 export interface Digest {
   hash: string
   size_bytes: number
+}
+
+/**
+ * A blob held by path: `merkle.ts` hashed the file as it streamed past. The
+ * upload reads it again and refuses bytes that no longer carry `digest`'s
+ * sha256, so a file rewritten since is never stored under the old digest.
+ */
+export interface FileBlob {
+  digest: Digest
+  file: string
+}
+
+/** A file read for upload no longer carries the digest it was hashed to. */
+class BlobChangedError extends Error {}
+
+const blobChanged = (b: FileBlob): BlobChangedError =>
+  new BlobChangedError(
+    `vx-reapi: ${b.file} changed since it was hashed as an input (${b.digest.hash.slice(0, 12)}); not uploaded`,
+  )
+
+/** `b`'s bytes, read now and checked against its digest. */
+async function readFileBlob(b: FileBlob): Promise<Uint8Array> {
+  const bytes = await Bun.file(b.file).slice(0, b.digest.size_bytes).bytes()
+  const hash = createHash('sha256').update(bytes).digest('hex')
+  if (bytes.byteLength !== b.digest.size_bytes || hash !== b.digest.hash) throw blobChanged(b)
+  return bytes
 }
 
 interface ServerCapabilities {
@@ -433,8 +460,10 @@ async function* messagesOf(
   body: Uint8Array | Blob,
   from: number,
   chunkBytes: number,
+  sum?: Hash,
 ): AsyncGenerator<Uint8Array> {
   if (body instanceof Uint8Array) {
+    sum?.update(body)
     for (let at = from; at < body.length; at += chunkBytes) {
       yield body.subarray(at, Math.min(at + chunkBytes, body.length))
     }
@@ -443,6 +472,7 @@ async function* messagesOf(
   let carry: Uint8Array = new Uint8Array(0)
   let skip = from
   for await (const whole of body.stream()) {
+    sum?.update(whole)
     // A resumed write starts past what the server committed.
     const piece = skip === 0 ? whole : whole.subarray(Math.min(skip, whole.length))
     skip -= whole.length - piece.length
@@ -923,7 +953,7 @@ export class ReapiClient {
    * whose Execute just named them missing has already contradicted it.
    */
   async uploadBlobs(
-    blobs: ReadonlyArray<{ digest: Digest; data: Uint8Array }>,
+    blobs: ReadonlyArray<{ digest: Digest; data: Uint8Array } | FileBlob>,
     maxBatchBytes = 0,
     everyBlob = false,
   ): Promise<void> {
@@ -940,7 +970,16 @@ export class ReapiClient {
         ? Math.min(maxBatchBytes, SAFE_BATCH_BYTES)
         : this.negotiatedBatchBytes || SAFE_BATCH_BYTES
     const jobs: Array<() => Promise<void>> = []
-    let batch: Array<{ digest: Digest; data: Uint8Array }> = []
+    // A file blob is read in its job, so a batch holds its bytes only while it is sent.
+    const send = (group: typeof blobs) => async (): Promise<void> =>
+      this.batchUpdateBlobs(
+        await Promise.all(
+          group.map(async (b) =>
+            'file' in b ? { digest: b.digest, data: await readFileBlob(b) } : b,
+          ),
+        ),
+      )
+    let batch: Array<(typeof blobs)[number]> = []
     let batched = 0
     for (const b of todo) {
       // Charge the ENCODING, not just the payload. Each entry also carries a
@@ -952,19 +991,18 @@ export class ReapiClient {
       // 4 194 304 ceiling).
       const cost = b.digest.size_bytes + BATCH_ENTRY_OVERHEAD
       if (cost > budget) {
-        jobs.push(() => this.writeBlob(b.digest, b.data))
+        jobs.push(() => ('file' in b ? this.writeFileBlob(b) : this.writeBlob(b.digest, b.data)))
         continue
       }
       if (batched + cost > budget) {
-        const full = batch
-        jobs.push(() => this.batchUpdateBlobs(full))
+        jobs.push(send(batch))
         batch = []
         batched = 0
       }
       batch.push(b)
       batched += cost
     }
-    if (batch.length > 0) jobs.push(() => this.batchUpdateBlobs(batch))
+    if (batch.length > 0) jobs.push(send(batch))
     // UPLOAD_CONCURRENCY at once, not one after another: a grpc-go server grows
     // its receive window from what it measures arriving, and one stream at a
     // time held four 8 MB writes to 10.2 s through 15 ms each way, 0.49 s at
@@ -1070,6 +1108,14 @@ export class ReapiClient {
     return this.negotiatedBatchBytes || SAFE_BATCH_BYTES
   }
 
+  /** `b` by ByteStream, from disk when past the batch limit, refused if it changed. */
+  async writeFileBlob(b: FileBlob): Promise<void> {
+    if (b.digest.size_bytes <= this.wholeWriteBytes) {
+      return this.writeBlob(b.digest, await readFileBlob(b))
+    }
+    return this.writeBlob(b.digest, Bun.file(b.file).slice(0, b.digest.size_bytes), b)
+  }
+
   /**
    * Upload a blob via ByteStream, chunked at `chunkBytes`, RESUMING an
    * interrupted identity upload from the server's committed offset
@@ -1084,7 +1130,7 @@ export class ReapiClient {
    * it would need the bytes in hand, and the one Blob this carries is a
    * zstd artifact already. A Blob under the limit is small enough to read.
    */
-  async writeBlob(digest: Digest, source: Uint8Array | Blob): Promise<void> {
+  async writeBlob(digest: Digest, source: Uint8Array | Blob, verify?: FileBlob): Promise<void> {
     const streamed = source instanceof Blob && source.size > this.wholeWriteBytes
     const body = source instanceof Blob && !streamed ? await source.bytes() : source
     const compressed = this.compression && body instanceof Uint8Array
@@ -1104,9 +1150,10 @@ export class ReapiClient {
       const resource = `${this.instance ? `${this.instance}/` : ''}uploads/${crypto.randomUUID()}/${segment}`
       const bounds = this.bounded()
       try {
-        await this.writeResource(resource, wire, digest, 0, chunk, compressed, bounds)
+        await this.writeResource(resource, wire, digest, 0, chunk, compressed, bounds, verify)
         return
       } catch (err) {
+        if (err instanceof BlobChangedError) throw err
         const code = (err as grpc.ServiceError).code
         // ADAPTIVE DOWNGRADE. The Bun node:http2 flow-control defect is a RACE,
         // not a boundary: chunk sizes above the RFC default initial window
@@ -1157,10 +1204,12 @@ export class ReapiClient {
                 chunk,
                 false,
                 this.bounded(),
+                verify,
               )
               return
               // quiet: a resume that fails starts afresh; its last failure throws
-            } catch {
+            } catch (resumeErr) {
+              if (resumeErr instanceof BlobChangedError) throw resumeErr
               // fall through to a fresh attempt
             }
           }
@@ -1183,8 +1232,11 @@ export class ReapiClient {
     chunkBytes: number,
     compressed: boolean,
     bounds: grpc.CallOptions,
+    verify?: FileBlob,
   ): Promise<void> {
     const total = body instanceof Blob ? body.size : body.length
+    // Every byte, the resumed-past prefix too: the last message waits on the sum.
+    const sum: Hash | undefined = verify && createHash('sha256')
     let stream!: {
       write(m: unknown): boolean
       end(): void
@@ -1221,8 +1273,15 @@ export class ReapiClient {
     let offset = startOffset
     let first = true
     try {
-      for await (const data of messagesOf(body, startOffset, chunkBytes)) {
+      for await (const data of messagesOf(body, startOffset, chunkBytes, sum)) {
         const end = offset + data.length
+        // Unfinished, the write commits nothing: a changed file never lands.
+        if (
+          verify &&
+          end === total &&
+          (end !== verify.digest.size_bytes || sum!.digest('hex') !== verify.digest.hash)
+        )
+          throw blobChanged(verify)
         const flowing = stream.write({
           resource_name: first ? resource : '',
           write_offset: offset,
