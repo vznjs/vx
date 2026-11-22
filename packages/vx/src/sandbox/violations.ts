@@ -596,6 +596,7 @@ export async function parseStraceViolations(
     if (!denyAnchors.some((root) => atOrUnder(abs, root))) continue
     // Skip paths the user explicitly allowed (and their descendants).
     const via = lexical === abs ? undefined : hiddenLink(lexical, abs, mounted, denyAnchors)
+    if (process.env['VX_TMP_DEBUG'] === '1') console.error('DBGLINK', JSON.stringify({ syscall, rawPath, dir, errno, lexical, abs, via, mounted: [...mounted], denyAnchors, allowAbs }))
     if (isUnderAny(abs, allowAbs) && via === undefined) continue
     // A grant bound as its children around a wall still grants the
     // directory: a file missing there is the task's own missing file. A

@@ -12,6 +12,7 @@ import { run } from './helpers/orchestrator.js'
 import { sandboxAvailable } from './helpers/sandbox-gate.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 
+process.env['VX_TMP_DEBUG'] = '1'
 const available = await sandboxAvailable('sandbox link-out-of-project test')
 let said = ''
 const log = {
