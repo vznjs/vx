@@ -604,14 +604,7 @@ export class GitFilesCache extends Map<string, readonly string[]> {
           }
       }
       const rel = abs.slice(list.base.length)
-      let lo = 0
-      let hi = list.rels.length
-      while (lo < hi) {
-        const mid = (lo + hi) >>> 1
-        if (list.rels[mid]! < rel) lo = mid + 1
-        else hi = mid
-      }
-      if (list.rels[lo] === rel) return true
+      if (list.rels[lowerBoundOf(list.rels, rel)] === rel) return true
     }
     return this.tracked.has(this.trackedKey(abs))
   }
@@ -3075,16 +3068,7 @@ export async function applyGitEnumeration(
   const scopes = enumeration.scopes.map((rel) => path.join(workspaceRoot, rel))
   if (base === undefined) cache.noteTrackedLater(scopes, () => enumeration.tracked.map(abs))
   else cache.noteTrackedSorted(scopes, base, enumeration.tracked)
-  const lowerBound = (key: string): number => {
-    let lo = 0
-    let hi = sorted.length
-    while (lo < hi) {
-      const mid = (lo + hi) >>> 1
-      if (sorted[mid]! < key) lo = mid + 1
-      else hi = mid
-    }
-    return lo
-  }
+  const lowerBound = (key: string): number => lowerBoundOf(sorted, key)
   const rootOids = (): Map<string, string> => {
     const oids = new Map<string, string>()
     for (const [rel, oid] of trusted) oids.set(abs(rel), oid)
