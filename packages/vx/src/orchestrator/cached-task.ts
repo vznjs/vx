@@ -185,7 +185,23 @@ export async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome>
     applySave(m, ran, await saveVerdict(m, ran, c, stamp), c, stamp)
   let save: { saved: boolean; unsavedBytes?: number }
   const saves = args.run.deferredSaves
-  if (landed === undefined || !policy.save || ran.exitCode !== 0) save = await saveBy(check)
+  if (
+    HACK_DEFER &&
+    landed === undefined &&
+    saves !== undefined &&
+    policy.save &&
+    ran.exitCode === 0 &&
+    policy.stability.severity !== 'error'
+  ) {
+    const settled: Promise<SaveFacts> = Promise.resolve().then(async () => {
+      const now = await saveBy(check)
+      const lane = saves.get(node.id)
+      if (lane !== undefined && lane !== settled) return lane
+      return now.saved ? { saved: true as const } : {}
+    })
+    saves.set(node.id, settled)
+    save = { saved: false }
+  } else if (landed === undefined || !policy.save || ran.exitCode !== 0) save = await saveBy(check)
   else if (
     saves === undefined ||
     // A moved input fails the task: decided before it is done.
@@ -227,6 +243,8 @@ export async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome>
  * key is used verbatim: a restore-tier task may run before its deps finish,
  * so its live `upstream` is incomplete.
  */
+const HACK_DEFER = process.env['VX_HACK_DEFER'] === '1'
+
 async function keyFor(args: ExecuteArgs): Promise<string> {
   const known = args.preProbed?.hash ?? args.upfrontKey
   if (known !== undefined) return known
