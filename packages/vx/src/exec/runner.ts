@@ -712,7 +712,8 @@ const BLOCKED_DRAIN_MS = 30_000
  * a leftover's, and a task the run stopped waits on no reader (Ctrl-C with
  * `vx run … | less` paused held the run). Nor a bound that ends with no
  * writer left on the pipes (`writersLeft`): the reader thread is only
- * behind. Unref'd, never cleared: a late resolve changes nothing.
+ * behind. Cleared once the readers drain: an armed timer held the task's
+ * pipes and output until it fired.
  */
 export async function drainOrAbort(
   streams: Promise<unknown>,
@@ -724,11 +725,15 @@ export async function drainOrAbort(
   const bound = testTimerMs('POST_EXIT_DRAIN', POST_EXIT_DRAIN_MS)
   const atExit = taken.chars
   const exitAt = performance.now()
+  let timer: ReturnType<typeof setTimeout> | undefined
+  let drained = false
   const deadline = new Promise<'timeout'>((resolve) => {
     let armedAt = 0
     const arm = (): void => {
+      if (drained) return
       armedAt = performance.now()
-      setTimeout(() => void due(), bound).unref?.()
+      timer = setTimeout(() => void due(), bound)
+      timer.unref?.()
     }
     const due = async (): Promise<void> => {
       const now = performance.now()
@@ -752,6 +757,9 @@ export async function drainOrAbort(
     arm()
   })
   const winner = await Promise.race([streams.then(() => 'drained' as const), deadline])
+  // A timer left armed held the task's pipes, and their output, until it fired.
+  drained = true
+  clearTimeout(timer)
   if (winner === 'timeout') ac.abort()
   return winner === 'timeout'
 }
