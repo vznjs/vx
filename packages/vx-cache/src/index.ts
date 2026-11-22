@@ -274,16 +274,22 @@ function pace(
 function streamed(res: Response, controller: AbortController, ms: number): Response {
   if (res.body === null) return res
   const window = pace(controller, ms)
-  const body = res.body.pipeThrough(
-    new TransformStream<Uint8Array, Uint8Array>({
-      transform(chunk, out) {
-        window.moved(chunk.byteLength)
-        out.enqueue(chunk)
-      },
-      flush: window.stop,
-    }),
-  )
-  return new Response(body, {
+  return piped(res.body, res, {
+    transform(chunk, out) {
+      window.moved(chunk.byteLength)
+      out.enqueue(chunk)
+    },
+    flush: window.stop,
+  })
+}
+
+/** `res` with `body` run through `transformer`. */
+function piped(
+  body: ReadableStream<Uint8Array>,
+  res: Response,
+  transformer: Transformer<Uint8Array, Uint8Array>,
+): Response {
+  return new Response(body.pipeThrough(new TransformStream(transformer)), {
     status: res.status,
     statusText: res.statusText,
     headers: res.headers,
@@ -303,22 +309,15 @@ function sized(res: Response): Response {
   if (res.body === null || named === null) return res
   const size = Number(named)
   let seen = 0
-  const body = res.body.pipeThrough(
-    new TransformStream<Uint8Array, Uint8Array>({
-      transform(chunk, out) {
-        seen += chunk.byteLength
-        if (seen > size) throw new Error(`the download ran past its ${size} bytes`)
-        out.enqueue(chunk)
-      },
-      flush() {
-        if (seen !== size) throw new Error(`the download ended after ${seen} of ${size} bytes`)
-      },
-    }),
-  )
-  return new Response(body, {
-    status: res.status,
-    statusText: res.statusText,
-    headers: res.headers,
+  return piped(res.body, res, {
+    transform(chunk, out) {
+      seen += chunk.byteLength
+      if (seen > size) throw new Error(`the download ran past its ${size} bytes`)
+      out.enqueue(chunk)
+    },
+    flush() {
+      if (seen !== size) throw new Error(`the download ended after ${seen} of ${size} bytes`)
+    },
   })
 }
 
