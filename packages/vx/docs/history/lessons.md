@@ -409,3 +409,7 @@ claim or a timed test. Add a lesson here, not to CLAUDE.md.
   watch fuzz seed diverged when a branch switch changed the source under
   the running watch, and its rerun was clean. Long probes run a detached
   worktree of main (2026-11-21).
+- SQLite's `locking_mode = EXCLUSIVE` keeps every lock a connection gets,
+  a failed `BEGIN EXCLUSIVE`'s shared one too: two `vx cache clean`s
+  waiting on one run each held a shared lock and waited on the other
+  forever. A waiter closes its connection between tries (2026-11-22).

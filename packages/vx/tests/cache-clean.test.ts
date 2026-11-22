@@ -294,6 +294,31 @@ describe('vx cache clean with no bound clears the cache', () => {
     },
     TIMEOUT,
   )
+  // Two checkouts' cleans waiting on one run: each failed try kept the lock
+  // it had got, so once the run closed each still saw the other and both
+  // waited forever (two worktrees' `vx cache clean` at once, a fuzz hang).
+  it(
+    'two cleans waiting on the same run both finish once it closes',
+    async () => {
+      expect((await vx(['run', 'build', '--all'])).code).toBe(0)
+      const st = store()
+      const held = new Database(path.join(st, 'store.db'))
+      held.query('SELECT count(*) FROM entries').get()
+      const order: string[] = []
+      const take = (name: string) =>
+        holdStore(st, () => {}).then((release) => {
+          order.push(name)
+          release()
+        })
+      const both = Promise.all([take('a'), take('b')])
+      // Both try, and fail, while the run holds the store.
+      await Bun.sleep(300)
+      held.close()
+      const done = await Promise.race([both.then(() => true), Bun.sleep(5_000).then(() => false)])
+      expect([done, order.toSorted()]).toEqual([true, ['a', 'b']])
+    },
+    TIMEOUT,
+  )
   /** Spawn `args` and read its stderr until it says `notice` or ends; the rest drains later. */
   const spawnUntil = async (
     cwd: string,
