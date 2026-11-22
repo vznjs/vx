@@ -78,7 +78,6 @@ export {
   PROJECT_CONFIG_FILENAMES,
   resolveCacheDir,
   resolveStoreRoot,
-  ROOT_NAME,
   type ConfigDir,
   type ProjectConfigs,
   type ProjectEntry,
