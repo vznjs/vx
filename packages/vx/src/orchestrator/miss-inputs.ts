@@ -23,6 +23,7 @@ import {
   secretNamed,
 } from '../util/index.js'
 import { warnOf } from '../report/index.js'
+import { hashArgsOf } from './execute-args.js'
 import type { ExecuteArgs, RunContext } from './execute-task.js'
 import { bracketLiteralHint } from './miss-save.js'
 import type { TaskPolicy } from './task-policy.js'
@@ -63,8 +64,7 @@ export async function describeMiss(
   env: NodeJS.ProcessEnv,
   pre?: PreDescribed,
 ): Promise<{ inputs: MissInputs; secrets: TaskSecrets }> {
-  const { node, upstream, log } = args
-  const { cache } = args.run
+  const { node, log } = args
   const cfg = node.config
   // A non-cacheable task folds nothing and ships no inputs. The HashCache
   // memos and the gitFilesCache OID map make this a fold, no I/O.
@@ -73,22 +73,7 @@ export async function describeMiss(
     ? undefined
     : pre !== undefined
       ? pre.described
-      : await describeTaskInputs({
-          node,
-          upstream,
-          workspaceRoot: args.run.workspaceRoot,
-          cache,
-          forwardArgs: args.run.forwardArgs,
-          nestedProjectDirs: args.nestedProjectDirs,
-          captureInto: captured,
-          ...(args.run.gitFilesCache !== undefined
-            ? { gitFilesCache: args.run.gitFilesCache }
-            : {}),
-          ...(args.run.hashCache !== undefined ? { hashCache: args.run.hashCache } : {}),
-          ...(args.run.probesAfterWrites !== undefined
-            ? { probesAfterWrites: args.run.probesAfterWrites }
-            : {}),
-        })
+      : await describeTaskInputs({ ...hashArgsOf(args, true), captureInto: captured })
   const commandFrom = policy.cacheable
     ? fsClockNow(args.run.cacheDir ?? path.join(args.run.workspaceRoot, '.vx'))
     : 0

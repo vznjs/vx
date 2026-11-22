@@ -14,6 +14,7 @@ import { releaseBridges, sandboxReads, wrapSandboxedCommand } from '../sandbox/i
 import type { TaskOutcome } from '../graph/index.js'
 import { maskedStreams, secretMask, testTimerMs } from '../util/index.js'
 import { warnOf } from '../report/index.js'
+import { hashArgsOf } from './execute-args.js'
 import type { ExecuteArgs } from './execute-task.js'
 import {
   commandWriteReach,
@@ -50,21 +51,7 @@ const READY_NOTICE_MS = 10_000
  */
 export function serverKey(args: ExecuteArgs): Promise<string | undefined> | string | undefined {
   if (args.noDependants === true) return undefined
-  return (
-    args.upfrontKey ??
-    keyOf(
-      computeTaskHash({
-        node: args.node,
-        upstream: args.upstream,
-        workspaceRoot: args.run.workspaceRoot,
-        cache: args.run.cache,
-        forwardArgs: args.run.forwardArgs,
-        nestedProjectDirs: args.nestedProjectDirs,
-        ...(args.run.gitFilesCache !== undefined ? { gitFilesCache: args.run.gitFilesCache } : {}),
-        ...(args.run.hashCache !== undefined ? { hashCache: args.run.hashCache } : {}),
-      }),
-    )
-  )
+  return args.upfrontKey ?? keyOf(computeTaskHash(hashArgsOf(args)))
 }
 
 /**

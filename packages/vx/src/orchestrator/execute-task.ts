@@ -25,6 +25,7 @@ import {
   keyOf,
   type UpfrontGroupKey,
 } from './task-hash.js'
+import { hashArgsOf } from './execute-args.js'
 import { executePersistentTask } from './persistent-task.js'
 import type { KeyedTasks } from './upstream-inputs.js'
 import { executeCachedTask, type PreparedKey, readsCache, restoreProbed } from './cached-task.js'
@@ -347,18 +348,7 @@ async function executeGroupTask(args: ExecuteArgs): Promise<TaskOutcome> {
     )
   }
   const wallclockNs = process.hrtime.bigint() - args.run.runStartHrTimeNs
-  const hash = await keyOf(
-    computeTaskHash({
-      node: args.node,
-      upstream: args.upstream,
-      workspaceRoot: args.run.workspaceRoot,
-      cache: args.run.cache,
-      forwardArgs: args.run.forwardArgs,
-      nestedProjectDirs: args.nestedProjectDirs,
-      ...(args.run.gitFilesCache !== undefined ? { gitFilesCache: args.run.gitFilesCache } : {}),
-      ...(args.run.hashCache !== undefined ? { hashCache: args.run.hashCache } : {}),
-    }),
-  )
+  const hash = await keyOf(computeTaskHash(hashArgsOf(args)))
   return groupOutcome(args.node, args.upstream, hash, wallclockNs)
 }
 
