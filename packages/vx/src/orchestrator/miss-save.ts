@@ -26,6 +26,7 @@ import {
   anyTaskGlob,
   asTrees,
   isLiteralPattern,
+  normalizeGlob,
   outputDirPrefixes,
   printable,
   relPosix,
@@ -593,8 +594,9 @@ function deadOutputGlobs(
   const ownWild = wild(a.outputs)
   const wsWild = wild(a.wsOutputs)
   if (ownWild.length === 0 && wsWild.length === 0) return []
-  const ownMatch = anyTaskGlob(ownWild)
-  const wsMatch = anyTaskGlob(wsWild)
+  // As the walk reads them: `./dist/**` matched `dist/a.js` there.
+  const ownMatch = anyTaskGlob(ownWild.map(normalizeGlob))
+  const wsMatch = anyTaskGlob(wsWild.map(normalizeGlob))
   for (const p of own) if (ownMatch(relPosix(projectDir, p))) return []
   for (const p of ws) if (wsMatch(relPosix(a.workspaceRoot, p))) return []
   // As the input rule: a link to a directory is listed by its own name,

@@ -17,6 +17,7 @@ import {
   ignoredInputLine,
   isLiteralPattern,
   MASKED,
+  normalizeGlob,
   outputMatcher,
   relPosix,
   secretNamed,
@@ -219,8 +220,9 @@ function deadSourceGlobs(
   const own = wild(declared?.files)
   const ws = wild(declared?.workspaceFiles)
   if (own.length === 0 && ws.length === 0) return []
-  const ownMatch = anyTaskGlob(own)
-  const wsMatch = anyTaskGlob(ws)
+  // As the walk reads them: `./src/**` matched `src/a.ts` there.
+  const ownMatch = anyTaskGlob(own.map(normalizeGlob))
+  const wsMatch = anyTaskGlob(ws.map(normalizeGlob))
   const prefix = projectRel === '' ? '' : `${projectRel}/`
   for (const { path: p } of files) {
     if (wsMatch(p)) return []
