@@ -515,8 +515,12 @@ export function buildCustomConfig(
   let fence: { denied: string[]; granted: string[] } | undefined
   const reachable = (real: string): boolean => {
     fence ??= { denied: denyRead.map(toRealPath), granted: reads.map(toRealPath) }
+    // A target above a grant is laid as the link it is (`punchedLinks`),
+    // which mounts nothing: behind it stands only what the grants bound.
+    // Dropped, `shared -> ../lib/shared` hid a granted `../lib/shared/s.json`.
     return (
-      !fence.denied.some((d) => atOrUnder(real, d)) || fence.granted.some((g) => atOrUnder(real, g))
+      !fence.denied.some((d) => atOrUnder(real, d)) ||
+      fence.granted.some((g) => atOrUnder(real, g) || atOrUnder(g, real))
     )
   }
   let allowRead = unique(reads.flatMap((r) => punchWritePaths(r, punched, reachable)))

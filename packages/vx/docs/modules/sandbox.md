@@ -354,7 +354,7 @@ export function keyedOutsideGrants(
 export function punchWritePaths(
   readPath: string,
   writePaths: readonly string[],
-  reachable?: (real: string) => boolean, // may a linked child's target be reached
+  reachable?: (real: string) => boolean, // may a linked child's target (or a grant under it) be reached
 ): string[]
 // Linux: the links a punch handed over as read grants, taken out of
 // `allowRead` as `[text, at]` and laid by vx with `--symlink` before

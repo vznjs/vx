@@ -1495,7 +1495,9 @@ elsewhere in the workspace. Applied as given, the two lines key every
 read they grant, so an edit there re-runs the task. A read through a link
 grants the directory holding the link too: the sandbox mounts a grant at
 its real path and never the link, so the target alone stayed out of
-reach. A credential path
+reach. That holds for a link into another project too (`shared ->
+../lib/shared`): the project's grant lays the link, and behind it stands
+only what the grants bind. A credential path
 (`~/.ssh`, `~/.aws`, `~/.gnupg`, `~/.kube`, `~/.config/gh`,
 `~/.config/gcloud`, `~/.netrc`, `~/.npmrc`, `~/.pypirc`,
 `~/.git-credentials`, `~/.docker/config.json`, a `.env` file) is never put in the
