@@ -266,7 +266,12 @@ detected. Throws as `UserError` so the CLI prints cleanly.
 ### Overlapping outputs
 
 Last, `detectOutputCollisions` refuses two tasks whose declared outputs
-overlap (`outputsOverlap`) with no edge between them. A pair with one is
+overlap (`outputsOverlap`) with no edge between them. Two globs overlap
+when some path takes both, decided exactly (`glob-meet.ts`: the two
+patterns walked together, segment by segment and character by
+character), so `*.js` beside `*b*` meets at `b.js`. A literal reads as a
+directory for that only with a trailing slash: `index.js` beside `*/**`
+is no overlap, `dist/` beside `**/out` is. A pair with one is
 refused too while `rules.exclusiveOutputs` is on (the default, X-53), its
 message naming the rule; off, the pair is marked as the addition shape.
 It never compares all pairs:
