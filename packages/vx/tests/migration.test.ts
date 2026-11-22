@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'bun:test'
 import {
   isStarterConfig,
   quoteTsLiteral,
+  renderWorkspace,
   starterProject,
   tscCompilesConfigNotes,
   type ApplyMigrationArgs,
@@ -778,6 +779,19 @@ describe('isStarterConfig', () => {
         at('vx.config.ts', starterProject('mjs')),
         at('vx.config.mjs', starterProject('ts')),
       ]).toEqual([true, true, false, false])
+      mkdirSync(path.join(dir, '.vx'))
+      expect([
+        at('.vx/workspace.ts', renderWorkspace('ts', [])),
+        at('.vx/workspace.mjs', renderWorkspace('mjs', [])),
+        // A CRLF checkout of vx init's file is still vx init's.
+        at('.vx/workspace.ts', renderWorkspace('ts', []).replaceAll('\n', '\r\n')),
+        at('vx.config.ts', starterProject('ts').replaceAll('\n', '\r\n')),
+        at('.vx/workspace.ts', renderWorkspace('mjs', [])),
+        at(
+          '.vx/workspace.ts',
+          renderWorkspace('ts', [{ pkg: '@vzn/vx-lockfile', factory: 'bun' }]),
+        ),
+      ]).toEqual([true, true, true, true, false, false])
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }

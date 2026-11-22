@@ -3,7 +3,7 @@
 // the lockfile plugin its lockfile calls for. `vx init` hands such a repo
 // here (2026-10-14: core reads no package.json).
 
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, describe, expect, it } from 'bun:test'
@@ -25,6 +25,17 @@ async function bunRepo(): Promise<string> {
     '{"name":"a","scripts":{"build":"tsc"}}\n',
   )
   return root
+}
+
+/** What `--no-install` left out: core and @vzn/vx-lockfile from this checkout. */
+async function linkPlugins(root: string): Promise<void> {
+  await mkdir(path.join(root, 'node_modules', '@vzn'), { recursive: true })
+  for (const pkg of ['vx', 'vx-lockfile'])
+    await symlink(
+      path.resolve(import.meta.dir, '..', '..', pkg),
+      path.join(root, 'node_modules', '@vzn', pkg),
+      'dir',
+    )
 }
 
 async function migrate(cwd: string, args: string[]) {
@@ -101,6 +112,68 @@ describe('vx-migrate on package.json scripts', () => {
     expect([r.code, r.err]).toEqual([0, ''])
     expect(r.out).not.toContain('kept')
     expect(await readFile(path.join(root, 'vx.config.ts'), 'utf8')).toContain("command: 'oxlint .'")
+  })
+
+  // vx init's workspace file, untouched, declares no plugin: kept as the
+  // user's, the lockfile plugin went undeclared and `vx lock` refused every
+  // `^build` init's own next step wrote (2026-11-22). Its CRLF checkout too.
+  for (const [eol, format] of [
+    ['\n', 'ts'],
+    ['\r\n', 'ts'],
+    ['\n', 'mjs'],
+  ] as const) {
+    it(`declares the lockfile plugin over vx init's ${format} workspace file (${JSON.stringify(eol)})`, async () => {
+      const root = await bunRepo()
+      const starter =
+        format === 'ts'
+          ? "import type { WorkspaceConfig } from '@vzn/vx/config'\n\nexport default { plugins: [] } satisfies WorkspaceConfig\n"
+          : 'export default { plugins: [] }\n'
+      await mkdir(path.join(root, '.vx'))
+      await writeFile(path.join(root, '.vx', `workspace.${format}`), starter.replaceAll('\n', eol))
+      const r = await migrate(root, [
+        '--dry',
+        '--format',
+        'json',
+        ...(format === 'mjs' ? ['--mjs'] : []),
+      ])
+      expect([r.code, r.err]).toEqual([0, ''])
+      const plan = JSON.parse(r.out) as { files: { path: string; contents: string }[] }
+      expect(plan.files.find((f) => f.path === `.vx/workspace.${format}`)?.contents).toContain(
+        "import { bun } from '@vzn/vx-lockfile'",
+      )
+    })
+  }
+
+  it('vx init, then vx-migrate: vx lock passes and ^build orders the packages', async () => {
+    const root = await bunRepo()
+    await mkdir(path.join(root, 'packages', 'b'), { recursive: true })
+    await writeFile(
+      path.join(root, 'packages', 'b', 'package.json'),
+      '{"name":"b","dependencies":{"a":"workspace:*"},"scripts":{"build":"tsc"}}\n',
+    )
+    const env = { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1' }
+    const core = path.resolve(import.meta.dir, '../../vx/src/bin.ts')
+    expect(Bun.spawnSync(['git', 'init', '-q'], { cwd: root, env }).exitCode).toBe(0)
+    expect(Bun.spawnSync(['bun', 'install'], { cwd: root, env }).exitCode).toBe(0)
+    expect(Bun.spawnSync([process.execPath, core, 'init'], { cwd: root, env }).exitCode).toBe(0)
+    const r = await migrate(root, ['--no-install'])
+    expect([r.code, r.err]).toEqual([0, ''])
+    await linkPlugins(root)
+    const lock = Bun.spawnSync([process.execPath, core, 'lock'], { cwd: root, env, stderr: 'pipe' })
+    expect([lock.exitCode, lock.stderr.toString()]).toEqual([0, ''])
+  })
+
+  it('keeps a workspace file the user wrote', async () => {
+    const root = await bunRepo()
+    await mkdir(path.join(root, '.vx'))
+    await writeFile(
+      path.join(root, '.vx', 'workspace.ts'),
+      'export default { plugins: [] } // mine\n',
+    )
+    const r = await migrate(root, ['--dry', '--format', 'json'])
+    expect([r.code, r.err]).toEqual([0, ''])
+    const plan = JSON.parse(r.out) as { files: { path: string }[] }
+    expect(plan.files.map((f) => f.path)).not.toContain('.vx/workspace.ts')
   })
 
   // A starter of the other extension was left beside the migrated root
@@ -196,6 +269,7 @@ describe('vx-migrate on package.json scripts', () => {
     const r = await migrate(root, ['--no-install'])
     expect([r.code, r.err]).toEqual([0, ''])
     expect(await readFile(path.join(root, 'vx.config.ts'), 'utf8')).not.toContain('^build')
+    await linkPlugins(root)
     const p = vx(['lock'])
     expect([p.exitCode, p.stderr.toString()]).toEqual([0, ''])
   })
