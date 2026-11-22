@@ -430,18 +430,39 @@ describe('real-repos.yml', () => {
 describe('conformance.yml', () => {
   const doc = read('conformance.yml')
   const job = doc.jobs['conformance']!
-  it('runs the conformance task weekly or dispatched, off the DTE run, one at a time', () => {
+  const merge = doc.jobs['merge']!
+  it('runs the conformance task weekly or dispatched, off the DTE run, one run per ref', () => {
     expect(Object.keys((doc.on ?? doc.true)!)).toEqual(['schedule', 'workflow_dispatch'])
-    expect(doc.concurrency).toEqual({ group: 'conformance', 'cancel-in-progress': false })
-    expect(JSON.stringify(job)).not.toContain('VX_DTE')
+    expect(doc.concurrency).toEqual({
+      group: 'conformance-${{ github.ref }}',
+      'cancel-in-progress': false,
+    })
+    expect(JSON.stringify(doc.jobs)).not.toContain('VX_DTE')
     expect(job.permissions).toEqual({ contents: 'read' })
+    expect(merge.permissions).toEqual({ contents: 'read' })
+  })
+
+  // Sharded (2026-11-22): one job per tool and third of the cases, then one merge.
+  it('runs every tool on every third of the cases, and merges them all', () => {
+    const matrix = (job as { strategy?: { matrix?: Record<string, unknown> } }).strategy?.matrix
+    expect(matrix?.['shard']).toEqual([1, 2, 3])
+    expect(matrix?.['tool']).toEqual(['vx', 'turbo', 'nx', 'vite-task', 'nix', 'moon'])
     expect(job.steps?.find((s) => s.name === 'vx run conformance')?.run).toBe(
-      'bun packages/vx/src/bin.ts run @vzn/vx-conformance#conformance',
+      'bun packages/vx/src/bin.ts run @vzn/vx-conformance#conformance -- --tool ${{ matrix.tool }} --shard ${{ matrix.shard }}/3 --out shard.json',
     )
-    expect(job.steps?.at(-1)?.if).toBe('always()')
-    expect(job.steps?.at(-1)?.with).toEqual({
+    expect((merge as { needs?: unknown }).needs).toBe('conformance')
+    expect((merge as { if?: unknown }).if).toBe('always()')
+    expect(merge.steps?.find((s) => s.name === 'vx run conformance.merge')?.run).toBe(
+      'bun packages/vx/src/bin.ts run @vzn/vx-conformance#conformance.merge',
+    )
+  })
+
+  // live-conformance.ts reads the run's results by this name.
+  it('uploads the merged results as conformance-data', () => {
+    expect(merge.steps?.at(-1)?.if).toBe('always()')
+    expect(merge.steps?.at(-1)?.with).toEqual({
       name: 'conformance-data',
-      path: 'private/vx-docs/src/data/conformance.json',
+      path: 'private/vx-conformance/conformance.json',
     })
   })
 })

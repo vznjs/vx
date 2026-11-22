@@ -27,6 +27,43 @@
         ]
       }
     },
+    "conformance.merge": {
+      "description": "bun src/merge.ts: the shards in shards/ → conformance.json",
+      "dependsOn": [
+        "install"
+      ],
+      "exec": {
+        "command": "bun src/merge.ts conformance.json shards/*/shard.json",
+        "env": {
+          "define": {
+            "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0"
+          }
+        },
+        "sandbox": {
+          "allow": {
+            "read": [
+              "**/*"
+            ],
+            "write": [
+              "conformance.json"
+            ]
+          }
+        }
+      },
+      "inputs": {
+        "files": [
+          "src/**",
+          "cases/**",
+          "package.json",
+          "shards/**"
+        ]
+      },
+      "outputs": {
+        "files": [
+          "conformance.json"
+        ]
+      }
+    },
     "lint": {
       "dependsOn": [
         "lint.oxlint",
