@@ -109,7 +109,7 @@ packages/vx-dte-server  the reference relay of `@vzn/vx-dte` (PROTOCOL.md): pass
                         OIDC tokens; imports only @vzn/vx-devtools, not even core
 private/vx-bench        synthetic workspace generator + runners (vx / turbo / nx)
 private/vx-conformance  one neutral suite of task-runner outcomes (cases/), run sandboxed against vx, Turbo, Nx,
-                        Vite Task and Nix through thin adapters; `conformance` (weekly on the rivals' latest, conformance.yml; not in `ci`) writes the results the
+                        Vite Task and Nix through thin adapters; `conformance` (weekly on the rivals' latest, conformance.yml; in no pipeline) writes the results the
                         site's conformance page renders. src/inventory.ts sorts every test file by whether a case can carry it
 private/vx-servers      compose.yaml: the dte, cache and history servers' images in one file
 skills/vx/SKILL.md      the agent skill, where `npx skills add vznjs/vx` finds it (.claude/skills are
@@ -133,7 +133,7 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
   time CI already spends); run only the fast checks for what you touched
   (that test file, oxlint on those files, `oxfmt --check`). Start the next
   unrelated work while CI runs; never wait idle on it. The full gate,
-  `bun packages/vx/src/bin.ts run ci --all`, is for diagnosing a red CI.
+  `bun packages/vx/src/bin.ts pipeline queue`, is for diagnosing a red CI.
   It refuses a Bun below `engines.bun` first (`check.bun`, item 575).
 - `bun test` alone cannot see a type error: it is transpile-only. Never
   pipe a check through `tail`/`grep` — it masks the exit.
@@ -173,7 +173,7 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
   `@vzn/vx-bench#bench.{vx,turbo,nx,vite-task,real}` and `#check.perf` (the tracer would be timed), and
   `@vzn/vx-conformance#test` and `#conformance` (each drives bubblewrap itself) are
   the ONLY tasks in the whole repo with no `exec.sandbox`.
-- Every package's suite is its `test` task, so `vx run ci --all` gates
+- Every package's suite is its `test` task, so `vx pipeline queue` gates
   them all; CI runs nothing but vx tasks (a workspace step is a design
   smell — declare the cross-project read on the task instead). The one
   suite that needs live services, `@vzn/vx-reapi#test`, runs skip-mode

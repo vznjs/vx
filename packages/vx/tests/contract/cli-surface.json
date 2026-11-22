@@ -54,6 +54,30 @@
       "--help",
       "--merge"
     ],
+    "pipeline": [
+      "--affected",
+      "--branch",
+      "--cache-concurrency-download",
+      "--cache-concurrency-restore",
+      "--cache-concurrency-upload",
+      "--cache-dir",
+      "--cache-download",
+      "--cache-policy",
+      "--concurrency",
+      "--continue",
+      "--dry",
+      "--exclude-dependencies",
+      "--filter",
+      "--force",
+      "--help",
+      "--no-cache",
+      "--output-logs",
+      "--profile",
+      "--retries",
+      "--schedule",
+      "--timeout",
+      "--verbosity"
+    ],
     "run": [
       "--affected",
       "--all",
@@ -201,6 +225,96 @@
     ],
     "lock --merge": [
       "*"
+    ],
+    "pipeline --affected": [
+      "*"
+    ],
+    "pipeline --branch": [
+      "*"
+    ],
+    "pipeline --cache-concurrency-download": [
+      "1",
+      "10",
+      "2"
+    ],
+    "pipeline --cache-concurrency-restore": [
+      "1",
+      "10",
+      "2"
+    ],
+    "pipeline --cache-concurrency-upload": [
+      "1",
+      "10",
+      "2"
+    ],
+    "pipeline --cache-dir": [
+      "*"
+    ],
+    "pipeline --cache-download": [
+      "all",
+      "none",
+      "toplevel"
+    ],
+    "pipeline --cache-policy": [
+      "local:r",
+      "local:rw",
+      "local:w",
+      "remote:r",
+      "remote:rw",
+      "remote:w"
+    ],
+    "pipeline --concurrency": [
+      "1",
+      "10",
+      "2"
+    ],
+    "pipeline --continue": [
+      "always",
+      "deps-ok",
+      "never"
+    ],
+    "pipeline --dry": [
+      "json",
+      "pretty"
+    ],
+    "pipeline --exclude-dependencies": [
+      "*"
+    ],
+    "pipeline --filter": [
+      "*"
+    ],
+    "pipeline --output-logs": [
+      "errors-only",
+      "full",
+      "hash-only",
+      "none"
+    ],
+    "pipeline --profile": [
+      "*"
+    ],
+    "pipeline --retries": [
+      "0",
+      "1",
+      "10",
+      "2"
+    ],
+    "pipeline --schedule": [
+      "critical-path",
+      "direct-dependents",
+      "most-work",
+      "ready-order"
+    ],
+    "pipeline --timeout": [
+      "12h",
+      "1d",
+      "30m",
+      "30s"
+    ],
+    "pipeline --verbosity": [
+      "0",
+      "1",
+      "10",
+      "2"
     ],
     "run --affected": [
       "*"

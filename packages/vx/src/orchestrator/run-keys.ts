@@ -12,7 +12,7 @@ import { readdirSync, statSync } from 'node:fs'
 import path from 'node:path'
 import type { GitFilesCache } from '../cache/index.js'
 import type { TaskNode } from '../graph/index.js'
-import { memoParts, onlyAbsent, ownEnv, unread, xxh3hex } from '../util/index.js'
+import { memoParts, onlyAbsent, ownEnv, taskEnvSource, unread, xxh3hex } from '../util/index.js'
 import type { StableKey } from './stable-keys.js'
 import {
   hashTaskConfig,
@@ -186,8 +186,9 @@ export function runKeysToken(args: RunKeysArgs): RunKeysAt | undefined {
     if (!nodeParts.push(node, args.hashCache, parts)) return undefined
     filesAt.push(parts.push(files) - 1)
   }
+  const source = taskEnvSource()
   for (const name of [...envNames].sort()) {
-    const value = ownEnv(process.env, name)
+    const value = ownEnv(source, name)
     parts.push(value === undefined ? name : `${name}=${value}`)
   }
   const selection = xxh3hex(ids.join('\0'))

@@ -39,7 +39,7 @@ describe.skipIf(!available || process.platform !== 'linux' || bwrap === null)(
 
     const vx = (...args: string[]) => {
       const r = Bun.spawnSync({
-        cmd: [process.execPath, BIN, 'run', ...args],
+        cmd: [process.execPath, BIN, 'run', '--output-logs=full', ...args],
         cwd: root,
         env: {
           ...process.env,

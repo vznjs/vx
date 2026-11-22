@@ -266,16 +266,15 @@ describe('examples/ci', () => {
       stdout: 'pipe',
       stderr: 'pipe',
     })
-    if (args[0] !== 'run') return { exit: r.exitCode, status: {} }
+    if (args[0] === 'lock') return { exit: r.exitCode, status: {} }
     return { exit: r.exitCode, status: lastStatus(root, env) }
   }
 
   it('runs the lines the workflow runs', () => {
     expect([...workflow.matchAll(/^\s+- run: >?\s*bun (vx \w+[^\n]*)/gm)].map((m) => m[1])).toEqual(
-      ['vx lock --check', 'vx run ci'],
+      ['vx lock --check', 'vx pipeline'],
     )
-    expect(workflow).toContain("&& '--affected'")
-    expect(workflow).toContain("|| '--all' }}")
+    expect(workflow).toContain("github.event_name == 'pull_request' && 'pr' || 'main' }}")
   })
 
   it('the CI guide shows the workflow and the workspace as they are here', () => {
@@ -293,7 +292,7 @@ describe('examples/ci', () => {
     const pr = 'refs/pull/7/merge'
     // A laptop wrote the locks and committed them (the fixture, as the README says).
     expect(step(main, ['lock', '--check']).exit).toBe(0)
-    const pushed = step(main, ['run', 'ci', '--all'])
+    const pushed = step(main, ['pipeline', 'main'])
     expect(pushed.exit).toBe(0)
     expect(pushed.status).toEqual({
       'app#build': 'success',
@@ -309,16 +308,16 @@ describe('examples/ci', () => {
     )
     commit(root)
     expect(step(pr, ['lock', '--check']).exit).toBe(0)
-    const opened = step(pr, ['run', 'ci', '--affected'])
+    const opened = step(pr, ['pipeline', 'pr'])
     expect(opened.exit).toBe(0)
     expect(opened.status).toEqual({
       'app#build': 'success',
       'app#test': 'success',
       'lib#build': 'cache-hit',
     })
-    expect(step(pr, ['run', 'ci', '--affected']).status['app#build']).toBe('cache-hit')
+    expect(step(pr, ['pipeline', 'pr']).status['app#build']).toBe('cache-hit')
     // One disk, one pool: main on the same tree hits what the pull request built.
-    expect(step(main, ['run', 'ci', '--all']).status).toEqual({
+    expect(step(main, ['pipeline', 'main']).status).toEqual({
       'app#build': 'cache-hit',
       'app#test': 'cache-hit',
       'lib#build': 'cache-hit',

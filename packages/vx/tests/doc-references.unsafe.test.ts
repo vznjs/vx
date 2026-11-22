@@ -53,7 +53,7 @@ describe('every core file path the guides and CLAUDE.md name exists', () => {
  */
 function sitePages(): string[] {
   // Read defensively: this tree is @vzn/vx-docs#build's OUTPUT, and that
-  // task runs beside this one in `vx run ci --all`. A page that vanishes
+  // task runs beside this one in `vx pipeline queue`. A page that vanishes
   // between the walk and the read is one the import script is rewriting —
   // its source is pinned by the safe half either way, and the alternative
   // (an ENOENT stack under an unrelated row) reads as a broken test, which

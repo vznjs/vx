@@ -1752,6 +1752,43 @@ export const PERSISTENT_TODO =
   'dependents unblock on readiness, and consider exec.timeout to bound the wait'
 ```
 
+## `Pipeline`
+
+type · `src/config.ts`
+
+`WorkspaceConfig.pipelines[name]`: a saved `vx run` over every project.
+Each key is its `vx run` flag in camelCase (`cachePolicy` is
+`--cache-policy`); a flag given to `vx pipeline` beats it, and so does
+the flag's `VX_*` variable.
+
+```ts
+export interface Pipeline {
+  tasks: readonly string[]
+  filter?: readonly string[]
+  affected?: boolean | string
+  excludeDependencies?: true | readonly string[]
+  env?: Readonly<Record<string, string>>
+  concurrency?: number | `${number}%`
+  schedule?: 'most-work' | 'critical-path' | 'direct-dependents' | 'ready-order'
+  continue?: 'never' | 'deps-ok' | 'always'
+  retries?: number
+  timeout?: Duration
+  branch?: string
+  cachePolicy?: string
+  noCache?: boolean
+  force?: boolean
+  cacheDir?: string
+  cacheDownload?: 'all' | 'toplevel' | 'none'
+  cacheConcurrencyDownload?: number
+  cacheConcurrencyUpload?: number
+  cacheConcurrencyRestore?: number
+  outputLogs?: 'full' | 'errors-only' | 'hash-only' | 'none'
+  verbosity?: number
+  profile?: boolean | string
+  dry?: boolean | 'pretty' | 'json'
+}
+```
+
 ## `PlannedTask`
 
 type · `src/orchestrator/plan.ts`
@@ -3466,6 +3503,7 @@ export interface WorkspaceConfig {
   lock?: LockSettings
   watch?: WatchSettings
   history?: HistorySettings
+  pipelines?: Record<string, Pipeline>
   plugins?: readonly (Plugin | undefined | null | false)[]
 }
 ```

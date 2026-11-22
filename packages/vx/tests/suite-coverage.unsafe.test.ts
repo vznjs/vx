@@ -1,7 +1,7 @@
 // Every test file in this repo is run by some task.
 //
 // A skip at least prints itself. A file no task names prints nothing: the
-// gate is `vx run ci --all`, and a suite it never launches is green by
+// gate is `vx pipeline queue`, and a suite it never launches is green by
 // omission. Three of the commands that launch suites here look only at the
 // TOP level of a `tests/` directory — the shard dealer `readdirSync`s it,
 // the unsafe task globs `./tests/*.unsafe.test.ts`, and vx-reapi loops over

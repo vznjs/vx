@@ -410,29 +410,6 @@ describe('--exclude-dependencies keys on the dependency it skips', () => {
     TIMEOUT,
   )
 
-  // A requested dependency keeps its edge (item 980), so the requested task
-  // the derivation keys is one BELOW a skipped one: `base#build` under the
-  // skipped `lib#build`. A requested task folds what `--` forwards.
-  it(
-    'a requested task beneath a skipped one folds the forwarded arguments, as the full run does',
-    async () => {
-      await baseLibApp()
-      const hashOf = (...flags: string[]): string => {
-        const plan = JSON.parse(
-          vx(root, 'run', 'app#build', 'base#build', '--dry=json', ...flags),
-        ) as { tasks: Array<{ id: string; hash: string }> }
-        return plan.tasks.find((t) => t.id === 'app#build')!.hash
-      }
-      const forwarded = ['--', '--mode=ci']
-      const full = hashOf(...forwarded)
-      expect([hashOf('--exclude-dependencies=build', ...forwarded), full === hashOf()]).toEqual([
-        full,
-        false,
-      ])
-    },
-    TIMEOUT,
-  )
-
   // Two scheduled tasks each lose an edge, one of them two: every dropped
   // task is keyed, not the first task's nor the first of a task's list.
   it(

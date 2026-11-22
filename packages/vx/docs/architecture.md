@@ -362,7 +362,7 @@ never branches on layering.
 
 1. **`bin.ts`** spawns with the user's argv. Forwards everything
    after the binary name to the cli module's `run`.
-2. **`cli/index.ts`** dispatches by subcommand: `run`, `watch`,
+2. **`cli/index.ts`** dispatches by subcommand: `run`, `watch`, `pipeline`,
    `cache`, `lock`, `init`, `upgrade`, `show`, `info`, `why`, `last`,
    `docs`, `completions`, `help`, `version`; any other
    verb is asked of the workspace's plugins (`commands` seam).

@@ -3,7 +3,7 @@
 // binary-launch.ts), and assert `--version` reports the version
 // package.json carries, which src/version.ts inlines and the release
 // workflows stamp. A layout move broke that stamp unseen for a week once
-// (2026-08-26 → 09-03); this runs in every `vx run ci`.
+// (2026-08-26 → 09-03); this runs in every CI pipeline.
 //
 // One host binary, not four cross targets: what a dependant needs from
 // core is its SOURCE, so `build` is not a task core has — the four

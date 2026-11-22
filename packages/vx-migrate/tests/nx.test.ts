@@ -792,15 +792,20 @@ describe('nx()', () => {
           },
           publish: { executor: '@acme/publish:run', options: { registry: 'x' } },
         })
-        const opts = {
+        // One task a run (M, 2026-11-22: args reach one task in one project).
+        const opts = (task: string) => ({
           cwd: root,
-          tasks: ['rcpub', 'publish'],
+          tasks: [task],
           log: silent(),
           handleSignals: false,
           forwardArgs: ['--otp=123'],
-        }
-        const r = await run(opts)
-        expect([status(r, 'lib#rcpub'), status(r, 'lib#publish')]).toEqual(['success', 'success'])
+        })
+        const rcpub = await run(opts('rcpub'))
+        const publish = await run(opts('publish'))
+        expect([status(rcpub, 'lib#rcpub'), status(publish, 'lib#publish')]).toEqual([
+          'success',
+          'success',
+        ])
         expect([
           (await libFile('one.txt').text()).trim(),
           (await libFile('two.txt').text()).trim(),

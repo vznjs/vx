@@ -67,10 +67,6 @@ export default defineProject({
       inputs: { files: ['src/**'] },
     },
 
-    ci: {
-      dependsOn: ['lint', 'test', 'test.live'],
-    },
-
     lint: {
       dependsOn: ['lint.oxlint', 'lint.oxfmt'],
     },

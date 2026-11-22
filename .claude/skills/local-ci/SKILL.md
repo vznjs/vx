@@ -10,14 +10,14 @@ metadata:
 Reproduces the GitHub Actions workflow `.github/workflows/ci.yml`
 locally. Fail fast.
 
-**Run the underlying commands directly, NOT the cached `vx run ci`
+**Run the underlying commands directly, NOT the cached `vx pipeline`
 gate.** A CI runner has no vx cache; locally, `lint.oxlint` /
 `lint.oxfmt` can CACHE-HIT a stale result and mask a real failure
 (this shipped a red main once — see the 2026-07-15 decision-log
 lesson). The raw commands are cache-proof.
 
 ```sh
-# lint · format · test (what `vx run ci` fans out to)
+# lint · format · test (what `vx pipeline` fans out to)
 bun install --frozen-lockfile && \
 bunx oxfmt --check . && \
 bunx oxlint --type-aware --type-check && \

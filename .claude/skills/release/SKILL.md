@@ -102,7 +102,7 @@ like Home Assistant releases"). Fewest words; no speed claims; never
   (`node /mnt/project-files/org/docs-site/og-cover.mjs <repo> <slug>`).
   `tests/og-image.test.ts` fails the gate when a post or release has none.
 
-Gate the docs (`bun packages/vx/src/bin.ts run @vzn/vx-docs#ci`), then
+Gate the docs (`bun packages/vx/src/bin.ts run lint build test --filter=@vzn/vx-docs`), then
 open a PR `docs(vx-docs): release post for v0.0.<N+1>`. No release post
 publishes unreviewed (2026-10-15: "ensure this won't happen
 again"): send the PR to Marketing for sign-off and to the EA to read,

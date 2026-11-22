@@ -12,12 +12,8 @@ export default defineProject({
       dependsOn: ['^build'],
     },
 
-    ci: {
-      dependsOn: ['lint', 'test'],
-    },
-
     // Every case against every tool: rewrites the site's conformance data.
-    // Not in `ci`: weekly on its own runner (conformance.yml), and after a
+    // In no pipeline: weekly on its own runner (conformance.yml), and after a
     // case changes. The rivals install at npm's latest inside the run
     // (src/tools.ts), which no key sees. No sandbox: the harness runs each
     // tool in a bubblewrap sandbox of its own, which vx's sandbox cannot

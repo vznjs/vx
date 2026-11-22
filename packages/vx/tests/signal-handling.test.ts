@@ -722,7 +722,7 @@ describe('signal handling during vx run (e2e)', () => {
       await waitForPid(path.join(dir, 'pid.txt'), 10_000)
       first.kill('SIGINT')
       expect(await first.exited).toBe(130)
-      const again = Bun.spawn([process.execPath, BIN, 'run', 'app#done'], {
+      const again = Bun.spawn([process.execPath, BIN, 'run', 'app#done', '--output-logs=full'], {
         cwd: fixture.root,
         env,
         stdout: 'pipe',

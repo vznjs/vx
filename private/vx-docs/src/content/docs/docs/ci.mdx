@@ -25,7 +25,7 @@ bun add -d @vzn/vx-ci
 ### 2. Declare it
 
 `vx init` already wrote `.vx/workspace.ts` with your lockfile's plugin.
-Add `github()` beside it:
+Add `github()` beside it, and a pipeline for each kind of run:
 
 ```ts
 // .vx/workspace.ts
@@ -41,6 +41,14 @@ export default defineWorkspace({
     // --affected. Anywhere else it does nothing.
     github(),
   ],
+  // What each CI job runs: `vx pipeline pr`, `vx pipeline main`.
+  pipelines: {
+    // A pull request: only the projects it changed and the ones that
+    // depend on them.
+    pr: { tasks: ['build', 'test'], affected: true },
+    // main and a merge queue: every project.
+    main: { tasks: ['build', 'test'] },
+  },
 })
 ```
 
@@ -73,18 +81,18 @@ jobs:
       - run: bun install --frozen-lockfile
       # Fails if someone changed a vx.config.ts and did not run vx lock.
       - run: bun vx lock --check
-      # main and a merge queue run every task. A pull request runs
-      # only the projects it changed and the projects that depend on them.
+      # A pull request runs the `pr` pipeline of .vx/workspace.ts, main
+      # and a merge queue run `main`.
       - run: >
-          bun vx run ci
-          ${{ github.event_name == 'pull_request'
-            && '--affected'
-            || '--all' }}
+          bun vx pipeline
+          ${{ github.event_name == 'pull_request' && 'pr' || 'main' }}
 ```
 
-`ci` is a task you define in your `vx.config.ts`, usually a group that
-depends on your `build`, `test` and `lint` tasks
-([Tasks](../tasks/)). Any task name works.
+A pipeline names the tasks a job runs, in every project, and any
+`vx run` flag as a key of the same name (`affected: true` is
+`--affected`). `vx pipeline pr` runs the pipeline named `pr`. A flag you
+type with it beats the pipeline's own
+([Pipelines](../../schema/workspace/#pipelines)).
 
 ### 4. Push
 
@@ -109,7 +117,7 @@ Each run writes a summary on the workflow run's page:
 > | @acme/ui#build | ✔️ up-to-date | 0ms |
 > | @acme/ui#lint | ⏭️ skipped |  |
 >
-> <sub>vx 0.0.21 · `vx run ci --all` · 3/5 passed · 1 up-to-date · 1 restored</sub>
+> <sub>vx 0.0.21 · `vx pipeline main` · 3/5 passed · 1 up-to-date · 1 restored</sub>
 
 A task that fails on inputs it passed on before is marked flaky in the
 log:
@@ -140,7 +148,7 @@ Add `- run: bun vx setup github` after `bun install`
 ### Common problems
 
 - **`--affected has no base here`.** The clone has no base branch and no `origin` to fetch it from. Set `baseBranch` in `.vx/workspace.ts`, or pass `--affected=<ref>`. When it says `fetching it from origin failed`, origin is unreachable (with `persist-credentials: false`, the checkout left no credentials for it): fetch the base in an earlier step, or pass `--affected=<ref>` to a commit the clone has.
-- **`nothing affected since <ref>` on every push.** On `main`, `origin/main` is the commit itself: run `--all` there, as above. Skipping unchanged work needs a [remote cache](../remote-cache/) or a persisted `~/.vx`.
+- **`nothing affected since <ref>` on every push.** On `main`, `origin/main` is the commit itself: run every project there, as the `main` pipeline above does. Skipping unchanged work needs a [remote cache](../remote-cache/) or a persisted `~/.vx`.
 - **The whole log lands in the job summary.** Don't redirect vx's output into `$GITHUB_STEP_SUMMARY`. `github()` writes the summary.
 
 ---
@@ -161,7 +169,7 @@ Run the same two lines as the GitHub workflow:
 
 ```sh
 bun vx lock --check
-bun vx run ci --affected   # --all on the default branch
+bun vx pipeline pr   # main on the default branch
 ```
 
 In a merge request, `gitlab()` gives `--affected` the request's diff

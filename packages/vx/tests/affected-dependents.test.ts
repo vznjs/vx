@@ -380,18 +380,6 @@ describe('--affected follows the graph a `graph` plugin leaves', () => {
       // CONTROL: a change the edge does not reach leaves tool out.
       await commitEdit('pkgs/app/src/index.ts', 'export const x = 3')
       expect(planned(['build'], '--affected=HEAD~1')).toEqual(['app#build', 'lib#build'])
-      // lib#build is in the run as app's dependency, not as a request: args
-      // after `--` (folded into a requested task's key) do not reach it.
-      const hashes = (...extra: string[]): Record<string, string> => {
-        const r = vx(root, 'run', 'build', '--affected=HEAD~1', '--dry=json', ...extra)
-        const out = r.stdout.slice(r.stdout.indexOf('{'))
-        const tasks = (JSON.parse(out) as { tasks: { id: string; hash: string }[] }).tasks
-        return Object.fromEntries(tasks.map((t) => [t.id, t.hash]))
-      }
-      const plain = hashes()
-      const forwarded = hashes('--', '--fwd')
-      expect(forwarded['lib#build']).toBe(plain['lib#build']!)
-      expect(forwarded['app#build']).not.toBe(plain['app#build']!)
     },
     TIMEOUT,
   )

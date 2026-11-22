@@ -36,6 +36,12 @@ export interface WorkspaceConfig {
   watch?: WatchSettings
   history?: HistorySettings
   /**
+   * Named sets of tasks with the `vx run` flags they run under, each run by
+   * `vx pipeline <name>`, so every CI job names one and its file holds no
+   * flags. No pipeline runs by default.
+   */
+  pipelines?: Record<string, Pipeline>
+  /**
    * Plugins for this workspace, consulted in this order once per `vx run`:
    * each fills any of the stages and capabilities below, with core's
    * executor and cache store at the tail of every list
@@ -43,6 +49,44 @@ export interface WorkspaceConfig {
    * entry is skipped, so `cond && plugin()` needs no filter.
    */
   plugins?: readonly (Plugin | undefined | null | false)[]
+}
+
+/**
+ * `WorkspaceConfig.pipelines[name]`: a saved `vx run` over every project.
+ * Each key is its `vx run` flag in camelCase (`cachePolicy` is
+ * `--cache-policy`); a flag given to `vx pipeline` beats it, and so does
+ * the flag's `VX_*` variable.
+ */
+export interface Pipeline {
+  /** The tasks, in every project that declares each (`'pkg#task'` names one); their order is `dependsOn`'s. */
+  tasks: readonly string[]
+  /** `--filter`: pnpm-style entry points; what they depend on still runs. */
+  filter?: readonly string[]
+  /** `--affected`: `true` for the projects a change reaches and their dependents, a ref for a fixed base. */
+  affected?: boolean | string
+  /** `--exclude-dependencies`: `true` skips every `dependsOn` edge, a list only those names. */
+  excludeDependencies?: true | readonly string[]
+  /** Set for vx and its plugins (a plugin's switch), never for a task; a variable already set wins. */
+  env?: Readonly<Record<string, string>>
+  concurrency?: number | `${number}%`
+  schedule?: 'most-work' | 'critical-path' | 'direct-dependents' | 'ready-order'
+  continue?: 'never' | 'deps-ok' | 'always'
+  retries?: number
+  timeout?: Duration
+  branch?: string
+  cachePolicy?: string
+  noCache?: boolean
+  force?: boolean
+  cacheDir?: string
+  cacheDownload?: 'all' | 'toplevel' | 'none'
+  cacheConcurrencyDownload?: number
+  cacheConcurrencyUpload?: number
+  cacheConcurrencyRestore?: number
+  outputLogs?: 'full' | 'errors-only' | 'hash-only' | 'none'
+  verbosity?: number
+  /** `--profile`: `true` writes profile.json, a string names the file. */
+  profile?: boolean | string
+  dry?: boolean | 'pretty' | 'json'
 }
 
 /** `WorkspaceConfig.run`: how a run runs. */

@@ -10,4 +10,12 @@ export default defineWorkspace({
     // --affected. Anywhere else it does nothing.
     github(),
   ],
+  // What each CI job runs: `vx pipeline pr`, `vx pipeline main`.
+  pipelines: {
+    // A pull request: only the projects it changed and the ones that
+    // depend on them.
+    pr: { tasks: ['build', 'test'], affected: true },
+    // main and a merge queue: every project.
+    main: { tasks: ['build', 'test'] },
+  },
 })

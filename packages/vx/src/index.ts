@@ -32,6 +32,7 @@ export {
 // Schema types and helpers (used by user vx.config files and presets).
 export type {
   WorkspaceConfig,
+  Pipeline,
   RunSettings,
   CacheSettings,
   LockSettings,

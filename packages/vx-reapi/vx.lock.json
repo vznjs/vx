@@ -18,13 +18,6 @@
         ]
       }
     },
-    "ci": {
-      "dependsOn": [
-        "lint",
-        "test",
-        "test.live"
-      ]
-    },
     "test": {
       "dependsOn": [
         "test.shard-*"

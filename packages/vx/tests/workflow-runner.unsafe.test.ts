@@ -40,8 +40,9 @@ function jobsOf(file: string): [string, Job][] {
   return Object.entries(doc.jobs ?? {})
 }
 
-// A vx task, launched from source (`src/bin.ts run`).
-const runsVxTask = (s: Step) => typeof s.run === 'string' && /\bbin\.ts run\b/.test(s.run)
+// A vx task, launched from source (`src/bin.ts run` or `pipeline`).
+const runsVxTask = (s: Step) =>
+  typeof s.run === 'string' && /\bbin\.ts (run|pipeline)\b/.test(s.run)
 
 // A distributed run's job only plans and dispatches: every task, sandboxed
 // or not, runs on a worker, which installs the runtime (ci-workflow law).

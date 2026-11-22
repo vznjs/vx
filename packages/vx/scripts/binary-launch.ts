@@ -1,5 +1,5 @@
 // Launching a compiled vx the way a user meets it, shared by check-binary.ts
-// (the host binary, every `vx run ci`) and release.ts (the binaries a
+// (the host binary, every CI pipeline) and release.ts (the binaries a
 // release ships). Bun 1.4.0's `--compile` signature is rejected by macOS
 // ("code or signature have been modified": SIGKILL on launch, every build
 // flavour, cross-compiled or native, measured 2026-09-02 on Darwin 27) until

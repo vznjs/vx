@@ -353,7 +353,13 @@ function parse(
       const taken = [...moved, ...before.slice(i, end)]
       const line = [...rest, '--', ...taken, ...out.forwardArgs]
       const again = parse([...rest, '--', ...out.forwardArgs], verb, taken)
-      const forwarded = again.error === undefined ? line : again.forwarded
+      // The suggested line must run: one of many tasks forwards nothing.
+      const forwarded =
+        again.error === undefined
+          ? parse(line, verb).error === undefined
+            ? line
+            : undefined
+          : again.forwarded
       const hint =
         forwarded === undefined
           ? ''
@@ -391,6 +397,22 @@ function parse(
   out.cache = applyCacheFlags(cachePolicy, flags)
   if (!cacheFlag && envSpec === undefined) out.cacheFlags = flags
 
+  // Forwarded args are one command's (M, 2026-11-22): a run of several
+  // tasks, or of whatever a change reaches, cannot say which. A --all or
+  // --filter run is refused once planned, if it asks for more than one.
+  if (out.forwardArgs.length > 0) {
+    const many =
+      out.affected !== undefined
+        ? '--affected'
+        : out.tasks.length > 1
+          ? `${out.tasks.length} tasks`
+          : undefined
+    if (many !== undefined)
+      return {
+        ...out,
+        error: `forwarded args (after --) go to one task in one project; run that task alone, e.g. vx run app#test -- --watch (got ${many})`,
+      }
+  }
   // A profile is about a run: the planning branch returns before it is written.
   if (out.dry !== undefined && out.profile !== undefined) {
     return { ...out, error: '--dry skips execution; --profile needs a real run' }
@@ -597,7 +619,11 @@ export async function resolveRunOptions(
 /** How many task names a run with no task names before `and N more`. */
 const TASKS_SHOWN = 12
 
-export async function runCmd(args: readonly string[]): Promise<number> {
+/** `invocation`: the line `vx last` replays, when it is not `vx run <args>` (`vx pipeline pr`). */
+export async function runCmd(
+  args: readonly string[],
+  invocation?: readonly string[],
+): Promise<number> {
   const parsed = parseRunArgs(args)
   if (parsed.error) {
     return refuse('run', args, `${parsed.error}${seeHelp('run')}`, 'VX_E_USAGE')
@@ -715,12 +741,9 @@ export async function runCmd(args: readonly string[]): Promise<number> {
   // The raw invocation for the `invocations` row. `args` is everything after
   // `run`, quoted so `vx last` replays one pasteable line; a picked task is
   // named, or the line would reopen the picker.
-  opts.command = [
-    'vx',
-    'run',
-    ...(picked !== undefined ? [shellQuote(picked)] : []),
-    ...args.map(shellQuote),
-  ].join(' ')
+  opts.command = (invocation ?? ['vx', 'run', ...(picked !== undefined ? [picked] : []), ...args])
+    .map((a, i) => (i < 2 ? a : shellQuote(a)))
+    .join(' ')
 
   // Planning short-circuits execution: the full task graph + a cache probe.
   if (parsed.dry !== undefined) {

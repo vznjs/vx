@@ -28,6 +28,7 @@ measurements.
 # Core
 vx run [OPTIONS] [TASK | PKG#TASK ...] [-- forwarded-args...]
 vx watch [OPTIONS] [--poll] TASK [-- forwarded-args...]
+vx pipeline NAME [OPTIONS]
 vx cache clean [--older-than <duration>] [--max-size <size>] [--global] [--dry] [--format pretty|json] [--cache-dir <path>]
 vx lock [--check] [--format pretty|json]
 vx lock --merge <base> <ours> <theirs> <path>
@@ -574,16 +575,23 @@ vx run test -- --watch              # underlying test runner sees "--watch"
 vx run build -- --sourcemap         # build command gets "--sourcemap"
 ```
 
-Only `vx run` and `vx watch` forward. Any other core verb refuses a `--`
-(`vx show forwards nothing after --`, `VX_E_USAGE`).
+Only `vx run` and `vx watch` forward, and only to one task in one
+project: with `--affected` or several tasks the run is refused
+(`forwarded args (after --) go to one task in one project`,
+`VX_E_USAGE`), and a `--all` or `--filter` run that asks for the task
+in more than one project is refused once planned, naming them, since
+nothing says which command they were meant for. Any
+other core verb refuses a `--` (`vx show forwards nothing after --`,
+`VX_E_USAGE`).
 
 vx takes no short flag, so a `-x` before `--` that no vx flag hint claims
 is refused with the run that forwards it: `vx run test -t adds` prints
 `✗ vx run  unknown flag: -t`, `see vx run --help` and
 `fix  vx run test -- -t adds`. Only the
 flag and the words after it up to the next flag move; vx's own flags
-stay before `--` (`vx run test -t adds --all` suggests
-`vx run test --all -- -t adds`). Another tool's name for a vx flag is
+stay before `--` (`vx run test -t adds --concurrency 2` suggests
+`vx run test --concurrency 2 -- -t adds`), and a run of many tasks, which
+forwards nothing, gets no suggestion. Another tool's name for a vx flag is
 named instead: `-j`, `--jobs` and `--parallel` hint `--concurrency`,
 `-F`, `--scope` and `--projects` hint `--filter`. A long flag
 far from every vx flag gets no such guess: a typo of a vx flag
@@ -822,7 +830,8 @@ unless explicitly overridden:
   `--affected`. The user asked about a swath of the workspace and
   wants news, not output.
 - **CI** — the `CI` env var is truthy (`CI=0` and `CI=false`, in any case, don't
-  count). Wins over the flow.
+  count). Wins over the flow: only failed tasks print (`errors-only`), so
+  the log holds what broke.
 
 Reported task lines share one column grid: `<status> <cache> <±usual>
 <time> <cpu> <mem> <outputs> <blocks> <worker> <mark> <task>`. No glyph
@@ -860,7 +869,7 @@ Per-task visibility by outcome. Each cell is the SHAPE of what prints —
 the renderer by `tests/output-doc-drift.test.ts`, so the vocabulary is
 fixed:
 
-| Outcome                | focused (requested task) | focused (dependency)      | broad                     | CI / `full`                  |
+| Outcome                | focused (requested task) | focused (dependency)      | broad                     | `full`                       |
 | ---------------------- | ------------------------ | ------------------------- | ------------------------- | ---------------------------- |
 | executed               | frame                    | silent                    | one-liner                 | frame                        |
 | restored-local/-remote | frame                    | silent                    | silent                    | frame, or one-liner if quiet |
@@ -1113,7 +1122,7 @@ command.
 
 ### `--output-logs <mode>`
 
-Explicit override; always beats the flow and CI defaults. `full`
+Explicit override; always beats the flow and the CI default (`errors-only`). `full`
 (frames for executed work, one-liners for quiet cache hits),
 `errors-only` (only failed tasks print, a server that died on its
 own after ready included, with what it wrote since; the CI noise
@@ -1876,6 +1885,61 @@ Re-run cycles whose orchestrator returns `{ ok: false }` do NOT exit
 the watch loop — a failed cycle just prints the framed FAILED block
 and waits for the next change. This matches `turbo watch` / `nx
 watch`.
+
+## `vx pipeline`
+
+`vx pipeline <name>` runs a pipeline of `.vx/workspace.ts`: its tasks in
+every project that declares them, under the `vx run` flags it saves
+([schema.md § Pipelines](schema.md#pipelines)). Each CI job names one.
+
+### Usage
+
+```
+vx pipeline NAME [OPTIONS]
+```
+
+`OPTIONS` are `vx run`'s but `--all`: a pipeline runs every project.
+
+### Examples
+
+```ts
+// .vx/workspace.ts
+export default defineWorkspace({
+  pipelines: {
+    pr: { tasks: ['lint', 'test'], affected: true },
+    main: { tasks: ['lint', 'test', 'build'] },
+  },
+})
+```
+
+```sh
+vx pipeline pr                     # lint and test what the change reaches
+vx pipeline main                   # every project
+vx pipeline main --dry             # the plan, nothing run
+vx pipeline pr --filter web        # a typed flag beats the saved one
+```
+
+### Options
+
+Each key of a pipeline is one of these flags in camelCase, and a flag
+typed here beats it: `--filter`, `--affected`, `--exclude-dependencies`,
+`--concurrency`, `--schedule`, `--branch`, `--timeout`, `--retries`,
+`--continue`, `--no-cache`, `--force`, `--cache-policy`, `--cache-dir`,
+`--cache-download`, `--cache-concurrency-download`,
+`--cache-concurrency-upload`, `--cache-concurrency-restore`,
+`--output-logs`, `--verbosity`, `--dry`, `--profile`. A flag's `VX_*`
+variable beats the key too.
+
+A pipeline's `env` is set for vx and its plugins before they start, and
+every task reads it as unset. Nothing goes after `--`: forwarded args are
+for one task in one project.
+
+### Exit codes
+
+- `0` — every task passed, or `--dry` planned them.
+- `1` — a task failed; or no name, a name no pipeline has (with the
+  nearest one as a fix), a task name or `--all` typed, or a refused
+  flag (`VX_E_USAGE`).
 
 ## `vx cache clean`
 

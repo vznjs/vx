@@ -5,12 +5,6 @@
         "^build"
       ]
     },
-    "ci": {
-      "dependsOn": [
-        "lint",
-        "test"
-      ]
-    },
     "lint": {
       "dependsOn": [
         "lint.oxlint",

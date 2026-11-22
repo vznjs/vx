@@ -120,7 +120,13 @@ export { executablePath, shellArgv, taskShell } from './which.js'
 export { procfsIsOwn } from './procfs.js'
 export { hangupIgnored } from './hangup.js'
 export { relayedCopy, stopActedOn } from './signal-relay.js'
-export { ESSENTIAL_ENV, ownEnv, withoutWorkspaceBins } from './essential-env.js'
+export {
+  ESSENTIAL_ENV,
+  ownEnv,
+  setVxOnlyEnv,
+  taskEnvSource,
+  withoutWorkspaceBins,
+} from './essential-env.js'
 export { gitEnv, helperEnv, hideEnvFromTasks } from './hide-env.js'
 export {
   checkIgnore,

@@ -17,7 +17,5 @@ export default defineProject({
       outputs: { files: [] },
       cache: true,
     },
-    // A task with no command is a group: `vx run ci` runs what it depends on.
-    ci: { dependsOn: ['build', 'test'] },
   },
 })

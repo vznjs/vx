@@ -125,17 +125,13 @@ jobs:
             core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN)
             core.exportVariable('ACTIONS_RESULTS_URL', process.env.ACTIONS_RESULTS_URL)
       # Plans the graph, starts the workers its width needs, then
-      # orchestrates them. A PR runs what its diff affects, inputs outside
-      # a project included (2026-10-23); main runs everything.
-      # The tasks say what each needs: `ci` is every change's checks, the
-      # platform's own tests on Mac workers included, and main's `release`
-      # adds the release binaries, their launch checks, the release notes
-      # and the site's deploy, with the newest numbers bench.yml measured.
-      - name: vx run
+      # orchestrates them. Each event's pipeline (.vx/workspace.ts) names
+      # what it runs: `pr`, `queue` or `main`.
+      - name: vx pipeline
         env:
           VX_DTE_RELAY: ${{ steps.relay.outputs.url || env.VX_DTE_RELAY }}
           VX_CACHE_URL: ${{ steps.cache.outputs.url || env.VX_CACHE_URL }}
-        run: bun packages/vx/src/bin.ts run --profile=profile.json ci ${{ github.event_name == 'push' && 'release' || '' }} ${{ github.event_name == 'pull_request' && '--affected' || '--all' }}
+        run: bun packages/vx/src/bin.ts pipeline ${{ github.event_name == 'push' && 'main' || github.event_name == 'pull_request' && 'pr' || 'queue' }}
       # The run in time (--profile): every worker's tasks on their own
       # lanes (@vzn/vx-dte), opened in https://ui.perfetto.dev; the job
       # summary links it.
@@ -191,5 +187,5 @@ jobs:
           case "$BASE" in ''|0000000000000000000000000000000000000000) exit 0 ;; esac
           git fetch --no-tags --depth=1 origin "$BASE"
           echo "VX_BENCH_BASE=$BASE" >> "$GITHUB_ENV"
-      - name: vx run check.perf
-        run: bun packages/vx/src/bin.ts run check.perf ${{ github.event_name == 'pull_request' && '--affected' || '--all' }}
+      - name: vx pipeline perf
+        run: bun packages/vx/src/bin.ts pipeline ${{ github.event_name == 'pull_request' && 'perf-pr' || 'perf' }}

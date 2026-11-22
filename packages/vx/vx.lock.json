@@ -6476,27 +6476,6 @@
         }
       }
     },
-    "ci": {
-      "dependsOn": [
-        "lint",
-        "test",
-        "check.binary",
-        "test.platform",
-        "build.bun.linux-arm64",
-        "build.bun.darwin-arm64"
-      ]
-    },
-    "release": {
-      "dependsOn": [
-        "ci",
-        "build.bun",
-        "check.binary.linux-arm64",
-        "check.binary.darwin-arm64",
-        "check.sandbox-canary",
-        "check.build-cold",
-        "release.sync"
-      ]
-    },
     "install": {
       "dependsOn": [
         "^build",

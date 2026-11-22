@@ -1,12 +1,5 @@
 {
   "tasks": {
-    "ci": {
-      "dependsOn": [
-        "lint",
-        "build",
-        "test"
-      ]
-    },
     "lint": {
       "dependsOn": [
         "lint.oxlint",
@@ -450,11 +443,6 @@
       },
       "cache": true
     },
-    "release": {
-      "dependsOn": [
-        "deploy.pages"
-      ]
-    },
     "build.live": {
       "description": "build the site with main's newest bench and conformance runs → dist-live/ (GitHub Actions only)",
       "dependsOn": [
@@ -509,7 +497,9 @@
     "deploy.pages": {
       "description": "deploy dist-live/ to GitHub Pages once every check passed (GitHub Actions only)",
       "dependsOn": [
-        "ci",
+        "lint",
+        "build",
+        "test",
         "build.live"
       ],
       "exec": {

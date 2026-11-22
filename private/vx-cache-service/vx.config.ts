@@ -6,10 +6,6 @@ export default defineProject({
       dependsOn: ['^build'],
     },
 
-    ci: {
-      dependsOn: ['lint', 'test'],
-    },
-
     lint: {
       dependsOn: ['lint.oxlint', 'lint.oxfmt'],
     },

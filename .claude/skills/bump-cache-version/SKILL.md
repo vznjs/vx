@@ -57,7 +57,7 @@ Run the gate from the repo root (never `bun test` alone — it cannot see a
 type error):
 
 ```sh
-bun packages/vx/src/bin.ts run ci --all
+bun packages/vx/src/bin.ts pipeline queue
 ```
 
 Then commit with a body that explains why the bump was needed — future

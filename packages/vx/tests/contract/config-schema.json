@@ -8,6 +8,7 @@
         "inputs",
         "lock",
         "outputs",
+        "pipelines",
         "plugins",
         "run",
         "watch"
@@ -36,9 +37,34 @@
       "outputs": ["clean"],
       "lock": ["reviewFiles"],
       "watch": ["debounce", "poll", "pollInterval"],
-      "history": ["retention"]
+      "history": ["retention"],
+      "pipelines.*": [
+        "affected",
+        "branch",
+        "cacheConcurrencyDownload",
+        "cacheConcurrencyRestore",
+        "cacheConcurrencyUpload",
+        "cacheDir",
+        "cacheDownload",
+        "cachePolicy",
+        "concurrency",
+        "continue",
+        "dry",
+        "env",
+        "excludeDependencies",
+        "filter",
+        "force",
+        "noCache",
+        "outputLogs",
+        "profile",
+        "retries",
+        "schedule",
+        "tasks",
+        "timeout",
+        "verbosity"
+      ]
     },
-    "records": [],
+    "records": ["pipelines", "pipelines.*.env"],
     "fields": {
       "baseBranch": {
         "ok": ["<absent>", "\"x\"", "\"(\"", "\"30d\"", "\"10G\"", "\"10\"", "\"main\""],
@@ -2683,6 +2709,1725 @@
           "{\"x\":\"y\"}"
         ]
       },
+      "pipelines": {
+        "ok": ["<absent>", "{}", "<seed>"],
+        "$CONFIG: `pipelines` must be an object of named pipelines, like { pr: { tasks: ['lint', 'test'] } }": [
+          "null",
+          "true",
+          "false",
+          "0",
+          "1",
+          "1.5",
+          "-1",
+          "65536",
+          "2147483648",
+          "\"\"",
+          "\"x\"",
+          "\"(\"",
+          "\"30d\"",
+          "\"10G\"",
+          "\"10\"",
+          "[]",
+          "[\"x\"]",
+          "[\"\"]",
+          "[1]",
+          "[3000]",
+          "[\"/x\"]",
+          "[\"!/x\"]",
+          "[\"../x\"]",
+          "[\"!x\"]",
+          "[\"!!x\",\"y\"]",
+          "[\".\"]",
+          "[\"**\"]",
+          "[\"A=B\"]",
+          "[\"A*\"]"
+        ],
+        "$CONFIG: `pipelines.x` must be an object like { tasks: ['lint', 'test'] }": [
+          "{\"x\":\"y\"}"
+        ]
+      },
+      "pipelines.*": {
+        "ok": ["<absent>", "<seed>"],
+        "$CONFIG: `pipelines.pr` must be an object like { tasks: ['lint', 'test'] }": [
+          "null",
+          "true",
+          "false",
+          "0",
+          "1",
+          "1.5",
+          "-1",
+          "65536",
+          "2147483648",
+          "\"\"",
+          "\"x\"",
+          "\"(\"",
+          "\"30d\"",
+          "\"10G\"",
+          "\"10\"",
+          "[]",
+          "[\"x\"]",
+          "[\"\"]",
+          "[1]",
+          "[3000]",
+          "[\"/x\"]",
+          "[\"!/x\"]",
+          "[\"../x\"]",
+          "[\"!x\"]",
+          "[\"!!x\",\"y\"]",
+          "[\".\"]",
+          "[\"**\"]",
+          "[\"A=B\"]",
+          "[\"A*\"]"
+        ],
+        "$CONFIG: `pipelines.pr.tasks` must be a non-empty array of task names, like ['lint', 'test']": [
+          "{}"
+        ],
+        "$CONFIG: `pipelines.pr` has unknown field \"x\" (allowed: affected, branch, cacheConcurrencyDownload, cacheConcurrencyRestore, cacheConcurrencyUpload, cacheDir, cacheDownload, cachePolicy, concurrency, continue, dry, env, excludeDependencies, filter, force, noCache, outputLogs, profile, retries, schedule, tasks, timeout, verbosity)": [
+          "{\"x\":\"y\"}"
+        ]
+      },
+      "pipelines.*.tasks": {
+        "$CONFIG: `pipelines.pr.tasks` must be a non-empty array of task names, like ['lint', 'test']": [
+          "<absent>",
+          "null",
+          "true",
+          "false",
+          "0",
+          "1",
+          "1.5",
+          "-1",
+          "65536",
+          "2147483648",
+          "\"\"",
+          "\"x\"",
+          "\"(\"",
+          "\"30d\"",
+          "\"10G\"",
+          "\"10\"",
+          "[]",
+          "[\"\"]",
+          "[1]",
+          "[3000]",
+          "{}",
+          "{\"x\":\"y\"}"
+        ],
+        "ok": [
+          "[\"x\"]",
+          "[\"/x\"]",
+          "[\"!/x\"]",
+          "[\"../x\"]",
+          "[\"!x\"]",
+          "[\"!!x\",\"y\"]",
+          "[\".\"]",
+          "[\"**\"]",
+          "[\"A=B\"]",
+          "[\"A*\"]",
+          "[\"lint\"]"
+        ]
+      },
+      "pipelines.*.filter": {
+        "ok": [
+          "<absent>",
+          "[\"x\"]",
+          "[\"/x\"]",
+          "[\"!/x\"]",
+          "[\"../x\"]",
+          "[\"!x\"]",
+          "[\"!!x\",\"y\"]",
+          "[\".\"]",
+          "[\"**\"]",
+          "[\"A=B\"]",
+          "[\"A*\"]",
+          "[\"a\"]"
+        ],
+        "$CONFIG: `pipelines.pr.filter` must be a non-empty array of filters, like ['@acme/*'] (got null)": [
+          "null"
+        ],
+        "$CONFIG: `pipelines.pr.filter` must be a non-empty array of filters, like ['@acme/*'] (got true)": [
+          "true"
+        ],
+        "$CONFIG: `pipelines.pr.filter` must be a non-empty array of filters, like ['@acme/*'] (got false)": [
+          "false"
+        ],
+        "$CONFIG: `pipelines.pr.filter` must be a non-empty array of filters, like ['@acme/*'] (got 0)": [
+          "0"
+        ],
+        "$CONFIG: `pipelines.pr.filter` must be a non-empty array of filters, like ['@acme/*'] (got 1)": [
+          "1"
+        ],
+        "$CONFIG: `pipelines.pr.filter` must be a non-empty array of filters, like ['@acme/*'] (got 1.5)": [
+          "1.5"
+        ],
+        "$CONFIG: `pipelines.pr.filter` must be a non-empty array of filters, like ['@acme/*'] (got -1)": [
+          "-1"
+        ],
+        "$CONFIG: `pipelines.pr.filter` must be a non-empty array of filters, like ['@acme/*'] (got 65536)": [
+          "65536"
+        ],
+        "$CONFIG: `pipelines.pr.filter` must be a non-empty array of filters, like ['@acme/*'] (got 2147483648)": [
+          "2147483648"
+        ],
+        "$CONFIG: `pipelines.pr.filter` must be a non-empty array of filters, like ['@acme/*'] (got \"\")": [
+          "\"\""
+        ],
+        "$CONFIG: `pipelines.pr.filter` must be a non-empty array of filters, like ['@acme/*'] (got \"x\")": [
+          "\"x\""
+        ],
+        "$CONFIG: `pipelines.pr.filter` must be a non-empty array of filters, like ['@acme/*'] (got \"(\")": [
+          "\"(\""
+        ],
+        "$CONFIG: `pipelines.pr.filter` must be a non-empty array of filters, like ['@acme/*'] (got \"30d\")": [
+          "\"30d\""
+        ],
+        "$CONFIG: `pipelines.pr.filter` must be a non-empty array of filters, like ['@acme/*'] (got \"10G\")": [
+          "\"10G\""
+        ],
+        "$CONFIG: `pipelines.pr.filter` must be a non-empty array of filters, like ['@acme/*'] (got \"10\")": [
+          "\"10\""
+        ],
+        "$CONFIG: `pipelines.pr.filter` must be a non-empty array of filters, like ['@acme/*'] (got [])": [
+          "[]"
+        ],
+        "$CONFIG: `pipelines.pr.filter` must be a non-empty array of filters, like ['@acme/*'] (got [\"\"])": [
+          "[\"\"]"
+        ],
+        "$CONFIG: `pipelines.pr.filter` must be a non-empty array of filters, like ['@acme/*'] (got [1])": [
+          "[1]"
+        ],
+        "$CONFIG: `pipelines.pr.filter` must be a non-empty array of filters, like ['@acme/*'] (got [3000])": [
+          "[3000]"
+        ],
+        "$CONFIG: `pipelines.pr.filter` must be a non-empty array of filters, like ['@acme/*'] (got {})": [
+          "{}"
+        ],
+        "$CONFIG: `pipelines.pr.filter` must be a non-empty array of filters, like ['@acme/*'] (got {\"x\":\"y\"})": [
+          "{\"x\":\"y\"}"
+        ]
+      },
+      "pipelines.*.affected": {
+        "ok": ["<absent>", "true", "false", "\"x\"", "\"(\"", "\"30d\"", "\"10G\"", "\"10\""],
+        "$CONFIG: `pipelines.pr.affected` must be true, false or a base ref (got null)": ["null"],
+        "$CONFIG: `pipelines.pr.affected` must be true, false or a base ref (got 0)": ["0"],
+        "$CONFIG: `pipelines.pr.affected` must be true, false or a base ref (got 1)": ["1"],
+        "$CONFIG: `pipelines.pr.affected` must be true, false or a base ref (got 1.5)": ["1.5"],
+        "$CONFIG: `pipelines.pr.affected` must be true, false or a base ref (got -1)": ["-1"],
+        "$CONFIG: `pipelines.pr.affected` must be true, false or a base ref (got 65536)": ["65536"],
+        "$CONFIG: `pipelines.pr.affected` must be true, false or a base ref (got 2147483648)": [
+          "2147483648"
+        ],
+        "$CONFIG: `pipelines.pr.affected` must be true, false or a base ref (got \"\")": ["\"\""],
+        "$CONFIG: `pipelines.pr.affected` must be true, false or a base ref (got [])": ["[]"],
+        "$CONFIG: `pipelines.pr.affected` must be true, false or a base ref (got [\"x\"])": [
+          "[\"x\"]"
+        ],
+        "$CONFIG: `pipelines.pr.affected` must be true, false or a base ref (got [\"\"])": [
+          "[\"\"]"
+        ],
+        "$CONFIG: `pipelines.pr.affected` must be true, false or a base ref (got [1])": ["[1]"],
+        "$CONFIG: `pipelines.pr.affected` must be true, false or a base ref (got [3000])": [
+          "[3000]"
+        ],
+        "$CONFIG: `pipelines.pr.affected` must be true, false or a base ref (got [\"/x\"])": [
+          "[\"/x\"]"
+        ],
+        "$CONFIG: `pipelines.pr.affected` must be true, false or a base ref (got [\"!/x\"])": [
+          "[\"!/x\"]"
+        ],
+        "$CONFIG: `pipelines.pr.affected` must be true, false or a base ref (got [\"../x\"])": [
+          "[\"../x\"]"
+        ],
+        "$CONFIG: `pipelines.pr.affected` must be true, false or a base ref (got [\"!x\"])": [
+          "[\"!x\"]"
+        ],
+        "$CONFIG: `pipelines.pr.affected` must be true, false or a base ref (got [\"!!x\",\"y\"])": [
+          "[\"!!x\",\"y\"]"
+        ],
+        "$CONFIG: `pipelines.pr.affected` must be true, false or a base ref (got [\".\"])": [
+          "[\".\"]"
+        ],
+        "$CONFIG: `pipelines.pr.affected` must be true, false or a base ref (got [\"**\"])": [
+          "[\"**\"]"
+        ],
+        "$CONFIG: `pipelines.pr.affected` must be true, false or a base ref (got [\"A=B\"])": [
+          "[\"A=B\"]"
+        ],
+        "$CONFIG: `pipelines.pr.affected` must be true, false or a base ref (got [\"A*\"])": [
+          "[\"A*\"]"
+        ],
+        "$CONFIG: `pipelines.pr.affected` must be true, false or a base ref (got {})": ["{}"],
+        "$CONFIG: `pipelines.pr.affected` must be true, false or a base ref (got {\"x\":\"y\"})": [
+          "{\"x\":\"y\"}"
+        ]
+      },
+      "pipelines.*.excludeDependencies": {
+        "ok": [
+          "<absent>",
+          "true",
+          "[\"x\"]",
+          "[\"/x\"]",
+          "[\"!/x\"]",
+          "[\"../x\"]",
+          "[\"!x\"]",
+          "[\"!!x\",\"y\"]",
+          "[\".\"]",
+          "[\"**\"]",
+          "[\"A=B\"]",
+          "[\"A*\"]",
+          "[\"gen\"]"
+        ],
+        "$CONFIG: `pipelines.pr.excludeDependencies` must be true or a non-empty array of task names (got null)": [
+          "null"
+        ],
+        "$CONFIG: `pipelines.pr.excludeDependencies` must be true or a non-empty array of task names (got false)": [
+          "false"
+        ],
+        "$CONFIG: `pipelines.pr.excludeDependencies` must be true or a non-empty array of task names (got 0)": [
+          "0"
+        ],
+        "$CONFIG: `pipelines.pr.excludeDependencies` must be true or a non-empty array of task names (got 1)": [
+          "1"
+        ],
+        "$CONFIG: `pipelines.pr.excludeDependencies` must be true or a non-empty array of task names (got 1.5)": [
+          "1.5"
+        ],
+        "$CONFIG: `pipelines.pr.excludeDependencies` must be true or a non-empty array of task names (got -1)": [
+          "-1"
+        ],
+        "$CONFIG: `pipelines.pr.excludeDependencies` must be true or a non-empty array of task names (got 65536)": [
+          "65536"
+        ],
+        "$CONFIG: `pipelines.pr.excludeDependencies` must be true or a non-empty array of task names (got 2147483648)": [
+          "2147483648"
+        ],
+        "$CONFIG: `pipelines.pr.excludeDependencies` must be true or a non-empty array of task names (got \"\")": [
+          "\"\""
+        ],
+        "$CONFIG: `pipelines.pr.excludeDependencies` must be true or a non-empty array of task names (got \"x\")": [
+          "\"x\""
+        ],
+        "$CONFIG: `pipelines.pr.excludeDependencies` must be true or a non-empty array of task names (got \"(\")": [
+          "\"(\""
+        ],
+        "$CONFIG: `pipelines.pr.excludeDependencies` must be true or a non-empty array of task names (got \"30d\")": [
+          "\"30d\""
+        ],
+        "$CONFIG: `pipelines.pr.excludeDependencies` must be true or a non-empty array of task names (got \"10G\")": [
+          "\"10G\""
+        ],
+        "$CONFIG: `pipelines.pr.excludeDependencies` must be true or a non-empty array of task names (got \"10\")": [
+          "\"10\""
+        ],
+        "$CONFIG: `pipelines.pr.excludeDependencies` must be true or a non-empty array of task names (got [])": [
+          "[]"
+        ],
+        "$CONFIG: `pipelines.pr.excludeDependencies` must be true or a non-empty array of task names (got [\"\"])": [
+          "[\"\"]"
+        ],
+        "$CONFIG: `pipelines.pr.excludeDependencies` must be true or a non-empty array of task names (got [1])": [
+          "[1]"
+        ],
+        "$CONFIG: `pipelines.pr.excludeDependencies` must be true or a non-empty array of task names (got [3000])": [
+          "[3000]"
+        ],
+        "$CONFIG: `pipelines.pr.excludeDependencies` must be true or a non-empty array of task names (got {})": [
+          "{}"
+        ],
+        "$CONFIG: `pipelines.pr.excludeDependencies` must be true or a non-empty array of task names (got {\"x\":\"y\"})": [
+          "{\"x\":\"y\"}"
+        ]
+      },
+      "pipelines.*.env": {
+        "ok": ["<absent>", "{}", "{\"x\":\"y\"}", "<seed>"],
+        "$CONFIG: `pipelines.pr.env` must be an object of variable names to strings, like { VX_DTE_RUN: '…' } (got null)": [
+          "null"
+        ],
+        "$CONFIG: `pipelines.pr.env` must be an object of variable names to strings, like { VX_DTE_RUN: '…' } (got true)": [
+          "true"
+        ],
+        "$CONFIG: `pipelines.pr.env` must be an object of variable names to strings, like { VX_DTE_RUN: '…' } (got false)": [
+          "false"
+        ],
+        "$CONFIG: `pipelines.pr.env` must be an object of variable names to strings, like { VX_DTE_RUN: '…' } (got 0)": [
+          "0"
+        ],
+        "$CONFIG: `pipelines.pr.env` must be an object of variable names to strings, like { VX_DTE_RUN: '…' } (got 1)": [
+          "1"
+        ],
+        "$CONFIG: `pipelines.pr.env` must be an object of variable names to strings, like { VX_DTE_RUN: '…' } (got 1.5)": [
+          "1.5"
+        ],
+        "$CONFIG: `pipelines.pr.env` must be an object of variable names to strings, like { VX_DTE_RUN: '…' } (got -1)": [
+          "-1"
+        ],
+        "$CONFIG: `pipelines.pr.env` must be an object of variable names to strings, like { VX_DTE_RUN: '…' } (got 65536)": [
+          "65536"
+        ],
+        "$CONFIG: `pipelines.pr.env` must be an object of variable names to strings, like { VX_DTE_RUN: '…' } (got 2147483648)": [
+          "2147483648"
+        ],
+        "$CONFIG: `pipelines.pr.env` must be an object of variable names to strings, like { VX_DTE_RUN: '…' } (got \"\")": [
+          "\"\""
+        ],
+        "$CONFIG: `pipelines.pr.env` must be an object of variable names to strings, like { VX_DTE_RUN: '…' } (got \"x\")": [
+          "\"x\""
+        ],
+        "$CONFIG: `pipelines.pr.env` must be an object of variable names to strings, like { VX_DTE_RUN: '…' } (got \"(\")": [
+          "\"(\""
+        ],
+        "$CONFIG: `pipelines.pr.env` must be an object of variable names to strings, like { VX_DTE_RUN: '…' } (got \"30d\")": [
+          "\"30d\""
+        ],
+        "$CONFIG: `pipelines.pr.env` must be an object of variable names to strings, like { VX_DTE_RUN: '…' } (got \"10G\")": [
+          "\"10G\""
+        ],
+        "$CONFIG: `pipelines.pr.env` must be an object of variable names to strings, like { VX_DTE_RUN: '…' } (got \"10\")": [
+          "\"10\""
+        ],
+        "$CONFIG: `pipelines.pr.env` must be an object of variable names to strings, like { VX_DTE_RUN: '…' } (got [])": [
+          "[]"
+        ],
+        "$CONFIG: `pipelines.pr.env` must be an object of variable names to strings, like { VX_DTE_RUN: '…' } (got [\"x\"])": [
+          "[\"x\"]"
+        ],
+        "$CONFIG: `pipelines.pr.env` must be an object of variable names to strings, like { VX_DTE_RUN: '…' } (got [\"\"])": [
+          "[\"\"]"
+        ],
+        "$CONFIG: `pipelines.pr.env` must be an object of variable names to strings, like { VX_DTE_RUN: '…' } (got [1])": [
+          "[1]"
+        ],
+        "$CONFIG: `pipelines.pr.env` must be an object of variable names to strings, like { VX_DTE_RUN: '…' } (got [3000])": [
+          "[3000]"
+        ],
+        "$CONFIG: `pipelines.pr.env` must be an object of variable names to strings, like { VX_DTE_RUN: '…' } (got [\"/x\"])": [
+          "[\"/x\"]"
+        ],
+        "$CONFIG: `pipelines.pr.env` must be an object of variable names to strings, like { VX_DTE_RUN: '…' } (got [\"!/x\"])": [
+          "[\"!/x\"]"
+        ],
+        "$CONFIG: `pipelines.pr.env` must be an object of variable names to strings, like { VX_DTE_RUN: '…' } (got [\"../x\"])": [
+          "[\"../x\"]"
+        ],
+        "$CONFIG: `pipelines.pr.env` must be an object of variable names to strings, like { VX_DTE_RUN: '…' } (got [\"!x\"])": [
+          "[\"!x\"]"
+        ],
+        "$CONFIG: `pipelines.pr.env` must be an object of variable names to strings, like { VX_DTE_RUN: '…' } (got [\"!!x\",\"y\"])": [
+          "[\"!!x\",\"y\"]"
+        ],
+        "$CONFIG: `pipelines.pr.env` must be an object of variable names to strings, like { VX_DTE_RUN: '…' } (got [\".\"])": [
+          "[\".\"]"
+        ],
+        "$CONFIG: `pipelines.pr.env` must be an object of variable names to strings, like { VX_DTE_RUN: '…' } (got [\"**\"])": [
+          "[\"**\"]"
+        ],
+        "$CONFIG: `pipelines.pr.env` must be an object of variable names to strings, like { VX_DTE_RUN: '…' } (got [\"A=B\"])": [
+          "[\"A=B\"]"
+        ],
+        "$CONFIG: `pipelines.pr.env` must be an object of variable names to strings, like { VX_DTE_RUN: '…' } (got [\"A*\"])": [
+          "[\"A*\"]"
+        ]
+      },
+      "pipelines.*.env.*": {
+        "ok": ["<absent>", "\"\"", "\"x\"", "\"(\"", "\"30d\"", "\"10G\"", "\"10\"", "\"1\""],
+        "$CONFIG: `pipelines.pr.env` must be an object of variable names to strings, like { VX_DTE_RUN: '…' } (got {\"VX_X\":null})": [
+          "null"
+        ],
+        "$CONFIG: `pipelines.pr.env` must be an object of variable names to strings, like { VX_DTE_RUN: '…' } (got {\"VX_X\":true})": [
+          "true"
+        ],
+        "$CONFIG: `pipelines.pr.env` must be an object of variable names to strings, like { VX_DTE_RUN: '…' } (got {\"VX_X\":false})": [
+          "false"
+        ],
+        "$CONFIG: `pipelines.pr.env` must be an object of variable names to strings, like { VX_DTE_RUN: '…' } (got {\"VX_X\":0})": [
+          "0"
+        ],
+        "$CONFIG: `pipelines.pr.env` must be an object of variable names to strings, like { VX_DTE_RUN: '…' } (got {\"VX_X\":1})": [
+          "1"
+        ],
+        "$CONFIG: `pipelines.pr.env` must be an object of variable names to strings, like { VX_DTE_RUN: '…' } (got {\"VX_X\":1.5})": [
+          "1.5"
+        ],
+        "$CONFIG: `pipelines.pr.env` must be an object of variable names to strings, like { VX_DTE_RUN: '…' } (got {\"VX_X\":-1})": [
+          "-1"
+        ],
+        "$CONFIG: `pipelines.pr.env` must be an object of variable names to strings, like { VX_DTE_RUN: '…' } (got {\"VX_X\":65536})": [
+          "65536"
+        ],
+        "$CONFIG: `pipelines.pr.env` must be an object of variable names to strings, like { VX_DTE_RUN: '…' } (got {\"VX_X\":2147483648})": [
+          "2147483648"
+        ],
+        "$CONFIG: `pipelines.pr.env` must be an object of variable names to strings, like { VX_DTE_RUN: '…' } (got {\"VX_X\":[]})": [
+          "[]"
+        ],
+        "$CONFIG: `pipelines.pr.env` must be an object of variable names to strings, like { VX_DTE_RUN: '…' } (got {\"VX_X\":[\"x\"]})": [
+          "[\"x\"]"
+        ],
+        "$CONFIG: `pipelines.pr.env` must be an object of variable names to strings, like { VX_DTE_RUN: '…' } (got {\"VX_X\":[\"\"]})": [
+          "[\"\"]"
+        ],
+        "$CONFIG: `pipelines.pr.env` must be an object of variable names to strings, like { VX_DTE_RUN: '…' } (got {\"VX_X\":[1]})": [
+          "[1]"
+        ],
+        "$CONFIG: `pipelines.pr.env` must be an object of variable names to strings, like { VX_DTE_RUN: '…' } (got {\"VX_X\":[3000]})": [
+          "[3000]"
+        ],
+        "$CONFIG: `pipelines.pr.env` must be an object of variable names to strings, like { VX_DTE_RUN: '…' } (got {\"VX_X\":[\"/x\"]})": [
+          "[\"/x\"]"
+        ],
+        "$CONFIG: `pipelines.pr.env` must be an object of variable names to strings, like { VX_DTE_RUN: '…' } (got {\"VX_X\":[\"!/x\"]})": [
+          "[\"!/x\"]"
+        ],
+        "$CONFIG: `pipelines.pr.env` must be an object of variable names to strings, like { VX_DTE_RUN: '…' } (got {\"VX_X\":[\"../x\"]})": [
+          "[\"../x\"]"
+        ],
+        "$CONFIG: `pipelines.pr.env` must be an object of variable names to strings, like { VX_DTE_RUN: '…' } (got {\"VX_X\":[\"!x\"]})": [
+          "[\"!x\"]"
+        ],
+        "$CONFIG: `pipelines.pr.env` must be an object of variable names to strings, like { VX_DTE_RUN: '…' } (got {\"VX_X\":[\"!!x\",\"y\"]})": [
+          "[\"!!x\",\"y\"]"
+        ],
+        "$CONFIG: `pipelines.pr.env` must be an object of variable names to strings, like { VX_DTE_RUN: '…' } (got {\"VX_X\":[\".\"]})": [
+          "[\".\"]"
+        ],
+        "$CONFIG: `pipelines.pr.env` must be an object of variable names to strings, like { VX_DTE_RUN: '…' } (got {\"VX_X\":[\"**\"]})": [
+          "[\"**\"]"
+        ],
+        "$CONFIG: `pipelines.pr.env` must be an object of variable names to strings, like { VX_DTE_RUN: '…' } (got {\"VX_X\":[\"A=B\"]})": [
+          "[\"A=B\"]"
+        ],
+        "$CONFIG: `pipelines.pr.env` must be an object of variable names to strings, like { VX_DTE_RUN: '…' } (got {\"VX_X\":[\"A*\"]})": [
+          "[\"A*\"]"
+        ],
+        "$CONFIG: `pipelines.pr.env` must be an object of variable names to strings, like { VX_DTE_RUN: '…' } (got {\"VX_X\":{}})": [
+          "{}"
+        ],
+        "$CONFIG: `pipelines.pr.env` must be an object of variable names to strings, like { VX_DTE_RUN: '…' } (got {\"VX_X\":{\"x\":\"y\"}})": [
+          "{\"x\":\"y\"}"
+        ]
+      },
+      "pipelines.*.concurrency": {
+        "ok": ["<absent>", "1", "65536", "2147483648", "2"],
+        "$CONFIG: `pipelines.pr.concurrency` must be a positive integer, or a share of the cores like '50%' (got null)": [
+          "null"
+        ],
+        "$CONFIG: `pipelines.pr.concurrency` must be a positive integer, or a share of the cores like '50%' (got true)": [
+          "true"
+        ],
+        "$CONFIG: `pipelines.pr.concurrency` must be a positive integer, or a share of the cores like '50%' (got false)": [
+          "false"
+        ],
+        "$CONFIG: `pipelines.pr.concurrency` must be a positive integer, or a share of the cores like '50%' (got 0)": [
+          "0"
+        ],
+        "$CONFIG: `pipelines.pr.concurrency` must be a positive integer, or a share of the cores like '50%' (got 1.5)": [
+          "1.5"
+        ],
+        "$CONFIG: `pipelines.pr.concurrency` must be a positive integer, or a share of the cores like '50%' (got -1)": [
+          "-1"
+        ],
+        "$CONFIG: `pipelines.pr.concurrency` must be a positive integer, or a share of the cores like '50%' (got \"\")": [
+          "\"\""
+        ],
+        "$CONFIG: `pipelines.pr.concurrency` must be a positive integer, or a share of the cores like '50%' (got \"x\")": [
+          "\"x\""
+        ],
+        "$CONFIG: `pipelines.pr.concurrency` must be a positive integer, or a share of the cores like '50%' (got \"(\")": [
+          "\"(\""
+        ],
+        "$CONFIG: `pipelines.pr.concurrency` must be a positive integer, or a share of the cores like '50%' (got \"30d\")": [
+          "\"30d\""
+        ],
+        "$CONFIG: `pipelines.pr.concurrency` must be a positive integer, or a share of the cores like '50%' (got \"10G\")": [
+          "\"10G\""
+        ],
+        "$CONFIG: `pipelines.pr.concurrency` must be a positive integer, or a share of the cores like '50%' (got \"10\")": [
+          "\"10\""
+        ],
+        "$CONFIG: `pipelines.pr.concurrency` must be a positive integer, or a share of the cores like '50%' (got [])": [
+          "[]"
+        ],
+        "$CONFIG: `pipelines.pr.concurrency` must be a positive integer, or a share of the cores like '50%' (got [\"x\"])": [
+          "[\"x\"]"
+        ],
+        "$CONFIG: `pipelines.pr.concurrency` must be a positive integer, or a share of the cores like '50%' (got [\"\"])": [
+          "[\"\"]"
+        ],
+        "$CONFIG: `pipelines.pr.concurrency` must be a positive integer, or a share of the cores like '50%' (got [1])": [
+          "[1]"
+        ],
+        "$CONFIG: `pipelines.pr.concurrency` must be a positive integer, or a share of the cores like '50%' (got [3000])": [
+          "[3000]"
+        ],
+        "$CONFIG: `pipelines.pr.concurrency` must be a positive integer, or a share of the cores like '50%' (got [\"/x\"])": [
+          "[\"/x\"]"
+        ],
+        "$CONFIG: `pipelines.pr.concurrency` must be a positive integer, or a share of the cores like '50%' (got [\"!/x\"])": [
+          "[\"!/x\"]"
+        ],
+        "$CONFIG: `pipelines.pr.concurrency` must be a positive integer, or a share of the cores like '50%' (got [\"../x\"])": [
+          "[\"../x\"]"
+        ],
+        "$CONFIG: `pipelines.pr.concurrency` must be a positive integer, or a share of the cores like '50%' (got [\"!x\"])": [
+          "[\"!x\"]"
+        ],
+        "$CONFIG: `pipelines.pr.concurrency` must be a positive integer, or a share of the cores like '50%' (got [\"!!x\",\"y\"])": [
+          "[\"!!x\",\"y\"]"
+        ],
+        "$CONFIG: `pipelines.pr.concurrency` must be a positive integer, or a share of the cores like '50%' (got [\".\"])": [
+          "[\".\"]"
+        ],
+        "$CONFIG: `pipelines.pr.concurrency` must be a positive integer, or a share of the cores like '50%' (got [\"**\"])": [
+          "[\"**\"]"
+        ],
+        "$CONFIG: `pipelines.pr.concurrency` must be a positive integer, or a share of the cores like '50%' (got [\"A=B\"])": [
+          "[\"A=B\"]"
+        ],
+        "$CONFIG: `pipelines.pr.concurrency` must be a positive integer, or a share of the cores like '50%' (got [\"A*\"])": [
+          "[\"A*\"]"
+        ],
+        "$CONFIG: `pipelines.pr.concurrency` must be a positive integer, or a share of the cores like '50%' (got {})": [
+          "{}"
+        ],
+        "$CONFIG: `pipelines.pr.concurrency` must be a positive integer, or a share of the cores like '50%' (got {\"x\":\"y\"})": [
+          "{\"x\":\"y\"}"
+        ]
+      },
+      "pipelines.*.schedule": {
+        "ok": ["<absent>", "\"most-work\""],
+        "$CONFIG: `pipelines.pr.schedule` must be one of 'most-work', 'critical-path', 'direct-dependents', 'ready-order' (got null)": [
+          "null"
+        ],
+        "$CONFIG: `pipelines.pr.schedule` must be one of 'most-work', 'critical-path', 'direct-dependents', 'ready-order' (got true)": [
+          "true"
+        ],
+        "$CONFIG: `pipelines.pr.schedule` must be one of 'most-work', 'critical-path', 'direct-dependents', 'ready-order' (got false)": [
+          "false"
+        ],
+        "$CONFIG: `pipelines.pr.schedule` must be one of 'most-work', 'critical-path', 'direct-dependents', 'ready-order' (got 0)": [
+          "0"
+        ],
+        "$CONFIG: `pipelines.pr.schedule` must be one of 'most-work', 'critical-path', 'direct-dependents', 'ready-order' (got 1)": [
+          "1"
+        ],
+        "$CONFIG: `pipelines.pr.schedule` must be one of 'most-work', 'critical-path', 'direct-dependents', 'ready-order' (got 1.5)": [
+          "1.5"
+        ],
+        "$CONFIG: `pipelines.pr.schedule` must be one of 'most-work', 'critical-path', 'direct-dependents', 'ready-order' (got -1)": [
+          "-1"
+        ],
+        "$CONFIG: `pipelines.pr.schedule` must be one of 'most-work', 'critical-path', 'direct-dependents', 'ready-order' (got 65536)": [
+          "65536"
+        ],
+        "$CONFIG: `pipelines.pr.schedule` must be one of 'most-work', 'critical-path', 'direct-dependents', 'ready-order' (got 2147483648)": [
+          "2147483648"
+        ],
+        "$CONFIG: `pipelines.pr.schedule` must be one of 'most-work', 'critical-path', 'direct-dependents', 'ready-order' (got \"\")": [
+          "\"\""
+        ],
+        "$CONFIG: `pipelines.pr.schedule` must be one of 'most-work', 'critical-path', 'direct-dependents', 'ready-order' (got \"x\")": [
+          "\"x\""
+        ],
+        "$CONFIG: `pipelines.pr.schedule` must be one of 'most-work', 'critical-path', 'direct-dependents', 'ready-order' (got \"(\")": [
+          "\"(\""
+        ],
+        "$CONFIG: `pipelines.pr.schedule` must be one of 'most-work', 'critical-path', 'direct-dependents', 'ready-order' (got \"30d\")": [
+          "\"30d\""
+        ],
+        "$CONFIG: `pipelines.pr.schedule` must be one of 'most-work', 'critical-path', 'direct-dependents', 'ready-order' (got \"10G\")": [
+          "\"10G\""
+        ],
+        "$CONFIG: `pipelines.pr.schedule` must be one of 'most-work', 'critical-path', 'direct-dependents', 'ready-order' (got \"10\")": [
+          "\"10\""
+        ],
+        "$CONFIG: `pipelines.pr.schedule` must be one of 'most-work', 'critical-path', 'direct-dependents', 'ready-order' (got [])": [
+          "[]"
+        ],
+        "$CONFIG: `pipelines.pr.schedule` must be one of 'most-work', 'critical-path', 'direct-dependents', 'ready-order' (got [\"x\"])": [
+          "[\"x\"]"
+        ],
+        "$CONFIG: `pipelines.pr.schedule` must be one of 'most-work', 'critical-path', 'direct-dependents', 'ready-order' (got [\"\"])": [
+          "[\"\"]"
+        ],
+        "$CONFIG: `pipelines.pr.schedule` must be one of 'most-work', 'critical-path', 'direct-dependents', 'ready-order' (got [1])": [
+          "[1]"
+        ],
+        "$CONFIG: `pipelines.pr.schedule` must be one of 'most-work', 'critical-path', 'direct-dependents', 'ready-order' (got [3000])": [
+          "[3000]"
+        ],
+        "$CONFIG: `pipelines.pr.schedule` must be one of 'most-work', 'critical-path', 'direct-dependents', 'ready-order' (got [\"/x\"])": [
+          "[\"/x\"]"
+        ],
+        "$CONFIG: `pipelines.pr.schedule` must be one of 'most-work', 'critical-path', 'direct-dependents', 'ready-order' (got [\"!/x\"])": [
+          "[\"!/x\"]"
+        ],
+        "$CONFIG: `pipelines.pr.schedule` must be one of 'most-work', 'critical-path', 'direct-dependents', 'ready-order' (got [\"../x\"])": [
+          "[\"../x\"]"
+        ],
+        "$CONFIG: `pipelines.pr.schedule` must be one of 'most-work', 'critical-path', 'direct-dependents', 'ready-order' (got [\"!x\"])": [
+          "[\"!x\"]"
+        ],
+        "$CONFIG: `pipelines.pr.schedule` must be one of 'most-work', 'critical-path', 'direct-dependents', 'ready-order' (got [\"!!x\",\"y\"])": [
+          "[\"!!x\",\"y\"]"
+        ],
+        "$CONFIG: `pipelines.pr.schedule` must be one of 'most-work', 'critical-path', 'direct-dependents', 'ready-order' (got [\".\"])": [
+          "[\".\"]"
+        ],
+        "$CONFIG: `pipelines.pr.schedule` must be one of 'most-work', 'critical-path', 'direct-dependents', 'ready-order' (got [\"**\"])": [
+          "[\"**\"]"
+        ],
+        "$CONFIG: `pipelines.pr.schedule` must be one of 'most-work', 'critical-path', 'direct-dependents', 'ready-order' (got [\"A=B\"])": [
+          "[\"A=B\"]"
+        ],
+        "$CONFIG: `pipelines.pr.schedule` must be one of 'most-work', 'critical-path', 'direct-dependents', 'ready-order' (got [\"A*\"])": [
+          "[\"A*\"]"
+        ],
+        "$CONFIG: `pipelines.pr.schedule` must be one of 'most-work', 'critical-path', 'direct-dependents', 'ready-order' (got {})": [
+          "{}"
+        ],
+        "$CONFIG: `pipelines.pr.schedule` must be one of 'most-work', 'critical-path', 'direct-dependents', 'ready-order' (got {\"x\":\"y\"})": [
+          "{\"x\":\"y\"}"
+        ]
+      },
+      "pipelines.*.continue": {
+        "ok": ["<absent>", "\"always\""],
+        "$CONFIG: `pipelines.pr.continue` must be one of 'never', 'deps-ok', 'always' (got null)": [
+          "null"
+        ],
+        "$CONFIG: `pipelines.pr.continue` must be one of 'never', 'deps-ok', 'always' (got true)": [
+          "true"
+        ],
+        "$CONFIG: `pipelines.pr.continue` must be one of 'never', 'deps-ok', 'always' (got false)": [
+          "false"
+        ],
+        "$CONFIG: `pipelines.pr.continue` must be one of 'never', 'deps-ok', 'always' (got 0)": [
+          "0"
+        ],
+        "$CONFIG: `pipelines.pr.continue` must be one of 'never', 'deps-ok', 'always' (got 1)": [
+          "1"
+        ],
+        "$CONFIG: `pipelines.pr.continue` must be one of 'never', 'deps-ok', 'always' (got 1.5)": [
+          "1.5"
+        ],
+        "$CONFIG: `pipelines.pr.continue` must be one of 'never', 'deps-ok', 'always' (got -1)": [
+          "-1"
+        ],
+        "$CONFIG: `pipelines.pr.continue` must be one of 'never', 'deps-ok', 'always' (got 65536)": [
+          "65536"
+        ],
+        "$CONFIG: `pipelines.pr.continue` must be one of 'never', 'deps-ok', 'always' (got 2147483648)": [
+          "2147483648"
+        ],
+        "$CONFIG: `pipelines.pr.continue` must be one of 'never', 'deps-ok', 'always' (got \"\")": [
+          "\"\""
+        ],
+        "$CONFIG: `pipelines.pr.continue` must be one of 'never', 'deps-ok', 'always' (got \"x\")": [
+          "\"x\""
+        ],
+        "$CONFIG: `pipelines.pr.continue` must be one of 'never', 'deps-ok', 'always' (got \"(\")": [
+          "\"(\""
+        ],
+        "$CONFIG: `pipelines.pr.continue` must be one of 'never', 'deps-ok', 'always' (got \"30d\")": [
+          "\"30d\""
+        ],
+        "$CONFIG: `pipelines.pr.continue` must be one of 'never', 'deps-ok', 'always' (got \"10G\")": [
+          "\"10G\""
+        ],
+        "$CONFIG: `pipelines.pr.continue` must be one of 'never', 'deps-ok', 'always' (got \"10\")": [
+          "\"10\""
+        ],
+        "$CONFIG: `pipelines.pr.continue` must be one of 'never', 'deps-ok', 'always' (got [])": [
+          "[]"
+        ],
+        "$CONFIG: `pipelines.pr.continue` must be one of 'never', 'deps-ok', 'always' (got [\"x\"])": [
+          "[\"x\"]"
+        ],
+        "$CONFIG: `pipelines.pr.continue` must be one of 'never', 'deps-ok', 'always' (got [\"\"])": [
+          "[\"\"]"
+        ],
+        "$CONFIG: `pipelines.pr.continue` must be one of 'never', 'deps-ok', 'always' (got [1])": [
+          "[1]"
+        ],
+        "$CONFIG: `pipelines.pr.continue` must be one of 'never', 'deps-ok', 'always' (got [3000])": [
+          "[3000]"
+        ],
+        "$CONFIG: `pipelines.pr.continue` must be one of 'never', 'deps-ok', 'always' (got [\"/x\"])": [
+          "[\"/x\"]"
+        ],
+        "$CONFIG: `pipelines.pr.continue` must be one of 'never', 'deps-ok', 'always' (got [\"!/x\"])": [
+          "[\"!/x\"]"
+        ],
+        "$CONFIG: `pipelines.pr.continue` must be one of 'never', 'deps-ok', 'always' (got [\"../x\"])": [
+          "[\"../x\"]"
+        ],
+        "$CONFIG: `pipelines.pr.continue` must be one of 'never', 'deps-ok', 'always' (got [\"!x\"])": [
+          "[\"!x\"]"
+        ],
+        "$CONFIG: `pipelines.pr.continue` must be one of 'never', 'deps-ok', 'always' (got [\"!!x\",\"y\"])": [
+          "[\"!!x\",\"y\"]"
+        ],
+        "$CONFIG: `pipelines.pr.continue` must be one of 'never', 'deps-ok', 'always' (got [\".\"])": [
+          "[\".\"]"
+        ],
+        "$CONFIG: `pipelines.pr.continue` must be one of 'never', 'deps-ok', 'always' (got [\"**\"])": [
+          "[\"**\"]"
+        ],
+        "$CONFIG: `pipelines.pr.continue` must be one of 'never', 'deps-ok', 'always' (got [\"A=B\"])": [
+          "[\"A=B\"]"
+        ],
+        "$CONFIG: `pipelines.pr.continue` must be one of 'never', 'deps-ok', 'always' (got [\"A*\"])": [
+          "[\"A*\"]"
+        ],
+        "$CONFIG: `pipelines.pr.continue` must be one of 'never', 'deps-ok', 'always' (got {})": [
+          "{}"
+        ],
+        "$CONFIG: `pipelines.pr.continue` must be one of 'never', 'deps-ok', 'always' (got {\"x\":\"y\"})": [
+          "{\"x\":\"y\"}"
+        ]
+      },
+      "pipelines.*.retries": {
+        "ok": ["<absent>", "0", "1", "65536", "2147483648"],
+        "$CONFIG: `pipelines.pr.retries` must be a non-negative integer (got null)": ["null"],
+        "$CONFIG: `pipelines.pr.retries` must be a non-negative integer (got true)": ["true"],
+        "$CONFIG: `pipelines.pr.retries` must be a non-negative integer (got false)": ["false"],
+        "$CONFIG: `pipelines.pr.retries` must be a non-negative integer (got 1.5)": ["1.5"],
+        "$CONFIG: `pipelines.pr.retries` must be a non-negative integer (got -1)": ["-1"],
+        "$CONFIG: `pipelines.pr.retries` must be a non-negative integer (got \"\")": ["\"\""],
+        "$CONFIG: `pipelines.pr.retries` must be a non-negative integer (got \"x\")": ["\"x\""],
+        "$CONFIG: `pipelines.pr.retries` must be a non-negative integer (got \"(\")": ["\"(\""],
+        "$CONFIG: `pipelines.pr.retries` must be a non-negative integer (got \"30d\")": ["\"30d\""],
+        "$CONFIG: `pipelines.pr.retries` must be a non-negative integer (got \"10G\")": ["\"10G\""],
+        "$CONFIG: `pipelines.pr.retries` must be a non-negative integer (got \"10\")": ["\"10\""],
+        "$CONFIG: `pipelines.pr.retries` must be a non-negative integer (got [])": ["[]"],
+        "$CONFIG: `pipelines.pr.retries` must be a non-negative integer (got [\"x\"])": ["[\"x\"]"],
+        "$CONFIG: `pipelines.pr.retries` must be a non-negative integer (got [\"\"])": ["[\"\"]"],
+        "$CONFIG: `pipelines.pr.retries` must be a non-negative integer (got [1])": ["[1]"],
+        "$CONFIG: `pipelines.pr.retries` must be a non-negative integer (got [3000])": ["[3000]"],
+        "$CONFIG: `pipelines.pr.retries` must be a non-negative integer (got [\"/x\"])": [
+          "[\"/x\"]"
+        ],
+        "$CONFIG: `pipelines.pr.retries` must be a non-negative integer (got [\"!/x\"])": [
+          "[\"!/x\"]"
+        ],
+        "$CONFIG: `pipelines.pr.retries` must be a non-negative integer (got [\"../x\"])": [
+          "[\"../x\"]"
+        ],
+        "$CONFIG: `pipelines.pr.retries` must be a non-negative integer (got [\"!x\"])": [
+          "[\"!x\"]"
+        ],
+        "$CONFIG: `pipelines.pr.retries` must be a non-negative integer (got [\"!!x\",\"y\"])": [
+          "[\"!!x\",\"y\"]"
+        ],
+        "$CONFIG: `pipelines.pr.retries` must be a non-negative integer (got [\".\"])": ["[\".\"]"],
+        "$CONFIG: `pipelines.pr.retries` must be a non-negative integer (got [\"**\"])": [
+          "[\"**\"]"
+        ],
+        "$CONFIG: `pipelines.pr.retries` must be a non-negative integer (got [\"A=B\"])": [
+          "[\"A=B\"]"
+        ],
+        "$CONFIG: `pipelines.pr.retries` must be a non-negative integer (got [\"A*\"])": [
+          "[\"A*\"]"
+        ],
+        "$CONFIG: `pipelines.pr.retries` must be a non-negative integer (got {})": ["{}"],
+        "$CONFIG: `pipelines.pr.retries` must be a non-negative integer (got {\"x\":\"y\"})": [
+          "{\"x\":\"y\"}"
+        ]
+      },
+      "pipelines.*.timeout": {
+        "ok": ["<absent>", "\"10m\""],
+        "$CONFIG: `pipelines.pr.timeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got null)": [
+          "null"
+        ],
+        "$CONFIG: `pipelines.pr.timeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got true)": [
+          "true"
+        ],
+        "$CONFIG: `pipelines.pr.timeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got false)": [
+          "false"
+        ],
+        "$CONFIG: `pipelines.pr.timeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got 0)": [
+          "0"
+        ],
+        "$CONFIG: `pipelines.pr.timeout` takes a duration with its unit, like '1s' or '1ms' (got 1)": [
+          "1"
+        ],
+        "$CONFIG: `pipelines.pr.timeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got 1.5)": [
+          "1.5"
+        ],
+        "$CONFIG: `pipelines.pr.timeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got -1)": [
+          "-1"
+        ],
+        "$CONFIG: `pipelines.pr.timeout` takes a duration with its unit, like '65536ms' or '66s' (got 65536)": [
+          "65536"
+        ],
+        "$CONFIG: `pipelines.pr.timeout` of 2147483648 exceeds the maximum timer delay (2147483647 ms, ~24.8 days): a longer timer fires at once, it does not mean \"no limit\" — omit it for no limit": [
+          "2147483648"
+        ],
+        "$CONFIG: `pipelines.pr.timeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got \"\")": [
+          "\"\""
+        ],
+        "$CONFIG: `pipelines.pr.timeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got \"x\")": [
+          "\"x\""
+        ],
+        "$CONFIG: `pipelines.pr.timeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got \"(\")": [
+          "\"(\""
+        ],
+        "$CONFIG: `pipelines.pr.timeout` of \"30d\" exceeds the maximum timer delay (2147483647 ms, ~24.8 days): a longer timer fires at once, it does not mean \"no limit\" — omit it for no limit": [
+          "\"30d\""
+        ],
+        "$CONFIG: `pipelines.pr.timeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got \"10G\")": [
+          "\"10G\""
+        ],
+        "$CONFIG: `pipelines.pr.timeout` takes a duration with its unit, like '10s' or '10ms' (got \"10\")": [
+          "\"10\""
+        ],
+        "$CONFIG: `pipelines.pr.timeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [])": [
+          "[]"
+        ],
+        "$CONFIG: `pipelines.pr.timeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"x\"])": [
+          "[\"x\"]"
+        ],
+        "$CONFIG: `pipelines.pr.timeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"\"])": [
+          "[\"\"]"
+        ],
+        "$CONFIG: `pipelines.pr.timeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [1])": [
+          "[1]"
+        ],
+        "$CONFIG: `pipelines.pr.timeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [3000])": [
+          "[3000]"
+        ],
+        "$CONFIG: `pipelines.pr.timeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"/x\"])": [
+          "[\"/x\"]"
+        ],
+        "$CONFIG: `pipelines.pr.timeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"!/x\"])": [
+          "[\"!/x\"]"
+        ],
+        "$CONFIG: `pipelines.pr.timeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"../x\"])": [
+          "[\"../x\"]"
+        ],
+        "$CONFIG: `pipelines.pr.timeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"!x\"])": [
+          "[\"!x\"]"
+        ],
+        "$CONFIG: `pipelines.pr.timeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"!!x\",\"y\"])": [
+          "[\"!!x\",\"y\"]"
+        ],
+        "$CONFIG: `pipelines.pr.timeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\".\"])": [
+          "[\".\"]"
+        ],
+        "$CONFIG: `pipelines.pr.timeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"**\"])": [
+          "[\"**\"]"
+        ],
+        "$CONFIG: `pipelines.pr.timeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"A=B\"])": [
+          "[\"A=B\"]"
+        ],
+        "$CONFIG: `pipelines.pr.timeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"A*\"])": [
+          "[\"A*\"]"
+        ],
+        "$CONFIG: `pipelines.pr.timeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got {})": [
+          "{}"
+        ],
+        "$CONFIG: `pipelines.pr.timeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got {\"x\":\"y\"})": [
+          "{\"x\":\"y\"}"
+        ]
+      },
+      "pipelines.*.branch": {
+        "ok": ["<absent>", "\"x\"", "\"(\"", "\"30d\"", "\"10G\"", "\"10\"", "\"main\""],
+        "$CONFIG: `pipelines.pr.branch` must be a non-blank string (got null)": ["null"],
+        "$CONFIG: `pipelines.pr.branch` must be a non-blank string (got true)": ["true"],
+        "$CONFIG: `pipelines.pr.branch` must be a non-blank string (got false)": ["false"],
+        "$CONFIG: `pipelines.pr.branch` must be a non-blank string (got 0)": ["0"],
+        "$CONFIG: `pipelines.pr.branch` must be a non-blank string (got 1)": ["1"],
+        "$CONFIG: `pipelines.pr.branch` must be a non-blank string (got 1.5)": ["1.5"],
+        "$CONFIG: `pipelines.pr.branch` must be a non-blank string (got -1)": ["-1"],
+        "$CONFIG: `pipelines.pr.branch` must be a non-blank string (got 65536)": ["65536"],
+        "$CONFIG: `pipelines.pr.branch` must be a non-blank string (got 2147483648)": [
+          "2147483648"
+        ],
+        "$CONFIG: `pipelines.pr.branch` must be a non-blank string (got \"\")": ["\"\""],
+        "$CONFIG: `pipelines.pr.branch` must be a non-blank string (got [])": ["[]"],
+        "$CONFIG: `pipelines.pr.branch` must be a non-blank string (got [\"x\"])": ["[\"x\"]"],
+        "$CONFIG: `pipelines.pr.branch` must be a non-blank string (got [\"\"])": ["[\"\"]"],
+        "$CONFIG: `pipelines.pr.branch` must be a non-blank string (got [1])": ["[1]"],
+        "$CONFIG: `pipelines.pr.branch` must be a non-blank string (got [3000])": ["[3000]"],
+        "$CONFIG: `pipelines.pr.branch` must be a non-blank string (got [\"/x\"])": ["[\"/x\"]"],
+        "$CONFIG: `pipelines.pr.branch` must be a non-blank string (got [\"!/x\"])": ["[\"!/x\"]"],
+        "$CONFIG: `pipelines.pr.branch` must be a non-blank string (got [\"../x\"])": [
+          "[\"../x\"]"
+        ],
+        "$CONFIG: `pipelines.pr.branch` must be a non-blank string (got [\"!x\"])": ["[\"!x\"]"],
+        "$CONFIG: `pipelines.pr.branch` must be a non-blank string (got [\"!!x\",\"y\"])": [
+          "[\"!!x\",\"y\"]"
+        ],
+        "$CONFIG: `pipelines.pr.branch` must be a non-blank string (got [\".\"])": ["[\".\"]"],
+        "$CONFIG: `pipelines.pr.branch` must be a non-blank string (got [\"**\"])": ["[\"**\"]"],
+        "$CONFIG: `pipelines.pr.branch` must be a non-blank string (got [\"A=B\"])": ["[\"A=B\"]"],
+        "$CONFIG: `pipelines.pr.branch` must be a non-blank string (got [\"A*\"])": ["[\"A*\"]"],
+        "$CONFIG: `pipelines.pr.branch` must be a non-blank string (got {})": ["{}"],
+        "$CONFIG: `pipelines.pr.branch` must be a non-blank string (got {\"x\":\"y\"})": [
+          "{\"x\":\"y\"}"
+        ]
+      },
+      "pipelines.*.cachePolicy": {
+        "ok": ["<absent>", "\"x\"", "\"(\"", "\"30d\"", "\"10G\"", "\"10\"", "\"local:rw\""],
+        "$CONFIG: `pipelines.pr.cachePolicy` must be a non-blank string (got null)": ["null"],
+        "$CONFIG: `pipelines.pr.cachePolicy` must be a non-blank string (got true)": ["true"],
+        "$CONFIG: `pipelines.pr.cachePolicy` must be a non-blank string (got false)": ["false"],
+        "$CONFIG: `pipelines.pr.cachePolicy` must be a non-blank string (got 0)": ["0"],
+        "$CONFIG: `pipelines.pr.cachePolicy` must be a non-blank string (got 1)": ["1"],
+        "$CONFIG: `pipelines.pr.cachePolicy` must be a non-blank string (got 1.5)": ["1.5"],
+        "$CONFIG: `pipelines.pr.cachePolicy` must be a non-blank string (got -1)": ["-1"],
+        "$CONFIG: `pipelines.pr.cachePolicy` must be a non-blank string (got 65536)": ["65536"],
+        "$CONFIG: `pipelines.pr.cachePolicy` must be a non-blank string (got 2147483648)": [
+          "2147483648"
+        ],
+        "$CONFIG: `pipelines.pr.cachePolicy` must be a non-blank string (got \"\")": ["\"\""],
+        "$CONFIG: `pipelines.pr.cachePolicy` must be a non-blank string (got [])": ["[]"],
+        "$CONFIG: `pipelines.pr.cachePolicy` must be a non-blank string (got [\"x\"])": ["[\"x\"]"],
+        "$CONFIG: `pipelines.pr.cachePolicy` must be a non-blank string (got [\"\"])": ["[\"\"]"],
+        "$CONFIG: `pipelines.pr.cachePolicy` must be a non-blank string (got [1])": ["[1]"],
+        "$CONFIG: `pipelines.pr.cachePolicy` must be a non-blank string (got [3000])": ["[3000]"],
+        "$CONFIG: `pipelines.pr.cachePolicy` must be a non-blank string (got [\"/x\"])": [
+          "[\"/x\"]"
+        ],
+        "$CONFIG: `pipelines.pr.cachePolicy` must be a non-blank string (got [\"!/x\"])": [
+          "[\"!/x\"]"
+        ],
+        "$CONFIG: `pipelines.pr.cachePolicy` must be a non-blank string (got [\"../x\"])": [
+          "[\"../x\"]"
+        ],
+        "$CONFIG: `pipelines.pr.cachePolicy` must be a non-blank string (got [\"!x\"])": [
+          "[\"!x\"]"
+        ],
+        "$CONFIG: `pipelines.pr.cachePolicy` must be a non-blank string (got [\"!!x\",\"y\"])": [
+          "[\"!!x\",\"y\"]"
+        ],
+        "$CONFIG: `pipelines.pr.cachePolicy` must be a non-blank string (got [\".\"])": ["[\".\"]"],
+        "$CONFIG: `pipelines.pr.cachePolicy` must be a non-blank string (got [\"**\"])": [
+          "[\"**\"]"
+        ],
+        "$CONFIG: `pipelines.pr.cachePolicy` must be a non-blank string (got [\"A=B\"])": [
+          "[\"A=B\"]"
+        ],
+        "$CONFIG: `pipelines.pr.cachePolicy` must be a non-blank string (got [\"A*\"])": [
+          "[\"A*\"]"
+        ],
+        "$CONFIG: `pipelines.pr.cachePolicy` must be a non-blank string (got {})": ["{}"],
+        "$CONFIG: `pipelines.pr.cachePolicy` must be a non-blank string (got {\"x\":\"y\"})": [
+          "{\"x\":\"y\"}"
+        ]
+      },
+      "pipelines.*.noCache": {
+        "ok": ["<absent>", "true", "false"],
+        "$CONFIG: `pipelines.pr.noCache` must be true or false (got null)": ["null"],
+        "$CONFIG: `pipelines.pr.noCache` must be true or false (got 0)": ["0"],
+        "$CONFIG: `pipelines.pr.noCache` must be true or false (got 1)": ["1"],
+        "$CONFIG: `pipelines.pr.noCache` must be true or false (got 1.5)": ["1.5"],
+        "$CONFIG: `pipelines.pr.noCache` must be true or false (got -1)": ["-1"],
+        "$CONFIG: `pipelines.pr.noCache` must be true or false (got 65536)": ["65536"],
+        "$CONFIG: `pipelines.pr.noCache` must be true or false (got 2147483648)": ["2147483648"],
+        "$CONFIG: `pipelines.pr.noCache` must be true or false (got \"\")": ["\"\""],
+        "$CONFIG: `pipelines.pr.noCache` must be true or false (got \"x\")": ["\"x\""],
+        "$CONFIG: `pipelines.pr.noCache` must be true or false (got \"(\")": ["\"(\""],
+        "$CONFIG: `pipelines.pr.noCache` must be true or false (got \"30d\")": ["\"30d\""],
+        "$CONFIG: `pipelines.pr.noCache` must be true or false (got \"10G\")": ["\"10G\""],
+        "$CONFIG: `pipelines.pr.noCache` must be true or false (got \"10\")": ["\"10\""],
+        "$CONFIG: `pipelines.pr.noCache` must be true or false (got [])": ["[]"],
+        "$CONFIG: `pipelines.pr.noCache` must be true or false (got [\"x\"])": ["[\"x\"]"],
+        "$CONFIG: `pipelines.pr.noCache` must be true or false (got [\"\"])": ["[\"\"]"],
+        "$CONFIG: `pipelines.pr.noCache` must be true or false (got [1])": ["[1]"],
+        "$CONFIG: `pipelines.pr.noCache` must be true or false (got [3000])": ["[3000]"],
+        "$CONFIG: `pipelines.pr.noCache` must be true or false (got [\"/x\"])": ["[\"/x\"]"],
+        "$CONFIG: `pipelines.pr.noCache` must be true or false (got [\"!/x\"])": ["[\"!/x\"]"],
+        "$CONFIG: `pipelines.pr.noCache` must be true or false (got [\"../x\"])": ["[\"../x\"]"],
+        "$CONFIG: `pipelines.pr.noCache` must be true or false (got [\"!x\"])": ["[\"!x\"]"],
+        "$CONFIG: `pipelines.pr.noCache` must be true or false (got [\"!!x\",\"y\"])": [
+          "[\"!!x\",\"y\"]"
+        ],
+        "$CONFIG: `pipelines.pr.noCache` must be true or false (got [\".\"])": ["[\".\"]"],
+        "$CONFIG: `pipelines.pr.noCache` must be true or false (got [\"**\"])": ["[\"**\"]"],
+        "$CONFIG: `pipelines.pr.noCache` must be true or false (got [\"A=B\"])": ["[\"A=B\"]"],
+        "$CONFIG: `pipelines.pr.noCache` must be true or false (got [\"A*\"])": ["[\"A*\"]"],
+        "$CONFIG: `pipelines.pr.noCache` must be true or false (got {})": ["{}"],
+        "$CONFIG: `pipelines.pr.noCache` must be true or false (got {\"x\":\"y\"})": [
+          "{\"x\":\"y\"}"
+        ]
+      },
+      "pipelines.*.force": {
+        "ok": ["<absent>", "true", "false"],
+        "$CONFIG: `pipelines.pr.force` must be true or false (got null)": ["null"],
+        "$CONFIG: `pipelines.pr.force` must be true or false (got 0)": ["0"],
+        "$CONFIG: `pipelines.pr.force` must be true or false (got 1)": ["1"],
+        "$CONFIG: `pipelines.pr.force` must be true or false (got 1.5)": ["1.5"],
+        "$CONFIG: `pipelines.pr.force` must be true or false (got -1)": ["-1"],
+        "$CONFIG: `pipelines.pr.force` must be true or false (got 65536)": ["65536"],
+        "$CONFIG: `pipelines.pr.force` must be true or false (got 2147483648)": ["2147483648"],
+        "$CONFIG: `pipelines.pr.force` must be true or false (got \"\")": ["\"\""],
+        "$CONFIG: `pipelines.pr.force` must be true or false (got \"x\")": ["\"x\""],
+        "$CONFIG: `pipelines.pr.force` must be true or false (got \"(\")": ["\"(\""],
+        "$CONFIG: `pipelines.pr.force` must be true or false (got \"30d\")": ["\"30d\""],
+        "$CONFIG: `pipelines.pr.force` must be true or false (got \"10G\")": ["\"10G\""],
+        "$CONFIG: `pipelines.pr.force` must be true or false (got \"10\")": ["\"10\""],
+        "$CONFIG: `pipelines.pr.force` must be true or false (got [])": ["[]"],
+        "$CONFIG: `pipelines.pr.force` must be true or false (got [\"x\"])": ["[\"x\"]"],
+        "$CONFIG: `pipelines.pr.force` must be true or false (got [\"\"])": ["[\"\"]"],
+        "$CONFIG: `pipelines.pr.force` must be true or false (got [1])": ["[1]"],
+        "$CONFIG: `pipelines.pr.force` must be true or false (got [3000])": ["[3000]"],
+        "$CONFIG: `pipelines.pr.force` must be true or false (got [\"/x\"])": ["[\"/x\"]"],
+        "$CONFIG: `pipelines.pr.force` must be true or false (got [\"!/x\"])": ["[\"!/x\"]"],
+        "$CONFIG: `pipelines.pr.force` must be true or false (got [\"../x\"])": ["[\"../x\"]"],
+        "$CONFIG: `pipelines.pr.force` must be true or false (got [\"!x\"])": ["[\"!x\"]"],
+        "$CONFIG: `pipelines.pr.force` must be true or false (got [\"!!x\",\"y\"])": [
+          "[\"!!x\",\"y\"]"
+        ],
+        "$CONFIG: `pipelines.pr.force` must be true or false (got [\".\"])": ["[\".\"]"],
+        "$CONFIG: `pipelines.pr.force` must be true or false (got [\"**\"])": ["[\"**\"]"],
+        "$CONFIG: `pipelines.pr.force` must be true or false (got [\"A=B\"])": ["[\"A=B\"]"],
+        "$CONFIG: `pipelines.pr.force` must be true or false (got [\"A*\"])": ["[\"A*\"]"],
+        "$CONFIG: `pipelines.pr.force` must be true or false (got {})": ["{}"],
+        "$CONFIG: `pipelines.pr.force` must be true or false (got {\"x\":\"y\"})": ["{\"x\":\"y\"}"]
+      },
+      "pipelines.*.cacheDir": {
+        "ok": ["<absent>", "\"x\"", "\"(\"", "\"30d\"", "\"10G\"", "\"10\"", "\".vx/cache\""],
+        "$CONFIG: `pipelines.pr.cacheDir` must be a non-blank string (got null)": ["null"],
+        "$CONFIG: `pipelines.pr.cacheDir` must be a non-blank string (got true)": ["true"],
+        "$CONFIG: `pipelines.pr.cacheDir` must be a non-blank string (got false)": ["false"],
+        "$CONFIG: `pipelines.pr.cacheDir` must be a non-blank string (got 0)": ["0"],
+        "$CONFIG: `pipelines.pr.cacheDir` must be a non-blank string (got 1)": ["1"],
+        "$CONFIG: `pipelines.pr.cacheDir` must be a non-blank string (got 1.5)": ["1.5"],
+        "$CONFIG: `pipelines.pr.cacheDir` must be a non-blank string (got -1)": ["-1"],
+        "$CONFIG: `pipelines.pr.cacheDir` must be a non-blank string (got 65536)": ["65536"],
+        "$CONFIG: `pipelines.pr.cacheDir` must be a non-blank string (got 2147483648)": [
+          "2147483648"
+        ],
+        "$CONFIG: `pipelines.pr.cacheDir` must be a non-blank string (got \"\")": ["\"\""],
+        "$CONFIG: `pipelines.pr.cacheDir` must be a non-blank string (got [])": ["[]"],
+        "$CONFIG: `pipelines.pr.cacheDir` must be a non-blank string (got [\"x\"])": ["[\"x\"]"],
+        "$CONFIG: `pipelines.pr.cacheDir` must be a non-blank string (got [\"\"])": ["[\"\"]"],
+        "$CONFIG: `pipelines.pr.cacheDir` must be a non-blank string (got [1])": ["[1]"],
+        "$CONFIG: `pipelines.pr.cacheDir` must be a non-blank string (got [3000])": ["[3000]"],
+        "$CONFIG: `pipelines.pr.cacheDir` must be a non-blank string (got [\"/x\"])": ["[\"/x\"]"],
+        "$CONFIG: `pipelines.pr.cacheDir` must be a non-blank string (got [\"!/x\"])": [
+          "[\"!/x\"]"
+        ],
+        "$CONFIG: `pipelines.pr.cacheDir` must be a non-blank string (got [\"../x\"])": [
+          "[\"../x\"]"
+        ],
+        "$CONFIG: `pipelines.pr.cacheDir` must be a non-blank string (got [\"!x\"])": ["[\"!x\"]"],
+        "$CONFIG: `pipelines.pr.cacheDir` must be a non-blank string (got [\"!!x\",\"y\"])": [
+          "[\"!!x\",\"y\"]"
+        ],
+        "$CONFIG: `pipelines.pr.cacheDir` must be a non-blank string (got [\".\"])": ["[\".\"]"],
+        "$CONFIG: `pipelines.pr.cacheDir` must be a non-blank string (got [\"**\"])": ["[\"**\"]"],
+        "$CONFIG: `pipelines.pr.cacheDir` must be a non-blank string (got [\"A=B\"])": [
+          "[\"A=B\"]"
+        ],
+        "$CONFIG: `pipelines.pr.cacheDir` must be a non-blank string (got [\"A*\"])": ["[\"A*\"]"],
+        "$CONFIG: `pipelines.pr.cacheDir` must be a non-blank string (got {})": ["{}"],
+        "$CONFIG: `pipelines.pr.cacheDir` must be a non-blank string (got {\"x\":\"y\"})": [
+          "{\"x\":\"y\"}"
+        ]
+      },
+      "pipelines.*.cacheDownload": {
+        "ok": ["<absent>", "\"all\""],
+        "$CONFIG: `pipelines.pr.cacheDownload` must be one of 'all', 'toplevel', 'none' (got null)": [
+          "null"
+        ],
+        "$CONFIG: `pipelines.pr.cacheDownload` must be one of 'all', 'toplevel', 'none' (got true)": [
+          "true"
+        ],
+        "$CONFIG: `pipelines.pr.cacheDownload` must be one of 'all', 'toplevel', 'none' (got false)": [
+          "false"
+        ],
+        "$CONFIG: `pipelines.pr.cacheDownload` must be one of 'all', 'toplevel', 'none' (got 0)": [
+          "0"
+        ],
+        "$CONFIG: `pipelines.pr.cacheDownload` must be one of 'all', 'toplevel', 'none' (got 1)": [
+          "1"
+        ],
+        "$CONFIG: `pipelines.pr.cacheDownload` must be one of 'all', 'toplevel', 'none' (got 1.5)": [
+          "1.5"
+        ],
+        "$CONFIG: `pipelines.pr.cacheDownload` must be one of 'all', 'toplevel', 'none' (got -1)": [
+          "-1"
+        ],
+        "$CONFIG: `pipelines.pr.cacheDownload` must be one of 'all', 'toplevel', 'none' (got 65536)": [
+          "65536"
+        ],
+        "$CONFIG: `pipelines.pr.cacheDownload` must be one of 'all', 'toplevel', 'none' (got 2147483648)": [
+          "2147483648"
+        ],
+        "$CONFIG: `pipelines.pr.cacheDownload` must be one of 'all', 'toplevel', 'none' (got \"\")": [
+          "\"\""
+        ],
+        "$CONFIG: `pipelines.pr.cacheDownload` must be one of 'all', 'toplevel', 'none' (got \"x\")": [
+          "\"x\""
+        ],
+        "$CONFIG: `pipelines.pr.cacheDownload` must be one of 'all', 'toplevel', 'none' (got \"(\")": [
+          "\"(\""
+        ],
+        "$CONFIG: `pipelines.pr.cacheDownload` must be one of 'all', 'toplevel', 'none' (got \"30d\")": [
+          "\"30d\""
+        ],
+        "$CONFIG: `pipelines.pr.cacheDownload` must be one of 'all', 'toplevel', 'none' (got \"10G\")": [
+          "\"10G\""
+        ],
+        "$CONFIG: `pipelines.pr.cacheDownload` must be one of 'all', 'toplevel', 'none' (got \"10\")": [
+          "\"10\""
+        ],
+        "$CONFIG: `pipelines.pr.cacheDownload` must be one of 'all', 'toplevel', 'none' (got [])": [
+          "[]"
+        ],
+        "$CONFIG: `pipelines.pr.cacheDownload` must be one of 'all', 'toplevel', 'none' (got [\"x\"])": [
+          "[\"x\"]"
+        ],
+        "$CONFIG: `pipelines.pr.cacheDownload` must be one of 'all', 'toplevel', 'none' (got [\"\"])": [
+          "[\"\"]"
+        ],
+        "$CONFIG: `pipelines.pr.cacheDownload` must be one of 'all', 'toplevel', 'none' (got [1])": [
+          "[1]"
+        ],
+        "$CONFIG: `pipelines.pr.cacheDownload` must be one of 'all', 'toplevel', 'none' (got [3000])": [
+          "[3000]"
+        ],
+        "$CONFIG: `pipelines.pr.cacheDownload` must be one of 'all', 'toplevel', 'none' (got [\"/x\"])": [
+          "[\"/x\"]"
+        ],
+        "$CONFIG: `pipelines.pr.cacheDownload` must be one of 'all', 'toplevel', 'none' (got [\"!/x\"])": [
+          "[\"!/x\"]"
+        ],
+        "$CONFIG: `pipelines.pr.cacheDownload` must be one of 'all', 'toplevel', 'none' (got [\"../x\"])": [
+          "[\"../x\"]"
+        ],
+        "$CONFIG: `pipelines.pr.cacheDownload` must be one of 'all', 'toplevel', 'none' (got [\"!x\"])": [
+          "[\"!x\"]"
+        ],
+        "$CONFIG: `pipelines.pr.cacheDownload` must be one of 'all', 'toplevel', 'none' (got [\"!!x\",\"y\"])": [
+          "[\"!!x\",\"y\"]"
+        ],
+        "$CONFIG: `pipelines.pr.cacheDownload` must be one of 'all', 'toplevel', 'none' (got [\".\"])": [
+          "[\".\"]"
+        ],
+        "$CONFIG: `pipelines.pr.cacheDownload` must be one of 'all', 'toplevel', 'none' (got [\"**\"])": [
+          "[\"**\"]"
+        ],
+        "$CONFIG: `pipelines.pr.cacheDownload` must be one of 'all', 'toplevel', 'none' (got [\"A=B\"])": [
+          "[\"A=B\"]"
+        ],
+        "$CONFIG: `pipelines.pr.cacheDownload` must be one of 'all', 'toplevel', 'none' (got [\"A*\"])": [
+          "[\"A*\"]"
+        ],
+        "$CONFIG: `pipelines.pr.cacheDownload` must be one of 'all', 'toplevel', 'none' (got {})": [
+          "{}"
+        ],
+        "$CONFIG: `pipelines.pr.cacheDownload` must be one of 'all', 'toplevel', 'none' (got {\"x\":\"y\"})": [
+          "{\"x\":\"y\"}"
+        ]
+      },
+      "pipelines.*.cacheConcurrencyDownload": {
+        "ok": ["<absent>", "1", "65536", "2147483648", "8"],
+        "$CONFIG: `pipelines.pr.cacheConcurrencyDownload` must be an integer ≥ 1 (got null)": [
+          "null"
+        ],
+        "$CONFIG: `pipelines.pr.cacheConcurrencyDownload` must be an integer ≥ 1 (got true)": [
+          "true"
+        ],
+        "$CONFIG: `pipelines.pr.cacheConcurrencyDownload` must be an integer ≥ 1 (got false)": [
+          "false"
+        ],
+        "$CONFIG: `pipelines.pr.cacheConcurrencyDownload` must be an integer ≥ 1 (got 0)": ["0"],
+        "$CONFIG: `pipelines.pr.cacheConcurrencyDownload` must be an integer ≥ 1 (got 1.5)": [
+          "1.5"
+        ],
+        "$CONFIG: `pipelines.pr.cacheConcurrencyDownload` must be an integer ≥ 1 (got -1)": ["-1"],
+        "$CONFIG: `pipelines.pr.cacheConcurrencyDownload` must be an integer ≥ 1 (got \"\")": [
+          "\"\""
+        ],
+        "$CONFIG: `pipelines.pr.cacheConcurrencyDownload` must be an integer ≥ 1 (got \"x\")": [
+          "\"x\""
+        ],
+        "$CONFIG: `pipelines.pr.cacheConcurrencyDownload` must be an integer ≥ 1 (got \"(\")": [
+          "\"(\""
+        ],
+        "$CONFIG: `pipelines.pr.cacheConcurrencyDownload` must be an integer ≥ 1 (got \"30d\")": [
+          "\"30d\""
+        ],
+        "$CONFIG: `pipelines.pr.cacheConcurrencyDownload` must be an integer ≥ 1 (got \"10G\")": [
+          "\"10G\""
+        ],
+        "$CONFIG: `pipelines.pr.cacheConcurrencyDownload` must be an integer ≥ 1 (got \"10\")": [
+          "\"10\""
+        ],
+        "$CONFIG: `pipelines.pr.cacheConcurrencyDownload` must be an integer ≥ 1 (got [])": ["[]"],
+        "$CONFIG: `pipelines.pr.cacheConcurrencyDownload` must be an integer ≥ 1 (got [\"x\"])": [
+          "[\"x\"]"
+        ],
+        "$CONFIG: `pipelines.pr.cacheConcurrencyDownload` must be an integer ≥ 1 (got [\"\"])": [
+          "[\"\"]"
+        ],
+        "$CONFIG: `pipelines.pr.cacheConcurrencyDownload` must be an integer ≥ 1 (got [1])": [
+          "[1]"
+        ],
+        "$CONFIG: `pipelines.pr.cacheConcurrencyDownload` must be an integer ≥ 1 (got [3000])": [
+          "[3000]"
+        ],
+        "$CONFIG: `pipelines.pr.cacheConcurrencyDownload` must be an integer ≥ 1 (got [\"/x\"])": [
+          "[\"/x\"]"
+        ],
+        "$CONFIG: `pipelines.pr.cacheConcurrencyDownload` must be an integer ≥ 1 (got [\"!/x\"])": [
+          "[\"!/x\"]"
+        ],
+        "$CONFIG: `pipelines.pr.cacheConcurrencyDownload` must be an integer ≥ 1 (got [\"../x\"])": [
+          "[\"../x\"]"
+        ],
+        "$CONFIG: `pipelines.pr.cacheConcurrencyDownload` must be an integer ≥ 1 (got [\"!x\"])": [
+          "[\"!x\"]"
+        ],
+        "$CONFIG: `pipelines.pr.cacheConcurrencyDownload` must be an integer ≥ 1 (got [\"!!x\",\"y\"])": [
+          "[\"!!x\",\"y\"]"
+        ],
+        "$CONFIG: `pipelines.pr.cacheConcurrencyDownload` must be an integer ≥ 1 (got [\".\"])": [
+          "[\".\"]"
+        ],
+        "$CONFIG: `pipelines.pr.cacheConcurrencyDownload` must be an integer ≥ 1 (got [\"**\"])": [
+          "[\"**\"]"
+        ],
+        "$CONFIG: `pipelines.pr.cacheConcurrencyDownload` must be an integer ≥ 1 (got [\"A=B\"])": [
+          "[\"A=B\"]"
+        ],
+        "$CONFIG: `pipelines.pr.cacheConcurrencyDownload` must be an integer ≥ 1 (got [\"A*\"])": [
+          "[\"A*\"]"
+        ],
+        "$CONFIG: `pipelines.pr.cacheConcurrencyDownload` must be an integer ≥ 1 (got {})": ["{}"],
+        "$CONFIG: `pipelines.pr.cacheConcurrencyDownload` must be an integer ≥ 1 (got {\"x\":\"y\"})": [
+          "{\"x\":\"y\"}"
+        ]
+      },
+      "pipelines.*.cacheConcurrencyUpload": {
+        "ok": ["<absent>", "1", "65536", "2147483648", "8"],
+        "$CONFIG: `pipelines.pr.cacheConcurrencyUpload` must be an integer ≥ 1 (got null)": [
+          "null"
+        ],
+        "$CONFIG: `pipelines.pr.cacheConcurrencyUpload` must be an integer ≥ 1 (got true)": [
+          "true"
+        ],
+        "$CONFIG: `pipelines.pr.cacheConcurrencyUpload` must be an integer ≥ 1 (got false)": [
+          "false"
+        ],
+        "$CONFIG: `pipelines.pr.cacheConcurrencyUpload` must be an integer ≥ 1 (got 0)": ["0"],
+        "$CONFIG: `pipelines.pr.cacheConcurrencyUpload` must be an integer ≥ 1 (got 1.5)": ["1.5"],
+        "$CONFIG: `pipelines.pr.cacheConcurrencyUpload` must be an integer ≥ 1 (got -1)": ["-1"],
+        "$CONFIG: `pipelines.pr.cacheConcurrencyUpload` must be an integer ≥ 1 (got \"\")": [
+          "\"\""
+        ],
+        "$CONFIG: `pipelines.pr.cacheConcurrencyUpload` must be an integer ≥ 1 (got \"x\")": [
+          "\"x\""
+        ],
+        "$CONFIG: `pipelines.pr.cacheConcurrencyUpload` must be an integer ≥ 1 (got \"(\")": [
+          "\"(\""
+        ],
+        "$CONFIG: `pipelines.pr.cacheConcurrencyUpload` must be an integer ≥ 1 (got \"30d\")": [
+          "\"30d\""
+        ],
+        "$CONFIG: `pipelines.pr.cacheConcurrencyUpload` must be an integer ≥ 1 (got \"10G\")": [
+          "\"10G\""
+        ],
+        "$CONFIG: `pipelines.pr.cacheConcurrencyUpload` must be an integer ≥ 1 (got \"10\")": [
+          "\"10\""
+        ],
+        "$CONFIG: `pipelines.pr.cacheConcurrencyUpload` must be an integer ≥ 1 (got [])": ["[]"],
+        "$CONFIG: `pipelines.pr.cacheConcurrencyUpload` must be an integer ≥ 1 (got [\"x\"])": [
+          "[\"x\"]"
+        ],
+        "$CONFIG: `pipelines.pr.cacheConcurrencyUpload` must be an integer ≥ 1 (got [\"\"])": [
+          "[\"\"]"
+        ],
+        "$CONFIG: `pipelines.pr.cacheConcurrencyUpload` must be an integer ≥ 1 (got [1])": ["[1]"],
+        "$CONFIG: `pipelines.pr.cacheConcurrencyUpload` must be an integer ≥ 1 (got [3000])": [
+          "[3000]"
+        ],
+        "$CONFIG: `pipelines.pr.cacheConcurrencyUpload` must be an integer ≥ 1 (got [\"/x\"])": [
+          "[\"/x\"]"
+        ],
+        "$CONFIG: `pipelines.pr.cacheConcurrencyUpload` must be an integer ≥ 1 (got [\"!/x\"])": [
+          "[\"!/x\"]"
+        ],
+        "$CONFIG: `pipelines.pr.cacheConcurrencyUpload` must be an integer ≥ 1 (got [\"../x\"])": [
+          "[\"../x\"]"
+        ],
+        "$CONFIG: `pipelines.pr.cacheConcurrencyUpload` must be an integer ≥ 1 (got [\"!x\"])": [
+          "[\"!x\"]"
+        ],
+        "$CONFIG: `pipelines.pr.cacheConcurrencyUpload` must be an integer ≥ 1 (got [\"!!x\",\"y\"])": [
+          "[\"!!x\",\"y\"]"
+        ],
+        "$CONFIG: `pipelines.pr.cacheConcurrencyUpload` must be an integer ≥ 1 (got [\".\"])": [
+          "[\".\"]"
+        ],
+        "$CONFIG: `pipelines.pr.cacheConcurrencyUpload` must be an integer ≥ 1 (got [\"**\"])": [
+          "[\"**\"]"
+        ],
+        "$CONFIG: `pipelines.pr.cacheConcurrencyUpload` must be an integer ≥ 1 (got [\"A=B\"])": [
+          "[\"A=B\"]"
+        ],
+        "$CONFIG: `pipelines.pr.cacheConcurrencyUpload` must be an integer ≥ 1 (got [\"A*\"])": [
+          "[\"A*\"]"
+        ],
+        "$CONFIG: `pipelines.pr.cacheConcurrencyUpload` must be an integer ≥ 1 (got {})": ["{}"],
+        "$CONFIG: `pipelines.pr.cacheConcurrencyUpload` must be an integer ≥ 1 (got {\"x\":\"y\"})": [
+          "{\"x\":\"y\"}"
+        ]
+      },
+      "pipelines.*.cacheConcurrencyRestore": {
+        "ok": ["<absent>", "1", "65536", "2147483648", "8"],
+        "$CONFIG: `pipelines.pr.cacheConcurrencyRestore` must be an integer ≥ 1 (got null)": [
+          "null"
+        ],
+        "$CONFIG: `pipelines.pr.cacheConcurrencyRestore` must be an integer ≥ 1 (got true)": [
+          "true"
+        ],
+        "$CONFIG: `pipelines.pr.cacheConcurrencyRestore` must be an integer ≥ 1 (got false)": [
+          "false"
+        ],
+        "$CONFIG: `pipelines.pr.cacheConcurrencyRestore` must be an integer ≥ 1 (got 0)": ["0"],
+        "$CONFIG: `pipelines.pr.cacheConcurrencyRestore` must be an integer ≥ 1 (got 1.5)": ["1.5"],
+        "$CONFIG: `pipelines.pr.cacheConcurrencyRestore` must be an integer ≥ 1 (got -1)": ["-1"],
+        "$CONFIG: `pipelines.pr.cacheConcurrencyRestore` must be an integer ≥ 1 (got \"\")": [
+          "\"\""
+        ],
+        "$CONFIG: `pipelines.pr.cacheConcurrencyRestore` must be an integer ≥ 1 (got \"x\")": [
+          "\"x\""
+        ],
+        "$CONFIG: `pipelines.pr.cacheConcurrencyRestore` must be an integer ≥ 1 (got \"(\")": [
+          "\"(\""
+        ],
+        "$CONFIG: `pipelines.pr.cacheConcurrencyRestore` must be an integer ≥ 1 (got \"30d\")": [
+          "\"30d\""
+        ],
+        "$CONFIG: `pipelines.pr.cacheConcurrencyRestore` must be an integer ≥ 1 (got \"10G\")": [
+          "\"10G\""
+        ],
+        "$CONFIG: `pipelines.pr.cacheConcurrencyRestore` must be an integer ≥ 1 (got \"10\")": [
+          "\"10\""
+        ],
+        "$CONFIG: `pipelines.pr.cacheConcurrencyRestore` must be an integer ≥ 1 (got [])": ["[]"],
+        "$CONFIG: `pipelines.pr.cacheConcurrencyRestore` must be an integer ≥ 1 (got [\"x\"])": [
+          "[\"x\"]"
+        ],
+        "$CONFIG: `pipelines.pr.cacheConcurrencyRestore` must be an integer ≥ 1 (got [\"\"])": [
+          "[\"\"]"
+        ],
+        "$CONFIG: `pipelines.pr.cacheConcurrencyRestore` must be an integer ≥ 1 (got [1])": ["[1]"],
+        "$CONFIG: `pipelines.pr.cacheConcurrencyRestore` must be an integer ≥ 1 (got [3000])": [
+          "[3000]"
+        ],
+        "$CONFIG: `pipelines.pr.cacheConcurrencyRestore` must be an integer ≥ 1 (got [\"/x\"])": [
+          "[\"/x\"]"
+        ],
+        "$CONFIG: `pipelines.pr.cacheConcurrencyRestore` must be an integer ≥ 1 (got [\"!/x\"])": [
+          "[\"!/x\"]"
+        ],
+        "$CONFIG: `pipelines.pr.cacheConcurrencyRestore` must be an integer ≥ 1 (got [\"../x\"])": [
+          "[\"../x\"]"
+        ],
+        "$CONFIG: `pipelines.pr.cacheConcurrencyRestore` must be an integer ≥ 1 (got [\"!x\"])": [
+          "[\"!x\"]"
+        ],
+        "$CONFIG: `pipelines.pr.cacheConcurrencyRestore` must be an integer ≥ 1 (got [\"!!x\",\"y\"])": [
+          "[\"!!x\",\"y\"]"
+        ],
+        "$CONFIG: `pipelines.pr.cacheConcurrencyRestore` must be an integer ≥ 1 (got [\".\"])": [
+          "[\".\"]"
+        ],
+        "$CONFIG: `pipelines.pr.cacheConcurrencyRestore` must be an integer ≥ 1 (got [\"**\"])": [
+          "[\"**\"]"
+        ],
+        "$CONFIG: `pipelines.pr.cacheConcurrencyRestore` must be an integer ≥ 1 (got [\"A=B\"])": [
+          "[\"A=B\"]"
+        ],
+        "$CONFIG: `pipelines.pr.cacheConcurrencyRestore` must be an integer ≥ 1 (got [\"A*\"])": [
+          "[\"A*\"]"
+        ],
+        "$CONFIG: `pipelines.pr.cacheConcurrencyRestore` must be an integer ≥ 1 (got {})": ["{}"],
+        "$CONFIG: `pipelines.pr.cacheConcurrencyRestore` must be an integer ≥ 1 (got {\"x\":\"y\"})": [
+          "{\"x\":\"y\"}"
+        ]
+      },
+      "pipelines.*.outputLogs": {
+        "ok": ["<absent>", "\"errors-only\""],
+        "$CONFIG: `pipelines.pr.outputLogs` must be one of 'full', 'errors-only', 'hash-only', 'none' (got null)": [
+          "null"
+        ],
+        "$CONFIG: `pipelines.pr.outputLogs` must be one of 'full', 'errors-only', 'hash-only', 'none' (got true)": [
+          "true"
+        ],
+        "$CONFIG: `pipelines.pr.outputLogs` must be one of 'full', 'errors-only', 'hash-only', 'none' (got false)": [
+          "false"
+        ],
+        "$CONFIG: `pipelines.pr.outputLogs` must be one of 'full', 'errors-only', 'hash-only', 'none' (got 0)": [
+          "0"
+        ],
+        "$CONFIG: `pipelines.pr.outputLogs` must be one of 'full', 'errors-only', 'hash-only', 'none' (got 1)": [
+          "1"
+        ],
+        "$CONFIG: `pipelines.pr.outputLogs` must be one of 'full', 'errors-only', 'hash-only', 'none' (got 1.5)": [
+          "1.5"
+        ],
+        "$CONFIG: `pipelines.pr.outputLogs` must be one of 'full', 'errors-only', 'hash-only', 'none' (got -1)": [
+          "-1"
+        ],
+        "$CONFIG: `pipelines.pr.outputLogs` must be one of 'full', 'errors-only', 'hash-only', 'none' (got 65536)": [
+          "65536"
+        ],
+        "$CONFIG: `pipelines.pr.outputLogs` must be one of 'full', 'errors-only', 'hash-only', 'none' (got 2147483648)": [
+          "2147483648"
+        ],
+        "$CONFIG: `pipelines.pr.outputLogs` must be one of 'full', 'errors-only', 'hash-only', 'none' (got \"\")": [
+          "\"\""
+        ],
+        "$CONFIG: `pipelines.pr.outputLogs` must be one of 'full', 'errors-only', 'hash-only', 'none' (got \"x\")": [
+          "\"x\""
+        ],
+        "$CONFIG: `pipelines.pr.outputLogs` must be one of 'full', 'errors-only', 'hash-only', 'none' (got \"(\")": [
+          "\"(\""
+        ],
+        "$CONFIG: `pipelines.pr.outputLogs` must be one of 'full', 'errors-only', 'hash-only', 'none' (got \"30d\")": [
+          "\"30d\""
+        ],
+        "$CONFIG: `pipelines.pr.outputLogs` must be one of 'full', 'errors-only', 'hash-only', 'none' (got \"10G\")": [
+          "\"10G\""
+        ],
+        "$CONFIG: `pipelines.pr.outputLogs` must be one of 'full', 'errors-only', 'hash-only', 'none' (got \"10\")": [
+          "\"10\""
+        ],
+        "$CONFIG: `pipelines.pr.outputLogs` must be one of 'full', 'errors-only', 'hash-only', 'none' (got [])": [
+          "[]"
+        ],
+        "$CONFIG: `pipelines.pr.outputLogs` must be one of 'full', 'errors-only', 'hash-only', 'none' (got [\"x\"])": [
+          "[\"x\"]"
+        ],
+        "$CONFIG: `pipelines.pr.outputLogs` must be one of 'full', 'errors-only', 'hash-only', 'none' (got [\"\"])": [
+          "[\"\"]"
+        ],
+        "$CONFIG: `pipelines.pr.outputLogs` must be one of 'full', 'errors-only', 'hash-only', 'none' (got [1])": [
+          "[1]"
+        ],
+        "$CONFIG: `pipelines.pr.outputLogs` must be one of 'full', 'errors-only', 'hash-only', 'none' (got [3000])": [
+          "[3000]"
+        ],
+        "$CONFIG: `pipelines.pr.outputLogs` must be one of 'full', 'errors-only', 'hash-only', 'none' (got [\"/x\"])": [
+          "[\"/x\"]"
+        ],
+        "$CONFIG: `pipelines.pr.outputLogs` must be one of 'full', 'errors-only', 'hash-only', 'none' (got [\"!/x\"])": [
+          "[\"!/x\"]"
+        ],
+        "$CONFIG: `pipelines.pr.outputLogs` must be one of 'full', 'errors-only', 'hash-only', 'none' (got [\"../x\"])": [
+          "[\"../x\"]"
+        ],
+        "$CONFIG: `pipelines.pr.outputLogs` must be one of 'full', 'errors-only', 'hash-only', 'none' (got [\"!x\"])": [
+          "[\"!x\"]"
+        ],
+        "$CONFIG: `pipelines.pr.outputLogs` must be one of 'full', 'errors-only', 'hash-only', 'none' (got [\"!!x\",\"y\"])": [
+          "[\"!!x\",\"y\"]"
+        ],
+        "$CONFIG: `pipelines.pr.outputLogs` must be one of 'full', 'errors-only', 'hash-only', 'none' (got [\".\"])": [
+          "[\".\"]"
+        ],
+        "$CONFIG: `pipelines.pr.outputLogs` must be one of 'full', 'errors-only', 'hash-only', 'none' (got [\"**\"])": [
+          "[\"**\"]"
+        ],
+        "$CONFIG: `pipelines.pr.outputLogs` must be one of 'full', 'errors-only', 'hash-only', 'none' (got [\"A=B\"])": [
+          "[\"A=B\"]"
+        ],
+        "$CONFIG: `pipelines.pr.outputLogs` must be one of 'full', 'errors-only', 'hash-only', 'none' (got [\"A*\"])": [
+          "[\"A*\"]"
+        ],
+        "$CONFIG: `pipelines.pr.outputLogs` must be one of 'full', 'errors-only', 'hash-only', 'none' (got {})": [
+          "{}"
+        ],
+        "$CONFIG: `pipelines.pr.outputLogs` must be one of 'full', 'errors-only', 'hash-only', 'none' (got {\"x\":\"y\"})": [
+          "{\"x\":\"y\"}"
+        ]
+      },
+      "pipelines.*.verbosity": {
+        "ok": ["<absent>", "0", "1", "65536", "2147483648"],
+        "$CONFIG: `pipelines.pr.verbosity` must be a non-negative integer (got null)": ["null"],
+        "$CONFIG: `pipelines.pr.verbosity` must be a non-negative integer (got true)": ["true"],
+        "$CONFIG: `pipelines.pr.verbosity` must be a non-negative integer (got false)": ["false"],
+        "$CONFIG: `pipelines.pr.verbosity` must be a non-negative integer (got 1.5)": ["1.5"],
+        "$CONFIG: `pipelines.pr.verbosity` must be a non-negative integer (got -1)": ["-1"],
+        "$CONFIG: `pipelines.pr.verbosity` must be a non-negative integer (got \"\")": ["\"\""],
+        "$CONFIG: `pipelines.pr.verbosity` must be a non-negative integer (got \"x\")": ["\"x\""],
+        "$CONFIG: `pipelines.pr.verbosity` must be a non-negative integer (got \"(\")": ["\"(\""],
+        "$CONFIG: `pipelines.pr.verbosity` must be a non-negative integer (got \"30d\")": [
+          "\"30d\""
+        ],
+        "$CONFIG: `pipelines.pr.verbosity` must be a non-negative integer (got \"10G\")": [
+          "\"10G\""
+        ],
+        "$CONFIG: `pipelines.pr.verbosity` must be a non-negative integer (got \"10\")": ["\"10\""],
+        "$CONFIG: `pipelines.pr.verbosity` must be a non-negative integer (got [])": ["[]"],
+        "$CONFIG: `pipelines.pr.verbosity` must be a non-negative integer (got [\"x\"])": [
+          "[\"x\"]"
+        ],
+        "$CONFIG: `pipelines.pr.verbosity` must be a non-negative integer (got [\"\"])": ["[\"\"]"],
+        "$CONFIG: `pipelines.pr.verbosity` must be a non-negative integer (got [1])": ["[1]"],
+        "$CONFIG: `pipelines.pr.verbosity` must be a non-negative integer (got [3000])": ["[3000]"],
+        "$CONFIG: `pipelines.pr.verbosity` must be a non-negative integer (got [\"/x\"])": [
+          "[\"/x\"]"
+        ],
+        "$CONFIG: `pipelines.pr.verbosity` must be a non-negative integer (got [\"!/x\"])": [
+          "[\"!/x\"]"
+        ],
+        "$CONFIG: `pipelines.pr.verbosity` must be a non-negative integer (got [\"../x\"])": [
+          "[\"../x\"]"
+        ],
+        "$CONFIG: `pipelines.pr.verbosity` must be a non-negative integer (got [\"!x\"])": [
+          "[\"!x\"]"
+        ],
+        "$CONFIG: `pipelines.pr.verbosity` must be a non-negative integer (got [\"!!x\",\"y\"])": [
+          "[\"!!x\",\"y\"]"
+        ],
+        "$CONFIG: `pipelines.pr.verbosity` must be a non-negative integer (got [\".\"])": [
+          "[\".\"]"
+        ],
+        "$CONFIG: `pipelines.pr.verbosity` must be a non-negative integer (got [\"**\"])": [
+          "[\"**\"]"
+        ],
+        "$CONFIG: `pipelines.pr.verbosity` must be a non-negative integer (got [\"A=B\"])": [
+          "[\"A=B\"]"
+        ],
+        "$CONFIG: `pipelines.pr.verbosity` must be a non-negative integer (got [\"A*\"])": [
+          "[\"A*\"]"
+        ],
+        "$CONFIG: `pipelines.pr.verbosity` must be a non-negative integer (got {})": ["{}"],
+        "$CONFIG: `pipelines.pr.verbosity` must be a non-negative integer (got {\"x\":\"y\"})": [
+          "{\"x\":\"y\"}"
+        ]
+      },
+      "pipelines.*.profile": {
+        "ok": ["<absent>", "true", "false", "\"x\"", "\"(\"", "\"30d\"", "\"10G\"", "\"10\""],
+        "$CONFIG: `pipelines.pr.profile` must be true, false or a file path (got null)": ["null"],
+        "$CONFIG: `pipelines.pr.profile` must be true, false or a file path (got 0)": ["0"],
+        "$CONFIG: `pipelines.pr.profile` must be true, false or a file path (got 1)": ["1"],
+        "$CONFIG: `pipelines.pr.profile` must be true, false or a file path (got 1.5)": ["1.5"],
+        "$CONFIG: `pipelines.pr.profile` must be true, false or a file path (got -1)": ["-1"],
+        "$CONFIG: `pipelines.pr.profile` must be true, false or a file path (got 65536)": ["65536"],
+        "$CONFIG: `pipelines.pr.profile` must be true, false or a file path (got 2147483648)": [
+          "2147483648"
+        ],
+        "$CONFIG: `pipelines.pr.profile` must be true, false or a file path (got \"\")": ["\"\""],
+        "$CONFIG: `pipelines.pr.profile` must be true, false or a file path (got [])": ["[]"],
+        "$CONFIG: `pipelines.pr.profile` must be true, false or a file path (got [\"x\"])": [
+          "[\"x\"]"
+        ],
+        "$CONFIG: `pipelines.pr.profile` must be true, false or a file path (got [\"\"])": [
+          "[\"\"]"
+        ],
+        "$CONFIG: `pipelines.pr.profile` must be true, false or a file path (got [1])": ["[1]"],
+        "$CONFIG: `pipelines.pr.profile` must be true, false or a file path (got [3000])": [
+          "[3000]"
+        ],
+        "$CONFIG: `pipelines.pr.profile` must be true, false or a file path (got [\"/x\"])": [
+          "[\"/x\"]"
+        ],
+        "$CONFIG: `pipelines.pr.profile` must be true, false or a file path (got [\"!/x\"])": [
+          "[\"!/x\"]"
+        ],
+        "$CONFIG: `pipelines.pr.profile` must be true, false or a file path (got [\"../x\"])": [
+          "[\"../x\"]"
+        ],
+        "$CONFIG: `pipelines.pr.profile` must be true, false or a file path (got [\"!x\"])": [
+          "[\"!x\"]"
+        ],
+        "$CONFIG: `pipelines.pr.profile` must be true, false or a file path (got [\"!!x\",\"y\"])": [
+          "[\"!!x\",\"y\"]"
+        ],
+        "$CONFIG: `pipelines.pr.profile` must be true, false or a file path (got [\".\"])": [
+          "[\".\"]"
+        ],
+        "$CONFIG: `pipelines.pr.profile` must be true, false or a file path (got [\"**\"])": [
+          "[\"**\"]"
+        ],
+        "$CONFIG: `pipelines.pr.profile` must be true, false or a file path (got [\"A=B\"])": [
+          "[\"A=B\"]"
+        ],
+        "$CONFIG: `pipelines.pr.profile` must be true, false or a file path (got [\"A*\"])": [
+          "[\"A*\"]"
+        ],
+        "$CONFIG: `pipelines.pr.profile` must be true, false or a file path (got {})": ["{}"],
+        "$CONFIG: `pipelines.pr.profile` must be true, false or a file path (got {\"x\":\"y\"})": [
+          "{\"x\":\"y\"}"
+        ]
+      },
+      "pipelines.*.dry": {
+        "ok": ["<absent>", "true", "false"],
+        "$CONFIG: `pipelines.pr.dry` must be true, false, 'pretty' or 'json' (got null)": ["null"],
+        "$CONFIG: `pipelines.pr.dry` must be true, false, 'pretty' or 'json' (got 0)": ["0"],
+        "$CONFIG: `pipelines.pr.dry` must be true, false, 'pretty' or 'json' (got 1)": ["1"],
+        "$CONFIG: `pipelines.pr.dry` must be true, false, 'pretty' or 'json' (got 1.5)": ["1.5"],
+        "$CONFIG: `pipelines.pr.dry` must be true, false, 'pretty' or 'json' (got -1)": ["-1"],
+        "$CONFIG: `pipelines.pr.dry` must be true, false, 'pretty' or 'json' (got 65536)": [
+          "65536"
+        ],
+        "$CONFIG: `pipelines.pr.dry` must be true, false, 'pretty' or 'json' (got 2147483648)": [
+          "2147483648"
+        ],
+        "$CONFIG: `pipelines.pr.dry` must be true, false, 'pretty' or 'json' (got \"\")": ["\"\""],
+        "$CONFIG: `pipelines.pr.dry` must be true, false, 'pretty' or 'json' (got \"x\")": [
+          "\"x\""
+        ],
+        "$CONFIG: `pipelines.pr.dry` must be true, false, 'pretty' or 'json' (got \"(\")": [
+          "\"(\""
+        ],
+        "$CONFIG: `pipelines.pr.dry` must be true, false, 'pretty' or 'json' (got \"30d\")": [
+          "\"30d\""
+        ],
+        "$CONFIG: `pipelines.pr.dry` must be true, false, 'pretty' or 'json' (got \"10G\")": [
+          "\"10G\""
+        ],
+        "$CONFIG: `pipelines.pr.dry` must be true, false, 'pretty' or 'json' (got \"10\")": [
+          "\"10\""
+        ],
+        "$CONFIG: `pipelines.pr.dry` must be true, false, 'pretty' or 'json' (got [])": ["[]"],
+        "$CONFIG: `pipelines.pr.dry` must be true, false, 'pretty' or 'json' (got [\"x\"])": [
+          "[\"x\"]"
+        ],
+        "$CONFIG: `pipelines.pr.dry` must be true, false, 'pretty' or 'json' (got [\"\"])": [
+          "[\"\"]"
+        ],
+        "$CONFIG: `pipelines.pr.dry` must be true, false, 'pretty' or 'json' (got [1])": ["[1]"],
+        "$CONFIG: `pipelines.pr.dry` must be true, false, 'pretty' or 'json' (got [3000])": [
+          "[3000]"
+        ],
+        "$CONFIG: `pipelines.pr.dry` must be true, false, 'pretty' or 'json' (got [\"/x\"])": [
+          "[\"/x\"]"
+        ],
+        "$CONFIG: `pipelines.pr.dry` must be true, false, 'pretty' or 'json' (got [\"!/x\"])": [
+          "[\"!/x\"]"
+        ],
+        "$CONFIG: `pipelines.pr.dry` must be true, false, 'pretty' or 'json' (got [\"../x\"])": [
+          "[\"../x\"]"
+        ],
+        "$CONFIG: `pipelines.pr.dry` must be true, false, 'pretty' or 'json' (got [\"!x\"])": [
+          "[\"!x\"]"
+        ],
+        "$CONFIG: `pipelines.pr.dry` must be true, false, 'pretty' or 'json' (got [\"!!x\",\"y\"])": [
+          "[\"!!x\",\"y\"]"
+        ],
+        "$CONFIG: `pipelines.pr.dry` must be true, false, 'pretty' or 'json' (got [\".\"])": [
+          "[\".\"]"
+        ],
+        "$CONFIG: `pipelines.pr.dry` must be true, false, 'pretty' or 'json' (got [\"**\"])": [
+          "[\"**\"]"
+        ],
+        "$CONFIG: `pipelines.pr.dry` must be true, false, 'pretty' or 'json' (got [\"A=B\"])": [
+          "[\"A=B\"]"
+        ],
+        "$CONFIG: `pipelines.pr.dry` must be true, false, 'pretty' or 'json' (got [\"A*\"])": [
+          "[\"A*\"]"
+        ],
+        "$CONFIG: `pipelines.pr.dry` must be true, false, 'pretty' or 'json' (got {})": ["{}"],
+        "$CONFIG: `pipelines.pr.dry` must be true, false, 'pretty' or 'json' (got {\"x\":\"y\"})": [
+          "{\"x\":\"y\"}"
+        ]
+      },
       "plugins": {
         "ok": ["<absent>", "[]"],
         "$CONFIG: `plugins` must be an array of plugin objects": [
@@ -2720,7 +4465,26 @@
         "$CONFIG: `plugins[0]` must be an object": ["[1]", "[3000]"]
       }
     },
-    "keys": {}
+    "keys": {
+      "pipelines": {
+        "$CONFIG: pipeline name \"\" must be a word with no space that does not start with -": [
+          "\"\""
+        ],
+        "$CONFIG: pipeline name \" x\" must be a word with no space that does not start with -": [
+          "\" x\""
+        ],
+        "ok": ["\"x#y\"", "\"x*\"", "\"^x\"", "\"!x\"", "\"A=B\""]
+      },
+      "pipelines.*.env": {
+        "$CONFIG: `pipelines.pr.env` must be an object of variable names to strings, like { VX_DTE_RUN: '…' } (got {\"\":\"1\"})": [
+          "\"\""
+        ],
+        "ok": ["\" x\"", "\"x#y\"", "\"x*\"", "\"^x\"", "\"!x\""],
+        "$CONFIG: `pipelines.pr.env` must be an object of variable names to strings, like { VX_DTE_RUN: '…' } (got {\"A=B\":\"1\"})": [
+          "\"A=B\""
+        ]
+      }
+    }
   },
   "project": {
     "levels": {

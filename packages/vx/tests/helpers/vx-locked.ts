@@ -9,7 +9,7 @@ import { findWorkspaceRoot, lockfilePath } from '../../src/workspace/index.js'
 const BIN = path.join(import.meta.dir, '..', '..', 'src', 'bin.ts')
 const args = process.argv.slice(2)
 const root =
-  ['run', 'watch', 'show', 'info'].includes(args[0] ?? '') &&
+  ['run', 'watch', 'pipeline', 'show', 'info'].includes(args[0] ?? '') &&
   !args.includes('--help') &&
   !args.includes('-h')
     ? await findWorkspaceRoot(process.cwd()).catch(() => null)

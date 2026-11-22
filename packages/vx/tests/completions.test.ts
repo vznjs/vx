@@ -115,7 +115,7 @@ describe('verbFlags is what each verb accepts', () => {
     // every verb matches on), plus `--cache-dir` where it takes the shared
     // parser; each must complete.
     const missing: string[] = []
-    const file: Record<string, string> = { watch: 'run' }
+    const file: Record<string, string> = { watch: 'run', pipeline: 'run' }
     for (const verb of Object.keys(PARSE)) {
       const src = readFileSync(
         path.join(import.meta.dir, '..', 'src', 'cli', `${file[verb] ?? verb}.ts`),
@@ -125,7 +125,9 @@ describe('verbFlags is what each verb accepts', () => {
       if (src.includes('parseCacheDirFlag(args')) named.add('--cache-dir')
       if (verb === 'watch') for (const f of WATCH_REFUSED_FLAGS) named.delete(f)
       // watch's own flag, matched in the parser run and watch share.
-      if (verb === 'run') named.delete('--poll')
+      if (verb === 'run' || verb === 'pipeline') named.delete('--poll')
+      // A pipeline runs every project already.
+      if (verb === 'pipeline') named.delete('--all')
       // Bun's own flags on init's vx-migrate spawn, not ones init takes.
       if (verb === 'init') for (const f of ['--no-install', '--silent']) named.delete(f)
       // The package managers' install flags and a binary's --version probe.

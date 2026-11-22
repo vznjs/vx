@@ -14,7 +14,7 @@ import {
   type ServerSpec,
 } from '../exec/index.js'
 import type { TaskNode } from '../graph/index.js'
-import { parseDuration } from '../util/index.js'
+import { parseDuration, taskEnvSource } from '../util/index.js'
 
 /**
  * Drop the run's facts about files a task may have written without declaring
@@ -72,7 +72,7 @@ export function taskEnv(
   const env = buildIsolatedEnv({
     passThrough: step.env?.passThrough ?? [],
     define: step.env?.define ?? {},
-    source: process.env,
+    source: taskEnvSource(),
     binPaths: bins,
     workspaceRoot,
   })

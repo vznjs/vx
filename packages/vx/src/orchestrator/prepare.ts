@@ -1031,6 +1031,15 @@ async function applyKeyStages(
   // they reached nothing and the run passed, the `--watch` unheard.
   if ((options.forwardArgs?.length ?? 0) > 0) {
     const requestedNodes = [...nodes.values()].filter((n) => n.requested)
+    // One command's args (M, 2026-11-22): a --all or --filter run that asks
+    // for the task in several projects cannot say whose they are.
+    if (requestedNodes.length > 1) {
+      const ids = requestedNodes.map((n) => n.id)
+      const named = ids.length > 3 ? `${ids.slice(0, 3).join(', ')}, …` : ids.join(', ')
+      throw new UserError(
+        `forwarded args (after --) go to one task in one project, and this run asks for ${ids.length}: ${named}; run that task alone, e.g. vx run ${ids[0]} -- …`,
+      )
+    }
     if (requestedNodes.length > 0 && requestedNodes.every(isGroupTask)) {
       const ids = requestedNodes.map((n) => n.id)
       const named = ids.length > 3 ? `${ids.slice(0, 3).join(', ')}, …` : ids.join(', ')

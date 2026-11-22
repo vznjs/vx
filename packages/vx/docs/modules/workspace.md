@@ -1042,6 +1042,25 @@ preserve `PackageGraph` shape. A reasonable extension: **edge
 metadata** — the plugin that supplied each edge, so `vx why` and
 dependency rules can name it.
 
+## `src/workspace/pipeline.ts` — pipelines
+
+A pipeline (`.vx/workspace` `pipelines`) is a saved `vx run`: each key is
+its flag in camelCase, so `vx pipeline` hands the run's own parser the
+line it stands for, and the schema holds each key to its flag's type.
+
+### Public surface
+
+```ts
+// Each pipeline key's `vx run` flag, and the setting whose variable beats it.
+export const PIPELINE_FLAGS: Readonly<Record<string, { flag: string; setting?: string }>>
+// The `vx run` line a pipeline stands for, less each key a typed flag or its variable set.
+export function pipelineRunArgs(
+  p: Pipeline,
+  typed: readonly string[],
+  env?: NodeJS.ProcessEnv,
+): string[]
+```
+
 ## `src/workspace/filter.ts` — `--filter` DSL
 
 ### Purpose

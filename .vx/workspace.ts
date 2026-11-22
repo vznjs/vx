@@ -11,6 +11,21 @@ const relay = process.env['VX_DTE_RELAY']
 const cacheUrl = process.env['VX_CACHE_URL'] || 'https://vx-cache.exelord.workers.dev'
 // What our servers' ALLOW names: every request names it, hashed.
 const repo = { issuer: 'https://token.actions.githubusercontent.com', repository: 'vznjs/vx' }
+// Every change's checks. The platform's own tests and the arm64 builds run
+// on their workers, and on a Linux machine with no such worker are skipped
+// with a warning (a Mac-only test merged green and turned main red, #4293).
+const checks = [
+  'lint',
+  'lint.oxlint',
+  'lint.oxfmt',
+  'test',
+  'test.live',
+  'check.binary',
+  'test.platform',
+  'build.bun.linux-arm64',
+  'build.bun.darwin-arm64',
+  '@vzn/vx-docs#build',
+]
 
 export default defineWorkspace({
   plugins: [
@@ -53,4 +68,31 @@ export default defineWorkspace({
       adapter: githubWorkers({ env: { VX_CACHE_URL: cacheUrl } }),
     }),
   ],
+  // What each ci.yml job runs. The run job distributes (its VX_DTE_RELAY);
+  // Perf times the machine, so its job sets none and runs here.
+  pipelines: {
+    // A PR runs what its diff affects, inputs outside a project included
+    // (2026-10-23).
+    pr: { tasks: checks, affected: true, profile: 'profile.json' },
+    // A merge queue, or a dispatch (whose cold run sets VX_CACHE_POLICY).
+    queue: { tasks: checks, profile: 'profile.json' },
+    // main adds every release binary, each proven to launch on its
+    // platform, the sandbox canary, a cold build, the release notes and
+    // the site's deploy, with the newest numbers bench.yml measured.
+    main: {
+      tasks: [
+        ...checks,
+        'build.bun',
+        'check.binary.linux-arm64',
+        'check.binary.darwin-arm64',
+        'check.sandbox-canary',
+        'check.build-cold',
+        'release.sync',
+        'deploy.pages',
+      ],
+      profile: 'profile.json',
+    },
+    'perf-pr': { tasks: ['check.perf'], affected: true },
+    perf: { tasks: ['check.perf'] },
+  },
 })

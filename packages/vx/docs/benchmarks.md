@@ -377,10 +377,10 @@ so seconds move no comparison. It
 uploads `measured/bench.json` as the `bench-data` artifact.
 
 Main's DTE run deploys the site (`@vzn/vx-docs#deploy.pages`, part of
-`release`). `build.live` fetches the newest `bench-data` from main and
+the `main` pipeline). `build.live` fetches the newest `bench-data` from main and
 builds the site with it while the tests run, so it never waits on Bench
 and never ships the committed copy, older than the live one; the upload
-waits only on `ci`. New numbers go live with the next main push.
+waits only on the site's checks. New numbers go live with the next main push.
 
 vx must win. Bench fails when vx is slower than any rival on a cold build,
 a restore or nothing changed, or burns more cold CPU than Turbo or Nx

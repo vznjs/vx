@@ -15,10 +15,6 @@ export default defineProject({
       inputs: { files: ['src/**'] },
     },
 
-    ci: {
-      dependsOn: ['lint', 'test'],
-    },
-
     lint: {
       dependsOn: ['lint.oxlint', 'lint.oxfmt'],
     },
