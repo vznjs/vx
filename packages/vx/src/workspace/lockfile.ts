@@ -38,6 +38,7 @@ import { PROJECT_CONFIG_FILENAMES } from './workspace.js'
 import {
   DEPENDENCIES_LOCK_NAME,
   type DependenciesLock,
+  dependenciesLockRefusal,
   mergeConflicted,
   mergeConflictMessage,
   parseDependenciesLock,
@@ -140,9 +141,7 @@ export function lockedDependencies(lock: Lockfile): DependenciesLock | undefined
     throw new UserError(
       read.bytes === null
         ? `no ${DEPENDENCIES_LOCK_NAME}: run \`vx lock\``
-        : mergeConflicted(new TextDecoder().decode(read.bytes))
-          ? mergeConflictMessage(DEPENDENCIES_LOCK_NAME)
-          : `${DEPENDENCIES_LOCK_NAME} is invalid, run \`vx lock\``,
+        : dependenciesLockRefusal(new TextDecoder().decode(read.bytes)),
       'VX_E_LOCK',
     )
   return read.parsed
