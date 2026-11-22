@@ -1,7 +1,7 @@
 #!/bin/sh
 # compose.yaml as a user runs it: all three images built, each answering
 # on its published port, then a clean stop (2026-10-25: one compose file
-# for all vx servers). Each image's own suite is its package's test.live;
+# for all vx servers). Each image's own suite is its package's test.docker;
 # this proves the file wires them.
 set -eu
 cd "$(dirname "$0")/.."

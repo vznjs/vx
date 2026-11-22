@@ -3,7 +3,7 @@
 // as the bench data's: a build without the file fails to resolve it. The
 // type is restated, not imported: the site's type-check reads no other
 // private package. Main's deploy names the results with the newest weekly
-// run's rivals in VX_DOCS_CONFORMANCE (build.live,
+// run's rivals in VX_DOCS_CONFORMANCE (deploy.pages.build,
 // scripts/live-conformance.ts), read as VX_DOCS_BENCH is.
 import { readFileSync } from 'node:fs'
 import committed from '../data/conformance.json'

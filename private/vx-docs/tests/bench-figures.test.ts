@@ -209,7 +209,7 @@ describe('no benchmark figure on the site is typed by hand', () => {
     const config = readFileSync(path.join(site, 'astro.config.mjs'), 'utf8')
     expect(config).toContain('mdastPlugins: [bench, mermaid, dataCharts]')
     const tasks = readFileSync(path.join(site, 'vx.config.ts'), 'utf8')
-    expect(tasks).toContain("dependsOn: ['install', '@vzn/vx-bench#site.numbers'],")
+    expect(tasks).toContain("dependsOn: ['install', '@vzn/vx-bench#bench.site'],")
   })
 
   // A benchmark times its machine, so it runs only in CI's Bench job, one

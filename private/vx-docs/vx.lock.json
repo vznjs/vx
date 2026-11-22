@@ -2,8 +2,7 @@
   "tasks": {
     "lint": {
       "dependsOn": [
-        "lint.oxlint",
-        "lint.oxfmt"
+        "lint.*"
       ]
     },
     "lint.oxlint": {
@@ -110,7 +109,7 @@
       },
       "cache": true
     },
-    "import": {
+    "build.import": {
       "description": "generate src/content/docs from packages/vx/docs, the plugin READMEs and the relay protocol",
       "dependsOn": [
         "install"
@@ -176,11 +175,16 @@
       },
       "cache": true
     },
+    "bench": {
+      "dependsOn": [
+        "bench.*"
+      ]
+    },
     "bench.data": {
-      "description": "gather the head-to-head rows of @vzn/vx-bench#site.numbers → measured/bench.json",
+      "description": "gather the head-to-head rows of @vzn/vx-bench#bench.site → measured/bench.json",
       "dependsOn": [
         "install",
-        "@vzn/vx-bench#site.numbers"
+        "@vzn/vx-bench#bench.site"
       ],
       "exec": {
         "command": "bun scripts/bench-data.ts",
@@ -219,10 +223,14 @@
       "cache": true
     },
     "test": {
+      "dependsOn": [
+        "test.*"
+      ]
+    },
+    "test.bun": {
       "description": "bun test — the landing, sidebar, redirect, diagram, compare and site-link pins (needs the imported content and dist/)",
       "dependsOn": [
         "install",
-        "import",
         "build"
       ],
       "exec": {
@@ -332,6 +340,11 @@
         "^build"
       ]
     },
+    "build": {
+      "dependsOn": [
+        "build.*"
+      ]
+    },
     "build.images": {
       "description": "resize src/assets/{blog,features} → public/_img/",
       "dependsOn": [
@@ -368,11 +381,11 @@
       },
       "cache": true
     },
-    "build": {
+    "build.astro": {
       "description": "astro build → dist/",
       "dependsOn": [
         "install",
-        "import",
+        "build.import",
         "build.images"
       ],
       "exec": {
@@ -443,11 +456,11 @@
       },
       "cache": true
     },
-    "build.live": {
+    "deploy.pages.build": {
       "description": "build the site with main's newest bench and conformance runs → dist-live/ (GitHub Actions only)",
       "dependsOn": [
         "install",
-        "import",
+        "build.import",
         "build.images"
       ],
       "exec": {
@@ -494,13 +507,18 @@
         }
       }
     },
+    "deploy": {
+      "dependsOn": [
+        "deploy.*"
+      ]
+    },
     "deploy.pages": {
       "description": "deploy dist-live/ to GitHub Pages once every check passed (GitHub Actions only)",
       "dependsOn": [
         "lint",
         "build",
         "test",
-        "build.live"
+        "deploy.pages.build"
       ],
       "exec": {
         "command": "bun scripts/deploy-pages.ts dist-live",

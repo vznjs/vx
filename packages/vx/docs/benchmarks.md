@@ -175,7 +175,7 @@ measured with its own core.
 ### The per-PR guard
 
 `private/vx-bench/perf-guard.ts` runs in every PR's gate as
-`@vzn/vx-bench#check.perf`, in CI's `Perf` job: a runner of its own
+`@vzn/vx-bench#perf`, in CI's `Perf` job: a runner of its own
 beside the DTE run, whose workers are packed for the run's wall
 time, not a task's (ci.yml `perf`). It builds a 25- and a 100-package workspace
 and drives core in-process through five phases, each from a `vx lock`
@@ -206,7 +206,7 @@ Run it through `vx run`.
 ### The per-PR bench against every rival and the base
 
 `private/vx-bench/pr-bench.ts` runs in every PR's gate after
-perf-guard.ts, in the same task (`@vzn/vx-bench#check.perf`), so the
+perf-guard.ts, in the same task (`@vzn/vx-bench#perf.bench`), so the
 two benchmarks never share a machine. It times this checkout's vx,
 compiled as released, against the base commit's vx (`VX_BENCH_BASE`: the
 PR's base, or main before a push, built in the same job from `git archive`
@@ -377,7 +377,7 @@ so seconds move no comparison. It
 uploads `measured/bench.json` as the `bench-data` artifact.
 
 Main's DTE run deploys the site (`@vzn/vx-docs#deploy.pages`, part of
-the `main` pipeline). `build.live` fetches the newest `bench-data` from main and
+the `main` pipeline). `deploy.pages.build` fetches the newest `bench-data` from main and
 builds the site with it while the tests run, so it never waits on Bench
 and never ships the committed copy, older than the live one; the upload
 waits only on the site's checks. New numbers go live with the next main push.
@@ -518,7 +518,7 @@ Cold is one run; nothing changed and restore are the median of 3.
 bun private/vx-bench/compare.ts                      # every runner, 3 reps (about 20 min)
 RUNNERS=vx,turbo bun private/vx-bench/compare.ts     # a subset of runners
 BENCH_BUILD_MS=0 bun private/vx-bench/compare.ts 1   # zero-length tasks: each tool's own cost per task
-vx run @vzn/vx-bench#site.numbers --concurrency 1    # the site's rows, one runner at a time
+vx run @vzn/vx-docs#bench --concurrency 1          # the site's rows, one runner at a time
 ```
 
 It writes the runners' rows to `OUT` (default

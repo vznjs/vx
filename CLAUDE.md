@@ -159,31 +159,36 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
   `scripts/test-shard.ts` drops the name, so the shard command never
   sees the file; `test.bun.unsafe`'s `UNSAFE_SHARD_COUNT` (10) shards
   run them, dealt by `--unsafe` from `tests/unsafe-shard-weights.json`.
-  Mac workers take only the platform's files (`test.platform`, dealt
-  by `--platform` on the Mac's own times, `tests/platform-shard-weights.json`). The unsafe shards of both, `@vzn/vx-reapi#test.shard-*` and
-  `@vzn/vx-reapi#test.live` (which dial service containers on the host's
+  Mac workers take only the platform's files (`test.bun.platform`, dealt
+  by `--platform` on the Mac's own times, `tests/platform-shard-weights.json`). The unsafe shards of both, `@vzn/vx-reapi#test.bun.shard-*` and
+  `@vzn/vx-reapi#test.bun.live` (which dial service containers on the host's
   loopback, unreachable from a Linux sandbox's network namespace), its
-  `services.cache` / `services.exec` (Docker), `@vzn/vx-dte-server#test.live`
-  (builds and runs the relay's image), `@vzn/vx-cache-server#test.live` and
-  `@vzn/vx-history-server#test.live` (each builds and runs its image),
-  `@vzn/vx-servers#test.live` (brings up the compose file of all three), `@vzn/vx-migrate#nx.install`
+  `test.bun.live.cache` / `test.bun.live.exec` (Docker), `@vzn/vx-dte-server#test.docker`
+  (builds and runs the relay's image), `@vzn/vx-cache-server#test.docker` and
+  `@vzn/vx-history-server#test.docker` (each builds and runs its image),
+  `@vzn/vx-servers#test.docker` (brings up the compose file of all three), `@vzn/vx-migrate#test.bun.live.nx`
   (the npm registry), `release.images` (pushes the server images through Docker),
-  `check.sandbox-canary` and
-  `check.build-cold` (each drives the sandbox itself, on a Mac worker) and
-  `@vzn/vx-bench#bench.{vx,turbo,nx,vite-task,real}` and `#check.perf` (the tracer would be timed), and
-  `@vzn/vx-conformance#test` and `#conformance` (each drives bubblewrap itself) are
+  `canary.sandbox` and
+  `canary.build-cold` (each drives the sandbox itself, on a Mac worker) and
+  `@vzn/vx-bench#bench.{vx,turbo,nx,vite-task,real}` and `#perf.bench` (the tracer would be timed), and
+  `@vzn/vx-conformance#test.bun` and `#conformance` (each drives bubblewrap itself) are
   the ONLY tasks in the whole repo with no `exec.sandbox`.
-- Every package's suite is its `test` task, so `vx pipeline queue` gates
+- Task names (M, 2026-11-22): a public task is a group (`build`, `lint`,
+  `test`, `check`, `compile`, `canary`, `deploy`, `perf`, `format`), and its
+  work is `{group}.{technology}.{configuration?}.{subtask?}` (`test.bun.shard-3`,
+  `lint.oxfmt`), which only its group runs. Pipelines name groups only
+  (`tests/ci-workflow.unsafe.test.ts`).
+- Every package's suite is its `test` group, so `vx pipeline queue` gates
   them all; CI runs nothing but vx tasks (a workspace step is a design
   smell — declare the cross-project read on the task instead). The one
   suite that needs live services, `@vzn/vx-reapi#test`, runs skip-mode
-  in the gate; the live files run as `@vzn/vx-reapi#test.live` and
-  `@vzn/vx-migrate#test.live` in the same Linux run, each bringing its
+  in the gate; the live files run as `@vzn/vx-reapi#test.bun.live` and
+  `@vzn/vx-migrate#test.bun.live` in the same Linux run, each bringing its
   services as foreground persistent tasks (uncached: the services and
   `nx@24` are unpinned).
 - Sandbox tests skip without `bwrap`/`socat`/`strace`; `VX_REQUIRE_SANDBOX=1`
   (CI) makes an unavailable sandbox a failure.
-- Format: `bun packages/vx/src/bin.ts run lint.oxfmt.fix`.
+- Format: `bun packages/vx/src/bin.ts run format`.
 - Commits and PR titles: Conventional Commits (2026-09-27),
   `type(scope): imperative summary`, first line < 72 chars, body says
   why. Types: feat fix perf refactor test docs ci build chore revert; scope is
