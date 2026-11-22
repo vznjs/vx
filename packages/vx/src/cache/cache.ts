@@ -25,7 +25,6 @@ import {
   type PruneOptions,
   type PruneResult,
   type SaveArgs,
-  type TaskInputRow,
   type TaskMemo,
 } from './layer.js'
 import { LocalMemo, type RemoteHits, type StoreMemo } from '../memo/index.js'
@@ -37,7 +36,6 @@ import * as lookup from './lookup.js'
 import * as restoring from './restore.js'
 import * as saving from './save.js'
 import * as pruning from './prune.js'
-import { flushIndex } from './save.js'
 import {
   DEFAULT_STORE,
   type SchemaReset,
@@ -48,6 +46,7 @@ import {
   guard,
   historyFilesOf,
   indexErrorOf,
+  tarPath,
 } from './store-index.js'
 
 /** What a run's background uploads moved: totals over the ones that landed. */
@@ -171,7 +170,7 @@ export function indexError(cache: Cache, err: unknown): unknown {
 
 function closeStore(ix: StoreIndex): void {
   try {
-    flushIndex(ix)
+    saving.flushIndex(ix)
     const held = ix.localMemo.takeHeldBlobSizes()
     if (held !== undefined && held.size > 0) ix.files.rememberBlobSizes(held)
     flushAccessed(ix)
@@ -339,7 +338,7 @@ export class Cache implements CacheLayer {
   }
 
   getSaved(hash: string): Promise<CacheEntry | null> {
-    return lookup.getSaved(this.ix, hash)
+    return lookup.getIngested(this.ix, hash)
   }
 
   /** Whether no lookup here can hit. The listing is kept for `adopt`. */
@@ -370,7 +369,7 @@ export class Cache implements CacheLayer {
   }
 
   outputsPath(hash: string): string {
-    return lookup.outputsPath(this.ix, hash)
+    return tarPath(this.ix, hash)
   }
 
   outputBytes(hash: string): number | undefined {
@@ -415,19 +414,7 @@ export class Cache implements CacheLayer {
     return saving.readOnlyNotice(this.ix)
   }
 
-  async save(args: {
-    hash: string
-    /** See `CacheLayer.save` — `exitCode` is not a caller's to supply. */
-    entry: Omit<CacheEntry, 'hash' | 'storedAt' | 'outputFiles' | 'exitCode'>
-    projectDir: string
-    outputFiles: string[]
-    outputDirs?: string[]
-    workspaceOutputFiles?: string[]
-    workspaceOutputDirs?: string[]
-    workspaceRoot?: string
-    inputComponents?: readonly TaskInputRow[]
-    /** See `CacheLayer.save`. */
-  }): Promise<void> {
+  async save(args: SaveArgs): Promise<void> {
     return saving.save(this.ix, args)
   }
 
