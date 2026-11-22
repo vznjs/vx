@@ -2112,7 +2112,9 @@ export function mergeLock(
 `vx lock --merge %O %A %B %P` is git's merge driver for both locks
 (`merge=vx-lock` in `.vx/.gitattributes`; `vx lock` sets
 `merge.vx-lock.driver` in the clone's config, `cli/merge-driver.ts`,
-since git reads no driver from a committed file). Per key, a side that
+since git reads no driver from a committed file; where the bun or the
+`bin.ts` it names is gone, it runs `git merge-file`, so a conflict keeps
+git's markers rather than ours alone). Per key, a side that
 changed it over the base wins, both alike is either, and both different
 is a conflict marked as git marks one (`clean: false`, exit 1). Task
 lines are kept when a merged project line names them. The dependencies

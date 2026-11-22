@@ -2276,7 +2276,9 @@ as it was started, then `lock --merge %O %A %B %P`; git reads drivers
 only from its own config, never a committed file). With it, git merges
 the locks by key: a project one side changed takes that side, task lines
 follow the projects that name them, and only a project both sides
-changed differently is a conflict, marked as git marks one. The merged
+changed differently is a conflict, marked as git marks one. When the vx
+it names is gone (bun upgraded away, the checkout moved), the driver runs
+git's own text merge instead, so a conflict still carries markers. The merged
 lock is not trusted further than any: a run checks the merged digests
 against the merged lockfile and refuses with "run `vx lock`" when they
 differ, and `vx lock --check` audits the configs. A conflict is fixed
