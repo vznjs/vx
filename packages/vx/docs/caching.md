@@ -908,7 +908,9 @@ is on):
 2. The per-component input fingerprint is the one captured before the
    command ran: on a miss `describeTaskInputs` fills `captureInto` once
    (the same call yields the key re-checked below), so no second
-   `computeTaskHash` runs.
+   `computeTaskHash` runs. A cacheable task whose key no fold memo names
+   is described at its key (`keyOrDescribe`): the description's key is
+   the key, so the inputs are resolved and hashed once.
 3. The artifact — one `stdout` entry (bounded: the first and last 8 Mi
    characters of the task's output, the dropped middle named where it was), the `outputs/<rel>` (+
    `workspace-outputs/<rel>`) entries, the `.vx-meta.json` sidecar and
@@ -957,7 +959,8 @@ before the command ran — at the task's start, or up front by the local
 short-circuit — and the save files the outputs under it, so the inputs
 must still be what it describes. Two checks, in order. The key
 re-derived just before the command (`describeTaskInputs`, which the
-executor seam needs anyway) must equal it. Then each input file is
+executor seam needs anyway) must equal it; a key with no fold behind it
+is that description's own, so the two are one derivation. Then each input file is
 `lstat`ed once: a file whose ctime falls
 after, or within `FILE_HASH_RACY_MS` before, the moment its digest was
 learned — the enumeration's start for an index OID, the describe for a

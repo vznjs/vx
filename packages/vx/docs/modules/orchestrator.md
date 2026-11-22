@@ -617,7 +617,10 @@ one-shot handler mid-cleanup.
    `KeyFailed`, a failed outcome marked `isKeyFailed` and no command run —
    unless the up-front pass
    already has the key: a `preProbed` hash, or an uncached task's
-   `upfrontKey` (orchestrator.md; a persistent task takes it too).
+   `upfrontKey` (orchestrator.md; a persistent task takes it too). A
+   cacheable task takes it through `keyOrDescribe`: a fold memo's key,
+   else `describeTaskInputs`'s, whose description the miss then reuses
+   instead of resolving and hashing its inputs again.
 2. `cleanArgs = { projectDir, outputs, nestedProjectDirs }` is
    prepared once.
 3. **If caching is on**: `cache.get(hash)`.
@@ -1656,7 +1659,11 @@ export interface ComputeHashArgs {
 
 export async function computeTaskHash(args: ComputeHashArgs): Promise<string>
 // A key derivation whose throw is rethrown as the scheduler's `KeyFailed`.
-export async function keyOf(derived: Promise<string>): Promise<string>
+export async function keyOf<T>(derived: Promise<T>): Promise<T>
+// A cacheable task's key at dispatch: a fold memo's, else `describeTaskInputs`'s own, with the description.
+export async function keyOrDescribe(
+  args: ComputeHashArgs,
+): Promise<{ hash: string; described?: Awaited<ReturnType<typeof describeTaskInputs>> }>
 export async function describeTaskInputs(args: ComputeHashArgs): Promise<{
   hash: string
   inputs: TaskInputs

@@ -23,10 +23,13 @@ export interface Spare {
 }
 
 /**
- * Spares kept waiting. Two: a cold run's slots free one at a time, and a
- * burst (the run's first tasks) spawns fresh while the pool fills.
+ * Spares kept waiting. Four: a cold run's slots free one at a time, but a
+ * spawn under load takes 2-5 ms, and with two, 1 task in 12 waited for its
+ * spare or spawned fresh (500 site-shape tasks on 4 cores: 37 waited 2.2 ms
+ * each; with four, 13). A burst (the run's first tasks) spawns fresh while
+ * the pool fills.
  */
-const SPARES = 2
+const SPARES = 4
 
 const spares: Spare[] = []
 /** A spare that could not start (no libc pipes, a refused spawn): no more are tried. */
@@ -75,9 +78,10 @@ function start(): Spare | undefined {
   return { child: settled, pipes, script: fds[1]! }
 }
 
-/** A spare for the next task, or undefined; starts another in its place. */
-export function takeSpare(): Spare | undefined {
-  const taken = spares.shift()
+let refilling: ReturnType<typeof setImmediate> | undefined
+
+function refill(): void {
+  refilling = undefined
   while (!off && spares.length < SPARES) {
     const s = start()
     if (s === undefined) {
@@ -86,6 +90,17 @@ export function takeSpare(): Spare | undefined {
     }
     spares.push(s)
   }
+}
+
+/**
+ * A spare for the next task, or undefined; another starts in its place once
+ * the turn is done, so the taken one gets its script, or a task with none its
+ * own spawn, first: the spare's pipes and spawn message were 0.1 ms of every
+ * hand-over, and its spawn queued a fresh one behind it.
+ */
+export function takeSpare(): Spare | undefined {
+  const taken = spares.shift()
+  refilling ??= setImmediate(refill)
   return taken
 }
 
