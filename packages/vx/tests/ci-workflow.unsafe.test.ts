@@ -4,7 +4,8 @@
 //
 // `.unsafe`: the workflows live at the repo root, which a sandboxed project
 // task may not read.
-import { existsSync, readdirSync, readFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readdirSync, readFileSync } from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import type { WorkspaceConfig } from '../src/config.js'
@@ -442,13 +443,33 @@ describe('conformance.yml', () => {
     expect(merge.permissions).toEqual({ contents: 'read' })
   })
 
-  // Sharded (2026-11-22): one job per tool and third of the cases, then one merge.
-  it('runs every tool on every third of the cases, and merges them all', () => {
-    const matrix = (job as { strategy?: { matrix?: Record<string, unknown> } }).strategy?.matrix
-    expect(matrix?.['shard']).toEqual([1, 2, 3])
-    expect(matrix?.['tool']).toEqual(['vx', 'turbo', 'nx', 'vite-task', 'nix', 'moon'])
+  // Sharded (2026-11-22): each tool's cases dealt to as many jobs as keep a
+  // share near 90 s (plan), then one merge.
+  it('runs every tool on every share of the cases, and merges them all', () => {
+    const plan = doc.jobs['plan']!.steps![0]!.run!
+    const out = path.join(mkdtempSync(path.join(os.tmpdir(), 'plan-')), 'out')
+    const r = Bun.spawnSync(['bash', '-c', plan], { env: { ...process.env, GITHUB_OUTPUT: out } })
+    expect(r.exitCode).toBe(0)
+    const { include } = JSON.parse(readFileSync(out, 'utf8').replace(/^matrix=/, '')) as {
+      include: { tool: string; shard: string }[]
+    }
+    expect([...new Set(include.map((m) => m.tool))]).toEqual([
+      'vx',
+      'turbo',
+      'nx',
+      'vite-task',
+      'nix',
+      'moon',
+    ])
+    for (const tool of new Set(include.map((m) => m.tool))) {
+      const shards = include.filter((m) => m.tool === tool).map((m) => m.shard)
+      expect(shards).toEqual(shards.map((_, i) => `${i + 1}/${shards.length}`))
+    }
+    expect((job as { strategy?: { matrix?: unknown } }).strategy?.matrix).toBe(
+      '${{ fromJSON(needs.plan.outputs.matrix) }}',
+    )
     expect(job.steps?.find((s) => s.name === 'vx run conformance')?.run).toBe(
-      'bun packages/vx/src/bin.ts run @vzn/vx-conformance#conformance -- --tool ${{ matrix.tool }} --shard ${{ matrix.shard }}/3 --out shard.json',
+      'bun packages/vx/src/bin.ts run @vzn/vx-conformance#conformance -- --tool ${{ matrix.tool }} --shard ${{ matrix.shard }} --out shard.json',
     )
     expect((merge as { needs?: unknown }).needs).toBe('conformance')
     expect((merge as { if?: unknown }).if).toBe('always()')

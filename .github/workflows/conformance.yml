@@ -8,7 +8,7 @@ name: Conformance
 # should the sweep not. It uploads the results as the `conformance-data`
 # artifact; main's next deploy shows the rivals' outcomes from it
 # (@vzn/vx-docs#build.live). A case vx fails turns the run red. Each job
-# runs one tool on a third of the cases; `merge` joins them
+# runs one tool on its share of the cases; `merge` joins them
 # (@vzn/vx-conformance#conformance.merge).
 
 on:
@@ -24,19 +24,32 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # Each job runs one tool on every third case (cli.ts --shard), so the
-  # suite takes minutes, not the 50 one job took (2026-11-22).
-  conformance:
-    name: ${{ matrix.tool }} ${{ matrix.shard }}/3
+  # Each job runs one tool on its share of the cases (cli.ts --shard), so
+  # every share takes about 90 s. A tool's whole suite (2026-11-22, run
+  # 45064874265): vx 540 s, Turbo 350, Nx 1180, Vite Task 100, Nix 380, moon
+  # 3710; set-up is ~15 s a job. At three shards a tool, moon's took 26 min.
+  plan:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 2
+    permissions: {}
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+    steps:
+      - id: plan
+        run: |
+          echo 'matrix={"include":'"$(jq -nc '{"vx":6,"turbo":4,"nx":14,"vite-task":2,"nix":5,"moon":42}
+            | to_entries | map(.key as $t | .value as $n | range(1; $n + 1) | {tool: $t, shard: "\(.)/\($n)"})')"'}' >> "$GITHUB_OUTPUT"
+
+  conformance:
+    name: ${{ matrix.tool }} ${{ matrix.shard }}
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
     permissions:
       contents: read
     strategy:
       fail-fast: false
-      matrix:
-        tool: [vx, turbo, nx, vite-task, nix, moon]
-        shard: [1, 2, 3]
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
     env:
       VX_REQUIRE_SANDBOX: '1'
     steps:
@@ -65,12 +78,12 @@ jobs:
           echo "$HOME/.nix-profile/bin" >> "$GITHUB_PATH"
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
       - name: vx run conformance
-        run: bun packages/vx/src/bin.ts run @vzn/vx-conformance#conformance -- --tool ${{ matrix.tool }} --shard ${{ matrix.shard }}/3 --out shard.json
+        run: bun packages/vx/src/bin.ts run @vzn/vx-conformance#conformance -- --tool ${{ matrix.tool }} --shard ${{ matrix.shard }} --out shard.json
       - name: Upload the shard's results
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: conformance-shard-${{ matrix.tool }}-${{ matrix.shard }}
+          name: conformance-shard-${{ matrix.tool }}-${{ strategy.job-index }}
           path: private/vx-conformance/shard.json
           if-no-files-found: ignore
 

@@ -24,8 +24,9 @@ Turborepo, Nx, Vite Task and moon install at npm's latest at the start of
 each run, never pinned (`src/tools.ts`); Nix is the one on the PATH. The
 Conformance workflow (`.github/workflows/conformance.yml`) runs the whole
 suite weekly, after the Monday rival sweep dispatches it, with Nix from
-its installer's latest. Each of its jobs runs one tool on a third of the
-cases (`--shard 2/3`), all at once, and `conformance.merge` joins their
+its installer's latest. Each of its jobs runs one tool on a share of the
+cases sized to about 90 s (`--shard 2/14`; moon's 42 shares, Nx's 14),
+all at once, under the task's 5-minute limit, and `conformance.merge` joins their
 results (`src/merge.ts`). Main's deploy shows the rivals' outcomes and
 versions from its newest run and vx's from the commit
 (`private/vx-docs/scripts/live-conformance.ts`). A case vx fails fails
