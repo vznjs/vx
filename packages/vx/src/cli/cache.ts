@@ -122,8 +122,8 @@ interface PruneArgs {
 export function parsePruneArgs(args: readonly string[]): PruneArgs {
   const out: PruneArgs = {}
   for (let i = 0; i < args.length; i++) {
-    const a = args[i]
-    if (a === '--older-than' || a?.startsWith('--older-than=')) {
+    const a = args[i]!
+    if (a === '--older-than' || a.startsWith('--older-than=')) {
       const v = a === '--older-than' ? args[++i] : a.slice('--older-than='.length)
       if (v === undefined || v === '') {
         return {
@@ -145,7 +145,7 @@ export function parsePruneArgs(args: readonly string[]): PruneArgs {
         }
       }
       out.olderThanMs = Date.now() - ms
-    } else if (a === '--max-size' || a?.startsWith('--max-size=')) {
+    } else if (a === '--max-size' || a.startsWith('--max-size=')) {
       const v = a === '--max-size' ? args[++i] : a.slice('--max-size='.length)
       if (v === undefined || v === '') {
         return { error: `--max-size requires a value: a size like 500M or 1G${seeHelp('cache')}` }
@@ -173,7 +173,7 @@ export function parsePruneArgs(args: readonly string[]): PruneArgs {
       out.dry = true
     } else if (a === '--global') {
       out.global = true
-    } else if (a === '--format' || a?.startsWith('--format=')) {
+    } else if (a === '--format' || a.startsWith('--format=')) {
       const v = formatValue(a === '--format' ? args[++i] : a.slice('--format='.length), 'cache')
       if (typeof v === 'object') return v
       out.format = v
@@ -181,7 +181,7 @@ export function parsePruneArgs(args: readonly string[]): PruneArgs {
       const cd = parseCacheDirFlag(args, i)
       if (cd === null)
         return {
-          error: `${refusedWord(a ?? '')}: ${a}${flagHint('cache clean', a ?? '')}${seeHelp('cache')}`,
+          error: `${refusedWord(a)}: ${a}${flagHint('cache clean', a)}${seeHelp('cache')}`,
         }
       if ('error' in cd) return { error: `${cd.error}${seeHelp('cache')}` }
       out.cacheDir = cd.cacheDir

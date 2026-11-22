@@ -23,8 +23,8 @@ interface InfoArgs {
 export function parseInfoArgs(args: readonly string[]): InfoArgs {
   const out: InfoArgs = { format: 'pretty' }
   for (let i = 0; i < args.length; i++) {
-    const a = args[i]
-    if (a === '--format' || a?.startsWith('--format=')) {
+    const a = args[i]!
+    if (a === '--format' || a.startsWith('--format=')) {
       const v = formatValue(a === '--format' ? args[++i] : a.slice('--format='.length), 'info')
       if (typeof v === 'object') return { ...out, ...v }
       out.format = v
@@ -39,7 +39,7 @@ export function parseInfoArgs(args: readonly string[]): InfoArgs {
     }
     return {
       ...out,
-      error: `${refusedWord(a ?? '')}: ${a}${flagHint('info', a ?? '')}${seeHelp('info')}`,
+      error: `${refusedWord(a)}: ${a}${flagHint('info', a)}${seeHelp('info')}`,
     }
   }
   return out
