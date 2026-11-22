@@ -98,7 +98,8 @@ function zygote(path) {
   let proc
   try {
     // Its own session: no group signal of the terminal or of vx reaches it.
-    proc = Bun.spawn([path], { stdio: ['ignore', 'ignore', 'ignore', sv[1], pw[1]], detached: true })
+    // No environment: each request carries its task's, and vx's own stays out of /proc.
+    proc = Bun.spawn([path], { stdio: ['ignore', 'ignore', 'ignore', sv[1], pw[1]], detached: true, env: {} })
   } catch {
     for (const fd of [sv[0], sv[1], pw[0], pw[1]]) closeSync(fd)
     return undefined

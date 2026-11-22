@@ -165,6 +165,19 @@ ${body}
     return out.trim()
   }
 
+  it('a signal a task sends its parent reaches vx, as when vx was the parent', async () => {
+    const out = await inProcess(`
+let got = 0
+process.on('SIGUSR2', () => got++)
+const { child, r } = await run('kill -USR2 $PPID; exit 0', helper)
+await child.exited
+drain(r)
+for (let i = 0; i < 200 && got === 0; i++) await Bun.sleep(10)
+console.log(JSON.stringify({ got, exitCode: child.exitCode }))
+`)
+    expect(JSON.parse(out)).toEqual({ got: 1, exitCode: 0 })
+  })
+
   it('a helper that cannot start leaves the spawn as it was', async () => {
     const out = await inProcess(`
 const { child, r } = await run('echo $PPID; exit 3', '/nonexistent/vx-measure')

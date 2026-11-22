@@ -68,9 +68,10 @@ the code vx-observe already used).
 
 The spawn thread (`spawn-off.ts`) starts it with Bun's spawn, in a session
 of its own, holding two descriptors: fd 3, one end of a `SOCK_SEQPACKET`
-socket pair, and fd 4, the write end of a pipe. It writes a hello, then
-loops on `ppoll` over the socket and a `signalfd` for `SIGCHLD`; every
-signal is blocked, so no group signal, terminal or `kill` stops it.
+socket pair, and fd 4, the write end of a pipe, and no environment. It
+writes a hello, then loops on `ppoll` over the socket and a `signalfd`;
+every signal is blocked, `SIGCHLD` reaps, and any other is passed on to vx
+(only while vx is its parent).
 
 - **Spawn.** One message: `{1, id, nfds, ignored, argc, envc}`, then the
   shell's path, the directory, argv and env, each NUL-ended, and the
@@ -131,7 +132,15 @@ instead of nothing.
 - **What the task sees.** The same env, directory, descriptors, signal
   dispositions (Bun's children get them default; so does the helper and so
   its forks) and argv0. One difference: the shell's `$PPID` is the
-  helper's pid, not vx's, fresh and spare alike.
+  helper's pid, not vx's, fresh and spare alike. Every signal the helper
+  can catch is passed on to vx, so a task's `kill -TERM $PPID` still
+  stops the run (`aborted-outcome.test.ts`). SIGKILL and SIGSTOP cannot be
+  passed on: they reach the helper (its tasks then end with SIGKILL, as
+  under Fallback); a task that means to kill vx itself kills the helper's
+  parent.
+- **What the task can read.** The helper starts with no environment and,
+  like vx, is not dumpable, so `/proc/$PPID/environ` and its memory stay
+  closed to an unsandboxed task (`hide-env.unsafe.test.ts`).
 
 ## Where it applies
 

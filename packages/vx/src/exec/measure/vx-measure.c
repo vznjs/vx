@@ -23,6 +23,10 @@
  * gets the descriptors at 0..nfds-1 and nothing else, an empty signal mask,
  * the directory, and execs. This process ends when vx closes the socket.
  *
+ * It is each shell's parent, so a task's `kill -TERM $PPID` reaches it, not
+ * vx: every signal it can catch is passed on to vx. Like vx it is not
+ * dumpable, so no task reads its memory or environment.
+ *
  * No libc: one file builds for x86_64 and aarch64 with any clang, and the
  * binary is a few kilobytes vx embeds (scripts/build-observe.ts).
  */
@@ -35,14 +39,14 @@ enum {
   NR_read = 0, NR_write = 1, NR_close = 3, NR_rt_sigprocmask = 14, NR_recvmsg = 47,
   NR_clone = 56, NR_execve = 59, NR_wait4 = 61, NR_kill = 62, NR_fcntl = 72, NR_chdir = 80,
   NR_setsid = 112, NR_exit_group = 231, NR_openat = 257, NR_faccessat = 269, NR_ppoll = 271,
-  NR_signalfd4 = 289, NR_dup3 = 292,
+  NR_signalfd4 = 289, NR_dup3 = 292, NR_getppid = 110, NR_prctl = 157,
 };
 #elif defined(__aarch64__)
 enum {
   NR_read = 63, NR_write = 64, NR_close = 57, NR_rt_sigprocmask = 135, NR_recvmsg = 212,
   NR_clone = 220, NR_execve = 221, NR_wait4 = 260, NR_kill = 129, NR_fcntl = 25, NR_chdir = 49,
   NR_setsid = 157, NR_exit_group = 94, NR_openat = 56, NR_faccessat = 48, NR_ppoll = 73,
-  NR_signalfd4 = 74, NR_dup3 = 24,
+  NR_signalfd4 = 74, NR_dup3 = 24, NR_getppid = 173, NR_prctl = 167,
 };
 #else
 #error "vx-measure builds for x86_64 and aarch64"
@@ -53,7 +57,7 @@ enum {
   SIG_BLOCK = 0, SIG_SETMASK = 2, AT_FDCWD = -100, X_OK = 1, O_RDONLY = 0, O_WRONLY = 1,
   O_CLOEXEC = 02000000, SFD_CLOEXEC = 02000000, SFD_NONBLOCK = 04000, WNOHANG = 1,
   MSG_CMSG_CLOEXEC = 0x40000000, MSG_TRUNC = 0x20, MSG_CTRUNC = 0x8, SOL_SOCKET = 1,
-  SCM_RIGHTS = 1, POLLIN = 1,
+  SCM_RIGHTS = 1, POLLIN = 1, PR_SET_DUMPABLE = 4,
 };
 
 enum { REQ = 3, REPLY = 4, MAX_FDS = 16, MAX_PTRS = 16384, MAX_LIVE = 4096, FD_HIGH = 64 };
@@ -290,21 +294,29 @@ static void request(void) {
 }
 
 static void main_(void) {
-  /* SIGCHLD through a descriptor; nothing else reaches this process. */
+  /* Every signal through a descriptor: SIGCHLD reaps, the rest go to vx. */
   u64 all = ~0ul;
   S4(NR_rt_sigprocmask, SIG_BLOCK, &all, 0, 8);
-  u64 chld = 1ul << (SIGCHLD - 1);
-  long sfd = S4(NR_signalfd4, -1, &chld, 8, SFD_CLOEXEC | SFD_NONBLOCK);
+  long vx = S0(NR_getppid);
+  long sfd = S4(NR_signalfd4, -1, &all, 8, SFD_CLOEXEC | SFD_NONBLOCK);
   if (sfd < 0) S1(NR_exit_group, 1);
+  S5(NR_prctl, PR_SET_DUMPABLE, 0, 0, 0, 0);
   reply(HELLO, 0, 0, 0, 0);
-  char drain[128 * 4];
+  /* signalfd_siginfo: ssi_signo first, 128 bytes each. */
+  u32 info[32 * 4];
   for (;;) {
     struct pollfd p[2] = {{REQ, POLLIN, 0}, {(int)sfd, POLLIN, 0}};
     if (S5(NR_ppoll, p, 2, 0, 0, 8) < 0) continue;
     if (p[1].revents) {
-      while (S3(NR_read, sfd, drain, sizeof drain) > 0) {
-      }
-      reap();
+      int chld = 0;
+      for (long n; (n = S3(NR_read, sfd, info, sizeof info)) > 0;)
+        for (long i = 0; i < n / 128; i++) {
+          u32 sig = info[i * 32];
+          if (sig == SIGCHLD) chld = 1;
+          /* Only to the vx that started it: once it is gone, no one. */
+          else if (S0(NR_getppid) == vx) S2(NR_kill, vx, sig);
+        }
+      if (chld) reap();
     }
     if (p[0].revents) request();
   }

@@ -241,7 +241,9 @@ held to its start; at the exit, `end` lets everything go; and an
   takes the descriptors at 0..n-1 and nothing else, an empty signal mask,
   and execs. The helper says the pid, then the exit status, `ru_maxrss`
   and CPU of its wait; `kill()` goes through it, so it never signals a
-  reaped pid. The task's `$PPID` is the helper's pid. Where it cannot
+  reaped pid. The task's `$PPID` is the helper's pid; every signal it can
+  catch is passed on to vx, so `kill -TERM $PPID` still stops the run, and
+  it starts with no environment and is not dumpable, as vx is not. Where it cannot
   start, declines (a missing directory: the spawn's own ENOENT) or a send
   waits past a second, the thread spawns as before; if it dies, the
   shells it forked are killed (their exit is lost) and the rest spawn as
