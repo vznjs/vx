@@ -1385,6 +1385,9 @@ export async function resolveOutputTree(args: {
   clearing?: boolean
 }): Promise<OutputTree> // { files, emptyDirs, special: string[], findSpecial?: () => string[] }
 
+/** From now on a clear before a command renames each file into `dir` and unlinks it off the slot; an earlier process's leftovers there go first. */
+export function deferRemovals(dir: string): void
+
 /**
  * Remove every file currently matching the declared output globs.
  * Called before every cache-miss exec AND before every cache-hit
@@ -1665,7 +1668,9 @@ Returns sorted absolute paths. `resolveWorkspaceOutputs` is the same
 pass for `outputs.workspaceFiles`, anchored at the workspace root and
 deliberately without the project-dir exclusion.
 
-`cleanOutputs` removes every match, then the directories it emptied,
+`cleanOutputs` removes every match (before a command, once the run
+called `deferRemovals`, by a rename into `.vx/cache/trash/` and an unlink
+off the slot; in place on another file system), then the directories it emptied,
 bottom-up, but only inside the trees the task declared (before a miss;
 `cleanWorkspaceOutputs` too, and `cleanOutputPaths`, which a hit uses
 after its in-place restore to remove the outputs its entry does not hold): below each
@@ -1874,6 +1879,7 @@ export class GitFilesCache extends Map<string, readonly string[]> {
   markOutputsChanged(projectDir: string, relPaths: readonly string[]): void // a save or restore wrote these
   noteTracked(scopes: readonly string[], absPaths: readonly string[]): void // what the index lists under these dirs
   noteTrackedLater(scopes: readonly string[], absPaths: () => Iterable<string>): void // the same, listed on the first committedIn question
+  noteTrackedSorted(scopes: readonly string[], base: string, rels: readonly string[]): void // the enumeration's list, asked by binary search with no set built (the set held a cold run's first wave 19 ms at 38k paths); a set under core.ignorecase
   committedIn(dir: string): (abs: string) => boolean // git tracks it or a gitlink above it, never a link above it: never cleaned (lists an uncovered dir once)
   markWorkspaceOutputsChanged(workspaceRoot: string, relPaths: readonly string[]): void
   invalidateWorkspacePartition(): void

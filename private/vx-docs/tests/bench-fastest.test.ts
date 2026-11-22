@@ -54,3 +54,10 @@ it('names each race vx loses, and to whom', () => {
   ])
   expect(() => assertFastest(d, 'bench-data')).toThrow(/bench-data: vx is not the fastest/)
 })
+
+it("fails a cold CPU under the commands' own: the measurement lost the tasks", () => {
+  const d = data({ vx: [5, -2], turbo: [6, 40], nx: [50, 90], 'vite-task': [5, 10] })
+  expect(losses(d)).toEqual([
+    "cold build CPU: vx 8 ms is under the commands' own 10 ms, so it was not measured",
+  ])
+})

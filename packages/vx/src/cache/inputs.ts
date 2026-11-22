@@ -10,13 +10,16 @@ import {
   chmodSync,
   type Dirent,
   lstatSync,
+  mkdirSync,
   readdirSync,
   realpathSync,
+  renameSync,
   rmdirSync,
   rmSync,
   statSync,
+  writeFileSync,
 } from 'node:fs'
-import { rm, rmdir } from 'node:fs/promises'
+import { rm, rmdir, unlink } from 'node:fs/promises'
 import type { InputsConfig, TaskConfig } from '../config.js'
 import {
   appendTail,
@@ -25,6 +28,7 @@ import {
   anyTaskGlob,
   tailText,
   asTrees,
+  beforeExit,
   isExecutableMissing,
   isInstalledPath,
   isLiteralPattern,
@@ -1625,13 +1629,80 @@ function changedSince(
 const SYNC_CLEAN_MAX = 128
 
 /**
+ * Where a run moves the outputs it clears before a command (`deferRemovals`),
+ * and the unlinks still going. A rename is a name's change; an unlink frees
+ * the file's blocks, and under a cold run's load that held the task's slot
+ * 0.6 ms for one 220 KB output (the bench's build), against 0.02 ms.
+ */
+let trash:
+  | { dir: string; made: boolean; sweeping: boolean; n: number; going: Set<Promise<void>> }
+  | undefined
+
+/**
+ * From now on, a clear before a command renames each file into `dir` and
+ * unlinks it off the slot. What an earlier process left
+ * in `dir` (killed before its unlinks ended) goes too.
+ */
+export function deferRemovals(dir: string): void {
+  if (trash?.dir === dir) return
+  if (trash === undefined && !settling) {
+    settling = true
+    beforeExit(removalsSettled)
+  }
+  trash = { dir, made: false, sweeping: true, n: 0, going: new Set() }
+  const t = trash
+  const left = rm(dir, { recursive: true, force: true })
+    .catch(() => {})
+    .finally(() => {
+      t.sweeping = false
+      t.going.delete(left)
+    })
+  t.going.add(left)
+}
+
+let settling = false
+
+/** Once every deferred unlink has ended. Never throws. */
+async function removalsSettled(): Promise<void> {
+  while (trash !== undefined && trash.going.size > 0) await Promise.all(trash.going)
+}
+
+/** `f` moved into the trash, its unlink started; false leaves it to the remove (another file system, a refusal). */
+function trashed(f: string): boolean {
+  const t = trash
+  if (t === undefined) return false
+  try {
+    if (!t.made) {
+      // Until the sweep of what an earlier process left ends, a rename
+      // could land where it deletes.
+      if (t.sweeping) return false
+      mkdirSync(t.dir, { recursive: true })
+      // Under the workspace: git lists none of it.
+      writeFileSync(path.join(t.dir, '.gitignore'), '*\n')
+      t.made = true
+    }
+    const to = path.join(t.dir, `${process.pid}-${t.n++}`)
+    renameSync(f, to)
+    const gone = unlink(to).catch(() => {})
+    t.going.add(gone)
+    void gone.finally(() => t.going.delete(gone))
+    return true
+  } catch (err) {
+    // Another file system: every rename would fail the same way.
+    if ((err as NodeJS.ErrnoException).code === 'EXDEV') trash = undefined
+    return false
+  }
+}
+
+/**
  * A declared output the process cannot remove (another user's `dist/`, a
  * read-only checkout) is the environment's failure, not an internal error.
  *
  * A directory of this user's that withholds its own write (`chmod 555 dist/ro`,
  * which a hit restores too) gets owner write and search for the remove and its
  * mode back after, as a restore's write does, or the task could never run or
- * restore again. `keepOpen`: the command runs next and gets no mode back.
+ * restore again. `keepOpen`: the command runs next and gets no mode back, and
+ * a file moves into the trash where it can (`deferRemovals`).
  */
 async function removeAll(
   all: readonly string[],
@@ -1654,6 +1725,7 @@ async function removeAll(
   try {
     if (files.length <= SYNC_CLEAN_MAX) {
       for (const f of files) {
+        if (keepOpen && trashed(f)) continue
         try {
           rmSync(f, { force: true })
         } catch (err) {

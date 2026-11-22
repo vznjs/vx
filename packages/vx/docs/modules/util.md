@@ -79,6 +79,7 @@ export function signalExitCode(signal: string | number): number // 128 + signo (
 export function stopSignal(reason: unknown): 'SIGINT' | 'SIGTERM'
 export class PersistentReadyError extends Error // reason: 'timeout' | 'exited' | 'spawn'; exitCode?: the child's own
 export function primeSpares(n: number): void // warm-shell.ts: keep n spare shells (at least four)
+export function warmSpares(): void // warm-shell.ts: start the spares now (a run's first local cache miss)
 export function streamToString(
   stream: ReadableStream<Uint8Array> | number | undefined,
   onChunk?: (s: string) => void,
@@ -211,9 +212,11 @@ held to its start; at the exit, `end` lets everything go; and an
   spawned fresh, 2.7 ms on a spare. A run keeps one per slot its first
   tasks fill (`primeSpares`; at least four: with two, 1 task in 12 cold
   waited for one), refilled once the turn that took one is done, so the
-  taken spare gets its script first. An empty pool starts its spares when
-  a task asks for one, so a run that spawns nothing (a warm one) starts
-  no shell. Four let each wave of tasks ending together spawn fresh: 500
+  taken spare gets its script first. The pool starts at the run's first
+  cache miss of a local task (`warmSpares`), while that task's inputs
+  are described and its outputs cleared: the first wave of a cold run
+  waited ~15 ms each for the helper to start and fork. A run with no
+  miss (a warm one) starts no shell. Four let each wave of tasks ending together spawn fresh: 500
   site-shape tasks at 10 slots, 0.4 -> 0.26 ms a task before its spawn. Each waits on
   its own pipes, with no directory or env of a task, blocked reading
   descriptor 3. The task's script, written when one is taken, closes
@@ -248,7 +251,12 @@ held to its start; at the exit, `end` lets everything go; and an
   start, declines (a missing directory: the spawn's own ENOENT) or a send
   waits past a second, the thread spawns as before; if it dies, the
   shells it forked are killed (their exit is lost) and the rest spawn as
-  before. Design and numbers: `docs/design/peak-memory-exact-2026-11.md`.
+  before. Before vx exits it closes the socket and reaps the helper (at
+  most 1 s, `beforeExit`): its usage then joins vx's children's, with
+  every shell it waited for. Left to die after vx, it went to init, and
+  a run's CPU read without its tasks' (the bench's cold vx, 19.9 s for
+  9,603 tasks, under the bare commands' own 21.6 s). Design and numbers:
+  `docs/design/peak-memory-exact-2026-11.md`.
 - **`exec`:** a plain `word args…` command runs as `exec word args…`, so
   the program replaces the shell. A shell builtin keeps the shell (each
   one bash's `compgen -b` lists, bash-only `pushd` among them), and so

@@ -49,6 +49,8 @@ export const burnClip = (cells: number, cols: number): string => {
  * A near tie keeps two decimals so it never shows as the winner's 1×. */
 export const ratioLabel = (ms: number, fastest: number): string => {
   if (ms === fastest) return '1×'
+  // A fastest of 0 has no multiple: every other figure read `Infinity×`.
+  if (!(fastest > 0)) return '—'
   const r = ms / fastest
   return `${r < 2 ? r.toFixed(2) : r < 10 ? r.toFixed(1) : Math.round(r)}×`
 }

@@ -579,10 +579,48 @@ export class GitFilesCache extends Map<string, readonly string[]> {
     this.trackedScopes.push(...scopes)
   }
 
+  /**
+   * `noteTrackedLater` for the enumeration's list, `base` + each of `rels`
+   * absolute: asked by binary search, with no set built. The set took the
+   * first clean of a cold run 19 ms (38k paths), with the first wave of
+   * tasks waiting behind it. Under a case-folding compare it becomes the set.
+   */
+  noteTrackedSorted(scopes: readonly string[], base: string, rels: readonly string[]): void {
+    this.trackedSorted.push({ base, rels, checked: false })
+    this.trackedScopes.push(...scopes)
+  }
+
+  private trackedSorted: { base: string; rels: readonly string[]; checked: boolean }[] = []
+
   private isTracked(abs: string): boolean {
+    if (this.trackedSorted.length > 0 && this.trackedKey('A') !== 'A') {
+      for (const { base, rels } of this.trackedSorted.splice(0))
+        this.trackedPending.push(() => rels.map((r) => base + r))
+    }
     if (this.trackedPending.length > 0) {
       for (const paths of this.trackedPending.splice(0))
         for (const p of paths()) this.tracked.add(this.trackedKey(p))
+    }
+    for (const list of this.trackedSorted) {
+      if (!abs.startsWith(list.base)) continue
+      if (!list.checked) {
+        list.checked = true
+        // Git's byte order is not always the code-unit order `<` compares.
+        for (let i = 1; i < list.rels.length; i++)
+          if (list.rels[i - 1]! > list.rels[i]!) {
+            list.rels = [...list.rels].sort()
+            break
+          }
+      }
+      const rel = abs.slice(list.base.length)
+      let lo = 0
+      let hi = list.rels.length
+      while (lo < hi) {
+        const mid = (lo + hi) >>> 1
+        if (list.rels[mid]! < rel) lo = mid + 1
+        else hi = mid
+      }
+      if (list.rels[lo] === rel) return true
     }
     return this.tracked.has(this.trackedKey(abs))
   }
@@ -3055,10 +3093,9 @@ export async function applyGitEnumeration(
   // Built when a no-OID file's record asks (`committedIn`): with
   // `path.join`, 1.2 ms of vueuse's no-op for 1,583 tracked files, 0.7
   // joined as above (2026-11-11).
-  cache.noteTrackedLater(
-    enumeration.scopes.map((rel) => path.join(workspaceRoot, rel)),
-    () => enumeration.tracked.map(abs),
-  )
+  const scopes = enumeration.scopes.map((rel) => path.join(workspaceRoot, rel))
+  if (base === undefined) cache.noteTrackedLater(scopes, () => enumeration.tracked.map(abs))
+  else cache.noteTrackedSorted(scopes, base, enumeration.tracked)
   const lowerBound = (key: string): number => {
     let lo = 0
     let hi = sorted.length

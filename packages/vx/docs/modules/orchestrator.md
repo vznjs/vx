@@ -1247,7 +1247,9 @@ the file in the outputs of the task that writes it.
    line, once, on this miss; `outputs: []` is a deliberate cached no-op
    and says nothing. Every declared output is required, so
    `missing-outputs.ts` has already failed the attempt in `classifyExit`
-   when a glob matched nothing; the warning is left to an additive task,
+   when a glob matched nothing (a synchronous scan that stops at the
+   first match: the async one waited its turn on a busy run's loop with
+   the slot held, 1.1 ms a build on the bench's cold run); the warning is left to an additive task,
    whose globs matched files its upstream wrote. When only literal outputs matched and every
    wildcard glob matched nothing, the line names those globs and says a
    later hit restores only the literal files. When the task declares `exec.sandbox` and no
