@@ -168,21 +168,22 @@ here, itself or in a brace group.
 
 ## Graph + scheduler
 
-| File                                                                                  | Topic                                                                                                     |
-| ------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| [`graph.md`](./graph.md#srcgraphtask-graphts--task-dag-construction--cycle-detection) | `src/graph/task-graph.ts` — TaskNode DAG builder + cycle detection.                                       |
-|                                                                                       | `src/graph/definition.ts` — `taskDefinition(s)`, what history keys a task by (see task-graph.md).         |
-|                                                                                       | `src/graph/default-build.ts` — the `build` a project declaring none gets (see task-graph.md).             |
-|                                                                                       | `src/graph/critical-path.ts` — `criticalPath`, the order a `schedule` plugin returns (see task-graph.md). |
-|                                                                                       | `src/graph/stand-ins.ts` — what an edge past a cycle's default build stands in for (see task-graph.md).   |
-| [`graph.md`](./graph.md#srcgraphschedulerts--two-tier-parallel-topological-executor)  | `src/graph/scheduler.ts` — parallel topological executor.                                                 |
-|                                                                                       | `src/graph/priorities.ts` — the ready-queue ranking (see scheduler.md).                                   |
-|                                                                                       | `src/graph/task-status.ts` — the status vocabulary (see scheduler.md).                                    |
-|                                                                                       | `src/graph/outcome.ts` — `TaskOutcome`, its errors and marks (see scheduler.md).                          |
-|                                                                                       | `src/graph/lanes.ts` — the slots running tasks hold (see scheduler.md).                                   |
-|                                                                                       | `src/graph/ready-heap.ts` — the ready queue's heap (see scheduler.md).                                    |
-| [`util.md`](./util.md#srcutildependency-spects--turbonx-micro-syntax-parser)          | `src/util/dependency-spec.ts` — shared Turbo/Nx micro-syntax parser.                                      |
-| [`graph.md`](./graph.md#srcgraphfoldsts--which-dependencies-a-key-folds)              | `src/graph/folds.ts` — which dependencies a key folds (`inputs.tasks`).                                   |
+| File                                                                                  | Topic                                                                                                        |
+| ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| [`graph.md`](./graph.md#srcgraphtask-graphts--task-dag-construction--cycle-detection) | `src/graph/task-graph.ts` — TaskNode DAG builder + cycle detection.                                          |
+|                                                                                       | `src/graph/definition.ts` — `taskDefinition(s)`, what history keys a task by (see task-graph.md).            |
+|                                                                                       | `src/graph/default-build.ts` — the `build` a project declaring none gets (see task-graph.md).                |
+|                                                                                       | `src/graph/critical-path.ts` — `criticalPath`, the order a `schedule` plugin returns (see task-graph.md).    |
+|                                                                                       | `src/graph/stand-ins.ts` — what an edge past a cycle's default build stands in for (see task-graph.md).      |
+| [`graph.md`](./graph.md#srcgraphschedulerts--two-tier-parallel-topological-executor)  | `src/graph/scheduler.ts` — parallel topological executor.                                                    |
+|                                                                                       | `src/graph/priorities.ts` — the ready-queue ranking (see scheduler.md).                                      |
+|                                                                                       | `src/graph/task-status.ts` — the status vocabulary (see scheduler.md).                                       |
+|                                                                                       | `src/graph/outcome.ts` — `TaskOutcome`, its errors and marks (see scheduler.md).                             |
+|                                                                                       | `src/graph/lanes.ts` — the slots running tasks hold (see scheduler.md).                                      |
+|                                                                                       | `src/graph/ready-heap.ts` — the ready queue's heap (see scheduler.md).                                       |
+|                                                                                       | `src/graph/glob-meet.ts` — whether two output globs take a common path (see graph.md § Overlapping outputs). |
+| [`util.md`](./util.md#srcutildependency-spects--turbonx-micro-syntax-parser)          | `src/util/dependency-spec.ts` — shared Turbo/Nx micro-syntax parser.                                         |
+| [`graph.md`](./graph.md#srcgraphfoldsts--which-dependencies-a-key-folds)              | `src/graph/folds.ts` — which dependencies a key folds (`inputs.tasks`).                                      |
 
 ## Cache cluster
 

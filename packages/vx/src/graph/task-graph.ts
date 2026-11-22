@@ -3,7 +3,6 @@ import type { ProjectConfig, TaskConfig, WorkspaceRules } from '../config.js'
 import {
   asTrees,
   braceAlternatives,
-  GLOB_WILDCARDS,
   checkIgnoreSync,
   ignoreProbes,
   isLiteralPattern,
@@ -29,6 +28,7 @@ import {
 import type { PackageGraph, ProjectEntry } from '../workspace/index.js'
 import { isDefaultBuild } from './default-build.js'
 import { foldedDeps, isGroupTask } from './folds.js'
+import { globsMeet } from './glob-meet.js'
 import type { TaskOutcome } from './outcome.js'
 import { addStandIn } from './stand-ins.js'
 
@@ -1091,9 +1091,10 @@ export function outputsOverlap(rawA: string, rawB: string): boolean {
 }
 
 function overlapOne(rawA: string, rawB: string): boolean {
-  // A built path proves overlap only between globs as written: a literal's
-  // `/**` twin reads it as a directory.
-  const bothGlobs = literalPath(rawA) === null && literalPath(rawB) === null
+  // A literal's `/**` twin reads it as a directory, which only a trailing
+  // slash says it is: `index.js` beside `*/**` is no overlap.
+  const tree = (raw: string): boolean => literalPath(raw) === null || raw.endsWith('/')
+  const meetCounts = tree(rawA) && tree(rawB)
   for (const a of asTrees([rawA])) {
     for (const b of asTrees([rawB])) {
       const la = literalPath(a)
@@ -1104,7 +1105,7 @@ function overlapOne(rawA: string, rawB: string): boolean {
         if (taskGlob(b).match(la)) return true
       } else if (lb !== null) {
         if (taskGlob(a).match(lb)) return true
-      } else if (a === b || covers(a, b) || covers(b, a) || (bothGlobs && witnessed(a, b)))
+      } else if (a === b || covers(a, b) || covers(b, a) || (meetCounts && globsMeet(a, b)))
         return true
     }
   }
@@ -1113,130 +1114,6 @@ function overlapOne(rawA: string, rawB: string): boolean {
 
 /** `staticPrefix` names the project root `.`; a path built under it starts bare. */
 const rootless = (prefix: string): string => (prefix === '.' ? '' : prefix)
-
-/**
- * Do two globs both match a path built from them? A hit proves the overlap, a
- * miss decides nothing. The path sits under the deeper literal prefix and ends
- * in either glob's filled last segment.
- */
-function witnessed(a: string, b: string): boolean {
-  const pa = rootless(staticPrefix(a))
-  const pb = rootless(staticPrefix(b))
-  const nested = (outer: string, inner: string): boolean =>
-    outer === '' || inner === outer || inner.startsWith(`${outer}/`)
-  if (!nested(pa, pb) && !nested(pb, pa)) return false
-  const deeper = pa.length >= pb.length ? pa : pb
-  const ga = taskGlob(a)
-  const gb = taskGlob(b)
-  for (const glob of [a, b]) {
-    const last = glob.slice(glob.lastIndexOf('/') + 1)
-    if (/[[\]{}()!+@]/.test(last)) continue
-    const leaf = last.replace(/\*+|\?/g, 'x')
-    for (const mid of ['', 'x/']) {
-      const candidate = deeper === '' ? `${mid}${leaf}` : `${deeper}/${mid}${leaf}`
-      if (ga.match(candidate) && gb.match(candidate)) return true
-    }
-  }
-  // Each glob filled whole, every wildcard a name and `**` one level or none:
-  // `**/dist/**` beside `**/*` meets at `x/dist/x`.
-  for (const glob of [a, b]) {
-    const segs = glob.split('/')
-    if (segs.some((s) => /[[\]{}()!+@]/.test(s))) continue
-    for (const drop of [false, true]) {
-      const candidate = segs
-        .flatMap((s) => (s === '**' ? (drop ? [] : ['x']) : [s.replace(/\*+|\?/g, 'x')]))
-        .join('/')
-      if (candidate !== '' && ga.match(candidate) && gb.match(candidate)) return true
-    }
-  }
-  const met = unified(a.split('/'), b.split('/'))
-  return met !== null && met !== '' && ga.match(met) && gb.match(met)
-}
-
-/**
- * A path both globs take, built segment by segment, `**` matching a segment of
- * the other or none. Null when none; a find is checked whole after.
- */
-function unified(sa: readonly string[], sb: readonly string[]): string | null {
-  // A `!` opening a class is the class's; anywhere else, an extglob.
-  if ([...sa, ...sb].some((x) => /[{}()!+@]/.test(x.replaceAll('[!', '[')))) return null
-  const memo = new Map<string, string | null>()
-  const join = (name: string, rest: string): string => (rest === '' ? name : `${name}/${rest}`)
-  const walk = (i: number, j: number): string | null => {
-    const key = `${i},${j}`
-    if (memo.has(key)) return memo.get(key)!
-    memo.set(key, null)
-    let out: string | null = null
-    if (i === sa.length && j === sb.length) out = ''
-    else if (sa[i] === '**' || sb[j] === '**') {
-      // A last `**` takes one segment at least: `out/**` is not `out`.
-      const lastA = sa[i] === '**' && i === sa.length - 1
-      const lastB = sb[j] === '**' && j === sb.length - 1
-      const [wide, x, y, other] = sa[i] === '**' ? [sa, i, j, sb] : [sb, j, i, sa]
-      if (lastA && lastB) out = 'x'
-      if (out === null && sa[i] === '**' && !lastA) out = walk(i + 1, j)
-      if (out === null && sb[j] === '**' && !lastB) out = walk(i, j + 1)
-      if (out === null && y < other.length && other[y] !== '**') {
-        const name = segmentMeet('*', other[y]!)
-        // Having taken one, it may take more or stop.
-        const rest =
-          name === null
-            ? null
-            : wide === sa
-              ? (walk(x, y + 1) ?? walk(x + 1, y + 1))
-              : (walk(y + 1, x) ?? walk(y + 1, x + 1))
-        if (name !== null && rest !== null) out = join(name, rest)
-      }
-    } else if (i < sa.length && j < sb.length) {
-      const name = segmentMeet(sa[i]!, sb[j]!)
-      const rest = name === null ? null : walk(i + 1, j + 1)
-      if (name !== null && rest !== null) out = join(name, rest)
-    }
-    memo.set(key, out)
-    return out
-  }
-  return walk(0, 0)
-}
-
-/** A name both segments take, from each filled in and the one's head joined to the other's tail. */
-function segmentMeet(x: string, y: string): string | null {
-  const fill = (seg: string, star: string): string =>
-    seg
-      .replace(/\*+/g, star)
-      .replace(/\?/g, 'x')
-      // A negated class takes a name it does not list: `[!a]` is not `a`.
-      .replace(/\[([!^]?)(.)([^\]]*)\]/g, (_, not: string, first: string, more: string) =>
-        not === ''
-          ? first
-          : (['x', 'y', 'z', '0', '_'].find((c) => !`${first}${more}`.includes(c)) ?? first),
-      )
-  const head = (seg: string): string => {
-    const at = seg.search(GLOB_WILDCARDS)
-    return at === -1 ? seg : seg.slice(0, at)
-  }
-  const tail = (seg: string): string => {
-    let at = seg.length
-    while (at > 0 && !GLOB_WILDCARDS.test(seg[at - 1]!)) at--
-    return seg.slice(at)
-  }
-  const gx = new Bun.Glob(x)
-  const gy = new Bun.Glob(y)
-  for (const c of [
-    fill(x, 'x'),
-    fill(y, 'x'),
-    fill(x, ''),
-    fill(y, ''),
-    head(x) + tail(y),
-    head(y) + tail(x),
-    // Each name a class lists, the other's class filled: `[ab]` beside `[!a]` meets at `b`.
-    ...[x, y].flatMap((seg) => {
-      const listed = /\[([^!^\]][^\]]*)\]/.exec(seg)?.[1] ?? ''
-      return listed.split('').map((ch) => fill(seg.replace(/\[[^!^\]][^\]]*\]/, ch), 'x'))
-    }),
-  ])
-    if (c !== '' && gx.match(c) && gy.match(c)) return c
-  return null
-}
 
 /**
  * Does `P/**` match every path `glob` can? Yes when `glob`'s literal prefix is
