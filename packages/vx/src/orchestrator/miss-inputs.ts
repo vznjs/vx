@@ -49,34 +49,45 @@ export interface MissInputs {
   readonly keyed: (facts: readonly InputFact[]) => readonly InputFact[]
 }
 
+/** A description the key already made (`keyOrDescribe`), with its rows. */
+export interface PreDescribed {
+  readonly described: Described
+  readonly captured: TaskInputComponent[]
+}
+
 /** Describe the inputs and build the secret mask its rows' names need. */
 export async function describeMiss(
   args: ExecuteArgs,
   policy: TaskPolicy,
   env: NodeJS.ProcessEnv,
+  pre?: PreDescribed,
 ): Promise<{ inputs: MissInputs; secrets: TaskSecrets }> {
   const { node, upstream, log } = args
   const { cache } = args.run
   const cfg = node.config
   // A non-cacheable task folds nothing and ships no inputs. The HashCache
   // memos and the gitFilesCache OID map make this a fold, no I/O.
-  const captured: TaskInputComponent[] = []
-  const described = policy.cacheable
-    ? await describeTaskInputs({
-        node,
-        upstream,
-        workspaceRoot: args.run.workspaceRoot,
-        cache,
-        forwardArgs: args.run.forwardArgs,
-        nestedProjectDirs: args.nestedProjectDirs,
-        captureInto: captured,
-        ...(args.run.gitFilesCache !== undefined ? { gitFilesCache: args.run.gitFilesCache } : {}),
-        ...(args.run.hashCache !== undefined ? { hashCache: args.run.hashCache } : {}),
-        ...(args.run.probesAfterWrites !== undefined
-          ? { probesAfterWrites: args.run.probesAfterWrites }
-          : {}),
-      })
-    : undefined
+  const captured: TaskInputComponent[] = pre?.captured ?? []
+  const described = !policy.cacheable
+    ? undefined
+    : pre !== undefined
+      ? pre.described
+      : await describeTaskInputs({
+          node,
+          upstream,
+          workspaceRoot: args.run.workspaceRoot,
+          cache,
+          forwardArgs: args.run.forwardArgs,
+          nestedProjectDirs: args.nestedProjectDirs,
+          captureInto: captured,
+          ...(args.run.gitFilesCache !== undefined
+            ? { gitFilesCache: args.run.gitFilesCache }
+            : {}),
+          ...(args.run.hashCache !== undefined ? { hashCache: args.run.hashCache } : {}),
+          ...(args.run.probesAfterWrites !== undefined
+            ? { probesAfterWrites: args.run.probesAfterWrites }
+            : {}),
+        })
   const commandFrom = policy.cacheable
     ? fsClockNow(args.run.cacheDir ?? path.join(args.run.workspaceRoot, '.vx'))
     : 0

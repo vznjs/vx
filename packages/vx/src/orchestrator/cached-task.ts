@@ -12,7 +12,12 @@
 
 import path from 'node:path'
 import { fsClockNow } from '../memo/index.js'
-import { ArtifactVanishedError, type CacheEntry, FULL_CACHE_POLICY } from '../cache/index.js'
+import {
+  ArtifactVanishedError,
+  type CacheEntry,
+  FULL_CACHE_POLICY,
+  type TaskInputComponent,
+} from '../cache/index.js'
 import { signalExitCode } from '../exec/index.js'
 import { RestoreDemoted, RestoreFailed, type TaskOutcome } from '../graph/index.js'
 import { span } from '../util/index.js'
@@ -25,13 +30,13 @@ import { upstreamOutputsHere } from './attempt-request.js'
 import { runAttempts } from './attempts.js'
 import { restoreHit } from './hit-restore.js'
 import { fingerprintMoved, type KeyCheck, type StateStamp } from './input-recheck.js'
-import { describeMiss } from './miss-inputs.js'
+import { describeMiss, type PreDescribed } from './miss-inputs.js'
 import { missOutcome } from './miss-outcome.js'
 import { type SaveFacts, withCheckFacts } from './miss-save.js'
 import type { MissRun } from './miss-run.js'
 import { getContext } from './remote-prefetch.js'
 import { forwardedSignal } from './signals.js'
-import { computeTaskHash, keyOf } from './task-hash.js'
+import { computeTaskHash, keyOf, keyOrDescribe } from './task-hash.js'
 import { type TaskPolicy, taskPolicy } from './task-policy.js'
 import { isAborted, taskEnv } from './task-process.js'
 import { applySave, saveVerdict } from './task-save.js'
@@ -101,7 +106,7 @@ export async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome>
   // When the task started, as an offset from run start, for EVERY outcome
   // (hits included), so the timeline shows when each task actually ran.
   const taskStartNs = process.hrtime.bigint() - args.run.runStartHrTimeNs
-  const hash = await keyFor(args)
+  const { hash, pre } = await keyFor(args, policy)
 
   // The local no-op half of `exec.remote: 'only'`: no remote executor took
   // the task, so it succeeds without running. The hash was still computed:
@@ -122,7 +127,7 @@ export async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome>
 
   const env = taskEnv(node, policy.exec, args.run.workspaceRoot)
   const wallclockStartNs = process.hrtime.bigint() - args.run.runStartHrTimeNs
-  const { inputs, secrets } = await describeMiss(args, policy, env)
+  const { inputs, secrets } = await describeMiss(args, policy, env, pre)
 
   const fetched = await fetchDeferredUpstream(args, hash, taskStartNs)
   if (fetched !== undefined) return fetched
@@ -250,25 +255,30 @@ export async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome>
  * key is used verbatim: a restore-tier task may run before its deps finish,
  * so its live `upstream` is incomplete.
  */
-async function keyFor(args: ExecuteArgs): Promise<string> {
+async function keyFor(
+  args: ExecuteArgs,
+  policy: TaskPolicy,
+): Promise<{ hash: string; pre?: PreDescribed }> {
   const known = args.preProbed?.hash ?? args.upfrontKey
-  if (known !== undefined) return known
+  if (known !== undefined) return { hash: known }
   args.run.keyedTasks?.keyedNow(args)
-  return await keyOf(
-    computeTaskHash({
-      node: args.node,
-      upstream: args.upstream,
-      workspaceRoot: args.run.workspaceRoot,
-      cache: args.run.cache,
-      forwardArgs: args.run.forwardArgs,
-      nestedProjectDirs: args.nestedProjectDirs,
-      ...(args.run.gitFilesCache !== undefined ? { gitFilesCache: args.run.gitFilesCache } : {}),
-      ...(args.run.hashCache !== undefined ? { hashCache: args.run.hashCache } : {}),
-      ...(args.run.probesAfterWrites !== undefined
-        ? { probesAfterWrites: args.run.probesAfterWrites }
-        : {}),
-    }),
-  )
+  const hashArgs = {
+    node: args.node,
+    upstream: args.upstream,
+    workspaceRoot: args.run.workspaceRoot,
+    cache: args.run.cache,
+    forwardArgs: args.run.forwardArgs,
+    nestedProjectDirs: args.nestedProjectDirs,
+    ...(args.run.gitFilesCache !== undefined ? { gitFilesCache: args.run.gitFilesCache } : {}),
+    ...(args.run.hashCache !== undefined ? { hashCache: args.run.hashCache } : {}),
+    ...(args.run.probesAfterWrites !== undefined
+      ? { probesAfterWrites: args.run.probesAfterWrites }
+      : {}),
+  }
+  if (!policy.cacheable) return { hash: await keyOf(computeTaskHash(hashArgs)) }
+  const captured: TaskInputComponent[] = []
+  const { hash, described } = await keyOf(keyOrDescribe({ ...hashArgs, captureInto: captured }))
+  return described === undefined ? { hash } : { hash, pre: { described, captured } }
 }
 
 /**
