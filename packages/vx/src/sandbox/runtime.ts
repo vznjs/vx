@@ -2847,6 +2847,7 @@ async function prepareAttempt(
   start: number,
 ): Promise<{ prepared: Prepared } | { result: AttemptResult }> {
   const trace = await traceFor(args.config.weakerWhenNested === true)
+  if (process.env['VX_TMP_DEBUG'] === '1') console.error('DBGTRACE', trace, JSON.stringify([...observerRefusedIn]), await observerState())
   const widened = widenedEntries(args.config.allowWrite)
   let wrap: Wrap
   try {

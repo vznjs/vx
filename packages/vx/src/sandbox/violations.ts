@@ -520,6 +520,7 @@ export async function parseStraceViolations(
   widened: ReadonlyMap<string, ReadonlySet<string>> = new Map(),
 ): Promise<SandboxViolation[]> {
   const text = typeof log === 'string' ? await Bun.file(log).text() : log.text
+  if (process.env['VX_TMP_DEBUG'] === '1') console.error('DBGTEXT', text.length, JSON.stringify(text.split('\n').filter((l) => l.includes('s.json')).slice(0, 6)))
   if (text.length === 0) return []
 
   // Treat every baseAllow + sandbox.allowRead + allowWrite path as "this
@@ -593,6 +594,7 @@ export async function parseStraceViolations(
       : toRealPath(lexical)
     // Only report paths under the workspace-root deny anchor — system
     // libs / /proc / /sys / etc. probes are not interesting violations.
+    if (process.env['VX_TMP_DEBUG'] === '1' && rawPath.includes('s.json')) console.error('DBGPRE', JSON.stringify({ syscall, rawPath, dir, errno, lexical, abs, denyAnchors }))
     if (!denyAnchors.some((root) => atOrUnder(abs, root))) continue
     // Skip paths the user explicitly allowed (and their descendants).
     const via = lexical === abs ? undefined : hiddenLink(lexical, abs, mounted, denyAnchors)
