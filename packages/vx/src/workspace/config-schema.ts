@@ -785,6 +785,7 @@ function validateExec(exec: unknown, where: string, cache: unknown): void {
   if (command.includes('\0')) {
     throw new UserError(`${where}.exec.command holds a NUL, which no command line can carry`)
   }
+  assertUtf8(command, `${where}.exec.command`)
   const timeout = (exec as { timeout?: unknown }).timeout
   if (timeout !== undefined) {
     validateSettingValue(timeout, 'run.timeout', `${where}.exec.timeout`)
@@ -902,6 +903,7 @@ function validateExecEnv(env: unknown, where: string): void {
       if (typeof val !== 'string' || val.includes('\0')) {
         throw new UserError(`${where}.exec.env.define.${k} must be a string with no NUL`)
       }
+      assertUtf8(val, `${where}.exec.env.define.${k}`)
     }
   }
 }
@@ -1102,6 +1104,7 @@ function validateInputs(inputs: unknown, task: TaskConfig, where: string): void 
           `${where}.inputs.${field} must be an array of non-empty shell command strings with no NUL`,
         )
       }
+      for (const s of list as string[]) assertUtf8(s, `${where}.inputs.${field}`)
     }
   }
   // workspaceFiles mirror the files validation: non-empty strings,
@@ -1866,6 +1869,18 @@ function assertShellName(name: string, field: string): void {
   if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
     throw new UserError(
       `${field}: ${JSON.stringify(name)} is not a shell variable name ([A-Za-z_][A-Za-z0-9_]*); sh would drop it before the task runs`,
+    )
+  }
+}
+
+/**
+ * A lone surrogate has no UTF-8 form: the spawn wrote U+FFFD in its place,
+ * so the task ran other bytes than its config, and its key, said.
+ */
+function assertUtf8(text: string, field: string): void {
+  if (!(text as string & { isWellFormed(): boolean }).isWellFormed()) {
+    throw new UserError(
+      `${field} holds a lone surrogate, which UTF-8 cannot carry: the task would run U+FFFD in its place`,
     )
   }
 }
