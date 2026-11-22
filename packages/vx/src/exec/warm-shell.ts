@@ -12,7 +12,7 @@ import { closeSync, writeSync } from 'node:fs'
 import { taskShell } from '../util/index.js'
 import { flushGuard, listGroup } from './kill-tree.js'
 import { heldPipe, TaskPipes } from './pipes.js'
-import { measureHelperNow } from './measure-helper.js'
+import { measureHelper, measureHelperNow } from './measure-helper.js'
 import { type OffChild, spawnOff } from './spawn-off.js'
 
 /** A shell waiting for its task's script on descriptor 3. */
@@ -98,6 +98,23 @@ function refill(): void {
  */
 export function primeSpares(n: number): void {
   pool = Math.max(pool, n)
+}
+
+let warming = false
+
+/**
+ * Start the spares now, before any task asks: called at a run's first cache
+ * miss, a task that will spawn. The first wave of a cold run waited ~15 ms
+ * each for the helper to start and fork its spare (500 site-shape tasks);
+ * the miss comes before the task's input description and output clean.
+ */
+export function warmSpares(): void {
+  if (warming) return
+  warming = true
+  // The spares fork in the helper once its path is known (`measureHelperNow`).
+  void measureHelper().then(() => {
+    if (spares.length === 0) topUp()
+  })
 }
 
 function topUp(): void {

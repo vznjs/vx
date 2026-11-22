@@ -18,7 +18,7 @@ import {
   FULL_CACHE_POLICY,
   type TaskInputComponent,
 } from '../cache/index.js'
-import { signalExitCode } from '../exec/index.js'
+import { signalExitCode, warmSpares } from '../exec/index.js'
 import { RestoreDemoted, RestoreFailed, type TaskOutcome } from '../graph/index.js'
 import { span } from '../util/index.js'
 import { warnOf } from '../report/index.js'
@@ -38,6 +38,7 @@ import { getContext } from './remote-prefetch.js'
 import { forwardedSignal } from './signals.js'
 import { computeTaskHash, keyOf, keyOrDescribe } from './task-hash.js'
 import { type TaskPolicy, taskPolicy } from './task-policy.js'
+import { isLocalExecutor } from './local-executor.js'
 import { isAborted, taskEnv } from './task-process.js'
 import { applySave, saveVerdict } from './task-save.js'
 import { stampUndeclaredState } from './undeclared-state.js'
@@ -124,6 +125,8 @@ export async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome>
 
   const hit = await probe(args, policy, hash, taskStartNs, got)
   if (hit !== null) return hit
+  // It will spawn: the first such task starts the spare shells.
+  if (isLocalExecutor(args.executor) && node.config.exec?.sandbox === undefined) warmSpares()
 
   const env = taskEnv(node, policy.exec, args.run.workspaceRoot)
   const wallclockStartNs = process.hrtime.bigint() - args.run.runStartHrTimeNs

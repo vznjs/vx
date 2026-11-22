@@ -211,9 +211,11 @@ held to its start; at the exit, `end` lets everything go; and an
   spawned fresh, 2.7 ms on a spare. A run keeps one per slot its first
   tasks fill (`primeSpares`; at least four: with two, 1 task in 12 cold
   waited for one), refilled once the turn that took one is done, so the
-  taken spare gets its script first. An empty pool starts its spares when
-  a task asks for one, so a run that spawns nothing (a warm one) starts
-  no shell. Four let each wave of tasks ending together spawn fresh: 500
+  taken spare gets its script first. The pool starts at the run's first
+  cache miss of a local task (`warmSpares`), while that task's inputs
+  are described and its outputs cleared: the first wave of a cold run
+  waited ~15 ms each for the helper to start and fork. A run with no
+  miss (a warm one) starts no shell. Four let each wave of tasks ending together spawn fresh: 500
   site-shape tasks at 10 slots, 0.4 -> 0.26 ms a task before its spawn. Each waits on
   its own pipes, with no directory or env of a task, blocked reading
   descriptor 3. The task's script, written when one is taken, closes
