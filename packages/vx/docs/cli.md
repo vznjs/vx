@@ -465,9 +465,15 @@ What counts as a change:
   beside one), so `vx lock` never marks a project affected by itself. So
   is the `.vx/.gitignore` `vx init` writes.
   `.vx/projects.lock` counts entry by entry when the base has
-  one: a project whose locked config, name or edges changed is
-  selected whole (a run reads them from there; the lock is the reason
-  shown), and `vx lock` rewriting the same entries selects nothing.
+  one: a project whose name, edges, project-level fields or set of
+  tasks changed is selected whole (a run reads them from there; the
+  lock is the reason shown), and `vx lock` rewriting the same entries
+  selects nothing. When only some tasks' locked configs moved, a config
+  edit (or an edit to a file the config imports) selects those tasks
+  alone, with the config as the `input` shown: changing `build`'s command
+  no longer re-runs `test` (`affected-config-tasks.test.ts`). An edit
+  that moves no locked task (a comment) selects none of its tasks with
+  `inputs` (one without reads its whole project, the config too).
 
 **A lockfile change selects what its plugin says.** Core keys no
 lockfile and no install setting: without a lockfile plugin, the root

@@ -53,9 +53,13 @@ function wholeProjects(
     )
     const links = changes.dirLinksIn?.get(name)
     const loose = changes.untrackedIn?.get(name)
+    // The lock said which tasks a config edit moved (`configTasks`).
+    const perTaskConfig = changes.configTasks?.has(name) === true
     const unclaimed = (rel: string): boolean =>
-      KEYED_BY_EVERY_TASK.has(rel) ||
-      (!byKeys && !keyed.some((t) => declaresInput(t, rel, null, links?.has(rel), loose?.has(rel))))
+      KEYED_BY_EVERY_TASK.has(rel)
+        ? !perTaskConfig
+        : !byKeys &&
+          !keyed.some((t) => declaresInput(t, rel, null, links?.has(rel), loose?.has(rel)))
     const rel = rels.find(unclaimed)
     if (rel !== undefined) whole.set(name, rel)
   }
@@ -175,6 +179,18 @@ export function affectedRoots(
     }
     if (!changes.projects.has(n.projectName)) return false
     const rels = changes.paths.get(n.projectName) ?? []
+    if (changes.configTasks?.get(n.projectName)?.has(n.taskName) === true) {
+      if (seeds !== null) {
+        const config = rels.find((r) => KEYED_BY_EVERY_TASK.has(r))
+        seeds.set(
+          n.id,
+          config === undefined
+            ? inProject(n.projectName, undefined)
+            : { ...inProject(n.projectName, config), kind: 'input' },
+        )
+      }
+      return true
+    }
     // An unkeyed group runs nothing. A task with no inputs may read anything
     // in its project: a root file another task of it declares
     // (`workspaceFiles`) is no change there.

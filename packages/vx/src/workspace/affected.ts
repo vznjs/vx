@@ -235,6 +235,12 @@ export interface AffectedChanges {
   untrackedIn?: ReadonlyMap<string, ReadonlySet<string>>
   /** Those changed paths, workspace-relative: `declaresInput`'s `untracked`. */
   untracked?: ReadonlySet<string>
+  /**
+   * Per project, the tasks whose locked config moved (`.vx/projects.lock` at
+   * the base against now) when nothing else in its entry did: its config
+   * file's edit reaches these tasks alone, none when the set is empty.
+   */
+  configTasks?: ReadonlyMap<string, ReadonlySet<string>>
 }
 
 /** `<base>...HEAD` / `<base>..HEAD`: the base alone, read as `affectedChanges` reads it. */
@@ -284,7 +290,7 @@ export async function affectedChanges(
   }
   const owners = await pathOwners(args, diff, claimedOwned, perTask)
   if (typeof owners === 'string') return everything(owners)
-  const { owned, whole, paths, dirLinksIn, untrackedIn, untrackedSet } = owners
+  const { owned, whole, paths, dirLinksIn, untrackedIn, untrackedSet, configTasks } = owners
 
   // A project whose config imports a changed file: resolved-config hashing
   // folds it, so selection must too. Asked of every changed path, since a
@@ -306,7 +312,8 @@ export async function affectedChanges(
     }
     for (const name of imports.owners) {
       owned.add(name)
-      whole.add(name)
+      // A run reads the config from the lock: its diff said which tasks moved.
+      if (!configTasks.has(name)) whole.add(name)
     }
   }
 
@@ -322,6 +329,7 @@ export async function affectedChanges(
     ...(dirLinks.size > 0 ? { dirLinks, dirLinksIn } : {}),
     ...(untrackedIn.size > 0 ? { untrackedIn } : {}),
     ...(untrackedSet.size > 0 ? { untracked: untrackedSet } : {}),
+    ...(configTasks.size > 0 ? { configTasks } : {}),
   })
   if (changed.length === 0 || args.workspaceGlobOwners === undefined) return done()
   const globOwners = await args.workspaceGlobOwners(changed, nestedDirs, dirLinks, untrackedSet)
@@ -761,7 +769,17 @@ async function pathOwners(
   // name, a `discover` edge). The lock is the reason only when no closer file
   // is.
   const lockMoved: string[] = []
-  if (diffed.paths.includes(LOCKFILE_NAME) || untracked.includes(LOCKFILE_NAME)) {
+  // Per project, the tasks whose locked config moved when nothing else in its
+  // entry did: a config edit then reaches those tasks, not the whole project
+  // (one task's command edited re-ran every sibling).
+  const configTasks = new Map<string, Set<string>>()
+  const configEdited = (name: string): boolean =>
+    perTask && (paths.get(name) ?? []).some((rel) => CONFIG_NAMES.has(rel))
+  const lockChanged = diffed.paths.includes(LOCKFILE_NAME) || untracked.includes(LOCKFILE_NAME)
+  if (!lockChanged) {
+    // The lock is what a run reads: an edit it did not move re-keys nothing.
+    for (const p of projects) if (configEdited(p.name)) configTasks.set(p.name, new Set())
+  } else {
     // A side with no lock (or one that will not parse) ran nothing from
     // it: the paths of the configs say what changed, as before the lock.
     const before = lockEntries(await gitBytesAt(args.workspaceRoot, base, LOCKFILE_NAME))
@@ -772,8 +790,18 @@ async function pathOwners(
       (Object.hasOwn(before, dir) === Object.hasOwn(after, dir) &&
         JSON.stringify(before[dir]) === JSON.stringify(after[dir]))
     for (const p of projects) {
-      if (same(lockKey(rootDir, p.dir))) continue
+      const key = lockKey(rootDir, p.dir)
+      if (same(key)) {
+        if (before !== null && after !== null && configEdited(p.name))
+          configTasks.set(p.name, new Set())
+        continue
+      }
+      const moved = perTask ? movedTasks(before![key], after![key]) : undefined
       owned.add(p.name)
+      if (moved !== undefined) {
+        configTasks.set(p.name, moved)
+        continue
+      }
       whole.add(p.name)
       lockMoved.push(p.name)
     }
@@ -840,7 +868,31 @@ async function pathOwners(
   for (const name of lockMoved) if (!claimedOwned.has(name)) claimedOwned.set(name, LOCKFILE_NAME)
   for (const name of edgesMoved)
     if (!claimedOwned.has(name)) claimedOwned.set(name, DEPENDENCIES_LOCK_NAME)
-  return { owned, whole, paths, dirLinksIn, untrackedIn, untrackedSet }
+  return { owned, whole, paths, dirLinksIn, untrackedIn, untrackedSet, configTasks }
+}
+
+/**
+ * The task names whose entry differs between two lock entries of one project,
+ * or undefined when anything else in it did (a project-level field, a task
+ * added or removed, the entry new or gone): that reaches the whole project.
+ */
+function movedTasks(before: unknown, after: unknown): Set<string> | undefined {
+  const split = (e: unknown) => {
+    if (typeof e !== 'object' || e === null) return undefined
+    const { config, ...rest } = e as { config?: { tasks?: Record<string, unknown> } }
+    const { tasks = {}, ...fields } = config ?? {}
+    return { rest: JSON.stringify([rest, fields]), tasks }
+  }
+  const b = split(before)
+  const a = split(after)
+  if (b === undefined || a === undefined || b.rest !== a.rest) return undefined
+  const names = Object.keys(a.tasks)
+  if (
+    names.length !== Object.keys(b.tasks).length ||
+    !names.every((n) => Object.hasOwn(b.tasks, n))
+  )
+    return undefined
+  return new Set(names.filter((n) => JSON.stringify(a.tasks[n]) !== JSON.stringify(b.tasks[n])))
 }
 
 /** Git's attributes file: its eol and filter rules shape the bytes a checkout writes. */
