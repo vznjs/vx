@@ -772,6 +772,12 @@ function attachStore(
       } catch (err) {
         // A file whose directory went: SQLite cannot open its -wal there.
         const busy = (err as { code?: unknown }).code === 'SQLITE_BUSY'
+        // A reader holds no lock, so a clean elsewhere may delete the store
+        // between the look above and this attach: read it empty, as absent.
+        if (inspecting && !busy && !absent && !existsSync(storeFile)) {
+          absent = true
+          continue
+        }
         if (inspecting || busy || retried || remake(storeDir) !== null) throw err
         retried = true
         continue
