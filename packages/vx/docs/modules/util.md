@@ -248,7 +248,12 @@ held to its start; at the exit, `end` lets everything go; and an
   start, declines (a missing directory: the spawn's own ENOENT) or a send
   waits past a second, the thread spawns as before; if it dies, the
   shells it forked are killed (their exit is lost) and the rest spawn as
-  before. Design and numbers: `docs/design/peak-memory-exact-2026-11.md`.
+  before. Before vx exits it closes the socket and reaps the helper (at
+  most 1 s, `beforeExit`): its usage then joins vx's children's, with
+  every shell it waited for. Left to die after vx, it went to init, and
+  a run's CPU read without its tasks' (the bench's cold vx, 19.9 s for
+  9,603 tasks, under the bare commands' own 21.6 s). Design and numbers:
+  `docs/design/peak-memory-exact-2026-11.md`.
 - **`exec`:** a plain `word args…` command runs as `exec word args…`, so
   the program replaces the shell. A shell builtin keeps the shell (each
   one bash's `compgen -b` lists, bash-only `pushd` among them), and so

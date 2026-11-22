@@ -16,6 +16,8 @@
 
 import type { ResourceUsage } from 'bun'
 
+import { beforeExit } from '../util/index.js'
+
 /** What `runCommand` reads of a child spawned here. */
 export interface OffChild {
   readonly pid: number
@@ -111,7 +113,7 @@ function zygote(path) {
   // waits longer than a second (SO_SNDTIMEO) is a refusal.
   c.setsockopt(sv[0], 1, 7, c.ptr(new Int32Array([4 << 20])), 4)
   c.setsockopt(sv[0], 1, 21, c.ptr(new BigInt64Array([1n, 0n])), 16)
-  z = { dead: false, up: false, sock: sv[0] }
+  z = { dead: false, up: false, sock: sv[0], proc }
   // Its death is the pipe's end, once every record it wrote is read.
   void read(pw[0])
   return z
@@ -180,7 +182,8 @@ function told(v, at) {
 function ended() {
   if (z === undefined || z.dead) return
   z.dead = true
-  try { closeSync(z.sock) } catch {}
+  if (z.sock >= 0) closeSync(z.sock)
+  z.sock = -1
   for (const [id, m] of asked) {
     asked.delete(id)
     if (!z.up) spawn(m)
@@ -275,6 +278,18 @@ function spawn(m) {
 
 self.onmessage = (e) => {
   const m = e.data
+  if (m.close) {
+    // The verb is done: the socket's end ends the helper, and its exit, once
+    // reaped here, brings the CPU of every shell it waited for into vx's own
+    // children's usage. Left to die after vx, it went to init uncounted.
+    if (z?.sock >= 0) {
+      closeSync(z.sock)
+      z.sock = -1
+    }
+    if (z?.proc === undefined) postMessage({ closed: true })
+    else z.proc.exited.then(() => postMessage({ closed: true }))
+    return
+  }
   if (m.kill !== undefined) {
     const pid = forked.get(m.kill)
     if (pid === undefined) { live.get(m.kill)?.kill(m.signal); return }
@@ -305,12 +320,33 @@ let worker: Worker | undefined
 let nextId = 0
 const pending = new Map<number, Pending>()
 let liveCount = 0
+let closed: (() => void) | undefined
+let closing = false
+
+/**
+ * Before vx exits, once a shell went through `vx-measure`: end the helper and
+ * wait (at most 1 s) for its reap, so a run's usage counts its tasks' CPU.
+ */
+function closeHelper(): Promise<void> {
+  const w = worker
+  if (w === undefined) return Promise.resolve()
+  return new Promise<void>((resolve) => {
+    const timer = setTimeout(resolve, 1000)
+    closed = () => {
+      clearTimeout(timer)
+      resolve()
+    }
+    w.ref()
+    w.postMessage({ close: true })
+  }).finally(() => worker?.unref())
+}
 
 function thread(): Worker {
   if (worker !== undefined) return worker
   const w = new Worker(URL.createObjectURL(new Blob([WORKER], { type: 'text/javascript' })))
   w.onmessage = (e: MessageEvent) => {
     const m = e.data
+    if (m.closed === true) return closed?.()
     const p = pending.get(m.id)
     if (p === undefined) return
     if (m.error !== undefined) {
@@ -344,6 +380,10 @@ function settleLive(delta: number): void {
 /** Spawn `opts` on the spawn thread; resolves once the child is running, rejects when the spawn threw. */
 export function spawnOff(opts: OffSpawn): Promise<OffChild> {
   const w = thread()
+  if (opts.measure !== undefined && !closing) {
+    closing = true
+    beforeExit(closeHelper)
+  }
   const id = nextId++
   let held = opts.held !== false
   // Every spawn holds the run until its reply: a caller awaiting a spare's

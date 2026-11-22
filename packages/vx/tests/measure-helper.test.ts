@@ -131,13 +131,14 @@ describe.skipIf(process.platform !== 'linux' || arch === undefined)('vx-measure'
   })
 
   // Each in a process of its own: the helper is one per process, and these end it.
-  async function inProcess(body: string): Promise<string> {
+  async function inProcess(body: string, usage?: (cpuMs: number) => void): Promise<string> {
     const file = path.join(tmp, `case-${Math.random().toString(36).slice(2)}.ts`)
     await writeFile(
       file,
       `import { closeSync, readSync } from 'node:fs'
 import { heldPipe } from ${JSON.stringify(path.join(import.meta.dir, '..', 'src', 'exec', 'pipes.ts'))}
 import { spawnOff } from ${JSON.stringify(path.join(import.meta.dir, '..', 'src', 'exec', 'spawn-off.ts'))}
+import { settleBeforeExit } from ${JSON.stringify(path.join(import.meta.dir, '..', 'src', 'util', 'index.ts'))}
 const helper = ${JSON.stringify(helper)}
 async function run(script, measure) {
   const [r, w] = heldPipe()
@@ -162,6 +163,7 @@ ${body}
       p.exited,
     ])
     expect({ exitCode: p.exitCode, err }).toEqual({ exitCode: 0, err: '' })
+    usage?.(Number(p.resourceUsage()!.cpuTime.total) / 1000)
     return out.trim()
   }
 
@@ -176,6 +178,27 @@ for (let i = 0; i < 200 && got === 0; i++) await Bun.sleep(10)
 console.log(JSON.stringify({ got, exitCode: child.exitCode }))
 `)
     expect(JSON.parse(out)).toEqual({ got: 1, exitCode: 0 })
+  })
+
+  it("a task's CPU counts in vx's own usage: vx reaps the helper before it exits", async () => {
+    // The helper waits for each shell, so their CPU joins its children's
+    // usage, and joins vx's only once vx waits for the helper. Left to die
+    // after vx, it went to init: the bench read vx's cold CPU as 19.9 s for
+    // 9,603 tasks, under the bare commands' own 21.6 s.
+    let vx = 0
+    const out = await inProcess(
+      `
+const { child, r } = await run('i=0; while [ $i -lt 300000 ]; do i=$((i+1)); done', helper)
+await child.exited
+drain(r)
+await settleBeforeExit()
+console.log(Number(child.resourceUsage().cpuTime.total) / 1000)
+`,
+      (cpuMs) => (vx = cpuMs),
+    )
+    const task = Number(out)
+    expect(task).toBeGreaterThan(100)
+    expect(vx).toBeGreaterThan(task)
   })
 
   it('a helper that cannot start leaves the spawn as it was', async () => {
