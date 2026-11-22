@@ -82,6 +82,9 @@ Every part, in order: [Caching in depth](../../caching/).
   the ones it does not hold, so `dist/` ends as the cache stored it. A
   hit that finds them already as stored writes nothing.
 - A restore writes only files the task's `outputs` declare.
+- Every declared output must be written. A pattern that matches no file
+  once the command exits 0 fails the task, and nothing is saved
+  ([fix](../../guides/troubleshooting/)).
 - A failed task is never saved.
 - `--force` runs everything and saves only what the cache lacks; `--no-cache` ignores it.
 

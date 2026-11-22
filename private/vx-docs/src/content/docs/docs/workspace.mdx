@@ -47,6 +47,15 @@ vx lock
 [38;2;34;197;94m✓[0m [1mvx lock[0m  2 project configs → .vx/projects.lock, .vx/dependencies.lock
 ```
 
+When a merge leaves a conflict in the lock, every run refuses it:
+
+```ansi
+[38;2;239;68;68m✗[0m [1mvx run[0m  .vx/projects.lock holds a line `vx lock` never writes — re-run `vx lock`
+```
+
+Resolve the `vx.config.ts` files, then run `vx lock`. It writes both
+locks from the merged configs.
+
 <Aside type="tip">
   On CI, `vx lock --check` fails a change that skipped it ([guide](../../guides/ci/check-the-lock/)).
 </Aside>
