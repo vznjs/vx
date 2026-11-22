@@ -20,17 +20,21 @@ import {
   UserError,
   type PluginOptionKinds,
 } from '@vzn/vx'
-import { deadline, MAX_TIMER_MS } from '../remote-deadline.js'
-import { checkRemoteUrl } from '../remote-url.js'
-import { hideTokens, hidingErrors, refusal } from '../remote-refusal.js'
-import { OutageBreaker } from '../remote-breaker.js'
-import { Cooldown, withRetry } from '../remote-retry.js'
 import {
+  checkRemoteUrl,
+  Cooldown,
+  deadline,
   headerValueFault,
+  hideTokens,
+  hidingErrors,
   type KeychainRemote,
   keychainToken,
+  MAX_TIMER_MS,
+  OutageBreaker,
+  refusal,
   remoteLabel,
-} from '../remote-token.js'
+  withRetry,
+} from '../remote-http.js'
 
 export interface NxCacheOptions {
   /** Base URL of the cache server, or `NX_SELF_HOSTED_REMOTE_CACHE_SERVER`. */
