@@ -15,11 +15,11 @@ const SCAN = { onlyFiles: false, followSymlinks: false, dot: true } as const
  * leaves. Each stops at its first match: `dist/**` costs one directory read,
  * not the walk the save does.
  */
-export async function missingOutputs(
+export function missingOutputs(
   base: string,
   globs: readonly string[],
   nestedDirs: readonly string[],
-): Promise<string[]> {
+): string[] {
   const { positive, negative } = splitNegations(globs)
   if (positive.length === 0) return []
   const takenBack = anyTaskGlob(negative)
@@ -29,15 +29,11 @@ export async function missingOutputs(
   const kept = (rel: string): boolean =>
     !takenBack(rel) && !nested.some((n) => rel === n || rel.startsWith(`${n}/`))
   const missing: string[] = []
-  for (const g of positive) if (!(await matchesAny(base, g, kept))) missing.push(g)
+  for (const g of positive) if (!matchesAny(base, g, kept)) missing.push(g)
   return missing
 }
 
-async function matchesAny(
-  base: string,
-  glob: string,
-  kept: (rel: string) => boolean,
-): Promise<boolean> {
+function matchesAny(base: string, glob: string, kept: (rel: string) => boolean): boolean {
   for (const tree of asTrees([glob])) {
     if (isLiteralPattern(tree)) {
       if (kept(tree) && exists(path.join(base, tree))) return true
@@ -51,8 +47,11 @@ async function matchesAny(
     // `dir/**` left empty matched nothing: the clean keeps the root, so an
     // empty one is no sign the command wrote. A literal `dir` is required
     // as itself, and the clean removes it.
+    // Synchronous: it stops at the first match, and the async scan's answer
+    // waited its turn on a busy run's loop with the task's slot held (1.1 ms
+    // a build on the bench's cold run, against 0.05 ms).
     try {
-      for await (const rel of taskGlob(tree).scan({ ...SCAN, cwd: base })) {
+      for (const rel of taskGlob(tree).scanSync({ ...SCAN, cwd: base })) {
         if (rel !== '' && kept(rel)) return true
       }
     } catch {

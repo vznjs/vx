@@ -269,8 +269,7 @@ async function classifyExit(
     // replayed forever. A genuinely killed child already reports 143.
     if (code === 0) code = signalExitCode('SIGTERM')
   }
-  if (code === 0 && args.run.stopSignal?.aborted !== true && (await outputsMissing(m, res)))
-    code = 1
+  if (code === 0 && args.run.stopSignal?.aborted !== true && outputsMissing(m, res)) code = 1
   // The shell's 127 and 126 name the word and nothing about why (the PATH
   // vx built, or a `#!` line the file carries), and an exit above 128 is a
   // signal's number and nothing about what sent it. One frame line names
@@ -355,7 +354,7 @@ function unseenResult(
  * warning, as the save's own output warnings are, not into the task's
  * stream: there it printed uncoloured, or red in a frame.
  */
-async function outputsMissing(m: MissRun, res: ExecuteResult): Promise<boolean> {
+function outputsMissing(m: MissRun, res: ExecuteResult): boolean {
   const { args, policy, secrets } = m
   const { node, log } = args
   if (policy.outputs.length + policy.wsOutputs.length === 0) return false
@@ -363,8 +362,8 @@ async function outputsMissing(m: MissRun, res: ExecuteResult): Promise<boolean> 
   if (args.executor.capabilities?.remote === true) return false
   const nested = args.outputNestedDirs ?? args.nestedProjectDirs
   const missing = [
-    ...(await missingOutputs(node.projectDir, policy.outputs, nested)),
-    ...(await missingOutputs(args.run.workspaceRoot, policy.wsOutputs, [])),
+    ...missingOutputs(node.projectDir, policy.outputs, nested),
+    ...missingOutputs(args.run.workspaceRoot, policy.wsOutputs, []),
   ]
   if (missing.length === 0) return false
   const cfg = node.config
