@@ -25,6 +25,7 @@ import {
   type PruneOptions,
   type PruneResult,
   type SaveArgs,
+  type TaskInputRow,
   type TaskMemo,
 } from './layer.js'
 import { LocalMemo, type RemoteHits, type StoreMemo } from '../memo/index.js'
@@ -414,7 +415,19 @@ export class Cache implements CacheLayer {
     return saving.readOnlyNotice(this.ix)
   }
 
-  async save(args: SaveArgs): Promise<void> {
+  async save(args: {
+    hash: string
+    /** See `CacheLayer.save` — `exitCode` is not a caller's to supply. */
+    entry: Omit<CacheEntry, 'hash' | 'storedAt' | 'outputFiles' | 'exitCode'>
+    projectDir: string
+    outputFiles: string[]
+    outputDirs?: string[]
+    workspaceOutputFiles?: string[]
+    workspaceOutputDirs?: string[]
+    workspaceRoot?: string
+    inputComponents?: readonly TaskInputRow[]
+    /** See `CacheLayer.save`. */
+  }): Promise<void> {
     return saving.save(this.ix, args)
   }
 
