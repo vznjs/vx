@@ -7,7 +7,7 @@
 
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
-import { env } from './env.ts'
+import { env, runMain } from './github.ts'
 import { releaseVersion } from './release.ts'
 
 const ROOT = path.resolve(import.meta.dir, '..', '..', '..')
@@ -100,11 +100,4 @@ async function main(): Promise<void> {
   }
 }
 
-if (import.meta.main) {
-  try {
-    await main()
-  } catch (e) {
-    console.error(`release-images: ${e instanceof Error ? e.message : String(e)}`)
-    process.exit(1)
-  }
-}
+if (import.meta.main) await runMain(main)
