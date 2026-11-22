@@ -23,6 +23,7 @@ import {
   Cache,
   type CachePolicy,
   cachesNothing,
+  deferRemovals,
   formatCachePolicy,
   holdCacheDir,
   networkConcurrency,
@@ -1618,6 +1619,8 @@ async function runOnBus(
       firstWave++
     }
     primeSpares(firstWave)
+    // A clear before a command renames into here and unlinks off the slot.
+    deferRemovals(path.join(workspaceRoot, '.vx', 'cache', 'trash'))
     const outcomes = await runGraph({
       nodes,
       concurrency,

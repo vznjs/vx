@@ -45,6 +45,7 @@ export {
   addedInput,
   type InputListing,
   cleanOutputs,
+  deferRemovals,
   committedFiles,
   cleanWorkspaceOutputs,
   declaresInput,

@@ -29,6 +29,7 @@ import {
   cleanOutputPaths,
   cleanOutputs,
   cleanWorkspaceOutputs,
+  deferRemovals,
   GitFilesCache,
   ownOutputsSince,
   populateGitFilesCache,
@@ -73,6 +74,36 @@ describe('cleanOutputs — strict output-ownership contract', () => {
 
     expect(existsSync(path.join(projectDir, 'dist', 'a.js'))).toBe(false)
     expect(existsSync(path.join(projectDir, 'dist', 'b.js'))).toBe(false)
+  })
+
+  it("before a command, a run's clear renames each output into the trash and unlinks it there", async () => {
+    // An unlink frees the file's blocks with the task's slot held; the
+    // rename is a name's change. The run empties the trash first, and
+    // until then a clear removes in place.
+    const trash = path.join(root, '.vx', 'cache', 'trash')
+    await write(path.join(trash, '1-0'), 'a killed run left this')
+    deferRemovals(trash)
+    let moved = false
+    for (let i = 0; i < 200 && !moved; i++) {
+      await write(path.join(projectDir, 'dist', 'a.js'), 'old build')
+      await cleanOutputs({
+        projectDir,
+        outputs: ['dist/**'],
+        nestedProjectDirs: [],
+        beforeRun: true,
+      })
+      expect(existsSync(path.join(projectDir, 'dist', 'a.js'))).toBe(false)
+      moved = existsSync(path.join(trash, '.gitignore'))
+      if (!moved) await Bun.sleep(5)
+    }
+    expect(moved).toBe(true)
+    let left = await readdir(trash)
+    for (let i = 0; i < 200 && left.length > 1; i++) {
+      await Bun.sleep(5)
+      left = await readdir(trash)
+    }
+    expect(left).toEqual(['.gitignore'])
+    expect(await readFile(path.join(trash, '.gitignore'), 'utf8')).toBe('*\n')
   })
 
   // Root removes anything, so the case skips there — unless VX_REQUIRE_NONROOT says CI
