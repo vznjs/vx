@@ -2374,18 +2374,15 @@ function buildTask(
         if (!neg) rels.set(rel, [atRoot ? 'workspaceFiles' : 'files', translated])
       }
     }
-    // Exclusions alone narrow every package file: core refuses a list with
-    // nothing to narrow, and that refusal failed the whole run. Every file is
-    // the widest reading, so it can cost a hit and never serve a stale one.
-    if (files.length > 0 && files.every((f) => typeof f === 'string' && f.startsWith('!'))) {
-      files.unshift('**/*')
-    }
     // Turbo keys the package's own package.json beside any explicit
     // `inputs` (PACKAGE_CONFIG_INPUTS, turborepo#1832), whatever the
     // negations: without it, an edit to its `exports` or `type` replayed
     // the old build. A vx `!` subtracts wherever it sits, so a negation
     // that matches it (`!**/*.json`, `!**`) is dropped: the key widens,
-    // which costs hits and never serves a stale one.
+    // which costs hits and never serves a stale one. Exclusions alone
+    // narrow nothing in Turbo (turbo 2.11.13 keys package.json alone), and
+    // package.json is the positive entry core needs beside them: widened to
+    // every package file, an edit Turbo ignores was a miss.
     const pkgJson = (g: string) => new Bun.Glob(g).match('package.json')
     for (let n = files.length - 1; n >= 0; n--) {
       const g = files[n]

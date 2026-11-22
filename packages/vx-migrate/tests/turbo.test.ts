@@ -843,9 +843,10 @@ describe("the package's package.json with explicit inputs", () => {
           ['src/**', '!**/*.md'],
           ['src/**', '!**/*.md', 'package.json'],
         ],
-        [['!**'], ['**/*']],
-        [['!**/*.json'], ['**/*']],
-        [['!**/*.md'], ['**/*', '!**/*.md']],
+        // Exclusions alone narrow nothing: Turbo keys package.json alone.
+        [['!**'], ['package.json']],
+        [['!**/*.json'], ['package.json']],
+        [['!**/*.md'], ['!**/*.md', 'package.json']],
       ]
       for (const [given, mapped] of cases) {
         await writeFile(

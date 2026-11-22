@@ -609,17 +609,19 @@ export async function runCmd(
   args: readonly string[],
   invocation?: readonly string[],
 ): Promise<number> {
+  // `vx pipeline pr` refuses as itself, not as the `vx run` it stands for.
+  const verb = invocation?.[1] ?? 'run'
   const parsed = parseRunArgs(args)
   if (parsed.error) {
-    return refuse('run', args, `${parsed.error}${seeHelp('run')}`, 'VX_E_USAGE')
+    return refuse(verb, args, `${parsed.error}${seeHelp('run')}`, 'VX_E_USAGE')
   }
 
   const cwd = process.cwd()
   const unknownTask = async (message: string): Promise<number> =>
-    refuse('run', args, `${message}${await spacedHint(parsed, cwd)}`, 'VX_E_UNKNOWN_TASK')
+    refuse(verb, args, `${message}${await spacedHint(parsed, cwd)}`, 'VX_E_UNKNOWN_TASK')
   if (parsed.profile !== undefined) {
     const problem = profileProblem(cwd, parsed.profile)
-    if (problem !== undefined) return refuse('run', args, problem, 'VX_E_USAGE')
+    if (problem !== undefined) return refuse(verb, args, problem, 'VX_E_USAGE')
   }
   let tasks = [...parsed.tasks]
   let picked: string | undefined
@@ -645,7 +647,7 @@ export async function runCmd(
     const forProgram = parsed.dry === 'json'
     if (!process.stdin.isTTY || forProgram) {
       const scoped = await selection()
-      if ('error' in scoped) return refuse('run', args, scoped.error, scoped.code ?? 'VX_E_USAGE')
+      if ('error' in scoped) return refuse(verb, args, scoped.error, scoped.code ?? 'VX_E_USAGE')
       const asked =
         'empty' in scoped ? undefined : (scoped.only ?? (parsed.all ? 'all' : undefined))
       const here = 'empty' in scoped ? null : await taskNamesHere(cwd, asked)
@@ -664,7 +666,7 @@ export async function runCmd(
           ? ((await taskNamesHere(cwd, 'all'))?.names.length ?? 0)
           : 0) === 0
       ) {
-        return refuse('run', args, NO_TASKS_DECLARED, 'VX_E_USAGE')
+        return refuse(verb, args, NO_TASKS_DECLARED, 'VX_E_USAGE')
       }
       // Outside a project a bare name is refused without --all: the list
       // said "tasks here", and `vx run build` then said "not inside a project".
@@ -690,13 +692,13 @@ export async function runCmd(
     // Every run needs git: refused here, not after the user has chosen.
     const refusal = gitRefusal(await findWorkspaceRoot(cwd))
     if (refusal !== undefined) {
-      sayLine('error', refusal.message, 'vx run')
+      sayLine('error', refusal.message, `vx ${verb}`)
       return 1
     }
     const scoped = await selection()
-    if ('error' in scoped) return refuse('run', args, scoped.error, scoped.code ?? 'VX_E_USAGE')
+    if ('error' in scoped) return refuse(verb, args, scoped.error, scoped.code ?? 'VX_E_USAGE')
     if ('empty' in scoped) {
-      sayNotice('info', 'vx run', scoped.empty)
+      sayNotice('info', `vx ${verb}`, scoped.empty)
       return 0
     }
     const chosen = await pickTask(cwd, {}, load, scoped.only)
@@ -711,7 +713,7 @@ export async function runCmd(
   if ('error' in resolved)
     return resolved.code === 'VX_E_UNKNOWN_TASK'
       ? unknownTask(resolved.error)
-      : refuse('run', args, resolved.error, resolved.code ?? 'VX_E_USAGE')
+      : refuse(verb, args, resolved.error, resolved.code ?? 'VX_E_USAGE')
   // `--dry=json` prints a plan even when there is nothing to run: a script
   // reading stdout broke exactly then (Growth).
   const nothingToRun = (): 0 => {
@@ -719,7 +721,7 @@ export async function runCmd(
     return 0
   }
   if ('nothingSelected' in resolved) {
-    sayNotice('info', 'vx run', resolved.nothingSelected)
+    sayNotice('info', `vx ${verb}`, resolved.nothingSelected)
     return nothingToRun()
   }
   const opts = resolved
@@ -743,11 +745,11 @@ export async function runCmd(
       // The run's own line: a dry run that guessed from the scope alone said no
       // affected project declared a task one did.
       if (plan.noneAffected !== undefined) {
-        sayLine('info', plan.noneAffected, 'vx run')
+        sayLine('info', plan.noneAffected, `vx ${verb}`)
         return nothingToRun()
       }
       if (opts.handoff?.selectedByDiff === true) {
-        sayNotice('info', 'vx run', `no affected project declares task(s): ${tasks.join(', ')}`)
+        sayNotice('info', `vx ${verb}`, `no affected project declares task(s): ${tasks.join(', ')}`)
         return nothingToRun()
       }
       return unknownTask(`no projects declare task(s): ${tasks.join(', ')}`)
@@ -767,7 +769,7 @@ export async function runCmd(
   if (summary.refused !== undefined) {
     return summary.refused.startsWith('no projects declare')
       ? unknownTask(summary.refused)
-      : refuse('run', args, summary.refused, 'VX_E_REFUSED')
+      : refuse(verb, args, summary.refused, 'VX_E_REFUSED')
   }
   return summary.ok ? 0 : 1
 }

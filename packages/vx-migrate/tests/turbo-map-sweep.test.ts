@@ -116,13 +116,15 @@ describe('turbo-map: what the sweep found unheld', () => {
     expect(inputs).toEqual([{ files: ['**/*'] }, { files: ['src/**', 'package.json'], env: ['X'] }])
   })
 
-  // Item 936: `inputs: []` is Turbo's default (every package file), and
-  // an exclusion-only list narrows every file; the first keyed on nothing,
-  // the second failed the whole run. CONTROL: a list with a positive entry
-  // is left as it is.
+  // Item 936: `inputs: []` is Turbo's default (every package file); keyed
+  // on nothing, an edit replayed a stale build. An exclusion-only list is
+  // NOT the default: turbo 2.11.13 keys package.json alone, and vx keyed
+  // every package file, a miss on each edit Turbo ignores. CONTROL: a list
+  // with a positive entry is left as it is.
   it.each([
     [[], ['**/*']],
-    [['!**/*.md'], ['**/*', '!**/*.md']],
+    [['!**/*.md'], ['!**/*.md', 'package.json']],
+    [['!**'], ['package.json']],
     [
       ['src/**', '!**/*.md'],
       ['src/**', '!**/*.md', 'package.json'],
