@@ -39,14 +39,45 @@ const host = `${process.platform === 'darwin' ? 'darwin' : 'linux'}-${process.ar
 const out = path.join(root, 'dist', 'check-binary', `vx-${host}`)
 
 const text = (b: Uint8Array): string => new TextDecoder().decode(b)
+const fail = (message: string): never => {
+  process.stderr.write(`${message}\n`)
+  process.exit(1)
+}
+const spawn = (cmd: string[], cwd: string, env?: Record<string, string>) =>
+  Bun.spawnSync({ cmd, cwd, ...(env && { env }), stdout: 'pipe', stderr: 'pipe' })
 const run = (cmd: string[], label: string): void => {
-  const r = Bun.spawnSync({ cmd, cwd: root, stdout: 'pipe', stderr: 'pipe' })
-  if (r.exitCode !== 0) {
-    process.stderr.write(
-      `${label} failed (exit ${r.exitCode}):\n${text(r.stdout)}${text(r.stderr)}`,
-    )
-    process.exit(1)
+  const r = spawn(cmd, root)
+  if (r.exitCode !== 0)
+    fail(`${label} failed (exit ${r.exitCode}):\n${text(r.stdout)}${text(r.stderr)}`)
+}
+
+/**
+ * A throwaway workspace of `files` (relative path → text). Outside the
+ * repo: under dist/, discovery would find this repo's own workspace above it.
+ */
+function workspace(prefix: string, files: Record<string, string>): string {
+  const dir = mkdtempSync(path.join(os.tmpdir(), `vx-check-${prefix}-`))
+  for (const [rel, body] of Object.entries(files)) {
+    mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true })
+    writeFileSync(path.join(dir, rel), body)
   }
+  return dir
+}
+// One package `a`, its config given.
+const oneProject = (config: string): Record<string, string> => ({
+  'package.json': JSON.stringify({ name: 'ws', private: true, workspaces: ['packages/*'] }),
+  '.vx/workspace.mjs': 'export default {}\n',
+  'packages/a/package.json': JSON.stringify({ name: 'a' }),
+  'packages/a/vx.config.mjs': config,
+})
+// A host config that signs commits (an SSH signer such as 1Password's)
+// reaches a service the sandbox refuses; a fixture needs git's defaults.
+const git = (cwd: string, ...args: string[]): void => {
+  Bun.spawnSync({
+    cmd: ['git', '-c', 'user.email=ci@vx', '-c', 'user.name=ci', ...args],
+    cwd,
+    env: { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1' },
+  })
 }
 
 // This task's own sandbox, where one is required: on Linux its tracer is
@@ -72,10 +103,9 @@ if (
     at = stat.slice(stat.lastIndexOf(')') + 2).split(' ')[1] ?? '0'
   }
   if (!chain.some((comm) => comm.startsWith('vx-observe'))) {
-    process.stderr.write(
-      `this task's sandbox is not under vx's observer: its ancestors are ${chain.join(' < ') || 'unreadable'}\n`,
+    fail(
+      `this task's sandbox is not under vx's observer: its ancestors are ${chain.join(' < ') || 'unreadable'}`,
     )
-    process.exit(1)
   }
   console.log(
     `this task's sandbox reports through ${chain.find((comm) => comm.startsWith('vx-observe'))}`,
@@ -103,59 +133,35 @@ run(
 
 const want = `vx ${((await Bun.file(path.join(root, 'package.json')).json()) as { version: string }).version}`
 const got = launchVersion(out)
-// Painted when the env forces colour; the words are what is checked.
-const version = Bun.stripANSI(got.version)
-if (got.exitCode !== 0 || version !== want) {
-  process.stderr.write(
-    `binary reports ${JSON.stringify(version)} (exit ${got.exitCode}), expected ${JSON.stringify(want)}\n${got.stderr}`,
+if (got.exitCode !== 0 || got.version !== want) {
+  fail(
+    `binary reports ${JSON.stringify(got.version)} (exit ${got.exitCode}), expected ${JSON.stringify(want)}\n${got.stderr}`,
   )
-  process.exit(1)
 }
-console.log(`${path.relative(root, out)} reports ${version}`)
+console.log(`${path.relative(root, out)} reports ${got.version}`)
 
-// Outside the repo: under dist/, discovery would find this repo's own
-// workspace above it.
-const ws = mkdtempSync(path.join(os.tmpdir(), 'vx-check-binary-'))
-mkdirSync(path.join(ws, 'packages', 'a'), { recursive: true })
-writeFileSync(
-  path.join(ws, 'package.json'),
-  JSON.stringify({ name: 'ws', private: true, workspaces: ['packages/*'] }),
-)
-mkdirSync(path.join(ws, '.vx'), { recursive: true })
-writeFileSync(path.join(ws, '.vx/workspace.mjs'), 'export default {}\n')
-writeFileSync(path.join(ws, 'packages', 'a', 'package.json'), JSON.stringify({ name: 'a' }))
-writeFileSync(
-  path.join(ws, 'packages', 'a', 'vx.config.mjs'),
-  `export default {
-  tasks: { build: { exec: { command: 'true' }, description: () => 'x' } },
-}
-`,
-)
 // `vx lock --check` evaluates the config twice in one process: the graph
 // check's first load in process, then the audit's repeat load in the
 // worker. A worker that let the function through would report drift.
-writeFileSync(
-  path.join(ws, '.vx/projects.lock'),
-  JSON.stringify({
+const ws = workspace('binary', {
+  ...oneProject(`export default {
+  tasks: { build: { exec: { command: 'true' }, description: () => 'x' } },
+}
+`),
+  '.vx/projects.lock': JSON.stringify({
     version: LOCKFILE_VERSION,
     projects: { 'packages/a': { file: 'vx.config.mjs', config: { tasks: {} } } },
   }),
-)
-const check = Bun.spawnSync({
-  cmd: [out, 'lock', '--check'],
-  cwd: ws,
-  stdout: 'pipe',
-  stderr: 'pipe',
 })
+const check = spawn([out, 'lock', '--check'], ws)
 const refusal =
   'tasks.build.description is a function — a config must be JSON data, because the cache key is built from its JSON'
 const said = text(check.stderr)
 rmSync(ws, { recursive: true, force: true })
 if (check.exitCode === 0 || !said.includes(refusal) || said.includes('evaluates differently')) {
-  process.stderr.write(
-    `binary's config worker: \`vx lock --check\` said ${JSON.stringify(said)} (exit ${check.exitCode}), expected the refusal ${JSON.stringify(refusal)}\n`,
+  fail(
+    `binary's config worker: \`vx lock --check\` said ${JSON.stringify(said)} (exit ${check.exitCode}), expected the refusal ${JSON.stringify(refusal)}`,
   )
-  process.exit(1)
 }
 console.log(`${path.relative(root, out)} refuses a non-JSON config in its config worker`)
 
@@ -164,41 +170,26 @@ console.log(`${path.relative(root, out)} refuses a non-JSON config in its config
 // with --no-compile-autoload-dotenv, and a task's passThrough then saw a
 // value no shell had set (item 1089). A workspace with a `.env` that sets
 // the name a task passes through: the task must see it unset.
-const dotenv = mkdtempSync(path.join(os.tmpdir(), 'vx-check-dotenv-'))
-mkdirSync(path.join(dotenv, 'packages', 'a'), { recursive: true })
-writeFileSync(
-  path.join(dotenv, 'package.json'),
-  JSON.stringify({ name: 'ws', private: true, workspaces: ['packages/*'] }),
-)
-mkdirSync(path.join(dotenv, '.vx'), { recursive: true })
-writeFileSync(path.join(dotenv, '.vx/workspace.mjs'), 'export default {}\n')
-writeFileSync(path.join(dotenv, 'packages', 'a', 'package.json'), JSON.stringify({ name: 'a' }))
-writeFileSync(
-  path.join(dotenv, 'packages', 'a', 'vx.config.mjs'),
-  `export default { name: 'a', tasks: { probe: { exec: { command: 'echo "probe=\${VX_DOTENV_PROBE-unset}"', env: { passThrough: ['VX_DOTENV_PROBE'] } } } } }\n`,
-)
-writeFileSync(path.join(dotenv, '.env'), 'VX_DOTENV_PROBE=from-dotenv\n')
-Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: dotenv })
+const dotenv = workspace('dotenv', {
+  ...oneProject(
+    `export default { name: 'a', tasks: { probe: { exec: { command: 'echo "probe=\${VX_DOTENV_PROBE-unset}"', env: { passThrough: ['VX_DOTENV_PROBE'] } } } } }\n`,
+  ),
+  '.env': 'VX_DOTENV_PROBE=from-dotenv\n',
+})
+git(dotenv, 'init', '-q')
 const env: Record<string, string> = {}
 for (const [k, v] of Object.entries(process.env)) {
   if (k !== 'VX_DOTENV_PROBE' && v !== undefined) env[k] = v
 }
 // A run reads only the lock. Full logs: on CI they default to errors-only.
-Bun.spawnSync({ cmd: [out, 'lock'], cwd: dotenv, env, stdout: 'pipe', stderr: 'pipe' })
-const probe = Bun.spawnSync({
-  cmd: [out, 'run', 'a#probe', '--output-logs=full'],
-  cwd: dotenv,
-  env,
-  stdout: 'pipe',
-  stderr: 'pipe',
-})
+spawn([out, 'lock'], dotenv, env)
+const probe = spawn([out, 'run', 'a#probe', '--output-logs=full'], dotenv, env)
 rmSync(dotenv, { recursive: true, force: true })
 const probed = /^probe=(\S+)$/m.exec(text(probe.stdout) + text(probe.stderr))?.[1]
 if (probe.exitCode !== 0 || probed !== 'unset') {
-  process.stderr.write(
+  fail(
     `binary loaded the workspace's .env: its task saw VX_DOTENV_PROBE=${probed} (exit ${probe.exitCode}), expected unset\n${text(probe.stdout)}${text(probe.stderr)}`,
   )
-  process.exit(1)
 }
 console.log(`${path.relative(root, out)} leaves a workspace .env out of its environment`)
 
@@ -208,57 +199,34 @@ console.log(`${path.relative(root, out)} leaves a workspace .env out of its envi
 // `cannot find '@grpc/grpc-js'` (`main: build/src/index.js`, #1891). A
 // config that imports a scoped package whose `main` is nested, and one
 // whose `exports` is: the task must print both values.
-const resolve = mkdtempSync(path.join(os.tmpdir(), 'vx-check-resolve-'))
-const pkgDir = (name: string): string => path.join(resolve, 'node_modules', '@fixture', name)
-mkdirSync(path.join(pkgDir('main'), 'lib'), { recursive: true })
-mkdirSync(path.join(pkgDir('exports'), 'lib'), { recursive: true })
-mkdirSync(path.join(resolve, 'packages', 'a'), { recursive: true })
-writeFileSync(
-  path.join(pkgDir('main'), 'package.json'),
-  JSON.stringify({ name: '@fixture/main', main: 'lib/x.js' }),
-)
-writeFileSync(path.join(pkgDir('main'), 'lib', 'x.js'), "module.exports = { m: 'via-main' }\n")
-writeFileSync(
-  path.join(pkgDir('exports'), 'package.json'),
-  JSON.stringify({ name: '@fixture/exports', type: 'module', exports: { '.': './lib/e.js' } }),
-)
-writeFileSync(path.join(pkgDir('exports'), 'lib', 'e.js'), "export const e = 'via-exports'\n")
-writeFileSync(
-  path.join(resolve, 'package.json'),
-  JSON.stringify({ name: 'ws', private: true, workspaces: ['packages/*'] }),
-)
-mkdirSync(path.join(resolve, '.vx'), { recursive: true })
-writeFileSync(path.join(resolve, '.vx/workspace.mjs'), 'export default {}\n')
-writeFileSync(path.join(resolve, 'packages', 'a', 'package.json'), JSON.stringify({ name: 'a' }))
-writeFileSync(
-  path.join(resolve, 'packages', 'a', 'vx.config.mjs'),
-  `import { m } from '@fixture/main'
+const resolve = workspace('resolve', {
+  ...oneProject(`import { m } from '@fixture/main'
 import { e } from '@fixture/exports'
 export default { name: 'a', tasks: { probe: { exec: { command: \`echo "resolved=\${m},\${e}"\` } } } }
-`,
-)
-Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: resolve })
+`),
+  'node_modules/@fixture/main/package.json': JSON.stringify({
+    name: '@fixture/main',
+    main: 'lib/x.js',
+  }),
+  'node_modules/@fixture/main/lib/x.js': "module.exports = { m: 'via-main' }\n",
+  'node_modules/@fixture/exports/package.json': JSON.stringify({
+    name: '@fixture/exports',
+    type: 'module',
+    exports: { '.': './lib/e.js' },
+  }),
+  'node_modules/@fixture/exports/lib/e.js': "export const e = 'via-exports'\n",
+})
+git(resolve, 'init', '-q')
 // `vx lock` evaluates the config, so it is the import that must resolve.
-const resolveLock = Bun.spawnSync({
-  cmd: [out, 'lock'],
-  cwd: resolve,
-  stdout: 'pipe',
-  stderr: 'pipe',
-})
-const resolved = Bun.spawnSync({
-  cmd: [out, 'run', 'a#probe', '--output-logs=full'],
-  cwd: resolve,
-  stdout: 'pipe',
-  stderr: 'pipe',
-})
+const resolveLock = spawn([out, 'lock'], resolve)
+const resolved = spawn([out, 'run', 'a#probe', '--output-logs=full'], resolve)
 rmSync(resolve, { recursive: true, force: true })
 const resolvedOut = text(resolveLock.stderr) + text(resolved.stdout) + text(resolved.stderr)
 const got2 = /^resolved=(\S+)$/m.exec(resolvedOut)?.[1]
 if (resolved.exitCode !== 0 || got2 !== 'via-main,via-exports') {
-  process.stderr.write(
+  fail(
     `binary ignored a package's main or exports: got ${got2} (exit ${resolved.exitCode}), expected via-main,via-exports\n${resolvedOut}`,
   )
-  process.exit(1)
 }
 console.log(`${path.relative(root, out)} resolves a package's main and exports`)
 
@@ -271,48 +239,31 @@ console.log(`${path.relative(root, out)} resolves a package's main and exports`)
 // runs across the two. The second run must restore the first run's
 // output bytes (the command writes a fresh stamp) through the binary's
 // own container reader.
-const bare = mkdtempSync(path.join(os.tmpdir(), 'vx-check-bare-'))
-mkdirSync(path.join(bare, 'packages', 'a', 'src'), { recursive: true })
+const bare = workspace('bare', {
+  'package.json': JSON.stringify({ name: 'ws', private: true }),
+  'pnpm-workspace.yaml': 'packages:\n  - "packages/*"\n',
+  'packages/a/package.json': JSON.stringify({ name: 'a' }),
+  'packages/a/src/x.js': 'x\n',
+  'packages/a/vx.config.mjs': `import { defineProject } from '@vzn/vx/config'
+export default defineProject({ name: 'a', tasks: { build: { exec: { command: 'echo built-$(date +%s%N) > out.txt' }, inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] }, cache: true } } })
+`,
+  '.vx/workspace.mjs': `import { defineWorkspace } from '@vzn/vx'
+import { vxHistory } from '@vzn/vx-history'
+export default defineWorkspace({ plugins: [vxHistory({ assume: { 'a#build': 1000 } })] })
+`,
+  '.gitignore': 'node_modules\n.vx/cache/\n',
+})
 mkdirSync(path.join(bare, 'node_modules', '@vzn'), { recursive: true })
 symlinkSync(root, path.join(bare, 'node_modules', '@vzn', 'vx'))
 symlinkSync(
   path.resolve(root, '..', 'vx-history'),
   path.join(bare, 'node_modules', '@vzn', 'vx-history'),
 )
-writeFileSync(path.join(bare, 'package.json'), JSON.stringify({ name: 'ws', private: true }))
-writeFileSync(path.join(bare, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
-writeFileSync(path.join(bare, 'packages', 'a', 'package.json'), JSON.stringify({ name: 'a' }))
-writeFileSync(path.join(bare, 'packages', 'a', 'src', 'x.js'), 'x\n')
-writeFileSync(
-  path.join(bare, 'packages', 'a', 'vx.config.mjs'),
-  `import { defineProject } from '@vzn/vx/config'
-export default defineProject({ name: 'a', tasks: { build: { exec: { command: 'echo built-$(date +%s%N) > out.txt' }, inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] }, cache: true } } })
-`,
-)
-mkdirSync(path.join(bare, '.vx'), { recursive: true })
-writeFileSync(
-  path.join(bare, '.vx/workspace.mjs'),
-  `import { defineWorkspace } from '@vzn/vx'
-import { vxHistory } from '@vzn/vx-history'
-export default defineWorkspace({ plugins: [vxHistory({ assume: { 'a#build': 1000 } })] })
-`,
-)
-writeFileSync(path.join(bare, '.gitignore'), 'node_modules\n.vx/cache/\n')
-const git = (...args: string[]): void => {
-  Bun.spawnSync({
-    cmd: ['git', '-c', 'user.email=ci@vx', '-c', 'user.name=ci', ...args],
-    cwd: bare,
-    // A host config that signs commits (an SSH signer such as 1Password's)
-    // reaches a service the sandbox refuses; the fixture needs git's defaults.
-    env: { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1' },
-  })
-}
-git('init', '-q')
-Bun.spawnSync({ cmd: [out, 'lock'], cwd: bare, stdout: 'pipe', stderr: 'pipe' })
-git('add', '-A')
-git('commit', '-qm', 'init')
-const build = () =>
-  Bun.spawnSync({ cmd: [out, 'run', 'build', '--all'], cwd: bare, stdout: 'pipe', stderr: 'pipe' })
+git(bare, 'init', '-q')
+spawn([out, 'lock'], bare)
+git(bare, 'add', '-A')
+git(bare, 'commit', '-qm', 'init')
+const build = () => spawn([out, 'run', 'build', '--all'], bare)
 const outFile = path.join(bare, 'packages', 'a', 'out.txt')
 const first = build()
 const built = existsSync(outFile) ? readFileSync(outFile, 'utf8').trim() : undefined
@@ -326,9 +277,8 @@ if (
   built?.startsWith('built-') !== true ||
   restored !== built
 ) {
-  process.stderr.write(
+  fail(
     `binary on a bare-specifier workspace: exits ${first.exitCode}, ${second.exitCode}; out.txt ${JSON.stringify(restored)}, expected the first run's ${JSON.stringify(built)}\n${text(first.stderr)}${text(second.stderr)}`,
   )
-  process.exit(1)
 }
 console.log(`${path.relative(root, out)} runs a bare-specifier workspace with a plugin package`)
