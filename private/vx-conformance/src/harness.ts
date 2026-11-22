@@ -4,7 +4,7 @@
 // its own setup, every run) runs sandboxed in the case's directory: in
 // bubblewrap, or for a tool that isolates itself, in that tool's own sandbox.
 
-import { mkdtempSync, realpathSync, rmSync } from 'node:fs'
+import { chmodSync, lstatSync, mkdtempSync, readdirSync, realpathSync, rmSync } from 'node:fs'
 import {
   chmod,
   lstat,
@@ -294,9 +294,34 @@ export async function runCase(c: Case, adapter: Adapter): Promise<Outcome> {
       return await play(c, adapter, root, box)
     } finally {
       if (process.env['CONFORMANCE_KEEP']) console.error(`kept ${box}`)
-      else rmSync(box, { recursive: true, force: true })
+      else removeBox(box)
     }
   })
+}
+
+/**
+ * Removes a case's directory, read-only ones too: Nix leaves its builds'
+ * copies of store paths without write bits, which only root deletes
+ * anyway. Cleanup never decides a case's outcome; what stays is warned.
+ */
+export function removeBox(box: string): void {
+  try {
+    rmSync(box, { recursive: true, force: true })
+    return
+  } catch {}
+  const writable = (dir: string): void => {
+    chmodSync(dir, 0o700)
+    for (const name of readdirSync(dir)) {
+      const at = path.join(dir, name)
+      if (lstatSync(at).isDirectory()) writable(at)
+    }
+  }
+  try {
+    writable(box)
+    rmSync(box, { recursive: true, force: true })
+  } catch (e) {
+    console.warn(`conformance: could not remove ${box}: ${String(e)}`)
+  }
 }
 
 /** `n` plays, each in a fresh tree: one that does not pass is the outcome. */

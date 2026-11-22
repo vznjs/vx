@@ -40,6 +40,12 @@ describe.skipIf(!sandboxAvailable() && !process.env['VX_REQUIRE_SANDBOX'])('sand
     expect(await Bun.file(path.join(outside, 'f')).text()).toBe('kept')
   })
 
+  // Run as a user other than root, a root-owned `/` would read as nobody's
+  // (65534) through bwrap's user namespace: Nx 24.0.6 then refuses its daemon.
+  test("the root directory is not shown as nobody's", async () => {
+    expect((await sh('stat -c %u /')).out.trim()).not.toBe('65534')
+  })
+
   test('there is no network', async () => {
     const r = await sh('bun -e "await fetch(\'https://registry.npmjs.org\')"')
     expect(r.exit).not.toBe(0)
