@@ -1184,6 +1184,24 @@ describe('withForwardArgs', () => {
     ['control: a parameter expansion', 'x=args:; echo ${x}', 'args: --fix a b\n'],
     ['control: a quoted paren', "echo '(a)'", '(a) --fix a b\n'],
     ['control: an escaped paren', 'echo \\(a\\)', '(a) --fix a b\n'],
+    // A case pattern's `)` closed the subshell's paren in the scan, and an
+    // inner quote in a quoted `$(…)` ended the quote: the closer went unseen.
+    ['a case in a subshell', '(case a in a) echo args:;; esac)', 'args: --fix a b\n'],
+    [
+      'control: a parenthesized pattern',
+      '(case a in (a) echo args:;; esac) 2>&1',
+      'args: --fix a b\n',
+    ],
+    [
+      'a quoted substitution holding a quoted paren',
+      '(echo "$(echo "a)")" args:)',
+      'a) args: --fix a b\n',
+    ],
+    [
+      'control: case and in as arguments',
+      '(echo case in >/dev/null; echo args:)',
+      'args: --fix a b\n',
+    ],
   ])('%s', (_name, command, printed) => {
     expect(shOut(withForwardArgs(command, ['--fix', 'a b']))).toBe(printed)
   })
