@@ -2,7 +2,7 @@
 // files its outputs left, an uncached task's log. Names come from the run id
 // and task (`run/<id>/<task>/log`); each key is derived in a namespace no task
 // key or plugin entry shares. Remote only: locally `vx last --log` and the
-// working tree already hold them. No size cap (M: the cache is free). Plugins
+// working tree already hold them. No size cap. Plugins
 // read them by name (`ctx.cache.getRun`).
 
 import { stat, unlink } from 'node:fs/promises'
