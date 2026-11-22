@@ -102,6 +102,9 @@ describe('cache declarations that match nothing', () => {
           outputs: { files: ['stamp.info'], workspaceFiles: ['wsgone/**'] }, cache: true },
         partialok: { exec: { command: 'mkdir -p made && echo x > made/a.js && echo x > made.info' },
           inputs: { files: ['src/**'] }, outputs: { files: ['made/**', 'made.info'] }, cache: true },
+        // A leading ./ is accepted and dropped (schema.md).
+        dotslash: { exec: { command: 'mkdir -p dot && echo x > dot/a.js' },
+          inputs: { files: ['./src/**'] }, outputs: { files: ['./dot/**'] }, cache: true },
         wsfound: { exec: { command: 'mkdir -p ../../shared && echo x > ../../shared/a.js' },
           inputs: { files: ['src/**'] },
           outputs: { files: ['out/**'], workspaceFiles: ['shared/**'] },
@@ -158,6 +161,12 @@ describe('cache declarations that match nothing', () => {
     await writeFile(path.join(root, 'lib', 'x.js'), 'x\n')
     await symlink('../../lib', path.join(root, 'packages', 'app', 'vendor'))
     expect(await runTask('linked')).toEqual([])
+  })
+
+  // The save matched `./dot/**` against `dot/a.js` as written and said a hit
+  // restores nothing, while it restored the file.
+  it('a glob spelled with a leading ./ that matched is not named', async () => {
+    expect(await runTask('dotslash')).toEqual([])
   })
 
   it('a wildcard glob that matches nothing is named though a literal input matched', async () => {

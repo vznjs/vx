@@ -1148,7 +1148,7 @@ What a failed task takes down with it:
   became ready stops the run the same way.
 
 The mode is the local scheduler's: a task a plugin executor runs
-elsewhere is one dispatch, failed or not, like any other. Under `never`,
+elsewhere is one dispatch, failed or not, like any other. Under `--fail-fast`,
 a task the executor still holds for a machine to begin it (its row says
 `waiting`) is not yet started: its request is aborted and it completes
 as skipped.
