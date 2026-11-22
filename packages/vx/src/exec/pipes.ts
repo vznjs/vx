@@ -3,7 +3,7 @@
 
 import type { Pointer } from 'bun:ffi'
 import { closeSync } from 'node:fs'
-import { readOff } from './read-off.js'
+import { readOff, writerLeft } from './read-off.js'
 
 const O_NONBLOCK = 0o4000
 const O_CLOEXEC = 0o2000000
@@ -101,6 +101,7 @@ export class TaskPipes {
   readonly #stdinWrite: number | undefined
   /** The read ends went to the reader thread, which closes each once its stream ends. */
   #handed = false
+  #streams: [ReadableStream<Uint8Array>, ReadableStream<Uint8Array>] | undefined
 
   constructor(terminal?: boolean, held?: boolean) {
     const fds = terminal === true ? undefined : realPipes()
@@ -130,7 +131,19 @@ export class TaskPipes {
     const [out, err] = this.#read
     if (out === undefined) return [child.stdout, child.stderr]
     this.#handed = true
-    return [readOff(out), readOff(err!)]
+    this.#streams = [readOff(out), readOff(err!)]
+    return this.#streams
+  }
+
+  /**
+   * Whether anything still holds a write end of stdout or stderr: false once
+   * every writer closed, though the reader thread may not have drained them
+   * yet. True where vx cannot tell (Bun's own pipes).
+   */
+  async writersLeft(): Promise<boolean> {
+    if (this.#streams === undefined) return true
+    const [out, err] = await Promise.all(this.#streams.map(writerLeft))
+    return out! || err!
   }
 
   /**
