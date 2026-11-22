@@ -2676,8 +2676,9 @@ export function unlessStopped<T>(work: Promise<T>, signal: AbortSignal | undefin
 A vx started with SIGHUP ignored (`nohup`, a supervisor) installs no
 SIGHUP handler, here or in `vx watch`: a handler replaces the inherited
 `SIG_IGN`, and `nohup vx run` stopped its run and exited 129 when the
-terminal closed (2026-10-08). `hangupIgnored` (`util.md`) reads
-the disposition once, before the first handler.
+terminal closed (2026-10-08). Nor does one started with SIGINT ignored
+(a script's `vx run build &`) install a SIGINT handler. `startedIgnoring`
+(`util.md`) reads each disposition once, before the first handler.
 
 Under a parent that relays stops (the Node launcher, a handing-off vx,
 Bun's `bun vx` runner), a stop sent to the whole group arrives twice; the

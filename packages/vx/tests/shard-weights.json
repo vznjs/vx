@@ -258,7 +258,7 @@
   "graph-pipeline-properties.test.ts": 241,
   "group-key-once.test.ts": 2313,
   "handoff.test.ts": 425,
-  "hangup-ignored.test.ts": 18,
+  "signal-ignored.test.ts": 18,
   "hash-chain.test.ts": 566,
   "hash-extra-dir.test.ts": 12,
   "hash-list.test.ts": 343,

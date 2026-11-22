@@ -293,7 +293,7 @@ export default [
     kind: 'correctness',
     title: 'A run started with SIGHUP ignored (nohup) runs on when the terminal closes',
     why: '`nohup` sets SIGHUP to ignored so that a long job survives a closed terminal or a dropped SSH session. The ignore is inherited, and a runner that installs its own SIGHUP handler over it stops the run anyway. The user asked for the job to keep going, so the run finishes and exits 0.',
-    from: ['task-tree-kill', 'hangup-ignored'],
+    from: ['task-tree-kill', 'signal-ignored'],
     workspace: a({ slow: { command: 'touch started; sleep 1; echo done > done.txt' } }),
     steps: [
       {

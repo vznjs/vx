@@ -80,7 +80,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'git-pending-reads',
     'git-racy-index',
     'graph-order',
-    'hangup-ignored',
+    'signal-ignored',
     'hash-chain',
     'hash-scenarios',
     'hash-scenarios-names',
