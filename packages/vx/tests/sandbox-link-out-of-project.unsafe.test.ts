@@ -38,12 +38,15 @@ describe.skipIf(!available || process.platform !== 'linux')(
       await rm(root, { recursive: true, force: true })
     })
 
-    const outcome = async (read: string[]) => {
+    const outcome = async (
+      read: string[],
+      command = 'mkdir -p out && cat < shared/s.json > out/r.txt',
+    ) => {
       await addProject(root, 'lib', { files: { 'shared/s.json': 'shared\n', 'other.txt': 'x\n' } })
       const dir = await addProject(root, 'app', {
         config: `export default { tasks: { t: {
         exec: {
-          command: 'mkdir -p out && cat < shared/s.json > out/r.txt',
+          command: ${JSON.stringify(command)},
           sandbox: { allow: { read: ${JSON.stringify(read)}, write: ['out/'] } },
         },
         inputs: { files: ['src/**'], workspaceFiles: ['packages/lib/shared/s.json'] },
@@ -59,6 +62,7 @@ describe.skipIf(!available || process.platform !== 'linux')(
         sandbox: JSON.stringify(o.sandbox),
         status: o.status,
         fix: o.sandbox?.fix?.read,
+        lines: o.sandbox?.lines ?? [],
         out: await readFile(path.join(dir, 'out', 'r.txt'), 'utf8').catch(() => ''),
       }
     }
@@ -74,6 +78,19 @@ describe.skipIf(!available || process.platform !== 'linux')(
         'failed',
         ['.', '../lib/shared/s.json'],
       ])
+    })
+
+    // A tool that stats first (uutils' cat) leaves no record, only its words;
+    // judged by the target, the granted file behind the link was no hint.
+    it('a tool that stats first is told to grant the directory holding the link', async () => {
+      const o = await outcome(
+        ['src/', '../lib/shared/s.json'],
+        'test -f shared/s.json || { echo "cat: shared/s.json: No such file or directory" >&2; exit 1; }',
+      )
+      expect(
+        [o.status, o.lines.some((l) => l.includes("read: ['.']") && l.includes('failed naming'))],
+        `${said}\n${o.sandbox}`,
+      ).toEqual(['failed', true])
     })
 
     it('CONTROL: the link still grants nothing behind it beyond the grants', async () => {

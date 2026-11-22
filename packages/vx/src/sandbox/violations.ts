@@ -655,7 +655,7 @@ export async function parseStraceViolations(
  * is missing outside the sandbox too, and outside the deny anchor the
  * host is mounted, links and all.
  */
-function hiddenLink(
+export function hiddenLink(
   lexical: string,
   real: string,
   mounted: Set<string>,

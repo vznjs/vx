@@ -118,6 +118,7 @@ import {
 } from './paths.js'
 import { canScopeDenyScan, scopedMandatoryDenies, srtDefaultWritePaths } from './deny-scan.js'
 import {
+  hiddenLink,
   hiddenReadsOutside,
   observedWrites,
   parseStraceViolations,
@@ -3777,10 +3778,18 @@ function statedHiddenHint(
       if (seen.has(abs)) continue
       seen.add(abs)
       if (!lstatSync(abs, { throwIfNoEntry: false })) continue
-      const real = toRealPath(abs)
+      const target = toRealPath(abs)
+      // A granted target behind a link the sandbox does not hold is hidden
+      // all the same: the grant is the directory holding the link.
+      const via = target === abs ? undefined : hiddenLink(abs, target, new Set(grants), deny)
+      const real = via ?? target
       // A directory holding a grant is listable (bwrap builds the path to
       // the bind): cargo names its cwd in "could not find `Cargo.toml`".
-      if (!deny.some((d) => atOrUnder(real, d)) || readableUnder(real, grants)) continue
+      if (
+        via === undefined &&
+        (!deny.some((d) => atOrUnder(real, d)) || readableUnder(real, grants))
+      )
+        continue
       if (named.some((n) => n !== undefined && atOrUnder(real, n))) continue
       if (!found.includes(real)) found.push(real)
     }
