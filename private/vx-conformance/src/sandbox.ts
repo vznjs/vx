@@ -6,7 +6,7 @@
 // isolates its own work (Nix's build sandbox, `Adapter.sandboxed`): it runs
 // unboxed, with the same home, and every process it starts ends with the run.
 
-import { mkdirSync, readdirSync, readFileSync } from 'node:fs'
+import { lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync } from 'node:fs'
 import path from 'node:path'
 
 export interface Result {
@@ -17,6 +17,21 @@ export interface Result {
 }
 
 const BWRAP = Bun.which('bwrap')
+
+/**
+ * The host's root, read-only, one entry at a time: `/` itself stays
+ * bwrap's own directory. Run as a user other than root, bwrap's user
+ * namespace shows a root-owned `/` as nobody's, and a tool that checks
+ * who owns each directory above its own (Nx 24.0.6 does, before it dials
+ * its daemon) refuses to run at all, as it never would on the machine.
+ */
+const ROOT_BINDS = readdirSync('/').flatMap((name) => {
+  if (name === 'proc' || name === 'dev' || name === 'tmp') return []
+  const at = `/${name}`
+  return lstatSync(at).isSymbolicLink()
+    ? ['--symlink', readlinkSync(at), at]
+    : ['--ro-bind', at, at]
+})
 
 /** Whether this machine can sandbox a run. Without bwrap no case runs: an unsandboxed tool could escape it. */
 export function sandboxAvailable(): boolean {
@@ -117,9 +132,7 @@ export function spawnSandboxed(
   const tag = `${TAG}=${crypto.randomUUID()}`
   const boxing = [
     BWRAP!,
-    '--ro-bind',
-    '/',
-    '/',
+    ...ROOT_BINDS,
     '--dev',
     '/dev',
     ...(hostProc ? ['--bind', '/proc', '/proc'] : ['--proc', '/proc']),
@@ -133,6 +146,9 @@ export function spawnSandboxed(
     '--unshare-ipc',
     '--die-with-parent',
     '--new-session',
+    // bwrap's own `/` is a writable tmpfs; the host's was read-only.
+    '--remount-ro',
+    '/',
     '--chdir',
     cwd,
   ]
