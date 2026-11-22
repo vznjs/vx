@@ -548,6 +548,8 @@ SQLite stores metadata, and the small artifacts above:
 - **`entries`** — one row per cached output:
   `(hash, project, task, command, exit_code, duration_ms, size_bytes, created_at, accessed_at, cpu_ms, peak_rss_bytes, run_id)`;
   `run_id` and `created_at` name the run that wrote the entry as it stands and when (v54).
+  A tree entry's `size_bytes` is its files and links as laid on disk; a link to a
+  directory counts as a link, never walked (two links back to `out/` were 2^40 paths).
 - **`entry_stdout`** — an entry's captured stdout, `(hash, stdout)`, apart
   so the `accessed_at` bump does not rewrite it (v29); a zstd frame of its
   bytes as the task wrote them (v52, `rawEncode`), as text the logs outweighed every inline artifact.

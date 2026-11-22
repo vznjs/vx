@@ -87,15 +87,35 @@ const TREE_STAT_BATCH = 4096
 export async function treeBytes(dir: string): Promise<number> {
   const none = { size: 0, blocks: 0 }
   let n = diskBytes(await lstat(dir).catch(() => none))
-  const entries = await readdir(dir, { recursive: true, withFileTypes: true }).catch(() => [])
-  // Stats in batches: one at a time was 736 ms of a 20k-file save; all at once
-  // would hold every Stats.
-  for (let i = 0; i < entries.length; i += TREE_STAT_BATCH) {
-    const batch = entries.slice(i, i + TREE_STAT_BATCH)
-    const stats = await Promise.all(
-      batch.map((e) => lstat(path.join(e.parentPath, e.name)).catch(() => none)),
-    )
-    for (const st of stats) n += diskBytes(st)
+  // A level at a time, links not followed: Bun's recursive readdir goes
+  // through a link to a directory, so two links back to out/ (a copied
+  // node_modules with a dependency cycle) walked 2^40 paths.
+  let level = [dir]
+  while (level.length > 0) {
+    const next: string[] = []
+    const paths: string[] = []
+    // Stats in batches: one at a time was 736 ms of a 20k-file save; all at
+    // once would hold every Stats.
+    for (let i = 0; i < level.length; i += TREE_STAT_BATCH) {
+      const lists = await Promise.all(
+        level
+          .slice(i, i + TREE_STAT_BATCH)
+          .map((d) => readdir(d, { withFileTypes: true }).catch(() => [])),
+      )
+      for (const entries of lists)
+        for (const e of entries) {
+          const p = path.join(e.parentPath, e.name)
+          paths.push(p)
+          if (e.isDirectory()) next.push(p)
+        }
+    }
+    for (let i = 0; i < paths.length; i += TREE_STAT_BATCH) {
+      const stats = await Promise.all(
+        paths.slice(i, i + TREE_STAT_BATCH).map((p) => lstat(p).catch(() => none)),
+      )
+      for (const st of stats) n += diskBytes(st)
+    }
+    level = next
   }
   return n
 }
