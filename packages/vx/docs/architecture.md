@@ -481,7 +481,9 @@ restoreTier, … })` runs the DAG two-tier. Each ready node invokes
       to PATH.
       g. `describeTaskInputs` with `captureInto` (cacheable tasks
       only), before the spawn: the input set the executor receives and
-      the miss-only input-fingerprint rows the save persists.
+      the miss-only input-fingerprint rows the save persists. A key no
+      fold memo named was derived by this same description
+      (`keyOrDescribe`), which is reused.
       h. On miss + writes enabled: `cleanOutputs` first, so stale
       files from a previous build can't survive a fresh exec.
       i. The placed `TaskExecutor`'s `execute(request)`; the local

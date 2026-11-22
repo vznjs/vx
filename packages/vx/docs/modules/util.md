@@ -207,7 +207,9 @@ held to its start; at the exit, `end` lets everything go; and an
 - **Spare shell:** on Linux, a task's shell is started before the task
   is asked for (`warm-shell.ts`), so the slot that frees does not wait
   for sh to exec: 200 `sleep 0.02` took 4.4 ms each past their sleep
-  spawned fresh, 2.7 ms on a spare. Two spares wait at most, each on
+  spawned fresh, 2.7 ms on a spare. Four spares wait at most (with two,
+  1 task in 12 cold waited for one), refilled once the turn that took one
+  is done, so the taken spare gets its script first. Each waits on
   its own pipes, with no directory or env of a task, blocked reading
   descriptor 3. The task's script, written when one is taken, closes
   that descriptor, `cd -P`s to the task's directory (127 when it is gone,

@@ -273,7 +273,8 @@ terminal and a task succeeding or failing. Read it alongside
  │          describeTaskInputs({ captureInto }) then describes the input
  │          set ONCE, before the spawn: the executor gets the input
  │          values and the save reuses the captured per-component input
- │          fingerprint (a re-fold over the memos, no I/O).
+ │          fingerprint (a re-fold over the memos, no I/O). A key no
+ │          fold names was this description (`keyOrDescribe`, step 1).
  │       7. runCommand (or runSandboxed when `sandbox` is declared) →
  │          Bun.spawn shell with `command` + forwardArgs
  │          (shell-quoted). Buffer chunks via onStdout/onStderr.
