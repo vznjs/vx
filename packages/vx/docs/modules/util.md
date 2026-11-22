@@ -1924,6 +1924,7 @@ installing a handler; Node has no API for it.
 
 ```ts
 export function startedIgnoring(signal: 'SIGHUP' | 'SIGINT'): boolean
+export const IGNORED_SIGNALS_ENV = 'VX_IGNORED_SIGNALS' // a hand-off names the signals the global vx was started ignoring
 ```
 
 - Linux reads the `SigIgn` mask in `/proc/self/status`: `self` is this

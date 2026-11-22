@@ -475,6 +475,7 @@ export interface RunHandoff {
   holdPersistent?: boolean // hand every persistent task still running (a dependency-only one only with inputs.files) back on RunSummary.persistent
   watch?: boolean // a vx watch cycle: a save withheld over an input edited mid-run says the next cycle runs on it
   keep?: HeldPersistent // an earlier hand-back: a server still up whose task is unchanged stays up; the rest stop first
+  kept?: ReadonlyMap<string, TaskOutcome> // vx watch: an earlier cycle's uncached passes and failures, kept while key and upstream hold
   commandWindows?: CommandWindows // where the run records when each command ran (and each restore or deferred fetch) and where it may write; vx watch passes its own to tell a user's mid-cycle write from the run's
 }
 // run()'s argument inside vx (runCore / planCore): the public options and the hand-off.
@@ -554,6 +555,8 @@ export function executeTask(args: ExecuteArgs): Promise<TaskOutcome>
 // the probed hit executeTask would restore, as a thunk when its tree is current (`currentHit`)
 export function settleProbedHit(args: ExecuteArgs): (() => TaskOutcome) | undefined
 export { restoreHit, type RestoreHitArgs } from './hit-restore.js'
+// watch-kept.ts: an outcome a later `vx watch` cycle may keep while its key holds
+export function keepsOutcome(o: TaskOutcome): boolean
 ```
 
 Cache-key derivation (`ComputeHashArgs`, `computeTaskHash`,

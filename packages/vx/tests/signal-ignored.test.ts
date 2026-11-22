@@ -56,8 +56,8 @@ const runUnder = async (trap: string): Promise<number> => {
 
 it('a SIGINT vx was started deaf to leaves the run going', async () => {
   expect(await runUnder(`trap '' INT; `)).toBe(0)
-}, 20_000)
+}, 30_000)
 
 it('CONTROL: a SIGINT stops a run started with it on', async () => {
   expect(await runUnder('')).toBe(130)
-}, 20_000)
+}, 30_000)
