@@ -82,6 +82,7 @@ src/graph/critical-path.ts
 src/graph/default-build.ts
 src/graph/definition.ts
 src/graph/folds.ts
+src/graph/glob-meet.ts
 src/graph/index.ts
 src/graph/lanes.ts
 src/graph/outcome.ts
