@@ -54,6 +54,7 @@ import rivalKeys from './rival-keys.ts'
 import rivalShapes from './rival-shapes.ts'
 import rivalConfig from './rival-config.ts'
 import rivalGlobs from './rival-globs.ts'
+import rivalModes from './rival-modes.ts'
 import watch from './watch.ts'
 
 /** Every case, in the results' order. */
@@ -114,4 +115,5 @@ export const CASES: Case[] = [
   ...rivalShapes,
   ...rivalConfig,
   ...rivalGlobs,
+  ...rivalModes,
 ]
