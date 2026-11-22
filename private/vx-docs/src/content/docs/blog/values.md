@@ -12,7 +12,7 @@ excerpt: 'Three priorities in a fixed order settle every design choice in vx: pe
 When two designs both look fine, the one that wins on the earlier
 priority wins, and we don't reopen it.
 
-1. **Performance.** Measured, not claimed.
+1. **Performance.** Measured, not promised.
 2. **Modularity.** Each module's `index.ts` is its contract. A test
    fails any import that goes around it.
 3. **Extensibility.** A plugin point for every stage, a plugin for
@@ -38,7 +38,7 @@ a command runs, never what it is. No JavaScript-function tasks.
 **Resolved-config hashing.** The key sees the config after it runs, so
 imports, presets and computed values all count.
 
-**Cascade through deps by folding upstream input keys, never outputs.**
+**Cascade through dependencies: a key holds upstream input keys, never outputs.**
 Every key is known before anything runs. `--dry` and remote execution
 depend on that ([we tried the other way](../cascade-through-inputs/)).
 

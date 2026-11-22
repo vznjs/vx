@@ -10,7 +10,7 @@ excerpt: '@vzn/vx-history starts the longest chain first and keeps memory-hungry
 ---
 
 `@vzn/vx-history` learns from your past runs. It starts the
-longest chain first, and keeps memory-hungry tasks from starting
+longest path of work first, and keeps memory-hungry tasks from starting
 together. After a few runs:
 
 ```sh frame="terminal"
@@ -60,9 +60,9 @@ export default defineWorkspace({ plugins: [vxHistory()] })
 It reads the last 20 runs from the cache database, once per run. If the
 read breaks, it warns and uses the core order. It can't fail a build.
 
-## The longest chain first
+## The longest path first
 
-Each ready task's weight is its median time plus the longest chain
+Each ready task's weight is its median time plus the longest path
 waiting behind it. A slow docs build at the end of the graph starts
 early, not last on an idle machine.
 
@@ -88,7 +88,7 @@ A cache hit carries the numbers of the run that made it, so a runner
 knows a task's size without running it. `reservations` sets a size by
 hand for tasks with no history yet.
 
-The plugin only orders and admits. It never changes what runs or a
+The plugin only orders and holds back tasks. It never changes what runs or a
 task's key. Every option is in the [vx-history
 README](https://github.com/vznjs/vx/tree/main/packages/vx-history#readme).
 

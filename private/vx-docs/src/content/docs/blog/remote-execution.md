@@ -60,7 +60,7 @@ cores.
   runs only here.
 - **Not `exec.remote: false`, or anything depending on it.** Use it for
   Docker, a device or a local daemon.
-- **Not a task whose key folds a runtime probe** (`inputs.runtime`,
+- **Not a task whose key holds a runtime probe** (`inputs.runtime`,
   `workspaceRuntime`). A worker cannot prove it has your `node -v`.
 
 A worker gets exactly what the cache key declares. Run the task in the

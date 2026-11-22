@@ -39,7 +39,9 @@ dte({
 ```
 
 A task runs on a machine of its own platform, Linux unless it names
-another. A Mac starts only when a task needs macOS, and only as many as
+another.
+
+A Mac starts only when a task needs macOS, and only as many as
 those tasks fill. `exec.worker` sends a task to one named type.
 
 ## A task is booked by what it used last time
