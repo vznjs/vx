@@ -1385,6 +1385,9 @@ export async function resolveOutputTree(args: {
   clearing?: boolean
 }): Promise<OutputTree> // { files, emptyDirs, special: string[], findSpecial?: () => string[] }
 
+/** From now on a clear before a command renames each file into `dir` and unlinks it off the slot; an earlier process's leftovers there go first. */
+export function deferRemovals(dir: string): void
+
 /**
  * Remove every file currently matching the declared output globs.
  * Called before every cache-miss exec AND before every cache-hit

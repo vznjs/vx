@@ -79,6 +79,7 @@ export function signalExitCode(signal: string | number): number // 128 + signo (
 export function stopSignal(reason: unknown): 'SIGINT' | 'SIGTERM'
 export class PersistentReadyError extends Error // reason: 'timeout' | 'exited' | 'spawn'; exitCode?: the child's own
 export function primeSpares(n: number): void // warm-shell.ts: keep n spare shells (at least four)
+export function warmSpares(): void // warm-shell.ts: start the spares now (a run's first local cache miss)
 export function streamToString(
   stream: ReadableStream<Uint8Array> | number | undefined,
   onChunk?: (s: string) => void,
