@@ -27,6 +27,13 @@ const wrona = (quote: string): Voice => ({
 })
 
 export const ALL_VOICES: Voice[] = [
+  {
+    quote:
+      '[vx conformance] This is very impressive. Really great work here. I’ve always wanted to do something like this but have never really had the time.',
+    who: 'Miles Johnson',
+    role: 'Creator of moon',
+    href: 'https://github.com/moonrepo/moon/issues/2818#issuecomment-7070128267',
+  },
   shew('The benchmarks presented by this project are misleading.'),
   shew(
     'There’s a specific reason that none of the build systems that you’re comparing against don’t do what you’re doing: It doesn’t work.',
