@@ -25,21 +25,6 @@ export interface Tally {
   total: number
 }
 
-function emptyTally(): Tally {
-  return {
-    successful: 0,
-    failed: 0,
-    skipped: 0,
-    cachedLocal: 0,
-    restoredLocal: 0,
-    restoredRemote: 0,
-    upToDate: 0,
-    cachedRemote: 0,
-    aborted: 0,
-    total: 0,
-  }
-}
-
 /**
  * Walk live outcomes and return a `Tally` — the single owner of the bucket
  * rules.
@@ -57,7 +42,18 @@ function emptyTally(): Tally {
  *   `aborted` → +aborted only (no bucket, no total)
  */
 export function tallyOutcomes(outcomes: readonly TaskOutcome[]): Tally {
-  const t = emptyTally()
+  const t: Tally = {
+    successful: 0,
+    failed: 0,
+    skipped: 0,
+    cachedLocal: 0,
+    restoredLocal: 0,
+    restoredRemote: 0,
+    upToDate: 0,
+    cachedRemote: 0,
+    aborted: 0,
+    total: 0,
+  }
   for (const o of outcomes) {
     if (isGroupTask(o.node)) continue
     if (o.status === 'aborted') {
