@@ -1,8 +1,8 @@
 ---
 // One tool's score in one group of the conformance board: the share of
-// every case it passes, a bar of every case (faint: supported, solid:
-// passed), and the counts.
-import { percent, RESULTS } from '../../conformance/data.ts'
+// every case it passes, a bar of every case (solid: passed, red: its
+// issues, the cases it has the feature for but fails), and the counts.
+import { issues, percent, RESULTS } from '../../conformance/data.ts'
 
 interface Props {
   t: string
@@ -20,5 +20,5 @@ const share = (n: number) => (s && s.of > 0 ? (n / s.of) * 100 : 0)
     <span class="cfm-pass" style={`width:${share(s?.pass ?? 0)}%`} />
   </span>
   <span class="cfm-of">{s ? `${s.pass} of ${s.of}` : '–'}</span>
-  <span class="cfm-of">{s ? `${s.can} supported` : '–'}</span>
+  <span class="cfm-of">{issues(s)}</span>
 </span>

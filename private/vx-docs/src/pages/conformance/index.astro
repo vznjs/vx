@@ -81,7 +81,8 @@ const SAY = { pass: 'passes', fail: 'fails', 'n/a': 'does not have this feature'
         <h2>Scores</h2>
         <p class="cfm-sub">
           Cases passed, of every case, rounded down: 100% means every case passed. An N/A case is
-          not a pass. The bar's faint part is what the tool supports.
+          not a pass. The bar's red part is the tool's issues: cases it has the feature for but
+          fails.
         </p>
         <p class="cfm-sub">
           Open a group to see its cases: ✓ passes, ✗ fails, – N/A. Open a ✗ to see what the tool did
@@ -104,7 +105,10 @@ const SAY = { pass: 'passes', fail: 'fails', 'n/a': 'does not have this feature'
             }
           </div>
           <div class="cfm-row cfm-all" data-group="all">
-            <span class="cfm-name">{groupName('all')}</span>
+            <span class="cfm-name">
+              {groupName('all')}
+              <span class="cfm-cat-count">{cases.length} cases</span>
+            </span>
             {RANKED.map((t) => <Cell t={t} g="all" />)}
           </div>
           {

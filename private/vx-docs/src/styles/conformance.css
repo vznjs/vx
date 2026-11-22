@@ -148,7 +148,7 @@
   border-radius: 3px;
 }
 .vx-landing .cfm-bar > .cfm-can {
-  background: color-mix(in srgb, var(--phosphor) 30%, transparent);
+  background: var(--cfm-fail);
 }
 .vx-landing .cfm-bar > .cfm-pass {
   background: var(--phosphor);
@@ -258,6 +258,9 @@
   margin: 4px 0 0 22px;
   font: 12px / 1.3 var(--font-mono);
   color: var(--text-faint);
+}
+.vx-landing .cfm-all .cfm-cat-count {
+  margin-left: 0;
 }
 .vx-landing .cfm-cat-about {
   margin: 14px 0;

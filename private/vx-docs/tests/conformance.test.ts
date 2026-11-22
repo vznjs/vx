@@ -11,6 +11,7 @@ import {
   agree,
   CATEGORIES,
   inline,
+  issues,
   note,
   percent,
   RESULTS,
@@ -170,7 +171,7 @@ describe('the conformance page', () => {
     expect(na).toBeGreaterThan(0)
   })
 
-  it('scores each tool in every group: passed of what it supports, a bar of what it supports, and the counts', () => {
+  it('scores each tool in every group: passed of every case, a bar of passes and issues, and the counts', () => {
     const groups = ['all', ...CATEGORIES]
     const wrong: string[] = []
     for (const g of groups) {
@@ -185,7 +186,7 @@ describe('the conformance page', () => {
         if (
           !td.includes(`>${percent(s)}<`) ||
           !td.includes(`>${of}<`) ||
-          !td.includes(`>${s?.can} supported<`) ||
+          !td.includes(`>${issues(s)}<`) ||
           td.includes('supports')
         )
           wrong.push(`${g} ${t}: ${td}`)
@@ -195,6 +196,8 @@ describe('the conformance page', () => {
     expect(percent({ pass: 0, can: 0, of: 0 })).toBe('–')
     expect(percent({ pass: 0, can: 0, of: 11 })).toBe('0%')
     expect(supports({ pass: 0, can: 10, of: 11 })).toBe('90%')
+    expect(issues({ pass: 656, can: 957, of: 1023 })).toBe('301 issues')
+    expect(issues({ pass: 0, can: 1, of: 2 })).toBe('1 issue')
   })
 
   it('prints 100% only when every case passed', () => {
