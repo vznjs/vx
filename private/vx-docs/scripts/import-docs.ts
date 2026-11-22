@@ -260,6 +260,10 @@ export function transformFile(
   // `editLink.baseUrl` serves the hand-authored pages, so each imported
   // page names its own file under packages/vx/docs/.
   fm.push(`editUrl: ${yaml(`https://github.com/vznjs/vx/edit/main/packages/vx/docs/${srcRel}`)}`)
+  // Internals (each module's page, the design notes) are linked, not
+  // searched: they outranked the docs, `remote cache` found src/cache/'s
+  // page before the Remote cache page (2026-11-22).
+  if (/^(modules|design)\//.test(srcRel)) fm.push('pagefind: false')
   fm.push('---', '')
   return `${fm.join('\n')}${body.join('\n').replace(/^\n+/, '')}`
 }

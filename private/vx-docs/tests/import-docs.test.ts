@@ -116,8 +116,17 @@ describe('frontmatter', () => {
       'title: "C"',
       'description: "The local cache stores every artifact under its key."',
       'editUrl: "https://github.com/vznjs/vx/edit/main/packages/vx/docs/modules/cache.md"',
-      '---',
+      'pagefind: false',
     ])
+  })
+
+  // An internals page outranked the docs in search: `remote cache` found
+  // src/cache/'s page before the Remote cache page (2026-11-22).
+  it('internals are left out of search; the docs stay in', () => {
+    expect(transformFile('design/x-2026-01.md', '# X\n\nBody.\n', links)).toContain(
+      '\npagefind: false\n',
+    )
+    expect(transformFile('cli.md', '# vx\n\nBody.\n', links)).not.toContain('pagefind')
   })
 
   it('the description skips lists, numbers, images and short lines, strips link markup, and is cut at a word', () => {
