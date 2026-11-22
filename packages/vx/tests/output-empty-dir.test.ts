@@ -345,8 +345,8 @@ for (const outputs of [['public/uploads/**'], ['public/uploads/**', '**/*.map']]
       const dir = await addProject(root, 'app', {
         config: `
         export default { tasks: { gen: {
-          exec: { command: 'mkdir -p public/uploads' },
-          inputs: { files: ['src/**'] }, outputs: { files: ${JSON.stringify(outputs)} }, cache: true,
+          exec: { command: 'mkdir -p public/uploads && echo m > app.map' },
+          inputs: { files: ['src/**'] }, outputs: { files: ${JSON.stringify([...outputs, 'app.map'])} }, cache: true,
         } } }`,
         files: { 'src/in.txt': 'v1\n' },
       })

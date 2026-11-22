@@ -2,6 +2,7 @@
 // described inputs, and the per-attempt state the request, the attempt and
 // the save gate read.
 
+import type { StateStamps } from './undeclared-state.js'
 import type { ExecuteResult, SandboxViolation } from '../exec/index.js'
 import type { ExecuteArgs } from './execute-task.js'
 import type { AttemptSignal } from './attempt-signal.js'
@@ -54,6 +55,8 @@ export interface MissRun {
   attempt: number
   /** When the last attempt's command ended, on the file system's clock (`KeyedTasks`). */
   endedAt?: number
+  /** The undeclared state stamped before the command: a missing output's line names what survived. */
+  state?: StateStamps | undefined
 }
 
 /** The attempt before this one, which stands if this one is withdrawn. */

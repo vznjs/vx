@@ -1549,6 +1549,12 @@ a file or a whole directory tree: `dist` and `dist/` are `dist/**`
 (the turbo.json shape `"outputs": ["dist"]` migrates as it is); a
 leading `./` is accepted and dropped; `.` alone is refused.
 
+Every positive glob is required. Once the command exits 0, each must
+match a file, a link or an empty directory that no `!` entry takes back;
+one that matches nothing fails the task, cached or not, and nothing is
+saved. The error names each such glob. There are no optional outputs: a
+file a task writes only sometimes is not an output.
+
 ```ts
 outputs: {
   files: ['dist/**']

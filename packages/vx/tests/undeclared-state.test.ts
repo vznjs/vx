@@ -228,9 +228,10 @@ it(
 )
 
 // The state from a build outside vx (or one the rule above left unsaved)
-// says everything is built: the tool writes nothing at all.
+// says everything is built: the tool writes nothing at all, and the task
+// fails, naming the state.
 it(
-  'a miss whose outputs come out empty beside an undeclared ignored file is not saved',
+  'a miss whose outputs come out empty beside an undeclared ignored file fails',
   async () => {
     const { root, app } = await workspace("['dist/**']")
     const built = Bun.spawnSync(['sh', '-c', INCREMENTAL], { cwd: app })
@@ -239,9 +240,9 @@ it(
     const opts = { cwd: root, tasks: ['build'], log: silentLogger(fx) }
     const first = await run(opts)
     expect(await readdir(path.join(app, 'dist'))).toEqual([])
-    expect(first.outcomes.map((o) => [o.status, o.cache?.saved])).toEqual([['success', undefined]])
-    expect(fx.log.join('\n')).toContain(
-      "app#build: outputs matched no files (dist/**) while state, which the task declares neither input nor output, survived the clean — the result stands, but is not saved: a tool that reads such a file back (an incremental build's state) may take the cleaned outputs as built; declare it in outputs.files ('state'), so a miss starts without it and a hit restores it",
+    expect(first.outcomes.map((o) => [o.status, o.cache?.saved])).toEqual([['failed', undefined]])
+    expect(fx.err.join('\n')).toContain(
+      "app#build: outputs matched no files (dist/**) — the command exited 0 but never wrote it, so the task fails and nothing is cached: write it, or fix the pattern — state survived the clean, which the task declares neither input nor output: a tool that reads such a file back (an incremental build's state) may take the cleaned outputs as built; declare it in outputs.files ('state'), so a miss starts without it and a hit restores it",
     )
   },
   TIMEOUT,

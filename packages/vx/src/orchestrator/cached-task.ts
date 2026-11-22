@@ -170,6 +170,7 @@ export async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome>
     }
   }
   const stamp = stampState(m)
+  m.state = stamp.state
   const ran = await runAttempts(m, wallclockStartNs)
   if ('outcome' in ran) return ran.outcome
   const keyedTasks = args.run.keyedTasks

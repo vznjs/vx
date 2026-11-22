@@ -149,6 +149,7 @@ src/orchestrator/miss-inputs.ts
 src/orchestrator/miss-outcome.ts
 src/orchestrator/miss-run.ts
 src/orchestrator/miss-save.ts
+src/orchestrator/missing-outputs.ts
 src/orchestrator/options.ts
 src/orchestrator/output-host.ts
 src/orchestrator/output-log.ts

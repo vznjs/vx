@@ -15,10 +15,13 @@ import {
 } from '../exec/index.js'
 import { keyedOutsideGrants, sandboxReads } from '../sandbox/index.js'
 import { isLocalExecutor, localExecutor } from './local-executor.js'
-import { relPosix, span, UserError } from '../util/index.js'
+import { printable, relPosix, span, UserError } from '../util/index.js'
 import { warnOf } from '../report/index.js'
 import { outputsStep } from './attempt-outputs.js'
 import { buildRequest } from './attempt-request.js'
+import { bracketLiteralHint } from './miss-save.js'
+import { missingOutputs } from './missing-outputs.js'
+import { declareStateHint, stateLeft } from './undeclared-state.js'
 import type { MissRun, PriorAttempt } from './miss-run.js'
 import { executorLabel, nameExecutorFailure } from './plugin-host.js'
 import { lockedDirGone } from './projects.js'
@@ -266,6 +269,8 @@ async function classifyExit(
     // replayed forever. A genuinely killed child already reports 143.
     if (code === 0) code = signalExitCode('SIGTERM')
   }
+  if (code === 0 && args.run.stopSignal?.aborted !== true && (await outputsMissing(m, res)))
+    code = 1
   // The shell's 127 and 126 name the word and nothing about why (the PATH
   // vx built, or a `#!` line the file carries), and an exit above 128 is a
   // signal's number and nothing about what sent it. One frame line names
@@ -341,4 +346,46 @@ function unseenResult(
     stderr: '',
     violations: [...denied, { timestamp, hint: true, line }],
   }
+}
+
+/**
+ * A pass whose declared outputs did not all land here fails, said by the
+ * globs that matched nothing. Outputs that land elsewhere (a remote
+ * executor, a deferred download) are that executor's to check.
+ */
+async function outputsMissing(m: MissRun, res: ExecuteResult): Promise<boolean> {
+  const { args, policy, stream, secrets } = m
+  const { node, log } = args
+  if (policy.outputs.length + policy.wsOutputs.length === 0) return false
+  if (policy.deferred || res.outputs?.kind === 'deferred') return false
+  if (args.executor.capabilities?.remote === true) return false
+  const nested = args.outputNestedDirs ?? args.nestedProjectDirs
+  const missing = [
+    ...(await missingOutputs(node.projectDir, policy.outputs, nested)),
+    ...(await missingOutputs(args.run.workspaceRoot, policy.wsOutputs, [])),
+  ]
+  if (missing.length === 0) return false
+  const cfg = node.config
+  const left = m.state === undefined ? [] : stateLeft(m.state, node.projectDir)
+  const noWrite =
+    cfg.exec?.sandbox !== undefined && (cfg.exec.sandbox.allow?.write?.length ?? 0) === 0
+  const line =
+    `[vx] ${node.id}: outputs matched no files (${missing.join(', ')}) — the command exited 0 ` +
+    `but never wrote ${missing.length === 1 ? 'it' : 'them'}, so the task fails and nothing is cached: ` +
+    `write ${missing.length === 1 ? 'it' : 'them'}, or fix the pattern` +
+    (noWrite
+      ? ` — the task is sandboxed and declares no exec.sandbox.allow.write, so its writes never reached disk`
+      : '') +
+    (left.length > 0
+      ? ` — ${left.map(printable).join(', ')} survived the clean, which the task declares neither input nor ` +
+        `output: a tool that reads such a file back (an incremental build's state) may take the cleaned ` +
+        `outputs as built` +
+        declareStateHint(left)
+      : '') +
+    bracketLiteralHint([
+      ...policy.outputs.map((g) => [node.projectDir, g] as const),
+      ...policy.wsOutputs.map((g) => [args.run.workspaceRoot, g] as const),
+    ])
+  log.taskStderr(node, `${stream.nl()}${secrets.text(line)}\n`)
+  return true
 }

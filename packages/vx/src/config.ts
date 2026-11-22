@@ -652,7 +652,8 @@ export interface TaskOutputs {
   /**
    * Files this task produces, as project-relative globs; `[]` when none
    * (`lint`, `typecheck`). Not filtered through gitignore, so ignored dirs
-   * like `dist/` are captured.
+   * like `dist/` are captured. Each glob is required: one that matches
+   * nothing after the command exits 0 fails the task, and nothing is cached.
    */
   files: readonly string[]
   /**
