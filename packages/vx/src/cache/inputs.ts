@@ -2954,6 +2954,14 @@ async function scanUnion(
   try {
     for (const pattern of patterns) {
       if (absentPrefix(cwd, pattern, absent)) continue
+      // `Bun.Glob` finds no literal whose link leaves `cwd` or dangles, which
+      // a glob over its directory yields: one lstat names it either way.
+      if (isLiteralPattern(pattern) && !pattern.split('/').includes('..')) {
+        const lit = normalizeGlob(pattern)
+        roots?.add(path.dirname(path.resolve(cwd, lit)))
+        take(lit)
+        continue
+      }
       const from = scanRoot(cwd, pattern)
       if (from === null) continue
       roots?.add(from === undefined ? cwd : from.dir)

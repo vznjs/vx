@@ -116,6 +116,27 @@ it.skipIf(process.platform === 'win32')(
 )
 
 it.skipIf(process.platform === 'win32')(
+  'an output named outright that is a link out of the project, or dangling, comes back as a link',
+  async () => {
+    // Bun.Glob finds no literal whose link leaves its cwd or dangles: the
+    // save stored an empty artifact and the next run was up to date with no
+    // file. Under a glob (`dist/**`) the same link was kept.
+    const { root, dir } = await workspace(
+      'mkdir -p o && ln -sfn ../.gitignore up.txt && ln -sfn later.txt dang.txt && ln -sfn ../../.gitignore o/up.txt',
+      "{ files: ['up.txt', 'dang.txt', 'o/up.txt'] }",
+    )
+    writeFileSync(path.join(dir, '.gitignore'), 'up.txt\ndang.txt\no/\n')
+    expect(await ok(root)).toContain('local 1↑')
+    for (const f of ['up.txt', 'dang.txt', 'o']) rmSync(path.join(dir, f), { recursive: true })
+    expect(await ok(root)).toContain('1↓')
+    expect(readlinkSync(path.join(dir, 'up.txt'))).toBe('../.gitignore')
+    expect(readlinkSync(path.join(dir, 'dang.txt'))).toBe('later.txt')
+    expect(readlinkSync(path.join(dir, 'o/up.txt'))).toBe('../../.gitignore')
+  },
+  TIMEOUT,
+)
+
+it.skipIf(process.platform === 'win32')(
   'a link pointed elsewhere since the hit is put back, even at the same length',
   async () => {
     const { root, dir } = await workspace(
