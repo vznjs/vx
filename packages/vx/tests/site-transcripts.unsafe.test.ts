@@ -475,6 +475,9 @@ describe("the CLI reference's samples", () => {
       .replace(/\b[0-9a-f]{16}\b/g, '<key>')
       .replace(/[+−-]?\d+(?:\.\d+)?(?:ms|s|%|B|KB|MB|GB)(?!\w)/g, '<n>')
       .replace(/~?<n>/g, '<n>')
+      // The summary's spread drops a figure equal to one it already shows,
+      // and all of it when the tasks took the same time (report/summary.ts).
+      .replace(/( <n>)(?: · (?:max|avg|min) <n>)+/g, '$1')
       .replace(/@ [0-9a-f]{8}(\+dirty)?/g, '@ <sha>')
       .replace(/\b\d+ workers\b/g, '<n> workers')
       .replace(/\/home\/me\/demo|\/\S*vx-cli-[^/\s]+/g, '<root>')
