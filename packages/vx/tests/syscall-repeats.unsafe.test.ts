@@ -480,11 +480,11 @@ describe.skipIf(strace === null)('what vx asks the kernel once', () => {
         await import('$SRC/bin.ts')
         `,
       )
-      // The run's (the files token), the probe's hash, the miss's describe,
-      // and the re-check after the command. The key folded after describe
-      // hashed every input again: five.
+      // The run's (the files token), the describe the key and the miss share
+      // (`keyOrDescribe`), and the re-check after the command. The key
+      // folded after describe hashed every input again: five; a key derived
+      // apart from the miss's describe: four.
       expect(on(calls, path.join(proj, 'src', 'a.txt')).filter((c) => c === 'lstat')).toEqual([
-        'lstat',
         'lstat',
         'lstat',
         'lstat',
