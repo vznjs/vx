@@ -83,6 +83,21 @@ describe('Cache.hashFile — git blob OID domain', () => {
     expect(await cache.memo.hashFile(bin)).toBe(git(root, 'hash-object', bin))
   })
 
+  it('matches `git hash-object` for a file big enough to stream, one by one and in a batch', async () => {
+    const big = path.join(root, 'big.bin')
+    const bytes = new Uint8Array(9 * 1024 * 1024 + 7)
+    for (let i = 0; i < bytes.length; i++) bytes[i] = (i * 31) & 255
+    await writeFile(big, bytes)
+    const expected = git(root, 'hash-object', big)
+    expect(await cache.memo.hashFile(big)).toBe(expected)
+    const other = new Cache(path.join(root, '.vx', 'cache2'))
+    try {
+      expect((await other.memo.hashFiles([big])).get(big)).toBe(expected)
+    } finally {
+      other.close()
+    }
+  })
+
   it('uses sha256 blob OIDs in a sha256 repo', async () => {
     const dir = await mkdtemp(path.join(os.tmpdir(), 'vx-oid256-'))
     try {

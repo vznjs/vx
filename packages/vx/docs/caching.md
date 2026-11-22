@@ -1517,7 +1517,10 @@ check; one rewritten as CRLF since moved its size and is modified to
 Losing an OID is not over-invalidation. It routes that path to the
 content hasher, which hashes the worktree bytes — the correct source
 either way. The only cost is reading the file, which is exactly what
-the gate exists to avoid paying needlessly.
+the gate exists to avoid paying needlessly. A file over 8 MiB is read
+1 MiB at a time and 32 files at most are hashed at once, so a fresh
+clone's LFS inputs cost one buffer each, not their size in memory
+(`tests/memory-ceiling-cache.unsafe.test.ts`).
 
 Nor can the index's stat stand in for the file's own `lstat` where an
 OID was dropped. When a file's stat moved, git compares content after
