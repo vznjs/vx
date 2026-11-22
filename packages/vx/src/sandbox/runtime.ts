@@ -444,11 +444,11 @@ function sandboxTmpdir(): string {
  * removes what is still listed.
  */
 const liveTempFiles = new Set<string>()
-let tempExitHooked = false
-function unlinkOnExit(file: string): void {
-  liveTempFiles.add(file)
-  if (tempExitHooked) return
-  tempExitHooked = true
+const liveTaskTmpdirs = new Set<string>()
+let exitHooked = false
+function hookExit(): void {
+  if (exitHooked) return
+  exitHooked = true
   process.on('exit', () => {
     for (const f of liveTempFiles) {
       try {
@@ -457,7 +457,12 @@ function unlinkOnExit(file: string): void {
         // never written, or gone
       }
     }
+    for (const d of liveTaskTmpdirs) removeTaskTmpdir(d)
   })
+}
+function unlinkOnExit(file: string): void {
+  liveTempFiles.add(file)
+  hookExit()
 }
 
 /**
@@ -521,15 +526,9 @@ function ownTaskTmpRoot(): string {
   return root
 }
 
-const liveTaskTmpdirs = new Set<string>()
-let tmpdirExitHooked = false
 function trackTaskTmpdir(dir: string): void {
   liveTaskTmpdirs.add(dir)
-  if (tmpdirExitHooked) return
-  tmpdirExitHooked = true
-  process.on('exit', () => {
-    for (const d of liveTaskTmpdirs) removeTaskTmpdir(d)
-  })
+  hookExit()
 }
 
 /**
@@ -617,13 +616,9 @@ let scopedDenyScan = false
  */
 function scopedScanConfig(): { mandatoryDenySearchDepth: number; ripgrep?: { command: string } } {
   try {
-    return { mandatoryDenySearchDepth: 1, ripgrep: { command: noScanCommand() } }
+    return { mandatoryDenySearchDepth: 1, ripgrep: { command: scanCommandAgain() } }
   } catch {
-    try {
-      return { mandatoryDenySearchDepth: 1, ripgrep: { command: executablePath('true') } }
-    } catch {
-      return { mandatoryDenySearchDepth: 1 }
-    }
+    return { mandatoryDenySearchDepth: 1 }
   }
 }
 
@@ -637,6 +632,22 @@ function scanCommandAgain(): string {
     return executablePath('true')
   }
 }
+/** `<os tmpdir>/<prefix>-<uid>`: made 0700, refused unless it is this user's own private directory. */
+function ownTmpDir(prefix: string): string {
+  const uid = process.getuid!()
+  const dir = path.join(os.tmpdir(), `${prefix}-${uid}`)
+  try {
+    mkdirSync(dir, { mode: 0o700 })
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err
+  }
+  const d = lstatSync(dir)
+  if (!d.isDirectory() || d.uid !== uid || (d.mode & 0o077) !== 0) {
+    throw new Error(`${dir} is not this user's own directory`)
+  }
+  return dir
+}
+
 /**
  * An empty executable only this user can write: SRT runs it outside the
  * sandbox on every wrap, so it lives in this user's own 0700 directory under
@@ -649,20 +660,7 @@ function scanCommandAgain(): string {
  */
 function noScanCommand(): string {
   if (noScan !== undefined && existsSync(noScan)) return noScan
-  const uid = process.getuid!()
-  const dir = path.join(os.tmpdir(), `vx-noscan-${uid}`)
-  try {
-    mkdirSync(dir, { mode: 0o700 })
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err
-  }
-  const d = lstatSync(dir)
-  // A link reads mode 0777 here, and a file at the name fails the write
-  // below (ENOTDIR).
-  if (d.uid !== uid || (d.mode & 0o077) !== 0) {
-    throw new Error(`${dir} is not this user's own directory`)
-  }
-  const file = path.join(dir, 'rg')
+  const file = path.join(ownTmpDir('vx-noscan'), 'rg')
   try {
     writeFileSync(file, '', { mode: 0o700, flag: 'wx' })
   } catch (err) {
@@ -890,17 +888,7 @@ function envCutSocat(socat: string): string {
  */
 function ownWrapper(body: string): string {
   const uid = process.getuid!()
-  const dir = path.join(os.tmpdir(), `vx-socat-${uid}`)
-  try {
-    mkdirSync(dir, { mode: 0o700 })
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err
-  }
-  const d = lstatSync(dir)
-  if (!d.isDirectory() || d.uid !== uid || (d.mode & 0o077) !== 0) {
-    throw new Error(`${dir} is not this user's own directory`)
-  }
-  const file = path.join(dir, `socat-${xxh3hex(body).slice(0, 16)}`)
+  const file = path.join(ownTmpDir('vx-socat'), `socat-${xxh3hex(body).slice(0, 16)}`)
   const ok = (): boolean => {
     const f = lstatSync(file, { throwIfNoEntry: false })
     return (
@@ -2345,6 +2333,11 @@ function reachBridgeSocket(tag: string, port: number): string {
   return path.join(taskTmpdir(tag), `vx-reach-${tag}-${port}.sock`)
 }
 
+/** A port as `/proc/net/tcp` spells it: four uppercase hex digits. */
+function procNetPort(port: number): string {
+  return port.toString(16).toUpperCase().padStart(4, '0')
+}
+
 /**
  * The task's side of a reached loopback port (`network: ['localhost:4173']`),
  * in front of the user command: a listener on the port in the task's own
@@ -2366,7 +2359,7 @@ function reachBridgeInner(ports: readonly number[], tag: string, ipv6: boolean):
   })
   const waits = ports.map(
     (p) =>
-      `( i=0; until grep -qsE ':${p.toString(16).toUpperCase().padStart(4, '0')} [0-9A-F]+:0000 0A' /proc/net/tcp; do [ $i -ge 500 ] && break; i=$((i+1)); sleep 0.01; done );`,
+      `( i=0; until grep -qsE ':${procNetPort(p)} [0-9A-F]+:0000 0A' /proc/net/tcp; do [ $i -ge 500 ] && break; i=$((i+1)); sleep 0.01; done );`,
   )
   return `${listens.join(' ')} trap 'kill $(jobs -p) 2>/dev/null' EXIT; ${waits.join(' ')}`
 }
@@ -2452,7 +2445,7 @@ function portsHeld(ports: readonly number[]): number[] {
       if (addr === any || (file === '/proc/net/tcp' && addr === loop)) held.add(port!)
     }
   }
-  return ports.filter((p) => held.has(p.toString(16).toUpperCase().padStart(4, '0')))
+  return ports.filter((p) => held.has(procNetPort(p)))
 }
 
 /**
@@ -2467,7 +2460,7 @@ function portsHeld(ports: readonly number[]): number[] {
  */
 async function hostBridgesListen(ports: readonly number[], tag: string): Promise<void> {
   if (!procfsIsOwn()) return
-  const want = ports.map((p) => `0100007F:${p.toString(16).toUpperCase().padStart(4, '0')}`)
+  const want = ports.map((p) => `0100007F:${procNetPort(p)}`)
   const procs = hostBridges.get(tag)?.procs ?? []
   const until = performance.now() + 5_000
   while (performance.now() < until && procs.every((p) => p.exitCode === null)) {
@@ -2507,16 +2500,16 @@ function spawnHostBridges(tag: string): void {
       // could not bind it (item 873).
       procs.push(
         spawnGuarded((guard) =>
-          guard === undefined
-            ? Bun.spawn(argv, {
-                stdio: ['ignore', 'ignore', 'ignore'],
-                detached: true,
-                env: helperEnv(),
-              })
-            : Bun.spawn(
-                [taskShell(), '-c', `${guardLine(3)}exec ${argv.map(shellQuote).join(' ')}`],
-                { stdio: ['ignore', 'ignore', 'ignore', guard], detached: true, env: helperEnv() },
-              ),
+          Bun.spawn(
+            guard === undefined
+              ? argv
+              : [taskShell(), '-c', `${guardLine(3)}exec ${argv.map(shellQuote).join(' ')}`],
+            {
+              stdio: ['ignore', 'ignore', 'ignore', ...(guard === undefined ? [] : [guard])],
+              detached: true,
+              env: helperEnv(),
+            },
+          ),
         ),
       )
     } catch {
