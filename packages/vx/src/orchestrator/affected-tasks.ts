@@ -1,8 +1,9 @@
 // `--affected` per task. The diff seeds the tasks it reaches; a requested task
-// runs when its `dependsOn` closure holds one. So a change reaches another
-// project only along a task edge: `web#test` behind `^build` runs when
-// `ui#build` (or what it depends on) is reached, and a spec edit `ui#build`'s
-// inputs leave out stops at `ui`'s own tasks.
+// runs when its `dependsOn` closure holds one, through the edges its key folds
+// (`inputs.tasks`). So a change reaches another project only along a keyed
+// task edge: `web#test` behind `^build` runs when `ui#build` (or what it
+// depends on) is reached, and a spec edit `ui#build`'s inputs leave out stops
+// at `ui`'s own tasks.
 
 import path from 'node:path'
 import type { WorkspaceRules } from '../config.js'
@@ -11,6 +12,7 @@ import {
   buildTaskGraph,
   compileTaskPattern,
   expandRequested,
+  foldedDeps,
   isGroupTask,
   isTaskPattern,
   parseDependencySpec,
@@ -215,6 +217,18 @@ export function affectedRoots(
     if (seeds !== null) seeds.set(n.id, { ...inProject(n.projectName, rel), kind: 'input' })
     return true
   }
+  // The deps a key folds (`inputs.tasks`, less order-only edges): one whose
+  // hash the key leaves out cannot move it, so a change there reaches the
+  // task no more than a run would miss it (nx task-level affected agrees).
+  const keyDeps = new Map<string, readonly string[]>()
+  const depsOf = (n: TaskNode): readonly string[] => {
+    let d = keyDeps.get(n.id)
+    if (d === undefined) {
+      d = foldedDeps(n, (id) => nodes.get(id)!).map((c) => c.node.id)
+      keyDeps.set(n.id, d)
+    }
+    return d
+  }
   const reached = new Map<string, boolean>()
   // Post-order on an explicit stack: a closure is as deep as the graph, and
   // a recursion per edge threw `RangeError` on a chain the builder takes
@@ -238,7 +252,7 @@ export function affectedRoots(
         }
         frame[1] = 0
       }
-      const deps = nodes.get(id)!.deps
+      const deps = depsOf(nodes.get(id)!)
       let i = frame[1]
       while (i < deps.length && reached.get(deps[i]!) === false) i++
       frame[1] = i

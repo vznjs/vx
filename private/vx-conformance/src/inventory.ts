@@ -33,6 +33,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'affected-gitattributes',
     'affected-flagged',
     'affected-head-range',
+    'affected-key-deps',
     'affected-linked-inputs',
     'affected-moves',
     'affected-pass-through',

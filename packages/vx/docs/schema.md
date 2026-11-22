@@ -1395,6 +1395,10 @@ folded. Defaults:
 - **Omitted** → all upstream contribute (`['*', '^*']`). Most common.
 - **`[]`** → fully decoupled; no upstream contributes.
 
+`--affected` follows the same selection: a change reaches a task through a
+dependency only when its key folds that dependency, so with `[]` a change
+upstream selects the task no more than it would move its key.
+
 A list of **only negations** (`['!gen']`) is refused at load, as a
 negation-only `inputs.files` is: the selection starts empty and a `!`
 entry only subtracts, so it would fold no upstream hash. Write the
