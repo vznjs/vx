@@ -259,7 +259,15 @@ export async function affectedChanges(
   // A line-ending rule changes the bytes a checkout writes for every file
   // under it while git's blobs stay the same, so no input path moves
   // (vercel/turborepo#15004).
-  const rules = changed.filter((rel) => path.posix.basename(rel) === ATTRIBUTES && !VX_OWN.has(rel))
+  const rules: string[] = []
+  for (const rel of changed) {
+    if (path.posix.basename(rel) !== ATTRIBUTES || VX_OWN.has(rel)) continue
+    const [before, after] = await Promise.all([
+      gitBytesAt(args.workspaceRoot, base, rel),
+      bytesOrNull(path.join(args.workspaceRoot, rel)),
+    ])
+    if (checkoutRules(before) !== checkoutRules(after)) rules.push(rel)
+  }
   if (rules.includes(ATTRIBUTES)) return everything(ATTRIBUTES)
   const extrasBy = await claimedExtras(args, diff)
   if (typeof extrasBy === 'string') return everything(extrasBy)
@@ -837,6 +845,41 @@ async function pathOwners(
 
 /** Git's attributes file: its eol and filter rules shape the bytes a checkout writes. */
 const ATTRIBUTES = '.gitattributes'
+
+/**
+ * Attributes that never change the bytes a checkout writes: how git diffs,
+ * merges and archives a file, and how a forge shows it. Any other one (an
+ * eol or filter rule, `binary`, a user's macro) may, so it counts.
+ */
+const VIEW_ONLY_ATTRIBUTE =
+  /^(?:diff|merge|delta|whitespace|export-ignore|export-subst|conflict-marker-size|lockable|linguist-[\w-]+|gitlab-[\w-]+)$/
+
+/**
+ * An attributes file's rules as a checkout reads them, in order: each line
+ * with its view-only attributes dropped, and a line left with none dropped
+ * too (comments and blanks with them). A macro definition is kept whole.
+ * Two files with the same rules write the same bytes: committing
+ * `*.txt linguist-generated -diff` selected every project, though no
+ * checked-out byte moved.
+ */
+function checkoutRules(bytes: Uint8Array | null): string {
+  if (bytes === null) return ''
+  const out: string[] = []
+  for (const raw of new TextDecoder().decode(bytes).split(/\r?\n/)) {
+    const line = raw.trim()
+    if (line === '' || line.startsWith('#')) continue
+    const [pattern, ...attrs] = line.split(/[ \t]+/)
+    if (pattern!.startsWith('[attr]')) {
+      out.push(line)
+      continue
+    }
+    const kept = attrs.filter(
+      (a) => !VIEW_ONLY_ATTRIBUTE.test(a.replace(/^[-!]/, '').split('=')[0]!),
+    )
+    if (kept.length > 0) out.push(`${pattern} ${kept.join(' ')}`)
+  }
+  return out.join('\n')
+}
 
 /** What vx writes under `.vx`, which no key reads (cache/inputs.ts `ALWAYS_IGNORE`). */
 const VX_OWN: ReadonlySet<string> = new Set([
