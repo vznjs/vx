@@ -7,7 +7,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { resolveFilters } from '../src/cli/select.js'
-import { graphOfDiscovery } from '../src/orchestrator/projects.js'
+import { discoveryOf } from '../src/orchestrator/projects.js'
 import { lock } from './helpers/orchestrator.js'
 import { gitInit } from './helpers/workspace.js'
 import { writeEdges } from './helpers/plugin.js'
@@ -45,7 +45,7 @@ afterEach(async () => {
 const handed = async (filter: string): Promise<{ names: string[]; graph: boolean }> => {
   const r = await resolveFilters(root, [filter])
   if (!('names' in r)) throw new Error(JSON.stringify(r))
-  const graph = graphOfDiscovery(r.discovered.projects)
+  const graph = discoveryOf(r.discovered.projects).graph
   if (graph !== undefined) {
     // What the run would have built itself.
     const own = buildPackageGraph(r.discovered.projects)

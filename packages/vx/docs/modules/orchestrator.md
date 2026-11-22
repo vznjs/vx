@@ -1390,7 +1390,7 @@ All are on the `@vzn/vx` façade.
   context object; under `scope: 'workspace'` a `WeakMap` on it makes the
   stat + read happen once per run, not once per task.
 - **An extra file is hashed once per run.** Each discovery makes one
-  `ExtraHashes` (`extraHashesOfDiscovery`), the contexts core hands a
+  `ExtraHashes` (`discoveryOf(...).hashes`), the contexts core hands a
   claim carry it (`withExtraHashes`), and every hash a claim takes goes
   through it. A run hashes before any task starts, so no task's write
   falls between; a `vx watch` cycle discovers, and hashes, afresh.
@@ -3014,7 +3014,7 @@ export function unlockedDir(
    applied (`RunOptions`, from `cli/workspace-config.ts`), and
    `loadWorkspacePlugins` gives the declared plugin list — or, for a
    reused discovery, the load the CLI made before it
-   (`pluginsOfDiscovery`), so the `config` stage runs once per run.
+   (`discoveryOf(...).workspace`), so the `config` stage runs once per run.
 2. **Project config load** — `loadProjects` ([`orchestrator.md`](#srcorchestratorprojectsts--the-project-config-load)),
    the load `vx show` shares: scoped to the seeds and their package
    closure, from the lock, with the plugin `project` stage as `vx lock`
@@ -3023,7 +3023,7 @@ export function unlockedDir(
    unless a plugin fills the `project` stage, or the default `build`.
 3. **Package + task structure** — `buildPackageGraph`,
    `computeNestedProjectDirs` (once for the key, and once more with the
-   nested workspaces the lock records, `nestedWorkspacesOf`, for the
+   nested workspaces the lock records, `discoveryOf(...).walls`, for the
    output readers: `outputWallsOf(nestedDirsByProject)` returns it, the
    map itself when there is none), `expandRequested` (plus
    `unresolvedRequests`, the same predicate run in reverse to name the
@@ -3172,31 +3172,17 @@ export function lockDiscovery(
 ): Promise<ProjectMeta[]>
 // The plugin whose `discover` entry added a project with no config file (`LockedProject.by`).
 export function addedByPlugin(meta: ProjectMeta): string | undefined
-// The enumeration a discovery registered, by the array it returned (G-75).
-export function gitOfDiscovery(projects: readonly ProjectMeta[]): LazyGitEnumeration | undefined
-// The run's extra-file hashes (`ExtraHashes`, lockfile-claim.md), by the same array:
-// `discover`, the `project` stage, `--affected` and the key hash a `file:` directory once.
-export function extraHashesOfDiscovery(projects: readonly ProjectMeta[]): ExtraHashes | undefined
-// The lock that discovery read, by the same array: a later config load reads no second copy.
-export function lockOfDiscovery(
-  projects: readonly ProjectMeta[],
-): (() => Promise<Lockfile>) | undefined
-// The nested workspace roots (absolute) that lock records, by the same array;
-// none for an array no discovery made. A run's outputs stop at each.
-export function nestedWorkspacesOf(projects: readonly ProjectMeta[]): readonly string[]
-// The package graph a selection pass built over that array whose task edges
-// added none: the graph a run reusing the discovery would build again.
-export function keepDiscoveryGraph(projects: readonly ProjectMeta[], graph: PackageGraph): void
-export function graphOfDiscovery(projects: readonly ProjectMeta[]): PackageGraph | undefined
-// The workspace (`loadWorkspacePlugins`) the CLI loaded before that discovery:
-// a run reusing the array runs the `config` stage no second time.
-export function keepDiscoveryWorkspace(
-  projects: readonly ProjectMeta[],
-  workspace: Awaited<ReturnType<typeof loadWorkspacePlugins>>,
-): void
-export function pluginsOfDiscovery(
-  projects: readonly ProjectMeta[],
-): Awaited<ReturnType<typeof loadWorkspacePlugins>> | undefined
+// What a discovery learned, by the array it returned; empty for an array no
+// discovery made. `git`: the enumeration it registered (G-75). `lock`: the lock
+// it read, so a later config load reads no second copy. `hashes`: the run's
+// extra-file hashes (`ExtraHashes`, lockfile-claim.md): `discover`, the
+// `project` stage, `--affected` and the key hash a `file:` directory once.
+// `walls`: the nested workspace roots (absolute) the lock records; a run's
+// outputs stop at each. `workspace`: the `loadWorkspacePlugins` result the CLI
+// loaded before it, so a run reusing the array runs the `config` stage no
+// second time. `graph`: the package graph a selection pass built over it whose
+// task edges added none, which a run reusing the discovery would build again.
+export function discoveryOf(projects: readonly ProjectMeta[]): DiscoveryFacts
 // The refusal a task gets when it cannot spawn because its locked
 // project's directory is gone: run `vx lock`.
 export function lockedDirGone(root: string, name: string, dir: string): string
