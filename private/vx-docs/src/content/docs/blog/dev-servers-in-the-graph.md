@@ -78,7 +78,7 @@ passed, failed, timed out, or you pressed [Ctrl-C](../ctrl-c/).
 servers you asked for exits, vx says which and stops the rest:
 
 ```ansi
-vx: packages/app#dev exited with code 1; stopping 1 other persistent task
+[1m[38;2;234;179;8mvx:[0m[2m packages/app#dev exited with code 1; stopping 1 other persistent task[0m
 ```
 
 A crashed server makes `vx` exit 1.
