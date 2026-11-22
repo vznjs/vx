@@ -234,7 +234,9 @@ Combining them, as pnpm does:
 ### Filter DSL (`--filter`)
 
 A filter that matches nothing refuses the run with `no projects matched
-filter(s): …`, plus a hint:
+filter(s): …`, plus a hint, even beside filters that matched
+(`--filter ui --filter nope` refuses, naming `nope`) and for an
+exclusion (`!nope`): running the rest would hide the typo.
 
 - `Did you mean <name>?` when a project name is within two edits, or
   when one scoped name matches after its `/` (`--filter vx-otel` hints
@@ -253,9 +255,6 @@ filter(s): …`, plus a hint:
 - When an exclusion took back everything the filters matched, it names
   it: `no projects
 selected: !app excluded every project the other filters matched`.
-- An exclusion (`!<pattern>`) that matches nothing excludes nothing and
-  prints the same line as a warning, hint included; the run goes on, so
-  a CI script may exclude a project some checkouts lack.
 
 | Form               | Meaning                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -554,8 +553,8 @@ and exits 0, so a docs-only commit passes `vx run lint test build
 project the other filters matched`).
 - A name or path pattern that matches nothing is still an error, as a
   likely typo, with a ref too: `--filter 'nope[main]'` is refused when no
-  project is named `nope`, whatever changed. One that matches nothing
-  beside one that matched prints a warning.
+  project is named `nope`, whatever changed, and so is one beside a
+  filter that matched.
 
 **An empty selection never cancels an anchored task.** Project scope
 applies to bare names only, so `vx run app#deploy build

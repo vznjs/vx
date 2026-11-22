@@ -949,7 +949,7 @@ describe('cli run() end-to-end against a real fixture workspace', () => {
     ])
   })
 
-  it('a filter that matches nothing warns, even when another one matched', async () => {
+  it('a filter that matches nothing refuses the run, even when another one matched', async () => {
     let stdout = ''
     let stderr = ''
     vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
@@ -962,10 +962,9 @@ describe('cli run() end-to-end against a real fixture workspace', () => {
     })
 
     const code = await run(['run', '--filter', 'one', '--filter', 'noSuchPkg', 'hello'])
-    expect(code).toBe(0)
-    expect(stdout).toMatch(/success miss .* local +one#hello/)
-    expect(stderr).toContain('noSuchPkg')
-    expect(stderr).toContain('matched no projects')
+    expect(code).toBe(1)
+    expect(stdout).not.toContain('one#hello')
+    expect(stderr).toContain('no projects matched filter(s): "noSuchPkg"')
   })
 
   it('-v prints a verbose summary table', async () => {
