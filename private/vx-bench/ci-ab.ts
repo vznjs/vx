@@ -61,33 +61,44 @@ const ws = await mkdtemp(path.join(os.tmpdir(), 'vx-ab-'))
 console.log(`cpu: ${os.cpus()[0]?.model} x${os.cpus().length}`)
 await generate(ws, C)
 await linkRivals(ws)
-const vxBin = path.join(ws, '.vx-runner')
-const b = Bun.spawnSync([
-  'bun', 'build', '--compile', '--minify', '--bytecode', '--format=esm', '--splitting',
-  '--target=bun-linux-x64',
-  ...vxCompileEntries(path.join(modules, '@vzn', 'vx', 'src', 'bin.ts')),
-  '--outfile', vxBin,
-], { cwd: ws })
-if (b.exitCode !== 0) throw new Error(b.stderr.toString())
 gitInit(ws)
-const lock = Bun.spawnSync([vxBin, 'lock'], { cwd: ws, env: RUNNER_ENV })
-if (lock.exitCode !== 0) throw new Error(lock.stderr.toString())
-
+function compile(bin: string, out: string): void {
+  const b = Bun.spawnSync([
+    'bun', 'build', '--compile', '--minify', '--bytecode', '--format=esm', '--splitting',
+    '--target=bun-linux-x64', ...vxCompileEntries(bin), '--outfile', out,
+  ], { cwd: ws })
+  if (b.exitCode !== 0) throw new Error(b.stderr.toString())
+}
+// One workspace copy per vx: a run's memo is named by the code that wrote it.
+async function vxArm(label: string, bin: string) {
+  const dir = `${ws}-${label}`
+  if (Bun.spawnSync(['cp', '-a', ws, dir]).exitCode !== 0) throw new Error('cp')
+  const exe = path.join(dir, '.vx-runner')
+  compile(bin, exe)
+  const lock = Bun.spawnSync([exe, 'lock'], { cwd: dir, env: RUNNER_ENV })
+  if (lock.exitCode !== 0) throw new Error(lock.stderr.toString())
+  return {
+    label, dir, env: {}, clear: ['.vx/cache'],
+    cmd: [exe, 'run', ...RUN_TASKS, '--all', '--concurrency', String(C)],
+  }
+}
 const vt = rivalRuns(ws, C)['vite-task']
-const vxRun = [vxBin, 'run', ...RUN_TASKS, '--all', '--concurrency', String(C)]
-const arms = [
-  { label: 'base', cmd: vxRun, env: {}, clear: ['.vx/cache'] },
-  { label: 'defer', cmd: vxRun, env: { VX_HACK_DEFER: '1' }, clear: ['.vx/cache'] },
-  { label: 'deferSkip', cmd: vxRun, env: { VX_HACK_DEFER: '1', VX_HACK_SKIP_CHECKS: 'all' }, clear: ['.vx/cache'] },
-  { label: 'vt', cmd: vt.run, env: {}, clear: vt.clear.paths, clearCmd: vt.clear.command },
+const arms: { label: string; dir: string; cmd: string[]; env: Record<string, string>; clear: string[]; clearCmd?: string[] | undefined }[] = [
+  await vxArm('base', path.join(process.env.BASE_DIR!, 'packages/vx/src/bin.ts')),
+  await vxArm('new', path.join(modules, '@vzn', 'vx', 'src', 'bin.ts')),
+  { label: 'vt', dir: ws, cmd: vt.run, env: {}, clear: vt.clear.paths, clearCmd: vt.clear.command },
 ]
+const ms: Record<string, number[]> = {}
 for (let r = 0; r < ROUNDS; r++) {
   for (let i = 0; i < arms.length; i++) {
     const a = arms[(i + r) % arms.length]!
-    if (a.clearCmd) Bun.spawnSync(a.clearCmd, { cwd: ws, env: RUNNER_ENV })
-    for (const c of a.clear) await rm(path.join(ws, c), { recursive: true, force: true })
-    await deleteDist(ws)
-    const res = await run(a.cmd, ws, a.env)
+    if (a.clearCmd) Bun.spawnSync(a.clearCmd, { cwd: a.dir, env: RUNNER_ENV })
+    for (const c of a.clear) await rm(path.join(a.dir, c), { recursive: true, force: true })
+    await deleteDist(a.dir)
+    const res = await run(a.cmd, a.dir, a.env)
+    ;(ms[a.label] ??= []).push(res.ms)
     console.log(JSON.stringify({ round: r, arm: a.label, ...res }))
   }
 }
+const med = (xs: number[]) => [...xs].sort((a, b) => a - b)[xs.length >> 1]!
+console.log('SUMMARY ' + Object.entries(ms).map(([k, v]) => `${k}=${(med(v) / 1000).toFixed(2)}`).join(' '))

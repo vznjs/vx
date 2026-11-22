@@ -7,6 +7,7 @@
 // a later run replays. Moved out of execute-task.ts 2026-09-09 as pure
 // code motion.
 
+import type { KeyCheck } from './input-recheck.js'
 import { existsSync, statSync } from 'node:fs'
 import path from 'node:path'
 import {
@@ -221,14 +222,40 @@ export interface SaveFacts {
   outputBytes?: number
   /** The entry landed: the outcome's `saved`, set only once it has. */
   saved?: true
+  /** A save's re-check after the slot went (`TaskOutcome.cache.unkeyed`). */
+  unkeyed?: true
+  /** The input that re-check found moved (`TaskOutcome.cache.driftedInput`). */
+  driftedInput?: string | null
+}
+
+/** `facts` with what a re-check run after the slot went found, and an unsaved miss's bytes. */
+export function withCheckFacts(
+  facts: SaveFacts,
+  check: KeyCheck,
+  unsavedBytes: number | undefined,
+): SaveFacts {
+  if (!check.unkeyed && check.drifted === undefined && unsavedBytes === undefined) return facts
+  const out: SaveFacts = { ...facts }
+  if (check.unkeyed) out.unkeyed = true
+  if (check.drifted !== undefined) out.driftedInput = check.drifted
+  if (unsavedBytes !== undefined) out.outputBytes = unsavedBytes
+  return out
 }
 
 /** The outcome a deferred save settles: what the save cost, folded in. */
 export function withSaveFacts(o: TaskOutcome, f: SaveFacts): TaskOutcome {
   if (f.saveMs !== undefined) (o.timing ??= {}).saveMs = f.saveMs
-  if (f.artifactBytes === undefined && f.outputBytes === undefined && f.saved === undefined)
+  if (
+    f.artifactBytes === undefined &&
+    f.outputBytes === undefined &&
+    f.saved === undefined &&
+    f.unkeyed === undefined &&
+    f.driftedInput === undefined
+  )
     return o
   const cache = (o.cache ??= {})
+  if (f.unkeyed !== undefined) cache.unkeyed = true
+  if (f.driftedInput !== undefined) cache.driftedInput = f.driftedInput
   if (f.artifactBytes !== undefined) cache.artifactBytes = f.artifactBytes
   if (f.outputBytes !== undefined) cache.outputBytes = f.outputBytes
   if (f.saved !== undefined) cache.saved = f.saved

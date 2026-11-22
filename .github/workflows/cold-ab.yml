@@ -8,6 +8,10 @@ on:
 
 permissions: {}
 
+concurrency:
+  group: cold-ab
+  cancel-in-progress: true
+
 jobs:
   ab:
     name: Cold A/B ${{ matrix.n }}
@@ -25,4 +29,9 @@ jobs:
           persist-credentials: false
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
       - run: bun install --frozen-lockfile
-      - run: ROUNDS=3 bun private/vx-bench/ci-ab.ts
+      - name: Base checkout (main)
+        run: |
+          git fetch --depth=1 origin main
+          git worktree add /tmp/base FETCH_HEAD
+          cd /tmp/base && bun install --frozen-lockfile
+      - run: BASE_DIR=/tmp/base ROUNDS=4 bun private/vx-bench/ci-ab.ts
