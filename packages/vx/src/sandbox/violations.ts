@@ -901,9 +901,12 @@ function reportedWithin(
   // `root === '/'` would otherwise compare against `'//'` and drop
   // everything — the one prefix that needs no separator appended.
   const prefixes = roots.map((root) => (root.endsWith(path.sep) ? root : root + path.sep))
-  return (v) =>
-    v.path === undefined ||
-    roots.some((root, i) => v.path === root || v.path!.startsWith(prefixes[i]!))
+  const under = (p: string): boolean =>
+    roots.some((root, i) => p === root || p.startsWith(prefixes[i]!))
+  // A read behind a link the project holds (`shared -> ../lib/shared`) is
+  // the project's: its grant is the directory holding the link. Judged by
+  // the target alone, the hint named the file behind it again and again.
+  return (v) => v.path === undefined || under(v.path) || (v.via !== undefined && under(v.via))
 }
 
 /**
