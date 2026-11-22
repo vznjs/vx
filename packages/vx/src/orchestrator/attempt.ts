@@ -351,10 +351,12 @@ function unseenResult(
 /**
  * A pass whose declared outputs did not all land here fails, said by the
  * globs that matched nothing. Outputs that land elsewhere (a remote
- * executor, a deferred download) are that executor's to check.
+ * executor, a deferred download) are that executor's to check. Said as a
+ * warning, as the save's own output warnings are, not into the task's
+ * stream: there it printed uncoloured, or red in a frame.
  */
 async function outputsMissing(m: MissRun, res: ExecuteResult): Promise<boolean> {
-  const { args, policy, stream, secrets } = m
+  const { args, policy, secrets } = m
   const { node, log } = args
   if (policy.outputs.length + policy.wsOutputs.length === 0) return false
   if (policy.deferred || res.outputs?.kind === 'deferred') return false
@@ -386,6 +388,6 @@ async function outputsMissing(m: MissRun, res: ExecuteResult): Promise<boolean> 
       ...policy.outputs.map((g) => [node.projectDir, g] as const),
       ...policy.wsOutputs.map((g) => [args.run.workspaceRoot, g] as const),
     ])
-  log.taskStderr(node, `${stream.nl()}${secrets.text(line)}\n`)
+  warnOf(log)(secrets.text(line))
   return true
 }

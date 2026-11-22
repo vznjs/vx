@@ -1332,13 +1332,17 @@ describe('a backslash separator or a drive letter in a task glob', () => {
     `are ${base}-relative with forward slashes: write "${write}"`
 
   it('is refused in every task glob list, with the forward-slash spelling', () => {
-    expect(taskRefusal(task({ files: ['src\\**'] }))).toBe(sep('inputs.files', 'src\\**', 'src/**'))
+    expect(taskRefusal(task({ files: ['src\\**'] }))).toBe(
+      sep('inputs.files', 'src\\**', 'src/**') + ', or "src[*]*" for the character itself',
+    )
     expect(taskRefusal(task({ files: ['src\\lib\\*.ts'] }))).toBe(
-      sep('inputs.files', 'src\\lib\\*.ts', 'src/lib/*.ts'),
+      sep('inputs.files', 'src\\lib\\*.ts', 'src/lib/*.ts') +
+        ', or "src/lib[*].ts" for the character itself',
     )
     expect(taskRefusal(task({ files: ['src\\'] }))).toBe(sep('inputs.files', 'src\\', 'src/'))
     expect(taskRefusal(task({ files: ['**', '!src\\gen\\**'] }))).toBe(
-      sep('inputs.files', '!src\\gen\\**', '!src/gen/**'),
+      sep('inputs.files', '!src\\gen\\**', '!src/gen/**') +
+        ', or "!src/gen[*]*" for the character itself',
     )
     expect(taskRefusal(task({ files: ['C:\\src\\**'] }))).toBe(
       drive('inputs.files', 'C:\\src\\**', 'src/**'),
@@ -1350,10 +1354,11 @@ describe('a backslash separator or a drive letter in a task glob', () => {
       drive('inputs.files', '{c:/x,src}/**', '{x,src}/**'),
     )
     expect(taskRefusal(task({ files: ['**'], workspaceFiles: ['config\\*.json'] }))).toBe(
-      sep('inputs.workspaceFiles', 'config\\*.json', 'config/*.json', 'workspace-root'),
+      sep('inputs.workspaceFiles', 'config\\*.json', 'config/*.json', 'workspace-root') +
+        ', or "config[*].json" for the character itself',
     )
     expect(taskRefusal(task({ files: ['**'] }, { files: ['dist\\**'] }))).toBe(
-      sep('outputs.files', 'dist\\**', 'dist/**'),
+      sep('outputs.files', 'dist\\**', 'dist/**') + ', or "dist[*]*" for the character itself',
     )
     expect(
       taskRefusal(task({ files: ['**'] }, { files: ['dist/**'], workspaceFiles: ['D:\\out\\**'] })),
@@ -1374,7 +1379,8 @@ describe('a backslash separator or a drive letter in a task glob', () => {
     )
     // CONTROL: one after a name is still a separator.
     expect(taskRefusal(task({ files: ['src/lib\\*.ts'] }))).toBe(
-      sep('inputs.files', 'src/lib\\*.ts', 'src/lib/*.ts'),
+      sep('inputs.files', 'src/lib\\*.ts', 'src/lib/*.ts') +
+        ', or "src/lib[*].ts" for the character itself',
     )
   })
 
@@ -1385,6 +1391,30 @@ describe('a backslash separator or a drive letter in a task glob', () => {
       taskRefusal(task({ files: ['app/\\[id\\]/**', 'src/\\{b\\}.ts', '\\!x', 'x\\\\y'] })),
     ).toBeNull()
     expect(taskRefusal(task({ files: ['src/C:/x', 'ab:/x', 'src/**'] }))).toBeNull()
+  })
+
+  // `g/[x\-]` was told to write `g/[x/-]`: inside a class a backslash
+  // escapes (a class matches one character, never a separator), and so
+  // does one before a brace's comma.
+  it('leaves a backslash inside a class or before a brace comma alone', () => {
+    expect(taskRefusal(task({ files: ['g/[x\\-]', 'g/[\\]a]', '{a\\,b,c}'] }))).toBeNull()
+    // CONTROL: one outside the class is still a separator, and the
+    // rewrite leaves the class's escape as it was.
+    expect(taskRefusal(task({ files: ['g\\h[x\\-]'] }))).toBe(
+      sep('inputs.files', 'g\\h[x\\-]', 'g/h[x\\-]'),
+    )
+  })
+
+  // `g/a\*b` was told only to write `g/a/*b`, which changes what it means
+  // when the backslash escaped the star. Both readings are named.
+  it('names the escaped reading beside the separator one for a mid-name star or ?', () => {
+    expect(taskRefusal(task({ files: ['g/a\\*b'] }))).toBe(
+      sep('inputs.files', 'g/a\\*b', 'g/a/*b') + ', or "g/a[*]b" for the character itself',
+    )
+    expect(taskRefusal(task({ files: ['src\\lib\\?.ts'] }))).toBe(
+      sep('inputs.files', 'src\\lib\\?.ts', 'src/lib/?.ts') +
+        ', or "src/lib[?].ts" for the character itself',
+    )
   })
 })
 

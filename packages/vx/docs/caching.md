@@ -1115,7 +1115,8 @@ Once the command exits 0, each positive glob of `outputs.files` and
 `outputs.workspaceFiles` must match a path that no `!` entry takes back.
 An empty `dist/` does not satisfy `dist/**`, since the clean keeps that
 root; a literal `public/uploads` is satisfied by the directory itself. One that matches nothing fails the task,
-cached or not, and nothing is saved: `[vx] app#build: outputs matched no
+cached or not, and nothing is saved, said as a warning like the run's
+others (stderr, outside the task's frame, kept by `vx last`): `[vx] app#build: outputs matched no
 files (dist/**) — the command exited 0 but never wrote it, so the task
 fails and nothing is cached: write it, or fix the pattern`. Each glob
 answers for itself: a literal `tsconfig.tsbuildinfo` that matched does

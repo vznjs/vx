@@ -124,9 +124,13 @@ describe('cache declarations that match nothing', () => {
       handleSignals: false,
     })
     const all = lines.flatMap((l) => l.split('\n'))
-    expect(all.find((l) => l.startsWith('  warn'))).toBe('  warn      1 warning above')
-    // The output's line is the failure's, in the task's output, not a warning.
-    expect(all.filter((l) => l.includes('matched no files'))).toHaveLength(1)
+    // The input glob's warning and the missing output's, which is a warning
+    // too, beside every other vx warning rather than in the task's output.
+    expect(all.find((l) => l.startsWith('  warn'))).toBe('  warn      2 warnings above')
+    expect(all.filter((l) => l.includes('matched no files')).map((l) => l.slice(0, 31))).toEqual([
+      '[vx] app#lost: inputs matched n',
+      '[vx] app#lost: outputs matched ',
+    ])
   })
 
   it('an input glob and an output glob that match nothing are each named once', async () => {
