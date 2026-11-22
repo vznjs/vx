@@ -119,7 +119,7 @@ describe('a run reads each root file once', () => {
         '.vx/workspace.ts': ['exists'],
         '.vx/workspace.mjs': ['exists', 'bytes'],
         // The projects and their configs come from the lock.
-        '.vx/projects.lock.jsonl': ['exists', 'text'],
+        '.vx/projects.lock': ['exists', 'text'],
         // The edges, which live only there, read beside it.
         '.vx/dependencies.lock': ['exists', 'bytes'],
         // A config the run reads is still there (X-144).
@@ -144,7 +144,7 @@ describe('a run reads each root file once', () => {
         p.cache.close()
         expect([...p.nodes.keys()]).toEqual(['a#build'])
       })
-      expect(ops['.vx/projects.lock.jsonl']).toEqual(['exists', 'text'])
+      expect(ops['.vx/projects.lock']).toEqual(['exists', 'text'])
     },
     TIMEOUT,
   )
@@ -164,7 +164,7 @@ describe('a run reads each root file once', () => {
         p.cache.close()
         expect([...p.nodes.keys()]).toEqual(['a#build'])
       })
-      expect(ops['.vx/projects.lock.jsonl']).toEqual(['exists', 'text'])
+      expect(ops['.vx/projects.lock']).toEqual(['exists', 'text'])
     },
     TIMEOUT,
   )

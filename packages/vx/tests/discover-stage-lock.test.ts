@@ -83,7 +83,7 @@ const run = (...args: string[]) =>
 it('a run follows the discovery vx lock made, and calls no discover hook', async () => {
   const lock = await vx(root, ['lock'])
   expect(`${lock.code}\n${lock.err}`).toStartWith('0\n')
-  const text = await Bun.file(path.join(root, '.vx/projects.lock.jsonl')).text()
+  const text = await Bun.file(path.join(root, '.vx/projects.lock')).text()
   // The final graph only: names in the config lock, edges in the dependencies lock.
   expect(text).not.toContain('discoverStage')
   expect((await readLockfile(root))!.projects['tools/gen']!.name).toBe('gen')
@@ -159,14 +159,14 @@ it('and one dropped still runs what it discovered until vx lock', async () => {
 it('a lock naming two projects alike, or a dependencies lock of other projects, is invalid', async () => {
   await Bun.write(path.join(root, 'edges.txt'), 'b-on-a gen\n')
   expect((await vx(root, ['lock'])).code).toBe(0)
-  const file = path.join(root, '.vx/projects.lock.jsonl')
+  const file = path.join(root, '.vx/projects.lock')
   const good = await Bun.file(file).text()
   // Keyed by name, two alike are two lines of one key.
   expect(good).toContain('\ngen\t')
   await Bun.write(file, good.replace('\ngen\t', '\na\t'))
   const clash = await run('--filter', 'b')
   expect(clash.code).toBe(1)
-  expect(clash.err).toContain('.vx/projects.lock.jsonl holds a line `vx lock` never writes')
+  expect(clash.err).toContain('.vx/projects.lock holds a line `vx lock` never writes')
   expect(clash.out).not.toContain('built-b')
   await Bun.write(file, good)
   const deps = path.join(root, '.vx/dependencies.lock')

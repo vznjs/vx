@@ -56,7 +56,7 @@ it(
     )
     expect({ code: r.code, out: r.out, err: r.err }).toEqual({
       code: 0,
-      out: '✓ vx lock  1 project config → .vx/projects.lock.jsonl, .vx/dependencies.lock\n',
+      out: '✓ vx lock  1 project config → .vx/projects.lock, .vx/dependencies.lock\n',
       err: '',
     })
   },

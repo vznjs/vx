@@ -655,9 +655,9 @@ export function toPosix(p: string): string
 export function relPosix(from: string, to: string): string
 // `.vx/.gitignore`'s text: vx's machine-local state stays out of git
 export const DOT_VX_GITIGNORE = '/cache\n/tmp\n'
-// `.vx/.gitattributes`'s text: GitHub collapses the machine locks in a diff; git merges them with `vx lock --merge` and checks them out LF
+// `.vx/.gitattributes`'s text: GitHub collapses the machine locks in a diff; git checks them out LF and merges them as text
 export const DOT_VX_GITATTRIBUTES =
-  'projects.lock.jsonl linguist-generated=true merge=vx-lock eol=lf\ndependencies.lock linguist-generated=true merge=vx-lock eol=lf\n'
+  'projects.lock linguist-generated=true eol=lf\ndependencies.lock linguist-generated=true eol=lf\n'
 export function normalizeGlob(glob: string): string
 export function normalizeBunGlob(glob: string): string
 export function staticPrefix(glob: string): string

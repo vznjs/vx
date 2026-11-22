@@ -1648,7 +1648,7 @@ describe('parseRunArgs', () => {
     // cross-reference drags the whole `Execution (for run)` block — 26
     // lines of run's flags — into `vx lock --help`. The exact set is the assertion; a `not.toContain` would pass
     // on any single flag leaking.
-    expect(flagsIn(verbHelpText('lock'))).toEqual(['--check', '--format', '--merge'])
+    expect(flagsIn(verbHelpText('lock'))).toEqual(['--check', '--format'])
     expect(flagsIn(verbHelpText('init'))).toEqual([
       '--dry',
       '--force',

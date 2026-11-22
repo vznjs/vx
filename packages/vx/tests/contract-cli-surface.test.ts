@@ -69,8 +69,6 @@ function companions(verb: string, flag: string): string[] {
     return ['--max-size', '1G']
   if (verb === 'last' && flag === '--branch') return ['--stats']
   if (verb === 'last' && flag === '--follow') return ['--live']
-  // git's %O %A %B %P: the value probed is the first of four.
-  if (verb === 'lock' && flag === '--merge') return ['ours', 'theirs', '.vx/dependencies.lock']
   return []
 }
 

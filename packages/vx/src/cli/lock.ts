@@ -1,4 +1,4 @@
-// `vx lock` — freeze every resolved vx.config.* into .vx/projects.lock.jsonl, and
+// `vx lock` — freeze every resolved vx.config.* into .vx/projects.lock, and
 // each one, pretty, into a `vx.lock.json` beside it for review.
 // `vx lock --check` — audit the lock against a fresh evaluation in the
 // current environment. Design: docs/design/config-lock-2026-06.md.
@@ -74,7 +74,6 @@ import {
   DEPENDENCIES_LOCK_NAME,
   dependenciesLock,
   sameRecord,
-  mergeLock,
   parseDependenciesLock,
   dependenciesLockWrite,
   type DependenciesLock,
@@ -84,13 +83,10 @@ import {
   pathName,
 } from '../workspace/index.js'
 import { taskEdgesFrom } from './select.js'
-import { registerMergeDriver } from './merge-driver.js'
 import { loadCliWorkspace, warnToStderr } from './workspace-config.js'
 
 interface LockArgs {
   check: boolean
-  /** git's `%O %A %B %P`: base, ours (merged into), theirs, the lock's path. */
-  merge?: readonly string[]
   format: 'pretty' | 'json'
   error?: string
 }
@@ -100,13 +96,7 @@ export function parseLockArgs(args: readonly string[]): LockArgs {
   for (let i = 0; i < args.length; i++) {
     const a = args[i]!
     if (a === '--check') out.check = true
-    else if (a === '--merge') {
-      const files = args.slice(i + 1, i + 5)
-      if (files.length < 4)
-        return { ...out, error: `--merge takes git's %O %A %B %P${seeHelp('lock')}` }
-      out.merge = files
-      i += 4
-    } else if (a === '--format' || a.startsWith('--format=')) {
+    else if (a === '--format' || a.startsWith('--format=')) {
       const fv = formatValue(a === '--format' ? args[++i] : a.slice(9), 'lock')
       if (typeof fv === 'object') return { ...out, ...fv }
       out.format = fv
@@ -147,7 +137,6 @@ function placedDependsOn(
 export async function lockCmd(args: readonly string[]): Promise<number> {
   const parsed = parseLockArgs(args)
   if (parsed.error) return refuse('lock', args, parsed.error, 'VX_E_USAGE')
-  if (parsed.merge !== undefined) return await mergeLockFiles(parsed.merge)
   // Writing the lock prints one line; only the audit has an answer to shape.
   if (parsed.format === 'json' && !parsed.check)
     return refuse(
@@ -159,14 +148,6 @@ export async function lockCmd(args: readonly string[]): Promise<number> {
   const root = await findWorkspaceRoot(process.cwd())
   if (parsed.check) return await checkLock(root, parsed.format === 'json')
   return await lockWorkspace(root)
-}
-
-/** git's merge driver: the merge goes into ours; 1 leaves a conflict for git to report. */
-async function mergeLockFiles([base, ours, theirs, file]: readonly string[]): Promise<number> {
-  const [o, a, b] = await Promise.all([base!, ours!, theirs!].map((f) => Bun.file(f).text()))
-  const merged = mergeLock(file!, o!, a!, b!)
-  await Bun.write(ours!, merged.text)
-  return merged.clean ? 0 : 1
 }
 
 /**
@@ -684,7 +665,6 @@ async function writeLock(
     root,
   )
   await writeIfMissing(path.join(root, '.vx', '.gitattributes'), DOT_VX_GITATTRIBUTES)
-  registerMergeDriver(root)
   const n = metas.length
   say(
     `${n} project config${n === 1 ? '' : 's'} → ${LOCKFILE_NAME}, ${DEPENDENCIES_LOCK_NAME}${bareNote(bare)}`,

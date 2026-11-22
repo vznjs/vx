@@ -64,7 +64,7 @@ describe('vx lock refuses a bracket class that names an existing path', () => {
       expect({
         code: r.code,
         said: r.err.includes('lock not written') && r.err.includes('app/\\[id\\]/**'),
-        written: existsSync(path.join(root, '.vx/projects.lock.jsonl')),
+        written: existsSync(path.join(root, '.vx/projects.lock')),
       }).toEqual({ code: 1, said: true, written: false })
     },
     TIMEOUT,

@@ -37,7 +37,7 @@ it('writes the lock a line per project, a pretty review copy per config, and .vx
   const r = (root = await makeWorkspace({ prefix: 'vx-lock-review-' }))
   const dir = await addProject(r, 'a', { config: CONFIG })
   expect(vx(r, 'lock').code).toBe(0)
-  const lock = (await text(path.join(r, '.vx', 'projects.lock.jsonl')))!
+  const lock = (await text(path.join(r, '.vx', 'projects.lock')))!
   // The header, the task's line, the project's line.
   expect(lock.trimEnd().split('\n')).toHaveLength(3)
   expect(lock).toContain(
@@ -48,7 +48,7 @@ it('writes the lock a line per project, a pretty review copy per config, and .vx
   expect(JSON.parse(review)).toMatchObject(locked)
   expect(review).toStartWith('{\n  "tasks": {')
   expect(await text(path.join(r, '.vx', '.gitattributes'))).toBe(
-    'projects.lock.jsonl linguist-generated=true merge=vx-lock eol=lf\ndependencies.lock linguist-generated=true merge=vx-lock eol=lf\n',
+    'projects.lock linguist-generated=true eol=lf\ndependencies.lock linguist-generated=true eol=lf\n',
   )
   expect(vx(r, 'lock', '--check').code).toBe(0)
 })
@@ -195,7 +195,7 @@ it('a review copy vx lock cannot write refuses the lock and leaves it as it was'
   const r = (root = await makeWorkspace({ prefix: 'vx-lock-review-blocked-' }))
   const dir = await addProject(r, 'a', { config: CONFIG })
   expect(vx(r, 'lock').code).toBe(0)
-  const lockPath = path.join(r, '.vx', 'projects.lock.jsonl')
+  const lockPath = path.join(r, '.vx', 'projects.lock')
   const before = await text(lockPath)
   await Bun.write(path.join(dir, 'vx.config.mjs'), CONFIG.replace("'true'", "'false'"))
   await rm(path.join(dir, 'vx.lock.json'))
@@ -291,7 +291,7 @@ it('temps a killed vx lock left select no project under --affected', async () =>
   gitIn(r)('add', '-A')
   gitIn(r)('commit', '-q', '-m', 'init')
   for (const f of [
-    '.vx/projects.lock.jsonl.tmp-123-abc',
+    '.vx/projects.lock.tmp-123-abc',
     '.vx/dependencies.lock.tmp-123-abc',
     'vx.lock.json.tmp-123-abc',
   ])
@@ -311,9 +311,9 @@ it('a checkout under eol=crlf leaves the locks as vx wrote them', async () => {
   const git = gitIn(r)
   git('-c', 'core.autocrlf=true', 'add', '-A')
   git('commit', '-q', '-m', 'init')
-  for (const f of ['projects.lock.jsonl', 'dependencies.lock']) await rm(path.join(r, '.vx', f))
+  for (const f of ['projects.lock', 'dependencies.lock']) await rm(path.join(r, '.vx', f))
   git('-c', 'core.autocrlf=true', 'checkout', '-q', '--', '.')
-  for (const f of ['projects.lock.jsonl', 'dependencies.lock'])
+  for (const f of ['projects.lock', 'dependencies.lock'])
     expect(await text(path.join(r, '.vx', f))).not.toContain('\r')
   expect(vx(r, 'lock', '--check')).toMatchObject({ code: 0 })
   expect(vx(r, 'run', 'build', '--all').code).toBe(0)

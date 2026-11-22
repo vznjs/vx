@@ -1,5 +1,5 @@
 // A run keys a claimed lockfile from `.vx/dependencies.lock`, as it
-// takes configs from `.vx/projects.lock.jsonl`: the claimant's digests now,
+// takes configs from `.vx/projects.lock`: the claimant's digests now,
 // memoized by the file's hash since `vx lock` wrote them, must be what the
 // lock records, so a warm run parses nothing. A digest that moved since, a
 // lock with no record of a present file, or no lock at all refuses with

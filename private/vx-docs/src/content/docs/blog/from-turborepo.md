@@ -31,7 +31,7 @@ $ bunx @vzn/vx-migrate
             packages/web/vx.config.ts
             .vx/workspace.ts
             .vx/.gitignore
-  lock      3 project configs → .vx/projects.lock.jsonl
+  lock      3 project configs → .vx/projects.lock
 
   next      vx run build --all
 
@@ -54,7 +54,7 @@ flowchart LR
   P[package.json scripts] --> M
   M --> C[vx.config.ts per package]
   M --> W[.vx/workspace.ts]
-  M --> L[.vx/projects.lock.jsonl]
+  M --> L[.vx/projects.lock]
 ```
 
 ```ts title="packages/web/vx.config.ts"

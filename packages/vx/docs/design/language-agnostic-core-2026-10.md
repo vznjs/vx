@@ -2,7 +2,7 @@
 
 > **Status:** proposal. Owner decision (2026-10-14): core drops all
 > package.json / package-manager logic. Builds on lock-only runs
-> (`feat(lock)!: runs read only .vx/projects.lock.jsonl`, in flight):
+> (`feat(lock)!: runs read only .vx/projects.lock`, in flight):
 > only `vx lock` evaluates configs; workspace config, plugins and the
 > `discover` / `project` / `graph` stages run live every run.
 
@@ -78,7 +78,7 @@ Paths relative to `packages/vx/src`, at `d166cbe6d`.
 | `orchestrator/projects.ts:99-125, 184-225, 242, 308`                                                                       | discovery entry, package closure, `//` → package name, `ctx.packageJson`                                         | lock dirs + `discover`; closure over project graph; `//` → root's name; `packageJson` dropped |
 | `orchestrator/prepare.ts:262-271`                                                                                          | package graph, root by package name                                                                              | project graph                                                                                 |
 | `cli/why.ts:177-180`                                                                                                       | reads root `package.json` for `//`                                                                               | root's resolved name                                                                          |
-| `cli/watch.ts:177, 640-663, 706-738, 957`; `cli/watch-filter.ts:281, 313-328`; `cli/watch-set.ts:48`                       | re-discover on `package.json` / member dir changes                                                               | re-read on `.vx/projects.lock.jsonl` change; re-run `discover` on a claimed file change       |
+| `cli/watch.ts:177, 640-663, 706-738, 957`; `cli/watch-filter.ts:281, 313-328`; `cli/watch-set.ts:48`                       | re-discover on `package.json` / member dir changes                                                               | re-read on `.vx/projects.lock` change; re-run `discover` on a claimed file change             |
 | `orchestrator/run.ts:1867-1873, 1919`; `cli/select.ts:531, 622`; `graph/task-graph.ts:611`; `workspace/filter.ts:135, 198` | messages naming `workspaces` / package names                                                                     | reworded                                                                                      |
 | `workspace/config-schema.ts:1050-1058, 1093-1105`                                                                          | `name` refused as a foreign key; hints point at `workspaces`                                                     | `name` becomes a field; hints reworded                                                        |
 | `cache/cache.ts:698`                                                                                                       | `MANIFESTS` marks a project dir                                                                                  | config filenames + `.vx/workspace.*`                                                          |

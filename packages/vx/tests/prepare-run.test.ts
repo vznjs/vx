@@ -108,7 +108,7 @@ async function goneAfterLock(name: string): Promise<void> {
 
 /** What a run says when a config it reads is gone since the lock. */
 const gone = (name: string): string =>
-  `.vx/projects.lock.jsonl locks packages/${name} ("${name}"), but its vx.config.mjs is gone — run \`vx lock\``
+  `.vx/projects.lock locks packages/${name} ("${name}"), but its vx.config.mjs is gone — run \`vx lock\``
 
 /**
  * NB `prepareRun` takes an EXPLICIT project scope — resolving cwd to "the

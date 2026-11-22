@@ -33,7 +33,7 @@ tasks it found.
 vx lock   # after any edit to a vx.config.ts or .vx/workspace.ts
 ```
 
-A run reads every config from `.vx/projects.lock.jsonl`, never the files:
+A run reads every config from `.vx/projects.lock`, never the files:
 a task you add, or an edit to one, does nothing until `vx lock`. Commit
 the lock with the config.
 
