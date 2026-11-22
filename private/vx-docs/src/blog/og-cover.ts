@@ -13,6 +13,13 @@ import { imageUrl } from '../images.js'
 const COVERS = path.resolve('public/blog/covers')
 
 export async function ogCover(route: StarlightRouteData, site: URL | undefined): Promise<void> {
+  // A post's search snippet and link preview are its excerpt: with no
+  // `description`, Starlight gave all 120 posts and releases the site's.
+  const { description, excerpt } = route.entry.data
+  if (description === undefined && excerpt !== undefined)
+    for (const h of route.head)
+      if (h.attrs?.['name'] === 'description' || h.attrs?.['property'] === 'og:description')
+        h.attrs = { ...h.attrs, content: excerpt }
   const cover = route.entry.data.cover
   const og = route.head.find((h) => h.attrs?.['property'] === 'og:image')!
   const alt = route.head.find((h) => h.attrs?.['property'] === 'og:image:alt')!
