@@ -1848,8 +1848,11 @@ read as `$HOME/root/x` and created there).
 
 **Globs.** `read` and `write` accept patterns. On macOS the pattern
 reaches the policy and matches files created during the run; on Linux a
-grant is a mount, so the pattern is expanded when the task starts and a
-file created later is not covered — grant its directory instead. On both
+grant is a mount, so a READ pattern is expanded when the task starts and a
+file created later is not covered. A WRITE pattern binds its directory
+(`dist/*.js` binds `dist`) where a read grant shows it, so a match the
+task creates lands; a write there the pattern does not match is reported,
+as beside a file grant (below). On both
 platforms `<dir>/**` and `<dir>/**/*` collapse to `<dir>`, so
 `read: ['**/*']` lets a task list its own cwd; a `<dir>` that is itself a
 glob keeps its subtree (`.*.tmp/**` covers what is inside each match).
@@ -1871,21 +1874,20 @@ newline) is refused at load on every platform: the Linux report of a
 write spells a tab as a space, so a write the grant covers read as a
 violation of `a b`, and a refused write to `a b` would read the same.
 
-A Linux WRITE grant that matches nothing when the task starts therefore
-mounts nothing. Where a read grant mounts its directory, the task's first
-write under it fails with `Read-only file system` — a message naming
-neither vx nor the grant — so vx reports that grant itself before the
-task runs, once, and names the directory to grant instead, spelled as
-the config spells it (`allow: { write: ['gen/'] }`). Where no mount
-holds the directory, it is the sandbox's own scratch, the one mask left
-writable: the task may create, write and remove what the glob matches
-(anything else it writes there too), and nothing it leaves there
-outlives the task. That is right for a tool's temp directory and
-wrong for an output: a file the task leaves there is reported, and
-fails the task. A directory a read grant shows but a write grant beside
-it split (`read: ['.']` with `write: ['dist/', '*.tsbuildinfo']`) is
-bound writable for the glob, as a file grant there is, so what it
-matches lands on the host. A read grant matching nothing is ordinary
+A Linux WRITE glob's directory that no read grant shows is not bound.
+Where the host's read-only root holds it (outside the workspace), or
+binding it would make a nested project or `.git` writable (`*.log` in a
+root project), a glob matching nothing at the start mounts nothing: the
+task's first write under it fails with `Read-only file system` — a
+message naming neither vx nor the grant — so vx reports that grant
+itself before the task runs, once, and names the directory to grant
+instead, spelled as the config spells it (`allow: { write: ['gen/'] }`).
+Where no mount holds the directory inside the workspace, it is the
+sandbox's own scratch, the one mask left writable: the task may create,
+write and remove what the glob matches (anything else it writes there
+too), and nothing it leaves there outlives the task. That is right for a
+tool's temp directory and wrong for an output: a file the task leaves
+there is reported, and fails the task. A read grant matching nothing is ordinary
 (an optional file, a cache not yet populated) and is not reported. A
 pattern under a directory that does not exist yet matches nothing the
 same way, where the scan once failed the task with a bare `ENOENT` (B-6).

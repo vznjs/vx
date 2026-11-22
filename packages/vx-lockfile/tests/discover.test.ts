@@ -575,6 +575,28 @@ describe('discover', () => {
       )
     })
 
+    it(`${c.name}(): a dependency field that is not a name → range object refuses, naming it`, async () => {
+      // An array read as no dependencies: vx lock and run passed with no
+      // edge, so b ran beside a and hit with a's old output. Every package
+      // manager refuses such a manifest (bun 1.3: "expected object").
+      await writeFile(path.join(root, c.file), c.text)
+      await workspaces()
+      const metas = await projects({ root: rootPkg })
+      const b = path.join(root, 'packages/b/package.json')
+      for (const [field, value, said] of [
+        ['dependencies', ['a'], 'an array'],
+        ['devDependencies', null, 'null'],
+        ['optionalDependencies', 'a', 'a string'],
+        ['peerDependencies', { a: 1 }, 'a: 1'],
+      ] as const) {
+        await writeFile(b, JSON.stringify({ name: 'b', [field]: value }))
+        await expect(discover(c.make(), metas)).rejects.toThrow(
+          `packages/b/package.json: "${field}" must map each package name to a version range`,
+        )
+        await expect(discover(c.make(), metas)).rejects.toThrow(said)
+      }
+    })
+
     it(`${c.name}(): a package.json with a trailing comma and a comment reads as ${c.name} reads it`, async () => {
       // `bun install` takes a manifest with a trailing comma or a comment;
       // npm, pnpm and yarn refuse one. bun() refused it as "not JSON", so a

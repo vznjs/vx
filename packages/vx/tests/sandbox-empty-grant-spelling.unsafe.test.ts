@@ -39,10 +39,15 @@ describe.skipIf(process.platform !== 'linux')('the empty write grant report', ()
   }
 
   it('spells a grant in the project from the project, and its directory as a grant', () => {
-    const line = said(['*.log'])
-    expect(line).toContain("the write grant '*.log' matches nothing yet")
-    expect(line).toContain("`allow: { write: ['.'] }`")
+    // A directory that does not exist yet: one there is bound (punchedWriteGlobs).
+    const line = said(['logs/*.log'])
+    expect(line).toContain("the write grant 'logs/*.log' matches nothing yet")
+    expect(line).toContain("`allow: { write: ['logs/'] }`")
     expect(line).not.toContain(root)
+  })
+
+  it('says nothing for a glob whose directory a read grant shows: it is bound', () => {
+    expect(said(['*.log'])).toBe('')
   })
 
   it('names a subdirectory with the slash a directory grant takes', () => {

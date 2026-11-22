@@ -24,15 +24,16 @@ export default defineProject({
       dependsOn: ['install'],
       exec: {
         command: 'bun src/cli.ts',
-        // ~30 min on a 4-core runner (2026-11-21): room to grow.
-        timeout: '60m',
+        // One CI shard (conformance.yml) takes about 90 s. The whole suite
+        // in one run takes ~2 h of CPU: run it sharded, or `bun src/cli.ts`.
+        timeout: '5m',
         env: { define: NO_TRANSPILER_CACHE },
       },
       inputs: { files: SUITE },
     },
 
-    // A sharded run's results (conformance.yml: one job per tool and third
-    // of the cases, each `conformance -- --tool <t> --shard <i>/3`), joined.
+    // A sharded run's results (conformance.yml: one job per tool and share
+    // of the cases, each `conformance -- --tool <t> --shard <i>/<n>`), joined.
     'conformance.merge': {
       description: 'bun src/merge.ts: the shards in shards/ → conformance.json',
       dependsOn: ['install'],

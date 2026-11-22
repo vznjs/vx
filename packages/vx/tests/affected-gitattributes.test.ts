@@ -144,3 +144,51 @@ it(
   },
   TIMEOUT,
 )
+
+async function commitAttributes(text: string, message: string): Promise<void> {
+  await write(path.join(root, '.gitattributes'), text)
+  git(root, 'add', '-A')
+  git(root, 'commit', '-qm', message)
+}
+
+it(
+  'a rule that moves no checked-out byte selects nothing',
+  async () => {
+    // `linguist-generated -diff` shapes GitHub's view and `git diff`, never a
+    // checkout: every project was selected (conformance growth).
+    await commitAttributes('*.txt linguist-generated -diff\n', 'view-only rule')
+    const out = affected(root)
+    expect(out).not.toContain('app#build')
+    expect(out).not.toContain('lib#build')
+  },
+  TIMEOUT,
+)
+
+it(
+  'a view-only attribute added beside a checkout rule selects nothing; reordered checkout rules select all',
+  async () => {
+    await commitAttributes('*.txt text eol=lf\n*.txt -text\n', 'checkout rules')
+    await commitAttributes('*.txt text eol=lf -diff\n# note\n*.txt -text\n', 'view-only edit')
+    let out = affected(root)
+    expect(out).not.toContain('app#build')
+    // The later line wins: swapped, the checkout writes other bytes.
+    await commitAttributes('*.txt -text\n*.txt text eol=lf -diff\n', 'swap')
+    out = affected(root)
+    expect(out).toContain('app#build')
+    expect(out).toContain('lib#build')
+  },
+  TIMEOUT,
+)
+
+it(
+  'a view-only rule above projects selects nothing under it',
+  async () => {
+    await write(path.join(root, 'pkgs/.gitattributes'), '*.txt linguist-vendored\n')
+    git(root, 'add', '-A')
+    git(root, 'commit', '-qm', 'nested view-only')
+    const out = affected(root)
+    expect(out).not.toContain('app#build')
+    expect(out).not.toContain('lib#build')
+  },
+  TIMEOUT,
+)

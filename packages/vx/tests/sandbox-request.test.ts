@@ -78,25 +78,40 @@ const kind = async (p: string): Promise<'file' | 'dir' | 'none'> => {
 // (or, before B-57, ran with the workspace unwalled). Seatbelt compiles it
 // as a character class, so the workspace wall there matched nothing.
 describe('a project under a bracketed directory', () => {
-  it('is refused with the directory named, before anything is created', async () => {
-    dir = path.join(root, 'packages', '[old]', 'proj')
-    await mkdir(dir, { recursive: true })
-    const err = await requestFor(['dist/']).then(
-      () => undefined,
-      (e: unknown) => (e as Error).message,
-    )
-    expect([err, await kind(path.join(dir, 'dist'))]).toEqual([
-      `exec.sandbox: ${dir} holds [, ], * or ?, which the sandbox runtime reads as a ` +
-        `pattern, not a name — rename the directory, or run the task without exec.sandbox`,
-      'none',
-    ])
-    // CONTROL: the same request a directory over, with no bracket, resolves.
-    dir = path.join(root, 'packages', 'old', 'proj')
-    await mkdir(dir, { recursive: true })
-    expect((await requestFor(['dist/'])).sandbox.config.allowWrite).toEqual([
-      path.join(dir, 'dist'),
-    ])
-  })
+  it.skipIf(process.platform === 'linux')(
+    'is refused on macOS with the directory named, before anything is created',
+    async () => {
+      dir = path.join(root, 'packages', '[old]', 'proj')
+      await mkdir(dir, { recursive: true })
+      const err = await requestFor(['dist/']).then(
+        () => undefined,
+        (e: unknown) => (e as Error).message,
+      )
+      expect([err, await kind(path.join(dir, 'dist'))]).toEqual([
+        `exec.sandbox: ${dir} holds [, ], * or ?, which the macOS sandbox reads as a ` +
+          `pattern, not a name — rename the directory, or run the task without exec.sandbox`,
+        'none',
+      ])
+      // CONTROL: the same request a directory over, with no bracket, resolves.
+      dir = path.join(root, 'packages', 'old', 'proj')
+      await mkdir(dir, { recursive: true })
+      expect((await requestFor(['dist/'])).sandbox.config.allowWrite).toEqual([
+        path.join(dir, 'dist'),
+      ])
+    },
+  )
+  // Linux mounts every path by name: the project's own wildcards are read
+  // past (`nameDir`), and SRT is handed each such path literal.
+  it.skipIf(process.platform !== 'linux')(
+    'resolves on Linux, its grant at its own path',
+    async () => {
+      dir = path.join(root, 'packages', '[old]', 'proj')
+      await mkdir(dir, { recursive: true })
+      expect((await requestFor(['dist/'])).sandbox.config.allowWrite).toEqual([
+        path.join(dir, 'dist'),
+      ])
+    },
+  )
 })
 
 // The runtime reports a refused touch as one line per record, so a path

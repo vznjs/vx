@@ -482,6 +482,37 @@ describe('computeTaskHash over random resolved configs', () => {
     expect(shuffled).toBe(40)
   })
 
+  it('the order of input and output globs and dependsOn keeps the key', async () => {
+    // A `!` subtracts in any order, and dependsOn is a set: reordering
+    // `['src/**', 'lib/**']` reran the task (conformance growth,
+    // cache/input-globs-reordered-replays; Turbo replays).
+    // Input globs are resolved through git (the other rows key no file).
+    Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root })
+    for (const { c } of draws(0x0e4e, 20)) {
+      const withLists = (files: string[], out: string[], deps: string[]): Case => ({
+        ...c,
+        cfg: {
+          ...c.cfg,
+          inputs: { ...c.cfg.inputs!, files },
+          outputs: { files: out },
+          dependsOn: deps,
+        },
+      })
+      const base = await key(
+        withLists(['src/**', 'lib/**', '!**/*.md'], ['dist/**', 'out/**'], ['^build', 'gen']),
+      )
+      expect(
+        await key(
+          withLists(['!**/*.md', 'lib/**', 'src/**'], ['out/**', 'dist/**'], ['gen', '^build']),
+        ),
+      ).toBe(base)
+      // CONTROL: a different list moves it.
+      expect(
+        await key(withLists(['src/**', '!**/*.md'], ['dist/**', 'out/**'], ['^build', 'gen'])),
+      ).not.toBe(base)
+    }
+  })
+
   it('package.json bytes no glob names never move the key: core keys no package file', async () => {
     const r = rng(0x9a9)
     const c = draws(0x9a9, 1)[0]!.c

@@ -11,7 +11,7 @@ export {
   untracedReason,
   wrapSandboxedCommand,
 } from './runtime.js'
-export { atOrUnder, MOUNT_WILDCARDS, replacedBySandbox, sandboxReads, toRealPath } from './paths.js'
+export { atOrUnder, replacedBySandbox, sandboxReads, toRealPath, wildcardAt } from './paths.js'
 export { keyedOutsideGrants } from './binds.js'
 export {
   commandWriteReach,

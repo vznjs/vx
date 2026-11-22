@@ -55,10 +55,10 @@ describe('scopedMandatoryDenies', () => {
     expect(scopedMandatoryDenies(path.join(root, 'a'), [path.join(root, 'deep')])).toEqual([])
   })
 
-  it('refuses a deny a glob character would drop', () => {
-    expect(() => scopedMandatoryDenies(root, [path.join(root, 'p[1]')])).toThrow(
-      `the sandbox must keep ${path.join(root, 'p[1]/.bashrc')} read-only, and a path with a glob character (* ? [ ]) cannot reach it — rename the directory`,
-    )
+  it('keeps a deny holding a glob character: SRT is handed it literal', () => {
+    expect(scopedMandatoryDenies(root, [path.join(root, 'p[1]')])).toEqual([
+      path.join(root, 'p[1]/.bashrc'),
+    ])
   })
 
   it('scopes only a root without glob characters', () => {

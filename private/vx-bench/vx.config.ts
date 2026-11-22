@@ -37,6 +37,8 @@ export default defineProject({
       dependsOn: ['install'],
       exec: {
         command: 'bun perf-guard.ts && bun pr-bench.ts',
+        // ~4.4 min on CI (main, 2026-11-22): past the workspace's 2m.
+        timeout: '10m',
         // The commit pr-bench.ts times this checkout against (ci.yml sets it).
         // The site's workspace with no sleeps: restore and nothing-changed run no task.
         env: {

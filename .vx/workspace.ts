@@ -73,6 +73,10 @@ export default defineWorkspace({
   // names the relay (a PR's or main's run points it at the relay's
   // Preview or deploy, which wins). Perf times the machine, so it names
   // none and runs here.
+  // Every task's time limit (M, 2026-11-22): a hang fails in 2 minutes
+  // instead of holding the run to the job's 25. A task whose work is longer
+  // than that by nature (the benches, check.perf, conformance) says so itself.
+  run: { timeout: '2m' },
   pipelines: {
     // A PR runs what its diff affects, inputs outside a project included
     // (2026-10-23).

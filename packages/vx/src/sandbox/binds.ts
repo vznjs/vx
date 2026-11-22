@@ -9,7 +9,8 @@ import {
   atOrUnder,
   isMountableLiteral,
   localBindingOn,
-  MOUNT_WILDCARDS,
+  namedHead,
+  wildcardAt,
   toRealPath,
   unique,
 } from './paths.js'
@@ -233,29 +234,31 @@ export function scratchWrites(
 }
 
 /** The directory a write glob's matches land in: its head's. */
-export const globDir = (glob: string): string =>
-  path.dirname(glob.slice(0, glob.search(MOUNT_WILDCARDS) + 1))
+export const globDir = (glob: string): string => path.dirname(glob.slice(0, wildcardAt(glob) + 1))
 
 /**
- * Linux: the directories of the pending write globs (`dir` → its globs)
- * that a declared read grant shows but the punch around a write grant left
- * under no bind. `read: ['.']` beside `write: ['dist/', '*.log']` binds
- * the project's children, not the project: `out.log`, a declared output,
- * fell into the deny anchor's scratch and vanished under a green run.
- * Each is bound writable, as a file grant there is widened to its
- * directory, and a write there the glob does not cover is judged as one
- * under a widened grant (`refusedWrites`).
+ * Linux: the directories of the write globs (`dir` → its globs) that a
+ * declared read grant shows and no write bind holds. A bind covers what
+ * exists when the task starts, so `dist/*.js` bound only the matches
+ * already there, and a build writing a new one met `Read-only file system`;
+ * and `read: ['.']` beside `write: ['dist/', '*.log']` binds the project's
+ * children, not the project, so `out.log`, a declared output, fell into the
+ * deny anchor's scratch and vanished under a green run. Each is bound
+ * writable, as a file grant there is widened to its directory, and a write
+ * there the glob does not cover is judged as one under a widened grant
+ * (`refusedWrites`). A directory holding a wall never reaches here
+ * (`wallOff` drops its glob).
  */
 function punchedWriteGlobs(
-  pending: readonly string[],
+  globs: readonly string[],
   shown: readonly string[],
-  binds: readonly string[],
+  writeBinds: readonly string[],
 ): Map<string, string[]> {
   const out = new Map<string, string[]>()
   if (process.platform !== 'linux') return out
-  for (const glob of pending) {
+  for (const glob of globs) {
     const dir = globDir(glob)
-    if (!shown.some((r) => atOrUnder(dir, r)) || binds.some((b) => atOrUnder(dir, b))) continue
+    if (!shown.some((r) => atOrUnder(dir, r)) || writeBinds.some((b) => atOrUnder(dir, b))) continue
     try {
       if (!statSync(dir).isDirectory()) continue
     } catch {
@@ -384,7 +387,10 @@ const warnedGlob = new Set<string>()
  * once: the remedy is the deepest directory above it whose name holds none.
  */
 function holdsGlobChar(grant: string): boolean {
-  const at = srtStripped(grant).search(/[[\]*?\\]/)
+  const stripped = srtStripped(grant)
+  const glob = wildcardAt(stripped)
+  const slash = stripped.indexOf('\\')
+  const at = glob === -1 ? slash : slash === -1 ? glob : Math.min(glob, slash)
   if (at === -1) return false
   if (!warnedGlob.has(grant)) {
     warnedGlob.add(grant)
@@ -427,7 +433,7 @@ export function keyedOutsideGrants(
   rels: readonly string[],
 ): string[] {
   const head = (g: string): string => {
-    const at = g.search(MOUNT_WILDCARDS)
+    const at = wildcardAt(g)
     return at === -1 ? g : g.slice(0, g.lastIndexOf(path.sep, at)) || path.sep
   }
   const { config } = sandbox
@@ -467,8 +473,12 @@ export function keyedOutsideGrants(
 export function bindableReads(paths: readonly string[]): string[] {
   if (process.platform !== 'linux') return [...paths]
   return paths.filter((grant) => {
-    const at = srtStripped(grant).search(/[*?\\]/)
-    if (at === -1) return true
+    const head = namedHead(grant).length
+    const past = srtStripped(grant)
+      .slice(head)
+      .search(/[*?\\]/)
+    if (past === -1) return true
+    const at = head + past
     if (!warnedGlob.has(grant)) {
       warnedGlob.add(grant)
       notify({
@@ -524,9 +534,7 @@ export function buildCustomConfig(
     )
   }
   let allowRead = unique(reads.flatMap((r) => punchWritePaths(r, punched, reachable)))
-  const split = [
-    ...punchedWriteGlobs(c.pendingWrites ?? [], c.allowRead, [...allowRead, ...allowWrite]).keys(),
-  ]
+  const split = [...punchedWriteGlobs(c.writeGlobs ?? [], c.allowRead, allowWrite).keys()]
   if (split.length > 0) {
     allowWrite.push(...split)
     punched.push(...split)

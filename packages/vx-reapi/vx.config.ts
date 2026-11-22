@@ -163,7 +163,6 @@ export default defineProject({
       exec: {
         command: 'sh tests/helpers/bazel-remote.sh',
         persistent: { readyWhen: 'Starting gRPC server' },
-        timeout: '5m',
       },
       inputs: { files: ['tests/helpers/bazel-remote.sh'] },
     },
@@ -173,7 +172,6 @@ export default defineProject({
       exec: {
         command: 'sh tests/helpers/nativelink.sh',
         persistent: { readyWhen: 'Worker registered' },
-        timeout: '5m',
       },
       inputs: { files: ['tests/helpers/nativelink.sh', 'tests/helpers/nativelink-exec.json5'] },
     },

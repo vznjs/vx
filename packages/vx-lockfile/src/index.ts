@@ -776,7 +776,38 @@ async function manifestOf(
   if (pkg === null || typeof pkg !== 'object' || Array.isArray(pkg)) {
     throw new UserError(`${name}: not a ${kind === 'YAML' ? 'YAML mapping' : `${kind} object`}`)
   }
+  for (const field of MANIFEST_DEP_FIELDS) {
+    const bad = badDepField((pkg as Record<string, unknown>)[field])
+    if (bad !== undefined) {
+      throw new UserError(
+        `${name}: "${field}" must map each package name to a version range, not ${bad}`,
+      )
+    }
+  }
   return pkg as Record<string, unknown>
+}
+
+const MANIFEST_DEP_FIELDS = [
+  'dependencies',
+  'devDependencies',
+  'optionalDependencies',
+  'peerDependencies',
+] as const
+
+/**
+ * What is wrong with a dependency field, or undefined. Read as none, an
+ * array or a number range dropped the edge while lock and run passed;
+ * every package manager refuses such a manifest.
+ */
+function badDepField(v: unknown): string | undefined {
+  if (v === undefined) return undefined
+  if (v === null) return 'null'
+  if (Array.isArray(v)) return 'an array'
+  if (typeof v !== 'object') return `a ${typeof v}`
+  for (const [dep, spec] of Object.entries(v)) {
+    if (typeof spec !== 'string') return `${dep}: ${JSON.stringify(spec) ?? String(spec)}`
+  }
+  return undefined
 }
 
 /** `manifestOf`, each directory read once. */

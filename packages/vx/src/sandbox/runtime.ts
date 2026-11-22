@@ -101,7 +101,6 @@ import {
   readOnlyMasks,
   withCwd,
   scratchWrites,
-  globDir,
   widenedEntries,
   withLinkedWrites,
 } from './binds.js'
@@ -112,6 +111,7 @@ import {
   localBindingOn,
   loopbackPorts,
   MOUNT_WILDCARDS,
+  wildcardAt,
   namedPath,
   toRealPath,
   unique,
@@ -140,6 +140,7 @@ import {
 } from '../exec/index.js'
 
 type SrtModule = typeof import('@anthropic-ai/sandbox-runtime')
+type SrtTaskConfig = NonNullable<Parameters<SrtModule['SandboxManager']['wrapWithSandbox']>[2]>
 let srtPromise: Promise<SrtModule> | undefined
 /** Set once loaded, for `releaseBridges`, which a sync exit handler calls. */
 let srtLoaded: SrtModule | undefined
@@ -1462,6 +1463,7 @@ export function resolveSandboxConfig(
   }
   const a = cfg.allow ?? {}
   const pending: string[] = []
+  const globs: string[] = []
   const linked: Array<{ link: string; target: string }> = []
   const r: ResolvedSandboxConfig = {
     allowRead: expandGrants((a.read ?? []).flatMap(grantAlternatives).map(resolve), walls),
@@ -1484,9 +1486,11 @@ export function resolveSandboxConfig(
       }),
       walls,
       pending,
+      globs,
     ),
   }
   if (pending.length > 0) r.pendingWrites = pending
+  if (globs.length > 0) r.writeGlobs = globs
   if (linked.length > 0) r.linkedWrites = linked
   if (process.platform === 'darwin') {
     const read = wallsGlobsReach(r.allowRead, walls)
@@ -1649,12 +1653,13 @@ async function wrapIn(
     ),
     ...baselineLinks(args.baseAllowRead, customConfig.filesystem!.allowRead!),
   ]
-  // The directories `punchedWriteGlobs` bound, and the globs they hold.
+  // The directories `punchedWriteGlobs` bound, and the write globs: a write
+  // one matches is granted in any bound directory, a match's widened one
+  // too (`dist/a.js` there binds `dist`, where a new `dist/b.js` lands).
   const own = new Set(bindableWrites(args.config.allowWrite))
-  const heldDirs = customConfig.filesystem!.allowWrite.filter((w) => !own.has(w))
   const globsHeld = {
-    dirs: heldDirs,
-    globs: (args.config.pendingWrites ?? []).filter((g) => heldDirs.includes(globDir(g))),
+    dirs: customConfig.filesystem!.allowWrite.filter((w) => !own.has(w)),
+    globs: [...(args.config.writeGlobs ?? [])],
   }
   const scratch = pendingWriteGrants(
     args.config,
@@ -2024,10 +2029,17 @@ function asksUnixSockets(c: Pick<ResolvedSandboxConfig, 'unixSockets'>): boolean
  * walled. `[[]` is a class of one `[`; a lone `]` is plain text to it. A
  * `*` or `?` has no such spelling: `bindableReads` leaves its grant out.
  */
-function literalReadPaths(config: TaskSandboxConfig | undefined): TaskSandboxConfig | undefined {
+function literalReadPaths(config: TaskSandboxConfig | undefined): SrtTaskConfig | undefined {
   const fs = config?.filesystem
-  if (fs === undefined) return config
-  const escape = (paths: readonly string[]): string[] => paths.map((p) => p.replaceAll('[', '[[]'))
+  if (fs === undefined) return config as SrtTaskConfig | undefined
+  // A `*` or `?` reaches here only in a named directory (`nameDir`, a
+  // project under `packages/[*]/`): marked literal, as is every write path
+  // holding a wildcard, which SRT would otherwise drop.
+  const literal = (p: string) => ({ path: p, literal: true as const })
+  const escape = (paths: readonly string[]) =>
+    paths.map((p) => (/[*?]/.test(p) ? literal(p) : p.replaceAll('[', '[[]')))
+  const names = (paths: readonly string[]) =>
+    paths.map((p) => (MOUNT_WILDCARDS.test(p) ? literal(p) : p))
   return {
     ...config,
     filesystem: {
@@ -2035,6 +2047,8 @@ function literalReadPaths(config: TaskSandboxConfig | undefined): TaskSandboxCon
       // A `*` or `?` in a deny path matches its siblings too: a wider wall.
       denyRead: escape(fs.denyRead),
       ...(fs.allowRead !== undefined ? { allowRead: escape(bindableReads(fs.allowRead)) } : {}),
+      allowWrite: names(fs.allowWrite),
+      denyWrite: names(fs.denyWrite),
     },
   }
 }
@@ -2151,7 +2165,7 @@ function seatbeltSpells(grant: string, kind: 'read' | 'write', name: boolean): b
 function wrapForTask(
   SandboxManager: SrtModule['SandboxManager'],
   command: string,
-  customConfig: TaskSandboxConfig | undefined,
+  customConfig: SrtTaskConfig | undefined,
   sockets: boolean,
   gitConfig: boolean,
 ): Promise<string> {
@@ -4098,7 +4112,7 @@ function injectProfileRules(wrapped: string, rules: readonly string[]): string {
 export function wallsGlobsReach(grants: readonly string[], walls: readonly string[]): string[] {
   const heads = grants
     .filter((g) => namedPath(g) === undefined)
-    .map((g) => path.dirname(g.slice(0, g.search(MOUNT_WILDCARDS))))
+    .map((g) => path.dirname(g.slice(0, wildcardAt(g))))
   return walls.filter((w) => heads.some((h) => atOrUnder(w, h)))
 }
 
@@ -4141,7 +4155,7 @@ export function darwinAncestorRules(
   const inside = (d: string): boolean => anchors.some((a) => d !== a && atOrUnder(d, a))
   for (const g of [...c.allowRead, ...c.allowWrite]) {
     const named = namedPath(g)
-    const head = g.slice(0, g.search(MOUNT_WILDCARDS))
+    const head = g.slice(0, wildcardAt(g))
     const cut = head.lastIndexOf('/')
     const top = named !== undefined ? path.dirname(named) : head.slice(0, cut) || '/'
     for (let d = top; inside(d); d = path.dirname(d)) literals.add(d)
@@ -4226,11 +4240,10 @@ export function darwinWallRules(
  *
  * Linux: a grant is a bwrap bind mount, and you cannot mount a pattern.
  * The glob is expanded against the filesystem here, which means it covers
- * what exists when the task STARTS. A pattern matching a file the task
- * creates later grants nothing there — declare its directory instead.
- *
- * That last sentence is the whole contract, and until item 496 a task
- * that broke it learned so from its OWN tool. Measured, one task per
+ * what exists when the task STARTS. A write glob's directory is bound too
+ * where a read grant shows it (`punchedWriteGlobs`), so a match the task
+ * creates lands; elsewhere a pattern matching a file the task creates
+ * later grants nothing there. Measured before that bind, one task per
  * spelling, each writing files it declares:
  *
  *   write: ['g/**']         ok — collapsed to the directory
@@ -4254,6 +4267,8 @@ function expandGrants(
   walls: readonly string[],
   /** Write globs only: where a pattern that matched nothing is put. */
   unmatched?: string[],
+  /** Write globs only: where every pattern is put, matched or not. */
+  patterns?: string[],
 ): string[] {
   // A pattern covering a directory WHOLE is that directory. `<d>/**/*` and
   // `<d>/**` match everything UNDER `<d>` and never `<d>` itself, so a task
@@ -4281,9 +4296,10 @@ function expandGrants(
       out.push(p)
       continue
     }
+    patterns?.push(p)
     // Anchor the scan at the longest literal prefix so a pattern does not
     // walk the whole filesystem to find its matches.
-    const base = path.dirname(p.slice(0, p.search(MOUNT_WILDCARDS)))
+    const base = path.dirname(p.slice(0, wildcardAt(p)))
     const pattern = path.relative(base, p)
     // A hit that leaves the scan's base through a link is not what the
     // pattern named: bwrap binds by the link's target, so `read: ['*']`
@@ -4291,7 +4307,7 @@ function expandGrants(
     // never gives, and a cached task replayed b's old bytes (item 1006).
     // The boundary is the directory holding the first wildcard component,
     // not the scan's anchor: that sits one component higher.
-    const head = p.slice(0, p.search(MOUNT_WILDCARDS))
+    const head = p.slice(0, wildcardAt(p))
     const home = toRealPath(head.endsWith('/') ? head.slice(0, -1) : path.dirname(head))
     let hits = 0
     for (const hit of scanOrNothing(pattern, base)) {

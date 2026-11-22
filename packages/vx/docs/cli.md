@@ -521,7 +521,9 @@ line-ending and filter rules change the bytes a checkout writes while
 git's blobs stay the same, so no input path moves, yet a fresh clone
 reads new bytes. The root one selects every project; one in `packages/`
 selects the projects in it; a project's own selects its every task
-(vercel/turborepo#15004).
+(vercel/turborepo#15004). An edit that only touches attributes no
+checkout reads (`diff`, `merge`, `export-ignore`, `linguist-*`, a
+comment) selects nothing.
 
 **A file your config imports selects that project.** The key holds the
 resolved config, so a shared preset a `vx.config.*` imports is part of

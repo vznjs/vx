@@ -728,12 +728,22 @@ function hashableConfig(cfg: TaskConfig): unknown {
   const env = cfg.inputs?.env
   const pass = cfg.exec?.env?.passThrough
   const secret = cfg.exec?.env?.secret
+  const inFiles = cfg.inputs?.files
+  const inWs = cfg.inputs?.workspaceFiles
+  const outFiles = cfg.outputs?.files
+  const outWs = cfg.outputs?.workspaceFiles
+  const deps = cfg.dependsOn
   if (
     cfg.exec?.remote === undefined &&
     cfg.exec?.worker === undefined &&
     sortedNames(env) &&
     sortedNames(pass) &&
-    sortedNames(secret)
+    sortedNames(secret) &&
+    sortedNames(inFiles) &&
+    sortedNames(inWs) &&
+    sortedNames(outFiles) &&
+    sortedNames(outWs) &&
+    sortedNames(deps)
   )
     return keysSorted(cfg)
   const {
@@ -746,7 +756,15 @@ function hashableConfig(cfg: TaskConfig): unknown {
   if (!sortedNames(pass)) execRest.env = { ...execRest.env, passThrough: [...pass!].sort() }
   if (!sortedNames(secret)) execRest.env = { ...execRest.env, secret: [...secret!].sort() }
   const out: TaskConfig = cfg.exec === undefined ? { ...cfg } : { ...cfg, exec: execRest }
-  if (!sortedNames(env)) out.inputs = { ...cfg.inputs!, env: [...env!].sort() }
+  if (!sortedNames(env)) out.inputs = { ...out.inputs!, env: [...env!].sort() }
+  // Globs are sets too: a `!` subtracts in any order (schema.md), and
+  // dependsOn names edges, not a sequence (conformance growth,
+  // cache/input-globs-reordered-replays; Turbo replays).
+  if (!sortedNames(inFiles)) out.inputs = { ...out.inputs!, files: [...inFiles!].sort() }
+  if (!sortedNames(inWs)) out.inputs = { ...out.inputs!, workspaceFiles: [...inWs!].sort() }
+  if (!sortedNames(outFiles)) out.outputs = { ...out.outputs!, files: [...outFiles!].sort() }
+  if (!sortedNames(outWs)) out.outputs = { ...out.outputs!, workspaceFiles: [...outWs!].sort() }
+  if (!sortedNames(deps)) out.dependsOn = [...deps!].sort()
   return keysSorted(out)
 }
 
