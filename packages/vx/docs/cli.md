@@ -1932,7 +1932,8 @@ typed here beats it: `--filter`, `--affected`, `--exclude-dependencies`,
 `--output-logs`, `--verbosity`, `--dry`, `--profile`. A flag's `VX_*`
 variable beats the key too. A typed `--cache-policy` (or
 `VX_CACHE_POLICY`) also drops a saved `noCache` and `force`, and a typed
-`--force` a saved `noCache`.
+`--force` a saved `noCache`. A saved `cacheDir` or `profile` stands
+from the workspace root; a typed one, from the current directory.
 
 A pipeline's `env` is set for vx and its plugins before they start, and
 every task reads it as unset. Nothing goes after `--`: forwarded args are

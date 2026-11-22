@@ -1,6 +1,7 @@
 // `vx pipeline <name>`: a run `.vx/workspace.ts` saved under `pipelines`
 // (M, 2026-11-22), so each CI job names one and its file holds no flags.
 
+import path from 'node:path'
 import { setVxOnlyEnv, nearest } from '../util/index.js'
 import { findWorkspaceRoot, loadWorkspaceConfig, pipelineRunArgs } from '../workspace/index.js'
 import { refuse, seeHelp } from './help.js'
@@ -64,5 +65,16 @@ export async function pipelineCmd(args: readonly string[]): Promise<number> {
   // A variable already set wins, as it beats every setting the file holds.
   for (const [k, v] of Object.entries(pipeline.env ?? {}))
     if ((process.env[k] ?? '') === '') setVxOnlyEnv(k, v)
-  return runCmd([...pipelineRunArgs(pipeline, rest), ...rest], ['vx', 'pipeline', ...args])
+  // Its paths are the workspace file's, so they stand from the root, as
+  // `cache.dir` there does: from a project's directory a relative
+  // `cacheDir` put a second cache inside that project.
+  const rooted = (p: string): string => path.resolve(root, p)
+  const saved = {
+    ...pipeline,
+    ...(pipeline.cacheDir !== undefined ? { cacheDir: rooted(pipeline.cacheDir) } : {}),
+    ...(pipeline.profile === true || typeof pipeline.profile === 'string'
+      ? { profile: rooted(pipeline.profile === true ? 'profile.json' : pipeline.profile) }
+      : {}),
+  }
+  return runCmd([...pipelineRunArgs(saved, rest), ...rest], ['vx', 'pipeline', ...args])
 }

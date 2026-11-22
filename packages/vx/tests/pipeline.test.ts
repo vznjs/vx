@@ -1,6 +1,7 @@
 // `vx pipeline <name>` runs a `vx run` saved in `.vx/workspace` (M,
 // 2026-11-22): its tasks in every project, each key its flag, a typed flag
 // or the flag's variable over the saved value, and its `env` for vx alone.
+import { existsSync } from 'node:fs'
 import { realpath, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
@@ -101,9 +102,10 @@ describe('pipelines in .vx/workspace', () => {
 
 describe('vx pipeline <name>', () => {
   let root = ''
+  let cwd = ''
   const vx = async (...args: string[]): Promise<{ code: number; out: string; err: string }> => {
     const proc = Bun.spawn([process.execPath, BIN, ...args], {
-      cwd: root,
+      cwd: cwd || root,
       stdout: 'pipe',
       stderr: 'pipe',
       env: { ...process.env, CI: '', GITHUB_ACTIONS: '', NO_COLOR: '1', SHOWN: '' },
@@ -134,6 +136,7 @@ describe('vx pipeline <name>', () => {
           one: { tasks: ['build'], filter: ['a'] },
           env: { tasks: ['show'], filter: ['a'], env: { SHOWN: 'vx-only' } },
           quiet: { tasks: ['show'], filter: ['a'], env: { VX_RUN_OUTPUT_LOGS: 'none' } },
+          paths: { tasks: ['keep'], filter: ['a'], cacheDir: 'saved-cache', profile: 'saved.json' },
         }`,
       ),
     )
@@ -144,6 +147,7 @@ describe('vx pipeline <name>', () => {
         `export default { tasks: {
           build: { exec: { command: 'true' } },
           show: { exec: { command: 'echo "shown=[$SHOWN]"', env: { passThrough: ['SHOWN'] } } },
+          keep: { exec: { command: 'echo k > k.txt' }, inputs: { files: ['package.json'] }, outputs: { files: ['k.txt'] }, cache: true },
         } }`,
       )
   })
@@ -166,10 +170,30 @@ describe('vx pipeline <name>', () => {
     expect([quiet.code, quiet.out.includes('shown=')]).toEqual([0, false])
   }, 30_000)
 
+  // A path in the workspace file stands from the root, as `cache.dir` there
+  // does: run from a project's directory, it made a second cache inside it.
+  it('reads its paths from the workspace root, wherever it runs', async () => {
+    cwd = path.join(root, 'packages', 'a')
+    // The suite's own VX_CACHE_DIR would beat the key.
+    const dir = process.env['VX_CACHE_DIR']
+    process.env['VX_CACHE_DIR'] = ''
+    try {
+      const r = await vx('pipeline', 'paths')
+      expect([r.code, r.err]).toEqual([0, ''])
+    } finally {
+      cwd = ''
+      process.env['VX_CACHE_DIR'] = dir
+    }
+    expect(existsSync(path.join(root, 'saved-cache'))).toBe(true)
+    expect(existsSync(path.join(root, 'saved.json'))).toBe(true)
+    expect(existsSync(path.join(root, 'packages', 'a', 'saved-cache'))).toBe(false)
+    expect(existsSync(path.join(root, 'packages', 'a', 'saved.json'))).toBe(false)
+  }, 30_000)
+
   it('refuses no name, an unknown one, a task and --all, naming the fix', async () => {
     expect((await vx('pipeline')).err).toContain('missing pipeline name')
     const typo = (await vx('pipeline', 'chek')).err
-    expect(typo).toContain('no pipeline named chek; pipelines: check, one, env, quiet')
+    expect(typo).toContain('no pipeline named chek; pipelines: check, one, env, quiet, paths')
     expect(typo).toContain('fix  vx pipeline check')
     expect((await vx('pipeline', 'check', 'lint')).err).toContain(
       'vx pipeline runs one pipeline, whose tasks are its `tasks` (got lint)',
