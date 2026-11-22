@@ -569,6 +569,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'unscoped-vx.unsafe',
     'upgrade',
     'upgrade-write-preflight',
+    'user-journey.unsafe',
     'vx-cache-server/bun',
     'vx-cache-server/oidc',
     'vx-cache-server/r2-again',

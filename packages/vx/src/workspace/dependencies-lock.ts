@@ -62,6 +62,18 @@ export interface DependenciesLock {
   readonly digest: (name: string, f: number) => string | undefined
 }
 
+/** Whether `text` holds the marker lines a conflicted git merge leaves. */
+export function mergeConflicted(text: string): boolean {
+  return /^(?:<{7}|={7}|>{7})(?: |$)/m.test(text)
+}
+
+/**
+ * What a run says of a lock a merge left conflicted: the lock is written from
+ * the configs, so no hand resolution is needed.
+ */
+export const mergeConflictMessage = (file: string): string =>
+  `${file} holds a git merge conflict: run \`vx lock\`, which writes it anew from the configs`
+
 const invalid = (): UserError =>
   new UserError(`${DEPENDENCIES_LOCK_NAME} is invalid, run \`vx lock\``, 'VX_E_LOCK')
 

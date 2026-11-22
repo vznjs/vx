@@ -2930,7 +2930,8 @@ ignore files, and `prettier --check .` failed on them. Beside a
 `biome.json(c)` it names the `files.includes` lines biome needs. Where
 a package's tsconfig would compile the config it wrote and already lists
 an `exclude`, the config joins that list; with none, a note says to add
-one. It then runs `vx lock`'s
+one. Beside a `.moon/workspace.yml`, a note says moon's tasks are not
+migrated: vx reads no moon config. It then runs `vx lock`'s
 step, and `next:` says to declare a task and run `vx lock && vx run
 <task>`, preceded by `git init` outside a git work tree. Where that
 `package.json` has scripts, or declares a workspace (`workspaces`,

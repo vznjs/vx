@@ -12,7 +12,7 @@ vx run build --all
 ```
 
 ```ansi
-[38;2;239;68;68m✗[0m [1mvx run[0m  .vx/projects.lock holds a line `vx lock` never writes — re-run `vx lock`
+[38;2;239;68;68m✗[0m [1mvx run[0m  .vx/projects.lock holds a git merge conflict: run `vx lock`, which writes it anew from the configs
 ```
 
 Never edit the lock by hand. Fix it in three steps:
