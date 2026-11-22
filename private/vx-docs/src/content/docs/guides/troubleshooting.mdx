@@ -5,8 +5,8 @@ description: What vx printed, what it means, and the fix.
 
 import { Aside, CardGrid, LinkCard, Tabs, TabItem } from '@astrojs/starlight/components'
 
-Find what vx printed, read what it means, apply the fix. Every message vx
-prints names its own fix too.
+Find what vx printed and apply the fix. Problems with the sandbox, CI or
+a migration have their own lists:
 
 <CardGrid>
   <LinkCard title="Sandboxing problems" href="../../docs/sandboxing/#common-problems" />
@@ -16,25 +16,31 @@ prints names its own fix too.
 
 ## vx printed an error
 
-| vx prints                                          | Fix                                                                     |
-| -------------------------------------------------- | ----------------------------------------------------------------------- |
-| `no .vx/workspace.ts in …` | The file marks the workspace root: run `vx init`, or add `.vx/workspace.ts` at the root. A file above the checkout does not count. |
+Find the start of the message in the left column. Every message also
+ends with its own fix.
+
+| vx prints | Fix |
+| --- | --- |
+| `no .vx/workspace.ts in …` | Run `vx init` at the workspace root. It writes `.vx/workspace.ts`, which marks the root. A file above your git checkout does not count. |
 | `… belongs to another user, so vx does not take its directory as your workspace` | Outside git, vx ignores a `.vx/workspace.ts` another user owns. Run vx in a checkout you own. |
-| `not inside a project`                             | Run from a package directory, or pass `--all` or `--filter <pattern>`.  |
-| `two projects are named "…": …` | Two directories got one name (a config's `name`, a plugin's, or the path): set another `name` in one's `vx.config.ts`, then `vx lock`. |
-| `… locks …, but its … is gone` | A project's `vx.config.ts` was deleted or renamed since `vx lock`: run `vx lock`. A new config waits for it too. |
-| `vx requires git: … is not inside a git work tree` | A run needs git: run `git init` at the workspace root.                  |
-| `vx requires git: failed to spawn 'git'`           | Install git.                                                            |
-| `--affected has no base here`                      | Set `baseBranch`, or pass `--affected=<ref>`.                           |
-| `--affected has no default on the base branch`     | On `main` itself, run `--all`: the cache skips what did not change. `vx show` drops `--affected`. |
-| `… has unknown field "<key>"`                      | A typo, or a Turbo or Nx key: the message lists the fields vx allows.  |
-| `dependsOn cycle`                     | Remove one `dependsOn` edge of the loop it prints.                      |
-| `dependsOn …, but` `no project is named …` / `… declares no task …` | Take the name it suggests, or declare that task in that package.    |
-| `no projects declare task(s)`                      | A typo, a config edited since `vx lock`, or no config declares it: `vx show` lists every task. |
-| `unknown flag`                                     | `vx run --help` lists the flags.                                        |
-| `no projects matched filter(s)`                    | A typo: the message suggests the closest name. `vx show` lists every project. |
-| `waiting for another vx run (pid …)`               | One run per workspace at a time: it starts when that one ends. Stop it, or wait. |
-| `vx: command not found`                            | vx is not installed: `bunx @vzn/vx init` installs it, or `bun add -g @vzn/vx`. |
+| `not inside a project` | Run from a package's folder, or add `--all` or `--filter <name>`. |
+| `two projects are named "…": …` | Two folders have the same name: set another `name` in one's `vx.config.ts`, then run `vx lock`. |
+| `… locks …, but its … is gone` | A `vx.config.ts` was deleted or renamed: run `vx lock`. |
+| `… holds a line … never writes` | A merge left a conflict in the lock: see [Fix a merge conflict in the lock](../ci/fix-a-lock-conflict/). |
+| `… evaluates differently from the lock here` | A config changed without `vx lock`: run `vx lock` and commit the lock. |
+| `vx requires git: … is not inside a git work tree` | vx needs git: run `git init` at the workspace root. |
+| `vx requires git: failed to spawn 'git'` | Install git. |
+| `--affected has no base here` | Set `baseBranch`, or name a commit: `--affected=<ref>`. |
+| `--affected has no default on the base branch` | On `main` itself, run `--all`: the cache skips what did not change. |
+| `… has unknown field "<key>"` | A typo, or a Turbo or Nx key. The message lists the fields vx allows. |
+| `dependsOn cycle` | Two tasks wait for each other: remove one `dependsOn` from the loop it prints. |
+| `dependsOn …, but` `no project is named …` / `… declares no task …` | Use the name it suggests, or add that task to that package. |
+| `no projects declare task(s)` | A typo, or a config changed without `vx lock`. `vx show` lists every task. |
+| `unknown flag` | `vx run --help` lists the flags. |
+| `no projects matched filter(s)` | Every `--filter` must match a project. The message suggests the closest name; `vx show` lists them all. |
+| `timed out after …` | The task ran past its time limit: raise `exec.timeout` or `--timeout` ([guide](../running/set-a-time-limit/)). |
+| `waiting for another vx run (pid …)` | One run per workspace at a time. It starts when that one ends. |
+| `vx: command not found` | vx is not installed: `bunx @vzn/vx init` installs it, or `bun add -g @vzn/vx`. |
 
 A typo in `--filter` names the closest project:
 
@@ -50,54 +56,46 @@ vx run build --filter @demo/ap
 
 ## vx did something unexpected
 
-- **Only one package ran.** `vx run build` runs the package you are in
-  and what it depends on. Add `--all`.
-- **`no projects declare task(s): build`.** No selected package declares
-  `build`; one with no vx config has none. Give it a `vx.config.ts` whose
-  `build` has an `exec.command`, then run `vx lock`.
-- **A task runs every time.** It has no `cache: true`. `vx-migrate` leaves
-  a `TODO(vx-migrate)` where it could not write one. Or a task it depends on declares no
-  `inputs`: that task has no key, so nothing behind it hits. Give it
-  `inputs`.
-- **A task hit after you changed a file.** The file is not in
-  `inputs.files`. `vx why <project#task>` shows what the key saw;
-  [`exec.sandbox`](../../docs/sandboxing/), with reads granted no wider than
-  the inputs, refuses that read and names it.
-- **`inputs matched no files`.** The globs name nothing in the
-  project, so the key ignores its source. Fix the paths; they are
-  relative to the project directory.
-- **`outputs matched no files`.** The command exited 0 but never
-  wrote a declared output, so the task fails and nothing is cached.
-  Point `outputs.files` at what the task writes; a sandboxed task also
-  needs `exec.sandbox.allow.write` for it.
-- **`not ready after …: waiting for a line matching`.** A persistent
-  task's `readyWhen` has not matched its output yet, and no
-  `exec.timeout` has ended the wait. Fix the pattern, or set
-  `exec.timeout` to bound the wait.
-- **A task re-ran and you do not know why.** `vx why <project#task>`
-  names the part of the key that changed
+- **Only one package ran.** With no flag, `vx run build` runs the
+  package you are in, plus what it depends on. Add `--all` for every
+  package.
+- **`no projects declare task(s): build`.** None of the selected packages
+  has a `build` task. Add one to its `vx.config.ts`, then run `vx lock`.
+- **A task runs every time.** It needs `cache: true`. If it has that, a
+  task it depends on may have no `inputs`: give that task `inputs` too.
+  `vx-migrate` leaves a `TODO(vx-migrate)` where it could not decide.
+- **A task came from the cache after you changed a file.** That file is
+  not in `inputs.files`: add it. To catch the next one,
+  [`exec.sandbox`](../../docs/sandboxing/), with reads granted no wider
+  than the inputs, refuses that read and names the file.
+- **A task ran again and you do not know why.** `vx why <project#task>`
+  names what changed
   ([Find why a task missed the cache](../caching/why-a-task-missed/)).
+- **`inputs matched no files`.** The globs find nothing. Paths are
+  relative to the project's folder: fix them.
+- **`outputs matched no files`.** The command never wrote a file its
+  `outputs.files` names, so the task fails and nothing is saved. Point
+  the pattern at what the command writes
+  ([Cache a task](../caching/cache-a-task/)).
+- **The run did not stop at the first failure.** By default a failure
+  stops only the tasks that wait for it. Add `--fail-fast`
+  ([guide](../running/stop-at-the-first-failure/)).
+- **`not ready after …: waiting for a line matching`.** A dev server has
+  not printed its `readyWhen` line. Fix the pattern, or set
+  `exec.timeout` to stop waiting.
 - **A variable is empty inside the command.** Past a small essential
   allowlist (`PATH`, `HOME`, `CI` and a few more), vx passes only what
-  you list: add it to `exec.env.passThrough`
+  you list. Add the name to `exec.env.passThrough`
   ([Environment variables](../../docs/environment-variables/)).
-- **`dist/` is empty after `tsc -b`.** With `rootDir: "src"`, tsc
-  writes `tsconfig.tsbuildinfo` outside `dist/`. vx empties `dist/`
-  before a run, tsc finds the buildinfo, and writes nothing (or only
-  what changed). vx then warns and saves nothing.
-
-  Add `tsconfig.tsbuildinfo` to `outputs.files`, or point
-  `tsBuildInfoFile` into `dist/`.
-- **The editor cannot resolve `@vzn/vx`.** Add it as a devDependency.
-  vx itself runs a config without it.
-- **A package has no `vx.config.ts`.** It gets a default `build`: a
-  group behind `^build`, keyed on all its files, so editing it re-runs
-  the packages that depend on it.
-- **A package has nothing to build, but others depend on it.** Its
-  default `build` waits on its own dependencies' builds.
-  `build: { dependsOn: [] }` waits on nothing, but also drops its files
-  from its dependents' keys: use it only when no dependent reads its
-  source.
+- **`dist/` is empty after `tsc -b`.** tsc keeps `tsconfig.tsbuildinfo`
+  outside `dist/`, finds it, and skips the build. Add
+  `tsconfig.tsbuildinfo` to `outputs.files`, or set `tsBuildInfoFile`
+  inside `dist/`.
+- **The editor cannot find `@vzn/vx`.** Add it as a devDependency. vx
+  runs a config without it.
+- **A package has no `vx.config.ts`.** It gets a default `build` that
+  only waits for its dependencies' builds. Its files still count, so
+  editing it re-runs the packages that use it.
 
 ## Platforms
 

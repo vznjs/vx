@@ -39,4 +39,7 @@ vx run test --filter '...@demo/ui'
 vx run lint --all --filter '!@demo/docs'
 ```
 
+Every filter must match a project. If one matches nothing, vx stops
+before running anything and suggests the closest name.
+
 See [`--filter`](../../../cli/run/#filter-dsl---filter).
