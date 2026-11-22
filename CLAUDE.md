@@ -135,6 +135,11 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
   unrelated work while CI runs; never wait idle on it. The full gate,
   `bun packages/vx/src/bin.ts pipeline queue`, is for diagnosing a red CI.
   It refuses a Bun below `engines.bun` first (`check.bun`, item 575).
+- Before merging, run the built-in `code-review` skill on the PR; add
+  `security-review` when it touches the zygote, `src/sandbox/` or the
+  lock files (`.vx/*.lock`, `vx lock`); use `dataviz` for any site
+  chart. Project skills in `.claude/skills/`: `add-conformance-case`,
+  `thread-handoff` (org/handoff/<stream>.md on rotation), `docs-change`.
 - `bun test` alone cannot see a type error: it is transpile-only. Never
   pipe a check through `tail`/`grep` — it masks the exit.
 - The core suite runs as `SHARD_COUNT` (84, `vx.config.ts`) parallel

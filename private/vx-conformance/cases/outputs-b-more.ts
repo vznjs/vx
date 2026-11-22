@@ -283,9 +283,9 @@ const DISJOINT: Pair[] = [
   [
     'literal-beside-glob-head',
     'An output tree and another task’s files beside it, one in a directory whose name extends it',
-    '`dist/a/**` claims only the `dist/a` folder, while the other task writes `dist/ab/c.js` and `dist/b.js`. `dist/ab` starts with the same letters but is a different folder. A string-prefix check reads it as inside `dist/a`, then refuses the pair or deletes the file on a restore. Paths are compared by whole segments.',
+    '`dist/a/**` claims only the `dist/a` folder, while the other task writes `dist/ab/c.js`. `dist/ab` starts with the same letters but is a different folder. A string-prefix check reads it as inside `dist/a`, then refuses the pair or deletes the file on a restore. Paths are compared by whole segments.',
     inA('dist/a/x.txt', ['dist/a/**']),
-    inA('dist/ab/c.js', ['dist/ab/c.js', 'dist/b.js']),
+    inA('dist/ab/c.js', ['dist/ab/c.js']),
     [`${A}/dist`],
   ],
   [

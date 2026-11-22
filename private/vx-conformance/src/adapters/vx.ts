@@ -39,6 +39,8 @@ export const vx: Adapter = {
     'ready-port': 'A server’s ready signal is a line it prints, never a port it opens.',
     'dependency-bin':
       'vx runs the tools the machine has and installs none, so no task puts programs on its dependants’ PATH.',
+    'without-git':
+      'vx finds the workspace root inside a git work tree and keys tracked files by git, so a folder that is not a repository is refused.',
     continue:
       'Nothing runs on a failed dependency: a failure skips its dependents, and `--fail-fast` stops the run.',
   },
@@ -71,10 +73,16 @@ export const vx: Adapter = {
                       sandbox: {
                         ...(spec.sandbox.hermetic ? { hermetic: true } : {}),
                         allow: {
-                          read: [...(spec.inputs ?? []), ...(spec.sandbox.read ?? [])],
+                          // A root input or output is declared, so granted: by absolute path, as grants outside the project are.
+                          read: [
+                            ...(spec.inputs ?? []),
+                            ...(spec.rootInputs ?? []).map((g) => path.join(dir, g)),
+                            ...(spec.sandbox.read ?? []),
+                          ],
                           // The harness marks an isolated task's start and end there.
                           write: [
                             ...(spec.outputs ?? []),
+                            ...(spec.rootOutputs ?? []).map((g) => path.join(dir, g)),
                             ...(spec.sandbox.write ?? []),
                             `${path.dirname(path.join(dir, ISOLATED_RAN))}/`,
                           ],

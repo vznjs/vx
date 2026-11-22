@@ -144,7 +144,7 @@ function addition(individualOutputs: string[]): WorkspaceSpec {
             outputs: individualOutputs,
           },
           noop: {
-            command: 'true',
+            command: 'printf n > dist/noop',
             dependsOn: ['individual'],
             inputs: ['srcb/**'],
             outputs: ['dist/noop'],

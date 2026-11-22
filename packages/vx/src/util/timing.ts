@@ -35,6 +35,17 @@ export function mark(label: string): void {
   marks.push([label, Bun.nanoseconds() - t0])
 }
 
+/**
+ * Now, in epoch ms, on the stages' clock: the monotonic clock mapped to the
+ * wall once. A run's own stamps read this, not `Date.now()`, so a stage
+ * always lies inside its run: the wall clock slews from the monotonic one
+ * over a long process (1.04 ms 47 s into a CI shard), which put a stage
+ * past its run's end.
+ */
+export function wallNow(): number {
+  return wall0 + (Bun.nanoseconds() - t0) / 1e6
+}
+
 /** One stage's wall window, in epoch ms. */
 export interface StageTime {
   name: string

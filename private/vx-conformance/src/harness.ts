@@ -361,7 +361,8 @@ async function play(c: Case, adapter: Adapter, root: string, box: string): Promi
       }
     }
   }
-  let ws = c.workspace
+  // Each play gets its own copy: a configure step that edits in place must not reach the next tool.
+  let ws = structuredClone(c.workspace)
   await writeWorkspace(root, ws)
   await install()
   await linkTool(root, adapter)
@@ -445,7 +446,7 @@ async function play(c: Case, adapter: Adapter, root: string, box: string): Promi
         return { status: 'fail', step: i + 1, detail: 'refused the config', log: refused }
       const failed = await watch(
         root,
-        { bind: box, boxed },
+        { bind: box, boxed, hostProc: c.needs?.includes('sandbox') === true },
         adapter.env,
         adapter
           .watch(step.watch, step.projects)

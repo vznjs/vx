@@ -78,6 +78,7 @@ import { graphCounts } from './graph-memo.js'
 import {
   mark,
   stageTimes,
+  wallNow,
   MAX_TIMEOUT_MS,
   timingLines,
   ulid,
@@ -892,7 +893,9 @@ async function runOnBus(
   })
   try {
     const runStartHrTimeNs = process.hrtime.bigint()
-    const endedAtMsAtStart = Date.now()
+    // Whole ms, floored here and ceiled at the end, so every stage between
+    // lies inside the run's window.
+    const endedAtMsAtStart = Math.floor(wallNow())
     // Every remote turned off by its `open` is no remote: a task must not clean
     // its outputs for a save that goes nowhere.
     const remoteCacheEnabled = prepared.hasRemoteLayer && !remotesClosed
@@ -1835,7 +1838,7 @@ async function runOnBus(
 
     // The summary, artifacts and history all exclude groups through
     // `tallyOutcomes`, so each gets the full list.
-    const endedAtMs = Date.now()
+    const endedAtMs = Math.ceil(wallNow())
     const totalMs = Number(process.hrtime.bigint() - runStartHrTimeNs) / 1_000_000
     // Foreground dev mode: list the persistent tasks still up between the task
     // frames and the footer. A requested server that crashed meanwhile is dead,
@@ -2171,7 +2174,7 @@ async function runOnBus(
             )
           : list
         await summarize(told, ok && !crashed && !stopped, {
-          at: Date.now(),
+          at: Math.ceil(wallNow()),
           totalMs: Number(process.hrtime.bigint() - runStartHrTimeNs) / 1_000_000,
         })
       }
