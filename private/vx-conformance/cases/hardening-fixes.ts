@@ -266,7 +266,7 @@ export default [
       'An isolated task still runs a tool from its node_modules when that folder is a link out of the workspace',
     why: 'A package store on another disk or a container volume often makes `node_modules` a link to a folder outside the workspace. The tools in its `.bin` are what the task runs, so isolation must keep the link itself reachable, not only the folder it points at. A sandbox that drops the link reports every installed tool as not found, and isolation gets turned off.',
     from: ['sandbox-node-modules-link.unsafe'],
-    needs: ['sandbox'],
+    needs: ['sandbox', 'package-manager'],
     workspace: {
       projects: {
         a: {

@@ -22,6 +22,7 @@ import type { Adapter } from './adapter.ts'
 import { modulesOf, pkgDir } from './tools.ts'
 import { caseHome, sandboxed, spawnSandboxed, type SpawnOptions } from './sandbox.ts'
 import {
+  needsOf,
   projectDir,
   type Case,
   type Expect,
@@ -281,11 +282,9 @@ const GIT_IDENTITY = {
 const BASE = process.env['CONFORMANCE_TMP'] ?? os.tmpdir()
 
 export async function runCase(c: Case, adapter: Adapter): Promise<Outcome> {
-  if (c.needs?.some((f) => adapter.lacks.includes(f)))
-    return {
-      status: 'n/a',
-      detail: `needs ${c.needs.filter((f) => adapter.lacks.includes(f)).join(', ')}`,
-    }
+  const lacking = needsOf(c).filter((f) => adapter.lacks[f] !== undefined)
+  if (lacking.length > 0)
+    return { status: 'n/a', detail: lacking.map((f) => adapter.lacks[f]).join(' ') }
   return await everyPlay(c.races ?? 1, async () => {
     const box = realpathSync(mkdtempSync(path.join(BASE, `conf-${adapter.name}-`)))
     // Files outside the repository sit beside it, in the one directory the run may write.
@@ -472,7 +471,13 @@ async function play(c: Case, adapter: Adapter, root: string, box: string): Promi
             process.execPath,
             SUPERVISE,
             JSON.stringify({
-              ...(stop ? { stop } : {}),
+              ...(stop
+                ? {
+                    stop: adapter.mirrors
+                      ? { ...stop, mirrors: adapter.mirrors.map((m) => path.join(root, m)) }
+                      : stop,
+                  }
+                : {}),
               ...(step.expect.alone ? { left: LEFT } : {}),
               ...(openStdin ? { openStdin: true } : {}),
             }),

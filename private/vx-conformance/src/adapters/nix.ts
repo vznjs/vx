@@ -16,6 +16,16 @@ const RUN = path.join(import.meta.dir, 'nix-run.ts')
 /** Where the run leaves nix-build's own output, for `report`: in the case's home. */
 export const LAST = '.home/nix-last.json'
 
+/** Where builds run, in the case's home: a file a running task makes is visible there. */
+export const BUILDS = '.home/nix-builds'
+
+/**
+ * What the run copied back from each task's `$out`, by task: a Nix user's
+ * results stay in the store, so an untracked file a task's own build left is
+ * never that task's source.
+ */
+export const RESTORED = '.home/nix-restored.json'
+
 /** A Nix string literal. */
 function nixStr(s: string): string {
   return `"${s
@@ -97,8 +107,14 @@ function globBody(g: string): string {
  */
 export function globRegexes(dir: string, globs: string[]): { inc: string[]; exc: string[] } {
   const prefix = dir === '.' ? '' : `${escapeRe(dir)}/`
+  // A `.` segment is the directory it sits in: `src/.` is `src`.
   const re = (g: string) =>
-    `${prefix}${globBody(g.replace(/^(\.\/)+/, '').replace(/\/+$/, ''))}(/.*)?`
+    `${prefix}${globBody(
+      g
+        .replace(/(^|\/)\.(?=\/|$)/g, '$1')
+        .replace(/^\/+/, '')
+        .replace(/\/+$/, ''),
+    )}(/.*)?`
   return {
     inc: globs.filter((g) => !g.startsWith('!')).map(re),
     exc: globs.filter((g) => g.startsWith('!')).map((g) => re(g.slice(1))),
@@ -130,23 +146,32 @@ function caret(ws: WorkspaceSpec, from: string, task: string): string[] {
 /** The task data the Nix side turns into derivations. */
 function specs(ws: WorkspaceSpec) {
   const out: Record<string, unknown> = {}
+  const dirs = Object.entries(ws.projects).map(([n, p]) => projectDir(n, p))
   for (const [name, p] of Object.entries(ws.projects)) {
     const dir = projectDir(name, p)
+    // A project's files stop where a project nested in it starts.
+    const nested = dirs
+      .filter((d) => d !== dir && (dir === '.' || d.startsWith(`${dir}/`)))
+      .map((d) => `${escapeRe(d)}(/.*)?`)
     for (const [t, spec] of Object.entries(p.tasks ?? {})) {
       // A name nothing declares stays in: Nix refuses the missing attribute.
       const deps = (spec.dependsOn ?? []).flatMap((d) =>
         d.startsWith('^') ? caret(ws, name, d.slice(1)) : [d.includes('#') ? d : `${name}#${d}`],
       )
-      const own = spec.inputs
-        ? { tracked: false, ...globRegexes(dir, spec.inputs) }
-        : { tracked: true, ...globRegexes(dir, ['**']) }
-      const sel = [
-        own,
-        ...(spec.rootInputs ? [{ tracked: false, ...globRegexes('.', spec.rootInputs) }] : []),
-        // A granted read reaches the sandbox as Nix lets a file in: a source, which keys it.
-        ...(spec.sandbox?.read ? [{ tracked: false, ...globRegexes(dir, spec.sandbox.read) }] : []),
-      ]
       const outs = [globRegexes(dir, spec.outputs ?? []), globRegexes('.', spec.rootOutputs ?? [])]
+      const results = outs.flatMap((o) => o.inc)
+      const pick = (at: string, globs: string[], not: string[]) => {
+        const g = globRegexes(at, globs)
+        return { inc: g.inc, exc: [...g.exc, ...not] }
+      }
+      const sel = [
+        spec.inputs
+          ? { tracked: false, ...pick(dir, spec.inputs, nested) }
+          : { tracked: true, ...pick(dir, ['**'], nested) },
+        ...(spec.rootInputs ? [{ tracked: false, ...pick('.', spec.rootInputs, []) }] : []),
+        // A granted read reaches the sandbox as Nix lets a file in: a source, which keys it.
+        ...(spec.sandbox?.read ? [{ tracked: false, ...pick(dir, spec.sandbox.read, []) }] : []),
+      ]
       out[`${name}#${t}`] = {
         name: `${name}-${t}`.replace(/[^A-Za-z0-9+._?=-]/g, '_').replace(/^\./, '_'),
         dir,
@@ -156,7 +181,7 @@ function specs(ws: WorkspaceSpec) {
         env: spec.env ?? [],
         cache: spec.cache !== false,
         outDefault: spec.outputs === undefined ? '1' : '',
-        outRe: outs.flatMap((o) => o.inc),
+        outRe: results,
         outEx: outs.flatMap((o) => o.exc),
         binDir: spec.bin ? path.posix.join(dir, spec.bin) : '',
       }
@@ -217,6 +242,8 @@ snap() {
 dirs=$binPath
 while [ -n "$dirs" ]; do b=\${dirs%%:*}; PATH="$top/$b:$PATH"; [ "$b" = "$dirs" ] && dirs= || dirs=\${dirs#*:}; done
 export PATH
+# A task whose inputs match nothing still runs in its project's directory.
+mkdir -p "$top/$dir"
 cd "$top/$dir"
 status=0
 sh -c "$command" 3>&- || status=$?
@@ -258,7 +285,13 @@ const LIB = `
   # What git tracks, as a flake sees the tree: tracked files, as they are on disk.
   tracked = builtins.filter (rel: builtins.pathExists (root + "/\${rel}")) (walk (builtins.fetchGit root).outPath "");
   any = res: rel: builtins.any (re: builtins.match re rel != null) res;
-  pick = s: builtins.filter (rel: any s.inc rel && !(any s.exc rel)) (if s.tracked then tracked else files);
+  restoredFile = root + "/${RESTORED}";
+  restored = if builtins.pathExists restoredFile then builtins.fromJSON (builtins.readFile restoredFile) else { };
+  trackedSet = builtins.listToAttrs (map (rel: { name = rel; value = true; }) tracked);
+  result = id: let own = builtins.listToAttrs (map (rel: { name = rel; value = true; }) (restored.\${id} or [ ])); in
+    rel: builtins.hasAttr rel own && !(builtins.hasAttr rel trackedSet);
+  pick = id: s: let mine = result id; in
+    builtins.filter (rel: any s.inc rel && !(any s.exc rel) && !(mine rel)) (if s.tracked then tracked else files);
   # A file is copied alone; a link as a link, from its directory filtered to it, as builtins.path follows the path it is given.
   source = rel:
     let p = root + "/\${rel}"; in {
@@ -280,14 +313,14 @@ const LIB = `
   mk = id: s:
     let
       deps = map (d: builtins.getAttr d tasks) s.deps;
-      srcs = builtins.listToAttrs (map source (builtins.concatMap pick s.sel));
+      srcs = builtins.listToAttrs (map source (builtins.concatMap (pick id) s.sel));
       env = builtins.filter (e: e.value != "") (map (n: { name = n; value = builtins.getEnv n; }) s.env);
       drv = derivation ({
         inherit (s) name dir outDefault;
         system = builtins.currentSystem;
         builder = "/bin/sh";
         args = [ "-c" builder ];
-        PATH = builtins.getEnv "PATH";
+        PATH = r.path;
         command = s.command + (if builtins.elem id requested
           then builtins.concatStringsSep "" (map (a: " " + quote a) (r.args or [ ])) else "");
         srcs = builtins.concatStringsSep "\\n" (builtins.attrValues (builtins.mapAttrs (rel: p: "\${p}\\t\${rel}") srcs));
@@ -327,41 +360,35 @@ export const nix: Adapter = {
   bins: [],
   // Every build runs in Nix's own sandbox (nix-run.ts): that is Nix's isolation, not bubblewrap.
   sandboxed: false,
+  // Each build mirrors the workspace in its own build directory (nix-run.ts's build-dir).
+  mirrors: [`${BUILDS}/*/build/ws`],
   version: async () => {
     const out = await Bun.$`nix --version`.text()
     return out.trim().split(' ').at(-1)!
   },
-  lacks: [
-    // nix-build builds the attributes it is named: no git change selects
-    // them, no pattern, tag, directory or walk picks them, and what a
-    // derivation needs is always built first.
-    'affected',
-    'filter',
-    'select-walk',
-    'select-dir',
-    'select-tag',
-    'task-pattern',
-    // A derivation is a build: never a long-running process, never
-    // retried, with no time limit of its own.
-    'persistent',
-    'ready',
-    'timeout',
-    'retries',
-    // Evaluation reads files and variables, never a command's output.
-    'runtime-inputs',
-    // A variable reaches a build only as an attribute, which keys it.
-    'pass-through-env',
-    // A dependency's output path is the dependant's input: it always keys it.
-    'dependency-inputs-off',
-    // `--keep-going` builds what does not depend on a failure, never what does.
-    'continue',
-    // A valid output is never built again: `--check` compares, it saves nothing.
-    'force',
-    // Building writes the store; nothing reads it without writing.
-    'read-only-cache',
-    // nix-build has no watch mode.
-    'watch',
-  ],
+  lacks: {
+    // nix-build builds the attributes it is named, and what a derivation needs first.
+    affected: 'nix-build builds the attributes it is named: no git change selects them.',
+    filter: 'nix-build builds the attributes it is named: no filter picks them.',
+    'select-walk': 'nix-build builds the attributes it is named: no selector walks to dependents.',
+    'select-dir': 'nix-build builds the attributes it is named: no directory picks them.',
+    'select-tag': 'nix-build builds the attributes it is named: no tag picks them.',
+    'task-pattern': 'A derivation names its inputs exactly: no pattern over task names.',
+    persistent: 'A derivation is a build that ends: Nix has no long-running task.',
+    ready: 'A derivation is a build that ends: nothing waits for a ready line.',
+    timeout: 'Nix has no time limit of a build’s own (`timeout` is a setting for every build).',
+    retries: 'Nix does not retry a failed build.',
+    'runtime-inputs': 'Evaluation reads files and variables, never a command’s output.',
+    'pass-through-env': 'A variable reaches a build only as an attribute, which keys it.',
+    'dependency-inputs-off':
+      'A dependency’s output path is its dependant’s input: it always keys it.',
+    continue: '`--keep-going` builds what does not depend on a failure, never what does.',
+    force: 'A valid output is never built again: `--check` rebuilds to compare and saves nothing.',
+    'read-only-cache': 'Building writes the store: no build reads it without writing.',
+    watch: 'nix-build has no watch mode.',
+    'package-manager':
+      'Nix reads no package.json or lockfile and installs nothing into node_modules: what a build depends on is written in Nix.',
+  },
   env: { NO_COLOR: '1' },
   async configure(dir, ws, command) {
     await writeFile(path.join(dir, 'default.nix'), nixFile(ws, command))
@@ -369,6 +396,8 @@ export const nix: Adapter = {
   },
   run: (task, projects, opts = {}) => [
     process.execPath,
+    // Bun would read the workspace's .env into nix-build's environment; a Nix user's shell does not.
+    '--no-env-file',
     RUN,
     JSON.stringify({
       tasks: [task, ...(opts.also ?? [])],

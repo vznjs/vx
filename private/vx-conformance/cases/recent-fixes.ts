@@ -652,7 +652,7 @@ export default [
     title: 'An isolated task that may write into node_modules still resolves its linked packages',
     why: 'pnpm installs each package as a link into a store beside it, and `tsc -b` in Vite’s template writes `node_modules/.tmp/*.tsbuildinfo`. An isolation that turns those links into plain folders once the task may write under node_modules leaves each package unable to find its own dependencies, and the build fails on files the install put there.',
     from: ['sandbox-write-through-link.unsafe'],
-    needs: ['sandbox'],
+    needs: ['sandbox', 'package-manager'],
     workspace: one(
       {
         command:

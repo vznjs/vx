@@ -403,6 +403,9 @@
   color: var(--cfm-fail);
   font-family: var(--font-body);
 }
+.vx-landing .cfm-cases td[data-status='n/a'] .cfm-detail strong {
+  color: var(--cfm-na);
+}
 
 @media (max-width: 640px) {
   .vx-landing .cfm-section {

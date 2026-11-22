@@ -87,8 +87,12 @@ is not measured. Every case has a `why`: 3–4 sentences on why the
 outcome is right and what the alternative costs a user, shown collapsed
 under the case on the site. `from`
 names the vx tests the case is drawn from. `needs` names a feature a
-tool may lack (affected, timeout, retries, persistent tasks, watch…); a tool
-without it scores the case not applicable.
+tool may lack (affected, timeout, retries, persistent tasks, watch, a
+package manager…); a step that installs needs a package manager. A tool
+without the feature scores the case N/A, and its adapter's `lacks` says
+why in one sentence the site shows. N/A is only for a feature the tool
+does not have at all: a tool that has the feature but does it its own way
+passes or fails the case like any other.
 
 A score is cases passed, of every case in the group. A case not applicable
 to a tool counts as not passed: it is a behaviour that tool's users cannot
@@ -123,17 +127,22 @@ mean the same thing, the adapter uses the one its docs teach:
   attributes; a `cache: false` task takes a per-run nonce. The build runs
   in a copy of the workspace; its declared outputs, or with none declared
   what its command wrote, go to `$out`, and the run copies each built
-  task's `$out` back into the tree: the Nix store is the cache. The report
+  task's `$out` back into the tree: the Nix store is the cache. What the run
+  copied back is never the same task's source, unless git tracks it: a Nix
+  user's results stay in the store. A project's files stop where a project
+  nested in it starts. Builds fill every core (`--max-jobs auto`) and see a
+  fixed PATH of the system's tools, never the caller's. The report
   is the derivations nix-build lists to build. Each case has its own store
-  in its home, built without build users. Every build runs in Nix's own
+  in its home, built without build users, in build directories there
+  (`build-dir`), where a stop sees the file a running task made. Every build runs in Nix's own
   sandbox (`sandbox = true`, no fallback): it sees its inputs, the
   system's tools and Bun, and no workspace, home or network; a granted
   read is a source. The harness's marks reach the build log, and the run
   appends them to the tree's. It
   lacks affected, every selector but a project list, task patterns,
   persistent tasks, timeouts, retries, runtime inputs, pass-through
-  variables, dependency inputs off, continue, force, read-only cache
-  and watch. It needs Nix on the PATH (`nix-build`,
+  variables, dependency inputs off, continue, force, read-only cache,
+  watch and a package manager (package.json, lockfile, node_modules). It needs Nix on the PATH (`nix-build`,
   `nix-instantiate`); its version is `nix --version`.
 - **moon**: `.moon/workspace.yml` maps each project to its directory; each
   project's `moon.yml` holds its `dependsOn` (the edges moon's

@@ -10,7 +10,7 @@ import { appendFileSync, chmodSync, existsSync, mkdirSync } from 'node:fs'
 import { readdir, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { MEET } from '../spec.ts'
-import { jsRegExp, MARK } from './nix.ts'
+import { BUILDS, jsRegExp, MARK, RESTORED } from './nix.ts'
 
 interface Info {
   id: string
@@ -53,12 +53,24 @@ const toolchain = [
   ),
 ]
 
+const builds = path.join(root, BUILDS)
+mkdirSync(builds, { recursive: true })
+
 const meet = path.join(root, MEET)
 mkdirSync(meet, { recursive: true })
 // The sandbox's build user is not the case's owner.
 chmodSync(meet, 0o777)
 
 const run = JSON.stringify({
+  // The toolchain's own directories, as a nixpkgs build gets its tools: never the caller's PATH, which would key every build.
+  path: [
+    '/usr/local/bin',
+    '/usr/bin',
+    '/bin',
+    '/usr/sbin',
+    '/sbin',
+    path.dirname(process.execPath),
+  ].join(':'),
   tasks: req.tasks,
   ...(req.projects ? { projects: req.projects } : {}),
   args: req.args ?? [],
@@ -80,6 +92,9 @@ const common = [
   '--option',
   'sandbox-fallback',
   'false',
+  '--option',
+  'build-dir',
+  builds,
   '--option',
   'sandbox-paths',
   [...toolchain, `/meet=${meet}`].join(' '),
@@ -103,7 +118,9 @@ const build = Bun.spawn(
     '-A',
     'selected',
     '--no-out-link',
-    ...(req.concurrency !== undefined ? ['--max-jobs', String(req.concurrency)] : []),
+    // Nix builds one derivation at a time unless told otherwise; a run fills every core, as `-j auto` asks.
+    '--max-jobs',
+    req.concurrency !== undefined ? String(req.concurrency) : 'auto',
     ...(req.dry ? ['--dry-run'] : []),
   ],
   { stdout: 'inherit', stderr: 'pipe' },
@@ -128,14 +145,32 @@ await writeFile(
   JSON.stringify({ drvs: Object.fromEntries(info.map((t) => [t.id, t.drv])), log }),
 )
 
-if (!req.dry)
+if (!req.dry) {
+  const restored: Record<string, string[]> = existsSync(path.join(root, RESTORED))
+    ? await Bun.file(path.join(root, RESTORED)).json()
+    : {}
   // Dependencies first, so a dependant's output at the same path is what stays.
   for (const t of info.toReversed()) {
     if (!existsSync(t.out)) continue
     if (t.outRe.length > 0) await clear(t)
     restore(t.out, root)
+    restored[t.id] = [...new Set([...(restored[t.id] ?? []), ...filesOf(t.out)])]
   }
+  await writeFile(path.join(root, RESTORED), JSON.stringify(restored))
+}
 process.exit(exit)
+
+/** The files and links under a store tree, relative to it. */
+function filesOf(dir: string): string[] {
+  const out = Bun.spawnSync(['find', '.', '(', '-type', 'f', '-o', '-type', 'l', ')', '-print0'], {
+    cwd: dir,
+  })
+  return out.stdout
+    .toString()
+    .split('\0')
+    .filter(Boolean)
+    .map((f) => f.slice(2))
+}
 
 /** Remove what the task's outputs match in the tree: the restore replaces it. */
 async function clear(t: Info): Promise<void> {

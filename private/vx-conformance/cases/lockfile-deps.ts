@@ -547,6 +547,7 @@ export default [
       'A change in a local directory dependency’s own node_modules replays the task depending on it',
     why: 'An install copies a local directory dependency without its `node_modules`, so files there never reach the project. A change inside it changes nothing the task reads. A runner that hashes it reruns the task whenever the dependency’s own tools install or update, which can be on every run.',
     from: ['vx-lockfile/file-dir-dep'],
+    needs: ['package-manager'],
     workspace: fileDir(),
     steps: [
       { run: 'build', expect: { exit: 0 } },
@@ -563,6 +564,7 @@ export default [
       'An edit inside a `link:` directory dependency runs the task of the project depending on it',
     why: 'A `link:` dependency is a symlink to a directory, so an edit there is live in the project at once, with no install. The lockfile does not change, and the project’s own files do not either. A runner must still key on the linked directory’s content, or it replays the old build while the code it imports has changed.',
     from: ['vx-lockfile/file-dir-dep'],
+    needs: ['package-manager'],
     workspace: fileDir('link:../../vendor/dep'),
     steps: [
       { run: 'build', expect: { exit: 0, files: { [out('lib')]: 'dep\n' } } },
@@ -707,6 +709,7 @@ export default [
     title: 'A workspace package linked under another name is a dependency: its build runs first',
     why: '`"y": "link:../b"` installs the workspace package `b`, just as `"b": "workspace:*"` does. `a` reads `b`’s build, so `b` must build first. A runner that only treats `workspace:` as a link between projects may build both at once, and `a` then reads a missing or old `dist`, failing or shipping stale code.',
     from: ['vx-lockfile/link-to-workspace'],
+    needs: ['package-manager'],
     workspace: {
       projects: {
         a: {
@@ -865,6 +868,7 @@ export default [
     title: 'A package the root depends on that itself depends on another workspace forms no cycle',
     why: '`util` can reach `lib` through the root, but `lib` depends on `util`. Adding the root’s dependencies as an edge from every project would give `util` an edge back to `lib`, a cycle no manifest wrote. The runner would then refuse to build or pick an order at random. The root’s edge must not point a package at what depends on it.',
     from: ['vx-lockfile/root-workspace-dep'],
+    needs: ['package-manager'],
     workspace: rootDep(),
     steps: [
       {
@@ -940,6 +944,7 @@ export default [
       'An edit inside a `link:` dependency beside the repository runs the task of the project depending on it, with no install',
     why: 'node_modules holds a link to the folder, so an edit there is what the task reads at once, with no install. Nothing in the repository changed, and git sees nothing. A key that only looks inside the repository replays the old output while the code it read has moved.',
     from: ['vx-lockfile/outside-dir-dep'],
+    needs: ['package-manager'],
     workspace: outsideDir('link:'),
     steps: [
       { run: 'build', expect: { exit: 0, files: { [out('lib')]: 'dep\n' } } },
@@ -959,6 +964,7 @@ export default [
       'A file added to a `link:` dependency beside the repository runs the task of the project depending on it',
     why: 'A linked folder is read live, so a file added there is part of what the task can import, with no install. Adding a module is as much a change as editing one. A key that only hashed the files present at install time misses it, and the build replays without the new file.',
     from: ['vx-lockfile/outside-dir-dep'],
+    needs: ['package-manager'],
     workspace: outsideDir('link:'),
     steps: [
       { run: 'build', expect: { exit: 0 } },
@@ -978,6 +984,7 @@ export default [
       'An edit inside a `link:` dependency beside the repository replays the projects that do not depend on it',
     why: 'Only the projects that link the outside folder read its files. An edit there cannot change the output of a project that does not depend on it. Running every project on such an edit spends builds that produce the same bytes and makes a shared folder cost the whole workspace.',
     from: ['vx-lockfile/outside-dir-dep'],
+    needs: ['package-manager'],
     workspace: outsideDir('link:'),
     steps: [
       { run: 'build', expect: { exit: 0 } },
@@ -1027,6 +1034,7 @@ export default [
       'A file added to a `link:` directory dependency runs the task of the project depending on it, with no install',
     why: 'A linked folder is read live, so a file added to it is something the task can now import, with no install step. Adding a module is as much a change as editing one. A key that only covers files known at install time replays the old build without the new file.',
     from: ['vx-lockfile/file-dir-dep'],
+    needs: ['package-manager'],
     workspace: fileDir('link:../../vendor/dep'),
     steps: [
       { run: 'build', expect: { exit: 0 } },
@@ -1046,6 +1054,7 @@ export default [
       'An edit inside a `link:` directory dependency replays the projects that do not depend on it',
     why: 'Only the projects that link the folder read its files. An edit inside it cannot change the output of a project that does not depend on it. Running those projects again spends a build each on bytes that cannot differ, on every save in the shared folder.',
     from: ['vx-lockfile/file-dir-dep'],
+    needs: ['package-manager'],
     workspace: fileDir('link:../../vendor/dep'),
     steps: [
       { run: 'build', expect: { exit: 0 } },
@@ -1082,6 +1091,7 @@ export default [
       'An edit to a `link:` dependency kept inside another project’s directory runs the task of the project depending on it',
     why: 'The edited folder sits inside another project’s directory, but the dependant links it and reads its files. Which project owns the folder on disk does not decide who reads it. A key that charges the edit only to the owner replays the dependant with code it no longer reads.',
     from: ['vx-lockfile/extra-in-project'],
+    needs: ['package-manager'],
     workspace: {
       ...extraInProject(),
       projects: {
@@ -1143,6 +1153,7 @@ export default [
       'An edit behind a dependency installed under another name, linked from beside the repository, runs the task again',
     why: 'The dependency is installed under another name and linked from beside the repository, so neither git nor the name shows the edit. The task still reads the linked files. A key that follows only repository files, or the package’s own name, replays an output built from the old code.',
     from: ['vx-lockfile/dependency-names', 'vx-lockfile/outside-dir-dep'],
+    needs: ['package-manager'],
     workspace: {
       projects: { a: reader('a', { foo: `link:${OUT}/dep` }, 'cat node_modules/foo/v.txt') },
       outside: outsideVendored('dep', 'dep'),

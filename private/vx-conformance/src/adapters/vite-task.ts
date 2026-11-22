@@ -18,30 +18,25 @@ export const viteTask: Adapter = {
   // `vp run` selects by package, never by a git change, and takes one task;
   // dependsOn names tasks exactly; a task has no time limit, no retries, and
   // is never a long-running process the run stops.
-  lacks: [
-    // No task names a directory of programs its dependants get on PATH.
-    'dependency-bin',
-    'affected',
-    'task-pattern',
-    'timeout',
-    'retries',
-    'persistent',
-    'ready',
-    'runtime-inputs',
-    'multi-task',
-    // A failure stops the run; `--cache` and `--no-cache` turn caching on
-    // or off, never reads apart from writes; no plan without running;
-    // nothing keeps a command from what it never declared.
-    'continue',
-    'force',
-    'read-only-cache',
-    // `vp run` has no watch mode.
-    'watch',
-    'dry-run',
-    'sandbox',
-    // A filter picks by name or directory; packages carry no tags.
-    'select-tag',
-  ],
+  lacks: {
+    'dependency-bin': 'No Vite Task task puts a directory of programs on its dependants’ PATH.',
+    affected: 'Vite Task does not select tasks by what git says changed.',
+    'task-pattern': 'Dependencies name tasks exactly: no pattern over task names.',
+    timeout: 'Vite Task has no per-task time limit.',
+    retries: 'Vite Task does not retry a failed task.',
+    persistent: 'Vite Task has no long-running task it stops when the run ends.',
+    ready: 'Vite Task does not hold a task until another prints a ready line.',
+    'runtime-inputs': 'Vite Task inputs are files and variables, never a command’s output.',
+    'multi-task': '`vp run` runs one task name per run.',
+    continue: 'A failure stops the run: nothing goes on past it.',
+    force:
+      '`--cache` and `--no-cache` turn caching on or off; no run ignores entries and saves fresh ones.',
+    'read-only-cache': 'No run reads the cache and writes nothing to it.',
+    watch: '`vp run` has no watch mode.',
+    'dry-run': 'Vite Task has no run that plans and runs nothing.',
+    sandbox: 'Vite Task keeps no task from files, network or home it never declared.',
+    'select-tag': 'A filter picks by name or directory; packages carry no tags.',
+  },
   env: { NO_COLOR: '1', DO_NOT_TRACK: '1', VITE_PLUS_TELEMETRY_DISABLED: '1' },
   // Vite Task installs the workspace's `packageManager` from the registry
   // before a run: the sandbox has none, so its home holds the bun that runs

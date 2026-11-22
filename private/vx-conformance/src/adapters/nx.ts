@@ -38,17 +38,17 @@ export const nx: Adapter = {
   // it, every cache read writes too, no run is planned without running,
   // and nothing keeps a command from what it never declared. Every host
   // variable reaches a task, keying none it does not name.
-  lacks: [
-    // No task names a directory of programs its dependants get on PATH.
-    'dependency-bin',
-    'select-walk',
-    'timeout',
-    'retries',
-    'continue',
-    'read-only-cache',
-    'dry-run',
-    'sandbox',
-  ],
+  lacks: {
+    'dependency-bin': 'No Nx task puts a directory of programs on its dependants’ PATH.',
+    'select-walk':
+      'Nx selects projects by name, pattern or tag; no selector adds their dependencies or dependents.',
+    timeout: 'Nx has no per-task time limit.',
+    retries: 'Nx does not retry a failed task.',
+    continue: 'Nx never runs a task whose dependency failed.',
+    'read-only-cache': 'Nx has no run that reads the cache and writes nothing to it.',
+    'dry-run': 'Nx has no run that plans and runs nothing.',
+    sandbox: 'Nx keeps no task from files, network or home it never declared.',
+  },
   env: {
     NX_DAEMON: 'false',
     NX_NO_CLOUD: 'true',
