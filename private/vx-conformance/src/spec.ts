@@ -18,6 +18,8 @@ export interface TaskSpec {
   passThrough?: string[]
   /** Project-relative globs the task writes, stored and restored with it. Omitted: the tool's default; `[]`: none. */
   outputs?: string[]
+  /** Project-relative globs the task may or may not write: stored and restored when it does, no failure when it does not. */
+  optionalOutputs?: string[]
   /** A directory of `outputs` that holds programs: every task depending on this one runs them by name. */
   bin?: string
   /** Workspace-root-relative globs that also key the task, in any directory. */
@@ -34,12 +36,19 @@ export interface TaskSpec {
   timeout?: number
   /** How many more times a failed attempt runs before the task fails. */
   retries?: number
+  /** Seconds the command may print nothing before the tool kills it and fails it. */
+  idleTimeout?: number
+  /** Tasks sharing this name never run at the same time, whatever else runs beside them. */
+  mutex?: string
+  /** `file` (one of the task's outputs, project-relative) must hold exactly `text`'s bytes, pinned by checksum: a build that writes other bytes fails. */
+  checksum?: { file: string; text: string }
   /**
    * A long-running process (a dev server): never cached, and stopped by the
    * tool once nothing needs it. `ready`: text the process prints once it is
-   * up; until then nothing that depends on it starts.
+   * up; `port`: a local TCP port it accepts connections on once it is up.
+   * Until then nothing that depends on it starts.
    */
-  persistent?: true | { ready: string }
+  persistent?: true | { ready: string } | { port: number }
   /** `false`: what the task depends on runs first, but its inputs never key this task. Default: they do. */
   dependencyInputs?: false
   /**
@@ -176,6 +185,8 @@ export type Step =
       readOnlyCache?: true
       /** Plan the run without running any task. */
       dry?: true
+      /** Run the requested tasks again though they are cached, and fail when what they write differs from what is stored. */
+      verify?: true
       /** Stop the run as Ctrl-C or a supervisor does: `signal` to the runner's process group once `when` exists. */
       stop?: Stop
       /** The runner's input stream is a pipe left open and never written, as a terminal nobody types in is. */
@@ -318,6 +329,18 @@ export type Feature =
   | 'select-tag'
   /** A dependency's declared directory of programs on a dependant's PATH (`bin`). */
   | 'dependency-bin'
+  /** Outputs a task may leave unwritten (`optionalOutputs`). */
+  | 'optional-outputs'
+  /** Tasks that share a name never overlapping (`mutex`). */
+  | 'mutex'
+  /** A limit on how long a task may print nothing (`idleTimeout`). */
+  | 'idle-timeout'
+  /** An output pinned by checksum (`checksum`). */
+  | 'output-checksum'
+  /** A run that rebuilds a cached task and compares its bytes (`check`). */
+  | 'determinism-check'
+  /** Holding a persistent task's dependants until it accepts connections on a port. */
+  | 'ready-port'
   /**
    * A package manager's workspace: dependencies named in package.json, a
    * lockfile, packages installed into node_modules and the programs they link.

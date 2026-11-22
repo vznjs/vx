@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { scores, scoreTable, type Results } from '../src/report.ts'
+import { mergeResults, scores, scoreTable, type Results } from '../src/report.ts'
 
 const rows: Results['cases'] = [
   {
@@ -51,4 +51,30 @@ test('an exact share keeps its point', () => {
   expect(scoreTable({ tools: { a: '1' }, scores: { a: { all } } })).toContain(
     '| all | 29% (29/100), supports 100% |',
   )
+})
+
+// A sharded CI run: each job one tool and every nth case; the merge is the run.
+test('shards merge into one run, each case in the suite order with every tool', () => {
+  const part = (tool: string, ids: string[]): Results => ({
+    coverage: {} as Results['coverage'],
+    tools: { [tool]: '1' },
+    scores: {},
+    cases: rows
+      .filter((r) => ids.includes(r.id))
+      .map((r) => ({ ...r, outcomes: { [tool]: r.outcomes[tool]! } })),
+  })
+  const merged = mergeResults(
+    [part('b', ['report/y']), part('a', ['report/y', 'inputs/x']), part('b', ['inputs/x'])],
+    ['inputs/x', 'report/y'],
+  )
+  expect(merged.cases.map((c) => c.id)).toEqual(['inputs/x', 'report/y'])
+  expect(merged.cases.map((c) => c.outcomes)).toEqual(rows.map((r) => r.outcomes))
+  expect(merged.scores).toEqual(scores(['b', 'a'], rows))
+  expect(merged.notes).toBeUndefined()
+  // What a shard's harness fell back on reaches the merged run.
+  const noted = mergeResults(
+    [{ ...part('a', ['inputs/x']), notes: ['moon ran without x'] }, part('b', ['inputs/x'])],
+    ['inputs/x'],
+  )
+  expect(noted.notes).toEqual(['moon ran without x'])
 })

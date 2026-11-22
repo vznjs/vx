@@ -1333,8 +1333,11 @@ export async function runCommand(opts: RunOptions): Promise<RunResult> {
 
   opts.liveChildren?.add(proc)
   // The spawn is awaited while the command runs: a stop landing then swept a
-  // live set without it, and the run waited out the command.
-  if (opts.signal?.aborted === true) void stopLate(proc, stopSignal(opts.signal.reason))
+  // live set without it, and the run waited out the command. Awaited before
+  // the result, as the stop's own sweep waits for the group: the shell dying
+  // of it ended the task while a trap in its group still ran its cleanup.
+  const late =
+    opts.signal?.aborted === true ? stopLate(proc, stopSignal(opts.signal.reason)) : undefined
   opts.onSpawn?.(proc.pid)
   // Linux: the tree sampled while running has the task's own live sum.
   const watch = process.platform === 'linux' ? watchTree(proc.pid) : undefined
@@ -1369,6 +1372,7 @@ export async function runCommand(opts: RunOptions): Promise<RunResult> {
   const stderr = blame ? streamed + cutLine : streamed
   // A leftover with stdio sent elsewhere holds no pipe to cut: its non-empty
   // group says so. One kill(0) when empty.
+  await late
   const left = cut || (await groupOutlives(proc, POST_EXIT_DRAIN_MS))
   opts.liveChildren?.delete(proc)
   releaseGroup(proc)

@@ -107,7 +107,8 @@ it("(c) a save creates a file another task's input glob takes", async () => {
 
 // Untracked: the clean never deletes a committed file (2026-10-14).
 it("(d) a clean deletes another task's input", async () => {
-  await configure('gen/x', 'test "$(cat src/p.txt)" = 2 || cp src/p.txt gen/x')
+  // At 2 it writes only `made`: the clean took gen/x, and nothing puts it back.
+  await configure('{gen/x,made}', 'test "$(cat src/p.txt)" = 2 && touch made || cp src/p.txt gen/x')
   commit('init')
   await writeFile(path.join(pkg, 'gen', 'x'), '1\n')
   vx('a#use')

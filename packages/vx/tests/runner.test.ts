@@ -1,9 +1,10 @@
 import { EventEmitter } from 'node:events'
-import { fstatSync } from 'node:fs'
+import { existsSync, fstatSync } from 'node:fs'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
+import * as spawnOffModule from '../src/exec/spawn-off.js'
 import { isAlive, waitForDead } from './helpers/alive.js'
 import {
   armTimeout,
@@ -2314,6 +2315,44 @@ describe('a stop that lands while the spawn is awaited', () => {
       await rm(cwd, { recursive: true, force: true })
     }
   }, 30_000)
+
+  // The shell died of the late stop while a trap in its group still ran its
+  // cleanup; the run took the shell's exit as the task's end and exited, and
+  // the cleanup was cut short (conformance, group-sigterm-leaves-task-its-cleanup,
+  // 2 runs in 12 under load).
+  // Linux only: elsewhere the task's pipes are Bun's, so its spawn stays on
+  // this thread and no stop can land while it is awaited.
+  it.skipIf(process.platform !== 'linux')(
+    "waits for the task's group, as a stop that found it live does",
+    async () => {
+      const cwd = await mkdtemp(path.join(os.tmpdir(), 'vx-late-stop-'))
+      const stop = new AbortController()
+      const spawnOff = spawnOffModule.spawnOff
+      // The stop lands once the task runs, before its spawn's answer.
+      const spy = spyOn(spawnOffModule, 'spawnOff').mockImplementation(async (o) => {
+        const child = await spawnOff(o)
+        while (!existsSync(path.join(cwd, 'ready'))) await Bun.sleep(5)
+        stop.abort('SIGTERM')
+        return child
+      })
+      try {
+        await runCommand({
+          command:
+            "(trap 'sleep 0.3; echo cleaned > cleaned.txt; exit 0' TERM; touch ready; while :; do sleep 0.05; done); true",
+          cwd,
+          // A name sh sets itself: a fresh spawn, not a spare (warm-shell.ts).
+          env: { PATH: process.env.PATH ?? '', SHLVL: '1' },
+          liveChildren: new Set(),
+          signal: stop.signal,
+        })
+        expect(existsSync(path.join(cwd, 'cleaned.txt'))).toBe(true)
+      } finally {
+        spy.mockRestore()
+        await rm(cwd, { recursive: true, force: true })
+      }
+    },
+    30_000,
+  )
 })
 
 // A busy scheduler read what a heavy task left buffered 30 ms past the bound

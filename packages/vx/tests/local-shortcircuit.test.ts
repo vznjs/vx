@@ -708,7 +708,8 @@ describe('local cache short-circuit', () => {
       export default {
         tasks: {
           build: {
-            exec: { command: "mkdir -p ../../shared ../solo/gen && echo x > ../../shared/g.txt && echo y > ../solo/gen/g.txt" },
+            // Every glob a test below declares matches a file: one that matches none fails the task.
+            exec: { command: "mkdir -p ../../shared ../solo/gen && echo x > ../../shared/g.txt && echo y > ../solo/gen/g.txt && echo z > ../solo/g.gen" },
             inputs: { files: ['src/**'] }, outputs: ${o}, cache: true,
           },
         },

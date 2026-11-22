@@ -1102,26 +1102,31 @@ Before item 750 only a save marked them, so a same-run reader keyed
 from the snapshot's index OID for an output (or for an input the task
 rewrote) restored the bytes from before the command.
 
-A declared set that resolves to **nothing** is said on the run's
+An input set that resolves to **nothing** is said on the run's
 status line. `inputs matched no files (lib/**)` — the key would
 not change when the source does — is said on every miss of a cacheable
 task, right after `describeTaskInputs` and before the command, whether
 or not it saves. It is said too when every wildcard glob matched nothing
 and only literal files did (`scr/**` beside the `package.json` a
-lockfile plugin appends), naming the wildcard globs. `outputs matched no files (build/**)` — an empty
-artifact was saved and a later hit restores nothing — is said on the
-save path, and when a deferred fetch (`--cache-download=none`) lands
-nothing. It is said too when every wildcard output glob matched nothing
-and only literal files did (`dist/**` beside the `tsconfig.tsbuildinfo`
-turbo()/nx() add to an incremental tsc task): `outputs matched no files
-(dist/**) — a later hit restores only the literal files
-(tsconfig.tsbuildinfo)`. Both are almost always a glob
-against the wrong directory; the output line names one other cause when
+lockfile plugin appends), naming the wildcard globs.
+
+**Every declared output is required** (`orchestrator/missing-outputs.ts`).
+Once the command exits 0, each positive glob of `outputs.files` and
+`outputs.workspaceFiles` must match a path that no `!` entry takes back.
+An empty `dist/` does not satisfy `dist/**`, since the clean keeps that
+root; a literal `public/uploads` is satisfied by the directory itself. One that matches nothing fails the task,
+cached or not, and nothing is saved: `[vx] app#build: outputs matched no
+files (dist/**) — the command exited 0 but never wrote it, so the task
+fails and nothing is cached: write it, or fix the pattern`. Each glob
+answers for itself: a literal `tsconfig.tsbuildinfo` that matched does
+not cover a `dist/**` that did not. The line names the likely cause when
 it applies: a sandboxed task with no `exec.sandbox.allow.write`, whose
-writes never reached disk, or a `workspaceFiles` directory that is a
-symlink out of the workspace, whose files vx drops as outside (a project
-output directory linked out of the project refuses the task instead, X-88). `outputs.files: []` is a deliberate cached
-no-op and says nothing; a task with no `cache: true` is never checked.
+writes never reached disk, or an undeclared state file that survived the
+clean (below). A failed task is retried as any failure is. Outputs a
+remote executor or a deferred download (`--cache-download=none`) lands
+elsewhere are not checked here; a deferred fetch that lands nothing
+warns `outputs matched no files … an empty artifact is saved`.
+`outputs.files: []` declares no output and checks nothing.
 
 **Undeclared state is not saved** (`orchestrator/undeclared-state.ts`).
 A file in the task's project that git ignores, or a `.tsbuildinfo` it
@@ -1132,10 +1137,10 @@ before `.gitignore` named it). An incremental tool keeps its state there: `tsc -
 it emitted only the changed file, and the partial `dist/` was saved. A
 miss stamps those files, as `git status` listed them at run start,
 before its command; if one changed (and a sandbox let the task write
-it), or the outputs matched no files while one is there (an ignored
-file or a `.tsbuildinfo`: before a first commit every source is
-untracked), the result
-stands but is not saved, and the line names the file and the fix:
+it), the result stands but is not saved; if the outputs matched no files
+while one is there (an ignored file or a `.tsbuildinfo`: before a first
+commit every source is untracked), the task fails as above. Either way
+the line names the file and the fix:
 declare it in `outputs.files`, so a miss starts without it and a hit
 restores it. Any other untracked file is a generator's own, rewritten
 each build (Astro's `.astro/` with no `.gitignore` entry): stamped, no
@@ -1974,9 +1979,8 @@ reads as before. The ingest side takes the numbers only as plain
 non-negative numbers; anything else in a foreign sidecar is dropped.
 `dirs` (v44) names the empty directories the output globs matched at
 save (`outputs/dist/empty`, `workspace-outputs/gen/empty` under
-`outputs.workspaceFiles`), and the empty root of a `<dir>/**` glob,
-which the glob itself does not match (`public/uploads` a task made empty
-under `public/uploads/**`): a tar of regular files cannot hold them, and
+`outputs.workspaceFiles`), and an empty directory a literal output
+names (`public/uploads`): a tar of regular files cannot hold them, and
 a hit makes each one, so the tree a hit leaves is the one the miss left.
 A miss's clean removes the empty directories it finds under the outputs
 too, so one an older build left is not saved as this run's, and a hit

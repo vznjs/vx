@@ -4413,7 +4413,7 @@ and 50-cell bars. On a terminal narrower than that the bars shrink, as
 do a frame's section rules, so none wraps onto a second row. Off a terminal they keep their width.
 
 **Warnings on stderr.** A run's warnings, such as `[vx] app#build:
-outputs matched no files …` or a plugin's, go to stderr. Stdout
+inputs matched no files …` or a plugin's, go to stderr. Stdout
 carries only the rows, the frames and the footer, so `vx run build >
 log.txt` keeps them out of the log.
 

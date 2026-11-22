@@ -5,10 +5,12 @@
 // runs on the system toolchain, so moon downloads nothing. Project edges are
 // `dependsOn` in moon.yml, moon's explicit form. The report is the run
 // report moon writes after each run, `.moon/cache/runReport.json`.
-import { mkdir, writeFile } from 'node:fs/promises'
+import { existsSync, readdirSync } from 'node:fs'
+import { mkdir, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
-import type { Adapter } from '../adapter.ts'
-import { pkgDir } from '../tools.ts'
+import { optionalAsOutputs, type Adapter } from '../adapter.ts'
+import { harnessNotes } from '../report.ts'
+import { modulesOf, pkgDir } from '../tools.ts'
 import { projectDir, type Selector, type TaskReport } from '../spec.ts'
 
 // The binary @moonrepo/cli's own bin (a Node shim) spawns: run directly, so
@@ -20,6 +22,94 @@ function moonBin(): string {
     process.platform === 'darwin' ? `core-macos-${process.arch}` : `core-linux-${process.arch}-gnu`,
     'moon',
   )
+}
+
+// A moon JavaScript workspace enables these: package.json edges, the
+// lockfile in the hash, and node_modules/.bin on a task's PATH. They are
+// WASM plugins moon downloads on first use, which the sandbox cannot.
+const TOOLCHAINS = { javascript: { packageManager: 'bun' }, bun: {} }
+/** The toolchains each case declares: {@link TOOLCHAINS} loaded from the fetched files, once fetched. */
+let local: Record<string, Record<string, string>> | undefined
+
+/**
+ * Run moon once, outside the sandbox, so it downloads its own toolchain
+ * plugins; every case then loads them from those files. Without them moon
+ * runs as a workspace with no toolchain, and the results' notes say why.
+ */
+export async function fetchMoonPlugins(): Promise<void> {
+  const root = path.join(modulesOf('@moonrepo/cli'), '.moon-plugins')
+  const home = path.join(root, 'home')
+  const ws = path.join(root, 'ws')
+  await rm(root, { recursive: true, force: true })
+  await mkdir(path.join(ws, '.moon'), { recursive: true })
+  await mkdir(home, { recursive: true })
+  await writeFile(path.join(ws, 'package.json'), '{ "name": "fetch", "private": true }\n')
+  await writeFile(
+    path.join(ws, '.moon', 'workspace.yml'),
+    JSON.stringify({ projects: { fetch: '.' }, telemetry: false }),
+  )
+  await writeFile(path.join(ws, '.moon', 'toolchains.yml'), JSON.stringify(TOOLCHAINS))
+  const env = { ...process.env, HOME: home, NO_COLOR: '1', DO_NOT_TRACK: '1' }
+  Bun.spawnSync(['git', 'init', '-q'], { cwd: ws, env })
+  const proc = Bun.spawnSync([moonBin(), 'setup'], { cwd: ws, env, stdout: 'pipe', stderr: 'pipe' })
+  const dir = path.join(home, '.moon', 'plugins', 'toolchains')
+  const have = existsSync(dir) ? readdirSync(dir) : []
+  const files = Object.keys(TOOLCHAINS).map((t) =>
+    have.find((f) => f.startsWith(t) && f.endsWith('.wasm')),
+  )
+  if (proc.exitCode !== 0 || files.includes(undefined)) {
+    return note(
+      `moon fetched no toolchain plugins (exit ${proc.exitCode}, found ${have.join(' ') || 'none'}), so it runs without them:\n${proc.stdout.toString()}${proc.stderr.toString()}`,
+    )
+  }
+  // Loaded from a file, not the registry: a case has no network, and moon asked
+  // the registry again from a home holding a copy of the download.
+  const toolchains = Object.fromEntries(
+    Object.entries(TOOLCHAINS).map(([t, c], i) => [
+      t,
+      { ...c, plugin: `file://${path.join(dir, files[i]!)}` },
+    ]),
+  )
+  // One task run as a case runs it, from an empty home with no network: moon
+  // failing every case on the plugins is the harness's failure, not moon's.
+  const smoke = await smokeRun(ws, toolchains, path.join(root, 'smoke-home'))
+  if (smoke !== undefined)
+    return note(
+      `moon with its toolchain plugins failed a task offline, so it runs without them:\n${smoke}`,
+    )
+  local = toolchains
+}
+
+function note(text: string): void {
+  harnessNotes.push(text)
+  console.warn(`conformance: ${text}`)
+}
+
+/** moon's output when a trivial task fails under `toolchains` without network, else undefined. */
+async function smokeRun(ws: string, toolchains: object, home: string): Promise<string | undefined> {
+  await mkdir(home, { recursive: true })
+  await writeFile(path.join(ws, '.moon', 'toolchains.yml'), JSON.stringify(toolchains))
+  await writeFile(
+    path.join(ws, 'moon.yml'),
+    JSON.stringify({
+      toolchains: { default: Object.keys(toolchains) },
+      tasks: { t: { command: 'echo ok' } },
+    }),
+  )
+  const bwrap = Bun.which('bwrap')
+  const run = [moonBin(), 'run', 'fetch:t']
+  const proc = Bun.spawnSync(
+    bwrap === null ? run : [bwrap, '--dev-bind', '/', '/', '--unshare-net', '--', ...run],
+    {
+      cwd: ws,
+      env: { ...process.env, HOME: home, NO_COLOR: '1', DO_NOT_TRACK: '1' },
+      stdout: 'pipe',
+      stderr: 'pipe',
+    },
+  )
+  return proc.exitCode === 0
+    ? undefined
+    : `exit ${proc.exitCode}\n${proc.stdout.toString()}${proc.stderr.toString()}`
 }
 
 /** A project-relative glob as moon spells a workspace-relative one: a leading `/`, after any `!`. */
@@ -60,6 +150,11 @@ export const moon: Adapter = {
   pkg: '@moonrepo/cli',
   bins: [],
   lacks: {
+    'idle-timeout': 'moon has no limit on how long a task may print nothing.',
+    'output-checksum': 'moon has no way to pin an output’s bytes to a checksum.',
+    'determinism-check': 'No moon run rebuilds a cached task to compare its bytes.',
+    'ready-port':
+      'A `wait` dependency waits for the persistent task to start, never for a port it opens.',
     'dependency-bin': 'No moon task puts a directory of programs on its dependants’ PATH.',
     'select-walk':
       '`--upstream`/`--downstream` walk the task graph from the requested tasks, never the project graph, and never leave the matched projects out.',
@@ -71,7 +166,8 @@ export const moon: Adapter = {
     'dry-run': '`moon action-graph` draws the graph; no run plans and runs nothing.',
   },
   env: { NO_COLOR: '1', DO_NOT_TRACK: '1' },
-  async configure(dir, ws, command) {
+  async configure(dir, given, command) {
+    const ws = optionalAsOutputs(given)
     const persistent = new Set(
       Object.entries(ws.projects).flatMap(([n, p]) =>
         Object.entries(p.tasks ?? {})
@@ -91,6 +187,8 @@ export const moon: Adapter = {
       ),
     )
     await mkdir(path.join(dir, '.moon'), { recursive: true })
+    if (local !== undefined)
+      await writeFile(path.join(dir, '.moon', 'toolchains.yml'), JSON.stringify(local))
     await writeFile(
       path.join(dir, '.moon', 'workspace.yml'),
       JSON.stringify(
@@ -148,6 +246,7 @@ export const moon: Adapter = {
             ...(spec.cache === false ? { cache: false } : {}),
             ...(spec.timeout !== undefined ? { timeout: spec.timeout } : {}),
             ...(spec.retries !== undefined ? { retryCount: spec.retries } : {}),
+            ...(spec.mutex !== undefined ? { mutex: spec.mutex } : {}),
             // moon refuses a dependant on a server that does not run in CI; its docs enable it.
             // The command is its own shell (moon's fully qualified form), so moon wraps it in no other.
             ...(spec.takesArgs ? { shell: false } : {}),
@@ -185,6 +284,8 @@ export const moon: Adapter = {
           {
             ...(edges.length > 0 ? { dependsOn: edges } : {}),
             ...(p.tags ? { tags: p.tags } : {}),
+            // A shell line runs a package's bin from node_modules/.bin only under these.
+            ...(local !== undefined ? { toolchains: { default: Object.keys(local) } } : {}),
             tasks,
           },
           null,

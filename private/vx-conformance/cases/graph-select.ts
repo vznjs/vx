@@ -27,12 +27,12 @@ function chain(): WorkspaceSpec {
 
 const FROM = ['filter', 'filter-properties']
 
-/** site and admin tagged web, api tagged scope:api and depending on lib; lib untagged. */
+/** site and admin tagged web, api tagged scope/api and depending on lib; lib untagged. */
 const tagged = (): WorkspaceSpec => ({
   projects: {
-    site: { ...p(), tags: ['web', 'scope:site'] },
+    site: { ...p(), tags: ['web', 'scope/site'] },
     admin: { ...p(), tags: ['web'] },
-    api: { ...p(['lib']), tags: ['scope:api'] },
+    api: { ...p(['lib']), tags: ['scope/api'] },
     lib: p(),
   },
 })
@@ -425,9 +425,9 @@ export default [
   selects({
     slug: 'by-tag-glob',
     title: 'A `*` in a tag selects the projects carrying any tag it matches',
-    why: 'A pattern in a tag picks every tag it matches, as a pattern in a name picks every name. Users group tags by prefix, such as scope:web and scope:api, to select a family at once. Matching only the literal text selects nothing, so the run passes while it built none of them.',
+    why: 'A pattern in a tag picks every tag it matches, as a pattern in a name picks every name. Users group tags by prefix, such as scope/web and scope/api, to select a family at once. Matching only the literal text selects nothing, so the run passes while it built none of them.',
     workspace: tagged(),
-    select: [{ tag: 'scope:*' }],
+    select: [{ tag: 'scope/*' }],
     ran: ['site', 'api'],
     notRan: ['admin', 'lib'],
   }),
@@ -447,7 +447,7 @@ export default [
     title: 'A tag and its dependencies select the tagged projects and what they depend on',
     why: 'Selecting a tag with its dependencies means the tagged projects and everything they need to build. A tagged app cannot build without its libraries, even untagged ones. Leaving them out fails the run or builds against stale output; adding unrelated projects runs work nobody asked for.',
     workspace: tagged(),
-    select: [{ tag: 'scope:api', with: 'dependencies' }],
+    select: [{ tag: 'scope/api', with: 'dependencies' }],
     ran: ['api', 'lib'],
     notRan: ['site', 'admin'],
   }),

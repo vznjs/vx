@@ -58,7 +58,7 @@ const configFor = (dependantOutputs: string): string => `
         // Third in the chain, as strapi's build → build:code → build:types:
         // an overlap with individual too, ordered by this edge.
         dependsOn: ['individual'],
-        exec: { command: 'true' },
+        exec: { command: 'mkdir -p dist && echo n > dist/noop' },
         inputs: { files: ['srcb/**'], tasks: [] }, outputs: { files: ['dist/noop'] }, cache: true,
       },
     },
@@ -175,9 +175,8 @@ describe.each(Object.entries(SHAPES))('overlapping outputs, addition shape: %s',
       expect(tree(ws.app)).toEqual(await coldTree('A1', 'B1', config))
       const warm = await run({ cwd: ws.root, tasks: TASKS, log: silent })
       // Neither restores: build's current-check ignores what individual
-      // declares it adds, and individual's checks only its own rows. noop's
-      // artifact holds no rows, and a hit with no rows is up-to-date while
-      // its globs still match nothing (item 589).
+      // declares it adds, and individual's checks only its own rows, as
+      // noop's does.
       expect(statusOf(warm)).toEqual({
         build: 'cache-hit',
         individual: 'cache-hit',
@@ -197,7 +196,8 @@ describe.each(Object.entries(SHAPES))('overlapping outputs, addition shape: %s',
       expect(statusOf(r)).toEqual({
         build: 'success',
         individual: 'cache-hit+restored',
-        noop: 'cache-hit',
+        // Its file went with the upstream's clean, or the restore beside it.
+        noop: 'cache-hit+restored',
       })
       // The sharp claim: individual's artifact holds ONLY dist/individual.
       // Had it captured dist/a.txt at save time (the glob walk), this
@@ -220,7 +220,7 @@ describe.each(Object.entries(SHAPES))('overlapping outputs, addition shape: %s',
   )
 
   it(
-    'a dependant that adds nothing saves an empty set and its hit leaves the upstream tree alone',
+    'a third task in the chain hits beside a restore and leaves the upstream tree alone',
     async () => {
       await run({ cwd: ws.root, tasks: TASKS, log: silent })
       await writeFile(path.join(ws.app, 'srcb', 'b.txt'), 'B2')
@@ -232,7 +232,8 @@ describe.each(Object.entries(SHAPES))('overlapping outputs, addition shape: %s',
       expect(statusOf(r)).toEqual({
         build: 'cache-hit',
         individual: 'cache-hit+restored',
-        noop: 'cache-hit',
+        // Its file went with the upstream's clean, or the restore beside it.
+        noop: 'cache-hit+restored',
       })
       expect(tree(ws.app)).toEqual(await coldTree('A1', 'B1', config))
     },

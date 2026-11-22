@@ -25,6 +25,10 @@ them out or `vx cache clean` clears the cache.
 
 --continue, run.continue, VX_RUN_CONTINUE and the pipeline key continue are gone; use --fail-fast / run.failFast / VX_RUN_FAIL_FAST / failFast. RunOptions.continueMode is now failFast.
 
+### orchestrator: fail a task whose declared output matched nothing
+
+a declared output that matches no files fails the task instead of warning.
+
 ### cli: drop the lock merge driver, name it .vx/projects.lock
 
 .vx/projects.lock.jsonl is now .vx/projects.lock (run vx lock); vx lock --merge is removed.

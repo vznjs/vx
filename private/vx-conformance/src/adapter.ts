@@ -79,6 +79,8 @@ export interface RunOptions {
   readOnlyCache?: boolean
   /** Plan only. */
   dry?: boolean
+  /** Rebuild cached tasks and fail when their bytes differ. */
+  verify?: boolean
 }
 
 /** A selector in the pnpm filter grammar Turborepo, Vite Task and vx share. */
@@ -94,4 +96,33 @@ export function pnpmFilter(s: Selector): string {
           ? `...${caret}${base}...`
           : base
   return (s.exclude ? '!' : '') + walked
+}
+
+/**
+ * `ws` with each task's `optionalOutputs` among its `outputs`: for a tool
+ * whose outputs are stored when written and never required, that is how
+ * it says an output may be left unwritten.
+ */
+export function optionalAsOutputs(ws: WorkspaceSpec): WorkspaceSpec {
+  return {
+    ...ws,
+    projects: Object.fromEntries(
+      Object.entries(ws.projects).map(([name, p]) => [
+        name,
+        p.tasks === undefined
+          ? p
+          : {
+              ...p,
+              tasks: Object.fromEntries(
+                Object.entries(p.tasks).map(([t, spec]) => [
+                  t,
+                  spec.optionalOutputs === undefined
+                    ? spec
+                    : { ...spec, outputs: [...(spec.outputs ?? []), ...spec.optionalOutputs] },
+                ]),
+              ),
+            },
+      ]),
+    ),
+  }
 }

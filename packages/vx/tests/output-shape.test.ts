@@ -440,8 +440,8 @@ esac
 // A restore's clean removed a stray `out/a.txt` and pruned the emptied
 // `out/`, which a sibling running beside it had just made and was about to
 // write into: the sibling failed "Directory nonexistent". The entry holds
-// nothing under `out`, so the restore never put it back; with one that
-// does, the same prune opens a window between the clean and the extract.
+// `out/a.txt`, so the prune opens a window between the clean and the
+// extract.
 describe('a restore beside a sibling writing into its directory (e2e)', () => {
   for (const [where, dir, outputs] of [
     ['project', 'out', `{ files: ['out/a.txt'] }`],
@@ -467,7 +467,7 @@ describe('a restore beside a sibling writing into its directory (e2e)', () => {
                   },
                   build: {
                     dependsOn: ['gate'],
-                    exec: { command: 'true' },
+                    exec: { command: 'mkdir -p ${dir} && echo a > ${dir}/a.txt' },
                     inputs: { files: ['gate.out'], tasks: [] }, outputs: ${outputs}, cache: true,
                   },
                   after: { dependsOn: ['build'], exec: { command: 'touch ../../go' } },
