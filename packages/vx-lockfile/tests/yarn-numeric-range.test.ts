@@ -60,6 +60,36 @@ it('an unquoted `1.0` range reaches its own entry, not `1`', () => {
   expect(moved(lock('1.0.1', r), lock('1.0.2', r))).toEqual(['packages/a'])
 })
 
+// Yarn writes a key over 1024 characters (an entry many ranges resolve to)
+// as YAML 1.2's explicit `? key` with its `:` on the next line. `c` keys
+// the 0.10 entry under `~0.10.0`, so it is no orphan every workspace folds.
+it('a `? key` over 1024 characters keeps every range its source text', () => {
+  const lodash = Array.from({ length: 60 }, (_, i) => `lodash@npm:^4.17.${i}`).join(', ')
+  const long = (ten: string) =>
+    lock(ten).replace(
+      '"stream-source@npm:0.10":',
+      '"stream-source@npm:0.10, stream-source@npm:~0.10.0":',
+    ).concat(`
+"c@workspace:packages/c":
+  version: 0.0.0-use.local
+  resolution: "c@workspace:packages/c"
+  dependencies:
+    lodash: ^4.17.1
+    stream-source: ~0.10.0
+  languageName: unknown
+  linkType: soft
+
+? "${lodash}"
+:
+  version: 4.17.21
+  resolution: "lodash@npm:4.17.21"
+  checksum: 10/lodash
+  languageName: node
+  linkType: hard
+`)
+  expect(moved(long('0.10.12'), long('0.10.13'))).toEqual(['packages/a', 'packages/c'])
+})
+
 it('every unquoted range reads as its source text', () => {
   const ranges = ['0.10', '1.0', '010', '0x1F', '1e3', '.5', 'true', 'null', '~', '1_000']
   const text = `__metadata:\n  version: 8\n  cacheKey: 10\n\n"a@workspace:.":\n  version: 0.0.0-use.local\n  resolution: "a@workspace:."\n  dependencies:\n${ranges.map((r, i) => `    p${i}: ${r}`).join('\n')}\n  languageName: unknown\n  linkType: soft\n`

@@ -2,6 +2,9 @@
 // (M, 2026-11-22), so each CI job names one and its file holds no flags.
 
 import path from 'node:path'
+import { parseCachePolicy } from '../cache/index.js'
+import type { Pipeline } from '../config.js'
+import { envName, parseSettingValue, SETTINGS, settingRefusal } from '../settings.js'
 import { setVxOnlyEnv, nearest } from '../util/index.js'
 import { findWorkspaceRoot, loadWorkspaceConfig, pipelineRunArgs } from '../workspace/index.js'
 import { refuse, seeHelp } from './help.js'
@@ -37,6 +40,40 @@ export function parsePipelineArgs(args: readonly string[]): {
   return { name, rest }
 }
 
+/**
+ * Why a saved value the load could not check is refused, or undefined:
+ * `cachePolicy`, whose grammar is the cache module's, and an `env` entry
+ * that sets a setting's variable, unless a variable already set or the
+ * setting's typed flag beats it (then nothing reads it).
+ */
+function savedRefusal(name: string, p: Pipeline, typed: readonly string[]): string | undefined {
+  const where = (key: string) => `.vx/workspace: \`pipelines.${name}.${key}\``
+  const policy = (key: string, spec: string): string | undefined => {
+    try {
+      parseCachePolicy(spec)
+      return undefined
+    } catch (err) {
+      return `${where(key)} ${(err as Error).message}`
+    }
+  }
+  if (p.cachePolicy !== undefined) {
+    const why = policy('cachePolicy', p.cachePolicy)
+    if (why !== undefined) return why
+  }
+  const given = (flag: string) => typed.some((a) => a === flag || a.startsWith(`${flag}=`))
+  for (const [k, v] of Object.entries(p.env ?? {})) {
+    if ((process.env[k] ?? '') !== '' || v === '') continue
+    const s = SETTINGS.find((x) => x.env !== false && envName(x.path) === k)
+    if (s === undefined || (s.flag !== undefined && given(s.flag.name))) continue
+    if (s.path === 'cache.policy') {
+      const why = policy(`env.${k}`, v)
+      if (why !== undefined) return why
+    } else if (parseSettingValue(s.kind, v) === null)
+      return settingRefusal(s.path, where(`env.${k}`), v)
+  }
+  return undefined
+}
+
 export async function pipelineCmd(args: readonly string[]): Promise<number> {
   const { name, rest, error } = parsePipelineArgs(args)
   if (error !== undefined || name === undefined)
@@ -62,6 +99,10 @@ export async function pipelineCmd(args: readonly string[]): Promise<number> {
       'VX_E_USAGE',
     )
   }
+  // The run's parser would refuse a bad saved value as a typed flag or a
+  // variable the user never set: name the key that holds it.
+  const refused = savedRefusal(name, pipeline, rest)
+  if (refused !== undefined) return refuse('pipeline', args, refused, 'VX_E_CONFIG')
   // A variable already set wins, as it beats every setting the file holds.
   for (const [k, v] of Object.entries(pipeline.env ?? {}))
     if ((process.env[k] ?? '') === '') setVxOnlyEnv(k, v)

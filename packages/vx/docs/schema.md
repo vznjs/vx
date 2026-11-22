@@ -798,7 +798,10 @@ exec: {
 Every name in these lists (and in `inputs.env`) must be one an
 environment can hold: non-empty, with no `=` and no NUL, and a `define`
 value holds no NUL. Such a name is refused at load; it used to reach the
-child split at its `=` or not at all. A `passThrough` or `define` name is
+child split at its `=` or not at all. A `define` value, `exec.command` and
+an `inputs.runtime` or `workspaceRuntime` command hold no lone surrogate
+(`'\ud800'`): UTF-8 has no form for one, so the task ran U+FFFD in its
+place, other bytes than its config and key said. A `passThrough` or `define` name is
 also a shell variable name, `[A-Za-z_][A-Za-z0-9_]*`: the task runs under
 `sh -c`, and dash (Linux's `sh`) drops any other name from the environment
 it hands the command, so `my.var` reached a task on macOS and never on

@@ -391,6 +391,30 @@ describe('task refusals the sweep found unheld (item 653)', () => {
     expect(taskRefusal({ exec: { command: "printf 'a\\0b'" } })).toBeNull()
   })
 
+  // A lone surrogate has no UTF-8 form: the spawn wrote U+FFFD for it, so
+  // `printf '\ud800'` and `printf '\udfff'` held two keys and ran one command,
+  // other bytes than the config said (key fuzzer, 2026-11-22).
+  it('a command or define value holding a lone surrogate is refused', () => {
+    const tail =
+      ' holds a lone surrogate, which UTF-8 cannot carry: the task would run U+FFFD in its place'
+    for (const bad of ['\ud800', 'a\udfffb', '\udc00\ud800']) {
+      expect(taskRefusal({ exec: { command: `echo ${bad}` } })).toBe(
+        `${CFG}: tasks.t.exec.command${tail}`,
+      )
+      expect(taskRefusal({ exec: { command: 'x', env: { define: { A: bad } } } })).toBe(
+        `${CFG}: tasks.t.exec.env.define.A${tail}`,
+      )
+      for (const field of ['runtime', 'workspaceRuntime']) {
+        expect(cacheRefusal({ files: [], [field]: [`echo ${bad}`] })).toBe(
+          `${CFG}: tasks.t.inputs.${field}${tail}`,
+        )
+      }
+    }
+    // Control: a pair is one code point, which UTF-8 carries.
+    expect(taskRefusal({ exec: { command: 'echo 😀', env: { define: { A: '😀' } } } })).toBeNull()
+    expect(cacheRefusal({ files: [], runtime: ['echo 😀'] })).toBeNull()
+  })
+
   // Each shape loaded and could not be referenced: `x#y` read as project
   // `x`, `^gen` as the dependencies' `gen`, `''` ran as `a#` and `vx run a#`
   // refused it (item 1000).
