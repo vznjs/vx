@@ -361,7 +361,8 @@ async function play(c: Case, adapter: Adapter, root: string, box: string): Promi
       }
     }
   }
-  let ws = c.workspace
+  // Each play gets its own copy: a configure step that edits in place must not reach the next tool.
+  let ws = structuredClone(c.workspace)
   await writeWorkspace(root, ws)
   await install()
   await linkTool(root, adapter)
