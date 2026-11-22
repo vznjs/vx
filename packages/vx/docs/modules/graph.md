@@ -75,9 +75,6 @@ export function excludeDependencies(
   nodes: Map<string, TaskNode>,
   exclude: 'all' | readonly string[],
 ): { keyOnly: Map<string, TaskNode>; dropped: Map<string, string[]> }
-// Lives in `src/util/task-id.ts` (the cache reads the same rule and may
-// not import the graph); re-exported here and on the façade.
-export function splitTaskId(id: string): [project: string, task: string]
 // The task a config declares under `name`, by OWN property: `constructor`
 // or `toString` is no task unless the config names it (item 897).
 export function declaredTask(
