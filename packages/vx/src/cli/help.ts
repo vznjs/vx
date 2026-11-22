@@ -126,6 +126,7 @@ export function helpText(pluginCommands: readonly string[] = []): string {
     '  vx watch [OPTIONS] [--poll] TASK [-- forwarded-args...]',
     '  vx cache clean [--older-than <duration>] [--max-size <size>] [--global] [--dry] [--format pretty|json] [--cache-dir <path>]',
     '  vx lock [--check] [--format pretty|json]',
+    '  vx lock --merge <base> <ours> <theirs> <path>',
     '  vx init [--dry [--format pretty|json]] [--force] [--mjs] [--native|--keep] [--plugin <hook>]',
     '  vx upgrade [TAG] [-g|--global]',
     '  vx show [PROJECT[#TASK] | TASK] [--filter <pattern>] [--affected[=<ref>]] [--format pretty|json]',
@@ -319,6 +320,8 @@ export function helpText(pluginCommands: readonly string[] = []): string {
     '                       check the graph rules. Exits 1 on drift (e.g. configs that',
     '                       read env vars). Run it before the run in CI. With --format json',
     '                       it prints {upToDate, audited, notAudited, problems}.',
+    '  vx lock --merge      git\'s merge driver for the two locks, registered by vx lock:',
+    '                       merges them by project; exits 1 on a project both sides changed.',
     '',
     ...(pluginCommands.length > 0 ? ['Plugin commands:', ...pluginCommands, ''] : []),
   ].join('\n')

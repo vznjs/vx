@@ -397,7 +397,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'lock-unkeyed-inputs',
     'locked-digests',
     'lockfile-boundary',
-    'lockfile-pool',
+    'lock-merge',
     'lockfile-claim',
     'metrics',
     'migration',

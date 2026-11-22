@@ -30,6 +30,7 @@ vx run [OPTIONS] [TASK | PKG#TASK ...] [-- forwarded-args...]
 vx watch [OPTIONS] [--poll] TASK [-- forwarded-args...]
 vx cache clean [--older-than <duration>] [--max-size <size>] [--global] [--dry] [--format pretty|json] [--cache-dir <path>]
 vx lock [--check] [--format pretty|json]
+vx lock --merge <base> <ours> <theirs> <path>
 vx init [--dry [--format pretty|json]] [--force] [--mjs] [--native|--keep] [--plugin <hook>]
 vx show [PROJECT[#TASK] | TASK] [--filter <pattern>] [--affected[=<ref>]] [--format pretty|json]
 vx info [--format pretty|json] [--cache-dir <path>]
@@ -2153,6 +2154,7 @@ stale.
 vx lock              # Evaluate all vx.config.* now; write .vx/projects.lock.jsonl and .vx/dependencies.lock.
 vx lock --check      # Audit: full re-evaluation vs the lock. Exit 1 on drift.
 vx lock --check --format json   # The audit as {upToDate, audited, notAudited, problems}.
+vx lock --merge %O %A %B %P     # git's merge driver for the locks; vx lock registers it.
 ```
 
 ### Example

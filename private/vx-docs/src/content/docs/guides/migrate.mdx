@@ -96,7 +96,7 @@ bunx @vzn/vx init --keep
   [2mfrom    [0m  turbo.json, run by turbo() from @vzn/vx-migrate
   [2mran     [0m  npm install -D @vzn/vx-lockfile @vzn/vx-history
   [2mfiles   [0m  .vx/workspace.ts
-  [2mlock    [0m  0 project configs → .vx/projects.lock.jsonl (and the tasks a plugin maps for app, lib)
+  [2mlock    [0m  0 project configs → .vx/projects.lock.jsonl, .vx/dependencies.lock (and the tasks a plugin maps for app, lib)
   [2mnote    [0m  a temporary start: vx init --native writes native config
 
   [2mnext    [0m  [1mvx run build --all[0m
@@ -253,7 +253,7 @@ The first prints:
   [2mran     [0m  npm install -D @vzn/vx-lockfile @vzn/vx-history
   [2mfiles   [0m  .vx/workspace.ts
             .vx/.gitignore
-  [2mlock    [0m  0 project configs → .vx/projects.lock.jsonl (and the tasks a plugin maps for app, lib)
+  [2mlock    [0m  0 project configs → .vx/projects.lock.jsonl, .vx/dependencies.lock (and the tasks a plugin maps for app, lib)
   [2mnote    [0m  a temporary start: vx init --native writes native config
 
   [2mnext    [0m  [1mvx run build --all[0m
@@ -269,7 +269,7 @@ The second prints:
   [2mtasks   [0m  [38;2;34;197;94m2 clean[0m
   [2mfiles   [0m  packages/app/vx.config.ts
             packages/lib/vx.config.ts
-  [2mlock    [0m  2 project configs → .vx/projects.lock.jsonl
+  [2mlock    [0m  2 project configs → .vx/projects.lock.jsonl, .vx/dependencies.lock
   [2mnote    [0m  migrating from the resolved project-graph snapshot — plugin-inferred targets are frozen as static config; `nx:run-commands` targets are their shell lines
 
   [2mnext    [0m  [1mvx run build --all[0m

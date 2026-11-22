@@ -254,7 +254,7 @@ describe.skipIf(skipAsRoot('a cache directory this user cannot write into'))(
           const locked = await vx(['lock'], null)
           expect(locked.code).toBe(1)
           expect(locked.err).toMatch(
-            /^vx: EACCES: permission denied, open '.*\.vx\/projects\.lock\.json' — a path vx must write is not writable by this user\n$/,
+            /^vx: EACCES: permission denied, open '.*\.vx\/projects\.lock\.jsonl' — a path vx must write is not writable by this user\n$/,
           )
         } finally {
           await chmod(path.join(root, '.vx'), 0o755)
