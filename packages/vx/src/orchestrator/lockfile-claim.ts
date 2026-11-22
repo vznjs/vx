@@ -680,7 +680,9 @@ export interface ReachGraph {
  * strongly connected component: Tarjan's walk (iterative — a dependency
  * chain can be thousands deep) emits components children-first, and each
  * folds its members (sorted), each as its material and the materials its
- * edges land on, and its child components' digests (sorted).
+ * edges land on, and the digests of the nodes its edges leave for (sorted).
+ * A cycle member's digest is its component's and its label: an edge into
+ * the cycle names which member it lands on.
  * O(nodes + edges), where one traversal per member is O(members × nodes).
  */
 export function reachDigests(g: ReachGraph): string[] {
@@ -690,7 +692,8 @@ export function reachDigests(g: ReachGraph): string[] {
   const onStack = new Uint8Array(n)
   const stack: number[] = []
   const comp = new Int32Array(n).fill(-1)
-  const compHash: string[] = []
+  let comps = 0
+  const nodeHash: string[] = Array.from({ length: n }, () => '')
   let counter = 0
   for (let root = 0; root < n; root++) {
     if (idx[root] !== -1) continue
@@ -724,14 +727,17 @@ export function reachDigests(g: ReachGraph): string[] {
       for (;;) {
         const w = stack.pop()!
         onStack[w] = 0
-        comp[w] = compHash.length
+        comp[w] = comps
         members.push(w)
         if (w === v) break
       }
-      const id = compHash.length
+      const id = comps++
+      // A child is the node an edge lands on, not its component: two copies
+      // of one version in one child cycle that reach apart share the
+      // cycle's digest, and an edge moved between them moved nothing.
       const children = new Set<string>()
       for (const m of members) {
-        for (const w of g.edges[m]!) if (comp[w] !== id) children.add(compHash[comp[w]!]!)
+        for (const w of g.edges[m]!) if (comp[w] !== id) children.add(nodeHash[w]!)
       }
       // A member is its material AND where its edges land: all members
       // share one digest, so retargeting an edge between two of them (a
@@ -748,13 +754,16 @@ export function reachDigests(g: ReachGraph): string[] {
               ]
               return `${g.material[m]!}\0${targets.sort().join('\0')}`
             })
-          : cycleLabels(g, members, (w) => (comp[w] === id ? undefined : compHash[comp[w]!]!))
+          : cycleLabels(g, members, (w) => (comp[w] === id ? undefined : nodeHash[w]!))
       let h = xxh3(`members:${members.length}`)
-      for (const line of lines.sort()) h = xxh3(`${line}\n`, h)
+      for (const line of [...lines].sort()) h = xxh3(`${line}\n`, h)
       h = xxh3(`children:${children.size}`, h)
       for (const c of [...children].sort()) h = xxh3(`${c}\n`, h)
-      compHash.push(h.toString(16).padStart(16, '0'))
+      const compHash = h.toString(16).padStart(16, '0')
+      // A singleton keeps the component's digest, so an acyclic one keeps its value.
+      if (members.length === 1) nodeHash[members[0]!] = compHash
+      else members.forEach((m, i) => (nodeHash[m] = xxh3hex(`${compHash}\0${lines[i]!}`)))
     }
   }
-  return Array.from({ length: n }, (_, i) => compHash[comp[i]!]!)
+  return nodeHash
 }

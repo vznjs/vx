@@ -720,10 +720,40 @@ describe('reachDigests', () => {
     expect(renumbered[1]).toBe(swap(2, 3)[0])
   })
 
-  it('a member of a cycle shares its component digest', () => {
+  // The same swap seen from outside: two copies of one version, each in
+  // the one cycle a dependent reaches, resolve apart. The dependent's edge
+  // was named by material plus that cycle's digest, which every member
+  // shared, so moving it from one copy to the other moved nothing.
+  it('moves when an edge into a cycle is retargeted between two copies of one material', () => {
+    // 0 imp → 1 or 2 (both `foo`); 1 ↔ 3 ↔ 2 one cycle; 1 → 4 bar1, 2 → 5 bar2.
+    const into = (target: number) =>
+      reachDigests({
+        material: ['imp', 'foo', 'foo', 'x', 'bar1', 'bar2'],
+        edges: [[target], [3, 4], [3, 5], [1, 2], [], []],
+      })
+    expect(into(2)[0]).not.toBe(into(1)[0])
+    // The same from a cycle member whose edge leaves for that cycle.
+    const fromCycle = (target: number) =>
+      reachDigests({
+        material: ['a', 'b', 'foo', 'foo', 'x', 'bar1', 'bar2'],
+        edges: [[1, target], [0], [4, 5], [4, 6], [2, 3], [], []],
+      })
+    expect(fromCycle(3)[0]).not.toBe(fromCycle(2)[0])
+    // CONTROL: the same graph numbered otherwise digests alike.
+    const renumbered = reachDigests({
+      material: ['imp', 'foo', 'foo', 'x', 'bar2', 'bar1'],
+      edges: [[2], [3, 4], [3, 5], [1, 2], [], []],
+    })
+    expect(renumbered[0]).toBe(into(1)[0])
+  })
+
+  it('a member of a cycle folds its component digest and its own place', () => {
     const d = reachDigests(graph(['a', 'b', 'c', 'd']))
-    expect(d[1]).toBe(d[2])
+    expect(d[1]).not.toBe(d[2])
     expect(d[0]).not.toBe(d[1])
+    // Two members alike in material and edges are one place.
+    const twins = reachDigests({ material: ['t', 't'], edges: [[1], [0]] })
+    expect(twins[0]).toBe(twins[1])
   })
 
   it('a SELF-LOOP changes nothing — an edge inside a component is not a child', () => {
@@ -742,8 +772,9 @@ describe('reachDigests', () => {
     // stack as each frame pops; without that the ring splits into three
     // components that each claim to reach the others.
     const d = reachDigests({ material: ['a', 'b', 'c'], edges: [[1], [2], [0]] })
-    expect(d[0]).toBe(d[1])
-    expect(d[1]).toBe(d[2])
+    // Split, c would fold a before a had a digest: a's material must move c.
+    const after = reachDigests({ material: ['a2', 'b', 'c'], edges: [[1], [2], [0]] })
+    for (const i of [0, 1, 2]) expect(after[i]).not.toBe(d[i])
     // CONTROL: the same three nodes in a CHAIN are three distinct digests.
     const chain = reachDigests({ material: ['a', 'b', 'c'], edges: [[1], [2], []] })
     expect(new Set(chain).size).toBe(3)
@@ -764,8 +795,8 @@ describe('reachDigests', () => {
     // artefact of where the walk entered the cycle.
     const ab = reachDigests({ material: ['a', 'b'], edges: [[1], [0]] })
     const ba = reachDigests({ material: ['b', 'a'], edges: [[1], [0]] })
-    expect(ba[0]).toBe(ab[0])
-    expect(ba[1]).toBe(ab[1])
+    expect(ba[0]).toBe(ab[1])
+    expect(ba[1]).toBe(ab[0])
   })
 
   it('a member and a child digest are in DIFFERENT sections — the counts separate them', () => {

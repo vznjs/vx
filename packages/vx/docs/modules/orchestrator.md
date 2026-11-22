@@ -1408,16 +1408,18 @@ All are on the `@vzn/vx` façade.
 `reachDigests` is a digest a parser may use: one hash per node over
 everything the node reaches, Merkle-style, with the strongly connected
 component as the unit (lockfiles carry cycles): iterative Tarjan,
-children first, each component folding its members and its child
-components' digests, both sorted. A member folds as its material AND the
-materials its edges land on (a self-loop aside): every member shares the
-component's digest, so a retarget between two members inside one cycle
-must still move it. In a cycle, each member folds as a colour-refinement
-label: its material and the child digests its edges leave for, then its
-in-cycle targets' labels until no two labels part further, so two
-members swapping copies of one version still move it. A singleton folds
-as its material and its targets', so an acyclic digest is stable.
-O(nodes + edges).
+children first, each component folding its members and the digests of
+the nodes its edges leave for, both sorted. A member folds as its
+material AND the materials its edges land on (a self-loop aside), so a
+retarget between two members inside one cycle moves the component. In a
+cycle, each member folds as a colour-refinement label: its material and
+the child digests its edges leave for, then its in-cycle targets' labels
+until no two labels part further, so two members swapping copies of one
+version still move it. A member's digest is the component's and its
+label: an edge into a cycle moved between two copies of one version
+that reach apart moves the dependent. A singleton's digest is its
+component's, folding its material and its targets', so an acyclic
+digest is stable. O(nodes + edges).
 
 **A file the lockfile names but does not pin.** A lockfile may record a
 patch or a path dependency by path, never a hash of its content, so an

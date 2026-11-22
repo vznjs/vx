@@ -2198,7 +2198,9 @@ does not. Lockfiles carry dependency cycles, so the unit is the
 strongly connected component: Tarjan's walk (iterative — a dependency
 chain can be thousands deep) emits components children-first, and each
 folds its members (sorted), each as its material and the materials its
-edges land on, and its child components' digests (sorted).
+edges land on, and the digests of the nodes its edges leave for (sorted).
+A cycle member's digest is its component's and its label: an edge into
+the cycle names which member it lands on.
 O(nodes + edges), where one traversal per member is O(members × nodes).
 
 ```ts
