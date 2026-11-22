@@ -320,6 +320,7 @@ export function helpText(pluginCommands: readonly string[] = []): string {
     '                       check the graph rules. Exits 1 on drift (e.g. configs that',
     '                       read env vars). Run it before the run in CI. With --format json',
     '                       it prints {upToDate, audited, notAudited, problems}.',
+    '',
     "  vx lock --merge      git's merge driver for the two locks, registered by vx lock:",
     '                       merges them by project; exits 1 on a project both sides changed.',
     '',
