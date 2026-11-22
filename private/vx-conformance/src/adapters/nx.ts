@@ -94,12 +94,14 @@ export const nx: Adapter = {
       const tasks = Object.entries(p.tasks ?? {})
       const namedInputs = Object.fromEntries(
         tasks
-          .filter(([, spec]) => spec.inputs || spec.rootInputs)
+          .filter(([, spec]) => spec.inputs || spec.rootInputs || spec.runtime)
           .map(([t, spec]) => [
             `${t}-inputs`,
             [
               ...(spec.inputs ? spec.inputs.map(rooted) : ['default']),
               ...(spec.rootInputs ?? []).map(fromRoot),
+              // In the named input, so a dependant's `^<task>-inputs` reaches it too.
+              ...(spec.runtime ?? []).map((r) => ({ runtime: r })),
             ],
           ]),
       )
@@ -111,13 +113,12 @@ export const nx: Adapter = {
             options: { command: command(name, t), cwd: '{projectRoot}' },
             dependsOn: (spec.dependsOn ?? []).map((d) => dependsOn(d, ready)),
             inputs: [
-              spec.inputs || spec.rootInputs ? `${t}-inputs` : 'default',
+              spec.inputs || spec.rootInputs || spec.runtime ? `${t}-inputs` : 'default',
               // A `^` pattern names no one task, so no one named input: the dependencies' files.
               ...(spec.dependencyInputs === false ? [] : (spec.dependsOn ?? []))
                 .filter((d) => d.startsWith('^'))
                 .map((d) => (d.includes('*') ? '^default' : `${d}-inputs`)),
               ...(spec.env ?? []).map((e) => ({ env: e })),
-              ...(spec.runtime ?? []).map((r) => ({ runtime: r })),
             ],
             ...(spec.outputs || spec.rootOutputs
               ? {
