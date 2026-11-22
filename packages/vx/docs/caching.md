@@ -61,7 +61,9 @@ over (in order):
    `exec.remote` is dropped, because it says WHERE a task runs and not
    what it does (§ What's NOT in the key). Its keys are sorted all the
    way down, so the order a config or a plugin spells them in moves no
-   key; `vx lock` writes them sorted, so a run only checks.
+   key; `vx lock` writes them sorted, so a run only checks. So are the
+   lists that are sets: env names, input and output globs (a `!`
+   subtracts in any order) and `dependsOn`, so reordering one replays.
    Captures:
    - `exec` block (command, env declarations, timeout, persistent).
    - `dependsOn` and `inputs.tasks` declarations.
