@@ -101,7 +101,23 @@ const SIDEBAR_GROUPS: Record<'Docs' | 'Guides' | 'Reference', SidebarItem[]> = {
     { label: 'All guides', link: '/guides/' },
     {
       label: 'Get started',
-      items: [{ label: 'Migrate from Turborepo, Nx or Vite Task', link: '/guides/migrate/' }],
+      items: [
+        { label: 'Cache a task', link: '/guides/caching/cache-a-task/' },
+        {
+          label: "Build a project's dependencies first",
+          link: '/guides/running/build-dependencies-first/',
+        },
+        { label: 'Migrate from Turborepo, Nx or Vite Task', link: '/guides/migrate/' },
+      ],
+    },
+    {
+      label: 'Running',
+      items: [
+        { label: 'Run only what changed', link: '/guides/running/run-what-changed/' },
+        { label: "Run one project's tasks", link: '/guides/running/run-one-project/' },
+        { label: 'Stop at the first failure', link: '/guides/running/stop-at-the-first-failure/' },
+        { label: 'Set a time limit on a task', link: '/guides/running/set-a-time-limit/' },
+      ],
     },
     {
       label: 'Caching',
@@ -111,15 +127,12 @@ const SIDEBAR_GROUPS: Record<'Docs' | 'Guides' | 'Reference', SidebarItem[]> = {
       ],
     },
     {
-      label: 'Running',
-      items: [
-        { label: 'Run only what changed', link: '/guides/running/run-what-changed/' },
-        { label: "Run one project's tasks", link: '/guides/running/run-one-project/' },
-      ],
-    },
-    {
       label: 'CI',
-      items: [{ label: 'Fail CI when the lock is stale', link: '/guides/ci/check-the-lock/' }],
+      items: [
+        { label: 'Run the same checks locally and on CI', link: '/guides/ci/run-a-pipeline/' },
+        { label: 'Fail CI when the lock is stale', link: '/guides/ci/check-the-lock/' },
+        { label: 'Fix a merge conflict in the lock', link: '/guides/ci/fix-a-lock-conflict/' },
+      ],
     },
     {
       label: 'Debugging',

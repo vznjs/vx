@@ -250,6 +250,197 @@ describe('the one-task guides show what vx prints', () => {
   })
 })
 
+// The newcomer guides, on a workspace as `vx init` leaves it: a bun()
+// lockfile plugin, so '^build' follows package.json, and two pipelines.
+// A run's rows carry times, CPU and memory, so those lines are held
+// with their figures blanked; the rest are held as printed.
+describe('the newcomer guides show what vx prints', () => {
+  let ws = ''
+  const at = (cwd: string, env: Record<string, string | undefined>, args: string[]) => {
+    const r = Bun.spawnSync({ cmd: [process.execPath, BIN, ...args], cwd, env })
+    return { code: r.exitCode, out: r.stdout.toString() + r.stderr.toString() }
+  }
+  const run = (...args: string[]) => at(ws, ENV, args)
+  const runColour = (...args: string[]) => at(ws, COLOUR, args)
+  const sh = (...args: string[]) => Bun.spawnSync({ cmd: args, cwd: ws, env: ENV }).exitCode
+  const guide = (rel: string) => readFileSync(path.join(GUIDES, rel), 'utf8')
+  /** A line with its timings, CPU and memory blanked and its spacing folded. */
+  const loose = (line: string) =>
+    plain(line)
+      .replace(/[~+−-]?\d+(?:\.\d+)?(?:ms|s|%|[KMG]?B)(?=[\s)]|$)/g, '<n>')
+      .replace(/\s+/g, ' ')
+      .trim()
+  /** Each line of the sample is a line vx printed, and the sample keeps vx's colours. */
+  const holds = (sample: string, out: string) => {
+    expect(sample).toContain(String.fromCharCode(27))
+    const printedLines = out.split('\n').map(loose)
+    for (const line of sample.split('\n').filter((l) => plain(l).trim() !== ''))
+      expect(printedLines).toContain(loose(line))
+  }
+  const plan = (text: string) =>
+    stable(plain(text))
+      .split('\n')
+      .map((l) => l.replace(/ +~[\d.]+m?s/g, ' ~<t>').trimEnd())
+      .join('\n')
+  const config = (test: string) => `export default {
+  tasks: {
+    build: {
+      dependsOn: ['^build'],
+      exec: { command: 'mkdir -p dist && cp src/index.ts dist/index.js' },
+      inputs: { files: ['src/**'] },
+      outputs: { files: ['dist/**'] },
+      cache: true,
+    },
+    test: { exec: { command: "${test}" } },
+    e2e: { exec: { command: 'sleep 5' } },
+  },
+}
+`
+  const ui = () => path.join(ws, 'packages/ui/vx.config.mjs')
+
+  beforeAll(async () => {
+    ws = await mkdtemp(path.join(os.tmpdir(), 'vx-site-newcomer-'))
+    await mkdir(path.join(ws, '.vx'))
+    await mkdir(path.join(ws, 'node_modules/@vzn'), { recursive: true })
+    await symlink(
+      path.resolve(import.meta.dir, '..', '..', 'vx-lockfile'),
+      path.join(ws, 'node_modules/@vzn/vx-lockfile'),
+    )
+    await writeFile(
+      path.join(ws, '.vx/workspace.mjs'),
+      `import { bun } from '@vzn/vx-lockfile'
+
+export default {
+  plugins: [bun()],
+  pipelines: {
+    pr: { tasks: ['build', 'test'], affected: true },
+    main: { tasks: ['build', 'test'] },
+  },
+}
+`,
+    )
+    await writeFile(path.join(ws, '.gitignore'), 'node_modules\ndist\n')
+    await writeFile(
+      path.join(ws, 'package.json'),
+      '{ "name": "demo", "private": true, "workspaces": ["packages/*"] }\n',
+    )
+    const web = { '@demo/ui': 'workspace:*' }
+    await writeFile(
+      path.join(ws, 'bun.lock'),
+      JSON.stringify({
+        lockfileVersion: 1,
+        workspaces: {
+          '': { name: 'demo' },
+          'packages/ui': { name: '@demo/ui', version: '1.0.0' },
+          'packages/web': { name: '@demo/web', version: '1.0.0', dependencies: web },
+        },
+        packages: {
+          '@demo/ui': ['@demo/ui@workspace:packages/ui'],
+          '@demo/web': ['@demo/web@workspace:packages/web'],
+        },
+      }),
+    )
+    for (const [name, test] of [
+      ['ui', "echo 'expected 2, got 1' && exit 1"],
+      ['web', 'sleep 1 && echo ok'],
+    ] as const) {
+      await mkdir(path.join(ws, `packages/${name}/src`), { recursive: true })
+      await writeFile(
+        path.join(ws, `packages/${name}/package.json`),
+        JSON.stringify({
+          name: `@demo/${name}`,
+          version: '1.0.0',
+          ...(name === 'web' ? { dependencies: web } : {}),
+        }),
+      )
+      await writeFile(path.join(ws, `packages/${name}/vx.config.mjs`), config(test))
+      await writeFile(path.join(ws, `packages/${name}/src/index.ts`), '1\n')
+    }
+    expect(sh('git', 'init', '-q', '-b', 'main')).toBe(0)
+    expect(run('lock').code).toBe(0)
+    expect(sh('git', 'add', '-A')).toBe(0)
+    expect(sh('git', 'commit', '-qm', 'one')).toBe(0)
+  })
+
+  afterAll(async () => {
+    if (ws !== '') await rm(ws, { recursive: true, force: true })
+  })
+
+  it("build-dependencies-first: web's plan builds ui first", () => {
+    const page = guide('running/build-dependencies-first.md')
+    const r = at(path.join(ws, 'packages/web'), ENV, ['run', 'build', '--dry'])
+    expect(r.code).toBe(0)
+    expect(plan(printed(page, 'vx run build --dry'))).toBe(plan(r.out))
+  })
+
+  it('stop-at-the-first-failure: the rest runs, then --fail-fast aborts it', () => {
+    const page = guide('running/stop-at-the-first-failure.md')
+    const rest = runColour('run', 'test', '--all')
+    expect(rest.code).toBe(1)
+    holds(printed(page, 'vx run test --all'), rest.out)
+    const fast = runColour('run', 'test', '--all', '--fail-fast')
+    expect(fast.code).toBe(1)
+    holds(printed(page, 'vx run test --all --fail-fast'), fast.out)
+  })
+
+  it('set-a-time-limit: --timeout fails the task', () => {
+    const page = guide('running/set-a-time-limit.md')
+    const r = runColour('run', '@demo/web#e2e', '--timeout', '1s')
+    expect(r.code).toBe(1)
+    holds(printed(page, 'vx run @demo/web#e2e --timeout 1s'), r.out)
+  })
+
+  it('cache-a-task: an output that matched nothing fails the task', async () => {
+    const page = guide('caching/cache-a-task.md')
+    await writeFile(
+      ui(),
+      config("echo 'expected 2, got 1' && exit 1").replace("'dist/**'", "'dist/main.js'"),
+    )
+    expect(run('lock').code).toBe(0)
+    const r = runColour('run', '@demo/ui#build')
+    expect(sh('git', 'checkout', '-q', '--', '.')).toBe(0)
+    expect(run('lock').code).toBe(0)
+    expect(r.code).toBe(1)
+    holds(printed(page, 'vx run @demo/ui#build'), r.out)
+  })
+
+  it('run-a-pipeline: pr on a branch runs what the change reaches', async () => {
+    const page = guide('ci/run-a-pipeline.md')
+    expect(run('run', 'build', '--all').code).toBe(0)
+    expect(sh('git', 'checkout', '-qb', 'feature')).toBe(0)
+    await writeFile(path.join(ws, 'packages/web/src/index.ts'), '2\n')
+    expect(sh('git', 'commit', '-qam', 'web')).toBe(0)
+    const r = run('pipeline', 'pr', '--dry')
+    expect(sh('git', 'checkout', '-q', 'main')).toBe(0)
+    expect(r.code).toBe(0)
+    expect(plan(printed(page, 'vx pipeline pr --dry'))).toBe(plan(r.out))
+  })
+
+  it('fix-a-lock-conflict: a run refuses the merged lock, vx lock writes it again', async () => {
+    const page = guide('ci/fix-a-lock-conflict.md')
+    const edit = async (file: string) => {
+      await writeFile(
+        ui(),
+        config("echo 'expected 2, got 1' && exit 1").replace("'src/**'", `'src/**', '${file}'`),
+      )
+      expect(run('lock').code).toBe(0)
+      expect(sh('git', 'commit', '-qam', file)).toBe(0)
+    }
+    expect(sh('git', 'checkout', '-qb', 'other')).toBe(0)
+    await edit('tsconfig.json')
+    expect(sh('git', 'checkout', '-q', 'main')).toBe(0)
+    await edit('README.md')
+    expect(sh('git', 'merge', '-q', 'other')).not.toBe(0)
+    const refused = runColour('run', 'build', '--all')
+    expect(refused.code).toBe(1)
+    expect(printed(page, 'vx run build --all')).toBe(refused.out.trim())
+    expect(sh('git', 'checkout', '--theirs', 'packages/ui/vx.config.mjs')).toBe(0)
+    const locked = runColour('lock')
+    expect(locked.code).toBe(0)
+    expect(sample(page, 'project configs →')).toBe(locked.out.trim())
+  })
+})
+
 describe("the caching page's verdict table", () => {
   it('every row is a verdict vx why can print', async () => {
     const page = readFileSync(path.join(GUIDES, '..', 'docs', 'caching.mdx'), 'utf8')
