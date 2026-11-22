@@ -198,20 +198,14 @@ export async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome>
     // The command is done: its slot goes to the next task, and the re-checks
     // and the save run after it. Its dependants still wait for them
     // (`settledOf`); what they find rides the outcome when it settles.
-    const settled: Promise<SaveFacts> = new Promise<void>((r) => setImmediate(r)).then(
-      async () => {
-        const now = await saveBy(check)
-        // A save on the run's lane parked its own settling here.
-        const lane = saves.get(node.id)
-        const facts: SaveFacts =
-          lane !== undefined && lane !== settled
-            ? await lane
-            : now.saved
-              ? { saved: true }
-              : {}
-        return withCheckFacts(facts, check, now.unsavedBytes)
-      },
-    )
+    const settled: Promise<SaveFacts> = new Promise<void>((r) => setImmediate(r)).then(async () => {
+      const now = await saveBy(check)
+      // A save on the run's lane parked its own settling here.
+      const lane = saves.get(node.id)
+      const facts: SaveFacts =
+        lane !== undefined && lane !== settled ? await lane : now.saved ? { saved: true } : {}
+      return withCheckFacts(facts, check, now.unsavedBytes)
+    })
     saves.set(node.id, settled)
     save = { saved: false }
   } else if (landed === undefined || !policy.save || ran.exitCode !== 0) save = await saveBy(check)

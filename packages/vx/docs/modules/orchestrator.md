@@ -1183,6 +1183,17 @@ the executor's own return is never held. Dependents wait on the same
 promise (the scheduler's `settledOf`): their execute request carries
 the upstream's output rows, which the save writes.
 
+The save's verdict leaves the slot too (2026-11-22): once a local miss's
+command exits 0, `cached-task.ts` parks the whole save (the re-checks
+`saveVerdict` makes, then the slot-bound half above) in `deferredSaves`
+and returns, so the next task starts while it runs. The re-checks lstat
+each input again, ~0.4 ms a miss, and that held every slot on the site's
+9,603-task cold run, where Vite Task won on Intel runners. What a
+re-check finds (`unkeyed`, `driftedInput`) and an unsaved miss's bytes
+ride `SaveFacts` onto the outcome before it settles. A task that fails
+on a moved input (`stability.severity: 'error'`), or whose sandbox fix
+reads what the save left, still decides in the slot.
+
 ### Undeclared state (2026-11-12)
 
 A git-ignored file in the task's project (or a `.tsbuildinfo`, untracked
