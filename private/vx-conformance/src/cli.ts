@@ -16,6 +16,7 @@ import { ADAPTERS } from './adapters/index.ts'
 import { runCase, type Outcome } from './harness.ts'
 import { coverage, ref, scores, scoreTable, toolVersion, type Results } from './report.ts'
 import { sandboxAvailable } from './sandbox.ts'
+import { fetchMoonPlugins } from './adapters/moon.ts'
 import { installLatest, LATEST } from './tools.ts'
 
 const { values } = parseArgs({
@@ -43,6 +44,7 @@ const out =
   values.out ?? path.join(import.meta.dir, '..', '..', 'vx-docs', 'src', 'data', 'conformance.json')
 
 await installLatest(tools.flatMap((t) => (t.pkg && LATEST.includes(t.pkg) ? [t.pkg] : [])))
+if (tools.some((t) => t.name === 'moon')) await fetchMoonPlugins()
 
 const work = tools.flatMap((t) => cases.map((c) => ({ t, c })))
 const outcomes = new Map<string, Outcome>()

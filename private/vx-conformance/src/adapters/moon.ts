@@ -5,10 +5,11 @@
 // runs on the system toolchain, so moon downloads nothing. Project edges are
 // `dependsOn` in moon.yml, moon's explicit form. The report is the run
 // report moon writes after each run, `.moon/cache/runReport.json`.
-import { mkdir, writeFile } from 'node:fs/promises'
+import { existsSync, readdirSync } from 'node:fs'
+import { cp, mkdir, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import type { Adapter } from '../adapter.ts'
-import { pkgDir } from '../tools.ts'
+import { modulesOf, pkgDir } from '../tools.ts'
 import { projectDir, type Selector, type TaskReport } from '../spec.ts'
 
 // The binary @moonrepo/cli's own bin (a Node shim) spawns: run directly, so
@@ -19,6 +20,47 @@ function moonBin(): string {
     '..',
     process.platform === 'darwin' ? `core-macos-${process.arch}` : `core-linux-${process.arch}-gnu`,
     'moon',
+  )
+}
+
+// A moon JavaScript workspace enables these: package.json edges, the
+// lockfile in the hash, and node_modules/.bin on a task's PATH. They are
+// WASM plugins moon downloads on first use, which the sandbox cannot.
+const TOOLCHAINS = { javascript: { packageManager: 'bun' }, bun: {} }
+let fetched: string | undefined
+
+/**
+ * Run moon once, outside the sandbox, so it downloads its own toolchain
+ * plugins into a home every case's home then starts from. Without them
+ * moon runs as a workspace with no toolchain, and says so.
+ */
+export async function fetchMoonPlugins(): Promise<void> {
+  const root = path.join(modulesOf('@moonrepo/cli'), '.moon-plugins')
+  const home = path.join(root, 'home')
+  const ws = path.join(root, 'ws')
+  await rm(root, { recursive: true, force: true })
+  await mkdir(path.join(ws, '.moon'), { recursive: true })
+  await mkdir(home, { recursive: true })
+  await writeFile(path.join(ws, 'package.json'), '{ "name": "fetch", "private": true }\n')
+  await writeFile(
+    path.join(ws, '.moon', 'workspace.yml'),
+    JSON.stringify({ projects: { fetch: '.' }, telemetry: false }),
+  )
+  await writeFile(path.join(ws, '.moon', 'toolchains.yml'), JSON.stringify(TOOLCHAINS))
+  const env = { ...process.env, HOME: home, NO_COLOR: '1', DO_NOT_TRACK: '1' }
+  Bun.spawnSync(['git', 'init', '-q'], { cwd: ws, env })
+  const proc = Bun.spawnSync([moonBin(), 'setup'], { cwd: ws, env, stdout: 'pipe', stderr: 'pipe' })
+  const dir = path.join(home, '.moon', 'plugins', 'toolchains')
+  const have = existsSync(dir) ? readdirSync(dir) : []
+  if (
+    proc.exitCode === 0 &&
+    ['javascript', 'bun'].every((t) => have.some((f) => f.startsWith(t)))
+  ) {
+    fetched = home
+    return
+  }
+  console.warn(
+    `conformance: moon fetched no toolchain plugins (exit ${proc.exitCode}, found ${have.join(' ') || 'none'}); moon runs without them\n${proc.stdout.toString()}${proc.stderr.toString()}`,
   )
 }
 
@@ -71,6 +113,12 @@ export const moon: Adapter = {
     'dry-run': '`moon action-graph` draws the graph; no run plans and runs nothing.',
   },
   env: { NO_COLOR: '1', DO_NOT_TRACK: '1' },
+  async seed(home) {
+    if (fetched === undefined) return
+    for (const d of ['.moon', '.proto'])
+      if (existsSync(path.join(fetched, d)))
+        await cp(path.join(fetched, d), path.join(home, d), { recursive: true })
+  },
   async configure(dir, ws, command) {
     const persistent = new Set(
       Object.entries(ws.projects).flatMap(([n, p]) =>
@@ -91,6 +139,8 @@ export const moon: Adapter = {
       ),
     )
     await mkdir(path.join(dir, '.moon'), { recursive: true })
+    if (fetched !== undefined)
+      await writeFile(path.join(dir, '.moon', 'toolchains.yml'), JSON.stringify(TOOLCHAINS))
     await writeFile(
       path.join(dir, '.moon', 'workspace.yml'),
       JSON.stringify(
@@ -185,6 +235,8 @@ export const moon: Adapter = {
           {
             ...(edges.length > 0 ? { dependsOn: edges } : {}),
             ...(p.tags ? { tags: p.tags } : {}),
+            // A shell line runs a package's bin from node_modules/.bin only under these.
+            ...(fetched !== undefined ? { toolchains: { default: ['javascript', 'bun'] } } : {}),
             tasks,
           },
           null,
