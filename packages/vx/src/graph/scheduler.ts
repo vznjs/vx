@@ -28,6 +28,9 @@ import {
   type TaskOutcome,
 } from './outcome.js'
 
+/** Ready tasks prepared ahead of a free slot (`prepare`). */
+const PREPARE_AHEAD = 4
+
 export type ContinueMode = 'never' | 'deps-ok' | 'always'
 
 export interface ScheduleOptions {
@@ -78,6 +81,12 @@ export interface ScheduleOptions {
    * other work. Resolves to the outcome with the save folded in.
    */
   settledOf?: (outcome: TaskOutcome) => Promise<TaskOutcome | void> | undefined
+  /**
+   * Told of the next ready tasks while no slot is free for them, once each,
+   * so what a task's dispatch needs before its command (its key) is learned
+   * while it waits, not in the slot it waits for.
+   */
+  prepare?: (node: TaskNode, upstream: TaskOutcome[]) => void
   /**
    * True for an outcome whose dependants need nothing of what it still owes
    * (its files are on their way to this machine, and none of them reads this
@@ -227,6 +236,8 @@ class GraphRun {
   // Held servers not yet answered, and those of them that became ready.
   private readonly unanswered: Set<string>
   private readonly heldReady = new Set<string>()
+  /** Ready tasks handed to `prepare` (true) and dispatched since (false). */
+  private readonly prepared = new Map<string, boolean>()
   private settledIdle = 0
   /** Outcomes in, dependants released, still to finish (`trails`). */
   private settling = 0
@@ -593,6 +604,7 @@ class GraphRun {
     // Repush with original seqs so the next tick's order does not depend on
     // `parked`'s.
     for (const [id, seq] of parked) this.execReady.push(id, seq)
+    if (this.options.prepare !== undefined && this.execReady.size > 0) this.prepareNext()
 
     // The outcome count alone: a slot is released before its outcome lands, so
     // the lane counters add nothing here.
@@ -645,7 +657,33 @@ class GraphRun {
     return lanes.restoreRoom() ? this.restoreReady.pop() : undefined
   }
 
+  /**
+   * Hand the next ready tasks to `prepare`, after this turn: a slot that frees
+   * by then dispatches its task without waiting on it. A slot frees every
+   * few milliseconds on a cold run, so only the few next in line.
+   */
+  private prepareNext(): void {
+    for (const id of this.execReady.top(PREPARE_AHEAD)) {
+      if (this.prepared.has(id) || this.unanswered.has(id) || this.willSkip(id)) continue
+      if (this.idle.has(id) || this.options.exclusive?.has(id) === true) continue
+      this.prepared.set(id, true)
+      setImmediate(() => {
+        if (this.prepared.get(id) !== true || this.resolved) return
+        const node = this.nodes.get(id) as TaskNode
+        try {
+          this.options.prepare!(
+            node,
+            node.deps.map((d) => this.outcomes.get(d) as TaskOutcome),
+          )
+        } catch {
+          // Its dispatch learns what it needs, and says what failed.
+        }
+      })
+    }
+  }
+
   private dispatch(id: string): void {
+    this.prepared.set(id, false)
     const node = this.nodes.get(id) as TaskNode
 
     // For a restore-tier task running before its deps finish, `upstream`

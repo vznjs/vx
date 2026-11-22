@@ -255,13 +255,54 @@ export async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome>
  * key is used verbatim: a restore-tier task may run before its deps finish,
  * so its live `upstream` is incomplete.
  */
+/** A key taken before the task's dispatch, and when (`KeyedTasks.keyedAt`). */
+export interface PreparedKey {
+  readonly key: { hash: string; pre?: PreDescribed }
+  readonly at: number
+  readonly atMs: number
+}
+
+/**
+ * Take a ready task's key while it waits for a slot (`SchedulerOptions.prepare`),
+ * for its dispatch to read back: the key and the description it folds were
+ * most of what a cold miss did in its slot before its command. Their facts
+ * are dated now, so the re-check after the command sees any write since.
+ */
+export function prepareKey(args: ExecuteArgs): void {
+  const prepared = args.run.preparedKeys
+  if (prepared === undefined || args.preProbed !== undefined || args.upfrontKey !== undefined)
+    return
+  const policy = taskPolicy(args)
+  if (!policy.cacheable) return
+  const at = fsClockNow(args.run.cacheDir ?? path.join(args.run.workspaceRoot, '.vx'))
+  const atMs = Date.now()
+  const taken = derivedKey(args, policy).then((key) => ({ key, at, atMs }))
+  // Read by its dispatch, which rethrows it; a run that stops first never asks.
+  taken.catch(() => {})
+  prepared.set(args.node.id, taken)
+}
+
 async function keyFor(
   args: ExecuteArgs,
   policy: TaskPolicy,
 ): Promise<{ hash: string; pre?: PreDescribed }> {
   const known = args.preProbed?.hash ?? args.upfrontKey
   if (known !== undefined) return { hash: known }
+  const prepared = args.run.preparedKeys?.get(args.node.id)
+  if (prepared !== undefined) {
+    args.run.preparedKeys!.delete(args.node.id)
+    const { key, at, atMs } = await prepared
+    args.run.keyedTasks?.keyedAt(args, at, atMs)
+    return key
+  }
   args.run.keyedTasks?.keyedNow(args)
+  return derivedKey(args, policy)
+}
+
+async function derivedKey(
+  args: ExecuteArgs,
+  policy: TaskPolicy,
+): Promise<{ hash: string; pre?: PreDescribed }> {
   const hashArgs = {
     node: args.node,
     upstream: args.upstream,

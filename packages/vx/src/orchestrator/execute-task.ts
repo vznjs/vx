@@ -27,7 +27,7 @@ import {
 } from './task-hash.js'
 import { executePersistentTask } from './persistent-task.js'
 import type { KeyedTasks } from './upstream-inputs.js'
-import { executeCachedTask, readsCache, restoreProbed } from './cached-task.js'
+import { executeCachedTask, type PreparedKey, readsCache, restoreProbed } from './cached-task.js'
 
 /** What every task of a run shares: built once per run. */
 export interface RunContext {
@@ -148,6 +148,8 @@ export interface RunContext {
    * must not probe the cache before the entry is there.
    */
   deferredSaves?: Map<string, Promise<SaveFacts>>
+  /** Keys taken while a task waited for its slot (`prepareKey`), by task id; its dispatch takes its own. */
+  preparedKeys?: Map<string, Promise<PreparedKey>>
   /** Tasks in `deferredSaves` whose save waits for files still coming here: their dependants do not. */
   trailingSaves?: Set<string>
   /**

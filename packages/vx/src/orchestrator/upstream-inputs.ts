@@ -139,6 +139,15 @@ export class KeyedTasks {
     this.dirty.add(args.node.id)
   }
 
+  /** The task took its key at `at` (the file system's clock), `atMs` (ms epoch), before its dispatch (`prepareKey`). */
+  keyedAt(args: ExecuteArgs, at: number, atMs: number): void {
+    const k = this.keyed.get(args.node.id)
+    if (k === undefined) return
+    k.at = at
+    k.atMs = atMs
+    this.dirty.add(args.node.id)
+  }
+
   /** A miss's command ended: its facts answer for its inputs from here. */
   ran(args: ExecuteArgs, facts: readonly InputFact[] | undefined, at: number): void {
     const k = this.keyed.get(args.node.id)
