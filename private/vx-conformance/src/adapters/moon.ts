@@ -6,7 +6,7 @@
 // `dependsOn` in moon.yml, moon's explicit form. The report is the run
 // report moon writes after each run, `.moon/cache/runReport.json`.
 import { existsSync, readdirSync } from 'node:fs'
-import { cp, mkdir, rm, writeFile } from 'node:fs/promises'
+import { mkdir, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import type { Adapter } from '../adapter.ts'
 import { harnessNotes } from '../report.ts'
@@ -28,15 +28,13 @@ function moonBin(): string {
 // lockfile in the hash, and node_modules/.bin on a task's PATH. They are
 // WASM plugins moon downloads on first use, which the sandbox cannot.
 const TOOLCHAINS = { javascript: { packageManager: 'bun' }, bun: {} }
-// The harness installs each case's packages; moon installing them again needs
-// the network a case has none of.
-const PIPELINE = { installDependencies: false }
-let fetched: string | undefined
+/** The toolchains each case declares: {@link TOOLCHAINS} loaded from the fetched files, once fetched. */
+let local: Record<string, Record<string, string>> | undefined
 
 /**
  * Run moon once, outside the sandbox, so it downloads its own toolchain
- * plugins into a home every case's home then starts from. Without them
- * moon runs as a workspace with no toolchain, and says so.
+ * plugins; every case then loads them from those files. Without them moon
+ * runs as a workspace with no toolchain, and the results' notes say why.
  */
 export async function fetchMoonPlugins(): Promise<void> {
   const root = path.join(modulesOf('@moonrepo/cli'), '.moon-plugins')
@@ -56,35 +54,45 @@ export async function fetchMoonPlugins(): Promise<void> {
   const proc = Bun.spawnSync([moonBin(), 'setup'], { cwd: ws, env, stdout: 'pipe', stderr: 'pipe' })
   const dir = path.join(home, '.moon', 'plugins', 'toolchains')
   const have = existsSync(dir) ? readdirSync(dir) : []
-  const plugins =
-    proc.exitCode === 0 && ['javascript', 'bun'].every((t) => have.some((f) => f.startsWith(t)))
-  // A task run as a case runs it, with the plugins and no network: moon on them
-  // failing every case is the harness's failure, not moon's.
-  const smoke = plugins ? await smokeRun(ws, env) : undefined
-  if (plugins && smoke === undefined) {
-    fetched = home
-    return
+  const files = Object.keys(TOOLCHAINS).map((t) =>
+    have.find((f) => f.startsWith(t) && f.endsWith('.wasm')),
+  )
+  if (proc.exitCode !== 0 || files.includes(undefined)) {
+    return note(
+      `moon fetched no toolchain plugins (exit ${proc.exitCode}, found ${have.join(' ') || 'none'}), so it runs without them:\n${proc.stdout.toString()}${proc.stderr.toString()}`,
+    )
   }
-  const note = plugins
-    ? `moon with its toolchain plugins failed a task offline, so it runs without them:\n${smoke}`
-    : `moon fetched no toolchain plugins (exit ${proc.exitCode}, found ${have.join(' ') || 'none'}), so it runs without them:\n${proc.stdout.toString()}${proc.stderr.toString()}`
-  harnessNotes.push(note)
-  console.warn(`conformance: ${note}`)
+  // Loaded from a file, not the registry: a case has no network, and moon asked
+  // the registry again from a home holding a copy of the download.
+  const toolchains = Object.fromEntries(
+    Object.entries(TOOLCHAINS).map(([t, c], i) => [
+      t,
+      { ...c, plugin: `file://${path.join(dir, files[i]!)}` },
+    ]),
+  )
+  // One task run as a case runs it, from an empty home with no network: moon
+  // failing every case on the plugins is the harness's failure, not moon's.
+  const smoke = await smokeRun(ws, toolchains, path.join(root, 'smoke-home'))
+  if (smoke !== undefined)
+    return note(
+      `moon with its toolchain plugins failed a task offline, so it runs without them:\n${smoke}`,
+    )
+  local = toolchains
 }
 
-/** moon's output when a trivial task fails under the plugins without network, else undefined. */
-async function smokeRun(
-  ws: string,
-  env: Record<string, string | undefined>,
-): Promise<string | undefined> {
-  await writeFile(
-    path.join(ws, '.moon', 'workspace.yml'),
-    JSON.stringify({ projects: { fetch: '.' }, telemetry: false, pipeline: PIPELINE }),
-  )
+function note(text: string): void {
+  harnessNotes.push(text)
+  console.warn(`conformance: ${text}`)
+}
+
+/** moon's output when a trivial task fails under `toolchains` without network, else undefined. */
+async function smokeRun(ws: string, toolchains: object, home: string): Promise<string | undefined> {
+  await mkdir(home, { recursive: true })
+  await writeFile(path.join(ws, '.moon', 'toolchains.yml'), JSON.stringify(toolchains))
   await writeFile(
     path.join(ws, 'moon.yml'),
     JSON.stringify({
-      toolchains: { default: ['javascript', 'bun'] },
+      toolchains: { default: Object.keys(toolchains) },
       tasks: { t: { command: 'echo ok' } },
     }),
   )
@@ -92,7 +100,12 @@ async function smokeRun(
   const run = [moonBin(), 'run', 'fetch:t']
   const proc = Bun.spawnSync(
     bwrap === null ? run : [bwrap, '--dev-bind', '/', '/', '--unshare-net', '--', ...run],
-    { cwd: ws, env, stdout: 'pipe', stderr: 'pipe' },
+    {
+      cwd: ws,
+      env: { ...process.env, HOME: home, NO_COLOR: '1', DO_NOT_TRACK: '1' },
+      stdout: 'pipe',
+      stderr: 'pipe',
+    },
   )
   return proc.exitCode === 0
     ? undefined
@@ -148,12 +161,6 @@ export const moon: Adapter = {
     'dry-run': '`moon action-graph` draws the graph; no run plans and runs nothing.',
   },
   env: { NO_COLOR: '1', DO_NOT_TRACK: '1' },
-  async seed(home) {
-    if (fetched === undefined) return
-    for (const d of ['.moon', '.proto'])
-      if (existsSync(path.join(fetched, d)))
-        await cp(path.join(fetched, d), path.join(home, d), { recursive: true })
-  },
   async configure(dir, ws, command) {
     const persistent = new Set(
       Object.entries(ws.projects).flatMap(([n, p]) =>
@@ -174,8 +181,8 @@ export const moon: Adapter = {
       ),
     )
     await mkdir(path.join(dir, '.moon'), { recursive: true })
-    if (fetched !== undefined)
-      await writeFile(path.join(dir, '.moon', 'toolchains.yml'), JSON.stringify(TOOLCHAINS))
+    if (local !== undefined)
+      await writeFile(path.join(dir, '.moon', 'toolchains.yml'), JSON.stringify(local))
     await writeFile(
       path.join(dir, '.moon', 'workspace.yml'),
       JSON.stringify(
@@ -185,7 +192,6 @@ export const moon: Adapter = {
           ),
           vcs: { client: 'git', defaultBranch: 'main' },
           telemetry: false,
-          ...(fetched !== undefined ? { pipeline: PIPELINE } : {}),
         },
         null,
         2,
@@ -272,7 +278,7 @@ export const moon: Adapter = {
             ...(edges.length > 0 ? { dependsOn: edges } : {}),
             ...(p.tags ? { tags: p.tags } : {}),
             // A shell line runs a package's bin from node_modules/.bin only under these.
-            ...(fetched !== undefined ? { toolchains: { default: ['javascript', 'bun'] } } : {}),
+            ...(local !== undefined ? { toolchains: { default: Object.keys(local) } } : {}),
             tasks,
           },
           null,

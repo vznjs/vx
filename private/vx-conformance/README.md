@@ -158,9 +158,11 @@ mean the same thing, the adapter uses the one its docs teach:
   `retryCount`). Each dependency keys its dependant (`cacheStrategy: hash`;
   moon's own default keys only one with outputs), or not (`ignored`) when
   the case says so. A runtime input is a `fingerprint` check; a persistent
-  task is the `server` preset, and a dependant `wait`s on it. No toolchain
-  is configured, so every task runs on the system toolchain and moon
-  downloads nothing. Selectors are a `--query` over project fields,
+  task is the `server` preset, and a dependant `wait`s on it. Its JavaScript
+  and Bun toolchains are downloaded once, before the cases, and each case
+  loads them from those files (`plugin: file://…`), since a case has no
+  network; if the download or an offline test task fails, moon runs with
+  no toolchain and the results' `notes` say why. Selectors are a `--query` over project fields,
   `--continue` is `moon exec --on-failure continue`, affected is
   `--affected --base --downstream deep --include-relations`. The report is
   `.moon/cache/runReport.json`. It lacks project-graph walks in a selection, task patterns, a ready line, a
