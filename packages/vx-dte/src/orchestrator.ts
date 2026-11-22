@@ -2355,11 +2355,8 @@ export class Orchestrator {
     return out
   }
 
-  /**
-   * How much later each next worker of a size joined than the one before,
-   * this run (`spreadMs`): each size two of which joined.
-   */
-  spreadsMs(): Map<string, number> {
+  /** Each size's workers' warm-ups, in the order they joined. */
+  private warmUps(): Map<string, number[]> {
     const ups = new Map<string, number[]>()
     for (const a of [...this.workers.values(), ...this.gone]) {
       const size = a.declared?.size
@@ -2368,7 +2365,17 @@ export class Orchestrator {
       if (of === undefined) ups.set(size, [a.warmUpMs])
       else of.push(a.warmUpMs)
     }
-    return new Map([...ups].flatMap(([size, ms]) => (ms.length < 2 ? [] : [[size, spreadMs(ms)]])))
+    return ups
+  }
+
+  /**
+   * How much later each next worker of a size joined than the one before,
+   * this run (`spreadMs`): each size two of which joined.
+   */
+  spreadsMs(): Map<string, number> {
+    return new Map(
+      [...this.warmUps()].flatMap(([size, ms]) => (ms.length < 2 ? [] : [[size, spreadMs(ms)]])),
+    )
   }
 
   /** Each size's cores its machines spent besides the run's tasks, on average: what the plan leaves it. */
@@ -2526,14 +2533,7 @@ export class Orchestrator {
     const work = new Map<string | undefined, number>()
     for (const t of r.tasks)
       work.set(t.platform, (work.get(t.platform) ?? 0) + t.cores * (t.ms ?? 0))
-    const ups = new Map<string, number[]>()
-    for (const a of [...this.workers.values(), ...this.gone]) {
-      const size = a.declared?.size
-      if (a.warmUpMs === undefined || size === undefined) continue
-      const of = ups.get(size)
-      if (of === undefined) ups.set(size, [a.warmUpMs])
-      else of.push(a.warmUpMs)
-    }
+    const ups = this.warmUps()
     let end = perfect
     for (const [platform, w] of work) {
       // Each core slot's start, and its cores.
