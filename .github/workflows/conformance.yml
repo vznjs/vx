@@ -27,7 +27,8 @@ jobs:
   # Each job runs one tool on its share of the cases (cli.ts --shard), so
   # every share takes about 90 s. A tool's whole suite (2026-11-22, run
   # 45064874265): vx 540 s, Turbo 350, Nx 1180, Vite Task 100, Nix 380, moon
-  # 3710; set-up is ~15 s a job. At three shards a tool, moon's took 26 min.
+  # 3710 (about 850 since its plugin cache is shared, EXTISM_CACHE_CONFIG);
+  # set-up is ~15 s a job. At three shards a tool, moon's took 26 min.
   plan:
     runs-on: ubuntu-latest
     timeout-minutes: 2
@@ -37,7 +38,7 @@ jobs:
     steps:
       - id: plan
         run: |
-          echo 'matrix={"include":'"$(jq -nc '{"vx":6,"turbo":4,"nx":14,"vite-task":2,"nix":5,"moon":42}
+          echo 'matrix={"include":'"$(jq -nc '{"vx":6,"turbo":4,"nx":14,"vite-task":2,"nix":5,"moon":10}
             | to_entries | map(.key as $t | .value as $n | range(1; $n + 1) | {tool: $t, shard: "\(.)/\($n)"})')"'}' >> "$GITHUB_OUTPUT"
 
   conformance:
