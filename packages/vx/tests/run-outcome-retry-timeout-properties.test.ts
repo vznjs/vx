@@ -150,7 +150,7 @@ async function scenario(mode: Mode, seed: number, iter: number): Promise<string[
     } else if (st === 'skipped') {
       if (n !== 0) broken.push(`${label}: ${t} skipped yet started ${n}`)
     } else if (st === 'aborted') {
-      if (!failFast || n === 0) broken.push(`${label}: ${t} aborted after ${n} attempts`)
+      if (!failFast) broken.push(`${label}: ${t} aborted with no failure to stop the run`)
     } else broken.push(`${label}: ${t} status ${st}`)
     if (failedUp && n !== 0) broken.push(`${label}: ${t} started behind a failure`)
     if (mode === 'default' && !failedUp && st === 'skipped')

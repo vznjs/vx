@@ -600,8 +600,6 @@ export interface ScheduleOptions {
   serverDied?: (id: string) => boolean
   /** Called once when `failFast` stops dispatch: the caller kills what is in flight. */
   onFailFast?: () => void
-  /** Called once, when 'never' stops dispatch: a task in flight starts no retry. */
-  onFailFast?: () => void
   execute: (node: TaskNode, upstream: TaskOutcome[]) => Promise<TaskOutcome>
   onStart?: (node: TaskNode) => void
   onFinish?: (outcome: TaskOutcome) => void
