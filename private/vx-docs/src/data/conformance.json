@@ -1,6 +1,6 @@
 {
   "coverage": {
-    "ported": 247,
+    "ported": 250,
     "rest": {
       "pending": [
         "affected-clean-filters",
@@ -90,6 +90,7 @@
         "config-types-schema",
         "config-umask",
         "config-umask-concurrent",
+        "config-vanished",
         "configless-fence",
         "contract-cli-surface",
         "contract-cli-wire",
@@ -178,19 +179,21 @@
         "lock-graph-rules",
         "lock-help",
         "lock-nested-workspace-name",
+        "lock-review-fds",
         "lock-review-files",
         "lock-secret",
         "lock-shadowed-config",
         "lock-unkeyed-inputs",
         "locked-digests",
         "lockfile-boundary",
-        "lockfile-pool",
+        "lock-merge-conflict",
         "lockfile-claim",
         "metrics",
         "migration",
         "near-miss",
         "output-never-dotvx",
         "own-rss-high-water",
+        "pipeline",
         "placement",
         "placement-async-hints",
         "plan-format",
@@ -255,6 +258,7 @@
         "sandbox-hint-spelling.unsafe",
         "sandbox-host-helpers.unsafe",
         "sandbox-lifecycle.unsafe",
+        "sandbox-link-out-of-project.unsafe",
         "sandbox-loopback-hint.unsafe",
         "sandbox-loopback-reach.unsafe",
         "sandbox-misrooted-writes.unsafe",
@@ -657,6 +661,7 @@
         "vx-otel/timeout-option",
         "vx-otel/tls",
         "vx-otel/unknown-options",
+        "vx-reapi/big-inputs",
         "vx-reapi/boolean-options",
         "vx-reapi/cache-ac-refused",
         "vx-reapi/cache-sweep",
@@ -713,12 +718,12 @@
         "workspace-load-messages",
         "workspace-root-file",
         "workspace-unreadable",
+        "write-file-signal",
         "write-through-link"
       ],
       "internal": [
         "admit-warning-prefix",
         "alive-helper.unsafe",
-        "always-dead-server-taint",
         "archive-extract-meta",
         "archive-security",
         "artifact-checksum",
@@ -747,7 +752,6 @@
         "cache-save-batch",
         "cache-save-lock",
         "cache-stdout-bytes",
-        "cache-store",
         "cache-store-moved",
         "cache-unreadable",
         "capture-cap",
@@ -783,6 +787,7 @@
         "execute-task",
         "exit-codes-complete",
         "exit-held-loop",
+        "failure-cache-properties",
         "file-url-paths",
         "fixture-helpers",
         "fold-memo",
@@ -812,6 +817,7 @@
         "hide-env.unsafe",
         "hit-rows",
         "home-guard",
+        "index-blobs",
         "index-schema-race",
         "index-write-wait",
         "inflight",
@@ -833,6 +839,10 @@
         "log-spacing",
         "logger-concurrency-slots",
         "memo-parts",
+        "memory-ceiling-cache.unsafe",
+        "memory-ceiling-output.unsafe",
+        "memory-ceiling-scale.unsafe",
+        "memory-ceiling-watch.unsafe",
         "miss-save-marks",
         "narrow-terminal",
         "no-auto-install.unsafe",
@@ -848,6 +858,7 @@
         "orchestrator",
         "orchestrator-remote",
         "orchestrator-run",
+        "out-pace",
         "output-dirs-snapshot",
         "output-log",
         "output-memory.unsafe",
@@ -930,6 +941,8 @@
         "shell-verdict-sandbox",
         "shell-verdict-secret-mask",
         "skipped-footer",
+        "read-off",
+        "snapshots-while-running",
         "spawn-off",
         "sqlite-query-only.unsafe",
         "stable-keys",
@@ -940,13 +953,14 @@
         "status-vocabulary",
         "stop-display",
         "stop-listener",
+        "store-deleted-preview",
         "store-schema-race",
         "summary",
         "summary-meters",
         "summary-skipped-cached",
+        "symlinks-in-repo.unsafe",
         "syscall-repeats.unsafe",
         "taint-properties",
-        "taint-tracker",
         "tar-numeric-fields",
         "tar-roundtrip-fuzz",
         "tar-stream",
@@ -973,7 +987,7 @@
         "ulid",
         "uncached-key-once",
         "unpassed-env",
-        "upstream-output-moved",
+        "upstream-input-window-race",
         "user-error-classify",
         "util-hash",
         "util-num",
@@ -993,6 +1007,7 @@
         "watch-claimed-extras",
         "watch-claimed-files",
         "watch-cycle-clock",
+        "watch-edit-before-arm",
         "watch-ignore-submodule",
         "watch-initial-readiness",
         "watch-judge-label",
@@ -1008,6 +1023,7 @@
         "watch-ws-import-in-project",
         "workspace-files-shared-memo",
         "workspace-output-config",
+        "written-rows",
         "zstd-frames"
       ],
       "docs": [
@@ -1113,14 +1129,14 @@
   "scores": {
     "vx": {
       "all": {
-        "pass": 1019,
-        "can": 1019,
-        "of": 1023
+        "pass": 1020,
+        "can": 1020,
+        "of": 1024
       },
       "correctness": {
-        "pass": 840,
-        "can": 840,
-        "of": 844
+        "pass": 841,
+        "can": 841,
+        "of": 845
       },
       "efficiency": {
         "pass": 170,
@@ -1143,9 +1159,9 @@
         "of": 8
       },
       "failure": {
-        "pass": 74,
-        "can": 74,
-        "of": 76
+        "pass": 75,
+        "can": 75,
+        "of": 77
       },
       "affected": {
         "pass": 99,
@@ -1190,14 +1206,14 @@
     },
     "turbo": {
       "all": {
-        "pass": 643,
-        "can": 932,
-        "of": 1023
+        "pass": 644,
+        "can": 933,
+        "of": 1024
       },
       "correctness": {
-        "pass": 519,
-        "can": 759,
-        "of": 844
+        "pass": 520,
+        "can": 760,
+        "of": 845
       },
       "efficiency": {
         "pass": 120,
@@ -1220,9 +1236,9 @@
         "of": 8
       },
       "failure": {
-        "pass": 24,
-        "can": 48,
-        "of": 76
+        "pass": 25,
+        "can": 49,
+        "of": 77
       },
       "affected": {
         "pass": 67,
@@ -1268,13 +1284,13 @@
     "nx": {
       "all": {
         "pass": 656,
-        "can": 957,
-        "of": 1023
+        "can": 958,
+        "of": 1024
       },
       "correctness": {
         "pass": 495,
-        "can": 780,
-        "of": 844
+        "can": 781,
+        "of": 845
       },
       "efficiency": {
         "pass": 157,
@@ -1298,8 +1314,8 @@
       },
       "failure": {
         "pass": 37,
-        "can": 56,
-        "of": 76
+        "can": 57,
+        "of": 77
       },
       "affected": {
         "pass": 57,
@@ -1345,13 +1361,13 @@
     "vite-task": {
       "all": {
         "pass": 508,
-        "can": 762,
-        "of": 1023
+        "can": 763,
+        "of": 1024
       },
       "correctness": {
         "pass": 418,
-        "can": 631,
-        "of": 844
+        "can": 632,
+        "of": 845
       },
       "efficiency": {
         "pass": 88,
@@ -1375,8 +1391,8 @@
       },
       "failure": {
         "pass": 28,
-        "can": 36,
-        "of": 76
+        "can": 37,
+        "of": 77
       },
       "affected": {
         "pass": 0,
@@ -1421,14 +1437,14 @@
     },
     "nix": {
       "all": {
-        "pass": 517,
-        "can": 681,
-        "of": 1023
+        "pass": 518,
+        "can": 682,
+        "of": 1024
       },
       "correctness": {
-        "pass": 431,
-        "can": 568,
-        "of": 844
+        "pass": 432,
+        "can": 569,
+        "of": 845
       },
       "efficiency": {
         "pass": 84,
@@ -1451,9 +1467,9 @@
         "of": 8
       },
       "failure": {
-        "pass": 26,
-        "can": 37,
-        "of": 76
+        "pass": 27,
+        "can": 38,
+        "of": 77
       },
       "affected": {
         "pass": 0,
@@ -1499,13 +1515,13 @@
     "moon": {
       "all": {
         "pass": 593,
-        "can": 914,
-        "of": 1023
+        "can": 915,
+        "of": 1024
       },
       "correctness": {
         "pass": 460,
-        "can": 750,
-        "of": 844
+        "can": 751,
+        "of": 845
       },
       "efficiency": {
         "pass": 128,
@@ -1529,8 +1545,8 @@
       },
       "failure": {
         "pass": 42,
-        "can": 61,
-        "of": 76
+        "can": 62,
+        "of": 77
       },
       "affected": {
         "pass": 69,
@@ -25514,7 +25530,7 @@
       "from": [
         "parity-turbo",
         "parity-nx",
-        "continue-taint"
+        "scheduler"
       ],
       "outcomes": {
         "vx": {
@@ -25696,6 +25712,44 @@
         },
         "moon": {
           "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "failure/fail-fast-stops-running-tasks",
+      "ref": "sew898",
+      "category": "failure",
+      "kind": "correctness",
+      "title": "Asked to fail fast, a run stops its running tasks at the first failure",
+      "why": "Failing fast means the first error ends the run now: the developer or the CI job learns of it at once instead of waiting for every other task already started. A run that lets those tasks finish costs the whole wait it was asked to skip, and a task cut short must leave no output behind as if it had finished.",
+      "from": [
+        "fail-fast",
+        "parity-nx"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 1,
+          "detail": "did not finish within 20 s"
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 1,
+          "detail": "left running: /bin/sh -c printf '+%s\\n' 'app#build' >> ../../.ran && (touch started && sleep 30 && echo done > out.txt) && printf -- '-%s\\n' 'app#build' >> ../../.ran; sleep 30"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "fail",
+          "step": 1,
+          "detail": "left running: bash -c printf '+%s\\n' 'app#build' >> ../../.ran && (touch started && sleep 30 && echo done > out.txt) && printf -- '-%s\\n' 'app#build' >> ../../.ran; sleep 30"
         }
       }
     },
@@ -32625,7 +32679,6 @@
       "title": "Asked to continue, a run goes on past a failed task and still fails",
       "why": "Asked to continue, the run should go on with every task the failure does not block, so the user sees every error at once. The run as a whole still failed, though. A green exit would let a pipeline merge or deploy with a broken task the log mentions only in passing.",
       "from": [
-        "continue-taint",
         "parity-turbo"
       ],
       "outcomes": {
@@ -32663,8 +32716,8 @@
       "title": "A task that ran past its dependency’s failure is not replayed once the dependency is fixed",
       "why": "When the run continued past a failed dependency, the task after it ran on whatever the failure left, which is not a valid build. Saving that result lets it replay after the dependency is fixed. The task must run again on the fixed dependency, or the stale output outlives the fix.",
       "from": [
-        "continue-taint",
-        "continue-cache-properties"
+        "parity-turbo",
+        "taint-tracker"
       ],
       "outcomes": {
         "vx": {

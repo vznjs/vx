@@ -135,6 +135,7 @@ export const vx: Adapter = {
         : ['--all']),
     ...(opts.only ? ['--exclude-dependencies'] : []),
     ...(opts.concurrency !== undefined ? [`--concurrency=${opts.concurrency}`] : []),
+    ...(opts.failFast ? ['--fail-fast'] : []),
     ...(opts.force ? ['--force'] : []),
     ...(opts.readOnlyCache ? ['--cache-policy=local:r'] : []),
     ...(opts.dry ? ['--dry'] : []),

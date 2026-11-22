@@ -15,7 +15,7 @@ export default [
     kind: 'correctness',
     title: 'Asked to continue, a run goes on past a failed task and still fails',
     why: 'Asked to continue, the run should go on with every task the failure does not block, so the user sees every error at once. The run as a whole still failed, though. A green exit would let a pipeline merge or deploy with a broken task the log mentions only in passing.',
-    from: ['continue-taint', 'parity-turbo'],
+    from: ['parity-turbo'],
     needs: ['continue'],
     workspace: {
       projects: {
@@ -44,7 +44,7 @@ export default [
     title:
       'A task that ran past its dependency’s failure is not replayed once the dependency is fixed',
     why: 'When the run continued past a failed dependency, the task after it ran on whatever the failure left, which is not a valid build. Saving that result lets it replay after the dependency is fixed. The task must run again on the fixed dependency, or the stale output outlives the fix.',
-    from: ['continue-taint', 'continue-cache-properties'],
+    from: ['parity-turbo', 'taint-tracker'],
     needs: ['continue'],
     workspace: {
       projects: {

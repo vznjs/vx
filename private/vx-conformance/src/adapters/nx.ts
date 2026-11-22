@@ -154,6 +154,7 @@ export const nx: Adapter = {
       ...(opts.only ? ['--excludeTaskDependencies'] : []),
       '--outputStyle=stream',
       ...(opts.concurrency !== undefined ? [`--parallel=${opts.concurrency}`] : []),
+      ...(opts.failFast ? ['--nxBail'] : []),
       ...(opts.force ? ['--skipNxCache'] : []),
       ...(opts.args ? ['--', ...opts.args] : []),
     ]

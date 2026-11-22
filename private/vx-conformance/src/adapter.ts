@@ -71,6 +71,8 @@ export interface RunOptions {
   args?: string[]
   /** Go on past a failure. */
   continue?: boolean
+  /** Stop the run at the first failure. */
+  failFast?: boolean
   /** Ignore cache entries; save fresh ones. */
   force?: boolean
   /** Read the cache, write nothing. */
