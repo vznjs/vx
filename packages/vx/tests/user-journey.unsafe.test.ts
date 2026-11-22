@@ -122,7 +122,12 @@ beforeAll(async () => {
     path.join(root, 'package.json'),
     JSON.stringify({ name: 'acme', private: true, workspaces: ['packages/*'] }),
   )
-  await writeFile(path.join(root, '.gitignore'), 'node_modules\ndist\n.home\n.bun-cache\n')
+  // The home exists as a machine's does: steps keep their scratch in it.
+  await mkdir(env['HOME']!, { recursive: true })
+  await writeFile(
+    path.join(root, '.gitignore'),
+    'node_modules\ndist\n.home\n.ci-home\n.bun-cache\n',
+  )
   await pkg('utils', [])
   await pkg('lib', ['utils'])
   await pkg('app', ['lib'])
