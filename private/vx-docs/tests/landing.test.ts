@@ -465,7 +465,7 @@ describe('the landing page', () => {
   })
 
   // Quotes only (2026-11-19): the words, who said them and their role,
-  // a public one linked to where it was said, all in one band.
+  // a public one linked to the GitHub thread where it was said, all in one band.
   it('quotes people word for word, in one band', () => {
     expect(html).not.toContain('class="qc"')
     const wall = section(html, 'voices')
@@ -478,7 +478,8 @@ describe('the landing page', () => {
     expect(quotes).toEqual(ALL_VOICES.map((v) => `“${v.quote}”`))
     expect(hrefs(wall)).toEqual(ALL_VOICES.flatMap((v) => (v.href ? [v.href] : [])))
     for (const v of ALL_VOICES) {
-      if (v.href) expect(v.href).toMatch(/^https:\/\/github\.com\/vznjs\/vx\//)
+      if (v.href)
+        expect(v.href).toMatch(/^https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/(?:pull|issues)\/\d+/)
     }
   })
 
