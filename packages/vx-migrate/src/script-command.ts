@@ -140,13 +140,7 @@ export async function yarnrcText(root: string): Promise<string> {
  */
 export function runsScriptHooks(dir: string, memo: Map<string, Owner>): string | null {
   const { manager, at } = ownerOf(dir, memo)
-  const read = (f: string): string | undefined => {
-    try {
-      return readFileSync(path.join(at, f), 'utf8')
-    } catch {
-      return undefined
-    }
-  }
+  const read = (f: string) => readIn(at, f)
   const npmrc = read('.npmrc') ?? ''
   const set = (key: string, value: string): boolean =>
     new RegExp(`^\\s*${key}\\s*=\\s*${value}\\s*$`, 'm').test(npmrc)
@@ -176,6 +170,14 @@ function pnpmSkipsHooks(yaml: string | undefined): boolean {
   }
 }
 
+function readIn(dir: string, file: string): string | undefined {
+  try {
+    return readFileSync(path.join(dir, file), 'utf8')
+  } catch {
+    return undefined
+  }
+}
+
 /** The package manager that owns a directory, and the directory that says so. */
 export interface Owner {
   manager: string
@@ -189,13 +191,7 @@ export interface Owner {
 export function ownerOf(dir: string, memo: Map<string, Owner>): Owner {
   const known = memo.get(dir)
   if (known !== undefined) return known
-  const read = (f: string): string | undefined => {
-    try {
-      return readFileSync(path.join(dir, f), 'utf8')
-    } catch {
-      return undefined
-    }
-  }
+  const read = (f: string) => readIn(dir, f)
   let manager: string | undefined
   try {
     // A byte-order mark is stripped, as npm, pnpm and discovery strip it:

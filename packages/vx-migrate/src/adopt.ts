@@ -38,7 +38,8 @@ const LOCKFILES: ReadonlyArray<readonly [string, PackageManager]> = [
   ['package-lock.json', 'npm'],
 ]
 
-function readText(file: string): string {
+/** A file's text without a byte-order mark; '' when unreadable. */
+export function readText(file: string): string {
   try {
     return readFileSync(file, 'utf8').replace(/^\uFEFF/, '')
   } catch {

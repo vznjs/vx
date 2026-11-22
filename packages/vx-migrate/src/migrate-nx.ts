@@ -10,7 +10,7 @@ import {
 } from '@vzn/vx'
 import type { PackageMeta } from './packages.js'
 import { mapNxWorkspace, parseNxGraph, readNxJson } from './nx/nx-map.js'
-import { spareTrackedOutputs, trackedFiles, trackedKinds } from './tracked-outputs.js'
+import { spareTrackedTodos, trackedFiles, trackedKinds } from './tracked-outputs.js'
 import { adoptedToolNotes } from './workspace-notes.js'
 
 /** What a task's `npm_package_*` read: the manifest, so a bump reaches them. */
@@ -41,12 +41,7 @@ export async function migrateNx(
   })
   // A reader whose `!` hides a committed file under another task's output
   // runs uncached, as under nx().
-  if (tracked !== null)
-    for (const [id, todo] of spareTrackedOutputs(root, mapped.projects, tracked)) {
-      const at = id.lastIndexOf('#')
-      const p = mapped.projects.find((x) => x.name === id.slice(0, at))
-      p?.tasks.find((t) => t.name === id.slice(at + 1))?.todos.push(todo)
-    }
+  spareTrackedTodos(root, mapped.projects, tracked)
   const adopted = await adoptedToolNotes(root, {
     plugin: 'nx',
     config: 'nx.json',

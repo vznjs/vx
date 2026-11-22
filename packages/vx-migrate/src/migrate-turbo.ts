@@ -18,7 +18,7 @@ import { ROOT_ENGINES_PROBE } from './turbo/root-engines.js'
 import {
   gitIgnored,
   gitIgnoredUnder,
-  spareTrackedOutputs,
+  spareTrackedTodos,
   trackedFiles,
   trackedKinds,
 } from './tracked-outputs.js'
@@ -62,12 +62,7 @@ export async function migrateTurbo(
   })
   // A reader whose `!` hides a committed file under another task's output
   // runs uncached, as under turbo().
-  if (tracked !== null)
-    for (const [id, todo] of spareTrackedOutputs(root, mapping.projects, tracked)) {
-      const at = id.lastIndexOf('#')
-      const p = mapping.projects.find((x) => x.name === id.slice(0, at))
-      p?.tasks.find((t) => t.name === id.slice(at + 1))?.todos.push(todo)
-    }
+  spareTrackedTodos(root, mapping.projects, tracked)
 
   // vx keys a task on what it declares, nothing global: the user lists
   // what each task reads (M, 2026-11-21).

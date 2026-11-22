@@ -5,7 +5,7 @@
 import { type MigrationFormat, type MigrationPlan } from '@vzn/vx'
 import type { PackageMeta } from './packages.js'
 import { spelledNames } from './spelled-env.js'
-import { spareTrackedOutputs, trackedFiles, trackedKinds } from './tracked-outputs.js'
+import { spareTrackedTodos, trackedFiles, trackedKinds } from './tracked-outputs.js'
 import { mapViteTaskWorkspace, viteTaskProjects } from './vite-task/vite-task-map.js'
 
 export async function migrateViteTask(
@@ -22,12 +22,7 @@ export async function migrateViteTask(
   })
   // A reader whose `!` hides a committed file under another task's output
   // runs uncached.
-  if (tracked !== null)
-    for (const [id, todo] of spareTrackedOutputs(root, mapped.projects, tracked)) {
-      const at = id.lastIndexOf('#')
-      const p = mapped.projects.find((x) => x.name === id.slice(0, at))
-      p?.tasks.find((t) => t.name === id.slice(at + 1))?.todos.push(todo)
-    }
+  spareTrackedTodos(root, mapped.projects, tracked)
   return {
     headerNotes: [
       'each `run.tasks` entry and package.json script became a task; a task whose files ' +
