@@ -1,6 +1,6 @@
 {
   "coverage": {
-    "ported": 380,
+    "ported": 381,
     "rest": {
       "pending": [
         "affected-diff-early",
@@ -696,7 +696,6 @@
         "cli-streams",
         "cli-verb-sections",
         "closure-search",
-        "colors",
         "consumer-types.unsafe",
         "core-source-key.unsafe",
         "dependencies-lock",
@@ -1013,6 +1012,7 @@
     "moon fetched no toolchain plugins (exit 1, found system-ad7abb72e596dcc556ad0fc2e87dcb23949f91d8280fc61c94cfec6224695c59.wasm), so it runs without them:\nError: plugin::loader::registry::load_failure\n\n  × Failed to load plugin from ghcr.io/moonrepo/bun_toolchain:1.0.5 registry.\n  ├─▶ error sending request for url (https://ghcr.io/v2/moonrepo/\n  │   bun_toolchain/blobs/\n  │   sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a)\n  ├─▶ client error (Connect)\n  ╰─▶ tunnel error: unsuccessful\n\n",
     "moon failed 23 of 45 cases; one: succeeded, expected a failure\n$ /home/user/vx/private/vx-conformance/node_modules/.latest-16732/node_modules/@moonrepo/core-linux-x64-gnu/moon run :build\n▮▮▮▮ b:build (545ce2ac)\n▮▮▮▮ a:build (51d8f186)\n▮▮▮▮ b:build (566ms, 545ce2ac)\n▮▮▮▮ a:build (5s 14ms, 51d8f186)\n▮▮▮▮ c:build (ef0196dd)\n▮▮▮▮ c:build (4ms, ef0196dd)\n\nTasks: 3 completed\n Time: 5s 76ms\n\n",
     "moon fetched no toolchain plugins (exit 1, found system-ad7abb72e596dcc556ad0fc2e87dcb23949f91d8280fc61c94cfec6224695c59.wasm), so it runs without them:\nError: plugin::loader::registry::load_failure\n\n  × Failed to load plugin from ghcr.io/moonrepo/bun_toolchain:1.0.5 registry.\n  ├─▶ error sending request for url (https://ghcr.io/v2/moonrepo/\n  │   bun_toolchain/blobs/\n  │   sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a)\n  ├─▶ client error (Connect)\n  ╰─▶ tunnel error: unsuccessful\n\n",
+    "moon fetched no toolchain plugins (exit 1, found system-ad7abb72e596dcc556ad0fc2e87dcb23949f91d8280fc61c94cfec6224695c59.wasm), so it runs without them:\nError: plugin::loader::registry::load_failure\n\n  × Failed to load plugin from ghcr.io/moonrepo/bun_toolchain:1.0.5 registry.\n  ├─▶ error sending request for url (https://ghcr.io/v2/moonrepo/\n  │   bun_toolchain/blobs/\n  │   sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a)\n  ├─▶ client error (Connect)\n  ╰─▶ tunnel error: unsuccessful\n\n",
     "moon fetched no toolchain plugins (exit 1, found system-ad7abb72e596dcc556ad0fc2e87dcb23949f91d8280fc61c94cfec6224695c59.wasm), so it runs without them:\nError: plugin::loader::registry::load_failure\n\n  × Failed to load plugin from ghcr.io/moonrepo/bun_toolchain:1.0.5 registry.\n  ├─▶ error sending request for url (https://ghcr.io/v2/moonrepo/\n  │   bun_toolchain/blobs/\n  │   sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a)\n  ├─▶ client error (Connect)\n  ╰─▶ tunnel error: unsuccessful\n\n"
   ],
   "tools": {
@@ -1026,19 +1026,19 @@
   "scores": {
     "vx": {
       "all": {
-        "pass": 1897,
-        "can": 1897,
-        "of": 1939
+        "pass": 1957,
+        "can": 1957,
+        "of": 1999
       },
       "correctness": {
-        "pass": 1536,
-        "can": 1536,
-        "of": 1575
+        "pass": 1572,
+        "can": 1572,
+        "of": 1611
       },
       "efficiency": {
-        "pass": 272,
-        "can": 272,
-        "of": 274
+        "pass": 296,
+        "can": 296,
+        "of": 298
       },
       "data": {
         "pass": 89,
@@ -1096,26 +1096,26 @@
         "of": 126
       },
       "watch": {
-        "pass": 61,
-        "can": 61,
-        "of": 61
+        "pass": 121,
+        "can": 121,
+        "of": 121
       }
     },
     "turbo": {
       "all": {
-        "pass": 1190,
-        "can": 1637,
-        "of": 1939
+        "pass": 1241,
+        "can": 1693,
+        "of": 1999
       },
       "correctness": {
-        "pass": 962,
-        "can": 1290,
-        "of": 1575
+        "pass": 991,
+        "can": 1323,
+        "of": 1611
       },
       "efficiency": {
-        "pass": 198,
-        "can": 263,
-        "of": 274
+        "pass": 220,
+        "can": 286,
+        "of": 298
       },
       "data": {
         "pass": 30,
@@ -1173,26 +1173,26 @@
         "of": 126
       },
       "watch": {
-        "pass": 51,
-        "can": 60,
-        "of": 61
+        "pass": 102,
+        "can": 116,
+        "of": 121
       }
     },
     "nx": {
       "all": {
-        "pass": 1208,
-        "can": 1666,
-        "of": 1939
+        "pass": 1256,
+        "can": 1724,
+        "of": 1999
       },
       "correctness": {
-        "pass": 944,
-        "can": 1314,
-        "of": 1575
+        "pass": 969,
+        "can": 1348,
+        "of": 1611
       },
       "efficiency": {
-        "pass": 234,
-        "can": 269,
-        "of": 274
+        "pass": 257,
+        "can": 293,
+        "of": 298
       },
       "data": {
         "pass": 30,
@@ -1250,26 +1250,26 @@
         "of": 126
       },
       "watch": {
-        "pass": 46,
-        "can": 61,
-        "of": 61
+        "pass": 94,
+        "can": 119,
+        "of": 121
       }
     },
     "vite-task": {
       "all": {
         "pass": 908,
         "can": 1318,
-        "of": 1939
+        "of": 1999
       },
       "correctness": {
         "pass": 763,
         "can": 1052,
-        "of": 1575
+        "of": 1611
       },
       "efficiency": {
         "pass": 136,
         "can": 188,
-        "of": 274
+        "of": 298
       },
       "data": {
         "pass": 9,
@@ -1329,24 +1329,24 @@
       "watch": {
         "pass": 0,
         "can": 0,
-        "of": 61
+        "of": 121
       }
     },
     "nix": {
       "all": {
         "pass": 965,
         "can": 1307,
-        "of": 1939
+        "of": 1999
       },
       "correctness": {
         "pass": 823,
         "can": 1061,
-        "of": 1575
+        "of": 1611
       },
       "efficiency": {
         "pass": 132,
         "can": 166,
-        "of": 274
+        "of": 298
       },
       "data": {
         "pass": 10,
@@ -1406,24 +1406,24 @@
       "watch": {
         "pass": 0,
         "can": 0,
-        "of": 61
+        "of": 121
       }
     },
     "moon": {
       "all": {
         "pass": 1154,
         "can": 1632,
-        "of": 1939
+        "of": 1999
       },
       "correctness": {
         "pass": 902,
         "can": 1290,
-        "of": 1575
+        "of": 1611
       },
       "efficiency": {
         "pass": 217,
         "can": 252,
-        "of": 274
+        "of": 298
       },
       "data": {
         "pass": 35,
@@ -1483,7 +1483,7 @@
       "watch": {
         "pass": 0,
         "can": 0,
-        "of": 61
+        "of": 121
       }
     }
   },
@@ -55888,6 +55888,2138 @@
         },
         "moon": {
           "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "watch/new-project-joins-the-watch",
+      "ref": "sucqhc",
+      "category": "watch",
+      "kind": "correctness",
+      "title": "A project added while watching is built, and its next edit rebuilds it",
+      "why": "Adding a package to a monorepo is ordinary work, and nobody expects to restart the watch for it. The new project declares the watched task, so the watch owes it a first build. Its own edits must rebuild it from then on, or the user works on a project the watch silently ignores.",
+      "from": [
+        "watch-loop-members",
+        "watch-new-member-edit"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 1,
+          "detail": "phase 2: after 30 s: did not run web#build"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "`vp run` has no watch mode."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build has no watch mode."
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "`moon run` runs once: moon has no watch mode."
+        }
+      }
+    },
+    {
+      "id": "watch/new-project-follows-its-library",
+      "ref": "4p5idm",
+      "category": "watch",
+      "kind": "correctness",
+      "title": "A project added while watching rebuilds when the library it depends on changes",
+      "why": "A new package that depends on a library reads that library’s build, just as the older packages do. Once it has joined the watch, an edit to the library makes its build stale too. The watch must rebuild it after the library, or the newest package is the one left holding old code.",
+      "from": [
+        "watch-loop-members",
+        "watch-new-member-edit"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 1,
+          "detail": "phase 2: after 30 s: did not run web#build"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "`vp run` has no watch mode."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build has no watch mode."
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "`moon run` runs once: moon has no watch mode."
+        }
+      }
+    },
+    {
+      "id": "watch/task-edge-added-reruns-dependant",
+      "ref": "1ro8ik",
+      "category": "watch",
+      "kind": "correctness",
+      "title": "Once the app is made to depend on a library while watching, a library edit rebuilds it",
+      "why": "The watch decides what an edit reaches from the task graph, and that graph just gained an edge. A watch that keeps the graph it started with treats the library as unrelated to the app. The app now reads the library’s build, so it must be rebuilt after it.",
+      "from": [
+        "watch-loop-members",
+        "watch-rules"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 1,
+          "detail": "phase 3: after 30 s: did not run app#build"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "`vp run` has no watch mode."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build has no watch mode."
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "`moon run` runs once: moon has no watch mode."
+        }
+      }
+    },
+    {
+      "id": "watch/diamond-bottom-edit-builds-each-once",
+      "ref": "pysvwb",
+      "category": "watch",
+      "kind": "correctness",
+      "title": "Editing a library two others build on, both used by the app, rebuilds every project once and in order",
+      "why": "The app reaches the library by two paths, and a watch that walks each path on its own builds it twice. Each project read the library, so each must be rebuilt, but once is enough. Order matters too: the app needs both of its dependencies rebuilt before it reads them.",
+      "from": [
+        "watch-loop-members",
+        "watch-rules"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "`vp run` has no watch mode."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build has no watch mode."
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "`moon run` runs once: moon has no watch mode."
+        }
+      }
+    },
+    {
+      "id": "watch/diamond-side-edit-leaves-other-side",
+      "ref": "n3qvdg",
+      "category": "watch",
+      "kind": "efficiency",
+      "title": "Editing one of two libraries the app uses rebuilds it and the app, not the other library or the base",
+      "why": "Only one side of the diamond changed. The base below it and the other side beside it read nothing that changed, so their builds still stand. Rebuilding them as well turns a small edit into a rebuild of the whole tree.",
+      "from": [
+        "watch-rules",
+        "watch-loop-members"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "`vp run` has no watch mode."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build has no watch mode."
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "`moon run` runs once: moon has no watch mode."
+        }
+      }
+    },
+    {
+      "id": "watch/dependency-inputs-off-dependant-not-rerun",
+      "ref": "9jp7tt",
+      "category": "watch",
+      "kind": "efficiency",
+      "title": "Editing a library while watching leaves an app alone when the app’s key does not take in its dependencies",
+      "why": "The app asks for the library to be built first, but says the library’s files do not key it. After a library edit the app’s inputs are exactly the ones it was built from. Running it again repeats work whose result is already on disk.",
+      "from": [
+        "watch-rules",
+        "task-hash-derive"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "A dependency’s hash always keys its dependants: no task orders a dependency without it."
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "`vp run` has no watch mode."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build has no watch mode. A dependency’s output path is its dependant’s input: it always keys it."
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "`moon run` runs once: moon has no watch mode."
+        }
+      }
+    },
+    {
+      "id": "watch/own-task-edit-leaves-prerequisite",
+      "ref": "zk9xzl",
+      "category": "watch",
+      "kind": "efficiency",
+      "title": "Editing the build’s own source while watching leaves the codegen step it depends on alone",
+      "why": "The build waits for a codegen task in the same project, but the edit touched only what the build reads. The codegen’s inputs did not change, so its output still stands. Running it again delays every save by work that cannot produce anything new.",
+      "from": [
+        "watch-rules",
+        "watch-initial-edit-done"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "`vp run` has no watch mode."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build has no watch mode."
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "`moon run` runs once: moon has no watch mode."
+        }
+      }
+    },
+    {
+      "id": "watch/failing-project-does-not-block-others",
+      "ref": "wl12rl",
+      "category": "watch",
+      "kind": "correctness",
+      "title": "While one project’s build is broken, editing another project still rebuilds it",
+      "why": "A broken build in one corner of a monorepo is normal while someone is mid-change. The other project does not depend on it, so nothing stops it from building. A watch that gives up or holds every edit behind the broken project leaves the rest of the workspace stale.",
+      "from": [
+        "watch-signals",
+        "watch-loop-members"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "`vp run` has no watch mode."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build has no watch mode."
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "`moon run` runs once: moon has no watch mode."
+        }
+      }
+    },
+    {
+      "id": "watch/same-file-saved-five-times-builds-latest-once",
+      "ref": "gnumqj",
+      "category": "watch",
+      "kind": "efficiency",
+      "title": "Five quick saves of one file while watching rebuild once, with the last content",
+      "why": "Format-on-save and autosave can write one file several times within a few milliseconds. Only the last content matters, and one build of it is the right answer. Building once per save repeats the same work and may show results of content that was gone before the build began.",
+      "from": [
+        "watch-loop-edits",
+        "watch-late-batch"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "`vp run` has no watch mode."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build has no watch mode."
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "`moon run` runs once: moon has no watch mode."
+        }
+      }
+    },
+    {
+      "id": "watch/transient-file-reruns-nothing",
+      "ref": "f9p6y3",
+      "category": "watch",
+      "kind": "efficiency",
+      "title": "A file created and deleted at once among the sources while watching reruns nothing",
+      "why": "Tools drop short-lived files beside sources all the time, a lock or a temporary copy, and remove them a moment later. By the time anything could build, the sources are exactly what was built before. A rebuild here costs time and produces the same output.",
+      "from": [
+        "watch-transient-file",
+        "watch-judge-properties"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "`vp run` has no watch mode."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build has no watch mode."
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "`moon run` runs once: moon has no watch mode."
+        }
+      }
+    },
+    {
+      "id": "watch/renamed-input-directory-reruns",
+      "ref": "3fem0i",
+      "category": "watch",
+      "kind": "correctness",
+      "title": "Renaming a folder of sources while watching rebuilds, and an edit under its new name rebuilds again",
+      "why": "Renaming a folder is a single rename: no file inside it is written. Its files now sit at new paths, which a build that lists paths sees. The watch must also follow the folder under its new name, or the next edit inside it is lost.",
+      "from": [
+        "watch-tree-linux",
+        "watch-poll-moved-dir"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 1,
+          "detail": "phase 3: after 30 s: did not run app#build"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "`vp run` has no watch mode."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build has no watch mode."
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "`moon run` runs once: moon has no watch mode."
+        }
+      }
+    },
+    {
+      "id": "watch/directory-moved-out-reruns",
+      "ref": "7fl350",
+      "category": "watch",
+      "kind": "correctness",
+      "title": "Moving a folder out of the sources while watching rebuilds without it, and its later edits rerun nothing",
+      "why": "Moving a folder away is one rename, with no file deleted, yet its files are no longer inputs. The build must drop them. A watch that still follows the moved folder would then rebuild on edits to files the task no longer reads.",
+      "from": [
+        "watch-tree-linux",
+        "watch-poll-moved-dir"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 1,
+          "detail": "phase 2: after 30 s: did not run app#build"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "`vp run` has no watch mode."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build has no watch mode."
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "`moon run` runs once: moon has no watch mode."
+        }
+      }
+    },
+    {
+      "id": "watch/emptied-input-reruns",
+      "ref": "auv11t",
+      "category": "watch",
+      "kind": "correctness",
+      "title": "Emptying a source file while watching rebuilds without its content",
+      "why": "A file cut down to nothing is still a change, and the build made from its old content is wrong now. Some watchers compare sizes or skip empty writes, and miss it. The output must match the sources on disk.",
+      "from": [
+        "watch-loop-edits"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "`vp run` has no watch mode."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build has no watch mode."
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "`moon run` runs once: moon has no watch mode."
+        }
+      }
+    },
+    {
+      "id": "watch/edit-with-old-mtime-reruns",
+      "ref": "bdkx6y",
+      "category": "watch",
+      "kind": "correctness",
+      "title": "An edit that keeps the file’s size and old modification time while watching still rebuilds",
+      "why": "Tools that sync or restore files often keep the original timestamp, and a same-length edit leaves the size alone too. The content changed all the same. A watch that trusts size and time to spot changes keeps a build of bytes no longer on disk.",
+      "from": [
+        "watch-poll-moved-dir",
+        "git-racy-index"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "`vp run` has no watch mode."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build has no watch mode."
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "`moon run` runs once: moon has no watch mode."
+        }
+      }
+    },
+    {
+      "id": "watch/file-moved-in-with-old-mtime-reruns",
+      "ref": "hmc599",
+      "category": "watch",
+      "kind": "correctness",
+      "title": "A file with an old timestamp moved into the sources while watching rebuilds with it",
+      "why": "A file unpacked from an archive or copied with its times kept can carry a date years before the watch began. Moving it in still adds an input. A watch that ignores files older than its own start leaves the build without it.",
+      "from": [
+        "watch-judge-properties",
+        "watch-tree-linux"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "`vp run` has no watch mode."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build has no watch mode."
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "`moon run` runs once: moon has no watch mode."
+        }
+      }
+    },
+    {
+      "id": "watch/edit-behind-directory-link-reruns",
+      "ref": "8l415b",
+      "category": "watch",
+      "kind": "correctness",
+      "title": "Editing a file inside a folder that a source folder link points to while watching rebuilds",
+      "why": "Sharing a folder of sources through a link is a common way to reuse files without a package. The task reads through the link, so an edit at the target changes its input. A watch that only follows real folders under the project never hears the edit.",
+      "from": [
+        "watch-linked-input",
+        "watch-symlink-retarget"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 2,
+          "detail": "phase 2: after 30 s: did not run app#build"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 2,
+          "detail": "phase 2: after 30 s: did not run app#build"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "`vp run` has no watch mode."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build has no watch mode."
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "`moon run` runs once: moon has no watch mode."
+        }
+      }
+    },
+    {
+      "id": "watch/edit-behind-link-outside-workspace-reruns",
+      "ref": "kxyul7",
+      "category": "watch",
+      "kind": "correctness",
+      "title": "Editing a file outside the repository that a source link points to while watching rebuilds",
+      "why": "A source may be a link to a checkout beside the repository, such as a shared config. The task reads its content through the link. A watch that only follows the repository never sees the edit, and the build keeps the old content.",
+      "from": [
+        "watch-linked-input"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 2,
+          "detail": "phase 2: after 30 s: did not run app#build"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 2,
+          "detail": "phase 2: after 30 s: did not run app#build"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "`vp run` has no watch mode."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build has no watch mode."
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "`moon run` runs once: moon has no watch mode."
+        }
+      }
+    },
+    {
+      "id": "watch/new-link-into-sources-reruns",
+      "ref": "dvfy6d",
+      "category": "watch",
+      "kind": "correctness",
+      "title": "A link added among the sources while watching rebuilds with the file it points to",
+      "why": "Making a link is creating a file, and the build reads through it. Its target’s content is now part of the task’s input. A watch that only looks at regular files skips the link, and the build leaves its content out.",
+      "from": [
+        "watch-symlink-retarget",
+        "watch-linked-input"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 1,
+          "detail": "phase 2: after 30 s: did not run app#build"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "`vp run` has no watch mode."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build has no watch mode."
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "`moon run` runs once: moon has no watch mode."
+        }
+      }
+    },
+    {
+      "id": "watch/link-target-same-bytes-reruns-nothing",
+      "ref": "fv190a",
+      "category": "watch",
+      "kind": "efficiency",
+      "title": "Saving the target of a source link with the same bytes while watching reruns nothing",
+      "why": "The link’s target was written, but its content is what the build already read. A watch that reacts to any write behind the link rebuilds for nothing. The same-bytes rule holds behind a link as it does for a plain file.",
+      "from": [
+        "watch-linked-input"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "`vp run` has no watch mode."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build has no watch mode."
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "`moon run` runs once: moon has no watch mode."
+        }
+      }
+    },
+    {
+      "id": "watch/unignored-input-reruns",
+      "ref": "tg31kq",
+      "category": "watch",
+      "kind": "correctness",
+      "title": "Once a source is taken out of .gitignore while watching, its next edit rebuilds the task",
+      "why": "A file git ignored was no input, but after the .gitignore edit it is an ordinary source under the task’s pattern. Its edits must rebuild like any other. A watch that keeps the ignore rules it started with goes on skipping a file the user now counts as code.",
+      "from": [
+        "watch-root-scope",
+        "watch-unignored-deletion"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 1,
+          "detail": "phase 3: after 30 s: did not run app#build"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "`vp run` has no watch mode."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build has no watch mode."
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "`moon run` runs once: moon has no watch mode."
+        }
+      }
+    },
+    {
+      "id": "watch/newly-ignored-file-reruns-nothing",
+      "ref": "7olbuk",
+      "category": "watch",
+      "kind": "efficiency",
+      "title": "Once a source is added to .gitignore and dropped from git while watching, its edits rerun nothing",
+      "why": "Ignoring a file and removing it from the index takes it out of the task’s inputs from that moment, just as for a file ignored from the start. Its edits then change nothing the task is keyed on. A watch that keeps the ignore rules it started with keeps rebuilding for a file the user gave up on.",
+      "from": [
+        "watch-root-scope",
+        "watch-rules"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "`vp run` has no watch mode."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build has no watch mode."
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "`moon run` runs once: moon has no watch mode."
+        }
+      }
+    },
+    {
+      "id": "watch/commit-of-built-edit-reruns-nothing",
+      "ref": "wkbndx",
+      "category": "watch",
+      "kind": "efficiency",
+      "title": "Committing an edit the watch already built reruns nothing",
+      "why": "The commit records bytes that are already on disk and already built. Git’s index and history change, the files do not. A watch that keys on git state as well as content rebuilds on every commit for nothing.",
+      "from": [
+        "watch-initial-edit-done",
+        "git-trust"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "`vp run` has no watch mode."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build has no watch mode."
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "`moon run` runs once: moon has no watch mode."
+        }
+      }
+    },
+    {
+      "id": "watch/branch-switch-rebuilds",
+      "ref": "j7wl5h",
+      "category": "watch",
+      "kind": "correctness",
+      "title": "Switching git branches while watching rebuilds with the branch’s files, and switching back restores them",
+      "why": "A checkout rewrites sources to another commit’s content, which is the largest edit a user makes in a day. The build must follow it each way. Coming back to the first branch must leave the first build’s output, rebuilt or replayed.",
+      "from": [
+        "watch-initial-edit-done",
+        "watch-loop-edits"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "`vp run` has no watch mode."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build has no watch mode."
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "`moon run` runs once: moon has no watch mode."
+        }
+      }
+    },
+    {
+      "id": "watch/narrowed-inputs-stop-reruns",
+      "ref": "o7hgnp",
+      "category": "watch",
+      "kind": "efficiency",
+      "title": "After the task’s inputs are narrowed to one file while watching, an edit to a file left out reruns nothing",
+      "why": "The config now says the task reads one file only. The other source is no longer part of its key, so its edits change nothing the task depends on. A watch that keeps the patterns it started with goes on rebuilding for files the user took out.",
+      "from": [
+        "watch-rules",
+        "watch-node-modules-input"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "`vp run` has no watch mode."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build has no watch mode."
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "`moon run` runs once: moon has no watch mode."
+        }
+      }
+    },
+    {
+      "id": "watch/removed-task-stops-reruns",
+      "ref": "nvqtlh",
+      "category": "watch",
+      "kind": "efficiency",
+      "title": "Once a project’s build is taken out of its config while watching, its edits run nothing",
+      "why": "The project no longer declares the watched task, so nothing in it is part of the watch. Its edits must not run a task the config dropped. The other project’s key did not change either, so it stays as built.",
+      "from": [
+        "watch-loop-members",
+        "watch-rules"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "`vp run` has no watch mode."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build has no watch mode."
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "`moon run` runs once: moon has no watch mode."
+        }
+      }
+    },
+    {
+      "id": "watch/task-added-to-existing-project-runs",
+      "ref": "hjrpcw",
+      "category": "watch",
+      "kind": "correctness",
+      "title": "Giving a project the watched task while watching builds it, and leaves the other project alone",
+      "why": "The project existed all along but had nothing to run. Once its config declares the watched task it is part of the watch, and owes a first build. The project already built has an unchanged key, so it needs nothing.",
+      "from": [
+        "watch-loop-members",
+        "watch-loop"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "`vp run` has no watch mode."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build has no watch mode."
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "`moon run` runs once: moon has no watch mode."
+        }
+      }
+    },
+    {
+      "id": "watch/uncached-dependency-edit-reruns-dependant",
+      "ref": "aneka3",
+      "category": "watch",
+      "kind": "correctness",
+      "title": "Editing a never-cached library while watching reruns it and the app that uses it",
+      "why": "A task that is never cached still has inputs, and an edit to them makes its output and everything built on it stale. The app reads the library’s build. Both must run again, the library first.",
+      "from": [
+        "watch-loop-uncached",
+        "watch-loop-members"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "`vp run` has no watch mode."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build has no watch mode."
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "`moon run` runs once: moon has no watch mode."
+        }
+      }
+    },
+    {
+      "id": "watch/server-waits-for-build-fix",
+      "ref": "a2dmj0",
+      "category": "watch",
+      "kind": "correctness",
+      "title": "A dev server whose build fails does not start under watch, and starts once the build is fixed",
+      "why": "The server depends on the build, and serving without it would show something that does not match the code. While the build fails the server must stay down. Once an edit fixes the build, the watch must start the server, not wait for a restart.",
+      "from": [
+        "watch-initial-readiness",
+        "watch-signals"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "Turborepo does not hold a task until a persistent one prints a ready line."
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "`vp run` has no watch mode. Vite Task has no long-running task it stops when the run ends. Vite Task does not hold a task until another prints a ready line."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build has no watch mode. A derivation is a build that ends: Nix has no long-running task. A derivation is a build that ends: nothing waits for a ready line."
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "`moon run` runs once: moon has no watch mode. A `wait` dependency waits for the persistent task to start, never for a line it prints."
+        }
+      }
+    },
+    {
+      "id": "watch/dependant-edit-under-broken-dependency-builds-nothing",
+      "ref": "wsegaq",
+      "category": "watch",
+      "kind": "correctness",
+      "title": "Editing the app while the library it needs is broken does not build the app",
+      "why": "The app reads the library’s build, and there is no good build of the library to read. Building the app anyway would use a missing or old library output. The app must wait until the library builds again.",
+      "from": [
+        "watch-signals",
+        "watch-dependency-gone"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "`vp run` has no watch mode."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build has no watch mode."
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "`moon run` runs once: moon has no watch mode."
+        }
+      }
+    },
+    {
+      "id": "watch/root-package-task-reruns",
+      "ref": "xfajtx",
+      "category": "watch",
+      "kind": "correctness",
+      "title": "Editing a source of the workspace’s root package, beside its members, while watching rebuilds its task",
+      "why": "Small repositories often keep their one project at the root, beside the workspace’s own files. Its sources are inputs like any project’s. A watch that only follows member folders never rebuilds it.",
+      "from": [
+        "watch-root-scope",
+        "watch-loop"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "`vp run` has no watch mode."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build has no watch mode."
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "`moon run` runs once: moon has no watch mode."
+        }
+      }
+    },
+    {
+      "id": "watch/selected-library-leaves-dependants",
+      "ref": "5p7gxt",
+      "category": "watch",
+      "kind": "efficiency",
+      "title": "Watching only a library rebuilds it on an edit, but not the app that depends on it",
+      "why": "The user asked to watch the library, and the app is not part of that. A selection takes what the selected project needs, never what needs it. Building the app too runs work the user left out on purpose.",
+      "from": [
+        "watch-anchored-scope",
+        "watch-loop-members"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "`vp run` has no watch mode."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build has no watch mode."
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "`moon run` runs once: moon has no watch mode."
+        }
+      }
+    },
+    {
+      "id": "watch/new-root-input-file-reruns",
+      "ref": "cz4z0y",
+      "category": "watch",
+      "kind": "correctness",
+      "title": "A new file at the root matching a task’s root inputs while watching rebuilds with it",
+      "why": "A root input given as a pattern covers files that do not exist yet, as a project pattern does. A file added there changes what the task reads. A watch that follows only the root files present at its start leaves it out.",
+      "from": [
+        "watch-label-workspace-wide",
+        "watch-claimed-files"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 1,
+          "detail": "phase 2: after 30 s: did not run app#build"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "`vp run` has no watch mode."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build has no watch mode."
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "`moon run` runs once: moon has no watch mode."
+        }
+      }
+    },
+    {
+      "id": "watch/dependency-edit-during-dependant-run-rebuilds",
+      "ref": "p6ltgz",
+      "category": "watch",
+      "kind": "correctness",
+      "title": "Editing a library while the app that uses it is building rebuilds both, ending with the latest library",
+      "why": "The app copied the library’s output when it started, so its result is stale before it ends. The library edit must lead to a library build and one more app build after it. A watch that drops edits arriving while a dependant runs leaves the app built on the older library.",
+      "from": [
+        "watch-loop-members",
+        "watch-initial-edit-done"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "`vp run` has no watch mode."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build has no watch mode."
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "`moon run` runs once: moon has no watch mode."
+        }
+      }
+    },
+    {
+      "id": "watch/edit-to-other-project-during-run",
+      "ref": "og2xd9",
+      "category": "watch",
+      "kind": "correctness",
+      "title": "Editing another project while one is building rebuilds that project, and the running build is not repeated",
+      "why": "The edit touched a project the running build does not read. It must still be built, during or right after the running one. The running build’s inputs did not change, so starting it again would be wasted work.",
+      "from": [
+        "watch-loop-members",
+        "watch-initial-edit-done"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "`vp run` has no watch mode."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build has no watch mode."
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "`moon run` runs once: moon has no watch mode."
+        }
+      }
+    },
+    {
+      "id": "watch/dependency-edit-undone-restores-both",
+      "ref": "a47o10",
+      "category": "watch",
+      "kind": "efficiency",
+      "title": "Undoing a library edit while watching brings back the library’s and the app’s earlier results without rebuilding",
+      "why": "After the undo, every input in the chain is one an earlier run already built. Both results can be put back as they were. Rebuilding gives the same bytes and only costs time; restoring must not set off another round either.",
+      "from": [
+        "watch-restored-output",
+        "watch-loop"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "`vp run` has no watch mode."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build has no watch mode."
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "`moon run` runs once: moon has no watch mode."
+        }
+      }
+    },
+    {
+      "id": "watch/input-named-with-brackets-reruns",
+      "ref": "vfjy2w",
+      "category": "watch",
+      "kind": "correctness",
+      "title": "Editing a source named with square brackets while watching rebuilds",
+      "why": "Route folders such as `[id]` are everywhere in web frameworks, and brackets mean a character class in a glob. A watch that turns the path back into a pattern matches nothing and misses the edit. The file is an input like any other.",
+      "from": [
+        "watch-lossy-name",
+        "watch-claimed-extras"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "`vp run` has no watch mode."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build has no watch mode."
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "`moon run` runs once: moon has no watch mode."
+        }
+      }
+    },
+    {
+      "id": "watch/new-folder-with-many-files-builds-all",
+      "ref": "r5tzqi",
+      "category": "watch",
+      "kind": "correctness",
+      "title": "A new folder filled with fifty files at once while watching rebuilds once, with every file",
+      "why": "A generator or an unpacked archive makes a folder and fills it faster than a watcher can start following it. Files written before the folder is followed are still new inputs. The build must include all of them, once, or it builds a tree missing pieces.",
+      "from": [
+        "watch-tree-linux",
+        "watch-recreated-dirs"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "`vp run` has no watch mode."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build has no watch mode."
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "`moon run` runs once: moon has no watch mode."
+        }
+      }
+    },
+    {
+      "id": "watch/timed-out-task-retried-after-edit",
+      "ref": "5yguq6",
+      "category": "watch",
+      "kind": "correctness",
+      "title": "A build killed for running past its time limit while watching runs again once the source is fixed",
+      "why": "A time limit turns a hang into a failure, and a failure while watching waits for the next edit. The hung build must be killed, not left holding the task. The next edit then builds as usual.",
+      "from": [
+        "watch-signals",
+        "stall-watch"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "Turborepo has no per-task time limit."
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "Nx has no per-task time limit."
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "`vp run` has no watch mode. Vite Task has no per-task time limit."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build has no watch mode. Nix has no time limit of a build’s own (`timeout` is a setting for every build)."
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "`moon run` runs once: moon has no watch mode."
+        }
+      }
+    },
+    {
+      "id": "watch/revert-after-failed-build-restores-output",
+      "ref": "a11utl",
+      "category": "watch",
+      "kind": "correctness",
+      "title": "Undoing an edit whose build failed after writing its output brings back the good output",
+      "why": "The failed build wrote its output before failing, so the file on disk belongs to the bad source. After the undo the sources match the earlier good build again. A watch that skips the restore because the key is one it already saw leaves the failed build’s output in place.",
+      "from": [
+        "watch-restored-output",
+        "watch-loop-edit-undone"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "`vp run` has no watch mode."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build has no watch mode."
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "`moon run` runs once: moon has no watch mode."
+        }
+      }
+    },
+    {
+      "id": "watch/dependency-without-the-task-reruns-nothing",
+      "ref": "iqo2uu",
+      "category": "watch",
+      "kind": "efficiency",
+      "title": "Editing a package the app depends on, which has no build of its own, reruns nothing while watching",
+      "why": "The package is a dependency, but it declares no build, so the app’s build reads only the app’s own sources. The edit changes nothing in the app’s inputs. Rebuilding the app because a dependency’s files moved runs work whose result cannot differ.",
+      "from": [
+        "watch-rules",
+        "watch-loop-members"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "`vp run` has no watch mode."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build has no watch mode."
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "`moon run` runs once: moon has no watch mode."
+        }
+      }
+    },
+    {
+      "id": "watch/file-deleted-and-restored-at-once-reruns-nothing",
+      "ref": "02xttq",
+      "category": "watch",
+      "kind": "efficiency",
+      "title": "A source deleted and written back with the same bytes at once while watching reruns nothing",
+      "why": "Some tools write a file by removing it and creating it again. When they are done the content is what the build already read. A watch that acts on the deletion alone builds without the file, then again with it, both for nothing.",
+      "from": [
+        "watch-transient-file",
+        "watch-unignored-deletion"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "`vp run` has no watch mode."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build has no watch mode."
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "`moon run` runs once: moon has no watch mode."
+        }
+      }
+    },
+    {
+      "id": "watch/listed-input-created-later-reruns",
+      "ref": "xhor0p",
+      "category": "watch",
+      "kind": "correctness",
+      "title": "Creating a file the task names outright in its inputs, missing at the start, rebuilds while watching",
+      "why": "A task can name a file that does not exist yet, such as an optional local override. A watch that follows only the files it found at the start never sees it arrive. Once it exists it is an input, and the build must take it.",
+      "from": [
+        "watch-unignored-deletion",
+        "watch-claimed-files"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "`vp run` has no watch mode."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build has no watch mode."
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "`moon run` runs once: moon has no watch mode."
+        }
+      }
+    },
+    {
+      "id": "watch/dependency-task-of-another-name-reruns",
+      "ref": "rlrfe5",
+      "category": "watch",
+      "kind": "correctness",
+      "title": "Editing a library whose compile step the app’s build needs rebuilds both while watching",
+      "why": "The watched task is the build, but the library’s part of it is a task with another name. The watch must follow the graph, not the task name, to see that the app reads the library’s compile output. A watch that only reruns tasks named like the watched one leaves the library stale and the app with it.",
+      "from": [
+        "watch-loop-members",
+        "watch-rules"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 1,
+          "detail": "phase 2: after 30 s: did not run app#build"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "`vp run` has no watch mode."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build has no watch mode."
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "`moon run` runs once: moon has no watch mode."
+        }
+      }
+    },
+    {
+      "id": "watch/task-temp-file-in-sources-does-not-loop",
+      "ref": "p1kxmj",
+      "category": "watch",
+      "kind": "efficiency",
+      "title": "A build that makes and removes a scratch file among its sources while watching runs once per edit",
+      "why": "Plenty of tools drop a scratch file beside the sources while they work and clean it up before they finish. When the build ends, its sources are exactly what it read. A watch that takes the scratch file for an edit rebuilds once more, and loops if every build does it.",
+      "from": [
+        "watch-project-dir-write",
+        "watch-own-rewrite-loop"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "`vp run` has no watch mode."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build has no watch mode."
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "`moon run` runs once: moon has no watch mode."
+        }
+      }
+    },
+    {
+      "id": "watch/output-inside-sources-does-not-loop",
+      "ref": "zvlm4e",
+      "category": "watch",
+      "kind": "efficiency",
+      "title": "A build that writes a declared output inside its own source folder while watching runs once per edit",
+      "why": "Generators often write next to the code, inside the folder the task reads. The written file is the task’s output, not something the user edited. Treating it as a new input makes every build start the next one.",
+      "from": [
+        "watch-rules",
+        "watch-poll-output-beside-input"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 1,
+          "detail": "phase 1: ran app#build more than once"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 1,
+          "detail": "phase 2: ran app#build more than once"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "`vp run` has no watch mode."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build has no watch mode."
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "`moon run` runs once: moon has no watch mode."
+        }
+      }
+    },
+    {
+      "id": "watch/initial-run-replays-a-warm-cache",
+      "ref": "p5nin1",
+      "category": "watch",
+      "kind": "efficiency",
+      "title": "Starting a watch after a plain run replays the build instead of running it again",
+      "why": "A watch shares its cache with plain runs. The sources have not changed since the plain run, so its result is the right one. Running the build again only delays the moment the watch is ready.",
+      "from": [
+        "watch-restored-output",
+        "watch-loop"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "`vp run` has no watch mode."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build has no watch mode."
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "`moon run` runs once: moon has no watch mode."
+        }
+      }
+    },
+    {
+      "id": "watch/initial-run-restores-missing-output",
+      "ref": "rkzc1i",
+      "category": "watch",
+      "kind": "correctness",
+      "title": "Starting a watch after deleting a cached build’s output puts the output back, and does not loop",
+      "why": "The output is gone but the sources match a cached result, so the watch’s first run must restore it. The restore writes files the watch can see. Taking those writes for an edit sets off a rebuild that should never happen.",
+      "from": [
+        "watch-restored-output"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "`vp run` has no watch mode."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build has no watch mode."
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "`moon run` runs once: moon has no watch mode."
+        }
+      }
+    },
+    {
+      "id": "watch/plain-run-after-watch-replays",
+      "ref": "4o9s64",
+      "category": "watch",
+      "kind": "efficiency",
+      "title": "A plain run after a watch replays what the watch last built",
+      "why": "The watch built the edited sources and cached the result like any run. Nothing has changed since. A plain run, such as a pre-commit hook, should replay it rather than build again.",
+      "from": [
+        "watch-loop",
+        "watch-restored-output"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "`vp run` has no watch mode."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build has no watch mode."
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "`moon run` runs once: moon has no watch mode."
+        }
+      }
+    },
+    {
+      "id": "watch/removed-project-keeps-watching-the-rest",
+      "ref": "cwmkxr",
+      "category": "watch",
+      "kind": "correctness",
+      "title": "Deleting a project while watching keeps the watch going for the projects left",
+      "why": "Removing a package is a normal edit, and a watch must survive it. The remaining project did not change, so it needs nothing at the removal. Its next edit must still rebuild it.",
+      "from": [
+        "watch-dependency-gone",
+        "watch-loop-members"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "`vp run` has no watch mode."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build has no watch mode."
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "`moon run` runs once: moon has no watch mode."
+        }
+      }
+    },
+    {
+      "id": "watch/other-task-input-reruns-nothing",
+      "ref": "bcz07q",
+      "category": "watch",
+      "kind": "efficiency",
+      "title": "Editing a file only the project’s lint reads, while watching its build, reruns nothing",
+      "why": "The file belongs to the project, but only a task outside the watch reads it. The build’s inputs did not change. A watch that reruns on any file in the package rebuilds on every lint-config save.",
+      "from": [
+        "watch-rules",
+        "watch-claimed-files"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "`vp run` has no watch mode."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build has no watch mode."
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "`moon run` runs once: moon has no watch mode."
+        }
+      }
+    },
+    {
+      "id": "watch/sibling-dependant-outside-selection-not-run",
+      "ref": "9ktp4o",
+      "category": "watch",
+      "kind": "efficiency",
+      "title": "Watching one app, a library edit rebuilds the library and that app, but not another app on the same library",
+      "why": "The user picked one app, and the watch takes in what it needs, which includes the library. The second app also uses the library but was not picked. Rebuilding it runs work outside what was asked for.",
+      "from": [
+        "watch-anchored-scope",
+        "watch-loop-members"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "`vp run` has no watch mode."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build has no watch mode."
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "`moon run` runs once: moon has no watch mode."
+        }
+      }
+    },
+    {
+      "id": "watch/dependency-config-change-rebuilds-dependant",
+      "ref": "0jtv9j",
+      "category": "watch",
+      "kind": "correctness",
+      "title": "Changing a library’s build command while watching rebuilds the library and then the app",
+      "why": "The library’s output comes from its command, so a new command makes a new output. The app reads that output, so its build is stale too. A watch that reruns only the reconfigured task leaves the app built on the old library.",
+      "from": [
+        "watch-loop-edits",
+        "watch-loop-members"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "`vp run` has no watch mode."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build has no watch mode."
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "`moon run` runs once: moon has no watch mode."
+        }
+      }
+    },
+    {
+      "id": "watch/config-reverted-replays",
+      "ref": "gzuosj",
+      "category": "watch",
+      "kind": "efficiency",
+      "title": "Undoing a change to a task’s command while watching brings back the earlier result without rebuilding",
+      "why": "After the config goes back, the task is exactly the one an earlier run built. Its cached result is right and immediate. Rebuilding gives the same bytes and costs the user time.",
+      "from": [
+        "watch-loop",
+        "watch-loop-edits"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "`vp run` has no watch mode."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build has no watch mode."
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "`moon run` runs once: moon has no watch mode."
+        }
+      }
+    },
+    {
+      "id": "watch/file-renamed-to-match-inputs-reruns",
+      "ref": "um436v",
+      "category": "watch",
+      "kind": "correctness",
+      "title": "Renaming a file so its name matches the task’s inputs while watching rebuilds with it",
+      "why": "The file was there all along, but under a name the inputs did not match. The rename makes it an input without writing a byte. A watch that waits for writes, or only re-reads files it already knew, misses it.",
+      "from": [
+        "watch-transient-file",
+        "watch-label-live-path"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "`vp run` has no watch mode."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build has no watch mode."
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "`moon run` runs once: moon has no watch mode."
+        }
+      }
+    },
+    {
+      "id": "watch/symlink-loop-in-sources-still-watches",
+      "ref": "6ip3qt",
+      "category": "watch",
+      "kind": "correctness",
+      "title": "A link among the sources that points back at its own folder does not stop a watch from rebuilding",
+      "why": "A link to `.` inside a folder makes an endless path, and a watcher that follows links walks it forever. Such links turn up in real trees, from test fixtures to package managers. The watch must start and keep rebuilding on edits.",
+      "from": [
+        "watch-linked-input",
+        "watch-tree-linux"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "`vp run` has no watch mode."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build has no watch mode."
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "`moon run` runs once: moon has no watch mode."
+        }
+      }
+    },
+    {
+      "id": "watch/dangling-link-in-sources-still-watches",
+      "ref": "nr5zht",
+      "category": "watch",
+      "kind": "correctness",
+      "title": "A broken link among the sources does not stop a watch from rebuilding",
+      "why": "A link whose target is gone is common in a working tree, for instance after a branch switch. The build never reads it. The watch must still start and rebuild on edits to the real sources.",
+      "from": [
+        "watch-symlink-retarget",
+        "watch-linked-input"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "`vp run` has no watch mode."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build has no watch mode."
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "`moon run` runs once: moon has no watch mode."
+        }
+      }
+    },
+    {
+      "id": "watch/two-libraries-edited-at-once-build-the-app-once",
+      "ref": "xvjs7r",
+      "category": "watch",
+      "kind": "efficiency",
+      "title": "Editing both libraries an app uses at once while watching builds each library, then the app once",
+      "why": "A refactor or a checkout often touches several packages in the same moment. The app needs both libraries rebuilt before it reads them, and one build of it after both is the right result. Building it once per library repeats work and shows an app built on half the change.",
+      "from": [
+        "watch-loop-edits",
+        "watch-loop-members"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "`vp run` has no watch mode."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build has no watch mode."
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "`moon run` runs once: moon has no watch mode."
+        }
+      }
+    },
+    {
+      "id": "watch/flip-between-two-versions-replays-both",
+      "ref": "vncsjm",
+      "category": "watch",
+      "kind": "efficiency",
+      "title": "Switching a source back and forth between two versions while watching builds each version only once",
+      "why": "Toggling a flag or comparing two approaches means saving the same two contents in turn. Each version was built once, and both results are cached. From the third save on, the watch should put back the stored result instead of building again.",
+      "from": [
+        "watch-loop",
+        "watch-loop-edit-undone"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "`vp run` has no watch mode."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build has no watch mode."
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "`moon run` runs once: moon has no watch mode."
+        }
+      }
+    },
+    {
+      "id": "watch/git-housekeeping-reruns-nothing",
+      "ref": "c8xarz",
+      "category": "watch",
+      "kind": "efficiency",
+      "title": "Tagging and packing the git repository while watching reruns nothing",
+      "why": "A tag, a fetch or a garbage collection rewrites files under `.git`, often many of them. No source changed. A watch that reacts to git’s own files rebuilds whenever an editor’s git panel refreshes.",
+      "from": [
+        "watch-tree-linux",
+        "watch-initial-edit-done"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "`vp run` has no watch mode."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build has no watch mode."
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "`moon run` runs once: moon has no watch mode."
+        }
+      }
+    },
+    {
+      "id": "watch/sandboxed-task-reruns-on-edit",
+      "ref": "hp7y3z",
+      "category": "watch",
+      "kind": "correctness",
+      "title": "Editing the source of a sandboxed build while watching rebuilds it, once",
+      "why": "A sandbox changes where a task may read and write, not when it runs. The watch must rebuild it on an edit as it would any task. The sandbox’s own setup must not look like an edit either, or each build starts the next.",
+      "from": [
+        "watch-loop",
+        "sandbox-grants.unsafe"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "Turborepo keeps no task from files, network or home it never declared."
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "Nx keeps no task from files, network or home it never declared."
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "`vp run` has no watch mode. Vite Task keeps no task from files, network or home it never declared."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build has no watch mode."
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "`moon run` runs once: moon has no watch mode. moon keeps no task from files, network or home it never declared."
         }
       }
     },

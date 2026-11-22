@@ -446,7 +446,7 @@ async function play(c: Case, adapter: Adapter, root: string, box: string): Promi
         return { status: 'fail', step: i + 1, detail: 'refused the config', log: refused }
       const failed = await watch(
         root,
-        { bind: box, boxed },
+        { bind: box, boxed, hostProc: c.needs?.includes('sandbox') === true },
         adapter.env,
         adapter
           .watch(step.watch, step.projects)
