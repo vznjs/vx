@@ -14,7 +14,7 @@ import {
 } from '../memo/index.js'
 import { type ExecuteResult } from '../exec/index.js'
 import type { TaskNode, TaskOutcome } from '../graph/index.js'
-import { atOrUnder, MOUNT_WILDCARDS, toRealPath } from '../sandbox/index.js'
+import { atOrUnder, wildcardAt, toRealPath } from '../sandbox/index.js'
 import { outputMatcher, printable, relPosix, span, taskGlobOf } from '../util/index.js'
 import { warnOf } from '../report/index.js'
 import type { ExecuteArgs } from './execute-task.js'
@@ -287,7 +287,7 @@ export function noStateWritten(m: MissRun, { state, from }: StateStamp): boolean
 
 /** Whether write grant `grant` (absolute) may reach `abs`: a glob by its whole directory, to err toward "it could". */
 function mayWrite(abs: string, grant: string): boolean {
-  const at = grant.search(MOUNT_WILDCARDS)
+  const at = wildcardAt(grant)
   return atOrUnder(abs, at === -1 ? grant : path.dirname(grant.slice(0, at + 1)))
 }
 

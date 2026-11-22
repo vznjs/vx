@@ -4,7 +4,7 @@
 // dropped, and a project under `w*s/` granted its siblings' files. A
 // backslash SRT skips outright: Bun's realpath refuses such a path, so a
 // sandboxed project under `back\\slash/` saw nothing and ran in $HOME.
-import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, realpath, rename, rm, writeFile } from 'node:fs/promises'
 import { realpathSync, statSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -19,6 +19,15 @@ import { bindableReads, bindableWrites } from '../src/sandbox/binds.js'
 import { sandboxRequestFor } from '../src/sandbox/request.js'
 import type { TaskNode } from '../src/graph/index.js'
 import { sandboxAvailable } from './helpers/sandbox-gate.js'
+import { addProject } from './helpers/workspace.js'
+import { run } from './helpers/orchestrator.js'
+import {
+  TIMEOUT,
+  type Fixture,
+  collectingLogger,
+  expectOk,
+  makeWorkspace,
+} from './helpers/sandbox-fixture.js'
 
 const linux = process.platform === 'linux'
 
@@ -106,12 +115,14 @@ describe('a project under a directory holding * or ?', () => {
     )
   }
 
-  it.each(['w*s', 'w?s'])('%s is refused with the directory named', async (name) => {
+  it.each(['w*s', 'w?s'])('%s resolves on Linux', async (name) => {
     const dir = path.join(root, name, 'proj')
     await mkdir(dir, { recursive: true })
     expect(await request(dir)).toBe(
-      `exec.sandbox: ${dir} holds [, ], * or ?, which the sandbox runtime reads as a ` +
-        `pattern, not a name — rename the directory, or run the task without exec.sandbox`,
+      linux
+        ? 'resolved'
+        : `exec.sandbox: ${dir} holds [, ], * or ?, which the macOS sandbox reads as a ` +
+            `pattern, not a name — rename the directory, or run the task without exec.sandbox`,
     )
   })
 
@@ -222,3 +233,76 @@ describe.skipIf(!available || !linux)('a sandboxed read under a brace grant', ()
     ]).toEqual(['cacbd{a,b}', ['cc', 'da'].map((f) => path.join(proj, f))])
   })
 })
+
+describe.skipIf(!linux || !(await sandboxAvailable('bracketed project')))(
+  'a sandboxed project under a directory holding [, ], * or ?',
+  () => {
+    // Refused until 2026-11-22 (conformance growth: `packages/[legacy]`).
+    // vx's globs read past the project's own name (`nameDir`), and SRT is
+    // handed each such path literal, so it runs and caches as any project.
+    let fixture: Fixture
+    beforeEach(async () => {
+      fixture = await makeWorkspace()
+    })
+    afterEach(async () => {
+      await rm(fixture.root, { recursive: true, force: true })
+    })
+
+    const project = async (name: string, command: string, read: string, write?: string) => {
+      const d0 = await addProject(fixture.root, 'legacy', {
+        files: { 'src/x.txt': 'hi', 'secret.txt': 's' },
+        config: `export default { tasks: { build: {
+          exec: { command: '${command}', sandbox: { allow: { read: ['${read}']${
+            write === undefined ? '' : `, write: ['${write}']`
+          } } } },
+          inputs: { files: ['src/**'] },
+          ${write === undefined ? '' : `outputs: { files: ['${write.endsWith('/') ? `${write}**` : write}'] }, cache: true,`}
+        } } }`,
+      })
+      const dir = path.join(path.dirname(d0), name)
+      await rename(d0, dir)
+      return dir
+    }
+
+    for (const name of ['[legacy]', 'a*b', 'q?']) {
+      for (const [write, file, read] of [
+        ['dist/', 'dist/o', 'src/'],
+        ['out.txt', 'out.txt', 'src/'],
+        ['gen/*.js', 'gen/a.js', '.'],
+      ] as const) {
+        it(
+          `${name}: write ${write} lands, caches and restores`,
+          async () => {
+            const dir = await project(name, `cat src/x.txt > ${file}`, read, write)
+            const go = () =>
+              run({ cwd: fixture.root, tasks: ['build'], log: collectingLogger(fixture) })
+            expectOk(await go(), fixture)
+            expect(await readFile(path.join(dir, file), 'utf8')).toBe('hi')
+            await rm(path.join(dir, file))
+            const again = await go()
+            expectOk(again, fixture)
+            expect(again.outcomes[0]?.status).toBe('cache-hit')
+            expect(await readFile(path.join(dir, file), 'utf8')).toBe('hi')
+          },
+          TIMEOUT,
+        )
+      }
+      it(
+        `${name}: a read or a write no grant covers is still refused`,
+        async () => {
+          for (const command of ['cat secret.txt', 'echo x > src/y']) {
+            await rm(path.join(fixture.root, 'packages', name), { recursive: true, force: true })
+            await project(name, command, 'src/')
+            const r = await run({
+              cwd: fixture.root,
+              tasks: ['build'],
+              log: collectingLogger(fixture),
+            })
+            expect([command, r.ok]).toEqual([command, false])
+          }
+        },
+        TIMEOUT,
+      )
+    }
+  },
+)

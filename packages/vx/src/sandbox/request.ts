@@ -18,6 +18,7 @@ import {
   loopbackPorts,
   replacedBySandbox,
   toRealPath,
+  nameDir,
 } from './paths.js'
 import {
   initSandbox,
@@ -234,13 +235,17 @@ export async function sandboxRequestFor(
   nestedOf: (projectDir: string) => readonly string[] = () => [],
 ): Promise<SandboxRequest> {
   // The runtime reads a path holding a bracket as a pattern: on Linux it
-  // mounts no such write path (B-60); seatbelt's rules compile it as a
+  // mounted no such write path (B-60); seatbelt's rules compile it as a
   // character class, so vx's own workspace wall matched nothing (B-65).
   // A `*` or `?` is one too, and its grants matched the project's siblings.
   const home = toRealPath(node.projectDir)
-  if (/[[\]*?]/.test(home)) {
+  // Linux mounts each path by name (`nameDir` keeps vx's own globs from
+  // reading the project's as a pattern, and SRT is handed it literal).
+  if (process.platform === 'linux') {
+    for (const d of [node.projectDir, home, workspaceRoot, toRealPath(workspaceRoot)]) nameDir(d)
+  } else if (/[[\]*?]/.test(home)) {
     throw new UserError(
-      `exec.sandbox: ${home} holds [, ], * or ?, which the sandbox runtime reads as a ` +
+      `exec.sandbox: ${home} holds [, ], * or ?, which the macOS sandbox reads as a ` +
         `pattern, not a name — rename the directory, or run the task without exec.sandbox`,
     )
   }

@@ -9,7 +9,8 @@ import {
   atOrUnder,
   isMountableLiteral,
   localBindingOn,
-  MOUNT_WILDCARDS,
+  namedHead,
+  wildcardAt,
   toRealPath,
   unique,
 } from './paths.js'
@@ -233,8 +234,7 @@ export function scratchWrites(
 }
 
 /** The directory a write glob's matches land in: its head's. */
-export const globDir = (glob: string): string =>
-  path.dirname(glob.slice(0, glob.search(MOUNT_WILDCARDS) + 1))
+export const globDir = (glob: string): string => path.dirname(glob.slice(0, wildcardAt(glob) + 1))
 
 /**
  * Linux: the directories of the write globs (`dir` → its globs) that a
@@ -387,7 +387,10 @@ const warnedGlob = new Set<string>()
  * once: the remedy is the deepest directory above it whose name holds none.
  */
 function holdsGlobChar(grant: string): boolean {
-  const at = srtStripped(grant).search(/[[\]*?\\]/)
+  const stripped = srtStripped(grant)
+  const glob = wildcardAt(stripped)
+  const slash = stripped.indexOf('\\')
+  const at = glob === -1 ? slash : slash === -1 ? glob : Math.min(glob, slash)
   if (at === -1) return false
   if (!warnedGlob.has(grant)) {
     warnedGlob.add(grant)
@@ -430,7 +433,7 @@ export function keyedOutsideGrants(
   rels: readonly string[],
 ): string[] {
   const head = (g: string): string => {
-    const at = g.search(MOUNT_WILDCARDS)
+    const at = wildcardAt(g)
     return at === -1 ? g : g.slice(0, g.lastIndexOf(path.sep, at)) || path.sep
   }
   const { config } = sandbox
@@ -470,8 +473,12 @@ export function keyedOutsideGrants(
 export function bindableReads(paths: readonly string[]): string[] {
   if (process.platform !== 'linux') return [...paths]
   return paths.filter((grant) => {
-    const at = srtStripped(grant).search(/[*?\\]/)
-    if (at === -1) return true
+    const head = namedHead(grant).length
+    const past = srtStripped(grant)
+      .slice(head)
+      .search(/[*?\\]/)
+    if (past === -1) return true
+    const at = head + past
     if (!warnedGlob.has(grant)) {
       warnedGlob.add(grant)
       notify({

@@ -6,7 +6,7 @@
 
 import { existsSync, lstatSync, statSync } from 'node:fs'
 import path from 'node:path'
-import { absolutize, atOrUnder, isUnderAny, localBindingOn, toRealPath } from './paths.js'
+import { absolutize, atOrUnder, globOf, isUnderAny, localBindingOn, toRealPath } from './paths.js'
 import { bindableReads, bindableWrites } from './binds.js'
 import { printable } from '../util/index.js'
 import type { ResolvedSandboxConfig, SandboxViolation } from '../exec/index.js'
@@ -543,7 +543,7 @@ export async function parseStraceViolations(
   // counts its scratch): cp's probe of its destination there failed a task
   // on its own output. One a read bind holds is readable; one outside the
   // workspace, never reported.
-  const pendingWrites = (args.config.pendingWrites ?? []).map((g) => new Bun.Glob(g))
+  const pendingWrites = (args.config.pendingWrites ?? []).map(globOf)
   const denyAnchors = baselines.denyRead.map((p) => toRealPath(absolutize(p)))
   const mounted = new Set([
     ...allowAbs,
@@ -1013,7 +1013,7 @@ export function refusedWrites(
 ): SandboxViolation[] {
   const binds = new Set(writable.map((w) => toRealPath(absolutize(w))))
   const granted = new Set((widened?.granted ?? []).map((w) => toRealPath(absolutize(w))))
-  const globs = scratch.map((g) => new Bun.Glob(g))
+  const globs = scratch.map(globOf)
   // Whether a write `binds` covers lands under a widened directory where
   // no grant covers it, and so is reported (see above).
   const undeclared = (syscall: string, abs: string): boolean => {

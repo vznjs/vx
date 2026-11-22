@@ -111,6 +111,7 @@ import {
   localBindingOn,
   loopbackPorts,
   MOUNT_WILDCARDS,
+  wildcardAt,
   namedPath,
   toRealPath,
   unique,
@@ -139,6 +140,7 @@ import {
 } from '../exec/index.js'
 
 type SrtModule = typeof import('@anthropic-ai/sandbox-runtime')
+type SrtTaskConfig = NonNullable<Parameters<SrtModule['SandboxManager']['wrapWithSandbox']>[2]>
 let srtPromise: Promise<SrtModule> | undefined
 /** Set once loaded, for `releaseBridges`, which a sync exit handler calls. */
 let srtLoaded: SrtModule | undefined
@@ -2027,10 +2029,17 @@ function asksUnixSockets(c: Pick<ResolvedSandboxConfig, 'unixSockets'>): boolean
  * walled. `[[]` is a class of one `[`; a lone `]` is plain text to it. A
  * `*` or `?` has no such spelling: `bindableReads` leaves its grant out.
  */
-function literalReadPaths(config: TaskSandboxConfig | undefined): TaskSandboxConfig | undefined {
+function literalReadPaths(config: TaskSandboxConfig | undefined): SrtTaskConfig | undefined {
   const fs = config?.filesystem
-  if (fs === undefined) return config
-  const escape = (paths: readonly string[]): string[] => paths.map((p) => p.replaceAll('[', '[[]'))
+  if (fs === undefined) return config as SrtTaskConfig | undefined
+  // A `*` or `?` reaches here only in a named directory (`nameDir`, a
+  // project under `packages/[*]/`): marked literal, as is every write path
+  // holding a wildcard, which SRT would otherwise drop.
+  const literal = (p: string) => ({ path: p, literal: true as const })
+  const escape = (paths: readonly string[]) =>
+    paths.map((p) => (/[*?]/.test(p) ? literal(p) : p.replaceAll('[', '[[]')))
+  const names = (paths: readonly string[]) =>
+    paths.map((p) => (MOUNT_WILDCARDS.test(p) ? literal(p) : p))
   return {
     ...config,
     filesystem: {
@@ -2038,6 +2047,8 @@ function literalReadPaths(config: TaskSandboxConfig | undefined): TaskSandboxCon
       // A `*` or `?` in a deny path matches its siblings too: a wider wall.
       denyRead: escape(fs.denyRead),
       ...(fs.allowRead !== undefined ? { allowRead: escape(bindableReads(fs.allowRead)) } : {}),
+      allowWrite: names(fs.allowWrite),
+      denyWrite: names(fs.denyWrite),
     },
   }
 }
@@ -2154,7 +2165,7 @@ function seatbeltSpells(grant: string, kind: 'read' | 'write', name: boolean): b
 function wrapForTask(
   SandboxManager: SrtModule['SandboxManager'],
   command: string,
-  customConfig: TaskSandboxConfig | undefined,
+  customConfig: SrtTaskConfig | undefined,
   sockets: boolean,
   gitConfig: boolean,
 ): Promise<string> {
@@ -4101,7 +4112,7 @@ function injectProfileRules(wrapped: string, rules: readonly string[]): string {
 export function wallsGlobsReach(grants: readonly string[], walls: readonly string[]): string[] {
   const heads = grants
     .filter((g) => namedPath(g) === undefined)
-    .map((g) => path.dirname(g.slice(0, g.search(MOUNT_WILDCARDS))))
+    .map((g) => path.dirname(g.slice(0, wildcardAt(g))))
   return walls.filter((w) => heads.some((h) => atOrUnder(w, h)))
 }
 
@@ -4144,7 +4155,7 @@ export function darwinAncestorRules(
   const inside = (d: string): boolean => anchors.some((a) => d !== a && atOrUnder(d, a))
   for (const g of [...c.allowRead, ...c.allowWrite]) {
     const named = namedPath(g)
-    const head = g.slice(0, g.search(MOUNT_WILDCARDS))
+    const head = g.slice(0, wildcardAt(g))
     const cut = head.lastIndexOf('/')
     const top = named !== undefined ? path.dirname(named) : head.slice(0, cut) || '/'
     for (let d = top; inside(d); d = path.dirname(d)) literals.add(d)
@@ -4288,7 +4299,7 @@ function expandGrants(
     patterns?.push(p)
     // Anchor the scan at the longest literal prefix so a pattern does not
     // walk the whole filesystem to find its matches.
-    const base = path.dirname(p.slice(0, p.search(MOUNT_WILDCARDS)))
+    const base = path.dirname(p.slice(0, wildcardAt(p)))
     const pattern = path.relative(base, p)
     // A hit that leaves the scan's base through a link is not what the
     // pattern named: bwrap binds by the link's target, so `read: ['*']`
@@ -4296,7 +4307,7 @@ function expandGrants(
     // never gives, and a cached task replayed b's old bytes (item 1006).
     // The boundary is the directory holding the first wildcard component,
     // not the scan's anchor: that sits one component higher.
-    const head = p.slice(0, p.search(MOUNT_WILDCARDS))
+    const head = p.slice(0, wildcardAt(p))
     const home = toRealPath(head.endsWith('/') ? head.slice(0, -1) : path.dirname(head))
     let hits = 0
     for (const hit of scanOrNothing(pattern, base)) {

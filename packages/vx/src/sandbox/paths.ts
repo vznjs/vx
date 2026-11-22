@@ -52,9 +52,49 @@ export function replacedBySandbox(dir: string): boolean {
   return process.platform === 'linux' && atOrUnder(dir, '/dev')
 }
 
+/**
+ * Directories whose names hold a wildcard and are names, not patterns: a
+ * sandboxed project under `packages/[legacy]/` (its own and the
+ * workspace's, both spellings). A grant spelled under one is read from past
+ * it, so `[legacy]` is never a class of six letters. Added once per run by
+ * `sandboxRequestFor`; never removed (a set of names, not state).
+ */
+const nameDirs = new Set<string>()
+
+/** Record `dir` as a name `wildcardAt` reads past (Linux: the sandbox mounts it by name). */
+export function nameDir(dir: string): void {
+  if (MOUNT_WILDCARDS.test(dir)) nameDirs.add(dir.endsWith(path.sep) ? dir.slice(0, -1) : dir)
+}
+
+/** The longest named directory `p` is at or under, or ''. */
+export function namedHead(p: string): string {
+  let head = ''
+  for (const d of nameDirs) if (d.length > head.length && atOrUnder(p, d)) head = d
+  return head
+}
+
+/** The index of a grant's first wildcard past any named directory (`nameDir`), or -1. */
+export function wildcardAt(grant: string): number {
+  if (!MOUNT_WILDCARDS.test(grant)) return -1
+  const head = namedHead(grant)
+  const at = grant.slice(head.length).search(MOUNT_WILDCARDS)
+  return at === -1 ? -1 : head.length + at
+}
+
+/**
+ * An absolute pattern as `Bun.Glob` must read it: a named directory's
+ * wildcards escaped, so `packages/[legacy]/*.log` matches in `[legacy]`.
+ */
+export function globOf(pattern: string): Bun.Glob {
+  const head = namedHead(pattern)
+  return new Bun.Glob(
+    head === '' ? pattern : head.replace(/[*?[\]{}\\]/g, '\\$&') + pattern.slice(head.length),
+  )
+}
+
 /** True when a grant names one path the sandbox can mount, rather than a pattern to scan. */
 export function isMountableLiteral(grant: string): boolean {
-  return !MOUNT_WILDCARDS.test(grant)
+  return wildcardAt(grant) === -1
 }
 
 /**

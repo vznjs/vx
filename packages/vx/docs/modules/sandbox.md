@@ -78,9 +78,8 @@ included) to `denyWrite`. A deny is the hit or one of its ancestors, so
 every hit that counts lies under a write path. It runs per task and is
 never cached: it decides refusals. It is stricter than rg: it walks
 into `node_modules` and counts a symlink by its name, so such a file inside a write grant is refused where rg missed it.
-A deny whose path holds a glob character would be dropped by SRT on
-Linux, so the task is refused instead, and a root with one keeps SRT's
-own depth-3 scan. `sandbox-deny-scan.unsafe.test.ts` holds the binds
+A deny whose path holds a glob character reaches SRT marked literal
+(`literalReadPaths`), and a root with one keeps SRT's own depth-3 scan. `sandbox-deny-scan.unsafe.test.ts` holds the binds
 equal to SRT's whole-root scan for three grant sets.
 
 SRT still spawned its `rg` on every wrap for those root entries, and
@@ -710,12 +709,21 @@ resolve, so such a read or write grant is left out the same way, and a
 project under such a directory is refused on Linux: its task saw no
 project and ran in `$HOME`.
 
-SRT drops every Linux write path holding `[`, `]`, `*` or `?` (it reads
-one as a glob), with no spelling that keeps it, so `bindableWrites` drops it
-first and says so once, naming the directory above it: left in, the read
-grants were punched around a bind that never came, the directory
-vanished from the task's view ("Directory nonexistent"), and the refused
-write went unreported, judged against the grant (B-59).
+SRT drops every Linux write path holding `[`, `]`, `*` or `?` it is
+handed as a string (it reads one as a glob), so `bindableWrites` drops a
+grant whose own part holds one first and says so once, naming the
+directory above it: left in, the read grants were punched around a bind
+that never came, the directory vanished from the task's view ("Directory
+nonexistent"), and the refused write went unreported, judged against the
+grant (B-59).
+
+A Linux project under a directory holding `[`, `]`, `*` or `?`
+(`packages/[legacy]/`) runs sandboxed. `sandboxRequestFor` records the
+project's and the workspace's directories as names (`nameDir`), and every
+glob test vx makes (`wildcardAt`, `globOf`) reads past them, so
+`[legacy]` is never a class of six letters. SRT gets each path holding
+one as `{ path, literal: true }` (a read or deny path holding only
+brackets keeps the `[[]` spelling). Refused until 2026-11-22.
 
 On macOS vx hands seatbelt's SRT the grant as written, and SRT compiles
 a spelling holding `[` as a regex in which a backslash is a literal one,
@@ -730,9 +738,9 @@ read grant whose only brackets are escaped names one path the same way and
 gets the same subtree, as Linux's bind gives it: `out/\[id\]` read the
 directory and none of its files. A baseline
 inside a wall a glob reaches is carved out whatever its name holds. A project under a bracketed
-directory is refused on both platforms (B-60, B-65): seatbelt compiled
-vx's own workspace wall as a class too, so it matched nothing. So is one
-under a directory holding `*` or `?`, whose grants matched its siblings.
+directory is refused on macOS (B-60, B-65): seatbelt compiled vx's own
+workspace wall as a class too, so it matched nothing. So is one under a
+directory holding `*` or `?`, whose grants matched its siblings.
 
 A `*` or `?` meant as itself, escaped in a grant (`a\*.txt`) or in a
 baseline's name, has no seatbelt spelling either: SRT compiled the

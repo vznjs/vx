@@ -16,7 +16,7 @@
 import { lstatSync, readdirSync } from 'node:fs'
 import { homedir } from 'node:os'
 import path from 'node:path'
-import { relPosix, UserError } from '../util/index.js'
+import { relPosix } from '../util/index.js'
 import { atOrUnder, MOUNT_WILDCARDS } from './paths.js'
 
 /** SRT's `DEFAULT_MANDATORY_DENY_SEARCH_DEPTH`; rg lists files one level deeper. */
@@ -153,14 +153,7 @@ export function scopedMandatoryDenies(
       if (d !== undefined) denies.add(d)
     }
   }
-  for (const d of denies) {
-    // SRT's `containsGlobChars` is this set: such a `denyWrite` entry is dropped on Linux.
-    if (MOUNT_WILDCARDS.test(d)) {
-      throw new UserError(
-        `the sandbox must keep ${d} read-only, and a path with a glob character (* ? [ ]) cannot reach it — rename the directory`,
-      )
-    }
-  }
+  // One holding a glob character reaches SRT marked literal (`literalReadPaths`).
   return [...denies]
 }
 
