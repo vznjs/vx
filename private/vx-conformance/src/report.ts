@@ -123,3 +123,29 @@ export function scoreTable(r: Pick<Results, 'tools' | 'scores'>): string {
     ...groups.map((g) => `| ${g} | ${tools.map((t) => percent(r.scores[t]![g])).join(' | ')} |`),
   ].join('\n')
 }
+
+/** Names each case vx fails, the run's one red result: a vx bug to fix. */
+export function vxFailures(rows: Row[]): boolean {
+  const fails = rows.filter((r) => r.outcomes['vx']?.status === 'fail')
+  if (fails.length > 0) console.error(`conformance: vx fails ${fails.map((r) => r.id).join(', ')}`)
+  return fails.length > 0
+}
+
+/** Shards' results as one run's: each case's outcomes joined, in the suite's order, scored again. */
+export function mergeResults(parts: Results[], order: string[]): Results {
+  const rows = new Map<string, Row>()
+  for (const p of parts)
+    for (const r of p.cases) {
+      const had = rows.get(r.id)
+      rows.set(r.id, had ? { ...had, outcomes: { ...had.outcomes, ...r.outcomes } } : r)
+    }
+  const at = new Map(order.map((id, i) => [id, i]))
+  const cases = [...rows.values()].sort((a, b) => (at.get(a.id) ?? 0) - (at.get(b.id) ?? 0))
+  const tools = Object.assign({}, ...parts.map((p) => p.tools)) as Results['tools']
+  return {
+    coverage: parts[0]!.coverage,
+    tools,
+    scores: scores(Object.keys(tools), cases),
+    cases,
+  }
+}

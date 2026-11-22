@@ -7,14 +7,24 @@
 //   bun src/cli.ts --case inputs/,cache/ cases whose id starts with one of those
 //   bun src/cli.ts --jobs 8              cases at once (default: CPU count)
 //   bun src/cli.ts --out file.json       where the results go
+//   bun src/cli.ts --shard 2/3           every third case, from the second (one CI job's part)
 //   bun src/cli.ts --verbose             print each failed run's output
+//   bun src/merge.ts out.json a.json b.json  shards' results → one
 import os from 'node:os'
 import path from 'node:path'
 import { parseArgs } from 'node:util'
 import { CASES } from '../cases/index.ts'
 import { ADAPTERS } from './adapters/index.ts'
 import { runCase, type Outcome } from './harness.ts'
-import { coverage, ref, scores, scoreTable, toolVersion, type Results } from './report.ts'
+import {
+  coverage,
+  ref,
+  scores,
+  scoreTable,
+  toolVersion,
+  vxFailures,
+  type Results,
+} from './report.ts'
 import { sandboxAvailable } from './sandbox.ts'
 import { fetchMoonPlugins } from './adapters/moon.ts'
 import { installLatest, LATEST } from './tools.ts'
@@ -25,6 +35,7 @@ const { values } = parseArgs({
     case: { type: 'string' },
     jobs: { type: 'string' },
     out: { type: 'string' },
+    shard: { type: 'string' },
     verbose: { type: 'boolean' },
   },
 })
@@ -38,7 +49,11 @@ const tools = values.tool
   ? ADAPTERS.filter((a) => values.tool!.split(',').includes(a.name))
   : ADAPTERS
 const prefixes = values.case?.split(',') ?? ['']
-const cases = CASES.filter((c) => prefixes.some((p) => c.id.startsWith(p)))
+const [part, parts] = (values.shard ?? '1/1').split('/').map(Number) as [number, number]
+// Dealt in turn, so each shard gets its share of the slow kinds (watch, timeouts).
+const cases = CASES.filter((c) => prefixes.some((p) => c.id.startsWith(p))).filter(
+  (_, i) => i % parts === part - 1,
+)
 const jobs = Number(values.jobs ?? os.availableParallelism())
 const out =
   values.out ?? path.join(import.meta.dir, '..', '..', 'vx-docs', 'src', 'data', 'conformance.json')
@@ -96,12 +111,8 @@ const results: Results = {
 }
 console.log(scoreTable(results))
 // A partial run never replaces the site's results.
-if ((values.tool || values.case) && !values.out) process.exit(0)
+if ((values.tool || values.case || values.shard) && !values.out) process.exit(0)
 await Bun.write(out, JSON.stringify(results, null, 2) + '\n')
 // The site keeps vx's committed column (vx-docs scripts/live-conformance.ts):
 // a case vx fails is a vx bug to fix, and the weekly run goes red on it.
-const vxFails = rows.filter((r) => r.outcomes['vx']?.status === 'fail')
-if (vxFails.length > 0) {
-  console.error(`conformance: vx fails ${vxFails.map((r) => r.id).join(', ')}`)
-  process.exit(1)
-}
+if (vxFailures(rows)) process.exit(1)

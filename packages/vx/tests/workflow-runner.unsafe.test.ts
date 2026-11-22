@@ -73,6 +73,7 @@ describe('a Linux CI job that runs a vx task', () => {
       'bench.yml#bench',
       'ci.yml#perf',
       'conformance.yml#conformance',
+      'conformance.yml#merge',
       'npm.yml#publish',
       'npm.yml#images',
       'real-repos.yml#real-repos',
