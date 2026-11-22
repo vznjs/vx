@@ -23,21 +23,6 @@ import {
 
 const NO_COLOR: ColorSupport = { enabled: false }
 
-/** A meter of the run's states; a segment with no style is dim, `▱` the work left. */
-function segmentBar(
-  segments: readonly { n: number; color: Style | ''; glyph?: string; dim?: boolean }[],
-  colors: ColorSupport,
-): string {
-  return bar(
-    segments.map((seg): Segment => ({
-      n: seg.n,
-      style: seg.color === '' || seg.dim === true ? 'muted' : seg.color,
-      ...(seg.glyph !== undefined ? { cell: seg.glyph } : {}),
-    })),
-    colors,
-  )
-}
-
 /** Aggregate counts feeding the summary section — buildable from a
  *  finished outcome list (formatRunSummary) or incrementally by the
  *  live logger, so the in-flight region and the final summary are the
@@ -251,11 +236,11 @@ export function formatSummarySection(
   const running = stats.running ?? 0
   const scheduled = stats.scheduled ?? 0
   const blocked = stats.blocked ?? 0
-  const remainder = {
+  // The work left, `▱`.
+  const remainder: Segment = {
     n: Math.max(0, left - running - scheduled - blocked),
-    color: 'muted' as const,
-    glyph: '\u25b1',
-    dim: true,
+    style: 'muted',
+    cell: '\u25b1',
   }
 
   const dim = (txt: string) => paint('muted', txt, colors)
@@ -278,16 +263,16 @@ export function formatSummarySection(
   // What is not done yet, running included: the count the bar's unfilled part shows.
   if (left > 0) taskParts.push(dim(`${left} left`))
   if (runTotal > 0) taskParts.push(dim(`${runTotal} total`))
-  const taskBar = segmentBar(
+  const taskBar = bar(
     [
-      { n: stats.failed, color: 'error' },
-      { n: stats.successful, color: 'ok' },
-      { n: stats.skipped, color: 'warn' },
-      { n: aborted, color: 'aborted' },
-      { n: notRun, color: 'notRun' },
-      { n: running, color: 'warn' },
-      { n: scheduled, color: 'muted', dim: true },
-      { n: blocked, color: 'muted', dim: true },
+      { n: stats.failed, style: 'error' },
+      { n: stats.successful, style: 'ok' },
+      { n: stats.skipped, style: 'warn' },
+      { n: aborted, style: 'aborted' },
+      { n: notRun, style: 'notRun' },
+      { n: running, style: 'warn' },
+      { n: scheduled, style: 'muted' },
+      { n: blocked, style: 'muted' },
       remainder,
     ],
     colors,
@@ -300,19 +285,17 @@ export function formatSummarySection(
 
   // Run context (final footer only): the projects bar leads the meter
   // stack — the projects in the run (yellow) vs the rest of the workspace (dim).
-  if (context !== undefined) {
-    const wsTotal = context.workspaceProjectCount
-    if (wsTotal !== undefined && wsTotal > 0) {
-      const width = barWidth(colors)
-      const cells =
-        context.packageCount === 0
-          ? 0
-          : Math.min(width, Math.max(1, Math.round((context.packageCount / wsTotal) * width)))
-      lines.push(
-        row('projects', gauge(cells, 'warn', colors)),
-        legend([paint('warn', `${context.packageCount} in run`, colors), dim(`${wsTotal} total`)]),
-      )
-    }
+  const wsTotal = context?.workspaceProjectCount
+  if (context !== undefined && wsTotal !== undefined && wsTotal > 0) {
+    const width = barWidth(colors)
+    const cells =
+      context.packageCount === 0
+        ? 0
+        : Math.min(width, Math.max(1, Math.round((context.packageCount / wsTotal) * width)))
+    lines.push(
+      row('projects', gauge(cells, 'warn', colors)),
+      legend([paint('warn', `${context.packageCount} in run`, colors), dim(`${wsTotal} total`)]),
+    )
   }
 
   if (taskBar.length > 0) {
@@ -337,20 +320,20 @@ export function formatSummarySection(
   if (miss + noCache + hits + left + stats.skipped + restoreFailed > 0) {
     const layers = context?.cache
     const b = cacheBuckets(stats, layers)
-    const cacheBar = segmentBar(
+    const cacheBar = bar(
       [
-        { n: b.miss, color: 'error' },
-        { n: b.notSaved, color: 'warn' },
-        { n: b.noCache, color: 'muted', dim: true },
-        { n: b.upToDate, color: 'ok' },
-        { n: b.restoredLocal, color: 'local' },
-        { n: b.saved, color: 'local' },
-        { n: b.restoredRemote, color: 'remote' },
-        { n: b.uploaded, color: 'remote' },
-        { n: b.uploading, color: 'info' },
-        { n: b.remoteFailed, color: 'error' },
-        { n: restoreFailed, color: 'error' },
-        { n: stats.skipped, color: 'warn' },
+        { n: b.miss, style: 'error' },
+        { n: b.notSaved, style: 'warn' },
+        { n: b.noCache, style: 'muted' },
+        { n: b.upToDate, style: 'ok' },
+        { n: b.restoredLocal, style: 'local' },
+        { n: b.saved, style: 'local' },
+        { n: b.restoredRemote, style: 'remote' },
+        { n: b.uploaded, style: 'remote' },
+        { n: b.uploading, style: 'info' },
+        { n: b.remoteFailed, style: 'error' },
+        { n: restoreFailed, style: 'error' },
+        { n: stats.skipped, style: 'warn' },
         remainder,
       ],
       colors,
@@ -450,19 +433,16 @@ export function formatSummarySection(
     // An executor that says where tasks ran says it better than the pool.
     if (context.concurrency !== undefined && own.length === 0)
       info.push(`${context.concurrency} worker${context.concurrency === 1 ? '' : 's'}`)
-    const layers = context.cache
+    const local = context.cache?.local ?? true
+    const remote = context.cache?.remote ?? context.remoteCacheEnabled
     info.push(
-      layers === undefined
-        ? context.remoteCacheEnabled
-          ? 'local + remote cache'
-          : 'local cache'
-        : layers.local && layers.remote
-          ? 'local + remote cache'
-          : layers.local
-            ? 'local cache'
-            : layers.remote
-              ? 'remote cache'
-              : 'no cache',
+      local && remote
+        ? 'local + remote cache'
+        : local
+          ? 'local cache'
+          : remote
+            ? 'remote cache'
+            : 'no cache',
     )
     if (context.cacheScope !== undefined) info.push(`scope ${context.cacheScope}`)
     // The plugin's hand on the run: a task a policy held with a worker free
@@ -523,13 +503,17 @@ function warnRows(
 function formatEta(ms: number): string {
   if (ms < 1000) return '<1s'
   const s = Math.ceil(ms / 1000)
-  if (s < 60) return `~${s}s`
-  return `~${Math.floor(s / 60)}m ${String(s % 60).padStart(2, '0')}s`
+  return s < 60 ? `~${s}s` : `~${minutes(s)}`
 }
 
 function formatOver(ms: number): string {
   const s = Math.max(1, Math.ceil(ms / 1000))
-  return s < 60 ? `+${s}s` : `+${Math.floor(s / 60)}m ${String(s % 60).padStart(2, '0')}s`
+  return s < 60 ? `+${s}s` : `+${minutes(s)}`
+}
+
+/** Whole seconds from a minute on: `2m 05s`. */
+function minutes(s: number): string {
+  return `${Math.floor(s / 60)}m ${String(s % 60).padStart(2, '0')}s`
 }
 
 /**
@@ -589,8 +573,6 @@ function tableStatusColor(o: TaskOutcome): Style {
   }
 }
 
-// Local byte formatter — the orchestrator can't import cli/format.ts
-// (module boundary), and the footer only needs one compact form.
 /**
  * Ran here with `cache: true`, succeeded, and its result was not saved.
  * Outputs left in the executor's store (`outputs: 'deferred'`) ran
