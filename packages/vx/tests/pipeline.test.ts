@@ -138,6 +138,8 @@ describe('vx pipeline <name>', () => {
           quiet: { tasks: ['show'], filter: ['a'], env: { VX_RUN_OUTPUT_LOGS: 'none' } },
           ghost: { tasks: ['nope'] },
           paths: { tasks: ['keep'], filter: ['a'], cacheDir: 'saved-cache', profile: 'saved.json' },
+          policy: { tasks: ['build'], cachePolicy: 'bogus' },
+          badenv: { tasks: ['build'], env: { VX_RUN_RETRIES: 'x', VX_CACHE_POLICY: 'local:q' } },
         }`,
       ),
     )
@@ -189,6 +191,27 @@ describe('vx pipeline <name>', () => {
     expect(existsSync(path.join(root, 'saved.json'))).toBe(true)
     expect(existsSync(path.join(root, 'packages', 'a', 'saved-cache'))).toBe(false)
     expect(existsSync(path.join(root, 'packages', 'a', 'saved.json'))).toBe(false)
+  }, 30_000)
+
+  // The load cannot check these; the run's parser refused them as a typed
+  // `--cache-policy` under `vx run`, or as a variable the user never set.
+  it('refuses a bad saved cachePolicy or setting variable, naming its key', async () => {
+    const policy = await vx('pipeline', 'policy')
+    expect([policy.code, policy.err]).toEqual([
+      1,
+      expect.stringContaining("`pipelines.policy.cachePolicy` invalid segment 'bogus'"),
+    ])
+    expect(policy.err).not.toContain('--cache-policy')
+    const env = await vx('pipeline', 'badenv')
+    expect([env.code, env.err]).toEqual([
+      1,
+      expect.stringContaining('`pipelines.badenv.env.VX_RUN_RETRIES` must be a non-negative'),
+    ])
+    // Its flag beats the variable, so nothing reads it; the next one is read.
+    const typed = await vx('pipeline', 'badenv', '--retries=0')
+    expect(typed.err).toContain("`pipelines.badenv.env.VX_CACHE_POLICY` invalid flag 'q'")
+    const both = await vx('pipeline', 'badenv', '--retries=0', '--cache-policy=local:rw')
+    expect([both.code, both.err]).toEqual([0, ''])
   }, 30_000)
 
   it('refuses no name, an unknown one, a task and --all, naming the fix', async () => {

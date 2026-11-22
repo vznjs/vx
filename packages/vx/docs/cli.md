@@ -1944,7 +1944,9 @@ for one task in one project.
 - `0` — every task passed, or `--dry` planned them.
 - `1` — a task failed; or no name, a name no pipeline has (with the
   nearest one as a fix), a task name or `--all` typed, or a refused
-  flag (`VX_E_USAGE`).
+  flag (`VX_E_USAGE`); or a saved `cachePolicy`, or an `env` entry
+  setting a `VX_*` variable, the run would refuse, naming that key
+  (`VX_E_CONFIG`).
 
 ## `vx cache clean`
 
