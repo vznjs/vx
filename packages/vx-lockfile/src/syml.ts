@@ -14,6 +14,10 @@ export function parseSyml(text: string): Doc | undefined {
   const root: Doc = {}
   const stack: { indent: number; map: Doc }[] = [{ indent: 0, map: root }]
   let open: Doc | undefined
+  // A key over 1024 characters, which Yarn writes `? key` with its `:` on
+  // the next line (YAML 1.2's limit on an implicit key): read as a hand
+  // edit, the whole file fell back to YAML and `0.10` read as 0.1 again.
+  let explicit: string | undefined
   let at = 0
   while (at < text.length) {
     let end = text.indexOf('\n', at)
@@ -34,7 +38,16 @@ export function parseSyml(text: string): Doc | undefined {
     const map = stack.at(-1)!.map
     let key: string
     let rest: number
-    if (line[indent] === '"') {
+    if (explicit !== undefined) {
+      if (line[indent] !== ':') return undefined
+      key = explicit
+      explicit = undefined
+      rest = indent + 1
+    } else if (line[indent] === '?' && line[indent + 1] === ' ') {
+      explicit = scalar(line.slice(indent + 2).trim())
+      if (explicit === undefined) return undefined
+      continue
+    } else if (line[indent] === '"') {
       const close = closingQuote(line, indent)
       if (close === -1 || line[close + 1] !== ':') return undefined
       const k = json(line.slice(indent, close + 1))
@@ -54,19 +67,21 @@ export function parseSyml(text: string): Doc | undefined {
       continue
     }
     if (line[rest] !== ' ') return undefined
-    if (value[0] === '"') {
-      const v = json(value)
-      if (v === undefined) return undefined
-      map[key] = v
-    } else if (value === '{}') {
+    if (value === '{}') {
       map[key] = {}
-    } else if (PLAIN_START.includes(value[0]!)) {
-      return undefined
-    } else {
-      map[key] = value
+      continue
     }
+    const v = scalar(value)
+    if (v === undefined) return undefined
+    map[key] = v
   }
-  return root
+  return explicit === undefined ? root : undefined
+}
+
+/** A whole scalar as Yarn's writer emits it, JSON-quoted or plain; undefined otherwise. */
+function scalar(text: string): string | undefined {
+  if (text[0] === '"') return json(text)
+  return text === '' || PLAIN_START.includes(text[0]!) ? undefined : text
 }
 
 /** A character no plain scalar of Yarn's writer starts with. */
