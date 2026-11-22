@@ -432,8 +432,9 @@ restoreTier, … })` runs the DAG two-tier. Each ready node invokes
       have exited (`serverUsers`).
       Persistent tasks
       the user REQUESTED, those a requested group stands for, and the
-      persistent tasks they depend on, are kept alive (none when
-      anything else failed) and the process
+      persistent tasks they depend on, are kept alive (a failure
+      elsewhere skips only its dependants; `--fail-fast` stops them) and
+      the process
       blocks at the very end (after the summary), streaming what they
       write, until the first of them exits — then
       one status line names it and its code, the others are torn down

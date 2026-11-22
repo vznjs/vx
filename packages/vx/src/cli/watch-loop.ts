@@ -599,6 +599,7 @@ class WatchLoop {
             // the next event retries, and dispose() on SIGINT is the exit. A
             // config's throw may quote a secret.
             failed = err instanceof Error ? err.message : String(err)
+            this.kept.clear()
             sayNotice('error', 'vx watch', `cycle failed: ${maskedLine(failed)}`)
           }
         if (judged !== undefined) judged.to = Math.min(judged.to, Date.now())
@@ -667,7 +668,7 @@ class WatchLoop {
     // A server whose task is unchanged stays up: the cycle rebuilds its deps
     // and the dev tool reloads. The run stops the others before its graph.
     const before = this.held
-    const kept = this.kept.forCycle(changes.changed, this.allDirs)
+    const kept = this.kept.forCycle(changes.changed, this.allDirs, workspaceRoot)
     const current = watchCycle(
       {
         ...opts,

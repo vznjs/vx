@@ -18,6 +18,7 @@ import {
 } from '../graph/index.js'
 import {
   type AffectedChanges,
+  LOCKFILE_NAME,
   type PackageGraph,
   PROJECT_CONFIG_FILENAMES,
   type ProjectEntry,
@@ -179,13 +180,17 @@ export function affectedRoots(
     }
     if (!changes.projects.has(n.projectName)) return false
     const rels = changes.paths.get(n.projectName) ?? []
-    if (changes.configTasks?.get(n.projectName)?.has(n.taskName) === true) {
+    // An unkeyed group runs nothing: it is reached through its deps.
+    if (
+      changes.configTasks?.get(n.projectName)?.has(n.taskName) === true &&
+      (keyed || !isGroupTask(n))
+    ) {
       if (seeds !== null) {
         const config = rels.find((r) => KEYED_BY_EVERY_TASK.has(r))
         seeds.set(
           n.id,
           config === undefined
-            ? inProject(n.projectName, undefined)
+            ? { kind: 'workspace', file: LOCKFILE_NAME }
             : { ...inProject(n.projectName, config), kind: 'input' },
         )
       }

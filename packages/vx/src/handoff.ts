@@ -255,12 +255,16 @@ export async function handOff(bin: string, args: readonly string[]): Promise<nev
   // This vx waits out the whole run beside the tasks, and `run()`, which
   // hides the env on every verb, is never reached here. Imported here:
   // a start that hands off nothing pays nothing.
-  await (await import('./util/index.js')).hideEnvFromTasks()
+  const util = await import('./util/index.js')
+  await util.hideEnvFromTasks()
   // The handlers come first: a signal landing between the spawn and them killed
   // this vx and left the local one running, orphaned. A handler runs on the
   // event loop, after the spawn returned.
   let child: Bun.Subprocess | undefined
   for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP'] as const) {
+    // One this vx was started deaf to (`&` in a script, nohup) stays so, and
+    // the local vx inherits the ignore: a handler here reset it on exec.
+    if (sig !== 'SIGTERM' && util.startedIgnoring(sig)) continue
     process.on(sig, () => {
       if (!inForeground()) child?.kill(sig)
     })
@@ -278,7 +282,7 @@ export async function handOff(bin: string, args: readonly string[]): Promise<nev
   // SIGINT, and an exit 130 ran the script's next line. The code below is
   // the rest, and the fallback should the signal not land.
   if (signal === 'SIGINT' || signal === 'SIGTERM' || signal === 'SIGHUP') {
-    ;(await import('./util/index.js')).dieOf(signal)
+    util.dieOf(signal)
   }
   if (typeof signal === 'number') process.exit(128 + signal)
   const { constants } = await import('node:os')

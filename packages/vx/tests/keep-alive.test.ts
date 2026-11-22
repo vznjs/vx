@@ -549,7 +549,7 @@ describe('foreground keep-alive ends when one requested server exits', () => {
   // passes `--fail-fast`). Nx keeps it. The run still exits 1 once the kept
   // server ends.
   const failing = (bad: string) => `export default { tasks: {
-    dev: { exec: { command: 'echo $$ > pid.txt; echo READY; exec sleep 2', persistent: { readyWhen: 'READY' } } },
+    dev: { exec: { command: 'echo $$ > pid.txt; echo READY; exec sleep 5', persistent: { readyWhen: 'READY' } } },
     ${bad}
   } }`
   const cases = [
@@ -598,7 +598,7 @@ describe('foreground keep-alive ends when one requested server exits', () => {
     const pid = await waitForPid(path.join(dir, 'pid.txt'), 10_000)
     const t0 = performance.now()
     expect(await proc.exited).toBe(1)
-    expect(performance.now() - t0).toBeLessThan(1_500)
+    expect(performance.now() - t0).toBeLessThan(3_500)
     expect(await waitForDead(pid, 1_000)).toBe(true)
   }, 30_000)
 })

@@ -104,4 +104,31 @@ describe('vx watch reruns only what a change reaches (e2e)', () => {
     await Bun.sleep(SETTLE_MS)
     expect(await count('bad#lint')).toBe(1)
   }, 40_000)
+
+  it('a dependant runs again when its uncached dependency ran, though its own key is the same', async () => {
+    // lib#gen reads schema.json without declaring it: the edit is in its
+    // project, so it runs, and what app#check reads moved under the same key.
+    await addProject(root, 'lib', {
+      config: `export default { tasks: { gen: {
+        exec: { command: 'mkdir -p gen && cat schema.json > gen/out.txt && echo lib#gen >> ${log}' },
+        inputs: { files: ['src/**'] },
+      } } }\n`,
+      files: { 'src/a.txt': 'l1\n', 'schema.json': 's1\n', '.gitignore': 'gen/\n' },
+    })
+    await addProject(root, 'app', {
+      config: `export default { tasks: { check: {
+        dependsOn: ['lib#gen'],
+        exec: { command: 'cat ../lib/gen/out.txt > seen.txt && echo app#check >> ${log}' },
+        inputs: { files: ['src/**'] },
+      } } }\n`,
+      files: { 'src/a.txt': 'a1\n', '.gitignore': 'seen.txt\n' },
+    })
+    watch = startWatch(root, [], {}, 'app#check')
+    const w = watch
+    await until(() => w.out().includes('watching '), 'the watching marker')
+    await writeFile(path.join(root, 'packages/lib/schema.json'), 's2\n')
+    await until(async () => (await count('lib#gen')) === 2, 'the generator ran again')
+    await until(async () => (await count('app#check')) === 2, 'the dependant ran again')
+    expect(await readFile(path.join(root, 'packages/app/seen.txt'), 'utf8')).toBe('s2\n')
+  }, 40_000)
 })

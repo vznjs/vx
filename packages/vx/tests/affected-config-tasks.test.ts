@@ -74,3 +74,15 @@ it('CONTROL: committed, the same diff against the parent', async () => {
   }
   expect(plan.tasks.map((t) => t.id)).toEqual(['app#build'])
 })
+
+it('a group whose edges moved selects nothing itself: it runs nothing', async () => {
+  const git = gitIn(root)
+  await edit(config('true', "\n    ci: { dependsOn: ['build'] },"))
+  git('add', '-A')
+  git('commit', '-qm', 'ci')
+  await edit(config('true', "\n    ci: { dependsOn: ['build', 'test'] },"))
+  const plan = JSON.parse(vx('run', 'ci', '--affected=HEAD', '--dry=json')) as {
+    tasks: Array<{ id: string }>
+  }
+  expect(plan.tasks.map((t) => t.id)).toEqual([])
+})

@@ -37,6 +37,16 @@ export function keepsOutcome(o: TaskOutcome): boolean {
   )
 }
 
+/**
+ * A dependency ran its command this cycle: an uncached one may have rewritten
+ * what its dependant reads under the same key (a key folds input keys, never
+ * outputs), so nothing built on it is kept.
+ */
+function ranHere(o: TaskOutcome): boolean {
+  if (o.groupUpstream !== undefined) return o.groupUpstream.some(ranHere)
+  return (o.status === 'success' || o.status === 'failed') && o.cache?.kept !== true
+}
+
 /** The task's kept result from an earlier cycle when its key is the same, else undefined: it runs. */
 export function keptOutcome(
   args: ExecuteArgs,
@@ -44,7 +54,7 @@ export function keptOutcome(
   startNs: bigint,
 ): TaskOutcome | undefined {
   const last = args.run.kept?.get(args.node.id)
-  if (last === undefined || last.hash !== hash) return undefined
+  if (last === undefined || last.hash !== hash || args.upstream.some(ranHere)) return undefined
   const timing = { startNs, endNs: startNs }
   const cache = { ...last.cache, kept: true as const }
   if (last.status === 'failed')
