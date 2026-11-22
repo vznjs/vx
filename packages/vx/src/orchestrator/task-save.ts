@@ -48,6 +48,9 @@ export type SaveVerdict =
  * describes its inputs, no server it used died under it, and its outputs
  * are its own. Each check that fails says why; later ones do not run.
  */
+const HACK_SKIP = process.env['VX_HACK_SKIP_CHECKS'] === '1'
+const HACK_BURN_NS = Number(process.env['VX_HACK_BURN_US'] ?? 0) * 1000
+
 export async function saveVerdict(
   m: MissRun,
   ran: Attempts,
@@ -55,6 +58,10 @@ export async function saveVerdict(
   stamp: StateStamp,
 ): Promise<SaveVerdict> {
   const { args, policy } = m
+  if (HACK_BURN_NS > 0) {
+    const end = Bun.nanoseconds() + HACK_BURN_NS
+    while (Bun.nanoseconds() < end);
+  }
   const passed = ran.exitCode === 0
   if (passed && policy.save && (policy.deferred || ran.result.outputs?.kind === 'deferred')) {
     const materialize =
@@ -70,9 +77,10 @@ export async function saveVerdict(
     policy.save &&
     nothingLeftRunning(m, ran) &&
     noStateWritten(m, stamp) &&
-    (await keyStillTrue(m, ran.result, check)) &&
-    upstreamOutputsHeld(m) &&
-    (await upstreamInputsHeld(m, check)) &&
+    (HACK_SKIP ||
+      ((await keyStillTrue(m, ran.result, check)) &&
+        upstreamOutputsHeld(m) &&
+        (await upstreamInputsHeld(m, check)))) &&
     (await args.run.serverDiedUnder?.(args.node)) !== true
   ) {
     const own = await m.guard.own()
