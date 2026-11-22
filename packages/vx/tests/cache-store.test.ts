@@ -465,19 +465,19 @@ describe('a tree hit holding a link', () => {
 
 describe('a tree holding links to directories', () => {
   // Bun's recursive readdir follows a link to a directory: a save's size walk
-  // went through two links back to out/ (pnpm's dependency cycles lay them in
+  // went through links back to out/ (pnpm's dependency cycles lay them in
   // a copied node_modules) into a 2^40-path walk, 7 GB, then the OOM killer.
   it.skipIf(process.platform === 'win32')(
     'saves and counts its bytes without going through the links',
     async () => {
       const proj = path.join(root, 'p')
-      await mkdir(path.join(proj, 'out/a'), { recursive: true })
-      await mkdir(path.join(proj, 'out/b'), { recursive: true })
+      // four, not two: with two, Bun's walk sometimes meets ELOOP first and stops
+      for (const d of ['a', 'b', 'c', 'd'])
+        await mkdir(path.join(proj, 'out', d), { recursive: true })
       await mkdir(path.join(proj, 'big'), { recursive: true })
       await writeFile(path.join(proj, 'out/a.bin'), LARGE)
       await writeFile(path.join(proj, 'big/huge.bin'), new Uint8Array(4 * 1024 * 1024))
-      await symlink('..', path.join(proj, 'out/a/up'))
-      await symlink('..', path.join(proj, 'out/b/up'))
+      for (const d of ['a', 'b', 'c', 'd']) await symlink('..', path.join(proj, 'out', d, 'up'))
       await symlink('../big', path.join(proj, 'out/big'))
       const cache = new Cache(
         path.join(root, 'c'),
@@ -488,7 +488,7 @@ describe('a tree holding links to directories', () => {
         undefined,
         { embeddings: 0, decompress: true },
       )
-      const outs = ['out/a.bin', 'out/a/up', 'out/b/up', 'out/big']
+      const outs = ['out/a.bin', 'out/a/up', 'out/b/up', 'out/c/up', 'out/d/up', 'out/big']
       await cache.save({
         hash: HASH,
         entry: { taskId: 'p#build', command: 'build', durationMs: 1, stdout: '' },
