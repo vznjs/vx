@@ -9,10 +9,22 @@
 import type { Database } from 'bun:sqlite'
 import { lazyStatement, isIndexFull } from '../index-db/index.js'
 import { lstatSync, readlinkSync } from 'node:fs'
+import { open } from 'node:fs/promises'
 import path from 'node:path'
 
 import { FILE_HASH_RACY_MS, racyWindowMs } from './fs-clock.js'
 import { isPermissionError, UserError } from '../util/index.js'
+
+/**
+ * A file past this streams through the hasher: read whole, the inputs git
+ * vouches no OID for (LFS and other filtered files, untracked ones) held
+ * every byte at once, ~650 MiB over the floor for four 150 MiB files.
+ */
+const STREAM_HASH_BYTES = 8 * 1024 * 1024
+/** Files hashed at once in a batch: a run's misses, each up to one stream's buffers. */
+const HASH_WIDTH = 32
+/** What one streamed file holds at a time. */
+const STREAM_CHUNK_BYTES = 1024 * 1024
 
 export class FileHashStore {
   private readonly selectFileHash: ReturnType<Database['prepare']>
@@ -309,9 +321,15 @@ export class FileHashStore {
       }
     }
     if (misses.length === 0) return out
-    const digests = await Promise.all(
-      misses.map((p) => this.hashFileFromDisk(p).catch(() => undefined)),
-    )
+    const digests: (string | undefined)[] = []
+    let next = 0
+    const lane = async (): Promise<void> => {
+      while (next < misses.length) {
+        const i = next++
+        digests[i] = await this.hashFileFromDisk(misses[i]!).catch(() => undefined)
+      }
+    }
+    await Promise.all(Array.from({ length: Math.min(HASH_WIDTH, misses.length) }, lane))
     const now = Date.now()
     const rows: Array<[string, Stat, string]> = []
     for (let i = 0; i < misses.length; i++) {
@@ -350,7 +368,13 @@ export class FileHashStore {
   private async hashFileFromDisk(filePath: string): Promise<string> {
     let bytes: Uint8Array
     try {
-      bytes = await Bun.file(filePath).bytes()
+      const file = Bun.file(filePath)
+      const size = file.size
+      if (size > STREAM_HASH_BYTES) {
+        const streamed = await this.hashStream(filePath, size)
+        if (streamed !== undefined) return streamed
+      }
+      bytes = await file.bytes()
     } catch (err) {
       // Left raw, the scheduler added the write hint to an input vx only
       // reads: "a path vx must write is not writable by this user".
@@ -361,6 +385,32 @@ export class FileHashStore {
       )
     }
     return this.hashBytes(bytes, filePath)
+  }
+
+  /**
+   * `hashBytes` of `file` read a chunk at a time. The blob header names the
+   * size before the bytes, so a file that grew or shrank under the read
+   * answers undefined, and the caller reads it whole as before.
+   */
+  private async hashStream(filePath: string, size: number): Promise<string | undefined> {
+    const hasher = new Bun.CryptoHasher(this.objectFormat ?? this.detectObjectFormat(filePath))
+    hasher.update(`blob ${size}\0`)
+    // One buffer reused: a Bun.file stream read ahead ~40 MiB a file.
+    const buf = Buffer.allocUnsafe(STREAM_CHUNK_BYTES)
+    const fh = await open(filePath, 'r')
+    try {
+      let read = 0
+      for (;;) {
+        const { bytesRead } = await fh.read(buf, 0, buf.length, read)
+        if (bytesRead === 0) break
+        read += bytesRead
+        if (read > size) return undefined
+        hasher.update(buf.subarray(0, bytesRead))
+      }
+      return read === size ? hasher.digest('hex') : undefined
+    } finally {
+      await fh.close()
+    }
   }
 
   /**

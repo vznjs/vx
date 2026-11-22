@@ -60,3 +60,28 @@ describe.skipIf(!linux)('vx peak memory over big outputs', () => {
     TIMEOUT,
   )
 })
+
+describe.skipIf(!linux)('vx peak memory over big inputs', () => {
+  it(
+    '600 MiB of inputs git holds no OID for hash in bounded memory',
+    async () => {
+      // Four 150 MiB inputs a fresh clone's git vouches no OID for (untracked
+      // here; LFS and other filtered files are the same path): each was read
+      // whole and all at once, ~650 MiB over the floor, before a byte was hashed.
+      const root = await workspace({
+        a: `export default { tasks: { out: { exec: { command: 'mkdir -p dist && ls src > dist/l' }, inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true } } }\n`,
+      })
+      const src = path.join(root, 'packages', 'a', 'src')
+      for (const n of [1, 2, 3, 4])
+        Bun.spawnSync([
+          'sh',
+          '-c',
+          `head -c ${150 * MIB} /dev/urandom > ${JSON.stringify(path.join(src, `big${n}.bin`))}`,
+        ])
+      const miss = await run(root, ['a#out'])
+      expect(miss.out).toContain('a#out')
+      expect(miss.peak - base).toBeLessThan(160)
+    },
+    TIMEOUT,
+  )
+})
