@@ -22,6 +22,7 @@ import { ABSENT_INPUT } from '../cache/index.js'
 import { FILE_HASH_RACY_MS, fsClockNow, racyWindowMs, stampGrainMs } from '../memo/index.js'
 import { outputMatcher, printable, relPosix, span } from '../util/index.js'
 import { type Logger, warnOf } from '../report/index.js'
+import { hashArgsOf } from './execute-args.js'
 import type { ExecuteArgs, RunContext } from './execute-task.js'
 import type { CommandWindows } from './command-windows.js'
 import { type InputFact, inputFilesOf, movedInput } from './task-hash.js'
@@ -424,16 +425,7 @@ function changedAfter(dir: string, at: number): boolean {
 async function ownInputs(args: ExecuteArgs): Promise<readonly string[]> {
   const end = span('miss: list upstream inputs')
   const { node, run } = args
-  const files = await inputFilesOf({
-    node,
-    upstream: args.upstream,
-    workspaceRoot: run.workspaceRoot,
-    cache: run.cache,
-    forwardArgs: run.forwardArgs,
-    nestedProjectDirs: args.nestedProjectDirs,
-    ...(run.gitFilesCache !== undefined ? { gitFilesCache: run.gitFilesCache } : {}),
-    ...(run.hashCache !== undefined ? { hashCache: run.hashCache } : {}),
-  })
+  const files = await inputFilesOf(hashArgsOf(args))
   end()
   const own = node.config.outputs?.files ?? []
   const ws = node.config.outputs?.workspaceFiles ?? []
