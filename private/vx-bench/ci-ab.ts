@@ -13,7 +13,7 @@ import { deleteDist } from './outputs.js'
 import { generate, gitInit, linkRivals, RUNNER_ENV, rivalRuns } from './site-workspace.js'
 import { RUN_TASKS } from './shape.js'
 
-const ROUNDS = Number(process.env.ROUNDS ?? 2)
+const ROUNDS = Number(process.env.ROUNDS ?? 3)
 const C = 10
 const modules = path.join(import.meta.dir, 'node_modules')
 
@@ -77,8 +77,10 @@ const vt = rivalRuns(ws, C)['vite-task']
 const vxRun = [vxBin, 'run', ...RUN_TASKS, '--all', '--concurrency', String(C)]
 const arms = [
   { label: 'base', cmd: vxRun, env: {}, clear: ['.vx/cache'] },
-  { label: 'skip', cmd: vxRun, env: { VX_HACK_SKIP_CHECKS: '1' }, clear: ['.vx/cache'] },
-  { label: 'burn300', cmd: vxRun, env: { VX_HACK_BURN_US: '300' }, clear: ['.vx/cache'] },
+  { label: 'skipAll', cmd: vxRun, env: { VX_HACK_SKIP_CHECKS: 'all' }, clear: ['.vx/cache'] },
+  { label: 'skipOwn', cmd: vxRun, env: { VX_HACK_SKIP_CHECKS: 'own' }, clear: ['.vx/cache'] },
+  { label: 'skipUp', cmd: vxRun, env: { VX_HACK_SKIP_CHECKS: 'up' }, clear: ['.vx/cache'] },
+  { label: 'stat40', cmd: vxRun, env: { VX_HACK_STATS: '40' }, clear: ['.vx/cache'] },
   { label: 'vt', cmd: vt.run, env: {}, clear: vt.clear.paths, clearCmd: vt.clear.command },
 ]
 for (let r = 0; r < ROUNDS; r++) {

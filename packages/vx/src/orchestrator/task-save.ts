@@ -1,3 +1,4 @@
+import { lstatSync } from 'node:fs'
 // Whether a miss is saved, decided in one place (`saveVerdict`), and what
 // each verdict does to the cache and the run's facts (`applySave`).
 
@@ -48,8 +49,9 @@ export type SaveVerdict =
  * describes its inputs, no server it used died under it, and its outputs
  * are its own. Each check that fails says why; later ones do not run.
  */
-const HACK_SKIP = process.env['VX_HACK_SKIP_CHECKS'] === '1'
+const HACK_SKIP = process.env['VX_HACK_SKIP_CHECKS'] ?? ''
 const HACK_BURN_NS = Number(process.env['VX_HACK_BURN_US'] ?? 0) * 1000
+const HACK_STATS = Number(process.env['VX_HACK_STATS'] ?? 0)
 
 export async function saveVerdict(
   m: MissRun,
@@ -61,6 +63,11 @@ export async function saveVerdict(
   if (HACK_BURN_NS > 0) {
     const end = Bun.nanoseconds() + HACK_BURN_NS
     while (Bun.nanoseconds() < end);
+  }
+  if (HACK_STATS > 0) {
+    const files = m.inputs.described?.facts.map((f) => f.path) ?? []
+    if (files.length > 0)
+      for (let i = 0; i < HACK_STATS; i++) lstatSync(files[i % files.length]!, { throwIfNoEntry: false })
   }
   const passed = ran.exitCode === 0
   if (passed && policy.save && (policy.deferred || ran.result.outputs?.kind === 'deferred')) {
@@ -77,10 +84,9 @@ export async function saveVerdict(
     policy.save &&
     nothingLeftRunning(m, ran) &&
     noStateWritten(m, stamp) &&
-    (HACK_SKIP ||
-      ((await keyStillTrue(m, ran.result, check)) &&
-        upstreamOutputsHeld(m) &&
-        (await upstreamInputsHeld(m, check)))) &&
+    (HACK_SKIP === 'all' || HACK_SKIP === 'own' || (await keyStillTrue(m, ran.result, check))) &&
+    (HACK_SKIP === 'all' || HACK_SKIP === 'up' || upstreamOutputsHeld(m)) &&
+    (HACK_SKIP === 'all' || HACK_SKIP === 'up' || (await upstreamInputsHeld(m, check))) &&
     (await args.run.serverDiedUnder?.(args.node)) !== true
   ) {
     const own = await m.guard.own()
