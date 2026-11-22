@@ -49,6 +49,15 @@ import viteTaskE2eA from './vite-task-e2e-a.ts'
 import viteTaskE2eB from './vite-task-e2e-b.ts'
 import vitePlanA from './vite-task-plan-a.ts'
 import vitePlanB from './vite-task-plan-b.ts'
+import rivalShell from './rival-shell.ts'
+import rivalTurbo from './rival-turbo.ts'
+import rivalKeys from './rival-keys.ts'
+import rivalShapes from './rival-shapes.ts'
+import rivalConfig from './rival-config.ts'
+import rivalGlobs from './rival-globs.ts'
+import rivalModes from './rival-modes.ts'
+import rivalReport from './rival-report.ts'
+import rivalDiscovery from './rival-discovery.ts'
 import watch from './watch.ts'
 
 /** Every case, in the results' order. */
@@ -104,4 +113,13 @@ export const CASES: Case[] = [
   ...moonTests,
   ...recentFixes,
   ...hardeningFixes,
+  ...rivalShell,
+  ...rivalTurbo,
+  ...rivalKeys,
+  ...rivalShapes,
+  ...rivalConfig,
+  ...rivalGlobs,
+  ...rivalModes,
+  ...rivalReport,
+  ...rivalDiscovery,
 ]
