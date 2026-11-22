@@ -134,7 +134,7 @@ its `dependsOn` needs from other projects. `--all`, `--filter`,
 
 ### Usage
 
-```
+```sh
 vx run [OPTIONS] [TASK | PKG#TASK ...] [-- forwarded-args...]
 ```
 
@@ -1526,7 +1526,7 @@ change in the projects in scope. Press `Ctrl+C` to stop.
 
 ### Usage
 
-```
+```sh
 vx watch [OPTIONS] [--poll] TASK [-- forwarded-args...]
 ```
 
@@ -1885,7 +1885,7 @@ every project that declares them, under the `vx run` flags it saves
 
 ### Usage
 
-```
+```sh
 vx pipeline NAME [OPTIONS]
 ```
 
@@ -1950,7 +1950,7 @@ bound clears the cache. It operates on the entries and
 
 ### Usage
 
-```
+```sh
 vx cache clean --older-than <duration>     # Drop entries last used before now - duration (up to 1h slack).
 vx cache clean --max-size <size>            # After age-based pruning, evict LRU until under <size>.
 vx cache clean ... --dry                    # Say what either policy would reap; delete nothing.
@@ -2214,7 +2214,7 @@ stale.
 
 ### Usage
 
-```
+```sh
 vx lock              # Evaluate all vx.config.* now; write .vx/projects.lock and .vx/dependencies.lock.
 vx lock --check      # Audit: full re-evaluation vs the lock. Exit 1 on drift.
 vx lock --check --format json   # The audit as {upToDate, audited, notAudited, problems}.
@@ -2634,7 +2634,7 @@ without asking the registry.
 
 ### Usage
 
-```
+```sh
 vx upgrade [TAG] [-g|--global]
 ```
 
@@ -2829,7 +2829,7 @@ tsconfig's `exclude`, or pass `--mjs`.
 
 ### Usage
 
-```
+```sh
 vx init [--dry [--format pretty|json]] [--force] [--mjs] [--native|--keep] [--plugin <hook>]
 ```
 
@@ -2984,7 +2984,7 @@ package, run before a workspace file exists (it writes one); `vx init`
 runs it in a repo with a `turbo.json`, `turbo.jsonc`, `nx.json`, an
 exported Nx graph or Lerna on Nx —
 
-```
+```sh
 bunx @vzn/vx-migrate           # turbo.json, an Nx graph, vite-plus run.tasks, else package.json scripts → vx.config.ts (vx init hands it only Turbo and Nx)
 bunx @vzn/vx-migrate --dry     # print the generated files instead of writing
 bunx @vzn/vx-migrate --force   # overwrite existing vx.config.*
@@ -3268,7 +3268,7 @@ no lock it refuses as a run does (`no lock: run \`vx lock\``).
 
 ### Usage
 
-```
+```sh
 vx show                          # list every project
 vx show <project>                # one project's resolved config (`//`: the root project's)
 vx show <pkg>#<task>             # a single task (`//#<task>`: the root project's)
@@ -3401,7 +3401,7 @@ why (`lockError` in JSON, where the counts are zero). A broken config is `vx loc
 
 ### Usage
 
-```
+```sh
 vx info [--format pretty|json] [--cache-dir <path>]
 ```
 
@@ -3576,7 +3576,7 @@ dependency is a group, which records no run of its own.
 
 ### Usage
 
-```
+```sh
 vx why (TASK | PKG#TASK) [--run RUNID] [--format pretty|json] [--cache-dir <path>]
 ```
 
@@ -3762,7 +3762,7 @@ stopped.
 
 ### Usage
 
-```
+```sh
 vx last [RUNID] [--list[=N]] [--failed] [--log <task>] [--stats [<task>] [--branch <name>]] [--sql <query>] [--live [--follow]] [--format pretty|json] [--cache-dir <path>]
 ```
 
@@ -4113,7 +4113,7 @@ names the site).
 
 Print a completion script for `bash`, `zsh` or `fish`:
 
-```
+```sh
 eval "$(vx completions bash)"                          # this shell
 vx completions zsh > ~/.zfunc/_vx                      # zsh, with ~/.zfunc on $fpath
 vx completions fish > ~/.config/fish/completions/vx.fish

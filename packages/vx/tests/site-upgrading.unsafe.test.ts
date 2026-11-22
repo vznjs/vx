@@ -1,4 +1,4 @@
-// The site's "Upgrading to 1.0" page lists every breaking commit's
+// The site's "Upgrading vx" page lists every breaking commit's
 // `BREAKING CHANGE:` footer git log holds, and no other. The footers are
 // compared, not the titles: a squash merge titles the commit after its PR,
 // and the footer is the part that tells a user what to do. Regenerate with
@@ -24,7 +24,7 @@ const shallow =
 
 it('a footer ends at a git trailer with no blank line before it', () => {
   const body = 'Why.\n\nBREAKING CHANGE: a is b\nnow.\nCo-Authored-By: C <c@c>\nClaude-Session: s'
-  expect(footers(page([{ subject: 'feat!: x', body }]))).toEqual(['a is b now.'])
+  expect(footers(page([{ subject: 'feat!: x', body }]))).toEqual(['A is b now.'])
 })
 
 it('guides/upgrading.md carries every breaking footer in git log', () => {
