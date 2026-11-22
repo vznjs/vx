@@ -2,8 +2,9 @@
    the site is one product (design/site-redo-2026-09.md § One look). The
    --vx-* tokens are the only colours a diagram may use
    (components/guide/diagram/README.md); Starlight's own properties are mapped
-   onto them below. Dark is the default theme (components/starlight/
-   ThemeProvider.astro); the light theme keeps every pair readable. */
+   onto them below. The reader's system picks dark or light until they pick
+   one in the header (components/starlight/ThemeProvider.astro); the light
+   theme keeps every pair readable. */
 
 :root {
   --vx-bg: #0a0b0d;

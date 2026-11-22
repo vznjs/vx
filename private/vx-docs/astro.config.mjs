@@ -177,7 +177,7 @@ export default defineConfig({
         },
       ],
       // The site's chrome: the places in the header (and atop the phone
-      // menu), the landing's fonts, and dark as the default theme. The blog's
+      // menu), the landing's fonts, and the theme the system picks. The blog's
       // and releases' posts take a hero and related posts here
       // (src/components/blog/); their indexes, tag pages and feeds are
       // src/pages/blog/ and src/pages/releases/.
