@@ -453,6 +453,11 @@ the settle resolves with (the save's time and size) is merged into the
 outcome the dependents and observers see. An outcome `trails(outcome)`
 names releases its dependents at once and finishes at the settle: its
 files are still coming to this machine, and no dependent reads them here.
+While no slot is free, the next four ready exec-tier tasks are handed to
+`prepare(node, upstream)` once each, a turn later and only if still
+queued, so the orchestrator takes their keys while they wait instead of
+in the slot they wait for (2026-11-22: 0.36 → 0.16 ms of a cold miss's
+slot).
 
 ### Public surface
 
@@ -611,6 +616,8 @@ export interface ScheduleOptions {
   settledOf?: (outcome: TaskOutcome) => Promise<Partial<TaskOutcome> | void> | undefined
   /** True for an outcome whose dependents need nothing of what it still owes. */
   trails?: (outcome: TaskOutcome) => boolean
+  /** Told of the next ready tasks while no slot is free, once each: their keys are taken while they wait. */
+  prepare?: (node: TaskNode, upstream: TaskOutcome[]) => void
   /** The outcome of an exec-tier task settled in place, or undefined to dispatch it. */
   settleNow?: (node: TaskNode, upstream: TaskOutcome[]) => (() => TaskOutcome) | undefined
   /** Optional per-node weight override (a scheduling policy's seam). */
