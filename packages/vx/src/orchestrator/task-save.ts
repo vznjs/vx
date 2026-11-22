@@ -3,7 +3,7 @@
 
 import { span } from '../util/index.js'
 import { warnOf } from '../report/index.js'
-import type { Attempts } from './attempts.js'
+import type { Attempts } from './attempt.js'
 import { outputsStep, type OwnOutputs } from './attempt-outputs.js'
 import {
   keyStillTrue,

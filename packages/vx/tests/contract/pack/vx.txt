@@ -124,10 +124,7 @@ src/orchestrator/admission.ts
 src/orchestrator/affected-tasks.ts
 src/orchestrator/attempt-outputs.ts
 src/orchestrator/attempt-request.ts
-src/orchestrator/attempt-signal.ts
-src/orchestrator/attempt-stream.ts
 src/orchestrator/attempt.ts
-src/orchestrator/attempts.ts
 src/orchestrator/cached-task.ts
 src/orchestrator/command-windows.ts
 src/orchestrator/deferred-outputs.ts
@@ -155,7 +152,6 @@ src/orchestrator/miss-inputs.ts
 src/orchestrator/miss-outcome.ts
 src/orchestrator/miss-run.ts
 src/orchestrator/miss-save.ts
-src/orchestrator/missing-outputs.ts
 src/orchestrator/options.ts
 src/orchestrator/output-host.ts
 src/orchestrator/output-log.ts
@@ -192,7 +188,6 @@ src/orchestrator/task-log-buffer.ts
 src/orchestrator/task-policy.ts
 src/orchestrator/task-process.ts
 src/orchestrator/task-save.ts
-src/orchestrator/task-secrets.ts
 src/orchestrator/telemetry-host.ts
 src/orchestrator/telemetry.ts
 src/orchestrator/trailing-outputs.ts

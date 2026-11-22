@@ -10,7 +10,7 @@ import type {
   TaskOutcome,
 } from '../graph/index.js'
 import { warnOf } from '../report/index.js'
-import type { Attempts } from './attempts.js'
+import type { Attempts } from './attempt.js'
 import type { KeyCheck } from './input-recheck.js'
 import type { MissRun } from './miss-run.js'
 import { failedOutputLog } from './output-log.js'
