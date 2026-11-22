@@ -12,6 +12,7 @@
       ],
       "exec": {
         "command": "bun perf-guard.ts && bun pr-bench.ts",
+        "timeout": "10m",
         "env": {
           "define": {
             "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",

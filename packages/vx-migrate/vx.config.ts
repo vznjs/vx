@@ -141,7 +141,6 @@ export default defineProject({
         command:
           'mkdir -p .nx-live && cd .nx-live && { [ -f package.json ] || echo \'{"private":true}\' > package.json; } && bun add nx@24 @nx/js@24 typescript@5 && echo installed',
         persistent: { readyWhen: '^installed$' },
-        timeout: '5m',
       },
     },
   },

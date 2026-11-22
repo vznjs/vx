@@ -115,7 +115,7 @@ export async function deploy(
   // it, until the job's own timeout (main's CI, 2026-11-22: 22 min): each has
   // its own deadline, and a status read that times out is asked again.
   const fetch = (url: string | URL, init: RequestInit = {}): Promise<Response> =>
-    globalThis.fetch(url, { ...init, signal: AbortSignal.timeout(opts.request ?? 60_000) })
+    globalThis.fetch(url, { ...init, signal: AbortSignal.timeout(opts.request ?? 30_000) })
   const api = env.GITHUB_API_URL ?? 'https://api.github.com'
   const { run, job } = backendIds(env.ACTIONS_RUNTIME_TOKEN)
   const ids = { workflowRunBackendId: run, workflowJobRunBackendId: job, name: 'github-pages' }
@@ -182,7 +182,9 @@ export async function deploy(
   }).then((r) => call('create deployment', r))
   log(`deploy-pages: deployment ${deployment.id}`)
 
-  const deadline = performance.now() + (opts.deadline ?? 600_000)
+  // Inside the workspace's 2-minute task limit: the deploy goes live in
+  // well under a minute.
+  const deadline = performance.now() + (opts.deadline ?? 80_000)
   for (let errors = 0; ;) {
     let status: string
     try {
