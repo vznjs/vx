@@ -150,39 +150,46 @@ vx run test -- --watch=false  # forward arguments to the task
 
 The first run executes and saves; the next finds nothing changed:
 
-```
-$ vx run build --all
-
-            success miss           —    17ms   88%   41MB     2KB       1 local          lib#build
-            success miss           —     6ms   83%   38MB     1KB       0 local          app#build
-
-
-  Summary                                                                                                       vx 0.0.0
-  projects  ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰
-            2 in run · 2 total
-  tasks     ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰
-            2 success · 2 total
-  cache     ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰
-            local 2↑
-
-  info      4 workers · local cache · run 01a16e03-afb0-76ee-9cea-18a61c9d1e91
-  time      101ms · max 17ms · avg 12ms · min 6ms
+```sh
+vx run build --all
 ```
 
+```ansi
+
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mTasks[0m[4m[58;2;110;118;129m     [2mstatus  cache     ±usual    time   cpu    mem outputs  blocks worker         task[0m[4m[58;2;110;118;129m                           [0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m           [2m—[0m    [38;2;203;213;225m19ms[0m   [2m30%[0m  [2m2.2MB[0m     [2m19B[0m       [38;2;203;213;225m1[0m [2mlocal[0m          [38;2;244;114;182mlib[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m           [2m—[0m     [38;2;203;213;225m4ms[0m  [2m113%[0m  [2m2.0MB[0m     [2m19B[0m       [2m0[0m [2mlocal[0m          [38;2;147;197;253mapp[0m[2m#[0m[38;2;244;114;182mbuild[0m
+
+
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mSummary[0m[4m[58;2;110;118;129m                                                                                                       [2mvx 0.0.0[0m
+  [2mprojects[0m  [38;2;234;179;8m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
+            [38;2;234;179;8m2 in run[0m [2m·[0m [2m2 total[0m
+  [2mtasks   [0m  [38;2;34;197;94m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
+            [38;2;34;197;94m2 success[0m [2m·[0m [2m2 total[0m
+  [2mcache   [0m  [38;2;56;189;248m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
+            [2mlocal[0m [38;2;56;189;248m2↑[0m
+
+  [2minfo    [0m  4 workers [2m·[0m local cache [2m·[0m run 01a20586-c80c-74ca-b24b-a37caf560ec9
+  [2mtime    [0m  72ms [2m·[0m [2mmax 19ms[0m [2m·[0m [2mavg 12ms[0m [2m·[0m [2mmin 4ms[0m
 ```
-$ vx run build --all
+
+```sh
+vx run build --all
+```
+
+```ansi
 
 
-  Summary                                                                                                       vx 0.0.0
-  projects  ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰
-            2 in run · 2 total
-  tasks     ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰
-            2 success · 2 total
-  cache     ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰
-            local 2✓
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mSummary[0m[4m[58;2;110;118;129m                                                                                                       [2mvx 0.0.0[0m
+  [2mprojects[0m  [38;2;234;179;8m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
+            [38;2;234;179;8m2 in run[0m [2m·[0m [2m2 total[0m
+  [2mtasks   [0m  [38;2;34;197;94m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
+            [38;2;34;197;94m2 success[0m [2m·[0m [2m2 total[0m
+  [2mcache   [0m  [38;2;34;197;94m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
+            [2mlocal[0m [38;2;34;197;94m2✓[0m
 
-  info      4 workers · local cache · run 01a16e03-b0b1-77f6-a758-f7aa680822ab
-  time      16ms
+  [2minfo    [0m  4 workers [2m·[0m local cache [2m·[0m run 01a20586-c912-76b8-9d44-c47c0ec7c16a
+  [2mtime    [0m  20ms
 ```
 
 The [Flags](#flags) table lists every option.
@@ -1244,15 +1251,18 @@ remote that can batch is asked once for every key; one that cannot, or
 whose batch failed, is asked each key at once, so an unreachable remote
 costs the plan its timeout about twice, not once per task.
 
+```sh
+vx run build test --all --dry
 ```
-$ vx run ci --dry
-  Plan 3    status  cache      usual    time   cpu    mem outputs  blocks worker         task
-            cached  local          —       —     —      —       —       0 local          @vzn/vx#format-check
-            cached  local          —       —     —      —       —       0 local          @vzn/vx#lint
-            run     miss     ~1m 13s       —     —      —       —       0 local          @vzn/vx#test
 
-  tasks      3 planned · 2 cache hits (2 local) · 1 would run
-  predicted  ~72.64s wall · ~72.64s total execution
+```ansi
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mPlan[0m[4m[58;2;110;118;129m [2m4[0m[4m[58;2;110;118;129m    [2mstatus  cache      usual    time   cpu    mem outputs  blocks worker         task[0m[4m[58;2;110;118;129m                           [0m
+            [38;2;34;197;94mcached[0m  [38;2;56;189;248mlocal[0m          [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [38;2;203;213;225m1[0m [2mlocal[0m          [38;2;147;197;253mapp[0m[2m#[0m[38;2;244;114;182mbuild[0m  [2mcompile the app[0m
+            [38;2;34;197;94mcached[0m  [38;2;56;189;248mlocal[0m          [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [38;2;203;213;225m3[0m [2mlocal[0m          [38;2;244;114;182mlib[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;6;182;212mrun[0m     [2mmiss[0m           [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2mlocal[0m          [38;2;147;197;253mapp[0m[2m#[0m[38;2;96;165;250mtest[0m
+            [38;2;6;182;212mrun[0m     [2mmiss[0m           [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2mlocal[0m          [38;2;244;114;182mlib[0m[2m#[0m[38;2;96;165;250mtest[0m
+
+  [2mtasks   [0m  [38;2;203;213;225m4 planned · 2 cache hits (2 local) · 2 would run[0m
 ```
 
 The plan is a `Plan` panel on the run's own grid: each task's status and
@@ -1344,10 +1354,18 @@ to shorten the run.
 Under `--affected`, each requested task the diff kept says why after its
 id, and its JSON object carries an `affected` reason:
 
+```sh
+vx run build lint --affected=main --dry
 ```
-$ vx run build lint --affected=main --dry
-            run     miss           —       —     —      —       —       0 local          app#build  affected: packages/lib/src/a.ts changed (an input), via lib#build
-            run     no-cache       —       —     —      —       —       0 local          lib#lint  affected: packages/lib/src/a.ts changed (in its project)
+
+```ansi
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mPlan[0m[4m[58;2;110;118;129m [2m3[0m[4m[58;2;110;118;129m    [2mstatus  cache      usual    time   cpu    mem outputs  blocks worker         task[0m[4m[58;2;110;118;129m                           [0m
+            [38;2;6;182;212mrun[0m     [2mmiss[0m        [2m~4ms[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2mlocal[0m          [38;2;147;197;253mapp[0m[2m#[0m[38;2;244;114;182mbuild[0m  [2mcompile the app · affected: packages/lib/src/index.ts changed (an input), via lib#build[0m
+            [38;2;6;182;212mrun[0m     [2mmiss[0m       [2m~19ms[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [38;2;203;213;225m1[0m [2mlocal[0m          [38;2;244;114;182mlib[0m[2m#[0m[38;2;244;114;182mbuild[0m  [2maffected: packages/lib/src/index.ts changed (an input)[0m
+            [38;2;6;182;212mrun[0m     [2mno-cache[0m       [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2mlocal[0m          [38;2;244;114;182mlib[0m[2m#[0m[38;2;232;121;249mlint[0m  [2maffected: packages/lib/src/index.ts changed (in its project)[0m
+
+  [2mtasks    [0m  [38;2;203;213;225m3 planned · 2 would run · 1 no-cache[0m
+  [2mpredicted[0m  [38;2;203;213;225m~23ms wall · ~23ms total execution · 1 task never timed (+?)[0m
 ```
 
 `kind` is `input` (a changed `file` is a declared input), `project` (its
@@ -2136,23 +2154,17 @@ workspace or a `.git` is refused, by the clear and by every run, with
 the resolved path named. An index SQLite cannot read is cleared like
 any other.
 
+```sh
+vx cache clean
 ```
-$ vx cache clean
-✓ vx cache clean  freed 1.4 GB
 
-  .vx/cache
-  /home/me/.vx/3f2a9c01b4d5e6f7/cache
+```ansi
+[38;2;34;197;94m✓[0m [1mvx cache clean[0m  freed 472 KB
 
-  run history cleared too: vx last and vx why start over
+  [38;2;203;213;225m.vx/cache[0m
+  [38;2;203;213;225m/home/me/.vx/157e2c42758e0d27/cache[0m
 
-$ vx cache clean --global --dry
-› vx cache clean  would free 3.1 GB (dry run)
-
-  .vx/cache
-  /home/me/.vx/3f2a9c01b4d5e6f7/cache
-  /home/me/.vx/9b8e7d6c5a4f3e2d/cache
-
-  run history goes too: vx last and vx why start over
+  [38;2;203;213;225mrun history cleared too: vx last and vx why start over[0m
 ```
 
 It waits for a `vx run` on this workspace to finish first (the run's
@@ -2222,20 +2234,32 @@ vx lock --check --format json   # The audit as {upToDate, audited, notAudited, p
 
 ### Example
 
+```sh
+vx lock
 ```
-$ vx lock
-✓ vx lock  2 project configs → .vx/projects.lock, .vx/dependencies.lock
-$ vx lock --check
-✓ vx lock --check  up to date (2 projects)
+
+```ansi
+[38;2;34;197;94m✓[0m [1mvx lock[0m  2 project configs → .vx/projects.lock, .vx/dependencies.lock
+```
+
+```sh
+vx lock --check
+```
+
+```ansi
+[38;2;34;197;94m✓[0m [1mvx lock --check[0m  up to date (2 projects)
 ```
 
 After an edit the lock has not seen:
 
+```sh
+vx lock --check
 ```
-$ vx lock --check
-✗ vx lock --check  packages/lib/vx.config.ts evaluates differently from the lock here — its config, a file it imports, or the environment it reads changed; run 'vx lock'
 
-  tasks.build.exec.command: "tsc -b" → "tsc -b --force"
+```ansi
+[38;2;239;68;68m✗[0m [1mvx lock --check[0m  packages/lib/vx.config.mjs evaluates differently from the lock here — its config, a file it imports, or the environment it reads changed; run 'vx lock'
+
+  [38;2;203;213;225mtasks.build.exec.command: "mkdir -p dist && cp src/index.ts dist/index.js" → "mkdir -p dist && cp -f src/index.ts dist/index.js"[0m
 ```
 
 Under the line, up to three places where the evaluated config
@@ -2835,21 +2859,22 @@ vx init [--dry [--format pretty|json]] [--force] [--mjs] [--native|--keep] [--pl
 
 ### Example
 
+```sh
+vx init --dry
 ```
-$ vx init --dry
 
-  vx init 0.0.0
-  from      no turbo.json or nx.json
-  dry run   nothing written
-  files     .vx/workspace.ts
-            vx.config.ts
-            .vx/.gitignore
-            .vx/.gitattributes
-  lock      .vx/projects.lock
-            .vx/dependencies.lock
-            vx.lock.json beside each vx.config
+```ansi
+  [2mfrom    [0m  [38;2;203;213;225mno turbo.json or nx.json[0m
+  [2mdry run [0m  [38;2;203;213;225mnothing written[0m
+  [2mfiles   [0m  [38;2;203;213;225m.vx/workspace.ts[0m
+            [38;2;203;213;225mvx.config.ts[0m
+            [38;2;203;213;225m.vx/.gitignore[0m
+            [38;2;203;213;225m.vx/.gitattributes[0m
+  [2mlock    [0m  [38;2;203;213;225m.vx/projects.lock[0m
+            [38;2;203;213;225m.vx/dependencies.lock[0m
+            [38;2;203;213;225mvx.lock.json beside each vx.config[0m
 
-  next      declare a task in vx.config.ts, then vx lock && vx run <task>
+  [2mnext    [0m  [1mdeclare a task in vx.config.ts, then vx lock && vx run <task>[0m
 ```
 
 ### Options
@@ -3281,25 +3306,30 @@ vx show ... --format json        # machine-readable (default: pretty)
 
 ### Examples
 
-```
-$ vx show
-  project  dir            tasks         tags
-  app      packages/app   3 tasks       scope:web
-  bare     packages/bare  no vx config
+```sh
+vx show
 ```
 
+```ansi
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mProjects[0m[4m[58;2;110;118;129m [2m2[0m[4m[58;2;110;118;129m                                                                                                            [0m
+  [2mproject  dir           tasks    tags[0m
+  [38;2;147;197;253mapp[0m      [38;2;203;213;225mpackages/app[0m  [38;2;203;213;225m2 tasks[0m  [38;2;203;213;225mscope:web[0m
+  [38;2;244;114;182mlib[0m      [38;2;203;213;225mpackages/lib[0m  [38;2;203;213;225m3 tasks[0m
 ```
-$ vx show app#build
 
-  app#build
-  dir            packages/app
-  description    compile the app
-  command        tsc -b
-  dependsOn      ^build
-  inputs.files   src/**
-  inputs.env     NODE_ENV
-  outputs.files  dist/**, *.tsbuildinfo
-  cache          yes
+```sh
+vx show app#build
+```
+
+```ansi
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mapp#build[0m[4m[58;2;110;118;129m                                                                                                             [0m
+  [2mdir          [0m  [38;2;203;213;225mpackages/app[0m
+  [2mdescription  [0m  [38;2;203;213;225mcompile the app[0m
+  [2mcommand      [0m  [38;2;203;213;225mmkdir -p dist && cp src/index.ts dist/index.js[0m
+  [2mdependsOn    [0m  [38;2;203;213;225mlib#build[0m
+  [2minputs.files [0m  [38;2;203;213;225msrc/**[0m
+  [2moutputs.files[0m  [38;2;203;213;225mdist/**[0m
+  [2mcache        [0m  [38;2;203;213;225myes[0m
 ```
 
 ### Options
@@ -3582,18 +3612,26 @@ vx why (TASK | PKG#TASK) [--run RUNID] [--format pretty|json] [--cache-dir <path
 
 ### Example
 
+```sh
+vx why app#build
 ```
-$ vx why app#build
-app#build — run 01a1193a-7b39-75a9-870b-5c03e26d7104
-  this run   2026-10-08T01:57:05.486Z · success · executed · key 9ef9806a9c69209e
-  previous   2026-10-08T01:57:05.325Z · success · executed · key e240348b20e79fd6
-  verdict    cache key changed: file packages/app/src/input.txt
 
-  what changed (1 component, 6 unchanged):
-    changed file  packages/app/src/input.txt  78981922613b2afb6025042ff6bd878ac1994e85 → 61780798228d17af2d34fce4cfbdf35556832472
+```ansi
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhy[0m[4m[58;2;110;118;129m [2mapp#build[0m[4m[58;2;110;118;129m                                                                                                         [0m
+  [2mrun     [0m  [38;2;203;213;225m01a20586-cbaf-7160-b020-55d05de49e8a[0m
+  [2mthis run[0m  [38;2;203;213;225m2026-11-22T23:10:49.829Z · success · executed · key 3c76140a1f7a50f8[0m
+  [2mprevious[0m  [38;2;203;213;225m2026-11-22T23:10:49.123Z · cache-hit · up-to-date · key d68851b93ee0a52d[0m
+  [2mverdict [0m  [38;2;234;179;8mcache key changed: upstream lib#build[0m
 
-  what to do:
-    file  an edit re-runs by design; a file the task does not read belongs out of inputs.files
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhat changed[0m[4m[58;2;110;118;129m [2m1 of 5[0m[4m[58;2;110;118;129m                                                                                                   [0m
+  [2mchange   kind      name       before → after[0m
+  [38;2;234;179;8mchanged[0m  [38;2;203;213;225mupstream[0m  [1mlib#build[0m  [38;2;203;213;225m7d9a66971f00e735 → 600df849c8e55574[0m
+
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mRoot cause[0m[4m[58;2;110;118;129m                                                                                                            [0m
+  [38;2;147;197;253mapp[0m[2m#[0m[38;2;244;114;182mbuild[0m[2m ← [0m[38;2;244;114;182mlib[0m[2m#[0m[38;2;244;114;182mbuild[0m[2m ← [0m[1mfile packages/lib/src/index.ts[0m
+
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhat to do[0m[4m[58;2;110;118;129m                                                                                                            [0m
+  [2mfile    [0m  [38;2;203;213;225man edit re-runs by design; a file the task does not read belongs out of inputs.files[0m
 ```
 
 ### Arguments
@@ -3768,24 +3806,32 @@ vx last [RUNID] [--list[=N]] [--failed] [--log <task>] [--stats [<task>] [--bran
 
 ### Examples
 
-```
-$ vx last
-  Run 01a16de7-6cd7-7563-984c-5ffba8fb6629
-  status    ok
-  command   vx run ci --all
-  when      2026-10-24T12:34:05.662Z · 425ms · master @ 1587dec6
-  tasks     3 tasks · 1 hit (0 up-to-date, 1 restored: 1 local, 0 remote)
-
-  Tasks 3   status  cache     ±usual    time   cpu    mem outputs  blocks worker         task
-            success miss           —     3ms  110%      —      0B       0 local          app#test
-            success miss           —   412ms   51%   48MB   120KB       1 local          app#build
-            success local          —     7ms     —      —    36KB       2 local          lib#build
+```sh
+vx last
 ```
 
+```ansi
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mRun[0m[4m[58;2;110;118;129m [2m01a20586-cbaf-7160-b020-55d05de49e8a[0m[4m[58;2;110;118;129m                                                                              [0m
+  [2mstatus  [0m  [38;2;34;197;94mok[0m
+  [2mcommand [0m  [1mvx run build --all[0m
+  [2mwhen    [0m  [38;2;203;213;225m2026-11-22T23:10:49.779Z · 59ms · feat @ 52bd1786+dirty[0m
+  [2mtasks   [0m  [2m2 tasks · 0 hits[0m
+
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mTasks[0m[4m[58;2;110;118;129m [2m2[0m[4m[58;2;110;118;129m   [2mstatus  cache     ±usual    time   cpu    mem outputs  blocks worker         task[0m[4m[58;2;110;118;129m                           [0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m        [2m+0ms[0m     [38;2;203;213;225m8ms[0m   [2m50%[0m  [2m2.2MB[0m     [2m19B[0m       [38;2;203;213;225m1[0m [2mlocal[0m          [38;2;244;114;182mlib[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m        [2m+0ms[0m     [38;2;203;213;225m4ms[0m  [2m100%[0m  [2m2.1MB[0m     [2m19B[0m       [2m0[0m [2mlocal[0m          [38;2;147;197;253mapp[0m[2m#[0m[38;2;244;114;182mbuild[0m
 ```
-$ vx last --list
-ok     2026-10-24T12:34:05.662Z  01a16de7-6cd7  3 tasks · 0 hits  61ms  $ vx run ci --all
-ok     2026-10-24T12:34:05.367Z  01a16de7-6bb3  3 tasks · 0 hits  52ms  $ vx run ci --all
+
+```sh
+vx last --list
+```
+
+```ansi
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mRuns[0m[4m[58;2;110;118;129m [2m3[0m[4m[58;2;110;118;129m                                                                                                                [0m
+  [2m    when                      run            tasks                                        time  command[0m
+  [38;2;34;197;94mok[0m  [38;2;203;213;225m2026-11-22T23:10:49.779Z[0m  [1m01a20586-cbaf[0m  [2m2 tasks · 0 hits[0m                             [38;2;203;213;225m59ms[0m  [1mvx run build --all[0m
+  [38;2;34;197;94mok[0m  [38;2;203;213;225m2026-11-22T23:10:49.110Z[0m  [1m01a20586-c912[0m  [2m2 tasks · 2 hits (2 up-to-date, 0 restored)[0m  [38;2;203;213;225m20ms[0m  [1mvx run build --all[0m
+  [38;2;34;197;94mok[0m  [38;2;203;213;225m2026-11-22T23:10:48.848Z[0m  [1m01a20586-c80c[0m  [2m2 tasks · 0 hits[0m                             [38;2;203;213;225m72ms[0m  [1mvx run build --all[0m
 ```
 
 ```sh

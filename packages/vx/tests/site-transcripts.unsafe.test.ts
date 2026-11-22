@@ -425,3 +425,120 @@ describe("the quickstart's output", () => {
     }
   })
 })
+
+// The CLI reference's samples (docs/cli.md), from the run they describe on
+// a lib/app fixture: the page showed `vx why`'s and `vx last`'s old
+// layouts and a `vx run ci` that no longer exists, in plain white, until
+// 2026-11-22. Each `sh` command block is followed by the `ansi` block vx
+// prints for it; what changes run to run (ids, times, keys, sizes) is
+// masked on both sides.
+describe("the CLI reference's samples", () => {
+  const CLI = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'cli.md'), 'utf8')
+  let dir = ''
+  const out: Record<string, string> = {}
+  const config = (name: string, deps: string) => `export default {
+  name: '${name}',${name === 'app' ? "\n  tags: ['scope:web']," : ''}
+  tasks: {
+    build: {${name === 'app' ? "\n      description: 'compile the app'," : ''}
+      dependsOn: [${deps}],
+      exec: { command: 'mkdir -p dist && cp src/index.ts dist/index.js' },
+      inputs: { files: ['src/**'] },
+      outputs: { files: ['dist/**'] },
+      cache: true,
+    },
+    test: {
+      dependsOn: ['build'],
+      exec: { command: 'test -f dist/index.js' },
+      inputs: { files: ['src/**'] },
+      outputs: { files: [] },
+      cache: true,
+    },${name === 'lib' ? "\n    lint: { exec: { command: 'true' } }," : ''}
+  },
+}
+`
+  const at = (...cmd: string[]) =>
+    expect(Bun.spawnSync({ cmd, cwd: dir, env: ENV }).exitCode).toBe(0)
+  const vxIn = (label: string, ...args: string[]) => {
+    const r = Bun.spawnSync({ cmd: [process.execPath, BIN, ...args], cwd: dir, env: COLOUR })
+    out[label] = plain(r.stdout.toString() + r.stderr.toString())
+  }
+  /** The `ansi` block after the `sh` block whose one line is `command`, from `from` on. */
+  const sampleAfter = (command: string, from = 0): string => {
+    const at = CLI.indexOf(`\`\`\`sh\n${command}\n\`\`\`\n\n\`\`\`ansi\n`, from)
+    expect(at).toBeGreaterThan(-1)
+    return plain(/```ansi\n([\s\S]*?)\n```/.exec(CLI.slice(at))![1]!)
+  }
+  /** What a run cannot repeat: ids, clocks, keys, sizes, timings, paths. */
+  const mask = (text: string): string =>
+    stable(text)
+      .replace(/\b[0-9a-f]{8}-[0-9a-f]{4}\b/g, '<id>')
+      .replace(/\b[0-9a-f]{16}\b/g, '<key>')
+      .replace(/[+−-]?\d+(?:\.\d+)?(?:ms|s|%|B|KB|MB|GB)(?!\w)/g, '<n>')
+      .replace(/~?<n>/g, '<n>')
+      .replace(/@ [0-9a-f]{8}(\+dirty)?/g, '@ <sha>')
+      .replace(/\b\d+ workers\b/g, '<n> workers')
+      .replace(/\/home\/me\/demo|\/\S*vx-cli-[^/\s]+/g, '<root>')
+      .replace(/ +/g, ' ')
+      .split('\n')
+      .map((l) => l.trimEnd())
+      .join('\n')
+
+  beforeAll(async () => {
+    dir = await mkdtemp(path.join(os.tmpdir(), 'vx-cli-'))
+    await mkdir(path.join(dir, '.vx'))
+    await writeFile(path.join(dir, '.vx/workspace.mjs'), 'export default {}\n')
+    await writeFile(path.join(dir, '.gitignore'), 'dist\n')
+    for (const [name, deps] of [
+      ['lib', ''],
+      ['app', "'lib#build'"],
+    ] as const) {
+      await mkdir(path.join(dir, `packages/${name}/src`), { recursive: true })
+      await writeFile(path.join(dir, `packages/${name}/vx.config.mjs`), config(name, deps))
+      await writeFile(path.join(dir, `packages/${name}/src/index.ts`), `export const ${name} = 1\n`)
+    }
+    at('git', 'init', '-q', '-b', 'main')
+    vxIn('lock', 'lock')
+    vxIn('lock --check', 'lock', '--check')
+    at('git', 'add', '-A')
+    at('git', 'commit', '-qm', 'one')
+    vxIn('run1', 'run', 'build', '--all')
+    vxIn('run2', 'run', 'build', '--all')
+    vxIn('dry', 'run', 'build', 'test', '--all', '--dry')
+    vxIn('show', 'show')
+    vxIn('show app#build', 'show', 'app#build')
+    at('git', 'checkout', '-qb', 'feat')
+    await writeFile(path.join(dir, 'packages/lib/src/index.ts'), 'export const lib = 2\n')
+    vxIn('affected', 'run', 'build', 'lint', '--affected=main', '--dry')
+    vxIn('run3', 'run', 'build', '--all')
+    vxIn('why', 'why', 'app#build')
+    vxIn('last', 'last')
+    vxIn('last --list', 'last', '--list')
+  })
+
+  afterAll(async () => {
+    if (dir !== '') await rm(dir, { recursive: true, force: true })
+  })
+
+  it('vx lock, vx show and vx why print what the page shows', () => {
+    for (const [command, label] of [
+      ['vx lock', 'lock'],
+      ['vx show', 'show'],
+      ['vx show app#build', 'show app#build'],
+      ['vx why app#build', 'why'],
+    ] as const)
+      expect(mask(sampleAfter(command))).toBe(mask(out[label]!))
+    expect(mask(sampleAfter('vx lock --check'))).toBe(mask(out['lock --check']!))
+  })
+
+  it('vx run, its plans, and vx last print what the page shows', () => {
+    const first = CLI.indexOf('```sh\nvx run build --all\n```')
+    expect(mask(sampleAfter('vx run build --all'))).toBe(mask(out['run1']!))
+    expect(mask(sampleAfter('vx run build --all', first + 1))).toBe(mask(out['run2']!))
+    expect(mask(sampleAfter('vx run build test --all --dry'))).toBe(mask(out['dry']!))
+    expect(mask(sampleAfter('vx run build lint --affected=main --dry'))).toBe(
+      mask(out['affected']!),
+    )
+    expect(mask(sampleAfter('vx last'))).toBe(mask(out['last']!))
+    expect(mask(sampleAfter('vx last --list'))).toBe(mask(out['last --list']!))
+  })
+})
