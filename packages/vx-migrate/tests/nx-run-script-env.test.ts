@@ -65,12 +65,11 @@ it('defines the $npm_* a script reads from the manifest; any other is a todo', a
   })
 })
 
-// A folded `pre` hook runs as its own script under npm, with its own event.
-it('a folded hook leaves npm_lifecycle_event unset, with a todo', async () => {
+// A folded `pre` hook runs as its own script under npm, with its own event:
+// the folded command sets each part's, so no define and no todo.
+it('a folded hook leaves npm_lifecycle_event to the command', async () => {
   expect(await exec({ pregen: 'echo pre', gen: 'echo $npm_lifecycle_event' }, 'gen')).toEqual({
     define: {},
-    todos: [
-      "nx:run-script: `$npm_lifecycle_event` is set by the package manager's `run`, not here — unset",
-    ],
+    todos: [],
   })
 })

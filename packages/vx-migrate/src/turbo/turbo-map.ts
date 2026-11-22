@@ -2006,7 +2006,7 @@ function sidecarId(entry: string, own: string, rootName: string | undefined): st
  * The `npm_*` variables Turbo's tasks see: it runs a script through the package
  * manager (`pnpm run build`), which sets them, and vx runs the body itself, so
  * `echo $npm_package_version` printed nothing. The event is the script's own
- * name, which folded `pre`/`post` hooks do not share (core's `vx init` rule).
+ * name; a folded command sets each part's own (`foldScriptHooks`).
  */
 function npmScriptEnv(
   task: Record<string, unknown>,

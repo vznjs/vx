@@ -18,14 +18,14 @@ describe('scriptCommand: a task named for a lifecycle verb runs its hooks as `<p
     (name) => {
       const scripts = { [`pre${name}`]: 'echo pre', [`post${name}`]: 'echo post' }
       expect(scriptCommand(name, 'echo body', scripts)).toBe(
-        foldScriptHooks('echo pre', 'echo body', 'echo post'),
+        foldScriptHooks('echo pre', 'echo body', 'echo post', 'x'),
       )
     },
   )
 
   it('CONTROL: an ordinary task’s hooks are folded around it', () => {
     expect(scriptCommand('build', 'tsc', { prebuild: 'gen', postbuild: 'copy' })).toBe(
-      foldScriptHooks('gen', 'tsc', 'copy'),
+      foldScriptHooks('gen', 'tsc', 'copy', 'x'),
     )
   })
 })

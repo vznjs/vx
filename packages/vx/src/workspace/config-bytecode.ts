@@ -342,7 +342,10 @@ async function build(
     // A read-only cache directory, a full disk, a graph Bun cannot bundle:
     // the next run loads the source, as this one did.
   } finally {
-    rmSync(tmp, { recursive: true, force: true })
+    // A cache dir this user cannot write into refuses the cleanup too.
+    try {
+      rmSync(tmp, { recursive: true, force: true })
+    } catch {}
   }
 }
 

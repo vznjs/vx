@@ -109,6 +109,12 @@ describe('readLockfile — absent is not an error', () => {
     // If this ever threw, every plain `vx run` in every workspace would fail.
     expect(await readLockfile(root)).toBeNull()
   })
+
+  it('no lock is no broken entry, so a crash before the first `vx lock` stays itself', () => {
+    // It read as broken: any crash in a fresh workspace, `vx lock`'s own
+    // included, printed "projects.lock is invalid, run `vx lock`" in its place.
+    expect(lockEntryBroken(root)).toBe(false)
+  })
 })
 
 describe('readLockfile — the boundary rejects malformed input loudly', () => {

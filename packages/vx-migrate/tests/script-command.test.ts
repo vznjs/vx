@@ -29,11 +29,11 @@ describe('scriptCommand — a script body becomes the task command', () => {
       install: 'node-gyp rebuild',
     }
     expect(scriptCommand('build', 'tsup', scripts)).toBe(
-      foldScriptHooks('cp a.css a.directcss', 'tsup', 'rm a.directcss'),
+      foldScriptHooks('cp a.css a.directcss', 'tsup', 'rm a.directcss', 'x'),
     )
     expect(scriptCommand('test', 'vitest', scripts)).toBe('vitest')
     expect(scriptCommand('install', 'node-gyp rebuild', scripts)).toBe(
-      foldScriptHooks('node check.js', 'node-gyp rebuild', undefined),
+      foldScriptHooks('node check.js', 'node-gyp rebuild', undefined, 'x'),
     )
     // An empty hook is no hook.
     expect(scriptCommand('build', 'tsup', { prebuild: '', build: 'tsup' })).toBe('tsup')
@@ -94,33 +94,35 @@ describe('foldScriptHooks runs the hooks as npm does', () => {
 
   it('hands the forwarded args to the body alone, not the post hook', async () => {
     expect(
-      await run(foldScriptHooks('echo PRE', 'echo BODY', 'echo POST'), ['--flag', 'a b']),
+      await run(foldScriptHooks('echo PRE', 'echo BODY', 'echo POST', 'x'), ['--flag', 'a b']),
     ).toEqual({ code: 0, out: ['PRE', 'BODY --flag a b', 'POST'] })
   })
 
   it('stops at a failing pre hook even when the body holds a `;`', async () => {
-    expect(await run(foldScriptHooks('false', 'echo A; echo B', 'echo POST'))).toEqual({
+    expect(await run(foldScriptHooks('false', 'echo A; echo B', 'echo POST', 'x'))).toEqual({
       code: 1,
       out: [''],
     })
   })
 
   it('runs no post hook after a failing body, and keeps the body’s code', async () => {
-    expect(await run(foldScriptHooks(undefined, 'echo A; exit 3', 'echo POST'))).toEqual({
+    expect(await run(foldScriptHooks(undefined, 'echo A; exit 3', 'echo POST', 'x'))).toEqual({
       code: 3,
       out: ['A'],
     })
   })
 
   it('survives a trailing comment in any part', async () => {
-    expect(await run(foldScriptHooks('echo PRE # c', 'echo BODY # c', 'echo POST # c'))).toEqual({
+    expect(
+      await run(foldScriptHooks('echo PRE # c', 'echo BODY # c', 'echo POST # c', 'x')),
+    ).toEqual({
       code: 0,
       out: ['PRE', 'BODY', 'POST'],
     })
   })
 
   it('appends the args as text, as npm does: no part sees them as $1', async () => {
-    const fold = foldScriptHooks('echo pre:$1:$#', 'echo body:$1:$#: "$*"', 'echo post:$1:$#')
+    const fold = foldScriptHooks('echo pre:$1:$#', 'echo body:$1:$#: "$*"', 'echo post:$1:$#', 'x')
     expect(await run(fold, ['foo', "it's", 'a b', '$HOME'])).toEqual({
       code: 0,
       out: ['pre::0', "body::0:  foo it's a b $HOME", 'post::0'],
@@ -129,7 +131,20 @@ describe('foldScriptHooks runs the hooks as npm does', () => {
     expect(npm.out[0]).toBe("body::0:  foo it's a b $HOME")
   })
 
+  // npm runs each hook as a script of its own, under its own
+  // `npm_lifecycle_event`; folded with none set, a hook or body reading it
+  // (wireit beside a `prebuild`) read an empty name.
+  it('gives each part its own $npm_lifecycle_event, as npm runs each', async () => {
+    const e = 'echo $npm_lifecycle_event'
+    expect(await run(foldScriptHooks(e, e, e, 'build:x'), ['a'])).toEqual({
+      code: 0,
+      out: ['prebuild:x', 'build:x a', 'postbuild:x'],
+    })
+    // CONTROL: a part that reads no event is written as before.
+    expect(foldScriptHooks('echo pre', e, undefined, 'b')).toContain('(echo pre\n)')
+  })
+
   it('CONTROL: a script with no hooks is its body, verbatim', () => {
-    expect(foldScriptHooks(undefined, 'tsc -b && echo x', undefined)).toBe('tsc -b && echo x')
+    expect(foldScriptHooks(undefined, 'tsc -b && echo x', undefined, 'x')).toBe('tsc -b && echo x')
   })
 })

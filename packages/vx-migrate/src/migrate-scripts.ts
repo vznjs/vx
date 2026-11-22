@@ -277,8 +277,8 @@ const MANIFEST_IMPORT = "import pkg from './package.json' with { type: 'json' }"
  * (probed: npm, pnpm, bun and yarn printed the version, the name and the
  * script's name) and vx sets none, so a migrated `echo $npm_package_version`
  * printed nothing. The name and version are read from the manifest at
- * evaluation, so a bump reaches them; the event is the script's own name, which
- * a folded hook does not share. A field the manifest lacks is left unset, as
+ * evaluation, so a bump reaches them; the event is the script's own name (a folded
+ * command sets each part's own, `foldScriptHooks`). A field the manifest lacks is left unset, as
  * npm leaves it: `pkg.version` would be undefined, which `vx lock` refuses.
  */
 function npmEnv(
@@ -298,7 +298,7 @@ function npmEnv(
       if (typeof manifest[key] !== 'string') continue
       define[v] = { raw: `pkg.${key}` }
       readsManifest = true
-    } else if (v !== 'npm_lifecycle_event' || folded) unset.push(v!)
+    } else if (v !== 'npm_lifecycle_event') unset.push(v!)
   }
   return { define, unset, readsManifest }
 }
@@ -969,6 +969,7 @@ export function migrateScripts(
         hook(`pre${name}`) ? (scripts[`pre${name}`] as string) : undefined,
         own,
         hook(`post${name}`) ? (scripts[`post${name}`] as string) : undefined,
+        name,
       )
       if (hooks.length > 0) {
         todos.push(

@@ -2453,10 +2453,10 @@ Full design: `docs/design/config-lock-2026-06.md`. A lock written by a
 
 ### Exit codes
 
-| Code | When                                                                                                                                                                          |
-| ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `0`  | lock written / lock is up to date                                                                                                                                             |
-| `1`  | parse error, workspace-discovery error, missing lock (`--check` without one), any drift (every mismatched project is listed on stderr), or a secret value the lock would hold |
+| Code | When                                                                                                                                                                                                                                                                                      |
+| ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `0`  | lock written / lock is up to date                                                                                                                                                                                                                                                         |
+| `1`  | parse error, workspace-discovery error, missing lock (`--check` without one), any drift (every mismatched project is listed on stderr), or a secret value the lock would hold; or a promise a config rejected that nothing awaited (`vx: unhandled rejection: …`, the lock still written) |
 
 ## Releasing (maintainers)
 
