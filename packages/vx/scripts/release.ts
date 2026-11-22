@@ -321,9 +321,6 @@ async function assemble(os: Os, version: string): Promise<void> {
   empty(TREE)
   const targets = TARGETS.filter((t) => t.os === os)
   await emitPlatformPackages({
-    mainName: '@vzn/vx',
-    base: 'vx',
-    distPrefix: 'vx',
     targets,
     version,
     outDir: TREE,

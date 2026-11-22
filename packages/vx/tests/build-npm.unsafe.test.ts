@@ -100,9 +100,6 @@ describe.skipIf(NODE === null || !nativeBinary)('the published bin, installed', 
   }
   const nodeModules = path.join(root, 'node_modules')
   await emitPlatformPackages({
-    mainName: '@vzn/vx',
-    base: 'vx',
-    distPrefix: 'vx',
     targets: TARGETS,
     version: '9.9.9',
     outDir: nodeModules,
