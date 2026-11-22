@@ -43,6 +43,7 @@ export default [
       'A dependency named in both `dependencies` and `devDependencies` is built once, before its dependant',
     why: 'Listing a package in two dependency fields of one manifest still makes it one dependency. `^build` must build it first, and once: two edges to the same task are one edge. Missing the edge builds app against a missing lib; running lib twice wastes the work and can rewrite its output while app reads it.',
     from: ['package-graph'],
+    needs: ['package-manager'],
     workspace: {
       projects: {
         lib: chainProject('lib'),

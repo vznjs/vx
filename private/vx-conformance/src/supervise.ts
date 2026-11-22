@@ -14,6 +14,7 @@
 
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { constants } from 'node:os'
+import path from 'node:path'
 import { runProcesses, TAG } from './sandbox.ts'
 
 interface Options {
@@ -24,6 +25,8 @@ interface Options {
     ignored?: boolean
     again?: string
     waitMs?: number
+    /** Absolute globs of directories mirroring the workspace, where `when` and `again` may appear first. */
+    mirrors?: string[]
   }
   left?: string
   /** The tool's stdin is a pipe this holds open and never writes. */
@@ -43,10 +46,20 @@ const proc = Bun.spawn(cmd, {
   detached: true,
 })
 
+/** Whether a workspace file a task makes exists, in the tree or in a mirror of it. */
+const seen = (rel: string, mirrors: string[] = []): boolean =>
+  existsSync(rel) ||
+  mirrors.some(
+    (m) =>
+      !new Bun.Glob(path.join(m, rel).slice(1))
+        .scanSync({ cwd: '/', onlyFiles: false, dot: true })
+        .next().done,
+  )
+
 if (stop) {
   const deadline = Date.now() + (stop.waitMs ?? 30_000)
   while (proc.exitCode === null && proc.signalCode === null && Date.now() < deadline) {
-    if (existsSync(stop.when)) break
+    if (seen(stop.when, stop.mirrors)) break
     await Bun.sleep(20)
   }
   const signal = (): void => {
@@ -61,7 +74,7 @@ if (stop) {
   if (stop.again) {
     const again = Date.now() + 30_000
     while (proc.exitCode === null && proc.signalCode === null && Date.now() < again) {
-      if (existsSync(stop.again)) break
+      if (seen(stop.again, stop.mirrors)) break
       await Bun.sleep(20)
     }
     signal()

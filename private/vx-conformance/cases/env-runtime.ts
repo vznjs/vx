@@ -169,6 +169,7 @@ export default [
     title: 'A bin a project’s dependency ships is on that project’s task PATH',
     why: 'A project that depends on a package expects to call that package’s bins by name, as package scripts do. The package manager links them into the project’s `node_modules/.bin`, and the task’s PATH must include it. Without it the command fails with command not found, or runs a global copy of the tool at a version the lockfile never pinned.',
     from: ['task-shell'],
+    needs: ['package-manager'],
     workspace: shellShadow({
       command: 'mkdir -p dist && own-tool > dist/out.txt',
       inputs: ['src/**'],

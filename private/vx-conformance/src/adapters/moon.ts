@@ -59,24 +59,17 @@ export const moon: Adapter = {
   name: 'moon',
   pkg: '@moonrepo/cli',
   bins: [],
-  lacks: [
-    // No task names a directory of programs its dependants get on PATH.
-    'dependency-bin',
-    // `--query` matches project fields; `--upstream`/`--downstream` walk
-    // the task graph from the requested tasks, never the project graph,
-    // and never leave the matched projects out.
-    'select-walk',
-    // A target names a task exactly, or by tag; no pattern over task names.
-    'task-pattern',
-    // A `wait` dependency waits for the persistent task to start, never for a line it prints.
-    'ready',
-    // Nothing keeps a command from files, network or home it never declared.
-    'sandbox',
-    // No watch mode: `moon run` runs once.
-    'watch',
-    // No run is planned without running (`moon action-graph` draws the graph, runs nothing).
-    'dry-run',
-  ],
+  lacks: {
+    'dependency-bin': 'No moon task puts a directory of programs on its dependants’ PATH.',
+    'select-walk':
+      '`--upstream`/`--downstream` walk the task graph from the requested tasks, never the project graph, and never leave the matched projects out.',
+    'task-pattern': 'A target names a task exactly, or by tag: no pattern over task names.',
+    ready:
+      'A `wait` dependency waits for the persistent task to start, never for a line it prints.',
+    sandbox: 'moon keeps no task from files, network or home it never declared.',
+    watch: '`moon run` runs once: moon has no watch mode.',
+    'dry-run': '`moon action-graph` draws the graph; no run plans and runs nothing.',
+  },
   env: { NO_COLOR: '1', DO_NOT_TRACK: '1' },
   async configure(dir, ws, command) {
     const persistent = new Set(

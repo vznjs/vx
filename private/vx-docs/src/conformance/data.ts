@@ -118,9 +118,13 @@ export const about = (g: string): string => ABOUT[g] ?? ''
 const unique = (xs: string[]): string[] => [...new Set(xs)]
 export const CATEGORIES = unique(RESULTS.cases.map((c) => c.category))
 
-/** A score as the page prints it: cases passed of every case, rounded down, so 100% means every case passed; a case the tool cannot express is not a pass. `–` when the group is empty. */
+/** A score as the page prints it: cases passed of every case, rounded down, so 100% means every case passed; an N/A case is not a pass. `–` when the group is empty. */
 export const percent = (s: Score | undefined): string =>
   s === undefined || s.of === 0 ? '–' : `${Math.floor((s.pass * 100) / s.of)}%`
+
+/** The cases a tool has the feature for but fails: its issues. `–` with no score. */
+export const issues = (s: Score | undefined): string =>
+  s === undefined ? '–' : `${s.can - s.pass} ${s.can - s.pass === 1 ? 'issue' : 'issues'}`
 
 /** The share of all cases a tool can express at all, rounded down like {@link percent}. */
 export const supports = (s: Score | undefined): string =>

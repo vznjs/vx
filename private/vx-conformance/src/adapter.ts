@@ -25,8 +25,18 @@ export interface Adapter {
    * the case's home, and what it starts ends with each run.
    */
   sandboxed?: false
-  /** What the tool's config cannot express: a case needing one is not applicable. */
-  lacks: Feature[]
+  /**
+   * Workspace-relative globs of the directories where the tool mirrors the
+   * workspace while a task runs (Nix's build directories): a file a task
+   * makes appears there, never in the tree, until the run copies it back.
+   */
+  mirrors?: string[]
+  /**
+   * The features the tool does not have, each with why, in a sentence the
+   * page shows: a case needing one is not applicable to it. A feature the
+   * tool has but runs another way is not here: its cases pass or fail.
+   */
+  lacks: Partial<Record<Feature, string>>
   /** Variables every invocation of the tool sees. */
   env: Record<string, string>
   /** Prepare the case's home (`home`) before any run: what the tool would otherwise fetch. */

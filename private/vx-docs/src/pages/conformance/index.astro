@@ -3,7 +3,8 @@
 // tool did with it, from src/data/conformance.json (src/conformance/data.ts).
 // The score board's rows are the categories, each a <details> whose summary
 // is its scores; open, it says what it checks and lists its cases in the
-// same columns. A failing cell opens its detail as one, and the "only where
+// same columns. A failing cell opens its detail as one, an N/A cell why the
+// tool does not have the feature, and the "only where
 // tools differ" switch is a checkbox the stylesheet reads. Every case is a
 // link: `#<case ref>`, and `?tool=<tool>#<case ref>` for one tool's failure.
 // The script at the end only opens what such a link points into.
@@ -31,7 +32,7 @@ const sections = CATEGORIES.map((id) => ({
   cases: cases.filter((c) => c.category === id),
 }))
 const MARK = { pass: '✓', fail: '✗', 'n/a': '–' } as const
-const SAY = { pass: 'passes', fail: 'fails', 'n/a': 'cannot express it' } as const
+const SAY = { pass: 'passes', fail: 'fails', 'n/a': 'does not have this feature' } as const
 ---
 
 <FeaturesPage
@@ -54,8 +55,9 @@ const SAY = { pass: 'passes', fail: 'fails', 'n/a': 'cannot express it' } as con
           week the suite runs again on each tool's latest release.
         </p>
         <p class="lede">
-          A tool that cannot express a case does not support it. A case it supports but gets
-          wrong is an issue: you would hit it using that feature.
+          A case is N/A for a tool that does not have the feature at all. A tool that has the
+          feature but gets the case wrong fails it, even when it does things its own way: you would
+          hit it using that feature.
         </p>
         <ul class="chips" aria-label="Tool versions">
           {
@@ -78,12 +80,13 @@ const SAY = { pass: 'passes', fail: 'fails', 'n/a': 'cannot express it' } as con
       <div class="container">
         <h2>Scores</h2>
         <p class="cfm-sub">
-          Cases passed, of every case, rounded down: 100% means every case passed. A case the tool
-          cannot express is not a pass. The bar's faint part is what the tool supports.
+          Cases passed, of every case, rounded down: 100% means every case passed. An N/A case is
+          not a pass. The bar's red part is the tool's issues: cases it has the feature for but
+          fails.
         </p>
         <p class="cfm-sub">
-          Open a group to see its cases: ✓ passes, ✗ fails, – the tool cannot express it. Open a ✗
-          to see what the tool did instead.
+          Open a group to see its cases: ✓ passes, ✗ fails, – N/A. Open a ✗ to see what the tool did
+          instead, or a – to see which feature it does not have.
         </p>
         <input type="checkbox" id="cfm-differ" class="cfm-toggle" />
         <label for="cfm-differ" class="cfm-switch">
@@ -102,7 +105,10 @@ const SAY = { pass: 'passes', fail: 'fails', 'n/a': 'cannot express it' } as con
             }
           </div>
           <div class="cfm-row cfm-all" data-group="all">
-            <span class="cfm-name">{groupName('all')}</span>
+            <span class="cfm-name">
+              {groupName('all')}
+              <span class="cfm-cat-count">{cases.length} cases</span>
+            </span>
             {RANKED.map((t) => <Cell t={t} g="all" />)}
           </div>
           {
@@ -155,22 +161,21 @@ const SAY = { pass: 'passes', fail: 'fails', 'n/a': 'cannot express it' } as con
                           const label = `${toolName(t)} ${SAY[o.status]}`
                           return (
                             <td data-tool={t} data-status={o.status}>
-                              {o.status === 'fail' ? (
+                              {o.status !== 'pass' && note(o) !== '' ? (
                                 <details>
                                   <summary aria-label={label} title={note(o)}>
-                                    {MARK.fail}
+                                    {MARK[o.status]}
                                   </summary>
                                   <p class="cfm-detail">
-                                    <strong>{toolName(t)}</strong> {note(o)}
+                                    <strong>
+                                      {toolName(t)}
+                                      {o.status === 'n/a' ? ': N/A' : ''}
+                                    </strong>{' '}
+                                    {note(o)}
                                   </p>
                                 </details>
                               ) : (
-                                <span
-                                  aria-label={label}
-                                  title={o.status === 'n/a' ? note(o) || undefined : undefined}
-                                >
-                                  {MARK[o.status]}
-                                </span>
+                                <span aria-label={label}>{MARK[o.status]}</span>
                               )}
                             </td>
                           )

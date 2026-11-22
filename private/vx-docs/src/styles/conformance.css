@@ -147,8 +147,9 @@
   inset: 0 auto 0 0;
   border-radius: 3px;
 }
+/* The landing page's fail band (stage.css .col-can): one red for a tool's issues on both pages. */
 .vx-landing .cfm-bar > .cfm-can {
-  background: color-mix(in srgb, var(--phosphor) 30%, transparent);
+  background: rgba(200, 120, 120, 0.4);
 }
 .vx-landing .cfm-bar > .cfm-pass {
   background: var(--phosphor);
@@ -258,6 +259,9 @@
   margin: 4px 0 0 22px;
   font: 12px / 1.3 var(--font-mono);
   color: var(--text-faint);
+}
+.vx-landing .cfm-all .cfm-cat-count {
+  margin-left: 0;
 }
 .vx-landing .cfm-cat-about {
   margin: 14px 0;
@@ -402,6 +406,9 @@
   display: block;
   color: var(--cfm-fail);
   font-family: var(--font-body);
+}
+.vx-landing .cfm-cases td[data-status='n/a'] .cfm-detail strong {
+  color: var(--cfm-na);
 }
 
 @media (max-width: 640px) {

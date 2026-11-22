@@ -384,6 +384,7 @@ export default [
       'A workspace package named only as a peer is built first, and an edit to it runs the consumer again',
     why: 'The workspace links the peer in, so the consumer’s build reads it as it reads any dependency. Naming it as a peer only changes who installs it outside the workspace. Building the consumer first, or replaying it after the peer changed, leaves it built against code that is no longer there.',
     from: ['parity-turbo', 'vx-lockfile/discover'],
+    needs: ['package-manager'],
     workspace: {
       projects: {
         lib: chainProject('lib'),

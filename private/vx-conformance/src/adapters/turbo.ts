@@ -20,19 +20,18 @@ export const turbo: Adapter = {
   // Turborepo allows any) start at once.
   // A task always keys on its dependencies' hashes, and nothing keeps a
   // command from the files, network or home it never declared.
-  lacks: [
-    // No task names a directory of programs its dependants get on PATH.
-    'dependency-bin',
-    'task-pattern',
-    'timeout',
-    'retries',
-    'ready',
-    'runtime-inputs',
-    'dependency-inputs-off',
-    'sandbox',
-    // A filter picks by name, directory or change; packages carry no tags.
-    'select-tag',
-  ],
+  lacks: {
+    'dependency-bin': 'No Turborepo task puts a directory of programs on its dependants’ PATH.',
+    'task-pattern': '`dependsOn` names tasks exactly: no pattern over task names.',
+    timeout: 'Turborepo has no per-task time limit.',
+    retries: 'Turborepo does not retry a failed task.',
+    ready: 'Turborepo does not hold a task until a persistent one prints a ready line.',
+    'runtime-inputs': 'Turborepo inputs are files and variables, never a command’s output.',
+    'dependency-inputs-off':
+      'A dependency’s hash always keys its dependants: no task orders a dependency without it.',
+    sandbox: 'Turborepo keeps no task from files, network or home it never declared.',
+    'select-tag': 'A filter picks by name, directory or change; packages carry no tags.',
+  },
   env: { TURBO_TELEMETRY_DISABLED: '1', DO_NOT_TRACK: '1', NO_COLOR: '1' },
   async configure(dir, ws, command) {
     // Turbo names the root package `//`.

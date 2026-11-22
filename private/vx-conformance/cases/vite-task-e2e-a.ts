@@ -2,12 +2,12 @@
 // earlier case carried. Each is said in the neutral language; the fixtures
 // whose outcome is a log line, a terminal mode or Vite Task's own file
 // tracking stay out.
-import { defineCase, type TaskSpec } from '../src/spec.ts'
+import { defineCase, MEET, type TaskSpec } from '../src/spec.ts'
 import { chainProject, one, out } from './shapes.ts'
 
-/** Marks itself up, waits up to 10 s for `other` to be up, and writes whether it saw it. */
-const meeting = (other: string): TaskSpec => ({
-  command: `touch up; i=0; while [ ! -e ../${other}/up ] && [ $i -lt 100 ]; do sleep 0.1; i=$((i+1)); done; mkdir -p dist; if [ -e ../${other}/up ]; then echo together; else echo alone; fi > dist/out.txt`,
+/** Marks itself up where running tasks meet, waits up to 10 s for `other` to be up, and writes whether it saw it. */
+const meeting = (self: string, other: string): TaskSpec => ({
+  command: `m=../../${MEET}; mkdir -p $m; touch $m/${self}-up; i=0; while [ ! -e $m/${other}-up ] && [ $i -lt 100 ]; do sleep 0.1; i=$((i+1)); done; mkdir -p dist; if [ -e $m/${other}-up ]; then echo together; else echo alone; fi > dist/out.txt`,
   inputs: ['src/**'],
   outputs: ['dist/**'],
 })
@@ -35,8 +35,8 @@ export default [
     from: ['scheduler', 'run-concurrency'],
     workspace: {
       projects: {
-        p: { tasks: { build: meeting('q') }, files: { 'src/a.txt': 'p\n' } },
-        q: { tasks: { build: meeting('p') }, files: { 'src/a.txt': 'q\n' } },
+        p: { tasks: { build: meeting('p', 'q') }, files: { 'src/a.txt': 'p\n' } },
+        q: { tasks: { build: meeting('q', 'p') }, files: { 'src/a.txt': 'q\n' } },
       },
     },
     steps: [
@@ -184,6 +184,7 @@ export default [
     title: 'A project whose package.json does not parse fails the run',
     why: 'A manifest that does not parse leaves the project’s name, dependencies and tasks unknown. Skipping the project lets the run go green with its tasks never run and its dependants built in the wrong order. Failing at once names the broken file while the mistake is fresh.',
     from: ['discovery-refusals', 'package-json-bom'],
+    needs: ['package-manager'],
     workspace: {
       projects: {
         a: {

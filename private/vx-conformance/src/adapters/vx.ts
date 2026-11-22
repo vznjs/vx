@@ -26,11 +26,10 @@ export const vx: Adapter = {
   name: 'vx',
   pkg: '@vzn/vx',
   bins: ['vx'],
-  lacks: [
-    // vx calls the tools a machine has and installs none: a task names no
-    // programs for its dependants' PATH.
-    'dependency-bin',
-  ],
+  lacks: {
+    'dependency-bin':
+      'vx runs the tools the machine has and installs none, so no task puts programs on its dependants’ PATH.',
+  },
   env: { NO_COLOR: '1' },
   installed: [[VX, 'lock']],
   // A run follows the lock and never re-reads a manifest: `vx lock` is the

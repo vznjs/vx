@@ -51,8 +51,10 @@ marks each command as it starts and ends, so "ran" means it ran.
 | watch    |    31 |  31 |  27 |        28 |    0 |         0 |   0 |
 | sandbox  |    18 |  18 |   0 |         1 |    0 |         1 |  15 |
 
-A case a tool cannot express counts as not passed. Its users cannot get
-that behaviour either.
+A case is N/A for a tool that does not have the feature at all, and an
+N/A case counts as not passed: its users cannot get that behaviour
+either. A tool that has the feature but does it its own way still
+passes or fails the case.
 
 ## Each case says why it matters
 

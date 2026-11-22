@@ -314,6 +314,11 @@ export type Feature =
   | 'select-tag'
   /** A dependency's declared directory of programs on a dependant's PATH (`bin`). */
   | 'dependency-bin'
+  /**
+   * A package manager's workspace: dependencies named in package.json, a
+   * lockfile, packages installed into node_modules and the programs they link.
+   */
+  | 'package-manager'
 
 export interface Case {
   /** `category/slug`, unique. */
@@ -336,6 +341,14 @@ export interface Case {
 
 export function defineCase(c: Case): Case {
   return c
+}
+
+/** What a case needs: what it names, and a package manager when a step installs. */
+export function needsOf(c: Case): Feature[] {
+  const needs = c.needs ?? []
+  return c.steps.some((s) => 'install' in s) && !needs.includes('package-manager')
+    ? [...needs, 'package-manager']
+    : needs
 }
 
 /** A project's directory, workspace-relative. */

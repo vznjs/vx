@@ -87,3 +87,12 @@ test('Nix’s input globs match as each glob says, from the workspace root', () 
     ),
   ).toEqual([])
 })
+
+test('a `.` segment in a Nix input glob is the directory it sits in', () => {
+  const { inc, exc } = globRegexes('packages/a', ['*/.', '!gen/.', './src/./x'])
+  const matches = (rel: string) =>
+    inc.some((r) => jsRegExp(r).test(rel)) && !exc.some((r) => jsRegExp(r).test(rel))
+  expect(
+    ['packages/a/src/a.txt', 'packages/a/gen/g.txt', 'packages/a/src/x'].filter(matches),
+  ).toEqual(['packages/a/src/a.txt', 'packages/a/src/x'])
+})

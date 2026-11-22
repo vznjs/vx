@@ -11,6 +11,7 @@ import {
   agree,
   CATEGORIES,
   inline,
+  issues,
   note,
   percent,
   RESULTS,
@@ -154,7 +155,23 @@ describe('the conformance page', () => {
     expect(fails).toBeGreaterThan(0)
   })
 
-  it('scores each tool in every group: passed of what it supports, a bar of what it supports, and the counts', () => {
+  it('opens each N/A cell onto the feature the tool does not have', () => {
+    const wrong: string[] = []
+    let na = 0
+    for (const c of RESULTS.cases) {
+      for (const [t, status, inner] of cells(row(c.id))) {
+        if (status !== 'n/a') continue
+        na++
+        if (!c.outcomes[t]?.detail) wrong.push(`${c.id} ${t}: no reason in the data`)
+        else if (!inner.includes('<details>') || !unescape(inner).includes(note(c.outcomes[t]!)))
+          wrong.push(`${c.id} ${t}: no reason on the page`)
+      }
+    }
+    expect(wrong).toEqual([])
+    expect(na).toBeGreaterThan(0)
+  })
+
+  it('scores each tool in every group: passed of every case, a bar of passes and issues, and the counts', () => {
     const groups = ['all', ...CATEGORIES]
     const wrong: string[] = []
     for (const g of groups) {
@@ -169,7 +186,7 @@ describe('the conformance page', () => {
         if (
           !td.includes(`>${percent(s)}<`) ||
           !td.includes(`>${of}<`) ||
-          !td.includes(`>${s?.can} supported<`) ||
+          !td.includes(`>${issues(s)}<`) ||
           td.includes('supports')
         )
           wrong.push(`${g} ${t}: ${td}`)
@@ -179,13 +196,15 @@ describe('the conformance page', () => {
     expect(percent({ pass: 0, can: 0, of: 0 })).toBe('–')
     expect(percent({ pass: 0, can: 0, of: 11 })).toBe('0%')
     expect(supports({ pass: 0, can: 10, of: 11 })).toBe('90%')
+    expect(issues({ pass: 656, can: 957, of: 1023 })).toBe('301 issues')
+    expect(issues({ pass: 0, can: 1, of: 2 })).toBe('1 issue')
   })
 
   it('prints 100% only when every case passed', () => {
     expect(percent({ pass: 859, can: 860, of: 860 })).toBe('99%')
     expect(percent({ pass: 860, can: 860, of: 860 })).toBe('100%')
     expect(percent({ pass: 1, can: 200, of: 200 })).toBe('0%')
-    // A case the tool cannot express is not a pass: 992 of 993 is 99%.
+    // An N/A case is not a pass: 992 of 993 is 99%.
     expect(percent({ pass: 992, can: 992, of: 993 })).toBe('99%')
     expect(percent({ pass: 992, can: 993, of: 993 })).toBe('99%')
     expect(percent({ pass: 1, can: 1, of: 11 })).toBe('9%')
