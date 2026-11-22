@@ -3,7 +3,8 @@
 // clean into a lock a run reads; one project both changed differently is a
 // conflict that refuses until `vx lock`.
 
-import { readFile, rm, writeFile } from 'node:fs/promises'
+import { copyFile, link, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
 import { mergeLock } from '../src/workspace/lock-merge.js'
@@ -147,6 +148,47 @@ it(
     await writeFile(path.join(root, 'packages/a/vx.config.mjs'), config('echo both'))
     expect(vx('lock').code).toBe(0)
     expect(vx('run', 'build', '--all', '--output-logs', 'full').out).toContain('both')
+  },
+  TIMEOUT,
+)
+
+// git keeps the driver's command, so a bun upgraded away, a moved checkout or
+// a cleared bunx cache left a command that could not start: git then kept
+// ours with no conflict marker, and committed, the lock dropped the other
+// branch's projects with no word from a run.
+it(
+  "a driver whose vx is gone falls back to git's own text merge, markers and all",
+  async () => {
+    const git = gitIn(root)
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'vx-gone-bun-'))
+    const bun = path.join(dir, 'bun')
+    await link(process.execPath, bun).catch(() => copyFile(process.execPath, bun))
+    const lockWith = () =>
+      Bun.spawnSync({ cmd: [bun, BIN, 'lock'], cwd: root, env: { ...process.env, NO_COLOR: '1' } })
+        .exitCode
+    try {
+      await addProject(root, 'a', config('echo a'))
+      await addProject(root, 'b', config('echo b'))
+      expect(lockWith()).toBe(0)
+      expect(git('config', '--get', 'merge.vx-lock.driver')).toContain(bun)
+      git('add', '-A')
+      git('commit', '-qm', 'base')
+      git('checkout', '-qb', 'one')
+      await writeFile(path.join(root, 'packages/a/vx.config.mjs'), config('echo a2'))
+      expect(lockWith()).toBe(0)
+      git('commit', '-qam', 'one')
+      git('checkout', '-q', '-')
+      await writeFile(path.join(root, 'packages/b/vx.config.mjs'), config('echo b2'))
+      expect(lockWith()).toBe(0)
+      git('commit', '-qam', 'two')
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+    expect(() => git('merge', '-q', '--no-edit', 'one')).toThrow()
+    expect(await readFile(path.join(root, P), 'utf8')).toContain('<<<<<<< ')
+    const run = vx('run', 'build', '--all')
+    expect(run.code).toBe(1)
+    expect(run.out).toContain('vx lock')
   },
   TIMEOUT,
 )
