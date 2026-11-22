@@ -30,7 +30,7 @@ import { type CliLoadOptions, discoverCliProjects, loadCliWorkspace } from './wo
 import { resolveSetting } from '../settings.js'
 import { lockedExtras } from './watch-filter.js'
 import { watchCycle } from './watch-cycle.js'
-import { hangupIgnored } from '../util/index.js'
+import { startedIgnoring } from '../util/index.js'
 import * as ui from '../ui/index.js'
 import { sayNotice } from '../ui/index.js'
 import { sweepConfigs, watchedProjects } from './watch-set.js'
@@ -127,7 +127,8 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
   // `on`, not `once`: a second signal during the teardown is absorbed (an
   // abort is once), where `once` left it to Bun's default, exit 130 with
   // the cycle's children mid-grace.
-  process.on('SIGINT', () => stop.abort('SIGINT'))
+  // Started deaf to it (`vx watch … &` in a script): it stays so.
+  if (!startedIgnoring('SIGINT')) process.on('SIGINT', () => stop.abort('SIGINT'))
   // Said once the loop is down, the last line: written as the signal
   // landed, the aborted cycle's summary printed below it.
   const stopped = (): number => {
@@ -141,7 +142,7 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
   // A task runs in its own session (exec/kill-tree.ts): the terminal
   // closing reaches the loop alone, and the loop passes it on — unless vx
   // was started with it ignored (nohup).
-  if (!hangupIgnored()) process.on('SIGHUP', () => stop.abort('SIGHUP'))
+  if (!startedIgnoring('SIGHUP')) process.on('SIGHUP', () => stop.abort('SIGHUP'))
   // Bun ignores SIGPIPE: past its reader (`| head`, a quit `| less`) a write
   // only raises EPIPE, and the watch, its server with it, ran on for nobody
   // while the shell waited on the pipeline. It ends as a hang-up does. Off
