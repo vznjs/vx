@@ -38,8 +38,8 @@ flowchart RL
 ```
 
 ```ansi
-  root cause:
-    packages/app#build ← packages/lib#build ← file packages/lib/src/index.ts
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mRoot cause[0m[4m[58;2;110;118;129m [0m
+  [38;2;147;197;253mpackages/app[0m[2m#[0m[38;2;244;114;182mbuild[0m[2m ← [0m[38;2;244;114;182mpackages/lib[0m[2m#[0m[38;2;244;114;182mbuild[0m[2m ← [0m[1mfile packages/lib/src/index.ts[0m
 ```
 
 ## It only reads the cache database

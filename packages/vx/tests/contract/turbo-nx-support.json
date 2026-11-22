@@ -52,7 +52,7 @@
   {
     "key": "turbo.json extends",
     "status": "supported",
-    "reason": "Package configs' `extends` chains are followed as Turbo does; cycles and missing parents are refused."
+    "reason": "Package configs' `extends` are followed as Turbo does; cycles and missing parents are refused."
   },
   {
     "key": "turbo.json futureFlags",
@@ -167,7 +167,7 @@
   {
     "key": "turbo.json tasks.*.inputs[].from",
     "status": "not-supported",
-    "reason": "Ignored; vx folds each dependency's cache key instead of its outputs."
+    "reason": "Ignored; vx adds each dependency's cache key instead of its outputs."
   },
   {
     "key": "turbo.json tasks.*.inputs[].globs",
@@ -327,7 +327,7 @@
   {
     "key": "nx.json extends",
     "status": "supported",
-    "reason": "The chain is followed and merged as Nx does, before named inputs are read."
+    "reason": "Each parent is followed and merged as Nx does, before named inputs are read."
   },
   {
     "key": "nx.json defaultBase",
@@ -642,17 +642,17 @@
   {
     "key": "inputs: a string",
     "status": "mapped",
-    "reason": "Named inputs expanded, token paths made project or workspace globs, `^name` folded over dependencies."
+    "reason": "Named inputs expanded, token paths made project or workspace globs, `^name` applied over dependencies."
   },
   {
     "key": "inputs: {fileset, dependencies}",
     "status": "mapped",
-    "reason": "The fileset becomes a glob; with `dependencies: true` it is folded through the dependencies."
+    "reason": "The fileset becomes a glob; with `dependencies: true` it covers the dependencies too."
   },
   {
     "key": "inputs: {projects, dependencies, input}",
     "status": "mapped",
-    "reason": "Folded through the named projects' inputs (a superset); unknown project names get a TODO."
+    "reason": "The named projects' inputs are added (a superset); unknown project names get a TODO."
   },
   {
     "key": "inputs: {runtime}",
@@ -667,12 +667,12 @@
   {
     "key": "inputs: {externalDependencies}",
     "status": "mapped",
-    "reason": "Core keys no lockfile. With a @vzn/vx-lockfile plugin, which keys the project's and the root's dependencies, dropped: silent for names the root package.json declares, a TODO names any other. With no plugin claiming the lockfile, the task keys the whole file, as does a target with no such input of its own whose executor is not an `@nx/` or `@nrwl/` one (Nx hashes every external dependency there)."
+    "reason": "Core keys no lockfile. With a @vzn/vx-lockfile plugin, which keys the project's and the root's dependencies, dropped: silent for names the root package.json declares, a TODO names any other. With no lockfile plugin, the task keys the whole file, as does a target with no such input of its own whose executor is not an `@nx/` or `@nrwl/` one (Nx hashes every external dependency there)."
   },
   {
     "key": "inputs: {dependentTasksOutputFiles, transitive}",
     "status": "supported",
-    "reason": "vx folds each dependency's cache key (its inputs, transitively) through `dependsOn`, and a cached task's output follows from its inputs. An uncached producer's matching files are an `inputs.workspaceRuntime` probe, answered after it ran; with `transitive`, one behind an `nx:noop` group or another task too. A `^` edge with no Nx dependency reads nothing and stays cached."
+    "reason": "vx adds each dependency's cache key (its inputs, transitively) through `dependsOn`, and a cached task's output follows from its inputs. An uncached producer's matching files are an `inputs.workspaceRuntime` probe, answered after it ran; with `transitive`, one behind an `nx:noop` group or another task too. A `^` edge with no Nx dependency reads nothing and stays cached."
   },
   {
     "key": "inputs: {json, fields, excludeFields}",

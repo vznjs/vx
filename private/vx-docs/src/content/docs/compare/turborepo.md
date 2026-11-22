@@ -54,7 +54,7 @@ Same graph, commands and concurrency, each tool in its own native config: [how i
 | Install                    | One binary; no Bun, Node optional                                                          | npm and Node                                 |
 
 Every row is held in [vx vs Turborepo vs Nx](../../comparison/), which
-links each claim to its source.
+links each row to its source.
 
 ## A cache you can trust
 

@@ -60,7 +60,7 @@ benchmark took 87 s against 25 s off (Nx 23.3.0, 2026-10-12).
 | Install                             | One binary; no Bun, Node optional                                                          | npm and Node                                            |
 
 Every row is held in [vx vs Turborepo vs Nx](../../comparison/), which
-links each claim to its source.
+links each row to its source.
 
 ## Free on vx, Nx Cloud on Nx
 
