@@ -948,6 +948,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'workspace-load-messages',
     'workspace-root-file',
     'workspace-unreadable',
+    'write-file-signal',
     'write-through-link',
   ],
   internal: [

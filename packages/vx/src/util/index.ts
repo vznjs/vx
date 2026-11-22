@@ -146,6 +146,7 @@ export {
 export { OWN_DIR_HINT, refuseForeignCacheDir } from './foreign-cache-dir.js'
 export { realPath, realpathOf, sameDir } from './real-path.js'
 export {
+  exitOnStop,
   IGNORE_ALL,
   ignoreDir,
   type PendingWrite,

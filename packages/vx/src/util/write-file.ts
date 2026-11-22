@@ -1,7 +1,53 @@
-import { lstatSync, readlinkSync, realpathSync, writeFileSync } from 'node:fs'
+import { lstatSync, readlinkSync, realpathSync, unlinkSync, writeFileSync } from 'node:fs'
 import { lstat, mkdir, open, rename, rm } from 'node:fs/promises'
 import path from 'node:path'
 import { UserError } from './errors.js'
+import { claimExitForSignal, dieOf } from './settle.js'
+
+/** Temps a write has made and not yet renamed or removed. */
+const inFlight = new Set<string>()
+let exitHooked = false
+
+function track(tmp: string): void {
+  if (!exitHooked) {
+    exitHooked = true
+    process.on('exit', () => {
+      for (const t of inFlight) {
+        try {
+          unlinkSync(t)
+        } catch {
+          // renamed already, or never made
+        }
+      }
+    })
+  }
+  inFlight.add(tmp)
+}
+
+const STOP_CODES = { SIGINT: 130, SIGTERM: 143, SIGHUP: 129 } as const
+
+/**
+ * `work`, with a stop signal ending vx through its exit hooks: the default
+ * action skipped them, so a Ctrl-C in `vx lock` left a temp beside every
+ * review copy it was writing, and `git status` offered them for commit.
+ * vx still dies of the signal, as a script running it expects.
+ */
+export async function exitOnStop<T>(work: () => Promise<T>): Promise<T> {
+  const stop = (signal: keyof typeof STOP_CODES) => (): void => {
+    claimExitForSignal()
+    process.once('exit', () => dieOf(signal))
+    process.exit(STOP_CODES[signal])
+  }
+  const handlers = (Object.keys(STOP_CODES) as (keyof typeof STOP_CODES)[]).map(
+    (s) => [s, stop(s)] as const,
+  )
+  for (const [s, h] of handlers) process.on(s, h)
+  try {
+    return await work()
+  } finally {
+    for (const [s, h] of handlers) process.off(s, h)
+  }
+}
 
 /**
  * Refuses a `file` whose directory resolves outside `root`: a repo can carry
@@ -81,16 +127,28 @@ export async function writeAllOrNone(files: readonly PendingWrite[], root: strin
   const tag = `.tmp-${process.pid}-${Math.random().toString(36).slice(2)}`
   let at = 0
   try {
-    for (; at < files.length; at++) await Bun.write(files[at]!.file + tag, files[at]!.text)
+    for (; at < files.length; at++) {
+      track(files[at]!.file + tag)
+      await Bun.write(files[at]!.file + tag, files[at]!.text)
+    }
     // A rename over a directory fails only after the ones before it landed.
     for (at = 0; at < files.length; at++)
       if ((await lstat(files[at]!.file).catch(() => null))?.isDirectory())
         throw Object.assign(new Error('directory'), { code: 'EISDIR' })
-    for (at = 0; at < files.length; at++) await rename(files[at]!.file + tag, files[at]!.file)
+    for (at = 0; at < files.length; at++) {
+      await rename(files[at]!.file + tag, files[at]!.file)
+      inFlight.delete(files[at]!.file + tag)
+    }
   } catch (err) {
     // Best effort: where the write was refused the temp cannot be named
     // either (ENOTDIR), and that must not replace the refusal itself.
-    await Promise.all(files.map((f) => rm(f.file + tag, { force: true }).catch(() => {})))
+    await Promise.all(
+      files.map((f) =>
+        rm(f.file + tag, { force: true })
+          .catch(() => {})
+          .finally(() => inFlight.delete(f.file + tag)),
+      ),
+    )
     const f = files[Math.min(at, files.length - 1)]!
     const e = err as NodeJS.ErrnoException
     if (typeof e.message === 'string') e.message = e.message.split(f.file + tag).join(f.file)
@@ -108,6 +166,7 @@ export async function writeNoFollow(file: string, text: string, root: string): P
   refuseSymlink(file, root)
   await mkdir(path.dirname(file), { recursive: true })
   const tmp = `${file}.tmp-${process.pid}-${Math.random().toString(36).slice(2)}`
+  track(tmp)
   try {
     const fh = await open(tmp, 'wx')
     try {
@@ -116,8 +175,10 @@ export async function writeNoFollow(file: string, text: string, root: string): P
       await fh.close()
     }
     await rename(tmp, file)
+    inFlight.delete(tmp)
   } catch (err) {
     await rm(tmp, { force: true }).catch(() => {})
+    inFlight.delete(tmp)
     // The refusal names the file the user knows, as `writeLockfile`'s does.
     const e = err as NodeJS.ErrnoException
     if (typeof e.message === 'string') e.message = e.message.split(tmp).join(file)
