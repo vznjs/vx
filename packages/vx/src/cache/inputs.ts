@@ -63,20 +63,6 @@ import {
 } from './git-inputs.js'
 import { FILE_HASH_RACY_MS, racyWindowMs } from '../memo/index.js'
 
-// git-inputs.ts's surface, re-exported for readers that reach it through here.
-export {
-  GitFilesCache,
-  populateGitFilesCache,
-  runGitLsFiles,
-  startGitEnumeration,
-  applyGitEnumeration,
-  gitPathspecs,
-  autocrlfConverts,
-  gitStatWeakened,
-  attributeFilesOutsideTree,
-  type GitEnumeration,
-} from './git-inputs.js'
-
 // vx's own files are never task inputs, or a re-lock would move every `**`
 // reader's key. Relative to the project, so only where vx writes them: a
 // project's own `src/.vx/` stays an input. `node_modules` is not listed: the
@@ -2035,7 +2021,6 @@ function realOrNull(p: string): string | null {
 
 // Re-exported from `util/paths.ts`, where the graph's overlap refusal can read
 // the same rule.
-export { asTrees } from '../util/index.js'
 
 /**
  * The literals no path in `files` answers (by itself or anything under it). Git

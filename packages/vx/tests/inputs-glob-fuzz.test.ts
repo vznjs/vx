@@ -13,7 +13,8 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, expect, it } from 'bun:test'
-import { GitFilesCache, populateGitFilesCache, resolveInputs } from '../src/cache/inputs.js'
+import { GitFilesCache, populateGitFilesCache } from '../src/cache/git-inputs.js'
+import { resolveInputs } from '../src/cache/inputs.js'
 
 function mulberry32(seed: number): () => number {
   let a = seed >>> 0

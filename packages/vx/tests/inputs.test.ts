@@ -25,14 +25,13 @@ import { afterEach, beforeEach, describe, expect, it, setDefaultTimeout } from '
 // Fixture hooks git-init real repos; under load (full suite after a
 // warm day of runs) the default 5s hook timeout flakes. File-scoped.
 setDefaultTimeout(30_000)
+import { GitFilesCache, populateGitFilesCache } from '../src/cache/git-inputs.js'
 import {
   cleanOutputPaths,
   cleanOutputs,
   cleanWorkspaceOutputs,
   deferRemovals,
-  GitFilesCache,
   ownOutputsSince,
-  populateGitFilesCache,
   type ProjectFilesCache,
   resolveInputs,
   resolveOutputs,

@@ -16,12 +16,8 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import {
-  addedInput,
-  GitFilesCache,
-  populateGitFilesCache,
-  resolveInputs,
-} from '../src/cache/inputs.js'
+import { GitFilesCache, populateGitFilesCache } from '../src/cache/git-inputs.js'
+import { addedInput, resolveInputs } from '../src/cache/inputs.js'
 import { writeLocalWorkspace } from './helpers/local-workspace.js'
 
 const TIMEOUT = 60_000

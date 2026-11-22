@@ -37,11 +37,11 @@ import {
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, setDefaultTimeout } from 'bun:test'
+import { GitFilesCache } from '../src/cache/git-inputs.js'
 import {
   cleanOutputPaths,
   cleanOutputs,
   cleanWorkspaceOutputs,
-  GitFilesCache,
   type ProjectFilesCache,
   resolveInputs,
   resolveOutputs,

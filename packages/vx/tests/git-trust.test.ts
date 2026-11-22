@@ -6,7 +6,7 @@
 import { mkdir, readFile, rm, utimes, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { GitFilesCache, populateGitFilesCache } from '../src/cache/inputs.js'
+import { GitFilesCache, populateGitFilesCache } from '../src/cache/git-inputs.js'
 import type { RunSummary } from '../src/orchestrator/index.js'
 import type { Logger } from '../src/report/index.js'
 import { run } from './helpers/orchestrator.js'

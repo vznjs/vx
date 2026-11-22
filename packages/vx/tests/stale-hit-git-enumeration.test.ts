@@ -16,7 +16,7 @@ import {
   gitStatWeakened,
   populateGitFilesCache,
   runGitLsFiles,
-} from '../src/cache/inputs.js'
+} from '../src/cache/git-inputs.js'
 
 const TIMEOUT = 60_000
 const CLI = path.join(import.meta.dir, 'helpers', 'vx-locked.ts')

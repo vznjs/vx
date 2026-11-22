@@ -12,7 +12,7 @@ import {
   detectCi,
   normalizeRemoteUrl,
 } from '../src/orchestrator/run-context.js'
-import { GitFilesCache, populateGitFilesCache } from '../src/cache/inputs.js'
+import { GitFilesCache, populateGitFilesCache } from '../src/cache/git-inputs.js'
 import { xxh3hex } from '../src/util/index.js'
 
 /** The `git` spawns `fn` makes, by `Bun.spawnSync`. */
