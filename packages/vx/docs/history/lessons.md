@@ -413,3 +413,7 @@ claim or a timed test. Add a lesson here, not to CLAUDE.md.
   a failed `BEGIN EXCLUSIVE`'s shared one too: two `vx cache clean`s
   waiting on one run each held a shared lock and waited on the other
   forever. A waiter closes its connection between tries (2026-11-22).
+- Bun's `readdir(dir, { recursive: true })` follows a link to a directory
+  (Node's does not): two links back to an ancestor in a saved tree were a
+  2^40-path walk and an OOM kill, one threw ELOOP. Walk a user's tree a
+  level at a time with `withFileTypes` (2026-11-22).
