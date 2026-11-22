@@ -504,6 +504,7 @@
       ],
       "exec": {
         "command": "bun scripts/deploy-pages.ts dist-live",
+        "timeout": "12m",
         "env": {
           "passThrough": [
             "ACTIONS_RUNTIME_TOKEN",
