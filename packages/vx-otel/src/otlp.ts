@@ -839,6 +839,14 @@ export function buildLogsRequest(args: {
       ...(spanId ? { spanId } : {}),
     }
   })
+  return logsRequest(args, logRecords)
+}
+
+/** Wrap log records in an ExportLogsServiceRequest. */
+function logsRequest(
+  args: { serviceName: string; vxVersion: string; resource?: Readonly<Record<string, string>> },
+  logRecords: OtlpLogRecord[],
+): unknown {
   return {
     resourceLogs: [
       {
@@ -889,14 +897,5 @@ export function buildEventLogsRequest(args: {
     ...(args.traceId ? { traceId: args.traceId } : {}),
     ...(args.traceId && e.spanId ? { spanId: e.spanId } : {}),
   }))
-  return {
-    resourceLogs: [
-      {
-        resource: {
-          attributes: resourceAttributes(args.serviceName, args.vxVersion, args.resource),
-        },
-        scopeLogs: [{ scope: { name: 'vx', version: args.vxVersion }, logRecords }],
-      },
-    ],
-  }
+  return logsRequest(args, logRecords)
 }
