@@ -12,6 +12,7 @@ import { closeSync, writeSync } from 'node:fs'
 import { taskShell } from '../util/index.js'
 import { flushGuard, listGroup } from './kill-tree.js'
 import { heldPipe, TaskPipes } from './pipes.js'
+import { measureHelperNow } from './measure-helper.js'
 import { type OffChild, spawnOff } from './spawn-off.js'
 
 /** A shell waiting for its task's script on descriptor 3. */
@@ -62,6 +63,8 @@ function start(): Spare | undefined {
     detached: true,
     held: false,
     stdio: ['ignore', ...(pipes.stdio as [number, number]), fds[0]!],
+    // Its fork is made here, before the task is asked for.
+    measure: measureHelperNow(),
   }).then((c) => {
     listGroup(c.pid)
     return c

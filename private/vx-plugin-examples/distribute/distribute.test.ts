@@ -79,11 +79,12 @@ it('runs each task on a worker, streams its output, and caches it as the floor w
 }, 30_000)
 
 it('gives a task back to this machine when its worker dies under it', async () => {
-  // On the worker the command kills it (its shell's parent); given back,
-  // it runs here, where the marker it left says not to.
+  // On the worker the command kills it; given back, it runs here, where the
+  // marker it left says not to. On Linux the shell's parent is vx-measure, a
+  // SIGKILL it cannot pass on, so the worker is that helper's parent.
   const dir = await pkg(
     'a',
-    `export default { tasks: { hi: { exec: { command: 'if [ ! -e gone ]; then touch gone; kill -9 $PPID; sleep 5; fi; echo here > here.txt' } } } }`,
+    `export default { tasks: { hi: { exec: { command: 'if [ ! -e gone ]; then touch gone; w=$PPID; case "$(ps -o comm= -p $w)" in vx-measure*) w=$(ps -o ppid= -p $w);; esac; kill -9 $w; sleep 5; fi; echo here > here.txt' } } } }`,
   )
   await workspace(1)
   const r = await run({ cwd: root, tasks: ['hi'], log: quiet(), handleSignals: false })

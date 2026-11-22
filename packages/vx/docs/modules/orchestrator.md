@@ -725,7 +725,8 @@ one-shot handler mid-cleanup.
 6. Return outcome with hash, status (`success` / `failed`),
    exitCode, durationMs, hrtime spans, and
    (when Bun's resourceUsage returned them) `cpuMs` / `peakRssBytes` —
-   the peak only when it rose above vx's own footprint (runner.md).
+   on Linux the shell's own peak (`vx-measure` forks it), elsewhere only when it
+   rose above vx's own footprint (util.md's runner).
 
 ### The hit
 

@@ -1011,10 +1011,10 @@ save failed` for it, not an exit.
      it started and its peak memory so far, looked at every 500 ms only
      while this list draws (a pipe or CI reads nothing); on a finished
      row its average cores and peak memory over the whole run, `—` on
-     a hit. On Linux the peak the kernel reports at exit includes vx's own
-     memory, inherited at exec, so a task lighter than vx takes the peak
-     of its tree looked at every 250 ms while it runs; one over before
-     the first look shows `—`.
+     a hit. On Linux the peak at exit is the task's own, read by the
+     small helper that forks its shell (the kernel hands a shell vx
+     spawned vx's own memory at exec), or its tree's sum looked at every
+     250 ms while it runs, whichever is larger.
    - **outputs**: on a finished row, the bytes of its outputs: on a hit
      the files it restored, on a miss the files it wrote, saved or not;
      `—` when vx has no size for it (a remote hit not yet downloaded,
