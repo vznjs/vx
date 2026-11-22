@@ -2,7 +2,8 @@
 // A visitor's system preference picks the theme until they pick one in the
 // header, which Starlight remembers. Until 2026-11-22 a first visit stored
 // "dark" (marked by `vx-theme-seeded`): that stored value was never the
-// reader's choice, so it is cleared once and the system decides again.
+// reader's choice, so it is cleared once and the system decides again. A
+// reader who had picked dark since cannot be told apart and picks it again.
 import Default from '@astrojs/starlight/components/ThemeProvider.astro'
 ---
 
