@@ -70,7 +70,7 @@ killed.
 
 ```mermaid
 flowchart LR
-  C[vx.config.ts] -->|"vx lock (30 s limit, rules checked)"| L[.vx/projects.lock.jsonl]
+  C[vx.config.ts] -->|"vx lock (30 s limit, rules checked)"| L[.vx/projects.lock]
   L -->|read as data| R[vx run]
 ```
 

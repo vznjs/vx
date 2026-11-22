@@ -357,7 +357,7 @@ const calls = (root: string) => readFile(path.join(root, '.pnpm-calls'), 'utf8')
 describe('vx-migrate ends with the lock', () => {
   // 2026-10-14: "vx migrate should generate lock as well". solid's
   // shape: ssr has no task Turbo runs, and gets a config all the same.
-  it('writes .vx/projects.lock.jsonl once the plugins resolve; --no-install leaves it to vx lock', async () => {
+  it('writes .vx/projects.lock once the plugins resolve; --no-install leaves it to vx lock', async () => {
     const { root, env } = await solidShaped()
     try {
       await installPlugins(root)
@@ -367,9 +367,9 @@ describe('vx-migrate ends with the lock', () => {
       expect([r.code, r.err]).toEqual([0, ''])
       // The lock line follows the files; the notes (Turbo's builtin env) and next follow it.
       expect(r.out).toContain(
-        '\n            .vx/.gitignore\n  lock      2 project configs → .vx/projects.lock.jsonl, .vx/dependencies.lock\n  note  ',
+        '\n            .vx/.gitignore\n  lock      2 project configs → .vx/projects.lock, .vx/dependencies.lock\n  note  ',
       )
-      expect(await Bun.file(path.join(root, '.vx/projects.lock.jsonl')).exists()).toBe(true)
+      expect(await Bun.file(path.join(root, '.vx/projects.lock')).exists()).toBe(true)
     } finally {
       await rm(root, { recursive: true, force: true })
     }
@@ -381,7 +381,7 @@ describe('vx-migrate ends with the lock', () => {
       const r = await migrate(root, env, ['--no-install'])
       expect([r.code, r.err]).toEqual([0, ''])
       expect(r.out).not.toContain('vx lock:')
-      expect(await Bun.file(path.join(root, '.vx/projects.lock.jsonl')).exists()).toBe(false)
+      expect(await Bun.file(path.join(root, '.vx/projects.lock')).exists()).toBe(false)
     } finally {
       await rm(root, { recursive: true, force: true })
     }
@@ -482,7 +482,7 @@ describe('vx-migrate on a pnpm Turbo repo with no vx installed', () => {
           r.code,
           [...ws.matchAll(/^ {4}(\w+)\(\),$/gm)].map((m) => m[1]),
           await calls(root),
-          await Bun.file(path.join(root, '.vx/projects.lock.jsonl')).exists(),
+          await Bun.file(path.join(root, '.vx/projects.lock')).exists(),
           planned.find((f) => f.path === '.vx/workspace.ts')?.contents,
         ]).toEqual([
           0,

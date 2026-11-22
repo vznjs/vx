@@ -13,9 +13,9 @@ re-exported from `@vzn/vx`.
 ├── vx.config.ts                 (optional: the root project, named `//`)
 ├── .vx/
 │   ├── workspace.ts             (required: marks the root; workspace-wide settings)
-│   ├── projects.lock.jsonl      (`vx lock`: configs, a line per project; committed)
+│   ├── projects.lock      (`vx lock`: configs, a line per project; committed)
 │   ├── dependencies.lock        (`vx lock`: edges and digests, a line per project; committed)
-│   ├── .gitattributes           (both locks `linguist-generated merge=vx-lock eol=lf`; written when missing)
+│   ├── .gitattributes           (both locks `linguist-generated eol=lf`; written when missing)
 │   ├── .gitignore               (`/cache`; written by `vx init` and the cache when missing)
 │   └── cache/                   (machine-local state; the only part git ignores)
 └── <any>/<dir>/
@@ -1128,7 +1128,7 @@ Always applied to every glob pass (regardless of what you wrote):
   under `--affected` on its own, as in Nx (only what git sees does); `vx
 watch` re-runs it on an edit there.
 - **Always-ignored** — `.git/**`, `.vx/cache/**`,
-  `.vx/projects.lock.jsonl`, `vx.lock.json`, and `.vx/tmp/**`, where vx's
+  `.vx/projects.lock`, `vx.lock.json`, and `.vx/tmp/**`, where vx's
   restores stage, only where vx writes them: at the project's root (a
   project's own `src/.vx/tmp/x` or `src/sub/vx.lock.json` is an input),
   and for `workspaceFiles` every project's `vx.lock.json`. The run's
@@ -1212,7 +1212,7 @@ engine reads either as part of a name, so it matched nothing and the
 task keyed nothing for it.
 
 Still applied: the always-ignored set (`.git/**`, `.vx/cache/**`,
-`.vx/projects.lock.jsonl`, `vx.lock.json`, `.vx/tmp/**`, and the
+`.vx/projects.lock`, `vx.lock.json`, `.vx/tmp/**`, and the
 `.tmp-*` temps a killed write of a lock leaves),
 untracked files under `node_modules/`, and the task's own declared
 outputs, `outputs.workspaceFiles` and the `outputs.files` its globs reach
@@ -2301,7 +2301,7 @@ The loader rejects:
 ## Workspace config (`.vx/workspace.ts`)
 
 Loaded from `.vx/workspace.{ts,mts,js,mjs,cts,cjs}`: the directory holding
-`.vx` is the workspace root. `.vx` also holds the lock (`.vx/projects.lock.jsonl`)
+`.vx` is the workspace root. `.vx` also holds the lock (`.vx/projects.lock`)
 `.vx/cache`, the machine-local state (the cache, the workspace id), and
 `.vx/tmp`, where a restore stages files; git ignores only those two:
 `.vx/.gitignore` says `/cache` and `/tmp`. Every field falls back to its
@@ -3252,13 +3252,13 @@ Project-discovery errors (`src/workspace/workspace.ts`, `src/orchestrator/projec
 | `<dir>: a project is named by its path unless named, and this one holds "#" …`                                       | A path no task spec can address: set `name` in its config.                                                  |
 | `<dir>: the directory's name is not valid UTF-8, which no project path may hold — rename it`                         | A project directory's name has bytes UTF-8 cannot decode, shown as `\xNN`.                                  |
 | `<dir>: "//" names the workspace root — set another \`name\``                                                        | A config away from the root says `name: '//'`.                                                              |
-| `.vx/projects.lock.jsonl locks <dir>, but its <file> is gone — run \`vx lock\``                                      | A locked project's config was deleted or renamed (X-144).                                                   |
-| `.vx/projects.lock.jsonl locks <dir>, but its <file> is not readable by this user (<code>)`                          | This user may not search the project's directory (D-132).                                                   |
-| `.vx/projects.lock.jsonl has unsupported version <n> (this vx expects 8) — re-run \`vx lock\``                       | A lock an earlier vx wrote.                                                                                 |
-| `.vx/projects.lock.jsonl was written by a newer vx (version <n>; this vx reads 8) — upgrade vx`                      | A lock a later vx wrote: re-locking would write the older version.                                          |
+| `.vx/projects.lock locks <dir>, but its <file> is gone — run \`vx lock\``                                            | A locked project's config was deleted or renamed (X-144).                                                   |
+| `.vx/projects.lock locks <dir>, but its <file> is not readable by this user (<code>)`                                | This user may not search the project's directory (D-132).                                                   |
+| `.vx/projects.lock has unsupported version <n> (this vx expects 8) — re-run \`vx lock\``                             | A lock an earlier vx wrote.                                                                                 |
+| `.vx/projects.lock was written by a newer vx (version <n>; this vx reads 8) — upgrade vx`                            | A lock a later vx wrote: re-locking would write the older version.                                          |
 | `<dir> is outside this sparse checkout, so vx lock cannot read its <file> — run \`git sparse-checkout add <dir>\``   | `vx lock` or `--check` where a sparse checkout left a config out.                                           |
-| `.vx/projects.lock.jsonl: no task #<id> — re-run \`vx lock\``                                                        | A hand-edited lock names a task line it does not hold.                                                      |
-| `.vx/projects.lock.jsonl holds a line \`vx lock\` never writes — re-run \`vx lock\``                                 | A line with no tab, a name twice, or a merge's conflict markers.                                            |
+| `.vx/projects.lock: no task #<id> — re-run \`vx lock\``                                                              | A hand-edited lock names a task line it does not hold.                                                      |
+| `.vx/projects.lock holds a line \`vx lock\` never writes — re-run \`vx lock\``                                       | A line with no tab, a name twice, or a merge's conflict markers.                                            |
 | `plugin '<name>' adds project <p>, but git ignores <file>, so \`vx lock\` cannot read it — unignore it or delete it` | A `discover` plugin's directory holds a config git ignores: `vx lock`, `--check` and a run naming its task. |
 | `git ls-files failed (exit <n>): <why>`                                                                              | `vx lock` could not list the configs (a torn index).                                                        |
 

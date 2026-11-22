@@ -4,7 +4,7 @@
 // (6.13+) stamped it from its coarse clock, the same tick as a file renamed
 // into place a moment earlier. `vx watch` started right after `vx lock`
 // took the lock for an edit made during its first run, and ran a cycle
-// nobody asked for ("changed root .vx/projects.lock.jsonl").
+// nobody asked for ("changed root .vx/projects.lock").
 
 import { mkdirSync, mkdtempSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import os from 'node:os'

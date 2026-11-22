@@ -1,7 +1,7 @@
-// A committed `.vx/projects.lock.jsonl` is a 1.0 contract surface
+// A committed `.vx/projects.lock` is a 1.0 contract surface
 // (docs/design/versioning-1.0.md): users check it in, and CI runs
 // `vx lock --check && vx run …` against it. `tests/contract/
-// lock.jsonl` is the lock this vx writes for one fixture workspace. A
+// projects.lock` is the lock this vx writes for one fixture workspace. A
 // later vx must write the same bytes (so a format change is a reviewed diff
 // of that file) and must accept the committed one: `--check` passes and
 // a run reads it. A change to the entry shape, or to
@@ -18,7 +18,7 @@ import { addProject, makeWorkspace } from './helpers/workspace.js'
 
 // The real CLI: a run here must read the committed lock, not re-lock first.
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
-const RECORD = path.join(import.meta.dir, 'contract', 'lock.jsonl')
+const RECORD = path.join(import.meta.dir, 'contract', 'projects.lock')
 
 let root: string
 
@@ -70,9 +70,9 @@ afterAll(async () => {
   await rm(root, { recursive: true, force: true })
 })
 
-it('vx lock writes tests/contract/lock.jsonl byte for byte', () => {
+it('vx lock writes tests/contract/projects.lock byte for byte', () => {
   expect(vx('ci', 'lock').code).toBe(0)
-  const live = readFileSync(path.join(root, '.vx/projects.lock.jsonl'), 'utf8')
+  const live = readFileSync(path.join(root, '.vx/projects.lock'), 'utf8')
   if (process.env['VX_UPDATE_CONTRACT'] === '1' && process.env['CI'] !== 'true') {
     writeFileSync(RECORD, live)
   }
@@ -80,7 +80,7 @@ it('vx lock writes tests/contract/lock.jsonl byte for byte', () => {
 })
 
 it('the committed lock passes --check and drives a run', () => {
-  writeFileSync(path.join(root, '.vx/projects.lock.jsonl'), readFileSync(RECORD, 'utf8'))
+  writeFileSync(path.join(root, '.vx/projects.lock'), readFileSync(RECORD, 'utf8'))
   const check = vx('ci', 'lock', '--check')
   expect([check.code, check.out]).toEqual([0, check.out])
   // Run under another mode: a live evaluation would print `app local`, so

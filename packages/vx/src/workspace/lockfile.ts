@@ -1,8 +1,8 @@
-// .vx/projects.lock.jsonl — frozen resolved-config lockfile.
+// .vx/projects.lock — frozen resolved-config lockfile.
 //
 // `vx lock` finds every project's vx.config.*, evaluates each in the CURRENT
 // environment and freezes the resolved objects into
-// `.vx/projects.lock.jsonl` at the workspace root. Every run loads configs from
+// `.vx/projects.lock` at the workspace root. Every run loads configs from
 // it and never evaluates one; only `vx lock` writes it. See
 // docs/design/config-lock-2026-06.md.
 //
@@ -42,7 +42,7 @@ import {
   readDependenciesLock,
 } from './dependencies-lock.js'
 
-export const LOCKFILE_NAME = '.vx/projects.lock.jsonl'
+export const LOCKFILE_NAME = '.vx/projects.lock'
 const ENTRY_KEYS = new Set(['path', 'file', 'by', 'config'])
 
 export const LOCKFILE_VERSION = 8
@@ -149,7 +149,7 @@ export function lockDigest(lock: Lockfile): string | undefined {
 }
 
 /**
- * Read and shape-validate `.vx/projects.lock.jsonl`. Returns `null` when no lock
+ * Read and shape-validate `.vx/projects.lock`. Returns `null` when no lock
  * exists (the common case — the feature is opt-in). The lock is a
  * user-editable file, so this is a system boundary: malformed content
  * throws a `UserError` instead of crashing deeper in the run.

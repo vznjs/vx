@@ -22,7 +22,7 @@ catches it:
 
 ```sh frame="terminal"
 $ vx lock
-✓ vx lock  4 project configs → .vx/projects.lock.jsonl
+✓ vx lock  4 project configs → .vx/projects.lock
 
 $ vx lock --check
 ✓ vx lock --check  up to date (4 projects)
@@ -39,7 +39,7 @@ $ echo $?
 
 ```mermaid
 flowchart LR
-  C["vx.config.ts files"] -->|vx lock| L[.vx/projects.lock.jsonl]
+  C["vx.config.ts files"] -->|vx lock| L[.vx/projects.lock]
   L --> R[vx run]
   L --> W[vx watch]
   L --> A[--affected]

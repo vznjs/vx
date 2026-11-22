@@ -1688,21 +1688,21 @@ describe('vx init — the generated build is not a cached no-op', () => {
     }
   })
 
-  it('ends with the lock: .vx/projects.lock.jsonl written and named, none under --dry', async () => {
+  it('ends with the lock: .vx/projects.lock written and named, none under --dry', async () => {
     // 2026-10-14: "vx migrate should generate lock as well".
     const root = await makeScriptsWorkspace()
     await withLockfile(root)
     try {
       const dry = await vx(root, ['init', '--dry'])
       expect(dry.code).toBe(0)
-      expect(existsSync(path.join(root, '.vx/projects.lock.jsonl'))).toBe(false)
+      expect(existsSync(path.join(root, '.vx/projects.lock'))).toBe(false)
       const r = await vx(root, ['init'])
       expect(r.code).toBe(0)
       expect(r.err).toBe('')
       expect(row(r.out, 'lock')).toEqual([
-        '3 project configs → .vx/projects.lock.jsonl, .vx/dependencies.lock',
+        '3 project configs → .vx/projects.lock, .vx/dependencies.lock',
       ])
-      const lock = await Bun.file(path.join(root, '.vx/projects.lock.jsonl')).text()
+      const lock = await Bun.file(path.join(root, '.vx/projects.lock')).text()
       const dirs = lock
         .trimEnd()
         .split('\n')
@@ -1724,7 +1724,7 @@ describe('vx init — the generated build is not a cached no-op', () => {
       const r = await vx(root, ['init'], { FORCE_COLOR: '1' })
       expect(r.code).toBe(0)
       expect(row(Bun.stripANSI(r.out), 'lock')).toEqual([
-        '3 project configs → .vx/projects.lock.jsonl, .vx/dependencies.lock',
+        '3 project configs → .vx/projects.lock, .vx/dependencies.lock',
       ])
     } finally {
       await rm(root, { recursive: true, force: true })
@@ -1747,7 +1747,7 @@ describe('vx init — the generated build is not a cached no-op', () => {
       expect(r.err).toContain('dependsOn cycle')
       expect(r.out).toContain('  lock      not written\n')
       expect(r.out).toContain('  next      fix the above, then vx lock and ')
-      expect(existsSync(path.join(root, '.vx/projects.lock.jsonl'))).toBe(false)
+      expect(existsSync(path.join(root, '.vx/projects.lock'))).toBe(false)
       expect(existsSync(path.join(root, 'packages', 'app', 'vx.config.ts'))).toBe(true)
     } finally {
       await rm(root, { recursive: true, force: true })

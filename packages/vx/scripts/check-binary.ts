@@ -135,7 +135,7 @@ writeFileSync(
 // check's first load in process, then the audit's repeat load in the
 // worker. A worker that let the function through would report drift.
 writeFileSync(
-  path.join(ws, '.vx/projects.lock.jsonl'),
+  path.join(ws, '.vx/projects.lock'),
   JSON.stringify({
     version: LOCKFILE_VERSION,
     projects: { 'packages/a': { file: 'vx.config.mjs', config: { tasks: {} } } },

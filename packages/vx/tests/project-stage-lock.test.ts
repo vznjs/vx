@@ -64,7 +64,7 @@ it('a run follows the mapping vx lock made, and calls no project hook', async ()
   const lock = await vx(root, ['lock'])
   expect(`${lock.code}\n${lock.err}`).toStartWith('0\n')
   expect(lock.out).toContain('and the tasks a plugin maps for mapped')
-  const text = await Bun.file(path.join(root, '.vx/projects.lock.jsonl')).text()
+  const text = await Bun.file(path.join(root, '.vx/projects.lock')).text()
   // Only the final config: the plugin's mapping, not the steps that made it.
   expect(text).not.toContain('projectStage')
   const locked = (await readLockfile(root))!

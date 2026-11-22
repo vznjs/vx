@@ -89,7 +89,7 @@ it('the bare-project note names only projects a plugin gives tasks', async () =>
   const lock = await vx(root, ['lock'])
   expect(`${lock.code}\n${lock.err}`).toStartWith('0\n')
   expect(lock.out).toBe(
-    '✓ vx lock  2 project configs → .vx/projects.lock.jsonl, .vx/dependencies.lock (and the tasks a plugin maps for mapped)\n',
+    '✓ vx lock  2 project configs → .vx/projects.lock, .vx/dependencies.lock (and the tasks a plugin maps for mapped)\n',
   )
   const check = await vx(root, ['lock', '--check'])
   expect(check.out).toBe('✓ vx lock --check  up to date (2 projects; mapped by a plugin: mapped)\n')

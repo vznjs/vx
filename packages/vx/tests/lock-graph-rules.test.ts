@@ -66,7 +66,7 @@ describe('vx lock checks the graph rules', () => {
       expect({
         code: r.code,
         said: r.err.includes('lock not written') && r.err.includes('both write'),
-        written: existsSync(path.join(root, '.vx/projects.lock.jsonl')),
+        written: existsSync(path.join(root, '.vx/projects.lock')),
       }).toEqual({ code: 1, said: true, written: false })
     },
     TIMEOUT,
@@ -96,7 +96,7 @@ describe('a run', () => {
     'with no lock refuses and writes none, under CI or not',
     async () => {
       const root = await workspace(`{ a: ${task(['dist/**'])} }`)
-      const lockFile = path.join(root, '.vx/projects.lock.jsonl')
+      const lockFile = path.join(root, '.vx/projects.lock')
       for (const CI of ['', '1']) {
         const r = vx(root, ['run', 'a', '--all'], { CI })
         expect({ code: r.code, err: r.err, written: existsSync(lockFile) }).toEqual({

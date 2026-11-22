@@ -61,7 +61,7 @@ describe('vx init with no package.json', () => {
       await readFile(path.join(root, '.vx', 'workspace.ts'), 'utf8'),
       await readFile(path.join(root, 'vx.config.ts'), 'utf8'),
       existsSync(path.join(root, '.vx', '.gitignore')),
-      existsSync(path.join(root, '.vx', 'projects.lock.jsonl')),
+      existsSync(path.join(root, '.vx', 'projects.lock')),
       existsSync(path.join(root, 'package.json')),
     ]).toEqual([WORKSPACE, PROJECT, true, true, false])
     expect(r.out).toBe(
@@ -70,7 +70,7 @@ describe('vx init with no package.json', () => {
           ui.report(`vx init ${VERSION}`, [
             ['from', 'no turbo.json or nx.json'],
             ['files', '.vx/workspace.ts', 'vx.config.ts', '.vx/.gitignore', '.vx/.gitattributes'],
-            ['lock', '1 project config → .vx/projects.lock.jsonl, .vx/dependencies.lock'],
+            ['lock', '1 project config → .vx/projects.lock, .vx/dependencies.lock'],
             null,
             ['next', 'declare a task in vx.config.ts, then vx lock && vx run <task>'],
           ]),
@@ -110,12 +110,12 @@ describe('vx init with no package.json', () => {
       return r.out.slice(r.out.indexOf('  lock '), r.out.indexOf('\n\n', r.out.indexOf('  lock ')))
     }
     expect(await lockRow({ VX_LOCK_REVIEW_FILES: 'true' })).toBe(
-      '  lock      .vx/projects.lock.jsonl\n' +
+      '  lock      .vx/projects.lock\n' +
         '            .vx/dependencies.lock\n' +
         '            vx.lock.json beside each vx.config',
     )
     expect(await lockRow({ VX_LOCK_REVIEW_FILES: 'false' })).toBe(
-      '  lock      .vx/projects.lock.jsonl\n            .vx/dependencies.lock',
+      '  lock      .vx/projects.lock\n            .vx/dependencies.lock',
     )
     // A kept workspace file's own setting is the lock's.
     await mkdir(path.join(root, '.vx'))
@@ -124,9 +124,7 @@ describe('vx init with no package.json', () => {
       'export default { lock: { reviewFiles: false } }\n',
     )
     const r = await vx(root, ['init', '--dry'])
-    expect(r.out).toContain(
-      '  lock      .vx/projects.lock.jsonl\n            .vx/dependencies.lock\n\n',
-    )
+    expect(r.out).toContain('  lock      .vx/projects.lock\n            .vx/dependencies.lock\n\n')
   })
 
   it('keeps the files already here, and --force replaces them', async () => {
@@ -192,7 +190,7 @@ describe('vx init with no package.json', () => {
     await mkdir(path.join(root, '.vx', 'workspace.ts'), { recursive: true })
     for (const args of [['init'], ['init', '--force']]) {
       const r = await vx(root, args)
-      expect([r.code, r.err, existsSync(path.join(root, '.vx', 'projects.lock.jsonl'))]).toEqual([
+      expect([r.code, r.err, existsSync(path.join(root, '.vx', 'projects.lock'))]).toEqual([
         1,
         '✗ vx init  .vx/workspace.ts is a directory, where the workspace file goes; move it and re-run\n',
         false,

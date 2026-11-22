@@ -47,7 +47,7 @@ it('vx lock --check from a subdirectory passes a lock written at the root', asyn
 
 it('vx lock writes the same lock from the root and from a subdirectory', async () => {
   const r = await workspace()
-  const lock = path.join(r, '.vx', 'projects.lock.jsonl')
+  const lock = path.join(r, '.vx', 'projects.lock')
   expect(vx(r, 'lock').code).toBe(0)
   const atRoot = await Bun.file(lock).text()
   expect(atRoot).toContain(`echo ${r} ${r}`)

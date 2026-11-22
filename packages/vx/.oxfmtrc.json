@@ -20,7 +20,7 @@
     "src/cli/plugin-templates.ts",
     "docs/turbo-nx-support.md",
     "tests/contract/turbo-nx",
-    "tests/contract/lock.jsonl",
+    "tests/contract/projects.lock",
     "tests/contract/cli-surface.json",
     "tests/contract/discovery.json"
   ]

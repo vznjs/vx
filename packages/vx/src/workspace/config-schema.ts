@@ -597,7 +597,7 @@ export function validateWorkspace(config: WorkspaceConfig, configPath: string): 
  * Runtime validation of the user's config: `vx run` may load configs never
  * typechecked (plain JS, TS with errors ignored), so the worst shape
  * problems get a clear message instead of a crash deeper in. Also applied to
- * configs read back from `.vx/projects.lock.jsonl` (hand-editable).
+ * configs read back from `.vx/projects.lock` (hand-editable).
  * `ownConfig` is the config file outputs may not cover (null: none), apart
  * from `configPath` when that is a label (`<path> (after plugin 'x')`).
  */

@@ -28,7 +28,7 @@ a plugin changed the command, you see it here.
 
 ```mermaid
 flowchart LR
-  C[vx.config.ts + presets + plugins] -->|vx lock| L[.vx/projects.lock.jsonl]
+  C[vx.config.ts + presets + plugins] -->|vx lock| L[.vx/projects.lock]
   L --> S[vx show]
   L --> K[cache key]
 ```

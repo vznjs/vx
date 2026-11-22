@@ -95,7 +95,7 @@ Speed by subtraction is still speed:
 - **No daemon / project-graph process** — the cold numbers say it isn't
   needed.
 - **No config evaluation in a run** — configs are programs, and a run
-  evaluates none: it reads the resolved objects from `.vx/projects.lock.jsonl`.
+  evaluates none: it reads the resolved objects from `.vx/projects.lock`.
   Only `vx lock` evaluates them.
 - **No filesystem-tracing auto-inputs.** Not a gap — a position. A
   traced input set describes what the task read *that time*, on that

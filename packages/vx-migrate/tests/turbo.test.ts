@@ -1463,7 +1463,7 @@ describe('turbo() under vx lock', () => {
     async () => {
       expect(vx('lock')).toEqual({
         code: 0,
-        out: '✓ vx lock  0 project configs → .vx/projects.lock.jsonl, .vx/dependencies.lock (and the tasks a plugin maps for app, lib)\n',
+        out: '✓ vx lock  0 project configs → .vx/projects.lock, .vx/dependencies.lock (and the tasks a plugin maps for app, lib)\n',
         err: '',
       })
       const first = vx('run', 'build', '--all')
