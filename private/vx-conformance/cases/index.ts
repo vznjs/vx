@@ -48,6 +48,9 @@ import viteTaskE2eA from './vite-task-e2e-a.ts'
 import viteTaskE2eB from './vite-task-e2e-b.ts'
 import vitePlanA from './vite-task-plan-a.ts'
 import vitePlanB from './vite-task-plan-b.ts'
+import rivalShell from './rival-shell.ts'
+import rivalTurbo from './rival-turbo.ts'
+import rivalKeys from './rival-keys.ts'
 import watch from './watch.ts'
 
 /** Every case, in the results' order. */
@@ -102,4 +105,7 @@ export const CASES: Case[] = [
   ...moonTests,
   ...recentFixes,
   ...hardeningFixes,
+  ...rivalShell,
+  ...rivalTurbo,
+  ...rivalKeys,
 ]
