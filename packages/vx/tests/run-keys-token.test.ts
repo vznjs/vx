@@ -29,6 +29,7 @@ function args(
     lastKeys: () => new Map(),
     get: (id, probe) => rows.get(`${id}\0${probe}`),
     set: (id, probe, key) => void rows.set(`${id}\0${probe}`, key),
+    held: (id) => [...rows.keys()].some((k) => k.startsWith(`${id}\0`)),
   }
   const hashCache = createHashCache(folds, opts.clean, opts.strategy)
   hashCache.graph = opts.graph ?? 'graph'
