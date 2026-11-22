@@ -39,7 +39,8 @@ Three companions hold the rest, split 2026-09-09 as pure code motion:
   inside them (`punchWritePaths`), and the SRT custom config.
 - `sandbox/paths.ts` — `toRealPath`, `absolutize`, `atOrUnder`,
   `isUnderAny`, `sandboxReads`, `unique`, `grantAlternatives`,
-  `replacedBySandbox`.
+  `replacedBySandbox`, `nameDir` / `wildcardAt` / `globOf` (a project
+  directory whose name holds a wildcard, read as a name).
 - `sandbox/deny-scan.ts` — `scopedMandatoryDenies`: SRT's mandatory
   write denies (`.bashrc`, `.mcp.json`, `.vscode/`, `.git/hooks`, …),
   found within each task's write grants instead of the whole root.
@@ -310,6 +311,13 @@ export function sbplResolvedPath(value: string, field: string): string
 // decide whether an output grant is a glob.
 export const MOUNT_WILDCARDS: RegExp
 export function isMountableLiteral(grant: string): boolean
+// Linux: a directory whose name holds a wildcard, recorded as a name
+// (`packages/[legacy]/`); the index of a grant's first wildcard past one,
+// and an absolute pattern as Bun.Glob reads it (that name escaped).
+export function nameDir(dir: string): void
+export function namedHead(p: string): string
+export function wildcardAt(grant: string): number
+export function globOf(pattern: string): Bun.Glob
 // The grants one declared grant stands for: braces expanded as a task
 // glob's are, and an escaped brace or comma in a literal read as itself.
 export function grantAlternatives(grant: string): string[]

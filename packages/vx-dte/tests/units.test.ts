@@ -6000,7 +6000,10 @@ it('names the submodule of a keyed file the run’s tree holds only as a gitlink
 // no worker left. The task's own error fails the task, as core fails it.
 it('fails a task on its own error and keeps the worker', async () => {
   const root = await tmp()
-  await mkdir(path.join(root, 'p[1]'))
+  // A project dir the sandbox refuses: a backslash on Linux (a bracket runs
+  // there since 2026-11-22), a bracket on macOS.
+  const bad = process.platform === 'linux' ? 'p\\1' : 'p[1]'
+  await mkdir(path.join(root, bad))
   const served = servedRelay()
   const url = served.url
   try {
@@ -6065,7 +6068,7 @@ it('fails a task on its own error and keeps the worker', async () => {
             n: 1,
             root,
             realRoot: root,
-            tasks: [order('t1', 'p[1]'), order('t2', '')],
+            tasks: [order('t1', bad), order('t2', '')],
           })
         } else if (m.type === 'end') ends.set(m.task!, m.result!.exitCode)
         else seen.push(m.type)
