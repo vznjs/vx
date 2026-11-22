@@ -1,6 +1,6 @@
 {
   "coverage": {
-    "ported": 367,
+    "ported": 380,
     "rest": {
       "pending": [
         "affected-diff-early",
@@ -17,7 +17,6 @@
         "peak-memory-exact",
         "prepared-key",
         "project-stage-lock",
-        "restore-mtime",
         "server-chain",
         "server-died-under-task",
         "signal-tstp",
@@ -67,7 +66,6 @@
         "config-schema-exec-keys",
         "config-schema-fuzz",
         "config-schema-project-keys",
-        "config-schema-task-string",
         "config-schema-workspace-keys",
         "config-stage-verbs",
         "config-staleness",
@@ -107,7 +105,6 @@
         "forecast",
         "forward-args-group",
         "frozen-deleted-config",
-        "frozen-selection",
         "graph-memo",
         "graph-memo-run",
         "handoff",
@@ -187,7 +184,6 @@
         "plugin-name",
         "plugin-output",
         "plugin-pipeline",
-        "plugin-read-only",
         "plugin-run-facts",
         "plugin-run-record",
         "plugin-setup-warn",
@@ -250,7 +246,6 @@
         "secret-mask-reuse",
         "secret-prompt-quiet",
         "secrets",
-        "selection-graph-reuse",
         "settings",
         "show-affected",
         "show-default-build",
@@ -271,7 +266,6 @@
         "telemetry-command-secret-mask",
         "telemetry-lifecycle",
         "telemetry-trace-facts",
-        "timing-dry",
         "unlocked-config",
         "unscoped-vx.unsafe",
         "upgrade",
@@ -358,7 +352,6 @@
         "vx-history/url-masked",
         "vx-lockfile/bun-catalog-precise",
         "vx-lockfile/bun-patch-precise",
-        "vx-lockfile/dependency-section",
         "vx-lockfile/discover-parity",
         "vx-lockfile/entry-shapes",
         "vx-lockfile/io-refusals",
@@ -376,7 +369,6 @@
         "vx-lockfile/refusal-message",
         "vx-lockfile/rehoist-identity",
         "vx-lockfile/settings",
-        "vx-lockfile/transitive-workspace",
         "vx-lockfile/unknown-options",
         "vx-lockfile/yarn",
         "vx-lockfile/yarn-bound-descriptor",
@@ -665,7 +657,6 @@
         "alive-helper.unsafe",
         "archive-extract-meta",
         "archive-security",
-        "artifact-checksum",
         "artifact-pack-properties",
         "attempt-steps",
         "bin-reader-gone",
@@ -688,7 +679,6 @@
         "cache-save-batch",
         "cache-save-lock",
         "cache-stdout-bytes",
-        "cache-store-moved",
         "cache-unreadable",
         "ci-env-readers",
         "ci-output",
@@ -782,7 +772,6 @@
         "output-log",
         "output-memory.unsafe",
         "output-stamps-link",
-        "output-stamps-scale",
         "package-entry-shims.unsafe",
         "painted-output",
         "persistent-lifecycle-properties.unsafe",
@@ -864,7 +853,6 @@
         "symlinks-in-repo.unsafe",
         "syscall-repeats.unsafe",
         "taint-properties",
-        "task-artifacts",
         "task-glob-bun-1-4-4",
         "task-hash",
         "task-hash-properties",
@@ -882,7 +870,6 @@
         "ui-only-output.unsafe",
         "ulid",
         "uncached-key-once",
-        "unpassed-env",
         "upstream-input-window-race",
         "user-error-classify",
         "util-hash",
@@ -1024,7 +1011,8 @@
     "moon fetched no toolchain plugins (exit 1, found system-ad7abb72e596dcc556ad0fc2e87dcb23949f91d8280fc61c94cfec6224695c59.wasm), so it runs without them:\nError: plugin::loader::registry::load_failure\n\n  × Failed to load plugin from ghcr.io/moonrepo/bun_toolchain:1.0.5 registry.\n  ├─▶ error sending request for url (https://ghcr.io/v2/moonrepo/\n  │   bun_toolchain/blobs/\n  │   sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a)\n  ├─▶ client error (Connect)\n  ╰─▶ tunnel error: unsuccessful\n\n",
     "moon fetched no toolchain plugins (exit 1, found system-ad7abb72e596dcc556ad0fc2e87dcb23949f91d8280fc61c94cfec6224695c59.wasm), so it runs without them:\nError: plugin::loader::registry::load_failure\n\n  × Failed to load plugin from ghcr.io/moonrepo/bun_toolchain:1.0.5 registry.\n  ├─▶ error sending request for url (https://ghcr.io/v2/moonrepo/\n  │   bun_toolchain/blobs/\n  │   sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a)\n  ├─▶ client error (Connect)\n  ╰─▶ tunnel error: unsuccessful\n\n",
     "moon fetched no toolchain plugins (exit 1, found system-ad7abb72e596dcc556ad0fc2e87dcb23949f91d8280fc61c94cfec6224695c59.wasm), so it runs without them:\nError: plugin::loader::registry::load_failure\n\n  × Failed to load plugin from ghcr.io/moonrepo/bun_toolchain:1.0.5 registry.\n  ├─▶ error sending request for url (https://ghcr.io/v2/moonrepo/\n  │   bun_toolchain/blobs/\n  │   sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a)\n  ├─▶ client error (Connect)\n  ╰─▶ tunnel error: unsuccessful\n\n",
-    "moon failed 23 of 45 cases; one: succeeded, expected a failure\n$ /home/user/vx/private/vx-conformance/node_modules/.latest-16732/node_modules/@moonrepo/core-linux-x64-gnu/moon run :build\n▮▮▮▮ b:build (545ce2ac)\n▮▮▮▮ a:build (51d8f186)\n▮▮▮▮ b:build (566ms, 545ce2ac)\n▮▮▮▮ a:build (5s 14ms, 51d8f186)\n▮▮▮▮ c:build (ef0196dd)\n▮▮▮▮ c:build (4ms, ef0196dd)\n\nTasks: 3 completed\n Time: 5s 76ms\n\n"
+    "moon failed 23 of 45 cases; one: succeeded, expected a failure\n$ /home/user/vx/private/vx-conformance/node_modules/.latest-16732/node_modules/@moonrepo/core-linux-x64-gnu/moon run :build\n▮▮▮▮ b:build (545ce2ac)\n▮▮▮▮ a:build (51d8f186)\n▮▮▮▮ b:build (566ms, 545ce2ac)\n▮▮▮▮ a:build (5s 14ms, 51d8f186)\n▮▮▮▮ c:build (ef0196dd)\n▮▮▮▮ c:build (4ms, ef0196dd)\n\nTasks: 3 completed\n Time: 5s 76ms\n\n",
+    "moon fetched no toolchain plugins (exit 1, found system-ad7abb72e596dcc556ad0fc2e87dcb23949f91d8280fc61c94cfec6224695c59.wasm), so it runs without them:\nError: plugin::loader::registry::load_failure\n\n  × Failed to load plugin from ghcr.io/moonrepo/bun_toolchain:1.0.5 registry.\n  ├─▶ error sending request for url (https://ghcr.io/v2/moonrepo/\n  │   bun_toolchain/blobs/\n  │   sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a)\n  ├─▶ client error (Connect)\n  ╰─▶ tunnel error: unsuccessful\n\n"
   ],
   "tools": {
     "vx": "this commit",
@@ -1037,19 +1025,19 @@
   "scores": {
     "vx": {
       "all": {
-        "pass": 1841,
-        "can": 1841,
-        "of": 1855
+        "pass": 1873,
+        "can": 1873,
+        "of": 1905
       },
       "correctness": {
-        "pass": 1491,
-        "can": 1491,
-        "of": 1504
+        "pass": 1518,
+        "can": 1518,
+        "of": 1549
       },
       "efficiency": {
-        "pass": 261,
-        "can": 261,
-        "of": 261
+        "pass": 266,
+        "can": 266,
+        "of": 266
       },
       "data": {
         "pass": 89,
@@ -1057,9 +1045,9 @@
         "of": 90
       },
       "graph": {
-        "pass": 271,
-        "can": 271,
-        "of": 273
+        "pass": 283,
+        "can": 283,
+        "of": 285
       },
       "config": {
         "pass": 84,
@@ -1067,9 +1055,9 @@
         "of": 84
       },
       "failure": {
-        "pass": 132,
-        "can": 132,
-        "of": 136
+        "pass": 138,
+        "can": 138,
+        "of": 148
       },
       "affected": {
         "pass": 174,
@@ -1077,9 +1065,9 @@
         "of": 174
       },
       "cache": {
-        "pass": 78,
-        "can": 78,
-        "of": 81
+        "pass": 88,
+        "can": 88,
+        "of": 94
       },
       "inputs": {
         "pass": 458,
@@ -1087,14 +1075,14 @@
         "of": 458
       },
       "env": {
-        "pass": 93,
-        "can": 93,
-        "of": 95
+        "pass": 96,
+        "can": 96,
+        "of": 98
       },
       "outputs": {
-        "pass": 275,
-        "can": 275,
-        "of": 277
+        "pass": 276,
+        "can": 276,
+        "of": 287
       },
       "report": {
         "pass": 89,
@@ -1114,19 +1102,19 @@
     },
     "turbo": {
       "all": {
-        "pass": 1144,
-        "can": 1586,
-        "of": 1855
+        "pass": 1171,
+        "can": 1615,
+        "of": 1905
       },
       "correctness": {
-        "pass": 925,
-        "can": 1248,
-        "of": 1504
+        "pass": 947,
+        "can": 1272,
+        "of": 1549
       },
       "efficiency": {
-        "pass": 189,
-        "can": 254,
-        "of": 261
+        "pass": 194,
+        "can": 259,
+        "of": 266
       },
       "data": {
         "pass": 30,
@@ -1134,9 +1122,9 @@
         "of": 90
       },
       "graph": {
-        "pass": 164,
-        "can": 231,
-        "of": 273
+        "pass": 175,
+        "can": 243,
+        "of": 285
       },
       "config": {
         "pass": 52,
@@ -1144,9 +1132,9 @@
         "of": 84
       },
       "failure": {
-        "pass": 48,
-        "can": 87,
-        "of": 136
+        "pass": 51,
+        "can": 90,
+        "of": 148
       },
       "affected": {
         "pass": 137,
@@ -1154,9 +1142,9 @@
         "of": 174
       },
       "cache": {
-        "pass": 65,
-        "can": 79,
-        "of": 81
+        "pass": 74,
+        "can": 89,
+        "of": 94
       },
       "inputs": {
         "pass": 306,
@@ -1164,14 +1152,14 @@
         "of": 458
       },
       "env": {
-        "pass": 81,
-        "can": 85,
-        "of": 95
+        "pass": 84,
+        "can": 88,
+        "of": 98
       },
       "outputs": {
-        "pass": 209,
-        "can": 273,
-        "of": 277
+        "pass": 210,
+        "can": 274,
+        "of": 287
       },
       "report": {
         "pass": 30,
@@ -1191,19 +1179,19 @@
     },
     "nx": {
       "all": {
-        "pass": 1161,
-        "can": 1610,
-        "of": 1855
+        "pass": 1187,
+        "can": 1637,
+        "of": 1905
       },
       "correctness": {
-        "pass": 905,
-        "can": 1270,
-        "of": 1504
+        "pass": 926,
+        "can": 1292,
+        "of": 1549
       },
       "efficiency": {
-        "pass": 226,
-        "can": 257,
-        "of": 261
+        "pass": 231,
+        "can": 262,
+        "of": 266
       },
       "data": {
         "pass": 30,
@@ -1211,9 +1199,9 @@
         "of": 90
       },
       "graph": {
-        "pass": 198,
-        "can": 231,
-        "of": 273
+        "pass": 210,
+        "can": 243,
+        "of": 285
       },
       "config": {
         "pass": 36,
@@ -1221,9 +1209,9 @@
         "of": 84
       },
       "failure": {
-        "pass": 69,
-        "can": 95,
-        "of": 136
+        "pass": 71,
+        "can": 98,
+        "of": 148
       },
       "affected": {
         "pass": 116,
@@ -1231,9 +1219,9 @@
         "of": 174
       },
       "cache": {
-        "pass": 59,
-        "can": 69,
-        "of": 81
+        "pass": 67,
+        "can": 77,
+        "of": 94
       },
       "inputs": {
         "pass": 319,
@@ -1241,14 +1229,14 @@
         "of": 458
       },
       "env": {
-        "pass": 84,
-        "can": 93,
-        "of": 95
+        "pass": 87,
+        "can": 96,
+        "of": 98
       },
       "outputs": {
-        "pass": 204,
-        "can": 273,
-        "of": 277
+        "pass": 205,
+        "can": 274,
+        "of": 287
       },
       "report": {
         "pass": 30,
@@ -1268,19 +1256,19 @@
     },
     "vite-task": {
       "all": {
-        "pass": 868,
-        "can": 1269,
-        "of": 1855
+        "pass": 886,
+        "can": 1293,
+        "of": 1905
       },
       "correctness": {
-        "pass": 730,
-        "can": 1012,
-        "of": 1504
+        "pass": 745,
+        "can": 1033,
+        "of": 1549
       },
       "efficiency": {
-        "pass": 129,
-        "can": 179,
-        "of": 261
+        "pass": 132,
+        "can": 182,
+        "of": 266
       },
       "data": {
         "pass": 9,
@@ -1288,9 +1276,9 @@
         "of": 90
       },
       "graph": {
-        "pass": 152,
-        "can": 191,
-        "of": 273
+        "pass": 159,
+        "can": 203,
+        "of": 285
       },
       "config": {
         "pass": 47,
@@ -1298,9 +1286,9 @@
         "of": 84
       },
       "failure": {
-        "pass": 49,
-        "can": 68,
-        "of": 136
+        "pass": 52,
+        "can": 71,
+        "of": 148
       },
       "affected": {
         "pass": 0,
@@ -1308,9 +1296,9 @@
         "of": 174
       },
       "cache": {
-        "pass": 55,
-        "can": 62,
-        "of": 81
+        "pass": 59,
+        "can": 67,
+        "of": 94
       },
       "inputs": {
         "pass": 292,
@@ -1318,14 +1306,14 @@
         "of": 458
       },
       "env": {
-        "pass": 80,
-        "can": 83,
-        "of": 95
+        "pass": 83,
+        "can": 86,
+        "of": 98
       },
       "outputs": {
-        "pass": 183,
-        "can": 273,
-        "of": 277
+        "pass": 184,
+        "can": 274,
+        "of": 287
       },
       "report": {
         "pass": 9,
@@ -1345,19 +1333,19 @@
     },
     "nix": {
       "all": {
-        "pass": 921,
-        "can": 1258,
-        "of": 1855
+        "pass": 952,
+        "can": 1290,
+        "of": 1905
       },
       "correctness": {
-        "pass": 782,
-        "can": 1017,
-        "of": 1504
+        "pass": 811,
+        "can": 1047,
+        "of": 1549
       },
       "efficiency": {
-        "pass": 129,
-        "can": 161,
-        "of": 261
+        "pass": 131,
+        "can": 163,
+        "of": 266
       },
       "data": {
         "pass": 10,
@@ -1365,9 +1353,9 @@
         "of": 90
       },
       "graph": {
-        "pass": 92,
-        "can": 98,
-        "of": 273
+        "pass": 96,
+        "can": 103,
+        "of": 285
       },
       "config": {
         "pass": 37,
@@ -1375,9 +1363,9 @@
         "of": 84
       },
       "failure": {
-        "pass": 44,
-        "can": 74,
-        "of": 136
+        "pass": 52,
+        "can": 82,
+        "of": 148
       },
       "affected": {
         "pass": 0,
@@ -1385,9 +1373,9 @@
         "of": 174
       },
       "cache": {
-        "pass": 56,
-        "can": 68,
-        "of": 81
+        "pass": 62,
+        "can": 74,
+        "of": 94
       },
       "inputs": {
         "pass": 318,
@@ -1395,14 +1383,14 @@
         "of": 458
       },
       "env": {
-        "pass": 72,
-        "can": 79,
-        "of": 95
+        "pass": 75,
+        "can": 82,
+        "of": 98
       },
       "outputs": {
-        "pass": 203,
-        "can": 272,
-        "of": 277
+        "pass": 213,
+        "can": 282,
+        "of": 287
       },
       "report": {
         "pass": 10,
@@ -1422,19 +1410,19 @@
     },
     "moon": {
       "all": {
-        "pass": 1099,
-        "can": 1570,
-        "of": 1855
+        "pass": 1129,
+        "can": 1601,
+        "of": 1905
       },
       "correctness": {
-        "pass": 859,
-        "can": 1240,
-        "of": 1504
+        "pass": 884,
+        "can": 1266,
+        "of": 1549
       },
       "efficiency": {
-        "pass": 205,
-        "can": 240,
-        "of": 261
+        "pass": 210,
+        "can": 245,
+        "of": 266
       },
       "data": {
         "pass": 35,
@@ -1442,9 +1430,9 @@
         "of": 90
       },
       "graph": {
-        "pass": 155,
-        "can": 206,
-        "of": 273
+        "pass": 167,
+        "can": 218,
+        "of": 285
       },
       "config": {
         "pass": 58,
@@ -1452,9 +1440,9 @@
         "of": 84
       },
       "failure": {
-        "pass": 74,
-        "can": 118,
-        "of": 136
+        "pass": 80,
+        "can": 124,
+        "of": 148
       },
       "affected": {
         "pass": 137,
@@ -1462,9 +1450,9 @@
         "of": 174
       },
       "cache": {
-        "pass": 65,
-        "can": 73,
-        "of": 81
+        "pass": 74,
+        "can": 82,
+        "of": 94
       },
       "inputs": {
         "pass": 325,
@@ -1472,14 +1460,14 @@
         "of": 458
       },
       "env": {
-        "pass": 88,
-        "can": 93,
-        "of": 95
+        "pass": 90,
+        "can": 96,
+        "of": 98
       },
       "outputs": {
-        "pass": 162,
-        "can": 276,
-        "of": 277
+        "pass": 163,
+        "can": 277,
+        "of": 287
       },
       "report": {
         "pass": 35,
@@ -66215,6 +66203,1744 @@
           "status": "fail",
           "step": 1,
           "detail": "did not finish within 30 s"
+        }
+      }
+    },
+    {
+      "id": "failure/timeout-fires-on-a-task-that-keeps-printing",
+      "ref": "tsqhpv",
+      "category": "failure",
+      "kind": "correctness",
+      "title": "A task that keeps printing is still killed at its time limit",
+      "why": "A time limit counts wall-clock time, not silence. A task stuck in a loop that prints a progress line every few milliseconds is as hung as one that prints nothing. A runner that resets the clock on each line, mixing up a time limit with an idle limit, lets that loop hold the run and the CI job for good.",
+      "from": [
+        "task-timeout",
+        "timeout-bounds"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "Turborepo has no per-task time limit."
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "Nx has no per-task time limit."
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "Vite Task has no per-task time limit."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "Nix has no time limit of a build’s own (`timeout` is a setting for every build)."
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "failure/idle-timeout-kills-a-task-that-closed-its-output",
+      "ref": "4pqmcb",
+      "category": "failure",
+      "kind": "correctness",
+      "title": "A task that sends its output to /dev/null and hangs is killed at its idle limit",
+      "why": "An idle limit is there to end a task that has stopped making progress. A task that points its own output at /dev/null and then hangs prints nothing from that moment, so it is idle. A runner that only watches for silence while the output pipe is open, and waits for the pipe to close otherwise, never fires the limit on it.",
+      "from": [
+        "task-timeout"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "n/a",
+          "detail": "vx limits a task by wall-clock time only, never by how long it prints nothing."
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "Turborepo has no limit on how long a task may print nothing."
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "Nx has no limit on how long a task may print nothing."
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "Vite Task has no limit on how long a task may print nothing."
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "moon has no limit on how long a task may print nothing."
+        }
+      }
+    },
+    {
+      "id": "failure/idle-timeout-spared-by-error-stream-output",
+      "ref": "y9kukv",
+      "category": "failure",
+      "kind": "correctness",
+      "title": "A task that prints only to its error stream outlives its idle limit",
+      "why": "Many tools write their progress to stderr and keep stdout for results. A task doing that is busy, and it says so on the stream it has. A runner that watches only stdout for signs of life kills such tasks while they work.",
+      "from": [
+        "task-timeout"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "n/a",
+          "detail": "vx limits a task by wall-clock time only, never by how long it prints nothing."
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "Turborepo has no limit on how long a task may print nothing."
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "Nx has no limit on how long a task may print nothing."
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "Vite Task has no limit on how long a task may print nothing."
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "moon has no limit on how long a task may print nothing."
+        }
+      }
+    },
+    {
+      "id": "failure/idle-timeout-spared-by-output-without-newlines",
+      "ref": "zqlbc4",
+      "category": "failure",
+      "kind": "correctness",
+      "title": "A task that prints dots with no newline outlives its idle limit",
+      "why": "A progress bar prints a character at a time and ends the line only when it is done. Those bytes are output, so the task is not idle. A runner that counts only finished lines sees nothing until the bar ends and kills a task that was working all along.",
+      "from": [
+        "task-timeout"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "n/a",
+          "detail": "vx limits a task by wall-clock time only, never by how long it prints nothing."
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "Turborepo has no limit on how long a task may print nothing."
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "Nx has no limit on how long a task may print nothing."
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "Vite Task has no limit on how long a task may print nothing."
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "moon has no limit on how long a task may print nothing."
+        }
+      }
+    },
+    {
+      "id": "failure/idle-timeout-spared-by-a-child-printing",
+      "ref": "89ofji",
+      "category": "failure",
+      "kind": "correctness",
+      "title": "A task whose background child prints while the task waits outlives its idle limit",
+      "why": "A task is its whole process tree, and its output is what any of those processes print. A script that starts a worker and waits for it says nothing itself, while the worker reports progress. A runner that counts only what the top process writes kills the task in the middle of its work.",
+      "from": [
+        "task-timeout"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "n/a",
+          "detail": "vx limits a task by wall-clock time only, never by how long it prints nothing."
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "Turborepo has no limit on how long a task may print nothing."
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "Nx has no limit on how long a task may print nothing."
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "Vite Task has no limit on how long a task may print nothing."
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "moon has no limit on how long a task may print nothing."
+        }
+      }
+    },
+    {
+      "id": "failure/idle-timed-out-dependency-skips-dependants",
+      "ref": "94dj1o",
+      "category": "failure",
+      "kind": "correctness",
+      "title": "A dependency killed at its idle limit keeps its dependants from running, and is run again next time",
+      "why": "A task killed for going silent did not finish, so it failed like any other. What depends on it must not run on its missing output, and nothing of it may be cached. The next run starts it again rather than replaying a result it never produced.",
+      "from": [
+        "task-timeout",
+        "failure-mode"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "n/a",
+          "detail": "vx limits a task by wall-clock time only, never by how long it prints nothing."
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "Turborepo has no limit on how long a task may print nothing."
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "Nx has no limit on how long a task may print nothing."
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "Vite Task has no limit on how long a task may print nothing."
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "moon has no limit on how long a task may print nothing."
+        }
+      }
+    },
+    {
+      "id": "failure/idle-timeout-counts-silence-after-output",
+      "ref": "c6tkhe",
+      "category": "failure",
+      "kind": "correctness",
+      "title": "A task that prints a line and then hangs is killed at its idle limit",
+      "why": "Most hung tasks printed something first: a banner, a version, the first steps of a build. The idle limit counts from the last output, not from the start. A runner that disarms the limit once a task has printed anything never catches the hang that matters.",
+      "from": [
+        "task-timeout"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "n/a",
+          "detail": "vx limits a task by wall-clock time only, never by how long it prints nothing."
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "Turborepo has no limit on how long a task may print nothing."
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "Nx has no limit on how long a task may print nothing."
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "Vite Task has no limit on how long a task may print nothing."
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "moon has no limit on how long a task may print nothing."
+        }
+      }
+    },
+    {
+      "id": "failure/fail-fast-stopped-task-exiting-0-saves-nothing",
+      "ref": "qbwqpg",
+      "category": "failure",
+      "kind": "correctness",
+      "title": "A task a fail-fast run stops, which traps the stop and exits 0, is not cached",
+      "why": "Many programs answer SIGTERM with a clean shutdown and exit 0. When a fail-fast run stops one of them, its exit code says nothing about the work, which was cut short. Read as a success, its half-written output would be cached and replayed as a finished build on the next run.",
+      "from": [
+        "fail-fast",
+        "failure-cache-properties"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 1,
+          "detail": "did not finish within 30 s"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "failure/retry-gets-the-same-forwarded-args",
+      "ref": "ftow9q",
+      "category": "failure",
+      "kind": "correctness",
+      "title": "A retried task gets the args forwarded to the run again, each one whole",
+      "why": "A retry must run the same command the first attempt ran. Args forwarded to the run are part of that command: a flag, a value with a space in it. A retry that drops them, or splits them again, runs a different test than the one that failed, and its pass means nothing.",
+      "from": [
+        "retries",
+        "flaky-retry"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "Turborepo does not retry a failed task."
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "Nx does not retry a failed task."
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "Vite Task does not retry a failed task."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "Nix does not retry a failed build."
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "failure/zero-retries-runs-once",
+      "ref": "ef8em4",
+      "category": "failure",
+      "kind": "correctness",
+      "title": "A task given zero retries runs once and fails",
+      "why": "Zero retries means no retry. A runner that reads 0 as unset and falls back to some default retry count runs a failing deploy or migration again when the user said not to. The count is the number of extra attempts, and here there are none.",
+      "from": [
+        "retries"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "Turborepo does not retry a failed task."
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "Nx does not retry a failed task."
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "Vite Task does not retry a failed task."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "Nix does not retry a failed build."
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "failure/never-cached-dependant-of-a-failure-does-not-run",
+      "ref": "9sy5fp",
+      "category": "failure",
+      "kind": "correctness",
+      "title": "A never-cached task does not run when its dependency fails",
+      "why": "A task that is never cached is one that must always run, such as a deploy or a smoke test. It still needs what it depends on. A runner that treats uncached tasks as always ready runs the deploy on a build that just failed.",
+      "from": [
+        "failure-mode",
+        "uncached-no-lookup"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "failure/dependant-of-a-failing-uncached-task-not-restored",
+      "ref": "ef3pez",
+      "category": "failure",
+      "kind": "correctness",
+      "title": "A cached task is not restored when the never-cached task it depends on fails",
+      "why": "A never-cached task, like a code generator or a fetch, can fail on a run whose inputs did not change. The task built on it has a stored result for those inputs, but its dependency just failed, so this run has nothing to build on. Restoring the stored result anyway hides the failure behind outputs that look fresh.",
+      "from": [
+        "uncached-upstream-key",
+        "failure-mode"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "A variable reaches a build only as an attribute, which keys it."
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "graph/cycle-in-one-island-runs-nothing",
+      "ref": "1e193i",
+      "category": "graph",
+      "kind": "correctness",
+      "title": "A task cycle in one part of the workspace fails the run before any task runs, even in parts free of it",
+      "why": "A graph with a cycle cannot be ordered, so the run is refused as a whole. Running the parts that happen to be free of the cycle first gives a run that is half done and still red, with outputs that look like progress. The user fixes the cycle, then runs everything.",
+      "from": [
+        "task-graph",
+        "graph-order"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "graph/reversed-dependency-flips-order",
+      "ref": "1t2kkq",
+      "category": "graph",
+      "kind": "correctness",
+      "title": "Turning a dependency around builds the two projects in the new order, each on the other’s fresh output",
+      "why": "When `b` stops depending on `a` and `a` starts depending on `b`, the order must flip. A runner that keeps an old package graph builds `a` first again, against a `b` that is not there yet. Each project’s output must reflect the new edge: replaying either old result leaves the content the wrong way round.",
+      "from": [
+        "package-graph",
+        "vx-lockfile/dependency-section"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "Nix reads no package.json or lockfile and installs nothing into node_modules: what a build depends on is written in Nix."
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "graph/explicit-edge-against-package-direction-runs",
+      "ref": "7ho28e",
+      "category": "graph",
+      "kind": "correctness",
+      "title": "A library’s build that needs a generator in the app depending on it runs in between",
+      "why": "The app depends on the library as a package, and the library’s build names the app’s generator. The tasks still form a straight line: generator, library build, app build. A runner that folds tasks into a project graph sees a loop between two projects and refuses a run that has a valid order.",
+      "from": [
+        "task-graph",
+        "task-edge-selection"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "graph/dev-workspace-dependency-orders-and-keys",
+      "ref": "u8pexi",
+      "category": "graph",
+      "kind": "correctness",
+      "title": "A workspace package named only as a dev dependency is built first, and an edit to it runs the consumer again",
+      "why": "A build tool, a test helper or a shared config is usually a dev dependency, and the consumer’s build reads it all the same. Whether a package ships the dependency to users changes nothing about the build order. Leaving dev dependencies out of the graph builds the consumer against a stale or missing helper.",
+      "from": [
+        "package-graph",
+        "vx-lockfile/dependency-section"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 1,
+          "detail": "exited 1, expected success"
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "Nix reads no package.json or lockfile and installs nothing into node_modules: what a build depends on is written in Nix."
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "graph/optional-workspace-dependency-orders-and-keys",
+      "ref": "uy5uk2",
+      "category": "graph",
+      "kind": "correctness",
+      "title": "A workspace package named only as an optional dependency is built first, and an edit to it runs the consumer again",
+      "why": "Inside a workspace an optional dependency is linked like any other, so the consumer’s build reads it. Optional only means an install from a registry may skip it. A runner that drops these edges builds the consumer first, or replays it after the package changed.",
+      "from": [
+        "package-graph",
+        "vx-lockfile/dependency-section"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 1,
+          "detail": "exited 1, expected success"
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "Nix reads no package.json or lockfile and installs nothing into node_modules: what a build depends on is written in Nix."
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "graph/removed-package-dependency-no-longer-pulled",
+      "ref": "77o8la",
+      "category": "graph",
+      "kind": "efficiency",
+      "title": "Once an app no longer depends on a library, running the app does not build the library",
+      "why": "Running one project runs what it depends on now, not what it used to. After the dependency is removed from the manifest, the library is just another project. A runner holding an old graph rebuilds it every time the app runs, though nothing reads it.",
+      "from": [
+        "package-graph",
+        "vx-lockfile/deleted-project"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "Nix reads no package.json or lockfile and installs nothing into node_modules: what a build depends on is written in Nix."
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "graph/renamed-dependency-still-builds-first",
+      "ref": "bzbu8k",
+      "category": "graph",
+      "kind": "correctness",
+      "title": "A dependency renamed in both manifests still builds before the project that needs it",
+      "why": "Renaming a package is a common refactor, and the app’s manifest is updated to the new name in the same change. The edge is the same edge under a new name. A runner that keys its graph on the old name loses the edge and builds the app against a library that has not been rebuilt.",
+      "from": [
+        "package-graph",
+        "vx-lockfile/dependency-names"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 5,
+          "detail": "did not run app#build"
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "Nix reads no package.json or lockfile and installs nothing into node_modules: what a build depends on is written in Nix."
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "graph/only-ignores-a-broken-dependency",
+      "ref": "u8b6ns",
+      "category": "graph",
+      "kind": "correctness",
+      "title": "Skipping dependencies runs the selected task though its dependency would fail",
+      "why": "Skipping dependencies is how a user reruns one task against what is already on disk, often because something below it is broken right now. The broken dependency is not part of that run. A runner that still runs it, or fails the run because of it, takes away the one way to test the task alone.",
+      "from": [
+        "task-selection",
+        "frozen-selection"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 1,
+          "detail": "exited 1, expected success"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "fail",
+          "step": 1,
+          "detail": "exited 100, expected success"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "graph/dependency-gaining-the-task-builds-first-and-reruns",
+      "ref": "vgqqu3",
+      "category": "graph",
+      "kind": "correctness",
+      "title": "A dependency that gains a build task builds before the app, and the app runs again on its output",
+      "why": "Until the library has a build, the app’s `^build` reaches nothing there. Once it gets one, the app depends on that build: it must run first, and the app must run again on what it wrote. Replaying the app’s earlier result ships a build made before the library produced anything.",
+      "from": [
+        "task-graph",
+        "task-edge-selection"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 3,
+          "detail": "did not run app#build"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "graph/dependency-gaining-a-failing-task-stops-the-app",
+      "ref": "dwopah",
+      "category": "graph",
+      "kind": "correctness",
+      "title": "A dependency that gains a build which fails keeps the app built on it from running or replaying",
+      "why": "Once the library has a build, the app depends on it, and this run’s library build failed. The app’s stored result was made before that build existed, so it says nothing about the app on top of it. Running or restoring the app hides a failure the new edge was added to catch.",
+      "from": [
+        "task-graph",
+        "failure-mode"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "graph/deleted-project-no-longer-runs",
+      "ref": "s9a4pt",
+      "category": "graph",
+      "kind": "correctness",
+      "title": "A project deleted from the workspace is no longer run, and the rest still build",
+      "why": "Deleting a package is an ordinary cleanup. The next run must see the workspace as it is: the remaining projects build and the deleted one is gone. A runner that keeps an old project list tries to run a task in a directory that no longer exists, or restores its outputs into a recreated folder.",
+      "from": [
+        "package-graph",
+        "vx-lockfile/deleted-project"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "Nix reads no package.json or lockfile and installs nothing into node_modules: what a build depends on is written in Nix."
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "graph/dependency-by-version-range-orders-and-keys",
+      "ref": "8ipxzw",
+      "category": "graph",
+      "kind": "correctness",
+      "title": "A workspace package named by a version range its version meets is built first, and an edit to it runs the consumer again",
+      "why": "A package manager links a workspace package for any range its version satisfies, not only for `workspace:*`. Many repos predate the protocol and name siblings by version. The consumer reads the linked sibling, so the sibling must build first and its edits must run the consumer again.",
+      "from": [
+        "package-graph",
+        "vx-lockfile/dependency-names"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 1,
+          "detail": "exited 1, expected success"
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "Nix reads no package.json or lockfile and installs nothing into node_modules: what a build depends on is written in Nix."
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "cache/new-project-builds-and-the-rest-replay",
+      "ref": "k6ut84",
+      "category": "cache",
+      "kind": "efficiency",
+      "title": "Adding a project to the workspace builds it, and the projects already built replay",
+      "why": "A new package changes the workspace list and the lockfile, but nothing any existing project builds from. Only the new project has work to do. A runner that keys every task on the whole workspace’s manifest or lockfile rebuilds the monorepo each time someone adds a package.",
+      "from": [
+        "package-graph",
+        "vx-lockfile/closure-per-project"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "Nix reads no package.json or lockfile and installs nothing into node_modules: what a build depends on is written in Nix."
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "outputs/checksum-mismatch-skips-dependants",
+      "ref": "24wrje",
+      "category": "outputs",
+      "kind": "correctness",
+      "title": "An output that fails its pinned checksum keeps the tasks built on it from running",
+      "why": "A pinned checksum guards everything downstream from the wrong bytes: a toolchain, a vendored archive. When the bytes are wrong the task has failed, whatever its exit code was. A dependant that runs anyway builds on exactly the bytes the pin was there to stop.",
+      "from": [
+        "artifact-checksum",
+        "failure-mode"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "n/a",
+          "detail": "vx has no way to pin an output’s bytes to a checksum."
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "Turborepo has no way to pin an output’s bytes to a checksum."
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "Nx has no way to pin an output’s bytes to a checksum."
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "Vite Task has no way to pin an output’s bytes to a checksum."
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "moon has no way to pin an output’s bytes to a checksum."
+        }
+      }
+    },
+    {
+      "id": "outputs/checksum-mismatch-never-replayed",
+      "ref": "f3sd8r",
+      "category": "outputs",
+      "kind": "correctness",
+      "title": "A task that failed its pinned checksum fails again on the next run instead of replaying",
+      "why": "A checksum failure is a failure, and failures are never cached. If the wrong bytes were stored, the next run would replay them as a pass, and the pin would hold only once. The task must run and be judged again every time until its bytes match.",
+      "from": [
+        "artifact-checksum",
+        "failure-cache-properties"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "n/a",
+          "detail": "vx has no way to pin an output’s bytes to a checksum."
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "Turborepo has no way to pin an output’s bytes to a checksum."
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "Nx has no way to pin an output’s bytes to a checksum."
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "Vite Task has no way to pin an output’s bytes to a checksum."
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "moon has no way to pin an output’s bytes to a checksum."
+        }
+      }
+    },
+    {
+      "id": "outputs/checksum-pinned-output-replays-and-restores",
+      "ref": "9bejxw",
+      "category": "outputs",
+      "kind": "correctness",
+      "title": "A task whose output matches its pinned checksum replays, and its deleted output comes back",
+      "why": "A pin is a check on the bytes, not a reason to skip the cache. Once the output matched, the stored result is exactly the pinned file. Running the fetch again on every run wastes the download, and failing to restore the file breaks the tasks that read it.",
+      "from": [
+        "artifact-checksum",
+        "artifact-roundtrip"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "n/a",
+          "detail": "vx has no way to pin an output’s bytes to a checksum."
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "Turborepo has no way to pin an output’s bytes to a checksum."
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "Nx has no way to pin an output’s bytes to a checksum."
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "Vite Task has no way to pin an output’s bytes to a checksum."
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "moon has no way to pin an output’s bytes to a checksum."
+        }
+      }
+    },
+    {
+      "id": "outputs/checksum-judges-the-bytes-not-the-inputs",
+      "ref": "h8j9vb",
+      "category": "outputs",
+      "kind": "correctness",
+      "title": "A pinned output fails on sources that give other bytes, and passes on any sources that give the pinned ones",
+      "why": "The pin is on what the task writes, not on what it reads. Sources that produce other bytes fail the task though it exits 0. An edit that still produces the pinned bytes, like a change of letter case the task normalises away, passes like the first good build did.",
+      "from": [
+        "artifact-checksum"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "n/a",
+          "detail": "vx has no way to pin an output’s bytes to a checksum."
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "Turborepo has no way to pin an output’s bytes to a checksum."
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "Nx has no way to pin an output’s bytes to a checksum."
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "Vite Task has no way to pin an output’s bytes to a checksum."
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "moon has no way to pin an output’s bytes to a checksum."
+        }
+      }
+    },
+    {
+      "id": "outputs/checksum-file-not-written-fails",
+      "ref": "kbiox9",
+      "category": "outputs",
+      "kind": "correctness",
+      "title": "A task that never writes its pinned output fails",
+      "why": "A pin says this file must exist with these bytes. A task that exits 0 without writing it has not produced what it promised, and a missing file has no checksum to match. Passing it lets every dependant fail later, far from the cause.",
+      "from": [
+        "artifact-checksum",
+        "cache-declaration-warnings"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "n/a",
+          "detail": "vx has no way to pin an output’s bytes to a checksum."
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "Turborepo has no way to pin an output’s bytes to a checksum."
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "Nx has no way to pin an output’s bytes to a checksum."
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "Vite Task has no way to pin an output’s bytes to a checksum."
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "moon has no way to pin an output’s bytes to a checksum."
+        }
+      }
+    },
+    {
+      "id": "outputs/checksum-trailing-newline-counts",
+      "ref": "ed2r8g",
+      "category": "outputs",
+      "kind": "correctness",
+      "title": "An output that differs from its pin only by a missing final newline fails",
+      "why": "A checksum is over every byte, and a newline is a byte. A file missing its last newline is a different file to a parser, a signature check or a diff. A runner that trims whitespace before comparing passes bytes the pin does not allow.",
+      "from": [
+        "artifact-checksum"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "n/a",
+          "detail": "vx has no way to pin an output’s bytes to a checksum."
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "Turborepo has no way to pin an output’s bytes to a checksum."
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "Nx has no way to pin an output’s bytes to a checksum."
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "Vite Task has no way to pin an output’s bytes to a checksum."
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "moon has no way to pin an output’s bytes to a checksum."
+        }
+      }
+    },
+    {
+      "id": "outputs/checksum-pins-an-empty-file",
+      "ref": "8obuak",
+      "category": "outputs",
+      "kind": "correctness",
+      "title": "An output pinned as an empty file fails when it holds anything and passes when empty",
+      "why": "An empty file is a valid output with a checksum of its own, like an empty lock or marker file. Its pin must hold exactly: one byte fails, empty passes. A runner that treats an empty pin as no pin passes whatever the task writes.",
+      "from": [
+        "artifact-checksum"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "n/a",
+          "detail": "vx has no way to pin an output’s bytes to a checksum."
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "Turborepo has no way to pin an output’s bytes to a checksum."
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "Nx has no way to pin an output’s bytes to a checksum."
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "Vite Task has no way to pin an output’s bytes to a checksum."
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "moon has no way to pin an output’s bytes to a checksum."
+        }
+      }
+    },
+    {
+      "id": "outputs/checksum-two-projects-same-bytes-keep-their-own-files",
+      "ref": "lalt51",
+      "category": "outputs",
+      "kind": "correctness",
+      "title": "Two projects pinned to the same bytes both pass, each with its own file",
+      "why": "Two projects can vendor the same file, and so share a pin. Their outputs are the same bytes but live in two places. A runner that stores pinned results by content and restores one of them only once, or builds one and skips the other, leaves a project without its file.",
+      "from": [
+        "artifact-checksum",
+        "cache-store"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "n/a",
+          "detail": "vx has no way to pin an output’s bytes to a checksum."
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "Turborepo has no way to pin an output’s bytes to a checksum."
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "Nx has no way to pin an output’s bytes to a checksum."
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "Vite Task has no way to pin an output’s bytes to a checksum."
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "moon has no way to pin an output’s bytes to a checksum."
+        }
+      }
+    },
+    {
+      "id": "outputs/checksum-pinned-output-reaches-dependant",
+      "ref": "k3imh0",
+      "category": "outputs",
+      "kind": "correctness",
+      "title": "A task built on a pinned output reads the pinned bytes",
+      "why": "A pin is most often on something other tasks consume: a fetched tool, a vendored file. Once it passes, its output must be where the dependant looks for it, as any dependency’s is. A runner that checks the pin but keeps the file aside leaves the dependant with nothing to read.",
+      "from": [
+        "artifact-checksum",
+        "restore-in-place"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "n/a",
+          "detail": "vx has no way to pin an output’s bytes to a checksum."
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "Turborepo has no way to pin an output’s bytes to a checksum."
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "Nx has no way to pin an output’s bytes to a checksum."
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "Vite Task has no way to pin an output’s bytes to a checksum."
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "moon has no way to pin an output’s bytes to a checksum."
+        }
+      }
+    },
+    {
+      "id": "outputs/hit-restores-only-the-requested-tasks-outputs",
+      "ref": "damy16",
+      "category": "outputs",
+      "kind": "correctness",
+      "title": "Replaying one task of a project restores its outputs and not those of the project’s other task",
+      "why": "A replay restores what the requested task wrote. Its sibling task was not asked for, and its outputs are not part of this run. A runner that restores everything stored for the project writes files the user just deleted on purpose, from a task that never ran.",
+      "from": [
+        "restore-declared-only",
+        "task-artifacts"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "cache/check-run-failure-keeps-the-stored-result",
+      "ref": "tgrd53",
+      "category": "cache",
+      "kind": "correctness",
+      "title": "A check run that finds a task nondeterministic leaves the first stored result in place",
+      "why": "A check run is a test of the cache, not a write to it. When it finds the rebuild differs, the stored result is still what the run that saved it produced. A check that swaps in its own rebuild changes what every later run replays, as a side effect of looking.",
+      "from": [
+        "cache",
+        "artifact-roundtrip"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "n/a",
+          "detail": "No vx run rebuilds a cached task to compare its bytes with the stored ones."
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "No Turborepo run rebuilds a cached task to compare its bytes."
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "No Nx run rebuilds a cached task to compare its bytes."
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "No Vite Task run rebuilds a cached task to compare its bytes."
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "No moon run rebuilds a cached task to compare its bytes."
+        }
+      }
+    },
+    {
+      "id": "cache/check-run-after-one-of-two-output-trees-deleted-passes",
+      "ref": "7eezmg",
+      "category": "cache",
+      "kind": "correctness",
+      "title": "A check run passes a reproducible task after one of its two output trees was deleted",
+      "why": "A check compares a fresh rebuild with what the cache stored. What happens to be on disk at the time does not matter: a deleted tree is not a difference in the build. A check that compares against the working tree, or chokes on the missing half, fails a task that is perfectly reproducible.",
+      "from": [
+        "cache",
+        "restore-in-place"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "n/a",
+          "detail": "No vx run rebuilds a cached task to compare its bytes with the stored ones."
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "No Turborepo run rebuilds a cached task to compare its bytes."
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "No Nx run rebuilds a cached task to compare its bytes."
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "No Vite Task run rebuilds a cached task to compare its bytes."
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "No moon run rebuilds a cached task to compare its bytes."
+        }
+      }
+    },
+    {
+      "id": "cache/check-run-catches-a-difference-in-a-second-tree",
+      "ref": "oiws23",
+      "category": "cache",
+      "kind": "correctness",
+      "title": "A check run fails a task whose first output tree is stable and whose second differs",
+      "why": "Every declared output is part of the result a hit replays. A timestamp or a random id in a side file, a source map or a manifest, makes hits differ by machine as much as one in the main file. A check that compares only the first tree passes a task that is not reproducible.",
+      "from": [
+        "cache",
+        "artifact-roundtrip"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "n/a",
+          "detail": "No vx run rebuilds a cached task to compare its bytes with the stored ones."
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "No Turborepo run rebuilds a cached task to compare its bytes."
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "No Nx run rebuilds a cached task to compare its bytes."
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "No Vite Task run rebuilds a cached task to compare its bytes."
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "No moon run rebuilds a cached task to compare its bytes."
+        }
+      }
+    },
+    {
+      "id": "cache/new-package-dependency-builds-it-first-and-reruns",
+      "ref": "qye3ey",
+      "category": "cache",
+      "kind": "correctness",
+      "title": "Adding a workspace dependency to an app builds it first and runs the app again",
+      "why": "Adding a dependency changes what the app builds against, though none of the app’s sources changed. The new dependency must build first, and the app must run again to pick it up. Replaying the app’s old result ships a build that never saw the package the user just added.",
+      "from": [
+        "package-graph",
+        "vx-lockfile/transitive-workspace"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 5,
+          "detail": "did not run app#build"
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "Nix reads no package.json or lockfile and installs nothing into node_modules: what a build depends on is written in Nix."
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "cache/project-moved-restores-in-its-new-place",
+      "ref": "drq97a",
+      "category": "cache",
+      "kind": "correctness",
+      "title": "A project moved to another directory gets its outputs in the new directory",
+      "why": "After a move the project’s tasks run from its new place, and that is where their outputs belong. The runner may replay the stored result or run the task again, but the files must land under the new directory. Restoring them to the old path leaves the moved project without a build and puts files back in a directory that is gone.",
+      "from": [
+        "cache-store-moved",
+        "inputs-moved"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "Nix reads no package.json or lockfile and installs nothing into node_modules: what a build depends on is written in Nix."
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "cache/two-projects-swap-directories-keep-their-own-results",
+      "ref": "dl7pny",
+      "category": "cache",
+      "kind": "correctness",
+      "title": "Two projects that swap directories each get their own result in their new place",
+      "why": "When two projects trade places, each directory now holds the other project. A runner that pairs stored results with directories restores the old occupant’s files over the new one’s sources. Whatever is replayed or rebuilt, each directory must end up with the output of the project that lives there now.",
+      "from": [
+        "cache-store-moved",
+        "inputs-moved"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "Nix reads no package.json or lockfile and installs nothing into node_modules: what a build depends on is written in Nix."
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "cache/forced-run-with-dependencies-skipped-runs-only-the-task",
+      "ref": "xuifz9",
+      "category": "cache",
+      "kind": "correctness",
+      "title": "A forced run that skips dependencies runs the selected task alone",
+      "why": "Forcing says ignore the cache for what this run runs; skipping dependencies says what it runs. Together they rebuild one task against what is on disk, a common way to retry a suspect build. A runner that lets the force reach the skipped dependencies rebuilds the whole chain the user left out.",
+      "from": [
+        "run-option-shapes",
+        "frozen-selection"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 2,
+          "detail": "ran lib#build, expected it replayed or left out"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "`--cache` and `--no-cache` turn caching on or off; no run ignores entries and saves fresh ones."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "A valid output is never built again: `--check` rebuilds to compare and saves nothing."
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "cache/read-only-chain-builds-on-restored-dependency",
+      "ref": "dibm3k",
+      "category": "cache",
+      "kind": "correctness",
+      "title": "A read-only run restores a stored dependency and builds the changed project on it",
+      "why": "A read-only cache, as a pull-request job often uses, still replays what it can. The dependency’s result is stored, so it comes back to disk, and the changed project builds on it. A runner that skips the restore when it may not write leaves the dependant reading a missing file.",
+      "from": [
+        "plugin-read-only",
+        "restore-in-place"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "Nx has no run that reads the cache and writes nothing to it."
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "No run reads the cache and writes nothing to it."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "Building writes the store: no build reads it without writing."
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "cache/dry-run-restores-nothing",
+      "ref": "3okki7",
+      "category": "cache",
+      "kind": "correctness",
+      "title": "Planning a run does not restore a stored task’s deleted outputs",
+      "why": "A planned run reports what would happen and changes nothing. Restoring outputs is a change: files appear that the user deleted. A dry run that restores leaves the tree different from before the plan, so the plan was not a dry run at all.",
+      "from": [
+        "dry-no-writes",
+        "timing-dry"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "Nx has no run that plans and runs nothing."
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "Vite Task has no run that plans and runs nothing."
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "`moon action-graph` draws the graph; no run plans and runs nothing."
+        }
+      }
+    },
+    {
+      "id": "cache/run-options-do-not-key",
+      "ref": "3suh0w",
+      "category": "cache",
+      "kind": "efficiency",
+      "title": "A run at a concurrency of one, or asked to fail fast, replays what a plain run stored",
+      "why": "How many tasks run at once and whether the run stops at the first failure change how the run is scheduled, not what any task produces. A runner that folds them into the key misses the whole cache whenever a user debugs with one task at a time, or CI switches to fail fast.",
+      "from": [
+        "run-option-shapes",
+        "run-concurrency"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "cache/second-task-asked-for-shares-entry",
+      "ref": "sy15op",
+      "category": "cache",
+      "kind": "efficiency",
+      "title": "A task stored by a run of it alone replays when a run asks for it beside another task",
+      "why": "Which other tasks share a run says nothing about what one task produces. A build stored by `build` alone is the same build when the run asks for `lint` and `build`. Keying on the set of requested tasks makes every new combination start cold.",
+      "from": [
+        "task-selection",
+        "selection-graph-reuse"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "`vp run` runs one task name per run."
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "cache/forced-dependency-leaves-dependant-replaying",
+      "ref": "t0b7mm",
+      "category": "cache",
+      "kind": "efficiency",
+      "title": "Forcing a library to rebuild with unchanged sources lets the app on it replay next time",
+      "why": "A forced rebuild of the same sources is the same build: the inputs, and so the keys of everything above it, did not change. A runner that keys dependants on the time the dependency last ran, or on its fresh file stamps, rebuilds the whole stack after every forced rebuild of one package.",
+      "from": [
+        "uncached-upstream-key",
+        "restore-mtime"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "`--cache` and `--no-cache` turn caching on or off; no run ignores entries and saves fresh ones."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "A valid output is never built again: `--check` rebuilds to compare and saves nothing."
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "env/percent-format-text-in-value-reaches-verbatim",
+      "ref": "a9gvjo",
+      "category": "env",
+      "kind": "correctness",
+      "title": "A declared value holding `%s` and `%%` reaches the task as written, and `%%` keys apart from `%`",
+      "why": "A value like `printf %s` or `100%%` is text, and the task must see each byte. A runner that passes values through a format function turns `%%` into `%` and fills or drops `%s`. Then two different values reach the task as one, and the cache replays one for the other.",
+      "from": [
+        "env",
+        "env-properties"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "env/declared-color-variables-reach-as-set",
+      "ref": "yoc2hd",
+      "category": "env",
+      "kind": "correctness",
+      "title": "Declared `FORCE_COLOR` and `NO_COLOR` reach the task as the user set them, and key it",
+      "why": "Runners like to set colour variables themselves so that captured output stays coloured. A user who declares them has said their value matters to the task, as it does for a snapshot test of terminal output. Overriding them hands the task a value nobody set, and a change of value must still run it again.",
+      "from": [
+        "env",
+        "env-properties"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "fail",
+          "step": 1,
+          "detail": "packages/a/out.txt is \"unset|true\", expected \"0|1\""
+        }
+      }
+    },
+    {
+      "id": "env/args-percent-text-verbatim",
+      "ref": "0ts63d",
+      "category": "env",
+      "kind": "correctness",
+      "title": "Forwarded args holding `%s`, `%d` and `%%` reach the command as typed",
+      "why": "An arg like `--format=%s` or a test filter with `%` in it is text for the program. A runner that builds the command line through a format function fills `%s`, drops `%d` or halves `%%`. The program then gets an argument the user never typed.",
+      "from": [
+        "forward-args-verbatim",
+        "cli-arg-hygiene"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
         }
       }
     }
