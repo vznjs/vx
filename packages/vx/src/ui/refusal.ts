@@ -74,11 +74,26 @@ export function refusalNotice(
     })
   }
   const p = parts ?? messageParts(message)
-  const what = opts.headline !== undefined ? [p.headline, ...(p.what ?? [])] : (p.what ?? [])
-  return notice({
-    tone: p.tone ?? 'error',
+  return partsNotice(
+    p.tone ?? 'error',
     verb,
-    headline: opts.headline ?? p.headline,
+    p,
+    opts.headline,
+    opts.headline !== undefined ? [p.headline, ...(p.what ?? [])] : undefined,
+  )
+}
+
+function partsNotice(
+  tone: Tone,
+  verb: string,
+  p: RefusalParts,
+  headline = p.headline,
+  what: readonly string[] = p.what ?? [],
+): Block {
+  return notice({
+    tone,
+    verb,
+    headline,
     ...(what.length > 0 ? { what } : {}),
     ...(p.why !== undefined ? { why: p.why } : {}),
     ...(p.fix !== undefined ? { fix: p.fix } : {}),
@@ -87,15 +102,7 @@ export function refusalNotice(
 
 /** A message of `tone` from `verb`, a fact a line. */
 function messageNotice(tone: Tone, verb: string, message: string): Block {
-  const p = messageParts(message)
-  return notice({
-    tone,
-    verb,
-    headline: p.headline,
-    ...(p.what !== undefined ? { what: p.what } : {}),
-    ...(p.why !== undefined ? { why: p.why } : {}),
-    ...(p.fix !== undefined ? { fix: p.fix } : {}),
-  })
+  return partsNotice(tone, verb, messageParts(message))
 }
 
 /** A line that may open with its verb (`vx why: …`), as `messageNotice` draws it. */
