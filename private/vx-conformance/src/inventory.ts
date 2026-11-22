@@ -1202,6 +1202,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'status-vocabulary',
     'stop-display',
     'stop-listener',
+    'store-deleted-preview',
     'store-schema-race',
     'summary',
     'summary-meters',
