@@ -1709,11 +1709,7 @@ describe('vx init — the generated build is not a cached no-op', () => {
         .slice(1)
         .filter((l) => !l.startsWith('#'))
         .map((l) => (JSON.parse(l.slice(l.indexOf('\t') + 1)) as { path: string }).path)
-      expect(dirs.sort()).toEqual([
-        'packages/app',
-        'packages/lib',
-        'packages/silent',
-      ])
+      expect(dirs.sort()).toEqual(['packages/app', 'packages/lib', 'packages/silent'])
     } finally {
       await rm(root, { recursive: true, force: true })
     }
