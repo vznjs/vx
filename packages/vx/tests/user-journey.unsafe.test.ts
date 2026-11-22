@@ -418,6 +418,67 @@ export default {
     }
   })
 
+  // Two branches that each re-locked meet in a merge git cannot resolve in
+  // the locks: they are written from the configs, so `vx lock` resolves them.
+  it('a merge conflicted in the locks refuses until vx lock writes them anew', async () => {
+    const edit = async (name: string, from: string, to: string): Promise<void> => {
+      const file =
+        name === 'tools'
+          ? path.join(root, 'tools', 'tasks.ts')
+          : path.join(root, 'packages', name, 'package.json')
+      await writeFile(file, (await readFile(file, 'utf8')).replace(from, to))
+    }
+    await ok(['git', 'checkout', '-qb', 'one'])
+    await edit('tools', "'src/**'", "'src/**', 'one.txt'")
+    await edit('app', '"dependencies":{', '"dependencies":{"@acme/utils":"workspace:*",')
+    await install()
+    expect((await vx(['lock'])).code).toBe(0)
+    await ok(['git', 'commit', '-qam', 'one'])
+    await ok(['git', 'checkout', '-q', 'feat'])
+    await install()
+    await ok(['git', 'checkout', '-qb', 'two'])
+    await edit('tools', "'src/**'", "'src/**', 'two.txt'")
+    await edit('app', '"version":"1.0.0"', '"version":"1.0.1"')
+    await install()
+    expect((await vx(['lock'])).code).toBe(0)
+    await ok(['git', 'commit', '-qam', 'two'])
+    expect((await sh(['git', 'merge', '-q', 'one'])).code).toBe(1)
+    const conflicted = (file: string) => [
+      1,
+      expect.stringContaining(
+        `${file} holds a git merge conflict: run \`vx lock\`, which writes it anew from the configs`,
+      ),
+    ]
+    const projects = await vx(['run', 'build', '--all'])
+    expect([projects.code, projects.out]).toEqual(conflicted('.vx/projects.lock'))
+    // One side of the config lock kept: the dependencies lock still conflicts.
+    await ok(['git', 'checkout', '-q', '--ours', '.vx/projects.lock'])
+    const dependencies = await vx(['run', 'build', '--all'])
+    expect([dependencies.code, dependencies.out]).toEqual(conflicted('.vx/dependencies.lock'))
+    // The user resolves the source files, never the locks.
+    await writeFile(
+      path.join(root, 'packages', 'app', 'package.json'),
+      JSON.stringify({
+        name: '@acme/app',
+        version: '1.0.1',
+        dependencies: { '@acme/utils': 'workspace:*', '@acme/lib': 'workspace:*' },
+      }),
+    )
+    await ok(['git', 'checkout', '-q', '--ours', 'bun.lock'])
+    const shared = path.join(root, 'tools', 'tasks.ts')
+    await writeFile(
+      shared,
+      (await readFile(shared, 'utf8')).replace(
+        /<<<<<<<[^\n]*\n([^\n]*\n)=======\n[^\n]*\n>>>>>>>[^\n]*\n/,
+        '$1',
+      ),
+    )
+    await install()
+    expect((await vx(['lock'])).code).toBe(0)
+    expect((await vx(['run', 'build', '--all'])).code).toBe(0)
+    await ok(['git', 'commit', '-qam', 'merge one'])
+  })
+
   it('a failure skips its dependents, and vx last --failed names it', async () => {
     await writeFile(
       path.join(root, 'packages', 'utils', 'vx.config.ts'),
