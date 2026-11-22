@@ -1120,7 +1120,11 @@ export interface SaveFacts {
   unkeyed?: true // a re-check run after the slot went found the key no longer true
   driftedInput?: string | null // the input that re-check found moved
 }
-export function withCheckFacts(facts: SaveFacts, check: KeyCheck, unsavedBytes: number | undefined): SaveFacts
+export function withCheckFacts(
+  facts: SaveFacts,
+  check: KeyCheck,
+  unsavedBytes: number | undefined,
+): SaveFacts
 export function saveMiss(a: SaveMissArgs): Promise<{ landed: Promise<SaveFacts> }>
 
 export type UnsavedArgs = Pick<
