@@ -1012,6 +1012,7 @@
     "moon fetched no toolchain plugins (exit 1, found system-ad7abb72e596dcc556ad0fc2e87dcb23949f91d8280fc61c94cfec6224695c59.wasm), so it runs without them:\nError: plugin::loader::registry::load_failure\n\n  × Failed to load plugin from ghcr.io/moonrepo/bun_toolchain:1.0.5 registry.\n  ├─▶ error sending request for url (https://ghcr.io/v2/moonrepo/\n  │   bun_toolchain/blobs/\n  │   sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a)\n  ├─▶ client error (Connect)\n  ╰─▶ tunnel error: unsuccessful\n\n",
     "moon fetched no toolchain plugins (exit 1, found system-ad7abb72e596dcc556ad0fc2e87dcb23949f91d8280fc61c94cfec6224695c59.wasm), so it runs without them:\nError: plugin::loader::registry::load_failure\n\n  × Failed to load plugin from ghcr.io/moonrepo/bun_toolchain:1.0.5 registry.\n  ├─▶ error sending request for url (https://ghcr.io/v2/moonrepo/\n  │   bun_toolchain/blobs/\n  │   sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a)\n  ├─▶ client error (Connect)\n  ╰─▶ tunnel error: unsuccessful\n\n",
     "moon failed 23 of 45 cases; one: succeeded, expected a failure\n$ /home/user/vx/private/vx-conformance/node_modules/.latest-16732/node_modules/@moonrepo/core-linux-x64-gnu/moon run :build\n▮▮▮▮ b:build (545ce2ac)\n▮▮▮▮ a:build (51d8f186)\n▮▮▮▮ b:build (566ms, 545ce2ac)\n▮▮▮▮ a:build (5s 14ms, 51d8f186)\n▮▮▮▮ c:build (ef0196dd)\n▮▮▮▮ c:build (4ms, ef0196dd)\n\nTasks: 3 completed\n Time: 5s 76ms\n\n",
+    "moon fetched no toolchain plugins (exit 1, found system-ad7abb72e596dcc556ad0fc2e87dcb23949f91d8280fc61c94cfec6224695c59.wasm), so it runs without them:\nError: plugin::loader::registry::load_failure\n\n  × Failed to load plugin from ghcr.io/moonrepo/bun_toolchain:1.0.5 registry.\n  ├─▶ error sending request for url (https://ghcr.io/v2/moonrepo/\n  │   bun_toolchain/blobs/\n  │   sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a)\n  ├─▶ client error (Connect)\n  ╰─▶ tunnel error: unsuccessful\n\n",
     "moon fetched no toolchain plugins (exit 1, found system-ad7abb72e596dcc556ad0fc2e87dcb23949f91d8280fc61c94cfec6224695c59.wasm), so it runs without them:\nError: plugin::loader::registry::load_failure\n\n  × Failed to load plugin from ghcr.io/moonrepo/bun_toolchain:1.0.5 registry.\n  ├─▶ error sending request for url (https://ghcr.io/v2/moonrepo/\n  │   bun_toolchain/blobs/\n  │   sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a)\n  ├─▶ client error (Connect)\n  ╰─▶ tunnel error: unsuccessful\n\n"
   ],
   "tools": {
@@ -1025,19 +1026,19 @@
   "scores": {
     "vx": {
       "all": {
-        "pass": 1873,
-        "can": 1873,
-        "of": 1905
+        "pass": 1897,
+        "can": 1897,
+        "of": 1939
       },
       "correctness": {
-        "pass": 1518,
-        "can": 1518,
-        "of": 1549
+        "pass": 1536,
+        "can": 1536,
+        "of": 1575
       },
       "efficiency": {
-        "pass": 266,
-        "can": 266,
-        "of": 266
+        "pass": 272,
+        "can": 272,
+        "of": 274
       },
       "data": {
         "pass": 89,
@@ -1045,9 +1046,9 @@
         "of": 90
       },
       "graph": {
-        "pass": 283,
-        "can": 283,
-        "of": 285
+        "pass": 287,
+        "can": 287,
+        "of": 294
       },
       "config": {
         "pass": 84,
@@ -1055,19 +1056,19 @@
         "of": 84
       },
       "failure": {
-        "pass": 138,
-        "can": 138,
-        "of": 148
+        "pass": 141,
+        "can": 141,
+        "of": 154
       },
       "affected": {
-        "pass": 174,
-        "can": 174,
-        "of": 174
+        "pass": 175,
+        "can": 175,
+        "of": 175
       },
       "cache": {
-        "pass": 88,
-        "can": 88,
-        "of": 94
+        "pass": 90,
+        "can": 90,
+        "of": 96
       },
       "inputs": {
         "pass": 458,
@@ -1075,14 +1076,14 @@
         "of": 458
       },
       "env": {
-        "pass": 96,
-        "can": 96,
-        "of": 98
+        "pass": 103,
+        "can": 103,
+        "of": 105
       },
       "outputs": {
-        "pass": 276,
-        "can": 276,
-        "of": 287
+        "pass": 283,
+        "can": 283,
+        "of": 296
       },
       "report": {
         "pass": 89,
@@ -1102,19 +1103,19 @@
     },
     "turbo": {
       "all": {
-        "pass": 1171,
-        "can": 1615,
-        "of": 1905
+        "pass": 1190,
+        "can": 1637,
+        "of": 1939
       },
       "correctness": {
-        "pass": 947,
-        "can": 1272,
-        "of": 1549
+        "pass": 962,
+        "can": 1290,
+        "of": 1575
       },
       "efficiency": {
-        "pass": 194,
-        "can": 259,
-        "of": 266
+        "pass": 198,
+        "can": 263,
+        "of": 274
       },
       "data": {
         "pass": 30,
@@ -1122,9 +1123,9 @@
         "of": 90
       },
       "graph": {
-        "pass": 175,
-        "can": 243,
-        "of": 285
+        "pass": 177,
+        "can": 246,
+        "of": 294
       },
       "config": {
         "pass": 52,
@@ -1132,19 +1133,19 @@
         "of": 84
       },
       "failure": {
-        "pass": 51,
-        "can": 90,
-        "of": 148
+        "pass": 52,
+        "can": 92,
+        "of": 154
       },
       "affected": {
-        "pass": 137,
-        "can": 174,
-        "of": 174
+        "pass": 138,
+        "can": 175,
+        "of": 175
       },
       "cache": {
-        "pass": 74,
-        "can": 89,
-        "of": 94
+        "pass": 75,
+        "can": 90,
+        "of": 96
       },
       "inputs": {
         "pass": 306,
@@ -1152,14 +1153,14 @@
         "of": 458
       },
       "env": {
-        "pass": 84,
-        "can": 88,
-        "of": 98
+        "pass": 90,
+        "can": 94,
+        "of": 105
       },
       "outputs": {
-        "pass": 210,
-        "can": 274,
-        "of": 287
+        "pass": 218,
+        "can": 283,
+        "of": 296
       },
       "report": {
         "pass": 30,
@@ -1179,19 +1180,19 @@
     },
     "nx": {
       "all": {
-        "pass": 1187,
-        "can": 1637,
-        "of": 1905
+        "pass": 1208,
+        "can": 1666,
+        "of": 1939
       },
       "correctness": {
-        "pass": 926,
-        "can": 1292,
-        "of": 1549
+        "pass": 944,
+        "can": 1314,
+        "of": 1575
       },
       "efficiency": {
-        "pass": 231,
-        "can": 262,
-        "of": 266
+        "pass": 234,
+        "can": 269,
+        "of": 274
       },
       "data": {
         "pass": 30,
@@ -1199,9 +1200,9 @@
         "of": 90
       },
       "graph": {
-        "pass": 210,
-        "can": 243,
-        "of": 285
+        "pass": 214,
+        "can": 249,
+        "of": 294
       },
       "config": {
         "pass": 36,
@@ -1209,19 +1210,19 @@
         "of": 84
       },
       "failure": {
-        "pass": 71,
-        "can": 98,
-        "of": 148
+        "pass": 73,
+        "can": 102,
+        "of": 154
       },
       "affected": {
-        "pass": 116,
-        "can": 174,
-        "of": 174
+        "pass": 117,
+        "can": 175,
+        "of": 175
       },
       "cache": {
-        "pass": 67,
-        "can": 77,
-        "of": 94
+        "pass": 69,
+        "can": 79,
+        "of": 96
       },
       "inputs": {
         "pass": 319,
@@ -1229,14 +1230,14 @@
         "of": 458
       },
       "env": {
-        "pass": 87,
-        "can": 96,
-        "of": 98
+        "pass": 93,
+        "can": 103,
+        "of": 105
       },
       "outputs": {
-        "pass": 205,
-        "can": 274,
-        "of": 287
+        "pass": 211,
+        "can": 283,
+        "of": 296
       },
       "report": {
         "pass": 30,
@@ -1256,19 +1257,19 @@
     },
     "vite-task": {
       "all": {
-        "pass": 886,
-        "can": 1293,
-        "of": 1905
+        "pass": 908,
+        "can": 1318,
+        "of": 1939
       },
       "correctness": {
-        "pass": 745,
-        "can": 1033,
-        "of": 1549
+        "pass": 763,
+        "can": 1052,
+        "of": 1575
       },
       "efficiency": {
-        "pass": 132,
-        "can": 182,
-        "of": 266
+        "pass": 136,
+        "can": 188,
+        "of": 274
       },
       "data": {
         "pass": 9,
@@ -1276,9 +1277,9 @@
         "of": 90
       },
       "graph": {
-        "pass": 159,
-        "can": 203,
-        "of": 285
+        "pass": 163,
+        "can": 207,
+        "of": 294
       },
       "config": {
         "pass": 47,
@@ -1286,19 +1287,19 @@
         "of": 84
       },
       "failure": {
-        "pass": 52,
-        "can": 71,
-        "of": 148
+        "pass": 54,
+        "can": 74,
+        "of": 154
       },
       "affected": {
         "pass": 0,
         "can": 0,
-        "of": 174
+        "of": 175
       },
       "cache": {
-        "pass": 59,
-        "can": 67,
-        "of": 94
+        "pass": 60,
+        "can": 69,
+        "of": 96
       },
       "inputs": {
         "pass": 292,
@@ -1306,14 +1307,14 @@
         "of": 458
       },
       "env": {
-        "pass": 83,
-        "can": 86,
-        "of": 98
+        "pass": 90,
+        "can": 93,
+        "of": 105
       },
       "outputs": {
-        "pass": 184,
-        "can": 274,
-        "of": 287
+        "pass": 192,
+        "can": 283,
+        "of": 296
       },
       "report": {
         "pass": 9,
@@ -1333,19 +1334,19 @@
     },
     "nix": {
       "all": {
-        "pass": 952,
-        "can": 1290,
-        "of": 1905
+        "pass": 965,
+        "can": 1307,
+        "of": 1939
       },
       "correctness": {
-        "pass": 811,
-        "can": 1047,
-        "of": 1549
+        "pass": 823,
+        "can": 1061,
+        "of": 1575
       },
       "efficiency": {
-        "pass": 131,
-        "can": 163,
-        "of": 266
+        "pass": 132,
+        "can": 166,
+        "of": 274
       },
       "data": {
         "pass": 10,
@@ -1355,7 +1356,7 @@
       "graph": {
         "pass": 96,
         "can": 103,
-        "of": 285
+        "of": 294
       },
       "config": {
         "pass": 37,
@@ -1363,19 +1364,19 @@
         "of": 84
       },
       "failure": {
-        "pass": 52,
-        "can": 82,
-        "of": 148
+        "pass": 53,
+        "can": 84,
+        "of": 154
       },
       "affected": {
         "pass": 0,
         "can": 0,
-        "of": 174
+        "of": 175
       },
       "cache": {
-        "pass": 62,
-        "can": 74,
-        "of": 94
+        "pass": 63,
+        "can": 75,
+        "of": 96
       },
       "inputs": {
         "pass": 318,
@@ -1383,14 +1384,14 @@
         "of": 458
       },
       "env": {
-        "pass": 75,
-        "can": 82,
-        "of": 98
+        "pass": 80,
+        "can": 87,
+        "of": 105
       },
       "outputs": {
-        "pass": 213,
-        "can": 282,
-        "of": 287
+        "pass": 219,
+        "can": 291,
+        "of": 296
       },
       "report": {
         "pass": 10,
@@ -1410,19 +1411,19 @@
     },
     "moon": {
       "all": {
-        "pass": 1129,
-        "can": 1601,
-        "of": 1905
+        "pass": 1154,
+        "can": 1632,
+        "of": 1939
       },
       "correctness": {
-        "pass": 884,
-        "can": 1266,
-        "of": 1549
+        "pass": 902,
+        "can": 1290,
+        "of": 1575
       },
       "efficiency": {
-        "pass": 210,
-        "can": 245,
-        "of": 266
+        "pass": 217,
+        "can": 252,
+        "of": 274
       },
       "data": {
         "pass": 35,
@@ -1430,9 +1431,9 @@
         "of": 90
       },
       "graph": {
-        "pass": 167,
-        "can": 218,
-        "of": 285
+        "pass": 172,
+        "can": 224,
+        "of": 294
       },
       "config": {
         "pass": 58,
@@ -1440,19 +1441,19 @@
         "of": 84
       },
       "failure": {
-        "pass": 80,
-        "can": 124,
-        "of": 148
+        "pass": 83,
+        "can": 130,
+        "of": 154
       },
       "affected": {
-        "pass": 137,
-        "can": 174,
-        "of": 174
+        "pass": 138,
+        "can": 175,
+        "of": 175
       },
       "cache": {
-        "pass": 74,
-        "can": 82,
-        "of": 94
+        "pass": 76,
+        "can": 84,
+        "of": 96
       },
       "inputs": {
         "pass": 325,
@@ -1460,14 +1461,14 @@
         "of": 458
       },
       "env": {
-        "pass": 90,
-        "can": 96,
-        "of": 98
+        "pass": 96,
+        "can": 103,
+        "of": 105
       },
       "outputs": {
-        "pass": 163,
-        "can": 277,
-        "of": 287
+        "pass": 171,
+        "can": 286,
+        "of": 296
       },
       "report": {
         "pass": 35,
@@ -67922,6 +67923,1183 @@
       "from": [
         "forward-args-verbatim",
         "cli-arg-hygiene"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "graph/dependents-walk-leaves-a-dependencys-other-users",
+      "ref": "6cu2yc",
+      "category": "graph",
+      "kind": "efficiency",
+      "title": "Selecting a project with its dependents builds its dependency, but not that dependency’s other users",
+      "why": "ui’s check needs utils’ check, so utils runs as a dependency. admin also uses utils, but admin neither builds on ui nor is built on by it. Walking dependents from utils as well, because it entered the run, pulls in admin and, in a deep enough graph, the whole workspace. Only what builds on ui, and what that needs, belongs in the run.",
+      "from": [
+        "filter",
+        "select"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "Nx selects projects by name, pattern or tag; no selector adds their dependencies or dependents."
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build builds the attributes it is named: no filter picks them. nix-build builds the attributes it is named: no selector walks to dependents."
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "`--upstream`/`--downstream` walk the task graph from the requested tasks, never the project graph, and never leave the matched projects out."
+        }
+      }
+    },
+    {
+      "id": "graph/dependents-walk-of-a-project-another-selection-needs",
+      "ref": "idsxdb",
+      "category": "graph",
+      "kind": "correctness",
+      "title": "A library selected with its dependents gets them all, though another selected project already needs it",
+      "why": "app is selected on its own and needs lib, so lib enters the run as app’s dependency. lib is also selected with its dependents, which takes tool as well. A tool that adds lib once as a dependency and then skips the walk from it drops tool, though the user asked for it by name.",
+      "from": [
+        "filter",
+        "select"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "Nx selects projects by name, pattern or tag; no selector adds their dependencies or dependents."
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build builds the attributes it is named: no filter picks them. nix-build builds the attributes it is named: no selector walks to dependents."
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "`--upstream`/`--downstream` walk the task graph from the requested tasks, never the project graph, and never leave the matched projects out."
+        }
+      }
+    },
+    {
+      "id": "graph/dependents-walk-crosses-a-project-without-the-task",
+      "ref": "ku0ua4",
+      "category": "graph",
+      "kind": "correctness",
+      "title": "Selecting a library with its dependents reaches a project that uses it through one without the task",
+      "why": "app uses lib only through mid, and mid declares no check. app is still a dependent of lib, and its check still builds on lib’s, through mid. A walk that stops at the first project lacking the task leaves app unchecked on a change that can break it.",
+      "from": [
+        "filter",
+        "task-selection"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 1,
+          "detail": "did not run app#check"
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "Nx selects projects by name, pattern or tag; no selector adds their dependencies or dependents."
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build builds the attributes it is named: no filter picks them. nix-build builds the attributes it is named: no selector walks to dependents."
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "`--upstream`/`--downstream` walk the task graph from the requested tasks, never the project graph, and never leave the matched projects out."
+        }
+      }
+    },
+    {
+      "id": "failure/fail-fast-ends-a-running-tasks-retries",
+      "ref": "wl5h5y",
+      "category": "failure",
+      "kind": "correctness",
+      "title": "A fail-fast run stopped by one task’s failure does not retry another task it stopped",
+      "why": "b is running its first attempt when a fails and the run stops it. That attempt ends because the run ended it, not because b failed on its own, and the run is over. Starting b again leaves a process running after the runner exits, doing work nobody will see.",
+      "from": [
+        "fail-fast",
+        "retries"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "Turborepo does not retry a failed task."
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "Nx does not retry a failed task."
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "Vite Task does not retry a failed task."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "Nix does not retry a failed build."
+        },
+        "moon": {
+          "status": "fail",
+          "step": 1,
+          "detail": "left running: bash -c printf '+%s\\n' 'b#build' >> ../../.ran && (echo x >> attempts.txt; touch ../../started-b; sleep 5; exit 1) && printf -- '-%s\\n' 'b#build' >> ../../.ran; sleep 5"
+        }
+      }
+    },
+    {
+      "id": "failure/fail-fast-never-starts-a-task-waiting-on-a-mutex",
+      "ref": "35ee1s",
+      "category": "failure",
+      "kind": "correctness",
+      "title": "A fail-fast run never starts a task that was still waiting for a shared lock",
+      "why": "b and c share a lock, so one runs while the other waits. When a fails, the run stops the one running. The one waiting has not started, and failing fast means nothing else starts. Giving it the lock once the holder is stopped runs a process after the run has already failed.",
+      "from": [
+        "fail-fast"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "n/a",
+          "detail": "No vx setting keeps two tasks from running at the same time; only the run-wide concurrency limit."
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "No Turborepo setting keeps two tasks from running at the same time; only `--concurrency`."
+        },
+        "nx": {
+          "status": "fail",
+          "detail": "harness: Error: step 2 `sleep 1; [ \"$(ls started-b started-c 2>/dev/null | wc -l)\" -eq 1 ]` exited 1:\n"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "No Vite Task setting keeps two tasks from running at the same time."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "Nix has no setting that keeps two builds from running at the same time, only `--max-jobs` for all."
+        },
+        "moon": {
+          "status": "fail",
+          "step": 1,
+          "detail": "left running: bash -c printf '+%s\\n' 'b#build' >> ../../.ran && (touch ../../started-b; sleep 5; echo done > out.txt) && printf -- '-%s\\n' 'b#build' >> ../../.ran; sleep 5"
+        }
+      }
+    },
+    {
+      "id": "graph/mutex-freed-by-a-failed-holder",
+      "ref": "0jnt83",
+      "category": "graph",
+      "kind": "correctness",
+      "title": "A task that fails while holding a shared lock lets the task waiting for it run",
+      "why": "Two tasks that share a lock but not an edge are independent: one failing says nothing about the other. Whichever holds the lock first fails, and the lock must pass to the other, which then runs and fails on its own. A lock kept by a failed task leaves the run hanging, or drops a task the user asked for.",
+      "from": [
+        "failure-mode"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "n/a",
+          "detail": "No vx setting keeps two tasks from running at the same time; only the run-wide concurrency limit."
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "No Turborepo setting keeps two tasks from running at the same time; only `--concurrency`."
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "No Vite Task setting keeps two tasks from running at the same time."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "Nix has no setting that keeps two builds from running at the same time, only `--max-jobs` for all."
+        },
+        "moon": {
+          "status": "fail",
+          "step": 1,
+          "detail": "packages/c/ran.txt is missing, expected \"ran\\n\""
+        }
+      }
+    },
+    {
+      "id": "graph/mutex-spares-tasks-outside-it",
+      "ref": "8yjb2l",
+      "category": "graph",
+      "kind": "efficiency",
+      "title": "A task that names no lock runs at the same time as one holding a lock",
+      "why": "A lock names one resource, a database or a port, and keeps apart only the tasks that use it. A task that does not name it has nothing to wait for. Running it alone as well turns one shared resource into a run-wide queue, and the run is as slow as one at a time.",
+      "from": [
+        "run-concurrency"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "n/a",
+          "detail": "No vx setting keeps two tasks from running at the same time; only the run-wide concurrency limit."
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "No Turborepo setting keeps two tasks from running at the same time; only `--concurrency`."
+        },
+        "nx": {
+          "status": "fail",
+          "step": 1,
+          "detail": "packages/a/met.txt is \"alone\\n\", expected \"met\\n\""
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "No Vite Task setting keeps two tasks from running at the same time."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "Nix has no setting that keeps two builds from running at the same time, only `--max-jobs` for all."
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "graph/different-mutexes-run-together",
+      "ref": "p5a7hu",
+      "category": "graph",
+      "kind": "efficiency",
+      "title": "Two tasks naming two different locks run at the same time",
+      "why": "One task holds the database lock and the other the emulator lock; they share no resource. The lock name is what keeps tasks apart, so two names keep nothing apart from each other. A tool that treats any lock as one global lock runs them one after the other for no reason.",
+      "from": [
+        "run-concurrency"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "n/a",
+          "detail": "No vx setting keeps two tasks from running at the same time; only the run-wide concurrency limit."
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "No Turborepo setting keeps two tasks from running at the same time; only `--concurrency`."
+        },
+        "nx": {
+          "status": "fail",
+          "step": 1,
+          "detail": "packages/a/met.txt is \"alone\\n\", expected \"met\\n\""
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "No Vite Task setting keeps two tasks from running at the same time."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "Nix has no setting that keeps two builds from running at the same time, only `--max-jobs` for all."
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "graph/mutex-pair-joined-by-an-edge-runs-in-order",
+      "ref": "44yq2d",
+      "category": "graph",
+      "kind": "correctness",
+      "title": "Two tasks that share a lock, one depending on the other, run in order without hanging",
+      "why": "app’s task needs lib’s, and both use the same database. lib runs first and holds the lock; app takes it once lib is done. A tool that hands the lock to app before its dependency has run leaves app holding it while waiting for lib, which waits for the lock: the run hangs.",
+      "from": [
+        "graph-order"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "n/a",
+          "detail": "No vx setting keeps two tasks from running at the same time; only the run-wide concurrency limit."
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "No Turborepo setting keeps two tasks from running at the same time; only `--concurrency`."
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "No Vite Task setting keeps two tasks from running at the same time."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "Nix has no setting that keeps two builds from running at the same time, only `--max-jobs` for all."
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "outputs/nested-dot-directories-restored",
+      "ref": "9sj9nl",
+      "category": "outputs",
+      "kind": "correctness",
+      "title": "Files under dot-directories nested inside an output tree come back on a hit, as Next.js writes them",
+      "why": "Next.js writes its standalone server to `.next/standalone/app/.next/`, a dot-directory inside a dot-directory. Glob code that skips dot entries by default stores the tree without them, and the hit restores a server that cannot find its build. Every file under the output pattern must come back, at any depth.",
+      "from": [
+        "artifact-roundtrip",
+        "dot-slash-globs"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "outputs/optional-output-deleted-comes-back",
+      "ref": "q9f87x",
+      "category": "outputs",
+      "kind": "correctness",
+      "title": "An optional output the task did write, then deleted, comes back on the next hit",
+      "why": "Optional only means the task may leave the output unwritten. When it did write it, the output is part of the result like any other. Treating the deleted file as never written replays a tree without the coverage report the build produced.",
+      "from": [
+        "missing-outputs",
+        "restore-in-place"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "n/a",
+          "detail": "Every output vx declares is required: a pattern that matches no file fails the task."
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "failure/optional-output-does-not-excuse-a-missing-one",
+      "ref": "0e6o8f",
+      "category": "failure",
+      "kind": "correctness",
+      "title": "A task that writes only its optional output, and not its required one, fails and is not cached",
+      "why": "Marking coverage optional relaxes the check for coverage alone. dist is still required, and the build did not write it. A tool that passes the task because some output exists caches a result with no build in it, and every later hit restores nothing.",
+      "from": [
+        "missing-outputs"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "n/a",
+          "detail": "Every output vx declares is required: a pattern that matches no file fails the task."
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 1,
+          "detail": "succeeded, expected a failure"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 1,
+          "detail": "succeeded, expected a failure"
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 1,
+          "detail": "succeeded, expected a failure"
+        },
+        "nix": {
+          "status": "fail",
+          "step": 1,
+          "detail": "succeeded, expected a failure"
+        },
+        "moon": {
+          "status": "fail",
+          "step": 1,
+          "detail": "succeeded, expected a failure"
+        }
+      }
+    },
+    {
+      "id": "outputs/intact-outputs-left-in-place-on-a-hit",
+      "ref": "j0ud9z",
+      "category": "outputs",
+      "kind": "efficiency",
+      "title": "A hit over outputs still on disk as the task left them does not rewrite them",
+      "why": "When every output is already what the cache holds, there is nothing to restore. Deleting and writing them again gives each file a new inode and modification time, so a dev server or file watcher sees a change and rebuilds for nothing. Matched files and files named outright are both left as they are.",
+      "from": [
+        "restore-in-place",
+        "warm-outputs"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "fail",
+          "detail": "harness: Error: step 4 `[ \"$(stat -c '%i %y' packages/a/dist/a.js packages/a/dist/b.js packages/a/out.txt)\" = \"$(cat .stamps)\" ]` exited 1:\n"
+        },
+        "vite-task": {
+          "status": "fail",
+          "detail": "harness: Error: step 4 `[ \"$(stat -c '%i %y' packages/a/dist/a.js packages/a/dist/b.js packages/a/out.txt)\" = \"$(cat .stamps)\" ]` exited 1:\n"
+        },
+        "nix": {
+          "status": "fail",
+          "detail": "harness: Error: step 4 `[ \"$(stat -c '%i %y' packages/a/dist/a.js packages/a/dist/b.js packages/a/out.txt)\" = \"$(cat .stamps)\" ]` exited 1:\n"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "env/command-ending-in-double-dash",
+      "ref": "xopozk",
+      "category": "env",
+      "kind": "correctness",
+      "title": "A command that ends in `--` runs with that `--` as its last argument",
+      "why": "Some programs need a bare `--` to end their own options, and it can be the last word of the command. It belongs to the command, not to the runner’s argument forwarding. Stripping it changes what the program is asked to do.",
+      "from": [
+        "task-shell",
+        "forward-args-verbatim"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "cache/chain-with-every-output-deleted-replays-every-link",
+      "ref": "qoh5j2",
+      "category": "cache",
+      "kind": "efficiency",
+      "title": "A chain whose outputs were all deleted replays every project, the dependant too",
+      "why": "Nothing the chain reads has changed, so every project has a stored result. The dependency comes back from the cache instead of running, and that must not change what keys its dependant. A dependant keyed on how its dependency got its files rebuilds on every fresh checkout.",
+      "from": [
+        "hash-chain",
+        "restore-in-place"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "graph/dependency-inputs-off-still-waits",
+      "ref": "bh3vl2",
+      "category": "graph",
+      "kind": "correctness",
+      "title": "A task not keyed on its dependency still waits for it to finish, on every run that runs both",
+      "why": "Leaving a dependency out of the key says nothing about order: the task still needs it done first, for a server, a database or a generated file it does not track. When both run, the dependency finishes before the task starts. A tool that drops the edge with the key starts them together.",
+      "from": [
+        "graph-order",
+        "task-hash-derive"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "A dependency’s hash always keys its dependants: no task orders a dependency without it."
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "A dependency’s output path is its dependant’s input: it always keys it."
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "cache/dependency-inputs-off-shuts-out-changes-further-down",
+      "ref": "jnn9ul",
+      "category": "cache",
+      "kind": "efficiency",
+      "title": "A task not keyed on its dependency replays when only that dependency’s own dependency changes",
+      "why": "ui keys on lib, so a change in lib rebuilds ui. app waits for ui but was told not to key on it, and what ui is keyed on reaches app only through ui. The change two levels down must stop at that edge: app replays while ui rebuilds.",
+      "from": [
+        "hash-chain",
+        "task-hash-derive"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "A dependency’s hash always keys its dependants: no task orders a dependency without it."
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 3,
+          "detail": "did not run ui#build"
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "A dependency’s output path is its dependant’s input: it always keys it."
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "failure/dependency-inputs-off-dependant-skipped-on-failure",
+      "ref": "8ja8xh",
+      "category": "failure",
+      "kind": "correctness",
+      "title": "A task not keyed on its dependency is still skipped when that dependency fails",
+      "why": "Not keying on a dependency is about what the task reads, not about whether it may run without it. The task was ordered after lib because it needs lib done. When lib fails, the task runs against a dependency that never finished, so it is skipped like any other dependant, and the run fails.",
+      "from": [
+        "failure-mode",
+        "task-hash-derive"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "A dependency’s hash always keys its dependants: no task orders a dependency without it."
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "A dependency’s output path is its dependant’s input: it always keys it."
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "env/dependency-variable-change-replays-unkeyed-dependant",
+      "ref": "qy8196",
+      "category": "env",
+      "kind": "efficiency",
+      "title": "A variable only the dependency keys on reruns it, and replays a dependant not keyed on it",
+      "why": "lib keys on MODE, so a new value rebuilds lib. app waits for lib but was told not to key on it, and app itself never declared MODE. Nothing app is keyed on changed, so it replays. A tool that leaks the dependency’s variables into the dependant’s key through an edge it was told to leave out rebuilds app for nothing.",
+      "from": [
+        "env",
+        "task-hash-derive"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "A dependency’s hash always keys its dependants: no task orders a dependency without it."
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "A dependency’s output path is its dependant’s input: it always keys it."
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "outputs/replay-blocked-midway-then-cleared-restores-everything",
+      "ref": "m5c9y5",
+      "category": "outputs",
+      "kind": "correctness",
+      "title": "Once a file that blocked a replay is removed, the next run brings back every output, not only those the blocked one wrote",
+      "why": "A plain file standing where an output directory goes stops a restore partway, whatever the tool then does about it. Once the user removes the file, the outputs on disk may be only part of the result. The next run must leave the whole tree, never take the part on disk for a finished replay.",
+      "from": [
+        "restore-occupied-parent",
+        "restore-in-place"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "outputs/negation-beside-a-literal-output-needs-no-match",
+      "ref": "06ane8",
+      "category": "outputs",
+      "kind": "correctness",
+      "title": "A `!` output entry beside a file named outright passes when nothing matches the `!` entry",
+      "why": "A `!` entry only takes paths back from the outputs; it claims no file of its own. The one output the task must write is `report.json`, and it did. Failing the task because the `!` pattern matched nothing treats an exclusion as a promise, and a task that wrote everything it declared never caches.",
+      "from": [
+        "negated-outputs",
+        "missing-outputs"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "env/force-color-set-by-the-user-reaches-the-task-unchanged",
+      "ref": "bf3ra7",
+      "category": "env",
+      "kind": "correctness",
+      "title": "A `FORCE_COLOR` the user set and the task passes through reaches it as the user set it",
+      "why": "Many tools color their output by `FORCE_COLOR`, and a user sets it to 0 to get plain logs in CI. A runner that sets its own value for the processes it starts overrides that choice behind the user’s back, and a task whose output is parsed breaks. A variable the task passes through reaches it as the user set it.",
+      "from": [
+        "env",
+        "unpassed-env"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "A variable reaches a build only as an attribute, which keys it."
+        },
+        "moon": {
+          "status": "fail",
+          "step": 1,
+          "detail": "packages/a/got.txt is \"<>\", expected \"<0>\""
+        }
+      }
+    },
+    {
+      "id": "outputs/stale-file-in-read-only-output-dir-cleared-on-replay",
+      "ref": "0mb9m0",
+      "category": "outputs",
+      "kind": "correctness",
+      "title": "Replaying an older build clears a newer build’s file from a read-only output directory",
+      "why": "The newer build left an extra file in a directory it made read-only, as some code generators do. Going back to the older sources replays the older build, and the extra file is not part of it. A restore that cannot clear it fails with permission denied, or leaves a file the replayed build never wrote; the directory stays read-only as the build left it.",
+      "from": [
+        "restore-dir-mode",
+        "restore-in-place"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 5,
+          "detail": "packages/a/dist/ro/extra.txt exists, expected none"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 6,
+          "detail": "packages/a/dist/ro has mode 755, expected 555"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "fail",
+          "step": 6,
+          "detail": "packages/a/dist/ro has mode 755, expected 555"
+        },
+        "moon": {
+          "status": "fail",
+          "step": 5,
+          "detail": "packages/a/dist/ro/extra.txt exists, expected none"
+        }
+      }
+    },
+    {
+      "id": "failure/time-limit-does-not-count-the-wait-for-a-lock",
+      "ref": "62lxfg",
+      "category": "failure",
+      "kind": "correctness",
+      "title": "A task’s time limit does not count the time it waits for a lock another task holds",
+      "why": "Each task takes 2.5 s, within its 4 s limit, and they share a lock, so the second waits for the first. The limit is about the task’s own command hanging, not about how long the lock was held by someone else. Counting the wait kills a healthy task, and which one dies depends on who got the lock first.",
+      "from": [
+        "run-outcome-retry-timeout-properties"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "n/a",
+          "detail": "No vx setting keeps two tasks from running at the same time; only the run-wide concurrency limit."
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "No Turborepo setting keeps two tasks from running at the same time; only `--concurrency`. Turborepo has no per-task time limit."
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "Nx has no per-task time limit."
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "No Vite Task setting keeps two tasks from running at the same time. Vite Task has no per-task time limit."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "Nix has no setting that keeps two builds from running at the same time, only `--max-jobs` for all. Nix has no time limit of a build’s own (`timeout` is a setting for every build)."
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "affected/changed-dependent-does-not-hide-the-dependencys-other-users",
+      "ref": "uhra68",
+      "category": "affected",
+      "kind": "correctness",
+      "title": "When a library and one of its users both changed, the library’s other user is still selected",
+      "why": "zlib changed, so everything that builds on it is selected, app included. cli changed too and also builds on zlib. Taking cli first and marking zlib as already seen must not skip the walk from zlib to app. app builds on a changed library and has to be checked.",
+      "from": [
+        "affected-dependents"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "Vite Task does not select tasks by what git says changed."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build builds the attributes it is named: no git change selects them."
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "env/args-with-glob-characters-reach-verbatim",
+      "ref": "w6x0rw",
+      "category": "env",
+      "kind": "correctness",
+      "title": "Forwarded args holding `*`, `?` and `&` reach the command as typed, though files match them",
+      "why": "A query string like `?foo=bar&var=baz` or a pattern like `*.txt` is data for the program, which may expand it itself. The project holds `a.txt` and `b.txt`, so a shell that sees the args unquoted turns `*.txt` into two file names and `&` into a background job. Each arg reaches the command once, as the user typed it.",
+      "from": [
+        "forward-args-verbatim",
+        "forward-args-one-task"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 1,
+          "detail": "exited 1, expected success"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "env/command-parameter-default-reaches-the-shell",
+      "ref": "7a8h7z",
+      "category": "env",
+      "kind": "correctness",
+      "title": "A command using `${MODE:-dev}` gets the default while MODE is unset, and the value once it is set",
+      "why": "A default in a parameter expansion is shell syntax: the shell fills it in when the command runs. A runner that rewrites `${…}` itself, or drops the text after `:-`, hands the shell a different command. MODE is declared, so setting it runs the task again with the value in place of the default.",
+      "from": [
+        "task-shell",
+        "env"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "failure/long-output-of-a-failing-task-keeps-its-end",
+      "ref": "uvmgge",
+      "category": "failure",
+      "kind": "correctness",
+      "title": "A failing task that prints thirty thousand lines still shows its last line",
+      "why": "A test runner prints its summary, the names of what failed, at the very end of a long log. A runner that cuts the output at a buffer size, or stops reading once the process exits, drops exactly the line the developer needs. The whole output reaches the user, its end included.",
+      "from": [
+        "frame-big-output",
+        "failed-output-whole"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "outputs/concurrent-restores-of-many-projects-intact",
+      "ref": "7365em",
+      "category": "outputs",
+      "kind": "correctness",
+      "title": "Eight projects replaying a megabyte of random bytes each at the same time all come back byte for byte",
+      "why": "A run with nothing changed restores many projects at once, and a restore that shares buffers or writes through an unflushed handle can leave a file cut short or holding another project’s bytes. The next task then reads a broken file under a green run. Every restored file must equal what its build wrote.",
+      "from": [
+        "artifact-roundtrip",
+        "restore-in-place"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "outputs/dependency-optional-output-back-before-the-dependant-reads-it",
+      "ref": "ilwpug",
+      "category": "outputs",
+      "kind": "correctness",
+      "title": "A dependency’s deleted optional output is back before a rebuilding dependant reads it",
+      "why": "lib wrote its optional type declarations, so they are part of its stored result. app changed and rebuilds, reading those declarations; lib did not change and replays. A replay that skips optional outputs, or a dependant that starts before the restore, reads a missing file and fails or builds wrong.",
+      "from": [
+        "dependency-outputs-there",
+        "missing-outputs"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "n/a",
+          "detail": "Every output vx declares is required: a pattern that matches no file fails the task."
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "graph/mutex-keeps-apart-tasks-of-different-names",
+      "ref": "hmo9ld",
+      "category": "graph",
+      "kind": "correctness",
+      "title": "A lint and a test that name the same lock never run at the same time",
+      "why": "The lock names the resource, a database both tasks reset, not the task. That one is called lint and the other test, in different projects, changes nothing about the clash. A tool that keeps apart only tasks of one name lets them overlap and corrupt each other’s data.",
+      "from": [
+        "run-concurrency"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "n/a",
+          "detail": "No vx setting keeps two tasks from running at the same time; only the run-wide concurrency limit."
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "No Turborepo setting keeps two tasks from running at the same time; only `--concurrency`."
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "No Vite Task setting keeps two tasks from running at the same time. `vp run` runs one task name per run."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "Nix has no setting that keeps two builds from running at the same time, only `--max-jobs` for all."
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "outputs/restored-output-left-in-place-by-the-next-hit",
+      "ref": "fe4vd9",
+      "category": "outputs",
+      "kind": "efficiency",
+      "title": "An output one hit restored is left as it is by the next hit",
+      "why": "Once a hit has put a deleted output back, the file on disk is exactly what the cache holds. The next hit has nothing to restore, and writing the file again gives it a new inode and time, so watchers rebuild for nothing. A tool that only trusts files its own task wrote rewrites every restored output on every run.",
+      "from": [
+        "restore-in-place",
+        "output-stamps-scale"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "fail",
+          "detail": "harness: Error: step 6 `[ \"$(stat -c '%i %y' packages/a/dist/a.js packages/a/dist/b.js)\" = \"$(cat .stamps)\" ]` exited 1:\n"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "fail",
+          "detail": "harness: Error: step 6 `[ \"$(stat -c '%i %y' packages/a/dist/a.js packages/a/dist/b.js)\" = \"$(cat .stamps)\" ]` exited 1:\n"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "env/command-double-quoted-spaces-kept",
+      "ref": "w4vxux",
+      "category": "env",
+      "kind": "correctness",
+      "title": "Text in double quotes inside a command keeps its runs of spaces and its tab",
+      "why": "A quoted string is one word to the shell, spaces and all: a commit message, a column format, a search phrase. A runner that splits the command into words and joins them back with single spaces changes what the program receives. The shell sees the command exactly as written.",
+      "from": [
+        "task-shell",
+        "config-schema-task-string"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "env/command-quoted-program-path-with-a-space",
+      "ref": "0ijd8m",
+      "category": "env",
+      "kind": "correctness",
+      "title": "A command whose program is a quoted path holding a space runs that program",
+      "why": "Scripts kept in folders like `tools/dev scripts/` are called by a quoted path. The quotes make the path one word, so the shell runs the script. A runner that takes the first space-separated word as the program looks for `./tools/dev`, which does not exist, and the task fails.",
+      "from": [
+        "task-shell",
+        "shell-verdict"
       ],
       "outcomes": {
         "vx": {
