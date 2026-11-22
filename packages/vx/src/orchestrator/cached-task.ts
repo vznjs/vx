@@ -247,8 +247,36 @@ export async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome>
   return missOutcome(m, ran, check, save, { startNs: wallclockStartNs, endNs: wallclockEndNs })
 }
 
+/** A key taken before the task's dispatch, and when (`KeyedTasks.keyedAt`). */
+export interface PreparedKey {
+  readonly key: { hash: string; pre?: PreDescribed }
+  readonly at: number
+  readonly atMs: number
+}
+
 /**
- * The key, taken mid-run, not at prepare time: a task whose `inputs.files`
+ * Take a ready task's key while it waits for a slot (`SchedulerOptions.prepare`),
+ * for its dispatch to read back: the key and the description it folds were
+ * most of what a cold miss did in its slot before its command. Their facts
+ * are dated now, so the re-check after the command sees any write since.
+ */
+export function prepareKey(args: ExecuteArgs): void {
+  const prepared = args.run.preparedKeys
+  if (prepared === undefined || args.preProbed !== undefined || args.upfrontKey !== undefined)
+    return
+  const policy = taskPolicy(args)
+  if (!policy.cacheable) return
+  const at = fsClockNow(args.run.cacheDir ?? path.join(args.run.workspaceRoot, '.vx'))
+  const atMs = Date.now()
+  const taken = derivedKey(args, policy).then((key) => ({ key, at, atMs }))
+  // Read by its dispatch, which rethrows it; a run that stops first never asks.
+  taken.catch(() => {})
+  prepared.set(args.node.id, taken)
+}
+
+/**
+ * The key, taken mid-run (once the task is ready: `prepareKey`), not at
+ * prepare time: a task whose `inputs.files`
  * matches a sibling's outputs (`'**\/*'` after a `codegen` step) needs those
  * on disk first. Taken WITHOUT capture, so a warm all-hit run allocates no
  * component array; a miss's rows are captured by the describe. An up-front
@@ -261,7 +289,21 @@ async function keyFor(
 ): Promise<{ hash: string; pre?: PreDescribed }> {
   const known = args.preProbed?.hash ?? args.upfrontKey
   if (known !== undefined) return { hash: known }
+  const prepared = args.run.preparedKeys?.get(args.node.id)
+  if (prepared !== undefined) {
+    args.run.preparedKeys!.delete(args.node.id)
+    const { key, at, atMs } = await prepared
+    args.run.keyedTasks?.keyedAt(args, at, atMs)
+    return key
+  }
   args.run.keyedTasks?.keyedNow(args)
+  return derivedKey(args, policy)
+}
+
+async function derivedKey(
+  args: ExecuteArgs,
+  policy: TaskPolicy,
+): Promise<{ hash: string; pre?: PreDescribed }> {
   const hashArgs = {
     node: args.node,
     upstream: args.upstream,

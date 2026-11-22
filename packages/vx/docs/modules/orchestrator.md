@@ -620,7 +620,14 @@ one-shot handler mid-cleanup.
    `upfrontKey` (orchestrator.md; a persistent task takes it too). A
    cacheable task takes it through `keyOrDescribe`: a fold memo's key,
    else `describeTaskInputs`'s, whose description the miss then reuses
-   instead of resolving and hashing its inputs again.
+   instead of resolving and hashing its inputs again. A task that waited
+   for a slot usually took it already (`prepareKey`, through the
+   scheduler's `prepare`): its dispatch reads it back from
+   `RunContext.preparedKeys` and dates the key at when it was taken
+   (`KeyedTasks.keyedAt`). Its facts are dated then too, so a write in
+   the wait (another task's) is a moved input at the re-check: the save
+   is withheld, never filed under bytes the command did not read
+   (tests/prepared-key.test.ts).
 2. `cleanArgs = { projectDir, outputs, nestedProjectDirs }` is
    prepared once.
 3. **If caching is on**: `cache.get(hash)`.

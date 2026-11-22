@@ -133,6 +133,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'persistent-ready-timeout',
     'persistent-shutdown',
     'persistent-stop-before-spawn',
+    'prepared-key',
     'project-stage-lock',
     'raw-output-bytes',
     'relayed-signal',
