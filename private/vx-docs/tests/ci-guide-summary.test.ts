@@ -41,7 +41,7 @@ const tasks = [
 ]
 const summary = {
   v: 2,
-  run: { vxVersion: '0.0.21', command: 'vx run ci --all' },
+  run: { vxVersion: '0.0.21', command: 'vx pipeline main' },
   startedAt: 0,
   endedAt: 21_400,
   totalDurationMs: 21_400,

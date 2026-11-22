@@ -26,6 +26,7 @@ const keyless: DteAdapter = { keyless: true, spawn: () => {} }
 
 it('distributes a GitHub Actions run with a keyless adapter and a relay, naming no run', () => {
   delete process.env['VX_DTE_RUN']
+  delete process.env['VX_DTE_RELAY']
   process.env['ACTIONS_ID_TOKEN_REQUEST_URL'] = 'https://token.example'
   process.env['ACTIONS_ID_TOKEN_REQUEST_TOKEN'] = 'req-token'
   process.env['GITHUB_REPOSITORY_ID'] = '1'
@@ -34,4 +35,22 @@ it('distributes a GitHub Actions run with a keyless adapter and a relay, naming 
   expect(subscribed({ adapter: keyless })).toEqual([])
   delete process.env['ACTIONS_ID_TOKEN_REQUEST_URL']
   expect(subscribed({ relay: 'https://r', adapter: keyless })).toEqual([])
+})
+
+// A pipeline's `env` is set after .vx/workspace.ts loaded (M, 2026-11-22:
+// DTE switched through it): dte() reads VX_DTE_RELAY when the run starts.
+it('takes VX_DTE_RELAY set after dte() was made, at the run', () => {
+  delete process.env['VX_DTE_RUN']
+  delete process.env['VX_DTE_RELAY']
+  process.env['ACTIONS_ID_TOKEN_REQUEST_URL'] = 'https://token.example'
+  process.env['ACTIONS_ID_TOKEN_REQUEST_TOKEN'] = 'req-token'
+  process.env['GITHUB_REPOSITORY_ID'] = '1'
+  const options = { adapter: keyless }
+  expect(subscribed(options)).toEqual([])
+  process.env['VX_DTE_RELAY'] = 'https://r'
+  expect(subscribed(options)).toEqual(['onTaskComplete'])
+  process.env['VX_DTE_RELAY'] = 'relay.example.com'
+  expect(() => subscribed(options)).toThrow(
+    'VX_DTE_RELAY must be an http(s) URL, got "relay.example.com"',
+  )
 })

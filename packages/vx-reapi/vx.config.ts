@@ -70,7 +70,7 @@ const SHARDS: readonly (readonly string[])[] = [
 // servers and stalled more (3/6 rounds against this loop's 1/6): it gives
 // every file its own gRPC client, so the session-setup race runs nine
 // times. The live suites SKIP without an endpoint and FAIL with the
-// require flag set and no endpoint, so the plain `ci` run exercises the
+// require flag set and no endpoint, so the plain checks run exercises the
 // wire-level units and the CI job with the service containers proves
 // the wire. The endpoint values are key inputs: a skip-mode pass never
 // serves a live-mode run. No sandbox: the suites dial the service
@@ -122,10 +122,6 @@ export default defineProject({
       description: 'nothing to build — consumed as source',
       dependsOn: ['^build'],
       inputs: { files: ['src/**', 'protos/**'] },
-    },
-
-    ci: {
-      dependsOn: ['lint', 'test', 'test.live'],
     },
 
     test: {

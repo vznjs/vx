@@ -1136,7 +1136,7 @@ describe('orchestrator e2e — restores, groups, streams, plan and records', () 
   // command line of several, or ran a requested task twice when another
   // requested task also depended on it.
   it(
-    'arguments after -- reach every requested task, once each, and no dependency',
+    'arguments after -- reach the requested task, once, and no dependency',
     async () => {
       const task = (deps: string) => `
           export default {
@@ -1150,7 +1150,7 @@ describe('orchestrator e2e — restores, groups, streams, plan and records', () 
       const a = await addProject(fixture.root, 'a', { config: task(`'b#build'`) })
       const r = await run({
         cwd: fixture.root,
-        tasks: ['a#build', 'c#build'],
+        tasks: ['a#build'],
         forwardArgs: ['0', '--x', 'two words'],
         log: silentLogger(fixture),
       })
@@ -1158,12 +1158,21 @@ describe('orchestrator e2e — restores, groups, streams, plan and records', () 
       const read = (dir: string, f: string) => readFile(path.join(dir, f), 'utf8')
       expect(await read(a, 'args.txt')).toBe('ARGS: 0 --x two words\n')
       expect(await read(b, 'args.txt')).toBe('ARGS:\n')
-      expect(await read(c, 'args.txt')).toBe('ARGS: 0 --x two words\n')
+      expect(await read(c, 'args.txt')).toBe('ARGS:\n')
       expect(await Promise.all([a, b, c].map((d) => read(d, 'runs.txt')))).toEqual([
         'ran\n',
         'ran\n',
         'ran\n',
       ])
+      // Two requested tasks cannot say whose the args are (M, 2026-11-22).
+      await expect(
+        run({
+          cwd: fixture.root,
+          tasks: ['a#build', 'c#build'],
+          forwardArgs: ['--x'],
+          log: silentLogger(fixture),
+        }),
+      ).rejects.toThrow('this run asks for 2: a#build, c#build')
     },
     TIMEOUT,
   )

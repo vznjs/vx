@@ -10,7 +10,7 @@ terminal and a task succeeding or failing. Read it alongside
 ```
  ┌─ CLI dispatch (src/bin.ts → src/cli/index.ts → src/cli/run.ts)
  │    1. bin.ts spawns; forwards process.argv to cli.run().
- │    2. cli/index.ts dispatches by subcommand (run / watch / cache /
+ │    2. cli/index.ts dispatches by subcommand (run / watch / pipeline / cache /
  │       lock / init / upgrade / show / info / why / last / docs /
  │       completions / help / version); any other verb is asked of the
  │       workspace's plugins (`commands` seam).
@@ -39,7 +39,7 @@ terminal and a task succeeding or failing. Read it alongside
  │       stat'ed; one gone is refused ("run `vx lock`").
  │    3. loadWorkspacePlugins — loadWorkspaceConfig reads the
  │       .vx/workspace.{ts,mts,js,mjs,cts,cjs} the root lookup found (baseBranch /
- │       run / cache / inputs / outputs / watch / history / plugins / lock),
+ │       run / cache / inputs / outputs / watch / history / pipelines / plugins / lock),
  │       then the plugin `config` stage runs on it.
  │    4. The plugin `discover` stage: more directories, names and
  │       edges. A project is named by its config's `name`, else a

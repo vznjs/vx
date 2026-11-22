@@ -45,6 +45,7 @@ import {
   span,
   UserError,
   xxh3hex,
+  taskEnvSource,
 } from '../util/index.js'
 import { VERSION } from '../version.js'
 import { outputsLeft } from './run-report.js'
@@ -515,7 +516,7 @@ function inputsArgs(args: ComputeHashArgs): ResolveInputsArgs {
   return {
     projectDir: args.node.projectDir,
     workspaceRoot: args.workspaceRoot,
-    envSource: process.env,
+    envSource: taskEnvSource(),
     inputs: cfg.inputs,
     ownOutputs: cfgOut?.files ?? [],
     ownWorkspaceOutputs: cfgOut?.workspaceFiles ?? [],

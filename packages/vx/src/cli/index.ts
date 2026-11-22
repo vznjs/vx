@@ -240,6 +240,8 @@ async function dispatch(command: string | undefined, rest: string[]): Promise<nu
       return await (await import('./run.js')).runCmd(rest)
     case 'watch':
       return await (await import('./watch.js')).watchCmd(rest)
+    case 'pipeline':
+      return await (await import('./pipeline.js')).pipelineCmd(rest)
     case 'cache':
       return await (await import('./cache.js')).cacheCmd(rest)
     case 'lock':

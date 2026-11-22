@@ -5,6 +5,7 @@ import { parsePruneArgs } from '../../src/cli/cache.js'
 import { parseInitArgs } from '../../src/cli/init.js'
 import { parseLastArgs } from '../../src/cli/last.js'
 import { parseLockArgs } from '../../src/cli/lock.js'
+import { parsePipelineArgs } from '../../src/cli/pipeline.js'
 import { parseRunArgs } from '../../src/cli/run.js'
 import { parseShowArgs } from '../../src/cli/show.js'
 import { parseWhyArgs } from '../../src/cli/why.js'
@@ -20,6 +21,7 @@ export const PARSE: Readonly<Record<string, (argv: string[]) => string | null>> 
     const parsed = parseRunArgs(['build', ...a], 'watch')
     return parsed.error ?? watchRefusal(parsed)
   },
+  pipeline: (a) => parsePipelineArgs(['pr', ...a]).error ?? null,
   cache: (a) => parsePruneArgs(a).error ?? null,
   lock: (a) => parseLockArgs(a).error ?? null,
   init: (a) => parseInitArgs(a).error ?? null,

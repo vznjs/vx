@@ -7,6 +7,7 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
+import type { WorkspaceConfig } from '../src/config.js'
 
 const dir = path.resolve(import.meta.dir, '..', '..', '..', '.github', 'workflows')
 
@@ -40,6 +41,11 @@ interface Workflow {
 const read = (file: string): Workflow =>
   Bun.YAML.parse(readFileSync(path.join(dir, file), 'utf8')) as Workflow
 const doc = read('ci.yml')
+// What each job's `vx pipeline <name>` runs. A path the type-checker does
+// not follow: every package's oxlint sees this file, from where the root
+// lies elsewhere.
+const workspaceFile = path.join(dir, '..', '..', '.vx', 'workspace.ts')
+const pipelines = ((await import(workspaceFile)) as { default: WorkspaceConfig }).default.pipelines!
 const worker = read('vx-worker.yml').jobs['worker']!
 const bench = read('bench.yml').jobs['bench']!
 const checkout = (j: Job | undefined): Step | undefined =>
@@ -65,15 +71,17 @@ describe('ci.yml', () => {
 
   // A DTE worker is packed for the run's wall time, so a benchmark there
   // timed its neighbours (2026-10-24): it runs where no relay is set,
-  // and the run's `ci` does not reach it.
+  // in pipelines of its own that the run's do not name.
   it('runs the benchmarks off the DTE run', () => {
     const perf = doc.jobs['perf']!
     expect(JSON.stringify(perf)).not.toContain('VX_DTE')
     expect(perf.steps?.at(-1)?.run).toBe(
-      "bun packages/vx/src/bin.ts run check.perf ${{ github.event_name == 'pull_request' && '--affected' || '--all' }}",
+      "bun packages/vx/src/bin.ts pipeline ${{ github.event_name == 'pull_request' && 'perf-pr' || 'perf' }}",
     )
-    const bench = readFileSync(path.join(dir, '../../private/vx-bench/vx.config.ts'), 'utf8')
-    expect(bench).toContain("dependsOn: ['lint', 'test'],")
+    expect(pipelines['perf-pr']).toEqual({ tasks: ['check.perf'], affected: true })
+    expect(pipelines['perf']).toEqual({ tasks: ['check.perf'] })
+    for (const name of ['pr', 'queue', 'main'])
+      expect(pipelines[name]!.tasks).not.toContain('check.perf')
   })
 
   // A merged PR's run held its workers' runners until it ended, and the next
@@ -117,7 +125,7 @@ describe('ci.yml', () => {
     expect(steps[at]?.if).toBe(
       "github.event_name == 'pull_request' || github.ref == 'refs/heads/main'",
     )
-    const run = steps.find((s) => s.run?.includes('bin.ts run ') === true)!
+    const run = steps.find((s) => s.run?.includes('bin.ts pipeline ') === true)!
     expect(at).toBeLessThan(steps.indexOf(run))
     expect(steps[at]?.id).toBe('relay')
     const cache = steps.findIndex(
@@ -127,7 +135,7 @@ describe('ci.yml', () => {
     expect(cache).toBeLessThan(steps.indexOf(run))
     expect(steps[cache]?.id).toBe('cache')
     expect(run.env).toEqual({
-      VX_DTE_RELAY: '${{ steps.relay.outputs.url || env.VX_DTE_RELAY }}',
+      VX_DTE_RELAY: '${{ steps.relay.outputs.url }}',
       VX_CACHE_URL: '${{ steps.cache.outputs.url || env.VX_CACHE_URL }}',
     })
   })
@@ -139,8 +147,13 @@ describe('ci.yml', () => {
   it('runs every platform’s checks as tasks of the run, its tests on a PR too', () => {
     const steps = doc.jobs['linux']!.steps!
     expect(steps.filter((s) => /sandbox-canary\.ts|--cache-policy/.test(s.run ?? ''))).toEqual([])
-    const run = steps.find((s) => s.run?.includes('bin.ts run '))!.run!
-    expect(run).toContain("ci ${{ github.event_name == 'push' && 'release' || '' }}")
+    for (const name of ['pr', 'queue', 'main'])
+      expect(pipelines[name]!.tasks).toEqual(
+        expect.arrayContaining(['test.platform', 'check.binary']),
+      )
+    expect(pipelines['main']!.tasks).toEqual(
+      expect.arrayContaining(['check.sandbox-canary', 'check.build-cold', 'build.bun']),
+    )
   })
 
   // Every sandboxed task runs on a worker, which enforces it there.
@@ -160,11 +173,13 @@ describe('ci.yml', () => {
     expect(hand.if).toBe("github.event_name == 'push' && github.ref == 'refs/heads/main'")
     expect(hand.with?.['script']).toContain("core.exportVariable('ACTIONS_RUNTIME_TOKEN'")
     const names = run.steps!.map((s) => s.name)
-    expect(names.indexOf('Hand the Pages token to the run')).toBeLessThan(names.indexOf('vx run'))
+    expect(names.indexOf('Hand the Pages token to the run')).toBeLessThan(
+      names.indexOf('vx pipeline'),
+    )
+    expect(pipelines['main']!.tasks).toContain('deploy.pages')
     const docs = readFileSync(path.join(dir, '../../private/vx-docs/vx.config.ts'), 'utf8')
-    expect(docs).toContain("release: { dependsOn: ['deploy.pages'] }")
     expect(docs).toContain('${ASTRO_BUILD} --outDir dist-live`')
-    expect(docs).toContain("dependsOn: ['ci', 'build.live']")
+    expect(docs).toContain("dependsOn: ['lint', 'build', 'test', 'build.live']")
     expect(docs).toContain("command: 'bun scripts/deploy-pages.ts dist-live'")
     expect(run.steps!.some((s) => /deploy-pages|upload-pages-artifact/.test(s.uses ?? ''))).toBe(
       false,
@@ -178,9 +193,9 @@ describe('ci.yml', () => {
 
   // A run is what a developer would write (2026-10-23: "super
   // simple"); vx names the run, sizes, starts and cancels its workers.
-  it('is checkout, Bun, install, lock check and vx run, nothing else', () => {
+  it('is checkout, Bun, install, lock check and vx pipeline, nothing else', () => {
     const job = doc.jobs['linux']!
-    const run = job.steps!.find((s) => s.run?.includes('bin.ts run '))!.run!
+    const run = job.steps!.find((s) => s.run?.includes('bin.ts pipeline '))!.run!
     // The lock check is in the run (2026-10-23: "lock is the most
     // critical step on CI to run").
     expect(
@@ -192,7 +207,11 @@ describe('ci.yml', () => {
       'bun packages/vx/src/bin.ts lock --check',
       run,
     ])
-    expect(job.env?.['VX_DTE_RELAY']).toMatch(/^https:\/\//)
+    // The pipelines name the relay (M, 2026-11-22: DTE through a pipeline's env).
+    expect(job.env?.['VX_DTE_RELAY']).toBeUndefined()
+    for (const name of ['pr', 'queue', 'main'])
+      expect(pipelines[name]!.env?.['VX_DTE_RELAY']).toMatch(/^https:\/\//)
+    for (const name of ['perf-pr', 'perf']) expect(pipelines[name]!.env).toBeUndefined()
   })
 
   // The remote cache serves every hit (2026-10-23: "we dont need
@@ -235,8 +254,8 @@ describe('ci.yml', () => {
   // release-notes.yml was a workflow of its own for one task.
   it('syncs the release notes as a task of the Linux run, on a push', () => {
     const job = doc.jobs['linux']!
-    const run = job.steps!.find((s) => s.run?.includes('bin.ts run '))!
-    expect(run.run).toContain("${{ github.event_name == 'push' && 'release' || '' }}")
+    expect(pipelines['main']!.tasks).toContain('release.sync')
+    expect(pipelines['queue']!.tasks).not.toContain('release.sync')
     expect([job.env?.['GH_TOKEN'], job.permissions?.['contents']]).toEqual([
       '${{ github.token }}',
       'write',
@@ -245,9 +264,17 @@ describe('ci.yml', () => {
 
   // A PR runs what its diff affects (2026-10-23: "PR should run on
   // affected and DTE"); main runs everything, which seeds the cache.
+  // Each event names its pipeline (M, 2026-11-22).
   it('runs a PR affected, main all', () => {
-    const run = doc.jobs['linux']!.steps!.find((s) => s.run?.includes('bin.ts run '))!.run!
-    expect(run).toEndWith(" ${{ github.event_name == 'pull_request' && '--affected' || '--all' }}")
+    const run = doc.jobs['linux']!.steps!.find((s) => s.run?.includes('bin.ts pipeline '))!.run!
+    expect(run).toBe(
+      "bun packages/vx/src/bin.ts pipeline ${{ github.event_name == 'push' && 'main' || github.event_name == 'pull_request' && 'pr' || 'queue' }}",
+    )
+    expect([
+      pipelines['pr']!.affected,
+      pipelines['queue']!.affected,
+      pipelines['main']!.affected,
+    ]).toEqual([true, undefined, undefined])
   })
 
   it('filters no trigger by path', () => {

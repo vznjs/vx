@@ -108,3 +108,20 @@ function canonical(p: string): string | undefined {
 export function ownEnv(source: NodeJS.ProcessEnv, name: string): string | undefined {
   return Object.hasOwn(source, name) ? source[name] : undefined
 }
+
+/** The variables a pipeline's `env` set: vx's and its plugins', never a task's. */
+const vxOnly = new Set<string>()
+
+/** Set `name` for vx and its plugins only: every task reads it as unset. */
+export function setVxOnlyEnv(name: string, value: string): void {
+  process.env[name] = value
+  vxOnly.add(name)
+}
+
+/** `process.env` as a task reads it: its spawn, its key and its run's key. */
+export function taskEnvSource(): NodeJS.ProcessEnv {
+  if (vxOnly.size === 0) return process.env
+  const out: NodeJS.ProcessEnv = { ...process.env }
+  for (const name of vxOnly) delete out[name]
+  return out
+}

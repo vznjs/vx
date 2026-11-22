@@ -37,6 +37,7 @@ early too (2026-09-20). A verb never calls `process.exit` itself.
 | ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `run`                                | `cli/run.ts:runCmd(rest)`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | `watch`                              | `cli/watch.ts:watchCmd(rest)`; the OS watcher, its poller fallback and the mtime clock are `cli/watch-fs.ts`, the event filters `cli/watch-filter.ts`                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `pipeline`                           | `cli/pipeline.ts:pipelineCmd(rest)`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | `cache`                              | `cli/cache.ts:cacheCmd(rest)`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | `lock`                               | `cli/lock.ts:lockCmd(rest)`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | `init`                               | `cli/init.ts:initCmd(rest)` — the scripts mapping through the migration seam; scaffolds an empty workspace instead of refusing                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
@@ -147,7 +148,10 @@ export function parseRunArgs(args: readonly string[], verb: 'run' | 'watch' = 'r
 export function detectFlow(
   parsed: Pick<RunArgs, 'all' | 'filters' | 'affected'>,
 ): 'focused' | 'broad'
-export async function runCmd(args: readonly string[]): Promise<number>
+export async function runCmd(
+  args: readonly string[],
+  invocation?: readonly string[],
+): Promise<number> // invocation: the line `vx last` replays (`vx pipeline pr`)
 
 /**
  * Shared with `cli/watch.ts`: turn parsed args + cwd + task list into
@@ -848,6 +852,32 @@ Plausible extensions, all contained:
   projects (`opts.projects = [...affected]`). Useful for very large
   workspaces.
 
+## `src/cli/pipeline.ts` — `vx pipeline`
+
+### Purpose
+
+Runs a pipeline of `.vx/workspace` (`pipelines`): its first word names
+it, the rest are `vx run` flags but `--all`. It sets the pipeline's `env`
+for vx alone (`setVxOnlyEnv`), then hands `runCmd` the line the pipeline
+stands for (`pipelineRunArgs`) with the typed flags after it, and the
+`vx pipeline …` line for `vx last` to replay.
+
+### Public surface
+
+```ts
+export function parsePipelineArgs(args: readonly string[]): {
+  name?: string
+  rest: string[]
+  error?: string
+}
+export async function pipelineCmd(args: readonly string[]): Promise<number>
+```
+
+### Tests
+
+`tests/pipeline.test.ts`: the schema, the line a pipeline stands for,
+precedence, `env` hidden from tasks, and each refusal.
+
 ## `src/cli/cache.ts` — `vx cache clean`
 
 ### Purpose
@@ -1078,6 +1108,7 @@ gap before its description.
 - `Extensions (plugins)` — what plugins are for (remote cache,
   distributed execution, telemetry) and the plugin guide's URL.
 - `Argument forwarding (for run)` — explanation of `--`.
+- `Pipelines` — `vx pipeline`.
 - `Watch mode` — `vx watch`.
 - `Cache management` — `vx cache clean` examples.
 - `Introspection` — `vx show`, `vx info`, `vx why`, `vx last`.

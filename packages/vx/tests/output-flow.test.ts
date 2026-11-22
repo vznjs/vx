@@ -36,10 +36,13 @@ describe('resolveOutputView', () => {
     expect(resolveOutputView({ flow: 'broad' }, {})).toEqual({ mode: 'broad' })
   })
 
-  it('truthy CI overrides the flow with full (and is flagged on the view)', () => {
-    expect(resolveOutputView({ flow: 'broad' }, { CI: '1' })).toEqual({ mode: 'full', ci: true })
+  it('truthy CI overrides the flow with errors-only (and is flagged on the view)', () => {
+    expect(resolveOutputView({ flow: 'broad' }, { CI: '1' })).toEqual({
+      mode: 'errors-only',
+      ci: true,
+    })
     expect(resolveOutputView({ flow: 'focused' }, { CI: 'true' })).toEqual({
-      mode: 'full',
+      mode: 'errors-only',
       ci: true,
     })
   })
@@ -703,13 +706,13 @@ describe('defaultLogger visibility matrix — overrides', () => {
 describe('GitHub Actions renderer (full mode + gha)', () => {
   it('resolveOutputView attaches gha only when GITHUB_ACTIONS is truthy', () => {
     expect(resolveOutputView({}, { CI: '1', GITHUB_ACTIONS: 'true' })).toEqual({
-      mode: 'full',
+      mode: 'errors-only',
       gha: true,
       ci: true,
     })
-    expect(resolveOutputView({}, { CI: '1' })).toEqual({ mode: 'full', ci: true })
+    expect(resolveOutputView({}, { CI: '1' })).toEqual({ mode: 'errors-only', ci: true })
     expect(resolveOutputView({}, { CI: '1', GITHUB_ACTIONS: 'false' })).toEqual({
-      mode: 'full',
+      mode: 'errors-only',
       ci: true,
     })
     expect(resolveOutputView({ outputLogs: 'full' }, { GITHUB_ACTIONS: 'true' })).toEqual({
@@ -1194,10 +1197,14 @@ describe('flow e2e against a real fixture workspace', () => {
     expect(text()).toContain('FRESH-OUTPUT')
   })
 
-  it('truthy CI env restores full grouped output in a broad run', async () => {
+  it('truthy CI env prints only failures; --output-logs full brings the frames', async () => {
     process.env['CI'] = '1'
+    const quiet = captureStdout()
+    expect(await cliRun(['run', '--all', 'fresh'])).toBe(0)
+    expect(quiet()).not.toContain('FRESH-OUTPUT')
+    vi.restoreAllMocks()
     const text = captureStdout()
-    const code = await cliRun(['run', '--all', 'fresh'])
+    const code = await cliRun(['run', '--all', 'fresh', '--output-logs', 'full'])
     expect(code).toBe(0)
     // A CI log is coloured like the terminal: the words under the paint.
     expect(Bun.stripANSI(text())).toContain('┌─ one#fresh')
@@ -1227,7 +1234,8 @@ describe('flow e2e against a real fixture workspace', () => {
       // block → grouped with the cache outcome word).
       expect((await vx(['run', '--all', 'cached'])).code).toBe(0)
 
-      const { code, out } = await vx(['run', '--all', 'cached', 'fresh', 'boom'])
+      const full = ['--output-logs', 'full']
+      const { code, out } = await vx(['run', '--all', 'cached', 'fresh', 'boom', ...full])
       expect(code).toBe(1)
 
       // Executed + replayed-hit blocks are grouped...

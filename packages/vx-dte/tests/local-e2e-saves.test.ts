@@ -152,7 +152,7 @@ export default { plugins: [
   )
   const pat = 'pat-value-the-worker-saw'
   try {
-    const r = vx(['run', 'b#pat'], 'pat', { VX_E2E_PAT: pat, CI: 'true' })
+    const r = vx(['run', 'b#pat', '--output-logs=full'], 'pat', { VX_E2E_PAT: pat, CI: 'true' })
     const out = r.stdout.toString() + r.stderr.toString()
     expect([r.exitCode, out.includes('auth=***'), out.includes(pat)]).toEqual([0, true, false])
     const stored: string[] = []

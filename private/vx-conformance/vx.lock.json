@@ -5,12 +5,6 @@
         "^build"
       ]
     },
-    "ci": {
-      "dependsOn": [
-        "lint",
-        "test"
-      ]
-    },
     "conformance": {
       "description": "bun src/cli.ts: every case against vx, Turborepo, Nx, Vite Task, Nix and moon → vx-docs/src/data/conformance.json",
       "dependsOn": [

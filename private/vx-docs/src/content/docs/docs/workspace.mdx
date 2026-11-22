@@ -107,6 +107,7 @@ setting is in [the settings table](../../schema/workspace/#settings).
 | `run.logs`, `run.secrets.minLength` | how much output vx keeps with an entry and a failure, and the shortest value it masks as a secret (6) |
 | `watch.debounce`, `watch.pollInterval` | how long `vx watch` waits after a change, and how often a poll re-walks |
 | `history.retention` | how long `vx cache clean` keeps run history (`'30d'`) |
+| `pipelines` | named runs for `vx pipeline <name>`: `tasks` plus any `vx run` flag as a key, and an `env` for vx alone ([CI](../ci/)) |
 
 For a timeout, the first one set wins: a task's `exec.timeout`, then
 `--timeout`, then `VX_RUN_TIMEOUT`, then `run.timeout`. Only

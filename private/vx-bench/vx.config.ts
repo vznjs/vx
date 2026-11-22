@@ -22,14 +22,10 @@ export default defineProject({
       dependsOn: ['^build'],
     },
 
-    ci: {
-      dependsOn: ['lint', 'test'],
-    },
-
     // The per-PR benchmarks, one task so they never share a machine with
     // each other: on #4323's CI the two ran side by side beside two test
-    // shards and the Turbo ratio failed a commit its rerun passed. Not in
-    // `ci`: CI runs it in a job of its own, off the DTE run (ci.yml `perf`).
+    // shards and the Turbo ratio failed a commit its rerun passed. In no
+    // checks pipeline: the `perf` pipelines run it in a job of its own, off the DTE run (ci.yml `perf`).
     // perf-guard.ts: exact work counts and box-normalized times of core's
     // hot paths against perf-baseline.json. pr-bench.ts: vx against the base
     // commit's vx and Turborepo, restore and nothing-changed on the site's

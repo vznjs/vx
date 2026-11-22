@@ -45,6 +45,7 @@ import {
 } from '../settings.js'
 import { compileNameGlob, parseFilter } from './filter.js'
 import { nonJsonMessage, nonJsonPaths } from './json-data.js'
+import { PIPELINE_FLAGS } from './pipeline.js'
 import { projectNameProblem, ROOT_NAME } from './workspace.js'
 
 // Mirrors `WorkspaceConfig` in src/config.ts. Unknown keys are REJECTED for
@@ -144,7 +145,7 @@ export function inputStabilityEnv(): InputStability {
   }
 }
 
-const WORKSPACE_FIELDS = new Set<string>([...SETTING_GROUPS, 'baseBranch', 'plugins'])
+const WORKSPACE_FIELDS = new Set<string>([...SETTING_GROUPS, 'baseBranch', 'pipelines', 'plugins'])
 
 /**
  * `.vx/workspace`'s settings, as `src/settings.ts` lists them: each group's
@@ -268,6 +269,94 @@ function validateSettingValue(value: unknown, path: string, where: string): void
   }
 }
 
+const PIPELINE_FIELDS = new Set(['tasks', 'env', ...Object.keys(PIPELINE_FLAGS)])
+
+const plainObject = (v: unknown): v is Record<string, unknown> =>
+  typeof v === 'object' && v !== null && !Array.isArray(v)
+
+const words = (v: unknown): v is string[] =>
+  Array.isArray(v) &&
+  v.length > 0 &&
+  v.every((w) => typeof w === 'string' && w.trim() !== '' && !hasControl(w))
+
+/**
+ * `pipelines`: each a saved `vx run` whose values the run's own parser
+ * reads, so each is held to its flag's type here, where the file is named.
+ */
+function validatePipelines(value: unknown, configPath: string): void {
+  if (!plainObject(value))
+    throw new UserError(
+      `${configPath}: \`pipelines\` must be an object of named pipelines, like { pr: { tasks: ['lint', 'test'] } }`,
+    )
+  for (const [name, p] of Object.entries(value)) {
+    const at = `${configPath}: \`pipelines.${name}\``
+    if (name.trim() === '' || name.startsWith('-') || /\s/.test(name) || hasControl(name))
+      throw new UserError(
+        `${configPath}: pipeline name ${shown(name)} must be a word with no space that does not start with -`,
+      )
+    if (!plainObject(p))
+      throw new UserError(`${at} must be an object like { tasks: ['lint', 'test'] }`)
+    assertKnownFields(p, PIPELINE_FIELDS, at)
+    const field = (k: string) => `${configPath}: \`pipelines.${name}.${k}\``
+    if (!words(p['tasks']))
+      throw new UserError(
+        `${field('tasks')} must be a non-empty array of task names, like ['lint', 'test']`,
+      )
+    for (const [k, v] of Object.entries(p)) {
+      if (v === undefined || k === 'tasks') continue
+      const where = field(k)
+      const setting = PIPELINE_FLAGS[k as keyof typeof PIPELINE_FLAGS]?.setting
+      if (setting !== undefined) {
+        validateSettingValue(v, setting, where)
+        continue
+      }
+      const bad = (shape: string) => new UserError(`${where} must be ${shape} (got ${shown(v)})`)
+      switch (k) {
+        case 'env':
+          if (
+            !plainObject(v) ||
+            Object.entries(v).some(([n, x]) => !isEnvName(n) || typeof x !== 'string')
+          )
+            throw bad("an object of variable names to strings, like { VX_DTE_RUN: '…' }")
+          break
+        case 'filter':
+          if (!words(v)) throw bad("a non-empty array of filters, like ['@acme/*']")
+          break
+        case 'affected':
+          if (
+            typeof v !== 'boolean' &&
+            !(typeof v === 'string' && v.trim() !== '' && !hasControl(v))
+          )
+            throw bad('true, false or a base ref')
+          break
+        case 'excludeDependencies':
+          if (v !== true && !words(v)) throw bad('true or a non-empty array of task names')
+          break
+        case 'noCache':
+        case 'force':
+          if (typeof v !== 'boolean') throw bad('true or false')
+          break
+        case 'verbosity':
+          if (!Number.isInteger(v) || (v as number) < 0) throw bad('a non-negative integer')
+          break
+        case 'profile':
+          if (
+            typeof v !== 'boolean' &&
+            !(typeof v === 'string' && v.trim() !== '' && !hasControl(v))
+          )
+            throw bad('true, false or a file path')
+          break
+        case 'dry':
+          if (typeof v !== 'boolean' && v !== 'pretty' && v !== 'json')
+            throw bad("true, false, 'pretty' or 'json'")
+          break
+      }
+    }
+    if ((p['dry'] ?? false) !== false && (p['profile'] ?? false) !== false)
+      throw new UserError(`${at} sets dry and profile: a dry run writes no profile; drop one`)
+  }
+}
+
 /** The rules a setting's kind cannot say. */
 function validateSettingsExtra(config: WorkspaceConfig, configPath: string): void {
   const dir = config.cache?.dir
@@ -310,6 +399,7 @@ export function validateWorkspace(config: WorkspaceConfig, configPath: string): 
     if (config[group] !== undefined) validateSettingsAt(config[group], group, configPath)
   }
   validateSettingsExtra(config, configPath)
+  if (config.pipelines !== undefined) validatePipelines(config.pipelines, configPath)
   if (config.plugins !== undefined) {
     if (!Array.isArray(config.plugins)) {
       throw new UserError(`${configPath}: \`plugins\` must be an array of plugin objects`)

@@ -58,10 +58,6 @@ const ASTRO_BUILD =
 
 export default defineProject({
   tasks: {
-    ci: {
-      dependsOn: ['lint', 'build', 'test'],
-    },
-
     lint: {
       dependsOn: ['lint.oxlint', 'lint.oxfmt'],
     },
@@ -382,8 +378,6 @@ export default defineProject({
       cache: true,
     },
 
-    // The site's part of main's `release`.
-    release: { dependsOn: ['deploy.pages'] },
     // Main's deploy, a task of main's DTE run (2026-10-24: the Pages
     // actions were 33 s of main's workflow), on whichever worker is free.
     // It builds the site again with the newest numbers Bench measured on
@@ -392,8 +386,8 @@ export default defineProject({
     // (2026-11-06). The conformance page takes the rivals' outcomes from
     // the newest weekly Conformance run (scripts/live-conformance.ts).
     // Uncached: those numbers are no file of the commit.
-    // The build runs beside the tests and only the upload waits on `ci`:
-    // built after `ci`, it added 108 s to main's run (2026-11-10). Its
+    // The build runs beside the tests and only the upload waits on the checks:
+    // built after them, it added 108 s to main's run (2026-11-10). Its
     // files stay on its worker, where the upload follows it.
     'build.live': {
       description:
@@ -429,7 +423,7 @@ export default defineProject({
     'deploy.pages': {
       description:
         'deploy dist-live/ to GitHub Pages once every check passed (GitHub Actions only)',
-      dependsOn: ['ci', 'build.live'],
+      dependsOn: ['lint', 'build', 'test', 'build.live'],
       exec: {
         command: 'bun scripts/deploy-pages.ts dist-live',
         env: {

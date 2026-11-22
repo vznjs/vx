@@ -568,40 +568,38 @@ describe('exec.persistent (e2e)', () => {
   // dev is never SIGTERM'd before writing; its own nested `sh -c '…' sh`
   // absorbs the (also-appended) args as positional params it ignores. Both
   // `dev` and `smoke` are requested so forwardArgs reach dev.
-  const SMOKE =
-    "sh -c 'for i in $(seq 1 250); do if [ -f got.txt ]; then cat got.txt; exit 0; fi; sleep 0.02; done' sh"
-
-  const argsConfig = (ready: boolean): string => {
-    const devCommand = ready ? 'echo READY; echo GOTARGS: > got.txt' : 'echo GOTARGS: > got.txt'
-    const persistent = ready ? `{ readyWhen: 'READY' }` : `{}`
-    return `export default {
-      tasks: {
-        dev: {
-          exec: { command: ${JSON.stringify(devCommand)}, persistent: ${persistent} },
+  // Forwarded args reach the one task a run asks for (M, 2026-11-22): the
+  // server alone, held up until it wrote what it got.
+  const served = async (ready: boolean, args: string[]): Promise<string> => {
+    const dir = await addProject(fixture.root, 'app', {
+      config: `export default {
+        tasks: {
+          dev: { exec: { command: 'sh serve.sh', persistent: ${ready ? `{ readyWhen: 'READY' }` : '{}'} } },
         },
-        smoke: {
-          exec: { command: ${JSON.stringify(SMOKE)} },
-          dependsOn: ['dev'],
-        },
-      },
-    }`
+      }`,
+    })
+    await Bun.write(
+      path.join(dir, 'serve.sh'),
+      'printf "GOTARGS: %s\\n" "$*" > got.part; mv got.part got.txt; echo READY; exec sleep 30\n',
+    )
+    const r = await run({
+      cwd: fixture.root,
+      tasks: ['dev'],
+      projects: ['app'],
+      forwardArgs: args,
+      handoff: { holdPersistent: true },
+      log: silentLogger(fixture),
+    })
+    const got = path.join(dir, 'got.txt')
+    for (let i = 0; i < 250 && !(await Bun.file(got).exists()); i++) await Bun.sleep(20)
+    await r.persistent?.stop()
+    return readFileSync(got, 'utf8')
   }
 
   it(
     'appends forwardArgs to a persistent command with NO readyWhen',
     async () => {
-      await addProject(fixture.root, 'app', { config: argsConfig(false) })
-      const r = await run({
-        cwd: fixture.root,
-        tasks: ['dev', 'smoke'],
-        projects: ['app'],
-        forwardArgs: ['--port', '3000'],
-        log: silentLogger(fixture),
-      })
-      expect(r.ok).toBe(true)
-      // dev received the forwarded args (appended to its command) → wrote
-      // them to got.txt → smoke read them back.
-      expect(fixture.log.join('\n')).toContain('GOTARGS: --port 3000')
+      expect(await served(false, ['--port', '3000'])).toBe('GOTARGS: --port 3000\n')
     },
     TIMEOUT,
   )
@@ -609,22 +607,13 @@ describe('exec.persistent (e2e)', () => {
   it(
     'shell-quotes forwarded args so the child gets what the user typed',
     async () => {
-      await addProject(fixture.root, 'app', { config: argsConfig(false) })
       // Double quotes do NOT stop `sh` expanding, so quoting these with
       // JSON.stringify handed the child the EXPANSION (`$(id -u)` → the
       // uid) instead of the literal string the user asked to forward.
       // The one-shot path has always used shellQuote; this is the same
       // contract for the ready-on-spawn persistent path.
       const hostile = ['$(id -u)', '`id -u`', '$HOME']
-      const r = await run({
-        cwd: fixture.root,
-        tasks: ['dev', 'smoke'],
-        projects: ['app'],
-        forwardArgs: hostile,
-        log: silentLogger(fixture),
-      })
-      expect(r.ok).toBe(true)
-      expect(fixture.log.join('\n')).toContain(`GOTARGS: ${hostile.join(' ')}`)
+      expect(await served(false, hostile)).toBe(`GOTARGS: ${hostile.join(' ')}\n`)
     },
     TIMEOUT,
   )
@@ -632,18 +621,9 @@ describe('exec.persistent (e2e)', () => {
   it(
     'appends forwardArgs to a persistent command WITH a readyWhen',
     async () => {
-      await addProject(fixture.root, 'app', { config: argsConfig(true) })
-      const r = await run({
-        cwd: fixture.root,
-        tasks: ['dev', 'smoke'],
-        projects: ['app'],
-        forwardArgs: ['--port', '3000'],
-        log: silentLogger(fixture),
-      })
-      expect(r.ok).toBe(true)
       // `vx run dev -- --port 4000` on a Vite server with
       // `readyWhen: 'Local:'` dropped the port before item 1060.
-      expect(fixture.log.join('\n')).toContain('GOTARGS: --port 3000')
+      expect(await served(true, ['--port', '3000'])).toBe('GOTARGS: --port 3000\n')
     },
     TIMEOUT,
   )

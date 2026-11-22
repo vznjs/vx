@@ -107,7 +107,7 @@ export const SETTINGS: readonly Setting[] = [
   {
     path: 'run.outputLogs',
     kind: { type: 'enum', values: ['full', 'errors-only', 'hash-only', 'none'] },
-    default: '`full` on CI, else by what the run selects',
+    default: '`errors-only` on CI, else by what the run selects',
     doc: 'Which task output the run prints. Chosen before the workspace loads, so flag and env only.',
     flag: { verb: 'run', name: '--output-logs' },
     config: false,

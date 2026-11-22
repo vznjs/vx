@@ -2376,7 +2376,7 @@ default and where it came from.
 | `run.timeout`                                  | `VX_RUN_TIMEOUT`                 | `--timeout`                    | a duration like '500ms', '30s' or '5m', at most 24 days                 | none                                                                          | A task's time limit, for tasks without their own `exec.timeout` (`'30m'`). A task's own `exec.timeout` beats it.                                                                                 |
 | `run.retries`                                  | `VX_RUN_RETRIES`                 | `--retries`                    | a non-negative integer                                                  | 0                                                                             | Re-runs of a failed task, for tasks without their own `exec.retries`. A task's own `exec.retries` beats it.                                                                                      |
 | `run.continue`                                 | `VX_RUN_CONTINUE`                | `--continue`                   | one of 'never', 'deps-ok', 'always'                                     | deps-ok                                                                       | What a failed task takes down: `never` stops the run, `deps-ok` skips its dependents, `always` runs them too.                                                                                    |
-| `run.outputLogs` (variable or flag only)       | `VX_RUN_OUTPUT_LOGS`             | `--output-logs`                | one of 'full', 'errors-only', 'hash-only', 'none'                       | `full` on CI, else by what the run selects                                    | Which task output the run prints. Chosen before the workspace loads, so flag and env only.                                                                                                       |
+| `run.outputLogs` (variable or flag only)       | `VX_RUN_OUTPUT_LOGS`             | `--output-logs`                | one of 'full', 'errors-only', 'hash-only', 'none'                       | `errors-only` on CI, else by what the run selects                             | Which task output the run prints. Chosen before the workspace loads, so flag and env only.                                                                                                       |
 | `run.killGrace`                                | `VX_RUN_KILL_GRACE`              | —                              | a duration like '500ms', '30s' or '5m', at most 24 days                 | `2s`                                                                          | How long a task, server or plugin's process may take to exit after SIGTERM (a timeout, a stop, the run's end) before vx sends SIGKILL.                                                           |
 | `run.pluginTimeout`                            | `VX_RUN_PLUGIN_TIMEOUT`          | —                              | a duration like '500ms', '30s' or '5m', at most 24 days                 | `3s`                                                                          | How long one plugin's end-of-run flush or teardown may take before the run ends without it; `'0ms'` waits for nothing not already done.                                                          |
 | `run.logs.captureHead`                         | `VX_RUN_LOGS_CAPTURE_HEAD`       | —                              | a size like '500MB' or '10GB'                                           | `8MiB`                                                                        | The start of a task's output vx keeps for its cache entry and replay; the live stream is never cut. Counted in characters.                                                                       |
@@ -2422,6 +2422,8 @@ interface WorkspaceConfig {
   lock?: LockSettings
   watch?: { poll?: boolean; debounce?: Duration; pollInterval?: Duration }
   history?: { retention?: Duration } // run history `vx cache clean` keeps; '30d'
+  /** Named runs for `vx pipeline <name>`; none runs by default. */
+  pipelines?: Record<string, Pipeline>
   /** Run-level plugins (cache / executor / telemetry capabilities). */
   plugins?: readonly (Plugin | undefined | null | false)[]
 }
@@ -2710,6 +2712,111 @@ to <reader>'s inputs.<field>, or depend on <writer> and leave it out of
 The loader validates the shape (each setting by its kind, plugin objects
 with a name and at least one capability) and throws a `UserError` on
 malformed input.
+
+### Pipelines
+
+A pipeline is a `vx run` saved under a name, for `vx pipeline <name>`:
+its `tasks` in every project that declares them, under the flags it
+saves. Each CI job names one, and its workflow file holds no flags.
+
+```ts
+import { defineWorkspace } from '@vzn/vx/config'
+
+export default defineWorkspace({
+  pipelines: {
+    pr: { tasks: ['lint', 'test', 'build'], affected: true, continue: 'always' },
+    main: { tasks: ['lint', 'test', 'build', 'release'] },
+    fork: { tasks: ['lint', 'test'], affected: true, cachePolicy: 'remote:r' },
+  },
+})
+```
+
+Every key, each at a value its flag takes:
+
+```ts
+import { defineWorkspace } from '@vzn/vx/config'
+
+export default defineWorkspace({
+  pipelines: {
+    nightly: {
+      tasks: ['test', 'web#e2e'],
+      filter: ['./apps/*'],
+      affected: false,
+      excludeDependencies: ['gen'],
+      env: { VX_DTE_RELAY: 'https://relay.example.com' },
+      concurrency: '50%',
+      schedule: 'critical-path',
+      continue: 'always',
+      retries: 1,
+      timeout: '30m',
+      branch: 'nightly',
+      cachePolicy: 'local:rw,remote:r',
+      noCache: false,
+      force: true,
+      cacheDir: '.vx/cache',
+      cacheDownload: 'toplevel',
+      cacheConcurrencyDownload: 32,
+      cacheConcurrencyUpload: 32,
+      cacheConcurrencyRestore: 16,
+      outputLogs: 'errors-only',
+      verbosity: 1,
+      profile: 'nightly.json',
+      dry: false,
+    },
+  },
+})
+```
+
+```ts
+interface Pipeline {
+  /** The tasks, in every project that declares each (`'pkg#task'` names one); their order is `dependsOn`'s. */
+  tasks: readonly string[]
+  /** `--filter`: pnpm-style entry points; what they depend on still runs. */
+  filter?: readonly string[]
+  /** `--affected`: `true` for the projects a change reaches and their dependents, a ref for a fixed base. */
+  affected?: boolean | string
+  /** `--exclude-dependencies`: `true` skips every `dependsOn` edge, a list only those names. */
+  excludeDependencies?: true | readonly string[]
+  /** Set for vx and its plugins (a plugin's switch), never for a task; a variable already set wins. */
+  env?: Readonly<Record<string, string>>
+  concurrency?: number | `${number}%`
+  schedule?: 'most-work' | 'critical-path' | 'direct-dependents' | 'ready-order'
+  continue?: 'never' | 'deps-ok' | 'always'
+  retries?: number
+  timeout?: Duration
+  branch?: string
+  cachePolicy?: string
+  noCache?: boolean
+  force?: boolean
+  cacheDir?: string
+  cacheDownload?: 'all' | 'toplevel' | 'none'
+  cacheConcurrencyDownload?: number
+  cacheConcurrencyUpload?: number
+  cacheConcurrencyRestore?: number
+  outputLogs?: 'full' | 'errors-only' | 'hash-only' | 'none'
+  verbosity?: number
+  /** `--profile`: `true` writes profile.json, a string names the file. */
+  profile?: boolean | string
+  dry?: boolean | 'pretty' | 'json'
+}
+```
+
+- **Keys are flags.** Each key but `tasks` and `env` is its `vx run` flag
+  in camelCase (`cachePolicy` is `--cache-policy`) and takes what the
+  flag takes; [cli.md](cli.md) says what each does. `--all` has no key: a
+  pipeline runs every project, and `filter` or `affected` narrows it.
+- **Precedence.** A flag typed with `vx pipeline` beats its key, and so
+  does the flag's `VX_*` variable; the key beats `.vx/workspace`'s
+  setting. A typed `--dry` also drops a saved `profile` (a dry run writes
+  none), and a typed `--profile` a saved `dry`; one pipeline sets only one
+  of the two.
+- **`env`** is set before the run's plugins start, for vx and the plugins
+  only (a plugin's on/off switch): every task reads it as unset, in its
+  command and its key. A variable already set in the shell wins. A
+  plugin reads it from its setup on; `.vx/workspace.ts`'s own top level
+  ran before it was set, so a value read there misses it.
+- **No forwarded args.** `-- <args>` reach one task in one project, and a
+  pipeline is never one.
 
 There are no workspace-level `globalInputs` / task-default fields:
 root-anchored file inputs are declared per task via

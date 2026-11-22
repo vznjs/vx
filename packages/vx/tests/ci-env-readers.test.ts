@@ -20,6 +20,9 @@ describe('every reader of CI agrees with detectCi', () => {
   it('CONTROL: an unrecognised value is CI to each of them', () => {
     expect(detectCi({ CI: 'yes' }).ci).toBe(true)
     expect(onCI('yes')).toBe(true)
-    expect(resolveOutputView({ flow: 'broad' }, { CI: 'yes' })).toEqual({ mode: 'full', ci: true })
+    expect(resolveOutputView({ flow: 'broad' }, { CI: 'yes' })).toEqual({
+      mode: 'errors-only',
+      ci: true,
+    })
   })
 })

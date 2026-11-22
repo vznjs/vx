@@ -35,11 +35,7 @@ describe('forwarded args and groups', () => {
     )
   })
 
-  it('runs when a requested task has a command, or no args were given', async () => {
-    expect([
-      await said(['build', 'compile'], ['--x']),
-      await said(['compile'], ['--x']),
-      await said(['build'], []),
-    ]).toEqual(['ok', 'ok', 'ok'])
+  it('runs when the requested task has a command, or no args were given', async () => {
+    expect([await said(['compile'], ['--x']), await said(['build'], [])]).toEqual(['ok', 'ok'])
   })
 })

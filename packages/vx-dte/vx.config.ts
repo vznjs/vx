@@ -32,6 +32,8 @@ const testTask = (files: string) => ({
         GIT_CONFIG_GLOBAL: '/dev/null',
         GIT_CONFIG_NOSYSTEM: '1',
         VX_CACHE_DIR: '.vx/cache',
+        // As a laptop runs vx: on CI a spawned vx prints errors-only logs.
+        CI: '',
       },
     },
     sandbox: {
@@ -60,10 +62,6 @@ export default defineProject({
       description: 'nothing to build — consumed as source',
       dependsOn: ['^build'],
       inputs: { files: ['src/**'] },
-    },
-
-    ci: {
-      dependsOn: ['lint', 'test'],
     },
 
     lint: {

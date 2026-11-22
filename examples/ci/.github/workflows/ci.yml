@@ -16,10 +16,8 @@ jobs:
       - run: bun install --frozen-lockfile
       # Fails if someone changed a vx.config.ts and did not run vx lock.
       - run: bun vx lock --check
-      # main and a merge queue run every task. A pull request runs
-      # only the projects it changed and the projects that depend on them.
+      # A pull request runs the `pr` pipeline of .vx/workspace.ts, main
+      # and a merge queue run `main`.
       - run: >
-          bun vx run ci
-          ${{ github.event_name == 'pull_request'
-            && '--affected'
-            || '--all' }}
+          bun vx pipeline
+          ${{ github.event_name == 'pull_request' && 'pr' || 'main' }}

@@ -91,7 +91,10 @@ describe('the settings list', () => {
     }
     const declared = [
       ...fieldsOf('WorkspaceConfig').filter(
-        (f) => !(SETTING_GROUPS as readonly string[]).includes(f) && f !== 'plugins',
+        (f) =>
+          !(SETTING_GROUPS as readonly string[]).includes(f) &&
+          f !== 'plugins' &&
+          f !== 'pipelines',
       ),
       ...fieldsOf('RunSettings').map((f) => `run.${f}`),
       ...fieldsOf('CacheSettings').map((f) => `cache.${f}`),

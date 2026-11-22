@@ -11,6 +11,7 @@ export {
   mergeBaseWith,
 } from './affected.js'
 export { applyFilters, parseFilter } from './filter.js'
+export { pipelineRunArgs, PIPELINE_FLAGS } from './pipeline.js'
 export { mergeLock } from './lock-merge.js'
 export { readClaimedFiles } from './fingerprint.js'
 export { checkBracketLiterals } from './bracket-literal.js'

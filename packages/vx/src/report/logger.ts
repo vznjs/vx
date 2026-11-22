@@ -210,7 +210,8 @@ export function resolveOutputView(
   const outputLogs =
     options.outputLogs ?? (settingEnv('run.outputLogs', env) as OutputView['mode'] | undefined)
   if (outputLogs !== undefined) return mk(outputLogs)
-  if (ci) return mk('full')
+  // A CI log is read for what broke (M, 2026-11-22).
+  if (ci) return mk('errors-only')
   if (options.flow !== undefined) return mk(options.flow)
   return mk('full')
 }

@@ -124,6 +124,7 @@ export function helpText(pluginCommands: readonly string[] = []): string {
     'Usage:',
     '  vx run [OPTIONS] [TASK | PKG#TASK ...] [-- forwarded-args...]',
     '  vx watch [OPTIONS] [--poll] TASK [-- forwarded-args...]',
+    '  vx pipeline NAME [OPTIONS]',
     '  vx cache clean [--older-than <duration>] [--max-size <size>] [--global] [--dry] [--format pretty|json] [--cache-dir <path>]',
     '  vx lock [--check] [--format pretty|json]',
     '  vx lock --merge <base> <ours> <theirs> <path>',
@@ -191,8 +192,8 @@ export function helpText(pluginCommands: readonly string[] = []): string {
     '                                  form; dependents run, never save).',
     '      --output-logs <mode>        full | errors-only | hash-only | none, over',
     '                                  the flow default (focused without',
-    '                                  --all/--filter/--affected, broad with, full in',
-    '                                  CI).',
+    '                                  --all/--filter/--affected, broad with,',
+    '                                  errors-only in CI).',
     '      --verbosity <n>             0 (default), or 1 and up for a per-task',
     '                                  summary table after the run.',
     '',
@@ -212,7 +213,15 @@ export function helpText(pluginCommands: readonly string[] = []): string {
     '',
     'Argument forwarding (for run):',
     "  Anything after `--` is forwarded (shell-quoted) to the task's exec",
-    '  command. The forwarded args are folded into the cache key.',
+    '  command, for one task in one project only: refused with --affected,',
+    '  several tasks, or a --all or --filter run that asks for the task in',
+    '  several projects. They are folded into the cache key.',
+    '',
+    'Pipelines:',
+    '  vx pipeline <name>         Run a pipeline of .vx/workspace.ts: its tasks in',
+    '                             every project, under its saved vx run flags.',
+    "                             Takes vx run's flags but --all; a flag typed beats",
+    "                             the pipeline's. No pipeline runs by default.",
     '',
     'Watch mode:',
     '  vx watch <task>            Initial run, then re-run on filesystem changes.',
@@ -461,6 +470,9 @@ export function documentedFlags(verb: string, text = helpText()): string[] {
  */
 export const WATCH_REFUSED_FLAGS: readonly string[] = ['--dry', '--profile', '--verbosity']
 
+/** `vx run` flags `vx pipeline` refuses: a pipeline runs every project already. */
+const PIPELINE_REFUSED_FLAGS: readonly string[] = ['--all']
+
 /**
  * The flags one verb accepts: those on its own Usage line, and for a verb
  * that takes `[OPTIONS]` (run, watch) the documented run flags — less the
@@ -478,7 +490,9 @@ export function acceptedFlags(verb: string): string[] {
     for (const f of line.match(/--[a-zA-Z][a-zA-Z-]*/g) ?? []) flags.add(f)
     if (line.includes('[OPTIONS]')) {
       for (const f of documentedFlags('run')) {
-        if (verb !== 'watch' || !WATCH_REFUSED_FLAGS.includes(f)) flags.add(f)
+        const refused =
+          verb === 'watch' ? WATCH_REFUSED_FLAGS : verb === 'pipeline' ? PIPELINE_REFUSED_FLAGS : []
+        if (!refused.includes(f)) flags.add(f)
       }
     }
   }

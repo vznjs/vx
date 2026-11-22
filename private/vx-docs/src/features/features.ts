@@ -605,7 +605,7 @@ export default defineProject({
       'Beside each `vx.config` it writes `vx.lock.json`, that project’s resolved config, pretty, so a reviewer sees what a config change does; vx never reads it.',
       'Every run loads configs from the lock and evaluates nothing; only `vx lock` writes it. `vx lock --check` re-evaluates every config and fails on drift, so a pipeline can check the lock first.',
     ],
-    example: { lang: 'sh', code: 'vx lock\nvx lock --check\nvx run ci --all' },
+    example: { lang: 'sh', code: 'vx lock\nvx lock --check\nvx pipeline main' },
     image: 'vx-lock.png',
     imageAlt: 'vx lock writing .vx/projects.lock.jsonl.',
     docs: { label: 'vx lock', href: 'cli/lock/' },

@@ -6,6 +6,7 @@
 export const CORE_VERBS = [
   'run',
   'watch',
+  'pipeline',
   'cache',
   'lock',
   'init',

@@ -43,6 +43,9 @@ const SUITE_ENV = {
   BUN_RUNTIME_TRANSPILER_CACHE_PATH: '0',
   FORCE_COLOR: '0',
   VX_CACHE_DIR: '.vx/cache',
+  // The suite reads vx as a laptop runs it: on CI a spawned vx inherits CI
+  // and prints errors-only logs. A test about CI sets it for its child.
+  CI: '',
 }
 // `bun build --compile --target=bun-<t>` for a target other than the
 // running Bun fetches `@oven/bun-<t>` from the npm registry once, extracts
@@ -247,7 +250,7 @@ const unsafeShardTasks = {
 
 // The release steps npm.yml, release.yml and auto-release.yml run
 // (scripts/release.ts, scripts/auto-release.ts). Uncached, since each has a
-// side effect, and in no `ci` graph: only a workflow names them.
+// side effect, and in no pipeline: only a workflow names them.
 const RELEASE_VERSION = { passThrough: ['VX_RELEASE_VERSION'] }
 // What `npm publish --provenance` reads under trusted publishing: the OIDC
 // token request (npm's lib/utils/oidc.js), the CI detection (ci-info) and
@@ -461,33 +464,6 @@ export default defineProject({
     ...shardTasks,
     ...unsafeShardTasks,
     ...releaseTasks,
-    // What CI asks of every change: the platform's own tests and the arm64
-    // builds run on their workers, and on a Linux machine with no such
-    // worker are skipped with a warning (a Mac-only test merged green and
-    // turned main red, #4293).
-    ci: {
-      dependsOn: [
-        'lint',
-        'test',
-        'check.binary',
-        'test.platform',
-        'build.bun.linux-arm64',
-        'build.bun.darwin-arm64',
-      ],
-    },
-    // What main adds: every release binary, each proven to launch on its
-    // platform, the sandbox canary, a cold build, and the release notes.
-    release: {
-      dependsOn: [
-        'ci',
-        'build.bun',
-        'check.binary.linux-arm64',
-        'check.binary.darwin-arm64',
-        'check.sandbox-canary',
-        'check.build-cold',
-        'release.sync',
-      ],
-    },
 
     // `check.bun` sits under install so that every shard, the unsafe suite,
     // the lint tasks and the binary check wait on it: a gate below the Bun

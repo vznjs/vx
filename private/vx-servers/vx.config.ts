@@ -6,10 +6,6 @@ export default defineProject({
       dependsOn: ['^build'],
     },
 
-    ci: {
-      dependsOn: ['lint.oxlint', 'lint.oxfmt', 'test', 'test.live'],
-    },
-
     'lint.oxlint': {
       description: 'oxlint with tsgolint-backed type-aware checks',
       exec: {

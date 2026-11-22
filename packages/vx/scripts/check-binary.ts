@@ -3,7 +3,7 @@
 // binary-launch.ts), and assert `--version` reports the version
 // package.json carries, which src/version.ts inlines and the release
 // workflows stamp. A layout move broke that stamp unseen for a week once
-// (2026-08-26 → 09-03); this runs in every `vx run ci`.
+// (2026-08-26 → 09-03); this runs in every CI pipeline.
 //
 // One host binary, not four cross targets: what a dependant needs from
 // core is its SOURCE, so `build` is not a task core has — the four
@@ -183,10 +183,10 @@ const env: Record<string, string> = {}
 for (const [k, v] of Object.entries(process.env)) {
   if (k !== 'VX_DOTENV_PROBE' && v !== undefined) env[k] = v
 }
-// A run reads only the lock.
+// A run reads only the lock. Full logs: on CI they default to errors-only.
 Bun.spawnSync({ cmd: [out, 'lock'], cwd: dotenv, env, stdout: 'pipe', stderr: 'pipe' })
 const probe = Bun.spawnSync({
-  cmd: [out, 'run', 'a#probe'],
+  cmd: [out, 'run', 'a#probe', '--output-logs=full'],
   cwd: dotenv,
   env,
   stdout: 'pipe',
@@ -246,7 +246,7 @@ const resolveLock = Bun.spawnSync({
   stderr: 'pipe',
 })
 const resolved = Bun.spawnSync({
-  cmd: [out, 'run', 'a#probe'],
+  cmd: [out, 'run', 'a#probe', '--output-logs=full'],
   cwd: resolve,
   stdout: 'pipe',
   stderr: 'pipe',
