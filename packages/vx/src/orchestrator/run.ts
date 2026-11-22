@@ -45,6 +45,7 @@ import {
 import { VERSION } from '../version.js'
 import {
   hostPlatform,
+  primeSpares,
   signalExitCode,
   VX_RUN_TASK_ENV,
   VX_RUN_WORKSPACE_ENV,
@@ -1606,6 +1607,17 @@ async function runOnBus(
     }
     // Tasks a plugin's executor threw on, and its name: the throw left no `where`.
     const thrownOn = new Map<string, string>()
+    // A spare shell for each slot the first tasks fill (`primeSpares`).
+    let firstWave = 0
+    for (const n of nodes.values()) {
+      if (firstWave === concurrency) break
+      if (n.config.exec === undefined || n.config.exec.sandbox !== undefined) continue
+      if (shortCircuit.restoreTier.has(n.id) || holders.has(n.id) || !localPlaced(n.id)) continue
+      // A hit runs nothing.
+      if (shortCircuit.preProbed.get(n.id)?.hit != null) continue
+      firstWave++
+    }
+    primeSpares(firstWave)
     const outcomes = await runGraph({
       nodes,
       concurrency,

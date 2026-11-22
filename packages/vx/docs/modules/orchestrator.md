@@ -627,7 +627,8 @@ one-shot handler mid-cleanup.
    (`KeyedTasks.keyedAt`). Its facts are dated then too, so a write in
    the wait (another task's) is a moved input at the re-check: the save
    is withheld, never filed under bytes the command did not read
-   (tests/prepared-key.test.ts).
+   (tests/prepared-key.test.ts). Its `cache.get` is asked in the wait
+   too, and step 3 awaits that answer.
 2. `cleanArgs = { projectDir, outputs, nestedProjectDirs }` is
    prepared once.
 3. **If caching is on**: `cache.get(hash)`.

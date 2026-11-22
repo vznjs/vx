@@ -4,7 +4,7 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import { runCommand } from '../src/exec/runner.js'
 import * as spawnOffModule from '../src/exec/spawn-off.js'
-import { spareScript } from '../src/exec/warm-shell.js'
+import { primeSpares, spareScript } from '../src/exec/warm-shell.js'
 
 const linux = process.platform === 'linux'
 
@@ -143,5 +143,26 @@ describe.skipIf(!linux)('a task runs in a shell started before it', () => {
     expect(res.spawnFailed).toBe(true)
     expect(res.exitCode).toBe(127)
     expect(res.stderr).toContain('does not exist')
+  })
+
+  // Tasks of one length end together: a pool of four left the rest of a
+  // wave to start shells in their slots.
+  it('keeps a spare for each task of a wave a run primed for', async () => {
+    primeSpares(6)
+    await runCommand({ command: 'true', cwd, env })
+    await new Promise((r) => setTimeout(r, 300))
+    const spy = spyOn(spawnOffModule, 'spawnOff')
+    try {
+      const wave = Array.from({ length: 6 }, (_, i) =>
+        runCommand({ command: `echo wave-${i}`, cwd, env }),
+      )
+      // Every take found a spare waiting: none started one in its turn.
+      expect(spy.mock.calls.length).toBe(0)
+      expect((await Promise.all(wave)).map((r) => r.stdout)).toEqual(
+        Array.from({ length: 6 }, (_, i) => `wave-${i}\n`),
+      )
+    } finally {
+      spy.mockRestore()
+    }
   })
 })
