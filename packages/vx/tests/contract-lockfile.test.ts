@@ -42,7 +42,7 @@ beforeAll(async () => {
   tasks: {
     build: {
       description: 'compile',
-      exec: { command: 'echo lib', env: { passThrough: ['HOME'] }, timeout: '1m', retries: 1 },
+      exec: { command: 'mkdir -p dist && echo lib > dist/lib.txt', env: { passThrough: ['HOME'] }, timeout: '1m', retries: 1 },
       inputs: { files: ['src/**'], env: ['LOCK_FIXTURE_MODE'] }, outputs: { files: ['dist/**'] }, cache: true,
     },
   },

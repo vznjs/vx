@@ -1,6 +1,6 @@
 // A sandboxed task with no write grant writes into the sandbox's scratch,
-// never the disk, and may still exit 0: the empty-outputs warning names
-// that cause (miss-save.ts). Unsafe: it runs a sandbox, which cannot nest
+// never the disk, and may still exit 0: the missing-output failure names
+// that cause (missing-outputs.ts). Unsafe: it runs a sandbox, which cannot nest
 // inside a sandboxed shard (A-24).
 
 import { rm } from 'node:fs/promises'
@@ -12,7 +12,7 @@ import { addProject, makeWorkspace } from './helpers/workspace.js'
 
 const available = await sandboxAvailable('sandbox empty-outputs test')
 
-describe.skipIf(!available)('the empty-outputs warning for a sandboxed task', () => {
+describe.skipIf(!available)('the missing-output failure of a sandboxed task', () => {
   let root: string
   beforeEach(async () => {
     root = await makeWorkspace({ prefix: 'vx-sb-empty-' })
@@ -34,22 +34,22 @@ describe.skipIf(!available)('the empty-outputs warning for a sandboxed task', ()
       {},
       {
         get: (_, k) =>
-          k === 'status' || k === 'warn' ? (l: string) => lines.push(l) : () => undefined,
+          k === 'taskStderr' ? (_: unknown, l: string) => lines.push(l.trim()) : () => undefined,
       },
     ) as Logger
-    expect((await run({ cwd: root, tasks: ['build'], log, handleSignals: false })).ok).toBe(true)
+    expect((await run({ cwd: root, tasks: ['build'], log, handleSignals: false })).ok).toBe(false)
     return lines.filter((l) => l.includes('matched no files'))
   }
 
-  it('with no write grant, the warning says its writes never reached disk', async () => {
+  it('with no write grant, the line says its writes never reached disk', async () => {
     expect(await warnings('')).toEqual([
-      '[vx] app#build: outputs matched no files (build/**) — an empty artifact is saved; a later hit restores nothing — the task is sandboxed and declares no exec.sandbox.allow.write, so its writes never reached disk',
+      '[vx] app#build: outputs matched no files (build/**) — the command exited 0 but never wrote it, so the task fails and nothing is cached: write it, or fix the pattern — the task is sandboxed and declares no exec.sandbox.allow.write, so its writes never reached disk',
     ])
   })
 
-  it('control: with a write grant, the plain warning', async () => {
+  it('control: with a write grant, the plain line', async () => {
     expect(await warnings(", write: ['build']")).toEqual([
-      '[vx] app#build: outputs matched no files (build/**) — an empty artifact is saved; a later hit restores nothing',
+      '[vx] app#build: outputs matched no files (build/**) — the command exited 0 but never wrote it, so the task fails and nothing is cached: write it, or fix the pattern',
     ])
   })
 })

@@ -417,3 +417,9 @@ claim or a timed test. Add a lesson here, not to CLAUDE.md.
   (Node's does not): two links back to an ancestor in a saved tree were a
   2^40-path walk and an OOM kill, one threw ELOOP. Walk a user's tree a
   level at a time with `withFileTypes` (2026-11-22).
+- A child's `ru_maxrss` is not only its own: under vfork Linux keeps the
+  parent's memory mark at exec, so every process vx spawns reads vx's size,
+  and only a fork of a small process starts clean. A shell cannot hand
+  that fork over: its one fork that does not wait, `cmd &`, ignores
+  SIGINT and SIGQUIT in a non-interactive shell (POSIX), for good. A
+  small process that forks every shell does (`vx-measure`, 2026-11-22).

@@ -485,6 +485,7 @@ async function play(c: Case, adapter: Adapter, root: string, box: string): Promi
             ...(step.force ? { force: true } : {}),
             ...(step.readOnlyCache ? { readOnlyCache: true } : {}),
             ...(step.dry ? { dry: true } : {}),
+            ...(step.verify ? { verify: true } : {}),
           })
         : adapter.affected(step.affected, step.base)
     )

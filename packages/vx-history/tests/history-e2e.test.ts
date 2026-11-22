@@ -234,9 +234,13 @@ describe('vx-history plugin end to end', () => {
       expect(b.reservation?.cpus).toBeUndefined()
       const c = byId.get('c#build')!
       expect(c.runs).toBe(1)
-      // `true` is lighter than vx itself, so its peak is unknown (the
+      // `true` is lighter than vx itself: on Linux its peak is the shell's
+      // own few megabytes (vx-measure forks it); elsewhere unknown (the
       // runner reports a peak only above its own footprint).
-      expect(c.maxPeakRssBytes).toBeNull()
+      if (process.platform === 'linux') {
+        expect(c.maxPeakRssBytes).toBeGreaterThan(0)
+        expect(c.maxPeakRssBytes!).toBeLessThan(16 * 1024 * 1024)
+      } else expect(c.maxPeakRssBytes).toBeNull()
       expect(c.reservation).toEqual({ memory: 1024, cpus: 2 })
       expect(c.declared).toBe(true)
       const pretty = Bun.spawnSync({ cmd: [process.execPath, CORE_BIN, 'history'], cwd: root })
@@ -244,7 +248,12 @@ describe('vx-history plugin end to end', () => {
       const text = Bun.stripANSI(pretty.stdout.toString())
       expect(text).toContain('budgets')
       expect(text).toMatch(/a#build\s+1\s+\S+\s+\d+ MB\s+\S+\s+\d+ MB$/m)
-      expect(text).toMatch(/b#build\s+1\s+\S+\s+—\s+\S+\s+—$/m)
+      // Its few megabytes (Linux) are under one 64 MB step: no reservation.
+      expect(text).toMatch(
+        process.platform === 'linux'
+          ? /b#build\s+1\s+\S+\s+\d+(\.\d+)? MB\s+\S+\s+—$/m
+          : /b#build\s+1\s+\S+\s+—\s+\S+\s+—$/m,
+      )
       expect(text).toMatch(/c#build\s+1\s+.*1024 MB · 2 cores \(declared\)$/m)
       const bad = Bun.spawnSync({
         cmd: [process.execPath, CORE_BIN, 'history', '--nope'],

@@ -15,6 +15,8 @@ dependencies.
 vx run build --all                  # a task in every project that declares it
 vx run test --affected=origin/main  # only what the diff since origin/main reaches
 vx run app#build                    # one project's task (and what it depends on)
+vx run test --all --fail-fast       # stop at the first failure, killing running tasks
+vx pipeline pr                      # a named run saved in .vx/workspace.ts (what CI runs)
 vx last --format json               # the last run's result as JSON
 ```
 
@@ -35,7 +37,8 @@ vx lock   # after any edit to a vx.config.ts or .vx/workspace.ts
 
 A run reads every config from `.vx/projects.lock`, never the files:
 a task you add, or an edit to one, does nothing until `vx lock`. Commit
-the lock with the config.
+the lock with the config. After a merge conflict in `.vx/projects.lock`,
+resolve the configs and run `vx lock`; never edit a lock by hand.
 
 ## Look before running
 
@@ -110,6 +113,9 @@ vx lock --check --format json  # a vx.config that changed since the lock, or no 
   change does not re-run a task, the file is not one of its inputs. Fix
   the config, do not force. A task with no `inputs` has no key, so every
   cached task behind it misses: give it `inputs`.
+- Every declared `outputs.files` pattern must match a file the task
+  wrote, or the task fails (`outputs matched no files`). Fix the pattern
+  or the command; a file written only sometimes is not an output.
 - Every JSON shape is a JSON Schema in `node_modules/@vzn/vx/schemas/`.
 - Reference: `vx docs <words> --format json` searches the reference pages at
   this vx's release tag on GitHub (online); the sections holding every word

@@ -61,7 +61,7 @@ flowchart TB
 ```
 
 `--output-logs full` gives every task its own frame, in the order they
-finish. On CI the frames fold into log groups. `vx last` prints the
+finish. On CI the frames become log groups. `vx last` prints the
 summary again later.
 
 Fix the test and run again. Four tasks come from the cache, and the run

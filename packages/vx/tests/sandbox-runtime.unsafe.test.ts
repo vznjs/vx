@@ -777,7 +777,7 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
             tasks: {
               build: {
                 exec: { command: 'echo ok > /tmp/vx-allowwrite-test.txt', sandbox: { allow: { write: ['/tmp'] } } },
-                inputs: { files: ['src/**'] }, outputs: { files: ['src/x.txt'] }, cache: true,
+                inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true,
               },
             },
           }

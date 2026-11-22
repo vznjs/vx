@@ -9,8 +9,8 @@ tags:
 excerpt: 'vx run picks the project you are in, never waits on a picker in a pipe, and gives each task its own fold on GitHub Actions.'
 ---
 
-`vx run` picks the project you are in, never hangs in a pipe, and folds
-each task on GitHub Actions. Small things, done carefully.
+`vx run` picks the project you are in, never hangs in a pipe, and groups
+each task's log on GitHub Actions. Small things, done carefully.
 
 ```sh frame="terminal"
 $ cd packages/a && vx run build     # the project you stand in
@@ -40,7 +40,7 @@ In a terminal, a bare `vx run` opens a picker. In a pipe or a script
 nobody can pick, so vx lists the tasks and exits 1. The live progress
 area is off too, and the log gets plain lines.
 
-## One fold per task on GitHub Actions
+## One log group per task on GitHub Actions
 
 On Actions, each task gets its own log group with its result and time.
 A long run collapses to one line per task:

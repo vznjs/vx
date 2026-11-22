@@ -3,7 +3,7 @@
 // its default.
 import { mkdir, symlink, writeFile } from 'node:fs/promises'
 import path from 'node:path'
-import { pnpmFilter, type Adapter } from '../adapter.ts'
+import { optionalAsOutputs, pnpmFilter, type Adapter } from '../adapter.ts'
 import { projectDir, type TaskReport } from '../spec.ts'
 
 /** A workspace-root-relative glob as Vite Task spells it: a glob with a workspace base. */
@@ -19,6 +19,11 @@ export const viteTask: Adapter = {
   // dependsOn names tasks exactly; a task has no time limit, no retries, and
   // is never a long-running process the run stops.
   lacks: {
+    mutex: 'No Vite Task setting keeps two tasks from running at the same time.',
+    'idle-timeout': 'Vite Task has no limit on how long a task may print nothing.',
+    'output-checksum': 'Vite Task has no way to pin an output’s bytes to a checksum.',
+    'determinism-check': 'No Vite Task run rebuilds a cached task to compare its bytes.',
+    'ready-port': 'Vite Task has no long-running task it waits on.',
     'dependency-bin': 'No Vite Task task puts a directory of programs on its dependants’ PATH.',
     affected: 'Vite Task does not select tasks by what git says changed.',
     'task-pattern': 'Dependencies name tasks exactly: no pattern over task names.',
@@ -48,7 +53,8 @@ export const viteTask: Adapter = {
     await writeFile(path.join(root, `${Bun.version}.lock`), '')
     await symlink(process.execPath, path.join(bin, 'bun'))
   },
-  async configure(dir, ws, command) {
+  async configure(dir, given, command) {
+    const ws = optionalAsOutputs(given)
     for (const [name, p] of Object.entries(ws.projects)) {
       const tasks = Object.fromEntries(
         Object.entries(p.tasks ?? {}).map(([t, spec]) => [

@@ -615,7 +615,7 @@ describe('the keys-from-git post counts the parts the key folds', () => {
   const page = readFileSync(path.join(DOCS, 'blog', 'keys-from-git.md'), 'utf8')
   it('"eleven parts" is CACHE_VERSION plus every labelled fold', () => {
     expect(labels.length + 1).toBe(11)
-    expect(page).toContain('seed-chained across eleven parts')
+    expect(page).toContain('one xxh3 hash over eleven parts, each seeded by the one before')
     // Anchored on the paragraph, not on the number it cites: the old
     // anchor was the literal `Part 11`, which is the cross-reference item
     // 397 had to move when it fixed the 11/12 inversion — a pin that
@@ -633,7 +633,7 @@ describe('the keys-from-git post counts the parts the key folds', () => {
   })
   it('it says the plugin part folds where the source folds it — before the input files', () => {
     expect(labels.indexOf('plugin')).toBeLessThan(labels.indexOf('inputs'))
-    expect(page.replace(/\s+/g, ' ')).toContain('folded right after the upstream keys')
+    expect(page.replace(/\s+/g, ' ')).toContain('hashed right after the upstream keys')
   })
   it('each git command it names is spelled as git-inputs.ts spawns it', () => {
     const git = readFileSync(
@@ -1779,7 +1779,7 @@ describe('the cascade post names every way a key is preliminary', () => {
       ['undeclaredWriteReach', 'an upstream with no `cache: true` that may write in the project'],
       [
         'commandWriteReach',
-        'rewrites its own inputs in place (a formatter) whose key this one does not fold',
+        'rewrites its own inputs in place (a formatter) whose key this one does not include',
       ],
       ['node.deps.some((d) => unstableById.has(d))', 'and every task depending on it'],
     ]
@@ -1814,7 +1814,7 @@ describe('the remote-execution post lists what placement keeps local', () => {
       'Not persistent tasks, or anything depending on one.',
       'Not sandboxed tasks, or anything depending on one.',
       'Not `exec.remote: false`, or anything depending on it.',
-      'Not a task whose key folds a runtime probe',
+      'Not a task whose key holds a runtime probe',
     ])
       expect(post).toContain(line)
   })

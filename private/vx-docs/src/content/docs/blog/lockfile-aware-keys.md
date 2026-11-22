@@ -66,7 +66,7 @@ A package you import but never declared is in no list.
 
 Declare it.
 
-## `--affected` follows the same claim
+## `--affected` follows the same rule
 
 `vx run test --affected` with a lockfile change picks only the projects
 the change reaches. Keys and selection use the same rule, so they never

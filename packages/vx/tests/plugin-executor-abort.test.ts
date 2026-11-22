@@ -347,9 +347,11 @@ describe('an executor that ignores the signal', () => {
   it("a retry's pass after an abandoned attempt is not saved", async () => {
     const once = pluginSource(
       'org/deaf-once',
-      `{ executor() { let calls = 0; return { name: 'deaf-once', execute() {
+      `{ executor() { let calls = 0; return { name: 'deaf-once', execute(req) {
           calls++
           if (calls === 1) return new Promise(() => {})
+          require('node:fs').mkdirSync(req.cwd + '/dist', { recursive: true })
+          require('node:fs').writeFileSync(req.cwd + '/dist/a.txt', 'a')
           return Promise.resolve({ exitCode: 0, durationMs: 1, stdout: '', stderr: '', violations: [] })
         } } } }`,
     )

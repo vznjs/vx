@@ -897,6 +897,18 @@ describe('output negation', () => {
       // `*/**` reaches every dir the negations do not name; committed files
       // there are taken back, untracked ones are cleaned (EA, 2026-10-14:
       // nx()'s rule), and the sources under `src` survive a real run.
+      // Every declared output is required, so each build writes `.medusa`.
+      await pkg('lib', {
+        build: 'mkdir -p dist .medusa && echo lib > dist/lib.js && echo m > .medusa/m',
+      })
+      await pkg(
+        'app',
+        {
+          build: 'mkdir -p dist .medusa && cat src/gen/api.js > dist/app.js && echo m > .medusa/m',
+          codegen: 'mkdir -p src/gen && echo "// api" > src/gen/api.js',
+        },
+        { lib: 'workspace:*' },
+      )
       await writeFile(
         path.join(root, 'turbo.json'),
         JSON.stringify({
@@ -1005,8 +1017,9 @@ describe('output negation', () => {
   it(
     'a top-level output of a kind the package tracks none of stays cached (n8n `*.xml`)',
     async () => {
-      await pkg('app', { test: 'echo report > junit.xml' })
-      await pkg('lib', { test: 'echo report > junit.xml' })
+      const write = 'mkdir -p coverage && echo c > coverage/c && echo report > junit.xml'
+      await pkg('app', { test: write })
+      await pkg('lib', { test: write })
       const lib = path.join(root, 'packages', 'lib')
       await writeFile(path.join(lib, 'pom.xml'), '<project/>\n')
       await writeFile(

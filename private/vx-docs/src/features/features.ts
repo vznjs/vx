@@ -221,6 +221,7 @@ const FIRST: readonly Feature[] = [
     body: [
       'Many monorepo caches restore files on top of what is already there. Delete a module, get a hit, and the old file is still in `dist/`.',
       'vx owns a task’s declared outputs. It wipes them before the task runs and before it restores a hit, so after either one the output directory holds the cached snapshot and nothing else.',
+      'Every declared output must be written. A pattern that matches no file once the command exits 0 fails the task, and nothing is cached.',
     ],
     example: {
       lang: 'ts',
@@ -604,6 +605,7 @@ export default defineProject({
       'A TypeScript config can evaluate differently on another machine. `vx lock` evaluates every config now and writes the resolved objects to `.vx/projects.lock`.',
       'Beside each `vx.config` it writes `vx.lock.json`, that project’s resolved config, pretty, so a reviewer sees what a config change does; vx never reads it.',
       'Every run loads configs from the lock and evaluates nothing; only `vx lock` writes it. `vx lock --check` re-evaluates every config and fails on drift, so a pipeline can check the lock first.',
+      'A merge that clashes in the lock needs no hand edit: runs refuse it, and `vx lock` writes it anew from the merged configs.',
     ],
     example: { lang: 'sh', code: 'vx lock\nvx lock --check\nvx pipeline main' },
     image: 'vx-lock.png',

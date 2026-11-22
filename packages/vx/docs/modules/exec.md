@@ -281,8 +281,9 @@ zombie-counting read took 1.5 s).
 wants a task's CPU and memory over its run (`task.sample`, telemetry.md)
 needs a look while it runs: `sampleTrees(roots)` gives each live root pid
 the summed CPU time (ms) and resident memory (bytes) of the root and every
-descendant. `watchTree(pid)` is the sandbox's, and every Linux task's in the runner (the
-wait's peak there carries vx's own): one 250 ms timer looks at
+descendant. `watchTree(pid)` is the sandbox's (whose pid namespace keeps the task's
+use out of the wait), and every Linux task's in the runner (a sum over
+the tree, where the wait has the largest one process): one 250 ms timer looks at
 every watched tree, and `stop()` answers the most CPU and the peak memory
 any look saw, or nothing when no look landed.
 

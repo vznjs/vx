@@ -6,12 +6,14 @@ description: Public workspaces on native vx config, timed against the tool they 
 The benchmark on [vx vs Nx](../nx/) is a synthetic graph built to be
 fair to every tool.
 
-This page is the other half: real public workspaces, each given native vx
-config that follows its `turbo.json`, timed against the Turborepo it
-already pins. Both tools run the same tasks, each at its own default
-worker count, interleaved. A cold build is the best of three; restore and
-nothing changed are the best of up to thirty runs, as one run of them
-swings by 15 ms.
+This page is the other half: real public workspaces on native vx config
+that follows their `turbo.json`, timed against the Turborepo they pin.
+
+Both tools run the same tasks, interleaved, each at its own default
+worker count. A cold build is the best of three runs.
+
+Restore and nothing changed are the best of up to thirty runs, because
+one run of them swings by 15 ms.
 
 <!-- bench: filled from private/vx-bench/real-repos.json at build (src/bench/real.ts) -->
 
@@ -70,16 +72,18 @@ Run %bench.real.create-t3-turbo.date% on
 
 <!-- bench:end -->
 
-Cold build deletes the outputs and both caches, and is the whole build's
-wall time: a real workspace has no ideal schedule to subtract, so the
-total is the fair number. Restore deletes the build outputs and keeps
-the cache; "nothing changed" deletes nothing. In those two rows every
-task is a cache hit, so the whole run is the runner's overhead.
+**Cold build** deletes the outputs and both caches and times the whole
+build. A real workspace has no ideal schedule to subtract, so the total
+is the fair number.
 
-Turborepo runs with its daemon off. Each workspace's vx config, its
-pinned commit and every change the bench makes to it live in vx's
-source under `private/vx-bench/real/`, and a workflow measures them
-again each week. How the harness works is in
+**Restore** deletes the build outputs and keeps the cache. **Nothing
+changed** deletes nothing. Every task in those two rows is a cache hit,
+so the whole run is the runner's overhead.
+
+Turborepo runs with its daemon off. Each workspace's vx config, commit
+and bench changes live in vx's source under `private/vx-bench/real/`.
+
+A workflow measures them again each week. How the harness works is in
 [the benchmarks](../../benchmarks/#real-repos).
 
 ## Try it on yours

@@ -66,9 +66,10 @@ vx run build --filter @demo/ap
 - **`inputs matched no files`.** The globs name nothing in the
   project, so the key ignores its source. Fix the paths; they are
   relative to the project directory.
-- **`outputs matched no files`.** The task wrote elsewhere, so a
-  hit restores nothing. Point `outputs.files` at what the task writes;
-  a sandboxed task also needs `exec.sandbox.allow.write` for it.
+- **`outputs matched no files`.** The command exited 0 but never
+  wrote a declared output, so the task fails and nothing is cached.
+  Point `outputs.files` at what the task writes; a sandboxed task also
+  needs `exec.sandbox.allow.write` for it.
 - **`not ready after …: waiting for a line matching`.** A persistent
   task's `readyWhen` has not matched its output yet, and no
   `exec.timeout` has ended the wait. Fix the pattern, or set

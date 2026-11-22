@@ -781,6 +781,7 @@ export const MORE: readonly Feature[] = [
     body: [
       'A hit is only useful if the files your next step needs are there. `outputs.files` names them: `dist/**`, a coverage report, a generated schema.',
       'On a hit, vx restores those files and nothing else. Outputs at the workspace root go under `outputs.workspaceFiles`.',
+      'Every output you name must exist when the command finishes. If one matches no file, the task fails and nothing is cached, so a typo in a glob never caches an empty build.',
     ],
     example: {
       lang: 'ts',

@@ -22,7 +22,7 @@ export interface RunResult {
   timedOut?: boolean // vx's own `timeoutMs` timer fired: a real `failed`, not an `aborted` shutdown
   killedAfterGrace?: true // the timeout's SIGKILL past the grace took the child or a process it left
   cpuMs?: number // user + system, from Bun.spawn().resourceUsage()
-  peakRssBytes?: number // maxRSS (bytes) when it rose above vx's own RSS high-water mark; on Linux else the tree's peak `watchTree` saw, if a look landed
+  peakRssBytes?: number // Linux: the larger of the shell's own peak (its wait4 in `vx-measure`) and the tree's peak `watchTree` saw; elsewhere maxRSS (bytes) when it rose above vx's own RSS high-water mark
   spawnFailed?: true // Bun.spawn threw: the 127 is vx's, no shell ran
   leftRunning?: true // a leftover held a pipe past the drain bound or stayed in the group: not saved
 }
@@ -227,6 +227,28 @@ held to its start; at the exit, `end` lets everything go; and an
   sets itself at start (`IFS`, `OPTIND`, `PPID`, `PWD`, and bash's
   `SHLVL`, `SHELLOPTS`, `BASHOPTS`, `UID`, `EUID`), a script over
   60 KiB, or a terminal spawns fresh.
+- **Peak:** on Linux (x64, arm64), `vx-measure` forks every
+  `runCommand` shell and spare (`src/exec/measure/vx-measure.c`, a 5 KB
+  static helper with no libc, built with vx-observe by
+  `scripts/build-observe.ts`; `measure-helper.ts` finds it with `embeddedBinaryPath` (an
+  `EmbeddedBinary`: its path per architecture), copied out of
+  a compiled vx once per user). Bun spawns with vfork, and at exec Linux
+  keeps vx's memory mark in the child's maxrss, so a shell vx spawned read
+  at least vx's size in wait4; a fork of the small helper starts clean.
+  One helper runs per vx, started by the spawn thread at the first task
+  (`spawn-off.ts`). The thread sends each spawn over a socket (argv, env,
+  directory, the descriptors by SCM_RIGHTS); the fork calls `setsid`
+  (leader of its session and group, as Bun's `detached` made the shell),
+  takes the descriptors at 0..n-1 and nothing else, an empty signal mask,
+  and execs. The helper says the pid, then the exit status, `ru_maxrss`
+  and CPU of its wait; `kill()` goes through it, so it never signals a
+  reaped pid. The task's `$PPID` is the helper's pid; every signal it can
+  catch is passed on to vx, so `kill -TERM $PPID` still stops the run, and
+  it starts with no environment and is not dumpable, as vx is not. Where it cannot
+  start, declines (a missing directory: the spawn's own ENOENT) or a send
+  waits past a second, the thread spawns as before; if it dies, the
+  shells it forked are killed (their exit is lost) and the rest spawn as
+  before. Design and numbers: `docs/design/peak-memory-exact-2026-11.md`.
 - **`exec`:** a plain `word args…` command runs as `exec word args…`, so
   the program replaces the shell. A shell builtin keeps the shell (each
   one bash's `compgen -b` lists, bash-only `pushd` among them), and so
@@ -397,6 +419,9 @@ Bun's shape into our schema:
   peak 1024× too big; `tests/runner.test.ts` now reads a known
   allocation back within a bounded factor, so a unit slip cannot pass a
   pure-function pin again.
+- On Linux `vx-measure` forks the shell (below) and its peak is its
+  own: the floor is not asked. What follows is the rule where it is not
+  (macOS, a terminal task, a helper that cannot run).
 - A peak at or under this process's own RSS high-water mark is not
   reported. Linux folds the forking parent's mark into a child's
   `ru_maxrss` at exec (a forked child starts with its parent's pages and

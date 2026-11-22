@@ -301,7 +301,7 @@ describe('stale cache hits', () => {
           path.join(root, 'p/vx.config.mjs'),
           `export default { tasks: { build: {
              exec: {
-               command: 'if [ ! -f ${marker} ]; then touch ${marker}; echo HALF > ${half}; exit 1; fi; mkdir -p gen; echo ok > gen/out.js',
+               command: 'if [ ! -f ${marker} ]; then touch ${marker}; echo HALF > ${half}; exit 1; fi; mkdir -p gen ../wsgen; echo ok > gen/out.js; echo ok > ../wsgen/out.js',
                retries: 1,
              },
              inputs: { files: ['src/**'] },

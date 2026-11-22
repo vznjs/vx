@@ -1,6 +1,6 @@
 {
   "coverage": {
-    "ported": 250,
+    "ported": 251,
     "rest": {
       "pending": [
         "affected-clean-filters",
@@ -17,6 +17,7 @@
         "key-not-derived",
         "lock-edges",
         "may-hold-match",
+        "prepared-key",
         "project-stage-lock",
         "raw-output-bytes",
         "restore-mtime",
@@ -1134,14 +1135,14 @@
   "scores": {
     "vx": {
       "all": {
-        "pass": 1215,
-        "can": 1215,
-        "of": 1219
+        "pass": 1216,
+        "can": 1216,
+        "of": 1228
       },
       "correctness": {
-        "pass": 999,
-        "can": 999,
-        "of": 1003
+        "pass": 1000,
+        "can": 1000,
+        "of": 1012
       },
       "efficiency": {
         "pass": 189,
@@ -1156,7 +1157,7 @@
       "graph": {
         "pass": 166,
         "can": 166,
-        "of": 166
+        "of": 168
       },
       "config": {
         "pass": 9,
@@ -1166,7 +1167,7 @@
       "failure": {
         "pass": 87,
         "can": 87,
-        "of": 89
+        "of": 91
       },
       "affected": {
         "pass": 99,
@@ -1176,7 +1177,7 @@
       "cache": {
         "pass": 56,
         "can": 56,
-        "of": 56
+        "of": 58
       },
       "inputs": {
         "pass": 385,
@@ -1189,9 +1190,9 @@
         "of": 69
       },
       "outputs": {
-        "pass": 241,
-        "can": 241,
-        "of": 241
+        "pass": 242,
+        "can": 242,
+        "of": 244
       },
       "report": {
         "pass": 27,
@@ -1211,14 +1212,14 @@
     },
     "turbo": {
       "all": {
-        "pass": 793,
-        "can": 1113,
-        "of": 1219
+        "pass": 794,
+        "can": 1115,
+        "of": 1228
       },
       "correctness": {
-        "pass": 650,
-        "can": 904,
-        "of": 1003
+        "pass": 651,
+        "can": 906,
+        "of": 1012
       },
       "efficiency": {
         "pass": 132,
@@ -1233,7 +1234,7 @@
       "graph": {
         "pass": 106,
         "can": 145,
-        "of": 166
+        "of": 168
       },
       "config": {
         "pass": 5,
@@ -1243,7 +1244,7 @@
       "failure": {
         "pass": 31,
         "can": 58,
-        "of": 89
+        "of": 91
       },
       "affected": {
         "pass": 67,
@@ -1253,7 +1254,7 @@
       "cache": {
         "pass": 47,
         "can": 56,
-        "of": 56
+        "of": 58
       },
       "inputs": {
         "pass": 249,
@@ -1266,9 +1267,9 @@
         "of": 69
       },
       "outputs": {
-        "pass": 176,
-        "can": 238,
-        "of": 241
+        "pass": 177,
+        "can": 240,
+        "of": 244
       },
       "report": {
         "pass": 11,
@@ -1288,14 +1289,14 @@
     },
     "nx": {
       "all": {
-        "pass": 796,
-        "can": 1135,
-        "of": 1219
+        "pass": 799,
+        "can": 1139,
+        "of": 1228
       },
       "correctness": {
-        "pass": 623,
-        "can": 923,
-        "of": 1003
+        "pass": 626,
+        "can": 927,
+        "of": 1012
       },
       "efficiency": {
         "pass": 169,
@@ -1308,9 +1309,9 @@
         "of": 27
       },
       "graph": {
-        "pass": 131,
-        "can": 153,
-        "of": 166
+        "pass": 133,
+        "can": 155,
+        "of": 168
       },
       "config": {
         "pass": 1,
@@ -1320,7 +1321,7 @@
       "failure": {
         "pass": 45,
         "can": 66,
-        "of": 89
+        "of": 91
       },
       "affected": {
         "pass": 57,
@@ -1330,7 +1331,7 @@
       "cache": {
         "pass": 44,
         "can": 48,
-        "of": 56
+        "of": 58
       },
       "inputs": {
         "pass": 250,
@@ -1343,9 +1344,9 @@
         "of": 69
       },
       "outputs": {
-        "pass": 171,
-        "can": 238,
-        "of": 241
+        "pass": 172,
+        "can": 240,
+        "of": 244
       },
       "report": {
         "pass": 4,
@@ -1365,14 +1366,14 @@
     },
     "vite-task": {
       "all": {
-        "pass": 635,
-        "can": 926,
-        "of": 1219
+        "pass": 636,
+        "can": 928,
+        "of": 1228
       },
       "correctness": {
-        "pass": 532,
-        "can": 762,
-        "of": 1003
+        "pass": 533,
+        "can": 764,
+        "of": 1012
       },
       "efficiency": {
         "pass": 97,
@@ -1387,7 +1388,7 @@
       "graph": {
         "pass": 101,
         "can": 130,
-        "of": 166
+        "of": 168
       },
       "config": {
         "pass": 4,
@@ -1397,7 +1398,7 @@
       "failure": {
         "pass": 32,
         "can": 45,
-        "of": 89
+        "of": 91
       },
       "affected": {
         "pass": 0,
@@ -1407,7 +1408,7 @@
       "cache": {
         "pass": 40,
         "can": 42,
-        "of": 56
+        "of": 58
       },
       "inputs": {
         "pass": 237,
@@ -1420,9 +1421,9 @@
         "of": 69
       },
       "outputs": {
-        "pass": 151,
-        "can": 238,
-        "of": 241
+        "pass": 152,
+        "can": 240,
+        "of": 244
       },
       "report": {
         "pass": 6,
@@ -1442,14 +1443,14 @@
     },
     "nix": {
       "all": {
-        "pass": 667,
-        "can": 857,
-        "of": 1219
+        "pass": 673,
+        "can": 864,
+        "of": 1228
       },
       "correctness": {
-        "pass": 562,
-        "can": 711,
-        "of": 1003
+        "pass": 568,
+        "can": 718,
+        "of": 1012
       },
       "efficiency": {
         "pass": 99,
@@ -1464,7 +1465,7 @@
       "graph": {
         "pass": 73,
         "can": 74,
-        "of": 166
+        "of": 168
       },
       "config": {
         "pass": 0,
@@ -1472,9 +1473,9 @@
         "of": 9
       },
       "failure": {
-        "pass": 31,
-        "can": 47,
-        "of": 89
+        "pass": 33,
+        "can": 49,
+        "of": 91
       },
       "affected": {
         "pass": 0,
@@ -1482,9 +1483,9 @@
         "of": 99
       },
       "cache": {
-        "pass": 36,
-        "can": 45,
-        "of": 56
+        "pass": 38,
+        "can": 47,
+        "of": 58
       },
       "inputs": {
         "pass": 263,
@@ -1497,9 +1498,9 @@
         "of": 69
       },
       "outputs": {
-        "pass": 171,
-        "can": 236,
-        "of": 241
+        "pass": 173,
+        "can": 239,
+        "of": 244
       },
       "report": {
         "pass": 6,
@@ -1519,14 +1520,14 @@
     },
     "moon": {
       "all": {
-        "pass": 734,
-        "can": 1088,
-        "of": 1219
+        "pass": 737,
+        "can": 1091,
+        "of": 1228
       },
       "correctness": {
-        "pass": 575,
-        "can": 887,
-        "of": 1003
+        "pass": 578,
+        "can": 890,
+        "of": 1012
       },
       "efficiency": {
         "pass": 146,
@@ -1539,9 +1540,9 @@
         "of": 27
       },
       "graph": {
-        "pass": 100,
-        "can": 136,
-        "of": 166
+        "pass": 101,
+        "can": 137,
+        "of": 168
       },
       "config": {
         "pass": 3,
@@ -1551,7 +1552,7 @@
       "failure": {
         "pass": 51,
         "can": 74,
-        "of": 89
+        "of": 91
       },
       "affected": {
         "pass": 69,
@@ -1561,7 +1562,7 @@
       "cache": {
         "pass": 47,
         "can": 52,
-        "of": 56
+        "of": 58
       },
       "inputs": {
         "pass": 254,
@@ -1574,9 +1575,9 @@
         "of": 69
       },
       "outputs": {
-        "pass": 135,
-        "can": 241,
-        "of": 241
+        "pass": 137,
+        "can": 243,
+        "of": 244
       },
       "report": {
         "pass": 13,
@@ -33053,6 +33054,329 @@
         },
         "moon": {
           "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "outputs/declared-output-never-written-fails",
+      "ref": "jzk9ry",
+      "category": "outputs",
+      "kind": "correctness",
+      "title": "A task that exits 0 but never writes a declared output fails, and nothing is cached",
+      "why": "A declared output that matches no file after the command means the build did not do its job: the output path is wrong, or the tool skipped its emit. Treated as a success, the empty result is cached and every later run reports a hit that restores nothing. Failing the task says so where CI shows it, and the next run tries again.",
+      "from": [
+        "missing-outputs",
+        "cache-declaration-warnings"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 1,
+          "detail": "succeeded, expected a failure"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 1,
+          "detail": "succeeded, expected a failure"
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 1,
+          "detail": "succeeded, expected a failure"
+        },
+        "nix": {
+          "status": "fail",
+          "step": 1,
+          "detail": "succeeded, expected a failure"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "outputs/optional-output-left-unwritten-passes",
+      "ref": "hjozhv",
+      "category": "outputs",
+      "kind": "correctness",
+      "title": "An output marked optional may be left unwritten: the task passes and its other outputs are cached",
+      "why": "Some outputs exist only some of the time, like a coverage report a test run writes only when asked. Marking such an output optional keeps the strict check on every other output while this one may be absent. The run passes, the outputs that were written are cached, and the next run replays them.",
+      "from": [
+        "missing-outputs"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "n/a",
+          "detail": "Every output vx declares is required: a pattern that matches no file fails the task."
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "graph/mutex-tasks-never-overlap",
+      "ref": "o9k0g8",
+      "category": "graph",
+      "kind": "correctness",
+      "title": "Two tasks that share one resource never run at the same time",
+      "why": "Tasks that share one port, one database or one emulator break each other when they overlap, and the break comes and goes with timing. Lowering the whole run to one task at a time fixes it at the cost of every other task. Naming the shared resource on those tasks keeps them apart while everything else still runs in parallel.",
+      "from": [
+        "run-concurrency"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "n/a",
+          "detail": "No vx setting keeps two tasks from running at the same time; only the run-wide concurrency limit."
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "No Turborepo setting keeps two tasks from running at the same time; only `--concurrency`."
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "No Vite Task setting keeps two tasks from running at the same time."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "Nix has no setting that keeps two builds from running at the same time, only `--max-jobs` for all."
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "failure/idle-timeout-kills-a-silent-task",
+      "ref": "ssa2gr",
+      "category": "failure",
+      "kind": "correctness",
+      "title": "A task that prints nothing past its idle limit is killed and fails the run",
+      "why": "A hung test often stops printing long before any wall-clock limit would end it, and that limit has to be generous enough for the slowest healthy run. A limit on silence ends the hung task early while a long task that keeps reporting progress runs on. The run fails, so CI shows the hang instead of waiting out its own timeout.",
+      "from": [
+        "task-timeout"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "n/a",
+          "detail": "vx limits a task by wall-clock time only, never by how long it prints nothing."
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "Turborepo has no limit on how long a task may print nothing."
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "Nx has no limit on how long a task may print nothing."
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "Vite Task has no limit on how long a task may print nothing."
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "moon has no limit on how long a task may print nothing."
+        }
+      }
+    },
+    {
+      "id": "failure/idle-timeout-spares-a-task-that-prints",
+      "ref": "iv2uxz",
+      "category": "failure",
+      "kind": "correctness",
+      "title": "A task that keeps printing outlives its idle limit and succeeds",
+      "why": "An idle limit measures silence, not length. A task that runs longer than the limit but prints along the way is working and must succeed. A runner that read the limit as a wall-clock one would kill healthy long builds.",
+      "from": [
+        "task-timeout"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "n/a",
+          "detail": "vx limits a task by wall-clock time only, never by how long it prints nothing."
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "Turborepo has no limit on how long a task may print nothing."
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "Nx has no limit on how long a task may print nothing."
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "Vite Task has no limit on how long a task may print nothing."
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "moon has no limit on how long a task may print nothing."
+        }
+      }
+    },
+    {
+      "id": "outputs/checksum-mismatch-fails",
+      "ref": "6dy8t4",
+      "category": "outputs",
+      "kind": "correctness",
+      "title": "An output pinned by checksum fails the task when its bytes differ, and passes when they match",
+      "why": "A pinned checksum says exactly which bytes a task must produce, as a downloaded toolchain or a vendored archive should. A build that writes anything else is wrong, however it exits, and caching it would spread the wrong bytes. Once the bytes match, the task passes.",
+      "from": [
+        "artifact-roundtrip"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "n/a",
+          "detail": "vx has no way to pin an output’s bytes to a checksum."
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "Turborepo has no way to pin an output’s bytes to a checksum."
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "Nx has no way to pin an output’s bytes to a checksum."
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "Vite Task has no way to pin an output’s bytes to a checksum."
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "moon has no way to pin an output’s bytes to a checksum."
+        }
+      }
+    },
+    {
+      "id": "cache/check-run-catches-a-nondeterministic-task",
+      "ref": "wqxeg3",
+      "category": "cache",
+      "kind": "correctness",
+      "title": "A check run rebuilds a cached task and fails when its bytes come out different",
+      "why": "A cache is only as good as the tasks it stores: one whose output changes from run to run makes every hit a guess about which build you got. A check run rebuilds the cached task and compares, so the nondeterminism shows up as a failure in one place. Without it, it shows up as builds that differ by machine.",
+      "from": [
+        "cache"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "n/a",
+          "detail": "No vx run rebuilds a cached task to compare its bytes with the stored ones."
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "No Turborepo run rebuilds a cached task to compare its bytes."
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "No Nx run rebuilds a cached task to compare its bytes."
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "No Vite Task run rebuilds a cached task to compare its bytes."
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "No moon run rebuilds a cached task to compare its bytes."
+        }
+      }
+    },
+    {
+      "id": "cache/check-run-passes-a-reproducible-task",
+      "ref": "k8fcl0",
+      "category": "cache",
+      "kind": "correctness",
+      "title": "A check run passes a cached task that rebuilds to the same bytes",
+      "why": "A check run is meant to prove a cached result, and a reproducible task must pass it. A check that failed reproducible tasks too, by comparing timestamps or paths, would be switched off and catch nothing.",
+      "from": [
+        "cache"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "n/a",
+          "detail": "No vx run rebuilds a cached task to compare its bytes with the stored ones."
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "No Turborepo run rebuilds a cached task to compare its bytes."
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "No Nx run rebuilds a cached task to compare its bytes."
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "No Vite Task run rebuilds a cached task to compare its bytes."
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "No moon run rebuilds a cached task to compare its bytes."
+        }
+      }
+    },
+    {
+      "id": "graph/dependant-waits-for-port",
+      "ref": "peahnt",
+      "category": "graph",
+      "kind": "correctness",
+      "title": "A task that needs a server starts only once the server accepts connections on its port",
+      "why": "Many servers print nothing reliable when they are ready, but every one of them opens its port. Waiting for the port means a dependant never meets a closed socket, whatever the server logs. Starting the dependant as soon as the process spawns gives e2e failures that come and go with machine speed.",
+      "from": [
+        "persistent"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "n/a",
+          "detail": "A server’s ready signal is a line it prints, never a port it opens."
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "Turborepo does not hold a task until a persistent one opens a port."
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "Vite Task has no long-running task it stops when the run ends. Vite Task has no long-running task it waits on."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "A derivation is a build that ends: Nix has no long-running task. A derivation is a build that ends: nothing waits for a port."
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "A `wait` dependency waits for the persistent task to start, never for a port it opens."
         }
       }
     },

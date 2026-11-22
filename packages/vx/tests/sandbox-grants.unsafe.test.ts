@@ -260,7 +260,7 @@ describe.skipIf(!available)('a sandboxed task that produced nothing says why', (
   // while in a single-package workspace — project dir === workspace root,
   // which is where vx's deny anchor and the cwd become the same path —
   // the write SUCCEEDS into that scratch and the task exits 0. There the
-  // miss-save warning is the only thing that says the build produced
+  // missing-output failure is the only thing that says the build produced
   // nothing, so it names the likely cause.
   //
   // Config-only on purpose: the rows below run `true` and declare an
@@ -313,7 +313,7 @@ describe.skipIf(!available)('a sandboxed task that produced nothing says why', (
     async () => {
       await project(undefined)
       const r = await run({ cwd: fixture.root, tasks: ['build'], log: collectingLogger(fixture) })
-      expectOk(r, fixture)
+      expect(r.outcomes[0]?.status).toBe('failed')
       expect(warning()).toContain('declares no exec.sandbox.allow.write')
     },
     TIMEOUT,
@@ -330,7 +330,7 @@ describe.skipIf(!available)('a sandboxed task that produced nothing says why', (
       // disk exactly as rarely as the one it was written for.
       await project([])
       const r = await run({ cwd: fixture.root, tasks: ['build'], log: collectingLogger(fixture) })
-      expectOk(r, fixture)
+      expect(r.outcomes[0]?.status).toBe('failed')
       expect(warning()).toContain('declares no exec.sandbox.allow.write')
     },
     TIMEOUT,
@@ -339,12 +339,12 @@ describe.skipIf(!available)('a sandboxed task that produced nothing says why', (
   it(
     'CONTROL: a task that DID declare a write grant is not blamed for the sandbox',
     async () => {
-      // Same missing output glob, so the warning still fires — only the
+      // Same missing output glob, so the task still fails — only the
       // cause clause differs. Without this the row above would pass for a
       // message that always blames the sandbox.
       await project('dist/')
       const r = await run({ cwd: fixture.root, tasks: ['build'], log: collectingLogger(fixture) })
-      expectOk(r, fixture)
+      expect(r.outcomes[0]?.status).toBe('failed')
       expect(warning()).toContain('matched no files')
       expect(warning()).not.toContain('exec.sandbox.allow.write')
     },

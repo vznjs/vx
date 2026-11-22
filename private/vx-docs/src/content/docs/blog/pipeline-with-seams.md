@@ -55,7 +55,7 @@ run and `commands` for new verbs.
 | `project`     | Add, remove or edit one loaded project's tasks.                                            |
 | `graph`       | Add or drop edges, mark tasks requested.                                                   |
 | `key`         | Contribute extra cache-key material per task.                                              |
-| `fingerprint` | Claim a root file such as a lockfile and key it per project.                               |
+| `fingerprint` | Take a root file such as a lockfile and key it per project.                                |
 | `measures`    | Time what is no task, such as a worker's warm-up, kept and shared as a task's timing.     |
 | `schedule`    | Return a priority per ready task.                                                          |
 | `admit`       | Vet each local dispatch against what is running right now; `false` holds the task.         |
