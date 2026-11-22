@@ -715,13 +715,7 @@ export class Orchestrator {
     const t = this.clock()
     for (const [id, { declared }] of this.spawnedAt)
       if (!this.cancelled.has(id) && !this.unstarted.has(id))
-        p.adopt(
-          id,
-          declared.size,
-          declared.place ?? declared.platform ?? hostPlatform(),
-          declared.cpu,
-          t,
-        )
+        p.adopt(id, declared.size, placeOf(declared), declared.cpu, t)
     for (const a of this.workers.values()) this.adopted(p, a, t)
     for (const id of this.waiting.keys()) p.ready(id)
     return p
@@ -1140,6 +1134,16 @@ export class Orchestrator {
    * machine ran busy for 50 s and they ran 1.7 times their history (main
    * f2ddcb6, 2026-11-12).
    */
+  /** The labels of every worker that joined, online or gone. */
+  private joinedLabels(): Set<string> {
+    return new Set([...this.workers.values(), ...this.gone].map((a) => a.label))
+  }
+
+  /** Whether asked worker `id` is still starting: not joined, failed or cancelled. */
+  private starting(id: string, joined: Set<string>): boolean {
+    return !joined.has(id) && !this.unstarted.has(id) && !this.cancelled.has(id)
+  }
+
   private otherOf(a: Worker): number {
     if (a.cores !== a.reported.cores) return 0
     return wholeCores(a.other ?? this.sizeOther(a) ?? 0)
@@ -1226,14 +1230,11 @@ export class Orchestrator {
     above: { readonly cores: number; readonly memory: number },
     platform: string | undefined,
   ): boolean {
-    const joined = new Set([...this.workers.values(), ...this.gone].map((x) => x.label))
+    const joined = this.joinedLabels()
     for (const [id, { declared }] of this.spawnedAt)
       if (
-        !joined.has(id) &&
-        !this.unstarted.has(id) &&
-        !this.cancelled.has(id) &&
-        (platform === undefined ||
-          (declared.place ?? declared.platform ?? hostPlatform()) === platform) &&
+        this.starting(id, joined) &&
+        (platform === undefined || placeOf(declared) === platform) &&
         (declared.cpu > above.cores || declared.memory > above.memory)
       )
         return true
@@ -2028,7 +2029,7 @@ export class Orchestrator {
       // one that joined on its own is numbered in the order it joined.
       const spawn = info.id === undefined ? undefined : this.spawnedAt.get(info.id)
       const asked = spawn?.at
-      const taken = new Set([...this.workers.values(), ...this.gone].map((a) => a.label))
+      const taken = this.joinedLabels()
       let label = asked === undefined ? undefined : info.id
       while (label === undefined || taken.has(label)) label = `worker#${++this.joined}`
       // Workers of one host (local()) each report the host: the size it
@@ -2390,7 +2391,7 @@ export class Orchestrator {
    */
   release(ids: Iterable<string>): string[] {
     for (const a of this.workers.values()) if (a.faulty && a.busy.size === 0) this.letGo(a)
-    const joined = new Set([...this.workers.values(), ...this.gone].map((a) => a.label))
+    const joined = this.joinedLabels()
     const cancelled: string[] = []
     for (const id of ids) {
       const a = this.workers.get(id)
@@ -2426,13 +2427,7 @@ export class Orchestrator {
         // the planner counts it again: its setup is paid
         const declared = this.spawnedAt.get(id)?.declared
         if (declared !== undefined)
-          this.bound?.adopt(
-            id,
-            declared.size,
-            declared.place ?? declared.platform ?? hostPlatform(),
-            declared.cpu,
-            this.clock(),
-          )
+          this.bound?.adopt(id, declared.size, placeOf(declared), declared.cpu, this.clock())
       }
     if (out.length > 0) this.pumpSoon()
     return out
@@ -2479,10 +2474,8 @@ export class Orchestrator {
 
   /** Nothing online that takes work, none still starting: no task can run. */
   private stranded(reason: string): void {
-    const joined = new Set([...this.workers.values(), ...this.gone].map((a) => a.label))
-    const starting = [...this.spawnedAt.keys()].some(
-      (s) => !this.unstarted.has(s) && !this.cancelled.has(s) && !joined.has(s),
-    )
+    const joined = this.joinedLabels()
+    const starting = [...this.spawnedAt.keys()].some((s) => this.starting(s, joined))
     const working = [...this.workers.values()].some((a) => !a.faulty)
     if (!working && !starting) this.fail(reason)
   }
@@ -3385,6 +3378,8 @@ const bytes = (n: number): string =>
         : `${n} B`
 
 /** A machine is what its size says: the same cores, memory within a tenth. */
+/** A size naming no platform is this machine's, as `dte()` planned it. */
+const placeOf = (d: Declared): string => d.place ?? d.platform ?? hostPlatform()
 const matches = (cores: number, memory: number, d: Declared): boolean =>
   cores === d.cpu && Math.abs(memory - d.memory) <= d.memory * 0.1
 
