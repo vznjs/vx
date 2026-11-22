@@ -261,10 +261,11 @@ export async function handOff(bin: string, args: readonly string[]): Promise<nev
   // this vx and left the local one running, orphaned. A handler runs on the
   // event loop, after the spawn returned.
   let child: Bun.Subprocess | undefined
+  // One this vx was started deaf to (`&` in a script, nohup) stays so, here
+  // and in the local vx, which Bun spawns with every signal at its default.
+  const ignored = (['SIGINT', 'SIGHUP'] as const).filter((sig) => util.startedIgnoring(sig))
   for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP'] as const) {
-    // One this vx was started deaf to (`&` in a script, nohup) stays so, and
-    // the local vx inherits the ignore: a handler here reset it on exec.
-    if (sig !== 'SIGTERM' && util.startedIgnoring(sig)) continue
+    if (sig !== 'SIGTERM' && ignored.includes(sig)) continue
     process.on(sig, () => {
       if (!inForeground()) child?.kill(sig)
     })
@@ -272,7 +273,12 @@ export async function handOff(bin: string, args: readonly string[]): Promise<nev
   child = Bun.spawn([bin, ...args], {
     stdio: ['inherit', 'inherit', 'inherit'],
     // A group stop reaches the local vx from here too (util/signal-relay.ts).
-    env: { ...process.env, VX_HANDED_OFF: process.execPath, VX_SIGNAL_RELAY: '1' },
+    env: {
+      ...process.env,
+      VX_HANDED_OFF: process.execPath,
+      VX_SIGNAL_RELAY: '1',
+      ...(ignored.length > 0 ? { [util.IGNORED_SIGNALS_ENV]: ignored.join(',') } : {}),
+    },
   })
   const code = await child.exited
   const signal = child.signalCode

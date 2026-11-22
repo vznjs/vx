@@ -120,7 +120,7 @@ export { CORE_VERBS } from './verbs.js'
 export { isUnsupportedBun, MIN_BUN, unsupportedBunMessage } from './bun-version.js'
 export { executablePath, shellArgv, taskShell } from './which.js'
 export { procfsIsOwn } from './procfs.js'
-export { startedIgnoring } from './hangup.js'
+export { IGNORED_SIGNALS_ENV, startedIgnoring } from './hangup.js'
 export { relayedCopy, stopActedOn } from './signal-relay.js'
 export {
   ESSENTIAL_ENV,

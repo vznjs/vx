@@ -14,12 +14,26 @@ import { dlopen, FFIType, ptr } from 'bun:ffi'
 
 const NUMBER = { SIGHUP: 1, SIGINT: 2 } as const
 const ignored = new Map<keyof typeof NUMBER, boolean>()
+/**
+ * Set by a global vx handing off (handoff.ts): the signals it was started
+ * deaf to. Bun's spawn gives a child every signal at its default, so the
+ * local vx cannot read the ignore off its own disposition.
+ */
+export const IGNORED_SIGNALS_ENV = 'VX_IGNORED_SIGNALS'
+let handed: string[] | undefined
 
 /** Whether this process started with `signal` ignored (inherited `SIG_IGN`). */
 export function startedIgnoring(signal: keyof typeof NUMBER): boolean {
   let known = ignored.get(signal)
   if (known === undefined) {
-    known = read(NUMBER[signal])
+    if (handed === undefined) {
+      handed = (process.env[IGNORED_SIGNALS_ENV] ?? '').split(',').filter(Boolean)
+      delete process.env[IGNORED_SIGNALS_ENV]
+    }
+    known = handed.includes(signal)
+    // Handed on at its default: a listener that does nothing is the ignore.
+    if (known) process.on(signal, () => {})
+    else known = read(NUMBER[signal])
     ignored.set(signal, known)
   }
   return known

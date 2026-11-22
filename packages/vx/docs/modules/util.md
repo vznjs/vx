@@ -1933,6 +1933,10 @@ export function startedIgnoring(signal: 'SIGHUP' | 'SIGINT'): boolean
   trampoline's compile).
 - False elsewhere and when the read fails: a handler is installed, as
   before.
+- A global vx handing off names the ones it was started deaf to in
+  `VX_IGNORED_SIGNALS` (Bun spawns the local vx with every signal at its
+  default), and the local vx reads them from there, removes the variable
+  and installs a listener that does nothing: that is the ignore.
 - Read once per process, before the first handler: `signals.ts` and
   `vx watch` ask it before they install theirs, and a removed handler
   does not bring the ignore back.
