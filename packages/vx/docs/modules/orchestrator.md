@@ -1117,7 +1117,10 @@ export interface SaveFacts {
   artifactBytes?: number // the artifact it wrote
   outputBytes?: number // the files it saved, uncompressed: the row's `outputs` and runs.output_bytes
   saved?: true // the entry landed; the outcome's `saved` comes from here in a run
+  unkeyed?: true // a re-check run after the slot went found the key no longer true
+  driftedInput?: string | null // the input that re-check found moved
 }
+export function withCheckFacts(facts: SaveFacts, check: KeyCheck, unsavedBytes: number | undefined): SaveFacts
 export function saveMiss(a: SaveMissArgs): Promise<{ landed: Promise<SaveFacts> }>
 
 export type UnsavedArgs = Pick<
@@ -1190,7 +1193,7 @@ and returns, so the next task starts while it runs. The re-checks lstat
 each input again, ~0.4 ms a miss, and that held every slot on the site's
 9,603-task cold run, where Vite Task won on Intel runners. What a
 re-check finds (`unkeyed`, `driftedInput`) and an unsaved miss's bytes
-ride `SaveFacts` onto the outcome before it settles. A task that fails
+ride `SaveFacts` onto the outcome before it settles. A save that throws there (an output it cannot store) fails the task when it settles (the scheduler's `settledOf` rejection), as a throw in the slot did. A task that fails
 on a moved input (`stability.severity: 'error'`), or whose sandbox fix
 reads what the save left, still decides in the slot.
 

@@ -808,7 +808,34 @@ class GraphRun {
       this.finishOne(id, settledOutcome ?? outcome, early)
       this.tick()
     }
-    void settled.then(done, () => done())
+    // A save that threw after the slot went fails the task, as it did in the slot.
+    void settled.then(done, (thrown: unknown) => {
+      const failed = this.failedOutcome(outcome.node, thrown)
+      if (outcome.timing !== undefined) failed.timing = outcome.timing
+      if (failed.status !== 'aborted') this.report(id, outcome.node, thrown, unwrapThrown(thrown))
+      done(failed)
+    })
+  }
+
+  /** The outcome of a task whose own work threw: failed, or aborted after the run's stop. */
+  private failedOutcome(node: TaskNode, thrown: unknown): TaskOutcome {
+    // After the run's stop a rejection is the stop's doing (a probe it killed):
+    // aborted, as any task it kills, and unsaid.
+    const stopped = this.aborted()
+    const exitCode = thrown instanceof OutputsFailed ? thrown.exitCode : 1
+    const durationMs = thrown instanceof OutputsFailed ? thrown.durationMs : 0
+    const outcome: TaskOutcome = stopped
+      ? { node, status: 'aborted', exitCode, durationMs }
+      : {
+          node,
+          status: 'failed',
+          exitCode,
+          durationMs,
+          ...(thrown instanceof RestoreFailed ? { restoreFailed: true as const } : {}),
+        }
+    if (thrown instanceof KeyFailed && !stopped) markKeyFailed(outcome)
+    if (thrown instanceof OutputsFailed && !stopped) markOutputsFailed(outcome, thrown.step)
+    return outcome
   }
 
   private rejected(
@@ -824,32 +851,9 @@ class GraphRun {
       this.tick()
       return
     }
-    const err =
-      thrown instanceof RestoreFailed ||
-      thrown instanceof KeyFailed ||
-      thrown instanceof OutputsFailed
-        ? thrown.error
-        : thrown
-    // After the run's stop a rejection is the stop's doing (a probe it killed):
-    // aborted, as any task it kills, and unsaid.
-    const stopped = this.aborted()
-    const exitCode = thrown instanceof OutputsFailed ? thrown.exitCode : 1
-    const durationMs = thrown instanceof OutputsFailed ? thrown.durationMs : 0
-    const outcome: TaskOutcome = withHold(
-      stopped
-        ? { node, status: 'aborted', exitCode, durationMs }
-        : {
-            node,
-            status: 'failed',
-            exitCode,
-            durationMs,
-            ...(thrown instanceof RestoreFailed ? { restoreFailed: true as const } : {}),
-          },
-    )
-    if (thrown instanceof KeyFailed && !stopped) markKeyFailed(outcome)
-    if (thrown instanceof OutputsFailed && !stopped) markOutputsFailed(outcome, thrown.step)
+    const outcome = withHold(this.failedOutcome(node, thrown))
     free()
-    if (!stopped) this.report(id, node, thrown, err)
+    if (outcome.status !== 'aborted') this.report(id, node, thrown, unwrapThrown(thrown))
     this.finishOne(id, outcome)
     this.tick()
   }
@@ -1025,4 +1029,13 @@ export function idleServers(
     }
   }
   return out
+}
+
+/** The error a wrapped throw carries (a restore, key or outputs step's), or the throw. */
+function unwrapThrown(thrown: unknown): unknown {
+  return thrown instanceof RestoreFailed ||
+    thrown instanceof KeyFailed ||
+    thrown instanceof OutputsFailed
+    ? thrown.error
+    : thrown
 }
