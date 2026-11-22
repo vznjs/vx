@@ -183,10 +183,10 @@ const env: Record<string, string> = {}
 for (const [k, v] of Object.entries(process.env)) {
   if (k !== 'VX_DOTENV_PROBE' && v !== undefined) env[k] = v
 }
-// A run reads only the lock.
+// A run reads only the lock. Full logs: on CI they default to errors-only.
 Bun.spawnSync({ cmd: [out, 'lock'], cwd: dotenv, env, stdout: 'pipe', stderr: 'pipe' })
 const probe = Bun.spawnSync({
-  cmd: [out, 'run', 'a#probe'],
+  cmd: [out, 'run', 'a#probe', '--output-logs=full'],
   cwd: dotenv,
   env,
   stdout: 'pipe',
@@ -246,7 +246,7 @@ const resolveLock = Bun.spawnSync({
   stderr: 'pipe',
 })
 const resolved = Bun.spawnSync({
-  cmd: [out, 'run', 'a#probe'],
+  cmd: [out, 'run', 'a#probe', '--output-logs=full'],
   cwd: resolve,
   stdout: 'pipe',
   stderr: 'pipe',

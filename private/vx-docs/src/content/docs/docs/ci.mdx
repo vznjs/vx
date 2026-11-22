@@ -88,10 +88,11 @@ jobs:
           ${{ github.event_name == 'pull_request' && 'pr' || 'main' }}
 ```
 
-A pipeline names the tasks a job runs, in every project, and any
-`vx run` flag as a key of the same name (`affected: true` is
-`--affected`). `vx pipeline pr` runs the pipeline named `pr`. A flag you
-type with it beats the pipeline's own
+A pipeline names the tasks a job runs, in every project.
+`vx pipeline pr` runs the one named `pr`.
+
+Any `vx run` flag is a key of the same name (`affected: true` is
+`--affected`), and a flag you type beats it
 ([Pipelines](../../schema/workspace/#pipelines)).
 
 ### 4. Push

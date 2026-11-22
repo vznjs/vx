@@ -1904,6 +1904,8 @@ vx pipeline NAME [OPTIONS]
 
 ```ts
 // .vx/workspace.ts
+import { defineWorkspace } from '@vzn/vx/config'
+
 export default defineWorkspace({
   pipelines: {
     pr: { tasks: ['lint', 'test'], affected: true },

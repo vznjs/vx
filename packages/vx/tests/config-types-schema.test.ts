@@ -29,6 +29,7 @@ import type {
   TaskConfig,
   WorkspaceConfig,
   LockSettings,
+  Pipeline,
 } from '../src/config.js'
 import { defineProject } from '../src/config.js'
 import { validateProjectConfig, validateWorkspace } from '../src/workspace/index.js'
@@ -46,10 +47,36 @@ const WORKSPACE = [
   'inputs',
   'lock',
   'outputs',
+  'pipelines',
   'plugins',
   'run',
   'watch',
 ] as const satisfies readonly Keys<WorkspaceConfig>[]
+const PIPELINE = [
+  'affected',
+  'branch',
+  'cacheConcurrencyDownload',
+  'cacheConcurrencyRestore',
+  'cacheConcurrencyUpload',
+  'cacheDir',
+  'cacheDownload',
+  'cachePolicy',
+  'concurrency',
+  'continue',
+  'dry',
+  'env',
+  'excludeDependencies',
+  'filter',
+  'force',
+  'noCache',
+  'outputLogs',
+  'profile',
+  'retries',
+  'schedule',
+  'tasks',
+  'timeout',
+  'verbosity',
+] as const satisfies readonly Keys<Pipeline>[]
 const RUN = [
   'concurrency',
   'continue',
@@ -158,6 +185,7 @@ const IGNORES = [
 
 const exhaustive: [
   Exhaustive<WorkspaceConfig, typeof WORKSPACE>,
+  Exhaustive<Pipeline, typeof PIPELINE>,
   Exhaustive<RunSettings, typeof RUN>,
   Exhaustive<NonNullable<RunSettings['rules']>, typeof RULES>,
   Exhaustive<WatchSettings, typeof WATCH>,
@@ -184,6 +212,7 @@ const exhaustive: [
   Exhaustive<SandboxDenials, typeof DENIALS>,
   Exhaustive<SandboxIgnore, typeof IGNORES>,
 ] = [
+  true,
   true,
   true,
   true,
@@ -278,6 +307,11 @@ describe('the config types and the validator agree on every level (D-71)', () =>
           }) as never,
           'p',
         ),
+    ],
+    [
+      'pipelines.<name>',
+      PIPELINE,
+      () => validateWorkspace({ pipelines: { p: { tasks: ['a'], ...X } } } as never, 'w'),
     ],
     ['run', RUN, () => validateWorkspace({ run: { ...X } } as never, 'w')],
     ['run.rules', RULES, () => validateWorkspace({ run: { rules: X } } as never, 'w')],

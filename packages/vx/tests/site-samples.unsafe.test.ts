@@ -1099,7 +1099,7 @@ describe('the workspace-config guide documents every WorkspaceConfig field', () 
     const decl = /export interface WorkspaceConfig \{([\s\S]*?)\n\}/.exec(src)
     expect(decl).not.toBeNull()
     const fields = [...decl![1]!.matchAll(/^  (\w+)\?:/gm)].map((m) => m[1]!)
-    expect(fields.length).toBe(9)
+    expect(fields.length).toBe(10)
     const page = readFileSync(path.join(DOCS, 'docs', 'workspace.mdx'), 'utf8')
     expect(page).toContain('plugins: [')
     // A row names a setting by its path (`run.timeout`); its group is the field.

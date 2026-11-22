@@ -41,9 +41,11 @@ interface Workflow {
 const read = (file: string): Workflow =>
   Bun.YAML.parse(readFileSync(path.join(dir, file), 'utf8')) as Workflow
 const doc = read('ci.yml')
-// What each job's `vx pipeline <name>` runs.
-const pipelines = ((await import('../../../.vx/workspace.ts')) as { default: WorkspaceConfig })
-  .default.pipelines!
+// What each job's `vx pipeline <name>` runs. A path the type-checker does
+// not follow: every package's oxlint sees this file, from where the root
+// lies elsewhere.
+const workspaceFile = path.join(dir, '..', '..', '.vx', 'workspace.ts')
+const pipelines = ((await import(workspaceFile)) as { default: WorkspaceConfig }).default.pipelines!
 const worker = read('vx-worker.yml').jobs['worker']!
 const bench = read('bench.yml').jobs['bench']!
 const checkout = (j: Job | undefined): Step | undefined =>

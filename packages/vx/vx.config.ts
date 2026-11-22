@@ -43,6 +43,9 @@ const SUITE_ENV = {
   BUN_RUNTIME_TRANSPILER_CACHE_PATH: '0',
   FORCE_COLOR: '0',
   VX_CACHE_DIR: '.vx/cache',
+  // The suite reads vx as a laptop runs it: on CI a spawned vx inherits CI
+  // and prints errors-only logs. A test about CI sets it for its child.
+  CI: '',
 }
 // `bun build --compile --target=bun-<t>` for a target other than the
 // running Bun fetches `@oven/bun-<t>` from the npm registry once, extracts

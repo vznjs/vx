@@ -326,9 +326,11 @@ it('an executor cannot change the outputs core saves', async () => {
 // its args after `--`: an executor's edit to its request's reached the
 // next task, which ran with it under the key of what it declares.
 it("an executor's edit to its request reaches no other task", async () => {
-  const task = `export default { tasks: { t: { exec: { command: 'echo "$X" > out', env: { define: { X: 'good' } } } } } }`
-  const a = await addProject(root, 'a', { config: task })
-  const b = await addProject(root, 'b', { config: task })
+  // b's runs after a's (forwarded args reach one requested task: M, 2026-11-22).
+  const task = (deps: string) =>
+    `export default { tasks: { t: { dependsOn: [${deps}], exec: { command: 'echo "$X" > out', env: { define: { X: 'good' } } } } } }`
+  const a = await addProject(root, 'a', { config: task('') })
+  const b = await addProject(root, 'b', { config: task(`'a#t'`) })
   await plugins(
     pluginSource(
       'org/exec',
@@ -341,7 +343,7 @@ it("an executor's edit to its request reaches no other task", async () => {
   )
   await run({
     cwd: root,
-    tasks: ['t'],
+    tasks: ['b#t'],
     forwardArgs: ['ok'],
     concurrency: 1,
     log,

@@ -2720,6 +2720,8 @@ its `tasks` in every project that declares them, under the flags it
 saves. Each CI job names one, and its workflow file holds no flags.
 
 ```ts
+import { defineWorkspace } from '@vzn/vx/config'
+
 export default defineWorkspace({
   pipelines: {
     pr: { tasks: ['lint', 'test', 'build'], affected: true, continue: 'always' },
@@ -2732,6 +2734,8 @@ export default defineWorkspace({
 Every key, each at a value its flag takes:
 
 ```ts
+import { defineWorkspace } from '@vzn/vx/config'
+
 export default defineWorkspace({
   pipelines: {
     nightly: {
