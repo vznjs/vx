@@ -1550,7 +1550,8 @@ a file or a whole directory tree: `dist` and `dist/` are `dist/**`
 leading `./` is accepted and dropped; `.` alone is refused.
 
 Every positive glob is required. Once the command exits 0, each must
-match a file, a link or an empty directory that no `!` entry takes back;
+match a path that no `!` entry takes back (an empty `dist/` does not
+satisfy `dist/**`; name an empty directory as itself, `public/uploads`);
 one that matches nothing fails the task, cached or not, and nothing is
 saved. The error names each such glob. There are no optional outputs: a
 file a task writes only sometimes is not an output.

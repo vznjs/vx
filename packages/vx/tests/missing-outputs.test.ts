@@ -67,6 +67,8 @@ describe('a declared output that matches no files', () => {
           inputs: { files: ['src/**'] }, outputs: { files: ['out/**', '!out/**/*.map'] }, cache: true },
         found: { exec: { command: 'mkdir -p dist && echo x > dist/a.js' },
           inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true },
+        emptyroot: { exec: { command: 'mkdir -p void' },
+          inputs: { files: ['src/**'] }, outputs: { files: ['void/**'] }, cache: true },
         dirsonly: { exec: { command: 'mkdir -p gen/a/b' },
           inputs: { files: ['src/**'] }, outputs: { files: ['gen/**'] }, cache: true },
         noop: { exec: { command: 'true' },
@@ -112,6 +114,12 @@ describe('a declared output that matches no files', () => {
     const r = await runTask('takenback')
     expect(r.status).toBe('failed')
     expect(r.lines).toEqual([expect.stringContaining('(out/**)')])
+  })
+
+  it('fails a `dir/**` whose dir the command left empty', async () => {
+    const r = await runTask('emptyroot')
+    expect(r.status).toBe('failed')
+    expect(r.lines).toEqual([expect.stringContaining('(void/**)')])
   })
 
   it('passes outputs that matched, only empty directories, or none declared', async () => {

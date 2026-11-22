@@ -1112,8 +1112,9 @@ lockfile plugin appends), naming the wildcard globs.
 
 **Every declared output is required** (`orchestrator/missing-outputs.ts`).
 Once the command exits 0, each positive glob of `outputs.files` and
-`outputs.workspaceFiles` must match a file, a link or an empty directory
-that no `!` entry takes back. One that matches nothing fails the task,
+`outputs.workspaceFiles` must match a path that no `!` entry takes back.
+An empty `dist/` does not satisfy `dist/**`, since the clean keeps that
+root; a literal `public/uploads` is satisfied by the directory itself. One that matches nothing fails the task,
 cached or not, and nothing is saved: `[vx] app#build: outputs matched no
 files (dist/**) — the command exited 0 but never wrote it, so the task
 fails and nothing is cached: write it, or fix the pattern`. Each glob
@@ -1978,9 +1979,8 @@ reads as before. The ingest side takes the numbers only as plain
 non-negative numbers; anything else in a foreign sidecar is dropped.
 `dirs` (v44) names the empty directories the output globs matched at
 save (`outputs/dist/empty`, `workspace-outputs/gen/empty` under
-`outputs.workspaceFiles`), and the empty root of a `<dir>/**` glob,
-which the glob itself does not match (`public/uploads` a task made empty
-under `public/uploads/**`): a tar of regular files cannot hold them, and
+`outputs.workspaceFiles`), and an empty directory a literal output
+names (`public/uploads`): a tar of regular files cannot hold them, and
 a hit makes each one, so the tree a hit leaves is the one the miss left.
 A miss's clean removes the empty directories it finds under the outputs
 too, so one an older build left is not saved as this run's, and a hit

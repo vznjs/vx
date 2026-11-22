@@ -4,7 +4,7 @@
 // sandbox with no write grant and an incremental tool that skipped its emit
 // all look like this.
 
-import { lstatSync, readdirSync, statSync } from 'node:fs'
+import { lstatSync, statSync } from 'node:fs'
 import path from 'node:path'
 import { anyTaskGlob, asTrees, isLiteralPattern, splitNegations, taskGlob } from '../util/index.js'
 
@@ -48,8 +48,9 @@ async function matchesAny(
     const prefix = staticPrefix(tree)
     if (prefix !== '' && kept(prefix) && linksToDir(path.join(base, prefix))) return true
     if (prefix !== '' && !exists(path.join(base, prefix))) continue
-    // `dir/**` takes `dir` itself: an empty one is saved, and a hit makes it.
-    if (tree === `${prefix}/**` && kept(prefix) && isEmptyDir(path.join(base, prefix))) return true
+    // `dir/**` left empty matched nothing: the clean keeps the root, so an
+    // empty one is no sign the command wrote. A literal `dir` is required
+    // as itself, and the clean removes it.
     for await (const rel of taskGlob(tree).scan({ ...SCAN, cwd: base })) {
       if (rel !== '' && kept(rel)) return true
     }
@@ -66,17 +67,6 @@ function staticPrefix(glob: string): string {
 function exists(abs: string): boolean {
   try {
     return lstatSync(abs, { throwIfNoEntry: false }) !== undefined
-  } catch {
-    return false
-  }
-}
-
-function isEmptyDir(abs: string): boolean {
-  try {
-    return (
-      lstatSync(abs, { throwIfNoEntry: false })?.isDirectory() === true &&
-      readdirSync(abs).length === 0
-    )
   } catch {
     return false
   }
