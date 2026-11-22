@@ -889,6 +889,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'vx-otel/timeout-option',
     'vx-otel/tls',
     'vx-otel/unknown-options',
+    'vx-reapi/big-inputs',
     'vx-reapi/boolean-options',
     'vx-reapi/cache-ac-refused',
     'vx-reapi/cache-sweep',

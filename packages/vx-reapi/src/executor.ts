@@ -52,6 +52,7 @@ import { execDigestFor } from './cache.js'
 import {
   type ActionResult,
   type Digest,
+  type FileBlob,
   type Directory,
   MAX_TIMER_MS,
   type Operation,
@@ -1061,7 +1062,7 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
       // UI; named before the upload, which is most of that traffic.
       client.nameAction(actionDigest.hash)
       const caps = await untilAborted(capabilitiesOnce(), req.signal)
-      const upload: Blob[] = [
+      const upload: (Blob | FileBlob)[] = [
         ...tree.blobs,
         { digest: commandDigest, data: commandBytes },
         { digest: actionDigest, data: actionBytes },

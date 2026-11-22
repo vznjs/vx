@@ -42,6 +42,7 @@ const SHARDS: readonly (readonly string[])[] = [
     'wire-exec-sweep',
   ],
   [
+    'big-inputs',
     'boolean-options',
     'cache-sweep',
     'capabilities-retry',

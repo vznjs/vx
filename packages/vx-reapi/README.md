@@ -163,6 +163,13 @@ was restored. The input root holds exactly the files the key hashed: core
 keys no package file, so a project's `package.json` is in it only as a
 listed input (`@vzn/vx-lockfile` lists it on every cached task).
 
+A file over 1 MiB is hashed as it streams past and held by path, not its
+bytes: an action's inputs cost a buffer, not their size, while it waits on
+the upload. The upload reads such a file again and refuses it if its bytes
+no longer carry the digest (the task fails, saying which file changed), so
+a rewrite mid-run is never stored under the old digest
+(`tests/big-inputs.test.ts`).
+
 This matters most under `--cache-download=none`, where deferral leaves no
 local cache entry behind, so vx's own probe misses on every later run
 and the record is what makes the second run cheap. Records are checked
