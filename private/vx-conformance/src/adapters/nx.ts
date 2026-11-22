@@ -8,11 +8,14 @@ import { projectDir, type Selector } from '../spec.ts'
 
 /** A project-relative glob as Nx spells it; a `!` stays in front. */
 function rooted(glob: string): string {
+  // An absolute or empty pattern reaches Nx as the user wrote it.
+  if (glob === '' || glob.replace(/^!/, '').startsWith('/')) return glob
   return glob.startsWith('!') ? `!{projectRoot}/${glob.slice(1)}` : `{projectRoot}/${glob}`
 }
 
 /** A workspace-root-relative glob as Nx spells it. */
 function fromRoot(glob: string): string {
+  if (glob === '' || glob.replace(/^!/, '').startsWith('/')) return glob
   return glob.startsWith('!') ? `!{workspaceRoot}/${glob.slice(1)}` : `{workspaceRoot}/${glob}`
 }
 
@@ -91,12 +94,14 @@ export const nx: Adapter = {
       const tasks = Object.entries(p.tasks ?? {})
       const namedInputs = Object.fromEntries(
         tasks
-          .filter(([, spec]) => spec.inputs || spec.rootInputs)
+          .filter(([, spec]) => spec.inputs || spec.rootInputs || spec.runtime)
           .map(([t, spec]) => [
             `${t}-inputs`,
             [
               ...(spec.inputs ? spec.inputs.map(rooted) : ['default']),
               ...(spec.rootInputs ?? []).map(fromRoot),
+              // In the named input, so a dependant's `^<task>-inputs` reaches it too.
+              ...(spec.runtime ?? []).map((r) => ({ runtime: r })),
             ],
           ]),
       )
@@ -108,13 +113,12 @@ export const nx: Adapter = {
             options: { command: command(name, t), cwd: '{projectRoot}' },
             dependsOn: (spec.dependsOn ?? []).map((d) => dependsOn(d, ready)),
             inputs: [
-              spec.inputs || spec.rootInputs ? `${t}-inputs` : 'default',
+              spec.inputs || spec.rootInputs || spec.runtime ? `${t}-inputs` : 'default',
               // A `^` pattern names no one task, so no one named input: the dependencies' files.
               ...(spec.dependencyInputs === false ? [] : (spec.dependsOn ?? []))
                 .filter((d) => d.startsWith('^'))
                 .map((d) => (d.includes('*') ? '^default' : `${d}-inputs`)),
               ...(spec.env ?? []).map((e) => ({ env: e })),
-              ...(spec.runtime ?? []).map((r) => ({ runtime: r })),
             ],
             ...(spec.outputs || spec.rootOutputs
               ? {
@@ -195,11 +199,15 @@ export const nx: Adapter = {
       '--outputStyle=stream',
     ].join(' '),
   ],
-  // Each run rewrites run.json in its cache directory.
+  // Each run rewrites run.json in its cache directory: the shared one under
+  // the home, or the workspace's own `.nx/cache` when Nx does not share it.
   report: async (root) => {
-    const [file] = await Array.fromAsync(
-      new Bun.Glob('.home/.nx/*/cache/run.json').scan({ cwd: root, dot: true }),
+    const found = await Promise.all(
+      ['.nx/cache/run.json', '.home/.nx/*/cache/run.json'].map((g) =>
+        Array.fromAsync(new Bun.Glob(g).scan({ cwd: root, dot: true })),
+      ),
     )
+    const file = found.flat()[0]
     const run = await Bun.file(path.join(root, file!)).json()
     return Object.fromEntries(
       run.tasks.map((t: NxTask) => [

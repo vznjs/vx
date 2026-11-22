@@ -346,6 +346,8 @@ export type Feature =
    * lockfile, packages installed into node_modules and the programs they link.
    */
   | 'package-manager'
+  /** A workspace that is not a git repository: files keyed by reading them. */
+  | 'without-git'
 
 export interface Case {
   /** `category/slug`, unique. */
