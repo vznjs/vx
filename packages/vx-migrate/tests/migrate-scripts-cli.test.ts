@@ -27,15 +27,36 @@ async function bunRepo(): Promise<string> {
   return root
 }
 
-/** What `--no-install` left out: core and @vzn/vx-lockfile from this checkout. */
+/**
+ * What `--no-install` left out: core, linked, and a stand-in
+ * @vzn/vx-lockfile whose plugins give each package its workspace deps
+ * (what a migration installs is adopt.test.ts's subject).
+ */
 async function linkPlugins(root: string): Promise<void> {
-  await mkdir(path.join(root, 'node_modules', '@vzn'), { recursive: true })
-  for (const pkg of ['vx', 'vx-lockfile'])
-    await symlink(
-      path.resolve(import.meta.dir, '..', '..', pkg),
-      path.join(root, 'node_modules', '@vzn', pkg),
-      'dir',
-    )
+  const vzn = path.join(root, 'node_modules', '@vzn')
+  await mkdir(path.join(vzn, 'vx-lockfile'), { recursive: true })
+  const core = path.dirname(path.dirname(Bun.resolveSync('@vzn/vx', import.meta.dir)))
+  await symlink(core, path.join(vzn, 'vx'), 'dir')
+  await writeFile(
+    path.join(vzn, 'vx-lockfile', 'package.json'),
+    JSON.stringify({ name: '@vzn/vx-lockfile', type: 'module', exports: './index.js' }),
+  )
+  await writeFile(
+    path.join(vzn, 'vx-lockfile', 'index.js'),
+    `import { definePlugin } from '@vzn/vx'
+export const bun = () => definePlugin(import.meta, {
+  async discover(ctx) {
+    const pkgs = await Promise.all(ctx.projects.map((p) => Bun.file(p.dir + '/package.json').json().catch(() => ({}))))
+    const dir = new Map(pkgs.map((pkg, i) => [pkg.name, ctx.projects[i].dir]))
+    return ctx.projects.map((p, i) => ({
+      dir: p.dir,
+      deps: Object.keys({ ...pkgs[i].dependencies }).filter((n) => n !== pkgs[i].name && dir.has(n)).map((n) => dir.get(n)),
+    }))
+  },
+})
+export { bun as npm, bun as pnpm, bun as yarn }
+`,
+  )
 }
 
 async function migrate(cwd: string, args: string[]) {
@@ -154,7 +175,6 @@ describe('vx-migrate on package.json scripts', () => {
     const env = { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1' }
     const core = path.resolve(import.meta.dir, '../../vx/src/bin.ts')
     expect(Bun.spawnSync(['git', 'init', '-q'], { cwd: root, env }).exitCode).toBe(0)
-    expect(Bun.spawnSync(['bun', 'install'], { cwd: root, env }).exitCode).toBe(0)
     expect(Bun.spawnSync([process.execPath, core, 'init'], { cwd: root, env }).exitCode).toBe(0)
     const r = await migrate(root, ['--no-install'])
     expect([r.code, r.err]).toEqual([0, ''])
