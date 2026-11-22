@@ -9,6 +9,7 @@ import { existsSync, readdirSync } from 'node:fs'
 import { cp, mkdir, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import type { Adapter } from '../adapter.ts'
+import { harnessNotes } from '../report.ts'
 import { modulesOf, pkgDir } from '../tools.ts'
 import { projectDir, type Selector, type TaskReport } from '../spec.ts'
 
@@ -27,6 +28,9 @@ function moonBin(): string {
 // lockfile in the hash, and node_modules/.bin on a task's PATH. They are
 // WASM plugins moon downloads on first use, which the sandbox cannot.
 const TOOLCHAINS = { javascript: { packageManager: 'bun' }, bun: {} }
+// The harness installs each case's packages; moon installing them again needs
+// the network a case has none of.
+const PIPELINE = { installDependencies: false }
 let fetched: string | undefined
 
 /**
@@ -52,16 +56,47 @@ export async function fetchMoonPlugins(): Promise<void> {
   const proc = Bun.spawnSync([moonBin(), 'setup'], { cwd: ws, env, stdout: 'pipe', stderr: 'pipe' })
   const dir = path.join(home, '.moon', 'plugins', 'toolchains')
   const have = existsSync(dir) ? readdirSync(dir) : []
-  if (
-    proc.exitCode === 0 &&
-    ['javascript', 'bun'].every((t) => have.some((f) => f.startsWith(t)))
-  ) {
+  const plugins =
+    proc.exitCode === 0 && ['javascript', 'bun'].every((t) => have.some((f) => f.startsWith(t)))
+  // A task run as a case runs it, with the plugins and no network: moon on them
+  // failing every case is the harness's failure, not moon's.
+  const smoke = plugins ? await smokeRun(ws, env) : undefined
+  if (plugins && smoke === undefined) {
     fetched = home
     return
   }
-  console.warn(
-    `conformance: moon fetched no toolchain plugins (exit ${proc.exitCode}, found ${have.join(' ') || 'none'}); moon runs without them\n${proc.stdout.toString()}${proc.stderr.toString()}`,
+  const note = plugins
+    ? `moon with its toolchain plugins failed a task offline, so it runs without them:\n${smoke}`
+    : `moon fetched no toolchain plugins (exit ${proc.exitCode}, found ${have.join(' ') || 'none'}), so it runs without them:\n${proc.stdout.toString()}${proc.stderr.toString()}`
+  harnessNotes.push(note)
+  console.warn(`conformance: ${note}`)
+}
+
+/** moon's output when a trivial task fails under the plugins without network, else undefined. */
+async function smokeRun(
+  ws: string,
+  env: Record<string, string | undefined>,
+): Promise<string | undefined> {
+  await writeFile(
+    path.join(ws, '.moon', 'workspace.yml'),
+    JSON.stringify({ projects: { fetch: '.' }, telemetry: false, pipeline: PIPELINE }),
   )
+  await writeFile(
+    path.join(ws, 'moon.yml'),
+    JSON.stringify({
+      toolchains: { default: ['javascript', 'bun'] },
+      tasks: { t: { command: 'echo ok' } },
+    }),
+  )
+  const bwrap = Bun.which('bwrap')
+  const run = [moonBin(), 'run', 'fetch:t']
+  const proc = Bun.spawnSync(
+    bwrap === null ? run : [bwrap, '--dev-bind', '/', '/', '--unshare-net', '--', ...run],
+    { cwd: ws, env, stdout: 'pipe', stderr: 'pipe' },
+  )
+  return proc.exitCode === 0
+    ? undefined
+    : `exit ${proc.exitCode}\n${proc.stdout.toString()}${proc.stderr.toString()}`
 }
 
 /** A project-relative glob as moon spells a workspace-relative one: a leading `/`, after any `!`. */
@@ -150,6 +185,7 @@ export const moon: Adapter = {
           ),
           vcs: { client: 'git', defaultBranch: 'main' },
           telemetry: false,
+          ...(fetched !== undefined ? { pipeline: PIPELINE } : {}),
         },
         null,
         2,

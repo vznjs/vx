@@ -18,6 +18,7 @@ import { ADAPTERS } from './adapters/index.ts'
 import { runCase, type Outcome } from './harness.ts'
 import {
   coverage,
+  harnessNotes,
   ref,
   scores,
   scoreTable,
@@ -100,6 +101,7 @@ const rows = cases.map((c) => ({
 }))
 const results: Results = {
   coverage: coverage(cases),
+  ...(harnessNotes.length > 0 ? { notes: harnessNotes } : {}),
   tools: Object.fromEntries(
     await Promise.all(tools.map(async (t) => [t.name, await toolVersion(t)] as const)),
   ),

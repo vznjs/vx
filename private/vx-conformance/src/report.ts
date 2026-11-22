@@ -38,8 +38,13 @@ export interface Score {
   of: number
 }
 
+/** What the harness had to fall back on this run (a tool set up without a part), for whoever reads the results. */
+export const harnessNotes: string[] = []
+
 export interface Results {
   coverage: Coverage
+  /** {@link harnessNotes}, when there are any. */
+  notes?: string[]
   /** Tool → version. */
   tools: Record<string, string>
   /** Tool → `all`, each kind and each category → its score. */
@@ -142,8 +147,10 @@ export function mergeResults(parts: Results[], order: string[]): Results {
   const at = new Map(order.map((id, i) => [id, i]))
   const cases = [...rows.values()].sort((a, b) => (at.get(a.id) ?? 0) - (at.get(b.id) ?? 0))
   const tools = Object.assign({}, ...parts.map((p) => p.tools)) as Results['tools']
+  const notes = parts.flatMap((p) => p.notes ?? [])
   return {
     coverage: parts[0]!.coverage,
+    ...(notes.length > 0 ? { notes } : {}),
     tools,
     scores: scores(Object.keys(tools), cases),
     cases,

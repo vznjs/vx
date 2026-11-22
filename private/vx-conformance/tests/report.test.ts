@@ -70,4 +70,11 @@ test('shards merge into one run, each case in the suite order with every tool', 
   expect(merged.cases.map((c) => c.id)).toEqual(['inputs/x', 'report/y'])
   expect(merged.cases.map((c) => c.outcomes)).toEqual(rows.map((r) => r.outcomes))
   expect(merged.scores).toEqual(scores(['b', 'a'], rows))
+  expect(merged.notes).toBeUndefined()
+  // What a shard's harness fell back on reaches the merged run.
+  const noted = mergeResults(
+    [{ ...part('a', ['inputs/x']), notes: ['moon ran without x'] }, part('b', ['inputs/x'])],
+    ['inputs/x'],
+  )
+  expect(noted.notes).toEqual(['moon ran without x'])
 })

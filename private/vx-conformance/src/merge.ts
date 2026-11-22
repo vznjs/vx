@@ -16,6 +16,7 @@ const results = mergeResults(
   parts,
   CASES.map((c) => c.id),
 )
+for (const n of results.notes ?? []) console.error(`conformance: ${n}`)
 console.log(scoreTable(results))
 await Bun.write(out, JSON.stringify(results, null, 2) + '\n')
 if (vxFailures(results.cases)) process.exit(1)
