@@ -303,7 +303,7 @@ export function invocationCommand(line: readonly string[] | string): string {
  * The bounds the CLI and workspace config already hold, enforced at the façade:
  * a `concurrency` of 0 or NaN left no slot and the run waited forever; a NaN
  * `retries` retried without end; a `timeout` of 0, NaN or out of range killed
- * every task. A misspelled `continueMode` silently lost fail-fast; wrong-typed
+ * every task. A wrong-typed `failFast` silently lost fail-fast; wrong-typed
  * `excludeDependencies`, `projects` or `signal` failed inside the run.
  */
 function refuseRunOptions(options: CoreRunOptions): void {
@@ -335,7 +335,6 @@ function refuseRunOptions(options: CoreRunOptions): void {
     if (value !== undefined && !words.includes(value as string))
       refuse(name, value, `one of ${words.map((w) => `'${w}'`).join(', ')}`)
   }
-  oneOf('continueMode', options.continueMode, ['never', 'deps-ok', 'always'])
   oneOf('outputLogs', options.outputLogs, ['full', 'errors-only', 'none', 'hash-only'])
   oneOf('download', options.download, ['all', 'toplevel', 'none'])
   oneOf('flow', options.flow, ['focused', 'broad'])
@@ -348,6 +347,8 @@ function refuseRunOptions(options: CoreRunOptions): void {
   const exclude = options.excludeDependencies
   if (exclude !== undefined && exclude !== 'all' && !names(exclude))
     refuse('excludeDependencies', exclude, "'all' or an array of task names")
+  if (options.failFast !== undefined && typeof options.failFast !== 'boolean')
+    refuse('failFast', options.failFast, 'true or false')
   if (options.signal !== undefined && !(options.signal instanceof AbortSignal))
     refuse('signal', options.signal, 'an AbortSignal')
   const { concurrency, retries, timeout } = options
@@ -1231,9 +1232,9 @@ async function runOnBus(
       }
     }
 
-    // Whether this task runs behind a failure (`continueMode: 'always'`) or on
-    // the key of a dep `--exclude-dependencies` kept from running: its save is
-    // withheld and the taint propagates (admission.ts).
+    // Whether this task runs on the key of a dep `--exclude-dependencies`
+    // kept from running: its save is withheld and the taint propagates
+    // (admission.ts).
     const excluded = excludedTaint(nodes)
     if (excluded.unsaved > 0) {
       warnOf(log)(
@@ -1246,15 +1247,12 @@ async function runOnBus(
       const child = persistentRegistry.get(id)
       return child !== undefined && hasEnded(child) && child.exitCode !== 0
     }
-    // Under `always`, a task starting while a server it depends on is dead runs
-    // on a failure the outcomes do not hold yet (the server's says `success`
-    // until the end), so it is seeded at dispatch. `serverDiedUnder` seeds a
-    // death during the task, as does a leftover process (`leftRunning`).
+    // `serverDiedUnder` seeds a server's death during a task, as does a
+    // leftover process (`leftRunning`).
     const taintSeeds = new Set(excluded.seeds)
     const hasServers = [...nodes.values()].some((n) => n.config.exec?.persistent !== undefined)
-    const continueAlways = options.continueMode === 'always'
-    let taint = taintTracker(continueAlways, taintSeeds, nodes, hasServers)
-    let taintOn = continueAlways || taintSeeds.size > 0 || hasServers
+    let taint = taintTracker(taintSeeds, nodes, hasServers)
+    let taintOn = taintSeeds.size > 0 || hasServers
     // Each task that ran tainted, and the task at the root of it: its
     // outcome's `taintedBy` once it finishes.
     const taintedRan = new Map<string, string>()
@@ -1266,8 +1264,10 @@ async function runOnBus(
       telemetry === undefined ? undefined : createMissExplainer(indexDb(prepared.localCache))
     const lateProbes = probesAfterWrites(nodes, workspaceRoot)
     // The scheduler's fail-fast stop, as the retry loop of a task already
-    // in flight sees it.
+    // in flight sees it. Under `--fail-fast` it is also each attempt's stop:
+    // what it kills ends `aborted`, never cached.
     const failFast = new AbortController()
+    let failFastKill: Promise<void> | undefined
     // Tasks a plugin's shared record names flaky (`ctx.flaky`).
     const sharedFlaky = new Set<string>()
     const scope: RunContext = {
@@ -1297,7 +1297,8 @@ async function runOnBus(
       commandWindows: windows,
       keyedTasks,
       projectTasks: projectTasksOf(prepared.projects),
-      stopSignal: stop.signal,
+      stopSignal:
+        options.failFast === true ? AbortSignal.any([stop.signal, failFast.signal]) : stop.signal,
       failFast: failFast.signal,
       inputStability,
       serverReady: (id) => void sinceReady.set(id, []),
@@ -1329,7 +1330,7 @@ async function runOnBus(
       // the task settles, so every outcome a dependent's judge reads is
       // recorded by the tracker made here.
       if (!taintOn) {
-        taint = taintTracker(continueAlways, taintSeeds, nodes, true)
+        taint = taintTracker(taintSeeds, nodes, true)
         taintOn = true
       }
       taintSeeds.add(node.id)
@@ -1384,16 +1385,8 @@ async function runOnBus(
       upstream: TaskOutcome[],
       reuseProbe = true,
     ): ExecuteArgs => {
-      let deadServer: string | undefined
-      if (options.continueMode === 'always') {
-        for (const d of node.deps) {
-          deadServer = deadServerBehind(nodes, serverDied, d)
-          if (deadServer !== undefined) break
-        }
-        if (deadServer !== undefined) taintSeeds.add(node.id)
-      }
       const tainted = taint.judge(node, upstream)
-      if (tainted) taintedRan.set(node.id, deadServer ?? taint.cause(node, upstream))
+      if (tainted) taintedRan.set(node.id, taint.cause(node, upstream))
       const a = argsOf(node, upstream, reuseProbe, tainted)
       keyedTasks.dispatched(a)
       return a
@@ -1635,9 +1628,14 @@ async function runOnBus(
       ...(hasPooledExecutor(executors) ? { poolOf: poolOfPlacement(placements) } : {}),
       ...(admit !== undefined ? { admit } : {}),
       ...(holders.size > 0 ? { exclusive: holders } : {}),
-      ...(options.continueMode !== undefined ? { continueMode: options.continueMode } : {}),
+      ...(options.failFast === true ? { failFast: true } : {}),
       serverDied,
-      onFailFast: () => failFast.abort(),
+      onFailFast: () => {
+        failFast.abort()
+        // The tasks still running, not the servers: those go at the run's
+        // end, as after any failure.
+        failFastKill = terminateChildren(() => [...liveChildren])
+      },
       signal: stop.signal,
       onStart: (node) => {
         // A platform skip never starts, like a skip blocked upstream: its
@@ -1710,7 +1708,7 @@ async function runOnBus(
       },
       // An unkeyed group runs nothing, and a restore-tier hit whose tree is
       // current restores nothing: settled in place, unless a taint may ride it.
-      ...(options.continueMode !== 'always' && taintSeeds.size === 0
+      ...(taintSeeds.size === 0
         ? {
             settleNow: (node: TaskNode, upstream: TaskOutcome[]) => {
               const skip = platformSkip(node)
@@ -1752,6 +1750,8 @@ async function runOnBus(
           }
         : {}),
     })
+    // A child of a killed task's group may outlive its leader: reaped first.
+    await failFastKill
     // What is still coming to this machine is the run's too: it ends with
     // every file here, as a run that waited for each did.
     await trailing.settle()
@@ -1792,7 +1792,6 @@ async function runOnBus(
       keep: foreground || hold,
       hold,
       keyed: keyedHeld,
-      continueAlways: options.continueMode === 'always',
       endedBeforeStop: stop.endedBeforeStop,
     })
     // A `setup` hook may have written: what was stat'ed before it proves no hit.

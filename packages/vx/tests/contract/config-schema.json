@@ -15,7 +15,7 @@
       ],
       "run": [
         "concurrency",
-        "continue",
+        "failFast",
         "killGrace",
         "logs",
         "pluginTimeout",
@@ -48,10 +48,10 @@
         "cacheDownload",
         "cachePolicy",
         "concurrency",
-        "continue",
         "dry",
         "env",
         "excludeDependencies",
+        "failFast",
         "filter",
         "force",
         "noCache",
@@ -99,7 +99,7 @@
       },
       "run": {
         "ok": ["<absent>", "{}", "<seed>"],
-        "$CONFIG: `run` must be an object (fields: concurrency, schedule, timeout, retries, continue, killGrace, pluginTimeout, logs, secrets, rules)": [
+        "$CONFIG: `run` must be an object (fields: concurrency, schedule, timeout, retries, failFast, killGrace, pluginTimeout, logs, secrets, rules)": [
           "null",
           "true",
           "false",
@@ -130,7 +130,7 @@
           "[\"A=B\"]",
           "[\"A*\"]"
         ],
-        "$CONFIG: `run` has unknown field \"x\" (allowed: concurrency, continue, killGrace, logs, pluginTimeout, retries, rules, schedule, secrets, timeout)": [
+        "$CONFIG: `run` has unknown field \"x\" (allowed: concurrency, failFast, killGrace, logs, pluginTimeout, retries, rules, schedule, secrets, timeout)": [
           "{\"x\":\"y\"}"
         ]
       },
@@ -445,81 +445,37 @@
           "{\"x\":\"y\"}"
         ]
       },
-      "run.continue": {
-        "ok": ["<absent>", "\"deps-ok\""],
-        "$CONFIG: `run.continue` must be one of 'never', 'deps-ok', 'always' (got null)": ["null"],
-        "$CONFIG: `run.continue` must be one of 'never', 'deps-ok', 'always' (got true)": ["true"],
-        "$CONFIG: `run.continue` must be one of 'never', 'deps-ok', 'always' (got false)": [
-          "false"
-        ],
-        "$CONFIG: `run.continue` must be one of 'never', 'deps-ok', 'always' (got 0)": ["0"],
-        "$CONFIG: `run.continue` must be one of 'never', 'deps-ok', 'always' (got 1)": ["1"],
-        "$CONFIG: `run.continue` must be one of 'never', 'deps-ok', 'always' (got 1.5)": ["1.5"],
-        "$CONFIG: `run.continue` must be one of 'never', 'deps-ok', 'always' (got -1)": ["-1"],
-        "$CONFIG: `run.continue` must be one of 'never', 'deps-ok', 'always' (got 65536)": [
-          "65536"
-        ],
-        "$CONFIG: `run.continue` must be one of 'never', 'deps-ok', 'always' (got 2147483648)": [
-          "2147483648"
-        ],
-        "$CONFIG: `run.continue` must be one of 'never', 'deps-ok', 'always' (got \"\")": ["\"\""],
-        "$CONFIG: `run.continue` must be one of 'never', 'deps-ok', 'always' (got \"x\")": [
-          "\"x\""
-        ],
-        "$CONFIG: `run.continue` must be one of 'never', 'deps-ok', 'always' (got \"(\")": [
-          "\"(\""
-        ],
-        "$CONFIG: `run.continue` must be one of 'never', 'deps-ok', 'always' (got \"30d\")": [
-          "\"30d\""
-        ],
-        "$CONFIG: `run.continue` must be one of 'never', 'deps-ok', 'always' (got \"10G\")": [
-          "\"10G\""
-        ],
-        "$CONFIG: `run.continue` must be one of 'never', 'deps-ok', 'always' (got \"10\")": [
-          "\"10\""
-        ],
-        "$CONFIG: `run.continue` must be one of 'never', 'deps-ok', 'always' (got [])": ["[]"],
-        "$CONFIG: `run.continue` must be one of 'never', 'deps-ok', 'always' (got [\"x\"])": [
-          "[\"x\"]"
-        ],
-        "$CONFIG: `run.continue` must be one of 'never', 'deps-ok', 'always' (got [\"\"])": [
-          "[\"\"]"
-        ],
-        "$CONFIG: `run.continue` must be one of 'never', 'deps-ok', 'always' (got [1])": ["[1]"],
-        "$CONFIG: `run.continue` must be one of 'never', 'deps-ok', 'always' (got [3000])": [
-          "[3000]"
-        ],
-        "$CONFIG: `run.continue` must be one of 'never', 'deps-ok', 'always' (got [\"/x\"])": [
-          "[\"/x\"]"
-        ],
-        "$CONFIG: `run.continue` must be one of 'never', 'deps-ok', 'always' (got [\"!/x\"])": [
-          "[\"!/x\"]"
-        ],
-        "$CONFIG: `run.continue` must be one of 'never', 'deps-ok', 'always' (got [\"../x\"])": [
-          "[\"../x\"]"
-        ],
-        "$CONFIG: `run.continue` must be one of 'never', 'deps-ok', 'always' (got [\"!x\"])": [
-          "[\"!x\"]"
-        ],
-        "$CONFIG: `run.continue` must be one of 'never', 'deps-ok', 'always' (got [\"!!x\",\"y\"])": [
-          "[\"!!x\",\"y\"]"
-        ],
-        "$CONFIG: `run.continue` must be one of 'never', 'deps-ok', 'always' (got [\".\"])": [
-          "[\".\"]"
-        ],
-        "$CONFIG: `run.continue` must be one of 'never', 'deps-ok', 'always' (got [\"**\"])": [
-          "[\"**\"]"
-        ],
-        "$CONFIG: `run.continue` must be one of 'never', 'deps-ok', 'always' (got [\"A=B\"])": [
-          "[\"A=B\"]"
-        ],
-        "$CONFIG: `run.continue` must be one of 'never', 'deps-ok', 'always' (got [\"A*\"])": [
-          "[\"A*\"]"
-        ],
-        "$CONFIG: `run.continue` must be one of 'never', 'deps-ok', 'always' (got {})": ["{}"],
-        "$CONFIG: `run.continue` must be one of 'never', 'deps-ok', 'always' (got {\"x\":\"y\"})": [
-          "{\"x\":\"y\"}"
-        ]
+      "run.failFast": {
+        "ok": ["<absent>", "true", "false"],
+        "$CONFIG: `run.failFast` must be true or false (got null)": ["null"],
+        "$CONFIG: `run.failFast` must be true or false (got 0)": ["0"],
+        "$CONFIG: `run.failFast` must be true or false (got 1)": ["1"],
+        "$CONFIG: `run.failFast` must be true or false (got 1.5)": ["1.5"],
+        "$CONFIG: `run.failFast` must be true or false (got -1)": ["-1"],
+        "$CONFIG: `run.failFast` must be true or false (got 65536)": ["65536"],
+        "$CONFIG: `run.failFast` must be true or false (got 2147483648)": ["2147483648"],
+        "$CONFIG: `run.failFast` must be true or false (got \"\")": ["\"\""],
+        "$CONFIG: `run.failFast` must be true or false (got \"x\")": ["\"x\""],
+        "$CONFIG: `run.failFast` must be true or false (got \"(\")": ["\"(\""],
+        "$CONFIG: `run.failFast` must be true or false (got \"30d\")": ["\"30d\""],
+        "$CONFIG: `run.failFast` must be true or false (got \"10G\")": ["\"10G\""],
+        "$CONFIG: `run.failFast` must be true or false (got \"10\")": ["\"10\""],
+        "$CONFIG: `run.failFast` must be true or false (got [])": ["[]"],
+        "$CONFIG: `run.failFast` must be true or false (got [\"x\"])": ["[\"x\"]"],
+        "$CONFIG: `run.failFast` must be true or false (got [\"\"])": ["[\"\"]"],
+        "$CONFIG: `run.failFast` must be true or false (got [1])": ["[1]"],
+        "$CONFIG: `run.failFast` must be true or false (got [3000])": ["[3000]"],
+        "$CONFIG: `run.failFast` must be true or false (got [\"/x\"])": ["[\"/x\"]"],
+        "$CONFIG: `run.failFast` must be true or false (got [\"!/x\"])": ["[\"!/x\"]"],
+        "$CONFIG: `run.failFast` must be true or false (got [\"../x\"])": ["[\"../x\"]"],
+        "$CONFIG: `run.failFast` must be true or false (got [\"!x\"])": ["[\"!x\"]"],
+        "$CONFIG: `run.failFast` must be true or false (got [\"!!x\",\"y\"])": ["[\"!!x\",\"y\"]"],
+        "$CONFIG: `run.failFast` must be true or false (got [\".\"])": ["[\".\"]"],
+        "$CONFIG: `run.failFast` must be true or false (got [\"**\"])": ["[\"**\"]"],
+        "$CONFIG: `run.failFast` must be true or false (got [\"A=B\"])": ["[\"A=B\"]"],
+        "$CONFIG: `run.failFast` must be true or false (got [\"A*\"])": ["[\"A*\"]"],
+        "$CONFIG: `run.failFast` must be true or false (got {})": ["{}"],
+        "$CONFIG: `run.failFast` must be true or false (got {\"x\":\"y\"})": ["{\"x\":\"y\"}"]
       },
       "run.killGrace": {
         "ok": ["<absent>", "\"2s\""],
@@ -2782,7 +2738,7 @@
         "$CONFIG: `pipelines.pr.tasks` must be a non-empty array of task names, like ['lint', 'test']": [
           "{}"
         ],
-        "$CONFIG: `pipelines.pr` has unknown field \"x\" (allowed: affected, branch, cacheConcurrencyDownload, cacheConcurrencyRestore, cacheConcurrencyUpload, cacheDir, cacheDownload, cachePolicy, concurrency, continue, dry, env, excludeDependencies, filter, force, noCache, outputLogs, profile, retries, schedule, tasks, timeout, verbosity)": [
+        "$CONFIG: `pipelines.pr` has unknown field \"x\" (allowed: affected, branch, cacheConcurrencyDownload, cacheConcurrencyRestore, cacheConcurrencyUpload, cacheDir, cacheDownload, cachePolicy, concurrency, dry, env, excludeDependencies, failFast, filter, force, noCache, outputLogs, profile, retries, schedule, tasks, timeout, verbosity)": [
           "{\"x\":\"y\"}"
         ]
       },
@@ -3387,99 +3343,39 @@
           "{\"x\":\"y\"}"
         ]
       },
-      "pipelines.*.continue": {
-        "ok": ["<absent>", "\"always\""],
-        "$CONFIG: `pipelines.pr.continue` must be one of 'never', 'deps-ok', 'always' (got null)": [
-          "null"
-        ],
-        "$CONFIG: `pipelines.pr.continue` must be one of 'never', 'deps-ok', 'always' (got true)": [
-          "true"
-        ],
-        "$CONFIG: `pipelines.pr.continue` must be one of 'never', 'deps-ok', 'always' (got false)": [
-          "false"
-        ],
-        "$CONFIG: `pipelines.pr.continue` must be one of 'never', 'deps-ok', 'always' (got 0)": [
-          "0"
-        ],
-        "$CONFIG: `pipelines.pr.continue` must be one of 'never', 'deps-ok', 'always' (got 1)": [
-          "1"
-        ],
-        "$CONFIG: `pipelines.pr.continue` must be one of 'never', 'deps-ok', 'always' (got 1.5)": [
-          "1.5"
-        ],
-        "$CONFIG: `pipelines.pr.continue` must be one of 'never', 'deps-ok', 'always' (got -1)": [
-          "-1"
-        ],
-        "$CONFIG: `pipelines.pr.continue` must be one of 'never', 'deps-ok', 'always' (got 65536)": [
-          "65536"
-        ],
-        "$CONFIG: `pipelines.pr.continue` must be one of 'never', 'deps-ok', 'always' (got 2147483648)": [
-          "2147483648"
-        ],
-        "$CONFIG: `pipelines.pr.continue` must be one of 'never', 'deps-ok', 'always' (got \"\")": [
-          "\"\""
-        ],
-        "$CONFIG: `pipelines.pr.continue` must be one of 'never', 'deps-ok', 'always' (got \"x\")": [
-          "\"x\""
-        ],
-        "$CONFIG: `pipelines.pr.continue` must be one of 'never', 'deps-ok', 'always' (got \"(\")": [
-          "\"(\""
-        ],
-        "$CONFIG: `pipelines.pr.continue` must be one of 'never', 'deps-ok', 'always' (got \"30d\")": [
-          "\"30d\""
-        ],
-        "$CONFIG: `pipelines.pr.continue` must be one of 'never', 'deps-ok', 'always' (got \"10G\")": [
-          "\"10G\""
-        ],
-        "$CONFIG: `pipelines.pr.continue` must be one of 'never', 'deps-ok', 'always' (got \"10\")": [
-          "\"10\""
-        ],
-        "$CONFIG: `pipelines.pr.continue` must be one of 'never', 'deps-ok', 'always' (got [])": [
-          "[]"
-        ],
-        "$CONFIG: `pipelines.pr.continue` must be one of 'never', 'deps-ok', 'always' (got [\"x\"])": [
-          "[\"x\"]"
-        ],
-        "$CONFIG: `pipelines.pr.continue` must be one of 'never', 'deps-ok', 'always' (got [\"\"])": [
-          "[\"\"]"
-        ],
-        "$CONFIG: `pipelines.pr.continue` must be one of 'never', 'deps-ok', 'always' (got [1])": [
-          "[1]"
-        ],
-        "$CONFIG: `pipelines.pr.continue` must be one of 'never', 'deps-ok', 'always' (got [3000])": [
-          "[3000]"
-        ],
-        "$CONFIG: `pipelines.pr.continue` must be one of 'never', 'deps-ok', 'always' (got [\"/x\"])": [
-          "[\"/x\"]"
-        ],
-        "$CONFIG: `pipelines.pr.continue` must be one of 'never', 'deps-ok', 'always' (got [\"!/x\"])": [
-          "[\"!/x\"]"
-        ],
-        "$CONFIG: `pipelines.pr.continue` must be one of 'never', 'deps-ok', 'always' (got [\"../x\"])": [
-          "[\"../x\"]"
-        ],
-        "$CONFIG: `pipelines.pr.continue` must be one of 'never', 'deps-ok', 'always' (got [\"!x\"])": [
-          "[\"!x\"]"
-        ],
-        "$CONFIG: `pipelines.pr.continue` must be one of 'never', 'deps-ok', 'always' (got [\"!!x\",\"y\"])": [
+      "pipelines.*.failFast": {
+        "ok": ["<absent>", "true", "false"],
+        "$CONFIG: `pipelines.pr.failFast` must be true or false (got null)": ["null"],
+        "$CONFIG: `pipelines.pr.failFast` must be true or false (got 0)": ["0"],
+        "$CONFIG: `pipelines.pr.failFast` must be true or false (got 1)": ["1"],
+        "$CONFIG: `pipelines.pr.failFast` must be true or false (got 1.5)": ["1.5"],
+        "$CONFIG: `pipelines.pr.failFast` must be true or false (got -1)": ["-1"],
+        "$CONFIG: `pipelines.pr.failFast` must be true or false (got 65536)": ["65536"],
+        "$CONFIG: `pipelines.pr.failFast` must be true or false (got 2147483648)": ["2147483648"],
+        "$CONFIG: `pipelines.pr.failFast` must be true or false (got \"\")": ["\"\""],
+        "$CONFIG: `pipelines.pr.failFast` must be true or false (got \"x\")": ["\"x\""],
+        "$CONFIG: `pipelines.pr.failFast` must be true or false (got \"(\")": ["\"(\""],
+        "$CONFIG: `pipelines.pr.failFast` must be true or false (got \"30d\")": ["\"30d\""],
+        "$CONFIG: `pipelines.pr.failFast` must be true or false (got \"10G\")": ["\"10G\""],
+        "$CONFIG: `pipelines.pr.failFast` must be true or false (got \"10\")": ["\"10\""],
+        "$CONFIG: `pipelines.pr.failFast` must be true or false (got [])": ["[]"],
+        "$CONFIG: `pipelines.pr.failFast` must be true or false (got [\"x\"])": ["[\"x\"]"],
+        "$CONFIG: `pipelines.pr.failFast` must be true or false (got [\"\"])": ["[\"\"]"],
+        "$CONFIG: `pipelines.pr.failFast` must be true or false (got [1])": ["[1]"],
+        "$CONFIG: `pipelines.pr.failFast` must be true or false (got [3000])": ["[3000]"],
+        "$CONFIG: `pipelines.pr.failFast` must be true or false (got [\"/x\"])": ["[\"/x\"]"],
+        "$CONFIG: `pipelines.pr.failFast` must be true or false (got [\"!/x\"])": ["[\"!/x\"]"],
+        "$CONFIG: `pipelines.pr.failFast` must be true or false (got [\"../x\"])": ["[\"../x\"]"],
+        "$CONFIG: `pipelines.pr.failFast` must be true or false (got [\"!x\"])": ["[\"!x\"]"],
+        "$CONFIG: `pipelines.pr.failFast` must be true or false (got [\"!!x\",\"y\"])": [
           "[\"!!x\",\"y\"]"
         ],
-        "$CONFIG: `pipelines.pr.continue` must be one of 'never', 'deps-ok', 'always' (got [\".\"])": [
-          "[\".\"]"
-        ],
-        "$CONFIG: `pipelines.pr.continue` must be one of 'never', 'deps-ok', 'always' (got [\"**\"])": [
-          "[\"**\"]"
-        ],
-        "$CONFIG: `pipelines.pr.continue` must be one of 'never', 'deps-ok', 'always' (got [\"A=B\"])": [
-          "[\"A=B\"]"
-        ],
-        "$CONFIG: `pipelines.pr.continue` must be one of 'never', 'deps-ok', 'always' (got [\"A*\"])": [
-          "[\"A*\"]"
-        ],
-        "$CONFIG: `pipelines.pr.continue` must be one of 'never', 'deps-ok', 'always' (got {})": [
-          "{}"
-        ],
-        "$CONFIG: `pipelines.pr.continue` must be one of 'never', 'deps-ok', 'always' (got {\"x\":\"y\"})": [
+        "$CONFIG: `pipelines.pr.failFast` must be true or false (got [\".\"])": ["[\".\"]"],
+        "$CONFIG: `pipelines.pr.failFast` must be true or false (got [\"**\"])": ["[\"**\"]"],
+        "$CONFIG: `pipelines.pr.failFast` must be true or false (got [\"A=B\"])": ["[\"A=B\"]"],
+        "$CONFIG: `pipelines.pr.failFast` must be true or false (got [\"A*\"])": ["[\"A*\"]"],
+        "$CONFIG: `pipelines.pr.failFast` must be true or false (got {})": ["{}"],
+        "$CONFIG: `pipelines.pr.failFast` must be true or false (got {\"x\":\"y\"})": [
           "{\"x\":\"y\"}"
         ]
       },

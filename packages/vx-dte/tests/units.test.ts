@@ -1248,7 +1248,7 @@ it('pumps a long queue in time that does not grow with its upstreams', async () 
 })
 
 // Core withdraws a task the executor holds for a machine (`running` answers
-// `null`) when `--continue=never` trips. One still sharing its dependencies
+// `null`) when `--fail-fast` trips. One still sharing its dependencies
 // answered `undefined`, so it was kept, and sent once they were shared
 // (2026-11-06).
 it('holds a task for a machine from the moment core hands it over, and a stop then sends it nowhere', async () => {

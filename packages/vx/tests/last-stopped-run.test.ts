@@ -17,7 +17,7 @@ const vx = (...args: string[]) => {
 const stopAfterSlowStarts = async (...tasks: string[]): Promise<void> => {
   const pid = path.join(dir, 'pid.txt')
   await rm(pid, { force: true })
-  const proc = Bun.spawn([process.execPath, BIN, 'run', ...tasks, '--continue'], {
+  const proc = Bun.spawn([process.execPath, BIN, 'run', ...tasks], {
     cwd: root,
     stdout: 'pipe',
     stderr: 'pipe',

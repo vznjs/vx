@@ -147,7 +147,7 @@ function genWorkspace(r: R): Obj {
         schedule: maybe(r, () => pick(r, ['most-work', 'critical-path'])),
         timeout: maybe(r, () => pick(r, ['1s', `${MAX_TIMEOUT_MS}ms`])),
         retries: maybe(r, () => pick(r, [0, 2])),
-        continue: maybe(r, () => pick(r, ['never', 'always'])),
+        failFast: maybe(r, () => chance(r)),
         rules: maybe(r, () =>
           fields({
             exclusiveOutputs: maybe(r, () => chance(r)),

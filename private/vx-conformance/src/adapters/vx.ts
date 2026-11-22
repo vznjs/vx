@@ -29,6 +29,8 @@ export const vx: Adapter = {
   lacks: {
     'dependency-bin':
       'vx runs the tools the machine has and installs none, so no task puts programs on its dependants’ PATH.',
+    continue:
+      'Nothing runs on a failed dependency: a failure skips its dependents, and `--fail-fast` stops the run.',
   },
   env: { NO_COLOR: '1' },
   installed: [[VX, 'lock']],
@@ -133,7 +135,7 @@ export const vx: Adapter = {
         : ['--all']),
     ...(opts.only ? ['--exclude-dependencies'] : []),
     ...(opts.concurrency !== undefined ? [`--concurrency=${opts.concurrency}`] : []),
-    ...(opts.continue ? ['--continue'] : []),
+    ...(opts.failFast ? ['--fail-fast'] : []),
     ...(opts.force ? ['--force'] : []),
     ...(opts.readOnlyCache ? ['--cache-policy=local:r'] : []),
     ...(opts.dry ? ['--dry'] : []),

@@ -488,17 +488,6 @@ describe('Turbo parity — failures, output and reports', () => {
   )
 
   it(
-    '`--continue` runs dependents past a failure; the run is still red',
-    async () => {
-      const r = await summarized(root, ['lib#after', '--continue'])
-      expect(r.code).toBe(1)
-      expect(r.tasks.get('lib#fail')?.['status']).toBe('failed')
-      expect(r.tasks.get('lib#after')?.['status']).toBe('success')
-    },
-    TIMEOUT,
-  )
-
-  it(
     'a failed task is never a cache hit next time (Turbo caches successes only)',
     async () => {
       await vx(root, ['run', 'lib#fail'])

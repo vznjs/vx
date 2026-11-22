@@ -79,65 +79,31 @@ describe('exec.platforms', () => {
   // A start with no run behind it opened a single task's live frame
   // (`┌─ … $ cmd`) that nothing closed, above the skip's row. A skip
   // blocked upstream never starts either; observers already expect that.
-  for (const continueMode of [undefined, 'always'] as const) {
-    it(`starts no task it skips off its platforms (continue=${continueMode ?? 'default'})`, async () => {
-      const dir = await addProject(root, 'app', CONFIG)
-      const events: string[] = []
-      await run({
-        cwd: dir,
-        tasks: ['other'],
-        ...(continueMode !== undefined ? { continueMode } : {}),
-        log: {
-          ...logger([]),
-          taskStart: (n) => void events.push(`start ${n.id}`),
-          taskComplete: (n, o) => void events.push(`${o.status} ${n.id}`),
-        },
-      })
-      expect(events).toEqual(['skipped app#other'])
-    })
-  }
-
-  // `--continue=always` runs a FAILURE's dependants; a platform skip is no
-  // failure, and its dependant ran with nothing beneath it and turned the
-  // run red.
-  it('skips the dependants under --continue=always too', async () => {
+  it('starts no task it skips off its platforms', async () => {
     const dir = await addProject(root, 'app', CONFIG)
-    const r = await run({
+    const events: string[] = []
+    await run({
       cwd: dir,
-      tasks: ['after', 'here'],
-      continueMode: 'always',
-      log: logger([]),
+      tasks: ['other'],
+      log: {
+        ...logger([]),
+        taskStart: (n) => void events.push(`start ${n.id}`),
+        taskComplete: (n, o) => void events.push(`${o.status} ${n.id}`),
+      },
     })
+    expect(events).toEqual(['skipped app#other'])
+  })
+
+  // A platform skip is no failure: its dependant skips with it, naming it,
+  // and the run stays green.
+  it('skips the dependants of a task off its platforms', async () => {
+    const dir = await addProject(root, 'app', CONFIG)
+    const r = await run({ cwd: dir, tasks: ['after', 'here'], log: logger([]) })
     const by = new Map(r.outcomes.map((o) => [o.node.id, o]))
     expect(r.ok).toBe(true)
     expect([by.get('app#after')?.status, by.get('app#after')?.blockedBy]).toEqual([
       'skipped',
       'app#other',
-    ])
-    expect(await Bun.file(path.join(dir, 'after.txt')).exists()).toBe(false)
-  })
-
-  // `--continue=always` runs past a FAILED upstream; a platform skip is
-  // not one. Its dependants ran anyway, built on outputs never made, and
-  // the taint kept them from saving, so every such run ran them again.
-  it('skips the dependants of a task off its platforms under --continue=always', async () => {
-    const dir = await addProject(
-      root,
-      'app',
-      `export default { tasks: {
-        other: { exec: { command: 'touch other.txt', platforms: ['${OTHER}'] } },
-        broken: { exec: { command: 'exit 1' } },
-        after: { dependsOn: ['broken', 'other'], exec: { command: 'touch after.txt' } },
-        last: { dependsOn: ['after'], exec: { command: 'touch last.txt' } },
-      } }`,
-    )
-    const r = await run({ cwd: dir, tasks: ['last'], log: logger([]), continueMode: 'always' })
-    const by = new Map(r.outcomes.map((o) => [o.node.id, o]))
-    expect(
-      ['app#after', 'app#last'].map((id) => [by.get(id)?.status, by.get(id)?.blockedBy]),
-    ).toEqual([
-      ['skipped', 'app#other'],
-      ['skipped', 'app#other'],
     ])
     expect(await Bun.file(path.join(dir, 'after.txt')).exists()).toBe(false)
   })

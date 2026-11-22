@@ -332,7 +332,7 @@ terminal and a task succeeding or failing. Read it alongside
        and no persistent child exited on its own before the run
        stopped it.
     8. FOREGROUND ONLY: if the user requested persistent tasks (dev
-       servers) and nothing else failed (or under `--continue=always`),
+       servers) and nothing else failed,
        the process now blocks until ONE of them, or a persistent task they
        depend on, exits — the
        summary is already printed, `▸ <id> running` rows list what's
@@ -444,7 +444,7 @@ broader access has cache-stability implications).
 | Child killed by Ctrl-C teardown (SIGINT/SIGTERM/SIGHUP), or by an embedder's `RunOptions.signal` abort — which also completes every never-started task `aborted` | Task is `aborted` — not recorded in history. An attempt that ends while the run is stopping is `aborted` whatever its exit: a trap that exits 0 is not cached, and a failure is not retried (item 962). What it printed still shows in its frame. A child killed by a signal while the run is NOT stopping (a supervisor's SIGTERM, a `kill` from another shell) is `failed (exit 143, 128 + SIGTERM)`: retried, shown, and fail-fast trips (item 1100) |
 | `execute()` throws (internal error)                                                                                                                              | Task marked `failed`; stderr written `[vx] internal error in <id>` (a `UserError` reports plainly); a plugin executor's throw reports plainly as `plugin '<p>' (executor '<e>') failed in execute: <reason>` (C-63, C-85)                                                                                                                                                                                                                               |
 | Persistent task exits non-zero before ready                                                                                                                      | Task marked `failed` with `not ready: exited (exit N) before a line matched readyWhen /…/`, and a 127, 126 or signal exit gets the one-shot task's verdict line; its output already streamed live; `aborted` when the run's stop killed it (C-62)                                                                                                                                                                                                       |
-| Upstream task fails                                                                                                                                              | Under the default `--continue=deps-ok`, dependents marked `skipped` (exit 1, durationMs 0); no command runs — EXCEPT a restore-tier task, whose confirmed cache hit still restores (its key is dep-independent). `--continue=never` stops dispatch; `--continue=always` runs dependents, never saved                                                                                                                                                    |
+| Upstream task fails                                                                                                                                              | By default, dependents marked `skipped` (exit 1, durationMs 0); no command runs — EXCEPT a restore-tier task, whose confirmed cache hit still restores (its key is dep-independent). `--fail-fast` kills the running tasks (`aborted`) and stops dispatch                                                                                                                                                                                               |
 | Sandbox violation (macOS monitor / Linux structural)                                                                                                             | Task is `failed`; violations render in the frame; nothing cached                                                                                                                                                                                                                                                                                                                                                                                        |
 | Remote-cache error (500, timeout, corrupt artifact)                                                                                                              | Degrades to a cache miss; never fails the run                                                                                                                                                                                                                                                                                                                                                                                                           |
 | No .vx/workspace.* in cwd or any parent up to the git top-level                                                                                                  | `findWorkspaceRoot` throws (UserError); `vx run` exits 1                                                                                                                                                                                                                                                                                                                                                                                                |
@@ -454,11 +454,11 @@ broader access has cache-stability implications).
 | Malformed config                                                                                                                                                 | `loadProjectConfigs` throws (UserError) with file + field                                                                                                                                                                                                                                                                                                                                                                                               |
 | `inputs.runtime` / `workspaceRuntime` probe exits non-zero                                                                                                       | `cache key not derived: inputs.runtime probe exited N: <command>`; that task is `failed (cache key not derived)` with no command run, dependents skip                                                                                                                                                                                                                                                                                                   |
 
-By default (`--continue=deps-ok`) failures don't kill the scheduler —
-independent tasks already in flight finish, and unrelated tasks not yet
-started still run. `--continue=never` stops dispatch at the first
-failure; `--continue=always` runs dependents too
-([`cli.md` § Failure propagation](./cli.md#failure-propagation----continue)). The
+By default failures don't kill the scheduler — independent tasks
+already in flight finish, and unrelated tasks not yet started still run.
+`--fail-fast` kills the running tasks and stops dispatch at the first
+failure
+([`cli.md` § Failure propagation](./cli.md#failure-propagation----fail-fast)). The
 overall exit code is 1 if any task ended in `failed`, `skipped` (a
 platform skip, and what it blocks, aside) or `aborted` status, or a
 persistent child exited before the run stopped it. A task's own
@@ -633,7 +633,7 @@ The colors / framing modules:
   restore-tier tasks run on their own lane, `2 × concurrency` wide,
   and never take an exec slot.
 - Failure of a task doesn't pause the scheduler — independent
-  siblings continue running and starting (unless `--continue=never`).
+  siblings continue running and starting (unless `--fail-fast`).
 
 ### Executor pools
 
@@ -722,8 +722,8 @@ summary is `@vzn/vx-ci`'s.
   the workspace-wide case.
 - **The scheduler doesn't bail on first failure by default.** A flaky
   test failing shouldn't stop an unrelated build. Independent siblings
-  continue; only dependents are skipped. `--continue=never` opts into
-  fail-fast.
+  continue; only dependents are skipped. `--fail-fast` opts into
+  stopping at once, killing what runs.
 - **Misses own the worker pool.** A miss is the critical path, so
   the exec lane is `concurrency` wide and only executions take it.
   Restores run on their own lane, so warm work never queues behind

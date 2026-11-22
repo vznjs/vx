@@ -36,7 +36,6 @@ const runs = async (lint: string): Promise<string> => {
     await run({
       cwd: fixture.root,
       tasks: ['build', 'lint'],
-      continueMode: 'always',
       log: defaultLogger({ enabled: false }, { mode: 'broad' }, out),
     })
     return out.text()

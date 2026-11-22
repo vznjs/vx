@@ -68,7 +68,7 @@ export async function runAttempt(
   const endReq = span('miss: build request')
   const req = await buildRequest(m, isLocalExecutor(args.executor))
   endReq()
-  // A sibling's failure under --continue=never can land while a retry
+  // A sibling's failure under --fail-fast can land while a retry
   // cleans or builds its request, after the loop's own check: the retry is
   // withdrawn and the attempt before it stands.
   if (m.attempt > 1 && args.run.failFast?.aborted === true) {

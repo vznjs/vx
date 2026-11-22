@@ -519,7 +519,7 @@ sandbox violations). Core's own executor, `localExecutor`, is the same
   the up-front probe and each completion
   — `running(id)` says where a task it was handed runs, for the live row, or `null` while
   it holds the task for a machine (no row; the tasks line counts it `scheduled`;
-  under `--continue=never` a failure aborts its `signal` and it is skipped)
+  under `--fail-fast` a failure aborts its `signal` and it is skipped)
   — `footer()` returns `[label, text]` rows the run's footer shows, live
   and at the end (a bad shape shows none); `ExecuteResult.where`
   is shown on the task's row and frame after its id, as `<id>@<where>`
@@ -584,8 +584,8 @@ cacheable }` — what `accepts()` sees. Placement happens ONCE per task,
   an executor's own remote record uses), `refresh?` (cache reads are off, or
   remote reads are with a remote layer composed: do not answer from that
   record), `unsaved?` (core saves no entry under the key: the policy
-  writes no layer, or an upstream failed under `--continue=always`, ran
-  unkeyed or is keyless; or, with a remote layer composed, the policy
+  writes no layer, or it built on a dependency `--exclude-dependencies`
+  left out or a server that died under it, ran unkeyed or is keyless; or, with a remote layer composed, the policy
   writes no remote; an executor that saves results for dependants keeps
   them off the key too), `remoteOnly?` (`exec.remote: 'only'`:
   leave outputs off this disk), `platform?` (one of the task's

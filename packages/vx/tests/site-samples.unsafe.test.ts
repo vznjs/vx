@@ -8,6 +8,7 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import { formatPlanText } from '../src/cli/plan-format.js'
+import { parseRunArgs } from '../src/cli/run.js'
 import { executedCells, flakyNote, formatTaskExecutedLine } from '../src/report/framed-output.js'
 import { formatFailureLine } from '../src/report/status-line.js'
 import { localExecutor } from '../src/orchestrator/local-executor.js'
@@ -289,12 +290,12 @@ describe('the caching page quotes what vx why says', () => {
     // run never reach it; every other note opens `cache key` or `this task`.
     const from = src.indexOf('function unchangedKeyNote')
     const verdicts = src.slice(from, src.indexOf('\n// ----', from))
-    // A template literal's interpolated group reads `(…)` on the pages: the
-    // continue-taint verdict was one, and a quote-only match missed it (J2-13).
+    // A template literal's interpolated group reads `(…)` on the pages; a
+    // quote-only match missed one (J2-13).
     const notes = [...verdicts.matchAll(/(['`])((?:cache key|this task )(?:(?!\1)[^\\])*)\1/g)].map(
       (m) => m[2]!.replace(/\([^()]*\$\{[^}]*\}[^()]*\)/g, '(…)'),
     )
-    expect(notes.length).toBe(18)
+    expect(notes.length).toBe(16)
     for (const note of notes) {
       expect(guide).toContain(note)
       expect(post).toContain(note)
@@ -726,17 +727,12 @@ describe('the from-turborepo pages map every turbo.json key the mapper knows', (
     expect(globals.length).toBe(4)
     for (const g of globals) expect(page).toContain('`' + g + '`')
   })
-  it('what it says a bare `--continue` does is what run.ts does', () => {
-    const run = readFileSync(path.resolve(import.meta.dir, '..', 'src', 'cli', 'run.ts'), 'utf8')
-    expect(run).toContain("// Bare --continue = 'always' (the Turbo convention)")
-    const scheduler = readFileSync(
-      path.resolve(import.meta.dir, '..', 'src', 'graph', 'scheduler.ts'),
-      'utf8',
-    )
-    expect(scheduler).toContain("options.continueMode ?? 'deps-ok'")
+  it('what it says of a failure is what vx parses', () => {
+    expect(parseRunArgs(['build', '--fail-fast']).failFast).toBe(true)
+    expect(parseRunArgs(['build', '--continue']).error).toStartWith('unknown flag: --continue')
     const flat = page.replace(/\s+/g, ' ')
-    expect(flat).toContain('a vx run with no flag is `deps-ok`')
-    expect(flat).toContain('bare `--continue` is `always`')
+    expect(flat).toContain('vx `--fail-fast` kills them')
+    expect(flat).toContain('vx has no `--continue`')
   })
 })
 
@@ -1280,9 +1276,8 @@ describe('the tasks guide uses the status words the scheduler sets', () => {
     const page = readFileSync(path.join(DOCS, 'docs', 'tasks.mdx'), 'utf8').replace(/\s+/g, ' ')
     expect(page).toContain('skips its transitive dependents')
     expect(page).not.toContain('aborts its transitive dependents')
-    for (const mode of ['deps-ok', 'never', 'always']) {
-      expect(page).toContain('`--continue=' + mode + '`')
-    }
+    expect(page).toContain('`--fail-fast`')
+    expect(page).not.toContain('--continue')
   })
 })
 

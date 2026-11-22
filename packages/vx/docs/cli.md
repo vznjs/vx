@@ -653,7 +653,7 @@ span lines.
 | `--cache-policy <spec>` (`--cache-policy`) | value          | `VX_CACHE_POLICY` / `cache.policy`                             | Per-layer read/write control. See below. An EMPTY spec (`--cache-policy=`) is a parse error — it applied nothing and left every axis on; pass `--no-cache` to disable them all.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | `--cache-dir <path>`                       | value          | `VX_CACHE_DIR` / `cache.dir` / `~/.vx/<id>/cache`              | Cache directory override, resolved relative to cwd (absolute paths used as-is). Beats `VX_CACHE_DIR`, the workspace's `cache.dir` and the default; like them, the directory then holds the whole cache, shared through no store, for every cache the run opens, so the workspace's default dir is not created beside it. A per-run knob — never folded into a cache key. `--cache-dir=<path>` form too; the space form rejects a value starting with `-`, and both refuse one of only whitespace. A directory this user cannot write into serves its hits and saves nothing, saying so once; an empty one fails the run before any task with `cache directory <path> is not writable (EACCES: …)`. One under a selected task's declared outputs fails the run before any task, naming the task (its output clean would delete the cache). |
 | `--retries <n>`                            | value          | `run.retries`, else `0`                                        | Re-run a failed task up to `n` more times; never a persistent one. A task's own `exec.retries` wins (even an explicit `0`). Never affects cache keys. `--retries=<n>` form too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| `--continue[=<mode>]`                      | value          | `deps-ok`                                                      | What a failed task takes down with it. `never` stops dispatch on the first failure; `deps-ok` (default) skips only its dependents; `always` (bare `--continue`) runs dependents anyway. See § Failure propagation.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `--fail-fast`                              | boolean        | `run.failFast`, else off                                       | Stop the run at the first failure, killing the tasks still running. Off, a failure skips only its dependents. See § Failure propagation.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | `--timeout <duration>`                     | duration       | `run.timeout`, else none                                       | A task's time limit (`30s`, `10m`), for tasks without their own `exec.timeout`, which always wins. A runaway task is killed + `failed`. A bare number is refused naming the forms with units. Never affects cache keys. `--timeout=<duration>` form too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | `--output-logs <mode>`                     | value          | `VX_RUN_OUTPUT_LOGS`, else flow-derived                        | `full` \| `errors-only` \| `hash-only` \| `none` — explicit output override. See § `--output-logs`. `--output-logs=<mode>` form too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | `--cache-download <mode>`                  | value          | `cache.download`, else `all`                                   | `all` \| `toplevel` \| `none` — where a REMOTELY-executed task's outputs land. `none` leaves them in the remote CAS and fetches lazily, only when a locally-placed task needs them. Never affects cache keys. See § `--cache-download`. `--cache-download=<mode>` form too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
@@ -705,8 +705,7 @@ means "run `build`, affected scope", and there is no way to tell that
 apart from "`build` is the git base". Write `--affected=origin/main`. Getting it wrong is loud, not silent: the value
 becomes a positional that matches no project, so the run refuses to
 start (see "Every requested name must resolve" above). A word from a
-closed set says so first: `--dry json` and `--continue never` are refused
-with their `=` form.
+closed set says so first: `--dry json` is refused with its `=` form.
 
 `--exclude-dependencies=` with an EMPTY value, or a list of no names
 (`=,`), is rejected rather than guessed — "drop every edge" and "drop none" are both plausible readings.
@@ -733,7 +732,7 @@ workers. A duration flag (`--timeout`) takes its unit (`500ms`, `30s`,
 An empty `=` value means "no value" on two flags, which then act like
 their bare forms: `--profile=` writes `profile.json` and
 `--affected=` uses the default base. Every other flag refuses an empty
-value: `--dry=`, `--continue=` and
+value: `--dry=` and
 `--exclude-dependencies=` as well as the ones with no bare form
 (`--retries=`, `--timeout=`, `--cache-dir=`, `--filter=`, `--cache-policy=`,
 `--verbosity=`).
@@ -954,7 +953,7 @@ other persistent task`), and a non-zero exit makes the run exit 1
    A Ctrl-C prints no such line: the server ended because it was
    stopped, and vx exits 130. A run with a failure elsewhere (a task
    failed or skipped, a server never ready or crashed) holds nothing: it
-   stops its servers and exits 1, unless `--continue=always`; `vx watch`
+   stops its servers and exits 1; `vx watch`
    keeps its server through a failed cycle. While vx holds them, what
    the servers write streams below the summary a line at a time under
    each one's id (`app#dev │ Local: http://localhost:5173`), except
@@ -1131,31 +1130,22 @@ no log output at all; the run's audit trail of which key each task
 resolved to, Turbo parity), `none` (no per-task output). The
 end-of-run summary always prints.
 
-### Failure propagation — `--continue`
+### Failure propagation — `--fail-fast`
 
-`--continue[=never|deps-ok|always]` controls what a failed task takes
-down with it:
+What a failed task takes down with it:
 
-- **`deps-ok`** (default): the failure's transitive dependents are
-  skipped; independent siblings keep running. A server that dies after
-  it became ready is a failure to its dependents not yet started,
-  including those that reach it through a group or another server; a dependent running
+- **Default**: the failure's transitive dependents are skipped;
+  independent siblings keep running. A server that dies after it became
+  ready is a failure to its dependents not yet started, including those
+  that reach it through a group or another server; a dependent running
   when it died finishes but is not saved, nor is what is built on it.
-- **`never`**: fail fast — the first failure stops dispatch. In-flight
-  tasks finish their attempt and start no retry; everything not yet started (cache restores
-  included) completes as skipped. A server that dies after it became
-  ready stops dispatch the same way.
-- **`always`** (bare `--continue`): dependents run even when an
-  upstream failed — to surface every failure in one pass. A task
-  downstream of a failure (directly, or through successes built on it)
-  runs and cleans its outputs as usual but is **never saved**: under
-  pure-input hashing its key is the one a healthy run derives, while its
-  bytes were built on a partial tree, so caching it would hand the next
-  clean run a stale hit. A server that died after it became ready is
-  such a failure to what starts after its death. A cache hit still
-  restores (that artifact came from a healthy run), and the next run
-  without the failure rebuilds the rest. A task `exec.platforms` skips
-  here is no failure: its dependents are skipped in every mode.
+  Nothing ever runs on a failed dependency. A task `exec.platforms`
+  skips is no failure, but its dependents are skipped too.
+- **`--fail-fast`** (`run.failFast`): the first failure stops the run
+  at once. The tasks still running are killed (they end `aborted`, are
+  never saved and start no retry); everything not yet started (cache
+  restores included) completes as skipped. A server that dies after it
+  became ready stops the run the same way.
 
 The mode is the local scheduler's: a task a plugin executor runs
 elsewhere is one dispatch, failed or not, like any other. Under `never`,
@@ -1522,7 +1512,7 @@ subdirectory).
 platform cannot host it (Linux needs `bwrap`, `socat` and `rg` on PATH;
 macOS, `sandbox-exec`), that task fails with one line, `sandbox not
 available: <reason>`, and never runs unsandboxed. Tasks without a
-sandbox run as usual, and the failure's dependents follow `--continue`.
+sandbox run as usual, and the failure's dependents are skipped.
 A task an executor that enforces the sandbox where it runs takes
 (`@vzn/vx-dte`'s workers) arms nothing here, so a DTE run's
 orchestrator needs no sandbox runtime.
@@ -1925,7 +1915,7 @@ vx pipeline pr --filter web        # a typed flag beats the saved one
 Each key of a pipeline is one of these flags in camelCase, and a flag
 typed here beats it: `--filter`, `--affected`, `--exclude-dependencies`,
 `--concurrency`, `--schedule`, `--branch`, `--timeout`, `--retries`,
-`--continue`, `--no-cache`, `--force`, `--cache-policy`, `--cache-dir`,
+`--fail-fast`, `--no-cache`, `--force`, `--cache-policy`, `--cache-dir`,
 `--cache-download`, `--cache-concurrency-download`,
 `--cache-concurrency-upload`, `--cache-concurrency-restore`,
 `--output-logs`, `--verbosity`, `--dry`, `--profile`. A flag's `VX_*`
@@ -3648,10 +3638,7 @@ A re-execution names its cause when the index shows one: the previous
 run on the key failed and saved nothing, the run did not read the cache
 (`--force`, or a `--cache-policy` without read) or did not use it at all
 (`--no-cache`, or a `--cache-policy` without read or write), no entry for the key was
-there when it ran (pruned or evicted), the previous run was not saved
-because it ran beside a failed task (a task run past a failed dependency
-under `--continue` is never cached; said ahead of a prune, and as
-"neither run saved it" when this run ran beside one too), or the previous run executed and no entry
+there when it ran (pruned or evicted), or the previous run executed and no entry
 holds the key (its save failed, or a prune took it; a previous run whose
 policy wrote no cache says that instead, ahead of a prune, and one that built on a
 dependency `--exclude-dependencies` left out names that dependency). A previous run that
@@ -3733,13 +3720,11 @@ names the hash change and says the component diff is unavailable. An
 entry restored from a remote cache came with no fingerprints (the
 artifact carries none), and the detail line says so rather than a
 prune. When
-only the previous run failed, or passed beside a failed task
-(`--continue`, never saved), or wrote no cache (`--no-cache`, or a
+only the previous run failed, or wrote no cache (`--no-cache`, or a
 `--cache-policy` without write), the diff is taken against the last run
 that saved an entry instead, and the detail line names that run, even
 when the diff has rows. When
-this run wrote no cache, or passed beside a failed task (`--continue`),
-the detail line says so rather than a prune. A
+this run wrote no cache, the detail line says so rather than a prune. A
 task with `inputs` and no `cache: true` derives a key too — it is what
 dependents fold — but saves no entry, so for it the verb can only report
 the key change and says so.
@@ -4230,7 +4215,7 @@ what a TASK sees is `exec.env` in `docs/schema.md`.
 | `VX_RUN_BRANCH`                   | [`run.branch`](schema.md#settings)                 | The branch a run records in its history and forecasts from. Flag and env only: a committed branch would be wrong on every other branch.                                                          |
 | `VX_RUN_TIMEOUT`                  | [`run.timeout`](schema.md#settings)                | A task's time limit, for tasks without their own `exec.timeout` (`'30m'`).                                                                                                                       |
 | `VX_RUN_RETRIES`                  | [`run.retries`](schema.md#settings)                | Re-runs of a failed task, for tasks without their own `exec.retries`.                                                                                                                            |
-| `VX_RUN_CONTINUE`                 | [`run.continue`](schema.md#settings)               | What a failed task takes down: `never` stops the run, `deps-ok` skips its dependents, `always` runs them too.                                                                                    |
+| `VX_RUN_FAIL_FAST`                | [`run.failFast`](schema.md#settings)               | Stop the run at the first failure, killing the tasks still running; off, a failure skips only its dependents.                                                                                    |
 | `VX_RUN_OUTPUT_LOGS`              | [`run.outputLogs`](schema.md#settings)             | Which task output the run prints. Chosen before the workspace loads, so flag and env only.                                                                                                       |
 | `VX_RUN_KILL_GRACE`               | [`run.killGrace`](schema.md#settings)              | How long a task, server or plugin's process may take to exit after SIGTERM (a timeout, a stop, the run's end) before vx sends SIGKILL.                                                           |
 | `VX_RUN_PLUGIN_TIMEOUT`           | [`run.pluginTimeout`](schema.md#settings)          | How long one plugin's end-of-run flush or teardown may take before the run ends without it; `'0ms'` waits for nothing not already done.                                                          |
@@ -4611,7 +4596,7 @@ The schema is documented in
 ## What's still missing vs Turbo
 
 Tracked in [`comparison.md`](./comparison.md). Nothing visible from the
-CLI is open: `--output-logs hash-only`, `--continue=<mode>`
+CLI is open: `--output-logs hash-only`, `--fail-fast`
 and `--cache-dir <path>` all shipped and are documented above.
 Remote-cache credentials are not core CLI flags at all: core carries no
 HTTP cache client — a remote cache arrives through a plugin's `cache`

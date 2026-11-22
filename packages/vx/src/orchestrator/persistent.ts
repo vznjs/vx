@@ -498,8 +498,8 @@ function holdAll(
  * died on its own failed. A run that failed elsewhere keeps nothing: `vx run
  * dev --all` with one server that never became ready sat on the others for
  * good, so a script hung, and the Ctrl-C that ended it read 130 over the
- * failure. A kept server's own crash ends the keep-alive wait as before, and
- * `--continue=always` asked to keep going, and does. The watch loop (`hold`)
+ * failure. A kept server's own crash ends the keep-alive wait as before. The
+ * watch loop (`hold`)
  * still holds: a failing test in a cycle stopped the dev server the next change
  * would restart anyway. A kept server that has already died fails too; the
  * keep-alive wait names it.
@@ -513,7 +513,6 @@ export async function disposeServers(args: {
   hold: boolean
   /** Under a hold, `keyedServers`: one of them with no input file is not kept (`keyBlind`). */
   keyed: ReadonlySet<string>
-  continueAlways: boolean
   /** The servers that had ended when a stop landed; undefined without a stop. */
   endedBeforeStop: ReadonlySet<Child> | undefined
 }): Promise<{ keepAlive: KeepAlive; crashed: CrashedPersistent[] }> {
@@ -537,7 +536,7 @@ export async function disposeServers(args: {
     [...registry.values()].some(
       (c) => hasEnded(c) && c.exitCode !== 0 && !keepAlive.children.includes(c),
     )
-  if (failedElsewhere && !args.hold && !args.continueAlways) keepAlive = { nodes: [], children: [] }
+  if (failedElsewhere && !args.hold) keepAlive = { nodes: [], children: [] }
   const crashed = (
     await shutdownPersistent(registry, keepAlive.children, undefined, serverUsers(args.nodes))
   ).filter((c) => endedBeforeStop?.has(registry.get(c.id)!) ?? true)

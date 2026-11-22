@@ -10,7 +10,7 @@ import {
   type CoreRunOptions,
   type RunHandoff,
 } from '../orchestrator/index.js'
-import { type ContinueMode, isKeyFailed } from '../graph/index.js'
+import { isKeyFailed } from '../graph/index.js'
 import {
   applyCacheFlags,
   type CacheFlags,
@@ -36,8 +36,8 @@ import { kindHint, parseSettingValue, type Setting, SETTINGS, settingRefusal } f
 import { formatPlanJson, planReport } from './plan-format.js'
 
 export interface RunArgs {
-  /** Failure propagation (`--continue[=never|deps-ok|always]`). */
-  continueMode?: ContinueMode
+  /** `--fail-fast`: the first failure kills the tasks still running and ends the run. */
+  failFast?: boolean
   /**
    * Positional task names: bare (`'build'`) across the resolved scope, or
    * anchored `'pkg#task'`. All run in one invocation with a shared graph.
@@ -97,10 +97,10 @@ function flagOf(a: string | undefined, name: string): string | undefined {
   return a === name || a?.startsWith(`${name}=`) ? name : undefined
 }
 
-// The settings parsed by their kind alone; the cache flags, `--continue`
-// and `--cache-dir` keep their own branches above.
+// The settings parsed by their kind alone; the cache flags, `--fail-fast`
+// (a switch, no value) and `--cache-dir` keep their own branches above.
 const GENERIC_FLAGS = SETTINGS.filter(
-  (s) => s.flag?.verb === 'run' && !['run.continue', 'cache.dir', 'cache.policy'].includes(s.path),
+  (s) => s.flag?.verb === 'run' && !['run.failFast', 'cache.dir', 'cache.policy'].includes(s.path),
 )
 
 /** The setting a flag names. */
@@ -260,23 +260,8 @@ function parse(
       noCacheFlag = true
     } else if (a === '--force') {
       forceFlag = true
-    } else if (a === '--continue') {
-      // Bare --continue = 'always' (the Turbo convention). Its mode takes `=`
-      // only: `--continue never` would read `never` as a task.
-      const next = before[i + 1]
-      if (next === 'never' || next === 'deps-ok' || next === 'always') {
-        return { ...out, error: `--continue takes its mode with '=': --continue=${next}` }
-      }
-      out.continueMode = 'always'
-    } else if (a?.startsWith('--continue=')) {
-      const v = a.slice('--continue='.length)
-      if (v === '') {
-        return { ...out, error: `--continue= requires a mode: never, deps-ok, or always` }
-      }
-      if (v !== 'never' && v !== 'deps-ok' && v !== 'always') {
-        return { ...out, error: `--continue must be never, deps-ok, or always (got ${v})` }
-      }
-      out.continueMode = v
+    } else if (a === '--fail-fast') {
+      out.failFast = true
     } else if (a === '--verbosity' || a?.startsWith('--verbosity=')) {
       const v = a === '--verbosity' ? before[++i] : a.slice('--verbosity='.length)
       if (v === undefined || v === '')
@@ -286,8 +271,8 @@ function parse(
         return { ...out, error: `--verbosity must be a non-negative integer (got ${v})` }
       out.verbosity = n
     } else if (a === '--dry') {
-      // As `--continue`'s mode: `--dry json` read `json` as a task, and the
-      // run said no project declares it.
+      // `--dry json` read `json` as a task, and the run said no project
+      // declares it.
       const next = before[i + 1]
       if (next === 'pretty' || next === 'json') {
         return { ...out, error: `--dry takes its format with '=': --dry=${next}` }
@@ -588,7 +573,7 @@ export async function resolveRunOptions(
       ? { cacheFlags: parsed.cacheFlags }
       : { cache: parsed.cache }),
     flow: detectFlow(parsed),
-    ...(parsed.continueMode !== undefined ? { continueMode: parsed.continueMode } : {}),
+    ...(parsed.failFast === true ? { failFast: true } : {}),
     forwardArgs: parsed.forwardArgs,
     // isatty, not process.stdin: touching the stream opens it, and a config
     // that throws then reports an extra native stack frame.

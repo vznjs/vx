@@ -1,6 +1,6 @@
 // Run outcomes over seeded random graphs whose tasks pass, fail, flake
 // (`exec.retries`), time out (`exec.timeout`, with and without retries)
-// and cache, under each `continueMode`. Every attempt appends a line to a
+// and cache, with and without `--fail-fast`. Every attempt appends a line to a
 // marker file outside every key, so "started" and "attempts" are read from
 // disk. A second run with the same keys proves what was saved. It found
 // a retry's clean pruning a directory a sibling had just made (retries.test.ts).
@@ -12,13 +12,12 @@ import path from 'node:path'
 import { afterAll, beforeAll, expect, it } from 'bun:test'
 import type { Logger } from '../src/report/index.js'
 import { run } from './helpers/orchestrator.js'
-import type { ContinueMode } from '../src/graph/index.js'
 import { gitInitCommit } from './helpers/workspace.js'
 import { rng } from './helpers/rng.js'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
 
 // A slot per task, as many as a scenario makes: the oracle says a saved
-// task hits on the second run, and under 'never' a one-core runner's one
+// task hits on the second run, and under --fail-fast a one-core runner's one
 // slot let the first failure stop the run before the hit was restored.
 const SLOTS = 8
 const errs: string[] = []
@@ -43,7 +42,9 @@ interface Spec {
   passes: boolean
 }
 
-async function scenario(mode: ContinueMode, seed: number, iter: number): Promise<string[]> {
+type Mode = 'default' | 'fail-fast'
+
+async function scenario(mode: Mode, seed: number, iter: number): Promise<string[]> {
   const rnd = rng(seed)
   const root = path.join(tmp, `${mode}-${iter}`)
   const marks = `${root}.marks`
@@ -104,7 +105,7 @@ async function scenario(mode: ContinueMode, seed: number, iter: number): Promise
   const res = await run({
     cwd: root,
     tasks: ts.map((t) => `p#${t}`),
-    continueMode: mode,
+    failFast: mode === 'fail-fast',
     log,
     handleSignals: false,
     concurrency: SLOTS,
@@ -122,12 +123,12 @@ async function scenario(mode: ContinueMode, seed: number, iter: number): Promise
     return out
   }
   const anyFailed = ts.some((t) => status.get(t) === 'failed')
-  // Under 'never' the first failure stops retries: a task in flight then
-  // ends on its current attempt (item X-68). That first failure is a task
-  // that could not pass and spent every attempt; without one, every task
-  // must run its full course.
+  // Under --fail-fast the first failure kills the tasks in flight (they
+  // end `aborted`) and stops retries (item X-68). That first failure is a
+  // task that could not pass and spent every attempt; without one, every
+  // task must run its full course.
   const failFast =
-    mode === 'never' && ts.some((t) => !spec.get(t)!.passes && status.get(t) === 'failed')
+    mode === 'fail-fast' && ts.some((t) => !spec.get(t)!.passes && status.get(t) === 'failed')
   if (res.ok === anyFailed) broken.push(`${label}: ok ${res.ok} with failed=${anyFailed}`)
   for (const t of ts) {
     const s = spec.get(t)!
@@ -148,12 +149,12 @@ async function scenario(mode: ContinueMode, seed: number, iter: number): Promise
       if (n !== s.retries + 1 && !cut) broken.push(`${label}: ${t} failed after ${n} attempts`)
     } else if (st === 'skipped') {
       if (n !== 0) broken.push(`${label}: ${t} skipped yet started ${n}`)
+    } else if (st === 'aborted') {
+      if (!failFast) broken.push(`${label}: ${t} aborted with no failure to stop the run`)
     } else broken.push(`${label}: ${t} status ${st}`)
-    if (failedUp && mode !== 'always' && n !== 0)
-      broken.push(`${label}: ${t} started behind a failure`)
-    if (mode === 'deps-ok' && !failedUp && st === 'skipped')
+    if (failedUp && n !== 0) broken.push(`${label}: ${t} started behind a failure`)
+    if (mode === 'default' && !failedUp && st === 'skipped')
       broken.push(`${label}: ${t} skipped with every dep passed`)
-    if (mode === 'always' && st === 'skipped') broken.push(`${label}: ${t} skipped under always`)
   }
 
   // Same keys again: a saved task hits and starts nothing; a failed one
@@ -164,30 +165,28 @@ async function scenario(mode: ContinueMode, seed: number, iter: number): Promise
   const again = await run({
     cwd: root,
     tasks: ts.map((t) => `p#${t}`),
-    continueMode: mode,
+    failFast: mode === 'fail-fast',
     log,
     handleSignals: false,
     concurrency: SLOTS,
   })
   const st2 = new Map(again.outcomes.map((o) => [o.node.id.slice(2), o.status]))
   for (const t of ts) {
-    const behind = [...upstream(t)].some((d) => status.get(d) !== 'success')
-    const savable = status.get(t) === 'success' && (mode !== 'always' || !behind)
+    const savable = status.get(t) === 'success'
     const n = await attempts(t)
     if (savable && (st2.get(t) !== 'cache-hit' || n !== 0))
       broken.push(`${label}: ${t} passed but second run ${st2.get(t)} after ${n} attempts`)
-    if (status.get(t) === 'failed' && st2.get(t) === 'cache-hit')
-      broken.push(`${label}: ${t} failed yet hit the cache`)
+    if (['failed', 'aborted'].includes(status.get(t)!) && st2.get(t) === 'cache-hit')
+      broken.push(`${label}: ${t} ${status.get(t)} yet hit the cache`)
   }
   return broken
 }
 
 for (const [mode, seed, iterations] of [
-  ['never', 1, 10],
-  ['deps-ok', 2, 10],
-  ['always', 3, 10],
+  ['fail-fast', 1, 10],
+  ['default', 2, 10],
 ] as const) {
-  it(`--continue=${mode}: retries x timeout x cache outcomes match the oracle`, async () => {
+  it(`${mode}: retries x timeout x cache outcomes match the oracle`, async () => {
     const broken: string[] = []
     for (let i = 0; i < iterations; i++) broken.push(...(await scenario(mode, seed * 1000 + i, i)))
     expect(broken.slice(0, 4)).toEqual([])

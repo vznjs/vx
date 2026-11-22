@@ -481,6 +481,7 @@ async function play(c: Case, adapter: Adapter, root: string, box: string): Promi
             ...(step.args ? { args: step.args } : {}),
             ...(step.concurrency !== undefined ? { concurrency: step.concurrency } : {}),
             ...(step.continue ? { continue: true } : {}),
+            ...(step.failFast ? { failFast: true } : {}),
             ...(step.force ? { force: true } : {}),
             ...(step.readOnlyCache ? { readOnlyCache: true } : {}),
             ...(step.dry ? { dry: true } : {}),

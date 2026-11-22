@@ -45,7 +45,7 @@ export {
   type SucceededOutcome,
   type TaskOutcome,
 } from './outcome.js'
-export { type ContinueMode, deadServerBehind, idleServers, runGraph } from './scheduler.js'
+export { deadServerBehind, idleServers, runGraph } from './scheduler.js'
 export {
   type CacheSource,
   deriveCacheSource,

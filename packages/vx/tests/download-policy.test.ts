@@ -920,7 +920,7 @@ describe('--cache-download end to end', () => {
     }
   })
 
-  it('a materialisation failure trips --continue=never like any other failure', async () => {
+  it('a materialisation failure trips --fail-fast like any other failure', async () => {
     const a = await fixture({ consumers: 2, failMaterialize: true })
     try {
       const r = await run({
@@ -928,7 +928,7 @@ describe('--cache-download end to end', () => {
         tasks: ['use'],
         projects: ['pkg-b', 'pkg-b1'],
         download: 'none',
-        continueMode: 'never',
+        failFast: true,
         // Strict ordering, as the scheduler's own fail-fast pins use: with
         // both consumers in flight at once they would BOTH legitimately
         // fail (fail-fast stops queued dispatch, in-flight work finishes),
@@ -945,35 +945,6 @@ describe('--cache-download end to end', () => {
       // One consumer failed on the fetch; the queued one never dispatched.
       expect(consumerStatuses.filter((st) => st === 'failed').length).toBe(1)
       expect(consumerStatuses.filter((st) => st === 'skipped').length).toBe(1)
-    } finally {
-      a.cleanup()
-    }
-  })
-
-  it('--continue=always with a FAILED deferred producer does not wedge its dependent', async () => {
-    // Registration happens only on a zero exit, so a failed producer leaves
-    // NO registry entry — and `--continue=always` runs the dependent anyway.
-    // It must materialise nothing, run, and fail on its own missing input,
-    // rather than hanging or throwing out of the registry walk. The path
-    // exists because the two features were built three waves apart and had
-    // never met.
-    const a = await fixture({ failProducer: true })
-    try {
-      const r = await run({
-        cwd: a.root,
-        tasks: ['use'],
-        projects: ['pkg-b'],
-        download: 'none',
-        continueMode: 'always',
-        log: silent(),
-        handleSignals: false,
-      })
-      expect(r.ok).toBe(false)
-      expect(r.outcomes.find((o) => o.node.id === 'pkg-a#gen')!.status).toBe('failed')
-      // The dependent RAN (not skipped — that is what `always` means) and
-      // failed on its own, with nothing materialised.
-      expect(r.outcomes.find((o) => o.node.id === 'pkg-b#use')!.status).toBe('failed')
-      expect(fake().materialized).toEqual([])
     } finally {
       a.cleanup()
     }

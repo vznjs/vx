@@ -35,7 +35,7 @@ export default [
     kind: 'correctness',
     title: 'A failed dependency stops the projects that need it from running',
     why: 'A task that depends on another reads what that one produced. If the dependency failed, its output is missing or half written, and a dependant built on it either fails with a confusing second error or passes on stale files. Skipping the dependants keeps the first real error in front of the developer and saves the time spent building on a broken base.',
-    from: ['parity-turbo', 'parity-nx', 'continue-taint'],
+    from: ['parity-turbo', 'parity-nx', 'scheduler'],
     workspace: {
       projects: {
         lib: {
@@ -133,5 +133,47 @@ export default [
       },
     },
     steps: [{ run: 'build', expect: { exit: 'fail', notRan: ['a#build', 'a#check'] } }],
+  }),
+
+  defineCase({
+    id: 'failure/fail-fast-stops-running-tasks',
+    category: 'failure',
+    kind: 'correctness',
+    title: 'Asked to fail fast, a run stops its running tasks at the first failure',
+    why: 'Failing fast means the first error ends the run now: the developer or the CI job learns of it at once instead of waiting for every other task already started. A run that lets those tasks finish costs the whole wait it was asked to skip, and a task cut short must leave no output behind as if it had finished.',
+    from: ['fail-fast', 'parity-nx'],
+    needs: ['fail-fast'],
+    workspace: {
+      projects: {
+        // Fails once the slow task has started, so the failure lands while it runs.
+        lib: {
+          tasks: {
+            build: {
+              command:
+                'for i in $(seq 200); do test -f ../app/started && break; sleep 0.05; done; exit 1',
+              cache: false,
+            },
+          },
+        },
+        app: {
+          tasks: {
+            build: { command: 'touch started && sleep 30 && echo done > out.txt', cache: false },
+          },
+        },
+      },
+    },
+    steps: [
+      {
+        run: 'build',
+        concurrency: 2,
+        failFast: true,
+        expect: {
+          exit: 'fail',
+          files: { 'packages/app/out.txt': null },
+          within: 20,
+          alone: true,
+        },
+      },
+    ],
   }),
 ]
