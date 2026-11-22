@@ -139,6 +139,7 @@ const SIDEBAR_GROUPS: Record<'Docs' | 'Guides' | 'Reference', SidebarItem[]> = {
         { label: 'Commands', link: '/cli/' },
         { label: 'vx run', link: '/cli/run/' },
         { label: 'vx watch', link: '/cli/watch/' },
+        { label: 'vx pipeline', link: '/cli/pipeline/' },
         { label: 'vx show', link: '/cli/show/' },
         { label: 'vx why', link: '/cli/why/' },
         { label: 'vx last', link: '/cli/last/' },

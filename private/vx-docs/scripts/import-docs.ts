@@ -280,6 +280,7 @@ const CLI_PAGES: readonly SplitPage[] = [
     headings: ['`vx run`', 'Planning mode (`--dry`)', 'Run artifacts (`--profile`)', 'Sandbox'],
   },
   { page: 'watch', headings: ['`vx watch`'] },
+  { page: 'pipeline', headings: ['`vx pipeline`'] },
   { page: 'show', headings: ['`vx show`'] },
   { page: 'why', headings: ['`vx why`'] },
   { page: 'last', headings: ['`vx last`'] },

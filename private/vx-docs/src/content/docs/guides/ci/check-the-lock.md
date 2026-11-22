@@ -27,11 +27,11 @@ exits `0`:
 
 ---
 
-In GitHub Actions, run it before the build:
+In GitHub Actions, run it before the [pipeline](../../../docs/ci/):
 
 ```yaml title=".github/workflows/ci.yml"
 - run: bun vx lock --check
-- run: bun vx run build --all
+- run: bun vx pipeline main
 ```
 
 See [`vx lock`](../../../cli/lock/).

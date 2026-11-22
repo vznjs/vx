@@ -17,6 +17,7 @@ vx run lint test build --all           # several tasks, one graph
 vx run test --all -- --bail            # the child runs: bun test --bail; the key sees it
 vx run build --all --dry               # the plan, nothing runs
 vx watch test --all                    # re-run whenever its files change
+vx pipeline pr                         # a named run from .vx/workspace.ts (see CI)
 ```
 
 `--dry` prints what would run and where each result would come from.
