@@ -45,7 +45,7 @@ comment out of the key ([key parts](../keys-from-git/)).
 
 ## The win: keys before anything runs
 
-| Fold the upstream's…        | A comment-only edit upstream | Key known before anything runs? |
+| Key on the upstream's…      | A comment-only edit upstream | Key known before anything runs? |
 | --------------------------- | ---------------------------- | ------------------------------- |
 | output hash (early cutoff)  | downstream hits              | no: needs the upstream to run   |
 | input key (vx)              | downstream re-runs once      | yes                             |
@@ -76,7 +76,7 @@ That covers three kinds of upstream:
 - an upstream's root-anchored `outputs.workspaceFiles`;
 - an upstream with no `cache: true` that may write in the project;
 - an upstream that rewrites its own inputs in place (a formatter) whose
-  key this one does not fold.
+  key this one does not include.
 
 That task, and every task depending on it, waits and is left out of the
 up-front lookup. `vx lock` refuses a task whose inputs match another

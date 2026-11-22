@@ -21,18 +21,18 @@ Recorded timings found the best order in every case we measured.
 | Ready order | The task that became ready first | No |
 | Most direct dependents | The task the most tasks wait on directly | No |
 | Most transitive dependents (vx's default) | The task the most work waits on, at any depth | No |
-| Critical path by step count | The task at the head of the longest chain of tasks | No |
-| Critical path by recorded time | The task at the head of the longest chain in seconds | Yes |
+| Critical path by step count | The task at the head of the longest path of tasks | No |
+| Critical path by recorded time | The task at the head of the longest path in seconds | Yes |
 
 The last one is the
 [`@vzn/vx-history`](../../plugins/vx-history/) plugin.
 It is off by default. With equal tasks, vx's default lands close to
-longest chain first. Real tasks are not equal.
+longest path first. Real tasks are not equal.
 
 ## Case 1: a slow task with nothing after it
 
 Two workers. One task takes 60 seconds and nothing depends on it. Two
-chains each have a 29.75-second parent and a 0.25-second child.
+pairs each have a 29.75-second parent and a 0.25-second child.
 
 ```mermaid
 flowchart LR
@@ -66,7 +66,7 @@ because the long task was first in line.
 
 ## Case 2: the mirror image
 
-Ten workers. 100 independent tasks and one chain of two, A then B.
+Ten workers. 100 independent tasks and one pair, A then B.
 Every task takes 2 seconds.
 
 ```mermaid
@@ -111,7 +111,7 @@ Cases 1 and 2 are mirror images. Shape alone cannot tell a 60-second
 task from a 2-second one, so any shape rule loses one of them.
 
 The history plugin ranks each task by its recorded time plus the longest
-chain behind it. From the second run on, it found the best order in
+path behind it. From the second run on, it found the best order in
 every case. So vx ships no more guessing rules.
 
 ## A guess for the first run?
@@ -151,12 +151,12 @@ export default {
 | `run.schedule` | Starts first |
 | --- | --- |
 | `most-work` (default) | The task the most work waits on, at any depth |
-| `critical-path` | The task at the head of the longest chain of tasks |
+| `critical-path` | The task at the head of the longest path of tasks |
 | `direct-dependents` | The task the most tasks wait on directly |
 | `ready-order` | The task that became ready first |
 
 A `schedule` plugin still ranks first. The rule breaks its ties. A slow
-typecheck starting late? Try `ready-order`. Long chains finishing last?
+typecheck starting late? Try `ready-order`. Long paths finishing last?
 Try `critical-path`.
 
 ## Turn it on

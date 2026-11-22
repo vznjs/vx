@@ -66,7 +66,7 @@ dropped, not waited on.
   graph is done.
 - **`vx watch`:** Ctrl-C mid-cycle stops that cycle's children.
 
-## The tests are the claim
+## The tests are the proof
 
 Each path has a test. It starts a real child, ends the run that way,
 and checks the child is dead in time. A zombie counts as alive.

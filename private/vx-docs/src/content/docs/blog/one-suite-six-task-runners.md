@@ -25,7 +25,9 @@ xychart-beta
 ## The cases come from every tool's own tests
 
 The cases are compiled from the test suites of Nx, Turborepo, Vite
-Task, moon, Nix and vx. A case names no tool's config. It says which
+Task, moon, Nix and vx.
+
+A case names no tool's config. It says which
 projects exist, what each task runs, and what must hold afterwards.
 
 ```mermaid
@@ -53,7 +55,9 @@ marks each command as it starts and ends, so "ran" means it ran.
 
 A case is N/A for a tool that does not have the feature at all, and an
 N/A case counts as not passed: its users cannot get that behaviour
-either. A tool that has the feature but does it its own way still
+either.
+
+A tool that has the feature but does it its own way still
 passes or fails the case.
 
 ## Each case says why it matters

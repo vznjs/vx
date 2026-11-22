@@ -1,5 +1,5 @@
 ---
-title: 'Flaky is a claim only declared inputs can back'
+title: 'Only declared inputs can prove a task flaky'
 date: 2026-09-10T23:33:00Z
 authors:
   - vzn

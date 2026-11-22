@@ -48,7 +48,9 @@ same plan. The change added 3,968 lines and removed 11,136.
 ## What we learned
 
 **A task's time is a range.** Tasks stray 22 to 25% from their history
-on every run. The first engine read history as exact and asked for
+on every run.
+
+The first engine read history as exact and asked for
 workers at the last moment. One run ended at 98 s against a 70.6 s ideal.
 Planning with the spread took its replay from 78.9 s to 72.4 s.
 

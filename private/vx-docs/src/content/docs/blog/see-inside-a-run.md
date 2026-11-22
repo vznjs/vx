@@ -35,7 +35,7 @@ would run:
 predicted: ~22ms wall · ~22ms total execution
 ```
 
-Each task names the changed file, or the chain that reached it.
+Each task names the changed file, or the dependency path that reached it.
 
 ## What the run did
 
