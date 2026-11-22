@@ -1559,6 +1559,7 @@ export interface OutcomeCache {
   unkeyed?: true
   driftedInput?: string | null
   keylessBy?: string
+  kept?: true
 }
 ```
 

@@ -49,6 +49,7 @@ export type {
   RunSummary,
 } from './options.js'
 export { commandWindows, type CommandWindows } from './command-windows.js'
+export { keepsOutcome } from './watch-kept.js'
 // Re-surface the cache policy contract (defined in the cache module) so
 // embedders constructing RunOptions.cache and the package façade can
 // reach it without importing the cache module directly.

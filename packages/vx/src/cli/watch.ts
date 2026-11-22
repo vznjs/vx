@@ -34,6 +34,7 @@ import { hangupIgnored } from '../util/index.js'
 import * as ui from '../ui/index.js'
 import { sayNotice } from '../ui/index.js'
 import { sweepConfigs, watchedProjects } from './watch-set.js'
+import { KeptResults } from './watch-kept.js'
 import {
   fenceDirs,
   type InitialCycle,
@@ -235,8 +236,10 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
   let drifted: string | undefined
   /** Each task's key as the initial run took it. */
   let keys: ReadonlyMap<string, string> | undefined
+  const kept = new KeptResults()
   initial.held = runOrchestrator(initial.cycle.opts).then(
     async (run) => {
+      kept.record(run.outcomes)
       drifted = run.outcomes.find((o) => o.cache?.unkeyed === true)?.node.id
       keys = new Map(
         run.outcomes.flatMap((o) => (o.hash === undefined ? [] : [[o.node.id, o.hash]])),
@@ -327,6 +330,7 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
       configImports: swept.configImports,
       workspaceConfigImports: swept.workspaceConfigImports,
       fenceDirs: fenceDirs(allProjects),
+      kept,
       // The workspace as the cycle that just ran saw it: a project the lock
       // gained or lost since the loop armed joins or leaves the watched
       // set. The scope is the one resolved at start; a new project joins

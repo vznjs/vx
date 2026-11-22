@@ -305,6 +305,7 @@ const SUCCEEDED: { word: string; color: Style } = { word: 'success', color: 'ok'
 
 /** Whether the task ran its command: a hit whose restore failed did not, nor a task with no key. */
 function ranCommand(o: TaskOutcome): boolean {
+  if (o.cache?.kept === true) return false
   return (
     o.status === 'success' || (o.status === 'failed' && o.restoreFailed !== true && !isKeyFailed(o))
   )
@@ -316,6 +317,7 @@ function ranCommand(o: TaskOutcome): boolean {
  */
 function cacheOf(o: TaskOutcome): { word: string; color: Style } {
   if (o.restoreFailed === true || isKeyFailed(o)) return NO_CACHE_WORD
+  if (o.cache?.kept === true) return KEPT
   switch (o.status) {
     case 'success':
     case 'failed':
@@ -332,6 +334,8 @@ function cacheOf(o: TaskOutcome): { word: string; color: Style } {
 const NO_CACHE_WORD: { word: string; color: Style } = { word: '', color: 'muted' }
 const NO_CACHE: { word: string; color: Style } = { word: 'no-cache', color: 'muted' }
 const MISS: { word: string; color: Style } = { word: 'miss', color: 'muted' }
+/** `vx watch` kept the last cycle's result: nothing ran (orchestrator/watch-kept.ts). */
+const KEPT: { word: string; color: Style } = { word: 'kept', color: 'muted' }
 const FRESH: { word: string; color: Style } = { word: 'fresh', color: 'ok' }
 const LOCAL: { word: string; color: Style } = { word: 'local', color: 'local' }
 const REMOTE: { word: string; color: Style } = { word: 'remote', color: 'remote' }

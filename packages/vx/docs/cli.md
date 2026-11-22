@@ -1718,7 +1718,15 @@ watch events within 2000 ms; polling every 250 ms instead`.
    `--affected` diff is read once, for the initial run. A later cycle
    runs the requested task in every project of the scope fixed at start,
    and the cache keys decide what executes (the startup diff, asked
-   again, kept an edit made since out of every cycle). Events arriving
+   again, kept an edit made since out of every cycle). A task no key can
+   answer for, an uncached one or a cached one that failed (no entry),
+   keeps the last cycle's result instead of running again when its key
+   is the one it ran under and no path that started the cycle lies in
+   its project: editing the app runs no uncached generator it builds on
+   (turborepo#13347), and an edit elsewhere runs no failing lint again.
+   Its row says `kept`. A path outside every project, a timeout, a
+   proven flake or a result its key does not vouch for keeps nothing
+   (`watch-reach.test.ts`). Events arriving
    while a run is in flight queue and drain after the current cycle.
    Re-runs are debounced ~150ms after the last event, and wait at most
    1 s after the first, so a writer that never pauses holds no edit back.

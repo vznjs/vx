@@ -33,6 +33,7 @@ import {
 } from './watch-filter.js'
 import { CLOSED, type WatchHandle, WatcherPool } from './watch-fs.js'
 import { ChangeJudge } from './watch-judge.js'
+import type { KeptResults } from './watch-kept.js'
 import { type WatchCycle, watchCycle } from './watch-cycle.js'
 import { limitSetting, maskedLine, printable, restartTimings, untimed } from '../util/index.js'
 import * as ui from '../ui/index.js'
@@ -162,6 +163,8 @@ interface WatchLoopArgs {
   rediscover: () => Promise<Rediscovered>
   /** `watch.poll`: poll from the start instead of the OS watcher. */
   poll: boolean
+  /** Each uncached pass and failure so far, which a cycle the change does not reach keeps. */
+  kept: KeptResults
 }
 
 export const fenceDirs = (all: readonly ProjectMeta[]): string[] => all.map((p) => p.dir)
@@ -258,6 +261,9 @@ class WatchLoop {
   /** A declared output, tracked or not: the cycle notice's advice turns on it. */
   private isOutputPath: ReturnType<typeof makeWatchIgnore>
   private fenced: ReturnType<typeof makeFence>
+  /** Every project's directory, in scope or not (`WatchLoopArgs.fenceDirs`). */
+  private allDirs: readonly string[]
+  private readonly kept: KeptResults
   private matters: ReturnType<typeof makeRootEventFilter>
   /** Since the last cycle, a member came or went, or a file that shapes the watched set changed (`shapesWatchedSet`). */
   private reread = false
@@ -314,6 +320,7 @@ class WatchLoop {
   private heldDirs = new Map<string, string>()
 
   constructor(private readonly args: WatchLoopArgs) {
+    this.kept = args.kept
     this.opts = args.opts
     this.stop = args.stop
     const workspaceRoot = args.workspaceRoot
@@ -344,6 +351,7 @@ class WatchLoop {
     )
     this.isOutputPath = makeWatchIgnore(this.cacheDir, this.outputs)
     this.fenced = makeFence(args.fenceDirs)
+    this.allDirs = args.fenceDirs
     this.matters = makeRootEventFilter(
       workspaceRoot,
       this.projectDirs,
@@ -659,11 +667,13 @@ class WatchLoop {
     // A server whose task is unchanged stays up: the cycle rebuilds its deps
     // and the dev tool reloads. The run stops the others before its graph.
     const before = this.held
+    const kept = this.kept.forCycle(changes.changed, this.allDirs)
     const current = watchCycle(
       {
         ...opts,
         handoff: {
           ...opts.handoff,
+          ...(kept ? { kept } : {}),
           ...(before ? { keep: before } : {}),
           ...(judged ? { commandWindows: judged.windows } : {}),
         },
@@ -673,6 +683,7 @@ class WatchLoop {
     )
     this.current = current
     const cycle = await runOrchestrator(current.opts)
+    this.kept.record(cycle.outcomes)
     changes.drifted(
       cycle.outcomes.flatMap((o) =>
         o.cache?.driftedInput === undefined ? [] : [o.cache.driftedInput],
@@ -1121,6 +1132,7 @@ class WatchLoop {
     )
     this.isOutputPath = makeWatchIgnore(this.cacheDir, this.outputs)
     this.fenced = makeFence(next.fenceDirs)
+    this.allDirs = next.fenceDirs
     this.matters = makeRootEventFilter(
       this.workspaceRoot,
       this.projectDirs,

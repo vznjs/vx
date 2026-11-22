@@ -1297,6 +1297,7 @@ async function runOnBus(
       preparedKeys,
       trailingSaves,
       commandWindows: windows,
+      ...(options.handoff?.kept !== undefined ? { kept: options.handoff.kept } : {}),
       keyedTasks,
       projectTasks: projectTasksOf(prepared.projects),
       stopSignal:

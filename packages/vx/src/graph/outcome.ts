@@ -185,6 +185,12 @@ export interface OutcomeCache {
    * and a dependant that folds `hash` does neither.
    */
   keylessBy?: string
+  /**
+   * `vx watch`: its key is the one an earlier cycle ran it under, and no path
+   * in its project changed since, so that cycle's result stands and nothing
+   * ran (orchestrator/watch-kept.ts).
+   */
+  kept?: true
 }
 
 /** A sandboxed task's denials (`exec.sandbox`): any one fails the task. */

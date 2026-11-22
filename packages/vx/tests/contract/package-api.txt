@@ -1292,6 +1292,7 @@ export interface OutcomeCache {
   unkeyed?: true
   driftedInput?: string | null
   keylessBy?: string
+  kept?: true
 }
 == type OutcomePlacement (src/graph/outcome.ts)
 export interface OutcomePlacement {
