@@ -99,6 +99,33 @@ export const outputsLinks = [
     ],
   }),
 
+  defineCase({
+    id: 'outputs/links-back-to-own-dir-restored',
+    category: 'outputs',
+    kind: 'correctness',
+    title: 'Output symlinks back to their own directory are cached and restored as links',
+    why: 'A copied pnpm `node_modules` holds links that lead back up the tree when packages depend on each other. A runner that follows those links while it stores or measures the outputs walks forever: the save hangs until the machine runs out of memory. The links are a few bytes each and come back as written.',
+    from: ['cache-store'],
+    workspace: one(
+      {
+        command:
+          'mkdir -p dist/a dist/b dist/c dist/d && cp src/big.txt dist/big.bin && for d in a b c d; do ln -s .. dist/$d/up; done',
+        inputs: ['src/**'],
+        outputs: ['dist/**'],
+      },
+      { 'src/big.txt': BIG },
+    ),
+    steps: [
+      { run: 'build', expect: { exit: 0 } },
+      { write: { [`${A}/dist`]: null } },
+      {
+        run: 'build',
+        expect: { exit: 0, notRan: ['a#build'], files: { [`${A}/dist/big.bin`]: BIG } },
+      },
+      { check: { links: { [`${A}/dist/a/up`]: '..', [`${A}/dist/d/up`]: '..' } } },
+    ],
+  }),
+
   ...(
     [
       [
