@@ -19,7 +19,7 @@ the slow tasks start first.
 | Cold, with the file | 10.68 s |
 | Full local history | 10.64 s |
 
-<small>8 packages with a `build` → `check` → `pack` chain (0.5 s each) and 3 slow `e2e` tasks (10 s each) · `sleep` tasks · linux x64, 4 cores, 4 workers · vx 0.0.634 · `bun private/vx-bench/timings-file-bench.ts`</small>
+<small>8 packages with a `build` → `check` → `pack` sequence (0.5 s each) and 3 slow `e2e` tasks (10 s each) · `sleep` tasks · linux x64, 4 cores, 4 workers · vx 0.0.634 · `bun private/vx-bench/timings-file-bench.ts`</small>
 
 Every task runs in all three. Only the order changes. The file saves
 1.4 s and matches a machine with its full history. No order finishes under 10.5 s.
@@ -34,7 +34,7 @@ export default {
 }
 ```
 
-`@vzn/vx-history` starts the longest chain first. vx reads the
+`@vzn/vx-history` starts the longest path of work first. vx reads the
 file before it orders the run, and writes each task's median time after:
 
 ```json

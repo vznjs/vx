@@ -37,7 +37,7 @@ error: Expected identifier but found "="
 ```
 
 `b` and `d` were cache hits, so they print nothing. A skip names the
-failure at the root of its chain, so you fix one thing.
+failure that started it, so you fix one thing.
 
 <small>Demo workspace · vx 69617eb · 2026-10-23</small>
 

@@ -33,7 +33,7 @@ flowchart LR
 
 ## A key has eleven parts
 
-A key is an xxh3 hash, seed-chained across eleven parts.
+A key is one xxh3 hash over eleven parts, each seeded by the one before.
 
 Each part goes in under its own label (`task:`, `config:`, `upstream:`,
 `plugin:`, `inputs:`, …), with lengths and `\0` separators so two
@@ -53,8 +53,8 @@ The parts, as [Caching](../../caching/) numbers them:
 7. The same for `workspaceRuntime`, run once per run.
 8. The keys of the upstream tasks this task depends on
    ([cascade post](../cascade-through-inputs/)).
-9. What a plugin's `key` stage adds, folded right after the upstream
-   keys and before the input files. `@vzn/vx-lockfile` folds each
+9. What a plugin's `key` stage adds, hashed right after the upstream
+   keys and before the input files. `@vzn/vx-lockfile` adds each
    project's dependency closure here.
 10. The platform, only for a task that names `exec.platforms`.
 11. The content hashes of every file `inputs.files` matches: its git blob

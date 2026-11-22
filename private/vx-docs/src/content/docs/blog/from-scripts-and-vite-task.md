@@ -41,7 +41,7 @@ $ bunx @vzn/vx-migrate --dry
             app#build: cache: add `inputs: { files: ['**'] }, outputs: { files: ['dist/**'] }, cache: true` with this package's real outputs, and narrow the inputs to what it reads …
 ```
 
-The chain stops at the first part that fails. Arguments after `--` reach
+The `&&` list stops at the first part that fails. Arguments after `--` reach
 `build` only, as with npm.
 
 If your package manager skips these hooks (Yarn 2+, or npm with
