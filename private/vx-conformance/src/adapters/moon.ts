@@ -49,7 +49,14 @@ export async function fetchMoonPlugins(): Promise<void> {
     JSON.stringify({ projects: { fetch: '.' }, telemetry: false }),
   )
   await writeFile(path.join(ws, '.moon', 'toolchains.yml'), JSON.stringify(TOOLCHAINS))
-  const env = { ...process.env, HOME: home, NO_COLOR: '1', DO_NOT_TRACK: '1' }
+  // moon compiles each WASM plugin on every run, about 1.5 s, into a cache
+  // under the home, and every case starts from an empty home. One shared
+  // compile cache, warmed here outside the sandbox, takes that off every run;
+  // a case reads it and need not write it.
+  const config = path.join(root, 'wasm-cache.toml')
+  await writeFile(config, `[cache]\ndirectory = ${JSON.stringify(path.join(root, 'wasm-cache'))}\n`)
+  moon.env.EXTISM_CACHE_CONFIG = config
+  const env = { ...process.env, ...moon.env, HOME: home }
   Bun.spawnSync(['git', 'init', '-q'], { cwd: ws, env })
   const proc = Bun.spawnSync([moonBin(), 'setup'], { cwd: ws, env, stdout: 'pipe', stderr: 'pipe' })
   const dir = path.join(home, '.moon', 'plugins', 'toolchains')
@@ -102,7 +109,7 @@ async function smokeRun(ws: string, toolchains: object, home: string): Promise<s
     bwrap === null ? run : [bwrap, '--dev-bind', '/', '/', '--unshare-net', '--', ...run],
     {
       cwd: ws,
-      env: { ...process.env, HOME: home, NO_COLOR: '1', DO_NOT_TRACK: '1' },
+      env: { ...process.env, ...moon.env, HOME: home },
       stdout: 'pipe',
       stderr: 'pipe',
     },
