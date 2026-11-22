@@ -230,7 +230,8 @@ held to its start; at the exit, `end` lets everything go; and an
 - **Peak:** on Linux (x64, arm64), `vx-measure` forks every
   `runCommand` shell and spare (`src/exec/measure/vx-measure.c`, a 5 KB
   static helper with no libc, built with vx-observe by
-  `scripts/build-observe.ts`; `measure-helper.ts` finds it, copied out of
+  `scripts/build-observe.ts`; `measure-helper.ts` finds it with `embeddedBinaryPath` (an
+  `EmbeddedBinary`: its path per architecture), copied out of
   a compiled vx once per user). Bun spawns with vfork, and at exec Linux
   keeps vx's memory mark in the child's maxrss, so a shell vx spawned read
   at least vx's size in wait4; a fork of the small helper starts clean.
