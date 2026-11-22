@@ -145,22 +145,25 @@ describe.skipIf(!linux)('a task runs in a shell started before it', () => {
     expect(res.stderr).toContain('does not exist')
   })
 
-  // A run's first tasks start together, before any slot frees: four spares
-  // left the rest to spawn in their slots.
-  it('gives each of a primed first wave a spare', async () => {
+  // Tasks of one length end together: a pool of four left the rest of a
+  // wave to start shells in their slots.
+  it('keeps a spare for each task of a wave a run primed for', async () => {
     primeSpares(6)
+    await runCommand({ command: 'true', cwd, env })
     await new Promise((r) => setTimeout(r, 300))
     const spy = spyOn(spawnOffModule, 'spawnOff')
     try {
       const wave = Array.from({ length: 6 }, (_, i) =>
         runCommand({ command: `echo wave-${i}`, cwd, env }),
       )
+      // Every take found a spare waiting: none started one in its turn.
+      expect(spy.mock.calls.length).toBe(0)
       expect((await Promise.all(wave)).map((r) => r.stdout)).toEqual(
         Array.from({ length: 6 }, (_, i) => `wave-${i}\n`),
       )
-      expect(spy.mock.calls.some(([o]) => o.cmd.join(' ').includes('wave-'))).toBe(false)
     } finally {
       spy.mockRestore()
     }
   })
+
 })

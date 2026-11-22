@@ -1607,12 +1607,14 @@ async function runOnBus(
     }
     // Tasks a plugin's executor threw on, and its name: the throw left no `where`.
     const thrownOn = new Map<string, string>()
-    // The first tasks' shells, spawning while their keys are taken.
+    // A spare shell for each slot the first tasks fill (`primeSpares`).
     let firstWave = 0
     for (const n of nodes.values()) {
       if (firstWave === concurrency) break
       if (n.config.exec === undefined || n.config.exec.sandbox !== undefined) continue
       if (shortCircuit.restoreTier.has(n.id) || holders.has(n.id) || !localPlaced(n.id)) continue
+      // A hit runs nothing.
+      if (shortCircuit.preProbed.get(n.id)?.hit != null) continue
       firstWave++
     }
     primeSpares(firstWave)

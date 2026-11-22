@@ -78,7 +78,7 @@ export function signalExitCode(signal: string | number): number // 128 + signo (
 // task stopped before its spawn exits as if it had killed it.
 export function stopSignal(reason: unknown): 'SIGINT' | 'SIGTERM'
 export class PersistentReadyError extends Error // reason: 'timeout' | 'exited' | 'spawn'; exitCode?: the child's own
-export function primeSpares(n: number): void // warm-shell.ts: keep n spare shells (at least four), started now
+export function primeSpares(n: number): void // warm-shell.ts: keep n spare shells (at least four)
 export function streamToString(
   stream: ReadableStream<Uint8Array> | number | undefined,
   onChunk?: (s: string) => void,
@@ -208,13 +208,13 @@ held to its start; at the exit, `end` lets everything go; and an
 - **Spare shell:** on Linux, a task's shell is started before the task
   is asked for (`warm-shell.ts`), so the slot that frees does not wait
   for sh to exec: 200 `sleep 0.02` took 4.4 ms each past their sleep
-  spawned fresh, 2.7 ms on a spare. A run starts one per slot its first
-  tasks fill before it dispatches them (`primeSpares`; at least four:
-  with two, 1 task in 12 cold waited for one), and keeps that many,
-  refilled once the turn that took one is done, so the taken spare gets
-  its script first. Fewer let the first wave and each wave of tasks
-  ending together spawn fresh: 500 site-shape tasks at 10 slots, 0.33 ->
-  0.2 ms a task before its spawn. Each waits on
+  spawned fresh, 2.7 ms on a spare. A run keeps one per slot its first
+  tasks fill (`primeSpares`; at least four: with two, 1 task in 12 cold
+  waited for one), refilled once the turn that took one is done, so the
+  taken spare gets its script first. An empty pool starts its spares when
+  a task asks for one, so a run that spawns nothing (a warm one) starts
+  no shell. Four let each wave of tasks ending together spawn fresh: 500
+  site-shape tasks at 10 slots, 0.4 -> 0.26 ms a task before its spawn. Each waits on
   its own pipes, with no directory or env of a task, blocked reading
   descriptor 3. The task's script, written when one is taken, closes
   that descriptor, `cd -P`s to the task's directory (127 when it is gone,

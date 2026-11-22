@@ -86,15 +86,15 @@ function refill(): void {
 }
 
 /**
- * Keep `n` spares (at least `SPARES`) and start them now, before a run's
- * first tasks: those start together, before any slot has freed, and a slot
- * wave (tasks of one length ending together) took more than four. 500
- * site-shape tasks at 10 slots: the first 10 spawned fresh at 13 ms each and
- * 1 task in 25 after them; pre-spawn 0.33 -> 0.2 ms a task.
+ * Keep `n` spares (at least `SPARES`), for a run whose first `n` tasks start
+ * together, before any slot has freed; with four, the rest spawned fresh in
+ * their slots, as did each wave of tasks ending together (500 site-shape
+ * tasks at 10 slots: 1 in 20 spawned fresh; pre-spawn 0.4 -> 0.26 ms a
+ * task). They start when the first task asks for one, so a
+ * run that spawns nothing (a warm one) starts no shell.
  */
 export function primeSpares(n: number): void {
   pool = Math.max(pool, n)
-  topUp()
 }
 
 function topUp(): void {
@@ -112,9 +112,11 @@ function topUp(): void {
  * A spare for the next task, or undefined; another starts in its place once
  * the turn is done, so the taken one gets its script, or a task with none its
  * own spawn, first: the spare's pipes and spawn message were 0.1 ms of every
- * hand-over, and its spawn queued a fresh one behind it.
+ * hand-over, and its spawn queued a fresh one behind it. An empty pool
+ * starts its spares now, this task's first.
  */
 export function takeSpare(): Spare | undefined {
+  if (spares.length === 0) topUp()
   const taken = spares.shift()
   refilling ??= setImmediate(refill)
   return taken
