@@ -165,5 +165,4 @@ describe.skipIf(!linux)('a task runs in a shell started before it', () => {
       spy.mockRestore()
     }
   })
-
 })
