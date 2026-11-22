@@ -481,8 +481,7 @@ const SHELL_BUILTINS = new Set([
  * process fewer.
  */
 export function execWrap(command: string): string {
-  const first = execWord(command)
-  return first === undefined ? command : `exec ${command}`
+  return execWord(command) === undefined ? command : `exec ${command}`
 }
 
 /**
@@ -553,16 +552,6 @@ const SIGNAL_ALIASES = new Set(['SIGIOT', 'SIGPOLL', 'SIGCLD'])
 const TIMEOUT_SIGKILL_GRACE_MS = 2000
 
 /**
- * Run `fn` one loop turn later, after pending child exits are read: a deadline
- * due in the same turn as an exit fires before Bun reaps it, so a task that
- * exited 0 in time was failed as timed out, and a server that died read as a
- * readiness timeout.
- */
-function afterPendingExits(fn: () => void): ReturnType<typeof setTimeout> {
-  return setTimeout(fn, 0)
-}
-
-/**
  * Run `fn` after `ms` of run time. Time vx spent stopped (Ctrl-Z) is not run
  * time: its tasks were stopped too.
  */
@@ -574,7 +563,10 @@ function afterRunTime(ms: number, fn: () => void): { clear: () => void } {
     timer = setTimeout(() => {
       const left = due - runTime()
       if (left > 1) arm(left)
-      else timer = afterPendingExits(fn)
+      // One turn later, after pending child exits are read: due in the same
+      // turn as an exit, it fired before Bun reaped it, and a task that
+      // exited 0 in time was failed as timed out.
+      else timer = setTimeout(fn, 0)
     }, delay)
   }
   arm(ms)
