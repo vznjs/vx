@@ -49,8 +49,17 @@ function words(key: FlagKey, flag: string, v: unknown): string[] {
   return [`${flag}=${v as string | number}`]
 }
 
-/** A typed flag that also stands in for a key: a dry run writes no profile, and a profiled run is real. */
-const DISPLACES: Readonly<Partial<Record<FlagKey, string>>> = { profile: '--dry', dry: '--profile' }
+/**
+ * The other keys whose typed flag (or its variable) also stands in for a key:
+ * a dry run writes no profile, and a profiled run is real; a typed cache
+ * policy or `--force` beats a saved `noCache`, which a run applies over both.
+ */
+const DISPLACES: Readonly<Partial<Record<FlagKey, readonly FlagKey[]>>> = {
+  profile: ['dry'],
+  dry: ['profile'],
+  noCache: ['cachePolicy', 'force'],
+  force: ['cachePolicy'],
+}
 
 /**
  * The `vx run` line a pipeline stands for, before the flags typed with it:
@@ -63,14 +72,14 @@ export function pipelineRunArgs(
   env: NodeJS.ProcessEnv = process.env,
 ): string[] {
   const given = (flag: string): boolean => typed.some((a) => a === flag || a.startsWith(`${flag}=`))
+  const set = (key: FlagKey): boolean => {
+    const { flag, setting } = PIPELINE_FLAGS[key]
+    return given(flag) || (setting !== undefined && (env[envName(setting)] ?? '') !== '')
+  }
   const out = [...p.tasks, '--all']
   for (const key of Object.keys(PIPELINE_FLAGS) as FlagKey[]) {
-    const { flag, setting } = PIPELINE_FLAGS[key]
-    if (given(flag)) continue
-    const displacing = DISPLACES[key]
-    if (displacing !== undefined && given(displacing)) continue
-    if (setting !== undefined && (env[envName(setting)] ?? '') !== '') continue
-    out.push(...words(key, flag, p[key]))
+    if (set(key) || DISPLACES[key]?.some(set) === true) continue
+    out.push(...words(key, PIPELINE_FLAGS[key].flag, p[key]))
   }
   return out
 }

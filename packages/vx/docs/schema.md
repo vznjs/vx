@@ -2805,11 +2805,16 @@ interface Pipeline {
   in camelCase (`cachePolicy` is `--cache-policy`) and takes what the
   flag takes; [cli.md](cli.md) says what each does. `--all` has no key: a
   pipeline runs every project, and `filter` or `affected` narrows it.
+  `cacheDir` and `profile` stand from the workspace root, as `cache.dir`
+  in this file does, wherever `vx pipeline` runs.
 - **Precedence.** A flag typed with `vx pipeline` beats its key, and so
   does the flag's `VX_*` variable; the key beats `.vx/workspace`'s
   setting. A typed `--dry` also drops a saved `profile` (a dry run writes
   none), and a typed `--profile` a saved `dry`; one pipeline sets only one
-  of the two.
+  of the two. A typed `--cache-policy` or its variable drops a saved
+  `noCache` and `force`, and a typed `--force` a saved `noCache`: a run
+  applies those over the policy, so the saved key would beat the typed
+  flag.
 - **`env`** is set before the run's plugins start, for vx and the plugins
   only (a plugin's on/off switch): every task reads it as unset, in its
   command and its key. A variable already set in the shell wins. A
