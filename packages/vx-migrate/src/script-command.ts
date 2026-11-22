@@ -53,7 +53,7 @@ export function scriptCommand(
     hooks && usable(scripts[h]) ? scripts[h] : undefined
   const parts = [hook(`pre${name}`), body, hook(`post${name}`)]
   if (parts.some((p) => p !== undefined && YARN_RUN_BUILTIN.test(p))) return yarnRun(name)
-  return foldScriptHooks(parts[0], body, parts[2])
+  return foldScriptHooks(parts[0], body, parts[2], name)
 }
 
 /**
@@ -67,20 +67,28 @@ export function scriptCommand(
  * after a failed pre hook. npm appends them as TEXT: no part sees them as
  * `$1`…, so the function quotes them into `vx_a`, clears its positional
  * parameters, and evals the body with `vx_a` after it. Each part ends on
- * its own line, so a trailing `# comment` cannot swallow the paren. A
+ * its own line, so a trailing `# comment` cannot swallow the paren. npm
+ * runs each part as a script of its own, `npm_lifecycle_event` its name
+ * (`prebuild`, `build`, `postbuild`), so a part reading it gets its own:
+ * one value for the task, or none, was wrong for two of the three. A
  * script with no hooks is its body, verbatim.
  */
 export function foldScriptHooks(
   pre: string | undefined,
   body: string,
   post: string | undefined,
+  name: string,
 ): string {
   if (pre === undefined && post === undefined) return body
   const quoted = `'${body.replaceAll("'", `'\\''`)}'`
+  const event = (part: string, as: string): string =>
+    readsLifecycleEvent(part)
+      ? `npm_lifecycle_event=${shellQuote(as)}; export npm_lifecycle_event\n`
+      : ''
   const parts = [
-    ...(pre === undefined ? [] : [`(${pre}\n)`]),
-    `(eval ${quoted}"$vx_a"\n)`,
-    ...(post === undefined ? [] : [`(${post}\n)`]),
+    ...(pre === undefined ? [] : [`(${event(pre, `pre${name}`)}${pre}\n)`]),
+    `(${event(body, name)}eval ${quoted}"$vx_a"\n)`,
+    ...(post === undefined ? [] : [`(${event(post, `post${name}`)}${post}\n)`]),
   ]
   return `vx_script() {\n${QUOTE_ARGS}\nset --\n${parts.join(' && ')}\n}\nvx_script`
 }
