@@ -391,6 +391,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'lock-graph-rules',
     'lock-help',
     'lock-nested-workspace-name',
+    'lock-review-fds',
     'lock-review-files',
     'lock-secret',
     'lock-shadowed-config',

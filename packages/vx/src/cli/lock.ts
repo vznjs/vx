@@ -511,6 +511,8 @@ export async function lockAfterMigration(root: string): Promise<{ code: number; 
 
 /** Refusals shown in full past the first; the rest are counted. */
 const ALSO_SHOWN = 4
+/** Review copies written at once: well under macOS's default 256 descriptors. */
+const REVIEW_WIDTH = 64
 
 /** One refusal `notWritten` prints, and the configs it reaches when it is in a file they import. */
 interface Refused {
@@ -641,20 +643,25 @@ async function writeLock(
   // The copies first: one that cannot be written leaves the lock as it was,
   // not a new lock beside stale copies and a stack.
   for (const r of reviews) refuseSymlink(r.file, root)
-  const blocked = (
-    await Promise.all(
-      reviews.map((r) =>
-        writeNoFollow(r.file, r.text, root).then(
-          () => null,
-          (err: unknown): { file: string; err: NodeJS.ErrnoException } => {
-            if (typeof (err as NodeJS.ErrnoException).code !== 'string' || isOutOfFds(err))
-              throw err
-            return { file: r.file, err: err as NodeJS.ErrnoException }
-          },
-        ),
-      ),
-    )
-  ).filter((b) => b !== null)
+  // `REVIEW_WIDTH` at a time: all at once ran out of macOS's default 256
+  // descriptors in a 400-project workspace.
+  const results: ({ file: string; err: NodeJS.ErrnoException } | null)[] = []
+  let next = 0
+  const lane = async (): Promise<void> => {
+    while (next < reviews.length) {
+      const i = next++
+      const r = reviews[i]!
+      results[i] = await writeNoFollow(r.file, r.text, root).then(
+        () => null,
+        (err: unknown): { file: string; err: NodeJS.ErrnoException } => {
+          if (typeof (err as NodeJS.ErrnoException).code !== 'string' || isOutOfFds(err)) throw err
+          return { file: r.file, err: err as NodeJS.ErrnoException }
+        },
+      )
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(REVIEW_WIDTH, reviews.length) }, lane))
+  const blocked = results.filter((b) => b !== null)
   if (blocked.length > 0) {
     const first = blocked[0]!
     notWritten('', {
