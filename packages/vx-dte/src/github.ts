@@ -249,7 +249,11 @@ export function github(options: GithubOptions = {}): DteAdapter {
         return undefined
       })) as { jobs?: Job[] } | null | undefined
       if (body === undefined) return undefined
-      const jobs = body?.jobs ?? []
+      // A boundary: GitHub's list once held a null, and `j.name` threw
+      // outside any catch, failing a run whose tasks all passed.
+      const jobs = (Array.isArray(body?.jobs) ? body.jobs : []).filter(
+        (j): j is Job => typeof j === 'object' && j !== null && typeof j.name === 'string',
+      )
       all.push(...jobs)
       // A first page's tag says nothing of the next: only a run of one page is asked by it.
       const etag = res.headers.get('etag')
@@ -276,11 +280,14 @@ export function github(options: GithubOptions = {}): DteAdapter {
           }
           if (workers.size === 0) watched.delete(run)
         }),
-      ).then(() => {
-        const next = Math.min(2 * ms, WATCH_MAX_MS)
-        if (!closed && watched.size > 0) look(Math.max(next, held - Date.now()))
-        else watch = undefined
-      })
+      )
+        // A fault reading jobs costs a look, never the run.
+        .catch(() => {})
+        .then(() => {
+          const next = Math.min(2 * ms, WATCH_MAX_MS)
+          if (!closed && watched.size > 0) look(Math.max(next, held - Date.now()))
+          else watch = undefined
+        })
     }, ms)
     watch.unref()
   }

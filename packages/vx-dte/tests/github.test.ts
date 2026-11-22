@@ -417,6 +417,50 @@ it('says a worker let go in a run that goes on is left running', async () => {
   }
 })
 
+// GitHub's jobs list once held a null: `j.name` threw outside any catch,
+// and a run whose 112 tasks all passed exited 1 on the unhandled rejection
+// (2026-11-22). An entry that is no job is skipped; the rest still count.
+it('skips a jobs entry that is no job, and still reads the rest', async () => {
+  const server = Bun.serve({
+    port: 0,
+    hostname: '127.0.0.1',
+    fetch(req) {
+      const path = new URL(req.url).pathname
+      if (path.endsWith('/dispatches')) return Response.json({ workflow_run_id: 7 })
+      if (path === '/repos/o/r/actions/runs/7/jobs')
+        return Response.json({
+          jobs: [
+            null,
+            'x',
+            { status: 'completed' },
+            { name: 'small#1', status: 'completed', conclusion: 'success' },
+          ],
+        })
+      return new Response(null, { status: 202 })
+    },
+  })
+  Object.assign(process.env, {
+    GITHUB_API_URL: `http://127.0.0.1:${server.port}`,
+    GITHUB_REPOSITORY: 'o/r',
+    GITHUB_TOKEN: 'ght',
+  })
+  const rejected: unknown[] = []
+  const onRejection = (err: unknown): void => void rejected.push(err)
+  process.on('unhandledRejection', onRejection)
+  try {
+    const why: string[] = []
+    const adapter = github()
+    void adapter.spawn(spawn('small#1', 'small', (w) => why.push(w)))
+    for (let i = 0; i < 50 && why.length < 1; i++) await Bun.sleep(100)
+    expect(why).toEqual(['job success'])
+    expect(rejected).toEqual([])
+    await adapter.close?.()
+  } finally {
+    process.off('unhandledRejection', onRejection)
+    await server.stop(true)
+  }
+}, 30_000)
+
 // A job that failed at its install told the run nothing: its worker stayed
 // `starting` and the run waited for the job's timeout (2026-10-22).
 it('says why for each worker whose job ended, a success too', async () => {
