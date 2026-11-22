@@ -87,6 +87,15 @@ describe('pipelines in .vx/workspace', () => {
     // A typed --dry previews it: the saved profile needs a real run.
     expect(pipelineRunArgs({ tasks: ['a'], profile: true }, ['--dry'], {})).toEqual(['a', '--all'])
     expect(pipelineRunArgs({ tasks: ['a'], dry: true }, ['--profile'], {})).toEqual(['a', '--all'])
+    // A run applies --no-cache over every cache policy and --force over the
+    // policy's reads, so a typed policy or --force (or the policy's variable)
+    // stands in for a saved noCache, and a typed policy for a saved force.
+    const nc: Pipeline = { tasks: ['a'], noCache: true, force: true }
+    expect(pipelineRunArgs(nc, ['--cache-policy=local:rw'], {})).toEqual(['a', '--all'])
+    expect(pipelineRunArgs(nc, [], { VX_CACHE_POLICY: 'local:rw' })).toEqual(['a', '--all'])
+    expect(pipelineRunArgs(nc, ['--force'], {})).toEqual(['a', '--all'])
+    // CONTROL: untyped, both stay.
+    expect(pipelineRunArgs(nc, [], {})).toEqual(['a', '--all', '--no-cache', '--force'])
   })
 })
 

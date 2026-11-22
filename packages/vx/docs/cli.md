@@ -1930,7 +1930,9 @@ typed here beats it: `--filter`, `--affected`, `--exclude-dependencies`,
 `--cache-download`, `--cache-concurrency-download`,
 `--cache-concurrency-upload`, `--cache-concurrency-restore`,
 `--output-logs`, `--verbosity`, `--dry`, `--profile`. A flag's `VX_*`
-variable beats the key too.
+variable beats the key too. A typed `--cache-policy` (or
+`VX_CACHE_POLICY`) also drops a saved `noCache` and `force`, and a typed
+`--force` a saved `noCache`.
 
 A pipeline's `env` is set for vx and its plugins before they start, and
 every task reads it as unset. Nothing goes after `--`: forwarded args are
