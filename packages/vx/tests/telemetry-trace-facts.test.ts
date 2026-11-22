@@ -70,11 +70,14 @@ it('a task names the tasks with a command it waited on, through a group, and the
   expect(summary!.stages!.map((s) => s.name)).toEqual(names)
   expect(summary!.stages![0]!.startedAt).toBeGreaterThanOrEqual(first.endedAt)
   const runGraph = first.stages!.find((s) => s.name === 'run graph')!
-  // The run's stamps are Date.now(), whole ms truncated; a stage's are a
-  // monotonic clock with a fraction, so each may sit up to 1 ms either side
-  // (774.87 against a run started at 775 on a macOS runner).
-  expect(runGraph.startedAt).toBeGreaterThan(first.startedAt - 1)
-  expect(runGraph.endedAt).toBeLessThan(first.endedAt + 1)
+  // The run's stamps are Date.now(), whole ms truncated; a stage's are the
+  // monotonic clock from the process's origin, with a fraction. Truncation
+  // is up to 1 ms, and the wall clock drifts from the monotonic one over a
+  // long process (an NTP slew): 1.04 ms late on main's CI 47 s into a shard,
+  // 0.13 ms early on a macOS runner. 5 ms holds both and still catches a
+  // stage stamped outside its run.
+  expect(runGraph.startedAt).toBeGreaterThan(first.startedAt - 5)
+  expect(runGraph.endedAt).toBeLessThan(first.endedAt + 5)
 }, 30_000)
 
 it('a cacheable task that ran counts the files its key read; a hit and an uncached task count none', async () => {
