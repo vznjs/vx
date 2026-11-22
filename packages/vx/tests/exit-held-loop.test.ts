@@ -120,3 +120,19 @@ it(
   },
   2 * HANG_MS + 5_000,
 )
+
+it(
+  'a config’s floating rejection fails `vx lock`, as one after the verb does',
+  async () => {
+    // bin.ts counts a rejection nothing awaited as a failure, but the verb's
+    // own code then overwrote the exit code: one during the lock exited 0.
+    const r = await lock(
+      "Promise.reject(new Error('lost'))\nexport default { tasks: { build: { exec: { command: 'true' } } } }\n",
+    )
+    expect({ code: r.code, err: r.err }).toEqual({
+      code: 1,
+      err: 'vx: unhandled rejection: lost\n',
+    })
+  },
+  HANG_MS + 5_000,
+)
