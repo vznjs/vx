@@ -137,7 +137,7 @@ it('a deleted project leaves the alike task it shared unselected', async () => {
   const git = gitIn(root)
   git('add', '-A')
   git('commit', '-q', '-m', 'init')
-  expect(git('show', 'HEAD:.vx/projects.lock.jsonl').match(/^#/gm)).toHaveLength(1)
+  expect(git('show', 'HEAD:.vx/projects.lock').match(/^#/gm)).toHaveLength(1)
   await rm(path.join(root, 'packages/a'), { recursive: true })
   await lock(root)
   git('add', '-A')

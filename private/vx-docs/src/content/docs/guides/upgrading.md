@@ -21,6 +21,10 @@ them out or `vx cache clean` clears the cache.
 
 ## After v0.0.658
 
+### cli: drop the lock merge driver, name it .vx/projects.lock
+
+.vx/projects.lock.jsonl is now .vx/projects.lock (run vx lock); vx lock --merge is removed.
+
 ### cache: stream a failed task's outputs to the remote
 
 PreparedRun.keepRunEntry takes (name, body: Blob), not (name, bytes: Uint8Array).

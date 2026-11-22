@@ -908,7 +908,9 @@ is on):
 2. The per-component input fingerprint is the one captured before the
    command ran: on a miss `describeTaskInputs` fills `captureInto` once
    (the same call yields the key re-checked below), so no second
-   `computeTaskHash` runs.
+   `computeTaskHash` runs. A cacheable task whose key no fold memo names
+   is described at its key (`keyOrDescribe`): the description's key is
+   the key, so the inputs are resolved and hashed once.
 3. The artifact — one `stdout` entry (bounded: the first and last 8 Mi
    characters of the task's output, the dropped middle named where it was), the `outputs/<rel>` (+
    `workspace-outputs/<rel>`) entries, the `.vx-meta.json` sidecar and
@@ -957,7 +959,8 @@ before the command ran — at the task's start, or up front by the local
 short-circuit — and the save files the outputs under it, so the inputs
 must still be what it describes. Two checks, in order. The key
 re-derived just before the command (`describeTaskInputs`, which the
-executor seam needs anyway) must equal it. Then each input file is
+executor seam needs anyway) must equal it; a key with no fold behind it
+is that description's own, so the two are one derivation. Then each input file is
 `lstat`ed once: a file whose ctime falls
 after, or within `FILE_HASH_RACY_MS` before, the moment its digest was
 learned — the enumeration's start for an index OID, the describe for a
@@ -1387,7 +1390,7 @@ A task's cache becomes invalid when any of these change:
 | Bump `CACHE_VERSION`                                                                                                                     | step 1 — orphans every entry                                                                                                                                                                            |
 | Change `exec.env.passThrough` _values_ alone                                                                                             | **NOT a trigger** by design — passThrough values are host-specific                                                                                                                                      |
 | Change a file not in `inputs.files` / `inputs.workspaceFiles`                                                                            | **NOT a trigger** by design — declare it explicitly                                                                                                                                                     |
-| Edit `.vx/projects.lock.jsonl`                                                                                                           | **NOT a trigger** — globally excluded from inputs (v24); it's vx's own metadata, never a task input                                                                                                     |
+| Edit `.vx/projects.lock`                                                                                                                 | **NOT a trigger** — globally excluded from inputs (v24); it's vx's own metadata, never a task input                                                                                                     |
 | Change a file in a nested project's dir                                                                                                  | **NOT a trigger** for the parent's `files` globs — project boundaries are hard (workspaceFiles is the explicit exception)                                                                               |
 
 The cascade in step 8 is what makes monorepo caching work: edit a
@@ -1540,7 +1543,7 @@ exactly on `inputs.env`, and they share its asymmetry with the
 lockfile:
 
 - **The command _strings_ live in the resolved config**, so `vx lock`
-  freezes them into `.vx/projects.lock.jsonl` (just as it freezes the env _names_
+  freezes them into `.vx/projects.lock` (just as it freezes the env _names_
   a task declares).
 - **The command _output_ is resolved live at hash time on every run**
   — inside `resolveInputs`, the same place env _values_ are read from
@@ -2674,7 +2677,7 @@ moat.
   `inputs.workspaceFiles: ['golib/**']` beside its read grant. `go build`
   stamps the commit (`vcs.revision`) into the binary, which no input
   holds, so a hit replays the old one: build with `-buildvcs=false`.
-- **`.vx/projects.lock.jsonl`** — globally excluded (v24); also filtered out of
+- **`.vx/projects.lock`** — globally excluded (v24); also filtered out of
   `--affected` change sets. So are the files `vx lock` and `vx init`
   write beside it: each project's `vx.lock.json` review copy,
   `.vx/.gitattributes`, `.vx/.gitignore` and `.vx/dependencies.lock`.
@@ -3084,7 +3087,7 @@ breaking footer).
   so existing artifacts stay valid and `CACHE_VERSION` stays `v24`. The
   schema gate drops + recreates on the version mismatch (pre-alpha, no
   migration).
-- **v23 → v24**: exclude `.vx/projects.lock.jsonl` from the input file set
+- **v23 → v24**: exclude `.vx/projects.lock` from the input file set
   globally (`ALWAYS_IGNORE` in `cache/inputs.ts`). The lockfile is
   committed, so git enumerates it, but it's vx's own frozen-config
   metadata — never a task input. Without this, a `vx lock` re-write

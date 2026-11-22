@@ -112,7 +112,7 @@ it('maps an Nx repo with no package.json to configs core runs alone', async () =
     '.vx/.gitattributes',
     '.vx/.gitignore',
     '.vx/dependencies.lock',
-    '.vx/projects.lock.jsonl',
+    '.vx/projects.lock',
     '.vx/workspace.ts',
     'apps/b/vx.config.ts',
     'apps/b/vx.lock.json',

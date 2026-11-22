@@ -152,9 +152,9 @@ describe('frontmatter', () => {
         '```',
         '',
         '`vx lock` freezes every project config',
-        'into .vx/projects.lock.jsonl.',
+        'into .vx/projects.lock.',
       ]),
-    ).toBe('vx lock freezes every project config into .vx/projects.lock.jsonl.')
+    ).toBe('vx lock freezes every project config into .vx/projects.lock.')
     expect(deriveDescription(['**Status: the record of a finished campaign.**'])).toBe(
       'Status: the record of a finished campaign.',
     )

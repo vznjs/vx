@@ -822,7 +822,7 @@ export function checkBracketLiterals(root: string, projects: Iterable<ProjectEnt
 
 `validateProjectConfig` is the one boundary three readers cross with the
 same object shape: the loader after evaluation, `lockfile.ts` on a frozen
-entry read back from `.vx/projects.lock.jsonl` (a hand-editable file — the same
+entry read back from `.vx/projects.lock` (a hand-editable file — the same
 boundary), and `orchestrator/projects.ts` after each plugin's `project`
 edit (a broken edit is refused naming the plugin; there `configPath` is
 that label and `ownConfig` the project's config file, or null with none). `validateWorkspace`
@@ -1336,7 +1336,7 @@ export function headBase(workspaceRoot: string, ref: string): string | undefined
    that asks for a partial clone asks `core.ignorecase` too: set true on
    a disk that tells case apart (`ignoreCaseLies`), the listing runs with
    `-c core.ignorecase=false`, else a new `a.txt` beside the tracked
-   `A.txt` selected nothing. `.vx/projects.lock.jsonl` is
+   `A.txt` selected nothing. `.vx/projects.lock` is
    no project's path: its entries are compared at the base and now (when
    both have a lock that parses): an entry is a project's final config,
    its plugin-given name and the plugin that added it. A project whose
@@ -1912,13 +1912,13 @@ and a CI runner declaring `reapi()`.
 unclaimed file is not watched). `tests/affected.test.ts` pins the
 `--affected` half of a claim; `packages/vx-lockfile/tests` the key half.
 
-## `src/workspace/lockfile.ts` — .vx/projects.lock.jsonl
+## `src/workspace/lockfile.ts` — .vx/projects.lock
 
 ### Purpose
 
 `vx lock` finds every project (`findProjectConfigs`, then the plugin
 `discover` stage), freshly evaluates each config and freezes it, by
-directory, into `.vx/projects.lock.jsonl`. Every run takes its project
+directory, into `.vx/projects.lock`. Every run takes its project
 directories from the lock as well as their configs, so a config added
 since does not run until locked. Every run loads configs FROM the
 lock (zero eval, no staleness check, no schema validation);
@@ -1935,7 +1935,7 @@ answer (an Nx graph, a manifest) never moves a run until `vx lock`, and
 ### Public surface
 
 ```ts
-export const LOCKFILE_NAME = '.vx/projects.lock.jsonl'
+export const LOCKFILE_NAME = '.vx/projects.lock'
 export const LOCKFILE_VERSION = 8
 
 export interface LockedProject {
@@ -1958,7 +1958,7 @@ export function lockfilePath(root: string): string
 export const NO_LOCK = 'no lock: run `vx lock`' // a run's refusal when no lock exists
 export const EMPTY_LOCK =
   'The lock holds no project — write a vx.config (`vx init`), then run `vx lock`' // run and vx show, when it holds none
-export const LOCK_INVALID = '.vx/projects.lock.jsonl is invalid, run `vx lock`'
+export const LOCK_INVALID = '.vx/projects.lock is invalid, run `vx lock`'
 // On a run's crash path only: does the lock hold an entry `vx lock` could
 // not have written? A run validates no entry, so it pays nothing for this.
 export function lockEntryBroken(root: string): boolean
@@ -1994,7 +1994,8 @@ only their lines and tasks: 2,016 projects parse in 0.7 ms for one, 1.8 ms
 for a tenth and 5.4 ms for all (version 7, one JSON object: about 6 ms
 whatever was asked), from 1.33 MB against 1.01 MB. Keyed by name and
 sorted, two branches that changed different projects touch different
-lines, and `vx lock --merge` (`lock-merge.ts`, below) merges them by key.
+lines; git merges them as text, and a line both changed conflicts until
+`vx lock` rewrites the lock.
 
 `readLockfile` checks the shape only: the header an object of this
 `LOCKFILE_VERSION`, each line a key, a tab and a JSON object of
@@ -2117,32 +2118,6 @@ older version over it), and selection then falls back (every project
 for a deletion). `vx lock --check` holds it to a fresh derivation once
 the lock itself holds.
 
-#### Merging (`lock-merge.ts`)
-
-```ts
-export function mergeLock(
-  file: string, // git's %P: which lock
-  base: string,
-  ours: string,
-  theirs: string,
-): { text: string; clean: boolean }
-```
-
-`vx lock --merge %O %A %B %P` is git's merge driver for both locks
-(`merge=vx-lock` in `.vx/.gitattributes`; `vx lock` sets
-`merge.vx-lock.driver` in the clone's config, `cli/merge-driver.ts`,
-since git reads no driver from a committed file; where the bun or the
-`bin.ts` it names is gone, it runs `git merge-file`, so a conflict keeps
-git's markers rather than ours alone). Per key, a side that
-changed it over the base wins, both alike is either, and both different
-is a conflict marked as git marks one (`clean: false`, exit 1). Task
-lines are kept when a merged project line names them. The dependencies
-lock's digests are columns of its header's `files`, so two sides that
-list other files conflict whole. A merge, not a re-lock: the driver runs
-before the configs and the lockfile have merged. The result is checked
-like any lock: a run holds the digests to the merged lockfile, and
-`--check` audits the configs.
-
 #### A run's read (`orchestrator/locked-digests.ts`)
 
 ```ts
@@ -2221,7 +2196,7 @@ when one moved.
 - A read lock's configs share each task line's object, so a reader never
   edits one in place: the `project` and `graph` stages copy first
   (`tests/plugin-pipeline.test.ts`, "an alike task").
-- `.vx/projects.lock.jsonl` is globally excluded from cache inputs and
+- `.vx/projects.lock` is globally excluded from cache inputs and
   `--affected` (it's vx's own metadata, never a task input).
 
 ## `src/workspace/migration.ts` — the plan → files seam

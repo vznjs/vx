@@ -123,7 +123,7 @@ describe('contractBreaks', () => {
   })
 
   it('a lock loses what a project or a task it names lost, not a renamed task line', () => {
-    const record = 'tests/contract/lock.jsonl'
+    const record = 'tests/contract/projects.lock'
     const lock = (...tasks: string[]) =>
       `{"version":1}\n${tasks.map((t, i) => `#${i}${t}\t{"c":"${t}"}`).join('\n')}\na\t{"path":"a","config":{"tasks":{${tasks.map((t, i) => `"${t}":"#${i}${t}"`).join(',')}}}}\n`
     expect(contractBreaks(record, lock('t'), lock('t', 'u'))).toEqual([])

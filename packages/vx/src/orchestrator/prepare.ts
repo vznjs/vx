@@ -580,7 +580,7 @@ async function loadScope(
   localCache: Cache,
 ) {
   const { projectMetas, readLock } = ws
-  // Configs load from .vx/projects.lock.jsonl with no evaluation; only `vx lock`
+  // Configs load from .vx/projects.lock with no evaluation; only `vx lock`
   // evaluates (docs/design/config-lock-2026-06.md). Read once, and only if
   // needed: the CLI's selection may have staged every config already
   // (`handoff.staged`).

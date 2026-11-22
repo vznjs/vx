@@ -199,7 +199,7 @@ describe('vx lock', () => {
       expect({
         code: r.exitCode,
         err: r.stderr.toString().split('\n'),
-        written: existsSync(path.join(root, '.vx/projects.lock.jsonl')),
+        written: existsSync(path.join(root, '.vx/projects.lock')),
       }).toEqual({
         code: 1,
         err: [

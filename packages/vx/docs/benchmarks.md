@@ -528,7 +528,7 @@ The table carries **CPU** columns and the **ideal** run, the theoretical
 best case, so each row reads as overhead above it.
 
 **`vx lock`** is what the `vx` row runs (since 2026-09-29), as every
-run does: it executes the `.vx/projects.lock.jsonl` graph with **zero
+run does: it executes the `.vx/projects.lock` graph with **zero
 per-run config evaluation**.
 
 Measured 2026-09-12 on the 1,000-project bench, compiled binary, 12
@@ -540,7 +540,7 @@ lock read plus 12–14 ms of load from the lock.
 
 The lock is for what it guarantees — what runs is what was locked,
 whatever a config would read from the environment. In your repo:
-`vx lock`, then commit `.vx/projects.lock.jsonl`.
+`vx lock`, then commit `.vx/projects.lock`.
 
 ## How the overhead scales with the workspace (2026-09-10)
 

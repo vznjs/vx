@@ -51,8 +51,7 @@
     "lock": [
       "--check",
       "--format",
-      "--help",
-      "--merge"
+      "--help"
     ],
     "pipeline": [
       "--affected",
@@ -222,9 +221,6 @@
     "lock --format": [
       "json",
       "pretty"
-    ],
-    "lock --merge": [
-      "*"
     ],
     "pipeline --affected": [
       "*"

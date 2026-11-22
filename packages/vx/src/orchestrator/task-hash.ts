@@ -141,7 +141,7 @@ export interface ComputeHashArgs {
 }
 
 /** A key derivation whose throw is the task's `KeyFailed`: its command never ran. */
-export async function keyOf(derived: Promise<string>): Promise<string> {
+export async function keyOf<T>(derived: Promise<T>): Promise<T> {
   try {
     return await derived
   } catch (err) {
@@ -181,6 +181,38 @@ async function taskHash(args: ComputeHashArgs): Promise<string> {
     )
     folds.set(args.node.id, probe, key)
     return key
+  } finally {
+    end()
+  }
+}
+
+/**
+ * A cacheable task's key at dispatch, its inputs described when no fold names
+ * it. Unfolded, the key resolves and hashes every input, and the miss that
+ * follows described them again: the same work twice in the task's slot
+ * (0.3 ms a task cold). The description's own key is the key, so the
+ * re-check's `described.hash === hash` holds by construction; the stats it
+ * compares after the command are the ones this key folded.
+ */
+export async function keyOrDescribe(
+  args: ComputeHashArgs,
+): Promise<{ hash: string; described?: Awaited<ReturnType<typeof describeTaskInputs>> }> {
+  if (isKeyless(args.node.config)) return { hash: keylessHash(args.node.id) }
+  const folds = args.hashCache?.folds
+  const { captureInto: _rows, ...unrowed } = args
+  const token = folds === undefined ? undefined : filesToken(inputsArgs(unrowed))
+  let probe: string | undefined
+  if (folds !== undefined && token !== undefined) {
+    const head = foldHead((await resolveKeyInput(unrowed, true)).input)
+    probe = FOLD_PARTS.token(FOLD_MEMO_VERSION, { head, files: token })!
+    const known = folds.get(args.node.id, probe)
+    if (known !== undefined) return { hash: known }
+  }
+  const end = span('task hash')
+  try {
+    const described = await describeTaskInputs(args)
+    if (probe !== undefined) folds!.set(args.node.id, probe, described.hash)
+    return { hash: described.hash, described }
   } finally {
     end()
   }

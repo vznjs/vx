@@ -3,7 +3,7 @@ title: Fail CI when the lock is stale
 description: Use vx lock --check to fail a build whose configs changed without vx lock.
 ---
 
-Runs read every project's config from `.vx/projects.lock.jsonl`, which
+Runs read every project's config from `.vx/projects.lock`, which
 `vx lock` writes. Add `vx lock --check` to CI to fail a change that edited a
 `vx.config.ts` without running `vx lock`.
 
