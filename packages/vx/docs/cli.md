@@ -2262,8 +2262,9 @@ it, it is no task's input, and `lock.reviewFiles: false`
 it is named by `vx lock` and fails `--check`; when the config was renamed
 to a name vx does not read (`vx.config.json`, `.tsx`), the notice names
 that file. `vx lock` also writes
-`.vx/.gitattributes` (both locks `linguist-generated merge=vx-lock`)
-when it is missing, so GitHub collapses the locks in a diff; `vx init`
+`.vx/.gitattributes` (both locks `linguist-generated merge=vx-lock eol=lf`)
+when it is missing, so GitHub collapses the locks in a diff and a
+repository's `eol=crlf` or `core.autocrlf` leaves them LF; `vx init`
 does too, and an existing one is never edited.
 
 ### Merging

@@ -17,11 +17,13 @@ export function toPosix(p: string): string {
 export const DOT_VX_GITIGNORE = '/cache\n/tmp\n'
 
 /**
- * `.vx/.gitattributes`' text: GitHub collapses the machine locks in a diff, and
- * git merges them by project with `vx lock --merge` where `vx lock` registered it.
+ * `.vx/.gitattributes`' text: GitHub collapses the machine locks in a diff, git
+ * merges them by project with `vx lock --merge` where `vx lock` registered it,
+ * and a checkout keeps their LF where the repository asks for CRLF (`eol=crlf`,
+ * `core.autocrlf`): a CRLF lock reads as stale.
  */
 export const DOT_VX_GITATTRIBUTES =
-  'projects.lock.jsonl linguist-generated=true merge=vx-lock\ndependencies.lock linguist-generated=true merge=vx-lock\n'
+  'projects.lock.jsonl linguist-generated=true merge=vx-lock eol=lf\ndependencies.lock linguist-generated=true merge=vx-lock eol=lf\n'
 
 /**
  * A path `path.relative` may rewrite: an empty, `.` or `..` component, a
