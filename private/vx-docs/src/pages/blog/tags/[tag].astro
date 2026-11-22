@@ -15,7 +15,10 @@ const { label } = Astro.props
 <StarlightPage
   frontmatter={{
     title: label,
-    description: `Posts tagged ${tag}.`,
+    // The tab and search title say it is the blog's: "Caching" alone was
+    // also the docs page's title.
+    head: [{ tag: 'title', content: `${label} posts | vx blog` }],
+    description: `Every vx blog post about ${label.toLowerCase()}, newest first.`,
     template: 'splash',
     pagefind: false,
   }}
