@@ -244,9 +244,13 @@ function yarnBerryCompare(
   } catch {
     // None: no catalog to read.
   }
+  // A focused install (`yarn workspaces focus`) lists the root without its
+  // dependencies, and the focused workspaces maybe without their dev ones:
+  // what Node finds above them is another package's copy (probed on babel,
+  // Yarn 4.19). Only a full install, listing every workspace, is checked.
+  for (const id of lock.workspaces.values()) if (!listed.has(id)) return { dirs: [] }
   const direct = yarnLock().directVersions(lock, yarnLock().catalogsOf(rc))
-  for (const [dir, id] of lock.workspaces) {
-    if (!listed.has(id)) continue
+  for (const [dir] of lock.workspaces) {
     for (const [name, version] of direct.get(dir)!) {
       for (let d = dir; ; d = path.posix.dirname(d)) {
         const installed = versionAt(
