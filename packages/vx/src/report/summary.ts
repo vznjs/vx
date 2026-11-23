@@ -573,11 +573,13 @@ export function formatOutcomeTable(
     })
   if (rows.length === 0) return []
   const widths = {
-    task: Math.max(4, ...rows.map((r) => r.task.length)),
+    // Columns on screen: a CJK name is two columns a character.
+    task: Math.max(4, ...rows.map((r) => Bun.stringWidth(r.task))),
     status: Math.max(6, ...rows.map((r) => r.status.length)),
     duration: Math.max(8, ...rows.map((r) => r.duration.length)),
   }
-  const pad = (text: string, width: number) => ' '.repeat(Math.max(0, width - text.length))
+  const pad = (text: string, width: number) =>
+    ' '.repeat(Math.max(0, width - Bun.stringWidth(text)))
   const header = `${'TASK'.padEnd(widths.task)}  ${'STATUS'.padEnd(widths.status)}  ${'DURATION'.padStart(widths.duration)}`
   const dim = (t: string) => paint('muted', t, colors)
   return [

@@ -730,11 +730,13 @@ export async function pickTask(
   // stdout, `vx run > out.txt` put it in the file and asked a blank screen.
   const out = io.output ?? process.stderr
   const numW = String(entries.length).length
-  const idW = Math.max(...entries.map((e) => `${e.project}#${e.task}`.length))
+  // Columns on screen: a CJK name is two columns a character.
+  const idW = Math.max(...entries.map((e) => Bun.stringWidth(`${e.project}#${e.task}`)))
   out.write('Tasks:\n')
   entries.forEach((e, i) => {
     const n = String(i + 1).padStart(numW, ' ')
-    const id = `${e.project}#${e.task}`.padEnd(idW)
+    const name = `${e.project}#${e.task}`
+    const id = name + ' '.repeat(idW - Bun.stringWidth(name))
     const desc = e.description ? `  ${e.description}` : ''
     out.write(`  ${n}. ${id}${desc}\n`)
   })
