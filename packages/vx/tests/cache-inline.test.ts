@@ -349,7 +349,8 @@ describe('6: a small remote body is ingested inline', () => {
         true,
         true,
         true,
-        true,
+        // Past this machine's ceiling: a miss, not the remote's fault (its copy is kept).
+        false,
       ])
       expect((outcomes[4] as Error).message).toContain('runs past 73760 bytes')
       expect([
