@@ -1067,6 +1067,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'held-blob-sizes',
     'held-server-exit',
     'held-server-output',
+    'helper-binaries',
     'hide-env.unsafe',
     'hit-rows',
     'home-guard',
