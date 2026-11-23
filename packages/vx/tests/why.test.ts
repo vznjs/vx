@@ -3,6 +3,7 @@
 // The fixture runs a real task twice with a changed input file so the
 // persisted entry_inputs rows carry a genuine component-level diff.
 
+import { ambiguousTask } from '../src/cli/help.js'
 import { readFileSync } from 'node:fs'
 import { mkdir, rm, unlink, writeFile } from 'node:fs/promises'
 import { Database } from 'bun:sqlite'
@@ -1423,4 +1424,19 @@ describe('vx why — an upstream whose config moved', () => {
     },
     TIMEOUT,
   )
+})
+
+describe('a bare name that ran in many projects', () => {
+  it('lists the first ten and counts the rest', () => {
+    // 10,000 projects listed 10,002 lines.
+    const ids = Array.from({ length: 12 }, (_, i) => `p${String(i).padStart(2, '0')}#build`)
+    expect(ambiguousTask('why', 'build', ids).message).toBe(
+      'vx why: "build" ran in 12 projects — pick one:\n' +
+        ids
+          .slice(0, 10)
+          .map((id) => `  ${id}`)
+          .join('\n') +
+        '\n  … and 2 more (name one as <project>#build)',
+    )
+  })
 })

@@ -22,7 +22,7 @@ import {
   shortRunId,
 } from '../history/index.js'
 import { buildTaskGraph, expandRequested, isDefaultBuild, taskDefinitions } from '../graph/index.js'
-import { flagHint, formatValue, seeHelp } from './help.js'
+import { ambiguousTask, flagHint, formatValue, seeHelp } from './help.js'
 import {
   applyGraphStage,
   currentBranch,
@@ -914,10 +914,7 @@ async function bareTaskId(db: Database, task: string, at: VerbWorkspace): Promis
   if (ids.length <= 1) return ids[0] ?? task
   const here = await findCwdProject(process.cwd(), at)
   if (here !== null && ids.includes(`${here}#${task}`)) return `${here}#${task}`
-  throw new UserError(
-    `vx last: "${task}" ran in ${ids.length} projects — pick one:\n${ids.map((id) => `  ${id}`).join('\n')}`,
-    'VX_E_AMBIGUOUS',
-  )
+  throw ambiguousTask('last', task, ids)
 }
 
 export async function lastCmd(args: readonly string[]): Promise<number> {

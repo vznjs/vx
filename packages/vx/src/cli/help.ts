@@ -1,4 +1,11 @@
-import { CORE_VERBS, errorDocument, maskedLine, nearest, wantsJson } from '../util/index.js'
+import {
+  CORE_VERBS,
+  errorDocument,
+  maskedLine,
+  nearest,
+  UserError,
+  wantsJson,
+} from '../util/index.js'
 import * as ui from '../ui/index.js'
 import { detectColors, paint, refusalNotice, type ColorSupport } from '../ui/index.js'
 
@@ -532,3 +539,17 @@ export function refuse(
 }
 
 type Paint = typeof paint
+
+/** How many projects an ambiguous task name lists: 10,000 listed 10,002 lines. */
+const AMBIGUOUS_SHOWN = 10
+
+/** A bare task name that ran in several projects: the first few ids, then a count. */
+export function ambiguousTask(verb: string, task: string, ids: readonly string[]): UserError {
+  const lines = ids.slice(0, AMBIGUOUS_SHOWN).map((id) => `  ${id}`)
+  const more = ids.length - AMBIGUOUS_SHOWN
+  if (more > 0) lines.push(`  … and ${more} more (name one as <project>#${task})`)
+  return new UserError(
+    `vx ${verb}: "${task}" ran in ${ids.length} projects — pick one:\n${lines.join('\n')}`,
+    'VX_E_AMBIGUOUS',
+  )
+}
