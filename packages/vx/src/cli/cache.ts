@@ -40,6 +40,9 @@ import {
   warnToStderr,
 } from './workspace-config.js'
 
+/** Taking turns is a status line, as a run says it, not a warning. */
+const waiting = (line: string): void => ui.say('info', line)
+
 /**
  * `vx cache stats` is a habit from the other runners, and vx's answer is a
  * different VERB rather than a missing one — saying so where the user typed it
@@ -254,18 +257,16 @@ async function cleanCmd(args: readonly string[]): Promise<number> {
   // takes the run's lock and waits its turn. A dry run deletes nothing.
   const releaseRunLock = parsed.dry
     ? async (): Promise<void> => {}
-    : await acquireRunLock(root, { log: warnToStderr, holder: 'cache clean' })
+    : await acquireRunLock(root, { log: warnToStderr, wait: waiting, holder: 'cache clean' })
   try {
     // A run in another checkout of the repository holds no lock of this
     // one's, and shares the store: the prune waits for every process that
     // has the store open, then opens its own handle on it. A cache
     // directory with no store may be another workspace's: the prune holds
     // it until done, as its runs do.
-    if (!parsed.dry && storeRoot !== null) (await holdStore(storeRoot, warnToStderr))()
+    if (!parsed.dry && storeRoot !== null) (await holdStore(storeRoot, waiting))()
     const releaseDir =
-      !parsed.dry && storeRoot === null
-        ? await holdCacheDir(dir, 'exclusive', warnToStderr)
-        : () => {}
+      !parsed.dry && storeRoot === null ? await holdCacheDir(dir, 'exclusive', waiting) : () => {}
     const cache =
       parsed.dry === true
         ? new Cache(dir, undefined, undefined, undefined, 'preview', storeRoot)
@@ -377,7 +378,7 @@ async function clear(
   const release =
     parsed.dry === true
       ? async () => {}
-      : await acquireRunLock(root, { log: warnToStderr, holder: 'cache clean' })
+      : await acquireRunLock(root, { log: warnToStderr, wait: waiting, holder: 'cache clean' })
   try {
     return await clearHeld(args, root, dir, storeRoot, parsed)
   } finally {
@@ -496,8 +497,8 @@ async function clearHeld(
     const asides: string[] = []
     try {
       for (const t of [...doomed].sort()) {
-        holds.push(await holdStore(t, warnToStderr))
-        if (t === shared) holds.push(await holdCacheDir(t, 'exclusive', warnToStderr))
+        holds.push(await holdStore(t, waiting))
+        if (t === shared) holds.push(await holdCacheDir(t, 'exclusive', waiting))
       }
       for (const t of doomed) {
         for (const e of entries(t)) {

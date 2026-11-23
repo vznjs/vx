@@ -66,7 +66,7 @@ it('a second vx lock waits for the one writing, then writes what the configs say
       err += decoder.decode(chunk.value)
     }
     reader.releaseLock()
-    expect(err).toContain('[vx] waiting for another vx lock (pid ')
+    expect(err).toMatch(/^\[vx\] waiting for another vx lock \(pid \d+\)/m)
     expect(await Bun.file(path.join(root, '.vx/projects.lock')).exists()).toBe(false)
   } finally {
     await release()

@@ -182,7 +182,12 @@ export async function lockWorkspace(
   // A stop ends vx through its exit hooks, which remove the temps it was
   // writing and its run lock's entry.
   return await exitOnStop(async () => {
-    const release = await acquireRunLock(root, { log: warn, of: 'lock' })
+    const release = await acquireRunLock(root, {
+      log: warn,
+      // Taking turns is a status line, as a run says it, not a warning.
+      wait: (line) => ui.say('info', line),
+      of: 'lock',
+    })
     try {
       const check = await audit(root, warn)
       if (check.broken !== null) {
