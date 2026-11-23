@@ -264,17 +264,23 @@ export class OutputIndex {
   }
 
   /**
-   * The identities (`ino:ctime`, floored) among `files`' that a stamp holds
-   * under an entry whose key folded the file's `oid` at its workspace-relative
-   * `rel` (its `entry_inputs`): bytes a save or restore here left under a key
-   * that took git's version, not a hand edit some miss saved. Flushed and
-   * pending stamps; one scan of them.
+   * Each of `files` (`rel\0ino:ctime`, ctime floored) a stamp holds under an
+   * entry whose key folded its `oid` at its `rel` (that entry's
+   * `entry_inputs`): bytes a save or restore here left under a key that took
+   * git's version, not a hand edit some miss saved. Flushed and pending
+   * stamps; one scan of them. An entry a remote ingest wrote has no inputs
+   * here, so its bytes prove nothing until a local save.
    */
   foldedStamps(files: readonly StampProbe[]): Set<string> {
     const out = new Set<string>()
     if (files.length === 0) return out
-    const byId = new Map<string, StampProbe>()
-    for (const f of files) byId.set(`${f.ino}:${Math.floor(f.ctimeMs)}`, f)
+    const byId = new Map<string, StampProbe[]>()
+    for (const f of files) {
+      const id = `${f.ino}:${Math.floor(f.ctimeMs)}`
+      const same = byId.get(id)
+      if (same === undefined) byId.set(id, [f])
+      else same.push(f)
+    }
     const under = new Map<string, Set<string>>()
     const note = (id: string, hash: string): void => {
       if (!byId.has(id)) return
@@ -308,14 +314,13 @@ export class OutputIndex {
         if (kind === 'file') files.add(`${name}\0${digest}`)
       folded.set(r.entry_hash, files)
     }
-    for (const [id, hs] of under) {
-      const f = byId.get(id)!
-      for (const h of hs)
-        if (folded.get(h)?.has(`${f.rel}\0${f.oid}`) === true) {
-          out.add(id)
-          break
-        }
-    }
+    for (const [id, hs] of under)
+      for (const f of byId.get(id)!)
+        for (const h of hs)
+          if (folded.get(h)?.has(`${f.rel}\0${f.oid}`) === true) {
+            out.add(`${f.rel}\0${id}`)
+            break
+          }
     return out
   }
 

@@ -2859,7 +2859,10 @@ export async function startGitEnumeration(
   // `hashFile`, which hashes the worktree bytes — the source that was correct
   // all along. The only cost is the read, so the gate below is about paying it
   // ONLY where a filter can actually apply.
-  await dropFilteredOids(trusted, {
+  // A filtered file's staged OID is no clean checkout's key part either: one
+  // pass over both (their paths are apart), only when there is a staged one.
+  const filtered = staged.size === 0 ? trusted : new Map([...trusted, ...staged])
+  await dropFilteredOids(filtered, {
     listed: all,
     ignoredAttributes: parsedStatus?.ignoredAttributes ?? false,
     workspaceRoot,
@@ -2870,6 +2873,10 @@ export async function startGitEnumeration(
     spawnGit,
     early,
   })
+  if (filtered !== trusted) {
+    for (const rel of trusted.keys()) if (!filtered.has(rel)) trusted.delete(rel)
+    for (const rel of staged.keys()) if (!filtered.has(rel)) staged.delete(rel)
+  }
   if (vars !== null && vars.exitCode === 0 && fileModeIgnored(vars.stdout)) {
     restampModes(trusted, workspaceRoot)
     // As a clean file is keyed, or a rewrite's mode moved the key.
@@ -3101,11 +3108,19 @@ export function writeIndexBlobs(files: ReadonlyMap<string, string>): void {
     })
     if (proc.exitCode !== 0)
       throw new Error(`git could not give ${abs} as committed: ${proc.stderr.toString().trim()}`)
-    writeFileSync(abs, proc.stdout)
-    const mode = lstatSync(abs).mode & 0o7777
-    const exec = held.startsWith('100755:')
-    const want = exec ? mode | 0o111 : mode & ~0o111
-    if (want !== mode) chmodSync(abs, want)
+    // Beside it and renamed over: a read-only output is replaced, not opened,
+    // and a hard link's other name keeps its bytes.
+    // The mode a checkout gives it: the index's, under the umask.
+    const want = (held.startsWith('100755:') ? 0o777 : 0o666) & ~process.umask()
+    const temp = `${abs}.vx-${process.pid}-${Date.now().toString(36)}`
+    try {
+      writeFileSync(temp, proc.stdout)
+      chmodSync(temp, want)
+      renameSync(temp, abs)
+    } catch (err) {
+      rmSync(temp, { force: true })
+      throw err
+    }
   }
 }
 

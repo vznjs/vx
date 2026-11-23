@@ -258,7 +258,7 @@ describe('stale cache hits', () => {
         `export default {
            tasks: {
              build: {
-               exec: { command: 'mkdir -p dist && cat src/a.txt > dist/out && echo built >> dist/LICENSE' },
+               exec: { command: 'mkdir -p dist && cat src/a.txt > dist/out && echo built >> dist/LICENSE && chmod a-w dist/LICENSE' },
                inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
              },
            },
@@ -272,6 +272,8 @@ describe('stale cache hits', () => {
       git(root, 'commit', '-q', '-m', 'initial')
 
       await writeLocalWorkspace(root)
+      // The build leaves it read-only: the write-back replaces it, as a
+      // checkout would, rather than opening it.
       const license = () => readFile(path.join(root, 'dist/LICENSE'), 'utf8')
       vx(root, 'run', 'build')
       expect(await license()).toBe('license v1\nbuilt\n')
@@ -281,6 +283,7 @@ describe('stale cache hits', () => {
       expect(await license()).toBe('license v1\nbuilt\n')
       expect(vx(root, 'run', 'build')).toMatch(/build[^\n]*up-to-date/)
       // A hand edit is never written back: keyed by its bytes, built over.
+      await rm(path.join(root, 'dist/LICENSE'))
       await Bun.write(path.join(root, 'dist/LICENSE'), 'hand edit\n')
       vx(root, 'run', 'build')
       expect(await license()).toBe('hand edit\nbuilt\n')

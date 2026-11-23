@@ -714,7 +714,8 @@ async function heldOutputs(
   for (const [abs, oid] of found) {
     // Asked now, not at the run's start: a task's write since is no proof.
     const st = lstatSync(abs, { throwIfNoEntry: false })
-    if (st?.isFile() === true && proven.has(`${st.ino}:${Math.floor(st.ctimeMs)}`))
+    const rel = relPosix(args.workspaceRoot, abs)
+    if (st?.isFile() === true && proven.has(`${rel}\0${st.ino}:${Math.floor(st.ctimeMs)}`))
       held.set(abs, oid)
   }
   return held.size > 0 ? held : undefined
