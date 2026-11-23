@@ -56,7 +56,7 @@ One forwarded argument list reaches one task:
 
 ```sh
 vx show --format json                          # projects and their tasks
-vx show app --format json                      # one project's tasks as a run reads them
+vx show @acme/app --format json                # one project's tasks as a run reads them
 vx run test --affected=origin/main --dry --format json  # what would run, cache hit or miss, and why
 ```
 
