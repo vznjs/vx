@@ -1,0 +1,57 @@
+---
+// A wide table on a phone hid its later columns off-screen (Junior QA,
+// 2026-11-23). Under 40rem each row of a docs table stacks into a card and
+// every cell names its column. The names come from the header, copied by
+// this script; without it the table keeps its sideways scroll.
+---
+
+<script>
+  for (const table of document.querySelectorAll<HTMLTableElement>('.sl-markdown-content .vx-table-scroll > table')) {
+    if (table.closest('.vx-chart-table')) continue
+    const names = [...table.querySelectorAll('thead th')].map((th) => th.textContent?.trim() ?? '')
+    if (names.length < 3) continue
+    for (const row of table.querySelectorAll('tbody tr'))
+      row.querySelectorAll('td').forEach((td, i) => td.setAttribute('data-label', names[i] ?? ''))
+    table.dataset.stack = ''
+  }
+</script>
+
+<style is:global>
+  @media (max-width: 40rem) {
+    .sl-markdown-content table[data-stack],
+    .sl-markdown-content table[data-stack] tbody,
+    .sl-markdown-content table[data-stack] tr,
+    .sl-markdown-content table[data-stack] td {
+      display: block;
+      width: 100%;
+    }
+    .sl-markdown-content table[data-stack] thead {
+      display: none;
+    }
+    .sl-markdown-content table[data-stack] tr {
+      padding: 0.6rem 0.8rem;
+      border-bottom: 1px solid var(--vx-border);
+    }
+    .sl-markdown-content table[data-stack] td {
+      border: 0;
+      padding: 0.15rem 0;
+      text-align: left;
+    }
+    .sl-markdown-content table[data-stack] td:first-child {
+      font-weight: 600;
+      color: var(--vx-fg);
+    }
+    .sl-markdown-content table[data-stack] td:not(:first-child)::before {
+      content: attr(data-label);
+      display: block;
+      font: 500 0.68rem / 1.4 var(--vx-mono);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--vx-muted);
+    }
+    .sl-markdown-content table[data-stack] td code {
+      white-space: normal;
+      overflow-wrap: anywhere;
+    }
+  }
+</style>
