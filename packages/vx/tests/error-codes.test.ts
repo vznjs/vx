@@ -2,7 +2,7 @@
 // line on stdout, `{ ok: false, error: { code, message } }`, so an agent
 // branches on the code instead of parsing prose. stderr and the exit code
 // stay as they were.
-import { readdirSync, readFileSync } from 'node:fs'
+import { readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { mkdir, mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -664,6 +664,19 @@ describe('every core code has a section that says what to do', () => {
   it('a heading per code the source names, and none it does not', () => {
     expect(thrown.size).toBeGreaterThan(10)
     expect(headed.toSorted()).toEqual([...thrown].toSorted())
+  })
+
+  // The codes are what an agent branches on, yet the break law read them
+  // only from error.json's description, prose it never compares: a
+  // dropped or renamed code shipped as no break. The record is one code a
+  // line, read by lost lines. Regenerate after a deliberate change:
+  //   VX_UPDATE_CONTRACT=1 bun test tests/error-codes.test.ts
+  it('tests/contract/error-codes.txt records every code', () => {
+    const record = path.resolve(import.meta.dir, 'contract', 'error-codes.txt')
+    const text = `${headed.toSorted().join('\n')}\n`
+    if (process.env['VX_UPDATE_CONTRACT'] === '1' && process.env['CI'] !== 'true')
+      writeFileSync(record, text)
+    expect(readFileSync(record, 'utf8')).toBe(text)
   })
 
   // The schema an agent reads named 14 of 21 codes (2026-10-28).
