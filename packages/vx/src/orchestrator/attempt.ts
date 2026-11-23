@@ -88,9 +88,15 @@ export async function runAttempts(
   for (;;) {
     m.attempt++
     const a = await runAttempt(m, prior, spentMs)
-    // Never started: skipped, as fail-fast skips a task not yet dispatched.
+    // Never started: skipped, as fail-fast skips a task not yet dispatched;
+    // on the run's stop, not run, as the scheduler ends one it never dispatched.
     if (a.unbegun)
-      return { outcome: { node, status: 'skipped', durationMs: 0, hash, timing: timing() } }
+      return {
+        outcome:
+          args.run.stopSignal?.aborted === true && args.run.failFast?.aborted !== true
+            ? { node, status: 'aborted', exitCode: 1, durationMs: 0, hash }
+            : { node, status: 'skipped', durationMs: 0, hash, timing: timing() },
+      }
     const result = a.result
     prior = { result, exitCode: a.exitCode }
     if (a.withdrawn) {

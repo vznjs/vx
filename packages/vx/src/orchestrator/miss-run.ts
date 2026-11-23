@@ -200,8 +200,9 @@ export class AttemptSignal {
   /** The plugin executor's timeout aborted the request. */
   timeoutFired = false
   /**
-   * Fail-fast withdrew the attempt while its executor still held it for a
-   * machine to begin (`running` answered `null`): it never started.
+   * Fail-fast or the run's stop withdrew the attempt while its executor
+   * still held it for a machine to begin (`running` answered `null`): it
+   * never started.
    */
   unbegun = false
   private timer: ReturnType<typeof setTimeout> | undefined
@@ -227,7 +228,15 @@ export class AttemptSignal {
   request(local: boolean): AbortSignal {
     const { args } = this
     const stop = new AbortController()
-    const abort = (): void => stop.abort(args.run.stopSignal?.reason)
+    // A stop while a plugin executor still holds the attempt for a machine
+    // (`running` answers `null`) ends one that never started: not run, as a
+    // task the scheduler never dispatched, not aborted on a machine it never
+    // reached (DTE's report named a worker and a time for it).
+    const abort = (): void => {
+      if (!local && args.executor.distribution?.running?.(args.node.id) === null)
+        this.unbegun = true
+      stop.abort(args.run.stopSignal?.reason)
+    }
     this.unlisten?.()
     this.unlisten = undefined
     this.unbegun = false
