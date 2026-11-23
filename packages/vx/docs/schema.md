@@ -893,7 +893,7 @@ shows it: the task's output and the line vx adds under a shell's 127 or
 replays, the command a cache entry stores (what `vx why` prints and a
 remote cache receives), the `$ command` line, telemetry records,
 `vx show`, the hashes `vx why` gives for such a variable in
-`inputs.env` (its value, unsalted: the row names it and its change), an executor's error, a plugin's warning or failure (a remote's reply; the failure masked in the error `run()` rejects with), a failed `inputs` runtime probe's error (its command and output), and the run's own invocation line that `vx last` prints (a
+`inputs.env` (its value, unsalted: the row names it and its change), an executor's error, a plugin's warning or failure (a remote's reply, also as the run's history row keeps it for `vx last`; the failure masked in the error `run()` rejects with), a failed `inputs` runtime probe's error (its command and output), and the run's own invocation line that `vx last` prints (a
 secret passed after `--`). So are every string of a
 task `vx show` prints (a runtime probe, `readyWhen`, the description),
 the description `--dry` and the task picker print, a runtime probe's

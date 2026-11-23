@@ -3,7 +3,7 @@
 // a miss), its upload pool, and its failures said once per class. Order across
 // remotes and provenance are `LayeredCache`'s.
 
-import { machineParallelism, notify, thrownMessage } from '../util/index.js'
+import { machineParallelism, maskedLine, notify, thrownMessage } from '../util/index.js'
 import type { RemoteKeyTraffic, RemoteTraffic } from './cache.js'
 import type { ArtifactInfo, RemoteCacheLayer } from './layered-cache.js'
 
@@ -442,7 +442,9 @@ export class RemoteLane {
     // run's.
     if (hash !== undefined && this.remote.off !== true) {
       const failures = this.trafficOf(hash).failures
-      const said = `${op}: ${e.message}`
+      // A server's reply may echo the token it was sent: the row and the
+      // telemetry record keep it, as the warning does, masked.
+      const said = maskedLine(`${op}: ${e.message}`)
       if (!failures.includes(said)) failures.push(said)
     }
     const cls = failureClass(e, hash)

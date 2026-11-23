@@ -458,6 +458,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'registry',
     'remote-artifact-names',
     'remote-duration',
+    'remote-error-mask',
     'remote-faults-said.unsafe',
     'remote-held-gone',
     'remote-open',
