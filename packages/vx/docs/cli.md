@@ -1271,17 +1271,7 @@ a stack and exit 1 after its task had succeeded.
 
 ## Planning mode (`--dry`)
 
-`--dry` short-circuits execution. It builds the full task graph,
-computes each task's cache key as the run would (none, `hash: ""`, for
-a server no task depends on), and probes the cache to predict the
-hit/miss outcome. Against a remote cache the probe is a lightweight
-existence check — planning never downloads or ingests artifacts. With no
-remote it writes nothing: no `.vx/cache`, no index, not the directory a
-mistyped `--cache-dir` names. With one, it keeps the remote hits it found
-in the local index, so the `vx run` after it fetches them at once. Each
-remote that can batch is asked once for every key; one that cannot, or
-whose batch failed, is asked each key at once, so an unreachable remote
-costs the plan its timeout about twice, not once per task.
+`--dry` shows what a run would do and runs nothing: each task, whether the cache holds it, and where it would run.
 
 ```sh
 vx run build test --all --dry
@@ -1297,46 +1287,7 @@ vx run build test --all --dry
   [2mtasks   [0m  [38;2;203;213;225m4 planned · 2 cache hits (2 local) · 2 would run[0m
 ```
 
-The plan is a `Plan` panel on the run's own grid: each task's status and
-cache words as the run would print them (`cached` `local`, `run` `miss`), and
-where it would run under `worker`; the cache key is in `--dry --format json`.
-
-**Time prediction.** A would-run task with recorded history shows its
-typical executed duration under `usual` (`~p50` over its recent non-hit
-runs in the local `cache.db`). The `predicted` field forecasts the run: `wall` is the longest dependency
-chain of would-run cost (cache hits restore near-instantly and count
-as 0), `total execution` is the sum across would-run tasks. Tasks with
-no timing (no executed success yet) count as 0 and are called out (`N tasks
-never timed (+?)`) — the totals are honest lower bounds. The field is omitted
-when nothing would run or when no would-run task has history.
-
-**Placement.** Each row's `worker` is where the task would land: the
-executor's name (`spy-remote`) when the workspace's plugins supply more
-than one, `local` for the floor; the JSON object carries it as
-`executor`. An `exec.remote: 'only'` task no remote accepts reads `noop`
-with no worker: the run would skip it rather than run here, and it
-costs nothing in the prediction. If an executor hook throws
-or returns something that is not an executor, the plan still prints —
-`--dry` never fails over a label — but says so on the status line, in
-the plugin's name: `[vx] placement not shown — plugin 'x' … (the run
-would refuse on it)`.
-
-**Platforms.** A task whose `exec.platforms` leave this machine out is
-`skipped`, and so is every task that depends on it, as the run skips
-them: the row says why (`needs darwin-arm64, this is linux-x64`,
-`blocked by mac#build`) and the JSON carries `otherPlatform` or
-`blockedBy`. On CI, or when no executor routes such a task, `--dry`
-refuses as the run does.
-
-**A key that cannot be derived.** A task whose `inputs.runtime` /
-`workspaceRuntime` probe exits non-zero, or whose `inputs.env` value is
-refused, has no key, and the run fails it. `--dry` prints the run's own
-line to stderr (`[vx] @demo/web#build: cache key not derived: inputs.runtime
-probe exited 7: …`), still prints the plan, and exits 1. The task's row,
-and its dependants', read `run` `no-cache` with an empty `hash`: the
-closed status set has no word for a failure.
-
-Row legend (the run's own words; the status word's colour carries the outcome):
+Each row is a task in the run's own words: `cached` `local` is a hit, `run` `miss` would execute. `worker` says where it would run.
 
 | Status / cache    | Meaning                                                                       |
 | ----------------- | ----------------------------------------------------------------------------- |
@@ -1348,14 +1299,59 @@ Row legend (the run's own words; the status word's colour carries the outcome):
 | `not run`         | a server you did not request whose every dependant is a hit, local or remote  |
 | `skipped`         | `exec.platforms` leave this machine out, or a task it depends on is skipped   |
 
-Group tasks are left out of the panel (they are in the JSON).
+Default: off. A run without `--dry` executes.
 
-`--dry --format json` emits the same data as one JSON object on one line, alone on stdout
-(a stage's warnings go to stderr, and so does what a plugin hook prints
-under any core verb's `--format json`; a plugin verb owns its stdout), and with nothing to run (nothing
-affected) an empty `tasks` list, the note on stderr; `schemas/plan.json`
-is its JSON Schema, held like the read verbs' (see Machine-readable output).
-Indented here to read:
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
+
+**What a plan does**
+
+- It builds the full task graph and computes each task's cache key as the run would, then asks the cache for each key.
+- A server no task depends on has no key: its `hash` is `""`.
+- Against a remote cache it only checks that the entry exists. A plan never downloads or unpacks an artifact.
+- With no remote it writes nothing: no `.vx/cache`, no index, not even the folder a mistyped `--cache-dir` names.
+- With a remote it keeps the remote hits it found in the local index, so the `vx run` after it fetches them at once.
+- A remote that can batch is asked once for every key. One that cannot, or whose batch failed, is asked for each key at once.
+- So an unreachable remote costs a plan its timeout about twice, not once per task.
+- The colour of the status word carries the outcome. Group tasks are left out of the panel; the JSON lists them.
+- The cache key is in `--dry --format json`.
+
+**Time prediction**
+
+- `usual` is a would-run task's typical time: `~p50` over its recent runs that were not hits, from the local `cache.db`.
+- `predicted` forecasts the run. `wall` is the longest dependency chain of would-run time.
+- A cache hit restores near-instantly and counts as 0 in `wall`.
+- `total execution` is the sum over the tasks that would run.
+- A task with no timing yet (no run that executed and passed) counts as 0, and the line says `N tasks never timed (+?)`. The totals are lower bounds.
+- `predicted` is left out when nothing would run, or when no task that would run has history.
+
+**Placement**
+
+- `worker` is the executor's name (`spy-remote`) when the workspace's plugins supply more than one, and `local` for this machine.
+- The JSON object carries it as `executor`.
+- `noop` with no worker: an `exec.remote: 'only'` task no remote accepts. The run skips it, and it costs nothing in the prediction.
+- An executor hook that throws, or returns something that is not an executor, does not fail `--dry`. The plan still prints.
+- The status line then names the plugin: `[vx] placement not shown — plugin 'x' … (the run would refuse on it)`.
+
+**Platforms**
+
+- A task whose `exec.platforms` leave this machine out is `skipped`, and so is every task that depends on it, as in a run.
+- The row says why: `needs darwin-arm64, this is linux-x64`, or `blocked by mac#build`.
+- The JSON carries `otherPlatform` or `blockedBy`.
+- On CI, or when no executor routes such a task, `--dry` refuses as the run does.
+
+**A key that cannot be derived**
+
+- A task whose `inputs.runtime` or `workspaceRuntime` probe exits non-zero, or whose `inputs.env` value is refused, has no key. The run fails it.
+- `--dry` prints the run's own line to stderr: `[vx] @demo/web#build: cache key not derived: inputs.runtime probe exited 7: …`.
+- It still prints the plan, then exits 1.
+- That task's row and its dependants' read `run` `no-cache` with an empty `hash`: the status list has no word for a failure.
+
+</div>
+</details>
+
+`--dry --format json` emits the same data as one JSON object on one line, alone on stdout. Indented here to read:
 
 ```json
 {
@@ -1375,17 +1371,25 @@ Indented here to read:
 }
 ```
 
-Every task with history carries `p50Ms`, hits included (only the text
-view's `usual` is limited to tasks that would run); `predicted` counts
-would-run tasks only and is present whenever local history was
-readable. Its `criticalPath` names the would-run tasks with history on
-the chain `wallMs` measures, dependencies first: the tasks to speed up
-to shorten the run.
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
+
+- A stage's warnings go to stderr, and so does what a plugin hook prints under any core verb's `--format json`.
+- A plugin verb owns its own stdout.
+- With nothing to run (nothing affected), `tasks` is an empty list and the note goes to stderr.
+- `schemas/plan.json` is its JSON Schema, held like the read verbs' (see Machine-readable output).
+- Every task with history carries `p50Ms`, hits included. Only the text view's `usual` is limited to tasks that would run.
+- `predicted` counts would-run tasks only, and is present whenever local history was readable.
+- `criticalPath` names the would-run tasks with history on the chain `wallMs` measures, dependencies first.
+- Those are the tasks to speed up to shorten the run.
+
+</div>
+</details>
 
 ### Why a task is affected (`affected.kind`)
 
-Under `--affected`, each requested task the diff kept says why after its
-id, and its JSON object carries an `affected` reason:
+Under `--affected`, each task the diff kept says why after its id. Its JSON object carries the reason as `affected`.
 
 ```sh
 vx run build lint --affected=main --dry
@@ -1401,40 +1405,58 @@ vx run build lint --affected=main --dry
   [2mpredicted[0m  [38;2;203;213;225m~294ms wall · ~294ms total execution · 1 task never timed (+?)[0m
 ```
 
-On a terminal too narrow for a reason beside its row, the reason goes on
-its own line under the row.
+| `kind`      | Why the task is kept                                                   |
+| ----------- | ---------------------------------------------------------------------- |
+| `input`     | a changed `file` is one of its declared inputs                         |
+| `project`   | its project changed and the task reads the project whole               |
+| `workspace` | a `file` no project owns changed and reached every task of the project |
+| `package`   | a `^` edge passes a changed `project` that has no such task            |
+| `named`     | you named it as `pkg#task` beside a bare task                          |
+| `selected`  | another filter selected its project                                    |
 
-`kind` is `input` (a changed `file` is a declared input), `project` (its
-project changed and the task reads it whole: a task with no `inputs`, or a
-changed `file` no task of the project declares, often an output git does not
-ignore; no `file` for a config import), `workspace` (a `file` no project
-owns changed and reached every task of the project: the workspace config
-reaches every project, shown as `changed (workspace-wide)`; a root file a
-plugin claims, such as a lockfile, or a directory it names reaches only
-the projects whose digest moved, shown as `changed (every task in its
-project)`),
-`package` (a `^` edge passes a changed `project` with no such task),
-`named` (`pkg#task` beside a bare task) or `selected` (another filter
-selected its project). `via` is the `dependsOn` chain, nearest first, to
-the task the change reached. A dependency the kept tasks pull in carries
-none. The reasons are gathered only for a plan; a run pays nothing.
-`--dry --format json` also states `affectedBase`, the ref the diff was taken
-against: a bare `--affected` picks it (a plugin's base, else the base
-branch), so a reason that names no file may come from a commit
-the base reaches, a root `package.json` edit among them.
+`via` is the `dependsOn` chain, nearest first, to the task the change reached.
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
+
+- On a terminal too narrow for the reason beside its row, the reason goes on its own line under the row.
+- `project` covers a task with no `inputs`, and a changed `file` no task of the project declares, often an output git does not ignore.
+- A `project` reason for a config import has no `file`.
+- `workspace` from the workspace config reaches every project, shown as `changed (workspace-wide)`.
+- `workspace` from a root file a plugin claims (a lockfile) or a folder it names reaches only the projects whose digest moved.
+- That one is shown as `changed (every task in its project)`.
+- A dependency the kept tasks pull in carries no reason.
+- The reasons are gathered only for a plan. A run pays nothing for them.
+- `--dry --format json` also states `affectedBase`, the ref the diff was taken against.
+- A bare `--affected` picks that base: a plugin's base, else the base branch.
+- So a reason that names no file may come from a commit the base reaches, a root `package.json` edit among them.
+
+</div>
+</details>
 
 ## Run artifacts (`--profile`)
 
-`--profile` adds a side-effect after a real run completes. Errors
-writing the artifact are surfaced via `vx: failed to write …` but
-don't change the run's exit code — the run already happened. A path
-that is a directory is refused before the run (`VX_E_USAGE`); a missing
-parent directory is made.
+`--profile` writes a file about the run after it ends. It never changes the run's exit code, since the run already happened.
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
+
+- An error writing the file prints `vx: failed to write …`, and the exit code stays the run's.
+- `--profile dist/` (a path that is a folder) is refused before the run, `VX_E_USAGE`.
+- `--profile traces/run.json` makes a missing `traces/` folder.
+
+</div>
+</details>
 
 ### `--profile[=<path>]`
 
-Writes a Chrome-trace JSON of every task's wallclock span. Open in
-`chrome://tracing` or https://ui.perfetto.dev.
+Writes a Chrome trace of every task's time span. Open it in `chrome://tracing` or https://ui.perfetto.dev.
+
+```sh
+vx run build --profile
+```
 
 ```json
 {
@@ -1458,28 +1480,33 @@ Writes a Chrome-trace JSON of every task's wallclock span. Open in
 }
 ```
 
-Each project gets a distinct `tid`, and one more for each task it runs
-beside another of its own, so concurrent tasks render on separate lanes. `ts` and `dur` are microseconds derived
-from the per-task `hrtime.bigint()` spans the runner captures.
-`cat` carries the task's final status (`success`, `cache-hit`,
-`cache-hit-remote`, `failed`). A remote hit this run downloaded also
-carries `fetchMs`, its download and ingest; the rest of its `dur` is vx's.
-
-With a remote cache, the run's lane 0 holds two `cache` spans: `stable
-keys` (the up-front keys, `args.keys`) and `remote probe` (the batch
-check, `args.keys` asked, `args.held` found). An executor adds its own events after the run's process
-(`TaskExecutor.profile`): `@vzn/vx-dte` adds one process per worker,
-each task on a lane of its own, and the orchestrator's waits
-([its README](https://github.com/vznjs/vx/tree/main/packages/vx-dte#readme)).
+| Field | Means                                                                         |
+| ----- | ----------------------------------------------------------------------------- |
+| `cat` | the task's final status: `success`, `cache-hit`, `cache-hit-remote`, `failed` |
+| `ts`  | start, in microseconds                                                        |
+| `dur` | length, in microseconds                                                       |
+| `tid` | the lane the task is drawn on                                                 |
 
 Default path: `profile.json` (cwd-relative).
 
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
+
+- Each project gets its own `tid`, and one more for each task it runs beside another of its own. Tasks that overlap draw on separate lanes.
+- `ts` and `dur` come from the per-task `hrtime.bigint()` spans the runner captures.
+- A remote hit this run downloaded also carries `fetchMs`, its download and unpack. The rest of its `dur` is vx's.
+- With a remote cache, lane 0 holds two `cache` spans: `stable keys` (the up-front keys, `args.keys`) and `remote probe`.
+- `remote probe` is the batch check: `args.keys` asked, `args.held` found.
+- An executor adds its own events after the run's process (`TaskExecutor.profile`).
+- `@vzn/vx-dte` adds one process per worker, each task on a lane of its own, plus the orchestrator's waits ([its README](https://github.com/vznjs/vx/tree/main/packages/vx-dte#readme)).
+
+</div>
+</details>
+
 ## Sandbox
 
-Sandbox isolation is opt-in **per task** via an `exec.sandbox` block in
-the task's config — there is no `--sandbox` CLI flag. See
-[`modules/sandbox.md`](./modules/sandbox.md#srcsandboxruntimets--sandbox-wrapper-for-per-task-isolation) for the
-full reference.
+A sandbox lets a task read and write only the paths you grant it. You turn it on per task with an `exec.sandbox` block; there is no `--sandbox` flag.
 
 ```ts
 // vx.config.ts
@@ -1503,80 +1530,96 @@ export default {
 }
 ```
 
-The grants are the task's whole permission surface — nothing is derived
-from `cache`, and the only thing core adds is `node_modules` plus the
-workspace packages linked there, never a link back to the task's own
-project (npm and Yarn link that too). For a task that declares `cache`
-a linked package is granted only when its key includes a task of that
-package; declaring `cache` narrows core's grant and widens nothing.
-Enforcement anchors at the workspace root (a task never leaves its
-project); only denials inside the project, or under a withheld linked
-package, are reported.
+A task that touches a path it was not granted fails, and nothing is cached for it. Its `SANDBOX VIOLATIONS` section ends with a `fix:` line naming the grants it needed:
 
-Policy: **fail on violation.** Any task that touches a path it didn't
-declare either fails naturally (Linux: `ENOENT` from bwrap's
-mount-namespace hide) or is flagged via the macOS violation store
-and forced to exit non-zero. No cache is written for a failed task. The
-task's `SANDBOX VIOLATIONS` section ends with a dimmed `fix:` line,
-the grants that would have allowed each denial, project-relative
-anywhere in the workspace (`'../a/src/x.js'`; an absolute path holds on
-no other machine):
-`fix: exec.sandbox.allow: { read: ['tsconfig.json'], write: ['dist/'] }`.
-Each path is a JS string literal, spelled as the glob it must be: a
-bracket escaped (`read: ['pages/\\[id\\].tsx']`, and so in `inputs.files`, where
-a `*` or `?` is a class, `'a[*]b.txt'`, and a leading `!` is escaped,
-`'\\!notes'`: raw, it is a negation that keys nothing);
-a path no grant can name alone (a `*`, `?` or backslash, and on Linux a
-write with a bracket; `schema.md`) is granted as the directory above it.
-On Linux a refused open is a read or a write by the flags it asked
-with: a missing file opened to read is a read grant, never a file vx
-would create. A host `deny.network` holds gets no network grant.
-A write grants the narrowest directory the next file there lands in
-too: under a declared output, that output's directory
-(`src/generated/`, never `src/`); in `node_modules`, the tool's own
-directory (`node_modules/.vite/`, `node_modules/.cache/storybook/`,
-`node_modules/.prisma/`, never every installed package); else the top
-directory it landed in. When `inputs.files` reads that directory it
-grants the file alone, so the task cannot write its own inputs. A file
-named for the millisecond it was made (13 digits, vite's
-`vite.config.ts.timestamp-<ms>-<hex>.mjs`) is new each run, so its
-directory is granted in its place (`node_modules/.vite-temp/`), or, where
-that directory is the project itself, a glob from the clock on
-(`vite.config.ts.timestamp-*.mjs`); a read the output depends on is a key input as well, and
-the line says so, since a grant never adds one: `inputs.files` for a
-read of the project, `inputs.workspaceFiles` (workspace-relative) for one
-elsewhere in the workspace. Applied as given, the two lines key every
-read they grant, so an edit there re-runs the task. A read through a link
-grants the directory holding the link too: the sandbox mounts a grant at
-its real path and never the link, so the target alone stayed out of
-reach. That holds for a link into another project too (`shared ->
-../ui/shared`): the project's grant lays the link, and behind it stands
-only what the grants bind. A credential path
-(`~/.ssh`, `~/.aws`, `~/.gnupg`, `~/.kube`, `~/.config/gh`,
-`~/.config/gcloud`, `~/.netrc`, `~/.npmrc`, `~/.pypirc`,
-`~/.git-credentials`, `~/.docker/config.json`, a `.env` file) is never put in the
-line: an agent applies it as given, so it is named apart as one to
-grant only on purpose.
-"Didn't declare" means the grants, which on Linux are wider than they
-read: a file-shaped write grant is bound as its whole directory, so
-every file beside it is readable without a violation — `schema.md`
-§ `exec.sandbox` has the shape and the remedy (outputs in a
-subdirectory).
+```
+fix: exec.sandbox.allow: { read: ['tsconfig.json'], write: ['dist/'] }
+```
 
-`vx run` arms the sandbox runtime when a task that declares
-`exec.sandbox` is about to execute; a cache hit needs none. If the
-platform cannot host it (Linux needs `bwrap`, `socat` and `rg` on PATH;
-macOS, `sandbox-exec`), that task fails with one line, `sandbox not
-available: <reason>`, and never runs unsandboxed. Tasks without a
-sandbox run as usual, and the failure's dependents are skipped.
-A task an executor that enforces the sandbox where it runs takes
-(`@vzn/vx-dte`'s workers) arms nothing here, so a DTE run's
-orchestrator needs no sandbox runtime.
+Default: no sandbox. The full reference is [`modules/sandbox.md`](./modules/sandbox.md#srcsandboxruntimets--sandbox-wrapper-for-per-task-isolation).
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
+
+**What a task is granted**
+
+- The grants are the task's whole permission surface. Nothing is derived from `cache`.
+- Core adds only `node_modules` and the workspace packages linked there.
+- Never a link back to the task's own project: npm and Yarn make that link too, and it is not granted.
+- For a task that declares `cache`, a linked package is granted only when its key includes a task of that package.
+- So declaring `cache` narrows core's grant and widens nothing.
+- Enforcement starts at the workspace root: a task never leaves its project.
+- Only denials inside the project, or under a withheld linked package, are reported.
+
+**On a violation**
+
+- Linux: the task fails on its own, with `ENOENT`, since bwrap hides the path from its mount namespace.
+- macOS: the violation store flags it and vx forces a non-zero exit.
+- No cache entry is written for a failed task.
+
+**The `fix:` line**
+
+- Each path is relative to the project, anywhere in the workspace: `'../a/src/x.js'`. An absolute path holds on no other machine.
+- Each path is a JS string literal spelled as the glob it must be. A bracket is escaped: `read: ['pages/\\[id\\].tsx']`.
+- In `inputs.files` too, where `*` or `?` is a class, the line writes `'a[*]b.txt'`.
+- A leading `!` is escaped, `'\\!notes'`: raw, it is a negation that keys nothing.
+- A path no grant can name alone is granted as the folder above it: one with `*`, `?` or a backslash, and on Linux a write with a bracket (see `schema.md`).
+- On Linux a refused open is a read or a write by the flags it asked with.
+- A missing file opened to read is a read grant, never a file vx would create.
+- A host that `deny.network` holds gets no network grant.
+
+**Write grants**
+
+- A write also grants the narrowest folder the next file there lands in.
+- Under a declared output, that is the output's folder: `src/generated/`, never `src/`.
+- In `node_modules`, it is the tool's own folder: `node_modules/.vite/`, `node_modules/.cache/storybook/`, `node_modules/.prisma/`. Never every installed package.
+- Anywhere else, it is the top folder the file landed in.
+- When `inputs.files` reads that folder, the line grants the file alone, so the task cannot write its own inputs.
+- `vite.config.ts.timestamp-<ms>-<hex>.mjs`: a file named for the millisecond it was made (13 digits) is new each run.
+- So its folder is granted instead (`node_modules/.vite-temp/`).
+- Where that folder is the project itself, the grant is a glob from the clock on: `vite.config.ts.timestamp-*.mjs`.
+
+**Reads the output depends on**
+
+- A grant never adds a key input. So a read the output depends on is named as an input as well, and the line says so.
+- A read in the project goes to `inputs.files`. One elsewhere in the workspace goes to `inputs.workspaceFiles` (workspace-relative).
+- Applied as given, the two lines key every read they grant, so an edit there re-runs the task.
+
+**Links**
+
+- A read through a link grants the folder holding the link too.
+- The sandbox mounts a grant at its real path and never the link, so the target alone stayed out of reach.
+- A link into another project (`shared -> ../ui/shared`) works the same: the project's grant lays the link.
+- Behind that link stands only what the grants bind.
+
+**Credentials**
+
+- `~/.ssh`, `~/.aws`, `~/.gnupg`, `~/.kube`, `~/.config/gh`, `~/.config/gcloud`: a credential path is never put in the `fix:` line.
+- So are `~/.netrc`, `~/.npmrc`, `~/.pypirc`, `~/.git-credentials`, `~/.docker/config.json` and a `.env` file.
+- An agent applies the line as given, so a credential is named apart, as one to grant only on purpose.
+
+**Wider than they read**
+
+- On Linux the grants are wider than they read: a write grant shaped like a file is bound as its whole folder.
+- So every file beside it is readable without a violation.
+- `schema.md` § `exec.sandbox` has the shape and the remedy: put outputs in a subfolder.
+
+**The runtime**
+
+- `vx run` arms the sandbox runtime when a task that declares `exec.sandbox` is about to execute. A cache hit needs none.
+- Linux needs `bwrap`, `socat` and `rg` on PATH. macOS needs `sandbox-exec`.
+- Where the platform cannot host it, that task fails with one line, `sandbox not available: <reason>`, and never runs unsandboxed.
+- Tasks without a sandbox run as usual. The failed task's dependents are skipped.
+- A task taken by an executor that enforces the sandbox where it runs (`@vzn/vx-dte`'s workers) arms nothing here.
+- So a DTE run's orchestrator needs no sandbox runtime.
+
+</div>
+</details>
 
 ## `vx watch`
 
-`vx watch` runs the named task, then re-runs it on every filesystem
-change in the projects in scope. Press `Ctrl+C` to stop.
+`vx watch` runs a task, then runs it again each time you save a file in the projects it covers. Press `Ctrl+C` to stop.
 
 ### Usage
 
@@ -1637,274 +1680,270 @@ Every other flag is `vx run`'s ([Flags](#flags)).
 
 ### Lifecycle
 
-1. **Initial run.** Same code path as `vx run` — same scope resolution,
-   same task graph, same cache behaviour, printed as its rows alone.
-   No watcher is armed yet, so an edit made while it runs has no event.
-   One to the inputs of a task it was running leaves that task unsaved
-   (its key no longer describes them), and the loop starts its first
-   cycle on that, labelled `<task> inputs, edited during the first run`.
-   Any other (an input of a task that already finished, a new lock) is
-   found as the loop arms: a file git lists as untracked or modified
-   (asked again once the watchers are up, so a save between the two is
-   not lost), written since the run started by none of its commands, is
-   a change, and the first cycle runs on it. One written while a command of its
-   own project ran may be that command's: the keys are taken again, and
-   it is a change when one moved. A loop that armed while the run
-   waited on a server does both once the run returns, so an edit beside
-   a dev server already up is a cycle too. A tracked file deleted while
-   it runs has no date to tell it from one deleted before: the keys are
-   taken again for it too. An edit committed while it runs is no
-   longer modified, and a checkout or a stash leaves clean files it
-   never read: whenever git's index moved since the run started, the
-   keys are taken again, and one that moved starts a cycle labelled
-   `files, committed or checked out during the first run`. An untracked
-   file deleted while it runs is still unheard: nothing lists it.
-2. **Watch loop.** After the initial run finishes (or once it waits only
-   on a server's readiness), the directory of
-   every project a cycle can run — the scope (the bare tasks' scope
-   plus each `pkg#task`'s own project; only those when every task is
-   anchored) plus its transitive dependencies, the closure `--filter '@demo/web...'` walks, cross-project
-   `dependsOn` edges included — is watched recursively, less any project
-   nested inside it, with a config or not (a root project's key leaves a nested
-   project's files out, so an edit there is no cycle). The workspace root is
-   watched (non-recursively) for a claimed file (a lockfile), for
-   `.vx/projects.lock` and for an edit to `.vx/workspace.*` — the one root file that
-   shapes a run (plugins, `config` stage, concurrency) without being any
-   task's input; the cycle after it re-evaluates the file. With the file
-   removed a cycle fails, as `vx run` refuses, until it is back. A `.gitignore`
-   there or in a project's parent directory is a cycle too, and so is the
-   repository's `.git/info/exclude`: inputs are
-   gitignore-aware, so it changes what keys read. The files a
-   claimed file's digests read besides it, as the lock recorded them in
-   `.vx/dependencies.lock` (a `file:` or `link:` dependency's
-   directory, inside the root or not, and a patch file), are watched too,
-   and their edit is a cycle; a re-lock that changes the set re-arms it. A file a
-   config imports from disk (relative, `#imports` or a tsconfig alias,
-   as `--affected` follows) from outside the watched projects (a
-   shared preset) is watched too, and its edit is a cycle that re-reads
-   the configs; so is one inside a project, which re-reads the set as the
-   config's own edit does. A file the workspace config imports is loaded once per
-   process, so its edit is named with the restart it needs rather than
-   run stale. An import whose file is gone stays on the list
-   by the name it would have, so its return is a cycle. The
-   projects are the lock's: a new `.vx/projects.lock` is the
-   event that adds or drops one, and its directory is watched
-   from before that cycle runs, so an edit made during it queues. A config added and not locked is no project yet. With no
-   lock at start the first cycle fails saying so, and the watch waits
-   for one. A project directory, or one a config imports from,
-   removed and made again (a checkout that restores `packages/`) is
-   heard from its nearest directory that exists and each one above it,
-   and a watch whose
-   directory was replaced is armed again (an OS watch holds the deleted
-   one; `watch-recreated-dirs.test.ts`). There, a project directory
-   that is still the same one starts no cycle: a task writing at its
-   top level moved its mtime, which macOS reports to the parent
-   (`watch-project-dir-write.test.ts`). Under `--filter` or
-   `--affected` the scope is the one resolved at start, and a new
-   project joins it only as a dependency of it. A task's own declared outputs (`outputs.files`,
-   `outputs.workspaceFiles`; a plugin's `project` stage counts, as in
-   a run) never trigger a re-run — a cycle that writes `dist/` is not
-   an edit, nor is the `dist` directory itself coming and going (a
-   literal entry covers its whole tree, as in the schema), unless some
-   task reads the path as an input (an in-place formatter's `src/**`
-   output still leaves a `build` reading `src/**` watching it;
-   a task's own outputs are no input of it, so a `turbo()` task reading
-   `**/*` does not re-run on its own `dist/`; only the tasks the run
-   reaches through `dependsOn` are asked, so an unwatched `lint` reading
-   `**/*` beside `vx watch build` asks nothing) — and neither do `node_modules`
-   (save an input named there or a file git tracks there, see Path
-   filtering), `.git` or the cache directory. A write the task did NOT declare (a
-   task with no `cache: true` declares nothing) is caught by state,
-   judged once the bytes have settled: a file whose bytes and mode did
-   not change since the loop last saw it is not an edit (a `chmod` is one,
-   as the key reads the executable bit), nor is a directory
-   whose entries (names and sizes) did not, nor a path that stayed
-   gone; a symlink is its target string and what it points to, as the
-   key folds them, so a retarget is an edit, and so is an edit behind
-   it: watch arms each link's target, wherever it lies, and names the
-   link; a path the loop has never judged is an edit only if it was
-   modified after the watchers went live (macOS delivers the initial
-   run's own writes after the arm; the later of the path's mtime and
-   ctime says which side of it a path belongs to, so a file moved in
-   with an old mtime by `mv`, `cp -p` or `tar x` still counts, and a
-   symlink's own times are read, never its target's), and a
-   path git did not list at the arm that is gone again (vim's `4913`
-   write probe, a lock file) is no edit (a `.gitignore` edit lists
-   again, so a file it stops ignoring is one); and
-   nothing is judged while a cycle runs — its
-   own writes are mid-flight, a `dist` deleted and not yet rebuilt is
-   a state the tree will not keep — so paths that land mid-run are
-   judged together one debounce window after it ends, an edit made
-   meanwhile included (a task's input edited while it ran is not saved,
-   and its line says the next cycle runs on it: it does, even when the
-   file was put back to the state the last judgement saw, since the
-   task read the other one, but once: a task whose next run leaves the
-   file as that cycle found it rewrote it itself (`sort -o`, `sed -i`
-   write even when nothing changed) and starts none, where it re-ran
-   forever, and watch says so once, `watch-own-rewrite-loop.test.ts`; so does a file written during the cycle
-   where no command of it may write, an edit landing before the keys
-   and put back while the cycle runs included). A task that writes into its own project,
-   `rm -rf dist && tsc` included, costs one extra cycle instead of
-   re-running forever — when the bytes it leaves are the same. A file
-   it rewrites with DIFFERENT bytes every run (a pid file, a
-   timestamped log) is either git-ignored — a git-ignored path never
-   starts a cycle, since no cache key can see it (a user's edit to one
-   still does in a project with a task that has a command and no cache,
-   which reads what it likes, outside any project nested
-   in it, and to one a task names outright; a write the last cycle made is not, read off the later of
-   its mtime and ctime, so an output a cache hit restores is the run's,
-   `watch-restored-output.test.ts`, unless
-   no command of the cycle may have made it: an edit to
-   `node_modules/.gen/**` after its task ran, while another task held
-   the run, is a cycle, `watch-node-modules-input.test.ts`) — or declared an
-   output, or the loop re-runs on it; after three such cycles in a row
-   watch names the path and the remedy, once, and keeps going. A dev
-   server the last cycle left running counts as that cycle for as long
-   as it runs, so a log it rewrites in its project is named too, with
-   `.gitignore` as the remedy (a persistent task declares no outputs). Only a file in a running server's own project, outside any
-   project nested there, is blamed on it, and never one git tracks, as
-   git answers when it would be blamed, so a file committed or checked
-   out since watch started counts: three saves of a source file are the
-   user's. A new file not yet added to git in the server's own
-   project is the one case where the server and the user look alike:
-   `git add` it. When any project's config declares
-   `inputs.workspaceFiles`, the per-project watchers are swapped
-   for ONE recursive root watcher (boundaries are off for those globs,
-   so a root-relative glob can name a file anywhere). That watcher
-   hears every write in the tree and keeps only the ones a key can
-   see: a path inside a project's directory, a fingerprint file at the
-   root, or a match of a declared `workspaceFiles` glob. A log written
-   at the root, a `coverage/` or `.turbo/` tree, an editor's scratch
-   file are dropped before the trigger — so `vx watch … > build.log`
-   inside the repo settles instead of feeding itself a cycle per line
-   of its own output. The opening line, `watching N projects · M tasks`
-   (after the initial run's rows), is
-   printed only after every watcher has reported a probe file written
-   under it (`.vx-watch-probe`, re-written on a short backoff until its
-   event arrives, then removed): on macOS a directory watcher can return
-   before its event stream is live, and an edit in that gap is silently
-   lost — so the line is a promise, not a hope. A probe is never an
-   edit, at any depth: another watcher's, seen under a nested project,
-   ran a cycle (and restarted a dev server) with no edit made (item
-   1016). A
-   watcher whose probe is not heard within 2 s is replaced by a poller
-   that checks every 250 ms, with the notice `vx watch: <dir>: no OS
-watch events within 2000 ms; polling every 250 ms instead`.
-3. **On change.** A cycle opens with a blank line and
-   `changed <project> <relpath>`, plus ` (+N more)` when more paths
-   changed, then its task rows as `vx run` prints them, with no footer.
-   Where a hit prints no row (`--all`, `--filter`, `--affected`, or
-   `--output-logs errors-only` / `none`), a cycle of hits alone says
-   ` N tasks cached, nothing ran`, so a cycle back to cached bytes is
-   not silent below the failure before it.
-   The named path is the first changed file that still exists (a
-   directory only when no file changed), so an
-   editor's temporary file renamed away names nothing; a deletion names
-   the cycle when nothing else changed. The `watching` line is said
-   once: a cycle that re-reads the watched set (a member came or went,
-   the lock or a plugin changed) says nothing more; `VX_DEBUG_WATCH=1`
-   says each arm on stderr as `vx watch: armed N projects (M watches)`,
-   M the OS watches (or pollers) open. A plugin's
-   warning is said once a cycle, by the cycle's run: the watch's own
-   reads of the configs say none. Errors and refusals go to stderr. The
-   orchestrator is invoked again with the same options, save one: the
-   `--affected` diff is read once, for the initial run. A later cycle
-   runs the requested task in every project of the scope fixed at start,
-   and the cache keys decide what executes (the startup diff, asked
-   again, kept an edit made since out of every cycle). A task no key can
-   answer for, an uncached one or a cached one that failed (no entry),
-   keeps the last cycle's result instead of running again when its key
-   is the one it ran under and no path that started the cycle lies in
-   its project: editing the app runs no uncached generator it builds on
-   (turborepo#13347), and an edit elsewhere runs no failing lint again.
-   Its row says `kept`. A path outside every project, a timeout, a
-   proven flake or a result its key does not vouch for keeps nothing
-   (`watch-reach.test.ts`). Events arriving
-   while a run is in flight queue and drain after the current cycle.
-   Re-runs are debounced ~150ms after the last event, and wait at most
-   1 s after the first, so a writer that never pauses holds no edit back.
-4. **Exit.** `SIGINT` (Ctrl+C) exits 0; once the cycle in flight is down, `vx watch: stopped` is the last line.
+1. **Initial run.** The same as `vx run`: same scope, same task graph, same cache. It prints its rows alone.
+2. **Watch loop.** Then vx watches every project the task can reach, and prints `watching N projects · M tasks`.
+3. **On change.** A save starts a cycle: `changed <project> <relpath>`, then the task rows. The cache keys decide what runs.
+4. **Exit.** `Ctrl+C` stops the cycle in flight, prints `vx watch: stopped` last, and exits 0.
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
+
+**An edit during the initial run**
+
+- No watcher is armed during the initial run, so an edit made then has no event. vx finds it another way.
+- An edit to the inputs of a task the run was running leaves that task unsaved: its key no longer describes them.
+- The loop then starts its first cycle on it, labelled `<task> inputs, edited during the first run`.
+- Any other edit (an input of a task that already finished, a new lock) is found as the loop arms.
+- There, a file git lists as untracked or modified, written since the run started by none of its commands, is a change. The first cycle runs on it.
+- git is asked again once the watchers are up, so a save between the two is not lost.
+- A file written while a command of its own project ran may be that command's: the keys are taken again, and it is a change when one moved.
+- A loop that armed while the run waited on a server does both once the run returns. So an edit beside a dev server already up is a cycle too.
+- A tracked file deleted during the run has no date to tell it from one deleted before: the keys are taken again for it too.
+- An edit committed during the run is no longer modified, and a checkout or stash leaves clean files the run never read.
+- So whenever git's index moved since the run started, the keys are taken again.
+- One that moved starts a cycle labelled `files, committed or checked out during the first run`.
+- An untracked file deleted during the run is still not heard: nothing lists it.
+
+**What is watched**
+
+- The loop starts when the initial run finishes, or once the run waits only on a server's readiness.
+- Watched recursively: the folder of every project a cycle can run, less any project nested inside it, with a config or not.
+- That set is the scope plus its transitive dependencies, the closure `--filter '@demo/web...'` walks, cross-project `dependsOn` edges included.
+- The scope is the bare tasks' scope plus each `pkg#task`'s own project. When every task is anchored, only those projects.
+- A root project's key leaves a nested project's files out, so an edit in a nested project is no cycle for the root.
+- The workspace root is watched, not recursively, for a claimed file (a lockfile), for `.vx/projects.lock` and for `.vx/workspace.*`.
+- `.vx/workspace.*` shapes a run (plugins, `config` stage, concurrency) without being any task's input. The cycle after its edit re-reads it.
+- With `.vx/workspace.*` removed, a cycle fails, as `vx run` refuses, until the file is back.
+- A `.gitignore` at the root or in a project's parent folder is a cycle too, and so is `.git/info/exclude`: inputs follow gitignore.
+- The files a claimed file's digests read, as `.vx/dependencies.lock` records them, are watched too, and their edit is a cycle.
+- Those are a `file:` or `link:` dependency's folder, inside the root or not, and a patch file. A re-lock that changes the set re-arms it.
+- A file a config imports from disk, from outside the watched projects (a shared preset), is watched. Its edit re-reads the configs.
+- That counts relative imports, `#imports` and tsconfig aliases, as `--affected` follows them.
+- An import inside a project re-reads the set, as an edit to the config does.
+- A file the workspace config imports is loaded once per process. Its edit names the restart it needs rather than run stale.
+- An import whose file is gone stays on the list under the name it would have, so its return is a cycle.
+
+**Which projects**
+
+- The projects are the lock's. A new `.vx/projects.lock` is the event that adds or drops one.
+- A new project's folder is watched from before that cycle runs, so an edit made during it queues.
+- A config added and not locked is no project yet.
+- With no lock at start, the first cycle fails saying so, and the watch waits for one.
+- Under `--filter` or `--affected` the scope is the one resolved at start. A new project joins it only as a dependency of it.
+
+**Folders removed and made again**
+
+- A project folder, or one a config imports from, removed and made again (a checkout that restores `packages/`) is still heard.
+- It is heard from its nearest folder that exists and each one above it.
+- A watch whose folder was replaced is armed again: an OS watch holds the deleted one.
+- There, a project folder that is still the same one starts no cycle.
+- That is a task writing at its top level, which moved its mtime: macOS reports that to the parent.
+
+**Outputs are not edits**
+
+- A task's own declared outputs (`outputs.files`, `outputs.workspaceFiles`) never trigger a run. A plugin's `project` stage counts, as in a run.
+- So a cycle that writes `dist/` is not an edit, nor is `dist` itself coming and going. A literal entry covers its whole tree.
+- The exception: some task reads the path as an input. A formatter's `src/**` output still leaves a `build` reading `src/**` watching it.
+- A task's own outputs are no input of it, so a task reading `**/*` does not re-run on its own `dist/`.
+- Only the tasks the run reaches through `dependsOn` are asked. An unwatched `lint` reading `**/*` beside `vx watch build` asks nothing.
+- `node_modules`, `.git` and the cache folder never trigger a run either (see Path filtering for the exceptions).
+
+**What counts as an edit**
+
+- A write the task did not declare is judged by state, once its bytes have settled. A task with no `cache: true` declares nothing.
+- A file whose bytes and mode did not change since the loop last saw it is no edit. A `chmod` is one: the key reads the executable bit.
+- A folder whose entries (names and sizes) did not change is no edit, nor is a path that stayed gone.
+- A symlink is its target string and what it points to, as the key folds them. A retarget is an edit.
+- So is an edit behind a link: watch arms each link's target, wherever it lies, and names the link.
+- A path the loop has never judged is an edit only if it was modified after the watchers went live.
+- macOS delivers the initial run's own writes after the arm. The later of the path's mtime and ctime says which side it is on.
+- So a file moved in with an old mtime by `mv`, `cp -p` or `tar x` still counts. A symlink's own times are read, never its target's.
+- A path git did not list at the arm that is gone again is no edit: vim's `4913` write probe, a lock file.
+- A `.gitignore` edit lists again, so a file it stops ignoring is an edit.
+
+**Nothing is judged during a cycle**
+
+- A cycle's own writes are mid-flight, and a `dist` deleted and not yet rebuilt is a state the tree will not keep.
+- So paths that land during a cycle are judged together, one debounce window after it ends, an edit made meanwhile included.
+- A task's input edited while it ran is not saved, and its line says the next cycle runs on it.
+- It does, once, even when the file was put back as the last judgement saw it, since the task read the other one.
+- A task whose next run leaves the file as that cycle found it rewrote the file itself (`sort -o`, `sed -i` write even when nothing changed).
+- That starts no cycle, where it would re-run forever, and watch says so once.
+- The same goes for a file written during the cycle where no command of it may write.
+- That includes an edit landing before the keys and put back while the cycle runs.
+
+**A task that writes into its own project**
+
+- `rm -rf dist && vite build` costs one extra cycle, not an endless loop, when the bytes it leaves are the same.
+- A file it rewrites with different bytes every run (a pid file, a timestamped log) must be git-ignored or declared an output.
+- Otherwise the loop re-runs on it. After three such cycles in a row, watch names the path and the remedy, once, and keeps going.
+- A git-ignored path never starts a cycle, since no cache key can see it. The exceptions follow.
+- Your edit to an ignored file still starts one in a project with a task that has a command and no cache: that task reads what it likes.
+- That holds outside any project nested in it, and for an ignored file a task names outright.
+- A write the last cycle made is not an edit, read off the later of its mtime and ctime. So an output a cache hit restores is the run's.
+- Unless no command of the cycle may have made it: an edit to `node_modules/.gen/**` after its task ran, while another task held the run, is a cycle.
+
+**Dev servers and their writes**
+
+- A dev server the last cycle left running counts as that cycle for as long as it runs.
+- So a log it rewrites in its project is named too, with `.gitignore` as the remedy: a persistent task declares no outputs.
+- Only a file in a running server's own project, outside any project nested there, is blamed on it.
+- A file git tracks is never blamed, as git answers when it would be. So a file committed or checked out since watch started counts.
+- Three saves of a source file are yours.
+- A new file not yet added to git in the server's own project looks like the server's write. `git add` it.
+
+**One root watcher**
+
+- When any project's config declares `inputs.workspaceFiles`, the per-project watchers become one recursive watcher on the root.
+- Boundaries are off for those globs, so a root-relative glob can name a file anywhere.
+- That watcher hears every write in the tree and keeps only the ones a key can see.
+- Those are: a path inside a project's folder, a fingerprint file at the root, or a match of a declared `workspaceFiles` glob.
+- A log written at the root, a `coverage/` tree, an editor's scratch file are dropped before the trigger.
+- So `vx watch … > build.log` inside the repo settles, instead of starting a cycle per line of its own output.
+
+**The `watching` line**
+
+- `watching N projects · M tasks` prints after the initial run's rows, only once every watcher has heard a probe file written under it.
+- The probe is `.vx-watch-probe`, written again on a short backoff until its event arrives, then removed.
+- On macOS a folder watcher can return before its event stream is live, and an edit in that gap is lost. So the line is a promise.
+- A probe is never an edit, at any depth. Another watcher's probe, seen under a nested project, once ran a cycle with no edit made.
+- A watcher whose probe is not heard within 2 s is replaced by a poller that checks every 250 ms.
+- The notice: `vx watch: <dir>: no OS watch events within 2000 ms; polling every 250 ms instead`.
+
+**On change**
+
+- A cycle opens with a blank line and `changed <project> <relpath>`, plus ` (+N more)` when more paths changed.
+- Then come its task rows as `vx run` prints them, with no footer.
+- Where a hit prints no row (`--all`, `--filter`, `--affected`, `--output-logs errors-only` or `none`), a cycle of hits alone says ` N tasks cached, nothing ran`.
+- So a cycle back to cached bytes is not silent below the failure before it.
+- The named path is the first changed file that still exists, a folder only when no file changed.
+- An editor's temporary file renamed away names nothing. A deletion names the cycle when nothing else changed.
+- The `watching` line is said once. A cycle that re-reads the watched set (a member came or went, the lock or a plugin changed) says nothing more.
+- `VX_DEBUG_WATCH=1` says each arm on stderr as `vx watch: armed N projects (M watches)`, M the OS watches or pollers open.
+- A plugin's warning is said once a cycle, by the cycle's run. The watch's own reads of the configs say none.
+- Errors and refusals go to stderr.
+
+**What a cycle runs**
+
+- Each cycle runs with the same options, save one: the `--affected` diff is read once, for the initial run.
+- A later cycle runs the requested task in every project of the scope fixed at start, and the cache keys decide what executes.
+- Asking the startup diff again would keep an edit made since out of every cycle.
+- A task no key can answer for (an uncached one, or a cached one that failed) keeps the last cycle's result. Its row says `kept`.
+- That holds when its key is the one it ran under and no path that started the cycle lies in its project.
+- So editing the app runs no uncached generator it builds on, and an edit elsewhere runs no failing lint again.
+- A path outside every project, a timeout, a proven flake or a result its key does not vouch for keeps nothing.
+- Events that arrive during a cycle queue and run after it.
+- A cycle starts ~150 ms after the last event, and at most 1 s after the first, so a writer that never pauses holds no edit back.
+
+**Exit**
+
+- `SIGINT` (`Ctrl+C`) exits 0. `vx watch: stopped` is the last line, once the cycle in flight is down.
+
+</div>
+</details>
 
 ### Path filtering
 
-Always ignored (no re-trigger):
+Some paths never start a cycle. Everything else does, and the cache keys decide what actually runs.
 
-- `.git/` and `.vx/cache/` anywhere in the path.
-- `node_modules/` anywhere in the path, save what a task the watch
-  reaches names there through that segment (`node_modules/.prisma/client/**`)
-  and a file git tracks there (a committed fixture under
-  `fixtures/node_modules/`): those are inputs, so both watchers enter
-  only those directories and an edit there is a cycle. A broad glob
-  (`**`, `fixtures/**`) names no `node_modules`.
-- A path git ignores (`git check-ignore`, asked once per debounce
-  window, never per event), unless a task's inputs name it outright
-  (`.env.local`, `dist/**`) by the rule the key reads them (schema.md §
-  gitignore filter): `src/**` over a listed `src` names no ignored
-  `src/dev.log`, so a dev server writing one starts no cycle. Any other
-  is invisible to every cache key — inputs are tracked +
-  untracked-not-ignored — so a cycle it started could change nothing,
-  and it never names a cycle. A tracked file that matches a pattern is not ignored, by
-  git's own rule; outside a repository nothing is.
-- Files ending in `~` (editor swap files), and `.vx/tmp/`, where
-  restores stage.
-- The run's **resolved cache directory**, wherever it is. `.vx/cache/` covers the
-  default, but `defineWorkspace({ cache: { dir } })` and `--cache-dir` can put it
-  anywhere; watching it would let vx's own cache writes trigger the next
-  cycle, which writes again — a loop that never settles. A `cache.dir`
-  edit mid-watch moves the filter with it, from the cycle that re-reads
-  the config.
-- A new empty directory (`mkdir src/new`): it holds nothing a key reads.
-  A file made in it is the change, and so is a directory moved in with
-  files (`mv stage src/moved`), whatever their times. A project directory made again, which the watch waits
-  on, still is one.
+| Never a cycle             | Why                                                         |
+| ------------------------- | ----------------------------------------------------------- |
+| `.git/`, `.vx/cache/`     | vx's and git's own files, anywhere in the path              |
+| `node_modules/`           | installed packages, anywhere in the path (exceptions below) |
+| a path git ignores        | no cache key can see it                                     |
+| `notes.md~`               | a file ending in `~`, an editor swap file                   |
+| `.vx/tmp/`                | where restores stage                                        |
+| the resolved cache folder | vx's own cache writes                                       |
+| `mkdir src/new`           | a new empty folder holds nothing a key reads                |
 
-Everything else triggers a cycle. We deliberately don't filter events
-against per-task `inputs.files` — the cache hash is the source
-of truth. A change to an irrelevant file produces a cache-hit run
-(typically tens of ms); the cost is much smaller than the engineering
-cost of a per-event glob match.
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
+
+**`node_modules`**
+
+- `node_modules/.prisma/client/**`: what a task the watch reaches names there, through that segment, is an input. An edit there is a cycle.
+- So is a file git tracks there, such as a committed fixture under `fixtures/node_modules/`.
+- Both watchers enter only those folders.
+- A broad glob (`**`, `fixtures/**`) names no `node_modules`.
+
+**Ignored paths**
+
+- git is asked (`git check-ignore`) once per debounce window, never per event.
+- `.env.local` or `dist/**` named outright in a task's inputs is watched, by the rule the key reads them (schema.md § gitignore filter).
+- `src/**` over a listed `src` names no ignored `src/dev.log`, so a dev server writing one starts no cycle.
+- Any other ignored path is invisible to every cache key (inputs are tracked plus untracked-not-ignored), so it never names a cycle.
+- A tracked file that matches an ignore pattern is not ignored, by git's own rule. Outside a repository nothing is ignored.
+
+**The cache folder**
+
+- `.vx/cache/` covers the default. `defineWorkspace({ cache: { dir } })` and `--cache-dir` can put the cache anywhere, and that is ignored too.
+- Watching it would let vx's own cache writes start the next cycle, which writes again: a loop that never settles.
+- A `cache.dir` edit during the watch moves the filter with it, from the cycle that re-reads the config.
+
+**New folders**
+
+- A file made in a new empty folder is the change.
+- So is a folder moved in with files (`mv stage src/moved`), whatever their times.
+- A project folder made again, which the watch waits on, still is one.
+
+**Why not filter by inputs**
+
+- vx deliberately does not filter events against per-task `inputs.files`: the cache key is the source of truth.
+- A change to an unrelated file costs a cache-hit run, typically tens of ms. That is far cheaper than a glob match per event.
+
+</div>
+</details>
 
 ### How changes are seen
 
-One recursive OS watcher (`fs.watch`) per project directory in scope,
-plus the workspace root for the fingerprint files, `.git/info/` for
-`exclude`, and each file or directory a claimed file's recorded digests
-read besides it. Each watcher must
-prove it delivers: a directory whose watcher reports nothing within
-2 s of the probe is polled every 250 ms instead, with a one-line
-notice on stderr (`no OS watch events within 2000 ms; polling every
-250 ms instead`). Where the watcher is known not to deliver — a sandbox
-without FSEvents access on macOS, a network mount, a container bind —
-`VX_WATCH_POLL=1` polls from the start and skips the 2 s probe; the loop
-says so once (`vx watch: polling every 250 ms (watch.poll)`). A
-watcher the OS refuses for its watch limit (`ENOSPC`, `EMFILE`) is
-polled too, with a notice naming the limit to raise. The
-poller walks the same tree the event filter keeps: the always-ignored
-segments and the run's declared output containers are never sampled,
-unless a task's inputs can lie in one (`src/**/*.ts` beside an output
-`src/**/*.js`) or git tracks a file there.
-It samples each file's later clock of mtime and ctime, so a replacement
-that carries the old file's mtime (`cp -p`, `rsync -a`, a `mv`) is an
-edit to it as it is to the OS watcher. It samples each directory by
-its identity, as the OS watcher reports it, so one moved in is a
-change though its files keep times from before the arm.
+vx opens one recursive OS watcher (`fs.watch`) per project folder in scope. Each one must prove it works within 2 s, or vx polls that folder every 250 ms instead.
+
+```sh
+VX_WATCH_POLL=1 vx watch build   # poll from the start
+```
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
+
+- Also watched: the workspace root for the fingerprint files, `.git/info/` for `exclude`, and each file or folder a claimed file's digests read.
+- A folder whose watcher reports nothing within 2 s of the probe is polled every 250 ms.
+- stderr says so in one line: `no OS watch events within 2000 ms; polling every 250 ms instead`.
+- Where the watcher is known not to deliver (a macOS sandbox without FSEvents access, a network mount, a container bind), use `VX_WATCH_POLL=1`.
+- It polls from the start and skips the 2 s probe. The loop says so once: `vx watch: polling every 250 ms (watch.poll)`.
+- A watcher the OS refuses for its watch limit (`ENOSPC`, `EMFILE`) is polled too, with a notice naming the limit to raise.
+- The poller walks the same tree the event filter keeps. It never samples the always-ignored segments or the run's output folders.
+- Unless a task's inputs can lie in one (`src/**/*.ts` beside an output `src/**/*.js`), or git tracks a file there.
+- It samples each file's later clock of mtime and ctime. A replacement that keeps the old mtime (`cp -p`, `rsync -a`, a `mv`) is an edit.
+- It samples each folder by its identity, as the OS watcher reports it. So a folder moved in is a change, though its files keep older times.
+
+</div>
+</details>
 
 ### Claimed root file changes
 
-A root file a plugin claims — a lockfile or install setting under
-`@vzn/vx-lockfile` (`pnpm-lock.yaml`, `bun.lock`, `.npmrc`, …),
-`turbo.json` under `turbo()` — triggers a cycle, and so does
-`.vx/projects.lock`. Watch mode hears them because it watches the
-workspace root (non-recursively); a plugin added to the workspace
-config mid-watch counts from the cycle that loads it. The keys then
-decide which projects actually re-run: core keys no package file, so a
-lockfile edit re-keys only through its claimant
-([cache key derivation](./caching.md#cache-key-derivation)). Every
-cycle's configs come from `.vx/projects.lock`, so a config edit
-alone changes no command: the cycle it starts says so on stderr,
-`vx watch: packages/web/vx.config.ts changed; runs read the lock, so run
-\`vx lock\` to apply it` (a config import's edit too). A re-lock
-(`vx lock`) is a cycle that re-reads the watched set.
+A root file a plugin claims starts a cycle: a lockfile under `@vzn/vx-lockfile` (`pnpm-lock.yaml`, `bun.lock`, `.npmrc`, …), or `turbo.json` under `@vzn/vx-migrate`'s `turbo()`. So does `.vx/projects.lock`.
+
+A config edit alone changes no command, since every cycle reads its configs from `.vx/projects.lock`. The cycle says so:
+
+```
+vx watch: packages/web/vx.config.ts changed; runs read the lock, so run `vx lock` to apply it
+```
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
+
+- Watch hears these files because it watches the workspace root, not recursively.
+- A plugin added to the workspace config during the watch counts from the cycle that loads it.
+- The keys decide which projects re-run. Core keys no package file, so a lockfile edit re-keys only through its claimant ([cache key derivation](./caching.md#cache-key-derivation)).
+- An edit to a file a config imports prints the same `run vx lock` line.
+- A re-lock (`vx lock`) is a cycle that re-reads the watched set.
+
+</div>
+</details>
 
 ### Constraints
 
@@ -1915,77 +1954,88 @@ run):
 - `--format` — only a plan has one; each cycle's run is
   `vx last --format json` after it.
 - `--profile` — would overwrite its target per cycle.
-- `--verbosity <n>` (n > 0) — formats
-  ONE run's result; a watch loop has no single run to report. (`--verbosity 0`
-  is accepted: it asks for what watch already prints.)
+- `--verbosity <n>` (n > 0) — formats ONE run's result; a watch loop has no single run to report.
+- `--verbosity 0` is accepted: it asks for what watch already prints.
 
-A persistent task (`exec.persistent`, a dev server), requested or only
-a dependency, starts once and stays up across cycles; each cycle re-runs
-what it depends on, as the cache keys decide. So `vx watch dev`, with `dev` depending on
-`^build`, rebuilds only the libraries an edit reaches on the way to the
-app and leaves the server running; the dev tool's own reload picks up
-what was rebuilt. What the server writes keeps printing, under its id
-above the rows while a cycle rebuilds, and its frame closes `still
-running` in a cycle that kept it. A requested server, and one it
-depends on, restarts
-only when its own task config (or the args forwarded to it) changed, or
-when it died. A server only another task depends on restarts when its
-key changed (a file in its `inputs.files`, its config, or what it
-depends on), so `vx watch e2e` boots its api once and again only after
-an edit the api's key sees, and `e2e` never tests the old one; with no
-`inputs.files` it restarts every cycle, as no key sees its edits. The
-old one is always stopped first (the kill grace, then
-SIGKILL), so the two never hold one port. One that dies while watch
-idles is said (`vx: @demo/web#dev exited with code 3`); the next change
-starts it again. A cycle in which a task the server depends on fails
-stops it, and so does one that no longer starts it (its dependants all
-hit, or the selection changed). An edit while a cycle waits only on a server that has not
-printed its `readyWhen` line stops that cycle and starts the next, so a
-fix reaches a server stuck before ready, in the initial run too; the
-servers already up stay up through it. A file
-git does not track in the server's project, that no task's inputs name,
-and that stopped the last such cycle and is written again while the next
-server starts is that server's own boot write (a timestamped config
-bundle, a pid file): it stops no further cycle, so the server is not
-restarted for good. A new source file saved again is an edit.
-Stopping watch stops the server too. A one-shot task (`vx watch build`)
-re-runs itself and what it depends on.
+**Dev servers.** A persistent task (`exec.persistent`) starts once and stays up across cycles. Each cycle re-runs what it depends on, as the keys decide.
+
+```sh
+vx watch dev   # dev depends on ^build
+```
+
+Each edit rebuilds only the libraries it reaches on the way to the app. The server keeps running, and the dev tool's own reload picks up what was rebuilt.
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
+
+**What it prints**
+
+- A persistent task counts whether you requested it or it is only a dependency.
+- What the server writes keeps printing, under its id, above the rows while a cycle rebuilds.
+- Its frame closes `still running` in a cycle that kept it.
+
+**When it restarts**
+
+- A requested server, and one it depends on, restarts only when its own task config or forwarded args changed, or when it died.
+- A server only another task depends on restarts when its key changed: a file in its `inputs.files`, its config, or what it depends on.
+- So `vx watch e2e` boots its api once, and again only after an edit the api's key sees. `e2e` never tests the old one.
+- With no `inputs.files`, that server restarts every cycle: no key sees its edits.
+- The old one is always stopped first (the kill grace, then SIGKILL), so the two never hold one port.
+
+**When it stops**
+
+- One that dies while watch idles is said: `vx: @demo/web#dev exited with code 3`. The next change starts it again.
+- A cycle in which a task the server depends on fails stops it.
+- So does a cycle that no longer starts it: its dependants all hit, or the selection changed.
+- Stopping watch stops the server too.
+
+**A server not ready yet**
+
+- An edit while a cycle waits only on a server that has not printed its `readyWhen` line stops that cycle and starts the next.
+- So a fix reaches a server stuck before ready, in the initial run too. The servers already up stay up through it.
+- A file the server writes as it boots (a timestamped config bundle, a pid file) stops no further cycle, so the server is not restarted for good.
+- That is a file git does not track in its project, no task's inputs name, that stopped the last such cycle and is written again as the next starts.
+- A new source file saved again is an edit.
+
+**One-shot tasks**
+
+- `vx watch build` re-runs `build` and what it depends on.
+
+</div>
+</details>
 
 ### Exit codes
 
-- `0` — clean Ctrl+C / SIGTERM exit. A cycle in flight is torn down
-  first — its children, and the dev server held between cycles, get the
-  signal watch received (a Ctrl-C as SIGINT; a SIGTERM or SIGHUP as SIGTERM),
-  a 2 s grace, then SIGKILL — and the process leaves only
-  once it has returned, so a CI cancellation never orphans a task. A
-  second signal during that teardown changes nothing: still `0`, once
-  the cycle is down.
-  Also `0` once its reader is gone (`vx watch dev | head`, a quit
-  `| less`): Bun ignores SIGPIPE, so the next write's EPIPE stops
-  the watch as a SIGTERM does; an idle watch ends at its next output.
-  Also `0`, with no watch, when `--affected` selects nothing: watch
-  prints `vx watch: nothing affected since <ref>` and exits as `vx run`
-  does.
-- `1` — parser error, missing scope, or a task name no project in
-  scope declares: the initial run refuses it as `vx run` does, with the
-  same `Did you mean` hint, and watch exits rather than re-run the
-  refusal on every change.
+- `0` — clean Ctrl+C / SIGTERM exit; also once its reader is gone; also, with no watch, when `--affected` selects nothing (`vx watch: nothing affected since <ref>`, as `vx run` does).
+- `1` — parser error, missing scope, or a task name no project in scope declares (the initial run refuses it as `vx run` does, with the same `Did you mean` hint).
 
-A cycle that throws — no `.vx/projects.lock`, or one that locks a
-config since removed — prints `vx watch: cycle failed: <reason>` once
-and watch keeps watching, the initial run included, so the `vx lock`
-that fixes it re-runs.
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
 
-Re-run cycles whose orchestrator returns `{ ok: false }` do NOT exit
-the watch loop — a failed cycle just prints the framed FAILED block
-and waits for the next change. This matches `turbo watch` / `nx
-watch`.
+**Stopping**
+
+- A cycle in flight is torn down first: its children, and the dev server held between cycles, get the signal watch received.
+- A Ctrl-C passes on as SIGINT. A SIGTERM or SIGHUP passes on as SIGTERM. Then a 2 s grace, then SIGKILL.
+- The process leaves only once the cycle has returned, so a CI cancellation never orphans a task.
+- A second signal during that teardown changes nothing: still `0`, once the cycle is down.
+- `vx watch dev | head`, or a quit `| less`: Bun ignores SIGPIPE, so the next write's EPIPE stops the watch as a SIGTERM does.
+- An idle watch with no reader ends at its next output.
+
+**Refusals and failures**
+
+- A task name no project declares exits rather than re-run the refusal on every change.
+- A cycle that throws (no `.vx/projects.lock`, or one that locks a config since removed) prints `vx watch: cycle failed: <reason>` once.
+- Watch keeps watching, the initial run included, so the `vx lock` that fixes it re-runs.
+- A cycle whose run fails (`{ ok: false }`) does not end the watch. It prints the framed FAILED block and waits for the next change.
+
+</div>
+</details>
 
 ## `vx pipeline`
 
-`vx pipeline <name>` runs a pipeline of `.vx/workspace.ts`: its tasks in
-every project that declares them, under the `vx run` flags it saves
-([schema.md § Pipelines](schema.md#pipelines)). Each CI job names one.
+`vx pipeline <name>` runs a pipeline from `.vx/workspace.ts`: its tasks, in every project that declares them, with the `vx run` flags it saves ([schema.md § Pipelines](schema.md#pipelines)). Each CI job names one.
 
 ### Usage
 
@@ -2033,43 +2083,58 @@ A second `vx pipeline main` with nothing changed restores all six tasks from the
 
 ### Options
 
-Each key of a pipeline is one of these flags in camelCase, and a flag
-typed here beats it: `--filter`, `--affected`, `--exclude-dependencies`,
-`--concurrency`, `--schedule`, `--branch`, `--timeout`, `--retries`,
-`--fail-fast`, `--no-cache`, `--force`, `--cache-policy`, `--cache-dir`,
-`--cache-download`, `--cache-concurrency-download`,
-`--cache-concurrency-upload`, `--cache-concurrency-restore`,
-`--output-logs`, `--verbosity`, `--dry`, `--format`, `--profile`. A flag's `VX_*`
-variable beats the key too. A typed `--cache-policy` (or
-`VX_CACHE_POLICY`) also drops a saved `noCache` and `force`, and a typed
-`--force` a saved `noCache`. A saved `cacheDir` or `profile` stands
-from the workspace root; a typed one, from the current directory.
-A saved `true` has no typed flag that turns it off: `failFast` yields to `VX_RUN_FAIL_FAST=false`, `noCache` and `force` to a typed `--cache-policy` or `VX_CACHE_POLICY`, `dry` to a typed `--profile`, and `affected` only to another base, `--affected=<ref>`. Otherwise edit the pipeline.
+Each key of a pipeline is a `vx run` flag in camelCase: `--fail-fast` is `failFast`. A flag you type beats the saved key, and so does its `VX_*` variable.
 
-A pipeline's `env` is set for vx and its plugins before they start, and
-every task reads it as unset. Nothing goes after `--`: forwarded args are
-for one task in one project.
+| Group           | Flags                                                                                       |
+| --------------- | ------------------------------------------------------------------------------------------- |
+| scope           | `--filter`, `--affected`, `--exclude-dependencies`, `--branch`                              |
+| running         | `--concurrency`, `--schedule`, `--timeout`, `--retries`, `--fail-fast`                      |
+| cache           | `--no-cache`, `--force`, `--cache-policy`, `--cache-dir`, `--cache-download`                |
+| cache transfers | `--cache-concurrency-download`, `--cache-concurrency-upload`, `--cache-concurrency-restore` |
+| output          | `--output-logs`, `--verbosity`, `--dry`, `--format`, `--profile`                            |
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
+
+- A typed `--cache-policy` (or `VX_CACHE_POLICY`) also drops a saved `noCache` and `force`.
+- A typed `--force` drops a saved `noCache`.
+- A saved `cacheDir` or `profile` is read from the workspace root. A typed one is read from the current folder.
+- A saved `true` has no typed flag that turns it off. Each yields only to its own escape:
+- `failFast` yields to `VX_RUN_FAIL_FAST=false`.
+- `noCache` and `force` yield to a typed `--cache-policy` or `VX_CACHE_POLICY`.
+- `dry` yields to a typed `--profile`.
+- `affected` yields only to another base, `--affected=<ref>`.
+- Otherwise, edit the pipeline.
+- A pipeline's `env` is set for vx and its plugins before they start. Every task reads it as unset.
+- Nothing goes after `--`: forwarded args are for one task in one project.
+
+</div>
+</details>
 
 ### Exit codes
 
 - `0` — every task passed, or `--dry` planned them.
-- `1` — a task failed; or no name, a name no pipeline has (with the
-  nearest one as a fix), a task name or `--all` typed, or a refused
-  flag (`VX_E_USAGE`); or a saved `cachePolicy`, or an `env` entry
-  setting a `VX_*` variable, the run would refuse, naming that key
-  (`VX_E_CONFIG`). A refusal that names a saved flag, or a task no
-  project declares, adds the key that holds it
-  (`--affected is \`pipelines.pr.affected\``).
+- `1` — a task failed; or no name, a name no pipeline has (with the nearest one as a fix), a task name or `--all` typed, or a refused flag (`VX_E_USAGE`).
+- `1` — a saved `cachePolicy`, or an `env` entry setting a `VX_*` variable, the run would refuse, naming that key (`VX_E_CONFIG`).
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
+
+- A refusal that names a saved flag, or a task no project declares, adds the key that holds it.
+- For example: ``--affected is `pipelines.pr.affected` ``.
+
+</div>
+</details>
 
 ## `vx cache clean`
 
-`vx cache clean` evicts old or oversized cache entries, or with no
-bound clears the cache. It operates on the entries and
-`<hash>.tar.zst` artifacts of the store a run opens
-(`~/.vx/<id>/cache`, shared by every checkout of the workspace), or of
-`<cacheDir>` itself when the workspace names one (`cache.dir`,
-`VX_CACHE_DIR`, `--cache-dir`). It never contacts a remote cache: a remote is
-pruned where it is hosted.
+`vx cache clean` frees disk space: it drops old cache entries, trims the cache to a size, or with no bound clears it all.
+
+It works on the store a run opens (`~/.vx/<id>/cache`, shared by every checkout of the workspace), or on `<cacheDir>` when the workspace names one (`cache.dir`, `VX_CACHE_DIR`, `--cache-dir`).
+
+It never contacts a remote cache: a remote is pruned where it is hosted.
 
 ### Usage
 
@@ -2118,145 +2183,163 @@ vx cache clean --older-than 30d --dry
 | `--format json`           | the result as one object                                |
 | `--cache-dir <path>`      | the cache a run with the same flag uses                 |
 
-Both bounds may be combined: age-based eviction runs first, then LRU eviction if the
-total is still over the size cap. Sizes are on disk, as `du` counts them: a
-5 KB file holds a whole block, so a store of small files is bigger than
-their lengths. No run evicts anything: to bound the
-cache, run this from a schedule or CI.
+| Write  | Means      |
+| ------ | ---------- |
+| `30d`  | 30 days    |
+| `24h`  | 24 hours   |
+| `60m`  | 60 minutes |
+| `500M` | 500 MiB    |
+| `10G`  | 10 GiB     |
 
-A clean with a bound also drops run
-history and hash memos older than 30 days, and gives the pages of the
-rows it dropped and the entries it evicted back to the disk (a `VACUUM`
-of the index, once rows went); a run never does.
-It reports the rows and the bytes the index shrank by
-(`historyRows`, `historyBytes`); a dry run, or one that dropped no row, reports neither.
+Default: no bound, which clears the whole cache. No run ever evicts anything: to bound the cache, run this from a schedule or CI.
 
-Both flags take either form: `--older-than 30d` or `--older-than=30d`.
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
 
-**Duration units**: `ms`, `s`, `m`, `h`, `d`, case-insensitive, except
-minutes, which are `m` only: `1M` is refused, since some tools read it
-as a month. Examples: `30d`, `24h`, `60m`, `30s`, `30D`.
+**Bounds**
 
-**Size units**: `K`, `M`, `G`, `T` (powers of 1024), case-insensitive, with an optional `B` or `iB` (`512MB`, `32KiB`).
-Optional `B` suffix is accepted. Examples: `500M`, `1G`, `100K`, `2T`,
-`500MB`, `1gb`. A bare number is refused here: `--max-size 10` would
-read as ten bytes and evict nearly everything, and nobody means that —
-write `10G`, or `10B` when bytes really are the unit.
+- `--older-than 30d --max-size 10G`: both bounds may be combined. Age-based eviction runs first, then LRU while the total is over the size.
+- `--older-than` allows up to an hour of slack.
+- Sizes are on disk, as `du` counts them. A 5 KB file holds a whole block, so a store of small files is bigger than their lengths.
+- Both flags take either form: `--older-than 30d` or `--older-than=30d`.
 
-**A zero bound is rejected.** `--max-size 0` and `--older-than 0d` would
-evict every entry in the cache, which is far more often a
-computed-to-zero retention than an intent. `vx cache clean` with no
-bound clears the whole cache when that is really what you want.
+**History**
+
+- A clean with a bound also drops run history and hash memos older than 30 days. A run never does.
+- It gives the pages of the dropped rows and evicted entries back to the disk: a `VACUUM` of the index, once rows went.
+- It reports the rows and the bytes the index shrank by (`historyRows`, `historyBytes`). A dry run, or one that dropped no row, reports neither.
+
+**Duration units**
+
+- `ms`, `s`, `m`, `h`, `d`, in any case: `30d`, `24h`, `60m`, `30s`, `30D`.
+- Minutes are `m` only: `1M` is refused, since some tools read it as a month.
+
+**Size units**
+
+- `K`, `M`, `G`, `T`, powers of 1024, in any case, with an optional `B` or `iB`: `500M`, `1G`, `100K`, `2T`, `500MB`, `1gb`, `32KiB`.
+- `--max-size 10` is refused: a bare number would read as ten bytes and evict nearly everything. Write `10G`, or `10B` if you mean bytes.
+
+**A zero bound is rejected.**
+
+- `--max-size 0` and `--older-than 0d` would evict every entry. That is far more often a retention computed to zero than an intent.
+- `vx cache clean` with no bound clears the whole cache when that is what you want.
+
+</div>
+</details>
 
 ### Orphans
 
-After eviction, prune sweeps the cache directory for **orphans**: an
-artifact (a `<hash>.tree` directory, or a `<hash>.tar.zst`) the index
-has no row for (a `SCHEMA_VERSION` bump drops every table and leaves
-the artifacts behind, as a deleted `cache.db` does) and a
-`<hash>.tree.tmp-*` or `<hash>.tar.zst.tmp-*` a save that crashed never
-renamed. A run that asks for a row-less `<hash>.tar.zst`'s key indexes
-it again from its bytes and hits; a row-less tree (its stdout lived in
-its row) and an archive no task asks for again are only reclaimed here. The
-policy judges a row-less artifact as it judges an entry, by its file
-time plus an hour (a hit renews a file time over an hour old): another
-vx version sharing the store may still use it. A temp goes once it is an
-hour old; nothing younger than an hour is taken. Only the names vx writes are taken:
-`<hash>` is the key's 16 lowercase hex digits and the temp suffix is
-the one a save makes, so a `release.tar.zst` beside the index in a
-`cache.dir` you share is never touched. The converse, an
-index row whose artifact is gone (deleted by hand), is dropped by the
-same prune, and its bytes count toward neither `--max-size` nor the
-evicted total: they are on no disk, and counting them evicted real
-entries to make room for them. A row used within the hour
-is kept until a later prune, but its bytes are left out all the same. The sweep runs on every prune, under
-either flag, and reports separately from the policy's evictions.
+After eviction, the clean also removes **orphans**: cache files the index has no row for, and temp files a crashed save left behind.
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
+
+**What an orphan is**
+
+- A `<hash>.tree` folder or `<hash>.tar.zst` the index has no row for.
+- A `SCHEMA_VERSION` bump drops every table and leaves the artifacts behind, as a deleted `cache.db` does.
+- A `<hash>.tree.tmp-*` or `<hash>.tar.zst.tmp-*` a save that crashed never renamed.
+
+**When it goes**
+
+- A run that asks for a row-less `<hash>.tar.zst`'s key indexes it again from its bytes and hits.
+- A row-less tree (its stdout lived in its row), and an archive no task asks for again, are only reclaimed here.
+- A row-less artifact is judged as an entry is, by its file time plus an hour. Another vx version sharing the store may still use it.
+- A hit renews a file time over an hour old.
+- A temp goes once it is an hour old. Nothing younger than an hour is taken.
+
+**Only vx's names**
+
+- `<hash>` is the key's 16 lowercase hex digits, and the temp suffix is the one a save makes.
+- So a `release.tar.zst` beside the index in a `cache.dir` you share is never touched.
+
+**Rows with no file**
+
+- An index row whose artifact is gone (deleted by hand) is dropped by the same prune.
+- Its bytes count toward neither `--max-size` nor the evicted total: they are on no disk.
+- Counting them once evicted real entries to make room for them.
+- A row used within the hour is kept until a later prune, but its bytes are left out all the same.
+- The sweep runs on every prune, under either flag, and reports apart from the policy's evictions.
+
+</div>
+</details>
 
 ### `--dry`
 
-`--dry` picks the victims under the same policy and counts the
-orphans the sweep would take, then returns without touching the index
-or the directory; the real prune with the same flags reaps exactly what
-it named (an in-flight save aside), from the same store: one a run
-would not use is passed over by both. On an index an earlier vx wrote,
-which the real prune resets first, it reads the index as that reset
-leaves it: the shared store's entries still face the policy, and every
-artifact in the workspace's own directory is row-less, judged by the
-policy on its file time.
+`--dry` names what a clean with the same flags would take, and touches nothing.
+
+```sh
+vx cache clean --max-size 10G --dry
+```
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
+
+- It picks the victims under the same policy and counts the orphans the sweep would take, then returns without touching the index or the folder.
+- The real prune with the same flags reaps exactly what it named, an in-flight save aside, from the same store.
+- One a run would not use is passed over by both.
+- On an index an earlier vx wrote, which the real prune resets first, it reads the index as that reset leaves it.
+- There the shared store's entries still face the policy, and every artifact in the workspace's own folder is row-less, judged on its file time.
+
+</div>
+</details>
 
 ### Concurrent runs
 
-A prune that deletes waits for a `vx run` on the same workspace to
-finish first (the run's lock; it says `[vx] waiting for another vx run
-(pid N) on this workspace to finish…` after a second), so it never
-evicts what that run is restoring. One started by a task of that run
-is refused instead: the run holds the lock until the task ends. A run
-in another checkout of the repository takes no lock of this one's but
-holds the shared store open until it ends: the prune waits for
-every process holding the store (`[vx] waiting for another vx process
-using the cache store <dir> to finish…`). A cache directory with no
-store (`--cache-dir`, `cache.dir`, `VX_CACHE_DIR`) may be another
-workspace's too: each run on it holds it shared, from before its cache
-opens to its end, and the prune waits for those runs (`[vx] waiting for
-another vx process using the cache directory <dir> to finish…`), as a run
-waits for the prune (`[vx] waiting for a vx cache clean of <dir> to
-finish…`) ([caching](./caching.md#concurrent-runs)).
+A clean that deletes waits for a `vx run` on the same workspace to finish first, so it never evicts what that run is restoring.
+
+```
+[vx] waiting for another vx run (pid N) on this workspace to finish…
+```
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
+
+- It waits on the run's lock, and says so after a second.
+- A clean started by a task of that run is refused instead: the run holds the lock until the task ends.
+- A run in another checkout takes no lock of this one's, but holds the shared store open until it ends.
+- The clean waits for every process holding the store: `[vx] waiting for another vx process using the cache store <dir> to finish…`.
+- A cache folder with no store (`--cache-dir`, `cache.dir`, `VX_CACHE_DIR`) may be another workspace's too.
+- Each run on it holds it shared, from before its cache opens to its end, and the clean waits for those runs.
+- That wait says `[vx] waiting for another vx process using the cache directory <dir> to finish…`.
+- A run waits for the clean in turn: `[vx] waiting for a vx cache clean of <dir> to finish…` ([caching](./caching.md#concurrent-runs)).
+
+</div>
+</details>
 
 ### Which cache
 
-`vx cache clean` resolves the workspace root from cwd and honors a
-`defineWorkspace({ cache: { dir } })` override — it prunes the same
-directory a run would use. `--cache-dir <path>` (cwd-relative, as on
-`vx run`) names another one, so a run that wrote elsewhere can be
-pruned there.
+`vx cache clean` cleans the folder a run would use: it finds the workspace root from the current folder and reads `defineWorkspace({ cache: { dir } })`.
+
+```sh
+vx cache clean --older-than 7d --cache-dir /tmp/vx-cache
+```
+
+`--cache-dir <path>` names another folder, relative to the current one as on `vx run`, so a run that wrote elsewhere can be cleaned there.
 
 ### Other subcommands
 
-`clean` is the only `vx cache` subcommand: the statistics other runners
-put under a `cache` verb — the directory, the entry count, the size —
-are part of [`vx info`](#vx-info), and `vx cache stats`, `list`, `ls`,
-`gc` and their neighbours say so (`list` also names `vx last --list`;
-`clear`, `purge`, `reset` and `wipe` name a bare `vx cache clean`) rather than printing a bare "unknown subcommand".
-Clean's flags typed without the verb (`vx cache --older-than 30d`)
-name the whole command they make: `vx cache clean --older-than 30d`.
+`clean` is the only `vx cache` subcommand. The cache's folder, entry count and size are in [`vx info`](#vx-info).
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
+
+- `vx cache stats`, `list`, `ls`, `gc` and their neighbours point you to `vx info` rather than print a bare "unknown subcommand".
+- `vx cache list` also names `vx last --list`.
+- `clear`, `purge`, `reset` and `wipe` name a bare `vx cache clean`.
+- `vx cache --older-than 30d`, a clean flag typed without the verb, names the whole command it makes: `vx cache clean --older-than 30d`.
+
+</div>
+</details>
 
 ### With no bound: clear the cache
 
-`vx cache clean` with neither `--older-than` nor `--max-size` clears
-the whole cache: the cache directory (`.vx/cache`, or `cache.dir` /
-`--cache-dir`: the index and this workspace's run history, so `vx last`
-and `vx why` start over), the store a run opens and the one its index
-last named, if another (a changed HOME, an origin added), where the
-entries live (`~/.vx/<id>/cache`, shared by this workspace's
-checkouts, so their entries go too). `--global` also clears every other
-workspace's store under `~/.vx` (each `~/.vx/*/cache` holding a `store.db`; any other directory there stays); it takes no bound
-and no `--cache-dir`. `.vx/workspace.ts`, the lock and `.vx/.gitignore`
-sit outside them and stay; a `cache.dir` that holds them (`.vx`, the
-workspace root) is refused. A `cache.dir` you named may be shared
-(`build/`, `~/.cache`), so there only what vx wrote goes (the index,
-its artifacts, run history, its `*` `.gitignore`); your own files stay,
-and the directory goes only if that empties it. A directory with no
-`cache.db` is not a vx cache and is left alone, and the store an index
-names goes only if it is one (`.vx/<id>/cache` holding a `store.db`)
-and this workspace's (its `<id>` is the workspace's, or the one it had
-before an origin was added): the index is a file in the checkout, which
-a commit, a copy or a restored CI cache could point at any directory or
-another workspace's store. Every target is checked before the
-first delete: a store this user cannot remove (another user's, after one
-`sudo vx run`) stays, as runs leave it for `.vx/cache`, and stderr says
-`cache store <dir> left as is: this user cannot remove it (EACCES)`; a
-cache directory it cannot remove refuses the clear, exit 1, with nothing
-deleted. A workspace that never ran says
-`› vx cache clean  nothing to free`. The next run misses every task once
-and saves again.
-
-A `.vx/cache` linked to another directory (a CI cache volume) is
-cleared through the link of what vx wrote there (the files above and
-`compiled/`), and the link stays. A cache directory that resolves,
-through links, to the home directory, `/`, or a directory holding the
-workspace or a `.git` is refused, by the clear and by every run, with
-the resolved path named. An index SQLite cannot read is cleared like
-any other.
+`vx cache clean` with neither `--older-than` nor `--max-size` clears the whole cache, including run history, so `vx last` and `vx why` start over. The next run misses every task once and saves again.
 
 ```sh
 vx cache clean
@@ -2271,15 +2354,59 @@ vx cache clean
   [38;2;203;213;225mrun history cleared too: vx last and vx why start over[0m
 ```
 
-It waits for a `vx run` on this workspace to finish first (the run's
-lock), for every vx process holding a store it deletes open (a run
-in another checkout of the workspace), and for every run of another
-workspace on a cache directory with no store it deletes, as a trim does.
-A run in another checkout that starts meanwhile waits for it (`[vx]
-waiting for a vx cache clean of <dir> to finish…`), then makes a new
-store. With `--format json` it prints
-`{ dry, cleared, bytesFreed }` (`schemas/cache.json`), `cleared`
-listing the directories.
+With `--format json` it prints `{ dry, cleared, bytesFreed }` (`schemas/cache.json`), `cleared` listing the directories.
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
+
+**What goes**
+
+- The cache folder: `.vx/cache`, or `cache.dir` / `--cache-dir`. It holds the index and this workspace's run history.
+- The store a run opens, where the entries live: `~/.vx/<id>/cache`, shared by this workspace's checkouts, so their entries go too.
+- The store the index last named, if another one (after a changed HOME, or an origin added).
+- `--global` also clears every other workspace's store: each `~/.vx/*/cache` holding a `store.db`. Any other folder there stays.
+- `--global` takes no bound and no `--cache-dir`.
+
+**What stays**
+
+- `.vx/workspace.ts`, the lock and `.vx/.gitignore` sit outside those folders and stay.
+- A `cache.dir` that holds them (`.vx`, the workspace root) is refused.
+- A `cache.dir` you named may be shared (`build/`, `~/.cache`). There only what vx wrote goes: the index, its artifacts, run history, its `*` `.gitignore`.
+- Your own files stay there, and the folder goes only if that empties it.
+- A folder with no `cache.db` is not a vx cache and is left alone.
+
+**Which store may go**
+
+- The store an index names goes only if it is one (`.vx/<id>/cache` holding a `store.db`) and is this workspace's.
+- This workspace's means its `<id>` is the workspace's, or the one it had before an origin was added.
+- The index is a file in the checkout: a commit, a copy or a restored CI cache could point it at any folder or another workspace's store.
+
+**Checks before deleting**
+
+- Every target is checked before the first delete.
+- A store this user cannot remove (another user's, after one `sudo vx run`) stays, as runs leave it for `.vx/cache`.
+- stderr then says `cache store <dir> left as is: this user cannot remove it (EACCES)`.
+- A cache folder it cannot remove refuses the clear, exit 1, with nothing deleted.
+- A workspace that never ran says `› vx cache clean  nothing to free`.
+
+**Links**
+
+- A `.vx/cache` linked to another folder (a CI cache volume) is cleared through the link, of what vx wrote there (the files above and `compiled/`).
+- The link itself stays.
+- A cache folder that resolves through links to the home folder, `/`, or a folder holding the workspace or a `.git` is refused, naming the resolved path.
+- Every run refuses it too.
+- An index SQLite cannot read is cleared like any other.
+
+**Waiting**
+
+- It waits for a `vx run` on this workspace to finish first (the run's lock), as a trim does.
+- It waits for every vx process holding open a store it deletes: a run in another checkout of the workspace.
+- It waits for every run of another workspace on a cache folder with no store it deletes.
+- A run in another checkout that starts meanwhile waits for it (`[vx] waiting for a vx cache clean of <dir> to finish…`), then makes a new store.
+
+</div>
+</details>
 
 ### Exit codes
 
@@ -2290,23 +2417,35 @@ listing the directories.
 
 ## Runs read the lock
 
-Every run, `vx watch` cycle, `--affected` selection and the picker takes
-its projects and their configs only from the committed
-`.vx/projects.lock` (2026-10-14). A run never walks for
-configs (an `--all` run asks git for the names alone, to refuse one the
-lock lacks), never evaluates one, never checks the graph rules
-(`run.rules`) and never writes the lock: only `vx lock` does. With no
-lock, a run fails with `no lock: run \`vx lock\``. A run trusts the
-lock and evaluates nothing, so after adding or editing a config, run
-`vx lock`. One local check reminds you: a config file edited since this
-machine's last `vx lock`(or passing`vx lock --check`) refuses the run
-with `<file> changed since the last \`vx lock\` — run \`vx lock\``
-(`VX_E_LOCK`); it compares the file's size, mtime and bytes with those
-`vx lock`read, kept in the cache dir's`config-stamps.json`, and only
-while the lock is the one written then, so a pull that brings a new lock,
-or a fresh clone, is never refused. A config edit committed without
-relocking is refused like an uncommitted one. A file a config imports is not checked. In a pipeline, `vx lock --check` first re-evaluates every
-config and checks the rules.
+Every run reads its projects and their configs only from the committed `.vx/projects.lock`. After you add or edit a config, run `vx lock`.
+
+```sh
+vx lock
+```
+
+That holds for `vx run`, every `vx watch` cycle, `--affected` selection and the picker. With no lock, a run fails with `` no lock: run `vx lock` ``.
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
+
+**What a run never does**
+
+- It never walks for configs. An `--all` run asks git for the names alone, to refuse one the lock lacks.
+- It never evaluates a config, never checks the graph rules (`run.rules`) and never writes the lock. Only `vx lock` does.
+
+**The local reminder**
+
+- A config file edited since this machine's last `vx lock` (or a passing `vx lock --check`) refuses the run, `VX_E_LOCK`.
+- The message: `` <file> changed since the last `vx lock` — run `vx lock` ``.
+- It compares the file's size, mtime and bytes with those `vx lock` read, kept in the cache folder's `config-stamps.json`.
+- It checks only while the lock is the one written then. So a pull that brings a new lock, or a fresh clone, is never refused.
+- A config edit committed without relocking is refused like an uncommitted one.
+- A file a config imports is not checked.
+- In a pipeline, `vx lock --check` first re-evaluates every config and checks the rules.
+
+</div>
+</details>
 
 ## `vx lock`
 

@@ -132,7 +132,7 @@ describe('Turbo and Nx config support (docs/turbo-nx-support.md)', () => {
     const row = table.find((r) => r.key === 'turbo.json futureFlags.watchUsingTaskInputs')!
     const cli = readFileSync(path.join(import.meta.dir, '..', 'docs', 'cli.md'), 'utf8')
     expect(cli.split(/\s+/).join(' ')).toContain(
-      "We deliberately don't filter events against per-task `inputs.files`",
+      'vx deliberately does not filter events against per-task `inputs.files`',
     )
     expect(row.reason).toContain('re-runs on any change in a watched project')
   })
