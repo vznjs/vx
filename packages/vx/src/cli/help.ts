@@ -129,7 +129,7 @@ export function helpText(pluginCommands: readonly string[] = []): string {
     '  vx lock [--check] [--format pretty|json]',
     '  vx init [--dry [--format pretty|json]] [--force] [--mjs] [--native|--keep] [--plugin <hook>]',
     '  vx upgrade [TAG] [-g|--global]',
-    '  vx show [PROJECT[#TASK] | TASK] [--filter <pattern>] [--affected[=<ref>]] [--format pretty|json]',
+    '  vx show [PROJECT[#TASK] | TASK] [--filter <pattern>] [--affected[=<base>]] [--format pretty|json]',
     '  vx info [--format pretty|json] [--cache-dir <path>]',
     '  vx why (TASK | PKG#TASK) [--run RUNID] [--format pretty|json] [--cache-dir <path>]',
     '  vx last [RUNID] [--list[=N]] [--failed] [--log <task>] [--stats [<task>] [--branch <name>]] [--sql <query>] [--live [--follow]] [--format pretty|json] [--cache-dir <path>]',
@@ -137,6 +137,20 @@ export function helpText(pluginCommands: readonly string[] = []): string {
     '  vx completions bash|zsh|fish',
     '  vx help [VERB]',
     '  vx version',
+    '',
+    'Examples:',
+    '  vx run build                   build (vite build) in this project, dependencies first.',
+    '  vx run test --affected         vitest in each project changed since the base branch,',
+    '                                 and in the projects that depend on them.',
+    '  vx run lint --all              oxlint in every project that declares lint.',
+    "  vx run web#test -- --coverage  web's vitest, with --coverage passed to it.",
+    '  vx run build --dry             The plan: each task and whether it would hit the cache.',
+    '  vx watch test                  vitest again on every change to its inputs.',
+    '  vx pipeline pr                 The pr pipeline .vx/workspace.ts declares.',
+    '  vx why build                   The input that made build miss the cache.',
+    '  vx last --failed               The latest failed run, its failures first.',
+    "  vx last --log test             test's output in the latest run that ran it.",
+    "  vx show web#build              web's build task as a run reads it.",
     '',
     'Selection (for run):',
     '  (default)                Run task in the project containing cwd.',
@@ -151,7 +165,7 @@ export function helpText(pluginCommands: readonly string[] = []): string {
     '',
     'Execution (for run):',
     '  Each setting flag beats its VX_* variable, which beats .vx/workspace',
-    '  (docs/schema.md § Settings).',
+    '  (https://vznjs.github.io/vx/schema/#settings).',
     '      --concurrency <n>           Max parallel tasks (default: usable cores);',
     '                                  50% means half of them.',
     '      --schedule <rule>           most-work (default) | critical-path |',
@@ -204,8 +218,8 @@ export function helpText(pluginCommands: readonly string[] = []): string {
     '      --profile[=<path>]    Write Chrome-trace JSON (default profile.json).',
     '',
     'Extensions (plugins):',
-    '  vx core runs tasks in-process and nothing else. A dashboard, remote',
-    '  cache, distributed execution, and telemetry export are provided by',
+    '  vx core runs and caches tasks on this machine, nothing else. A remote',
+    '  cache, distributed execution, telemetry export or a dashboard come from',
     '  PLUGINS declared in .vx/workspace.ts — first-party or your own. Core',
     '  depends on none of them; a plain `vx run` never requires a plugin.',
     '  See the plugin guide: https://vznjs.github.io/vx/docs/plugins/',
@@ -252,7 +266,7 @@ export function helpText(pluginCommands: readonly string[] = []): string {
     "  vx show <pkg>#<task> Print a single task's resolved config.",
     '  vx show <task>       That task in every project declaring it.',
     "      --filter <pattern>  The list (or a task's projects) as `vx run --filter` selects.",
-    "      --affected[=<ref>]  A task's projects `vx run <task> --affected` runs; no task:",
+    "      --affected[=<base>]  A task's projects `vx run <task> --affected` runs; no task:",
     '                       the changed projects and their dependents.',
     '      --format <fmt>   pretty (default) | json.',
     '  vx info              Workspace doctor: vx/bun/git versions, project +',
@@ -478,7 +492,11 @@ const PIPELINE_REFUSED_FLAGS: readonly string[] = ['--all']
  */
 export function acceptedFlags(verb: string): string[] {
   const quoted = verb.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  // The Usage block only: an example line forwards the task's own flags
+  // (`vx run web#test -- --coverage`), which vx does not take.
   const usage = helpText()
+    .split('\n\n')
+    .find((block) => block.startsWith('Usage:'))!
     .split('\n')
     .filter((line) => new RegExp(`^  vx ${quoted}( |$)`).test(line))
   const flags = new Set<string>()

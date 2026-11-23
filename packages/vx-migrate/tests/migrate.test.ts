@@ -1488,6 +1488,21 @@ describe('the writer: what the sweep found unheld', () => {
   const USAGE =
     'usage: vx-migrate [--from turbo|nx|vite-task|scripts] [--native|--keep] [--no-install] [--dry [--format json]] [--force] [--mjs]'
 
+  // `--help` printed the synopsis alone: what each flag does was in the README only.
+  const HELP = [
+    USAGE,
+    '',
+    'Write vx config from turbo.json, an Nx graph, Vite Task or package.json scripts.',
+    '  --from <source>  turbo | nx | vite-task | scripts, when several are checked in.',
+    '  --native         Write a vx.config.ts per package (no question).',
+    '  --keep           Turbo or Nx: only .vx/workspace.ts, declaring turbo() or nx().',
+    '  --no-install     Install nothing and skip vx lock.',
+    '  --dry            Print the files instead of writing them.',
+    '  --format json    With --dry: the plan as one JSON document.',
+    '  --force          Overwrite existing vx.config.* files.',
+    '  --mjs            Write .mjs files (no type import) instead of .ts.',
+  ].join('\n')
+
   it('parseMigrateArgs: --from=<source>, --help, and an unknown flag by name', () => {
     expect(parseMigrateArgs(['--from=nx'])).toEqual({
       dry: false,
@@ -1506,7 +1521,7 @@ describe('the writer: what the sweep found unheld', () => {
     const root = await makeRoot('vx-migrate-help-')
     try {
       for (const flag of ['--help', '-h'])
-        expect(await vx(root, [flag])).toEqual({ code: 0, out: `${USAGE}\n`, err: '' })
+        expect(await vx(root, [flag])).toEqual({ code: 0, out: `${HELP}\n`, err: '' })
       expect(await vx(root, ['--nope'])).toEqual({
         code: 1,
         out: '',
