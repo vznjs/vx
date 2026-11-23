@@ -28,13 +28,9 @@ Each number below comes from a command you can run yourself.
   Build %bench.task.build%, test and typecheck %bench.task.test%, lint
   %bench.task.lint%, publish %bench.task.publish%. %bench.provenance%
 
-- **vx alone.** A 100-project workspace replays fully cached in
-  **74 ms** for the whole process, and 1,000 projects in 172 ms. That is
-  one macOS arm64 machine on 2026-09-02.
-
-  A 4-core Linux container reads 271 ms at 1,000 projects. Its restore
-  row deletes the outputs first and extracts every artifact, so it costs
-  more than an untouched tree.
+- **vx alone.** With nothing changed, the whole vx process on that
+  %bench.projects%-project workspace takes %bench.vx.warm%. With every
+  output deleted first, it restores them all in %bench.vx.restore%.
 
 - **Head to head.** One generated workspace (%bench.projects% projects,
   %bench.tasks% tasks) runs under each tool: cold, with nothing changed,

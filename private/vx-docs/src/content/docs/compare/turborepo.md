@@ -32,6 +32,11 @@ Same graph, commands and concurrency, each tool in its own native config: [how i
 
 <!-- bench:end -->
 
+The bench runs Turborepo with the `futureFlags` its
+[Conformance](../../conformance/) score is measured on, which makes
+Turborepo slower here than with them off: about 0.1 to 0.2 s of a
+nothing-changed run.
+
 ## Feature by feature
 
 |                            | vx                                                                                         | Turborepo                                    |
@@ -43,7 +48,7 @@ Same graph, commands and concurrency, each tool in its own native config: [how i
 | Clean-tree hashing         | No source reads: git index OIDs                                                            | git OIDs                                     |
 | Daemon                     | None                                                                                       | None for `turbo run` since 2.8.11            |
 | Remote cache               | Any wire through a plugin; `turboCache()` speaks Turbo's own                               | Vercel's `/v8/artifacts`, hosted or your own |
-| Plugins                    | Every pipeline stage, 15 hooks; core applies none                                          | Its docs describe no plugin surface          |
+| Plugins                    | Every pipeline stage, 16 hooks; core applies none                                          | Its docs describe no plugin surface          |
 | Why a task missed          | `vx why` diffs two keys: the file, env var or upstream that moved                          | `--summarize` shows hashes, not the diff     |
 | Watch mode                 | `vx watch <task>`                                                                          | `turbo watch`                                |
 | Prune for Docker           | No equivalent                                                                              | `turbo prune`                                |

@@ -308,7 +308,8 @@ describe('the why-vx-is-fast concept quotes the benchmarks page', () => {
     const page = readFileSync(path.join(DOCS, 'concepts', 'why-vx-is-fast.md'), 'utf8')
     const bench = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'benchmarks.md'), 'utf8')
     // The head-to-head's figures are tokens the site fills from the measured
-    // data (2026-10-29); the run.ts ones are dated quotations.
+    // data (2026-10-29); none is typed by hand (2026-11-23: run.ts's
+    // 2026-09-02 figures stood beside each week's live ones).
     for (const figure of [
       '%bench.ideal.cold%',
       '%bench.vx.cold%',
@@ -320,8 +321,7 @@ describe('the why-vx-is-fast concept quotes the benchmarks page', () => {
       '%bench.nx.warm%',
       '%bench.vt.warm%',
       '%bench.tasks%',
-      '74 ms',
-      '172 ms',
+      '%bench.vx.restore%',
     ]) {
       expect(page).toContain(figure)
       expect(bench).toContain(figure)
@@ -2001,21 +2001,25 @@ describe('the posts state the daemons as the benchmark ran them', () => {
   })
 })
 
-describe("the concepts page reads run.ts's restore row as it is measured", () => {
+describe("the concepts page reads the head-to-head's restore row as it is measured", () => {
   // J2-17's class on a second page: "a restore costs about the same as an
   // untouched tree", of a harness whose restore row deletes the outputs
   // (J2-22).
-  it('the restore row extracts, and the page says so', () => {
+  it('the restore row deletes every output first, and the page says so', () => {
     const harness = readFileSync(
-      path.resolve(import.meta.dir, '..', '..', '..', 'private', 'vx-bench', 'run.ts'),
+      path.resolve(import.meta.dir, '..', '..', '..', 'private', 'vx-bench', 'compare.ts'),
       'utf8',
     )
-    expect(harness).toContain('warm-restore   — outputs deleted, cache intact (full extract path)')
+    expect(harness).toMatch(
+      /await deleteDist\(dir\)\n\s*const res = await timed\(r, dir, 'restoring'\)/,
+    )
     const page = readFileSync(path.join(DOCS, 'concepts', 'why-vx-is-fast.md'), 'utf8').replace(
       /\s+/g,
       ' ',
     )
-    expect(page).toContain('Its restore row deletes the outputs first and extracts every artifact')
+    expect(page).toContain(
+      'With every output deleted first, it restores them all in %bench.vx.restore%',
+    )
     expect(page).not.toContain('a restore costs about the same as an untouched tree')
   })
 })
