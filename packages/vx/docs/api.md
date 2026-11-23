@@ -1730,7 +1730,7 @@ stream raw, live; dependencies are silent unless they fail. broad: a
 
 `gha` (GitHub Actions): task output is fenced from workflow commands; in full
 mode each block is a collapsible group, except failures, which stay open with
-an `::error` annotation.
+an `::error` annotation, as each deferred failure frame has in the list views.
 
 `ci`: suppresses the status line even on a TTY.
 
