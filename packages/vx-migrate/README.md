@@ -199,7 +199,7 @@ Once per `vx lock` (no run maps) the plugin keys its snapshot (`<cache dir>/nx-p
 ### What it does not do
 
 - A task the package's own `vx.config` already declares is left alone — the plugin fills, it never overwrites. Migrate a package by writing its config; the rest of the repo keeps running from the graph.
-- Each package-manager member is a project through core's `discover` stage (core finds only directories holding a `vx.config`), named by its `package.json`. An Nx project no workspace package matches — the root project, or an integrated repo's `project.json` library no package glob lists (analogjs) — is made a project the same way, by its `package.json` name or else its Nx name, and its targets attach there by directory; no `vx.config` is needed. One whose name a package already holds, or whose directory is gone, has nowhere to go and is reported by `vx lock`; run its targets with `nx`. A `^target` only such a project declares is no edge, as under Nx, and an explicit edge to one of its targets is dropped with a todo (the key misses it) rather than refusing the run. A negated output (`!{projectRoot}/dist/cache`) takes its path back from the positive ones (core's A-44). A cached target with no `outputs` takes what Nx caches for it: `options.outputPath` (each path of a list), or for `build` and `prepare` `dist/{projectRoot}` and `{projectRoot}/dist`; Nx's `{projectRoot}/build` and `{projectRoot}/public` are outputs too when git tracks nothing under them; one that holds a tracked file is a todo, since vx cleans an output before the run.
+- Each package-manager member is a project through core's `discover` stage (core finds only directories holding a `vx.config`), named by its `package.json`. An Nx project no workspace package matches — the root project, or an integrated repo's `project.json` library no package glob lists (analogjs) — is made a project the same way, by its `package.json` name or else its Nx name, and its targets attach there by directory; no `vx.config` is needed. One whose name a package already holds, or whose directory is gone, has nowhere to go and is reported by `vx lock`; run its targets with `nx`. A `^target` only such a project declares is no edge, as under Nx, and an explicit edge to one of its targets is dropped with a todo (the key misses it) rather than refusing the run. A negated output (`!{projectRoot}/dist/cache`) takes its path back from the positive ones. A cached target with no `outputs` takes what Nx caches for it: `options.outputPath` (each path of a list), or for `build` and `prepare` `dist/{projectRoot}` and `{projectRoot}/dist`; Nx's `{projectRoot}/build` and `{projectRoot}/public` are outputs too when git tracks nothing under them; one that holds a tracked file is a todo, since vx cleans an output before the run.
 - Nx adds an `nx-release-publish` target (`@nx/js:release-publish`) to every project with a `package.json`; it comes along as one `nx-exec` task per package, run only when asked (`vx run nx-release-publish --filter <pkg>`), and counts in `vx info`'s task total. A migration does not write it: Nx release's publish step skips a private package and a published version and rewrites `workspace:` ranges, which no one line does, so the report has one note naming the package manager's own `publish`.
 - `nx-exec` and `nx-env` must be on every task's PATH, which they are when `@vzn/vx-migrate` is a devDependency of the workspace (its bins land in `node_modules/.bin`); a plugin loaded by path warns at `vx lock` when they are not. Both load Nx from the workspace, so a repo run from an exported `graph` with no `node_modules/nx` warns once too.
 - A `dependsOn` entry's `params: "forward"` (the run's arguments) and `options: "forward"` (this target's options, its configuration's merged in) hand the dependency overrides, a different command than vx's one task per target: each is one todo per task, naming no dependency so a run's warnings group them (an atomized `e2e-ci` forwards to every spec), `options` only when there are options to forward.
@@ -296,7 +296,8 @@ package's `package.json` scripts become its `vx.config.ts`, plus a
 the root (`bun()`, `pnpm()`, `npm()` or `yarn()`; with none yet, the
 one its install writes; `{ plugins: [] }` under `--no-install`): package edges (`^build`, `--affected`) come from it.
 With no plugin declared there are none: a workspace's report names the install
-and the plugin `^build` needs. A lone package's tasks get no `^` edge whatever
+and the plugin `^build` needs. Its `project#task` ids are then vx's: `//` for the
+root, else the package's path. A lone package's tasks get no `^` edge whatever
 the workspace file declares (`vx init`'s, written first, names no plugin):
 there is no other package to build first.
 vx runs and caches on this machine with no plugin, so it declares no executor or
@@ -311,16 +312,15 @@ when `packages/*/package.json` files sit below it unreached, both
 the mapper and a run that finds no config say so instead ("package.json
 declares no workspaces … Add "workspaces": ["packages/*"] to
 package.json and re-run") rather than "no scripts" or "run vx init". A
-workspace whose globs match no `package.json` gets a note naming them
-(M-42); a nameless member, or two sharing a name, is matched and
-named on its own line instead (M-46), and so is a member directory whose
+workspace whose globs match no `package.json` gets a note naming them; a nameless member, or two sharing a name, is matched and
+named on its own line instead, and so is a member directory whose
 name is not valid UTF-8, its bytes escaped (`packages/x\xff: the
 directory's name is not valid UTF-8, so its package.json cannot be read —
 rename it`): no path names it. When such skipped scripts are all there
 is, the report's `tasks` row reads `none: no package.json script became a task` rather than
-saying there are none (M-59). When `pnpm-workspace.yaml` lists the
+saying there are none. When `pnpm-workspace.yaml` lists the
 members and the root `package.json`'s `workspaces` lists other globs,
-the note names the unread list (M-51): pnpm reads only the yaml, while
+the note names the unread list: pnpm reads only the yaml, while
 bun, npm and yarn read `package.json`. With
 no `package.json` or `pnpm-workspace.yaml` here or above, it stops and
 names `vx init`, which sets up a workspace without one. Every
@@ -422,8 +422,7 @@ extension (`replaced` in the report) rather than writing a second one
 the loader would choose between by its order. Without
 `--force`, it never overwrites: a package that already has a vx
 config keeps it, untouched, the rest get theirs, and the report lists
-the kept ones under `kept`, so a half-adopted workspace adopts the rest
-(M-52). A Turbo, Nx or Vite Task migration still refuses an existing config.
+the kept ones under `kept`, so a half-adopted workspace adopts the rest. A Turbo, Nx or Vite Task migration still refuses an existing config.
 
 Two npm conventions are mapped rather than copied, because copying them
 loses behaviour. `pre<x>` / `post<x>` hooks, which npm runs around `x`
@@ -431,7 +430,7 @@ without being named, are joined into `x`'s command in that order, each
 in its own subshell, so the chain stops at the first that fails whatever
 a part holds (a `;`, an `exit`), and forwarded `--` args reach `x` alone,
 as npm hands them to the script and not its hooks, appended
-as text, so no part sees them as `$1` (X-60). The
+as text, so no part sees them as `$1`. The
 command is a small shell function, `vx_script`, around the three parts;
 it carries a TODO saying so; a `pre<x>` with no `x` stays a task of its own, and
 npm's lifecycle hooks (`prepack`, `prepublishOnly`, …) are never tasks. A script
@@ -524,9 +523,9 @@ lifecycle script, or a hook joined into another script): a group over
 it would name a task nothing defines. A verbatim chain whose
 parts run this package's own scripts (`check: pnpm run build && pnpm run
 lint`) gets a TODO naming those parts: each ran again inside the command,
-beside its own task, so `vx run check` built twice (M-41). So does a
+beside its own task, so `vx run check` built twice. So does a
 part that runs them through `run-s`, `run-p` or `npm-run-all`
-(`build: run-p build:*`), unless the task is persistent (M-48). Its
+(`build: run-p build:*`), unless the task is persistent. Its
 order may matter, so it is not made a group.
 
 The report lists each TODO once per reason: tasks that share one are
@@ -588,7 +587,7 @@ Every option falls back to the tool's own environment variable, so a self-hosted
 
 | Option            | Environment variable                                                                                              | Meaning                                                                                                                                                                                                                                                                                                                                                                                  |
 | ----------------- | ----------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `url`             | `TURBO_API`                                                                                                       | base URL of the cache server; default with a token: `https://vercel.com/api`; http(s) only (http to any host, as Turbo and Nx take it); a `user:pass@` in it is refused, the option's when the config loads                                                                                                                                                                              |
+| `url`             | `TURBO_API`                                                                                                       | base URL of the cache server; default with a token: `https://vercel.com/api`; http(s) only (http to any host, as Turbo and Nx take it), with no blanks around it; a `user:pass@` in it is refused, the option's when the config loads                                                                                                                                                    |
 | `token`           | `TURBO_TOKEN`                                                                                                     | Bearer token on every request; then OIDC, `.turbo/config.json`, the OS keychain                                                                                                                                                                                                                                                                                                          |
 | `oidc`            | `ACTIONS_ID_TOKEN_REQUEST_URL`, `ACTIONS_ID_TOKEN_REQUEST_TOKEN` (GitHub sets them)                               | `true` or `{ tokenUrl, revokeUrl, audience, params }` (`TurboOidcOptions`): exchange the GitHub Actions job's OIDC token for a short-lived one ([OIDC](#oidc-on-github-actions))                                                                                                                                                                                                         |
 | `teamId`          | `TURBO_TEAMID`                                                                                                    | `teamId` query parameter (Vercel's `team_` form only, as Turbo sends it); part of the signature                                                                                                                                                                                                                                                                                          |
@@ -619,12 +618,12 @@ export default defineWorkspace({
 
 Every option falls back to the tool's own environment variable, and a missing token to the OS keychain ([Tokens](#tokens-and-the-os-keychain)); with no server the plugin **declines** and the run stays local.
 
-| Option      | Environment variable                       | Meaning                                                                                                                                                     |
-| ----------- | ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `url`       | `NX_SELF_HOSTED_REMOTE_CACHE_SERVER`       | base URL of the cache server; http(s) only (http to any host, as Turbo and Nx take it); a `user:pass@` in it is refused, the option's when the config loads |
-| `token`     | `NX_SELF_HOSTED_REMOTE_CACHE_ACCESS_TOKEN` | Bearer token, else the OS keychain; `''` (option or variable): an open server                                                                               |
-| `timeoutMs` | —                                          | per-request deadline (default 30 s; ms above 0, up to 2³¹−1)                                                                                                |
-| `retries`   | —                                          | resends, as `turboCache()`'s (default 1)                                                                                                                    |
+| Option      | Environment variable                       | Meaning                                                                                                                                                                               |
+| ----------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `url`       | `NX_SELF_HOSTED_REMOTE_CACHE_SERVER`       | base URL of the cache server; http(s) only (http to any host, as Turbo and Nx take it), with no blanks around it; a `user:pass@` in it is refused, the option's when the config loads |
+| `token`     | `NX_SELF_HOSTED_REMOTE_CACHE_ACCESS_TOKEN` | Bearer token, else the OS keychain; `''` (option or variable): an open server                                                                                                         |
+| `timeoutMs` | —                                          | per-request deadline (default 30 s; ms above 0, up to 2³¹−1)                                                                                                                          |
+| `retries`   | —                                          | resends, as `turboCache()`'s (default 1)                                                                                                                                              |
 
 The Nx spec has no existence probe, so `has` (the `--dry` prediction; the prefetch pass calls `get`) is a `GET` whose body is cancelled before it answers. The wire carries no producing-task duration, so a remote hit reports none.
 

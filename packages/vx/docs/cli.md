@@ -630,8 +630,8 @@ before a `#` comment still
 open there (`echo args: # show` gets them; with comment-only lines
 below a commented line, before the earliest). A heredoc's body and
 terminator are not command lines: `cat <<X … X` gets them on the
-`cat <<X` line (X-12). A `<<X` in a comment or in quotes opens no
-heredoc, and a quote in a body opens no string (X-110). A persistent task gets
+`cat <<X` line. A `<<X` in a comment or in quotes opens no
+heredoc, and a quote in a body opens no string. A persistent task gets
 them too, with or without a `readyWhen`.
 
 The command, with its forwarded args, is one argument to `sh -c`, and
@@ -1216,7 +1216,7 @@ One safety gate: a task whose outputs another task's `inputs`
 globs could read on disk is silently kept eager, because deferring it
 would make that key depend on whether the bytes arrived. A task with no
 `cache` that a cached task depends on counts as reading its whole
-project (C-16). `--dry` reports
+project. `--dry` reports
 how many tasks would keep their outputs remote and names each downgrade,
 so a run that defers nothing says why. A run in which any task declares a
 `inputs.runtime` / `workspaceRuntime` command defers **nothing**:
@@ -1660,13 +1660,13 @@ Every other flag is `vx run`'s ([Flags](#flags)).
    `files, committed or checked out during the first run`. An untracked
    file deleted while it runs is still unheard: nothing lists it.
 2. **Watch loop.** After the initial run finishes (or once it waits only
-   on a server's readiness, X-139), the directory of
+   on a server's readiness), the directory of
    every project a cycle can run — the scope (the bare tasks' scope
    plus each `pkg#task`'s own project; only those when every task is
    anchored) plus its transitive dependencies, the closure `--filter '@demo/web...'` walks, cross-project
    `dependsOn` edges included — is watched recursively, less any project
    nested inside it, with a config or not (a root project's key leaves a nested
-   project's files out, so an edit there is no cycle; X-42, X-57). The workspace root is
+   project's files out, so an edit there is no cycle). The workspace root is
    watched (non-recursively) for a claimed file (a lockfile), for
    `.vx/projects.lock` and for an edit to `.vx/workspace.*` — the one root file that
    shapes a run (plugins, `config` stage, concurrency) without being any
@@ -1674,7 +1674,7 @@ Every other flag is `vx run`'s ([Flags](#flags)).
    removed a cycle fails, as `vx run` refuses, until it is back. A `.gitignore`
    there or in a project's parent directory is a cycle too, and so is the
    repository's `.git/info/exclude`: inputs are
-   gitignore-aware, so it changes what keys read (X-136). The files a
+   gitignore-aware, so it changes what keys read. The files a
    claimed file's digests read besides it, as the lock recorded them in
    `.vx/dependencies.lock` (a `file:` or `link:` dependency's
    directory, inside the root or not, and a patch file), are watched too,
@@ -1683,14 +1683,13 @@ Every other flag is `vx run`'s ([Flags](#flags)).
    as `--affected` follows) from outside the watched projects (a
    shared preset) is watched too, and its edit is a cycle that re-reads
    the configs; so is one inside a project, which re-reads the set as the
-   config's own edit does (WD-14). A file the workspace config imports is loaded once per
+   config's own edit does. A file the workspace config imports is loaded once per
    process, so its edit is named with the restart it needs rather than
    run stale. An import whose file is gone stays on the list
-   by the name it would have, so its return is a cycle (X-133). The
+   by the name it would have, so its return is a cycle. The
    projects are the lock's: a new `.vx/projects.lock` is the
    event that adds or drops one, and its directory is watched
-   from before that cycle runs, so an edit made during it queues
-   (X-138). A config added and not locked is no project yet. With no
+   from before that cycle runs, so an edit made during it queues. A config added and not locked is no project yet. With no
    lock at start the first cycle fails saying so, and the watch waits
    for one. A project directory, or one a config imports from,
    removed and made again (a checkout that restores `packages/`) is
@@ -1766,7 +1765,7 @@ Every other flag is `vx run`'s ([Flags](#flags)).
    project nested there, is blamed on it, and never one git tracks, as
    git answers when it would be blamed, so a file committed or checked
    out since watch started counts: three saves of a source file are the
-   user's (WD-7). A new file not yet added to git in the server's own
+   user's. A new file not yet added to git in the server's own
    project is the one case where the server and the user look alike:
    `git add` it. When any project's config declares
    `inputs.workspaceFiles`, the per-project watchers are swapped
@@ -2419,7 +2418,7 @@ its config's `name`, else by a plugin's `discover` stage (vx-lockfile
 gives `package.json`'s `name`), else by its root-relative path (`//` for
 the root); two projects of one name are refused naming both
 directories, every such clash at once. The plugin `discover` stage runs here and nowhere else, and may
-add directories (X-143); one holding a config git ignores is refused, as
+add directories; one holding a config git ignores is refused, as
 is `--check`, naming the plugin and the file: "plugin 'vx-gen' adds project
 gen, but git ignores gen/vx.config.ts, so `vx lock` cannot read it —
 unignore it or delete it" (a run naming its task says the same, never
@@ -2521,7 +2520,7 @@ named as `$MY_CREDS`). It names each place
 (`a: tasks.deploy.exec.command holds $API_TOKEN`) and writes nothing.
 Masking it instead would freeze a `***` that every run runs. Let the
 shell expand it: `$API_TOKEN` in the command, the name in
-`exec.env.passThrough` (L-42). A value the config's own text spells
+`exec.env.passThrough`. A value the config's own text spells
 (the config or a local module it imports) is committed already and
 locks: `docker compose up -d postgres` beside
 `DATABASE_URL=postgres://postgres:postgres@…`. `vx lock --check` fails
@@ -2547,7 +2546,7 @@ Every run consumes it: configs come from the
 lock with no evaluation, no audit and no schema validation
 of its entries, which `vx lock` validated when it wrote them (frozen-env
 semantics: env reads in a config keep their lock-time values; a
-locked directory whose config file is gone (X-144) or that this user
+locked directory whose config file is gone or that this user
 may not search (EACCES, named as such), or a missing lock, is a hard error;
 a config-less one (a `project` plugin's, such as `turbo()`'s) whose
 directory is gone fails its task with the same `vx lock` hint, asked only
@@ -3131,7 +3130,7 @@ writes through one, and so is a `plugins` directory that resolves outside the
 workspace. `--dry` names the files and writes nothing. The two files are
 `private/vx-plugin-examples/plugins`, which the gate runs, copied into
 core (`src/cli/plugin-templates.ts`) and held equal by
-`tests/plugin-templates.unsafe.test.ts` (H-21).
+`tests/plugin-templates.unsafe.test.ts`.
 
 ### Exit codes
 
@@ -3492,7 +3491,7 @@ task count, and `no vx config` for config-less packages; one whose
 tasks all come from plugins reads `N tasks from plugins (no vx
 config)`, and one a configured project depends on reads `1 task,
 default build (no vx config)`: a run loads it for that dependant's
-`^build` (X-48). A configured project that declares no `build` reads
+`^build`. A configured project that declares no `build` reads
 `N tasks, default build`, and `vx show <project>` marks that task
 `<project>#build  default`. One nothing configured reaches has no task in any
 view: `vx show bare` lists none, and `vx run bare#build` refuses it. A
@@ -3519,7 +3518,7 @@ name that is no project is a task: `vx show build` prints the block
 from every project declaring `build` (an array of the one-task shape
 in JSON). The default `build` is declared by none: it counts in the
 list and `vx show <project>`, but `vx show build`, like
-`vx run build --all`, does not name it (X-145).
+`vx run build --all`, does not name it.
 
 ### `--filter` and `--affected`
 
@@ -3529,7 +3528,7 @@ projects, as `vx run` selects: `turbo ls --affected` is
 is `vx show t --affected`. Beside a task, `--affected` lists the
 projects whose task the run keeps: a change reaches another project
 only along a task edge, so a dependent whose `test` has no `^test` is
-not listed (X-147). A task's list the selection leaves empty says so on
+not listed. A task's list the selection leaves empty says so on
 stderr (`no affected project's test runs`); `--format json` prints `[]`.
 With no task there is no edge to follow, and the
 list is the run's candidates, `--filter "...[<base>]"`'s: the changed
@@ -3549,7 +3548,7 @@ line, and a `pkg#task` hints whole specs (`unknown task: "@demo/web#bui"`,
 `fix  @demo/web#build`). A project's directory, relative to the root, hints
 that project (`p/a` hints `alpha`, `p/a#build` `alpha#build`). With nothing near, it lists what exists instead: `unknown
 project: "zzz"; projects: @demo/ui, @demo/web`, `; its tasks: @demo/web#build, @demo/web#test`,
-or `; projects and tasks: …` (M-57).
+or `; projects and tasks: …`.
 
 An empty target (`vx show ''`) is refused: omit it to list every project.
 
@@ -3788,10 +3787,10 @@ cut to its first 12 characters, as git cuts one. Piped output and
 
 ### Arguments
 
-| Argument   | Meaning                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `PKG#TASK` | one project's task; a group that never ran (`{ dependsOn }`, no `exec`) is refused as one, which records no run, with fix `vx show PKG#TASK`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| `TASK`     | a bare task name: inside a project that declares it, that project's (`no runs of <project>#<task> yet` when it never ran, even when no other project ran it; a group says it records no run and points at `vx show`), as `vx run` picks; elsewhere it resolves when exactly one project ran it (several → an error listing the candidates; unknown → include-match suggestions, or, with none near, a pointer to `vx last --stats`, which lists the tasks that ran, or word that nothing has run yet, whose fix is `vx run <task> --all` where the cwd's project does not declare it; after runs of only groups, which record no task row, that no run executed a task and to ask about one the group depends on, X-50) |
+| Argument   | Meaning                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `PKG#TASK` | one project's task; a group that never ran (`{ dependsOn }`, no `exec`) is refused as one, which records no run, with fix `vx show PKG#TASK`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `TASK`     | a bare task name: inside a project that declares it, that project's (`no runs of <project>#<task> yet` when it never ran, even when no other project ran it; a group says it records no run and points at `vx show`), as `vx run` picks; elsewhere it resolves when exactly one project ran it (several → an error listing the candidates; unknown → include-match suggestions, or, with none near, a pointer to `vx last --stats`, which lists the tasks that ran, or word that nothing has run yet, whose fix is `vx run <task> --all` where the cwd's project does not declare it; after runs of only groups, which record no task row, that no run executed a task and to ask about one the group depends on) |
 
 ### Options
 
@@ -3905,7 +3904,7 @@ while another task ran names that task.
 | `upstream`              | a dependency's input key — a lockfile change moves it too, so that row rides with the lockfile plugin's |
 | `plugin`                | a `key` plugin's material, by name; a lockfile plugin's dependency closure                              |
 | `platform`              | the platform a task naming `exec.platforms` ran on                                                      |
-| `format`                | the key format vx itself folds: it moves only with an upgrade, and re-keys every task once, X-142       |
+| `format`                | the key format vx itself folds: it moves only with an upgrade, and re-keys every task once              |
 
 A control character in a component's name (a file named with an
 escape or a carriage return) prints as `\xNN`, so no file name drives
@@ -4080,9 +4079,9 @@ newest 50, as `warnings` rows, written only by a run that warned.
 failures ends with the command that re-runs them (`re-run what failed:
 vx run @demo/web#test -- …`, with the arguments the run forwarded to the
 tasks that got them; a failed dependency, which never got them, gets a
-line of its own without them, X-140). The
+line of its own without them). The
 replayed `$ vx run …` or `$ vx watch …` line and that one keep each
-argument shell-quoted (`-- 'a b'`), so either pastes back as it ran (X-49);
+argument shell-quoted (`-- 'a b'`), so either pastes back as it ran;
 the re-run line quotes a task id the same way (`'@demo/web#it'\''s boom'`).
 
 **No runs yet.** Before any run, every form says so
