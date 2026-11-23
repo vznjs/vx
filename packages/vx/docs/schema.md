@@ -1651,9 +1651,28 @@ export default defineProject({
 
 ### `outputs` (optional)
 
-What the task produces, cached or not. On an uncached task, dependants'
-sandbox reads work the same; nothing is saved or restored, and nothing is
-cleaned, since there is no snapshot to keep exact.
+The files the task writes. A cached task saves them after a run and puts
+them back on a hit.
+
+```ts
+outputs: {
+  files: ['dist/**']
+}
+```
+
+| Field            | Means                                              |
+| ---------------- | -------------------------------------------------- |
+| `files`          | what the task writes inside its project (required) |
+| `workspaceFiles` | what it writes elsewhere, from the workspace root  |
+| `clean`          | `false` keeps the last outputs on a miss           |
+
+Default: none. A cached task needs it; see [`cache`](#cache-optional).
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
+
+The full shape:
 
 ```ts
 interface TaskOutputs {
@@ -1663,138 +1682,147 @@ interface TaskOutputs {
 }
 ```
 
+- `outputs` on a task with no `cache`: dependants' sandbox reads work the
+  same. Nothing is saved, restored or cleaned: there is no snapshot to keep
+  exact.
+- `clean: false` keeps the outputs on a miss instead of deleting them first,
+  for a tool that reads its own last output (an incremental build's state
+  file).
+- `clean: false` gives up the clean tree: the save stores every file the
+  outputs match after the run, so a file an older build left behind is
+  cached and restored on every machine.
+- `clean: false` still starts a retry clean, and a hit still restores the
+  cached files bit-identically.
+- `clean` omitted: the workspace's `outputs.clean` decides, else `true`. A
+  workspace `false` keys the task as its own `false` would.
+
+</div>
+</details>
+
 #### `outputs.files` (required)
 
-Project-relative globs of files the task produces. Captured on cache
-write, restored on cache hit (overwriting any local modifications),
-and **wiped before exec AND before restore** so the project dir ends
-every run bit-identical to the cached snapshot. A literal entry names
-a file or a whole directory tree: `dist` and `dist/` are `dist/**`
-(the turbo.json shape `"outputs": ["dist"]` migrates as it is); a
-leading `./` is accepted and dropped; `.` alone is refused.
-
-A literal path is required, and a task writes at least one output.
-Once the command exits 0, each positive literal path (`dist/index.js`,
-`public/uploads`) must name a path that no `!` entry takes back; a
-directory satisfies itself. A wildcard (`dist/**`, `coverage/**`) may
-match nothing beside one that matched, but outputs that matched nothing
-at all fail (an empty `dist/` does not satisfy `dist/**`). Either fails
-the task, cached or not, and nothing is saved; the error names each glob
-([caching.md](caching.md#cache-write)).
+The files inside the project the task writes. vx deletes them before a
+run, saves them after it, and restores them on a hit.
 
 ```ts
 outputs: {
   files: ['dist/**']
-} // typical build output
-outputs: {
-  files: []
-} // tasks with no file output (lint, test)
-outputs: {
-  files: ['dist/**', 'coverage/**']
 }
 ```
 
-Outputs are **NOT** filtered through gitignore — typical artifact
-dirs like `dist/`, `coverage/`, `.next/`, `pkg/` are captured normally
-even when gitignored (they usually are).
+| Write            | Means                                              |
+| ---------------- | -------------------------------------------------- |
+| `dist/**`        | everything under `dist`; may match nothing         |
+| `dist`           | the same tree, but `dist` must exist after the run |
+| `dist/index.js`  | this file, which must exist after the run          |
+| `!dist/**/*.tmp` | except temp files: not cleaned, saved or restored  |
+| `[]`             | the task writes no files (`oxlint`, `vitest run`)  |
 
-An installed `node_modules` is no output unless a glob names it
-(`node_modules/**`): `**/*.js` never saves, restores or cleans the
-project's dependencies. One under a glob's own literal directory is the
-build's: `.output/**` takes Nitro's `.output/server/node_modules/**`.
+Default: none, the field is required inside `outputs`.
 
-Like inputs, outputs stop at a project boundary: an entry rooted inside
-a nested project (`sub/dist/**` when `sub/` holds its own config) would
-save nothing, so `vx lock` refuses it (`VX_E_NESTED_OUTPUT`): let that
-project's task write the files, or name them in
-`outputs.workspaceFiles`. `**`, a sibling and a `!` entry are fine. A
-nested workspace (`sub/` holding its own `.vx/workspace.*`) is the same
-boundary for outputs: no output glob of an outer project matches under
-it, so the clean before a run never deletes its files. An input glob
-still matches there, so an edit in it re-keys the outer task.
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
 
-A **symlink** the globs match is an output: it is cached and restored
-as the link, its target as written (a link to a file, to a directory,
-or to nothing yet), and the clean unlinks it (never following it). No
-byte of its target is read. A link must be relative and lead somewhere
-inside the workspace, out of `.git`: an absolute one, `../../../etc/hosts`, or
-`../../.git/config` fails the save by name and caches nothing, so the next run executes again.
-A link may name another output link as its target (`libu.so -> libu.so.1`, a
-soname chain), but never pass through one on the way (`up/../x`), loop, or
-chain past 8 links. An
-output DIRECTORY that is a symlink (`dist -> real-out`) is followed: its
-target is cleaned, saved and restored as the output; one that resolves
-outside the project refuses the task, naming the link. The clean also prunes the directories it
-emptied, so an output that is a directory one run and a file the next
-restores either way.
+**What must exist.** Each rule applies once the command exits 0; a failed
+check fails the task, cached or not, saves nothing, and the error names
+each path.
 
-The clean deletes what a dependency of the same project wrote there
-earlier in the run, too: a step with no outputs that writes into
-`dist/` (an `ng-packagr` before a `build` over `dist/**`). vx warns,
-naming the files and the task that wrote them; declare them in that
-task's outputs, or have it write elsewhere.
+- `dist/index.js`, `dist`: a literal path must exist. One that matches
+  nothing fails the task.
+- `['dist/**', '.next/**']`: a glob may match nothing beside one that
+  matched, so one list fits a `vite build` app and a Next app alike.
+- `['dist/**']` with nothing written: a task that declares outputs and
+  writes none at all fails.
+- `dist/**` over an empty `dist/`: an empty directory is no match. To
+  require one, name it as itself: `public/uploads`.
+- `['dist/**', '!dist/a.js']`: a path a `!` entry takes back is no match.
+- `report.json` written only sometimes: match it with a glob
+  (`reports/*.json`), not a literal path.
 
-Empty `[]` is valid for tasks that produce no files (e.g. `lint`,
-`test`); you still cache the no-op success so the next
-run is a no-op too.
+**How a path is read.**
 
-**`clean: false`** keeps the outputs on a miss instead of wiping them
-first, for a tool that reads its own last output (tsc's
-`.tsbuildinfo`). It opts out of the clean-tree guarantee: the save
-stores every file the outputs match after the run, so a file an older
-build left behind is cached and restored on every machine. A retry
-still starts clean, and a hit still restores bit-identically. Omitted → the workspace's
-`outputs.clean`, else `true`; a workspace `false` keys the task as its own
-`false` would.
+- `dist` and `dist/` name the whole tree, as `dist/**` does.
+- `./dist/**` is `dist/**`: a leading `./` is dropped.
+- `.` alone is refused: write `**`.
+- `dist/`, `coverage/`, `.next/`: outputs ignore `.gitignore`, so
+  gitignored build folders are saved as usual.
+- `**/*.js` never saves, restores or cleans the project's installed
+  `node_modules`: write `node_modules/**` to make it an output.
+- `.output/**` takes `.output/server/node_modules/**`: a `node_modules`
+  under a glob's own literal folder is the build's.
 
-A **`!` entry takes a path back** from what the positive globs select
-(A-44; a scratch dir under `dist` stays out of the clean this way; a
-tracked file needs no `!`, below):
+**Project boundaries.**
 
-```ts
-outputs: {
-  files: ['dist/**', '!**/*.tmp']
-}
-```
+- `sub/dist/**` where `sub/` has its own config: `vx lock` refuses it
+  (`VX_E_NESTED_OUTPUT`), since it would save nothing.
+- Fix it: let `sub`'s own task write those files, or name them in
+  `outputs.workspaceFiles`.
+- `**`, a sibling folder and a `!` entry are fine beside a nested project.
+- `sub/` holding its own `.vx/workspace.*`: no outer output glob matches
+  under it, so the clean never deletes its files.
+- An outer input glob still matches inside a nested workspace, so an edit
+  there re-keys the outer task.
 
-A path taken back is not cleaned before a run or a restore, not saved,
-not accepted from a remote artifact, and not hidden from `vx watch`;
-it stays an input, so an edit to it moves the key. A list of only `!`
-entries selects nothing and is refused, and `!!x` is refused as it is
-for inputs. The directory short-circuit on a warm hit reads the
-positive globs, so a task with a `!` entry keeps it (A-46).
-`workspaceFiles` takes `!` the same way.
+**Symlinks.**
 
-**Cleaning semantics** (one of vx's strict-output-ownership rules):
+- `dist/latest -> v2`: a matched link is saved and restored as the link,
+  its target as written: a file, a folder, or nothing yet.
+- The clean unlinks a link and never follows it. No byte of its target is
+  read.
+- `/abs/x`, `../../../etc/hosts`, `../../.git/config`: a link must be
+  relative, stay inside the workspace and stay out of `.git`.
+- Such a link fails the save by name and caches nothing, so the next run
+  executes again.
+- `libu.so -> libu.so.1`: a link may target another output link.
+- `up/../x`: a link may not pass through another link on the way, loop, or
+  chain past 8 links.
+- `dist -> real-out`: an output folder that is a link is followed; its
+  target is cleaned, saved and restored.
+- An output folder link that resolves outside the project refuses the
+  task, naming the link.
 
-- Before exec on a cache miss: the declared output globs are resolved
-  and matching files / dirs are wiped. So a leftover `dist/old.js`
-  from a prior build can't survive into a fresh build that doesn't
-  rewrite it.
-- Before restore on a cache hit: same wipe, then files are copied
-  from the cache entry into the project dir. The post-restore tree
-  is the cached snapshot, byte-for-byte.
-- A file git tracks is never wiped (2026-10-14). It is still saved and
-  restored, and is in the task's key even when no `inputs.files` glob
-  reaches it, so an edit to it moves the key. A run that removes one
-  saves nothing: no hit could replay the removal.
+**The clean.**
 
-Skipped when `outputs.files` is empty (nothing declared as
-output) and when no cache-write axis is enabled (e.g. `--no-cache`,
-or a read-only `--cache-policy=local:r`) — the user is debugging and
-managing the tree themselves. `--force` keeps writes on, so it does
-clean.
+- On a miss, before the command: matching files and folders are deleted,
+  so a stale `dist/old.js` never survives into a fresh build.
+- On a hit: the same delete, then the cached files are copied in, over any
+  local edit. The tree ends as the cached snapshot, byte for byte.
+- The clean prunes the folders it emptied, so an output that is a folder
+  one run and a file the next restores either way.
+- `dist/README.md` tracked by git: never deleted. It is still saved,
+  restored and in the key, even when no `inputs.files` glob reaches it.
+- A run that removes a tracked output saves nothing: no hit could replay
+  the removal.
+- `files: []`: no clean. Nor with no cache write (`--no-cache`,
+  `--cache-policy=local:r`). `--force` keeps cache writes on, so it cleans.
+- A same-project dependency that writes into `dist/` with no outputs of
+  its own (an `ng-packagr` step before a `build` over `dist/**`): the
+  clean deletes its files.
+- vx warns then, naming the files and the task that wrote them: declare
+  them in that task's outputs, or have it write elsewhere.
+
+**`!` entries.**
+
+- `['dist/**', '!**/*.tmp']`: a path taken back is not cleaned before a
+  run or a restore, not saved, and not accepted from a remote artifact.
+- `vx watch` still watches a path taken back, and it stays an input, so
+  an edit to it moves the key.
+- `['!dist/**']` alone selects nothing and is refused. `!!x` is refused,
+  as for inputs.
+- `['dist/**', '!dist/tmp/**']`: a warm hit still takes the folder
+  shortcut, which reads only the positive globs.
+- A tracked file needs no `!`: the clean already keeps it.
+- `[]`: valid for a task that writes nothing. A cached `oxlint` still
+  caches its success, so the next run is a no-op too.
+
+</div>
+</details>
 
 #### `outputs.workspaceFiles` (optional, default `[]`)
 
-Workspace-root-relative globs for outputs the task writes OUTSIDE its
-project dir (e.g. a root-level generated file). Same capture / restore
-/ wipe semantics as `files`, anchored at the workspace root; packed
-into the artifact under a separate `workspace-outputs/<rel-to-root>`
-namespace so project and workspace outputs never collide. A project
-`outputs.files` glob under a top-level `workspace-outputs/` is refused
-at load: that name is the namespace. A file another glob matches there
-(`**/*.js`) is refused at save, and the task is not cached.
+What the task writes outside its own project, written from the workspace
+root. vx deletes, saves and restores them as it does `files`.
 
 ```ts
 outputs: {
@@ -1803,48 +1831,76 @@ outputs: {
 }
 ```
 
-**No boundary rule — deliberate escape hatch.** These globs may
-capture (and on restore, overwrite; on clean, wipe) files anywhere in
-the workspace, including inside other projects' dirs. Two limits: a
-glob that covers a project's `vx.config.*`, the task's own or another's
-(`packages/b/**`), is refused by `vx lock`, since the clean would
-delete that project's config and its untracked files (take the config
-back with `!packages/b/vx.config.ts` only if the rest is truly the
-task's); and a directory on a glob's literal head that is a symlink
-out of the workspace refuses the task, as one out of the project does
-for `files`. Prefer
-project-relative `files` whenever the task can write inside its own
-dir. Two tasks whose workspace outputs provably overlap (equal
-literals, or a literal a glob matches) are refused at graph build, like
-overlapping `files`: vx cleans declared outputs before a run and before
-a restore, so the second would delete the first's. The comparison is by
-PATH, not by spelling — `./dist/**` and `dist/**` are one declaration,
-and so are `dist//**` and `dist/./app.js` (item 441) — and a literal
-entry is read as the file OR its whole tree, the same rule the resolver
-uses, so `dist` collides with `dist/app.js` (item 442). A whole subtree
-collides with any glob whose literal head lies inside it: `dist/**` with
-`dist/extra/**` or `dist/*.js` (item 941). Two globs a path built from
-either one matches are one too: `**/*` and `**/dist/**` both match
-`x/dist/x`. A pair is no overlap where one task's `!` output entry
-takes the other's glob back whole: `['**/dist', '!types/**']` beside
-`types/**` (a `!` entry is never cleaned or captured). Globs that only _might_
-overlap (`dist/*` and `dist/sub/**`) are let through; there, last
-restore wins. A workspace output is also compared with every other
-project's `files` outputs, read from the root: `packages/b/dist/a.txt`
-collides with `b`'s `dist/**` (item 1088). An overlap
-between two tasks one of which depends on the other is refused too,
-unless the workspace sets `run.rules.exclusiveOutputs: false` (X-53);
-then the dependant is additive and owns only what its run adds to the
-tree, or finds as its own last run left it (`caching.md` § Additive
-outputs, item 588). Across the two namespaces
-an upstream `files` task is told the dependant's globs in its own
-project's terms, so a workspace glob that does not start inside that
-project (`**/a.txt`) is refused even with the edge.
+| Write                         | Means                          |
+| ----------------------------- | ------------------------------ |
+| `generated/**`                | a folder at the workspace root |
+| `packages/web/public/app.css` | one file in another project    |
+| `!generated/tmp/**`           | except a scratch folder        |
+
+Default: `[]`.
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
+
+**Where they go.**
+
+- `generated/a.ts` is stored as `workspace-outputs/generated/a.ts` in the
+  artifact, so project and workspace outputs never collide.
+- `files: ['workspace-outputs/**']`: refused at load, since that top-level
+  name is the namespace.
+- `files: ['**/*.js']` matching a file under `workspace-outputs/`: refused
+  at save, and the task is not cached.
+- `!` entries work as in `files`.
+
+**No project boundary.**
+
+- `packages/web/**`: these globs may save, overwrite on restore and delete
+  on clean anywhere, other projects included. Prefer `files` when the
+  task can write in its own folder.
+- `packages/b/**` covering a `vx.config.*`, the task's own or another's:
+  `vx lock` refuses it, since the clean would delete that config and its
+  untracked files.
+- `!packages/b/vx.config.ts` takes the config back. Do it only if the rest
+  of `packages/b` is truly the task's.
+- A folder on a glob's literal head that is a link out of the workspace
+  refuses the task, as it does for `files`.
+
+**Two tasks, one path.** vx cleans outputs before a run and a restore, so
+two tasks that provably overlap are refused at graph build: the second
+would delete the first's files.
+
+- `./dist/**` is `dist/**`, `dist//**` is `dist/**`, and `dist/./app.js` is
+  `dist/app.js`: the check compares paths, not spellings.
+- `dist` collides with `dist/app.js`: a literal is the file or its whole
+  tree.
+- `dist/**` collides with `dist/extra/**` and `dist/*.js`: a whole tree
+  holds every glob whose literal head lies in it.
+- `**/*` collides with `**/dist/**`: both match `x/dist/x`.
+- `['**/dist', '!types/**']` beside `types/**`: no overlap, since the `!`
+  takes the other glob back whole.
+- `dist/*` beside `dist/sub/**` only might overlap: allowed, and the last
+  restore wins.
+- `packages/b/dist/a.txt` collides with project `b`'s `dist/**`: workspace
+  outputs are checked against every project's `files` too.
+- An overlap is refused even when one task depends on the other, unless
+  the workspace sets `run.rules.exclusiveOutputs: false`.
+- With that `false`, the dependant is additive: it owns only what its run
+  adds, or finds as its own last run left it.
+- How additive outputs work:
+  [caching.md § Additive outputs](caching.md#additive-outputs-two-tasks-one-tree-an-edge-between-them).
+- Across the two namespaces, an upstream `files` task sees the
+  dependant's globs in its own project's terms.
+- So `**/a.txt`, which does not start inside that project, is refused even
+  with the edge.
+
+</div>
+</details>
 
 ### `cache` (optional)
 
-`cache: true` makes a task cached: `outputs` lists what it writes, which a
-hit restores. A task without `cache: true` always runs.
+`cache: true` lets vx skip a task whose inputs did not change and restore
+its outputs instead. Without it, the task always runs.
 
 ```ts
 build: {
@@ -1855,18 +1911,28 @@ build: {
 }
 ```
 
-**Caching is opt-in.** Omit `cache` (or set it `false`) and the task always runs (no read,
-no write). `cache: true` turns caching on for that task. The
-project loader requires `exec`, the task's `inputs` and `outputs`
-when `cache` is set: declaring "what does this read?" and "what does
-it produce?" is a deliberate, conscious choice, and a task with no
-command produces nothing to cache.
+| Write          | Means                                        |
+| -------------- | -------------------------------------------- |
+| `cache: true`  | cached; needs `exec`, `inputs` and `outputs` |
+| `cache: false` | runs every time, no cache read or write      |
+| omitted        | the same as `false`                          |
 
-**Why opt-in?** Defaulting caching to ON with implicit "all files / no
-outputs" silently produces stale builds the moment a user forgets
-to revisit the config. The cost of a single forgotten cache miss
-(re-run a task) is much less than the cost of a stale cache hit
-(ship broken artifacts).
+Default: `false`. Caching is opt-in.
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
+
+- `cache: true` with no `inputs` or `outputs`: the loader refuses it. What
+  a task reads and writes is a choice you make on purpose.
+- `cache: true` with no `exec`: refused too, since a task with no command
+  produces nothing to cache.
+- Why opt-in: caching on by default, with guessed inputs and no outputs,
+  gives stale builds the moment a config falls behind.
+- A forgotten cache costs one rerun. A stale hit ships broken files.
+
+</div>
+</details>
 
 ### `exec.sandbox` (optional)
 
@@ -2481,39 +2547,10 @@ pack: {
 
 ## Group tasks (no `exec`)
 
-A task with no `exec` and a `dependsOn` is a **group task** — a pure
-aggregator. Running a group is equivalent to running its dependencies;
-nothing else happens (no spawn, no I/O, no cache read/write). An empty
-`dependsOn: []` is an explicit no-op group: it exists to be named — by a
-dependant's `^build`, by `vx run build --all` — and runs nothing. A
-project with no `build` gets a keyed one (above), which a bare name
-does not select.
-
-A group with `inputs` is a **keyed group**: its `inputs` are a key
-and nothing runs. A task that depends on it folds that key, so an edit
-to those inputs re-runs the dependant, and `--affected` reaches it. It
-takes no `cache` (a group writes nothing), and it needs no `dependsOn`. It spawns nothing, writes no cache entry, and the
-run summary does not count it. `@vzn/vx-migrate` writes one for each
-Nx `^production`-style input and each Turbo transit node.
+A task with no `exec` and a `dependsOn` is a group: running it runs its
+dependencies, and nothing else.
 
 ```ts
-// `test` re-runs when a file under fixtures/ changes; nothing spawns for it
-fixtures: { inputs: { files: ['fixtures/**'] } },
-test: { exec: { command: 'bun test' }, dependsOn: ['fixtures'], cache: true /* … */ },
-```
-
-Bare `--exclude-dependencies` keeps a group's edges for the same reason:
-`vx run ci --exclude-dependencies` runs `ci`'s members without their own
-dependencies. A name list (`--exclude-dependencies=lint.oxfmt`) drops a
-member it names, like any edge.
-
-```ts
-// `vx run install --all`  →  fans out to `build` in every workspace dep
-install: {
-  description: 'build everything in workspace dependency order',
-  dependsOn: ['^build'],
-}
-
 // `vx run ci`  →  runs format-check + lint + test in the cwd project
 ci: {
   description: 'format-check + lint + test (CI gate)',
@@ -2521,23 +2558,78 @@ ci: {
 }
 ```
 
-Group tasks:
+| Write                                | Means                                      |
+| ------------------------------------ | ------------------------------------------ |
+| `dependsOn: ['lint', 'test']`        | runs `lint` and `test`                     |
+| `dependsOn: ['^build']`              | runs `build` in every workspace dependency |
+| `dependsOn: []`                      | runs nothing; exists to be named           |
+| `inputs: { files: ['fixtures/**'] }` | a keyed group: a key for dependants        |
 
-- **Are not counted in the run summary.** "3 tasks, 2 cached" reflects
-  real executable tasks — including a group in the count is confusing
-  ("3 of 4 cached" when one was a group that ran nothing).
-- **Are not recorded in the `runs` table.** Analytics queries that
-  aggregate runtime won't see them.
-- **Render no framed block** in the live output.
-- **DO contribute a stable hash to downstream tasks** that filter
-  `inputs.tasks` to include the group. The hash is rolled up from
-  the group's upstream outcomes (sorted, joined, hashed). So any
-  change beneath the group cascades correctly.
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
 
-The loader rejects:
+**Plain groups.**
 
-- A task with no `exec`, no `dependsOn` and no `inputs` (literal no-op).
-- A group with `cache` (a group writes nothing).
+- A group spawns nothing, reads and writes no files, and reads and writes
+  no cache.
+- `dependsOn: []`: an explicit no-op group. A dependant's `^build` or
+  `vx run build --all` names it, and it runs nothing.
+- `dependsOn: ['^build']` as `install`: `vx run install --all` fans out to
+  `build` in every workspace dependency.
+
+  ```ts
+  install: {
+    description: 'build everything in workspace dependency order',
+    dependsOn: ['^build'],
+  }
+  ```
+
+- A project with no `build` gets a keyed one (see
+  [`TaskConfig`](#taskconfig)). A bare `vx run build` does not select it.
+
+**Keyed groups.**
+
+- `fixtures: { inputs: { files: ['fixtures/**'] } }`: a group with
+  `inputs` is a key. Nothing runs for it.
+- A task that depends on a keyed group folds its key, so an edit to those
+  inputs re-runs the dependant, and `--affected` reaches it.
+- A keyed group needs no `dependsOn`. It spawns nothing, writes no cache
+  entry, and the run summary does not count it.
+- `@vzn/vx-migrate` writes keyed groups for the shared input sets of a
+  repo it converts.
+
+  ```ts
+  // `test` re-runs when a file under fixtures/ changes; nothing spawns for it
+  fixtures: { inputs: { files: ['fixtures/**'] } },
+  test: { exec: { command: 'bun test' }, dependsOn: ['fixtures'], cache: true /* … */ },
+  ```
+
+**In a run.**
+
+- `vx run ci --exclude-dependencies` keeps the group's edges: it runs
+  `ci`'s members without their own dependencies.
+- `--exclude-dependencies=lint.oxfmt` drops a member it names, like any
+  edge.
+- "3 tasks, 2 cached": the run summary counts no group, so "3 of 4
+  cached" never counts one that ran nothing.
+- A group is not recorded in the `runs` table, so runtime queries do not
+  see it.
+- A group renders no framed block in the live output.
+- A group still gives a stable hash to a dependant whose `inputs.tasks`
+  includes it, so any change beneath the group cascades.
+- That hash is rolled up from the group's upstream outcomes: sorted,
+  joined, hashed.
+
+**Refused by the loader.**
+
+- `lint: {}`: no `exec`, no `dependsOn` and no `inputs` is a literal
+  no-op.
+- `ci: { dependsOn: ['lint'], cache: true }`: a group takes no `cache`,
+  since it writes nothing.
+
+</div>
+</details>
 
 ## Workspace config (`.vx/workspace.ts`)
 
