@@ -76,7 +76,11 @@ export async function restoreHit(given: RestoreHitArgs): Promise<TaskOutcome> {
         }
       : given
   const { hit } = restore
-  const now = currentHit(restore)
+  // Asked already when the scheduler tried to settle it in place: a second
+  // lstat per output directory of every restored hit.
+  const stale = args.run.staleTrees
+  const asked = stale?.get(node.id) === hash && stale.delete(node.id)
+  const now = asked ? undefined : currentHit(restore)
   if (now !== undefined) return now()
   // The directories the positive globs cover whole. A `!` entry inside one
   // leaves the snapshot sound: a file added or removed there still bumps a
@@ -299,6 +303,8 @@ export async function restoreHit(given: RestoreHitArgs): Promise<TaskOutcome> {
     let staleWsRels: string[] = []
     let staleDirs: string[] = []
     let staleWsDirs: string[] = []
+    // The output heads the walk found absent: the copy lays them unasked.
+    let absent: ReadonlySet<string> | undefined
     // The restore writes into the tree as a command would, and a write in a
     // cycle no window covers is the user's to `vx watch` (`sawEvent`): with
     // none, a hit's restore started one more cycle whenever the next
@@ -315,6 +321,7 @@ export async function restoreHit(given: RestoreHitArgs): Promise<TaskOutcome> {
         sweepRestoreTemps(args.run.workspaceRoot, wsOutputs, wsCleanArgs.committed)
         if (outputs.length > 0) {
           const tree = walked?.proj ?? (await resolveOutputTree({ ...walkArgs, ...cleanArgs }))
+          absent = tree.absent
           // A FIFO, socket or device is found too: one the entry does not hold
           // is a stray like any file, and one in a held path's way goes first.
           foundRels = [...tree.files, ...(tree.findSpecial?.() ?? [])].map((f) =>
@@ -358,6 +365,7 @@ export async function restoreHit(given: RestoreHitArgs): Promise<TaskOutcome> {
       await args.run.cache.restoreOutputs(hash, node.projectDir, args.run.workspaceRoot, {
         files: outputs,
         workspaceFiles: wsOutputs,
+        ...(absent !== undefined ? { absent } : {}),
       })
       if (staleRels.length > 0 || staleDirs.length > 0) {
         await cleanOutputPaths({
@@ -578,7 +586,12 @@ function inTheWay(found: readonly string[], held: readonly string[]): Set<string
 }
 
 /** The found outputs the entry does not hold: the stale ones, once it has restored. */
-type Tree = { files: string[]; emptyDirs: string[]; findSpecial?: () => string[] }
+type Tree = {
+  files: string[]
+  emptyDirs: string[]
+  findSpecial?: () => string[]
+  absent?: ReadonlySet<string>
+}
 
 /**
  * The empty directories found under the outputs (absolute) that the entry

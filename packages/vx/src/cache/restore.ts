@@ -234,6 +234,7 @@ async function restoreTree(
   accept: ((name: string, dir?: boolean) => boolean) | undefined,
   dated: Map<string, number>,
   absentDirs: Set<string>,
+  walkedAbsent: ReadonlySet<string> | undefined,
 ): Promise<void> {
   // No ceiling: a tree is this machine's own save, or a remote's artifact
   // the ceiling already bounded as it was decoded into one.
@@ -250,6 +251,7 @@ async function restoreTree(
       accept,
       dated,
       absentDirs,
+      walkedAbsent,
     )
   )
     return
@@ -281,6 +283,7 @@ async function restoreInline(
   accept: ((name: string, dir?: boolean) => boolean) | undefined,
   dated: Map<string, number>,
   absentDirs: Set<string>,
+  walkedAbsent: ReadonlySet<string> | undefined,
 ): Promise<boolean> {
   const tar = await decodedTarBytes(inline, hash, ix.artifactCeiling)
   if (tar === undefined) return false
@@ -302,6 +305,7 @@ async function restoreInline(
     accept,
     dated,
     absentDirs,
+    walkedAbsent,
   )
 }
 
@@ -450,6 +454,7 @@ async function copyTree(
   accept: ((name: string) => boolean) | undefined,
   dated: Map<string, number>,
   absentDirs: Set<string>,
+  walkedAbsent: ReadonlySet<string> | undefined,
 ): Promise<boolean> {
   const links: Array<[string, string]> = []
   for (const r of rows) {
@@ -465,15 +470,18 @@ async function copyTree(
     return false
   // What stands at each path, asked once: a real directory, nothing, or
   // anything else, which the extractor decides. Synchronous: the walk before
-  // cached these dentries.
+  // cached these dentries. A head the walk found absent is not asked again: a
+  // lstat per restored hit.
   const standing = new Map<string, 'dir' | 'absent' | 'other'>()
   const at = (rel: string): 'dir' | 'absent' | 'other' => {
     let known = standing.get(rel)
     if (known === undefined) {
+      const abs = path.join(projectDir, rel)
       try {
-        const st = lstatSync(path.join(projectDir, rel), { throwIfNoEntry: false })
+        const st =
+          walkedAbsent?.has(abs) === true ? undefined : lstatSync(abs, { throwIfNoEntry: false })
         known = st === undefined ? 'absent' : st.isDirectory() ? 'dir' : 'other'
-        if (known === 'absent') absentDirs.add(path.join(projectDir, rel))
+        if (known === 'absent') absentDirs.add(abs)
       } catch {
         known = 'other'
       }
@@ -840,6 +848,9 @@ async function restoreOutputsOnce(
     // Every step is async on purpose: a synchronous small restore is 2× faster
     // alone and 30% slower in a run, where workers overlap their round trips.
     const accept = outputs === undefined ? undefined : declaredName(outputs)
+    // The caller's walk is of the tree before this restore; a retry's first
+    // attempt may have laid something since.
+    const walkedAbsent = fresh ? undefined : outputs?.absent
     if (tree !== undefined) {
       await restoreTree(
         ix,
@@ -853,6 +864,7 @@ async function restoreOutputsOnce(
         accept,
         written,
         absentDirs,
+        walkedAbsent,
       )
     } else if (
       inline === undefined ||
@@ -866,6 +878,7 @@ async function restoreOutputsOnce(
         accept,
         written,
         absentDirs,
+        walkedAbsent,
       ))
     ) {
       const tar = await decodedTar(inline ?? Bun.file(src), hash, ix.artifactCeiling)

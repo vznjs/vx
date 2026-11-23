@@ -203,6 +203,13 @@ export interface CacheGetContext {
 export interface DeclaredOutputs {
   files: readonly string[]
   workspaceFiles: readonly string[]
+  /**
+   * Output directories, by absolute path, the caller's walk just found
+   * absent: the copy-out lays them without asking again. One made since is
+   * met by the rename, which refuses to replace it, and the extractor
+   * restores the rest.
+   */
+  absent?: ReadonlySet<string>
 }
 
 /** Metadata supplied at ingest time — values the artifact does not carry. */
