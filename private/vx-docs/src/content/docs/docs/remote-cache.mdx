@@ -383,7 +383,7 @@ On CI, `github()` or `gitlab()` ([`@vzn/vx-ci`](../../plugins/vx-ci/)) names the
 | merge queue into `main` | `refs/heads/main` |
 | laptop on `feat-x` | `refs/heads/feat-x, refs/heads/main` |
 
-`vxCache()` sends each branch as a hash, so no branch name leaves the machine. `turboCache()` sends them in `x-artifact-read-scopes`.
+`vxCache()` sends each branch as its ref, percent-encoded (`refs%2Fheads%2Fmain`); the server's bucket names it only by its hash. `turboCache()` sends them in `x-artifact-read-scopes`.
 
 For a server that ignores that header (Vercel), `turboCache({ scope: 'key' })` adds the branch to each key. Branches stay apart, but nothing enforces it.
 
