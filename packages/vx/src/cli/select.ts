@@ -412,6 +412,8 @@ function emptySelection(
   changedAny: ReadonlySet<ReturnType<typeof parseFilter>>,
   /** What each include that matched found on the walk it asked for: nothing. */
   emptyWalks: readonly string[],
+  /** Each `[<since>]` filter's changed projects. */
+  affectedByFilter: ReadonlyMap<ReturnType<typeof parseFilter>, ReadonlySet<string>>,
 ): FilterResolution {
   const includes = parsed.filter((f) => !f.negate)
   // Every pattern matched and an exclusion took them all back: "no
@@ -422,6 +424,16 @@ function emptySelection(
   if (includes.length > 0 && includes.every((f) => f.gitSince !== undefined)) {
     if (includes.every((f) => emptyDiffs.has(f))) {
       const refs = [...new Set(includes.map((f) => f.gitSince))].join(', ')
+      // The diff reached projects the selectors left out: "nothing affected"
+      // denied a change the run can see.
+      const elsewhere = includes.flatMap((f) => [...(affectedByFilter.get(f) ?? [])])
+      if (elsewhere.length > 0) {
+        const sels = includes.map((f) => f.raw).join(', ')
+        return {
+          empty: `nothing ${sels} ${includes.length > 1 ? 'select' : 'selects'} changed since ${refs}; the change reached ${listed(elsewhere)}`,
+          discovered: { root, projects },
+        }
+      }
       // A base that is HEAD (a single-branch clone whose `origin/HEAD` is the
       // branch under test) can mark nothing; say so.
       const self = includes.map((f) => headBase(root, f.gitSince!)).find((b) => b !== undefined)
@@ -666,7 +678,15 @@ export async function resolveFilters(
     }
   }
   if (selected.size === 0)
-    return emptySelection(root, parsed, projects, emptyDiffs, changedAny, emptyWalks)
+    return emptySelection(
+      root,
+      parsed,
+      projects,
+      emptyDiffs,
+      changedAny,
+      emptyWalks,
+      affectedByFilter,
+    )
   // Each include is a union: `--filter other` runs its tasks whether or not the
   // `--affected` diff reaches them; an exclude still removes.
   const others = parsed.filter((f) => f.negate || f.raw !== affected?.filter)

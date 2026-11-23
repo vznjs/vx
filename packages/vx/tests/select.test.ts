@@ -217,6 +217,20 @@ describe('resolveFilters', () => {
     })
   })
 
+  it('a selector whose projects did not change, beside a change elsewhere, says so', async () => {
+    // `app[HEAD]` with only lib changed said "nothing affected since HEAD".
+    const loose = path.join(root, 'packages', 'lib', 'loose.txt')
+    await Bun.write(loose, 'x\n')
+    try {
+      const { value } = await quiet(() => resolveFilters(root, ['app[HEAD]']))
+      expect(value).toMatchObject({
+        empty: 'nothing app[HEAD] selects changed since HEAD; the change reached lib',
+      })
+    } finally {
+      await rm(loose, { force: true })
+    }
+  })
+
   it('a typo beside a walk that came back empty names the typo, with its hint', async () => {
     // `lib^...` matched lib, which depends on no project; `apq` matched
     // nothing. The empty walk's error hid the typo and its "did you mean".

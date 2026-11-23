@@ -109,6 +109,8 @@ affected: the change reaches no test task.`
 - A diff that touched no project exits 0 with
   `nothing affected since <ref>` on stderr, once each bare name is
   found declared somewhere: a name no project declares is still refused.
+  One that touched only projects a selector leaves out says so:
+  `nothing @demo/web[main] selects changed since main; the change reached @demo/ui`.
 
 There is no `-V`; use `vx --version`, as in Turbo.
 
