@@ -1021,8 +1021,13 @@ function buildTask(
   // did not migrate: nx-examples'.NET ProductsApi), the key saw nothing the
   // task reads, and a changed document replayed the old generated client
   // (Growth).
-  const orphanReader =
-    inputs.dependentOutputs.length > 0 && !deps.some((d) => !d.includes('#inputs:'))
+  // A target with no `dependsOn` has no dependent task: Nx hashes nothing
+  // there and caches it (@nx/vitest infers the input on every test target).
+  const readsDependents =
+    inputs.dependentOutputs.length > 0 &&
+    Array.isArray(target.dependsOn) &&
+    target.dependsOn.length > 0
+  const orphanReader = readsDependents && !deps.some((d) => !d.includes('#inputs:'))
   if (orphanReader && cacheWanted && !persistent) {
     todos.push(orphanReaderTodo(inputs.dependentOutputs, target.dependsOn))
   }
@@ -1152,7 +1157,7 @@ function buildTask(
   }
 
   const generated: GeneratedTask = { name: variant.name, todos, task }
-  if (cacheEnabled && inputs.dependentOutputs.length > 0)
+  if (cacheEnabled && readsDependents)
     dependentReaders.set(generated, {
       globs: inputs.dependentOutputs,
       transitive: inputs.transitiveOutputs,
