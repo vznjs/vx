@@ -30,7 +30,7 @@ const { sample, pick } = Astro.props
       <input id="vx-graph-find" class="find" type="text" list="vx-graph-ids" placeholder="@demo/web#build" />
       <datalist id="vx-graph-ids"></datalist>
       <label class="vx-label" for="vx-graph-why">waits on?</label>
-      <input id="vx-graph-why" class="why-to" type="text" list="vx-graph-ids" placeholder="@demo/utils#build" />
+      <input id="vx-graph-why" class="why-to" type="text" list="vx-graph-ids" placeholder="@demo/ui#build" />
     </div>
   </div>
   <p class="status vx-say" aria-live="polite" hidden></p>
@@ -63,6 +63,22 @@ const { sample, pick } = Astro.props
     box-sizing: border-box;
     margin-block: 0.25rem 0.5rem;
   }
+  /* The browser's own file button ignores the theme; give it the chips' look. */
+  .own .file {
+    font-family: var(--vx-mono);
+    font-size: 13px;
+    color: var(--vx-muted);
+  }
+  .own .file::file-selector-button {
+    margin-inline-end: 0.5rem;
+    padding: 0.3rem 0.7rem;
+    font: inherit;
+    color: var(--vx-fg);
+    background: var(--vx-surface-2);
+    border: 1.5px solid var(--vx-border);
+    border-radius: 8px;
+    cursor: pointer;
+  }
   .draw {
     overflow-x: auto;
     margin-block: 0.5rem 1rem;
@@ -87,5 +103,9 @@ const { sample, pick } = Astro.props
     margin: 0 0 0.75rem;
     padding: 0;
     list-style: none;
+  }
+  /* The site's prose bullet would sit before every chip. */
+  .out :global(li) {
+    display: block;
   }
 </style>

@@ -1,64 +1,82 @@
 {
   "tasks": [
     {
-      "id": "@demo/ui#test",
-      "project": "@demo/ui",
-      "task": "test",
-      "hash": "3fdea519fc3f33ea",
+      "id": "@demo/admin#build",
+      "project": "@demo/admin",
+      "task": "build",
+      "hash": "59390881d4b2c499",
       "cacheStatus": "miss",
       "deps": ["@demo/ui#build"],
-      "p50Ms": 405
+      "p50Ms": 163
     },
     {
       "id": "@demo/ui#build",
       "project": "@demo/ui",
       "task": "build",
-      "hash": "33b13f319efdd97b",
+      "hash": "8c257e6860353920",
       "cacheStatus": "miss",
-      "deps": ["@demo/utils#build"],
-      "p50Ms": 161
+      "deps": [],
+      "p50Ms": 1697
     },
     {
-      "id": "@demo/utils#build",
-      "project": "@demo/utils",
+      "id": "@demo/api#build",
+      "project": "@demo/api",
       "task": "build",
-      "hash": "0921bd53d073c0be",
+      "hash": "0495c9cc808b0422",
       "cacheStatus": "hit-local",
       "deps": [],
-      "p50Ms": 202
-    },
-    {
-      "id": "@demo/utils#test",
-      "project": "@demo/utils",
-      "task": "test",
-      "hash": "cbccac88148ed0f5",
-      "cacheStatus": "hit-local",
-      "deps": ["@demo/utils#build"],
-      "p50Ms": 418
-    },
-    {
-      "id": "@demo/web#test",
-      "project": "@demo/web",
-      "task": "test",
-      "hash": "fc13109b7f415032",
-      "cacheStatus": "miss",
-      "deps": ["@demo/web#build"],
-      "p50Ms": 227
+      "p50Ms": 1693
     },
     {
       "id": "@demo/web#build",
       "project": "@demo/web",
       "task": "build",
-      "hash": "715e9a1da1d4eb10",
+      "hash": "94b642bd7a0ab06b",
       "cacheStatus": "miss",
       "deps": ["@demo/ui#build"],
-      "p50Ms": 182
+      "p50Ms": 164
+    },
+    {
+      "id": "@demo/admin#test",
+      "project": "@demo/admin",
+      "task": "test",
+      "hash": "fc9bc9d13669743d",
+      "cacheStatus": "miss",
+      "deps": ["@demo/ui#build"],
+      "p50Ms": 344
+    },
+    {
+      "id": "@demo/api#test",
+      "project": "@demo/api",
+      "task": "test",
+      "hash": "26f2b22a2f12e1e5",
+      "cacheStatus": "hit-local",
+      "deps": [],
+      "p50Ms": 1882
+    },
+    {
+      "id": "@demo/ui#test",
+      "project": "@demo/ui",
+      "task": "test",
+      "hash": "25d5e673660c3971",
+      "cacheStatus": "miss",
+      "deps": [],
+      "p50Ms": 1867
+    },
+    {
+      "id": "@demo/web#test",
+      "project": "@demo/web",
+      "task": "test",
+      "hash": "6864436ec7933f03",
+      "cacheStatus": "miss",
+      "deps": ["@demo/ui#build"],
+      "p50Ms": 353
     }
   ],
   "predicted": {
-    "wallMs": 570,
-    "workMs": 975,
+    "wallMs": 2050,
+    "workMs": 4588,
     "unknownCount": 0,
-    "criticalPath": ["@demo/ui#build", "@demo/web#build", "@demo/web#test"]
+    "criticalPath": ["@demo/ui#build", "@demo/web#test"]
   }
 }

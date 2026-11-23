@@ -11,14 +11,14 @@ import { Levels, Deeper, Concept, Quiz, Takeaway, NextStep } from '../../../comp
 See which tasks wait on which, and why. Ask vx for the plan of a run: nothing runs.
 
 ```sh
-vx run test --all --dry --format json > plan.json
+vx run build test --all --dry --format json > plan.json
 ```
 
 <Levels />
 
-This is that plan from the demo workspace, `@demo/web` on `@demo/ui` on `@demo/utils`. **Click any box.**
+Here is that plan from the [running tasks](../running-tasks/) workspace, after one edit to `packages/ui/src/index.js`. Its two tasks are `build` and `test`. **Click any box.**
 
-<GraphExplorer sample={JSON.stringify(demoPlan)} pick="@demo/web#build" />
+<GraphExplorer sample={JSON.stringify(demoPlan)} pick="@demo/ui#build" />
 
 <Concept term="Task graph">
   Every task in a run and the tasks each one waits on. An arrow from A to B means B starts only
@@ -29,13 +29,14 @@ This is that plan from the demo workspace, `@demo/web` on `@demo/ui` on `@demo/u
 
 The task you picked is in **bold**. Above it: what it **waits on**. Below it: what **waits on it**.
 
-- <span style="color: var(--vx-ok)">**Green**</span>: the cache has it, so the run restores it.
-- <span style="color: var(--vx-warn)">**Orange**</span>: it runs.
+- <span style="color: var(--vx-ok)">**Green**</span>: `cached`. The run restores it.
+- <span style="color: var(--vx-link)">**Cyan**</span>: `run`. It runs.
 
-<Quiz q="@demo/utils#build is green. Why does @demo/ui#build, right below it, still run?">
-  Its own file changed: `packages/ui/src/index.js` was edited. A green task above only means that
-  part of the key is the same. The edit gives `@demo/ui#build` a new key, and everything below it
-  too.
+The terminal uses the same two colours.
+
+<Quiz q="Nothing in packages/web changed. Why is @demo/web#build cyan?">
+  It waits on `@demo/ui#build`, which the edit gave a new key. A task's key holds the keys of
+  the tasks it waits on, so `@demo/web#build` gets a new one too. `@demo/api` stays green.
 </Quiz>
 
 <Takeaway>see what a task waits on, what waits on it, and which tasks a run would skip.</Takeaway>
@@ -45,23 +46,25 @@ The task you picked is in **bold**. Above it: what it **waits on**. Below it: wh
 Drop `--format json` and vx prints the same plan as a table:
 
 ```sh
-vx run test --all --dry
+vx run build test --all --dry
 ```
 
-```ansi title="the demo workspace, one file edited in @demo/ui"
-[4m[58;2;110;118;129m  [1m[38;2;167;139;250mPlan[0m[4m[58;2;110;118;129m [2m6[0m[4m[58;2;110;118;129m    [2mstatus  cache      usual  blocks worker task[0m[4m[58;2;110;118;129m                           [0m
-            [38;2;6;182;212mrun[0m     [2mmiss[0m      [2m~405ms[0m       [2m0[0m [2mlocal[0m  [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;96;165;250mtest[0m
-            [38;2;6;182;212mrun[0m     [2mmiss[0m      [2m~161ms[0m       [38;2;203;213;225m3[0m [2mlocal[0m  [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m
-            [38;2;34;197;94mcached[0m  [38;2;56;189;248mlocal[0m          [2m—[0m       [38;2;203;213;225m5[0m [2mlocal[0m  [38;2;129;140;248m@demo/utils[0m[2m#[0m[38;2;244;114;182mbuild[0m
-            [38;2;34;197;94mcached[0m  [38;2;56;189;248mlocal[0m          [2m—[0m       [2m0[0m [2mlocal[0m  [38;2;129;140;248m@demo/utils[0m[2m#[0m[38;2;96;165;250mtest[0m
-            [38;2;6;182;212mrun[0m     [2mmiss[0m      [2m~227ms[0m       [2m0[0m [2mlocal[0m  [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;96;165;250mtest[0m
-            [38;2;6;182;212mrun[0m     [2mmiss[0m      [2m~182ms[0m       [38;2;203;213;225m1[0m [2mlocal[0m  [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m
+```ansi title="one file edited in @demo/ui"
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mPlan[0m[4m[58;2;110;118;129m [2m8[0m[4m[58;2;110;118;129m    [2mstatus  cache      usual  blocks worker task[0m[4m[58;2;110;118;129m                           [0m
+            [38;2;6;182;212mrun[0m     [2mmiss[0m      [2m~163ms[0m       [2m0[0m [2mlocal[0m  [38;2;129;140;248m@demo/admin[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;6;182;212mrun[0m     [2mmiss[0m       [2m~1.7s[0m       [38;2;203;213;225m4[0m [2mlocal[0m  [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;34;197;94mcached[0m  [38;2;56;189;248mlocal[0m          [2m—[0m       [2m0[0m [2mlocal[0m  [38;2;232;121;249m@demo/api[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;6;182;212mrun[0m     [2mmiss[0m      [2m~164ms[0m       [2m0[0m [2mlocal[0m  [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;6;182;212mrun[0m     [2mmiss[0m      [2m~344ms[0m       [2m0[0m [2mlocal[0m  [38;2;129;140;248m@demo/admin[0m[2m#[0m[38;2;96;165;250mtest[0m
+            [38;2;34;197;94mcached[0m  [38;2;56;189;248mlocal[0m          [2m—[0m       [2m0[0m [2mlocal[0m  [38;2;232;121;249m@demo/api[0m[2m#[0m[38;2;96;165;250mtest[0m
+            [38;2;6;182;212mrun[0m     [2mmiss[0m       [2m~1.9s[0m       [2m0[0m [2mlocal[0m  [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;96;165;250mtest[0m
+            [38;2;6;182;212mrun[0m     [2mmiss[0m      [2m~353ms[0m       [2m0[0m [2mlocal[0m  [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;96;165;250mtest[0m
 
-  [2mtasks    [0m  [38;2;203;213;225m6 planned · 2 cache hits (2 local) · 4 would run[0m
-  [2mpredicted[0m  [38;2;203;213;225m~570ms wall · ~975ms total execution[0m
+  [2mtasks    [0m  [38;2;203;213;225m8 planned · 2 cache hits (2 local) · 6 would run[0m
+  [2mpredicted[0m  [38;2;203;213;225m~2.05s wall · ~4.59s total execution[0m
 ```
 
-Read **blocks**: how many tasks wait on that row. `@demo/utils#build` blocks 5, so a slow one there holds up the whole run.
+Read **blocks**: how many tasks wait on that row. `@demo/ui#build` blocks 4, so while it runs, four tasks wait.
 
 <Takeaway>spot the task that holds up the most work, before you run anything.</Takeaway>
 
@@ -91,17 +94,19 @@ Read **blocks**: how many tasks wait on that row. `@demo/utils#build` blocks 5, 
 
 Type a task in **Task** and another in **waits on?**. The path between them lights up.
 
-In the demo, `@demo/web#test` waits on `@demo/utils#build` through two steps:
+Pick `@demo/web#test` and ask if it waits on `@demo/ui#build`:
 
 ```sh
-@demo/web#test → @demo/web#build → @demo/ui#build → @demo/utils#build
+@demo/web#test → @demo/ui#build
 ```
+
+One arrow: the test waits on the build of the kit it imports. A longer path lists every task between the two.
 
 Each arrow is one line of config. `build` in `dependsOn` is a task of the same project; `^build` is `build` in each package this one depends on ([Tasks](../tasks/)).
 
-<Quiz q="The path says @demo/web#build → @demo/ui#build. Which config line made that edge?">
-  `dependsOn: ['^build']` in `packages/web/vx.config.ts`. `@demo/web` depends on `@demo/ui` in its
-  `package.json`, so `^build` means `@demo/ui#build`.
+<Quiz q="Which config line made the arrow @demo/web#test → @demo/ui#build?">
+  `dependsOn: ['^build']` on `test` in `packages/web/vx.config.ts`. `@demo/web` depends on
+  `@demo/ui` in its `package.json`, so `^build` means `@demo/ui#build`.
 </Quiz>
 
 <Takeaway>trace any wait back to the `dependsOn` line that made it.</Takeaway>
@@ -118,10 +123,12 @@ jq '[.tasks[] | select(.cacheStatus == "miss") | .id]' plan.json
 
 ```ansi title="the demo plan"
 [1;39m[
-  [0;32m"@demo/ui#test"[0m[1;39m,
+  [0;32m"@demo/admin#build"[0m[1;39m,
   [0;32m"@demo/ui#build"[0m[1;39m,
-  [0;32m"@demo/web#test"[0m[1;39m,
-  [0;32m"@demo/web#build"[0m[1;39m
+  [0;32m"@demo/web#build"[0m[1;39m,
+  [0;32m"@demo/admin#test"[0m[1;39m,
+  [0;32m"@demo/ui#test"[0m[1;39m,
+  [0;32m"@demo/web#test"[0m[1;39m
 [1;39m][0m
 ```
 
@@ -135,12 +142,11 @@ jq '.predicted' plan.json
 
 ```ansi title="the demo plan"
 [1;39m{
-  [0m[1;34m"wallMs"[0m[1;39m: [0m[0;39m570[0m[1;39m,
-  [0m[1;34m"workMs"[0m[1;39m: [0m[0;39m975[0m[1;39m,
+  [0m[1;34m"wallMs"[0m[1;39m: [0m[0;39m2050[0m[1;39m,
+  [0m[1;34m"workMs"[0m[1;39m: [0m[0;39m4588[0m[1;39m,
   [0m[1;34m"unknownCount"[0m[1;39m: [0m[0;39m0[0m[1;39m,
   [0m[1;34m"criticalPath"[0m[1;39m: [0m[1;39m[
     [0;32m"@demo/ui#build"[0m[1;39m,
-    [0;32m"@demo/web#build"[0m[1;39m,
     [0;32m"@demo/web#test"[0m[1;39m
   [1;39m][0m[1;39m
 [1;39m}[0m
@@ -157,7 +163,7 @@ vx run build --filter @demo/web... --dry --format json > plan.json
 vx run test --affected --dry --format json > plan.json
 ```
 
-`--filter @demo/web...` is `@demo/web` and everything it depends on. `--affected` is what your changes reach, and each task says why in `affected`.
+`--filter @demo/web...` is `@demo/web` and everything it uses. `--affected` is what your changes reach, and each task says why in `affected`.
 
 <Takeaway>answer "what runs, what is slow, what did my change touch" from one file.</Takeaway>
 
@@ -200,30 +206,28 @@ Each task:
 | `unknownCount` | tasks that would run with no history; above 0, both times are too low |
 | `criticalPath` | the path `wallMs` measures, first task first |
 
-`affected.kind`:
+`affected.kind` says why the task is in the run:
 
-| Kind | The task is in the run because |
-| --- | --- |
-| `input` | a changed file is one of its `inputs` |
-| `project` | a file in its project changed, and it reads the whole project |
-| `workspace` | a workspace-wide file changed, such as `.vx/workspace.ts` |
-| `package` | a package it depends on through `^` changed (`project` names it) |
-| `named` | you asked for it as `project#task` |
-| `selected` | another filter picked its project |
+- `input`: a changed file is one of its `inputs`.
+- `project`: a file in its project changed, and it reads the whole project.
+- `workspace`: a workspace-wide file changed, such as `.vx/workspace.ts`.
+- `package`: a package it depends on through `^` changed; `project` names it.
+- `named`: you asked for it as `project#task`.
+- `selected`: another filter picked its project.
 
 `via` lists the `dependsOn` path, nearest first, from the task to the one the change reached.
 
 ### What each status means
 
-| `cacheStatus` | The explorer says | Colour |
-| --- | --- | --- |
-| `hit-local` | cache hit (this machine) | <span style="color: var(--vx-ok)">green</span> |
-| `hit-remote` | cache hit (remote) | <span style="color: var(--vx-ok)">green</span> |
-| `miss` | cache miss: runs | <span style="color: var(--vx-warn)">orange</span> |
-| `no-cache` | not cached: runs | <span style="color: var(--vx-warn)">orange</span> |
-| `group` | group: runs nothing itself | grey |
-| `not-started` | not run: every task after it restores from the cache | grey |
-| `skipped` | skipped: needs another platform, or waits on a task that does | grey |
+- <span style="color: var(--vx-ok)">`hit-local`</span>: cache hit on this machine.
+- <span style="color: var(--vx-ok)">`hit-remote`</span>: cache hit in the [remote cache](../remote-cache/).
+- <span style="color: var(--vx-link)">`miss`</span>: no entry for its key, so it runs.
+- <span style="color: var(--vx-link)">`no-cache`</span>: the task has no `cache: true`, so it runs.
+- `group`: a task with no command; it runs nothing itself.
+- `not-started`: a dev server every task after it restores from the cache, so it never starts.
+- `skipped`: it needs another platform, or waits on a task that does.
+
+The explorer draws the first two green, the next two cyan, the rest grey.
 
 ### What the explorer reads
 
@@ -233,13 +237,11 @@ The picture holds the picked task, everything it waits on and everything that wa
 
 ### Messages
 
-| The explorer says | Fix |
-| --- | --- |
-| `Not JSON.` | paste the whole output of `vx run <task> --all --dry --format json` |
-| `That is a vx error, not a plan.` | the command failed; run it again and fix what it prints |
-| `No "tasks" list.` | the JSON is not a plan; run the command above |
-| `A task without "id" or "deps".` | the plan was cut or edited; write it again |
-| `No task matches "…"` | no task id holds every word you typed |
+- `Not JSON.` Paste the whole output of `vx run <task> --all --dry --format json`.
+- `That is a vx error, not a plan.` The command failed. Run it again and fix what it prints.
+- `No "tasks" list.` The JSON is not a plan. Run the command above.
+- `A task without "id" or "deps".` The plan was cut or edited. Write it again.
+- `No task matches "…"` No task id holds every word you typed.
 
 </Deeper>
 

@@ -136,24 +136,49 @@ class GraphExplorer extends HTMLElement {
     const tone = statusTone(t.cacheStatus)
     out.hidden = false
     out.innerHTML =
-      `<p><strong>${esc(id)}</strong>: <span class="is-${tone}">${esc(statusWords(t.cacheStatus))}</span>.${onPath} ` +
-      `It waits on ${n} task${n === 1 ? '' : 's'} in all.</p>` +
+      `<p><strong>${esc(id)}</strong>: <span style="color: var(--vx-${tone})">${esc(statusWords(t.cacheStatus))}</span>.${onPath} ` +
+      (n === 0
+        ? 'It waits on nothing.</p>'
+        : `It waits on ${n} task${n === 1 ? '' : 's'} in all.</p>`) +
       why +
       `<p class="vx-label">Waits on</p><ul>${list(t.deps)}</ul>` +
       `<p class="vx-label">Waited on by</p><ul>${list(graph.dependents.get(id) ?? [])}</ul>`
     draw.hidden = false
-    draw.innerHTML = picture(graph, id, chain ?? [])
+    draw.innerHTML = picture(
+      graph,
+      id,
+      chain ?? [],
+      Math.max(300, draw.clientWidth || this.clientWidth),
+    )
   }
 }
 
 /** The picked task's world as an SVG: rows top to bottom, edges pointing down. */
-function picture(graph: Graph, id: string, chain: readonly string[]): string {
-  const { rows, edges } = layers(graph, id)
-  const count = rows.reduce((s, r) => s + r.length, 0)
+function picture(graph: Graph, id: string, chain: readonly string[], fit: number): string {
+  const { rows: layered, edges } = layers(graph, id)
+  const count = layered.reduce((s, r) => s + r.length, 0)
   if (count > MAX_DRAWN) {
     return `<p class="legend">${count} tasks in this task's world: too many to draw. The lists below name them.</p>`
   }
   const w = (n: string) => Math.ceil(n.length * CHAR) + 2 * PAD + 6
+  // A row wider than the frame wraps onto the next, so a phone keeps the
+  // text readable; a wrapped row's tasks wait on nothing in it, so every
+  // edge still points down.
+  const rows: string[][] = []
+  for (const layer of layered) {
+    let row: string[] = []
+    let used = 0
+    for (const n of layer) {
+      if (row.length > 0 && used + GAP + w(n) > fit) {
+        rows.push(row)
+        row = []
+        used = 0
+      }
+      used += (row.length > 0 ? GAP : 0) + w(n)
+      row.push(n)
+    }
+    rows.push(row)
+  }
   const width = Math.max(
     300,
     ...rows.map((r) => r.reduce((s, n) => s + w(n), 0) + GAP * (r.length - 1)),
@@ -185,7 +210,7 @@ function picture(graph: Graph, id: string, chain: readonly string[]): string {
     .map(([n, p]) => {
       const t = graph.tasks.get(n)!
       const picked = n === id
-      const colour = `var(--vx-${statusTone(t.cacheStatus) === 'muted' ? 'muted' : statusTone(t.cacheStatus)})`
+      const colour = `var(--vx-${statusTone(t.cacheStatus)})`
       return (
         `<g data-task="${esc(n)}" role="button" tabindex="0" aria-label="${esc(n)}: ${esc(statusWords(t.cacheStatus))}" style="cursor:pointer">` +
         `<rect x="${p.x}" y="${p.y}" width="${p.w}" height="${BOX_H}" rx="8" fill="var(--vx-surface-2)" stroke="${picked ? 'var(--vx-accent)' : colour}" stroke-width="${picked ? 2.5 : 1.5}"/>` +
@@ -202,7 +227,7 @@ function picture(graph: Graph, id: string, chain: readonly string[]): string {
     lines +
     boxes +
     `</svg>` +
-    `<p class="legend"><span class="is-accent">▢ picked</span> · <span class="is-ok">▢ from cache</span> · <span class="is-warn">▢ runs</span> · arrows point to the task that waits</p>`
+    `<p class="legend"><span class="is-accent">▢ picked</span> · <span class="is-ok">▢ cached</span> · <span style="color: var(--vx-link)">▢ runs</span> · arrows point to the task that waits</p>`
   )
 }
 

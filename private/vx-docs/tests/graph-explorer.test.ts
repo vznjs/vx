@@ -124,9 +124,9 @@ describe('the picture', () => {
     expect(layers(graph, 'docs#build').rows).toEqual([['docs#build']])
   })
 
-  it('colours a restore green, a run orange, the rest muted', () => {
+  it('colours a restore green, a run cyan, the rest muted', () => {
     expect(statusTone('hit-remote')).toBe('ok')
-    expect(statusTone('no-cache')).toBe('warn')
+    expect(statusTone('no-cache')).toBe('link')
     expect(statusTone('group')).toBe('muted')
   })
 })

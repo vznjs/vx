@@ -115,10 +115,13 @@ const STATUS_WORDS: Record<string, string> = {
   skipped: 'skipped: needs another platform, or waits on a task that does',
 }
 
-/** The picture's tone for a predicted status: green restores, orange runs. */
-export function statusTone(status: string): 'ok' | 'warn' | 'muted' {
+/**
+ * The picture's tone for a predicted status, as the terminal's plan colours
+ * it: green `cached`, cyan `run` (the theme's link colour).
+ */
+export function statusTone(status: string): 'ok' | 'link' | 'muted' {
   if (status === 'hit-local' || status === 'hit-remote') return 'ok'
-  if (status === 'miss' || status === 'no-cache') return 'warn'
+  if (status === 'miss' || status === 'no-cache') return 'link'
   return 'muted'
 }
 
