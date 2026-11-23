@@ -57,7 +57,7 @@ describe('a page as markdown', () => {
 describe('the reading order', () => {
   it('opens with the quickstart and leaves the blog out', () => {
     const order = readingOrder([page('docs/ci'), page('blog/x'), page('quickstart'), page('docs')])
-    expect(order[0]![0]).toBe('Get started')
+    expect(order[0]![0]).toBe('Start here')
     expect(order[0]![1].map((p) => p.id)).toEqual(['docs', 'quickstart'])
     expect(order.flatMap(([, ps]) => ps.map((p) => p.id))).not.toContain('blog/x')
   })

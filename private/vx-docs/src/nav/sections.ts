@@ -54,6 +54,7 @@ const SIDEBAR_GROUPS: Record<'Docs', SidebarItem[]> = {
         { label: 'Quickstart', link: '/quickstart/' },
         { label: 'Move an existing workspace to vx', link: '/docs/migrate/' },
         { label: 'Work with AI agents', link: '/docs/agents/' },
+        { label: 'Upgrading vx', link: '/docs/upgrading/' },
       ],
     },
     {
@@ -151,13 +152,6 @@ const SIDEBAR_GROUPS: Record<'Docs', SidebarItem[]> = {
         { label: 'Servers', link: '/docs/servers/' },
         { label: 'History server', link: '/docs/servers/history/' },
         { label: 'Write a plugin', link: '/docs/writing-plugins/' },
-      ],
-    },
-    {
-      label: 'Get help',
-      items: [
-        { label: 'Troubleshooting', link: '/docs/troubleshooting/' },
-        { label: 'Upgrading vx', link: '/docs/upgrading/' },
       ],
     },
     {
