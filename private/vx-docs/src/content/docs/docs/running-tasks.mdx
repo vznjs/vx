@@ -10,6 +10,7 @@ import ProjectMap from '../../../components/running/ProjectMap.astro'
 export const neverEnds = { lanes: [{ task: '@demo/web#e2e', bars: [{ from: 0, to: 20, tone: 'warn', label: 'still running…', open: true }] }] }
 export const limitHit = { lanes: [{ task: '@demo/web#e2e', bars: [{ from: 0, to: 10, tone: 'danger', label: 'timed out' }] }], marks: [{ at: 10, label: 'limit', tone: 'danger' }] }
 import { Levels, Deeper, Concept, Quiz, Walkthrough, Frame, Takeaway, NextStep } from '../../../components/learn'
+import { RunTimeline } from '../../../components/play'
 import RunPicker from '../../../components/demos/RunPicker.astro'
 import ErrorFinder from '../../../components/docs/troubleshooting/ErrorFinder.astro'
 
@@ -481,6 +482,10 @@ vx run //#build             # the root project's task
 ```
 
 <Takeaway>run a whole check (lint, test, build) as one command.</Takeaway>
+
+Change the slots, make a task fail, and toggle `--fail-fast` to see what the run does:
+
+<RunTimeline concurrency={2} />
 
 ## 6. Pass flags to the tool
 

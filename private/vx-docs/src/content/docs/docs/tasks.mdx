@@ -12,6 +12,7 @@ import GraphExplorer from '../../../components/demos/GraphExplorer.astro'
 import DependsOn from '../../../components/demos/DependsOn.astro'
 import OutputRule from '../../../components/demos/OutputRule.astro'
 import { Levels, Deeper, Concept, Quiz, Takeaway, NextStep } from '../../../components/learn'
+import { TaskGraph, GlobTester, ConfigExplorer } from '../../../components/play'
 import ErrorFinder from '../../../components/docs/troubleshooting/ErrorFinder.astro'
 
 A task is **one command** vx runs for you. This page grows one small
@@ -123,6 +124,10 @@ Try each kind of entry on `web#build` here:
 </Aside>
 
 <Takeaway>build a library before the app that imports it, every time.</Takeaway>
+
+Click a task to see what runs first, or edit a file to see what runs again:
+
+<TaskGraph task="@demo/web#build" />
 
 <Deeper level="patterns" title="Build a project's dependencies first">
 
@@ -258,6 +263,10 @@ run finds both keys:
 ```
 
 `2✓` is two hits. The run took 27 ms, because no `vite build` ran.
+
+Type globs and watch which files a task reads. Files of other projects never match:
+
+<GlobTester mode="inputs" project="@demo/web" />
 
 ### Outputs that must exist
 
@@ -547,6 +556,10 @@ for and what waits for it. Nothing is uploaded.
 ---
 
 <Deeper level="details" title="Every task field">
+
+Click any field to read what it does:
+
+<ConfigExplorer area="task" />
 
 | Field | Type | Default | Does |
 | --- | --- | --- | --- |

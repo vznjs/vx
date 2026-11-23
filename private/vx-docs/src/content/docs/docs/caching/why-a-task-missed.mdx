@@ -7,6 +7,7 @@ import Diagram from '../../../../components/guide/diagram/Diagram.astro'
 import { rootCause } from '../../../../components/docs/pictures/caching.js'
 import { Aside } from '@astrojs/starlight/components'
 import { Levels, Deeper, Quiz, Walkthrough, Frame, Takeaway, NextStep } from '../../../../components/learn'
+import { CacheSim } from '../../../../components/play'
 
 A task ran when you expected a skip. Ask vx why:
 
@@ -146,6 +147,14 @@ The command in `vx.config.ts` became `vite build --minify false`:
 </Quiz>
 
 <Takeaway>tell a file, a variable and a config change apart at a glance.</Takeaway>
+
+## Try it
+
+Make an edit, press Run, and read the reason vx gives for each task:
+
+<CacheSim task="build" />
+
+<Takeaway>predict a hit or a miss before you run.</Takeaway>
 
 <Deeper level="patterns" title="Common cases">
 

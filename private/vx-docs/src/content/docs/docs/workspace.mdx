@@ -8,6 +8,7 @@ import Demo from '../../../components/Demo.astro'
 import { workspaceLock } from '../../../components/docs/pictures/workspace.js'
 import { Aside, FileTree, Tabs, TabItem, Badge } from '@astrojs/starlight/components'
 import { Levels, Deeper, Concept, Quiz, Compare, Takeaway, NextStep } from '../../../components/learn'
+import { ConfigExplorer } from '../../../components/play'
 import ErrorFinder from '../../../components/docs/troubleshooting/ErrorFinder.astro'
 
 You have vx installed. Now meet the folder it works in, your workspace. One small file marks it:
@@ -390,6 +391,10 @@ See [Remote cache](../remote-cache/).
 </Deeper>
 
 <Deeper level="details" title="Every field">
+
+Click any field to read what it does:
+
+<ConfigExplorer area="workspace" />
 
 Each field, its default, and what it does. "Also" lists its variable and flag.
 
