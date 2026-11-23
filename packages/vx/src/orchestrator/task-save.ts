@@ -1,6 +1,7 @@
 // Whether a miss is saved, decided in one place (`saveVerdict`), and what
 // each verdict does to the cache and the run's facts (`applySave`).
 
+import { lstatSync } from 'node:fs'
 import { span } from '../util/index.js'
 import { warnOf } from '../report/index.js'
 import type { Attempts } from './attempt.js'
@@ -82,6 +83,27 @@ export async function saveVerdict(
   return args.noDependants === true ? { kind: 'count' } : { kind: 'mark' }
 }
 
+/**
+ * The key by what git holds for the run's committed outputs (`HeldKey`), when
+ * the command rewrote every one of them: the entry then holds no byte of
+ * theirs it did not write, and is saved under that key too. Undefined
+ * otherwise, and where another machine ran it.
+ */
+function rewroteHeld(m: MissRun): string | undefined {
+  const { args, hash } = m
+  const described = m.inputs.described
+  const heldKey = described?.heldKey
+  if (heldKey === undefined || heldKey.key === hash) return undefined
+  if (args.executor.capabilities?.remote === true) return undefined
+  for (const file of heldKey.files) {
+    const fact = described!.facts.find((f) => f.path === file)
+    const st = lstatSync(file, { throwIfNoEntry: false })
+    if (fact?.ctimeMs === undefined || st === undefined || st.ctimeMs === fact.ctimeMs)
+      return undefined
+  }
+  return heldKey.key
+}
+
 /** Carry out `verdict`: whether an entry is in, and an unsaved miss's output bytes. */
 export async function applySave(
   m: MissRun,
@@ -112,11 +134,11 @@ export async function applySave(
         })
       return { saved: false }
     case 'save': {
-      const { landed } = await outputsStep('save', ran.exitCode, ran.spentMs, () =>
+      const saveUnder = (key: string) =>
         saveMiss({
           ...verdict.own,
           node,
-          hash,
+          hash: key,
           cache: args.run.cache,
           log: args.log,
           workspaceRoot: args.run.workspaceRoot,
@@ -135,9 +157,17 @@ export async function applySave(
           // A sink listens: say what the save cost.
           measure: args.run.explainMiss !== undefined,
           state: stamp.state,
-        }),
-      )
+        })
+      const { landed } = await outputsStep('save', ran.exitCode, ran.spentMs, () => saveUnder(hash))
       args.run.keyedTasks?.saved(args, hash)
+      const held = rewroteHeld(m)
+      if (held !== undefined) {
+        // Its landing is not awaited, as a deferred save's is not: an entry
+        // that does not land is a miss next run, never a wrong hit.
+        const { landed: also } = await saveUnder(held)
+        also.catch(() => {})
+        args.run.keyedTasks?.saved(args, held)
+      }
       // A run that settles the outcome on `landed` learns there whether the
       // entry is in; without one, the save is done (a `--force` save may
       // have kept the entry it found).

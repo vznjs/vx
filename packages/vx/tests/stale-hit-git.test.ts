@@ -188,6 +188,12 @@ describe('stale cache hits', () => {
       await Bun.write(path.join(root, 'src/a.txt'), 'b')
       expect(vx(root, 'run', 'build')).not.toMatch(/build[^\n]*(up-to-date|restored)/)
       expect(await readFile(path.join(root, 'dist/index.js'), 'utf8')).toBe('b')
+      // Edit, build, build: the second hits though the map is still dirty.
+      expect(vx(root, 'run', 'build')).toMatch(/build[^\n]*up-to-date/)
+      await Bun.write(path.join(root, 'src/a.txt'), 'c')
+      vx(root, 'run', 'build')
+      expect(vx(root, 'run', 'build')).toMatch(/build[^\n]*up-to-date/)
+      expect(await readFile(path.join(root, 'dist/index.js'), 'utf8')).toBe('c')
     },
     TIMEOUT,
   )

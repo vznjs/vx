@@ -2498,10 +2498,10 @@ function inPlan(plan: FilesPlan, rel: string): boolean {
  * each by the index OID git holds for it, where its bytes on disk differ: a
  * build that rewrites `dist/index.js.map` with new bytes each run moved its
  * own next key by its bytes, and never hit. What git holds still moves the
- * key on a staged or committed edit (turborepo#14831); a hand edit is an
- * output's, which a hit writes over. A file an input glob names keeps its
- * bytes: `src/**` over `src/gen.ts` is the user's to edit. Undefined when
- * none.
+ * key on a staged or committed edit (turborepo#14831). The caller keys by
+ * these only where the bytes on disk are the ones stamped under that key, so
+ * a hand edit still moves it. A file an input glob names keeps its bytes:
+ * `src/**` over `src/gen.ts` is the user's to edit. Undefined when none.
  */
 export function committedOutputOids(
   task: TaskConfig,

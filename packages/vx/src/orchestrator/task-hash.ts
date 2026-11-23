@@ -335,11 +335,12 @@ export async function describeTaskInputs(args: ComputeHashArgs): Promise<{
   added: () => string | undefined
   /** The fold up to the files (`foldHead`), for a fold memo's probe. */
   head: () => bigint
+  heldKey?: HeldKey
 }> {
   const hashedAt = Date.now()
   // The key folds `held`; the facts and the executor's input files carry the
   // bytes on disk, which a remote checks what it uploads against.
-  const { input, listings, held } = await resolveKeyInput(args)
+  const { input, listings, held, heldKey } = await resolveKeyInput(args)
   const known = (f: string): string | undefined =>
     held?.has(f) === true ? undefined : input.fileHashes?.get(f)
   // Resolved files arrive in order: sorting them again was 170 ms of a
@@ -435,6 +436,7 @@ export async function describeTaskInputs(args: ComputeHashArgs): Promise<{
     hash,
     facts,
     describedAt: hashedAt,
+    ...(heldKey !== undefined ? { heldKey } : {}),
     readUpstream,
     head: () => {
       const { captureInto: _rows, ...bare } = input
@@ -591,6 +593,7 @@ async function resolveKeyInput(
   listings: InputListing[]
   /** The `fileHashes` that are what git holds, not the bytes (`committedOutputOids`). */
   held?: ReadonlyMap<string, string>
+  heldKey?: HeldKey
 }> {
   const cfg = args.node.config
   const resolved = await resolveInputs({
@@ -675,8 +678,14 @@ async function resolveKeyInput(
     ...(args.node.platform !== undefined ? { platform: args.node.platform } : {}),
     ...(args.captureInto !== undefined ? { captureInto: args.captureInto } : {}),
   }
-  const held = skipFiles ? undefined : await heldOutputs(args, input, resolved.files)
-  if (held === undefined) return { input, listings: resolved.listings }
+  const found = skipFiles ? undefined : await heldOutputs(args, input, resolved.files)
+  const held = found?.held
+  if (held === undefined)
+    return {
+      input,
+      listings: resolved.listings,
+      ...(found?.heldKey !== undefined ? { heldKey: found.heldKey } : {}),
+    }
   const merged = fileHashes === undefined ? held : new Map([...fileHashes, ...held])
   return { input: { ...input, fileHashes: merged }, listings: resolved.listings, held }
 }
@@ -694,7 +703,7 @@ async function heldOutputs(
   args: ComputeHashArgs,
   input: CacheKeyInput,
   files: readonly string[],
-): Promise<ReadonlyMap<string, string> | undefined> {
+): Promise<{ held?: ReadonlyMap<string, string>; heldKey?: HeldKey } | undefined> {
   const run = args.gitFilesCache
   if (run === undefined || run.stagedOids.size === 0) return undefined
   const { projectDir } = args.node
@@ -710,13 +719,28 @@ async function heldOutputs(
   const fileHashes = input.fileHashes === undefined ? held : new Map([...input.fileHashes, ...held])
   const key = await args.cache.key(await knownIdentities(args, { ...bare, fileHashes }))
   const rows = args.cache.memo.loadOutputFilesBatch([key]).get(key)
-  if (rows === undefined) return undefined
+  // Not this key's bytes: keyed by them, and a miss that rewrites them all
+  // saves under this key too (`HeldKey`).
+  const heldKey = { key, files: [...held.keys()] }
+  if (rows === undefined) return { heldKey }
   const byPath = new Map(rows.map((r) => [r.path, r]))
   for (const abs of held.keys()) {
     const row = byPath.get(relPosix(projectDir, abs))
-    if (row === undefined || !stampedCurrent(abs, row)) return undefined
+    if (row === undefined || !stampedCurrent(abs, row)) return { heldKey }
   }
-  return held
+  return { held }
+}
+
+/**
+ * The key a run keyed by its committed outputs' bytes would have had by what
+ * git holds for them (`heldOutputs`). A miss whose command rewrote every one
+ * holds only its own bytes there, so it is saved under this key too, and the
+ * save's stamps let the next run fold it: else each run's rewrite keyed the
+ * next by new bytes, and after a source edit the build never hit again.
+ */
+export interface HeldKey {
+  key: string
+  files: readonly string[]
 }
 
 /**
