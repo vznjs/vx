@@ -8,16 +8,11 @@ import { pluginsAroundRun } from '../../../components/docs/pictures/plugins.js'
 import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components'
 import { Levels, Deeper, Concept, Quiz, Compare, Takeaway, NextStep } from '../../../components/learn'
 
-A plugin gives every run one new power. List it once in `.vx/workspace.ts`:
+You already use two plugins: `vxCache()` for the remote cache and `dte()` for Distributed task
+execution. Every plugin works the same way. See the ones your workspace loads:
 
-```ts title=".vx/workspace.ts"
-import { defineWorkspace } from '@vzn/vx/config'
-import { bun } from '@vzn/vx-lockfile'
-import { otel } from '@vzn/vx-otel'
-
-export default defineWorkspace({
-  plugins: [bun(), otel({ serviceName: 'demo' })],
-})
+```sh
+vx info
 ```
 
 <Levels />
@@ -124,7 +119,7 @@ nothing and hands the work back to this machine.
 Pick a tab. Each one shows the smallest setup that works.
 
 <Tabs>
-<TabItem label="Share a cache">
+<TabItem label="Cache">
 
 CI jobs share one cache through a [cache server](../servers/cache/) you host.
 
@@ -146,7 +141,7 @@ export default defineWorkspace({
 Next: [Remote cache](../remote-cache/).
 
 </TabItem>
-<TabItem label="See runs in a dashboard">
+<TabItem label="Dashboard">
 
 Every run becomes a trace in your OpenTelemetry tool: one span per task.
 
@@ -162,7 +157,7 @@ export default defineWorkspace({
 Next: [OpenTelemetry](#opentelemetry), below.
 
 </TabItem>
-<TabItem label="Use more machines">
+<TabItem label="More machines">
 
 One `vx run` spreads its tasks over workers your CI starts.
 
@@ -184,7 +179,7 @@ export default defineWorkspace({
 Next: [Distributed task execution](../distributed-task-execution/).
 
 </TabItem>
-<TabItem label="Rebuild only what a lockfile change reaches">
+<TabItem label="Lockfile">
 
 A `bun.lock` edit reruns only the projects whose dependencies changed.
 
@@ -200,7 +195,7 @@ export default defineWorkspace({
 `pnpm()`, `npm()` and `yarn()` do the same for their lockfiles. Next: [Lockfiles](../lockfiles/).
 
 </TabItem>
-<TabItem label="Start the slow tasks first">
+<TabItem label="Slow tasks first">
 
 vx learns how long each task takes and starts the tasks that hold the others up first.
 
@@ -216,7 +211,7 @@ export default defineWorkspace({
 Next: [History server](../servers/history/).
 
 </TabItem>
-<TabItem label="A summary on CI">
+<TabItem label="CI summary">
 
 Each GitHub Actions job gets a table of its tasks on its summary page.
 
@@ -232,7 +227,7 @@ export default defineWorkspace({
 Next: [CI](../ci/).
 
 </TabItem>
-<TabItem label="Keep Turbo or Nx">
+<TabItem label="Turbo or Nx">
 
 Start from your `turbo.json` or Nx graph, a temporary step while you move to `vx.config.ts`.
 
@@ -254,10 +249,10 @@ Next: [Migrate](../migrate/).
 
 ## Plugins that ship
 
-Every package below is on npm. The **hooks** column is for plugin authors: the parts of a run each
+Every package below is on npm. The **Plugin API names** column is for plugin authors: the parts of a run each
 one changes ([Write a plugin](../writing-plugins/)).
 
-| Package | Hooks it fills | What you get |
+| Package | Plugin API names | What you get |
 | --- | --- | --- |
 | [`@vzn/vx-lockfile`](../../plugins/vx-lockfile/) | `discover`, `project`, `fingerprint`, `key` | `pnpm()`, `bun()`, `npm()`, `yarn()`: [Lockfiles](../lockfiles/) |
 | [`@vzn/vx-cache`](../../plugins/vx-cache/) | `cache` | `vxCache()`: a [remote cache](../remote-cache/) on your cache server |
@@ -296,7 +291,7 @@ task**, plus metrics and each task's output as a log.
    otel-desktop-viewer
    ```
 
-2. Add `otel()` and point it at the viewer:
+2. Add `otel()`:
 
    ```ts title=".vx/workspace.ts" ins={2,5}
    import { defineWorkspace } from '@vzn/vx/config'
@@ -307,7 +302,7 @@ task**, plus metrics and each task's output as a log.
    })
    ```
 
-3. Run with the endpoint set:
+3. Run, sending to the viewer at `localhost:4318`:
 
    ```sh
    OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318 vx run build --all
@@ -651,9 +646,9 @@ From `@vzn/vx-devtools`: the CI token check every server shares.
 | `fetchJson` | Reads the issuer's keys; tests serve them offline. | a cached fetch |
 | `now` | The clock, in seconds; tests move it. | the real clock |
 
-</Deeper>
-
 <Takeaway>set any plugin option and know its default.</Takeaway>
+
+</Deeper>
 
 <NextStep href="../remote-execution/" title="Remote execution">
   Run tasks on a build server instead of this machine, with one plugin.

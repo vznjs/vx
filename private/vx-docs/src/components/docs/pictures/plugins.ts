@@ -21,7 +21,7 @@ export const pluginsAroundRun: Picture = {
       tone: 'ok',
     },
     { id: 'cache', x: 420, y: 80, w: 170, label: 'cache server', sub: 'vxCache()', tone: 'link' },
-    { id: 'otel', x: 420, y: 150, w: 170, label: 'OTel collector', sub: 'otel()', tone: 'link' },
+    { id: 'otel', x: 420, y: 150, w: 170, label: 'OpenTelemetry', sub: 'otel()', tone: 'link' },
     { id: 'ci', x: 420, y: 220, w: 170, label: 'CI workers', sub: 'dte()', tone: 'link' },
   ],
   arrows: [
@@ -55,7 +55,7 @@ export const pluginsAroundRun: Picture = {
         sub: 'vxCache()',
         tone: 'link',
       },
-      { id: 'otel', x: 180, y: 230, w: 160, label: 'OTel collector', sub: 'otel()', tone: 'link' },
+      { id: 'otel', x: 180, y: 230, w: 160, label: 'OpenTelemetry', sub: 'otel()', tone: 'link' },
       { id: 'ci', x: 180, y: 300, w: 160, label: 'CI workers', sub: 'dte()', tone: 'link' },
     ],
     arrows: [
