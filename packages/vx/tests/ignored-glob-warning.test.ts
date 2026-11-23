@@ -55,6 +55,9 @@ describe('a glob input that matches a git-ignored file', () => {
     await writeFile(path.join(app, 'src', 'debug.log'), 'noise\n')
     await writeFile(path.join(app, '.env'), 'A=1\n')
     await writeFile(path.join(app, '.env.local'), 'B=1\n')
+    await mkdir(path.join(app, 'env'))
+    await writeFile(path.join(app, 'env', '.env'), 'C=0\n')
+    await writeFile(path.join(app, 'env', '.env.local'), 'C=1\n')
     const task = (out: string, inputs: string[]) =>
       `{ exec: { command: 'mkdir -p ${out} && cat .env* > ${out}/out.js' },
         inputs: { files: ${JSON.stringify(inputs)} }, outputs: { files: ['${out}/**'] }, cache: true }`
@@ -66,6 +69,7 @@ describe('a glob input that matches a git-ignored file', () => {
         excluded: ${task('excluded-out', ['src/**', '.env*', '!.env.local'])},
         deep: ${task('deep-out', ['src/**'])},
         own: ${task('own-out', ['src/**', '*.json', 'vx.lock.json*'])},
+        envdir: ${task('envdir-out', ['src/**', 'env/**'])},
       } }\n`,
     )
     // A `**` reader, one per project: it may not read another task's outputs.
@@ -109,6 +113,14 @@ describe('a glob input that matches a git-ignored file', () => {
       "[vx] web#all: inputs leave out git-ignored .env.local (matched by **) — a glob reads only what git lists; name it as a literal input ('.env.local') to key on it",
     ])
     expect(await runTask('all', 'web2')).toEqual([])
+  })
+
+  // Vite's `envDir: 'env'`: `env/**` keyed the tracked files there and left
+  // the ignored `env/.env.local` the build reads out, in silence.
+  it('is named under a `dir/**` glob when it is a .env file in that directory', async () => {
+    expect(await runTask('envdir')).toEqual([
+      "[vx] app#envdir: inputs leave out git-ignored env/.env.local (matched by env/**) — a glob reads only what git lists; name it as a literal input ('env/.env.local') to key on it",
+    ])
   })
 
   // vx leaves its own review copy out of every key, ignored by git or not:

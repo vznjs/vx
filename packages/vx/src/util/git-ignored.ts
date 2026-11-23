@@ -280,7 +280,7 @@ export function wholeIgnored(
  * `.env*` replayed a stale hit after an edit to `.env.local`. A run reads
  * it on the miss path only, one directory listing per such glob, no git;
  * `vx lock` passes no `files` and asks git which candidates it ignores. A
- * `**` glob is asked only for the `.env*` files beside the config (`['**']`
+ * `**` glob is asked only for the `.env*` files where it starts (`['**']`
  * over a Vite app replayed the old build after an edit to `.env.local`), so
  * an ignored `node_modules` or `dist` says nothing; nor does `vx lock`'s
  * review copy, which no key folds.
@@ -297,15 +297,26 @@ export function ignoredByGlobs(
     const segments = g.split('/')
     return segments.slice(0, -1).every((s) => isLiteralPattern(s) && s !== '..' && s !== '.')
   })
-  // A `**` glob is asked one thing: the `.env*` files beside the config.
-  const deep = declared.filter((g) => !g.startsWith('!') && g.startsWith('**'))
+  // A `**` glob is asked one thing: the `.env*` files where its `**` starts
+  // (`env/**` over Vite's `envDir: 'env'`, beside the config for `**`).
+  const deepDir = (g: string): string | undefined => {
+    const segments = g.split('/')
+    const at = segments.findIndex((s) => s.includes('**'))
+    if (at < 0 || segments[at] !== '**') return undefined
+    const lead = segments.slice(0, at)
+    return lead.every((s) => isLiteralPattern(s) && s !== '..' && s !== '.')
+      ? lead.join('/')
+      : undefined
+  }
+  const deep = declared.filter((g) => !g.startsWith('!') && deepDir(g) !== undefined)
   if (shallow.length + deep.length === 0) return []
   const excluded = anyTaskGlob(declared.filter((g) => g.startsWith('!')).map((g) => g.slice(1)))
   let keyed: Set<string> | undefined
   const found: [string, string, string][] = []
   for (const glob of [...shallow, ...deep]) {
-    const dotenvOnly = glob.startsWith('**')
-    const dir = dotenvOnly ? '' : glob.split('/').slice(0, -1).join('/')
+    const at = deepDir(glob)
+    const dotenvOnly = at !== undefined
+    const dir = at ?? glob.split('/').slice(0, -1).join('/')
     let entries
     try {
       entries = readdirSync(path.join(base, dir), { withFileTypes: true })
