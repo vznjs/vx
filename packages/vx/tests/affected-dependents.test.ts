@@ -13,28 +13,16 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
 import { edgesSource, pluginSource } from './helpers/plugin.js'
 import { git } from './helpers/workspace.js'
+import { vxSync } from './helpers/vx.js'
 
 const TIMEOUT = 60_000
-const CLI = path.join(import.meta.dir, 'helpers', 'vx-locked.ts')
 
 async function write(p: string, content: string): Promise<void> {
   await mkdir(path.dirname(p), { recursive: true })
   await writeFile(p, content)
 }
 
-function vx(cwd: string, ...args: string[]): { stdout: string; exitCode: number } {
-  const p = Bun.spawnSync({
-    cmd: ['bun', CLI, ...args],
-    cwd,
-    stdout: 'pipe',
-    stderr: 'pipe',
-    env: { ...process.env, CI: '', GITHUB_ACTIONS: '', NO_COLOR: '1' },
-  })
-  return {
-    stdout: new TextDecoder().decode(p.stdout) + new TextDecoder().decode(p.stderr),
-    exitCode: p.exitCode ?? 1,
-  }
-}
+const vx = (cwd: string, ...args: string[]) => vxSync(cwd, args)
 
 const CONFIG = `export default {
   tasks: {
@@ -87,14 +75,14 @@ afterEach(async () => {
 /** The task ids `vx run <tasks> <args> --dry=json` plans, sorted. */
 function planned(tasks: string[], ...args: string[]): string[] | string {
   const r = vx(root, 'run', ...tasks, ...args, '--dry=json')
-  if (r.exitCode !== 0) return r.stdout
-  const out = r.stdout.slice(r.stdout.indexOf('{'))
+  if (r.code !== 0) return r.text
+  const out = r.text.slice(r.text.indexOf('{'))
   return (JSON.parse(out) as { tasks: { id: string }[] }).tasks.map((t) => t.id).sort()
 }
 
 function appBuildHash(): string {
   const r = vx(root, 'run', 'build', '--filter', 'app', '--dry=json')
-  const out = r.stdout.slice(r.stdout.indexOf('{'))
+  const out = r.text.slice(r.text.indexOf('{'))
   const tasks = (JSON.parse(out) as { tasks: { id: string; hash: string }[] }).tasks
   return tasks.find((t) => t.id === 'app#build')!.hash
 }
@@ -110,10 +98,10 @@ describe('--affected and the dependents of what changed', () => {
     'an edit to lib selects lib AND app, never tool',
     () => {
       const r = vx(root, 'run', 'build', '--affected=HEAD~1')
-      expect(r.exitCode).toBe(0)
-      expect(r.stdout).toContain('lib#build')
-      expect(r.stdout).toContain('app#build')
-      expect(r.stdout).not.toContain('tool#build')
+      expect(r.code).toBe(0)
+      expect(r.text).toContain('lib#build')
+      expect(r.text).toContain('app#build')
+      expect(r.text).not.toContain('tool#build')
     },
     TIMEOUT,
   )
@@ -122,10 +110,10 @@ describe('--affected and the dependents of what changed', () => {
     'CONTROL: the plain [<base>] filter is only what changed',
     () => {
       const r = vx(root, 'run', 'build', '--filter', '[HEAD~1]')
-      expect(r.exitCode).toBe(0)
-      expect(r.stdout).toContain('lib#build')
-      expect(r.stdout).not.toContain('app#build')
-      expect(r.stdout).toContain('1 in run · 3 total')
+      expect(r.code).toBe(0)
+      expect(r.text).toContain('lib#build')
+      expect(r.text).not.toContain('app#build')
+      expect(r.text).toContain('1 in run · 3 total')
     },
     TIMEOUT,
   )
@@ -175,9 +163,9 @@ describe('--affected follows task edges (2026-10-04)', () => {
       expect(planned(['build'], '--affected=HEAD~1')).toEqual(['app#build', 'lib#build'])
       // A cold cache: the upstream runs before app, so app finds its inputs.
       const r = vx(root, 'run', 'build', '--affected=HEAD~1')
-      expect(r.exitCode).toBe(0)
-      expect(r.stdout).toContain('lib#build')
-      expect(r.stdout).not.toContain('tool#build')
+      expect(r.code).toBe(0)
+      expect(r.text).toContain('lib#build')
+      expect(r.text).not.toContain('tool#build')
     },
     TIMEOUT,
   )
@@ -190,7 +178,7 @@ describe('--affected follows task edges (2026-10-04)', () => {
         CONFIG.replace("['src/**', '!src/**/*.test.ts']", "['./src/**', '!./src//**/*.test.ts']"),
       )
       await commitEdit('pkgs/lib/src/index.test.ts', 'test 2')
-      expect(vx(root, 'run', 'build', '--affected=HEAD~1', '--dry').stdout).toContain(
+      expect(vx(root, 'run', 'build', '--affected=HEAD~1', '--dry').text).toContain(
         'Nothing affected: the change reaches no build task',
       )
       await commitEdit('pkgs/lib/src/index.ts', 'export const x = 3')
@@ -210,8 +198,8 @@ describe('--affected follows task edges (2026-10-04)', () => {
       expect(planned(['all'], '--affected=HEAD~1')).toEqual(['app#all', 'app#build', 'lib#build'])
       // CONTROL: a change its closure does not reach leaves it out.
       await commitEdit('pkgs/tool/src/index.ts', 'export const x = 3')
-      expect(vx(root, 'run', 'all', '--affected=HEAD~1', '--dry').exitCode).toBe(0)
-      expect(vx(root, 'run', 'all', '--affected=HEAD~1', '--dry').stdout).not.toContain('app#all')
+      expect(vx(root, 'run', 'all', '--affected=HEAD~1', '--dry').code).toBe(0)
+      expect(vx(root, 'run', 'all', '--affected=HEAD~1', '--dry').text).not.toContain('app#all')
     },
     TIMEOUT,
   )
@@ -234,13 +222,13 @@ describe('--affected follows task edges (2026-10-04)', () => {
     async () => {
       await commitEdit('pkgs/lib/src/index.test.ts', 'test 2')
       const r = vx(root, 'run', 'build', '--affected=HEAD~1')
-      expect(r.exitCode).toBe(0)
-      expect(r.stdout).not.toContain('#build')
-      expect(r.stdout).toContain('Nothing affected: the change reaches no build task')
+      expect(r.code).toBe(0)
+      expect(r.text).not.toContain('#build')
+      expect(r.text).toContain('Nothing affected: the change reaches no build task')
       // `--dry` says the run's line, not that no affected project declares
       // a task `lib` does declare (X-141).
       const dry = vx(root, 'run', 'build', '--affected=HEAD~1', '--dry')
-      expect([dry.exitCode, dry.stdout.trim()]).toEqual([
+      expect([dry.code, dry.text.trim()]).toEqual([
         0,
         '› vx run  Nothing affected: the change reaches no build task',
       ])
@@ -261,8 +249,8 @@ describe('--affected follows task edges (2026-10-04)', () => {
       git(root, 'commit', '-qm', 'toString')
       await commitEdit('pkgs/lib/src/index.ts', 'export const x = 3')
       const r = vx(root, 'run', 'toString', '--affected=HEAD~1')
-      expect(r.exitCode).toBe(0)
-      expect(r.stdout).toContain('No affected project declares task(s): toString.')
+      expect(r.code).toBe(0)
+      expect(r.text).toContain('No affected project declares task(s): toString.')
     },
     TIMEOUT,
   )

@@ -7,8 +7,8 @@ import { mkdir, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { gitIn, makeWorkspace } from './helpers/workspace.js'
+import { vx } from './helpers/vx.js'
 
-const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
 const TIMEOUT = 30_000
 
 const CONFIG = `
@@ -20,17 +20,6 @@ const CONFIG = `
     },
   }
 `
-
-async function vx(root: string, args: string[]): Promise<{ out: string; code: number }> {
-  const proc = Bun.spawn([process.execPath, BIN, ...args], {
-    cwd: root,
-    env: { ...process.env },
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
-  const [out, code] = await Promise.all([new Response(proc.stdout).text(), proc.exited])
-  return { out, code }
-}
 
 describe('vx last names a retried task’s attempts', () => {
   let root = ''

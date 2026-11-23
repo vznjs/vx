@@ -51,6 +51,7 @@ import { docsIn } from './helpers/docs-pages.js'
 import { declaredPaths, validate } from './helpers/json-schema.js'
 import { edgesSource, PLUGIN_IMPORT, pluginSource } from './helpers/plugin.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
+import { vxSync } from './helpers/vx.js'
 
 const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
 const SCHEMAS = path.resolve(import.meta.dir, '..', 'schemas')
@@ -139,17 +140,7 @@ const outputs: Record<string, unknown[]> = {
   error: [],
 }
 
-function vx(
-  args: string[],
-  env: Record<string, string> = {},
-): { code: number; out: string; err: string } {
-  const p = Bun.spawnSync({
-    cmd: [process.execPath, BIN, ...args],
-    cwd: root,
-    env: { ...process.env, NO_COLOR: '1', ...env },
-  })
-  return { code: p.exitCode, out: p.stdout.toString(), err: p.stderr.toString() }
-}
+const vx = (args: string[], env: Record<string, string> = {}) => vxSync(root, args, { env })
 
 // Every document as printed: a script reads one line per document.
 const printed: { what: string; out: string }[] = []

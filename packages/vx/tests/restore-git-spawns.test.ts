@@ -15,10 +15,10 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { writeLocalWorkspace } from './helpers/local-workspace.js'
 import { lock } from './helpers/orchestrator.js'
+import { BIN } from './helpers/vx.js'
 
 const TIMEOUT = 60_000
 // Core's bin over a lock written first: `vx lock` walks for configs, a run does not.
-const BIN = path.join(import.meta.dir, '..', 'src', 'bin.ts')
 
 interface Fixture {
   root: string

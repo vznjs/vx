@@ -5,26 +5,9 @@ import { rm } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
+import { vxSync } from './helpers/vx.js'
 
-const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
-
-function vx(
-  cwd: string,
-  env: Record<string, string>,
-  args: string[],
-): { code: number; text: string } {
-  const p = Bun.spawnSync({
-    cmd: [process.execPath, BIN, ...args],
-    cwd,
-    stdout: 'pipe',
-    stderr: 'pipe',
-    env: { ...process.env, NO_COLOR: '1', CI: '', ...env },
-  })
-  return {
-    code: p.exitCode ?? 1,
-    text: new TextDecoder().decode(p.stdout) + new TextDecoder().decode(p.stderr),
-  }
-}
+const vx = (cwd: string, env: Record<string, string>, args: string[]) => vxSync(cwd, args, { env })
 
 describe('a temp directory that is not there', () => {
   let root: string

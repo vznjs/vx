@@ -9,8 +9,9 @@ import { rm, unlink, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
+import { lastRun } from './helpers/last-run.js'
+import { vx } from './helpers/vx.js'
 
-const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
 const TIMEOUT = 60_000
 
 // Green only when a file OUTSIDE the task's inputs exists: the key never
@@ -53,33 +54,7 @@ const RETRY_CONFIG = `
   }
 `
 
-async function vx(root: string, args: string[]) {
-  const proc = Bun.spawn([process.execPath, BIN, ...args], {
-    cwd: root,
-    env: { ...process.env, CI: '', GITHUB_ACTIONS: '' },
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
-  const [out, err, code] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ])
-  return { code, text: out + err }
-}
-
 const lastLine = (text: string): string => text.trimEnd().split('\n').at(-1)!
-
-/** The newest run's task rows, as `vx last --format json` prints them. */
-async function lastRun(root: string): Promise<{ tasks: any[] }> {
-  const proc = Bun.spawn([process.execPath, BIN, 'last', '--format', 'json'], {
-    cwd: root,
-    stdout: 'pipe',
-    stderr: 'ignore',
-  })
-  const doc = JSON.parse(await new Response(proc.stdout).text()) as { tasks: any[] }
-  return { tasks: doc.tasks.map((t) => ({ ...t, id: `${t.project}#${t.task}` })) }
-}
 
 describe('flaky-task detection (e2e)', () => {
   let root: string
@@ -98,14 +73,14 @@ describe('flaky-task detection (e2e)', () => {
       expect(red.code).toBe(1)
       // The first failure on a key is a break until the key passes.
       expect(red.text).not.toContain('flaky -')
-      const redSummary = await lastRun(root)
+      const redRows = lastRun(root)
 
       // Control: a first pass after only failures is a recovery, not a flake.
       await writeFile(path.join(root, 'green'), '')
       const green = await vx(root, ['run', 'test', '--all'])
       expect(green.code).toBe(0)
       expect(green.text).not.toContain('flaky -')
-      const greenSummary = await lastRun(root)
+      const greenRows = lastRun(root)
 
       // `--force`: the pass was cached, and a hit executes nothing.
       await unlink(path.join(root, 'green'))
@@ -114,11 +89,11 @@ describe('flaky-task detection (e2e)', () => {
       expect(relapse.text).toContain('app#test flaky - passed 1× before')
       // Nothing prints below the footer: its time row is the last word.
       expect(lastLine(relapse.text)).toMatch(/^ {2}time {6}/)
-      const relapseSummary = await lastRun(root)
-      expect(relapseSummary.tasks[0].id).toBe('app#test')
+      const relapseRows = lastRun(root)
+      expect(relapseRows[0]!.id).toBe('app#test')
       // Same key every time: the claim is "same inputs", so prove it.
-      expect(relapseSummary.tasks[0].hash).toBe(redSummary.tasks[0].hash)
-      expect(greenSummary.tasks[0].hash).toBe(redSummary.tasks[0].hash)
+      expect(relapseRows[0]!.hash).toBe(redRows[0]!.hash)
+      expect(greenRows[0]!.hash).toBe(redRows[0]!.hash)
 
       // Once relapsed, a pass on the key is named too.
       await writeFile(path.join(root, 'green'), '')
@@ -137,8 +112,8 @@ describe('flaky-task detection (e2e)', () => {
       const broken = await vx(root, ['run', 'test', '--all'])
       expect(broken.code).toBe(1)
       expect(broken.text).not.toContain('flaky -')
-      const brokenSummary = await lastRun(root)
-      expect(brokenSummary.tasks[0].hash).not.toBe(redSummary.tasks[0].hash)
+      const brokenRows = lastRun(root)
+      expect(brokenRows[0]!.hash).not.toBe(redRows[0]!.hash)
 
       // The doctor's standing list: one task, one flaky key, the counts.
       // The hit above replayed a pass already on record, so it adds none.
@@ -203,11 +178,11 @@ describe('a task with no cache block', () => {
         })
         await writeFile(path.join(root, 'green'), '')
         expect((await vx(root, ['run', 'check', '--all'])).code).toBe(0)
-        const greenHash = (await lastRun(root)).tasks[0].hash
+        const greenHash = lastRun(root)[0]!.hash
         await unlink(path.join(root, 'green'))
         expect((await vx(root, ['run', 'check', '--all'])).code).toBe(1)
         // The positive first: one key, a pass then a failure.
-        expect((await lastRun(root)).tasks[0].hash).toBe(greenHash)
+        expect(lastRun(root)[0]!.hash).toBe(greenHash)
         const json = JSON.parse((await vx(root, ['info', '--format', 'json'])).text)
         expect(json.flakyTasks).toEqual([])
       } finally {

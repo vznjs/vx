@@ -12,10 +12,10 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'bun:test'
 import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
+import { vx } from './helpers/vx.js'
 
 const SMALL = process.env['VX_SMALL_DISK']
 const BWRAP = Bun.which('bwrap')
-const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
 const TIMEOUT = 30_000
 
 // 700 KB of noise: zstd cannot shrink it, so the artifact needs that much room.
@@ -29,24 +29,6 @@ const CONFIG = `
     },
   }
 `
-
-async function vx(
-  cwd: string,
-  args: string[],
-): Promise<{ code: number; out: string; err: string }> {
-  const proc = Bun.spawn([process.execPath, BIN, ...args], {
-    cwd,
-    stdout: 'pipe',
-    stderr: 'pipe',
-    env: { ...process.env, NO_COLOR: '1' },
-  })
-  const [out, err, code] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ])
-  return { code, out, err }
-}
 
 /** Write 256 KiB blocks into `dir` until the disk refuses one. */
 async function fill(dir: string): Promise<void> {

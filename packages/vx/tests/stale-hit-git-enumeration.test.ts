@@ -18,26 +18,16 @@ import {
   runGitLsFiles,
 } from '../src/cache/git-inputs.js'
 import { git, gitInit } from './helpers/workspace.js'
+import { vxSync } from './helpers/vx.js'
 
 const TIMEOUT = 60_000
-const CLI = path.join(import.meta.dir, 'helpers', 'vx-locked.ts')
 
 async function write(p: string, content: string): Promise<void> {
   await mkdir(path.dirname(p), { recursive: true })
   await writeFile(p, content)
 }
 
-/** Run the real CLI and return its combined output. */
-function vx(cwd: string, ...args: string[]): string {
-  const p = Bun.spawnSync({
-    cmd: ['bun', CLI, ...args],
-    cwd,
-    stdout: 'pipe',
-    stderr: 'pipe',
-    env: { ...process.env, CI: '', GITHUB_ACTIONS: '', NO_COLOR: '1' },
-  })
-  return new TextDecoder().decode(p.stdout) + new TextDecoder().decode(p.stderr)
-}
+const vx = (cwd: string, ...args: string[]) => vxSync(cwd, args).text
 
 let root: string
 
@@ -543,17 +533,8 @@ describe.skipIf(process.platform === 'darwin')('a name that is not UTF-8', () =>
   const BAD = Buffer.from([0x78, 0xff, 0x79]) // x, 0xFF, y
 
   function vxExit(cwd: string, ...args: string[]): { code: number; out: string } {
-    const p = Bun.spawnSync({
-      cmd: ['bun', CLI, ...args],
-      cwd,
-      stdout: 'pipe',
-      stderr: 'pipe',
-      env: { ...process.env, CI: '', GITHUB_ACTIONS: '', NO_COLOR: '1' },
-    })
-    return {
-      code: p.exitCode,
-      out: new TextDecoder().decode(p.stdout) + new TextDecoder().decode(p.stderr),
-    }
+    const p = vxSync(cwd, args)
+    return { code: p.code, out: p.text }
   }
 
   async function project(command: string): Promise<string> {

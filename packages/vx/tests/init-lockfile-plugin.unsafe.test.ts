@@ -6,8 +6,8 @@ import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promis
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, describe, expect, it } from 'bun:test'
+import { BIN, vx as spawnVx } from './helpers/vx.js'
 
-const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 const roots: string[] = []
 afterAll(async () => {
   for (const r of roots) await rm(r, { recursive: true, force: true })
@@ -21,23 +21,9 @@ async function tmp(prefix: string): Promise<string> {
   return root
 }
 
-async function vx(cwd: string, args: string[]) {
-  // The `next:` line names the runner that started vx; none here.
-  const { npm_config_user_agent: _, ...env } = process.env
-  const proc = Bun.spawn([process.execPath, BIN, ...args], {
-    cwd,
-    env,
-    stdin: 'ignore',
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
-  const [out, err, code] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ])
-  return { out, err, code }
-}
+// The `next:` line names the runner that started vx; none here.
+const vx = (cwd: string, args: string[]) =>
+  spawnVx(cwd, args, { bin: BIN, env: { npm_config_user_agent: undefined } })
 
 describe('vx init in a JS workspace', () => {
   // It declared no plugin, so the first `^build` a user wrote was refused at

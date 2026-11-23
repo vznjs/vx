@@ -10,8 +10,8 @@ import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import type { TaskNode } from '../src/graph/task-graph.js'
 import { formatTaskBlock } from '../src/report/framed-output.js'
+import { BIN } from './helpers/vx.js'
 
-const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 const SRC = path.resolve(import.meta.dir, '..', 'src')
 const GUIDES = path.resolve(import.meta.dir, '../../../private/vx-docs/src/content/docs/guides')
 // The pages show a developer's terminal: CI's own CI=true would pick the

@@ -13,25 +13,16 @@ import { afterEach, beforeEach, expect, it } from 'bun:test'
 import { writeLocalWorkspace } from './helpers/local-workspace.js'
 import { fsClockNow } from '../src/memo/index.js'
 import { git } from './helpers/workspace.js'
+import { vxSync } from './helpers/vx.js'
 
 const TIMEOUT = 60_000
-const CLI = path.join(import.meta.dir, 'helpers', 'vx-locked.ts')
 
 async function write(p: string, content: string): Promise<void> {
   await mkdir(path.dirname(p), { recursive: true })
   await writeFile(p, content)
 }
 
-function vx(cwd: string, ...args: string[]): string {
-  const p = Bun.spawnSync({
-    cmd: ['bun', CLI, ...args],
-    cwd,
-    stdout: 'pipe',
-    stderr: 'pipe',
-    env: { ...process.env, CI: '', GITHUB_ACTIONS: '', NO_COLOR: '1' },
-  })
-  return p.stdout.toString() + p.stderr.toString()
-}
+const vx = (cwd: string, ...args: string[]) => vxSync(cwd, args).text
 
 let root: string
 beforeEach(async () => {

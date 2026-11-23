@@ -10,25 +10,9 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, setDefaultTimeout } from 'bun:test'
 import { writeEdges } from './helpers/plugin.js'
 import { git, gitInit } from './helpers/workspace.js'
+import { vx } from './helpers/vx.js'
 
 setDefaultTimeout(30_000)
-
-const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
-
-async function vx(cwd: string, args: string[]) {
-  const proc = Bun.spawn([process.execPath, BIN, ...args], {
-    cwd,
-    env: { ...process.env, CI: '', GITHUB_ACTIONS: '' },
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
-  const [out, err, code] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ])
-  return { out, err, code }
-}
 
 // stat, not Bun.file().exists() — the latter is false for directories.
 async function exists(p: string): Promise<boolean> {

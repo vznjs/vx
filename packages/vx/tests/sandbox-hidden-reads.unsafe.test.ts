@@ -11,6 +11,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { run } from './helpers/orchestrator.js'
 import { sandboxAvailable } from './helpers/sandbox-gate.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
+import { BIN } from './helpers/vx.js'
 
 const available = await sandboxAvailable('sandbox hidden reads test')
 const quiet = { status() {}, taskStdout() {}, taskStderr() {}, taskComplete() {} }
@@ -110,7 +111,6 @@ describe.skipIf(!available || process.platform !== 'linux')('a read hidden by th
 // got `allow: { read: ['../../home/dot/npmrc'] }`, its link's target, and
 // an agent applies a suggested grant as given. A store, vx's own `~/.vx`
 // and what else is walled outside the workspace are named, never granted.
-const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 
 describe.skipIf(!available || process.platform !== 'linux')('a hidden store', () => {
   let root: string

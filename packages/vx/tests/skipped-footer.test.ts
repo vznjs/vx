@@ -4,25 +4,9 @@
 // in the task list naming its blocker, and the footer is the last line.
 import { rm } from 'node:fs/promises'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import path from 'node:path'
 import { lastRun } from './helpers/last-run.js'
 import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
-
-const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
-
-function vx(cwd: string, args: string[]): { code: number; text: string } {
-  const p = Bun.spawnSync({
-    cmd: [process.execPath, BIN, ...args],
-    cwd,
-    stdout: 'pipe',
-    stderr: 'pipe',
-    env: { ...process.env, NO_COLOR: '1', CI: '' },
-  })
-  return {
-    code: p.exitCode ?? 1,
-    text: new TextDecoder().decode(p.stdout) + new TextDecoder().decode(p.stderr),
-  }
-}
+import { vxSync } from './helpers/vx.js'
 
 describe('a skipped task', () => {
   let root: string
@@ -45,7 +29,7 @@ describe('a skipped task', () => {
   })
 
   it('is a row naming the failure that blocked it, above the footer', () => {
-    const r = vx(root, ['run', 'build', '--all'])
+    const r = vxSync(root, ['run', 'build', '--all'])
     expect(r.code).toBe(1)
     expect(r.text).toContain('1 failed · 1 skipped · 2 total')
     expect(r.text).toContain(
@@ -56,7 +40,7 @@ describe('a skipped task', () => {
   })
 
   it('the history row names the blocker; a failed row carries none', () => {
-    vx(root, ['run', 'build', '--all'])
+    vxSync(root, ['run', 'build', '--all'])
     const byId = new Map(lastRun(root).map((r) => [r.id, r]))
     expect(byId.get('app#build')?.['blockedBy']).toBe('lib#build')
     expect(byId.get('lib#build')?.['blockedBy']).toBeNull()
@@ -64,7 +48,7 @@ describe('a skipped task', () => {
 
   // CONTROL: nothing skipped, no skipped row.
   it('prints no skipped row when the run skipped nothing', () => {
-    const r = vx(root, ['run', 'lib#build'])
+    const r = vxSync(root, ['run', 'lib#build'])
     expect(r.code).toBe(1)
     expect(r.text).not.toContain('skipped ')
   })

@@ -11,26 +11,13 @@ import { afterEach, beforeEach, describe, expect, it, setDefaultTimeout } from '
 import { edgesSource, PLUGIN_IMPORT, pluginSource, writeEdges } from './helpers/plugin.js'
 import { noticed } from './helpers/notice.js'
 import { git, gitInit } from './helpers/workspace.js'
-
-const CLI = path.join(import.meta.dir, 'helpers', 'vx-locked.ts')
+import { vxSync } from './helpers/vx.js'
 
 // A test spawns vx up to seven times: past bun's 5 s default on a loaded
 // shard, bun killed the running vx and the next assertion read `exit 1: `.
 setDefaultTimeout(30_000)
 
-function vx(cwd: string, ...args: string[]): { out: string; exitCode: number } {
-  const p = Bun.spawnSync({
-    cmd: ['bun', CLI, ...args],
-    cwd,
-    stdout: 'pipe',
-    stderr: 'pipe',
-    env: { ...process.env, CI: '', GITHUB_ACTIONS: '', NO_COLOR: '1' },
-  })
-  return {
-    out: new TextDecoder().decode(p.stdout) + new TextDecoder().decode(p.stderr),
-    exitCode: p.exitCode ?? 1,
-  }
-}
+const vx = (cwd: string, ...args: string[]) => vxSync(cwd, args)
 
 let root: string
 
@@ -76,8 +63,8 @@ describe('--affected with no value, in the clone shapes CI produces', () => {
     git(root, 'update-ref', 'refs/remotes/origin/feat', 'HEAD')
     git(root, 'symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/feat')
     const r = vx(root, 'run', 'build', '--affected')
-    expect(r.exitCode).not.toBe(0)
-    expect(r.out).toContain(
+    expect(r.code).not.toBe(0)
+    expect(r.text).toContain(
       '--affected has no default on the base branch (feat): run --all (the cache skips what did not change), or name the last good commit, --affected=<sha>',
     )
   })
@@ -87,8 +74,8 @@ describe('--affected with no value, in the clone shapes CI produces', () => {
     git(root, 'update-ref', 'refs/remotes/origin/feat', 'HEAD')
     git(root, 'symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/feat')
     const r = vx(root, 'run', 'build', '--all', '--affected')
-    expect(r.exitCode).not.toBe(0)
-    expect(r.out).toContain(
+    expect(r.code).not.toBe(0)
+    expect(r.text).toContain(
       '--affected has no default on the base branch (feat): drop --affected, --all runs every project (the cache skips what did not change), or name the last good commit, --affected=<sha>',
     )
   })
@@ -96,9 +83,9 @@ describe('--affected with no value, in the clone shapes CI produces', () => {
   it('an explicit base that is HEAD itself is named as such, with the two bases you probably meant', () => {
     git(root, 'update-ref', 'refs/remotes/origin/feat', 'HEAD')
     const r = vx(root, 'run', 'build', '--affected=origin/feat')
-    expect(r.exitCode).toBe(0)
-    expect(r.out).toContain('nothing affected since origin/feat')
-    expect(r.out).toContain(
+    expect(r.code).toBe(0)
+    expect(r.text).toContain('nothing affected since origin/feat')
+    expect(r.text).toContain(
       'origin/feat is HEAD itself: compare with the branch you merge into (--affected=origin/main) or the previous commit (--affected=HEAD~1)',
     )
   })
@@ -110,17 +97,17 @@ describe('--affected with no value, in the clone shapes CI produces', () => {
     git(root, 'update-ref', 'refs/remotes/origin/main', 'HEAD')
     git(root, 'checkout', '-q', '-b', 'feature')
     const plain = noticed('vx run: nothing affected since origin/main', 'info').trimEnd()
-    expect(vx(root, 'run', 'build', '--affected=origin/main').out.trim()).toBe(plain)
+    expect(vx(root, 'run', 'build', '--affected=origin/main').text.trim()).toBe(plain)
     await writeFile(path.join(root, 'pkgs/app/src/a.txt'), 'a2\n')
     git(root, 'stash', '-q')
-    expect(vx(root, 'run', 'build', '--affected=origin/main').out.trim()).toBe(plain)
+    expect(vx(root, 'run', 'build', '--affected=origin/main').text.trim()).toBe(plain)
   })
 
   it('on the base branch itself, the note never suggests the base already in use', () => {
     git(root, 'checkout', '-q', '-b', 'main')
     git(root, 'update-ref', 'refs/remotes/origin/main', 'HEAD')
     const r = vx(root, 'run', 'build', '--affected=origin/main')
-    expect(r.out.trim()).toBe(
+    expect(r.text.trim()).toBe(
       noticed(
         'vx run: nothing affected since origin/main — origin/main is HEAD itself: compare with the previous commit (--affected=HEAD~1)',
         'info',
@@ -134,8 +121,8 @@ describe('--affected with no value, in the clone shapes CI produces', () => {
     it(`a ${ref} whose base is HEAD itself is named as such`, () => {
       git(root, 'update-ref', 'refs/remotes/origin/feat', 'HEAD')
       const r = vx(root, 'run', 'build', `--affected=${ref}`)
-      expect(r.exitCode).toBe(0)
-      expect(r.out).toContain(`nothing affected since ${ref} — origin/feat is HEAD itself`)
+      expect(r.code).toBe(0)
+      expect(r.text).toContain(`nothing affected since ${ref} — origin/feat is HEAD itself`)
     })
   }
 
@@ -153,19 +140,21 @@ describe('--affected with no value, in the clone shapes CI produces', () => {
     git(root, 'update-ref', 'refs/remotes/origin/feat', 'HEAD')
     const plan = (...args: string[]) => {
       const r = vx(root, 'run', 'build', ...args, '--dry=json')
-      if (r.exitCode !== 0) return `exit ${r.exitCode}: ${r.out}`
-      const json = r.out.slice(r.out.indexOf('{'))
+      if (r.code !== 0) return `exit ${r.code}: ${r.text}`
+      const json = r.text.slice(r.text.indexOf('{'))
       return (JSON.parse(json) as { tasks: { id: string }[] }).tasks.map((t) => t.id)
     }
     const workspace = (body: string) =>
       Bun.write(path.join(root, '.vx/workspace.mjs'), `${PLUGIN_IMPORT}export default ${body}\n`)
     await workspace(`{ plugins: [${edgesSource()}] }`)
-    expect(vx(root, 'run', 'build', '--affected').out).toContain(
+    expect(vx(root, 'run', 'build', '--affected').text).toContain(
       'no default on the base branch (feat)',
     )
     await workspace(`{ baseBranch: 'develop', plugins: [${edgesSource()}] }`)
     expect(plan('--affected')).toEqual(['app#build'])
-    expect(vx(root, 'run', 'build', '--affected=HEAD').out).toContain('nothing affected since HEAD')
+    expect(vx(root, 'run', 'build', '--affected=HEAD').text).toContain(
+      'nothing affected since HEAD',
+    )
     await workspace(
       `{ plugins: [${edgesSource()}, ${pluginSource('base', `{ config(ws) { ws.baseBranch = 'develop' } }`)}] }`,
     )
@@ -186,15 +175,9 @@ describe('--affected with no value, in the clone shapes CI produces', () => {
       `${PLUGIN_IMPORT}export default { plugins: [${edgesSource()}, ${pluginSource('org/ci', "{ config(_w, ctx) { ctx.setBranch({ base: 'HEAD' }) } }")}] }\n`,
     )
     const run = (env: Record<string, string>, ...args: string[]) => {
-      const p = Bun.spawnSync({
-        cmd: ['bun', CLI, 'run', 'build', ...args, '--dry=json'],
-        cwd: root,
-        stdout: 'pipe',
-        stderr: 'pipe',
-        env: { ...process.env, CI: '', GITHUB_ACTIONS: '', NO_COLOR: '1', ...env },
-      })
-      const out = p.stdout.toString()
-      if (p.exitCode !== 0) return `exit ${p.exitCode}: ${out}${p.stderr.toString()}`
+      const p = vxSync(root, ['run', 'build', ...args, '--dry=json'], { env })
+      const out = p.out
+      if (p.code !== 0) return `exit ${p.code}: ${out}${p.err}`
       return JSON.parse(out) as { affectedBase: string; tasks: { id: string }[] }
     }
     expect(run({}, '--affected')).toEqual({ affectedBase: 'HEAD', tasks: [] })
@@ -214,18 +197,12 @@ describe('--affected with no value, in the clone shapes CI produces', () => {
   // said where `origin/develop` came from.
   for (const base of ['origin/develop', 'nope..HEAD']) {
     it(`a VX_AFFECTED_BASE=${base} that does not resolve is named as the variable's`, () => {
-      const p = Bun.spawnSync({
-        cmd: ['bun', CLI, 'run', 'build', '--affected', '--dry'],
-        cwd: root,
-        stdout: 'pipe',
-        stderr: 'pipe',
-        env: { ...process.env, CI: '', GITHUB_ACTIONS: '', NO_COLOR: '1', VX_AFFECTED_BASE: base },
+      const p = vxSync(root, ['run', 'build', '--affected', '--dry'], {
+        env: { VX_AFFECTED_BASE: base },
       })
-      expect(p.exitCode).toBe(1)
+      expect(p.code).toBe(1)
       const ref = base.split('..')[0]
-      expect(p.stderr.toString()).toContain(
-        `VX_AFFECTED_BASE=${base}: git ref "${ref}" did not resolve`,
-      )
+      expect(p.err).toContain(`VX_AFFECTED_BASE=${base}: git ref "${ref}" did not resolve`)
     })
   }
 
@@ -234,23 +211,17 @@ describe('--affected with no value, in the clone shapes CI produces', () => {
     git(root, 'add', '-A')
     git(root, 'commit', '-q', '-m', 'docs')
     const r = vx(root, 'run', 'build', '--affected=HEAD~1')
-    expect(r.exitCode).toBe(0)
-    expect(r.out).toContain('nothing affected since HEAD~1')
-    expect(r.out).not.toContain('HEAD itself')
+    expect(r.code).toBe(0)
+    expect(r.text).toContain('nothing affected since HEAD~1')
+    expect(r.text).not.toContain('HEAD itself')
   })
 
   // A script piping `--dry=json` to jq broke exactly when there was
   // nothing to do: stdout was empty (Growth, affected-dry-json-empty.sh).
   it('--dry=json with nothing to run still prints a plan, the note on stderr', async () => {
     const dry = (...args: string[]) => {
-      const p = Bun.spawnSync({
-        cmd: ['bun', CLI, 'run', 'build', ...args, '--dry=json'],
-        cwd: root,
-        stdout: 'pipe',
-        stderr: 'pipe',
-        env: { ...process.env, CI: '', GITHUB_ACTIONS: '', NO_COLOR: '1' },
-      })
-      return { code: p.exitCode, stdout: p.stdout.toString(), stderr: p.stderr.toString() }
+      const p = vxSync(root, ['run', 'build', ...args, '--dry=json'])
+      return { code: p.code, stdout: p.out, stderr: p.err }
     }
     await writeFile(path.join(root, 'README.md'), 'docs only\n')
     git(root, 'add', '-A')
@@ -291,21 +262,11 @@ describe('--affected with no value, in the clone shapes CI produces', () => {
         `#!/bin/sh\nprintf '%s\\n' "$*" >> '${log}'\nexec '${Bun.which('git')}' "$@"\n`,
         { mode: 0o755 },
       )
-      const p = Bun.spawnSync({
-        cmd: ['bun', CLI, 'run', 'build', `--affected=${first}`, '--dry=json'],
-        cwd: root,
-        stdout: 'pipe',
-        stderr: 'pipe',
-        env: {
-          ...process.env,
-          CI: '',
-          GITHUB_ACTIONS: '',
-          NO_COLOR: '1',
-          PATH: `${shimDir}:${process.env['PATH']}`,
-        },
+      const p = vxSync(root, ['run', 'build', `--affected=${first}`, '--dry=json'], {
+        env: { PATH: `${shimDir}:${process.env['PATH']}` },
       })
-      expect({ code: p.exitCode, stderr: p.stderr.toString() }).toEqual({ code: 0, stderr: '' })
-      const tasks = (JSON.parse(p.stdout.toString()) as { tasks: { id: string }[] }).tasks
+      expect({ code: p.code, stderr: p.err }).toEqual({ code: 0, stderr: '' })
+      const tasks = (JSON.parse(p.out) as { tasks: { id: string }[] }).tasks
       expect(tasks.map((t) => t.id)).toEqual(['app#build'])
       const calls = (await Bun.file(log).text()).trim().split('\n')
       expect(calls.length).toBeGreaterThan(0)
@@ -343,17 +304,9 @@ describe('--affected with no value, in the clone shapes CI produces', () => {
       })
       expect(shallow.stdout.toString().trim()).toBe('true')
       const plan = (args: string[], cwd = clone) => {
-        const p = Bun.spawnSync({
-          cmd: ['bun', CLI, 'run', 'build', ...args, '--dry=json'],
-          cwd,
-          stdout: 'pipe',
-          stderr: 'pipe',
-          env: { ...process.env, CI: '', GITHUB_ACTIONS: '', NO_COLOR: '1' },
-        })
-        if (p.exitCode !== 0) return `exit ${p.exitCode}: ${p.stderr.toString()}`
-        return (JSON.parse(p.stdout.toString()) as { tasks: { id: string }[] }).tasks
-          .map((t) => t.id)
-          .sort()
+        const p = vxSync(cwd, ['run', 'build', ...args, '--dry=json'])
+        if (p.code !== 0) return `exit ${p.code}: ${p.err}`
+        return (JSON.parse(p.out) as { tasks: { id: string }[] }).tasks.map((t) => t.id).sort()
       }
       expect(plan(['--affected=HEAD~1'])).toEqual(['app#build', 'lib#build'])
       expect(plan(['--filter', '...[HEAD^]'])).toEqual(['app#build', 'lib#build'])
@@ -382,17 +335,9 @@ describe('--affected with no value, in the clone shapes CI produces', () => {
     git(root, 'commit', '-q', '-m', 'two')
     await writeFile(path.join(root, 'pkgs/lib/src/l.txt'), 'l2\n')
     const plan = (...args: string[]) => {
-      const p = Bun.spawnSync({
-        cmd: ['bun', CLI, 'run', 'build', ...args, '--dry=json'],
-        cwd: root,
-        stdout: 'pipe',
-        stderr: 'pipe',
-        env: { ...process.env, CI: '', GITHUB_ACTIONS: '', NO_COLOR: '1' },
-      })
-      if (p.exitCode !== 0) return `exit ${p.exitCode}: ${p.stderr.toString()}`
-      return (JSON.parse(p.stdout.toString()) as { tasks: { id: string }[] }).tasks
-        .map((t) => t.id)
-        .sort()
+      const p = vxSync(root, ['run', 'build', ...args, '--dry=json'])
+      if (p.code !== 0) return `exit ${p.code}: ${p.err}`
+      return (JSON.parse(p.out) as { tasks: { id: string }[] }).tasks.map((t) => t.id).sort()
     }
     // Control: the change and its dependent.
     expect(plan('--affected=HEAD')).toEqual(['app#build', 'lib#build'])
@@ -416,17 +361,9 @@ describe('--affected with no value, in the clone shapes CI produces', () => {
     git(root, 'commit', '-q', '-m', 'two')
     await writeFile(path.join(root, 'pkgs/lib/src/l.txt'), 'l2\n')
     const plan = (...args: string[]) => {
-      const p = Bun.spawnSync({
-        cmd: ['bun', CLI, 'run', 'build', ...args, '--dry=json'],
-        cwd: root,
-        stdout: 'pipe',
-        stderr: 'pipe',
-        env: { ...process.env, CI: '', GITHUB_ACTIONS: '', NO_COLOR: '1' },
-      })
-      if (p.exitCode !== 0) return `exit ${p.exitCode}: ${p.stderr.toString()}`
-      return (JSON.parse(p.stdout.toString()) as { tasks: { id: string }[] }).tasks
-        .map((t) => t.id)
-        .sort()
+      const p = vxSync(root, ['run', 'build', ...args, '--dry=json'])
+      if (p.code !== 0) return `exit ${p.code}: ${p.err}`
+      return (JSON.parse(p.out) as { tasks: { id: string }[] }).tasks.map((t) => t.id).sort()
     }
     expect(plan('--affected=HEAD')).toEqual(['lib#build'])
     expect(plan('--affected=HEAD', '--filter', 'other')).toEqual(['lib#build', 'other#build'])
@@ -451,7 +388,7 @@ describe('--affected with no value, in the clone shapes CI produces', () => {
     git(root, 'commit', '-q', '-m', 'two')
     const note = (...args: string[]) => {
       const r = vx(root, 'run', 'build', ...args)
-      return { exitCode: r.exitCode, out: r.out.trim() }
+      return { exitCode: r.code, out: r.text.trim() }
     }
     const head = noticed(
       'vx run: nothing affected since HEAD — the working tree has no change against HEAD; to compare commits, use the branch you merge into (--affected=origin/main) or the previous commit (--affected=HEAD~1)',
@@ -502,7 +439,7 @@ describe('--affected with no value, in the clone shapes CI produces', () => {
     // the edit, and the note still claimed a clean tree.
     for (const args of [['--affected=HEAD'], ['--filter', '[HEAD]'], ['--filter', 'app[HEAD]']]) {
       const r = vx(root, 'run', 'build', ...args)
-      expect({ args, exitCode: r.exitCode, out: r.out.trim() }).toEqual({
+      expect({ args, exitCode: r.code, out: r.text.trim() }).toEqual({
         args,
         exitCode: 0,
         out: noticed('vx run: nothing affected since HEAD', 'info').trimEnd(),
@@ -512,10 +449,10 @@ describe('--affected with no value, in the clone shapes CI produces', () => {
 
   it('no origin/HEAD and no parent commit: no base at all, exit 1', () => {
     const r = vx(root, 'run', 'build', '--affected')
-    expect(r.exitCode).toBe(1)
-    expect(r.out).toContain('--affected has no base here')
-    expect(r.out).toContain('set `baseBranch`, or name the base: --affected=origin/main')
-    expect(r.out).not.toContain('did not resolve')
+    expect(r.code).toBe(1)
+    expect(r.text).toContain('--affected has no base here')
+    expect(r.text).toContain('set `baseBranch`, or name the base: --affected=origin/main')
+    expect(r.text).not.toContain('did not resolve')
   })
 
   it('outside a git work tree every base form says so, as a plain run does (X-52)', async () => {
@@ -531,7 +468,7 @@ describe('--affected with no value, in the clone shapes CI produces', () => {
     try {
       for (const args of [['--affected'], ['--affected=main'], ['--filter', '...[main]']]) {
         const r = vx(root, 'run', 'build', ...args)
-        expect({ args, exitCode: r.exitCode, first: r.out.split('\n  (git: ')[0] }).toEqual({
+        expect({ args, exitCode: r.code, first: r.text.split('\n  (git: ')[0] }).toEqual({
           args,
           exitCode: 1,
           first: refusal,
@@ -548,7 +485,7 @@ describe('--affected with no value, in the clone shapes CI produces', () => {
     try {
       git(root, 'init', '-q', '-b', 'feat')
       const r = vx(root, 'run', 'build', '--affected')
-      expect({ exitCode: r.exitCode, out: r.out.trim() }).toEqual({
+      expect({ exitCode: r.code, out: r.text.trim() }).toEqual({
         exitCode: 1,
         out: noticed(
           'vx run: --affected has no base here: this repository has no commit yet. Commit first, or run without --affected.',

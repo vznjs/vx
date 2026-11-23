@@ -6,8 +6,8 @@ import { rm } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, expect, it } from 'bun:test'
 import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
+import { BIN, vxSync } from './helpers/vx.js'
 
-const BIN = path.join(import.meta.dir, '..', 'src', 'bin.ts')
 const config = (cmd: string) =>
   `export default { tasks: { build: { exec: { command: '${cmd}' } } } }\n`
 
@@ -17,15 +17,7 @@ afterEach(async () => {
   root = undefined
 })
 
-function vx(cwd: string, ...args: string[]): { code: number; out: string; err: string } {
-  const p = Bun.spawnSync({
-    cmd: [process.execPath, BIN, ...args],
-    cwd,
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
-  return { code: p.exitCode, out: p.stdout.toString(), err: p.stderr.toString() }
-}
+const vx = (cwd: string, ...args: string[]) => vxSync(cwd, args, { bin: BIN })
 
 const LOCK = '.vx/projects.lock'
 

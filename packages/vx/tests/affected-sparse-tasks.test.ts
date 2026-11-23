@@ -7,22 +7,9 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { writeLocalWorkspace } from './helpers/local-workspace.js'
 import { git, gitInit } from './helpers/workspace.js'
+import { vxSync } from './helpers/vx.js'
 
-const CLI = path.join(import.meta.dir, 'helpers', 'vx-locked.ts')
-
-function vx(cwd: string, ...args: string[]): { out: string; exitCode: number } {
-  const p = Bun.spawnSync({
-    cmd: ['bun', CLI, ...args],
-    cwd,
-    stdout: 'pipe',
-    stderr: 'pipe',
-    env: { ...process.env, CI: '', GITHUB_ACTIONS: '', NO_COLOR: '1' },
-  })
-  return {
-    out: new TextDecoder().decode(p.stdout) + new TextDecoder().decode(p.stderr),
-    exitCode: p.exitCode ?? 1,
-  }
-}
+const vx = (cwd: string, ...args: string[]) => vxSync(cwd, args)
 
 let root: string
 
@@ -66,15 +53,15 @@ describe('--affected: a task only unchanged projects declare is not a typo', () 
     const dry = vx(root, 'run', 'test', '--affected=HEAD~1', '--dry')
     const filter = vx(root, 'run', 'test', '--filter', '[HEAD~1]')
     expect({
-      run: [run.exitCode, run.out.includes('No affected project declares task(s): test')],
-      dry: [dry.exitCode, dry.out.includes('No affected project declares task(s): test')],
-      filter: filter.exitCode,
+      run: [run.code, run.text.includes('No affected project declares task(s): test')],
+      dry: [dry.code, dry.text.includes('No affected project declares task(s): test')],
+      filter: filter.code,
     }).toEqual({ run: [0, true], dry: [0, true], filter: 0 })
   })
 
   it('the names an affected project declares run; the others do not stop them', () => {
     const r = vx(root, 'run', 'lint', 'test', '--affected=HEAD~1')
-    expect([r.exitCode, r.out.includes('docs#lint'), r.out.includes('app#test')]).toEqual([
+    expect([r.code, r.text.includes('docs#lint'), r.text.includes('app#test')]).toEqual([
       0,
       true,
       false,
@@ -83,7 +70,7 @@ describe('--affected: a task only unchanged projects declare is not a typo', () 
 
   it('a name no project declares is still refused (control)', () => {
     const r = vx(root, 'run', 'tset', '--affected=HEAD~1')
-    expect([r.exitCode, r.out.includes('no projects declare task(s): tset')]).toEqual([1, true])
+    expect([r.code, r.text.includes('no projects declare task(s): tset')]).toEqual([1, true])
   })
 
   it('a name no project declares is refused when nothing changed at all (vercel/turborepo#12268)', () => {
@@ -92,9 +79,9 @@ describe('--affected: a task only unchanged projects declare is not a typo', () 
     const ref = vx(root, 'run', 'tset', '--filter', '[HEAD]')
     const real = vx(root, 'run', 'test', '--affected=HEAD')
     expect([
-      [typo.exitCode, typo.out.includes('no projects declare task(s): tset')],
-      [ref.exitCode, ref.out.includes('no projects declare task(s): tset')],
-      [real.exitCode, real.out.includes('nothing affected since HEAD')],
+      [typo.code, typo.text.includes('no projects declare task(s): tset')],
+      [ref.code, ref.text.includes('no projects declare task(s): tset')],
+      [real.code, real.text.includes('nothing affected since HEAD')],
     ]).toEqual([
       [1, true],
       [1, true],
@@ -104,14 +91,14 @@ describe('--affected: a task only unchanged projects declare is not a typo', () 
 
   it('a scope the user named is judged as before (control)', () => {
     const r = vx(root, 'run', 'test', '--filter', 'docs')
-    expect([r.exitCode, r.out.includes('no projects declare task(s): test')]).toEqual([1, true])
+    expect([r.code, r.text.includes('no projects declare task(s): test')]).toEqual([1, true])
   })
 
   // A named project that lacks the task is skipped, not an error, and does
   // not stop the named one that declares it.
   it('a named scope runs the projects declaring the task; one that lacks it is no error', () => {
     const r = vx(root, 'run', 'test', '--filter', 'docs', '--filter', 'app')
-    expect([r.exitCode, r.out.includes('app#test'), r.out.includes('docs#')]).toEqual([
+    expect([r.code, r.text.includes('app#test'), r.text.includes('docs#')]).toEqual([
       0,
       true,
       false,
@@ -136,9 +123,9 @@ describe('--affected: a task only an unaffected dependency declares is not a typ
     const both = vx(root, 'run', 'lint', 'test', '--affected=HEAD~1')
     const typo = vx(root, 'run', 'tset', '--affected=HEAD~1')
     expect({
-      run: [run.exitCode, run.out.includes('No affected project declares task(s): test')],
-      both: [both.exitCode, both.out.includes('docs#lint'), both.out.includes('app#test')],
-      typo: [typo.exitCode, typo.out.includes('no projects declare task(s): tset')],
+      run: [run.code, run.text.includes('No affected project declares task(s): test')],
+      both: [both.code, both.text.includes('docs#lint'), both.text.includes('app#test')],
+      typo: [typo.code, typo.text.includes('no projects declare task(s): tset')],
     }).toEqual({ run: [0, true], both: [0, true, false], typo: [1, true] })
   })
 })
@@ -156,9 +143,9 @@ describe('--affected: a changed project with no vx config', () => {
     const dry = vx(root, 'run', 'test', '--affected=HEAD~1', '--dry')
     const typo = vx(root, 'run', 'tset', '--affected=HEAD~1')
     expect({
-      run: [run.exitCode, run.out.includes('No affected project declares task(s): test')],
-      dry: [dry.exitCode, dry.out.includes('No affected project declares task(s): test')],
-      typo: [typo.exitCode, typo.out.includes('no projects declare task(s): tset')],
+      run: [run.code, run.text.includes('No affected project declares task(s): test')],
+      dry: [dry.code, dry.text.includes('No affected project declares task(s): test')],
+      typo: [typo.code, typo.text.includes('no projects declare task(s): tset')],
     }).toEqual({ run: [0, true], dry: [0, true], typo: [1, true] })
   })
 })

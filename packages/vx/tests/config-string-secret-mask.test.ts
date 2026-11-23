@@ -14,13 +14,13 @@ import { pickTask } from '../src/cli/select.js'
 import { run } from '../src/orchestrator/index.js'
 import { type Logger } from '../src/report/index.js'
 import { panelTop } from '../src/ui/index.js'
+import { BIN, vxSync } from './helpers/vx.js'
 
 const gradientRule = (c: { enabled: boolean }, title: string): string => panelTop(title, c)
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 
 const TOKEN = 'tokenvalue123'
 const PAT = 'patvalue456789'
-const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 let root: string
 let saved: [string | undefined, string | undefined]
 
@@ -69,15 +69,8 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true })
 })
 
-function vx(args: string[], env: Record<string, string> = {}): string {
-  const p = Bun.spawnSync([process.execPath, BIN, ...args], {
-    cwd: root,
-    env: { ...process.env, CI: '', GITHUB_ACTIONS: '', ...env },
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
-  return p.stdout.toString() + p.stderr.toString()
-}
+const vx = (args: string[], env: Record<string, string> = {}) =>
+  vxSync(root, args, { bin: BIN, env }).text
 
 const stamp = (): string => path.join(root, 'packages', 'app', 'stamp')
 const leaks = (text: string): boolean => text.includes(TOKEN) || text.includes(PAT)

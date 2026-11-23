@@ -13,9 +13,9 @@ import path from 'node:path'
 import { afterEach, describe, expect, it } from 'bun:test'
 import { lock } from './helpers/orchestrator.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
+import { BIN } from './helpers/vx.js'
 
 const LAUNCHER = path.resolve(import.meta.dir, '..', 'npm-launcher.cjs')
-const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 const HANDOFF = path.resolve(import.meta.dir, '..', 'src', 'handoff.ts')
 const NODE = Bun.which('node')
 const TIMEOUT = 30_000

@@ -7,7 +7,8 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'bun:test'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
-import { BIN, NOT_CI, SETTLE_MS, startWatch, until, type Watch } from './helpers/watch-loop.js'
+import { NOT_CI, SETTLE_MS, startWatch, until, type Watch } from './helpers/watch-loop.js'
+import { BIN } from './helpers/vx.js'
 
 let w: Watch | undefined
 let root = ''

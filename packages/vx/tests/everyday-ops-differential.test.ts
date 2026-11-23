@@ -24,8 +24,8 @@ import path from 'node:path'
 import { afterAll, expect, it } from 'bun:test'
 import { rng } from './helpers/rng.js'
 import { addProject, gitIn, gitInit, makeWorkspace } from './helpers/workspace.js'
+import { BIN } from './helpers/vx.js'
 
-const BIN = path.resolve(import.meta.dir, '../src/bin.ts')
 const PROJECTS = ['a', 'b', 'c', 'd'] as const
 type Project = (typeof PROJECTS)[number]
 const DEPS: Record<Project, readonly Project[]> = { a: [], b: ['a'], c: ['b'], d: [] }

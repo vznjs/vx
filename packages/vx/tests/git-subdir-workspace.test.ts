@@ -9,7 +9,8 @@ import { populateGitFilesCache } from '../src/cache/git-inputs.js'
 import { type Logger } from '../src/report/index.js'
 import { run } from './helpers/orchestrator.js'
 import { dry, type DryTask } from './helpers/parity.js'
-import { BIN, SETTLE_MS, executions, initialOnly, startWatch, until } from './helpers/watch-loop.js'
+import { SETTLE_MS, executions, initialOnly, startWatch, until } from './helpers/watch-loop.js'
+import { BIN } from './helpers/vx.js'
 import {
   addProject,
   git,

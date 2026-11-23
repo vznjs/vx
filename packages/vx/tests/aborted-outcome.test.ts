@@ -25,9 +25,9 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { writeLocalWorkspace } from './helpers/local-workspace.js'
 import { writeEdges } from './helpers/plugin.js'
 import { git, gitInit } from './helpers/workspace.js'
+import { vxSync } from './helpers/vx.js'
 
 const TIMEOUT = 60_000
-const CLI = path.join(import.meta.dir, 'helpers', 'vx-locked.ts')
 
 let root: string
 
@@ -36,19 +36,7 @@ async function write(p: string, content: string): Promise<void> {
   await writeFile(p, content)
 }
 
-function vx(cwd: string, ...args: string[]): { out: string; code: number } {
-  const p = Bun.spawnSync({
-    cmd: ['bun', CLI, ...args],
-    cwd,
-    stdout: 'pipe',
-    stderr: 'pipe',
-    env: { ...process.env, CI: '', GITHUB_ACTIONS: '', NO_COLOR: '1' },
-  })
-  return {
-    out: new TextDecoder().decode(p.stdout) + new TextDecoder().decode(p.stderr),
-    code: p.exitCode ?? -1,
-  }
-}
+const vx = (cwd: string, ...args: string[]) => vxSync(cwd, args)
 
 beforeEach(async () => {
   root = await mkdtemp(path.join(os.tmpdir(), 'vx-aborted-'))
@@ -113,7 +101,7 @@ describe('a task killed by a shutdown signal', () => {
       const first = vx(root, 'run', 'build', '--all')
       expect(first.code).not.toBe(0)
       // b never ran, so it cached nothing built from a's partial tree.
-      expect(first.out).toMatch(/skipped/)
+      expect(first.text).toMatch(/skipped/)
 
       // Run 2 is entirely healthy: a completes and writes COMPLETE.
       await rm(path.join(root, 'kill.flag'))
@@ -155,8 +143,8 @@ describe('a task killed by a shutdown signal', () => {
       expect(r.code).not.toBe(0)
       // Requested, it printed, so its frame is its entry in the list; the
       // footer counts it in the total.
-      expect(r.out).toMatch(/\n└─ r#doomed ── \([\d.]+m?s\) aborted\n/)
-      expect(r.out).toContain('\n            1 success · 1 aborted · 2 total\n')
+      expect(r.text).toMatch(/\n└─ r#doomed ── \([\d.]+m?s\) aborted\n/)
+      expect(r.text).toContain('\n            1 success · 1 aborted · 2 total\n')
     },
     TIMEOUT,
   )
@@ -189,13 +177,13 @@ describe('a task killed by a shutdown signal', () => {
       expect(
         (await Bun.file(path.join(root, 'attempts')).text()).split('\n').filter(Boolean),
       ).toEqual(['x', 'x', 'x'])
-      expect(r.out).toContain('DIAGNOSTIC')
-      expect(r.out).toContain('failed (exit 143, 128 + SIGTERM)')
+      expect(r.text).toContain('DIAGNOSTIC')
+      expect(r.text).toContain('failed (exit 143, 128 + SIGTERM)')
       // Why, in its frame: the line a pipeline's same 143 already got.
-      expect(r.out).toContain(
+      expect(r.text).toContain(
         '[vx] exit 143 is how the shell reports a death by SIGTERM (15): something outside vx asked the process to stop',
       )
-      expect(r.out).not.toContain('killed by a shutdown signal')
+      expect(r.text).not.toContain('killed by a shutdown signal')
       expect(await Bun.file(path.join(root, 'later.txt')).exists()).toBe(false)
     },
     TIMEOUT,
@@ -218,8 +206,8 @@ describe('a task killed by a shutdown signal', () => {
       for (let i = 0; i < 5; i++) {
         const r = vx(root, 'run', 'doomed')
         expect(r.code).not.toBe(0)
-        expect(r.out).toContain('aborted')
-        expect(r.out).not.toContain('something outside vx')
+        expect(r.text).toContain('aborted')
+        expect(r.text).not.toContain('something outside vx')
       }
     },
     TIMEOUT,
@@ -241,8 +229,8 @@ describe('a task killed by a shutdown signal', () => {
 
       const r = vx(root, 'run', 'fine')
       expect(r.code).toBe(0)
-      expect(r.out).not.toMatch(/not run/)
-      expect(r.out).not.toMatch(/aborted/)
+      expect(r.text).not.toMatch(/not run/)
+      expect(r.text).not.toMatch(/aborted/)
     },
     TIMEOUT,
   )

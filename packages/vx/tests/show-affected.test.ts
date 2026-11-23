@@ -8,19 +8,11 @@ import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { writeEdges } from './helpers/plugin.js'
 import { git } from './helpers/workspace.js'
+import { vxSync } from './helpers/vx.js'
 
-const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
 const roots: string[] = []
 
-function vx(root: string, ...args: string[]): { code: number | null; out: string; err: string } {
-  const r = Bun.spawnSync({
-    cmd: [process.execPath, BIN, ...args],
-    cwd: root,
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
-  return { code: r.exitCode, out: r.stdout.toString(), err: r.stderr.toString() }
-}
+const vx = (root: string, ...args: string[]) => vxSync(root, args)
 
 function shown(root: string, ...args: string[]): string[] {
   const r = vx(root, 'show', ...args, '--format', 'json')

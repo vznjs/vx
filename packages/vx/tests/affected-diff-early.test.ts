@@ -10,8 +10,7 @@ import { afterEach, beforeEach, expect, it, setDefaultTimeout } from 'bun:test'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
 import { pluginSource } from './helpers/plugin.js'
 import { git, gitInit } from './helpers/workspace.js'
-
-const BIN = path.join(import.meta.dir, '..', 'src', 'bin.ts')
+import { BIN } from './helpers/vx.js'
 
 setDefaultTimeout(30_000)
 

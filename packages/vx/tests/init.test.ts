@@ -12,30 +12,9 @@ import { migrateCommand, migrateHint, parseInitArgs } from '../src/cli/init.js'
 import { PLUGIN_TEMPLATES } from '../src/cli/plugin-templates.js'
 import { definePlugin } from '../src/index.js'
 import { noticed } from './helpers/notice.js'
+import { vx } from './helpers/vx.js'
 
-const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
 const TIMEOUT = 30_000
-
-interface VxResult {
-  code: number
-  out: string
-  err: string
-}
-
-async function vx(root: string, args: string[]): Promise<VxResult> {
-  const proc = Bun.spawn([process.execPath, BIN, ...args], {
-    cwd: root,
-    env: { ...process.env },
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
-  const [out, err, code] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ])
-  return { code, out, err }
-}
 
 const CORE_PKG = path.resolve(import.meta.dir, '..')
 

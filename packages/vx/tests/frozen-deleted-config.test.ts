@@ -8,23 +8,9 @@ import { afterEach, beforeEach, expect, it } from 'bun:test'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
 import { pluginSource } from './helpers/plugin.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
+import { BIN, vx as spawnVx } from './helpers/vx.js'
 
-const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
-
-async function vx(root: string, args: string[]) {
-  const proc = Bun.spawn([process.execPath, BIN, ...args], {
-    cwd: root,
-    stdout: 'pipe',
-    stderr: 'pipe',
-    env: { ...process.env, NO_COLOR: '1' },
-  })
-  const [out, err, code] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ])
-  return { code, out, err }
-}
+const vx = (root: string, args: string[]) => spawnVx(root, args, { bin: BIN })
 
 let root: string
 let config: string

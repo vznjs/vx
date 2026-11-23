@@ -15,19 +15,7 @@ import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
 import { noticed } from './helpers/notice.js'
-
-const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
-
-function vx(cwd: string, args: string[]): { code: number; out: string; err: string } {
-  const p = Bun.spawnSync({
-    cmd: ['bun', BIN, ...args],
-    cwd,
-    env: { ...process.env, NO_COLOR: '1', CI: '' },
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
-  return { code: p.exitCode, out: p.stdout.toString(), err: p.stderr.toString() }
-}
+import { vxSync } from './helpers/vx.js'
 
 describe('a task without a cache block is `no-cache`, never `miss`', () => {
   let root: string
@@ -56,7 +44,7 @@ describe('a task without a cache block is `no-cache`, never `miss`', () => {
   })
 
   it('row words and legend agree', () => {
-    const r = vx(root, ['run', 'build', '--all'])
+    const r = vxSync(root, ['run', 'build', '--all'])
     expect({ code: r.code, err: r.err }).toEqual({ code: 0, err: '' })
     expect(r.out).toMatch(
       /success miss +\S+ +\S+ +\d+% +(?:—|[\d.]+[KMG]?B) +0B +\d+ local +cached#build/,
@@ -68,12 +56,12 @@ describe('a task without a cache block is `no-cache`, never `miss`', () => {
   })
 
   it('a verb typo gets the same hint a task or flag typo gets', () => {
-    const r = vx(root, ['rnu', 'build'])
+    const r = vxSync(root, ['rnu', 'build'])
     expect(r.code).toBe(1)
     expect(r.err).toContain(noticed('vx: unknown command: rnu. Did you mean run? (see `vx help`)'))
     // One line and a pointer, not the full help after it.
     expect(r.err).not.toContain('Usage:')
     // Nothing near: no hint, no wrong guess.
-    expect(vx(root, ['zzzzzzzz']).err).toStartWith('✗ vx  unknown command: zzzzzzzz\n')
+    expect(vxSync(root, ['zzzzzzzz']).err).toStartWith('✗ vx  unknown command: zzzzzzzz\n')
   })
 })

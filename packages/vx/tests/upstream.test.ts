@@ -10,8 +10,7 @@ import {
 import { addProject, makeWorkspace, silentLogger, TIMEOUT } from './helpers/orchestrator-fixture.js'
 import type { TaskNode, TaskOutcome } from '../src/graph/index.js'
 import { UserError } from '../src/util/index.js'
-
-const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
+import { BIN } from './helpers/vx.js'
 
 /** A refusal as `vx lock` says it, which a run's lock helper throws first. */
 const byLock = (message: string) => `✗ vx lock  lock not written\n\n  ${message}`

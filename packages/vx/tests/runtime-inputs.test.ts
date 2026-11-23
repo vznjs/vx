@@ -9,6 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, setDefaultTimeout } from '
 import { answerRuntime } from '../src/cache/index.js'
 import { isAlive } from './helpers/alive.js'
 import { addProject, gitIn, makeWorkspace as makeWorkspaceRoot } from './helpers/workspace.js'
+import { vx as spawnVx } from './helpers/vx.js'
 
 setDefaultTimeout(30_000)
 
@@ -19,20 +20,8 @@ function makeWorkspace(): Promise<string> {
   return makeWorkspaceRoot({ prefix: 'vx-runtime-e2e-', rootName: 'root' })
 }
 
-async function vx(root: string, args: string[], env: Record<string, string> = {}, bin = BIN) {
-  const proc = Bun.spawn([process.execPath, bin, ...args], {
-    cwd: root,
-    env: { ...process.env, CI: '', GITHUB_ACTIONS: '', ...env },
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
-  const [out, err, code] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ])
-  return { code, out, err }
-}
+const vx = (root: string, args: string[], env: Record<string, string> = {}, bin?: string) =>
+  spawnVx(root, args, { env, bin })
 
 describe('runtime inputs — e2e', () => {
   let root: string

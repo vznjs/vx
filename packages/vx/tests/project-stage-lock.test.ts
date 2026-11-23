@@ -9,23 +9,10 @@ import { localWorkspaceSource } from './helpers/local-workspace.js'
 import { pluginSource } from './helpers/plugin.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 import { readLockfile } from '../src/workspace/lockfile.js'
+import { BIN, vx as spawnVx } from './helpers/vx.js'
 
-const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
-
-async function vx(root: string, args: string[]) {
-  const proc = Bun.spawn([process.execPath, BIN, ...args], {
-    cwd: root,
-    stdout: 'pipe',
-    stderr: 'pipe',
-    env: { ...process.env, NO_COLOR: '1', VX_LOCK_REVIEW_FILES: 'false' },
-  })
-  const [out, err, code] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ])
-  return { code, out, err }
-}
+const vx = (root: string, args: string[]) =>
+  spawnVx(root, args, { bin: BIN, env: { VX_LOCK_REVIEW_FILES: 'false' } })
 
 // The mapping reads `mapping.txt` at the root, as turbo() reads turbo.json,
 // and logs each visit.

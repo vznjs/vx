@@ -8,6 +8,7 @@ import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { rm } from 'node:fs/promises'
 import { gitIn, makeWorkspace } from './helpers/workspace.js'
+import { vx as spawnVx } from './helpers/vx.js'
 
 const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
 const TIMEOUT = 30_000
@@ -23,16 +24,8 @@ const CONFIG = `
   }
 `
 
-async function vx(root: string, args: string[], env: Record<string, string> = {}) {
-  const proc = Bun.spawn([process.execPath, BIN, ...args], {
-    cwd: root,
-    env: { ...process.env, ...env },
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
-  const [out, code] = await Promise.all([new Response(proc.stdout).text(), proc.exited])
-  return { out, code }
-}
+const vx = (root: string, args: string[], env: Record<string, string> = {}) =>
+  spawnVx(root, args, { env })
 
 const verdict = (out: string): string | undefined =>
   out

@@ -9,24 +9,9 @@ import { localWorkspaceSource } from './helpers/local-workspace.js'
 import { pluginSource } from './helpers/plugin.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 import { readLockfile } from '../src/workspace/lockfile.js'
+import { BIN, vx as spawnVx } from './helpers/vx.js'
 
-const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
-const REAL_BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
-
-async function vx(root: string, args: string[], bin = BIN) {
-  const proc = Bun.spawn([process.execPath, bin, ...args], {
-    cwd: root,
-    stdout: 'pipe',
-    stderr: 'pipe',
-    env: { ...process.env, NO_COLOR: '1' },
-  })
-  const [out, err, code] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ])
-  return { code, out, err }
-}
+const vx = (root: string, args: string[], bin?: string) => spawnVx(root, args, { bin })
 
 let root: string
 beforeEach(async () => {
@@ -65,7 +50,7 @@ it('vx lock freezes the discovered project, so lock --check && run succeeds', as
   const locked = Object.keys((await readLockfile(root))!.projects)
   // By directory: a project with a config is locked whoever names it.
   expect(locked).toEqual(['packages/app', 'tools/gen'])
-  const run = await vx(root, ['run', 'build', '--all'], REAL_BIN)
+  const run = await vx(root, ['run', 'build', '--all'], BIN)
   expect(`${run.code}\n${run.err}`).toStartWith('0\n')
   expect(run.out).toContain('gen#build')
 }, 30_000)

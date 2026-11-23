@@ -6,8 +6,8 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterAll, describe, expect, it } from 'bun:test'
 import { packagesSource, PLUGIN_IMPORT, pluginSource } from './helpers/plugin.js'
+import { BIN, vxSync } from './helpers/vx.js'
 
-const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 const roots: string[] = []
 
 afterAll(async () => {
@@ -52,16 +52,8 @@ async function workspace(): Promise<string> {
   return root
 }
 
-function vx(root: string, ...args: string[]): { code: number; out: string; err: string } {
-  const r = Bun.spawnSync({
-    cmd: [process.execPath, BIN, ...args],
-    cwd: root,
-    stdout: 'pipe',
-    stderr: 'pipe',
-    env: { ...process.env, VX_LOCK_REVIEW_FILES: 'false', NO_COLOR: '1' },
-  })
-  return { code: r.exitCode, out: r.stdout.toString(), err: r.stderr.toString() }
-}
+const vx = (root: string, ...args: string[]) =>
+  vxSync(root, args, { bin: BIN, env: { VX_LOCK_REVIEW_FILES: 'false' } })
 
 describe('vx info reads the lock', () => {
   it('with no lock it answers: no lock, no tasks, nothing evaluated', async () => {

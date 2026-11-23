@@ -6,24 +6,11 @@ import path from 'node:path'
 import { expect, it } from 'bun:test'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 import { PARITY_TIMEOUT as TIMEOUT } from './helpers/parity.js'
+import { BIN, vx as spawnVx } from './helpers/vx.js'
 
 // The bare CLI: the test helper's `vx` locks before each run.
-const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 
-async function vx(cwd: string, args: string[]): Promise<{ code: number; text: string }> {
-  const p = Bun.spawn([process.execPath, BIN, ...args], {
-    cwd,
-    env: { ...process.env, CI: '', GITHUB_ACTIONS: '', NO_COLOR: '1' },
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
-  const [out, err, code] = await Promise.all([
-    new Response(p.stdout).text(),
-    new Response(p.stderr).text(),
-    p.exited,
-  ])
-  return { code, text: out + err }
-}
+const vx = (cwd: string, args: string[]) => spawnVx(cwd, args, { bin: BIN })
 
 it(
   'naming a task in a config the lock has not seen asks for `vx lock`',

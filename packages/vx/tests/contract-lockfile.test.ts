@@ -15,9 +15,9 @@ import { rm } from 'node:fs/promises'
 import path from 'node:path'
 import { afterAll, beforeAll, expect, it } from 'bun:test'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
+import { BIN } from './helpers/vx.js'
 
 // The real CLI: a run here must read the committed lock, not re-lock first.
-const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 const RECORD = path.join(import.meta.dir, 'contract', 'projects.lock')
 
 let root: string

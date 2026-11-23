@@ -11,8 +11,8 @@ import { afterAll, describe, expect, it } from 'bun:test'
 import { initInstalls, notServed } from '../src/cli/init.js'
 import * as ui from '../src/ui/index.js'
 import { VERSION } from '../src/version.js'
+import { BIN, vx as spawnVx } from './helpers/vx.js'
 
-const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 const roots: string[] = []
 afterAll(async () => {
   for (const r of roots) await rm(r, { recursive: true, force: true })
@@ -26,23 +26,9 @@ async function tmp(prefix: string): Promise<string> {
   return root
 }
 
-async function vx(cwd: string, args: string[], extra: Record<string, string> = {}) {
-  // The `next:` line names the runner that started vx; none here.
-  const { npm_config_user_agent: _, ...env } = process.env
-  const proc = Bun.spawn([process.execPath, BIN, ...args], {
-    cwd,
-    env: { ...env, ...extra },
-    stdin: 'ignore',
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
-  const [out, err, code] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ])
-  return { out, err, code }
-}
+// The `next:` line names the runner that started vx; none here.
+const vx = (cwd: string, args: string[], extra: Record<string, string> = {}) =>
+  spawnVx(cwd, args, { bin: BIN, env: { npm_config_user_agent: undefined, ...extra } })
 
 // Type-only: Bun erases the import, so the files load with nothing
 // installed, and a user's tsc checks them against config.ts alone, never

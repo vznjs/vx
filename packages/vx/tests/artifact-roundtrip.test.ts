@@ -24,28 +24,16 @@ import {
 } from './helpers/stored-artifact.js'
 import { TAR_STORE } from './helpers/tar-store.js'
 import { git, gitInit } from './helpers/workspace.js'
+import { vxSync } from './helpers/vx.js'
 
 const TIMEOUT = 60_000
-const CLI = path.join(import.meta.dir, 'helpers', 'vx-locked.ts')
 
 async function write(p: string, content: string): Promise<void> {
   await mkdir(path.dirname(p), { recursive: true })
   await writeFile(p, content)
 }
 
-function vx(cwd: string, ...args: string[]): { out: string; exitCode: number } {
-  const p = Bun.spawnSync({
-    cmd: ['bun', CLI, ...args],
-    cwd,
-    stdout: 'pipe',
-    stderr: 'pipe',
-    env: { ...process.env, CI: '', GITHUB_ACTIONS: '', NO_COLOR: '1' },
-  })
-  return {
-    out: new TextDecoder().decode(p.stdout) + new TextDecoder().decode(p.stderr),
-    exitCode: p.exitCode ?? -1,
-  }
-}
+const vx = (cwd: string, ...args: string[]) => vxSync(cwd, args)
 
 /** Every file under `dir`, as rel → { bytes, mode }. The full restore contract. */
 async function snapshotTree(dir: string): Promise<Map<string, { text: string; mode: number }>> {
@@ -127,7 +115,7 @@ describe('artifact round-trip', () => {
       // express one of these names fails HERE, turning a working build into a
       // failed run.
       const cold = vx(root, 'run', 'build')
-      expect(cold.exitCode).toBe(0)
+      expect(cold.code).toBe(0)
 
       const produced = await snapshotTree(path.join(root, 'dist'))
       // Guard the fixture itself before trusting the comparison.
@@ -145,7 +133,7 @@ describe('artifact round-trip', () => {
       // Wipe and replay from cache.
       await rm(path.join(root, 'dist'), { recursive: true, force: true })
       const warm = vx(root, 'run', 'build')
-      expect(warm.exitCode).toBe(0)
+      expect(warm.code).toBe(0)
 
       const restored = await snapshotTree(path.join(root, 'dist'))
       // Full equality: no missing entry, no extra entry, same bytes, same mode.
@@ -182,8 +170,8 @@ describe('artifact round-trip', () => {
       git(root, 'commit', '-qm', 'init')
 
       const res = vx(root, 'run', 'snap')
-      expect(res.out).not.toContain('file name is too long')
-      expect(res.exitCode).toBe(0)
+      expect(res.text).not.toContain('file name is too long')
+      expect(res.code).toBe(0)
     },
     TIMEOUT,
   )
@@ -230,7 +218,7 @@ describe('artifact round-trip', () => {
           'echo p > .next/server/page.js',
         ].join(' && '),
       )
-      expect(vx(root, 'run', 'build').exitCode).toBe(0)
+      expect(vx(root, 'run', 'build').code).toBe(0)
       const produced = await snapshotTree(path.join(root, '.next'))
       expect([...produced.keys()].sort()).toEqual([
         'a.json',
@@ -239,11 +227,11 @@ describe('artifact round-trip', () => {
         'standalone/server.js',
       ])
       await rm(path.join(root, '.next'), { recursive: true, force: true })
-      expect(vx(root, 'run', 'build').exitCode).toBe(0)
+      expect(vx(root, 'run', 'build').code).toBe(0)
       expect(await snapshotTree(path.join(root, '.next'))).toEqual(produced)
       const again = vx(root, 'run', 'build')
-      expect(again.exitCode).toBe(0)
-      expect(again.out).toContain('up-to-date')
+      expect(again.code).toBe(0)
+      expect(again.text).toContain('up-to-date')
     },
     TIMEOUT,
   )
@@ -262,9 +250,9 @@ describe('artifact round-trip', () => {
           'echo css > .build/c.css',
         ].join(' && '),
       )
-      expect(vx(root, 'run', 'build').exitCode).toBe(0)
+      expect(vx(root, 'run', 'build').code).toBe(0)
       await rm(path.join(root, '.build'), { recursive: true, force: true })
-      expect(vx(root, 'run', 'build').exitCode).toBe(0)
+      expect(vx(root, 'run', 'build').code).toBe(0)
       expect([...(await snapshotTree(path.join(root, '.build'))).keys()].sort()).toEqual([
         'a.js',
         'b.ts',
@@ -321,10 +309,10 @@ describe('artifact round-trip — odd names', () => {
       git(root, 'commit', '-qm', 'init')
 
       const cold = vx(root, 'run', 'build')
-      expect(cold.exitCode).toBe(0)
+      expect(cold.code).toBe(0)
       // Until X-65 the save refused the backslash name, and the warm run
       // re-ran the task, so the tree matched without a hit.
-      expect(cold.out).not.toContain('cache save failed')
+      expect(cold.text).not.toContain('cache save failed')
       const produced = await snapshotTree(path.join(root, 'dist'))
       expect([...produced.keys()].sort()).toEqual(
         ['with spaces.js', 'café.js', 'quo"te.js', 'back\\slash.js'].sort(),
@@ -332,8 +320,8 @@ describe('artifact round-trip — odd names', () => {
 
       await rm(path.join(root, 'dist'), { recursive: true, force: true })
       const warm = vx(root, 'run', 'build')
-      expect(warm.exitCode).toBe(0)
-      expect(warm.out).toContain('local 1↓')
+      expect(warm.code).toBe(0)
+      expect(warm.text).toContain('local 1↓')
       const restored = await snapshotTree(path.join(root, 'dist'))
       expect([...restored.keys()].sort()).toEqual([...produced.keys()].sort())
       for (const [rel, want] of produced) expect(restored.get(rel)).toEqual(want)

@@ -11,9 +11,9 @@ import { afterEach, beforeEach, expect, it } from 'bun:test'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
 import { pluginSource } from './helpers/plugin.js'
 import { gitInitCommit } from './helpers/workspace.js'
+import { BIN } from './helpers/vx.js'
 
 const CLI = path.join(import.meta.dir, 'helpers', 'vx-locked.ts')
-const BIN = path.join(import.meta.dir, '..', 'src', 'bin.ts')
 let root: string
 
 beforeEach(async () => {

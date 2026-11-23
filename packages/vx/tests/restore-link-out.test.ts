@@ -18,24 +18,9 @@ import type { Logger } from '../src/report/index.js'
 import { run } from './helpers/orchestrator.js'
 import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
 import { writeLocalWorkspace } from './helpers/local-workspace.js'
+import { vx } from './helpers/vx.js'
 
-const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
 const TIMEOUT = 30_000
-
-async function vx(cwd: string, args: string[]): Promise<{ code: number; out: string }> {
-  const proc = Bun.spawn([process.execPath, BIN, ...args], {
-    cwd,
-    stdout: 'pipe',
-    stderr: 'pipe',
-    env: { ...process.env, NO_COLOR: '1' },
-  })
-  const [out, err, code] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ])
-  return { code, out: out + err }
-}
 
 describe('restoring into an output directory that links out of the project', () => {
   let root: string
@@ -77,8 +62,8 @@ describe('restoring into an output directory that links out of the project', () 
       for (let i = 0; i < 2; i++) {
         const r = await vx(root, ['run', 'build', '--all'])
         expect(r.code).toBe(1)
-        expect(r.out).not.toContain('internal error')
-        expect(r.out).toContain(
+        expect(r.text).not.toContain('internal error')
+        expect(r.text).toContain(
           `[vx] app#build: ${dist} is a symbolic link to ${outside}, outside ${appDir} — ` +
             'vx never cleans, saves or restores declared outputs through a link that ' +
             'leaves the project. Remove the link and re-run, or stop declaring outputs under it.',
@@ -88,17 +73,17 @@ describe('restoring into an output directory that links out of the project', () 
         // The hit's restore failed: the task failed, in no cache column
         // (neither a miss nor its layer's hit), and ran no command. (Its grid
         // row is pinned by `vx last` below: CI's static output draws no grid.)
-        expect(r.out).toContain('└─ app#build ── (0ms) failed (cache restore failed)')
-        expect(r.out).toMatch(/^ {12}1 failed · 1 total$/m)
+        expect(r.text).toContain('└─ app#build ── (0ms) failed (cache restore failed)')
+        expect(r.text).toMatch(/^ {12}1 failed · 1 total$/m)
         // The cache bar fills with it, as the tasks bar does; no legend counts it.
-        expect(r.out).toMatch(/^ {2}cache +▰+\n\n/m)
-        expect(r.out).not.toMatch(/miss|local 1|↓/)
-        expect(r.out).not.toContain('$ mkdir')
+        expect(r.text).toMatch(/^ {2}cache +▰+\n\n/m)
+        expect(r.text).not.toMatch(/miss|local 1|↓/)
+        expect(r.text).not.toContain('$ mkdir')
       }
       // History says the same: a failure, no miss, no hit.
       const last = await vx(root, ['last'])
-      expect(last.out).toMatch(/^ +failed  — .* app#build  cache restore failed$/m)
-      expect(last.out).not.toMatch(/miss|executed/)
+      expect(last.text).toMatch(/^ +failed  — .* app#build  cache restore failed$/m)
+      expect(last.text).not.toMatch(/miss|executed/)
 
       // CONTROL: a link that stays inside the project is written through.
       const inside = path.join(appDir, 'real-out')
@@ -381,8 +366,8 @@ describe('a dangling link that leads out of the project', () => {
         for (const [at, to] of links) await symlink(to, path.join(appDir, at))
         const r = await vx(root, ['run', 'build', '--all'])
         expect(r.code).toBe(1)
-        expect(r.out).not.toContain('internal error')
-        expect(r.out).toContain(
+        expect(r.text).not.toContain('internal error')
+        expect(r.text).toContain(
           `[vx] app#build: ${path.join(appDir, shape.named)} is a symbolic link to ${gone}, outside ${appDir} — ` +
             'a cache restore never writes through a link that leaves its directory.',
         )
@@ -428,7 +413,7 @@ describe('a dangling link that leads out of the project', () => {
       await symlink('dist', dist)
       const r = await vx(root, ['run', 'build', '--all'])
       expect(r.code).toBe(1)
-      expect(r.out).toContain(
+      expect(r.text).toContain(
         `[vx] app#build: ${dist} goes through a cycle of symbolic links (at ${dist}) — ` +
           'a cache restore cannot write through it. Remove the link and re-run.',
       )

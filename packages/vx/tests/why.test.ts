@@ -14,6 +14,7 @@ import { parseShowArgs } from '../src/cli/show.js'
 import { parseWhyArgs } from '../src/cli/why.js'
 import { WHAT_TO_DO } from '../src/cli/why.js'
 import { noticed } from './helpers/notice.js'
+import { vx as spawnVx } from './helpers/vx.js'
 
 const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
 const TIMEOUT = 30_000
@@ -50,24 +51,8 @@ interface VxResult {
   err: string
 }
 
-async function vx(
-  root: string,
-  args: string[],
-  env: Record<string, string> = {},
-): Promise<VxResult> {
-  const proc = Bun.spawn([process.execPath, BIN, ...args], {
-    cwd: root,
-    env: { ...process.env, ...env },
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
-  const [out, err, code] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ])
-  return { code, out, err }
-}
+const vx = (root: string, args: string[], env: Record<string, string> = {}) =>
+  spawnVx(root, args, { env })
 
 describe('vx why (e2e)', () => {
   let root: string

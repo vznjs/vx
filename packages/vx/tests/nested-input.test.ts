@@ -18,6 +18,7 @@ import { LOCKFILE_NAME } from '../src/workspace/index.js'
 import { lock, run } from './helpers/orchestrator.js'
 import { silentLogger } from './helpers/orchestrator-fixture.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
+import { BIN } from './helpers/vx.js'
 
 const roots: string[] = []
 afterEach(async () => {
@@ -103,7 +104,6 @@ describe('an output under a nested project', () => {
   })
 })
 
-const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 const silent = silentLogger({ root: '', log: [], err: [] })
 
 /** `packages/a` declaring `files`, holding `inner`, a workspace of its own with an uncommitted project. */

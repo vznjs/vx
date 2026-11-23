@@ -21,40 +21,16 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { writeLocalWorkspace } from './helpers/local-workspace.js'
 import { git, gitInit } from './helpers/workspace.js'
+import { vxSync } from './helpers/vx.js'
 
 const TIMEOUT = 60_000
-const CLI = path.join(import.meta.dir, 'helpers', 'vx-locked.ts')
 
 async function write(p: string, content: string): Promise<void> {
   await mkdir(path.dirname(p), { recursive: true })
   await writeFile(p, content)
 }
 
-interface RunResult {
-  /** stdout and stderr together. */
-  stdout: string
-  /** stdout alone: `--dry=json`'s document. */
-  json: string
-  exitCode: number
-}
-
-function vx(cwd: string, ...args: string[]): RunResult {
-  const p = Bun.spawnSync({
-    cmd: ['bun', CLI, ...args],
-    cwd,
-    stdout: 'pipe',
-    stderr: 'pipe',
-    // Pin the output flow: the default depends on CI/GITHUB_ACTIONS, which
-    // makes an assertion on stdout behave differently on a runner.
-    env: { ...process.env, CI: '', GITHUB_ACTIONS: '', NO_COLOR: '1' },
-  })
-  const json = new TextDecoder().decode(p.stdout)
-  return {
-    stdout: json + new TextDecoder().decode(p.stderr),
-    json,
-    exitCode: p.exitCode ?? 1,
-  }
-}
+const vx = (cwd: string, ...args: string[]) => vxSync(cwd, args)
 
 let root: string
 
@@ -102,8 +78,8 @@ describe('--affected sees a workspaceFiles change', () => {
     'the change re-keys the task AND selects it',
     async () => {
       // Warm the cache at v1.
-      expect(vx(root, 'run', 'build', '--all').exitCode).toBe(0)
-      expect(vx(root, 'run', 'build', '--all').stdout).toMatch(/ \d+✓/)
+      expect(vx(root, 'run', 'build', '--all').code).toBe(0)
+      expect(vx(root, 'run', 'build', '--all').text).toMatch(/ \d+✓/)
 
       // Change the SHARED file — inside no project, but folded into app#build's
       // key by its `workspaceFiles` glob.
@@ -114,19 +90,19 @@ describe('--affected sees a workspaceFiles change', () => {
       // Half one: the key really did move. Without this, "affected selected
       // nothing" would be the CORRECT answer and the test would prove nothing.
       const unscoped = vx(root, 'run', 'build', '--all')
-      expect(unscoped.exitCode).toBe(0)
-      expect(unscoped.stdout).not.toMatch(/ \d+✓/)
+      expect(unscoped.code).toBe(0)
+      expect(unscoped.text).not.toMatch(/ \d+✓/)
 
       // Half two: --affected must select it. Re-warm first so a miss here can
       // only come from selection, not from the key still being cold.
-      expect(vx(root, 'run', 'build', '--all').stdout).toMatch(/ \d+✓/)
+      expect(vx(root, 'run', 'build', '--all').text).toMatch(/ \d+✓/)
       await write(path.join(root, 'shared/schema.txt'), 'v3')
       git(root, 'add', '-A')
       git(root, 'commit', '-qm', 'bump again')
 
       const scoped = vx(root, 'run', 'build', '--affected=HEAD~1')
-      expect(scoped.exitCode).toBe(0)
-      expect(scoped.stdout).toContain('app#build')
+      expect(scoped.code).toBe(0)
+      expect(scoped.text).toContain('app#build')
     },
     TIMEOUT,
   )
@@ -159,9 +135,9 @@ describe('--affected sees a workspaceFiles change', () => {
       git(root, 'commit', '-qm', 'bump data')
 
       const scoped = vx(root, 'run', 'build', '--filter', '[HEAD~1]', '--dry')
-      expect(scoped.exitCode).toBe(0)
-      expect(scoped.stdout).toContain('app#build')
-      expect(scoped.stdout).toContain('tool#build')
+      expect(scoped.code).toBe(0)
+      expect(scoped.text).toContain('app#build')
+      expect(scoped.text).toContain('tool#build')
     },
     TIMEOUT,
   )
@@ -177,8 +153,8 @@ describe('--affected sees a workspaceFiles change', () => {
       git(root, 'commit', '-qm', 'add unrelated doc')
 
       const scoped = vx(root, 'run', 'build', '--affected=HEAD~1')
-      expect(scoped.exitCode).toBe(0)
-      expect(scoped.stdout).not.toContain('app#build')
+      expect(scoped.code).toBe(0)
+      expect(scoped.text).not.toContain('app#build')
     },
     TIMEOUT,
   )
@@ -193,8 +169,8 @@ describe('--affected sees a workspaceFiles change', () => {
       git(root, 'commit', '-qm', 'edit app source')
 
       const scoped = vx(root, 'run', 'build', '--affected=HEAD~1')
-      expect(scoped.exitCode).toBe(0)
-      expect(scoped.stdout).toContain('app#build')
+      expect(scoped.code).toBe(0)
+      expect(scoped.text).toContain('app#build')
     },
     TIMEOUT,
   )
@@ -206,7 +182,7 @@ describe('--affected sees a workspaceFiles change', () => {
       await write(path.join(root, '.gitignore'), 'dist/\n')
       git(root, 'add', '-A')
       git(root, 'commit', '-qm', 'ignore dist')
-      expect(vx(root, 'run', 'build', '--all').exitCode).toBe(0)
+      expect(vx(root, 'run', 'build', '--all').code).toBe(0)
       await write(
         path.join(root, 'package.json'),
         JSON.stringify({ name: 'r', workspaces: ['pkgs/*'], description: 'x' }, null, 2),
@@ -214,8 +190,8 @@ describe('--affected sees a workspaceFiles change', () => {
       git(root, 'commit', '-qam', 'root manifest')
       const plan = (...args: string[]) => {
         const r = vx(root, 'run', 'build', ...args, '--dry=json')
-        if (r.exitCode !== 0) return r.stdout
-        return (JSON.parse(r.json) as { tasks: { id: string; cacheStatus: string }[] }).tasks.map(
+        if (r.code !== 0) return r.text
+        return (JSON.parse(r.out) as { tasks: { id: string; cacheStatus: string }[] }).tasks.map(
           (t) => `${t.id} ${t.cacheStatus}`,
         )
       }
@@ -251,8 +227,8 @@ describe('--affected sees a workspaceFiles change', () => {
       git(root, 'commit', '-qm', 'app lints')
       const planned = (): string[] | string => {
         const r = vx(root, 'run', 'build', 'lint', '--affected=HEAD~1', '--dry=json')
-        if (r.exitCode !== 0) return r.stdout
-        return (JSON.parse(r.json) as { tasks: { id: string }[] }).tasks.map((t) => t.id).sort()
+        if (r.code !== 0) return r.text
+        return (JSON.parse(r.out) as { tasks: { id: string }[] }).tasks.map((t) => t.id).sort()
       }
 
       await write(path.join(root, 'shared/schema.txt'), 'v2')
@@ -299,8 +275,8 @@ describe('--affected sees a workspaceFiles change', () => {
       git(root, 'commit', '-qm', 'two root configs')
       const planned = (): string[] | string => {
         const r = vx(root, 'run', 'build', 'test', '--affected=HEAD~1', '--dry=json')
-        if (r.exitCode !== 0) return r.stdout
-        return (JSON.parse(r.json) as { tasks: { id: string }[] }).tasks.map((t) => t.id).sort()
+        if (r.code !== 0) return r.text
+        return (JSON.parse(r.out) as { tasks: { id: string }[] }).tasks.map((t) => t.id).sort()
       }
       await write(path.join(root, 'test-config.txt'), 't2')
       git(root, 'commit', '-qam', 'test config')
@@ -344,10 +320,10 @@ describe('--affected sees a workspaceFiles change', () => {
       git(root, 'commit', '-qm', 'readers of vendor')
       const planned = (): string[] | string => {
         const r = vx(root, 'run', 'build', '--affected=HEAD', '--dry=json')
-        if (r.exitCode !== 0) return r.stdout
-        const ids = (JSON.parse(r.json) as { tasks: { id: string }[] }).tasks.map((t) => t.id)
+        if (r.code !== 0) return r.text
+        const ids = (JSON.parse(r.out) as { tasks: { id: string }[] }).tasks.map((t) => t.id)
         // Nothing to run: the note on stderr says why.
-        return ids.length === 0 ? r.stdout : ids.sort()
+        return ids.length === 0 ? r.text : ids.sort()
       }
       expect(planned()).toContain('nothing affected')
       await write(path.join(sub, 'f.txt'), '2')
@@ -370,9 +346,9 @@ describe('--affected and a directory link below a glob', () => {
   // link when that content changes, and selection matched it as a file.
   const planned = (task: string): string[] | string => {
     const r = vx(root, 'run', task, '--affected=HEAD~1', '--dry=json')
-    if (r.exitCode !== 0) return r.stdout
-    const ids = (JSON.parse(r.json) as { tasks: { id: string }[] }).tasks.map((t) => t.id)
-    return ids.length === 0 ? r.stdout : ids.sort()
+    if (r.code !== 0) return r.text
+    const ids = (JSON.parse(r.out) as { tasks: { id: string }[] }).tasks.map((t) => t.id)
+    return ids.length === 0 ? r.text : ids.sort()
   }
   const keyed = (files: string, ws = '[]') =>
     `{ exec: { command: "true" }, inputs: { files: ${files}, workspaceFiles: ${ws} }, outputs: { files: [] }, cache: true }`

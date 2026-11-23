@@ -12,8 +12,8 @@ import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { declaredPaths, validate } from './helpers/json-schema.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
+import { vxSync } from './helpers/vx.js'
 
-const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
 const PLUGIN = path.resolve(import.meta.dir, '..', '..', 'vx-history')
 const TIMEOUT = 60_000
 
@@ -23,10 +23,7 @@ const schema = JSON.parse(
   readFileSync(path.join(PLUGIN, 'schemas', 'history.json'), 'utf8'),
 ) as Record<string, unknown>
 
-function vx(args: string[]): { code: number; out: string; err: string } {
-  const p = Bun.spawnSync({ cmd: [process.execPath, BIN, ...args], cwd: root })
-  return { code: p.exitCode, out: p.stdout.toString(), err: p.stderr.toString() }
-}
+const vx = (args: string[]) => vxSync(root, args)
 
 beforeAll(async () => {
   root = await makeWorkspace({ prefix: 'vx-plugin-json-' })

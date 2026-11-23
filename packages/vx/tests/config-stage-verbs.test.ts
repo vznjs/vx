@@ -12,8 +12,8 @@ import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { packagesSource, PLUGIN_IMPORT, pluginSource } from './helpers/plugin.js'
 import { storedKeys } from './helpers/stored-artifact.js'
+import { vx as spawnVx } from './helpers/vx.js'
 
-const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
 const TIMEOUT = 30_000
 
 // A `config` plugin that moves the cache: the shape a plugin reading the
@@ -44,24 +44,8 @@ const APP_CONFIG = `
   }
 `
 
-async function vx(
-  root: string,
-  args: string[],
-): Promise<{ code: number; out: string; err: string }> {
-  const proc = Bun.spawn([process.execPath, BIN, ...args], {
-    cwd: root,
-    // The config stage's cache.dir loses to VX_CACHE_DIR, which the gate sets.
-    env: { ...process.env, NO_COLOR: '1', VX_CACHE_DIR: '' },
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
-  const [out, err, code] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ])
-  return { code, out, err }
-}
+// The config stage's cache.dir loses to VX_CACHE_DIR, which the gate sets.
+const vx = (root: string, args: string[]) => spawnVx(root, args, { env: { VX_CACHE_DIR: '' } })
 
 describe('the `config` stage reaches every verb that opens the cache', () => {
   let root: string

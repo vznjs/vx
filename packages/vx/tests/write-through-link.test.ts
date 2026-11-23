@@ -17,8 +17,8 @@ import path from 'node:path'
 import { afterEach, beforeEach, expect, it, vi } from 'bun:test'
 import { applyMigration } from '../src/orchestrator/index.js'
 import type { MigrationPlan } from '../src/workspace/index.js'
+import { BIN, vxSync } from './helpers/vx.js'
 
-const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 const CONFIG = `export default { tasks: { build: { exec: { command: 'true' } } } }\n`
 
 let root: string
@@ -36,15 +36,7 @@ afterEach(async () => {
   await rm(outside, { recursive: true, force: true })
 })
 
-function vx(...args: string[]): { code: number; err: string } {
-  const p = Bun.spawnSync({
-    cmd: [process.execPath, BIN, ...args],
-    cwd: root,
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
-  return { code: p.exitCode, err: p.stderr.toString() }
-}
+const vx = (...args: string[]) => vxSync(root, args, { bin: BIN })
 
 const refused = (at: string): string =>
   `refusing to write ${at}: it is a symlink to ${victim}; remove the link and run again`

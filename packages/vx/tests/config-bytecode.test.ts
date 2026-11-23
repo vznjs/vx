@@ -9,8 +9,8 @@ import { realpathSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { BIN } from './helpers/vx.js'
 
-const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 const CORE_PKG = path.resolve(import.meta.dir, '..')
 const TIMEOUT = 30_000
 

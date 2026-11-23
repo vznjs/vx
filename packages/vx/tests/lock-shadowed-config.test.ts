@@ -5,8 +5,8 @@ import path from 'node:path'
 import { afterEach, expect, it } from 'bun:test'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 import { noticed } from './helpers/notice.js'
+import { BIN } from './helpers/vx.js'
 
-const BIN = path.join(import.meta.dir, '..', 'src', 'bin.ts')
 const CONFIG = `export default { tasks: { build: { exec: { command: 'true' } } } }\n`
 
 let root: string | undefined

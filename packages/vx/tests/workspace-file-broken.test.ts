@@ -10,8 +10,8 @@ import path from 'node:path'
 import { afterAll, expect, it } from 'bun:test'
 import { findWorkspaceRoot } from '../src/workspace/workspace.js'
 import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
+import { BIN } from './helpers/vx.js'
 
-const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 const CONFIG = `export default { tasks: { build: { exec: { command: 'true' } } } }\n`
 const home = await mkdtemp(path.join(os.tmpdir(), 'vx-ws-broken-home-'))
 const made: string[] = []
