@@ -326,6 +326,12 @@ Each plugin also adds a project's manifest (`package.json`, or under `pnpm()` a 
   ```ansi
   [2mverdict [0m  [38;2;234;179;8mcache key changed: file patches/x+1.0.0.patch[0m
   ```
+
+- **A file an install script writes** (`prisma generate`'s client, a node-gyp addon) is in no
+  lockfile, so an install that changes it re-keys nothing.
+
+  Name it as an input: in `inputs.files` under the project's own `node_modules`, in
+  `inputs.workspaceFiles` under the root's (`node_modules/.prisma/client/**`).
 - **An unreadable lockfile** stops the run and names the install to re-run.
 - **A lockfile changed since `vx lock`** stops the run: `run vx lock`.
 - **A lockfile older than a `package.json`** (a dependency added, no install yet) stops `vx lock`
