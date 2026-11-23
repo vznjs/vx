@@ -4750,7 +4750,9 @@ back, each a dim segment, and how many are left, those included:
 `30 success · 4 running · 12 scheduled · 16 blocked · 32 left · 62 total`.
 The summary then replaces the live view. The total is
 always last on its line. A framed task (focused or `full`) that
-printed while it stopped shows its frame instead of a row.
+printed while it stopped shows its frame instead of a row. One whose
+frame opened before the stop reached its command (a slow `inputs.runtime`
+probe) closes it `not run`.
 
 **Flaky rows.** A task the run just proved nondeterministic says so
 in a dim note on its own row (and its frame's footer) — from the local

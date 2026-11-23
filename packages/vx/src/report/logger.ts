@@ -699,6 +699,8 @@ export function defaultLogger(
   // Live frames open now: a warning said inside one is a line of it, not a
   // panel (a "Warnings" header printed between a task's output and its close).
   let liveFrames = 0
+  /** Tasks whose live frame `taskStart` opened. */
+  const opened = new Set<string>()
   const emitFrameClose = (line: string): void => {
     liveFrames = Math.max(0, liveFrames - 1)
     taskWrite(`${line}\n\n`)
@@ -866,6 +868,7 @@ export function defaultLogger(
         // streams nothing (or the hit replays nothing).
         emitLine(formatFrameOpen(node, colors, forwardArgs))
         liveFrames++
+        opened.add(node.id)
       } else if (node.config.exec?.persistent !== undefined && !persistentTails.has(node.id)) {
         // Bound a persistent task's output from its FIRST chunk. Waiting for
         // its outcome would leave a never-ready one uncapped forever.
@@ -1038,6 +1041,12 @@ export function defaultLogger(
         freeSlot(node.id)
         refresh(true)
         if (isGroupTask(node)) return
+        // A stop that reached it before its command (a slow key) still
+        // closes the frame its start opened.
+        if (neverStarted(outcome) && opened.has(node.id)) {
+          emitFrameClose(formatFrameClose(node, outcome, colors))
+          return
+        }
         // What it printed while stopping (a trap's cleanup) still reaches the
         // terminal: a task trapping Ctrl-C and exiting 0 is aborted, and its
         // frame is dropped. A list view prints a killed task's partial output

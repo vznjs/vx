@@ -1171,6 +1171,7 @@ function formatBlockFooter(o: TaskOutcome, colors: ColorSupport): string {
   // Footer: ` (<dur>) <status>`. The duration is what this run spent; for a
   // hit, probe and restore, not the stored exec time
   // (`TaskOutcome.cache.stored.durationMs`).
+  if (neverStarted(o)) return ` ${paint('notRun', 'not run', colors)}`
   const dur = paint('muted', `(${formatElapsed(o.durationMs)})`, colors)
   const tag = formatStatusTag(o, colors)
   return ` ${dur} ${tag}${flakyNote(o, colors)}`
