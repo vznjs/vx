@@ -1102,14 +1102,33 @@ sandbox at all.
 ### A write grant cannot be removed (Linux)
 
 A directory grant is a bind mount, and a mount point cannot be removed or
-renamed: under `write: ['dist/']`, `rm -rf dist && tsc` empties `dist`,
-then fails with `Read-only file system` (EBUSY under a writable parent).
-macOS allows it. No bind makes it work and keeps "a task writes only its
-grants": binding the parent lets the task write beside the grant. So a
-failed task whose stderr names a grant root (absolute, or
-relative to the cwd, `./` allowed) on a line holding `Read-only file
-system`, `EROFS`, `EBUSY` or `resource busy` gets a hint naming the grant
-and the removal that works, `rm -rf dist/*` (`grantRemovalHint`; X-90,
+renamed: under `write: ['dist/']`, `rm -rf dist && tsc` emptied `dist`,
+then failed with `Read-only file system` (EBUSY under a writable parent).
+macOS allows it. Binding the host's parent would let the task write
+beside the grant, so `stagedOutputs` binds vx's own directory there
+instead. Each directory grant in the task's directory that the task's
+outputs claim whole (`dist/**` with no `!` exclusion under it, handed
+down as `ownedOutputs`) is copied as hard links (`linkTree`) into
+`.vx/tmp/<pid>-<tag>` in the nearest `.vx`. That staging is mounted as
+the task's directory under the mask, and the other grants bind into it
+as before. The output directory is a plain directory there. What the
+task writes beside it lands in the staging, is reported (no grant covers
+it) and goes with the staging. After the task, each staged directory is
+renamed over the host's; if the task removed it and made none, the
+host's goes too. A failed rename throws, so the task fails rather than
+saving stale bytes. The host's directory is never moved: a concurrent
+task reading it still sees it, and a killed run's staging, which holds
+only links, is swept as a restore's is (`sweepStaging`). Directories are
+not staged for a server, for a grant no output claims whole, for a
+directory the line names anywhere but its own write bind (a deny or mask
+in it is a mount that would move with it), where a mask
+sits at the task's directory (its later `--remount-ro` would cover the
+staging), or for a task whose directory a grant
+binds itself (`write: ['.']`, a file grant there). There a failed task
+whose stderr names a grant root (absolute, or relative to the cwd, `./`
+allowed) on a line holding `Read-only file system`, `EROFS`, `EBUSY` or
+`resource busy` gets a hint naming the grant and the removal that works,
+`rm -rf dist/*` (`grantRemovalHint`; X-90,
 `sandbox-grant-remove.unsafe.test.ts`). The lines are kept as stderr
 streams, as `GIT_NO_REPO`'s are: a run captures no output.
 
@@ -1152,7 +1171,12 @@ task per spelling, each writing the files it declares:
 | `g/[ab].txt`  | same                                               |
 
 (`g/*` and its siblings ran with `read: ['.']`, which mounts `g`
-read-only.) That is the documented contract rather than a defect, but
+read-only.) A glob's directory in the task's own directory is bound now
+(`punchedWriteGlobs`, made first when missing), so each of these lands;
+what the directory held at the start is judged as a widened grant's
+(`heldEntries`, read by `parseStraceViolations`), and a directory the
+glob may still match beneath is no violation (`holdsMatchUnder`). The
+table holds outside it. That is the documented contract rather than a defect, but
 the failure names neither vx nor the grant, so `expandGrants` hands the
 grant over as `pendingWrites`, and `pendingWriteGrants` reports it —
 once per grant, before the task runs — and names the directory to grant

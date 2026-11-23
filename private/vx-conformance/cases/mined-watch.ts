@@ -1484,10 +1484,6 @@ export default [
       { write: { [A]: 'a2\n' }, expect: { ran: ['app#build'], files: { [OUT]: 'a2\n' } } },
     ],
   }),
-] satisfies Case[]
-
-// vx fails these; each is listed in the hand-off report with its output.
-export const pending: Case[] = [
   // Turborepo watch: a run covers the packages a change reaches, not every package
   watchCase({
     id: 'watch/failed-task-not-rerun-by-unrelated-edit',
@@ -1532,4 +1528,6 @@ export const pending: Case[] = [
       },
     ],
   }),
-]
+] satisfies Case[]
+
+export const pending: Case[] = []

@@ -1617,10 +1617,6 @@ export default [
       },
     ],
   }),
-] as Case[]
-
-// vx selects more than these changes reach (see the report); kept out of the shipped list.
-export const pending: Case[] = [
   defineCase({
     id: 'affected/test-definition-change-skips-dependents',
     category: 'affected',
@@ -1663,4 +1659,6 @@ export const pending: Case[] = [
       { affected: 'test', base: 'HEAD~1', expect: { exit: 0, notRan: tests('a', 'b') } },
     ],
   }),
-]
+] as Case[]
+
+export const pending: Case[] = []

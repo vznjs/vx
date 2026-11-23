@@ -1,6 +1,6 @@
 {
   "coverage": {
-    "ported": 394,
+    "ported": 401,
     "rest": {
       "pending": [
         "affected-config-tasks",
@@ -18,6 +18,7 @@
         "peak-memory-exact",
         "prepared-key",
         "project-stage-lock",
+        "restore-odd-names",
         "server-died-under-task",
         "signal-tstp",
         "uncached-workspace-output-key",
@@ -150,6 +151,7 @@
         "lock-check-broken",
         "lock-checkout-path",
         "lock-config-cwd",
+        "lock-config-edited",
         "lock-discover-stage",
         "lock-graph-rules",
         "lock-help",
@@ -208,15 +210,13 @@
         "sandbox-arg-too-long.unsafe",
         "sandbox-canary-home.unsafe",
         "sandbox-deny-scan",
-        "sandbox-empty-grant-spelling.unsafe",
         "sandbox-fd-records",
         "sandbox-git-discovery.unsafe",
         "sandbox-hint",
         "sandbox-host-helpers.unsafe",
-        "sandbox-lifecycle.unsafe",
         "sandbox-loopback-hint.unsafe",
-        "sandbox-loopback-reach.unsafe",
         "sandbox-network-patterns.unsafe",
+        "sandbox-odd-names.unsafe",
         "sandbox-noscan-dir.unsafe",
         "sandbox-noscan-gone.unsafe",
         "sandbox-observer-drain.unsafe",
@@ -226,7 +226,6 @@
         "sandbox-port-held.unsafe",
         "sandbox-prewarm.unsafe",
         "sandbox-proxy-ready.unsafe",
-        "sandbox-runtime.unsafe",
         "sandbox-session-guard.unsafe",
         "sandbox-signal-notice.unsafe",
         "sandbox-strace-argv",
@@ -235,7 +234,6 @@
         "sandbox-unchecked-rewriter.unsafe",
         "sandbox-violation-secret-mask.unsafe",
         "sandbox-weaker-nested.unsafe",
-        "sandbox-write-glob-new-file.unsafe",
         "schedule-refine",
         "schedule-strategy",
         "scoped-config-loading",
@@ -295,6 +293,7 @@
         "vx-ci/unknown-options",
         "vx-devtools/hostile-tokens",
         "vx-devtools/key-cache",
+        "vx-devtools/keys-read-retry",
         "vx-devtools/oidc",
         "vx-devtools/parse-allow",
         "vx-devtools/terminal",
@@ -409,6 +408,7 @@
         "vx-migrate/migrate-turbo-tsc-reach",
         "vx-migrate/migrate-undecodable-member",
         "vx-migrate/migrate-vite-task",
+        "vx-migrate/migrate-workspace-rules",
         "vx-migrate/migration-member-link",
         "vx-migrate/no-conflict-markers",
         "vx-migrate/no-install-next",
@@ -727,6 +727,7 @@
         "hash-extra-dir",
         "held-blob-sizes",
         "held-server-exit",
+        "helper-binaries",
         "hide-env.unsafe",
         "hit-rows",
         "index-blobs",
@@ -736,6 +737,7 @@
         "invocation-secret-mask",
         "kept-hits",
         "key-vx-version",
+        "kill-tree-escaped.unsafe",
         "kill-tree-guard-backlog",
         "kill-tree-guard-lines.unsafe",
         "kill-tree-guard-zombie.unsafe",
@@ -773,6 +775,7 @@
         "painted-output",
         "persistent-lifecycle-properties.unsafe",
         "persistent-sandbox-hint.unsafe",
+        "piped-run-reader",
         "plain-output",
         "port-bridge-dial",
         "posix-rel-paths",
@@ -784,18 +787,21 @@
         "reading-verbs-git",
         "real-path",
         "recursive-run",
+        "refusal-next-step",
         "refusal-notice",
         "refused-run-region.unsafe",
         "rel-posix",
         "repo-facts-disk",
         "resave-aside",
         "resolve-cache",
+        "restore-case-twin",
         "restore-exdev",
         "restore-git-spawns",
         "restore-link-swap-rename",
         "restore-partial-commit",
         "restore-ported",
         "restore-rows-held",
+        "restore-sibling-dir",
         "restore-unreadable-stale",
         "rng",
         "run-artifacts",
@@ -804,7 +810,6 @@
         "run-history-blocks",
         "run-history-row-cells",
         "run-id",
-        "run-keys",
         "run-keys-token",
         "run-lock",
         "run-lock-e2e",
@@ -878,6 +883,7 @@
         "vx-lockfile/link-outside-root",
         "wal-checkpointer",
         "wall-clock-step",
+        "warn-in-live-frame",
         "watch-affected",
         "watch-cycle-clock",
         "watch-edit-before-arm",
@@ -922,6 +928,7 @@
         "doc-references",
         "doc-references.unsafe",
         "docs",
+        "docs-config-paths.unsafe",
         "docs-examples.unsafe",
         "env-doc-drift",
         "error-codes-repo.unsafe",
@@ -995,19 +1002,19 @@
   "scores": {
     "vx": {
       "all": {
-        "pass": 2096,
-        "can": 2096,
-        "of": 2171
+        "pass": 2115,
+        "can": 2115,
+        "of": 2190
       },
       "correctness": {
-        "pass": 1690,
-        "can": 1690,
-        "of": 1757
+        "pass": 1702,
+        "can": 1702,
+        "of": 1769
       },
       "efficiency": {
-        "pass": 317,
-        "can": 317,
-        "of": 324
+        "pass": 324,
+        "can": 324,
+        "of": 331
       },
       "data": {
         "pass": 89,
@@ -1020,24 +1027,24 @@
         "of": 319
       },
       "config": {
-        "pass": 87,
-        "can": 87,
-        "of": 87
+        "pass": 88,
+        "can": 88,
+        "of": 88
       },
       "failure": {
-        "pass": 152,
-        "can": 152,
-        "of": 165
+        "pass": 154,
+        "can": 154,
+        "of": 167
       },
       "affected": {
-        "pass": 184,
-        "can": 184,
-        "of": 184
+        "pass": 186,
+        "can": 186,
+        "of": 186
       },
       "cache": {
-        "pass": 101,
-        "can": 101,
-        "of": 124
+        "pass": 104,
+        "can": 104,
+        "of": 127
       },
       "inputs": {
         "pass": 475,
@@ -1060,31 +1067,31 @@
         "of": 90
       },
       "sandbox": {
-        "pass": 132,
-        "can": 132,
-        "of": 132
+        "pass": 141,
+        "can": 141,
+        "of": 141
       },
       "watch": {
-        "pass": 123,
-        "can": 123,
-        "of": 123
+        "pass": 125,
+        "can": 125,
+        "of": 125
       }
     },
     "turbo": {
       "all": {
-        "pass": 1376,
-        "can": 1781,
-        "of": 2171
+        "pass": 1382,
+        "can": 1791,
+        "of": 2190
       },
       "correctness": {
-        "pass": 1109,
-        "can": 1443,
-        "of": 1757
+        "pass": 1110,
+        "can": 1446,
+        "of": 1769
       },
       "efficiency": {
-        "pass": 237,
-        "can": 308,
-        "of": 324
+        "pass": 242,
+        "can": 315,
+        "of": 331
       },
       "data": {
         "pass": 30,
@@ -1097,24 +1104,24 @@
         "of": 319
       },
       "config": {
-        "pass": 55,
-        "can": 72,
-        "of": 87
+        "pass": 56,
+        "can": 73,
+        "of": 88
       },
       "failure": {
         "pass": 61,
-        "can": 103,
-        "of": 165
+        "can": 105,
+        "of": 167
       },
       "affected": {
         "pass": 144,
-        "can": 183,
-        "of": 184
+        "can": 185,
+        "of": 186
       },
       "cache": {
-        "pass": 83,
-        "can": 100,
-        "of": 124
+        "pass": 86,
+        "can": 103,
+        "of": 127
       },
       "inputs": {
         "pass": 337,
@@ -1139,29 +1146,29 @@
       "sandbox": {
         "pass": 1,
         "can": 1,
-        "of": 132
+        "of": 141
       },
       "watch": {
-        "pass": 104,
-        "can": 118,
-        "of": 123
+        "pass": 106,
+        "can": 120,
+        "of": 125
       }
     },
     "nx": {
       "all": {
-        "pass": 1377,
-        "can": 1816,
-        "of": 2171
+        "pass": 1381,
+        "can": 1826,
+        "of": 2190
       },
       "correctness": {
-        "pass": 1069,
-        "can": 1468,
-        "of": 1757
+        "pass": 1070,
+        "can": 1471,
+        "of": 1769
       },
       "efficiency": {
-        "pass": 278,
-        "can": 318,
-        "of": 324
+        "pass": 281,
+        "can": 325,
+        "of": 331
       },
       "data": {
         "pass": 30,
@@ -1175,23 +1182,23 @@
       },
       "config": {
         "pass": 39,
-        "can": 75,
-        "of": 87
+        "can": 76,
+        "of": 88
       },
       "failure": {
-        "pass": 82,
-        "can": 113,
-        "of": 165
+        "pass": 83,
+        "can": 115,
+        "of": 167
       },
       "affected": {
-        "pass": 122,
-        "can": 184,
-        "of": 184
+        "pass": 124,
+        "can": 186,
+        "of": 186
       },
       "cache": {
-        "pass": 79,
-        "can": 92,
-        "of": 124
+        "pass": 80,
+        "can": 95,
+        "of": 127
       },
       "inputs": {
         "pass": 342,
@@ -1216,29 +1223,29 @@
       "sandbox": {
         "pass": 0,
         "can": 1,
-        "of": 132
+        "of": 141
       },
       "watch": {
         "pass": 96,
-        "can": 121,
-        "of": 123
+        "can": 123,
+        "of": 125
       }
     },
     "vite-task": {
       "all": {
-        "pass": 1015,
-        "can": 1374,
-        "of": 2171
+        "pass": 1019,
+        "can": 1379,
+        "of": 2190
       },
       "correctness": {
-        "pass": 855,
-        "can": 1158,
-        "of": 1757
+        "pass": 856,
+        "can": 1160,
+        "of": 1769
       },
       "efficiency": {
-        "pass": 151,
-        "can": 207,
-        "of": 324
+        "pass": 154,
+        "can": 210,
+        "of": 331
       },
       "data": {
         "pass": 9,
@@ -1251,24 +1258,24 @@
         "of": 319
       },
       "config": {
-        "pass": 49,
-        "can": 72,
-        "of": 87
+        "pass": 50,
+        "can": 73,
+        "of": 88
       },
       "failure": {
         "pass": 62,
-        "can": 82,
-        "of": 165
+        "can": 83,
+        "of": 167
       },
       "affected": {
         "pass": 0,
         "can": 0,
-        "of": 184
+        "of": 186
       },
       "cache": {
-        "pass": 68,
-        "can": 79,
-        "of": 124
+        "pass": 71,
+        "can": 82,
+        "of": 127
       },
       "inputs": {
         "pass": 311,
@@ -1293,29 +1300,29 @@
       "sandbox": {
         "pass": 1,
         "can": 1,
-        "of": 132
+        "of": 141
       },
       "watch": {
         "pass": 0,
         "can": 0,
-        "of": 123
+        "of": 125
       }
     },
     "nix": {
       "all": {
-        "pass": 1083,
-        "can": 1364,
-        "of": 2171
+        "pass": 1090,
+        "can": 1376,
+        "of": 2190
       },
       "correctness": {
-        "pass": 928,
-        "can": 1173,
-        "of": 1757
+        "pass": 934,
+        "can": 1182,
+        "of": 1769
       },
       "efficiency": {
-        "pass": 145,
-        "can": 181,
-        "of": 324
+        "pass": 146,
+        "can": 184,
+        "of": 331
       },
       "data": {
         "pass": 10,
@@ -1329,23 +1336,23 @@
       },
       "config": {
         "pass": 39,
-        "can": 66,
-        "of": 87
+        "can": 67,
+        "of": 88
       },
       "failure": {
         "pass": 61,
-        "can": 92,
-        "of": 165
+        "can": 93,
+        "of": 167
       },
       "affected": {
         "pass": 0,
         "can": 0,
-        "of": 184
+        "of": 186
       },
       "cache": {
-        "pass": 84,
-        "can": 97,
-        "of": 124
+        "pass": 85,
+        "can": 100,
+        "of": 127
       },
       "inputs": {
         "pass": 342,
@@ -1368,31 +1375,31 @@
         "of": 90
       },
       "sandbox": {
-        "pass": 91,
-        "can": 125,
-        "of": 132
+        "pass": 97,
+        "can": 132,
+        "of": 141
       },
       "watch": {
         "pass": 0,
         "can": 0,
-        "of": 123
+        "of": 125
       }
     },
     "moon": {
       "all": {
-        "pass": 1268,
-        "can": 1718,
-        "of": 2171
+        "pass": 1271,
+        "can": 1726,
+        "of": 2190
       },
       "correctness": {
         "pass": 1002,
-        "can": 1406,
-        "of": 1757
+        "can": 1409,
+        "of": 1769
       },
       "efficiency": {
-        "pass": 231,
-        "can": 277,
-        "of": 324
+        "pass": 234,
+        "can": 282,
+        "of": 331
       },
       "data": {
         "pass": 35,
@@ -1406,23 +1413,23 @@
       },
       "config": {
         "pass": 59,
-        "can": 84,
-        "of": 87
+        "can": 85,
+        "of": 88
       },
       "failure": {
         "pass": 92,
-        "can": 141,
-        "of": 165
+        "can": 143,
+        "of": 167
       },
       "affected": {
-        "pass": 143,
-        "can": 184,
-        "of": 184
+        "pass": 144,
+        "can": 186,
+        "of": 186
       },
       "cache": {
-        "pass": 81,
-        "can": 98,
-        "of": 124
+        "pass": 83,
+        "can": 101,
+        "of": 127
       },
       "inputs": {
         "pass": 346,
@@ -1447,12 +1454,12 @@
       "sandbox": {
         "pass": 0,
         "can": 1,
-        "of": 132
+        "of": 141
       },
       "watch": {
         "pass": 0,
         "can": 0,
-        "of": 123
+        "of": 125
       }
     }
   },
@@ -45302,6 +45309,41 @@
       }
     },
     {
+      "id": "sandbox/project-dir-with-brackets-isolated-passes",
+      "ref": "jfrizk",
+      "category": "sandbox",
+      "kind": "correctness",
+      "title": "An isolated task runs in a project whose folder name holds brackets",
+      "why": "A bracket in a path reads as a glob class to many tools. If the sandbox treats the project folder as a pattern, it grants nothing and the task cannot read its own sources. A literal folder name must stay literal.",
+      "from": [
+        "sandbox-glob-chars.unsafe"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "Turborepo keeps no task from files, network or home it never declared."
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "Nx keeps no task from files, network or home it never declared."
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "Vite Task keeps no task from files, network or home it never declared."
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "moon keeps no task from files, network or home it never declared."
+        }
+      }
+    },
+    {
       "id": "sandbox/granted-file-with-space-readable",
       "ref": "doa6q5",
       "category": "sandbox",
@@ -46828,6 +46870,151 @@
       }
     },
     {
+      "id": "sandbox/root-glob-output-passes",
+      "ref": "flewmg",
+      "category": "sandbox",
+      "kind": "correctness",
+      "title": "An isolated task may write an output its `*.js` pattern at the project root matches",
+      "why": "Some builds write `index.js` beside `package.json`, and declare `*.js` as the output. The file it writes is exactly what the pattern names. A sandbox that cannot grant a pattern before any file matches it loses the output or fails the task.",
+      "from": [
+        "sandbox-write-glob-new-file.unsafe",
+        "sandbox-empty-grant-spelling.unsafe"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "Turborepo keeps no task from files, network or home it never declared."
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "Nx keeps no task from files, network or home it never declared."
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "Vite Task keeps no task from files, network or home it never declared."
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "moon keeps no task from files, network or home it never declared."
+        }
+      }
+    },
+    {
+      "id": "sandbox/file-glob-output-in-new-dir-passes",
+      "ref": "p1d2oq",
+      "category": "sandbox",
+      "kind": "correctness",
+      "title": "An isolated task may write an output its `dist/*.js` pattern matches in a folder it makes",
+      "why": "`dist/*.js` is a common output, and `dist` does not exist before the first build. The written file is what the pattern names. Refusing it because the folder had nothing to match when the task started breaks the first run.",
+      "from": [
+        "sandbox-write-glob-new-file.unsafe",
+        "sandbox-empty-grant-spelling.unsafe"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "Turborepo keeps no task from files, network or home it never declared."
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "Nx keeps no task from files, network or home it never declared."
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "Vite Task keeps no task from files, network or home it never declared."
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "moon keeps no task from files, network or home it never declared."
+        }
+      }
+    },
+    {
+      "id": "sandbox/deep-glob-output-passes",
+      "ref": "7kjw7e",
+      "category": "sandbox",
+      "kind": "correctness",
+      "title": "An isolated task may write an output its `dist/**/*.js` pattern matches in a nested folder",
+      "why": "A recursive pattern with an extension is how most builds name their JavaScript output. The file lies under `dist` and matches. A sandbox must grant what such a pattern can match, including folders the task makes.",
+      "from": [
+        "sandbox-write-glob-new-file.unsafe",
+        "sandbox-request"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "Turborepo keeps no task from files, network or home it never declared."
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "Nx keeps no task from files, network or home it never declared."
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "Vite Task keeps no task from files, network or home it never declared."
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "moon keeps no task from files, network or home it never declared."
+        }
+      }
+    },
+    {
+      "id": "sandbox/write-glob-grant-new-file-passes",
+      "ref": "4fvmqh",
+      "category": "sandbox",
+      "kind": "correctness",
+      "title": "An isolated task granted `logs/*.log` may create a new log file there",
+      "why": "A write grant by pattern is for files the task will make, not only ones that exist. The new file matches the pattern the user wrote. Refusing it makes a pattern grant useless for anything but rewriting old files.",
+      "from": [
+        "sandbox-write-glob-new-file.unsafe"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "Turborepo keeps no task from files, network or home it never declared."
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "Nx keeps no task from files, network or home it never declared."
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "Vite Task keeps no task from files, network or home it never declared."
+        },
+        "nix": {
+          "status": "fail",
+          "step": 1,
+          "detail": "exited 100, expected success"
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "moon keeps no task from files, network or home it never declared."
+        }
+      }
+    },
+    {
       "id": "sandbox/output-dir-inside-inputs-writable",
       "ref": "b60xr9",
       "category": "sandbox",
@@ -47169,6 +47356,41 @@
       "why": "Some tools save space by hard-linking identical outputs. Both names are declared outputs, and no outside file is reached. The sandbox has no reason to refuse it.",
       "from": [
         "sandbox-widened-reads.unsafe"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "Turborepo keeps no task from files, network or home it never declared."
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "Nx keeps no task from files, network or home it never declared."
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "Vite Task keeps no task from files, network or home it never declared."
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "moon keeps no task from files, network or home it never declared."
+        }
+      }
+    },
+    {
+      "id": "sandbox/clean-and-rebuild-output-dir-passes",
+      "ref": "0s799c",
+      "category": "sandbox",
+      "kind": "correctness",
+      "title": "An isolated task may delete its whole output folder and write it again",
+      "why": "`rm -rf dist && tsc` is how a great many builds start. The folder and everything in it are declared outputs, so removing and recreating them touches nothing else. A sandbox that cannot allow this forces users to rewrite their build scripts to turn it on.",
+      "from": [
+        "sandbox-grant-remove.unsafe"
       ],
       "outcomes": {
         "vx": {
@@ -47702,6 +47924,42 @@
       }
     },
     {
+      "id": "sandbox/isolated-task-leaves-no-process",
+      "ref": "t6cgo0",
+      "category": "sandbox",
+      "kind": "correctness",
+      "title": "A background process an isolated task starts does not outlive the run",
+      "why": "An isolated task’s processes are part of the task. One left running can keep writing after the task was saved, or hold a port the next run needs. Ending the task ends everything it started.",
+      "from": [
+        "sandbox-lifecycle.unsafe",
+        "sandbox-runtime.unsafe"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "Turborepo keeps no task from files, network or home it never declared."
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "Nx keeps no task from files, network or home it never declared."
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "Vite Task keeps no task from files, network or home it never declared."
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "moon keeps no task from files, network or home it never declared."
+        }
+      }
+    },
+    {
       "id": "sandbox/refused-task-dependents-skipped",
       "ref": "vmfx0w",
       "category": "sandbox",
@@ -47736,6 +47994,80 @@
         "moon": {
           "status": "n/a",
           "detail": "moon keeps no task from files, network or home it never declared."
+        }
+      }
+    },
+    {
+      "id": "sandbox/network-granted-reaches-local-server",
+      "ref": "ra2j9b",
+      "category": "sandbox",
+      "kind": "correctness",
+      "title": "An isolated task granted a server’s port reaches the server the run started",
+      "why": "Integration tests talk to a server another task started. The user granted the network on purpose, so the connection is expected. A sandbox that still blocks it leaves such tests no way to run isolated.",
+      "from": [
+        "sandbox-loopback-reach.unsafe",
+        "sandbox-host-services.unsafe"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "Turborepo keeps no task from files, network or home it never declared. Turborepo does not hold a task until a persistent one prints a ready line."
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "Nx keeps no task from files, network or home it never declared."
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "Vite Task keeps no task from files, network or home it never declared. Vite Task has no long-running task it stops when the run ends. Vite Task does not hold a task until another prints a ready line."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "A derivation is a build that ends: Nix has no long-running task. A derivation is a build that ends: nothing waits for a ready line."
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "moon keeps no task from files, network or home it never declared. A `wait` dependency waits for the persistent task to start, never for a line it prints."
+        }
+      }
+    },
+    {
+      "id": "sandbox/network-grant-is-per-task",
+      "ref": "asx31a",
+      "category": "sandbox",
+      "kind": "correctness",
+      "title": "A network grant on one task does not let another task of the run reach the network",
+      "why": "The task without the grant has no network in its key, so a reply would change its output silently. One task’s grant must not open the network for all. The granted task gets the reply and the other fails.",
+      "from": [
+        "sandbox-network-per-task.unsafe",
+        "sandbox-proxy-denials.unsafe"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "Turborepo keeps no task from files, network or home it never declared. Turborepo does not hold a task until a persistent one prints a ready line."
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "Nx keeps no task from files, network or home it never declared."
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "Vite Task keeps no task from files, network or home it never declared. Vite Task has no long-running task it stops when the run ends. Vite Task does not hold a task until another prints a ready line."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "A derivation is a build that ends: Nix has no long-running task. A derivation is a build that ends: nothing waits for a ready line."
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "moon keeps no task from files, network or home it never declared. A `wait` dependency waits for the persistent task to start, never for a line it prints."
         }
       }
     },
@@ -52772,6 +53104,44 @@
       }
     },
     {
+      "id": "config/manifest-dependencies-array-refused",
+      "ref": "rakj7d",
+      "category": "config",
+      "kind": "correctness",
+      "title": "A workspace package whose dependencies field is an array fails the run",
+      "why": "`dependencies` maps names to versions; an array has no names, only indexes. A tool that reads it as empty builds the package before what it imports, and one that reads the indexes as names depends on packages `0` and `1`. The run fails before it builds out of order.",
+      "from": [
+        "discovery-refusals",
+        "package-json-bom"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 2,
+          "detail": "succeeded, expected a failure"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "fail",
+          "step": 2,
+          "detail": "succeeded, expected a failure"
+        },
+        "moon": {
+          "status": "fail",
+          "step": 2,
+          "detail": "succeeded, expected a failure"
+        }
+      }
+    },
+    {
       "id": "failure/fail-fast-keeps-what-finished",
       "ref": "oslmun",
       "category": "failure",
@@ -57718,6 +58088,80 @@
       }
     },
     {
+      "id": "watch/failed-task-not-rerun-by-unrelated-edit",
+      "ref": "83a7gk",
+      "category": "watch",
+      "kind": "efficiency",
+      "title": "A broken build in one project is not run again when an unrelated project is edited",
+      "why": "Nothing the broken build reads has changed, so running it again only fails the same way. The edit was in another project with no tie to it. Repeating the failure on every unrelated save wastes time and buries the useful output under the same error.",
+      "from": [
+        "watch-rules",
+        "watch-signals"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 1,
+          "detail": "phase 2: ran docs#build, expected it replayed or left out"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "`vp run` has no watch mode."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build has no watch mode."
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "`moon run` runs once: moon has no watch mode."
+        }
+      }
+    },
+    {
+      "id": "watch/uncached-dependency-not-rerun-on-dependant-edit",
+      "ref": "00toav",
+      "category": "watch",
+      "kind": "efficiency",
+      "title": "Editing the app while watching does not rerun the never-cached library it depends on",
+      "why": "Turning the cache off for a task means its result is never replayed, not that it reruns whenever anything nearby changes. The edit touched the app only, so the library’s inputs are as they were. Rerunning the library on every app save makes the slowest step of a watch run every time.",
+      "from": [
+        "watch-loop-uncached",
+        "watch-rules"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 1,
+          "detail": "phase 2: ran lib#build, expected it replayed or left out"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "`vp run` has no watch mode."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build has no watch mode."
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "`moon run` runs once: moon has no watch mode."
+        }
+      }
+    },
+    {
       "id": "affected/chain-change-reaches-top",
       "ref": "zwyftq",
       "category": "affected",
@@ -59942,6 +60386,78 @@
           "status": "fail",
           "step": 4,
           "detail": "did not run a#test"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "Vite Task does not select tasks by what git says changed."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build builds the attributes it is named: no git change selects them."
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "affected/test-definition-change-skips-dependents",
+      "ref": "92yxd1",
+      "category": "affected",
+      "kind": "efficiency",
+      "title": "Changing a library’s `test` definition leaves its dependents’ tests out",
+      "why": "Dependents reach the library through its build, not its test. A new test command changes the library’s test result only. Selecting the dependents because their library’s config changed reruns their tests, which read the same build as before.",
+      "from": [
+        "affected-dry-reasons"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 3,
+          "detail": "ran app#test, expected it replayed or left out"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "Vite Task does not select tasks by what git says changed."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build builds the attributes it is named: no git change selects them."
+        },
+        "moon": {
+          "status": "fail",
+          "step": 3,
+          "detail": "did not run lib#test"
+        }
+      }
+    },
+    {
+      "id": "affected/attribute-changing-no-bytes",
+      "ref": "qocg45",
+      "category": "affected",
+      "kind": "efficiency",
+      "title": "A `.gitattributes` rule that changes no checked-out byte, `linguist-generated`, selects nothing",
+      "why": "Some attributes only tell other tools how to show a file, such as GitHub’s `linguist-generated` or `-diff`. They change no byte any task reads. Selecting every project because `.gitattributes` changed reruns the whole workspace for a code-review setting.",
+      "from": [
+        "affected-gitattributes"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 3,
+          "detail": "ran a#test, b#test, expected it replayed or left out"
+        },
+        "nx": {
+          "status": "pass"
         },
         "vite-task": {
           "status": "n/a",
@@ -64162,6 +64678,112 @@
       }
     },
     {
+      "id": "cache/input-globs-reordered-replays",
+      "ref": "f1puo3",
+      "category": "cache",
+      "kind": "efficiency",
+      "title": "Listing the same input globs in another order replays the task",
+      "why": "Inputs are a set of files; the order the globs are written in does not change which files they match. A tool that keys the list as written rebuilds after a harmless reformat of the config. The files and their bytes are the same, so the entry is too.",
+      "from": [
+        "stable-keys",
+        "run-keys"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 3,
+          "detail": "ran a#build, expected it replayed or left out"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "cache/output-globs-reordered-replays",
+      "ref": "1qtw68",
+      "category": "cache",
+      "kind": "efficiency",
+      "title": "Listing the same output globs in another order replays the task and restores both trees",
+      "why": "The outputs are a set of paths, and their order in the config says nothing about what the task writes. A tool that keys the list as written rebuilds after a reorder that changed nothing. The replay must still restore every declared tree.",
+      "from": [
+        "stable-keys",
+        "output-dirs"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 4,
+          "detail": "ran a#build, expected it replayed or left out"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "fail",
+          "step": 4,
+          "detail": "ran a#build, expected it replayed or left out"
+        },
+        "moon": {
+          "status": "fail",
+          "step": 4,
+          "detail": "ran a#build, expected it replayed or left out"
+        }
+      }
+    },
+    {
+      "id": "cache/depends-on-reordered-replays",
+      "ref": "z0dzt4",
+      "category": "cache",
+      "kind": "efficiency",
+      "title": "Listing the same dependencies in another order replays the task",
+      "why": "The dependencies of a task are a set: each must run first, whatever order they are written in. The task reads the same inputs and the same upstream results either way. Rebuilding after a reorder throws away a valid entry for an edit that changed nothing.",
+      "from": [
+        "stable-keys",
+        "key-fold"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "fail",
+          "step": 3,
+          "detail": "ran a#build, expected it replayed or left out"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
       "id": "inputs/case-twin-tracked-edit-reruns",
       "ref": "swrlic",
       "category": "inputs",
@@ -68069,6 +68691,86 @@
           "status": "fail",
           "step": 1,
           "detail": "did not finish within 30 s"
+        }
+      }
+    },
+    {
+      "id": "failure/run-with-sigint-ignored-runs-through-ctrl-c",
+      "ref": "qkisbb",
+      "category": "failure",
+      "kind": "correctness",
+      "title": "A run a script started in the background, with SIGINT ignored, runs on through Ctrl-C",
+      "why": "A shell script that starts a job with `&` hands it SIGINT ignored, so that Ctrl-C at the terminal stops the script’s foreground work and leaves the background job alone. A runner that installs its own SIGINT handler over the inherited ignore stops a job its user deliberately shielded. The run finishes its task and exits 0.",
+      "from": [
+        "task-tree-kill",
+        "signal-handling"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 1,
+          "detail": "packages/app/done.txt is missing, expected \"done\\n\""
+        },
+        "nx": {
+          "status": "fail",
+          "step": 1,
+          "detail": "exited 130, expected success"
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 1,
+          "detail": "exited 130, expected success"
+        },
+        "nix": {
+          "status": "fail",
+          "step": 1,
+          "detail": "exited 1, expected success"
+        },
+        "moon": {
+          "status": "fail",
+          "step": 1,
+          "detail": "exited 130, expected success"
+        }
+      }
+    },
+    {
+      "id": "failure/build-failure-leaves-a-requested-server-running",
+      "ref": "lyqzts",
+      "category": "failure",
+      "kind": "correctness",
+      "title": "Without fail-fast, a build that fails does not stop the dev server running beside it",
+      "why": "A failure skips what depends on it, and nothing else, unless the user asked to fail fast. A dev server that does not depend on the broken build should stay up, so the user can fix the build without starting the server again. The run fails once it is stopped, but the server stays up until then.",
+      "from": [
+        "held-persistent",
+        "persistent"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 1,
+          "detail": "packages/app/outlived is missing, expected \"\""
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "Vite Task has no long-running task it stops when the run ends."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "A derivation is a build that ends: Nix has no long-running task."
+        },
+        "moon": {
+          "status": "fail",
+          "step": 1,
+          "detail": "left running: sleep 60"
         }
       }
     },

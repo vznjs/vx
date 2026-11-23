@@ -1362,10 +1362,6 @@ export default [
       { run: 'build', expect: { exit: 0, files: { [out('a')]: 'a\n' } } },
     ],
   }),
-] as Case[]
-
-// vx keys the lists as written: each of these reorders reruns the task.
-export const pending: Case[] = [
   // Turborepo hashes the resolved file set, not the order globs are listed in
   defineCase({
     id: 'cache/input-globs-reordered-replays',
@@ -1493,4 +1489,6 @@ export const pending: Case[] = [
       { run: 'build', expect: { exit: 0, notRan: ['a#build'] } },
     ],
   }),
-]
+] as Case[]
+
+export const pending: Case[] = []

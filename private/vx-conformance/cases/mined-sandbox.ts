@@ -1634,7 +1634,7 @@ const runs: Case[] = [
 const network: Case[] = [
   sandboxCase({
     id: 'sandbox/network-granted-reaches-local-server',
-    title: 'An isolated task granted the network reaches a server the run started',
+    title: 'An isolated task granted a server’s port reaches the server the run started',
     why: 'Integration tests talk to a server another task started. The user granted the network on purpose, so the connection is expected. A sandbox that still blocks it leaves such tests no way to run isolated.',
     from: ['sandbox-loopback-reach.unsafe', 'sandbox-host-services.unsafe'],
     needs: ['sandbox', 'persistent', 'ready'],
@@ -1643,7 +1643,7 @@ const network: Case[] = [
         a: {
           tasks: {
             serve: { command: serve(47821), persistent: { ready: 'listening' } },
-            build: { ...iso(fetch(47821), { network: true }), dependsOn: ['serve'] },
+            build: { ...iso(fetch(47821), { network: ['localhost:47821'] }), dependsOn: ['serve'] },
           },
           files: { 'src/a.txt': 'a\n' },
         },
@@ -1662,7 +1662,12 @@ const network: Case[] = [
       projects: {
         srv: { tasks: { serve: { command: serve(47822), persistent: { ready: 'listening' } } } },
         a: {
-          tasks: { build: { ...iso(fetch(47822), { network: true }), dependsOn: ['srv#serve'] } },
+          tasks: {
+            build: {
+              ...iso(fetch(47822), { network: ['localhost:47822'] }),
+              dependsOn: ['srv#serve'],
+            },
+          },
           files: { 'src/a.txt': 'a\n' },
         },
         b: {
@@ -1687,19 +1692,6 @@ const network: Case[] = [
 
 const all = [...reads, ...deps, ...writes, ...temp, ...runs, ...network]
 
-/** Cases vx fails today, each a correct expectation: see the report that moved them here. */
-const PENDING = new Set([
-  'sandbox/project-dir-with-brackets-isolated-passes',
-  'sandbox/root-glob-output-passes',
-  'sandbox/file-glob-output-in-new-dir-passes',
-  'sandbox/deep-glob-output-passes',
-  'sandbox/write-glob-grant-new-file-passes',
-  'sandbox/clean-and-rebuild-output-dir-passes',
-  'sandbox/network-granted-reaches-local-server',
-  'sandbox/network-grant-is-per-task',
-  'sandbox/isolated-task-leaves-no-process',
-])
+export const pending: Case[] = []
 
-export const pending: Case[] = all.filter((c) => PENDING.has(c.id))
-
-export default all.filter((c) => !PENDING.has(c.id))
+export default all

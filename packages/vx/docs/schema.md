@@ -1887,7 +1887,13 @@ newline) is refused at load on every platform: the Linux report of a
 write spells a tab as a space, so a write the grant covers read as a
 violation of `a b`, and a refused write to `a b` would read the same.
 
-A Linux WRITE glob's directory that no read grant shows is not bound.
+A Linux WRITE glob's directory in the task's own directory is bound
+writable, made first when missing (`*.js` at the project root,
+`dist/*.js` before `dist` exists, `dist/**/*.js`), and judged as a
+widened file grant's directory is (below): a read or write there that no
+grant covers is a violation. Until 2026-11-23 it was bound only where a
+read grant showed it, and a new match failed the task.
+Elsewhere, a glob's directory that no read grant shows is not bound.
 Where the host's read-only root holds it (outside the workspace), or
 binding it would make a nested project or `.git` writable (`*.log` in a
 root project), a glob matching nothing at the start mounts nothing: the
@@ -2163,14 +2169,19 @@ task, never counted, with a grant for each refused write (a refused
 `mkdir ~/.cache` is granted as `'~/.cache/'`, never home itself). The
 remedy is to declare it: `allow: { write: [...] }`.
 
-**A write grant cannot be removed on Linux.** A directory grant is
-mounted in place, so `rm -rf dist && tsc` under `write: ['dist/']`
-empties `dist` and then fails with `Read-only file system`; a failed
-task names the grant, whether it said so on stderr or, as Playwright
-does, on stdout. Remove its contents instead: `rm -rf dist/*`. A tool
-that removes its own output directory writes one inside the grant:
-`playwright test --output test-results/run` under
-`write: ['test-results/']`.
+**A task may remove its own output directory.** `rm -rf dist && tsc`
+under `write: ['dist/']` and `outputs.files: ['dist/**']` works on Linux
+too. A directory grant in the task's directory that its outputs claim
+whole (`dist/**`, no `!dist/...` exclusion) is copied into vx's staging
+(`.vx/tmp/`) as hard links, so no bytes are copied. The staging is
+mounted as the task's directory, and after the task its copy replaces
+the host's. The host's directory is untouched while the task runs, so a
+concurrent task still reads it and a killed run loses nothing. Until
+2026-11-23 the grant was mounted in place and the removal failed with
+`Read-only file system`. It is still mounted in place where the task's
+directory is itself granted (`write: ['.']`, or a file grant there) or
+no output claims the whole directory. There, remove its contents instead
+(`rm -rf dist/*`); a failed task names the grant.
 
 **The boundary is the workspace root.** A task may not leave its own
 project, so every sibling project and every root file is denied. Being
