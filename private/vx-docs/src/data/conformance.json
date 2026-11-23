@@ -1,6 +1,6 @@
 {
   "coverage": {
-    "ported": 393,
+    "ported": 394,
     "rest": {
       "pending": [
         "affected-config-tasks",
@@ -352,7 +352,6 @@
         "vx-history/unknown-options",
         "vx-history/url-masked",
         "vx-lockfile/bun-catalog-precise",
-        "vx-lockfile/bun-patch-precise",
         "vx-lockfile/discover-parity",
         "vx-lockfile/entry-shapes",
         "vx-lockfile/io-refusals",
@@ -1026,7 +1025,12 @@
     "moon fetched no toolchain plugins (exit 1, found none), so it runs without them:\nError: plugin::loader::registry::load_failure\n\n  × Failed to load plugin from ghcr.io/moonrepo/bun_toolchain:1.0.5 registry.\n  ├─▶ error sending request for url (https://ghcr.io/v2/moonrepo/\n  │   bun_toolchain/blobs/\n  │   sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a)\n  ├─▶ client error (Connect)\n  ╰─▶ tunnel error: unsuccessful\n\n",
     "moon failed 1 of 1 cases; one: ran app#test, expected it replayed or left out\n$ /home/user/vx/private/vx-conformance/node_modules/.latest-514/node_modules/@moonrepo/core-linux-x64-gnu/moon run :test --affected --base HEAD~1 --downstream deep --include-relations\n▮▮▮▮ lib:test (e2312194)\n▮▮▮▮ lib:build (d5df1879)\nlib:test | lib2\n▮▮▮▮ lib:test (6ms, e2312194)\n▮▮▮▮ lib:build (8ms, d5df1879)\n▮▮▮▮ app:test (fefbffd6)\napp:test | app\n▮▮▮▮ app:test (5ms, fefbffd6)\n\nTasks: 3 completed\n Time: 57ms\n\n",
     "moon fetched no toolchain plugins (exit 1, found system-ad7abb72e596dcc556ad0fc2e87dcb23949f91d8280fc61c94cfec6224695c59.wasm), so it runs without them:\nError: plugin::loader::registry::load_failure\n\n  × Failed to load plugin from ghcr.io/moonrepo/bun_toolchain:1.0.5 registry.\n  ├─▶ error sending request for url (https://ghcr.io/v2/moonrepo/\n  │   bun_toolchain/blobs/\n  │   sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a)\n  ├─▶ client error (Connect)\n  ╰─▶ tunnel error: unsuccessful\n\n",
-    "nx failed 1 of 1 cases; one: packages/a/dist/out.txt is \"1\\n\", expected \"2\\n\"\n$ /tmp/conf-nx-wl97zi/node_modules/.bin/nx run-many -t build --outputStyle=stream\n\n NX   Running target build for project a:\n\n- a\n\n\n\n> nx run a:build  [local cache]\n\n> printf '+%s\\n' 'a#build' >> ../../.ran && (mkdir -p dist ../../.home/meet && n=$(cat ../../.home/meet/n 2>/dev/null || echo 0) && n=$((n+1)) && echo $n > ../../.home/meet/n && echo $n > dist/out.txt) && printf -- '-%s\\n' 'a#build' >> ../../.ran\r\n\r\n\n\n\n NX   Successfully ran target build for project a\n\nNx read the output from the cache instead of running the command for 1 out of 1 tasks.\n\n  Run duration:      3ms\n  Cache:             1/1 hit (100%)\n  Critical path:     1ms (1 task)\n  Recoverable time:  <1ms\n"
+    "nx failed 1 of 1 cases; one: packages/a/dist/out.txt is \"1\\n\", expected \"2\\n\"\n$ /tmp/conf-nx-wl97zi/node_modules/.bin/nx run-many -t build --outputStyle=stream\n\n NX   Running target build for project a:\n\n- a\n\n\n\n> nx run a:build  [local cache]\n\n> printf '+%s\\n' 'a#build' >> ../../.ran && (mkdir -p dist ../../.home/meet && n=$(cat ../../.home/meet/n 2>/dev/null || echo 0) && n=$((n+1)) && echo $n > ../../.home/meet/n && echo $n > dist/out.txt) && printf -- '-%s\\n' 'a#build' >> ../../.ran\r\n\r\n\n\n\n NX   Successfully ran target build for project a\n\nNx read the output from the cache instead of running the command for 1 out of 1 tasks.\n\n  Run duration:      3ms\n  Cache:             1/1 hit (100%)\n  Critical path:     1ms (1 task)\n  Recoverable time:  <1ms\n",
+    "moon fetched no toolchain plugins (exit 1, found system-ad7abb72e596dcc556ad0fc2e87dcb23949f91d8280fc61c94cfec6224695c59.wasm), so it runs without them:\nError: plugin::loader::registry::load_failure\n\n  × Failed to load plugin from ghcr.io/moonrepo/bun_toolchain:1.0.5 registry.\n  ├─▶ error sending request for url (https://ghcr.io/v2/moonrepo/\n  │   bun_toolchain/blobs/\n  │   sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a)\n  ├─▶ client error (Connect)\n  ╰─▶ tunnel error: unsuccessful\n\n",
+    "nx failed 28 of 47 cases; one: ran a#build, expected it replayed or left out\n$ /tmp/conf-nx-HYeEOV/node_modules/.bin/nx affected -t build --base=HEAD~1 --outputStyle=stream\n\n NX   Running target build for 3 projects:\n\n- a\n- b\n- c\n\n\n\n> nx run b:build\n\n\n> nx run a:build\n\n\n> nx run c:build\n\n\n\n\n NX   Successfully ran target build for 3 projects\n\n\n  Run duration:      25ms\n  Cache:             0/3 hit (0%)\n  Critical path:     22ms (1 task)\n  Recoverable time:  <1ms\n",
+    "vite-task failed 26 of 47 cases; one: did not run a#build\n$ /tmp/conf-vite-task-D8m1rY/node_modules/.bin/vp run -r build\n~/packages/a$ printf '+%s\\n' 'a#build' >> ../../.ran && (mkdir -p dist && cat node_modules/x/v.txt > dist/out.txt) && printf -- '-%s\\n' 'a#build' >> ../../.ran ◉ cache hit, replaying\n\n~/packages/b$ printf '+%s\\n' 'b#build' >> ../../.ran && (mkdir -p dist && cat node_modules/y/v.txt > dist/out.txt) && printf -- '-%s\\n' 'b#build' >> ../../.ran ◉ cache hit, replaying\n\n~/packages/c$ printf '+%s\\n' 'c#build' >> ../../.ran && (mkdir -p dist && cat node_modules/x/v.txt node_modules/b/node_modules/y/v.txt > dist/out.txt) && printf -- '-%s\\n' 'c#build' >> ../../.ran ◉ cache hit, replaying\n\n---\nvp run: 3/3 cache hit (100%), 3/3 successful, 26ms saved. (Run `vp run --last-details` for full details)\n",
+    "moon failed 30 of 47 cases; one: did not run b#build, c#build\n$ /home/user/vx/private/vx-conformance/node_modules/.latest-10340/node_modules/@moonrepo/core-linux-x64-gnu/moon run :build --affected --base HEAD~1 --downstream deep --include-relations\n\n│ CAUTION\n│ No tasks affected by changed files. Unable to execute\n│ action pipeline.\n│ For targets :build.\n\n",
+    "moon fetched no toolchain plugins (exit 1, found system-ad7abb72e596dcc556ad0fc2e87dcb23949f91d8280fc61c94cfec6224695c59.wasm), so it runs without them:\nError: plugin::loader::registry::load_failure\n\n  × Failed to load plugin from ghcr.io/moonrepo/bun_toolchain:1.0.5 registry.\n  ├─▶ error sending request for url (https://ghcr.io/v2/moonrepo/\n  │   bun_toolchain/blobs/\n  │   sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a)\n  ├─▶ client error (Connect)\n  ╰─▶ tunnel error: unsuccessful\n\n"
   ],
   "tools": {
     "vx": "this commit",
@@ -1039,19 +1043,19 @@
   "scores": {
     "vx": {
       "all": {
-        "pass": 2086,
-        "can": 2086,
-        "of": 2161
+        "pass": 2094,
+        "can": 2094,
+        "of": 2169
       },
       "correctness": {
-        "pass": 1684,
-        "can": 1684,
-        "of": 1751
+        "pass": 1689,
+        "can": 1689,
+        "of": 1756
       },
       "efficiency": {
-        "pass": 313,
-        "can": 313,
-        "of": 320
+        "pass": 316,
+        "can": 316,
+        "of": 323
       },
       "data": {
         "pass": 89,
@@ -1059,9 +1063,9 @@
         "of": 90
       },
       "graph": {
-        "pass": 311,
-        "can": 311,
-        "of": 318
+        "pass": 312,
+        "can": 312,
+        "of": 319
       },
       "config": {
         "pass": 87,
@@ -1069,24 +1073,24 @@
         "of": 87
       },
       "failure": {
-        "pass": 151,
-        "can": 151,
-        "of": 164
+        "pass": 152,
+        "can": 152,
+        "of": 165
       },
       "affected": {
-        "pass": 182,
-        "can": 182,
-        "of": 182
+        "pass": 184,
+        "can": 184,
+        "of": 184
       },
       "cache": {
-        "pass": 100,
-        "can": 100,
-        "of": 123
+        "pass": 101,
+        "can": 101,
+        "of": 124
       },
       "inputs": {
-        "pass": 472,
-        "can": 472,
-        "of": 484
+        "pass": 475,
+        "can": 475,
+        "of": 487
       },
       "env": {
         "pass": 145,
@@ -1116,19 +1120,19 @@
     },
     "turbo": {
       "all": {
-        "pass": 1358,
-        "can": 1825,
-        "of": 2161
+        "pass": 1372,
+        "can": 1833,
+        "of": 2169
       },
       "correctness": {
-        "pass": 1095,
-        "can": 1437,
-        "of": 1751
+        "pass": 1106,
+        "can": 1442,
+        "of": 1756
       },
       "efficiency": {
-        "pass": 233,
-        "can": 304,
-        "of": 320
+        "pass": 236,
+        "can": 307,
+        "of": 323
       },
       "data": {
         "pass": 30,
@@ -1136,34 +1140,34 @@
         "of": 90
       },
       "graph": {
-        "pass": 195,
-        "can": 267,
-        "of": 318
+        "pass": 196,
+        "can": 268,
+        "of": 319
       },
       "config": {
-        "pass": 55,
+        "pass": 53,
         "can": 72,
         "of": 87
       },
       "failure": {
-        "pass": 60,
-        "can": 102,
-        "of": 164
+        "pass": 61,
+        "can": 103,
+        "of": 165
       },
       "affected": {
-        "pass": 141,
-        "can": 181,
-        "of": 182
+        "pass": 144,
+        "can": 183,
+        "of": 184
       },
       "cache": {
-        "pass": 82,
-        "can": 99,
-        "of": 123
+        "pass": 83,
+        "can": 100,
+        "of": 124
       },
       "inputs": {
-        "pass": 327,
-        "can": 468,
-        "of": 484
+        "pass": 337,
+        "can": 471,
+        "of": 487
       },
       "env": {
         "pass": 132,
@@ -1193,19 +1197,19 @@
     },
     "nx": {
       "all": {
-        "pass": 1372,
-        "can": 1859,
-        "of": 2161
+        "pass": 1375,
+        "can": 1867,
+        "of": 2169
       },
       "correctness": {
-        "pass": 1066,
-        "can": 1462,
-        "of": 1751
+        "pass": 1068,
+        "can": 1467,
+        "of": 1756
       },
       "efficiency": {
-        "pass": 276,
-        "can": 314,
-        "of": 320
+        "pass": 277,
+        "can": 317,
+        "of": 323
       },
       "data": {
         "pass": 30,
@@ -1213,9 +1217,9 @@
         "of": 90
       },
       "graph": {
-        "pass": 229,
-        "can": 268,
-        "of": 318
+        "pass": 230,
+        "can": 269,
+        "of": 319
       },
       "config": {
         "pass": 39,
@@ -1223,24 +1227,24 @@
         "of": 87
       },
       "failure": {
-        "pass": 81,
-        "can": 112,
-        "of": 164
+        "pass": 82,
+        "can": 113,
+        "of": 165
       },
       "affected": {
         "pass": 122,
-        "can": 182,
-        "of": 182
+        "can": 184,
+        "of": 184
       },
       "cache": {
-        "pass": 78,
-        "can": 91,
-        "of": 123
+        "pass": 79,
+        "can": 92,
+        "of": 124
       },
       "inputs": {
         "pass": 342,
-        "can": 484,
-        "of": 484
+        "can": 487,
+        "of": 487
       },
       "env": {
         "pass": 134,
@@ -1270,19 +1274,19 @@
     },
     "vite-task": {
       "all": {
-        "pass": 1012,
-        "can": 1437,
-        "of": 2161
+        "pass": 1014,
+        "can": 1442,
+        "of": 2169
       },
       "correctness": {
-        "pass": 853,
-        "can": 1153,
-        "of": 1751
+        "pass": 855,
+        "can": 1158,
+        "of": 1756
       },
       "efficiency": {
         "pass": 150,
         "can": 206,
-        "of": 320
+        "of": 323
       },
       "data": {
         "pass": 9,
@@ -1290,9 +1294,9 @@
         "of": 90
       },
       "graph": {
-        "pass": 177,
-        "can": 224,
-        "of": 318
+        "pass": 178,
+        "can": 225,
+        "of": 319
       },
       "config": {
         "pass": 49,
@@ -1300,24 +1304,24 @@
         "of": 87
       },
       "failure": {
-        "pass": 61,
-        "can": 81,
-        "of": 164
+        "pass": 62,
+        "can": 82,
+        "of": 165
       },
       "affected": {
         "pass": 0,
         "can": 0,
-        "of": 182
+        "of": 184
       },
       "cache": {
         "pass": 68,
         "can": 79,
-        "of": 123
+        "of": 124
       },
       "inputs": {
         "pass": 311,
-        "can": 469,
-        "of": 484
+        "can": 472,
+        "of": 487
       },
       "env": {
         "pass": 132,
@@ -1347,19 +1351,19 @@
     },
     "nix": {
       "all": {
-        "pass": 1080,
-        "can": 1433,
-        "of": 2161
+        "pass": 1083,
+        "can": 1436,
+        "of": 2169
       },
       "correctness": {
-        "pass": 927,
-        "can": 1174,
-        "of": 1751
+        "pass": 929,
+        "can": 1176,
+        "of": 1756
       },
       "efficiency": {
-        "pass": 143,
-        "can": 179,
-        "of": 320
+        "pass": 144,
+        "can": 180,
+        "of": 323
       },
       "data": {
         "pass": 10,
@@ -1369,7 +1373,7 @@
       "graph": {
         "pass": 103,
         "can": 110,
-        "of": 318
+        "of": 319
       },
       "config": {
         "pass": 39,
@@ -1377,24 +1381,24 @@
         "of": 87
       },
       "failure": {
-        "pass": 60,
-        "can": 91,
-        "of": 164
+        "pass": 61,
+        "can": 92,
+        "of": 165
       },
       "affected": {
         "pass": 0,
         "can": 0,
-        "of": 182
+        "of": 184
       },
       "cache": {
-        "pass": 83,
-        "can": 96,
-        "of": 123
+        "pass": 84,
+        "can": 97,
+        "of": 124
       },
       "inputs": {
-        "pass": 341,
-        "can": 429,
-        "of": 484
+        "pass": 342,
+        "can": 430,
+        "of": 487
       },
       "env": {
         "pass": 122,
@@ -1424,19 +1428,19 @@
     },
     "moon": {
       "all": {
-        "pass": 1265,
-        "can": 1764,
-        "of": 2161
+        "pass": 1268,
+        "can": 1772,
+        "of": 2169
       },
       "correctness": {
-        "pass": 1000,
-        "can": 1401,
-        "of": 1751
+        "pass": 1003,
+        "can": 1406,
+        "of": 1756
       },
       "efficiency": {
         "pass": 230,
-        "can": 273,
-        "of": 320
+        "can": 276,
+        "of": 323
       },
       "data": {
         "pass": 35,
@@ -1444,9 +1448,9 @@
         "of": 90
       },
       "graph": {
-        "pass": 184,
-        "can": 240,
-        "of": 318
+        "pass": 185,
+        "can": 241,
+        "of": 319
       },
       "config": {
         "pass": 60,
@@ -1454,24 +1458,24 @@
         "of": 87
       },
       "failure": {
-        "pass": 91,
-        "can": 140,
-        "of": 164
+        "pass": 92,
+        "can": 141,
+        "of": 165
       },
       "affected": {
         "pass": 143,
-        "can": 182,
-        "of": 182
+        "can": 184,
+        "of": 184
       },
       "cache": {
         "pass": 81,
-        "can": 97,
-        "of": 123
+        "can": 98,
+        "of": 124
       },
       "inputs": {
-        "pass": 345,
-        "can": 484,
-        "of": 484
+        "pass": 346,
+        "can": 487,
+        "of": 487
       },
       "env": {
         "pass": 137,
@@ -21319,9 +21323,7 @@
           "status": "pass"
         },
         "turbo": {
-          "status": "fail",
-          "step": 5,
-          "detail": "did not run a#build"
+          "status": "pass"
         },
         "nx": {
           "status": "fail",
@@ -21361,7 +21363,7 @@
         "turbo": {
           "status": "fail",
           "step": 4,
-          "detail": "did not run b#build, c#build"
+          "detail": "did not run c#build"
         },
         "nx": {
           "status": "fail",
@@ -21433,7 +21435,7 @@
         "turbo": {
           "status": "fail",
           "step": 4,
-          "detail": "did not run b#build"
+          "detail": "did not run c#build"
         },
         "nx": {
           "status": "fail",
@@ -21540,9 +21542,7 @@
           "status": "pass"
         },
         "turbo": {
-          "status": "fail",
-          "step": 4,
-          "detail": "did not run a#build"
+          "status": "pass"
         },
         "nx": {
           "status": "fail",
@@ -22115,9 +22115,7 @@
           "status": "pass"
         },
         "turbo": {
-          "status": "fail",
-          "step": 4,
-          "detail": "did not run n#build"
+          "status": "pass"
         },
         "nx": {
           "status": "fail",
@@ -22394,9 +22392,7 @@
           "status": "pass"
         },
         "turbo": {
-          "status": "fail",
-          "step": 4,
-          "detail": "did not run lib#build"
+          "status": "pass"
         },
         "nx": {
           "status": "fail",
@@ -22547,9 +22543,7 @@
           "status": "pass"
         },
         "turbo": {
-          "status": "fail",
-          "step": 4,
-          "detail": "did not run lib#build"
+          "status": "pass"
         },
         "nx": {
           "status": "pass"
@@ -22690,9 +22684,7 @@
           "status": "pass"
         },
         "turbo": {
-          "status": "fail",
-          "step": 4,
-          "detail": "did not run lib#build"
+          "status": "pass"
         },
         "nx": {
           "status": "pass"
@@ -22768,9 +22760,7 @@
           "status": "pass"
         },
         "turbo": {
-          "status": "fail",
-          "step": 4,
-          "detail": "did not run a#build"
+          "status": "pass"
         },
         "nx": {
           "status": "pass"
@@ -22806,9 +22796,7 @@
           "status": "pass"
         },
         "turbo": {
-          "status": "fail",
-          "step": 4,
-          "detail": "did not run a#build"
+          "status": "pass"
         },
         "nx": {
           "status": "fail",
@@ -31460,9 +31448,7 @@
           "status": "pass"
         },
         "turbo": {
-          "status": "fail",
-          "step": 6,
-          "detail": "ran a#test, b#test, expected it replayed or left out"
+          "status": "pass"
         },
         "nx": {
           "status": "fail",
@@ -35655,7 +35641,8 @@
           "status": "pass"
         },
         "turbo": {
-          "status": "pass"
+          "status": "fail",
+          "detail": "harness: SyntaxError: JSON Parse error: Unexpected token '}'"
         },
         "nx": {
           "status": "pass"
@@ -50421,7 +50408,8 @@
           "status": "pass"
         },
         "turbo": {
-          "status": "pass"
+          "status": "fail",
+          "detail": "harness: SyntaxError: JSON Parse error: Unexpected EOF"
         },
         "nx": {
           "status": "pass"
@@ -72296,12 +72284,12 @@
         "nx": {
           "status": "fail",
           "step": 4,
-          "detail": "exited 1, expected success"
+          "detail": "app#build started before lib#build finished"
         },
         "vite-task": {
           "status": "fail",
           "step": 4,
-          "detail": "app#build started before lib#build finished"
+          "detail": "exited 1, expected success"
         },
         "nix": {
           "status": "n/a",
@@ -76765,6 +76753,293 @@
         },
         "moon": {
           "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "cache/tasks-named-dev-and-start-replay",
+      "ref": "gn7gea",
+      "category": "cache",
+      "kind": "efficiency",
+      "title": "Cached tasks named `dev` and `start` replay like any other task",
+      "why": "A task’s name is the user’s label, not a statement about what it does. Names like `dev` and `start` often belong to dev servers, but here they are plain builds the user marked cacheable. A runner that treats those names as long-running and never stores them reruns work the user asked it to keep.",
+      "from": [
+        "cache"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "`vp run` runs one task name per run."
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "fail",
+          "step": 3,
+          "detail": "ran a#dev, a#start, expected it replayed or left out"
+        }
+      }
+    },
+    {
+      "id": "inputs/close-brace-before-open-brace-is-a-name",
+      "ref": "p9cdpl",
+      "category": "inputs",
+      "kind": "correctness",
+      "title": "An input `src/a}{b.txt` keys the file of that name",
+      "why": "A `}` before any `{` closes nothing, and a `{` with no `}` after it opens nothing, so both are plain characters of the name. File names carry braces from templating tools and copied paths. A runner that rejects the pattern, or reads it as a broken alternative that matches nothing, either fails the run or replays a build of an edited file.",
+      "from": [
+        "contract-task-globs"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 1,
+          "detail": "exited 1, expected success"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 1,
+          "detail": "exited 1, expected success"
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 1,
+          "detail": "exited 1, expected success"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "graph/removed-dependency-project-is-not-brought-back",
+      "ref": "4davou",
+      "category": "graph",
+      "kind": "correctness",
+      "title": "Once a new dependency project is deleted again, the next run builds without it and does not bring it back",
+      "why": "Undoing a change is ordinary: a project added on a branch and then thrown away is gone. The run after it must plan from the workspace as it stands now. A runner that remembers the deleted project from an earlier graph either fails on a dependency that no longer exists or writes its directory back.",
+      "from": [
+        "discover-stage",
+        "vx-lockfile/deleted-project"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "Nix reads no package.json or lockfile and installs nothing into node_modules: what a build depends on is written in Nix."
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "failure/task-editing-gitignore-still-fails",
+      "ref": "uk55jt",
+      "category": "failure",
+      "kind": "correctness",
+      "title": "A task that edits the root .gitignore and then fails still fails the run",
+      "why": "Tools write ignore rules: a generator adds its output folder, a setup step adds a cache directory. A change to which files git ignores is not a reason to stop judging the task’s exit code. A run that loses track of the failure and reports success lets a broken build through CI.",
+      "from": [
+        "failure-mode"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "inputs/dependency-patch-edit-reruns-its-reader",
+      "ref": "mvt2lr",
+      "category": "inputs",
+      "kind": "correctness",
+      "title": "Editing the patch applied to an installed package, and installing, runs the task reading it again",
+      "why": "A patch is part of the installed package: after the install, the files the task reads hold the patched bytes. The lockfile names the patch file but not what it says, so a key built only from the lockfile sees nothing change. The task must run again, or it replays a build of the old patch.",
+      "from": [
+        "vx-lockfile/bun-patch-precise"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 8,
+          "detail": "did not run a#build"
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 8,
+          "detail": "did not run a#build"
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "Nix reads no package.json or lockfile and installs nothing into node_modules: what a build depends on is written in Nix."
+        },
+        "moon": {
+          "status": "fail",
+          "step": 8,
+          "detail": "did not run a#build"
+        }
+      }
+    },
+    {
+      "id": "inputs/removed-dependency-reruns-only-its-project",
+      "ref": "ukw7h9",
+      "category": "inputs",
+      "kind": "correctness",
+      "title": "Removing an external dependency from one project runs that project’s task again, and no other",
+      "why": "The project that dropped the package no longer has it installed, so what its task reads changed. The project that still takes the same package installs exactly what it did before. Rerunning it, or every project, because the lockfile lost an entry wastes the run on work that cannot differ.",
+      "from": [
+        "vx-lockfile/closure-per-project"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 4,
+          "detail": "did not run a#build"
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 4,
+          "detail": "did not run a#build"
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "Nix reads no package.json or lockfile and installs nothing into node_modules: what a build depends on is written in Nix."
+        },
+        "moon": {
+          "status": "fail",
+          "step": 4,
+          "detail": "did not run a#build"
+        }
+      }
+    },
+    {
+      "id": "affected/removed-dependency-selects-only-its-project",
+      "ref": "j9ad41",
+      "category": "affected",
+      "kind": "efficiency",
+      "title": "A committed removal of one project’s external dependency selects that project alone",
+      "why": "Only the project that dropped the package installs anything different. Another project still taking the same package, and one that never took it, are untouched. Selecting every project because the lockfile changed turns a dependency cleanup into a full CI run.",
+      "from": [
+        "vx-lockfile/closure-per-project",
+        "affected"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 4,
+          "detail": "ran b#build, c#build, expected it replayed or left out"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "Vite Task does not select tasks by what git says changed."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build builds the attributes it is named: no git change selects them. Nix reads no package.json or lockfile and installs nothing into node_modules: what a build depends on is written in Nix."
+        },
+        "moon": {
+          "status": "fail",
+          "step": 4,
+          "detail": "did not run a#build"
+        }
+      }
+    },
+    {
+      "id": "affected/added-dependency-selects-only-its-project",
+      "ref": "weyay9",
+      "category": "affected",
+      "kind": "efficiency",
+      "title": "A committed new external dependency of one project selects that project alone",
+      "why": "Adding a package changes what that one project installs. The project that already took the same package resolves it exactly as before, and a project without it is untouched. A lockfile change is a change to the projects whose dependencies it holds, not to all of them.",
+      "from": [
+        "vx-lockfile/closure-per-project",
+        "affected"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 4,
+          "detail": "ran a#build, c#build, expected it replayed or left out"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "Vite Task does not select tasks by what git says changed."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build builds the attributes it is named: no git change selects them. Nix reads no package.json or lockfile and installs nothing into node_modules: what a build depends on is written in Nix."
+        },
+        "moon": {
+          "status": "fail",
+          "step": 4,
+          "detail": "did not run b#build"
         }
       }
     }
