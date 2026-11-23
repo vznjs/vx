@@ -899,7 +899,7 @@ describe('output negation', () => {
       // `*/**` reaches every dir the negations do not name; committed files
       // there are taken back, untracked ones are cleaned (EA, 2026-10-14:
       // nx()'s rule), and the sources under `src` survive a real run.
-      // Every declared output is required, so each build writes `.medusa`.
+      // A wildcard output may match nothing; each build writes `.medusa` so its restore is covered.
       await pkg('lib', {
         build: 'mkdir -p dist .medusa && echo lib > dist/lib.js && echo m > .medusa/m',
       })
