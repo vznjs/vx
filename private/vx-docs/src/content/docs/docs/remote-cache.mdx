@@ -330,15 +330,15 @@ Each plugin's options are on its page: [`@vzn/vx-migrate`](../../plugins/vx-migr
 
 ### `vxCache()` options
 
-| Option | Default | What it does |
+| Option | What it does | Default |
 | --- | --- | --- |
-| `url` | `VX_CACHE_URL` | The server's URL. `https` only; `http` only to `127.0.0.1`, `::1` or `localhost`. No `?query` or `#fragment`. |
-| `issuer` | required | Your CI's token issuer: `https://token.actions.githubusercontent.com`, `https://gitlab.com` or your GitLab's URL. |
-| `repository` | required | The repository, `org/name`, as `ALLOW` names it. |
-| `timeoutMs` | `30000` | How long a read or check waits for an answer, in ms. A download then must bring at least 1 MiB a second. |
-| `uploadTimeoutMs` | `60000` | The same for an upload: at least 1 MiB a second, then an answer within this time. |
-| `retries` | `2` | How many times a request answered `5xx` or `429`, or cut off, is sent again (0 to 10), 1 s, 2 s, … apart. |
-| `headers` | none | Headers sent on every request, for a proxy in front of the server. An unset value is left out. `authorization`, `content-type`, `content-length` and `vx-*` are refused. |
+| `url` | The server's URL. `https` only; `http` only to `127.0.0.1`, `::1` or `localhost`. No `?query` or `#fragment`. | `VX_CACHE_URL` |
+| `issuer` | Your CI's token issuer: `https://token.actions.githubusercontent.com`, `https://gitlab.com` or your GitLab's URL. | required |
+| `repository` | The repository, `org/name`, as `ALLOW` names it. | required |
+| `timeoutMs` | How long a read or check waits for an answer, in ms. A download then must bring at least 1 MiB a second. | `30000` |
+| `uploadTimeoutMs` | The same for an upload: at least 1 MiB a second, then an answer within this time. | `60000` |
+| `retries` | How many times a request answered `5xx` or `429`, or cut off, is sent again (0 to 10), 1 s, 2 s, … apart. | `2` |
+| `headers` | Headers sent on every request, for a proxy in front of the server. An unset value is left out. `authorization`, `content-type`, `content-length` and `vx-*` are refused. | none |
 
 | Variable | What it does |
 | --- | --- |
@@ -351,14 +351,14 @@ A redirect is not followed: it fails the request and names where it pointed. The
 
 In `.vx/workspace.ts`, under `cache`:
 
-| Setting | Default | What it does |
+| Setting | What it does | Default |
 | --- | --- | --- |
-| `policy` | every layer reads and writes | Which layers a run reads and writes, such as `'local:rw,remote:r'`. Same as `--cache-policy` or `VX_CACHE_POLICY`. |
-| `artifactCeiling` | `'1GiB'` | The largest entry, unpacked, a remote stores or a hit unpacks. Same on every machine. `VX_CACHE_ARTIFACT_CEILING`. |
-| `upload.failures` | `'ci'` | Which runs keep a failed task's log and outputs in the remote: `'ci'`, `'local'` or `'always'`. |
-| `concurrency.download` | min(96, max(cores × 3, 64)) | Downloads at once. `--cache-concurrency-download`. |
-| `concurrency.upload` | min(96, max(cores × 3, 64)) | Uploads at once, per remote. `--cache-concurrency-upload`. |
-| `download` | `'all'` | Which results of tasks run on other machines land here. See [Remote execution](../remote-execution/). |
+| `policy` | Which layers a run reads and writes, such as `'local:rw,remote:r'`. Same as `--cache-policy` or `VX_CACHE_POLICY`. | every layer reads and writes |
+| `artifactCeiling` | The largest entry, unpacked, a remote stores or a hit unpacks. Same on every machine. `VX_CACHE_ARTIFACT_CEILING`. | `'1GiB'` |
+| `upload.failures` | Which runs keep a failed task's log and outputs in the remote: `'ci'`, `'local'` or `'always'`. | `'ci'` |
+| `concurrency.download` | Downloads at once. `--cache-concurrency-download`. | min(96, max(cores × 3, 64)) |
+| `concurrency.upload` | Uploads at once, per remote. `--cache-concurrency-upload`. | min(96, max(cores × 3, 64)) |
+| `download` | Which results of tasks run on other machines land here. See [Remote execution](../remote-execution/). | `'all'` |
 
 Off CI (`CI` unset), vx never writes the remote unless `--cache-policy`, `VX_CACHE_POLICY` or `cache.policy` names it. Each setting is also in the [workspace reference](../../schema/workspace/#settings).
 
