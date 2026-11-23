@@ -102,6 +102,7 @@ execution, plugins) and ends with `<NextStep>` to the next chapter.
 | Starlight `<Steps>`, `<Tabs>` | a sequence to follow; alternatives (bun / pnpm) | |
 | `GraphExplorer` (`../demos/`) | the interactive task graph | the graph pages |
 | `<CacheSim task?>` (`../play/`) | change a file, config or env, run, see hit / miss / up to date and why | caching pages; `import { CacheSim } from '../../../components/play'` |
+| `<TaskGraph task? mode?>` (`../play/`) | the story's tasks as a picture: click one to see what runs first, in waves; edit a file to see what reruns | `mode="order"` (default) or `"rerun"`; `import { TaskGraph } from '../../../components/play'` |
 
 Real output stays ` ```ansi ` pasted from a real run (docs guide M4, M10).
 A Walkthrough frame is the place to put two outputs the reader compares.
