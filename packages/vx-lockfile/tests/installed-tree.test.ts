@@ -177,6 +177,19 @@ describe('bun(): no install record, so the workspaces’ dependencies as Node re
     expect(await run(npm())).toBe(
       'node_modules was installed from a different package-lock.json (node_modules/is-number is not installed, node_modules/.package-lock.json names 7.0.0) — run `npm install`',
     )
+    // A prerelease of the version is not it.
+    await write({
+      'node_modules/.store/is-number@7.0.0-beta.1-9C8BjRcRzDOrS4TE11sgJQ/node_modules/is-number/package.json':
+        pkg('7.0.0-beta.1'),
+    })
+    expect(await run(npm())).toContain('(node_modules/is-number is not installed')
+    // The store holds the version, but the path links another: not installed as recorded.
+    await write({
+      'node_modules/.store/is-number@7.0.0-9C8BjRcRzDOrS4TE11sgJQ/node_modules/is-number/package.json':
+        pkg('7.0.0'),
+      'node_modules/is-number/package.json': pkg('5.0.0'),
+    })
+    expect(await run(npm())).toContain('(node_modules/is-number is 5.0.0,')
   })
 
   it('reads a manifest version with a leading v as the version it cleans to', async () => {
@@ -684,6 +697,23 @@ kleur@4.1.5:
     )
     await write({ 'node_modules/is-number/package.json': pkg('7.0.0') })
     expect(await run(yarn())).toBe('ok')
+    // A catalog edit naming the entry already installed, before the install:
+    // yarn.lock and the state stay as they were, the kept match does not.
+    await write({
+      'yarn.lock': both.replace('is-number: "npm:7.0.0"', 'is-number: "catalog:"'),
+      '.yarnrc.yml': 'catalog:\n  is-number: 6.0.0\n',
+    })
+    await write({ 'node_modules/is-number/package.json': pkg('6.0.0') })
+    const past = new Date(Date.now() - 60_000)
+    for (const rel of ['yarn.lock', '.yarnrc.yml', 'node_modules/.yarn-state.yml']) {
+      await utimes(path.join(root, rel), past, past)
+    }
+    expect(await run(yarn())).toBe('ok')
+    await write({ '.yarnrc.yml': 'catalog:\n  is-number: 7.0.0\n' })
+    expect(await run(yarn())).toBe(
+      "node_modules was installed from a different yarn.lock (packages/a's is-number is 6.0.0, the lockfile names 7.0.0) — run `yarn install`",
+    )
+    await write({ 'yarn.lock': both, '.yarnrc.yml': '' })
     // A focused install leaves the workspace out of the state: not checked.
     await write({
       'node_modules/is-number/package.json': pkg('6.0.0'),

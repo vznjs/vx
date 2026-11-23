@@ -519,7 +519,8 @@ export function directVersions(
       const versions = new Set<string>()
       for (const target of resolveDescriptor(lock, id, name, range, catalogs)) {
         const e = lock.entries.get(target)!
-        versions.add(/@(?:npm|patch):/.test(e.resolution) ? e.version : '\0')
+        const locator = e.resolution.slice(0, e.resolution.indexOf('\0'))
+        versions.add(/^.[^@]*@(?:npm|patch):/.test(locator) ? e.version : '\0')
       }
       const [version] = versions
       if (versions.size === 1 && version !== '\0') deps.set(name, version!)

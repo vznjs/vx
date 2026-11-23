@@ -72,7 +72,7 @@ function npmCompare(lockText: string, markerText: string, root: string): string 
     const version = obj(raw)['version']
     if (!p.includes('node_modules/') || typeof version !== 'string') continue
     const installed = versionAt(root, p)
-    if (installed !== version && !stored(p, version)) {
+    if (installed !== version && (installed !== undefined || !stored(p, version))) {
       return `${p} is ${installed === undefined ? 'not installed' : String(installed)}, node_modules/.package-lock.json names ${String(version)}`
     }
   }
@@ -131,8 +131,9 @@ function npmStore(root: string): (p: string, version: string) => boolean {
       }
       listed.set(dir, names)
     }
+    // `<name>@<version>-<22 base64url>`: a prerelease's `1.0.0-beta.1-…` is not 1.0.0's.
     const prefix = `${name.slice(slash + 1)}@${version}-`
-    return names.some((n) => n.startsWith(prefix))
+    return names.some((n) => n.startsWith(prefix) && /^[\w-]{22}$/.test(n.slice(prefix.length)))
   }
 }
 
@@ -226,7 +227,7 @@ function yarnBerryCompare(
   lock: import('./yarn.js').Lockfile,
   markerText: string,
   root: string,
-): string | undefined {
+): Verdict {
   const listed = new Set<string>()
   for (const line of markerText.split('\n')) {
     const m = /^"?([^\s"].*?)"?:$/.exec(line)
@@ -234,7 +235,7 @@ function yarnBerryCompare(
     // A virtual locator is its package's, per peer set.
     const locator = m[1]!.replace(/@virtual:[^#]+#/, '@')
     if (!lock.entries.has(locator))
-      return `${locator} is installed, and the lockfile does not list it`
+      return { mismatch: `${locator} is installed, and the lockfile does not list it` }
     listed.add(locator)
   }
   let rc: string | undefined
@@ -254,14 +255,16 @@ function yarnBerryCompare(
         )
         if (installed !== undefined) {
           if (installed !== version)
-            return `${dir}'s ${name} is ${installed}, the lockfile names ${version}`
+            return { mismatch: `${dir}'s ${name} is ${installed}, the lockfile names ${version}` }
           break
         }
         if (d === '.') break
       }
     }
   }
-  return undefined
+  // The catalogs it read: an edit naming another entry, before the install,
+  // leaves yarn.lock and the state as they were.
+  return { dirs: [yarnLock().YARNRC] }
 }
 
 /**
@@ -452,12 +455,12 @@ const INSTALL_CHECKS: Readonly<Record<string, InstallCheck>> = {
     ],
     compare: (lock, parse, marker, root) => {
       const parsed = parse(lock) as import('./yarn.js').Lockfile
+      if (marker!.file.endsWith('.yarn-state.yml'))
+        return yarnBerryCompare(parsed, marker!.text, root)
       return {
         mismatch: marker!.file.endsWith('.yarn-integrity')
           ? yarnClassicCompare(parsed, marker!.text)
-          : marker!.file.endsWith('.store')
-            ? yarnStoreCompare(parsed, root)
-            : yarnBerryCompare(parsed, marker!.text, root),
+          : yarnStoreCompare(parsed, root),
       }
     },
   },
