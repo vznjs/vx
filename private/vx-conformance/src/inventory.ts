@@ -1068,6 +1068,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'fixture-helpers',
     'fold-memo',
     'footer-run-id',
+    'footer-time-telemetry',
     'footer-time-uploads',
     'forward-args-frame',
     'frame-big-output',
