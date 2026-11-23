@@ -3343,6 +3343,10 @@ opens it on click), and the lines up to it with a caret under the field
   [2mfix[0m  [1muse command[0m
 ```
 
+On a terminal narrower than a framed line, each line shows the columns
+around the caret, `…` where it was cut, so the caret stays under the
+field.
+
 A value the config imports (`test: testTask`, `...lib()`) is followed to
 the file that declares it, a relative import or a workspace package's,
 and that file is framed, with the configs it reaches as `used by …`:

@@ -14,6 +14,7 @@ import {
 } from '../src/report/framed-output.js'
 import { formatRunSummary } from '../src/report/summary.js'
 import { whatChangedSection } from '../src/cli/why.js'
+import { ui } from '../src/ui/index.js'
 
 const node = (id: string): TaskNode => {
   const [projectName, taskName] = id.split('#')
@@ -230,5 +231,49 @@ describe("vx last's task row with a note, on a narrow terminal", () => {
       expect(lines.length).toBe(1)
       expect(lines[0]!.endsWith('packages/app#build  exit 3')).toBe(true)
     }
+  })
+})
+
+// A refused config's source frame printed its lines whole: a 60-column
+// terminal wrapped a long config line, and the caret under it landed on
+// the wrong character or a row of its own. On a terminal each line now
+// shows the window around the caret, `…` where it was cut.
+describe("a refusal's source frame, on a narrow terminal", () => {
+  const line = `export default { tasks: { build: { exec: { command: 'tsc -p .' }, inputs: { files: ['src/**'] }, outputs: ['dist/**'] } } }`
+  const col = line.indexOf("outputs: ['") + 1
+  const frame = `> 1 | ${line}\n    | ${' '.repeat(col - 1)}^`
+  const draw = (columns?: number): string[] =>
+    ui.code(frame).lines(columns === undefined ? { enabled: false } : { enabled: false, columns })
+
+  it.each([40, 60, 80])('fits %i columns with the caret under its character', (columns) => {
+    const [src, caret] = draw(columns)
+    for (const l of [src!, caret!]) expect(Bun.stringWidth(l)).toBeLessThanOrEqual(columns)
+    expect(src!.slice(caret!.indexOf('^')).startsWith('outputs')).toBe(true)
+    expect(src).toContain('…')
+  })
+
+  it('keeps the caret under its character past wide ones', () => {
+    const wide = `const 名前 = '${'名'.repeat(30)}'; export default { tasks: { 構築: { outputs: [] } } }`
+    const at = wide.indexOf('outputs')
+    const lead = Bun.stringWidth(wide.slice(0, at))
+    for (const columns of [40, 41, 60]) {
+      const [src, caret] = ui
+        .code(`> 1 | ${wide}\n    | ${' '.repeat(lead)}^`)
+        .lines({ enabled: false, columns })
+      expect(Bun.stringWidth(src!)).toBeLessThanOrEqual(columns)
+      const before = Bun.stringWidth(caret!.slice(0, caret!.indexOf('^')))
+      let w = 0
+      let under = ''
+      for (const ch of src!) {
+        if (w === before) under = ch
+        w += Bun.stringWidth(ch)
+      }
+      expect(under).toBe('o')
+    }
+  })
+
+  it('CONTROL: off a terminal, and on a wide one, the line stays whole', () => {
+    for (const lines of [draw(), draw(200)])
+      expect(lines).toEqual([`  > 1 | ${line}`, `      | ${' '.repeat(col - 1)}^`])
   })
 })

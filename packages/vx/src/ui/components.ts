@@ -421,9 +421,50 @@ export function trace(lines: readonly string[]): Block {
   )
 }
 
-/** A source frame (`> 1 | …` and its caret), indented. */
+/**
+ * A source frame (`> 1 | …` and its caret, the last line), indented. A
+ * terminal narrower than a source line wrapped it and the caret pointed at
+ * the wrong character: there each line shows the window around the caret,
+ * `…` where it was cut.
+ */
 export function code(frame: string): Block {
-  return block(() => frame.split('\n').map((l) => (l === '' ? '' : `${INDENT}${l}`)))
+  return block((c) => {
+    const lines = frame.split('\n')
+    const gutter = lines[0]!.indexOf(' | ') + 3
+    const room = c.columns === undefined ? Infinity : c.columns - INDENT.length - gutter
+    const caret = lines.at(-1)!.indexOf('^') - gutter
+    const fits = lines.every((l) => Bun.stringWidth(l.slice(gutter)) <= room)
+    const start = fits ? 0 : Math.max(0, caret - Math.floor((room * 2) / 3))
+    return lines.map((l, i) => {
+      if (l === '') return ''
+      if (fits) return `${INDENT}${l}`
+      const text =
+        i === lines.length - 1
+          ? `${' '.repeat(caret - start)}^`
+          : window(l.slice(gutter), start, room)
+      return `${INDENT}${l.slice(0, gutter)}${text}`.trimEnd()
+    })
+  })
+}
+
+/**
+ * `text`'s columns from `start`, `room` wide, `…` at each end that was cut.
+ * Each kept character stays at its column: a wide one cut in two, or
+ * replaced by the one-column `…`, leaves a space.
+ */
+function window(text: string, start: number, room: number): string {
+  let at = 0
+  const kept: string[] = []
+  for (const ch of text) {
+    const w = Bun.stringWidth(ch)
+    if (at + w > start && at + w <= start + room)
+      kept.push(at < start ? ' '.repeat(at + w - start) : ch)
+    at += w
+  }
+  const mark = (ch: string): string => '…'.padEnd(Bun.stringWidth(ch))
+  if (start > 0 && kept.length > 0) kept[0] = mark(kept[0]!)
+  if (at > start + room && kept.length > 0) kept[kept.length - 1] = mark(kept.at(-1)!)
+  return kept.join('')
 }
 
 export interface NoticeParts {
