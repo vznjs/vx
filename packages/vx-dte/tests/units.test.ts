@@ -4806,6 +4806,11 @@ it('refuses options it does not read and workers it cannot start', () => {
       dte({ workers: { linux: { machines: { s: { cpu: 2, memory: '8GB' } } } }, adapter }),
     ),
   ).toBe('taken')
+  // An adapter passed as workers was walked as worker types:
+  // `dte() option "workers.relay": options must be an object …; got a function`.
+  expect(refusal(() => dte({ workers: local() as never }))).toBe(
+    'dte() option "workers" got an adapter: pass it as adapter, as in dte({ adapter: local(), workers: { linux: { machines: { small: { cpu: 2, memory: \'8GB\' } } } } })',
+  )
   expect(refusal(() => local({ prepar: 'x' } as never))).toContain(
     'local() has unknown option "prepar"',
   )

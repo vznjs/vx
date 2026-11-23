@@ -233,8 +233,16 @@ function proxyHeaders(headers: DteOptions['headers']): Record<string, string> {
   return out
 }
 
+const SIZES_EXAMPLE = "{ linux: { machines: { small: { cpu: 2, memory: '8GB' } } } }"
+
 export function dte(options: DteOptions = {}) {
   refuseUnknownOptions('dte()', options, KEYS)
+  // Walked as worker types, an adapter's methods were refused as
+  // `workers.relay`, naming neither the mistake nor the field.
+  if (typeof (options.workers as { spawn?: unknown } | undefined)?.spawn === 'function')
+    throw new UserError(
+      `dte() option "workers" got an adapter: pass it as adapter, as in dte({ adapter: local(), workers: ${SIZES_EXAMPLE} })`,
+    )
   const headers = proxyHeaders(options.headers)
   const declared = Object.entries(options.workers ?? {}).flatMap(([type, t]) => {
     if (!NAME.test(type)) refuse('workers', NAMED, type)
@@ -334,7 +342,7 @@ export function dte(options: DteOptions = {}) {
   // With none, no worker was ever asked for and the run waited until killed.
   if (adapter !== undefined && !sizes.some((s) => s.max > 0)) {
     throw new UserError(
-      "dte(): workers names no machine the adapter may start (one with max above 0), such as linux: { machines: { small: { cpu: 2, memory: '8GB' } } }",
+      `dte(): workers names no machine the adapter may start (one with max above 0), such as ${SIZES_EXAMPLE.slice(2, -2)}`,
     )
   }
   if (adapter === undefined && options.relay === undefined) {
