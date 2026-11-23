@@ -299,18 +299,19 @@ function everywhereResolutions(root: Record<string, unknown> | undefined): Map<s
  * path) — berry lists the range among the keys, but the name is enough.
  *
  * A Yarn 4 catalog range (`catalog:`, `catalog:<name>`) is recorded as
- * that literal, and the range the catalog names lives in `.yarnrc.yml`,
- * not here: the entry it resolved to is in the file, but nothing points
- * at it. So it resolves to EVERY entry of that package — a bump of any
- * of them moves the workspace, never a bump of none (turborepo#12635).
- * Which one the catalog names is `.yarnrc.yml`'s to say, and core folds
- * that file into every key.
+ * that literal, and the range the catalog names lives in `.yarnrc.yml`
+ * (`catalogs`), not here: the entry it resolved to is in the file, but
+ * nothing points at it. The range `.yarnrc.yml` names resolves as written;
+ * one it does not name, or one the file does not key (an edit not yet
+ * installed), resolves to EVERY entry of that package — a bump of any of
+ * them moves the workspace, never a bump of none (turborepo#12635).
  */
 function resolveDescriptor(
   lock: Lockfile,
   from: string,
   name: string,
   range: string,
+  catalogs?: Catalogs,
 ): readonly string[] {
   // A patched descriptor reaches the patched entries Yarn installs as well as
   // the plain one it keys.
@@ -330,7 +331,14 @@ function resolveDescriptor(
     for (const id of lock.workspaces.values()) if (id.startsWith(`${name}@workspace:`)) return [id]
     return []
   }
-  if (range.startsWith('catalog:')) return lock.names.get(name) ?? []
+  if (range.startsWith('catalog:')) {
+    const named = catalogs?.get(range.slice('catalog:'.length))?.get(name)
+    const keyed =
+      named === undefined || named.startsWith('catalog:')
+        ? []
+        : resolveDescriptor(lock, from, name, named)
+    return keyed.length > 0 ? keyed : (lock.names.get(name) ?? [])
+  }
   if (!range.includes(':')) {
     const bare = lock.descriptors.get(`${name}@npm:${range}`)
     if (bare !== undefined) return withPatch(`${name}@npm:${range}`, bare)
@@ -494,6 +502,28 @@ export function fileDeps(lock: Lockfile, workspace?: (dir: string) => boolean): 
 }
 
 export const YARNRC = '.yarnrc.yml'
+
+/** `.yarnrc.yml`'s catalogs: name (`''` for `catalog`) → package → range. */
+export type Catalogs = ReadonlyMap<string, ReadonlyMap<string, string>>
+
+/** The catalogs `.yarnrc.yml` declares; none from a file that does not parse. */
+export function catalogsOf(rc: string | undefined): Catalogs {
+  const out = new Map<string, ReadonlyMap<string, string>>()
+  let doc: Record<string, unknown> | undefined
+  try {
+    doc = rc === undefined ? undefined : record(Bun.YAML.parse(rc))
+  } catch {
+    return out
+  }
+  if (doc === undefined) return out
+  const ranges = (raw: unknown): ReadonlyMap<string, string> =>
+    depsOf({ dependencies: raw }, ['dependencies'])
+  if (record(doc['catalog']) !== undefined) out.set('', ranges(doc['catalog']))
+  for (const [name, raw] of Object.entries(record(doc['catalogs']) ?? {})) {
+    if (record(raw) !== undefined) out.set(name, ranges(raw))
+  }
+  return out
+}
 
 /** One `packageExtensions` selector (`ident@range`) and the dependencies it adds. */
 export interface Extension {
@@ -693,6 +723,7 @@ export function importerDigests(
   files: ReadonlyMap<string, string> = new Map(),
   extensions: readonly Extension[] = BUILTIN,
   resolutions: readonly Resolution[] = [],
+  catalogs: Catalogs = new Map(),
 ): ReadonlyMap<string, string> {
   const index = new Map<string, number>()
   const material: string[] = []
@@ -709,7 +740,7 @@ export function importerDigests(
   for (const [id, e] of lock.entries) {
     const from = index.get(id)!
     for (const [name, range] of e.deps) {
-      const targets = resolveDescriptor(lock, id, name, range)
+      const targets = resolveDescriptor(lock, id, name, range, catalogs)
       for (const target of targets) edges[from]!.push(index.get(target)!)
       if (targets.length === 0) material[from] += `\nunresolved\0${name}\0${range}`
     }

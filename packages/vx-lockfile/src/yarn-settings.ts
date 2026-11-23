@@ -36,3 +36,26 @@ export function packageSettings(text: string): string | undefined {
   }
   return `yarn-package\0${stable(kept)}`
 }
+
+/**
+ * `.yarnrc.yml` as every task folds it: without `catalog` and `catalogs`,
+ * which the digest reads to resolve each workspace's `catalog:` range to
+ * the yarn.lock entry it names, so a catalog bump re-keys only the
+ * projects reaching that package. Undefined for a file that does not
+ * parse to a mapping, folded whole.
+ */
+export function yarnrcSettings(text: string): string | undefined {
+  let doc: unknown
+  try {
+    doc = Bun.YAML.parse(text)
+  } catch {
+    return undefined
+  }
+  const map = record(doc)
+  if (map === undefined) return undefined
+  const rest: Json = {}
+  for (const [k, v] of Object.entries(map)) {
+    if (k !== 'catalog' && k !== 'catalogs') rest[k] = v
+  }
+  return `yarnrc\0${stable(rest)}`
+}

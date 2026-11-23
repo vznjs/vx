@@ -9,7 +9,13 @@ import { planRun } from '../../vx/tests/helpers/orchestrator.js'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
 import { affectedIds, commitAll, moved } from './helpers/affected.js'
 import { yarn } from '../src/index.js'
-import { importerDigests, importerLinks, parseLockfile, resolutionsOf } from '../src/yarn.js'
+import {
+  catalogsOf,
+  importerDigests,
+  importerLinks,
+  parseLockfile,
+  resolutionsOf,
+} from '../src/yarn.js'
 import { lowHalfGlobals } from './helpers/low-half.js'
 
 const PLUGIN_INDEX = path.resolve(import.meta.dir, '..', 'src', 'index.ts')
@@ -644,6 +650,39 @@ describe('Yarn 4 catalogs (turborepo#12635)', () => {
     )
     expect(gained).not.toBe(catalogLock())
     expect(movedDirs(catalogLock(), gained)).toEqual(['packages/a', 'packages/c'])
+  })
+
+  // `.yarnrc.yml` names the range: the workspace reaches the entry it keys,
+  // not every entry of the package (probed, Yarn 4.19).
+  it('a catalog `.yarnrc.yml` names reaches only the entry its range keys', () => {
+    const rc = 'catalog:\n  is-number: ^7.0.0\ncatalogs:\n  odd:\n    is-even: ^1.0.0\n'
+    const moved = (before: string, after: string): string[] => {
+      const at = (t: string) =>
+        importerDigests(parseLockfile(t), undefined, undefined, undefined, catalogsOf(rc))
+      const [b, a] = [at(before), at(after)]
+      return [...a.keys()].filter((dir) => a.get(dir) !== b.get(dir)).sort()
+    }
+    const lock = catalogLock({ seven: '7.0.0' })
+    const six = lock.replaceAll('is-number@npm:6.0.0', 'is-number@npm:6.0.1')
+    expect(six).not.toBe(lock)
+    // b's is-odd reaches the ^6 entry; a's catalog names ^7.
+    expect(moved(lock, six)).toEqual(['packages/b'])
+    expect(moved(lock, catalogLock({ seven: '7.0.1' }))).toEqual(['packages/a', 'packages/c'])
+    expect(moved(lock, catalogLock({ seven: '7.0.0', isEven: '1.0.1' }))).toEqual(['packages/e'])
+  })
+
+  it('reads no catalog from a `.yarnrc.yml` that does not parse', () => {
+    expect(catalogsOf(undefined).size).toBe(0)
+    expect(catalogsOf('catalog: [').size).toBe(0)
+    expect(
+      [...catalogsOf('catalog:\n  a: ^1\ncatalogs:\n  n:\n    b: 2\n')].map(([k, v]) => [
+        k,
+        [...v],
+      ]),
+    ).toEqual([
+      ['', [['a', '^1']]],
+      ['n', [['b', '2']]],
+    ])
   })
 
   it('a named catalog (`catalog:<name>`) reaches the entries of its package', () => {
