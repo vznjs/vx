@@ -70,7 +70,8 @@ text(...items) why(line)           // indented facts; an indented dim line
 fields(rows: FieldRow[])           // dim label column, values aligned
 fix(action) next(command)          // dim label, bold value
 report(title, rows)                // blank line, then a section of fields
-table(columns: Column[], rows)     // header, aligned cells, right-aligned numbers
+table(columns: Column[], rows)     // header, aligned cells, right-aligned numbers; on a narrow
+                                   // terminal `drop` columns go in rank order, an `under` last one wraps below its row
 excerpt(title, body)               // a file shown whole
 code(frame) notice(parts: NoticeParts) trace(lines)
 bar(segments: Segment[], colors) gauge(filled, style, colors)

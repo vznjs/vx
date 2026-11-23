@@ -936,7 +936,14 @@ export function formatRunList(
   }[],
 ): ui.Block {
   return ui.table(
-    ['', 'when', 'run', 'tasks', { title: 'time', align: 'right' }, 'command'],
+    [
+      '',
+      { title: 'when', drop: 1 },
+      'run',
+      { title: 'tasks', drop: 2 },
+      { title: 'time', align: 'right' },
+      { title: 'command', under: true },
+    ],
     runs.map(({ inv, id }) => [
       inv.exitOk ? ui.tone('ok', 'ok') : ui.tone('error', 'FAILED'),
       fmtWhen(inv.startedAt),

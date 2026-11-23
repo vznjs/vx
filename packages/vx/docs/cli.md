@@ -4080,7 +4080,9 @@ and `--list=5` alike; the space form takes the next argument as the
 count unless it is a flag or a run id, eight hex digits at least, so
 `--list 1.5` is refused as a count); `vx last RUNID` replays a
 specific one, and the two do not combine (a word beside `--list` no run
-id could be is refused as an unexpected argument).
+id could be is refused as an unexpected argument). On a terminal too
+narrow for every column the start goes, then the counts, and a command
+that does not fit beside its run goes on its own line under it.
 
 ### `--log`
 

@@ -16,6 +16,7 @@ import {
   taskList,
 } from '../src/report/framed-output.js'
 import { formatRunSummary } from '../src/report/summary.js'
+import { formatRunList } from '../src/cli/last.js'
 import { whatChangedSection } from '../src/cli/why.js'
 import { paint, ui } from '../src/ui/index.js'
 
@@ -371,5 +372,58 @@ describe('a task row at 50 columns', () => {
   it('CONTROL: at 60 and off a terminal the name stays whole', () => {
     for (const colors of [{ enabled: false }, { enabled: false, columns: 60 }])
       expect(row(colors).endsWith(` ${id}`)).toBe(true)
+  })
+})
+
+// `vx last --list` drew a 93-109 column grid: a 60-column terminal wrapped
+// every run. There `when` drops, then the counts, and a command that does
+// not fit beside its row goes under it, as a --dry reason does.
+describe('vx last --list on a narrow terminal', () => {
+  const run = (o: { failedCount?: number; hitCount?: number; command?: string } = {}) => ({
+    inv: {
+      exitOk: (o.failedCount ?? 0) === 0,
+      startedAt: Date.UTC(2026, 10, 23, 22, 4, 41, 788),
+      taskCount: 3,
+      failedCount: o.failedCount ?? 0,
+      totalDurationMs: 52,
+      command: o.command ?? 'vx run build warn --all',
+      hitCount: o.hitCount ?? 0,
+      upToDateCount: o.hitCount ?? 0,
+      restoredLocalCount: 0,
+      restoredRemoteCount: 0,
+    },
+    id: '01a20a70-9bb8',
+  })
+  const list = (columns?: number, runs = [run({ failedCount: 1 }), run()]): string[] =>
+    formatRunList(runs).lines(
+      columns === undefined ? { enabled: false } : { enabled: false, columns },
+    )
+
+  it.each([50, 60, 80])('every line fits %i columns and keeps status, run and time', (columns) => {
+    const lines = list(columns, [
+      run({ failedCount: 1, command: 'vx run build lint test typecheck --all' }),
+      run(),
+    ])
+    for (const l of lines) expect(Bun.stringWidth(l)).toBeLessThanOrEqual(columns)
+    expect(lines[0]).not.toContain('when')
+    const failed = lines.findIndex((l) => l.includes('FAILED'))
+    expect(lines[failed]).toContain('01a20a70-9bb8')
+    expect(lines[failed]).toContain('52ms')
+    expect(lines.some((l) => l.trim() === 'vx run build lint test typecheck --all')).toBe(true)
+  })
+
+  it('at 70 the counts stay, and a command that fits stays beside', () => {
+    const lines = list(70, [run({ failedCount: 1, command: 'vx' })])
+    expect(lines[1]).toContain('3 tasks · 0 hits · 1 failed')
+    expect(lines[1]!.endsWith('52ms  vx')).toBe(true)
+  })
+
+  it('CONTROL: off a terminal, and on a wide one, every column on one line', () => {
+    for (const lines of [list(), list(200)]) {
+      expect(lines[0]).toContain('when')
+      expect(lines.length).toBe(3)
+      expect(lines[1]).toContain('2026-11-23T22:04:41.788Z')
+      expect(lines[1]!.endsWith('vx run build warn --all')).toBe(true)
+    }
   })
 })

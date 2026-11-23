@@ -374,34 +374,89 @@ export function report(title: string, rows: readonly FieldRow[]): Block {
 }
 
 /** A table column: its header, and `right` for numbers. */
-export type Column = string | { readonly title: string; readonly align: 'right' }
+export type Column =
+  | string
+  | {
+      readonly title: string
+      readonly align?: 'right'
+      /** On a terminal too narrow for the row, the column goes: 1 first, then 2… */
+      readonly drop?: number
+      /** The last column: on a terminal too narrow for it beside its row, under it. */
+      readonly under?: boolean
+    }
 
 /**
  * Aligned columns under a dim header (an empty header line is left out).
- * A plain string cell is dim; the last column is never padded.
+ * A plain string cell is dim; the last column is never padded. On a
+ * terminal narrower than the rows, the `drop` columns go in their order
+ * and an `under` last column goes on its own line below its row.
  */
 export function table(columns: readonly Column[], rows: readonly (readonly Inline[])[]): Block {
   return block((c) => {
-    const titles = columns.map((col) => (typeof col === 'string' ? col : col.title))
-    const right = columns.map((col) => typeof col !== 'string' && col.align === 'right')
-    const cells = rows.map((r) => r.map((x) => inline(typeof x === 'string' ? prose(x) : x, c)))
-    const widths = titles.map((h, i) =>
-      Math.max(h.length, ...rows.map((r) => (r[i] === undefined ? 0 : width(r[i]!)))),
+    const spec = (col: Column) => (typeof col === 'string' ? { title: col } : col)
+    const widthOf = (i: number): number =>
+      Math.max(
+        spec(columns[i]!).title.length,
+        ...rows.map((r) => (r[i] === undefined ? 0 : width(r[i]!))),
+      )
+    let shown = columns.map((_, i) => i)
+    const last = columns.length - 1
+    const under = columns.length > 1 && spec(columns[last]!).under === true
+    if (c.columns !== undefined) {
+      const fixed = (): number[] => (under ? shown.filter((i) => i !== last) : shown)
+      const span = (): number =>
+        INDENT.length + fixed().reduce((n, i) => n + widthOf(i) + 2, 0) - (under ? 0 : 2)
+      const order = shown
+        .filter((i) => spec(columns[i]!).drop !== undefined)
+        .sort((a, b) => spec(columns[a]!).drop! - spec(columns[b]!).drop!)
+      for (const i of order) {
+        if (span() <= c.columns) break
+        shown = shown.filter((j) => j !== i)
+      }
+    }
+    const titles = shown.map((i) => spec(columns[i]!).title)
+    const right = shown.map((i) => spec(columns[i]!).align === 'right')
+    const widths = shown.map(widthOf)
+    const cells = rows.map((r) =>
+      shown.map((i) =>
+        r[i] === undefined ? '' : inline(typeof r[i] === 'string' ? prose(r[i]) : r[i]!, c),
+      ),
     )
     const pad = (s: string, i: number, w: number): string => {
       const gap = ' '.repeat(Math.max(0, widths[i]! - w))
       return right[i] ? gap + s : i === titles.length - 1 ? s : s + gap
     }
+    // An `under` column's title past the terminal's edge would wrap: it goes.
+    const headed =
+      under && c.columns !== undefined
+        ? titles.map((h, i) =>
+            i === titles.length - 1 &&
+            INDENT.length + widths.slice(0, i).reduce((a, w) => a + w + 2, 0) + h.length >
+              c.columns!
+              ? ''
+              : h,
+          )
+        : titles
     const head = titles.every((t) => t === '')
       ? []
       : [
-          `${INDENT}${paint('muted', titles.map((h, i) => pad(h, i, h.length)).join('  '), c)}`.trimEnd(),
+          `${INDENT}${paint('muted', headed.map((h, i) => pad(h, i, h.length)).join('  '), c)}`.trimEnd(),
         ]
     return [
       ...head,
-      ...cells.map((r, ri) =>
-        `${INDENT}${r.map((s, i) => pad(s, i, width(rows[ri]![i] ?? ''))).join('  ')}`.trimEnd(),
-      ),
+      ...cells.flatMap((r, ri) => {
+        const ws = shown.map((i) => width(rows[ri]![i] ?? ''))
+        const line = `${INDENT}${r.map((s, i) => pad(s, i, ws[i]!)).join('  ')}`.trimEnd()
+        if (!under || c.columns === undefined || Bun.stringWidth(line) <= c.columns) return [line]
+        const n = r.length - 1
+        const before = `${INDENT}${r
+          .slice(0, n)
+          .map((s, i) => pad(s, i, ws[i]!))
+          .join('  ')}`.trimEnd()
+        const at = INDENT.length + widths.slice(0, n).reduce((a, w) => a + w + 2, 0)
+        const indent = at + ws[n]! <= c.columns ? at : INDENT.length
+        return [before, `${' '.repeat(indent)}${r[n]}`]
+      }),
     ]
   })
 }
