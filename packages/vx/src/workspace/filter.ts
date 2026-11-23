@@ -298,8 +298,7 @@ function matchProjects(
     let changed = affectedByFilter?.get(filter) ?? new Set<string>()
     if (filter.sinceViaDeps === true) {
       changed = new Set(changed)
-      for (const name of [...changed])
-        for (const d of graph.transitiveDependents(name)) changed.add(d)
+      for (const d of graph.dependentsOf(changed)) changed.add(d)
     }
     if (filter.matcher === '') return [...changed]
     return matchSelector(filter, projects, tags).filter((name) => changed.has(name))
@@ -448,21 +447,16 @@ export function applyFilters(opts: ApplyFiltersOptions): Set<string> {
           (f.matcher === '' || matchSelector(f, opts.projects, opts.tags).length > 0),
       )
     const expanded = new Set<string>()
-    for (const name of matched) {
-      if (!f.onlyDeps && !f.onlyDependents) expanded.add(name)
-      if (f.withDeps || f.onlyDeps) {
-        for (const d of opts.graph.transitiveDeps(name)) expanded.add(d)
-      }
-      if (f.withDependents) {
-        // Both walks: the dependents' own dependencies too, as Turbo 2.5.8
-        // selects (`...db...` on create-t3-turbo ran the ui and validators
-        // its apps build on; vx ran db's dependencies alone).
-        const both = f.withDeps || f.onlyDeps
-        for (const d of opts.graph.transitiveDependents(name)) {
-          expanded.add(d)
-          if (both) for (const dd of opts.graph.transitiveDeps(d)) expanded.add(dd)
-        }
-      }
+    if (!f.onlyDeps && !f.onlyDependents) for (const name of matched) expanded.add(name)
+    const withDeps = f.withDeps || f.onlyDeps
+    if (withDeps) for (const d of opts.graph.depsOf(matched)) expanded.add(d)
+    if (f.withDependents) {
+      const dependents = opts.graph.dependentsOf(matched)
+      for (const d of dependents) expanded.add(d)
+      // Both walks: the dependents' own dependencies too, as Turbo 2.5.8
+      // selects (`...db...` on create-t3-turbo ran the ui and validators
+      // its apps build on; vx ran db's dependencies alone).
+      if (withDeps) for (const d of opts.graph.depsOf(dependents)) expanded.add(d)
     }
     if (matched.length > 0 && expanded.size === 0) opts.onEmptyWalk?.(f, matched)
     if (f.negate) excludes.push(expanded)
