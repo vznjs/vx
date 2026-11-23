@@ -219,6 +219,11 @@
                   "const": true,
                   "description": "a hit whose restore threw: neither a hit nor a miss"
                 },
+                "outputsMissing": {
+                  "type": "array",
+                  "items": { "type": "string" },
+                  "description": "the declared output globs an exit 0 left matching no file: why the task failed"
+                },
                 "storedDurationMs": {
                   "type": "number",
                   "description": "on a hit: the run time the entry was stored with, the work the hit skipped"

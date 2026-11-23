@@ -146,6 +146,7 @@ const OUTCOME_VIEW: Required<Omit<OutcomeView, 'isGroup'>> = {
   durationMs: 1.5,
   noCache: true,
   restoreFailed: true,
+  outputsMissing: ['dist/**'],
   storedDurationMs: 2,
   storedCpuMs: 3,
   storedPeakRssBytes: 4,

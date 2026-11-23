@@ -885,7 +885,9 @@ run removes on its way out (`orchestrator.md`).
   `isKeyFailed(outcome)`, which is not on the wire; `failed (cache save
 failed)` / `failed (output clean failed)` for a miss whose save or clean
   vx refused, `outputsFailedOf(outcome)`, which `projectOutcome` copies
-  onto the view), `failedLabel`, `skippedReason`, and
+  onto the view; `failed (exited 0, no file matched dist/**)` for an exit 0
+  that wrote no declared output, `OutcomeView.outputsMissing`, the reason
+  `missingOutputsReason` gives `vx last` too), `failedLabel`, `skippedReason`, and
   `ranNoCache` (a task no cache answered for: no
   `cache: true`, or `TaskOutcome.cache.off` — `no-cache`, never a miss;
   `--dry`'s plan asks it too). The frame footer and

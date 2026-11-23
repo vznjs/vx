@@ -394,17 +394,6 @@ function skippedLabel(o: SkipView): string {
 }
 
 /**
- * A failure's label, one copy for every surface (the frame's footer, the
- * status line, the run report, the Actions annotation): the exit code, and
- * above 128 the signal it stands for — `failed (exit 137, 128 + SIGKILL)` —
- * or, for vx's own timeout, `failed (timed out, exit 143)`, or a persistent
- * task that never became ready, `failed (never ready: timed out, exit 1)`,
- * or an input changed under `inputStability.severity: 'error'`,
- * `failed (src/a.ts changed during the run, exit 1)`; a
- * sandboxed task's violations are counted after: `failed (exit 1, 2 sandbox
- * violations)`.
- */
-/**
  * A command that exited 0 but left a declared output matching nothing: its
  * exit 1 is vx's, so the globs are the reason, not `exit 1`.
  */
@@ -421,6 +410,17 @@ export function missingOutputsReason(globs: readonly string[]): string {
   return `exited 0, no file matched ${globs.join(', ')}`
 }
 
+/**
+ * A failure's label, one copy for every surface (the frame's footer, the
+ * status line, the run report, the Actions annotation): the exit code, and
+ * above 128 the signal it stands for — `failed (exit 137, 128 + SIGKILL)` —
+ * or, for vx's own timeout, `failed (timed out, exit 143)`, or a persistent
+ * task that never became ready, `failed (never ready: timed out, exit 1)`,
+ * or an input changed under `inputStability.severity: 'error'`,
+ * `failed (src/a.ts changed during the run, exit 1)`; a
+ * sandboxed task's violations are counted after: `failed (exit 1, 2 sandbox
+ * violations)`.
+ */
 export function failedLabel(
   exitCode: number,
   timedOut?: true,
