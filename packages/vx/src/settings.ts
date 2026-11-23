@@ -174,7 +174,7 @@ export const SETTINGS: readonly Setting[] = [
   {
     path: 'cache.policy',
     kind: { type: 'string' },
-    default: 'every layer reads and writes',
+    default: 'every layer reads and writes on CI; off CI the remote is read only',
     doc: "Which layers a run reads and writes (`'local:rw,remote:r'`); `--no-cache` and `--force` apply on top.",
     flag: { verb: 'run', name: '--cache-policy' },
   },

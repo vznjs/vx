@@ -361,7 +361,7 @@ In `.vx/workspace.ts`, under `cache`:
 
 | Setting | What it does | Default |
 | --- | --- | --- |
-| `policy` | Which layers a run reads and writes, such as `'local:rw,remote:r'`. Same as `--cache-policy` or `VX_CACHE_POLICY`. | every layer reads and writes |
+| `policy` | Which layers a run reads and writes, such as `'local:rw,remote:r'`. Same as `--cache-policy` or `VX_CACHE_POLICY`. | CI: every layer reads and writes. Off CI: the remote is read only |
 | `artifactCeiling` | The largest entry, unpacked, a remote stores or a hit unpacks. Same on every machine. `VX_CACHE_ARTIFACT_CEILING`. | `'1GiB'` |
 | `upload.failures` | Which runs keep a failed task's log and outputs in the remote: `'ci'`, `'local'` or `'always'`. | `'ci'` |
 | `concurrency.download` | Downloads at once. `--cache-concurrency-download`. | min(96, max(cores × 3, 64)) |

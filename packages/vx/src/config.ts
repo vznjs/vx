@@ -177,7 +177,8 @@ export interface CacheSettings {
   /**
    * Which layers a run reads and writes (`'local:rw,remote:r'`; a layer it
    * leaves out stays on); `--no-cache` and `--force` still apply on top.
-   * Omitted → every layer reads and writes. The local layer is always read
+   * Omitted → every layer reads and writes on CI; off CI the remote is read
+   * only. The local layer is always read
    * first, then each remote in declared order.
    */
   policy?: string
