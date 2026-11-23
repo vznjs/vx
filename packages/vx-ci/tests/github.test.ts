@@ -775,6 +775,17 @@ describe('every output the vx-ci sweep found unheld', () => {
     expect(renderJobSummary(summary([task({})]))).not.toContain('Workers to declare')
   })
 
+  it('one core is singular in the workers to declare', () => {
+    const md = renderJobSummary(
+      summary([task({})], {
+        advice: [
+          { of: 'declared', endMs: 4_400, workers: [{ count: 1, cores: 1, memoryBytes: 4e9 }] },
+        ],
+      }),
+    )
+    expect(md).toContain('| 1 × (1 core, 4.0 GB) | 4.4s |')
+  })
+
   it('a persistent task that failed to spawn reads so', () => {
     const md = renderJobSummary(
       summary([task({ status: 'failed', exitCode: 127, notReady: 'spawn' })]),

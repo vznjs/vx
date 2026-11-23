@@ -296,7 +296,7 @@ function renderAdvice(advice: NonNullable<RunSummaryRecord['advice']>): string[]
       `| ${ADVICE[a.of]} | ${a.workers
         .map(
           (w) =>
-            `${w.count} × ${w.size === undefined ? '' : `${escapeMarkdownCell(escapeInline(w.size))} `}(${w.cores} cores, ${gb(w.memoryBytes)} GB${w.platform === undefined ? '' : `, ${escapeMarkdownCell(escapeInline(w.platform))}`})`,
+            `${w.count} × ${w.size === undefined ? '' : `${escapeMarkdownCell(escapeInline(w.size))} `}(${w.cores} core${w.cores === 1 ? '' : 's'}, ${gb(w.memoryBytes)} GB${w.platform === undefined ? '' : `, ${escapeMarkdownCell(escapeInline(w.platform))}`})`,
         )
         .join(' + ')} | ${fmtMs(a.endMs)} |`,
     )
