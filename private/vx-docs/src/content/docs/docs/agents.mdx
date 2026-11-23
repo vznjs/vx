@@ -1,5 +1,5 @@
 ---
-title: AI agents
+title: Work with AI agents
 description: Let a coding agent run vx, read its answers as JSON, and branch on stable error codes. People get the same answers as text.
 ---
 
@@ -52,7 +52,15 @@ Outside a terminal vx prints plain lines and never opens the task picker. A run 
 
 ## Watch an agent fix a test
 
-`@demo/web` has a `total()` helper. Someone renamed `price` to `cost` by mistake. Step through what the agent does.
+`@demo/web` adds up a cart's prices, and a vitest test checks it. Someone typed `cost` where it says `price`:
+
+```js title="packages/web/src/price.js" del={2} ins={3}
+export const total = (items) =>
+  items.reduce((sum, i) => sum + i.price, 0)
+  items.reduce((sum, i) => sum + i.cost, 0)
+```
+
+Step through what the agent does next.
 
 <Walkthrough title="From red to green, without reading a log">
 <Frame title="1. Run: the exit code says it failed">
@@ -68,11 +76,21 @@ The exit code is `1`. The agent does not scroll the log. It asks vx.
 <Frame title="2. Read: vx names the file and line">
 
 ```sh
-vx last --failed --format json | jq -c '.tasks[] | select(.status == "failed") | {project, task, dir, locations}'
+vx last --failed --format json | jq '.tasks[] | select(.status == "failed") | {task, dir, locations}'
 ```
 
 ```json
-{"project":"@demo/web","task":"test","dir":"packages/web","locations":[{"file":"/home/user/demo/packages/web/src/price.test.js","line":3,"col":71}]}
+{
+  "task": "test",
+  "dir": "packages/web",
+  "locations": [
+    {
+      "file": "/home/user/demo/packages/web/src/price.test.js",
+      "line": 3,
+      "col": 71
+    }
+  ]
+}
 ```
 
 `locations` points at **line 3** of the test. `output` (left out above) holds vitest's own words: `expected NaN to be 5`.
@@ -80,13 +98,16 @@ vx last --failed --format json | jq -c '.tasks[] | select(.status == "failed") |
 </Frame>
 <Frame title="3. Fix and run again: only the broken task runs">
 
-The agent opens `price.js`, puts `i.price` back, and runs the same command.
+The agent fixes `price.js`, runs the same command, and checks the result with `vx last`:
 
-```sh
-vx run test --all
+```ansi title="vx last"
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mTasks[0m[4m[58;2;110;118;129m [2m3[0m[4m[58;2;110;118;129m   [2mstatus  cache       time   task[0m[4m[58;2;110;118;129m [0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m       [38;2;203;213;225m495ms[0m   [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;96;165;250mtest[0m
+            [38;2;34;197;94msuccess[0m [38;2;34;197;94mfresh[0m        [38;2;203;213;225m2ms[0m   [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;34;197;94msuccess[0m [38;2;34;197;94mfresh[0m        [38;2;203;213;225m0ms[0m   [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;96;165;250mtest[0m
 ```
 
-`@demo/ui`'s build and test did not change, so they replay from the [cache](../caching/). Only `@demo/web#test` runs. Exit code `0`.
+`@demo/ui` did not change, so its tasks are **fresh**: vx skipped them. Only `@demo/web#test` ran. Exit code `0`.
 
 </Frame>
 </Walkthrough>
@@ -116,16 +137,34 @@ vx run test --all
 Ask before running. Here an agent edited `packages/ui/src/index.js` and asks which tests that reaches:
 
 ```sh
-vx run test --affected=HEAD --dry --format json | jq -c '.tasks[] | {id, cacheStatus, affected}'
+vx run test --affected=HEAD --dry --format json | jq '.tasks[] | {id, affected}'
 ```
 
 ```json
-{"id":"@demo/ui#test","cacheStatus":"miss","affected":{"kind":"input","file":"packages/ui/src/index.js"}}
-{"id":"@demo/web#test","cacheStatus":"miss","affected":{"kind":"input","file":"packages/ui/src/index.js","via":["@demo/ui#build"]}}
-{"id":"@demo/ui#build","cacheStatus":"miss","affected":null}
+{
+  "id": "@demo/ui#test",
+  "affected": {
+    "kind": "input",
+    "file": "packages/ui/src/index.js"
+  }
+}
+{
+  "id": "@demo/web#test",
+  "affected": {
+    "kind": "input",
+    "file": "packages/ui/src/index.js",
+    "via": [
+      "@demo/ui#build"
+    ]
+  }
+}
+{
+  "id": "@demo/ui#build",
+  "affected": null
+}
 ```
 
-Each test says **why** it is in (`affected`) and whether it will hit the cache (`cacheStatus`). `@demo/ui#build` has no reason: it is in only because a test needs it. Nothing ran yet.
+Each test says **why** it is in (`affected`). `@demo/ui#build` has none: it is in only because a test needs it. Nothing ran yet.
 
 <Quiz q="The edit was in @demo/ui. Why is @demo/web#test in the list?">
   Its `affected.via` says so: `@demo/web#test` depends on `@demo/ui#build`, and that build reads the
@@ -154,7 +193,7 @@ A refused command, asked for JSON, prints one line with a stable `code`. People 
 {"ok":false,"error":{"code":"VX_E_UNKNOWN_TASK","message":"vx run: no projects declare task(s): biuld. Did you mean build?","docs":"https://vznjs.github.io/vx/cli/#vx_e_unknown_task"}}
 ```
 
-The agent reads `code`, not `message`: the words may change, the code will not. `docs` links what to do.
+The agent reads `code`, not `message`: the words can change, the code stays. `docs` links what to do.
 
 | Code | What the agent does |
 | --- | --- |
@@ -178,11 +217,27 @@ The agent reads `code`, not `message`: the words may change, the code will not. 
 After an edit in `@demo/ui`, `@demo/web#build` missed the cache. `vx why` follows the path back to the file:
 
 ```sh
-vx why @demo/web#build --format json | jq -c '.roots'
+vx why @demo/web#build --format json | jq '.roots'
 ```
 
 ```json
-[{"chain":["@demo/web#build","@demo/ui#build"],"entries":[{"kind":"file","name":"packages/ui/src/index.js","change":"changed","before":"cf57131a5fea6396ae8105166e9b9d8914d2513d","after":"f180e64f2f10a3bd2e61b14c723393f2091b2004"}]}]
+[
+  {
+    "chain": [
+      "@demo/web#build",
+      "@demo/ui#build"
+    ],
+    "entries": [
+      {
+        "kind": "file",
+        "name": "packages/ui/src/index.js",
+        "change": "changed",
+        "before": "cf57131a5fea6396ae8105166e9b9d8914d2513d",
+        "after": "f180e64f2f10a3bd2e61b14c723393f2091b2004"
+      }
+    ]
+  }
+]
 ```
 
 `chain` is the path through the graph; `entries` is what changed at its end.
@@ -192,11 +247,14 @@ vx why @demo/web#build --format json | jq -c '.roots'
 `vx last --sql` runs one read-only query over the run history:
 
 ```sh
-vx last --sql "SELECT project || '#' || task AS task, COUNT(*) AS runs, SUM(status = 'failed') AS failures FROM runs GROUP BY 1" --format json
+vx last --sql "SELECT project || '#' || task AS task, COUNT(*) AS runs, SUM(status = 'failed') AS failures FROM runs GROUP BY 1" --format json | jq -c '.rows[]'
 ```
 
 ```json
-{"rows":[{"task":"@demo/ui#build","runs":9,"failures":0},{"task":"@demo/ui#test","runs":8,"failures":0},{"task":"@demo/web#build","runs":5,"failures":0},{"task":"@demo/web#test","runs":8,"failures":3}]}
+{"task":"@demo/ui#build","runs":9,"failures":0}
+{"task":"@demo/ui#test","runs":8,"failures":0}
+{"task":"@demo/web#build","runs":5,"failures":0}
+{"task":"@demo/web#test","runs":8,"failures":3}
 ```
 
 `vx last --sql "SELECT name, sql FROM sqlite_schema" --format json` lists the tables. `runs` has one row per task per run, `invocations` one per run; join on `run_id`.
@@ -225,6 +283,7 @@ Each of `problems` is `{code, message}`. `VX_E_LOCK` means `vx lock` fixes it.
 `bunx skills add` installs the latest skill. To match the vx your workspace has installed, copy it from there:
 
 ```sh
+mkdir -p .claude/skills/vx
 cp node_modules/@vzn/vx/skills/vx/SKILL.md .claude/skills/vx/
 ```
 
@@ -262,7 +321,17 @@ Every shape is a JSON Schema (draft 2020-12) in `node_modules/@vzn/vx/schemas/`,
 | `locations` | the files the output names, as `{ file, line?, col? }` |
 | `dir` | the project's directory; relative paths in `output` start here |
 
-**A plan task** (`--dry --format json`) holds `id`, `project`, `task`, `hash` (its cache key), `cacheStatus` (`hit-local`, `miss`, …), `deps`, `p50Ms` (its usual time). Under `--affected`, each task you asked for adds `affected`:
+**A plan task** (`--dry --format json`) holds:
+
+| Field | Holds |
+| --- | --- |
+| `id`, `project`, `task` | which task |
+| `hash` | its cache key |
+| `cacheStatus` | `hit-local`, `miss`, … |
+| `deps` | the tasks it waits for |
+| `p50Ms` | its usual time |
+
+Under `--affected`, each task you asked for adds `affected`:
 
 | `affected` field | Holds |
 | --- | --- |

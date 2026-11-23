@@ -120,8 +120,8 @@ afterAll(async () => {
 describe('the guides show what vx prints', () => {
   it("the agents page's roots sample has vx why --format json's shape", () => {
     const page = readFileSync(path.join(GUIDES, '..', 'docs', 'agents.mdx'), 'utf8')
-    const line = /^\[\{"chain":.*\]$/m.exec(page)![0]
-    const roots = JSON.parse(line) as { chain: string[]; entries: Record<string, string>[] }[]
+    const block = /jq '\.roots'\n```\n\n```json\n([\s\S]*?)\n```/.exec(page)![1]!
+    const roots = JSON.parse(block) as { chain: string[]; entries: Record<string, string>[] }[]
     const why = JSON.parse(vx('why', '@demo/app#build', '--format', 'json').stdout) as {
       diff: { entries: Record<string, string>[] }
     }
