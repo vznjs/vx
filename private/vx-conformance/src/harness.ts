@@ -351,8 +351,10 @@ async function play(c: Case, adapter: Adapter, root: string, box: string): Promi
   // refuses every run until the config changes: each run reads as that
   // refusal, exit 1, nothing run.
   let refused: string | null = null
+  let rootProject: string | undefined
   const configure = async (ws: WorkspaceSpec) => {
     refused = null
+    rootProject = Object.entries(ws.projects).find(([n, p]) => projectDir(n, p) === '.')?.[0]
     for (const argv of await adapter.configure(root, ws, (p, t) => marked(ws, p, t))) {
       const r = await sh(argv)
       if (r.exit !== 0) {
@@ -487,6 +489,7 @@ async function play(c: Case, adapter: Adapter, root: string, box: string): Promi
             ...(step.readOnlyCache ? { readOnlyCache: true } : {}),
             ...(step.dry ? { dry: true } : {}),
             ...(step.verify ? { verify: true } : {}),
+            ...(rootProject !== undefined ? { root: rootProject } : {}),
           })
         : adapter.affected(step.affected, step.base)
     )

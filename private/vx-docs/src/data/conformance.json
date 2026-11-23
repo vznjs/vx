@@ -1,6 +1,6 @@
 {
   "coverage": {
-    "ported": 388,
+    "ported": 393,
     "rest": {
       "pending": [
         "affected-diff-early",
@@ -8,7 +8,6 @@
         "clean-readonly-dir",
         "deferred-output-empty",
         "everyday-ops-differential",
-        "keyless-through-server",
         "ignored-glob-warning",
         "key-not-derived",
         "lock-edges",
@@ -223,7 +222,6 @@
         "sandbox-port-held.unsafe",
         "sandbox-prewarm.unsafe",
         "sandbox-proxy-ready.unsafe",
-        "sandbox-run-direct.unsafe",
         "sandbox-runtime.unsafe",
         "sandbox-session-guard.unsafe",
         "sandbox-signal-notice.unsafe",
@@ -787,7 +785,6 @@
         "repo-facts-disk",
         "resave-aside",
         "resolve-cache",
-        "restore-artifact-replaced",
         "restore-exdev",
         "restore-git-spawns",
         "restore-link-swap-rename",
@@ -846,7 +843,6 @@
         "syscall-repeats.unsafe",
         "taint-properties",
         "task-glob-bun-1-4-4",
-        "task-hash",
         "task-hash-properties",
         "task-log-buffer",
         "task-outputs-shape",
@@ -972,7 +968,6 @@
         "turbo-nx-support-flags.unsafe",
         "turbo-nx-wording.unsafe",
         "upgrading-page",
-        "upstream",
         "upstream-ledger.unsafe",
         "workflow-runner.unsafe"
       ]
@@ -1019,7 +1014,9 @@
     "moon failed 1 of 1 cases; one: succeeded, expected a failure\n$ /home/user/vx/private/vx-conformance/node_modules/.latest-20804/node_modules/@moonrepo/core-linux-x64-gnu/moon run :check --query project=ui || project=nope\n▮▮▮▮ ui:check (0eabc72a)\n▮▮▮▮ ui:check (4ms, 0eabc72a)\n\nTasks: 1 completed\n Time: 24ms\n\n",
     "moon fetched no toolchain plugins (exit 1, found none), so it runs without them:\nError: plugin::loader::registry::load_failure\n\n  × Failed to load plugin from ghcr.io/moonrepo/bun_toolchain:1.0.5 registry.\n  ├─▶ error sending request for url (https://ghcr.io/v2/moonrepo/\n  │   bun_toolchain/blobs/\n  │   sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a)\n  ├─▶ client error (Connect)\n  ╰─▶ tunnel error: unsuccessful\n\n",
     "nx failed 1 of 1 cases; one: exited 1, expected success\n$ /tmp/conf-nx-eGC80s/node_modules/.bin/nx run-many -t build --outputStyle=stream\n\n NX   Running target build for 2 projects:\n\n- app\n- lib\n\n\n\n> nx run app:build\n\n\n> nx run lib:build\n\napp: cat: ../lib/dist/out.txt: No such file or directory\n\n\n  Run duration:      32ms\n  Cache:             0/1 hit (0%)\n  Critical path:     29ms (1 task)\n  Recoverable time:  <1ms\n\n NX   Running target build for 2 projects failed\n\nFailed tasks:\n\n- app:build\n\n",
-    "vite-task failed 1 of 1 cases; one: app#build started before lib#build finished\n$ /tmp/conf-vite-task-jYUe9A/node_modules/.bin/vp run -r build\n~/packages/lib$ printf '+%s\\n' 'lib#build' >> ../../.ran && (mkdir -p dist && cat  src/*.txt > dist/out.txt) && printf -- '-%s\\n' 'lib#build' >> ../../.ran\n~/packages/app$ printf '+%s\\n' 'app#build' >> ../../.ran && (mkdir -p dist && cat ../lib/dist/out.txt src/*.txt > dist/out.txt) && printf -- '-%s\\n' 'app#build' >> ../../.ran\n\n\n---\nvp run: 0/2 cache hit (0%), 2/2 successful. (Run `vp run --last-details` for full details)\n"
+    "vite-task failed 1 of 1 cases; one: app#build started before lib#build finished\n$ /tmp/conf-vite-task-jYUe9A/node_modules/.bin/vp run -r build\n~/packages/lib$ printf '+%s\\n' 'lib#build' >> ../../.ran && (mkdir -p dist && cat  src/*.txt > dist/out.txt) && printf -- '-%s\\n' 'lib#build' >> ../../.ran\n~/packages/app$ printf '+%s\\n' 'app#build' >> ../../.ran && (mkdir -p dist && cat ../lib/dist/out.txt src/*.txt > dist/out.txt) && printf -- '-%s\\n' 'app#build' >> ../../.ran\n\n\n---\nvp run: 0/2 cache hit (0%), 2/2 successful. (Run `vp run --last-details` for full details)\n",
+    "moon fetched no toolchain plugins (exit 1, found none), so it runs without them:\nError: plugin::loader::registry::load_failure\n\n  × Failed to load plugin from ghcr.io/moonrepo/bun_toolchain:1.0.5 registry.\n  ├─▶ error sending request for url (https://ghcr.io/v2/moonrepo/\n  │   bun_toolchain/blobs/\n  │   sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a)\n  ├─▶ client error (Connect)\n  ╰─▶ tunnel error: unsuccessful\n\n",
+    "moon fetched no toolchain plugins (exit 1, found none), so it runs without them:\nError: plugin::loader::registry::load_failure\n\n  × Failed to load plugin from ghcr.io/moonrepo/bun_toolchain:1.0.5 registry.\n  ├─▶ error sending request for url (https://ghcr.io/v2/moonrepo/\n  │   bun_toolchain/blobs/\n  │   sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a)\n  ├─▶ client error (Connect)\n  ╰─▶ tunnel error: unsuccessful\n\n"
   ],
   "tools": {
     "vx": "this commit",
@@ -1032,19 +1029,19 @@
   "scores": {
     "vx": {
       "all": {
-        "pass": 1985,
-        "can": 1985,
-        "of": 2030
+        "pass": 2084,
+        "can": 2084,
+        "of": 2159
       },
       "correctness": {
-        "pass": 1597,
-        "can": 1597,
-        "of": 1638
+        "pass": 1683,
+        "can": 1683,
+        "of": 1750
       },
       "efficiency": {
-        "pass": 299,
-        "can": 299,
-        "of": 302
+        "pass": 312,
+        "can": 312,
+        "of": 319
       },
       "data": {
         "pass": 89,
@@ -1052,9 +1049,9 @@
         "of": 90
       },
       "graph": {
-        "pass": 294,
-        "can": 294,
-        "of": 301
+        "pass": 311,
+        "can": 311,
+        "of": 318
       },
       "config": {
         "pass": 87,
@@ -1062,34 +1059,34 @@
         "of": 87
       },
       "failure": {
-        "pass": 147,
-        "can": 147,
-        "of": 160
+        "pass": 151,
+        "can": 151,
+        "of": 164
       },
       "affected": {
-        "pass": 178,
-        "can": 178,
-        "of": 178
+        "pass": 181,
+        "can": 181,
+        "of": 181
       },
       "cache": {
-        "pass": 91,
-        "can": 91,
-        "of": 97
+        "pass": 99,
+        "can": 99,
+        "of": 122
       },
       "inputs": {
-        "pass": 462,
-        "can": 462,
-        "of": 463
+        "pass": 472,
+        "can": 472,
+        "of": 484
       },
       "env": {
-        "pass": 106,
-        "can": 106,
-        "of": 108
+        "pass": 145,
+        "can": 145,
+        "of": 148
       },
       "outputs": {
-        "pass": 284,
-        "can": 284,
-        "of": 299
+        "pass": 295,
+        "can": 295,
+        "of": 311
       },
       "report": {
         "pass": 89,
@@ -1097,31 +1094,31 @@
         "of": 90
       },
       "sandbox": {
-        "pass": 126,
-        "can": 126,
-        "of": 126
+        "pass": 132,
+        "can": 132,
+        "of": 132
       },
       "watch": {
-        "pass": 121,
-        "can": 121,
-        "of": 121
+        "pass": 122,
+        "can": 122,
+        "of": 122
       }
     },
     "turbo": {
       "all": {
-        "pass": 1262,
-        "can": 1721,
-        "of": 2030
+        "pass": 1357,
+        "can": 1824,
+        "of": 2159
       },
       "correctness": {
-        "pass": 1011,
-        "can": 1347,
-        "of": 1638
+        "pass": 1094,
+        "can": 1436,
+        "of": 1750
       },
       "efficiency": {
-        "pass": 221,
-        "can": 290,
-        "of": 302
+        "pass": 233,
+        "can": 304,
+        "of": 319
       },
       "data": {
         "pass": 30,
@@ -1129,9 +1126,9 @@
         "of": 90
       },
       "graph": {
-        "pass": 180,
-        "can": 251,
-        "of": 301
+        "pass": 195,
+        "can": 267,
+        "of": 318
       },
       "config": {
         "pass": 55,
@@ -1139,34 +1136,34 @@
         "of": 87
       },
       "failure": {
-        "pass": 57,
-        "can": 98,
-        "of": 160
+        "pass": 60,
+        "can": 102,
+        "of": 164
       },
       "affected": {
-        "pass": 139,
-        "can": 178,
-        "of": 178
+        "pass": 141,
+        "can": 181,
+        "of": 181
       },
       "cache": {
-        "pass": 75,
-        "can": 91,
-        "of": 97
+        "pass": 81,
+        "can": 98,
+        "of": 122
       },
       "inputs": {
-        "pass": 309,
-        "can": 447,
-        "of": 463
+        "pass": 327,
+        "can": 468,
+        "of": 484
       },
       "env": {
-        "pass": 93,
-        "can": 97,
-        "of": 108
+        "pass": 132,
+        "can": 136,
+        "of": 148
       },
       "outputs": {
-        "pass": 221,
-        "can": 286,
-        "of": 299
+        "pass": 232,
+        "can": 298,
+        "of": 311
       },
       "report": {
         "pass": 30,
@@ -1176,29 +1173,29 @@
       "sandbox": {
         "pass": 1,
         "can": 1,
-        "of": 126
+        "of": 132
       },
       "watch": {
-        "pass": 102,
-        "can": 116,
-        "of": 121
+        "pass": 103,
+        "can": 117,
+        "of": 122
       }
     },
     "nx": {
       "all": {
-        "pass": 1281,
-        "can": 1754,
-        "of": 2030
+        "pass": 1371,
+        "can": 1857,
+        "of": 2159
       },
       "correctness": {
-        "pass": 990,
-        "can": 1374,
-        "of": 1638
+        "pass": 1066,
+        "can": 1461,
+        "of": 1750
       },
       "efficiency": {
-        "pass": 261,
-        "can": 297,
-        "of": 302
+        "pass": 275,
+        "can": 313,
+        "of": 319
       },
       "data": {
         "pass": 30,
@@ -1206,9 +1203,9 @@
         "of": 90
       },
       "graph": {
-        "pass": 218,
-        "can": 255,
-        "of": 301
+        "pass": 229,
+        "can": 268,
+        "of": 318
       },
       "config": {
         "pass": 39,
@@ -1216,34 +1213,34 @@
         "of": 87
       },
       "failure": {
-        "pass": 78,
-        "can": 108,
-        "of": 160
+        "pass": 81,
+        "can": 112,
+        "of": 164
       },
       "affected": {
-        "pass": 120,
-        "can": 178,
-        "of": 178
+        "pass": 121,
+        "can": 181,
+        "of": 181
       },
       "cache": {
-        "pass": 70,
-        "can": 80,
-        "of": 97
+        "pass": 78,
+        "can": 90,
+        "of": 122
       },
       "inputs": {
-        "pass": 324,
-        "can": 463,
-        "of": 463
+        "pass": 342,
+        "can": 484,
+        "of": 484
       },
       "env": {
-        "pass": 95,
-        "can": 106,
-        "of": 108
+        "pass": 134,
+        "can": 145,
+        "of": 148
       },
       "outputs": {
-        "pass": 213,
-        "can": 286,
-        "of": 299
+        "pass": 222,
+        "can": 298,
+        "of": 311
       },
       "report": {
         "pass": 30,
@@ -1253,29 +1250,29 @@
       "sandbox": {
         "pass": 0,
         "can": 1,
-        "of": 126
+        "of": 132
       },
       "watch": {
-        "pass": 94,
-        "can": 119,
-        "of": 121
+        "pass": 95,
+        "can": 120,
+        "of": 122
       }
     },
     "vite-task": {
       "all": {
-        "pass": 923,
-        "can": 1338,
-        "of": 2030
+        "pass": 1012,
+        "can": 1437,
+        "of": 2159
       },
       "correctness": {
-        "pass": 778,
-        "can": 1070,
-        "of": 1638
+        "pass": 853,
+        "can": 1153,
+        "of": 1750
       },
       "efficiency": {
-        "pass": 136,
-        "can": 190,
-        "of": 302
+        "pass": 150,
+        "can": 206,
+        "of": 319
       },
       "data": {
         "pass": 9,
@@ -1283,9 +1280,9 @@
         "of": 90
       },
       "graph": {
-        "pass": 164,
-        "can": 210,
-        "of": 301
+        "pass": 177,
+        "can": 224,
+        "of": 318
       },
       "config": {
         "pass": 49,
@@ -1293,34 +1290,34 @@
         "of": 87
       },
       "failure": {
-        "pass": 57,
-        "can": 77,
-        "of": 160
+        "pass": 61,
+        "can": 81,
+        "of": 164
       },
       "affected": {
         "pass": 0,
         "can": 0,
-        "of": 178
+        "of": 181
       },
       "cache": {
-        "pass": 60,
-        "can": 70,
-        "of": 97
+        "pass": 68,
+        "can": 79,
+        "of": 122
       },
       "inputs": {
-        "pass": 295,
-        "can": 448,
-        "of": 463
+        "pass": 311,
+        "can": 469,
+        "of": 484
       },
       "env": {
-        "pass": 93,
-        "can": 96,
-        "of": 108
+        "pass": 132,
+        "can": 135,
+        "of": 148
       },
       "outputs": {
-        "pass": 195,
-        "can": 286,
-        "of": 299
+        "pass": 204,
+        "can": 298,
+        "of": 311
       },
       "report": {
         "pass": 9,
@@ -1330,29 +1327,29 @@
       "sandbox": {
         "pass": 1,
         "can": 1,
-        "of": 126
+        "of": 132
       },
       "watch": {
         "pass": 0,
         "can": 0,
-        "of": 121
+        "of": 122
       }
     },
     "nix": {
       "all": {
-        "pass": 977,
-        "can": 1323,
-        "of": 2030
+        "pass": 1080,
+        "can": 1433,
+        "of": 2159
       },
       "correctness": {
-        "pass": 834,
-        "can": 1075,
-        "of": 1638
+        "pass": 927,
+        "can": 1174,
+        "of": 1750
       },
       "efficiency": {
-        "pass": 133,
-        "can": 168,
-        "of": 302
+        "pass": 143,
+        "can": 179,
+        "of": 319
       },
       "data": {
         "pass": 10,
@@ -1360,9 +1357,9 @@
         "of": 90
       },
       "graph": {
-        "pass": 96,
-        "can": 103,
-        "of": 301
+        "pass": 103,
+        "can": 110,
+        "of": 318
       },
       "config": {
         "pass": 39,
@@ -1370,34 +1367,34 @@
         "of": 87
       },
       "failure": {
-        "pass": 56,
-        "can": 87,
-        "of": 160
+        "pass": 60,
+        "can": 91,
+        "of": 164
       },
       "affected": {
         "pass": 0,
         "can": 0,
-        "of": 178
+        "of": 181
       },
       "cache": {
-        "pass": 64,
-        "can": 76,
-        "of": 97
+        "pass": 83,
+        "can": 96,
+        "of": 122
       },
       "inputs": {
-        "pass": 320,
-        "can": 408,
-        "of": 463
+        "pass": 341,
+        "can": 429,
+        "of": 484
       },
       "env": {
-        "pass": 82,
-        "can": 89,
-        "of": 108
+        "pass": 122,
+        "can": 129,
+        "of": 148
       },
       "outputs": {
-        "pass": 221,
-        "can": 294,
-        "of": 299
+        "pass": 231,
+        "can": 306,
+        "of": 311
       },
       "report": {
         "pass": 10,
@@ -1405,31 +1402,31 @@
         "of": 90
       },
       "sandbox": {
-        "pass": 89,
-        "can": 120,
-        "of": 126
+        "pass": 91,
+        "can": 126,
+        "of": 132
       },
       "watch": {
         "pass": 0,
         "can": 0,
-        "of": 121
+        "of": 122
       }
     },
     "moon": {
       "all": {
-        "pass": 1185,
-        "can": 1660,
-        "of": 2030
+        "pass": 1264,
+        "can": 1762,
+        "of": 2159
       },
       "correctness": {
-        "pass": 929,
-        "can": 1314,
-        "of": 1638
+        "pass": 999,
+        "can": 1400,
+        "of": 1750
       },
       "efficiency": {
-        "pass": 221,
-        "can": 256,
-        "of": 302
+        "pass": 230,
+        "can": 272,
+        "of": 319
       },
       "data": {
         "pass": 35,
@@ -1437,9 +1434,9 @@
         "of": 90
       },
       "graph": {
-        "pass": 174,
-        "can": 228,
-        "of": 301
+        "pass": 184,
+        "can": 240,
+        "of": 318
       },
       "config": {
         "pass": 60,
@@ -1447,34 +1444,34 @@
         "of": 87
       },
       "failure": {
-        "pass": 88,
-        "can": 136,
-        "of": 160
+        "pass": 91,
+        "can": 140,
+        "of": 164
       },
       "affected": {
-        "pass": 141,
-        "can": 178,
-        "of": 178
+        "pass": 143,
+        "can": 181,
+        "of": 181
       },
       "cache": {
-        "pass": 76,
-        "can": 85,
-        "of": 97
+        "pass": 80,
+        "can": 96,
+        "of": 122
       },
       "inputs": {
-        "pass": 329,
-        "can": 463,
-        "of": 463
+        "pass": 345,
+        "can": 484,
+        "of": 484
       },
       "env": {
-        "pass": 98,
-        "can": 106,
-        "of": 108
+        "pass": 137,
+        "can": 145,
+        "of": 148
       },
       "outputs": {
-        "pass": 184,
-        "can": 289,
-        "of": 299
+        "pass": 189,
+        "can": 301,
+        "of": 311
       },
       "report": {
         "pass": 35,
@@ -1484,12 +1481,12 @@
       "sandbox": {
         "pass": 0,
         "can": 1,
-        "of": 126
+        "of": 132
       },
       "watch": {
         "pass": 0,
         "can": 0,
-        "of": 121
+        "of": 122
       }
     }
   },
@@ -4472,9 +4469,7 @@
           "status": "pass"
         },
         "turbo": {
-          "status": "fail",
-          "step": 1,
-          "detail": "exited 1, expected success"
+          "status": "pass"
         },
         "nx": {
           "status": "pass"
@@ -38673,9 +38668,7 @@
           "status": "pass"
         },
         "turbo": {
-          "status": "fail",
-          "step": 1,
-          "detail": "exited 1, expected success"
+          "status": "pass"
         },
         "nx": {
           "status": "pass"
@@ -72303,6 +72296,4390 @@
         "nix": {
           "status": "n/a",
           "detail": "Nix reads no package.json or lockfile and installs nothing into node_modules: what a build depends on is written in Nix."
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "graph/single-package-repo-runs-and-replays",
+      "ref": "wqgcjx",
+      "category": "graph",
+      "kind": "correctness",
+      "title": "A repository that is one package, with no workspace members, runs its task and replays it",
+      "why": "Plenty of repositories are a single package: a library, a CLI, a site. A task runner must treat the root package as a project when there is nothing else, not refuse it for lacking members. Turborepo runs a separate single-package mode for this. The first run builds, the second replays the stored result.",
+      "from": [
+        "root-project",
+        "cache"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "graph/single-package-own-prerequisite-runs-first",
+      "ref": "tp6ofl",
+      "category": "graph",
+      "kind": "correctness",
+      "title": "In a one-package repository, a task runs after the task of its own it depends on, and both replay",
+      "why": "A single package still has steps that build on each other: a code generator before the build. With no members there is no project graph to lean on, only the task edge. The generator must finish before the build reads what it wrote, and both must be stored, so the next run replays the pair.",
+      "from": [
+        "root-project",
+        "graph-order"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 5,
+          "detail": "did not run app#build"
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 5,
+          "detail": "did not run app#build"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "graph/single-package-dry-run-runs-nothing",
+      "ref": "i0yd11",
+      "category": "graph",
+      "kind": "correctness",
+      "title": "Planning a run in a one-package repository runs nothing and writes nothing",
+      "why": "A planned run answers what would run without doing it. In a one-package repository the plan still covers the task and the step before it. Running either one, or writing their outputs, turns a question into a build the user did not ask for. The tree stays as it was.",
+      "from": [
+        "root-project",
+        "dry-no-writes"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "Nx has no run that plans and runs nothing."
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "Vite Task has no run that plans and runs nothing."
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "`moon action-graph` draws the graph; no run plans and runs nothing."
+        }
+      }
+    },
+    {
+      "id": "inputs/single-package-keys-only-declared-files",
+      "ref": "t1c3nw",
+      "category": "inputs",
+      "kind": "correctness",
+      "title": "In a one-package repository, an edit outside the task’s inputs replays and an edit inside runs it",
+      "why": "When the project is the whole repository, every file of the repository is a file of the project. A tool that keys the root package by everything under it reruns on a README edit. One that keys nothing replays a stale build after a source edit. The declared inputs decide, as they do for a member.",
+      "from": [
+        "root-project",
+        "inputs"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "cache/single-package-uncached-task-runs-every-time",
+      "ref": "w3deuu",
+      "category": "cache",
+      "kind": "correctness",
+      "title": "In a one-package repository, a task marked never cached runs on every run",
+      "why": "A task that must not be replayed, a deploy or a check against a live service, is marked so. In a one-package repository that mark must hold as it does for a member. Replaying it skips the very work the user asked to happen each time. Both runs run it.",
+      "from": [
+        "root-project",
+        "cache"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "fail",
+          "step": 2,
+          "detail": "checks.log is \"checked\\n\", expected \"checked\\nchecked\\n\""
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "graph/whole-run-includes-root-project-task",
+      "ref": "1zf46f",
+      "category": "graph",
+      "kind": "correctness",
+      "title": "A run with no selection runs the root package’s task beside its members’",
+      "why": "The root package is a project too: a repository-wide lint or a docs build often lives there. A run over every project that skips the root leaves that work undone while reporting success. Turborepo’s test pins that an unfiltered run takes the root’s task. Both the root’s and the member’s task run.",
+      "from": [
+        "root-project",
+        "filter"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "graph/select-member-leaves-root-project-task",
+      "ref": "0g07ej",
+      "category": "graph",
+      "kind": "efficiency",
+      "title": "Selecting one member does not run the root package’s task of the same name",
+      "why": "The root package holds every member on disk, but it is a project of its own, not their parent in the graph. A selection of `a` asks for `a` and what it depends on. Running the root’s build as well, because its folder holds `a`, does work nobody asked for, and a root build is often the slowest one.",
+      "from": [
+        "root-project",
+        "filter"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build builds the attributes it is named: no filter picks them."
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "graph/select-dependents-reaches-root-project",
+      "ref": "5cot7a",
+      "category": "graph",
+      "kind": "correctness",
+      "title": "Selecting a library with its dependents takes the root package that depends on it",
+      "why": "A root package that lists a workspace library in its dependencies is that library’s dependent like any member. A walk to dependents that stops at the members leaves out the root’s task, which then misses the library change it reads. The walk takes `util` and the root, and leaves `another`, which uses nothing of `util`.",
+      "from": [
+        "root-project",
+        "filter"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "Nx selects projects by name, pattern or tag; no selector adds their dependencies or dependents."
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build builds the attributes it is named: no selector walks to dependents."
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "`--upstream`/`--downstream` walk the task graph from the requested tasks, never the project graph, and never leave the matched projects out."
+        }
+      }
+    },
+    {
+      "id": "graph/select-root-with-dependencies",
+      "ref": "4vlrbu",
+      "category": "graph",
+      "kind": "correctness",
+      "title": "Selecting the root package with its dependencies builds the libraries it depends on first",
+      "why": "The root package’s dependencies are workspace projects, and a root build that bundles them needs them built. Selecting the root with its dependencies must walk from the root as from any project. It builds `util` before the root and leaves `another`, which the root does not depend on.",
+      "from": [
+        "root-project",
+        "filter"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "Nx selects projects by name, pattern or tag; no selector adds their dependencies or dependents."
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build builds the attributes it is named: no selector walks to dependents."
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "`--upstream`/`--downstream` walk the task graph from the requested tasks, never the project graph, and never leave the matched projects out."
+        }
+      }
+    },
+    {
+      "id": "graph/root-dependency-is-not-every-members-dependency",
+      "ref": "lhkz3r",
+      "category": "graph",
+      "kind": "efficiency",
+      "title": "A member that does not depend on a library the root depends on does not build it first",
+      "why": "The root package depending on `util` says the root needs `util`, nothing about `another`. Turborepo folds the root’s workspace dependencies into every package, so `another` with its dependencies builds `util` too. That is work the manifests never asked for. Selecting `another` with its dependencies runs `another` alone.",
+      "from": [
+        "root-project",
+        "filter"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "Nx selects projects by name, pattern or tag; no selector adds their dependencies or dependents."
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build builds the attributes it is named: no selector walks to dependents."
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "`--upstream`/`--downstream` walk the task graph from the requested tasks, never the project graph, and never leave the matched projects out."
+        }
+      }
+    },
+    {
+      "id": "inputs/root-dependency-edit-spares-unrelated-member",
+      "ref": "56tc6q",
+      "category": "inputs",
+      "kind": "efficiency",
+      "title": "An edit in a library the root depends on reruns the root’s task and leaves an unrelated member replayed",
+      "why": "Turborepo puts the root’s workspace dependencies in the global hash, so touching `util` misses the build of every package. `another` reads nothing of `util`, and nothing in any manifest links them. Rebuilding it costs a full task for an edit it cannot see. `util` and the root rebuild; `another` replays.",
+      "from": [
+        "root-project",
+        "hash-chain"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 3,
+          "detail": "ran another#build, expected it replayed or left out"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 3,
+          "detail": "did not run root#build"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "inputs/root-input-not-keyed-through-taskless-dependency",
+      "ref": "pxp94t",
+      "category": "inputs",
+      "kind": "efficiency",
+      "title": "A root file one project’s task reads does not rerun another project that reaches a dependency without the task",
+      "why": "`b` waits on its dependencies’ builds, but `shared` has none, so nothing is built there. Turborepo once gave that empty step a key of its own, global inputs included, so a root file only `a` reads reached `b` through it. An empty step reads nothing and keys nothing. Changing the file reruns `a` and replays `b`.",
+      "from": [
+        "workspace-files",
+        "hash-chain"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "outputs/single-package-deleted-output-restored",
+      "ref": "pbpgdl",
+      "category": "outputs",
+      "kind": "correctness",
+      "title": "In a one-package repository, a deleted output comes back at the repository root on a replay",
+      "why": "In a one-package repository the project folder is the repository root, so outputs live beside `.git` and the tool’s own files. A tool that places restored files relative to a members folder, or skips restoring at the root, leaves the build missing after a replay. The file comes back where the task wrote it, with its bytes.",
+      "from": [
+        "root-project",
+        "output-flow"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "env/single-package-declared-variable-keys",
+      "ref": "bzyfdo",
+      "category": "env",
+      "kind": "correctness",
+      "title": "In a one-package repository, a declared variable reaches the task and a new value runs it again",
+      "why": "A one-package build reads its mode from the environment as any project does. If the root package’s task skips the variable when keying, a production build replays a development result. The value must reach the command and key it. The second run, with a new value, builds again and writes the new value.",
+      "from": [
+        "root-project",
+        "env"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "failure/single-package-unknown-task-fails",
+      "ref": "kt3ei7",
+      "category": "failure",
+      "kind": "correctness",
+      "title": "In a one-package repository, asking for a task the package does not declare fails",
+      "why": "A typo in a task name must not look like success. With no members there is no other project to run it in, so the run has nothing to do. A tool that exits 0 with nothing run lets CI pass a test job that tested nothing. The run fails and runs nothing.",
+      "from": [
+        "root-project",
+        "cli-task-names"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 1,
+          "detail": "succeeded, expected a failure"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "failure/single-package-failing-prerequisite-skips-task",
+      "ref": "0q9w5n",
+      "category": "failure",
+      "kind": "correctness",
+      "title": "In a one-package repository, a failing step before the build fails the run and the build never runs",
+      "why": "The build reads what its prerequisite writes, so building after that step failed reads nothing or an old file. In a one-package repository the task edge is all that orders them. The run fails, the build does not start, and no output of it appears.",
+      "from": [
+        "root-project",
+        "failure-mode"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "graph/single-package-forwarded-args-reach-task",
+      "ref": "l8abms",
+      "category": "graph",
+      "kind": "correctness",
+      "title": "In a one-package repository, args given to the run reach the task’s command",
+      "why": "A one-package repository runs one project, so forwarding args is unambiguous: `test -- --watch=false` means the package’s test. A tool that drops them, or hands them to the step before, runs the command the user did not ask for. The args reach the requested task as written.",
+      "from": [
+        "root-project",
+        "forward-args-verbatim"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "affected/single-package-change-selects-the-package",
+      "ref": "xzw4fn",
+      "category": "affected",
+      "kind": "correctness",
+      "title": "In a one-package repository, an affected run runs nothing with no change and runs the task after one",
+      "why": "Every file of a one-package repository belongs to its one project. With no change since the base the run has nothing to do and must succeed. After a committed source edit the package is changed and its task runs. A tool that only maps changes onto workspace members selects nothing ever.",
+      "from": [
+        "root-project",
+        "affected"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "Vite Task does not select tasks by what git says changed."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build builds the attributes it is named: no git change selects them."
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "failure/root-dependency-failure-skips-root-task",
+      "ref": "p8nvqe",
+      "category": "failure",
+      "kind": "correctness",
+      "title": "A library the root package depends on failing skips the root’s task and lets an unrelated member build",
+      "why": "The root’s build waits on its dependencies like any project’s, so it must not run over a library that just failed. A member that does not depend on that library has nothing to wait for and should build. The run fails, the root’s task does not start, and `another` still builds.",
+      "from": [
+        "root-project",
+        "failure-mode"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "outputs/restore-beside-committed-file-keeps-its-edit",
+      "ref": "lvd111",
+      "category": "outputs",
+      "kind": "correctness",
+      "title": "Restoring a deleted build file into an output folder keeps a committed file there as last committed",
+      "why": "A license or a checked-in asset often sits in the output folder, committed, and the task never writes it. When the build file is deleted and the run replays, the restore writes into that folder. A restore that unpacks the whole stored folder puts the old copy of the committed file back, and `git diff` shows an edit nobody made. The build file comes back and the committed file keeps its new text.",
+      "from": [
+        "stale-hit-git",
+        "output-flow"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 5,
+          "detail": "packages/a/out/LICENSE is \"license v1\\n\", expected \"license v2\\n\""
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 5,
+          "detail": "packages/a/out/LICENSE is \"license v1\\n\", expected \"license v2\\n\""
+        },
+        "nix": {
+          "status": "fail",
+          "step": 5,
+          "detail": "packages/a/out/LICENSE is missing, expected \"license v2\\n\""
+        },
+        "moon": {
+          "status": "fail",
+          "step": 5,
+          "detail": "packages/a/out/LICENSE is \"license v1\\n\", expected \"license v2\\n\""
+        }
+      }
+    },
+    {
+      "id": "affected/file-named-after-negated-folder-selects",
+      "ref": "2om0mp",
+      "category": "affected",
+      "kind": "correctness",
+      "title": "A file named outright as an input, beside an exclude of its whole folder, selects the task when it changes",
+      "why": "An input list such as `src/index.txt` and `!src/**` says: of `src`, read only this file. Turborepo’s test pins that an edit to the named file still selects the task. A matcher that lets the folder exclude win drops the one file the task reads, and the affected run skips a task whose result just changed. A tool may refuse the list outright instead.",
+      "from": [
+        "affected-head-range",
+        "inputs-resolution"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 3,
+          "detail": "did not run a#build"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "Vite Task does not select tasks by what git says changed."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build builds the attributes it is named: no git change selects them."
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "graph/single-package-two-tasks-in-one-run",
+      "ref": "ijzfxj",
+      "category": "graph",
+      "kind": "correctness",
+      "title": "In a one-package repository, a run asking for two tasks runs both",
+      "why": "`lint` and `build` side by side is the usual CI line, in a single package as in a monorepo. A tool that takes only the first name, or reads the second as a project to select, runs half of what was asked and reports success. Both tasks run and leave their files.",
+      "from": [
+        "root-project",
+        "cli-task-names"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "`vp run` runs one task name per run."
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "inputs/single-package-fixture-folder-with-manifest-keys-the-task",
+      "ref": "h0f2c0",
+      "category": "inputs",
+      "kind": "correctness",
+      "title": "In a one-package repository, an edit in a fixture folder that holds its own package.json runs the task reading it",
+      "why": "Test fixtures are often small packages, each with a package.json, inside a repository that lists no workspaces. Such a folder is not a project, so its files belong to the package around it. A tool that takes every package.json as a project boundary drops the fixture from the task’s inputs and replays tests built from the old fixture.",
+      "from": [
+        "root-project",
+        "nested-input"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "watch/single-package-edit-rebuilds",
+      "ref": "fepchh",
+      "category": "watch",
+      "kind": "correctness",
+      "title": "In a one-package repository, editing a source while watching rebuilds it",
+      "why": "A watch over a single package watches the whole repository root, `.git` and the tool’s own files included. It must still react to a source edit and ignore its own writes. A watch that only follows member folders never fires here, and the user keeps testing the first build.",
+      "from": [
+        "root-project",
+        "watch-loop"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "`vp run` has no watch mode."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build has no watch mode."
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "`moon run` runs once: moon has no watch mode."
+        }
+      }
+    },
+    {
+      "id": "inputs/hundred-untracked-names-with-spaces-each-keyed",
+      "ref": "wp6a0s",
+      "category": "inputs",
+      "kind": "correctness",
+      "title": "With a hundred new files named with spaces under the inputs, editing one of them runs the task again",
+      "why": "Git quotes and splits a long status listing in ways a careless parser gets wrong, and spaces in names are where it breaks first. Turborepo’s test counts that a hundred untracked spaced names all reach the task’s inputs. A tool that loses some of them replays a stale build when one of the lost files changes.",
+      "from": [
+        "git-enum-unicode",
+        "inputs"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "graph/single-package-selected-by-its-name",
+      "ref": "oxjo5s",
+      "category": "graph",
+      "kind": "correctness",
+      "title": "In a one-package repository, selecting the package by its name runs its task",
+      "why": "Scripts and CI templates select by name, and the same template often serves single packages and monorepos. In a one-package repository the name in package.json is the one project’s name. A tool that refuses the selection, or matches nothing and exits 0, breaks the shared template.",
+      "from": [
+        "root-project",
+        "filter"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build builds the attributes it is named: no filter picks them."
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "graph/root-caret-without-dependencies-runs-alone",
+      "ref": "oqe38h",
+      "category": "graph",
+      "kind": "efficiency",
+      "title": "The root package’s task that waits on its dependencies’ builds runs alone when the root depends on nothing",
+      "why": "The root package’s folder holds every member, but its manifest lists no workspace dependency. Its `^build` therefore names no project. A tool that treats the root as depending on everything under it builds every member first, which for a root lint or docs task is the whole repository for nothing.",
+      "from": [
+        "root-project",
+        "graph-order"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build builds the attributes it is named: no filter picks them."
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "inputs/member-edit-outside-root-dependencies-replays-root-task",
+      "ref": "ge421d",
+      "category": "inputs",
+      "kind": "efficiency",
+      "title": "An edit in a member the root package does not depend on replays the root’s task that waits on its dependencies",
+      "why": "The root’s build waits on `util`, so a change in `util` must reach it. `another` is in the repository but not in the root’s dependencies, so its edits cannot change what the root reads. A tool that folds every member into the root’s key rebuilds the root on each member edit. `another` rebuilds; the root and `util` replay.",
+      "from": [
+        "root-project",
+        "hash-chain"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "cache/args-order-keys-the-task",
+      "ref": "stglty",
+      "category": "cache",
+      "kind": "correctness",
+      "title": "The same forwarded args in another order run the task again",
+      "why": "Positional args mean what their place says: `cp a b` and `cp b a` are different commands. A key that sorts the args, or folds them as a set, replays the first order’s output for the second. Here the task writes its args in order, so a replay leaves the wrong order on disk.",
+      "from": [
+        "forward-args-verbatim",
+        "task-hash"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "fail",
+          "step": 2,
+          "detail": "did not run a#build"
+        }
+      }
+    },
+    {
+      "id": "cache/one-spaced-arg-is-not-two-args",
+      "ref": "ffw1wm",
+      "category": "cache",
+      "kind": "correctness",
+      "title": "One forwarded arg holding a space and two args without it key the task apart",
+      "why": "`\"x y\"` is one argument and `x y` is two, and a command can tell them apart. A key that joins the args with spaces gives both the same key and replays the wrong result. Each must keep its own entry, so going back to the first replays the first.",
+      "from": [
+        "forward-args-verbatim",
+        "task-hash"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "inputs/gitignored-directory-deletes-and-moves",
+      "ref": "2subvx",
+      "category": "inputs",
+      "kind": "correctness",
+      "title": "Under a gitignored input directory, a deleted file, a moved folder and a deleted folder each run the task again",
+      "why": "Generated directories are gitignored, so git cannot tell the tool what changed in them; the tool has to look. A file gone, a folder renamed and a folder removed each change what the task reads. Moving the folder back restores the exact inputs of an earlier run, so that run’s result replays.",
+      "from": [
+        "ignored-inputs",
+        "inputs-moved"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 5,
+          "detail": "did not run a#build"
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 9,
+          "detail": "ran a#build, expected it replayed or left out"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "fail",
+          "step": 5,
+          "detail": "did not run a#build"
+        }
+      }
+    },
+    {
+      "id": "cache/unkeyed-reader-of-generated-file-keyed-after-the-generator",
+      "ref": "hon06b",
+      "category": "cache",
+      "kind": "correctness",
+      "title": "A task keyed only on a file its prerequisite generates runs again when the generator’s source changes",
+      "why": "The reader is not keyed on the generator, only on the generated file, and that file is only new once the generator has run. A tool that derives every key before any task runs reads last run’s generated file and replays a stale result. The reader’s key must be taken after its prerequisite has written what it reads.",
+      "from": [
+        "unkeyed-upstream",
+        "upstream"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "A dependency’s hash always keys its dependants: no task orders a dependency without it."
+        },
+        "nx": {
+          "status": "fail",
+          "step": 2,
+          "detail": "ran a#build, expected it replayed or left out"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "A dependency’s output path is its dependant’s input: it always keys it."
+        },
+        "moon": {
+          "status": "fail",
+          "step": 2,
+          "detail": "ran a#build, expected it replayed or left out"
+        }
+      }
+    },
+    {
+      "id": "cache/server-source-change-replays-unkeyed-test",
+      "ref": "wcim3e",
+      "category": "cache",
+      "kind": "efficiency",
+      "title": "A test that waits for a dev server but is not keyed on it replays when only the server’s sources change",
+      "why": "Saying a task is not keyed on its dependency is a promise that the dependency cannot change its result: the test needs the server up, not its source. With only the server’s source changed, the test’s own inputs are the same, so it replays. Nothing then needs the server, so it does not start.",
+      "from": [
+        "exclude-dependencies-key",
+        "keyless-through-server"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "A dependency’s hash always keys its dependants: no task orders a dependency without it."
+        },
+        "nx": {
+          "status": "fail",
+          "step": 3,
+          "detail": "ran web#e2e, api#dev, expected it replayed or left out"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "Vite Task has no long-running task it stops when the run ends."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "A derivation is a build that ends: Nix has no long-running task. A dependency’s output path is its dependant’s input: it always keys it."
+        },
+        "moon": {
+          "status": "fail",
+          "step": 1,
+          "detail": "did not finish within 30 s"
+        }
+      }
+    },
+    {
+      "id": "affected/server-edge-reaches-the-suite",
+      "ref": "epa9xi",
+      "category": "affected",
+      "kind": "correctness",
+      "title": "A library change selects the e2e suite whose dev server is built on that library, with no package dependency between them",
+      "why": "The suite tests the server and the server is built from the library, so a library change can break the suite. The path runs only through task edges, two of them, one into a server. A selection that walks package dependencies, or stops at the server, leaves the one test that would catch the break out of the run.",
+      "from": [
+        "affected-tasks",
+        "task-edge-selection"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 3,
+          "detail": "exited 1, expected success"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 3,
+          "detail": "did not run suite#e2e"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "Vite Task does not select tasks by what git says changed. Vite Task has no long-running task it stops when the run ends."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build builds the attributes it is named: no git change selects them. A derivation is a build that ends: Nix has no long-running task."
+        },
+        "moon": {
+          "status": "fail",
+          "step": 3,
+          "detail": "did not finish within 30 s"
+        }
+      }
+    },
+    {
+      "id": "failure/taskless-bridge-failure-skips-only-its-top",
+      "ref": "nexe1q",
+      "category": "failure",
+      "kind": "correctness",
+      "title": "A failed build reached through one project without a build skips only the project above that bridge",
+      "why": "Two apps each reach a library through a middle project that has no build. The middle projects are only bridges: each app waits for its own library and nothing else. A tool that merges the bridges into one stand-in makes both apps wait on both libraries, so one library’s failure wrongly skips the other app.",
+      "from": [
+        "task-graph",
+        "run-failures-store"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 1,
+          "detail": "did not run y#build"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "fail",
+          "step": 1,
+          "detail": "did not run y#build"
+        }
+      }
+    },
+    {
+      "id": "graph/twelve-tasks-at-once",
+      "ref": "gj0z7g",
+      "category": "graph",
+      "kind": "efficiency",
+      "title": "At a concurrency of 12, twelve independent tasks all run at the same time",
+      "why": "A limit of twelve means twelve tasks may run together, and a big machine asks for it. A runner that hits an internal cap first, such as a limit on listeners or pipes, quietly runs fewer at once and the run takes longer. Each task here waits until all twelve have started.",
+      "from": [
+        "run-concurrency",
+        "scheduler"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "graph/ready-line-printed-at-once-releases",
+      "ref": "e5k8gr",
+      "category": "graph",
+      "kind": "correctness",
+      "title": "A server that prints its ready line as its very first output still releases what waits for it",
+      "why": "Nothing replays a server’s earlier output, so a matcher that starts listening a moment after the spawn misses a line printed at once. The server is up, and its dependants wait forever for a line that already came. The ready line counts from the first byte the server writes.",
+      "from": [
+        "persistent",
+        "ready-wait-notice"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "Turborepo does not hold a task until a persistent one prints a ready line."
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "Vite Task has no long-running task it stops when the run ends. Vite Task does not hold a task until another prints a ready line."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "A derivation is a build that ends: Nix has no long-running task. A derivation is a build that ends: nothing waits for a ready line."
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "A `wait` dependency waits for the persistent task to start, never for a line it prints."
+        }
+      }
+    },
+    {
+      "id": "outputs/link-in-dir-output-beside-file-glob",
+      "ref": "jxhkoo",
+      "category": "outputs",
+      "kind": "correctness",
+      "title": "Outputs mixing a file pattern and two directory trees, one holding a symlink, cache and come back whole",
+      "why": "A Next.js build leaves manifests matched by `*.json` beside standalone and server trees, and the standalone tree holds links. Storing the file pattern and the trees as separate pieces once made the store trip over the link and fail the save. Every piece, the link included, must be stored, replayed with the outputs intact, and restored once deleted.",
+      "from": [
+        "output-glob-links",
+        "output-links"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "fail",
+          "step": 5,
+          "detail": "packages/a/.next/standalone/linked-entry.js is missing"
+        }
+      }
+    },
+    {
+      "id": "cache/unkeyed-edge-through-taskless-project-replays",
+      "ref": "i3y3rw",
+      "category": "cache",
+      "kind": "efficiency",
+      "title": "A build not keyed on its dependencies replays when a library it reaches through a project without a build changes",
+      "why": "The app reaches the library’s build through a middle project that has no build of its own, and the app was told not to key on what it depends on. Passing through a project without the task does not turn that edge back into a keyed one. The library rebuilds, and the app, whose own sources are the same, replays.",
+      "from": [
+        "unkeyed-upstream",
+        "exclude-dependencies-key"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "A dependency’s hash always keys its dependants: no task orders a dependency without it."
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "A dependency’s output path is its dependant’s input: it always keys it."
+        },
+        "moon": {
+          "status": "fail",
+          "step": 1,
+          "detail": "app#build started before lib#build finished"
+        }
+      }
+    },
+    {
+      "id": "cache/unkeyed-dependant-of-uncached-task-replays",
+      "ref": "ptz2w8",
+      "category": "cache",
+      "kind": "efficiency",
+      "title": "A cached task behind a never-cached prerequisite replays when it is not keyed on that prerequisite",
+      "why": "A never-cached prerequisite runs on every run, and a tool that cannot tell what it changed may refuse to replay what depends on it. Here the dependant was told not to key on its prerequisites, and its own sources are the same. The prerequisite runs, as it always does, and the dependant replays.",
+      "from": [
+        "uncached-upstream-key",
+        "unkeyed-upstream"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "A dependency’s hash always keys its dependants: no task orders a dependency without it."
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "A dependency’s output path is its dependant’s input: it always keys it."
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "outputs/root-project-negated-output-left-out",
+      "ref": "r0m8jd",
+      "category": "outputs",
+      "kind": "correctness",
+      "title": "The root project’s `!` output entry keeps that folder out of what a replay brings back",
+      "why": "When the repository root is itself a project, its outputs are paths with no directory in front. A negation there still names a path under the root project. A tool that loses the `!` while joining it to an empty project path stores the scratch folder with the build, or refuses the pattern, and the replay brings back files the user took out.",
+      "from": [
+        "negated-outputs",
+        "root-project"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "env/command-inline-variable-scoped-to-its-step",
+      "ref": "5kvj1y",
+      "category": "env",
+      "kind": "correctness",
+      "title": "A variable set in front of one program in an `&&` chain does not reach the next program",
+      "why": "A `NAME=value` prefix is the environment of that one program, not of the command line. A tool that splits the chain at `&&` and lifts every prefix into the task’s environment leaks the value into steps the user never gave it. The first program sees the value; the second sees it unset.",
+      "from": [
+        "task-shell",
+        "runner"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "env/command-assignment-alone-seen-later-not-exported",
+      "ref": "ek59fp",
+      "category": "env",
+      "kind": "correctness",
+      "title": "A variable assigned on its own, `B=two && …`, is seen by later steps but not handed to programs",
+      "why": "An assignment with no program sets a shell variable for the rest of the line, without exporting it. A tool that reads it as a program named `B=two` fails the task; one that exports it hands the value to programs that should not see it. The later step expands it, and a child shell sees it unset.",
+      "from": [
+        "task-shell",
+        "runner"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "env/command-inline-variable-not-expanded-in-its-own-args",
+      "ref": "moooab",
+      "category": "env",
+      "kind": "correctness",
+      "title": "A prefix `X=hi prog \"$X\"` does not fill in `$X` in that same program’s args",
+      "why": "The shell expands a program’s words before it applies the prefix, so `X=hi echo $X` prints what `X` was before. A tool that turns the prefix into the environment of the whole line, then expands, prints `hi` where the user’s terminal prints nothing. The arg holds the value from before the prefix: unset.",
+      "from": [
+        "task-shell",
+        "runner"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "env/command-export-reaches-later-programs",
+      "ref": "1agpai",
+      "category": "env",
+      "kind": "correctness",
+      "title": "A variable exported in one step of an `&&` chain reaches the programs of the later steps",
+      "why": "An `export` changes the environment of the shell itself, and every program it starts afterwards inherits it. A tool that runs each step of the chain as its own process loses the export after the first step. The child shell started later sees the value.",
+      "from": [
+        "task-shell",
+        "runner"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "env/command-escaped-quote-inside-double-quotes",
+      "ref": "e18x4j",
+      "category": "env",
+      "kind": "correctness",
+      "title": "A `\\\"` inside double quotes reaches the program as a plain double quote",
+      "why": "Inside double quotes a backslash escapes the quote, so `\"arg\\\"2\"` is the one word `arg\"2`. A tool that unquotes the command itself and ends the string at the escaped quote passes two words, or keeps the backslash. The program receives exactly `arg\"2`.",
+      "from": [
+        "task-shell",
+        "runner"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "env/command-inline-variable-value-with-escaped-quote",
+      "ref": "u1tvmb",
+      "category": "env",
+      "kind": "correctness",
+      "title": "A prefix value written `FOO=\"BE\\\"R\"` reaches the program as `BE\"R`",
+      "why": "A value set in front of a program follows the same quoting as any word. A tool that lifts the prefix into an environment map with its own unquoting keeps the backslash or cuts the value at the inner quote. The program sees the value the shell would give it.",
+      "from": [
+        "task-shell",
+        "runner"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "env/command-inline-variable-value-with-space",
+      "ref": "neh61e",
+      "category": "env",
+      "kind": "correctness",
+      "title": "A prefix value in quotes holding a space, `X=\"a b\" prog`, reaches the program whole",
+      "why": "Quotes make `a b` one value. A tool that splits the prefix at the space sets `X=a` and runs a program named `b`. The program sees `a b`.",
+      "from": [
+        "task-shell",
+        "runner"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "env/command-nested-quote-kinds",
+      "ref": "1esd04",
+      "category": "env",
+      "kind": "correctness",
+      "title": "Single quotes inside double quotes, and double inside single, reach the program as text",
+      "why": "Each kind of quote makes the other a plain character: `\"hello 'world'\"` and `'hello \"world\"'`. A tool that strips every quote it finds, of either kind, hands the program `hello world` twice. Each arg keeps its inner quotes.",
+      "from": [
+        "task-shell",
+        "runner"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "env/command-backslash-space-one-word",
+      "ref": "8ycx1o",
+      "category": "env",
+      "kind": "correctness",
+      "title": "A backslash before a space, `hello\\ world`, keeps the two halves one arg",
+      "why": "An escaped space is part of the word, the way a file name with a space is often typed. A tool that splits the command on spaces before the shell sees it passes `hello\\` and `world`. The program receives one arg, `hello world`.",
+      "from": [
+        "task-shell",
+        "runner"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "env/command-double-quoted-backslash-pair",
+      "ref": "ijana3",
+      "category": "env",
+      "kind": "correctness",
+      "title": "Two backslashes inside double quotes reach the program as one",
+      "why": "Inside double quotes `\\\\` is an escaped backslash, so `\"a\\\\b\"` is `a\\b`. A tool that unquotes without handling escapes passes both backslashes, and a Windows-style path in a task arrives doubled. The program receives a single backslash.",
+      "from": [
+        "task-shell",
+        "runner"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "env/command-operators-inside-quotes-are-text",
+      "ref": "dqabdg",
+      "category": "env",
+      "kind": "correctness",
+      "title": "An `&&`, `;`, `|` or `||` inside quotes reaches the program as text, not as a split",
+      "why": "A tool that splits a command at `&&` before the shell reads it must respect quotes, or a quoted script such as `node -e \"a(); if (x) b()\"` is cut in pieces. Inside quotes every operator is a character. The program prints the whole string.",
+      "from": [
+        "task-shell",
+        "runner"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "env/command-and-or-read-left-to-right",
+      "ref": "3pla58",
+      "category": "env",
+      "kind": "correctness",
+      "title": "In `true || skip && next`, the step after `&&` still runs",
+      "why": "`&&` and `||` have equal precedence in `sh` and bind left to right, so the line reads `(true || skip) && next`. A tool that splits at `&&` first and then reads `||` within each part, or the other way round, runs something else. Here `skip` does not run and `next` does.",
+      "from": [
+        "task-shell",
+        "runner"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "env/command-bang-inverts-status",
+      "ref": "uxlxoq",
+      "category": "env",
+      "kind": "correctness",
+      "title": "A `!` before a program turns its failure into success, and the chain goes on",
+      "why": "`! grep -q x file` is how a task asserts something is absent. A tool that takes `!` as a program name, or drops it, fails the step or inverts nothing. Here the search finds nothing, so the negated step passes and the next one writes the file.",
+      "from": [
+        "task-shell",
+        "runner"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "env/command-comment-ends-the-line",
+      "ref": "p6f5fz",
+      "category": "env",
+      "kind": "correctness",
+      "title": "Text after a ` #` is a comment up to the line’s end: an `&&` step written there never runs",
+      "why": "A comment runs to the end of the line, operators and all, and the next line is a command again. A tool that splits the command at `&&` before the shell reads it runs the commented step, here a delete. The file the first step wrote is still there, with the next line’s write after it.",
+      "from": [
+        "task-shell",
+        "runner"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "env/command-hash-inside-a-word-is-text",
+      "ref": "bwilvl",
+      "category": "env",
+      "kind": "correctness",
+      "title": "A `#` in the middle of a word, `a#b`, is text and not a comment",
+      "why": "Only a `#` that starts a word begins a comment. A tool that cuts the command at every `#` drops the rest of the word and everything after it. The program receives `a#b` and the step after it runs.",
+      "from": [
+        "task-shell",
+        "runner"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "env/command-background-step-and-wait",
+      "ref": "iagag1",
+      "category": "env",
+      "kind": "correctness",
+      "title": "A single `&` runs a step in the background, and `wait` waits for it",
+      "why": "One `&` starts a job without waiting; `wait` then holds the command until it ends. A tool that reads `&` as a broken `&&`, or ends the task when its shell reaches the end, loses the job’s write. The file holds what the background job wrote.",
+      "from": [
+        "task-shell",
+        "runner"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "env/command-brace-group-one-redirect",
+      "ref": "3qxb18",
+      "category": "env",
+      "kind": "correctness",
+      "title": "A `{ …; }` group sends every step’s output through one redirect",
+      "why": "Braces group steps without a subshell, so one `>` after them catches all their output. A tool that runs the steps one by one applies the redirect to the last only. The file holds both lines.",
+      "from": [
+        "task-shell",
+        "runner"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "env/command-if-then-else",
+      "ref": "rmo5u9",
+      "category": "env",
+      "kind": "correctness",
+      "title": "An `if … then … else … fi` in a command takes the branch its test picks",
+      "why": "Conditionals are common in tasks: build only when a file exists, pick a flag by platform. A tool that splits at `;` runs `then` and `else` as programs. The branch for the true test runs.",
+      "from": [
+        "task-shell",
+        "runner"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "env/command-exit-ends-the-command",
+      "ref": "hi2x46",
+      "category": "env",
+      "kind": "correctness",
+      "title": "An `exit 0` in the middle of a command ends it there, successfully",
+      "why": "`exit` ends the shell, so nothing after it runs, and the status is the one it gives. A tool that runs each step in its own shell lets the steps after it run. The run succeeds and the later write never happens.",
+      "from": [
+        "task-shell",
+        "runner"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "env/command-status-variable-after-failure",
+      "ref": "dp6mn2",
+      "category": "env",
+      "kind": "correctness",
+      "title": "A step after a failure reads its status from `$?`",
+      "why": "In one shell, `$?` holds the status of the last command. A tool that runs the steps in separate processes, or under `set -e`, loses it or never reaches the next step. The file holds 1, the status of `false`.",
+      "from": [
+        "task-shell",
+        "runner"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "env/command-function-defined-and-called",
+      "ref": "3rc5o4",
+      "category": "env",
+      "kind": "correctness",
+      "title": "A shell function defined in a command can be called later in it",
+      "why": "A short function keeps a long task readable. A tool that splits the command into programs runs `greet()` as a program name. The call prints what the function says.",
+      "from": [
+        "task-shell",
+        "runner"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "env/command-case-statement",
+      "ref": "35yerh",
+      "category": "env",
+      "kind": "correctness",
+      "title": "A `case … esac` in a command takes the arm whose pattern matches",
+      "why": "`case` patterns use glob syntax and end each arm with `;;`. A tool that splits at `;` or expands the patterns against files breaks the statement. The `*.txt` arm runs.",
+      "from": [
+        "task-shell",
+        "runner"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "env/command-arithmetic-expansion",
+      "ref": "16ieai",
+      "category": "env",
+      "kind": "correctness",
+      "title": "An arithmetic expansion, `$((6*7))`, is replaced by its value",
+      "why": "Tasks compute counts and ports inline. The shell evaluates `$((…))`; a tool that passes the command on without a shell, or treats the `*` as a glob, writes the text or a file list. The file holds 42.",
+      "from": [
+        "task-shell",
+        "runner"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "env/command-unmatched-glob-stays-literal",
+      "ref": "7ahly8",
+      "category": "env",
+      "kind": "correctness",
+      "title": "An unquoted glob that matches no file reaches the program as written",
+      "why": "In `sh`, a pattern with no match is left as it is, unlike shells set to fail or to drop it. A tool that runs commands under such a shell either fails the task or passes no argument. The program receives `src/*.nomatch`.",
+      "from": [
+        "task-shell",
+        "runner"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "env/command-reads-stdin-from-a-file",
+      "ref": "zlabwm",
+      "category": "env",
+      "kind": "correctness",
+      "title": "A `< file` redirect feeds the file to the program’s input",
+      "why": "A redirect is set up by the shell before the program starts. A tool that passes `<` as an argument hands the program a file named `<`. The program reads the source and writes it upper-cased.",
+      "from": [
+        "task-shell",
+        "runner"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "env/command-quoted-here-document-keeps-dollar",
+      "ref": "obdwl3",
+      "category": "env",
+      "kind": "correctness",
+      "title": "A here-document with a quoted delimiter, `<<'EOF'`, keeps `$HOME` as text",
+      "why": "Quoting the delimiter turns off expansion inside the document, which is how a task writes a script or template holding `$`. A tool that rewrites the command, or expands variables itself, fills in the value. The file holds `$HOME` as typed.",
+      "from": [
+        "task-shell",
+        "runner"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "env/command-sees-no-positional-args",
+      "ref": "pqpudh",
+      "category": "env",
+      "kind": "correctness",
+      "title": "A command run with no forwarded args sees `$#` as 0",
+      "why": "A task that takes no args must not be handed any: no task name, no flag of the runner’s own. A tool that wraps the command and leaks words into its positional args changes what `\"$@\"` passes on. The count is 0.",
+      "from": [
+        "task-shell",
+        "runner"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "env/command-exit-trap-runs",
+      "ref": "s92x05",
+      "category": "env",
+      "kind": "correctness",
+      "title": "An `EXIT` trap set at the start of a command runs when the command ends",
+      "why": "A trap is how a task cleans up or stamps a file whatever happens. It runs when the shell exits, after the last step. A tool that runs each step in its own process never runs it. The file holds the last step’s line, then the trap’s.",
+      "from": [
+        "task-shell",
+        "runner"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "env/command-empty-quoted-arg-kept",
+      "ref": "ksmwhv",
+      "category": "env",
+      "kind": "correctness",
+      "title": "An empty quoted arg, `\"\"`, reaches the program as an arg of its own",
+      "why": "Programs tell an empty value from no value: `--prefix \"\"` is not `--prefix`. A tool that unquotes and drops empty words shifts every arg after it. The program receives two args, the first empty.",
+      "from": [
+        "task-shell",
+        "runner"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "env/command-error-stream-merged-into-pipe",
+      "ref": "a7ru0x",
+      "category": "env",
+      "kind": "correctness",
+      "title": "A `2>&1` sends the error stream down the pipe with the output",
+      "why": "Order matters: `2>&1 |` merges the error stream into what the next program reads. A tool that captures the error stream itself first leaves the pipe empty. The next program receives and changes the line written to the error stream.",
+      "from": [
+        "task-shell",
+        "runner"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "env/command-line-continuation",
+      "ref": "kqaz2r",
+      "category": "env",
+      "kind": "correctness",
+      "title": "A backslash at the end of a line joins it to the next one",
+      "why": "Long commands are wrapped with `\\` at the line end, and the shell reads the two lines as one. A tool that splits the command into lines first runs `two` as a program of its own. The program receives both words.",
+      "from": [
+        "task-shell",
+        "runner"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "env/command-tab-separates-words",
+      "ref": "jud8t9",
+      "category": "env",
+      "kind": "correctness",
+      "title": "A tab between a program and its args separates them as a space does",
+      "why": "The shell splits words on blanks, tabs included. A tool that splits only on spaces runs a program whose name holds a tab. The program runs with its args.",
+      "from": [
+        "task-shell",
+        "runner"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "env/command-with-leading-blank-lines",
+      "ref": "e6oizj",
+      "category": "env",
+      "kind": "correctness",
+      "title": "A command that starts with blank lines and indentation still runs",
+      "why": "A command copied from a block string often starts with a newline and spaces. The shell skips them. A tool that takes everything before the first space as the program name runs nothing. The output is written.",
+      "from": [
+        "task-shell",
+        "runner"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "env/command-inline-value-holding-operators",
+      "ref": "ytznlu",
+      "category": "env",
+      "kind": "correctness",
+      "title": "A prefix value in quotes holding `;` and `&&`, `X='a;b && c' prog`, reaches the program whole",
+      "why": "A tool that lifts prefixes out of the command must cut them where the shell does, not at the first operator character. Quoted, `;` and `&&` are part of the value. The program sees the whole value.",
+      "from": [
+        "task-shell",
+        "runner"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "env/command-pipe-binds-tighter-than-and",
+      "ref": "fxegib",
+      "category": "env",
+      "kind": "correctness",
+      "title": "In `a | b && c || d`, the pipe is one step whose status the `&&` and `||` act on",
+      "why": "A pipeline is a single step of an `&&` list: its status is its last program’s. A tool that splits at `|` before `&&` hands `c` the wrong status. Here the search fails, so the fallback runs.",
+      "from": [
+        "task-shell",
+        "runner"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "env/command-redirect-applies-to-its-step",
+      "ref": "3pkggd",
+      "category": "env",
+      "kind": "correctness",
+      "title": "A `>` on one step of an `&&` chain catches only that step’s output",
+      "why": "A redirect belongs to the program it follows. A tool that splits the chain and sends the whole task’s output to the file, or that moves the redirect, writes lines the user sent to the terminal. The file holds only the first step’s line.",
+      "from": [
+        "task-shell",
+        "runner"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "env/command-glob-in-inline-value-not-expanded",
+      "ref": "q6wyk0",
+      "category": "env",
+      "kind": "correctness",
+      "title": "A prefix value holding a glob, `X=src/*.txt prog`, reaches the program as written",
+      "why": "The shell does not expand file names in an assignment. A tool that expands the value itself, or treats the prefix as an arg, hands the program a file list. The program sees `src/*.txt`.",
+      "from": [
+        "task-shell",
+        "runner"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "env/command-quotes-joined-into-one-word",
+      "ref": "oozgnu",
+      "category": "env",
+      "kind": "correctness",
+      "title": "Plain, double-quoted and single-quoted pieces with no space between them make one arg",
+      "why": "A word can be built from pieces quoted in different ways: `a\"b c\"'d e'` is the single word `ab cd e`. A tool that unquotes piece by piece and splits between them passes three args. The program receives one.",
+      "from": [
+        "task-shell",
+        "runner"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "sandbox/hardlink-outside-outputs-fails",
+      "ref": "626v7m",
+      "category": "sandbox",
+      "kind": "correctness",
+      "title": "An isolated task that hard-links an input to a name outside its outputs fails, and leaves no name",
+      "why": "A hard link makes a new file name, which is a write to the folder it lands in. Made outside the outputs, it is never stored and a replay leaves it out. The sandbox judges the new name like any other write: the task fails and the name is not left.",
+      "from": [
+        "sandbox-grants.unsafe",
+        "sandbox-misrooted-writes.unsafe"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "Turborepo keeps no task from files, network or home it never declared."
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "Nx keeps no task from files, network or home it never declared."
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "Vite Task keeps no task from files, network or home it never declared."
+        },
+        "nix": {
+          "status": "fail",
+          "step": 1,
+          "detail": "succeeded, expected a failure"
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "moon keeps no task from files, network or home it never declared."
+        }
+      }
+    },
+    {
+      "id": "sandbox/move-input-into-outputs-fails",
+      "ref": "z9wgyj",
+      "category": "sandbox",
+      "kind": "correctness",
+      "title": "An isolated task that moves an input into its outputs fails, and the input stays where it was",
+      "why": "A move takes the file out of its folder, which changes the inputs as surely as deleting it. A sandbox that only checks where a rename lands lets a task eat its own sources. The task fails and the source is kept.",
+      "from": [
+        "sandbox-grants.unsafe",
+        "sandbox-misrooted-writes.unsafe"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "Turborepo keeps no task from files, network or home it never declared."
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "Nx keeps no task from files, network or home it never declared."
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "Vite Task keeps no task from files, network or home it never declared."
+        },
+        "nix": {
+          "status": "fail",
+          "step": 1,
+          "detail": "succeeded, expected a failure"
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "moon keeps no task from files, network or home it never declared."
+        }
+      }
+    },
+    {
+      "id": "sandbox/undeclared-read-in-background-grandchild-fails",
+      "ref": "deu4cr",
+      "category": "sandbox",
+      "kind": "correctness",
+      "title": "An isolated task fails when a process it started in the background reads an undeclared file",
+      "why": "What a task’s children and their children do is the task’s doing, backgrounded or not. A sandbox that watches only the first process misses a read two levels down. The task fails, so its output never comes to depend on a file nothing keys.",
+      "from": [
+        "sandbox-grants.unsafe",
+        "sandbox-hidden-reads.unsafe"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "Turborepo keeps no task from files, network or home it never declared."
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "Nx keeps no task from files, network or home it never declared."
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "Vite Task keeps no task from files, network or home it never declared."
+        },
+        "nix": {
+          "status": "fail",
+          "step": 1,
+          "detail": "succeeded, expected a failure"
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "moon keeps no task from files, network or home it never declared."
+        }
+      }
+    },
+    {
+      "id": "sandbox/undeclared-write-in-background-grandchild-fails",
+      "ref": "netyt7",
+      "category": "sandbox",
+      "kind": "correctness",
+      "title": "An isolated task fails when a process it started in the background writes outside its outputs",
+      "why": "A write two processes down is still the task’s write. A sandbox that follows only the first process lets the file land, where no replay brings it back. The task fails and the file is not left.",
+      "from": [
+        "sandbox-grants.unsafe",
+        "sandbox-misrooted-writes.unsafe"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "Turborepo keeps no task from files, network or home it never declared."
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "Nx keeps no task from files, network or home it never declared."
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "Vite Task keeps no task from files, network or home it never declared."
+        },
+        "nix": {
+          "status": "fail",
+          "step": 1,
+          "detail": "succeeded, expected a failure"
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "moon keeps no task from files, network or home it never declared."
+        }
+      }
+    },
+    {
+      "id": "sandbox/undeclared-dir-listing-fails",
+      "ref": "59qltt",
+      "category": "sandbox",
+      "kind": "correctness",
+      "title": "An isolated task that lists a project folder it never declared fails",
+      "why": "Which files a folder holds is something a task can build on, such as a list of pages. A listing of a folder outside the inputs keys nothing, so adding a file there would replay a stale list. The task fails.",
+      "from": [
+        "sandbox-grants.unsafe",
+        "sandbox-hidden-reads.unsafe"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "Turborepo keeps no task from files, network or home it never declared."
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "Nx keeps no task from files, network or home it never declared."
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "Vite Task keeps no task from files, network or home it never declared."
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "moon keeps no task from files, network or home it never declared."
+        }
+      }
+    },
+    {
+      "id": "sandbox/input-script-runs",
+      "ref": "nionap",
+      "category": "sandbox",
+      "kind": "correctness",
+      "title": "An isolated task may run an executable script that is one of its inputs",
+      "why": "A task often runs a script kept beside its sources. Running it reads the script and starts the interpreter its first line names, both of which the task may reach. The script runs and writes the output.",
+      "from": [
+        "sandbox-grants.unsafe",
+        "sandbox-run-direct.unsafe"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "Turborepo keeps no task from files, network or home it never declared."
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "Nx keeps no task from files, network or home it never declared."
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "Vite Task keeps no task from files, network or home it never declared."
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "moon keeps no task from files, network or home it never declared."
+        }
+      }
+    },
+    {
+      "id": "graph/select-dir-dotdot-in-middle",
+      "ref": "uhhpab",
+      "category": "graph",
+      "kind": "correctness",
+      "title": "A directory selector `packages/x/../a` selects the project in `packages/a`",
+      "why": "A `..` in a path steps up a folder, wherever it sits. A tool that matches the text against project folders finds none and fails, or one that strips the `..` finds the wrong one. Only `a` runs.",
+      "from": [
+        "filter",
+        "select"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 1,
+          "detail": "did not run a#build"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build builds the attributes it is named: no filter picks them. nix-build builds the attributes it is named: no directory picks them."
+        },
+        "moon": {
+          "status": "fail",
+          "step": 1,
+          "detail": "exited 1, expected success"
+        }
+      }
+    },
+    {
+      "id": "graph/select-dir-trailing-dot",
+      "ref": "lf4djr",
+      "category": "graph",
+      "kind": "correctness",
+      "title": "A directory selector `packages/a/.` selects the project in `packages/a`",
+      "why": "A trailing `/.` names the folder itself, as completion in a shell often leaves it. A tool that matches the text literally finds no project there. Only `a` runs.",
+      "from": [
+        "filter",
+        "select"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 1,
+          "detail": "did not run a#build"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 1,
+          "detail": "did not run a#build"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build builds the attributes it is named: no filter picks them. nix-build builds the attributes it is named: no directory picks them."
+        },
+        "moon": {
+          "status": "fail",
+          "step": 1,
+          "detail": "exited 1, expected success"
+        }
+      }
+    },
+    {
+      "id": "graph/select-dir-glob-picks-one-folder",
+      "ref": "7vs4gf",
+      "category": "graph",
+      "kind": "correctness",
+      "title": "A directory glob `apps/*` selects the projects under `apps` and none under `packages`",
+      "why": "A directory glob is anchored at the folder it names. A tool that matches only the last part, `*`, takes every project in the workspace. Only the project under `apps` runs.",
+      "from": [
+        "filter",
+        "select"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 1,
+          "detail": "did not run web#build"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build builds the attributes it is named: no filter picks them. nix-build builds the attributes it is named: no directory picks them."
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "inputs/negated-folder-at-any-depth",
+      "ref": "ru07ue",
+      "category": "inputs",
+      "kind": "efficiency",
+      "title": "A negation `!**/snap/**` takes back a folder of that name at the top and deep down",
+      "why": "A leading `**` lets a negation reach the folder wherever it sits, top level included. A tool that needs at least one folder before `snap` keys the top one; one that anchors it keys the deep one. Edits under either replay, and an edit to a source beside them runs the task again.",
+      "from": [
+        "inputs-resolution",
+        "brace-inputs"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "cache/check-run-catches-an-extra-file",
+      "ref": "ma8ql2",
+      "category": "cache",
+      "kind": "correctness",
+      "title": "A check run fails a task whose rebuild writes one more file than the stored result",
+      "why": "A check run asks whether the stored result is what the task makes. A rebuild that leaves a file the stored result lacks makes something else, even when every file both hold is the same. A check that compares only the files the entry lists never sees the new one, and passes a task whose replays miss a file.",
+      "from": [
+        "artifact-roundtrip"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "n/a",
+          "detail": "No vx run rebuilds a cached task to compare its bytes with the stored ones."
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "No Turborepo run rebuilds a cached task to compare its bytes."
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "No Nx run rebuilds a cached task to compare its bytes."
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "No Vite Task run rebuilds a cached task to compare its bytes."
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "No moon run rebuilds a cached task to compare its bytes."
+        }
+      }
+    },
+    {
+      "id": "cache/check-run-catches-a-missing-file",
+      "ref": "2ofwtl",
+      "category": "cache",
+      "kind": "correctness",
+      "title": "A check run fails a task whose rebuild leaves out a file the stored result holds",
+      "why": "A file the first build wrote and the rebuild does not is a difference in what the task makes. A check that compares only the files the rebuild wrote finds nothing wrong, and the stored file goes on being replayed though the task no longer makes it. Dropping a file is as much a sign of nondeterminism as changing one.",
+      "from": [
+        "artifact-roundtrip"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "n/a",
+          "detail": "No vx run rebuilds a cached task to compare its bytes with the stored ones."
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "No Turborepo run rebuilds a cached task to compare its bytes."
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "No Nx run rebuilds a cached task to compare its bytes."
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "No Vite Task run rebuilds a cached task to compare its bytes."
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "No moon run rebuilds a cached task to compare its bytes."
+        }
+      }
+    },
+    {
+      "id": "cache/check-run-catches-an-executable-bit-difference",
+      "ref": "bfw63x",
+      "category": "cache",
+      "kind": "correctness",
+      "title": "A check run fails a task whose rebuild makes a script executable that was not before",
+      "why": "A replay restores the mode with the bytes, and a script that is executable on one machine and not on another runs on one and fails on the other. A rebuild that changes only the executable bit therefore made something different. A check that compares contents alone passes it.",
+      "from": [
+        "restore-dir-mode"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "n/a",
+          "detail": "No vx run rebuilds a cached task to compare its bytes with the stored ones."
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "No Turborepo run rebuilds a cached task to compare its bytes."
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "No Nx run rebuilds a cached task to compare its bytes."
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "No Vite Task run rebuilds a cached task to compare its bytes."
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "No moon run rebuilds a cached task to compare its bytes."
+        }
+      }
+    },
+    {
+      "id": "cache/check-run-catches-a-retargeted-link",
+      "ref": "qmcn25",
+      "category": "cache",
+      "kind": "correctness",
+      "title": "A check run fails a task whose rebuild points an output link at another file",
+      "why": "An output link is replayed as the link, so its target is part of what the task makes. Here both targets hold the same bytes, which a check that follows links would compare as equal. The link still names another file, and a later change to either target makes the two builds behave differently.",
+      "from": [
+        "output-links"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "n/a",
+          "detail": "No vx run rebuilds a cached task to compare its bytes with the stored ones."
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "No Turborepo run rebuilds a cached task to compare its bytes."
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "No Nx run rebuilds a cached task to compare its bytes."
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "No Vite Task run rebuilds a cached task to compare its bytes."
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "No moon run rebuilds a cached task to compare its bytes."
+        }
+      }
+    },
+    {
+      "id": "cache/check-run-catches-a-file-turned-into-a-link",
+      "ref": "2ewuzo",
+      "category": "cache",
+      "kind": "correctness",
+      "title": "A check run fails a task whose rebuild writes a link where it first wrote a file",
+      "why": "A file and a link to a file of the same bytes read alike, but they are not the same output. A replay writes one or the other, and a tool that copies, packs or edits the output treats them differently. A check that reads through the link sees equal bytes and misses the change of shape.",
+      "from": [
+        "output-shape"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "n/a",
+          "detail": "No vx run rebuilds a cached task to compare its bytes with the stored ones."
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "No Turborepo run rebuilds a cached task to compare its bytes."
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "No Nx run rebuilds a cached task to compare its bytes."
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "No Vite Task run rebuilds a cached task to compare its bytes."
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "No moon run rebuilds a cached task to compare its bytes."
+        }
+      }
+    },
+    {
+      "id": "cache/check-run-ignores-what-the-task-prints",
+      "ref": "utoub0",
+      "category": "cache",
+      "kind": "correctness",
+      "title": "A check run passes a task that prints the time but writes the same files",
+      "why": "A build log holds timestamps, durations and process ids that differ on every run. What a check must judge is what the task leaves behind, since that is what a replay restores. A check that compared the log would fail nearly every task and be switched off.",
+      "from": [
+        "replay-fidelity"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "n/a",
+          "detail": "No vx run rebuilds a cached task to compare its bytes with the stored ones."
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "No Turborepo run rebuilds a cached task to compare its bytes."
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "No Nx run rebuilds a cached task to compare its bytes."
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "No Vite Task run rebuilds a cached task to compare its bytes."
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "No moon run rebuilds a cached task to compare its bytes."
+        }
+      }
+    },
+    {
+      "id": "cache/check-run-ignores-files-outside-the-outputs",
+      "ref": "b5d3bi",
+      "category": "cache",
+      "kind": "correctness",
+      "title": "A check run passes a task whose scratch file outside its outputs differs on every build",
+      "why": "A task often leaves logs or temporary files beside its outputs. They are not stored, so a replay never brings them back and no later task reads them from the cache. A check that compared them would flag a task whose stored result is perfectly reproducible.",
+      "from": [
+        "restore-declared-only"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "n/a",
+          "detail": "No vx run rebuilds a cached task to compare its bytes with the stored ones."
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "No Turborepo run rebuilds a cached task to compare its bytes."
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "No Nx run rebuilds a cached task to compare its bytes."
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "No Vite Task run rebuilds a cached task to compare its bytes."
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "No moon run rebuilds a cached task to compare its bytes."
+        }
+      }
+    },
+    {
+      "id": "cache/check-run-of-a-rebuild-that-fails-fails",
+      "ref": "siot45",
+      "category": "cache",
+      "kind": "correctness",
+      "title": "A check run fails when the rebuild exits non-zero, and the stored result still replays",
+      "why": "A rebuild that fails did not reproduce the stored result, so the check cannot pass. The stored result was made by a build that passed and is still the right one for those inputs. A check that lets the failed rebuild remove it turns a flaky failure into a rebuild on every machine.",
+      "from": [
+        "task-save"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "n/a",
+          "detail": "No vx run rebuilds a cached task to compare its bytes with the stored ones."
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "No Turborepo run rebuilds a cached task to compare its bytes."
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "No Nx run rebuilds a cached task to compare its bytes."
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "No Vite Task run rebuilds a cached task to compare its bytes."
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "No moon run rebuilds a cached task to compare its bytes."
+        }
+      }
+    },
+    {
+      "id": "cache/check-run-catches-a-difference-in-a-root-output",
+      "ref": "poj6lm",
+      "category": "cache",
+      "kind": "correctness",
+      "title": "A check run fails a task whose rebuild changes the file it writes at the workspace root",
+      "why": "An output outside the project’s directory is stored and replayed like the others. A check that compares only the project’s own tree passes a task whose root file differs between builds. Every machine that replays it then gets whichever build happened to be stored.",
+      "from": [
+        "artifact-roundtrip"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "n/a",
+          "detail": "No vx run rebuilds a cached task to compare its bytes with the stored ones."
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "No Turborepo run rebuilds a cached task to compare its bytes."
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "No Nx run rebuilds a cached task to compare its bytes."
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "No Vite Task run rebuilds a cached task to compare its bytes."
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "No moon run rebuilds a cached task to compare its bytes."
+        }
+      }
+    },
+    {
+      "id": "cache/check-run-catches-a-same-size-change",
+      "ref": "exd241",
+      "category": "cache",
+      "kind": "correctness",
+      "title": "A check run fails a task whose rebuild writes other bytes of the same length and time",
+      "why": "Size and modification time are a cheap guess at whether a file changed, and here they agree. Only the bytes differ. A check that trusts the guess passes a task whose two builds disagree, which is the one thing it exists to catch.",
+      "from": [
+        "restore-mtime"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "n/a",
+          "detail": "No vx run rebuilds a cached task to compare its bytes with the stored ones."
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "No Turborepo run rebuilds a cached task to compare its bytes."
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "No Nx run rebuilds a cached task to compare its bytes."
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "No Vite Task run rebuilds a cached task to compare its bytes."
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "No moon run rebuilds a cached task to compare its bytes."
+        }
+      }
+    },
+    {
+      "id": "cache/check-run-ignores-a-modification-time-difference",
+      "ref": "90z87a",
+      "category": "cache",
+      "kind": "correctness",
+      "title": "A check run passes a task whose rebuild writes the same bytes with another file time",
+      "why": "Every rebuild writes its files at a new time, and some tasks set times of their own. A replay dates the files it writes anyway, so the stored time is not part of what the task makes. A check that compared archives with their timestamps would fail every reproducible task.",
+      "from": [
+        "restore-mtime"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "n/a",
+          "detail": "No vx run rebuilds a cached task to compare its bytes with the stored ones."
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "No Turborepo run rebuilds a cached task to compare its bytes."
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "No Nx run rebuilds a cached task to compare its bytes."
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "No Vite Task run rebuilds a cached task to compare its bytes."
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "No moon run rebuilds a cached task to compare its bytes."
+        }
+      }
+    },
+    {
+      "id": "cache/check-run-catches-contents-swapped-between-files",
+      "ref": "829oe6",
+      "category": "cache",
+      "kind": "correctness",
+      "title": "A check run fails a task whose rebuild swaps what two of its files hold",
+      "why": "Both builds write the same two contents, only under each other’s names. A check that compares the set of content hashes without the paths sees nothing wrong. Every reader of either file still gets something else from one build to the next.",
+      "from": [
+        "artifact-roundtrip"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "n/a",
+          "detail": "No vx run rebuilds a cached task to compare its bytes with the stored ones."
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "No Turborepo run rebuilds a cached task to compare its bytes."
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "No Nx run rebuilds a cached task to compare its bytes."
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "No Vite Task run rebuilds a cached task to compare its bytes."
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "No moon run rebuilds a cached task to compare its bytes."
+        }
+      }
+    },
+    {
+      "id": "cache/check-run-catches-a-difference-in-a-dotfile",
+      "ref": "8bwx4i",
+      "category": "cache",
+      "kind": "correctness",
+      "title": "A check run fails a task whose rebuild changes only a dotfile among its outputs",
+      "why": "Dotfiles are outputs like any other: a `.env` a build writes, a `.map` index, a manifest. A replay restores them, so they must be compared. A check that walks the outputs with a plain `*` skips them and passes a task whose hidden file differs.",
+      "from": [
+        "artifact-roundtrip"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "n/a",
+          "detail": "No vx run rebuilds a cached task to compare its bytes with the stored ones."
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "No Turborepo run rebuilds a cached task to compare its bytes."
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "No Nx run rebuilds a cached task to compare its bytes."
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "No Vite Task run rebuilds a cached task to compare its bytes."
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "No moon run rebuilds a cached task to compare its bytes."
+        }
+      }
+    },
+    {
+      "id": "inputs/without-git-new-file-reruns",
+      "ref": "fx7gqt",
+      "category": "inputs",
+      "kind": "correctness",
+      "title": "In a workspace that is not a git repository, a new file under the inputs runs the task again",
+      "why": "Without git there is no list of tracked files to start from, so the tool must walk the input globs itself. A walk done once and remembered, or one that hashes only files it saw before, misses the new file. The task then replays a build that never read it.",
+      "from": [
+        "no-git-on-path"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "n/a",
+          "detail": "vx finds the workspace root inside a git work tree and keys tracked files by git, so a folder that is not a repository is refused."
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "fail",
+          "step": 3,
+          "detail": "ran a#build, expected it replayed or left out"
+        }
+      }
+    },
+    {
+      "id": "inputs/without-git-deleted-file-reruns",
+      "ref": "oyvcb2",
+      "category": "inputs",
+      "kind": "correctness",
+      "title": "In a workspace that is not a git repository, deleting an input runs the task again",
+      "why": "A deleted input changes what the task reads, so its result changes too. Without git the tool learns of the deletion only by walking the inputs again. A tool that keys only the files still there and remembers nothing of the old set can miss that one went.",
+      "from": [
+        "no-git-on-path"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "n/a",
+          "detail": "vx finds the workspace root inside a git work tree and keys tracked files by git, so a folder that is not a repository is refused."
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "inputs/without-git-executable-bit-reruns",
+      "ref": "fzsfth",
+      "category": "inputs",
+      "kind": "correctness",
+      "title": "In a workspace that is not a git repository, making an input executable runs the task again",
+      "why": "Git records the executable bit for the files it tracks, and a tool keying files by reading them must record it too. A script that becomes executable changes what a task that runs or packs it produces. Hashing contents alone replays the build of the plain file.",
+      "from": [
+        "no-git-on-path"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "n/a",
+          "detail": "vx finds the workspace root inside a git work tree and keys tracked files by git, so a folder that is not a repository is refused."
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 4,
+          "detail": "did not run a#build"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 4,
+          "detail": "did not run a#build"
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 4,
+          "detail": "did not run a#build"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "inputs/without-git-link-retarget-reruns",
+      "ref": "9kmq37",
+      "category": "inputs",
+      "kind": "correctness",
+      "title": "In a workspace that is not a git repository, pointing an input link at another file runs the task again",
+      "why": "A link under the inputs decides which file the task reads through it. Without git the tool must read the link itself, not only list it. A tool that keys the link’s name and nothing else replays the build of the old target.",
+      "from": [
+        "no-git-on-path",
+        "linked-inputs"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "n/a",
+          "detail": "vx finds the workspace root inside a git work tree and keys tracked files by git, so a folder that is not a repository is refused."
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 5,
+          "detail": "did not run a#build"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "inputs/without-git-edit-outside-inputs-replays",
+      "ref": "kyaesm",
+      "category": "inputs",
+      "kind": "efficiency",
+      "title": "In a workspace that is not a git repository, editing a file outside the inputs replays the task",
+      "why": "Without git a tool may fall back to hashing the whole project directory. The inputs still say what the task reads, and a README beside the sources is not among them. Rerunning on every edit to it throws the cache away exactly where git is missing, in a tarball or a container build.",
+      "from": [
+        "no-git-on-path"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "n/a",
+          "detail": "vx finds the workspace root inside a git work tree and keys tracked files by git, so a folder that is not a repository is refused."
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "fail",
+          "step": 4,
+          "detail": "ran a#build, expected it replayed or left out"
+        }
+      }
+    },
+    {
+      "id": "outputs/without-git-deleted-output-restored",
+      "ref": "qwrho2",
+      "category": "outputs",
+      "kind": "correctness",
+      "title": "In a workspace that is not a git repository, a deleted output comes back from the cache",
+      "why": "A replay restores outputs from the cache, which has nothing to do with git. Without git, though, a tool may decide what to clean or restore by asking git which files are its own. The deleted output must still come back with its bytes and the task must not run.",
+      "from": [
+        "no-git-on-path"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "n/a",
+          "detail": "vx finds the workspace root inside a git work tree and keys tracked files by git, so a folder that is not a repository is refused."
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "fail",
+          "step": 4,
+          "detail": "ran a#build, expected it replayed or left out"
+        }
+      }
+    },
+    {
+      "id": "cache/without-git-dependency-edit-cascades",
+      "ref": "3xjt1r",
+      "category": "cache",
+      "kind": "correctness",
+      "title": "In a workspace that is not a git repository, editing a library rebuilds it and the app on it",
+      "why": "The app’s result depends on what the library built, so a new library source must reach the app’s key through the library’s. Without git the library’s key comes from reading its files, and the app’s must fold that in. Rebuilding the library alone leaves the app replaying a build on the old library.",
+      "from": [
+        "no-git-on-path",
+        "hash-chain"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "n/a",
+          "detail": "vx finds the workspace root inside a git work tree and keys tracked files by git, so a folder that is not a repository is refused."
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 4,
+          "detail": "did not run app#build"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "inputs/without-git-renamed-file-reruns",
+      "ref": "vho7gb",
+      "category": "inputs",
+      "kind": "correctness",
+      "title": "In a workspace that is not a git repository, renaming an input runs the task again",
+      "why": "A file’s name is part of what a task reads: a bundler emits it, a test runner reports it, a glob orders by it. Hashing only the bytes of each file, without its path, makes the renamed tree look unchanged. The task then replays a build that names the old file.",
+      "from": [
+        "no-git-on-path"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "n/a",
+          "detail": "vx finds the workspace root inside a git work tree and keys tracked files by git, so a folder that is not a repository is refused."
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "inputs/without-git-dotfile-edit-reruns",
+      "ref": "id1uuy",
+      "category": "inputs",
+      "kind": "correctness",
+      "title": "In a workspace that is not a git repository, editing a dotfile under the inputs runs the task again",
+      "why": "Git lists dotfiles like any other file, so a tool keying by git sees them. A walk of the file system written by hand often skips names starting with a dot, and `.babelrc` or `.env.defaults` under the sources then never keys the task. The edit replays a build made with the old config.",
+      "from": [
+        "no-git-on-path"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "n/a",
+          "detail": "vx finds the workspace root inside a git work tree and keys tracked files by git, so a folder that is not a repository is refused."
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "inputs/without-git-empty-directory-added-replays",
+      "ref": "xe1k66",
+      "category": "inputs",
+      "kind": "efficiency",
+      "title": "In a workspace that is not a git repository, a new empty folder under the inputs replays the task",
+      "why": "Input globs name files, and an empty folder adds none. With git the folder is invisible, since git tracks files only. A walk of the file system that keys directories as entries reruns the task here, so the same sources key differently with and without git.",
+      "from": [
+        "no-git-on-path"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "n/a",
+          "detail": "vx finds the workspace root inside a git work tree and keys tracked files by git, so a folder that is not a repository is refused."
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "fail",
+          "step": 4,
+          "detail": "ran a#build, expected it replayed or left out"
+        }
+      }
+    },
+    {
+      "id": "cache/removing-git-keeps-the-cache",
+      "ref": "6mhhrg",
+      "category": "cache",
+      "kind": "efficiency",
+      "title": "Deleting the `.git` folder of a built workspace still replays the task",
+      "why": "The sources did not change, only the way the tool finds them. A Docker build that copies the checkout without `.git`, or a release tarball, should hit what CI built from the repository. A tool whose keys differ by how it listed the files rebuilds everything there.",
+      "from": [
+        "no-git-on-path",
+        "gitlink-without-git"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "n/a",
+          "detail": "vx finds the workspace root inside a git work tree and keys tracked files by git, so a folder that is not a repository is refused."
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "fail",
+          "step": 3,
+          "detail": "ran a#build, expected it replayed or left out"
+        }
+      }
+    },
+    {
+      "id": "cache/git-init-keeps-the-cache",
+      "ref": "6yzeln",
+      "category": "cache",
+      "kind": "efficiency",
+      "title": "Making a built folder a git repository and committing it still replays the task",
+      "why": "A project often starts as a plain folder and becomes a repository later. Its files are the same before and after the first commit. A tool that keys tracked files by git and loose files by reading them must reach the same key both ways, or the first commit throws the whole cache away.",
+      "from": [
+        "no-git-on-path",
+        "gitlink-without-git"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "n/a",
+          "detail": "vx finds the workspace root inside a git work tree and keys tracked files by git, so a folder that is not a repository is refused."
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "fail",
+          "step": 4,
+          "detail": "ran a#build, expected it replayed or left out"
+        }
+      }
+    },
+    {
+      "id": "cache/forced-read-only-run-keeps-the-stored-bytes",
+      "ref": "9hw00d",
+      "category": "cache",
+      "kind": "correctness",
+      "title": "A forced run under a read-only cache runs the task and leaves the stored result as it was",
+      "why": "A read-only cache promises not to write, and forcing the run asks only to ignore what is stored. Together the task runs and its new result goes nowhere. A tool that lets force win saves from a run that was told not to, which is how an untrusted branch overwrites the main branch’s entries.",
+      "from": [
+        "download-policy"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 2,
+          "detail": "exited 1, expected success"
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "Nx has no run that reads the cache and writes nothing to it."
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "`--cache` and `--no-cache` turn caching on or off; no run ignores entries and saves fresh ones. No run reads the cache and writes nothing to it."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "A valid output is never built again: `--check` rebuilds to compare and saves nothing. Building writes the store: no build reads it without writing."
+        },
+        "moon": {
+          "status": "fail",
+          "step": 4,
+          "detail": "packages/a/dist/out.txt is \"2\\n\", expected \"1\\n\""
+        }
+      }
+    },
+    {
+      "id": "outputs/hard-linked-outputs-restored",
+      "ref": "u6uf29",
+      "category": "outputs",
+      "kind": "correctness",
+      "title": "Two output files a task hard-linked to each other both come back on a replay",
+      "why": "Build tools hard-link outputs to save space: a package copied into two places, a binary under two names. An archive stores the second name as a link to the first, and a restore that skips link entries, or writes them before their target, loses one. Both names must come back with the bytes the task wrote.",
+      "from": [
+        "tar-roundtrip-fuzz"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "outputs/equal-outputs-of-two-projects-stay-apart",
+      "ref": "bxlo4k",
+      "category": "outputs",
+      "kind": "correctness",
+      "title": "Two projects that build the same bytes get separate files: editing one leaves the other alone",
+      "why": "A cache that stores equal contents once may hand both projects the same file on disk. An edit to one project’s output then lands in the other project and in the stored entry too. The next replay restores the edited bytes for both, and the cache is wrong without any task running.",
+      "from": [
+        "restore-in-place"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "outputs/equal-files-of-one-task-stay-apart",
+      "ref": "tl1vvy",
+      "category": "outputs",
+      "kind": "correctness",
+      "title": "Two equal output files of one task come back as separate files: editing one leaves the other alone",
+      "why": "Equal files in one output are common: license copies, empty markers, the same asset under two paths. A restore that writes the second as a hard link to the first ties them together, so an edit to one rewrites the other, and the stored entry too if it shares the file. The next replay must still give each its own bytes.",
+      "from": [
+        "restore-in-place"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "outputs/output-swapped-for-hard-link-to-a-source-not-written-through",
+      "ref": "ovxg7c",
+      "category": "outputs",
+      "kind": "correctness",
+      "title": "An output a user replaced with a hard link to a source file is put back, and the source keeps its bytes",
+      "why": "A hard link is the same file under two names. A replay that opens the output and writes over it in place writes into the source file as well, destroying the user’s work without a word. Putting the output back must replace the name, leaving the other name’s bytes alone.",
+      "from": [
+        "restore-link-swap",
+        "restore-in-place"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "fail",
+          "step": 3,
+          "detail": "packages/a/dist/out.txt is \"a\\n\", expected \"built\\n\""
+        }
+      }
+    },
+    {
+      "id": "outputs/fifo-in-place-of-an-output-replaced",
+      "ref": "wz26s1",
+      "category": "outputs",
+      "kind": "correctness",
+      "title": "A named pipe left where an output file goes is replaced by the file on the next run, without hanging",
+      "why": "Opening a named pipe to write it waits until something reads it, so a replay that writes over the output in place never ends. Hashing it to see whether it changed waits the same way. The run must replace the pipe with the stored file and finish.",
+      "from": [
+        "restore-occupied-parent",
+        "restore-artifact-replaced"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "fail",
+          "step": 5,
+          "detail": "verdict.txt is \"other\\n\", expected \"file\\n\""
+        }
+      }
+    },
+    {
+      "id": "inputs/file-swapped-for-link-to-same-bytes-reruns",
+      "ref": "kqa26r",
+      "category": "inputs",
+      "kind": "correctness",
+      "title": "Swapping an input for a link to a file of the same bytes runs the task again, and swapping it back replays",
+      "why": "Git, a tar archive and a Nix store all record a link as a link. A task that copies, packs or lists its sources makes something different from a link than from a file, though reading through it gives the same bytes. Putting the plain file back is the first tree again, so its build replays.",
+      "from": [
+        "linked-inputs",
+        "hash-scenarios"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 3,
+          "detail": "did not run a#build"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 3,
+          "detail": "did not run a#build"
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 6,
+          "detail": "ran a#build, expected it replayed or left out"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "fail",
+          "step": 3,
+          "detail": "did not run a#build"
+        }
+      }
+    },
+    {
+      "id": "inputs/file-swapped-for-hard-link-to-equal-file-replays",
+      "ref": "btx01a",
+      "category": "inputs",
+      "kind": "efficiency",
+      "title": "Replacing an input with a hard link to another file of the same bytes replays the task",
+      "why": "Deduplicating tools, package managers and backups replace equal files with hard links. The file is still a regular file with the same bytes and mode, only its inode and link count changed. A key that reads anything beyond the bytes and mode reruns the task for a tree no task can tell apart.",
+      "from": [
+        "hash-scenarios",
+        "stale-hit"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "outputs/restored-dependency-output-is-newer-for-a-make-style-copy",
+      "ref": "0dm59f",
+      "category": "outputs",
+      "kind": "correctness",
+      "title": "A library output brought back by a replay counts as newer than the copy the app kept, so the app picks it up",
+      "why": "Many build steps copy or compile only what is newer than their own output, as make does. When a replay brings back an older library build, it has just been written, and the app’s copy from the newer build must count as out of date. A restore that stamps the file with the time it was first built makes the app keep the newer copy and save it under the older library’s key.",
+      "from": [
+        "restore-mtime"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 5,
+          "detail": "packages/app/dist/out.txt is \"lib2\\n\", expected \"lib\\n\""
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 3,
+          "detail": "packages/app/dist/out.txt is \"lib\\n\", expected \"lib2\\n\""
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "fail",
+          "step": 5,
+          "detail": "packages/app/dist/out.txt is \"lib2\\n\", expected \"lib\\n\""
+        }
+      }
+    },
+    {
+      "id": "outputs/replay-rewrites-only-the-damaged-output",
+      "ref": "pwc1bo",
+      "category": "outputs",
+      "kind": "efficiency",
+      "title": "A replay puts back the one output a user edited and leaves its untouched sibling as it was",
+      "why": "Rewriting an output that already holds the stored bytes gives it a new time. A watcher, a dev server or a make-style step downstream then sees a change that never happened and rebuilds. Only the edited file needs writing, so its sibling keeps its time.",
+      "from": [
+        "restore-in-place",
+        "restore-keep-rewrite"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 5,
+          "detail": "verdict.txt is \"rewritten\\n\", expected \"kept\\n\""
+        },
+        "nx": {
+          "status": "fail",
+          "step": 5,
+          "detail": "verdict.txt is \"rewritten\\n\", expected \"kept\\n\""
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 5,
+          "detail": "verdict.txt is \"rewritten\\n\", expected \"kept\\n\""
+        },
+        "nix": {
+          "status": "fail",
+          "step": 5,
+          "detail": "verdict.txt is \"rewritten\\n\", expected \"kept\\n\""
+        },
+        "moon": {
+          "status": "fail",
+          "step": 3,
+          "detail": "packages/a/dist/x.txt is \"z\", expected \"x\\n\""
+        }
+      }
+    },
+    {
+      "id": "env/restored-dependency-program-runs-by-name",
+      "ref": "1l72o5",
+      "category": "env",
+      "kind": "correctness",
+      "title": "A program a dependency built, deleted and brought back by a replay, still runs by name in its dependant",
+      "why": "A dependant that rebuilds while its dependency replays needs the dependency’s programs back on disk, executable, before it starts. A replay that restores the file without its mode, or after the dependant started, leaves a command not found. The dependant must run the tool just as it did when the dependency built it.",
+      "from": [
+        "task-shell",
+        "restore-dir-mode"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "n/a",
+          "detail": "vx runs the tools the machine has and installs none, so no task puts programs on its dependants’ PATH."
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "No Turborepo task puts a directory of programs on its dependants’ PATH."
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "No Nx task puts a directory of programs on its dependants’ PATH."
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "No Vite Task task puts a directory of programs on its dependants’ PATH."
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "No moon task puts a directory of programs on its dependants’ PATH."
+        }
+      }
+    },
+    {
+      "id": "cache/check-run-catches-a-new-empty-directory",
+      "ref": "3pbmm6",
+      "category": "cache",
+      "kind": "correctness",
+      "title": "A check run fails a task whose rebuild leaves an empty folder the stored result lacks",
+      "why": "A replay brings back the empty folders a task leaves under its outputs, since a later step may write into them or test for them. A rebuild that leaves one the first build did not made a different tree. A check that compares only files passes it.",
+      "from": [
+        "output-empty-dir"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "n/a",
+          "detail": "No vx run rebuilds a cached task to compare its bytes with the stored ones."
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "No Turborepo run rebuilds a cached task to compare its bytes."
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "No Nx run rebuilds a cached task to compare its bytes."
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "No Vite Task run rebuilds a cached task to compare its bytes."
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "No moon run rebuilds a cached task to compare its bytes."
+        }
+      }
+    },
+    {
+      "id": "inputs/without-git-link-cycle-no-hang",
+      "ref": "77n599",
+      "category": "inputs",
+      "kind": "correctness",
+      "title": "In a workspace that is not a git repository, a folder link back into the inputs neither hangs nor fails the run",
+      "why": "With git the tool reads a list of files, and a link is one entry. Without git it walks the folders itself, and a walk that follows a link back to its own parent never ends. The run must key the files once and finish, and an edit must still run the task again.",
+      "from": [
+        "no-git-on-path",
+        "linked-inputs"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "n/a",
+          "detail": "vx finds the workspace root inside a git work tree and keys tracked files by git, so a folder that is not a repository is refused."
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "inputs/without-git-project-holding-its-own-repository",
+      "ref": "xlhpdy",
+      "category": "inputs",
+      "kind": "correctness",
+      "title": "In a workspace that is not a git repository, a new file in a project that is a repository of its own runs its task again",
+      "why": "A vendored project often keeps its own `.git` inside a workspace that has none. A tool that finds that repository and keys the project by what it tracks misses a file nobody committed there. The new file is still an input, and the task must run again.",
+      "from": [
+        "no-git-on-path",
+        "gitlink-without-git"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "n/a",
+          "detail": "vx finds the workspace root inside a git work tree and keys tracked files by git, so a folder that is not a repository is refused."
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "inputs/without-git-root-input-edit-reruns",
+      "ref": "3uykw6",
+      "category": "inputs",
+      "kind": "correctness",
+      "title": "In a workspace that is not a git repository, editing a workspace-level file a task declares runs it again",
+      "why": "A shared config at the workspace root, such as a `tsconfig.base.json`, keys every task that names it. Without git the tool must find and read it outside the project’s own folder. A tool that walks only the project when git is missing replays builds made with the old config.",
+      "from": [
+        "no-git-on-path"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "n/a",
+          "detail": "vx finds the workspace root inside a git work tree and keys tracked files by git, so a folder that is not a repository is refused."
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
         },
         "moon": {
           "status": "pass"

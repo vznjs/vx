@@ -77,6 +77,8 @@ export interface RunOptions {
   force?: boolean
   /** Read the cache, write nothing. */
   readOnlyCache?: boolean
+  /** The name of the project at the workspace root, if one is there (Turborepo selects it as `//`). */
+  root?: string
   /** Plan only. */
   dry?: boolean
   /** Rebuild cached tasks and fail when their bytes differ. */
