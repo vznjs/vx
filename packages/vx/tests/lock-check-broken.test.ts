@@ -5,6 +5,8 @@
 import { mkdir, readdir, writeFile, rm } from 'node:fs/promises'
 import path from 'node:path'
 import { afterAll, beforeAll, expect, it } from 'bun:test'
+import { localWorkspaceSource } from './helpers/local-workspace.js'
+import { edgesSource } from './helpers/plugin.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 import { BIN } from './helpers/vx.js'
 
@@ -27,10 +29,13 @@ it('a config that no longer loads is the one problem, not every locked project',
     cmd: [process.execPath, BIN, 'lock', '--check', '--format', 'json'],
     cwd: root,
   })
-  const { problems } = JSON.parse(r.stdout.toString()) as { problems: string[] }
+  const { problems } = JSON.parse(r.stdout.toString()) as {
+    problems: { code: string; message: string }[]
+  }
   expect(r.exitCode).toBe(1)
   expect(problems).toHaveLength(1)
-  expect(problems[0]).toContain('packages/a/vx.config.mjs')
+  expect(problems[0]!.code).toBe('VX_E_CONFIG')
+  expect(problems[0]!.message).toContain('packages/a/vx.config.mjs')
 })
 
 const T = `{ exec: { command: 'true' }, inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true }`
@@ -68,7 +73,12 @@ it('a lock that is not valid JSON is a drift the audit names, in its own shape',
     upToDate: false,
     audited: 1,
     notAudited: 0,
-    problems: ['.vx/projects.lock is not valid JSON — re-run `vx lock` or delete it'],
+    problems: [
+      {
+        code: 'VX_E_LOCK',
+        message: '.vx/projects.lock is not valid JSON — re-run `vx lock` or delete it',
+      },
+    ],
   })
   expect(pretty.exitCode).toBe(1)
   expect(pretty.stderr.toString()).toContain(
@@ -133,11 +143,15 @@ it('every config that does not load is named, root-relative, with its frame', as
   })
   const pretty = Bun.spawnSync({ cmd: [process.execPath, BIN, 'lock', '--check'], cwd: ws })
   await rm(ws, { recursive: true, force: true })
-  const { problems } = JSON.parse(json.stdout.toString()) as { problems: string[] }
-  expect(problems.filter((p) => p.includes('unknown field "bad"'))).toEqual([
-    'packages/a/vx.config.mjs: tasks.b has unknown field "bad" (allowed: cache, dependsOn, description, exec, inputs, outputs)',
-    'packages/b/vx.config.mjs: tasks.b has unknown field "bad" (allowed: cache, dependsOn, description, exec, inputs, outputs)',
-  ])
+  const { problems } = JSON.parse(json.stdout.toString()) as {
+    problems: { code: string; message: string }[]
+  }
+  expect(problems.filter((p) => p.message.includes('unknown field "bad"'))).toEqual(
+    ['a', 'b'].map((p) => ({
+      code: 'VX_E_CONFIG',
+      message: `packages/${p}/vx.config.mjs: tasks.b has unknown field "bad" (allowed: cache, dependsOn, description, exec, inputs, outputs)`,
+    })),
+  )
   const err = pretty.stderr.toString()
   expect(pretty.exitCode).toBe(1)
   expect(err).toContain('packages/a/vx.config.mjs:1:')
@@ -158,10 +172,81 @@ it('every broken dependsOn is named, root-relative', async () => {
     cwd: ws,
   })
   await rm(ws, { recursive: true, force: true })
-  const { problems } = JSON.parse(r.stdout.toString()) as { problems: string[] }
+  const { problems } = JSON.parse(r.stdout.toString()) as {
+    problems: { code: string; message: string }[]
+  }
   expect(r.exitCode).toBe(1)
-  expect(problems.filter((p) => p.includes('no such task'))).toEqual([
-    'packages/a/vx.config.mjs: tasks.build.dependsOn names a#zz but no such task is declared',
-    'packages/b/vx.config.mjs: tasks.build.dependsOn names b#zz but no such task is declared',
-  ])
+  expect(problems.filter((p) => p.message.includes('no such task'))).toEqual(
+    ['a', 'b'].map((p) => ({
+      code: 'VX_E_DEPENDS_ON',
+      message: `packages/${p}/vx.config.mjs: tasks.build.dependsOn names ${p}#zz but no such task is declared`,
+    })),
+  )
 })
+
+// Seven codes the docs told an agent to branch on reached it only as prose:
+// `vx lock` prints no JSON, and the audit's problems were strings.
+it('each graph rule reaches the audit under its own code', async () => {
+  const out = `outputs: { files: ['dist/**'] }, inputs: { files: ['in/**'] }, cache: true`
+  const cases: Record<string, { a?: string; root?: string; rules?: string }> = {
+    cycle: {
+      a: `{ x: { exec: { command: 'true' }, dependsOn: ['y'] }, y: { exec: { command: 'true' }, dependsOn: ['x'] } }`,
+    },
+    dependsOn: { a: `{ x: { exec: { command: 'true' }, dependsOn: ['ghost'] } }` },
+    outputOverlap: {
+      a: `{ p: { exec: { command: 'true' }, ${out} }, q: { exec: { command: 'true' }, ${out} } }`,
+    },
+    inputIsOutput: {
+      a: `{ s: { exec: { command: 'true' }, inputs: { files: ['src/**'] }, outputs: { files: ['src/**'] }, cache: true } }`,
+    },
+    nestedInput: {
+      root: `{ r: { exec: { command: 'true' }, inputs: { files: ['packages/b/src/**'] }, outputs: { files: [] }, cache: true } }`,
+    },
+    nestedOutput: {
+      root: `{ r: { exec: { command: 'true' }, inputs: { files: ['x/**'] }, outputs: { files: ['packages/b/dist/**'] }, cache: true } }`,
+    },
+    dependencyRule: { rules: `{ dependencies: [{ from: 'b', deny: ['a'] }] }` },
+  }
+  const codes = await Promise.all(
+    Object.entries(cases).map(async ([name, c]) => {
+      const ws = await makeWorkspace({ prefix: `vx-lock-check-code-${name}-` })
+      try {
+        const a = await addProject(ws, 'a', CONFIG)
+        await addProject(ws, 'b', CONFIG)
+        if (c.root !== undefined) await writeFile(path.join(ws, 'vx.config.mjs'), CONFIG)
+        expect(Bun.spawnSync({ cmd: [process.execPath, BIN, 'lock'], cwd: ws }).exitCode).toBe(0)
+        if (c.a !== undefined)
+          await writeFile(path.join(a, 'vx.config.mjs'), `export default { tasks: ${c.a} }\n`)
+        if (c.root !== undefined)
+          await writeFile(path.join(ws, 'vx.config.mjs'), `export default { tasks: ${c.root} }\n`)
+        if (c.rules !== undefined)
+          await writeFile(
+            path.join(ws, '.vx', 'workspace.mjs'),
+            localWorkspaceSource([edgesSource({ b: ['a'] })], '', c.rules),
+          )
+        const r = Bun.spawnSync({
+          cmd: [process.execPath, BIN, 'lock', '--check', '--format', 'json'],
+          cwd: ws,
+        })
+        expect(r.exitCode).toBe(1)
+        const { problems } = JSON.parse(r.stdout.toString()) as {
+          problems: { code: string; message: string }[]
+        }
+        // The config edit is drift too, VX_E_LOCK beside the rule's own.
+        return [name, problems.map((p) => p.code).filter((code) => code !== 'VX_E_LOCK')]
+      } finally {
+        await rm(ws, { recursive: true, force: true })
+      }
+    }),
+  )
+  expect(Object.fromEntries(codes)).toEqual({
+    cycle: ['VX_E_CYCLE'],
+    dependsOn: ['VX_E_DEPENDS_ON'],
+    outputOverlap: ['VX_E_OUTPUT_OVERLAP'],
+    inputIsOutput: ['VX_E_INPUT_IS_OUTPUT'],
+    nestedInput: ['VX_E_NESTED_INPUT'],
+    nestedOutput: ['VX_E_NESTED_OUTPUT'],
+    dependencyRule: ['VX_E_DEPENDENCY_RULE'],
+  })
+  // Seven workspaces, each locked then audited: two vx spawns apiece.
+}, 30_000)

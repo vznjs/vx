@@ -45,6 +45,7 @@ import {
   relPosix,
   type RefusalParts,
   UserError,
+  errorCode,
   secretMask,
   secretNamed,
   type SecretMask,
@@ -343,6 +344,7 @@ async function audit(root: string, warn: (message: string) => void): Promise<Gra
       return {
         ...out,
         broken: placedDependsOn(err, out.all, root) ?? err.message,
+        brokenCode: errorCode(err),
         ...(err.parts ? { brokenParts: err.parts } : {}),
         ...(err instanceof ConfigsRefused ? { alsoBroken: err.all.slice(1) } : {}),
       }
@@ -398,6 +400,8 @@ function everyGraphRefusal(
 interface GraphCheck {
   /** A graph rule's refusal, or a config that does not load; null when sound. */
   broken: string | null
+  /** `broken`'s error code (`VX_E_CYCLE`, `VX_E_CONFIG`, …). */
+  brokenCode?: string
   brokenParts?: RefusalParts
   /** Every config loaded and resolved: `broken`, if set, is a graph rule's refusal. */
   loaded: boolean
@@ -995,6 +999,15 @@ function warnShadowed(root: string, check: GraphCheck, verb: string): void {
     )
 }
 
+/** One `vx lock --check` problem: its code is what an agent branches on. */
+interface LockProblem {
+  code: string
+  message: string
+}
+
+/** Drift `vx lock` fixes. */
+const stale = (message: string): LockProblem => ({ code: 'VX_E_LOCK', message })
+
 /**
  * Audit the lock: find and re-evaluate every config in the CURRENT
  * environment and deep-compare it with the locked object. That sees an
@@ -1009,7 +1022,7 @@ async function checkLock(root: string, json: boolean): Promise<number> {
   const { broken } = check
   const metas = configured(check.all)
   const bare = bareProjects(check.all, check.tasked)
-  const answer = (problems: string[]): number => {
+  const answer = (problems: LockProblem[]): number => {
     if (json) {
       const out = {
         upToDate: problems.length === 0,
@@ -1030,14 +1043,14 @@ async function checkLock(root: string, json: boolean): Promise<number> {
   } catch (err) {
     if (!isUserError(err)) throw err
     if (!json) sayNotice('error', 'vx lock --check', err.message)
-    return answer([err.message])
+    return answer([{ code: errorCode(err), message: err.message }])
   }
   if (!lock) {
     const problem = `no ${LOCKFILE_NAME} at ${root} — run \`vx lock\` first`
     if (!json) sayNotice('error', 'vx lock --check', problem)
-    return answer([problem])
+    return answer([stale(problem)])
   }
-  const failures: string[] = []
+  const failures: LockProblem[] = []
   const drifted = new Set<string>()
   for (const [dir, fresh] of Object.entries(check.fresh.projects)) {
     if (fresh.file === undefined) continue
@@ -1057,24 +1070,28 @@ async function checkLock(root: string, json: boolean): Promise<number> {
                 .join('')
             : null
     if (problem === null) continue
-    failures.push(problem)
+    failures.push(stale(problem))
     drifted.add(dir)
   }
   const lockedWalls = lock.nestedWorkspaces ?? []
   const walls = check.fresh.nestedWorkspaces ?? []
   for (const dir of walls)
     if (!lockedWalls.includes(dir))
-      failures.push(`${dir} is a nested workspace the lock does not hold — run 'vx lock'`)
+      failures.push(stale(`${dir} is a nested workspace the lock does not hold — run 'vx lock'`))
   for (const dir of lockedWalls)
     if (!walls.includes(dir))
       failures.push(
-        `the lock holds ${dir} as a nested workspace, which it is not now — run 'vx lock'`,
+        stale(`the lock holds ${dir} as a nested workspace, which it is not now — run 'vx lock'`),
       )
-  if (check.loaded) failures.push(...pluginDrift(lock, check.fresh, drifted))
-  // Every graph refusal, root-relative as the rest of the audit.
+  if (check.loaded) failures.push(...pluginDrift(lock, check.fresh, drifted).map(stale))
+  // Every graph refusal, root-relative as the rest of the audit, by its own
+  // code: the lock's audit is the one place an agent reads VX_E_CYCLE.
   if (broken !== null && check.loaded)
-    for (const m of [broken, ...(check.alsoBroken ?? []).map((e) => e.message)])
-      failures.push(m.startsWith(`${root}/`) ? m.slice(root.length + 1) : m)
+    for (const [code, m] of [
+      [check.brokenCode ?? 'VX_E_REFUSED', broken] as const,
+      ...(check.alsoBroken ?? []).map((e) => [errorCode(e), e.message] as const),
+    ])
+      failures.push({ code, message: m.startsWith(`${root}/`) ? m.slice(root.length + 1) : m })
   // What `vx lock` refuses to write here fails here too: a lock written
   // where the value was no secret passed in an env where it is one.
   if (check.loaded)
@@ -1087,24 +1104,31 @@ async function checkLock(root: string, json: boolean): Promise<number> {
       ),
       check.reviewFiles ? reviewsOf(metas, check.resolved) : [],
     ))
-      failures.push(
-        `${l.at}, a secret value here — the lock is committed, so the secret is too; let the shell expand $${l.name} instead of reading process.env in the config, then run 'vx lock'`,
-      )
+      // The config is what changes, as `vx lock` refusing it says.
+      failures.push({
+        code: 'VX_E_CONFIG',
+        message: `${l.at}, a secret value here — the lock is committed, so the secret is too; let the shell expand $${l.name} instead of reading process.env in the config, then run 'vx lock'`,
+      })
   // Each config that does not load, as `vx lock` names them: a CI fixing
   // one at a time re-ran the gate once per broken config.
-  const refused: { message: string; parts?: RefusalParts }[] =
+  const refused: { code: string; message: string; parts?: RefusalParts }[] =
     broken === null || check.loaded
       ? []
       : [
-          { message: broken, ...(check.brokenParts ? { parts: check.brokenParts } : {}) },
+          {
+            code: check.brokenCode ?? 'VX_E_REFUSED',
+            message: broken,
+            ...(check.brokenParts ? { parts: check.brokenParts } : {}),
+          },
           ...(check.alsoBroken ?? []).map((e) => ({
+            code: errorCode(e),
             message: e.message,
             ...(e.parts ? { parts: e.parts } : {}),
           })),
         ]
   if (check.reviewFiles && check.loaded) {
     // A project the lock already fails is named once.
-    const stale = await Promise.all(
+    const copies = await Promise.all(
       reviewsOf(
         metas.filter((m) => !drifted.has(lockKey(root, m.dir))),
         check.resolved,
@@ -1124,15 +1148,15 @@ async function checkLock(root: string, json: boolean): Promise<number> {
             : `"${r.name}" (${rel}) is not what its config resolves to here — run 'vx lock'`
       }),
     )
-    for (const f of stale) if (f !== null) failures.push(f)
-    for (const file of await strayCopies(check)) failures.push(strayLine(root, file))
+    for (const f of copies) if (f !== null) failures.push(stale(f))
+    for (const file of await strayCopies(check)) failures.push(stale(strayLine(root, file)))
   }
   // A config that does not load evaluated none: every locked project
   // read as gone, the healthy ones too.
   for (const dir of check.loaded ? Object.keys(lock.projects) : []) {
     if (lock.projects[dir]!.file !== undefined && !Object.hasOwn(check.fresh.projects, dir)) {
       const what = dir === '.' ? 'the workspace root project' : dir
-      failures.push(`the lock holds ${what}, which has no vx.config now — run 'vx lock'`)
+      failures.push(stale(`the lock holds ${what}, which has no vx.config now — run 'vx lock'`))
     }
   }
   // Named only over a lock that holds: a config drift moves the record too.
@@ -1143,18 +1167,23 @@ async function checkLock(root: string, json: boolean): Promise<number> {
     const read = parseDependenciesLock(text)
     if (read === null || !sameRecord(read, check.dependencies))
       failures.push(
-        `${DEPENDENCIES_LOCK_NAME} ${text === null ? 'is missing' : 'is not what the dependencies resolve to here'} — run 'vx lock'`,
+        stale(
+          `${DEPENDENCIES_LOCK_NAME} ${text === null ? 'is missing' : 'is not what the dependencies resolve to here'} — run 'vx lock'`,
+        ),
       )
   }
   if (json)
     // Root-relative, as every other problem: the loader names the absolute path.
     return answer([
-      ...refused.map((r) => r.message.split(`${root}${path.sep}`).join('')),
+      ...refused.map((r) => ({
+        code: r.code,
+        message: r.message.split(`${root}${path.sep}`).join(''),
+      })),
       ...failures,
     ])
   if (failures.length + refused.length > 0) {
     for (const r of refused) ui.print('err', refusalNotice('vx lock --check', r.message, r.parts))
-    for (const f of failures) sayNotice('error', 'vx lock --check', f)
+    for (const f of failures) sayNotice('error', 'vx lock --check', f.message)
     return 1
   }
   const n = metas.length
