@@ -6284,7 +6284,6 @@
         "timeout": "5m",
         "env": {
           "passThrough": [
-            "VX_REQUIRE_CARGO",
             "NODE_EXTRA_CA_CERTS"
           ],
           "define": {
@@ -6306,8 +6305,7 @@
           "package.json"
         ],
         "runtime": [
-          "bun --version",
-          "cargo --version"
+          "bun --version"
         ],
         "workspaceFiles": [
           "examples/**",

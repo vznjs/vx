@@ -253,8 +253,8 @@ const unsafeShardTasks = {
   ),
 }
 
-// The stack starters (examples/vite, next, rust) run the real tools, so
-// each is installed from the npm registry and builds with cargo: no sandbox,
+// The stack starters (examples/vite, next) run the real tools, so each is
+// installed from the npm registry: no sandbox,
 // and not a shard (scripts/test-shard.ts deals no `.live` file). Cached: each
 // starter pins its tools, so the key sees what it installs.
 const examplesTask = {
@@ -265,13 +265,13 @@ const examplesTask = {
     command: `bun test --only-failures --timeout=120000 ./tests/examples.live.test.ts`,
     timeout: '5m',
     env: {
-      passThrough: ['VX_REQUIRE_CARGO', 'NODE_EXTRA_CA_CERTS'],
+      passThrough: ['NODE_EXTRA_CA_CERTS'],
       define: SUITE_ENV,
     },
   },
   inputs: {
     files: SOURCES,
-    runtime: [...BUN_VERSION, 'cargo --version'],
+    runtime: BUN_VERSION,
     workspaceFiles: ['examples/**', 'packages/vx-lockfile/**'],
   },
   outputs: { files: [] as string[] },

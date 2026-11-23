@@ -322,12 +322,6 @@ describe('the starters install with the package manager their README names', () 
       expect(readme).toContain('bun install')
       // A run keys from the digests `vx lock` records, and refuses without them.
       expect(readme.indexOf('vx lock')).toBeGreaterThan(readme.indexOf('bun install'))
-      // A starter of JS packages reads their edges from bun.lock; the Rust
-      // one has none, its package.json only installing vx.
-      const pkg = JSON.parse(readFileSync(path.join(EXAMPLES, name, 'package.json'), 'utf8')) as {
-        workspaces?: string[]
-      }
-      if (pkg.workspaces === undefined) continue
       const workspace = readFileSync(path.join(EXAMPLES, name, '.vx', 'workspace.ts'), 'utf8')
       expect(workspace).toContain("import { bun } from '@vzn/vx-lockfile'")
     }
@@ -352,7 +346,7 @@ describe('every starter under examples/ has a run in this suite or the live one'
       ...[import.meta.path, live]
         .map((f) => readFileSync(f, 'utf8'))
         .join('\n')
-        .matchAll(/^describe(?:\.skipIf\([^)]*\))?\('examples\/(\w+)'/gm),
+        .matchAll(/^describe\('examples\/(\w+)'/gm),
     ]
       .map((m) => m[1]!)
       .sort()

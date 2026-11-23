@@ -1,5 +1,5 @@
 // The stack starters under examples/ run the real tools: vite, vitest,
-// oxlint, next and cargo. Each is copied to a fresh git repo and set up as
+// oxlint and next. Each is copied to a fresh git repo and set up as
 // its README says (`bun install`, then `vx lock`), with the @vzn packages
 // linked to this checkout instead of fetched, then driven through a cold
 // run, a warm one and an edit. Its own task, `test.bun.examples`: the
@@ -25,12 +25,14 @@ const PACKAGES = path.dirname(CORE)
 const EXAMPLES = path.resolve(PACKAGES, '..', 'examples')
 const BIN = path.join(CORE, 'src', 'bin.ts')
 const roots: string[] = []
+// Each fixture's own store, never the home's shared one.
+const ENV = { ...process.env, VX_CACHE_DIR: '.vx/cache' }
 afterAll(() => {
   for (const r of roots) rmSync(r, { recursive: true, force: true })
 })
 
 function sh(cmd: string[], cwd: string): string {
-  const r = Bun.spawnSync({ cmd, cwd, stdout: 'pipe', stderr: 'pipe' })
+  const r = Bun.spawnSync({ cmd, cwd, env: ENV, stdout: 'pipe', stderr: 'pipe' })
   if (r.exitCode !== 0) throw new Error(`${cmd.join(' ')}: ${r.stdout}${r.stderr}`)
   return r.stdout.toString()
 }
@@ -70,10 +72,11 @@ function run(
   const r = Bun.spawnSync({
     cmd: [process.execPath, BIN, 'run', ...tasks, '--all'],
     cwd: root,
+    env: ENV,
     stdout: 'pipe',
     stderr: 'pipe',
   })
-  return { exit: r.exitCode, output: `${r.stdout}${r.stderr}`, status: lastStatus(root) }
+  return { exit: r.exitCode, output: `${r.stdout}${r.stderr}`, status: lastStatus(root, ENV) }
 }
 
 /** Each task of `ids` at `status`. */
@@ -141,38 +144,6 @@ describe('examples/next', () => {
       // format has no build of its own: its default one is keyed on its files.
       'site#build': 'success',
       'site#lint': 'cache-hit',
-    })
-  })
-})
-
-// cargo is not on every machine that runs the suite; CI sets
-// VX_REQUIRE_CARGO, so there a missing cargo fails instead of skipping.
-const cargo = Bun.which('cargo') !== null
-if (!cargo && process.env['VX_REQUIRE_CARGO'] === '1')
-  throw new Error('VX_REQUIRE_CARGO=1 but cargo is not on PATH')
-
-describe.skipIf(!cargo)('examples/rust', () => {
-  const root = cargo ? fixture('rust') : ''
-  const tasks = ['hello#build', 'hello#lint', 'hello#test']
-
-  it('builds, tests and lints the crate cold, replays warm, and re-runs on an edit', () => {
-    const cold = run(root, ['build', 'test', 'lint'])
-    expect(cold.output).toContain('3 success')
-    expect(cold.status).toEqual(all(tasks, 'success'))
-
-    rmSync(path.join(root, 'crates/hello/target'), { recursive: true })
-    const warm = run(root, ['build', 'test', 'lint'])
-    expect(warm.exit).toBe(0)
-    expect(warm.status).toEqual(all(tasks, 'cache-hit'))
-    expect(sh([path.join(root, 'crates/hello/target/release/hello')], root)).toBe('hello, vx\n')
-
-    const lib = path.join(root, 'crates/hello/src/lib.rs')
-    writeFileSync(lib, readFileSync(lib, 'utf8').replace('hello, {name}', 'hi, {name}'))
-    const edited = run(root, ['build', 'test', 'lint'])
-    expect(edited.status).toEqual({
-      'hello#build': 'success',
-      'hello#lint': 'success',
-      'hello#test': 'failed',
     })
   })
 })
