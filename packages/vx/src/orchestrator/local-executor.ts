@@ -3,6 +3,7 @@
 // supplies differently, it is what running MEANS when no plugin claims the
 // task, so it sits at the TAIL of every executor list. An executor plugin
 // places work ELSEWHERE; its absence is "here".
+import path from 'node:path'
 import { runCommand, signalExitCode, stopSignal, type TaskExecutor } from '../exec/index.js'
 import { runSandboxed } from '../sandbox/index.js'
 
@@ -57,6 +58,7 @@ export function localExecutor(): TaskExecutor {
         config: req.sandbox.config,
         ...(req.sandbox.keyRoot !== undefined ? { keyRoot: req.sandbox.keyRoot } : {}),
         ...(req.sandbox.keyNested !== undefined ? { keyNested: req.sandbox.keyNested } : {}),
+        ownedOutputs: ownedOutputDirs(req.cwd, req.outputs.files),
         upstreamOutputs: [
           ...(req.sandbox.dependencyReads ?? []),
           ...(req.sandbox.dependencyReported ?? []),
@@ -66,4 +68,14 @@ export function localExecutor(): TaskExecutor {
   }
   locals.add(executor)
   return executor
+}
+
+/** The directories an output glob claims whole (`dist/**` or `dist/**` then `/*`), absolute. */
+function ownedOutputDirs(cwd: string, files: readonly string[]): string[] {
+  const owned: string[] = []
+  for (const f of files) {
+    const m = /^(?:\.\/)?([^*?[\]{}!]+?)\/\*\*(?:\/\*)?$/.exec(f)
+    if (m !== null) owned.push(path.resolve(cwd, m[1]!))
+  }
+  return owned
 }

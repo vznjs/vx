@@ -91,16 +91,55 @@ describe.skipIf(!available || process.platform !== 'linux')(
     })
     afterEach(() => rm(root, { recursive: true, force: true }))
 
-    it('names the grant', async () => {
-      await addProject(root, 'app', {
-        config: `export default { tasks: { t: { exec: {
-        command: 'rm -rf dist && echo new > dist/new.js',
-        sandbox: { allow: { read: ['.'], write: ['dist/'] } },
+    const quiet = { status() {}, taskStdout() {}, taskStderr() {}, taskComplete() {} }
+    const app = (command: string, write: string, outputs = '') =>
+      addProject(root, 'app', {
+        config: `export default { tasks: { t: { ${outputs} exec: {
+        command: '${command}',
+        sandbox: { allow: { read: ['.'], write: [${write}] } },
       } } } }\n`,
+      }).then(async (dir) => {
+        await mkdir(path.join(dir, 'dist'), { recursive: true })
+        await writeFile(path.join(dir, 'dist', 'old.js'), 'old')
+        return dir
       })
-      await mkdir(path.join(root, 'packages', 'app', 'dist'))
-      await writeFile(path.join(root, 'packages', 'app', 'dist', 'old.js'), 'old')
-      const quiet = { status() {}, taskStdout() {}, taskStderr() {}, taskComplete() {} }
+
+    // Staged, the output directory is no mount point: `rm -rf dist && tsc`
+    // works (conformance sandbox/clean-and-rebuild-output-dir-passes), and
+    // what the task writes beside it is reported and never reaches the host.
+    const owned = "inputs: { files: [] }, outputs: { files: ['dist/**'] }, cache: true,"
+    it('lets the task remove and rebuild it, and reports a write beside it', async () => {
+      const dir = await app('rm -rf dist && mkdir dist && echo new > dist/new.js', "'dist/'", owned)
+      const ok = await runVx({ cwd: root, tasks: ['t'], log: quiet })
+      expect(ok.outcomes[0]?.status).toBe('success')
+      expect(readdirSync(path.join(dir, 'dist'))).toEqual(['new.js'])
+      expect(
+        readdirSync(path.join(root, '.vx', 'tmp')).filter((n) => /-[0-9a-f]{16}$/.test(n)),
+      ).toEqual([])
+
+      await app(
+        'rm -rf dist && mkdir dist && echo new > dist/new.js && echo x > stray.txt',
+        "'dist/'",
+        owned,
+      )
+      const r = await runVx({ cwd: root, tasks: ['t'], log: quiet })
+      expect(r.outcomes[0]?.status).toBe('failed')
+      expect(r.outcomes[0]?.sandbox?.lines?.some((l) => l.includes('stray.txt'))).toBe(true)
+      expect(existsSync(path.join(dir, 'stray.txt'))).toBe(false)
+    }, 30_000)
+
+    // A file grant in the task's directory binds the directory itself:
+    // nothing is staged, and the removal is refused with the hint.
+    it('names the grant where the task directory is bound', async () => {
+      await app('rm -rf dist && echo new > dist/new.js', "'dist/', 'out.txt'", owned)
+      const r = await runVx({ cwd: root, tasks: ['t'], log: quiet })
+      expect(r.outcomes[0]?.sandbox?.lines).toEqual([HINT])
+    }, 30_000)
+
+    // A grant no output claims whole may be another task's to read while
+    // this one runs: it stays in place, and the removal gets the hint.
+    it('names a grant no output claims', async () => {
+      await app('rm -rf dist && echo new > dist/new.js', "'dist/'")
       const r = await runVx({ cwd: root, tasks: ['t'], log: quiet })
       expect(r.outcomes[0]?.sandbox?.lines).toEqual([HINT])
     }, 30_000)

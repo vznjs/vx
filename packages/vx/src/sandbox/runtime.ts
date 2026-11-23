@@ -78,6 +78,7 @@ import {
   withCwd,
   widenedEntries,
   withLinkedWrites,
+  stagedOutputs,
 } from './binds.js'
 import { atOrUnder, loopbackPorts, MOUNT_WILDCARDS, toRealPath } from './paths.js'
 import { scopedMandatoryDenies, srtDefaultWritePaths } from './deny-scan.js'
@@ -199,6 +200,12 @@ export interface SandboxedRunArgs {
   /** `ExecuteSandbox.dependencyReads` and `dependencyReported`: the dependencies' outputs. */
   readonly upstreamOutputs?: readonly string[]
   /**
+   * Directories the task's declared outputs claim whole (`dist/**`),
+   * absolute: only these may be staged (`stagedOutputs`), since no other
+   * task may write or rely on what is in them while it runs.
+   */
+  readonly ownedOutputs?: readonly string[]
+  /**
    * User-declared sandbox block (after path-resolution). Path lists are
    * unioned with the baselines; bool/object fields fall through to SRT.
    */
@@ -247,7 +254,10 @@ function javaToolOptionsFix(host: string | undefined, task: string | undefined):
  * exit). Returns the wrapped command and the tag the store keys by.
  */
 export async function wrapSandboxedCommand(
-  args: Pick<SandboxedRunArgs, 'command' | 'cwd' | 'forwardArgs' | 'config' | 'env'> &
+  args: Pick<
+    SandboxedRunArgs,
+    'command' | 'cwd' | 'forwardArgs' | 'config' | 'env' | 'ownedOutputs'
+  > &
     Pick<SandboxedRunArgs, 'baseAllowRead' | 'baseDenyRead'> & {
       /** A persistent server: the sandbox outlives a run's reset until `releaseBridges(tag)`. */
       server?: boolean
@@ -270,6 +280,8 @@ export async function wrapSandboxedCommand(
    * `unshown`, those no read grant shows, whose reads are judged too.
    */
   held: { dirs: string[]; globs: string[]; unshown: string[] }
+  /** Moves the output directories staged for the task back (`stagedOutputs`): once, after it ends. */
+  unstage?: () => void
   /** The command reads its polite signals off fd 3: spawn it with one and `signalThrough` it. */
   forwardsSignals: boolean
   /** The command writes its trace to fd TRACE_FD: spawn it with the log there. */
@@ -502,6 +514,20 @@ async function wrapIn(
     spawnHostBridges(tag)
     if (ports.length > 0) await hostBridgesListen(ports, tag)
   }
+  // A server outlives the attempt that would move its outputs back.
+  const staged =
+    args.server === true
+      ? undefined
+      : stagedOutputs(wrapped, {
+          cwd: baselines.cwd,
+          allowRead: filesystem.allowRead!,
+          allowWrite: filesystem.allowWrite,
+          granted: args.config.allowWrite,
+          linked: args.config.linkedWrites,
+          owned: args.ownedOutputs ?? [],
+          tag,
+        })
+  if (staged !== undefined) wrapped = staged.wrapped
   return {
     wrapped,
     tag,
@@ -510,6 +536,7 @@ async function wrapIn(
     baselines,
     scratch,
     held: globsHeld,
+    ...(staged === undefined ? {} : { unstage: staged.restore }),
     forwardsSignals: grouped.forwards,
     traced: grouped.traced,
     observed: grouped.traced && typeof grouped.trace === 'object',
@@ -1102,10 +1129,16 @@ async function runSandboxedOnce(args: SandboxedRunArgs): Promise<AttemptResult> 
     srtCommand,
     observerSocket(wrapped),
   )
-  const started = spawnAttempt(args, prepared.wrap, takeRecords, SandboxManager, start)
-  if ('result' in started) return started.result
+  let ended: Ended
+  let started: ReturnType<typeof spawnAttempt>
+  try {
+    started = spawnAttempt(args, prepared.wrap, takeRecords, SandboxManager, start)
+    if ('result' in started) return started.result
+    ended = await awaitAttempt(args, started.spawned, tag)
+  } finally {
+    prepared.wrap.unstage?.()
+  }
   const { proc, straceLog } = started.spawned
-  const ended = await awaitAttempt(args, started.spawned, tag)
   // Linux: the write observer's records arrive over a socket, not with the
   // exit; `takeRecords(true)` waits until all it sent are read.
   const denials = await attemptDenials(args, prepared, await takeRecords(true), straceLog)

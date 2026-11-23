@@ -1102,14 +1102,26 @@ sandbox at all.
 ### A write grant cannot be removed (Linux)
 
 A directory grant is a bind mount, and a mount point cannot be removed or
-renamed: under `write: ['dist/']`, `rm -rf dist && tsc` empties `dist`,
-then fails with `Read-only file system` (EBUSY under a writable parent).
-macOS allows it. No bind makes it work and keeps "a task writes only its
-grants": binding the parent lets the task write beside the grant. So a
-failed task whose stderr names a grant root (absolute, or
-relative to the cwd, `./` allowed) on a line holding `Read-only file
-system`, `EROFS`, `EBUSY` or `resource busy` gets a hint naming the grant
-and the removal that works, `rm -rf dist/*` (`grantRemovalHint`; X-90,
+renamed: under `write: ['dist/']`, `rm -rf dist && tsc` emptied `dist`,
+then failed with `Read-only file system` (EBUSY under a writable parent).
+macOS allows it. Binding the host's parent would let the task write
+beside the grant, so `stagedOutputs` binds vx's own directory there
+instead: each directory grant in the task's directory that the task's
+outputs claim whole (`dist/**`, handed down as `ownedOutputs`; another
+grant may be a concurrent task's to read) moves into
+`.vx/tmp/<pid>-<tag>` (one rename, on the workspace's filesystem), that
+staging is mounted as the task's directory under the mask, and the other
+grants bind into it as before. The output directory is a plain directory
+there; what the task writes beside it lands in the staging, is reported
+(no grant covers it) and goes with the staging. After the task the
+directories move back; a killed run's staging is swept as a restore's is
+(`sweepStaging`). Not staged: a server, a grant no output claims whole,
+or a task whose directory a grant
+binds itself (`write: ['.']`, a file grant there). There a failed task
+whose stderr names a grant root (absolute, or relative to the cwd, `./`
+allowed) on a line holding `Read-only file system`, `EROFS`, `EBUSY` or
+`resource busy` gets a hint naming the grant and the removal that works,
+`rm -rf dist/*` (`grantRemovalHint`; X-90,
 `sandbox-grant-remove.unsafe.test.ts`). The lines are kept as stderr
 streams, as `GIT_NO_REPO`'s are: a run captures no output.
 

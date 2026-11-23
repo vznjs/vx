@@ -991,14 +991,14 @@
   "scores": {
     "vx": {
       "all": {
-        "pass": 2112,
-        "can": 2112,
-        "of": 2187
+        "pass": 2113,
+        "can": 2113,
+        "of": 2188
       },
       "correctness": {
-        "pass": 1700,
-        "can": 1700,
-        "of": 1767
+        "pass": 1701,
+        "can": 1701,
+        "of": 1768
       },
       "efficiency": {
         "pass": 323,
@@ -1056,9 +1056,9 @@
         "of": 90
       },
       "sandbox": {
-        "pass": 140,
-        "can": 140,
-        "of": 140
+        "pass": 141,
+        "can": 141,
+        "of": 141
       },
       "watch": {
         "pass": 124,
@@ -1070,12 +1070,12 @@
       "all": {
         "pass": 1380,
         "can": 1789,
-        "of": 2187
+        "of": 2188
       },
       "correctness": {
         "pass": 1109,
         "can": 1445,
-        "of": 1767
+        "of": 1768
       },
       "efficiency": {
         "pass": 241,
@@ -1135,7 +1135,7 @@
       "sandbox": {
         "pass": 1,
         "can": 1,
-        "of": 140
+        "of": 141
       },
       "watch": {
         "pass": 105,
@@ -1147,12 +1147,12 @@
       "all": {
         "pass": 1379,
         "can": 1824,
-        "of": 2187
+        "of": 2188
       },
       "correctness": {
         "pass": 1069,
         "can": 1470,
-        "of": 1767
+        "of": 1768
       },
       "efficiency": {
         "pass": 280,
@@ -1212,7 +1212,7 @@
       "sandbox": {
         "pass": 0,
         "can": 1,
-        "of": 140
+        "of": 141
       },
       "watch": {
         "pass": 95,
@@ -1224,12 +1224,12 @@
       "all": {
         "pass": 1018,
         "can": 1378,
-        "of": 2187
+        "of": 2188
       },
       "correctness": {
         "pass": 856,
         "can": 1160,
-        "of": 1767
+        "of": 1768
       },
       "efficiency": {
         "pass": 153,
@@ -1289,7 +1289,7 @@
       "sandbox": {
         "pass": 1,
         "can": 1,
-        "of": 140
+        "of": 141
       },
       "watch": {
         "pass": 0,
@@ -1299,14 +1299,14 @@
     },
     "nix": {
       "all": {
-        "pass": 1088,
-        "can": 1374,
-        "of": 2187
+        "pass": 1089,
+        "can": 1375,
+        "of": 2188
       },
       "correctness": {
-        "pass": 933,
-        "can": 1181,
-        "of": 1767
+        "pass": 934,
+        "can": 1182,
+        "of": 1768
       },
       "efficiency": {
         "pass": 145,
@@ -1364,9 +1364,9 @@
         "of": 90
       },
       "sandbox": {
-        "pass": 96,
-        "can": 131,
-        "of": 140
+        "pass": 97,
+        "can": 132,
+        "of": 141
       },
       "watch": {
         "pass": 0,
@@ -1378,12 +1378,12 @@
       "all": {
         "pass": 1270,
         "can": 1725,
-        "of": 2187
+        "of": 2188
       },
       "correctness": {
         "pass": 1002,
         "can": 1409,
-        "of": 1767
+        "of": 1768
       },
       "efficiency": {
         "pass": 233,
@@ -1443,7 +1443,7 @@
       "sandbox": {
         "pass": 0,
         "can": 1,
-        "of": 140
+        "of": 141
       },
       "watch": {
         "pass": 0,
@@ -47279,6 +47279,41 @@
       "why": "Some tools save space by hard-linking identical outputs. Both names are declared outputs, and no outside file is reached. The sandbox has no reason to refuse it.",
       "from": [
         "sandbox-widened-reads.unsafe"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "Turborepo keeps no task from files, network or home it never declared."
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "Nx keeps no task from files, network or home it never declared."
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "Vite Task keeps no task from files, network or home it never declared."
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "moon keeps no task from files, network or home it never declared."
+        }
+      }
+    },
+    {
+      "id": "sandbox/clean-and-rebuild-output-dir-passes",
+      "ref": "0s799c",
+      "category": "sandbox",
+      "kind": "correctness",
+      "title": "An isolated task may delete its whole output folder and write it again",
+      "why": "`rm -rf dist && tsc` is how a great many builds start. The folder and everything in it are declared outputs, so removing and recreating them touches nothing else. A sandbox that cannot allow this forces users to rewrite their build scripts to turn it on.",
+      "from": [
+        "sandbox-grant-remove.unsafe"
       ],
       "outcomes": {
         "vx": {

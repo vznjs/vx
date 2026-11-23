@@ -2154,14 +2154,18 @@ task, never counted, with a grant for each refused write (a refused
 `mkdir ~/.cache` is granted as `'~/.cache/'`, never home itself). The
 remedy is to declare it: `allow: { write: [...] }`.
 
-**A write grant cannot be removed on Linux.** A directory grant is
-mounted in place, so `rm -rf dist && tsc` under `write: ['dist/']`
-empties `dist` and then fails with `Read-only file system`; a failed
-task names the grant, whether it said so on stderr or, as Playwright
-does, on stdout. Remove its contents instead: `rm -rf dist/*`. A tool
-that removes its own output directory writes one inside the grant:
-`playwright test --output test-results/run` under
-`write: ['test-results/']`.
+**A task may remove its own output directory.** `rm -rf dist && tsc`
+under `write: ['dist/']` and `outputs.files: ['dist/**']` works on Linux
+too: a directory grant in the task's directory that its outputs claim
+whole (`dist/**`) is moved into vx's staging (`.vx/tmp/`) for the run,
+the staging is mounted as the task's directory, and the directory comes
+back after the task, so it is no mount point the task cannot remove.
+Until 2026-11-23 it was mounted in place and the removal failed with
+`Read-only file system`. Where the task's directory is itself granted
+(`write: ['.']`, or a file grant there), or no output claims the whole
+directory (another task may read it meanwhile), the grant is still
+mounted in place: remove its contents instead (`rm -rf dist/*`), and a failed task
+names the grant.
 
 **The boundary is the workspace root.** A task may not leave its own
 project, so every sibling project and every root file is denied. Being
