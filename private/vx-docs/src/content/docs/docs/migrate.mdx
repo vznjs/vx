@@ -425,7 +425,7 @@ vx run build --all
 vx run build --all
 ```
 
-The second run restores `dist/` and runs nothing.
+The second run finds `dist/` already in place: **up-to-date**, and nothing runs.
 
 <Quiz q="Why does vx not guess which files vite build reads?">
   A guess can miss a file. Then an edit to it would not change the key, and vx would replay an old

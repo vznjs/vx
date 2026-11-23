@@ -217,7 +217,7 @@ e2e: {
 },
 ```
 
-On a hit, `e2e` restores its report and no server starts.
+On a hit, `e2e` restores its report. The server still starts: it shares the project and has no sandbox, so it could change what `e2e` reads.
 
 ### An API and a web app
 
