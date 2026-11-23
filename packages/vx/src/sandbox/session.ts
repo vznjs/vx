@@ -618,6 +618,10 @@ export async function initSandbox(opts?: {
       // enableLogMonitor — macOS-only; populates the SandboxViolationStore.
       true,
     )
+  } catch (err) {
+    // SRT 0.0.83 cancels a start its own reset overtook and throws: the
+    // stop asked for, not a failed sandbox. Taken down below as before.
+    if (!cut) throw err
   } finally {
     for (const ev of CUT_SIGNALS) process.off(ev, onCut)
   }
