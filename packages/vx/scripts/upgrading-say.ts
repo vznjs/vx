@@ -110,14 +110,19 @@ export const SAY: Readonly<Record<string, string>> = {
     "`vx lock` prints `✓ vx lock N project configs → .vx/projects.lock.json`. A refusal prints `✗ vx lock lock not written`, with what, why and the fix under it.\n\n`applyMigration`'s `lock` option returns `{ code, said }`.",
   'feat(cli)!: give each vx lock --check problem its error code':
     '`vx lock --check --format json` lists each problem as `{ code, message }`, not as a string.',
+  'feat(cache)!: make the artifact ceiling a setting, 1 GiB by default':
+    'The default artifact ceiling is 1 GiB, not 2 GiB. Raise it with `cache.artifactCeiling` or `VX_CACHE_ARTIFACT_CEILING`.',
+  'refactor(cli)!: remove vx run --tag':
+    '`vx run --tag` is gone, and `@vzn/vx-otel` drops its `vx.tag.<key>` attributes.',
+  // Native Windows support does not exist; the page never names it.
+  'refactor!: drop native Windows code paths': '',
 }
 
 /** A heading for a commit whose subject uses a word readers do not know. */
 export const TITLE: Readonly<Record<string, string>> = {
   'feat(vx-dte)!: plan a distributed run with one engine':
     'Distributed task execution plans with one engine',
-  'refactor(workspace)!: keep JS out of the migration seam':
-    'foldScriptHooks is no longer exported',
+  'refactor(workspace)!: keep JS out of the migration seam': '`foldScriptHooks` is not exported',
   'refactor(orchestrator)!: make the lockfile claim ecosystem-neutral':
     'Lockfile plugins name importers links',
   'refactor(cache)!: take history and memos off Cache and CacheLayer':
@@ -215,3 +220,16 @@ export const AUTHORS: ReadonlySet<string> = new Set([
   'fix(vx-dte)!: wait on a late worker, never give up and ask again',
   "fix(cache)!: stream a failed task's outputs to the remote",
 ])
+
+/**
+ * The JavaScript API part of a change whose user part SAY tells: the release
+ * list puts it under the same heading, in the block for plugin authors.
+ */
+export const API: Readonly<Record<string, string>> = {
+  'feat(cache)!: make the artifact ceiling a setting, 1 GiB by default':
+    '`RunOptions.artifactCeiling` is removed.',
+  'feat(orchestrator)!: replace --continue with --fail-fast':
+    '`RunOptions.continueMode` is `failFast`.',
+  'refactor(cli)!: remove vx run --tag':
+    '`RunOptions.tags` and `RunContextRecord.tags` are removed (`TELEMETRY_SCHEMA_VERSION` 4).',
+}

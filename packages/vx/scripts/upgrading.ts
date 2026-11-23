@@ -12,7 +12,7 @@
 import { readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { isBreaking, type Commit } from './release-notes.ts'
-import { AUTHORS, SAY, TITLE } from './upgrading-say.ts'
+import { API, AUTHORS, SAY, TITLE } from './upgrading-say.ts'
 
 /** A commit and the `v*` tag on it, if a release was cut there. */
 export interface TaggedCommit extends Commit {
@@ -116,7 +116,9 @@ function entry({ subject, body }: Commit): { title: string; footer: string } {
   const m = HEADER.exec(subject)
   // The heading is the change in plain words: the scope is code's word for
   // where it lives, which a reader upgrading does not need.
-  const title = sentence((m === null ? subject : m[3]!).replace(/ \([A-Z][A-Z0-9]*-\d+\)$/, ''))
+  const title = sentence(
+    lead((m === null ? subject : m[3]!).replace(/ \([A-Z][A-Z0-9]*-\d+\)$/, '')),
+  )
   const lines = body.split('\n')
   const start = lines.findIndex((l) => /^BREAKING[ -]CHANGE: /.test(l))
   if (start === -1) return { title, footer: '' }
@@ -131,7 +133,7 @@ function entry({ subject, body }: Commit): { title: string; footer: string } {
     .replace(/^BREAKING[ -]CHANGE: /, '')
     .replace(/\s+/g, ' ')
     .trim()
-  return { title, footer: sentence(footer) }
+  return { title, footer: sentence(lead(footer)) }
 }
 
 /** A heading or a footer starts with a capital, unless it starts with code (`--continue`, `.vx/`). */
@@ -147,16 +149,34 @@ const mdx = (text: string): string =>
     .map((part, i) =>
       i % 2 === 1
         ? part
-        : part.replace(/\{/g, '&#123;').replace(/\}/g, '&#125;').replace(/</g, '&lt;'),
+        : present(part).replace(/\{/g, '&#123;').replace(/\}/g, '&#125;').replace(/</g, '&lt;'),
     )
     .join('')
+
+// A page states the rule as it is (M's docs rules): "is now X" is "is X",
+// "no longer reads" is "does not read". Footers are history and say "now".
+const present = (prose: string): string =>
+  prose
+    .replace(/\b(is|are|was|were) no longer\b/gi, '$1 not')
+    .replace(/\bno longer (\w+)\b/gi, (_, verb: string) => {
+      const end = /(ies|sses|shes|ches|xes|s)$/.exec(verb)?.[1]
+      if (end === undefined) return `do not ${verb}`
+      const base = { ies: 'y', sses: 'ss', shes: 'sh', ches: 'ch', xes: 'x', s: '' }[end]
+      return `does not ${verb.slice(0, -end.length)}${base}`
+    })
+    // "does not write or reads": the second verb follows the first.
+    .replace(/\b(does not \w+) or (\w+?)s\b/g, '$1 or $2')
+    .replace(/\bno longer\b/gi, 'not')
+    .replace(/, now,/g, ',')
+    .replace(/ now\b/g, '')
+    .replace(/\bNow (?=[a-z])/g, '')
 
 // A heading or footer that opens with a command, a flag or a file keeps it
 // as typed, in code: `vx lock` records, never "Vx lock records".
 const lead = (text: string): string =>
   text.replace(
-    /^(vx(?: [a-z][a-z-]*)?|--[a-z][a-z-]*|\.vx\/[\w.-]+)(?=[\s:,;.]|$)/i,
-    (m) => `\`${m.toLowerCase()}\``,
+    /^(vx(?:-[a-z]+)+|vx(?: [a-z][a-z-]*)?(?=[\s:,;]|$)|--[a-z][a-z-]*|\.vx\/[\w.-]+|[a-z]\w*(?:\.\w+)+(?:\.\*)?|[a-z]\w*\([^)]*\))/i,
+    (m) => `\`${m}\``,
   )
 
 export const BEGIN =
@@ -181,14 +201,16 @@ export function page(commits: readonly TaggedCommit[]): string {
     if (isBreaking(commit) || step !== undefined) {
       const { title, footer } = entry(commit)
       const said = footer === '' ? '' : (SAY[subject] ?? footer)
-      const text = [lead(said), step?.steps ?? ''].filter((t) => t !== '').join('\n\n')
+      const text = [said, step?.steps ?? ''].filter((t) => t !== '').join('\n\n')
       // A breaking commit with no footer and no step has nothing to tell a reader.
       if (text !== '' && (footer === '' || !seen.has(footer))) {
         seen.add(footer)
-        const heading = lead(step?.title ?? TITLE[subject] ?? title)
+        const heading = step?.title ?? TITLE[subject] ?? title
         ;(AUTHORS.has(subject) ? entries.authors : entries.users).push(
           `### ${mdx(bunx(heading))}\n\n${mdx(bunx(text))}\n`,
         )
+        const api = API[subject]
+        if (api !== undefined) entries.authors.push(`### ${mdx(heading)}\n\n${mdx(api)}\n`)
       }
     }
     if (commit.tag !== undefined) {

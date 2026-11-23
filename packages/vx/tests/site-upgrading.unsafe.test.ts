@@ -24,8 +24,8 @@ const shallow =
     .trim() === 'true'
 
 it('a footer ends at a git trailer with no blank line before it', () => {
-  const body = 'Why.\n\nBREAKING CHANGE: a is b\nnow.\nCo-Authored-By: C <c@c>\nClaude-Session: s'
-  expect(footers(page([{ subject: 'feat!: x', body }]))).toEqual(['A is b now.'])
+  const body = 'Why.\n\nBREAKING CHANGE: a is b\nthen.\nCo-Authored-By: C <c@c>\nClaude-Session: s'
+  expect(footers(page([{ subject: 'feat!: x', body }]))).toEqual(['A is b then.'])
 })
 
 it('docs/upgrading.mdx carries every breaking footer in git log', () => {

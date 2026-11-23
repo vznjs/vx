@@ -28,15 +28,15 @@ Pick the vx you run, from `vx --version`. The list keeps only the releases after
 
 ### A run refuses a config edited since vx lock
 
-After editing a `vx.config.ts`, run `vx lock` before `vx run`, `vx show`, `vx why` or `vx pipeline`: the run now refuses with `VX_E_LOCK`, naming the file, instead of running the config the lock holds.
+After editing a `vx.config.ts`, run `vx lock` before `vx run`, `vx show`, `vx why` or `vx pipeline`: the run refuses with `VX_E_LOCK`, naming the file, instead of running the config the lock holds.
 
-### Sandboxed tasks no longer read credential stores
+### Sandboxed tasks do not read credential stores
 
-A sandboxed task no longer reads browser profiles, `~/.config/sops/age`, `~/.config/rclone`, `~/.my.cnf`, `~/.password-store` or `~/.sentryclirc`.
+A sandboxed task does not read browser profiles, `~/.config/sops/age`, `~/.config/rclone`, `~/.my.cnf`, `~/.password-store` or `~/.sentryclirc`.
 
 A task that needs one names it in `exec.sandbox.allow.read`.
 
-Variables whose names hold `PASSPHRASE` or end in `_PASS` are now masked in output.
+Variables whose names hold `PASSPHRASE` or end in `_PASS` are masked in output.
 
 ### Run history starts empty once
 
@@ -50,11 +50,11 @@ Nothing to do. `vx last` and `vx why` show only runs made after the upgrade. A p
 
 ### A --force run replaces the entry its key held
 
-A `--force` run now replaces the local entry under its key. A custom cache layer drops `kept()` and `stampWritten()`: vx no longer calls them.
+A `--force` run replaces the local entry under its key. A custom cache layer drops `kept()` and `stampWritten()`: vx does not call them.
 
 ### A --filter that matches nothing refuses the run
 
-A `--filter` that matches no project, an exclusion too, now refuses the run even when another filter matched. Fix or remove it in your CI scripts and pipelines.
+A `--filter` that matches no project, an exclusion too, refuses the run even when another filter matched. Fix or remove it in your CI scripts and pipelines.
 
 ### Fail a task whose declared output path matched nothing
 
@@ -76,13 +76,13 @@ Run your tasks once after upgrading. A task that fails with `outputs matched no 
 
 Replace each use:
 
-- `--continue=never` or `run.continue: 'never'`: use `--fail-fast` or `run.failFast: true`. Tasks still running are now killed.
-- `--continue`, `--continue=always`: remove it. A failed task's dependents never run now.
+- `--continue=never` or `run.continue: 'never'`: use `--fail-fast` or `run.failFast: true`. Tasks still running are killed.
+- `--continue`, `--continue=always`: remove it. A failed task's dependents never run.
 - `--continue=deps-ok`: remove it. That is the default.
 
 ### Drop the lock merge driver, name it .vx/projects.lock
 
-`.vx/projects.lock.jsonl` is now .vx/projects.lock (run vx lock); vx lock --merge is removed.
+`.vx/projects.lock.jsonl` is .vx/projects.lock (run vx lock); vx lock --merge is removed.
 
 Delete the old lock, the old attributes file and the merge driver, then lock again:
 
@@ -105,7 +105,11 @@ On CI a run prints only failed tasks. To see every task, pass `--output-logs ful
 
 ### Refuse two tasks whose outputs can share a path
 
-`vx lock` now refuses two tasks whose output globs can match one path, such as `*.js` beside `*b*`. Narrow one glob so the two tasks write no common path.
+`vx lock` refuses two tasks whose output globs can match one path, such as `*.js` beside `*b*`. Narrow one glob so the two tasks write no common path.
+
+### Replace --continue with --fail-fast
+
+`RunOptions.continueMode` is `failFast`.
 
 </Deeper>
 
@@ -117,13 +121,17 @@ On CI a run prints only failed tasks. To see every task, pass `--output-logs ful
 
 ### Make the artifact ceiling a setting, 1 GiB by default
 
-The default artifact ceiling is 1 GiB, not 2 GiB, and RunOptions.artifactCeiling is removed.
+The default artifact ceiling is 1 GiB, not 2 GiB. Raise it with `cache.artifactCeiling` or `VX_CACHE_ARTIFACT_CEILING`.
 
 <Deeper level="details" title="For plugin authors and server hosts">
 
 ### Stream a failed task's outputs to the remote
 
-PreparedRun.keepRunEntry takes (name, body: Blob), not (name, bytes: Uint8Array).
+`PreparedRun.keepRunEntry` takes (name, body: Blob), not (name, bytes: Uint8Array).
+
+### Make the artifact ceiling a setting, 1 GiB by default
+
+`RunOptions.artifactCeiling` is removed.
 
 </Deeper>
 
@@ -139,15 +147,15 @@ The worker workflow's parent input, the run's RUNNER_TEMP list of worker runs an
 
 ### Let Yarn 2+ start the vx bin
 
-@vzn/vx no longer ships launcher.sh; bin.vx is ./launcher.cjs.
+@vzn/vx does not ship launcher.sh; bin.vx is ./launcher.cjs.
 
 ### Distributed task execution plans with one engine
 
-Dte(&#123; scheduler &#125;) is removed.
+`dte({ scheduler })` is removed.
 
 ### Keep a root-installed package the root's own
 
-A workspace package installed only by the root `package.json` no longer orders, keys or `--affected`-selects other projects; declare it in the `package.json` of each project that loads it.
+A workspace package installed only by the root `package.json` does not order, keys or `--affected`-selects other projects; declare it in the `package.json` of each project that loads it.
 
 ### Put the vx version in every cache key
 
@@ -167,7 +175,7 @@ If a tool reads `cache.db` directly, it sees hits only up to the last of those c
 
 ### Wait on a late worker, never give up and ask again
 
-A DteAdapter's cancel() gets no late argument and kept() is no longer called; drop both from a custom adapter.
+A DteAdapter's cancel() gets no late argument and kept() is not called; drop both from a custom adapter.
 
 ### Hash issuer, repository and ref in object names
 
@@ -189,7 +197,7 @@ Artifacts stored under the old names are not read. `blobName()` is async: `await
 
 ### An uncached task ends before its files are home
 
-ExecuteRequest.download and ExecuteResult.outputs gain 'trailing', and TaskArtifacts.save resolves the stored output.
+`ExecuteRequest.download` and ExecuteResult.outputs gain 'trailing', and TaskArtifacts.save resolves the stored output.
 
 </Deeper>
 
@@ -209,7 +217,7 @@ What changed: a workspace package's own version counts under `bun()` and `npm()`
 
 ### Drop core's root and config entry shims
 
-@vzn/vx no longer ships index.ts or config/index.ts; a vx binary from 0.0.484 or older cannot load it.
+@vzn/vx does not ship index.ts or config/index.ts; a vx binary from 0.0.484 or older cannot load it.
 
 <Deeper level="details" title="For plugin authors and server hosts">
 
@@ -220,15 +228,15 @@ What changed: a workspace package's own version counts under `bun()` and `npm()`
 - `remote`, `sandbox`, `servers`, `runtime`, `exclusive`, `timeouts`, `platforms`, `capacity` → under `capabilities`
 - `workers`, `demand`, `running`, `unneeded`, `footer`, `machines`, `idealMs`, `advice`, `profile` → under `distribution`
 
-`@vzn/vx` no longer exports `localFloor`, `LocalFloor`, `sandboxRequestFor`, `sweepPlaceholders`, `SandboxRequest` or `BoundedCapture`.
+`@vzn/vx` does not export `localFloor`, `LocalFloor`, `sandboxRequestFor`, `sweepPlaceholders`, `SandboxRequest` or `BoundedCapture`.
 
 It also drops `answerRuntime`, `packageManagerPath` and `sampleTrees`.
 
 A worker calls `workerRuntime({ root })` and uses `prepare(task)` → `run()` / `sweep()`, `probe`, `packageManager` and `sample`.
 
-### foldScriptHooks is no longer exported
+### `foldScriptHooks` is not exported
 
-`@vzn/vx` no longer exports `foldScriptHooks`.
+`@vzn/vx` does not export `foldScriptHooks`.
 
 For migrator authors:
 
@@ -238,7 +246,7 @@ For migrator authors:
 
 ### Lockfile plugins name importers links
 
-LockfileClaim's `importers` option and hook are now `links`, and `LockfileImporter` is no longer exported from @vzn/vx.
+LockfileClaim's `importers` option and hook are `links`, and `LockfileImporter` is not exported from @vzn/vx.
 
 ### Group TaskOutcome by concern, a union by status
 
@@ -267,13 +275,13 @@ The groups and status variants are exported as types.
 
 It also loses `remoteReadOnlyByDefault`, `summaryTable`, `holdPersistent`, `watch`, `keep` and `commandWindows`.
 
-vx's CLI passes those internally; `run()` and `planRun()` no longer read them. Drop them from your calls.
+vx's CLI passes those internally; `run()` and `planRun()` do not read them. Drop them from your calls.
 
-### Cache no longer records runs
+### Cache does not record runs
 
 `Cache` loses `recordRun`, `recordRuns`, `recordMeasures`, `recordRunBundle` and `recordRemoteErrors`. No public replacement: core records each run itself.
 
-`CacheLayer` and `LayeredCache` lose `recordRunBundle`. A custom layer's `recordRunBundle` is no longer called.
+`CacheLayer` and `LayeredCache` lose `recordRunBundle`. A custom layer's `recordRunBundle` is not called.
 
 On `Cache`, call these through `cache.memo.<name>` (`StoreMemo`):
 
@@ -290,7 +298,7 @@ A layer hands those out as `layer.memo` (`TaskMemo`).
 
 ### Check tokens with @vzn/vx-devtools
 
-The relay no longer exports `parseAllow`, `TokenError`, `Allowed`, `repositoryClaimOf` or `workflowClaimOf`. Use `parseAllow`, `Refusal` and `Admits` from `@vzn/vx-devtools`.
+The relay does not export `parseAllow`, `TokenError`, `Allowed`, `repositoryClaimOf` or `workflowClaimOf`. Use `parseAllow`, `Refusal` and `Admits` from `@vzn/vx-devtools`.
 
 Refusal texts changed. Update any script or alert that matches them:
 
@@ -371,7 +379,7 @@ A size setting with no unit is refused; write '32KiB'.
 
 ### Refuse inputs.tasks lists that pick no dependency
 
-A negation-only inputs.tasks list, and an exact pkg#task entry naming only a transitive dependency, are now refused.
+A negation-only inputs.tasks list, and an exact pkg#task entry naming only a transitive dependency, are refused.
 
 ### Cut cache and history requests per run
 
@@ -389,23 +397,23 @@ The local cache index is schema v52; logs cached before it are dropped on first 
 
 ### Ask Blobs.size for the bucket's own answer
 
-Blobs.size takes a second argument, bucket. A Blobs of your own answers from the bucket itself when it is true, never from a mark it keeps; one that keeps no mark ignores it.
+`Blobs.size` takes a second argument, bucket. A Blobs of your own answers from the bucket itself when it is true, never from a mark it keeps; one that keeps no mark ignores it.
 
 ### Keep remote hits when a token is refused
 
-RemoteCacheLayer.get may return undefined (no answer), so a caller that tests only for null must treat undefined as a miss too.
+`RemoteCacheLayer.get` may return undefined (no answer), so a caller that tests only for null must treat undefined as a miss too.
 
 ### Clean only vx stores under ~/.vx; name failed saves once
 
-Cache.formatChange is gone; it was never read.
+`Cache.formatChange` is gone; it was never read.
 
 ### Close affected, sandbox, summary and migrate bugs from the hunt
 
-VxCacheLayer.put's meta parameter carries replace.
+`VxCacheLayer.put`'s meta parameter carries replace.
 
 ### Close watch, lock, DTE and history bugs found by the bug hunt
 
-RemoteCacheLayer.put's meta may carry replace, which a layer honours by writing over its stored entry, and Cache.recordRuns takes the run's head.
+`RemoteCacheLayer.put`'s meta may carry replace, which a layer honours by writing over its stored entry, and Cache.recordRuns takes the run's head.
 
 </Deeper>
 
@@ -417,7 +425,7 @@ RemoteCacheLayer.put's meta may carry replace, which a layer honours by writing 
 
 ### Remove outputs.bin and outputs.mount
 
-Outputs.bin and outputs.mount are refused as unknown fields. Call a tool by path, or install it outside vx and key on its version with inputs.runtime.
+`outputs.bin` and outputs.mount are refused as unknown fields. Call a tool by path, or install it outside vx and key on its version with inputs.runtime.
 
 </div>
 
@@ -457,11 +465,11 @@ The façade's `ui` is the new kit: `report(title, rows)`, `table(columns, rows)`
 
 ### Drop waited, show usual from the first row, title lists
 
-Logger.taskStart takes only the node; the task:start event carries no waitedMs.
+`Logger.taskStart` takes only the node; the task:start event carries no waitedMs.
 
 ### Read issuer keys through the Worker shared cache
 
-OidcOptions.fetchJson is called as fetchJson(url, fresh): fresh is true for a reload of keys already read, which must reach the issuer. A fetchJson that took one argument still works.
+`OidcOptions.fetchJson` is called as fetchJson(url, fresh): fresh is true for a reload of keys already read, which must reach the issuer. A fetchJson that took one argument still works.
 
 </Deeper>
 
@@ -477,9 +485,9 @@ OidcOptions.fetchJson is called as fetchJson(url, fresh): fresh is true for a re
 
 A run's steps, warnings and failed output live in the `steps`, `warnings` and `failures` tables of `cache.db`. Lockfile parses live in its `lockfile_memos` table.
 
-vx no longer writes or reads `<cacheDir>/steps/`, `warnings/`, `failures/` or `lockfile-claims/`. You may delete them.
+vx does not write or read `<cacheDir>/steps/`, `warnings/`, `failures/` or `lockfile-claims/`. You may delete them.
 
-`vx cache clean` no longer takes those folder names from a cache dir you named.
+`vx cache clean` does not take those folder names from a cache dir you named.
 
 If you call `runFailures` or `taskLog`, pass the index handle, not the cache dir.
 
@@ -487,11 +495,11 @@ If you call `runFailures` or `taskLog`, pass the index handle, not the cache dir
 
 ### One grid for both task lists, with cost and place
 
-Logger.taskStart is called as taskStart(node, info?) with info.waitedMs, and the task:start event carries waitedMs: a logger or bus subscriber that matched on their exact shape takes the new field.
+`Logger.taskStart` is called as taskStart(node, info?) with info.waitedMs, and the task:start event carries waitedMs: a logger or bus subscriber that matched on their exact shape takes the new field.
 
 ### Hand plugins history rows, not a cache.db handle
 
-`@vzn/vx` no longer exports `LocalHistoryProvider`, and `Cache` has no `dbHandle()`. A plugin cannot open `cache.db`.
+`@vzn/vx` does not export `LocalHistoryProvider`, and `Cache` has no `dbHandle()`. A plugin cannot open `cache.db`.
 
 Read run history with `localHistory(cache, { recent, branch, defs })`. It returns `loadFor`, `p50sFor`, `resourcesFor`, `hasImported` and `importTimings`.
 
@@ -535,7 +543,7 @@ CACHE_VERSION is vx-cache-v50: every cached task misses once after upgrading.
 
 ### Name the server options url and headers
 
-VxHistory(&#123; server, serverHeaders &#125;) is vxHistory(&#123; url, headers &#125;).
+`vxHistory({ server, serverHeaders })` is vxHistory(&#123; url, headers &#125;).
 
 ### Store and send repo and refs plainly
 
@@ -543,11 +551,11 @@ VxHistory(&#123; server, serverHeaders &#125;) is vxHistory(&#123; url, headers 
 
 ### Drop timings shared through the remote cache
 
-VxHistory() no longer writes or reads timings through the remote cache (ctx.cache); share them with a history server.
+`vxHistory()` does not write or read timings through the remote cache (ctx.cache); share them with a history server.
 
 ### Name the repository on every request; public reads
 
-VxCache() requires issuer and repository, as does vxHistory() with a server; x-artifact-scope and x-artifact-max-* are vx-scope and vx-max-*; Access.issuer keeps its scheme, so stored keys move.
+`vxCache()` requires issuer and repository, as does vxHistory() with a server; x-artifact-scope and x-artifact-max-* are vx-scope and vx-max-*; Access.issuer keeps its scheme, so stored keys move.
 
 ### Name a repository by org/name, not its id
 
@@ -565,7 +573,7 @@ CacheRefs takes the plugin's refs; without github() or gitlab(), CI reads git's 
 
 ### Drop the check run; github() writes the job summary only
 
-Github() no longer takes checks, checkName or fetchFn, and @vzn/vx-ci no longer exports FetchFn.
+`github()` does not take checks, checkName or fetchFn, and @vzn/vx-ci does not export FetchFn.
 
 ### Speak Turbo's routes, cache downloads per DC
 
@@ -598,7 +606,7 @@ To expire old entries, set lifecycle rules on the bucket.
 
 `/v1/artifacts/check` and the batch download take `{ keys: [{ scope, hash }] }`. A single download names its ref in `x-vx-scope`. `x-artifact-read-scopes` is gone.
 
-`vxCache()` no longer keeps timings or orders tasks. Declare `vxHistory()` for that.
+`vxCache()` does not keep timings or orders tasks. Declare `vxHistory()` for that.
 
 ### Rename vx-schedule-history to vx-history
 
@@ -630,7 +638,7 @@ The server and vxCache() speak Turbo's remote cache API under /v1; update both t
 
 ### Add vx dte init; gitlab() triggers worker pipelines
 
-Gitlab() takes no include and vx dte plan is gone: run vx dte init to write the new .gitlab-ci.yml, give each size a max, and drop VX_DTE_GITLAB_TOKEN.
+`gitlab()` takes no include and vx dte plan is gone: run vx dte init to write the new .gitlab-ci.yml, give each size a max, and drop VX_DTE_GITLAB_TOKEN.
 
 ### Learn a crowded task's need, not its share
 
@@ -656,11 +664,11 @@ The run list's column header reads `· worker`.
 
 ### Close known lockfile, cache, DTE and watch issues
 
-FingerprintClaim.extraFiles(file, bytes, ctx) may return a promise, and DteAdapter.cancel(ids, late?) may return the ids it left running: a plugin implementing either takes the new arguments.
+`FingerprintClaim.extraFiles`(file, bytes, ctx) may return a promise, and DteAdapter.cancel(ids, late?) may return the ids it left running: a plugin implementing either takes the new arguments.
 
 ### Keep numeric signals, forward args into compounds
 
-RunResult.signal is string | number: an executor or telemetry plugin that reads it must accept a number for a signal with no name.
+`RunResult.signal` is string | number: an executor or telemetry plugin that reads it must accept a number for a signal with no name.
 
 ### Servers accept CI by the ALLOW string, not TRUST
 
@@ -675,15 +683,15 @@ Protected refs are gone: any run of a listed workflow writes its branch's cache.
 
 ### Drop the test transports from the options
 
-Github(&#123; append, sizeOf &#125;) and otel(&#123; post &#125;) are removed; @vzn/vx-otel no longer exports PostFn or OtlpTls.
+`github({ append, sizeOf })` and otel(&#123; post &#125;) are removed; @vzn/vx-otel does not export PostFn or OtlpTls.
 
 ### Answer 502 when the issuer's keys cannot be read
 
-TokenError's status may now be 502 (the issuer's keys could not be read), besides 401 and 403. Treat 502 as a retry, not a refusal.
+TokenError's status may be 502 (the issuer's keys could not be read), besides 401 and 403. Treat 502 as a retry, not a refusal.
 
 ### Count no upload a remote skipped
 
-RemoteCacheLayer.put resolves void or false; false means nothing was sent and no upload is counted.
+`RemoteCacheLayer.put` resolves void or false; false means nothing was sent and no upload is counted.
 
 ### Store nothing
 
@@ -695,19 +703,19 @@ POST /v1/artifacts/upload is gone; upload each artifact with PUT /v1/artifacts/&
 
 ### Name objects by issuer, id, scope and hash
 
-The trusted scope is gone. Cache objects and history rows live under new names; old ones are no longer read. Access drops repo and trustedRef; the history query takes `scopes`, not `scope`.
+The trusted scope is gone. Cache objects and history rows live under new names; old ones are not read. Access drops repo and trustedRef; the history query takes `scopes`, not `scope`.
 
 ### Move the CI token check into @vzn/vx-devtools
 
-@vzn/vx-cache-server no longer exports oidcAuth, parseTrust, Access, Authorize, OidcOptions or TrustRule; import them from @vzn/vx-devtools.
+@vzn/vx-cache-server does not export oidcAuth, parseTrust, Access, Authorize, OidcOptions or TrustRule; import them from @vzn/vx-devtools.
 
 ### Move criticalPath into core
 
-@vzn/vx-schedule-history no longer exports criticalPath or criticalPathPriorities; import criticalPath from @vzn/vx.
+@vzn/vx-schedule-history does not export criticalPath or criticalPathPriorities; import criticalPath from @vzn/vx.
 
 ### Run many Bun nodes over one Postgres
 
-CreateCacheServer() and evict() take a Store (sqliteStore(db) or postgresStore(url)) in place of a Db, and artifacts gain a blob column: start on an empty database and bucket.
+`createCacheServer()` and evict() take a Store (sqliteStore(db) or postgresStore(url)) in place of a Db, and artifacts gain a blob column: start on an empty database and bucket.
 
 ### Rename @vzn/vx-dte-relay to vx-dte-server
 
@@ -735,11 +743,11 @@ A relay host passes no `store` and calls no `open()`; it keeps what `attach` ret
 
 ### One round-trip per remote hit, never "up to date"
 
-CacheLayer.probeFirst is removed, with the probe gate behind it.
+`CacheLayer.probeFirst` is removed, with the probe gate behind it.
 
 ### Name the setting that asked for a missing remote
 
-RunOptions.remoteRequested is the name of the setting that asked (`'--cache-policy'`), not a boolean.
+`RunOptions.remoteRequested` is the name of the setting that asked (`'--cache-policy'`), not a boolean.
 
 ### Drop the agent names the relay still took
 
@@ -795,7 +803,7 @@ A socket frame of `{ n, to, body }` is answered `400`; send it as `{ n, sends: [
 
 ### Drop the frames version from join
 
-A relay's join no longer answers `frames`; a socket always takes `sends`, `remove` and `leave` frames.
+A relay's join does not answer `frames`; a socket always takes `sends`, `remove` and `leave` frames.
 
 ### Allow issuer:repo:workflow entries in one ALLOW
 
@@ -811,15 +819,15 @@ An orchestrator joins with key, its P-256 public key, and signs each request as 
 
 ### The relay accepts named repositories, deploys with cf
 
-Vx-dte-relay needs --repository owner/repo and the Worker needs REPOSITORIES; wrangler.jsonc is replaced by cloudflare.config.ts (deploy with cf).
+`vx-dte-relay` needs --repository owner/repo and the Worker needs REPOSITORIES; wrangler.jsonc is replaced by cloudflare.config.ts (deploy with cf).
 
 ### Sign relay keys by GitHub OIDC, with no secret
 
-@vzn/vx-dte-relay binds a run by repository_id or project_id only; runClaimsOf no longer names run_id or pipeline_id.
+@vzn/vx-dte-relay binds a run by repository_id or project_id only; runClaimsOf does not name run_id or pipeline_id.
 
 ### A task an agent has not begun reads waiting
 
-TaskExecutor.running may return null (the task waits for a machine), and RunContext.whereRunning may too; a caller that compared with undefined only must handle null.
+`TaskExecutor.running` may return null (the task waits for a machine), and RunContext.whereRunning may too; a caller that compared with undefined only must handle null.
 
 </Deeper>
 
@@ -850,7 +858,7 @@ To turn `package.json` scripts into tasks, run `bunx @vzn/vx-migrate`.
 
 ### Drop the local cache hit check
 
-Cache.store.verify (VX_CACHE_STORE_VERIFY) is removed: a local hit restores its stored files unchecked.
+`cache.store.verify` (VX_CACHE_STORE_VERIFY) is removed: a local hit restores its stored files unchecked.
 
 <Deeper level="details" title="For plugin authors and server hosts">
 
@@ -868,19 +876,19 @@ Plugin API: RemoteCacheLayer.has resolves ArtifactInfo or null (`{ size, duratio
 
 ### Drop run-end housekeeping and cache.retention
 
-A run no longer cleans the cache at its end. `cache.retention` is removed, with `VX_CACHE_RETENTION_OLDER_THAN` and `VX_CACHE_RETENTION_MAX_SIZE`.
+A run does not clean the cache at its end. `cache.retention` is removed, with `VX_CACHE_RETENTION_OLDER_THAN` and `VX_CACHE_RETENTION_MAX_SIZE`.
 
 To trim the cache, run `vx cache clean --older-than` or `vx cache clean --max-size`.
 
-`@vzn/vx-migrate` no longer maps Turbo's `cacheMaxSize` / `cacheMaxAge` or Nx's `maxCacheSize`.
+`@vzn/vx-migrate` does not map Turbo's `cacheMaxSize` / `cacheMaxAge` or Nx's `maxCacheSize`.
 
 ### Rename cache.store.compress to decompress
 
-Cache.store.compress is now cache.store.decompress (VX_CACHE_STORE_DECOMPRESS), default true: plain files. compress: true is decompress: false.
+`cache.store.compress` is cache.store.decompress (VX_CACHE_STORE_DECOMPRESS), default true: plain files. compress: true is decompress: false.
 
 ### Size embedded entries with cache.store.embeddings
 
-Cache.store.embedded is now cache.store.embeddings (VX_CACHE_STORE_EMBEDDINGS): false, or the largest entry kept in the index as a size string, default '32KiB'. true is no longer a value.
+`cache.store.embedded` is cache.store.embeddings (VX_CACHE_STORE_EMBEDDINGS): false, or the largest entry kept in the index as a size string, default '32KiB'. true is not a value.
 
 ### Read [...] in a task glob as a character class
 
@@ -894,7 +902,7 @@ CACHE_VERSION is vx-cache-v47; a v46 local cache is not read. Set cache.store.co
 
 ### Read one plugin cache key per request
 
-Plugin API: on a branch, ctx.cache.get, has and hasMany no longer fall back to the default branch's entry; pass false to read it.
+Plugin API: on a branch, ctx.cache.get, has and hasMany do not fall back to the default branch's entry; pass false to read it.
 
 </Deeper>
 
@@ -912,7 +920,7 @@ The remote cache for a branch is scoped by `<owner>/<repo>:<branch>`. Update the
 - `run.affectedBase` → `baseBranch` (a branch name)
 - `VX_RUN_AFFECTED_BASE` → `VX_BASE_BRANCH`
 
-A bare `--affected` on the base branch is refused; it no longer falls back to `HEAD~1`. Pass `--affected=<sha>` there.
+A bare `--affected` on the base branch is refused; it does not fall back to `HEAD~1`. Pass `--affected=<sha>` there.
 
 `github()` scopes by `<owner>/<repo>:<branch>`, not `pr-<n>`. The config hook's `ctx` gains `setBranch`.
 
@@ -926,7 +934,7 @@ The local cache stores every entry under its task key, whatever the scope.
 
 ### Read vx docs from the version's tag on GitHub
 
-`vx docs` needs the network: it reads packages/vx/docs at the version's tag on GitHub and refuses with VX_E_NETWORK when it cannot. The npm package no longer ships docs/*.md.
+`vx docs` needs the network: it reads packages/vx/docs at the version's tag on GitHub and refuses with VX_E_NETWORK when it cannot. The npm package does not ship docs/*.md.
 
 ### Read a warm task's key back from the cache index
 
@@ -970,7 +978,7 @@ To keep untrusted pull requests from writing the shared cache, set vx's `cache.p
 
 ### Stop ignoring Bun's compile temp files in core
 
-`vx no` longer skips the temp files `bun build --compile` writes. A broad input glob like `**/*` on a compile task, or on a task in the same directory, picks them up.
+vx does not skip the temp files `bun build --compile` writes. A broad input glob like `**/*` on a compile task, or on a task in the same directory, picks them up.
 
 Add both excludes to that task's `inputs.files`:
 
@@ -981,7 +989,7 @@ Add both excludes to that task's `inputs.files`:
 
 ### Restore only the task's declared outputs
 
-Cache.restoreOutputs and CacheLayer.restoreOutputs take the task's declared outputs as a fourth argument; a restore writes only the names they select.
+`Cache.restoreOutputs` and CacheLayer.restoreOutputs take the task's declared outputs as a fourth argument; a restore writes only the names they select.
 
 </Deeper>
 
@@ -993,17 +1001,17 @@ Cache.restoreOutputs and CacheLayer.restoreOutputs take the task's declared outp
 
 ### Read gitignored inputs named outright
 
-Run.rules.upfrontKeys and VX_RUN_RULES_UPFRONT_KEYS are removed; a task reading another task's outputs must depend on it and leave it out of inputs.tasks.
+`run.rules.upfrontKeys` and VX_RUN_RULES_UPFRONT_KEYS are removed; a task reading another task's outputs must depend on it and leave it out of inputs.tasks.
 
 ### Move inputs onto the task
 
-`tasks.<name>.cache.inputs` is now `tasks.<name>.inputs`; `cache` without `exec` is refused; a task depending on an uncached task with no `inputs` never hits; `.vx/projects.lock.json` is version 4.
+`tasks.<name>.cache.inputs` is `tasks.<name>.inputs`; `cache` without `exec` is refused; a task depending on an uncached task with no `inputs` never hits; `.vx/projects.lock.json` is version 4.
 
 <Deeper level="details" title="For plugin authors and server hosts">
 
 ### Never hold a run on fetched schedule weights
 
-PreparedRun.priorities takes an optional ScheduleRun (step, refined).
+`PreparedRun.priorities` takes an optional ScheduleRun (step, refined).
 
 </Deeper>
 
@@ -1027,7 +1035,7 @@ PreparedRun.priorities takes an optional ScheduleRun (step, refined).
 
 ### Remove vx run --tag
 
-`vx run --tag` is removed, with RunOptions.tags and RunContextRecord.tags (TELEMETRY_SCHEMA_VERSION 4) and vx-otel's `vx.tag.<key>` attributes. The invocations table drops `tags` (SCHEMA_VERSION v39).
+`vx run --tag` is gone, and `@vzn/vx-otel` drops its `vx.tag.<key>` attributes.
 
 ### Remove vx run --graph
 
@@ -1049,7 +1057,11 @@ Removed fields: `RunOptions.summarize` / `json`, `RunSummary.json`, `OutputConte
 
 ### One LayeredCache over every declared remote
 
-`CacheLayer.save` no longer takes `skipLocalWrite`. Only core's own ChainedCache set it; a caller passing it drops the field.
+`CacheLayer.save` does not take `skipLocalWrite`. Only core's own ChainedCache set it; a caller passing it drops the field.
+
+### Remove vx run --tag
+
+`RunOptions.tags` and `RunContextRecord.tags` are removed (`TELEMETRY_SCHEMA_VERSION` 4).
 
 </Deeper>
 
@@ -1061,7 +1073,7 @@ Removed fields: `RunOptions.summarize` / `json`, `RunSummary.json`, `OutputConte
 
 ### Lay out every refusal as a notice
 
-Refusals on stderr no longer read `vx <verb>: <message>`; scripts should read --format json or the exit code.
+Refusals on stderr do not read `vx <verb>: <message>`; scripts should read --format json or the exit code.
 
 ### Output components for every verb and plugin
 
@@ -1075,13 +1087,13 @@ CachePolicy in run history and telemetry records reads `local:rw,remote:r`, the 
 
 ### Stop ignoring *.tsbuildinfo as an input
 
-`vx stops` ignoring `*.tsbuildinfo` by default. A tracked, or untracked and not ignored, `tsbuildinfo` is an input of any task whose globs reach it.
+vx stops ignoring `*.tsbuildinfo` by default. A tracked, or untracked and not ignored, `tsbuildinfo` is an input of any task whose globs reach it.
 
 To keep it out of keys, add it to `.gitignore` or declare it an output.
 
 ### Cache everything the outputs hold under clean: false
 
-Under cache.outputs.clean: false a leftover output file is now saved and restored on every machine; before, its presence meant nothing was cached.
+Under cache.outputs.clean: false a leftover output file is saved and restored on every machine; before, its presence meant nothing was cached.
 
 ### Stop vx watch re-running on its own run's writes
 
@@ -1089,15 +1101,15 @@ Under cache.outputs.clean: false a leftover output file is now saved and restore
 
 ### Install the vx skill with bunx skills add vznjs/vx
 
-`bunx skills add vznjs/vx/packages/vx/skills/vx` no longer exists; install the agent skill with `bunx skills add vznjs/vx`.
+`bunx skills add vznjs/vx/packages/vx/skills/vx` does not exist; install the agent skill with `bunx skills add vznjs/vx`.
 
 ### Drop the VX_CACHE_OUTPUTS_CLEAN variable
 
-VX_CACHE_OUTPUTS_CLEAN is no longer read. Set cache.outputs.clean in .vx/workspace.ts or on the task instead.
+VX_CACHE_OUTPUTS_CLEAN is not read. Set cache.outputs.clean in .vx/workspace.ts or on the task instead.
 
 ### Share blob sizes and the flaky record across worktrees
 
-SCHEMA_VERSION v38 (blob_sizes and task_outcomes in the store): the local index resets once. A repeat cache hit no longer counts as another pass in flaky counts.
+SCHEMA_VERSION v38 (blob_sizes and task_outcomes in the store): the local index resets once. A repeat cache hit does not count as another pass in flaky counts.
 
 ### Give plugins ctx.cache over the workspace cache
 
@@ -1107,7 +1119,7 @@ SCHEMA_VERSION v37 (plugin_blobs, unique remote task_durations rows): the local 
 
 ### Keep a CI run's bytes and hand plugins a run report
 
-`teardown` now takes the run's `RunReport` (`teardown(run?)`), and `PluginCache` has a `getRun(name)` method: a test double that implements `PluginCache` adds `getRun: async () => null`.
+`teardown` takes the run's `RunReport` (`teardown(run?)`), and `PluginCache` has a `getRun(name)` method: a test double that implements `PluginCache` adds `getRun: async () => null`.
 
 </Deeper>
 
@@ -1179,7 +1191,7 @@ Removed exports: `ConfigEvalStore`, `LoadProjectConfigOptions`, the `Cache` conf
 
 ### Rename vx cache prune to vx cache clean
 
-`vx cache prune` is now `vx cache clean`; the old name is an unknown subcommand. A bare `vx cache clean` clears this repo's cache and run history instead of exiting 1.
+`vx cache prune` is `vx cache clean`; the old name is an unknown subcommand. A bare `vx cache clean` clears this repo's cache and run history instead of exiting 1.
 
 ### Write the lock minified, a review copy per config
 
@@ -1187,11 +1199,11 @@ Removed exports: `ConfigEvalStore`, `LoadProjectConfigOptions`, the `Cache` conf
 
 ### Check graph rules only in vx lock, never in a run
 
-A run no longer refuses overlapping outputs or an input glob that matches another task's outputs. Run `vx lock` (or `vx lock --check` in CI) to check run.rules.
+A run does not refuse overlapping outputs or an input glob that matches another task's outputs. Run `vx lock` (or `vx lock --check` in CI) to check run.rules.
 
 ### Move the workspace config and lock into .vx
 
-`vx`.workspace.* and vx-lock.json are no longer read. Move the workspace config to .vx/workspace.ts (its relative imports gain a ../) and re-run vx lock.
+`vx.workspace.*` and vx-lock.json are not read. Move the workspace config to .vx/workspace.ts (its relative imports gain a ../) and re-run vx lock.
 
 ### Retire @vzn/vx-mcp for the agent skill and vx last --stats
 
@@ -1242,13 +1254,13 @@ To evaluate the configs instead, pass `--no-frozen` or set `VX_RUN_FROZEN=false`
 
 `vx lock` refuses a graph that breaks `run.rules`, and `vx lock --check` reports it.
 
-### `vx`.workspace.* marks the workspace root
+### `vx.workspace.*` marks the workspace root
 
 Every verb but vx init needs a vx.workspace.* file; without one it stops with VX_E_NO_WORKSPACE. A global vx hands off only to the workspace root's own node_modules/@vzn/vx.
 
 ### One path per setting, env and flag derived from it
 
-`vx`.workspace keys, VX_* variables and some flags are renamed; old names are refused.
+`vx.workspace` keys, VX_* variables and some flags are renamed; old names are refused.
 
 ### Set cache policy in vx.workspace, scope under cache
 
@@ -1258,7 +1270,7 @@ The top-level `cacheScope` workspace key is removed; use `cache: { scope }`.
 
 ### Discover names projects and supplies edges
 
-The NamedProject type is now DiscoveredProject; a discover entry's name is optional and it may carry deps and reach.
+The NamedProject type is DiscoveredProject; a discover entry's name is optional and it may carry deps and reach.
 
 ### Output stage lets a plugin draw the terminal
 
@@ -1291,7 +1303,7 @@ A cache hook returns a RemoteCacheLayer (has, get, put, optional hasMany), not a
 
 ## v0.0.635
 
-### Github() is undefined off Actions; skip falsy plugins
+### `github()` is undefined off Actions; skip falsy plugins
 
 @vzn/vx-ci's github() returns undefined outside GitHub Actions; a caller reading its fields must handle undefined.
 
@@ -1299,7 +1311,7 @@ A cache hook returns a RemoteCacheLayer (has, get, put, optional hasMany), not a
 
 ### Skip the schedule stage when every task is a hit
 
-PreparedRun.priorities is a function returning the schedule stage's weights, and the stage runs after setup, only when a task will start.
+`PreparedRun.priorities` is a function returning the schedule stage's weights, and the stage runs after setup, only when a task will start.
 
 </Deeper>
 
@@ -1325,7 +1337,7 @@ SCHEMA_VERSION v33. The first run drops the local index once; artifact files sta
 
 ### Connect a bare endpoint with TLS, as Bazel does
 
-A vx-reapi endpoint with no scheme now uses TLS; a plaintext server needs grpc:// or tls: false.
+A vx-reapi endpoint with no scheme uses TLS; a plaintext server needs grpc:// or tls: false.
 
 </div>
 
@@ -1347,7 +1359,7 @@ Every cached task misses once after upgrading to vx-cache-v42.
 
 ### Drop unread store fields, fix chunking comments
 
-Cache.storeFallback and Cache.storeMoved are removed; nothing read them.
+`Cache.storeFallback` and Cache.storeMoved are removed; nothing read them.
 
 </Deeper>
 
@@ -1369,7 +1381,7 @@ Every cached task misses once after upgrading to vx-cache-v41.
 
 ### Refuse env names sh would drop
 
-Exec.env define and passThrough names must be shell identifiers ([A-Za-z_][A-Za-z0-9_]*); other names are refused at load.
+`exec.env` define and passThrough names must be shell identifiers ([A-Za-z_][A-Za-z0-9_]*); other names are refused at load.
 
 ### Accept readonly lists in every config array field
 
@@ -1383,13 +1395,13 @@ Config array fields are typed readonly; code that mutates a resolved config list
 
 ### Refuse a tag that --filter tag: cannot name
 
-A tag that --filter tag: cannot select (`**`, an upper-case glob such as `A*`) is now refused at config load.
+A tag that --filter tag: cannot select (`**`, an upper-case glob such as `A*`) is refused at config load.
 
 <Deeper level="details" title="For plugin authors and server hosts">
 
 ### Dry prune on an earlier index previews the store
 
-Cache.orphansBeforeReset is gone; open a Cache in 'preview' mode instead.
+`Cache.orphansBeforeReset` is gone; open a Cache in 'preview' mode instead.
 
 </Deeper>
 
@@ -1423,7 +1435,7 @@ Import github() from '@vzn/vx-ci' instead of '@vzn/vx-github'.
 
 ### Keep artifacts when the store schema changes
 
-Cache.getMany and CacheLayer.getMany take an optional per-hash get context; a layer that ignores it is unchanged.
+`Cache.getMany` and CacheLayer.getMany take an optional per-hash get context; a layer that ignores it is unchanged.
 
 </Deeper>
 
@@ -1499,13 +1511,13 @@ A migrated config writes nx-exec lines where it wrote jest, vite, tsc, node and 
 
 ### Refuse the wire-form options reapi() ignored
 
-Reapi() no longer accepts onWarn, tlsCaPem, tlsClientCertPem or tlsClientKeyPem; use tlsCertificate, tlsClientCertificate and tlsClientKey (PEM files).
+`reapi()` does not accept onWarn, tlsCaPem, tlsClientCertPem or tlsClientKeyPem; use tlsCertificate, tlsClientCertificate and tlsClientKey (PEM files).
 
 <Deeper level="details" title="For plugin authors and server hosts">
 
 ### Inline the wire-only keys
 
-@vzn/vx-reapi's plugin-api record no longer lists the WireOnly type (it was never exported; ReapiPluginOptions is unchanged in shape).
+@vzn/vx-reapi's plugin-api record does not list the WireOnly type (it was never exported; ReapiPluginOptions is unchanged in shape).
 
 </Deeper>
 
@@ -1558,7 +1570,7 @@ Reapi() no longer accepts onWarn, tlsCaPem, tlsClientCertPem or tlsClientKeyPem;
 
 ### Stop exporting the parser namespaces
 
-@vzn/vx-lockfile no longer exports the pnpmLock, bunLock, npmLock and yarnLock namespaces.
+@vzn/vx-lockfile does not export the pnpmLock, bunLock, npmLock and yarnLock namespaces.
 
 </Deeper>
 
@@ -1593,7 +1605,7 @@ Import only the plugin itself.
 
 ### Stop exporting the Checks API helpers
 
-@vzn/vx-github no longer exports buildCheckRunPayload, clampSummary, postCheckRun, resolveCheckRunEnv or the CheckRunEnv type.
+@vzn/vx-github does not export buildCheckRunPayload, clampSummary, postCheckRun, resolveCheckRunEnv or the CheckRunEnv type.
 
 </Deeper>
 
@@ -1615,23 +1627,13 @@ Pass each option with its kind. The type checker derives the kinds from your opt
 
 </div>
 
-<div data-release="v0.0.356">
-
-## v0.0.356
-
-### Drop native Windows code paths
-
-Tasks no longer receive SYSTEMROOT, APPDATA and the other Windows essential env vars; native Windows is unsupported.
-
-</div>
-
 <div data-release="v0.0.324">
 
 ## v0.0.324
 
 ### Type generated configs from the @vzn/vx/config entry
 
-`vx init` and vx-migrate now write `import type { ProjectConfig } from '@vzn/vx/config'`, and @vzn/vx exports ./config.
+`vx init` and vx-migrate write `import type { ProjectConfig } from '@vzn/vx/config'`, and @vzn/vx exports ./config.
 
 </div>
 
@@ -1641,7 +1643,7 @@ Tasks no longer receive SYSTEMROOT, APPDATA and the other Windows essential env 
 
 ### Adopt Turbo and Nx only
 
-Lage(), wireit(), workspaceScripts(), the lage-worker bin and vx-migrate --from lage|wireit|scripts are removed.
+`lage()`, wireit(), workspaceScripts(), the lage-worker bin and vx-migrate --from lage|wireit|scripts are removed.
 
 </div>
 
@@ -1651,7 +1653,7 @@ Lage(), wireit(), workspaceScripts(), the lage-worker bin and vx-migrate --from 
 
 ### Drop moon support
 
-Moon(), mapMoonWorkspace and vx-migrate --from moon are removed.
+`moon()`, mapMoonWorkspace and vx-migrate --from moon are removed.
 
 </div>
 
@@ -1681,7 +1683,7 @@ The turbo-nx-support record moves turbo.json tasks.*.interruptible from not-supp
 
 ### Take a run id prefix in whyDidThisRerun
 
-@vzn/vx packs src/orchestrator/run-id.ts in place of src/cli/run-id.ts, and vx-mcp's whyDidThisRerun runId description now names a prefix.
+@vzn/vx packs src/orchestrator/run-id.ts in place of src/cli/run-id.ts, and vx-mcp's whyDidThisRerun runId description names a prefix.
 
 </div>
 
@@ -1733,4 +1735,4 @@ DefineProject rejects keys the schema does not declare at type-check time. vx al
 
 <Takeaway>find every change between your vx and the newest one, with the fix for each.</Takeaway>
 
-<NextStep href="../../../docs/upgrading/" title="Upgrading vx">Run the upgrade itself in three steps.</NextStep>
+<NextStep href="../../../cli/" title="Commands">Every `vx` verb and flag, in one reference.</NextStep>

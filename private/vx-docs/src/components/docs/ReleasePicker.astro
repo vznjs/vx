@@ -50,6 +50,9 @@
         changes === 0
           ? 'Nothing to change: no breaking change since this release.'
           : `${changes} change${changes === 1 ? '' : 's'} to check, in ${releases} release${releases === 1 ? '' : 's'}.`
+      // The next release's block shows too, closed: say what it is.
+      if (blocks.some((b) => b.dataset['release'] === 'Unreleased' && !b.hidden))
+        count.textContent += ' Unreleased: what the next release changes.'
     }
     if (tags[1] !== undefined) select.value = tags[1]
     select.addEventListener('change', show)
