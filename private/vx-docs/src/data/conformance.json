@@ -1018,14 +1018,14 @@
   "scores": {
     "vx": {
       "all": {
-        "pass": 2135,
-        "can": 2135,
-        "of": 2204
+        "pass": 2137,
+        "can": 2137,
+        "of": 2206
       },
       "correctness": {
-        "pass": 1720,
-        "can": 1720,
-        "of": 1781
+        "pass": 1722,
+        "can": 1722,
+        "of": 1783
       },
       "efficiency": {
         "pass": 326,
@@ -1063,9 +1063,9 @@
         "of": 128
       },
       "inputs": {
-        "pass": 479,
-        "can": 479,
-        "of": 491
+        "pass": 481,
+        "can": 481,
+        "of": 493
       },
       "env": {
         "pass": 146,
@@ -1095,14 +1095,14 @@
     },
     "turbo": {
       "all": {
-        "pass": 1392,
-        "can": 1805,
-        "of": 2204
+        "pass": 1393,
+        "can": 1807,
+        "of": 2206
       },
       "correctness": {
-        "pass": 1118,
-        "can": 1458,
-        "of": 1781
+        "pass": 1119,
+        "can": 1460,
+        "of": 1783
       },
       "efficiency": {
         "pass": 244,
@@ -1140,9 +1140,9 @@
         "of": 128
       },
       "inputs": {
-        "pass": 340,
-        "can": 475,
-        "of": 491
+        "pass": 341,
+        "can": 477,
+        "of": 493
       },
       "env": {
         "pass": 133,
@@ -1173,13 +1173,13 @@
     "nx": {
       "all": {
         "pass": 1392,
-        "can": 1840,
-        "of": 2204
+        "can": 1842,
+        "of": 2206
       },
       "correctness": {
         "pass": 1079,
-        "can": 1483,
-        "of": 1781
+        "can": 1485,
+        "of": 1783
       },
       "efficiency": {
         "pass": 283,
@@ -1218,8 +1218,8 @@
       },
       "inputs": {
         "pass": 346,
-        "can": 491,
-        "of": 491
+        "can": 493,
+        "of": 493
       },
       "env": {
         "pass": 135,
@@ -1250,13 +1250,13 @@
     "vite-task": {
       "all": {
         "pass": 1027,
-        "can": 1389,
-        "of": 2204
+        "can": 1391,
+        "of": 2206
       },
       "correctness": {
         "pass": 862,
-        "can": 1168,
-        "of": 1781
+        "can": 1170,
+        "of": 1783
       },
       "efficiency": {
         "pass": 156,
@@ -1295,8 +1295,8 @@
       },
       "inputs": {
         "pass": 314,
-        "can": 476,
-        "of": 491
+        "can": 478,
+        "of": 493
       },
       "env": {
         "pass": 133,
@@ -1328,12 +1328,12 @@
       "all": {
         "pass": 1098,
         "can": 1386,
-        "of": 2204
+        "of": 2206
       },
       "correctness": {
         "pass": 941,
         "can": 1190,
-        "of": 1781
+        "of": 1783
       },
       "efficiency": {
         "pass": 147,
@@ -1373,7 +1373,7 @@
       "inputs": {
         "pass": 346,
         "can": 434,
-        "of": 491
+        "of": 493
       },
       "env": {
         "pass": 122,
@@ -1404,13 +1404,13 @@
     "moon": {
       "all": {
         "pass": 1279,
-        "can": 1736,
-        "of": 2204
+        "can": 1738,
+        "of": 2206
       },
       "correctness": {
         "pass": 1008,
-        "can": 1417,
-        "of": 1781
+        "can": 1419,
+        "of": 1783
       },
       "efficiency": {
         "pass": 236,
@@ -1449,8 +1449,8 @@
       },
       "inputs": {
         "pass": 349,
-        "can": 491,
-        "of": 491
+        "can": 493,
+        "of": 493
       },
       "env": {
         "pass": 138,
@@ -77735,6 +77735,84 @@
           "status": "fail",
           "step": 8,
           "detail": "did not run a#build"
+        }
+      }
+    },
+    {
+      "id": "inputs/patch-edit-built-before-install-not-replayed",
+      "ref": "ipe8mb",
+      "category": "inputs",
+      "kind": "correctness",
+      "title": "A build run after a patch edit but before the install is not replayed once the install applies it",
+      "why": "A pull can change a patch file while the installed package still holds the old patched bytes. A build run then reads the old bytes, but the patch file it is keyed on is already the new one. Stored under that key, the old build comes back after the install, so the patch looks applied when it is not. The tool must refuse to build on the stale install, or keep that result out of the cache.",
+      "from": [
+        "vx-lockfile/bun-patch-installed"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 10,
+          "detail": "packages/a/dist/out.txt is \"one\\n\", expected \"two\\n\""
+        },
+        "nx": {
+          "status": "fail",
+          "step": 10,
+          "detail": "packages/a/dist/out.txt is \"one\\n\", expected \"two\\n\""
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 10,
+          "detail": "packages/a/dist/out.txt is \"one\\n\", expected \"two\\n\""
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "Nix reads no package.json or lockfile and installs nothing into node_modules: what a build depends on is written in Nix."
+        },
+        "moon": {
+          "status": "fail",
+          "step": 10,
+          "detail": "packages/a/dist/out.txt is \"one\\n\", expected \"two\\n\""
+        }
+      }
+    },
+    {
+      "id": "inputs/first-patch-built-before-install-not-replayed",
+      "ref": "xekvrr",
+      "category": "inputs",
+      "kind": "correctness",
+      "title": "A build run after a first patch is added but before the install is not replayed once the install applies it",
+      "why": "A pull that adds a patch leaves the unpatched package installed until the next install. A build run in between reads the unpatched bytes under a key that already names the patch. Stored, it comes back after the install and hides the patch entirely. The tool must refuse to build on the stale install, or keep that result out of the cache.",
+      "from": [
+        "vx-lockfile/bun-patch-installed"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 10,
+          "detail": "packages/a/dist/out.txt is \"x\\n\", expected \"one\\n\""
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 10,
+          "detail": "packages/a/dist/out.txt is \"x\\n\", expected \"one\\n\""
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "Nix reads no package.json or lockfile and installs nothing into node_modules: what a build depends on is written in Nix."
+        },
+        "moon": {
+          "status": "fail",
+          "step": 10,
+          "detail": "packages/a/dist/out.txt is \"x\\n\", expected \"one\\n\""
         }
       }
     },
