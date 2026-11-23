@@ -211,6 +211,7 @@ describe('vx pipeline <name>', () => {
           badenv: { tasks: ['build'], env: { VX_RUN_RETRIES: 'x', VX_CACHE_POLICY: 'local:q' } },
           own: { tasks: ['keep'], filter: ['a'], noCache: true, env: { VX_CACHE_POLICY: 'local:rw' } },
           base: { tasks: ['build'], affected: true },
+          solo: { tasks: ['solo'], filter: ['a'] },
         }`,
       ),
     )
@@ -225,6 +226,7 @@ describe('vx pipeline <name>', () => {
           keep: { exec: { command: 'echo k > k.txt' }, inputs: { files: ['package.json'] }, outputs: { files: ['k.txt'] }, cache: true },
         } }`,
       )
+    await addProject(root, 'c', `export default { tasks: { solo: { exec: { command: 'true' } } } }`)
   })
   afterAll(async () => {
     await rm(root, { recursive: true, force: true })
@@ -314,6 +316,28 @@ describe('vx pipeline <name>', () => {
     const typed = await vx('pipeline', 'check', '--affected')
     expect(typed.err).toContain('--affected has no base here')
     expect(typed.err).not.toContain('`pipelines.')
+  }, 30_000)
+
+  // Every pipeline passes --all, and --all beside a filter is the filter's
+  // selection: the hint said "pass --all", which `vx pipeline` refuses and
+  // `vx run --all --filter a` had already taken.
+  it('widens the filter, not --all, for a task only projects outside it declare', async () => {
+    const hint =
+      'Only projects outside the selection declare solo — widen --filter to include them, or drop it'
+    const saved = await vx('pipeline', 'solo')
+    expect([saved.code, saved.err]).toEqual([1, expect.stringContaining(hint)])
+    expect(saved.err).toContain('--filter is `pipelines.solo.filter` in .vx/workspace')
+    expect(saved.err).not.toContain('pass --all')
+    expect((await vx('pipeline', 'check', '--filter', 'b', '--dry')).err).toBe('')
+    expect((await vx('run', 'solo', '--all', '--filter', 'a')).err).toContain(hint)
+    // CONTROL: a run scoped to the project it stands in is widened by --all.
+    cwd = path.join(root, 'packages', 'a')
+    try {
+      const here = await vx('run', 'solo')
+      expect(here.err).toContain('— pass --all, or a --filter that includes them')
+    } finally {
+      cwd = ''
+    }
   }, 30_000)
 
   it('refuses no name, an unknown one, a task and --all, naming the fix', async () => {

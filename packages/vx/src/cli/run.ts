@@ -591,6 +591,7 @@ export async function resolveRunOptions(
   }
   if (projects !== undefined) opts.projects = projects
   if (selectedByDiff) handoff.selectedByDiff = true
+  if (resolved !== undefined && projects !== undefined) handoff.selectedByFilter = true
   if (affected !== undefined) opts.affected = affected
   if (outright !== undefined) handoff.selectedOutright = outright
   if (staged !== undefined) handoff.staged = staged

@@ -2141,7 +2141,7 @@ async function nothingToRun(
   log: Logger,
 ): Promise<RunSummary | undefined> {
   if (prepared.unresolvedTasks.length > 0) {
-    const refused = `no projects declare task(s): ${prepared.unresolvedTasks.join(', ')}.${await unresolvedHint(prepared, options.projects)}`
+    const refused = `no projects declare task(s): ${prepared.unresolvedTasks.join(', ')}.${await unresolvedHint(prepared, options.projects, options.handoff?.selectedByFilter === true)}`
     return { ok: false, outcomes: [], refused }
   }
   if (prepared.empty === 'none-affected') {
@@ -2153,7 +2153,13 @@ async function nothingToRun(
   // 1. `empty-graph` is defensive, unreachable today.
   const refused =
     prepared.empty === 'no-tasks-declared'
-      ? `no projects declare task(s): ${options.tasks.join(', ')}.${elsewhereHint(prepared.declaredElsewhere, true, options.projects, prepared.projects)}${await initHint(prepared)}`
+      ? `no projects declare task(s): ${options.tasks.join(', ')}.${elsewhereHint(
+          prepared.declaredElsewhere,
+          true,
+          options.projects,
+          prepared.projects,
+          options.handoff?.selectedByFilter === true,
+        )}${await initHint(prepared)}`
       : 'no tasks to run.'
   return { ok: false, outcomes: [], refused }
 }
@@ -2226,7 +2232,11 @@ export async function planCore(options: CoreRunOptions): Promise<RunPlan> {
       return {
         tasks: [],
         unresolvedTasks: prepared.unresolvedTasks,
-        unresolvedHint: await unresolvedHint(prepared, options.projects),
+        unresolvedHint: await unresolvedHint(
+          prepared,
+          options.projects,
+          options.handoff?.selectedByFilter === true,
+        ),
       }
     }
     if (prepared.empty === 'no-tasks-declared' && prepared.declaredElsewhere.length > 0) {
@@ -2238,6 +2248,7 @@ export async function planCore(options: CoreRunOptions): Promise<RunPlan> {
           true,
           options.projects,
           prepared.projects,
+          options.handoff?.selectedByFilter === true,
         ),
       }
     }
@@ -2336,10 +2347,14 @@ function elsewhereHint(
   lock: boolean,
   selected: readonly string[] | undefined,
   projects: ReadonlyMap<string, ProjectEntry>,
+  byFilter: boolean,
 ): string {
   if (names.length === 0) return ''
   const own = ownDefaultBuild(names, selected, projects)
-  return ` Only projects outside the selection declare ${names.join(', ')} — pass --all, or a --filter that includes them.${own}${lock && own === '' ? LOCK_HINT : ''}`
+  const reach = byFilter
+    ? 'widen --filter to include them, or drop it'
+    : 'pass --all, or a --filter that includes them'
+  return ` Only projects outside the selection declare ${names.join(', ')} — ${reach}.${own}${lock && own === '' ? LOCK_HINT : ''}`
 }
 
 /**
@@ -2375,8 +2390,15 @@ async function unresolvedHint(
     projects: ReadonlyMap<string, ProjectEntry>
   },
   selected: readonly string[] | undefined,
+  byFilter: boolean,
 ): Promise<string> {
-  const elsewhere = elsewhereHint(prepared.declaredElsewhere, false, selected, prepared.projects)
+  const elsewhere = elsewhereHint(
+    prepared.declaredElsewhere,
+    false,
+    selected,
+    prepared.projects,
+    byFilter,
+  )
   const near = didYouMean(
     prepared.unresolvedTasks,
     prepared.hintProjects,

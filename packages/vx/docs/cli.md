@@ -84,7 +84,9 @@ declares a task yet: add one under `tasks` in a vx.config, then run
 vx.config, run `vx lock`.``, since a task added since the last lock is not in it.
 - `Only projects outside the selection declare <name> — pass
 --all, or a --filter that includes them.` when the run was scoped and a project
-  outside the scope declares it, then the lock line, since a task just added
+  outside the scope declares it; when `--filter` scoped it (a pipeline's
+  too, which passes `--all`), `— widen --filter to include them, or drop
+it.`, since `--all` beside a filter is the filter's selection. Then the lock line, since a task just added
   to a selected project's config is not in the lock yet. A selected project
   whose `build` is the default one (a root with an empty config) is named
   instead: `vx show` counts that build, but no bare name runs it.
