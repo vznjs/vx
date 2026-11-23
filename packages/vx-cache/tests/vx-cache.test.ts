@@ -1523,6 +1523,32 @@ describe('config', () => {
       expect(asked).toBe(before)
     })
 
+  // EAI_AGAIN is the resolver's "try again": one lost lookup at a job's
+  // start turned the remote off for the whole run.
+  it('asks a check again after one EAI_AGAIN, and stays on', async () => {
+    const srv = server()
+    try {
+      const token = await srv.token(MAIN_JOB)
+      let failed = 0
+      const flaky: typeof fetch = Object.assign(
+        async (input: string | URL | Request, init?: RequestInit) => {
+          if (failed === 0) {
+            failed++
+            throw Object.assign(new Error('lookup lost'), { code: 'EAI_AGAIN' })
+          }
+          return fetch(input, init)
+        },
+        { preconnect: fetch.preconnect },
+      )
+      const c = layer(srv.url, token, [MAIN], flaky, 0)
+      expect(await c.hasMany(['ab36'])).not.toBeNull()
+      expect(failed).toBe(1)
+      expect(c.off).toBe(false)
+    } finally {
+      await srv.stop()
+    }
+  })
+
   it('CONTROL: a check that finds no server while the server answers others is that check alone', async () => {
     const srv = server()
     try {

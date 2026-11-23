@@ -73,7 +73,8 @@ const LEND_MARGIN_MS = 5 * 60_000
 const RESET = new Set(['ECONNRESET', 'EPIPE', 'ECONNREFUSED'])
 /**
  * No server to reach: the connection refused, or no route or address for
- * its host (no network, a mistyped url). Only a refusal is asked again.
+ * its host (no network, a mistyped url). Only a refusal is asked again,
+ * and a request whose lookup said EAI_AGAIN, once, before the remote goes off.
  */
 const NO_SERVER = new Set(['ECONNREFUSED', 'ENOTFOUND', 'EAI_AGAIN', 'ENETUNREACH', 'EHOSTUNREACH'])
 
@@ -603,7 +604,9 @@ export class VxCacheLayer implements RemoteCacheLayer {
       try {
         return await this.ask(path, init, since, false)
       } catch (err) {
-        if (!(err instanceof Unanswered)) throw err
+        // EAI_AGAIN is the resolver's own "try again": one lookup lost
+        // turned the remote off for the whole run.
+        if (!(err instanceof Unanswered) && codeOf(err) !== 'EAI_AGAIN') throw err
         return await this.ask(path, init, since, true)
       }
     } catch (err) {

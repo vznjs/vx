@@ -43,8 +43,9 @@ export default {
   with a 5xx or 429, or whose connection reset, is sent again, 1 s, 2 s, …
   apart; GitHub's OIDC endpoint is asked again the same way. A request that finds no
   server (every try refused its connection, or its host has no address or
-  route: no network, a mistyped url), while the server answered nothing else,
-  turns the remote off for the run, said once. A reset
+  route: no network, a mistyped url; a lookup told to try again is tried
+  once more), while the server answered nothing else, turns the remote off
+  for the run, said once. A reset
   connection is that request's loss alone.
 - `timeoutMs` (default 30 000) bounds each read and query, and
   `uploadTimeoutMs` (default 60 000) each upload. A download is bounded
