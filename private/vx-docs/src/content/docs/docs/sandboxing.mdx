@@ -10,10 +10,15 @@ import { Levels, Deeper, Concept, Quiz, Walkthrough, Frame, Compare, Takeaway, N
 
 A cache is only as right as a task's inputs. Put the task in a box: it sees only the files you grant, and vx names every file it reached for outside them.
 
-```ts mark={3}
+```ts mark={3-8}
 exec: {
   command: 'vite build',
-  sandbox: { allow: { read: ['.'], write: ['dist/'] } },
+  sandbox: {
+    allow: {
+      read: ['.'],
+      write: ['dist/'],
+    },
+  },
 },
 ```
 
@@ -52,19 +57,19 @@ rendering chunks...
 computing gzip size...
 [2mdist/[22m[32mindex.html                [39m[1m[2m0.14 kB[22m[1m[22m[2m │ gzip: 0.13 kB[22m
 [2mdist/[22m[2massets/[22m[36mindex-CFD2rREh.js  [39m[1m[2m0.78 kB[22m[1m[22m[2m │ gzip: 0.44 kB[22m
-[32m✓ built in 115ms[39m
+[32m✓ built in 61ms[39m
 [0m[2m├─[0m [1m[38;2;239;68;68mSANDBOX VIOLATIONS (2)[0m [2m────────────────────────────────────[0m
 
-access(/repo/packages/web/vite.config.js) = -1 ENOENT  [/repo/packages/web/vite.config.js]
+access(/repo/packages/web/vite.config.ts) = -1 ENOENT  [/repo/packages/web/vite.config.ts]
 access(/repo/packages/web/package.json) = -1 ENOENT  [/repo/packages/web/package.json]
 
-[2mfix: exec.sandbox.allow: { read: ['package.json', 'vite.config.js'] }[0m
-[2mand, if the output depends on them, inputs.files: ['package.json', 'vite.config.js'][0m
+[2mfix: exec.sandbox.allow: { read: ['package.json', 'vite.config.ts'] }[0m
+[2mand, if the output depends on them, inputs.files: ['package.json', 'vite.config.ts'][0m
 
-[2m└─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(459ms)[0m [1m[38;2;239;68;68mfailed (exit 1, 2 sandbox violations)[0m
+[2m└─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(305ms)[0m [1m[38;2;239;68;68mfailed (exit 1, 2 sandbox violations)[0m
 ```
 
-Vite says **built**. vx says **failed**: vite looked for `vite.config.js` and `package.json`, found nothing, and built without your config.
+Vite says **built**. vx says **failed**: vite looked for `vite.config.ts` and `package.json`, found nothing, and built without your config.
 
 </Frame>
 <Frame title="2. Grant the config, key it, run again">
@@ -81,7 +86,7 @@ build: {
           'src/',
           'index.html',
           'package.json',
-          'vite.config.js',
+          'vite.config.ts',
         ],
         write: ['dist/'],
       },
@@ -92,7 +97,7 @@ build: {
       'src/**',
       'index.html',
       'package.json',
-      'vite.config.js',
+      'vite.config.ts',
     ],
   },
   outputs: { files: ['dist/**'] },
@@ -104,7 +109,7 @@ build: {
 [2m$[0m vx run @demo/web#build
 
 [2m┌─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m>[0m $ vite build
-[31mfailed to load config from /repo/packages/web/vite.config.js[39m
+[31mfailed to load config from /repo/packages/web/vite.config.ts[39m
 [31merror during build:
 Error: ENOENT: no such file or directory, mkdir '/repo/packages/web/node_modules/.vite-temp'
 [0m[2m├─[0m [1m[38;2;239;68;68mSANDBOX VIOLATIONS (1)[0m [2m────────────────────────────────────[0m
@@ -113,7 +118,7 @@ mkdir(/repo/packages/web/node_modules/.vite-temp) = a write no grant covers  [/r
 
 [2mfix: exec.sandbox.allow: { write: ['node_modules/.vite-temp/'] }[0m
 
-[2m└─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(201ms)[0m [1m[38;2;239;68;68mfailed (exit 1, 1 sandbox violation)[0m
+[2m└─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(211ms)[0m [1m[38;2;239;68;68mfailed (exit 1, 1 sandbox violation)[0m
 ```
 
 Vite reads its config this time, and needs one more folder: it bundles the config into `node_modules/.vite-temp/` first.
@@ -131,7 +136,7 @@ build: {
           'src/',
           'index.html',
           'package.json',
-          'vite.config.js',
+          'vite.config.ts',
         ],
         write: [
           'dist/',
@@ -145,7 +150,7 @@ build: {
       'src/**',
       'index.html',
       'package.json',
-      'vite.config.js',
+      'vite.config.ts',
     ],
   },
   outputs: { files: ['dist/**'] },
@@ -164,11 +169,11 @@ rendering chunks...
 computing gzip size...
 [2mdist/[22m[32mindex.html                [39m[1m[2m0.14 kB[22m[1m[22m[2m │ gzip: 0.13 kB[22m
 [2mdist/[22m[2massets/[22m[36mindex-CFD2rREh.js  [39m[1m[2m0.78 kB[22m[1m[22m[2m │ gzip: 0.44 kB[22m
-[32m✓ built in 60ms[39m
-[0m[2m└─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(396ms)[0m [2msuccess[0m
+[32m✓ built in 62ms[39m
+[0m[2m└─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(308ms)[0m [2msuccess[0m
 ```
 
-**success**. Every file the build reads is in its key. An edit to `vite.config.js` builds again, instead of putting back an old `dist/`.
+**success**. Every file the build reads is in its key. An edit to `vite.config.ts` builds again, instead of putting back an old `dist/`.
 
 </Frame>
 </Walkthrough>
@@ -184,11 +189,14 @@ Add `sandbox` to a task's `exec`. An empty one, `sandbox: {}`, grants nothing in
 
 So most blocks start the same way, and grow from the report:
 
-```ts mark={4}
+```ts mark={5-6}
 exec: {
   command: 'vite build',
   sandbox: {
-    allow: { read: ['.'], write: ['dist/'] },
+    allow: {
+      read: ['.'],
+      write: ['dist/'],
+    },
   },
 },
 ```
@@ -213,11 +221,11 @@ A failed sandboxed task ends with three parts. Each tells you one thing:
 ```ansi wrap
 [0m[2m├─[0m [1m[38;2;239;68;68mSANDBOX VIOLATIONS (2)[0m [2m────────────────────────────────────[0m
 
-access(/repo/packages/web/vite.config.js) = -1 ENOENT  [/repo/packages/web/vite.config.js]
+access(/repo/packages/web/vite.config.ts) = -1 ENOENT  [/repo/packages/web/vite.config.ts]
 access(/repo/packages/web/package.json) = -1 ENOENT  [/repo/packages/web/package.json]
 
-[2mfix: exec.sandbox.allow: { read: ['package.json', 'vite.config.js'] }[0m
-[2mand, if the output depends on them, inputs.files: ['package.json', 'vite.config.js'][0m
+[2mfix: exec.sandbox.allow: { read: ['package.json', 'vite.config.ts'] }[0m
+[2mand, if the output depends on them, inputs.files: ['package.json', 'vite.config.ts'][0m
 ```
 
 1. **The violations**: what the task did, and the full path in `[ ]`.
@@ -228,7 +236,7 @@ access(/repo/packages/web/package.json) = -1 ENOENT  [/repo/packages/web/package
 <div slot="left">
 
 ```ts
-read: ['vite.config.js'],
+read: ['vite.config.ts'],
 inputs: { files: ['src/**'] },
 ```
 
@@ -238,8 +246,8 @@ The build reads the config. An edit to it is a cache **hit**: the old `dist/` co
 <div slot="right">
 
 ```ts
-read: ['vite.config.js'],
-inputs: { files: ['src/**', 'vite.config.js'] },
+read: ['vite.config.ts'],
+inputs: { files: ['src/**', 'vite.config.ts'] },
 ```
 
 An edit to the config is a **miss**: the build runs with it.
@@ -480,7 +488,7 @@ A task never reaches another project, or a workspace root file you did not grant
 
 | `@demo/web#build` touches | What happens |
 | --- | --- |
-| `../ui/src/button.js`, another project | hidden: no file, and no violation |
+| `../ui/src/button.ts`, another project | hidden: no file, and no violation |
 | `README.md`, its own file, not granted | a violation: the task fails |
 
 A refused write outside the project names the folder to grant, or the file itself when that folder holds the project (a root `bun.lock`).

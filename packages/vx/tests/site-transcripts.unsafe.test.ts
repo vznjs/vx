@@ -525,12 +525,12 @@ describe("the sandboxing guide's failures", () => {
     expect(tab('title="1. The build passes, and vx fails it"')).toBe(
       frame(
         [
-          `access(${web}/vite.config.js) = -1 ENOENT  [${web}/vite.config.js]`,
+          `access(${web}/vite.config.ts) = -1 ENOENT  [${web}/vite.config.ts]`,
           `access(${web}/package.json) = -1 ENOENT  [${web}/package.json]`,
         ],
         {
-          read: ['package.json', 'vite.config.js'],
-          inputs: ['package.json', 'vite.config.js'],
+          read: ['package.json', 'vite.config.ts'],
+          inputs: ['package.json', 'vite.config.ts'],
         },
         [
           'vite v7.3.0 building client environment for production...',
@@ -540,7 +540,7 @@ describe("the sandboxing guide's failures", () => {
           'computing gzip size...',
           'dist/index.html                0.14 kB │ gzip: 0.13 kB',
           'dist/assets/index-CFD2rREh.js  0.78 kB │ gzip: 0.44 kB',
-          '✓ built in 115ms',
+          '✓ built in 61ms',
         ].join('\n'),
       ),
     )
@@ -551,7 +551,7 @@ describe("the sandboxing guide's failures", () => {
         ],
         { write: ['node_modules/.vite-temp/'] },
         [
-          `failed to load config from ${web}/vite.config.js`,
+          `failed to load config from ${web}/vite.config.ts`,
           'error during build:',
           `Error: ENOENT: no such file or directory, mkdir '${web}/node_modules/.vite-temp'`,
         ].join('\n'),
