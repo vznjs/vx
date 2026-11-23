@@ -254,6 +254,9 @@ export function defaultLogger(
 ): DefaultLogger {
   const forwardArgs = opts.forwardArgs ?? []
   const errOut = opts.err ?? process.stderr
+  // stderr decides its own colour: `vx run 2> warn.log` on a terminal wrote
+  // escapes into the file. A given stream is the caller's and takes `colors`.
+  const errColors = opts.err === undefined && colors.enabled ? detectColors(process.stderr) : colors
   // Per-task buffers, split by stream so the frame can show stdout and stderr
   // apart; interleaved chunks are reordered. Held as string[] joined on flush:
   // `+=` is O(N²).
@@ -792,18 +795,18 @@ export function defaultLogger(
     warn(line) {
       flushKept()
       endStreamLine()
-      if (!colors.enabled || liveFrames > 0) {
-        writer.writeTo(errOut, `${ui.tagged('warn', line, colors)}\n`)
+      if (!errColors.enabled || liveFrames > 0) {
+        writer.writeTo(errOut, `${ui.tagged('warn', line, errColors)}\n`)
         return
       }
       if (panelOpen !== 'Warnings') {
-        writer.writeTo(errOut, `${ui.panelTop('Warnings', colors)}\n`)
+        writer.writeTo(errOut, `${ui.panelTop('Warnings', errColors)}\n`)
         panelOpen = 'Warnings'
       }
       const rows = line
         .replace(/\n+$/, '')
         .split('\n')
-        .map((l) => ui.tagged('warn', l, colors))
+        .map((l) => ui.tagged('warn', l, errColors))
       writer.writeTo(errOut, `${rows.join('\n')}\n`)
     },
     runStart(info) {
