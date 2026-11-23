@@ -34,11 +34,6 @@ const HEADER = /^(\w+)(?:\(([^)]*)\))?!?: (.+?)(?: \(#\d+\))?$/
  * same PR.
  */
 export const STEPS: Readonly<Record<string, { title?: string; steps: string }>> = {
-  'feat(lock): a run refuses a config edited since vx lock': {
-    title: 'A run refuses a config edited since vx lock',
-    steps:
-      'After editing a `vx.config.ts`, run `vx lock` before `vx run`, `vx show`, `vx why` or `vx pipeline`: the run refuses with `VX_E_LOCK`, naming the file, instead of running the config the lock holds.',
-  },
   'refactor(cli)!: drop the lock merge driver, name it .vx/projects.lock': {
     steps: [
       'Delete the old lock, the old attributes file and the merge driver, then lock again:',
@@ -104,6 +99,12 @@ export const STEPS: Readonly<Record<string, { title?: string; steps: string }>> 
       'Variables whose names hold `PASSPHRASE` or end in `_PASS` are masked in output.',
     ].join('\n'),
   },
+  // The day PR's squash (#5622) took in feat(lock)'s step.
+  'feat!: land 2026-11-23 alpha hardening, docs and locks': {
+    title: 'Locks, lock problems, dry runs and edited configs',
+    steps:
+      'After editing a `vx.config.ts`, run `vx lock` before `vx run`, `vx show`, `vx why` or `vx pipeline`: the run refuses with `VX_E_LOCK`, naming the file, instead of running the config the lock holds.',
+  },
   "feat(report)!: name a failed task's directory and the piped columns": {
     title: 'Run history starts empty once',
     steps:
@@ -111,8 +112,8 @@ export const STEPS: Readonly<Record<string, { title?: string; steps: string }>> 
   },
 }
 
-/** A breaking commit's title line and its footer, as the page shows them. */
-function entry({ subject, body }: Commit): { title: string; footer: string } {
+/** A breaking commit's title line and its footers, as the page shows them. */
+function entry({ subject, body }: Commit): { title: string; footers: string[] } {
   const m = HEADER.exec(subject)
   // The heading is the change in plain words: the scope is code's word for
   // where it lives, which a reader upgrading does not need.
@@ -120,20 +121,26 @@ function entry({ subject, body }: Commit): { title: string; footer: string } {
     lead((m === null ? subject : m[3]!).replace(/ \([A-Z][A-Z0-9]*-\d+\)$/, '')),
   )
   const lines = body.split('\n')
-  const start = lines.findIndex((l) => /^BREAKING[ -]CHANGE: /.test(l))
-  if (start === -1) return { title, footer: '' }
-  // A footer ends at a blank line or at the git trailers (`Co-Authored-By:`)
-  // a squash message can put in its paragraph (#4876's did).
-  const end = lines.findIndex(
-    (l, i) => i > start && (l.trim() === '' || /^[A-Za-z]+(?:-[A-Za-z]+)+: /.test(l)),
-  )
-  const footer = lines
-    .slice(start, end === -1 ? undefined : end)
-    .join(' ')
-    .replace(/^BREAKING[ -]CHANGE: /, '')
-    .replace(/\s+/g, ' ')
-    .trim()
-  return { title, footer: sentence(lead(footer)) }
+  const breaking = (l: string): boolean => /^BREAKING[ -]CHANGE: /.test(l)
+  const footers: string[] = []
+  for (let start = lines.findIndex(breaking); start !== -1;) {
+    // A footer ends at a blank line, the next footer (a day PR's squash
+    // holds several, #5622) or the git trailers (`Co-Authored-By:`) a
+    // squash message can put in its paragraph (#4876's did).
+    const end = lines.findIndex(
+      (l, i) =>
+        i > start && (l.trim() === '' || breaking(l) || /^[A-Za-z]+(?:-[A-Za-z]+)+: /.test(l)),
+    )
+    const footer = lines
+      .slice(start, end === -1 ? undefined : end)
+      .join(' ')
+      .replace(/^BREAKING[ -]CHANGE: /, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+    footers.push(sentence(lead(footer)))
+    start = end === -1 ? -1 : lines.findIndex((l, i) => i >= end && breaking(l))
+  }
+  return { title, footers }
 }
 
 /** A heading or a footer starts with a capital, unless it starts with code (`--continue`, `.vx/`). */
@@ -199,12 +206,13 @@ export function page(commits: readonly TaggedCommit[]): string {
     const subject = commit.subject.replace(/ \(#\d+\)$/, '')
     const step = STEPS[subject]
     if (isBreaking(commit) || step !== undefined) {
-      const { title, footer } = entry(commit)
-      const said = footer === '' ? '' : (SAY[subject] ?? footer)
+      const { title, footers } = entry(commit)
+      const fresh = footers.filter((f) => !seen.has(f))
+      const said = footers.length === 0 ? '' : (SAY[subject] ?? fresh.join('\n\n'))
       const text = [said, step?.steps ?? ''].filter((t) => t !== '').join('\n\n')
       // A breaking commit with no footer and no step has nothing to tell a reader.
-      if (text !== '' && (footer === '' || !seen.has(footer))) {
-        seen.add(footer)
+      if (text !== '' && (footers.length === 0 || fresh.length > 0)) {
+        for (const f of fresh) seen.add(f)
         const heading = step?.title ?? TITLE[subject] ?? title
         ;(AUTHORS.has(subject) ? entries.authors : entries.users).push(
           `### ${mdx(bunx(heading))}\n\n${mdx(bunx(text))}\n`,

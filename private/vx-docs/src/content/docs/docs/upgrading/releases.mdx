@@ -26,10 +26,6 @@ Pick the vx you run, from `vx --version`. The list keeps only the releases after
 
 `vx lock --check --format json` lists each problem as `{ code, message }`, not as a string.
 
-### A run refuses a config edited since vx lock
-
-After editing a `vx.config.ts`, run `vx lock` before `vx run`, `vx show`, `vx why` or `vx pipeline`: the run refuses with `VX_E_LOCK`, naming the file, instead of running the config the lock holds.
-
 ### Sandboxed tasks do not read credential stores
 
 A sandboxed task does not read browser profiles, `~/.config/sops/age`, `~/.config/rclone`, `~/.my.cnf`, `~/.password-store` or `~/.sentryclirc`.
