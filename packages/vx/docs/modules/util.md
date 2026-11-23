@@ -19,6 +19,7 @@ export interface RunResult {
   stdout: string // retained text, or '' when `capture.stdout` is false
   stderr: string // retained text, or '' when `capture.stderr` is false
   signal?: string | number // the signal that killed the child (Bun's signalCode: its name, or its number when it has none)
+  exitedBeforeStop?: true // the command exited before the run's stop landed: its exit is its own
   timedOut?: boolean // vx's own `timeoutMs` timer fired: a real `failed`, not an `aborted` shutdown
   killedAfterGrace?: true // the timeout's SIGKILL past the grace took the child or a process it left
   cpuMs?: number // user + system, from Bun.spawn().resourceUsage()
