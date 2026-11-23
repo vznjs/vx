@@ -678,7 +678,7 @@ export function hello(): VxPlugin {
       hello: {
         description: 'say hello from a plugin',
         run(argv) {
-          console.log(`hello, ${styleText('bold', argv[0] ?? 'world')}`)
+          console.log(`${styleText('green', '✓')} hello, ${styleText(['bold', 'magenta'], argv[0] ?? 'world')}`)
           return 0 // the exit code
         },
       },
@@ -688,7 +688,7 @@ export function hello(): VxPlugin {
 ```
 
 ```ansi title="vx hello web"
-hello, [1mweb[22m
+[32m✓[39m hello, [1m[35mweb[39m[22m
 ```
 
 The verb's exit code is the process's. `vx help` lists the verb under **Plugin commands**, beside your plugin's name.
@@ -703,17 +703,18 @@ A verb reads `cache.db` only through vx, which hands back rows, never a handle:
 import { styleText } from 'node:util'
 import { Cache, definePlugin, localHistory, type VxPlugin } from '@vzn/vx'
 
-export function history(): VxPlugin {
+export function durations(): VxPlugin {
   return definePlugin(import.meta, {
     commands: {
-      history: {
+      durations: {
         description: 'print how often each task ran and its median time',
         async run(argv, ctx) {
           const cache = Cache.inspect(ctx.cacheDir) // read-only
           try {
             const table = await localHistory(cache).loadFor(argv)
             for (const [id, h] of table) {
-              console.log(`${styleText('bold', id)}  ${h.runs} runs  p50 ${h.p50DurationMs ?? '—'}ms`)
+              const p50 = h.p50DurationMs === undefined ? '—' : `${h.p50DurationMs}ms`
+              console.log(`${styleText(['bold', 'magenta'], id)}  ${styleText('dim', `${h.runs} runs`)}  p50 ${styleText('cyan', p50)}`)
             }
           } finally {
             cache.close()
@@ -726,9 +727,9 @@ export function history(): VxPlugin {
 }
 ```
 
-```ansi title="vx history @demo/web#test @demo/ui#test"
-[1m@demo/ui#test[22m  3 runs  p50 568ms
-[1m@demo/web#test[22m  3 runs  p50 504ms
+```ansi title="vx durations @demo/web#test @demo/ui#test"
+[1m[35m@demo/ui#test[39m[22m  [2m10 runs[22m  p50 [36m724ms[39m
+[1m[35m@demo/web#test[39m[22m  [2m10 runs[22m  p50 [36m751ms[39m
 ```
 
 <Takeaway>build tools on what your runs already recorded.</Takeaway>
