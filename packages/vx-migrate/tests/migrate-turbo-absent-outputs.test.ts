@@ -107,3 +107,30 @@ describe('migrateTurbo: outputs that match nothing now', () => {
     )
   })
 })
+
+describe('migrateTurbo: a committed output is no sign a run wrote it', () => {
+  it('names nothing per task when only a committed file matches', async () => {
+    // shadcn/ui commits apps/v4/public/r/styles: a fresh clone's packages
+    // were all named against it, as if the others had been built.
+    const a = await pkg('a', { 'styles/x.json': '' })
+    const b = await pkg('b', {})
+    const git = (...args: string[]) =>
+      Bun.spawnSync(['git', ...args], {
+        cwd: root,
+        env: { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null' },
+      })
+    git('init', '-q')
+    git('add', '-A')
+    const plan = await planOf({ build: { outputs: ['dist/**', 'styles/**'] } }, [a, b])
+    expect({
+      todos: plan.projects.flatMap((p) => p.tasks.map((t) => [`${p.name}#${t.name}`, t.todos])),
+      notes: plan.notes.filter((n) => n.startsWith('no package has a file')),
+    }).toEqual({
+      todos: [
+        ['a#build', []],
+        ['b#build', []],
+      ],
+      notes: [unbuiltOutputsNote(new Map([['build', ['dist/**', 'styles/**']]]))],
+    })
+  })
+})
