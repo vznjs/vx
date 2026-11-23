@@ -289,6 +289,11 @@ export class HistoryServer {
 
   private readonly bounds: ServerBounds
 
+  /** Whether a 401 turned the server off for the run: later calls send nothing. */
+  get off(): boolean {
+    return this.refused
+  }
+
   /** Whether the run has a token to send: with none it reads only. */
   get writes(): boolean {
     return hasToken(this.env)

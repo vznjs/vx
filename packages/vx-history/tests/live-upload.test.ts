@@ -121,4 +121,33 @@ ${quick.join('\n')}
     expect(new Set(hashes).size).toBe(hashes.length)
     expect(hashes.length).toBe(QUICK + 2)
   }, 30_000)
+
+  // A token refused mid-run (a GitLab id_token past its exp) turned the
+  // server off, and the run's last upload then returned unsent: the
+  // timings were lost and nothing said so.
+  it('says a token refused mid-run', async () => {
+    status = 401
+    refused = 0
+    const said: string[] = []
+    const write = { out: process.stdout.write, err: process.stderr.write }
+    const hear = (chunk: unknown, ...rest: unknown[]): boolean => {
+      said.push(String(chunk))
+      const done = rest.find((r) => typeof r === 'function') as (() => void) | undefined
+      done?.()
+      return true
+    }
+    process.stdout.write = hear as typeof process.stdout.write
+    process.stderr.write = hear as typeof process.stderr.write
+    try {
+      const pending = runAll()
+      for (let i = 0; i < 200 && refused === 0; i++) await Bun.sleep(25)
+      await writeFile(path.join(root, 'uploaded'), '')
+      const r = await pending
+      expect(r.outcomes.every((o) => o.status === 'success')).toBe(true)
+    } finally {
+      process.stdout.write = write.out
+      process.stderr.write = write.err
+    }
+    expect(said.join('').match(/\[vx\] vx-history: [^\n]*the token was refused/g)?.length).toBe(1)
+  }, 30_000)
 })

@@ -837,7 +837,9 @@ class Live {
       } catch (err) {
         // Abandoned by teardown, which says so itself.
         if (this.stop.signal.aborted) return
-        if (!last) {
+        // A refused token turns the server off: the last upload would
+        // send nothing, and the timings were lost unsaid.
+        if (!last && !this.server.off) {
           this.held = true
           this.restore(timings, outcomes)
           return
