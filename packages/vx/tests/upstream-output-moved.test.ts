@@ -111,9 +111,8 @@ it('a dependency output git ignores, rewritten mid-run, is not replayed', async 
   expect(await readFile(path.join(app, 'dist/o'), 'utf8')).toBe('A\n')
 }, 30_000)
 
-// `--force` re-runs a stored key and keeps its entry, whose rows name the
-// last save's mtimes. The dependency's own fresh write is not a move: before
-// the fix every forced chain warned here and saved no dependant.
+// `--force` re-runs a stored key. The dependency's own fresh write is not a
+// move: once every forced chain warned here and saved no dependant.
 it('a --force run over a stored chain saves its dependants', async () => {
   await addProject(root, 'lib', {
     config: `export default { tasks: { build: {

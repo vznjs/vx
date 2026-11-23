@@ -51,7 +51,6 @@ import {
   StoreIndex,
   guard,
   historyFilesOf,
-  storedHere,
   tarPath,
   tempPath,
   tempTreePath,
@@ -253,18 +252,6 @@ export async function save(
   // Local writes off (`local:,remote:rw`): no artifact and no row here; the
   // LayeredCache packs the bytes itself for the upload.
   if (!ix.write) return
-  // A reading cache saves only on a miss. With `--force` a held key is re-run
-  // and its entry kept; its bytes are this run's too, so the row's `outputs`
-  // counts them.
-  if (!ix.read && guard(ix, () => storedHere(ix, args.hash))) {
-    const rows = ix.localMemo.loadOutputFilesBatch([args.hash]).get(args.hash) ?? []
-    ix.savedBytes.set(
-      args.hash,
-      rows.reduce((n, r) => n + r.size, 0),
-    )
-    ix.keptHashes.add(args.hash)
-    return
-  }
   // The constructor makes the cache directory; doing it again per save cost two
   // round trips.
   const endPack = span('save: pack')

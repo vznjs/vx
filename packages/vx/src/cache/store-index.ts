@@ -248,8 +248,6 @@ export class StoreIndex {
    * `outputs` without reading back. Taken once, by `outputBytes`.
    */
   readonly savedBytes = new Map<string, number>()
-  /** Each key a `--force` save found stored and kept: no save of this run's. Taken once, by `kept`. */
-  readonly keptHashes = new Set<string>()
   /** The run this cache saves for: each entry it writes records it (`entries.run_id`). */
   runId: string | undefined
   readonly folds: IndexFoldMemo

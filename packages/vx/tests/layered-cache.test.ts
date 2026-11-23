@@ -592,8 +592,8 @@ describe('LayeredCache', () => {
     expect(await local.has('h-nowrite')).toBe('local')
   })
 
-  it('save() under --force that keeps the local entry uploads this run’s outputs, not the kept ones', async () => {
-    // The kept entry went up to a remote that held none: an old build, or a
+  it('save() under --force over a held local entry uploads this run’s outputs, not the old ones', async () => {
+    // The old entry went up to a remote that held none: an old build, or a
     // corrupt one, which a remote that never replaces a key kept for good.
     await saveSample(local, 'h-kept')
     local.close()
@@ -618,7 +618,6 @@ describe('LayeredCache', () => {
       entry: { taskId: 'pkg#build', command: 'echo produced', durationMs: 5, stdout: '' },
     })
     await forced.drainUploads()
-    expect(forced.kept('h-kept')).toBe(true)
     await wipeLocal()
     await rm(path.join(projectDir, 'dist'), { recursive: true })
     const layered = makeLayered()

@@ -386,7 +386,6 @@ export async function saveMiss(a: SaveMissArgs): Promise<{ landed: Promise<SaveF
     }
   }
   const facts: SaveFacts = {}
-  let kept = false
   const save = async (): Promise<void> => {
     const saveStart = a.measure === true ? performance.now() : 0
     const endSave = span('miss: save')
@@ -418,9 +417,6 @@ export async function saveMiss(a: SaveMissArgs): Promise<{ landed: Promise<SaveF
     endSave()
     const bytes = cache.outputBytes?.(a.hash)
     if (bytes !== undefined) facts.outputBytes = bytes
-    // A `--force` run that found the key stored kept that entry: the
-    // footer's `↑` counts saves, and this was none.
-    if (cache.kept?.(a.hash) === true) kept = true
     if (a.measure === true) {
       facts.saveMs = Math.round(performance.now() - saveStart)
       // No local artifact (local writes off): no size to say.
@@ -432,10 +428,8 @@ export async function saveMiss(a: SaveMissArgs): Promise<{ landed: Promise<SaveF
     }
     // The files the task just wrote are the entry's bytes: stamp them,
     // so the next hit can tell them from another entry's with the same
-    // size and mtime (item 886). A kept entry names the last save's mtimes:
-    // stamped as written, a dependant's save does not take them for a move.
-    if (kept) cache.memo.stampWritten?.(a.hash, node.projectDir, a.workspaceRoot)
-    else cache.memo.recordOutputStamps?.(a.hash, node.projectDir, a.workspaceRoot)
+    // size and mtime (item 886).
+    cache.memo.recordOutputStamps?.(a.hash, node.projectDir, a.workspaceRoot)
     // The directory snapshot behind the next hit's skip-restore, taken at
     // run end from the run's list: the task wrote these directories
     // milliseconds ago, inside the snapshot's racy window, so a snapshot
@@ -464,11 +458,11 @@ export async function saveMiss(a: SaveMissArgs): Promise<{ landed: Promise<SaveF
     return {
       landed: a
         .deferSave(save, node.id)
-        .then((stored) => (stored && !kept ? { ...facts, saved: true } : facts)),
+        .then((stored) => (stored ? { ...facts, saved: true } : facts)),
     }
   }
   await save()
-  return { landed: Promise.resolve(kept ? facts : { ...facts, saved: true }) }
+  return { landed: Promise.resolve({ ...facts, saved: true }) }
 }
 
 /** What `markUnsaved` reads of a miss: where its declared outputs are. */

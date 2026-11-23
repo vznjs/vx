@@ -115,7 +115,6 @@ export interface CacheLayer {
   outputsPath(hash: string): string // a file-backed artifact's path; a small one lives in the index
   artifactSize?(hash: string): number | undefined // the stored artifact's compressed size, wherever it lives
   outputBytes?(hash: string): number | undefined // the entry this process just saved: its files' bytes, uncompressed; asked once
-  kept?(hash: string): boolean // the last save found the key stored and kept it (--force): no save; asked once
   prune(options: PruneOptions): Promise<PruneResult>
   close(): void
 }
@@ -134,7 +133,6 @@ export interface TaskMemo {
     holds?: (files: readonly string[]) => boolean,
   ): Promise<void>
   recordOutputStamps?(hash: string, projectDir: string, workspaceRoot: string): void
-  stampWritten?(hash: string, projectDir: string, workspaceRoot: string): void
   loadOutputDirsBatch?(hashes: readonly string[]): Map<string, OutputDirRow[]>
   outputDirsCurrent?(projectDir: string, rows: readonly OutputDirRow[]): boolean
 }

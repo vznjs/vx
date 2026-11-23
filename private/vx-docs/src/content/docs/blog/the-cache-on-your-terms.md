@@ -29,8 +29,8 @@ $ vx run build --all --no-cache
   time      42ms
 ```
 
-`--force` runs everything and saves what the cache lacks. It doesn't
-upload a key that's already stored. `--no-cache` neither reads nor
+`--force` runs everything and replaces the local cache's entries. It
+doesn't upload a key a remote already holds. `--no-cache` neither reads nor
 writes. `--cache-policy` sets read/write per layer:
 
 ```sh frame="terminal"

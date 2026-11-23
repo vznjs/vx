@@ -222,7 +222,6 @@ export class Cache implements CacheLayer {
   async localHasMany(hashes: readonly string[]): Promise<Set<string>>
   outputsPath(hash: string): string
   outputBytes(hash: string): number | undefined
-  kept(hash: string): boolean
   async discard(hash: string): Promise<void>
   artifactSize(hash: string): number | undefined
   async restoreOutputs(
@@ -359,7 +358,6 @@ export interface CacheLayer {
   outputsPath(hash: string): string
   artifactSize?(hash: string): number | undefined
   outputBytes?(hash: string): number | undefined
-  kept?(hash: string): boolean
   discard?(hash: string): Promise<void>
   prune(options: PruneOptions): Promise<PruneResult>
   close(): void
