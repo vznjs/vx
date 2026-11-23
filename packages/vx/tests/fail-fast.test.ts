@@ -87,7 +87,7 @@ it('CONTROL: without --fail-fast the sibling finishes and its dependant runs', a
 // is gone (reaped by vx), so the order holds without a timer. The stop reached
 // a command that had already exited: its exit is its own, never the stop's
 // abort. The pid lands by a rename: written in place, `first` could read
-// the file created and still empty, and fail before \`late\` exited.
+// the file created and still empty, and fail before `late` exited.
 for (const [code, said] of [
   [3, 'failed 3'],
   [0, 'success 0'],
