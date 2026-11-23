@@ -37,7 +37,7 @@ export const STEPS: Readonly<Record<string, { title?: string; steps: string }>> 
   'feat(lock): a run refuses a config edited since vx lock': {
     title: 'A run refuses a config edited since vx lock',
     steps:
-      'After editing a `vx.config.ts`, run `vx lock` before `vx run`, `vx show`, `vx why` or `vx pipeline`: the run now refuses with `VX_E_LOCK`, naming the file, instead of running the config the lock holds.',
+      'After editing a `vx.config.ts`, run `vx lock` before `vx run`, `vx show`, `vx why` or `vx pipeline`: the run refuses with `VX_E_LOCK`, naming the file, instead of running the config the lock holds.',
   },
   'refactor(cli)!: drop the lock merge driver, name it .vx/projects.lock': {
     steps: [
@@ -67,8 +67,8 @@ export const STEPS: Readonly<Record<string, { title?: string; steps: string }>> 
     steps: [
       'Replace each use:',
       '',
-      "- `--continue=never` or `run.continue: 'never'`: use `--fail-fast` or `run.failFast: true`. Tasks still running are now killed.",
-      "- `--continue`, `--continue=always`: remove it. A failed task's dependents never run now.",
+      "- `--continue=never` or `run.continue: 'never'`: use `--fail-fast` or `run.failFast: true`. Tasks still running are killed.",
+      "- `--continue`, `--continue=always`: remove it. A failed task's dependents never run.",
       '- `--continue=deps-ok`: remove it. That is the default.',
     ].join('\n'),
   },
@@ -83,16 +83,16 @@ export const STEPS: Readonly<Record<string, { title?: string; steps: string }>> 
   'fix(cli): a --filter that matches nothing refuses beside a match': {
     title: 'A --filter that matches nothing refuses the run',
     steps:
-      'A `--filter` that matches no project, an exclusion too, now refuses the run even when another filter matched. Fix or remove it in your CI scripts and pipelines.',
+      'A `--filter` that matches no project, an exclusion too, refuses the run even when another filter matched. Fix or remove it in your CI scripts and pipelines.',
   },
   'fix(cache)!: a --force run replaces the entry its key held': {
     steps:
-      'A `--force` run now replaces the local entry under its key. A custom cache layer drops `kept()` and `stampWritten()`: vx no longer calls them.',
+      'A `--force` run replaces the local entry under its key. A custom cache layer drops `kept()` and `stampWritten()`: vx no longer calls them.',
   },
   'fix(graph): refuse every output pair that takes a common path': {
     title: 'Refuse two tasks whose outputs can share a path',
     steps:
-      '`vx lock` now refuses two tasks whose output globs can match one path, such as `*.js` beside `*b*`. Narrow one glob so the two tasks write no common path.',
+      '`vx lock` refuses two tasks whose output globs can match one path, such as `*.js` beside `*b*`. Narrow one glob so the two tasks write no common path.',
   },
   'fix(sandbox): withhold browser profiles, mask more secret names': {
     title: 'Sandboxed tasks no longer read credential stores',
@@ -101,7 +101,7 @@ export const STEPS: Readonly<Record<string, { title?: string; steps: string }>> 
       '',
       'A task that needs one names it in `exec.sandbox.allow.read`.',
       '',
-      'Variables whose names hold `PASSPHRASE` or end in `_PASS` are now masked in output.',
+      'Variables whose names hold `PASSPHRASE` or end in `_PASS` are masked in output.',
     ].join('\n'),
   },
   "feat(report)!: name a failed task's directory and the piped columns": {
