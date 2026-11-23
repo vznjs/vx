@@ -2,48 +2,73 @@
 
 Website: <https://vznjs.github.io/vx/> · source: <https://github.com/vznjs/vx>
 
-A server for the task timings a vx scheduler asks for, that you host. It
-keeps one row per task, already the numbers the scheduler uses (duration, a slow run,
-CPU cores, peak memory), and merges each CI run's report into it: a
-history, not a log. It also keeps the flaky record every CI machine
-shares: only the cache keys that failed, each with a flaky flag,
-so a run retries a task that flaked on another machine. It speaks the [vx-history protocol](./PROTOCOL.md)
-(`/v1`) on three backends that answer alike:
+A server you host for the task timings a vx scheduler asks for.
+
+- It keeps one row per task, already the numbers the scheduler uses:
+  duration, a slow run, CPU cores, peak memory.
+- It merges each CI run's report into that row: a history, not a log.
+- It also keeps the flaky record every CI machine shares: only the cache
+  keys that failed, each with a flaky flag.
+- So a run retries a task that flaked on another machine.
+
+It speaks the [vx-history protocol](./PROTOCOL.md) (`/v1`) on three
+backends that answer alike:
 
 - **Bun**, with a SQLite file.
-- **Cloudflare Workers**, with D1, on the free plan. An upload is one
-  statement per 666 KB of timings and two per 666 KB of outcomes (D1 binds
-  a string of up to 2 MB, and a character may be 3 bytes); a query two
-  reads per 666 KB of hashes. The free plan's 50 queries a request fit
-  PROTOCOL.md's largest upload (10 000 tasks, 512-character hashes: 41
-  statements, 50 with a new isolate's setup and the day's sweep). Its
-  10 ms of CPU is the tighter limit: parsing and checking an upload took
-  about 1.1 ms per 1 000 tasks with their outcomes (measured on Bun;
-  Miniflare models neither limit), so a run of up to about 8 000 tasks
-  fits.
+- **Cloudflare Workers**, with D1, on the free plan. A run of up to
+  about 8 000 tasks fits.
 - **Docker**, the Bun server in an image.
+
+<details>
+<summary>Details: why about 8 000 tasks fit the Workers free plan</summary>
+
+- An upload is one statement per 666 KB of timings and two per 666 KB of
+  outcomes.
+- That is because D1 binds a string of up to 2 MB, and a character may
+  be 3 bytes.
+- A query is two reads per 666 KB of hashes.
+- The free plan's 50 queries a request fit PROTOCOL.md's largest upload:
+  10 000 tasks with 512-character hashes.
+- That upload is 41 statements, or 50 with a new isolate's setup and the
+  day's sweep.
+- The free plan's 10 ms of CPU is the tighter limit.
+- Parsing and checking an upload took about 1.1 ms per 1 000 tasks with
+  their outcomes, measured on Bun. Miniflare models neither limit.
+
+</details>
 
 `vxHistory()` ([`@vzn/vx-history`](https://github.com/vznjs/vx/tree/main/packages/vx-history))
 points vx at it.
 
 ## CI tokens
 
-Every request carries a CI job's own OIDC token, checked by `@vzn/vx-devtools`,
-under the same `ALLOW` as [`@vzn/vx-cache-server`'s](https://github.com/vznjs/vx/tree/main/packages/vx-cache-server#ci-tokens)
-(`issuer:owner/repo:workflow` entries): a job of a workflow it names
-writes its own branch, and any other job is refused. A row is the issuer,
-repository, ref and task hash, stored plainly, and its numbers. A run
-sends one query: its repository, the refs it reads (its branch, then the
-branch it merges into, then the default branch) and every task hash;
-the server answers each from the first ref that holds it. A token of
-another repository than the query names is refused. `AUDIENCE` is the
-`aud` a token must name: the origin clients reach the server at (a URL
-is read as its origin; one that is no URL stops the server). On
-Workers, unset, it is that origin (Cloudflare routes only the Worker's
-own hostnames to it); on Bun and Docker it is required, since there the
-origin is the request's `Host` header, which a client picks.
-`READ_ACCESS=public` lets a query with no token read a repository
-`ALLOW` names; it uploads nothing.
+Every request carries a CI job's own OIDC token, checked by
+`@vzn/vx-devtools`.
+
+- It uses the same `ALLOW` as
+  [`@vzn/vx-cache-server`'s](https://github.com/vznjs/vx/tree/main/packages/vx-cache-server#ci-tokens):
+  `issuer:owner/repo:workflow` entries.
+- A job of a workflow `ALLOW` names writes its own branch. Any other job
+  is refused.
+- A row is the issuer, repository, ref and task hash, stored plainly,
+  and its numbers.
+- A run sends one query: its repository, the refs it reads and every
+  task hash.
+- The refs it reads are its branch, then the branch it merges into, then
+  the default branch.
+- The server answers each hash from the first ref that holds it.
+- A token of another repository than the query names is refused.
+- `READ_ACCESS=public` lets a query with no token read a repository
+  `ALLOW` names. It uploads nothing.
+
+`AUDIENCE` is the `aud` a token must name: the origin clients reach the
+server at.
+
+- A URL is read as its origin. A value that is no URL stops the server.
+- On Workers, unset, it is that origin. Cloudflare routes only the
+  Worker's own hostnames to it.
+- On Bun and Docker it is required. There the origin is the request's
+  `Host` header, which a client picks.
 
 ## On Bun
 
@@ -51,9 +76,13 @@ origin is the request's `Host` header, which a client picks.
 ALLOW='https://token.actions.githubusercontent.com:acme/app:ci.yml' AUDIENCE=https://history.example.com bun packages/vx-history-server/src/bun.ts --db /var/lib/vx-history.sqlite --port 8080
 ```
 
-`TIMING_DAYS` (default 30, whole days in decimal digits; on Workers a JSON number too)
-is how long a task's row outlives its last report; the first upload of each day sweeps, whichever node or Workers
-isolate takes it.
+`TIMING_DAYS` is how long a task's row outlives its last report.
+
+- The default is 30.
+- It is whole days in decimal digits. On Workers a JSON number works
+  too.
+- The first upload of each day sweeps, whichever node or Workers isolate
+  takes it.
 
 ## With Docker
 
@@ -88,13 +117,15 @@ The same server as a `fetch` handler, over storage of your own
 (`src/index.ts`):
 
 - `createHistoryServer(options: ServerOptions)` returns
-  `(req: Request) => Promise<Response>`. `ServerOptions` is
-  `{ store, authorize, timingDays?, now? }`: `authorize` is
-  `oidcTokenAuth` from `@vzn/vx-devtools`.
-- `sqliteStore(db: Db)` is the `Store` over a SQLite `Db`
-  (`{ all(sql, params), run(sql, params) }`), as bun:sqlite and D1 are.
-  A `Store` merges `Report`s, keeps `Outcome`s and reads `Timing`s, each of a `Repo`
-  (`{ issuer, repository }`) and a ref.
-- `WEIGHT` (0.3) and `RSS_DECAY` (0.9) are the merge's constants;
-  `MAX_UPLOAD_TIMINGS`, `MAX_QUERY_HASHES` and `MAX_QUERY_REFS` its
-  limits. A refusal is `errorJson` from `@vzn/vx-devtools`.
+  `(req: Request) => Promise<Response>`.
+- `ServerOptions` is `{ store, authorize, timingDays?, now? }`.
+  `authorize` is `oidcTokenAuth` from `@vzn/vx-devtools`.
+- `sqliteStore(db: Db)` is the `Store` over a SQLite `Db`, as bun:sqlite
+  and D1 are.
+- A `Db` is `{ all(sql, params), run(sql, params) }`.
+- A `Store` merges `Report`s, keeps `Outcome`s and reads `Timing`s.
+- Each is of a `Repo` (`{ issuer, repository }`) and a ref.
+- `WEIGHT` (0.3) and `RSS_DECAY` (0.9) are the merge's constants.
+- `MAX_UPLOAD_TIMINGS`, `MAX_QUERY_HASHES` and `MAX_QUERY_REFS` are its
+  limits.
+- A refusal is `errorJson` from `@vzn/vx-devtools`.
