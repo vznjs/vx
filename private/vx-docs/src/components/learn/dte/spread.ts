@@ -102,7 +102,10 @@ export function plan(push: Push, max: number): Plan {
   for (let n = 1; n <= max; n++) {
     const b = simulate(run, n)
     const end = Math.max(...b.map((x) => x.end))
-    if (end < bestEnd) ((best = b), (bestEnd = end))
+    if (end < bestEnd) {
+      best = b
+      bestEnd = end
+    }
   }
   const workers = new Set(best!.filter((b) => b.kind === 'task').map((b) => b.lane)).size
   return { bars: [...bars, ...best!], workers, end: Math.max(bestEnd, restored) }
