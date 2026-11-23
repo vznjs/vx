@@ -1,21 +1,42 @@
 ---
 title: Cache server
-description: Host @vzn/vx-cache-server, the remote cache vxCache() reads and writes, on Workers, Bun or Docker.
+description: Host @vzn/vx-cache-server so every CI machine reuses what another one built, on Workers, Bun or Docker.
 ---
 
-import { Aside, Tabs, TabItem } from '@astrojs/starlight/components'
+import Diagram from '../../../../components/guide/diagram/Diagram.astro'
+import { cacheReadOrder, cacheBucketPath } from '../../../../components/docs/pictures/servers.js'
+import { Aside, Tabs, TabItem, Steps } from '@astrojs/starlight/components'
+import { Levels, Deeper, Concept, Quiz, Compare, Takeaway, NextStep } from '../../../../components/learn'
 
-`@vzn/vx-cache-server` is the remote cache you host. `vxCache()` from
-`@vzn/vx-cache` points vx at it.
+One CI machine builds `@demo/ui`. Every other machine, and every later run, gets the result instead of building it again.
 
-It keeps task results in one bucket, Cloudflare R2 or any S3 bucket, and
-nothing else: no database, and no state on the server itself.
+```sh
+bunx @vzn/vx-cache-server --port 8080
+```
 
-[Remote cache](../../remote-cache/) walks through the whole setup on
-Cloudflare. This page is the reference: every way to host it, every
-setting, and how it stores results.
+<Levels />
 
-## Deploy
+<Compare left="No cache server" right="With one">
+<div slot="left">
+
+Each CI runner starts empty. Every task runs, on every runner, every time.
+
+</div>
+<div slot="right">
+
+The first runner stores `@demo/ui#build`. The next one restores it, and its line ends in **remote**.
+
+</div>
+</Compare>
+
+<Concept term="Remote cache">
+  A cache on a server instead of one machine's disk. vx asks its own `.vx/cache` first, then the
+  remote one.
+</Concept>
+
+`@vzn/vx-cache-server` keeps results in one bucket, Cloudflare R2 or any S3 bucket. No database, no state on the server. [Remote cache](../../remote-cache/) walks the whole setup on Cloudflare.
+
+## Deploy it
 
 <Tabs syncKey="server-host">
 <TabItem label="Cloudflare Workers">
@@ -32,20 +53,17 @@ bun add @vzn/vx-cache-server
   "name": "vx-cache-server",
   "main": "node_modules/@vzn/vx-cache-server/src/worker.ts",
   "compatibility_date": "2026-10-01",
-  "vars": { "ALLOW": "" },
+  "vars": { "ALLOW": "https://token.actions.githubusercontent.com:acme/app:ci.yml" },
   "r2_buckets": [{ "binding": "BLOBS", "bucket_name": "vx-cache" }]
 }
 ```
-
-Fill `ALLOW` ([`ALLOW`](../#allow-who-takes-part)), then:
 
 ```sh
 bunx wrangler login
 bunx wrangler deploy
 ```
 
-The first deploy creates the R2 bucket `vx-cache`. Each setting below
-is a var in `wrangler.jsonc`.
+The first deploy creates the R2 bucket `vx-cache`. Every setting below is a var in `wrangler.jsonc`.
 
 </TabItem>
 <TabItem label="Bun">
@@ -64,10 +82,7 @@ bunx @vzn/vx-cache-server --port 8080
 [38;2;34;197;94m✓[0m [1mvx-cache-server[0m  listening on [38;2;6;182;212mhttp://0.0.0.0:8080/[0m
 ```
 
-`--port` (default 8080) and `--host` (default `0.0.0.0`) set it.
-
-A server keeps no state of its own, so you can run as many as you like
-over one bucket, behind a load balancer.
+The green line means it is up. Run as many as you like over one bucket, behind a load balancer.
 
 </TabItem>
 <TabItem label="Docker">
@@ -77,16 +92,12 @@ docker run -p 8080:8080 -e ALLOW='…' -e AUDIENCE=https://cache.example.com -e 
   -e S3_ACCESS_KEY_ID=… -e S3_SECRET_ACCESS_KEY=… ghcr.io/vznjs/vx-cache-server
 ```
 
-Or run it beside the other two servers with
-[Docker Compose](../#all-three-with-docker-compose): the `cache`
-service, on port 8081.
+Or run it beside the other two with [Docker Compose](../#run-all-three-with-docker-compose): the `cache` service, on port 8081.
 
 </TabItem>
 </Tabs>
 
-Put HTTPS in front of it: a CI token is a bearer token.
-
-To check it answers, ask for its limits:
+Check it answers:
 
 ```sh
 curl https://cache.example.com/v1/capabilities
@@ -96,71 +107,104 @@ curl https://cache.example.com/v1/capabilities
 {"code":"bad_request","message":"vx-issuer and vx-repository: the issuer's and the repository's hashes (PROTOCOL.md § Keys)"}
 ```
 
-That refusal means it is up and has an `ALLOW`. A Worker with `ALLOW`
-empty says `ALLOW is empty: set it to the CI workflows this server
-serves` instead.
+That refusal is good news: the server is up and has an `ALLOW`. Put HTTPS in front of it.
 
-The Bun server and its image do not start without an `ALLOW`.
+<Takeaway>run your own remote cache on Cloudflare, Bun or Docker.</Takeaway>
 
-## Settings
+## Point vx at it
 
-| Setting | Default | What it sets |
-| --- | --- | --- |
-| `ALLOW` | required (a Worker without it refuses every request) | who takes part, each `issuer:owner/repo:workflow` ([`ALLOW`](../#allow-who-takes-part)) |
-| `READ_ACCESS` | unset: every request needs a CI token | `public`: a request with no token, such as a laptop's, reads a repository `ALLOW` names, and writes nothing |
-| `AUDIENCE` | Workers: the origin it is reached at. Bun and Docker: required | the `aud` a CI token must name, read as its origin |
-| `S3_BUCKET`, `S3_ENDPOINT`, `S3_REGION`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` | | the bucket (Bun and Docker), as Bun's S3 client reads them |
-| `MAX_CHECK_HASHES` | 500 (6 on Workers) | how many lookups one check may make |
-| `MAX_UPLOAD_BYTES` | 100 MB | the largest result it takes |
-| `EXPIRY_DAYS` | unset: every lookup asks R2 | Workers: your bucket's expiry in days, so a repeat check skips R2 ([How it stores results](#how-it-stores-results)) |
+<Steps>
 
-vx learns the limits from the server's answers. A check over them is
-refused and sent again in smaller ones; a result over the upload limit
-is not uploaded, with a warning.
+1. Add the plugins:
 
-On Workers each lookup is one subrequest, so a higher
-`MAX_CHECK_HASHES` must fit your Cloudflare plan.
+   ```sh
+   bun add -d @vzn/vx-cache @vzn/vx-ci
+   ```
 
-## Point vx at it: `vxCache()`
+2. Name the server in `.vx/workspace.ts`:
+
+   ```ts title=".vx/workspace.ts" ins={3,8-12}
+   import { defineWorkspace } from '@vzn/vx/config'
+   import { github } from '@vzn/vx-ci'
+   import { vxCache } from '@vzn/vx-cache'
+
+   export default defineWorkspace({
+     plugins: [
+       github(),
+       vxCache({
+         url: 'https://cache.example.com',
+         issuer: 'https://token.actions.githubusercontent.com',
+         repository: 'acme/app',
+       }),
+     ],
+   })
+   ```
+
+3. Let each CI job ask for its token:
+
+   <Tabs syncKey="ci">
+   <TabItem label="GitHub Actions">
+
+   ```yaml title=".github/workflows/ci.yml"
+   permissions:
+     contents: read
+     id-token: write
+   ```
+
+   </TabItem>
+   <TabItem label="GitLab CI">
+
+   ```yaml title=".gitlab-ci.yml"
+   vx:
+     id_tokens:
+       VX_CACHE_TOKEN:
+         aud: https://cache.example.com
+   ```
+
+   </TabItem>
+   </Tabs>
+
+4. Run `vx lock`, commit and push.
+
+</Steps>
+
+`github()` (or `gitlab()`) tells the cache which branch a run is on. Without it, a CI run reads only its own branch and the default branch.
+
+<Takeaway>connect your CI to the cache server and share results between runners.</Takeaway>
+
+## Which results a run gets
+
+A run reads the closest branch first, then falls back:
+
+<Diagram {...cacheReadOrder} />
+
+A pull request reads its merge ref, then its own branch, then the branch it merges into. It writes only its merge ref. [Servers](../#say-who-takes-part-allow) shows every kind of run.
+
+<Quiz q="A push to main stored @demo/ui#build. Pull request #7 has not touched @demo/ui. Does it build @demo/ui?">
+  No. Its merge ref and `feat-x` miss, then `main` holds the same key: a hit.
+</Quiz>
+
+<Takeaway>predict which branch's result a pull request reuses.</Takeaway>
+
+## Expire old results
+
+The server never deletes anything. Give the bucket a lifecycle rule that does. On R2, one day:
 
 ```sh
-bun add -d @vzn/vx-cache @vzn/vx-ci
+bunx wrangler r2 bucket lifecycle add vx-cache all '' --expire-days 1
 ```
+
+On S3, put the same rule in the bucket's lifecycle configuration. A run that misses an expired result runs the task and stores it again.
+
+<Takeaway>keep the bucket small without touching the server.</Takeaway>
+
+<Deeper level="patterns" title="Common setups">
+
+### A proxy in front, such as Cloudflare Access
+
+Pass its service token in `headers`:
 
 ```ts title=".vx/workspace.ts"
-import { defineWorkspace } from '@vzn/vx/config'
-import { vxCache } from '@vzn/vx-cache'
-import { github } from '@vzn/vx-ci'
-
-export default defineWorkspace({
-  plugins: [
-    github(),
-    vxCache({
-      url: 'https://cache.example.com', // or VX_CACHE_URL
-      issuer: 'https://token.actions.githubusercontent.com',
-      repository: 'acme/app',
-    }),
-  ],
-})
-```
-
-| Option | Default | What it sets |
-| --- | --- | --- |
-| `url` | `VX_CACHE_URL` | the server's URL: https, http only to `127.0.0.1`, `::1` or `localhost`; a redirect is not followed |
-| `issuer` | required | your CI's token issuer: `https://token.actions.githubusercontent.com`, `https://gitlab.com` or your GitLab's URL |
-| `repository` | required | the repository, `org/name`, as `ALLOW` names it |
-| `timeoutMs` | 30 000 | how long one read or check may wait for its answer, in ms (above 0, up to 2³¹−1); a download then brings at least 1 MiB a second over each |
-| `uploadTimeoutMs` | 60 000 | an upload sends at least 1 MiB a second over each, then is answered within one, in ms (above 0, up to 2³¹−1) |
-| `retries` | 2 | how many times a request answered 5xx or 429, or whose connection reset, is sent again, 1 s, 2 s, … apart (0 to 10) |
-| `headers` | none | headers sent on every request, for a proxy in front of the server |
-
-`github()` or `gitlab()` from `@vzn/vx-ci` tells the cache which branch
-a CI run is on. Without one, a CI run reads only the checked-out branch
-and the default branch.
-
-For a proxy such as Cloudflare Access, pass its service token:
-
-```ts
 vxCache({
   url: 'https://cache.example.com',
   issuer: 'https://token.actions.githubusercontent.com',
@@ -172,100 +216,88 @@ vxCache({
 })
 ```
 
-An unset value is left out. The `authorization` header stays the CI
-token's.
+An unset value is left out. The `authorization` header stays the CI token's. Workers of a [Distributed task execution](../../distributed-task-execution/) run send the headers too, so give their job the same secrets.
 
-The workers of a [distributed task execution](../../distributed-task-execution/)
-run send the headers too, so give their job the same secrets.
+<Takeaway>put the cache server behind your own access proxy.</Takeaway>
 
-### Tokens
+### Laptops read CI's results
 
-Each CI job needs a token for the server's URL:
+Set `READ_ACCESS=public` on the server. A laptop has no token, so it reads and never uploads. Any other server refuses its first read: vx says so once and goes on with the local cache.
 
-<Tabs syncKey="ci">
-<TabItem label="GitHub Actions">
+<Takeaway>let every developer start from what CI built.</Takeaway>
 
-```yaml title=".github/workflows/ci.yml"
-permissions:
-  contents: read
-  id-token: write
-```
+### The URL from the environment
 
-vx asks GitHub for the token and asks again before it expires. A job
-without `id-token: write` warns and only reads.
+Leave `url` out and set `VX_CACHE_URL`. With Distributed task execution, the run lends its token to its workers, so they read and write where the run does.
 
-</TabItem>
-<TabItem label="GitLab CI">
+<Takeaway>keep one config for several cache servers.</Takeaway>
 
-```yaml title=".gitlab-ci.yml"
-vx:
-  id_tokens:
-    VX_CACHE_TOKEN:
-      aud: https://cache.example.com
-```
+### Prune one branch
 
-</TabItem>
-</Tabs>
-
-Off CI there is no token. A run then reads from a server with
-`READ_ACCESS=public` and uploads nothing.
-
-Any other server refuses the first read. vx says so once, and the run
-goes on with its local cache. A refused write turns off uploads only.
-
-With [distributed task execution](../../distributed-task-execution/),
-the run lends its token to its workers, so they read and write where the
-run does.
-
-## Expiry
-
-The server never deletes anything. Give the bucket a lifecycle rule
-that deletes results by age instead. On R2, one day:
+Delete its folder in the bucket. Its name is the first 32 hex digits of the branch ref's SHA-256:
 
 ```sh
-bunx wrangler r2 bucket lifecycle add vx-cache all '' --expire-days 1
+printf %s refs/heads/main | sha256sum | cut -c1-32
 ```
 
-On S3, put the same rule in the bucket's lifecycle configuration. A run
-that misses an expired result runs the task and stores it again.
+<Takeaway>drop one branch's results by hand.</Takeaway>
 
-## How it stores results
+</Deeper>
 
-A result's name in the bucket is `<issuer>/<repository>/<branch>/<key>`,
-each part one folder. The first three are **hashed** (SHA-256, the first
-32 hex digits), so the bucket's listing shows no host, repository or
-branch name.
+<Deeper level="details" title="Every option and how it stores results">
 
-To **prune one branch**, delete its folder. Its name is
-`printf %s refs/heads/main | sha256sum | cut -c1-32`. One repository never reads
-another's results.
+### Server settings
 
-A result is never rewritten: a second upload of the same key keeps the
-first bytes.
+| Setting | Default | What it does | Example |
+| --- | --- | --- | --- |
+| `ALLOW` | required | who takes part ([`ALLOW`](../#say-who-takes-part-allow)) | `https://token.actions.githubusercontent.com:acme/app:ci.yml` |
+| `AUDIENCE` | Workers: the URL it is reached at. Bun and Docker: required | the `aud` a CI token must name, read as its origin | `https://cache.example.com` |
+| `READ_ACCESS` | unset: every request needs a token | `public`: a request with no token reads a repository `ALLOW` names | `public` |
+| `S3_BUCKET` | Bun and Docker: required | the bucket | `vx-cache` |
+| `S3_ENDPOINT` | Bun's S3 default | the bucket's endpoint | `https://s3.example.com` |
+| `S3_REGION` | Bun's S3 default | the bucket's region | `eu-west-1` |
+| `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` | required | the bucket's credentials | |
+| `S3_SESSION_TOKEN` | none | a temporary credential's session token | |
+| `MAX_CHECK_HASHES` | 500 (6 on Workers) | lookups one check may make, results × branches | `100` |
+| `MAX_UPLOAD_BYTES` | 100 MB | the largest result it takes | `500000000` |
+| `EXPIRY_DAYS` | unset | Workers: your bucket's expiry, so a repeat check skips R2 | `1` |
+| `BLOBS` | | Workers: the R2 bucket binding | `vx-cache` |
+| `--port` | 8080 | Bun: the port it listens on | `--port 9000` |
+| `--host` | `0.0.0.0` | Bun: the address it listens on | `--host 127.0.0.1` |
 
-A download through Workers goes through Cloudflare's cache: after R2
-serves a result once, that data center answers it without R2.
+vx learns the limits from the server's answers. A check over them is sent again in parts. A result over the upload limit is not uploaded, with a warning.
 
-An upload of a result R2 expired drops the copy in the data center it
-reaches.
+On Workers each lookup is one subrequest, so a higher `MAX_CHECK_HASHES` must fit your Cloudflare plan.
 
-Whether a result exists is asked of R2, never of that copy, so every
-data center agrees.
+A bad value stops the Bun server before it listens:
 
-With `EXPIRY_DAYS` set to the bucket's expiry, an upload, a check or a
-download that R2 answers leaves an "exists" mark in that data center
-until R2 may drop the result. A repeat check there skips R2.
+```ansi title="MAX_UPLOAD_BYTES=abc"
+[38;2;239;68;68m✗[0m [1mvx-cache-server[0m  MAX_UPLOAD_BYTES: not a whole number above 0: abc
+```
 
-A miss always asks R2, so a later upload is never hidden. An upload
-always asks R2 whether it holds the result, never the mark, so a
-result deleted by hand is stored again.
+### `vxCache()` options
 
-A download R2 misses drops the mark.
+Every option of the plugin (`url`, `issuer`, `repository`, `timeoutMs`, `uploadTimeoutMs`, `retries`, `headers`) is on [Remote cache](../../remote-cache/#vxcache-options).
 
-## API
+### How it stores results
 
-Turbo's routes under `/v1`, each read naming the branches it reads
-([PROTOCOL.md](https://github.com/vznjs/vx/blob/main/packages/vx-cache-server/PROTOCOL.md)):
+<Diagram {...cacheBucketPath} />
+
+A result's name is `<issuer>/<repository>/<branch>/<key>`. The first three are hashed (SHA-256, the first 32 hex digits), so the bucket's listing shows no host, repository or branch name. One repository never reads another's results.
+
+A result is never rewritten: a second upload of the same key keeps the first bytes.
+
+On Workers, a download goes through Cloudflare's cache. After R2 serves a result once, that data center answers it without R2.
+
+Whether a result exists is always asked of R2, so every data center agrees.
+
+With `EXPIRY_DAYS` set, an answer R2 gives leaves an "exists" mark in that data center until R2 may drop the result. A repeat check there skips R2.
+
+A miss, an upload, and a download R2 misses always ask R2.
+
+### API
+
+Turbo's routes under `/v1`, each read naming the branches it reads ([PROTOCOL.md](https://github.com/vznjs/vx/blob/main/packages/vx-cache-server/PROTOCOL.md)):
 
 | Route | Does |
 | --- | --- |
@@ -275,14 +307,10 @@ Turbo's routes under `/v1`, each read naming the branches it reads
 | `POST /v1/artifacts` | `{ hashes, scopes }`: each hash's size and the first branch holding it |
 | `GET /v1/capabilities` | the limits |
 
-A branch on the wire is its ref, percent-encoded (`refs/heads/main` is
-`refs%2Fheads%2Fmain`), the same name as its folder. Any other spelling
-is refused with `400`.
+A branch on the wire is its ref, percent-encoded (`refs%2Fheads%2Fmain`). Any other spelling is refused with `400`. Any server that speaks the protocol can stand in for this one.
 
-Any server that speaks the protocol can stand in for this one.
+To mount it in your own server, `createCacheServer({ blobs, authorize, limits? })` returns a `fetch` handler over your bucket. The [README](https://github.com/vznjs/vx/tree/main/packages/vx-cache-server#api) lists the whole API.
 
-To mount it in a server of your own, `createCacheServer({ blobs, authorize, limits? })`
-returns a `fetch` handler over your bucket.
+</Deeper>
 
-The [README](https://github.com/vznjs/vx/tree/main/packages/vx-cache-server#api)
-lists the whole API.
+<NextStep href="../../ci/" title="CI">Run the same checks on CI, now with a cache every runner shares.</NextStep>

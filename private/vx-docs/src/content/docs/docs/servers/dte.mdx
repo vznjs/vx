@@ -1,31 +1,38 @@
 ---
 title: DTE server
-description: Host @vzn/vx-dte-server, the relay where a distributed task execution run meets its workers, on Workers, Bun or Docker.
+description: Host @vzn/vx-dte-server, the relay where a Distributed task execution run meets its workers, on Workers, Bun or Docker.
 ---
 
-import { Aside, Tabs, TabItem } from '@astrojs/starlight/components'
+import Diagram from '../../../../components/guide/diagram/Diagram.astro'
+import { dteRun } from '../../../../components/docs/pictures.js'
+import { Aside, Tabs, TabItem, Steps } from '@astrojs/starlight/components'
+import { Levels, Deeper, Concept, Quiz, Walkthrough, Frame, Takeaway, NextStep } from '../../../../components/learn'
 
-[Distributed task execution](../../distributed-task-execution/) (DTE)
-needs a relay. `@vzn/vx-dte-server` is that relay. You host your own, on
-Cloudflare, Bun or Docker.
+[Distributed task execution](../../distributed-task-execution/) spreads one `vx run` over many CI machines. They meet at a relay you host:
 
-CI runners accept no incoming connection, so the run and its workers all
-connect out to the relay, and it passes their messages on.
+```sh
+bunx @vzn/vx-dte-server --port 8080
+```
 
-It stores nothing and keeps no secret. It cannot read what it passes
-on: the run and its workers encrypt it. Files never go through it; they
-go through your [remote cache](../../remote-cache/).
+<Levels />
 
-## 1. Deploy the relay
+<Diagram {...dteRun} />
+
+<Concept term="Relay">
+  A server that passes messages between machines that cannot reach each other. CI runners accept no
+  incoming connection, so the run and its workers all connect out to the relay.
+</Concept>
+
+The relay stores nothing, keeps no secret and cannot read what it passes: the run and its workers encrypt it. Files never go through it; they go through your [remote cache](../../remote-cache/).
+
+## Deploy the relay
 
 <Tabs syncKey="relay-host">
 <TabItem label="Cloudflare (button)">
 
 [Deploy to Cloudflare](https://deploy.workers.cloudflare.com/?url=https://github.com/vznjs/vx/tree/main/packages/vx-dte-server)
 
-The button copies the relay into a new repository of yours and deploys
-it. It asks for one var, `ALLOW` (step 2). The relay's URL is the
-Worker's, such as `https://vx-dte-server.acme.workers.dev`.
+The button copies the relay into a new repository of yours and deploys it. It asks for one var, `ALLOW`. The relay's URL is the Worker's, such as `https://vx-dte-server.acme.workers.dev`.
 
 </TabItem>
 <TabItem label="Cloudflare (wrangler)">
@@ -40,15 +47,15 @@ bun add @vzn/vx-dte-server
   "name": "vx-dte-server",
   "main": "node_modules/@vzn/vx-dte-server/src/worker.ts",
   "compatibility_date": "2026-10-01",
-  "vars": { "ALLOW": "" },
+  "vars": {
+    "ALLOW": "https://token.actions.githubusercontent.com:acme/app:ci.yml https://token.actions.githubusercontent.com:acme/app:vx-worker.yml"
+  },
   "durable_objects": {
     "bindings": [{ "name": "RELAY", "class_name": "RelayRun" }]
   },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["RelayRun"] }]
 }
 ```
-
-Fill `ALLOW` (step 2), then:
 
 ```sh
 bunx wrangler login
@@ -68,7 +75,7 @@ bunx @vzn/vx-dte-server --port 8080
 [38;2;34;197;94m✓[0m [1mvx-dte-server[0m  listening on [38;2;6;182;212mhttp://0.0.0.0:8080[0m
 ```
 
-`AUDIENCE` is the relay's public URL. Put it behind HTTPS.
+The green line means it is up. Put it behind HTTPS.
 
 </TabItem>
 <TabItem label="Docker">
@@ -80,44 +87,39 @@ docker run -p 8080:8080 \
   ghcr.io/vznjs/vx-dte-server
 ```
 
-Or run it beside the other two servers with
-[Docker Compose](../#all-three-with-docker-compose): the `dte`
-service, on port 8080, with `DTE_ALLOW` and `DTE_AUDIENCE`.
+Or run it beside the other two with [Docker Compose](../#run-all-three-with-docker-compose): the `dte` service, on port 8080, with `DTE_ALLOW` and `DTE_AUDIENCE`.
 
 </TabItem>
 </Tabs>
 
-## 2. Say who may use it: `ALLOW`
+<Takeaway>host your own relay on Cloudflare, Bun or Docker.</Takeaway>
 
-`ALLOW` lists the workflows whose jobs may join a run, one entry per
-workflow, as `issuer:owner/repo:workflow`, separated by spaces.
+## Say who may use it
 
-List the workflow that runs `vx run` and the workers' workflow.
-`vx dte init` prints the line for you. Every other job is refused.
+`ALLOW` lists two workflows: the one that runs `vx run`, and the workers' one. `vx dte init` prints the line for you.
 
-```jsonc title="wrangler.jsonc"
-"vars": {
-  "ALLOW": "https://token.actions.githubusercontent.com:acme/app:ci.yml https://token.actions.githubusercontent.com:acme/app:vx-worker.yml"
-}
+```sh
+ALLOW='https://token.actions.githubusercontent.com:acme/app:ci.yml https://token.actions.githubusercontent.com:acme/app:vx-worker.yml'
 ```
 
-| CI | One entry |
-| --- | --- |
-| GitHub Actions | `https://token.actions.githubusercontent.com:acme/app:ci.yml` |
-| GitLab CI | `https://gitlab.com:group/project:.gitlab-ci.yml` |
-
-On Bun and Docker, `ALLOW` is an environment variable of the same
-form. GitLab names a project by its full path, `group/subgroup/project`.
+Every other job is refused. [Servers](../#say-who-takes-part-allow) explains each entry.
 
 <Aside type="caution" title="A plain var, not a secret">
-  `ALLOW` names repositories, nothing secret. Keep it in your
-  `wrangler.jsonc`: each deploy sets vars from that file, so a var set
-  only in the Cloudflare dashboard is lost on the next deploy.
+  `ALLOW` names repositories, nothing secret. Keep it in `wrangler.jsonc`: a var set only in the
+  Cloudflare dashboard is lost on the next deploy.
 </Aside>
 
-## 3. Check it answers
+<Quiz q="A worker of acme/site, which ALLOW also lists, tries to join a run of acme/app. Is it let in?">
+  No. A run belongs to the repository that started it. A worker of another repository never joins
+  it.
+</Quiz>
 
-A request with no token is refused, and says why:
+<Takeaway>let exactly your two workflows meet at the relay.</Takeaway>
+
+## Check it, then name it in `dte()`
+
+<Walkthrough title="From a refusal to a run">
+<Frame title="1. Ask with no token">
 
 ```sh
 curl https://relay.example.com/v1/sessions/$(uuidgen)/socket
@@ -127,12 +129,12 @@ curl https://relay.example.com/v1/sessions/$(uuidgen)/socket
 {"error":"no bearer token"}
 ```
 
-A Cloudflare relay with an empty `ALLOW` says
-`this relay's ALLOW is empty: it admits no run` instead.
+A refusal that says why: the relay is up. One with an empty `ALLOW` says `this relay's ALLOW is empty: it admits no run` instead.
 
-## 4. Name it in `dte()`
+</Frame>
+<Frame title="2. Name the relay">
 
-```ts title=".vx/workspace.ts"
+```ts title=".vx/workspace.ts" ins={2}
 dte({
   relay: 'https://relay.example.com',
   workers: { linux: { machines: { cpu4: { max: 8, cpu: 4, memory: '16GB' } } } },
@@ -140,11 +142,10 @@ dte({
 })
 ```
 
-Each job proves who it is with its CI token for the relay's URL.
+</Frame>
+<Frame title="3. Give each job a token">
 
-On GitHub Actions both workflows need `permissions: { id-token: write }`,
-which `vx dte init` writes. On GitLab, the run's job and the workers'
-job each ask for a token:
+On GitHub Actions both workflows need `permissions: { id-token: write }`, which `vx dte init` writes. On GitLab, each job asks:
 
 ```yaml title=".gitlab-ci.yml"
 vx:
@@ -153,39 +154,80 @@ vx:
       aud: https://relay.example.com
 ```
 
+</Frame>
+</Walkthrough>
+
 [Distributed task execution](../../distributed-task-execution/) walks through the rest.
 
----
+<Takeaway>connect a Distributed task execution run to your relay.</Takeaway>
 
-## Settings
+<Deeper level="patterns" title="Common setups">
 
-| Setting | Cloudflare | Bun and Docker | What it sets |
+### Test a relay on one machine
+
+`--no-auth` turns off the token check. It listens on loopback only, so nothing outside your machine reaches it:
+
+```sh
+bunx @vzn/vx-dte-server --no-auth --port 8080
+```
+
+```ansi
+[38;2;34;197;94m✓[0m [1mvx-dte-server[0m  listening on [38;2;6;182;212mhttp://127.0.0.1:8080[0m
+```
+
+To try Distributed task execution with no relay at all, use `local()` ([on your machine](../../distributed-task-execution/try-on-your-machine/)).
+
+<Takeaway>run the relay locally with no CI tokens.</Takeaway>
+
+### A deploy in the middle of a run
+
+A deploy, or a restart on Bun or Docker, forgets the runs in flight. The run and its workers connect again, and the work goes on.
+
+<Takeaway>update the relay any time, even while runs use it.</Takeaway>
+
+### Cloudflare's free plan
+
+Each run is one Durable Object. 20 websocket messages count as one request, against 100,000 a day, so the relay fits the free plan.
+
+<Takeaway>host the relay at no cost.</Takeaway>
+
+</Deeper>
+
+<Deeper level="details" title="Every setting and the wire">
+
+### Settings
+
+| Setting | Default | What it does | Example |
 | --- | --- | --- | --- |
-| who may take part | `ALLOW` var | `ALLOW` | `issuer:owner/repo:workflow` entries |
-| audience | `AUDIENCE` var, unset: the relay's URL | `AUDIENCE` | the `aud` every token must name |
-| listen | | `--port` (8080), `--host` (`0.0.0.0`) | where it listens |
+| `ALLOW` | required | who takes part: space-separated `issuer:owner/repo:workflow` | `https://gitlab.com:group/project:.gitlab-ci.yml` |
+| `AUDIENCE` | Cloudflare: the relay's URL. Bun and Docker: required | the `aud` every CI token must name | `https://relay.example.com` |
+| `RELAY` | | Cloudflare: the Durable Object binding, class `RelayRun` | |
+| `--port` | 8080 | Bun: the port it listens on | `--port 9000` |
+| `--host` | `0.0.0.0`; `127.0.0.1` with `--no-auth` | Bun: the address it listens on | `--host ::1` |
+| `--no-auth` | off | Bun: no token check, loopback only | `--no-auth` |
 
-Set `AUDIENCE` only when your tokens name a URL other than the one the
-relay is reached at.
+On Cloudflare, set `AUDIENCE` only when your tokens name a URL other than the one the relay is reached at. GitLab names a project by its full path, `group/subgroup/project`.
 
-## What to know
+The Bun relay names what is missing and stops:
 
-- A run belongs to the repository that started it. A worker of another
-  repository cannot join it, even one `ALLOW` lists.
-- On Cloudflare each run is one Durable Object, and the relay fits the
-  free plan: 20 websocket messages count as one Durable Object request,
-  against 100,000 a day.
-- A deploy, or a restart on Bun or Docker, forgets the runs in flight.
-  The run and its workers connect again, and the work goes on.
-- A job whose connection drops may connect again within 10 s. A run ends
-  when its `vx run` job leaves, or drops and does not come back in time.
-- On Bun, 10 000 connections over 100 runs take 41 MB more than an idle
-  relay (measured 2026-10-24, 4 cores).
+```ansi
+[38;2;239;68;68m✗[0m [1mvx-dte-server[0m  missing ALLOW and AUDIENCE (or --no-auth)
+[2musage: vx-dte-server [--port 8080] [--host 0.0.0.0][0m
+```
 
-## API
+```ansi title="--no-auth --host 0.0.0.0"
+[38;2;239;68;68m✗[0m [1mvx-dte-server[0m  --no-auth listens on loopback only
+```
 
-The wire is [Switchboard v1](../../../switchboard/), an open protocol.
-Any server that speaks it can stand in for this relay.
+### Connections
+
+- A job whose connection drops may connect again within 10 s.
+- A run ends when its `vx run` job leaves, or drops and does not come back in time.
+- On Bun, 10 000 connections over 100 runs take 41 MB more than an idle relay (measured 2026-10-24, 4 cores).
+
+### The wire
+
+[Switchboard v1](../../../switchboard/), an open protocol. Any server that speaks it can stand in for this relay.
 
 | Part | Value |
 | --- | --- |
@@ -193,11 +235,10 @@ Any server that speaks it can stand in for this relay.
 | subprotocol | `switchboard.v1` |
 | auth | the job's CI token, as a bearer token |
 
-To mount the relay in a server of your own:
+To mount the relay in your own server, `createRelay()` returns a `fetch` handler, `serveRelay()` serves it on `Bun.serve`, and `createVerifier()` checks CI tokens against `parseAllow(ALLOW)`.
 
-- `createRelay()` returns a `fetch` handler;
-- `serveRelay()` serves it on `Bun.serve`;
-- `createVerifier()` checks the CI tokens against `parseAllow(ALLOW)`.
+The [README](https://github.com/vznjs/vx/tree/main/packages/vx-dte-server#api) lists the whole API.
 
-The [README](https://github.com/vznjs/vx/tree/main/packages/vx-dte-server#api)
-lists the whole API.
+</Deeper>
+
+<NextStep href="../../plugins/" title="Plugins">See every plugin that adds to vx, and the servers they use.</NextStep>
