@@ -98,6 +98,14 @@ export function resourceUsageToCpuRss(
 // `failed (exit 137, 128 + SIGKILL)`.
 export function exitSignal(code: number): string | undefined
 
+// A persistent task's exit code once what it wrote before it exited has
+// reached its callbacks; a child spawned elsewhere, at its exit.
+export function serverExited(child: ReturnType<typeof Bun.spawn>): Promise<number>
+
+// util/json-position.ts: where a refused package.json stops parsing, as
+// `line:column` (Bun's parsers name none).
+export function jsonErrorAt(text: string, jsonc?: boolean): string | undefined
+
 // The bare word a shell would have run, when the command is a plain
 // `word args…` — what shell-verdict.ts names in a 127 frame line. Read
 // as the shell reads it: quotes group and are removed (`"./my tool.sh"`).

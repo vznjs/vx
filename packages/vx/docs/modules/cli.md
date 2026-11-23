@@ -151,7 +151,8 @@ export async function runCmd(
   args: readonly string[],
   invocation?: readonly string[],
   saved?: ReadonlyMap<string, string>,
-): Promise<number> // invocation: the line `vx last` replays (`vx pipeline pr`); saved: flag → the key that saved it
+  pipeline?: { name: string; affectedInstead: string },
+): Promise<number> // invocation: the line `vx last` replays (`vx pipeline pr`); saved: flag → the key that saved it; pipeline: the `vx pipeline` it stands for
 
 /**
  * Shared with `cli/watch.ts`: turn parsed args + cwd + task list into
@@ -168,7 +169,8 @@ export async function resolveRunOptions(
   tasks: readonly string[],
   verb: 'run' | 'watch' = 'run',
   scopeOut?: { affectedBase?: string }, // learns the ref --affected diffed from
-): Promise<RunOptions | { error: string } | { nothingSelected: string }>
+  affectedInstead?: string, // what to do instead of a bare --affected on the base branch (`vx pipeline`)
+): Promise<RunOptions | { error: string; code?: string } | { nothingSelected: string }>
 ```
 
 ### Parser
