@@ -778,12 +778,12 @@ export async function runCmd(
   return summary.ok ? 0 : 1
 }
 
-/** `\n  --affected is \`pipelines.pr.affected\` in .vx/workspace.ts` for each saved flag `message` names. */
+/** `\n  --affected is \`pipelines.pr.affected\` in .vx/workspace` for each saved flag `message` names. */
 function savedNote(message: string, saved: ReadonlyMap<string, string>): string {
   let out = ''
   for (const [flag, key] of saved)
     if (new RegExp(`(?<![\\w-])${flag}(?![\\w-])`).test(message))
-      out += `\n  ${flag} is ${key} in .vx/workspace.ts`
+      out += `\n  ${flag} is ${key} in .vx/workspace`
   return out
 }
 

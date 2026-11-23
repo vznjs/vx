@@ -53,7 +53,17 @@ describe('pipelines in .vx/workspace', () => {
     expect(refusal({ pr: { tasks: ['--force'] } })).toBe(
       "ws.ts: `pipelines.pr.tasks` names \"--force\": it starts with '-', which the CLI reads as a flag; name a task, or 'pkg#task'",
     )
-    for (const bad of ['^build', 'a#', '#build', 'a#^b', 'build ', 'b*'])
+    for (const bad of [
+      '^build',
+      'a#',
+      '#build',
+      'a#^b',
+      'build ',
+      'b*',
+      '--force#build',
+      'a #b',
+      '^a#b',
+    ])
       expect(refusal({ pr: { tasks: [bad] } })).toContain('`pipelines.pr.tasks` names')
     expect(refusal({ pr: { tasks: ['build', 'a#build', '@s/a#test'] } })).toBeUndefined()
     // Its `env` and a key both setting one setting: the variable silently won.
@@ -61,6 +71,13 @@ describe('pipelines in .vx/workspace', () => {
       'ws.ts: `pipelines.pr.env.VX_RUN_RETRIES` sets what `pipelines.pr.retries` sets: drop one',
     )
     expect(refusal({ pr: { tasks: ['a'], env: { VX_RUN_RETRIES: '2' } } })).toBeUndefined()
+    // A key that saves no flag, or a value that sets nothing, is no second say.
+    expect(
+      refusal({ pr: { tasks: ['a'], failFast: false, env: { VX_RUN_FAIL_FAST: 'true' } } }),
+    ).toBeUndefined()
+    expect(
+      refusal({ pr: { tasks: ['a'], retries: 1, env: { VX_RUN_RETRIES: '' } } }),
+    ).toBeUndefined()
     expect(refusal(['pr'])).toContain('`pipelines` must be an object')
   })
 
@@ -200,7 +217,8 @@ describe('vx pipeline <name>', () => {
       expect([r.code, r.err]).toEqual([0, ''])
     } finally {
       cwd = ''
-      process.env['VX_CACHE_DIR'] = dir
+      if (dir === undefined) delete process.env['VX_CACHE_DIR']
+      else process.env['VX_CACHE_DIR'] = dir
     }
     expect(existsSync(path.join(root, 'saved-cache'))).toBe(true)
     expect(existsSync(path.join(root, 'saved.json'))).toBe(true)
@@ -241,7 +259,8 @@ describe('vx pipeline <name>', () => {
       const plan = JSON.parse(r.out) as { tasks: { cacheStatus: string }[] }
       expect(plan.tasks.map((t) => t.cacheStatus)).toEqual(['no-cache'])
     } finally {
-      process.env['VX_CACHE_DIR'] = dir
+      if (dir === undefined) delete process.env['VX_CACHE_DIR']
+      else process.env['VX_CACHE_DIR'] = dir
     }
   }, 30_000)
 
@@ -249,7 +268,7 @@ describe('vx pipeline <name>', () => {
   it('names the key behind a refused saved flag', async () => {
     const r = await vx('pipeline', 'base')
     expect([r.code, r.err]).toEqual([1, expect.stringContaining('--affected has no base here')])
-    expect(r.err).toContain('--affected is `pipelines.base.affected` in .vx/workspace')
+    expect(r.err).toContain('--affected is `pipelines.base.affected` in .vx/workspace\n')
     const typed = await vx('pipeline', 'check', '--affected')
     expect(typed.err).toContain('--affected has no base here')
     expect(typed.err).not.toContain('`pipelines.')

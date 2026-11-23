@@ -314,10 +314,16 @@ function validatePipelines(value: unknown, configPath: string): void {
           `${field('tasks')} names ${JSON.stringify(t)}: it ${why}; name a task, or 'pkg#task'`,
         )
     }
-    // A variable its `env` sets for a key's setting silently beat the key.
+    // A variable its `env` sets for a key's setting silently beat the key
+    // (a `false` key or an empty value sets nothing).
     for (const n of Object.keys(plainObject(p['env']) ? p['env'] : {})) {
       const key = Object.entries(PIPELINE_FLAGS).find(
-        ([k, f]) => f.setting !== undefined && p[k] !== undefined && envName(f.setting) === n,
+        ([k, f]) =>
+          f.setting !== undefined &&
+          p[k] !== undefined &&
+          p[k] !== false &&
+          envName(f.setting) === n &&
+          (p['env'] as Record<string, unknown>)[n] !== '',
       )?.[0]
       if (key !== undefined)
         throw new UserError(
@@ -1981,6 +1987,16 @@ function assertTaskName(name: string, configPath: string): void {
 function pipelineTaskProblem(spec: string): string | null {
   const at = spec.indexOf('#')
   if (at === 0) return "has no project before '#'"
+  if (at > 0) {
+    const project = spec.slice(0, at)
+    const why =
+      project.trim() !== project
+        ? 'has surrounding whitespace'
+        : project.startsWith('-')
+          ? "starts with '-', which the CLI reads as a flag"
+          : projectNameProblem(project)
+    if (why !== null) return `has a project that ${why}`
+  }
   const why = taskNameProblem(spec.slice(at + 1))
   return why === null ? null : at === -1 ? why : `has a task that ${why}`
 }
