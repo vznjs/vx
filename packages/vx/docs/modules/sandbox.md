@@ -252,6 +252,10 @@ export function initSandbox(opts?: {
   allowAllUnixSockets?: boolean // some task asks; the lift is set per task's wrap
 }): Promise<void>
 export function resetSandbox(): Promise<void>
+// `vx lock`: the first task whose network entry the runtime would refuse, named, or undefined
+export function networkPatternRefusal(
+  projects: Iterable<{ name: string; config: ProjectConfig }>,
+): Promise<string | undefined>
 // why sandboxed tasks run untraced (no observer and no working strace), or null; `vx info` says it
 export function untracedReason(): Promise<string | null>
 

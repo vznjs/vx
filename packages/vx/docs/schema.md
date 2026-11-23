@@ -1961,10 +1961,11 @@ mounting, so a file grant stays exact there. Pinned in
 **A `network` entry is a host pattern**: `example.com`, `*.example.com`,
 either with a port (`example.com:443`), or `localhost`. A scheme or path
 (`https://example.com`), a dotless host, a bad port, and `*` or `*.com`
-(too broad) refuse the run with the entry named; `deny.network` also
+(too broad) are refused by `vx lock`, naming the task and the entry; `deny.network` also
 takes a bare `*` (deny all, `*:22` for one port). Until 2026-10-02 such an
 entry matched nothing with no word, and an allowed `*` opened every host
-to every sandboxed task of the run.
+to every sandboxed task of the run; until 2026-11-23 the lock took it and
+the run refused it, failing every sandboxed task of the run, naming none.
 
 **A server on this machine is `localhost:<port>`.** A sandboxed client
 of a server another task runs (an e2e against `vite preview`) grants

@@ -24,6 +24,7 @@ import {
   hasHook,
   ignoredConfigRefusal,
   loadProjects,
+  networkPatternRefusal,
 } from '../orchestrator/index.js'
 import { resolveSetting, runRules } from '../settings.js'
 import {
@@ -297,6 +298,8 @@ async function audit(root: string, warn: (message: string) => void): Promise<Gra
     out.loaded = true
     out.dependencies = await dependenciesOf(root, out.all, plugins, cacheDir, warn)
     checkBracketLiterals(root, projects.values())
+    const badNetwork = await networkPatternRefusal(projects.values())
+    if (badNetwork !== undefined) throw new UserError(badNetwork, 'VX_E_LOCK')
     const names = new Set<string>()
     for (const entry of projects.values()) {
       const tasks = Object.entries(entry.config.tasks ?? {})

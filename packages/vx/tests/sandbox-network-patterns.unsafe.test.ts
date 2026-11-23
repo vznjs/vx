@@ -4,6 +4,11 @@
 // every host to every sandboxed task of the run. Refused now; and the
 // refusal, the first thrown past the Linux probe, left the runtime up, so
 // the process hung after the summary (2026-10-02).
+//
+// That check judged the union of the run's sandboxed tasks as the sandbox
+// started: one task's bad entry failed every sandboxed task of the run, each
+// with the same line naming none of them, after `vx lock` had passed the
+// config. `vx lock` refuses it now, naming the task (2026-11-23).
 import { realpathSync } from 'node:fs'
 import { rm } from 'node:fs/promises'
 import path from 'node:path'
@@ -12,6 +17,7 @@ import { sandboxAvailable } from './helpers/sandbox-gate.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 
 const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
+const LOCK = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 const available = await sandboxAvailable('sandbox network patterns test')
 const TIMEOUT = 30_000
 
@@ -45,17 +51,44 @@ describe.skipIf(!available)('a network entry SRT does not take', () => {
   }
 
   const refusal = (entry: string) =>
-    `[vx] app#t: sandbox: ${entry} is not a host pattern: name a host ("example.com"), a ` +
+    `  app#t exec.sandbox: ${entry} is not a host pattern: name a host ("example.com"), a ` +
     `subdomain wildcard ("*.example.com") or either with a port ("example.com:443"); no ` +
     `scheme or path, and "*" or "*.com" is refused as too broad (a bare "*" only in deny)`
 
   it(
-    'a URL is refused, named, and the run exits',
+    'a URL is refused by vx lock, named, and nothing runs',
     async () => {
       expect(await vx(`{ allow: { network: ['https://example.com', 'example.org'] } }`)).toEqual({
         code: 1,
         said: refusal('allow.network "https://example.com"'),
       })
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'vx lock names the task whose entry is refused, not its siblings',
+    async () => {
+      await addProject(root, 'app', {
+        config: `export default { tasks: {
+          ok: { exec: { command: 'true', sandbox: { allow: { read: ['.'] } } } },
+          t: { exec: { command: 'true', sandbox: { deny: { network: ['https://x.example'] } } } },
+        } }\n`,
+      })
+      const p = Bun.spawn([process.execPath, LOCK, 'lock'], {
+        cwd: root,
+        env: { ...process.env, NO_COLOR: '1' },
+        stdout: 'pipe',
+        stderr: 'pipe',
+      })
+      const [out, err, code] = await Promise.all([
+        new Response(p.stdout).text(),
+        new Response(p.stderr).text(),
+        p.exited,
+      ])
+      expect(code).toBe(1)
+      expect(`${out}${err}`).toContain(refusal('deny.network "https://x.example"'))
+      expect(`${out}${err}`).not.toContain('app#ok')
     },
     TIMEOUT,
   )
