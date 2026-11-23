@@ -1,5 +1,5 @@
 ---
-title: DTE server
+title: Distributed task execution server
 description: Host @vzn/vx-dte-server, the relay where a Distributed task execution run meets its workers, on Workers, Bun or Docker.
 ---
 
@@ -8,7 +8,7 @@ import { dteRun } from '../../../../components/docs/pictures.js'
 import { Aside, Tabs, TabItem, Steps } from '@astrojs/starlight/components'
 import { Levels, Deeper, Concept, Quiz, Walkthrough, Frame, Takeaway, NextStep } from '../../../../components/learn'
 
-[Distributed task execution](../../distributed-task-execution/) spreads one `vx run` over many CI machines. They meet at a relay you host:
+The Distributed task execution server, or DTE server, is the relay where one `vx run` meets its workers on other CI machines. You host it:
 
 ```sh
 bunx @vzn/vx-dte-server --port 8080
@@ -19,8 +19,8 @@ bunx @vzn/vx-dte-server --port 8080
 <Diagram {...dteRun} />
 
 <Concept term="Relay">
-  A server that passes messages between machines that cannot reach each other. CI runners accept no
-  incoming connection, so the run and its workers all connect out to the relay.
+  A small server that passes messages between your run and its workers. It reads nothing it passes:
+  every message is encrypted end to end. CI machines all dial out to it.
 </Concept>
 
 The relay stores nothing, keeps no secret and cannot read what it passes: the run and its workers encrypt it. Files never go through it; they go through your [remote cache](../../remote-cache/).
@@ -129,7 +129,9 @@ curl https://relay.example.com/v1/sessions/$(uuidgen)/socket
 {"error":"no bearer token"}
 ```
 
-A refusal that says why: the relay is up. One with an empty `ALLOW` says `this relay's ALLOW is empty: it admits no run` instead.
+A refusal that says why: the relay is up.
+
+On Cloudflare, an empty `ALLOW` answers `this relay's ALLOW is empty: it admits no run` instead. The Bun relay does not start without one.
 
 </Frame>
 <Frame title="2. Name the relay">
@@ -153,6 +155,15 @@ vx:
     VX_DTE_TOKEN:
       aud: https://relay.example.com
 ```
+
+</Frame>
+<Frame title="4. Push: workers take tasks">
+
+```ansi title="the end of the run"
+  [2mworkers [0m  [38;2;96;165;250mlinux.cpu4[0m[2m#[0m[38;2;167;139;250m1[0m  stopped  2 done · warm-up 0.1s · @demo/ui#build, @demo/web#build
+```
+
+Read the **workers** line: worker `linux.cpu4#1` joined through the relay and ran 2 tasks.
 
 </Frame>
 </Walkthrough>
@@ -235,7 +246,13 @@ The Bun relay names what is missing and stops:
 | subprotocol | `switchboard.v1` |
 | auth | the job's CI token, as a bearer token |
 
-To mount the relay in your own server, `createRelay()` returns a `fetch` handler, `serveRelay()` serves it on `Bun.serve`, and `createVerifier()` checks CI tokens against `parseAllow(ALLOW)`.
+To mount the relay in your own server:
+
+| Function | Does |
+| --- | --- |
+| `createRelay()` | returns a `fetch` handler |
+| `serveRelay()` | serves it on `Bun.serve` |
+| `createVerifier()` | checks CI tokens against `parseAllow(ALLOW)` |
 
 The [README](https://github.com/vznjs/vx/tree/main/packages/vx-dte-server#api) lists the whole API.
 
