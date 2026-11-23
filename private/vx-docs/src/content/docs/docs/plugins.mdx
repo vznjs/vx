@@ -257,17 +257,17 @@ one changes ([Write a plugin](../writing-plugins/)).
 | [`@vzn/vx-lockfile`](../../plugins/vx-lockfile/) | `discover`, `project`, `fingerprint`, `key` | `pnpm()`, `bun()`, `npm()`, `yarn()`: [Lockfiles](../lockfiles/) |
 | [`@vzn/vx-cache`](../../plugins/vx-cache/) | `cache` | `vxCache()`: a [remote cache](../remote-cache/) on your cache server |
 | [`@vzn/vx-otel`](../../plugins/vx-otel/) | `telemetry` | `otel()`: [traces, metrics and logs](#opentelemetry) |
-| [`@vzn/vx-ci`](../../plugins/vx-ci/) | `config`, `telemetry`, `commands` | `github()`, `gitlab()`: [CI](../ci/) summaries and branch caches |
-| [`@vzn/vx-dte`](../distributed-task-execution/) | `executor`, `commands` | `dte()`: [Distributed task execution](../distributed-task-execution/) |
-| [`@vzn/vx-history`](../../plugins/vx-history/) | `schedule`, `admit`, `commands` | `vxHistory()`: slow tasks first, memory-aware packing |
-| [`@vzn/vx-reapi`](../../plugins/vx-reapi/) | `cache`, `executor` | `reapi()`: [Remote cache](../remote-cache/) and [Remote execution](../remote-execution/) on a Bazel server |
-| [`@vzn/vx-migrate`](../../plugins/vx-migrate/) | `config`, `discover`, `project`, `fingerprint` (`turbo()`, `nx()`), `cache` (`turboCache()`, `nxCache()`) | [Migrate](../migrate/) from Turbo or Nx |
+| [`@vzn/vx-ci`](../../plugins/vx-ci/) | `config`, `telemetry` (`github()`), `commands` | `github()`, `gitlab()`: [CI](../ci/) summaries and branch caches |
+| [`@vzn/vx-dte`](../distributed-task-execution/) | `config`, `measures`, `schedule`, `executor`, `setup`, `teardown`, `commands` | `dte()`: [Distributed task execution](../distributed-task-execution/) |
+| [`@vzn/vx-history`](../../plugins/vx-history/) | `schedule`, `admit`, `setup`, `teardown`, `commands` | `vxHistory()`: slow tasks first, memory-aware packing |
+| [`@vzn/vx-reapi`](../../plugins/vx-reapi/) | `executor`, `cache`, `teardown` | `reapi()`: [Remote cache](../remote-cache/) and [Remote execution](../remote-execution/) on a Bazel server |
+| [`@vzn/vx-migrate`](../../plugins/vx-migrate/) | `config`, `discover`, `project`, `fingerprint` (`turbo()`, `nx()`), `cache` (`turboCache()`, `nxCache()`), `teardown` (`turboCache()`) | [Migrate](../migrate/) from Turbo or Nx |
 | [`@vzn/vx-cache-server`](../../plugins/vx-cache-server/) | none | the [cache server](../servers/cache/) you host |
 | [`@vzn/vx-history-server`](../../plugins/vx-history-server/) | none | the [history server](../servers/history/) `vxHistory()` reads |
 | [`@vzn/vx-dte-server`](../servers/dte/) | none | the relay `dte()` meets its workers at |
 | [`@vzn/vx-devtools`](../../plugins/vx-devtools/) | none | the CI token check the servers share |
 
-One plugin can fill several: `@vzn/vx-history` fills three at once.
+One plugin can fill several: `@vzn/vx-dte` fills seven at once.
 
 <Aside type="tip" title="Each package's full guide">
   Every package has its own page under [Plugins](../../plugins/vx-ci/) in the sidebar.

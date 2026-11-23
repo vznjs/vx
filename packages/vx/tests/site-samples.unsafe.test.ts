@@ -1337,17 +1337,58 @@ describe.each(['pnpm', 'bun'])(
 )
 
 describe('the plugins guide rosters every hook a shipped plugin fills', () => {
-  it('@vzn/vx-history is named on all three of its hooks', () => {
-    const src = readFileSync(
-      path.resolve(import.meta.dir, '..', '..', 'vx-history', 'src', 'index.ts'),
-      'utf8',
-    )
-    for (const hook of ['async schedule(', 'hooks.admit =', 'commands: {']) {
-      expect(src).toContain(hook)
+  // The column named three of vx-dte's seven hooks and none of the setup,
+  // teardown or measures several fill. Each factory is called, under the
+  // env and options that make it answer, and the keys it returns are its row.
+  it("each row's hooks are every hook its factories return, and no other", async () => {
+    const pkg = (name: string): Promise<Record<string, (o?: unknown) => unknown>> =>
+      import(path.resolve(import.meta.dir, '..', '..', name, 'src', 'index.ts'))
+    const ci = {
+      GITHUB_ACTIONS: process.env['GITHUB_ACTIONS'],
+      GITLAB_CI: process.env['GITLAB_CI'],
     }
-    const page = readFileSync(path.join(DOCS, 'docs', 'plugins.mdx'), 'utf8').replace(/\s+/g, ' ')
-    expect(page).toContain('`@vzn/vx-history` fills three at once')
-    for (const hook of ['`schedule`', '`admit`', '`commands`']) expect(page).toContain(hook)
+    process.env['GITHUB_ACTIONS'] = 'true'
+    process.env['GITLAB_CI'] = 'true'
+    const oidc = { issuer: 'https://token.actions.githubusercontent.com', repository: 'a/b' }
+    const lockfile = await pkg('vx-lockfile')
+    const migrate = await pkg('vx-migrate')
+    const dte = await pkg('vx-dte')
+    const ciPkg = await pkg('vx-ci')
+    const made: Record<string, unknown[]> = {
+      '@vzn/vx-lockfile': ['pnpm', 'bun', 'npm', 'yarn'].map((f) => lockfile[f]!()),
+      '@vzn/vx-cache': [(await pkg('vx-cache'))['vxCache']!({ url: 'https://c.dev', ...oidc })],
+      '@vzn/vx-otel': [(await pkg('vx-otel'))['otel']!()],
+      '@vzn/vx-ci': [ciPkg['github']!(), ciPkg['gitlab']!()],
+      '@vzn/vx-dte': [
+        dte['dte']!({
+          relay: 'https://r.dev',
+          adapter: dte['local']!(),
+          workers: { linux: { machines: { s: { cpu: 2, memory: '8GB', max: 1 } } } },
+        }),
+      ],
+      '@vzn/vx-history': [(await pkg('vx-history'))['vxHistory']!()],
+      '@vzn/vx-reapi': [(await pkg('vx-reapi'))['reapi']!({ endpoint: 'grpc://localhost:1' })],
+      '@vzn/vx-migrate': ['turbo', 'nx', 'turboCache', 'nxCache'].map((f) => migrate[f]!()),
+    }
+    for (const [k, v] of Object.entries(ci)) {
+      if (v === undefined) delete process.env[k]
+      else process.env[k] = v
+    }
+    const page = readFileSync(path.join(DOCS, 'docs', 'plugins.mdx'), 'utf8')
+    const section = /## Plugins that ship\n([\s\S]*?)\n## /.exec(page)![1]!
+    const rows: Record<string, string[]> = {}
+    for (const m of section.matchAll(/^\| \[?`(@vzn\/[\w-]+)`[^|]*\| ([^|]*) \|/gm)) {
+      const named = [...m[2]!.matchAll(/`(\w+)`/g)].map((n) => n[1]!)
+      rows[m[1]!] = named.filter((h) => (PLUGIN_HOOKS as readonly string[]).includes(h)).sort()
+    }
+    const filled: Record<string, string[]> = {}
+    for (const [name, plugins] of Object.entries(made)) {
+      const hooks = new Set<string>()
+      for (const p of plugins as Record<string, unknown>[])
+        for (const k of Object.keys(p)) if (k !== 'name' && p[k] !== undefined) hooks.add(k)
+      filled[name] = [...hooks].sort()
+    }
+    expect(Object.fromEntries(Object.keys(made).map((n) => [n, rows[n]]))).toEqual(filled)
   })
   // An install of any plugin answered 404 while the guide told readers to
   // run one (J-92); the note's count is every public package but core.
