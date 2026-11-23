@@ -1389,6 +1389,9 @@ vx run build lint --affected=main --dry
   [2mpredicted[0m  [38;2;203;213;225m~23ms wall · ~23ms total execution · 1 task never timed (+?)[0m
 ```
 
+On a terminal too narrow for a reason beside its row, the reason goes on
+its own line under the row.
+
 `kind` is `input` (a changed `file` is a declared input), `project` (its
 project changed and the task reads it whole: a task with no `inputs`, or a
 changed `file` no task of the project declares, often an output git does not

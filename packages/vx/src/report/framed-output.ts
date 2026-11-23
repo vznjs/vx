@@ -672,7 +672,7 @@ export function planList(rows: readonly PlannedRow[]): ui.Block {
   return {
     head: formatRunningHeader,
     lines: (c) =>
-      rows.map((r) => {
+      rows.flatMap((r) => {
         const usual =
           r.usualMs === undefined
             ? undefined
@@ -696,7 +696,17 @@ export function planList(rows: readonly PlannedRow[]): ui.Block {
             worker: r.worker,
           },
         )
-        return r.note === '' ? row : `${row}  ${paint('muted', r.note, c)}`
+        if (r.note === '') return [row]
+        // A terminal too narrow for the reason beside the row (an `--affected`
+        // chain runs past 130 columns) wraps it into the next row: it goes on
+        // its own line, under the task's name where it fits there, else at the
+        // gutter, where a field's value starts. Off a terminal it stays beside.
+        const width = Bun.stringWidth(Bun.stripANSI(row))
+        if (c.columns === undefined || width + 2 + Bun.stringWidth(r.note) <= c.columns)
+          return [`${row}  ${paint('muted', r.note, c)}`]
+        const name = width - Bun.stringWidth(r.node.id)
+        const under = name + Bun.stringWidth(r.note) <= c.columns ? name : GUTTER
+        return [row, `${' '.repeat(under)}${paint('muted', r.note, c)}`]
       }),
   }
 }
