@@ -12,6 +12,7 @@ import path from 'node:path'
 import { gitTop, workspaceFileWritten } from '../handoff.js'
 import { flagHint, formatValue, refuse, seeHelp } from './help.js'
 import { lockAfterMigration } from './lock.js'
+import { migrateHint } from './select.js'
 import { loadCliWorkspace } from './workspace-config.js'
 import { resolveSetting } from '../settings.js'
 import { PLUGIN_TEMPLATES } from './plugin-templates.js'
@@ -692,11 +693,6 @@ async function migrate(dirs: readonly string[], args: InitArgs): Promise<number>
     // A compiled vx is a Bun runtime only when told so.
     env: isCompiledBinary() ? { ...process.env, BUN_BE_BUN: '1' } : process.env,
   }).exited
-}
-
-/** The line that sends a scripts workspace to vx-migrate, at this vx's version: `bun x` may answer a bare name from its cache. */
-export function migrateHint(mjs: boolean, running = VERSION): string {
-  return `bunx @vzn/vx-migrate${running === '0.0.0' ? '' : `@${running}`}${mjs ? ' --mjs' : ''}`
 }
 
 export function migrateCommand(

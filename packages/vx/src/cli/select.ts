@@ -5,6 +5,7 @@
 
 import path from 'node:path'
 import { settingEnv } from '../settings.js'
+import { VERSION } from '../version.js'
 import fs from 'node:fs'
 import {
   affectedChanges,
@@ -704,9 +705,13 @@ interface PickedTask {
   description?: string
 }
 
-/** What a workspace with no task yet says, picker or not. */
-export const NO_TASKS_DECLARED =
-  'no tasks declared in any project. Declare one under `tasks` in a vx.config, or run `vx init` to write them from package.json scripts, then `vx lock`'
+/** The line that sends a scripts workspace to vx-migrate, at this vx's version: `bun x` may answer a bare name from its cache. */
+export function migrateHint(mjs: boolean, running = VERSION): string {
+  return `bunx @vzn/vx-migrate${running === '0.0.0' ? '' : `@${running}`}${mjs ? ' --mjs' : ''}`
+}
+
+/** What a workspace with no task yet says, picker or not: `vx init` writes no task, so the scripts route is vx-migrate's. */
+export const NO_TASKS_DECLARED = `no tasks declared in any project. Declare one under \`tasks\` in a vx.config, then run \`vx lock\`; or run \`${migrateHint(false)}\` to make them from package.json scripts`
 
 /**
  * The task the user picks from a numbered menu; null when nothing was

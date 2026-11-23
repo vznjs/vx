@@ -79,7 +79,7 @@ describe('vx run interactive picker', () => {
     expect(await pick(root, { input: new PassThrough(), output })).toBeNull()
     expect(stderr).toBe(
       noticed(
-        'vx run: no tasks declared in any project. Declare one under `tasks` in a vx.config, or run `vx init` to write them from package.json scripts, then `vx lock`\n',
+        'vx run: no tasks declared in any project. Declare one under `tasks` in a vx.config, then run `vx lock`; or run `bunx @vzn/vx-migrate` to make them from package.json scripts\n',
       ),
     )
   })
