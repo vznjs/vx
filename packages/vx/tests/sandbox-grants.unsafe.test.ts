@@ -1218,19 +1218,30 @@ describe.skipIf(!available || process.platform !== 'linux')(
     )
 
     it(
-      'fails, naming the file, when no grant shows the directory and the write is left there',
+      'lands it when no grant shows the directory, and reports a read there',
       async () => {
-        // No read grant shows the project directory, so `*.log` is the deny
-        // anchor's scratch, kept for a tool's temp directory; `out.log` is
-        // left there and goes with the sandbox, so it is reported.
-        await project('echo hi > out.log; mkdir -p dist; echo d > dist/x', '*.log', 'src/')
+        // No read grant shows the project directory. `*.log` was the deny
+        // anchor's scratch, and `out.log`, a declared output, failed the task
+        // as a write gone with the sandbox (conformance
+        // sandbox/root-glob-output-passes). The task's own directory is bound
+        // for the glob now, and what was there is judged as a widened grant's.
+        const dir = await project(
+          'echo hi > out.log; mkdir -p dist; echo d > dist/x',
+          '*.log',
+          'src/',
+        )
+        const ok = await run({
+          cwd: fixture.root,
+          tasks: ['build'],
+          log: collectingLogger(fixture),
+        })
+        expectOk(ok, fixture)
+        expect(await readFile(path.join(dir, 'out.log'), 'utf8')).toBe('hi\n')
+
+        await project('echo hi > out.log; cat package.json > dist/x', '*.log', 'src/')
         const r = await run({ cwd: fixture.root, tasks: ['build'], log: collectingLogger(fixture) })
         expect(r.outcomes[0]?.status).toBe('failed')
-        expect(
-          r.outcomes[0]?.sandbox?.lines?.some(
-            (l) => l.includes('out.log') && l.includes("sandbox's scratch"),
-          ),
-        ).toBe(true)
+        expect(r.outcomes[0]?.sandbox?.lines?.some((l) => l.includes('package.json'))).toBe(true)
       },
       TIMEOUT,
     )

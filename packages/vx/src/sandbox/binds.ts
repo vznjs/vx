@@ -3,7 +3,7 @@
 // a read grant punched around the write grants inside it, the network
 // lists SRT insists on receiving in full.
 
-import { lstatSync, readdirSync, readlinkSync, statSync } from 'node:fs'
+import { lstatSync, mkdirSync, readdirSync, readlinkSync, statSync } from 'node:fs'
 import path from 'node:path'
 import {
   atOrUnder,
@@ -248,18 +248,33 @@ export const globDir = (glob: string): string => path.dirname(glob.slice(0, wild
  * there the glob does not cover is judged as one under a widened grant
  * (`refusedWrites`). A directory holding a wall never reaches here
  * (`wallOff` drops its glob).
+ *
+ * In the task's own directory the glob's directory is bound whether or not
+ * a read grant shows it, and made first when missing: an output `*.js` at
+ * the project root, `dist/*.js` before `dist` exists, or a recursive one,
+ * fell into the scratch and failed the task as a write gone with the
+ * sandbox (conformance sandbox/root-glob-output-passes). What was there
+ * at the start is judged as a widened grant's is: a read of it no grant
+ * covers is a violation (`parseStraceViolations`).
  */
 function punchedWriteGlobs(
   globs: readonly string[],
   shown: readonly string[],
   writeBinds: readonly string[],
+  own?: string,
 ): Map<string, string[]> {
   const out = new Map<string, string[]>()
   if (process.platform !== 'linux') return out
   for (const glob of globs) {
     const dir = globDir(glob)
-    if (!shown.some((r) => atOrUnder(dir, r)) || writeBinds.some((b) => atOrUnder(dir, b))) continue
+    const mine = own !== undefined && atOrUnder(dir, own)
+    if (
+      (!mine && !shown.some((r) => atOrUnder(dir, r))) ||
+      writeBinds.some((b) => atOrUnder(dir, b))
+    )
+      continue
     try {
+      if (mine) mkdirSync(dir, { recursive: true })
       if (!statSync(dir).isDirectory()) continue
     } catch {
       continue
@@ -511,6 +526,8 @@ export function buildCustomConfig(
   baselines: {
     allowRead: readonly string[]
     denyRead: readonly string[]
+    /** The task's directory: a write glob's directory in it is bound even unshown. */
+    cwd?: string
   },
 ): TaskSandboxConfig {
   const c = args.config
@@ -534,7 +551,9 @@ export function buildCustomConfig(
     )
   }
   let allowRead = unique(reads.flatMap((r) => punchWritePaths(r, punched, reachable)))
-  const split = [...punchedWriteGlobs(c.writeGlobs ?? [], c.allowRead, allowWrite).keys()]
+  const split = [
+    ...punchedWriteGlobs(c.writeGlobs ?? [], c.allowRead, allowWrite, baselines.cwd).keys(),
+  ]
   if (split.length > 0) {
     allowWrite.push(...split)
     punched.push(...split)

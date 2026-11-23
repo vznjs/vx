@@ -397,7 +397,8 @@ async function wrapIn(
               ? undefined
               : { observer }
             : args.trace,
-          args.tracePaths === true,
+          // A glob's directory bound for it is judged as a widened grant's.
+          args.tracePaths === true || globsHeld.dirs.length > 0,
         )
       : { command: taggedCommand, forwards: false, traced: false, trace: undefined }
   // The tag leads: SRT keys a record by the wrap's first 100 characters,
@@ -1018,9 +1019,12 @@ async function attemptDenials(
     process.platform === 'linux'
       ? [
           ...(trace.length > 0
-            ? await parseStraceViolations({ text: trace }, args, baselines, prepared.widened).catch(
-                () => [],
-              )
+            ? await parseStraceViolations(
+                { text: trace },
+                args,
+                baselines,
+                prepared.heldEntries,
+              ).catch(() => [])
             : []),
           ...refusedWrites(
             // Keyed by what SRT wrapped, the in-sandbox group wrapper

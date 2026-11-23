@@ -1881,7 +1881,13 @@ newline) is refused at load on every platform: the Linux report of a
 write spells a tab as a space, so a write the grant covers read as a
 violation of `a b`, and a refused write to `a b` would read the same.
 
-A Linux WRITE glob's directory that no read grant shows is not bound.
+A Linux WRITE glob's directory in the task's own directory is bound
+writable, made first when missing (`*.js` at the project root,
+`dist/*.js` before `dist` exists, `dist/**/*.js`), and judged as a
+widened file grant's directory is (below): a read or write there that no
+grant covers is a violation. Until 2026-11-23 it was bound only where a
+read grant showed it, and a new match failed the task.
+Elsewhere, a glob's directory that no read grant shows is not bound.
 Where the host's read-only root holds it (outside the workspace), or
 binding it would make a nested project or `.git` writable (`*.log` in a
 root project), a glob matching nothing at the start mounts nothing: the

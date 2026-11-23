@@ -1,6 +1,6 @@
 {
   "coverage": {
-    "ported": 398,
+    "ported": 400,
     "rest": {
       "pending": [
         "affected-config-tasks",
@@ -209,7 +209,6 @@
         "sandbox-arg-too-long.unsafe",
         "sandbox-canary-home.unsafe",
         "sandbox-deny-scan",
-        "sandbox-empty-grant-spelling.unsafe",
         "sandbox-fd-records",
         "sandbox-git-discovery.unsafe",
         "sandbox-hint",
@@ -233,7 +232,6 @@
         "sandbox-unchecked-rewriter.unsafe",
         "sandbox-violation-secret-mask.unsafe",
         "sandbox-weaker-nested.unsafe",
-        "sandbox-write-glob-new-file.unsafe",
         "schedule-refine",
         "schedule-strategy",
         "scoped-config-loading",
@@ -993,14 +991,14 @@
   "scores": {
     "vx": {
       "all": {
-        "pass": 2108,
-        "can": 2108,
-        "of": 2183
+        "pass": 2112,
+        "can": 2112,
+        "of": 2187
       },
       "correctness": {
-        "pass": 1696,
-        "can": 1696,
-        "of": 1763
+        "pass": 1700,
+        "can": 1700,
+        "of": 1767
       },
       "efficiency": {
         "pass": 323,
@@ -1058,9 +1056,9 @@
         "of": 90
       },
       "sandbox": {
-        "pass": 136,
-        "can": 136,
-        "of": 136
+        "pass": 140,
+        "can": 140,
+        "of": 140
       },
       "watch": {
         "pass": 124,
@@ -1072,12 +1070,12 @@
       "all": {
         "pass": 1380,
         "can": 1789,
-        "of": 2183
+        "of": 2187
       },
       "correctness": {
         "pass": 1109,
         "can": 1445,
-        "of": 1763
+        "of": 1767
       },
       "efficiency": {
         "pass": 241,
@@ -1137,7 +1135,7 @@
       "sandbox": {
         "pass": 1,
         "can": 1,
-        "of": 136
+        "of": 140
       },
       "watch": {
         "pass": 105,
@@ -1149,12 +1147,12 @@
       "all": {
         "pass": 1379,
         "can": 1824,
-        "of": 2183
+        "of": 2187
       },
       "correctness": {
         "pass": 1069,
         "can": 1470,
-        "of": 1763
+        "of": 1767
       },
       "efficiency": {
         "pass": 280,
@@ -1214,7 +1212,7 @@
       "sandbox": {
         "pass": 0,
         "can": 1,
-        "of": 136
+        "of": 140
       },
       "watch": {
         "pass": 95,
@@ -1226,12 +1224,12 @@
       "all": {
         "pass": 1018,
         "can": 1378,
-        "of": 2183
+        "of": 2187
       },
       "correctness": {
         "pass": 856,
         "can": 1160,
-        "of": 1763
+        "of": 1767
       },
       "efficiency": {
         "pass": 153,
@@ -1291,7 +1289,7 @@
       "sandbox": {
         "pass": 1,
         "can": 1,
-        "of": 136
+        "of": 140
       },
       "watch": {
         "pass": 0,
@@ -1301,14 +1299,14 @@
     },
     "nix": {
       "all": {
-        "pass": 1085,
-        "can": 1370,
-        "of": 2183
+        "pass": 1088,
+        "can": 1374,
+        "of": 2187
       },
       "correctness": {
-        "pass": 930,
-        "can": 1177,
-        "of": 1763
+        "pass": 933,
+        "can": 1181,
+        "of": 1767
       },
       "efficiency": {
         "pass": 145,
@@ -1366,9 +1364,9 @@
         "of": 90
       },
       "sandbox": {
-        "pass": 93,
-        "can": 127,
-        "of": 136
+        "pass": 96,
+        "can": 131,
+        "of": 140
       },
       "watch": {
         "pass": 0,
@@ -1380,12 +1378,12 @@
       "all": {
         "pass": 1270,
         "can": 1725,
-        "of": 2183
+        "of": 2187
       },
       "correctness": {
         "pass": 1002,
         "can": 1409,
-        "of": 1763
+        "of": 1767
       },
       "efficiency": {
         "pass": 233,
@@ -1445,7 +1443,7 @@
       "sandbox": {
         "pass": 0,
         "can": 1,
-        "of": 136
+        "of": 140
       },
       "watch": {
         "pass": 0,
@@ -46787,6 +46785,151 @@
           "status": "fail",
           "step": 1,
           "detail": "succeeded, expected a failure"
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "moon keeps no task from files, network or home it never declared."
+        }
+      }
+    },
+    {
+      "id": "sandbox/root-glob-output-passes",
+      "ref": "flewmg",
+      "category": "sandbox",
+      "kind": "correctness",
+      "title": "An isolated task may write an output its `*.js` pattern at the project root matches",
+      "why": "Some builds write `index.js` beside `package.json`, and declare `*.js` as the output. The file it writes is exactly what the pattern names. A sandbox that cannot grant a pattern before any file matches it loses the output or fails the task.",
+      "from": [
+        "sandbox-write-glob-new-file.unsafe",
+        "sandbox-empty-grant-spelling.unsafe"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "Turborepo keeps no task from files, network or home it never declared."
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "Nx keeps no task from files, network or home it never declared."
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "Vite Task keeps no task from files, network or home it never declared."
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "moon keeps no task from files, network or home it never declared."
+        }
+      }
+    },
+    {
+      "id": "sandbox/file-glob-output-in-new-dir-passes",
+      "ref": "p1d2oq",
+      "category": "sandbox",
+      "kind": "correctness",
+      "title": "An isolated task may write an output its `dist/*.js` pattern matches in a folder it makes",
+      "why": "`dist/*.js` is a common output, and `dist` does not exist before the first build. The written file is what the pattern names. Refusing it because the folder had nothing to match when the task started breaks the first run.",
+      "from": [
+        "sandbox-write-glob-new-file.unsafe",
+        "sandbox-empty-grant-spelling.unsafe"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "Turborepo keeps no task from files, network or home it never declared."
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "Nx keeps no task from files, network or home it never declared."
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "Vite Task keeps no task from files, network or home it never declared."
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "moon keeps no task from files, network or home it never declared."
+        }
+      }
+    },
+    {
+      "id": "sandbox/deep-glob-output-passes",
+      "ref": "7kjw7e",
+      "category": "sandbox",
+      "kind": "correctness",
+      "title": "An isolated task may write an output its `dist/**/*.js` pattern matches in a nested folder",
+      "why": "A recursive pattern with an extension is how most builds name their JavaScript output. The file lies under `dist` and matches. A sandbox must grant what such a pattern can match, including folders the task makes.",
+      "from": [
+        "sandbox-write-glob-new-file.unsafe",
+        "sandbox-request"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "Turborepo keeps no task from files, network or home it never declared."
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "Nx keeps no task from files, network or home it never declared."
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "Vite Task keeps no task from files, network or home it never declared."
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "moon keeps no task from files, network or home it never declared."
+        }
+      }
+    },
+    {
+      "id": "sandbox/write-glob-grant-new-file-passes",
+      "ref": "4fvmqh",
+      "category": "sandbox",
+      "kind": "correctness",
+      "title": "An isolated task granted `logs/*.log` may create a new log file there",
+      "why": "A write grant by pattern is for files the task will make, not only ones that exist. The new file matches the pattern the user wrote. Refusing it makes a pattern grant useless for anything but rewriting old files.",
+      "from": [
+        "sandbox-write-glob-new-file.unsafe"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "Turborepo keeps no task from files, network or home it never declared."
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "Nx keeps no task from files, network or home it never declared."
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "Vite Task keeps no task from files, network or home it never declared."
+        },
+        "nix": {
+          "status": "fail",
+          "step": 1,
+          "detail": "exited 100, expected success"
         },
         "moon": {
           "status": "n/a",

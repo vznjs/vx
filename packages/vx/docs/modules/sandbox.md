@@ -1152,7 +1152,12 @@ task per spelling, each writing the files it declares:
 | `g/[ab].txt`  | same                                               |
 
 (`g/*` and its siblings ran with `read: ['.']`, which mounts `g`
-read-only.) That is the documented contract rather than a defect, but
+read-only.) A glob's directory in the task's own directory is bound now
+(`punchedWriteGlobs`, made first when missing), so each of these lands;
+what the directory held at the start is judged as a widened grant's
+(`heldEntries`, read by `parseStraceViolations`), and a directory the
+glob may still match beneath is no violation (`holdsMatchUnder`). The
+table holds outside it. That is the documented contract rather than a defect, but
 the failure names neither vx nor the grant, so `expandGrants` hands the
 grant over as `pendingWrites`, and `pendingWriteGrants` reports it —
 once per grant, before the task runs — and names the directory to grant

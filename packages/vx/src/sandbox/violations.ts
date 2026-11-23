@@ -6,7 +6,15 @@
 
 import { existsSync, lstatSync, statSync } from 'node:fs'
 import path from 'node:path'
-import { absolutize, atOrUnder, globOf, isUnderAny, localBindingOn, toRealPath } from './paths.js'
+import {
+  absolutize,
+  atOrUnder,
+  globOf,
+  isUnderAny,
+  localBindingOn,
+  toRealPath,
+  wildcardAt,
+} from './paths.js'
 import { bindableReads, bindableWrites } from './binds.js'
 import { printable } from '../util/index.js'
 import type { ResolvedSandboxConfig, SandboxViolation } from '../exec/index.js'
@@ -544,6 +552,10 @@ export async function parseStraceViolations(
   // on its own output. One a read bind holds is readable; one outside the
   // workspace, never reported.
   const pendingWrites = (args.config.pendingWrites ?? []).map(globOf)
+  // A miss where a write glob reaches is the task's own missing file, as
+  // a pending one's is: `cp a logs/new.log` under `logs/*.log` opens
+  // without `O_CREAT` first (conformance sandbox/write-glob-grant-new-file-passes).
+  const writeGlobs = (args.config.writeGlobs ?? []).map(globOf)
   const denyAnchors = baselines.denyRead.map((p) => toRealPath(absolutize(p)))
   const mounted = new Set([
     ...allowAbs,
@@ -604,6 +616,7 @@ export async function parseStraceViolations(
     // One the host has was made after the grant was listed, and is hidden.
     if (via === undefined && walledIn(abs) && !lstatSync(abs, { throwIfNoEntry: false })) continue
     if (underGlob(abs, pendingWrites)) continue
+    if (errno === 'ENOENT' && underGlob(abs, writeGlobs)) continue
     if (read === true && !undeclared(abs)) continue
     // A hidden path answers ENOENT, as a missing one does: a probe
     // (`./gen.sh || …`, `test -x`, a PATH walk) is a refusal only where
@@ -1073,6 +1086,11 @@ export function refusedWrites(
       else if (!(moveSource && syscall.startsWith('link'))) left.set(abs, { syscall, raw })
       continue
     }
+    // A directory a write glob may still match beneath is the way to its
+    // match: `mkdir -p dist/sub` for `dist/**/*.js` (conformance
+    // sandbox/deep-glob-output-passes).
+    if (bound && syscall.startsWith('mkdir') && scratch.some((g) => holdsMatchUnder(abs, g)))
+      continue
     if (bound && !undeclared(syscall, abs)) continue
     const moved = bound && MOVES.test(syscall)
     // A directory a write bind lies in exists, since bwrap made it to mount
@@ -1167,6 +1185,23 @@ function exists(p: string): boolean {
 }
 
 /** `p`, or a directory holding it, matches one of `globs`. */
+/** Whether absolute write glob `glob` can match a path strictly under directory `dir`. */
+function holdsMatchUnder(dir: string, glob: string): boolean {
+  const at = wildcardAt(glob)
+  if (at === -1) return false
+  const base = path.dirname(glob.slice(0, at + 1))
+  if (!atOrUnder(dir, base) || dir === base) return false
+  const rest = glob.slice(base.length + 1).split('/')
+  const segs = path.relative(base, dir).split(path.sep)
+  for (let i = 0; i < segs.length; i++) {
+    const seg = rest[i]
+    if (seg === undefined) return false
+    if (seg === '**') return true
+    if (!new Bun.Glob(seg).match(segs[i]!)) return false
+  }
+  return rest.length > segs.length
+}
+
 function underGlob(p: string, globs: readonly InstanceType<typeof Bun.Glob>[]): boolean {
   if (globs.length === 0) return false
   for (let at = p; ; at = path.dirname(at)) {

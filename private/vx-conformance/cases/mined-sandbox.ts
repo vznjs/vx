@@ -1692,14 +1692,12 @@ const network: Case[] = [
 
 const all = [...reads, ...deps, ...writes, ...temp, ...runs, ...network]
 
-/** Cases vx fails today, each a correct expectation: see the report that moved them here. */
-const PENDING = new Set([
-  'sandbox/root-glob-output-passes',
-  'sandbox/file-glob-output-in-new-dir-passes',
-  'sandbox/deep-glob-output-passes',
-  'sandbox/write-glob-grant-new-file-passes',
-  'sandbox/clean-and-rebuild-output-dir-passes',
-])
+/**
+ * Cases vx fails today, each a correct expectation. On Linux a write grant
+ * is a bind mount, and a mount point cannot be removed: `rm -rf dist` under
+ * `dist/` meets "Read-only file system" (vx names the fix in its hint).
+ */
+const PENDING = new Set(['sandbox/clean-and-rebuild-output-dir-passes'])
 
 export const pending: Case[] = all.filter((c) => PENDING.has(c.id))
 
