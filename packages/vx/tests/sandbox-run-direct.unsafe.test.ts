@@ -399,7 +399,10 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
     expect(a.tag).not.toBe(b.tag)
     // Then the task's own TMPDIR (item 965), after the tag.
     expect(a.taggedCommand.startsWith(`: 'vx-${a.tag}'; export TMPDIR=`)).toBe(true)
-    expect(a.taggedCommand).toMatch(new RegExp(`vx-task-${process.pid}-${a.tag}'?; echo hi$`))
+    // A host's TMP or TEMP follows TMPDIR there (sandbox-temp-vars).
+    expect(a.taggedCommand).toMatch(
+      new RegExp(`vx-task-${process.pid}-${a.tag}'?; (export TE?MP="\\$TMPDIR"; )*echo hi$`),
+    )
     releaseBridges(a.tag)
     releaseBridges(b.tag)
   })
