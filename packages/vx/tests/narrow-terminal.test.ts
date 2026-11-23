@@ -474,8 +474,11 @@ describe('help on a narrow terminal', () => {
     for (const text of [helpText(), verbHelpText('run')]) {
       for (const enabled of [false, true]) {
         const out = paintHelp(wrapHelp(text, columns), { enabled }, paint)
+        // A URL wider than the terminal stays whole, alone on its line:
+        // split, it would no longer open.
         for (const l of out.split('\n'))
-          expect(Bun.stringWidth(l)).toBeLessThanOrEqual(Math.min(columns, 80))
+          if (words(l).length > 1 || !/^\(?https?:/.test(words(l)[0] ?? ''))
+            expect(Bun.stringWidth(l)).toBeLessThanOrEqual(Math.min(columns, 80))
         expect(words(out)).toEqual(words(text))
       }
     }
