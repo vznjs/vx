@@ -1,9 +1,9 @@
 ---
-// The running pages' story workspace: `@demo/web` and `@demo/docs` both
+// The running pages' story workspace: `@demo/web` and `@demo/admin` both
 // use `@demo/ui`. One drawing, drawn at build time; a page passes which
 // projects a command picks, and which one a change touched, so each Tabs
 // item shows one answer. Small enough to read at phone width unscaled.
-type Name = 'web' | 'docs' | 'ui'
+type Name = 'web' | 'admin' | 'ui'
 
 interface Props {
   /** The projects the command runs in. */
@@ -19,13 +19,13 @@ const { picked, changed, label, caption } = Astro.props
 const BOX = { w: 116, h: 40 }
 const at: Record<Name, { x: number; y: number }> = {
   web: { x: 14, y: 12 },
-  docs: { x: 190, y: 12 },
+  admin: { x: 190, y: 12 },
   ui: { x: 102, y: 108 },
 }
 const tone = (n: Name) => (picked.includes(n) ? 'accent' : 'muted')
 const edges: Array<[Name, Name]> = [
   ['web', 'ui'],
-  ['docs', 'ui'],
+  ['admin', 'ui'],
 ]
 ---
 

@@ -218,8 +218,8 @@ describe('the one-task guides show what vx prints', () => {
     expect(printed(page, 'vx lock')).toBe(locked)
   })
 
-  it('run-one-project: the --filter plan', () => {
-    const page = guide('running/run-one-project.mdx')
+  it('running-tasks: the --filter plan', () => {
+    const page = guide('running-tasks.mdx')
     const r = run('run', 'build', '--filter', '@demo/web', '--dry')
     expect(r.code).toBe(0)
     expect(plan(plain(printed(page, 'vx run build --filter @demo/web --dry')))).toBe(plan(r.stdout))
@@ -373,8 +373,12 @@ export default {
     expect(plan(printed(page, 'vx run build --dry'))).toBe(plan(r.out))
   })
 
-  it('stop-at-the-first-failure: the rest runs, then --fail-fast aborts it', () => {
-    const page = guide('running/stop-at-the-first-failure.mdx')
+  it('running-tasks: the rest runs, then --fail-fast aborts it', () => {
+    const page = guide('running-tasks.mdx').slice(
+      guide('running-tasks.mdx').indexOf(
+        '<Deeper level="patterns" title="Stop at the first failure">',
+      ),
+    )
     const rest = runColour('run', 'test', '--all')
     expect(rest.code).toBe(1)
     holds(printed(page, 'vx run test --all'), rest.out)
@@ -384,8 +388,8 @@ export default {
     holds(printed(tab, 'vx run test --all --fail-fast'), fast.out)
   })
 
-  it('set-a-time-limit: --timeout fails the task', () => {
-    const page = guide('running/set-a-time-limit.mdx')
+  it('running-tasks: --timeout fails the task', () => {
+    const page = guide('running-tasks.mdx')
     const r = runColour('run', '@demo/web#e2e', '--timeout', '1s')
     expect(r.code).toBe(1)
     holds(printed(page, 'vx run @demo/web#e2e --timeout 1s'), r.out)
@@ -447,7 +451,7 @@ export default {
   })
 })
 
-// The running pages' story workspace: web and docs both use ui, through a
+// The running pages' story workspace: web and admin both use ui, through a
 // bun() lockfile plugin. Each sample on those pages is a run of it. Plan
 // and table rows hold their times, CPU, memory and usual times blanked.
 describe('the running guides show what vx prints', () => {
@@ -532,16 +536,16 @@ ${build}      inputs: { files: ['src/**'] },
           '': { name: 'demo' },
           'packages/ui': { name: '@demo/ui', version: '0.0.0' },
           'packages/web': { name: '@demo/web', version: '0.0.0', dependencies: uses },
-          'packages/docs': { name: '@demo/docs', version: '0.0.0', dependencies: uses },
+          'packages/admin': { name: '@demo/admin', version: '0.0.0', dependencies: uses },
         },
         packages: {
           '@demo/ui': ['@demo/ui@workspace:packages/ui'],
           '@demo/web': ['@demo/web@workspace:packages/web'],
-          '@demo/docs': ['@demo/docs@workspace:packages/docs'],
+          '@demo/admin': ['@demo/admin@workspace:packages/admin'],
         },
       }),
     )
-    for (const name of ['ui', 'web', 'docs']) {
+    for (const name of ['ui', 'web', 'admin']) {
       await mkdir(path.join(ws, `packages/${name}/src`), { recursive: true })
       await write(
         `packages/${name}/package.json`,
@@ -554,7 +558,7 @@ ${build}      inputs: { files: ['src/**'] },
       await write(`packages/${name}/src/index.ts`, `export const ${name} = 1\n`)
     }
     await write('packages/ui/vx.config.ts', leaf('0.3'))
-    await write('packages/docs/vx.config.ts', leaf('0.2'))
+    await write('packages/admin/vx.config.ts', leaf('0.2'))
     await write('packages/web/vx.config.ts', web(copies(true)))
     expect(sh('git', 'init', '-q', '-b', 'main')).toBe(0)
     relock()
@@ -588,15 +592,8 @@ ${build}      inputs: { files: ['src/**'] },
     holds(block(tab(page, 'With ^build'), 'Tasks'), ordered.out)
   })
 
-  it('run-one-project: a filter that matches nothing names the closest project', () => {
-    const page = guide('running/run-one-project.mdx')
-    const r = runColour('run', 'build', '--filter', '@demo/wbe')
-    expect(r.code).toBe(1)
-    expect(printed(page, 'vx run build --filter @demo/wbe')).toBe(r.out.trim())
-  })
-
-  it('run-what-changed: each edit plans what it reaches', async () => {
-    const page = guide('running/run-what-changed.mdx')
+  it('running-tasks: each edit plans what it reaches', async () => {
+    const page = guide('running-tasks.mdx')
     expect(run('run', 'build', '--all').code).toBe(0)
     const edits = [
       ['Edit ui/src', 'packages/ui/src/index.ts'],

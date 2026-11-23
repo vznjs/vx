@@ -76,11 +76,6 @@ const SIDEBAR_GROUPS: Record<'Docs', SidebarItem[]> = {
       label: 'Run tasks',
       items: [
         { label: 'Running tasks', link: '/docs/running-tasks/' },
-        // FOLD these four into Running tasks
-        { label: 'Run only what changed', link: '/docs/running/run-what-changed/' },
-        { label: "Run one project's tasks", link: '/docs/running/run-one-project/' },
-        { label: 'Stop at the first failure', link: '/docs/running/stop-at-the-first-failure/' },
-        { label: 'Set a time limit on a task', link: '/docs/running/set-a-time-limit/' },
         { label: 'Explore the task graph', link: '/docs/graph-explorer/' },
       ],
     },

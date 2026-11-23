@@ -3,7 +3,12 @@ title: Running tasks
 description: Run a task with vx run, choose the projects it runs in, and see the plan before anything starts.
 ---
 
-import { FileTree } from '@astrojs/starlight/components'
+import { FileTree, Tabs, TabItem } from '@astrojs/starlight/components'
+import Timeline from '../../../components/running/Timeline.astro'
+import ProjectMap from '../../../components/running/ProjectMap.astro'
+
+export const neverEnds = { lanes: [{ task: '@demo/web#e2e', bars: [{ from: 0, to: 20, tone: 'warn', label: 'still running…', open: true }] }] }
+export const limitHit = { lanes: [{ task: '@demo/web#e2e', bars: [{ from: 0, to: 10, tone: 'danger', label: 'timed out' }] }], marks: [{ at: 10, label: 'limit', tone: 'danger' }] }
 import { Levels, Deeper, Concept, Quiz, Walkthrough, Frame, Takeaway, NextStep } from '../../../components/learn'
 import RunPicker from '../../../components/demos/RunPicker.astro'
 import ErrorFinder from '../../../components/docs/troubleshooting/ErrorFinder.astro'
@@ -287,6 +292,34 @@ Full grammar and error messages: [`--filter`](../../cli/run/#filter-dsl---filter
 
 </Deeper>
 
+<Deeper level="patterns" title="Run one project's tasks">
+
+### Run one project's tasks
+
+A filter picks where to **start**. What those tasks depend on still comes
+along. Filter on `web`, and its `^build` builds `ui` first:
+
+```sh
+vx run build --filter @demo/web --dry
+```
+
+```ansi
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mPlan[0m[4m[58;2;110;118;129m [2m2[0m[4m[58;2;110;118;129m    [2mstatus  cache      usual    time   cpu    mem outputs  blocks worker         task[0m[4m[58;2;110;118;129m[0m
+            [38;2;6;182;212mrun[0m     [2mmiss[0m        [2m~6ms[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2mlocal[0m          [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;6;182;212mrun[0m     [2mmiss[0m       [2m~12ms[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [38;2;203;213;225m1[0m [2mlocal[0m          [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m
+
+  [2mtasks    [0m  [38;2;203;213;225m2 planned · 2 would run[0m
+  [2mpredicted[0m  [38;2;203;213;225m~18ms wall · ~18ms total execution[0m
+```
+
+Two rows, not one: `@demo/ui#build` blocks `web`, so it runs too. When you
+know the dependencies are built, add `--exclude-dependencies` to run only
+the picked tasks.
+
+<Takeaway>work on one app and trust that what it needs is built first.</Takeaway>
+
+</Deeper>
+
 <Takeaway>run a task in exactly the projects you mean, by name, folder or neighbours.</Takeaway>
 
 ## 4. Run only what changed
@@ -343,6 +376,72 @@ What marks a task: a changed file in its `inputs`, a changed
 `vx.config.ts`, or a changed file no task of its project declares.
 
 A change then travels only along `dependsOn`. Full rules: [`--affected`](../../cli/run/#--affectedbase).
+
+</Deeper>
+
+<Deeper level="patterns" title="Run only what changed">
+
+### Run only what changed
+
+`--affected` picks **projects** from git. The cache then decides what
+really runs. Three edits on a branch, three plans. The orange dot is the
+edit; bright boxes are affected.
+
+<Tabs>
+<TabItem label="Edit ui/src">
+
+<ProjectMap picked={['ui', 'web', 'admin']} changed="ui" label="An edit in @demo/ui affects ui, web and admin" />
+
+`ui` changed, and both apps use it. All three rebuild:
+
+```ansi
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mPlan[0m[4m[58;2;110;118;129m [2m3[0m[4m[58;2;110;118;129m    [2mstatus  cache      usual    time   cpu    mem outputs  blocks worker         task[0m[4m[58;2;110;118;129m                           [0m
+            [38;2;6;182;212mrun[0m     [2mmiss[0m      [2m~210ms[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2mlocal[0m          [38;2;129;140;248m@demo/admin[0m[2m#[0m[38;2;244;114;182mbuild[0m  [2maffected: packages/ui/src/index.ts changed (an input), via @demo/ui#build[0m
+            [38;2;6;182;212mrun[0m     [2mmiss[0m      [2m~306ms[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [38;2;203;213;225m2[0m [2mlocal[0m          [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m  [2maffected: packages/ui/src/index.ts changed (an input)[0m
+            [38;2;6;182;212mrun[0m     [2mmiss[0m        [2m~3ms[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2mlocal[0m          [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m  [2maffected: packages/ui/src/index.ts changed (an input), via @demo/ui#build[0m
+
+  [2mtasks    [0m  [38;2;203;213;225m3 planned · 3 would run[0m
+  [2mpredicted[0m  [38;2;203;213;225m~516ms wall · ~519ms total execution[0m
+```
+
+</TabItem>
+<TabItem label="Edit web/src">
+
+<ProjectMap picked={['web']} changed="web" label="An edit in @demo/web affects only web" />
+
+Nothing uses `web`, so only `web` rebuilds. `ui` comes along as a
+dependency and is a cache hit:
+
+```ansi
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mPlan[0m[4m[58;2;110;118;129m [2m2[0m[4m[58;2;110;118;129m    [2mstatus  cache      usual    time   cpu    mem outputs  blocks worker         task[0m[4m[58;2;110;118;129m                           [0m
+            [38;2;6;182;212mrun[0m     [2mmiss[0m        [2m~3ms[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2mlocal[0m          [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m  [2maffected: packages/web/src/index.ts changed (an input)[0m
+            [38;2;34;197;94mcached[0m  [38;2;56;189;248mlocal[0m          [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [38;2;203;213;225m1[0m [2mlocal[0m          [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m
+
+  [2mtasks    [0m  [38;2;203;213;225m2 planned · 1 cache hit (1 local) · 1 would run[0m
+  [2mpredicted[0m  [38;2;203;213;225m~3ms wall · ~3ms total execution[0m
+```
+
+</TabItem>
+<TabItem label="Edit ui/README.md">
+
+<ProjectMap picked={['ui', 'web', 'admin']} changed="ui" label="A README edit in @demo/ui marks all three affected, yet all three are cache hits" />
+
+The README is in `ui`, so all three are affected. No task reads it, so
+all three are cache hits and nothing runs:
+
+```ansi
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mPlan[0m[4m[58;2;110;118;129m [2m3[0m[4m[58;2;110;118;129m    [2mstatus  cache      usual    time   cpu    mem outputs  blocks worker         task[0m[4m[58;2;110;118;129m                           [0m
+            [38;2;34;197;94mcached[0m  [38;2;56;189;248mlocal[0m          [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2mlocal[0m          [38;2;129;140;248m@demo/admin[0m[2m#[0m[38;2;244;114;182mbuild[0m  [2maffected: packages/ui/README.md changed (in its project), via @demo/ui#build[0m
+            [38;2;34;197;94mcached[0m  [38;2;56;189;248mlocal[0m          [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [38;2;203;213;225m2[0m [2mlocal[0m          [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m  [2maffected: packages/ui/README.md changed (in its project)[0m
+            [38;2;34;197;94mcached[0m  [38;2;56;189;248mlocal[0m          [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2mlocal[0m          [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m  [2maffected: packages/ui/README.md changed (in its project), via @demo/ui#build[0m
+
+  [2mtasks   [0m  [38;2;203;213;225m3 planned · 3 cache hits (3 local)[0m
+```
+
+</TabItem>
+</Tabs>
+
+<Takeaway>predict any branch's run: git picks the projects, the cache skips the unchanged tasks.</Takeaway>
 
 </Deeper>
 
@@ -571,6 +670,152 @@ Rules every flag follows:
 | `130` | you pressed Ctrl-C (`143` for SIGTERM, `129` for SIGHUP) |
 
 Every detail: [`vx run`](../../cli/run/).
+
+</Deeper>
+
+<Deeper level="patterns" title="Stop at the first failure">
+
+### Stop at the first failure
+
+`ui`'s test fails fast. `web`'s test takes a second. Pick a tab and watch.
+
+<Tabs>
+<TabItem label="Default">
+
+<Timeline
+  label="ui's test fails at 12 ms; web's test keeps running and passes at 1.01 s"
+  end={1100}
+  unit="ms"
+  lanes={[
+    { task: '@demo/ui#test', bars: [{ from: 0, to: 12, tone: 'danger' }] },
+    { task: '@demo/web#test', bars: [{ from: 0, to: 1010, tone: 'ok', label: 'success' }] },
+  ]}
+  marks={[{ at: 12, label: 'ui fails', tone: 'danger' }]}
+/>
+
+`web` runs to the end. One run shows you **every** failure. Only the
+tasks that need a failed one are skipped:
+
+```sh
+vx run test --all
+```
+
+```ansi
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mTasks[0m[4m[58;2;110;118;129m     [2mstatus  cache     ±usual    time   cpu    mem outputs  blocks worker         task[0m[4m[58;2;110;118;129m                           [0m
+            [38;2;239;68;68mfailed[0m  [2mno-cache[0m       [2m—[0m    [38;2;203;213;225m12ms[0m    [2m9%[0m  [2m1.7MB[0m       [2m—[0m       [2m0[0m [2mlocal[0m          [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;96;165;250mtest[0m
+            [38;2;34;197;94msuccess[0m [2mno-cache[0m       [2m—[0m   [38;2;203;213;225m1.01s[0m    [2m0%[0m  [2m3.6MB[0m       [2m—[0m       [2m0[0m [2mlocal[0m          [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;96;165;250mtest[0m
+
+[2m┌─[0m [1m[38;2;192;132;252m@demo/ui[0m[2m#[0m[1m[38;2;96;165;250mtest[0m [2m>[0m [1m[38;2;239;68;68mfailed (exit 1)[0m
+
+[2mpackages/ui $ echo 'expected 2, got 1' && exit 1[0m
+
+[2m├─[0m [1mOUTPUT[0m [2m────────────────────────────────────────────────────[0m
+
+expected 2, got 1
+
+[2m└─[0m [1m[38;2;192;132;252m@demo/ui[0m[2m#[0m[1m[38;2;96;165;250mtest[0m [2m──[0m [2m(12ms)[0m [1m[38;2;239;68;68mfailed (exit 1)[0m
+```
+
+</TabItem>
+<TabItem label="--fail-fast">
+
+<Timeline
+  label="ui's test fails at 12 ms; vx stops web's test at 19 ms"
+  end={1100}
+  unit="ms"
+  lanes={[
+    { task: '@demo/ui#test', bars: [{ from: 0, to: 12, tone: 'danger' }] },
+    { task: '@demo/web#test', bars: [{ from: 0, to: 19, tone: 'warn' }] },
+  ]}
+  marks={[{ at: 12, label: 'ui fails', tone: 'danger' }]}
+/>
+
+vx kills `web` and ends the run. Its row says `aborted`:
+
+```sh
+vx run test --all --fail-fast
+```
+
+```ansi
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mTasks[0m[4m[58;2;110;118;129m     [2mstatus  cache     ±usual    time   cpu    mem outputs  blocks worker         task[0m[4m[58;2;110;118;129m                           [0m
+            [38;2;239;68;68mfailed[0m  [2mno-cache[0m       [2m—[0m    [38;2;203;213;225m12ms[0m    [2m9%[0m  [2m1.7MB[0m       [2m—[0m       [2m0[0m [2mlocal[0m          [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;96;165;250mtest[0m
+            [38;2;249;115;22maborted[0m [2m—[0m              [2m—[0m    [38;2;203;213;225m19ms[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2mlocal[0m          [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;96;165;250mtest[0m
+```
+
+</TabItem>
+</Tabs>
+
+Both exit `1`, and neither caches a failed or aborted task. To make it the
+default, set `run: { failFast: true }` in `.vx/workspace.ts`, or
+`failFast: true` on one [pipeline](../ci/run-a-pipeline/).
+
+A flaky task can get extra attempts first: `exec.retries: 2` means up to
+three runs. `--fail-fast` waits until a task is out of attempts.
+
+<Takeaway>choose per run: every failure at once, or the first one back sooner.</Takeaway>
+
+</Deeper>
+
+<Deeper level="patterns" title="Set a time limit on a task">
+
+### Set a time limit on a task
+
+A task has **no** time limit unless you set one. One test waits for a page
+that never loads. Pick a tab.
+
+<Tabs>
+<TabItem label="No limit">
+
+<Timeline label="e2e starts and never ends; the run hangs" end={20} unit="m" {...neverEnds} />
+
+The run waits forever.
+
+</TabItem>
+<TabItem label="timeout: '10m'">
+
+<Timeline label="e2e runs until the 10 minute limit, then vx stops it and it fails as timed out" end={20} unit="m" {...limitHit} />
+
+At ten minutes vx stops it. The task fails, and the run ends.
+
+```ts title="packages/web/vx.config.ts" ins={3}
+tasks: {
+  e2e: {
+    exec: { command: 'playwright test', timeout: '10m' },
+  },
+},
+```
+
+</TabItem>
+</Tabs>
+
+To try it, pass `--timeout` to one run. Here the task sleeps five seconds:
+
+```sh
+vx run @demo/web#e2e --timeout 1s
+```
+
+```ansi
+[2m┌─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;147;197;253me2e[0m [2m>[0m $ sleep 5
+[vx] timed out after 1000ms — killed (SIGTERM)
+[2m└─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;147;197;253me2e[0m [2m──[0m [2m(1.01s)[0m [1m[38;2;239;68;68mfailed (timed out, exit 143)[0m
+```
+
+Read the last word: `failed (timed out)`. vx exits `1`, and a timed-out
+task is never cached.
+
+| Where | Setting | Applies to |
+| --- | --- | --- |
+| a task in `vx.config.ts` | `exec: { timeout: '10m' }` | that task |
+| command line | `--timeout 10m` | every task in this run |
+| `.vx/workspace.ts` | `run: { timeout: '30m' }` | every task in every run |
+
+The most specific wins: `exec.timeout` beats `--timeout`, which beats
+`run.timeout`. A duration has its unit: `'500ms'`, `'30s'`, `'10m'`, `'1h'`, `'1d'`.
+
+A process still alive after `SIGTERM` gets `SIGKILL` once `run.killGrace`
+(default `'2s'`) passes.
+
+<Takeaway>turn "CI hung for six hours" into a red task with a clear reason.</Takeaway>
 
 </Deeper>
 
