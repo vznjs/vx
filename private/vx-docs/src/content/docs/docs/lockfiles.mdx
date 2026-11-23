@@ -19,6 +19,11 @@ export default defineWorkspace({ plugins: [bun()] })
 
 <Levels />
 
+<Concept term="Lockfile">
+  The file your package manager writes on install (`bun.lock`, `pnpm-lock.yaml`,
+  `package-lock.json`, `yarn.lock`). It records the exact version of every dependency.
+</Concept>
+
 <Walkthrough title="@demo/web bumps ms from 2.1.2 to 2.1.3">
 <Frame title="1. Install: vx sees the lockfile moved">
 
@@ -46,13 +51,13 @@ Commit `.vx/dependencies.lock` with `bun.lock`.
 <Frame title="3. Run: only @demo/web builds">
 
 ```ansi title="the run after the bump"
-[2m$[0m vx run build --all
+[2m$[0m vx run build --all --output-logs hash-only
 
-[4m[58;2;110;118;129m  [1m[38;2;167;139;250mTasks[0m[4m[58;2;110;118;129m     [2mstatus  cache     ±usual    time   cpu    mem outputs  blocks worker         task[0m[4m[58;2;110;118;129m                           [0m
-            [38;2;34;197;94msuccess[0m [2mmiss[0m        [2m+4ms[0m   [38;2;203;213;225m232ms[0m  [2m128%[0m   [2m94MB[0m    [2m855B[0m       [2m0[0m [2mlocal[0m          [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m
+[38;2;34;197;94mup-to-date[0m [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m [2m7332bcf54e63d75c[0m
+[38;2;34;197;94msuccess[0m [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m [2m71a8fb022989b08b[0m
 ```
 
-One row, `@demo/web#build`. `@demo/ui#build` was **up to date**: `ms` is not its dependency.
+`@demo/web#build`: **success**, it ran. `@demo/ui#build`: **up-to-date**, `ms` is not its dependency.
 
 </Frame>
 <Frame title="4. Ask why">
@@ -61,9 +66,9 @@ One row, `@demo/web#build`. `@demo/ui#build` was **up to date**: `ms` is not its
 [2m$[0m vx why @demo/web#build
 
 [4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhy[0m[4m[58;2;110;118;129m [2m@demo/web#build[0m[4m[58;2;110;118;129m                                                                                                   [0m
-  [2mrun     [0m  [38;2;203;213;225m01a209c1-10f6-724b-97b8-ee2b515ac4d3[0m
-  [2mthis run[0m  [38;2;203;213;225m2026-11-23T18:52:57.489Z · success · executed · key a68d647c76fae790[0m
-  [2mprevious[0m  [38;2;203;213;225m2026-11-23T18:52:53.122Z · cache-hit · up-to-date · key 19f617345c842002[0m
+  [2mrun     [0m  [38;2;203;213;225m01a209e3-5569-754e-804e-4eab62051c43[0m
+  [2mthis run[0m  [38;2;203;213;225m2026-11-23T19:30:23.246Z · success · executed · key 71a8fb022989b08b[0m
+  [2mprevious[0m  [38;2;203;213;225m2026-11-23T19:30:22.388Z · success · executed · key 5ea687db9ef92858[0m
   [2mverdict [0m  [38;2;234;179;8mcache key changed: file packages/web/package.json, plugin @vzn/vx-lockfile/bun[0m
 
 [4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhat changed[0m[4m[58;2;110;118;129m [2m2 of 8[0m[4m[58;2;110;118;129m                                                                                                   [0m
@@ -80,11 +85,6 @@ Read the **verdict**: `plugin @vzn/vx-lockfile/bun`. The install changed this pr
 
 </Frame>
 </Walkthrough>
-
-<Concept term="Lockfile">
-  The file your package manager writes on install (`bun.lock`, `pnpm-lock.yaml`,
-  `package-lock.json`, `yarn.lock`). It records the exact version of every dependency.
-</Concept>
 
 ## Add the plugin
 
@@ -142,21 +142,25 @@ The plugin cuts the lockfile into one slice per project: the packages that proje
 A slice goes into the keys of that project's tasks only.
 
 ```ansi title="bump ms in @demo/web"
-[2m$[0m vx run build --all
+[2m$[0m vx run build --all --output-logs hash-only
 
-[4m[58;2;110;118;129m  [1m[38;2;167;139;250mTasks[0m[4m[58;2;110;118;129m     [2mstatus  cache     ±usual    time   cpu    mem outputs  blocks worker         task[0m[4m[58;2;110;118;129m                           [0m
-            [38;2;34;197;94msuccess[0m [2mmiss[0m        [2m+4ms[0m   [38;2;203;213;225m232ms[0m  [2m128%[0m   [2m94MB[0m    [2m855B[0m       [2m0[0m [2mlocal[0m          [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m
+[38;2;34;197;94mup-to-date[0m [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m [2m7332bcf54e63d75c[0m
+[38;2;34;197;94msuccess[0m [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m [2m71a8fb022989b08b[0m
 ```
 
 ```ansi title="bump clsx in @demo/ui"
-[2m$[0m vx run build --all
+[2m$[0m vx run build --all --output-logs hash-only
 
-[4m[58;2;110;118;129m  [1m[38;2;167;139;250mTasks[0m[4m[58;2;110;118;129m     [2mstatus  cache     ±usual    time   cpu    mem outputs  blocks worker         task[0m[4m[58;2;110;118;129m                           [0m
-            [38;2;34;197;94msuccess[0m [2mmiss[0m      [38;2;34;197;94m−302ms[0m   [38;2;203;213;225m211ms[0m  [2m123%[0m   [2m88MB[0m     [2m68B[0m       [38;2;203;213;225m1[0m [2mlocal[0m          [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m
-            [38;2;34;197;94msuccess[0m [2mmiss[0m       [2m−13ms[0m   [38;2;203;213;225m219ms[0m  [2m131%[0m   [2m98MB[0m    [2m855B[0m       [2m0[0m [2mlocal[0m          [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m
+[38;2;34;197;94msuccess[0m [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m [2m48e5676c2d17350c[0m
+[38;2;34;197;94msuccess[0m [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m [2m3c0c3098859278d0[0m
 ```
 
-Read the last column. After the `clsx` bump, `@demo/web` builds too. It builds on `@demo/ui`, so a new `@demo/ui` key gives it a new key.
+Read the first word of each line. After the `clsx` bump, both say **success**. `@demo/web` builds
+on `@demo/ui`, so a new `@demo/ui` key gives it a new key.
+
+<Aside type="tip" title="One line per task">
+  `--output-logs hash-only` prints each task's status, name and key, and hides the tool's output.
+</Aside>
 
 <Quiz q="@demo/ui adds a devDependency it only uses in tests. Does @demo/web#build run again?">
   Yes. The dependency is in `@demo/ui`'s slice, so `@demo/ui#build` gets a new key, and
@@ -190,9 +194,15 @@ Without a plugin, projects go by their folder (`packages/ui`), and `vx lock` ref
 `--affected` runs the projects a change touched. With a plugin, a lockfile change counts too: only the
 projects whose slice moved are affected.
 
-```sh
-vx run build --affected
+```ansi title="after the ms bump in @demo/web, before the commit"
+[2m$[0m vx show --affected=HEAD
+
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mProjects[0m[4m[58;2;110;118;129m [2m1[0m[4m[58;2;110;118;129m                                                                                                            [0m
+  [2mproject    dir           tasks[0m
+  [38;2;244;114;182m@demo/web[0m  [38;2;203;213;225mpackages/web[0m  [38;2;203;213;225m1 task[0m
 ```
+
+One project: `@demo/web`. Its slice moved; `@demo/ui`'s did not.
 
 <Takeaway>run CI on a dependency bump without rebuilding the whole workspace.</Takeaway>
 
@@ -200,8 +210,8 @@ vx run build --affected
 
 ### One key for the whole lockfile
 
-`scope: 'workspace'` puts the whole lockfile into every task's key. Any install re-runs
-everything. Use it for the coarsest, simplest key.
+`scope` takes `'project'` (the default: each key holds its project's slice) or `'workspace'`.
+`'workspace'` puts the whole lockfile into every key, so any install re-runs everything.
 
 ```ts title=".vx/workspace.ts" mark={4}
 import { defineWorkspace } from '@vzn/vx/config'
@@ -213,11 +223,10 @@ export default defineWorkspace({ plugins: [bun({ scope: 'workspace' })] })
 The same `ms` bump in `@demo/web` now re-runs both projects:
 
 ```ansi title="scope: 'workspace'"
-[2m$[0m vx run build --all
+[2m$[0m vx run build --all --output-logs hash-only
 
-[4m[58;2;110;118;129m  [1m[38;2;167;139;250mTasks[0m[4m[58;2;110;118;129m     [2mstatus  cache     ±usual    time   cpu    mem outputs  blocks worker         task[0m[4m[58;2;110;118;129m                           [0m
-            [38;2;34;197;94msuccess[0m [2mmiss[0m        [2m−8ms[0m   [38;2;203;213;225m224ms[0m  [2m118%[0m   [2m92MB[0m     [2m68B[0m       [38;2;203;213;225m1[0m [2mlocal[0m          [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m
-            [38;2;34;197;94msuccess[0m [2mmiss[0m        [2m−6ms[0m   [38;2;203;213;225m226ms[0m  [2m130%[0m   [2m97MB[0m    [2m855B[0m       [2m0[0m [2mlocal[0m          [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m
+[38;2;34;197;94msuccess[0m [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m [2m6068b4831dff8b0f[0m
+[38;2;34;197;94msuccess[0m [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m [2mc586d60cd9f95027[0m
 ```
 
 ### A tool every project uses
@@ -225,21 +234,39 @@ The same `ms` bump in `@demo/web` now re-runs both projects:
 Put shared tools (`vite`, `vitest`, `oxlint`) in the root `package.json`. Their bins run from the
 root `node_modules/.bin`, which is on every task's `PATH`.
 
-So every key holds the root's dependencies. Bumping a root devDependency re-runs every project.
+```json title="package.json" ins={4}
+{
+  "workspaces": ["packages/*"],
+  "devDependencies": {
+    "vite": "7.3.0"
+  }
+}
+```
+
+So every key holds the root's dependencies. Bumping `vite` here re-runs every project.
 
 ### A workspace project the root depends on
 
 A workspace project in the root's dependencies counts only for the root. A project that loads it
 names it in its **own** `package.json`.
 
-Without that line, it does not build after it, its key leaves it out, and `--affected` skips it.
+```json title="packages/web/package.json" ins={3}
+{
+  "dependencies": {
+    "@demo/ui": "workspace:*"
+  }
+}
+```
+
+Without that line, `@demo/web` does not build after `@demo/ui`, its key leaves `@demo/ui` out, and
+`--affected` skips it.
 
 <Aside type="caution" title="Undeclared imports">
   An import you never declared in `package.json` is in no project's key. Declare every
   dependency a project loads.
 </Aside>
 
-<Takeaway>set up shared tools and workspace links so every key holds what each project really uses.</Takeaway>
+<Takeaway>keep each key true: shared tools at the root, links in each `package.json`.</Takeaway>
 
 </Deeper>
 
