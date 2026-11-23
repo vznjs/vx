@@ -41,9 +41,9 @@ const DOCS_GROUPS = [
 const DOCS_FIRST: [string, string][] = [
   ['What is vx?', 'docs/'],
   ['Quickstart', 'quickstart/'],
-  ['Move an existing workspace to vx', 'docs/migrate/'],
   ['Workspace', 'docs/workspace/'],
   ['Lockfiles', 'docs/lockfiles/'],
+  ['Move an existing workspace to vx', 'docs/migrate/'],
   ['Tasks', 'docs/tasks/'],
 ]
 const INTERNALS_TOP = ['overview/', 'architecture/', 'optimizations/', 'patterns/', 'flows/']

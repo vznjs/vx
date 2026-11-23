@@ -6,7 +6,7 @@ description: "The folder vx works in: how vx finds it, names its projects, locks
 import Diagram from '../../../components/guide/diagram/Diagram.astro'
 import Demo from '../../../components/Demo.astro'
 import { workspaceLock } from '../../../components/docs/pictures/workspace.js'
-import { Aside, FileTree, Tabs, TabItem, Badge } from '@astrojs/starlight/components'
+import { Aside, FileTree, Tabs, TabItem, Badge, Steps } from '@astrojs/starlight/components'
 import { Levels, Deeper, Concept, Quiz, Compare, Takeaway, NextStep } from '../../../components/learn'
 import { ConfigExplorer } from '../../../components/play'
 import ErrorFinder from '../../../components/docs/troubleshooting/ErrorFinder.astro'
@@ -44,6 +44,42 @@ That empty file is a whole workspace. vx runs every task on this machine and cac
 </Concept>
 
 ---
+
+## Grow my-app into two projects
+
+Coming from the [Quickstart](../../quickstart/)? Turn its one app into the two projects this page uses. From `my-app`:
+
+<Steps>
+
+1. Move the app into `packages/web`:
+
+   ```sh
+   mkdir -p packages/web && mv index.html src public package.json vx.config.ts packages/web/
+   ```
+
+2. Add a library beside it:
+
+   ```sh
+   bun create vite packages/ui --template vanilla
+   ```
+
+3. Make the root a Bun workspace, and name the two projects:
+
+   ```sh
+   echo '{ "private": true, "workspaces": ["packages/*"] }' > package.json
+   (cd packages/ui && bun pm pkg set name=@demo/ui)
+   (cd packages/web && bun pm pkg set name=@demo/web && bun add @demo/ui@workspace:*)
+   ```
+
+4. Record the new layout:
+
+   ```sh
+   vx lock
+   ```
+
+</Steps>
+
+<Takeaway>turn one app into a workspace of projects.</Takeaway>
 
 ## Find the root
 

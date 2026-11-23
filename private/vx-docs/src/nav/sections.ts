@@ -52,7 +52,6 @@ const SIDEBAR_GROUPS: Record<'Docs', SidebarItem[]> = {
       items: [
         { label: 'What is vx?', link: '/docs/' },
         { label: 'Quickstart', link: '/quickstart/' },
-        { label: 'Move an existing workspace to vx', link: '/docs/migrate/' },
       ],
     },
     {
@@ -60,6 +59,7 @@ const SIDEBAR_GROUPS: Record<'Docs', SidebarItem[]> = {
       items: [
         { label: 'Workspace', link: '/docs/workspace/' },
         { label: 'Lockfiles', link: '/docs/lockfiles/' },
+        { label: 'Move an existing workspace to vx', link: '/docs/migrate/' },
       ],
     },
     {

@@ -135,10 +135,11 @@
   color: inherit;
 }
 
-.sl-markdown-content :is(ul, ol) > li::marker {
+/* Not in a file tree: its rows draw their own icons. */
+.sl-markdown-content :is(ul, ol):not(starlight-file-tree *) > li::marker {
   color: var(--vx-accent);
 }
-.sl-markdown-content ul > li::marker {
+.sl-markdown-content ul:not(starlight-file-tree *) > li::marker {
   content: '▸  ';
   font-size: 0.8em;
 }
