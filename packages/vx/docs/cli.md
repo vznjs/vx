@@ -2963,7 +2963,7 @@ script runs `lerna run` through Nx (`useNx`, else Lerna 6+), as
 vx-migrate detects them, it runs `@vzn/vx-migrate` there, so `vx init` is the one command
 (2026-10-08): the latest release through `bun x`,
 never an installed one, so init always installs the latest `@vzn/vx`
-and moves every `@vzn/vx-*` plugin the root lists to it
+(or the running vx, when the registry's latest is older) and moves every `@vzn/vx-*` plugin the root lists to it
 (2026-10-16; a source checkout runs the nearest installed
 `node_modules/@vzn/vx-migrate` instead) (`BUN_BE_BUN=1` makes the compiled
 binary that runtime). `--dry`, `--format`, `--force`, `--mjs`,

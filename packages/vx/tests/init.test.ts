@@ -8,7 +8,7 @@ import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
-import { migrateCommand, migrateHint, parseInitArgs } from '../src/cli/init.js'
+import { initVersion, migrateCommand, migrateHint, parseInitArgs } from '../src/cli/init.js'
 import { PLUGIN_TEMPLATES } from '../src/cli/plugin-templates.js'
 import { definePlugin } from '../src/index.js'
 import { noticed } from './helpers/notice.js'
@@ -405,4 +405,14 @@ it('the next line names vx-migrate at the running version', () => {
     'bunx @vzn/vx-migrate@0.0.656 --mjs',
     'bunx @vzn/vx-migrate',
   ])
+})
+
+// A vx ahead of the registry's latest (a tarball, a dist-tag not yet moved)
+// pinned the older release, which could not read the lock init had written.
+it('installs the registry latest, never one older than the running vx', () => {
+  expect([
+    initVersion('0.0.659', '0.0.660'),
+    initVersion('0.0.661', '0.0.660'),
+    initVersion('0.0.660', '0.0.660'),
+  ]).toEqual(['0.0.660', '0.0.661', '0.0.660'])
 })

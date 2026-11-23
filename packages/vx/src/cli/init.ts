@@ -306,6 +306,16 @@ export function notServed(output: string): string | undefined {
 }
 
 /**
+ * The release init installs: the registry's latest, never one older than the
+ * running vx. A vx ahead of `latest` (a tarball, a dist-tag not yet moved)
+ * pinned the older one, whose run could not read the lock init had just
+ * written ("no lock: run `vx lock`").
+ */
+export function initVersion(latest: string, running = VERSION): string {
+  return Bun.semver.order(latest, running) < 0 ? running : latest
+}
+
+/**
  * Run `initInstalls`, in order. A source checkout (0.0.0, which npm never
  * had) installs nothing: the release would replace the code under test.
  */
@@ -315,7 +325,7 @@ async function install(
   plugins: readonly string[] = [],
 ): Promise<string[]> {
   if (VERSION === '0.0.0') return []
-  const version = await targetVersion(undefined, 'vx init')
+  const version = initVersion(await targetVersion(undefined, 'vx init'))
   const steps = initInstalls(
     version,
     process.env['npm_config_user_agent'],
@@ -675,7 +685,8 @@ async function migrate(dirs: readonly string[], args: InitArgs): Promise<number>
   // vx-migrate installs the project's own vx.
   if (!args.dry) await install(null, false)
   // An exact version: `bun x` may answer `@latest` from its cache.
-  const latest = VERSION === '0.0.0' ? 'latest' : await targetVersion(undefined, 'vx init')
+  const latest =
+    VERSION === '0.0.0' ? 'latest' : initVersion(await targetVersion(undefined, 'vx init'))
   return Bun.spawn(migrateCommand(dirs, flags, latest), {
     stdio: ['inherit', 'inherit', 'inherit'],
     // A compiled vx is a Bun runtime only when told so.
