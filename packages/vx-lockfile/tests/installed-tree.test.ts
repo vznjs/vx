@@ -635,6 +635,23 @@ kleur@4.1.5:
     await write({ 'node_modules/.yarn-state.yml': yarnState('5.0.0') })
     expect(await run(yarn())).toBe('ok')
   })
+
+  // `nodeLinker: pnpm` writes no .yarn-state.yml: its record is the store,
+  // one directory per locator, named after the locator's hash (Yarn 4.19).
+  it('refuses a package Yarn 2+ put in its pnpm store that the lockfile does not resolve to', async () => {
+    const store = (v: string): Record<string, string> => ({
+      [`node_modules/.store/is-number-npm-${v}-${v === '7.0.0' ? '060086935c' : 'ffffffffff'}/package/package.json`]:
+        pkg(v),
+      // A peer set's copy: virtual, named after no lockfile entry.
+      'node_modules/.store/a-virtual-8d387c295e/package/package.json': '{}',
+    })
+    await write({ ...MANIFESTS, 'yarn.lock': yarnBerry('5.0.0'), ...store('7.0.0') })
+    expect(await run(yarn())).toBe(
+      'node_modules was installed from a different yarn.lock (node_modules/.store/is-number-npm-7.0.0-060086935c is installed, and the lockfile does not list it) — run `yarn install`',
+    )
+    await write({ 'yarn.lock': yarnBerry('7.0.0') })
+    expect(await run(yarn())).toBe('ok')
+  })
 })
 
 // Each parse of the lockfile, counted in a process of its own: a run whose

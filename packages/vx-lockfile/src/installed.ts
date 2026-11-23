@@ -5,7 +5,8 @@
 //
 // Each manager leaves a record of what it installed beside the tree (npm
 // `node_modules/.package-lock.json`, pnpm `node_modules/.pnpm/lock.yaml`,
-// Yarn 1 `node_modules/.yarn-integrity`, Yarn 2+ `node_modules/.yarn-state.yml`);
+// Yarn 1 `node_modules/.yarn-integrity`, Yarn 2+ `node_modules/.yarn-state.yml`,
+// or under `nodeLinker: pnpm` its `node_modules/.store`);
 // Bun leaves none (1.4.4, either linker), so its workspaces' dependencies
 // are read where Node resolves them, and every package where its linker
 // put it. The answer is a pure function of the
@@ -201,6 +202,31 @@ function yarnBerryCompare(
   return undefined
 }
 
+/**
+ * Yarn 2+'s `nodeLinker: pnpm` store, which writes no .yarn-state.yml: one
+ * directory per locator, its name ending in the first 10 hex of the
+ * locator's hash (Yarn's `slugifyLocator`). One no lockfile entry hashes
+ * to is another install's; a peer set's copy (`-virtual-`) names none.
+ */
+function yarnStoreCompare(lock: import('./yarn.js').Lockfile, root: string): string | undefined {
+  const sha = (s: string): string => new Bun.CryptoHasher('sha512').update(s).digest('hex')
+  const hashes = new Set<string>()
+  for (const locator of lock.entries.keys()) {
+    const at = locator.indexOf('@', 1)
+    const ident = locator.slice(0, at)
+    const slash = ident.startsWith('@') ? ident.indexOf('/') : -1
+    const identHash =
+      slash === -1 ? sha(ident) : sha(ident.slice(1, slash) + ident.slice(slash + 1))
+    hashes.add(sha(identHash + locator.slice(at + 1)).slice(0, 10))
+  }
+  for (const dir of readdirSync(path.join(root, 'node_modules', '.store'))) {
+    const m = /-([0-9a-f]{10})$/.exec(dir)
+    if (m === null || dir.endsWith(`-virtual-${m[1]}`) || hashes.has(m[1]!)) continue
+    return `node_modules/.store/${dir} is installed, and the lockfile does not list it`
+  }
+  return undefined
+}
+
 /** The version of the package installed at root-relative `dir`; none when absent or unreadable. */
 function versionAt(root: string, dir: string): string | undefined {
   let text: string
@@ -357,13 +383,19 @@ const INSTALL_CHECKS: Readonly<Record<string, InstallCheck>> = {
     }),
   },
   yarn: {
-    markers: ['node_modules/.yarn-integrity', 'node_modules/.yarn-state.yml'],
-    compare: (lock, parse, marker) => {
+    markers: [
+      'node_modules/.yarn-integrity',
+      'node_modules/.yarn-state.yml',
+      'node_modules/.store',
+    ],
+    compare: (lock, parse, marker, root) => {
       const parsed = parse(lock) as import('./yarn.js').Lockfile
       return {
         mismatch: marker!.file.endsWith('.yarn-integrity')
           ? yarnClassicCompare(parsed, marker!.text)
-          : yarnBerryCompare(parsed, marker!.text),
+          : marker!.file.endsWith('.store')
+            ? yarnStoreCompare(parsed, root)
+            : yarnBerryCompare(parsed, marker!.text),
       }
     },
   },
@@ -430,7 +462,13 @@ export function checkInstalled(
     verdict = check.compare(
       readUtf8(path.join(root, lockFile)),
       parse,
-      marker === undefined ? undefined : { file: marker, text: readUtf8(path.join(root, marker)) },
+      marker === undefined
+        ? undefined
+        : // The store is a directory: its compare lists it.
+          {
+            file: marker,
+            text: marker.endsWith('.store') ? '' : readUtf8(path.join(root, marker)),
+          },
       root,
     )
   } catch (err) {
