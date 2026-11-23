@@ -77,7 +77,7 @@ docker run -p 8080:8080 -e ALLOW=https://gitlab.com:group/app:.gitlab-ci.yml \
   -e AUDIENCE=https://relay.example.com ghcr.io/vznjs/vx-dte-server
 ```
 
-All vx servers at once, this relay with its state on a volume included:
+All vx servers at once, this relay included (it stores nothing, so it needs no volume):
 [`private/vx-servers/compose.yaml`](../../private/vx-servers/compose.yaml)
 (`docker compose up`).
 
