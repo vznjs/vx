@@ -12,7 +12,7 @@
 import { readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { isBreaking, type Commit } from './release-notes.ts'
-import { SAY, TITLE } from './upgrading-say.ts'
+import { AUTHORS, SAY, TITLE } from './upgrading-say.ts'
 
 /** A commit and the `v*` tag on it, if a release was cut there. */
 export interface TaggedCommit extends Commit {
@@ -21,7 +21,7 @@ export interface TaggedCommit extends Commit {
 
 export const PAGE = path.resolve(
   import.meta.dir,
-  '../../../private/vx-docs/src/content/docs/docs/upgrading.mdx',
+  '../../../private/vx-docs/src/content/docs/docs/upgrading/releases.mdx',
 )
 
 const HEADER = /^(\w+)(?:\(([^)]*)\))?!?: (.+?)(?: \(#\d+\))?$/
@@ -145,50 +145,72 @@ const mdx = (text: string): string =>
   text
     .split(/(```[\s\S]*?```|``.*?``|`[^`\n]*`)/)
     .map((part, i) =>
-      i % 2 === 1 ? part : part.replace(/[{}]/g, (c) => `\\${c}`).replace(/</g, '&lt;'),
+      i % 2 === 1
+        ? part
+        : part.replace(/\{/g, '&#123;').replace(/\}/g, '&#125;').replace(/</g, '&lt;'),
     )
     .join('')
+
+// A heading or footer that opens with a command, a flag or a file keeps it
+// as typed, in code: `vx lock` records, never "Vx lock records".
+const lead = (text: string): string =>
+  text.replace(
+    /^(vx(?: [a-z][a-z-]*)?|--[a-z][a-z-]*|\.vx\/[\w.-]+)(?=[\s:,;.]|$)/i,
+    (m) => `\`${m.toLowerCase()}\``,
+  )
 
 export const BEGIN =
   '{/* Generated from git log by packages/vx/scripts/upgrading.ts: do not hand-edit until END. */}'
 export const END = '{/* END of the generated releases. */}'
 
-/** The release list: one `<div data-release>` per release, newest first, the picker's input. */
+/**
+ * The release list: one `<div data-release>` per release, newest first, the
+ * picker's input. A release's changes for plugin authors and server hosts
+ * sit in a closed Details block; changes not released yet sit in one too.
+ */
 export function page(commits: readonly TaggedCommit[]): string {
   // A squash commit's body can carry an earlier commit's footer again
   // (#2527 repeated #2521's); the commit that made the change keeps it.
   const seen = new Set<string>()
-  const releases: { name: string; entries: string[] }[] = []
-  let entries: string[] = []
-  let last = ''
+  type Entries = { users: string[]; authors: string[] }
+  const releases: { name: string; entries: Entries }[] = []
+  let entries: Entries = { users: [], authors: [] }
   for (const commit of commits) {
     const subject = commit.subject.replace(/ \(#\d+\)$/, '')
     const step = STEPS[subject]
     if (isBreaking(commit) || step !== undefined) {
       const { title, footer } = entry(commit)
-      if (footer === '' || !seen.has(footer)) {
+      const said = footer === '' ? '' : (SAY[subject] ?? footer)
+      const text = [lead(said), step?.steps ?? ''].filter((t) => t !== '').join('\n\n')
+      // A breaking commit with no footer and no step has nothing to tell a reader.
+      if (text !== '' && (footer === '' || !seen.has(footer))) {
         seen.add(footer)
-        const said = footer === '' ? '' : (SAY[subject] ?? footer)
-        const text = [said, step?.steps ?? ''].filter((t) => t !== '').join('\n\n')
-        entries.push(
-          `#### ${mdx(bunx(step?.title ?? TITLE[subject] ?? title))}\n\n${mdx(bunx(text)) || 'Nothing to change beyond the steps above.'}\n`,
+        const heading = lead(step?.title ?? TITLE[subject] ?? title)
+        ;(AUTHORS.has(subject) ? entries.authors : entries.users).push(
+          `### ${mdx(bunx(heading))}\n\n${mdx(bunx(text))}\n`,
         )
       }
     }
     if (commit.tag !== undefined) {
-      if (entries.length > 0) releases.push({ name: commit.tag, entries })
-      entries = []
-      last = commit.tag
+      if (entries.users.length + entries.authors.length > 0)
+        releases.push({ name: commit.tag, entries })
+      entries = { users: [], authors: [] }
     }
   }
-  if (entries.length > 0)
-    releases.push({ name: last === '' ? 'Unreleased' : `After ${last}`, entries })
-  const body = releases
-    .toReversed()
-    .map(
-      ({ name, entries }) =>
-        `<div data-release="${name}">\n\n### ${name}\n\n${entries.toReversed().join('\n')}\n</div>\n`,
-    )
+  if (entries.users.length + entries.authors.length > 0)
+    releases.push({ name: 'Unreleased', entries })
+  const details = (title: string, items: string[]): string =>
+    `<Deeper level="details" title="${title}">\n\n${items.toReversed().join('\n')}\n</Deeper>\n`
+  const body = releases.toReversed().map(({ name, entries: { users, authors } }) => {
+    const parts =
+      name === 'Unreleased'
+        ? [details('In the next release', [...authors, ...users])]
+        : [
+            users.toReversed().join('\n'),
+            authors.length > 0 ? details('For plugin authors and server hosts', authors) : '',
+          ]
+    return `<div data-release="${name}">\n\n## ${name}\n\n${parts.filter((p) => p !== '').join('\n')}\n</div>\n`
+  })
   return `${BEGIN}\n\n${body.join('\n')}\n${END}`
 }
 
@@ -238,7 +260,7 @@ if (import.meta.main) {
   const want = spliced(have, page(taggedCommits(path.resolve(import.meta.dir, '../../..'))))
   if (process.argv.includes('--check')) {
     if (have !== want) {
-      process.stderr.write('docs/upgrading.mdx does not match git log; run the script\n')
+      process.stderr.write('docs/upgrading/releases.mdx does not match git log; run the script\n')
       process.exit(1)
     }
   } else writeFileSync(PAGE, want)

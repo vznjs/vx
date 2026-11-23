@@ -129,6 +129,7 @@ const SIDEBAR_GROUPS: Record<'Docs', SidebarItem[]> = {
         { label: 'Write a plugin', link: '/docs/writing-plugins/' },
         { label: 'Work with AI agents', link: '/docs/agents/' },
         { label: 'Upgrading vx', link: '/docs/upgrading/' },
+        { label: 'What changed in each release', link: '/docs/upgrading/releases/' },
       ],
     },
     {

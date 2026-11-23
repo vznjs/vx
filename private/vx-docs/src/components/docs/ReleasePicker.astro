@@ -1,8 +1,9 @@
 ---
-// The upgrading page's "which vx do you run?" picker: it hides every release
+// The release list's "which vx do you run?" picker: it hides every release
 // at or below the one picked, so the reader sees only the changes to make.
 // It reads the `<div data-release>` blocks packages/vx/scripts/upgrading.ts
-// writes. Without JavaScript it stays hidden and every release shows.
+// writes, and starts on the release before the newest. Without JavaScript
+// it stays hidden and every release shows.
 ---
 
 <div class="vx-release-picker" hidden>
@@ -18,11 +19,9 @@
   const select = root?.querySelector('select')
   const count = root?.querySelector<HTMLElement>('.vx-release-count')
   const blocks = [...document.querySelectorAll<HTMLElement>('[data-release]')]
-  // 'v0.0.659' → [0, 0, 659]; 'After v0.0.659' sorts above every release.
+  // 'v0.0.659' → [0, 0, 659]; 'Unreleased' sorts above every release.
   const parts = (name: string): number[] =>
-    name.startsWith('After') || name === 'Unreleased'
-      ? [Infinity]
-      : name.replace(/^v/, '').split('.').map(Number)
+    name === 'Unreleased' ? [Infinity] : name.replace(/^v/, '').split('.').map(Number)
   const newer = (a: number[], b: number[]): boolean => {
     for (let i = 0; i < Math.max(a.length, b.length); i++) {
       const d = (a[i] ?? 0) - (b[i] ?? 0)
@@ -42,8 +41,9 @@
         const on = from === undefined || newer(parts(b.dataset['release']!), from)
         b.hidden = !on
         if (on) {
-          releases++
-          changes += b.querySelectorAll('h4').length
+          if (b.dataset['release'] !== 'Unreleased') releases++
+          // Changes in a closed block (plugin authors, the next release) are not counted.
+          changes += [...b.querySelectorAll('h3')].filter((h) => !h.closest('details')).length
         }
       }
       count.textContent =
@@ -51,6 +51,7 @@
           ? 'Nothing to change: no breaking change since this release.'
           : `${changes} change${changes === 1 ? '' : 's'} to check, in ${releases} release${releases === 1 ? '' : 's'}.`
     }
+    if (tags[1] !== undefined) select.value = tags[1]
     select.addEventListener('change', show)
     root.hidden = false
     show()

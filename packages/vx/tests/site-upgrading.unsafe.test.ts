@@ -15,7 +15,7 @@ if (process.env['VX_REQUIRE_TAGS'] === '1') fetchHistory(ROOT)
 
 /** Each entry's text under its heading. */
 function footers(md: string): string[] {
-  return [...md.matchAll(/^#### .+\n\n(.+)\n/gm)].map((m) => m[1]!).toSorted()
+  return [...md.matchAll(/^### .+\n\n(.+)\n/gm)].map((m) => m[1]!).toSorted()
 }
 
 const shallow =
@@ -52,7 +52,8 @@ it('every paragraph of the release list reads on a phone', () => {
     .filter((p) => !/^\s*([#<{-]|\d+\.)/.test(p))
     .map((p) =>
       p
-        .replace(/\\([{}])/g, '$1')
+        .replace(/&#123;/g, '{')
+        .replace(/&#125;/g, '}')
         .replace(/&lt;/g, '<')
         .replace(/`|\*\*/g, '')
         .trim(),
