@@ -418,6 +418,10 @@ export function helpText(pluginCommands: readonly string[] = []): string {
   ].join('\n')
 }
 
+/** `--affected=` with nothing after it: refused, as cli.md says, in run, watch and show. */
+export const AFFECTED_EMPTY =
+  '--affected= needs a value: pass bare --affected for the default base, or --affected=<ref>'
+
 /**
  * Every argument error ends with this. `vx <verb> --help` prints the reference;
  * before that there was nowhere to send a user who got a flag wrong, so the

@@ -12,7 +12,7 @@ import type { ProjectConfig, TaskConfig } from '../config.js'
 import { declaredTask } from '../graph/index.js'
 import { isDefaultBuild } from '../graph/index.js'
 import { affectedTaskProjects, projectAtDir, unlockedDir } from '../orchestrator/index.js'
-import { flagHint, formatValue, refuse, seeHelp } from './help.js'
+import { AFFECTED_EMPTY, flagHint, formatValue, refuse, seeHelp } from './help.js'
 import {
   listed,
   nearMatches,
@@ -74,8 +74,10 @@ export function parseShowArgs(args: readonly string[]): ShowArgs {
       out.affected = ''
       const next = args[i + 1]
       if (next !== undefined && !next.startsWith('-')) out.spacedBase ??= next
-    } else if (a.startsWith('--affected=')) out.affected = a.slice('--affected='.length)
-    else if (a.startsWith('-'))
+    } else if (a.startsWith('--affected=')) {
+      out.affected = a.slice('--affected='.length)
+      if (out.affected === '') return { ...out, error: `${AFFECTED_EMPTY}${seeHelp('show')}` }
+    } else if (a.startsWith('-'))
       return { ...out, error: `unknown flag: ${a}${flagHint('show', a)}${seeHelp('show')}` }
     else if (out.target === 'project')
       // Nx's spelling: `nx show project <name>`.

@@ -1,9 +1,10 @@
-import { documentedFlags, helpText, verbHelpText } from '../src/cli/help.js'
+import { documentedFlags, helpText, seeHelp, verbHelpText } from '../src/cli/help.js'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'bun:test'
 import { localWorkspaceSource, writeLocalWorkspace } from './helpers/local-workspace.js'
 import { formatBytes, parseDuration, parseSize } from '../src/util/index.js'
 import { parsePruneArgs } from '../src/cli/cache.js'
 import { parseRunArgs } from '../src/cli/run.js'
+import { parseShowArgs } from '../src/cli/show.js'
 import { run } from './helpers/cli.js'
 import { lock } from './helpers/orchestrator.js'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
@@ -2058,6 +2059,19 @@ describe('parseRunArgs', () => {
 
   it('rejects unknown flag', () => {
     expect(parseRunArgs(['--bogus']).error).toMatch(/unknown flag/)
+  })
+
+  it('--affected= (empty value) is refused, not read as the default base', () => {
+    // `--affected=$BASE` with BASE unset diffed from the default base; cli.md
+    // says an empty value is refused.
+    const msg =
+      '--affected= needs a value: pass bare --affected for the default base, or --affected=<ref>'
+    expect(parseRunArgs(['build', '--affected=']).error).toBe(msg)
+    expect(parseRunArgs(['build', '--affected=', '--dry'], 'watch').error).toBe(msg)
+    expect(parseShowArgs(['--affected=']).error).toBe(`${msg}${seeHelp('show')}`)
+    expect(parseRunArgs(['build', '--affected']).affected).toBe('')
+    expect(parseRunArgs(['build', '--affected=main']).affected).toBe('main')
+    expect(parseShowArgs(['--affected']).affected).toBe('')
   })
 
   it('-f is not recognized (legacy)', () => {

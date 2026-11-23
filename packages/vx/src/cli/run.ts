@@ -2,7 +2,7 @@ import { statSync } from 'node:fs'
 import path from 'node:path'
 import { isatty } from 'node:tty'
 import { findWorkspaceRoot } from '../workspace/index.js'
-import { anchoredSpecError, flagHint, refuse, seeHelp } from './help.js'
+import { AFFECTED_EMPTY, anchoredSpecError, flagHint, refuse, seeHelp } from './help.js'
 import {
   planCore,
   runCore as runOrchestrator,
@@ -302,6 +302,8 @@ function parse(
       spacedValue('--affected', before[i + 1])
     } else if (a.startsWith('--affected=')) {
       out.affected = a.slice('--affected='.length)
+      // `--affected=$BASE` with BASE unset diffed from the default base.
+      if (out.affected === '') return { ...out, error: AFFECTED_EMPTY }
     } else if (a === '--poll') {
       // The edit-distance hint offered vx run `--all`, a different flag.
       if (verb === 'run')
