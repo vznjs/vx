@@ -66,11 +66,11 @@ const pushes: Array<[Push, string]> = [
   </div>
 
   <p class="vx-spread-key">
-    <span class="vx-spread-swatch vx-spread-warm"></span> worker starting
-    <span class="vx-spread-swatch vx-spread-ui"></span> <code>@demo/ui</code>
-    <span class="vx-spread-swatch vx-spread-web"></span> <code>@demo/web</code>
-    <span class="vx-spread-swatch vx-spread-hit"></span> restored from the cache
-    <span class="vx-spread-swatch vx-spread-chain-key"></span> longest path
+    <span class="vx-spread-item"><span class="vx-spread-swatch vx-spread-warm"></span> worker starting</span>
+    <span class="vx-spread-item"><span class="vx-spread-swatch vx-spread-ui"></span> <code>@demo/ui</code></span>
+    <span class="vx-spread-item"><span class="vx-spread-swatch vx-spread-web"></span> <code>@demo/web</code></span>
+    <span class="vx-spread-item"><span class="vx-spread-swatch vx-spread-hit"></span> restored from the cache</span>
+    <span class="vx-spread-item"><span class="vx-spread-swatch vx-spread-chain-key"></span> longest path</span>
   </p>
   <p class="vx-spread-note">Nine real runs, one per choice, on 2-core <code>local()</code> workers. The output below is from the 3-worker runs.</p>
 </figure>
@@ -267,6 +267,9 @@ const pushes: Array<[Push, string]> = [
   }
   .vx-spread-chain-key {
     box-shadow: inset 0 0 0 2px var(--vx-fg);
+  }
+  .vx-spread-item {
+    white-space: nowrap;
   }
   .vx-spread-key,
   .vx-spread-note {
