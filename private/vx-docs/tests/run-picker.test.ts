@@ -4,6 +4,7 @@
 
 import { describe, expect, it } from 'bun:test'
 import { command, filterProjects, plan } from '../src/components/demos/model/run-picker.ts'
+import type { Scope } from '../src/components/demos/model/run-picker.ts'
 
 const ids = (p: ReturnType<typeof plan>) => p.tasks.map((t) => t.id)
 
@@ -26,7 +27,7 @@ describe('run picker', () => {
   })
 
   it('--affected reaches users through ^build, and lint stays put', () => {
-    const changed = { kind: 'affected', changed: ['@demo/ui', '@demo/api'] } as const
+    const changed: Scope = { kind: 'affected', changed: ['@demo/ui', '@demo/api'] }
     expect(ids(plan('test', changed))).toEqual([
       '@demo/admin#test',
       '@demo/api#test',

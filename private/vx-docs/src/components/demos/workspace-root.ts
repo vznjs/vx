@@ -16,7 +16,7 @@ class WorkspaceRoot extends HTMLElement {
     const byDir = new Map(rows.map((r) => [r.dataset['dir']!, r]))
     const seen: string[] = []
     let found: string | null = null
-    for (let dir: string | null = from; dir !== null; dir = parent(dir)) {
+    for (let dir: string | null = from; dir !== null; dir = parentDir(dir)) {
       const row = byDir.get(dir)
       if (row === undefined) break
       seen.push(dir)
@@ -43,7 +43,7 @@ class WorkspaceRoot extends HTMLElement {
 const up = (n: number): string =>
   n === 0 ? 'right where you are' : `${n} folder${n === 1 ? '' : 's'} up`
 
-const parent = (dir: string): string | null => {
+const parentDir = (dir: string): string | null => {
   const at = dir.lastIndexOf('/')
   return at === -1 ? null : dir.slice(0, at)
 }
