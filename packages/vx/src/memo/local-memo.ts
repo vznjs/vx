@@ -38,7 +38,6 @@ export interface StoreMemo {
     holds?: (files: readonly string[]) => boolean,
   ): Promise<void>
   recordOutputStamps(hash: string, projectDir: string, workspaceRoot: string): void
-  stampWritten(hash: string, projectDir: string, workspaceRoot: string): void
   loadOutputDirsBatch(hashes: readonly string[]): Map<string, OutputDirRow[]>
   outputDirsCurrent(projectDir: string, rows: readonly OutputDirRow[]): boolean
   warmOutputs(
@@ -277,12 +276,6 @@ export class LocalMemo implements StoreMemo {
     const dated = this.datedMtimes.get(hash)
     this.datedMtimes.delete(hash)
     this.outputs.recordOutputStamps(hash, projectDir, workspaceRoot, dated)
-  }
-
-  /** Stamp `hash`'s files as a `--force` run wrote them beside its kept entry: this process only. */
-  stampWritten(hash: string, projectDir: string, workspaceRoot: string): void {
-    this.datedMtimes.delete(hash)
-    this.outputs.recordOutputStamps(hash, projectDir, workspaceRoot, undefined, true)
   }
 
   /**

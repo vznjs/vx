@@ -153,6 +153,8 @@ interface Worker {
   readonly size: number
   readonly cores: number
   readonly askedAt: number
+  /** Started without the plan (CI before the run, or on its own): its join is no warm-up. */
+  readonly adopted?: true
   joinedAt?: number
   leftAt?: number
   readonly run: Set<number>
@@ -575,7 +577,7 @@ export class Engine {
   /** A worker of size `z` the engine did not ask for (started before the run, or joining on its own), from `t`. */
   adopt(z: number, t: number, cores = this.sizes[z]!.cores): number {
     this.advance(t)
-    return this.ask(z, cores)
+    return this.ask(z, cores, true)
   }
 
   /**
@@ -657,9 +659,13 @@ export class Engine {
     this.advance(t)
     const x = this.workers[w]!
     x.joinedAt = t
-    this.joins[x.size]!.push(t - x.askedAt)
-    this.warms[x.size] = NaN
-    this.spreads[x.size] = NaN
+    // An adopted worker was up before the run knew it: its join at once taught a warm-up of 0, and a
+    // joined worker was let go for one asked in its place that never came (main 02dce35, 2026-11-22).
+    if (x.adopted !== true) {
+      this.joins[x.size]!.push(t - x.askedAt)
+      this.warms[x.size] = NaN
+      this.spreads[x.size] = NaN
+    }
     for (const i of x.reserved) this.state[i] = READY
     x.reserved = []
   }
@@ -801,7 +807,7 @@ export class Engine {
     if (c === c) return c
     const by = new Map<number, number[]>()
     for (const w of this.workers)
-      if (w.size === z && w.joinedAt !== undefined) {
+      if (w.size === z && w.joinedAt !== undefined && w.adopted !== true) {
         const g = by.get(w.askedAt)
         if (g === undefined) by.set(w.askedAt, [w.joinedAt])
         else g.push(w.joinedAt)
@@ -884,12 +890,13 @@ export class Engine {
   private live(): Worker[] {
     return this.workers.filter((w) => w.leftAt === undefined)
   }
-  private ask(z: number, cores = this.sizes[z]!.cores): number {
+  private ask(z: number, cores = this.sizes[z]!.cores, adopted = false): number {
     this.workers.push({
       ix: this.workers.length,
       size: z,
       cores,
       askedAt: this.t,
+      ...(adopted ? { adopted } : {}),
       run: new Set(),
       reserved: [],
     })

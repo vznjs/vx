@@ -21,6 +21,10 @@ version. `vx cache clean --older-than 7d` drops the old entries later.
 
 ## After v0.0.659
 
+### Drop Cache.kept and the stampWritten memo hooks
+
+Nothing to change beyond the steps above.
+
 ### Fail a task whose declared output matched nothing
 
 A declared output that matches no files fails the task instead of warning.

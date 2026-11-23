@@ -17,7 +17,7 @@ import {
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, describe, expect, it } from 'bun:test'
-import { localVx, upgradesOnlyItself } from '../src/handoff.js'
+import { localVx, retierJit, upgradesOnlyItself } from '../src/handoff.js'
 
 const LAUNCHER = path.resolve(import.meta.dir, '..', 'npm-launcher.sh')
 const HANDOFF = path.resolve(import.meta.dir, '..', 'src', 'handoff.ts')
@@ -385,5 +385,61 @@ describe('the compiled binary hands off', () => {
     }
     // Any other signal keeps the shell's code.
     expect(handed('USR1').exitCode).toBe(128 + os.constants.signals.SIGUSR1)
+  })
+})
+
+// A compiled vx restarts a run with JSC's top JIT tier off (its compiles
+// never paid back within a run), once, and keeps the option and its mark
+// out of every process it starts. Driven through `bun run`: the restart
+// execs this Bun with the argv it was given.
+describe('retierJit', () => {
+  const printer = path.join(root, 'print-env.ts')
+  writeFileSync(
+    printer,
+    `console.log(JSON.stringify([process.env.BUN_JSC_useFTLJIT ?? null, process.env.VX_JIT_TIERED ?? null]))\n`,
+  )
+  const restart = (env: Record<string, string>, compiled = true): string => {
+    const p = Bun.spawnSync({
+      cmd: [
+        process.execPath,
+        '-e',
+        `const { retierJit } = await import(${JSON.stringify(HANDOFF)}); retierJit(['run', ${JSON.stringify(printer)}], ${compiled}); console.log('not restarted')`,
+      ],
+      env: { PATH: process.env['PATH'] ?? '', ...env },
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+    return p.stdout.toString().trim()
+  }
+
+  it('restarts a compiled run with the top tier off, marked as set by vx', () => {
+    expect(restart({})).toBe('["false","1"]')
+  })
+
+  it('leaves alone one the user set, a source run and a verb that runs no tasks', () => {
+    expect(restart({ BUN_JSC_useFTLJIT: 'true' })).toBe('not restarted')
+    expect(restart({}, false)).toBe('not restarted')
+    const p = Bun.spawnSync({
+      cmd: [
+        process.execPath,
+        '-e',
+        `const { retierJit } = await import(${JSON.stringify(HANDOFF)}); retierJit(['show'], true); console.log('not restarted')`,
+      ],
+      stdout: 'pipe',
+    })
+    expect(p.stdout.toString().trim()).toBe('not restarted')
+  })
+
+  it('once restarted, takes the option and its mark out of the environment', () => {
+    const was = [process.env['BUN_JSC_useFTLJIT'], process.env['VX_JIT_TIERED']] as const
+    try {
+      process.env['BUN_JSC_useFTLJIT'] = 'false'
+      process.env['VX_JIT_TIERED'] = '1'
+      retierJit(['run'], true)
+      expect('BUN_JSC_useFTLJIT' in process.env || 'VX_JIT_TIERED' in process.env).toBe(false)
+    } finally {
+      if (was[0] !== undefined) process.env['BUN_JSC_useFTLJIT'] = was[0]
+      if (was[1] !== undefined) process.env['VX_JIT_TIERED'] = was[1]
+    }
   })
 })

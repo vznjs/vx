@@ -317,10 +317,6 @@ export function outputBytes(ix: StoreIndex, hash: string): number | undefined {
   return bytes
 }
 
-export function kept(ix: StoreIndex, hash: string): boolean {
-  return ix.keptHashes.delete(hash)
-}
-
 export function artifactSize(ix: StoreIndex, hash: string): number | undefined {
   return guard(
     ix,

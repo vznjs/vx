@@ -71,6 +71,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'env-reads-complete',
     'everyday-ops-differential',
     'fail-fast',
+    'force-replaces',
     'keyless-through-server',
     'exclude-dependencies-key',
     'failed-output-whole',

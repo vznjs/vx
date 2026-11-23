@@ -101,6 +101,14 @@ esac
 # when npm could not hoist it. The nested one first, as Node resolves:
 # npm nests it only when the slot beside holds another release. The glibc
 # binary needs its loader (musl has none); launcher.cjs names that cause.
+# JSC's top JIT tier off, as a binary run by hand restarts itself to set
+# (handoff.ts retierJit): set on the exec, it costs nothing. One the user
+# set is theirs.
+if [ -z "${BUN_JSC_useFTLJIT+x}" ]; then
+  BUN_JSC_useFTLJIT=false
+  VX_JIT_TIERED=1
+  export BUN_JSC_useFTLJIT VX_JIT_TIERED
+fi
 if [ -n "$key" ] && { [ -z "$loader" ] || [ -e "$loader" ]; }; then
   for bin in "$here/node_modules/$scope/$base-$key/$base" "$here/../$base-$key/$base"; do
     if [ -x "$bin" ]; then exec "$bin" "$@"; fi

@@ -1119,3 +1119,31 @@ it("main 9600386's plan allows its tasks' times the spread an earlier run's had"
   expect(before).toBeGreaterThan(76_000)
   expect(after).toBeLessThan(74_000)
 })
+
+// Main 02dce35 (2026-11-22): a worker the CI started before the run joined
+// the moment it was adopted, and that join taught the size a warm-up of 0.
+// Its task not handed over yet, a worker asked in its place looked as soon
+// and held less: the joined one was let go, and the run waited 58 s on the
+// one asked, which its adapter never starts.
+it('an adopted worker’s join teaches no warm-up: it is kept for the task to come', () => {
+  const nodes = new Map(
+    [
+      { id: 'a#gen', deps: [] },
+      { id: 'b#use', deps: ['a#gen'] },
+    ].map((n) => [n.id, { ...n, config: { exec: { command: 'x' } } } as unknown as TaskNode]),
+  )
+  const planner = new Planner({
+    nodes,
+    platform: () => 'linux-x64',
+    sizes: [
+      { name: 'mac', cores: 1, memory: 1e9, max: 1, platform: 'linux-x64', warmUpMs: 20_000 },
+    ],
+    known: (id) => ({ ms: id === 'a#gen' ? 50 : 30, cores: 1 }),
+    expected: new Set(['b#use']),
+  })
+  planner.drop('a#gen', 0)
+  planner.adopt('mac#1', 'mac', 'linux-x64', 1, 100)
+  planner.joined('mac#1', 100)
+  const d = planner.decide(100, (s) => `${s.name}#2`)
+  expect([d.leave, d.ask]).toEqual([[], []])
+})

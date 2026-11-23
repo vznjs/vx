@@ -944,9 +944,10 @@ is on):
    Until 2026-09-27 (A-3) the rename came first, and a commit refused
    past the busy timeout left the new bytes beside the old rows: every
    later hit on the key failed the task as a corrupt artifact.
-   A `--force` save of a key the index already holds is skipped, so
-   `--force` rewrites nothing. A re-save (a key dropped as corrupt, or
-   two writers that both found it absent) first moves the previous
+   A `--force` save of a key the index already holds replaces it: the
+   doubted local entry is what `--force` repairs (a remote never replaces a
+   key). A re-save (a `--force` run, a
+   key dropped as corrupt, or two writers that both found it absent) first moves the previous
    artifact aside under
    a temp name and unlinks it after the commit: ext4 flushes the
    incoming file when a rename replaces one, 0.55 ms a save on the main
@@ -1000,9 +1001,7 @@ sibling task or another process that rewrites an ignored `dist`, would
 file bytes no key names. The save checks each dependency's outputs against
 the stamps its save or restore left, and withholds the entry when one
 moved: `[vx] app#build: an output of lib#build changed while it ran (a
-checkout, a stash, another process) — …`. A `--force` run that kept a dependency's stored
-entry stamps the files it just wrote, for that run only: the entry's rows
-name the last save's mtimes, and the fresh write is not a move. Each output is `lstat`ed once
+checkout, a stash, another process) — …`. Each output is `lstat`ed once
 per dependant's save, and not again for a dependant whose command ended
 before the last check found them held. So are the inputs of every task the key folds, dependencies of
 dependencies too (`inputs.tasks` decides which): an editor's save or a

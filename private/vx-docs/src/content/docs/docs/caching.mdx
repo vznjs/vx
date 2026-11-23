@@ -86,7 +86,7 @@ Every part, in order: [Caching in depth](../../caching/).
   once the command exits 0 fails the task, and nothing is saved
   ([fix](../../guides/troubleshooting/)).
 - A failed task is never saved.
-- `--force` runs everything and saves only what the cache lacks; `--no-cache` ignores it.
+- `--force` runs everything and replaces what the local cache holds (a remote keeps the keys it has); `--no-cache` ignores it.
 
 ---
 

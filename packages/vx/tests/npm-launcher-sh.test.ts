@@ -57,11 +57,14 @@ describe.skipIf(!loaderPresent)('npm launcher (sh)', () => {
     }
   }
 
-  function run(cmd: string[]): { code: number | null; out: string } {
+  function run(
+    cmd: string[],
+    env: Record<string, string> = {},
+  ): { code: number | null; out: string } {
     const p = Bun.spawnSync({
       cmd,
       cwd: root,
-      env: { PATH: tools },
+      env: { PATH: tools, ...env },
       stdout: 'pipe',
       stderr: 'pipe',
     })
@@ -125,5 +128,18 @@ describe.skipIf(!loaderPresent)('npm launcher (sh)', () => {
     install(pkg, bin)
     chmodSync(bin, 0o644)
     expect(run([path.join(pkg, 'launcher.sh')]).code).toBe(3)
+  })
+
+  // handoff.ts retierJit: the binary would restart itself to set it.
+  it('execs the binary with JSC’s top JIT tier off, marked as set by vx; one the user set stays', () => {
+    const pkg = path.join(root, 'node_modules', '@vzn', 'vx')
+    const bin = path.join(root, 'node_modules', '@vzn', `vx-${KEY}`, 'vx')
+    install(pkg, bin)
+    exe(bin, 'echo "bin ${BUN_JSC_useFTLJIT-unset} ${VX_JIT_TIERED-unset}"')
+    expect(run([path.join(pkg, 'launcher.sh'), 'run'])).toEqual({ code: 0, out: 'bin false 1' })
+    expect(run([path.join(pkg, 'launcher.sh'), 'run'], { BUN_JSC_useFTLJIT: 'true' })).toEqual({
+      code: 0,
+      out: 'bin true unset',
+    })
   })
 })
