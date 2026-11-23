@@ -246,6 +246,25 @@ describe('every input the npm digest must read', () => {
     }
   })
 
+  // A registry mirror move rewrites every `resolved` over the same tarballs
+  // (`npm install --registry`): the integrity pins the bytes, so no key
+  // moves. A git or tarball dependency has no integrity: its URL is it.
+  it('a resolved URL moves no workspace where an integrity pins the bytes', () => {
+    const text = (host: string, integrity: boolean) =>
+      doc({
+        'packages/a': { name: 'a', dependencies: { dep: '^1' } },
+        'node_modules/dep': {
+          version: '1.0.0',
+          resolved: `https://${host}/dep-1.0.0.tgz`,
+          ...(integrity ? { integrity: 'sha512-dep' } : {}),
+        },
+      })
+    expect(movedDirs(text('registry.npmjs.org', true), text('mirror.corp', true))).toEqual([])
+    expect(movedDirs(text('registry.npmjs.org', false), text('mirror.corp', false))).toEqual([
+      'packages/a',
+    ])
+  })
+
   // vercel/turborepo#4824 (its fixture workspace-peer-dependency.json): a
   // workspace linked under a registry name (`eslint` → packages/c) that a
   // registry package and a workspace both peer on. It resolved to no
@@ -278,7 +297,6 @@ describe('every input the npm digest must read', () => {
 
   it.each([
     ['version', { version: '1.0.1' }],
-    ['resolved', { resolved: 'https://mirror/x-1.0.0.tgz' }],
     ['integrity', { integrity: 'sha512-other' }],
   ])('the %s alone moves the package', (_, change) => {
     const text = (over: Record<string, string>) =>

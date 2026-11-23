@@ -29,7 +29,7 @@ export interface Entry {
   readonly deps: ReadonlyMap<string, string>
   /** the root's and a workspace's `sectionsOf`; '' for any other entry */
   readonly sections: string
-  /** version + resolved + integrity — whatever pins the bytes; a workspace's version; '' for a link, the root */
+  /** version + integrity, else resolved — whatever pins the bytes; a workspace's version; '' for a link, the root */
   readonly resolution: string
   /** the path a `link: true` entry points at */
   readonly link: string | undefined
@@ -91,7 +91,14 @@ export function parseLockfile(text: string): Lockfile {
             ? typeof e['version'] === 'string'
               ? e['version']
               : ''
-            : [e['version'], e['resolved'], e['integrity']]
+            : // The integrity pins the bytes: a registry mirror move rewrites
+              // every `resolved` over the same tarballs. Without one (git, a
+              // tarball URL) the URL is what pins them.
+              [
+                e['version'],
+                typeof e['integrity'] === 'string' ? '' : e['resolved'],
+                e['integrity'],
+              ]
                 .map((v) => (typeof v === 'string' ? v : ''))
                 .join('\0'),
       link,
