@@ -467,6 +467,7 @@ export interface RunHandoff {
   staged?: ReadonlyMap<string, ProjectEntry> // the CLI's own selection load, reused once (below)
   discovered?: { root: string; projects: ProjectMeta[] } // the selection pass's discovery, reused once when the root matches
   selectedByDiff?: boolean // `projects` came from a git diff: bare names judged workspace-wide (item 1024)
+  selectedByFilter?: boolean // `projects` came from --filter or --affected: --all beside it is the filter's selection, widened for a task only others declare
   selectedOutright?: readonly string[] // projects a non-affected --filter named: their tasks run beside affected ones (X-10)
   affectedReasons?: Map<string, AffectedReason> // planRun (`--dry`) collects why `--affected` kept each request
   remoteRequested?: string // the setting whose spec named a remote axis ('--cache-policy')

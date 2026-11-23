@@ -316,9 +316,14 @@ refusal is decided by the file's bytes now, never by a memo (rule 9).
 export interface ConfigStamps {
   at: number // epoch ms before the first stat: the racy window runs from here
   configs: Record<string, [number, number, string]>
+  head: string | null // the commit HEAD named when taken; null outside git
 }
 export const CONFIG_STAMPS_FILE = 'config-stamps.json' // a cache clear deletes it
-export function takeConfigStamps(root: string, files: readonly string[]): Promise<ConfigStamps>
+export function takeConfigStamps(
+  root: string,
+  files: readonly string[],
+  head: string | null,
+): Promise<ConfigStamps>
 export function writeConfigStamps(
   root: string,
   cacheDir: string,
@@ -329,6 +334,7 @@ export function configsEditedSinceLock(
   cacheDir: string,
   lock: string | undefined,
   files: readonly { file: string; size: number; mtimeMs: number }[],
+  head: () => string | null,
 ): Promise<string[]>
 ```
 
