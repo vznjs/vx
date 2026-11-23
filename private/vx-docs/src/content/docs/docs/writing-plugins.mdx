@@ -46,11 +46,12 @@ Follow the plugin above from a file to a task that runs. Take `test` out of `pac
 <Walkthrough title="From one file to a new task">
 <Frame title="1. List it in the workspace">
 
-```ts title=".vx/workspace.ts" ins={2,4}
-import { defineWorkspace } from '@vzn/vx/config'
+```ts title=".vx/workspace.ts" ins={3,5}
+import type { WorkspaceConfig } from '@vzn/vx/config'
+import { bun } from '@vzn/vx-lockfile'
 import { vitest } from '../plugins/vitest.ts'
 
-export default defineWorkspace({ plugins: [vitest()] })
+export default { plugins: [bun(), vitest()] } satisfies WorkspaceConfig
 ```
 
 </Frame>
@@ -88,17 +89,27 @@ No `vx.config.ts` names `test`. Your plugin wrote it.
 <Frame title="4. Run it">
 
 ```sh
-vx run test --all
+vx run test --all --output-logs hash-only
 ```
 
 ```ansi
-[4m[58;2;110;118;129m  [1m[38;2;167;139;250mTasks[0m[4m[58;2;110;118;129m     [2mstatus  cache     ±usual    time   cpu    mem outputs  blocks worker         task[0m[4m[58;2;110;118;129m[0m
-            [38;2;34;197;94msuccess[0m [2mmiss[0m        [2m−1ms[0m   [38;2;203;213;225m751ms[0m  [2m143%[0m  [2m273MB[0m      [2m0B[0m       [2m0[0m [2mlocal[0m          [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;96;165;250mtest[0m
-            [38;2;34;197;94msuccess[0m [2mmiss[0m       [2m+30ms[0m   [38;2;203;213;225m754ms[0m  [2m133%[0m  [2m258MB[0m      [2m0B[0m       [2m0[0m [2mlocal[0m          [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;96;165;250mtest[0m
-2 tasks · [32m0 failed[39m · 0 cached · 805ms
+[38;2;34;197;94msuccess[0m [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;96;165;250mtest[0m [2mf5228f9ea784753f[0m
+[38;2;34;197;94msuccess[0m [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;96;165;250mtest[0m [2mcc50f28bab6377d4[0m
+
+
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mSummary[0m[4m[58;2;110;118;129m                                                                                                       [2mvx 0.0.0[0m
+  [2mprojects[0m  [38;2;234;179;8m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
+            [38;2;234;179;8m2 in run[0m [2m·[0m [2m2 total[0m
+  [2mtasks   [0m  [38;2;34;197;94m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
+            [38;2;34;197;94m2 success[0m [2m·[0m [2m2 total[0m
+  [2mcache   [0m  [38;2;56;189;248m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
+            [2mlocal[0m [38;2;56;189;248m2↑[0m
+
+  [2minfo    [0m  4 workers [2m·[0m local cache [2m·[0m run 01a20a09-4742-7001-8f91-73beaf210c39
+  [2mtime    [0m  601ms [2m·[0m [2mmax 568ms[0m [2m·[0m [2mavg 536ms[0m [2m·[0m [2mmin 504ms[0m
 ```
 
-Both projects ran `vitest run`. The task is cached like any task you write by hand.
+Each line reads: status, task, cache key. Both projects ran `vitest run`, cached like a task you write by hand.
 
 </Frame>
 </Walkthrough>
@@ -124,28 +135,28 @@ Both projects ran `vitest run`. The task is cached like any task you write by ha
   the tasks, a key, the order, where a task runs, where results go.
 </Concept>
 
-A run passes the hooks in this order. Fill the one that owns what you want to change:
+A run passes the hooks in this order, with `setup` and `teardown` around it. Fill the one that owns what you want to change:
 
 <Diagram {...pluginStages} />
 
-| Stage       | Hook                   | Use it to                                                      |
-| ----------- | ---------------------- | -------------------------------------------------------------- |
-| config      | `config(ws, ctx)`      | change the workspace config before vx reads it                 |
-| discover    | `discover(ctx)`        | make a directory a project, and say what it depends on         |
-| project     | `project(config, ctx)` | add, remove or rewrite a project's tasks                       |
-| graph       | `graph(nodes, ctx)`    | add or drop the edges between tasks                            |
-| key         | `key(task, ctx)`       | add what your inputs cannot see to the cache key               |
-| fingerprint | `fingerprint`          | key a root file yourself, such as a lockfile                   |
-| measures    | `measures(nodes)`      | time work that is no task, such as a worker's start            |
-| schedule    | `schedule(nodes, ctx)` | pick which ready task starts first                             |
-| admit       | `admit(task, ctx)`     | hold a ready task back until something finishes               |
-| execute     | `executor(ctx)`        | run a task's command somewhere else                            |
-| store       | `cache(ctx)`           | keep results in your own remote cache                          |
-| observe     | `telemetry(ctx)`       | send each run's records somewhere; it never changes the run    |
-| render      | `output(ctx)`          | draw the terminal yourself                                     |
-| setup       | `setup(ctx)`           | connect, read a token, subscribe to events, before the first task |
-| cli         | `commands`             | add a verb to `vx`                                             |
-| teardown    | `teardown()`           | flush and close when the run ends                              |
+| Stage | Hook | Use it to |
+| --- | --- | --- |
+| 1 | `config(ws, ctx)` | change the workspace config before vx reads it |
+| 2 | `discover(ctx)` | make a directory a project, and say what it depends on |
+| 3 | `project(config, ctx)` | add, remove or rewrite a project's tasks |
+| 4 | `graph(nodes, ctx)` | add or drop the edges between tasks |
+| 5 | `key(task, ctx)` | add what your inputs cannot see to the cache key |
+| 6 | `fingerprint` | key a root file yourself, such as a lockfile |
+| 7 | `measures(nodes)` | time work that is no task, such as a worker's start |
+| 8 | `schedule(nodes, ctx)` | pick which ready task starts first |
+| 9 | `admit(task, ctx)` | hold a ready task back until something finishes |
+| 10 | `executor(ctx)` | run a task's command somewhere else |
+| 11 | `cache(ctx)` | keep results in your own remote cache |
+| 12 | `telemetry(ctx)` | send each run's records somewhere; it never changes the run |
+| 13 | `output(ctx)` | draw the terminal yourself |
+| start | `setup(ctx)` | connect, read a token, subscribe to events, before the first task |
+| CLI | `commands` | add a verb to `vx` |
+| end | `teardown()` | flush and close when the run ends |
 
 Plugins are asked in the order you list them. Whatever every plugin declines, vx does itself on this machine.
 
@@ -468,14 +479,18 @@ Its `ctx` has `projects`: every project's `name` and `dir`.
 | `onRefine(listener)` | called each time another plugin refines |
 | `flaky(taskIds)` | name tasks known as flaky: a failing one gets one retry |
 
-**`admit(task, ctx)`** returns `true` to start the task now, `false` to hold it until something finishes. vx asks often, so keep it cheap and synchronous. Hits, pooled tasks and groups are never asked. Several plugins: all must admit.
+**`admit(task, ctx)`** returns `true` to start the task now, `false` to hold it until something finishes.
+
+vx asks often, so keep it cheap and synchronous. Hits, pooled tasks and groups are never asked. With several plugins, all must admit.
 
 | `ctx` field | What it is |
 | --- | --- |
 | `running` | the tasks holding a worker here now, read-only |
 | `concurrency` | the run's worker count |
 
-**`measures(nodes)`** names work your plugin times that is no task: a map of `<plugin>#<name>` to a definition hash. vx asks before `schedule`. Report each one from `setup` with `ctx.measure({ id, def, durationMs, cores? })`, `def` being its definition hash; history keeps the last of each id.
+**`measures(nodes)`** names work your plugin times that is no task: a map of `<plugin>#<name>` to a definition hash. vx asks before `schedule`.
+
+Report each one from `setup` with `ctx.measure({ id, def, durationMs, cores? })`. `def` is its definition hash. History keeps the last of each id.
 
 </Deeper>
 
@@ -625,8 +640,8 @@ export function runLine(): VxPlugin {
 }
 ```
 
-```ansi title="vx run test --all --force, its first line"
-2 tasks · [32m0 failed[39m · 0 cached · 805ms
+```ansi title="vx run test --all --force: the line it adds after the task table"
+2 tasks · [32m0 failed[39m · 0 cached · 577ms
 ```
 
 Do network I/O in `flush(signal)`, which vx awaits for up to 3 s. Pass `signal` to `fetch`.
@@ -672,8 +687,8 @@ export function hello(): VxPlugin {
 }
 ```
 
-```ansi title="vx hello M"
-hello, [1mM[22m
+```ansi title="vx hello web"
+hello, [1mweb[22m
 ```
 
 The verb's exit code is the process's. `vx help` lists the verb under **Plugin commands**, beside your plugin's name.
@@ -685,18 +700,21 @@ The verb's exit code is the process's. `vx help` lists the verb under **Plugin c
 A verb reads `cache.db` only through vx, which hands back rows, never a handle:
 
 ```ts
+import { styleText } from 'node:util'
 import { Cache, definePlugin, localHistory, type VxPlugin } from '@vzn/vx'
 
-export function mcp(): VxPlugin {
+export function history(): VxPlugin {
   return definePlugin(import.meta, {
     commands: {
-      mcp: {
-        description: 'serve run history to an AI agent over stdio',
+      history: {
+        description: 'print how often each task ran and its median time',
         async run(argv, ctx) {
           const cache = Cache.inspect(ctx.cacheDir) // read-only
           try {
             const table = await localHistory(cache).loadFor(argv)
-            void table
+            for (const [id, h] of table) {
+              console.log(`${styleText('bold', id)}  ${h.runs} runs  p50 ${h.p50DurationMs ?? '—'}ms`)
+            }
           } finally {
             cache.close()
           }
@@ -706,6 +724,11 @@ export function mcp(): VxPlugin {
     },
   })
 }
+```
+
+```ansi title="vx history @demo/web#test @demo/ui#test"
+[1m@demo/ui#test[22m  3 runs  p50 568ms
+[1m@demo/web#test[22m  3 runs  p50 504ms
 ```
 
 <Takeaway>build tools on what your runs already recorded.</Takeaway>
@@ -842,7 +865,7 @@ Reject with `executorFallback(reason)`, from `@vzn/vx`, to hand a task back. vx 
 
 For [Distributed task execution](../distributed-task-execution/), the executor also fills `distribution`: where each task runs, its footer rows, its machines. Each worker runs its tasks through `workerRuntime()`.
 
-<Takeaway>keep sandboxed tasks safe and fall back to this machine when yours cannot run a task.</Takeaway>
+<Takeaway>keep sandboxed tasks safe, and hand back a task yours cannot run.</Takeaway>
 
 </Deeper>
 
@@ -902,7 +925,13 @@ vx asks `executor(ctx)` once per run. Per task, the first executor whose `accept
 | `changed` | files the command changed where it ran, which this disk cannot see |
 | `where`, `machine` | which machine ran it, and its `cores`, `memoryBytes` and `cpuShare` |
 
-`distribution` hooks, each optional: `workers`, `demand(remaining, missed)`, `running(taskId)`, `unneeded(taskId)`, `footer()`, `machines()`, `idealMs()`, `advice()`, `profile()`. `@vzn/vx-dte` fills them all.
+`distribution` hooks, each optional:
+
+- `workers`, `demand(remaining, missed)`
+- `running(taskId)`, `unneeded(taskId)`
+- `footer()`, `machines()`, `idealMs()`, `advice()`, `profile()`
+
+`@vzn/vx-dte` fills them all.
 
 </Deeper>
 
@@ -1134,4 +1163,6 @@ A throw in any other hook stops the run, or `vx lock`, with one line naming your
 
 Every type a plugin sees is on the [`@vzn/vx` API](../../api/) page.
 
-<NextStep href="../agents/" title="Work with AI agents">Let an agent run, read and fix your workspace with the commands you now know.</NextStep>
+<Takeaway>find a runnable example for each hook, and every type a plugin sees.</Takeaway>
+
+<NextStep href="../agents/" title="Work with AI agents">Let an agent run, read and fix your workspace for you.</NextStep>
