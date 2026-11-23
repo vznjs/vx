@@ -280,6 +280,66 @@ it('a worker with other tracked files than the run is refused', async () => {
   }
 })
 
+// The relay carries a worker's frames: a null body, or a `part` list that
+// was no array, threw out of the orchestrator's loop and ended the run.
+it('a worker message of the wrong shape is dropped, and the run hears the next', async () => {
+  const served = servedRelay()
+  const url = served.url
+  const warned: string[] = []
+  try {
+    const o = new Orchestrator({
+      me: await join(url, R, 'orchestrator', null, undefined),
+      root: '/ws',
+      tree: 'aaa',
+      nodes: () => undefined,
+      need: () => ({ cores: 1, memory: 0 }),
+      artifacts: fakeArtifacts().artifacts,
+      cacheFacts: async () => ({ refs: [], lent: {} }),
+      run: R,
+      keyOf: () => undefined,
+      warn: (m) => warned.push(m),
+    })
+    const worker = await join(
+      url,
+      R,
+      'worker',
+      { v: 1, cores: 1, memory: 1, tree: 'aaa' },
+      undefined,
+    )
+    const bad = [
+      null,
+      5,
+      { type: 'together', messages: 5 },
+      { type: 'together', messages: [null] },
+      { type: 'report', batch: 0, load: {} },
+      { type: 'part', task: 't', violations: 5 },
+      { type: 'end', task: 't' },
+      { type: 'ran', task: 't', load: 5 },
+    ]
+    for (const body of bad) await worker.send('orchestrator', body)
+    for (let i = 0; i < 50 && warned.length < bad.length; i++) await Bun.sleep(20)
+    expect(warned.filter((m) => m.includes('not its protocol'))).toHaveLength(bad.length)
+    const other = await join(
+      url,
+      R,
+      'worker',
+      { v: 1, cores: 1, memory: 1, tree: 'bbb' },
+      undefined,
+    )
+    let got: unknown[] = []
+    for (let i = 0; i < 20 && got.length === 0; i++) got = await other.poll()
+    expect(got).toEqual([
+      {
+        from: 'orchestrator',
+        body: { type: 'refused', reason: 'checked out tree bbb, the run is on aaa' },
+      },
+    ])
+    await o.close()
+  } finally {
+    await served.stop()
+  }
+})
+
 // A package added without `git add` is not in a worktree, so its
 // prepare's install rewrote bun.lock and every worker was refused by two
 // hashes; only the new project's own task said `git add` (2026-11-11).
