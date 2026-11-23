@@ -328,7 +328,7 @@ A pipeline is a saved `vx run` over every project. Each key is its `vx run` flag
 | `dry` | `--dry` | `true` | Print the plan; run nothing. |
 | `format` | `--format` | `'json'` | With `dry`, print the plan as JSON. Default `'pretty'`. |
 
-**Who wins.** A flag you type beats its key: `vx pipeline main --filter web` runs main's tasks in `web` alone. A flag's `VX_*` variable beats it too. The key beats `.vx/workspace.ts`'s own setting.
+**Who wins.** A flag you type beats its key: `vx pipeline main --filter @demo/web` runs main's tasks in `@demo/web` and what it needs. A flag's `VX_*` variable beats it too. The key beats `.vx/workspace.ts`'s own setting.
 
 **What a pipeline cannot do.** It has no `--all` key: it always starts from every project. Nothing goes after `--`, since forwarded args are for one task. A typo in `tasks` fails at `vx lock`, not in the CI job.
 

@@ -3,14 +3,15 @@ title: Run the same checks locally and on CI
 description: Save a run under a name in .vx/workspace.ts, then call it with vx pipeline on your machine and on CI.
 ---
 
-import { Aside } from '@astrojs/starlight/components'
-import { Concept, Quiz, Takeaway, NextStep } from '../../../../components/learn'
+import { Levels, Deeper, Concept, Quiz, Takeaway, NextStep } from '../../../../components/learn'
 
 Write a run once in `.vx/workspace.ts`. Then you and CI type the same short command:
 
 ```sh
 vx pipeline pr
 ```
+
+<Levels />
 
 <Concept term="Pipeline">
   A `vx run` saved under a name. Its keys are the `vx run` flags you would type:
@@ -75,12 +76,47 @@ Read the last column: each task says why it is in the plan. Only `packages/web` 
 
 `vx lock --check` fails the job when a config changed without `vx lock` ([Keep the lock fresh](../#keep-the-lock-fresh)).
 
-<Aside type="caution">
-  On `main` itself, `pr` has no base to compare with, so vx refuses it. Run `main` there: the cache
-  still skips what did not change.
-</Aside>
-
 <Takeaway>run one command on your machine and get CI's exact result.</Takeaway>
+
+<Deeper level="patterns" title="Change a pipeline for one run">
+
+### Add a flag
+
+A flag you type beats the pipeline's key. This runs `main`'s tasks in `@demo/web`, plus the `@demo/ui#build` it needs:
+
+```sh
+vx pipeline main --filter @demo/web
+```
+
+### Plan without running
+
+`--dry` works on any pipeline. `vx pipeline main --dry` lists every task and whether the cache holds it.
+
+<Takeaway>reuse a saved pipeline for a one-off run.</Takeaway>
+
+</Deeper>
+
+<Deeper level="details" title="When vx refuses a pipeline">
+
+On `main` itself, `pr` has no base to compare with:
+
+```ansi title="vx pipeline pr, on main"
+[38;2;239;68;68m✗[0m [1mvx pipeline[0m  [38;2;203;213;225m--affected has no default on the base branch (main): drop --affected, --all runs every project (the cache skips what did not change), or name the last good commit, --affected=<sha>[0m
+
+  [38;2;203;213;225m--affected is [0m[1m`pipelines.pr.affected`[0m[38;2;203;213;225m in .vx/workspace[0m
+```
+
+Run `main` there: the cache still skips what did not change.
+
+A name no pipeline has names the closest one:
+
+```ansi title="vx pipeline prr"
+[38;2;239;68;68m✗[0m [1mvx pipeline[0m  [38;2;203;213;225mno pipeline named prr; pipelines: pr, main[0m
+
+  [2mfix[0m  [1mvx pipeline pr[0m
+```
+
+</Deeper>
 
 Every key a pipeline takes: [Pipeline keys](../#pipeline-keys), and [`vx pipeline`](../../../cli/pipeline/).
 
