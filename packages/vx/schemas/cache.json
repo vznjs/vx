@@ -25,7 +25,7 @@
         "orphanBytes": { "type": "integer" },
         "historyRows": {
           "type": "integer",
-          "description": "run history and hash-memo rows older than 30 days, dropped; absent on a dry run"
+          "description": "run history and hash-memo rows older than 30 days, dropped; absent on a dry run or when none was"
         },
         "historyBytes": {
           "type": "integer",

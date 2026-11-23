@@ -2128,7 +2128,7 @@ history and hash memos older than 30 days, and gives the pages of the
 rows it dropped and the entries it evicted back to the disk (a `VACUUM`
 of the index, once rows went); a run never does.
 It reports the rows and the bytes the index shrank by
-(`historyRows`, `historyBytes`); a dry run reports neither.
+(`historyRows`, `historyBytes`); a dry run, or one that dropped no row, reports neither.
 
 Both flags take either form: `--older-than 30d` or `--older-than=30d`.
 
