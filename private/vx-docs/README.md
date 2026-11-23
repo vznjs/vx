@@ -127,7 +127,9 @@ of contents; `src/components/blog/` draws the index (the newest post
 large, filter chips, a grid of cover cards), the tag pages
 (`src/pages/blog/tags/`), the Releases index (`src/pages/releases/`),
 each post's hero and its related posts, and `src/blog/feed.ts` writes
-both feeds. A post is:
+both feeds. Release notes are searched from an index of their own at a
+tenth of the weight (`src/plugins/release-search.ts`), so a feature's
+page comes before the note that announced it. A post is:
 
 ```md
 ---

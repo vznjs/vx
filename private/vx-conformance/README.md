@@ -10,7 +10,8 @@ tool did, each tool's score) are the site's conformance page, written to
 Each case has a short ref, six characters derived from its `id`
 (`ref()` in `src/report.ts`). The ref is the case's link on that page
 (`/conformance/#<ref>`, and `/conformance/?tool=nx#<ref>` opens what one tool
-did), and issues filed with other tools cite it: an id is never renamed or
+did; its category's own page, `/conformance/<category>/#<ref>`, holds the
+row), and issues filed with other tools cite it: an id is never renamed or
 reused, or its ref would change.
 
 ```sh

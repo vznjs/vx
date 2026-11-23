@@ -15,7 +15,6 @@ import {
   CATEGORIES,
   groupName,
   inline,
-  note,
   RESULTS,
   RANKED,
   toolName,
@@ -31,8 +30,9 @@ const sections = CATEGORIES.map((id) => ({
   id,
   cases: cases.filter((c) => c.category === id),
 }))
-const MARK = { pass: '✓', fail: '✗', 'n/a': '–' } as const
-const SAY = { pass: 'passes', fail: 'fails', 'n/a': 'does not have this feature' } as const
+// Each case's category, by ref: a link to `#<ref>` opens the category
+// and loads its cases first.
+const REFS = Object.fromEntries(cases.map((c) => [c.ref, c.category]))
 ---
 
 <FeaturesPage
@@ -128,62 +128,9 @@ const SAY = { pass: 'passes', fail: 'fails', 'n/a': 'does not have this feature'
                   ))}
                 </summary>
                 <p class="cfm-cat-about" set:html={inline(about(s.id))} />
-                <table class="cfm-cases">
-                  <colgroup>
-                    <col />
-                    <col span={RANKED.length} class="cfm-col" />
-                  </colgroup>
-                  <thead class="cfm-sr">
-                    <tr>
-                      <th scope="col">Case</th>
-                      {RANKED.map((t) => (
-                        <th scope="col" class="cfm-tool">
-                          {toolName(t)}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {s.cases.map((c) => (
-                      <tr id={c.ref} data-case={c.id} data-agree={agree(c) ? '' : undefined}>
-                        <th scope="row">
-                          <span class="cfm-title" set:html={inline(c.title)} />
-                          <details class="cfm-why">
-                            <summary>Why this is right</summary>
-                            <p set:html={inline(c.why)} />
-                          </details>
-                          <span class="cfm-meta">
-                            <a href={`#${c.ref}`}>{c.ref}</a> · {c.id} · {c.kind}
-                          </span>
-                        </th>
-                        {RANKED.map((t) => {
-                          const o = c.outcomes[t] ?? { status: 'n/a' as const }
-                          const label = `${toolName(t)} ${SAY[o.status]}`
-                          return (
-                            <td data-tool={t} data-status={o.status}>
-                              {o.status !== 'pass' && note(o) !== '' ? (
-                                <details>
-                                  <summary aria-label={label} title={note(o)}>
-                                    {MARK[o.status]}
-                                  </summary>
-                                  <p class="cfm-detail">
-                                    <strong>
-                                      {toolName(t)}
-                                      {o.status === 'n/a' ? ': N/A' : ''}
-                                    </strong>{' '}
-                                    {note(o)}
-                                  </p>
-                                </details>
-                              ) : (
-                                <span aria-label={label}>{MARK[o.status]}</span>
-                              )}
-                            </td>
-                          )
-                        })}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                <p class="cfm-more" data-cat={s.id}>
+                  <a href={`${s.id}/`}>All {s.cases.length} cases</a>
+                </p>
               </details>
             ))
           }
@@ -193,19 +140,59 @@ const SAY = { pass: 'passes', fail: 'fails', 'n/a': 'does not have this feature'
   </div>
 </FeaturesPage>
 
+<script type="application/json" id="cfm-refs" set:html={JSON.stringify(REFS)} />
+
 <script>
-  // A case's row sits in a closed category, and not every browser opens a
-  // <details> to reach a link's target.
-  const show = (): void => {
+  // A category's cases live on its own page (conformance/<category>/): the
+  // whole table here was 3.4 MB. Opening a category fetches that page's
+  // table into it; a link to `#<ref>` opens the case's category first,
+  // and `?tool=<tool>` opens that tool's detail.
+  const REFS = JSON.parse(document.getElementById('cfm-refs')?.textContent ?? '{}') as Record<
+    string,
+    string
+  >
+  const loads = new Map<string, Promise<void>>()
+
+  const load = (cat: HTMLDetailsElement): Promise<void> => {
+    const more = cat.querySelector<HTMLElement>('.cfm-more')
+    if (!more) return Promise.resolve()
+    let done = loads.get(cat.id)
+    if (!done) {
+      const href = more.querySelector('a')!.href
+      done = fetch(href)
+        .then((r) => (r.ok ? r.text() : Promise.reject(new Error(String(r.status)))))
+        .then((html) => {
+          const table = new DOMParser()
+            .parseFromString(html, 'text/html')
+            .querySelector('table.cfm-cases')
+          if (table) more.replaceWith(document.importNode(table, true))
+        })
+        .catch(() => loads.delete(cat.id))
+      loads.set(cat.id, done)
+    }
+    return done
+  }
+
+  for (const cat of document.querySelectorAll<HTMLDetailsElement>('details.cfm-cat'))
+    cat.addEventListener('toggle', () => {
+      if (cat.open) void load(cat)
+    })
+
+  const show = async (): Promise<void> => {
     let id = location.hash.slice(1)
     try {
       id = decodeURIComponent(id)
     } catch {}
-    const at = id ? document.getElementById(id) : null
-    const cat = at?.closest<HTMLDetailsElement>('details.cfm-cat')
-    if (!at || !cat) return
+    if (!id) return
+    const cat = document.querySelector<HTMLDetailsElement>(
+      `details.cfm-cat[id="${CSS.escape(REFS[id] ?? id)}"]`,
+    )
+    if (!cat) return
     cat.open = true
-    if (at.hasAttribute('data-agree')) {
+    await load(cat)
+    const at = REFS[id] ? document.getElementById(id) : cat
+    if (!at) return
+    if (at.hasAttribute('data-agree') && at !== cat) {
       const differ = document.querySelector<HTMLInputElement>('#cfm-differ')
       if (differ) differ.checked = false
     }
@@ -216,6 +203,6 @@ const SAY = { pass: 'passes', fail: 'fails', 'n/a': 'does not have this feature'
     }
     at.scrollIntoView()
   }
-  show()
-  addEventListener('hashchange', show)
+  void show()
+  addEventListener('hashchange', () => void show())
 </script>
