@@ -68,23 +68,8 @@ const SIDEBAR_GROUPS: Record<'Docs', SidebarItem[]> = {
       label: 'Define tasks',
       items: [
         { label: 'Tasks', link: '/docs/tasks/' },
-        // FOLD into Tasks
-        {
-          label: "Build a project's dependencies first",
-          link: '/docs/running/build-dependencies-first/',
-        },
         { label: 'Environment variables', link: '/docs/environment-variables/' },
-        // FOLD into Environment variables
-        {
-          label: 'Pass an environment variable to a task',
-          link: '/docs/running/pass-an-environment-variable/',
-        },
         { label: 'Dev servers', link: '/docs/dev-servers/' },
-        // FOLD into Dev servers
-        {
-          label: 'Start a dev server before your tests',
-          link: '/docs/running/start-a-dev-server/',
-        },
       ],
     },
     {

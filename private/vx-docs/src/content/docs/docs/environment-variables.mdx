@@ -3,7 +3,7 @@ title: Environment variables
 description: Give a task the variables it needs, and choose which ones re-run it.
 ---
 
-import { Aside } from '@astrojs/starlight/components'
+import { Aside, Tabs, TabItem } from '@astrojs/starlight/components'
 import { Levels, Deeper, Concept, Quiz, Walkthrough, Frame, Compare, Takeaway, NextStep } from '../../../components/learn'
 import EnvPicker from '../../../components/env/EnvPicker.astro'
 
@@ -294,6 +294,67 @@ export default defineWorkspace({
 ```
 
 <Takeaway>set up public bundler values, publish tokens and per-run settings without guessing.</Takeaway>
+
+</Deeper>
+
+<Deeper level="patterns" title="A bundle that bakes in NODE_ENV">
+
+### A bundle that bakes in NODE_ENV
+
+`vite build` writes `NODE_ENV` into the bundle. Pass it only, and the
+cache cannot tell `production` from `development`. Here a one-line script
+stands in for `vite` and prints the mode. Pick a tab.
+
+<Tabs>
+<TabItem label="passThrough only">
+
+```ts
+exec: { command: 'vite build', env: { passThrough: ['NODE_ENV'] } },
+inputs: { files: ['src/**'] },
+```
+
+`vx lock` warns you right away:
+
+```ansi
+[38;2;234;179;8m![0m [1mvx lock[0m  [38;2;203;213;225m@demo/web#bundle: exec.env.passThrough forwards NODE_ENV, which a bundler writes into its output, and the key does not see it — add it to inputs.env[0m
+```
+
+Build with `production`, then `development`. The second run keeps `production`:
+
+```ansi
+[2m┌─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;129;140;248mbundle[0m [2m>[0m $ mkdir -p out && echo "mode=$NODE_ENV" > out/mode.txt && cat out/mode.txt
+mode=production
+[2m└─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;129;140;248mbundle[0m [2m──[0m [2m(2ms)[0m [2mup-to-date[0m
+```
+
+</TabItem>
+<TabItem label="Also in inputs.env">
+
+```ts ins={2}
+exec: { command: 'vite build', env: { passThrough: ['NODE_ENV'] } },
+inputs: { files: ['src/**'], env: ['NODE_ENV'] },
+```
+
+A new value is a new cache entry, so `development` builds fresh:
+
+```ansi
+[2m┌─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;129;140;248mbundle[0m [2m>[0m $ mkdir -p out && echo "mode=$NODE_ENV" > out/mode.txt && cat out/mode.txt
+mode=development
+[2m└─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;129;140;248mbundle[0m [2m──[0m [2m(7ms)[0m [2msuccess[0m
+```
+
+Switch back to `production`, and vx restores that bundle from the cache:
+
+```ansi
+[2m┌─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;129;140;248mbundle[0m [2m>[0m $ mkdir -p out && echo "mode=$NODE_ENV" > out/mode.txt && cat out/mode.txt
+mode=production
+[2m└─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;129;140;248mbundle[0m [2m──[0m [2m(10ms)[0m [2mrestored-local[0m
+```
+
+</TabItem>
+</Tabs>
+
+<Takeaway>switch modes freely: each value keeps its own cached bundle, and none replays the wrong one.</Takeaway>
 
 </Deeper>
 

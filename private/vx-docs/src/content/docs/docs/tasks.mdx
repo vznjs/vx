@@ -3,7 +3,9 @@ title: Tasks
 description: Teach vx what to run, in what order, and when to skip it.
 ---
 
-import { Aside, Badge } from '@astrojs/starlight/components'
+import { Aside, Badge, Tabs, TabItem } from '@astrojs/starlight/components'
+import Timeline from '../../../components/running/Timeline.astro'
+import ProjectMap from '../../../components/running/ProjectMap.astro'
 import Diagram from '../../../components/guide/diagram/Diagram.astro'
 import { cacheKey, taskGraph } from '../../../components/docs/pictures.js'
 import GraphExplorer from '../../../components/demos/GraphExplorer.astro'
@@ -119,6 +121,98 @@ Try each kind of entry on `web#build` here:
 </Aside>
 
 <Takeaway>build a library before the app that imports it, every time.</Takeaway>
+
+<Deeper level="patterns" title="Build a project's dependencies first">
+
+### Build a project's dependencies first
+
+`@demo/web` and `@demo/docs` both use `@demo/ui`. Here `web`'s build
+copies `ui`'s `dist/`.
+
+<ProjectMap picked={['web', 'ui']} label="@demo/web and @demo/docs both use @demo/ui" caption="Arrows point at the package being used." />
+
+Pick a tab and watch the run.
+
+<Tabs>
+<TabItem label="Without ^build">
+
+<Timeline
+  label="Both builds start at once; web fails at 9 ms because ui's dist is not there yet; ui finishes at 306 ms"
+  end={320}
+  unit="ms"
+  lanes={[
+    { task: '@demo/ui#build', bars: [{ from: 0, to: 306, tone: 'ok', label: 'built' }] },
+    { task: '@demo/web#build', bars: [{ from: 0, to: 30, tone: 'danger', label: '✗' }] },
+  ]}
+/>
+
+Both start at once. `web` looks for `ui/dist` before it exists:
+
+```ansi
+
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mTasks[0m[4m[58;2;110;118;129m     [2mstatus  cache     ±usual    time   cpu    mem outputs  blocks worker         task[0m[4m[58;2;110;118;129m                           [0m
+            [38;2;239;68;68mfailed[0m  [2mmiss[0m           [2m—[0m     [38;2;203;213;225m9ms[0m   [2m36%[0m  [2m2.2MB[0m       [2m—[0m       [2m0[0m [2mlocal[0m          [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m        [2m+1ms[0m   [38;2;203;213;225m306ms[0m    [2m1%[0m  [2m3.6MB[0m      [2m6B[0m       [2m0[0m [2mlocal[0m          [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m
+
+[2m┌─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m>[0m [1m[38;2;239;68;68mfailed (exit 1)[0m
+
+[2mpackages/web $ mkdir -p dist && cp ../ui/dist/index.js dist/[0m
+
+[2m├─[0m [1mOUTPUT[0m [2m────────────────────────────────────────────────────[0m
+
+[38;2;239;68;68mcp: cannot stat '../ui/dist/index.js': No such file or directory[0m
+
+[2m└─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(9ms)[0m [1m[38;2;239;68;68mfailed (exit 1)[0m
+```
+
+</TabItem>
+<TabItem label="With ^build">
+
+<Timeline
+  label="ui builds first, 0 to 307 ms; web starts after it and builds in 3 ms"
+  end={320}
+  unit="ms"
+  lanes={[
+    { task: '@demo/ui#build', bars: [{ from: 0, to: 307, tone: 'ok', label: 'built' }] },
+    { task: '@demo/web#build', bars: [{ from: 307, to: 318, tone: 'ok' }] },
+  ]}
+/>
+
+`ui` builds first. `blocks 1` says one task waited for it:
+
+```ansi
+
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mTasks[0m[4m[58;2;110;118;129m     [2mstatus  cache     ±usual    time   cpu    mem outputs  blocks worker         task[0m[4m[58;2;110;118;129m                           [0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m        [2m+1ms[0m   [38;2;203;213;225m307ms[0m    [2m1%[0m  [2m3.6MB[0m      [2m6B[0m       [38;2;203;213;225m1[0m [2mlocal[0m          [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m           [2m—[0m     [38;2;203;213;225m3ms[0m  [2m118%[0m  [2m2.0MB[0m      [2m6B[0m       [2m0[0m [2mlocal[0m          [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m
+```
+
+</TabItem>
+</Tabs>
+
+<Takeaway>put every package after the packages it uses, with one line.</Takeaway>
+
+### See the order before you run
+
+Run `vx lock` after a config edit. Then add `--dry` to plan without running:
+
+```sh
+vx run build --dry
+```
+
+```ansi
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mPlan[0m[4m[58;2;110;118;129m [2m2[0m[4m[58;2;110;118;129m    [2mstatus  cache      usual    time   cpu    mem outputs  blocks worker         task[0m[4m[58;2;110;118;129m                           [0m
+            [38;2;6;182;212mrun[0m     [2mmiss[0m           [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2mlocal[0m          [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;6;182;212mrun[0m     [2mmiss[0m           [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [38;2;203;213;225m1[0m [2mlocal[0m          [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m
+
+  [2mtasks   [0m  [38;2;203;213;225m2 planned · 2 would run[0m
+```
+
+Read the `blocks` column: `@demo/ui#build` blocks one task, so it goes first.
+
+<Takeaway>answer "what runs, in what order?" before anything runs.</Takeaway>
+
+</Deeper>
 
 ---
 

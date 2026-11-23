@@ -5,7 +5,8 @@ description: Start a dev server inside a run, wait until it is ready, then run w
 
 import Diagram from '../../../components/guide/diagram/Diagram.astro'
 import { serverLife } from '../../../components/docs/pictures/dev-servers.js'
-import { Aside } from '@astrojs/starlight/components'
+import { Aside, Tabs, TabItem } from '@astrojs/starlight/components'
+import Timeline from '../../../components/running/Timeline.astro'
 import { Levels, Deeper, Concept, Quiz, Compare, Takeaway, NextStep } from '../../../components/learn'
 
 Start the app's dev server, wait until it answers, check the page, stop the server. One command.
@@ -281,6 +282,64 @@ dev: {
 vx reads none of its output, so it is ready once started: no `readyWhen`.
 
 <Takeaway>wire servers, tests and watchers together the way your app needs.</Takeaway>
+
+</Deeper>
+
+<Deeper level="patterns" title="Start a dev server before your tests">
+
+### Start a dev server before your tests
+
+Watch the [race from Wait until it is ready](#wait-until-it-is-ready) in
+time. The server needs 300 ms before it answers. Pick a tab.
+
+<Tabs>
+<TabItem label="persistent: {}">
+
+<Timeline
+  label="The server starts; the check starts at once, finds nothing listening and fails at 16 ms; the server is up at 300 ms"
+  end={400}
+  unit="ms"
+  lanes={[
+    { task: '@demo/web#dev', bars: [{ from: 0, to: 300, tone: 'muted', label: 'starting' }, { from: 300, to: 400, tone: 'ok', label: 'up', open: true }] },
+    { task: '@demo/web#smoke', bars: [{ from: 0, to: 16, tone: 'danger' }] },
+  ]}
+/>
+
+Ready at spawn, so the check runs too early and fails.
+
+</TabItem>
+<TabItem label="readyWhen: 'Local:'">
+
+<Timeline
+  label="The server starts and prints Local: at 300 ms; the check starts then and passes"
+  end={400}
+  unit="ms"
+  lanes={[
+    { task: '@demo/web#dev', bars: [{ from: 0, to: 300, tone: 'muted', label: 'starting' }, { from: 300, to: 400, tone: 'ok', label: 'up', open: true }] },
+    { task: '@demo/web#smoke', bars: [{ from: 300, to: 330, tone: 'ok' }] },
+  ]}
+  marks={[{ at: 300, label: 'Local:', tone: 'accent' }]}
+/>
+
+The check waits for `Local:`, then passes. Swap the `curl` for
+`playwright test` and you have end-to-end tests:
+
+```ts title="packages/web/vx.config.ts" mark={3}
+tasks: {
+  dev: {
+    exec: { command: 'vite', persistent: { readyWhen: 'Local:' }, timeout: '30s' },
+  },
+  e2e: {
+    dependsOn: ['dev'],
+    exec: { command: 'playwright test' },
+  },
+},
+```
+
+</TabItem>
+</Tabs>
+
+<Takeaway>replace "sleep 5 and hope" with "start the moment the server says so".</Takeaway>
 
 </Deeper>
 
