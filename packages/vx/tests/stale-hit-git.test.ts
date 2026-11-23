@@ -148,6 +148,88 @@ describe('stale cache hits', () => {
     )
 
   it(
+    'a build that rewrites a committed output with new bytes each run hits by its committed version',
+    async () => {
+      // A committed `dist/` whose build writes a timestamped source map: keyed
+      // by the bytes on disk, each run's rewrite moved the next run's key and
+      // the build never hit. No input glob reaches the file, so the key folds
+      // the version git holds; a staged or committed edit still moves it.
+      await Bun.write(path.join(root, 'package.json'), '{"name":"r","private":true}')
+      await writeLocalWorkspace(root)
+      await Bun.write(
+        path.join(root, 'vx.config.mjs'),
+        `export default {
+           tasks: {
+             build: {
+               exec: { command: 'mkdir -p dist && cat src/a.txt > dist/index.js && date +%s%N > dist/index.js.map' },
+               inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
+             },
+           },
+         }`,
+      )
+      await Bun.write(path.join(root, 'src/a.txt'), 'a')
+      await Bun.write(path.join(root, 'dist/index.js'), 'a')
+      await Bun.write(path.join(root, 'dist/index.js.map'), 'committed')
+      await Bun.write(path.join(root, '.gitignore'), '.vx/cache/\n')
+      gitInit(root)
+      git(root, 'add', '-A')
+      git(root, 'commit', '-q', '-m', 'initial')
+
+      await writeLocalWorkspace(root)
+      expect(vx(root, 'run', 'build')).not.toMatch(/build[^\n]*up-to-date/)
+      const built = await readFile(path.join(root, 'dist/index.js.map'), 'utf8')
+      expect(vx(root, 'run', 'build')).toMatch(/build[^\n]*up-to-date/)
+      expect(vx(root, 'run', 'build')).toMatch(/build[^\n]*up-to-date/)
+      expect(await readFile(path.join(root, 'dist/index.js.map'), 'utf8')).toBe(built)
+      // Staged: the version git holds moved, so the key does.
+      git(root, 'add', 'dist/index.js.map')
+      expect(vx(root, 'run', 'build')).not.toMatch(/build[^\n]*(up-to-date|restored)/)
+      expect(vx(root, 'run', 'build')).toMatch(/build[^\n]*up-to-date/)
+      await Bun.write(path.join(root, 'src/a.txt'), 'b')
+      expect(vx(root, 'run', 'build')).not.toMatch(/build[^\n]*(up-to-date|restored)/)
+      expect(await readFile(path.join(root, 'dist/index.js'), 'utf8')).toBe('b')
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a hand edit to a committed output an input glob names still moves the key',
+    async () => {
+      // CONTROL for the test above: `src/gen.txt` is an output and `src/**`
+      // names it, so its bytes on disk key the task. An uncommitted edit must
+      // run the task, not restore the entry's bytes over the edit.
+      await Bun.write(path.join(root, 'package.json'), '{"name":"r","private":true}')
+      await writeLocalWorkspace(root)
+      await Bun.write(
+        path.join(root, 'vx.config.mjs'),
+        `export default {
+           tasks: {
+             build: {
+               exec: { command: 'cat src/gen.txt src/a.txt > out.txt && cp src/gen.txt src/gen.txt.tmp && mv src/gen.txt.tmp src/gen.txt' },
+               inputs: { files: ['src/**'] }, outputs: { files: ['src/gen.txt', 'out.txt'] }, cache: true,
+             },
+           },
+         }`,
+      )
+      await Bun.write(path.join(root, 'src/a.txt'), 'a')
+      await Bun.write(path.join(root, 'src/gen.txt'), 'gen v1\n')
+      await Bun.write(path.join(root, '.gitignore'), '.vx/cache/\nout.txt\n')
+      gitInit(root)
+      git(root, 'add', '-A')
+      git(root, 'commit', '-q', '-m', 'initial')
+
+      await writeLocalWorkspace(root)
+      vx(root, 'run', 'build')
+      expect(vx(root, 'run', 'build')).toMatch(/build[^\n]*up-to-date/)
+      await Bun.write(path.join(root, 'src/gen.txt'), 'gen hand edit\n')
+      expect(vx(root, 'run', 'build')).not.toMatch(/build[^\n]*(up-to-date|restored)/)
+      expect(await readFile(path.join(root, 'src/gen.txt'), 'utf8')).toBe('gen hand edit\n')
+      expect(await readFile(path.join(root, 'out.txt'), 'utf8')).toBe('gen hand edit\na')
+    },
+    TIMEOUT,
+  )
+
+  it(
     'a codegen that rewrites its committed output is saved, and a hit writes what it left',
     async () => {
       // TanStack Router's committed `routeTree.gen.ts`, declared an output

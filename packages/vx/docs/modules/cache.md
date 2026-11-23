@@ -1430,6 +1430,16 @@ export async function cleanWorkspaceOutputs(args: {
   kept?: string[]
 }): Promise<string[]>
 
+// A committed file under the task's own outputs that no input glob names,
+// by the index OID git holds where its bytes on disk differ: a build's
+// rewrite of it no longer moves its own next key (2026-11-23, caching.md).
+export function committedOutputOids(
+  task: TaskConfig,
+  projectDir: string,
+  files: readonly string[],
+  staged: ReadonlyMap<string, string>, // GitFilesCache.stagedOids
+): Map<string, string> | undefined
+
 // No clean removes a file git tracks (2026-10-14); `committedFiles`
 // answers from the run's enumeration, listing a dir it did not cover once.
 export function committedFiles(
@@ -1875,6 +1885,9 @@ export class GitFilesCache extends Map<string, readonly string[]> {
   invalidateWorkspacePartition(): void
   clear(): void // every partition AND its OIDs and pending marks (a write that reached the workspace)
   oidsFor(projectDir: string): ReadonlyMap<string, string> | undefined // trusted index OIDs by path
+  stagedOid(abs: string): string | undefined // what git holds for a tracked file status named changed (`committedOutputOids`)
+  get stagedOids(): ReadonlyMap<string, string> // every stagedOid answer
+  setStaged(staged: Map<string, string>): void // the enumeration's `staged`, by absolute path
   setOids(projectDir: string, oids: Map<string, string>): void
   filesDigest(projectDir: string, snapshot: readonly string[]): string | undefined // the partition's paths + OIDs (a file with none by its stat), none a link
   declarationDigest(
@@ -1911,6 +1924,7 @@ export interface GitEnumeration {
   tracked: readonly string[] // every index path (a submodule as its gitlink), root-relative: never cleaned
   scopes: readonly string[] // the pathspecs listed, root-relative
   trusted: Map<string, string> // path → index OID, for the tracked-clean ones
+  staged: Map<string, string> // path → index OID, for the tracked ones status named changed (no link); folded into filesDigest
   flagged: readonly string[] // tracked paths git does not look at on disk (assume-unchanged, skip-worktree)
   dirty: boolean | null
   vars: string | null // `git var -l` output, read once for config lookups

@@ -2493,6 +2493,39 @@ function inPlan(plan: FilesPlan, rel: string): boolean {
   return input
 }
 
+/**
+ * The committed files under the task's own outputs that no input glob names,
+ * each by the index OID git holds for it, where its bytes on disk differ: a
+ * build that rewrites `dist/index.js.map` with new bytes each run moved its
+ * own next key by its bytes, and never hit. What git holds still moves the
+ * key on a staged or committed edit (turborepo#14831); a hand edit is an
+ * output's, which a hit writes over. A file an input glob names keeps its
+ * bytes: `src/**` over `src/gen.ts` is the user's to edit. Undefined when
+ * none.
+ */
+export function committedOutputOids(
+  task: TaskConfig,
+  projectDir: string,
+  files: readonly string[],
+  staged: ReadonlyMap<string, string>,
+): Map<string, string> | undefined {
+  const outputs = task.outputs?.files
+  if (outputs === undefined || outputs.length === 0) return undefined
+  const plan = filesPlan(task.inputs?.files, outputs)
+  if (plan === null) return undefined
+  const base = projectDir.endsWith(path.sep) ? projectDir : projectDir + path.sep
+  let out: Map<string, string> | undefined
+  // The changed set is a handful of files beside a task's thousands: each is
+  // found in the sorted list. One not found keys by its bytes, as before.
+  for (const [abs, oid] of staged) {
+    if (!abs.startsWith(base) || files[lowerBoundOf(files, abs)] !== abs) continue
+    const rel = abs.slice(base.length)
+    if (!ownOnly(plan, rel) || (plan.isPositive(rel) && !plan.isExcluded(rel))) continue
+    ;(out ??= new Map()).set(abs, oid)
+  }
+  return out
+}
+
 /** `FilesPlan.ownOnly`, memoised: asked only of a path `inPlan` refused. */
 function ownOnly(plan: FilesPlan, rel: string): boolean {
   let own = plan.ownOnly.get(rel)

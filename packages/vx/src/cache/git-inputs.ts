@@ -1076,6 +1076,26 @@ export class GitFilesCache extends Map<string, readonly string[]> {
     })
   }
 
+  /**
+   * The index OID of a tracked file `git status` named changed, by absolute
+   * path: what git holds for it, not its bytes on disk. Undefined for any
+   * other file.
+   */
+  stagedOid(abs: string): string | undefined {
+    return this.staged.get(abs)
+  }
+
+  /** Every `stagedOid` answer, by absolute path. */
+  get stagedOids(): ReadonlyMap<string, string> {
+    return this.staged
+  }
+
+  setStaged(staged: Map<string, string>): void {
+    this.staged = staged
+  }
+
+  private staged = new Map<string, string>()
+
   /** Trusted index OIDs for a project (abs path → oid), if any survive. */
   oidsFor(projectDir: string): ReadonlyMap<string, string> | undefined {
     return this.oids.get(projectDir)?.map
@@ -1155,6 +1175,7 @@ export class GitFilesCache extends Map<string, readonly string[]> {
 
   override clear(): void {
     this.forgetFacts()
+    this.staged = new Map()
     this.changed.clear()
     this.oids.clear()
     this.digests.clear()
@@ -2268,6 +2289,12 @@ export interface GitEnumeration {
   scopes: readonly string[]
   /** Workspace-relative path → index OID, for files whose worktree state matched the index. */
   trusted: Map<string, string>
+  /**
+   * Workspace-relative path → index OID of each tracked file `git status`
+   * named changed (no link): what git holds, not the bytes on disk. Keys a
+   * committed output no input glob names (`GitFilesCache.indexOidOf`).
+   */
+  staged: Map<string, string>
   /** Tracked paths git does not look at on disk (assume-unchanged, skip-worktree), workspace-relative. */
   flagged: readonly string[]
   /** Whether the worktree had uncommitted changes; null when `git status` failed. */
@@ -2787,8 +2814,14 @@ export async function startGitEnumeration(
   // null when the status spawn failed (non-repo / git error).
   const worktreeDirty = dirty === null ? null : dirty.size > 0
   const trusted = dirty === null || indexMoved ? new Map<string, string>() : oids
+  const staged = new Map<string, string>()
   if (dirty !== null) {
-    for (const rel of dirty) trusted.delete(rel)
+    for (const rel of dirty) {
+      const oid = trusted.get(rel)
+      if (oid === undefined) continue
+      if (!oid.startsWith('120000:')) staged.set(rel, oid)
+      trusted.delete(rel)
+    }
   }
   // A skip-worktree / assume-unchanged path sits at stage 0 and `git status`
   // reports nothing for it, so it would otherwise keep a trusted OID — and
@@ -2835,6 +2868,7 @@ export async function startGitEnumeration(
     tracked: gitlinks.size === 0 ? tracked : tracked.concat([...gitlinks]),
     scopes: pathspecs,
     trusted,
+    staged,
     flagged: [...flagged],
     dirty: worktreeDirty,
     vars: vars !== null && vars.exitCode === 0 ? vars.stdout : null,
@@ -2984,8 +3018,11 @@ export function relistedFilesDigest(
   const loose: string[] = []
   for (const rel of [...files].sort()) {
     const oid = oids?.get(base + rel)
-    if (oid === undefined) loose.push(rel)
-    else if (oid.startsWith('120000:')) return undefined
+    if (oid === undefined) {
+      loose.push(rel)
+      const held = cache.stagedOid(base + rel)
+      if (held !== undefined) known += `${rel}\0index:${held}\n`
+    } else if (oid.startsWith('120000:')) return undefined
     else known += `${rel}\0${oid}\n`
   }
   const statted = statRecords(
@@ -3069,6 +3106,9 @@ export async function applyGitEnumeration(
   if (base === undefined) cache.noteTrackedLater(scopes, () => enumeration.tracked.map(abs))
   else cache.noteTrackedSorted(scopes, base, enumeration.tracked)
   const lowerBound = (key: string): number => lowerBoundOf(sorted, key)
+  const staged = new Map<string, string>()
+  for (const [rel, oid] of enumeration.staged) staged.set(abs(rel), oid)
+  cache.setStaged(staged)
   const rootOids = (): Map<string, string> => {
     const oids = new Map<string, string>()
     for (const [rel, oid] of trusted) oids.set(abs(rel), oid)
@@ -3138,8 +3178,12 @@ export async function applyGitEnumeration(
         const oid = trusted.get(rel)
         if (undecodable?.has(rel) === true || oid?.startsWith('120000:') === true)
           records = undefined
-        else if (oid === undefined) loose.push(rel)
-        else records += `${own}\0${oid}\n`
+        else if (oid === undefined) {
+          loose.push(rel)
+          // A committed output no input glob names is keyed by this OID.
+          const held = enumeration.staged.get(rel)
+          if (held !== undefined) records += `${own}\0index:${held}\n`
+        } else records += `${own}\0${oid}\n`
       }
       // An empty slice is a directory git did not see, not an empty project:
       // a project has at least its package.json, tracked or untracked. A

@@ -15,6 +15,7 @@ import {
   absentOr,
   addedInput,
   behindLink,
+  committedOutputOids,
   filesToken,
   foldHead,
   hashFileSeen,
@@ -640,6 +641,14 @@ async function resolveKeyInput(
     if (wsOids !== undefined && wsOids !== fileHashes) {
       fileHashes = fileHashes === undefined ? wsOids : new Map([...wsOids, ...fileHashes])
     }
+  }
+  // A committed output no input glob names folds what git holds for it, not
+  // the bytes the task's last run left there (`committedOutputOids`).
+  const run = args.gitFilesCache
+  if (!skipFiles && run !== undefined && run.stagedOids.size > 0) {
+    const held = committedOutputOids(cfg, args.node.projectDir, resolved.files, run.stagedOids)
+    if (held !== undefined)
+      fileHashes = fileHashes === undefined ? held : new Map([...fileHashes, ...held])
   }
   const taskConfigHash = hashTaskConfig(cfg, args.hashCache)
 

@@ -1253,6 +1253,13 @@ out, and a hit wrote the old bytes over a committed edit, as
 turborepo#14831 fixed in Turbo) or a `!` entry takes it back (`**`,
 `!dist/**`; until 2026-11-10 the negation dropped it too), so an edit
 moves the key and the saved bytes follow from it; the task's rewrite is no input that moved mid-run.
+Where no `inputs.files` glob names it, the key folds the version git
+holds (its index OID), not the bytes on disk (2026-11-23): a build that
+writes a timestamped `dist/index.js.map` over the committed one moved its
+own next key by its bytes and never hit. A staged or committed edit still
+moves the key; an uncommitted hand edit does not, and a hit writes the
+entry's bytes over it, as over any output. One an input glob names
+(`src/**` over its `routeTree.gen.ts`) keys by its bytes on disk.
 A run that removes one (`rm dist/tracked.txt`) saves nothing: no hit
 could replay the removal, since its restore leaves the file too, so the
 tree a hit left (a fresh CI checkout's) held a file the run took away,
