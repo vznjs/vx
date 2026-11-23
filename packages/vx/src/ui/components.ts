@@ -194,6 +194,16 @@ export function wrap(line: string, w: number): string[] {
   return rows
 }
 
+/**
+ * `line` as a terminal of `c.columns` shows it: wrapped at a space under its
+ * value column when wider, not cut mid-word by the terminal and run under
+ * the label. Off a terminal (no columns), the one line as it is.
+ */
+function fit(line: string, c: ColorSupport): string[] {
+  if (c.columns === undefined || Bun.stringWidth(line) <= c.columns) return [line]
+  return wrap(line, c.columns).map((r) => r.trimEnd())
+}
+
 /** A title line's width: the terminal's, so a task's name sits over it too; never under the bars'. */
 const titleWidth = (c: ColorSupport): number => Math.max(ruleWidth(c), c.columns ?? TABLE_WIDTH)
 
@@ -253,9 +263,9 @@ export function status(t: Tone, verb: string, headline: Inline): Block {
   // A status line's words are its fact (`1 project config → …`): painted at
   // the value level, never plain white beside its mark.
   const words = typeof headline === 'string' ? prose(headline) : headline
-  return block((c) => [
-    `${paint(t, SYMBOL[t], c)} ${paint('strong', verb, c)}  ${inline(words, c)}`,
-  ])
+  return block((c) =>
+    fit(`${paint(t, SYMBOL[t], c)} ${paint('strong', verb, c)}  ${inline(words, c)}`, c),
+  )
 }
 
 /**
@@ -294,7 +304,7 @@ export function excerpt(title: string, body: string): Block {
 export function text(...items: Inline[]): Block {
   return block((c) =>
     items.flatMap((i) =>
-      lines(typeof i === 'string' ? prose(i) : i, c).map((l) => `${INDENT}${l}`),
+      lines(typeof i === 'string' ? prose(i) : i, c).flatMap((l) => fit(`${INDENT}${l}`, c)),
     ),
   )
 }
@@ -311,7 +321,7 @@ export function gap(): Block {
 
 /** An indented dim line: why it matters. */
 export function why(line: Inline): Block {
-  return block((c) => lines(line, c).map((l) => `${INDENT}${paint('muted', l, c)}`))
+  return block((c) => lines(line, c).flatMap((l) => fit(`${INDENT}${paint('muted', l, c)}`, c)))
 }
 
 /** A label and its values; values after the first sit under it. `null` is a blank line. */
@@ -335,11 +345,7 @@ export function fields(rows: readonly FieldRow[]): Block {
         .forEach((v, i) => {
           const head = i === 0 ? paint('muted', label.padEnd(w), c) : ' '.repeat(w)
           const value = strongRow ? paint('strong', v, c) : v
-          const line = `${INDENT}${head}  ${value}`.trimEnd()
-          // On a terminal narrower than the line, the terminal's own wrap cut
-          // words and ran under the label column: wrap at a space, under the value.
-          if (c.columns === undefined || Bun.stringWidth(line) <= c.columns) out.push(line)
-          else for (const r of wrap(line, c.columns)) out.push(r.trimEnd())
+          out.push(...fit(`${INDENT}${head}  ${value}`.trimEnd(), c))
         })
     }
     return out

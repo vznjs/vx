@@ -181,6 +181,21 @@ describe('wrap', () => {
     )
   })
 
+  it('a status and its text wrap on a narrow terminal, the status under its headline', () => {
+    const narrow = { enabled: false, columns: 30 }
+    expect(
+      ui.render(
+        [
+          ui.status('error', 'vx run', 'the config changed since the last lock'),
+          ui.text('run vx lock, then run again'),
+        ],
+        narrow,
+      ),
+    ).toBe(
+      '✗ vx run  the config changed\n          since the last lock\n\n  run vx lock, then run again\n',
+    )
+  })
+
   it('cuts a word longer than the row, and carries its colour on', () => {
     expect(ui.wrap('\x1b[2mabcdefghijklmnopqrstuvwxyz\x1b[0m end', 20)).toEqual([
       '\x1b[2mabcdefghijklmnopqrst\x1b[0m',
