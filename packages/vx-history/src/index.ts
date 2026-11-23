@@ -1021,6 +1021,8 @@ async function historyCmd(
   const tasks: Pick<TaskNode, 'id' | 'config'>[] = []
   for (const p of projects.values()) {
     for (const [t, config] of Object.entries(p.config.tasks ?? {})) {
+      // A group runs no command: no timing, and the schedule asks for none.
+      if (config.exec?.command === undefined) continue
       ids.push(`${p.name}#${t}`)
       tasks.push({ id: `${p.name}#${t}`, config })
     }
