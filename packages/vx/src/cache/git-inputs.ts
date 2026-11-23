@@ -3094,6 +3094,8 @@ export function writeIndexBlobs(files: ReadonlyMap<string, string>): void {
     const colon = held.indexOf(':')
     const oid = colon === -1 ? held : held.slice(colon + 1)
     const dir = path.dirname(abs)
+    // A failed attempt may have removed its directory: a checkout makes it.
+    mkdirSync(dir, { recursive: true })
     const facts = repoFacts(dir)
     if (facts === null) throw new Error(`git could not give ${abs} as committed: no repository`)
     // `--path` is the top's, whatever the cwd: an attribute file below it
@@ -3118,8 +3120,6 @@ export function writeIndexBlobs(files: ReadonlyMap<string, string>): void {
     // The mode a checkout gives it: the index's, under the umask.
     const want = (held.startsWith('100755:') ? 0o777 : 0o666) & ~process.umask()
     const temp = `${abs}.vx-${process.pid}-${Date.now().toString(36)}`
-    // A failed attempt may have removed its directory: a checkout makes it.
-    mkdirSync(path.dirname(abs), { recursive: true })
     try {
       writeFileSync(temp, proc.stdout)
       chmodSync(temp, want)

@@ -330,6 +330,41 @@ describe('stale cache hits', () => {
   )
 
   it(
+    'a retry after an attempt that removed the outputs still starts from the committed bytes',
+    async () => {
+      // The write-back before each attempt found no `dist/` and failed the
+      // task before the retry's command ran (review).
+      await Bun.write(path.join(root, 'package.json'), '{"name":"r","private":true}')
+      await writeLocalWorkspace(root)
+      await Bun.write(
+        path.join(root, 'vx.config.mjs'),
+        `export default {
+           tasks: {
+             build: {
+               exec: { command: 'if [ -f flake ]; then rm -rf dist flake; exit 1; fi; mkdir -p dist && cat src/a.txt > dist/out && echo built >> dist/LICENSE', retries: 1 },
+               inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
+             },
+           },
+         }`,
+      )
+      await Bun.write(path.join(root, 'src/a.txt'), 'a')
+      await Bun.write(path.join(root, 'dist/LICENSE'), 'license v1\n')
+      await Bun.write(path.join(root, '.gitignore'), '.vx/cache/\ndist/out\nflake\n')
+      gitInit(root)
+      git(root, 'add', '-A')
+      git(root, 'commit', '-q', '-m', 'initial')
+
+      await writeLocalWorkspace(root)
+      vx(root, 'run', 'build')
+      await Bun.write(path.join(root, 'src/a.txt'), 'b')
+      await Bun.write(path.join(root, 'flake'), '')
+      expect(vx(root, 'run', 'build')).toMatch(/build[^\n]*success/)
+      expect(await readFile(path.join(root, 'dist/LICENSE'), 'utf8')).toBe('license v1\nbuilt\n')
+    },
+    TIMEOUT,
+  )
+
+  it(
     'a task that stages a committed output mid-run re-keys the build after it',
     async () => {
       // The build keys `dist/x` by what git holds. A task before it in the
