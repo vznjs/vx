@@ -6,7 +6,7 @@ import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import { PLUGIN_HOOKS } from '@vzn/vx'
 
-const GUIDES = path.resolve(import.meta.dir, '..', 'src', 'content', 'docs', 'guides')
+const GUIDES = path.resolve(import.meta.dir, '..', 'src', 'content', 'docs', 'docs')
 const LIFECYCLE = new Set(['setup', 'teardown'])
 
 describe('the site guides follow PLUGIN_HOOKS', () => {

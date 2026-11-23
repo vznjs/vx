@@ -44,7 +44,7 @@ const SKIP = [
   /(^|\/)tests\//,
   /^packages\/vx\/docs\/(history|design)\//,
   /^packages\/vx\/docs\/STATUS\.md$/,
-  /^private\/vx-docs\/src\/content\/docs\/guides\/upgrading\.md$/,
+  /^private\/vx-docs\/src\/content\/docs\/docs\/upgrading\.md$/,
 ]
 
 // A post is kept current, with no note on what changed
