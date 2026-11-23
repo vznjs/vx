@@ -4600,6 +4600,22 @@ it('books the cores a task keeps busy on average, to the quarter, a whole core a
   expect(needOf(undefined)).toEqual({ cores: 1, memory: 0, ask: { cores: 2, memory: 4e9 } })
 })
 
+// A build that used every core of a 4-core, 16GB worker ran on one again
+// next run, with a 16-core size declared: its unsaturated memory read as 0,
+// so any worker with memory was "bigger" (2026-11-23, docs sample).
+it('sends a task that filled only its cores, or only its memory, to a machine bigger in that one', () => {
+  const r = { p50DurationMs: 1, maxCpuParallelism: 3.9 }
+  expect(needOf({ ...r, saturatedCores: 4 }).above).toEqual({ cores: 4, memory: Infinity })
+  expect(needOf({ ...r, saturatedMemoryBytes: 8e9 }).above).toEqual({
+    cores: Infinity,
+    memory: 8e9,
+  })
+  expect(needOf({ ...r, saturatedCores: 4, saturatedMemoryBytes: 8e9 }).above).toEqual({
+    cores: 4,
+    memory: 8e9,
+  })
+})
+
 // Main cc5a276, 2026-10-23: check.bun, vx-docs#import and release.sync end
 // before the Linux sandbox's first look, so none has a CPU measure; each
 // booked a whole worker and small#1 ran at 13%. Wasted: "we can't waste whole
@@ -5503,6 +5519,27 @@ it('gives a task that filled its worker a bigger one', async () => {
     await Bun.sleep(50)
     const big = await h.worker(8, 'big#2')
     expect(await big.batches()).toEqual([['heavy']])
+  } finally {
+    await h.stop()
+  }
+}, 30_000)
+
+// A size that says 8 cores on a 2-core runner: the heavy task waited for a
+// bigger one and the run asked that size again and again for good
+// (2026-11-23, a docs sample on local()).
+it('runs a task that filled its worker on the bigger size even when that size joins no bigger', async () => {
+  const h = await harness(new Map([node('heavy')]), () => ({
+    cores: Infinity,
+    memory: Infinity,
+    above: { cores: 2, memory: Infinity },
+  }))
+  try {
+    h.o.spawned('big#1', { size: 'big', cpu: 8, memory: 1000 })
+    void h.o.execute(h.req('heavy'))
+    await Bun.sleep(50)
+    const big = await h.worker(2, 'big#1')
+    const sent = await Promise.race([big.batches(), Bun.sleep(2_000).then(() => 'none')])
+    expect(sent).toEqual([['heavy']])
   } finally {
     await h.stop()
   }

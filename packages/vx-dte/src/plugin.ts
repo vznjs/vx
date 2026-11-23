@@ -1197,7 +1197,9 @@ export function needOf(r: TaskResources | undefined, ask: Need = FRESH): Need {
     return {
       cores: Infinity,
       memory: Infinity,
-      above: { cores: r.saturatedCores ?? 0, memory: r.saturatedMemoryBytes ?? 0 },
+      // The side it did not fill is no reason to move: 0 there let any
+      // worker with memory count as bigger, so it never moved.
+      above: { cores: r.saturatedCores ?? Infinity, memory: r.saturatedMemoryBytes ?? Infinity },
     }
   // The cores it keeps busy on average (`bookedCores`), a whole core at
   // least: at their 0.3-core average, eight test shards shared one 4-core

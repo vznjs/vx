@@ -307,6 +307,13 @@ export class Orchestrator extends RunReport<Worker> {
   missed: ReadonlySet<string> = new Set()
   private pumping = false
   private joined = 0
+  /**
+   * Each size as its first worker to join had it. A size that says 16 cores
+   * on a 4-core runner is no bigger than 4: a task that filled a 4-core
+   * worker waited for a bigger one, and the run asked that size again and
+   * again for good (2026-11-23).
+   */
+  private readonly sizeHas = new Map<string, { cores: number; memory: number }>()
   /** The run in time, for `--profile` (`profile`). */
   readonly trace = new Trace()
   /** When a task last began, ended or faulted, or the run last said it waits. */
@@ -703,7 +710,14 @@ export class Orchestrator extends RunReport<Worker> {
       const mine = (platform: string | undefined): boolean =>
         need.platform === undefined || platform === need.platform
       b =
-        p.sizes.some((z) => z.max > 0 && mine(z.platform) && roomier(need, z.cores, z.memory)) ||
+        p.sizes.some((z) => {
+          const has = this.sizeHas.get(z.name)
+          return (
+            z.max > 0 &&
+            mine(z.platform) &&
+            roomier(need, has?.cores ?? z.cores, has?.memory ?? z.memory)
+          )
+        }) ||
         [...this.workers.values()].some(
           (a) => !a.faulty && mine(a.platform) && roomier(need, a.cores, a.memory),
         ) ||
@@ -712,7 +726,11 @@ export class Orchestrator extends RunReport<Worker> {
             !this.cancelled.has(id) &&
             !this.unstarted.has(id) &&
             mine(declared.place ?? declared.platform) &&
-            roomier(need, declared.cpu, declared.memory),
+            roomier(
+              need,
+              this.sizeHas.get(declared.size)?.cores ?? declared.cpu,
+              this.sizeHas.get(declared.size)?.memory ?? declared.memory,
+            ),
         )
       biggers.set(key, b)
       return b
@@ -1151,7 +1169,8 @@ export class Orchestrator extends RunReport<Worker> {
       if (
         this.starting(id, joined) &&
         (platform === undefined || placeOf(declared) === platform) &&
-        (declared.cpu > above.cores || declared.memory > above.memory)
+        ((this.sizeHas.get(declared.size)?.cores ?? declared.cpu) > above.cores ||
+          (this.sizeHas.get(declared.size)?.memory ?? declared.memory) > above.memory)
       )
         return true
     return false
@@ -1954,6 +1973,8 @@ export class Orchestrator extends RunReport<Worker> {
       const cores = Math.min(Number(info.cores), spawn?.declared.cpu ?? Infinity)
       const memory = Math.min(Number(info.memory), spawn?.declared.memory ?? Infinity)
       const warmUpMs = asked === undefined ? undefined : performance.now() - asked
+      if (spawn !== undefined && !this.sizeHas.has(spawn.declared.size))
+        this.sizeHas.set(spawn.declared.size, { cores, memory })
       this.trace.joined(
         label,
         performance.now(),
