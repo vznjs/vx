@@ -897,10 +897,6 @@ export default [
       { run: 'build', expect: { exit: 0, ran: ['a#build'], files: { [out('a')]: 'a\ntwo\n' } } },
     ],
   }),
-] satisfies Case[]
-
-// vx keeps the first entry saved under a key: a forced run's new bytes are not stored.
-export const pending: Case[] = [
   // binary-cache.sh rebuilds with --rebuild and copies the new path up: the fresh result replaces the old.
   defineCase({
     id: 'cache/forced-run-replaces-the-stored-bytes',
@@ -922,4 +918,4 @@ export const pending: Case[] = [
       { run: 'build', expect: { exit: 0, notRan: ['a#build'], files: { [out('a')]: '2\n' } } },
     ],
   }),
-]
+] satisfies Case[]
