@@ -1,0 +1,197 @@
+---
+// The glob tester. Without JavaScript it shows the default globs, the files
+// they take lit in the tree, and what vx says. `glob-tester.ts` makes the
+// list editable and re-renders the `.gt-pats`, `.gt-tree`, `.gt-term` and
+// `.vx-say` hooks below from the model.
+import '../demos/widget.css'
+import { DEFAULT_PATTERNS, PROJECTS, render, buildWrites, type Mode } from './model/glob-tester.js'
+
+interface Props {
+  /** Which list the reader edits: a task's `inputs.files` or `outputs.files`. */
+  mode?: Mode
+  /** The story project whose `build` task the globs belong to. */
+  project?: string
+  /** The starting globs, one per entry; `!` leaves out. */
+  patterns?: string[]
+}
+
+const { mode = 'inputs', project = '@demo/web' } = Astro.props
+const patterns = Astro.props.patterns ?? DEFAULT_PATTERNS[mode]
+if (PROJECTS[project] === undefined) throw new Error(`<GlobTester project="${project}">: no such story project`)
+
+const view = render({ mode, project, entries: patterns, written: new Set(buildWrites(project)), still: true })
+const id = `vx-gt-${mode}-${project.replace(/\W/g, '')}`
+const sibling = project === '@demo/ui' ? 'web' : 'ui'
+const presets: Array<[string, string[]]> =
+  mode === 'inputs'
+    ? [
+        ['Skip tests', ['src/**', 'vite.config.ts', '!src/**/*.test.tsx']],
+        ['A folder name', ['src', 'vite.config.ts']],
+        ['Everything', ['**']],
+        ['Add .env', ['src/**', 'vite.config.ts', '.env']],
+        ['Own dist', ['src/**', 'dist/**']],
+        [`Reach into ${sibling}`, [`../${sibling}/src/**`]],
+      ]
+    : [
+        ['Wildcard', ['dist/**']],
+        ['A folder', ['dist']],
+        ['One exact file', ['dist/index.js']],
+        ['Skip assets', ['dist/**', '!dist/assets/**']],
+        ['Extra wildcard', ['dist/**', '.vite/**']],
+      ]
+---
+
+<figure class="vx-demo not-content">
+  <vx-glob-tester data-mode={mode} data-project={project}>
+    <div class="gt">
+      <div class="gt-side">
+        <label class="vx-label" for={id}>
+          <code>{project}</code> build · <code>{mode}.files</code>
+        </label>
+        <textarea id={id} rows="4" spellcheck="false" readonly aria-describedby={`${id}-hint`}
+          >{patterns.join('\n')}</textarea
+        >
+        <p id={`${id}-hint`} class="gt-hint">One glob per line. Start a line with <code>!</code> to leave files out.</p>
+        <div class="vx-row gt-try" data-js hidden>
+          <span class="vx-label">Try</span>
+          {presets.map(([label, set]) => <button type="button" data-set={set.join('|')}>{label}</button>)}
+        </div>
+        {
+          mode === 'outputs' && (
+            <div class="vx-row gt-try" data-js hidden>
+              <span class="vx-label">The build wrote</span>
+              <button type="button" data-wrote="all">everything</button>
+              <button type="button" data-wrote="none">nothing</button>
+            </div>
+          )
+        }
+        <ul class="gt-pats" aria-label="What each glob does" set:html={view.patterns} />
+        <pre class="gt-term" hidden={view.terminal === ''} set:html={view.terminal} />
+      </div>
+      <ul class="gt-tree" aria-label="Files in the workspace" set:html={view.tree} />
+    </div>
+    <p class="vx-say" aria-live="polite">{view.say}</p>
+  </vx-glob-tester>
+</figure>
+
+<script>
+  import './glob-tester.ts'
+</script>
+
+<style>
+  .gt {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 17rem), 1fr));
+    gap: 1rem;
+    align-items: start;
+  }
+  .gt-side {
+    min-width: 0;
+  }
+  .gt textarea {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+    margin-block: 0.35rem 0.25rem;
+    padding: 0.5rem 0.6rem;
+    resize: vertical;
+  }
+  .gt-hint {
+    font-size: 0.85rem;
+    color: var(--vx-muted);
+  }
+  .gt-try {
+    justify-content: flex-start;
+  }
+  .gt-try button {
+    min-height: 32px;
+  }
+  .gt :global(.gt-pats),
+  .gt :global(.gt-tree) {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    font-family: var(--vx-mono);
+    font-size: 13px;
+  }
+  .gt :global(.gt-pats > li) {
+    padding: 0.4rem 0;
+    border-bottom: 1px solid var(--vx-border);
+    overflow-wrap: anywhere;
+  }
+  .gt :global(.gt-pats > li.is-refused) {
+    border-bottom-color: var(--vx-danger);
+  }
+  .gt :global(.gt-note) {
+    display: block;
+    margin-top: 0.2rem;
+    font-family: var(--vx-font-body);
+    font-size: 0.85rem;
+    color: var(--vx-muted);
+  }
+  .gt :global(.gt-term) {
+    margin-top: 0.75rem;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+  .gt :global(.gt-term[hidden]) {
+    display: none;
+  }
+  .gt :global(.gt-tree) {
+    padding: 0.5rem;
+    border: 1.5px solid var(--vx-border);
+    border-radius: 8px;
+    background: var(--vx-surface-2);
+  }
+  .gt :global(.gt-tree > li) {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.1rem 0.4rem;
+    min-height: 26px;
+    padding-inline-start: calc(var(--d) * 1rem);
+    border-radius: 4px;
+  }
+  .gt :global(.gt-mark) {
+    display: inline-block;
+    width: 1ch;
+  }
+  .gt :global(.gt-tree > li.is-hit) {
+    background: color-mix(in srgb, var(--vx-ok) 14%, transparent);
+  }
+  .gt :global(.gt-tree > li.is-hit .gt-name) {
+    color: var(--vx-fg);
+    font-weight: 600;
+  }
+  .gt :global(.gt-tree > li.is-out),
+  .gt :global(.gt-tree > li.is-gone .gt-name) {
+    color: var(--vx-muted);
+  }
+  .gt :global(.gt-tree > li.is-left .gt-name) {
+    text-decoration: line-through;
+    color: var(--vx-muted);
+  }
+  .gt :global(.gt-tree > li.is-project > .gt-name) {
+    font-weight: 600;
+  }
+  .gt :global(.gt-tag) {
+    padding: 0 0.35rem;
+    border: 1px solid var(--vx-border);
+    border-radius: 4px;
+    font-size: 11px;
+    color: var(--vx-muted);
+  }
+  .gt :global(.gt-check) {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    min-height: 32px;
+    cursor: pointer;
+  }
+  .gt :global(.gt-check input) {
+    width: 18px;
+    height: 18px;
+    margin: 0;
+    accent-color: var(--vx-accent);
+  }
+</style>
