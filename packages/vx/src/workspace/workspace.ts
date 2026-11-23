@@ -591,7 +591,10 @@ async function gitZ(cwd: string, args: string[], strict = false): Promise<string
     proc.exited,
   ])
   if (code !== 0)
-    throw new UserError(`git ls-files failed (exit ${code}): ${err.trim()}`, 'VX_E_GIT')
+    throw new UserError(
+      `git ls-files failed (exit ${code}) in ${cwd}: ${err.trim() || 'no output'}. Run it there to see why.`,
+      'VX_E_GIT',
+    )
   const text = new TextDecoder('utf-8', { ignoreBOM: true }).decode(out)
   // U+FFFD alone is cheap to look for; a valid name may hold it, so the bytes confirm.
   if (strict && text.includes('\uFFFD')) {

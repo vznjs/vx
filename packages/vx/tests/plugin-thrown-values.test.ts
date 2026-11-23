@@ -97,6 +97,6 @@ it('admit and teardown name what was thrown', async () => {
   )
   expect(said).toEqual([
     "[vx] plugin 'org/odd' failed in admit: threw {}; admitting every task from here on",
-    "[vx] plugin 'org/odd' failed in teardown: socket gone",
+    "[vx] plugin 'org/odd' failed in teardown: socket gone; the run's verdict stands",
   ])
 })

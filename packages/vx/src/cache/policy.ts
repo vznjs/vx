@@ -46,7 +46,9 @@ export function parseCachePolicy(spec: string, base: CachePolicy = FULL_CACHE_PO
     if (seg.length === 0) continue
     const colon = seg.indexOf(':')
     if (colon < 0) {
-      throw new UserError(`invalid segment '${seg}': expected '<layer>:<flags>'`)
+      throw new UserError(
+        `invalid segment '${seg}': expected '<layer>:<flags>', as in 'local:rw,remote:r'`,
+      )
     }
     const layer = seg.slice(0, colon)
     const flags = seg.slice(colon + 1)
@@ -58,7 +60,9 @@ export function parseCachePolicy(spec: string, base: CachePolicy = FULL_CACHE_PO
       )
     }
     if (seen.has(layer)) {
-      throw new UserError(`layer '${layer}' specified twice`)
+      throw new UserError(
+        `layer '${layer}' specified twice: name each layer once, as in 'local:rw,remote:r'`,
+      )
     }
     seen.add(layer)
     const flagSet = new Set<string>()
@@ -67,7 +71,9 @@ export function parseCachePolicy(spec: string, base: CachePolicy = FULL_CACHE_PO
         throw new UserError(`invalid flag '${ch}' for '${layer}': expected 'r' and/or 'w'`)
       }
       if (flagSet.has(ch)) {
-        throw new UserError(`flag '${ch}' repeated for '${layer}'`)
+        throw new UserError(
+          `flag '${ch}' repeated for '${layer}': give each flag once, as in '${layer}:rw'`,
+        )
       }
       flagSet.add(ch)
     }

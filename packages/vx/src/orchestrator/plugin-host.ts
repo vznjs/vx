@@ -649,7 +649,9 @@ export async function applyScheduleHooks(
               if (w !== undefined) refine(w)
             },
             (err: unknown) =>
-              ctx.warn(`[vx] plugin '${plugin.name}' failed to refine: ${thrownMessage(err)}`),
+              ctx.warn(
+                `[vx] plugin '${plugin.name}' failed to refine: ${thrownMessage(err)}; the run keeps its order`,
+              ),
           )
           .finally(() => promised.delete(p))
         promised.add(p)
@@ -668,7 +670,9 @@ export async function applyScheduleHooks(
         try {
           l.listener()
         } catch (err) {
-          ctx.warn(`[vx] plugin '${l.plugin.name}' failed in onRefine: ${thrownMessage(err)}`)
+          ctx.warn(
+            `[vx] plugin '${l.plugin.name}' failed in onRefine: ${thrownMessage(err)}; the run goes on`,
+          )
         }
       }
     }
@@ -714,7 +718,9 @@ function measuresOf(
     try {
       got = plugin.measures(nodes)
     } catch (err) {
-      warn(`[vx] plugin '${plugin.name}' failed in measures: ${thrownMessage(err)}`)
+      warn(
+        `[vx] plugin '${plugin.name}' failed in measures: ${thrownMessage(err)}; its measures are left out`,
+      )
       continue
     }
     if (got === undefined) continue
@@ -1214,7 +1220,9 @@ export async function teardownPlugins(
         warn(`[vx] plugin '${plugin.name}' teardown timed out after ${ms}ms; it did not complete`)
       }
     } catch (err) {
-      warn(`[vx] plugin '${plugin.name}' failed in teardown: ${thrownMessage(err)}`)
+      warn(
+        `[vx] plugin '${plugin.name}' failed in teardown: ${thrownMessage(err)}; the run's verdict stands`,
+      )
     }
   }
 }

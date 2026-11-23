@@ -147,7 +147,9 @@ describe('Plugin API', () => {
         workspaceRoot: '/ws',
         cacheDir: '/ws/.vx/cache',
       }),
-    ).rejects.toThrow(new Error("plugin 'x' setup is not a function"))
+    ).rejects.toThrow(
+      new Error("plugin 'x' setup is not a function (got string): make it a function, or drop it"),
+    )
   })
 
   it('awaits each setup in order, so a plugin subscribes before the next runs', async () => {

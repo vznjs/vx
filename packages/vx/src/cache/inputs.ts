@@ -49,6 +49,7 @@ import {
   treeRoot,
   stripTrailingSlash,
   taskGlob,
+  thrownMessage,
   UserError,
   writableUnder,
   withoutWorkspaceBins,
@@ -771,7 +772,9 @@ async function runRuntimeCommand(
         `${probe} could not run: vx runs it with sh -c and 'sh' is not on PATH (command: ${command}, cwd: ${cwd}). Install a POSIX sh and re-run.`,
       )
     }
-    throw new UserError(`${probe} failed to spawn: ${command} (cwd: ${cwd})`)
+    throw new UserError(
+      `${probe} failed to spawn: ${command} (cwd: ${cwd}): ${thrownMessage(err)}. Check the directory exists and is readable.`,
+    )
   }
   liveProbes.add(proc)
   let mine: Set<ReturnType<typeof Bun.spawn>> | undefined

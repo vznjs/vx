@@ -155,7 +155,7 @@ describe('teardownPlugins — a dropped result is reported', () => {
     )
     expect({ after, warnings }).toEqual({
       after: true,
-      warnings: ["[vx] plugin 'org/bad' failed in teardown: boom"],
+      warnings: ["[vx] plugin 'org/bad' failed in teardown: boom; the run's verdict stands"],
     })
   })
 })
@@ -241,7 +241,9 @@ describe('the lifecycle is reached on a run that FAILED', () => {
       status: (line: string) => void lines.push(line),
     }
     await run({ cwd: root, projects: ['a'], tasks: ['boom'], log, handleSignals: false })
-    const warned = lines.indexOf("[vx] plugin 'org/bad' failed in teardown: boom")
+    const warned = lines.indexOf(
+      "[vx] plugin 'org/bad' failed in teardown: boom; the run's verdict stands",
+    )
     const result = lines.findIndex((l) => l.startsWith('  time '))
     expect({ warned: warned >= 0, last: result === lines.length - 1 }).toEqual({
       warned: true,

@@ -73,7 +73,7 @@ it(
     expect({ code: r.code, out: r.out, err: r.err }).toEqual({
       code: 1,
       out: '',
-      err: `✗ vx lock  lock not written\n\n  Project config ${r.file} did not finish evaluating within 300ms (VX_CONFIG_WORKER_TIMEOUT)\n`,
+      err: `✗ vx lock  lock not written\n\n  Project config ${r.file} did not finish evaluating within 300ms\n  Settle what its top level awaits, or raise VX_CONFIG_WORKER_TIMEOUT\n`,
     })
   },
   HANG_MS + 5_000,
@@ -91,7 +91,7 @@ it(
       out: '',
       err:
         `! vx  Project config ${r.file} still evaluating after 300 ms; vx gives up at 1.5 s (VX_CONFIG_WORKER_TIMEOUT)\n` +
-        `✗ vx lock  lock not written\n\n  Project config ${r.file} did not finish evaluating within 1500ms (VX_CONFIG_WORKER_TIMEOUT)\n`,
+        `✗ vx lock  lock not written\n\n  Project config ${r.file} did not finish evaluating within 1500ms\n  Settle what its top level awaits, or raise VX_CONFIG_WORKER_TIMEOUT\n`,
     })
   },
   HANG_MS + 5_000,
@@ -108,14 +108,14 @@ it(
     expect({ code: r.code, out: r.out, err: r.err }).toEqual({
       code: 1,
       out: '',
-      err: `✗ vx lock  lock not written\n\n  Project config ${r.file} did not finish evaluating within 300ms (VX_CONFIG_WORKER_TIMEOUT)\n`,
+      err: `✗ vx lock  lock not written\n\n  Project config ${r.file} did not finish evaluating within 300ms\n  Settle what its top level awaits, or raise VX_CONFIG_WORKER_TIMEOUT\n`,
     })
     const workspace = path.join(root, '.vx', 'workspace.mjs')
     await writeFile(workspace, never)
     const w = await lock('export default {}\n', env)
     expect({ code: w.code, out: w.out }).toEqual({ code: 1, out: '' })
     expect(w.err).toContain(
-      `Workspace config ${workspace} did not finish evaluating within 300ms (VX_CONFIG_WORKER_TIMEOUT)`,
+      `Workspace config ${workspace} did not finish evaluating within 300ms\n  Settle what its top level awaits, or raise VX_CONFIG_WORKER_TIMEOUT`,
     )
   },
   2 * HANG_MS + 5_000,
