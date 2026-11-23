@@ -48,6 +48,7 @@ export {
   cleanOutputs,
   deferRemovals,
   committedFiles,
+  committedOutputOids,
   cleanWorkspaceOutputs,
   declaresInput,
   namedIgnoredReach,
@@ -91,6 +92,7 @@ export {
   type LazyGitEnumeration,
   type GitEnumeration,
   type BlobSizeMemo,
+  writeIndexBlobs,
 } from './git-inputs.js'
 export {
   type ArtifactInfo,

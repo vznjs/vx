@@ -20,6 +20,7 @@ export {
   OUTPUT_DIRS_OVER_CAP,
   type OutputDirRow,
   type OutputFileRow,
+  type StampProbe,
   OutputIndex,
   rowAncestors,
   wideDirMode,

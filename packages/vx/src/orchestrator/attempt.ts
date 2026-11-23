@@ -228,7 +228,7 @@ async function runAttempt(
   // Its throw (a name vx cannot clear) fails the task before this attempt's
   // command: no exit of its own to name.
   await outputsStep('clean', m.attempt > 1 ? prior!.exitCode : 1, spentMs, () =>
-    m.guard.prepare(m.attempt),
+    m.guard.prepare(m.attempt, described?.held),
   )
   // What the attempt before this one left, put back if this one is
   // withdrawn: it stands, with its output and its refusals.

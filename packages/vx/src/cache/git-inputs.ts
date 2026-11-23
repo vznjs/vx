@@ -9,11 +9,13 @@ import os from 'node:os'
 import path from 'node:path'
 import {
   accessSync,
+  chmodSync,
   closeSync,
   constants as fsConstants,
   existsSync,
   fstatSync,
   lstatSync,
+  mkdirSync,
   mkdtempSync,
   openSync,
   readdirSync,
@@ -1076,6 +1078,39 @@ export class GitFilesCache extends Map<string, readonly string[]> {
     })
   }
 
+  /**
+   * The index OID of a tracked file `git status` named changed, by absolute
+   * path: what git holds for it, not its bytes on disk. Undefined for any
+   * other file.
+   */
+  stagedOid(abs: string): string | undefined {
+    return this.stagedOids.get(abs)
+  }
+
+  /**
+   * Every `stagedOid` answer, by absolute path. A task's write the run did
+   * not mark (`clear`, `delete`) may have been a `git add`: the index's stamp
+   * is then asked once, and an index that moved answers for none.
+   */
+  get stagedOids(): ReadonlyMap<string, string> {
+    if (!this.stagedChecked) {
+      this.stagedChecked = true
+      if (this.staged.size > 0 && indexStampOf(this.stagedIndex?.file) !== this.stagedIndex?.stamp)
+        this.staged = new Map()
+    }
+    return this.staged
+  }
+
+  setStaged(staged: Map<string, string>, index: { file: string; stamp: string } | undefined): void {
+    this.staged = staged
+    this.stagedIndex = index
+    this.stagedChecked = true
+  }
+
+  private staged = new Map<string, string>()
+  private stagedIndex: { file: string; stamp: string } | undefined
+  private stagedChecked = true
+
   /** Trusted index OIDs for a project (abs path → oid), if any survive. */
   oidsFor(projectDir: string): ReadonlyMap<string, string> | undefined {
     return this.oids.get(projectDir)?.map
@@ -1147,6 +1182,7 @@ export class GitFilesCache extends Map<string, readonly string[]> {
 
   override delete(key: string): boolean {
     this.forgetFacts()
+    this.stagedChecked = false
     this.changed.delete(key)
     this.oids.delete(key)
     this.digests.delete(key)
@@ -1155,6 +1191,7 @@ export class GitFilesCache extends Map<string, readonly string[]> {
 
   override clear(): void {
     this.forgetFacts()
+    this.stagedChecked = false
     this.changed.clear()
     this.oids.clear()
     this.digests.clear()
@@ -1863,10 +1900,13 @@ async function dropFilteredOids(
      */
     early?: Promise<GitRun | null> | undefined
   },
+  /** The changed files' index OIDs (`staged`), dropped by the same rule: no clean checkout keys by them either. */
+  staged?: Map<string, string>,
 ): Promise<void> {
-  if (trusted.size === 0) return
+  if (trusted.size === 0 && (staged?.size ?? 0) === 0) return
   if (autocrlfConverts(args.gitVars)) {
     trusted.clear()
+    staged?.clear()
     return
   }
   // Cheap checks first, and nothing is materialized until one of them fires —
@@ -1925,9 +1965,13 @@ async function dropFilteredOids(
   // size the index recorded (a moved size is `M` before git reads a byte).
   // Dropped here, vueuse's `* text=auto eol=lf` had vx stat all 1,124 of
   // its inputs itself: ~8 ms of every run (2026-11-12).
-  const res = await (args.early ?? args.spawnGit(CHECK_ATTR, [...trusted.keys()].join('\0')))
+  const asked = staged === undefined ? [...trusted.keys()] : [...trusted.keys(), ...staged.keys()]
+  const res = await (args.early ?? args.spawnGit(CHECK_ATTR, asked.join('\0')))
   if (res === null || res.exitCode !== 0) return
-  for (const rel of parseCheckAttrOutput(res.stdout, false)) trusted.delete(rel)
+  for (const rel of parseCheckAttrOutput(res.stdout, false)) {
+    trusted.delete(rel)
+    staged?.delete(rel)
+  }
 }
 
 /**
@@ -2268,6 +2312,14 @@ export interface GitEnumeration {
   scopes: readonly string[]
   /** Workspace-relative path → index OID, for files whose worktree state matched the index. */
   trusted: Map<string, string>
+  /**
+   * Workspace-relative path → index OID of each tracked file `git status`
+   * named changed (no link): what git holds, not the bytes on disk. Keys a
+   * committed output no input glob names (`GitFilesCache.stagedOid`).
+   */
+  staged: Map<string, string>
+  /** The index `staged` was read from and its stamp then; absent when none was. */
+  stagedIndex?: { file: string; stamp: string }
   /** Tracked paths git does not look at on disk (assume-unchanged, skip-worktree), workspace-relative. */
   flagged: readonly string[]
   /** Whether the worktree had uncommitted changes; null when `git status` failed. */
@@ -2616,11 +2668,7 @@ export async function startGitEnumeration(
   // `status` while `ls-files` had listed the staged blob, and that blob
   // keyed the committed bytes on disk. The index is stamped before the
   // listing and after the status; an index that moved trusts no OID.
-  const indexStamp = (): string | undefined => {
-    if (indexFile === undefined) return undefined
-    const st = lstatSync(indexFile, { throwIfNoEntry: false })
-    return st === undefined ? undefined : `${st.ino}:${st.ctimeMs}:${st.size}`
-  }
+  const indexStamp = (): string | undefined => indexStampOf(indexFile)
   const stampBefore = indexStamp()
   // Four spawns at most (the rev-parse is memoized per process), one
   // worktree walk. `ls-files -s -v` reads the INDEX only
@@ -2787,8 +2835,14 @@ export async function startGitEnumeration(
   // null when the status spawn failed (non-repo / git error).
   const worktreeDirty = dirty === null ? null : dirty.size > 0
   const trusted = dirty === null || indexMoved ? new Map<string, string>() : oids
+  const staged = new Map<string, string>()
   if (dirty !== null) {
-    for (const rel of dirty) trusted.delete(rel)
+    for (const rel of dirty) {
+      const oid = trusted.get(rel)
+      if (oid === undefined) continue
+      if (!oid.startsWith('120000:')) staged.set(rel, oid)
+      trusted.delete(rel)
+    }
   }
   // A skip-worktree / assume-unchanged path sits at stage 0 and `git status`
   // reports nothing for it, so it would otherwise keep a trusted OID — and
@@ -2813,19 +2867,25 @@ export async function startGitEnumeration(
   // `hashFile`, which hashes the worktree bytes — the source that was correct
   // all along. The only cost is the read, so the gate below is about paying it
   // ONLY where a filter can actually apply.
-  await dropFilteredOids(trusted, {
-    listed: all,
-    ignoredAttributes: parsedStatus?.ignoredAttributes ?? false,
-    workspaceRoot,
-    gitDir,
-    gitPrefix,
-    pathspecs,
-    gitVars: vars !== null && vars.exitCode === 0 ? vars.stdout : '',
-    spawnGit,
-    early,
-  })
+  await dropFilteredOids(
+    trusted,
+    {
+      listed: all,
+      ignoredAttributes: parsedStatus?.ignoredAttributes ?? false,
+      workspaceRoot,
+      gitDir,
+      gitPrefix,
+      pathspecs,
+      gitVars: vars !== null && vars.exitCode === 0 ? vars.stdout : '',
+      spawnGit,
+      early,
+    },
+    staged,
+  )
   if (vars !== null && vars.exitCode === 0 && fileModeIgnored(vars.stdout)) {
     restampModes(trusted, workspaceRoot)
+    // As a clean file is keyed, or a rewrite's mode moved the key.
+    restampModes(staged, workspaceRoot)
   }
   if (parsedStatus !== null && parsedStatus.undecodable.size > 0) {
     undecodable.push(...stripPrefixFromSet(parsedStatus.undecodable, gitPrefix))
@@ -2835,6 +2895,10 @@ export async function startGitEnumeration(
     tracked: gitlinks.size === 0 ? tracked : tracked.concat([...gitlinks]),
     scopes: pathspecs,
     trusted,
+    staged,
+    ...(staged.size > 0 && indexFile !== undefined && stampBefore !== undefined
+      ? { stagedIndex: { file: indexFile, stamp: stampBefore } }
+      : {}),
     flagged: [...flagged],
     dirty: worktreeDirty,
     vars: vars !== null && vars.exitCode === 0 ? vars.stdout : null,
@@ -2984,8 +3048,11 @@ export function relistedFilesDigest(
   const loose: string[] = []
   for (const rel of [...files].sort()) {
     const oid = oids?.get(base + rel)
-    if (oid === undefined) loose.push(rel)
-    else if (oid.startsWith('120000:')) return undefined
+    if (oid === undefined) {
+      loose.push(rel)
+      const held = cache.stagedOid(base + rel)
+      if (held !== undefined) known += `${rel}\0index:${held}\n`
+    } else if (oid.startsWith('120000:')) return undefined
     else known += `${rel}\0${oid}\n`
   }
   const statted = statRecords(
@@ -3008,6 +3075,60 @@ function statRecord(
   if (now - Math.floor(st.ctimeMs) < racyWindowMs(st.ctimeMs, FILE_HASH_RACY_MS)) return
   const mode = (st.mode & 0o100) !== 0 ? '100755' : '100644'
   return `${rel.slice(prefixLength)}\0stat:${mode}:${st.size}:${Math.floor(st.mtimeMs)}:${Math.floor(st.ctimeMs)}:${Number(st.ino)}`
+}
+
+/** `ino:ctime:size` of a git index, which git replaces by rename on each write; undefined when absent. */
+function indexStampOf(file: string | undefined): string | undefined {
+  if (file === undefined) return undefined
+  const st = lstatSync(file, { throwIfNoEntry: false })
+  return st === undefined ? undefined : `${st.ino}:${st.ctimeMs}:${st.size}`
+}
+
+/**
+ * Write back what git holds for each file (absolute path → its index OID, as
+ * `stagedOid` answers), through the checkout's filters, in place: the bytes a
+ * key that folded that OID promises. Throws when git cannot give them.
+ */
+export function writeIndexBlobs(files: ReadonlyMap<string, string>): void {
+  for (const [abs, held] of files) {
+    const colon = held.indexOf(':')
+    const oid = colon === -1 ? held : held.slice(colon + 1)
+    const dir = path.dirname(abs)
+    // A failed attempt may have removed its directory: a checkout makes it.
+    mkdirSync(dir, { recursive: true })
+    const facts = repoFacts(dir)
+    if (facts === null) throw new Error(`git could not give ${abs} as committed: no repository`)
+    // `--path` is the top's, whatever the cwd: an attribute file below it
+    // names the filters.
+    const proc = Bun.spawnSync({
+      cmd: [
+        executablePath('git'),
+        'cat-file',
+        '--filters',
+        `--path=${facts.prefix}${path.basename(abs)}`,
+        oid,
+      ],
+      env: gitEnv(),
+      cwd: dir,
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+    if (proc.exitCode !== 0)
+      throw new Error(`git could not give ${abs} as committed: ${proc.stderr.toString().trim()}`)
+    // Beside it and renamed over: a read-only output is replaced, not opened,
+    // and a hard link's other name keeps its bytes.
+    // The mode a checkout gives it: the index's, under the umask.
+    const want = (held.startsWith('100755:') ? 0o777 : 0o666) & ~process.umask()
+    const temp = `${abs}.vx-${process.pid}-${Date.now().toString(36)}`
+    try {
+      writeFileSync(temp, proc.stdout)
+      chmodSync(temp, want)
+      renameSync(temp, abs)
+    } catch (err) {
+      rmSync(temp, { force: true })
+      throw err
+    }
+  }
 }
 
 /** The partition half of `populateGitFilesCache`: store per-project slices of one enumeration. */
@@ -3069,6 +3190,9 @@ export async function applyGitEnumeration(
   if (base === undefined) cache.noteTrackedLater(scopes, () => enumeration.tracked.map(abs))
   else cache.noteTrackedSorted(scopes, base, enumeration.tracked)
   const lowerBound = (key: string): number => lowerBoundOf(sorted, key)
+  const staged = new Map<string, string>()
+  for (const [rel, oid] of enumeration.staged) staged.set(abs(rel), oid)
+  cache.setStaged(staged, enumeration.stagedIndex)
   const rootOids = (): Map<string, string> => {
     const oids = new Map<string, string>()
     for (const [rel, oid] of trusted) oids.set(abs(rel), oid)
@@ -3138,8 +3262,12 @@ export async function applyGitEnumeration(
         const oid = trusted.get(rel)
         if (undecodable?.has(rel) === true || oid?.startsWith('120000:') === true)
           records = undefined
-        else if (oid === undefined) loose.push(rel)
-        else records += `${own}\0${oid}\n`
+        else if (oid === undefined) {
+          loose.push(rel)
+          // A committed output no input glob names is keyed by this OID.
+          const held = enumeration.staged.get(rel)
+          if (held !== undefined) records += `${own}\0index:${held}\n`
+        } else records += `${own}\0${oid}\n`
       }
       // An empty slice is a directory git did not see, not an empty project:
       // a project has at least its package.json, tracked or untracked. A

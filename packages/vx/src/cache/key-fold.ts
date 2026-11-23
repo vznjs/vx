@@ -64,7 +64,8 @@ export async function foldKey(
   // I/O), hashFile's stat memo, a full blob-OID computation. All describe the
   // WORKTREE bytes the task reads: the map holds only paths whose worktree and
   // index forms match, since a clean filter makes the index blob different
-  // bytes. When the map covers every file there is nothing to await, so one
+  // bytes. Except a committed own output no input glob names, folded by what
+  // git holds (`committedOutputOids`). When the map covers every file there is nothing to await, so one
   // pass fills the array and the first gap falls back to the awaited form.
   let fileHashes: readonly string[] | undefined
   const provided = input.fileHashes

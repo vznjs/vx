@@ -528,6 +528,7 @@ describe('GitFilesCache workspace-wide partition', () => {
             set: (dir: string, files: readonly string[]) => gfc.set(dir, files),
             newFilesIgnored: (dir: string) => gfc.newFilesIgnored(dir),
             markOutputsChanged: () => {},
+            stagedOids: new Map(),
           } as never,
         })
 
