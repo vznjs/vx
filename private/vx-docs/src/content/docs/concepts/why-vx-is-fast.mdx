@@ -1,0 +1,229 @@
+---
+title: Why vx is fast
+description: How vx skips work, why the work it skips stays correct, and the measured numbers.
+---
+
+import Diagram from '../../../components/guide/diagram/Diagram.astro'
+import { threeOutcomes } from '../../../components/docs/pictures/why-fast.js'
+import { Aside } from '@astrojs/starlight/components'
+import { Levels, Deeper, Concept, Quiz, Walkthrough, Frame, Takeaway, NextStep } from '../../../components/learn'
+
+vx is fast because it does **less work**, and the work it skips is proven safe to skip.
+
+```sh
+vx run build
+```
+
+<Levels />
+
+<Walkthrough title="One build, four runs">
+<Frame title="1. You edit @demo/ui: both builds run">
+
+```ansi title="after an edit to packages/ui/src/index.js"
+[2m$[0m vx run build
+[0m[2m└─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(254ms)[0m [2msuccess[0m
+  [2mtime    [0m  537ms [2m·[0m [2mmax 254ms[0m [2m·[0m [2mavg 237ms[0m [2m·[0m [2mmin 220ms[0m
+```
+
+Two builds ran and vx stored what they made.
+
+</Frame>
+<Frame title="2. Nothing changed: nothing runs">
+
+```ansi title="the same command again"
+[2m$[0m vx run build
+[0m[2m└─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(3ms)[0m [2mup-to-date[0m
+  [2mtime    [0m  27ms
+```
+
+Read the last word of the task line: **up-to-date**. vx touched no file.
+
+</Frame>
+<Frame title="3. You delete dist/: vx copies it back">
+
+```ansi title="after rm -rf dist"
+[2m$[0m vx run build
+[0m[2m└─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(12ms)[0m [2mrestored-local[0m
+  [2mtime    [0m  37ms
+```
+
+**restored-local**: the files came back from the cache. vite never started.
+
+</Frame>
+<Frame title="4. You undo the edit: the old result comes back">
+
+```ansi title="after git checkout packages/ui/src/index.js"
+[2m$[0m vx run build
+[0m[2m└─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(16ms)[0m [2mrestored-local[0m
+  [2mtime    [0m  42ms
+```
+
+The files match an earlier run, so its result is reused. No rebuild.
+
+</Frame>
+</Walkthrough>
+
+<Concept term="Up to date">
+  The task's outputs are already on disk and match its key. vx does nothing for it: no copy, no
+  command.
+</Concept>
+
+## Every task ends one of three ways
+
+<Diagram {...threeOutcomes} />
+
+Only a **new key** runs the command. The other two outcomes cost milliseconds.
+
+<Quiz q="You delete dist/ in @demo/web and change nothing else. What does vx do?">
+  It restores `dist/` from the cache. The key is the same, so the old result is still right.
+</Quiz>
+
+<Takeaway>read a run's task lines and tell which tasks did work.</Takeaway>
+
+## Know what changed without reading files
+
+<Concept term="Cache key">
+  A short code made from everything a task reads. Same inputs, same key.
+</Concept>
+
+Git already knows an ID for every committed file. vx asks git once per run and builds each key from those IDs.
+
+Clean-tree key derivation costs zero source-file reads. Only files you edited are hashed, and they get the same ID git would give them.
+
+<Quiz q="You commit your edit. Does the next run rebuild?">
+  No. The edited file already had git's ID for its content, and committing keeps that ID. The key stays
+  the same.
+</Quiz>
+
+<Takeaway>commit freely: a commit alone never changes a key.</Takeaway>
+
+## Start the right task first
+
+vx runs every ready task it has a free worker for. When more tasks are ready than workers, it starts the one **most other tasks wait on**.
+
+Add the `@vzn/vx-history` plugin and vx orders tasks by the longest path of waiting work left, learned from past runs ([plugins](../../docs/plugins/)).
+
+<Takeaway>see why a long line of dependent builds starts before a lone lint.</Takeaway>
+
+## Nothing runs in the background
+
+- **No daemon.** No background process, no stale state, no socket to break.
+- **No config evaluated in a run.** `vx lock` evaluates every `vx.config.ts` once into `.vx/projects.lock`. A run reads only that file.
+
+<Aside type="tip">Commit `.vx/projects.lock`. CI then starts from the same lock you ran.</Aside>
+
+<Takeaway>expect every `vx run` to start the same way, with nothing left over from the last one.</Takeaway>
+
+## The numbers
+
+One generated workspace runs under each tool: %bench.projects% projects in %bench.levels% levels, %bench.tasks% tasks. Shorter bars are better.
+
+| Runner | Nothing changed | Cold build, time added |
+| --- | --- | --- |
+| vx | %bench.vx.warm% | %bench.vx.cold% |
+| Turborepo | %bench.turbo.warm% | %bench.turbo.cold% |
+| Vite Task | %bench.vt.warm% | %bench.vt.cold% |
+| Nx | %bench.nx.warm% | %bench.nx.cold% |
+
+**Nothing changed** is the whole run with every task up to date. **Cold build** is the time a runner adds to the %bench.ideal.cold% the tasks need on their own.
+
+With every output deleted first, it restores them all in %bench.vx.restore%. Method and every result: [Benchmarks](../../benchmarks/).
+
+<Deeper level="details" title="The workload">
+
+Build %bench.task.build%, test %bench.task.test%, lint %bench.task.lint%, publish %bench.task.publish% per project. %bench.provenance%
+
+</Deeper>
+
+<Takeaway>read the head-to-head and know what each column measures.</Takeaway>
+
+<Deeper level="patterns" title="Keep your own workspace fast">
+
+### List only what a task reads
+
+A file outside `inputs.files` never moves the key. A smaller list means fewer rebuilds.
+
+```ts title="packages/web/vx.config.ts" mark={4}
+build: {
+  dependsOn: ['^build'],
+  exec: { command: 'vite build' },
+  inputs: { files: ['src/**', 'index.html', 'vite.config.js'] },
+  outputs: { files: ['dist/**'] },
+  cache: true,
+},
+```
+
+<Takeaway>trim a task's inputs to what its command reads.</Takeaway>
+
+### Let the sandbox check your list
+
+With `exec.sandbox`, a task sees only the files you grant. A read outside them fails the task and names the file ([Sandboxing](../../docs/sandboxing/)).
+
+<Takeaway>keep a short input list and let a failed read tell you what it missed.</Takeaway>
+
+### Ask why a task ran
+
+```sh
+vx why @demo/web#build
+```
+
+It names the input that changed ([Caching](../../docs/caching/)).
+
+<Takeaway>find the file behind any rebuild.</Takeaway>
+
+</Deeper>
+
+<Deeper level="details" title="Under the hood">
+
+### What else vx does
+
+1. **`^build` skips the gaps.** It walks past projects with no `build` to the nearest one that has it. No filler tasks.
+2. **The key sees the evaluated config.** Imports, presets and computed values all count.
+3. **Outputs belong to their task.** vx clears declared outputs before a task runs, so no stale file survives.
+4. **Overlapping outputs are refused** (`run.rules.exclusiveOutputs`, on by default).
+
+### The mechanics
+
+- **Hashes come from git's index.** One `git ls-files -s` lists every tracked file and its ID. A `git status` beside it finds edited and new files.
+- **Bitset graph maths.** Task priority uses packed bitsets. On a 3,270-task graph, 8.5 s became a few milliseconds.
+- **A scheduler that never re-scans.** Ready tasks come off a heap. A finished task updates only its direct dependents.
+- **Restores check first.** Outputs already in place cost one stat per file: no writes.
+- **Plain files in the local cache.** A restore copies files out, with a clone where the disk supports it. Nothing to unpack.
+- **Uploads off the critical path.** A remote cache upload packs its archive in the background.
+
+### See where the time goes
+
+`VX_DEBUG_TIMING=1` prints each stage of a run. The up-to-date run from frame 2:
+
+```ansi
+[2m$[0m VX_DEBUG_TIMING=1 vx run build
+[1m[38;2;6;182;212m[vx timing][0m[2m  stage                    own   cumulative[0m
+[2m             startup                 84.0ms      84.0ms[0m
+[2m             workspace config         0.3ms      84.3ms[0m
+[2m             discover projects        2.4ms      86.7ms[0m
+[2m             package graph            0.5ms      87.1ms[0m
+[2m             open cache               7.4ms      94.5ms[0m
+[2m             load configs             3.1ms      97.6ms[0m
+[2m             build graph              4.2ms     101.8ms[0m
+[2m             git enumeration         13.7ms     115.5ms[0m
+[2m             plugin stages            8.1ms     123.6ms[0m
+[2m             classify + probe        19.0ms     142.6ms[0m
+[2m             schedule                 0.1ms     142.7ms[0m
+[2m             run graph               14.3ms     157.0ms[0m
+[2m             record history           4.5ms     161.6ms[0m
+[2m             output dir snapshots     0.6ms     162.2ms[0m
+[2m             close                    6.8ms     169.0ms[0m
+```
+
+Most of the time is **startup**: loading vx itself. Every stage after it is a few milliseconds. The full table: [Timing](../../modules/util/#srcutiltimingts--vx_debug_timing-stage-table).
+
+### What vx leaves out on purpose
+
+- **No traced inputs.** A trace shows what a task read once, after it ran. The key is needed before it runs.
+- **No daemon.** The cold and nothing-changed numbers above are without one.
+
+Every choice with its source: [Optimizations](../../optimizations/). Feature by feature: [vx vs Turborepo vs Nx](../../comparison/).
+
+</Deeper>
+
+<NextStep href="../../docs/caching/" title="Caching">Turn on the cache for your own tasks.</NextStep>

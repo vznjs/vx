@@ -307,7 +307,7 @@ describe('the caching page quotes what vx why says', () => {
 
 describe('the why-vx-is-fast concept quotes the benchmarks page', () => {
   it('each figure it states is on docs/benchmarks.md as written', () => {
-    const page = readFileSync(path.join(DOCS, 'concepts', 'why-vx-is-fast.md'), 'utf8')
+    const page = readFileSync(path.join(DOCS, 'concepts', 'why-vx-is-fast.mdx'), 'utf8')
     const bench = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'benchmarks.md'), 'utf8')
     // The head-to-head's figures are tokens the site fills from the measured
     // data (2026-10-29); none is typed by hand (2026-11-23: run.ts's
@@ -2023,7 +2023,7 @@ describe("the concepts page reads the head-to-head's restore row as it is measur
     expect(harness).toMatch(
       /await deleteDist\(dir\)\n\s*const res = await timed\(r, dir, 'restoring'\)/,
     )
-    const page = readFileSync(path.join(DOCS, 'concepts', 'why-vx-is-fast.md'), 'utf8').replace(
+    const page = readFileSync(path.join(DOCS, 'concepts', 'why-vx-is-fast.mdx'), 'utf8').replace(
       /\s+/g,
       ' ',
     )
@@ -2142,7 +2142,7 @@ describe('the git-index claim names what a clean key still reads', () => {
     )
     for (const page of [
       ['blog', 'why-vx-is-fast.md'],
-      ['concepts', 'why-vx-is-fast.md'],
+      ['concepts', 'why-vx-is-fast.mdx'],
     ]) {
       expect(flat(path.join(DOCS, ...page))).toContain(
         'Clean-tree key derivation costs zero source-file reads',

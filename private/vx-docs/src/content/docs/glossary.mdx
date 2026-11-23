@@ -1,0 +1,198 @@
+---
+title: Glossary
+description: Every word the vx docs use, explained in one line, with the name other tools use for it.
+---
+
+import Diagram from '../../components/guide/diagram/Diagram.astro'
+import { wordMap } from '../../components/docs/pictures/glossary.js'
+import { Levels, Deeper, Quiz, Takeaway, NextStep } from '../../components/learn'
+
+One config holds most of the words on this page. Find each one in it:
+
+```ts title="packages/web/vx.config.ts"
+export default defineProject({ //           a project
+  tasks: {
+    build: { //                             a task
+      dependsOn: ['^build'], //             a task dependency
+      exec: { command: 'vite build' },
+      inputs: { files: ['src/**'] }, //     inputs make the cache key
+      outputs: { files: ['dist/**'] }, //   outputs go in the cache
+      cache: true,
+    },
+  },
+})
+```
+
+<Levels />
+
+<Diagram {...wordMap} />
+
+Coming from another tool? Each section ends with a table of the names Turborepo, Nx and Bazel use. A dash means that tool's docs name no such idea.
+
+## Where tasks live
+
+### Workspace
+
+**Your whole repository, as vx sees it.** It starts at the folder holding `.vx/workspace.ts` ([workspace](../docs/workspace/)).
+
+### Project
+
+**A folder with a `vx.config.ts`**, such as `packages/web`. Usually a package, in any language.
+
+### Task
+
+**One command for one project.** Its id is `project#task`, such as `@demo/web#build` ([tasks](../docs/tasks/)).
+
+### Task dependency
+
+**A task that must finish first.** `dependsOn: ['^build']` means: build the projects I depend on before me ([`dependsOn`](../schema/depends-on/)).
+
+### Task graph
+
+**Every task a command will run, joined by its dependencies.** Read it when a run surprises you: `vx run build --dry`.
+
+### Project graph
+
+**The projects and which ones depend on which.** A lockfile plugin reads it from your package manager ([lockfiles](../docs/lockfiles/)).
+
+### Lock
+
+**Your configs, evaluated once.** `vx lock` writes `.vx/projects.lock`. Every run reads that file, never the configs.
+
+<Quiz q="You add a task to packages/web/vx.config.ts. What do you run before vx run sees it?">
+  `vx lock`. Runs read only `.vx/projects.lock`, so the lock must include the new task.
+</Quiz>
+
+<Takeaway>name every part of a workspace, from `.vx/workspace.ts` down to one task.</Takeaway>
+
+<Deeper level="details" title="The same words in other tools">
+
+| Idea | vx | Turborepo | Nx | Bazel |
+| --- | --- | --- | --- | --- |
+| Workspace | workspace | [Workspace](https://turborepo.com/docs/core-concepts/package-and-task-graph) | [workspace](https://nx.dev/docs/reference/glossary#workspace) | [repository](https://bazel.build/reference/glossary#repository) |
+| Project | project | [package](https://turborepo.com/docs/core-concepts/package-and-task-graph#package-graph) | [project](https://nx.dev/docs/reference/glossary#project) | [package](https://bazel.build/reference/glossary#package) |
+| Task | task | [task](https://turborepo.com/docs/reference/configuration#tasks) | [task](https://nx.dev/docs/reference/glossary#task) | [action](https://bazel.build/reference/glossary#action) |
+| Task dependency | `dependsOn` | [`dependsOn`](https://turborepo.com/docs/reference/configuration#dependson) | [`dependsOn`](https://nx.dev/docs/reference/glossary#task-pipeline) | [dependency](https://bazel.build/reference/glossary#dependency) |
+| Task graph | task graph | [Task Graph](https://turborepo.com/docs/core-concepts/package-and-task-graph#task-graph) | [task graph](https://nx.dev/docs/reference/glossary#graph) | [action graph](https://bazel.build/reference/glossary#action-graph) |
+| Project graph | package graph | [Package Graph](https://turborepo.com/docs/core-concepts/package-and-task-graph#package-graph) | [project graph](https://nx.dev/docs/reference/glossary#graph) | [target graph](https://bazel.build/reference/glossary#target-graph) |
+
+Names checked against each tool's docs on 2026-09-24.
+
+</Deeper>
+
+## Running tasks
+
+### Up to date
+
+**A task whose outputs are already in place.** vx runs nothing and copies nothing for it.
+
+### Affected
+
+**The projects a change can reach**: the ones you edited, plus everything that depends on them. `vx run test --affected` runs only those.
+
+### Persistent task
+
+**A task that never exits**, such as `vite dev`. `exec.persistent.readyWhen` tells vx when it is ready for the tasks after it. Never cached ([dev servers](../docs/dev-servers/)).
+
+### Critical path
+
+**The longest line of tasks that each wait on the one before.** No run ends sooner than it. The `@vzn/vx-history` plugin starts that line first.
+
+<Takeaway>tell up to date from affected, and know why a dev server is never cached.</Takeaway>
+
+<Deeper level="details" title="The same words in other tools">
+
+| Idea | vx | Turborepo | Nx | Bazel |
+| --- | --- | --- | --- | --- |
+| Affected | `--affected` | [`--affected`](https://turborepo.com/docs/reference/run#--affected) | [`nx affected`](https://nx.dev/docs/features/ci-features/affected) | — |
+| Persistent task | `exec.persistent` | [`persistent`](https://turborepo.com/docs/reference/configuration#persistent) | `continuous` | — |
+| Critical path | critical path | — | [critical path](https://nx.dev/docs/kb/ci-caching) | [critical path](https://bazel.build/advanced/performance/json-trace-profile) |
+
+</Deeper>
+
+## Caching
+
+### Inputs
+
+**Everything that can change a task's result**: files, config, env, and the tasks before it. You list the files. vx never guesses them ([caching](../docs/caching/)).
+
+### Outputs
+
+**The files a task makes**, such as `dist/**`. vx stores them, and the task's terminal output too.
+
+### Cache key
+
+**A short code made from a task's inputs.** Same inputs, same key, same outputs. vx's key is a 16-character xxHash3 digest.
+
+### Hit and miss
+
+**A hit** finds the key and puts the stored outputs back. **A miss** runs the task, then stores what it made.
+
+### Stale hit
+
+**A hit that serves the wrong files**, because the task read something missing from its inputs. The run looks green. It is the worst thing a cache can do.
+
+### Remote cache
+
+**A cache shared between machines**, so CI and your laptop reuse each other's results ([remote cache](../docs/remote-cache/)).
+
+<Quiz q="A task reads .env, but .env is not in its inputs. You change .env. What happens?">
+  A stale hit. The key did not change, so vx restores the old outputs. Add `.env` to the inputs.
+  A sandbox would have failed the task when it read the file.
+</Quiz>
+
+<Takeaway>explain why a task ran or was skipped, and spot a stale hit before it bites.</Takeaway>
+
+<Deeper level="details" title="The same words in other tools">
+
+| Idea | vx | Turborepo | Nx | Bazel |
+| --- | --- | --- | --- | --- |
+| Inputs | `inputs` | [`inputs`](https://turborepo.com/docs/reference/configuration#inputs) | [cache inputs](https://nx.dev/docs/reference/glossary#cache-inputs) | input [artifacts](https://bazel.build/reference/glossary#artifact) |
+| Outputs | `outputs` | [`outputs`](https://turborepo.com/docs/reference/configuration#outputs) | [cache outputs](https://nx.dev/docs/reference/glossary#cache-outputs) | output [artifacts](https://bazel.build/reference/glossary#artifact) |
+| Cache key | cache key | [hash](https://turborepo.com/docs/crafting-your-repository/caching#task-inputs) | [hash](https://nx.dev/docs/reference/glossary#cache-inputs) | [action key](https://bazel.build/reference/glossary#action-key) |
+| Hit and miss | hit, miss | [cache hit, miss](https://turborepo.com/docs/crafting-your-repository/caching) | [cache hit, miss](https://nx.dev/docs/reference/glossary#cache-hit) | [action cache](https://bazel.build/reference/glossary#action-cache) hit |
+| Stale hit | stale hit | — | [false cache hit](https://nx.dev/docs/features/ci-features/sandboxing) | broken [correctness](https://bazel.build/reference/glossary#correctness) |
+| Remote cache | remote cache | [Remote Caching](https://turborepo.com/docs/core-concepts/remote-caching) | [remote cache](https://nx.dev/docs/reference/glossary#remote-cache) | remote caching |
+
+</Deeper>
+
+## Beyond one machine
+
+### Sandbox
+
+**A task run where it sees only the files you grant.** A read outside them fails the task and names the file, so a missing input cannot hide. Set `exec.sandbox` ([sandboxing](../docs/sandboxing/)).
+
+### Distributed task execution
+
+**One run spread over several CI machines.** You start one job; it starts **workers** and hands each one tasks ([Distributed task execution](../docs/distributed-task-execution/)).
+
+### Worker
+
+**A CI job that runs tasks for a Distributed task execution run.** Its results come back through the remote cache.
+
+### Relay
+
+**The server that passes messages between a run and its workers.** You host it.
+
+### Remote execution
+
+**Running a task on a build farm** and bringing its outputs back. `exec.remote`, through the `@vzn/vx-reapi` plugin ([remote execution](../docs/remote-execution/)).
+
+### Plugin
+
+**A package that changes part of a run**: where tasks run, where the cache lives, what gets reported. Listed in `.vx/workspace.ts` ([plugins](../docs/plugins/)).
+
+<Takeaway>pick the right tool when one machine is not enough: sandbox, workers or a build farm.</Takeaway>
+
+<Deeper level="details" title="The same words in other tools">
+
+| Idea | vx | Turborepo | Nx | Bazel |
+| --- | --- | --- | --- | --- |
+| Sandbox | `exec.sandbox` | — | [task sandboxing](https://nx.dev/docs/features/ci-features/sandboxing) | [sandboxing](https://bazel.build/reference/glossary#sandboxing) |
+| Distributed task execution | `@vzn/vx-dte` | — | [distributed task execution](https://nx.dev/docs/reference/glossary#distributed-task-execution) | — |
+| Remote execution | `exec.remote` | — | — | remote execution |
+| Plugin | plugin | — | [plugin](https://nx.dev/docs/reference/glossary#plugin) | [rules](https://bazel.build/reference/glossary#rule) |
+
+</Deeper>
+
+<NextStep href="../docs/" title="Docs">Start the story: your first task in a few minutes.</NextStep>

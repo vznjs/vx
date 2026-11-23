@@ -29,7 +29,7 @@ const SHELL_BANNED =
 const ESC = String.fromCharCode(27)
 
 // Pages these rules reach.
-const ROOTS = ['docs', 'quickstart.mdx', 'glossary.md']
+const ROOTS = ['docs', 'quickstart.mdx', 'glossary.mdx']
 // The generated upgrading guide quotes commit footers, which git keeps as written.
 const LATER = new Set(['docs/upgrading.md'])
 
