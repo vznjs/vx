@@ -65,8 +65,11 @@ describe('vx watch on a root project with a nested project (e2e)', () => {
     // loaded runner judged the truncate, so the write landed inside that
     // cycle and started a second one, by design, since the run may have
     // read the empty file (ChangeJudge.sawEvent; main CI, 2026-11-23).
-    await writeFile(path.join(root, 'src', 'r.txt.tmp'), 'r2\n')
-    await rename(path.join(root, 'src', 'r.txt.tmp'), path.join(root, 'src', 'r.txt'))
+    // Staged outside the tree: any file in a project is an event, so a
+    // temporary in `src/` judged before the rename was a cycle of its own
+    // (a cache hit) on a loaded runner (CI, 2026-11-23).
+    await writeFile(path.join(outside, 'r.txt'), 'r2\n')
+    await rename(path.join(outside, 'r.txt'), path.join(root, 'src', 'r.txt'))
     await until(() => w.cycles() === 1, 'the cycle the root edit starts')
     await until(async () => (await ran()).length === 2, 'the root build the edit runs')
     await Bun.sleep(SETTLE_MS)
