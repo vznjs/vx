@@ -115,7 +115,7 @@ describe('inputs', () => {
       'index.html',
       'src/App.test.tsx',
       'src/App.tsx',
-      'src/main.ts',
+      'src/index.ts',
       'src/styles.css',
     ])
   })
@@ -167,6 +167,17 @@ describe('inputs', () => {
 
   it('never takes another project’s files: globs are project-relative', () => {
     expect(resolveInputs('@demo/ui', ['**']).files.every((f) => !f.includes('App'))).toBe(true)
+  })
+
+  it('draws every other project closed and out of reach', () => {
+    const v = render({
+      mode: 'inputs',
+      project: '@demo/web',
+      entries: ['src/**'],
+      written: new Set(),
+    })
+    for (const p of ['@demo/ui', '@demo/admin', '@demo/api'])
+      expect(v.tree).toContain(`${p} · out of reach`)
   })
 
   it('says when nothing matched, with the line vx prints', () => {

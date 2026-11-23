@@ -21,8 +21,8 @@
 export type TaskName = 'build' | 'test' | 'lint'
 
 export type ChangeId =
-  | 'button'
-  | 'app'
+  | 'uiSrc'
+  | 'webSrc'
   | 'readme'
   | 'ignored'
   | 'command'
@@ -38,8 +38,8 @@ export interface Change {
 }
 
 export const CHANGES: readonly Change[] = [
-  { id: 'button', label: 'Edit Button.tsx', target: 'packages/ui/src/Button.tsx' },
-  { id: 'app', label: 'Edit App.tsx', target: 'packages/web/src/App.tsx' },
+  { id: 'uiSrc', label: 'Edit ui/src/index.ts', target: 'packages/ui/src/index.ts' },
+  { id: 'webSrc', label: 'Edit web/src/index.ts', target: 'packages/web/src/index.ts' },
   { id: 'readme', label: 'Edit ui/README.md', target: 'packages/ui/README.md' },
   { id: 'ignored', label: 'Edit ui/src/debug.log', target: 'packages/ui/src/debug.log' },
   { id: 'command', label: "ui build: 'vite build --minify false'", target: 'exec.command' },
@@ -56,13 +56,13 @@ interface FileSpec {
 }
 
 const FILES: readonly FileSpec[] = [
-  { path: 'packages/ui/src/Button.tsx', project: 'ui', change: 'button' },
-  { path: 'packages/ui/src/index.ts', project: 'ui' },
+  { path: 'packages/ui/src/index.ts', project: 'ui', change: 'uiSrc' },
   { path: 'packages/ui/src/debug.log', project: 'ui', ignored: true, change: 'ignored' },
   { path: 'packages/ui/README.md', project: 'ui', change: 'readme' },
-  { path: 'packages/web/src/App.tsx', project: 'web', change: 'app' },
+  { path: 'packages/web/src/index.ts', project: 'web', change: 'webSrc' },
   { path: 'packages/web/vite.config.ts', project: 'web' },
-  { path: 'packages/docs/src/main.ts', project: 'docs' },
+  { path: 'packages/admin/src/index.ts', project: 'admin' },
+  { path: 'packages/api/src/index.ts', project: 'api' },
 ]
 
 export interface TaskSpec {
@@ -83,8 +83,9 @@ export interface TaskSpec {
 // web's config; web's build alone also keys on VITE_API_URL (inputs.env).
 const PROJECTS = [
   { name: 'ui', deps: [] as string[], ms: 640, tests: 12 },
-  { name: 'docs', deps: [] as string[], ms: 410, tests: 4 },
   { name: 'web', deps: ['ui'], ms: 820, tests: 7 },
+  { name: 'admin', deps: ['ui'], ms: 710, tests: 5 },
+  { name: 'api', deps: [] as string[], ms: 410, tests: 9 },
 ]
 
 const spec = (p: (typeof PROJECTS)[number], task: TaskName): TaskSpec => {

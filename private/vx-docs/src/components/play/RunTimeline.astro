@@ -20,7 +20,7 @@ if (fail !== undefined && !STORY_TASKS.some((t) => t.id === fail)) {
 }
 const opts = { concurrency, fail, failFast: false }
 const run = simulate(opts)
-const choices = [undefined, '@demo/ui#build', '@demo/ui#test', '@demo/web#build', '@demo/docs#build']
+const choices = [undefined, '@demo/ui#build', '@demo/ui#test', '@demo/admin#build', '@demo/api#build']
 ---
 
 <figure class="vx-demo not-content">

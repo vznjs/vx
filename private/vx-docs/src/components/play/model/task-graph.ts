@@ -1,12 +1,12 @@
-// The task graph widget's model: the story workspace's seven tasks as a
+// The task graph widget's model: the story workspace's twelve tasks as a
 // `Graph` (the graph explorer's own model, read through `parsePlan` from a
 // plan in `vx run … --dry --format json`'s shape), plus the two questions the
 // widget asks of it. Pure: no DOM, held by tests/play-task-graph.test.ts.
 //
 // The vx rules it models:
 // - `dependsOn: ['^build']` adds an edge to the `build` of each project this
-//   one depends on (packages/vx/docs/schema.md, "`'^name'`"). @demo/web
-//   depends on @demo/ui; @demo/docs on nothing.
+//   one depends on (packages/vx/docs/schema.md, "`'^name'`"). @demo/web and
+//   @demo/admin depend on @demo/ui; @demo/api on nothing.
 // - A task starts once everything it waits on is done
 //   (packages/vx/src/graph/scheduler.ts). With equal task times that is
 //   waves: wave n holds the tasks whose longest chain of waits is n long.
@@ -28,9 +28,10 @@ export interface StoryTask {
 }
 
 const PROJECTS: Record<string, string> = {
-  '@demo/ui': 'packages/ui',
   '@demo/web': 'packages/web',
-  '@demo/docs': 'packages/docs',
+  '@demo/ui': 'packages/ui',
+  '@demo/admin': 'packages/admin',
+  '@demo/api': 'packages/api',
 }
 
 const t = (
@@ -49,21 +50,23 @@ const t = (
 })
 
 // The configs of running-tasks.mdx: every project declares the same shape.
-// `^build` in @demo/ui and @demo/docs resolves to nothing: they use no project.
+// `^build` in @demo/ui and @demo/api resolves to nothing: they use no project.
 export const STORY: readonly StoryTask[] = [
-  t('@demo/ui', 'build', 'vite build', ['^build'], ['src/**', 'vite.config.ts']),
-  t('@demo/ui', 'test', 'vitest run', ['^build'], ['src/**']),
-  t('@demo/ui', 'lint', 'oxlint src', [], ['src/**']),
-  t('@demo/web', 'build', 'vite build', ['^build'], ['src/**', 'vite.config.ts']),
-  t('@demo/web', 'test', 'vitest run', ['^build'], ['src/**']),
-  t('@demo/web', 'lint', 'oxlint src', [], ['src/**']),
-  t('@demo/docs', 'build', 'vite build', ['^build'], ['src/**', 'vite.config.ts']),
-]
+  '@demo/ui',
+  '@demo/web',
+  '@demo/admin',
+  '@demo/api',
+].flatMap((p) => [
+  t(p, 'build', 'vite build', ['^build'], ['src/**', 'vite.config.ts']),
+  t(p, 'test', 'vitest run', ['^build'], ['src/**']),
+  t(p, 'lint', 'oxlint src', [], ['src/**']),
+])
 
 const DEPS: Record<string, string[]> = {
-  '@demo/web': ['@demo/ui'],
   '@demo/ui': [],
-  '@demo/docs': [],
+  '@demo/web': ['@demo/ui'],
+  '@demo/admin': ['@demo/ui'],
+  '@demo/api': [],
 }
 
 const byId = new Map(STORY.map((s) => [s.id, s]))
@@ -154,10 +157,10 @@ export function reruns(graph: Graph, file: string): Reruns {
 
 /** The files the reader can edit, one chip each. */
 export const EDITS = [
-  'packages/ui/src/Button.tsx',
+  'packages/ui/src/index.ts',
   'packages/ui/vite.config.ts',
-  'packages/web/src/App.tsx',
-  'packages/docs/src/main.ts',
+  'packages/web/src/index.ts',
+  'packages/api/src/index.ts',
   'packages/ui/README.md',
 ] as const
 
@@ -303,7 +306,9 @@ function edgeTones(graph: Graph, tone: (from: string, to: string) => Tone): Map<
 }
 
 // The drawing, in the diagram kit's units: a dashed frame per project, a box
-// per task. Wide: projects side by side. Narrow (a phone): stacked.
+// per task. Wide: projects side by side. Narrow (a phone): stacked. @demo/ui
+// sits between the two projects that use it, so every arrow reaches a
+// neighbour and none crosses a box.
 const ROWS = ['build', 'test', 'lint']
 const COLS = Object.keys(PROJECTS)
 
@@ -316,7 +321,7 @@ function layout(
     const tasks = STORY.filter((s) => s.id.startsWith(`${p}#`))
     const f = narrow
       ? { x: 4, y: 4 + i * 128, w: 352, h: 104 }
-      : { x: 4 + i * 198, y: 4, w: 184, h: 272 }
+      : { x: 4 + i * 149, y: 4, w: 140, h: 272 }
     frames.push({ ...f, label: p })
     for (const s of tasks) {
       const r = ROWS.indexOf(s.name)
@@ -327,13 +332,13 @@ function layout(
         title: `${s.id}: ${s.command}`,
         ...(narrow
           ? { x: f.x + 10 + r * 114, y: f.y + 32, w: 104 }
-          : { x: f.x + 17, y: f.y + 32 + r * 80, w: 150 }),
+          : { x: f.x + 10, y: f.y + 32 + r * 80, w: 120 }),
       })
     }
   })
   const arrows: Arrow[] = STORY.flatMap((s) => resolve(s).map((d) => ({ from: d, to: s.id })))
   return narrow
-    ? { width: 360, height: 388, boxes, arrows, frames }
+    ? { width: 360, height: 516, boxes, arrows, frames }
     : { width: 600, height: 280, boxes, arrows, frames }
 }
 

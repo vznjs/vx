@@ -35,12 +35,16 @@ export interface SimTask {
 export const STORY_TASKS: readonly SimTask[] = [
   { id: '@demo/ui#build', command: 'vite build', deps: [], units: 4 },
   { id: '@demo/ui#test', command: 'vitest run', deps: [], units: 3 },
-  { id: '@demo/ui#lint', command: 'oxlint', deps: [], units: 1 },
+  { id: '@demo/ui#lint', command: 'oxlint src', deps: [], units: 1 },
   { id: '@demo/web#build', command: 'vite build', deps: ['@demo/ui#build'], units: 3 },
   { id: '@demo/web#test', command: 'vitest run', deps: ['@demo/ui#build'], units: 2 },
-  { id: '@demo/web#lint', command: 'oxlint', deps: [], units: 1 },
-  { id: '@demo/docs#build', command: 'vite build', deps: [], units: 2 },
-  { id: '@demo/docs#lint', command: 'oxlint', deps: [], units: 1 },
+  { id: '@demo/web#lint', command: 'oxlint src', deps: [], units: 1 },
+  { id: '@demo/admin#build', command: 'vite build', deps: ['@demo/ui#build'], units: 3 },
+  { id: '@demo/admin#test', command: 'vitest run', deps: ['@demo/ui#build'], units: 2 },
+  { id: '@demo/admin#lint', command: 'oxlint src', deps: [], units: 1 },
+  { id: '@demo/api#build', command: 'vite build', deps: [], units: 2 },
+  { id: '@demo/api#test', command: 'vitest run', deps: [], units: 2 },
+  { id: '@demo/api#lint', command: 'oxlint src', deps: [], units: 1 },
 ]
 
 export type Status = 'success' | 'failed' | 'skipped' | 'aborted'

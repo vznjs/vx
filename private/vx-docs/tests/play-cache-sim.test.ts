@@ -28,10 +28,15 @@ describe('first and second run', () => {
   it('misses everything on an empty cache, then is up to date', () => {
     const s = emptyState()
     const first = run(s, 'build')
-    expect(Object.values(outcomes(first))).toEqual(['miss', 'miss', 'miss'])
+    expect(Object.values(outcomes(first))).toEqual(['miss', 'miss', 'miss', 'miss'])
     expect(first.results[0]!.verdict).toContain('first recorded run')
     const second = run(s, 'build')
-    expect(Object.values(outcomes(second))).toEqual(['up-to-date', 'up-to-date', 'up-to-date'])
+    expect(Object.values(outcomes(second))).toEqual([
+      'up-to-date',
+      'up-to-date',
+      'up-to-date',
+      'up-to-date',
+    ])
     expect(second.results[0]!.verdict).toBe(
       'cache key unchanged — this run was served from cache, nothing re-ran',
     )
@@ -39,24 +44,27 @@ describe('first and second run', () => {
 })
 
 describe('what moves a key', () => {
-  it('an input of ui misses ui and web, through the upstream key', () => {
+  it('an input of ui misses ui, web and admin, through the upstream key', () => {
     const s = warm()
-    toggle(s, 'button')
+    toggle(s, 'uiSrc')
     const r = by(run(s, 'build'))
     expect(r['@demo/ui#build']!.outcome).toBe('miss')
-    expect(r['@demo/ui#build']!.verdict).toBe('cache key changed: file packages/ui/src/Button.tsx')
-    expect(r['@demo/web#build']!.outcome).toBe('miss')
-    expect(r['@demo/web#build']!.verdict).toBe('cache key changed: upstream @demo/ui#build')
-    expect(r['@demo/docs#build']!.outcome).toBe('up-to-date')
+    expect(r['@demo/ui#build']!.verdict).toBe('cache key changed: file packages/ui/src/index.ts')
+    for (const id of ['@demo/web#build', '@demo/admin#build']) {
+      expect(r[id]!.outcome).toBe('miss')
+      expect(r[id]!.verdict).toBe('cache key changed: upstream @demo/ui#build')
+    }
+    expect(r['@demo/api#build']!.outcome).toBe('up-to-date')
   })
 
   it('an input of web misses web only', () => {
     const s = warm()
-    toggle(s, 'app')
+    toggle(s, 'webSrc')
     expect(outcomes(run(s, 'build'))).toEqual({
       '@demo/ui#build': 'up-to-date',
-      '@demo/docs#build': 'up-to-date',
       '@demo/web#build': 'miss',
+      '@demo/admin#build': 'up-to-date',
+      '@demo/api#build': 'up-to-date',
     })
   })
 
@@ -79,6 +87,8 @@ describe('what moves a key', () => {
     const r = run(s, 'build')
     expect(by(r)['@demo/ui#build']!.verdict).toBe('cache key changed: config')
     expect(by(r)['@demo/web#build']!.outcome).toBe('miss')
+    expect(by(r)['@demo/admin#build']!.outcome).toBe('miss')
+    expect(by(r)['@demo/api#build']!.outcome).toBe('up-to-date')
     expect(terminalHtml(r)).toContain('$ vite build --minify false')
   })
 
@@ -88,28 +98,30 @@ describe('what moves a key', () => {
     const r = by(run(s, 'build'))
     expect(r['@demo/web#build']!.verdict).toBe('cache key changed: env VITE_API_URL')
     expect(r['@demo/ui#build']!.outcome).toBe('up-to-date')
+    expect(r['@demo/admin#build']!.outcome).toBe('up-to-date')
   })
 
   it('names the first three moved parts, then a count', () => {
     const s = warm()
-    toggle(s, 'app')
+    toggle(s, 'webSrc')
     toggle(s, 'envDeclared')
-    toggle(s, 'button')
+    toggle(s, 'uiSrc')
     toggle(s, 'command')
     expect(by(run(s, 'build'))['@demo/web#build']!.verdict).toBe(
-      'cache key changed: file packages/web/src/App.tsx, env VITE_API_URL, upstream @demo/ui#build',
+      'cache key changed: file packages/web/src/index.ts, env VITE_API_URL, upstream @demo/ui#build',
     )
   })
 
-  it("test's ^build folds ui's build key: a ui edit misses web's tests too", () => {
+  it("test's ^build folds ui's build key: a ui edit misses web's and admin's tests too", () => {
     const s = warm()
-    toggle(s, 'button')
+    toggle(s, 'uiSrc')
     const r = run(s, 'test')
     expect(outcomes(r)).toEqual({
       '@demo/ui#build': 'miss',
       '@demo/ui#test': 'miss',
-      '@demo/docs#test': 'up-to-date',
       '@demo/web#test': 'miss',
+      '@demo/admin#test': 'miss',
+      '@demo/api#test': 'up-to-date',
     })
     expect(by(r)['@demo/web#test']!.verdict).toBe('cache key changed: upstream @demo/ui#build')
   })
@@ -117,11 +129,12 @@ describe('what moves a key', () => {
   it('a key never folds a task it does not depend on: lint has no dependsOn', () => {
     const s = warm()
     run(s, 'lint')
-    toggle(s, 'button')
+    toggle(s, 'uiSrc')
     expect(outcomes(run(s, 'lint'))).toEqual({
       '@demo/ui#lint': 'miss',
-      '@demo/docs#lint': 'up-to-date',
       '@demo/web#lint': 'up-to-date',
+      '@demo/admin#lint': 'up-to-date',
+      '@demo/api#lint': 'up-to-date',
     })
   })
 })
@@ -139,28 +152,29 @@ describe('hits and outputs', () => {
   it('undoing an edit brings back a stored key: a hit that restores', () => {
     const s = warm()
     const before = by(run(s, 'build'))['@demo/ui#build']!.key
-    toggle(s, 'button')
+    toggle(s, 'uiSrc')
     run(s, 'build')
-    toggle(s, 'button')
+    toggle(s, 'uiSrc')
     const r = by(run(s, 'build'))
     expect(r['@demo/ui#build']!.key).toBe(before)
     expect(r['@demo/ui#build']!.outcome).toBe('restored')
     expect(r['@demo/web#build']!.outcome).toBe('restored')
-    expect(r['@demo/ui#build']!.verdict).toBe('cache key changed: file packages/ui/src/Button.tsx')
+    expect(r['@demo/admin#build']!.outcome).toBe('restored')
+    expect(r['@demo/ui#build']!.verdict).toBe('cache key changed: file packages/ui/src/index.ts')
   })
 
   it('a task with no outputs is up to date on any stored key', () => {
     const s = warm()
-    toggle(s, 'button')
+    toggle(s, 'uiSrc')
     run(s, 'test')
-    toggle(s, 'button')
+    toggle(s, 'uiSrc')
     expect(by(run(s, 'test'))['@demo/ui#test']!.outcome).toBe('up-to-date')
   })
 
   it('prints the words vx prints on the frame', () => {
     const s = warm()
     deleteWebDist(s)
-    toggle(s, 'app')
+    toggle(s, 'webSrc')
     const html = terminalHtml(run(s, 'build'))
     expect(html).toContain('success')
     expect(html).toContain('up-to-date')
