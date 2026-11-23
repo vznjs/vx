@@ -1156,6 +1156,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'restore-partial-commit',
     'restore-ported',
     'restore-rows-held',
+    'restore-sibling-dir',
     'restore-staging',
     'restore-unreadable-stale',
     'rng',

@@ -25,6 +25,7 @@ import {
   span,
   modeMatches,
   readUmask,
+  renameNew,
   restoredMode,
 } from '../util/index.js'
 import {
@@ -653,7 +654,7 @@ async function copyTree(
     // At once, every one settled before a failure is handled, as the
     // copies; one alone is awaited, as a 1,601-restore run felt the promises.
     const land = async (rel: string): Promise<void> => {
-      await rename(temps.get(rel)!, path.join(projectDir, rel))
+      await renameNew(temps.get(rel)!, path.join(projectDir, rel))
       landed.push(rel)
     }
     if (roots.length === 1) await land(roots[0]!)

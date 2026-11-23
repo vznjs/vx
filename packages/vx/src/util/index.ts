@@ -159,6 +159,7 @@ export {
   ignoreDir,
   type PendingWrite,
   refuseSymlink,
+  renameNew,
   writeAllOrNone,
   writeNoFollow,
 } from './write-file.js'
