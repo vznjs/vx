@@ -112,7 +112,7 @@ A sandboxed task that reads a file it did not declare fails. A failed task is ne
 
 With vx, the cache server decides where a write lands. Your CI's OIDC token, checked against the server's trust policy, names the branch.
 
-So a pull request writes only its own branch's cache. It reads its own results first, then main's ([security model](../../security/#cache-poisoning)).
+So a pull request writes only its own entries (on GitHub, its merge ref). It reads those first, then its branch's, then main's ([security model](../../security/#cache-poisoning)).
 
 This blocks cache poisoning such as [CVE-2025-36852](https://nx.dev/blog/cve-2025-36852-critical-cache-poisoning-vulnerability-creep), where a pull request plants bytes main later replays.
 
@@ -125,7 +125,7 @@ This blocks cache poisoning such as [CVE-2025-36852](https://nx.dev/blog/cve-202
 | Config | TypeScript, evaluated into the cache key | JSON (`project.json`, `nx.json`), plus inferred targets |
 | Daemon | None; nothing boots per task | On by default locally |
 | Outputs on run and restore | Exactly the cached files: no stale file survives a hit | Additive |
-| Task sandbox | Free and local, opt-in per task (Linux, macOS) | An Nx Cloud feature |
+| Task sandbox | Local, opt-in per task (Linux, macOS), no account | An Nx Cloud feature |
 | Remote cache | Your own server (`vxCache()`), Nx's self-hosted spec (`nxCache()`), Turbo's, or Bazel REAPI | Nx Cloud or a plugin |
 | Flaky task detection | Local: the same key failed after it passed | Nx Cloud |
 | Why a task missed | `vx why` names the file, env var or upstream that moved | Shows hashes, not the diff |
