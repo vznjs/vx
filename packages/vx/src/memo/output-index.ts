@@ -103,6 +103,27 @@ interface WarmStats {
 const DIRS_JOINED =
   'SELECT d.entry_hash, d.path, d.mtime_ms FROM json_each(?) q JOIN output_dirs d ON d.entry_hash = q.value AND d.root = ?'
 
+/**
+ * Whether the file at `abs` is the one this machine stamped for `row` after the
+ * save or restore that left it equal to the entry, judged as
+ * `isOutputsCurrent` judges a file but by lstat. A row with no stamp, or a
+ * link's, never is.
+ */
+export function stampedCurrent(abs: string, row: OutputFileRow): boolean {
+  const e = row as StampedRow
+  if (e.ino === undefined || e.mode === LINK_MODE) return false
+  const s = lstatSync(abs, { throwIfNoEntry: false })
+  return (
+    s !== undefined &&
+    s.isFile() &&
+    s.size === e.size &&
+    modeMatches(s.mode, e.mode) &&
+    Math.abs(s.mtimeMs - (e.stampMtimeMs ?? e.mtimeMs)) < 1 &&
+    s.ino === e.ino &&
+    Math.floor(s.ctimeMs) === e.ctimeMs
+  )
+}
+
 export class OutputIndex {
   /** Rows read ahead of the probe (`warmRows`), by entry hash; the probe's read takes them. */
   private readonly warmed = new Map<string, OutputFileRow[]>()

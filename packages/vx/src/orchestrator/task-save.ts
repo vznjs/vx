@@ -6,7 +6,6 @@ import { warnOf } from '../report/index.js'
 import type { Attempts } from './attempt.js'
 import { outputsStep, type OwnOutputs } from './attempt-outputs.js'
 import {
-  heldOutputsWritten,
   keyStillTrue,
   type KeyCheck,
   movedSinceKey,
@@ -73,7 +72,6 @@ export async function saveVerdict(
     noStateWritten(m, stamp) &&
     (await keyStillTrue(m, ran.result, check)) &&
     upstreamOutputsHeld(m) &&
-    heldOutputsWritten(m) &&
     (await upstreamInputsHeld(m, check)) &&
     (await args.run.serverDiedUnder?.(args.node)) !== true
   ) {

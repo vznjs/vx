@@ -1693,7 +1693,6 @@ export interface InputFact {
   since: number
   ctimeMs?: number // the ctime of the describe's stat behind the digest (none for an index OID)
   behind?: string // a link's content as the key folds it (`behindLink`)
-  held?: true // the key folded what git holds (`committedOutputOids`); a save is withheld unless the command wrote it (`heldOutputsWritten`)
 }
 export async function movedInput(
   facts: readonly InputFact[],

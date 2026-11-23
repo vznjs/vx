@@ -221,6 +221,8 @@ export const DIR_MODE = 0o040000
 export function wideDirMode(disk: number): boolean
 // Every directory above the rows' paths, which a restore makes first.
 export function rowAncestors(rows: readonly OutputFileRow[]): string[]
+// The file at abs is the one this machine stamped for row (isOutputsCurrent's test, by lstat); no stamp: never.
+export function stampedCurrent(abs: string, row: OutputFileRow): boolean
 // `dir` and a slash: a row's path appended to it is the file's.
 export const baseOf: (dir: string) => string
 export interface OutputFileRow {

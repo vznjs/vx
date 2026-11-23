@@ -22,6 +22,7 @@ export {
   type OutputFileRow,
   OutputIndex,
   rowAncestors,
+  stampedCurrent,
   wideDirMode,
   WORKSPACE_OUTPUT_PREFIX,
 } from './output-index.js'

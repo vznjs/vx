@@ -193,12 +193,13 @@ describe('stale cache hits', () => {
   )
 
   it(
-    'a hand edit to a committed output the build never writes is not saved under the committed key',
+    'a hand edit to a committed output no input glob names still moves the key',
     async () => {
-      // `dist/LICENSE` is keyed by what git holds. A run while it holds an
-      // uncommitted edit the build does not write saved the edit under the
-      // committed key, and once the tree was clean again a hit wrote the edit
-      // over the committed file (fuzzcout seed 1).
+      // CONTROL for the index-OID key: it holds only while the file still has
+      // the bytes this machine saved or restored under it. An uncommitted edit
+      // the build never writes keys by its bytes: the run keeps it, and no
+      // entry under the committed key holds it, so a clean tree later gets
+      // the committed bytes back (fuzzcout seed 1 wrote the edit over them).
       await Bun.write(path.join(root, 'package.json'), '{"name":"r","private":true}')
       await writeLocalWorkspace(root)
       await Bun.write(
@@ -220,8 +221,13 @@ describe('stale cache hits', () => {
       git(root, 'commit', '-q', '-m', 'initial')
 
       await writeLocalWorkspace(root)
+      vx(root, 'run', 'build')
+      expect(vx(root, 'run', 'build')).toMatch(/build[^\n]*up-to-date/)
       await Bun.write(path.join(root, 'dist/LICENSE'), 'hand edit')
-      expect(vx(root, 'run', 'build')).toMatch(/not saved[^\n]*dist\/LICENSE/)
+      expect(vx(root, 'run', 'build')).not.toMatch(/build[^\n]*(up-to-date|restored)/)
+      expect(await readFile(path.join(root, 'dist/LICENSE'), 'utf8')).toBe('hand edit')
+      await Bun.write(path.join(root, 'src/a.txt'), 'b')
+      vx(root, 'run', 'build')
       git(root, 'checkout', '--', 'dist/LICENSE')
       vx(root, 'run', 'build')
       expect(await readFile(path.join(root, 'dist/LICENSE'), 'utf8')).toBe('license v1')

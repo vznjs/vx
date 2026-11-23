@@ -1431,8 +1431,9 @@ export async function cleanWorkspaceOutputs(args: {
 }): Promise<string[]>
 
 // A committed file under the task's own outputs that no input glob names,
-// by the index OID git holds where its bytes on disk differ: a build's
-// rewrite of it no longer moves its own next key (2026-11-23, caching.md).
+// by the index OID git holds where its bytes on disk differ. The key folds
+// them only while each holds the bytes stamped under that key
+// (orchestrator `heldOutputs`, caching.md, 2026-11-23).
 export function committedOutputOids(
   task: TaskConfig,
   projectDir: string,

@@ -5,6 +5,7 @@ import {
   type FoldMemo,
   FILE_HASH_RACY_MS,
   racyWindowMs,
+  stampedCurrent,
   stampGrainMs,
   WORKSPACE_OUTPUT_PREFIX,
 } from '../memo/index.js'
@@ -315,11 +316,6 @@ export interface InputFact {
    * untouched, so the re-check compares this rather than the link's ctime.
    */
   behind?: string
-  /**
-   * The key folded what git holds for it, not this digest's bytes
-   * (`committedOutputOids`): a save is withheld unless the command wrote it.
-   */
-  held?: true
 }
 
 /**
@@ -389,7 +385,6 @@ export async function describeTaskInputs(args: ComputeHashArgs): Promise<{
     if (ctimeMs !== undefined) fact.ctimeMs = ctimeMs
     const linked = behind.get(f)
     if (linked !== undefined) fact.behind = linked
-    if (held?.has(f) === true) fact.held = true
     return fact
   })
   // Groups expanded: this describes the input root, not the key, and a group
@@ -655,21 +650,6 @@ async function resolveKeyInput(
       fileHashes = fileHashes === undefined ? wsOids : new Map([...wsOids, ...fileHashes])
     }
   }
-  // A committed output no input glob names folds what git holds for it, not
-  // the bytes the task's last run left there (`committedOutputOids`).
-  const run = args.gitFilesCache
-  const held =
-    skipFiles || run === undefined || run.stagedOids.size === 0
-      ? undefined
-      : committedOutputOids(
-          cfg,
-          args.node.projectDir,
-          args.workspaceRoot,
-          resolved.files,
-          run.stagedOids,
-        )
-  if (held !== undefined)
-    fileHashes = fileHashes === undefined ? held : new Map([...fileHashes, ...held])
   const taskConfigHash = hashTaskConfig(cfg, args.hashCache)
 
   // Args after `--` reach a requested command; the default build (a keyed
@@ -695,7 +675,48 @@ async function resolveKeyInput(
     ...(args.node.platform !== undefined ? { platform: args.node.platform } : {}),
     ...(args.captureInto !== undefined ? { captureInto: args.captureInto } : {}),
   }
-  return { input, listings: resolved.listings, ...(held !== undefined ? { held } : {}) }
+  const held = skipFiles ? undefined : await heldOutputs(args, input, resolved.files)
+  if (held === undefined) return { input, listings: resolved.listings }
+  const merged = fileHashes === undefined ? held : new Map([...fileHashes, ...held])
+  return { input: { ...input, fileHashes: merged }, listings: resolved.listings, held }
+}
+
+/**
+ * The committed outputs no input glob names whose key part is what git holds
+ * (`committedOutputOids`), or undefined for none. Only while each still holds
+ * the very bytes this machine saved or restored under the key that folds them
+ * (its output stamp): a build that rewrites a committed `dist/index.js.map`
+ * with new bytes each run then hits, while a hand edit, or bytes a run under
+ * another key left, keys by its bytes as any input does, so no entry under
+ * the committed key ever holds bytes its task did not leave.
+ */
+async function heldOutputs(
+  args: ComputeHashArgs,
+  input: CacheKeyInput,
+  files: readonly string[],
+): Promise<ReadonlyMap<string, string> | undefined> {
+  const run = args.gitFilesCache
+  if (run === undefined || run.stagedOids.size === 0) return undefined
+  const { projectDir } = args.node
+  const held = committedOutputOids(
+    args.node.config,
+    projectDir,
+    args.workspaceRoot,
+    files,
+    run.stagedOids,
+  )
+  if (held === undefined) return undefined
+  const { captureInto: _rows, ...bare } = input
+  const fileHashes = input.fileHashes === undefined ? held : new Map([...input.fileHashes, ...held])
+  const key = await args.cache.key(await knownIdentities(args, { ...bare, fileHashes }))
+  const rows = args.cache.memo.loadOutputFilesBatch([key]).get(key)
+  if (rows === undefined) return undefined
+  const byPath = new Map(rows.map((r) => [r.path, r]))
+  for (const abs of held.keys()) {
+    const row = byPath.get(relPosix(projectDir, abs))
+    if (row === undefined || !stampedCurrent(abs, row)) return undefined
+  }
+  return held
 }
 
 /**
