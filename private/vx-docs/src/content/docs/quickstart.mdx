@@ -102,6 +102,17 @@ You now have a cached task. In a monorepo, give each package its own
 `vx.config.ts`, and run every package's build from the root with
 `vx run build --all`.
 
+## Start from an example
+
+Each example is a small workspace with its tasks, cache and tests set up.
+Copy one and follow its `README.md`.
+
+| Example | Tasks |
+| ------- | ----- |
+| [Vite and Vitest](https://github.com/vznjs/vx/tree/main/examples/vite) | an app and a library: `vite build`, `vitest run`, `oxlint` |
+| [Next.js](https://github.com/vznjs/vx/tree/main/examples/next) | an app and a shared package: `next build`, `vitest run`, `oxlint` |
+| [Rust](https://github.com/vznjs/vx/tree/main/examples/rust) | one crate: `cargo build`, `cargo test`, `cargo clippy` |
+
 ## Next
 
 <CardGrid>

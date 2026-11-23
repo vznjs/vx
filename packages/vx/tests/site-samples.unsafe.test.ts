@@ -1055,7 +1055,8 @@ describe('the tasks that decline the sandbox (CLAUDE.md)', () => {
       }
     }
     // vx#canary.sandbox.cold-build and vx#canary.sandbox.leaks (each drives the
-    // sandbox itself), vx#release.docker (Docker), vx#test.bun.unsafe's and vx#test.bun.platform-unsafe's
+    // sandbox itself), vx#release.docker (Docker), vx#test.bun.examples (npm and
+    // cargo), vx#test.bun.unsafe's and vx#test.bun.platform-unsafe's
     // shards, vx-cache-server#, vx-dte-server# and vx-history-server#test.docker, vx-migrate#test.bun.live.nx,
     // vx-reapi#test's shards, #test.bun.live and its two services. If none are found the reader is broken, not the docs.
     expect(found.sort()).toEqual(
@@ -1063,6 +1064,7 @@ describe('the tasks that decline the sandbox (CLAUDE.md)', () => {
         'vx#canary.sandbox.cold-build',
         'vx#canary.sandbox.leaks',
         'vx#release.docker',
+        'vx#test.bun.examples',
         ...Array.from(
           { length: UNSAFE_SHARD_COUNT },
           (_, k) => `vx#test.bun.unsafe.shard-${k + 1}`,

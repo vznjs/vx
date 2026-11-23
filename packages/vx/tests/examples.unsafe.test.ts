@@ -322,6 +322,12 @@ describe('the starters install with the package manager their README names', () 
       expect(readme).toContain('bun install')
       // A run keys from the digests `vx lock` records, and refuses without them.
       expect(readme.indexOf('vx lock')).toBeGreaterThan(readme.indexOf('bun install'))
+      // A starter of JS packages reads their edges from bun.lock; the Rust
+      // one has none, its package.json only installing vx.
+      const pkg = JSON.parse(readFileSync(path.join(EXAMPLES, name, 'package.json'), 'utf8')) as {
+        workspaces?: string[]
+      }
+      if (pkg.workspaces === undefined) continue
       const workspace = readFileSync(path.join(EXAMPLES, name, '.vx', 'workspace.ts'), 'utf8')
       expect(workspace).toContain("import { bun } from '@vzn/vx-lockfile'")
     }
@@ -336,12 +342,17 @@ function starters(): string[] {
     .sort()
 }
 
-// The runs above name their starters; one added to examples/ without a
-// describe block here would ship unrun. The set is read from the tree.
-describe('every starter under examples/ has a run in this suite', () => {
-  it('the directories are the ones the describe blocks above drive', () => {
+// The runs above and examples.live.test.ts's (the stacks, installed from
+// npm) name their starters; one added to examples/ without a describe
+// block would ship unrun. The set is read from the tree.
+describe('every starter under examples/ has a run in this suite or the live one', () => {
+  it('the directories are the ones the describe blocks drive', () => {
+    const live = path.join(import.meta.dir, 'examples.live.test.ts')
     const driven = [
-      ...readFileSync(import.meta.path, 'utf8').matchAll(/^describe\('examples\/(\w+)'/gm),
+      ...[import.meta.path, live]
+        .map((f) => readFileSync(f, 'utf8'))
+        .join('\n')
+        .matchAll(/^describe(?:\.skipIf\([^)]*\))?\('examples\/(\w+)'/gm),
     ]
       .map((m) => m[1]!)
       .sort()

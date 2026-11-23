@@ -1,0 +1,7 @@
+{
+  "name": "vx-example-rust",
+  "private": true,
+  "devDependencies": {
+    "@vzn/vx": "latest"
+  }
+}
