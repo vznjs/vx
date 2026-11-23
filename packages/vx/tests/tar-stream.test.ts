@@ -5,7 +5,13 @@
 // entries.
 
 import { describe, expect, it } from 'bun:test'
-import { TarFormatError, tarEntries, tarPack, tarSize } from '../src/cache/tar-stream.js'
+import {
+  TarFormatError,
+  tarEntries,
+  tarEntriesSync,
+  tarPack,
+  tarSize,
+} from '../src/cache/tar-stream.js'
 import { streamOf } from './helpers/stream.js'
 
 const enc = new TextEncoder()
@@ -170,6 +176,28 @@ describe('tarEntries', () => {
     h.set(enc.encode(sum.toString(8).padStart(6, '0') + '\0 '), 148)
     const tar = concat(h, padTo512(enc.encode('hello')), EOF_BLOCKS)
     expect(await collect(tar)).toEqual([{ name: 'outputs/a', size: 5, type: '0', text: 'hello' }])
+  })
+
+  // A hostile base-256 size (every byte 0xff) is past any safe integer, so
+  // `left -= take` stands still: the body runs to the archive's end and is
+  // refused there, by both readers, never yielded short.
+  it('refuses a base-256 size past the archive, by both readers', async () => {
+    const h = header({ name: 'outputs/a', size: 0, type: '0' })
+    h.fill(0xff, 124, 136)
+    h.set(enc.encode('        '), 148)
+    let sum = 0
+    for (const b of h) sum += b
+    h.set(enc.encode(sum.toString(8).padStart(6, '0') + '\0 '), 148)
+    const tar = concat(h, padTo512(enc.encode('hello')), EOF_BLOCKS)
+    for (const chunk of [undefined, 7]) {
+      let err: unknown
+      await collect(tar, chunk).catch((e: unknown) => (err = e))
+      expect(err).toBeInstanceOf(TarFormatError)
+      expect((err as Error).message).toStartWith('archive ends inside entry outputs/a')
+    }
+    expect(() => {
+      for (const e of tarEntriesSync(tar)) e.body()
+    }).toThrow(/^archive ends inside entry outputs\/a/)
   })
 
   it('refuses a size field that is not all octal digits, before yielding anything', async () => {
