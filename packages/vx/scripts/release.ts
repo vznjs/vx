@@ -1,4 +1,4 @@
-// The npm steps of release.yml's `vx pipeline release`, each a `release.npm.*`
+// The npm steps of npm.yml's `vx pipeline npm`, each a `release.npm.*`
 // task in vx.config.ts: CI runs vx tasks, never its own commands (owner,
 // 2026-10-03). The version is VX_RELEASE_VERSION, the release tag exactly as
 // the workflow received it: it arrives through the environment, never pasted

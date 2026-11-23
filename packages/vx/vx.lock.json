@@ -6843,7 +6843,7 @@
       ]
     },
     "check.bun.binary": {
-      "description": "compile the host binary the way release.yml does; it must launch and report the manifest version",
+      "description": "compile the host binary the way npm.yml does; it must launch and report the manifest version",
       "dependsOn": [
         "install"
       ],
@@ -6900,7 +6900,7 @@
       "cache": true
     },
     "canary.bun.linux-arm64": {
-      "description": "compile the host binary the way release.yml does; it must launch and report the manifest version",
+      "description": "compile the host binary the way npm.yml does; it must launch and report the manifest version",
       "dependsOn": [
         "install"
       ],
@@ -6960,7 +6960,7 @@
       "cache": true
     },
     "canary.bun.darwin-arm64": {
-      "description": "compile the host binary the way release.yml does; it must launch and report the manifest version",
+      "description": "compile the host binary the way npm.yml does; it must launch and report the manifest version",
       "dependsOn": [
         "install"
       ],

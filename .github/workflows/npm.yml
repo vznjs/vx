@@ -1,14 +1,14 @@
-name: Release
+name: npm
 
-# A release, as one distributed run (@vzn/vx-dte): `vx pipeline release`
+# A release, as one distributed run (@vzn/vx-dte): `vx pipeline npm`
 # (.vx/workspace.ts) compiles the binaries once, proves them (the darwin
 # ones on a Mac worker, which re-signs one macOS refuses), attests and
 # attaches them to the draft release (the last upload publishes it),
 # publishes the npm packages and pushes the server images. Every step is a
 # `release.*` task (packages/vx/vx.config.ts); a worker runs it with this
 # job's environment, so its tokens and its OIDC identity are this job's:
-# npm's trusted publisher for every package names release.yml and the npm
-# environment, and the attestations name release.yml.
+# npm's trusted publisher for every package names npm.yml and the npm
+# environment, and the attestations name npm.yml.
 #
 # auto-release.yml dispatches it on the tag it created, whose draft release
 # it fills. A maintainer may dispatch it on a tag too: each step skips what
@@ -26,7 +26,7 @@ permissions: {}
 # waits. Never cancelled: a run stopped mid-upload leaves a draft half
 # attached.
 concurrency:
-  group: release-${{ github.ref }}
+  group: npm-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -67,5 +67,5 @@ jobs:
         run: bun install --frozen-lockfile
       - name: Check vx.lock.json
         run: bun packages/vx/src/bin.ts lock --check
-      - name: vx pipeline release
-        run: bun packages/vx/src/bin.ts pipeline release
+      - name: vx pipeline npm
+        run: bun packages/vx/src/bin.ts pipeline npm

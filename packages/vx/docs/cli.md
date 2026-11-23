@@ -2510,23 +2510,23 @@ creates the GitHub release, both from the Conventional Commits since the
 last tag (`scripts/release-notes.ts`, run by the `release.github.tag` task,
 `scripts/auto-release.ts`). The release is created as a draft: this
 repo's releases are immutable and take assets only before they are
-published, so `release.yml` publishes it after its last upload. The version: below 0.1.0 always a
+published, so `npm.yml` publishes it after its last upload. The version: below 0.1.0 always a
 patch (cutting 0.1.0 is the owner's, by hand); then before 1.0 a `feat`
 or a breaking change (`type!:`, a `BREAKING CHANGE:` footer) is a minor
 (`v0.4.2` → `v0.5.0`) and anything else a patch (`v0.4.3`); from 1.0 a
 breaking change is a major. The notes: breaking changes first, then
 `feat`, `fix` and `perf`, the rest counted. It then
-dispatches `release.yml` on the tag. A release made with the workflow
+dispatches `npm.yml` on the tag. A release made with the workflow
 token fires no `release` event in other workflows, which is why it is
 dispatched rather than triggered. A commit is released only when the
 last release is its ancestor, so an older tree never gets a higher
 version, and one that already carries a `v*` tag is a no-op.
 
 A version can still be cut by hand: push its tag (say `v1.0.0`),
-create a draft release for it, and dispatch `release.yml` on the tag;
+create a draft release for it, and dispatch `npm.yml` on the tag;
 the next auto-release continues from it.
 
-`release.yml` is one job running `vx pipeline release` over DTE
+`npm.yml` is one job running `vx pipeline npm` over DTE
 workers (`.vx/workspace.ts`): it compiles the four binaries once (the
 version defined into each, `src/version.ts`), proves them (the darwin
 ones on a Mac worker, re-signed ad hoc only where macOS refuses one),
@@ -2537,7 +2537,7 @@ servers, `@vzn/vx-devtools`) and publishes them with **npm trusted
 publishing**, then pushes the server images. A worker runs a task with
 its run's environment, so the OIDC token npm exchanges for a
 short-lived credential, and the one the attestations are signed with,
-are `release.yml`'s: no long-lived npm token exists anywhere. Each step
+are `npm.yml`'s: no long-lived npm token exists anywhere. Each step
 skips what is done (an attached asset, a package on the registry), so a
 re-run on the tag completes a release still in draft.
 
@@ -2558,7 +2558,7 @@ linux-x64:
 | `release.github.<os>.upload` | attaches `dist/vx-<os>-*` the draft release lacks; darwin's then publishes it                                                            |
 | `release.npm.served`         | waits (up to 15 min) until npm's CDN answers 200 for every published tarball: it 404ed v0.0.646's for minutes, failing installs          |
 | `release.docker`             | pushes the three server images to `ghcr.io/vznjs/<server>` at the version (amd64 + arm64); `latest` follows npm's                        |
-| `release.github.tag`         | `auto-release.yml`'s: decides the version, creates the draft release with its notes, dispatches `release.yml`                            |
+| `release.github.tag`         | `auto-release.yml`'s: decides the version, creates the draft release with its notes, dispatches `npm.yml`                                |
 
 The version reaches them as `VX_RELEASE_VERSION` (the tag) and each
 refuses one that is not a version. Every one but `release.docker` (it
@@ -2577,7 +2577,7 @@ then stopped exactly there.
 
 One-time setup, per package, on npmjs.com → package → Settings →
 Trusted Publisher → GitHub Actions: owner `vznjs`, repository `vx`,
-workflow `release.yml`, environment left blank. Do this for `@vzn/vx`,
+workflow `npm.yml`, environment left blank. Do this for `@vzn/vx`,
 `@vzn/vx-darwin-x64`, `@vzn/vx-darwin-arm64`, `@vzn/vx-linux-x64`,
 `@vzn/vx-linux-arm64` and the six plugins: `@vzn/vx-ci`,
 `@vzn/vx-lockfile`, `@vzn/vx-migrate`, `@vzn/vx-otel`,

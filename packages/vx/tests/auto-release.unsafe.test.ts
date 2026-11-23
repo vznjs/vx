@@ -1,10 +1,10 @@
 // auto-release.yml releases on demand a commit whose CI went green on main:
 // its `release.github.tag` task (scripts/auto-release.ts) picks it, tags it, creates the GitHub release as a
-// draft (release.yml's last upload publishes it), and
-// dispatches release.yml on the tag — a release made with the workflow token
+// draft (npm.yml's last upload publishes it), and
+// dispatches npm.yml on the tag — a release made with the workflow token
 // fires no `release` event, so without that dispatch the tag would exist
 // and nothing would be built or published. The rows read both workflow
-// files, so a dropped trigger or a release.yml that only knows the release
+// files, so a dropped trigger or an npm.yml that only knows the release
 // event fails here, not on the first merge after it. Which commit is
 // released is tests/release.test.ts's.
 //
@@ -88,16 +88,16 @@ describe('auto-release.yml', () => {
     })
   })
 
-  it('dispatches release.yml on the tag, which names the version', () => {
-    expect(dispatches('1.2.3')).toEqual([{ workflow: 'release.yml', ref: 'v1.2.3' }])
+  it('dispatches npm.yml on the tag, which names the version', () => {
+    expect(dispatches('1.2.3')).toEqual([{ workflow: 'npm.yml', ref: 'v1.2.3' }])
   })
 
-  // An immutable release takes assets only as a draft, so release.yml is
+  // An immutable release takes assets only as a draft, so npm.yml is
   // dispatched for one; a `release: published` run could attach nothing.
-  it('release.yml runs on a dispatch alone and reads its version from the tag', () => {
-    expect(triggers(parse('release.yml'))).toEqual({ workflow_dispatch: null })
-    const release = parse('release.yml').jobs?.['release']
-    expect(text('release.yml')).not.toContain('github.event.release')
+  it('npm.yml runs on a dispatch alone and reads its version from the tag', () => {
+    expect(triggers(parse('npm.yml'))).toEqual({ workflow_dispatch: null })
+    const release = parse('npm.yml').jobs?.['release']
+    expect(text('npm.yml')).not.toContain('github.event.release')
     expect((release as { env?: Record<string, string> }).env?.['VX_RELEASE_VERSION']).toBe(
       '${{ github.ref_name }}',
     )
@@ -108,7 +108,7 @@ describe('auto-release.yml', () => {
 // `actions: write` (every pull request's DTE run holds one) could publish
 // a branch's code to npm with provenance, or attest it as a release.
 describe('the publishing workflow', () => {
-  const release = (): Job => parse('release.yml').jobs!['release']!
+  const release = (): Job => parse('npm.yml').jobs!['release']!
 
   // A dispatch on a branch checks the branch out: the job runs on a tag only.
   it('runs on a release tag only, checked out as dispatched', () => {
@@ -122,6 +122,6 @@ describe('the publishing workflow', () => {
   // with this job's OIDC token (a task runs with its run's environment).
   it('publishes to npm from the npm environment', () => {
     expect(release().environment).toBe('npm')
-    expect(Object.keys(parse('release.yml').jobs ?? {})).toEqual(['release'])
+    expect(Object.keys(parse('npm.yml').jobs ?? {})).toEqual(['release'])
   })
 })

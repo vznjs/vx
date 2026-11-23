@@ -147,7 +147,7 @@ const shardTask = (i: number, n = SHARD_COUNT, flags = '') => ({
 // darwin-arm64 on a Mac worker; plain check.bun.binary on the run's own Linux.
 const checkBinary = (platforms?: readonly ('linux-arm64' | 'darwin-arm64')[]) => ({
   description:
-    'compile the host binary the way release.yml does; it must launch and report the manifest version',
+    'compile the host binary the way npm.yml does; it must launch and report the manifest version',
   dependsOn: ['install'],
   exec: {
     command: 'bun scripts/check-binary.ts',
@@ -275,7 +275,7 @@ const compileTasks = Object.fromEntries(
   ]),
 )
 
-// A release (release.yml: `vx pipeline release` over the release workers,
+// A release (npm.yml: `vx pipeline npm` over the release workers,
 // vx-release-worker.yml; scripts/release*.ts). Uncached, since each has a
 // side effect. A darwin step runs on a Mac (it can re-sign), a linux one on
 // linux-x64; an uncached step that writes files keeps its dependants on its
@@ -610,7 +610,7 @@ export default defineProject({
     deploy: {
       dependsOn: ['deploy.*'],
     },
-    // main's: release.yml publishes a release before its post lands.
+    // main's: npm.yml publishes a release before its post lands.
     'deploy.github': {
       description: 'give each GitHub release the body of its release post on the site',
       exec: {
