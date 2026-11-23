@@ -600,6 +600,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'vx-ci/unknown-options',
     'vx-devtools/hostile-tokens',
     'vx-devtools/key-cache',
+    'vx-devtools/keys-read-retry',
     'vx-devtools/oidc',
     'vx-devtools/parse-allow',
     'vx-devtools/terminal',
