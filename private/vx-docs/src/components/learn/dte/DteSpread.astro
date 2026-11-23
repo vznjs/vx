@@ -63,6 +63,12 @@ const pushes: Array<[Push, string]> = [
         </span>
       </div>
     ))}
+    <div class="vx-spread-lane vx-spread-axis" aria-hidden="true">
+      <span class="vx-spread-who"></span>
+      <span class="vx-spread-ticks">
+        {[0, 250, 500, 750, 1000].map((ms) => <span style={`left:${pct(ms)}`}>{ms / 1000}s</span>)}
+      </span>
+    </div>
   </div>
 
   <p class="vx-spread-key">
@@ -267,6 +273,18 @@ const pushes: Array<[Push, string]> = [
   }
   .vx-spread-chain-key {
     box-shadow: inset 0 0 0 2px var(--vx-fg);
+  }
+  .vx-spread-ticks {
+    position: relative;
+    height: 1rem;
+    font-family: var(--vx-mono);
+    font-size: 0.62rem;
+    color: var(--vx-muted);
+  }
+  .vx-spread-ticks span {
+    position: absolute;
+    border-left: 1px solid var(--vx-border);
+    padding-left: 0.2rem;
   }
   .vx-spread-item {
     white-space: nowrap;

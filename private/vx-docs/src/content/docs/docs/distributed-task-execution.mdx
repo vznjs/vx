@@ -139,7 +139,12 @@ A machine with a `platform` takes the tasks whose `exec.platforms` name it:
 ```ts title=".vx/workspace.ts"
 mac: {
   machines: {
-    m1: { max: 2, cpu: 3, memory: '7GB', platform: 'darwin-arm64' },
+    m1: {
+      max: 2,
+      cpu: 3,
+      memory: '7GB',
+      platform: 'darwin-arm64',
+    },
   },
 },
 ```
@@ -153,8 +158,18 @@ mac: {
 ```ts title=".vx/workspace.ts"
 dte({
   relay: 'https://relay.example.com',
-  workers: { linux: { machines: { small: { max: 4, cpu: 2, memory: '8GB' } } } },
-  adapter: gitlab({ tags: { 'linux.small': ['saas-linux-small-amd64'] } }),
+  workers: {
+    linux: {
+      machines: {
+        small: { max: 4, cpu: 2, memory: '8GB' },
+      },
+    },
+  },
+  adapter: gitlab({
+    tags: {
+      'linux.small': ['saas-linux-small-amd64'],
+    },
+  }),
 }),
 ```
 
@@ -171,7 +186,11 @@ With no `adapter`, vx starts nothing. Name the relay, then share one random run 
 dte({
   relay: 'https://relay.example.com',
   workers: {
-    linux: { machines: { cpu4: { cpu: 4, memory: '16GB' } } },
+    linux: {
+      machines: {
+        cpu4: { cpu: 4, memory: '16GB' },
+      },
+    },
   },
 }),
 ```
@@ -297,7 +316,6 @@ Names use letters, digits, `_` and `-`.
 | `asked` | when vx asked for each worker, and the run's estimate then |
 | `ideal` | the best end the allowed workers could give |
 | `perfect` | the end if no task waited: the longest path of tasks that wait on each other |
-| `drift` | how far the run ended past both |
 | `best` / `any` | the fewest machines of your sizes, or of any size, that end as soon |
 
 </Deeper>
