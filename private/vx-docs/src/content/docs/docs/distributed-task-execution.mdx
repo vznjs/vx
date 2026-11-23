@@ -182,7 +182,7 @@ You need vx on CI ([CI](../ci/)) and a [remote cache](../remote-cache/) every jo
 
    `ci.yml` runs `vx run`. `vx-worker.yml` is each worker's job: check out, install, `vx dte worker`. Run `vx dte init` again after you change `workers`.
 
-4. **Let the workflows in.** Put the `ALLOW` line it printed into the relay's settings, and deploy the relay again ([how](../servers/dte/#2-say-who-may-use-it-allow)).
+4. **Let the workflows in.** Put the `ALLOW` line it printed into the relay's settings, and deploy the relay again ([how](../servers/dte/#say-who-may-use-it)).
 
 5. **Push** the two workflows, `.vx/workspace.ts` and the lock. The run's log and job summary show each worker beside its tasks.
 
