@@ -27,8 +27,8 @@ export const remoteExecution: Picture = {
   notes: [{ x: 400, y: 168, text: 'outputs go back the same way', anchor: 'middle' }],
   narrow: {
     width: 340,
-    height: 350,
-    frames: [{ x: 70, y: 110, w: 200, h: 230, label: 'your REAPI pool', tone: 'link' }],
+    height: 410,
+    frames: [{ x: 10, y: 130, w: 320, h: 270, label: 'your REAPI pool', tone: 'link' }],
     boxes: [
       {
         id: 'you',
@@ -39,13 +39,13 @@ export const remoteExecution: Picture = {
         sub: 'plans the order',
         tone: 'accent',
       },
-      { id: 'server', x: 95, y: 140, w: 150, label: 'server', sub: 'queue · files' },
-      { id: 'workers', x: 95, y: 250, w: 150, label: 'workers', sub: 'run commands', tone: 'ok' },
+      { id: 'server', x: 95, y: 165, w: 150, label: 'server', sub: 'queue · files' },
+      { id: 'workers', x: 95, y: 275, w: 150, label: 'workers', sub: 'run commands', tone: 'ok' },
     ],
     arrows: [
       { from: 'you', to: 'server', label: 'task' },
       { from: 'server', to: 'workers', label: 'run' },
     ],
-    notes: [{ x: 170, y: 332, text: 'outputs go back the same way', anchor: 'middle' }],
+    notes: [{ x: 170, y: 378, text: 'outputs go back the same way', anchor: 'middle' }],
   },
 }

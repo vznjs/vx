@@ -11,7 +11,7 @@ import { Levels, Deeper, Concept, Quiz, Walkthrough, Frame, Compare, Takeaway, N
 Already run a Bazel worker pool? Point vx at it, and your builds run there instead of on your laptop.
 
 ```sh
-vx run deploy --dry   # where would each task run?
+vx run deploy --all --dry   # where would each task run?
 ```
 
 <Levels />
@@ -48,6 +48,8 @@ export default defineWorkspace({
 ```
 
 Read the **worker** column: both builds and the install go to **vx/reapi**. `deploy` stays **local**.
+
+`demo#install` puts `node_modules` on the pool ([how](#give-workers-node_modules)).
 
 </Frame>
 <Frame title="3. Point it at a cache-only server">
@@ -116,6 +118,10 @@ deploy: {
   exec: { command: 'wrangler pages deploy dist', remote: false },
 },
 ```
+
+<Aside type="note">
+  Under [Distributed task execution](../distributed-task-execution/), workers take every task, `exec.remote: false` included.
+</Aside>
 
 vx keeps these here on its own, and every task that depends on them:
 
@@ -270,7 +276,7 @@ computing gzip size...
 
 Read the yellow line: the pool was full, so the build ran here and still passed.
 
-<Takeaway>connect to a hosted or private pool, pass values safely, and never wait on a full queue.</Takeaway>
+<Takeaway>connect any pool, pass values safely, and skip a full queue.</Takeaway>
 
 </Deeper>
 
@@ -318,9 +324,8 @@ The connection options (`endpoint`, `headers`, TLS, timeouts, `chunkBytes`) are 
 - No worker starts a task within `queueTimeoutMs`: it runs here. An `'only'` task fails instead.
 - A dropped connection: vx re-attaches to the running task instead of starting it again.
 - A task already run on the pool with the same key: vx skips the worker and replays the result.
-- Uploads chunk at 65535 bytes (`SAFE_CHUNK_BYTES`), the size no Bun http2
-  stall has been seen at. A larger `chunkBytes` that stalls retries once at
-  that size before the task fails.
+- Uploads chunk at 65535 bytes (`SAFE_CHUNK_BYTES`), about 64 KB; `chunkBytes` changes it.
+  A larger size that stalls retries once at 64 KB.
 
 Every wire detail: [`@vzn/vx-reapi`](../../plugins/vx-reapi/).
 
