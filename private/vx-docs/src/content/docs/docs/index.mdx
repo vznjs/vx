@@ -11,7 +11,6 @@ vx runs the tasks of a JavaScript monorepo in the right order, many at once, and
 
 ```sh
 bunx @vzn/vx init
-vx run build --all
 ```
 
 <Levels />
@@ -26,9 +25,9 @@ A small workspace: `@demo/web`, a Vite app, uses `@demo/ui`, a component library
 ```ansi title="first run"
 [2m$[0m vx run build --all
 
-[4m[58;2;110;118;129m  [1m[38;2;167;139;250mTasks[0m[4m[58;2;110;118;129m     [2mstatus  cache     ±usual    time   task[0m[4m[58;2;110;118;129m                         [0m
-            [38;2;34;197;94msuccess[0m [2mmiss[0m           [2m—[0m   [38;2;203;213;225m253ms[0m   [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m
-            [38;2;34;197;94msuccess[0m [2mmiss[0m           [2m—[0m   [38;2;203;213;225m234ms[0m   [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mTasks[0m[4m[58;2;110;118;129m     [2mstatus  cache       time   task[0m[4m[58;2;110;118;129m   [0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m       [38;2;203;213;225m248ms[0m   [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m       [38;2;203;213;225m256ms[0m   [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m
 
   [2mcache   [0m  [38;2;56;189;248m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
             [2mlocal[0m [38;2;56;189;248m2↑[0m
@@ -45,7 +44,7 @@ A small workspace: `@demo/web`, a Vite app, uses `@demo/ui`, a component library
   [2mcache   [0m  [38;2;34;197;94m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
             [2mlocal[0m [38;2;34;197;94m2✓[0m
 
-  [2mtime    [0m  26ms
+  [2mtime    [0m  42ms
 ```
 
 `local 2✓`: both builds are up to date. Nothing ran.
@@ -53,17 +52,18 @@ A small workspace: `@demo/web`, a Vite app, uses `@demo/ui`, a component library
 </Frame>
 <Frame title="3. Edit one file in ui: both build again">
 
-```ansi title="after an edit to packages/ui/src/index.js"
+```ansi title="after editing ui"
 [2m$[0m vx run build --all
 
-[4m[58;2;110;118;129m  [1m[38;2;167;139;250mTasks[0m[4m[58;2;110;118;129m     [2mstatus  cache     ±usual    time   task[0m[4m[58;2;110;118;129m                         [0m
-            [38;2;34;197;94msuccess[0m [2mmiss[0m       [38;2;34;197;94m−53ms[0m   [38;2;203;213;225m200ms[0m   [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m
-            [38;2;34;197;94msuccess[0m [2mmiss[0m       [2m−24ms[0m   [38;2;203;213;225m210ms[0m   [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mTasks[0m[4m[58;2;110;118;129m     [2mstatus  cache       time   task[0m[4m[58;2;110;118;129m   [0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m       [38;2;203;213;225m246ms[0m   [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m       [38;2;203;213;225m207ms[0m   [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m
 
 [2m$[0m vx why @demo/web#build
 
-[4m[58;2;110;118;129m  [1m[38;2;167;139;250mRoot cause[0m[4m[58;2;110;118;129m                                                                [0m
-  [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m[2m ← [0m[38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m[2m ← [0m[1mfile packages/ui/src/index.js[0m
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mRoot cause[0m[4m[58;2;110;118;129m                                  [0m
+  [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m[2m ← [0m[38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m[2m ← [0m[1mfile[0m
+  [1mpackages/ui/src/index.js[0m
 ```
 
 web rebuilt because ui changed. `vx why` traces it back to the one file.
@@ -78,9 +78,9 @@ web rebuilt because ui changed. `vx why` traces it back to the one file.
 Each project lists its tasks in a `vx.config.ts`:
 
 ```ts title="packages/web/vx.config.ts" mark={6,8,9,10}
-import { defineProject } from '@vzn/vx/config'
+import type { ProjectConfig } from '@vzn/vx/config'
 
-export default defineProject({
+export default {
   tasks: {
     build: {
       dependsOn: ['^build'],
@@ -90,7 +90,7 @@ export default defineProject({
       cache: true,
     },
   },
-})
+} satisfies ProjectConfig
 ```
 
 <Concept term="Task">
