@@ -14,7 +14,7 @@ import {
 } from '../src/report/framed-output.js'
 import { formatRunSummary } from '../src/report/summary.js'
 import { whatChangedSection } from '../src/cli/why.js'
-import { ui } from '../src/ui/index.js'
+import { paint, ui } from '../src/ui/index.js'
 
 const node = (id: string): TaskNode => {
   const [projectName, taskName] = id.split('#')
@@ -275,5 +275,25 @@ describe("a refusal's source frame, on a narrow terminal", () => {
   it('CONTROL: off a terminal, and on a wide one, the line stays whole', () => {
     for (const lines of [draw(), draw(200)])
       expect(lines).toEqual([`  > 1 | ${line}`, `      | ${' '.repeat(col - 1)}^`])
+  })
+})
+
+// On a colour terminal the frame was the one block of a refusal with no
+// colour at all: vx's gutter now reads dim and the caret red, as the
+// headline's mark; the source between stays the user's own text.
+describe("a refusal's source frame, in colour", () => {
+  const on = { enabled: true }
+  const frame = '> 1 | export default { tasks: 1 }\n    |                 ^'
+
+  it('dims the gutter and paints the caret', () => {
+    const [src, caret] = ui.code(frame).lines(on)
+    expect(src).toBe(`  ${paint('muted', '> 1 |', on)} export default { tasks: 1 }`)
+    expect(caret).toBe(
+      `  ${paint('muted', '    |', on)} ${' '.repeat(16)}${paint('error', '^', on)}`,
+    )
+  })
+
+  it('CONTROL: off colour the frame is as written', () => {
+    expect(ui.code(frame).lines({ enabled: false })).toEqual(frame.split('\n').map((l) => `  ${l}`))
   })
 })

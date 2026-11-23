@@ -425,7 +425,8 @@ export function trace(lines: readonly string[]): Block {
  * A source frame (`> 1 | …` and its caret, the last line), indented. A
  * terminal narrower than a source line wrapped it and the caret pointed at
  * the wrong character: there each line shows the window around the caret,
- * `…` where it was cut.
+ * `…` where it was cut. The gutter is dim and the caret red; the source
+ * between is the user's own text.
  */
 export function code(frame: string): Block {
   return block((c) => {
@@ -437,12 +438,11 @@ export function code(frame: string): Block {
     const start = fits ? 0 : Math.max(0, caret - Math.floor((room * 2) / 3))
     return lines.map((l, i) => {
       if (l === '') return ''
-      if (fits) return `${INDENT}${l}`
-      const text =
-        i === lines.length - 1
-          ? `${' '.repeat(caret - start)}^`
-          : window(l.slice(gutter), start, room)
-      return `${INDENT}${l.slice(0, gutter)}${text}`.trimEnd()
+      const mark = `${INDENT}${paint('muted', l.slice(0, gutter - 1), c)} `
+      if (i === lines.length - 1)
+        return `${mark}${' '.repeat(caret - start)}${paint('error', '^', c)}`
+      if (fits) return `${mark}${l.slice(gutter)}`
+      return `${mark}${window(l.slice(gutter), start, room)}`.trimEnd()
     })
   })
 }

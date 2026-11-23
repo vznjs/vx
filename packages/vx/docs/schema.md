@@ -3338,10 +3338,10 @@ opens it on click), and the lines up to it with a caret under the field
   [38;2;203;213;225mtasks.build.exec has unknown field "comand"[0m
   [2mallowed: command, env, interactive, persistent, platforms, remote, retries, sandbox, timeout, worker[0m
 
-    4 |   tasks: {
-    5 |     build: {
-  > 6 |       exec: { comand: 'mkdir -p dist' },
-      |               ^
+  [2m  4 |[0m   tasks: {
+  [2m  5 |[0m     build: {
+  [2m> 6 |[0m       exec: { comand: 'mkdir -p dist' },
+  [2m    |[0m               [38;2;239;68;68m^[0m
 
   [2mfix[0m  [1muse command[0m
 ```
