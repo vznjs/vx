@@ -477,7 +477,7 @@ One that declares no `inputs` has no key, and every task behind it misses. `inpu
 - **Excluded unless named:** files git ignores, an ignored `node_modules` included. A broad glob like `src/**` skips them; an exact path or a glob whose fixed part git ignores (`.env.local`, `node_modules/.prisma/client/**`) keys them.
 - **The task's own outputs** are out, except a file git tracks. That one stays in the key by what git holds, and a miss writes git's version back first.
 - **A nested project's files** are out.
-- **Always excluded:** `.git` and vx's own files. In full: an untracked `node_modules` git does not ignore (an install), `.git`, `.vx/cache`, `.vx/projects.lock`, `vx.lock.json`, `.vx/.gitattributes`, `.vx/.gitignore`, `.vx/dependencies.lock`, `.vx/tmp` (restore staging), the temps a killed write leaves (`.vx/projects.lock.tmp-*`, `.vx/dependencies.lock.tmp-*`, `vx.lock.json.tmp-*`), each at the project's root only.
+- **Always excluded:** `.git`, an install's `node_modules` (untracked, not ignored), and vx's own files at the project's root: `.vx/cache`, `.vx/tmp`, the lock files `vx lock` writes (`.vx/projects.lock`, `.vx/dependencies.lock`, `vx.lock.json`, `.vx/.gitattributes`, `.vx/.gitignore`) and the temp copies a killed `vx lock` leaves behind (`.vx/projects.lock.tmp-*`, `.vx/dependencies.lock.tmp-*`, `vx.lock.json.tmp-*`).
 
 Every part, in order: [Caching in depth](../../caching/).
 
