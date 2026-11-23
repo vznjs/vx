@@ -87,7 +87,7 @@ describe.skipIf(
           proc.exited,
         ])
         expect(`${code}\n${out}${err}`).toStartWith('0\n')
-        expect(err).toMatch(/\b3 pass\b/)
+        expect(err).toMatch(/\b4 pass\b/)
         // The one skip is this wrapper, inside.
         expect(err).toMatch(/\b1 skip\b/)
       } finally {
@@ -146,6 +146,36 @@ describe.skipIf(SMALL === undefined)('a full disk (VX_SMALL_DISK)', () => {
       expect(second.out + second.err).toContain('ENOSPC')
       expect(second.code).toBe(1)
       expect(await readFile(out, 'utf8')).toBe('old\n')
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a save the disk fills mid-write leaves no entry a later run hits',
+    async () => {
+      const root = await makeWorkspace({ prefix: 'vx-full-save-' })
+      made.push(root)
+      const cacheDir = path.join(small, 'cache')
+      await project(root)
+      const run = () => vx(root, ['run', 'build', '--all', '--cache-dir', cacheDir])
+      const first = await run()
+      expect(`${first.code}\n${first.err}`).toStartWith('0\n')
+      await writeFile(
+        path.join(root, 'packages', 'app', 'src', 'index.js'),
+        'export const changed = 1\n',
+      )
+      await fill(small)
+      // 256 KiB of room: the 700 KB artifact starts, and the disk ends it.
+      await rm(path.join(small, 'filler-0.bin'))
+      const full = await run()
+      expect(full.out + full.err).toMatch(/cache save failed: app#build: .*(ENOSPC|full)/)
+      expect(full.code).toBe(0)
+      for (const f of await readdir(small))
+        if (f.startsWith('filler-')) await rm(path.join(small, f))
+      await rm(path.join(root, 'packages', 'app', 'dist'), { recursive: true, force: true })
+      const after = await run()
+      expect(`${after.code}\n${after.out}`).toMatch(/^0\n[\s\S]*1 success/)
+      expect(after.out).not.toContain('restored')
     },
     TIMEOUT,
   )
