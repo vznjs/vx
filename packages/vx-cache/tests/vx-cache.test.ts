@@ -1411,6 +1411,33 @@ describe('config', () => {
     }
   })
 
+  // Bun.serve streams a download with no Content-Length: core, which
+  // refuses a body past its artifact ceiling by its length, read 100 MB of
+  // a 286 MB one before refusing it (2026-11-23).
+  it('names a download its length, as vx-size says it', async () => {
+    const srv = server()
+    try {
+      const token = await srv.token(MAIN_JOB)
+      await layer(srv.url, token).put('ab22', new Blob(['12345']), { durationMs: 1 })
+      // Streamed as a bucket's body is: chunked, no length.
+      const chunked: typeof fetch = Object.assign(
+        async (input: string | URL | Request, init?: RequestInit) => {
+          const res = await fetch(input, init)
+          if (init?.method !== 'GET') return res
+          const headers = new Headers(res.headers)
+          headers.delete('content-length')
+          return new Response(res.body, { status: res.status, headers })
+        },
+        { preconnect: fetch.preconnect },
+      )
+      const got = await layer(srv.url, token, [MAIN], chunked).get('ab22')
+      const res = got!.body as Response
+      expect([res.headers.get('content-length'), await res.text()]).toEqual(['5', '12345'])
+    } finally {
+      await srv.stop()
+    }
+  })
+
   it('asks no more than `retries` says', async () => {
     const srv = server()
     try {

@@ -286,7 +286,7 @@ function streamed(res: Response, controller: AbortController, ms: number): Respo
 /** `res` with `body` run through `transformer`. */
 function piped(
   body: ReadableStream<Uint8Array>,
-  res: Response,
+  res: Pick<Response, 'status' | 'statusText' | 'headers'>,
   transformer: Transformer<Uint8Array, Uint8Array>,
 ): Response {
   return new Response(body.pipeThrough(new TransformStream(transformer)), {
@@ -309,16 +309,24 @@ function sized(res: Response): Response {
   if (res.body === null || named === null) return res
   const size = Number(named)
   let seen = 0
-  return piped(res.body, res, {
-    transform(chunk, out) {
-      seen += chunk.byteLength
-      if (seen > size) throw new Error(`the download ran past its ${size} bytes`)
-      out.enqueue(chunk)
+  // Named as its length too: core refuses a body past its artifact ceiling
+  // by its length before reading it, and read 100 MB of a 286 MB one first.
+  const headers = new Headers(res.headers)
+  headers.set('content-length', named)
+  return piped(
+    res.body,
+    { status: res.status, statusText: res.statusText, headers },
+    {
+      transform(chunk, out) {
+        seen += chunk.byteLength
+        if (seen > size) throw new Error(`the download ran past its ${size} bytes`)
+        out.enqueue(chunk)
+      },
+      flush() {
+        if (seen !== size) throw new Error(`the download ended after ${seen} of ${size} bytes`)
+      },
     },
-    flush() {
-      if (seen !== size) throw new Error(`the download ended after ${seen} of ${size} bytes`)
-    },
-  })
+  )
 }
 
 /**
