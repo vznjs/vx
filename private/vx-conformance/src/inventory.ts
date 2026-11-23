@@ -1411,6 +1411,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'upgrading-page',
     'upstream',
     'upstream-ledger.unsafe',
+    'vx-lines-coloured',
     'workflow-runner.unsafe',
   ],
 }
