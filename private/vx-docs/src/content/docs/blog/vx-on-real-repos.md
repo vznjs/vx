@@ -87,7 +87,7 @@ rebuilds from scratch.
 | edit | 268.92 s | 259.96 s |
 | clone | 2.59 s | 3.54 s |
 
-:::note[Clone row]
+:::note[medusa clone row]
 vx's clone takes what its restore takes (3.54 s and 3.45 s, all 83 hits).
 Turborepo's clone takes less time than its own restore.
 :::
@@ -103,7 +103,7 @@ Turborepo's clone takes less time than its own restore.
 | edit | 34.10 s | 29.03 s |
 | clone | 0.96 s | 0.58 s |
 
-:::note[Clone row]
+:::note[TanStack query clone row]
 Nx's first clone rep missed its cache (36.42 s): Nx 23 indexes its local
 cache in the checkout's own `.nx/workspace-data`. The chart shows the
 minimum.

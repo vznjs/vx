@@ -271,6 +271,8 @@ export default defineProject({
           'src/nav/**',
           // llms.test.ts holds the agents' markdown and its reading order.
           'src/llms/**',
+          // a11y-static.test.ts finds the code-region script by its marker.
+          'src/plugins/code-region-names.ts',
           // config examples, and its images on disk.
           'src/components/guide/**',
           'src/components/landing/**',

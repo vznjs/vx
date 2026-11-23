@@ -604,7 +604,11 @@
 .vx-landing .cfm .cfm-hits a:hover,
 .vx-landing .cfm .cfm-hits a:focus-visible {
   background: color-mix(in srgb, var(--phosphor) 6%, transparent);
-  outline: none;
+}
+/* A 6% tint alone is no visible focus for a keyboard user (WCAG 2.4.7). */
+.vx-landing .cfm .cfm-hits a:focus-visible {
+  outline: 2px solid var(--phosphor);
+  outline-offset: -2px;
 }
 .vx-landing .cfm-hit-title {
   display: block;

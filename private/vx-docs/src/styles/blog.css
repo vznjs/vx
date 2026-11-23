@@ -404,6 +404,21 @@
   color: var(--vx-accent);
 }
 
+/* The link's own box is the title, which is 0 px tall when the cover draws
+   it: its focus ring would not show. The ring goes on the ::after that
+   covers the whole card. */
+.vx-card-title a:focus-visible,
+.vx-feature h2 a:focus-visible {
+  outline: none;
+}
+
+.vx-card-title a:focus-visible::after,
+.vx-feature h2 a:focus-visible::after {
+  outline: 2px solid var(--vx-accent);
+  outline-offset: 4px;
+  border-radius: 12px;
+}
+
 .vx-card-excerpt {
   display: -webkit-box;
   -webkit-box-orient: vertical;

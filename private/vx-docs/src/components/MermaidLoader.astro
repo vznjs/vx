@@ -82,7 +82,23 @@
     }
 
     await mermaid.run({ nodes: blocks })
+    for (const el of blocks) keyboardScroll(el)
   }
+
+  // A diagram wider than a phone scrolls sideways; a keyboard user can
+  // scroll it only once it takes focus (WCAG 2.1.1, axe's
+  // scrollable-region-focusable). One that fits stays out of the tab order.
+  function keyboardScroll(el: HTMLElement): void {
+    if (el.scrollWidth > el.clientWidth) el.tabIndex = 0
+    else el.removeAttribute('tabindex')
+  }
+  let resizing: ReturnType<typeof setTimeout> | undefined
+  addEventListener('resize', () => {
+    clearTimeout(resizing)
+    resizing = setTimeout(() => {
+      for (const el of document.querySelectorAll<HTMLElement>('pre.mermaid[data-processed]')) keyboardScroll(el)
+    }, 250)
+  })
 
   // One render at a time. The first render and the theme observer both
   // fire on load (Starlight sets `data-theme` as it starts), and two

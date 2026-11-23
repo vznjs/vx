@@ -280,6 +280,7 @@
           "src/data/conformance.json",
           "src/nav/**",
           "src/llms/**",
+          "src/plugins/code-region-names.ts",
           "src/components/guide/**",
           "src/components/landing/**",
           "src/components/Demo.astro",
