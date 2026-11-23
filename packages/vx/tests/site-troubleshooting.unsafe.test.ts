@@ -29,7 +29,9 @@ function block(page: string): string {
 
 describe('the "When it goes wrong" blocks quote vx as it prints', () => {
   it('every quoted error is in core’s source', () => {
-    const quoted = PAGES.flatMap((p) => [...block(p).matchAll(/^\| `([^`]+)`/gm)].map((m) => m[1]!))
+    const quoted = PAGES.flatMap((p) =>
+      [...block(p).matchAll(/^- \*\*`([^`]+)`/gm)].map((m) => m[1]!),
+    )
     expect(quoted.length).toBeGreaterThanOrEqual(10)
     const src = sourceText(SRC)
     // The one row a shell prints, not vx.

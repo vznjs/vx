@@ -141,11 +141,36 @@ describe('the guides show what vx prints', () => {
     expect(run.stdout.trim()).toBe(line)
   })
 
-  it("running tasks' filter typo is what vx prints", () => {
+  // On the page's own shop (ui, web, admin, api), so the suggestion is a
+  // project the reader has.
+  it("running tasks' filter typo is what vx prints", async () => {
     const page = readFileSync(path.join(GUIDES, 'running-tasks.mdx'), 'utf8')
-    const run = vxColour('run', 'build', '--filter', '@demo/ap')
-    expect(run.code).toBe(1)
-    expect(printed(page, 'vx run build --filter @demo/ap')).toBe(run.stderr.trim())
+    const shop = await mkdtemp(path.join(os.tmpdir(), 'vx-site-shop-'))
+    try {
+      await mkdir(path.join(shop, '.vx'))
+      await writeFile(path.join(shop, '.vx/workspace.mjs'), 'export default {}\n')
+      for (const name of ['ui', 'web', 'admin', 'api']) {
+        await mkdir(path.join(shop, 'packages', name), { recursive: true })
+        await writeFile(
+          path.join(shop, 'packages', name, 'vx.config.mjs'),
+          `export default {
+  name: '@demo/${name}',
+  tasks: { build: { exec: { command: 'true' } } },
+}
+`,
+        )
+      }
+      const at = (...cmd: string[]) => Bun.spawnSync({ cmd, cwd: shop, env: COLOUR })
+      expect(at('git', 'init', '-q', '-b', 'main').exitCode).toBe(0)
+      expect(at('git', 'add', '-A').exitCode).toBe(0)
+      expect(at('git', 'commit', '-qm', 'one').exitCode).toBe(0)
+      expect(at(process.execPath, BIN, 'lock').exitCode).toBe(0)
+      const run = at(process.execPath, BIN, 'run', 'build', '--filter', '@demo/wbe')
+      expect(run.exitCode).toBe(1)
+      expect(printed(page, 'vx run build --filter @demo/wbe')).toBe(run.stderr.toString().trim())
+    } finally {
+      await rm(shop, { recursive: true, force: true })
+    }
   })
 })
 

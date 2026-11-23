@@ -550,16 +550,14 @@ Look at the second line: the old command, then the new one. Run `vx lock` to tak
 
 ### Every message, word for word
 
-| vx prints | Fix |
-| --- | --- |
-| `no .vx/workspace.ts in …` | Run `vx init` at the workspace root. It writes `.vx/workspace.ts`, which marks the root. A file above your git checkout does not count. |
-| `… belongs to another user, so vx does not take its directory as your workspace` | Outside git, vx ignores a `.vx/workspace.ts` another user owns. Run vx in a checkout you own. |
-| `two projects are named "…": …` | Two folders have the same name: set another `name` in one's `vx.config.ts`, then run `vx lock`. |
-| `… locks …, but its … is gone` | A `vx.config.ts` was deleted or renamed: run `vx lock`. |
-| `… holds a line … never writes` | A merge left a conflict in the lock: see [Fix a merge conflict in the lock](../ci/#fix-a-merge-conflict-in-the-lock). |
-| `… evaluates differently from the lock here` | A config changed without `vx lock`: run `vx lock` and commit the lock. |
-| `vx requires git: … is not inside a git work tree` | vx needs git: run `git init` at the workspace root. |
-| `vx requires git: failed to spawn 'git'` | Install git. |
+- **`no .vx/workspace.ts in …`.** Run `vx init` at the workspace root. It writes `.vx/workspace.ts`, which marks the root. A file above your git checkout does not count.
+- **`… belongs to another user, so vx does not take its directory as your workspace`.** Outside git, vx ignores a `.vx/workspace.ts` another user owns. Run vx in a checkout you own.
+- **`two projects are named "…": …`.** Two folders have the same name: set another `name` in one's `vx.config.ts`, then run `vx lock`.
+- **`… locks …, but its … is gone`.** A `vx.config.ts` was deleted or renamed: run `vx lock`.
+- **`… holds a line … never writes`.** A merge left a conflict in the lock: see [Fix a merge conflict in the lock](../ci/#fix-a-merge-conflict-in-the-lock).
+- **`… evaluates differently from the lock here`.** A config changed without `vx lock`: run `vx lock` and commit the lock.
+- **`vx requires git: … is not inside a git work tree`.** vx needs git: run `git init` at the workspace root.
+- **`vx requires git: failed to spawn 'git'`.** Install git.
 
 - **The editor cannot find `@vzn/vx`.** Add it as a devDependency. vx
   runs a config without it.

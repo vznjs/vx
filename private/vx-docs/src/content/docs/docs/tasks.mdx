@@ -634,12 +634,10 @@ Paste what vx printed, or open a code:
 
 <ErrorFinder codes={['VX_E_CONFIG', 'VX_E_CYCLE', 'VX_E_DEPENDS_ON', 'VX_E_OUTPUT_OVERLAP', 'VX_E_INPUT_IS_OUTPUT', 'VX_E_NESTED_INPUT', 'VX_E_NESTED_OUTPUT', 'VX_E_DEPENDENCY_RULE']} />
 
-| vx prints | Fix |
-| --- | --- |
-| `… has unknown field "<key>"` | A typo, or a Turbo or Nx key. The message lists the fields vx allows. |
-| `dependsOn cycle` | Two tasks wait for each other: remove one `dependsOn` from the loop it prints. |
-| `dependsOn …, but` `no project is named …` / `… declares no task …` | Use the name it suggests, or add that task to that package. |
-| `timed out after …` | The task ran past its time limit: raise `exec.timeout` or `--timeout` ([Handle failures and hangs](#5-handle-failures-and-hangs)). |
+- **`… has unknown field "<key>"`.** A typo, or a Turbo or Nx key. The message lists the fields vx allows.
+- **`dependsOn cycle`.** Two tasks wait for each other: remove one `dependsOn` from the loop it prints.
+- **`dependsOn …, but` `no project is named …` / `… declares no task …`.** Use the name it suggests, or add that task to that package.
+- **`timed out after …`.** The task ran past its time limit: raise `exec.timeout` or `--timeout` ([Handle failures and hangs](#5-handle-failures-and-hangs)).
 
 - **`inputs matched no files`.** The globs find nothing. Paths are
   relative to the project's folder: fix them.
