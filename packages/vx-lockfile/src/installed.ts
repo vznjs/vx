@@ -30,6 +30,7 @@ const load = createRequire(import.meta.url)
 const bunLock = (): typeof import('./bun.js') => load('./bun.js')
 const npmLock = (): typeof import('./npm.js') => load('./npm.js')
 const pnpmLock = (): typeof import('./pnpm.js') => load('./pnpm.js')
+const yarnLock = (): typeof import('./yarn.js') => load('./yarn.js')
 
 /** What the install left that disagrees with the lockfile; `dirs`: what the kept match stats too. */
 interface Verdict {
@@ -186,11 +187,18 @@ function yarnClassicCompare(
  * Yarn 2+'s node_modules state: the packages it installed by locator. A
  * locator the lockfile does not resolve to is another install; a missing
  * one may be a platform's optional package, so only the extra counts.
+ * Then each workspace the state lists (a focused install lists only
+ * those it installed): its registry dependencies where Node resolves
+ * them. A pull that moves a workspace to a version another package
+ * already holds leaves no extra locator, only the old copy where the
+ * workspace loads it.
  */
 function yarnBerryCompare(
   lock: import('./yarn.js').Lockfile,
   markerText: string,
+  root: string,
 ): string | undefined {
+  const listed = new Set<string>()
   for (const line of markerText.split('\n')) {
     const m = /^"?([^\s"].*?)"?:$/.exec(line)
     if (m === null || m[1] === '__metadata') continue
@@ -198,6 +206,31 @@ function yarnBerryCompare(
     const locator = m[1]!.replace(/@virtual:[^#]+#/, '@')
     if (!lock.entries.has(locator))
       return `${locator} is installed, and the lockfile does not list it`
+    listed.add(locator)
+  }
+  let rc: string | undefined
+  try {
+    rc = readUtf8(path.join(root, yarnLock().YARNRC))
+  } catch {
+    // None: no catalog to read.
+  }
+  const direct = yarnLock().directVersions(lock, yarnLock().catalogsOf(rc))
+  for (const [dir, id] of lock.workspaces) {
+    if (!listed.has(id)) continue
+    for (const [name, version] of direct.get(dir)!) {
+      for (let d = dir; ; d = path.posix.dirname(d)) {
+        const installed = versionAt(
+          root,
+          d === '.' ? `node_modules/${name}` : `${d}/node_modules/${name}`,
+        )
+        if (installed !== undefined) {
+          if (installed !== version)
+            return `${dir}'s ${name} is ${installed}, the lockfile names ${version}`
+          break
+        }
+        if (d === '.') break
+      }
+    }
   }
   return undefined
 }
@@ -395,7 +428,7 @@ const INSTALL_CHECKS: Readonly<Record<string, InstallCheck>> = {
           ? yarnClassicCompare(parsed, marker!.text)
           : marker!.file.endsWith('.store')
             ? yarnStoreCompare(parsed, root)
-            : yarnBerryCompare(parsed, marker!.text),
+            : yarnBerryCompare(parsed, marker!.text, root),
       }
     },
   },

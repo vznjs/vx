@@ -503,6 +503,32 @@ export function fileDeps(lock: Lockfile, workspace?: (dir: string) => boolean): 
 
 export const YARNRC = '.yarnrc.yml'
 
+/**
+ * Each workspace's installed dependencies that resolve to registry entries
+ * of one version, by workspace dir: name → version (the install check).
+ * A link, a workspace or a range of several versions is left out.
+ */
+export function directVersions(
+  lock: Lockfile,
+  catalogs: Catalogs,
+): ReadonlyMap<string, ReadonlyMap<string, string>> {
+  const out = new Map<string, Map<string, string>>()
+  for (const [dir, id] of lock.workspaces) {
+    const deps = new Map<string, string>()
+    for (const [name, range] of lock.entries.get(id)!.installed) {
+      const versions = new Set<string>()
+      for (const target of resolveDescriptor(lock, id, name, range, catalogs)) {
+        const e = lock.entries.get(target)!
+        versions.add(/@(?:npm|patch):/.test(e.resolution) ? e.version : '\0')
+      }
+      const [version] = versions
+      if (versions.size === 1 && version !== '\0') deps.set(name, version!)
+    }
+    out.set(dir, deps)
+  }
+  return out
+}
+
 /** `.yarnrc.yml`'s catalogs: name (`''` for `catalog`) → package → range. */
 export type Catalogs = ReadonlyMap<string, ReadonlyMap<string, string>>
 

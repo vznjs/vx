@@ -636,6 +636,40 @@ kleur@4.1.5:
     expect(await run(yarn())).toBe('ok')
   })
 
+  // A pull that moves a workspace to a version the lockfile already holds
+  // for another package (is-odd keeps is-number 6): the old install has no
+  // package the new lockfile lacks, only one it now lacks (Yarn 4.19).
+  it('refuses a Yarn 2+ workspace dependency installed at another version than the lockfile names', async () => {
+    const both = yarnBerry('7.0.0').replace(
+      '"is-number@npm:7.0.0":',
+      `"is-number@npm:6.0.0":
+  version: 6.0.0
+  resolution: "is-number@npm:6.0.0"
+  checksum: 10c0/6.0.0
+  languageName: node
+  linkType: hard
+
+"is-number@npm:7.0.0":`,
+    )
+    await write({
+      ...MANIFESTS,
+      'yarn.lock': both,
+      'node_modules/.yarn-state.yml': yarnState('6.0.0'),
+      'node_modules/is-number/package.json': pkg('6.0.0'),
+    })
+    expect(await run(yarn())).toBe(
+      "node_modules was installed from a different yarn.lock (packages/a's is-number is 6.0.0, the lockfile names 7.0.0) — run `yarn install`",
+    )
+    await write({ 'node_modules/is-number/package.json': pkg('7.0.0') })
+    expect(await run(yarn())).toBe('ok')
+    // A focused install leaves the workspace out of the state: not checked.
+    await write({
+      'node_modules/is-number/package.json': pkg('6.0.0'),
+      'node_modules/.yarn-state.yml': yarnState('6.0.0').replace(/"a@workspace[^]*?\n\n/, ''),
+    })
+    expect(await run(yarn())).toBe('ok')
+  })
+
   // `nodeLinker: pnpm` writes no .yarn-state.yml: its record is the store,
   // one directory per locator, named after the locator's hash (Yarn 4.19).
   it('refuses a package Yarn 2+ put in its pnpm store that the lockfile does not resolve to', async () => {
