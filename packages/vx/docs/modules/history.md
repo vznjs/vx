@@ -336,7 +336,7 @@ InputWriter         // { taskId, file, writers: the tasks running when the file 
 
 `run-failures.ts` beside it keeps a failed run's task output as rows of
 cache.db's `failures` (caching.md § Schema), through
-`cache/run-notes.ts`:
+`history/run-notes.ts`:
 
 ```ts
 writeRunFailures(cache, runId, outcomes, warn): void // at run end; only when an outcome carries failedOutput or inputMoved; newest 50 failed runs kept; a refused write warns
@@ -375,7 +375,7 @@ replays, masked as it was), and nothing for an uncached pass or a skip.
 `runFailures` lists the run's failed `runs` rows and fills each from its
 `failures` row; `vx last --format json` answers from it.
 
-`cache/run-notes.ts` holds the statements over `steps`, `warnings` and
+`history/run-notes.ts` holds the statements over `steps`, `warnings` and
 `failures`: what a run said that its `runs` rows do not hold. A run's
 steps it did not wait on (`vx:prefetch`), which its output never shows,
 and its warnings go in at run end, in one transaction; each table keeps
@@ -394,9 +394,6 @@ export interface RunStep {
   ok: boolean
 }
 ```
-
-The module index re-exports `explainCacheKey` as `explainCacheKeyQuery`
-and `whyDidThisRerun` as `whyDidThisRerunQuery`.
 
 `run-id.ts` beside it resolves the run id a caller types:
 `resolveRunId(db, raw, verb)` answers the whole id, or the one run it is
@@ -459,7 +456,7 @@ readers.
 - Open or close anything; no `Cache` lifecycle.
 - Evaluate configs or recompute a key — `explainCacheKey` says so in
   its note: it returns persisted entry metadata.
-- Write rows. `recordRunBundle` (`cache/run-history.ts`) is the writer.
+- Write rows. `recordRunBundle` (`history/run-history.ts`) is the writer.
 
 ### Tests
 

@@ -1903,8 +1903,8 @@ removes at once (`.vx-clock-<pid>`, the watch stamps). A hit needs
 `.vx/tmp/` writable even where `--cache-dir` points elsewhere: a
 read-only checkout mounts one over it. A failed run's
 task output is `failures` rows (one per task: `output` plain text, ANSI
-stripped, secrets masked, the first 8 KiB and last 56 KiB; `locations`
-and `sandbox_fix` JSON), written at run end only when a task failed with
+stripped, secrets masked, the first 8 KiB and last 56 KiB; `dir`, the
+task's project directory; `locations` and `sandbox_fix` JSON), written at run end only when a task failed with
 output or a moved input; the newest 50 failed runs are kept. A refused
 write (a full disk) costs only that output, never the run's verdict.
 
@@ -2171,8 +2171,8 @@ hand takes the inline artifacts with it. A `.tmp-*` a crashed save
 left is never a hit. `vx cache clean` sweeps row-less files. A
 row-less artifact may be in use: two vx versions share one store, and
 each open drops the other's rows. So the policy judges it as it judges a
-row, its file time standing for `accessed_at`: past `olderThan` it goes,
-and under `maxSize` it counts, oldest use first with the rows. A hit
+row, its file time standing for `accessed_at`: past `--older-than` it goes,
+and under `--max-size` it counts, oldest use first with the rows. A hit
 renews a file time over an hour old, so the last use is read as the file
 time plus an hour. An inline artifact with no row is judged the same
 way, its `at` standing for the file time, and `vx info` counts it with
@@ -2186,7 +2186,7 @@ A row's `accessed_at` is renewed the same way: a hit renews it only once
 it is over an hour old (2026-10-08). Renewing every hit rewrote
 2,180 rows at a warm 1,090-package run's close, ~30 ms. So the policy
 reads a row's last use as `accessed_at` plus an hour too: an entry used
-within `olderThan` is never pruned, and one may stay up to an hour past
+within `--older-than` is never pruned, and one may stay up to an hour past
 it (`tests/cache.test.ts` › "an entry used within the age limit is never
 pruned").
 Captured stdout is stored twice on purpose: in the artifact (so it
