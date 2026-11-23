@@ -1217,7 +1217,7 @@ and each task hears it once: from vx, as SIGINT. Through `bun vx`, which
 passes the Ctrl-C on to vx as well, it is still one stop; a second
 press is the second signal. Ctrl-Z (SIGTSTP) stops
 each task's process group, then vx; `fg` or `bg` continues vx, and vx
-continues them. Neither a `timeout` nor a task's duration counts the time stopped. A Linux sandboxed task's command is not stopped, only
+continues them. Neither a `timeout` nor a task's duration counts the time stopped, nor does its live row's clock. A Linux sandboxed task's command is not stopped, only
 held once its output pipe fills. A stop starts no more remote
 cache uploads and does not wait on one in flight, nor on a remote lookup or
 download: what was half-read is dropped and fetched again next run.

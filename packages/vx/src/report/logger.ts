@@ -60,6 +60,7 @@ import {
   type StatusStream,
 } from '../ui/index.js'
 import { isCacheHit } from '../graph/index.js'
+import { runTime } from '../exec/index.js'
 import { outcomeLabel, outcomeWord, ranNoCache } from './events.js'
 import type { BlockedTask, Forecast } from './forecast.js'
 
@@ -447,7 +448,9 @@ export function defaultLogger(
   const buildRegion = (): readonly string[] => {
     let force = forcePending
     forcePending = false
-    const now = Date.now()
+    // Rows, steps and the forecast read the clock a task's duration reads:
+    // a Ctrl-Z stops it, so a row does not count the time vx was stopped.
+    const now = runTime()
     // A task its executor still holds has not begun: its clock starts at
     // the first frame a machine runs it.
     const where = runContext?.whereRunning
@@ -484,7 +487,7 @@ export function defaultLogger(
     }
     const etaMs = deadlineMs === undefined ? undefined : deadlineMs - now
     if (signals.progress && total > 0) {
-      const elapsed = now - startedAtMs
+      const elapsed = Date.now() - startedAtMs
       const pct = Math.floor(
         etaMs !== undefined && etaMs > 0
           ? (elapsed / (elapsed + etaMs)) * 100
@@ -562,7 +565,7 @@ export function defaultLogger(
         ...(blockedBy !== undefined && !stopping ? { blockedBy } : {}),
         ...(stopping ? { stopping } : {}),
         ...(shownSteps.length > 0 ? { steps: shownSteps } : {}),
-        nowMs: Date.now(),
+        nowMs: now,
         summaryLines,
         ...(runContext?.whereRunning !== undefined ? { where: runContext.whereRunning } : {}),
         ...(runContext?.usage !== undefined ? { usage: runContext.usage } : {}),
@@ -813,7 +816,7 @@ export function defaultLogger(
       refresh(true)
     },
     stepStart(id) {
-      steps.set(id, Date.now())
+      steps.set(id, runTime())
       // Drawn by the ticker once it passes STEP_SHOWN_MS; a quicker one never is.
       tick()
     },
@@ -862,7 +865,7 @@ export function defaultLogger(
       if (statusDead) return
       const slot: WorkerSlot = {
         id: node.id,
-        startedMs: Date.now(),
+        startedMs: runTime(),
         cache: ranNoCache({ node }) ? 'no-cache' : 'miss',
       }
       const free = slots.indexOf(null)
