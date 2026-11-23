@@ -1328,6 +1328,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'doc-references',
     'doc-references.unsafe',
     'docs',
+    'docs-config-paths.unsafe',
     'docs-examples.unsafe',
     'env-doc-drift',
     'error-codes-repo.unsafe',

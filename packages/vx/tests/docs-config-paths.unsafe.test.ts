@@ -21,7 +21,8 @@ const schema = JSON.parse(
 const real = new Set(SETTINGS.map((s) => s.path))
 for (const { levels } of Object.values(schema))
   for (const [level, keys] of Object.entries(levels ?? {}))
-    for (const k of keys) real.add(`${level === '' ? '' : `${level}.`}${k}`.replace(/^tasks\.\*\./, ''))
+    for (const k of keys)
+      real.add(`${level === '' ? '' : `${level}.`}${k}`.replace(/^tasks\.\*\./, ''))
 
 /** A path or its tail (`persistent.readyWhen` of `exec.persistent.readyWhen`). */
 const known = (p: string): boolean =>
@@ -74,8 +75,7 @@ it('quotes only config paths vx takes', () => {
     const prose = text.replace(/^```[\s\S]*?^```/gm, '')
     for (const m of prose.matchAll(/`([^`\n]+)`/g)) {
       const p = PATH.exec(m[1]!)?.[1]
-      if (p === undefined || NOT_CONFIG.has(p) || /\.(ts|md|db|lock|json|mjs|js)$/.test(p))
-        continue
+      if (p === undefined || NOT_CONFIG.has(p) || /\.(ts|md|db|lock|json|mjs|js)$/.test(p)) continue
       if (!known(p)) bad.push(`${path.relative(REPO, file)}: ${p}`)
     }
   }
