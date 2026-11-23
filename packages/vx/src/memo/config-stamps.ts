@@ -8,7 +8,7 @@
 
 import { mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
-import { xxh3hex } from '../util/index.js'
+import { executablePath, gitEnv, xxh3hex } from '../util/index.js'
 import { FILE_HASH_RACY_MS, racyWindowMs } from './fs-clock.js'
 
 /** The file in a cache directory the stamps live in; a clear deletes it (and a temp of it). */
@@ -20,6 +20,8 @@ export interface ConfigStamps {
   at: number
   /** Each config, workspace-relative → [size, mtimeMs, xxh3 of its bytes]. */
   configs: Record<string, [number, number, string]>
+  /** The commit HEAD named when taken; null outside git. */
+  head: string | null
 }
 
 interface Stamps extends ConfigStamps {
@@ -37,6 +39,7 @@ interface Stamps extends ConfigStamps {
 export async function takeConfigStamps(
   root: string,
   files: readonly string[],
+  head: string | null,
 ): Promise<ConfigStamps> {
   const at = Date.now()
   const configs: ConfigStamps['configs'] = {}
@@ -48,7 +51,7 @@ export async function takeConfigStamps(
       configs[path.relative(root, file)] = [s.size, s.mtimeMs, xxh3hex(bytes)]
     }),
   )
-  return { at, configs }
+  return { at, configs, head }
 }
 
 /** Keep `stamps` beside the lock now on disk. */
@@ -101,13 +104,18 @@ async function readStamps(cacheDir: string): Promise<Stamps | null> {
  * the lock whose digest is `lock`: size and mtime (the caller's stat)
  * first, the bytes only when those moved or the stamp was taken inside
  * the file's racy window (a same-size edit then keeps both). Empty when
- * no stamp was taken beside this lock in this workspace.
+ * no stamp was taken beside this lock in this workspace. Once HEAD moved
+ * since the stamp (a pull, a checkout), a config whose bytes are HEAD's
+ * came with the commit, not an edit here: a comment-only change keeps
+ * the lock's bytes, and CI's `vx lock --check` judges a commit. `head` is
+ * asked only when a config moved.
  */
 export async function configsEditedSinceLock(
   root: string,
   cacheDir: string,
   lock: string | undefined,
   files: readonly { file: string; size: number; mtimeMs: number }[],
+  head: () => string | null,
 ): Promise<string[]> {
   if (lock === undefined || files.length === 0) return []
   const stamps = await readStamps(cacheDir)
@@ -130,8 +138,56 @@ export async function configsEditedSinceLock(
       )
         return null
       const bytes = await readFile(file).catch(() => null)
-      return bytes !== null && xxh3hex(bytes) !== was[2] ? rel : null
+      return bytes !== null && xxh3hex(bytes) !== was[2] ? { rel, bytes } : null
     }),
   )
-  return edited.filter((f) => f !== null)
+  const moved = edited.filter((f) => f !== null)
+  if (moved.length === 0) return []
+  const now = typeof stamps.head === 'string' ? head() : null
+  const committed = now === null || now === stamps.head ? new Map() : headBlobs(root, moved)
+  return moved
+    .filter(({ rel, bytes }) => {
+      const oid = committed.get(rel.split(path.sep).join('/'))
+      return oid === undefined || blobOid(bytes, oid.length) !== oid
+    })
+    .map(({ rel }) => rel)
+}
+
+/** Each of `files`' blob OID at HEAD, by workspace-relative POSIX path; empty on any git failure. */
+function headBlobs(root: string, files: readonly { rel: string }[]): Map<string, string> {
+  const out = new Map<string, string>()
+  try {
+    const proc = Bun.spawnSync({
+      cmd: [
+        executablePath('git'),
+        'ls-tree',
+        '-z',
+        'HEAD',
+        '--',
+        ...files.map((f) => f.rel.split(path.sep).join('/')),
+      ],
+      cwd: root,
+      env: gitEnv(),
+      stdout: 'pipe',
+      stderr: 'ignore',
+    })
+    if (proc.exitCode !== 0) return out
+    // `<mode> blob <oid>\t<path>`, paths relative to `root` as asked.
+    for (const entry of new TextDecoder().decode(proc.stdout).split('\0')) {
+      const tab = entry.indexOf('\t')
+      const meta = entry.slice(0, tab).split(' ')
+      if (tab > 0 && meta[1] === 'blob') out.set(entry.slice(tab + 1), meta[2]!)
+    }
+  } catch {
+    // No git: every moved config stays edited.
+  }
+  return out
+}
+
+/** Git's blob OID of `bytes`, SHA-1 or (a 64-hex repo) SHA-256. */
+function blobOid(bytes: Uint8Array, hexLength: number): string {
+  const hasher = new Bun.CryptoHasher(hexLength === 64 ? 'sha256' : 'sha1')
+  hasher.update(`blob ${bytes.byteLength}\0`)
+  hasher.update(bytes)
+  return hasher.digest('hex')
 }

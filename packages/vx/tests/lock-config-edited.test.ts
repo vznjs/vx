@@ -5,7 +5,7 @@
 import { readFile, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { addProject, makeWorkspace } from './helpers/workspace.js'
+import { addProject, git, makeWorkspace } from './helpers/workspace.js'
 
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 
@@ -106,5 +106,35 @@ describe('a config edited since vx lock', () => {
     expect((await vx(root, ['lock', '--check'])).code).toBe(0)
     const { code } = await vx(root, ['run', 'say', '--all'])
     expect(code).toBe(0)
+  })
+
+  // A pull bringing a comment-only edit keeps the lock's bytes and passes
+  // CI's `--check`: the run refused it, though nothing was edited here.
+  describe('after HEAD moved', () => {
+    const commit = (message: string) => {
+      git(root, 'add', '-A')
+      git(root, 'commit', '-q', '-m', message)
+    }
+    beforeEach(async () => {
+      commit('locked')
+      expect((await vx(root, ['lock'])).code).toBe(0)
+    })
+
+    it("runs a config whose bytes are the new commit's", async () => {
+      await writeFile(file, `// a comment\n${config('before')}`)
+      commit('a comment, as a pull brings it')
+      const { code, out } = await vx(root, ['run', 'say', '--all'])
+      expect(out).not.toContain('changed since the last `vx lock`')
+      expect(code).toBe(0)
+    })
+
+    it('refuses an edit HEAD does not hold', async () => {
+      await writeFile(path.join(root, 'other.txt'), 'x')
+      commit('another file')
+      await writeFile(file, config('after'))
+      const { code, out } = await vx(root, ['run', 'say', '--all'])
+      expect(code).toBe(1)
+      expect(out).toContain('changed since the last `vx lock`')
+    })
   })
 })

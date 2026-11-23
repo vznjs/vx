@@ -2231,7 +2231,8 @@ with `<file> changed since the last \`vx lock\` — run \`vx lock\``
 (`VX_E_LOCK`); it compares the file's size, mtime and bytes with those
 `vx lock`read, kept in the cache dir's`config-stamps.json`, and only
 while the lock is the one written then, so a pull or a fresh clone is
-never refused. A file a config imports is not checked. In a pipeline, `vx lock --check` first re-evaluates every
+never refused: a config whose bytes are a newer HEAD's came with a commit,
+not an edit. A file a config imports is not checked. In a pipeline, `vx lock --check` first re-evaluates every
 config and checks the rules.
 
 ## `vx lock`

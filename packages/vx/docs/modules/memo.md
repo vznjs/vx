@@ -304,7 +304,10 @@ configs from the lock, so `configsEditedSinceLock` names the in-scope
 config files whose bytes moved since: the run refuses them with "run
 `vx lock`". Asked only while the lock's bytes are the stamped ones and the
 stamps are this workspace's (a pull, a clone or a cache dir another
-checkout shares asks nothing); read once per version of the file. The stat match only ever skips the read; a
+checkout shares asks nothing). Once HEAD moved since the stamp, a config
+whose bytes are HEAD's blob came with the commit (a comment-only edit a
+pull brings keeps the lock's bytes) and is not refused: CI's
+`vx lock --check` judges a commit. Read once per version of the file. The stat match only ever skips the read; a
 refusal is decided by the file's bytes now, never by a memo (rule 9).
 
 ### Public surface
