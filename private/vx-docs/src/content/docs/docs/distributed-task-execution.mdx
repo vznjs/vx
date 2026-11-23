@@ -19,19 +19,21 @@ vx run build test lint --all
 
 <DteSpread />
 
-Press the buttons. Each bar is a task, placed on the worker that runs it. A task the cache already has never needs a worker.
+Press the buttons to replay real runs. Each bar is a task on the worker that ran it. A task the cache already has never needs a worker.
 
 <Concept term="Worker">
   A CI machine that joins your run, takes tasks, runs them and hands back what they made. vx starts
   workers for you, and stops them when the work runs out.
 </Concept>
 
-<Quiz q="You allow 3 workers, and every task changed. Why does vx start only 2?">
+<Quiz q="Every task changed. Why does the run end later with 3 workers allowed than with 2?">
   `@demo/web#test` waits for `@demo/ui#build`. That path (outlined) takes as long as it takes, on
-  any number of machines. A third worker would cost a warm-up and end nothing sooner.
+  any number of machines. The third worker only added a warm-up.
+
+  The run's own `best` line says so: 2 machines end as soon.
 </Quiz>
 
-<Takeaway>predict how many workers a push starts, and why more is not always faster.</Takeaway>
+<Takeaway>predict which tasks need a worker, and why more workers is not always faster.</Takeaway>
 
 ## What happens in one run
 
@@ -57,17 +59,18 @@ A worker checks out your commit, runs each task it gets, and saves the outputs t
 
 ```ansi title="the Tasks table: the worker column says who ran what"
 [4m[58;2;110;118;129m  [1m[38;2;167;139;250mTasks[0m[4m[58;2;110;118;129m     [2mstatus  cache     ±usual    time   cpu    mem outputs  blocks worker         task[0m[4m[58;2;110;118;129m                           [0m
-            [38;2;34;197;94msuccess[0m [2mmiss[0m       [38;2;34;197;94m−97ms[0m   [38;2;203;213;225m312ms[0m   [2m98%[0m   [2m95MB[0m     [2m68B[0m       [38;2;203;213;225m2[0m [38;2;244;114;182mlinux.cpu2[0m[2m#[0m[38;2;167;139;250m1[0m   [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m
-            [38;2;34;197;94msuccess[0m [2mmiss[0m       [2m−14ms[0m    [38;2;203;213;225m70ms[0m   [2m52%[0m   [2m51MB[0m      [2m0B[0m       [2m0[0m [38;2;244;114;182mlinux.cpu2[0m[2m#[0m[38;2;167;139;250m1[0m   [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;232;121;249mlint[0m
-            [38;2;34;197;94msuccess[0m [2mmiss[0m       [2m−84ms[0m   [38;2;203;213;225m513ms[0m   [2m99%[0m   [2m90MB[0m      [2m0B[0m       [2m0[0m [38;2;244;114;182mlinux.cpu2[0m[2m#[0m[38;2;167;139;250m1[0m   [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;96;165;250mtest[0m
-            [38;2;34;197;94msuccess[0m [2mmiss[0m       [38;2;239;68;68m+23ms[0m    [38;2;203;213;225m97ms[0m   [2m40%[0m   [2m51MB[0m      [2m0B[0m       [2m0[0m [38;2;244;114;182mlinux.cpu2[0m[2m#[0m[38;2;96;165;250m2[0m   [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;232;121;249mlint[0m
-            [38;2;34;197;94msuccess[0m [2mmiss[0m       [2m−26ms[0m   [38;2;203;213;225m310ms[0m  [2m114%[0m  [2m101MB[0m    [2m908B[0m       [2m0[0m [38;2;244;114;182mlinux.cpu2[0m[2m#[0m[38;2;96;165;250m2[0m   [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m
-            [38;2;34;197;94msuccess[0m [2mmiss[0m       [2m−24ms[0m   [38;2;203;213;225m447ms[0m  [2m108%[0m   [2m84MB[0m      [2m0B[0m       [2m0[0m [38;2;244;114;182mlinux.cpu2[0m[2m#[0m[38;2;167;139;250m1[0m   [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;96;165;250mtest[0m
-  [2mworkers [0m  [38;2;244;114;182mlinux.cpu2[0m[2m#[0m[38;2;167;139;250m1[0m  stopped  4 done · warm-up 0.2s
-  [2m        [0m  [38;2;244;114;182mlinux.cpu2[0m[2m#[0m[38;2;96;165;250m2[0m  left     2 done · warm-up 0.3s · @demo/web#lint, @demo/web#build
+            [38;2;34;197;94msuccess[0m [2mmiss[0m       [2m+57ms[0m   [38;2;203;213;225m397ms[0m   [2m78%[0m   [2m92MB[0m     [2m68B[0m       [38;2;203;213;225m2[0m [38;2;244;114;182mlinux.cpu2[0m[2m#[0m[38;2;167;139;250m1[0m   [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m        [2m−3ms[0m    [38;2;203;213;225m81ms[0m   [2m45%[0m   [2m51MB[0m      [2m0B[0m       [2m0[0m [38;2;244;114;182mlinux.cpu2[0m[2m#[0m[38;2;96;165;250m2[0m   [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;232;121;249mlint[0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m        [2m+8ms[0m    [38;2;203;213;225m91ms[0m   [2m43%[0m   [2m51MB[0m      [2m0B[0m       [2m0[0m [38;2;244;114;182mlinux.cpu2[0m[2m#[0m[38;2;232;121;249m3[0m   [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;232;121;249mlint[0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m       [2m+12ms[0m   [38;2;203;213;225m609ms[0m   [2m85%[0m  [2m152MB[0m      [2m0B[0m       [2m0[0m [38;2;244;114;182mlinux.cpu2[0m[2m#[0m[38;2;167;139;250m1[0m   [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;96;165;250mtest[0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m       [38;2;239;68;68m+74ms[0m   [38;2;203;213;225m419ms[0m  [2m101%[0m  [2m102MB[0m    [2m909B[0m       [2m0[0m [38;2;244;114;182mlinux.cpu2[0m[2m#[0m[38;2;232;121;249m3[0m   [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m       [2m+85ms[0m   [38;2;203;213;225m531ms[0m   [2m92%[0m   [2m92MB[0m      [2m0B[0m       [2m0[0m [38;2;244;114;182mlinux.cpu2[0m[2m#[0m[38;2;167;139;250m1[0m   [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;96;165;250mtest[0m
+  [2mworkers [0m  [38;2;244;114;182mlinux.cpu2[0m[2m#[0m[38;2;167;139;250m1[0m  stopped  3 done · warm-up 0.3s
+  [2m        [0m  [38;2;244;114;182mlinux.cpu2[0m[2m#[0m[38;2;96;165;250m2[0m  left     1 done · warm-up 0.3s · @demo/ui#lint
+  [2m        [0m  [38;2;244;114;182mlinux.cpu2[0m[2m#[0m[38;2;232;121;249m3[0m  left     2 done · warm-up 0.3s · @demo/web#lint, @demo/web#build
 ```
 
-Read the `worker` column: worker `#1` of the `linux.cpu2` machines ran four tasks, worker `#2` two.
+Read the `worker` column: worker `#1` of the `linux.cpu2` machines ran three tasks, `#2` one, `#3` two. It is the run the replay above shows.
 
 </Frame>
 <Frame title="5. Push again, nothing changed">
@@ -204,15 +207,15 @@ An edit in `apps/web` misses only `@demo/web`'s tasks. `@demo/ui`'s come from th
 
 ```ansi title="after an edit to apps/web/src/main.js"
 [4m[58;2;110;118;129m  [1m[38;2;167;139;250mTasks[0m[4m[58;2;110;118;129m     [2mstatus  cache     ±usual    time   cpu    mem outputs  blocks worker         task[0m[4m[58;2;110;118;129m                           [0m
-            [38;2;34;197;94msuccess[0m [2mmiss[0m       [2m−13ms[0m    [38;2;203;213;225m84ms[0m   [2m44%[0m   [2m51MB[0m      [2m0B[0m       [2m0[0m [38;2;244;114;182mlinux.cpu2[0m[2m#[0m[38;2;96;165;250m2[0m   [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;232;121;249mlint[0m
-            [38;2;34;197;94msuccess[0m [2mmiss[0m        [2m+9ms[0m   [38;2;203;213;225m345ms[0m  [2m106%[0m  [2m101MB[0m    [2m911B[0m       [2m0[0m [38;2;244;114;182mlinux.cpu2[0m[2m#[0m[38;2;167;139;250m1[0m   [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m
-            [38;2;34;197;94msuccess[0m [2mmiss[0m       [2m−25ms[0m   [38;2;203;213;225m446ms[0m  [2m104%[0m   [2m89MB[0m      [2m0B[0m       [2m0[0m [38;2;244;114;182mlinux.cpu2[0m[2m#[0m[38;2;96;165;250m2[0m   [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;96;165;250mtest[0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m       [38;2;239;68;68m+21ms[0m   [38;2;203;213;225m104ms[0m   [2m48%[0m   [2m51MB[0m      [2m0B[0m       [2m0[0m [38;2;244;114;182mlinux.cpu2[0m[2m#[0m[38;2;167;139;250m1[0m   [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;232;121;249mlint[0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m       [38;2;239;68;68m+93ms[0m   [38;2;203;213;225m451ms[0m  [2m106%[0m   [2m97MB[0m    [2m909B[0m       [2m0[0m [38;2;244;114;182mlinux.cpu2[0m[2m#[0m[38;2;96;165;250m2[0m   [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m       [2m+54ms[0m   [38;2;203;213;225m508ms[0m  [2m106%[0m   [2m88MB[0m      [2m0B[0m       [2m0[0m [38;2;244;114;182mlinux.cpu2[0m[2m#[0m[38;2;167;139;250m1[0m   [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;96;165;250mtest[0m
 
   [2mcache   [0m  [38;2;34;197;94m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m[38;2;56;189;248m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
             [2mlocal[0m [38;2;34;197;94m3✓[0m [38;2;56;189;248m3↑[0m
 
-  [2mworkers [0m  [38;2;244;114;182mlinux.cpu2[0m[2m#[0m[38;2;167;139;250m1[0m  left     1 done · warm-up 0.3s · @demo/web#build
-  [2m        [0m  [38;2;244;114;182mlinux.cpu2[0m[2m#[0m[38;2;96;165;250m2[0m  stopped  2 done · warm-up 0.3s · @demo/web#lint, @demo/web#test
+  [2mworkers [0m  [38;2;244;114;182mlinux.cpu2[0m[2m#[0m[38;2;167;139;250m1[0m  stopped  2 done · warm-up 0.3s · @demo/web#lint, @demo/web#test
+  [2m        [0m  [38;2;244;114;182mlinux.cpu2[0m[2m#[0m[38;2;96;165;250m2[0m  left     1 done · warm-up 0.3s · @demo/web#build
 ```
 
 ### One task on another machine
@@ -306,7 +309,7 @@ dte({ workers, adapter, relay, token, unmeasured, headers })
 | `unmeasured` | `{ cpu, memory }`: what a task with no history uses, for the plan | the measured tasks' mean |
 | `headers` | headers on every call to the relay, for a proxy in front of it | none |
 
-An unknown key is refused. With an `adapter`, at least one machine needs `max` above 0.
+An unknown key is refused. With an `adapter`, at least one machine needs `max` above 0. The same options, with every plugin's, are on [Plugins](../plugins/).
 
 **Each machine** in `workers.<type>.machines.<name>`, named `<type>.<name>` in the output (`linux.cpu4`):
 
@@ -371,21 +374,23 @@ Names use letters, digits, `_` and `-`.
 
 <Deeper level="details" title="Reading the workers lines">
 
-```ansi title="the end of a run with two workers"
-  [2mworkers [0m  [38;2;244;114;182mlinux.cpu2[0m[2m#[0m[38;2;167;139;250m1[0m  stopped  4 done · warm-up 0.2s
+```ansi title="the end of the same run, with three workers"
+  [2mworkers [0m  [38;2;244;114;182mlinux.cpu2[0m[2m#[0m[38;2;167;139;250m1[0m  stopped  3 done · warm-up 0.3s
   [2m        [0m  [2m              declared 2c/8G · actual [0m[38;2;239;68;68m4c/14G[0m
-  [2m        [0m  [2m              online 1.0s · busy 1.0s · idle 0.0s[0m
-  [2m        [0m  [2m              cpu peak 2.0 · used avg 1.4 cores · machine avg 2.8 · booked avg 1.5[0m
-  [2m        [0m  [2m              cpu utilization machine 100% · tasks 69% · worker 7%[0m
-  [2m        [0m  [38;2;244;114;182mlinux.cpu2[0m[2m#[0m[38;2;96;165;250m2[0m  left     2 done · warm-up 0.3s · @demo/web#lint, @demo/web#build
+  [2m        [0m  [2m              online 1.1s · busy 1.0s · idle 0.0s[0m
+  [2m        [0m  [2m              cpu peak 1.7 · used avg 1.2 cores · machine avg 3.3 · booked avg 1.5[0m
+  [2m        [0m  [2m              cpu utilization machine 100% · tasks 63% · worker 6%[0m
+  [2m        [0m  [38;2;244;114;182mlinux.cpu2[0m[2m#[0m[38;2;96;165;250m2[0m  left     1 done · warm-up 0.3s · @demo/ui#lint
+  [2m        [0m  [2m              declared 2c/8G · actual [0m[38;2;239;68;68m4c/14G[0m
+  [2m        [0m  [38;2;244;114;182mlinux.cpu2[0m[2m#[0m[38;2;232;121;249m3[0m  left     2 done · warm-up 0.3s · @demo/web#lint, @demo/web#build
   [2m        [0m  [2m              declared 2c/8G · actual [0m[38;2;239;68;68m4c/14G[0m
   [2m        [0m  [2mprobe         at 0.0s: 6 tasks left to run, 0 known misses[0m
-  [2m        [0m  [2masked         1 at 0.1s for 6 tasks (6 measured), estimate 20.9s · 1 at 0.5s for 6 tasks (6 measured), estimate 0.7s[0m
-  [2m        [0m  [2mideal         1.1s: the best the workers it may start allow, its longest chain or each platform's work on all their cores[0m
-  [2m        [0m  [2mperfect       1.1s: its longest chain as long as it took, no task waiting for a worker, holding 3.0 core-s at least[0m
-  [2m        [0m  [2mdrift         +0.2s past ideal, +0.2s past perfect[0m
-  [2m        [0m  [2mbest          2 × linux.cpu2 (2c/8G linux-x64): 1.1s, the fewest of its sizes[0m
-  [2m        [0m  [2many           2 × (2c/8G linux-x64): 1.1s, of any cores, the least core time[0m
+  [2m        [0m  [2masked         1 at 0.1s for 6 tasks (6 measured), estimate 1.0s · 1 at 0.3s for 6 tasks (6 measured), estimate 0.8s · 1 at 0.4s for 6 tasks (6 measured), estimate 0.7s[0m
+  [2m        [0m  [2mideal         1.3s: the best the workers it may start allow, its longest chain or each platform's work on all their cores[0m
+  [2m        [0m  [2mperfect       1.3s: its longest chain as long as it took, no task waiting for a worker, holding 3.5 core-s at least[0m
+  [2m        [0m  [2mdrift         +0.1s past ideal, +0.1s past perfect[0m
+  [2m        [0m  [2mbest          2 × linux.cpu2 (2c/8G linux-x64): 1.3s, the fewest of its sizes[0m
+  [2m        [0m  [2many           2 × (2c/8G linux-x64): 1.3s, of any cores, the least core time[0m
 ```
 
 | Line | Says |

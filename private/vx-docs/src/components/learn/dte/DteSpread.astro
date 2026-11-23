@@ -1,19 +1,24 @@
 ---
 // Tasks spreading over workers: pick a push and how many workers vx may
-// start, and see where each task runs and when the run ends. Rendered on
-// the server for the first choice, so the page reads the same without
-// script; the buttons redraw it from the same model (spread.ts).
-import { TASKS, WARM_UP_MS, plan, longest, seconds, type Bar, type Push } from './spread'
+// start (\`max\`), and replay the real run: where each task ran and when the
+// run ended. Rendered on the server for the first choice, so the page reads
+// the same without script; the buttons redraw it from the same runs.
+import { RUNS, longest, project, rows, seconds, type Bar, type Push, type Run } from './spread'
 
 const MAX = 3
-const SCALE = 1200 // ms across the track, fixed so a change shows as movement
-const first = plan('all', MAX)
-const chain = new Set(longest('all'))
+const SCALE = 1400 // ms across the track, fixed so a change shows as movement
+const first = RUNS[`all-${MAX}`]
+const chain = longest(first)
 const pct = (ms: number) => `${((ms / SCALE) * 100).toFixed(2)}%`
+// A restore takes a few ms: keep it visible.
+const width = (b: Bar) => pct(Math.max(b.end - b.start, 8))
+const place = (b: Bar, run: Run) => {
+  const h = 100 / rows(run)
+  return b.kind === 'task' ? `;top:${(b.slot ?? 0) * h}%;height:${h}%` : ''
+}
 const label = (b: Bar) =>
   b.kind === 'warm' ? `${b.id} starts` : `${b.id}${b.kind === 'hit' ? ' from the cache' : ''}: ${seconds(b.end - b.start)}`
 const short = (id: string) => id.replace('@demo/', '')
-const project = (id: string) => TASKS.find((t) => t.id === id)?.project ?? ''
 const pushes: Array<[Push, string]> = [
   ['all', 'Every task changed'],
   ['web', 'Edit in apps/web'],
@@ -34,7 +39,7 @@ const pushes: Array<[Push, string]> = [
       {pushes.map(([p, text], i) => <button type="button" data-push={p} aria-pressed={String(i === 0)}>{text}</button>)}
     </div>
     <div role="group" aria-label="Workers vx may start">
-      <span class="vx-spread-label">Workers allowed</span>
+      <span class="vx-spread-label">Workers allowed (<code>max</code>)</span>
       {[1, 2, 3].map((n) => <button type="button" data-max-workers={n} aria-pressed={String(n === MAX)}>{n}</button>)}
     </div>
   </div>
@@ -49,7 +54,7 @@ const pushes: Array<[Push, string]> = [
             .map((b) => (
               <span
                 class={`vx-spread-bar vx-spread-${b.kind} vx-spread-${project(b.id)}${chain.has(b.id) ? ' vx-spread-chain' : ''}`}
-                style={`left:${pct(b.start)};width:${pct(b.end - b.start)}${b.kind === 'task' ? `;top:${b.slot ? '50%' : '0'}` : ''}`}
+                style={`left:${pct(b.start)};width:${width(b)}${place(b, first)}`}
                 title={label(b)}
               >
                 {b.kind === 'task' ? short(b.id) : ''}
@@ -61,50 +66,54 @@ const pushes: Array<[Push, string]> = [
   </div>
 
   <p class="vx-spread-key">
-    <span class="vx-spread-swatch vx-spread-warm"></span> worker starting ({seconds(WARM_UP_MS)})
+    <span class="vx-spread-swatch vx-spread-warm"></span> worker starting
     <span class="vx-spread-swatch vx-spread-ui"></span> <code>@demo/ui</code>
     <span class="vx-spread-swatch vx-spread-web"></span> <code>@demo/web</code>
     <span class="vx-spread-swatch vx-spread-hit"></span> restored from the cache
     <span class="vx-spread-swatch vx-spread-chain-key"></span> longest path
   </p>
-  <p class="vx-spread-note">Task times measured on a real run. Simplified: each worker runs two tasks at once.</p>
+  <p class="vx-spread-note">Nine real runs, one per choice, on 2-core <code>local()</code> workers. The output below is from the 3-worker runs.</p>
 </figure>
 
 <script>
-  import { TASKS, longest, plan, seconds, type Bar, type Push } from './spread'
+  import { RUNS, longest, project, rows, seconds, type Bar, type Push } from './spread'
 
   for (const fig of document.querySelectorAll<HTMLElement>('[data-spread]')) {
     const scale = Number(fig.dataset.scale)
     let push: Push = 'all'
-    let max = Number(fig.dataset.max)
+    let max = Number(fig.dataset.max) as 1 | 2 | 3
     const pct = (ms: number) => `${((ms / scale) * 100).toFixed(2)}%`
     const still = matchMedia('(prefers-reduced-motion: reduce)').matches
     const draw = () => {
       const grow: Array<() => void> = []
-      const p = plan(push, max)
-      const chain = new Set(longest(push))
+      const run = RUNS[`${push}-${max}`]
+      const chain = longest(run)
+      const h = 100 / rows(run)
       for (const lane of fig.querySelectorAll<HTMLElement>('[data-lane]')) {
         const n = Number(lane.dataset.lane)
         const track = lane.querySelector<HTMLElement>('.vx-spread-track')!
         lane.classList.toggle('vx-spread-off', n > max)
         track.replaceChildren(
-          ...p.bars
+          ...run.bars
             .filter((b: Bar) => b.lane === n)
             .map((b: Bar) => {
               const el = document.createElement('span')
-              const proj = TASKS.find((t) => t.id === b.id)?.project ?? ''
-              el.className = `vx-spread-bar vx-spread-${b.kind} vx-spread-${proj}${chain.has(b.id) ? ' vx-spread-chain' : ''}`
+              el.className = `vx-spread-bar vx-spread-${b.kind} vx-spread-${project(b.id)}${chain.has(b.id) ? ' vx-spread-chain' : ''}`
+              const w = pct(Math.max(b.end - b.start, 8))
               el.style.left = pct(b.start)
-              el.style.width = still ? pct(b.end - b.start) : '0'
+              el.style.width = still ? w : '0'
               // Replay the run: each bar grows from its start, at half speed.
               el.style.transition = still ? 'none' : `width ${(b.end - b.start) * 2}ms linear ${b.start * 2}ms`
-              grow.push(() => (el.style.width = pct(b.end - b.start)))
-              if (b.kind === 'task') el.style.top = b.slot ? '50%' : '0'
+              grow.push(() => (el.style.width = w))
+              if (b.kind === 'task') {
+                el.style.top = `${(b.slot ?? 0) * h}%`
+                el.style.height = `${h}%`
+                el.textContent = b.id.replace('@demo/', '')
+              }
               el.title =
                 b.kind === 'warm'
                   ? `${b.id} starts`
                   : `${b.id}${b.kind === 'hit' ? ' from the cache' : ''}: ${seconds(b.end - b.start)}`
-              if (b.kind === 'task') el.textContent = b.id.replace('@demo/', '')
               return el
             }),
         )
@@ -112,9 +121,9 @@ const pushes: Array<[Push, string]> = [
       requestAnimationFrame(() => requestAnimationFrame(() => grow.forEach((g) => g())))
       const sum = fig.querySelector<HTMLElement>('[data-sum]')!
       sum.innerHTML =
-        p.workers === 0
-          ? `ends at <strong>${seconds(p.end)}</strong> · <strong>no</strong> worker started`
-          : `ends at <strong>${seconds(p.end)}</strong> · <strong>${p.workers}</strong> worker${p.workers === 1 ? '' : 's'} started`
+        run.workers === 0
+          ? `ends at <strong>${seconds(run.end)}</strong> · <strong>no</strong> worker started`
+          : `ends at <strong>${seconds(run.end)}</strong> · <strong>${run.workers}</strong> worker${run.workers === 1 ? '' : 's'} started`
       for (const b of fig.querySelectorAll<HTMLButtonElement>('[data-push]'))
         b.setAttribute('aria-pressed', String(b.dataset.push === push))
       for (const b of fig.querySelectorAll<HTMLButtonElement>('[data-max-workers]'))
@@ -123,14 +132,17 @@ const pushes: Array<[Push, string]> = [
     for (const b of fig.querySelectorAll<HTMLButtonElement>('[data-push]'))
       b.addEventListener('click', () => ((push = b.dataset.push as Push), draw()))
     for (const b of fig.querySelectorAll<HTMLButtonElement>('[data-max-workers]'))
-      b.addEventListener('click', () => ((max = Number(b.dataset.maxWorkers)), draw()))
+      b.addEventListener('click', () => ((max = Number(b.dataset.maxWorkers) as 1 | 2 | 3), draw()))
     fig.querySelector<HTMLElement>('[data-controls]')!.hidden = false
     // Replay once, when the reader scrolls to it.
-    const seen = new IntersectionObserver((entries) => {
-      if (!entries.some((e) => e.isIntersecting)) return
-      seen.disconnect()
-      draw()
-    }, { threshold: 0.4 })
+    const seen = new IntersectionObserver(
+      (entries) => {
+        if (!entries.some((e) => e.isIntersecting)) return
+        seen.disconnect()
+        draw()
+      },
+      { threshold: 0.4 },
+    )
     seen.observe(fig)
   }
 </script>
@@ -208,7 +220,7 @@ const pushes: Array<[Push, string]> = [
   }
   .vx-spread-track {
     position: relative;
-    height: 2.6rem;
+    height: 3rem;
     border-radius: 4px;
     background: var(--vx-bg);
     overflow: hidden;
@@ -222,7 +234,9 @@ const pushes: Array<[Push, string]> = [
     border-radius: 3px;
     font-family: var(--vx-mono);
     font-size: 0.62rem;
-    line-height: 1.2rem;
+    line-height: 1;
+    display: flex;
+    align-items: center;
     padding: 0 0.25rem;
     overflow: hidden;
     white-space: nowrap;
@@ -235,9 +249,6 @@ const pushes: Array<[Push, string]> = [
     border-radius: 2px;
     margin: 0 0.2rem 0 0.6rem;
     vertical-align: middle;
-  }
-  .vx-spread-task {
-    height: 50%;
   }
   .vx-spread-ui {
     background: #c084fc;
