@@ -7,12 +7,14 @@ import { indexDb, type Cache, storedLog } from '../cache/index.js'
 import { expandHits, keepRunNotes, keptFailures, PASS_STATUSES } from '../history/index.js'
 import { isGroupTask, type SandboxFix, type TaskOutcome } from '../graph/index.js'
 import { decodeOutputLog } from './output-log.js'
-import { maskedLine, splitTaskId, stripEscapes } from '../util/index.js'
+import { maskedLine, relPosix, splitTaskId, stripEscapes } from '../util/index.js'
 import { fileLocations, fileMemo, type OutputLocation } from '../ui/index.js'
 
 /** A failed task of a run and what it said. */
 export interface TaskFailure {
   taskId: string
+  /** Its project's directory from the workspace root, '.' for the root. */
+  dir?: string
   exitCode: number
   timedOut?: true
   /** The input that changed while the command ran (see `TaskOutcome`). */
@@ -41,6 +43,7 @@ export function writeRunFailures(
   runId: string,
   outcomes: readonly TaskOutcome[],
   warn: (message: string) => void,
+  workspaceRoot: string,
 ): void {
   const isFile = fileMemo()
   const failures = []
@@ -58,6 +61,7 @@ export function writeRunFailures(
     const output = attemptsText(o)
     failures.push({
       taskId: o.node.id,
+      dir: relPosix(workspaceRoot, o.node.projectDir) || '.',
       ...(o.inputMoved !== undefined ? { inputMoved: o.inputMoved } : {}),
       output,
       locations: fileLocations(output, o.node.projectDir, isFile),
@@ -146,6 +150,7 @@ export function runFailures(db: Database, runId?: string): RunFailures | null {
       const k = kept.get(taskId)
       return {
         taskId,
+        ...(k?.dir !== undefined ? { dir: k.dir } : {}),
         exitCode: r.exitCode,
         ...(r.timedOut === 1 ? { timedOut: true as const } : {}),
         ...(k?.inputMoved !== undefined ? { inputMoved: k.inputMoved } : {}),

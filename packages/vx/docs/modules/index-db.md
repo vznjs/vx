@@ -17,7 +17,7 @@ that owns its rows.
 ```ts
 // The index's schema. A mismatch drops and recreates the index: no
 // migrations, so any change to what it stores bumps this.
-export const SCHEMA_VERSION = 'v57'
+export const SCHEMA_VERSION = 'v58'
 // Every table; `store` names the schema holding the entry tables ('main'
 // when one cache.db holds everything, 'store' for the attached shared store).
 export function createTables(db: Database, store?: 'main' | 'store'): void

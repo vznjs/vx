@@ -1105,6 +1105,7 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
           ? t
           : {
               ...t,
+              ...(f.dir !== undefined ? { dir: f.dir } : {}),
               ...(f.inputMoved !== undefined ? { inputMoved: f.inputMoved } : {}),
               output: f.output,
               locations: f.locations,

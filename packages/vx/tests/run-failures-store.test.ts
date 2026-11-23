@@ -56,15 +56,21 @@ const failed = (runId: string): void => {
     startedAt: 0,
     endedAt: 0,
   })
-  writeRunFailures(cache, runId, [outcome()], (m) => {
-    throw new Error(m)
-  })
+  writeRunFailures(
+    cache,
+    runId,
+    [outcome()],
+    (m) => {
+      throw new Error(m)
+    },
+    cacheDir,
+  )
 }
 
 it('a failed task reads back what its run kept, from cache.db only', () => {
   failed('r1')
   expect(runFailures(indexDb(cache))?.tasks).toEqual([
-    { taskId: 'a#b', exitCode: 1, inputMoved: 'src/a.ts', output: '', locations: [] },
+    { taskId: 'a#b', dir: '.', exitCode: 1, inputMoved: 'src/a.ts', output: '', locations: [] },
   ])
   expect(indexDb(cache).query('SELECT run_id, task_id, input_moved FROM failures').all()).toEqual([
     { run_id: 'r1', task_id: 'a#b', input_moved: 'src/a.ts' },
