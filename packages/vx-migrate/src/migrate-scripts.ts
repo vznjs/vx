@@ -820,10 +820,14 @@ export function migrateScripts(
   const listed = (names: readonly string[]): string =>
     names.slice(0, 8).join(', ') + (names.length > 8 ? ` and ${names.length - 8} more` : '')
   const outsideScripts = outside?.['scripts']
-  const outsideRuns =
-    typeof outsideScripts === 'object' &&
-    outsideScripts !== null &&
-    Object.values(outsideScripts).some((v) => typeof v === 'string' && v !== '')
+  // A root whose only scripts are install hooks has nothing to map or explain.
+  const runsAny = (scripts: unknown): boolean =>
+    typeof scripts === 'object' &&
+    scripts !== null &&
+    Object.entries(scripts).some(
+      ([n, v]) => typeof v === 'string' && v !== '' && !LIFECYCLE.test(n),
+    )
+  const outsideRuns = runsAny(outsideScripts)
   const unnamedMaps = (): string[] => {
     const meta: PackageMeta = {
       name: 'package.json',
@@ -858,12 +862,14 @@ export function migrateScripts(
     return `${shared.length < named.length ? 'run the workspace or ' : ''}share a member's task name (${list})`
   }
   const rootName =
-    root?.name ??
-    (outsideRuns
-      ? typeof outside?.['name'] === 'string' && outside['name'] !== ''
-        ? outside['name']
-        : 'package.json'
-      : undefined)
+    root !== undefined && !runsAny(scriptsOf(root))
+      ? undefined
+      : (root?.name ??
+        (outsideRuns
+          ? typeof outside?.['name'] === 'string' && outside['name'] !== ''
+            ? outside['name']
+            : 'package.json'
+          : undefined))
   if (rootName !== undefined && rootMapped > 0) {
     const { runs, shared } = leftOut(rootMeta!)
     notes.push(

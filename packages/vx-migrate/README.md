@@ -484,7 +484,7 @@ of its own; one already there, hand-written or from an earlier
 (a `pre` / `post` hook goes with its script), its examples of running
 the members spelled by the repo's manager (`--workspaces` under npm, `yarn
 workspaces foreach` under Yarn 2+), and says which;
-with nothing mapped it names the root whenever it has a script, a member
+with nothing mapped it names the root whenever it has a script that is no lifecycle hook (`postinstall`, `prepare`), a member
 or not (pnpm's root is not), and why: its scripts run the workspace, or
 share a member's task name (listed), or both; it tells a root with no `"name"` to add one
 first (vuejs/core), naming the scripts that would then map (react), and a root whose
