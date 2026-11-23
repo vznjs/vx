@@ -89,7 +89,10 @@ of these exact sentences:
 | cache key unchanged — this run recorded no cache outcome, so whether it re-ran is unknown                  | the run recorded no outcome for this task; vx says so, not guesses |
 | this task declares no `cache: true` — it runs on every invocation; a change to its inputs still re-runs the tasks that depend on it    | not a cache decision at all                                      |
 | this task declares no `cache: true` — it runs on every invocation; it declares no `inputs` either, so each run derives a new key and every task that depends on it misses; declare its `inputs` (and `outputs` with `cache: true` to cache it too) | not cached, and no task depending on it can hit |
-| this task recorded no cache key (skipped, or a persistent task) — nothing to compare | there is no key to compare |
+| this task was skipped: it needs another platform, so it recorded no cache key | it waits for a worker of that platform |
+| this task never ran: … did not pass, so it recorded no cache key | a task it depends on failed or was skipped |
+| this task's cache key could not be derived, so its command never ran (…) | the line names the `vx last` command that shows why |
+| this task is persistent: it records no cache key | a server or watcher has no key to compare |
 
 </details>
 
