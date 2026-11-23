@@ -595,10 +595,6 @@ export default [
       },
     ],
   }),
-] satisfies Case[]
-
-// vx fails these; each is a vx bug, not a wrong case (see the report).
-export const pending: Case[] = [
   // packages/nx/src/tasks-runner/create-task-graph.spec.ts “dependsOn with inputs: false: records the edge but still runs the dependency”.
   defineCase({
     id: 'affected/unkeyed-dependant-left-out',
@@ -646,4 +642,4 @@ export const pending: Case[] = [
       },
     ],
   }),
-]
+] satisfies Case[]
