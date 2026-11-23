@@ -906,7 +906,7 @@ failed)` / `failed (output clean failed)` for a miss whose save or clean
 
 `drawMigration`: what `workspace`'s `writeMigration` answered, drawn.
 Under `--dry`, each file as an excerpt; a lock refusal above; then the
-`from` … `next` rows. Under `--json`, the one document on stdout. It
+`from` … `next` rows. Under `--dry --format json`, the one document on stdout. It
 writes no file; `orchestrator/migration.ts` composes write and draw.
 
 ### Public surface
