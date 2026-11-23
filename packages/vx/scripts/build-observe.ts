@@ -5,7 +5,7 @@
 //
 //   bun scripts/build-observe.ts
 //
-// Each helper uses no libc, so one clang 20 with lld builds both
+// Each helper uses no libc, so one clang 20.1.8 with lld builds both
 // architectures from any Linux or macOS machine. The binaries are
 // committed: a run from source and `bun build --compile` both take them
 // as files, and no machine that runs vx needs a compiler. `source.sha256`
@@ -44,7 +44,7 @@ const FLAGS = [
   '-fno-asynchronous-unwind-tables',
   '-fno-unwind-tables',
   '-fno-pic',
-  // No .comment naming the compiler's vendor and patch: any clang 20 gives these bytes.
+  // No .comment naming the compiler's vendor and patch: any build of clang 20.1.8 gives these bytes.
   '-fno-ident',
   '-fuse-ld=lld',
   '-Wl,--build-id=none',
@@ -53,18 +53,24 @@ const FLAGS = [
 ]
 
 /**
- * The clang the committed bytes came from: another major emits other code.
- * 20: GitHub's Ubuntu images carry it (20, 21 and 22 on 26.04).
+ * The clang the committed bytes came from, to the patch: 20.1.2 and 20.1.8
+ * emit other code. 20.1.8 is LLVM 20's last release, and GitHub's Ubuntu
+ * runners carry it (Ubuntu 26.04's clang-20). Anywhere else, build in that
+ * image:
+ *
+ *   docker run --rm -v "$PWD":/w -v "$(command -v bun)":/usr/local/bin/bun -w /w/packages/vx \
+ *     ubuntu:26.04 sh -c 'apt-get update && apt-get install -y clang-20 lld-20 && bun scripts/build-observe.ts'
  */
-const CLANG_MAJOR = 20
+const CLANG_VERSION = '20.1.8'
+const CLANG_MAJOR = CLANG_VERSION.split('.')[0]
 
-/** A clang of `CLANG_MAJOR` on PATH whose own lld it finds, or undefined. */
+/** A clang of `CLANG_VERSION` on PATH whose own lld it finds, or undefined. */
 export function clang(): string | undefined {
   for (const name of [`clang-${CLANG_MAJOR}`, 'clang']) {
     const bin = Bun.which(name)
     if (bin === null) continue
     const v = Bun.spawnSync([bin, '--version'], { stdout: 'pipe', stderr: 'ignore' })
-    if (!new RegExp(`clang version ${CLANG_MAJOR}\\.`).test(v.stdout.toString())) continue
+    if (!v.stdout.toString().includes(`clang version ${CLANG_VERSION} `)) continue
     // lld beside it, as `-fuse-ld=lld` looks: an answer that is no path is none found.
     const lld = Bun.spawnSync([bin, '-print-prog-name=ld.lld'], { stdout: 'pipe' })
     if (existsSync(lld.stdout.toString().trim())) return bin
@@ -84,7 +90,9 @@ export function buildHelper(cc: string, source: string, target: string, out: str
 if (import.meta.main) {
   const cc = clang()
   if (cc === undefined) {
-    console.error(`build-observe: needs clang ${CLANG_MAJOR} with its lld on PATH`)
+    console.error(
+      `build-observe: needs clang ${CLANG_VERSION} with its lld on PATH (see the docker line above)`,
+    )
     process.exit(1)
   }
   for (const { dir, name } of HELPERS) {

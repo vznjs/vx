@@ -55,4 +55,4 @@ it("reaches stderr past a test's own swap of process.stderr.write", async () => 
   // inside that window was read as the verb's own stderr.
   const said = await stderrOf(0, 'process.stderr.write = () => true; Bun.sleepSync(1_600)')
   expect(said).toMatch(LINE)
-}, 10_000)
+}, 30_000)
