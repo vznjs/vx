@@ -1059,9 +1059,50 @@ function refuseBadNumbers(options: TurboCacheOptions): void {
  *
  * Declines with no URL, team or token, so it is safe to leave declared.
  */
+const shownValue = (v: unknown): string =>
+  typeof v === 'function' ? 'a function' : (JSON.stringify(v) ?? typeof v)
+
+const OIDC_SHAPE = 'true or { tokenUrl, revokeUrl, audience, params }'
+
+/**
+ * `oidc`'s shape, at the call: read only in a CI job's cache hook, a wrong
+ * one passed `vx lock` and every laptop run, then ran local only in CI.
+ */
+function refuseBadOidc(oidc: unknown): void {
+  if (oidc === undefined || oidc === true) return
+  if (oidc === null || typeof oidc !== 'object' || Array.isArray(oidc))
+    throw new UserError(`turboCache() option "oidc" must be ${OIDC_SHAPE}, got ${shownValue(oidc)}`)
+  refuseUnknownOptions('turboCache() option "oidc"', oidc, {
+    tokenUrl: 'any',
+    revokeUrl: 'any',
+    audience: 'any',
+    params: 'any',
+  })
+  const o = oidc as Record<string, unknown>
+  const bad = (key: string, want: string): never => {
+    throw new UserError(
+      `turboCache() option "oidc.${key}" must be ${want}, got ${shownValue(o[key])}`,
+    )
+  }
+  for (const key of ['tokenUrl', 'audience'])
+    if (o[key] !== undefined && typeof o[key] !== 'string') bad(key, 'a string')
+  if (o.revokeUrl !== undefined && o.revokeUrl !== false && typeof o.revokeUrl !== 'string')
+    bad('revokeUrl', 'a string or false')
+  const params = o.params
+  if (
+    params !== undefined &&
+    (params === null ||
+      typeof params !== 'object' ||
+      Array.isArray(params) ||
+      Object.values(params).some((v) => typeof v !== 'string'))
+  )
+    bad('params', 'an object of strings')
+}
+
 export function turboCache(options: TurboCacheOptions = {}): VxPlugin {
   refuseUnknownOptions('turboCache()', options, TURBO_CACHE_KEYS)
   refuseBadNumbers(options)
+  refuseBadOidc(options.oidc)
   // At the call too, as vxCache() checks its url: in the hook alone, a verb
   // that opens no cache (`vx show`) took a url every run then failed on.
   const url = options.url?.replace(/\/+$/, '')

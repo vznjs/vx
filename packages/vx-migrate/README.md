@@ -1777,6 +1777,7 @@ permissions:
 - `team_id_or_slug` is the team id, else the slug; one is required. `params` adds fields such as `policy_id`.
 - Any other server names its `tokenUrl` (and `revokeUrl`, or none). `params` carries its extras.
 - `revokeUrl: false` skips the revoke.
+- A wrong `oidc` shape (not `true`, a field it does not take, a non-string value) is refused when `vx lock` loads the workspace.
 - Order: the `token` option, `TURBO_TOKEN`, then OIDC, then `.turbo/config.json`, then the OS keychain.
 - A request is tried three times on a `429`, a `5xx` or no answer, 30 s each.
 - A failed exchange is one warning and a local-only run.
