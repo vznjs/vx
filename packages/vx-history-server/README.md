@@ -11,9 +11,16 @@ so a run retries a task that flaked on another machine. It speaks the [vx-histor
 (`/v1`) on three backends that answer alike:
 
 - **Bun**, with a SQLite file.
-- **Cloudflare Workers**, with D1. It fits the free plan: an upload is one
-  statement per 2 MB of reports, a row write per task; a query one read
-  per 2 MB of hashes.
+- **Cloudflare Workers**, with D1, on the free plan. An upload is one
+  statement per 666 KB of timings and two per 666 KB of outcomes (D1 binds
+  a string of up to 2 MB, and a character may be 3 bytes); a query two
+  reads per 666 KB of hashes. The free plan's 50 queries a request fit
+  PROTOCOL.md's largest upload (10 000 tasks, 512-character hashes: 41
+  statements, 50 with a new isolate's setup and the day's sweep). Its
+  10 ms of CPU is the tighter limit: parsing and checking an upload took
+  about 1.1 ms per 1 000 tasks with their outcomes (measured on Bun;
+  Miniflare models neither limit), so a run of up to about 8 000 tasks
+  fits.
 - **Docker**, the Bun server in an image.
 
 `vxHistory()` ([`@vzn/vx-history`](https://github.com/vznjs/vx/tree/main/packages/vx-history))

@@ -68,7 +68,7 @@ bunx wrangler login
 bunx wrangler deploy
 ```
 
-The first deploy creates the D1 database `vx-history`. It fits Cloudflare's free plan.
+The first deploy creates the D1 database `vx-history`. Cloudflare's free plan takes a run of up to about 8,000 tasks: past that, an upload likely needs more than the plan's 10 ms of CPU ([README](https://github.com/vznjs/vx/tree/main/packages/vx-history-server#readme)).
 
 </TabItem>
 <TabItem label="Bun">
