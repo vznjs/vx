@@ -6,7 +6,7 @@ import { closeSync, mkdtempSync, openSync, realpathSync, rmSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, describe, expect, it } from 'bun:test'
-import { refusedWrites } from '../src/sandbox/violations.js'
+import { observedWrites, refusedWrites } from '../src/sandbox/violations.js'
 
 describe.skipIf(process.platform !== 'linux')('a write record naming a descriptor', () => {
   const dir = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'vx-fd-rec-')))
@@ -29,5 +29,20 @@ describe.skipIf(process.platform !== 'linux')('a write record naming a descripto
     expect(refusedWrites([`deny openat ${dir}/out.log`], []).map((v) => v.line)).toEqual([
       `openat(${dir}/out.log) = a write no grant covers  [${dir}/out.log]`,
     ])
+  })
+})
+
+// A write record's path may hold a newline (vx-observe escapes it, and
+// `observedWrites` decodes it back), and the record's parse read a path
+// only up to its first one: `mkdir "$(printf 'a\nb')"` refused by the
+// sandbox failed the task with no violation named (2026-11-23).
+describe.skipIf(process.platform !== 'linux')('a write record whose path holds a newline', () => {
+  const dir = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'vx-nl-rec-')))
+  afterAll(() => rmSync(dir, { recursive: true, force: true }))
+
+  it('is reported with its whole path', () => {
+    const records = observedWrites(`W mkdir "${dir}/new\\nl"\nW mkdir "${dir}/ta\\tb"\n`)
+    expect(records).toEqual([`deny mkdir ${dir}/new\nl`, `deny mkdir ${dir}/ta\tb`])
+    expect(refusedWrites(records, []).map((v) => v.path)).toEqual([`${dir}/new\nl`, `${dir}/ta\tb`])
   })
 })

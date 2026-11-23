@@ -1043,12 +1043,12 @@ export function refusedWrites(
   // runners, 2026-11-12).
   const timed = new Set<string>()
   for (const record of records) {
-    const m = /^deny (\S+) (\/.*)$/.exec(record)
+    const m = /^deny (\S+) (\/.*)$/s.exec(record)
     if (m !== null && TIMES.test(m[1]!)) timed.add(toRealPath(m[2]!))
   }
   let source = false
   for (const record of records) {
-    const m = /^deny (\S+) (\/.*)$/.exec(record)
+    const m = /^deny (\S+) (\/.*)$/s.exec(record)
     if (m === null) continue
     const [, syscall, raw] = m as unknown as [string, string, string]
     // A move is recorded source first, then destination.

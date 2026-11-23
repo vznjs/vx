@@ -47,7 +47,8 @@ function grantPath(abs: string, dirs: Dirs): string {
  * escaped, since `pages/[id].tsx` is a class that grants `pages/i.tsx`,
  * and applying the fix failed the run again on the same read. A path no
  * grant can name alone (a `*`, `?` or backslash; on Linux a write with a
- * bracket too: sandbox/binds.ts) is granted as the directory above it.
+ * bracket too: sandbox/binds.ts; a write with a control character, which
+ * the config refuses) is granted as the directory above it.
  */
 function grantFor(abs: string, dirs: Dirs, kind: 'read' | 'write'): string {
   return spell(grantPath(abs, dirs), kind)
@@ -57,7 +58,9 @@ function spell(raw: string, kind: 'read' | 'write'): string {
   const wild = raw.search(
     kind === 'write' && process.platform === 'linux' ? MOUNT_WILDCARDS : /[*?]/,
   )
-  const bad = Math.min(...[wild, raw.indexOf('\\')].filter((i) => i >= 0))
+  // oxlint-disable-next-line no-control-regex
+  const ctl = kind === 'write' ? raw.search(/[\x00-\x1f\x7f-\x9f]/) : -1
+  const bad = Math.min(...[wild, raw.indexOf('\\'), ctl].filter((i) => i >= 0))
   const at = bad === Infinity ? raw : raw.slice(0, raw.lastIndexOf('/', bad) + 1) || '.'
   return at.replace(/[[\]]/g, '\\$&')
 }
