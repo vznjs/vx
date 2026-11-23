@@ -586,14 +586,17 @@ rebuilt that task and hit the dependent's partial bytes. Under a Linux sandbox t
 leftover dies with the task's pid namespace instead, `setsid` or not.
 Unsandboxed, or under macOS's sandbox, a leftover that also left the
 group (`setsid`, a daemon that double-forks) and holds no pipe is not
-seen: the task is saved with its outputs as they stood at exit, and a
-hit replays that. vx does not chase it: macOS keeps nothing that ties
-such a process to the task that started it, Linux's ways (a child
-subreaper, a cgroup) work only there, and either would also take a
-shared daemon a task starts (sccache, Gradle's, Bazel's server) for a
-leftover and stop that task's saves. Turbo waits for the pipe instead,
-which a leftover server holds forever. A task whose output matters
-waits for what it starts (`wait`).
+waited for: the task is saved with its outputs as they stood at exit,
+and a hit replays that. Such a process would equally be a shared daemon
+the task started for the next build (sccache, Gradle's, Bazel's server),
+so a task that ends on its own leaves it running. A task vx stops (a
+timeout, Ctrl-C, `--fail-fast`, a server stopped at the run's end or by
+a `vx watch` restart) takes it down too: every spawn carries
+`VX_RUN_TREE` in its environment, each descendant inherits it, and the
+stop signals the processes holding it outside the group, then SIGKILLs
+any left after the grace. Turbo waits for the pipe instead, which a
+leftover server holds forever. A task whose output matters waits for
+what it starts (`wait`).
 
 Every surface uses one outcome vocabulary: task axis `success` /
 `failed` / `skipped` / `aborted` (+ `running` live), cache axis

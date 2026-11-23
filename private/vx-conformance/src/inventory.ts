@@ -1084,6 +1084,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'key-fold',
     'key-vx-version',
     'kill-tree',
+    'kill-tree-escaped.unsafe',
     'kill-tree-guard-backlog',
     'kill-tree-guard-lines.unsafe',
     'kill-tree-guard-zombie.unsafe',

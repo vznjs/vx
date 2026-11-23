@@ -2,13 +2,152 @@
 // (its own session and group), so the group is the task's tree: the shell, what
 // it backgrounded, a runner's workers. Signalling the child alone orphaned `x`
 // in `sh -c "x & y"`. A group signal also reaches members whose parent died
-// first. Only a daemon that calls setsid itself escapes (every non-cgroup
-// runner shares that); a sandbox's pid namespace takes even that.
+// first. A daemon that calls setsid itself leaves the group, so each spawn also
+// carries a token in its environment (`VX_RUN_TREE`), which every descendant
+// inherits: a stop finds the ones outside the group by it (`escapees`). A
+// sandbox's pid namespace takes them too.
 
 import { closeSync, readdirSync, readFileSync, writeSync } from 'node:fs'
 import { helperEnv, procfsIsOwn, taskShell } from '../util/index.js'
 
 export type Child = ReturnType<typeof Bun.spawn>
+
+/**
+ * The variable naming a spawn's tree. Set by vx on every task's process; what
+ * the task starts inherits it, and a stop signals each process carrying it
+ * that left the task's group.
+ */
+export const VX_RUN_TREE_ENV = 'VX_RUN_TREE'
+
+let treeSeq = 0
+const trees = new WeakMap<Child, string>()
+
+/** A fresh tree token: vx's pid and a count, so no two spawns of any vx share one. */
+export function treeToken(): string {
+  return `${process.pid}.${++treeSeq}`
+}
+
+/** `child` was spawned with `token` in its environment. */
+export function markTree(child: Child, token: string): void {
+  trees.set(child, token)
+}
+
+/** What a stop has signalled outside each child's group, polled until gone. */
+const escaped = new WeakMap<Child, Set<number>>()
+
+/**
+ * The processes carrying `child`'s token outside its group: a daemon that
+ * called setsid, or double-forked into a group of its own. A stop runs this
+ * only after its group signal, so the scan costs a warm run nothing. Linux
+ * reads /proc (this namespace's); macOS asks `ps -E`, which shows a process's
+ * environment to its owner. Elsewhere, none are found.
+ */
+function escapees(child: Child): number[] {
+  const token = trees.get(child)
+  if (token === undefined) return []
+  const mark = `${VX_RUN_TREE_ENV}=${token}`
+  if (procfsIsOwn()) return procEscapees(child.pid, mark)
+  if (process.platform === 'darwin') return psEscapees(child.pid, mark)
+  return []
+}
+
+function procEscapees(pgid: number, mark: string): number[] {
+  let entries: string[]
+  try {
+    entries = readdirSync('/proc')
+  } catch {
+    return []
+  }
+  const needle = Buffer.from(`${mark}\0`)
+  const found: number[] = []
+  for (const entry of entries) {
+    const first = entry.charCodeAt(0)
+    if (first < 48 || first > 57) continue
+    const pid = Number(entry)
+    if (pid === process.pid) continue
+    let stat: string
+    let environ: Buffer
+    try {
+      stat = readFileSync(`/proc/${entry}/stat`, 'utf8')
+      // Another user's is EACCES: not this task's.
+      environ = readFileSync(`/proc/${entry}/environ`)
+    } catch {
+      continue
+    }
+    const fields = stat.slice(stat.lastIndexOf(')') + 2).split(' ', 3)
+    if (Number(fields[2]) === pgid || fields[0] === 'Z' || fields[0] === 'X') continue
+    const at = environ.indexOf(needle)
+    if (at === 0 || (at > 0 && environ[at - 1] === 0)) found.push(pid)
+  }
+  return found
+}
+
+function psEscapees(pgid: number, mark: string): number[] {
+  let text: string
+  try {
+    const out = Bun.spawnSync(['ps', '-E', '-ww', '-x', '-o', 'pid=,pgid=,stat=,command='], {
+      env: helperEnv(),
+      stdio: ['ignore', 'pipe', 'ignore'],
+    })
+    if (out.exitCode !== 0) return []
+    text = out.stdout.toString()
+  } catch {
+    return []
+  }
+  const found: number[] = []
+  for (const line of text.split('\n')) {
+    const m = /^\s*(\d+)\s+(\d+)\s+(\S+)\s(.*)$/.exec(line)
+    if (m === null) continue
+    const pid = Number(m[1])
+    if (pid === process.pid || Number(m[2]) === pgid || m[3]!.startsWith('Z')) continue
+    // The environment follows the command, space-separated.
+    const at = m[4]!.indexOf(` ${mark}`)
+    if (at < 0) continue
+    const end = at + 1 + mark.length
+    if (end === m[4]!.length || m[4]![end] === ' ') found.push(pid)
+  }
+  return found
+}
+
+/** Signal what left `child`'s group with its token, and remember it for `untilGroupsGone`. */
+function signalEscapees(child: Child, signal: 'SIGINT' | 'SIGTERM' | 'SIGKILL'): void {
+  const pids = escapees(child)
+  if (pids.length === 0) return
+  let seen = escaped.get(child)
+  if (seen === undefined) escaped.set(child, (seen = new Set()))
+  for (const pid of pids) {
+    seen.add(pid)
+    try {
+      process.kill(pid, signal)
+    } catch {
+      // gone already
+    }
+  }
+}
+
+/** Is a process a stop signalled outside `child`'s group still running? */
+function escapeesAlive(child: Child): boolean {
+  const seen = escaped.get(child)
+  if (seen === undefined) return false
+  for (const pid of seen) if (!pidAlive(pid)) seen.delete(pid)
+  return seen.size > 0
+}
+
+function pidAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0)
+  } catch (err) {
+    return (err as NodeJS.ErrnoException).code === 'EPERM'
+  }
+  if (!procfsIsOwn()) return true
+  try {
+    const stat = readFileSync(`/proc/${pid}/stat`, 'utf8')
+    const state = stat[stat.lastIndexOf(')') + 2]
+    return state !== 'Z' && state !== 'X'
+  } catch {
+    return false
+  }
+}
 
 /**
  * A child whose polite signals go down a pipe, not to its group: a Linux
@@ -322,7 +461,10 @@ export function releaseServerGroup(child: Child): void {
 export function killTree(child: Child, signal: 'SIGINT' | 'SIGTERM' | 'SIGKILL'): void {
   // A pid of 0 would name OUR group (kill(0)): a child that never
   // spawned has nothing to kill.
-  if (!(child.pid > 0) || goneGroups.has(child)) return
+  if (!(child.pid > 0)) return
+  // Before the group: a server whose shell is gone may have left only these.
+  signalEscapees(child, signal)
+  if (goneGroups.has(child)) return
   const fd = signal === 'SIGKILL' ? undefined : channels.get(child)
   if (fd !== undefined) {
     try {
@@ -409,10 +551,13 @@ export async function untilGroupsGone(
     }),
   ])
   if (timer !== undefined) clearTimeout(timer)
-  let left = children.filter(groupAlive)
+  // What the stop signalled outside a group counts as its tree: a setsid
+  // daemon trapping SIGTERM is SIGKILLed past the grace too.
+  const alive = (c: Child): boolean => groupAlive(c) || escapeesAlive(c)
+  let left = children.filter(alive)
   while (left.length > 0 && performance.now() < deadline) {
     await Bun.sleep(Math.min(GROUP_POLL_MS, deadline - performance.now()))
-    left = left.filter(groupAlive)
+    left = left.filter(alive)
   }
   return left
 }

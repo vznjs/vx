@@ -10,6 +10,7 @@ import {
   VX_RUN_WORKSPACE_ENV,
 } from '../src/exec/env.js'
 import { ESSENTIAL_ENV } from '../src/util/essential-env.js'
+import { VX_RUN_TREE_ENV } from '../src/exec/kill-tree.js'
 import { answerRuntime, resolveInputs } from '../src/cache/index.js'
 import { run } from './helpers/orchestrator.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
@@ -503,7 +504,7 @@ describe('what a task sees of the host environment, end to end', () => {
     VX_ENV_PASSED: 'passed',
   }
 
-  it('the allowlist, the names a task passes through or defines, and the run’s own two, exactly', async () => {
+  it('the allowlist, the names a task passes through or defines, and the run’s own three, exactly', async () => {
     const root = await makeWorkspace({ prefix: 'vx-env-host-' })
     const saved = Object.fromEntries(Object.keys(PLANTED).map((k) => [k, process.env[k]]))
     try {
@@ -535,6 +536,7 @@ describe('what a task sees of the host environment, end to end', () => {
         'VX_ENV_PASSED',
         'VX_ENV_DEFINED',
         VX_RUN_TASK_ENV,
+        VX_RUN_TREE_ENV,
         VX_RUN_WORKSPACE_ENV,
       ].sort()
       expect(seen).toEqual(expected)

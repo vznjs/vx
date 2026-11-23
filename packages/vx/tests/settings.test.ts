@@ -36,6 +36,7 @@ const SRC = path.join(ROOT, 'src')
 const TASK_MARKERS = [
   'VX_RUN_WORKSPACE',
   'VX_RUN_TASK',
+  'VX_RUN_TREE',
   'VX_HANDED_OFF',
   'VX_SIGNAL_RELAY',
   'VX_JIT_TIERED',
@@ -390,7 +391,7 @@ function variablesTable(): string {
     "| `VX_SIGNAL_RELAY` | — | Set to `1` by a parent that relays stop signals (the Node launcher, a handing-off vx): a group stop's copy is the same stop, not a second one. vx removes it at start. |",
     "| `VX_JIT_TIERED` | — | Set to `1` with `BUN_JSC_useFTLJIT=false` by the npm launcher, or by a compiled vx restarting a run in a workspace whose `.vx/projects.lock` is 128 KiB or more (a smaller run ends before that tier pays back its restart), to turn JSC's top JIT tier off (its compiles never paid back within a run). vx removes both at start; one the user set is theirs. |",
     '| `VX_IGNORED_SIGNALS` | — | Set by a global vx that hands off when it was started with SIGINT or SIGHUP ignored (`vx run build &` in a script, nohup): those names, comma-separated, so the local vx keeps them ignored. vx removes it at start. |',
-    '| `VX_RUN_WORKSPACE`, `VX_RUN_TASK` | — | Set by vx on every task (below); a `vx run` a task starts reads them back. |',
+    '| `VX_RUN_WORKSPACE`, `VX_RUN_TASK`, `VX_RUN_TREE` | — | Set by vx on every task (below); a `vx run` a task starts reads the first two back, a stop the third. |',
   ].join('\n')
 }
 
