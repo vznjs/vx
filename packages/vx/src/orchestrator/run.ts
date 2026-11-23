@@ -1876,7 +1876,7 @@ async function runOnBus(
     })
     // The run ends once its uploads have: the footer is printed after them, and
     // a slow remote's drain read as no time at all (a 6.4 s run said 3.2 s).
-    const runEnd = prepared.hasRemoteLayer
+    let runEnd = prepared.hasRemoteLayer
       ? {
           at: Math.ceil(wallNow()),
           totalMs: Number(process.hrtime.bigint() - runStartHrTimeNs) / 1_000_000,
@@ -1948,6 +1948,22 @@ async function runOnBus(
     // A kept server can still fail the run in the wait below: its summary goes
     // out once the wait decides, or sinks read a pass over exit 1.
     if (!historyAfterWait) await summarize(list, ok)
+    // The footer is printed after the flush too: a slow collector's 3 s read
+    // as no time. The summary just sent cannot count its own flush.
+    if (sinks !== undefined && !historyAfterWait) {
+      runEnd = {
+        at: Math.ceil(wallNow()),
+        totalMs: Number(process.hrtime.bigint() - runStartHrTimeNs) / 1_000_000,
+      }
+      if (bundled)
+        recordHistory(() =>
+          runHistory(prepared.localCache).recordRunEnd(
+            runId,
+            runEnd.at,
+            Math.round(runEnd.totalMs),
+          ),
+        )
+    }
     // Each plugin's teardown, crash-isolated and time-bounded, after the drains
     // above; other exits reach it through `teardown`. Output-directory
     // snapshots first (miss-save.ts).

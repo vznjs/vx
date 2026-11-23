@@ -542,7 +542,7 @@ export interface HistoryWrites {
     hits?: RunHits
   }): void
   recordRemoteErrors(runId: string, errors: readonly (readonly [string, string])[]): void
-  // The run's end once its uploads drained, after its rows went in.
+  // The run's end once its uploads drained and telemetry flushed, after its rows went in.
   recordRunEnd(runId: string, endedAt: number, totalDurationMs: number): void
 }
 export function runHistory(cache: Cache): HistoryWrites
