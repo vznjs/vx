@@ -118,6 +118,14 @@ const SIDEBAR_GROUPS: Record<'Docs' | 'Guides' | 'Reference', SidebarItem[]> = {
         { label: "Run one project's tasks", link: '/guides/running/run-one-project/' },
         { label: 'Stop at the first failure', link: '/guides/running/stop-at-the-first-failure/' },
         { label: 'Set a time limit on a task', link: '/guides/running/set-a-time-limit/' },
+        {
+          label: 'Start a dev server before your tests',
+          link: '/guides/running/start-a-dev-server/',
+        },
+        {
+          label: 'Pass an environment variable to a task',
+          link: '/guides/running/pass-an-environment-variable/',
+        },
       ],
     },
     {
