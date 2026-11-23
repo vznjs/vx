@@ -2217,8 +2217,14 @@ its projects and their configs only from the committed
 configs, never evaluates one, never checks the graph rules
 (`run.rules`) and never writes the lock: only `vx lock` does. With no
 lock, a run fails with `no lock: run \`vx lock\``. A run trusts the
-lock: it performs NO staleness check, so after adding or editing a
-config, run `vx lock`. In a pipeline, `vx lock --check` first re-evaluates every
+lock and evaluates nothing, so after adding or editing a config, run
+`vx lock`. One local check reminds you: a config file edited since this
+machine's last `vx lock`(or passing`vx lock --check`) refuses the run
+with `<file> changed since the last \`vx lock\` — run \`vx lock\``
+(`VX_E_LOCK`); it compares the file's size, mtime and bytes with those
+`vx lock`read, kept in the cache dir's`config-stamps.json`, and only
+while the lock is the one written then, so a pull or a fresh clone is
+never refused. A file a config imports is not checked. In a pipeline, `vx lock --check` first re-evaluates every
 config and checks the rules.
 
 ## `vx lock`
@@ -2296,8 +2302,9 @@ shows no file diff to find them by.
 Run `vx lock` and commit `.vx/projects.lock` after
 editing any `vx.config.*` or `.vx/workspace.*`, after updating
 dependencies or plugins, and after changing a file a config imports.
-Runs read their configs from the lock, so until then they keep the old
-ones. `vx lock --check` as CI's first step fails a stale lock.
+Runs read their configs from the lock: until then they keep the old
+ones, and a run refuses a config file edited since this machine's
+`vx lock`. `vx lock --check` as CI's first step fails a stale lock.
 The full workflow: the site's CI guide and `examples/ci`.
 
 ### Options
@@ -2450,7 +2457,7 @@ always come from one run.
 ### How runs read it
 
 Every run consumes it: configs come from the
-lock with no evaluation, no staleness check and no schema validation
+lock with no evaluation, no audit and no schema validation
 of its entries, which `vx lock` validated when it wrote them (frozen-env
 semantics: env reads in a config keep their lock-time values; a
 locked directory whose config file is gone (X-144) or that this user
@@ -4444,7 +4451,9 @@ remote hit is never fresh, outputs or none: it is `↓` from the remote), `∅` 
 layer and `↑` saved to it, `✗` a task a remote read or write failed
 for (not one that turned the remote off for the run, a refused token or
 no answer: that is the run's, on the `warn` row, and its task counts as
-the others), and `⇡` an upload still running (live only, always last). The
+the others), and `⇡` an upload still running (live only, always last).
+A pipe with no colour (an agent's shell) gets no meters: each row holds
+its legend alone (`tasks     1 failed · 3 success · 4 total`). The
 region stays through vx's closing steps, worker rows gone, and the
 final footer replaces it in place. Each task counts once, under its strongest state: a
 failed remote read or write, then an upload running, then saved to a

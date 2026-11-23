@@ -79,6 +79,7 @@ function callsByPath(trace: string, cwd: string): Map<string, string[]> {
 describe.skipIf(strace === null)('one run touches each project file once, Bun included', () => {
   let root: string
   let scratch: string
+  let stamps: string
 
   beforeAll(async () => {
     scratch = await realpath(await mkdtemp(path.join(os.tmpdir(), 'vx-read-once-')))
@@ -103,6 +104,10 @@ describe.skipIf(strace === null)('one run touches each project file once, Bun in
 `,
     )
     expect(Bun.spawnSync({ cmd: [process.execPath, BIN, 'lock'], cwd: root }).exitCode).toBe(0)
+    // `vx lock` makes the cache dir for its config stamps; the cold run is
+    // one with none, and the stamps come back with the dir.
+    stamps = await readFile(path.join(root, '.vx', 'cache', 'config-stamps.json'), 'utf8')
+    await rm(path.join(root, '.vx', 'cache'), { recursive: true, force: true })
     gitInitCommit(root)
   })
 
@@ -143,9 +148,12 @@ describe.skipIf(strace === null)('one run touches each project file once, Bun in
       for (const name of ['cold', 'build', 'warm']) {
         // A real run's cache dir: `--dry` makes none, and the bytecode
         // bundle is built only under one.
-        if (name === 'build') await mkdir(path.join(root, '.vx', 'cache'), { recursive: true })
+        if (name === 'build') {
+          await mkdir(path.join(root, '.vx', 'cache'), { recursive: true })
+          await writeFile(path.join(root, '.vx', 'cache', 'config-stamps.json'), stamps)
+        }
         const run = await tracedRun(name)
-        expect(run('packages/a/vx.config.mjs')).toEqual(['newfstatat'])
+        expect(run('packages/a/vx.config.mjs')).toEqual(['statx'])
         expect(run('packages/a/package.json')).toEqual([])
         expect(run('packages/a')).toEqual([])
         if (name === 'cold')
@@ -154,6 +162,9 @@ describe.skipIf(strace === null)('one run touches each project file once, Bun in
         expect(run('pnpm-workspace.yaml')).toEqual([])
         expect(run('package.json')).toEqual(['openat'])
         expect(run('.vx/projects.lock')).toEqual(['newfstatat', 'openat'])
+        // The stamps the config check reads: once a run, however many loads.
+        if (name !== 'cold')
+          expect(run('.vx/cache/config-stamps.json')).toEqual(['openat', 'statx'])
       }
     },
     TIMEOUT,

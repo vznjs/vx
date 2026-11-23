@@ -1942,8 +1942,13 @@ async function runOnBus(
     if (options.handoff?.summaryTable === true)
       for (const line of formatOutcomeTable(list, colors)) log.status(line)
     // A run a signal stopped records nothing `vx last` opens: no id to copy.
-    const footerContext =
-      stop.stoppedBy === undefined ? runContext : { ...runContext, runId: undefined }
+    // A pipe with no colour gets no meters: their counts say it all.
+    const meters = options.log !== undefined || colors.enabled || process.stdout.isTTY === true
+    const footerContext = {
+      ...runContext,
+      ...(stop.stoppedBy === undefined ? {} : { runId: undefined }),
+      ...(meters ? {} : { meters: false }),
+    }
     if (options.footer !== false)
       for (const line of formatRunSummary(list, totalMs, colors, footerContext)) log.status(line)
 

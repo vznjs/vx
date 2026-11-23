@@ -57,6 +57,13 @@ describe('a piped run reads without a terminal', () => {
     expect(lines.filter((l) => /\bstatus\s+cache\s+±usual/.test(l))).toHaveLength(1)
   })
 
+  it('the summary gives counts, no meters', async () => {
+    const { out } = await vx(root, ['run', 'ok', 'boom', '--all'])
+    expect(out).not.toMatch(/[▰▱]/)
+    expect(out).toMatch(/^ {2}tasks {5}1 failed · 1 success · 2 total$/m)
+    expect(out).toMatch(/^ {2}projects {2}1 in run · 1 total$/m)
+  })
+
   it("a failed frame's command line names the directory it ran in", async () => {
     const { out } = await vx(root, ['run', 'boom', '--all'])
     expect(out).toContain(`packages/core $ echo "cp: cannot stat 'src/index.js'" && exit 1`)

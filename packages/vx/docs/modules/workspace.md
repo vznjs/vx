@@ -1923,7 +1923,8 @@ unclaimed file is not watched). `tests/affected.test.ts` pins the
 directory, into `.vx/projects.lock`. Every run takes its project
 directories from the lock as well as their configs, so a config added
 since does not run until locked. Every run loads configs FROM the
-lock (zero eval, no staleness check, no schema validation);
+lock (zero eval, no schema validation; a config file edited since this
+machine's `vx lock` refuses, `memo/config-stamps.ts`);
 `vx lock --check` re-evaluates every config and reports one drift
 message per project that differs. The lock holds the final graph only,
 never the steps that made it (2026-11-21): each project's config after

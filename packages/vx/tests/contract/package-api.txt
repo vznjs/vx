@@ -1716,6 +1716,7 @@ export interface ResolvedSandboxConfig {
 export interface RunContext {
   version: string
   workspaceRoot?: string
+  meters?: boolean
   packageCount: number
   runId?: string | undefined
   executorRows?: () => readonly (readonly [string, ui.Inline])[]

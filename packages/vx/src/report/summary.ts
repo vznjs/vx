@@ -173,6 +173,12 @@ export interface RunContext {
   version: string
   /** The workspace root: a frame names its task's directory from it. */
   workspaceRoot?: string
+  /**
+   * `false`: no meters, each row its legend alone. A pipe with no colour is
+   * read, often by an agent, never looked at: fifty cells of `▰` per row
+   * said nothing the counts beside them did not.
+   */
+  meters?: boolean
   /** Projects with a real task in the graph — the bar's "in run" half. */
   packageCount: number
   /** The run's whole id, as `vx last` takes it; shown on the `info` row. */
@@ -301,6 +307,15 @@ export function formatSummarySection(
   // Bars on the label row, color-coded legend on its own line below,
   // indented to the bar column (2 indent + 8 label + 2 gap = 12).
   const legend = (parts: string[]): string[] => fit(parts).map((l) => `${' '.repeat(12)}${l}`)
+  const meters = context?.meters !== false
+  // A meter row and its legend below it, or, without meters, the legend on
+  // the label's row.
+  const meter = (label: string, drawn: string, parts: string[]): string[] =>
+    meters
+      ? [row(label, drawn), ...(parts.length > 0 ? legend(parts) : [])]
+      : parts.length > 0
+        ? rows(label, parts)
+        : []
   // The panel's body; its box goes round it at the end.
   const lines: string[] = []
 
@@ -314,15 +329,16 @@ export function formatSummarySection(
         ? 0
         : Math.min(width, Math.max(1, Math.round((context.packageCount / wsTotal) * width)))
     lines.push(
-      row('projects', gauge(cells, 'warn', colors)),
-      ...legend([paint('warn', `${context.packageCount} in run`, colors), dim(`${wsTotal} total`)]),
+      ...meter('projects', gauge(cells, 'warn', colors), [
+        paint('warn', `${context.packageCount} in run`, colors),
+        dim(`${wsTotal} total`),
+      ]),
     )
   }
 
   if (taskBar.length > 0) {
-    lines.push(row('tasks', taskBar))
     // No legend line until the first bucket lands (live: all-gray bar).
-    if (taskParts.length > 0) lines.push(...legend(taskParts))
+    lines.push(...meter('tasks', taskBar, taskParts))
   } else {
     const groups = stats.emptyGroups ?? []
     // `vx run build` where no project gives build a command runs the default
@@ -408,8 +424,7 @@ export function formatSummarySection(
     // Skipped tasks ride the bar, yellow like the tasks meter, and failed
     // restores red, so the two bars fill alike; their counts are the tasks
     // legend's alone (the footer never says a fact twice).
-    lines.push(row('cache', cacheBar))
-    if (cacheParts.length > 0) lines.push(...legend(cacheParts))
+    lines.push(...meter('cache', cacheBar, cacheParts))
   }
 
   // Cache-miss duration spread (owner: hits' restore times polluted it — only

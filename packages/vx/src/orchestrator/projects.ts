@@ -13,6 +13,7 @@ import {
   frozenProjectConfigs,
   LOCKFILE_NAME,
   lockedDependencies,
+  lockDigest,
   lockedProjects,
   NO_LOCK,
   pathName,
@@ -45,6 +46,7 @@ import {
   resolveCacheDir,
   validateWorkspace,
 } from '../workspace/index.js'
+import { configsEditedSinceLock } from '../memo/index.js'
 import { DEFAULT_BUILD, parseDependencySpec } from '../graph/index.js'
 import { workspaceFile } from '../handoff.js'
 import { applyConfigHooks, applyDiscoverHooks, applyProjectHooks, hasHook } from './plugin-host.js'
@@ -491,7 +493,9 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
     )
     // A locked project whose config file is gone ran as locked, green, though
     // nothing declares it any more: asked only of the configs this run reads.
-    const present = await Promise.all(withFile.map((m) => Bun.file(m.configPath).exists()))
+    // One stat each: whether it is there, and whether it moved since `vx lock`.
+    const stats = await Promise.all(withFile.map((m) => stat(m.configPath).catch(() => null)))
+    const present = stats.map((s) => s !== null && !s.isDirectory())
     const goneAll = withFile.filter((_, i) => !present[i])
     const gone = goneAll[0]
     if (gone !== undefined) {
@@ -534,6 +538,23 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
           )
     }
     const fromLock = withFile.filter((m) => recordedOf(m) === undefined)
+    // A run reads the lock, never the config: one edited with no `vx lock`
+    // after it would run as it was, green.
+    const edited = await configsEditedSinceLock(
+      workspaceRoot,
+      args.cacheDir,
+      fromLock.length === 0 ? undefined : lockDigest(await lock()),
+      withFile.flatMap((m, i) =>
+        recordedOf(m) === undefined
+          ? [{ file: m.configPath, size: stats[i]!.size, mtimeMs: stats[i]!.mtimeMs }]
+          : [],
+      ),
+    )
+    if (edited.length > 0)
+      throw new UserError(
+        `${listed(edited, 5)} changed since the last \`vx lock\` — run \`vx lock\``,
+        'VX_E_LOCK',
+      )
     const loaded =
       fromLock.length === 0 ? [] : frozenProjectConfigs(await lock(), fromLock, workspaceRoot)
     let next = 0

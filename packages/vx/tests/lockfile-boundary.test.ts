@@ -462,7 +462,10 @@ describe('frozenProjectConfig — the trust model', () => {
     // which is the drift that actually matters).
     //
     // So the lock is trusted exactly as far as the repo it lives in is
-    // trusted, and `--check` is the audit. Anyone tightening this should
+    // trusted, and `--check` is the audit. The one check a run makes,
+    // a config FILE edited since this machine's `vx lock`
+    // (memo/config-stamps.ts), is a reminder, not an audit: it asks
+    // nothing of a lock it did not see written, as this one. Anyone tightening this should
     // change `--check`, not this path.
     const tampered = lock({
       projects: { pkg: entry({ tasks: { build: { exec: { command: 'echo TAMPERED' } } } }) },

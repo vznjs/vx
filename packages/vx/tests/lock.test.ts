@@ -169,7 +169,7 @@ describe('vx lock (e2e)', () => {
   )
 
   it(
-    'a changed config file: a run keeps the freeze until re-lock',
+    'a changed config file: a run refuses it until re-lock',
     async () => {
       const dir = await addProject(root, 'app', ENV_CONFIG)
       expect((await vx(root, ['lock'], { X: 'a' })).code).toBe(0)
@@ -183,9 +183,8 @@ describe('vx lock (e2e)', () => {
       expect(check.code).toBe(1)
       expect(check.err).toBe(DRIFT('tasks.build.exec.command: "echo flavor-a" → "echo edited"'))
 
-      // A run trusts the lock outright — no staleness checks; the
-      // pipeline's `vx lock --check` (above, exit 1) is the guard.
-      // It runs the FROZEN config, not the edited file.
+      // A run reads the lock, never the config: it names the edit and
+      // refuses, and leaves the lock as it was.
       const frozen = await vx(
         root,
         ['run', 'build', '--all', '--no-cache', '--output-logs', 'full'],
@@ -193,9 +192,11 @@ describe('vx lock (e2e)', () => {
           X: 'a',
         },
       )
-      expect(frozen.code).toBe(0)
-      expect(frozen.out).toContain('flavor-a')
-      expect(frozen.out).not.toContain('edited')
+      expect(frozen.code).toBe(1)
+      expect(frozen.err).toContain(
+        'packages/app/vx.config.mjs changed since the last `vx lock` — run `vx lock`',
+      )
+      expect(frozen.out).not.toContain('flavor-a')
 
       // Re-lock brings the edit into the frozen graph.
       expect((await vx(root, ['lock'], { X: 'a' })).code).toBe(0)

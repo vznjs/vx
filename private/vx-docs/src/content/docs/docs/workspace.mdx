@@ -38,6 +38,8 @@ name is the first of these that exists:
 Runs read configs from `.vx/projects.lock`, never from the files.
 After you add or edit a `vx.config.ts`, run `vx lock` and commit what it
 writes: the lock, and the `vx.lock.json` beside each config.
+If you forget, the next run stops and names the config you edited
+since your last `vx lock`.
 
 ```sh
 vx lock

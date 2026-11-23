@@ -610,6 +610,7 @@ export function cacheBucketOf(o: TaskOutcome): CacheBucket | undefined
 export interface RunContext {
   version: string
   workspaceRoot?: string // a frame names its task's directory from it
+  meters?: boolean // false: a pipe with no colour, each row its legend alone
   packageCount: number // projects with a task to run → the bar's "in run" half
   runId?: string | undefined // the whole id `vx last` takes (info row)
   executorRows?: () => readonly (readonly [string, ui.Inline])[] // executors' footer rows
