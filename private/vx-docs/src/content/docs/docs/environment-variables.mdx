@@ -27,18 +27,18 @@ API_URL=https://api.demo.dev vx run test
 
 [1m[30m[46m RUN [49m[39m[22m [36mv5.1.1 [39m[90m/tmp/demo/packages/web[39m
 
- [31m❯[39m src/index.test.ts [2m([22m[2m1 test[22m[2m | [22m[31m1 failed[39m[2m)[22m[32m 6[2mms[22m[39m
-[31m   [31m×[31m API_URL is https[39m[32m 5[2mms[22m[39m
+ [31m❯[39m src/index.test.ts [2m([22m[2m1 test[22m[2m | [22m[31m1 failed[39m[2m)[22m[32m 9[2mms[22m[39m
+[31m   [31m×[31m API_URL is https[39m[32m 7[2mms[22m[39m
 
 [31m⎯⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 1 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
 
 [41m[1m FAIL [22m[49m src/index.test.ts[2m > [22mAPI_URL is https
 [31m[1mTypeError[22m: .toMatch() expects to receive a string, but got undefined[39m
-[36m [2m❯[22m src/index.test.ts:[2m4:31[22m[39m
+[36m [2m❯[22m src/index.test.ts:[2m4:42[22m[39m
     [90m  2|[39m
     [90m  3|[39m [34mtest[39m([32m'API_URL is https'[39m[33m,[39m () [33m=>[39m {
-    [90m  4|[39m   [34mexpect[39m(process[33m.[39menv[33m.[39m[33mAPI_URL[39m)[33m.[39m[34mtoMatch[39m([36m/^https:/[39m)
-    [90m   |[39m                               [31m^[39m
+    [90m  4|[39m   [34mexpect[39m(process[33m.[39menv[33m.[39m[33mAPI_URL[39m[33m,[39m [32m'API_URL'[39m)[33m.[39m[34mtoMatch[39m([36m/^https:/[39m)
+    [90m   |[39m                                          [31m^[39m
     [90m  5|[39m })
     [90m  6|[39m
 
@@ -47,11 +47,11 @@ API_URL=https://api.demo.dev vx run test
 
 [2m Test Files [22m [1m[31m1 failed[39m[22m[90m (1)[39m
 [2m      Tests [22m [1m[31m1 failed[39m[22m[90m (1)[39m
-[2m   Start at [22m 22:14:25
-[2m   Duration [22m 209ms[2m (transform 55%, import 24%, tests 13%, worker 8%)[22m
+[2m   Start at [22m 22:15:16
+[2m   Duration [22m 284ms[2m (transform 66%, import 17%, tests 11%, worker 5%)[22m
 
 [1m[38;2;234;179;8m[vx][0m[2m API_URL is set in your environment, but this task does not get it: a task sees only the variables exec.env.passThrough and define name — add it to passThrough, and to inputs.env if the output depends on it[0m
-[2m└─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;96;165;250mtest[0m [2m──[0m [2m(554ms)[0m [1m[38;2;239;68;68mfailed (exit 1)[0m
+[2m└─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;96;165;250mtest[0m [2m──[0m [2m(689ms)[0m [1m[38;2;239;68;68mfailed (exit 1)[0m
 ```
 
 Read the `[vx]` line: vx names the variable it held back, and the fix.
@@ -70,8 +70,17 @@ cache: true,
 [2m$[0m API_URL=https://api.demo.dev vx run test
 
 [2m┌─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;96;165;250mtest[0m [2m>[0m $ vitest run
- [32m✓[39m src/index.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 3[2mms[22m[39m
-[0m[2m└─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;96;165;250mtest[0m [2m──[0m [2m(428ms)[0m [2msuccess[0m
+
+[1m[30m[46m RUN [49m[39m[22m [36mv5.1.1 [39m[90m/tmp/demo/packages/web[39m
+
+ [32m✓[39m src/index.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 4[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m1 passed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[32m1 passed[39m[22m[90m (1)[39m
+[2m   Start at [22m 22:15:18
+[2m   Duration [22m 204ms[2m (import 47%, transform 19%, tests 18%, worker 16%, environment 1%)[22m
+
+[0m[2m└─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;96;165;250mtest[0m [2m──[0m [2m(670ms)[0m [2msuccess[0m
 ```
 
 </Frame>
@@ -81,7 +90,16 @@ cache: true,
 [2m$[0m API_URL=http://staging.demo.dev vx run test
 
 [2m┌─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;96;165;250mtest[0m [2m>[0m $ vitest run
- [32m✓[39m src/index.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 3[2mms[22m[39m
+
+[1m[30m[46m RUN [49m[39m[22m [36mv5.1.1 [39m[90m/tmp/demo/packages/web[39m
+
+ [32m✓[39m src/index.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 4[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m1 passed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[32m1 passed[39m[22m[90m (1)[39m
+[2m   Start at [22m 22:15:18
+[2m   Duration [22m 204ms[2m (import 47%, transform 19%, tests 18%, worker 16%, environment 1%)[22m
+
 [0m[2m└─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;96;165;250mtest[0m [2m──[0m [2m(2ms)[0m [2mup-to-date[0m
 ```
 
@@ -101,9 +119,40 @@ cache: true,
 [2m$[0m API_URL=http://staging.demo.dev vx run test
 
 [2m┌─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;96;165;250mtest[0m [2m>[0m $ vitest run
- [31m❯[39m src/index.test.ts [2m([22m[2m1 test[22m[2m | [22m[31m1 failed[39m[2m)[22m[32m 6[2mms[22m[39m
+
+[1m[30m[46m RUN [49m[39m[22m [36mv5.1.1 [39m[90m/tmp/demo/packages/web[39m
+
+ [31m❯[39m src/index.test.ts [2m([22m[2m1 test[22m[2m | [22m[31m1 failed[39m[2m)[22m[32m 7[2mms[22m[39m
+[31m   [31m×[31m API_URL is https[39m[32m 5[2mms[22m[39m
+
+[31m⎯⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 1 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+
+[41m[1m FAIL [22m[49m src/index.test.ts[2m > [22mAPI_URL is https
 [31m[1mAssertionError[22m: API_URL: expected 'http://staging.demo.dev' to match /^https:/[39m
-[0m[2m└─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;96;165;250mtest[0m [2m──[0m [2m(451ms)[0m [1m[38;2;239;68;68mfailed (exit 1)[0m
+
+[32m- Expected:[39m
+/^https:/
+
+[31m+ Received:[39m
+"http://staging.demo.dev"
+
+[36m [2m❯[22m src/index.test.ts:[2m4:42[22m[39m
+    [90m  2|[39m
+    [90m  3|[39m [34mtest[39m([32m'API_URL is https'[39m[33m,[39m () [33m=>[39m {
+    [90m  4|[39m   [34mexpect[39m(process[33m.[39menv[33m.[39m[33mAPI_URL[39m[33m,[39m [32m'API_URL'[39m)[33m.[39m[34mtoMatch[39m([36m/^https:/[39m)
+    [90m   |[39m                                          [31m^[39m
+    [90m  5|[39m })
+    [90m  6|[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯[22m[39m
+
+
+[2m Test Files [22m [1m[31m1 failed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[31m1 failed[39m[22m[90m (1)[39m
+[2m   Start at [22m 22:15:19
+[2m   Duration [22m 173ms[2m (import 40%, tests 25%, transform 17%, worker 17%, environment 1%)[22m
+
+[0m[2m└─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;96;165;250mtest[0m [2m──[0m [2m(469ms)[0m [1m[38;2;239;68;68mfailed (exit 1)[0m
 ```
 
 The test ran, and caught the bad URL.
