@@ -649,7 +649,7 @@ describe("the quickstart's output", () => {
         `export default {
   tasks: {
     build: {
-      exec: { command: 'mkdir -p dist && cp src/index.ts dist/' },
+      exec: { command: 'mkdir -p dist && cp src/main.js dist/' },
       inputs: { files: ['src/**', 'tsconfig.json'] },
       outputs: { files: ['dist/**'] },
       cache: true,
@@ -658,7 +658,7 @@ describe("the quickstart's output", () => {
 }
 `,
       )
-      await writeFile(path.join(dir, 'src/index.ts'), '1\n')
+      await writeFile(path.join(dir, 'src/main.js'), '1\n')
       await writeFile(path.join(dir, 'tsconfig.json'), '{}\n')
       const at = (...cmd: string[]) =>
         Bun.spawnSync({ cmd, cwd: dir, env: ENV }).stdout.toString() as string
@@ -676,7 +676,7 @@ describe("the quickstart's output", () => {
       run('run', 'build')
       const ms = (t: string) => t.replace(/\(\d+ms\)/g, '(<ms>)')
       expect(ms(runColour('run', 'build')).split('\n')).toContain(ms(hit))
-      await writeFile(path.join(dir, 'src/index.ts'), '2\n')
+      await writeFile(path.join(dir, 'src/main.js'), '2\n')
       run('run', 'build')
       const why = runColour('why', 'build')
       expect(plain(why).split('\n')).toContain(verdict)

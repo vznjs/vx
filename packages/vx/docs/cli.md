@@ -2010,7 +2010,7 @@ vx cache clean --older-than 30d
 ```
 
 ```ansi
-[38;2;34;197;94m✓[0m [1mvx cache clean[0m  freed 95 MB
+[38;2;34;197;94m✓[0m [1mvx cache clean[0m  [38;2;203;213;225mfreed 95 MB[0m
 
   [38;2;203;213;225m15 entries[0m
 ```
@@ -2022,7 +2022,7 @@ vx cache clean --older-than 30d --dry
 ```
 
 ```ansi
-[38;2;6;182;212m›[0m [1mvx cache clean[0m  would free 95 MB (dry run)
+[38;2;6;182;212m›[0m [1mvx cache clean[0m  [38;2;203;213;225mwould free 95 MB (dry run)[0m
 
   [38;2;203;213;225m15 entries[0m
 ```
@@ -2184,7 +2184,7 @@ vx cache clean
 ```
 
 ```ansi
-[38;2;34;197;94m✓[0m [1mvx cache clean[0m  freed 472 KB
+[38;2;34;197;94m✓[0m [1mvx cache clean[0m  [38;2;203;213;225mfreed 472 KB[0m
 
   [38;2;203;213;225m.vx/cache[0m
   [38;2;203;213;225m/home/me/.vx/157e2c42758e0d27/cache[0m
@@ -2270,7 +2270,7 @@ vx lock
 ```
 
 ```ansi
-[38;2;34;197;94m✓[0m [1mvx lock[0m  2 project configs → .vx/projects.lock, .vx/dependencies.lock
+[38;2;34;197;94m✓[0m [1mvx lock[0m  [38;2;203;213;225m2 project configs → .vx/projects.lock, .vx/dependencies.lock[0m
 ```
 
 ```sh
@@ -2278,7 +2278,7 @@ vx lock --check
 ```
 
 ```ansi
-[38;2;34;197;94m✓[0m [1mvx lock --check[0m  up to date (2 projects)
+[38;2;34;197;94m✓[0m [1mvx lock --check[0m  [38;2;203;213;225mup to date (2 projects)[0m
 ```
 
 After an edit the lock has not seen:
@@ -2288,7 +2288,7 @@ vx lock --check
 ```
 
 ```ansi
-[38;2;239;68;68m✗[0m [1mvx lock --check[0m  packages/lib/vx.config.mjs evaluates differently from the lock here — its config, a file it imports, or the environment it reads changed; run 'vx lock'
+[38;2;239;68;68m✗[0m [1mvx lock --check[0m  [38;2;203;213;225mpackages/lib/vx.config.mjs evaluates differently from the lock here — its config, a file it imports, or the environment it reads changed; run 'vx lock'[0m
 
   [38;2;203;213;225mtasks.build.exec.command: "mkdir -p dist && cp src/index.ts dist/index.js" → "mkdir -p dist && cp -f src/index.ts dist/index.js"[0m
 ```
@@ -2702,7 +2702,7 @@ vx upgrade
 ```
 
 ```ansi
-[38;2;6;182;212m›[0m [1mvx upgrade[0m  0.0.658 → 0.0.659
+[38;2;6;182;212m›[0m [1mvx upgrade[0m  [38;2;203;213;225m0.0.658 → 0.0.659[0m
 
   [1mbun add @vzn/vx@0.0.659[0m[2m in /work/repo[0m
 ```

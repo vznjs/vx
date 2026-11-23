@@ -3169,7 +3169,7 @@ opens it on click), and the lines up to it with a caret under the field
 (`util/config-frame.ts`):
 
 ```ansi
-[38;2;239;68;68m✗[0m [1mvx lock[0m  lock not written
+[38;2;239;68;68m✗[0m [1mvx lock[0m  [38;2;203;213;225mlock not written[0m
 
   [1mpackages/app/vx.config.ts:6:15[0m
   [38;2;203;213;225mtasks.build.exec has unknown field "comand"[0m

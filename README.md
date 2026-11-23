@@ -31,8 +31,9 @@ In a git repo:
 bunx @vzn/vx init   # installs vx, writes an empty root vx.config.ts and the lockfile plugin
 ```
 
-A prebuilt binary for Linux (glibc, not Alpine's musl) and macOS, x64 and
-arm64. Windows: run vx inside WSL2.
+Needs [Bun](https://bun.com) 1.4.4 or later. A prebuilt binary for Linux
+(glibc, not Alpine's musl) and macOS, x64 and arm64. Windows: run vx
+inside WSL2.
 
 A task runs its tool directly, never through a package script. Cache one by
 saying what it reads and writes:
@@ -55,6 +56,7 @@ export default defineProject({
 ```
 
 ```sh
+vx lock               # saves the config; runs read only the lock
 vx run build --all    # builds, in dependency order; stores the results
 vx run build --all    # nothing changed: up-to-date, in milliseconds
 rm -rf packages/*/dist
