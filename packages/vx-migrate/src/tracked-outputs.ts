@@ -9,7 +9,7 @@
 
 import { lstat, readFile } from 'node:fs/promises'
 import path from 'node:path'
-import { isLiteralPattern, outputsOverlap } from '@vzn/vx'
+import { outputsOverlap } from '@vzn/vx'
 import { relPosix } from './paths.js'
 import type * as SharedOutputs from './shared-outputs.js'
 
@@ -318,41 +318,6 @@ export function spareTrackedOutputs(
   // Loaded here, on a remap only: a kept mapping's run never reads it.
   const { isKeyedGroup, unkey } = require('./shared-outputs.js') as typeof SharedOutputs
   const todos: [string, string][] = []
-  const trackedSet = new Set(tracked)
-  /**
-   * Drop the `!` entries readers carry for a committed file no output names
-   * any more — only where the reader runs after the writer: core refuses a
-   * key that reads another task's output it does not depend on (tamagui's
-   * `clean` beside `build`'s committed `tamagui.generated.css`: `vx lock`
-   * refused the whole workspace). A `^` edge is not followed: which packages
-   * it reaches is not known here, and keeping the `!` is the safe side.
-   */
-  const unhide = (
-    owner: (typeof projects)[number],
-    writer: (typeof owner.tasks)[number],
-    rooted: string,
-  ) => {
-    const after = runsAfter(owner, writer)
-    for (const q of projects) {
-      if (q !== owner) continue
-      const qrel = relPosix(root, q.dir)
-      for (const r of q.tasks) {
-        if (r !== writer && !after.has(r)) continue
-        const inputs = r.task?.['inputs'] as Outputs | undefined
-        if (inputs === undefined) continue
-        const own =
-          q === owner &&
-          Array.isArray(inputs.files) &&
-          (qrel === '' || rooted.startsWith(`${qrel}/`))
-            ? rooted.slice(qrel === '' ? 0 : qrel.length + 1)
-            : undefined
-        if (own !== undefined)
-          inputs.files = (inputs.files as unknown[]).filter((g) => g !== `!${own}`)
-        if (Array.isArray(inputs.workspaceFiles))
-          inputs.workspaceFiles = inputs.workspaceFiles.filter((g) => g !== `!${rooted}`)
-      }
-    }
-  }
   for (const p of projects) {
     const rel = relPosix(root, p.dir)
     const own = rel === '' ? tracked : filesUnder(tracked, rel).map((f) => f.slice(rel.length + 1))
@@ -367,14 +332,6 @@ export function spareTrackedOutputs(
         const globs = outputs[key]
         if (!Array.isArray(globs) || globs.length === 0) continue
         const strings = globs.filter((g): g is string => typeof g === 'string')
-        // An output naming one committed file (eslint's
-        // `eslint-suppressions.json`, a codegen's `gen.ts`) is also a
-        // source: the `!` a reader's inputs got for it goes, or every
-        // reader ran uncached (hono). The entry stays: dropped, a task
-        // that rewrites the file never saved.
-        const rootedOf = (g: string) => (key === 'files' && rel !== '' ? `${rel}/${g}` : g)
-        for (const g of strings)
-          if (isLiteralPattern(g) && trackedSet.has(rootedOf(g))) unhide(p, t, rootedOf(g))
         const hit = coveredTracked(strings, base)
         if (hit.length > 0) hits.push([key, hit])
       }
@@ -396,9 +353,14 @@ export function spareTrackedOutputs(
           return rel === '' ? bare : `${rel}/${bare}`
         }),
       ])
+      // A reader that runs after the writer keeps its `!` and its cache: its
+      // key folds the writer's, and core refuses a key that reads the
+      // outputs of a task it folds (tldraw's build after build-api's
+      // committed api-report.api.md: `vx lock` refused 17 packages).
+      const after = runsAfter(p, t)
       for (const q of projects) {
         for (const r of q.tasks) {
-          if (r === t) continue
+          if (r === t || (q === p && after.has(r))) continue
           const inputs = r.task?.['inputs'] as Outputs | undefined
           if (inputs === undefined) continue
           const f =

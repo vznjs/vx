@@ -720,6 +720,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'vx-migrate/migrate-turbo-drop-turbo',
     'vx-migrate/migrate-turbo-env-named',
     'vx-migrate/migrate-turbo-env-wildcard',
+    'vx-migrate/migrate-turbo-folded-tracked-output',
     'vx-migrate/migrate-turbo-framework-env',
     'vx-migrate/migrate-turbo-framework-prefix',
     'vx-migrate/migrate-turbo-lockfile-note',
