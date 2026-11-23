@@ -1,48 +1,303 @@
 ---
 title: Environment variables
-description: Pass variables to a task, and choose which ones its cache key sees.
+description: Give a task the variables it needs, and choose which ones re-run it.
 ---
 
-Past a small essential allowlist (below), a task sees only the variables
-you pass it.
+import { Aside } from '@astrojs/starlight/components'
+import { Levels, Deeper, Concept, Quiz, Walkthrough, Frame, Compare, Takeaway, NextStep } from '../../../components/learn'
+import EnvPicker from '../../../components/env/EnvPicker.astro'
 
-```ts title="packages/app/vx.config.ts"
+Your shell holds dozens of variables. A task gets almost none of them until you hand them over.
+
+```sh
+API_URL=https://api.demo.dev vx run test
+```
+
+<Levels />
+
+<Walkthrough title="One variable, four runs">
+<Frame title="1. The shell has API_URL. The test never sees it">
+
+`@demo/web` has a `vitest run` task. Its test reads `process.env.API_URL`.
+
+```ansi title="no exec.env yet"
+[2m$[0m API_URL=https://api.demo.dev vx run test
+
+[2m┌─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;96;165;250mtest[0m [2m>[0m $ vitest run
+ [31m❯[39m src/api.test.js [2m([22m[2m1 test[22m[2m | [22m[31m1 failed[39m[2m)[22m[32m 5[2mms[22m[39m
+[31m[1mTypeError[22m: .toMatch() expects to receive a string, but got undefined[39m
+[vx] API_URL is set in your environment, but this task does not get it: a task sees only the variables exec.env.passThrough and define name — add it to passThrough, and to inputs.env if the output depends on it
+[0m[2m└─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;96;165;250mtest[0m [2m──[0m [2m(381ms)[0m [1m[38;2;239;68;68mfailed (exit 1)[0m
+```
+
+Read the `[vx]` line: vx names the variable it held back, and the fix.
+
+</Frame>
+<Frame title="2. Pass it: the test passes">
+
+```ts title="packages/web/vx.config.ts" ins={1}
+exec: { command: 'vitest run', env: { passThrough: ['API_URL'] } },
+```
+
+```ansi title="with passThrough"
+[2m$[0m API_URL=https://api.demo.dev vx run test
+
+[2m┌─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;96;165;250mtest[0m [2m>[0m $ vitest run
+ [32m✓[39m src/api.test.js [2m([22m[2m1 test[22m[2m)[22m[32m 3[2mms[22m[39m
+[0m[2m└─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;96;165;250mtest[0m [2m──[0m [2m(410ms)[0m [2msuccess[0m
+```
+
+</Frame>
+<Frame title="3. Change the value: the old pass comes back">
+
+```ansi title="a staging URL, same key"
+[2m$[0m API_URL=http://staging.demo.dev vx run test
+
+[2m┌─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;96;165;250mtest[0m [2m>[0m $ vitest run
+ [32m✓[39m src/api.test.js [2m([22m[2m1 test[22m[2m)[22m[32m 3[2mms[22m[39m
+[0m[2m└─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;96;165;250mtest[0m [2m──[0m [2m(2ms)[0m [2mup-to-date[0m
+```
+
+**up-to-date**, yet the staging URL is `http:`. The key never saw `API_URL`, so vx replayed the old pass.
+
+</Frame>
+<Frame title="4. Key on it: a new value runs the test">
+
+```ts title="packages/web/vx.config.ts" ins={2}
+exec: { command: 'vitest run', env: { passThrough: ['API_URL'] } },
+inputs: { files: ['src/**'], env: ['API_URL'] },
+```
+
+```ansi title="with inputs.env"
+[2m$[0m API_URL=http://staging.demo.dev vx run test
+
+[2m┌─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;96;165;250mtest[0m [2m>[0m $ vitest run
+ [31m❯[39m src/api.test.js [2m([22m[2m1 test[22m[2m | [22m[31m1 failed[39m[2m)[22m[32m 6[2mms[22m[39m
+[31m[1mAssertionError[22m: API_URL: expected 'http://staging.demo.dev' to match /^https:/[39m
+[0m[2m└─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;96;165;250mtest[0m [2m──[0m [2m(412ms)[0m [1m[38;2;239;68;68mfailed (exit 1)[0m
+```
+
+The test ran, and caught the bad URL.
+
+</Frame>
+</Walkthrough>
+
+<Concept term="Environment variable">
+  A name with a text value that a program reads when it starts, like `API_URL=https://api.demo.dev`.
+  Your shell and your CI set them.
+</Concept>
+
+## Give a task a variable
+
+Past a small essential allowlist (below), a task sees only the variables you pass it.
+
+Name the variable in `exec.env.passThrough`. vx copies its value from your shell when the task starts:
+
+```ts title="packages/web/vx.config.ts" mark={7}
 import { defineProject } from '@vzn/vx/config'
 
 export default defineProject({
   tasks: {
-    build: {
+    test: {
       exec: {
-        command: 'vite build',
-        env: { passThrough: ['NODE_ENV', 'GH_TOKEN'], define: { MODE: 'production' } },
+        command: 'vitest run',
+        env: { passThrough: ['API_URL'] },
       },
-      inputs: { files: ['src/**'], env: ['NODE_ENV'] },
-      outputs: { files: ['dist/**'] },
+      inputs: { files: ['src/**'] },
+      outputs: { files: [] },
       cache: true,
     },
   },
 })
 ```
 
-Here `vite build` sees `NODE_ENV`, `GH_TOKEN` and `MODE`. The key sees
-`NODE_ENV` and `MODE`, so changing either re-runs the build; `GH_TOKEN`
-stays on this machine.
+`PATH`, `HOME`, `CI` and a few more reach every task without a word from you. The full list is under **Details**.
 
----
+<Takeaway>hand any shell or CI variable to a task by name.</Takeaway>
 
-## Which list to use
+## Re-run when a value changes
 
-| List                   | The command sees it | The key sees it | Use it for                                          |
-| ---------------------- | ------------------- | --------------- | --------------------------------------------------- |
-| `exec.env.passThrough` | yes                 | no              | secrets and CI flags (`GITHUB_ACTIONS`, `GH_TOKEN`); stays on this machine |
-| `inputs.env`     | no                  | yes             | with `passThrough`: a variable that changes the output |
-| `exec.env.define`      | yes                 | yes             | a literal value; a remote task gets it too          |
-| `exec.env.secret`      | —                   | —               | names whose values (6 characters or more) print as `***`; names holding `TOKEN`, `SECRET`, `KEY`, `PASSWORD`, `PASSWD`, `PASSPHRASE` or `CREDENTIAL`, or ending `_PASS`, are masked without it |
+<Concept term="Cache key">
+  A short code vx computes from everything a task reads. Same key, vx replays the stored result.
+  New key, the task runs. See [Caching](../caching/).
+</Concept>
 
----
+`passThrough` gives the value to the command. It does **not** put it in the key. Add the name to `inputs.env` and a new value means a new key:
 
-<details>
-<summary>What every task gets</summary>
+<Compare left="passThrough only" right="passThrough + inputs.env">
+<div slot="left">
+
+```ts
+exec: { command: 'vitest run', env: { passThrough: ['API_URL'] } },
+inputs: { files: ['src/**'] },
+```
+
+New `API_URL` → **up-to-date**, old result.
+
+</div>
+<div slot="right">
+
+```ts
+exec: { command: 'vitest run', env: { passThrough: ['API_URL'] } },
+inputs: { files: ['src/**'], env: ['API_URL'] },
+```
+
+New `API_URL` → the test **runs**.
+
+</div>
+</Compare>
+
+Why two lists? A token changes nothing a task makes. Keying on it would make every laptop and CI miss each other's cache.
+
+<Quiz q="GH_TOKEN lets a task download packages. Each machine has its own token. Which lists does it go in?">
+  `passThrough` only. The task needs it, but the files it makes are the same with any token. In
+  `inputs.env`, each machine would get its own key and never share a cache.
+</Quiz>
+
+<Takeaway>tell vx which variables change a task's result, so a new value never replays an old one.</Takeaway>
+
+## Write a value in the config
+
+A value that never changes between machines goes in `exec.env.define`. The command gets it, and the key sees it, because it is part of the config:
+
+```ts title="packages/web/vx.config.ts" mark={4}
+build: {
+  exec: {
+    command: 'vite build',
+    env: { define: { NODE_ENV: 'production' } },
+  },
+  inputs: { files: ['src/**', 'index.html'] },
+  outputs: { files: ['dist/**'] },
+  cache: true,
+},
+```
+
+Edit `'production'` and the next run builds again.
+
+<Takeaway>pin a variable to one value for every machine, with no shell setup.</Takeaway>
+
+## Hide a secret
+
+vx prints a secret's value as `***`, in the live output and in everything it stores:
+
+```ansi title="DEPLOY_TOKEN is masked by its name"
+[2m$[0m DEPLOY_TOKEN=tok_9f8e7d6c5b vx run deploy
+
+[2m┌─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;244;114;182mdeploy[0m [2m>[0m $ echo "uploading with $DEPLOY_TOKEN"
+uploading with ***
+[2m└─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;244;114;182mdeploy[0m [2m──[0m [2m(14ms)[0m [2msuccess[0m
+```
+
+The name holds `TOKEN`, so vx masks it with no setup. A secret named otherwise goes in `exec.env.secret`:
+
+```ts mark={2}
+exec: {
+  command: 'bunx wrangler deploy',
+  env: { passThrough: ['CF_API'], secret: ['CF_API'] },
+},
+```
+
+<Aside type="caution" title="Masking is for logs">
+  A task you pass a secret to can still read it. Pass a secret only to the task that needs it.
+</Aside>
+
+<Takeaway>pass tokens to a task without them landing in logs or the cache.</Takeaway>
+
+## Pick the right list
+
+| List                   | The command sees it | The key sees it | Use it for                                                    |
+| ---------------------- | ------------------- | --------------- | ------------------------------------------------------------- |
+| `exec.env.passThrough` | yes                 | no              | tokens and machine-specific values (`GH_TOKEN`, `API_URL`)    |
+| `inputs.env`           | no                  | yes             | with `passThrough`: a variable that changes the result        |
+| `exec.env.define`      | yes                 | yes             | a fixed value written in the config (`NODE_ENV: 'production'`) |
+| `exec.env.secret`      | —                   | —               | a secret whose name vx does not mask by itself                |
+
+Try it: type a variable and answer three questions. The config it needs appears below.
+
+<EnvPicker />
+
+<Takeaway>place any variable in the right list in a few seconds.</Takeaway>
+
+<Deeper level="patterns" title="Common setups">
+
+### A Vite public variable
+
+Vite writes `VITE_*` values into the bundle. Pass it **and** key on it, or a new URL ships the old bundle:
+
+```ts mark={1,2}
+exec: { command: 'vite build', env: { passThrough: ['VITE_API_URL'] } },
+inputs: { files: ['src/**', 'index.html'], env: ['VITE_API_URL'] },
+outputs: { files: ['dist/**'] },
+cache: true,
+```
+
+`vx lock` warns about a passed `VITE_`, `NEXT_PUBLIC_` or `NODE_ENV` variable that `inputs.env` leaves out.
+
+### A publish token
+
+A token changes no file the task makes. Pass it, do not key on it:
+
+```ts
+publish: {
+  dependsOn: ['build'],
+  exec: { command: 'bun publish', env: { passThrough: ['NPM_TOKEN'] } },
+},
+```
+
+`NPM_TOKEN` holds `TOKEN`, so its value prints as `***`.
+
+### One helper for both lists
+
+A config is TypeScript. A small function returns both lists:
+
+```ts title="packages/web/vx.config.ts"
+const keyed = (...names: string[]) => ({
+  exec: { command: 'vite build', env: { passThrough: names } },
+  inputs: { files: ['src/**', 'index.html'], env: names },
+})
+
+export default defineProject({
+  tasks: {
+    build: { ...keyed('VITE_API_URL', 'VITE_SENTRY_DSN'), outputs: { files: ['dist/**'] }, cache: true },
+  },
+})
+```
+
+### A setting for one run
+
+Every vx setting has a `VX_` variable. Set it for one command:
+
+```sh
+VX_RUN_CONCURRENCY=50% vx run test
+VX_CACHE_POLICY=local:rw,remote:r vx run build
+```
+
+A flag beats its variable. The variable beats `.vx/workspace.ts`.
+
+### Variables for a pipeline
+
+A [pipeline](../ci/) sets variables for vx and its plugins with `env`. Tasks do not see them:
+
+```ts title=".vx/workspace.ts" mark={9}
+import { defineWorkspace } from '@vzn/vx/config'
+import { dte } from '@vzn/vx-dte'
+
+export default defineWorkspace({
+  plugins: [dte()],
+  pipelines: {
+    ci: {
+      tasks: ['lint', 'test', 'build'],
+      env: { VX_DTE_RELAY: 'https://relay.example.com' },
+    },
+  },
+})
+```
+
+<Takeaway>set up public bundler values, publish tokens and per-run settings without guessing.</Takeaway>
+
+</Deeper>
+
+<Deeper level="details" title="What every task gets">
 
 Every task gets these variables, so everyday CLI tools work:
 
@@ -55,17 +310,175 @@ Every task gets these variables, so everyday CLI tools work:
 - `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `XDG_CACHE_HOME`, `XDG_STATE_HOME`,
   `XDG_RUNTIME_DIR`
 
+None of them is in the key: `PATH` and `HOME` differ on every machine. If one changes your output (`NODE_OPTIONS`, `LANG`), add it to `inputs.env`.
+
 vx also sets:
 
-| Variable | Value |
-| --- | --- |
-| `VX_RUN_WORKSPACE` | the workspace root |
-| `VX_RUN_TASK` | the `project#task` running |
-| `npm_execpath` | your package manager, so a tool that calls it back finds it |
+| Variable           | Value                                                                    |
+| ------------------ | ------------------------------------------------------------------------ |
+| `VX_RUN_WORKSPACE` | the workspace root                                                       |
+| `VX_RUN_TASK`      | the `project#task` running                                               |
+| `VX_RUN_TREE`      | a token per task, so a stop also ends a daemon the task started          |
+| `FORCE_COLOR`      | `1`, unless `FORCE_COLOR` or a non-empty `NO_COLOR` already reaches the task |
+| `npm_execpath`     | your package manager, so a tool that calls it back finds it              |
 
-The package's `node_modules/.bin` comes first on `PATH`. The variables
-vx itself reads are in [the CLI reference](../../cli/environment-variables/).
+A `vx run` inside a task of the same workspace is refused: use `dependsOn`. The package's own `node_modules/.bin`, then the workspace root's, come first on `PATH`.
 
-</details>
+Nothing else from your shell reaches a task. When a failed task's output names a variable your shell holds, vx prints the `[vx]` line from frame 1.
 
-See [`exec.env`](../../schema/) for every field.
+</Deeper>
+
+<Deeper level="details" title="Every field">
+
+### `exec.env.passThrough`
+
+Names copied from vx's environment when the task starts. Default `[]`. Not in the key.
+
+- Exact names only: `NEXT_PUBLIC_*` and `!NAME` are refused.
+- A shell variable name: letters, digits and `_`, not starting with a digit.
+- An unset name stays unset in the task.
+
+### `exec.env.define`
+
+Name and value pairs, both strings. Default `{}`. In the key, as part of the config.
+
+```ts
+env: { define: { NODE_ENV: 'production', TZ: 'UTC' } },
+```
+
+`define` beats `passThrough`, which beats the essential list. A task run on another machine gets the same values.
+
+### `exec.env.secret`
+
+Names whose values vx prints as `***`. Default `[]`. Exact names, no wildcard. Needed only for a name vx does not mask by itself (`GH_PAT`, `NPM_AUTH`).
+
+### `inputs.env`
+
+Names whose values go in the key. Default `[]`. It does not pass the value to the command.
+
+- Unset, empty and `'x'` are three different keys.
+- A value that is not valid UTF-8 fails the run, naming the variable, never its value.
+- `vx why` names a changed variable. A masked one shows as hashes.
+
+### `pipelines.<name>.env`
+
+Name and value pairs set before the pipeline's plugins start. For vx and plugins only: every task reads them as unset. A variable already set in your shell wins.
+
+### Where `***` appears
+
+A value is masked when its name holds `TOKEN`, `SECRET`, `KEY`, `PASSWORD`, `PASSWD`, `PASSPHRASE` or `CREDENTIAL`, ends in `_PASS`, or is in `exec.env.secret`.
+
+- Names ending `_FILE`, `_PATH` or `_DIR` are not masked by name.
+- A value shorter than 6 characters is not masked (`run.secrets.minLength`).
+- vx masks task output, the cached copy a hit replays, `vx show`, `vx why`, `vx last`, telemetry and error lines.
+
+Full rules: [the `exec` reference](../../schema/exec/).
+
+</Deeper>
+
+<Deeper level="details" title="Every VX_ variable">
+
+Each one sets one [workspace setting](../../schema/workspace/). An empty one is ignored. A bad value stops vx before any task runs:
+
+```ansi title="a value its setting does not take"
+[2m$[0m VX_RUN_TIMEOUT=soon vx run test
+[38;2;239;68;68m✗[0m [1mvx run[0m  [38;2;203;213;225mVX_RUN_TIMEOUT must be a duration like '500ms', '30s' or '5m', at most 24 days (got soon)[0m
+```
+
+**Run**
+
+| Variable                         | What it sets                                                       | Default                     |
+| -------------------------------- | ------------------------------------------------------------------ | --------------------------- |
+| `VX_RUN_CONCURRENCY`             | tasks at once: a number or `'50%'` of the cores                    | the cores vx may use        |
+| `VX_RUN_SCHEDULE`                | which ready task starts first                                      | `most-work`                 |
+| `VX_RUN_TIMEOUT`                 | a task's time limit when it has no `exec.timeout`; `--timeout` beats it              | none                        |
+| `VX_RUN_RETRIES`                 | re-runs of a failed task, for tasks without `exec.retries`         | `0`                         |
+| `VX_RUN_FAIL_FAST`               | stop everything at the first failure                               | `false`                     |
+| `VX_RUN_OUTPUT_LOGS`             | which task output prints: `full`, `errors-only`, `hash-only`, `none` | `errors-only` on CI       |
+| `VX_RUN_BRANCH`                  | the branch a run records in its history                            | git's branch                |
+| `VX_RUN_KILL_GRACE`              | time between SIGTERM and SIGKILL                                   | `2s`                        |
+| `VX_RUN_PLUGIN_TIMEOUT`          | how long a plugin may take to finish at the run's end              | `3s`                        |
+| `VX_RUN_LOGS_CAPTURE_HEAD`       | start of a task's output kept for replay                           | `8MiB`                      |
+| `VX_RUN_LOGS_CAPTURE_TAIL`       | end of a task's output kept for replay                             | `8MiB`                      |
+| `VX_RUN_LOGS_FAILED_HEAD`        | start of a failed attempt's output kept                            | `8KiB`                      |
+| `VX_RUN_LOGS_FAILED_TAIL`        | end of a failed attempt's output kept                              | `56KiB`                     |
+| `VX_RUN_SECRETS_MIN_LENGTH`      | shortest secret value vx masks                                     | `6`                         |
+| `VX_RUN_RULES_EXCLUSIVE_OUTPUTS` | refuse two tasks whose outputs overlap                             | `true`                      |
+
+**Cache**
+
+| Variable                        | What it sets                                                  | Default                      |
+| ------------------------------- | ------------------------------------------------------------- | ---------------------------- |
+| `VX_CACHE_DIR`                  | where the cache lives                                         | `.vx/cache`                  |
+| `VX_CACHE_POLICY`               | which caches a run reads and writes (`local:rw,remote:r`)     | every cache reads and writes |
+| `VX_CACHE_SCOPE`                | the branch a remote cache keeps entries under                 | the branch's                 |
+| `VX_CACHE_DOWNLOAD`             | which remote hits land on disk: `all`, `toplevel`, `none`     | `all`                        |
+| `VX_CACHE_CONCURRENCY_DOWNLOAD` | remote downloads at once                                      | 64 to 96, by cores           |
+| `VX_CACHE_CONCURRENCY_UPLOAD`   | uploads at once, per remote                                   | 64 to 96, by cores           |
+| `VX_CACHE_CONCURRENCY_RESTORE`  | local hits restoring at once                                  | twice `run.concurrency`      |
+| `VX_CACHE_STORE_EMBEDDINGS`     | largest entry kept inside the cache index                     | `32KiB`                      |
+| `VX_CACHE_STORE_DECOMPRESS`     | keep a larger entry as plain files                            | `true`                       |
+| `VX_CACHE_ARTIFACT_CEILING`     | largest entry a remote cache stores                           | `1GiB`                       |
+
+**Inputs, history, lock, watch**
+
+| Variable                       | What it sets                                                   | Default     |
+| ------------------------------ | -------------------------------------------------------------- | ----------- |
+| `VX_BASE_BRANCH`               | your main branch, for `--affected` and cache scope             | `origin/HEAD`'s branch |
+| `VX_AFFECTED_BASE`             | the commit a bare `--affected` compares with                   | merge base  |
+| `VX_INPUTS_STABILITY_STRATEGY` | what an input written during the command means for the save    | `immutable` |
+| `VX_INPUTS_STABILITY_SEVERITY` | whether a skipped save warns or fails the task                 | `warn`      |
+| `VX_HISTORY_RETENTION`         | run history `vx cache clean` keeps                             | `30d`       |
+| `VX_LOCK_REVIEW_FILES`         | `vx lock` writes `vx.lock.json` beside each config for review  | `true`      |
+| `VX_WATCH_POLL`                | `vx watch` polls instead of using the OS watcher               | `false`     |
+| `VX_WATCH_DEBOUNCE`            | wait after the last change before `vx watch` re-runs           | `150ms`     |
+| `VX_WATCH_POLL_INTERVAL`       | how often a polling `vx watch` looks                           | `250ms`     |
+| `VX_CONFIG_WORKER_TIMEOUT`     | how long one config may take to evaluate                       | `30s`       |
+
+**Debugging**
+
+| Variable            | What it does                                                       |
+| ------------------- | ------------------------------------------------------------------ |
+| `VX_DEBUG_TIMING`   | print the run's stage timings                                      |
+| `VX_DEBUG_WATCH`    | `vx watch` says each time it arms                                  |
+| `VX_DEBUG_DUMPABLE` | Linux: let strace or a debugger read vx                            |
+| `VX_DEBUG_STRACE`   | Linux: report a sandboxed task's refused reads with strace         |
+
+Flags, forms and every rule: [the CLI reference](../../cli/environment-variables/).
+
+</Deeper>
+
+<Deeper level="details" title="Plugin variables">
+
+| Variable                                   | Plugin                                           | What it does                                       |
+| ------------------------------------------ | ------------------------------------------------ | -------------------------------------------------- |
+| `VX_DTE_RUN`                               | [`@vzn/vx-dte`](../../plugins/vx-dte/)           | names the run and turns Distributed task execution on |
+| `VX_DTE_SECRET`                            | `@vzn/vx-dte`                                    | the key the run and its workers share              |
+| `VX_DTE_RELAY`                             | `@vzn/vx-dte`                                    | the relay's URL; beats the `relay` option          |
+| `VX_DTE_TOKEN`                             | `@vzn/vx-dte`                                    | the CI token the relay checks                      |
+| `VX_DTE_WORKER`                            | `@vzn/vx-dte`                                    | a worker's name, set by the run that starts it     |
+| `VX_DTE_SIZE`, `VX_DTE_SLOT`, `VX_DTE_PICK`, `VX_DTE_IDS`, `VX_DTE_SHA` | `@vzn/vx-dte` on GitLab | set by the run for each wave of workers |
+| `VX_CACHE_URL`                             | [`@vzn/vx-cache`](../../plugins/vx-cache/)       | the cache server's URL; stands in for `url`        |
+| `VX_CACHE_TOKEN`                           | `@vzn/vx-cache`                                  | GitLab: the CI token the cache server checks       |
+| `VX_HISTORY_URL`                           | [`@vzn/vx-history`](../../plugins/vx-history/)   | the history server's URL; stands in for `url`      |
+| `VX_HISTORY_TOKEN`                         | `@vzn/vx-history`                                | GitLab: the CI token the history server checks     |
+
+</Deeper>
+
+<Deeper level="details" title="Other variables vx reads">
+
+| Variable                                               | What vx does with it                                         |
+| ------------------------------------------------------ | ------------------------------------------------------------ |
+| `NO_COLOR`, `FORCE_COLOR`                              | turn vx's colours off or on                                  |
+| `CI`                                                   | a truthy value picks the CI output                           |
+| `GITHUB_ACTIONS`                                       | wraps each task's output in a collapsible group              |
+| `GITHUB_ACTIONS`, `GITLAB_CI`, `BUILDKITE`, `CIRCLECI` | names the CI provider in the run's history                   |
+| `CLAUDE_CODE_TMPDIR`, `CLAUDE_TMPDIR`                  | where a sandboxed task's temp folder goes                    |
+
+vx sets these for itself and removes them at start; do not set them: `VX_HANDED_OFF`, `VX_SIGNAL_RELAY`, `VX_JIT_TIERED`, `VX_IGNORED_SIGNALS`.
+
+</Deeper>
+
+<NextStep href="../sandboxing/" title="Sandboxing">
+  Prove what a task reads and writes, so a missing input or variable fails loudly instead of caching wrong.
+</NextStep>
