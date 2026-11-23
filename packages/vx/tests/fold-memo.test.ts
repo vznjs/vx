@@ -145,6 +145,33 @@ it('a committed edit, a dirty edit, an untracked input and a new declaration eac
   expect(await runs()).toBe(6)
 }, 120_000)
 
+// A tracked input rewritten at its size with its mtime set back (`cp -p`,
+// `tar -x`), then deleted and made again the same way (a new inode): git's
+// stats and the fold memo's probe must both see each.
+it('a tracked input rewritten or recreated with its size and mtime kept runs the task', async () => {
+  const x = path.join(pkg, 'src', 'x.txt')
+  await Bun.sleep(FILE_HASH_RACY_MS + 10)
+  build()
+  build()
+  expect(await runs()).toBe(1)
+  const { mtime } = statSync(x)
+  await writeFile(x, 'ONE\n')
+  utimesSync(x, mtime, mtime)
+  await Bun.sleep(FILE_HASH_RACY_MS + 10)
+  build()
+  expect(await runs()).toBe(2)
+  expect(await readFile(path.join(pkg, 'out.txt'), 'utf8')).toBe('ONE\n')
+  build()
+  expect(await runs()).toBe(2)
+  await rm(x)
+  await writeFile(x, 'One\n')
+  utimesSync(x, mtime, mtime)
+  await Bun.sleep(FILE_HASH_RACY_MS + 10)
+  build()
+  expect(await runs()).toBe(3)
+  expect(await readFile(path.join(pkg, 'out.txt'), 'utf8')).toBe('One\n')
+}, 60_000)
+
 it('a key read back from the memo reads no index OID', async () => {
   const silent: Logger = { status() {}, taskStdout() {}, taskStderr() {}, taskComplete() {} }
   expect((await run({ cwd: root, tasks: ['build'], log: silent })).ok).toBe(true)

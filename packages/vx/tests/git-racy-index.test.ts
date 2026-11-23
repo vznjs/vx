@@ -131,6 +131,26 @@ describe('a racily clean index', () => {
     expect(seen).toBe(true)
   })
 
+  // The copy is named by the real index's bytes, so a later run reads the
+  // same copy: an edit after it was refreshed, at the size and mtime kept,
+  // is still seen, by the ctime the copy recorded.
+  it('a reused copy still sees a same-size, mtime-keeping edit made after it', async () => {
+    checkout(true)
+    await startGitEnumeration(root, ['.'])
+    const made = copies()
+    expect(made).toHaveLength(1)
+    Bun.sleepSync(1000 - (Date.now() % 1000) + 5)
+    const file = path.join(root, 'f3.txt')
+    const { mtime } = statSync(file)
+    writeFileSync(file, 'x\n')
+    utimesSync(file, mtime, mtime)
+    const next = await startGitEnumeration(root, ['.'])
+    await checkBlobSizes(next)
+    expect(copies()).toEqual(made)
+    expect(next.changed).toEqual(['f3.txt'])
+    expect(next.trusted.has('f3.txt')).toBe(false)
+  })
+
   it('a clean index gets no copy', async () => {
     checkout(false)
     await startGitEnumeration(root, ['.'])
