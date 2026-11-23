@@ -31,6 +31,7 @@
   "history.unsafe.test.ts": 398,
   "init-lockfile-plugin.unsafe.test.ts": 531,
   "inputs-moved-sandbox.unsafe.test.ts": 668,
+  "kill-tree-escaped.unsafe.test.ts": 4000,
   "kill-tree-guard-lines.unsafe.test.ts": 202,
   "kill-tree-guard-zombie.unsafe.test.ts": 395,
   "kill-tree-proc.unsafe.test.ts": 225,
