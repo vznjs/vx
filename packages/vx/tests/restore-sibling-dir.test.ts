@@ -48,17 +48,23 @@ afterEach(async () => {
 const build = () =>
   run({ cwd: root, tasks: ['b'], projects: ['app'], log: quiet, handleSignals: false })
 
-// A staged tree's top directory under `.vx/tmp/<staging>/`.
+// The restore's staged `dist` (`.vx/tmp/<staging>/<n>/big.bin`): staged only
+// once the walk found `dist` missing, so a `dist` made now comes after it.
 const staged = (): boolean => {
   const tmp = path.join(root, '.vx', 'tmp')
-  if (!existsSync(tmp)) return false
-  return readdirSync(tmp).some((d) => {
-    try {
-      return readdirSync(path.join(tmp, d)).length > 0
-    } catch {
-      return false
-    }
-  })
+  try {
+    return readdirSync(tmp).some((d) => {
+      try {
+        return readdirSync(path.join(tmp, d)).some((n) =>
+          existsSync(path.join(tmp, d, n, 'big.bin')),
+        )
+      } catch {
+        return false
+      }
+    })
+  } catch {
+    return false
+  }
 }
 
 it('a directory a sibling made while the tree was staged is filled, not replaced', async () => {
@@ -67,9 +73,12 @@ it('a directory a sibling made while the tree was staged is filled, not replaced
   const dist = path.join(app, 'dist')
   let made: number | undefined
   const poll = setInterval(() => {
-    if (made === undefined && staged()) {
+    if (made !== undefined || !staged()) return
+    try {
       mkdirSync(dist)
       made = statSync(dist).ino
+    } catch {
+      // landed already: `made` stays unset and the test fails below
     }
   }, 0)
   const second = await build().finally(() => clearInterval(poll))
@@ -95,5 +104,8 @@ it('renameNew refuses a standing empty directory and leaves both trees', async (
     existsSync(path.join(root, 'from', 'f')),
   ]).toEqual(['EEXIST', ino, true])
   await renameNew(path.join(root, 'from'), path.join(root, 'new'))
+  // Any other refusal keeps its own code, read off errno.
+  const gone = await renameNew(path.join(root, 'from'), path.join(root, 'newer')).catch((e) => e)
+  expect(gone?.code).toBe('ENOENT')
   expect(existsSync(path.join(root, 'new', 'f'))).toBe(true)
 })

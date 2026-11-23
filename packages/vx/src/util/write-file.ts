@@ -1,3 +1,4 @@
+import { constants } from 'node:os'
 import { lstatSync, readlinkSync, realpathSync, unlinkSync, writeFileSync } from 'node:fs'
 import { lstat, mkdir, open, rename, rm } from 'node:fs/promises'
 import path from 'node:path'
@@ -204,51 +205,84 @@ export function ignoreDir(dir: string): void {
   }
 }
 
-type NoReplace = (from: Buffer, to: Buffer) => number
+interface NoReplace {
+  /** 0, or -1 with `errno()` set. */
+  call: (from: Buffer, to: Buffer) => number
+  errno: () => number
+}
 let noReplace: NoReplace | null | undefined
 
 function boundNoReplace(): NoReplace | null {
   if (noReplace !== undefined) return noReplace
   noReplace = null
   try {
-    const { dlopen, FFIType } = require('bun:ffi') as typeof import('bun:ffi')
+    const { dlopen, FFIType, read } = require('bun:ffi') as typeof import('bun:ffi')
+    const errnoAt = { args: [], returns: FFIType.ptr } as const
     if (process.platform === 'linux') {
       // glibc's soname; musl's loader answers any `libc.` name with itself.
-      const { renameat2 } = dlopen('libc.so.6', {
+      const { renameat2, __errno_location } = dlopen('libc.so.6', {
         renameat2: {
           args: [FFIType.i32, FFIType.ptr, FFIType.i32, FFIType.ptr, FFIType.u32],
           returns: FFIType.i32,
         },
+        __errno_location: errnoAt,
       }).symbols
-      // AT_FDCWD, RENAME_NOREPLACE
-      noReplace = (from, to) => renameat2(-100, from, -100, to, 1)
+      noReplace = {
+        // AT_FDCWD, RENAME_NOREPLACE
+        call: (from, to) => renameat2(-100, from, -100, to, 1),
+        errno: () => read.i32(__errno_location()!, 0),
+      }
     } else if (process.platform === 'darwin') {
-      const { renamex_np } = dlopen('/usr/lib/libSystem.B.dylib', {
+      const { renamex_np, __error } = dlopen('/usr/lib/libSystem.B.dylib', {
         renamex_np: { args: [FFIType.ptr, FFIType.ptr, FFIType.u32], returns: FFIType.i32 },
+        __error: errnoAt,
       }).symbols
-      // RENAME_EXCL
-      noReplace = (from, to) => renamex_np(from, to, 4)
+      noReplace = {
+        // RENAME_EXCL
+        call: (from, to) => renamex_np(from, to, 4),
+        errno: () => read.i32(__error()!, 0),
+      }
     }
   } catch {}
   return noReplace
 }
 
+const EEXIST = constants.errno.EEXIST
+const ENOTEMPTY = constants.errno.ENOTEMPTY
+// The call itself refused, by the filesystem (ZFS < 2.2, NFS, FUSE), the
+// kernel or a seccomp profile: not an answer about `to`.
+const UNSUPPORTED = new Set(
+  ['EINVAL', 'ENOSYS', 'ENOTSUP', 'EOPNOTSUPP', 'EPERM'].map(
+    (c) => (constants.errno as Record<string, number | undefined>)[c],
+  ),
+)
+
+const exists = (from: string, to: string): Error =>
+  Object.assign(new Error(`EEXIST: file already exists, rename '${from}' -> '${to}'`), {
+    code: 'EEXIST',
+  })
+
 /**
- * Rename `from` to `to` only where nothing stands at `to`; EEXIST otherwise.
+ * Rename the directory `from` to `to` only where nothing stands at `to`;
+ * EEXIST otherwise.
  * rename(2) replaces an EMPTY directory: a sibling task's fresh `mkdir -p
  * dist` was swapped for a restored tree, and its write into the directory it
- * had just resolved failed ENOENT.
+ * had just resolved failed ENOENT. Where no-replace cannot be asked, `to` is
+ * made as a directory and EEXIST thrown, so the caller fills it in place:
+ * slower, never a clobber.
  */
 export async function renameNew(from: string, to: string): Promise<void> {
-  const call = boundNoReplace()
-  if (call !== null) {
-    if (call(Buffer.from(`${from}\0`), Buffer.from(`${to}\0`)) === 0) return
-    if (lstatSync(to, { throwIfNoEntry: false }) !== undefined) {
-      throw Object.assign(new Error(`EEXIST: file already exists, rename '${from}' -> '${to}'`), {
-        code: 'EEXIST',
-      })
+  const nr = boundNoReplace()
+  if (nr !== null) {
+    if (nr.call(Buffer.from(`${from}\0`), Buffer.from(`${to}\0`)) === 0) return
+    const errno = nr.errno()
+    if (errno === EEXIST || errno === ENOTEMPTY) throw exists(from, to)
+    // ENOENT, EXDEV, EACCES and the rest: rename names them as node does.
+    if (!UNSUPPORTED.has(errno)) {
+      await rename(from, to)
+      return
     }
   }
-  // No call, or one the filesystem refused (EINVAL): rename names the error.
-  await rename(from, to)
+  await mkdir(to)
+  throw exists(from, to)
 }
