@@ -26,7 +26,7 @@
         "properties": {
           "code": {
             "type": "string",
-            "description": "Stable; branch on it, as schemas/error.json's: VX_E_LOCK for drift `vx lock` fixes (a missing lock is one), VX_E_CONFIG for a config that does not load or holds a secret, VX_E_REFUSED for a plugin hook that failed, and a graph rule's own (VX_E_CYCLE, VX_E_DEPENDS_ON, VX_E_OUTPUT_OVERLAP, \u2026)"
+            "description": "Stable; branch on it, as schemas/error.json's: VX_E_LOCK for drift `vx lock` fixes (a missing lock is one), VX_E_CONFIG for a config that does not load or holds a secret, VX_E_REFUSED for another refusal (a plugin hook that failed, two projects of one name), and a graph rule's own (VX_E_CYCLE, VX_E_DEPENDS_ON, VX_E_OUTPUT_OVERLAP, \u2026)"
           },
           "message": {
             "type": "string",
