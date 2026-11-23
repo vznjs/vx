@@ -5,7 +5,12 @@
         "^build"
       ]
     },
-    "check.perf": {
+    "perf": {
+      "dependsOn": [
+        "perf.bench"
+      ]
+    },
+    "perf.bench": {
       "description": "perf-guard.ts then pr-bench.ts: hot-path counts, and vx against the base commit and every rival",
       "dependsOn": [
         "install"
@@ -245,7 +250,7 @@
         }
       }
     },
-    "site.numbers": {
+    "bench.site": {
       "description": "every runner of the head-to-head, the rows the site reads",
       "dependsOn": [
         "@vzn/vx-bench#bench.vx",
@@ -256,8 +261,7 @@
     },
     "lint": {
       "dependsOn": [
-        "lint.oxlint",
-        "lint.oxfmt"
+        "lint.*"
       ]
     },
     "lint.oxlint": {
@@ -323,6 +327,11 @@
       "cache": true
     },
     "test": {
+      "dependsOn": [
+        "test.*"
+      ]
+    },
+    "test.bun": {
       "description": "bun test",
       "exec": {
         "command": "bun test --only-failures --timeout=30000",

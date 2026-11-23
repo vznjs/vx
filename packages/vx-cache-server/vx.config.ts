@@ -13,7 +13,7 @@ export default defineProject({
     },
 
     lint: {
-      dependsOn: ['lint.oxlint', 'lint.oxfmt'],
+      dependsOn: ['lint.*'],
     },
 
     'lint.oxlint': {
@@ -45,6 +45,10 @@ export default defineProject({
     },
 
     test: {
+      dependsOn: ['test.*'],
+    },
+
+    'test.bun': {
       description: 'bun test',
       exec: {
         command: 'bun test --only-failures --timeout=30000',
@@ -72,7 +76,7 @@ export default defineProject({
       cache: true,
     },
 
-    'test.live': {
+    'test.docker': {
       description: 'docker build, then the conformance suite through the container',
       exec: { command: 'sh tests/docker/smoke.sh' },
       dependsOn: ['install'],

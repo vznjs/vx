@@ -31,11 +31,18 @@ const unescape = (s: string): string =>
     .replace(/&gt;/g, '>')
     .replace(/&amp;/g, '&')
 
+// Each case's rows, read in one pass: looking each of 2,000 cases up in
+// the 2 MB page took the suite past bun's 5 s default (2026-11-22).
+const ROWS = new Map<string, { at: number; rows: string[] }>()
+for (const m of html.matchAll(/data-case="([^"]+)"/g)) {
+  const entry = ROWS.get(m[1]!) ?? { at: m.index, rows: [] }
+  entry.rows.push(html.slice(m.index, html.indexOf('</tr>', m.index)))
+  ROWS.set(m[1]!, entry)
+}
+
 /** A case's row: its `<tr>` to the next. */
 function row(id: string): string {
-  const start = html.indexOf(`data-case="${id}"`)
-  if (start < 0) return ''
-  return html.slice(start, html.indexOf('</tr>', start))
+  return ROWS.get(id)?.rows[0] ?? ''
 }
 
 /** Each tool's cell in a row, as [tool, status, inner HTML]. */
@@ -57,14 +64,11 @@ describe('the conformance page', () => {
   it('shows every case once, in its category, with each tool’s outcome', () => {
     const wrong: string[] = []
     for (const c of RESULTS.cases) {
-      if (html.split(`data-case="${c.id}"`).length !== 2) {
+      if (ROWS.get(c.id)?.rows.length !== 1) {
         wrong.push(`${c.id}: not shown once`)
         continue
       }
-      const section = html.lastIndexOf(
-        '<details class="cfm-cat" id="',
-        html.indexOf(`data-case="${c.id}"`),
-      )
+      const section = html.lastIndexOf('<details class="cfm-cat" id="', ROWS.get(c.id)!.at)
       if (!html.startsWith(`<details class="cfm-cat" id="${c.category}"`, section))
         wrong.push(`${c.id}: not under ${c.category}`)
       const got = cells(row(c.id)).map(([t, s]) => [t, s])

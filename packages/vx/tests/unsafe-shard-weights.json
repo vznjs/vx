@@ -155,5 +155,7 @@
   "ui-only-output.unsafe.test.ts": 127,
   "unscoped-vx.unsafe.test.ts": 220,
   "upstream-ledger.unsafe.test.ts": 27,
+  "user-journey.unsafe.test.ts": 7200,
+  "ci-journey.unsafe.test.ts": 3500,
   "workflow-runner.unsafe.test.ts": 157
 }

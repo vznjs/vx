@@ -47,7 +47,7 @@ export default defineProject({
     },
 
     lint: {
-      dependsOn: ['lint.oxlint', 'lint.oxfmt'],
+      dependsOn: ['lint.*'],
     },
 
     'lint.oxlint': {
@@ -77,6 +77,10 @@ export default defineProject({
     // The harness's own tests: the sandbox holds, the checks judge right,
     // and every test file in the repo is in the inventory.
     test: {
+      dependsOn: ['test.*'],
+    },
+
+    'test.bun': {
       description: 'bun test',
       exec: {
         command: 'bun test --only-failures --timeout=30000',

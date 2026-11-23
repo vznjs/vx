@@ -125,10 +125,12 @@ export default defineProject({
     },
 
     test: {
-      dependsOn: ['test.shard-*'],
+      dependsOn: ['test.*'],
     },
 
-    ...Object.fromEntries(SHARDS.map((files, k) => [`test.shard-${k + 1}`, shard(k + 1, files)])),
+    ...Object.fromEntries(
+      SHARDS.map((files, k) => [`test.bun.shard-${k + 1}`, shard(k + 1, files)]),
+    ),
 
     // Only the files that dial a real server (`*-e2e.test.ts`); `test` runs
     // every file, these in skip mode. It brings its servers: on a
@@ -136,9 +138,10 @@ export default defineProject({
     // servers are images (`bazel-remote:latest`) the key cannot see. No
     // sandbox, for `test`'s reason. Both require flags: a skip is a silent
     // pass, and these suites are the only proof the two wires work.
-    'test.live': {
-      description: 'bun test, the live REAPI files, against services.cache and services.exec',
-      dependsOn: ['install', 'services.cache', 'services.exec'],
+    'test.bun.live': {
+      description:
+        'bun test, the live REAPI files, against the bazel-remote and NativeLink services',
+      dependsOn: ['install', 'test.bun.live.cache', 'test.bun.live.exec'],
       exec: {
         command:
           'for f in tests/*-e2e.test.ts; do echo "== $f"; bun test --only-failures "$f" --timeout 90000 || exit 1; done',
@@ -156,9 +159,9 @@ export default defineProject({
       },
     },
 
-    // test.live's servers, in the foreground: the run stops them when it
+    // test.bun.live's servers, in the foreground: the run stops them when it
     // is done. No sandbox: they reach the Docker daemon.
-    'services.cache': {
+    'test.bun.live.cache': {
       description: 'bazel-remote (REAPI cache) on :19092',
       exec: {
         command: 'sh tests/helpers/bazel-remote.sh',
@@ -167,7 +170,7 @@ export default defineProject({
       inputs: { files: ['tests/helpers/bazel-remote.sh'] },
     },
 
-    'services.exec': {
+    'test.bun.live.exec': {
       description: 'NativeLink (REAPI execution) on :51051',
       exec: {
         command: 'sh tests/helpers/nativelink.sh',
@@ -177,7 +180,7 @@ export default defineProject({
     },
 
     lint: {
-      dependsOn: ['lint.oxlint', 'lint.oxfmt'],
+      dependsOn: ['lint.*'],
     },
 
     'lint.oxlint': {

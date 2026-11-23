@@ -67,7 +67,10 @@ e2e: {
 },
 ```
 
-A fully cached `vx run e2e` does not start the server. Its write grants
-must miss `e2e`'s inputs for that: `node_modules/.vite/` does.
+A fully cached `vx run e2e` starts no server here: its one write grant,
+`node_modules/.vite/`, misses `e2e`'s inputs.
+
+An unsandboxed server may write anywhere in its project, so a cached
+`e2e` beside it still starts it. From another project, it does not.
 
 To re-run tasks as files change, see [`vx watch`](../../cli/watch/).

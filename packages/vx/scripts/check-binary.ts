@@ -7,7 +7,7 @@
 //
 // One host binary, not four cross targets: what a dependant needs from
 // core is its SOURCE, so `build` is not a task core has — the four
-// release targets are `build.bun.*`, and the gate proves the one it can
+// release targets are `compile.bun.*`, and the gate proves the one it can
 // run. The output lives under dist/check-binary/, apart from theirs.
 //
 // Then the config worker, which is why its source is an inline string
@@ -34,7 +34,7 @@ import { LOCKFILE_VERSION } from '../src/workspace/index.ts'
 
 const root = path.resolve(import.meta.dir, '..')
 const host = `${process.platform === 'darwin' ? 'darwin' : 'linux'}-${process.arch === 'arm64' ? 'arm64' : 'x64'}`
-// Not dist/vx-<host>: `release` runs build.bun.<host> beside this on one
+// Not dist/vx-<host>: `release` runs compile.bun.<host> beside this on one
 // worker, and its compile rewrote the file this was launching (EACCES).
 const out = path.join(root, 'dist', 'check-binary', `vx-${host}`)
 

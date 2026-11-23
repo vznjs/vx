@@ -1,5 +1,5 @@
 // Bun's transpiler cache writes under HOME, which a sandbox does not grant:
-// check.perf's run of perf-guard.ts was refused that write (2026-10-22).
+// perf.bench's run of perf-guard.ts was refused that write (2026-10-22).
 import { expect, it } from 'bun:test'
 import config from '../vx.config.ts'
 

@@ -43,10 +43,14 @@ export const turbo: Adapter = {
     const ws = optionalAsOutputs(given)
     // Turbo names the root package `//`.
     const rootName = Object.entries(ws.projects).find(([n, p]) => projectDir(n, p) === '.')?.[0]
+    // A workspace that is only its root package is Turborepo's single-package
+    // mode: tasks there are plain names, never `//#task`.
+    const single = rootName !== undefined && Object.keys(ws.projects).length === 1
     const id = (name: string) => (name === rootName ? '//' : name)
+    const key = (name: string, t: string) => (single ? t : `${id(name)}#${t}`)
     const dep = (d: string) => {
       const at = d.indexOf('#')
-      return at > 0 ? `${id(d.slice(0, at))}${d.slice(at)}` : d
+      return at > 0 ? key(d.slice(0, at), d.slice(at + 1)) : d
     }
     const tasks: Record<string, unknown> = {}
     for (const [name, p] of Object.entries(ws.projects)) {
@@ -63,7 +67,7 @@ export const turbo: Adapter = {
         const outputs = spec.rootOutputs
           ? [...(spec.outputs ?? []), ...spec.rootOutputs.map(fromRoot)]
           : spec.outputs
-        tasks[`${id(name)}#${t}`] = {
+        tasks[key(name, t)] = {
           dependsOn: (spec.dependsOn ?? []).map(dep),
           ...(inputs ? { inputs } : {}),
           ...(spec.env ? { env: spec.env } : {}),
@@ -90,7 +94,10 @@ export const turbo: Adapter = {
     ...(opts.also ?? []),
     '--ui=stream',
     '--summarize',
-    ...(opts.select ? opts.select.map(pnpmFilter) : (projects ?? [])).map((f) => `--filter=${f}`),
+    ...(opts.select
+      ? opts.select.map((s) => pnpmFilter(s.name === opts.root ? { ...s, name: '//' } : s))
+      : (projects ?? []).map((p) => (p === opts.root ? '//' : p))
+    ).map((f) => `--filter=${f}`),
     ...(opts.only ? ['--only'] : []),
     ...(opts.concurrency !== undefined ? [`--concurrency=${opts.concurrency}`] : []),
     ...(opts.continue ? ['--continue=always'] : []),

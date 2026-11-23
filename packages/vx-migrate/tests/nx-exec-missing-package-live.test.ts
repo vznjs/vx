@@ -8,7 +8,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'nx-exec.cjs')
 const RELATIVE = process.env['VX_NX_MODULES']
-// Relative to the package: `test.live` names `.nx-live`.
+// Relative to the package: `test.bun.live` names `.nx-live`.
 const MODULES = RELATIVE && path.resolve(RELATIVE)
 if (process.env['VX_REQUIRE_NX'] === '1' && !MODULES) {
   throw new Error('VX_REQUIRE_NX=1 but VX_NX_MODULES is unset — the live nx-exec suite cannot run')

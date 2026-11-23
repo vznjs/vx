@@ -13,7 +13,7 @@ export default defineProject({
     },
 
     lint: {
-      dependsOn: ['lint.oxlint', 'lint.oxfmt'],
+      dependsOn: ['lint.*'],
     },
 
     'lint.oxlint': {
@@ -45,6 +45,10 @@ export default defineProject({
     },
 
     test: {
+      dependsOn: ['test.*'],
+    },
+
+    'test.bun': {
       description: 'bun test',
       exec: {
         command: 'bun test --only-failures --timeout=30000',
@@ -75,7 +79,7 @@ export default defineProject({
     // The image `docker run` serves, built, carrying one run both ways,
     // passing the conformance suite and stopping cleanly.
     // No sandbox: it reaches the Docker daemon.
-    'test.live': {
+    'test.docker': {
       description: 'docker build, then one run and the conformance suite through the container',
       exec: { command: 'sh tests/docker/smoke.sh' },
       dependsOn: ['install'],

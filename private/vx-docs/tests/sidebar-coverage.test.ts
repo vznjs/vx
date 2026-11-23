@@ -72,14 +72,14 @@ describe('docs site sidebar coverage', () => {
   // A hit on `import` restores only its declared outputs, so a generated
   // page the list leaves out is gone from the site after a hit (five were,
   // 2026-10-07: the link and sidebar pins went red on a restored import).
-  it("import's outputs are exactly the .gitignore manifest", () => {
+  it("build.import's outputs are exactly the .gitignore manifest", () => {
     const ignored = readFileSync(path.join(SITE, '.gitignore'), 'utf8')
       .split('\n')
       .map((l) => l.trim())
       .filter((l) => l.startsWith('/src/content/docs/'))
       .map((l) => l.slice(1).replace(/\/$/, '/**'))
       .sort()
-    const outputs = config.tasks?.import?.outputs?.files ?? []
+    const outputs = config.tasks?.['build.import']?.outputs?.files ?? []
     expect([...outputs].sort()).toEqual(ignored)
   })
 

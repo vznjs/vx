@@ -339,16 +339,19 @@ it('every file that reads the rows of hits writes kept ones out first', () => {
 
 // A compiled vx carries only the entry points its build names: a thread
 // started from a file of its own must be named in each binary build.
-it('starts no thread from a file the binary builds do not name', () => {
+it('starts no thread from a file the binary builds do not name', async () => {
   const pkg = path.join(import.meta.dir, '..')
   const entries = [...new Bun.Glob('src/**/*.ts').scanSync({ cwd: pkg })].flatMap((file) =>
     [
       ...readFileSync(path.join(pkg, file), 'utf8').matchAll(/new Worker\(new URL\('\.\/([^']+)'/g),
     ].map((m) => path.join(path.dirname(file), m[1]!)),
   )
-  const builds = [
-    ...readFileSync(path.join(pkg, 'vx.config.ts'), 'utf8').matchAll(/'bun build --compile[^']*'/g),
-  ].map((m) => m[0])
+  const { default: config } = (await import(path.join(pkg, 'vx.config.ts'))) as {
+    default: { tasks: Record<string, { exec?: { command?: string } }> }
+  }
+  const builds = Object.entries(config.tasks)
+    .filter(([name]) => name.startsWith('compile.bun.'))
+    .map(([, t]) => t.exec!.command!)
   expect(builds.length).toBe(4)
   for (const entry of entries) expect(builds.filter((b) => !b.includes(` ${entry} `))).toEqual([])
 })

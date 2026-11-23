@@ -1,7 +1,7 @@
 name: Release assets
 
 # Dispatched by auto-release.yml with the tag it just created (or by hand,
-# for a draft release a maintainer made). Runs `vx run build.bun` (which
+# for a draft release a maintainer made). Runs `vx run compile` (which
 # fans out to one task per target with per-binary caching), then attaches
 # the four vx-<target> binaries (for the curl installer + `vx upgrade`)
 # to the release. This repo's releases are immutable: assets attach only
@@ -10,7 +10,7 @@ name: Release assets
 # fire only once the release can no longer take assets.
 # A manual release's body is the maintainer's; an auto-release's is its
 # release post (packages/vx/scripts/release-notes.ts), kept current by
-# release.sync in ci.yml's Linux run on main.
+# deploy.releases in ci.yml's Linux run on main.
 
 on:
   workflow_dispatch:
@@ -75,12 +75,12 @@ jobs:
       # Ephemeral (CI only); sign-darwin proves it took.
       - run: bun packages/vx/src/bin.ts run release.stamp --filter @vzn/vx
 
-      # Dogfood: `build.bun` fans out to `build.bun.<target>` (four
+      # Dogfood: `compile` fans out to `compile.bun.<target>` (four
       # compiles). Each sub-task is individually cached, so re-running this
       # workflow on the same commit is essentially free. --concurrency 2:
       # concurrent `--compile --minify --bytecode` builds OOM a 7 GB runner
       # (this workflow OOM'd before with only four).
-      - run: bun packages/vx/src/bin.ts run build.bun --filter @vzn/vx --concurrency 2
+      - run: bun packages/vx/src/bin.ts run compile --filter @vzn/vx --concurrency 2
 
       # The darwin binaries are proven on macOS before they ship. Bun
       # 1.4.0's `--compile` wrote an ad-hoc signature that macOS rejects

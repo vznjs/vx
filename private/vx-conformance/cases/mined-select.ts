@@ -1382,11 +1382,6 @@ export default [
       },
     ],
   }),
-] satisfies Case[]
-
-// vx warns and runs ui: a selector that matches nothing beside one that matches
-// is a warning by design (docs/cli.md), where Turborepo refuses any unknown name.
-export const pending: Case[] = [
   // select.test.ts: 'the refusal names only the filters that matched nothing'
   refuses({
     slug: 'select-typo-beside-a-match-refused',
@@ -1396,4 +1391,6 @@ export const pending: Case[] = [
     all: CHAIN,
     select: [{ name: 'ui' }, { name: 'nope' }],
   }),
-]
+] satisfies Case[]
+
+export const pending: Case[] = []

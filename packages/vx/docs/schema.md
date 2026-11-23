@@ -658,8 +658,9 @@ the run went on`), so a dependant failing against it reads why, with the line a 
   persistent tasks you requested, those a requested group stands for,
   and the persistent tasks they depend on: vx stays up after the summary
   until one of them exits or you press Ctrl-C, streaming what they write.
-  A run where anything else failed keeps none and exits 1 (`cli.md`
-  § Output, "Pinned persistent tasks").
+  A failure elsewhere skips only its dependants: the rest stay up, and
+  the run exits 1 when the session ends (`--fail-fast` stops them at
+  the first failure; `cli.md` § Output, "Pinned persistent tasks").
 - **`cache` is rejected.** The config loader throws on
   `cache + persistent` — persistent tasks don't terminate, so there's
   no exit code to cache and no outputs to capture at a well-defined
@@ -1393,6 +1394,10 @@ folded. Defaults:
 
 - **Omitted** → all upstream contribute (`['*', '^*']`). Most common.
 - **`[]`** → fully decoupled; no upstream contributes.
+
+`--affected` follows the same selection: a change reaches a task through a
+dependency only when its key folds that dependency, so with `[]` a change
+upstream selects the task no more than it would move its key.
 
 A list of **only negations** (`['!gen']`) is refused at load, as a
 negation-only `inputs.files` is: the selection starts empty and a `!`
@@ -3259,21 +3264,23 @@ is no object (Turbo's `cache: false`) and a `persistent` that is none
 
 Project-discovery errors (`src/workspace/workspace.ts`, `src/orchestrator/projects.ts`):
 
-| Symptom                                                                                                              | Cause                                                                                                       |
-| -------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `two projects are named "<name>": <dir> and <dir> — give one another \`name\` in its vx.config`                      | Two directories got one name: a config's `name`, a plugin's, or the path.                                   |
-| `<dir>: a project is named by its path unless named, and this one holds "#" …`                                       | A path no task spec can address: set `name` in its config.                                                  |
-| `<dir>: the directory's name is not valid UTF-8, which no project path may hold — rename it`                         | A project directory's name has bytes UTF-8 cannot decode, shown as `\xNN`.                                  |
-| `<dir>: "//" names the workspace root — set another \`name\``                                                        | A config away from the root says `name: '//'`.                                                              |
-| `.vx/projects.lock locks <dir>, but its <file> is gone — run \`vx lock\``                                            | A locked project's config was deleted or renamed (X-144).                                                   |
-| `.vx/projects.lock locks <dir>, but its <file> is not readable by this user (<code>)`                                | This user may not search the project's directory (D-132).                                                   |
-| `.vx/projects.lock has unsupported version <n> (this vx expects 8) — re-run \`vx lock\``                             | A lock an earlier vx wrote.                                                                                 |
-| `.vx/projects.lock was written by a newer vx (version <n>; this vx reads 8) — upgrade vx`                            | A lock a later vx wrote: re-locking would write the older version.                                          |
-| `<dir> is outside this sparse checkout, so vx lock cannot read its <file> — run \`git sparse-checkout add <dir>\``   | `vx lock` or `--check` where a sparse checkout left a config out.                                           |
-| `.vx/projects.lock: no task #<id> — re-run \`vx lock\``                                                              | A hand-edited lock names a task line it does not hold.                                                      |
-| `.vx/projects.lock holds a line \`vx lock\` never writes — re-run \`vx lock\``                                       | A line with no tab, a name twice, or a merge's conflict markers.                                            |
-| `plugin '<name>' adds project <p>, but git ignores <file>, so \`vx lock\` cannot read it — unignore it or delete it` | A `discover` plugin's directory holds a config git ignores: `vx lock`, `--check` and a run naming its task. |
-| `git ls-files failed (exit <n>): <why>`                                                                              | `vx lock` could not list the configs (a torn index).                                                        |
+| Symptom                                                                                                              | Cause                                                                                                                               |
+| -------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `two projects are named "<name>": <dir> and <dir> — give one another \`name\` in its vx.config`                      | Two directories got one name: a config's `name`, a plugin's, or the path.                                                           |
+| `<dir>: a project is named by its path unless named, and this one holds "#" …`                                       | A path no task spec can address: set `name` in its config.                                                                          |
+| `<dir>: the directory's name is not valid UTF-8, which no project path may hold — rename it`                         | A project directory's name has bytes UTF-8 cannot decode, shown as `\xNN`.                                                          |
+| `<dir>: "//" names the workspace root — set another \`name\``                                                        | A config away from the root says `name: '//'`.                                                                                      |
+| `.vx/projects.lock locks <dir>, but its <file> is gone — run \`vx lock\``                                            | A locked project's config was deleted or renamed (X-144).                                                                           |
+| `.vx/projects.lock locks <dir>, but its <file> is not readable by this user (<code>)`                                | This user may not search the project's directory (D-132).                                                                           |
+| `.vx/projects.lock has unsupported version <n> (this vx expects 8) — re-run \`vx lock\``                             | A lock an earlier vx wrote.                                                                                                         |
+| `.vx/dependencies.lock has unsupported version <n> (this vx expects 5) — re-run \`vx lock\``                         | A dependencies lock an earlier vx wrote.                                                                                            |
+| `.vx/projects.lock was written by a newer vx (version <n>; this vx reads 8) — upgrade vx`                            | A lock a later vx wrote: re-locking would write the older version.                                                                  |
+| `<dir> is outside this sparse checkout, so vx lock cannot read its <file> — run \`git sparse-checkout add <dir>\``   | `vx lock` or `--check` where a sparse checkout left a config out.                                                                   |
+| `.vx/projects.lock: no task #<id> — re-run \`vx lock\``                                                              | A hand-edited lock names a task line it does not hold.                                                                              |
+| `.vx/projects.lock holds a line \`vx lock\` never writes — re-run \`vx lock\``                                       | A line with no tab, or a name twice.                                                                                                |
+| `<lock> holds a git merge conflict: run \`vx lock\`, which writes it anew from the configs`                          | A merge left conflict markers in `.vx/projects.lock` or `.vx/dependencies.lock`: resolve the configs and manifests, then `vx lock`. |
+| `plugin '<name>' adds project <p>, but git ignores <file>, so \`vx lock\` cannot read it — unignore it or delete it` | A `discover` plugin's directory holds a config git ignores: `vx lock`, `--check` and a run naming its task.                         |
+| `git ls-files failed (exit <n>): <why>`                                                                              | `vx lock` could not list the configs (a torn index).                                                                                |
 
 Core reads no `package.json` or `pnpm-workspace.yaml`; the errors reading them are `@vzn/vx-migrate`'s (its README, "Errors reading the members").
 

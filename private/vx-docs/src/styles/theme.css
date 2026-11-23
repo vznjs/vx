@@ -287,3 +287,23 @@ pre.mermaid svg {
 .sl-markdown-content .sl-anchor-link {
   display: none;
 }
+
+/* Starlight's phone menu button wears the same square outline as the menu on
+   pages with no sidebar (components/MobileMenu.astro), so the header's
+   corner looks the same on every page. */
+:root {
+  --sl-menu-button-size: 40px;
+}
+.sl-menu-button,
+:root[data-theme='light'] .sl-menu-button {
+  border: 1px solid var(--sl-color-hairline);
+  border-radius: 8px;
+  padding: 9px;
+  background-color: transparent;
+  color: var(--sl-color-white);
+  box-shadow: none;
+}
+.sl-menu-button:has(~ :popover-open),
+:root[data-theme='light'] .sl-menu-button:has(~ :popover-open) {
+  background-color: var(--sl-color-gray-6);
+}

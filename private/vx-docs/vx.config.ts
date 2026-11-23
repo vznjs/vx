@@ -19,7 +19,7 @@ const PROOFS = [
 const REAL_ROWS = 'private/vx-bench/real-repos.json'
 const REAL_ROWS_READ = '../vx-bench/real-repos.json'
 
-// What `import` generates from packages/vx/docs: a hit restores only these,
+// What `build.import` generates from packages/vx/docs: a hit restores only these,
 // so a page missing here vanishes from the site on a hit. Pinned to the
 // .gitignore manifest by tests/sidebar-coverage.test.ts.
 const IMPORTED = [
@@ -52,14 +52,14 @@ const IMPORTED = [
 // so no key read them before either.
 const NOT_GENERATED = [...IMPORTED, 'public/_img/**', 'dist/**'].map((g) => `!${g}`)
 
-// Under Bun, prerender included: the `build` task says why.
+// Under Bun, prerender included: the `build.astro` task says why.
 const ASTRO_BUILD =
   'mkdir -p .astro/bin && ln -sf "$(command -v bun)" .astro/bin/node && PATH="$PWD/.astro/bin:$PATH" bun --bun astro build'
 
 export default defineProject({
   tasks: {
     lint: {
-      dependsOn: ['lint.oxlint', 'lint.oxfmt'],
+      dependsOn: ['lint.*'],
     },
 
     // The site's TypeScript is type-checked like every package's (item 702):
@@ -143,7 +143,7 @@ export default defineProject({
     // marker and lives beside the hand-written ones, so the outputs are the
     // generated set by name — a hit restores exactly them and never wipes
     // a tracked page.
-    import: {
+    'build.import': {
       description:
         'generate src/content/docs from packages/vx/docs, the plugin READMEs and the relay protocol',
       dependsOn: ['install'],
@@ -183,10 +183,13 @@ export default defineProject({
     // Bench job runs it, one runner at a time on a machine of its own: no
     // build depends on it, so neither a DTE run nor a fresh clone's
     // `vx run build` ever runs a benchmark (2026-10-29).
+    bench: {
+      dependsOn: ['bench.*'],
+    },
+
     'bench.data': {
-      description:
-        'gather the head-to-head rows of @vzn/vx-bench#site.numbers → measured/bench.json',
-      dependsOn: ['install', '@vzn/vx-bench#site.numbers'],
+      description: 'gather the head-to-head rows of @vzn/vx-bench#bench.site → measured/bench.json',
+      dependsOn: ['install', '@vzn/vx-bench#bench.site'],
       exec: {
         command: 'bun scripts/bench-data.ts',
         env: { define: { BUN_RUNTIME_TRANSPILER_CACHE_PATH: '0' } },
@@ -219,9 +222,13 @@ export default defineProject({
     // guide's snippets type-check against `@vzn/vx-history`, and every
     // page's config blocks against the plugins they call.
     test: {
+      dependsOn: ['test.*'],
+    },
+
+    'test.bun': {
       description:
         'bun test — the landing, sidebar, redirect, diagram, compare and site-link pins (needs the imported content and dist/)',
-      dependsOn: ['install', 'import', 'build'],
+      dependsOn: ['install', 'build'],
       exec: {
         command: 'bun test --only-failures --timeout=30000',
         // Bun's transpiler cache writes under HOME, outside the sandbox's grants.
@@ -295,7 +302,11 @@ export default defineProject({
 
     // The images, resized before the build and keyed on the images alone:
     // a page edit never re-encodes them, and on a miss they encode beside
-    // `import` instead of inside `build`.
+    // `build.import` instead of inside `build.astro`.
+    build: {
+      dependsOn: ['build.*'],
+    },
+
     'build.images': {
       description: 'resize src/assets/{blog,features} → public/_img/',
       dependsOn: ['install'],
@@ -321,9 +332,9 @@ export default defineProject({
       cache: true,
     },
 
-    build: {
+    'build.astro': {
       description: 'astro build → dist/',
-      dependsOn: ['install', 'import', 'build.images'],
+      dependsOn: ['install', 'build.import', 'build.images'],
       exec: {
         // Under Bun, prerender included. `bun --bun` runs astro's bin on Bun,
         // but astro prerenders in a CHILD process it starts as `node`, and
@@ -366,7 +377,7 @@ export default defineProject({
         },
       },
       // The generated pages are gitignored, so `**/*` does not see them;
-      // `import`'s key does (its inputs are the docs), and it cascades
+      // `build.import`'s key does (its inputs are the docs), and it cascades
       // through `dependsOn`. This used to name `docs/**` at the workspace
       // root — a path that stopped existing when core moved under
       // `packages/`, so a docs edit never re-keyed the build.
@@ -389,10 +400,10 @@ export default defineProject({
     // The build runs beside the tests and only the upload waits on the checks:
     // built after them, it added 108 s to main's run (2026-11-10). Its
     // files stay on its worker, where the upload follows it.
-    'build.live': {
+    'deploy.pages.build': {
       description:
         "build the site with main's newest bench and conformance runs → dist-live/ (GitHub Actions only)",
-      dependsOn: ['install', 'import', 'build.images'],
+      dependsOn: ['install', 'build.import', 'build.images'],
       exec: {
         command: `bun scripts/live-bench.ts && bun scripts/live-conformance.ts && rm -rf .astro/live && ${ASTRO_BUILD} --outDir dist-live`,
         env: {
@@ -420,10 +431,14 @@ export default defineProject({
         },
       },
     },
+    deploy: {
+      dependsOn: ['deploy.*'],
+    },
+
     'deploy.pages': {
       description:
         'deploy dist-live/ to GitHub Pages once every check passed (GitHub Actions only)',
-      dependsOn: ['lint', 'build', 'test', 'build.live'],
+      dependsOn: ['lint', 'build', 'test', 'deploy.pages.build'],
       exec: {
         command: 'bun scripts/deploy-pages.ts dist-live',
         env: {

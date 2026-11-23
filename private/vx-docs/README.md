@@ -49,7 +49,7 @@ The last section, `#features`, is a strip of eight feature cards and the
 link to all of them.
 
 - **The numbers** are measured, never typed: `bench.data` gathers the
-  rows of `@vzn/vx-bench#site.numbers` into `src/data/bench.json`, and the
+  rows of `@vzn/vx-bench#bench.site` into `src/data/bench.json`, and the
   chart, the kicker and every `%bench.…%` token on a page read it
   (`src/bench/format.ts`; `tests/bench-figures.test.ts` holds it).
 - No cell says how much faster vx is (2026-10-12). The page draws the
@@ -176,7 +176,7 @@ metadata, shown as a `v0.0.637` chip beside the date, read from the
 slug. Every post has a cover (`src/assets/blog/vx-0-0-<version>.png`,
 1200×630). The slug is `vx-0-0-<version>`, the tag `release`, and the
 date the release's day. The GitHub release's body is the post
-(`release.sync`, in ci.yml's Linux run on main, keeps it current). Old `/blog/vx-0-0-*/` URLs
+(`deploy.releases`, in ci.yml's Linux run on main, keeps it current). Old `/blog/vx-0-0-*/` URLs
 redirect (`astro.config.mjs`).
 
 ## Commands
@@ -199,7 +199,7 @@ The build depends on `bench.data`, which depends on the benchmark tasks
 (`@vzn/vx-bench#bench.*`). Off CI they restore from main's remote cache.
 
 Measured here they take about 20 minutes, one runner at a time:
-`bun packages/vx/src/bin.ts run site.numbers --all --concurrency 1`.
+`bun packages/vx/src/bin.ts run @vzn/vx-docs#bench --concurrency 1`.
 
 ## Tests
 

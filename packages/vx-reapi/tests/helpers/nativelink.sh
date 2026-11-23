@@ -1,5 +1,5 @@
 #!/bin/sh
-# NativeLink for `test.live`, in the foreground: rehosted on busybox
+# NativeLink for `test.bun.live`, in the foreground: rehosted on busybox
 # (nativelink.md says why), from whichever of three mirrors answers, two
 # rounds 20 s apart, then run until the run stops it.
 set -eu

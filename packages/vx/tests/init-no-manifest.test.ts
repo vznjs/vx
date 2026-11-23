@@ -52,6 +52,21 @@ const WORKSPACE =
 const PROJECT =
   "import type { ProjectConfig } from '@vzn/vx/config'\n\nexport default { tasks: {} } satisfies ProjectConfig\n"
 
+// A moon workspace got the empty starter with no word: its moon.yml tasks
+// read as migrated, though vx reads no moon config.
+describe('vx init in a moon workspace', () => {
+  it('says moon tasks are not migrated', async () => {
+    const root = await tmp('vx-init-moon-')
+    await mkdir(path.join(root, '.moon'))
+    await writeFile(path.join(root, '.moon', 'workspace.yml'), 'projects:\n  - "packages/*"\n')
+    const r = await vx(root, ['init', '--dry', '--format', 'json'])
+    expect(r.code).toBe(0)
+    expect((JSON.parse(r.out) as { notes: string[] }).notes).toEqual([
+      "moon's tasks (.moon/ and each moon.yml) are not migrated: vx reads no moon config, so declare each task in a vx.config",
+    ])
+  })
+})
+
 describe('vx init with no package.json', () => {
   it('writes the workspace file and an empty root project, then the lock', async () => {
     const root = await tmp('vx-init-bare-')

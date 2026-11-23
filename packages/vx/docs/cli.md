@@ -134,7 +134,7 @@ its `dependsOn` needs from other projects. `--all`, `--filter`,
 
 ### Usage
 
-```
+```sh
 vx run [OPTIONS] [TASK | PKG#TASK ...] [-- forwarded-args...]
 ```
 
@@ -150,39 +150,46 @@ vx run test -- --watch=false  # forward arguments to the task
 
 The first run executes and saves; the next finds nothing changed:
 
-```
-$ vx run build --all
-
-            success miss           —    17ms   88%   41MB     2KB       1 local          lib#build
-            success miss           —     6ms   83%   38MB     1KB       0 local          app#build
-
-
-  Summary                                                                                                       vx 0.0.0
-  projects  ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰
-            2 in run · 2 total
-  tasks     ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰
-            2 success · 2 total
-  cache     ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰
-            local 2↑
-
-  info      4 workers · local cache · run 01a16e03-afb0-76ee-9cea-18a61c9d1e91
-  time      101ms · max 17ms · avg 12ms · min 6ms
+```sh
+vx run build --all
 ```
 
+```ansi
+
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mTasks[0m[4m[58;2;110;118;129m     [2mstatus  cache     ±usual    time   cpu    mem outputs  blocks worker         task[0m[4m[58;2;110;118;129m                           [0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m           [2m—[0m    [38;2;203;213;225m19ms[0m   [2m30%[0m  [2m2.2MB[0m     [2m19B[0m       [38;2;203;213;225m1[0m [2mlocal[0m          [38;2;244;114;182mlib[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m           [2m—[0m     [38;2;203;213;225m4ms[0m  [2m113%[0m  [2m2.0MB[0m     [2m19B[0m       [2m0[0m [2mlocal[0m          [38;2;147;197;253mapp[0m[2m#[0m[38;2;244;114;182mbuild[0m
+
+
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mSummary[0m[4m[58;2;110;118;129m                                                                                                       [2mvx 0.0.0[0m
+  [2mprojects[0m  [38;2;234;179;8m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
+            [38;2;234;179;8m2 in run[0m [2m·[0m [2m2 total[0m
+  [2mtasks   [0m  [38;2;34;197;94m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
+            [38;2;34;197;94m2 success[0m [2m·[0m [2m2 total[0m
+  [2mcache   [0m  [38;2;56;189;248m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
+            [2mlocal[0m [38;2;56;189;248m2↑[0m
+
+  [2minfo    [0m  4 workers [2m·[0m local cache [2m·[0m run 01a20586-c80c-74ca-b24b-a37caf560ec9
+  [2mtime    [0m  72ms [2m·[0m [2mmax 19ms[0m [2m·[0m [2mavg 12ms[0m [2m·[0m [2mmin 4ms[0m
 ```
-$ vx run build --all
+
+```sh
+vx run build --all
+```
+
+```ansi
 
 
-  Summary                                                                                                       vx 0.0.0
-  projects  ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰
-            2 in run · 2 total
-  tasks     ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰
-            2 success · 2 total
-  cache     ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰
-            local 2✓
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mSummary[0m[4m[58;2;110;118;129m                                                                                                       [2mvx 0.0.0[0m
+  [2mprojects[0m  [38;2;234;179;8m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
+            [38;2;234;179;8m2 in run[0m [2m·[0m [2m2 total[0m
+  [2mtasks   [0m  [38;2;34;197;94m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
+            [38;2;34;197;94m2 success[0m [2m·[0m [2m2 total[0m
+  [2mcache   [0m  [38;2;34;197;94m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
+            [2mlocal[0m [38;2;34;197;94m2✓[0m
 
-  info      4 workers · local cache · run 01a16e03-b0b1-77f6-a758-f7aa680822ab
-  time      16ms
+  [2minfo    [0m  4 workers [2m·[0m local cache [2m·[0m run 01a20586-c912-76b8-9d44-c47c0ec7c16a
+  [2mtime    [0m  20ms
 ```
 
 The [Flags](#flags) table lists every option.
@@ -213,14 +220,14 @@ If no task name is given:
 
 ### Selection
 
-| Form                          | Effect                                                                                             |
-| ----------------------------- | -------------------------------------------------------------------------------------------------- |
-| (default)                     | The project that contains cwd. Errors if cwd is not inside a project.                              |
-| `pkg#task`                    | Just that project.                                                                                 |
-| `//#task`                     | The root project's task (Turbo's spelling; the root is a project, D-39).                           |
-| `--all`                       | Every project that declares the task.                                                              |
-| `--filter <pat>` (repeatable) | pnpm-style filter DSL (see below).                                                                 |
-| `--affected[=<base>]`         | The tasks a git change reaches: the ones it touches and those whose `dependsOn` closure holds one. |
+| Form                          | Effect                                                                                                                                                 |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| (default)                     | The project that contains cwd. Errors if cwd is not inside a project.                                                                                  |
+| `pkg#task`                    | Just that project.                                                                                                                                     |
+| `//#task`                     | The root project's task (Turbo's spelling; the root is a project, D-39).                                                                               |
+| `--all`                       | Every project that declares the task.                                                                                                                  |
+| `--filter <pat>` (repeatable) | pnpm-style filter DSL (see below).                                                                                                                     |
+| `--affected[=<base>]`         | The tasks a git change reaches: the ones it touches and those whose `dependsOn` closure holds one, through the edges their keys fold (`inputs.tasks`). |
 
 Combining them, as pnpm does:
 
@@ -465,9 +472,15 @@ What counts as a change:
   beside one), so `vx lock` never marks a project affected by itself. So
   is the `.vx/.gitignore` `vx init` writes.
   `.vx/projects.lock` counts entry by entry when the base has
-  one: a project whose locked config, name or edges changed is
-  selected whole (a run reads them from there; the lock is the reason
-  shown), and `vx lock` rewriting the same entries selects nothing.
+  one: a project whose name, edges, project-level fields or set of
+  tasks changed is selected whole (a run reads them from there; the
+  lock is the reason shown), and `vx lock` rewriting the same entries
+  selects nothing. When only some tasks' locked configs moved, a config
+  edit (or an edit to a file the config imports) selects those tasks
+  alone, with the config as the `input` shown: changing `build`'s command
+  no longer re-runs `test` (`affected-config-tasks.test.ts`). An edit
+  that moves no locked task (a comment) selects none of its tasks with
+  `inputs` (one without reads its whole project, the config too).
 
 **A lockfile change selects what its plugin says.** Core keys no
 lockfile and no install setting: without a lockfile plugin, the root
@@ -644,7 +657,7 @@ span lines.
 | ------------------------------------------ | -------------- | -------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `--filter <pattern>`                       | repeatable     | (none)                                                         | pnpm-style filter DSL (see above). `--filter=<pattern>` form too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | `--all`                                    | boolean        | off                                                            | Select every project that declares the task.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| `--affected[=<base>]`                      | optional value | off                                                            | Select the tasks a change since `<base>` reaches: the ones it touches and those whose `dependsOn` closure holds one (default a plugin's base, else the merge base with `origin/<baseBranch>`; none on that branch); candidates are `--filter "...[<base>]"`'s.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `--affected[=<base>]`                      | optional value | off                                                            | Select the tasks a change since `<base>` reaches: the ones it touches and those whose `dependsOn` closure holds one, through the edges their keys fold (`inputs.tasks`) (default a plugin's base, else the merge base with `origin/<baseBranch>`; none on that branch); candidates are `--filter "...[<base>]"`'s.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | `--exclude-dependencies[=<names>]`         | optional value | off                                                            | Drop `dependsOn` edges. No value = all (just the requested task runs; a group's members run as the group); comma-list = drop only those names, each of which some project must declare (a typo is refused with the nearest name, item 1026). An edge to a task the run schedules anyway (`--all` requests it) stays, so the two still run in order, and so does the order through a dropped task: with `gen` dropped from `test → gen → build` and `build` requested, `test` still waits for `build`. An empty `=` value is a parse error (ambiguous — see below). A dropped dependency does not run but is still keyed, so every key is the one a full run derives; a task keyed on one may hit but does not save (`caching.md` step 8).                                                                                                 |
 | `--concurrency <n>`                        | int or `<n>%`  | `run.concurrency`, else the cores (cgroup-capped)              | Maximum parallel tasks that EXECUTE; confirmed cache-hit restores are disk work and run on their own lane, up to twice this. `1` serializes both; `50%` is half the CPUs (rounded, never below 1; over 100% is allowed for I/O-bound work). `--concurrency=<n>` form too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | `--schedule <rule>`                        | value          | `run.schedule`, else `most-work`                               | Which ready task starts first when more are ready than workers: `most-work`, `critical-path`, `direct-dependents`, `ready-order` (`docs/schema.md` § `run.schedule`).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
@@ -952,9 +965,11 @@ tracks the run live. Top to bottom:
 other persistent task`), and a non-zero exit makes the run exit 1
    and is what `vx last` records.
    A Ctrl-C prints no such line: the server ended because it was
-   stopped, and vx exits 130. A run with a failure elsewhere (a task
-   failed or skipped, a server never ready or crashed) holds nothing: it
-   stops its servers and exits 1; `vx watch`
+   stopped, and vx exits 130. A failure elsewhere (a task failed or
+   skipped, a server never ready or crashed) skips only its dependants:
+   the healthy servers stay up, and the run exits 1 when the session
+   ends; under `--fail-fast` the first failure stops them all and vx
+   exits 1 at once. `vx watch`
    keeps its server through a failed cycle. While vx holds them, what
    the servers write streams below the summary a line at a time under
    each one's id (`app#dev │ Local: http://localhost:5173`), except
@@ -1187,11 +1202,11 @@ cache entry for them, so the next run is a plain local hit.
 
 ### Exit codes
 
-| Code                  | When                                                                                                                                                                                                                                                                                                                                                                           |
-| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `0`                   | Every task finished `success` or `cache-hit` (local or remote), or was skipped as another platform's (`exec.platforms`) or behind one; or `--affected` left no project that declares the task.                                                                                                                                                                                 |
-| `1`                   | At least one task ended `failed` or `skipped` (a platform skip aside); a persistent task exited non-zero after it was ready; a task name no project declares; or parse/setup error.                                                                                                                                                                                            |
-| `130` / `143` / `129` | Interrupted (SIGINT / SIGTERM / SIGHUP): each task's process group (the task and what it forked) gets vx's signal once (a SIGHUP as a SIGTERM), a 2 s grace to go, then SIGKILL; a second signal skips the grace. vx then dies of the signal, so a shell script running it stops too (a run that handed a task the terminal exits with the code, so the terminal is restored). |
+| Code                  | When                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `0`                   | Every task finished `success` or `cache-hit` (local or remote), or was skipped as another platform's (`exec.platforms`) or behind one; or `--affected` left no project that declares the task.                                                                                                                                                                                                                                                                                      |
+| `1`                   | At least one task ended `failed` or `skipped` (a platform skip aside); a persistent task exited non-zero after it was ready; a task name no project declares; or parse/setup error.                                                                                                                                                                                                                                                                                                 |
+| `130` / `143` / `129` | Interrupted (SIGINT / SIGTERM / SIGHUP): each task's process group (the task and what it forked) gets vx's signal once (a SIGHUP as a SIGTERM), a 2 s grace to go, then SIGKILL; a second signal skips the grace. vx then dies of the signal, so a shell script running it stops too (a run that handed a task the terminal exits with the code, so the terminal is restored). A SIGINT or SIGHUP vx was started with ignored (a script's `vx run build &`, `nohup`) stays ignored. |
 
 A task runs in its own session, so a terminal's Ctrl-C reaches vx alone,
 and each task hears it once: from vx, as SIGINT. Through `bun vx`, which
@@ -1243,15 +1258,18 @@ remote that can batch is asked once for every key; one that cannot, or
 whose batch failed, is asked each key at once, so an unreachable remote
 costs the plan its timeout about twice, not once per task.
 
+```sh
+vx run build test --all --dry
 ```
-$ vx run ci --dry
-  Plan 3    status  cache      usual    time   cpu    mem outputs  blocks worker         task
-            cached  local          —       —     —      —       —       0 local          @vzn/vx#format-check
-            cached  local          —       —     —      —       —       0 local          @vzn/vx#lint
-            run     miss     ~1m 13s       —     —      —       —       0 local          @vzn/vx#test
 
-  tasks      3 planned · 2 cache hits (2 local) · 1 would run
-  predicted  ~72.64s wall · ~72.64s total execution
+```ansi
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mPlan[0m[4m[58;2;110;118;129m [2m4[0m[4m[58;2;110;118;129m    [2mstatus  cache      usual    time   cpu    mem outputs  blocks worker         task[0m[4m[58;2;110;118;129m                           [0m
+            [38;2;34;197;94mcached[0m  [38;2;56;189;248mlocal[0m          [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [38;2;203;213;225m1[0m [2mlocal[0m          [38;2;147;197;253mapp[0m[2m#[0m[38;2;244;114;182mbuild[0m  [2mcompile the app[0m
+            [38;2;34;197;94mcached[0m  [38;2;56;189;248mlocal[0m          [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [38;2;203;213;225m3[0m [2mlocal[0m          [38;2;244;114;182mlib[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;6;182;212mrun[0m     [2mmiss[0m           [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2mlocal[0m          [38;2;147;197;253mapp[0m[2m#[0m[38;2;96;165;250mtest[0m
+            [38;2;6;182;212mrun[0m     [2mmiss[0m           [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2mlocal[0m          [38;2;244;114;182mlib[0m[2m#[0m[38;2;96;165;250mtest[0m
+
+  [2mtasks   [0m  [38;2;203;213;225m4 planned · 2 cache hits (2 local) · 2 would run[0m
 ```
 
 The plan is a `Plan` panel on the run's own grid: each task's status and
@@ -1343,10 +1361,18 @@ to shorten the run.
 Under `--affected`, each requested task the diff kept says why after its
 id, and its JSON object carries an `affected` reason:
 
+```sh
+vx run build lint --affected=main --dry
 ```
-$ vx run build lint --affected=main --dry
-            run     miss           —       —     —      —       —       0 local          app#build  affected: packages/lib/src/a.ts changed (an input), via lib#build
-            run     no-cache       —       —     —      —       —       0 local          lib#lint  affected: packages/lib/src/a.ts changed (in its project)
+
+```ansi
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mPlan[0m[4m[58;2;110;118;129m [2m3[0m[4m[58;2;110;118;129m    [2mstatus  cache      usual    time   cpu    mem outputs  blocks worker         task[0m[4m[58;2;110;118;129m                           [0m
+            [38;2;6;182;212mrun[0m     [2mmiss[0m        [2m~4ms[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2mlocal[0m          [38;2;147;197;253mapp[0m[2m#[0m[38;2;244;114;182mbuild[0m  [2mcompile the app · affected: packages/lib/src/index.ts changed (an input), via lib#build[0m
+            [38;2;6;182;212mrun[0m     [2mmiss[0m       [2m~19ms[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [38;2;203;213;225m1[0m [2mlocal[0m          [38;2;244;114;182mlib[0m[2m#[0m[38;2;244;114;182mbuild[0m  [2maffected: packages/lib/src/index.ts changed (an input)[0m
+            [38;2;6;182;212mrun[0m     [2mno-cache[0m       [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2mlocal[0m          [38;2;244;114;182mlib[0m[2m#[0m[38;2;232;121;249mlint[0m  [2maffected: packages/lib/src/index.ts changed (in its project)[0m
+
+  [2mtasks    [0m  [38;2;203;213;225m3 planned · 2 would run · 1 no-cache[0m
+  [2mpredicted[0m  [38;2;203;213;225m~23ms wall · ~23ms total execution · 1 task never timed (+?)[0m
 ```
 
 `kind` is `input` (a changed `file` is a declared input), `project` (its
@@ -1525,7 +1551,7 @@ change in the projects in scope. Press `Ctrl+C` to stop.
 
 ### Usage
 
-```
+```sh
 vx watch [OPTIONS] [--poll] TASK [-- forwarded-args...]
 ```
 
@@ -1718,7 +1744,15 @@ watch events within 2000 ms; polling every 250 ms instead`.
    `--affected` diff is read once, for the initial run. A later cycle
    runs the requested task in every project of the scope fixed at start,
    and the cache keys decide what executes (the startup diff, asked
-   again, kept an edit made since out of every cycle). Events arriving
+   again, kept an edit made since out of every cycle). A task no key can
+   answer for, an uncached one or a cached one that failed (no entry),
+   keeps the last cycle's result instead of running again when its key
+   is the one it ran under and no path that started the cycle lies in
+   its project: editing the app runs no uncached generator it builds on
+   (turborepo#13347), and an edit elsewhere runs no failing lint again.
+   Its row says `kept`. A path outside every project, a timeout, a
+   proven flake or a result its key does not vouch for keeps nothing
+   (`watch-reach.test.ts`). Events arriving
    while a run is in flight queue and drain after the current cycle.
    Re-runs are debounced ~150ms after the last event, and wait at most
    1 s after the first, so a writer that never pauses holds no edit back.
@@ -1884,7 +1918,7 @@ every project that declares them, under the `vx run` flags it saves
 
 ### Usage
 
-```
+```sh
 vx pipeline NAME [OPTIONS]
 ```
 
@@ -1949,7 +1983,7 @@ bound clears the cache. It operates on the entries and
 
 ### Usage
 
-```
+```sh
 vx cache clean --older-than <duration>     # Drop entries last used before now - duration (up to 1h slack).
 vx cache clean --max-size <size>            # After age-based pruning, evict LRU until under <size>.
 vx cache clean ... --dry                    # Say what either policy would reap; delete nothing.
@@ -2135,23 +2169,17 @@ workspace or a `.git` is refused, by the clear and by every run, with
 the resolved path named. An index SQLite cannot read is cleared like
 any other.
 
+```sh
+vx cache clean
 ```
-$ vx cache clean
-✓ vx cache clean  freed 1.4 GB
 
-  .vx/cache
-  /home/me/.vx/3f2a9c01b4d5e6f7/cache
+```ansi
+[38;2;34;197;94m✓[0m [1mvx cache clean[0m  freed 472 KB
 
-  run history cleared too: vx last and vx why start over
+  [38;2;203;213;225m.vx/cache[0m
+  [38;2;203;213;225m/home/me/.vx/157e2c42758e0d27/cache[0m
 
-$ vx cache clean --global --dry
-› vx cache clean  would free 3.1 GB (dry run)
-
-  .vx/cache
-  /home/me/.vx/3f2a9c01b4d5e6f7/cache
-  /home/me/.vx/9b8e7d6c5a4f3e2d/cache
-
-  run history goes too: vx last and vx why start over
+  [38;2;203;213;225mrun history cleared too: vx last and vx why start over[0m
 ```
 
 It waits for a `vx run` on this workspace to finish first (the run's
@@ -2213,7 +2241,7 @@ stale.
 
 ### Usage
 
-```
+```sh
 vx lock              # Evaluate all vx.config.* now; write .vx/projects.lock and .vx/dependencies.lock.
 vx lock --check      # Audit: full re-evaluation vs the lock. Exit 1 on drift.
 vx lock --check --format json   # The audit as {upToDate, audited, notAudited, problems}.
@@ -2221,20 +2249,32 @@ vx lock --check --format json   # The audit as {upToDate, audited, notAudited, p
 
 ### Example
 
+```sh
+vx lock
 ```
-$ vx lock
-✓ vx lock  2 project configs → .vx/projects.lock, .vx/dependencies.lock
-$ vx lock --check
-✓ vx lock --check  up to date (2 projects)
+
+```ansi
+[38;2;34;197;94m✓[0m [1mvx lock[0m  2 project configs → .vx/projects.lock, .vx/dependencies.lock
+```
+
+```sh
+vx lock --check
+```
+
+```ansi
+[38;2;34;197;94m✓[0m [1mvx lock --check[0m  up to date (2 projects)
 ```
 
 After an edit the lock has not seen:
 
+```sh
+vx lock --check
 ```
-$ vx lock --check
-✗ vx lock --check  packages/lib/vx.config.ts evaluates differently from the lock here — its config, a file it imports, or the environment it reads changed; run 'vx lock'
 
-  tasks.build.exec.command: "tsc -b" → "tsc -b --force"
+```ansi
+[38;2;239;68;68m✗[0m [1mvx lock --check[0m  packages/lib/vx.config.mjs evaluates differently from the lock here — its config, a file it imports, or the environment it reads changed; run 'vx lock'
+
+  [38;2;203;213;225mtasks.build.exec.command: "mkdir -p dist && cp src/index.ts dist/index.js" → "mkdir -p dist && cp -f src/index.ts dist/index.js"[0m
 ```
 
 Under the line, up to three places where the evaluated config
@@ -2633,7 +2673,7 @@ without asking the registry.
 
 ### Usage
 
-```
+```sh
 vx upgrade [TAG] [-g|--global]
 ```
 
@@ -2828,27 +2868,28 @@ tsconfig's `exclude`, or pass `--mjs`.
 
 ### Usage
 
-```
+```sh
 vx init [--dry [--format pretty|json]] [--force] [--mjs] [--native|--keep] [--plugin <hook>]
 ```
 
 ### Example
 
+```sh
+vx init --dry
 ```
-$ vx init --dry
 
-  vx init 0.0.0
-  from      no turbo.json or nx.json
-  dry run   nothing written
-  files     .vx/workspace.ts
-            vx.config.ts
-            .vx/.gitignore
-            .vx/.gitattributes
-  lock      .vx/projects.lock
-            .vx/dependencies.lock
-            vx.lock.json beside each vx.config
+```ansi
+  [2mfrom    [0m  [38;2;203;213;225mno turbo.json or nx.json[0m
+  [2mdry run [0m  [38;2;203;213;225mnothing written[0m
+  [2mfiles   [0m  [38;2;203;213;225m.vx/workspace.ts[0m
+            [38;2;203;213;225mvx.config.ts[0m
+            [38;2;203;213;225m.vx/.gitignore[0m
+            [38;2;203;213;225m.vx/.gitattributes[0m
+  [2mlock    [0m  [38;2;203;213;225m.vx/projects.lock[0m
+            [38;2;203;213;225m.vx/dependencies.lock[0m
+            [38;2;203;213;225mvx.lock.json beside each vx.config[0m
 
-  next      declare a task in vx.config.ts, then vx lock && vx run <task>
+  [2mnext    [0m  [1mdeclare a task in vx.config.ts, then vx lock && vx run <task>[0m
 ```
 
 ### Options
@@ -2930,7 +2971,8 @@ ignore files, and `prettier --check .` failed on them. Beside a
 `biome.json(c)` it names the `files.includes` lines biome needs. Where
 a package's tsconfig would compile the config it wrote and already lists
 an `exclude`, the config joins that list; with none, a note says to add
-one. It then runs `vx lock`'s
+one. Beside a `.moon/workspace.yml`, a note says moon's tasks are not
+migrated: vx reads no moon config. It then runs `vx lock`'s
 step, and `next:` says to declare a task and run `vx lock && vx run
 <task>`, preceded by `git init` outside a git work tree. Where that
 `package.json` has scripts, or declares a workspace (`workspaces`,
@@ -2983,7 +3025,7 @@ package, run before a workspace file exists (it writes one); `vx init`
 runs it in a repo with a `turbo.json`, `turbo.jsonc`, `nx.json`, an
 exported Nx graph or Lerna on Nx —
 
-```
+```sh
 bunx @vzn/vx-migrate           # turbo.json, an Nx graph, vite-plus run.tasks, else package.json scripts → vx.config.ts (vx init hands it only Turbo and Nx)
 bunx @vzn/vx-migrate --dry     # print the generated files instead of writing
 bunx @vzn/vx-migrate --force   # overwrite existing vx.config.*
@@ -3267,7 +3309,7 @@ no lock it refuses as a run does (`no lock: run \`vx lock\``).
 
 ### Usage
 
-```
+```sh
 vx show                          # list every project
 vx show <project>                # one project's resolved config (`//`: the root project's)
 vx show <pkg>#<task>             # a single task (`//#<task>`: the root project's)
@@ -3280,25 +3322,30 @@ vx show ... --format json        # machine-readable (default: pretty)
 
 ### Examples
 
-```
-$ vx show
-  project  dir            tasks         tags
-  app      packages/app   3 tasks       scope:web
-  bare     packages/bare  no vx config
+```sh
+vx show
 ```
 
+```ansi
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mProjects[0m[4m[58;2;110;118;129m [2m2[0m[4m[58;2;110;118;129m                                                                                                            [0m
+  [2mproject  dir           tasks    tags[0m
+  [38;2;147;197;253mapp[0m      [38;2;203;213;225mpackages/app[0m  [38;2;203;213;225m2 tasks[0m  [38;2;203;213;225mscope:web[0m
+  [38;2;244;114;182mlib[0m      [38;2;203;213;225mpackages/lib[0m  [38;2;203;213;225m3 tasks[0m
 ```
-$ vx show app#build
 
-  app#build
-  dir            packages/app
-  description    compile the app
-  command        tsc -b
-  dependsOn      ^build
-  inputs.files   src/**
-  inputs.env     NODE_ENV
-  outputs.files  dist/**, *.tsbuildinfo
-  cache          yes
+```sh
+vx show app#build
+```
+
+```ansi
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mapp#build[0m[4m[58;2;110;118;129m                                                                                                             [0m
+  [2mdir          [0m  [38;2;203;213;225mpackages/app[0m
+  [2mdescription  [0m  [38;2;203;213;225mcompile the app[0m
+  [2mcommand      [0m  [38;2;203;213;225mmkdir -p dist && cp src/index.ts dist/index.js[0m
+  [2mdependsOn    [0m  [38;2;203;213;225mlib#build[0m
+  [2minputs.files [0m  [38;2;203;213;225msrc/**[0m
+  [2moutputs.files[0m  [38;2;203;213;225mdist/**[0m
+  [2mcache        [0m  [38;2;203;213;225myes[0m
 ```
 
 ### Options
@@ -3400,7 +3447,7 @@ why (`lockError` in JSON, where the counts are zero). A broken config is `vx loc
 
 ### Usage
 
-```
+```sh
 vx info [--format pretty|json] [--cache-dir <path>]
 ```
 
@@ -3575,24 +3622,32 @@ dependency is a group, which records no run of its own.
 
 ### Usage
 
-```
+```sh
 vx why (TASK | PKG#TASK) [--run RUNID] [--format pretty|json] [--cache-dir <path>]
 ```
 
 ### Example
 
+```sh
+vx why app#build
 ```
-$ vx why app#build
-app#build — run 01a1193a-7b39-75a9-870b-5c03e26d7104
-  this run   2026-10-08T01:57:05.486Z · success · executed · key 9ef9806a9c69209e
-  previous   2026-10-08T01:57:05.325Z · success · executed · key e240348b20e79fd6
-  verdict    cache key changed: file packages/app/src/input.txt
 
-  what changed (1 component, 6 unchanged):
-    changed file  packages/app/src/input.txt  78981922613b2afb6025042ff6bd878ac1994e85 → 61780798228d17af2d34fce4cfbdf35556832472
+```ansi
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhy[0m[4m[58;2;110;118;129m [2mapp#build[0m[4m[58;2;110;118;129m                                                                                                         [0m
+  [2mrun     [0m  [38;2;203;213;225m01a20586-cbaf-7160-b020-55d05de49e8a[0m
+  [2mthis run[0m  [38;2;203;213;225m2026-11-22T23:10:49.829Z · success · executed · key 3c76140a1f7a50f8[0m
+  [2mprevious[0m  [38;2;203;213;225m2026-11-22T23:10:49.123Z · cache-hit · up-to-date · key d68851b93ee0a52d[0m
+  [2mverdict [0m  [38;2;234;179;8mcache key changed: upstream lib#build[0m
 
-  what to do:
-    file  an edit re-runs by design; a file the task does not read belongs out of inputs.files
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhat changed[0m[4m[58;2;110;118;129m [2m1 of 5[0m[4m[58;2;110;118;129m                                                                                                   [0m
+  [2mchange   kind      name       before → after[0m
+  [38;2;234;179;8mchanged[0m  [38;2;203;213;225mupstream[0m  [1mlib#build[0m  [38;2;203;213;225m7d9a66971f00e735 → 600df849c8e55574[0m
+
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mRoot cause[0m[4m[58;2;110;118;129m                                                                                                            [0m
+  [38;2;147;197;253mapp[0m[2m#[0m[38;2;244;114;182mbuild[0m[2m ← [0m[38;2;244;114;182mlib[0m[2m#[0m[38;2;244;114;182mbuild[0m[2m ← [0m[1mfile packages/lib/src/index.ts[0m
+
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhat to do[0m[4m[58;2;110;118;129m                                                                                                            [0m
+  [2mfile    [0m  [38;2;203;213;225man edit re-runs by design; a file the task does not read belongs out of inputs.files[0m
 ```
 
 ### Arguments
@@ -3761,30 +3816,38 @@ stopped.
 
 ### Usage
 
-```
+```sh
 vx last [RUNID] [--list[=N]] [--failed] [--log <task>] [--stats [<task>] [--branch <name>]] [--sql <query>] [--live [--follow]] [--format pretty|json] [--cache-dir <path>]
 ```
 
 ### Examples
 
-```
-$ vx last
-  Run 01a16de7-6cd7-7563-984c-5ffba8fb6629
-  status    ok
-  command   vx run ci --all
-  when      2026-10-24T12:34:05.662Z · 425ms · master @ 1587dec6
-  tasks     3 tasks · 1 hit (0 up-to-date, 1 restored: 1 local, 0 remote)
-
-  Tasks 3   status  cache     ±usual    time   cpu    mem outputs  blocks worker         task
-            success miss           —     3ms  110%      —      0B       0 local          app#test
-            success miss           —   412ms   51%   48MB   120KB       1 local          app#build
-            success local          —     7ms     —      —    36KB       2 local          lib#build
+```sh
+vx last
 ```
 
+```ansi
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mRun[0m[4m[58;2;110;118;129m [2m01a20586-cbaf-7160-b020-55d05de49e8a[0m[4m[58;2;110;118;129m                                                                              [0m
+  [2mstatus  [0m  [38;2;34;197;94mok[0m
+  [2mcommand [0m  [1mvx run build --all[0m
+  [2mwhen    [0m  [38;2;203;213;225m2026-11-22T23:10:49.779Z · 59ms · feat @ 52bd1786+dirty[0m
+  [2mtasks   [0m  [2m2 tasks · 0 hits[0m
+
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mTasks[0m[4m[58;2;110;118;129m [2m2[0m[4m[58;2;110;118;129m   [2mstatus  cache     ±usual    time   cpu    mem outputs  blocks worker         task[0m[4m[58;2;110;118;129m                           [0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m        [2m+0ms[0m     [38;2;203;213;225m8ms[0m   [2m50%[0m  [2m2.2MB[0m     [2m19B[0m       [38;2;203;213;225m1[0m [2mlocal[0m          [38;2;244;114;182mlib[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m        [2m+0ms[0m     [38;2;203;213;225m4ms[0m  [2m100%[0m  [2m2.1MB[0m     [2m19B[0m       [2m0[0m [2mlocal[0m          [38;2;147;197;253mapp[0m[2m#[0m[38;2;244;114;182mbuild[0m
 ```
-$ vx last --list
-ok     2026-10-24T12:34:05.662Z  01a16de7-6cd7  3 tasks · 0 hits  61ms  $ vx run ci --all
-ok     2026-10-24T12:34:05.367Z  01a16de7-6bb3  3 tasks · 0 hits  52ms  $ vx run ci --all
+
+```sh
+vx last --list
+```
+
+```ansi
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mRuns[0m[4m[58;2;110;118;129m [2m3[0m[4m[58;2;110;118;129m                                                                                                                [0m
+  [2m    when                      run            tasks                                        time  command[0m
+  [38;2;34;197;94mok[0m  [38;2;203;213;225m2026-11-22T23:10:49.779Z[0m  [1m01a20586-cbaf[0m  [2m2 tasks · 0 hits[0m                             [38;2;203;213;225m59ms[0m  [1mvx run build --all[0m
+  [38;2;34;197;94mok[0m  [38;2;203;213;225m2026-11-22T23:10:49.110Z[0m  [1m01a20586-c912[0m  [2m2 tasks · 2 hits (2 up-to-date, 0 restored)[0m  [38;2;203;213;225m20ms[0m  [1mvx run build --all[0m
+  [38;2;34;197;94mok[0m  [38;2;203;213;225m2026-11-22T23:10:48.848Z[0m  [1m01a20586-c80c[0m  [2m2 tasks · 0 hits[0m                             [38;2;203;213;225m72ms[0m  [1mvx run build --all[0m
 ```
 
 ```sh
@@ -4112,7 +4175,7 @@ names the site).
 
 Print a completion script for `bash`, `zsh` or `fish`:
 
-```
+```sh
 eval "$(vx completions bash)"                          # this shell
 vx completions zsh > ~/.zfunc/_vx                      # zsh, with ~/.zfunc on $fpath
 vx completions fish > ~/.config/fish/completions/vx.fish
@@ -4251,6 +4314,7 @@ what a TASK sees is `exec.env` in `docs/schema.md`.
 | `VX_HANDED_OFF`                   | —                                                  | Set by a global vx that hands the call to the project's own (§ Which vx runs): the path of the vx that handed off, so the receiver does not hand off again.                                                                            |
 | `VX_SIGNAL_RELAY`                 | —                                                  | Set to `1` by a parent that relays stop signals (the Node launcher, a handing-off vx): a group stop's copy is the same stop, not a second one. vx removes it at start.                                                                 |
 | `VX_JIT_TIERED`                   | —                                                  | Set to `1` with `BUN_JSC_useFTLJIT=false` by the npm launcher, or by a compiled vx restarting a run, to turn JSC's top JIT tier off (its compiles never paid back within a run). vx removes both at start; one the user set is theirs. |
+| `VX_IGNORED_SIGNALS`              | —                                                  | Set by a global vx that hands off when it was started with SIGINT or SIGHUP ignored (`vx run build &` in a script, nohup): those names, comma-separated, so the local vx keeps them ignored. vx removes it at start.                   |
 | `VX_RUN_WORKSPACE`, `VX_RUN_TASK` | —                                                  | Set by vx on every task (below); a `vx run` a task starts reads them back.                                                                                                                                                             |
 
 <!-- /variables table -->

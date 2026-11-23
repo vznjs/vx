@@ -26,7 +26,7 @@ To cap the size, evict the least recently used entries until the cache fits:
 vx cache clean --max-size 5GB
 ```
 
-Add `--dry` to see what would go without deleting anything. No run
-evicts entries on its own, so run a bound from a schedule or CI.
+Add `--dry` to see what would go without deleting anything. A run never
+removes entries, so run one of these on a schedule or in CI.
 
 See [`vx cache clean`](../../../cli/cache/).

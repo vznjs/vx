@@ -62,6 +62,37 @@ export interface DependenciesLock {
   readonly digest: (name: string, f: number) => string | undefined
 }
 
+/** The `version` line 1 names; undefined when line 1 is not JSON. */
+function headerVersion(text: string): unknown {
+  const nl = text.indexOf('\n')
+  try {
+    return (JSON.parse(text.slice(0, nl < 0 ? text.length : nl)) as { version?: unknown })?.version
+  } catch {
+    return undefined
+  }
+}
+
+/** Why a run refuses the lock in `text`, which `parseDependenciesLock` read as none. */
+export function dependenciesLockRefusal(text: string): string {
+  if (mergeConflicted(text)) return mergeConflictMessage(DEPENDENCIES_LOCK_NAME)
+  const version = headerVersion(text)
+  return typeof version === 'number' && version < DEPENDENCIES_LOCK_VERSION
+    ? `${DEPENDENCIES_LOCK_NAME} has unsupported version ${version} (this vx expects ${DEPENDENCIES_LOCK_VERSION}) — re-run \`vx lock\``
+    : `${DEPENDENCIES_LOCK_NAME} is invalid, run \`vx lock\``
+}
+
+/** Whether `text` holds the marker lines a conflicted git merge leaves. */
+export function mergeConflicted(text: string): boolean {
+  return /^(?:<{7}|={7}|>{7})(?: |$)/m.test(text)
+}
+
+/**
+ * What a run says of a lock a merge left conflicted: the lock is written from
+ * the configs, so no hand resolution is needed.
+ */
+export const mergeConflictMessage = (file: string): string =>
+  `${file} holds a git merge conflict: run \`vx lock\`, which writes it anew from the configs`
+
 const invalid = (): UserError =>
   new UserError(`${DEPENDENCIES_LOCK_NAME} is invalid, run \`vx lock\``, 'VX_E_LOCK')
 
@@ -157,14 +188,7 @@ export function readDependenciesLock(root: string, reads?: LoadReads): Promise<U
 export function parseDependenciesLock(bytes: Uint8Array | null): DependenciesLock | null {
   if (bytes === null) return null
   const text = new TextDecoder().decode(bytes)
-  const nl = text.indexOf('\n')
-  let version: unknown
-  try {
-    version = (JSON.parse(text.slice(0, nl < 0 ? text.length : nl)) as { version?: unknown })
-      ?.version
-  } catch {
-    return null
-  }
+  const version = headerVersion(text)
   if (typeof version === 'number' && version > DEPENDENCIES_LOCK_VERSION)
     throw new UserError(
       `${DEPENDENCIES_LOCK_NAME} was written by a newer vx (version ${version}; this vx reads ${DEPENDENCIES_LOCK_VERSION}) — upgrade vx`,

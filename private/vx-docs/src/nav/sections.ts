@@ -55,7 +55,7 @@ const SIDEBAR_GROUPS: Record<'Docs' | 'Guides' | 'Reference', SidebarItem[]> = {
       items: [
         { label: 'What is vx?', link: '/docs/' },
         { label: 'Quickstart', link: '/quickstart/' },
-        { label: 'Upgrading to 1.0', link: '/guides/upgrading/' },
+        { label: 'Upgrading vx', link: '/guides/upgrading/' },
         { label: 'AI agents', link: '/docs/agents/' },
       ],
     },
@@ -107,6 +107,7 @@ const SIDEBAR_GROUPS: Record<'Docs' | 'Guides' | 'Reference', SidebarItem[]> = {
           label: "Build a project's dependencies first",
           link: '/guides/running/build-dependencies-first/',
         },
+        { label: 'Group tasks under one name', link: '/guides/running/group-tasks/' },
         { label: 'Migrate from Turborepo, Nx or Vite Task', link: '/guides/migrate/' },
       ],
     },

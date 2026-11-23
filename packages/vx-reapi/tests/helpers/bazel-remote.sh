@@ -1,5 +1,5 @@
 #!/bin/sh
-# bazel-remote for `test.live`, in the foreground: pulled from whichever of
+# bazel-remote for `test.bun.live`, in the foreground: pulled from whichever of
 # two mirrors answers, two rounds 20 s apart, as nativelink.sh builds. One
 # mirror's failed pull was `docker run` exiting 125 before ready (CI,
 # 2026-10-26).

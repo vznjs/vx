@@ -13,7 +13,7 @@ import { mapNxWorkspace } from '../src/nx/nx-map.js'
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'nx-exec.cjs')
 const NX_ENV = path.resolve(import.meta.dir, '..', 'src', 'nx-env.cjs')
 const RELATIVE = process.env['VX_NX_MODULES']
-// Relative to the package: `test.live` names `.nx-live`.
+// Relative to the package: `test.bun.live` names `.nx-live`.
 const MODULES = RELATIVE && path.resolve(RELATIVE)
 const REQUIRED = process.env['VX_REQUIRE_NX'] === '1'
 const TIMEOUT = 120_000

@@ -6,6 +6,10 @@ export default defineProject({
       dependsOn: ['^build'],
     },
 
+    lint: {
+      dependsOn: ['lint.*'],
+    },
+
     'lint.oxlint': {
       description: 'oxlint with tsgolint-backed type-aware checks',
       exec: {
@@ -37,6 +41,10 @@ export default defineProject({
     // worker-url.ts: which relay and cache server a CI run uses; what
     // compose.yaml hands each server.
     test: {
+      dependsOn: ['test.*'],
+    },
+
+    'test.bun': {
       description: 'bun test',
       exec: {
         command: 'bun test --only-failures --timeout=30000',
@@ -52,7 +60,7 @@ export default defineProject({
 
     // compose.yaml up, each server answering, a clean stop. No sandbox:
     // it reaches the Docker daemon.
-    'test.live': {
+    'test.docker': {
       description: 'docker compose up, each server answering, then a clean stop',
       exec: { command: 'sh tests/smoke.sh' },
       dependsOn: ['install'],

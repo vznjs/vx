@@ -1054,14 +1054,14 @@ describe('the tasks that decline the sandbox (CLAUDE.md)', () => {
         if (task.exec !== undefined && task.exec.sandbox === undefined) found.push(`${pkg}#${name}`)
       }
     }
-    // vx#check.build-cold and vx#check.sandbox-canary (each drives the
-    // sandbox itself), vx#release.images (Docker), vx#test.bun.unsafe's and vx#test.platform.unsafe's
-    // shards, vx-cache-server#, vx-dte-server# and vx-history-server#test.live (Docker), vx-migrate#nx.install,
-    // vx-reapi#test's shards, #test.live and its two services. If none are found the reader is broken, not the docs.
+    // vx#canary.build-cold and vx#canary.sandbox (each drives the
+    // sandbox itself), vx#release.images (Docker), vx#test.bun.unsafe's and vx#test.bun.platform-unsafe's
+    // shards, vx-cache-server#, vx-dte-server# and vx-history-server#test.docker, vx-migrate#test.bun.live.nx,
+    // vx-reapi#test's shards, #test.bun.live and its two services. If none are found the reader is broken, not the docs.
     expect(found.sort()).toEqual(
       [
-        'vx#check.build-cold',
-        'vx#check.sandbox-canary',
+        'vx#canary.build-cold',
+        'vx#canary.sandbox',
         'vx#release.images',
         ...Array.from(
           { length: UNSAFE_SHARD_COUNT },
@@ -1069,18 +1069,18 @@ describe('the tasks that decline the sandbox (CLAUDE.md)', () => {
         ),
         ...Array.from(
           { length: PLATFORM_UNSAFE_SHARD_COUNT },
-          (_, k) => `vx#test.platform.unsafe.shard-${k + 1}`,
+          (_, k) => `vx#test.bun.platform-unsafe.shard-${k + 1}`,
         ),
-        'vx-cache-server#test.live',
-        'vx-dte-server#test.live',
-        'vx-history-server#test.live',
-        'vx-migrate#nx.install',
-        'vx-reapi#services.cache',
-        'vx-reapi#services.exec',
-        'vx-reapi#test.shard-1',
-        'vx-reapi#test.shard-2',
-        'vx-reapi#test.shard-3',
-        'vx-reapi#test.live',
+        'vx-cache-server#test.docker',
+        'vx-dte-server#test.docker',
+        'vx-history-server#test.docker',
+        'vx-migrate#test.bun.live.nx',
+        'vx-reapi#test.bun.live.cache',
+        'vx-reapi#test.bun.live.exec',
+        'vx-reapi#test.bun.shard-1',
+        'vx-reapi#test.bun.shard-2',
+        'vx-reapi#test.bun.shard-3',
+        'vx-reapi#test.bun.live',
       ].sort(),
     )
   })

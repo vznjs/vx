@@ -854,14 +854,7 @@ export default [
       },
     ],
   }),
-] as Case[]
-
-// vx fails these; each is a vx bug, not a wrong case (see the comment above it).
-export const pending: Case[] = [
   // nx #37836 "depend on the project a link: dependency points into".
-  // vx: `vx lock` stops with "bun.lock is out of date: it does not list
-  // packages/app's dependency on lib", though bun.lock lists `"lib":
-  // "link:../lib"` under packages/app and `"app/lib": ["lib@link:./packages/lib"]`.
   defineCase({
     id: 'graph/link-dependency-on-a-workspace-package-builds-it-first',
     category: 'graph',
@@ -900,4 +893,7 @@ export const pending: Case[] = [
       },
     ],
   }),
-]
+] as Case[]
+
+// vx fails these; each is a vx bug, not a wrong case (see the comment above it).
+export const pending: Case[] = []

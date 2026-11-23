@@ -5,6 +5,11 @@
         "^build"
       ]
     },
+    "lint": {
+      "dependsOn": [
+        "lint.*"
+      ]
+    },
     "lint.oxlint": {
       "description": "oxlint with tsgolint-backed type-aware checks",
       "exec": {
@@ -67,6 +72,11 @@
       "cache": true
     },
     "test": {
+      "dependsOn": [
+        "test.*"
+      ]
+    },
+    "test.bun": {
       "description": "bun test",
       "exec": {
         "command": "bun test --only-failures --timeout=30000",
@@ -99,7 +109,7 @@
       },
       "cache": true
     },
-    "test.live": {
+    "test.docker": {
       "description": "docker compose up, each server answering, then a clean stop",
       "exec": {
         "command": "sh tests/smoke.sh"

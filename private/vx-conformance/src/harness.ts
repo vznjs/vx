@@ -351,8 +351,10 @@ async function play(c: Case, adapter: Adapter, root: string, box: string): Promi
   // refuses every run until the config changes: each run reads as that
   // refusal, exit 1, nothing run.
   let refused: string | null = null
+  let rootProject: string | undefined
   const configure = async (ws: WorkspaceSpec) => {
     refused = null
+    rootProject = Object.entries(ws.projects).find(([n, p]) => projectDir(n, p) === '.')?.[0]
     for (const argv of await adapter.configure(root, ws, (p, t) => marked(ws, p, t))) {
       const r = await sh(argv)
       if (r.exit !== 0) {
@@ -404,12 +406,12 @@ async function play(c: Case, adapter: Adapter, root: string, box: string): Promi
     }
     if ('install' in step) {
       await install()
-      for (const argv of refused === null ? (adapter.installed ?? []) : []) {
+      // A user locks again after installing: an earlier refusal (a manifest
+      // edited before its install) is judged afresh, not carried over.
+      for (const argv of adapter.installed ?? []) {
         const r = await sh(argv)
-        if (r.exit !== 0) {
-          refused = `$ ${argv.join(' ')}\n${r.out}`
-          break
-        }
+        refused = r.exit === 0 ? null : `$ ${argv.join(' ')}\n${r.out}`
+        if (refused !== null) break
       }
       continue
     }
@@ -487,6 +489,7 @@ async function play(c: Case, adapter: Adapter, root: string, box: string): Promi
             ...(step.readOnlyCache ? { readOnlyCache: true } : {}),
             ...(step.dry ? { dry: true } : {}),
             ...(step.verify ? { verify: true } : {}),
+            ...(rootProject !== undefined ? { root: rootProject } : {}),
           })
         : adapter.affected(step.affected, step.base)
     )

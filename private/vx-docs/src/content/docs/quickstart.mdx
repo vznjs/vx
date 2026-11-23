@@ -21,17 +21,16 @@ Cache your first task in two minutes, in a workspace you already have.
    bunx @vzn/vx init
    ```
 
-   `init` installs `vx`, writes an empty `vx.config.ts` at the root, and
-   declares your lockfile's plugin (`bun()` beside `bun.lock`) in
-   `.vx/workspace.ts`.
+   It installs `vx` and writes two files. `.vx/workspace.ts` marks the
+   workspace root and names your lockfile's plugin, such as `bun()`. The
+   empty `vx.config.ts` is where your tasks go.
 
 2. **Add a task**
 
-   Give `vx.config.ts` a `build` task: the tool it runs, the files it
-   reads, and the files it writes. vx runs the tool itself, with no
-   package script in between.
+   A task is one command. Tell vx what to run, which files it reads and
+   which files it writes. `cache: true` lets vx skip it when nothing changed.
 
-   ```ts title="vx.config.ts" ins={5-9}
+   ```ts title="vx.config.ts" ins={5-10}
    import type { ProjectConfig } from '@vzn/vx/config'
 
    export default {
@@ -46,21 +45,15 @@ Cache your first task in two minutes, in a workspace you already have.
    } satisfies ProjectConfig
    ```
 
-   In a monorepo, give each package its own `vx.config.ts` beside its
-   `package.json`, and add `dependsOn: ['^build']` to build a package's
-   dependencies first.
-
-   At the root, `vx run build --all` runs every package's build.
-
-   Then save the change for every run to read:
+   Then save your config to the lock. Every run reads the lock, so run
+   this after each config change:
 
    ```sh
    vx lock
    ```
 
-   Commit `.vx/` and each `vx.lock.json` it writes beside a config: runs
-   read the lock, and a reviewer reads a config's tasks in its `vx.lock.json`.
-   `vx show` lists every project the lock holds.
+   Commit `.vx/` and the `vx.lock.json` beside your config with the rest
+   of your code.
 
 3. **Run it twice**
 
@@ -69,9 +62,9 @@ Cache your first task in two minutes, in a workspace you already have.
    vx run build
    ```
 
-   The first run builds and stores the result. The second finds nothing
-   changed and skips the work (`up-to-date`). `my-app` is the `name` in
-   your `package.json`:
+   The first run builds and saves `dist/`. The second sees nothing changed
+   and does no work: it ends `up-to-date`. `my-app` is the `name` in your
+   `package.json`.
 
    ```ansi title="second run"
    [2m┌─[0m [1m[38;2;232;121;249mmy-app[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m>[0m $ tsc
@@ -80,8 +73,8 @@ Cache your first task in two minutes, in a workspace you already have.
 
 4. **Change a file and ask why**
 
-   Edit a file in `src/`, run again, and ask vx what changed. `verdict`
-   names the file you edited:
+   Edit a file in `src/` and run again: the task runs, because an input
+   changed. `vx why` names the file. Look at the `verdict` line:
 
    ```sh
    vx run build
@@ -105,9 +98,14 @@ Cache your first task in two minutes, in a workspace you already have.
 
 </Steps>
 
+You now have a cached task. In a monorepo, give each package its own
+`vx.config.ts`, and run every package's build from the root with
+`vx run build --all`.
+
 ## Next
 
 <CardGrid>
+  <LinkCard title="Build dependencies first" description="Build each package after the packages it uses." href="../guides/running/build-dependencies-first/" />
   <LinkCard title="Configure tasks" description="Inputs, outputs, dependencies and environment." href="../docs/tasks/" />
   <LinkCard title="Run on CI" description="GitHub Actions, then a remote cache and many runners." href="../docs/ci/" />
   <LinkCard title="Coming from Turborepo or Nx" description="Keep your config, or convert it." href="../guides/migrate/" />
