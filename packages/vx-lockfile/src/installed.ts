@@ -38,6 +38,8 @@ interface Verdict {
   readonly dirs?: readonly string[]
   /** What could not be compared and is said, not refused; a run that says one keeps no match. */
   readonly warnings?: readonly string[]
+  /** The install that fixes a mismatch, when not the manager's plain one. */
+  readonly fix?: string
 }
 
 interface InstallCheck {
@@ -396,16 +398,20 @@ export const bunPatchTag = (patch: Uint8Array): bigint =>
 const TAG = /^\.bun-tag-([0-9a-f]{1,16})$/
 
 /**
- * Each installed copy of a patched package against its patch file's tag: one
- * tagged for another patch is the stale install. A copy with no tag is said,
- * not refused: no compare is possible, and the key still folds the patch.
+ * Each installed copy of a package bun.lock lists against the patch it
+ * names for it: a copy with no tag, or one tagged for another patch, is the
+ * stale install (a pull that adds or edits a patch); a copy tagged where
+ * bun.lock names no patch is one `bun install` left patched after the patch
+ * was removed (bun 1.4.4 checks it unchanged), which only a reinstall
+ * replaces. A copy whose directory cannot be listed is said, not refused.
  */
 function bunPatchCompare(
   lock: import('./bun.js').Lockfile,
   root: string,
   store: string | undefined,
 ): Verdict {
-  if (lock.patches.size === 0) return {}
+  const listed = new Set<string>()
+  for (const e of lock.packages.values()) if (REGISTRY_ID.test(e.id)) listed.add(e.id)
   // Each copy's root-relative dir by its package id (`name@version`).
   const copies: [id: string, dir: string][] = []
   if (store !== undefined) {
@@ -428,39 +434,62 @@ function bunPatchCompare(
       copies.push([`${dir.slice(at + 'node_modules/'.length)}@${version}`, dir])
     }
   }
+  /** The patch file bun.lock names for `id` (by `name@version`, else `name`), read once. */
+  const wanted = new Map<string, { file: string; tag: bigint | undefined }>()
+  const patchOf = (id: string): { file: string; tag: bigint | undefined } | undefined => {
+    const key = lock.patches.has(id) ? id : id.slice(0, id.lastIndexOf('@'))
+    const file = lock.patches.get(key)
+    if (file === undefined) return undefined
+    let got = wanted.get(file)
+    if (got === undefined) {
+      let tag: bigint | undefined
+      try {
+        tag = bunPatchTag(readFileSync(path.join(root, file)))
+      } catch {
+        // No patch file: `bun install` refuses it; nothing to compare with.
+      }
+      wanted.set(file, (got = { file, tag }))
+    }
+    return got
+  }
   const warnings: string[] = []
-  for (const [key, file] of lock.patches) {
-    let want: bigint
+  for (const [id, dir] of copies) {
+    if (!listed.has(id)) continue
+    let names: string[]
     try {
-      want = bunPatchTag(readFileSync(path.join(root, file)))
-    } catch {
-      // No patch file: `bun install` refuses it, and so does no compare here.
+      names = readdirSync(path.join(root, dir))
+    } catch (err) {
+      // Not installed here (another platform, `--production`).
+      if ((err as { code?: string }).code === 'ENOENT') continue
+      warnings.push(
+        `[vx] bun(): ${id} at ${dir} cannot be listed, so its patch is not checked: ${err instanceof Error ? err.message : String(err)}`,
+      )
       continue
     }
-    for (const [id, dir] of copies) {
-      if (id !== key && id.slice(0, id.lastIndexOf('@')) !== key) continue
-      let names: string[]
-      try {
-        names = readdirSync(path.join(root, dir))
-      } catch {
-        // Not installed here (another platform, `--production`).
-        continue
-      }
-      const tags = names.flatMap((n) => {
-        const m = TAG.exec(n)
-        return m === null ? [] : [BigInt(`0x${m[1]!}`)]
-      })
-      if (tags.length === 0) {
-        warnings.push(
-          `[vx] bun(): ${id} at ${dir} has no .bun-tag-<hash>, so whether it carries ${file} is not checked — run \`bun install\` if it does not`,
-        )
-      } else if (!tags.includes(want)) {
-        return { mismatch: `${id} carries another patch than ${file}` }
-      }
+    const tags = names.flatMap((n) => {
+      const m = TAG.exec(n)
+      return m === null ? [] : [BigInt(`0x${m[1]!}`)]
+    })
+    const patch = patchOf(id)
+    if (patch === undefined) {
+      if (tags.length > 0)
+        return {
+          mismatch: `${id} at ${dir} carries a patch bun.lock does not name`,
+          fix: 'bun install --force',
+        }
+      continue
     }
+    if (patch.tag === undefined) continue
+    if (tags.length === 0)
+      return { mismatch: `${id} carries no patch, bun.lock names ${patch.file}` }
+    if (!tags.includes(patch.tag))
+      return { mismatch: `${id} carries another patch than ${patch.file}` }
   }
   return { warnings }
 }
+
+/** A registry package's id, `name@1.2.3…`: the copies Bun patches. */
+const REGISTRY_ID = /^.+@\d+\.\d+\.\d+/
 
 /** A store entry's package id: `@s+x@1.0.0+<peer hash>` → `@s/x@1.0.0`. */
 const storeId = (entry: string): string =>
@@ -634,7 +663,7 @@ export function checkInstalled(
   }
   if (verdict.mismatch !== undefined) {
     throw new UserError(
-      `node_modules was installed from a different ${lockFile} (${verdict.mismatch}) — run \`${manager} install\``,
+      `node_modules was installed from a different ${lockFile} (${verdict.mismatch}) — run \`${verdict.fix ?? `${manager} install`}\``,
     )
   }
   const warnings = verdict.warnings ?? []

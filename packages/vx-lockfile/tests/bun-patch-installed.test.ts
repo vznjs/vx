@@ -113,23 +113,58 @@ it('refuses while the hoisted copy carries another patch, and compares again onc
   expect(await run()).toEqual({ said: [], result: REFUSED })
 })
 
-// No tag, no compare: the key still folds the patch, and the run says it.
-it('says a patched copy with no tag, and keeps no match so it says it again', async () => {
+// A pull that adds a first patch: the copy installed before it has no tag
+// (Bun tags only what it patched), and its output was saved under the
+// patched key, replayed once the install patched it (probed, bun 1.4.4).
+it('refuses a copy with no tag where bun.lock names a patch', async () => {
   await write({
     ...WORKSPACE,
     'patches/is-number@7.0.0.patch': PATCH1,
     [`${STORE}/package.json`]: PKG,
   })
+  expect(await run()).toEqual({
+    said: [],
+    result:
+      'node_modules was installed from a different bun.lock (is-number@7.0.0 carries no patch, bun.lock names patches/is-number@7.0.0.patch) — run `bun install`',
+  })
+})
+
+// A pull that removes the patch: `bun install` checks the patched copy
+// unchanged and keeps it (bun 1.4.4); only a reinstall replaces it.
+it('refuses a tagged copy where bun.lock names no patch, naming the reinstall', async () => {
+  await write({
+    ...WORKSPACE,
+    'bun.lock': WORKSPACE['bun.lock'].replace(/ {2}"patchedDependencies": [^\n]*\n/, ''),
+    'node_modules/is-number/package.json': PKG,
+    [`node_modules/is-number/${tag(PATCH1)}`]: '',
+  })
+  expect(await run()).toEqual({
+    said: [],
+    result:
+      'node_modules was installed from a different bun.lock (is-number@7.0.0 at node_modules/is-number carries a patch bun.lock does not name) — run `bun install --force`',
+  })
+  // CONTROL: the reinstalled copy, untagged.
+  await rm(path.join(root, 'node_modules/is-number', tag(PATCH1)))
+  expect(await run()).toEqual({ said: [], result: 'ok' })
+})
+
+// A copy that cannot be listed cannot be compared: said, not refused, and
+// kept unmatched so the next run says it again.
+it('says a patched copy it cannot list', async () => {
+  await write({
+    ...WORKSPACE,
+    'patches/is-number@7.0.0.patch': PATCH1,
+    'node_modules/.bun/is-number@7.0.0/node_modules/is-number': 'not a directory',
+  })
   const said = [
-    `[vx] bun(): is-number@7.0.0 at ${STORE} has no .bun-tag-<hash>, so whether it carries patches/is-number@7.0.0.patch is not checked — run \`bun install\` if it does not`,
+    `[vx] bun(): is-number@7.0.0 at ${STORE} cannot be listed, so its patch is not checked: ENOTDIR: not a directory, scandir '${path.join(root, STORE)}'`,
   ]
   expect(await run()).toEqual({ said, result: 'ok' })
   expect(await run()).toEqual({ said, result: 'ok' })
 })
 
-// What Bun itself writes: a real install, from a registry served here, so a
-// Bun that hashes the patch otherwise fails this before a user's run.
-it('computes the tag a real bun install writes, under either linker', async () => {
+/** A registry serving `dep@1.0.0` (`index.js`: `module.exports = 1`), from `root`. */
+async function depRegistry(): Promise<Bun.Server<undefined>> {
   await mkdir(path.join(root, 'src', 'package'), { recursive: true })
   await writeFile(
     path.join(root, 'src', 'package', 'package.json'),
@@ -163,40 +198,65 @@ it('computes the tag a real bun install writes, under either linker', async () =
       return new Response('not found', { status: 404 })
     },
   })
-  const patch =
-    '--- a/index.js\n+++ b/index.js\n@@ -1 +1 @@\n-module.exports = 1\n+module.exports = 2\n'
+  return registry
+}
+
+const DEP_PATCH =
+  '--- a/index.js\n+++ b/index.js\n@@ -1 +1 @@\n-module.exports = 1\n+module.exports = 2\n'
+
+/** A workspace in `ws` whose `packages/a` depends on dep@1.0.0, patched or not. */
+async function depWorkspace(
+  ws: string,
+  registry: Bun.Server<undefined>,
+  linker: string,
+  patched: boolean,
+): Promise<void> {
+  await mkdir(path.join(ws, 'packages', 'a'), { recursive: true })
+  await writeFile(
+    path.join(ws, 'package.json'),
+    JSON.stringify({
+      name: 'root',
+      private: true,
+      workspaces: ['packages/*'],
+      ...(patched ? { patchedDependencies: { 'dep@1.0.0': 'patches/dep@1.0.0.patch' } } : {}),
+    }),
+  )
+  await writeFile(
+    path.join(ws, 'packages', 'a', 'package.json'),
+    '{ "name": "a", "dependencies": { "dep": "1.0.0" } }',
+  )
+  if (patched) {
+    await mkdir(path.join(ws, 'patches'), { recursive: true })
+    await writeFile(path.join(ws, 'patches', 'dep@1.0.0.patch'), DEP_PATCH)
+  } else await rm(path.join(ws, 'patches'), { recursive: true, force: true })
+  await writeFile(
+    path.join(ws, 'bunfig.toml'),
+    `[install]\nlinker = "${linker}"\nregistry = "${registry.url.origin}/"\ncache = "${path.join(ws, '.cache')}"\n`,
+  )
+}
+
+/** `bun install` with `args` in `ws`, which must succeed. */
+async function install(ws: string, ...args: string[]): Promise<void> {
+  const p = Bun.spawn([process.execPath, 'install', ...args], {
+    cwd: ws,
+    stdout: 'ignore',
+    stderr: 'pipe',
+    env: { ...process.env, BUN_INSTALL_CACHE_DIR: path.join(ws, '.cache') },
+  })
+  const err = await new Response(p.stderr).text()
+  const code = await p.exited
+  expect({ args, code, err: code === 0 ? '' : err }).toEqual({ args, code: 0, err: '' })
+}
+
+// What Bun itself writes: a real install, from a registry served here, so a
+// Bun that hashes the patch otherwise fails this before a user's run.
+it('computes the tag a real bun install writes, under either linker', async () => {
+  const registry = await depRegistry()
   try {
     for (const linker of ['isolated', 'hoisted']) {
       const ws = path.join(root, linker)
-      await mkdir(path.join(ws, 'packages', 'a'), { recursive: true })
-      await mkdir(path.join(ws, 'patches'), { recursive: true })
-      await writeFile(
-        path.join(ws, 'package.json'),
-        JSON.stringify({
-          name: 'root',
-          private: true,
-          workspaces: ['packages/*'],
-          patchedDependencies: { 'dep@1.0.0': 'patches/dep@1.0.0.patch' },
-        }),
-      )
-      await writeFile(
-        path.join(ws, 'packages', 'a', 'package.json'),
-        '{ "name": "a", "dependencies": { "dep": "1.0.0" } }',
-      )
-      await writeFile(path.join(ws, 'patches', 'dep@1.0.0.patch'), patch)
-      await writeFile(
-        path.join(ws, 'bunfig.toml'),
-        `[install]\nlinker = "${linker}"\nregistry = "${registry.url.origin}/"\ncache = "${path.join(ws, '.cache')}"\n`,
-      )
-      const install = Bun.spawn([process.execPath, 'install'], {
-        cwd: ws,
-        stdout: 'ignore',
-        stderr: 'pipe',
-        env: { ...process.env, BUN_INSTALL_CACHE_DIR: path.join(ws, '.cache') },
-      })
-      const err = await new Response(install.stderr).text()
-      const code = await install.exited
-      expect({ linker, code, err: code === 0 ? '' : err }).toEqual({ linker, code: 0, err: '' })
+      await depWorkspace(ws, registry, linker, true)
+      await install(ws)
       const copy = path.join(
         ws,
         linker === 'hoisted' ? 'node_modules/dep' : 'node_modules/.bun/dep@1.0.0/node_modules/dep',
@@ -205,8 +265,52 @@ it('computes the tag a real bun install writes, under either linker', async () =
         linker,
         patched: await Bun.file(path.join(copy, 'index.js')).text(),
         tags: readdirSync(copy).filter((n) => n.startsWith('.bun-tag')),
-      }).toEqual({ linker, patched: 'module.exports = 2\n', tags: [tag(patch)] })
+      }).toEqual({ linker, patched: 'module.exports = 2\n', tags: [tag(DEP_PATCH)] })
     }
+  } finally {
+    await registry.stop(true)
+  }
+}, 60_000)
+
+// The pulls a real install leaves stale: a patch added (the copy was
+// installed unpatched, with no tag), then removed (`bun install` keeps the
+// patched copy, bun 1.4.4). Each bun.lock is Bun's own (`--lockfile-only`).
+it('refuses a real install behind a patch added or removed, until the install that fixes it', async () => {
+  const registry = await depRegistry()
+  const ws = path.join(root, 'ws')
+  const runIn = async (): Promise<string> => {
+    const saved = root
+    root = ws
+    try {
+      return (await run()).result
+    } finally {
+      root = saved
+    }
+  }
+  try {
+    await depWorkspace(ws, registry, 'isolated', false)
+    await install(ws)
+    await mkdir(path.join(ws, '.vx', 'cache'), { recursive: true })
+    expect(await runIn()).toBe('ok')
+    await depWorkspace(ws, registry, 'isolated', true)
+    await install(ws, '--lockfile-only')
+    expect(await runIn()).toBe(
+      'node_modules was installed from a different bun.lock (dep@1.0.0 carries no patch, bun.lock names patches/dep@1.0.0.patch) — run `bun install`',
+    )
+    await install(ws)
+    expect(await runIn()).toBe('ok')
+    await depWorkspace(ws, registry, 'isolated', false)
+    await install(ws, '--lockfile-only')
+    await install(ws)
+    const copy = path.join(ws, 'node_modules/.bun/dep@1.0.0/node_modules/dep')
+    // Bun's own gap, the subject: the copy stays patched.
+    expect(await Bun.file(path.join(copy, 'index.js')).text()).toBe('module.exports = 2\n')
+    expect(await runIn()).toBe(
+      'node_modules was installed from a different bun.lock (dep@1.0.0 at node_modules/.bun/dep@1.0.0/node_modules/dep carries a patch bun.lock does not name) — run `bun install --force`',
+    )
+    await install(ws, '--force')
+    expect(await Bun.file(path.join(copy, 'index.js')).text()).toBe('module.exports = 1\n')
+    expect(await runIn()).toBe('ok')
   } finally {
     await registry.stop(true)
   }
