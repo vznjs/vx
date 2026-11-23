@@ -168,6 +168,41 @@ describe('the run lock', () => {
     expect(lines).toEqual([waiting])
   })
 
+  it('the notice names what holds the lock: a watch cycle or a cache clean, not "another vx run"', async () => {
+    // A `vx run` beside a `vx watch` waited on "another vx run (pid N)",
+    // where N was the watch: the user looked for a run that was not there.
+    const holderScript = path.join(dir, 'holder.ts')
+    const src = JSON.stringify(path.resolve(import.meta.dir, '../src/orchestrator/run-lock.ts'))
+    await writeFile(
+      holderScript,
+      `import { acquireRunLock } from ${src}
+await acquireRunLock('/w/app', { dir: ${JSON.stringify(dir)}, log: () => {}, holder: process.argv[2] })
+console.log('held')
+await Bun.sleep(30_000)
+`,
+    )
+    for (const [holder, phrase] of [
+      ['watch', 'a vx watch cycle'],
+      ['cache clean', 'a vx cache clean'],
+      ['run', 'another vx run'],
+    ] as const) {
+      const child = Bun.spawn(['bun', holderScript, holder], { stdout: 'pipe', stderr: 'inherit' })
+      const reader = child.stdout.getReader()
+      await reader.read()
+      const said: string[] = []
+      const second = acquireRunLock('/w/app', { dir, log: (l) => said.push(l) })
+      const deadline = Date.now() + 4_000
+      while (said.length === 0 && Date.now() < deadline) await Bun.sleep(20)
+      child.kill()
+      await (
+        await second
+      )()
+      expect(said).toEqual([
+        `[vx] waiting for ${phrase} (pid ${child.pid}) on this workspace to finish…`,
+      ])
+    }
+  })
+
   it('runs in one process share the lock; the last release removes it', async () => {
     // An embedder running two at once coordinates them itself
     // (`RunOptions.inflight`); the lock is for processes.

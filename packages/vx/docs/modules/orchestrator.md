@@ -355,7 +355,8 @@ out of `run()` (item 759, `tests/run-lock.test.ts` › "contending
 processes never hold it at once…", with holders that die holding it). A
 second process polls every 50 ms, after a second says
 `[vx] waiting for another vx run (pid N) on this workspace to finish…`
-(`run()` passes it to `log.status` as `wait`: taking turns is no
+(the holder's entry names a watch cycle or a cache clean, read once for
+this line; `run()` passes it to `log.status` as `wait`: taking turns is no
 warning; `tests/run-lock-e2e.test.ts` › "the waiting notice is a status
 line…"), and reclaims a lock whose pid is gone. A signal exit is `process.exit`
 (`signals.ts`), which runs no `finally`, so the process's `exit` event

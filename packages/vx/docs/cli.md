@@ -2972,6 +2972,8 @@ A clean that deletes waits for a `vx run` on the same workspace to finish first,
 [vx] waiting for another vx run (pid N) on this workspace to finish…
 ```
 
+A `vx watch` cycle holding the lock reads `a vx watch cycle (pid N)`, a clean `a vx cache clean (pid N)`.
+
 <details class="vx-deeper" data-level="3">
 <summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
 <div class="vx-deeper-body">
@@ -6237,7 +6239,8 @@ that forces colour for a run's log still parses them
 
 Two runs on one workspace take turns: the second waits for the first's
 run lock and, after a second, says `[vx] waiting for another vx run
-(pid N) on this workspace to finish…`, a status line the footer does
+(pid N) on this workspace to finish…`, naming `a vx watch cycle` or
+`a vx cache clean` when one of those holds it, a status line the footer does
 not count as a warning (see caching.md § Concurrent runs). The lock lives in this user's own directory in the temp
 directory, so two runs take turns only when they are one user's and
 share `TMPDIR`: a `nix develop` shell sets its own.

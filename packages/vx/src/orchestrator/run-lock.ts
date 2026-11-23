@@ -117,6 +117,19 @@ export interface RunLockOptions {
    * a review copy and the lock from different runs.
    */
   of?: 'lock'
+  /**
+   * What takes the run lock, written in its entry so a waiter names it:
+   * a run beside a `vx watch` waited on "another vx run" that was the watch.
+   */
+  holder?: RunLockHolder
+}
+
+/** What holds a run lock; an older vx's entry names none and reads as a run. */
+type RunLockHolder = 'run' | 'watch' | 'cache clean'
+
+const HOLDER_PHRASE: Record<string, string> = {
+  watch: 'a vx watch cycle',
+  'cache clean': 'a vx cache clean',
 }
 
 /** Releases a taken run lock; `path` is its directory (`runLockPath`). */
@@ -277,7 +290,7 @@ function alive(pid: number): boolean {
  * onto it. Resolves to the entry that names this taking, or null when
  * another run holds it.
  */
-async function place(lockDir: string): Promise<string | null> {
+async function place(lockDir: string, holder: RunLockHolder): Promise<string | null> {
   const entry = nextEntry()
   // Random too: where procfs is not this namespace's the entry names no
   // start time, and a restarted container's pid 1 would meet the staging
@@ -294,7 +307,7 @@ async function place(lockDir: string): Promise<string | null> {
   }
   placed.add(entry)
   try {
-    await writeFile(path.join(staging, entry), '')
+    await writeFile(path.join(staging, entry), holder === 'run' ? '' : holder)
     await rename(staging, lockDir)
     return entry
   } catch (err) {
@@ -381,7 +394,7 @@ export async function acquireRunLock(
     try {
       // A caller's own `dir` (a test's) is theirs to vouch for.
       if (opts.dir === undefined) ownLockRoot(lockDir)
-      const entry = await place(lockDir)
+      const entry = await place(lockDir, opts.holder ?? 'run')
       if (entry !== null) {
         heldHere.set(lockDir, 1)
         takers.set(lockDir, entry)
@@ -412,11 +425,15 @@ export async function acquireRunLock(
     }
     if (h !== null && !said && Date.now() - started >= SAY_AFTER_MS) {
       said = true
+      const kind =
+        opts.of === 'lock' || h.entry === LEGACY_PID
+          ? ''
+          : await readFile(path.join(lockDir, h.entry), 'utf8').catch(() => '')
       // Spelled out: the Troubleshooting page quotes the run's line as printed.
       ;(opts.wait ?? opts.log)(
         opts.of === 'lock'
           ? `[vx] waiting for another vx lock (pid ${h.pid}) on this workspace to finish…`
-          : `[vx] waiting for another vx run (pid ${h.pid}) on this workspace to finish…`,
+          : `[vx] waiting for ${HOLDER_PHRASE[kind] ?? 'another vx run'} (pid ${h.pid}) on this workspace to finish…`,
       )
     }
     await Bun.sleep(POLL_MS)

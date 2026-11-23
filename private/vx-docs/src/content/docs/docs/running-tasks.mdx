@@ -915,7 +915,7 @@ vx run build --filter @demo/wbe
 - **`no projects matched filter(s)`.** Every `--filter` must match a project. The message suggests the closest name; `vx show` lists them all.
 - **`--affected has no base here`.** Set `baseBranch`, or name a commit: `--affected=<ref>`.
 - **`--affected has no default on the base branch`.** On `main` itself, run `--all`: the cache skips what did not change.
-- **`waiting for another vx run (pid …)`.** One run per workspace at a time. It starts when that one ends.
+- **`waiting for another vx run (pid …)`.** One run per workspace at a time. It starts when that one ends. `a vx watch cycle` or `a vx cache clean` in its place names what holds it.
 - **`vx: command not found`.** vx is not installed: `bunx @vzn/vx init` installs it, or `bun add -g @vzn/vx`.
 
 - **Only one package ran.** With no flag, `vx run build` runs the

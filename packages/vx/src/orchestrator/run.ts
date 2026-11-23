@@ -513,7 +513,12 @@ async function runOnBus(
     const wait = (line: string): void => log.status(line)
     lockAskedAt = { ns: process.hrtime.bigint(), ms: wallNow() }
     const lock = await step('vx:run-lock', () =>
-      acquireRunLock(root, { log: warnOf(log), wait, signal }),
+      acquireRunLock(root, {
+        log: warnOf(log),
+        wait,
+        signal,
+        holder: options.handoff?.watch === true ? 'watch' : 'run',
+      }),
     )
     heldLock = lock
     // Another workspace's clean of a shared cache directory takes no lock of

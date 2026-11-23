@@ -254,7 +254,7 @@ async function cleanCmd(args: readonly string[]): Promise<number> {
   // takes the run's lock and waits its turn. A dry run deletes nothing.
   const releaseRunLock = parsed.dry
     ? async (): Promise<void> => {}
-    : await acquireRunLock(root, { log: warnToStderr })
+    : await acquireRunLock(root, { log: warnToStderr, holder: 'cache clean' })
   try {
     // A run in another checkout of the repository holds no lock of this
     // one's, and shares the store: the prune waits for every process that
@@ -375,7 +375,9 @@ async function clear(
   // waits for the run's lock, as a trim does, and only then reads what to
   // delete: read first, what the run saved meanwhile went uncounted.
   const release =
-    parsed.dry === true ? async () => {} : await acquireRunLock(root, { log: warnToStderr })
+    parsed.dry === true
+      ? async () => {}
+      : await acquireRunLock(root, { log: warnToStderr, holder: 'cache clean' })
   try {
     return await clearHeld(args, root, dir, storeRoot, parsed)
   } finally {
