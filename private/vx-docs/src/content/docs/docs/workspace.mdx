@@ -304,7 +304,7 @@ vx pipeline pr
 ```ansi
 [38;2;239;68;68m✗[0m [1mvx lock[0m  [38;2;203;213;225mlock not written[0m
 
-  [38;2;203;213;225mpipelines.pr.tasks names biuld, which no project declares; tasks: build[0m
+  [38;2;203;213;225mpipelines.pr.tasks names biuld, which no project declares; tasks: build, lint, test[0m
 ```
 
 See [Run a pipeline](../ci/run-a-pipeline/).
@@ -543,7 +543,7 @@ A run reads the lock, not your configs. `vx lock --check` shows what drifted:
 ```ansi title="vx lock --check"
 [38;2;239;68;68m✗[0m [1mvx lock --check[0m  [38;2;203;213;225mpackages/web/vx.config.ts evaluates differently from the lock here — its config, a file it imports, or the environment it reads changed; run 'vx lock'[0m
 
-  [38;2;203;213;225mtasks.build.exec.command: "mkdir -p dist && cp src/main.js dist/main.js" → "mkdir -p dist && cp src/main.js dist/app.js"[0m
+  [38;2;203;213;225mtasks.build.exec.command: "vite build" → "vite build --mode staging"[0m
 ```
 
 Look at the second line: the old command, then the new one. Run `vx lock` to take it.
