@@ -34,6 +34,17 @@ export const ALL_VOICES: Voice[] = [
     role: 'Creator of moon',
     href: 'https://github.com/moonrepo/moon/issues/2818#issuecomment-7070128267',
   },
+  {
+    quote: 'holy cow… this is awesome! People need to be using VX',
+    who: 'Tony Ward',
+    role: 'Software Engineer at CrowdStrike',
+  },
+  {
+    quote:
+      'VX is an amazing breath of fresh air. Finally there is a holistic monorepo cache tool that includes all the features of NX and turborepo',
+    who: 'Nathan Bernhardt',
+    role: 'Software Engineer at CrowdStrike',
+  },
   shew('The benchmarks presented by this project are misleading.'),
   shew(
     'There’s a specific reason that none of the build systems that you’re comparing against don’t do what you’re doing: It doesn’t work.',
