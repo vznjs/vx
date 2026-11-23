@@ -70,7 +70,7 @@ describe('every field', () => {
 describe('the words come from the reference', () => {
   it('takes a task field from its heading', () => {
     const t = fieldsOf('project').find((f) => f.path === 'tasks.*.exec.timeout')!
-    expect(t.what).toStartWith('Maximum time before vx SIGTERMs the child')
+    expect(t.what).toStartWith('How long one attempt may run before vx stops it')
     expect(t.href).toBe('/vx/schema/exec/#timeout-optional')
   })
 
@@ -90,7 +90,7 @@ describe('the words come from the reference', () => {
     expect(fieldsOf('project').find((f) => f.path === 'tasks')!.what).toBeNull()
     expect(fieldsOf('workspace').find((f) => f.path === 'cache')!.what).toBeNull()
     expect(fieldsOf('project').find((f) => f.path === 'tasks.*.cache')!.what).toStartWith(
-      '`cache: true` makes a task cached',
+      '`cache: true` lets vx skip a task',
     )
   })
 

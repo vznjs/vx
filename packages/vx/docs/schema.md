@@ -661,10 +661,10 @@ Default: none, the task runs on any machine.
   says why, once, and on the task's row:
 
   ```ansi
-  [1m[38;2;234;179;8m[vx][0m[2m skipped on linux-x64, with what depends on them: app#ios:build needs darwin-arm64 or darwin-x64[0m
+  [1m[38;2;234;179;8m[vx][0m[2m skipped on linux-x64, with what depends on them: app#ios:build needs darwin-arm64 or darwin-x64[0m
 
-  [4m[58;2;110;118;129m  [1m[38;2;167;139;250mTasks[0m[4m[58;2;110;118;129m     [2mstatus  cache     ±usual    time   cpu    mem outputs  blocks worker         task[0m[4m[58;2;110;118;129m                           [0m
-              [38;2;234;179;8mskipped[0m [2m—[0m              [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2m—[0m              [38;2;147;197;253mapp[0m[2m#[0m[38;2;129;140;248mios:build[0m [2m• needs darwin-arm64 or darwin-x64, this is linux-x64[0m
+  [4m[58;2;110;118;129m  [1m[38;2;167;139;250mTasks[0m[4m[58;2;110;118;129m     [2mstatus  cache     ±usual    time   cpu    mem outputs  blocks worker         task[0m[4m[58;2;110;118;129m                           [0m
+              [38;2;234;179;8mskipped[0m [2m—[0m              [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2m—[0m              [38;2;147;197;253mapp[0m[2m#[0m[38;2;129;140;248mios:build[0m [2m• needs darwin-arm64 or darwin-x64, this is linux-x64[0m
   ```
 
 - `otherPlatform: { needs, host }` is how a `run()` outcome and telemetry
