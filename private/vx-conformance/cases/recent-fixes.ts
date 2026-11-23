@@ -752,4 +752,76 @@ export default [
     },
     steps: [{ run: 'build', expect: { exit: 0, files: { 'out/gen.txt': 'one\n' } } }],
   }),
+
+  // 310550e: a literal output that is a link out of its project, or a
+  // dangling one, was saved empty, and the next run replayed nothing.
+  defineCase({
+    id: 'outputs/literal-link-outputs-restored',
+    category: 'outputs',
+    kind: 'correctness',
+    title:
+      'Outputs named outright that are links out of the project, or dangling, come back as links',
+    why: 'A link the task writes is an output like any file, whether the pattern names it outright or matches it with a wildcard. One that leads out of its project, or to a file not there yet, is still the link the build made. A tool that stores nothing for it replays an entry without it, and the next run is green with the link gone.',
+    from: ['output-links'],
+    workspace: {
+      ...one({
+        command: 'ln -sfn ../../shared/x.txt up.txt && ln -sfn later.txt dang.txt',
+        inputs: ['src/**'],
+        outputs: ['up.txt', 'dang.txt'],
+      }),
+      files: { 'shared/x.txt': 'x\n' },
+    },
+    steps: [
+      { run: 'build', expect: { exit: 0 } },
+      { write: { 'packages/a/up.txt': null, 'packages/a/dang.txt': null } },
+      { run: 'build', expect: { exit: 0 } },
+      {
+        check: {
+          links: { 'packages/a/up.txt': '../../shared/x.txt', 'packages/a/dang.txt': 'later.txt' },
+        },
+      },
+    ],
+  }),
+
+  // 01295d2: a pattern with no fixed directory (`**/dist/**`) pruned no
+  // directory the clean before a build emptied, so the emptied one was
+  // stored as an output of the next build.
+  defineCase({
+    id: 'outputs/emptied-dir-under-rootless-glob-not-replayed',
+    category: 'outputs',
+    kind: 'correctness',
+    title:
+      'A directory the last build wrote, under `**/dist/**`, is not replayed by the next build',
+    why: 'The build writes `dist/<name>/a.js`, and renaming the source moves it. The old directory belongs to the old build, so the new build’s replay must not bring it back, empty or not. A tool that stores it gives every later checkout a stale directory the command never made, and a tool reading `dist` sees a module that no longer exists.',
+    from: ['output-prune-rooted'],
+    workspace: one(
+      {
+        command: 'mkdir -p dist/$(cat src/name) && cat src/name > dist/$(cat src/name)/a.js',
+        inputs: ['src/**'],
+        outputs: ['**/dist/**'],
+      },
+      { 'src/name': 'old' },
+    ),
+    steps: [
+      { run: 'build', expect: { exit: 0, files: { 'packages/a/dist/old/a.js': 'old' } } },
+      { write: { 'packages/a/src/name': 'new' } },
+      { run: 'build', expect: { exit: 0, files: { 'packages/a/dist/new/a.js': 'new' } } },
+      { write: { 'packages/a/dist': null } },
+      { run: 'build', expect: { exit: 0, files: { 'packages/a/dist/new/a.js': 'new' } } },
+      { check: { missing: ['packages/a/dist/old'] } },
+    ],
+  }),
+
+  // 3f5ad76: a task's shell killed by a signal left what it forked running
+  // past the run, holding its pipes and ports.
+  defineCase({
+    id: 'failure/killed-shell-takes-its-children',
+    category: 'failure',
+    kind: 'correctness',
+    title: 'A task whose shell is killed leaves nothing it started running',
+    why: 'A shell killed by the kernel or a SIGKILL (out of memory, a watchdog) runs no cleanup of its own. What it forked is still the task’s, and the run that started it is the only thing that knows. A tool that lets those children run on leaves a server holding its port and a process writing into the outputs after the run says it failed.',
+    from: ['dead-shell-group'],
+    workspace: one({ command: 'sleep 60 & kill -9 $$', cache: false }),
+    steps: [{ run: 'build', expect: { exit: 'fail', within: 30, alone: true } }],
+  }),
 ]

@@ -1018,14 +1018,14 @@
   "scores": {
     "vx": {
       "all": {
-        "pass": 2138,
-        "can": 2138,
-        "of": 2207
+        "pass": 2141,
+        "can": 2141,
+        "of": 2210
       },
       "correctness": {
-        "pass": 1723,
-        "can": 1723,
-        "of": 1784
+        "pass": 1726,
+        "can": 1726,
+        "of": 1787
       },
       "efficiency": {
         "pass": 326,
@@ -1048,9 +1048,9 @@
         "of": 88
       },
       "failure": {
-        "pass": 155,
-        "can": 155,
-        "of": 167
+        "pass": 156,
+        "can": 156,
+        "of": 168
       },
       "affected": {
         "pass": 186,
@@ -1068,9 +1068,9 @@
         "of": 493
       },
       "outputs": {
-        "pass": 305,
-        "can": 305,
-        "of": 316
+        "pass": 307,
+        "can": 307,
+        "of": 318
       },
       "env": {
         "pass": 146,
@@ -1095,14 +1095,14 @@
     },
     "turbo": {
       "all": {
-        "pass": 1393,
-        "can": 1808,
-        "of": 2207
+        "pass": 1394,
+        "can": 1811,
+        "of": 2210
       },
       "correctness": {
-        "pass": 1119,
-        "can": 1461,
-        "of": 1784
+        "pass": 1120,
+        "can": 1464,
+        "of": 1787
       },
       "efficiency": {
         "pass": 244,
@@ -1126,8 +1126,8 @@
       },
       "failure": {
         "pass": 61,
-        "can": 105,
-        "of": 167
+        "can": 106,
+        "of": 168
       },
       "affected": {
         "pass": 144,
@@ -1145,9 +1145,9 @@
         "of": 493
       },
       "outputs": {
-        "pass": 234,
-        "can": 303,
-        "of": 316
+        "pass": 235,
+        "can": 305,
+        "of": 318
       },
       "env": {
         "pass": 133,
@@ -1173,13 +1173,13 @@
     "nx": {
       "all": {
         "pass": 1392,
-        "can": 1843,
-        "of": 2207
+        "can": 1846,
+        "of": 2210
       },
       "correctness": {
         "pass": 1079,
-        "can": 1486,
-        "of": 1784
+        "can": 1489,
+        "of": 1787
       },
       "efficiency": {
         "pass": 283,
@@ -1203,8 +1203,8 @@
       },
       "failure": {
         "pass": 83,
-        "can": 115,
-        "of": 167
+        "can": 116,
+        "of": 168
       },
       "affected": {
         "pass": 124,
@@ -1223,8 +1223,8 @@
       },
       "outputs": {
         "pass": 224,
-        "can": 303,
-        "of": 316
+        "can": 305,
+        "of": 318
       },
       "env": {
         "pass": 135,
@@ -1250,13 +1250,13 @@
     "vite-task": {
       "all": {
         "pass": 1027,
-        "can": 1392,
-        "of": 2207
+        "can": 1395,
+        "of": 2210
       },
       "correctness": {
         "pass": 862,
-        "can": 1171,
-        "of": 1784
+        "can": 1174,
+        "of": 1787
       },
       "efficiency": {
         "pass": 156,
@@ -1280,8 +1280,8 @@
       },
       "failure": {
         "pass": 62,
-        "can": 83,
-        "of": 167
+        "can": 84,
+        "of": 168
       },
       "affected": {
         "pass": 0,
@@ -1300,8 +1300,8 @@
       },
       "outputs": {
         "pass": 207,
-        "can": 303,
-        "of": 316
+        "can": 305,
+        "of": 318
       },
       "env": {
         "pass": 133,
@@ -1326,14 +1326,14 @@
     },
     "nix": {
       "all": {
-        "pass": 1098,
-        "can": 1387,
-        "of": 2207
+        "pass": 1101,
+        "can": 1390,
+        "of": 2210
       },
       "correctness": {
-        "pass": 941,
-        "can": 1191,
-        "of": 1784
+        "pass": 944,
+        "can": 1194,
+        "of": 1787
       },
       "efficiency": {
         "pass": 147,
@@ -1356,9 +1356,9 @@
         "of": 88
       },
       "failure": {
-        "pass": 61,
-        "can": 93,
-        "of": 167
+        "pass": 62,
+        "can": 94,
+        "of": 168
       },
       "affected": {
         "pass": 0,
@@ -1376,9 +1376,9 @@
         "of": 493
       },
       "outputs": {
-        "pass": 234,
-        "can": 310,
-        "of": 316
+        "pass": 236,
+        "can": 312,
+        "of": 318
       },
       "env": {
         "pass": 122,
@@ -1404,13 +1404,13 @@
     "moon": {
       "all": {
         "pass": 1279,
-        "can": 1739,
-        "of": 2207
+        "can": 1742,
+        "of": 2210
       },
       "correctness": {
         "pass": 1008,
-        "can": 1420,
-        "of": 1784
+        "can": 1423,
+        "of": 1787
       },
       "efficiency": {
         "pass": 236,
@@ -1434,8 +1434,8 @@
       },
       "failure": {
         "pass": 92,
-        "can": 143,
-        "of": 167
+        "can": 144,
+        "of": 168
       },
       "affected": {
         "pass": 144,
@@ -1454,8 +1454,8 @@
       },
       "outputs": {
         "pass": 192,
-        "can": 306,
-        "of": 316
+        "can": 308,
+        "of": 318
       },
       "env": {
         "pass": 138,
@@ -37446,6 +37446,121 @@
         "moon": {
           "status": "n/a",
           "detail": "moon keeps no task from files, network or home it never declared."
+        }
+      }
+    },
+    {
+      "id": "outputs/literal-link-outputs-restored",
+      "ref": "f6j2g7",
+      "category": "outputs",
+      "kind": "correctness",
+      "title": "Outputs named outright that are links out of the project, or dangling, come back as links",
+      "why": "A link the task writes is an output like any file, whether the pattern names it outright or matches it with a wildcard. One that leads out of its project, or to a file not there yet, is still the link the build made. A tool that stores nothing for it replays an entry without it, and the next run is green with the link gone.",
+      "from": [
+        "output-links"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 4,
+          "detail": "packages/a/up.txt is missing"
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 4,
+          "detail": "packages/a/dang.txt is missing"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "fail",
+          "step": 1,
+          "detail": "exited 1, expected success"
+        }
+      }
+    },
+    {
+      "id": "outputs/emptied-dir-under-rootless-glob-not-replayed",
+      "ref": "p7cjxd",
+      "category": "outputs",
+      "kind": "correctness",
+      "title": "A directory the last build wrote, under `**/dist/**`, is not replayed by the next build",
+      "why": "The build writes `dist/<name>/a.js`, and renaming the source moves it. The old directory belongs to the old build, so the new build’s replay must not bring it back, empty or not. A tool that stores it gives every later checkout a stale directory the command never made, and a tool reading `dist` sees a module that no longer exists.",
+      "from": [
+        "output-prune-rooted"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 6,
+          "detail": "packages/a/dist/old exists"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 6,
+          "detail": "packages/a/dist/old exists"
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 6,
+          "detail": "packages/a/dist/old exists"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "fail",
+          "step": 6,
+          "detail": "packages/a/dist/old exists"
+        }
+      }
+    },
+    {
+      "id": "failure/killed-shell-takes-its-children",
+      "ref": "55vcpg",
+      "category": "failure",
+      "kind": "correctness",
+      "title": "A task whose shell is killed leaves nothing it started running",
+      "why": "A shell killed by the kernel or a SIGKILL (out of memory, a watchdog) runs no cleanup of its own. What it forked is still the task’s, and the run that started it is the only thing that knows. A tool that lets those children run on leaves a server holding its port and a process writing into the outputs after the run says it failed.",
+      "from": [
+        "dead-shell-group"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 1,
+          "detail": "did not finish within 30 s"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 1,
+          "detail": "left running: sleep 60"
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 1,
+          "detail": "left running: sleep 60"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "fail",
+          "step": 1,
+          "detail": "did not finish within 30 s"
         }
       }
     },
