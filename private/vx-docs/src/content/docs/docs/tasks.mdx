@@ -3,6 +3,8 @@ title: Tasks
 description: Declare what each task runs and what must finish first.
 ---
 
+import Diagram from '../../../components/guide/diagram/Diagram.astro'
+import { taskGraph } from '../../../components/docs/pictures.js'
 import { Aside } from '@astrojs/starlight/components'
 import GraphExplorer from '../../../components/demos/GraphExplorer.astro'
 
@@ -36,15 +38,7 @@ export default defineProject({
 })
 ```
 
-```mermaid
-flowchart LR
-  codegen --> build
-  ubuild["ui#build"] -->|^build| build
-  build --> e2e
-  apibuild["api#build"] --> e2e
-  build --> ci
-  e2e --> ci
-```
+<Diagram {...taskGraph} />
 
 ---
 

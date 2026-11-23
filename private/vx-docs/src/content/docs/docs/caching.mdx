@@ -3,6 +3,8 @@ title: Caching
 description: Declare what a task reads and writes, so vx runs it once per set of inputs.
 ---
 
+import Diagram from '../../../components/guide/diagram/Diagram.astro'
+import { cacheKey } from '../../../components/docs/pictures.js'
 import { Aside } from '@astrojs/starlight/components'
 
 A task with `cache: true` runs once per set of inputs. List what the
@@ -37,12 +39,7 @@ export default defineProject({
 })
 ```
 
-```mermaid
-flowchart LR
-  I["inputs + config + upstream keys"] --> K((key))
-  K -->|stored| H["hit: restore dist/"]
-  K -->|new| R["miss: run, then store"]
-```
+<Diagram {...cacheKey} />
 
 ---
 

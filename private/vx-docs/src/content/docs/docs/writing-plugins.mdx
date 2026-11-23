@@ -3,16 +3,15 @@ title: Write a plugin
 description: Write a plugin that fills one or more stages of every run.
 ---
 
+import Diagram from '../../../components/guide/diagram/Diagram.astro'
+import { pluginStages } from '../../../components/docs/pictures.js'
 import { Steps, Aside, CardGrid, LinkCard } from '@astrojs/starlight/components'
 
 Change every run from one place: add tasks, key material, a cache, an
 exporter or a CLI verb. A plugin fills one or more stages of the run;
 everything else stays core's.
 
-```mermaid
-flowchart LR
-  config --> discover --> project --> G["graph"] --> key --> fingerprint --> measures --> schedule --> admit --> E["executor / cache"] --> T["telemetry / output"]
-```
+<Diagram {...pluginStages} />
 
 ---
 
