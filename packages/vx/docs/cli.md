@@ -3340,7 +3340,7 @@ For review, it also writes each project's resolved config, pretty, to
 
 - Configs are programs. `vx lock` runs them in the current environment
   and stores the post-evaluation objects, each project keyed by its
-  name (version 9; an older vx's lock is refused: re-run `vx lock`).
+  name (version 10; an older vx's lock is refused: re-run `vx lock`).
 - A project's name: its config's `name`, else a plugin's `discover`
   stage, else its root-relative path (`//` for the root).
 - `@vzn/vx-lockfile`'s `discover` stage gives `package.json`'s `name`.
@@ -3388,16 +3388,18 @@ For review, it also writes each project's resolved config, pretty, to
 **The file's layout**
 
 - It is laid out for the parse first, then for size, then for merges.
-- First, a header line: `{"version":9}`.
-- Then each distinct task config once: a pointer line (`#k2x0a1b`) and
-  its JSON line.
+- First, a header line: `{"version":10}`.
 - Then each project, in name-hash order:
   `<name>⇥{"path","file"|"by","config"}`.
 - `file` is left out for `vx.config.ts`, and the tasks are left out of
   `config`.
-- Then, per task in name order, a `⇥<task>` line and its pointer line.
+- Then, per task in name order, a `⇥<task>` line and its pointer line
+  (`#k2x0a1b`). The first task to hold a pointer has its JSON on the next
+  line.
 - A pointer is a hash of its task's JSON, so the same configs always lock
   to the same text.
+- Each project's tasks sit under its own line, so two branches that edit
+  different projects merge cleanly.
 - A merge that lost a pointer's entry is refused until `vx lock` rewrites
   the lock.
 - `vx show` lists a project's tasks in name order.

@@ -1991,35 +1991,39 @@ export function lockKey(root: string, dir: string): string
 ```
 
 On disk the lock is text, laid out for the parse first, then the size,
-then merges (2026-11-23): a header line, `{"version":9}` (with
-`nestedWorkspaces` when there is one), then each distinct task config
-once on two lines, its pointer (`#` and 7 base-36 characters) and its
-JSON (keys sorted), pointers sorted; then each project in xxh3-of-name
+then merges (2026-11-23): a header line, `{"version":10}` (with
+`nestedWorkspaces` when there is one), then each project in xxh3-of-name
 order, `<name>⇥{"path", "file" | "by", "config"}` (`file` left out for
 `vx.config.ts`, `null` for a project with neither file nor plugin;
 `config` without its tasks, left out when it held only tasks), and per
-task, in name order, a `⇥<task>` line and its pointer line. A pointer is
+task, in name order, a `⇥<task>` line and its pointer line (`#` and 7
+base-36 characters); the first task line holding a pointer has its JSON
+(keys sorted) on the next line. A pointer is
 7 base-36 characters of the xxh3 of its JSON (salted in JSON order on a
 clash), so tasks with the same JSON share one entry and the same projects
 lock to the same text whatever lock was there (M, 2026-11-23: a pointer
 kept across `vx lock` let a clean merge hand a task another branch's
 edit). A name a tab could break, or that starts with `#`, `"` or `{`, is
 written as a JSON string (a task name: one with a tab or a leading `"`).
-This workspace's lock is 176 KB against version 8's 181 KB, read in the
+This workspace's lock is 177 KB against version 8's 181 KB, read in the
 same time. A name line seldom changes, so it sits between two branches'
 edits to neighbouring projects and git merges both; hashed order keeps two
-new projects apart. Of 1,080 two-branch merges (4, 25 and 500 projects)
-80% conflicted in version 8 and 18% here; another 10% merge cleanly to a
-pointer the pool lost (one branch dropped the last task with a JSON the
-other added), which a run refuses until `vx lock` rewrites the lock. No
+new projects apart. Version 9 kept every JSON in one pool above the
+projects, so two branches editing different projects edited neighbouring
+pool lines and conflicted (`lock-merge-conflict.test.ts`); version 10 keeps
+each JSON under its project. Of 1,080 two-branch merges (4, 25 and 500 projects)
+80% conflicted in version 8 and 18% in version 9; a clean merge can still
+lose a pointer's JSON (one branch dropped or moved the task line that held
+a JSON the other kept), which a run refuses until `vx lock` rewrites the
+lock. No
 merge reads a task a branch did not write.
 
 `readLockfile` checks the shape only: the header an object of this
-`LOCKFILE_VERSION`, each pool pointer a line of 8 characters before a
-JSON line, each project line a key, a tab and a JSON object of
+`LOCKFILE_VERSION`, each project line a key, a tab and a JSON object of
 `{ path, file?, by?, config? }` (no other key; `by` only without `file`,
 `file` only with `config`), its task names in name order each before a
-pointer line, each name once, each `path` a directory
+pointer line of 8 characters (and its JSON line, if any; a pointer
+defined twice must hold the same JSON), each name once, each `path` a directory
 under the root as `lockKey` spells it (`.`, or a relative POSIX path
 with no empty, `.` or `..` segment: a run joins it onto the root, and
 `../x` ran a project outside the workspace), each task a `#id` with its

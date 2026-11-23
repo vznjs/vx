@@ -70,3 +70,38 @@ it('vx lock --check names a conflicted dependencies lock as a conflict', async (
   expect(check.code).toBe(1)
   expect(check.err).toContain('.vx/dependencies.lock holds a git merge conflict: run `vx lock`')
 })
+
+// Two branches each edited a different project and the merge still
+// clashed: every task's JSON sat in one pool at the top, side by side, so
+// both branches' pool edits touched. Each project's lines merge alone.
+it('git merges two branches that each edit a different project, and the lock checks', async () => {
+  const r = (root = await makeWorkspace({ prefix: 'vx-lock-merge-' }))
+  const git = gitIn(r)
+  const two = (cmd: string) =>
+    `export default { tasks: { build: { exec: { command: '${cmd}' } }, lint: { exec: { command: 'oxlint' } } } }\n`
+  await addProject(r, 'a', two('echo a'))
+  await addProject(r, 'b', two('echo b'))
+  expect(vx(r, 'lock').code).toBe(0)
+  git('add', '-A')
+  git('commit', '-qm', 'base')
+  git('checkout', '-qb', 'theirs')
+  await Bun.write(path.join(r, 'packages/a/vx.config.mjs'), two('echo a2'))
+  expect(vx(r, 'lock').code).toBe(0)
+  git('commit', '-qam', 'theirs')
+  git('checkout', '-q', '-')
+  await Bun.write(path.join(r, 'packages/b/vx.config.mjs'), two('echo b2'))
+  expect(vx(r, 'lock').code).toBe(0)
+  git('commit', '-qam', 'ours')
+  const merge = Bun.spawnSync({
+    cmd: ['git', 'merge', '-q', '--no-edit', 'theirs'],
+    cwd: r,
+    stdout: 'pipe',
+    stderr: 'pipe',
+  })
+  expect(`${merge.exitCode} ${merge.stdout.toString()}`).not.toContain('CONFLICT')
+  expect(merge.exitCode).toBe(0)
+  const check = vx(r, 'lock', '--check')
+  expect(`${check.code} ${check.err}`).toBe('0 ')
+  const text = await Bun.file(path.join(r, LOCK)).text()
+  expect([text.includes('echo a2'), text.includes('echo b2')]).toEqual([true, true])
+})

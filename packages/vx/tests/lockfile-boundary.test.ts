@@ -232,9 +232,7 @@ describe('readLockfile — the boundary rejects malformed input loudly', () => {
   })
 
   it('a string dependsOn is refused, not walked per character ("dependsOn b#a")', async () => {
-    await writeRaw(
-      jsonl('#ttttttt', '{"dependsOn":"a#build"}', 'pkg\t{"path":"pkg"}', '\tb', '#ttttttt'),
-    )
+    await writeRaw(jsonl('pkg\t{"path":"pkg"}', '\tb', '#ttttttt', '{"dependsOn":"a#build"}'))
     await expect(readLockfile(root)).rejects.toThrow('entry for "pkg" is malformed')
   })
 
@@ -279,12 +277,11 @@ describe('readLockfile — the boundary rejects malformed input loudly', () => {
 })
 
 describe('writeLockfile — the file is committed, so its shape is a contract', () => {
-  it('writes a header, each task once, then each project with its tasks by pointer', async () => {
-    // A task two projects declare alike is one pool entry, its pointer on a
-    // line, its JSON on the next; each project, in name-hash order, lists
-    // its tasks as a name line and a pointer line; `vx.config.ts` is the
-    // file a line leaves out. A missing trailing newline makes git complain
-    // on every write.
+  it('writes a header, then each project with its tasks by pointer, each JSON once', async () => {
+    // Each project, in name-hash order, lists its tasks as a name line and
+    // a pointer line; a task two projects declare alike has its JSON once,
+    // under its first holder; `vx.config.ts` is the file a line leaves out.
+    // A missing trailing newline makes git complain on every write.
     const build = { exec: { command: 'echo hi' } }
     await writeLockfile(root, {
       version: LOCKFILE_VERSION,
@@ -303,9 +300,10 @@ describe('writeLockfile — the file is committed, so its shape is a contract', 
     const order = Object.keys(lines).sort((a, b) =>
       Bun.hash.xxHash3(a) < Bun.hash.xxHash3(b) ? -1 : 1,
     )
+    const first = order.find((n) => n !== 'docs')!
+    lines[first] += '{"exec":{"command":"echo hi"}}\n'
     expect(await Bun.file(lockfilePath(root)).text()).toBe(
-      `{"version":${LOCKFILE_VERSION}}\n${id}\n{"exec":{"command":"echo hi"}}\n` +
-        order.map((n) => lines[n]).join(''),
+      `{"version":${LOCKFILE_VERSION}}\n` + order.map((n) => lines[n]).join(''),
     )
     const read = (await readLockfile(root))!
     expect(read.projects['web']!.config!.tasks!['build']).toBe(

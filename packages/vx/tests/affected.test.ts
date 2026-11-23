@@ -480,13 +480,13 @@ describe('affectedProjects', () => {
     const lockOf = (command: string, spaced = false) =>
       [
         `{"version":${LOCKFILE_VERSION}}`,
-        '#aaaaaaa',
-        `{"exec":{"command":${JSON.stringify(command)}}}`,
-        '#bbbbbbb',
-        '{"exec":{"command":"b"}}',
-        ...['a', 'b'].map((n) => {
+        ...[
+          ['a', command],
+          ['b', 'b'],
+        ].map(([n, c]) => {
           const e = JSON.stringify({ path: `packages/${n}`, file: 'vx.config.mjs' })
-          return `${n}\t${spaced ? e.replaceAll(',', ', ') : e}\n\tt\n#${n.repeat(7)}`
+          const t = JSON.stringify({ exec: { command: c } })
+          return `${n}\t${spaced ? e.replaceAll(',', ', ') : e}\n\tt\n#${n!.repeat(7)}\n${t}`
         }),
       ].join('\n')
     const all = () =>

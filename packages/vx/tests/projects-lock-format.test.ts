@@ -1,6 +1,6 @@
-// `.vx/projects.lock` v9 (M, 2026-11-23): every distinct task once under a
-// pointer that is the hash of its JSON, two lines per record, so git merges
-// edits to neighbouring records and the same projects lock to the same text.
+// `.vx/projects.lock` v10: every distinct task once under a pointer that is
+// the hash of its JSON, the JSON under its first holder, so git merges edits
+// to different projects and the same projects lock to the same text.
 
 import { afterEach, beforeEach, expect, it } from 'bun:test'
 import { spawnSync } from 'node:child_process'
@@ -52,30 +52,24 @@ const base = () =>
     'apps/web': project('@acme/web', { lint, build }),
   })
 
-it('writes the header, the pool as pointer and JSON lines, then each project with a line per task name and its pointer', () => {
+it('writes the header, then each project with its task names, pointers, and each JSON under its first holder', () => {
   const text = write(base())
   const lines = text.trimEnd().split('\n')
   expect(lines[0]).toBe(`{"version":${LOCKFILE_VERSION}}`)
-  // Three distinct tasks: three pointers, each then its JSON, sorted.
-  const pool = lines.slice(1, 7)
-  const pointers = pool.filter((_, i) => i % 2 === 0)
+  const pointers = lines.filter((l) => l.startsWith('#'))
   expect(pointers.every((p) => /^#[0-9a-z]{7}$/.test(p))).toBe(true)
-  expect([...pointers].sort()).toEqual(pointers)
-  expect(pool.filter((_, i) => i % 2 === 1).every((b) => b.startsWith('{'))).toBe(true)
+  // Three distinct tasks: three JSON lines, each right under a pointer.
+  const bodies = lines.flatMap((l, i) => (i > 0 && l.startsWith('{') ? [i] : []))
+  expect(bodies.length).toBe(3)
+  expect(bodies.every((i) => lines[i - 1]!.startsWith('#'))).toBe(true)
+  // No bigger than a pool: header, two names, five task and pointer lines, three JSON.
+  expect(lines.length).toBe(16)
   // Tasks in name order; `vx.config.ts` is the file a line leaves out.
   const ui = lines.indexOf('@acme/ui\t{"path":"packages/ui"}')
-  expect(ui).toBeGreaterThan(6)
-  expect(lines.slice(ui + 1, ui + 7).filter((_, i) => i % 2 === 0)).toEqual([
-    '\tbuild',
-    '\tlint',
-    '\ttest',
-  ])
-  expect(
-    lines
-      .slice(ui + 1, ui + 7)
-      .filter((_, i) => i % 2 === 1)
-      .every((p) => pointers.includes(p)),
-  ).toBe(true)
+  const web = lines.indexOf('@acme/web\t{"path":"apps/web"}')
+  expect(Math.min(ui, web)).toBe(1)
+  const own = lines.slice(ui + 1, ui < web ? web : undefined)
+  expect(own.filter((l) => l.startsWith('\t'))).toEqual(['\tbuild', '\tlint', '\ttest'])
 })
 
 it('orders projects by the hash of their name, so two new ones seldom land side by side', () => {
@@ -118,7 +112,7 @@ it('reads back every entry as written: file, by, other config keys, no tasks, od
   expect(read!.projects['packages/added']!.file).toBeUndefined()
 })
 
-it('gives an edited task the pointer of its new JSON, in its pool entry and each line that holds it', () => {
+it('gives an edited task the pointer of its new JSON, in each line that holds it, and writes that JSON once', () => {
   const before = write(base())
   const lint2 = { ...lint, exec: { command: 'oxlint --deny-warnings' } }
   const after = write(
@@ -130,9 +124,9 @@ it('gives an edited task the pointer of its new JSON, in its pool entry and each
   const a = new Set(before.split('\n')),
     b = after.split('\n')
   const added = b.filter((l) => !a.has(l))
-  // Its pool entry (pointer and JSON), and that pointer on both projects' lint lines.
-  expect(added.length).toBe(4)
-  expect(added.filter((l) => l === added[0]).length).toBe(3)
+  // The new pointer on both projects' lint lines, and its JSON under the first.
+  expect(added.length).toBe(3)
+  expect(added.filter((l) => l === added[0]).length).toBe(2)
   expect(added).toContain(JSON.stringify(lint2))
 })
 
@@ -148,8 +142,8 @@ it('moves only the edited project to a new pointer when the others keep the old 
   const a = new Set(before.split('\n')),
     b = after.split('\n')
   const added = b.filter((l) => !a.has(l))
-  // The new pool entry (pointer and JSON) and web's lint pointer.
-  expect(added.length).toBe(3)
+  // Web's new lint pointer and its JSON.
+  expect(added.length).toBe(2)
   expect(added).toContain(JSON.stringify(lint2))
   expect([...a].filter((l) => !b.includes(l))).toEqual([
     // web's old lint pointer line: the same text as ui's, so only one goes.
@@ -188,18 +182,10 @@ const merge = (ours: string, baseText: string, theirs: string) => {
   return { clean: r.status === 0, text: r.stdout }
 }
 
-// A name line stays put, so it sits between two branches' edits and git
-// merges both.
+// Each edit sits under its own project, unchanged lines between them, so
+// git merges both.
 it('git merges two branches that edit tasks of different projects', async () => {
-  // Other tasks keep the two branches' pool entries apart.
-  const others = Object.fromEntries(
-    ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'].map((n) => [
-      `packages/${n}`,
-      project(n, { lint: { ...lint, description: n } }),
-    ]),
-  )
   const b0 = lock({
-    ...others,
     'packages/ui': project('@acme/ui', { build: { ...build, description: 'ui' }, lint }),
     'apps/web': project('@acme/web', { build: { ...build, description: 'web' }, lint }),
   })
@@ -229,11 +215,12 @@ it('reads a lock a merge left conflicted as one to re-lock', async () => {
   expect(readLockfile(root)).rejects.toThrow('merge conflict')
 })
 
-it('refuses a task line with no pointer, and a pointer the pool lacks', async () => {
+it('refuses a task line with no pointer, and a pointer no line defines', async () => {
   const text = write(base())
   const p = path.join(root, '.vx/projects.lock')
   const lines = text.trimEnd().split('\n')
-  const last = lines.length - 1
+  // The last task's pointer line: a JSON line under it, if any, goes too.
+  const last = lines.findLastIndex((l) => l.startsWith('\t')) + 1
   writeFileSync(p, `${lines.slice(0, last).join('\n')}\n`)
   expect(readLockfile(root)).rejects.toThrow('run `vx lock`')
   writeFileSync(p, `${[...lines.slice(0, last), '#zzzzzzz'].join('\n')}\n`)
@@ -242,8 +229,8 @@ it('refuses a task line with no pointer, and a pointer the pool lacks', async ()
 })
 
 // A pointer names its JSON, so no clean merge can give a task a body
-// neither branch wrote for it: it conflicts, refuses as a pointer the pool
-// lacks, or reads each branch's task.
+// neither branch wrote for it: it conflicts, refuses as a pointer no line
+// defines, or reads each branch's task.
 const settles = async (
   ours: string,
   start: string,
@@ -287,29 +274,21 @@ it('never merges a task added on one branch onto a body the other branch dropped
   await settles(ours, start, theirs, { 'apps/web': { build, lint } })
 })
 
-it('refuses a pool pointer cut short or written twice, so a reader sees the body a task gets', async () => {
+it('refuses a pointer cut short, or one defined twice with different JSON, so a reader sees the body a task gets', async () => {
   const p = path.join(root, '.vx/projects.lock')
-  const lines = [
-    '{"version":9}',
-    '#abc',
-    '{"x":1}',
-    JSON.stringify(build),
-    'app\t{"path":"app"}',
-    '\tbuild',
-    '#abc',
-    '{"x":1}',
-  ]
+  const head = `{"version":${LOCKFILE_VERSION}}`
+  const lines = [head, 'app\t{"path":"app"}', '\tbuild', '#abc', '{"x":1}']
   writeFileSync(p, `${lines.join('\n')}\n`)
   expect(readLockfile(root)).rejects.toThrow('run `vx lock`')
   const twice = [
-    '{"version":9}',
-    '#aaaaaaa',
-    JSON.stringify(lint),
-    '#aaaaaaa',
-    JSON.stringify(build),
+    head,
     'app\t{"path":"app"}',
     '\tbuild',
     '#aaaaaaa',
+    JSON.stringify(build),
+    '\tlint',
+    '#aaaaaaa',
+    JSON.stringify(lint),
   ]
   writeFileSync(p, `${twice.join('\n')}\n`)
   expect(readLockfile(root)).rejects.toThrow('run `vx lock`')
