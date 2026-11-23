@@ -661,6 +661,13 @@ export function projectManager(dir: string, execPath: string): ManagedInstall['m
   return execPath.includes(`${path.sep}node_modules${path.sep}.pnpm${path.sep}`) ? 'pnpm' : 'npm'
 }
 
+/** `$name` as a POSIX path with `tail` after it; undefined when unset or relative. */
+function underEnv(name: string, tail: string): string | undefined {
+  const dir = process.env[name]
+  if (dir === undefined || !path.isAbsolute(dir)) return undefined
+  return `${dir.split(path.sep).join('/').replace(/\/+$/, '')}${tail}`
+}
+
 /**
  * How a package manager installed the binary at `execPath`, or null
  * (hand-installed). The path names the tree: a manager's global dir, or a
@@ -678,9 +685,20 @@ export function managedInstall(execPath: string, cwd: string): ManagedInstall | 
       `vx upgrade: this vx runs from a package-manager cache (${execPath}) — nothing is installed to upgrade; ask for the version you want instead: bunx @vzn/vx@latest`,
     )
   }
-  if (p.includes('/.bun/install/global/')) return { manager: 'bun', scope: 'global', cwd: root }
+  // A global dir moved by BUN_INSTALL or PNPM_HOME read as a project, which
+  // `vx upgrade -g` refused as "the project's own".
+  if (p.includes('/.bun/install/global/') || root === underEnv('BUN_INSTALL', '/install/global'))
+    return { manager: 'bun', scope: 'global', cwd: root }
+  const pnpmHome = underEnv('PNPM_HOME', '/global/')
   if (/\/pnpm\/global\/|\/pnpm-global\//.test(p))
     return { manager: 'pnpm', scope: 'global', cwd: root }
+  // pnpm's global dir is `<PNPM_HOME>/global/<layout>`, its store `.pnpm` in it.
+  const layout =
+    pnpmHome !== undefined && p.startsWith(pnpmHome)
+      ? /^\d+\//.exec(p.slice(pnpmHome.length))
+      : null
+  if (layout !== null)
+    return { manager: 'pnpm', scope: 'global', cwd: `${pnpmHome}${layout[0].slice(0, -1)}` }
   if (/\/yarn\/global\//.test(p)) return { manager: 'yarn', scope: 'global', cwd: root }
   const field = listingField(root)
   if (field !== undefined) {

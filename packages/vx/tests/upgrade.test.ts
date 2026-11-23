@@ -821,6 +821,38 @@ describe('managedInstall', () => {
     })
   })
 
+  // Moved by BUN_INSTALL or PNPM_HOME, each read as a project: `vx upgrade -g`
+  // refused it as "the project's own".
+  it('names a global dir that BUN_INSTALL or PNPM_HOME moved', () => {
+    const saved = { bun: process.env['BUN_INSTALL'], pnpm: process.env['PNPM_HOME'] }
+    process.env['BUN_INSTALL'] = '/opt/bun/'
+    process.env['PNPM_HOME'] = '/opt/pnpm-home'
+    try {
+      expect(managedInstall(`/opt/bun/install/global/${BIN}`, '/')).toEqual({
+        manager: 'bun',
+        scope: 'global',
+        cwd: '/opt/bun/install/global',
+      })
+      expect(
+        managedInstall(
+          `/opt/pnpm-home/global/5/node_modules/.pnpm/@vzn+vx-linux-x64@0.0.1/${BIN}`,
+          '/',
+        ),
+      ).toEqual({ manager: 'pnpm', scope: 'global', cwd: '/opt/pnpm-home/global/5' })
+      // pnpm 10 keeps its store beside node_modules, where the bin resolves.
+      expect(
+        managedInstall(`/opt/pnpm-home/global/5/.pnpm/@vzn+vx-linux-x64@0.0.1/${BIN}`, '/'),
+      ).toEqual({ manager: 'pnpm', scope: 'global', cwd: '/opt/pnpm-home/global/5' })
+    } finally {
+      for (const [k, v] of [
+        ['BUN_INSTALL', saved.bun],
+        ['PNPM_HOME', saved.pnpm],
+      ] as const)
+        if (v === undefined) delete process.env[k]
+        else process.env[k] = v
+    }
+  })
+
   it("names a project's manager by its lockfile, and the field that lists vx", async () => {
     const cases: [string, Record<string, string>, string, string][] = [
       ['pnpm', { 'pnpm-lock.yaml': '' }, 'devDependencies', 'pnpm add @vzn/vx@1.2.3 --save-dev'],
