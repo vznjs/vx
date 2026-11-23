@@ -246,8 +246,10 @@ To drop Nx, rewrite each one as the command it wraps: `jest`,
 
 </details>
 
-Generators, Nx Console and module-boundary rules have no vx equivalent;
-keep Nx for those.
+Generators and Nx Console have no vx equivalent; keep Nx for those.
+
+Module-boundary tags become `run.rules.dependencies`, checked by
+`vx lock`. Source imports stay your linter's job.
 
 ---
 
