@@ -361,6 +361,8 @@ describe('task selection', () => {
         await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name, version: '0.0.0' }))
         await writeFile(path.join(dir, 'vx.config.mjs'), `export default { tasks: { ${tasks} } }`)
       }
+      // An --all run refuses a config the lock lacks.
+      await lock(root)
       const parsed = parseRunArgs(['verify', '--all'])
       const resolved = await resolveRunOptions(parsed, root, parsed.tasks)
       if ('error' in resolved || 'nothingSelected' in resolved) throw new Error('unreachable')
