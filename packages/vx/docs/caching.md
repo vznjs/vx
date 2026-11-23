@@ -1986,7 +1986,8 @@ is compressed — the run stays green, one status line names the task
 (`[vx] cache save failed: <task> is not cached: its outputs pack to …,
 past the 1.0 GB cache.artifactCeiling a restore enforces — narrow
 outputs.files or raise it`), and nothing is
-stored for a later run to hit and fail to restore. Left to the scan, a
+stored for a later run to hit and fail to restore. Where the two sizes
+print alike (`1.0 GB`), each line names both in bytes too. Left to the scan, a
 2.2 GB output paid the whole compress and a decode (6 to 14 s) to learn
 the same thing and called the task's outputs a corrupt artifact.
 
