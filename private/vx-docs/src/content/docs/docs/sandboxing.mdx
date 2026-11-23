@@ -24,11 +24,16 @@ exec: {
 
 `@demo/web` builds with `vite build`. Grant it the files you think it reads, and the folder it writes:
 
-```ts title="packages/web/vx.config.ts" mark={4}
+```ts title="packages/web/vx.config.ts" mark={4-9}
 build: {
   exec: {
     command: 'vite build',
-    sandbox: { allow: { read: ['src/', 'index.html'], write: ['dist/'] } },
+    sandbox: {
+      allow: {
+        read: ['src/', 'index.html'],
+        write: ['dist/'],
+      },
+    },
   },
   inputs: { files: ['src/**', 'index.html'] },
   outputs: { files: ['dist/**'] },
@@ -36,7 +41,7 @@ build: {
 },
 ```
 
-```ansi title="vx run @demo/web#build"
+```ansi wrap title="vx run @demo/web#build"
 [2m$[0m vx run @demo/web#build
 
 [2m┌─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m>[0m $ vite build
@@ -66,19 +71,36 @@ Vite says **built**. vx says **failed**: vite looked for `vite.config.js` and `p
 
 Copy the `fix:` line into `read`, and the second line into `inputs.files`:
 
-```ts title="packages/web/vx.config.ts" mark={4,6}
+```ts title="packages/web/vx.config.ts" ins={9-10,20-21}
 build: {
   exec: {
     command: 'vite build',
-    sandbox: { allow: { read: ['src/', 'index.html', 'package.json', 'vite.config.js'], write: ['dist/'] } },
+    sandbox: {
+      allow: {
+        read: [
+          'src/',
+          'index.html',
+          'package.json',
+          'vite.config.js',
+        ],
+        write: ['dist/'],
+      },
+    },
   },
-  inputs: { files: ['src/**', 'index.html', 'package.json', 'vite.config.js'] },
+  inputs: {
+    files: [
+      'src/**',
+      'index.html',
+      'package.json',
+      'vite.config.js',
+    ],
+  },
   outputs: { files: ['dist/**'] },
   cache: true,
 },
 ```
 
-```ansi title="vx run @demo/web#build"
+```ansi wrap title="vx run @demo/web#build"
 [2m$[0m vx run @demo/web#build
 
 [2m┌─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m>[0m $ vite build
@@ -94,24 +116,44 @@ mkdir(/repo/packages/web/node_modules/.vite-temp) = a write no grant covers  [/r
 [2m└─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(201ms)[0m [1m[38;2;239;68;68mfailed (exit 1, 1 sandbox violation)[0m
 ```
 
-Now vite reads its config, and needs one more folder: it bundles the config into `node_modules/.vite-temp/` first.
+Vite reads its config this time, and needs one more folder: it bundles the config into `node_modules/.vite-temp/` first.
 
 </Frame>
 <Frame title="3. Every file accounted for">
 
-```ts title="packages/web/vx.config.ts" mark={4}
+```ts title="packages/web/vx.config.ts" ins={14}
 build: {
   exec: {
     command: 'vite build',
-    sandbox: { allow: { read: ['src/', 'index.html', 'package.json', 'vite.config.js'], write: ['dist/', 'node_modules/.vite-temp/'] } },
+    sandbox: {
+      allow: {
+        read: [
+          'src/',
+          'index.html',
+          'package.json',
+          'vite.config.js',
+        ],
+        write: [
+          'dist/',
+          'node_modules/.vite-temp/',
+        ],
+      },
+    },
   },
-  inputs: { files: ['src/**', 'index.html', 'package.json', 'vite.config.js'] },
+  inputs: {
+    files: [
+      'src/**',
+      'index.html',
+      'package.json',
+      'vite.config.js',
+    ],
+  },
   outputs: { files: ['dist/**'] },
   cache: true,
 },
 ```
 
-```ansi title="vx run @demo/web#build"
+```ansi wrap title="vx run @demo/web#build"
 [2m$[0m vx run @demo/web#build
 
 [2m┌─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m>[0m $ vite build
@@ -126,7 +168,7 @@ computing gzip size...
 [0m[2m└─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(396ms)[0m [2msuccess[0m
 ```
 
-**success**. Every file the build reads is now in its key. An edit to `vite.config.js` builds again, instead of putting back an old `dist/`.
+**success**. Every file the build reads is in its key. An edit to `vite.config.js` builds again, instead of putting back an old `dist/`.
 
 </Frame>
 </Walkthrough>
@@ -151,11 +193,11 @@ exec: {
 },
 ```
 
-| Grant | Opens | Starts as |
-| --- | --- | --- |
-| `read: ['.']` | the task's whole project, read-only | nothing, except `node_modules` |
-| `write: ['dist/']` | one folder to write | nothing, except the task's own temp folder |
-| `network: ['registry.npmjs.org']` | one host | no host |
+| Grant | What it opens |
+| --- | --- |
+| `read: ['.']` | the whole project, read-only. Before it, only `node_modules` is readable. |
+| `write: ['dist/']` | one folder to write. Before it, only the task's own temp folder. |
+| `network: ['registry.npmjs.org']` | one host. Before it, none. |
 
 <Aside type="note">
   `outputs` and `inputs` grant nothing. The sandbox reads only `allow`, so a folder the task writes
@@ -168,7 +210,7 @@ exec: {
 
 A failed sandboxed task ends with three parts. Each tells you one thing:
 
-```ansi
+```ansi wrap
 [0m[2m├─[0m [1m[38;2;239;68;68mSANDBOX VIOLATIONS (2)[0m [2m────────────────────────────────────[0m
 
 access(/repo/packages/web/vite.config.js) = -1 ENOENT  [/repo/packages/web/vite.config.js]
@@ -227,7 +269,7 @@ An edit to the config is a **miss**: the build runs with it.
 
 A sandboxed task reaches no host until you list it. A call anywhere else is refused, and named:
 
-```ansi title="vx run @demo/web#ping"
+```ansi wrap title="vx run @demo/web#ping"
 [2m$[0m vx run @demo/web#ping
 
 [2m┌─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;244;114;182mping[0m [2m>[0m $ curl -sS -o /dev/null https://example.com
@@ -382,14 +424,14 @@ sandbox: {
 }
 ```
 
-| Field | Default | What it does |
-| --- | --- | --- |
-| `allow` | nothing | What the task may read, write and reach. Every key below. |
-| `deny` | nothing | Hosts refused even when `allow.network` matches them. Takes `network` only. |
-| `ignore` | nothing | Violations to leave out of the report, by `read`, `write`, `systemInfo`, `network`. Grants nothing. |
-| `hermetic` | `false` | Refuse reads outside the workspace too, except what `allow.read` names and the shell. |
-| `weakerWhenNested` | `false` | Linux: run a weaker sandbox when vx itself is inside a container or sandbox. Without it, nesting fails the task. |
-| `weakerNetworkIsolation` | `false` | macOS: route the network through a host proxy, for lower overhead and weaker isolation. |
+| Field | What it does |
+| --- | --- |
+| `allow` | What the task may read, write and reach. Every key below. Default: nothing. |
+| `deny` | Hosts refused even when `allow.network` matches them. Takes `network` only. Default: none. |
+| `ignore` | Violations left out of the report, by `read`, `write`, `systemInfo`, `network`. Grants nothing. Default: none. |
+| `hermetic` | Refuse reads outside the workspace too, except `allow.read` and the shell. Default: `false`. |
+| `weakerWhenNested` | Linux: a weaker sandbox when vx itself runs in a container or sandbox. Without it, nesting fails the task. Default: `false`. |
+| `weakerNetworkIsolation` | macOS: the network goes through a host proxy, for lower overhead and weaker isolation. Default: `false`. |
 
 An unknown key is refused when the config loads: a typo never confines a task more than you meant.
 
@@ -397,17 +439,19 @@ An unknown key is refused when the config loads: a typo never confines a task mo
 
 Every key of `allow`. Each grant is the task's own, never shared with the run's other tasks.
 
-| Key            | Grants                                                            |
-| -------------- | ----------------------------------------------------------------- |
-| `read`         | paths or globs: project-relative, absolute or `~/`                |
-| `write`        | paths or globs; a folder ends in `/` or is a glob (`dist/**`); a write grant is readable too |
-| `network`      | `true`, or a list of hosts (`*.sentry.io`); `localhost:4173` reaches a server on this machine |
-| `localBinding` | `true` to bind localhost ports (Linux needs no grant); a port list (`[3000]`) also makes them reachable from outside |
-| `unixSockets`  | `true`, or socket paths (Linux: any path)                         |
-| `systemInfo`   | system info names a tool asks for (`vfs.disk-space`)              |
-| `machLookup`   | macOS services (`com.apple.FSEvents`)                             |
-| `pty`          | a terminal                                                        |
-| `gitConfig`    | write the repository's `.git/config`, for this task only          |
+Every key starts closed: no paths, no hosts, `false`.
+
+| Key | Grants, and an example |
+| --- | --- |
+| `read` | paths or globs: project-relative, absolute or `~/`. `read: ['.', '~/.cache/ms-playwright']` |
+| `write` | paths or globs; a folder ends in `/` or is a glob. A write grant is readable too. `write: ['dist/', 'coverage/']` |
+| `network` | `true`, or a list of hosts; `localhost:4173` reaches a server on this machine. `network: ['*.sentry.io']` |
+| `localBinding` | `true` to bind localhost ports (Linux needs no grant); a port list also makes them reachable from outside. `localBinding: [5173]` |
+| `unixSockets` | `true`, or socket paths (Linux: any path). `unixSockets: ['/var/run/docker.sock']` |
+| `systemInfo` | system info names a tool asks for. `systemInfo: ['vfs.disk-space']` |
+| `machLookup` | macOS services a tool looks up. `machLookup: ['com.apple.FSEvents']` |
+| `pty` | a terminal, for a tool that needs one. `pty: true` |
+| `gitConfig` | write the repository's `.git/config`, for this task only. `gitConfig: true` |
 
 `deny` takes `network`, the same host patterns, plus a bare `*` (every host). `ignore` takes patterns per kind of violation; relative ones start at the project folder.
 
@@ -419,8 +463,8 @@ Every key of `allow`. Each grant is the task's own, never shared with the run's 
 - **A write glob outside the project** covers only files there when the task starts on Linux. Grant its folder instead.
 
 <Aside type="caution" title="On Linux a file write grant opens its folder">
-  `write: ['out.txt']` binds the whole folder holding it. vx reports any other file the task reads or
-  writes there as a violation. Put outputs in their own folder to keep the rest closed.
+  `write: ['out.txt']` opens the whole folder that holds it. vx flags any other file the task
+  touches there. Keep outputs in a folder of their own.
 </Aside>
 
 ### Hosts
@@ -432,7 +476,12 @@ Every key of `allow`. Each grant is the task's own, never shared with the run's 
 
 ### The project wall
 
-A task never reaches another project, or a workspace root file you did not grant. That wall is silent. Touching one of its own files it did not declare fails the task.
+A task never reaches another project, or a workspace root file you did not grant. The two sides of the wall answer differently:
+
+| `@demo/web#build` touches | What happens |
+| --- | --- |
+| `../ui/src/button.js`, another project | hidden: no file, and no violation |
+| `README.md`, its own file, not granted | a violation: the task fails |
 
 A refused write outside the project names the folder to grant, or the file itself when that folder holds the project (a root `bun.lock`).
 
@@ -440,9 +489,11 @@ Under the host's temp directory, it names `$TMPDIR` instead: the task's own temp
 
 ### What vx denies by default
 
-Inside the workspace, everything the task was not granted. Outside it, the stores where tools keep credentials, among them:
+Inside the workspace, everything the task was not granted. Outside it, the stores where tools keep credentials, such as:
 
-`~/.ssh`, `~/.gnupg`, `~/.aws`, `~/.azure`, `~/.kube`, `~/.config/gcloud`, `~/.config/gh`, `~/.docker/config.json`, `~/.netrc`, `~/.git-credentials`, `~/.npmrc`, `~/.yarnrc.yml`, `~/.bunfig.toml`, the browsers' profiles.
+- `~/.ssh`, `~/.gnupg`, `~/.git-credentials`
+- `~/.aws`, `~/.kube`, `~/.docker/config.json`
+- `~/.npmrc`, `~/.bunfig.toml`, the browsers' profiles
 
 The [full list](../../schema/sandbox/) lives in the config reference. A grant naming one opens it for that task. What the sandbox stops, and what it does not: [Security model](../../security/).
 
@@ -473,4 +524,4 @@ The [full list](../../schema/sandbox/) lives in the config reference. A grant na
 
 </Deeper>
 
-<NextStep href="../../docs/ci/" title="CI">Your tasks are cached and proven. Now run them on every push.</NextStep>
+<NextStep href="../../docs/ci/" title="CI">Your tasks are cached and proven. Run them on every push next.</NextStep>
