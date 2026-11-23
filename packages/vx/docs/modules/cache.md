@@ -367,11 +367,14 @@ export function flushMemos(cache: Cache): void
 // `vx last --log` reads the row itself.
 export function storedLog(blob: Uint8Array | null): string
 export function taskEntryHashes(layer: CacheLayer, taskId: string): string[] // every entry this machine holds for the task (an additive miss reads their rows)
-// What vx wrote in a cache dir (index, artifacts, run history, its `*`
+// What vx wrote in a cache dir (index, artifacts, run history, config stamps, its `*`
 // ignore): all a clear of a dir the user named may delete (item 968).
 // `cache.lock` is last, so a clear deletes it last: a waiting run takes a
 // missing lock as the clear's end.
 export function vxCacheEntries(cacheDir: string): string[]
+// Make a cache dir and its ignore file for a verb that opens no index
+// (`vx lock`'s config stamps); a `*` only into a named dir it made.
+export function makeIgnoredCacheDir(cacheDir: string): void
 
 // The four independent cache axes, and the `--cache-policy=<spec>` parser over
 // them. `FULL_CACHE_POLICY` is every axis on — the default a run starts

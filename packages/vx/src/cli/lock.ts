@@ -54,6 +54,7 @@ import {
   writeAllOrNone,
   writeNoFollow,
 } from '../util/index.js'
+import { makeIgnoredCacheDir } from '../cache/index.js'
 import { type ConfigStamps, takeConfigStamps, writeConfigStamps } from '../memo/index.js'
 import * as ui from '../ui/index.js'
 import { refusalNotice, sayNotice } from '../ui/index.js'
@@ -705,7 +706,7 @@ async function writeLock(
     root,
   )
   await writeIfMissing(path.join(root, '.vx', '.gitattributes'), DOT_VX_GITATTRIBUTES)
-  if (check.stamps) await writeConfigStamps(root, check.stamps.cacheDir, check.stamps.taken)
+  if (check.stamps) await keepConfigStamps(root, check.stamps)
   const n = metas.length
   say(
     `${n} project config${n === 1 ? '' : 's'} → ${LOCKFILE_NAME}, ${DEPENDENCIES_LOCK_NAME}${bareNote(bare)}`,
@@ -1241,7 +1242,20 @@ async function checkLock(root: string, json: boolean): Promise<number> {
   const audited = `${n} project${n === 1 ? '' : 's'}`
   const mapped = bare.length === 0 ? '' : `; mapped by a plugin: ${bareNames(bare)}`
   // The configs read as locked: a run that finds one edited since says so.
-  if (check.stamps) await writeConfigStamps(root, check.stamps.cacheDir, check.stamps.taken)
+  if (check.stamps) await keepConfigStamps(root, check.stamps)
   ui.print('out', ui.status('ok', 'vx lock --check', `up to date (${audited}${mapped})`))
   return 0
+}
+
+/** The configs as read, beside the lock; a cache dir that cannot be made keeps none (a warning light only). */
+async function keepConfigStamps(
+  root: string,
+  stamps: { cacheDir: string; taken: ConfigStamps },
+): Promise<void> {
+  try {
+    makeIgnoredCacheDir(stamps.cacheDir)
+  } catch {
+    return
+  }
+  await writeConfigStamps(root, stamps.cacheDir, stamps.taken)
 }

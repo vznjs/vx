@@ -72,6 +72,18 @@ describe('a config edited since vx lock', () => {
     expect(code).toBe(0)
   })
 
+  it('leaves nothing for git to commit in .vx/cache', async () => {
+    // The first `vx lock` of a workspace made `.vx/cache/` bare for its
+    // stamps, before any run wrote `.vx/.gitignore`: `git add -A` then
+    // committed a machine-local file holding this checkout's absolute path.
+    const status = Bun.spawnSync(['git', 'status', '--porcelain', '--untracked-files=all'], {
+      cwd: root,
+    })
+    const listed = status.stdout.toString()
+    expect(listed).toContain('.vx/projects.lock')
+    expect(listed).not.toContain('.vx/cache')
+  })
+
   it('runs a lock no stamp was taken beside, as a fresh clone has', async () => {
     await rm(path.join(root, '.vx', 'cache', 'config-stamps.json'), { force: true })
     await writeFile(file, config('after'))

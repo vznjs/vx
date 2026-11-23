@@ -7,6 +7,7 @@ export {
   configsEditedSinceLock,
   takeConfigStamps,
   writeConfigStamps,
+  CONFIG_STAMPS_FILE,
 } from './config-stamps.js'
 export { FileHashStore, fileIdentity } from './file-hashes.js'
 export { type FoldMemo, IndexFoldMemo } from './fold-memo.js'

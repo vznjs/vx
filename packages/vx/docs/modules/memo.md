@@ -314,6 +314,7 @@ export interface ConfigStamps {
   at: number // epoch ms before the first stat: the racy window runs from here
   configs: Record<string, [number, number, string]>
 }
+export const CONFIG_STAMPS_FILE = 'config-stamps.json' // a cache clear deletes it
 export function takeConfigStamps(root: string, files: readonly string[]): Promise<ConfigStamps>
 export function writeConfigStamps(
   root: string,

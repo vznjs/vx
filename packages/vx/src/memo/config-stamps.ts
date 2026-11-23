@@ -11,7 +11,8 @@ import path from 'node:path'
 import { xxh3hex } from '../util/index.js'
 import { FILE_HASH_RACY_MS, racyWindowMs } from './fs-clock.js'
 
-const FILE = 'config-stamps.json'
+/** The file in a cache directory the stamps live in; a clear deletes it (and a temp of it). */
+export const CONFIG_STAMPS_FILE = 'config-stamps.json'
 
 /** Each config as `takeConfigStamps` read it. */
 export interface ConfigStamps {
@@ -59,7 +60,7 @@ export async function writeConfigStamps(
   try {
     const lock = xxh3hex(await readFile(path.join(root, '.vx', 'projects.lock')))
     await mkdir(cacheDir, { recursive: true })
-    const file = path.join(cacheDir, FILE)
+    const file = path.join(cacheDir, CONFIG_STAMPS_FILE)
     const temp = `${file}.${process.pid}.tmp`
     const kept: Stamps = { root, lock, ...stamps }
     // Renamed in: a run reading beside this write sees the old file or the new.
@@ -77,7 +78,7 @@ export async function writeConfigStamps(
 const read = new Map<string, { version: string; stamps: Promise<Stamps | null> }>()
 
 async function readStamps(cacheDir: string): Promise<Stamps | null> {
-  const file = path.join(cacheDir, FILE)
+  const file = path.join(cacheDir, CONFIG_STAMPS_FILE)
   const s = await stat(file).catch(() => null)
   if (s === null) return null
   const version = `${s.size}:${s.mtimeMs}:${s.ino}`
