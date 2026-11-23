@@ -610,8 +610,9 @@ A write to them throws, so a handler can never turn a failed task into
 a pass, nor a hook change a command after its key is taken.
 
 A `telemetry` hook or sink, `ctx.on` handler, `admit`, `output` hook or
-`Logger` that throws is switched off for the run with one warning. A
-`measures` hook that throws has its measures left out, with one warning.
+`Logger` that throws is switched off for the run with one warning.
+
+A `measures` hook that throws has its measures left out, with one warning.
 
 A `teardown` that throws leaves the run's result as it was. A verb that
 throws fails in one line.
