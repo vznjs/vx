@@ -54,8 +54,9 @@ A run that starts no task writes no block: `nothing affected since <ref>`
 `vx lock`, an `--affected` base the clone lacks) says its one line in
 the step's log, which is where to look.
 Anywhere else (`GITHUB_ACTIONS` not `true`: laptops, other CI)
-`github()` returns `undefined`, which `plugins` skips: no option is
-checked and nothing loads, so declaring it unconditionally is safe.
+`github()` returns `undefined`, which `plugins` skips: nothing loads,
+so declaring it unconditionally is safe. Its options are still checked
+there, so a typo fails on a laptop, not first on CI.
 
 ## Options
 
