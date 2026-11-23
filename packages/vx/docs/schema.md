@@ -2849,7 +2849,14 @@ interface Pipeline {
   only (a plugin's on/off switch): every task reads it as unset, in its
   command and its key. A variable already set in the shell wins. A
   plugin reads it from its setup on; `.vx/workspace.ts`'s own top level
-  ran before it was set, so a value read there misses it.
+  ran before it was set, so a value read there misses it. It is saved as
+  the keys are: its `VX_CACHE_POLICY` drops no saved `noCache`, and an
+  entry for a key's setting beside that key (`VX_RUN_RETRIES` with
+  `retries`) is refused: drop one.
+- **`tasks`** are names as `vx run` takes them, or `'pkg#task'`: a
+  `'--force'` or `'^build'` is refused when the file loads.
+- **A refusal names the key.** One that names a flag the pipeline saved
+  says which key holds it (`--affected is \`pipelines.pr.affected\``).
 - **No forwarded args.** `-- <args>` reach one task in one project, and a
   pipeline is never one.
 

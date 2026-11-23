@@ -150,7 +150,8 @@ export function detectFlow(
 export async function runCmd(
   args: readonly string[],
   invocation?: readonly string[],
-): Promise<number> // invocation: the line `vx last` replays (`vx pipeline pr`)
+  saved?: ReadonlyMap<string, string>,
+): Promise<number> // invocation: the line `vx last` replays (`vx pipeline pr`); saved: flag → the key that saved it
 
 /**
  * Shared with `cli/watch.ts`: turn parsed args + cwd + task list into
@@ -856,10 +857,12 @@ Plausible extensions, all contained:
 ### Purpose
 
 Runs a pipeline of `.vx/workspace` (`pipelines`): its first word names
-it, the rest are `vx run` flags but `--all`. It sets the pipeline's `env`
-for vx alone (`setVxOnlyEnv`), then hands `runCmd` the line the pipeline
-stands for (`pipelineRunArgs`) with the typed flags after it, and the
-`vx pipeline …` line for `vx last` to replay.
+it, the rest are `vx run` flags but `--all`. It reads the line the
+pipeline stands for (`pipelineRunArgs`) before setting its `env` for vx
+alone (`setVxOnlyEnv`), so that `env` displaces none of its keys, then
+hands `runCmd` that line with the typed flags after it, the
+`vx pipeline …` line for `vx last` to replay, and each saved flag's key,
+which a refusal naming the flag adds.
 
 ### Public surface
 
