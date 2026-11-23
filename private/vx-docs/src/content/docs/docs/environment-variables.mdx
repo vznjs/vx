@@ -24,10 +24,10 @@ API_URL=https://api.demo.dev vx run test
 [2m$[0m API_URL=https://api.demo.dev vx run test
 
 [2m┌─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;96;165;250mtest[0m [2m>[0m $ vitest run
- [31m❯[39m src/api.test.js [2m([22m[2m1 test[22m[2m | [22m[31m1 failed[39m[2m)[22m[32m 5[2mms[22m[39m
+ [31m❯[39m src/index.test.ts [2m([22m[2m1 test[22m[2m | [22m[31m1 failed[39m[2m)[22m[32m 6[2mms[22m[39m
 [31m[1mTypeError[22m: .toMatch() expects to receive a string, but got undefined[39m
-[vx] API_URL is set in your environment, but this task does not get it: a task sees only the variables exec.env.passThrough and define name — add it to passThrough, and to inputs.env if the output depends on it
-[0m[2m└─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;96;165;250mtest[0m [2m──[0m [2m(381ms)[0m [1m[38;2;239;68;68mfailed (exit 1)[0m
+[1m[38;2;234;179;8m[vx][0m[2m API_URL is set in your environment, but this task does not get it: a task sees only the variables exec.env.passThrough and define name — add it to passThrough, and to inputs.env if the output depends on it[0m
+[2m└─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;96;165;250mtest[0m [2m──[0m [2m(563ms)[0m [1m[38;2;239;68;68mfailed (exit 1)[0m
 ```
 
 Read the `[vx]` line: vx names the variable it held back, and the fix.
@@ -43,8 +43,8 @@ exec: { command: 'vitest run', env: { passThrough: ['API_URL'] } },
 [2m$[0m API_URL=https://api.demo.dev vx run test
 
 [2m┌─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;96;165;250mtest[0m [2m>[0m $ vitest run
- [32m✓[39m src/api.test.js [2m([22m[2m1 test[22m[2m)[22m[32m 3[2mms[22m[39m
-[0m[2m└─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;96;165;250mtest[0m [2m──[0m [2m(410ms)[0m [2msuccess[0m
+ [32m✓[39m src/index.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 3[2mms[22m[39m
+[0m[2m└─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;96;165;250mtest[0m [2m──[0m [2m(428ms)[0m [2msuccess[0m
 ```
 
 </Frame>
@@ -54,7 +54,7 @@ exec: { command: 'vitest run', env: { passThrough: ['API_URL'] } },
 [2m$[0m API_URL=http://staging.demo.dev vx run test
 
 [2m┌─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;96;165;250mtest[0m [2m>[0m $ vitest run
- [32m✓[39m src/api.test.js [2m([22m[2m1 test[22m[2m)[22m[32m 3[2mms[22m[39m
+ [32m✓[39m src/index.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 3[2mms[22m[39m
 [0m[2m└─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;96;165;250mtest[0m [2m──[0m [2m(2ms)[0m [2mup-to-date[0m
 ```
 
@@ -72,9 +72,9 @@ inputs: { files: ['src/**'], env: ['API_URL'] },
 [2m$[0m API_URL=http://staging.demo.dev vx run test
 
 [2m┌─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;96;165;250mtest[0m [2m>[0m $ vitest run
- [31m❯[39m src/api.test.js [2m([22m[2m1 test[22m[2m | [22m[31m1 failed[39m[2m)[22m[32m 6[2mms[22m[39m
+ [31m❯[39m src/index.test.ts [2m([22m[2m1 test[22m[2m | [22m[31m1 failed[39m[2m)[22m[32m 6[2mms[22m[39m
 [31m[1mAssertionError[22m: API_URL: expected 'http://staging.demo.dev' to match /^https:/[39m
-[0m[2m└─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;96;165;250mtest[0m [2m──[0m [2m(412ms)[0m [1m[38;2;239;68;68mfailed (exit 1)[0m
+[0m[2m└─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;96;165;250mtest[0m [2m──[0m [2m(451ms)[0m [1m[38;2;239;68;68mfailed (exit 1)[0m
 ```
 
 The test ran, and caught the bad URL.
@@ -93,12 +93,13 @@ Past a small essential allowlist (below), a task sees only the variables you pas
 
 Name the variable in `exec.env.passThrough`. vx copies its value from your shell when the task starts:
 
-```ts title="packages/web/vx.config.ts" mark={7}
+```ts title="packages/web/vx.config.ts" mark={9}
 import { defineProject } from '@vzn/vx/config'
 
 export default defineProject({
   tasks: {
     test: {
+      dependsOn: ['^build'],
       exec: {
         command: 'vitest run',
         env: { passThrough: ['API_URL'] },
