@@ -383,7 +383,9 @@ function tscTakers(root: string, abs: string): TscJudge | undefined {
     })
   const base = (n: string): boolean => {
     const ext = extenders(n)
-    return ext.length > 0 && ext.every((c) => c['files'] !== undefined || c['include'] !== undefined)
+    return (
+      ext.length > 0 && ext.every((c) => c['files'] !== undefined || c['include'] !== undefined)
+    )
   }
   const takers = names.flatMap((n) => {
     const v = judge(path.join(dir, n))
