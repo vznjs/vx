@@ -1153,6 +1153,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'reserved-names',
     'resolve-cache',
     'restore-artifact-replaced',
+    'restore-case-twin',
     'restore-exdev',
     'restore-git-spawns',
     'restore-link-swap',
