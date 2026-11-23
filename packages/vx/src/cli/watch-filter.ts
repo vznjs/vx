@@ -106,29 +106,8 @@ export function makeWatchIgnore(
   )
   // A path some task takes as an INPUT is never an output to ignore, even when
   // another task declares it one: an in-place formatter declaring `src/**` hid
-  // every `src` edit from a `build` watched beside it, and no cycle ran. Each
-  // task's inputs are judged on their own, less their `!` entries (its own
-  // outputs among them): a turbo() task reading `**/*` took its own `dist/`
-  // write for an edit, and every save ran one more "up-to-date" cycle.
-  const read = [...inputs].flatMap(([dir, tasks]) =>
-    tasks.map(
-      (globs) =>
-        [
-          path.resolve(dir),
-          asTrees(globs.filter((g) => !g.startsWith('!'))).map((g) => taskGlob(g)),
-          asTrees(globs.filter((g) => g.startsWith('!')).map((g) => g.slice(1))).map((g) =>
-            taskGlob(g),
-          ),
-          // The directory an own output lives in is the task's too (see below).
-          globs
-            .filter((g) => g.startsWith('!'))
-            .map((g) => outputContainer(g.slice(1)))
-            .filter((c) => c !== ''),
-          asTrees(globs.filter((g) => !g.startsWith('!'))).map(reach),
-          ownTrees(globs.filter((g) => g.startsWith('!')).map((g) => g.slice(1))),
-        ] as const,
-    ),
-  )
+  // every `src` edit from a `build` watched beside it, and no cycle ran.
+  const read = taskReads(inputs)
   // A directory the poller skips is one whose files it never samples: an
   // output container that also holds inputs (tsc's `.js` beside `.ts`,
   // `src/**/*.js` out of `src/**/*.ts`) is walked, or `--poll` never saw
@@ -205,17 +184,7 @@ export function makeWatchIgnore(
     }
     return false
   }
-  const isInput = (abs: string): boolean =>
-    read.some(([dir, globs, not, containers]) => {
-      if (!abs.startsWith(dir + path.sep)) return false
-      const rel = abs
-        .slice(dir.length + 1)
-        .split(path.sep)
-        .join('/')
-      if (!globs.some((g) => g.match(rel))) return false
-      if (not.some((g) => g.match(rel))) return false
-      return !containers.some((c) => c === rel || c.startsWith(`${rel}/`))
-    })
+  const isInput = inputMatcher(read)
   return (base, filename, dir = false) => {
     const why = ignoredBy(filename)
     if (why === 'always') return true
@@ -237,6 +206,52 @@ export function makeWatchIgnore(
     }
     return false
   }
+}
+
+// Each task's inputs, judged on their own, less their `!` entries (its own
+// outputs among them): a turbo() task reading `**/*` took its own `dist/`
+// write for an edit, and every save ran one more "up-to-date" cycle.
+function taskReads(inputs: ReadonlyMap<string, ReadonlyArray<readonly string[]>>) {
+  return [...inputs].flatMap(([dir, tasks]) =>
+    tasks.map(
+      (globs) =>
+        [
+          path.resolve(dir),
+          asTrees(globs.filter((g) => !g.startsWith('!'))).map((g) => taskGlob(g)),
+          asTrees(globs.filter((g) => g.startsWith('!')).map((g) => g.slice(1))).map((g) =>
+            taskGlob(g),
+          ),
+          // The directory an own output lives in is the task's too (`makeWatchIgnore`).
+          globs
+            .filter((g) => g.startsWith('!'))
+            .map((g) => outputContainer(g.slice(1)))
+            .filter((c) => c !== ''),
+          asTrees(globs.filter((g) => !g.startsWith('!'))).map(reach),
+          ownTrees(globs.filter((g) => g.startsWith('!')).map((g) => g.slice(1))),
+        ] as const,
+    ),
+  )
+}
+
+function inputMatcher(read: ReturnType<typeof taskReads>): (abs: string) => boolean {
+  return (abs) =>
+    read.some(([dir, globs, not, containers]) => {
+      if (!abs.startsWith(dir + path.sep)) return false
+      const rel = abs
+        .slice(dir.length + 1)
+        .split(path.sep)
+        .join('/')
+      if (!globs.some((g) => g.match(rel))) return false
+      if (not.some((g) => g.match(rel))) return false
+      return !containers.some((c) => c === rel || c.startsWith(`${rel}/`))
+    })
+}
+
+/** Whether some task's inputs match a path: the key reads it, so its write is an edit. */
+export function makeInputMatcher(
+  inputs: ReadonlyMap<string, ReadonlyArray<readonly string[]>>,
+): (abs: string) => boolean {
+  return inputMatcher(taskReads(inputs))
 }
 
 /**

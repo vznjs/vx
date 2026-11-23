@@ -1889,10 +1889,11 @@ hit, or the selection changed). An edit while a cycle waits only on a server tha
 printed its `readyWhen` line stops that cycle and starts the next, so a
 fix reaches a server stuck before ready, in the initial run too; the
 servers already up stay up through it. A file
-git does not track in the server's project that stopped the last such
-cycle and is written again while the next server starts is that
-server's own boot write (a timestamped config bundle, a route tree): it
-stops no further cycle, so the server is not restarted for good.
+git does not track in the server's project, that no task's inputs name,
+and that stopped the last such cycle and is written again while the next
+server starts is that server's own boot write (a timestamped config
+bundle, a pid file): it stops no further cycle, so the server is not
+restarted for good. A new source file saved again is an edit.
 Stopping watch stops the server too. A one-shot task (`vx watch build`)
 re-runs itself and what it depends on.
 
