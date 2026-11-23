@@ -146,7 +146,7 @@ vx run [OPTIONS] [TASK | PKG#TASK ...] [-- forwarded-args...]
 vx run build                  # the cwd project's build, and what it depends on
 vx run build --all            # every project that declares build
 vx run test --affected        # only what this branch changed, and its dependents
-vx run app#build lint         # one project's build, and lint in scope
+vx run @demo/web#build lint   # one project's build, and lint in scope
 vx run test -- --watch=false  # forward arguments to the task
 ```
 
@@ -159,8 +159,8 @@ vx run build --all
 ```ansi
 
 [4m[58;2;110;118;129m  [1m[38;2;167;139;250mTasks[0m[4m[58;2;110;118;129m     [2mstatus  cache     ±usual    time   cpu    mem outputs  blocks worker         task[0m[4m[58;2;110;118;129m                           [0m
-            [38;2;34;197;94msuccess[0m [2mmiss[0m           [2m—[0m    [38;2;203;213;225m19ms[0m   [2m30%[0m  [2m2.2MB[0m     [2m19B[0m       [38;2;203;213;225m1[0m [2mlocal[0m          [38;2;244;114;182mlib[0m[2m#[0m[38;2;244;114;182mbuild[0m
-            [38;2;34;197;94msuccess[0m [2mmiss[0m           [2m—[0m     [38;2;203;213;225m4ms[0m  [2m113%[0m  [2m2.0MB[0m     [2m19B[0m       [2m0[0m [2mlocal[0m          [38;2;147;197;253mapp[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m           [2m—[0m   [38;2;203;213;225m153ms[0m  [2m112%[0m  [2m110MB[0m     [2m89B[0m       [38;2;203;213;225m1[0m [2mlocal[0m          [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m           [2m—[0m   [38;2;203;213;225m141ms[0m  [2m115%[0m  [2m108MB[0m    [2m115B[0m       [2m0[0m [2mlocal[0m          [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m
 
 
 [4m[58;2;110;118;129m  [1m[38;2;167;139;250mSummary[0m[4m[58;2;110;118;129m                                                                                                       [2mvx 0.0.0[0m
@@ -171,8 +171,8 @@ vx run build --all
   [2mcache   [0m  [38;2;56;189;248m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
             [2mlocal[0m [38;2;56;189;248m2↑[0m
 
-  [2minfo    [0m  4 workers [2m·[0m local cache [2m·[0m run 01a20586-c80c-74ca-b24b-a37caf560ec9
-  [2mtime    [0m  72ms [2m·[0m [2mmax 19ms[0m [2m·[0m [2mavg 12ms[0m [2m·[0m [2mmin 4ms[0m
+  [2minfo    [0m  4 workers [2m·[0m local cache [2m·[0m run 01a20a09-a545-7387-b09d-f1fd478d50f0
+  [2mtime    [0m  333ms [2m·[0m [2mmax 153ms[0m [2m·[0m [2mavg 147ms[0m [2m·[0m [2mmin 141ms[0m
 ```
 
 ```sh
@@ -190,8 +190,8 @@ vx run build --all
   [2mcache   [0m  [38;2;34;197;94m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
             [2mlocal[0m [38;2;34;197;94m2✓[0m
 
-  [2minfo    [0m  4 workers [2m·[0m local cache [2m·[0m run 01a20586-c912-76b8-9d44-c47c0ec7c16a
-  [2mtime    [0m  20ms
+  [2minfo    [0m  4 workers [2m·[0m local cache [2m·[0m run 01a20a09-a737-7148-8c91-0e392691edef
+  [2mtime    [0m  18ms
 ```
 
 The [Flags](#flags) table lists every option.
@@ -1278,10 +1278,10 @@ vx run build test --all --dry
 
 ```ansi
 [4m[58;2;110;118;129m  [1m[38;2;167;139;250mPlan[0m[4m[58;2;110;118;129m [2m4[0m[4m[58;2;110;118;129m    [2mstatus  cache      usual    time   cpu    mem outputs  blocks worker         task[0m[4m[58;2;110;118;129m                           [0m
-            [38;2;34;197;94mcached[0m  [38;2;56;189;248mlocal[0m          [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [38;2;203;213;225m1[0m [2mlocal[0m          [38;2;147;197;253mapp[0m[2m#[0m[38;2;244;114;182mbuild[0m  [2mcompile the app[0m
-            [38;2;34;197;94mcached[0m  [38;2;56;189;248mlocal[0m          [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [38;2;203;213;225m3[0m [2mlocal[0m          [38;2;244;114;182mlib[0m[2m#[0m[38;2;244;114;182mbuild[0m
-            [38;2;6;182;212mrun[0m     [2mmiss[0m           [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2mlocal[0m          [38;2;147;197;253mapp[0m[2m#[0m[38;2;96;165;250mtest[0m
-            [38;2;6;182;212mrun[0m     [2mmiss[0m           [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2mlocal[0m          [38;2;244;114;182mlib[0m[2m#[0m[38;2;96;165;250mtest[0m
+            [38;2;34;197;94mcached[0m  [38;2;56;189;248mlocal[0m          [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [38;2;203;213;225m2[0m [2mlocal[0m          [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;34;197;94mcached[0m  [38;2;56;189;248mlocal[0m          [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2mlocal[0m          [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;6;182;212mrun[0m     [2mmiss[0m           [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2mlocal[0m          [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;96;165;250mtest[0m
+            [38;2;6;182;212mrun[0m     [2mmiss[0m           [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2mlocal[0m          [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;96;165;250mtest[0m
 
   [2mtasks   [0m  [38;2;203;213;225m4 planned · 2 cache hits (2 local) · 2 would run[0m
 ```
@@ -1381,12 +1381,12 @@ vx run build lint --affected=main --dry
 
 ```ansi
 [4m[58;2;110;118;129m  [1m[38;2;167;139;250mPlan[0m[4m[58;2;110;118;129m [2m3[0m[4m[58;2;110;118;129m    [2mstatus  cache      usual    time   cpu    mem outputs  blocks worker         task[0m[4m[58;2;110;118;129m                           [0m
-            [38;2;6;182;212mrun[0m     [2mmiss[0m        [2m~4ms[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2mlocal[0m          [38;2;147;197;253mapp[0m[2m#[0m[38;2;244;114;182mbuild[0m  [2mcompile the app · affected: packages/lib/src/index.ts changed (an input), via lib#build[0m
-            [38;2;6;182;212mrun[0m     [2mmiss[0m       [2m~19ms[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [38;2;203;213;225m1[0m [2mlocal[0m          [38;2;244;114;182mlib[0m[2m#[0m[38;2;244;114;182mbuild[0m  [2maffected: packages/lib/src/index.ts changed (an input)[0m
-            [38;2;6;182;212mrun[0m     [2mno-cache[0m       [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2mlocal[0m          [38;2;244;114;182mlib[0m[2m#[0m[38;2;232;121;249mlint[0m  [2maffected: packages/lib/src/index.ts changed (in its project)[0m
+            [38;2;6;182;212mrun[0m     [2mmiss[0m      [2m~153ms[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [38;2;203;213;225m1[0m [2mlocal[0m          [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m  [2maffected: packages/ui/src/index.ts changed (an input)[0m
+            [38;2;6;182;212mrun[0m     [2mmiss[0m      [2m~141ms[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2mlocal[0m          [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m  [2maffected: packages/ui/src/index.ts changed (an input), via @demo/ui#build[0m
+            [38;2;6;182;212mrun[0m     [2mmiss[0m           [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2mlocal[0m          [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;232;121;249mlint[0m  [2maffected: packages/ui/src/index.ts changed (an input)[0m
 
-  [2mtasks    [0m  [38;2;203;213;225m3 planned · 2 would run · 1 no-cache[0m
-  [2mpredicted[0m  [38;2;203;213;225m~23ms wall · ~23ms total execution · 1 task never timed (+?)[0m
+  [2mtasks    [0m  [38;2;203;213;225m3 planned · 3 would run[0m
+  [2mpredicted[0m  [38;2;203;213;225m~294ms wall · ~294ms total execution · 1 task never timed (+?)[0m
 ```
 
 On a terminal too narrow for a reason beside its row, the reason goes on
@@ -1583,17 +1583,33 @@ vx watch lint --filter '@scope/*'   # filtered scope
 vx watch build -- --sourcemap       # forwarded args carry through every cycle
 ```
 
-The first run, then one save to `src/index.js`, then `Ctrl+C`:
+The first run, then one save to `src/index.ts`, then `Ctrl+C`:
 
 ```ansi
-[2m┌─[0m [1m[38;2;244;114;182mlib[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m>[0m $ mkdir -p dist && cp src/index.js dist/index.js
-[2m└─[0m [1m[38;2;244;114;182mlib[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(2ms)[0m [2mup-to-date[0m
+[2m┌─[0m [1m[38;2;192;132;252m@demo/ui[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m>[0m $ vite build
+[36mvite v8.3.1 [32mbuilding client environment for production...[36m[39m
+transforming...
+[32m✓[0m 2 modules transformed.
+rendering chunks...
+computing gzip size...
+[2mdist/[0m[36mindex.js  [0m[1;2m0.08 kB[0m[2m │ gzip: 0.10 kB[0m
+
+[32m✓ built in 24ms[39m
+[0m[2m└─[0m [1m[38;2;192;132;252m@demo/ui[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(9ms)[0m [2mrestored-local[0m
 
 [38;2;6;182;212mwatching 1 project · 1 task[0m
 
-[38;2;6;182;212mchanged lib src/index.js[0m
-[2m┌─[0m [1m[38;2;244;114;182mlib[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m>[0m $ mkdir -p dist && cp src/index.js dist/index.js
-[2m└─[0m [1m[38;2;244;114;182mlib[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(6ms)[0m [2msuccess[0m
+[38;2;6;182;212mchanged @demo/ui src/index.ts[0m
+[2m┌─[0m [1m[38;2;192;132;252m@demo/ui[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m>[0m $ vite build
+[36mvite v8.3.1 [32mbuilding client environment for production...[36m[39m
+transforming...
+[32m✓[0m 2 modules transformed.
+rendering chunks...
+computing gzip size...
+[2mdist/[0m[36mindex.js  [0m[1;2m0.08 kB[0m[2m │ gzip: 0.10 kB[0m
+
+[32m✓ built in 21ms[39m
+[0m[2m└─[0m [1m[38;2;192;132;252m@demo/ui[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(164ms)[0m [2msuccess[0m
 
 
 [1m[38;2;6;182;212mvx watch:[0m[2m stopped[0m
@@ -1990,19 +2006,19 @@ vx pipeline main --dry             # the plan, nothing run
 vx pipeline main --filter web      # main's tasks in web alone
 ```
 
-A second `vx pipeline main` with nothing changed restores all four tasks from the cache:
+A second `vx pipeline main` with nothing changed restores all six tasks from the cache:
 
 ```ansi
 [4m[58;2;110;118;129m  [1m[38;2;167;139;250mSummary[0m[4m[58;2;110;118;129m                                                                                                       [2mvx 0.0.0[0m
   [2mprojects[0m  [38;2;234;179;8m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
             [38;2;234;179;8m2 in run[0m [2m·[0m [2m2 total[0m
   [2mtasks   [0m  [38;2;34;197;94m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
-            [38;2;34;197;94m4 success[0m [2m·[0m [2m4 total[0m
+            [38;2;34;197;94m6 success[0m [2m·[0m [2m6 total[0m
   [2mcache   [0m  [38;2;34;197;94m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
-            [2mlocal[0m [38;2;34;197;94m4✓[0m
+            [2mlocal[0m [38;2;34;197;94m6✓[0m
 
-  [2minfo    [0m  4 workers [2m·[0m local cache [2m·[0m run 01a209c3-ddd7-748c-84c3-54187b3d0184
-  [2mtime    [0m  16ms
+  [2minfo    [0m  4 workers [2m·[0m local cache [2m·[0m run 01a20a07-641f-7300-92ab-e3cb8be0761e
+  [2mtime    [0m  21ms
 ```
 
 ### Options
@@ -2340,9 +2356,9 @@ vx lock --check
 ```
 
 ```ansi
-[38;2;239;68;68m✗[0m [1mvx lock --check[0m  [38;2;203;213;225mpackages/lib/vx.config.mjs evaluates differently from the lock here — its config, a file it imports, or the environment it reads changed; run 'vx lock'[0m
+[38;2;239;68;68m✗[0m [1mvx lock --check[0m  [38;2;203;213;225mpackages/ui/vx.config.ts evaluates differently from the lock here — its config, a file it imports, or the environment it reads changed; run 'vx lock'[0m
 
-  [38;2;203;213;225mtasks.build.exec.command: "mkdir -p dist && cp src/index.ts dist/index.js" → "mkdir -p dist && cp -f src/index.ts dist/index.js"[0m
+  [38;2;203;213;225mtasks.lint.exec.command: "oxlint src" → "oxlint --deny-warnings src"[0m
 ```
 
 Under the line, up to three places where the evaluated config
@@ -3418,22 +3434,21 @@ vx show
 
 ```ansi
 [4m[58;2;110;118;129m  [1m[38;2;167;139;250mProjects[0m[4m[58;2;110;118;129m [2m2[0m[4m[58;2;110;118;129m                                                                                                            [0m
-  [2mproject  dir           tasks    tags[0m
-  [38;2;147;197;253mapp[0m      [38;2;203;213;225mpackages/app[0m  [38;2;203;213;225m2 tasks[0m  [38;2;203;213;225mscope:web[0m
-  [38;2;244;114;182mlib[0m      [38;2;203;213;225mpackages/lib[0m  [38;2;203;213;225m3 tasks[0m
+  [2mproject    dir           tasks[0m
+  [38;2;192;132;252m@demo/ui[0m   [38;2;203;213;225mpackages/ui[0m   [38;2;203;213;225m3 tasks[0m
+  [38;2;244;114;182m@demo/web[0m  [38;2;203;213;225mpackages/web[0m  [38;2;203;213;225m3 tasks[0m
 ```
 
 ```sh
-vx show app#build
+vx show @demo/web#build
 ```
 
 ```ansi
-[4m[58;2;110;118;129m  [1m[38;2;167;139;250mapp#build[0m[4m[58;2;110;118;129m                                                                                                             [0m
-  [2mdir          [0m  [38;2;203;213;225mpackages/app[0m
-  [2mdescription  [0m  [38;2;203;213;225mcompile the app[0m
-  [2mcommand      [0m  [38;2;203;213;225mmkdir -p dist && cp src/index.ts dist/index.js[0m
-  [2mdependsOn    [0m  [38;2;203;213;225mlib#build[0m
-  [2minputs.files [0m  [38;2;203;213;225msrc/**[0m
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250m@demo/web#build[0m[4m[58;2;110;118;129m                                                                                                       [0m
+  [2mdir          [0m  [38;2;203;213;225mpackages/web[0m
+  [2mcommand      [0m  [38;2;203;213;225mvite build[0m
+  [2mdependsOn    [0m  [38;2;203;213;225m^build[0m
+  [2minputs.files [0m  [38;2;203;213;225msrc/**, vite.config.ts, package.json[0m
   [2moutputs.files[0m  [38;2;203;213;225mdist/**[0m
   [2mcache        [0m  [38;2;203;213;225myes[0m
 ```
@@ -3550,22 +3565,22 @@ vx info
 ```ansi
 
 [4m[58;2;110;118;129m  [1m[38;2;167;139;250mvx info[0m[4m[58;2;110;118;129m                                                                                                               [0m
-  [2mvx              [0m  [38;2;203;213;225m0.0.660 (/usr/local/bin/vx)[0m
+  [2mvx              [0m  [38;2;203;213;225m0.0.0 (/usr/local/bin/vx)[0m
   [2mbun             [0m  [38;2;203;213;225m1.4.4[0m
   [2mgit             [0m  [38;2;203;213;225m2.43.0[0m
   [2mgit status cache[0m  [38;2;203;213;225mcore.fsmonitor, core.untrackedCache off[0m
-  [2mworkspace root  [0m  [38;2;203;213;225m/work/repo[0m
-  [2mprojects        [0m  [38;2;203;213;225m3 (2 tasks)[0m
+  [2mworkspace root  [0m  [38;2;203;213;225m/work/demo[0m
+  [2mprojects        [0m  [38;2;203;213;225m2 (6 tasks)[0m
   [2mplugins         [0m  [38;2;203;213;225m1 — @vzn/vx-lockfile (discover, project, key, fingerprint)[0m
   [2mworkers         [0m  [38;2;203;213;225m4 — the CPU count[0m
   [2mmemory          [0m  [38;2;203;213;225m13 GB usable — cgroup limit; the machine has 16 GB[0m
-  [2mcache dir       [0m  [38;2;203;213;225m/work/repo/.vx/cache (332 KB, this workspace's run history)[0m
-  [2mcache store     [0m  [38;2;203;213;225m~/.vx/c46f226815d1a23e/cache (284 MB, shared by this workspace's checkouts)[0m
+  [2mcache dir       [0m  [38;2;203;213;225m/work/demo/.vx/cache (440 KB, this workspace's run history)[0m
+  [2mcache store     [0m  [38;2;203;213;225m~/.vx/97cf846b43fdfb12/cache (156 KB, shared by this workspace's checkouts)[0m
   [2mcache versions  [0m  [38;2;203;213;225mkeys vx-cache-v56 · index schema v58[0m
-  [2mcache entries   [0m  [38;2;203;213;225m37 (284 MB)[0m
-  [2mtask runs (24h) [0m  [38;2;203;213;225m34 (11 cache hits: 2 up-to-date, 9 restored)[0m
-  [2mflaky tasks     [0m  [38;2;203;213;225m1 — app#test (2 of 5 runs failed on unchanged inputs)[0m
-  [2msandbox         [0m  [38;2;203;213;225mavailable (0 tasks declare exec.sandbox)[0m
+  [2mcache entries   [0m  [38;2;203;213;225m4 (1.9 KB)[0m
+  [2mtask runs (24h) [0m  [38;2;203;213;225m58 (19 cache hits: 18 up-to-date, 1 restored)[0m
+  [2mflaky tasks     [0m  [38;2;203;213;225m1 — @demo/web#test (5 of 13 runs failed on unchanged inputs)[0m
+  [2msandbox         [0m  [38;2;203;213;225mavailable (1 task declares exec.sandbox)[0m
   [2mprojects lock   [0m  [38;2;203;213;225myes[0m
 ```
 
@@ -3721,22 +3736,22 @@ vx why (TASK | PKG#TASK) [--run RUNID] [--format pretty|json] [--cache-dir <path
 ### Example
 
 ```sh
-vx why app#build
+vx why @demo/web#build
 ```
 
 ```ansi
-[4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhy[0m[4m[58;2;110;118;129m [2mapp#build[0m[4m[58;2;110;118;129m                                                                                                         [0m
-  [2mrun     [0m  [38;2;203;213;225m01a20586-cbaf-7160-b020-55d05de49e8a[0m
-  [2mthis run[0m  [38;2;203;213;225m2026-11-22T23:10:49.829Z · success · executed · key 3c76140a1f7a50f8[0m
-  [2mprevious[0m  [38;2;203;213;225m2026-11-22T23:10:49.123Z · cache-hit · up-to-date · key d68851b93ee0a52d[0m
-  [2mverdict [0m  [38;2;234;179;8mcache key changed: upstream lib#build[0m
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhy[0m[4m[58;2;110;118;129m [2m@demo/web#build[0m[4m[58;2;110;118;129m                                                                                                   [0m
+  [2mrun     [0m  [38;2;203;213;225m01a20a09-aa59-7506-89ab-db6e5860b83f[0m
+  [2mthis run[0m  [38;2;203;213;225m2026-11-23T20:12:15.536Z · success · executed · key 74ea908d8b92000d[0m
+  [2mprevious[0m  [38;2;203;213;225m2026-11-23T20:12:14.536Z · cache-hit · up-to-date · key 1b6ebb2fcb825864[0m
+  [2mverdict [0m  [38;2;234;179;8mcache key changed: upstream @demo/ui#build[0m
 
-[4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhat changed[0m[4m[58;2;110;118;129m [2m1 of 5[0m[4m[58;2;110;118;129m                                                                                                   [0m
-  [2mchange   kind      name       before → after[0m
-  [38;2;234;179;8mchanged[0m  [38;2;203;213;225mupstream[0m  [1mlib#build[0m  [38;2;203;213;225m7d9a66971f00e735 → 600df849c8e55574[0m
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhat changed[0m[4m[58;2;110;118;129m [2m1 of 9[0m[4m[58;2;110;118;129m                                                                                                   [0m
+  [2mchange   kind      name            before → after[0m
+  [38;2;234;179;8mchanged[0m  [38;2;203;213;225mupstream[0m  [1m@demo/ui#build[0m  [38;2;203;213;225m656b167cdd4cb280 → ed5b74f0328f56f9[0m
 
 [4m[58;2;110;118;129m  [1m[38;2;167;139;250mRoot cause[0m[4m[58;2;110;118;129m                                                                                                            [0m
-  [38;2;147;197;253mapp[0m[2m#[0m[38;2;244;114;182mbuild[0m[2m ← [0m[38;2;244;114;182mlib[0m[2m#[0m[38;2;244;114;182mbuild[0m[2m ← [0m[1mfile packages/lib/src/index.ts[0m
+  [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m[2m ← [0m[38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m[2m ← [0m[1mfile packages/ui/src/index.ts[0m
 
 [4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhat to do[0m[4m[58;2;110;118;129m                                                                                                            [0m
   [2mfile    [0m  [38;2;203;213;225man edit re-runs by design; a file the task does not read belongs out of inputs.files[0m
@@ -3927,15 +3942,15 @@ vx last
 ```
 
 ```ansi
-[4m[58;2;110;118;129m  [1m[38;2;167;139;250mRun[0m[4m[58;2;110;118;129m [2m01a20586-cbaf-7160-b020-55d05de49e8a[0m[4m[58;2;110;118;129m                                                                              [0m
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mRun[0m[4m[58;2;110;118;129m [2m01a20a09-aa59-7506-89ab-db6e5860b83f[0m[4m[58;2;110;118;129m                                                                              [0m
   [2mstatus  [0m  [38;2;34;197;94mok[0m
   [2mcommand [0m  [1mvx run build --all[0m
-  [2mwhen    [0m  [38;2;203;213;225m2026-11-22T23:10:49.779Z · 59ms · feat @ 52bd1786+dirty[0m
+  [2mwhen    [0m  [38;2;203;213;225m2026-11-23T20:12:15.325Z · 367ms · feature @ b2c16ff2+dirty[0m
   [2mtasks   [0m  [2m2 tasks · 0 hits[0m
 
 [4m[58;2;110;118;129m  [1m[38;2;167;139;250mTasks[0m[4m[58;2;110;118;129m [2m2[0m[4m[58;2;110;118;129m   [2mstatus  cache     ±usual    time   cpu    mem outputs  blocks worker         task[0m[4m[58;2;110;118;129m                           [0m
-            [38;2;34;197;94msuccess[0m [2mmiss[0m        [2m+0ms[0m     [38;2;203;213;225m8ms[0m   [2m50%[0m  [2m2.2MB[0m     [2m19B[0m       [38;2;203;213;225m1[0m [2mlocal[0m          [38;2;244;114;182mlib[0m[2m#[0m[38;2;244;114;182mbuild[0m
-            [38;2;34;197;94msuccess[0m [2mmiss[0m        [2m+0ms[0m     [38;2;203;213;225m4ms[0m  [2m100%[0m  [2m2.1MB[0m     [2m19B[0m       [2m0[0m [2mlocal[0m          [38;2;147;197;253mapp[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m        [2m+0ms[0m   [38;2;203;213;225m161ms[0m  [2m111%[0m  [2m106MB[0m     [2m86B[0m       [38;2;203;213;225m1[0m [2mlocal[0m          [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m        [2m+0ms[0m   [38;2;203;213;225m150ms[0m  [2m115%[0m  [2m108MB[0m    [2m112B[0m       [2m0[0m [2mlocal[0m          [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m
 ```
 
 ```sh
@@ -3944,16 +3959,16 @@ vx last --list
 
 ```ansi
 [4m[58;2;110;118;129m  [1m[38;2;167;139;250mRuns[0m[4m[58;2;110;118;129m [2m3[0m[4m[58;2;110;118;129m                                                                                                                [0m
-  [2m    when                      run            tasks                                        time  command[0m
-  [38;2;34;197;94mok[0m  [38;2;203;213;225m2026-11-22T23:10:49.779Z[0m  [1m01a20586-cbaf[0m  [2m2 tasks · 0 hits[0m                             [38;2;203;213;225m59ms[0m  [1mvx run build --all[0m
-  [38;2;34;197;94mok[0m  [38;2;203;213;225m2026-11-22T23:10:49.110Z[0m  [1m01a20586-c912[0m  [2m2 tasks · 2 hits (2 up-to-date, 0 restored)[0m  [38;2;203;213;225m20ms[0m  [1mvx run build --all[0m
-  [38;2;34;197;94mok[0m  [38;2;203;213;225m2026-11-22T23:10:48.848Z[0m  [1m01a20586-c80c[0m  [2m2 tasks · 0 hits[0m                             [38;2;203;213;225m72ms[0m  [1mvx run build --all[0m
+  [2m    when                      run            tasks                                         time  command[0m
+  [38;2;34;197;94mok[0m  [38;2;203;213;225m2026-11-23T20:12:15.325Z[0m  [1m01a20a09-aa59[0m  [2m2 tasks · 0 hits[0m                             [38;2;203;213;225m367ms[0m  [1mvx run build --all[0m
+  [38;2;34;197;94mok[0m  [38;2;203;213;225m2026-11-23T20:12:14.522Z[0m  [1m01a20a09-a737[0m  [2m2 tasks · 2 hits (2 up-to-date, 0 restored)[0m   [38;2;203;213;225m18ms[0m  [1mvx run build --all[0m
+  [38;2;34;197;94mok[0m  [38;2;203;213;225m2026-11-23T20:12:14.024Z[0m  [1m01a20a09-a545[0m  [2m2 tasks · 0 hits[0m                             [38;2;203;213;225m333ms[0m  [1mvx run build --all[0m
 ```
 
 ```sh
 vx last --failed          # the latest run that failed
-vx last --log app#test    # one task's output
-vx last --stats app#test  # p50, p99, pass and hit rate over the last 50 runs
+vx last --log @demo/web#test    # one task's output
+vx last --stats @demo/web#test  # p50, p99, pass and hit rate over the last 50 runs
 vx last --sql "SELECT task, AVG(peak_rss_bytes) FROM runs GROUP BY task"
 ```
 
@@ -4528,29 +4543,29 @@ streams live instead (§ Output).
 Frame anatomy:
 
 ```ansi
-[2m┌─[0m [1m[38;2;147;197;253mapp[0m[2m#[0m[1m[38;2;96;165;250mtest[0m [2m>[0m [1m[38;2;239;68;68mfailed (exit 1, 1 sandbox violation)[0m
+[2m┌─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;96;165;250mtest[0m [2m>[0m [1m[38;2;239;68;68mfailed (exit 1, 1 sandbox violation)[0m
 
-[2mpackages/app $ bun test[0m
+[2mpackages/web $ vitest run[0m
 
 [2m├─[0m [1mOUTPUT[0m [2m────────────────────────────────────────────────────[0m
 
-2 pass
-[38;2;239;68;68merror: expected 3, got 2[0m
-1 fail
+ × renders 3ms
+[38;2;239;68;68mError: EROFS: read-only file system, open 'notes.txt'[0m
+ Tests  1 failed (1)
 
 [2m├─[0m [1m[38;2;239;68;68mSANDBOX VIOLATIONS (1)[0m [2m────────────────────────────────────[0m
 
-write ../shared/notes.txt
+openat(/work/demo/packages/web/notes.txt) = a write no grant covers
 
-[2m└─[0m [1m[38;2;147;197;253mapp[0m[2m#[0m[1m[38;2;96;165;250mtest[0m [2m──[0m [2m(2.10s)[0m [1m[38;2;239;68;68mfailed (exit 1, 1 sandbox violation)[0m
+[2m└─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;96;165;250mtest[0m [2m──[0m [2m(2.10s)[0m [1m[38;2;239;68;68mfailed (exit 1, 1 sandbox violation)[0m
 ```
 
 Every section is conditional: the `$ <command>` line only for an
 executed task (success or failed — a hit replays its stored output and
 shows none), led by the directory it ran in from the workspace root
 (none for a project at the root), as a shell prompt would be: a task
-names paths from its own directory, so `src/index.js` in its output is
-`packages/app/src/index.js`, `OUTPUT` only when the task wrote something,
+names paths from its own directory, so `src/index.ts` in its output is
+`packages/web/src/index.ts`, `OUTPUT` only when the task wrote something,
 `SANDBOX VIOLATIONS (N)` only when the sandbox recorded some (`N`
 counts them) or `SANDBOX` when vx has only a note on a failure. The
 header carries the outcome (`restored-local • abc12345`, `failed (exit
@@ -4675,8 +4690,8 @@ row naming the failure that blocked it, so the footer's `1 skipped`
 always has a name above it:
 
 ```ansi
-            [38;2;234;179;8mskipped[0m [2m—[0m              [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [38;2;203;213;225m1[0m [2m—[0m              [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m [2m• blocked by @demo/ui#build[0m
-            [38;2;234;179;8mskipped[0m [2m—[0m              [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2m—[0m              [38;2;147;197;253mapp[0m[2m#[0m[38;2;244;114;182mbuild[0m [2m• blocked by @demo/ui#build[0m
+            [38;2;239;68;68mfailed[0m  [2mmiss[0m       [2m−33ms[0m   [38;2;203;213;225m157ms[0m  [2m109%[0m  [2m106MB[0m      [2m0B[0m       [38;2;203;213;225m1[0m [2mlocal[0m          [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;234;179;8mskipped[0m [2m—[0m              [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2m—[0m              [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m [2m• blocked by @demo/ui#build[0m
 ```
 
 A skip's cause is followed through a chain of skips to the failure at
@@ -4691,9 +4706,10 @@ until its task exits, and the task list names what the stop cut short
 run`). Neither reached the cache:
 
 ```ansi
-            [38;2;249;115;22maborted[0m [2m—[0m              [2m—[0m   [38;2;203;213;225m2.03s[0m     [2m—[0m      [2m—[0m       [2m—[0m       [38;2;203;213;225m2[0m [2mlocal[0m          [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m
-            [2mnot run[0m [2m—[0m              [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [38;2;203;213;225m1[0m [2m—[0m              [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m
-            [2mnot run[0m [2m—[0m              [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2m—[0m              [38;2;147;197;253mapp[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;249;115;22maborted[0m [2m—[0m              [2m—[0m     [38;2;203;213;225m9ms[0m     [2m—[0m      [2m—[0m       [2m—[0m       [38;2;203;213;225m2[0m [2mlocal[0m          [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [2mnot run[0m [2m—[0m              [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2m—[0m              [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [2mnot run[0m [2m—[0m              [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2m—[0m              [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;96;165;250mtest[0m
+            [38;2;249;115;22maborted[0m [2m—[0m              [2m—[0m    [38;2;203;213;225m14ms[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2mlocal[0m          [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;96;165;250mtest[0m
 ```
 
 In the task list view (`--all`, a filter) what an aborted task printed
@@ -4714,8 +4730,8 @@ in a dim note on its own row (and its frame's footer) — from the local
 run history alone, no service:
 
 ```ansi
-            [38;2;239;68;68mfailed[0m  [2mmiss[0m        [2m+1ms[0m    [38;2;203;213;225m10ms[0m   [2m14%[0m  [2m1.6MB[0m       [2m—[0m       [2m0[0m [2mlocal[0m          [38;2;147;197;253mapp[0m[2m#[0m[38;2;96;165;250mtest[0m [2mflaky - passed 2× before · 2 attempts[0m
-            [38;2;34;197;94msuccess[0m [2mmiss[0m           [2m—[0m    [38;2;203;213;225m14ms[0m    [2m8%[0m  [2m1.7MB[0m      [2m0B[0m       [2m0[0m [2mlocal[0m          [38;2;147;197;253mapp[0m[2m#[0m[38;2;96;165;250mtest[0m [2mflaky - 2 attempts[0m
+            [38;2;239;68;68mfailed[0m  [2mmiss[0m      [38;2;239;68;68m+181ms[0m   [38;2;203;213;225m971ms[0m   [2m55%[0m  [2m132MB[0m       [2m—[0m       [2m0[0m [2mlocal[0m          [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;96;165;250mtest[0m [2mflaky - passed 2× before · 2 attempts[0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m      [2m+124ms[0m   [38;2;203;213;225m914ms[0m   [2m60%[0m  [2m132MB[0m      [2m0B[0m       [2m0[0m [2mlocal[0m          [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;96;165;250mtest[0m [2mflaky - failed 1× before · 2 attempts[0m
 ```
 
 A task is flaky when its exact cache key FAILED AFTER IT HAD PASSED

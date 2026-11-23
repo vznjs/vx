@@ -348,11 +348,11 @@ describe('docs/cli.md — the broad-run sample is what the renderer prints', () 
 describe('docs/cli.md — the frame sample is what the renderer prints', () => {
   it('a failed block with command, interleaved output and a violation, byte for byte', async () => {
     const node = {
-      id: 'app#test',
-      projectName: 'app',
+      id: '@demo/web#test',
+      projectName: '@demo/web',
       taskName: 'test',
       config: {
-        exec: { command: 'bun test', sandbox: { allow: { read: ['**/*'] } } },
+        exec: { command: 'vitest run', sandbox: { allow: { read: ['.'] } } },
         inputs: { files: ['src/**'] },
         outputs: { files: [] },
         cache: true,
@@ -364,18 +364,21 @@ describe('docs/cli.md — the frame sample is what the renderer prints', () => {
       exitCode: 1,
       durationMs: 2100,
       hash: 'abc1234567',
-      sandbox: { violations: 1, lines: ['write ../shared/notes.txt'] },
+      sandbox: {
+        violations: 1,
+        lines: ['openat(/work/demo/packages/web/notes.txt) = a write no grant covers'],
+      },
     }
     const rendered = formatTaskBlock(
       node,
       outcome,
       {
         output: [
-          { text: '2 pass\n', err: false },
-          { text: 'error: expected 3, got 2\n', err: true },
-          { text: '1 fail\n', err: false },
+          { text: ' × renders 3ms\n', err: false },
+          { text: "Error: EROFS: read-only file system, open 'notes.txt'\n", err: true },
+          { text: ' Tests  1 failed (1)\n', err: false },
         ],
-        dir: 'packages/app',
+        dir: 'packages/web',
       },
       { enabled: true },
     ).replace(/\n$/, '')

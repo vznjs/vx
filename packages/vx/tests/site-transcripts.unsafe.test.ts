@@ -641,7 +641,7 @@ describe("the quickstart's output", () => {
 })
 
 // The CLI reference's samples (docs/cli.md), from the run they describe on
-// a lib/app fixture: the page showed `vx why`'s and `vx last`'s old
+// the docs' story (@demo/ui, and @demo/web on it): the page showed `vx why`'s and `vx last`'s old
 // layouts and a `vx run ci` that no longer exists, in plain white, until
 // 2026-11-22. Each `sh` command block is followed by the `ansi` block vx
 // prints for it; what changes run to run (ids, times, keys, sizes) is
@@ -650,23 +650,30 @@ describe("the CLI reference's samples", () => {
   const CLI = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'cli.md'), 'utf8')
   let dir = ''
   const out: Record<string, string> = {}
-  const config = (name: string, deps: string) => `export default {
-  name: '${name}',${name === 'app' ? "\n  tags: ['scope:web']," : ''}
+  // The page runs vite, vitest and oxlint; the fixture's bins are shell
+  // stand-ins that write what vite writes, so vx's own lines are held.
+  const config = `export default {
   tasks: {
-    build: {${name === 'app' ? "\n      description: 'compile the app'," : ''}
-      dependsOn: [${deps}],
-      exec: { command: 'mkdir -p dist && cp src/index.ts dist/index.js' },
-      inputs: { files: ['src/**'] },
+    build: {
+      dependsOn: ['^build'],
+      exec: { command: 'vite build' },
+      inputs: { files: ['src/**', 'vite.config.ts'] },
       outputs: { files: ['dist/**'] },
       cache: true,
     },
     test: {
-      dependsOn: ['build'],
-      exec: { command: 'test -f dist/index.js' },
+      dependsOn: ['^build'],
+      exec: { command: 'vitest run' },
+      inputs: { files: ['src/**', 'vite.config.ts'] },
+      outputs: { files: [] },
+      cache: true,
+    },
+    lint: {
+      exec: { command: 'oxlint src' },
       inputs: { files: ['src/**'] },
       outputs: { files: [] },
       cache: true,
-    },${name === 'lib' ? "\n    lint: { exec: { command: 'true' } }," : ''}
+    },
   },
 }
 `
@@ -702,16 +709,57 @@ describe("the CLI reference's samples", () => {
 
   beforeAll(async () => {
     dir = await mkdtemp(path.join(os.tmpdir(), 'vx-cli-'))
+    const write = (rel: string, text: string) => writeFile(path.join(dir, rel), text)
     await mkdir(path.join(dir, '.vx'))
-    await writeFile(path.join(dir, '.vx/workspace.mjs'), 'export default {}\n')
-    await writeFile(path.join(dir, '.gitignore'), 'dist\n')
-    for (const [name, deps] of [
-      ['lib', ''],
-      ['app', "'lib#build'"],
-    ] as const) {
+    await mkdir(path.join(dir, 'node_modules/.bin'), { recursive: true })
+    await mkdir(path.join(dir, 'node_modules/@vzn'))
+    await symlink(
+      path.resolve(import.meta.dir, '..', '..', 'vx-lockfile'),
+      path.join(dir, 'node_modules/@vzn/vx-lockfile'),
+    )
+    for (const [bin, body] of [
+      ['vite', 'mkdir -p dist && cp src/index.ts dist/index.js'],
+      ['vitest', 'true'],
+      ['oxlint', 'true'],
+    ])
+      await writeFile(path.join(dir, 'node_modules/.bin', bin), `#!/bin/sh\n${body}\n`, {
+        mode: 0o755,
+      })
+    await write(
+      '.vx/workspace.mjs',
+      `import { bun } from '@vzn/vx-lockfile'\n\nexport default { plugins: [bun()] }\n`,
+    )
+    await write('.gitignore', 'dist\nnode_modules\n')
+    await write(
+      'package.json',
+      '{ "name": "demo", "private": true, "workspaces": ["packages/*"] }\n',
+    )
+    const uses = { '@demo/ui': 'workspace:*' }
+    await write(
+      'bun.lock',
+      JSON.stringify({
+        lockfileVersion: 1,
+        workspaces: {
+          '': { name: 'demo' },
+          'packages/ui': { name: '@demo/ui' },
+          'packages/web': { name: '@demo/web', dependencies: uses },
+        },
+        packages: {
+          '@demo/ui': ['@demo/ui@workspace:packages/ui'],
+          '@demo/web': ['@demo/web@workspace:packages/web'],
+        },
+      }),
+    )
+    for (const name of ['ui', 'web']) {
       await mkdir(path.join(dir, `packages/${name}/src`), { recursive: true })
-      await writeFile(path.join(dir, `packages/${name}/vx.config.mjs`), config(name, deps))
-      await writeFile(path.join(dir, `packages/${name}/src/index.ts`), `export const ${name} = 1\n`)
+      await write(
+        `packages/${name}/package.json`,
+        JSON.stringify({ name: `@demo/${name}`, ...(name === 'ui' ? {} : { dependencies: uses }) }),
+      )
+      await write(`packages/${name}/vx.config.mjs`, config)
+      await write(`packages/${name}/vite.config.ts`, 'export default {}\n')
+      await write(`packages/${name}/src/index.ts`, `export const ${name} = 1\n`)
+      await write(`packages/${name}/src/index.test.ts`, '\n')
     }
     at('git', 'init', '-q', '-b', 'main')
     vxIn('lock', 'lock')
@@ -722,12 +770,12 @@ describe("the CLI reference's samples", () => {
     vxIn('run2', 'run', 'build', '--all')
     vxIn('dry', 'run', 'build', 'test', '--all', '--dry')
     vxIn('show', 'show')
-    vxIn('show app#build', 'show', 'app#build')
-    at('git', 'checkout', '-qb', 'feat')
-    await writeFile(path.join(dir, 'packages/lib/src/index.ts'), 'export const lib = 2\n')
+    vxIn('show @demo/web#build', 'show', '@demo/web#build')
+    at('git', 'checkout', '-qb', 'feature')
+    await write('packages/ui/src/index.ts', 'export const ui = 2\n')
     vxIn('affected', 'run', 'build', 'lint', '--affected=main', '--dry')
     vxIn('run3', 'run', 'build', '--all')
-    vxIn('why', 'why', 'app#build')
+    vxIn('why', 'why', '@demo/web#build')
     vxIn('last', 'last')
     vxIn('last --list', 'last', '--list')
   })
@@ -740,8 +788,8 @@ describe("the CLI reference's samples", () => {
     for (const [command, label] of [
       ['vx lock', 'lock'],
       ['vx show', 'show'],
-      ['vx show app#build', 'show app#build'],
-      ['vx why app#build', 'why'],
+      ['vx show @demo/web#build', 'show @demo/web#build'],
+      ['vx why @demo/web#build', 'why'],
     ] as const)
       expect(mask(sampleAfter(command))).toBe(mask(out[label]!))
     expect(mask(sampleAfter('vx lock --check'))).toBe(mask(out['lock --check']!))
