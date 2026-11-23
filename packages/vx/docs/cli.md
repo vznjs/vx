@@ -2886,7 +2886,9 @@ binary keeps the old one's mode (and, as root, its owner), and must
 answer `--version` before the upgrade reports it installed: one that
 does not start on this machine, or does not answer within 10 s, is
 swapped back for the previous vx, and the command exits 1 saying so
-(item 1097): `✓ vx upgrade  installed 0.0.2`. On the version it
+(item 1097): `the new binary did not start on this machine (… --version
+failed) — the previous vx is back in place`. Once it answers:
+`✓ vx upgrade  installed 0.0.2`. On the version it
 already is it says `› vx upgrade  already at <version>` and downloads
 nothing.
 
