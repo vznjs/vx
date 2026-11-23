@@ -308,6 +308,7 @@ it("the run's stop ends a task its executor holds unstarted not run, one begun a
             async execute(req) {
               const own = req.taskId === 'app#held' ? held : begun
               own.add(req.taskId)
+              globalThis.__vxExecuting?.()
               await new Promise((resolve) => req.signal?.addEventListener('abort', resolve, { once: true }))
               own.delete(req.taskId)
               return { exitCode: 130, signal: 'SIGINT', durationMs: 0, stdout: '', stderr: '', violations: [] }
@@ -323,8 +324,14 @@ it("the run's stop ends a task its executor holds unstarted not run, one begun a
       begun: { exec: { command: 'echo begun' } },
     } }`,
   )
+  // Stopped once both are in the executor, never after a fixed sleep: a
+  // loaded machine had not dispatched `begun` by 300 ms.
   const ac = new AbortController()
-  setTimeout(() => ac.abort(), 300)
+  let executing = 0
+  const g = globalThis as { __vxExecuting?: () => void }
+  g.__vxExecuting = () => {
+    if (++executing === 2) ac.abort()
+  }
   const r = await run({
     cwd: root,
     tasks: ['held', 'begun'],
@@ -341,6 +348,7 @@ it("the run's stop ends a task its executor holds unstarted not run, one begun a
     ['app#begun', 'aborted', false],
     ['app#held', 'aborted', true],
   ])
+  delete g.__vxExecuting
 }, 30_000)
 
 // A retry the stop reaches while its executor holds it is a stopped task,
