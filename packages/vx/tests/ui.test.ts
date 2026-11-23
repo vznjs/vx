@@ -163,6 +163,24 @@ describe('wrap', () => {
     )
   })
 
+  it('cuts a value too long for its row beside its label, never leaves the label alone', () => {
+    expect(ui.wrap('  root    /a/very/long/path/that/does/not/fit', 24)).toEqual(
+      ['  root    /a/very/long/p', '          ath/that/does/', '          not/fit'].map((r) =>
+        r.padEnd(24),
+      ),
+    )
+  })
+
+  it('fields wrap on a narrow terminal under the value column, and never off one', () => {
+    const rows: ui.FieldRow[] = [['verdict', 'cache key unchanged, so it executed and saved one']]
+    expect(ui.render([ui.fields(rows)], { enabled: false, columns: 30 })).toBe(
+      '  verdict   cache key\n            unchanged, so it\n            executed and saved\n            one\n',
+    )
+    expect(ui.render([ui.fields(rows)], OFF)).toBe(
+      '  verdict   cache key unchanged, so it executed and saved one\n',
+    )
+  })
+
   it('cuts a word longer than the row, and carries its colour on', () => {
     expect(ui.wrap('\x1b[2mabcdefghijklmnopqrstuvwxyz\x1b[0m end', 20)).toEqual([
       '\x1b[2mabcdefghijklmnopqrst\x1b[0m',

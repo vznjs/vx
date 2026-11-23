@@ -169,7 +169,9 @@ export function wrap(line: string, w: number): string[] {
     let end = at
     let space = -1
     while (end < cells.length && used + cells[end]!.cw <= w) {
-      if (cells[end]!.ch === ' ' && end > at) space = end
+      // Not a space of the label's gap: a value too long for its row is cut,
+      // not moved under a label left alone on the first.
+      if (cells[end]!.ch === ' ' && end > at && used >= hang) space = end
       used += cells[end]!.cw
       end++
     }
@@ -333,7 +335,11 @@ export function fields(rows: readonly FieldRow[]): Block {
         .forEach((v, i) => {
           const head = i === 0 ? paint('muted', label.padEnd(w), c) : ' '.repeat(w)
           const value = strongRow ? paint('strong', v, c) : v
-          out.push(`${INDENT}${head}  ${value}`.trimEnd())
+          const line = `${INDENT}${head}  ${value}`.trimEnd()
+          // On a terminal narrower than the line, the terminal's own wrap cut
+          // words and ran under the label column: wrap at a space, under the value.
+          if (c.columns === undefined || Bun.stringWidth(line) <= c.columns) out.push(line)
+          else for (const r of wrap(line, c.columns)) out.push(r.trimEnd())
         })
     }
     return out
