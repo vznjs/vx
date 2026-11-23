@@ -338,6 +338,8 @@ async function audit(root: string, warn: (message: string) => void): Promise<Gra
     // A run refuses it after its `graph` stage; the lock, which holds the
     // graph every run trusts, refuses it too.
     refuseFiltersThroughGroups(nodes)
+    // A typo in a pipeline's task waited for the CI job that runs it.
+    refuseUnknownPipelineTasks(workspaceConfig?.pipelines, nodes.keys(), projects.keys())
   } catch (err) {
     if (isUserError(err))
       return {
@@ -349,6 +351,33 @@ async function audit(root: string, warn: (message: string) => void): Promise<Gra
     throw err
   }
   return out
+}
+
+/** Each pipeline's task a node of the locked graph, or the lock refused naming it. */
+function refuseUnknownPipelineTasks(
+  pipelines: Readonly<Record<string, { readonly tasks: readonly string[] }>> | undefined,
+  ids: Iterable<string>,
+  names: Iterable<string>,
+): void {
+  if (pipelines === undefined) return
+  const all = new Set(ids)
+  const bare = new Set([...all].map((id) => id.slice(id.lastIndexOf('#') + 1)))
+  // Every project has a `build`: core's default one, which the graph leaves
+  // out where it has nothing to run.
+  const projects = new Set(names)
+  const known = (t: string): boolean => {
+    const at = t.lastIndexOf('#')
+    if (at < 0) return t === 'build' || bare.has(t)
+    return all.has(t) || (t.slice(at + 1) === 'build' && projects.has(t.slice(0, at)))
+  }
+  for (const [name, p] of Object.entries(pipelines)) {
+    const unknown = p.tasks.filter((t) => !known(t))
+    if (unknown.length > 0)
+      throw new UserError(
+        `pipelines.${name}.tasks names ${unknown.join(', ')}, which no project declares; tasks: ${[...bare].sort().join(', ')}`,
+        'VX_E_CONFIG',
+      )
+  }
 }
 
 /**

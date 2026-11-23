@@ -12,6 +12,7 @@ import { localWorkspaceSource } from './helpers/local-workspace.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 
 const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
+const LOCK_BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 
 const refusal = (pipelines: unknown): string | undefined => {
   try {
@@ -100,6 +101,36 @@ describe('pipelines in .vx/workspace', () => {
   })
 })
 
+// A typo in a pipeline's task waited for the CI job that ran it: the lock,
+// which reads every task, names it.
+it('vx lock refuses a pipeline task no project declares', async () => {
+  const root = await realpath(await makeWorkspace({ prefix: 'vx-pipeline-ghost-' }))
+  try {
+    await addProject(root, 'a', `export default { tasks: { lint: { exec: { command: 'true' } } } }`)
+    const lock = async (tasks: string): Promise<{ code: number; err: string }> => {
+      await writeFile(
+        path.join(root, '.vx/workspace.mjs'),
+        localWorkspaceSource([], '', undefined, `pipelines: { pr: { tasks: ${tasks} } }`),
+      )
+      const p = Bun.spawnSync([process.execPath, LOCK_BIN, 'lock'], {
+        cwd: root,
+        env: { ...process.env, NO_COLOR: '1' },
+      })
+      return { code: p.exitCode, err: p.stderr.toString() + p.stdout.toString() }
+    }
+    expect(await lock(`['lint', 'nope', 'a#lnt']`)).toEqual({
+      code: 1,
+      err: expect.stringContaining(
+        'pipelines.pr.tasks names nope, a#lnt, which no project declares; tasks: lint',
+      ),
+    })
+    // Every project's default build counts, as a run takes it.
+    expect((await lock(`['lint', 'a#lint', 'build', 'a#build']`)).code).toBe(0)
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+}, 30_000)
+
 describe('vx pipeline <name>', () => {
   let root = ''
   let cwd = ''
@@ -136,7 +167,6 @@ describe('vx pipeline <name>', () => {
           one: { tasks: ['build'], filter: ['a'] },
           env: { tasks: ['show'], filter: ['a'], env: { SHOWN: 'vx-only' } },
           quiet: { tasks: ['show'], filter: ['a'], env: { VX_RUN_OUTPUT_LOGS: 'none' } },
-          ghost: { tasks: ['nope'] },
           paths: { tasks: ['keep'], filter: ['a'], cacheDir: 'saved-cache', profile: 'saved.json' },
           policy: { tasks: ['build'], cachePolicy: 'bogus' },
           badenv: { tasks: ['build'], env: { VX_RUN_RETRIES: 'x', VX_CACHE_POLICY: 'local:q' } },
@@ -218,7 +248,7 @@ describe('vx pipeline <name>', () => {
     expect((await vx('pipeline')).err).toContain('missing pipeline name')
     const typo = (await vx('pipeline', 'chek')).err
     expect(typo).toContain(
-      'no pipeline named chek; pipelines: check, one, env, quiet, ghost, paths',
+      'no pipeline named chek; pipelines: check, one, env, quiet, paths, policy',
     )
     expect(typo).toContain('fix  vx pipeline check')
     expect((await vx('pipeline', 'check', 'lint')).err).toContain(
@@ -228,10 +258,6 @@ describe('vx pipeline <name>', () => {
       '--all: a pipeline runs every project already',
     )
     expect((await vx('pipeline', 'check', '--', 'x')).err).toContain('forwards nothing after --')
-    // A refusal past the flags is the pipeline's, not the `vx run` it stands for.
-    const ghost = (await vx('pipeline', 'ghost')).err
-    expect(ghost).toContain('vx pipeline  no projects declare task(s): nope')
-    expect(ghost).not.toContain('vx run ')
     // A name the object's prototype holds is no pipeline: it was taken for
     // one and crashed with a stack.
     for (const name of ['constructor', '__proto__', 'toString']) {

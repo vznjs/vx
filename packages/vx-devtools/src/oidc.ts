@@ -559,9 +559,7 @@ export function cachedFetchJson(
     if (hit !== undefined) return hit.json()
     // The global read at each call: one taken when the module loaded missed
     // a fetch set after it (a test's issuer reached the network).
-    const res = await (fetchImpl ?? fetch)(url, { signal: AbortSignal.timeout(10_000) })
-    if (!res.ok) throw new Error(`${url}: ${res.status}`)
-    const body = await res.text()
+    const body = await (await answered(url, fetchImpl)).text()
     // Parsed before it is kept: a 200 that is not JSON (a proxy's page) is
     // not served to every token for the next ten minutes.
     const json: unknown = JSON.parse(body)
@@ -574,7 +572,33 @@ export function cachedFetchJson(
 }
 
 async function defaultFetchJson(url: string): Promise<unknown> {
-  const res = await fetch(url, { signal: AbortSignal.timeout(10_000) })
-  if (!res.ok) throw new Error(`${url}: ${res.status}`)
-  return res.json()
+  return (await answered(url)).json()
+}
+
+/** One read of the issuer: GitHub answers in well under a second. */
+const KEYS_TRY_MS = 4_000
+/** Every try of one read: a timeout, a dropped connection, a 5xx or a 429 is tried again within it. */
+const KEYS_READ_MS = 15_000
+
+/**
+ * The issuer's 2xx answer for `url`, tried again past a timeout, a dropped
+ * connection, a 5xx or a 429, three tries in 15 s at most: one timed-out
+ * read of GitHub's keys ended a DTE worker before it joined.
+ */
+async function answered(url: string, fetchImpl?: typeof fetch): Promise<Response> {
+  const until = performance.now() + KEYS_READ_MS
+  for (let attempt = 1; ; attempt++) {
+    // The global read at each call, as cachedFetchJson's.
+    const res = await (fetchImpl ?? fetch)(url, {
+      signal: AbortSignal.timeout(Math.max(1, Math.min(KEYS_TRY_MS, until - performance.now()))),
+    }).catch((err: unknown) => (err instanceof Error ? err : new Error(String(err))))
+    if (!(res instanceof Error) && res.ok) return res
+    // quiet: an unread body held its connection open until collected
+    if (!(res instanceof Error)) await res.body?.cancel().catch(() => {})
+    const again = res instanceof Error || res.status >= 500 || res.status === 429
+    const pause = 250 * 2 ** (attempt - 1)
+    if (!again || attempt >= 3 || performance.now() + pause >= until)
+      throw res instanceof Error ? res : new Error(`${url}: ${res.status}`)
+    await new Promise((r) => setTimeout(r, pause))
+  }
 }
