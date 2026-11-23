@@ -1491,6 +1491,63 @@ describe('config', () => {
     expect(asked).toBe(2)
   })
 
+  // A check that found no server left the remote on: every task's check
+  // failed the same way, and a host with no address (no network, a
+  // mistyped url) was never off, each request paying its own DNS lookup.
+  for (const [code, first] of [
+    ['ECONNREFUSED', 'check'],
+    ['ENOTFOUND', 'check'],
+    ['EAI_AGAIN', 'check'],
+    ['ENOTFOUND', 'upload'],
+  ] as const)
+    it(`turns the remote off once ${first === 'check' ? 'a check' : 'an upload'} finds no server (${code})`, async () => {
+      let asked = 0
+      const down: typeof fetch = Object.assign(
+        () => {
+          asked++
+          return Promise.reject(Object.assign(new Error(`no server (${code})`), { code }))
+        },
+        { preconnect: fetch.preconnect },
+      )
+      const c = layer('http://127.0.0.1:1', 'token', [MAIN], down, 1)
+      ;(c as unknown as { wait: (ms: number) => Promise<void> }).wait = async () => {}
+      const said =
+        first === 'check'
+          ? c.hasMany(['ab30', 'ab31'])
+          : c.put('ab30', new Blob(['x']), { durationMs: 1 })
+      await expect(said).rejects.toThrow(`no server (${code}); remote cache off for this run`)
+      const before = asked
+      expect(await c.hasMany(['ab32'])).toBeNull()
+      expect(await c.get('ab32')).toBeUndefined()
+      expect(await c.put('ab33', new Blob(['x']), { durationMs: 1 })).toBe(false)
+      expect(asked).toBe(before)
+    })
+
+  it('CONTROL: a check that finds no server while the server answers others is that check alone', async () => {
+    const srv = server()
+    try {
+      const token = await srv.token(MAIN_JOB)
+      let c: VxCacheLayer
+      let once = true
+      const flaky: typeof fetch = Object.assign(
+        async (input: string | URL | Request, init?: RequestInit) => {
+          if (once && init?.method === 'POST') {
+            once = false
+            await c.put('ab34', new Blob(['y']), { durationMs: 1 })
+            throw Object.assign(new Error('no server'), { code: 'ENOTFOUND' })
+          }
+          return fetch(input, init)
+        },
+        { preconnect: fetch.preconnect },
+      )
+      c = layer(srv.url, token, [MAIN], flaky, 0)
+      await expect(c.hasMany(['ab35'])).rejects.toThrow('no server')
+      expect(c.off).toBe(false)
+    } finally {
+      await srv.stop()
+    }
+  })
+
   it('CONTROL: a lost connection while the server answers others is that request alone', async () => {
     const srv = server()
     try {
