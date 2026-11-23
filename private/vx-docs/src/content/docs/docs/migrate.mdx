@@ -182,6 +182,7 @@ bunx @vzn/vx init --native
             [38;2;203;213;225m.vx/.gitignore[0m
   [2mlock    [0m  [38;2;203;213;225m2 project configs → .vx/projects.lock, .vx/dependencies.lock[0m
   [2mnote    [0m  [38;2;203;213;225mmigrating from the resolved project-graph snapshot — plugin-inferred targets are frozen as static config; [0m[1m`nx:run-commands`[0m[38;2;203;213;225m targets are their shell lines[0m
+            [38;2;203;213;225mNx caches whichever of a target's outputs exist; vx fails a task when one of its output patterns matches nothing ("outputs matched no files"): 2 tasks declare outputs — remove each pattern its command never writes[0m
 
   [2mnext    [0m  [1mvx run build --all[0m
 ```
