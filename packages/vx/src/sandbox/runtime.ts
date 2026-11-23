@@ -504,13 +504,18 @@ async function wrapIn(
   // across them; only such a task, since git-aware tools read the variable
   // (vx's own repoFacts asks git instead of the disk under it). A value the
   // task's environment sets wins.
+  // A link vx binds as a file for its own programs (`bothSpellings`: a
+  // hermetic task's `/usr/bin/sh`) is there already: bwrap refuses a link
+  // over it, and a grant spelled through it failed the task.
+  const bound = new Set(allowRead)
+  const laid = links.filter(([, at]) => !bound.has(at))
   if (process.platform === 'linux' && /^\S*bwrap /.test(wrapped)) {
     const gitGranted = [...args.config.allowRead, ...args.config.allowWrite].some((g) =>
       g.split(/[\\/]/).includes('.git'),
     )
     wrapped =
       (gitGranted ? 'GIT_DISCOVERY_ACROSS_FILESYSTEM=${GIT_DISCOVERY_ACROSS_FILESYSTEM-1} ' : '') +
-      `exec ${readOnlyMasks(withCwd(withPunchedLinks(withLinkedWrites(wrapped, linkedWriteBinds(args.config.linkedWrites)), links), cwdDenied ? baselines.cwd : undefined), scratch)}`
+      `exec ${readOnlyMasks(withCwd(withPunchedLinks(withLinkedWrites(wrapped, linkedWriteBinds(args.config.linkedWrites)), laid), cwdDenied ? baselines.cwd : undefined), scratch)}`
   }
   if (process.platform === 'linux' && !hostHasIpv6())
     wrapped = `SOCAT_DEFAULT_LISTEN_IP=4 ${wrapped}`

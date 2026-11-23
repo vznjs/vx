@@ -83,20 +83,34 @@ export function readGrantLinks(
 }
 
 /**
- * Linux: the links inside the project a read grant passes through,
- * hop by hop (`src -> lib2 -> lib` is both), each at its real spelling.
+ * Linux: the links a read grant passes through, hop by hop (`src -> lib2
+ * -> lib` is both), each at its real spelling: those inside the project,
+ * and under `hermetic` those outside it too, where the host's root is
+ * hidden and a grant of `/usr/bin/python3 -> python3.12` bound the target
+ * alone, so the program the task ran was not there.
  */
-function readLinkSpellings(grant: string, projectDir: string): Array<{ at: string; text: string }> {
-  if (process.platform !== 'linux' || grant.startsWith('~') || path.isAbsolute(grant)) return []
-  const full = path.resolve(projectDir, grant)
+function readLinkSpellings(
+  grant: string,
+  projectDir: string,
+  hermetic: boolean,
+): Array<{ at: string; text: string }> {
+  if (process.platform !== 'linux') return []
+  const outside = grant.startsWith('~') || path.isAbsolute(grant)
+  if (outside && !hermetic) return []
+  const full = grant.startsWith('~')
+    ? path.join(os.homedir(), grant.slice(1))
+    : path.resolve(projectDir, grant)
   // A pattern's links are those of its literal head (`src/*.ts`: `src`).
   const at = wildcardAt(full)
   const lexical = at === -1 ? full : path.dirname(`${full.slice(0, at)}x`)
-  if (!atOrUnder(lexical, projectDir)) return []
+  const inside = atOrUnder(lexical, projectDir)
+  if (!outside && !inside) return []
   const home = toRealPath(projectDir)
   const out: Array<{ at: string; text: string }> = []
-  let cur = home
-  let parts = path.relative(projectDir, lexical).split(path.sep).filter(Boolean)
+  let cur = inside ? home : path.sep
+  let parts = (inside ? path.relative(projectDir, lexical) : lexical)
+    .split(path.sep)
+    .filter(Boolean)
   for (let hops = 0; parts.length > 0;) {
     const next = path.join(cur, parts.shift()!)
     let link = false
@@ -111,7 +125,15 @@ function readLinkSpellings(grant: string, projectDir: string): Array<{ at: strin
     }
     if (++hops > 40) return out
     const text = readlinkSync(next)
-    if (atOrUnder(next, home) && !out.some((o) => o.at === next)) out.push({ at: next, text })
+    // A link at the root (`/lib -> usr/lib`) is left as it is by the
+    // hermetic deny, so it is there already.
+    if (
+      (inside
+        ? atOrUnder(next, home)
+        : !atOrUnder(next, home) && path.dirname(next) !== path.sep) &&
+      !out.some((o) => o.at === next)
+    )
+      out.push({ at: next, text })
     parts = [...path.resolve(cur, text).split(path.sep).filter(Boolean), ...parts]
     cur = path.sep
   }
@@ -240,7 +262,7 @@ export function resolveSandboxConfig(
   const r: ResolvedSandboxConfig = {
     allowRead: expandGrants(
       (a.read ?? []).flatMap(grantAlternatives).map((p) => {
-        for (const l of readLinkSpellings(p, projectDir))
+        for (const l of readLinkSpellings(p, projectDir, cfg.hermetic === true))
           if (!linkedReads.some((o) => o.at === l.at)) linkedReads.push(l)
         return resolve(p)
       }),

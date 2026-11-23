@@ -2145,6 +2145,9 @@ libraries they link.
 
 Any other tool is yours to grant, with its libraries: `ldd $(command -v
 node)` lists them. The task then cannot lean on the machine unseen.
+A grant spelled through links (`/usr/bin/python3 -> python3.12`) is
+there as spelled, each link with its target; until 2026-11-24 Linux
+bound the target alone and the task met "not found" at the link.
 A command the host has but no grant reads exits 127, and vx names its
 host path and the grant. So does a command found whose runtime is hidden:
 the `node` its `#!/usr/bin/env node` line asks for, or a library that

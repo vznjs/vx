@@ -392,7 +392,7 @@ exec: {
 },
 ```
 
-Grant a tool's libraries with it: `ldd $(command -v node)` lists them. vx still grants the shell the command runs in.
+Grant a tool's libraries with it: `ldd $(command -v node)` lists them. A grant of a link (`/usr/bin/python3`) brings its target. vx still grants the shell the command runs in.
 
 <Takeaway>build with only the tools you named, nothing from the host.</Takeaway>
 
