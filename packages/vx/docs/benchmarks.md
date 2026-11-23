@@ -60,7 +60,7 @@ holds each task's own duration, as CI would carry it from an earlier run.
 
 **Time each tool adds over the ideal run:**
 
-|                                       | vx                 | Turborepo             | Nx                 | Vite Task          |
+| Scenario                              | vx                 | Turborepo             | Nx                 | Vite Task          |
 | ------------------------------------- | ------------------ | --------------------- | ------------------ | ------------------ |
 | **Nothing changed**                   | %bench.vx.warm%    | %bench.turbo.warm%    | %bench.nx.warm%    | %bench.vt.warm%    |
 | **Nothing changed, outputs restored** | %bench.vx.restore% | %bench.turbo.restore% | %bench.nx.restore% | %bench.vt.restore% |

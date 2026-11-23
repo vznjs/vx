@@ -59,7 +59,7 @@ sequenceDiagram
     C-->>X: CacheEntry {outputFiles, source: 'local'}
     X->>H: restoreHit
     H->>H: output set unchanged? directory-mtime<br/>short-circuit, else walk the output globs
-    H->>C: isOutputsCurrent? stat each output_files row<br/>(size + mode + millisecond mtime,<br/>inode + ctime stamp; from 2,048 files<br/>stat'ed ahead on a thread, while git walks)
+    H->>C: isOutputsCurrent? stat each output_files row<br/>(size + mode + millisecond mtime,<br/>inode + ctime stamp, from 2,048 files<br/>stat'ed ahead on a thread, while git walks)
     alt every output already current
         Note over H: skip extraction entirely —<br/>the warm-warm path costs N stats, zero writes
     else any output stale/missing

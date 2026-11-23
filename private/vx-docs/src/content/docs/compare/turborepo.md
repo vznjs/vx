@@ -34,7 +34,7 @@ Same graph, commands and concurrency, each tool in its own native config: [how i
 
 ## Feature by feature
 
-|                            | vx                                                                                         | Turborepo                                    |
+| Feature                    | vx                                                                                         | Turborepo                                    |
 | -------------------------- | ------------------------------------------------------------------------------------------ | -------------------------------------------- |
 | Config                     | TypeScript, evaluated into the cache key                                                   | JSON (`turbo.json`), static                  |
 | Default inputs             | None: you declare `inputs.files`                                                           | Every tracked file in the package            |

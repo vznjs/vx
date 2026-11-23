@@ -25,7 +25,7 @@ flowchart LR
 Seconds, min of 3. Shorter bars are less time; each table is one click
 away.
 
-### create-t3-turbo vs Turborepo 2.5.8
+## create-t3-turbo vs Turborepo 2.5.8
 
 `build typecheck`, 11 tasks, commit 8f945b7.
 
@@ -43,7 +43,7 @@ rebuilds from scratch.
 
 `outputs.clean: false` on the three tsc tasks keeps it.
 
-### react-email vs Turborepo 2.9.14
+## react-email vs Turborepo 2.9.14
 
 `build`, 4 tasks, commit 1531a39.
 
@@ -54,7 +54,7 @@ rebuilds from scratch.
 | edit | 28.23 s | 26.29 s |
 | clone | 0.34 s | 0.26 s |
 
-### trpc vs Turborepo 2.10.12
+## trpc vs Turborepo 2.10.12
 
 `build`, 7 tasks, commit d756e59.
 
@@ -65,7 +65,7 @@ rebuilds from scratch.
 | edit | 9.40 s | 7.04 s |
 | clone | 0.16 s | 0.13 s |
 
-### vercel/ai vs Turborepo 2.9.14
+## vercel/ai vs Turborepo 2.9.14
 
 `build`, 82 tasks, commit e8c8e32.
 
@@ -76,7 +76,7 @@ rebuilds from scratch.
 | edit | 156.38 s | 145.61 s |
 | clone | 0.97 s | 0.65 s |
 
-### medusa vs Turborepo 1.13.4
+## medusa vs Turborepo 1.13.4
 
 `build build:plugin`, 83 tasks, commit 5018ab67.
 
@@ -92,7 +92,7 @@ vx's clone takes what its restore takes (3.54 s and 3.45 s, all 83 hits).
 Turborepo's clone takes less time than its own restore.
 :::
 
-### TanStack query vs Nx 23.2.1
+## TanStack query vs Nx 23.2.1
 
 `build`, 25 tasks, commit 817bd02.
 
@@ -109,7 +109,7 @@ cache in the checkout's own `.nx/workspace-data`. The chart shows the
 minimum.
 :::
 
-### typescript-eslint vs Nx 23.2.0
+## typescript-eslint vs Nx 23.2.0
 
 `build`, 18 tasks, commit 57e7cccce.
 

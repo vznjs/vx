@@ -57,7 +57,7 @@ describe('no benchmark figure on the site is typed by hand', () => {
     for (const file of pages()) {
       const lines = readFileSync(file, 'utf8').split('\n')
       // A head-to-head table is headed by the ideal run, by the task count,
-      // or by nothing, with its four rows; or, transposed, it has a column
+      // or by "Scenario", with its four rows; or, transposed, it has a column
       // per row. A real repo's run (`| Run | vx | Nx |`) is its own
       // measurement, dated where it is printed.
       let header: string[] | undefined
@@ -72,7 +72,7 @@ describe('no benchmark figure on the site is typed by hand', () => {
           continue
         }
         const first = header[0]!
-        const headed = first === '' || /ideal run|%bench.tasks%/.test(first)
+        const headed = first === 'Scenario' || /ideal run|%bench.tasks%/.test(first)
         const transposed = header.some((c) => ROW_LABELS.has(c) || c === 'Cold build overhead')
         const isRow = (headed && ROW_LABELS.has(cells[0]!)) || (transposed && TOOLS.has(cells[0]!))
         if (!isRow || /^\|\s*-/.test(line)) continue

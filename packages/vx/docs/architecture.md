@@ -117,7 +117,7 @@ graph TD
 
 ### Allowed dependency matrix (rows import columns, via index only)
 
-|                  | util | ui  | config | version | settings | handoff | workspace | graph | index-db | memo | cache | exec | sandbox | history | report | orchestrator | cli | index |
+| Module           | util | ui  | config | version | settings | handoff | workspace | graph | index-db | memo | cache | exec | sandbox | history | report | orchestrator | cli | index |
 | ---------------- | ---- | --- | ------ | ------- | -------- | ------- | --------- | ----- | -------- | ---- | ----- | ---- | ------- | ------- | ------ | ------------ | --- | ----- |
 | **ui**           | ✓    | —   |        |         |          |         |           |       |          |      |       |      |         |         |        |              |     |       |
 | **settings**     | ✓    | ✓   |        |         | —        |         |           |       |          |      |       |      |         |         |        |              |     |       |
