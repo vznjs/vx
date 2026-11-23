@@ -2511,8 +2511,26 @@ it hides (`vx.config.ts` and `vx.config.mjs` in one directory, or two
 `.vx/workspace.*`): precedence reads the first, and an edit to the
 other changes nothing. The warning does not fail `--check`.
 `--format json` prints the audit as one document
-(`schemas/lock.json`, exit code unchanged; a missing lock is one of
-its `problems`); it answers `--check` only.
+(`schemas/lock.json`, exit code unchanged); it answers `--check` only.
+Each of its `problems` is `{code, message}`: `VX_E_LOCK` for drift
+`vx lock` fixes (a missing lock is one), `VX_E_CONFIG` for a config that
+does not load or evaluates to a secret, and a graph rule's own code
+(`VX_E_CYCLE`, …). Branch on the code; the message may change.
+
+```json
+{
+  "upToDate": false,
+  "audited": 1,
+  "notAudited": 0,
+  "problems": [
+    {
+      "code": "VX_E_CYCLE",
+      "message": "dependsOn cycle: p#x -> p#y -> p#x — remove one edge of the loop"
+    }
+  ]
+}
+```
+
 Full design: `docs/design/config-lock-2026-06.md`. A lock written by a
 1.x vx stays valid for every later 1.x (`tests/contract-lockfile.test.ts`).
 
@@ -3091,6 +3109,12 @@ before any `--`) answers a refusal on stdout too, as one line that
 `docs` links the code's section below, which says what to do;
 `vx docs <code>` prints that section. The exit code (1) and the
 prose on stderr do not change. Branch on the code; the message may change.
+A graph rule's code (`VX_E_CYCLE`, `VX_E_DEPENDS_ON`, `VX_E_OUTPUT_OVERLAP`,
+`VX_E_INPUT_IS_OUTPUT`, `VX_E_NESTED_INPUT`, `VX_E_NESTED_OUTPUT`,
+`VX_E_DEPENDENCY_RULE`) is `vx lock`'s refusal: an agent reads it as the
+`code` of a `vx lock --check --format json` problem. Every code is recorded
+in `tests/contract/error-codes.txt`; dropping or renaming one is a breaking
+change.
 
 #### `VX_E_USAGE`
 
