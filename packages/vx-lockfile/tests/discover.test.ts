@@ -510,6 +510,16 @@ describe('discover', () => {
       expect(await discover(c.make(), ok)).toEqual(EXPECTED)
     })
 
+    it(`${c.name}(): a root dependency the lockfile lacks is named the root's`, async () => {
+      // It read "does not list .'s dependency on a" (probed under each manager).
+      await writeFile(path.join(root, c.file), c.text)
+      await workspaces()
+      const metas = await projects({ root: { ...rootPkg, dependencies: { a: '*' } } })
+      await expect(discover(c.make(), metas)).rejects.toThrow(
+        `it does not list the root's dependency on a — run \`${c.name} install\``,
+      )
+    })
+
     it(`${c.name}(): a dependency on a workspace deleted from disk refuses`, async () => {
       // `rm -rf packages/e` while b still names it: the install fails, the
       // lockfile keeps b → e, and the lock dropped the edge with a ✓.

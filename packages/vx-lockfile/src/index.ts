@@ -1016,7 +1016,7 @@ async function staleness(
         if (linksUnrecorded && typeof spec === 'string' && spec.startsWith('link:')) continue
         if (unrecorded?.(name, pkg) === true) continue
         if (name !== own && names.has(name) && !deps.has(name)) {
-          missing.push(`${importer}'s dependency on ${name}`)
+          missing.push(`${importer === '.' ? 'the root' : importer}'s dependency on ${name}`)
         }
       }
     }
