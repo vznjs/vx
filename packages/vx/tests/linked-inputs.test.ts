@@ -10,6 +10,8 @@ import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promis
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { declaresInput } from '../src/cache/inputs.js'
+import type { TaskConfig } from '../src/config.js'
 import type { RunSummary } from '../src/orchestrator/index.js'
 import type { Logger } from '../src/report/index.js'
 import { run } from './helpers/orchestrator.js'
@@ -177,6 +179,52 @@ describe('a symlinked input keys what it points to', () => {
       // A negation that takes back the whole tree under a link still does.
       await writeFile(path.join(root, 'kept', 'z.txt'), 'kept 2\n')
       expect(statusOf(await build())).toBe('cache-hit')
+    },
+    TIMEOUT,
+  )
+
+  // 2026-11-23: a glob that matches a directory link by its name (`src/**`
+  // over `src/l`) kept it whatever the negations took back beneath it, so
+  // `!src/l/**`, documented to leave the link out, still keyed every file
+  // behind it: an edit there was a miss, and `--affected` selected the task.
+  it(
+    'a negation that takes back every path under a directory link leaves it out',
+    async () => {
+      for (const d of ['other', 'more']) {
+        await mkdir(path.join(root, d))
+        await writeFile(path.join(root, d, 'z.txt'), `${d} 1\n`)
+      }
+      app = await addProject(root, 'a', {
+        config: `export default { tasks: { build: { exec: { command: 'cat src/a.txt > out.txt' }, inputs: { files: ['src/**', '!src/l/**'], workspaceFiles: ['ws/**', '!ws/m/**'] }, outputs: { files: ['out.txt'] }, cache: true } } }`,
+      })
+      await mkdir(path.join(app, 'src'))
+      await writeFile(path.join(app, 'src', 'a.txt'), 'a\n')
+      await mkdir(path.join(root, 'ws'))
+      await symlink('../../../other', path.join(app, 'src', 'l'))
+      await symlink('../more', path.join(root, 'ws', 'm'))
+      commit('fixture')
+      expect(statusOf(await build()), said.join('')).toBe('success')
+      expect(statusOf(await build())).toBe('cache-hit')
+      await writeFile(path.join(root, 'other', 'z.txt'), 'other 2\n')
+      expect(statusOf(await build()), said.join('')).toBe('cache-hit')
+      await writeFile(path.join(root, 'more', 'z.txt'), 'more 2\n')
+      expect(statusOf(await build()), said.join('')).toBe('cache-hit')
+      // Untracked links too.
+      await symlink('../../../other', path.join(app, 'src', 'l2'))
+      await writeFile(
+        path.join(app, 'vx.config.ts'),
+        `export default { tasks: { build: { exec: { command: 'cat src/a.txt > out.txt' }, inputs: { files: ['src/**', '!src/l/**', '!src/l2/**'], workspaceFiles: ['ws/**', '!ws/m/**'] }, outputs: { files: ['out.txt'] }, cache: true } } }`,
+      )
+      expect(statusOf(await build()), said.join('')).toBe('success')
+      await writeFile(path.join(root, 'other', 'z.txt'), 'other 3\n')
+      expect(statusOf(await build()), said.join('')).toBe('cache-hit')
+      // `--affected` asks the same of a changed path behind a link.
+      const task = {
+        inputs: { files: ['src/**', '!src/l/**'], workspaceFiles: ['ws/**', '!ws/m/**'] },
+      } as unknown as TaskConfig
+      expect(declaresInput(task, 'src/l', null, true)).toBe(false)
+      expect(declaresInput(task, null, 'ws/m', true)).toBe(false)
+      expect(declaresInput(task, 'src/a.txt', null)).toBe(true)
     },
     TIMEOUT,
   )
