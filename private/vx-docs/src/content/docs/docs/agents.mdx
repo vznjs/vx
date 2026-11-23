@@ -107,7 +107,7 @@ The agent fixes `price.js`, runs the same command, and checks the result with `v
             [38;2;34;197;94msuccess[0m [38;2;34;197;94mfresh[0m        [38;2;203;213;225m0ms[0m   [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;96;165;250mtest[0m
 ```
 
-`@demo/ui` did not change, so its tasks are **fresh**: vx skipped them. Only `@demo/web#test` ran. Exit code `0`.
+`@demo/ui` did not change. **fresh** in the cache column means up to date: its outputs were already in place, so vx skipped it. Only `@demo/web#test` ran. Exit code `0`.
 
 </Frame>
 </Walkthrough>
@@ -164,7 +164,7 @@ vx run test --affected=HEAD --dry --format json | jq '.tasks[] | {id, affected}'
 }
 ```
 
-Each test says **why** it is in (`affected`). `@demo/ui#build` has none: it is in only because a test needs it. Nothing ran yet.
+Each test says **why** it is in (`affected`). `@demo/ui#build` has no `affected` field (jq prints `null`): it is in only because a test needs it. Nothing ran yet.
 
 <Quiz q="The edit was in @demo/ui. Why is @demo/web#test in the list?">
   Its `affected.via` says so: `@demo/web#test` depends on `@demo/ui#build`, and that build reads the
