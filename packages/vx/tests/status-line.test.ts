@@ -1202,6 +1202,19 @@ describe('createOutputWriter region erase accounts for wrapped rows', () => {
     expect(s.chunks.at(-1)).toBe('\x1b[2K\rm')
   })
 
+  it('a resize counts the cursor row at its fewer rows: no reflow is promised for it', () => {
+    // xterm.js (VS Code's terminal) reflows every row but the cursor's, which
+    // it cuts: counting that row at the new width erased a row of the log
+    // above the region (a 100 → 50 resize ate `1.8MB local p/a#fail`).
+    // Under-erasing leaves a junk row; over-erasing destroys output.
+    const s = ttyW(40)
+    const w = createOutputWriter(s, { forceFloorMs: 0 })
+    w.setRegion(['q'.repeat(30), 'r'.repeat(30)], { force: true })
+    s.columns = 10
+    w.setRegion(['n'], { force: true })
+    expect(s.chunks.at(-1)).toBe('\r\x1b[3A\x1b[Jn')
+  })
+
   // Cursor-up stops at the top of the screen: rows that scrolled into the
   // scrollback cannot be erased. A region taller than the terminal left its
   // top behind on every redraw, so each tick stacked a new block (VS Code's

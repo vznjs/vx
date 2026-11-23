@@ -148,6 +148,8 @@ export function createOutputWriter(
   // `regionRows`.
   let shownRows = 0
   let shownLines: readonly string[] = []
+  /** The cursor row's rows when drawn: see `eraseSeq`. */
+  let shownLastRows = 0
   let dead = false
   let holds = 0
   let lastDraw = -Infinity
@@ -237,9 +239,16 @@ export function createOutputWriter(
   // the exact legacy bytes (ESC[2K\r); anything taller moves to its
   // top row and clears to end of screen.
   // Counted at the width now: a terminal reflows its screen on a resize, so
-  // the rows the shown region takes are its lines' at the new width.
+  // the rows the shown region takes are its lines' at the new width. The
+  // cursor's row is the exception: xterm.js (VS Code) cuts it instead, so it
+  // counts at the fewer of its rows then and now, since an erase one row
+  // short leaves junk and one row long destroys the log above.
   const eraseSeq = (): string => {
-    const rows = shownRows > 0 ? regionRows(shownLines) : 0
+    let rows = 0
+    if (shownRows > 0 && shownLines.length > 0) {
+      const last = shownLines.at(-1)!
+      rows = regionRows(shownLines.slice(0, -1)) + Math.min(lineRows(last), shownLastRows)
+    }
     return rows > 1 ? `\r\x1b[${rows - 1}A\x1b[J` : CLEAR
   }
 
@@ -294,6 +303,7 @@ export function createOutputWriter(
       shown = true
       shownRows = regionRows(lines)
       shownLines = lines
+      shownLastRows = lines.length > 0 ? lineRows(lines.at(-1)!) : 0
       shownText = region
     }
     if (text !== '') stream.write(rawBytes(text))
