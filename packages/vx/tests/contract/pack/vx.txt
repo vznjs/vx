@@ -61,6 +61,7 @@ src/cli/watch-cycle.ts
 src/cli/watch-filter.ts
 src/cli/watch-fs.ts
 src/cli/watch-judge.ts
+src/cli/watch-kept.ts
 src/cli/watch-loop.ts
 src/cli/watch-set.ts
 src/cli/watch.ts
@@ -198,6 +199,7 @@ src/orchestrator/trailing-outputs.ts
 src/orchestrator/undeclared-state.ts
 src/orchestrator/upstream-inputs.ts
 src/orchestrator/upstream.ts
+src/orchestrator/watch-kept.ts
 src/orchestrator/worker-runtime.ts
 src/report/events.ts
 src/report/forecast.ts

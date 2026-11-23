@@ -579,10 +579,13 @@ async function starter(
   const gitInit =
     root === process.cwd() ? 'git init' : `git init ${path.relative(process.cwd(), root)}`
   const next = `${noGit ? `${gitInit}, ` : ''}${hasScripts(pkgRoot) ? `${migrateHint(args.mjs === true)} to make package.json scripts tasks, or ${declare}` : declare}`
-  const notes = tscCompilesConfigNotes(
-    root,
-    files.map((f) => path.join(root, f.path)),
-  )
+  const notes = [
+    ...unreadRunnerNotes(root),
+    ...tscCompilesConfigNotes(
+      root,
+      files.map((f) => path.join(root, f.path)),
+    ),
+  ]
   if (args.json === true) {
     ui.data(
       'out',
@@ -635,6 +638,18 @@ async function starter(
   ui.print('out', ui.report(`vx init ${VERSION}`, rows))
   // A run reads only the lock: init without one is not done, as vx-migrate exits.
   return lock.code === 0 ? 0 : 1
+}
+
+/**
+ * A task runner whose config no migration reads: its tasks would vanish
+ * with no word, the starter's empty project read as all there is.
+ */
+function unreadRunnerNotes(root: string): string[] {
+  return ['.moon/workspace.yml', '.moon/workspace.yaml'].some((f) => existsSync(path.join(root, f)))
+    ? [
+        "moon's tasks (.moon/ and each moon.yml) are not migrated: vx reads no moon config, so declare each task in a vx.config",
+      ]
+    : []
 }
 
 /**

@@ -496,6 +496,7 @@ export interface OutcomeCache {
   unkeyed?: true // ran over inputs its key no longer describes: no save, nor by a dependant (A-12)
   driftedInput?: string | null // its own re-check found this input (absolute) moved while it ran, null unnamed: vx watch judges it changed next
   keylessBy?: string // the task with no `inputs` its key includes (or itself): no read, no save
+  kept?: true // vx watch kept an earlier cycle's result: same key, no change in its project, nothing ran
 }
 
 export interface OutcomeSandbox { // any denial fails the task

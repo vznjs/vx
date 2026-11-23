@@ -475,6 +475,7 @@ export interface RunHandoff {
   holdPersistent?: boolean // hand every persistent task still running (a dependency-only one only with inputs.files) back on RunSummary.persistent
   watch?: boolean // a vx watch cycle: a save withheld over an input edited mid-run says the next cycle runs on it
   keep?: HeldPersistent // an earlier hand-back: a server still up whose task is unchanged stays up; the rest stop first
+  kept?: ReadonlyMap<string, TaskOutcome> // vx watch: an earlier cycle's uncached passes and failures, kept while key and upstream hold
   commandWindows?: CommandWindows // where the run records when each command ran (and each restore or deferred fetch) and where it may write; vx watch passes its own to tell a user's mid-cycle write from the run's
 }
 // run()'s argument inside vx (runCore / planCore): the public options and the hand-off.
@@ -553,6 +554,8 @@ export interface ExecuteArgs {
 export function executeTask(args: ExecuteArgs): Promise<TaskOutcome>
 // the probed hit executeTask would restore, as a thunk when its tree is current (`currentHit`)
 export function settleProbedHit(args: ExecuteArgs): (() => TaskOutcome) | undefined
+// watch-kept.ts: an outcome a later `vx watch` cycle may keep while its key holds
+export function keepsOutcome(o: TaskOutcome): boolean
 ```
 
 Cache-key derivation (`ComputeHashArgs`, `computeTaskHash`,
@@ -1531,9 +1534,6 @@ entry left them, replays and returns. The run's scheduler settles such a
 restore-tier hit in place through `settleProbedHit` (graph.md,
 `settleNow`), so a warm hit costs no dispatch and no promise. Anything
 else (no rows, a moved directory, a workspace output) walks.
-
-`execute-task.ts` re-exports `restoreHit` and its args, so the entry stays importable from
-where it was.
 
 ### In place, never clean-then-restore
 
@@ -2675,8 +2675,9 @@ export function unlessStopped<T>(work: Promise<T>, signal: AbortSignal | undefin
 A vx started with SIGHUP ignored (`nohup`, a supervisor) installs no
 SIGHUP handler, here or in `vx watch`: a handler replaces the inherited
 `SIG_IGN`, and `nohup vx run` stopped its run and exited 129 when the
-terminal closed (2026-10-08). `hangupIgnored` (`util.md`) reads
-the disposition once, before the first handler.
+terminal closed (2026-10-08). Nor does one started with SIGINT ignored
+(a script's `vx run build &`) install a SIGINT handler. `startedIgnoring`
+(`util.md`) reads each disposition once, before the first handler.
 
 Under a parent that relays stops (the Node launcher, a handing-off vx,
 Bun's `bun vx` runner), a stop sent to the whole group arrives twice; the

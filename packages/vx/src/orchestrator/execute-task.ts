@@ -166,6 +166,8 @@ export interface RunContext {
   fingerprintWatch?: FingerprintWatch
   /** When each command of the run ran and where it may write (command-windows.ts). */
   commandWindows?: CommandWindows
+  /** `vx watch`: each task's last result an unchanged key keeps (watch-kept.ts). */
+  kept?: ReadonlyMap<string, TaskOutcome>
   /** Every task of the project at a directory, as its config declares them (undeclared-state.ts). Absent: none. */
   projectTasks?: (projectDir: string) => readonly TaskConfig[]
   /**

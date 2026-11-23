@@ -16,6 +16,7 @@ import { SETTINGS } from '../src/settings.js'
 import { CACHE_VERSION } from '../src/cache/index.js'
 import { SCHEMA_VERSION } from '../src/index-db/index.js'
 import { LOCKFILE_VERSION } from '../src/workspace/lockfile.js'
+import { dependenciesLockRefusal } from '../src/workspace/dependencies-lock.js'
 import { formatRunSummary } from '../src/report/summary.js'
 import { parseInfoArgs } from '../src/cli/info.js'
 import {
@@ -133,8 +134,16 @@ describe('docs/cli.md — `vx lock` names the lock version it writes', () => {
   // schema.md's error rows said 5 after the lock moved to 6.
   it('schema.md quotes it in the lock-version errors', async () => {
     const doc = await Bun.file(new URL('../docs/schema.md', import.meta.url)).text()
-    const named = [...doc.matchAll(/this vx (?:expects|reads) (\d+)\)/g)]
-    expect(named.map((m) => Number(m[1]))).toEqual([LOCKFILE_VERSION, LOCKFILE_VERSION])
+    // The version a run's refusal of an older dependencies lock names.
+    const dependenciesLockVersion = Number(
+      /expects (\d+)/.exec(dependenciesLockRefusal('{"version":0}'))![1],
+    )
+    const named = [...doc.matchAll(/`\.vx\/(\w+)\.lock [^`]*this vx (?:expects|reads) (\d+)\)/g)]
+    expect(named.map((m) => [m[1], Number(m[2])])).toEqual([
+      ['projects', LOCKFILE_VERSION],
+      ['dependencies', dependenciesLockVersion],
+      ['projects', LOCKFILE_VERSION],
+    ])
   })
 })
 

@@ -189,8 +189,14 @@ function ghaFenceEnds(token: string): [open: string, close: string] {
   return [`::stop-commands::${token}\n`, `::${token}::\n`]
 }
 
-const cacheWordOf = (o: TaskOutcome): 'miss' | 'no-cache' | '' =>
-  o.restoreFailed === true || isKeyFailed(o) ? '' : ranNoCache(o) ? 'no-cache' : 'miss'
+const cacheWordOf = (o: TaskOutcome): 'miss' | 'no-cache' | 'kept' | '' =>
+  o.restoreFailed === true || isKeyFailed(o)
+    ? ''
+    : o.cache?.kept === true
+      ? 'kept'
+      : ranNoCache(o)
+        ? 'no-cache'
+        : 'miss'
 
 export function resolveOutputView(
   options: {

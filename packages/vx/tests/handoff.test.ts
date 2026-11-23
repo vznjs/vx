@@ -335,6 +335,35 @@ describe('the compiled binary hands off', () => {
     expect([await p.exited, await new Response(p.stdout).text()]).toEqual([0, 'got-term\n'])
   })
 
+  // A SIGINT or SIGHUP the global vx was started deaf to (a script's
+  // `vx run build &`, nohup) stays ignored in the local vx. Bun spawns it
+  // with every signal at its default, so the global names them in the env;
+  // with a handler installed here too, the Ctrl-C meant for the foreground
+  // job stopped the handed-off run.
+  it.skipIf(process.platform !== 'linux')(
+    'hands an ignored SIGINT and SIGHUP on to the local vx still ignored',
+    () => {
+      const HANGUP = path.resolve(import.meta.dir, '..', 'src', 'util', 'hangup.ts')
+      const local = `const { startedIgnoring } = await import(${JSON.stringify(HANGUP)}); const said = [startedIgnoring('SIGINT'), startedIgnoring('SIGHUP')]; process.kill(process.pid, 'SIGINT'); await Bun.sleep(100); console.log(said.join(' '), 'alive')`
+      const bin = path.join(root, 'ignores', 'vx')
+      exe(
+        bin,
+        `exec ${JSON.stringify(process.execPath)} -e ${JSON.stringify(local).replaceAll('$', '\\$')}`,
+      )
+      const handed = (trap: string): [number | null, string] => {
+        const code = `const { handOff } = await import(${JSON.stringify(HANDOFF)}); await handOff(${JSON.stringify(bin)}, [])`
+        const p = Bun.spawnSync({
+          cmd: ['sh', '-c', `${trap}exec "$0" -e "$1"`, process.execPath, code],
+          env: { PATH: process.env['PATH'] ?? '' },
+        })
+        return [p.exitCode, p.stdout.toString().trim()]
+      }
+      expect(handed(`trap '' INT HUP; `)).toEqual([0, 'true true alive'])
+      // CONTROL: started with neither ignored, the local vx dies of its own SIGINT.
+      expect(handed('')[1]).toBe('')
+    },
+  )
+
   // A shell running `vx run` in a script stops on Ctrl-C only when its
   // child DIED of SIGINT; handed off, vx exited 130 and the script ran
   // its next line (cli.md § Exit codes: vx dies of the signal).

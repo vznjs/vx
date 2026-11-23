@@ -93,7 +93,7 @@ export function formatFailureLine(
   id: string,
   durationMs: number | null,
   colors: ColorSupport = NO_COLOR,
-  cacheWord: 'miss' | 'no-cache' | '' = 'miss',
+  cacheWord: 'miss' | 'no-cache' | 'kept' | '' = 'miss',
   cells: RowCells = {},
 ): string {
   return formatTaskRow(

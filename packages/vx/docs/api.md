@@ -55,6 +55,7 @@ export interface AffectedChanges {
   dirLinksIn?: ReadonlyMap<string, ReadonlySet<string>>
   untrackedIn?: ReadonlyMap<string, ReadonlySet<string>>
   untracked?: ReadonlySet<string>
+  configTasks?: ReadonlyMap<string, ReadonlySet<string>>
 }
 ```
 
@@ -1559,6 +1560,7 @@ export interface OutcomeCache {
   unkeyed?: true
   driftedInput?: string | null
   keylessBy?: string
+  kept?: true
 }
 ```
 

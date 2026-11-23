@@ -93,7 +93,8 @@ export interface TaskBucket {
 
 /** A finished task's own cache bucket; none for a group, a skip or an abort. */
 export function cacheBucketOf(o: TaskOutcome): CacheBucket | undefined {
-  if (isGroupTask(o.node)) return undefined
+  // A result `vx watch` kept asked no cache this cycle: nothing ran.
+  if (isGroupTask(o.node) || o.cache?.kept === true) return undefined
   switch (o.status) {
     case 'success':
       return ranNoCache(o)

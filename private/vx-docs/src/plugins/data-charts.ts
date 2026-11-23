@@ -160,7 +160,9 @@ export const dataCharts = defineMdastPlugin({
     table.align = header.map((_, c) => table.align?.[c] ?? (c > 0 && figures[c] ? 'right' : null))
     // A wide table scrolls in this wrapper, so the table itself can span the full scrolled width.
     const scroller = [
-      { type: 'html', value: '<div class="vx-table-scroll">' },
+      // Focusable, so a keyboard can scroll a table wider than the page (WCAG
+      // 2.1.1; axe's scrollable-region-focusable).
+      { type: 'html', value: '<div class="vx-table-scroll" tabindex="0">' },
       node,
       { type: 'html', value: '</div>' },
     ]

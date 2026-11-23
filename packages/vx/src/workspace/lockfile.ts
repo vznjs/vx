@@ -38,6 +38,9 @@ import { PROJECT_CONFIG_FILENAMES } from './workspace.js'
 import {
   DEPENDENCIES_LOCK_NAME,
   type DependenciesLock,
+  dependenciesLockRefusal,
+  mergeConflicted,
+  mergeConflictMessage,
   parseDependenciesLock,
   readDependenciesLock,
 } from './dependencies-lock.js'
@@ -138,7 +141,7 @@ export function lockedDependencies(lock: Lockfile): DependenciesLock | undefined
     throw new UserError(
       read.bytes === null
         ? `no ${DEPENDENCIES_LOCK_NAME}: run \`vx lock\``
-        : `${DEPENDENCIES_LOCK_NAME} is invalid, run \`vx lock\``,
+        : dependenciesLockRefusal(new TextDecoder().decode(read.bytes)),
       'VX_E_LOCK',
     )
   return read.parsed
@@ -301,7 +304,7 @@ function decoded(text: string): Decoded {
     let end = text.indexOf('\n', a)
     if (end < 0) end = text.length
     const tab = text.indexOf('\t', a)
-    if (tab < 0 || tab > end) throw lineBroken()
+    if (tab < 0 || tab > end) throw lineBroken(text)
     if (text.charCodeAt(a) === 35) {
       taskAt.set(text.slice(a + 1, tab), tab + 1)
       a = end + 1
@@ -312,7 +315,7 @@ function decoded(text: string): Decoded {
     const entry: unknown = JSON.parse(text.slice(tab + 1, end))
     a = end + 1
     if (typeof name !== 'string' || name === '' || names.has(name) || !isObj(entry))
-      throw lineBroken()
+      throw lineBroken(text)
     names.add(name)
     const dir = entry['path']
     if (typeof dir !== 'string' || !isLockKey(dir))
@@ -350,9 +353,11 @@ function decoded(text: string): Decoded {
   return { header, projects }
 }
 
-const lineBroken = (): UserError =>
+const lineBroken = (text: string): UserError =>
   new UserError(
-    `${LOCKFILE_NAME} holds a line \`vx lock\` never writes — re-run \`vx lock\``,
+    mergeConflicted(text)
+      ? mergeConflictMessage(LOCKFILE_NAME)
+      : `${LOCKFILE_NAME} holds a line \`vx lock\` never writes — re-run \`vx lock\``,
     'VX_E_LOCK',
   )
 

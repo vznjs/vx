@@ -15,7 +15,7 @@ import { signalExitCode } from '../exec/index.js'
 import {
   claimExitForSignal,
   dieOf,
-  hangupIgnored,
+  startedIgnoring,
   killGraceMs,
   relayedCopy,
   settleWithin,
@@ -143,9 +143,10 @@ export function holdSignals(): HeldSignals {
   const onSigint = (): void => onSignal('SIGINT')
   const onSigterm = (): void => onSignal('SIGTERM')
   const onSighup = (): void => onSignal('SIGHUP')
-  process.on('SIGINT', onSigint)
+  // A Ctrl-C vx was started deaf to (a script's `vx run … &`) stays ignored.
+  if (!startedIgnoring('SIGINT')) process.on('SIGINT', onSigint)
   process.on('SIGTERM', onSigterm)
-  if (!hangupIgnored()) process.on('SIGHUP', onSighup)
+  if (!startedIgnoring('SIGHUP')) process.on('SIGHUP', onSighup)
   let taken = false
   return {
     signal: controller.signal,
@@ -304,10 +305,10 @@ export function forwardSignals(args: {
     markStopped(false)
   }
   if (args.enabled) {
-    process.on('SIGINT', onSigint)
+    // A Ctrl-C or hang-up vx was started deaf to (`&` in a script, nohup) stays ignored.
+    if (!startedIgnoring('SIGINT')) process.on('SIGINT', onSigint)
     process.on('SIGTERM', onSigterm)
-    // A hang-up vx was started deaf to (nohup) stays ignored.
-    if (!hangupIgnored()) process.on('SIGHUP', onSighup)
+    if (!startedIgnoring('SIGHUP')) process.on('SIGHUP', onSighup)
     process.on('SIGTSTP', onSigtstp)
     process.on('SIGCONT', onSigcont)
   }

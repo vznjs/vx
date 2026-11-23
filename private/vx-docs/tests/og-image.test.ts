@@ -31,4 +31,23 @@ describe('link previews', () => {
     expect(all.length).toBeGreaterThan(60)
     expect(bad).toEqual([])
   })
+  // 2026-11-22: every post and release carried the site's description, so a
+  // search result or a shared link said the same line for all 120.
+  it('every post and release page describes itself, not the site', () => {
+    const home = /<meta name="description" content="([^"]+)"/.exec(
+      readFileSync(path.join(DIST, 'index.html'), 'utf8'),
+    )![1]
+    const bad: string[] = []
+    for (const file of [...pages('blog'), ...pages('releases')]) {
+      const html = readFileSync(file, 'utf8')
+      for (const meta of [
+        /<meta name="description" content="([^"]+)"/,
+        /<meta property="og:description" content="([^"]+)"/,
+      ]) {
+        const got = meta.exec(html)?.[1]
+        if (got === undefined || got === home) bad.push(`${path.relative(DIST, file)}: ${got}`)
+      }
+    }
+    expect(bad).toEqual([])
+  })
 })

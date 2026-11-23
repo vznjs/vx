@@ -1239,6 +1239,7 @@ export interface AffectedChanges {
   dirLinksIn?: ReadonlyMap<string, ReadonlySet<string>> // project → its dirLinks, project-relative
   untrackedIn?: ReadonlyMap<string, ReadonlySet<string>> // project → its untracked changed paths, project-relative
   untracked?: ReadonlySet<string> // the changed paths git tracks neither now nor at the base, workspace-relative
+  configTasks?: ReadonlyMap<string, ReadonlySet<string>> // project → the tasks its config edit moved in .vx/projects.lock (not whole)
 }
 export function affectedChanges(args: AffectedArgs, perTask?: boolean): Promise<AffectedChanges> // perTask false: affectedProjects' set only
 

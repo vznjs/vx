@@ -7,6 +7,7 @@ import { expect, it } from 'bun:test'
 import {
   dependantsOf,
   dependenciesLock,
+  dependenciesLockRefusal,
   parseDependenciesLock,
   recordedDigests,
   sameRecord,
@@ -126,6 +127,16 @@ it('refuses a lock a newer vx wrote: re-locking would write the older version ov
   expect(() => parseDependenciesLock(bytes)).toThrow(
     '.vx/dependencies.lock was written by a newer vx (version 99; this vx reads 5) — upgrade vx',
   )
+})
+
+// An older vx's lock after an upgrade: the run names the version, as
+// projects.lock's refusal does, not a bare "invalid".
+it("names an older vx's version in the refusal, and a conflict or garbage apart", () => {
+  expect(dependenciesLockRefusal('{"version":4,"graph":[]}\n')).toBe(
+    '.vx/dependencies.lock has unsupported version 4 (this vx expects 5) — re-run `vx lock`',
+  )
+  expect(dependenciesLockRefusal('{"version":5}\n<<<<<<< ours\n')).toContain('merge conflict')
+  expect(dependenciesLockRefusal('VXDL')).toBe('.vx/dependencies.lock is invalid, run `vx lock`')
 })
 
 // A committed file a merge or a hand edit can break inside: the refusal is

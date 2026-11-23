@@ -543,13 +543,16 @@ describe('foreground keep-alive ends when one requested server exits', () => {
     expect(await waitForDead(pid, 1_000)).toBe(true)
   }, 30_000)
 
-  // C-60: a run that failed held its healthy servers for good: a script's
-  // `vx run dev --all` hung, and the Ctrl-C that ended it read 130.
+  // A failure skips only its dependants (M 2026-11-22), and a server is none:
+  // `vx run dev --all` stopped every healthy server the moment an unrelated
+  // task failed (C-60 had made it so, against a script that hung; that script
+  // passes `--fail-fast`). Nx keeps it. The run still exits 1 once the kept
+  // server ends.
   const failing = (bad: string) => `export default { tasks: {
-    dev: { exec: { command: 'echo $$ > pid.txt; echo READY; exec sleep 30', persistent: { readyWhen: 'READY' } } },
+    dev: { exec: { command: 'echo $$ > pid.txt; echo READY; exec sleep 5', persistent: { readyWhen: 'READY' } } },
     ${bad}
   } }`
-  for (const [title, bad, tasks] of [
+  const cases = [
     [
       'a server that never became ready',
       `bad: { exec: { command: 'exit 3', persistent: { readyWhen: 'READY' } } },`,
@@ -562,22 +565,42 @@ describe('foreground keep-alive ends when one requested server exits', () => {
        e2e: { dependsOn: ['mock'], exec: { command: 'sleep 0.6' } },`,
       ['dev', 'e2e'],
     ],
-  ] as const) {
-    it(`${title} stops the healthy server and exits 1`, async () => {
+    [
+      'an unrelated task that failed',
+      `lint: { exec: { command: 'sleep 0.3; exit 1' } },`,
+      ['dev', 'lint'],
+    ],
+  ] as const
+  const start = (tasks: readonly string[], flags: string[] = []) =>
+    track(
+      Bun.spawn([process.execPath, BIN, 'run', ...tasks, '--all', ...flags], {
+        cwd: root,
+        stdout: 'ignore',
+        stderr: 'ignore',
+        env: { ...process.env, VX_RUN_KILL_GRACE: '200ms' },
+      }),
+    )
+  for (const [title, bad, tasks] of cases) {
+    it(`${title} leaves the healthy server up, and vx exits 1 when it ends`, async () => {
       const dir = await addProject(root, 'app', failing(bad))
-      const proc = track(
-        Bun.spawn([process.execPath, BIN, 'run', ...tasks, '--all'], {
-          cwd: root,
-          stdout: 'ignore',
-          stderr: 'ignore',
-          env: { ...process.env, VX_RUN_KILL_GRACE: '200ms' },
-        }),
-      )
+      const proc = start(tasks)
       const pid = await waitForPid(path.join(dir, 'pid.txt'), 10_000)
+      const first = await Promise.race([proc.exited, Bun.sleep(1_200).then(() => 'up' as const)])
+      expect(first).toBe('up')
+      expect(await waitForDead(pid, 0)).toBe(false)
       expect(await proc.exited).toBe(1)
-      expect(await waitForDead(pid, 1_000)).toBe(true)
     }, 30_000)
   }
+  it('--fail-fast stops the healthy server at the failure and exits 1', async () => {
+    const [, bad, tasks] = cases[2]
+    const dir = await addProject(root, 'app', failing(bad))
+    const proc = start(tasks, ['--fail-fast'])
+    const pid = await waitForPid(path.join(dir, 'pid.txt'), 10_000)
+    const t0 = performance.now()
+    expect(await proc.exited).toBe(1)
+    expect(performance.now() - t0).toBeLessThan(3_500)
+    expect(await waitForDead(pid, 1_000)).toBe(true)
+  }, 30_000)
 })
 
 // Item 892: a persistent server that became ready and then died on its own

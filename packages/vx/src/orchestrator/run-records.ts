@@ -143,7 +143,9 @@ export function assembleRunRecords(input: RunRecordsInput): RunRecords {
     }
     if (input.withTelemetry) telemetryTasks.push(taskTelemetryOf(o))
     taskCount++
-    if (input.landed?.has(o) !== true) runs.push(runRecordOf(o as RecordedOutcome, input))
+    // A result `vx watch` kept ran nothing: a row would read as a 0 ms run.
+    if (input.landed?.has(o) !== true && o.cache?.kept !== true)
+      runs.push(runRecordOf(o as RecordedOutcome, input))
     if (o.status === 'failed') failedCount++
     if (o.status === 'cache-hit') hitLocalCount++
     if (o.status === 'cache-hit-remote') hitRemoteCount++

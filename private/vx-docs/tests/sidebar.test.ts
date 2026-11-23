@@ -27,7 +27,7 @@ const PLACES: [string, string][] = [
 const DOCS_PAGES: [string, string][] = [
   ['What is vx?', 'docs/'],
   ['Quickstart', 'quickstart/'],
-  ['Upgrading to 1.0', 'guides/upgrading/'],
+  ['Upgrading vx', 'guides/upgrading/'],
   ['AI agents', 'docs/agents/'],
   ['Workspace', 'docs/workspace/'],
   ['Tasks', 'docs/tasks/'],
