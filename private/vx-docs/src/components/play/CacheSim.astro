@@ -51,6 +51,7 @@ const list = (xs: readonly string[]) => (xs.length === 0 ? '—' : xs.join(', ')
         <span class="vx-row tasks" role="group" aria-labelledby="vx-cache-sim-task">
           <button type="button" data-task="build" aria-pressed={String(task === 'build')}>build</button>
           <button type="button" data-task="test" aria-pressed={String(task === 'test')}>test</button>
+          <button type="button" data-task="lint" aria-pressed={String(task === 'lint')}>lint</button>
         </span>
       </div>
       <div class="vx-row">
@@ -83,7 +84,11 @@ const list = (xs: readonly string[]) => (xs.length === 0 ? '—' : xs.join(', ')
                 <th scope="row">{t.id}</th>
                 <td>{list(t.files)}</td>
                 <td>{list(t.env)}</td>
-                <td>{t.dependsOn.length === 0 ? '—' : `^build (${t.dependsOn.join(', ')})`}</td>
+                <td>
+                  {t.task === 'lint'
+                    ? '—'
+                    : `^build (${t.dependsOn.length === 0 ? 'none' : t.dependsOn.join(', ')})`}
+                </td>
                 <td>{list(t.outputs)}</td>
               </tr>
             ))

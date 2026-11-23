@@ -21,7 +21,7 @@ class CacheSim extends HTMLElement {
   #task: TaskName = 'build'
 
   connectedCallback() {
-    this.#task = this.dataset['task'] === 'test' ? 'test' : 'build'
+    this.#task = (this.dataset['task'] ?? 'build') as TaskName
     run(this.#state, this.#task)
     run(this.#state, this.#task)
     this.querySelector<HTMLElement>('.controls')!.hidden = false

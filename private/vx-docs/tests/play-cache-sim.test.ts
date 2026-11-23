@@ -101,12 +101,27 @@ describe('what moves a key', () => {
     )
   })
 
-  it('a key never folds a task it does not depend on', () => {
+  it("test's ^build folds ui's build key: a ui edit misses web's tests too", () => {
     const s = warm()
     toggle(s, 'button')
-    expect(outcomes(run(s, 'test'))).toEqual({
+    const r = run(s, 'test')
+    expect(outcomes(r)).toEqual({
+      '@demo/ui#build': 'miss',
       '@demo/ui#test': 'miss',
-      '@demo/web#test': 'up-to-date',
+      '@demo/docs#test': 'up-to-date',
+      '@demo/web#test': 'miss',
+    })
+    expect(by(r)['@demo/web#test']!.verdict).toBe('cache key changed: upstream @demo/ui#build')
+  })
+
+  it('a key never folds a task it does not depend on: lint has no dependsOn', () => {
+    const s = warm()
+    run(s, 'lint')
+    toggle(s, 'button')
+    expect(outcomes(run(s, 'lint'))).toEqual({
+      '@demo/ui#lint': 'miss',
+      '@demo/docs#lint': 'up-to-date',
+      '@demo/web#lint': 'up-to-date',
     })
   })
 })

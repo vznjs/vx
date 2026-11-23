@@ -18,7 +18,7 @@
 //   `cache key unchanged — …` (cli/why.ts, history/metrics.ts).
 // - Entries stay in the cache, so undoing an edit brings back a stored key.
 
-export type TaskName = 'build' | 'test'
+export type TaskName = 'build' | 'test' | 'lint'
 
 export type ChangeId =
   | 'button'
@@ -61,7 +61,7 @@ const FILES: readonly FileSpec[] = [
   { path: 'packages/ui/src/debug.log', project: 'ui', ignored: true, change: 'ignored' },
   { path: 'packages/ui/README.md', project: 'ui', change: 'readme' },
   { path: 'packages/web/src/App.tsx', project: 'web', change: 'app' },
-  { path: 'packages/web/index.html', project: 'web' },
+  { path: 'packages/web/vite.config.ts', project: 'web' },
   { path: 'packages/docs/src/main.ts', project: 'docs' },
 ]
 
@@ -79,69 +79,56 @@ export interface TaskSpec {
   ms: number
 }
 
-/** In the order a run prints them: a dependency's frame first. */
-export const TASKS: readonly TaskSpec[] = [
-  {
-    id: '@demo/ui#build',
-    project: 'ui',
-    task: 'build',
-    command: 'vite build',
-    dependsOn: [],
-    files: ['src/**'],
-    env: [],
-    outputs: ['dist/**'],
-    log: '✓ built in 412ms',
-    ms: 640,
-  },
-  {
-    id: '@demo/docs#build',
-    project: 'docs',
-    task: 'build',
-    command: 'vite build',
-    dependsOn: [],
-    files: ['src/**'],
-    env: [],
-    outputs: ['dist/**'],
-    log: '✓ built in 203ms',
-    ms: 410,
-  },
-  {
-    id: '@demo/web#build',
-    project: 'web',
-    task: 'build',
-    command: 'vite build',
-    dependsOn: ['@demo/ui#build'],
-    files: ['src/**', 'index.html'],
-    env: ['VITE_API_URL'],
-    outputs: ['dist/**'],
-    log: '✓ built in 538ms',
-    ms: 820,
-  },
-  {
-    id: '@demo/ui#test',
-    project: 'ui',
-    task: 'test',
-    command: 'vitest run',
-    dependsOn: [],
-    files: ['src/**'],
-    env: [],
-    outputs: [],
-    log: 'Tests  12 passed (12)',
-    ms: 1180,
-  },
-  {
-    id: '@demo/web#test',
-    project: 'web',
-    task: 'test',
-    command: 'vitest run',
-    dependsOn: [],
-    files: ['src/**'],
-    env: [],
-    outputs: [],
-    log: 'Tests  7 passed (7)',
-    ms: 960,
-  },
+// Every project declares the same three tasks, as running-tasks.mdx shows
+// web's config; web's build alone also keys on VITE_API_URL (inputs.env).
+const PROJECTS = [
+  { name: 'ui', deps: [] as string[], ms: 640, tests: 12 },
+  { name: 'docs', deps: [] as string[], ms: 410, tests: 4 },
+  { name: 'web', deps: ['ui'], ms: 820, tests: 7 },
 ]
+
+const spec = (p: (typeof PROJECTS)[number], task: TaskName): TaskSpec => {
+  const base = { id: `@demo/${p.name}#${task}`, project: p.name, task }
+  if (task === 'lint')
+    return {
+      ...base,
+      command: 'oxlint src',
+      dependsOn: [],
+      files: ['src/**'],
+      env: [],
+      outputs: [],
+      log: 'Found 0 warnings and 0 errors.',
+      ms: 90,
+    }
+  // `^build`: the build of each project this one uses.
+  const dependsOn = p.deps.map((d) => `@demo/${d}#build`)
+  return task === 'build'
+    ? {
+        ...base,
+        command: 'vite build',
+        dependsOn,
+        files: ['src/**', 'vite.config.ts'],
+        env: p.name === 'web' ? ['VITE_API_URL'] : [],
+        outputs: ['dist/**'],
+        log: `✓ built in ${Math.round(p.ms * 0.65)}ms`,
+        ms: p.ms,
+      }
+    : {
+        ...base,
+        command: 'vitest run',
+        dependsOn,
+        files: ['src/**'],
+        env: [],
+        outputs: [],
+        log: `Tests  ${p.tests} passed (${p.tests})`,
+        ms: p.ms + 500,
+      }
+}
+
+/** In the order a run prints them: a dependency's frame first. */
+export const TASKS: readonly TaskSpec[] = (['build', 'test', 'lint'] as const).flatMap((t) =>
+  PROJECTS.map((p) => spec(p, t)),
+)
 
 export interface Part {
   kind: 'file' | 'config' | 'env' | 'upstream'
@@ -278,7 +265,11 @@ const outputsOf = (t: TaskSpec): string => t.outputs.map((o) => o.replace(/\*\*$
 export function run(s: State, task: TaskName): RunResult {
   const keys = new Map<string, string>()
   const results: TaskResult[] = []
-  for (const t of TASKS.filter((x) => x.task === task)) {
+  // `vx run <task> --all` runs every task it needs first: test's `^build`.
+  const wanted = new Set(TASKS.filter((x) => x.task === task).map((x) => x.id))
+  for (const t of [...TASKS].reverse())
+    if (wanted.has(t.id)) for (const d of t.dependsOn) wanted.add(d)
+  for (const t of TASKS.filter((x) => wanted.has(x.id))) {
     const parts = partsOf(s, t, keys)
     const key = keyOf(t.id, parts)
     keys.set(t.id, key)
