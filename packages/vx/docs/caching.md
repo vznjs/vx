@@ -1940,7 +1940,12 @@ applies to both: declared size and
 output length for the one-call decode, a running count for the stream.
 An ingest bounds the compressed body first: a remote body past the
 ceiling's zstd bound (a length header, a Blob's size, or a running count
-on a chunked stream) is refused before it can fill the disk.
+on a chunked stream) is refused before it can fill the disk. It is a
+miss, not a corrupt artifact: the remote's copy is kept for machines
+whose ceiling is higher, and the warning names this machine's
+`cache.artifactCeiling`, which every machine sharing a remote needs the
+same. `vxCache()` names a download's length from the server's `vx-size`,
+so one past the bound is refused before its first byte.
 A frame that declares no content size (what a streaming compressor
 writes — vx's own saves above 4 MiB) is always decoded as a stream, so
 a sizeless bomb has nowhere to expand and vx's artifacts ingest
