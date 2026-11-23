@@ -17,6 +17,14 @@ function inputs(entries: unknown[], named: Record<string, unknown[]> = {}) {
 }
 
 describe('expandNxInputs', () => {
+  // A named input and the target both naming one variable listed it twice,
+  // and vx lock refuses a name twice in inputs.env and passThrough.
+  it('names an env variable once, however many inputs name it', () => {
+    expect(inputs([{ env: 'A' }, 'base'], { base: [{ env: 'A' }, { env: 'B' }] }).envNames).toEqual(
+      ['A', 'B'],
+    )
+  })
+
   // Nx runs a runtime command as written, at the workspace root, and
   // hashes its stdout and stderr whatever it exits: `cat {workspaceRoot}/x`
   // hashed cat's error, and vx's probe failed the task on its exit 1

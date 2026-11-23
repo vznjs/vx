@@ -198,7 +198,7 @@ export function planNxUpstream(
     })
     // Two of Nx's sets in one list, as in `expandNxInputs`.
     inputs.wsFiles.push(...apartTakeBacks(files, own.wsFiles).flat())
-    inputs.envNames.push(...own.envNames)
+    for (const n of own.envNames) if (!inputs.envNames.includes(n)) inputs.envNames.push(n)
     inputs.runtimeCmds.push(...own.runtimeCmds)
     inputs.upstream.push(...own.upstream)
     const r = { inputs, todos }
