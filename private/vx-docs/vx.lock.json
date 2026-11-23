@@ -507,6 +507,11 @@
         }
       }
     },
+    "main": {
+      "dependsOn": [
+        "deploy"
+      ]
+    },
     "deploy": {
       "dependsOn": [
         "deploy.*"

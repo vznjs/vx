@@ -29,6 +29,7 @@ import {
   type BasePair,
   type Best,
   buildBase,
+  fetchBase,
   HELD,
   rivalLosses,
   RIVALS,
@@ -63,8 +64,11 @@ const COLD_LEVELS = 2
 const SMALL_RIVALS = ['nx', 'vite-task'] as const
 /** Nx or Vite Task within this factor of vx's best runs twice more. */
 const REACH = 1.25
-/** The commit this checkout is held to (CI: the PR's base, or main before the push); unset times no base. */
-const BASE = process.env.VX_BENCH_BASE || undefined
+/**
+ * The commit this checkout is held to (CI: the PR's base, or main before
+ * the push); unset, or all zeros on a branch's first push, times no base.
+ */
+const BASE = /^0*$/.test(process.env.VX_BENCH_BASE ?? '') ? undefined : process.env.VX_BENCH_BASE
 
 /**
  * Whether the base's vx times beside this one. A change to the config
@@ -213,13 +217,16 @@ try {
     os.tmpdir(),
   )
   const repo = path.resolve(import.meta.dir, '../..')
+  if (BASE !== undefined) fetchBase(repo, BASE)
   if (BASE !== undefined && sameCore(repo, BASE)) {
     baseOn = false
     console.log(
       "BASE SAME: core is the base's, byte for byte, so nothing is timed against it; the rivals still are",
     )
   }
-  if (baseOn && baseVx !== undefined && BASE !== undefined) buildBase(repo, BASE, baseVx)
+  if (baseOn && baseVx !== undefined && BASE !== undefined) {
+    buildBase(repo, BASE, baseVx)
+  }
   phase('compile')
   const all = workspace()
   // Nothing before the first pair is timed, so it runs side by side: both

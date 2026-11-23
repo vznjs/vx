@@ -181,7 +181,7 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
 - Task names (M, 2026-11-22, no exceptions): a public task is a group with
   no command (`build`, `lint`, `test`, `check`, `compile`, `canary`,
   `deploy`, `perf`, `format`, `bench`, `update`, `release`, `conformance`,
-  `dev`, `preview`); every command is `{group}.{technology}.{configuration?}.{subtask?}`
+  `dev`, `preview`, `main`: what only a push to main runs); every command is `{group}.{technology}.{configuration?}.{subtask?}`
   (`test.bun.shard-3`, `lint.oxfmt`, `release.npm.darwin.publish`). A
   convention, not enforced by vx (M, 2026-11-23). Pipelines name groups only
   (`tests/ci-workflow.unsafe.test.ts`).

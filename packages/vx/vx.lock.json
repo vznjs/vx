@@ -6598,6 +6598,12 @@
         ]
       }
     },
+    "main": {
+      "dependsOn": [
+        "canary",
+        "deploy"
+      ]
+    },
     "deploy": {
       "dependsOn": [
         "deploy.*"

@@ -531,6 +531,10 @@ export default defineProject({
       inputs: { files: ['src/**', 'tsconfig.json'] },
     },
 
+    // What only a push to main runs (.vx/workspace.ts's `main` pipeline).
+    main: {
+      dependsOn: ['canary', 'deploy'],
+    },
     deploy: {
       dependsOn: ['deploy.*'],
     },

@@ -431,6 +431,10 @@ export default defineProject({
         },
       },
     },
+    // What only a push to main runs (.vx/workspace.ts's `main` pipeline).
+    main: {
+      dependsOn: ['deploy'],
+    },
     deploy: {
       dependsOn: ['deploy.*'],
     },

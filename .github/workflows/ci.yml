@@ -162,6 +162,9 @@ jobs:
     env:
       GITHUB_TOKEN: ${{ github.token }}
       VX_REQUIRE_SANDBOX: '1'
+      # The commit pr-bench.ts fetches and times this checkout against: the
+      # PR's base, or main before the push.
+      VX_BENCH_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
     steps:
       - name: Check out
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -179,14 +182,5 @@ jobs:
           restore-keys: vx-setup-debs-${{ runner.os }}-${{ runner.arch }}-
       - name: Set up the sandbox
         run: bun packages/vx/src/bin.ts setup github
-      # The commit pr-bench.ts times this checkout against: the PR's base,
-      # or main before the push. A shallow clone holds neither.
-      - name: Fetch the base commit
-        env:
-          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
-        run: |
-          case "$BASE" in ''|0000000000000000000000000000000000000000) exit 0 ;; esac
-          git fetch --no-tags --depth=1 origin "$BASE"
-          echo "VX_BENCH_BASE=$BASE" >> "$GITHUB_ENV"
       - name: vx pipeline perf
         run: bun packages/vx/src/bin.ts pipeline ${{ github.event_name == 'pull_request' && 'perf-pr' || 'perf' }}

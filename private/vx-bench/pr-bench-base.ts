@@ -152,6 +152,19 @@ export function sameCore(repo: string, sha: string): boolean {
   return r.exitCode === 0
 }
 
+/** Fetches `sha` into a shallow clone that lacks it: commits and trees only. */
+export function fetchBase(repo: string, sha: string): void {
+  const has = Bun.spawnSync(['git', 'cat-file', '-e', `${sha}^{commit}`], { cwd: repo })
+  if (has.exitCode === 0) return
+  const r = Bun.spawnSync(['git', 'fetch', '--no-tags', '--depth=1', 'origin', sha], {
+    cwd: repo,
+    stdout: 'pipe',
+    stderr: 'pipe',
+  })
+  if (r.exitCode !== 0)
+    throw new Error(`git fetch of the base ${sha} failed:\n${r.stderr.toString()}`)
+}
+
 /**
  * The base commit's vx, compiled as this checkout's is, to `outfile`:
  * `packages/vx` at `sha` comes out of git's objects (`git archive`), so no
