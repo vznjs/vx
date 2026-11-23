@@ -1707,6 +1707,7 @@ export interface OutcomeView {
   timedOut?: true
   notReady?: 'timeout' | 'exited' | 'spawn'
   inputMoved?: string
+  outputsMissing?: readonly string[]
   blockedBy?: string
   otherPlatform?: { readonly needs: readonly string[]; readonly host: string }
   admissionHeldMs?: number

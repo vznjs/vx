@@ -449,7 +449,11 @@ async function classifyExit(
     // replayed forever. A genuinely killed child already reports 143.
     if (code === 0) code = signalExitCode('SIGTERM')
   }
-  if (code === 0 && args.run.stopSignal?.aborted !== true && outputsMissing(m, res)) code = 1
+  m.outputsMissing = undefined
+  if (code === 0 && args.run.stopSignal?.aborted !== true) {
+    m.outputsMissing = outputsMissing(m, res)
+    if (m.outputsMissing !== undefined) code = 1
+  }
   // The shell's 127 and 126 name the word and nothing about why (the PATH
   // vx built, or a `#!` line the file carries), and an exit above 128 is a
   // signal's number and nothing about what sent it. One frame line names
@@ -534,18 +538,18 @@ function unseenResult(
  * warning, as the save's own output warnings are, not into the task's
  * stream: there it printed uncoloured, or red in a frame.
  */
-function outputsMissing(m: MissRun, res: ExecuteResult): boolean {
+function outputsMissing(m: MissRun, res: ExecuteResult): string[] | undefined {
   const { args, policy, secrets } = m
   const { node, log } = args
-  if (policy.outputs.length + policy.wsOutputs.length === 0) return false
-  if (policy.deferred || res.outputs?.kind === 'deferred') return false
-  if (args.executor.capabilities?.remote === true) return false
+  if (policy.outputs.length + policy.wsOutputs.length === 0) return undefined
+  if (policy.deferred || res.outputs?.kind === 'deferred') return undefined
+  if (args.executor.capabilities?.remote === true) return undefined
   const nested = args.outputNestedDirs ?? args.nestedProjectDirs
   const missing = [
     ...missingOutputs(node.projectDir, policy.outputs, nested),
     ...missingOutputs(args.run.workspaceRoot, policy.wsOutputs, []),
   ]
-  if (missing.length === 0) return false
+  if (missing.length === 0) return undefined
   const cfg = node.config
   const left = m.state === undefined ? [] : stateLeft(m.state, node.projectDir)
   const noWrite =
@@ -568,5 +572,5 @@ function outputsMissing(m: MissRun, res: ExecuteResult): boolean {
       ...policy.wsOutputs.map((g) => [args.run.workspaceRoot, g] as const),
     ])
   warnOf(log)(secrets.text(line))
-  return true
+  return missing
 }

@@ -121,7 +121,9 @@ the mode; `ci: true` whenever `CI` is truthy.
   `::error title=<id>::failed (exit N)` (`failedLabel`: above 128 the
   signal is named, `failed (exit 137, 128 + SIGKILL)`; a timeout its
   reason, `failed (timed out, exit 143)`; a persistent task that never
-  became ready, `never ready: …`; a sandboxed task its violation count).
+  became ready, `never ready: …`; a command that exited 0 but left an
+  output glob matching nothing, `failed (exited 0, no file matched <glob>)`;
+  a sandboxed task its violation count).
   The views that defer a failure's frame to the run's end (`errors-only`,
   `broad`, `focused`) write the same annotation above it, with `gha`.
 - **`focused`** — requested non-group nodes stream stdout/stderr raw

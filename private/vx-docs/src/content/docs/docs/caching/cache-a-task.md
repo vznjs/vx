@@ -45,7 +45,7 @@ vx run @demo/ui#build
 ```ansi
 [2m┌─[0m [1m[38;2;192;132;252m@demo/ui[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m>[0m $ mkdir -p dist && cp src/index.ts dist/index.js
 [1m[38;2;234;179;8m[vx][0m[2m @demo/ui#build: outputs matched no files (dist/main.js) — the command exited 0 but never wrote it, so the task fails and nothing is cached: write it, or fix the pattern[0m
-[2m└─[0m [1m[38;2;192;132;252m@demo/ui[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(8ms)[0m [1m[38;2;239;68;68mfailed (exit 1)[0m
+[2m└─[0m [1m[38;2;192;132;252m@demo/ui[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(8ms)[0m [1m[38;2;239;68;68mfailed (exited 0, no file matched dist/main.js)[0m
 ```
 
 Here the command wrote `dist/index.js`, but the config says

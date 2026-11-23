@@ -300,6 +300,11 @@ interface FailureFacts {
    * could not name it). The exit is vx's 1.
    */
   inputMoved?: string
+  /**
+   * The declared output globs the command's exit 0 left matching nothing,
+   * which failed it. The exit is vx's 1.
+   */
+  outputsMissing?: readonly string[]
   /** A cache hit whose restore threw: no command ran, and it is in no cache column. */
   restoreFailed?: true
   /**

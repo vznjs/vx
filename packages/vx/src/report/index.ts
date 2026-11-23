@@ -9,6 +9,7 @@ export {
   type EventBus,
   type OutcomeView,
   outcomeWord,
+  missingOutputsReason,
   projectNode,
   projectOutcome,
   ranNoCache,

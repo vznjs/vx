@@ -38,6 +38,7 @@ import {
 import {
   formatRecordedRow,
   formatSize,
+  missingOutputsReason,
   outcomeWord,
   taskList,
   type WireEvent,
@@ -798,6 +799,20 @@ function formatStepRows(steps: readonly RunStep[]): ui.Block | undefined {
 }
 
 /**
+ * Task id → the output globs an exit 0 left matching nothing, read back from
+ * the warning the run kept (`outputsMissing` in orchestrator/attempt.ts): the
+ * row holds vx's exit 1, which names nothing the command did.
+ */
+function unwrittenOutputs(warnings: readonly string[]): Map<string, string[]> {
+  const found = new Map<string, string[]>()
+  for (const w of warnings) {
+    const m = /^\[vx\] (\S+): outputs matched no files \((.*?)\) — the command exited 0 /.exec(w)
+    if (m !== null) found.set(m[1]!, m[2]!.split(', '))
+  }
+  return found
+}
+
+/**
  * The per-task rows: failures first, then what executed or was skipped, then
  * cache hits. Hits are the noise of a warm run — 996 of a thousand rows on a
  * red run put the failure a screen's height above the prompt — so past
@@ -811,6 +826,8 @@ export function formatTaskRows(
   inputMoved: ReadonlyMap<string, string> = new Map(),
   /** Task id → its usual time now, from history; a task absent was never timed. */
   usual?: ReadonlyMap<string, number>,
+  /** Task id → the output globs its exit 0 left matching nothing, from the run's kept warnings. */
+  unwritten: ReadonlyMap<string, readonly string[]> = new Map(),
 ): ui.Block[] {
   if (tasks.length === 0) return []
   const failed = tasks.filter((t) => t.status === 'failed')
@@ -838,7 +855,9 @@ export function formatTaskRows(
             ? 'cache restore failed'
             : t.exitCode === 0 && t.notReady === null
               ? 'cache save failed'
-              : `exit ${t.exitCode}`
+              : unwritten.has(`${t.project}#${t.task}`)
+                ? missingOutputsReason(unwritten.get(`${t.project}#${t.task}`)!)
+                : `exit ${t.exitCode}`
     const note = (
       failure + reasonParts(t, statusHere, inputMoved.get(`${t.project}#${t.task}`))
     ).trim()
@@ -1230,12 +1249,12 @@ function printRun(
   // A task whose one timing is this run's own has no usual to compare
   // with: `+0ms` claimed a baseline the live row rightly showed as `—`.
   for (const id of history.timedOnlySince(ranIds, inv.startedAt)) usual.delete(id)
-  const taskRows = formatTaskRows(detail?.tasks ?? [], moved, usual)
+  const warnings = keptWarnings(db, inv.runId)
+  const taskRows = formatTaskRows(detail?.tasks ?? [], moved, usual, unwrittenOutputs(warnings))
   if (taskRows.length > 0)
     blocks.push(ui.section('Tasks', String(detail?.tasks.length ?? 0), ...taskRows))
   const stepRows = formatStepRows(keptSteps(db, inv.runId))
   if (stepRows !== undefined) blocks.push(ui.section('Steps', stepRows))
-  const warnings = keptWarnings(db, inv.runId)
   if (warnings.length > 0)
     blocks.push(ui.section('Warnings', String(warnings.length), ui.text(...warnings)))
   // The next command after reading a failed run, with the arguments the

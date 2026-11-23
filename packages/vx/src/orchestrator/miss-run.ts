@@ -73,6 +73,8 @@ export interface MissRun {
   endedAt?: number
   /** The undeclared state stamped before the command: a missing output's line names what survived. */
   state?: StateStamps | undefined
+  /** The output globs the last attempt's exit 0 left matching nothing, which failed it. */
+  outputsMissing?: readonly string[] | undefined
 }
 
 /** The attempt before this one, which stands if this one is withdrawn. */
