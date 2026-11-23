@@ -464,15 +464,20 @@ describe('vx watch with a persistent task (e2e)', () => {
     expect(await readPids()).toEqual([first!])
     expect(isAlive(first!)).toBe(true)
 
-    // Its config edit alone leaves the locked task unchanged, so it stays…
+    // Its config edit alone is refused until `vx lock`, and the server stays…
     const cfg = path.join(dir, 'vx.config.mjs')
     await writeFile(cfg, (await readFile(cfg, 'utf8')).replace('echo READY', 'echo READY again'))
-    await until(() => runsEnded(w) === 3, 'the end of the cycle after a config edit')
+    await until(
+      () => w.err().includes('changed since the last `vx lock`'),
+      'the refusal of the unlocked config edit',
+    )
+    expect(runsEnded(w)).toBe(2)
     expect(await readPids()).toEqual([first!])
+    expect(isAlive(first!)).toBe(true)
 
     // …and once locked the old one goes before the new one starts.
     lock(root)
-    await until(() => runsEnded(w) === 4, 'the end of the cycle after a re-lock')
+    await until(() => runsEnded(w) === 3, 'the end of the cycle after a re-lock')
     const all = await readPids()
     expect(all).toHaveLength(2)
     expect(isAlive(first!)).toBe(false)
