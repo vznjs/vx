@@ -81,7 +81,9 @@ function platformPackage(): string {
   const os = process.platform
   const arch = process.arch === 'x64' || process.arch === 'arm64' ? process.arch : null
   if ((os !== 'darwin' && os !== 'linux') || arch === null) {
-    throw new UserError(`vx upgrade: unsupported platform ${process.platform}/${process.arch}`)
+    throw new UserError(
+      `vx upgrade: unsupported platform ${process.platform}/${process.arch} — vx ships binaries for linux and darwin on x64 and arm64; run it from source with bunx @vzn/vx instead`,
+    )
   }
   return `${PACKAGE}-${os}-${arch}`
 }
@@ -376,7 +378,9 @@ export function binaryFromTarball(tgz: Uint8Array): Uint8Array {
   try {
     tar = Bun.gunzipSync(tgz as Uint8Array<ArrayBuffer>)
   } catch {
-    throw new UserError('vx upgrade: the release tarball is not gzip — nothing replaced')
+    throw new UserError(
+      'vx upgrade: the release tarball is not gzip — nothing replaced; check that the registry or mirror serves npm tarballs as published',
+    )
   }
   const text = (b: Uint8Array): string => new TextDecoder().decode(b).replace(/\0[\s\S]*$/, '')
   for (let at = 0; at + 512 <= tar.length;) {
@@ -395,7 +399,9 @@ export function binaryFromTarball(tgz: Uint8Array): Uint8Array {
     }
     at = body + Math.ceil(size / 512) * 512
   }
-  throw new UserError('vx upgrade: the release tarball holds no package/vx — nothing replaced')
+  throw new UserError(
+    'vx upgrade: the release tarball holds no package/vx — nothing replaced; check that the registry or mirror serves npm tarballs as published',
+  )
 }
 
 /**
@@ -560,7 +566,9 @@ function readJson(file: string): Record<string, unknown> | null {
   } catch (err) {
     const code = (err as NodeJS.ErrnoException).code
     if (code === 'ENOENT' || code === 'ENOTDIR' || code === 'EISDIR') return null
-    throw new UserError(`vx upgrade: could not read ${file} (${(err as Error).message})`)
+    throw new UserError(
+      `vx upgrade: could not read ${file} (${(err as Error).message}) — give this user read access to it, then run vx upgrade again`,
+    )
   }
   let v: unknown
   try {
@@ -766,7 +774,9 @@ export async function targetVersion(tag: string | undefined, verb = 'vx upgrade'
   const v = ((await fetchManifest(PACKAGE, 'latest', verb)) as { version?: unknown } | null)
     ?.version
   if (typeof v !== 'string' || !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(v)) {
-    throw new UserError(`${verb}: the npm registry named no latest version of ${PACKAGE}`)
+    throw new UserError(
+      `${verb}: the npm registry named no latest version of ${PACKAGE} — check the registry this machine uses, or name a version: vx upgrade v<major>.<minor>.<patch>`,
+    )
   }
   return v
 }
@@ -895,7 +905,9 @@ export async function upgradeGlobal(
   await named(`global vx ${from}`, async () => {
     const current = answeredVersion(from)
     if (current === undefined) {
-      throw new UserError('vx upgrade: it did not answer `--version`, so it is left as it is')
+      throw new UserError(
+        'vx upgrade: it did not answer `--version`, so it is left as it is; run it with --version to see why, or reinstall it',
+      )
     }
     if (current === version) {
       ui.print('out', ui.status('info', 'vx upgrade', `global already at ${current}`))

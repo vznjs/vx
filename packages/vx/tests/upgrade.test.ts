@@ -737,10 +737,10 @@ describe('binaryFromTarball', () => {
   it('takes package/vx, and refuses a tarball without it or not gzip', () => {
     expect(new TextDecoder().decode(binaryFromTarball(TGZ))).toBe(FAKE)
     expect(() => binaryFromTarball(tarball({ 'package/README.md': 'hi' }))).toThrow(
-      'vx upgrade: the release tarball holds no package/vx — nothing replaced',
+      'vx upgrade: the release tarball holds no package/vx — nothing replaced; check that the registry or mirror serves npm tarballs as published',
     )
     expect(() => binaryFromTarball(new TextEncoder().encode('plain'))).toThrow(
-      'vx upgrade: the release tarball is not gzip — nothing replaced',
+      'vx upgrade: the release tarball is not gzip — nothing replaced; check that the registry or mirror serves npm tarballs as published',
     )
   })
 })
