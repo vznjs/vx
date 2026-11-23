@@ -55,14 +55,19 @@ Run `vx init` inside your git checkout. It installs the `vx` command and writes 
 ```ansi title="vx init"
 [2m$[0m bunx @vzn/vx init
 
-  [2mfrom    [0m  [38;2;203;213;225mno turbo.json or nx.json[0m
-  [2mfiles   [0m  [38;2;203;213;225m.vx/workspace.ts[0m
-            [38;2;203;213;225mvx.config.ts[0m
-            [38;2;203;213;225m.vx/.gitignore[0m
-            [38;2;203;213;225m.vx/.gitattributes[0m
-  [2mlock    [0m  [38;2;203;213;225m1 project config → .vx/projects.lock, .vx/dependencies.lock[0m
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mvx init 0.0.661[0m[4m[58;2;110;118;129m                                                       [0m
+  [2mfrom     [0m  [38;2;203;213;225mno turbo.json or nx.json[0m
+  [2mfiles    [0m  [38;2;203;213;225m.vx/workspace.ts[0m
+             [38;2;203;213;225mvx.config.ts[0m
+             [38;2;203;213;225m.vx/.gitignore[0m
+             [38;2;203;213;225m.vx/.gitattributes[0m
+  [2minstalled[0m  [38;2;203;213;225mbun add -g @vzn/vx@0.0.661[0m
+             [38;2;203;213;225mbun add @vzn/vx@0.0.661 @vzn/vx-lockfile@0.0.661 --dev[0m
+  [2mlock     [0m  [38;2;203;213;225m1 project config → .vx/projects.lock, .vx/dependencies.lock[0m
 
-  [2mnext    [0m  [1mbunx @vzn/vx-migrate to make package.json scripts tasks, or declare a task in vx.config.ts, then vx lock && vx run <task>[0m
+  [2mnext     [0m  [1mbunx @vzn/vx-migrate@0.0.661 to make package.json scripts[0m
+             [1mtasks, or declare a task in vx.config.ts, then vx lock &&[0m
+             [1mvx run <task>[0m
 ```
 
 Look at **files**. Two of them matter today:
@@ -86,9 +91,8 @@ Look at **files**. Two of them matter today:
 | `vx.config.ts` | your project's tasks: none yet |
 | `.vx/.gitignore` | keeps `.vx/cache` and `.vx/tmp` out of git |
 | `.vx/.gitattributes` | GitHub hides the locks in a diff |
+| `installed` | `vx` for your shell, then `@vzn/vx` and `@vzn/vx-lockfile` as dev dependencies |
 | `lock` | the two lock files every run reads (step 2) |
-
-Init also installs `vx` for your shell, and `@vzn/vx` and `@vzn/vx-lockfile` as dev dependencies.
 
 The workspace file `vx init` writes for a Bun workspace:
 
