@@ -10,6 +10,7 @@
         "clean-readonly-dir",
         "deferred-output-empty",
         "everyday-ops-differential",
+        "force-replaces",
         "ignored-glob-warning",
         "key-not-derived",
         "lock-edges",
@@ -1023,7 +1024,9 @@
     "moon fetched no toolchain plugins (exit 1, found none), so it runs without them:\nError: plugin::loader::registry::load_failure\n\n  × Failed to load plugin from ghcr.io/moonrepo/bun_toolchain:1.0.5 registry.\n  ├─▶ error sending request for url (https://ghcr.io/v2/moonrepo/\n  │   bun_toolchain/blobs/\n  │   sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a)\n  ├─▶ client error (Connect)\n  ╰─▶ tunnel error: unsuccessful\n\n",
     "moon fetched no toolchain plugins (exit 1, found none), so it runs without them:\nError: plugin::loader::registry::load_failure\n\n  × Failed to load plugin from ghcr.io/moonrepo/bun_toolchain:1.0.5 registry.\n  ├─▶ error sending request for url (https://ghcr.io/v2/moonrepo/\n  │   bun_toolchain/blobs/\n  │   sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a)\n  ├─▶ client error (Connect)\n  ╰─▶ tunnel error: unsuccessful\n\n",
     "moon fetched no toolchain plugins (exit 1, found none), so it runs without them:\nError: plugin::loader::registry::load_failure\n\n  × Failed to load plugin from ghcr.io/moonrepo/bun_toolchain:1.0.5 registry.\n  ├─▶ error sending request for url (https://ghcr.io/v2/moonrepo/\n  │   bun_toolchain/blobs/\n  │   sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a)\n  ├─▶ client error (Connect)\n  ╰─▶ tunnel error: unsuccessful\n\n",
-    "moon failed 1 of 1 cases; one: ran app#test, expected it replayed or left out\n$ /home/user/vx/private/vx-conformance/node_modules/.latest-514/node_modules/@moonrepo/core-linux-x64-gnu/moon run :test --affected --base HEAD~1 --downstream deep --include-relations\n▮▮▮▮ lib:test (e2312194)\n▮▮▮▮ lib:build (d5df1879)\nlib:test | lib2\n▮▮▮▮ lib:test (6ms, e2312194)\n▮▮▮▮ lib:build (8ms, d5df1879)\n▮▮▮▮ app:test (fefbffd6)\napp:test | app\n▮▮▮▮ app:test (5ms, fefbffd6)\n\nTasks: 3 completed\n Time: 57ms\n\n"
+    "moon failed 1 of 1 cases; one: ran app#test, expected it replayed or left out\n$ /home/user/vx/private/vx-conformance/node_modules/.latest-514/node_modules/@moonrepo/core-linux-x64-gnu/moon run :test --affected --base HEAD~1 --downstream deep --include-relations\n▮▮▮▮ lib:test (e2312194)\n▮▮▮▮ lib:build (d5df1879)\nlib:test | lib2\n▮▮▮▮ lib:test (6ms, e2312194)\n▮▮▮▮ lib:build (8ms, d5df1879)\n▮▮▮▮ app:test (fefbffd6)\napp:test | app\n▮▮▮▮ app:test (5ms, fefbffd6)\n\nTasks: 3 completed\n Time: 57ms\n\n",
+    "moon fetched no toolchain plugins (exit 1, found system-ad7abb72e596dcc556ad0fc2e87dcb23949f91d8280fc61c94cfec6224695c59.wasm), so it runs without them:\nError: plugin::loader::registry::load_failure\n\n  × Failed to load plugin from ghcr.io/moonrepo/bun_toolchain:1.0.5 registry.\n  ├─▶ error sending request for url (https://ghcr.io/v2/moonrepo/\n  │   bun_toolchain/blobs/\n  │   sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a)\n  ├─▶ client error (Connect)\n  ╰─▶ tunnel error: unsuccessful\n\n",
+    "nx failed 1 of 1 cases; one: packages/a/dist/out.txt is \"1\\n\", expected \"2\\n\"\n$ /tmp/conf-nx-wl97zi/node_modules/.bin/nx run-many -t build --outputStyle=stream\n\n NX   Running target build for project a:\n\n- a\n\n\n\n> nx run a:build  [local cache]\n\n> printf '+%s\\n' 'a#build' >> ../../.ran && (mkdir -p dist ../../.home/meet && n=$(cat ../../.home/meet/n 2>/dev/null || echo 0) && n=$((n+1)) && echo $n > ../../.home/meet/n && echo $n > dist/out.txt) && printf -- '-%s\\n' 'a#build' >> ../../.ran\r\n\r\n\n\n\n NX   Successfully ran target build for project a\n\nNx read the output from the cache instead of running the command for 1 out of 1 tasks.\n\n  Run duration:      3ms\n  Cache:             1/1 hit (100%)\n  Critical path:     1ms (1 task)\n  Recoverable time:  <1ms\n"
   ],
   "tools": {
     "vx": "this commit",
@@ -1036,14 +1039,14 @@
   "scores": {
     "vx": {
       "all": {
-        "pass": 2085,
-        "can": 2085,
-        "of": 2160
+        "pass": 2086,
+        "can": 2086,
+        "of": 2161
       },
       "correctness": {
-        "pass": 1683,
-        "can": 1683,
-        "of": 1750
+        "pass": 1684,
+        "can": 1684,
+        "of": 1751
       },
       "efficiency": {
         "pass": 313,
@@ -1076,9 +1079,9 @@
         "of": 182
       },
       "cache": {
-        "pass": 99,
-        "can": 99,
-        "of": 122
+        "pass": 100,
+        "can": 100,
+        "of": 123
       },
       "inputs": {
         "pass": 472,
@@ -1113,14 +1116,14 @@
     },
     "turbo": {
       "all": {
-        "pass": 1357,
-        "can": 1824,
-        "of": 2160
+        "pass": 1358,
+        "can": 1825,
+        "of": 2161
       },
       "correctness": {
-        "pass": 1094,
-        "can": 1436,
-        "of": 1750
+        "pass": 1095,
+        "can": 1437,
+        "of": 1751
       },
       "efficiency": {
         "pass": 233,
@@ -1153,9 +1156,9 @@
         "of": 182
       },
       "cache": {
-        "pass": 81,
-        "can": 98,
-        "of": 122
+        "pass": 82,
+        "can": 99,
+        "of": 123
       },
       "inputs": {
         "pass": 327,
@@ -1191,13 +1194,13 @@
     "nx": {
       "all": {
         "pass": 1372,
-        "can": 1858,
-        "of": 2160
+        "can": 1859,
+        "of": 2161
       },
       "correctness": {
         "pass": 1066,
-        "can": 1461,
-        "of": 1750
+        "can": 1462,
+        "of": 1751
       },
       "efficiency": {
         "pass": 276,
@@ -1231,8 +1234,8 @@
       },
       "cache": {
         "pass": 78,
-        "can": 90,
-        "of": 122
+        "can": 91,
+        "of": 123
       },
       "inputs": {
         "pass": 342,
@@ -1269,12 +1272,12 @@
       "all": {
         "pass": 1012,
         "can": 1437,
-        "of": 2160
+        "of": 2161
       },
       "correctness": {
         "pass": 853,
         "can": 1153,
-        "of": 1750
+        "of": 1751
       },
       "efficiency": {
         "pass": 150,
@@ -1309,7 +1312,7 @@
       "cache": {
         "pass": 68,
         "can": 79,
-        "of": 122
+        "of": 123
       },
       "inputs": {
         "pass": 311,
@@ -1346,12 +1349,12 @@
       "all": {
         "pass": 1080,
         "can": 1433,
-        "of": 2160
+        "of": 2161
       },
       "correctness": {
         "pass": 927,
         "can": 1174,
-        "of": 1750
+        "of": 1751
       },
       "efficiency": {
         "pass": 143,
@@ -1386,7 +1389,7 @@
       "cache": {
         "pass": 83,
         "can": 96,
-        "of": 122
+        "of": 123
       },
       "inputs": {
         "pass": 341,
@@ -1421,14 +1424,14 @@
     },
     "moon": {
       "all": {
-        "pass": 1264,
-        "can": 1763,
-        "of": 2160
+        "pass": 1265,
+        "can": 1764,
+        "of": 2161
       },
       "correctness": {
-        "pass": 999,
-        "can": 1400,
-        "of": 1750
+        "pass": 1000,
+        "can": 1401,
+        "of": 1751
       },
       "efficiency": {
         "pass": 230,
@@ -1461,9 +1464,9 @@
         "of": 182
       },
       "cache": {
-        "pass": 80,
-        "can": 96,
-        "of": 122
+        "pass": 81,
+        "can": 97,
+        "of": 123
       },
       "inputs": {
         "pass": 345,
@@ -76724,6 +76727,41 @@
         },
         "nix": {
           "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "cache/forced-run-replaces-the-stored-bytes",
+      "ref": "l98e6z",
+      "category": "cache",
+      "kind": "correctness",
+      "title": "After a forced run writes other bytes, the next replay restores the forced run’s bytes",
+      "why": "A user forces a run because they no longer trust what is stored. If the task now writes something else, the stored result must become the new one. A cache that keeps the first entry for a key it already holds replays the very result the user asked to replace.",
+      "from": [
+        "task-save"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 4,
+          "detail": "packages/a/dist/out.txt is \"1\\n\", expected \"2\\n\""
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "`--cache` and `--no-cache` turn caching on or off; no run ignores entries and saves fresh ones."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "A valid output is never built again: `--check` rebuilds to compare and saves nothing."
         },
         "moon": {
           "status": "pass"
