@@ -62,4 +62,4 @@ export default {
 } satisfies WorkspaceConfig
 ```
 
-See [When a task fails](../../../docs/tasks/#when-a-task-fails).
+See [When a task fails](../../../docs/tasks/#5-handle-failures-and-hangs).

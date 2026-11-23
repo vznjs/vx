@@ -62,4 +62,4 @@ and vx builds `@demo/ui` first, then `@demo/web`.
 such as `bun()`. Without one, `vx lock` refuses `^build` and says so.
 :::
 
-See [`dependsOn`](../../../docs/tasks/#dependson).
+See [`dependsOn`](../../../docs/tasks/#2-put-tasks-in-order).
