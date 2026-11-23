@@ -222,8 +222,8 @@ export interface VxPlugin {
   output?(ctx: OutputContext): Logger | undefined | Promise<Logger | undefined>
 
   /**
-   * Optional setup per run (validate, connect, read a token). A throw aborts
-   * the run with a UserError naming the plugin. Not a guard over the
+   * Optional setup per run (validate, connect, read a token). A throw, or any
+   * returned value, aborts the run with a UserError naming the plugin. Not a guard over the
    * pipeline: the config, project, cache, graph and key stages ran already,
    * and a plan never calls it. It precedes `schedule`, the executors, the
    * sinks, admission and the first task.
@@ -232,8 +232,8 @@ export interface VxPlugin {
 
   /**
    * Optional teardown at run end (flush, close), in declaration order,
-   * `cache` plugins last since the others may write through them. Errors are
-   * logged, never thrown. A completed run passes its `RunReport`; other exits
+   * `cache` plugins last since the others may write through them. Errors, and
+   * any returned value, are logged, never thrown. A completed run passes its `RunReport`; other exits
    * pass none.
    */
   teardown?(run?: RunReport): void | Promise<void>
@@ -1051,7 +1051,13 @@ export async function installPlugins(args: InstallPluginsArgs): Promise<() => vo
       const setup = async (): Promise<void> => {
         const settled = hookStarted(plugin.name, 'setup')
         try {
-          await plugin.setup?.(ctx)
+          // A returned disposer (`return () => close()`) was never called.
+          const returned: unknown = await plugin.setup?.(ctx)
+          if (returned !== undefined) {
+            throw new Error(
+              `returned ${describeValue(returned)}, which core ignores — release what setup holds in teardown`,
+            )
+          }
         } finally {
           settled()
         }
@@ -1080,4 +1086,15 @@ export async function installPlugins(args: InstallPluginsArgs): Promise<() => vo
   return () => {
     for (const d of disposers) d()
   }
+}
+
+/** `a string`, `an array`, `null`, `a number` — for a refusal that names what came back. */
+export function describeValue(v: unknown): string {
+  if (v === null) return 'null'
+  if (Array.isArray(v)) return 'an array'
+  const t = typeof v
+  if (t !== 'object') return `a ${t}`
+  const proto: unknown = Object.getPrototypeOf(v)
+  if (proto === Object.prototype || proto === null) return 'an object'
+  return `a ${(v as object).constructor?.name || 'class instance'}`
 }

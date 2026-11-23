@@ -44,20 +44,10 @@ import type {
   VxPlugin,
   ConfigContext,
 } from './plugin.js'
+import { describeValue } from './plugin.js'
 import type { ProjectMeta } from '../workspace/index.js'
 import { extraHashesOf, hashExtra } from './lockfile-claim.js'
 import { readOnly, readOnlyNodes } from './read-only.js'
-
-/** `a string`, `an array`, `null`, `a number` — for a refusal that names what came back. */
-function describeValue(v: unknown): string {
-  if (v === null) return 'null'
-  if (Array.isArray(v)) return 'an array'
-  const t = typeof v
-  if (t !== 'object') return `a ${t}`
-  const proto: unknown = Object.getPrototypeOf(v)
-  if (proto === Object.prototype || proto === null) return 'an object'
-  return `a ${(v as object).constructor?.name || 'class instance'}`
-}
 
 function isRecord(v: unknown): v is Record<string, unknown> {
   if (typeof v !== 'object' || v === null) return false
@@ -1210,9 +1200,19 @@ export async function teardownPlugins(
     if (plugin.teardown === undefined) continue
     const ms = teardownTimeoutMs()
     try {
+      let returned: unknown
       const settled = await step(`${plugin.name}:teardown`, () =>
-        settleWithin(Promise.resolve(plugin.teardown?.(report)), ms),
+        settleWithin(
+          Promise.resolve(plugin.teardown?.(report)).then((r: unknown) => {
+            returned = r
+          }),
+          ms,
+        ),
       )
+      // A returned disposer was never called, and no word of it.
+      if (returned !== undefined) {
+        throw new Error(`returned ${describeValue(returned)}, which core ignores`)
+      }
       // Same rule as the flush above. A teardown that never settles has left
       // whatever it owns un-released, and the run exits anyway — silence would
       // present that as a clean shutdown.

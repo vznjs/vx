@@ -3440,7 +3440,8 @@ a run explorer's record on this API and reads it back through a verb.
   are warned and switched off,
   and a throwing `admit` (or one that answers a Promise, or anything not
   `true`, `false` or `undefined`) admits from then
-  on. An async hook's rejection counts as its throw. `ctx.on` with a
+  on. An async hook's rejection counts as its throw, and so does a value
+  `setup` or `teardown` returns (a disposer core would never call). `ctx.on` with a
   hook name it does not know fails the load (H-16), as does a handler (or
   a `ctx.bus.subscribe` subscriber) that is not a function.
 - **What a plugin observes is read-only** (`read-only.ts`,

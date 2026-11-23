@@ -325,6 +325,34 @@ describe('Plugin API', () => {
     )
   })
 
+  it('a setup that returns a value fails the load: core reads nothing it returns', async () => {
+    // `return () => close()`, the disposer Vite and React take, loaded and
+    // was never called, saying nothing: setup and teardown return nothing.
+    const said = (setup: () => unknown): Promise<string | undefined> =>
+      installPlugins({
+        plugins: [{ name: 'org/ret', setup: setup as never }],
+        bus: createEventBus(),
+        workspaceRoot: '/ws',
+        cacheDir: '/ws/.vx/cache',
+        warn: () => {},
+      }).then(
+        () => undefined,
+        (e: unknown) => (e as Error).message,
+      )
+    expect([
+      await said(() => () => {}),
+      await said(async () => 42),
+      // CONTROL: nothing returned, sync or async.
+      await said(() => {}),
+      await said(async () => {}),
+    ]).toEqual([
+      "plugin 'org/ret' failed in setup: returned a function, which core ignores — release what setup holds in teardown",
+      "plugin 'org/ret' failed in setup: returned a number, which core ignores — release what setup holds in teardown",
+      undefined,
+      undefined,
+    ])
+  })
+
   it('a handler that is not a function fails the load, as an unknown hook does', async () => {
     // It was taken, then threw at the first event, and that switched the
     // whole plugin off mid-run: its other handlers went quiet with it.

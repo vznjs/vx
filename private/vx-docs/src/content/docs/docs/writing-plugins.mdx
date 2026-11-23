@@ -516,7 +516,7 @@ export function taskLog(): VxPlugin {
 }
 ```
 
-A throw in `setup` stops the run before any task starts. A throw in `teardown` leaves the run's result as it was.
+A throw in `setup` stops the run before any task starts. A throw in `teardown` leaves the run's result as it was. Release in `teardown` what `setup` holds: a function `setup` returns is refused, not called.
 
 <Takeaway>do something before the first task, on every task and after the last one.</Takeaway>
 
@@ -1151,6 +1151,8 @@ It covers a task's config once the `graph` stage ends. A project config a `proje
 </Deeper>
 
 A throw in any other hook stops the run, or `vx lock`, with one line naming your plugin and the hook.
+
+`setup` and `teardown` return nothing. A value they return, such as a function to call later, counts as a throw: vx never calls it.
 
 <Quiz q="Your telemetry sink throws on every record. Does the build fail?">
   No. vx switches that sink off for the run and prints one warning. Observing never breaks a run.
