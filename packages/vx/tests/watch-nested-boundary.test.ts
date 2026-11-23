@@ -3,7 +3,7 @@
 // project watched its whole tree and ran a cycle for every edit inside a
 // nested project the run never reads (X-42).
 
-import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, realpath, rename, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
@@ -60,8 +60,13 @@ describe('vx watch on a root project with a nested project (e2e)', () => {
     await writeFile(path.join(root, 'packages', 'a', 'src', 'a.txt'), 'a2\n')
     await Bun.sleep(SETTLE_MS)
     expect({ cycles: w.cycles(), ran: await ran() }).toEqual({ cycles: 0, ran: ['root'] })
-    // CONTROL: an edit to the root project's own file is heard.
-    await writeFile(path.join(root, 'src', 'r.txt'), 'r2\n')
+    // CONTROL: an edit to the root project's own file is heard. Renamed
+    // into place, one event: a writeFile truncates then writes, and a
+    // loaded runner judged the truncate, so the write landed inside that
+    // cycle and started a second one, by design, since the run may have
+    // read the empty file (ChangeJudge.sawEvent; main CI, 2026-11-23).
+    await writeFile(path.join(root, 'src', 'r.txt.tmp'), 'r2\n')
+    await rename(path.join(root, 'src', 'r.txt.tmp'), path.join(root, 'src', 'r.txt'))
     await until(() => w.cycles() === 1, 'the cycle the root edit starts')
     await until(async () => (await ran()).length === 2, 'the root build the edit runs')
     await Bun.sleep(SETTLE_MS)
