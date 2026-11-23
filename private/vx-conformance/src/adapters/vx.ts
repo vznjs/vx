@@ -27,8 +27,6 @@ export const vx: Adapter = {
   pkg: '@vzn/vx',
   bins: ['vx'],
   lacks: {
-    'empty-outputs':
-      'A task that declares outputs must write at least one: one that writes none fails.',
     mutex:
       'No vx setting keeps two tasks from running at the same time; only the run-wide concurrency limit.',
     'idle-timeout':

@@ -279,6 +279,7 @@
         "vx-cache-server/r2-put",
         "vx-cache-server/start-line",
         "vx-cache-server/worker",
+        "vx-cache/fault-fuzz",
         "vx-cache/oidc-endpoint",
         "vx-cache/oidc-said-once",
         "vx-cache/refusals",
@@ -505,6 +506,7 @@
         "vx-migrate/remote-breaker",
         "vx-migrate/remote-cache-carry",
         "vx-migrate/remote-cache-degrade",
+        "vx-migrate/remote-cache-fault-fuzz",
         "vx-migrate/remote-cache-foreign-403",
         "vx-migrate/remote-retry",
         "vx-migrate/script-command",
@@ -923,7 +925,9 @@
         "caching-doc-drift",
         "ci-workflow.unsafe",
         "cli-doc-drift",
+        "cli-flags-explained",
         "cli-json-doc",
+        "config-fields-explained",
         "config-levels-doc",
         "conflict-markers",
         "contract-versioning-doc",
@@ -960,6 +964,7 @@
         "plugin-hooks-doc-drift.unsafe",
         "plugin-hostile-answers",
         "plugin-options-documented.unsafe",
+        "plugin-options-explained.unsafe",
         "readme-imports.unsafe",
         "readme-links.unsafe",
         "readme-words.unsafe",
@@ -991,6 +996,7 @@
         "turbo-nx-wording.unsafe",
         "upgrading-page",
         "upstream-ledger.unsafe",
+        "vx-lines-coloured",
         "workflow-runner.unsafe"
       ]
     },
@@ -1012,13 +1018,13 @@
   "scores": {
     "vx": {
       "all": {
-        "pass": 2132,
-        "can": 2132,
+        "pass": 2134,
+        "can": 2134,
         "of": 2203
       },
       "correctness": {
-        "pass": 1717,
-        "can": 1717,
+        "pass": 1719,
+        "can": 1719,
         "of": 1780
       },
       "efficiency": {
@@ -1067,8 +1073,8 @@
         "of": 149
       },
       "outputs": {
-        "pass": 301,
-        "can": 301,
+        "pass": 303,
+        "can": 303,
         "of": 314
       },
       "report": {
@@ -11199,14 +11205,13 @@
       "category": "outputs",
       "kind": "correctness",
       "title": "A stray file under an output glob the task never wrote to is gone after a replay",
-      "why": "A replay must leave the output tree as the task left it, and here the task wrote nothing. A tool that skips the clean when the entry is empty leaves a stray file in place. That file then ships, or gets tested, as if this build had made it, and the next clean build disagrees.",
+      "why": "A replay must leave the output tree as the task left it, and here the task wrote nothing under build. A tool that restores only the files it stored leaves a stray file in place. That file then ships, or gets tested, as if this build had made it, and the next clean build disagrees.",
       "from": [
         "cache-declaration-warnings"
       ],
       "outcomes": {
         "vx": {
-          "status": "n/a",
-          "detail": "A task that declares outputs must write at least one: one that writes none fails."
+          "status": "pass"
         },
         "turbo": {
           "status": "fail",
@@ -11228,8 +11233,8 @@
         },
         "moon": {
           "status": "fail",
-          "step": 1,
-          "detail": "exited 1, expected success"
+          "step": 4,
+          "detail": "packages/a/build/stray.js exists, expected none"
         }
       }
     },
@@ -11245,8 +11250,7 @@
       ],
       "outcomes": {
         "vx": {
-          "status": "n/a",
-          "detail": "A task that declares outputs must write at least one: one that writes none fails."
+          "status": "pass"
         },
         "turbo": {
           "status": "fail",
@@ -11268,8 +11272,8 @@
         },
         "moon": {
           "status": "fail",
-          "step": 1,
-          "detail": "exited 1, expected success"
+          "step": 4,
+          "detail": "nowhere/stray.js exists, expected none"
         }
       }
     },
