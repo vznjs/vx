@@ -687,7 +687,12 @@ describe('formatTaskBlock', () => {
     const orange = '\x1b[38;2;249;115;22m'
     const out = formatTaskBlock(
       node('app#dev', 'sleep 9'),
-      outcome('app#dev', 'aborted', { durationMs: 40, exitCode: 130 }),
+      // It started: one the stop reached first closes `not run`.
+      outcome('app#dev', 'aborted', {
+        durationMs: 40,
+        exitCode: 130,
+        timing: { startNs: 1_000_000n, endNs: 41_000_000n },
+      }),
       { output: [{ text: 'cleaning up\n', err: false }] },
       { enabled: true },
     )
