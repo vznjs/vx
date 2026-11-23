@@ -16,6 +16,7 @@ import {
   taskList,
 } from '../src/report/framed-output.js'
 import { formatRunSummary } from '../src/report/summary.js'
+import { helpText, paintHelp, verbHelpText, wrapHelp } from '../src/cli/help.js'
 import { formatRunList, formatStats } from '../src/cli/last.js'
 import { whatChangedSection } from '../src/cli/why.js'
 import { paint, ui } from '../src/ui/index.js'
@@ -459,5 +460,35 @@ describe('vx last --stats on a narrow terminal', () => {
   it('CONTROL: off a terminal, and on a wide one, every column', () => {
     for (const lines of [table(), table(200)])
       expect(lines[0]).toMatch(/task +runs +p50 +p99 +pass +hit +failure mode +peak rss +cpu/)
+  })
+})
+
+// `vx help` and `vx <verb> --help` are written at about 80 columns: a
+// 60-column terminal broke their lines mid-word, and a few ran to 88. On a
+// terminal each line now wraps at a space to the width, at most 80, its
+// continuation under the description; piped it stays as written.
+describe('help on a narrow terminal', () => {
+  const words = (s: string): string[] => Bun.stripANSI(s).split(/\s+/).filter(Boolean)
+
+  it.each([50, 60, 200])('fits min(%i, 80) columns and keeps every word', (columns) => {
+    for (const text of [helpText(), verbHelpText('run')]) {
+      for (const enabled of [false, true]) {
+        const out = paintHelp(wrapHelp(text, columns), { enabled }, paint)
+        for (const l of out.split('\n'))
+          expect(Bun.stringWidth(l)).toBeLessThanOrEqual(Math.min(columns, 80))
+        expect(words(out)).toEqual(words(text))
+      }
+    }
+  })
+
+  it('a wrapped description continues under its description column', () => {
+    const out = wrapHelp(verbHelpText('run'), 60).split('\n')
+    const at = out.findIndex((l) => l.startsWith('      --all '))
+    const col = out[at]!.indexOf('Run task')
+    expect(out[at + 1]!.length - out[at + 1]!.trimStart().length).toBe(col)
+  })
+
+  it('CONTROL: off a terminal the text is as written', () => {
+    expect(wrapHelp(helpText(), undefined)).toBe(helpText())
   })
 })

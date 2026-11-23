@@ -14,9 +14,66 @@ export async function printHelp(
   verb?: string,
 ): Promise<void> {
   const text = verb === undefined ? helpText(pluginCommands) : verbHelpText(verb)
-  // The reference a script greps: painted on a terminal only, and strips
-  // back to `text` exactly, so it goes out as written.
-  ui.data('out', paintHelp(text, helpColors(process.stdout, detectColors), paint))
+  // The reference a script greps: refilled and painted on a terminal only;
+  // piped it is `text` exactly.
+  const columns = process.stdout.isTTY ? process.stdout.columns : undefined
+  ui.data(
+    'out',
+    paintHelp(wrapHelp(text, columns), helpColors(process.stdout, detectColors), paint),
+  )
+}
+
+/** Help's widest line on a terminal: it is written at about 80 columns. */
+const HELP_WIDTH = 80
+/** The least a description keeps beside its term before it moves under it. */
+const DESCRIPTION_ROOM = 20
+
+/**
+ * Help as a terminal `columns` wide shows it: an entry wider than the
+ * terminal, or than 80, is refilled at spaces, its lines under its
+ * description column, so a 60-column terminal does not break a word. Off a
+ * terminal (no columns) it goes as written, for a script that greps it.
+ */
+export function wrapHelp(text: string, columns: number | undefined): string {
+  if (columns === undefined) return text
+  const w = Math.min(columns, HELP_WIDTH)
+  const lines = text.split('\n')
+  const out: string[] = []
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]!
+    if (line.length <= w) {
+      out.push(line)
+      continue
+    }
+    const lead = /^ */.exec(line)![0].length
+    const gap = /^ *\S.*? {2,}(?=\S)/.exec(line)?.[0].length
+    const column = gap ?? lead
+    // The entry's own continuation lines, authored under its description.
+    let body = line.slice(column)
+    while (i + 1 < lines.length && /^ *\S/.test(lines[i + 1]!)) {
+      const next = lines[i + 1]!
+      // Another entry (a term, two spaces, its description) is not this one's.
+      if (/^ */.exec(next)![0].length !== column || /\S {2,}\S/.test(next)) break
+      body += ` ${next.trim()}`
+      i++
+    }
+    const hang = w - column >= DESCRIPTION_ROOM ? column : lead + 4
+    let row = column === hang ? line.slice(0, column) : ''
+    if (row === '') out.push(line.slice(0, column).trimEnd())
+    let start = true
+    for (const word of body.split(' ').filter(Boolean)) {
+      if (!start && row.length + 1 + word.length > w) {
+        out.push(row)
+        row = ''
+        start = true
+      }
+      if (start) row = row === '' ? ' '.repeat(hang) + word : row + word
+      else row += ` ${word}`
+      start = false
+    }
+    out.push(row)
+  }
+  return out.join('\n')
 }
 
 /**

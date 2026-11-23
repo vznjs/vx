@@ -4359,7 +4359,7 @@ vx help lock
 Full reference: vx help
 ```
 
-It paints only on a terminal, so a script that greps it reads plain text. A plugin verb answers its own `--help`.
+It paints only on a terminal, so a script that greps it reads plain text. On a terminal an entry wider than the terminal, or than 80 columns, refills at spaces, its lines under its description; piped it is as written. A plugin verb answers its own `--help`.
 
 Exit codes: `0` the help printed; `1` a name that is no verb, with the nearest one when close.
 
