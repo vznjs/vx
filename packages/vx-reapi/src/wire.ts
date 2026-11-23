@@ -630,16 +630,24 @@ export class ReapiClient {
     meta: grpc.Metadata,
     options: grpc.CallOptions = {},
   ): Promise<T> {
-    for (let attempt = 0; ; attempt++) {
-      try {
-        const res = await new Promise<T>((resolve, reject) => {
+    return this.retried(
+      () =>
+        new Promise<T>((resolve, reject) => {
           ;(client as unknown as Record<string, Function>)[method]!(
             req,
             meta,
             options,
             (err: grpc.ServiceError | null, res: T) => (err ? reject(err) : resolve(res)),
           )
-        })
+        }),
+    )
+  }
+
+  /** `once`, tried again after each transient failure `retryDelay` allows. */
+  private async retried<T>(once: () => Promise<T>): Promise<T> {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        const res = await once()
         this.unreachable = false
         return res
       } catch (err) {
@@ -1317,18 +1325,8 @@ export class ReapiClient {
    * UNAVAILABLE reading a finished action's stdout or outputs failed the task
    * after the action succeeded.
    */
-  async readBlob(digest: Digest): Promise<Uint8Array | null> {
-    for (let attempt = 0; ; attempt++) {
-      try {
-        const blob = await this.readBlobOnce(digest)
-        this.unreachable = false
-        return blob
-      } catch (err) {
-        const delay = this.retryDelay(attempt, (err as grpc.ServiceError).code)
-        if (delay === undefined) throw spent(err)
-        await Bun.sleep(delay)
-      }
-    }
+  readBlob(digest: Digest): Promise<Uint8Array | null> {
+    return this.retried(() => this.readBlobOnce(digest))
   }
 
   private readBlobOnce(digest: Digest): Promise<Uint8Array | null> {

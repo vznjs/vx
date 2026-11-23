@@ -20,6 +20,7 @@ import type {
 } from '../orchestrator/index.js'
 import { configuredBaseBranch, findWorkspaceRoot } from '../workspace/index.js'
 import {
+  envFlagOn,
   machineParallelism,
   maskedLine,
   printable,
@@ -209,12 +210,7 @@ async function verbArtifacts(
       taskArtifacts,
       workspaceCachePolicy,
     },
-    { onCI },
-  ] = await Promise.all([
-    import('../cache/index.js'),
-    import('../orchestrator/index.js'),
-    import('./run.js'),
-  ])
+  ] = await Promise.all([import('../cache/index.js'), import('../orchestrator/index.js')])
   // `VX_CACHE_POLICY` beats the workspace's `cache.policy`, as it does for a
   // run, refused as `parseRunArgs` refuses it (cli/run.ts).
   const envSpec = process.env['VX_CACHE_POLICY'] || undefined
@@ -237,7 +233,7 @@ async function verbArtifacts(
     }
   }
   const policy: CachePolicy =
-    onCI(process.env['CI']) || namesRemote(envSpec ?? ws.workspaceConfig?.cache?.policy)
+    envFlagOn(process.env['CI']) || namesRemote(envSpec ?? ws.workspaceConfig?.cache?.policy)
       ? asked
       : { ...asked, remoteWrite: false }
   const scope = resolveCacheScope(
@@ -281,7 +277,7 @@ async function openVerbRemotes(
   remotes: readonly ResolvedRemote[],
   open: (typeof import('../orchestrator/index.js'))['openRemotes'],
 ): Promise<void> {
-  const ci = (await import('./run.js')).onCI(process.env['CI'])
+  const ci = envFlagOn(process.env['CI'])
   await open(remotes, ci, new SecretBroker(ci, warn))
 }
 

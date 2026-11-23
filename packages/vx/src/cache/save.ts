@@ -27,13 +27,11 @@ import {
   writeTree,
 } from './archive.js'
 import {
-  type CacheEntry,
   CorruptArtifactError,
   type DeclaredOutputs,
   type IngestMeta,
   type SaveArgs,
   type TaskInputComponent,
-  type TaskInputRow,
 } from './layer.js'
 import { WORKSPACE_OUTPUT_PREFIX, DIR_MODE, LINK_MODE } from '../memo/index.js'
 import {
@@ -230,22 +228,7 @@ export function readOnlyNotice(ix: StoreIndex): string | null {
   )
 }
 
-export async function save(
-  ix: StoreIndex,
-  args: {
-    hash: string
-    /** See `CacheLayer.save` — `exitCode` is not a caller's to supply. */
-    entry: Omit<CacheEntry, 'hash' | 'storedAt' | 'outputFiles' | 'exitCode'>
-    projectDir: string
-    outputFiles: string[]
-    outputDirs?: string[]
-    workspaceOutputFiles?: string[]
-    workspaceOutputDirs?: string[]
-    workspaceRoot?: string
-    inputComponents?: readonly TaskInputRow[]
-    /** See `CacheLayer.save`. */
-  },
-): Promise<void> {
+export async function save(ix: StoreIndex, args: SaveArgs): Promise<void> {
   // One `<hash>.tar.zst` per entry, holding only what a hit re-materializes:
   // `stdout` (always, maybe empty), `outputs/<rel>`, `workspace-outputs/<rel>`.
   // Metadata lives in SQLite; a remote ingest takes it as arguments.
@@ -298,10 +281,6 @@ export async function save(
 
 export function localWritesEnabled(ix: StoreIndex): boolean {
   return ix.write
-}
-
-export function packSavedBytes(ix: StoreIndex, args: SaveArgs): Promise<Uint8Array> {
-  return packArtifact(ix, args)
 }
 
 export async function pinArtifact(
@@ -421,18 +400,21 @@ export async function ingest(
   await guard(ix, () => writeArtifactAndIndex(ix, hash, small ?? { tmpPath }, meta))
 }
 
+/** What packing an entry reads of its save. */
+type PackArgs = Pick<
+  SaveArgs,
+  | 'hash'
+  | 'entry'
+  | 'projectDir'
+  | 'outputFiles'
+  | 'outputDirs'
+  | 'workspaceOutputFiles'
+  | 'workspaceOutputDirs'
+  | 'workspaceRoot'
+>
+
 /** Archive name → absolute source path for every declared output. */
-function outputsOf(
-  ix: StoreIndex,
-  args: {
-    projectDir: string
-    outputFiles: string[]
-    outputDirs?: string[]
-    workspaceOutputFiles?: string[]
-    workspaceOutputDirs?: string[]
-    workspaceRoot?: string
-  },
-): Map<string, string> {
+function outputsOf(args: PackArgs): Map<string, string> {
   const outputs = new Map<string, string>()
   for (const f of args.outputFiles) {
     outputs.set(`outputs/${relPosix(args.projectDir, f)}`, f)
@@ -451,19 +433,7 @@ function outputsOf(
  * entries straight into the archive; neither writes the final cache path, the
  * index step's job.
  */
-async function packArtifact(
-  ix: StoreIndex,
-  args: {
-    hash: string
-    entry: Omit<CacheEntry, 'hash' | 'storedAt' | 'outputFiles' | 'exitCode'>
-    projectDir: string
-    outputFiles: string[]
-    outputDirs?: string[]
-    workspaceOutputFiles?: string[]
-    workspaceOutputDirs?: string[]
-    workspaceRoot?: string
-  },
-): Promise<Uint8Array> {
+export async function packSavedBytes(ix: StoreIndex, args: PackArgs): Promise<Uint8Array> {
   // `stdout` is always present, even empty, so the layout is predictable.
   const plan = await planWithin(ix, args)
   if (plan.size <= STREAM_DECODE_FROM) return await zstdCompress(await packArtifactBytes(plan))
@@ -475,10 +445,7 @@ async function packArtifact(
  * costs a stat per output; left to the scan it cost a whole compress and decode
  * and called the task's own outputs corrupt.
  */
-async function planWithin(
-  ix: StoreIndex,
-  args: Parameters<typeof packArtifact>[1],
-): Promise<ArtifactPlan> {
+async function planWithin(ix: StoreIndex, args: PackArgs): Promise<ArtifactPlan> {
   const plan = await planOutputs(ix, args)
   if (plan.size > ix.artifactCeiling) {
     throw new Error(
@@ -489,14 +456,11 @@ async function planWithin(
   return plan
 }
 
-export function planOutputs(
-  ix: StoreIndex,
-  args: Parameters<typeof packArtifact>[1],
-): Promise<ArtifactPlan> {
+export function planOutputs(ix: StoreIndex, args: PackArgs): Promise<ArtifactPlan> {
   return planArtifact({
     key: args.hash,
     stdout: args.entry.stdout ?? '',
-    outputs: outputsOf(ix, args),
+    outputs: outputsOf(args),
     dirs: [
       ...(args.outputDirs ?? []).map((d) => `outputs/${relPosix(args.projectDir, d)}`),
       ...(args.workspaceOutputDirs ?? []).map(
@@ -518,7 +482,7 @@ export function planOutputs(
 export async function packArtifactToTemp(
   ix: StoreIndex,
   tmpPath: string,
-  args: Parameters<typeof packArtifact>[1],
+  args: PackArgs,
 ): Promise<{ compressed: Uint8Array; tar: Uint8Array } | { tmpPath: string }> {
   const plan = await planWithin(ix, args)
   if (plan.size <= STREAM_DECODE_FROM) {
@@ -547,7 +511,7 @@ export async function packArtifactToTemp(
  */
 async function packForSave(
   ix: StoreIndex,
-  args: Parameters<typeof packArtifact>[1],
+  args: PackArgs,
 ): Promise<
   | { compressed: Uint8Array; tar: Uint8Array }
   | { tmpPath: string }

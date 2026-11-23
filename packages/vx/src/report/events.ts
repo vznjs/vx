@@ -1,10 +1,7 @@
-// The run event stream — the substrate every output surface subscribes
-// to. The orchestrator no longer calls a Logger directly; it emits
-// RunEvents through a bus, and the terminal renderer (or a custom
-// embedder logger) is just the default, always-on, in-process
-// subscriber. Off-thread surfaces (web devtool, TUI, MCP) attach as
-// additional subscribers later, so a slow/wedged renderer can never
-// stall task exec. See docs/design/event-stream-2026-06.md.
+// The run event stream every output surface subscribes to: the
+// orchestrator emits RunEvents through a bus, and the terminal renderer
+// (or an embedder's logger) is the default in-process subscriber. See
+// docs/design/event-stream-2026-06.md.
 
 import { exitSignal } from '../exec/index.js'
 import type { InputChanges, TaskNode, TaskOutcome } from '../graph/index.js'
@@ -98,27 +95,16 @@ export function createEventBus(): EventBus {
   let subscribers: readonly RunEventSubscriber[] = []
   return {
     emit(event) {
-      // Synchronous, in-subscription-order fan-out. Ordering is part of
-      // the terminal renderer's contract (a stdout chunk must reach it
-      // before the task's completion block; block-separator bookkeeping
-      // depends on it), so emit must never reorder or defer.
-      //
-      // A throwing subscriber must NEVER break the run — the whole point
-      // of the bus is that a surface (an embedder's renderer, a future
-      // TUI) is isolated from execution. We swallow per-subscriber so one
-      // bad surface can't crash the user's build (mirrors the deleted
-      // Observer's makeSafeObserver contract). The terminal renderer is
-      // trusted and output-tested, so a real renderer bug still surfaces
-      // as wrong output, not a silent hang.
+      // Synchronous and in subscription order: the terminal renderer
+      // needs a stdout chunk before the task's completion block. A
+      // throwing subscriber never breaks the run.
       for (const subscriber of subscribers) {
         try {
           // A subscriber typed `void` may still be async: its rejection is
           // isolated as its throw is.
           const ret: unknown = subscriber(event)
           if (ret instanceof Promise) ret.catch(() => {})
-        } catch {
-          // isolate: a surface fault can't propagate into the orchestrator
-        }
+        } catch {}
       }
     },
     subscribe(subscriber) {
@@ -232,53 +218,27 @@ export function terminalSubscriber(sink: Logger): RunEventSubscriber {
 }
 
 /**
- * A bus subscriber that projects each event to its `WireEvent` and hands
- * it to `send` — the shared run→consumer forwarding path for whatever an
- * embedder builds on it (an NDJSON stream, an enveloped protocol; core
- * ships neither). Group-task start/complete events are dropped (no command,
- * pure scheduling noise). Summary status lines that follow run:end are
- * forwarded too. `send`
- * must be fire-and-forget and tolerant of its own failures (a dead
- * consumer can never break the run); the bus already isolates throws.
+ * A bus subscriber that hands each event's `WireEvent` to `send`, for
+ * whatever an embedder builds on it (core ships no consumer). Group tasks
+ * are dropped: no command. `send` must be fire-and-forget.
  */
 export function wireForwarder(send: (event: WireEvent) => void): RunEventSubscriber {
-  // Which tasks the consumer has been told about. A skipped task never
-  // reaches the scheduler's onStart, so its completion arrives with no
-  // preceding task:start — and a consumer resolves a completion's
-  // node from the start it recorded, so it would drop the task entirely
-  // while the forwarded footer still counted it. Synthesize the start here,
-  // where the live TaskNode is in hand, so the projection stays full
-  // fidelity (real requested/surfaced/command) instead of a stand-in.
   const started = new Set<string>()
   return (event) => {
-    if (
-      (event.kind === 'task:start' || event.kind === 'task:complete') &&
-      isGroupTask(event.node)
-    ) {
-      return
-    } else if (event.kind === 'task:start') {
+    if (event.kind === 'task:start' || event.kind === 'task:complete') {
+      if (isGroupTask(event.node)) return
+      // A skipped task never starts, and a consumer resolves a completion's
+      // node from its start: the start is sent here, from the live node.
+      if (event.kind === 'task:complete' && !started.has(event.node.id))
+        send({ kind: 'task:start', task: projectNode(event.node) })
       started.add(event.node.id)
-    } else if (event.kind === 'task:complete' && !started.has(event.node.id)) {
-      started.add(event.node.id)
-      send({ kind: 'task:start', task: projectNode(event.node) })
     }
     send(toWireEvent(event))
   }
 }
 
-// --- Serializable projections (the off-thread wire form) ---------------
-//
-// The in-process bus carries live refs; crossing a worker postMessage or
-// an RPC needs a JSON/structured-clone-safe form. Two concrete blockers
-// make the raw objects un-sendable:
-//   1. `TaskOutcome.timing.startNs/endNs` are bigint — JSON.stringify
-//      THROWS on a bigint.
-//   2. `TaskOutcome.node` back-references the whole TaskNode graph (its
-//      config + dep nodes), so every event would drag the graph across
-//      the boundary.
-// The projection fixes both: ids instead of the node graph, decimal
-// strings instead of bigint. Consumers on the far side rebuild their
-// view-model from the one-time task table in `run:start`.
+// The wire form: ids instead of the node graph a `TaskOutcome` drags along,
+// decimal strings instead of the bigints JSON.stringify throws on.
 
 /** Display projection of a TaskNode — exactly the fields renderers read. */
 export interface TaskView {

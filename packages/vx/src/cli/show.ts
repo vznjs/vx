@@ -57,10 +57,11 @@ export function parseShowArgs(args: readonly string[]): ShowArgs {
   const out: ShowArgs = { format: 'pretty', filters: [] }
   for (let i = 0; i < args.length; i++) {
     const a = args[i]!
-    let format: string | undefined
-    if (a === '--format') format = args[++i] ?? ''
-    else if (a.startsWith('--format=')) format = a.slice('--format='.length)
-    else if (a === '--filter' || a.startsWith('--filter=')) {
+    if (a === '--format' || a.startsWith('--format=')) {
+      const fv = formatValue(a === '--format' ? args[++i] : a.slice('--format='.length), 'show')
+      if (typeof fv === 'object') return { ...out, ...fv }
+      out.format = fv
+    } else if (a === '--filter' || a.startsWith('--filter=')) {
       const v = a === '--filter' ? args[++i] : a.slice('--filter='.length)
       // `--filter --format json` took `--format` as the pattern; no filter opens with `--`.
       if (v === undefined || v === '' || (a === '--filter' && v.startsWith('--')))
@@ -86,12 +87,6 @@ export function parseShowArgs(args: readonly string[]): ShowArgs {
     else if (a === '')
       return { ...out, error: `empty target (omit it to list every project)${seeHelp('show')}` }
     else out.target = a
-
-    if (format !== undefined) {
-      const fv = formatValue(format, 'show')
-      if (typeof fv === 'object') return { ...out, ...fv }
-      out.format = fv
-    }
   }
   return out
 }

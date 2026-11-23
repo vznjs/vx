@@ -2101,12 +2101,12 @@ function validateWorkspaceGlobs(v: unknown, where: string, negation: boolean): v
   }
 }
 
+const OUTPUT_LOST = 'the file is never saved or restored'
+
 /**
  * An output list of only `!` entries selects nothing: the task saves and
  * restores nothing while it reads as if it declared outputs.
  */
-const OUTPUT_LOST = 'the file is never saved or restored'
-
 function assertOutputsNotNegationOnly(globs: readonly string[], where: string): void {
   if (globs.length === 0 || globs.some((g) => !g.startsWith('!'))) return
   throw new UserError(

@@ -10,6 +10,7 @@ import type { ExecuteArgs, RunContext } from './execute-task.js'
 import type { ShortCircuit } from './local-shortcircuit.js'
 import { UNPLACED_EXECUTOR, type Placements } from './placement.js'
 import { outputWallsOf } from './prepare.js'
+import type { ComputeHashArgs } from './task-hash.js'
 
 /** Where the task's half is read from, per task id. */
 export interface TaskFacts {
@@ -70,5 +71,25 @@ export function executeArgsOf(
     if (!facts.dependedOn.has(id)) a.noDependants = true
     if (facts.holders.has(id)) a.terminal = true
     return a
+  }
+}
+
+/**
+ * The key derivation's arguments for a dispatch. `late` adds the run's
+ * `probesAfterWrites`: a cached task's key and its miss description pass
+ * it, and must agree, or the described inputs drift from the key.
+ */
+export function hashArgsOf(args: ExecuteArgs, late = false): ComputeHashArgs {
+  const { run } = args
+  return {
+    node: args.node,
+    upstream: args.upstream,
+    workspaceRoot: run.workspaceRoot,
+    cache: run.cache,
+    forwardArgs: run.forwardArgs,
+    nestedProjectDirs: args.nestedProjectDirs,
+    gitFilesCache: run.gitFilesCache,
+    hashCache: run.hashCache,
+    probesAfterWrites: late ? run.probesAfterWrites : undefined,
   }
 }

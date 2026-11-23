@@ -88,3 +88,26 @@ export function withTransitive<T extends { deps: object; peers: object }>(
   const transitive = reached.filter((d) => !direct.has(d))
   return transitive.length === 0 ? links : { ...links, transitive }
 }
+
+/** An empty lockfile graph; `node` adds an id once, with what it folds of its own, and returns its index. */
+export function newGraph(): {
+  index: Map<string, number>
+  material: string[]
+  edges: number[][]
+  node: (id: string, own: string) => number
+} {
+  const index = new Map<string, number>()
+  const material: string[] = []
+  const edges: number[][] = []
+  const node = (id: string, own: string): number => {
+    let i = index.get(id)
+    if (i === undefined) {
+      i = material.length
+      index.set(id, i)
+      material.push(own)
+      edges.push([])
+    }
+    return i
+  }
+  return { index, material, edges, node }
+}

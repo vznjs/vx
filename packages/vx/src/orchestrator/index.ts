@@ -25,17 +25,13 @@ export { applyMigration } from './migration.js'
 export type { AffectedReason } from './affected-tasks.js'
 export {
   discoverProjects,
+  discoveryOf,
   lockDiscovery,
   addedByPlugin,
-  extraHashesOfDiscovery,
-  gitOfDiscovery,
   ignoredConfigRefusal,
-  keepDiscoveryGraph,
-  keepDiscoveryWorkspace,
   loadProjects,
   loadResolvedProjects,
   loadWorkspacePlugins,
-  lockOfDiscovery,
   lockReader,
   type LoadedProjects,
   type LoadProjectsArgs,

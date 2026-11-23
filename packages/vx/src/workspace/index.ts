@@ -12,7 +12,6 @@ export {
 } from './affected.js'
 export { applyFilters, parseFilter } from './filter.js'
 export { pipelineRunArgs, PIPELINE_FLAGS } from './pipeline.js'
-
 export { readClaimedFiles } from './fingerprint.js'
 export { checkBracketLiterals } from './bracket-literal.js'
 export { checkDependencyRules } from './dependency-rules.js'
@@ -78,7 +77,6 @@ export {
   PROJECT_CONFIG_FILENAMES,
   resolveCacheDir,
   resolveStoreRoot,
-  ROOT_NAME,
   type ConfigDir,
   type ProjectConfigs,
   type ProjectEntry,

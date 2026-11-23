@@ -14,8 +14,8 @@ import type { ProjectConfig, TaskConfig } from '../src/config.js'
 import type { TaskNode } from '../src/graph/index.js'
 import { runGraph } from '../src/graph/scheduler.js'
 import { type TaskOutcome } from '../src/graph/outcome.js'
-import { buildTaskGraph, type ProjectEntry } from '../src/graph/task-graph.js'
-import type { PackageGraph } from '../src/workspace/index.js'
+import { buildTaskGraph } from '../src/graph/task-graph.js'
+import type { PackageGraph, ProjectEntry } from '../src/workspace/index.js'
 import { rng } from './helpers/rng.js'
 
 const NAMES = ['build', 'test', 'lint', 'pack']

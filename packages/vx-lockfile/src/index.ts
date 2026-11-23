@@ -751,7 +751,7 @@ async function manifestOf(
   }
   if (found.length === 0) return null
   if (found.length > 1) {
-    const rel = path.relative(root, dir).split(path.sep).join('/') || '.'
+    const rel = importerOf(root, dir)
     const bases = found.map((f) => path.posix.basename(f.name))
     throw new UserError(
       `${rel}: holds ${bases.slice(0, -1).join(', ')} and ${bases.at(-1)}, two manifests — keep one`,

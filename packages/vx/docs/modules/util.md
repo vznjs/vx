@@ -2320,6 +2320,46 @@ reports. This box (2026-09-12) has a v1 memory limit of 13.3 GiB on a
 15.7 GiB machine and no CPU quota, so the memory arm is proven live and
 the CPU arm by fixture.
 
+## `src/util/size.ts` — byte sizes, read and written
+
+### Purpose
+
+`parseSize` and `parseDuration` read the sizes and durations a flag or
+setting takes (cli.md's `vx cache clean`); `treeBytes` and `diskBytes`
+size a tree as `du` counts it; `formatBytes` writes a size.
+
+### API
+
+```ts
+formatBytes(n: number): string
+```
+
+Human-readable byte size with `B / KB / MB / GB / TB / PB` suffixes
+and one decimal of precision below 10 of any unit but PB. Powers of 1024.
+
+| Input            | Output   |
+| ---------------- | -------- |
+| `0`              | `0 B`    |
+| `1023`           | `1023 B` |
+| `1024`           | `1.0 KB` |
+| `9 * 1024 + 100` | `9.1 KB` |
+| `10 * 1024`      | `10 KB`  |
+| `1024 ** 2`      | `1.0 MB` |
+| `5 * 1024 ** 3`  | `5.0 GB` |
+
+### Use sites
+
+- `vx cache clean` output (`freed 1.3 GB`).
+- The `vx info` doctor printout: the
+  cache-size line (`cache entries     N (1.3 GB)`).
+- `vx last`: each executed task's peak RSS.
+
+### Tests
+
+`tests/cli.test.ts` includes a `formatBytes` table-driven case set; the
+table above is the function's output row for row
+(`tests/module-shape-drift.test.ts`).
+
 ## `src/util/umask.ts` — the mode a restore gives
 
 ### Purpose

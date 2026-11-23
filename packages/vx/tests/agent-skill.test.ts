@@ -4,7 +4,8 @@
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
-import { acceptedFlags, CORE_VERBS } from '../src/cli/help.js'
+import { acceptedFlags } from '../src/cli/help.js'
+import { CORE_VERBS } from '../src/util/index.js'
 
 const SKILL = readFileSync(
   path.resolve(import.meta.dir, '..', '..', '..', 'skills', 'vx', 'SKILL.md'),

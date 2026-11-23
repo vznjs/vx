@@ -65,7 +65,6 @@ export {
   markSurfacedDeps,
   outputsOverlap,
   outputTakenBack,
-  splitTaskId,
   type TaskNode,
   undeclaredDepsError,
   unresolvedRequests,

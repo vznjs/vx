@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:te
 import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { CORE_VERBS } from '../src/cli/help.js'
+import { CORE_VERBS } from '../src/util/index.js'
 import { run } from './helpers/cli.js'
 
 let stderr = ''

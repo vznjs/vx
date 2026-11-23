@@ -2,7 +2,7 @@
 // it points. Its own fold stays the blob of its target STRING (file-hashes.ts),
 // so a retarget to equal bytes moves the key; this is what follows it. The
 // target string alone let an edit behind the link replay the old output
-// (Growth), wherever the target lies: in the project, elsewhere in the
+// wherever the target lies: in the project, elsewhere in the
 // workspace, outside it. A directory link keys every file beneath it, tracked
 // or not, where Nx does not enter one: an edit there is an edit to what the
 // task reads. `--affected` (workspace/affected.ts) and `vx watch`

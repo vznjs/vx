@@ -80,8 +80,9 @@ export function formatTaskBlock(
   const corner = (s: string) => paint('muted', s, colors)
   // A ready server's frame reads as the live one does: marked, and running.
   const mark = persistentMark(node, colors)
-  const running = mark !== '' && outcome.status === 'success' && outcome.serverExit === undefined
-  const header = running ? paint('info', 'running', colors) : formatBlockHeader(outcome, colors)
+  const header = serving(node, outcome)
+    ? paint('info', 'running', colors)
+    : formatBlockHeader(outcome, colors)
   const lines: string[] = [`${corner('┌─')} ${mark}${idPainted} ${corner('>')} ${header}`]
 
   // The command section shows what ran. Hits skip it, unless `forceCommand`.
@@ -105,7 +106,7 @@ export function formatTaskBlock(
   lines.push(...violationSection(outcome, colors))
 
   lines.push(
-    `${corner('└─')} ${mark}${idPainted}${whereNote(outcome, colors)} ${corner('──')}${running ? runningFooter(outcome, colors) : formatBlockFooter(outcome, colors)}`,
+    `${corner('└─')} ${mark}${idPainted}${whereNote(outcome, colors)} ${corner('──')}${closeTail(node, outcome, colors)}`,
     '',
   )
   // Not `+ '\n'`: a rope over a 100 MB frame was flattened into a copy.
@@ -217,32 +218,8 @@ function pushBodyLines(lines: string[], text: string): void {
   for (const line of text.replace(/\n$/, '').split('\n')) lines.push(line)
 }
 
-/**
- * `project#task` halves, each in its name's identity hue, a dim separator
- * between. `hueSource` hashes the full project name, so the hue survives
- * truncation.
- */
-export function paintIdParts(
-  hueSource: string,
-  projectText: string,
-  taskText: string,
-  colors: ColorSupport,
-  opts: { bold?: boolean; sep?: '#' | ':' } = {},
-): string {
-  return idParts(hueSource, projectText, taskText, colors, opts)
-}
-
-function paintId(
-  projectName: string,
-  taskName: string,
-  colors: ColorSupport,
-  opts: { bold?: boolean } = {},
-): string {
-  return paintIdParts(projectName, projectName, taskName, colors, opts)
-}
-
 function paintTaskId(node: TaskNode, colors: ColorSupport, opts: { bold?: boolean } = {}): string {
-  return paintId(node.projectName, node.taskName, colors, opts)
+  return idParts(node.projectName, node.projectName, node.taskName, colors, opts)
 }
 
 // ── Reported-line grid: status · cache · usual · time · … · name ──────── No
@@ -273,7 +250,7 @@ function timeCell(ms: number | null, colors: ColorSupport): string {
   if (ms === null) return pad(TIME_COL - 1) + paint('muted', UNKNOWN, colors)
   let raw = formatElapsed(ms)
   // `1000.00s` is wider than the cell; minutes fit it up to `99m 59s`.
-  if (ms !== null && raw.length > TIME_COL) raw = formatElapsed(ms, true)
+  if (raw.length > TIME_COL) raw = formatElapsed(ms, true)
   // The time is the row's fact (value level); the cells around it are meta.
   return pad(TIME_COL - raw.length) + paint('value', raw, colors)
 }
@@ -736,17 +713,15 @@ function formatOutcomeRow(
   )
 }
 
-/** Where an executor ran the task, when not here, right after its id: `@small#2`. */
-function whereNote(o: TaskOutcome, colors: ColorSupport = NO_COLOR): string {
-  return o.placement?.where === undefined ? '' : placeNote(o.placement?.where, colors)
-}
-
 /**
- * ` · <where>` after the id: the dot dim, the place in its own hue. Last on the
- * row, as a worker's name has no width to pad to.
+ * ` · <where>` after the id when an executor ran the task elsewhere: the dot
+ * dim, the place in its own hue.
  */
-function placeNote(where: string, colors: ColorSupport = NO_COLOR): string {
-  return `${paint('muted', ' \u00b7', colors)} ${ui.inline(ui.place(where), colors)}`
+function whereNote(o: TaskOutcome, colors: ColorSupport): string {
+  const where = o.placement?.where
+  return where === undefined
+    ? ''
+    : `${paint('muted', ' \u00b7', colors)} ${ui.inline(ui.place(where), colors)}`
 }
 
 /**
@@ -893,13 +868,7 @@ export function formatFrameClose(
 ): string {
   const corner = (t: string) => paint('muted', t, colors)
   const mark = persistentMark(node, colors)
-  // A persistent task keeps running past this outcome, so the close reads
-  // `running`; ▸ marks both ends.
-  const tail =
-    mark !== '' && outcome.status === 'success' && outcome.serverExit === undefined
-      ? runningFooter(outcome, colors)
-      : formatBlockFooter(outcome, colors)
-  const close = `${corner('└─')} ${mark}${paintTaskId(node, colors, { bold: true })}${whereNote(outcome, colors)} ${corner('──')}${tail}`
+  const close = `${corner('└─')} ${mark}${paintTaskId(node, colors, { bold: true })}${whereNote(outcome, colors)} ${corner('──')}${closeTail(node, outcome, colors)}`
   const violations = violationSection(outcome, colors)
   return violations.length === 0 ? close : `${violations.join('\n')}\n${close}`
 }
@@ -917,7 +886,18 @@ function persistentMark(node: TaskNode, colors: ColorSupport): string {
   return node.config.exec?.persistent !== undefined ? `${paint('info', '▸', colors)} ` : ''
 }
 
-function runningFooter(o: TaskOutcome, colors: ColorSupport): string {
+/** A ready server whose child still runs: its frame reads `running`, ▸ marking both ends. */
+function serving(node: TaskNode, o: TaskOutcome): boolean {
+  return (
+    node.config.exec?.persistent !== undefined &&
+    o.status === 'success' &&
+    o.serverExit === undefined
+  )
+}
+
+/** The frame's close after its id: ` (<dur>) <status>`, or `running` for a ready server. */
+function closeTail(node: TaskNode, o: TaskOutcome, colors: ColorSupport): string {
+  if (!serving(node, o)) return formatBlockFooter(o, colors)
   return ` ${paint('muted', `(${formatElapsed(o.durationMs)})`, colors)} ${paint('info', 'running', colors)}`
 }
 
@@ -976,26 +956,11 @@ export function formatPersistentList(
 }
 
 function formatBlockHeader(o: TaskOutcome, colors: ColorSupport): string {
+  if (!isCacheHit(o.status)) return formatStatusTag(o, colors)
+  // A remote restore is the one hit painted accent: bytes came off the wire.
+  const hue = o.status === 'cache-hit-remote' && o.cache?.restored !== false ? 'info' : 'ok'
   const shortHash = o.hash ? o.hash.slice(0, 8) : ''
-  const dim = (s: string) => paint('muted', s, colors)
-  const word = outcomeLabel(o)
-  switch (o.status) {
-    case 'cache-hit':
-      return `${paint('ok', word, colors)} ${dim(`• ${shortHash}`)}`
-    case 'cache-hit-remote':
-      // A remote restore is the one hit painted accent: bytes came off the wire.
-      return `${paint(o.cache?.restored === false ? 'ok' : 'info', word, colors)} ${dim(`• ${shortHash}`)}`
-    case 'failed':
-      // The command lives in its own `├─ command` section; the header
-      // carries the outcome like every other status.
-      return paint('error', word, colors, true)
-    case 'skipped':
-      return paint('warn', word, colors)
-    case 'aborted':
-      return paint('aborted', word, colors)
-    default:
-      return dim(word)
-  }
+  return `${paint(hue, outcomeLabel(o), colors)} ${paint('muted', `• ${shortHash}`, colors)}`
 }
 
 function formatBlockFooter(o: TaskOutcome, colors: ColorSupport): string {

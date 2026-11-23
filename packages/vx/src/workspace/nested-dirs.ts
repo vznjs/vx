@@ -7,18 +7,10 @@ import type { ProjectEntry } from './workspace.js'
  * project's task cannot see files inside another project, even if its
  * globs would otherwise match.
  *
- * Sort once, then scan forward: every dir sharing `p.dir` as a STRING
- * prefix is contiguous in sorted order, and `p`'s nested descendants
- * (`p.dir + sep + …`) are a sub-run within that block. But a SIBLING whose
- * name extends `p.dir` by a char that sorts BELOW `sep` (`-`, `.`, `+`, a
- * space; `/` is 0x2F) lands BETWEEN `p.dir` and `p.dir + sep` — so a plain
- * `break` on the first non-descendant would stop before reaching the nested
- * children (e.g. `foo`, `foo-utils`, `foo/nested` → `foo/nested` missed,
- * silently breaking the project-boundary invariant). So: collect descendants,
- * SKIP interlopers that merely share the `p.dir` string prefix, and break only
- * once we leave the `p.dir` block entirely. The inner loop is still bounded by
- * that block (near-O(P log P) on real trees; interlopers are few), not the
- * full tail.
+ * Sort once, then scan forward: every dir sharing `p.dir` as a string
+ * prefix is contiguous, and `p`'s descendants (`p.dir + sep + …`) lie in that
+ * block. A sibling extending `p.dir` by a char below `sep` (`foo-utils` for
+ * `foo`) sorts between them, so skip it and stop only past the block.
  *
  * `workspaces`: the absolute roots of nested workspaces (each holds its own
  * `.vx/workspace.*`), a boundary for outputs: each joins the dirs of every
@@ -42,12 +34,8 @@ export function computeNestedProjectDirs(
       if (other.dir.startsWith(prefix)) {
         nested.push(other.dir)
       } else if (!other.dir.startsWith(p.dir)) {
-        // Past every dir sharing `p.dir`'s string prefix — no descendant can
-        // follow (they'd sort inside this block), so stop.
         break
       }
-      // else: an interloping sibling (`foo-utils` for `foo`) that shares the
-      // string prefix but isn't nested — skip it, descendants may follow.
     }
     for (const w of workspaces) if (w.startsWith(prefix)) nested.push(w)
     result.set(p.name, nested)

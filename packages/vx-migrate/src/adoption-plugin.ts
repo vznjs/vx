@@ -106,10 +106,7 @@ export function adoptionPlugin(
         if (t.task === null) continue
         // The user's own declaration wins — the plugin fills, never overwrites.
         // The mapping's own object, not a copy: the mapping is made per pass
-        // (above), so nothing outlives the pass that fills from it, and core
-        // only reads a stage-given task after validating it. The copy was the
-        // per-process memo's guard and cost 10 ms at 1,000 projects, 3,000
-        // clones.
+        // (above), so nothing outlives the pass that fills from it.
         if (!Object.hasOwn(config.tasks, t.name)) config.tasks[t.name] = t.task
       }
     },

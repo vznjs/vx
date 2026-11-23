@@ -22,6 +22,7 @@ import { signalExitCode, warmSpares } from '../exec/index.js'
 import { RestoreDemoted, RestoreFailed, type TaskOutcome } from '../graph/index.js'
 import { span } from '../util/index.js'
 import { warnOf } from '../report/index.js'
+import { hashArgsOf } from './execute-args.js'
 import type { ExecuteArgs } from './execute-task.js'
 import { AttemptSignal } from './attempt-signal.js'
 import { AttemptStream } from './attempt-stream.js'
@@ -318,19 +319,7 @@ async function derivedKey(
   args: ExecuteArgs,
   policy: TaskPolicy,
 ): Promise<{ hash: string; pre?: PreDescribed }> {
-  const hashArgs = {
-    node: args.node,
-    upstream: args.upstream,
-    workspaceRoot: args.run.workspaceRoot,
-    cache: args.run.cache,
-    forwardArgs: args.run.forwardArgs,
-    nestedProjectDirs: args.nestedProjectDirs,
-    ...(args.run.gitFilesCache !== undefined ? { gitFilesCache: args.run.gitFilesCache } : {}),
-    ...(args.run.hashCache !== undefined ? { hashCache: args.run.hashCache } : {}),
-    ...(args.run.probesAfterWrites !== undefined
-      ? { probesAfterWrites: args.run.probesAfterWrites }
-      : {}),
-  }
+  const hashArgs = hashArgsOf(args, true)
   if (!policy.cacheable) return { hash: await keyOf(computeTaskHash(hashArgs)) }
   const captured: TaskInputComponent[] = []
   const { hash, described } = await keyOf(keyOrDescribe({ ...hashArgs, captureInto: captured }))

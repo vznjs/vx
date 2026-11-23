@@ -715,13 +715,7 @@ export class Orchestrator {
     const t = this.clock()
     for (const [id, { declared }] of this.spawnedAt)
       if (!this.cancelled.has(id) && !this.unstarted.has(id))
-        p.adopt(
-          id,
-          declared.size,
-          declared.place ?? declared.platform ?? hostPlatform(),
-          declared.cpu,
-          t,
-        )
+        p.adopt(id, declared.size, placeOf(declared), declared.cpu, t)
     for (const a of this.workers.values()) this.adopted(p, a, t)
     for (const id of this.waiting.keys()) p.ready(id)
     return p
@@ -1132,6 +1126,16 @@ export class Orchestrator {
     return { cores: Math.max(booked.cores, cores), memory: Math.max(booked.memory, memory) }
   }
 
+  /** The labels of every worker that joined, online or gone. */
+  private joinedLabels(): Set<string> {
+    return new Set([...this.workers.values(), ...this.gone].map((a) => a.label))
+  }
+
+  /** Whether asked worker `id` is still starting: not joined, failed or cancelled. */
+  private starting(id: string, joined: Set<string>): boolean {
+    return !joined.has(id) && !this.unstarted.has(id) && !this.cancelled.has(id)
+  }
+
   /**
    * What `a`'s machine spends besides the run's tasks, where its machine is
    * the size it was given (a bigger one's spare cores take it): as it said,
@@ -1226,14 +1230,11 @@ export class Orchestrator {
     above: { readonly cores: number; readonly memory: number },
     platform: string | undefined,
   ): boolean {
-    const joined = new Set([...this.workers.values(), ...this.gone].map((x) => x.label))
+    const joined = this.joinedLabels()
     for (const [id, { declared }] of this.spawnedAt)
       if (
-        !joined.has(id) &&
-        !this.unstarted.has(id) &&
-        !this.cancelled.has(id) &&
-        (platform === undefined ||
-          (declared.place ?? declared.platform ?? hostPlatform()) === platform) &&
+        this.starting(id, joined) &&
+        (platform === undefined || placeOf(declared) === platform) &&
         (declared.cpu > above.cores || declared.memory > above.memory)
       )
         return true
@@ -2028,7 +2029,7 @@ export class Orchestrator {
       // one that joined on its own is numbered in the order it joined.
       const spawn = info.id === undefined ? undefined : this.spawnedAt.get(info.id)
       const asked = spawn?.at
-      const taken = new Set([...this.workers.values(), ...this.gone].map((a) => a.label))
+      const taken = this.joinedLabels()
       let label = asked === undefined ? undefined : info.id
       while (label === undefined || taken.has(label)) label = `worker#${++this.joined}`
       // Workers of one host (local()) each report the host: the size it
@@ -2354,11 +2355,8 @@ export class Orchestrator {
     return out
   }
 
-  /**
-   * How much later each next worker of a size joined than the one before,
-   * this run (`spreadMs`): each size two of which joined.
-   */
-  spreadsMs(): Map<string, number> {
+  /** Each size's workers' warm-ups, in the order they joined. */
+  private warmUps(): Map<string, number[]> {
     const ups = new Map<string, number[]>()
     for (const a of [...this.workers.values(), ...this.gone]) {
       const size = a.declared?.size
@@ -2367,7 +2365,17 @@ export class Orchestrator {
       if (of === undefined) ups.set(size, [a.warmUpMs])
       else of.push(a.warmUpMs)
     }
-    return new Map([...ups].flatMap(([size, ms]) => (ms.length < 2 ? [] : [[size, spreadMs(ms)]])))
+    return ups
+  }
+
+  /**
+   * How much later each next worker of a size joined than the one before,
+   * this run (`spreadMs`): each size two of which joined.
+   */
+  spreadsMs(): Map<string, number> {
+    return new Map(
+      [...this.warmUps()].flatMap(([size, ms]) => (ms.length < 2 ? [] : [[size, spreadMs(ms)]])),
+    )
   }
 
   /** Each size's cores its machines spent besides the run's tasks, on average: what the plan leaves it. */
@@ -2390,7 +2398,7 @@ export class Orchestrator {
    */
   release(ids: Iterable<string>): string[] {
     for (const a of this.workers.values()) if (a.faulty && a.busy.size === 0) this.letGo(a)
-    const joined = new Set([...this.workers.values(), ...this.gone].map((a) => a.label))
+    const joined = this.joinedLabels()
     const cancelled: string[] = []
     for (const id of ids) {
       const a = this.workers.get(id)
@@ -2426,13 +2434,7 @@ export class Orchestrator {
         // the planner counts it again: its setup is paid
         const declared = this.spawnedAt.get(id)?.declared
         if (declared !== undefined)
-          this.bound?.adopt(
-            id,
-            declared.size,
-            declared.place ?? declared.platform ?? hostPlatform(),
-            declared.cpu,
-            this.clock(),
-          )
+          this.bound?.adopt(id, declared.size, placeOf(declared), declared.cpu, this.clock())
       }
     if (out.length > 0) this.pumpSoon()
     return out
@@ -2479,10 +2481,8 @@ export class Orchestrator {
 
   /** Nothing online that takes work, none still starting: no task can run. */
   private stranded(reason: string): void {
-    const joined = new Set([...this.workers.values(), ...this.gone].map((a) => a.label))
-    const starting = [...this.spawnedAt.keys()].some(
-      (s) => !this.unstarted.has(s) && !this.cancelled.has(s) && !joined.has(s),
-    )
+    const joined = this.joinedLabels()
+    const starting = [...this.spawnedAt.keys()].some((s) => this.starting(s, joined))
     const working = [...this.workers.values()].some((a) => !a.faulty)
     if (!working && !starting) this.fail(reason)
   }
@@ -2533,14 +2533,7 @@ export class Orchestrator {
     const work = new Map<string | undefined, number>()
     for (const t of r.tasks)
       work.set(t.platform, (work.get(t.platform) ?? 0) + t.cores * (t.ms ?? 0))
-    const ups = new Map<string, number[]>()
-    for (const a of [...this.workers.values(), ...this.gone]) {
-      const size = a.declared?.size
-      if (a.warmUpMs === undefined || size === undefined) continue
-      const of = ups.get(size)
-      if (of === undefined) ups.set(size, [a.warmUpMs])
-      else of.push(a.warmUpMs)
-    }
+    const ups = this.warmUps()
     let end = perfect
     for (const [platform, w] of work) {
       // Each core slot's start, and its cores.
@@ -3384,6 +3377,8 @@ const bytes = (n: number): string =>
         ? `${Math.round(n / 1e3)} KB`
         : `${n} B`
 
+/** A size naming no platform is this machine's, as `dte()` planned it. */
+const placeOf = (d: Declared): string => d.place ?? d.platform ?? hostPlatform()
 /** A machine is what its size says: the same cores, memory within a tenth. */
 const matches = (cores: number, memory: number, d: Declared): boolean =>
   cores === d.cpu && Math.abs(memory - d.memory) <= d.memory * 0.1

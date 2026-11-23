@@ -12,7 +12,8 @@ import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import { verbFlags } from '../src/cli/completions.js'
-import { CORE_VERBS, WATCH_REFUSED_FLAGS } from '../src/cli/help.js'
+import { WATCH_REFUSED_FLAGS } from '../src/cli/help.js'
+import { CORE_VERBS } from '../src/util/index.js'
 
 const CLI_MD = readFileSync(path.join(import.meta.dir, '..', 'docs', 'cli.md'), 'utf8')
 

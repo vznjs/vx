@@ -28,18 +28,6 @@ function refused(key: string | symbol): TypeError {
 }
 
 /**
- * The run's events as a plugin sees them: a read-only view of each, made at
- * the first read of each object and kept for the run, so every plugin reads
- * the same view and a node keeps one identity from its start to its end.
- * A view, not a copy: core still writes an outcome after its task ends
- * (`serverExit`), and a frozen deep copy of each node and outcome was ~5 us
- * of every task a hook heard (10,000 tasks: 45 ms).
- */
-export function readOnlyEvents(): <T>(value: T) => T {
-  return readOnlyViews()
-}
-
-/**
  * What a stage hands a plugin that core goes on using live: a task node in
  * `key`, `schedule` and `admit` (core writes its key parts, platform and
  * deps after, so it is not frozen), the project list in `discover` (core
@@ -68,8 +56,14 @@ export function readOnlyNodes<V>(nodes: ReadonlyMap<string, V>): ReadonlyMap<str
  * Read-only views of plain objects and arrays, each made at its first read
  * and kept. Only plain objects and arrays are wrapped: a Map's methods need
  * the Map itself, and a frozen object is read-only already.
+ *
+ * One per run for the run's events as a plugin sees them, so every plugin
+ * reads the same view and a node keeps one identity from its start to its
+ * end. A view, not a copy: core still writes an outcome after its task ends
+ * (`serverExit`), and a frozen deep copy of each node and outcome was ~5 us
+ * of every task a hook heard (10,000 tasks: 45 ms).
  */
-function readOnlyViews(): <T>(value: T) => T {
+export function readOnlyViews(): <T>(value: T) => T {
   const views = new WeakMap<object, object>()
   const handler: ProxyHandler<object> = {
     // A frozen target's own values are its own: a proxy must answer them

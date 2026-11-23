@@ -12,7 +12,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { completionScript } from '../src/cli/completions.js'
-import { CORE_VERBS } from '../src/cli/help.js'
+import { CORE_VERBS } from '../src/util/index.js'
 
 const ZSH = Bun.which('zsh')
 const FISH = Bun.which('fish')

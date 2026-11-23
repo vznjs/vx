@@ -274,16 +274,22 @@ function pace(
 function streamed(res: Response, controller: AbortController, ms: number): Response {
   if (res.body === null) return res
   const window = pace(controller, ms)
-  const body = res.body.pipeThrough(
-    new TransformStream<Uint8Array, Uint8Array>({
-      transform(chunk, out) {
-        window.moved(chunk.byteLength)
-        out.enqueue(chunk)
-      },
-      flush: window.stop,
-    }),
-  )
-  return new Response(body, {
+  return piped(res.body, res, {
+    transform(chunk, out) {
+      window.moved(chunk.byteLength)
+      out.enqueue(chunk)
+    },
+    flush: window.stop,
+  })
+}
+
+/** `res` with `body` run through `transformer`. */
+function piped(
+  body: ReadableStream<Uint8Array>,
+  res: Response,
+  transformer: Transformer<Uint8Array, Uint8Array>,
+): Response {
+  return new Response(body.pipeThrough(new TransformStream(transformer)), {
     status: res.status,
     statusText: res.statusText,
     headers: res.headers,
@@ -303,22 +309,15 @@ function sized(res: Response): Response {
   if (res.body === null || named === null) return res
   const size = Number(named)
   let seen = 0
-  const body = res.body.pipeThrough(
-    new TransformStream<Uint8Array, Uint8Array>({
-      transform(chunk, out) {
-        seen += chunk.byteLength
-        if (seen > size) throw new Error(`the download ran past its ${size} bytes`)
-        out.enqueue(chunk)
-      },
-      flush() {
-        if (seen !== size) throw new Error(`the download ended after ${seen} of ${size} bytes`)
-      },
-    }),
-  )
-  return new Response(body, {
-    status: res.status,
-    statusText: res.statusText,
-    headers: res.headers,
+  return piped(res.body, res, {
+    transform(chunk, out) {
+      seen += chunk.byteLength
+      if (seen > size) throw new Error(`the download ran past its ${size} bytes`)
+      out.enqueue(chunk)
+    },
+    flush() {
+      if (seen !== size) throw new Error(`the download ended after ${seen} of ${size} bytes`)
+    },
   })
 }
 
@@ -846,7 +845,13 @@ export class VxCacheLayer implements RemoteCacheLayer {
       // null forgot each hit the index kept, the remote never asked).
       if (this.disabled) return undefined
       const some = scopes.slice(next, next + (this.limits?.maxCheckHashes ?? scopes.length))
-      const res = await this.fetched(hash, some)
+      // Retried as an upload is: one ECONNRESET read as a miss, and a DTE
+      // worker failed main 979cb59's docs build on an entry the remote held.
+      const res = await this.retried(`/v1/artifacts/${hash}`, {
+        method: 'GET',
+        headers: { 'vx-scope': some.join(', ') },
+        streamed: true,
+      })
       if (res === undefined) return undefined
       if (res.status === 404) {
         await res.body?.cancel()
@@ -868,19 +873,14 @@ export class VxCacheLayer implements RemoteCacheLayer {
   }
 
   /**
-   * A download's answer, asked again after a 5xx, a 429 or a reset connection, up to `retries` + 1 tries (3), as an
-   * upload is: one ECONNRESET read as a miss, and a DTE worker failed main 979cb59's docs build on an
-   * entry the remote held (2026-11-20). A deadline is not retried: the download already had its time.
+   * `request`, sent again after a 5xx, a 429 or a reset connection, up to
+   * `retries` + 1 tries: the last answer. A deadline is not retried.
    */
-  private async fetched(hash: string, scopes: readonly string[]): Promise<Response | undefined> {
+  private async retried(path: string, init: RequestInit): Promise<Response | undefined> {
     for (let attempt = 1; ; attempt++) {
       let res: Response | undefined
       try {
-        res = await this.request(`/v1/artifacts/${hash}`, {
-          method: 'GET',
-          headers: { 'vx-scope': scopes.join(', ') },
-          streamed: true,
-        })
+        res = await this.request(path, init)
       } catch (err) {
         if (!RESET.has((err as { code?: unknown }).code as string) || attempt > this.config.retries)
           throw err
@@ -956,36 +956,23 @@ export class VxCacheLayer implements RemoteCacheLayer {
     // one ECONNRESET, each lost a DTE worker's entry. A PUT names its hash, so
     // a second one stores the same bytes. A deadline is not retried: the upload
     // already had its time.
-    for (let attempt = 1; ; attempt++) {
-      let res: Response | undefined
-      try {
-        res = await this.request(`/v1/artifacts/${item.hash}`, {
-          method: 'PUT',
-          body: item.body,
-          headers: { 'content-type': 'application/octet-stream' },
-          timeoutMs: this.config.uploadTimeoutMs,
-          write: true,
-          paced: true,
-        })
-      } catch (err) {
-        if (!RESET.has((err as { code?: unknown }).code as string) || attempt > this.config.retries)
-          throw err
-        await this.wait(1000 * attempt)
-        continue
-      }
-      if (res === undefined) return false
-      if (res.ok) return
-      // Sent before any answer named the limits: the 413 names them
-      // (PROTOCOL.md), so it is said as a later one is, never a failure.
-      if (res.status === 413 && this.overLimit(item.hash, item.body)) {
-        await res.body?.cancel()
-        return false
-      }
-      if ((res.status !== 429 && res.status < 500) || attempt > this.config.retries)
-        throw await refusal(res, this.hidden)
+    const res = await this.retried(`/v1/artifacts/${item.hash}`, {
+      method: 'PUT',
+      body: item.body,
+      headers: { 'content-type': 'application/octet-stream' },
+      timeoutMs: this.config.uploadTimeoutMs,
+      write: true,
+      paced: true,
+    })
+    if (res === undefined) return false
+    if (res.ok) return
+    // Sent before any answer named the limits: the 413 names them
+    // (PROTOCOL.md), so it is said as a later one is, never a failure.
+    if (res.status === 413 && this.overLimit(item.hash, item.body)) {
       await res.body?.cancel()
-      await this.wait(1000 * attempt)
+      return false
     }
+    throw await refusal(res, this.hidden)
   }
 }
 

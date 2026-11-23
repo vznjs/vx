@@ -412,6 +412,13 @@ export function makeFence(fenceDirs: readonly string[]): (ownDir: string, abs: s
   }
 }
 
+const PROJECT_CONFIGS: ReadonlySet<string> = new Set(PROJECT_CONFIG_FILENAMES)
+
+/** A project's own config file, by name: a run reads it only through the lock. */
+export function isProjectConfigFile(filename: string): boolean {
+  return PROJECT_CONFIGS.has(path.basename(filename))
+}
+
 /**
  * A file whose edit can change what the loop watches: a project config (a
  * task that starts declaring `workspaceFiles` needs the root watcher, a
@@ -420,16 +427,8 @@ export function makeFence(fenceDirs: readonly string[]): (ownDir: string, abs: s
  * claims re-read the set as well (the caller asks: the projects come from
  * the lock, a lockfile plugin's `discover` names and edges from its file).
  */
-const PROJECT_CONFIGS: ReadonlySet<string> = new Set(PROJECT_CONFIG_FILENAMES)
-
-/** A project's own config file, by name: a run reads it only through the lock. */
-export function isProjectConfigFile(filename: string): boolean {
-  return PROJECT_CONFIGS.has(path.basename(filename))
-}
-
 export function shapesWatchedSet(filename: string): boolean {
-  const base = path.basename(filename)
-  return PROJECT_CONFIGS.has(base) || isWorkspaceConfigFile(filename.split(path.sep).join('/'))
+  return isProjectConfigFile(filename) || isWorkspaceConfigFile(filename.split(path.sep).join('/'))
 }
 
 /**

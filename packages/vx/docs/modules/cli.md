@@ -58,7 +58,6 @@ See:
 - [`cli.md`](#srccliwatchts--vx-watch-subcommand-and-watch-fsts-watch-filterts-watch-setts-watch-judgets-watch-cyclets) — `vx watch`
 - [`cli.md`](#srcclicachets--vx-cache-clean) — `vx cache clean`
 - [`cli.md`](#srcclihelpts--help-text) — `vx help`
-- [`cli.md`](#srccliformatts--shared-formatters) — shared formatters
 - `vx lock`, `vx init`, `vx show` / `vx info`, `vx why`,
   `vx last`, `vx completions`, `vx upgrade`: documented in
   [`../cli.md`](../cli.md); no separate module doc.
@@ -74,7 +73,7 @@ directory the run never used. Plugin warnings go to stderr. Each verb
 runs the stage once: a reading verb's helpers share one `verbWorkspace`
 (the stage, then the discovery over it), a discovery keeps the workspace
 it loaded (`workspaceOfDiscovery`), and a run handed that discovery
-reuses it (`keepDiscoveryWorkspace`, projects.md). A plugin
+reuses it (`discoveryOf(...).workspace`, projects.md). A plugin
 verb the dispatcher could never reach — one naming a core verb, or one
 plugins of two packages both declare — is refused by the workspace VALIDATOR
 (`validateWorkspace`, against `util/verbs.ts`), so a run refuses it
@@ -883,8 +882,7 @@ precedence, `env` hidden from tasks, and each refusal.
 ### Purpose
 
 Implements `vx cache clean`, which trims with a bound and clears with
-none. Both parsers are `util/size.ts`'s,
-re-exported here. Drives
+none. Both parsers are `util/size.ts`'s. Drives
 `Cache.prune({...})` from `src/cache/cache.ts` against the cache
 directory a run would use.
 
@@ -909,8 +907,7 @@ export interface ClearResult {
   cleared: string[]
   bytesFreed: number
 }
-export { parseDuration, parseSize } from '../util/index.js'
-// util's treeBytes (the blocks under a path, as `du` counts them: diskBytes of each lstat) sizes a clear and `vx info`'s rows
+// util's parseDuration and parseSize read the bounds; util's treeBytes (the blocks under a path, as `du` counts them: diskBytes of each lstat) sizes a clear and `vx info`'s rows
 ```
 
 ### Subcommand surface
@@ -1050,7 +1047,6 @@ export function seeHelp(verb: string): string
 export function flagHint(verb: string, arg: string): string // ` (did you mean --x?)` or '', every verb's unknown-flag refusal
 export function acceptedFlags(verb: string): string[] // Usage-line flags; `[OPTIONS]` adds run's, less watch's refusals
 export const WATCH_REFUSED_FLAGS: readonly string[]
-export { CORE_VERBS } from '../util/index.js'
 
 // `completions.ts`
 export type CompletionShell = 'bash' | 'zsh' | 'fish'
@@ -1198,46 +1194,6 @@ export async function pluginCommandHelp(cwd?: string): Promise<string[]>
 ### Tests
 
 `tests/plugin-commands.test.ts`.
-
-## `src/cli/format.ts` — shared formatters
-
-### Purpose
-
-Small string formatters shared by multiple CLI subcommands. The one
-formatter lives in `util/size.ts` since item 658 (the orchestrator may not
-import the CLI); this file re-exports it for the verbs.
-
-### Public surface
-
-```ts
-export { formatBytes } from '../util/index.js' // (n: number) => string
-```
-
-Human-readable byte size with `B / KB / MB / GB / TB / PB` suffixes
-and one decimal of precision below 10 of any unit but PB. Powers of 1024.
-
-| Input            | Output   |
-| ---------------- | -------- |
-| `0`              | `0 B`    |
-| `1023`           | `1023 B` |
-| `1024`           | `1.0 KB` |
-| `9 * 1024 + 100` | `9.1 KB` |
-| `10 * 1024`      | `10 KB`  |
-| `1024 ** 2`      | `1.0 MB` |
-| `5 * 1024 ** 3`  | `5.0 GB` |
-
-### Use sites
-
-- `vx cache clean` output (`freed 1.3 GB`).
-- The `vx info` doctor printout: the
-  cache-size line (`cache entries     N (1.3 GB)`).
-- `vx last`: each executed task's peak RSS.
-
-### Tests
-
-`tests/cli.test.ts` includes a `formatBytes` table-driven case set; the
-table above is the function's output row for row
-(`tests/module-shape-drift.test.ts`).
 
 ## `src/cli/plan-format.ts` — plan → text / JSON
 

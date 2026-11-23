@@ -12,12 +12,8 @@
 // the fix (its own output path).
 //
 // The overlap question is core's own `outputsOverlap`, asked through the
-// façade. It used to be a COPY of it here, and the copy stopped being the
-// same test the moment core's grew: `./dist/**` against `dist/**` (item
-// 441) and the literal `dist` against `dist/app.js` are
-// refused by the loader and were missed here — so the migration reported
-// clean on a config core would not load, which is the exact failure this
-// file exists to prevent.
+// façade: a copy drifted from the loader and reported clean on a config core
+// would not load.
 
 import { isLiteralPattern, outputsOverlap, type GeneratedTask } from '@vzn/vx'
 import { withoutTakenBack } from './glob-grammar.js'
@@ -427,12 +423,12 @@ export function excludeSiblingOutputs(tasks: GeneratedTask[], walksGlobs = false
   tasks.forEach((t, index) => {
     const inputs = inputsOf(t)
     if (inputs === undefined) return
-    const positive = inputs.files.filter((g) => typeof g === 'string' && !g.startsWith('!'))
+    const reads = positive(inputs.files)
     for (const w of writers) {
       if (w.index === index) continue
       for (const out of w.files) {
         if (inputs.files.includes(`!${out}`)) continue
-        const read = positive.filter((g) => outputsOverlap(g, out))
+        const read = reads.filter((g) => outputsOverlap(g, out))
         if (read.length === 0) continue
         const literal = read.find((g) => isLiteralPattern(g))
         if (literal !== undefined && isKeyedGroup(t)) continue
@@ -484,6 +480,15 @@ function reaches(tasks: readonly GeneratedTask[], from: number, to: number): boo
   return false
 }
 
+const positive = (v: unknown): string[] =>
+  Array.isArray(v) ? v.filter((f): f is string => typeof f === 'string' && !f.startsWith('!')) : []
+
+/** A project-relative glob at its workspace path. */
+function atWorkspace(rel: string, g: string): string {
+  const bare = g.replace(/^(\.\/)+/, '')
+  return rel === '' ? bare : `${rel}/${bare}`
+}
+
 /**
  * The same across projects, for workspace outputs: cal.com's shared
  * `post-install` writes `../../node_modules/@prisma/client/**` from every
@@ -504,10 +509,6 @@ export function resolveSharedWorkspaceOutputs(
     readonly tasks: GeneratedTask[]
   }[],
 ): void {
-  const positive = (v: unknown): string[] =>
-    Array.isArray(v)
-      ? v.filter((f): f is string => typeof f === 'string' && !f.startsWith('!'))
-      : []
   const kept: { id: string; project: string; ws: string[]; own: string[] }[] = []
   const { index, candidates } = prefixIndex()
   for (const p of projects) {
@@ -517,9 +518,7 @@ export function resolveSharedWorkspaceOutputs(
         | { files?: unknown; workspaceFiles?: unknown }
         | undefined
       const ws = positive(outputs?.workspaceFiles)
-      const own = positive(outputs?.files).map((g) =>
-        rel === '' ? g.replace(/^(\.\/)+/, '') : `${rel}/${g.replace(/^(\.\/)+/, '')}`,
-      )
+      const own = positive(outputs?.files).map((g) => atWorkspace(rel, g))
       if (ws.length === 0 && own.length === 0) continue
       // Two own outputs of one project are resolveSharedOutputs'.
       const overlap = (a: string[], b: string[]): string | undefined =>
@@ -580,10 +579,6 @@ export function excludeWorkspaceOutputs(
   /** The globs an opaque entry stands for (`vx-migrate`'s `...globalInputs` spread). */
   expand: (entry: unknown) => readonly string[] = () => [],
 ): void {
-  const positive = (v: unknown): string[] =>
-    Array.isArray(v)
-      ? v.filter((f): f is string => typeof f === 'string' && !f.startsWith('!'))
-      : []
   const writers: { task: GeneratedTask; id: string; globs: string[]; ws: string[] }[] = []
   const { index, candidates } = prefixIndex()
   for (const p of projects) {
@@ -592,20 +587,11 @@ export function excludeWorkspaceOutputs(
       const outputs = t.task?.['outputs'] as
         | { files?: unknown; workspaceFiles?: unknown }
         | undefined
-      const globs = [
-        ...positive(outputs?.workspaceFiles),
-        ...positive(outputs?.files).map((g) =>
-          rel === '' ? g.replace(/^(\.\/)+/, '') : `${rel}/${g.replace(/^(\.\/)+/, '')}`,
-        ),
-      ]
+      const ws = positive(outputs?.workspaceFiles)
+      const globs = [...ws, ...positive(outputs?.files).map((g) => atWorkspace(rel, g))]
       if (globs.length === 0) continue
       index(writers.length, globs)
-      writers.push({
-        task: t,
-        id: `${p.name}#${t.name}`,
-        globs,
-        ws: positive(outputs?.workspaceFiles),
-      })
+      writers.push({ task: t, id: `${p.name}#${t.name}`, globs, ws })
     }
   }
   if (writers.length === 0) return
@@ -646,7 +632,7 @@ export function excludeWorkspaceOutputs(
     for (const t of p.tasks) {
       const files = inputsOf(t)?.files
       if (files === undefined) continue
-      const reads = positive(files).map((g) => at + g.replace(/^(\.\/)+/, ''))
+      const reads = positive(files).map((g) => atWorkspace(rel, g))
       if (reads.length === 0) continue
       for (const i of candidates(reads)) {
         const w = writers[i]!

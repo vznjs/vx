@@ -4,8 +4,7 @@
 // next hit's skip-restore, and the exact written paths marked against the
 // git snapshot so a same-project consumer re-spawns git only when its
 // globs can see them. Stale-hit-critical: a line moved here changes what
-// a later run replays. Moved out of execute-task.ts 2026-09-09 as pure
-// code motion.
+// a later run replays.
 
 import type { KeyCheck } from './input-recheck.js'
 import { existsSync, statSync } from 'node:fs'

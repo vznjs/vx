@@ -182,10 +182,6 @@ export function getIngested(ix: StoreIndex, hash: string): Promise<CacheEntry | 
   return guard(ix, () => readEntry(ix, hash))
 }
 
-export function getSaved(ix: StoreIndex, hash: string): Promise<CacheEntry | null> {
-  return getIngested(ix, hash)
-}
-
 async function readEntry(ix: StoreIndex, hash: string): Promise<CacheEntry | null> {
   const row = ix.selectEntry.get(hash) as EntryRow | null
   if (row === null) return null
@@ -302,7 +298,8 @@ async function getManyEntries(
 }
 
 export async function has(ix: StoreIndex, hash: string): Promise<'local' | 'remote' | null> {
-  return guard(ix, () => hasEntry(ix, hash))
+  if (!ix.read) return null
+  return guard(ix, () => storedHere(ix, hash)) ? 'local' : null
 }
 
 export async function localHasMany(
@@ -312,15 +309,6 @@ export async function localHasMany(
   const out = new Set<string>()
   for (const hash of hashes) if ((await has(ix, hash)) === 'local') out.add(hash)
   return out
-}
-
-async function hasEntry(ix: StoreIndex, hash: string): Promise<'local' | 'remote' | null> {
-  if (!ix.read) return null
-  return storedHere(ix, hash) ? 'local' : null
-}
-
-export function outputsPath(ix: StoreIndex, hash: string): string {
-  return tarPath(ix, hash)
 }
 
 export function outputBytes(ix: StoreIndex, hash: string): number | undefined {

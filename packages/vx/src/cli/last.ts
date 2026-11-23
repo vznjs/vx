@@ -789,7 +789,6 @@ function formatStepRows(steps: readonly RunStep[]): ui.Block | undefined {
  * slowest restores, the one thing a hit's row tells. `--format json` lists
  * every row.
  */
-
 export function formatTaskRows(
   tasks: readonly RunSummaryRow[],
   /** Task id → the input that moved under it, from the run's kept failures. */

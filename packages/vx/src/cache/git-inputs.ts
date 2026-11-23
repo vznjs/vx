@@ -432,16 +432,7 @@ function underHeads(snapshot: readonly string[], heads: readonly string[]): read
     sortedMemo.set(snapshot, ordered)
   }
   const list = ordered
-  const lowerBound = (key: string): number => {
-    let lo = 0
-    let hi = list.length
-    while (lo < hi) {
-      const mid = (lo + hi) >>> 1
-      if (list[mid]! < key) lo = mid + 1
-      else hi = mid
-    }
-    return lo
-  }
+  const lowerBound = (key: string): number => lowerBoundOf(list, key)
   const at = new Set<number>()
   const exact = (rel: string): void => {
     let i = lowerBound(rel)
@@ -613,14 +604,7 @@ export class GitFilesCache extends Map<string, readonly string[]> {
           }
       }
       const rel = abs.slice(list.base.length)
-      let lo = 0
-      let hi = list.rels.length
-      while (lo < hi) {
-        const mid = (lo + hi) >>> 1
-        if (list.rels[mid]! < rel) lo = mid + 1
-        else hi = mid
-      }
-      if (list.rels[lo] === rel) return true
+      if (list.rels[lowerBoundOf(list.rels, rel)] === rel) return true
     }
     return this.tracked.has(this.trackedKey(abs))
   }
@@ -664,7 +648,7 @@ export class GitFilesCache extends Map<string, readonly string[]> {
   /**
    * When the enumeration that vouched for `oids` started (ms since the
    * epoch): an index OID says what a file held when `git status` looked,
-   * so a file changed since may hold something else (item 743). Unset on
+   * so a file changed since may hold something else. Unset on
    * a cache no enumeration filled; its OIDs are then re-checked by content.
    */
   enumeratedAtMs: number | undefined
@@ -725,13 +709,7 @@ export class GitFilesCache extends Map<string, readonly string[]> {
     const rel = relPosix(ig.root, dir)
     if (rel.startsWith('../')) return []
     const under = rel === '' ? '' : `${rel}/`
-    let lo = 0
-    let hi = ig.paths.length
-    while (lo < hi) {
-      const mid = (lo + hi) >>> 1
-      if (ig.paths[mid]! < under) lo = mid + 1
-      else hi = mid
-    }
+    const lo = lowerBoundOf(ig.paths, under)
     const out: string[] = []
     for (let i = lo; i < ig.paths.length && ig.paths[i]!.startsWith(under); i++) {
       const p = ig.paths[i]!
@@ -774,13 +752,7 @@ export class GitFilesCache extends Map<string, readonly string[]> {
     let known = ig.asked.get(rel)
     if (known !== undefined) return known
     const under = `${rel}/`
-    let lo = 0
-    let hi = ig.paths.length
-    while (lo < hi) {
-      const mid = (lo + hi) >>> 1
-      if (ig.paths[mid]! < under) lo = mid + 1
-      else hi = mid
-    }
+    const lo = lowerBoundOf(ig.paths, under)
     known = false
     const answered = ig.answered?.get(rel)
     if (answered !== undefined) known = answered && ig.paths[lo]?.startsWith(under) === true
@@ -1914,7 +1886,7 @@ async function dropFilteredOids(
   // Every listed path, not only the trusted ones: git applies a
   // `.gitattributes` that is untracked or modified as well, and scanned in
   // the trusted set alone such a file was never seen, so a CRLF file's LF
-  // index blob keyed it through an edit (item 977).
+  // index blob keyed it through an edit.
   if (!attributesPossible) {
     for (const rel of args.listed) {
       if (
@@ -1943,7 +1915,7 @@ async function dropFilteredOids(
   // `filter` and `working-tree-encoding` rewrite bytes too: a clean driver
   // (nbstripout, a `sed`) can map two worktree files to one blob, so the
   // blob's OID keyed an edit git calls clean, and the run replayed the old
-  // output (item 978). Git LFS is a `filter` as well: its files are hashed
+  // output. Git LFS is a `filter` as well: its files are hashed
   // from disk now, the one honest identity of what a task reads.
   //
   // `text` / `eol` / `crlf` alone drop nothing here: their conversion only
@@ -2105,7 +2077,7 @@ function fileModeIgnored(gitVars: string): boolean {
  * Under `core.fileMode=false`, each trusted identity's mode from an lstat of
  * the worktree file, as `hashFile` takes it; the OID stays the index's. The
  * index mode alone kept the key through a `chmod +x`, and the task replayed
- * the output a 644 input built (item 1076). A path that does not stat goes
+ * the output a 644 input built. A path that does not stat goes
  * back to the probe.
  */
 function restampModes(trusted: Map<string, string>, workspaceRoot: string): void {
@@ -2477,7 +2449,7 @@ function racyIndex(
 /**
  * The index `status` reads when the real one holds a racily clean entry: a
  * copy refreshed once and kept beside it, named by the real index's bytes.
- * `status` reads the real index without writing it (item 880), so in a
+ * `status` reads the real index without writing it, so in a
  * checkout nothing else had refreshed, every run re-hashed every racy file:
  * 347 against 8 ms on 1,800 files. The copy keeps the real mtime until git
  * refreshes it, so git's own racy rule holds for it; only stats move, the
@@ -2550,7 +2522,7 @@ export async function startGitEnumeration(
       Bun.spawn({
         // `status` refreshes the index when it can take `index.lock`, so
         // the user's own `git add` or `commit` failed on the lock while a
-        // vx run held it (12 in 1,165 across 80 runs, item 880). Read-only, as
+        // vx run held it (12 in 1,165 across 80 runs). Read-only, as
         // editors and prompts run it; a clean tree costs the same.
         cmd: [executablePath('git'), '--no-optional-locks', ...args],
         cwd: workspaceRoot,
@@ -3096,16 +3068,7 @@ export async function applyGitEnumeration(
   const scopes = enumeration.scopes.map((rel) => path.join(workspaceRoot, rel))
   if (base === undefined) cache.noteTrackedLater(scopes, () => enumeration.tracked.map(abs))
   else cache.noteTrackedSorted(scopes, base, enumeration.tracked)
-  const lowerBound = (key: string): number => {
-    let lo = 0
-    let hi = sorted.length
-    while (lo < hi) {
-      const mid = (lo + hi) >>> 1
-      if (sorted[mid]! < key) lo = mid + 1
-      else hi = mid
-    }
-    return lo
-  }
+  const lowerBound = (key: string): number => lowerBoundOf(sorted, key)
   const rootOids = (): Map<string, string> => {
     const oids = new Map<string, string>()
     for (const [rel, oid] of trusted) oids.set(abs(rel), oid)

@@ -2095,8 +2095,8 @@ read stays a spawn of its own: `rev-parse` prints no config value.
 run starts it at once; a `discover` hook's `worktreeChanges()` starts it
 on a scoped one; the CLI's `--filter` pass starts it for a `[<since>]`
 filter before the workspace config loads and hands it to its discovery
-(`discoverCliProjects`' `git`), which the run takes over (`gitOfDiscovery`
-finds its enumeration), and the run then reuses it rather than
+(`discoverCliProjects`' `git`), which the run takes over (`discoveryOf(...).git`
+is its enumeration), and the run then reuses it rather than
 spawn a scoped walk too (G-75).
 `applyGitEnumeration` folds the result into the run's `GitFilesCache`, which `inputs.ts`'s `resolveFiles`
 reads: a tracked-clean path carries a trusted OID and skips both the

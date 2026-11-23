@@ -8,7 +8,8 @@ import { mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
-import { acceptedFlags, CORE_VERBS } from '../../../packages/vx/src/cli/help.js'
+import { acceptedFlags } from '../../../packages/vx/src/cli/help.js'
+import { CORE_VERBS } from '../../../packages/vx/src/util/verbs.js'
 import { CATEGORIES, FEATURES } from '../src/features/features.js'
 
 const SITE = path.resolve(import.meta.dir, '..')

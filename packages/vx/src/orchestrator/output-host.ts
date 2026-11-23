@@ -6,7 +6,7 @@ import { terminalSubscriber, type RunEventSubscriber } from '../report/index.js'
 import type { Logger, RunEvent } from '../report/index.js'
 import { settleWithin, teardownTimeoutMs, thrownMessage } from '../util/index.js'
 import type { OutputContext, VxPlugin } from './plugin.js'
-import { readOnlyEvents } from './read-only.js'
+import { readOnlyViews } from './read-only.js'
 
 const REQUIRED = ['status', 'taskStdout', 'taskStderr', 'taskComplete'] as const
 const OPTIONAL = [
@@ -106,7 +106,7 @@ export function guardedOutput(
     }
   }
   const render = terminalSubscriber(logger)
-  const viewOf = readOnlyEvents()
+  const viewOf = readOnlyViews()
   return (event) => {
     if (failed) return fallback(event)
     current = event

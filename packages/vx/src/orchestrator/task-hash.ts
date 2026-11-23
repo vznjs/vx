@@ -125,8 +125,8 @@ export interface ComputeHashArgs {
   cache: CacheLayer
   forwardArgs?: readonly string[] | undefined
   nestedProjectDirs: string[]
-  gitFilesCache?: GitFilesCache
-  hashCache?: HashCache
+  gitFilesCache?: GitFilesCache | undefined
+  hashCache?: HashCache | undefined
   /**
    * When provided, each `CacheKeyInput` component is pushed here as
    * `cache.key()` folds it, so the persisted set cannot drift from the key.
@@ -137,7 +137,7 @@ export interface ComputeHashArgs {
    * (`probesAfterWrites`): such a task's probes are answered for it alone,
    * after its upstream ran, never from the run's shared memo.
    */
-  probesAfterWrites?: ReadonlySet<string>
+  probesAfterWrites?: ReadonlySet<string> | undefined
 }
 
 /** A key derivation whose throw is the task's `KeyFailed`: its command never ran. */

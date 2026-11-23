@@ -79,10 +79,7 @@ export function buildPackageGraph(
   const buildReach = (): void => {
     if (reachBuilt) return
     reachBuilt = true
-    for (const p of sorted) {
-      const own = order.get(p.name)!
-      reachDeps.set(p.name, [...new Set([...own, ...(reachOnly.get(p.name) ?? [])])].sort())
-    }
+    for (const p of sorted) reachOf(p.name)
     for (const [name, deps] of reachDeps) {
       for (const d of deps) {
         const arr = directDependents.get(d)

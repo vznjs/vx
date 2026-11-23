@@ -13,7 +13,7 @@
 
 import path from 'node:path'
 import { reachDigests } from '@vzn/vx'
-import { type LockfileImporter, reachedImporters, withTransitive } from './graph.js'
+import { type LockfileImporter, newGraph, reachedImporters, withTransitive } from './graph.js'
 import { readUtf8, record, sectionsOf, stable } from './json.js'
 import { topLevel, v13Document } from './pnpm-blocks.js'
 import { fromV13 } from './pnpm-v13.js'
@@ -470,19 +470,7 @@ function importerAt(lock: Lockfile, target: string): string | undefined {
 }
 
 function buildGraph(lock: Lockfile, files: ReadonlyMap<string, string>): Graph {
-  const index = new Map<string, number>()
-  const material: string[] = []
-  const edges: number[][] = []
-  const node = (id: string, own: string): number => {
-    let i = index.get(id)
-    if (i === undefined) {
-      i = material.length
-      index.set(id, i)
-      material.push(own)
-      edges.push([])
-    }
-    return i
-  }
+  const { index, material, edges, node } = newGraph()
   for (const key of lock.snapshots.keys()) {
     const resolution = lock.resolutions.get(key) ?? lock.resolutions.get(packageKey(key)) ?? ''
     const patch = patchOf(lock, key)
