@@ -714,10 +714,24 @@ kleur@4.1.5:
       "node_modules was installed from a different yarn.lock (packages/a's is-number is 6.0.0, the lockfile names 7.0.0) — run `yarn install`",
     )
     await write({ 'yarn.lock': both, '.yarnrc.yml': '' })
-    // A focused install leaves the workspace out of the state: not checked.
+    // A focused install lists only the workspaces it installed, the root
+    // always, without its dependencies: not checked.
     await write({
       'node_modules/is-number/package.json': pkg('6.0.0'),
       'node_modules/.yarn-state.yml': yarnState('6.0.0').replace(/"a@workspace[^]*?\n\n/, ''),
+    })
+    expect(await run(yarn())).toBe('ok')
+    // The root is listed by every focus, its dependencies not installed:
+    // its is-number found is the focused workspace's (probed on babel).
+    const rooted = both.replace(
+      '  resolution: "root@workspace:."\n',
+      '  resolution: "root@workspace:."\n  dependencies:\n    is-number: "npm:7.0.0"\n',
+    )
+    expect(rooted).not.toBe(both)
+    const state = yarnState('6.0.0').replace(/"a@workspace[^]*?\n\n/, '')
+    await write({
+      'yarn.lock': rooted,
+      'node_modules/.yarn-state.yml': `${state}\n"root@workspace:.":\n  locations:\n    - ""\n`,
     })
     expect(await run(yarn())).toBe('ok')
   })
