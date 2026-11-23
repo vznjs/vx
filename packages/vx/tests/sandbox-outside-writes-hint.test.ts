@@ -64,14 +64,13 @@ describe('the refused outside writes hint', () => {
     )
   })
 
-  // A sandboxed `cargo build` in a crate of a Cargo workspace rewrote the
-  // root's `Cargo.lock`, and the hint granted the lock's directory, the
-  // workspace root: every project's sources made writable (2026-11-23).
+  // A task writing a file at the workspace root was told to grant the
+  // root's directory: every project's sources made writable (2026-11-23).
   it('a file in a directory holding the project is its own grant', () => {
     const ws = path.join(base, 'ws')
-    expect(hint([`${ws}/Cargo.lock`, `${ws}/target/.rustc_info.json`], [])).toEndWith(
+    expect(hint([`${ws}/bun.lock`, `${ws}/dist/.stamp`], [])).toEndWith(
       'If the task needs them, grant them, e.g. ' +
-        `\`allow: { write: ['../Cargo.lock', '../target/'] }\`.`,
+        `\`allow: { write: ['../bun.lock', '../dist/'] }\`.`,
     )
   })
 

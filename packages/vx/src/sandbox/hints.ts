@@ -231,8 +231,8 @@ export function outsideWritesHint(
     return `${homeCache}/${tool}`
   }
   // Never home or above it: a tool's own `~/.cache` (or `~/.npmrc`) is the grant.
-  // Nor a directory holding the project: `cargo build` in a crate rewrote
-  // the workspace root's `Cargo.lock`, and its directory opened every project.
+  // Nor a directory holding the project: a task writing `../shared.txt`
+  // was told to grant `../`, every sibling project writable.
   const project = toRealPath(within)
   const grantOf = (p: string): string => {
     const cache = toolCache(p)
