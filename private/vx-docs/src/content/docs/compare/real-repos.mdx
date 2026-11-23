@@ -13,6 +13,11 @@ bunx @vzn/vx init --native
 
 <Levels />
 
+<Concept term="Cache hit">
+  A task whose inputs have not changed since a stored run. The tool skips it and uses the stored
+  outputs instead.
+</Concept>
+
 Each workspace is timed three ways. Step through them first:
 
 <Walkthrough title="Three runs, three questions">
@@ -33,11 +38,6 @@ Nothing is deleted. Every task is a hit with its outputs already in place, so th
 </Frame>
 </Walkthrough>
 
-<Concept term="Cache hit">
-  A task whose inputs have not changed since a stored run. The tool skips it and uses the stored
-  outputs instead.
-</Concept>
-
 <Quiz q="Which row tells you the most about the tool itself, not your build?">
   **Nothing changed.** No task does any work there, so every millisecond is the tool's own.
 </Quiz>
@@ -56,7 +56,7 @@ Nothing is deleted. Every task is a hit with its outputs already in place, so th
 
 Run %bench.real.solid.date% on %bench.real.solid.machine%, against %bench.real.solid.tool%.
 
-<Takeaway>compare both tools on a small library workspace, run by run.</Takeaway>
+<Takeaway>see what each tool costs on a 4-task library build, cold and warm.</Takeaway>
 
 ## vueuse/vueuse
 
@@ -70,13 +70,15 @@ Run %bench.real.solid.date% on %bench.real.solid.machine%, against %bench.real.s
 
 Run %bench.real.vueuse.date% on %bench.real.vueuse.machine%, against %bench.real.vueuse.tool%.
 
-<Takeaway>compare both tools on a workspace of a dozen packages.</Takeaway>
+<Takeaway>see how the gap holds on 12 tasks that depend on each other.</Takeaway>
 
 <Deeper level="details" title="Why line endings matter in this workspace">
 
-vueuse sets `* text=auto eol=lf`. There Turborepo trusts git's index, and [a conformance case](../../conformance/inputs/#olfjum) shows it replaying stale output after a same-size line-ending change.
+vueuse sets `* text=auto eol=lf`, so git may store a file with other line endings than the one on disk.
 
-vx trusts the index there only for a file whose stored blob is the same size as the file. A line-ending conversion never leaves that. Every other file is checked on disk.
+vx trusts git's index only for a file whose stored blob is the same size as the file. Every other file is checked on disk, so a line-ending edit always re-runs.
+
+How each tool handles this is [a conformance case](../../conformance/inputs/#olfjum).
 
 </Deeper>
 
@@ -92,11 +94,11 @@ vx trusts the index there only for a file whose stored blob is the same size as 
 
 Run %bench.real.create-t3-turbo.date% on %bench.real.create-t3-turbo.machine%, against %bench.real.create-t3-turbo.tool%.
 
-<Takeaway>compare both tools on a starter app template.</Takeaway>
+<Takeaway>see the numbers you would get starting from a popular app template.</Takeaway>
 
 <Deeper level="details" title="How these are measured">
 
-**Same work.** Both tools run the same tasks, interleaved, each at its own default worker count. Turborepo runs with its daemon off.
+**Same work.** Both tools run the same tasks, interleaved, each at its own default worker count. Turborepo's daemon is turned off; vx has none.
 
 **Best of N.** A cold build is the best of three runs. Restore and nothing changed are the best of up to thirty, because one run of them swings by 15 ms.
 

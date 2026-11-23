@@ -71,7 +71,7 @@ Both tools ran the same graph, the same commands, at the same concurrency. Short
 
 %bench.provenance%
 
-<Takeaway>read a benchmark bar as the time the tool costs you, not your build's time.</Takeaway>
+<Takeaway>read each bar as the time the tool itself costs you on %bench.tasks% tasks.</Takeaway>
 
 <Deeper level="details" title="How it is measured">
 
@@ -83,15 +83,15 @@ Both tools ran the same graph, the same commands, at the same concurrency. Short
 
 **Nx settings.** The daemon is off, as in CI. `.env` loading is off (`NX_LOAD_DOT_ENV_FILES=false`), which makes Nx faster here than its default.
 
-The daemon does not help here. With it on, a nothing-changed run took 70 s against 23 s off (Nx 24.0.6, 4-core Linux, best of three, 2026-11-23).
+Why off? In a separate check of this graph, the daemon made a nothing-changed run slower, not faster (Nx 24.0.6, 4-core Linux, best of three, 2026-11-23).
 
 The full method is on [Benchmarks](../../benchmarks/).
 
 </Deeper>
 
-## Free on vx, Nx Cloud on Nx
+## Sandbox, flaky tasks and run history on your machine
 
-Nx offers these three through Nx Cloud. With vx they run on your machine, at no cost.
+Nx offers these three through Nx Cloud. vx runs them locally, with no account.
 
 | You want | Nx | vx |
 | --- | --- | --- |
@@ -110,13 +110,11 @@ A sandboxed task that reads a file it did not declare fails. A failed task is ne
 
 ## A shared cache a pull request cannot poison
 
-A pull request that can write the cache main reads can plant bytes that main later replays.
-
-That attack is CREEP ([CVE-2025-36852](https://nx.dev/blog/cve-2025-36852-critical-cache-poisoning-vulnerability-creep)). Nx's advisory names its bucket-based self-hosted cache packages as affected.
-
-With vx, the cache server decides. Your CI's OIDC token, checked against the server's trust policy, says where a write lands.
+With vx, the cache server decides where a write lands. Your CI's OIDC token, checked against the server's trust policy, names the branch.
 
 So a pull request writes only its own branch's cache. It reads its own results first, then main's ([security model](../../security/#cache-poisoning)).
+
+This blocks cache poisoning such as [CVE-2025-36852](https://nx.dev/blog/cve-2025-36852-critical-cache-poisoning-vulnerability-creep), where a pull request plants bytes main later replays.
 
 <Takeaway>share one cache between main and pull requests without trusting every pull request.</Takeaway>
 

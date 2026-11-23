@@ -54,6 +54,8 @@ build: {
 
 Look at `exec.command`: vx runs `vite build` itself. No `package.json` script sits in between.
 
+Why `package.json` in inputs? Turborepo always hashes a package's own `package.json`, so init adds it. An edit to its `exports` still re-runs the build.
+
 ## How much time each tool adds
 
 <Concept term="Overhead">
@@ -72,7 +74,7 @@ Both tools ran the same graph, the same commands, at the same concurrency. Short
 
 %bench.provenance%
 
-<Takeaway>read a benchmark bar as the time the tool costs you, not your build's time.</Takeaway>
+<Takeaway>read each bar as the time the tool itself costs you on %bench.tasks% tasks.</Takeaway>
 
 <Deeper level="details" title="How it is measured">
 
@@ -95,7 +97,7 @@ Those flags make Turborepo slower here, by about 0.1 to 0.2 s of a nothing-chang
 | Config changes to count | Static JSON | Your TypeScript is evaluated, then hashed |
 | Proof a task reads only its inputs | No file sandbox | Opt-in [sandbox](../../docs/sandboxing/), free and local |
 
-The second row is the one that bites. A stale file in `dist/` ships quietly.
+Watch the second row when you switch: a file left in `dist/` by an older build is gone after a vx hit.
 
 <Quiz q="Last week's build wrote dist/old.js. Today's build no longer does. After a cache hit, is dist/old.js still there?">
   With Turborepo, yes: a restore adds files and never removes them. With vx, no: it wipes the
