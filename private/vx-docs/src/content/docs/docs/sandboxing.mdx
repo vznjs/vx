@@ -8,7 +8,7 @@ import { sandboxWalls } from '../../../components/docs/pictures/sandboxing.js'
 import { Aside } from '@astrojs/starlight/components'
 import { Levels, Deeper, Concept, Quiz, Walkthrough, Frame, Compare, Takeaway, NextStep } from '../../../components/learn'
 
-Put a task in a box. It sees only the files you grant, and vx names every file it reached for outside them.
+A cache is only as right as a task's inputs. Put the task in a box: it sees only the files you grant, and vx names every file it reached for outside them.
 
 ```ts mark={3}
 exec: {
@@ -444,7 +444,7 @@ Inside the workspace, everything the task was not granted. Outside it, the store
 
 `~/.ssh`, `~/.gnupg`, `~/.aws`, `~/.azure`, `~/.kube`, `~/.config/gcloud`, `~/.config/gh`, `~/.docker/config.json`, `~/.netrc`, `~/.git-credentials`, `~/.npmrc`, `~/.yarnrc.yml`, `~/.bunfig.toml`, the browsers' profiles.
 
-The [full list](../../schema/sandbox/) lives in the config reference. A grant naming one opens it for that task.
+The [full list](../../schema/sandbox/) lives in the config reference. A grant naming one opens it for that task. What the sandbox stops, and what it does not: [Security model](../../security/).
 
 ### Requirements & platform support
 
@@ -473,4 +473,4 @@ The [full list](../../schema/sandbox/) lives in the config reference. A grant na
 
 </Deeper>
 
-<NextStep href="../../security/" title="Security model">What the sandbox protects you from, and what it does not.</NextStep>
+<NextStep href="../../docs/ci/" title="CI">Your tasks are cached and proven. Now run them on every push.</NextStep>
