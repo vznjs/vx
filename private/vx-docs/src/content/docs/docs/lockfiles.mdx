@@ -332,6 +332,8 @@ Each plugin also adds a project's manifest (`package.json`, or under `pnpm()` a 
 
   Name it as an input: in `inputs.files` under the project's own `node_modules`, in
   `inputs.workspaceFiles` under the root's (`node_modules/.prisma/client/**`).
+- **A lockfile version change** (npm's `lockfileVersion` 2 to 3) re-keys every project, and
+  `--affected` selects them all, though nothing installed changed.
 - **An unreadable lockfile** stops the run and names the install to re-run.
 - **A lockfile changed since `vx lock`** stops the run: `run vx lock`.
 - **A lockfile older than a `package.json`** (a dependency added, no install yet) stops `vx lock`
