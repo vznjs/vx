@@ -3773,7 +3773,8 @@ is gone (pruned, or the run failed and never saved one) the verb still
 names the hash change and says the component diff is unavailable. An
 entry restored from a remote cache came with no fingerprints (the
 artifact carries none), and the detail line says so rather than a
-prune. When
+prune; a hit of a task that declares output files records the ones this
+machine derived the same key from, so its diff has rows. When
 only the previous run failed, or wrote no cache (`--no-cache`, or a
 `--cache-policy` without write), the diff is taken against the last run
 that saved an entry instead, and the detail line names that run, even

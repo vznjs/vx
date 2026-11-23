@@ -35,7 +35,7 @@ import { type SaveFacts, withCheckFacts } from './miss-save.js'
 import { AttemptSignal, AttemptStream, type MissRun } from './miss-run.js'
 import { getContext } from './remote-prefetch.js'
 import { forwardedSignal } from './signals.js'
-import { computeTaskHash, keyOf, keyOrDescribe } from './task-hash.js'
+import { computeTaskHash, describeTaskInputs, keyOf, keyOrDescribe } from './task-hash.js'
 import { type TaskPolicy, taskPolicy } from './task-policy.js'
 import { isLocalExecutor } from './local-executor.js'
 import { isAborted, taskEnv } from './task-process.js'
@@ -90,12 +90,50 @@ async function restoreOrMiss(
   cacheOpStart: number,
   taskStartNs: bigint,
 ): Promise<TaskOutcome | null> {
+  const inputs = hit.source === 'remote' ? await remoteHitInputs(args, hash) : undefined
   try {
-    return await restoreHit({ args, hash, hit, cacheOpStart, taskStartNs })
+    const restored = await restoreHit({ args, hash, hit, cacheOpStart, taskStartNs })
+    if (inputs !== undefined) recordHitInputs(args, hash, inputs)
+    return restored
   } catch (err) {
     if (!(err instanceof ArtifactVanishedError)) throw new RestoreFailed(err)
     warnOf(args.log)(`[vx] ${args.node.id}: ${err.message} — running it`)
     return null
+  }
+}
+
+function recordHitInputs(args: ExecuteArgs, hash: string, inputs: TaskInputComponent[]): void {
+  try {
+    args.run.cache.recordInputs?.(hash, inputs)
+  } catch {
+    // Proof only, as above: a store that refuses the row costs the next run a miss.
+  }
+}
+
+/**
+ * The rows this machine derives a remote hit's key from, taken before the
+ * restore rewrites its outputs: an ingest records none, and without them a
+ * committed output the hit rewrote is never proved, so the next run keys it
+ * by the restored bytes and misses. None when this derivation is not the
+ * hit's key (an up-front key taken ahead of its deps) or the task commits
+ * no outputs a key could fold.
+ */
+async function remoteHitInputs(
+  args: ExecuteArgs,
+  hash: string,
+): Promise<TaskInputComponent[] | undefined> {
+  if ((args.node.config.outputs?.files.length ?? 0) === 0) return undefined
+  if (args.run.gitFilesCache === undefined || args.run.cache.recordInputs === undefined)
+    return undefined
+  try {
+    const captured: TaskInputComponent[] = []
+    const hashArgs = { ...hashArgsOf(args), probesAfterWrites: args.run.probesAfterWrites }
+    // Described, never the fold memo's answer: a remembered key captures no rows.
+    const { hash: derived } = await describeTaskInputs({ ...hashArgs, captureInto: captured })
+    return derived === hash ? captured : undefined
+  } catch {
+    // Proof only: without it the next run keys the file by its bytes.
+    return undefined
   }
 }
 

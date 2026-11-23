@@ -266,6 +266,20 @@ export async function save(ix: StoreIndex, args: SaveArgs): Promise<void> {
   ix.savedBytes.set(args.hash, bytes)
 }
 
+/**
+ * Key components for an entry a remote served, taken by this machine's own
+ * derivation of the same key: an ingest has none, and a committed output the
+ * hit restored is proved by them (`foldedStamps`). Never over a row a save wrote.
+ */
+export function recordInputs(
+  ix: StoreIndex,
+  hash: string,
+  components: readonly TaskInputComponent[],
+): void {
+  if (!ix.write || components.length === 0) return
+  ix.insertEntryInput.run(hash, encodeEntryInputs(components))
+}
+
 export function localWritesEnabled(ix: StoreIndex): boolean {
   return ix.write
 }

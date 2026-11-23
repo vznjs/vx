@@ -1764,7 +1764,9 @@ describe('orchestrator: injected RemoteCacheLayer (RunOptions.remoteCache)', () 
 
   // A remote hit keeps no input fingerprints (the artifact carries none),
   // and the next miss's `vx why` said the entry "was pruned" (2026-11-11:
-  // a fresh checkout's first edit). It names the remote instead.
+  // a fresh checkout's first edit). It names the remote instead. A hit of a
+  // task with outputs records the inputs this machine derived its key from
+  // (a committed output it rewrote is proved by them), so its diff names them.
   it(
     "the next miss's diff says the previous entry came from the remote, not that it was pruned",
     async () => {
@@ -1780,8 +1782,8 @@ describe('orchestrator: injected RemoteCacheLayer (RunOptions.remoteCache)', () 
               tasks: {
                 build: {
                   dependsOn: ['^build'],
-                  exec: { command: 'echo built > out.txt' },
-                  inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] }, cache: true,
+                  exec: { command: 'echo built' },
+                  inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true,
                 },
               },
             }
@@ -1805,7 +1807,10 @@ describe('orchestrator: injected RemoteCacheLayer (RunOptions.remoteCache)', () 
           const note =
             'cache key changed but input fingerprints are unavailable — the previous entry was restored from the remote cache, which keeps no input fingerprints, so vx cannot name what changed; only the key change is known'
           expect([diffOf('a#build'), diffOf('b#build')]).toEqual([
-            { note, changed: [] },
+            {
+              note: '1 cache-key component(s) changed since the previous run',
+              changed: ['file packages/a/src/in.txt'],
+            },
             { note, changed: [] },
           ])
         } finally {

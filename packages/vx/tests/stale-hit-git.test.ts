@@ -6,7 +6,8 @@ import { mkdtemp, readdir, readFile, rm, writeFile, utimes } from 'node:fs/promi
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { writeLocalWorkspace } from './helpers/local-workspace.js'
+import { localWorkspaceSource, writeLocalWorkspace } from './helpers/local-workspace.js'
+import { pluginSource } from './helpers/plugin.js'
 import { git, gitInit } from './helpers/workspace.js'
 import { vxSync } from './helpers/vx.js'
 
@@ -194,6 +195,66 @@ describe('stale cache hits', () => {
       vx(root, 'run', 'build')
       expect(vx(root, 'run', 'build')).toMatch(/build[^\n]*up-to-date/)
       expect(await readFile(path.join(root, 'dist/index.js'), 'utf8')).toBe('c')
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a committed output a remote hit rewrote still hits on the next run',
+    async () => {
+      // A fresh clone pulls the build from a remote: the restore rewrites the
+      // committed source map with the bytes the other machine built. The hit
+      // was keyed by the version git holds, yet the next run keyed the now
+      // dirty file by its bytes and missed: a remote ingest wrote no input
+      // rows to prove what the restore's key folded.
+      const remote = path.join(root, 'remote')
+      const a = path.join(root, 'a')
+      const b = path.join(root, 'b')
+      const plugin = pluginSource(
+        'org/dir-remote',
+        `{ cache: () => {
+            const f = (h) => ${JSON.stringify(remote)} + '/' + h
+            return {
+              has: async (h) => ((await Bun.file(f(h)).exists()) ? {} : null),
+              get: async (h) => ((await Bun.file(f(h)).exists()) ? { body: Bun.file(f(h)), durationMs: undefined } : null),
+              put: async (h, body) => { await Bun.write(f(h), await body.arrayBuffer()) },
+            }
+          } }`,
+      )
+      await Bun.write(path.join(a, 'package.json'), '{"name":"r","private":true}')
+      await Bun.write(path.join(a, '.vx/workspace.mjs'), localWorkspaceSource([plugin]))
+      await Bun.write(
+        path.join(a, 'vx.config.mjs'),
+        `export default {
+           tasks: {
+             build: {
+               exec: { command: 'mkdir -p dist && cat src/a.txt > dist/index.js && od -An -N8 -tx8 /dev/urandom > dist/index.js.map' },
+               inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
+             },
+           },
+         }`,
+      )
+      await Bun.write(path.join(a, 'src/a.txt'), 'a')
+      await Bun.write(path.join(a, 'dist/index.js'), 'a')
+      await Bun.write(path.join(a, 'dist/index.js.map'), 'committed')
+      await Bun.write(path.join(a, '.gitignore'), '.vx/cache/\n')
+      await Bun.write(path.join(remote, '.keep'), '')
+      gitInit(a)
+      git(a, 'add', '-A')
+      git(a, 'commit', '-q', '-m', 'initial')
+      git(root, 'clone', '-q', a, b)
+
+      // Off CI a run writes no remote unless told to.
+      expect(vx(a, 'run', 'build', '--cache-policy=local:rw,remote:rw')).not.toMatch(
+        /build[^\n]*(up-to-date|restored)/,
+      )
+      const built = await readFile(path.join(a, 'dist/index.js.map'), 'utf8')
+      expect(vx(b, 'run', 'build')).toMatch(/build[^\n]*restored/)
+      expect(await readFile(path.join(b, 'dist/index.js.map'), 'utf8')).toBe(built)
+      expect(vx(b, 'run', 'build')).toMatch(/build[^\n]*up-to-date/)
+      // CONTROL: a hand edit after the restore still moves the key.
+      await Bun.write(path.join(b, 'dist/index.js.map'), 'hand')
+      expect(vx(b, 'run', 'build')).not.toMatch(/build[^\n]*(up-to-date|restored)/)
     },
     TIMEOUT,
   )

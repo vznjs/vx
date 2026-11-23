@@ -22,7 +22,7 @@ import {
   type PruneResult,
   type SaveArgs,
 } from './cache.js'
-import { isCorruptArtifact, type TaskMemo } from './layer.js'
+import { isCorruptArtifact, type TaskInputComponent, type TaskMemo } from './layer.js'
 import { RemoteLane, type ResolvedRemote } from './remote-lane.js'
 import type { PluginSecrets } from '../util/index.js'
 
@@ -633,6 +633,10 @@ export class LayeredCache implements CacheLayer {
 
   async ingest(hash: string, body: Blob | Response, meta: IngestMeta): Promise<void> {
     await this.local.ingest(hash, body, meta)
+  }
+
+  recordInputs(hash: string, components: readonly TaskInputComponent[]): void {
+    this.local.recordInputs(hash, components)
   }
 
   stats(opts?: CacheStatsOptions): CacheStats {
