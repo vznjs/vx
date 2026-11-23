@@ -131,11 +131,6 @@ function execThroughRestores(
   return view ?? exec
 }
 
-/**
- * For each task, how many other tasks are transitively blocked on it. The
- * highest go first: they unlock the most work and minimize idle workers at the
- * end. Nx ranks by direct dependents only.
- */
 /** Direct dependents as one flat list: node `i`'s are `dependents[offset[i]..offset[i + 1]]`. */
 interface DependentLists {
   offset: Int32Array
@@ -203,6 +198,11 @@ function popcount(v: number): number {
   return (((v + (v >>> 4)) & 0x0f0f0f0f) * 0x01010101) >>> 24
 }
 
+/**
+ * For each task, how many other tasks are transitively blocked on it. The
+ * highest go first: they unlock the most work and minimize idle workers at the
+ * end. Nx ranks by direct dependents only.
+ */
 export function computeReverseDepCount(
   nodes: ReadonlyMap<string, TaskNode>,
   /** Count only these dependents (the exec tier); every one when absent. */
