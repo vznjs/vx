@@ -985,13 +985,13 @@ other persistent task`), and a non-zero exit makes the run exit 1
    on the same line, underlined to the terminal's edge; every grid
    starts where a field's value does:
 
-   ```
-     Tasks     status  cache     ±usual    time   cpu    mem outputs  blocks worker         task
-               success miss      −846ms   1.96s  142%  310MB   600KB       0 local          solid-js#build
+   ```ansi
+   [4m[58;2;110;118;129m  [1m[38;2;167;139;250mTasks[0m[4m[58;2;110;118;129m     [2mstatus  cache     ±usual    time   cpu    mem outputs  blocks worker         task[0m[4m[58;2;110;118;129m                           [0m
+               [38;2;34;197;94msuccess[0m [2mmiss[0m        [2m+0ms[0m     [38;2;203;213;225m9ms[0m   [2m12%[0m  [2m1.8MB[0m      [2m0B[0m       [2m0[0m [2mlocal[0m          [38;2;147;197;253mapp[0m[2m#[0m[38;2;96;165;250mtest[0m
+               [4m[58;2;110;118;129m                                                                                                            [0m
 
-
-               running miss        ~18s   3.19s  180%  412MB       —      12 local        ◆ solid-js#types
-               blocked —           ~6.0s       —     —      —       —       — —              └ solid-element#build
+               [38;2;234;179;8mrunning[0m [2mmiss[0m       [2m~5.0s[0m   [38;2;203;213;225m2.10s[0m    [2m0%[0m  [2m1.9MB[0m       [2m—[0m       [38;2;203;213;225m1[0m [2mlocal[0m        [38;2;234;179;8m◆[0m [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m
+               [2mblocked[0m [2m—[0m          [2m~50ms[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m—[0m [2m—[0m              [2m└[0m [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m
    ```
 
    A running row's status is yellow.
@@ -1994,26 +1994,26 @@ vx cache clean --global                     # Also clear every other workspace's
 
 ### Examples
 
+```sh
+vx cache clean --older-than 30d
 ```
-$ vx cache clean --older-than 30d
-✓ vx cache clean  freed 1.3 GB
 
-  42 entries
+```ansi
+[38;2;34;197;94m✓[0m [1mvx cache clean[0m  freed 95 MB
 
-$ vx cache clean --older-than 30d      # after a SCHEMA_VERSION bump
-✓ vx cache clean  freed 1.3 GB
+  [38;2;203;213;225m15 entries[0m
+```
 
-  42 orphaned artifacts
+With `--dry` it says what would go and deletes nothing:
 
-$ vx cache clean --older-than 30d      # months of runs, nothing evicted
-✓ vx cache clean  freed 112 MB
+```sh
+vx cache clean --older-than 30d --dry
+```
 
-  722193 history rows past 30 days
+```ansi
+[38;2;6;182;212m›[0m [1mvx cache clean[0m  would free 95 MB (dry run)
 
-$ vx cache clean --older-than 30d --dry
-› vx cache clean  would free 1.3 GB (dry run)
-
-  42 entries · 3 orphaned artifacts
+  [38;2;203;213;225m15 entries[0m
 ```
 
 ### Options
@@ -2680,25 +2680,17 @@ vx upgrade [TAG] [-g|--global]
 
 In a project whose `package.json` lists `@vzn/vx`, beside a `bun.lock`:
 
-```
-› vx upgrade  0.0.1 → 0.0.2
-
-  bun add @vzn/vx@0.0.2 in /repo
+```sh
+vx upgrade
 ```
 
-From a global vx in that project, both move:
+```ansi
+[38;2;6;182;212m›[0m [1mvx upgrade[0m  0.0.658 → 0.0.659
 
+  [1mbun add @vzn/vx@0.0.659[0m[2m in /work/repo[0m
 ```
-› vx upgrade  project 0.0.1 → 0.0.2
 
-  bun add @vzn/vx@0.0.2 in /repo
-
-› vx upgrade  global 0.0.1 → 0.0.2
-
-  /usr/local/bin/vx
-
-✓ vx upgrade  global installed 0.0.2
-```
+From a global vx in that project, both move: the project's vx first, then the global binary.
 
 ### Options
 
@@ -3452,28 +3444,30 @@ vx info [--format pretty|json] [--cache-dir <path>]
 
 ### Example
 
+```sh
+vx info
 ```
-$ vx info
 
-  vx info
-  vx                0.0.0
-  bun               1.4.2
-  git               2.53.0
-  git status cache  core.fsmonitor, core.untrackedCache off
-  workspace root    /work/repo
-  projects          12 (34 tasks)
-  plugins           2 — @vzn/vx-reapi (executor, cache); @vzn/vx-otel (telemetry)
-  workers           2 — cgroup CPU quota 2 of 8 cores
-  memory            13 GB usable — cgroup limit; the machine has 16 GB
-  cache dir         /work/repo/.vx/cache (8.2 MB, this workspace's run history)
-  cache store       /home/me/.vx/3f2a9c1e7b4d5a60/cache (1.3 GB, shared by this workspace's checkouts)
-  cache versions    keys vx-cache-v56 · index schema v57
-  cache entries     42 (1.3 GB)
-  orphans           3 artifacts (12 MB) the index does not know — `vx cache clean` reaps them
-  task runs (24h)   7 (5 cache hits)
-  flaky tasks       1 — web#test (3 of 11 runs failed on unchanged inputs)
-  sandbox           available (9 tasks declare exec.sandbox)
-  projects lock     yes
+```ansi
+
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mvx info[0m[4m[58;2;110;118;129m                                                                                                               [0m
+  [2mvx              [0m  [38;2;203;213;225m0.0.660 (/usr/local/bin/vx)[0m
+  [2mbun             [0m  [38;2;203;213;225m1.4.4[0m
+  [2mgit             [0m  [38;2;203;213;225m2.43.0[0m
+  [2mgit status cache[0m  [38;2;203;213;225mcore.fsmonitor, core.untrackedCache off[0m
+  [2mworkspace root  [0m  [38;2;203;213;225m/work/repo[0m
+  [2mprojects        [0m  [38;2;203;213;225m3 (2 tasks)[0m
+  [2mplugins         [0m  [38;2;203;213;225m1 — @vzn/vx-lockfile (discover, project, key, fingerprint)[0m
+  [2mworkers         [0m  [38;2;203;213;225m4 — the CPU count[0m
+  [2mmemory          [0m  [38;2;203;213;225m13 GB usable — cgroup limit; the machine has 16 GB[0m
+  [2mcache dir       [0m  [38;2;203;213;225m/work/repo/.vx/cache (332 KB, this workspace's run history)[0m
+  [2mcache store     [0m  [38;2;203;213;225m~/.vx/c46f226815d1a23e/cache (284 MB, shared by this workspace's checkouts)[0m
+  [2mcache versions  [0m  [38;2;203;213;225mkeys vx-cache-v56 · index schema v57[0m
+  [2mcache entries   [0m  [38;2;203;213;225m37 (284 MB)[0m
+  [2mtask runs (24h) [0m  [38;2;203;213;225m34 (11 cache hits: 2 up-to-date, 9 restored)[0m
+  [2mflaky tasks     [0m  [38;2;203;213;225m1 — app#test (2 of 5 runs failed on unchanged inputs)[0m
+  [2msandbox         [0m  [38;2;203;213;225mavailable (0 tasks declare exec.sandbox)[0m
+  [2mprojects lock   [0m  [38;2;203;213;225myes[0m
 ```
 
 ### Options
@@ -3681,8 +3675,8 @@ entry kept its components it reads `(inputs differ)`. A key that folds a
 task with no `inputs` is new every run, so the task never hits; the
 verdict names that task:
 
-```
-  verdict    never cached: its key includes app#gate, which declares no `inputs`, so each run derives a new key; declare inputs on app#gate
+```ansi
+  [2mverdict [0m  [38;2;203;213;225mnever cached: its key includes @demo/ui#gate, which declares no [0m[1m`inputs`[0m[38;2;203;213;225m, so each run derives a new key; declare inputs on @demo/ui#gate[0m
 ```
 
 An **unchanged** key has three endings, and the verdict distinguishes
@@ -3712,7 +3706,7 @@ A skipped task never ran and derived no key: its line is `skipped · no key`.
 moves it and how to stop a move the task does not need. An upstream
 row is only the carrier, so `vx why` follows each dependency that moved
 in the same run down to the tasks whose OWN inputs moved and prints
-them under `root cause`, one chain per root (five at most, then a
+them under `Root cause`, one chain per root (five at most, then a
 count; a chain of more than six tasks prints its first two and last
 three around `N more`), and `what to do` speaks to those kinds instead
 (a `config` line names the `vx show` of the root's task, not the asked
@@ -3720,9 +3714,9 @@ one). Each upstream is
 compared between the two keys the dependant folded, so a run of the
 upstream alone in between changes nothing it names:
 
-```
-  root cause:
-    app#build ← lib#build ← file packages/lib/src/index.ts
+```ansi
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mRoot cause[0m[4m[58;2;110;118;129m                                                                                                            [0m
+  [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m[2m ← [0m[38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m[2m ← [0m[1mfile packages/ui/src/index.ts[0m
 ```
 
 A group records no run, so the key also names each task under a group
@@ -3744,9 +3738,10 @@ An edit made outside a run, or after the asked run ended, names none.
 The history holds when tasks ran, not what they wrote: a hand edit made
 while another task ran names that task.
 
-```
-  changed during a run:
-    packages/lib/src/gen.txt  while app#build ran
+```ansi
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mChanged during a run[0m[4m[58;2;110;118;129m                                                                                                  [0m
+  [2mfile                     written while[0m
+  [1mpackages/ui/src/gen.txt[0m  [38;2;203;213;225m@demo/web#build[0m
 ```
 
 **Kinds.** A row's kind is what the key folded:
@@ -4009,19 +4004,20 @@ shell, while it runs: an agent that started `vx run` in the background
 reads what runs, what already ended and what waits, without waiting for
 the end (the history holds a run only once it ended).
 
+```sh
+vx last --live
 ```
-$ vx last --live
-run 019a2f3c-5b1e-7c2d-9a40-1f3e5d7c8b21 — running 4.21s
-  $ vx run a#all
-  1 running · 2 ended · 1 waiting
 
-  running  a#slow   4.12s
-  success  a#lost   9ms
-  success  a#quick  8ms
-  waiting  a#after
+```ansi
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mRun[0m[4m[58;2;110;118;129m [2m01a20763-8948-7770-8fbf-4249802eeb29[0m[4m[58;2;110;118;129m                                                                              [0m
+  [2mstatus  [0m  [38;2;6;182;212mrunning 1.85s[0m
+  [2mcommand [0m  [1mvx run build --all[0m
+  [2mtasks   [0m  [38;2;203;213;225m1 running · 0 ended · 1 waiting[0m
 
-  warnings
-    [vx] a#lost: inputs matched no files (nope/**) — the key will not change when this project's source does
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mTasks[0m[4m[58;2;110;118;129m [2m2[0m[4m[58;2;110;118;129m                                                                                                               [0m
+  [2mstatus   task              time[0m
+  [38;2;6;182;212mrunning[0m  [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m   [38;2;203;213;225m1.80s[0m
+  [2mwaiting[0m  [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m
 ```
 
 With `--format json` it prints `{ live, tasks, warnings }`: `live` is
@@ -4345,22 +4341,22 @@ streams live instead (§ Output).
 
 Frame anatomy:
 
-```
-┌─ app#test > failed (exit 1, 1 sandbox violation)
+```ansi
+[2m┌─[0m [1m[38;2;147;197;253mapp[0m[2m#[0m[1m[38;2;96;165;250mtest[0m [2m>[0m [1m[38;2;239;68;68mfailed (exit 1, 1 sandbox violation)[0m
 
-$ bun test
+[2m$ bun test[0m
 
-├─ OUTPUT ────────────────────────────────────────────────────
+[2m├─[0m [1mOUTPUT[0m [2m────────────────────────────────────────────────────[0m
 
 2 pass
-error: expected 3, got 2
+[38;2;239;68;68merror: expected 3, got 2[0m
 1 fail
 
-├─ SANDBOX VIOLATIONS (1) ────────────────────────────────────
+[2m├─[0m [1m[38;2;239;68;68mSANDBOX VIOLATIONS (1)[0m [2m────────────────────────────────────[0m
 
 write ../shared/notes.txt
 
-└─ app#test ── (2.10s) failed (exit 1, 1 sandbox violation)
+[2m└─[0m [1m[38;2;147;197;253mapp[0m[2m#[0m[1m[38;2;96;165;250mtest[0m [2m──[0m [2m(2.10s)[0m [1m[38;2;239;68;68mfailed (exit 1, 1 sandbox violation)[0m
 ```
 
 Every section is conditional: the `$ <command>` line only for an
@@ -4396,23 +4392,25 @@ the run stopped it.
 There is **no top-of-run banner** — the run context lives in the
 footer. The task log opens with one blank line before its first row,
 on a terminal or not; a note vx prints before it is not part of it.
-A broad run looks like:
+A broad run looks like this; a hit gets no row, only its count in the
+footer:
 
-```
-            success local          —     4ms     —      —       —       — local          @vzn/vx#format-check
-            success miss           —   5.20s     —      —       —       — local          @vzn/vx#test
+```ansi
+
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mTasks[0m[4m[58;2;110;118;129m     [2mstatus  cache     ±usual    time   cpu    mem outputs  blocks worker         task[0m[4m[58;2;110;118;129m                           [0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m           [2m—[0m   [38;2;203;213;225m5.20s[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m—[0m [2mlocal[0m          [38;2;192;132;252m@vzn/vx[0m[2m#[0m[38;2;96;165;250mtest[0m
 
 
-  Summary                                                                                                       vx 0.0.0
-  projects  ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱
-            1 in run · 3 total
-  tasks     ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰
-            2 success · 2 total
-  cache     ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰
-            local 1↓ 1↑
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mSummary[0m[4m[58;2;110;118;129m                                                                                                       [2mvx 0.0.0[0m
+  [2mprojects[0m  [38;2;234;179;8m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m[2m▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱[0m
+            [38;2;234;179;8m1 in run[0m [2m·[0m [2m3 total[0m
+  [2mtasks   [0m  [38;2;34;197;94m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
+            [38;2;34;197;94m2 success[0m [2m·[0m [2m2 total[0m
+  [2mcache   [0m  [38;2;56;189;248m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m[38;2;56;189;248m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
+            [2mlocal[0m [38;2;56;189;248m1↓[0m [38;2;56;189;248m1↑[0m
 
-  info      8 workers · local cache · run 01a14941-c8cf-7a3e-9b51-2f06d4e8c713
-  time      5.34s
+  [2minfo    [0m  8 workers [2m·[0m local cache [2m·[0m run 01a14941-c8cf-7a3e-9b51-2f06d4e8c713
+  [2mtime    [0m  5.34s
 ```
 
 The three bars are meters: `projects` is what the run covered against
@@ -4485,9 +4483,9 @@ log.txt` keeps them out of the log.
 row naming the failure that blocked it, so the footer's `1 skipped`
 always has a name above it:
 
-```
-            skipped —              —       —     —      —       —       1 —              app#build • blocked by lib#build
-            skipped —              —       —     —      —       —       0 —              web#build • blocked by lib#build
+```ansi
+            [38;2;234;179;8mskipped[0m [2m—[0m              [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [38;2;203;213;225m1[0m [2m—[0m              [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m [2m• blocked by @demo/ui#build[0m
+            [38;2;234;179;8mskipped[0m [2m—[0m              [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2m—[0m              [38;2;147;197;253mapp[0m[2m#[0m[38;2;244;114;182mbuild[0m [2m• blocked by @demo/ui#build[0m
 ```
 
 A skip's cause is followed through a chain of skips to the failure at
@@ -4501,11 +4499,10 @@ until its task exits, and the task list names what the stop cut short
 (`aborted`, with its time so far) and what it reached first (`not
 run`). Neither reached the cache:
 
-```
-            aborted —              —   2.41s     —      —       —       0 local          app#dev
-            not run —              —       —     —      —       —       1 —              web#build
-            not run —              —       —     —      —       —       0 —              web#test
-            aborting —             —   3.37s     —      —       —       — local          api#dev
+```ansi
+            [38;2;249;115;22maborted[0m [2m—[0m              [2m—[0m   [38;2;203;213;225m2.03s[0m     [2m—[0m      [2m—[0m       [2m—[0m       [38;2;203;213;225m2[0m [2mlocal[0m          [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [2mnot run[0m [2m—[0m              [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [38;2;203;213;225m1[0m [2m—[0m              [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [2mnot run[0m [2m—[0m              [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2m—[0m              [38;2;147;197;253mapp[0m[2m#[0m[38;2;244;114;182mbuild[0m
 ```
 
 In the task list view (`--all`, a filter) what an aborted task printed
@@ -4525,9 +4522,9 @@ printed while it stopped shows its frame instead of a row.
 in a dim note on its own row (and its frame's footer) — from the local
 run history alone, no service:
 
-```
-            failed  miss           —   4.21s     —      —       —       — local          app#test flaky - passed 3× before
-            success miss           —  12.84s     —      —       —       — local          api#e2e flaky - failed 1× before · 2 attempts
+```ansi
+            [38;2;239;68;68mfailed[0m  [2mmiss[0m        [2m+1ms[0m    [38;2;203;213;225m10ms[0m   [2m14%[0m  [2m1.6MB[0m       [2m—[0m       [2m0[0m [2mlocal[0m          [38;2;147;197;253mapp[0m[2m#[0m[38;2;96;165;250mtest[0m [2mflaky - passed 2× before · 2 attempts[0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m           [2m—[0m    [38;2;203;213;225m14ms[0m    [2m8%[0m  [2m1.7MB[0m      [2m0B[0m       [2m0[0m [2mlocal[0m          [38;2;147;197;253mapp[0m[2m#[0m[38;2;96;165;250mtest[0m [2mflaky - 2 attempts[0m
 ```
 
 A task is flaky when its exact cache key FAILED AFTER IT HAD PASSED

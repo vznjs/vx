@@ -13,48 +13,25 @@ export const MENU: Partial<Record<SectionId, MenuLink[]>> = {
     { label: 'Every feature, one line each', href: 'all-features/' },
   ],
   docs: [
-    { label: 'What is vx?', href: 'docs/', line: 'What it does, in one table.' },
     { label: 'Quickstart', href: 'quickstart/', line: 'Install, configure, cached in a minute.' },
-    { label: 'Tasks', href: 'docs/tasks/', line: 'What runs, and in what order.' },
-    { label: 'Caching', href: 'docs/caching/', line: 'Inputs, outputs, and what the key holds.' },
     {
-      label: 'Sandboxing',
-      href: 'docs/sandboxing/',
-      line: 'A task touches only what it declares.',
+      label: 'Distributed task execution',
+      href: 'docs/distributed-task-execution/',
+      line: 'One run spread over the machines your CI starts.',
     },
-    { label: 'CI', href: 'docs/ci/', line: 'GitHub Actions, GitLab, affected runs.' },
-    { label: 'Remote cache', href: 'docs/remote-cache/', line: 'Share results between machines.' },
-    { label: 'AI agents', href: 'docs/agents/', line: 'The agent skill, JSON output, vx why.' },
-    { label: 'Plugins', href: 'docs/plugins/', line: 'Every stage is a seam.' },
-  ],
-  guides: [
+    { label: 'Caching', href: 'docs/caching/', line: 'Inputs, outputs, and what the key holds.' },
     {
       label: 'Find why a task missed the cache',
       href: 'guides/caching/why-a-task-missed/',
       line: 'vx why names the input that moved.',
     },
-    {
-      label: 'Run only what changed',
-      href: 'guides/running/run-what-changed/',
-      line: 'The tasks a git change reaches.',
-    },
+    { label: 'CI', href: 'docs/ci/', line: 'GitHub Actions, GitLab, affected runs.' },
     {
       label: 'Migrate from Turborepo, Nx or Vite Task',
       href: 'guides/migrate/',
       line: 'Convert your config in one command.',
     },
-    {
-      label: 'Troubleshooting',
-      href: 'guides/troubleshooting/',
-      line: 'Every message and its fix.',
-    },
-  ],
-  reference: [
     { label: 'Commands', href: 'cli/', line: 'Every verb and flag.' },
     { label: 'vx.config.ts', href: 'schema/', line: 'Every config key.' },
-    { label: 'Caching in depth', href: 'caching/', line: 'How a key is made.' },
-    { label: 'Benchmarks', href: 'benchmarks/', line: 'vx against Turborepo and Nx.' },
-    { label: 'Conformance', href: 'conformance/', line: 'One suite of cases, every tool.' },
-    { label: 'Security model', href: 'security/', line: 'What a task and a cache can reach.' },
   ],
 }

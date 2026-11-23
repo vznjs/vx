@@ -208,7 +208,7 @@ Once per `vx lock` (no run maps) the plugin keys its snapshot (`<cache dir>/nx-p
 
 ## `nx-exec` — one Nx executor, one process
 
-```
+```sh
 nx-exec <executor> --project <name> --target <name> [--configuration <name>] [--options '<json>'] [--dotenv <file>]... [--outputs-option <name>]... [overrides…]
 nx-env [--dotenv <file>]... [--envFile <file>] [--ready-when <string>]... -- <command> [args…]
 ```

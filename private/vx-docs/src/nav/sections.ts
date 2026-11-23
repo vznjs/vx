@@ -1,27 +1,17 @@
-// The site's places (design/site-short-2026-09.md § The shape, plus the
-// feature pages, plus Guides as Bun's docs have them): the Docs, the Guides
-// and the Reference each have a sidebar of their own; the Blog, Releases, Features and the landing ('home', no place in the
-// top nav) have none. Every page is a Starlight page, so one header, search
-// and theme serve them all. The landing is the story; the Guide it replaced
-// redirects there.
+// The site's places: one Docs section (M 2026-11-23: guides, docs and
+// reference are all docs) with a sidebar; the Blog, Releases, Features,
+// Conformance and the landing ('home', no place in the top nav) have none.
+// Every page is a Starlight page, so one header, search and theme serve them
+// all.
 //
-// Starlight has one sidebar. SIDEBAR is it, as three top-level groups whose
-// labels are the section names; route-data.ts shows a page only the group its
-// section owns. Internals (modules/, design/, overview, architecture,
-// optimizations, patterns, flows) are in no group: pages that explain them
-// link them.
+// Starlight has one sidebar. SIDEBAR is it, as one top-level group, Docs;
+// route-data.ts shows it on every docs page. Internals (modules/, design/,
+// overview, architecture, optimizations, patterns, flows) are in no group:
+// pages that explain them link them.
 
 import type { StarlightUserConfig } from '@astrojs/starlight/types'
 
-export type SectionId =
-  | 'home'
-  | 'features'
-  | 'docs'
-  | 'guides'
-  | 'reference'
-  | 'conformance'
-  | 'blog'
-  | 'releases'
+export type SectionId = 'home' | 'features' | 'docs' | 'conformance' | 'blog' | 'releases'
 
 declare global {
   namespace App {
@@ -36,8 +26,6 @@ declare global {
 export const SECTIONS: readonly { id: SectionId; label: string; href: string }[] = [
   { id: 'features', label: 'Features', href: 'features/' },
   { id: 'docs', label: 'Docs', href: 'docs/' },
-  { id: 'guides', label: 'Guides', href: 'guides/' },
-  { id: 'reference', label: 'Reference', href: 'cli/' },
   { id: 'conformance', label: 'Conformance', href: 'conformance/' },
   { id: 'blog', label: 'Blog', href: 'blog/' },
   { id: 'releases', label: 'Releases', href: 'releases/' },
@@ -45,36 +33,84 @@ export const SECTIONS: readonly { id: SectionId; label: string; href: string }[]
 
 type SidebarItem = NonNullable<StarlightUserConfig['sidebar']>[number]
 
-/** Each sidebar section's items, keyed by the label its top-level group carries. */
-const SIDEBAR_GROUPS: Record<'Docs' | 'Guides' | 'Reference', SidebarItem[]> = {
-  // One feature per page, grouped by area (as Bun's docs are; org style
-  // guide); the landing's diagram teaches the ideas.
+/**
+ * The one Docs sidebar (M 2026-11-23: "merge guides and docs", "merge
+ * references into docs as well"). Its order is the path a new user walks:
+ * start, define tasks, cache them, run them on CI, then spread CI over many
+ * machines; each area's how-to pages sit beside its doc, and the full
+ * reference closes the list. The key features are not first; earlier pages
+ * point to them (M 08:07: "you need to guide people to them").
+ */
+const SIDEBAR_GROUPS: Record<'Docs', SidebarItem[]> = {
   Docs: [
     {
       label: 'Get started',
       items: [
         { label: 'What is vx?', link: '/docs/' },
         { label: 'Quickstart', link: '/quickstart/' },
-        { label: 'Upgrading vx', link: '/guides/upgrading/' },
+        { label: 'Migrate from Turborepo, Nx or Vite Task', link: '/guides/migrate/' },
         { label: 'AI agents', link: '/docs/agents/' },
+        { label: 'Upgrading vx', link: '/guides/upgrading/' },
       ],
     },
     {
-      label: 'Configure',
+      label: 'Define tasks',
       items: [
         { label: 'Workspace', link: '/docs/workspace/' },
         { label: 'Tasks', link: '/docs/tasks/' },
-        { label: 'Caching', link: '/docs/caching/' },
+        {
+          label: "Build a project's dependencies first",
+          link: '/guides/running/build-dependencies-first/',
+        },
         { label: 'Environment variables', link: '/docs/environment-variables/' },
+        {
+          label: 'Pass an environment variable to a task',
+          link: '/guides/running/pass-an-environment-variable/',
+        },
+        { label: 'Lockfiles', link: '/docs/lockfiles/' },
         { label: 'Dev servers', link: '/docs/dev-servers/' },
+        {
+          label: 'Start a dev server before your tests',
+          link: '/guides/running/start-a-dev-server/',
+        },
       ],
     },
     {
-      label: 'Run',
+      label: 'Run tasks',
       items: [
         { label: 'Running tasks', link: '/docs/running-tasks/' },
+        { label: 'Run only what changed', link: '/guides/running/run-what-changed/' },
+        { label: "Run one project's tasks", link: '/guides/running/run-one-project/' },
+        { label: 'Stop at the first failure', link: '/guides/running/stop-at-the-first-failure/' },
+        { label: 'Set a time limit on a task', link: '/guides/running/set-a-time-limit/' },
         { label: 'Sandboxing', link: '/docs/sandboxing/' },
+      ],
+    },
+    {
+      label: 'Cache',
+      items: [
+        { label: 'Caching', link: '/docs/caching/' },
+        { label: 'Cache a task', link: '/guides/caching/cache-a-task/' },
+        { label: 'Find why a task missed the cache', link: '/guides/caching/why-a-task-missed/' },
+        { label: 'Clear the local cache', link: '/guides/caching/clean-the-cache/' },
+        { label: 'Remote cache', link: '/docs/remote-cache/' },
+        { label: 'Cache server', link: '/docs/servers/cache/' },
+      ],
+    },
+    {
+      label: 'CI',
+      items: [
         { label: 'CI', link: '/docs/ci/' },
+        { label: 'Run the same checks locally and on CI', link: '/guides/ci/run-a-pipeline/' },
+        { label: 'Fail CI when the lock is stale', link: '/guides/ci/check-the-lock/' },
+        { label: 'Fix a merge conflict in the lock', link: '/guides/ci/fix-a-lock-conflict/' },
+      ],
+    },
+    {
+      label: 'Distributed task execution',
+      items: [
+        { label: 'Distributed task execution', link: '/docs/distributed-task-execution/' },
+        { label: 'DTE server', link: '/docs/servers/dte/' },
       ],
     },
     // Everything that is not core (2026-10-26): each plugin, the
@@ -83,63 +119,10 @@ const SIDEBAR_GROUPS: Record<'Docs' | 'Guides' | 'Reference', SidebarItem[]> = {
       label: 'Plugins',
       items: [
         { label: 'Plugins', link: '/docs/plugins/' },
-        { label: 'Lockfiles', link: '/docs/lockfiles/' },
-        { label: 'Remote cache', link: '/docs/remote-cache/' },
-        { label: 'Distributed task execution', link: '/docs/distributed-task-execution/' },
         { label: 'Remote execution', link: '/docs/remote-execution/' },
         { label: 'Servers', link: '/docs/servers/' },
-        { label: 'Cache server', link: '/docs/servers/cache/' },
         { label: 'History server', link: '/docs/servers/history/' },
-        { label: 'DTE server', link: '/docs/servers/dte/' },
         { label: 'Write a plugin', link: '/docs/writing-plugins/' },
-      ],
-    },
-  ],
-  // One task per page, titled as the task, grouped by area (as Bun's guides
-  // are; org style guide). guides/index.mdx lists the same pages.
-  Guides: [
-    { label: 'All guides', link: '/guides/' },
-    {
-      label: 'Get started',
-      items: [
-        { label: 'Cache a task', link: '/guides/caching/cache-a-task/' },
-        {
-          label: "Build a project's dependencies first",
-          link: '/guides/running/build-dependencies-first/',
-        },
-        { label: 'Migrate from Turborepo, Nx or Vite Task', link: '/guides/migrate/' },
-      ],
-    },
-    {
-      label: 'Running',
-      items: [
-        { label: 'Run only what changed', link: '/guides/running/run-what-changed/' },
-        { label: "Run one project's tasks", link: '/guides/running/run-one-project/' },
-        { label: 'Stop at the first failure', link: '/guides/running/stop-at-the-first-failure/' },
-        { label: 'Set a time limit on a task', link: '/guides/running/set-a-time-limit/' },
-        {
-          label: 'Start a dev server before your tests',
-          link: '/guides/running/start-a-dev-server/',
-        },
-        {
-          label: 'Pass an environment variable to a task',
-          link: '/guides/running/pass-an-environment-variable/',
-        },
-      ],
-    },
-    {
-      label: 'Caching',
-      items: [
-        { label: 'Find why a task missed the cache', link: '/guides/caching/why-a-task-missed/' },
-        { label: 'Clear the local cache', link: '/guides/caching/clean-the-cache/' },
-      ],
-    },
-    {
-      label: 'CI',
-      items: [
-        { label: 'Run the same checks locally and on CI', link: '/guides/ci/run-a-pipeline/' },
-        { label: 'Fail CI when the lock is stale', link: '/guides/ci/check-the-lock/' },
-        { label: 'Fix a merge conflict in the lock', link: '/guides/ci/fix-a-lock-conflict/' },
       ],
     },
     {
@@ -149,13 +132,8 @@ const SIDEBAR_GROUPS: Record<'Docs' | 'Guides' | 'Reference', SidebarItem[]> = {
         { label: 'Explore the task graph', link: '/guides/graph-explorer/' },
       ],
     },
-  ],
-  // Short groups in plain words; Plugins is each published plugin's README.
-  // The caching deep dive and "What a run does" are reference only; the
-  // Docs' caching page links the first.
-  Reference: [
     {
-      label: 'CLI',
+      label: 'CLI reference',
       items: [
         { label: 'Commands', link: '/cli/' },
         { label: 'vx run', link: '/cli/run/' },
@@ -179,7 +157,7 @@ const SIDEBAR_GROUPS: Record<'Docs' | 'Guides' | 'Reference', SidebarItem[]> = {
       ],
     },
     {
-      label: 'Config',
+      label: 'Config reference',
       items: [
         { label: 'vx.config.ts', link: '/schema/' },
         { label: 'exec', link: '/schema/exec/' },
@@ -214,7 +192,7 @@ const SIDEBAR_GROUPS: Record<'Docs' | 'Guides' | 'Reference', SidebarItem[]> = {
       ],
     },
     {
-      label: 'Plugins',
+      label: 'Plugin reference',
       items: [
         { label: '@vzn/vx-ci', link: '/plugins/vx-ci/' },
         { label: '@vzn/vx-lockfile', link: '/plugins/vx-lockfile/' },
@@ -247,6 +225,4 @@ export const SIDEBAR: SidebarItem[] = Object.entries(SIDEBAR_GROUPS).map(([label
 /** The section a group label names. */
 export const GROUP_SECTION: Record<string, SectionId> = {
   Docs: 'docs',
-  Guides: 'guides',
-  Reference: 'reference',
 }

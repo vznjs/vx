@@ -5,20 +5,20 @@ const href = (p: string) => `${base}${p}`
 
 const footCols = {
   docs: [
-    { t: 'Features', h: href('features/') },
     { t: 'Quickstart', h: href('quickstart/') },
-    { t: 'Configure', h: href('docs/workspace/') },
+    { t: 'Distributed task execution', h: href('docs/distributed-task-execution/') },
+    { t: 'Caching', h: href('docs/caching/') },
     { t: 'Sandboxing', h: href('docs/sandboxing/') },
-    { t: 'CI and remote', h: href('docs/ci/') },
+    { t: 'CI', h: href('docs/ci/') },
     { t: 'Migrate', h: href('guides/migrate/') },
-    { t: 'Plugins', h: href('docs/plugins/') },
-  ],
-  reference: [
     { t: 'CLI', h: href('cli/') },
     { t: 'Config', h: href('schema/') },
+  ],
+  compare: [
+    { t: 'Features', h: href('features/') },
     { t: 'Benchmarks', h: href('benchmarks/') },
-    { t: 'Parity map for Turbo and Nx', h: href('parity/') },
     { t: 'Conformance', h: href('conformance/') },
+    { t: 'Parity map for Turbo and Nx', h: href('parity/') },
     { t: 'Glossary', h: href('glossary/') },
   ],
   community: [
