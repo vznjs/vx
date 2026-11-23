@@ -139,7 +139,17 @@ On Cloudflare, an empty `ALLOW` answers `this relay's ALLOW is empty: it admits 
 ```ts title=".vx/workspace.ts" ins={2}
 dte({
   relay: 'https://relay.example.com',
-  workers: { linux: { machines: { cpu4: { max: 8, cpu: 4, memory: '16GB' } } } },
+  workers: {
+    linux: {
+      machines: {
+        cpu4: {
+          max: 8,
+          cpu: 4,
+          memory: '16GB',
+        },
+      },
+    },
+  },
   adapter: github(),
 })
 ```
@@ -186,7 +196,7 @@ bunx @vzn/vx-dte-server --no-auth --port 8080
 [38;2;34;197;94m✓[0m [1mvx-dte-server[0m  listening on [38;2;6;182;212mhttp://127.0.0.1:8080[0m
 ```
 
-To try Distributed task execution with no relay at all, use `local()` ([on your machine](../../distributed-task-execution/try-on-your-machine/)).
+To try Distributed task execution with no relay to host, use `local()`: it [starts one on your machine](../../distributed-task-execution/try-on-your-machine/).
 
 <Takeaway>run the relay locally with no CI tokens.</Takeaway>
 

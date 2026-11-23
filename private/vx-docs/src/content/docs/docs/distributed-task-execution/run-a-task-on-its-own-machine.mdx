@@ -30,11 +30,27 @@ exec: {
 
 Add `e2e` next to `linux`. Order matters: a task that names no type goes to the **first** one with a machine of its platform.
 
-```ts title=".vx/workspace.ts" ins={4}
+```ts title=".vx/workspace.ts" ins={12-20}
 dte({
   workers: {
-    linux: { machines: { cpu4: { max: 8, cpu: 4, memory: '8GB' } } },
-    e2e: { machines: { cpu4: { max: 2, cpu: 4, memory: '8GB' } } },
+    linux: {
+      machines: {
+        cpu4: {
+          max: 8,
+          cpu: 4,
+          memory: '8GB',
+        },
+      },
+    },
+    e2e: {
+      machines: {
+        cpu4: {
+          max: 2,
+          cpu: 4,
+          memory: '8GB',
+        },
+      },
+    },
   },
   adapter: github(),
 }),
@@ -83,8 +99,25 @@ Each type can run on different CI runners, with their own images and tools:
 ```ts title=".vx/workspace.ts"
 workers: {
   // runsOn: a self-hosted runner label of yours
-  alpine: { machines: { cpu4: { max: 8, cpu: 4, memory: '16GB', runsOn: 'alpine-4-cores' } } },
-  ubuntu: { machines: { cpu4: { max: 2, cpu: 4, memory: '16GB' } } },
+  alpine: {
+    machines: {
+      cpu4: {
+        max: 8,
+        cpu: 4,
+        memory: '16GB',
+        runsOn: 'alpine-4-cores',
+      },
+    },
+  },
+  ubuntu: {
+    machines: {
+      cpu4: {
+        max: 2,
+        cpu: 4,
+        memory: '16GB',
+      },
+    },
+  },
 },
 ```
 
@@ -98,8 +131,25 @@ A type listed later gets the tasks no type before it can run, such as tasks for 
 
 ```ts
 workers: {
-  linux: { machines: { cpu4: { max: 8, cpu: 4, memory: '16GB' } } },
-  mac: { machines: { m1: { max: 2, cpu: 3, memory: '7GB', platform: 'darwin-arm64' } } },
+  linux: {
+    machines: {
+      cpu4: {
+        max: 8,
+        cpu: 4,
+        memory: '16GB',
+      },
+    },
+  },
+  mac: {
+    machines: {
+      m1: {
+        max: 2,
+        cpu: 3,
+        memory: '7GB',
+        platform: 'darwin-arm64',
+      },
+    },
+  },
 },
 ```
 

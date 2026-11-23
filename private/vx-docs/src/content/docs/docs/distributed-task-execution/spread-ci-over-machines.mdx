@@ -43,7 +43,7 @@ bun add -d @vzn/vx-dte
 
 Add it next to your cache. `github()` starts each worker as a GitHub Actions job.
 
-```ts title=".vx/workspace.ts" ins={4,16-22}
+```ts title=".vx/workspace.ts" ins={4,16-30}
 import { defineWorkspace } from '@vzn/vx/config'
 import { vxCache } from '@vzn/vx-cache'
 import { github as ci } from '@vzn/vx-ci'
@@ -62,7 +62,15 @@ export default defineWorkspace({
     dte({
       relay: 'https://vx-dte-server.acme.workers.dev',
       workers: {
-        linux: { machines: { cpu4: { max: 8, cpu: 4, memory: '16GB' } } },
+        linux: {
+          machines: {
+            cpu4: {
+              max: 8,
+              cpu: 4,
+              memory: '16GB',
+            },
+          },
+        },
       },
       adapter: github(),
     }),
@@ -70,7 +78,7 @@ export default defineWorkspace({
 })
 ```
 
-Read the `workers` line as: up to **8** machines per run, each **4** cores and **16GB**.
+Read `workers` as: up to **8** machines per run, each **4** cores and **16GB**.
 
 <Takeaway>tell vx where workers meet (`relay`), what they are (`workers`) and who starts them (`adapter`).</Takeaway>
 

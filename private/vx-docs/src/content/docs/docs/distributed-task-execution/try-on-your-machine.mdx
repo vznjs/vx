@@ -28,7 +28,7 @@ vx run build test lint --all
 
 Give `dte()` one group of workers, here named `linux`. `local()` starts each worker as a process in its own **git worktree**: a second checkout of your workspace, made by git.
 
-```ts title=".vx/workspace.ts" ins={2,8-13}
+```ts title=".vx/workspace.ts" ins={2,8-21}
 import { defineWorkspace } from '@vzn/vx/config'
 import { dte, local } from '@vzn/vx-dte'
 import { bun } from '@vzn/vx-lockfile'
@@ -38,7 +38,15 @@ export default defineWorkspace({
     bun(),
     dte({
       workers: {
-        linux: { machines: { cpu2: { max: 3, cpu: 2, memory: '8GB' } } },
+        linux: {
+          machines: {
+            cpu2: {
+              max: 3,
+              cpu: 2,
+              memory: '8GB',
+            },
+          },
+        },
       },
       adapter: local({ prepare: 'bun install' }),
     }),
@@ -136,9 +144,13 @@ adapter: local({ prepare: 'bun install --frozen-lockfile' }),
 
 Raise `max`. Each worker is a full process, so stay near your core count:
 
-```ts mark={2}
+```ts mark={4}
 workers: {
-  linux: { machines: { cpu2: { max: 4, cpu: 2, memory: '8GB' } } },
+  linux: {
+    machines: {
+      cpu2: { max: 4, cpu: 2, memory: '8GB' },
+    },
+  },
 },
 ```
 

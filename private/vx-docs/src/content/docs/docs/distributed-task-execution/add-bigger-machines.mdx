@@ -26,13 +26,22 @@ cpu16: { max: 2, cpu: 16, memory: '64GB' },
 
 ## Declare two sizes
 
-```ts title=".vx/workspace.ts" ins={6}
+```ts title=".vx/workspace.ts" ins={10-15}
 dte({
   workers: {
     linux: {
       machines: {
-        cpu4: { max: 8, cpu: 4, memory: '16GB' },
-        cpu16: { max: 2, cpu: 16, memory: '64GB', runsOn: 'ubuntu-latest-16-cores' },
+        cpu4: {
+          max: 8,
+          cpu: 4,
+          memory: '16GB',
+        },
+        cpu16: {
+          max: 2,
+          cpu: 16,
+          memory: '64GB',
+          runsOn: 'ubuntu-latest-16-cores',
+        },
       },
     },
   },
@@ -40,7 +49,7 @@ dte({
 }),
 ```
 
-Read the new line as: up to **2** machines of **16** cores and **64GB**, on the `ubuntu-latest-16-cores` runner.
+Read the new size as: up to **2** machines of **16** cores and **64GB**, on the `ubuntu-latest-16-cores` runner.
 
 <Aside type="caution" title="Say what the runner really has">
   vx plans by `cpu` and `memory` until a worker reports its machine. A runner with less shows in
@@ -110,7 +119,16 @@ The small build stays on `linux.cpu4#1`. The heavy one gets `linux.cpu16#1`: the
 Add a type whose machine names its platform. `vx dte init` runs it on `macos-latest`:
 
 ```ts title=".vx/workspace.ts"
-mac: { machines: { m1: { max: 2, cpu: 3, memory: '7GB', platform: 'darwin-arm64' } } },
+mac: {
+  machines: {
+    m1: {
+      max: 2,
+      cpu: 3,
+      memory: '7GB',
+      platform: 'darwin-arm64',
+    },
+  },
+},
 ```
 
 A task with `exec.platforms: ['darwin-arm64']` runs only there.
