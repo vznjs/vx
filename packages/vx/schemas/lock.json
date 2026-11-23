@@ -11,11 +11,11 @@
     },
     "audited": {
       "type": "integer",
-      "description": "projects with a vx.config, each audited"
+      "description": "projects audited: each with a vx.config, and each with none that a plugin's project stage gives tasks"
     },
     "notAudited": {
       "type": "integer",
-      "description": "projects with tasks and no vx.config: nothing to freeze, never audited"
+      "description": "always 0: every project with tasks is audited, a plugin-mapped one included"
     },
     "problems": {
       "type": "array",
@@ -26,7 +26,7 @@
         "properties": {
           "code": {
             "type": "string",
-            "description": "Stable; branch on it, as schemas/error.json's: VX_E_LOCK for drift `vx lock` fixes (a missing lock is one), VX_E_CONFIG for a config that does not load or holds a secret, and a graph rule's own (VX_E_CYCLE, VX_E_DEPENDS_ON, VX_E_OUTPUT_OVERLAP, \u2026)"
+            "description": "Stable; branch on it, as schemas/error.json's: VX_E_LOCK for drift `vx lock` fixes (a missing lock is one), VX_E_CONFIG for a config that does not load or holds a secret, VX_E_REFUSED for a plugin hook that failed, and a graph rule's own (VX_E_CYCLE, VX_E_DEPENDS_ON, VX_E_OUTPUT_OVERLAP, \u2026)"
           },
           "message": {
             "type": "string",

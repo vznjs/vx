@@ -3569,6 +3569,9 @@ With `--format json`, it prints the audit as one document:
   message may change.
 - `VX_E_LOCK`: drift `vx lock` fixes. A missing lock is one.
 - `VX_E_CONFIG`: a config that does not load, or evaluates to a secret.
+- `VX_E_REFUSED`: a plugin hook failed (a `discover` refusal).
+- `audited` counts every project with tasks, one a plugin maps
+  included, so `notAudited` is always 0.
 - A graph rule's own code (`VX_E_CYCLE`, …) for a broken graph rule.
 - Full design: `docs/design/config-lock-2026-06.md`.
 - A lock written by a 1.x vx stays valid for every later 1.x
