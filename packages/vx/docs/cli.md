@@ -2285,7 +2285,8 @@ listing the directories.
 Every run, `vx watch` cycle, `--affected` selection and the picker takes
 its projects and their configs only from the committed
 `.vx/projects.lock` (2026-10-14). A run never walks for
-configs, never evaluates one, never checks the graph rules
+configs (an `--all` run asks git for the names alone, to refuse one the
+lock lacks), never evaluates one, never checks the graph rules
 (`run.rules`) and never writes the lock: only `vx lock` does. With no
 lock, a run fails with `no lock: run \`vx lock\``. A run trusts the
 lock and evaluates nothing, so after adding or editing a config, run
@@ -2552,7 +2553,10 @@ dropped them); a config added since the lock is no project until
 `vx lock`, and naming its task, `c#build`, says so: "c#build: c/vx.config.ts
 is not in the lock yet — run `vx lock`", as a run from its directory says
 `c/vx.config.ts is not in the lock yet`, where it ran the locked project
-around it, and so do `--filter ./c`, `--filter c`, `vx show c` and `vx show c#build`, `c` its directory or its `package.json` name; so does a bare `build` that the
+around it, and so do `--filter ./c`, `--filter c`, `vx show c` and `vx show c#build`, `c` its directory or its `package.json` name; so does
+`--all`, for any config git lists (tracked or not, ignored ones left out,
+none under a nested workspace) in a directory the lock holds no config
+for, at the cost of one `git ls-files` that a filtered run does not pay; so does a bare `build` that the
 cwd's project or a `--filter` leaves unresolved while one of the
 selected projects holds such a config). An entry edited by
 hand into a shape `vx lock` could not write fails the run with

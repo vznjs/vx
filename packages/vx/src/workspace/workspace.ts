@@ -403,6 +403,55 @@ export async function findProjectConfigs(root: string): Promise<ProjectConfigs> 
 }
 
 /**
+ * The configs git lists (tracked or not, its ignore rules applied) in no
+ * directory of `locked` and under no nested workspace, root-relative POSIX:
+ * what `vx lock` would add. One spawn; outside git, or when git fails,
+ * none (a warning light: `vx lock --check` is the audit).
+ */
+export async function configsOutsideLock(
+  root: string,
+  locked: ReadonlySet<string>,
+): Promise<string[]> {
+  let rels: string[]
+  try {
+    rels = await gitZ(root, [
+      'ls-files',
+      '-z',
+      '--cached',
+      '--others',
+      '--exclude-standard',
+      '--',
+      ':(glob)**/vx.config.*',
+      ':(glob)**/.vx/workspace.*',
+      NOT_INSTALLS,
+      ...NOT_VX_STATE,
+    ])
+  } catch {
+    return []
+  }
+  const nested = rels.flatMap((rel) => {
+    const at = rel.lastIndexOf('/.vx/')
+    return at > 0 && WORKSPACE_RANK.has(rel.slice(at + 1)) ? [rel.slice(0, at)] : []
+  })
+  const unknown = rels.filter((rel) => {
+    const slash = rel.lastIndexOf('/')
+    const dir = slash === -1 ? '' : rel.slice(0, slash)
+    return (
+      CONFIG_RANK.has(rel.slice(slash + 1)) &&
+      !locked.has(dir) &&
+      !nested.some((n) => dir === n || dir.startsWith(`${n}/`))
+    )
+  })
+  if (unknown.length === 0) return []
+  // Asked only of these: a nested workspace whose `.vx/` git ignores, and a
+  // tracked config deleted from the worktree, which git still lists.
+  const hidden = await unlistedNested(root, unknown, nested)
+  const outside = unknown.filter((rel) => !hidden.some((n) => rel.startsWith(`${n}/`)))
+  const there = await Promise.all(outside.map((rel) => isFile(path.join(root, rel))))
+  return outside.filter((_, i) => there[i])
+}
+
+/**
  * Nested workspace roots git did not list (an ignored `.vx/`) among `rels`'
  * directories and ancestors: a run from under one takes it as root, so the
  * outer lock must not claim it.

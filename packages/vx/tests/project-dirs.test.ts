@@ -248,7 +248,10 @@ describe('a project is a directory with a vx.config', () => {
       await write(path.join(root, 'a/vx.config.mjs'), config())
       expect(vx(root, 'lock').code).toBe(0)
       await write(path.join(root, 'b/vx.config.mjs'), config())
-      expect(planned(root, 'hello', '--all')).toEqual(['a#hello'])
+      // Ran a alone, green: b was left out without a word.
+      expect(planned(root, 'hello', '--all')).toBe(
+        'exit 1: ✗ vx run  b/vx.config.mjs is not in the lock yet — run `vx lock`',
+      )
       const check = vx(root, 'lock', '--check')
       expect([check.code, check.err.trim()]).toEqual([
         1,

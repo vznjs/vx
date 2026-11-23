@@ -30,9 +30,10 @@ beforeEach(async () => {
   pids = path.join(shim, 'pids')
   await mkdir(shim)
   // A listing that takes its time: the shim says it started, then waits.
+  // The enumeration's alone: `--all` lists config names before it.
   await writeFile(
     path.join(shim, 'git'),
-    `#!/bin/sh\ncase "$*" in *ls-files*|*status*) echo $$ >> '${pids}'; sleep 20;; esac\nexec '${Bun.which('git')}' "$@"\n`,
+    `#!/bin/sh\ncase "$*" in *"ls-files -s"*|*status*) echo $$ >> '${pids}'; sleep 20;; esac\nexec '${Bun.which('git')}' "$@"\n`,
   )
   await chmod(path.join(shim, 'git'), 0o755)
 })

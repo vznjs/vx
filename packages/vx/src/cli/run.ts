@@ -23,6 +23,7 @@ import {
 import {
   type AffectedFilter,
   affectedFilterFor,
+  findAllSelection,
   findCwdSelection,
   NO_TASKS_DECLARED,
   pickTask,
@@ -545,6 +546,10 @@ export async function resolveRunOptions(
     }
   } else if (parsed.all) {
     projects = undefined
+    discovered = await findAllSelection(
+      cwd,
+      parsed.cacheDir !== undefined ? { cacheDir: parsed.cacheDir } : {},
+    )
   } else {
     const cwdProject = await findCwdSelection(
       cwd,

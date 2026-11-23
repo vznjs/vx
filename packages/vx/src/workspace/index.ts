@@ -69,6 +69,7 @@ export { repoIdsOf } from './repo-id.js'
 export {
   checkProjectNames,
   findWorkspaceRoot,
+  configsOutsideLock,
   findProjectConfigs,
   REVIEW_FILE,
   discoveredProject,

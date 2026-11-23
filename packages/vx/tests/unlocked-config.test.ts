@@ -215,3 +215,56 @@ it(
   },
   TIMEOUT,
 )
+
+// `vx run build --all` with a config added since the lock ran the locked
+// projects, green, and left the new one out without a word.
+it(
+  'an --all run with a config the lock has not seen asks for `vx lock`',
+  async () => {
+    const root = await makeWorkspace({ prefix: 'vx-unlocked-all-', edges: {} })
+    try {
+      await addProject(root, 'd', {
+        config: "export default { tasks: { build: { exec: { command: 'echo d' } } } }\n",
+      })
+      expect((await vx(root, ['lock'])).code).toBe(0)
+      // CONTROL: the locked workspace runs; a file vx does not read is no project.
+      await writeFile(path.join(root, 'packages', 'd', 'vx.config.json'), '{}\n')
+      expect((await vx(root, ['run', 'build', '--all'])).code).toBe(0)
+      const dir = await addProject(root, 'c', {
+        config: "export default { tasks: { build: { exec: { command: 'echo c' } } } }\n",
+      })
+      const r = await vx(root, ['run', 'build', '--all'])
+      expect(r.code).toBe(1)
+      expect(r.text).toContain('packages/c/vx.config.mjs is not in the lock yet — run `vx lock`')
+      // A filtered run asks nothing of the configs it does not select.
+      expect((await vx(root, ['run', 'build', '--filter', 'd'])).code).toBe(0)
+      await rm(dir, { recursive: true })
+      expect((await vx(root, ['run', 'build', '--all'])).code).toBe(0)
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  },
+  TIMEOUT,
+)
+
+it(
+  "an --all run asks nothing of a nested workspace's configs",
+  async () => {
+    const root = await makeWorkspace({ prefix: 'vx-unlocked-nested-', edges: {} })
+    try {
+      await addProject(root, 'd', {
+        config: "export default { tasks: { build: { exec: { command: 'echo d' } } } }\n",
+      })
+      const inner = path.join(root, 'inner')
+      await mkdir(path.join(inner, '.vx'), { recursive: true })
+      await writeFile(path.join(inner, '.vx', 'workspace.ts'), 'export default {}\n')
+      expect((await vx(root, ['lock'])).code).toBe(0)
+      await mkdir(path.join(inner, 'p'), { recursive: true })
+      await writeFile(path.join(inner, 'p', 'vx.config.mjs'), 'export default { tasks: {} }\n')
+      expect((await vx(root, ['run', 'build', '--all'])).code).toBe(0)
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  },
+  TIMEOUT,
+)

@@ -13,6 +13,7 @@ import {
   applyFilters,
   buildPackageGraph,
   configuredBaseBranch,
+  configsOutsideLock,
   defaultAffectedBase,
   findProjectConfigs,
   findWorkspaceRoot,
@@ -227,6 +228,31 @@ export async function findCwdSelection(
     })
   await refuseUnlockedConfig(root, abs, found?.dir ?? null)
   return found === null ? null : { name: found.name, discovered: { root, projects } }
+}
+
+/**
+ * The discovery an `--all` run takes every project from, refused while a
+ * config is on disk that the lock holds no project for: the run left it
+ * out, green. One git spawn, paid by `--all` alone.
+ */
+export async function findAllSelection(
+  cwd: string,
+  load: CliLoadOptions = {},
+): Promise<{ root: string; projects: ProjectMeta[] }> {
+  const root = await findWorkspaceRoot(cwd)
+  const projects = await discoverCliProjects(root, load)
+  const locked = new Set(
+    projects.flatMap((p) =>
+      typeof p.configPath === 'string' ? [relPosix(root, path.dirname(p.configPath))] : [],
+    ),
+  )
+  const unlocked = await configsOutsideLock(root, locked)
+  if (unlocked.length > 0)
+    throw new UserError(
+      `${listed(unlocked, 5)} ${unlocked.length === 1 ? 'is' : 'are'} not in the lock yet — run \`vx lock\``,
+      'VX_E_LOCK',
+    )
+  return { root, projects }
 }
 
 /**

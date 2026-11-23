@@ -64,6 +64,8 @@ export function findWorkspaceRoot(start: string, uid?: number): Promise<string>
 export function pathName(root: string, dir: string): string
 // Every directory holding a vx config, for `vx lock`; sorted by directory
 export function findProjectConfigs(root: string): Promise<ProjectConfigs>
+// The configs git lists in no locked directory, nested workspaces left out: an `--all` run refuses them
+export function configsOutsideLock(root: string, locked: ReadonlySet<string>): Promise<string[]>
 // The projects a lock records, named by the config's `name`, else by path
 export function lockedProjects(
   root: string,
@@ -155,7 +157,7 @@ checkout left it out (git asked only then)
 
 #### `findProjectConfigs(root)`
 
-`vx lock`'s walk; a run never walks. In git: `git ls-files` over the
+`vx lock`'s walk; a run never walks (an `--all` run's `configsOutsideLock` is one `git ls-files` of the names). In git: `git ls-files` over the
 config names, tracked and untracked, git's ignore rules applied, so a
 config git ignores is no project, and none under a `.vx` directory, at
 any depth, as the walk skips it (`.vx/workspace.*` still marks a nested
