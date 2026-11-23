@@ -46,7 +46,7 @@ The pull request did not touch `@demo/ui`, so its key matches. `↓` counts the 
 
 <Concept term="Remote cache">
   A [cache](../caching/) on a server, shared by every machine. vx asks it when the cache on this
-  machine misses, and uploads each new result to it.
+  machine misses, and uploads each result it makes.
 </Concept>
 
 ## How a run uses it
@@ -121,10 +121,10 @@ You need vx running on [CI](../ci/) and a Cloudflare account. To host it on Bun 
 3. **Point vx at it.**
 
    ```sh
-   bun add -d @vzn/vx-cache @vzn/vx-ci
+   bun add -d @vzn/vx-cache
    ```
 
-   ```ts title=".vx/workspace.ts" ins={2,3,9-14}
+   ```ts title=".vx/workspace.ts" ins={2,10-14}
    import { defineWorkspace } from '@vzn/vx/config'
    import { vxCache } from '@vzn/vx-cache'
    import { github } from '@vzn/vx-ci'
@@ -140,17 +140,24 @@ You need vx running on [CI](../ci/) and a Cloudflare account. To host it on Bun 
          repository: 'acme/app',
        }),
      ],
+     pipelines: {
+       pr: { tasks: ['lint', 'test', 'build'], affected: true },
+       main: { tasks: ['lint', 'test', 'build'] },
+     },
    })
    ```
 
-   `issuer` and `repository` match your `ALLOW`. `github()` tells the cache which branch a run is on. Run `vx lock` and commit.
+   `issuer` and `repository` match your `ALLOW`. `github()` tells the cache which branch a run is on. The `pipelines` stay as [CI](../ci/) set them. Run `vx lock` and commit.
 
 4. **Let CI jobs prove who they are.** Allow the job to ask for a token:
 
-   ```yaml title=".github/workflows/ci.yml" ins={3}
-   permissions:
-     contents: read
-     id-token: write
+   ```yaml title=".github/workflows/ci.yml" ins={6}
+   jobs:
+     ci:
+       runs-on: ubuntu-latest
+       permissions:
+         contents: read
+         id-token: write
    ```
 
    vx asks GitHub for the token itself. Nothing goes in your secrets.
@@ -173,7 +180,8 @@ You need vx running on [CI](../ci/) and a Cloudflare account. To host it on Bun 
 | Run | Reads | Writes |
 | --- | --- | --- |
 | push to `main` | `main` | `main` |
-| pull request from `feat-x` | `feat-x`, then `main` | `feat-x` |
+| pull request #12 from `feat-x` | `PR #12`, then `feat-x`, then `main` | `PR #12` only |
+| merge queue into `main` | `main` | `main` |
 | `pull_request_target`, `issue_comment`, `workflow_run` | `main` | nothing |
 | a laptop | nothing, unless the server sets `READ_ACCESS=public` | nothing |
 | another repository | refused | refused |
@@ -181,8 +189,8 @@ You need vx running on [CI](../ci/) and a Cloudflare account. To host it on Bun 
 The server decides this from the token. No option in your config can change it.
 
 <Quiz q="A pull request builds broken code. Can main's next run download that broken build?">
-  No. A pull request writes only its own branch. `main` never reads it, so code that is not merged
-  never reaches `main`'s runs.
+  No. A pull request writes only its own results (`PR #12`), never a branch. `main` never reads
+  them, so code that is not merged never reaches `main`'s runs.
 </Quiz>
 
 <Takeaway>tell, for any run, which results it can see and which it can change.</Takeaway>
@@ -285,7 +293,7 @@ The cache server takes uploads up to 100 MB, compressed. Raise its `MAX_UPLOAD_B
 Already run a Turborepo, Nx or Bazel cache? Keep it:
 
 <Tabs>
-  <TabItem label="Turborepo / Vercel">
+  <TabItem label="Turborepo">
     ```sh
     bun add -d @vzn/vx-migrate
     bunx turbo login && bunx turbo link        # stores a token and a team
@@ -302,7 +310,7 @@ Already run a Turborepo, Nx or Bazel cache? Keep it:
   <TabItem label="Nx">
     `nxCache()` from `@vzn/vx-migrate` does the same for a self-hosted Nx cache.
   </TabItem>
-  <TabItem label="Bazel REAPI">
+  <TabItem label="Bazel">
     A Bazel remote cache (NativeLink, BuildBuddy, Buildbarn, bazel-remote) works through `reapi()`
     from `@vzn/vx-reapi`:
 
@@ -332,7 +340,7 @@ Each plugin's options are on its page: [`@vzn/vx-migrate`](../../plugins/vx-migr
 
 | Option | What it does | Default |
 | --- | --- | --- |
-| `url` | The server's URL. `https` only; `http` only to `127.0.0.1`, `::1` or `localhost`. No `?query` or `#fragment`. | `VX_CACHE_URL` |
+| `url` | The server's URL, without `/v1`. `https` only; `http` only to `127.0.0.1`, `::1` or `localhost`. No `?query` or `#fragment`. | `VX_CACHE_URL` |
 | `issuer` | Your CI's token issuer: `https://token.actions.githubusercontent.com`, `https://gitlab.com` or your GitLab's URL. | required |
 | `repository` | The repository, `org/name`, as `ALLOW` names it. | required |
 | `timeoutMs` | How long a read or check waits for an answer, in ms. A download then must bring at least 1 MiB a second. | `30000` |
@@ -364,14 +372,14 @@ Off CI (`CI` unset), vx never writes the remote unless `--cache-policy`, `VX_CAC
 
 ### Cache scopes and tokens
 
-Each read names the branches the run reads, its own first. The server answers from the first branch that holds the result.
+Each read names the refs the run reads, its own first. A pull request writes only its merge ref, `refs/pull/<n>/merge`. The server answers from the first branch that holds the result.
 
 On CI, `github()` or `gitlab()` ([`@vzn/vx-ci`](../../plugins/vx-ci/)) names the branches. Without one, a run reads the checked-out branch, then the default branch:
 
 | Run | Branches read, in order |
 | --- | --- |
 | push to `main` | `refs/heads/main` |
-| pull request from `feat-x` | `refs/heads/feat-x, refs/heads/main` |
+| pull request #12 from `feat-x` | `refs/pull/12/merge, refs/heads/feat-x, refs/heads/main` |
 | merge queue into `main` | `refs/heads/main` |
 | laptop on `feat-x` | `refs/heads/feat-x, refs/heads/main` |
 
