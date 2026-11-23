@@ -212,6 +212,10 @@ A machine with a lower ceiling treats a bigger remote entry as a miss and
 runs the task. The ceiling stops a broken remote entry from filling the
 disk when it is restored.
 
+The vx cache server has a limit of its own: it takes an upload of up to
+100 MB, compressed. Raise its `MAX_UPLOAD_BYTES` for bigger entries
+([Settings](../servers/cache/#settings)).
+
 ---
 
 ## Other remote caches

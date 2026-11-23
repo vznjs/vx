@@ -22,13 +22,14 @@ export default defineWorkspace({
 })
 ```
 
-Workers check out what git tracks, so commit first. `VX_DTE_RUN` names
-the run and turns distribution on:
+Workers see the files git tracks, your uncommitted edits included, so
+`git add` new files first. `VX_DTE_RUN` names the run and turns
+distribution on:
 
 ```sh
 bun add -d @vzn/vx-dte
 vx lock
-git add -A && git commit -m "try distributed task execution"
+git add -A
 VX_DTE_RUN=$(uuidgen) vx run build --all
 ```
 
@@ -54,6 +55,19 @@ no worker starts:
   [2mworkers [0m  [2mnone started: no task needed one[0m
 ```
 
-Without `VX_DTE_RUN`, `vx run` runs on this machine as always.
+Without `VX_DTE_RUN`, `vx run` runs on this machine as always. On
+GitHub Actions the run names itself.
+
+---
+
+A task that reads a file git does not track fails, naming the file:
+
+```ansi
+[38;2;239;68;68m[vx] @demo/ui#build: plugin '@vzn/vx-dte' (executor 'dte') failed in execute: @demo/ui#build keys packages/ui/src/notes.ts, which git does not track, so no worker has it: git add it (and commit it for workers on CI), or leave it out of the task's inputs[0m
+```
+
+A worker builds on the bytes git stores, with its filters undone (line
+endings, `ident`, LFS). A task whose input differs on disk, such as a
+CRLF checkout, fails, naming it.
 
 When it works here, [spread your CI run over several machines](../spread-ci-over-machines/).
