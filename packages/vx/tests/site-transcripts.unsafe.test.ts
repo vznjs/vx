@@ -559,21 +559,21 @@ describe("the caching page's verdict table", () => {
 })
 
 // The sandbox needs bwrap, so the guide's two failures are rendered by the
-// frame renderer from the records the sandbox writes: `mkdir(<abs>) = a
-// write no grant covers  [<abs>]` (sandbox-runtime's "declaring
-// outputs grants no write") and strace's `openat(<raw>) = -1 ENOENT
-// [<abs>]`. The tabs left out the frame's lines and the write's path.
+// frame renderer from the records the sandbox writes: strace's
+// `access(<abs>) = -1 ENOENT  [<abs>]` and sandbox-runtime's `mkdir(<abs>) =
+// a write no grant covers  [<abs>]`. Pasted from a real `vite build` run
+// (2026-11-23); the tabs once left out the frame's lines and the write's path.
 describe("the sandboxing guide's failures", () => {
-  const command = 'mkdir -p dist && cat tsconfig.json src/a.ts > dist/out.js'
+  const command = 'vite build'
   const node = {
-    id: '@demo/app#build',
-    projectName: '@demo/app',
+    id: '@demo/web#build',
+    projectName: '@demo/web',
     taskName: 'build',
     config: { exec: { command } },
   } as unknown as TaskNode
   // The live frame a terminal shows for one task: its opening line, the
   // tool's output as it streamed, then the violations and the close.
-  const frame = (record: string, fix: Record<string, string[]>, stderr: string): string =>
+  const frame = (records: string[], fix: Record<string, string[]>, stderr: string): string =>
     [
       formatFrameOpen(node),
       stderr,
@@ -582,31 +582,53 @@ describe("the sandboxing guide's failures", () => {
         status: 'failed',
         exitCode: 1,
         durationMs: 12,
-        sandbox: { violations: 1, lines: [record], fix },
+        sandbox: { violations: records.length, lines: records, fix },
       } as TaskOutcome),
     ].join('\n')
   const page = readFileSync(path.join(GUIDES, '..', 'docs', 'sandboxing.mdx'), 'utf8')
   // The page shows a recorded coloured run: compared without its colours,
   // its typed command line, and with the run's own duration made stable.
-  const tab = (label: string): string =>
-    plain(sample(page.slice(page.indexOf(label)), 'vx run @demo/app#build'))
-      .replace(/^\$ vx run @demo\/app#build\n\n/, '')
+  const tab = (title: string): string =>
+    plain(sample(page.slice(page.indexOf(title)), 'vx run @demo/web#build'))
+      .replace(/^\$ vx run @demo\/web#build\n\n/, '')
       .replace(/\(\d+ms\)/g, '(12ms)')
+  const web = '/repo/packages/web'
 
   it('are the frames vx draws', () => {
     expect(page).toContain(`command: '${command}'`)
-    expect(tab('label="1. The write"')).toBe(
+    expect(tab('title="1. The build passes, and vx fails it"')).toBe(
       frame(
-        'mkdir(/repo/packages/app/dist) = a write no grant covers  [/repo/packages/app/dist]',
-        { write: ['dist/'] },
-        "mkdir: cannot create directory 'dist': Read-only file system",
+        [
+          `access(${web}/vite.config.js) = -1 ENOENT  [${web}/vite.config.js]`,
+          `access(${web}/package.json) = -1 ENOENT  [${web}/package.json]`,
+        ],
+        {
+          read: ['package.json', 'vite.config.js'],
+          inputs: ['package.json', 'vite.config.js'],
+        },
+        [
+          'vite v7.3.0 building client environment for production...',
+          'transforming...',
+          '✓ 3 modules transformed.',
+          'rendering chunks...',
+          'computing gzip size...',
+          'dist/index.html                0.14 kB │ gzip: 0.13 kB',
+          'dist/assets/index-CFD2rREh.js  0.78 kB │ gzip: 0.44 kB',
+          '✓ built in 115ms',
+        ].join('\n'),
       ),
     )
-    expect(tab('label="2. The read"')).toBe(
+    expect(tab('title="2. Grant the config, key it, run again"')).toBe(
       frame(
-        'openat(tsconfig.json) = -1 ENOENT  [/repo/packages/app/tsconfig.json]',
-        { read: ['tsconfig.json'], inputs: ['tsconfig.json'] },
-        'cat: tsconfig.json: No such file or directory',
+        [
+          `mkdir(${web}/node_modules/.vite-temp) = a write no grant covers  [${web}/node_modules/.vite-temp]`,
+        ],
+        { write: ['node_modules/.vite-temp/'] },
+        [
+          `failed to load config from ${web}/vite.config.js`,
+          'error during build:',
+          `Error: ENOENT: no such file or directory, mkdir '${web}/node_modules/.vite-temp'`,
+        ].join('\n'),
       ),
     )
   })
