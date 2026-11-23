@@ -108,8 +108,9 @@ export const SAY: Readonly<Record<string, string>> = {
     '`dte()` groups machines into worker types:\n\n- `dte({ workers: { <size>: {...} } })` → `dte({ workers: { <type>: { machines: { <name>: {...} } } } })`\n\nMachine names in output and adapter options read `<type>.<machine>`.',
   'feat(util)!: output components for every verb and plugin':
     "`vx lock` prints `✓ vx lock N project configs → .vx/projects.lock.json`. A refusal prints `✗ vx lock lock not written`, with what, why and the fix under it.\n\n`applyMigration`'s `lock` option returns `{ code, said }`.",
-  'feat(cli)!: give each vx lock --check problem its error code':
-    '`vx lock --check --format json` lists each problem as `{ code, message }`, not as a string.',
+  // The 2026-11-23 day PR squashed three breaking commits into one.
+  'feat!: land 2026-11-23 alpha hardening, docs and locks':
+    "`.vx/projects.lock` is version 9 and `.vx/dependencies.lock` version 6. Run `vx lock` once to rewrite both.\n\n`vx lock --check --format json` lists each problem as `{ code, message }`, not as a string.\n\n`vx run --dry=json` → `vx run --dry --format json`; `--dry=pretty` → `--dry`; pipeline `dry: 'json'` → `dry: true, format: 'json'`.",
   'feat(cache)!: make the artifact ceiling a setting, 1 GiB by default':
     'The default artifact ceiling is 1 GiB, not 2 GiB. Raise it with `cache.artifactCeiling` or `VX_CACHE_ARTIFACT_CEILING`.',
   'refactor(cli)!: remove vx run --tag':

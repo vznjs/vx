@@ -18,13 +18,15 @@ Pick the vx you run, from `vx --version`. The list keeps only the releases after
 
 <Deeper level="details" title="In the next release">
 
-### Plan as JSON with vx run --dry --format json
+### Locks, lock problems, dry runs and edited configs
+
+`.vx/projects.lock` is version 9 and `.vx/dependencies.lock` version 6. Run `vx lock` once to rewrite both.
+
+`vx lock --check --format json` lists each problem as `{ code, message }`, not as a string.
 
 `vx run --dry=json` → `vx run --dry --format json`; `--dry=pretty` → `--dry`; pipeline `dry: 'json'` → `dry: true, format: 'json'`.
 
-### Give each vx lock --check problem its error code
-
-`vx lock --check --format json` lists each problem as `{ code, message }`, not as a string.
+After editing a `vx.config.ts`, run `vx lock` before `vx run`, `vx show`, `vx why` or `vx pipeline`: the run refuses with `VX_E_LOCK`, naming the file, instead of running the config the lock holds.
 
 ### Sandboxed tasks do not read credential stores
 
@@ -39,10 +41,6 @@ Variables whose names hold `PASSPHRASE` or end in `_PASS` are masked in output.
 The local index schema is v58: it resets once, so the run history starts empty.
 
 Nothing to do. `vx last` and `vx why` show only runs made after the upgrade. A piped run prints the Tasks header once.
-
-### Write locks git merges cleanly
-
-`.vx/projects.lock` is version 9 and .vx/dependencies.lock version 6. Run `vx lock` once to rewrite both.
 
 ### A --force run replaces the entry its key held
 
