@@ -228,7 +228,7 @@ If no task name is given:
 | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | (default)                     | The project that contains cwd. Errors if cwd is not inside a project.                                                                                  |
 | `pkg#task`                    | Just that project.                                                                                                                                     |
-| `//#task`                     | The root project's task (Turbo's spelling; the root is a project, D-39).                                                                               |
+| `//#task`                     | The root project's task (Turbo's spelling; the root is a project).                                                                                     |
 | `--all`                       | Every project that declares the task.                                                                                                                  |
 | `--filter <pat>` (repeatable) | pnpm-style filter DSL (see below).                                                                                                                     |
 | `--affected[=<base>]`         | The tasks a git change reaches: the ones it touches and those whose `dependsOn` closure holds one, through the edges their keys fold (`inputs.tasks`). |
@@ -273,19 +273,19 @@ selected: !@demo/web excluded every project the other filters matched`.
 | Form               | Meaning                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `<pattern>`        | Match by package name. `*` matches any characters, including `/`. A pattern matching no package may leave out the scope, as pnpm reads it (`cart` is `@nx-example/cart` when one package carries it). One holding a `/` outside a scope that matches no package is a directory, as Nx's `--projects` reads it (`apps/*` is `./apps/*`).                                                                                                                                                                                    |
-| `./<dir>`          | The package at `<dir>` alone, as Turbo and pnpm read it (`.` is the root project); a `<dir>` that is no package matches the packages under it (relative to workspace root; D-43). A link to a package's directory names that package.                                                                                                                                                                                                                                                                                      |
+| `./<dir>`          | The package at `<dir>` alone, as Turbo and pnpm read it (`.` is the root project); a `<dir>` that is no package matches the packages under it (relative to workspace root). A link to a package's directory names that package.                                                                                                                                                                                                                                                                                            |
 | `{<dir>}`          | Same as `./<dir>`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | `<pattern>{<dir>}` | The packages `<pattern>` selects inside `<dir>` (a `{<dir>}` path form), as pnpm and Turbo read it: `@acme/*{apps}`, `*web*{./packages/*}`. Takes every operator a name takes.                                                                                                                                                                                                                                                                                                                                             |
 | `./<glob>`         | A glob over root-relative project dirs: `./packages/*` (direct children), `{apps/**}` (nested too; a trailing `**` matches zero dirs, so `./packages/kit/**` holds kit itself, as pnpm and Turbo read it). A path that names a project dir literally is read literally first, so `./packages/[abc]` is that directory. A glob matches a package's real directory and follows no link: with `packages/l -> ../ext/l`, `./packages/l` names l, while `./packages/*` and `./packages/l/**` leave it out (`./ext/*` holds it). |
-| `.`                | The root project alone, when the root is a project (D-39); otherwise the packages under the root, i.e. every package, not the one you are standing in.                                                                                                                                                                                                                                                                                                                                                                     |
-| `//`               | The root project alone, Turbo's name for it; matches nothing when the root is no project (D-46).                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `.`                | The root project alone, when the root is a project; otherwise the packages under the root, i.e. every package, not the one you are standing in.                                                                                                                                                                                                                                                                                                                                                                            |
+| `//`               | The root project alone, Turbo's name for it; matches nothing when the root is no project.                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | `tag:<pattern>`    | The projects whose config `tags` hold a match, as Nx's `tag:` reads them (`*` as in a name). Takes every operator a name takes: `!tag:x`, `...tag:x`, `tag:x^...`, `tag:x[main]`. Nx's `--projects tag:x` aliases it.                                                                                                                                                                                                                                                                                                      |
 | `<pattern>...`     | Match + all transitive dependencies (see below what an edge is).                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | `...<pattern>`     | Match + all transitive dependents.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | `<pattern>^...`    | Only the transitive dependencies, excluding the matched package itself.                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | `...^<pattern>`    | Only the transitive dependents, excluding the matched package itself.                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | `...<pattern>...`  | Match + its dependents + the dependencies of all of them, as Turbo selects (`...db...` takes the packages the apps that use db build on).                                                                                                                                                                                                                                                                                                                                                                                  |
-| `<sel>[<ref>]`     | The packages `<sel>` (a name pattern or `{<dir>}`) selects that changed since `<ref>`, as Turbo and pnpm read `@scope/*[main]` (D-44).                                                                                                                                                                                                                                                                                                                                                                                     |
+| `<sel>[<ref>]`     | The packages `<sel>` (a name pattern or `{<dir>}`) selects that changed since `<ref>`, as Turbo and pnpm read `@scope/*[main]`.                                                                                                                                                                                                                                                                                                                                                                                            |
 | `<sel>...[<ref>]`  | The packages `<sel>` selects that changed since `<ref>` or depend on one that did; no dependency is added (Turbo: `@acme/api...[HEAD]` is api when only its dependency changed).                                                                                                                                                                                                                                                                                                                                           |
 | `!<pattern>`       | Exclude packages matching `<pattern>`, from everything the includes select, in any order.                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | `[<git-ref>]`      | Projects whose files changed since `<git-ref>` (`main`, `HEAD~5`, …).                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
@@ -666,7 +666,7 @@ span lines.
 | `--filter <pattern>`               | repeatable     | (none)                                                         | pnpm-style filter DSL (see above). `--filter=<pattern>` form too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | `--all`                            | boolean        | off                                                            | Select every project that declares the task.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | `--affected[=<base>]`              | optional value | off                                                            | Select the tasks a change since `<base>` reaches: the ones it touches and those whose `dependsOn` closure holds one, through the edges their keys fold (`inputs.tasks`) (default a plugin's base, else the merge base with `origin/<baseBranch>`; none on that branch); candidates are `--filter "...[<base>]"`'s.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| `--exclude-dependencies[=<names>]` | optional value | off                                                            | Drop `dependsOn` edges. No value = all (just the requested task runs; a group's members run as the group); comma-list = drop only those names, each of which some project must declare (a typo is refused with the nearest name, item 1026). An edge to a task the run schedules anyway (`--all` requests it) stays, so the two still run in order, and so does the order through a dropped task: with `gen` dropped from `test → gen → build` and `build` requested, `test` still waits for `build`. An empty `=` value is a parse error (ambiguous — see below). A dropped dependency does not run but is still keyed, so every key is the one a full run derives; a task keyed on one may hit but does not save (`caching.md` step 8).                                                                                                 |
+| `--exclude-dependencies[=<names>]` | optional value | off                                                            | Drop `dependsOn` edges. No value = all (just the requested task runs; a group's members run as the group); comma-list = drop only those names, each of which some project must declare (a typo is refused with the nearest name). An edge to a task the run schedules anyway (`--all` requests it) stays, so the two still run in order, and so does the order through a dropped task: with `gen` dropped from `test → gen → build` and `build` requested, `test` still waits for `build`. An empty `=` value is a parse error (ambiguous — see below). A dropped dependency does not run but is still keyed, so every key is the one a full run derives; a task keyed on one may hit but does not save (`caching.md` step 8).                                                                                                            |
 | `--concurrency <n>`                | int or `<n>%`  | `run.concurrency`, else the cores (cgroup-capped)              | Maximum parallel tasks that EXECUTE; confirmed cache-hit restores are disk work and run on their own lane, up to twice this. `1` serializes both; `50%` is half the CPUs (rounded, never below 1; over 100% is allowed for I/O-bound work). `--concurrency=<n>` form too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | `--schedule <rule>`                | value          | `run.schedule`, else `most-work`                               | Which ready task starts first when more are ready than workers: `most-work`, `critical-path`, `direct-dependents`, `ready-order` (`docs/schema.md` § `run.schedule`).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | `--branch <name>`                  | value          | `VX_RUN_BRANCH`, else git's branch, then the CI provider's     | The branch the run records in its history and forecasts from. No config key: a committed branch would mislabel every other branch's runs. The space form rejects a value starting with `-`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
@@ -1685,7 +1685,7 @@ Every other flag is `vx run`'s ([Flags](#flags)).
    the configs; so is one inside a project, which re-reads the set as the
    config's own edit does (WD-14). A file the workspace config imports is loaded once per
    process, so its edit is named with the restart it needs rather than
-   run stale (item 949). An import whose file is gone stays on the list
+   run stale. An import whose file is gone stays on the list
    by the name it would have, so its return is a cycle (X-133). The
    projects are the lock's: a new `.vx/projects.lock` is the
    event that adds or drops one, and its directory is watched
@@ -1708,7 +1708,7 @@ Every other flag is `vx run`'s ([Flags](#flags)).
    an edit, nor is the `dist` directory itself coming and going (a
    literal entry covers its whole tree, as in the schema), unless some
    task reads the path as an input (an in-place formatter's `src/**`
-   output still leaves a `build` reading `src/**` watching it, item 946;
+   output still leaves a `build` reading `src/**` watching it;
    a task's own outputs are no input of it, so a `turbo()` task reading
    `**/*` does not re-run on its own `dist/`; only the tasks the run
    reaches through `dependsOn` are asked, so an unwatched `lint` reading
@@ -1751,7 +1751,7 @@ Every other flag is `vx run`'s ([Flags](#flags)).
    timestamped log) is either git-ignored — a git-ignored path never
    starts a cycle, since no cache key can see it (a user's edit to one
    still does in a project with a task that has a command and no cache,
-   which reads what it likes, item 947, outside any project nested
+   which reads what it likes, outside any project nested
    in it, and to one a task names outright; a write the last cycle made is not, read off the later of
    its mtime and ctime, so an output a cache hit restores is the run's,
    `watch-restored-output.test.ts`, unless
@@ -1762,8 +1762,7 @@ Every other flag is `vx run`'s ([Flags](#flags)).
    watch names the path and the remedy, once, and keeps going. A dev
    server the last cycle left running counts as that cycle for as long
    as it runs, so a log it rewrites in its project is named too, with
-   `.gitignore` as the remedy (a persistent task declares no outputs;
-   item 948). Only a file in a running server's own project, outside any
+   `.gitignore` as the remedy (a persistent task declares no outputs). Only a file in a running server's own project, outside any
    project nested there, is blamed on it, and never one git tracks, as
    git answers when it would be blamed, so a file committed or checked
    out since watch started counts: three saves of a source file are the
@@ -1895,7 +1894,7 @@ change though its files keep times from before the arm.
 
 A root file a plugin claims — a lockfile or install setting under
 `@vzn/vx-lockfile` (`pnpm-lock.yaml`, `bun.lock`, `.npmrc`, …),
-`turbo.json` under `turbo()` (item 961) — triggers a cycle, and so does
+`turbo.json` under `turbo()` — triggers a cycle, and so does
 `.vx/projects.lock`. Watch mode hears them because it watches the
 workspace root (non-recursively); a plugin added to the workspace
 config mid-watch counts from the cycle that loads it. The keys then
@@ -1906,7 +1905,7 @@ cycle's configs come from `.vx/projects.lock`, so a config edit
 alone changes no command: the cycle it starts says so on stderr,
 `vx watch: packages/web/vx.config.ts changed; runs read the lock, so run
 \`vx lock\` to apply it` (a config import's edit too). A re-lock
-(`vx lock`) is a cycle that re-reads the watched set (item 971).
+(`vx lock`) is a cycle that re-reads the watched set.
 
 ### Constraints
 
@@ -1976,7 +1975,7 @@ re-runs itself and what it depends on.
 A cycle that throws — no `.vx/projects.lock`, or one that locks a
 config since removed — prints `vx watch: cycle failed: <reason>` once
 and watch keeps watching, the initial run included, so the `vx lock`
-that fixes it re-runs (item 1017).
+that fixes it re-runs.
 
 Re-run cycles whose orchestrator returns `{ ok: false }` do NOT exit
 the watch loop — a failed cycle just prints the framed FAILED block
@@ -2165,13 +2164,12 @@ vx version sharing the store may still use it. A temp goes once it is an
 hour old; nothing younger than an hour is taken. Only the names vx writes are taken:
 `<hash>` is the key's 16 lowercase hex digits and the temp suffix is
 the one a save makes, so a `release.tar.zst` beside the index in a
-`cache.dir` you share is never touched (item 968). The converse, an
+`cache.dir` you share is never touched. The converse, an
 index row whose artifact is gone (deleted by hand), is dropped by the
 same prune, and its bytes count toward neither `--max-size` nor the
 evicted total: they are on no disk, and counting them evicted real
-entries to make room for them (item 975). A row used within the hour
-is kept until a later prune, but its bytes are left out all the same
-(item 1081). The sweep runs on every prune, under
+entries to make room for them. A row used within the hour
+is kept until a later prune, but its bytes are left out all the same. The sweep runs on every prune, under
 either flag, and reports separately from the policy's evictions.
 
 ### `--dry`
@@ -2184,7 +2182,7 @@ would not use is passed over by both. On an index an earlier vx wrote,
 which the real prune resets first, it reads the index as that reset
 leaves it: the shared store's entries still face the policy, and every
 artifact in the workspace's own directory is row-less, judged by the
-policy on its file time (item 1083).
+policy on its file time.
 
 ### Concurrent runs
 
@@ -2885,8 +2883,8 @@ downloaded; re-run as a user who can (sudo vx upgrade), …`. The new
 binary keeps the old one's mode (and, as root, its owner), and must
 answer `--version` before the upgrade reports it installed: one that
 does not start on this machine, or does not answer within 10 s, is
-swapped back for the previous vx, and the command exits 1 saying so
-(item 1097): `the new binary did not start on this machine (… --version
+swapped back for the previous vx, and the command exits 1 saying so:
+`the new binary did not start on this machine (… --version
 failed) — the previous vx is back in place`. Once it answers:
 `✓ vx upgrade  installed 0.0.2`. On the version it
 already is it says `› vx upgrade  already at <version>` and downloads
@@ -4300,7 +4298,7 @@ the flag they open the workspace's cache (`defineWorkspace({ cache: { dir } })`
 or `.vx/cache`). A `--cache-dir` that is not there is refused by name
 (`--cache-dir .vx/cahce: no such directory`, `VX_E_USAGE`). In a workspace that never
 ran, `vx why`, `vx last`, `vx info`, `vx show` and `vx cache clean`
-(dry or not) read it as empty and create nothing (item 900, E-7, E-38).
+(dry or not) read it as empty and create nothing.
 
 ### Exit codes
 
