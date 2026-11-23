@@ -31,7 +31,7 @@ const ESC = String.fromCharCode(27)
 // Pages these rules reach.
 const ROOTS = ['docs', 'quickstart.mdx', 'glossary.mdx']
 // The generated upgrading guide quotes commit footers, which git keeps as written.
-const LATER = new Set(['docs/upgrading.md'])
+const LATER = new Set(['docs/upgrading.mdx'])
 
 const pages = (rel: string): string[] => {
   const abs = path.join(CONTENT, rel)
@@ -117,7 +117,7 @@ describe('every page reads on a phone', () => {
 
   // CONTROL: the check sees a long paragraph and an internal word.
   it('catches what it is for', () => {
-    const found = problems('docs/upgrading.md')
+    const found = problems('docs/upgrading.mdx')
     expect(found.some((p) => p.includes('paragraph of'))).toBe(true)
     expect(found.some((p) => p.includes('internal'))).toBe(true)
   })
