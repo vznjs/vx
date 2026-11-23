@@ -1,21 +1,28 @@
-// `<vx-output-rule>`: enhances `OutputRule.astro`. A typed output path
-// says whether vx requires it after the command or lets it match nothing.
-import { outputRule } from './model/task-fields.js'
+// `<vx-output-rule>`: enhances `OutputRule.astro`. The reader toggles which
+// declared outputs the command wrote; the line says whether the task passes.
+import { outputsVerdict } from './model/task-fields.js'
 
 class OutputRule extends HTMLElement {
   connectedCallback() {
     this.querySelector<HTMLElement>('.try')!.hidden = false
-    const say = this.querySelector<HTMLElement>('.say')!
-    this.querySelector<HTMLInputElement>('.path')!.addEventListener('input', (e) => {
-      const v = (e.target as HTMLInputElement).value
-      const r = outputRule(v)
-      say.hidden = r === 'empty'
-      say.className = `say vx-say ${r === 'required' ? 'is-warn' : 'is-ok'}`
-      say.textContent =
-        r === 'required'
-          ? `${v.trim()} has no wildcard: it must exist, or the task fails.`
-          : `${v.trim()} has a wildcard: it may match nothing.`
+    this.addEventListener('click', (e) => {
+      const b = (e.target as Element).closest<HTMLButtonElement>('[data-path]')
+      if (b === null) return
+      b.setAttribute('aria-pressed', String(b.getAttribute('aria-pressed') !== 'true'))
+      this.#show()
     })
+  }
+
+  #show() {
+    const buttons = [...this.querySelectorAll<HTMLButtonElement>('[data-path]')]
+    const declared = buttons.map((b) => b.dataset['path']!)
+    const wrote = new Set(
+      buttons.filter((b) => b.getAttribute('aria-pressed') === 'true').map((b) => b.dataset['path']!),
+    )
+    const v = outputsVerdict(declared, wrote)
+    const say = this.querySelector<HTMLElement>('.say')!
+    say.className = `say vx-say ${v.ok ? 'is-ok' : 'is-danger'}`
+    say.textContent = v.ok ? 'The task passes.' : `The task fails: ${v.why}.`
   }
 }
 

@@ -165,8 +165,11 @@ run finds both keys:
 
 ### Outputs that must exist
 
-A plain path in `outputs.files` **must exist** when the command ends. A
-path with a wildcard may match nothing.
+Declared outputs are a promise. When the command ends:
+
+- a plain path, like `dist/index.js`, **must exist**;
+- a wildcard, like `coverage/**`, may match nothing;
+- but **at least one** declared output must exist.
 
 <OutputRule />
 
@@ -220,7 +223,7 @@ instead.
 
 | Field | Does |
 | --- | --- |
-| `outputs.files` <Badge text="required" /> | project files the task makes; `[]` when it makes none |
+| `outputs.files` <Badge text="required" /> | project files the task makes; plain paths must exist, and at least one entry must match; `[]` when it makes none |
 | `outputs.workspaceFiles` | files it makes outside the project, from the workspace root |
 | `outputs.clean` | `false` keeps old outputs for the command (an incremental build); default `true` removes them first |
 

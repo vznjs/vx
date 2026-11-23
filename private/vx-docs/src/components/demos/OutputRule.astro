@@ -1,30 +1,44 @@
 ---
-// The outputs rule. Without JavaScript it shows a fixed table of paths.
-// `output-rule.ts` reads `.path` and `.say`.
+// The outputs rule. Without JavaScript it shows the four cases below.
+// `output-rule.ts` reads each `[data-path]` toggle and the `.say` line.
 import Demo from '../Demo.astro'
 import { outputRule } from './model/task-fields.js'
 
-const ROWS = ['dist/index.js', 'dist', 'dist/**', 'coverage/*.json']
-const WORDS = { required: 'must exist, or the task fails', optional: 'may match nothing', empty: '' }
+const PATHS = ['dist/index.js', 'dist/**', 'coverage/**']
+const CASES: [declared: string, wrote: string, result: string, ok: boolean][] = [
+  ['dist/index.js', 'dist/index.js', 'passes', true],
+  ['dist/index.js', 'nothing', 'fails', false],
+  ['dist/**, coverage/**', 'dist/app.js', 'passes', true],
+  ['dist/**', 'nothing', 'fails', false],
+]
 ---
 
 <Demo name="output-rule">
   <table>
-    <thead><tr><th>outputs.files</th><th>after the command</th></tr></thead>
+    <thead><tr><th>declared</th><th>written</th><th>task</th></tr></thead>
     <tbody>
       {
-        ROWS.map((r) => (
+        CASES.map(([d, w, r, ok]) => (
           <tr>
-            <td><code>{r}</code></td>
-            <td class={outputRule(r) === 'required' ? 'is-warn' : 'is-ok'}>{WORDS[outputRule(r)]}</td>
+            <td><code>{d}</code></td>
+            <td>{w}</td>
+            <td class={ok ? 'is-ok' : 'is-danger'}>{r}</td>
           </tr>
         ))
       }
     </tbody>
   </table>
-  <div class="vx-row try" hidden>
-    <label class="vx-label" for="vx-out-path">Try a path:</label>
-    <input id="vx-out-path" class="path" type="text" placeholder=".next/**" spellcheck="false" />
+  <div class="try" hidden>
+    <p class="vx-label">Declared <code>outputs.files: ['dist/index.js', 'dist/**', 'coverage/**']</code>. Tap what the command wrote:</p>
+    <div class="vx-row">
+      {
+        PATHS.map((p) => (
+          <button type="button" data-path={p} aria-pressed="true">
+            {p} {outputRule(p) === 'required' ? '(plain)' : '(wildcard)'}
+          </button>
+        ))
+      }
+    </div>
+    <p class="say vx-say is-ok" aria-live="polite">The task passes.</p>
   </div>
-  <p class="say vx-say" aria-live="polite" hidden></p>
 </Demo>
