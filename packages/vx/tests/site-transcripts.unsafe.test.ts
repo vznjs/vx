@@ -8,8 +8,9 @@ import { readFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
+import type { TaskOutcome } from '../src/graph/outcome.js'
 import type { TaskNode } from '../src/graph/task-graph.js'
-import { formatTaskBlock } from '../src/report/framed-output.js'
+import { formatFrameClose, formatFrameOpen } from '../src/report/framed-output.js'
 import { BIN } from './helpers/vx.js'
 
 const SRC = path.resolve(import.meta.dir, '..', 'src')
@@ -570,33 +571,39 @@ describe("the sandboxing guide's failures", () => {
     taskName: 'build',
     config: { exec: { command } },
   } as unknown as TaskNode
-  const block = (record: string, fix: Record<string, string[]>, stderr: string): string =>
-    formatTaskBlock(
-      node,
-      {
+  // The live frame a terminal shows for one task: its opening line, the
+  // tool's output as it streamed, then the violations and the close.
+  const frame = (record: string, fix: Record<string, string[]>, stderr: string): string =>
+    [
+      formatFrameOpen(node),
+      stderr,
+      formatFrameClose(node, {
         node,
         status: 'failed',
         exitCode: 1,
         durationMs: 12,
         sandbox: { violations: 1, lines: [record], fix },
-      },
-      { output: [{ text: `${stderr}\n`, err: true }] },
-    ).trimEnd()
+      } as TaskOutcome),
+    ].join('\n')
   const page = readFileSync(path.join(GUIDES, '..', 'docs', 'sandboxing.mdx'), 'utf8')
+  // The page shows a recorded coloured run: compared without its colours,
+  // its typed command line, and with the run's own duration made stable.
   const tab = (label: string): string =>
-    sample(page.slice(page.indexOf(label)), '$ vx run build --all')
+    plain(sample(page.slice(page.indexOf(label)), 'vx run @demo/app#build'))
+      .replace(/^\$ vx run @demo\/app#build\n\n/, '')
+      .replace(/\(\d+ms\)/g, '(12ms)')
 
   it('are the frames vx draws', () => {
     expect(page).toContain(`command: '${command}'`)
     expect(tab('label="1. The write"')).toBe(
-      block(
+      frame(
         'mkdir(/repo/packages/app/dist) = a write no grant covers  [/repo/packages/app/dist]',
         { write: ['dist/'] },
         "mkdir: cannot create directory 'dist': Read-only file system",
       ),
     )
     expect(tab('label="2. The read"')).toBe(
-      block(
+      frame(
         'openat(tsconfig.json) = -1 ENOENT  [/repo/packages/app/tsconfig.json]',
         { read: ['tsconfig.json'], inputs: ['tsconfig.json'] },
         'cat: tsconfig.json: No such file or directory',
