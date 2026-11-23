@@ -156,7 +156,11 @@ describe("Turbo's switches the plugins leave alone", () => {
   it('each Turbo config variable is read, or ignored here and in the README', () => {
     const src = srcText()
     const readme = readFileSync(path.join(import.meta.dir, '..', 'README.md'), 'utf8')
-    const line = readme.split('\n').find((l) => l.startsWith("- Turbo's run switches"))
+    // The lead line and the list under it, up to the first line that is no item.
+    const lines = readme.split('\n')
+    const at = lines.findIndex((l) => l.startsWith("Turbo's run switches"))
+    const end = lines.findIndex((l, i) => i > at && l !== '' && !l.startsWith('- '))
+    const line = at < 0 ? undefined : lines.slice(at, end < 0 ? undefined : end).join('\n')
     expect({
       unclassified: TURBO_CONFIG_ENV.filter((n) => !src.includes(`'${n}'`) && !(n in IGNORED)),
       ignoredButRead: Object.keys(IGNORED).filter((n) => src.includes(`'${n}'`)),

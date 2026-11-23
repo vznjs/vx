@@ -256,8 +256,12 @@ vx dte worker                                                             # a wo
 ```
 
 A worker started before its run finds no run on the relay: it says so
-and exits. A run with no worker yet says once, a second in,
-`[vx] waiting for a worker to join run <id> on the relay…`, and its live
+and exits.
+
+A run with no worker yet says once, a second in,
+`[vx] waiting for a worker to join run <id> on the relay…`.
+
+Its live
 `workers` row reads `0 joined · waiting for a worker to join the relay`
 with no time left shown until one does.
 
