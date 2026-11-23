@@ -16,7 +16,6 @@ import { createRequire } from 'node:module'
 import path from 'node:path'
 import { launchVersion } from './binary-launch.ts'
 import { TARGETS, emitMainPackage, emitPlatformPackages, emitPluginPackages } from './build-npm.ts'
-import { runMain } from './github.ts'
 
 const CORE = path.resolve(import.meta.dir, '..')
 const DIST = path.join(CORE, 'dist')
@@ -425,4 +424,11 @@ async function main(argv: readonly string[]): Promise<void> {
   throw new Error(`unknown step: ${step}`)
 }
 
-if (import.meta.main) await runMain(() => main(process.argv.slice(2)))
+if (import.meta.main) {
+  try {
+    await main(process.argv.slice(2))
+  } catch (e) {
+    process.stderr.write(`${(e as Error).message}\n`)
+    process.exitCode = 1
+  }
+}
