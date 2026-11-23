@@ -34,7 +34,7 @@ export default defineWorkspace({
 })
 ```
 
-`pr` runs `build` and `test` only where your branch changed something. `main` runs them in every project. Run `vx lock` after the edit.
+This page keeps two tasks so the plans stay short. `pr` runs `build` and `test` only where your branch changed something. `main` runs them in every project. Run `vx lock` after the edit.
 
 <Takeaway>name a run once and stop retyping its flags.</Takeaway>
 
@@ -56,7 +56,9 @@ vx pipeline pr --dry
   [2mpredicted[0m  [38;2;203;213;225m~1.01s wall · ~1.01s total execution[0m
 ```
 
-Read the last column: each task says why it is in the plan. Only `packages/web` changed. `@demo/ui#build` is listed because `@demo/web#build` needs it, and it comes from the cache.
+Read the last column: each task says why it is in the plan. `no-cache` marks a task without `cache: true`: it always runs.
+
+Only `packages/web` changed. `@demo/ui#build` is listed because `@demo/web#build` needs it, and it comes from the cache.
 
 <Quiz q="Why is @demo/ui#build in the plan, when packages/ui did not change?">
   `@demo/web#build` depends on it (`^build`), so the run needs its output. It did not change, so

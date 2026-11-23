@@ -26,31 +26,31 @@ vx pipeline pr
 <Frame title="1. A push to main: every task runs">
 
 ```ansi title="vx pipeline main"
-[4m[58;2;110;118;129m  [1m[38;2;167;139;250mTasks[0m[4m[58;2;110;118;129m     [2mstatus  cache     ±usual    time   cpu    mem outputs  blocks worker         task[0m[4m[58;2;110;118;129m                           [0m
-            [38;2;34;197;94msuccess[0m [2mmiss[0m           [2m—[0m    [38;2;203;213;225m73ms[0m   [2m85%[0m   [2m78MB[0m      [2m0B[0m       [2m0[0m [2mlocal[0m          [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;232;121;249mlint[0m
-            [38;2;34;197;94msuccess[0m [2mmiss[0m           [2m—[0m    [38;2;203;213;225m89ms[0m   [2m72%[0m   [2m78MB[0m      [2m0B[0m       [2m0[0m [2mlocal[0m          [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;232;121;249mlint[0m
-            [38;2;34;197;94msuccess[0m [2mmiss[0m           [2m—[0m   [38;2;203;213;225m309ms[0m   [2m89%[0m   [2m99MB[0m     [2m68B[0m       [38;2;203;213;225m1[0m [2mlocal[0m          [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m
-            [38;2;34;197;94msuccess[0m [2mmiss[0m           [2m—[0m   [38;2;203;213;225m312ms[0m  [2m101%[0m  [2m100MB[0m    [2m908B[0m       [2m0[0m [2mlocal[0m          [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m
-            [38;2;34;197;94msuccess[0m [2mmiss[0m           [2m—[0m   [38;2;203;213;225m858ms[0m  [2m137%[0m  [2m273MB[0m      [2m0B[0m       [2m0[0m [2mlocal[0m          [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;96;165;250mtest[0m
-            [38;2;34;197;94msuccess[0m [2mmiss[0m           [2m—[0m   [38;2;203;213;225m944ms[0m  [2m119%[0m  [2m278MB[0m      [2m0B[0m       [2m0[0m [2mlocal[0m          [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;96;165;250mtest[0m
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mTasks[0m[4m[58;2;110;118;129m     [2mstatus  cache       time  task[0m[4m[58;2;110;118;129m                     [0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m      [38;2;203;213;225m1.34s[0m  [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;232;121;249mlint[0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m      [38;2;203;213;225m1.34s[0m  [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;232;121;249mlint[0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m      [38;2;203;213;225m1.67s[0m  [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m      [38;2;203;213;225m324ms[0m  [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m      [38;2;203;213;225m2.19s[0m  [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;96;165;250mtest[0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m      [38;2;203;213;225m704ms[0m  [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;96;165;250mtest[0m
 
-[4m[58;2;110;118;129m  [1m[38;2;167;139;250mSummary[0m[4m[58;2;110;118;129m                                                                                                       [2mvx 0.0.0[0m
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mSummary[0m[4m[58;2;110;118;129m  [2mvx 0.0.0[0m
   [2mcache   [0m  [38;2;56;189;248m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
             [2mlocal[0m [38;2;56;189;248m6↑[0m
 ```
 
-Six tasks, two projects. Each one stores its result in the cache: **local 6↑**.
+Six tasks in two projects: `@demo/web` builds on `@demo/ui`. Each one stores its result in the cache: **local 6↑**.
 
 </Frame>
 <Frame title="2. A pull request edits packages/web: only web runs">
 
 ```ansi title="vx pipeline pr"
-[4m[58;2;110;118;129m  [1m[38;2;167;139;250mTasks[0m[4m[58;2;110;118;129m     [2mstatus  cache     ±usual    time   cpu    mem outputs  blocks worker         task[0m[4m[58;2;110;118;129m                           [0m
-            [38;2;34;197;94msuccess[0m [2mmiss[0m        [2m−6ms[0m    [38;2;203;213;225m67ms[0m   [2m83%[0m   [2m78MB[0m      [2m0B[0m       [2m0[0m [2mlocal[0m          [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;232;121;249mlint[0m
-            [38;2;34;197;94msuccess[0m [2mmiss[0m        [2m+2ms[0m   [38;2;203;213;225m314ms[0m  [2m113%[0m   [2m98MB[0m    [2m930B[0m       [2m0[0m [2mlocal[0m          [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m
-            [38;2;34;197;94msuccess[0m [2mmiss[0m      [2m−137ms[0m   [38;2;203;213;225m721ms[0m  [2m181%[0m  [2m262MB[0m      [2m0B[0m       [2m0[0m [2mlocal[0m          [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;96;165;250mtest[0m
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mTasks[0m[4m[58;2;110;118;129m     [2mstatus  cache       time  task[0m[4m[58;2;110;118;129m                     [0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m       [38;2;203;213;225m70ms[0m  [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;232;121;249mlint[0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m      [38;2;203;213;225m330ms[0m  [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m      [38;2;203;213;225m672ms[0m  [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;96;165;250mtest[0m
 
-[4m[58;2;110;118;129m  [1m[38;2;167;139;250mSummary[0m[4m[58;2;110;118;129m                                                                                                       [2mvx 0.0.0[0m
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mSummary[0m[4m[58;2;110;118;129m  [2mvx 0.0.0[0m
   [2mcache   [0m  [38;2;34;197;94m▰▰▰▰▰▰▰▰▰▰▰▰▰[0m[38;2;56;189;248m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
             [2mlocal[0m [38;2;34;197;94m1✓[0m [38;2;56;189;248m3↑[0m
 ```
@@ -64,7 +64,7 @@ Three tasks ran, all in `@demo/web`. Read the cache line: **1✓** is `@demo/ui#
 
 > ## ❌ vx run
 >
-> **6** tasks · **3** executed · **3** cache hits (3 up-to-date, 0 restored) · **1** failed · 792ms
+> **6** tasks · **6** executed · **0** cache hits · **1** failed · 1.1s
 >
 > ### Failures
 >
@@ -72,16 +72,16 @@ Three tasks ran, all in `@demo/web`. Read the cache line: **1✓** is `@demo/ui#
 >
 > | Task | Status | Duration |
 > | --- | --- | --- |
-> | @demo/web#test | ❌ failed | 728ms |
-> | @demo/web#build | ✅ ran | 305ms |
-> | @demo/web#lint | ✅ ran | 64ms |
-> | @demo/ui#build | ✔️ up-to-date | 2ms |
-> | @demo/ui#lint | ✔️ up-to-date | 0ms |
-> | @demo/ui#test | ✔️ up-to-date | 0ms |
+> | @demo/web#test | ❌ failed | 776ms |
+> | @demo/ui#test | ✅ ran | 798ms |
+> | @demo/web#build | ✅ ran | 342ms |
+> | @demo/ui#build | ✅ ran | 308ms |
+> | @demo/web#lint | ✅ ran | 109ms |
+> | @demo/ui#lint | ✅ ran | 93ms |
 >
-> <sub>vx 0.0.659 · `vx pipeline main` · 5/6 passed · 3 up-to-date · 0 restored</sub>
+> <sub>vx 0.0.659 · `vx pipeline main` · 5/6 passed · 0 up-to-date · 0 restored</sub>
 
-The failure comes first. The full log stays in the job's output.
+A fresh runner has an empty cache, so all six ran. The failure comes first; the full log stays in the job's output.
 
 </Frame>
 </Walkthrough>
@@ -168,9 +168,9 @@ Pick a file. The tasks light up as `vx pipeline pr` ran them:
 
 Two steps decide. **Affected** picks the tasks; then the **cache** skips each one whose inputs did not change.
 
-<Quiz q="A pull request edits packages/ui/src/index.js. Does @demo/web#test run?">
-  No. `@demo/web#test` does not depend on any `@demo/ui` task, so the change does not reach it. Only
-  `@demo/web#build` does, through `^build`.
+<Quiz q="A pull request edits packages/ui/src/index.ts. Does @demo/web#test run?">
+  Yes. `@demo/web#test` depends on `@demo/ui#build` (`^build`), and that build is affected. Only
+  `@demo/web#lint` stays out: nothing it depends on changed.
 </Quiz>
 
 <Takeaway>tell, before you push, which tasks your pull request runs.</Takeaway>
@@ -382,14 +382,14 @@ A config changed without `vx lock`:
 [38;2;239;68;68m✗[0m [1mvx pipeline[0m  [38;2;203;213;225mpackages/web/vx.config.ts changed since the last [0m[1m`vx lock`[0m[38;2;203;213;225m — run [0m[1m`vx lock`[0m
 ```
 
-### When to run vx lock
-
-Run `vx lock` and commit after you edit a `vx.config.ts`, `.vx/workspace.ts`, a file a config imports, or your dependencies.
-
 - **`--affected has no base here`.** The clone has no base branch and no `origin` to fetch it from. Set `baseBranch` in `.vx/workspace.ts`, or `affected: '<ref>'`.
 - **`fetching it from origin failed`.** The checkout left no credentials (`persist-credentials: false`). Fetch the base in an earlier step.
 - **`nothing affected since <ref>`.** The change touches no project. That is a pass, exit `0`.
 - **The whole log lands in the job summary.** Don't redirect vx's output into `$GITHUB_STEP_SUMMARY`. `github()` writes the summary.
+
+### When to run vx lock
+
+Run `vx lock` and commit after you edit a `vx.config.ts`, `.vx/workspace.ts`, a file a config imports, or your dependencies.
 
 </Deeper>
 

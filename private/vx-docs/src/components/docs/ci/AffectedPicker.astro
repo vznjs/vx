@@ -17,15 +17,15 @@ const all = (s: State): Record<string, State> => Object.fromEntries(TASKS.map((t
 const CHOICES: Choice[] = [
   {
     id: 'web-src',
-    file: 'packages/web/src/index.js',
+    file: 'packages/web/src/index.ts',
     states: { ...all('out'), '@demo/web#lint': 'run', '@demo/web#test': 'run', '@demo/web#build': 'run', '@demo/ui#build': 'cache' },
     says: '@demo/web runs. @demo/ui#build comes from the cache: web needs it, and it did not change.',
   },
   {
     id: 'ui-src',
-    file: 'packages/ui/src/index.js',
-    states: { ...all('run'), '@demo/web#lint': 'out', '@demo/web#test': 'out' },
-    says: 'All of @demo/ui runs, and @demo/web#build, which builds on it. Web’s lint and test do not read ui, so they stay out.',
+    file: 'packages/ui/src/index.ts',
+    states: { ...all('run'), '@demo/web#lint': 'out' },
+    says: 'All of @demo/ui runs, and web’s build and test, which depend on ui’s build. Web’s lint depends on nothing, so it stays out.',
   },
   {
     id: 'web-readme',
