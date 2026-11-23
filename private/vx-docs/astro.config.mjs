@@ -91,7 +91,6 @@ export default defineConfig({
     '/guides/running/set-a-time-limit/': `${root}docs/running/set-a-time-limit/`,
     '/guides/running/start-a-dev-server/': `${root}docs/dev-servers/#start-a-dev-server-before-your-tests`,
     '/guides/running/stop-at-the-first-failure/': `${root}docs/running/stop-at-the-first-failure/`,
-    '/guides/troubleshooting/': `${root}docs/running-tasks/`,
     '/guides/upgrading/': `${root}docs/upgrading/`,
     '/concepts/ai-first/': `${root}docs/agents/`,
     '/plugins/vx-mcp/': `${root}docs/agents/`,

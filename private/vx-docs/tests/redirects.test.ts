@@ -138,7 +138,6 @@ const MERGED: Record<string, string> = {
   'guides/running/set-a-time-limit/': 'docs/running/set-a-time-limit/',
   'guides/running/start-a-dev-server/': 'docs/dev-servers/#start-a-dev-server-before-your-tests',
   'guides/running/stop-at-the-first-failure/': 'docs/running/stop-at-the-first-failure/',
-  'guides/troubleshooting/': 'docs/running-tasks/',
   'guides/upgrading/': 'docs/upgrading/',
   'migrate/from-turborepo/': 'docs/migrate/#turborepo',
   'migrate/from-nx/': 'docs/migrate/#nx',
