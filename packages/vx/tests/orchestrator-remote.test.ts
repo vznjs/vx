@@ -1764,7 +1764,9 @@ describe('orchestrator: injected RemoteCacheLayer (RunOptions.remoteCache)', () 
 
   // A remote hit keeps no input fingerprints (the artifact carries none),
   // and the next miss's `vx why` said the entry "was pruned" (2026-11-11:
-  // a fresh checkout's first edit). It names the remote instead.
+  // a fresh checkout's first edit). It names the remote instead. (A hit that
+  // restores a committed file records the inputs this machine derived its key
+  // from: stale-hit-committed-output.test.ts.)
   it(
     "the next miss's diff says the previous entry came from the remote, not that it was pruned",
     async () => {

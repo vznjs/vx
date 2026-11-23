@@ -112,6 +112,7 @@ export interface CacheLayer {
   ): Promise<void>
   save(args: SaveArgs): Promise<void>
   ingest(hash: string, body: Blob | Response, meta: IngestMeta): Promise<void> // adopt an artifact a remote served
+  recordInputs?(hash: string, components: readonly TaskInputComponent[]): void // a remote hit's key components, derived here; never replaces a row
   stats(opts?: CacheStatsOptions): CacheStats // { project? } narrows both aggregates
   outputsPath(hash: string): string // a file-backed artifact's path; a small one lives in the index
   artifactSize?(hash: string): number | undefined // the stored artifact's compressed size, wherever it lives

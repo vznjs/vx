@@ -470,6 +470,11 @@ export interface CacheLayer {
    * `meta`.
    */
   ingest(hash: string, body: Blob | Response, meta: IngestMeta): Promise<void>
+  /**
+   * The key components this machine derived `hash` from, for an entry a
+   * remote served (an ingest carries none). Never replaces a row.
+   */
+  recordInputs?(hash: string, components: readonly TaskInputComponent[]): void
   stats(opts?: CacheStatsOptions): CacheStats
   /**
    * Where a file-backed artifact for `hash` lives, whether or not it exists (a

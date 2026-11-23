@@ -246,6 +246,7 @@ export class Cache implements CacheLayer {
   get localWritesEnabled(): boolean
   packArtifactBytes(args: SaveArgs): Promise<Uint8Array>
   async pinArtifact(hash: string): Promise<{ body: Blob; release: () => Promise<void> }>
+  recordInputs(hash: string, components: readonly TaskInputComponent[]): void
   async ingest(hash: string, body: Blob | Response, meta: IngestMeta): Promise<void>
   checkpointOffThread(): void
   async stopCheckpoints(): Promise<void>
@@ -354,6 +355,7 @@ export interface CacheLayer {
     absent?: boolean
   }): Promise<void>
   ingest(hash: string, body: Blob | Response, meta: IngestMeta): Promise<void>
+  recordInputs?(hash: string, components: readonly TaskInputComponent[]): void
   stats(opts?: CacheStatsOptions): CacheStats
   outputsPath(hash: string): string
   artifactSize?(hash: string): number | undefined

@@ -25,6 +25,7 @@ import {
   type PruneOptions,
   type PruneResult,
   type SaveArgs,
+  type TaskInputComponent,
   type TaskInputRow,
   type TaskMemo,
 } from './layer.js'
@@ -451,6 +452,11 @@ export class Cache implements CacheLayer {
    */
   async pinArtifact(hash: string): Promise<{ body: Blob; release: () => Promise<void> }> {
     return saving.pinArtifact(this.ix, hash)
+  }
+
+  /** See `CacheLayer.recordInputs`. */
+  recordInputs(hash: string, components: readonly TaskInputComponent[]): void {
+    saving.recordInputs(this.ix, hash, components)
   }
 
   /**
