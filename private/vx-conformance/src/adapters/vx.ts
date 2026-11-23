@@ -86,7 +86,7 @@ export const vx: Adapter = {
                             ...(spec.sandbox.write ?? []),
                             `${path.dirname(path.join(dir, ISOLATED_RAN))}/`,
                           ],
-                          ...(spec.sandbox.network ? { network: true } : {}),
+                          ...(spec.sandbox.network ? { network: spec.sandbox.network } : {}),
                         },
                       },
                     }

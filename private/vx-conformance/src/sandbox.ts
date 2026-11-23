@@ -165,7 +165,8 @@ export function spawnSandboxed(
       // Git as it ships: no user config changes how a tool reads the tree.
       GIT_CONFIG_GLOBAL: '/dev/null',
       GIT_CONFIG_NOSYSTEM: '1',
-      ...(boxed ? {} : { [TAG]: tag.slice(TAG.length + 1) }),
+      // The host's /proc shows every process of the machine: the tag picks the run's.
+      ...(boxed && !hostProc ? {} : { [TAG]: tag.slice(TAG.length + 1) }),
       ...env,
     },
     stdin: 'ignore',

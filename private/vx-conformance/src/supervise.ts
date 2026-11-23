@@ -33,6 +33,17 @@ interface Options {
   openStdin?: boolean
 }
 
+// What the tool leaves behind is re-parented here, not to the host's init,
+// so on the host's /proc (a sandbox case) it is still found among this
+// process's descendants.
+if (process.platform === 'linux') {
+  const { dlopen, FFIType } = await import('bun:ffi')
+  const PR_SET_CHILD_SUBREAPER = 36
+  dlopen('libc.so.6', {
+    prctl: { args: [FFIType.i32, FFIType.u64], returns: FFIType.i32 },
+  }).symbols.prctl(PR_SET_CHILD_SUBREAPER, 1)
+}
+
 const [json, ...argv] = process.argv.slice(2)
 const opts: Options = JSON.parse(json!)
 const stop = opts.stop
@@ -89,6 +100,8 @@ function alive(): string[] {
   const self = String(process.pid)
   const tag = process.env[TAG]
   const run = tag === undefined ? null : new Set(runProcesses(process.pid, `${TAG}=${tag}`))
+  // The bwrap that started this carries the tag too: it is the harness's, not the run's.
+  for (let p = process.ppid; p > 1 && run !== null; p = parentOf(p)) run.delete(p)
   return readdirSync('/proc')
     .filter((p) => /^\d+$/.test(p) && p !== '1' && p !== self && (run?.has(Number(p)) ?? true))
     .flatMap((p) => {
@@ -100,6 +113,15 @@ function alive(): string[] {
         return []
       }
     })
+}
+
+function parentOf(pid: number): number {
+  try {
+    const stat = readFileSync(`/proc/${pid}/stat`, 'utf8')
+    return Number(stat.slice(stat.lastIndexOf(')') + 2).split(' ')[1])
+  } catch {
+    return 0
+  }
 }
 
 if (opts.left) {
