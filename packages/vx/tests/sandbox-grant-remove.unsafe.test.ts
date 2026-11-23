@@ -4,7 +4,15 @@
 // now carries a hint naming the grant and the removal that works.
 
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
-import { existsSync, lstatSync, readdirSync, realpathSync } from 'node:fs'
+import {
+  chmodSync,
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readdirSync,
+  realpathSync,
+  statSync,
+} from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
@@ -110,6 +118,19 @@ describe.skipIf(process.platform !== 'linux')('staging an output directory', () 
     expect(s?.wrapped).not.toContain(`--bind ${dist()} ${dist()}`)
     s?.restore()
     expect(readdirSync(dist())).toEqual(['.mcp.json'])
+  })
+
+  // The stage made each directory afresh at the umask's mode: a restore
+  // turned a 0700 `dist/bin` 0755 on the host, and the next save kept it.
+  it("keeps each staged directory's mode", () => {
+    mkdirSync(path.join(dist(), 'bin'))
+    chmodSync(path.join(dist(), 'bin'), 0o700)
+    chmodSync(dist(), 0o750)
+    const s = stage('')
+    expect(s).toBeDefined()
+    s!.restore()
+    expect(statSync(path.join(dist(), 'bin')).mode & 0o777).toBe(0o700)
+    expect(statSync(dist()).mode & 0o777).toBe(0o750)
   })
 
   it.each([

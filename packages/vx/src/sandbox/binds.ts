@@ -4,6 +4,7 @@
 // lists SRT insists on receiving in full.
 
 import {
+  chmodSync,
   linkSync,
   lstatSync,
   mkdirSync,
@@ -820,7 +821,12 @@ function nearestVx(dir: string): string | undefined {
   }
 }
 
-/** A copy of `from` at `to` whose files are hard links: no byte is copied. */
+/**
+ * A copy of `from` at `to` whose files are hard links: no byte is copied.
+ * Each directory keeps its mode, set once filled (a read-only one could
+ * take nothing): the restore puts the copy on the host, and a 0700 one
+ * came back at the umask's mode.
+ */
 function linkTree(from: string, to: string): void {
   mkdirSync(to)
   for (const e of readdirSync(from, { withFileTypes: true })) {
@@ -830,4 +836,5 @@ function linkTree(from: string, to: string): void {
     else if (e.isSymbolicLink()) symlinkSync(readlinkSync(src), dst)
     else linkSync(src, dst)
   }
+  chmodSync(to, statSync(from).mode & 0o7777)
 }
