@@ -1,0 +1,110 @@
+---
+// "Who reads, who writes": pick a CI run and see what one ALLOW entry lets
+// it do. Without JavaScript every case shows, stacked. `allow-explorer.ts`
+// unhides the `.vx-row` of choices and shows one `[data-case]` at a time.
+import Demo from '../Demo.astro'
+
+interface Case {
+  id: string
+  pick: string
+  run: string
+  reads: string
+  writes: string
+  tone: 'ok' | 'warn' | 'danger'
+}
+
+const CASES: Case[] = [
+  {
+    id: 'push-main',
+    pick: 'push to main',
+    run: 'A push to main runs ci.yml.',
+    reads: 'main',
+    writes: 'main',
+    tone: 'ok',
+  },
+  {
+    id: 'push-branch',
+    pick: 'push to feat-x',
+    run: 'A push to feat-x runs ci.yml.',
+    reads: 'feat-x, then main',
+    writes: 'feat-x',
+    tone: 'ok',
+  },
+  {
+    id: 'pr',
+    pick: 'pull request',
+    run: 'Pull request #7, feat-x into main, runs ci.yml. A fork’s pull request is the same.',
+    reads: 'refs/pull/7/merge, then feat-x, then main',
+    writes: 'refs/pull/7/merge only: a fork could name its branch main',
+    tone: 'ok',
+  },
+  {
+    id: 'queue',
+    pick: 'merge queue',
+    run: 'GitHub’s merge queue runs ci.yml on code about to land in main.',
+    reads: 'main',
+    writes: 'main',
+    tone: 'ok',
+  },
+  {
+    id: 'on-behalf',
+    pick: 'pull_request_target',
+    run: 'A pull_request_target, issue_comment or workflow_run run of ci.yml. It runs on main, maybe for a fork’s code.',
+    reads: 'as its pull request reads',
+    writes: 'nothing',
+    tone: 'warn',
+  },
+  {
+    id: 'other',
+    pick: 'deploy.yml',
+    run: 'Another workflow, deploy.yml, or another repository.',
+    reads: 'nothing: refused',
+    writes: 'nothing: refused',
+    tone: 'danger',
+  },
+  {
+    id: 'laptop',
+    pick: 'your laptop',
+    run: 'A laptop has no CI token.',
+    reads: 'only with READ_ACCESS=public, else refused',
+    writes: 'nothing',
+    tone: 'warn',
+  },
+]
+---
+
+<Demo name="allow-explorer">
+  <p>
+    <code>ALLOW='https://token.actions.githubusercontent.com:acme/app:ci.yml'</code>
+  </p>
+  <div class="vx-row" role="group" aria-label="Pick a CI run" hidden>
+    <span class="vx-label">Run</span>
+    {
+      CASES.map((c, i) => (
+        <button type="button" data-pick={c.id} aria-pressed={i === 0 ? 'true' : 'false'}>
+          {c.pick}
+        </button>
+      ))
+    }
+  </div>
+  {
+    CASES.map((c) => (
+      <div class="case" data-case={c.id}>
+        <p>{c.run}</p>
+        <table>
+          <tbody>
+            <tr>
+              <th scope="row">reads</th>
+              <td class={`is-${c.tone}`}>{c.reads}</td>
+            </tr>
+            <tr>
+              <th scope="row">writes</th>
+              <td class={`is-${c.tone}`}>{c.writes}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    ))
+  }
+  <Fragment slot="caption">Pick a run to see what this one ALLOW entry lets it read and write.</Fragment>
+</Demo>

@@ -1,5 +1,5 @@
 // Nx caches whichever of a target's outputs exist; vx fails a task one of
-// whose output patterns matched nothing. TanStack/store's shared `build`
+// whose literal output paths matched nothing (a wildcard may match nothing). TanStack/store's shared `build`
 // outputs (`build`, `dist`) failed every project that writes only `dist`,
 // and the migration said nothing (2026-11-23).
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
@@ -35,10 +35,16 @@ async function notes(outputs: string[], migration: boolean): Promise<string[]> {
   return m.notes
 }
 
-it('a migration names the outputs Nx treats as optional and vx requires', async () => {
+it('a migration names the literal outputs Nx treats as optional and vx requires', async () => {
   expect(await notes(['{projectRoot}/build', '{projectRoot}/dist'], true)).toContain(
-    `Nx caches whichever of a target's outputs exist; vx fails a task when one of its output patterns matches nothing ("outputs matched no files"): 1 task declares outputs, 1 more than one (store#build) — remove each pattern its command never writes`,
+    `Nx caches whichever of a target's outputs exist; vx fails a task when one of its literal output paths matches nothing ("outputs matched no files"; a wildcard may match nothing beside one that matched): 1 task declares literal outputs, 1 more than one (store#build) — remove each path its command never writes, or make it a wildcard`,
   )
+})
+
+it('says nothing of wildcard outputs, which may match nothing', async () => {
+  expect(
+    (await notes(['{projectRoot}/dist/**', '{projectRoot}/build/**'], true)).join('\n'),
+  ).not.toContain('outputs matched')
 })
 
 it('control: nx() says nothing, as the run names the task', async () => {

@@ -1129,22 +1129,31 @@ or not it saves. It is said too when every wildcard glob matched nothing
 and only literal files did (`scr/**` beside the `package.json` a
 lockfile plugin appends), naming the wildcard globs.
 
-**Every declared output is required** (`orchestrator/attempt-outputs.ts`, `missingOutputs`).
-Once the command exits 0, each positive glob of `outputs.files` and
-`outputs.workspaceFiles` must match a path that no `!` entry takes back.
-An empty `dist/` does not satisfy `dist/**`, since the clean keeps that
-root; a literal `public/uploads` is satisfied by the directory itself. One that matches nothing fails the task,
+**A literal output is required, and a task writes at least one**
+(`orchestrator/attempt-outputs.ts`, `missingOutputs`). Once the command
+exits 0, each positive literal path of `outputs.files` and
+`outputs.workspaceFiles` (`dist/index.js`, `public/uploads`) must name a
+path that no `!` entry takes back; a directory satisfies itself. A
+wildcard (`dist/**`, `.next/**`, `*.tsbuildinfo`) may match nothing
+beside one that matched: a shared list such as Turbo's
+`["dist/**", ".next/**"]` fits every package. A task whose outputs
+matched nothing at all fails, naming every one (an empty `dist/` does not
+satisfy `dist/**`, since the clean keeps that root). Either failure holds
 cached or not, and nothing is saved, said as a warning like the run's
-others (stderr, outside the task's frame, kept by `vx last`): `[vx] app#build: outputs matched no
-files (dist/**) — the command exited 0 but never wrote it, so the task
-fails and nothing is cached: write it, or fix the pattern`. Each glob
-answers for itself: a literal `tsconfig.tsbuildinfo` that matched does
-not cover a `dist/**` that did not. The line names the likely cause when
-it applies: a sandboxed task with no `exec.sandbox.allow.write`, whose
-writes never reached disk, or an undeclared state file that survived the
-clean (below). A failed task is retried as any failure is. Outputs a
-remote executor or a deferred download (`--cache-download=none`) lands
-elsewhere are not checked here; a deferred fetch that lands nothing
+others (stderr, outside the task's frame, kept by `vx last`): `[vx]
+app#build: outputs matched no files (dist/index.js) — the command exited 0
+but never wrote it, so the task fails and nothing is cached: write it, or
+fix the pattern`. The line names the likely cause when it applies: a
+sandboxed task with no `exec.sandbox.allow.write`, whose writes never
+reached disk, or an undeclared state file that survived the clean
+(below). A failed task is retried as any failure is.
+A remote executor checks the outputs where they landed, by the same
+rule, and names what matched nothing (`ExecuteResult.outputsMissing`;
+`@vzn/vx-dte`'s workers and `@vzn/vx-reapi` do): the task fails the same
+way. Outputs a
+remote executor that does not, or a deferred download
+(`--cache-download=none`), lands elsewhere are not checked here; a
+deferred fetch that lands nothing
 warns `outputs matched no files … an empty artifact is saved`.
 `outputs.files: []` declares no output and checks nothing.
 
@@ -2809,7 +2818,7 @@ version — the decision log it once named was retired 2026-09-02),
 `docs/STATUS.md` (the entry that says why the bump was needed, or why it
 was not), the cache tests, `tests/contract/stored-format.json`
 (regenerated, above), and
-`private/vx-docs/src/content/docs/docs/upgrading.md` (the bump's
+`private/vx-docs/src/content/docs/docs/upgrading/releases.mdx` (the bump's
 breaking footer).
 
 ### History

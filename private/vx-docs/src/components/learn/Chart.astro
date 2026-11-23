@@ -1,0 +1,24 @@
+---
+// Numbers drawn as bars, by the same renderer as the benchmark tables
+// (plugins/data-charts.ts), so every chart on the site looks alike.
+// Static HTML and CSS, no script.
+import { renderBars, type BarGroup } from '../../plugins/data-charts.js'
+interface Props {
+  groups: BarGroup[]
+  caption?: string
+}
+const { groups, caption } = Astro.props
+---
+
+<figure class="vx-chart not-content">
+  <Fragment set:html={renderBars(groups)} />
+  {caption && <figcaption>{caption}</figcaption>}
+</figure>
+
+<style>
+  .vx-chart figcaption {
+    color: var(--vx-muted);
+    font-size: 0.85rem;
+    margin-top: 0.4rem;
+  }
+</style>

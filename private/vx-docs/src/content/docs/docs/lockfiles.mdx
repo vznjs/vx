@@ -1,15 +1,94 @@
 ---
 title: Lockfiles
-description: Key each package on its own dependencies with your package manager's plugin.
+description: Add your package manager's plugin, and an install re-runs only the projects it changed.
 ---
 
-import { Tabs, TabItem } from '@astrojs/starlight/components'
+import Diagram from '../../../components/guide/diagram/Diagram.astro'
+import { lockfileSlices } from '../../../components/docs/pictures/lockfiles.ts'
+import { Aside, Tabs, TabItem } from '@astrojs/starlight/components'
+import { Levels, Deeper, Concept, Quiz, Walkthrough, Frame, Takeaway, NextStep } from '../../../components/learn'
 
-Add the plugin for your package manager. Without one, no lockfile or
-`package.json` is in any key, so an install re-runs nothing.
+Bump a dependency of one project. vx rebuilds that project and leaves the rest alone.
 
-`^build` also needs it to know which package depends on which. Without
-it, vx refuses a `^` and names the plugin to add.
+```ts title=".vx/workspace.ts" mark={2,4}
+import { defineWorkspace } from '@vzn/vx/config'
+import { bun } from '@vzn/vx-lockfile'
+
+export default defineWorkspace({ plugins: [bun()] })
+```
+
+<Levels />
+
+<Concept term="Lockfile">
+  The file your package manager writes on install (`bun.lock`, `pnpm-lock.yaml`,
+  `package-lock.json`, `yarn.lock`). It records the exact version of every dependency.
+</Concept>
+
+<Walkthrough title="@demo/web bumps ms from 2.1.2 to 2.1.3">
+<Frame title="1. Install: vx sees the lockfile moved">
+
+```ansi title="after editing packages/web/package.json"
+[2m$[0m bun install
+[2m$[0m vx run build --all
+
+[38;2;239;68;68m✗[0m [1mvx run[0m  [38;2;203;213;225mbun.lock changed since [0m[1m`vx lock`[0m[38;2;203;213;225m: run [0m[1m`vx lock`[0m
+```
+
+vx stops before running anything. A run never guesses from a lockfile it has not read.
+
+</Frame>
+<Frame title="2. Lock: vx reads the new install">
+
+```ansi title="vx lock"
+[2m$[0m vx lock
+
+[38;2;34;197;94m✓[0m [1mvx lock[0m  [38;2;203;213;225m2 project configs → .vx/projects.lock, .vx/dependencies.lock[0m
+```
+
+Commit `.vx/dependencies.lock` with `bun.lock`.
+
+</Frame>
+<Frame title="3. Run: only @demo/web builds">
+
+```ansi title="the run after the bump"
+[2m$[0m vx run build --all --output-logs hash-only
+
+[38;2;34;197;94mup-to-date[0m [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m [2m7332bcf54e63d75c[0m
+[38;2;34;197;94msuccess[0m [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m [2m71a8fb022989b08b[0m
+```
+
+`@demo/web#build`: **success**, it ran. `@demo/ui#build`: **up-to-date**, `ms` is not its dependency.
+
+</Frame>
+<Frame title="4. Ask why">
+
+```ansi title="vx why"
+[2m$[0m vx why @demo/web#build
+
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhy[0m[4m[58;2;110;118;129m [2m@demo/web#build[0m[4m[58;2;110;118;129m                                                                                                   [0m
+  [2mrun     [0m  [38;2;203;213;225m01a209e3-5569-754e-804e-4eab62051c43[0m
+  [2mthis run[0m  [38;2;203;213;225m2026-11-23T19:30:23.246Z · success · executed · key 71a8fb022989b08b[0m
+  [2mprevious[0m  [38;2;203;213;225m2026-11-23T19:30:22.388Z · success · executed · key 5ea687db9ef92858[0m
+  [2mverdict [0m  [38;2;234;179;8mcache key changed: file packages/web/package.json, plugin @vzn/vx-lockfile/bun[0m
+
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhat changed[0m[4m[58;2;110;118;129m [2m2 of 8[0m[4m[58;2;110;118;129m                                                                                                   [0m
+  [2mchange   kind    name                       before → after[0m
+  [38;2;234;179;8mchanged[0m  [38;2;203;213;225mfile[0m    [1mpackages/web/package.json[0m  [38;2;203;213;225m762d274cd05a7fa513d831f8d1ac83b0b9e76d60 → f27599c53124692056844798a193b87b3302987a[0m
+  [38;2;234;179;8mchanged[0m  [38;2;203;213;225mplugin[0m  [1m@vzn/vx-lockfile/bun[0m       [38;2;203;213;225ma789c2656906d73a → ec77019c5663628e[0m
+
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhat to do[0m[4m[58;2;110;118;129m                                                                                                            [0m
+  [2mfile    [0m  [38;2;203;213;225man edit re-runs by design; a file the task does not read belongs out of inputs.files[0m
+  [2mplugin  [0m  [38;2;203;213;225ma key plugin's material changed; that plugin decides what goes into the key[0m
+```
+
+Read the **verdict**: `plugin @vzn/vx-lockfile/bun`. The install changed this project's dependencies.
+
+</Frame>
+</Walkthrough>
+
+## Add the plugin
+
+Pick your package manager. Each plugin reads its own lockfile.
 
 <Tabs syncKey="pm">
   <TabItem label="Bun">
@@ -46,102 +125,204 @@ it, vx refuses a `^` and names the plugin to add.
   </TabItem>
 </Tabs>
 
-Then each package is keyed on its own dependencies, `^build` follows what
-the manager installed, and `--affected` follows both. `pnpm({ scope:
-'workspace' })` keys the whole file instead.
+Then run `vx lock` and commit what it writes.
 
-Add a dependency to `@demo/web` only, and only its build runs again;
-`@demo/ui` is a hit (`local 1✓ 1↑`):
+<Aside type="caution" title="No plugin, no lockfile in the key">
+  Without a plugin, no lockfile is in any key. An install then re-runs **nothing**, and a cached
+  build can come back built against the old versions.
+</Aside>
 
-```sh
-cd packages/web && bun add nanoid && cd ../..
-vx lock
-vx run build --all
+<Takeaway>make every install count: your lockfile is in every task's key.</Takeaway>
+
+## One install, only what it reached
+
+<Diagram {...lockfileSlices} />
+
+The plugin cuts the lockfile into one slice per project: the packages that project reaches.
+A slice goes into the keys of that project's tasks only.
+
+```ansi title="bump ms in @demo/web"
+[2m$[0m vx run build --all --output-logs hash-only
+
+[38;2;34;197;94mup-to-date[0m [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m [2m7332bcf54e63d75c[0m
+[38;2;34;197;94msuccess[0m [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m [2m71a8fb022989b08b[0m
 ```
 
-```ansi
-[4m[58;2;110;118;129m  [1m[38;2;167;139;250mTasks[0m[4m[58;2;110;118;129m     [2mstatus  cache     ±usual    time   cpu    mem outputs  blocks worker         task[0m[4m[58;2;110;118;129m                           [0m
-            [38;2;34;197;94msuccess[0m [2mmiss[0m       [2m+18ms[0m   [38;2;203;213;225m286ms[0m  [2m123%[0m  [2m111MB[0m    [2m926B[0m       [2m0[0m [2mlocal[0m          [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m
+```ansi title="bump clsx in @demo/ui"
+[2m$[0m vx run build --all --output-logs hash-only
 
-
-[4m[58;2;110;118;129m  [1m[38;2;167;139;250mSummary[0m[4m[58;2;110;118;129m                                                                                                       [2mvx 0.0.0[0m
-  [2mprojects[0m  [38;2;234;179;8m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
-            [38;2;234;179;8m2 in run[0m [2m·[0m [2m2 total[0m
-  [2mtasks   [0m  [38;2;34;197;94m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
-            [38;2;34;197;94m2 success[0m [2m·[0m [2m2 total[0m
-  [2mcache   [0m  [38;2;34;197;94m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m[38;2;56;189;248m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
-            [2mlocal[0m [38;2;34;197;94m1✓[0m [38;2;56;189;248m1↑[0m
-
-  [2minfo    [0m  4 workers [2m·[0m local cache [2m·[0m run 01a2089b-6ecc-7526-82ed-e1513785becb
-  [2mtime    [0m  364ms
+[38;2;34;197;94msuccess[0m [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m [2m48e5676c2d17350c[0m
+[38;2;34;197;94msuccess[0m [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m [2m3c0c3098859278d0[0m
 ```
 
-`vx why` names the lockfile plugin's part of the key:
+Read the first word of each line. After the `clsx` bump, both say **success**. `@demo/web` builds
+on `@demo/ui`, so a new `@demo/ui` key gives it a new key.
 
-```ansi
-[2m$[0m vx why @demo/web#build
+<Aside type="tip" title="One line per task">
+  `--output-logs hash-only` prints each task's status, name and key, and hides the tool's output.
+</Aside>
 
-[4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhy[0m[4m[58;2;110;118;129m [2m@demo/web#build[0m[4m[58;2;110;118;129m                                                                                                   [0m
-  [2mrun     [0m  [38;2;203;213;225m01a2089b-6ecc-7526-82ed-e1513785becb[0m
-  [2mthis run[0m  [38;2;203;213;225m2026-11-23T13:32:13.936Z · success · executed · key 021e29ebb6494f71[0m
-  [2mprevious[0m  [38;2;203;213;225m2026-11-23T13:32:13.374Z · cache-hit · restored · key 433035ef17a9e7c1[0m
-  [2mverdict [0m  [38;2;234;179;8mcache key changed: file packages/web/package.json, plugin @vzn/vx-lockfile/bun[0m
+<Quiz q="@demo/ui adds a devDependency it only uses in tests. Does @demo/web#build run again?">
+  Yes. The dependency is in `@demo/ui`'s slice, so `@demo/ui#build` gets a new key, and
+  `@demo/web#build` follows it: it builds on `@demo/ui`.
+</Quiz>
 
-[4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhat changed[0m[4m[58;2;110;118;129m [2m2 of 8[0m[4m[58;2;110;118;129m                                                                                                   [0m
-  [2mchange   kind    name                       before → after[0m
-  [38;2;234;179;8mchanged[0m  [38;2;203;213;225mfile[0m    [1mpackages/web/package.json[0m  [38;2;203;213;225med71bbbab55c4d78de37f226a215b4ce3974dec4 → 25b8ecc72f552de4fd3eefb843a2392103b6fcc2[0m
-  [38;2;234;179;8mchanged[0m  [38;2;203;213;225mplugin[0m  [1m@vzn/vx-lockfile/bun[0m       [38;2;203;213;225m15c3a1af713459c7 → 61836dec183214a6[0m
+<Takeaway>predict which projects an install re-runs: the ones whose dependencies it changed, and the projects built on them.</Takeaway>
 
-[4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhat to do[0m[4m[58;2;110;118;129m                                                                                                            [0m
-  [2mfile    [0m  [38;2;203;213;225man edit re-runs by design; a file the task does not read belongs out of inputs.files[0m
-  [2mplugin  [0m  [38;2;203;213;225ma key plugin's material changed; that plugin decides what goes into the key[0m
+## Link projects to each other
+
+The lockfile lists every project by its package name and what it depends on. The plugin hands both
+to vx, so `dependsOn: ['^build']` ("build my dependencies first") knows `@demo/ui` comes first.
+
+Without a plugin, projects go by their folder (`packages/ui`), and `vx lock` refuses a `^`:
+
+```ansi title="no plugin in .vx/workspace.ts"
+[2m$[0m vx lock
+
+[38;2;239;68;68m✗[0m [1mvx lock[0m  [38;2;203;213;225mlock not written[0m
+
+  [38;2;203;213;225mpackages/ui#build: ^build needs project edges; add pnpm()/bun()/npm()/yarn() and install so its lockfile exists, or a plugin that returns [0m[1m`deps`[0m
+[38;2;239;68;68m✗[0m [1mvx lock[0m  [38;2;203;213;225malso refused[0m
+
+  [38;2;203;213;225mpackages/web#build: ^build needs project edges; add pnpm()/bun()/npm()/yarn() and install so its lockfile exists, or a plugin that returns [0m[1m`deps`[0m
 ```
 
----
+<Takeaway>use `^build`: the lockfile tells vx that `@demo/ui` builds before `@demo/web`.</Takeaway>
 
-<details>
-<summary>What each plugin adds to a key</summary>
+## Run only what an install affected
 
-| Plugin   | A package's key includes                                                              | Install-wide, for every package |
+`--affected` runs the projects a change touched. With a plugin, a lockfile change counts too: only the
+projects whose slice moved are affected.
+
+```ansi title="after the ms bump in @demo/web, before the commit"
+[2m$[0m vx show --affected=HEAD
+
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mProjects[0m[4m[58;2;110;118;129m [2m1[0m[4m[58;2;110;118;129m                                                                                                            [0m
+  [2mproject    dir           tasks[0m
+  [38;2;244;114;182m@demo/web[0m  [38;2;203;213;225mpackages/web[0m  [38;2;203;213;225m1 task[0m
+```
+
+One project: `@demo/web`. Its slice moved; `@demo/ui`'s did not.
+
+<Takeaway>run CI on a dependency bump without rebuilding the whole workspace.</Takeaway>
+
+<Deeper level="patterns" title="Common setups">
+
+### One key for the whole lockfile
+
+`scope` takes `'project'` (the default: each key holds its project's slice) or `'workspace'`.
+`'workspace'` puts the whole lockfile into every key, so any install re-runs everything.
+
+```ts title=".vx/workspace.ts" mark={4}
+import { defineWorkspace } from '@vzn/vx/config'
+import { bun } from '@vzn/vx-lockfile'
+
+export default defineWorkspace({ plugins: [bun({ scope: 'workspace' })] })
+```
+
+The same `ms` bump in `@demo/web` now re-runs both projects:
+
+```ansi title="scope: 'workspace'"
+[2m$[0m vx run build --all --output-logs hash-only
+
+[38;2;34;197;94msuccess[0m [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m [2m6068b4831dff8b0f[0m
+[38;2;34;197;94msuccess[0m [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m [2mc586d60cd9f95027[0m
+```
+
+### A tool every project uses
+
+Put shared tools (`vite`, `vitest`, `oxlint`) in the root `package.json`. Their bins run from the
+root `node_modules/.bin`, which is on every task's `PATH`.
+
+```json title="package.json" ins={4}
+{
+  "workspaces": ["packages/*"],
+  "devDependencies": {
+    "vite": "8.3.8"
+  }
+}
+```
+
+So every key holds the root's dependencies. Bumping `vite` here re-runs every project.
+
+### A workspace project the root depends on
+
+A workspace project in the root's dependencies counts only for the root. A project that loads it
+names it in its **own** `package.json`.
+
+```json title="packages/web/package.json" ins={3}
+{
+  "dependencies": {
+    "@demo/ui": "workspace:*"
+  }
+}
+```
+
+Without that line, `@demo/web` does not build after `@demo/ui`, its key leaves `@demo/ui` out, and
+`--affected` skips it.
+
+<Aside type="caution" title="Undeclared imports">
+  An import you never declared in `package.json` is in no project's key. Declare every
+  dependency a project loads.
+</Aside>
+
+<Takeaway>keep each key true: shared tools at the root, links in each `package.json`.</Takeaway>
+
+</Deeper>
+
+<Deeper level="details" title="Every option and what goes into a key">
+
+### Options
+
+All four plugins take one option, `scope`, shown [above](#one-key-for-the-whole-lockfile). Its values
+and default are in [every plugin option](../../docs/plugins/#pnpm-bun-npm-yarn).
+
+### Which lockfiles each plugin reads
+
+- `pnpm()`: `pnpm-lock.yaml`, lockfile versions 5, 6, 9 and 13
+- `bun()`: `bun.lock` (the text lockfile)
+- `npm()`: `npm-shrinkwrap.json` or `package-lock.json`, versions 2 and 3
+- `yarn()`: `yarn.lock`, berry (yarn 2 and later) and yarn 1
+
+### What each plugin adds to a key
+
+| Plugin   | A project's key includes                                                              | Install-wide, for every project |
 | -------- | ------------------------------------------------------------------------------------- | ------------------------------- |
-| `pnpm()` | every package it reaches, by name, version and resolved peers, with integrity and any patch; under `nodeLinker: hoisted`, every peer variant of each | every top-level field but `importers`, `packages`, `snapshots`, `patchedDependencies`, `catalogs`, `overrides`, `packageExtensionsChecksum` and `ignoredOptionalDependencies` (`settings`, `onlyBuiltDependencies`, …) |
+| `pnpm()` | every package it reaches, by name, version and resolved peers, with integrity and any patch; under `nodeLinker: hoisted`, every peer variant of each | every top-level field but `importers`, `packages`, `snapshots`, `patchedDependencies`, `catalogs`, `overrides`, `ignoredOptionalDependencies` and `packageExtensionsChecksum` (`settings`, `onlyBuiltDependencies`, …) |
 | `bun()`  | the same, through Bun's hoisted layout; a peer reaches every installed copy of its name | every top-level field but `workspaces`, `packages`, `catalog`, `catalogs`, `overrides` and `patchedDependencies` (`trustedDependencies`, …) |
-| `npm()`  | the same, from `npm-shrinkwrap.json` or `package-lock.json` versions 2 and 3                                | the `lockfileVersion`; root `overrides` reach a package through the entries they force |
-| `yarn()` | the same, from a berry lockfile, each entry with every field but its dependency lists; a yarn 1 lockfile records no workspaces, so every package's key includes the whole file | `__metadata`'s `version` and `cacheKey`, and the root workspace's entry (its `dependenciesMeta`) through the root's closure |
+| `npm()`  | the same, from the lockfile's versions                                                | the `lockfileVersion`; root `overrides` reach a project through the entries they force |
+| `yarn()` | the same, from a berry lockfile, each entry with every field but its dependency lists; a yarn 1 lockfile records no workspaces, so every project's key includes the whole file | `__metadata`'s `version` and `cacheKey`, and the root workspace's entry (its `dependenciesMeta`) through the root's slice |
 
-Every package's key also holds the root package's own dependencies.
-Their bins run from the root `node_modules/.bin`, on every task's
-`PATH`.
+Every project's key also holds the root's own dependencies.
 
-So bumping a root devDependency re-runs every package.
-A workspace package the root depends on is the root's dependency only.
-Another package that loads it names it in its own `package.json`.
+### Install settings in every key
 
-Without that, it neither builds after it nor includes its key, and
-`--affected` leaves it out.
-
-Each plugin also puts its manager's install settings in every task's
-key, and adds a package's manifest (`package.json`, or under `pnpm()` a
-`package.json5` or `package.yaml`) to its tasks' inputs:
+Each plugin also adds a project's manifest (`package.json`, or under `pnpm()` a `package.json5` or
+`package.yaml`) to its tasks' inputs, and its manager's install settings to every key:
 
 | Plugin | Install settings in the key |
 | --- | --- |
-| `pnpm()` | `pnpm-workspace.yaml` except `patchedDependencies`, `overrides`, `packageExtensions`, `ignoredOptionalDependencies` and the catalogs (the lockfile records their effect per package), `.npmrc`, the root manifest's `pnpm` field |
+| `pnpm()` | `pnpm-workspace.yaml` except `patchedDependencies`, `overrides` and the catalogs (the lockfile records their effect per project), `.npmrc`, the root manifest's `pnpm` field |
 | `bun()` | `bunfig.toml`, `.npmrc` |
 | `npm()` | `.npmrc` |
-| `yarn()` | `.yarnrc.yml` except the catalogs (each project reads its own through yarn.lock), `.yarnrc` and `.npmrc` (yarn 1), the root `package.json`'s `workspaces.nohoist`, `installConfig`, `resolutions` and dependency ranges |
+| `yarn()` | `.yarnrc.yml`, `.yarnrc` and `.npmrc` (yarn 1), the root `package.json`'s `workspaces.nohoist`, `installConfig`, `resolutions` and dependency ranges |
 
-A yarn 1 lockfile records no workspaces, so `yarn()` reads which package
-depends on which from the workspaces' `package.json` files.
+### Edge rules
 
-Under pnpm's `excludeLinksFromLockfile`, the lockfile leaves out every
-`link:` dependency. `pnpm()` reads those from `package.json`, and every
-package's key holds every package's dependencies.
+- **yarn 1** records no workspaces, so `yarn()` reads which project depends on which from the
+  workspaces' `package.json` files.
+- **pnpm `excludeLinksFromLockfile`** leaves every `link:` dependency out of the lockfile.
+  `pnpm()` reads those from `package.json`, and every key holds every project's dependencies.
+- **An unreadable lockfile** stops the run and names the install to re-run.
+- **A lockfile changed since `vx lock`** stops the run: `run vx lock`.
+- **A lockfile older than a `package.json`** (a dependency added, no install yet) stops `vx lock`
+  until you install.
+- **`vx why`** names the part `plugin @vzn/vx-lockfile/<manager>`, for example `plugin @vzn/vx-lockfile/pnpm`.
 
-`vx why` names the part `plugin @vzn/vx-lockfile/pnpm`. An unreadable
-lockfile stops the run and names the install to re-run. An import you
-never declared is in no package's key.
+See [`@vzn/vx-lockfile`](../../plugins/vx-lockfile/) for the plugin's own page.
 
-</details>
+</Deeper>
 
-See [`@vzn/vx-lockfile`](../../plugins/vx-lockfile/).
+<NextStep href="../../docs/tasks/" title="Tasks">
+  Your workspace knows its projects and their dependencies. Now give each project its tasks.
+</NextStep>

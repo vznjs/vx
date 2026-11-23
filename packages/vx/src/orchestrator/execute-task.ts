@@ -16,6 +16,7 @@ import type { DeferredOutputs } from './deferred-outputs.js'
 import type { TrailingOutputs } from './trailing-outputs.js'
 import { type TreeLoad } from './telemetry.js'
 import { type Logger } from '../report/index.js'
+import type { ColorSupport } from '../ui/index.js'
 import {
   computeGroupHash,
   computeTaskHash,
@@ -62,6 +63,8 @@ export interface RunContext {
   stopSignal?: AbortSignal
   /** `--fail-fast` stopped the run: no further attempt starts. */
   failFast?: AbortSignal
+  /** The run's colours: vx's own `[vx]` lines in a task's stream are painted as every `[vx]` line is. */
+  colors?: ColorSupport
   /**
    * Registry the orchestrator owns. For each persistent task we
    * spawn, we stash the subprocess handle here so the orchestrator

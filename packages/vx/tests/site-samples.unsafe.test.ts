@@ -85,33 +85,47 @@ function fencedBlock(page: string, lang: string, firstLine: string): string {
   return page.slice(body, end)
 }
 
-// The running-tasks guide merged into the CI page (the short site).
-describe('the CI guide shows what --dry prints', () => {
-  it('its plan is formatPlanText on two local hits', () => {
+// The Running tasks page's "See the plan first" sample: the rows vx plans
+// for the demo workspace after an edit to ui (three builds run, api's is a
+// local hit, ui blocks two). The sample came from a run with history, so
+// its `usual` times and `predicted` line are read past.
+describe('the Running tasks page shows what --dry prints', () => {
+  it('its plan is formatPlanText on one local hit and three misses', () => {
     const page = readFileSync(path.join(DOCS, 'docs', 'running-tasks.mdx'), 'utf8')
-    const task = (id: string, hash: string, deps: string[] = []) => ({
+    const task = (id: string, cacheStatus: 'miss' | 'hit-local', deps: string[] = []) => ({
       node: {
         id,
         projectName: id.split('#')[0]!,
         taskName: id.split('#')[1]!,
         config: {},
       } as unknown as TaskNode,
-      hash,
-      cacheStatus: 'hit-local' as const,
+      hash: 'e04649970f18ba23',
+      cacheStatus,
       deps,
     })
-    const plan: RunPlan = {
+    const plan = {
       tasks: [
-        task('@demo/ui#build', 'e04649970f18ba23'),
-        // web builds on ui: a cached ui still blocks it.
-        task('@demo/web#build', 'b421f74f0107bb20', ['@demo/ui#build']),
+        task('@demo/admin#build', 'miss', ['@demo/ui#build']),
+        task('@demo/ui#build', 'miss'),
+        task('@demo/api#build', 'hit-local'),
+        task('@demo/web#build', 'miss', ['@demo/ui#build']),
       ],
-    }
-    // The page shows vx's colours (an `ansi` block); its text is the plain plan.
-    const start = page.indexOf('```ansi\n', page.indexOf('`--dry` prints'))
+    } as unknown as RunPlan
+    const start = page.indexOf('```ansi\n', page.indexOf('\n## 7. See the plan first\n'))
     const block = page.slice(start + '```ansi\n'.length, page.indexOf('\n```', start))
-    const plain = block.replace(new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, 'g'), '')
-    expect(plain).toBe(formatPlanText(plan).replace(/ +$/gm, '').replace(/\n+$/, ''))
+    const norm = (text: string) =>
+      text
+        .replace(new RegExp(`${String.fromCharCode(27)}\\[[0-9;:]*m`, 'g'), '')
+        .split('\n')
+        .filter((l) => !/^\s*predicted\s/.test(l))
+        .map((l) =>
+          l
+            .replace(/~\d+ms/, '—')
+            .replace(/\s+/g, ' ')
+            .trim(),
+        )
+        .filter((l) => l !== '')
+    expect(norm(block)).toEqual(norm(formatPlanText(plan, { enabled: false, columns: 60 })))
   })
 })
 
@@ -169,8 +183,8 @@ describe('no page says a task sees only what it declares, past the allowlist', (
       'an isolated environment: a small essential allowlist (`PATH`, `HOME`, `CI`, `NODE_OPTIONS` and a few more), then what `exec.env` says',
     )
     // The Troubleshooting page (#2470) came after, with "vx passes only
-    // what you list" (J2-8).
-    const trouble = readFileSync(path.join(GUIDES, 'troubleshooting.mdx'), 'utf8')
+    // what you list" (J2-8); its row lives on the env page now.
+    const trouble = readFileSync(path.join(GUIDES, 'environment-variables.mdx'), 'utf8')
     expect(trouble.split(/\s+/).join(' ')).toContain(
       'Past a small essential allowlist (`PATH`, `HOME`, `CI` and a few more), vx passes only what you list',
     )
@@ -215,7 +229,7 @@ describe('the CI guide states the wire chunk sizes', () => {
     expect(chunk).not.toBeNull()
     expect(safe).not.toBeNull()
     const page = readFileSync(path.join(DOCS, 'docs', 'remote-execution.mdx'), 'utf8')
-    const m = /- Uploads chunk at (\d+) bytes \(`SAFE_CHUNK_BYTES`\)/.exec(page)
+    const m = /- Uploads go in chunks of (\d+) bytes/.exec(page)
     expect(m).not.toBeNull()
     expect([m![1], chunk![1]]).toEqual([safe![1], safe![1]])
   })
@@ -307,7 +321,7 @@ describe('the caching page quotes what vx why says', () => {
 
 describe('the why-vx-is-fast concept quotes the benchmarks page', () => {
   it('each figure it states is on docs/benchmarks.md as written', () => {
-    const page = readFileSync(path.join(DOCS, 'concepts', 'why-vx-is-fast.md'), 'utf8')
+    const page = readFileSync(path.join(DOCS, 'concepts', 'why-vx-is-fast.mdx'), 'utf8')
     const bench = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'benchmarks.md'), 'utf8')
     // The head-to-head's figures are tokens the site fills from the measured
     // data (2026-10-29); none is typed by hand (2026-11-23: run.ts's
@@ -331,7 +345,7 @@ describe('the why-vx-is-fast concept quotes the benchmarks page', () => {
   })
 })
 
-describe("troubleshooting's known limits are still limits", () => {
+describe('the "When it goes wrong" limits are still limits', () => {
   // It listed "A workspaceFiles glob stops at a git submodule's edge"; since
   // 2026-09-27 the nested repository's files are listed and keyed
   // (caching.md), and an edit inside a submodule under `workspaceFiles:
@@ -339,10 +353,13 @@ describe("troubleshooting's known limits are still limits", () => {
   it('caching.md keys a submodule under workspaceFiles, and the known limits name no edge', () => {
     const caching = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'caching.md'), 'utf8')
     expect(caching.replace(/\s+/g, ' ')).toContain('and for a `workspaceFiles` glob')
-    const limits = /## Known limits\n([\s\S]*)$/.exec(
-      readFileSync(path.join(GUIDES, 'troubleshooting.mdx'), 'utf8'),
-    )![1]!
-    expect(limits).not.toContain('submodule')
+    const limits = ['caching.mdx', 'dev-servers.mdx', 'workspace.mdx'].map(
+      (page) =>
+        /title="When it goes wrong">([\s\S]*?)<\/Deeper>/.exec(
+          readFileSync(path.join(GUIDES, page), 'utf8'),
+        )![1]!,
+    )
+    for (const block of limits) expect(block).not.toContain('submodule')
   })
 })
 
@@ -910,11 +927,7 @@ describe('every page naming the Linux sandbox binaries names all three', () => {
       const text = readFileSync(p, 'utf8')
       return bins.filter((bin) => names(text, bin)).length >= 2
     })
-    expect(pages.map((p) => path.basename(p)).sort()).toEqual([
-      'sandboxing.mdx',
-      'the-sandbox.md',
-      'troubleshooting.mdx',
-    ])
+    expect(pages.map((p) => path.basename(p)).sort()).toEqual(['sandboxing.mdx', 'the-sandbox.md'])
     for (const page of pages) {
       const flat = readFileSync(page, 'utf8').replace(/\s+/g, ' ')
       expect({
@@ -1180,7 +1193,7 @@ describe('the caching guide lists what the cache never reads', () => {
       .join('\n')
     const names = [...entries.matchAll(/'([^']+?)(?:\/\*\*)?'/g)].map((m) => m[1]!)
     expect(names.length).toBe(11)
-    const excluded = /^\| Always excluded +\|.*$/m.exec(page)
+    const excluded = /^- \*\*Always excluded:\*\*.*$/m.exec(page)
     expect(excluded).not.toBeNull()
     for (const name of names) expect(excluded![0]).toContain(name)
   })
@@ -1930,11 +1943,8 @@ describe('the sandbox post judges a violation against the grants', () => {
     expect(post).toContain('the violation is judged against the grants alone')
     expect(post).not.toContain('reads a file its inputs never named fails')
     // The Troubleshooting page (#2470) said the sandbox refuses a read you
-    // did not declare, of a file missing from the inputs (J2-37).
-    const trouble = readFileSync(path.join(GUIDES, 'troubleshooting.mdx'), 'utf8').replace(
-      /\s+/g,
-      ' ',
-    )
+    // did not declare, of a file missing from the inputs (J2-37); the row is Caching's now.
+    const trouble = readFileSync(path.join(GUIDES, 'caching.mdx'), 'utf8').replace(/\s+/g, ' ')
     expect(trouble).toContain('with reads granted no wider than the inputs, refuses that read')
   })
 })
@@ -2023,7 +2033,7 @@ describe("the concepts page reads the head-to-head's restore row as it is measur
     expect(harness).toMatch(
       /await deleteDist\(dir\)\n\s*const res = await timed\(r, dir, 'restoring'\)/,
     )
-    const page = readFileSync(path.join(DOCS, 'concepts', 'why-vx-is-fast.md'), 'utf8').replace(
+    const page = readFileSync(path.join(DOCS, 'concepts', 'why-vx-is-fast.mdx'), 'utf8').replace(
       /\s+/g,
       ' ',
     )
@@ -2142,7 +2152,7 @@ describe('the git-index claim names what a clean key still reads', () => {
     )
     for (const page of [
       ['blog', 'why-vx-is-fast.md'],
-      ['concepts', 'why-vx-is-fast.md'],
+      ['concepts', 'why-vx-is-fast.mdx'],
     ]) {
       expect(flat(path.join(DOCS, ...page))).toContain(
         'Clean-tree key derivation costs zero source-file reads',
@@ -2157,7 +2167,7 @@ describe('the install pages name the libc the Linux binary needs', () => {
   // directory`), and with the loader and its libs it prints its version
   // (J-100). With no musl target, each page that names the platforms says
   // glibc.
-  it('build-npm ships no musl target, and the README, troubleshooting and one-binary post say glibc', () => {
+  it('build-npm ships no musl target, and the README, workspace page and one-binary post say glibc', () => {
     const build = readFileSync(
       path.resolve(import.meta.dir, '..', 'scripts', 'build-npm.ts'),
       'utf8',
@@ -2168,7 +2178,7 @@ describe('the install pages name the libc the Linux binary needs', () => {
     expect(flat(path.resolve(import.meta.dir, '..', '..', '..', 'README.md'))).toContain(
       "prebuilt binary for Linux (glibc, not Alpine's musl) and macOS",
     )
-    expect(flat(path.join(GUIDES, 'troubleshooting.mdx'))).toContain(
+    expect(flat(path.join(GUIDES, 'workspace.mdx'))).toContain(
       "on Linux with glibc (not Alpine's musl) or macOS",
     )
     expect(flat(path.join(DOCS, 'blog', 'one-binary.md'))).toContain(
@@ -2202,15 +2212,16 @@ describe('the sandbox pitch claims what the sandbox does', () => {
 describe('the README says what Ctrl-C reaches', () => {
   // "Ctrl-C reaps every child": a task's `setsid sleep … &` outlived a
   // SIGINT'd `vx run` (exit 130, the sleep still running), since vx signals
-  // the task's process group (J-106).
-  it('the README names the process group, and troubleshooting the setsid limit', () => {
+  // the task's process group (J-106). Since #5596 a stop also signals every
+  // process holding VX_RUN_TREE, so only a daemon that cleared it escapes.
+  it('the README names the process group, and Dev servers the env -i setsid limit', () => {
     const repo = path.resolve(import.meta.dir, '..', '..', '..')
     const flat = (p: string) => readFileSync(p, 'utf8').replace(/\s+/g, ' ')
     expect(flat(path.join(repo, 'README.md'))).toContain(
       "**Clean exits:** Ctrl-C reaps each task's process group.",
     )
-    expect(flat(path.join(GUIDES, 'troubleshooting.mdx'))).toContain(
-      "A process a task detaches into its own session (`setsid … &`) outlives Ctrl-C: vx signals the task's process group.",
+    expect(flat(path.join(GUIDES, 'dev-servers.mdx'))).toContain(
+      "A daemon a task starts with `setsid` and an empty environment (`env -i`) outlives Ctrl-C: vx finds a task's processes by a variable in their environment.",
     )
   })
 })

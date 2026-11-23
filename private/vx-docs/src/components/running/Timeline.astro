@@ -1,0 +1,214 @@
+---
+// A run drawn as lanes over time: one row per task, one bar per span.
+// Built at render time, no client script. The bars grow in the order they
+// start, once, each time the figure is shown (a Tabs switch replays it),
+// so a reader watches the run happen. Tones are the diagram kit's.
+export type Tone = 'accent' | 'ok' | 'danger' | 'warn' | 'link' | 'muted'
+
+export interface Bar {
+  from: number
+  to: number
+  tone: Tone
+  /** Short word on the bar: `built`, `failed`, `aborted`. */
+  label?: string
+  /** The bar runs off the right edge: the task never ends on its own. */
+  open?: boolean
+}
+
+export interface Lane {
+  task: string
+  bars: Bar[]
+}
+
+export interface Mark {
+  at: number
+  label: string
+  tone?: Tone
+}
+
+interface Props {
+  lanes: Lane[]
+  /** The time the right edge stands for, in the unit below. */
+  end: number
+  unit: string
+  marks?: Mark[]
+  /** What the picture says, for a reader who cannot see it. */
+  label: string
+  caption?: string
+}
+
+const { lanes, end, unit, marks = [], label, caption } = Astro.props
+const pct = (n: number) => `${Math.min(100, (n / end) * 100).toFixed(2)}%`
+// Bars grow over 1.2 s of wall time, starting in run order.
+const delay = (n: number) => `${((n / end) * 1.2).toFixed(2)}s`
+const ticks = [0, end / 2, end]
+---
+
+<figure class="vx-run-timeline not-content" role="img" aria-label={label}>
+  <div class="lanes">
+    {
+      lanes.map((lane) => (
+        <div class="lane">
+          <code class="task">{lane.task}</code>
+          <div class="track">
+            {lane.bars.map((b) => (
+              <span
+                class:list={['bar', `t-${b.tone}`, { open: b.open }]}
+                style={`left:${pct(b.from)};width:${pct(b.to - b.from)};animation-delay:${delay(b.from)}`}
+              >
+                {b.label && <span class="word">{b.label}</span>}
+              </span>
+            ))}
+            {marks.map((m) => (
+              <span class:list={['mark', `t-${m.tone ?? 'muted'}`]} style={`left:${pct(m.at)}`} />
+            ))}
+          </div>
+        </div>
+      ))
+    }
+    <div class="lane axis">
+      <span class="task"></span>
+      <div class="track">
+        {
+          ticks.map((t) => (
+            <span class="tick" style={`left:${pct(t)}`}>
+              {t === 0 ? '0' : `${+t.toFixed(2)}${unit}`}
+            </span>
+          ))
+        }
+        {
+          marks.map((m) => (
+            <span class:list={['mark-label', `t-${m.tone ?? 'muted'}`]} style={`left:${pct(m.at)}`}>
+              {m.label}
+            </span>
+          ))
+        }
+      </div>
+    </div>
+  </div>
+  {caption && <figcaption>{caption}</figcaption>}
+</figure>
+
+<style>
+  .vx-run-timeline {
+    margin: 1.5rem 0;
+    padding: 1rem 1rem 0.75rem;
+    border: 1px solid var(--vx-border);
+    border-radius: 8px;
+    background: var(--vx-surface);
+    font-family: var(--vx-mono);
+    font-size: 12px;
+  }
+  .lanes {
+    display: grid;
+    gap: 0.5rem;
+  }
+  .lane {
+    display: grid;
+    grid-template-columns: minmax(7.5rem, 30%) 1fr;
+    align-items: center;
+    gap: 0.75rem;
+  }
+  .task {
+    color: var(--vx-fg);
+    background: none;
+    padding: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .track {
+    position: relative;
+    height: 1.6rem;
+    border-radius: 6px;
+    background: var(--vx-surface-2);
+  }
+  .axis .track {
+    height: 2.4rem;
+    background: none;
+  }
+  .bar {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    display: flex;
+    align-items: center;
+    overflow: hidden;
+    border-radius: 6px;
+    border: 1.5px solid currentColor;
+    background: color-mix(in srgb, currentColor 22%, transparent);
+    transform-origin: left center;
+    animation: grow 0.5s ease-out both;
+  }
+  .bar.open {
+    border-right-style: dashed;
+    border-radius: 6px 0 0 6px;
+  }
+  .word {
+    padding: 0 0.4rem;
+    color: var(--vx-fg);
+    white-space: nowrap;
+  }
+  .mark {
+    position: absolute;
+    top: -0.25rem;
+    bottom: -0.25rem;
+    width: 0;
+    border-left: 2px dashed currentColor;
+  }
+  .tick,
+  .mark-label {
+    position: absolute;
+    top: 0.1rem;
+    transform: translateX(-50%);
+    color: var(--vx-muted);
+    white-space: nowrap;
+  }
+  .tick:first-child {
+    transform: none;
+  }
+  .tick:nth-child(3) {
+    transform: translateX(-100%);
+  }
+  .mark-label {
+    top: 1.2rem;
+  }
+  .t-accent {
+    color: var(--vx-accent);
+  }
+  .t-ok {
+    color: var(--vx-ok);
+  }
+  .t-danger {
+    color: var(--vx-danger);
+  }
+  .t-warn {
+    color: var(--vx-warn);
+  }
+  .t-link {
+    color: var(--vx-link);
+  }
+  .t-muted {
+    color: var(--vx-muted);
+  }
+  figcaption {
+    margin-top: 0.5rem;
+    font-family: var(--vx-font-body);
+    font-size: 0.9rem;
+    color: var(--vx-muted);
+    text-align: center;
+  }
+  @keyframes grow {
+    from {
+      transform: scaleX(0);
+    }
+    to {
+      transform: scaleX(1);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .bar {
+      animation: none;
+    }
+  }
+</style>

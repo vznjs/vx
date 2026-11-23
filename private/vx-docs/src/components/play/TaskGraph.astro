@@ -1,0 +1,228 @@
+---
+// The story workspace's task graph, drawn at build time in the diagram
+// kit's look (guide/diagram), in two layouts: side by side, and stacked on a
+// phone. Without JavaScript it shows the waves of `task`. `task-graph.ts`
+// unhides the controls and the buttons laid over each box, and redraws the
+// tones, sub lines, sentence and excerpt from `model/task-graph.ts`.
+import '../demos/widget.css'
+import '../guide/diagram/diagram.css'
+import { boxSize, extent, route, type Picture } from '../guide/diagram/diagram.js'
+import {
+  CAPTION,
+  EDITS,
+  NAMES,
+  NARROW,
+  WIDE,
+  orderView,
+  rerunView,
+  storyGraph,
+  type View,
+} from './model/task-graph.js'
+
+interface Props {
+  /** The task whose waves the first state shows. */
+  task?: string
+  /** Which question the widget opens on. */
+  mode?: 'order' | 'rerun'
+}
+
+const { task = '@demo/web#build', mode = 'order' } = Astro.props
+const graph = storyGraph()
+if (!graph.tasks.has(task)) throw new Error(`<TaskGraph task="${task}">: no such story task`)
+const view: View = mode === 'order' ? orderView(graph, [task]) : rerunView(graph, EDITS[0])
+const uid = Math.random().toString(36).slice(2, 8)
+const TONES = ['default', 'accent', 'warn', 'muted'] as const
+
+const layouts = [
+  { name: 'wide', p: { ...WIDE, name: `tg-${uid}-wide`, label: '', caption: '' } as Picture },
+  { name: 'narrow', p: { ...NARROW, name: `tg-${uid}-narrow`, label: '', caption: '' } as Picture },
+].map(({ name, p }) => {
+  const { top, height } = extent(p)
+  const width = p.width ?? 600
+  return {
+    name,
+    p,
+    top,
+    height,
+    width,
+    lines: (p.arrows ?? []).map((a) => ({ ...a, ...route(p, a) })),
+    pct: (x: number, y: number, w: number, h: number) =>
+      `left:${(x / width) * 100}%;top:${((y - top) / height) * 100}%;` +
+      `width:${(w / width) * 100}%;height:${(h / height) * 100}%;` +
+      // Inline, so widget.css's chip look never paints over the drawn box.
+      'background:transparent;border:0;padding:0;box-shadow:none',
+  }
+})
+const label =
+  'The tasks of @demo/web, @demo/ui, @demo/admin and @demo/api. Arrows run from a task to the tasks that wait on it.'
+---
+
+<figure class="vx-demo not-content">
+  <vx-task-graph data-task={task} data-mode={mode} data-uid={uid}>
+    <div class="vx-row modes" role="group" aria-label="Question" hidden>
+      <button type="button" data-mode="order" aria-pressed={String(mode === 'order')}>What runs first?</button>
+      <button type="button" data-mode="rerun" aria-pressed={String(mode === 'rerun')}>What reruns?</button>
+    </div>
+    <div class="vx-row picks" role="group" aria-label="Run every project's task" hidden={mode !== 'order'}>
+      <span class="vx-label">Click a task, or run</span>
+      {NAMES.map((n) => <button type="button" data-all={n}>{`${n} --all`}</button>)}
+    </div>
+    <div class="vx-row edits" role="group" aria-label="Edit a file" hidden={mode !== 'rerun'}>
+      <span class="vx-label">Edit</span>
+      {
+        EDITS.map((f, i) => (
+          <button type="button" data-edit={f} aria-pressed={String(mode === 'rerun' && i === 0)}>
+            {f.replace('packages/', '')}
+          </button>
+        ))
+      }
+    </div>
+    <p class="cmd vx-label">
+      {mode === 'order' ? `$ vx run ${task}` : `edited ${EDITS[0]}`}
+    </p>
+    <div class="vx-diagram graph">
+      {
+        layouts.map((l) => (
+          <div class="stage" data-layout={l.name} style={`max-width:${l.width}px`}>
+            <svg viewBox={`0 ${l.top} ${l.width} ${l.height}`} role="img" aria-label={label}>
+              <defs>
+                {TONES.map((t) => (
+                  <marker
+                    id={`vx-tg-${uid}-${l.name}-${t}`}
+                    viewBox="0 0 10 10"
+                    refX="9"
+                    refY="5"
+                    markerWidth="6"
+                    markerHeight="6"
+                    orient="auto-start-reverse"
+                  >
+                    <path class={`head ${t}`} d="M0 0 L10 5 L0 10 z" />
+                  </marker>
+                ))}
+              </defs>
+              {(l.p.frames ?? []).map((f) => (
+                <g class="frame default">
+                  <rect x={f.x} y={f.y} width={f.w} height={f.h} rx="12" />
+                  {/* On a phone the arrows run down the left, so the title moves right. */}
+                  <text
+                    x={l.name === 'narrow' ? f.x + f.w - 12 : f.x + 12}
+                    y={f.y + 20}
+                    text-anchor={l.name === 'narrow' ? 'end' : undefined}
+                  >
+                    {f.label}
+                  </text>
+                </g>
+              ))}
+              {l.lines.map((a) => {
+                const tone = view.arrows.get(`${a.from}>${a.to}`) ?? 'default'
+                return (
+                  <g class={`arrow ${tone}`} data-edge={`${a.from}>${a.to}`}>
+                    <path
+                      d={a.d}
+                      data-marker={`vx-tg-${uid}-${l.name}-`}
+                      marker-end={`url(#vx-tg-${uid}-${l.name}-${tone})`}
+                    />
+                  </g>
+                )
+              })}
+              {l.p.boxes.map((b) => {
+                const { w, h } = boxSize(b)
+                const v = view.boxes.get(b.id)!
+                return (
+                  <g class={`box ${v.tone}`} data-box={b.id}>
+                    <title>{b.title}</title>
+                    <rect x={b.x} y={b.y} width={w} height={h} rx="8" />
+                    <text class="label" x={b.x + w / 2} y={b.y + h / 2 - 9}>
+                      {b.label}
+                    </text>
+                    <text class="sub" x={b.x + w / 2} y={b.y + h / 2 + 11}>
+                      {v.sub}
+                    </text>
+                  </g>
+                )
+              })}
+            </svg>
+            {l.p.boxes.map((b) => {
+              const { w, h } = boxSize(b)
+              return (
+                <button
+                  type="button"
+                  class="hit"
+                  data-task={b.id}
+                  aria-label={b.id}
+                  aria-pressed={String(b.id === task && mode === 'order')}
+                  style={l.pct(b.x, b.y, w, h)}
+                  hidden
+                />
+              )
+            })}
+          </div>
+        ))
+      }
+    </div>
+    <p class="vx-say" aria-live="polite">{view.sentence}</p>
+    <pre
+      class="excerpt"
+      aria-label="The config behind it"><code>{view.lines.map((l) => (
+      <span class={l.tone === undefined ? undefined : `is-${l.tone}`}>{`${l.text}\n`}</span>
+    ))}</code></pre>
+  </vx-task-graph>
+  <figcaption>{CAPTION[mode]}</figcaption>
+</figure>
+
+<style>
+  /* Outweighs the kit's `.sl-markdown-content .vx-diagram` frame: here the
+     drawing sits inside the widget's own frame. */
+  .vx-demo .graph.vx-diagram {
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: none;
+    overflow: visible;
+  }
+  .stage {
+    position: relative;
+    margin: 0 auto;
+  }
+  .stage[data-layout='narrow'] {
+    display: none;
+  }
+  @media (max-width: 32rem) {
+    .stage[data-layout='wide'] {
+      display: none;
+    }
+    .stage[data-layout='narrow'] {
+      display: block;
+    }
+  }
+  .stage svg {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
+  /* A clear button over each drawn box: the box is what the reader sees,
+     the button is what a click, a tap or the keyboard reaches. */
+  .vx-demo .hit {
+    position: absolute;
+    min-height: 32px;
+    border-radius: 8px;
+  }
+  .vx-demo .hit[hidden] {
+    display: none;
+  }
+  .vx-demo p.cmd {
+    margin: 0 0 0.5rem;
+    text-align: center;
+  }
+  .vx-demo p.vx-say {
+    margin-block: 0.25rem 0.75rem;
+  }
+  .excerpt {
+    max-width: 36rem;
+    margin-inline: auto;
+  }
+</style>
+
+<script>
+  import './task-graph.ts'
+</script>

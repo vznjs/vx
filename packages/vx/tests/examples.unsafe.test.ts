@@ -231,9 +231,9 @@ describe('examples/ci', () => {
   }
 
   it('runs the lines the workflow runs', () => {
-    expect([...workflow.matchAll(/^\s+- run: >?\s*bun (vx \w+[^\n]*)/gm)].map((m) => m[1])).toEqual(
-      ['vx lock --check', 'vx pipeline'],
-    )
+    expect(
+      [...workflow.matchAll(/^\s+- run: >?\s*bun (vx \w+(?: --[\w-]+)?)/gm)].map((m) => m[1]),
+    ).toEqual(['vx lock --check', 'vx pipeline'])
     expect(workflow).toContain("github.event_name == 'pull_request' && 'pr' || 'main' }}")
   })
 
@@ -242,9 +242,14 @@ describe('examples/ci', () => {
       path.join(PACKAGES, '..', 'private', 'vx-docs', 'src', 'content', 'docs', 'docs', 'ci.mdx'),
       'utf8',
     )
-    expect(guide).toContain('```yaml\n' + workflow + '```')
-    const workspace = readFileSync(path.join(root, '.vx/workspace.ts'), 'utf8')
-    expect(guide).toContain('```ts\n// .vx/workspace.ts\n' + workspace + '```')
+    const fence = (title: string): string | undefined =>
+      new RegExp(
+        '```\\w+ title="' + title.replace(/\./g, '\\.') + '"[^\\n]*\\n([\\s\\S]*?)```',
+      ).exec(guide)?.[1]
+    expect(fence('.github/workflows/ci.yml')).toBe(workflow)
+    expect(fence('.vx/workspace.ts')).toBe(
+      readFileSync(path.join(root, '.vx/workspace.ts'), 'utf8'),
+    )
   })
 
   it('main fills the cache, a pull request reuses it and builds only what it changed', () => {
@@ -256,8 +261,10 @@ describe('examples/ci', () => {
     expect(pushed.exit).toBe(0)
     expect(pushed.status).toEqual({
       'app#build': 'success',
+      'app#lint': 'success',
       'app#test': 'success',
       'lib#build': 'success',
+      'lib#lint': 'success',
     })
     Bun.spawnSync(['git', 'update-ref', 'refs/remotes/origin/main', 'HEAD'], { cwd: root })
 
@@ -272,6 +279,7 @@ describe('examples/ci', () => {
     expect(opened.exit).toBe(0)
     expect(opened.status).toEqual({
       'app#build': 'success',
+      'app#lint': 'success',
       'app#test': 'success',
       'lib#build': 'cache-hit',
     })
@@ -279,8 +287,10 @@ describe('examples/ci', () => {
     // One disk, one pool: main on the same tree hits what the pull request built.
     expect(step(main, ['pipeline', 'main']).status).toEqual({
       'app#build': 'cache-hit',
+      'app#lint': 'cache-hit',
       'app#test': 'cache-hit',
       'lib#build': 'cache-hit',
+      'lib#lint': 'cache-hit',
     })
   }, 60_000)
 

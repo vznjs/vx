@@ -1,0 +1,180 @@
+---
+title: Upgrading vx
+description: Move your workspace to a newer vx with one command, then see what each release changed and what to do.
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components'
+import { Levels, Deeper, Concept, Quiz, Walkthrough, Frame, Compare, Takeaway, NextStep } from '../../../components/learn'
+
+You, your team and your agents all run the same vx. One command keeps it current: it moves vx, and every `@vzn` plugin with it, to the newest release.
+
+```sh
+vx upgrade
+```
+
+<Levels />
+
+<Walkthrough title="@demo moves from 0.0.658 to 0.0.659">
+<Frame title="1. vx upgrade installs the release and locks again">
+
+```ansi title="vx upgrade"
+[2m$[0m vx upgrade
+
+[38;2;6;182;212m›[0m [1mvx upgrade[0m  [38;2;203;213;225m0.0.658 → 0.0.659[0m
+
+  [1mbun add @vzn/vx@0.0.659 @vzn/vx-lockfile@0.0.659 --dev[0m[2m in /work/demo[0m
+[0m[1mbun add [0m[2mv1.4.4 (38afee6c8)[0m
+[0m[32minstalled[0m [1m@vzn/vx[0m[2m@0.0.659[0m with binaries:
+[0m [2m- [0m[1mvx[0m
+[0m[32minstalled[0m [1m@vzn/vx-lockfile[0m[2m@0.0.659[0m
+
+[0m[2m[[1m5.00ms[0m[2m][0m[2m done[0m
+[38;2;34;197;94m✓[0m [1mvx lock[0m  [38;2;203;213;225m2 project configs → .vx/projects.lock, .vx/dependencies.lock[0m
+```
+
+Read the first line: **0.0.658 → 0.0.659**. The last line is `vx lock`, run for you.
+
+</Frame>
+<Frame title="2. Commit what changed">
+
+```ansi title="git status --short"
+ [31mM[m bun.lock
+ [31mM[m package.json
+[31m??[m .vx/.gitignore
+[31m??[m .vx/dependencies.lock
+[31m??[m .vx/projects.lock
+```
+
+`package.json` and `bun.lock` pin the new vx. `.vx/` holds the new lock and `.vx/.gitignore`, which the release adds: commit it too.
+
+</Frame>
+<Frame title="3. The first build runs again, once">
+
+```ansi title="vx run build, before and after"
+[2m$[0m vx run build    # on 0.0.658
+[2m┌─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m>[0m [38;2;34;197;94mup-to-date[0m [2m• 409a4c89[0m
+[2m└─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(1ms)[0m [2mup-to-date[0m
+
+[2m$[0m vx run build    # on 0.0.659: new key
+[2m┌─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m>[0m [2msuccess[0m
+[2m└─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(260ms)[0m [2msuccess[0m
+
+[2m$[0m vx run build    # on 0.0.659 again
+[2m┌─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m>[0m [38;2;34;197;94mup-to-date[0m [2m• 3e19da81[0m
+[2m└─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(3ms)[0m [2mup-to-date[0m
+```
+
+Old key **409a4c89** on 0.0.658. One real build on 0.0.659, then a hit under the new key **3e19da81**.
+
+</Frame>
+</Walkthrough>
+
+<Concept term="Breaking change">
+  A change in a release that can stop your setup working until you edit something. Until 1.0, any
+  release can hold one. Each is listed below with the fix.
+</Concept>
+
+## Upgrade in three steps
+
+<Steps>
+
+1. Run `vx upgrade` in the workspace. It installs the release with your package manager, moves every `@vzn` plugin to the same version, then runs `vx lock`.
+
+2. Open [What changed in each release](../../docs/upgrading/releases/), pick your old version, and make each change it shows. Check yours with `vx --version`.
+
+3. Commit `package.json`, your lockfile and `.vx/`. Everyone and CI then install the same vx.
+
+</Steps>
+
+<Quiz q="A teammate on 0.0.658 pulls your commit but does not install. What happens on their next vx run?">
+  If the release changed the lock's format, their vx refuses it: `.vx/projects.lock was written by a
+  newer vx … upgrade vx`. One `bun install` gives them the pinned vx, and the run works.
+</Quiz>
+
+<Takeaway>move a workspace to a new vx and keep the whole team on it.</Takeaway>
+
+## Why every task runs once after
+
+<Concept term="Cache key">
+  A short code vx computes from everything a task reads. The vx version is part of it.
+</Concept>
+
+<Compare leftTitle="vx 0.0.658" rightTitle="vx 0.0.659">
+<div slot="left">
+
+```ansi
+[2m└─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(1ms)[0m [2mup-to-date[0m
+```
+
+</div>
+<div slot="right">
+
+```ansi
+[2m└─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(260ms)[0m [2msuccess[0m
+```
+
+</div>
+</Compare>
+
+A new vx means new keys, so nothing old is reused. Each task runs once and is stored again. A release never replays what an older vx stored.
+
+<Aside type="tip" title="Free the space later">
+  Entries from the old vx stay on disk. `vx cache clean --older-than 7d` drops the ones no run has
+  used for a week.
+</Aside>
+
+<Takeaway>expect one full run after an upgrade, and know why it is safe.</Takeaway>
+
+<Deeper level="patterns" title="Common setups">
+
+### Pick a release
+
+`vx upgrade` takes a version. A lower one goes back:
+
+```sh
+vx upgrade 0.0.659    # or v0.0.659
+```
+
+### A global vx beside the project's
+
+Inside a project, a global `vx upgrade` moves both to one version: the project's first, then the global. `vx upgrade -g` moves only the global one and never touches `package.json`.
+
+### A registry mirror
+
+vx installs from the registry your package manager already uses: `@vzn:registry` or `registry` in `.npmrc`, `npm_config_registry`, or `bunfig.toml`. Nothing extra to set.
+
+### CI
+
+CI installs what the lockfile pins, so a commit from step 3 is the whole CI upgrade. Its first run builds every task once, like yours did.
+
+<Takeaway>pin a release, move a global vx, and upgrade behind a company mirror.</Takeaway>
+
+</Deeper>
+
+<Deeper level="details" title="What vx upgrade does, exactly">
+
+| Your vx was installed…  | `vx upgrade` runs                                        |
+| ----------------------- | -------------------------------------------------------- |
+| in a project            | its package manager's add, same field: `bun add @vzn/vx@<v> --dev` |
+| with `bun add -g`       | `bun add -g @vzn/vx@<v>`                                 |
+| with `pnpm add -g`      | `pnpm add -g @vzn/vx@<v>`                                |
+| with `npm install -g`   | `npm install -g --prefix <prefix> @vzn/vx@<v>`           |
+| with `yarn global add`  | `yarn global add @vzn/vx@<v>`                            |
+| as a binary, by hand    | downloads the release and replaces itself                |
+
+- **Plugins move too.** Every `@vzn/vx-*` plugin in the same `package.json` installs at the same version.
+- **The download is checked.** A hand-installed binary checks npm's signature and the file's hash first. Any mismatch refuses, and nothing is replaced.
+- **A broken binary is undone.** The new vx must answer `--version` within 10 s, or the old one comes back and the command exits 1.
+- **The lock follows.** After an install inside a workspace, the new vx runs `vx lock`. If that fails, it prints `vx lock failed: run vx lock`.
+- **Already there.** On the version you run, it prints `already at <version>` and downloads nothing.
+
+| Exit code | When |
+| --- | --- |
+| `0` | installed, or already at that version |
+| `1` | anything refused or undone: no network, a directory it cannot write, a bad signature, a binary that does not start, a failed install |
+
+Every message and edge rule: [the `vx upgrade` reference](../../cli/upgrade/).
+
+</Deeper>
+
+<NextStep href="../../docs/upgrading/releases/" title="What changed in each release">Pick your old version and see each change to make.</NextStep>

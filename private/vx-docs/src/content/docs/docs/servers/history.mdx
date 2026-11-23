@@ -1,29 +1,47 @@
 ---
 title: History server
-description: Host @vzn/vx-history-server, the task timings vxHistory() orders CI runs by, on Workers, Bun or Docker.
+description: Host @vzn/vx-history-server so every fresh CI runner knows how long each task takes and starts the long ones first.
 ---
 
-import { Tabs, TabItem, Aside } from '@astrojs/starlight/components'
+import Diagram from '../../../../components/guide/diagram/Diagram.astro'
+import { historyLoop } from '../../../../components/docs/pictures/servers.js'
+import { Aside, Tabs, TabItem, Steps } from '@astrojs/starlight/components'
+import { Levels, Deeper, Concept, Quiz, Compare, Takeaway, NextStep } from '../../../../components/learn'
 
-With `vxHistory()` from `@vzn/vx-history`, vx starts the longest path of
-dependent tasks first, so a run ends sooner.
+A fresh CI runner remembers no earlier run. The history server remembers for all of them, so each run starts its longest tasks first.
 
-To find that path, it needs to know how long each task took last time.
-Your laptop remembers its own runs. A fresh CI runner remembers nothing.
+```sh
+bunx @vzn/vx-history-server --db vx-history.sqlite --port 8080
+```
 
-`@vzn/vx-history-server` remembers for every runner. After each CI run,
-vx sends it each task's time, the cores it kept busy and its peak memory.
+<Levels />
 
-The next run, on any runner, asks for those numbers before it starts.
+<Diagram {...historyLoop} />
+
+<Concept term="Critical path">
+  The longest line of tasks that wait on each other. A run can end no sooner than it, so vx starts
+  it first. To find it, vx needs each task's time.
+</Concept>
+
+<Compare leftTitle="Fresh runner, no history" rightTitle="Fresh runner, with history">
+<div slot="left">
+
+vx guesses. A short `oxlint` may start before the slow `vite build` that `@demo/web` waits on.
+
+</div>
+<div slot="right">
+
+vx knows `@demo/ui#build` → `@demo/web#build` is the longest path, and starts it first.
+
+</div>
+</Compare>
 
 <Aside>
-  The history only decides the order tasks start in. A wrong or missing
-  number never changes what runs or what is cached.
+  History changes when tasks start and whether a flaky task is retried. A wrong or missing number
+  never changes a task's result or what is cached.
 </Aside>
 
-## Set it up
-
-### 1. Deploy the server
+## Deploy it
 
 <Tabs syncKey="server-host">
 <TabItem label="Cloudflare Workers">
@@ -40,19 +58,17 @@ bun add @vzn/vx-history-server
   "name": "vx-history-server",
   "main": "node_modules/@vzn/vx-history-server/src/worker.ts",
   "compatibility_date": "2026-10-01",
-  "vars": { "ALLOW": "" },
+  "vars": { "ALLOW": "https://token.actions.githubusercontent.com:acme/app:ci.yml" },
   "d1_databases": [{ "binding": "DB", "database_name": "vx-history" }]
 }
 ```
-
-Fill `ALLOW` ([`ALLOW`](../#allow-who-takes-part)), then:
 
 ```sh
 bunx wrangler login
 bunx wrangler deploy
 ```
 
-The first deploy creates the D1 database `vx-history`.
+The first deploy creates the D1 database `vx-history`. It fits Cloudflare's free plan.
 
 </TabItem>
 <TabItem label="Bun">
@@ -69,8 +85,7 @@ bunx @vzn/vx-history-server --db vx-history.sqlite --port 8080
 [38;2;34;197;94m✓[0m [1mvx-history-server[0m  listening on [38;2;6;182;212mhttp://0.0.0.0:8080/[0m
 ```
 
-`--db` (default `vx-history.sqlite`), `--port` (default 8080) and
-`--host` (default `0.0.0.0`) set the file and where it listens.
+The green line means it is up.
 
 </TabItem>
 <TabItem label="Docker">
@@ -79,142 +94,190 @@ bunx @vzn/vx-history-server --db vx-history.sqlite --port 8080
 docker run -p 8080:8080 -v vx-history:/data -e ALLOW='…' -e AUDIENCE=https://history.example.com ghcr.io/vznjs/vx-history-server
 ```
 
-The database is `/data/vx-history.sqlite`, on the volume. Or run it
-beside the other two servers with
-[Docker Compose](../#all-three-with-docker-compose): the `history`
-service, on port 8082.
+The database is `/data/vx-history.sqlite`, on the volume. Or run it beside the other two with [Docker Compose](../#run-all-three-with-docker-compose): the `history` service, on port 8082.
 
 </TabItem>
 </Tabs>
 
-Put HTTPS in front of it: a CI token is a bearer token.
-
-### 2. Point vx at it
+Check it answers:
 
 ```sh
-bun add -d @vzn/vx-history @vzn/vx-ci
+curl http://localhost:8080/v1/capabilities   # Workers: your workers.dev URL
 ```
 
-```ts title=".vx/workspace.ts"
-import { defineWorkspace } from '@vzn/vx/config'
-import { github } from '@vzn/vx-ci'
-import { vxHistory } from '@vzn/vx-history'
-
-export default defineWorkspace({
-  plugins: [
-    github(), // on GitLab, gitlab()
-    vxHistory({
-      url: 'https://history.example.com', // or VX_HISTORY_URL
-      issuer: 'https://token.actions.githubusercontent.com',
-      repository: 'acme/app',
-    }),
-  ],
-})
+```json
+{"maxUploadTimings":10000,"maxQueryHashes":10000,"maxQueryRefs":8}
 ```
 
-`url` is https (http only to `127.0.0.1`, `::1` or `localhost`). `issuer`
-and `repository` must match your `ALLOW` entry. Run `vx lock`
-and commit.
+Those are its limits: the server is up. Put HTTPS in front of it.
 
-### 3. Let CI jobs prove who they are
+<Takeaway>run a history server on Cloudflare, Bun or Docker.</Takeaway>
 
-<Tabs syncKey="ci">
-<TabItem label="GitHub Actions">
+## Point vx at it
 
-```yaml title=".github/workflows/ci.yml"
-permissions:
-  contents: read
-  id-token: write
-```
+<Steps>
 
-</TabItem>
-<TabItem label="GitLab CI">
+1. Add the plugins:
 
-```yaml title=".gitlab-ci.yml"
-vx:
-  id_tokens:
-    VX_HISTORY_TOKEN:
-      aud: https://history.example.com
-```
+   ```sh
+   bun add -d @vzn/vx-history @vzn/vx-ci
+   ```
 
-</TabItem>
-</Tabs>
+2. Name the server in `.vx/workspace.ts`:
 
-Then push. vx prints nothing about the history when it works. When the
-server refuses, it says so once, in the server's words, and the run
-orders its tasks as it would without one.
+   ```ts title=".vx/workspace.ts" ins={3,8-12}
+   import { defineWorkspace } from '@vzn/vx/config'
+   import { github } from '@vzn/vx-ci'
+   import { vxHistory } from '@vzn/vx-history'
 
----
+   export default defineWorkspace({
+     plugins: [
+       github(), // on GitLab, gitlab()
+       vxHistory({
+         url: 'https://history.example.com',
+         issuer: 'https://token.actions.githubusercontent.com',
+         repository: 'acme/app',
+       }),
+     ],
+   })
+   ```
+
+3. Let each CI job ask for its token:
+
+   <Tabs syncKey="ci">
+   <TabItem label="GitHub Actions">
+
+   ```yaml title=".github/workflows/ci.yml"
+   permissions:
+     contents: read
+     id-token: write
+   ```
+
+   </TabItem>
+   <TabItem label="GitLab CI">
+
+   ```yaml title=".gitlab-ci.yml"
+   vx:
+     id_tokens:
+       VX_HISTORY_TOKEN:
+         aud: https://history.example.com
+   ```
+
+   </TabItem>
+   </Tabs>
+
+4. Run `vx lock`, commit and push.
+
+</Steps>
+
+vx prints nothing about the history when it works. When the server refuses, vx says so once, in the server's words, and orders tasks as it would without one.
+
+`issuer` and `repository` must match your `ALLOW` entry. Every `vxHistory()` option, and how it works with no server, is on [its page](../../../plugins/vx-history/).
+
+<Takeaway>give every CI runner the timings of the runs before it.</Takeaway>
 
 ## How a run uses it
 
-- **At the start**, it asks for the numbers of its tasks: its own
-  branch's first, then the branch it merges into, then the default
-  branch's. It does not wait for them: it starts on what this machine
-  knows and re-orders the waiting tasks when they arrive.
-- **At the end**, it sends the numbers of the tasks it ran, once. With
-  [distributed task execution](../../distributed-task-execution/), the
-  run that hands out the tasks sends them, with each worker's measurements.
-- **Off CI** there is no token. A run then reads from a server with
-  `READ_ACCESS=public`, and sends nothing.
+- **At the start**, it asks for its tasks' numbers: its own branch's first, then the branch it merges into, then the default branch's. It does not wait: it starts on what it knows and re-orders when they arrive.
+- **At the end**, it sends the numbers of the tasks it ran, once.
+- **Off CI**, there is no token. A run reads from a server with `READ_ACCESS=public` and sends nothing.
 
-A task's numbers belong to its command and `env.define`. Change the
-command and the task starts fresh. Change its inputs or dependencies
-and it keeps them.
+<Quiz q="You add a file to @demo/ui's inputs. Does @demo/ui#build lose its history?">
+  No. A task's numbers belong to its command and `env.define`. Inputs and dependencies can change;
+  a new command starts fresh.
+</Quiz>
 
-`vxHistory()` also works with no server, from this machine's history
-alone, or from a file a CI cache carries between runs.
+<Takeaway>know when the history is read, written and reset.</Takeaway>
 
-Those options, and `assume` for tasks it has never seen, are on its
-[reference page](../../../plugins/vx-history/).
+<Deeper level="patterns" title="Common setups">
 
-## Settings
+### Laptops order by CI's times
 
-| Setting | Default | What it sets |
+Set `READ_ACCESS=public` on the server. A laptop reads CI's timings and never sends its own.
+
+<Takeaway>order local runs by what CI measured.</Takeaway>
+
+### Distributed task execution
+
+The run that hands out the tasks sends the numbers, with each worker's measurements. Workers send nothing themselves.
+
+<Takeaway>keep one history for runs spread over many machines.</Takeaway>
+
+### Keep rows longer
+
+A task that runs rarely, such as a weekly release, can outlive the 30-day default. Raise it:
+
+```sh
+TIMING_DAYS=90
+```
+
+<Takeaway>keep timings for tasks that run less than once a month.</Takeaway>
+
+</Deeper>
+
+<Deeper level="details" title="Every setting, what it keeps, the API">
+
+### Server settings
+
+| Setting | Default | What it does | Example |
+| --- | --- | --- | --- |
+| `ALLOW` | required | who takes part ([`ALLOW`](../#say-who-takes-part-allow)) | `https://token.actions.githubusercontent.com:acme/app:ci.yml` |
+| `AUDIENCE` | Workers: the URL it is reached at. Bun and Docker: required | the `aud` a CI token must name, read as its origin | `https://history.example.com` |
+| `READ_ACCESS` | unset: every request needs a token | `public`: a request with no token reads a repository `ALLOW` names | `public` |
+| `TIMING_DAYS` | 30 | whole days a row is kept after its last report | `90` |
+| `DB` | | Workers: the D1 database binding | `vx-history` |
+| `--db` | `vx-history.sqlite` | Bun: the SQLite file | `--db /var/lib/vx-history.sqlite` |
+| `--port` | 8080 | Bun: the port it listens on | `--port 9000` |
+| `--host` | `0.0.0.0` | Bun: the address it listens on | `--host 127.0.0.1` |
+
+A bad value stops the Bun server before it listens:
+
+```ansi title="TIMING_DAYS=0"
+[38;2;239;68;68m✗[0m [1mvx-history-server[0m  TIMING_DAYS: a whole number of days, got 0
+```
+
+### What it keeps
+
+One row per issuer, repository, branch and task, stored plainly. Each report updates the row:
+
+| Number | Update | Why |
 | --- | --- | --- |
-| `ALLOW` | required (a Worker without it refuses every request) | who takes part, each `issuer:owner/repo:workflow` ([`ALLOW`](../#allow-who-takes-part)) |
-| `READ_ACCESS` | unset: every request needs a CI token | `public`: a request with no token reads a repository `ALLOW` names, and writes nothing |
-| `AUDIENCE` | Workers: the origin it is reached at. Bun and Docker: required | the `aud` a CI token must name, read as its origin |
-| `TIMING_DAYS` | 30 | days a task's row is kept after its last report |
+| `durationMs`, `cores` | `old × 0.7 + new × 0.3` | follows a task that got slower within about three runs; one odd run moves it 30% |
+| `rssBytes` | `max(new, old × 0.9)` | planning needs the peak; the decay lets a task that shrank come down |
+| `slowMs` | `max(new, old × 0.9)` of the duration | how slow a task gets, which the average hides |
+| `runs` | `+ 1` | how many reports made the row |
 
-On Workers, each setting is a var in `wrangler.jsonc`.
+A report that would move the row under 5%, with no new memory peak, is not written, unless the row is a day old.
 
-## What it keeps
+It also keeps a **flaky record** per repository: only the cache keys that failed, each marked flaky once it passed on a retry or a later run. A run retries a task that flaked on another machine.
 
-One row per issuer, repository, branch and task, each stored plainly,
-so the table reads as it is. Each report updates the row:
+It keeps no log, no list of runs and no raw samples. A row or key not reported for `TIMING_DAYS` is deleted by the first upload of each day.
 
-- `durationMs` and `cores`: `old × 0.7 + new × 0.3`. A task that got
-  slower is followed within about three runs, and one odd run moves it
-  30%.
-- `rssBytes`: `max(new, old × 0.9)`. Planning needs the peak, and the
-  decay lets a task that shrank come down.
-- `runs`: how many reports made the row.
+### API
 
-It keeps no log, no list of runs and no raw samples. A row not reported
-for `TIMING_DAYS` is deleted by the first upload of each day.
-
-## API
-
-All under `/v1`
-([PROTOCOL.md](https://github.com/vznjs/vx/blob/main/packages/vx-history-server/PROTOCOL.md)):
+All under `/v1` ([PROTOCOL.md](https://github.com/vznjs/vx/blob/main/packages/vx-history-server/PROTOCOL.md)):
 
 | Route | Does |
 | --- | --- |
-| `POST /v1/timings/upload` | `{ timings: [{ hash, durationMs, cores?, rssBytes? }] }`, up to 10 000, each added to the token's branch's row; `204` |
-| `POST /v1/timings/query` | `{ issuer, repository, refs, hashes }`, 1 to 8 refs and up to 10 000 hashes: each hash's row in the first ref that holds one |
-| `GET /v1/capabilities` | `{ maxUploadTimings, maxQueryHashes, maxQueryRefs }`, which every `/v1/timings` answer names as `vx-max-*` headers too |
+| `POST /v1/timings/upload` | `{ timings: [{ hash, durationMs, cores?, rssBytes? }], outcomes?: [{ hash, key, outcome }] }`, up to 10 000 each, into the token's branch; `204` |
+| `POST /v1/timings/query` | `{ issuer, repository, refs, hashes }`, 1 to 8 refs and up to 10 000 hashes: each hash's row in the first ref holding one, and the flaky ones |
+| `GET /v1/capabilities` | `{ maxUploadTimings, maxQueryHashes, maxQueryRefs }`, also sent as `vx-max-*` headers on every answer |
 
-A run asks once, with every hash. A query answers
-`{ timings: { <hash>: { durationMs, cores, rssBytes, runs } } }`; a hash
-no ref holds is left out. Every refusal is `{ code, message }`.
+A query answers `{ timings: { <hash>: { durationMs, cores, rssBytes, slowMs, runs } }, flaky: [<hash>] }`. Every refusal is `{ code, message }`:
 
-To mount it in a server of your own:
+```json
+{"code":"forbidden","message":"acme/other is not in this server's ALLOW"}
+```
 
-- `createHistoryServer({ store, authorize, timingDays? })` returns a
-  `fetch` handler;
-- `sqliteStore(db)` keeps the rows in any SQLite that `bun:sqlite` or D1
-  serves.
+To mount it in your own server:
 
-The [README](https://github.com/vznjs/vx/tree/main/packages/vx-history-server#api)
-lists the whole API.
+| Function | Returns |
+| --- | --- |
+| `createHistoryServer({ store, authorize, timingDays? })` | a `fetch` handler |
+| `sqliteStore(db)` | a store over any SQLite that `bun:sqlite` or D1 serves |
+
+The [README](https://github.com/vznjs/vx/tree/main/packages/vx-history-server#api) lists the whole API.
+
+</Deeper>
+
+<NextStep href="../../writing-plugins/" title="Write a plugin">Build your own plugin on the same stages these servers' plugins use.</NextStep>

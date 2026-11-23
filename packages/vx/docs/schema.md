@@ -124,14 +124,36 @@ and one starting with `^` (dependencies' tasks), `!` (a negation) or
 A task or project name holding a control character (`ESC`, `\r`) is
 refused too: vx prints names raw, and one could retitle the terminal.
 
-`name` is refused at load when `dependsOn` or `--filter` could not
+### `name` (optional)
+
+The project's name: what `web#build`, `--filter web` and `dependsOn` use
+to reach it. Omitted, the project is named by its path.
+
+```ts
+import { defineProject } from '@vzn/vx/config'
+
+export default defineProject({ name: 'web' })
+```
+
+It is refused at load when `dependsOn` or `--filter` could not
 spell it: surrounding whitespace, a `#`, a `*` (a pattern), a leading
 `^` (dependencies' tasks) or `!` (an exclusion), a leading `tag:`, a
 leading or trailing `...` (a dependency walk), a trailing `[<ref>]` (a
 git range), or a directory form (`./x`, `{x}`, `x{dir}`). A name a plugin gives
 and a project's path name are held to the same rule.
 
-`tags` label the project for selection: `--filter tag:<name>` selects
+### `tags` (optional)
+
+Labels for picking projects: `vx run test --filter tag:app` runs `test`
+in every project tagged `app`.
+
+```ts
+import { defineProject } from '@vzn/vx/config'
+
+export default defineProject({ tags: ['type:app', 'scope:web'] })
+```
+
+Tags label the project for selection: `--filter tag:<name>` selects
 the projects carrying one (`cli.md` § Filter DSL), as Nx's `tag:` does.
 Each is a non-empty string a tag filter can name, or it is refused at
 load: no surrounding whitespace, no `*` (a pattern), no control
@@ -229,6 +251,10 @@ interface ExecConfig {
   sandbox?: SandboxConfig // opt-in OS sandbox for this command
 }
 ```
+
+#### `command` (required)
+
+The shell command the task runs, from the project's directory.
 
 `command` is a string. Run via `sh -c` (`dash` on macOS, as Linux's
 `sh` is), so POSIX
@@ -536,6 +562,10 @@ interface PersistentConfig {
 }
 ```
 
+| Field       | What it does                                                                                                               |
+| ----------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `readyWhen` | A regex, as a string. The first output line it matches marks the server ready (`'Local:'`). Omitted: ready once it starts. |
+
 Marks the task as a long-running process — a dev server, a file
 watcher, a daemon. The runner spawns the command but does NOT wait
 for it to exit. Instead it considers the task "ready":
@@ -710,7 +740,7 @@ REPL, a watch mode that reads keys. Turbo's `interactive`.
 }
 ```
 
-#### `ExecEnv` (optional)
+#### `env` (optional)
 
 ```ts
 interface ExecEnv {
@@ -719,6 +749,15 @@ interface ExecEnv {
   secret?: readonly string[] // names whose values are masked (`***`) whatever the name; see Masking
 }
 ```
+
+The variables the command sees. Nothing from your shell reaches it
+unless named here.
+
+| Field         | What it does                                                                                                                    |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `passThrough` | Names copied from your shell, exact: `['API_URL']`. Not in the cache key; add them to `inputs.env` when they change the output. |
+| `define`      | Fixed values set for the task: `{ NODE_ENV: 'production' }`. In the cache key.                                                  |
+| `secret`      | Names whose values vx prints as `***`, whatever the name: `['DEPLOY_TOKEN']`.                                                   |
 
 The child process sees a deliberately limited env. From lowest to
 highest priority:
@@ -1561,6 +1600,8 @@ interface TaskOutputs {
 }
 ```
 
+#### `outputs.files` (required)
+
 Project-relative globs of files the task produces. Captured on cache
 write, restored on cache hit (overwriting any local modifications),
 and **wiped before exec AND before restore** so the project dir ends
@@ -1800,6 +1841,29 @@ interface SandboxIgnore {
   network?: readonly string[] // '<host>:<port>'
 }
 ```
+
+| Field                    | What it does                                                                                                                                       |
+| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `allow`                  | What the command may do beyond reading its project: the grants below.                                                                              |
+| `allow.read`             | Paths or globs it may read: project-relative, `~/`-relative or absolute (`['~/.npmrc']`). Not a cache input.                                       |
+| `allow.write`            | Paths or globs it may write (`['dist/']`). A write grant can be read too.                                                                          |
+| `allow.network`          | Domains it may reach (`['registry.npmjs.org']`); `'localhost:4173'` reaches a server on this machine. `true` opens the network but adds no domain. |
+| `allow.systemInfo`       | macOS: sysctl names it may read (`['vfs.disk-space']`).                                                                                            |
+| `allow.unixSockets`      | Unix sockets it may open (Docker, ssh-agent, a database): `true` for all, or a list of paths. Linux allows any path once granted.                  |
+| `allow.localBinding`     | Ports on localhost it may listen on: `true`, or a list, which also exposes those ports to your machine.                                            |
+| `allow.machLookup`       | macOS: mach service names it may look up.                                                                                                          |
+| `allow.pty`              | `true` lets it open a terminal (a TTY).                                                                                                            |
+| `allow.gitConfig`        | `true` lets it write the repository's `.git/config`.                                                                                               |
+| `deny`                   | What it may not do even when a grant allows it.                                                                                                    |
+| `deny.network`           | Domains it may not reach, checked before `allow.network` (`['*:22']` blocks every host's port 22).                                                 |
+| `ignore`                 | Refused touches to leave out of the report; the task still cannot make them.                                                                       |
+| `ignore.read`            | Paths of refused reads to leave out (`['~/.cache/probe']`).                                                                                        |
+| `ignore.write`           | Paths of refused writes to leave out (`['*.bun-build']`).                                                                                          |
+| `ignore.systemInfo`      | macOS: sysctl names of refused reads to leave out.                                                                                                 |
+| `ignore.network`         | Refused connections to leave out, as `'<host>:<port>'`.                                                                                            |
+| `hermetic`               | `true`: outside the workspace it reads only what `allow.read` names, so a tool on the machine cannot be used unseen. Default `false`.              |
+| `weakerWhenNested`       | Linux: `true` lets the sandbox run where vx itself runs in a container or another sandbox; the task then sees the host's `/proc`. Default `false`. |
+| `weakerNetworkIsolation` | macOS: `true` sends the network through a proxy on your machine, with weaker isolation. Default `false`.                                           |
 
 One shape describes what a task may do; vx translates it into a seatbelt
 profile on macOS and bwrap mounts plus seccomp on Linux. `ignore` takes
@@ -2082,7 +2146,9 @@ libraries they link.
 Any other tool is yours to grant, with its libraries: `ldd $(command -v
 node)` lists them. The task then cannot lean on the machine unseen.
 A command the host has but no grant reads exits 127, and vx names its
-host path and the grant (`tests/shell-verdict-sandbox.test.ts`).
+host path and the grant. So does a command found whose runtime is hidden:
+the `node` its `#!/usr/bin/env node` line asks for, or a library that
+runtime links (`tests/shell-verdict-sandbox.test.ts`).
 
 A grant says what a task may read; `inputs.runtime` says what moves its
 key. Declare both for a tool.
@@ -2418,6 +2484,23 @@ it runs under. `vx info` lists every setting not at its
 default and where it came from.
 
 ### Settings
+
+The settings come in groups:
+
+| Group                    | What it holds                                                                                                       |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------- |
+| `run`                    | How tasks run: how many at once, time limits, retries, logs, secrets and graph rules.                               |
+| `run.logs`               | How much of each task's output vx keeps, for the cache and for failures.                                            |
+| `run.secrets`            | How vx hides secret values in output: `minLength`.                                                                  |
+| `run.rules`              | Checks `vx lock` runs on the task graph; each is on unless set to `false`.                                          |
+| `run.rules.dependencies` | Which projects may depend on which: `[{ from: 'tag:lib', deny: ['tag:app'] }]` stops a library using an app. Below. |
+| `cache.concurrency`      | How many cache transfers run at once: `download`, `upload`, `restore`.                                              |
+| `cache.store`            | How the local cache keeps entries on disk: `embeddings`, `decompress`.                                              |
+| `cache.upload`           | What the remote cache keeps beyond hits: `failures`.                                                                |
+| `history`                | How long vx keeps run history: `retention`.                                                                         |
+| `lock`                   | What `vx lock` writes beside the lock: `reviewFiles`.                                                               |
+| `plugins`                | The plugins this workspace uses, in order. None by default. Below.                                                  |
+| `pipelines`              | Named runs for `vx pipeline <name>`. See Pipelines.                                                                 |
 
 <!-- settings table: generated by tests/settings.test.ts -->
 
@@ -2768,7 +2851,7 @@ The loader validates the shape (each setting by its kind, plugin objects
 with a name and at least one capability) and throws a `UserError` on
 malformed input.
 
-### Pipelines
+### `pipelines`
 
 A pipeline is a `vx run` saved under a name, for `vx pipeline <name>`:
 its `tasks` in every project that declares them, under the flags it
@@ -2872,6 +2955,38 @@ interface Pipeline {
   format?: 'pretty' | 'json'
 }
 ```
+
+#### Every key of `pipelines.*`
+
+Only `tasks` is required. A key left out leaves its flag off, so the
+workspace's own setting (or vx's default) applies.
+
+| Key                        | Flag                           | Takes                                                                    | Left out                                              | What it does                                                                                                                                                            |
+| -------------------------- | ------------------------------ | ------------------------------------------------------------------------ | ----------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tasks`                    | (the task names)               | names, or `'pkg#task'`                                                   | required                                              | The tasks to run, in every project that declares each. `dependsOn` orders them.                                                                                         |
+| `filter`                   | `--filter`                     | pnpm-style patterns                                                      | every project                                         | Run only in the projects these select; what they depend on still runs.                                                                                                  |
+| `affected`                 | `--affected`                   | `true`, or a git ref                                                     | off                                                   | Run only where a change since the base reaches: changed projects and the tasks that depend on them. `true` takes the base from a CI plugin, else `origin/<baseBranch>`. |
+| `excludeDependencies`      | `--exclude-dependencies`       | `true`, or task names                                                    | off                                                   | Skip `dependsOn` edges: `true` all of them, a list only those names.                                                                                                    |
+| `env`                      | (none)                         | `{ NAME: 'value' }`                                                      | none                                                  | Variables set for vx and its plugins before they start (a plugin's switch). Tasks never see them. A variable already set wins.                                          |
+| `concurrency`              | `--concurrency`                | a number, or `'50%'`                                                     | `run.concurrency`, else the cores                     | Most tasks running at once.                                                                                                                                             |
+| `schedule`                 | `--schedule`                   | `'most-work'`, `'critical-path'`, `'direct-dependents'`, `'ready-order'` | `run.schedule`, else `'most-work'`                    | Which ready task starts first when workers are short.                                                                                                                   |
+| `failFast`                 | `--fail-fast`                  | `true`                                                                   | `run.failFast`, else off                              | Stop the run at the first failure. Off, a failure skips only its dependents.                                                                                            |
+| `retries`                  | `--retries`                    | a number                                                                 | `run.retries`, else `0`                               | Re-runs of a failed task. A task's own `exec.retries` wins.                                                                                                             |
+| `timeout`                  | `--timeout`                    | a duration (`'10m'`)                                                     | `run.timeout`, else none                              | Time limit per task. A task's own `exec.timeout` wins.                                                                                                                  |
+| `branch`                   | `--branch`                     | a branch name                                                            | git's branch, then the CI's                           | The branch the run records in its history.                                                                                                                              |
+| `cachePolicy`              | `--cache-policy`               | a policy (`'local:rw,remote:r'`)                                         | `cache.policy`, else read and write all               | What each cache layer may read and write.                                                                                                                               |
+| `noCache`                  | `--no-cache`                   | `true`                                                                   | off                                                   | No cache reads, no writes.                                                                                                                                              |
+| `force`                    | `--force`                      | `true`                                                                   | off                                                   | Run every task again; writes stay on.                                                                                                                                   |
+| `cacheDir`                 | `--cache-dir`                  | a path, from the workspace root                                          | `cache.dir`, else `~/.vx/<id>/cache`                  | Where the local cache lives.                                                                                                                                            |
+| `cacheDownload`            | `--cache-download`             | `'all'`, `'toplevel'`, `'none'`                                          | `cache.download`, else `'all'`                        | Which outputs of a remotely run task land on this machine.                                                                                                              |
+| `cacheConcurrencyDownload` | `--cache-concurrency-download` | a number                                                                 | `cache.concurrency.download`                          | Remote downloads at once.                                                                                                                                               |
+| `cacheConcurrencyUpload`   | `--cache-concurrency-upload`   | a number                                                                 | `cache.concurrency.upload`                            | Uploads at once, per remote.                                                                                                                                            |
+| `cacheConcurrencyRestore`  | `--cache-concurrency-restore`  | a number                                                                 | `cache.concurrency.restore`, else twice `concurrency` | Local hits restoring outputs at once.                                                                                                                                   |
+| `outputLogs`               | `--output-logs`                | `'full'`, `'errors-only'`, `'hash-only'`, `'none'`                       | `run.outputLogs`, else vx picks                       | How much task output the log shows.                                                                                                                                     |
+| `verbosity`                | `--verbosity`                  | `0` or more                                                              | `0`                                                   | `1` adds a table of every task to the log.                                                                                                                              |
+| `profile`                  | `--profile`                    | `true`, or a file name                                                   | off                                                   | Write a Chrome trace of the run (`profile.json`). Not with `dry`.                                                                                                       |
+| `dry`                      | `--dry`                        | `true`                                                                   | off                                                   | Print the plan; run nothing.                                                                                                                                            |
+| `format`                   | `--format`                     | `'pretty'`, `'json'`                                                     | `'pretty'`                                            | With `dry: true`, print the plan as JSON.                                                                                                                               |
 
 - **Keys are flags.** Each key but `tasks` and `env` is its `vx run` flag
   in camelCase (`cachePolicy` is `--cache-policy`) and takes what the

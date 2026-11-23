@@ -19,7 +19,13 @@
 import { existsSync } from 'node:fs'
 import { lstat } from 'node:fs/promises'
 import path from 'node:path'
-import { type Duration, type GeneratedProject, type GeneratedTask, UserError } from '@vzn/vx'
+import {
+  type Duration,
+  type GeneratedProject,
+  type GeneratedTask,
+  isLiteralPattern,
+  UserError,
+} from '@vzn/vx'
 import type { PackageMeta } from '../packages.js'
 import { refuseTaskNames } from '../plugin-gaps.js'
 import { withoutTakenBack } from '../glob-grammar.js'
@@ -720,7 +726,8 @@ export async function mapNxWorkspace(
 
 /**
  * Nx caches whichever of a target's outputs exist, and vx fails a task one
- * of whose output patterns matched nothing: TanStack/store's shared
+ * of whose literal output paths matched nothing (a wildcard may match
+ * nothing, M 2026-11-23): TanStack/store's shared
  * `build` outputs (`build`, `dist`) failed every project that writes only
  * `dist` (2026-11-23). Said once, naming the tasks most likely to miss one.
  */
@@ -731,20 +738,20 @@ function optionalOutputsNote(projects: readonly GeneratedProject[]): string | un
       const o = t.task?.['outputs'] as { files?: unknown; workspaceFiles?: unknown } | undefined
       const n = [o?.files, o?.workspaceFiles]
         .flatMap((l) => (Array.isArray(l) ? l : []))
-        .filter((g) => typeof g === 'string' && !g.startsWith('!')).length
+        .filter((g) => typeof g === 'string' && !g.startsWith('!') && isLiteralPattern(g)).length
       if (n > 0) declared.push({ id: `${p.name}#${t.name}`, n })
     }
   if (declared.length === 0) return undefined
   const many = declared.filter((d) => d.n > 1).map((d) => d.id)
   const shown = many.slice(0, 3).join(', ')
   return (
-    `Nx caches whichever of a target's outputs exist; vx fails a task when one of its output ` +
-    `patterns matches nothing ("outputs matched no files"): ${declared.length} ` +
-    `task${declared.length === 1 ? '' : 's'} declare${declared.length === 1 ? 's' : ''} outputs` +
+    `Nx caches whichever of a target's outputs exist; vx fails a task when one of its literal output ` +
+    `paths matches nothing ("outputs matched no files"; a wildcard may match nothing beside one that matched): ${declared.length} ` +
+    `task${declared.length === 1 ? '' : 's'} declare${declared.length === 1 ? 's' : ''} literal outputs` +
     (many.length === 0
       ? ''
       : `, ${many.length} more than one (${shown}${many.length > 3 ? ', …' : ''})`) +
-    ' — remove each pattern its command never writes'
+    ' — remove each path its command never writes, or make it a wildcard'
   )
 }
 

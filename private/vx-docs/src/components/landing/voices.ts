@@ -28,7 +28,7 @@ const wrona = (quote: string): Voice => ({
 
 // The order is the page's: the first half is the top row, the rest the
 // bottom, each looping. Voices alternate so one person's quotes sit apart
-// wherever the count allows (11 of 17 are Anthony's, so some pairs remain).
+// wherever the count allows (11 of 18 are Anthony's, so some pairs remain).
 export const ALL_VOICES: Voice[] = [
   {
     quote:
@@ -78,6 +78,12 @@ export const ALL_VOICES: Voice[] = [
   shew(
     'Obviously, you can’t count on a graph having uniform timing in a real world repository, so unblocking more tasks sooner is generally meaningless at scale.',
   ),
+  {
+    quote:
+      'Blinked. Missed the build. Finally, a cache I trust more than myself. My coffee breaks are gone. Thanks, I guess.',
+    who: 'Sabin Hertanu',
+    role: 'Software Engineer at CrowdStrike',
+  },
   shew(
     'If your users can configure their way out of that, that’s fine, but then its dishonest to claim the numbers that you are.',
     C,

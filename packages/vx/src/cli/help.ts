@@ -40,36 +40,42 @@ export function helpColors(
 export function paintHelp(text: string, colors: ColorSupport, paint: Paint): string {
   if (!colors.enabled) return text
   const lines = text.split('\n')
-  return lines
-    .map((line, i) => {
-      if (line === '') return line
-      if (i === 0) {
-        const [name, ...rest] = line.split(' ')
-        return [paint('info', name!, colors, true), ...rest].join(' ')
-      }
-      const heading = /^([A-Z][^:]*?)( \(for [^)]*\))?:$/.exec(line)
-      if (heading !== null) {
-        const qualifier = heading[2] === undefined ? '' : paint('muted', heading[2], colors)
-        return `${paint('strong', heading[1]!, colors)}${qualifier}${paint('strong', ':', colors)}`
-      }
-      // ` term description`: a term is a flag, a `vx` form, a selector.
-      const row = /^(\s+)(\S(?:.*?\S)?)(\s{2,}\S.*)?$/.exec(line)
-      if (row === null) return line
-      const [, indent, term, description = ''] = row
-      if (/^vx \S/.test(term!)) {
-        const verb = term!.split(' ')[1]!
-        // Prose that opens with `vx` (`vx core runs tasks…`) is not a form.
-        if (description === '' && !(CORE_VERBS as readonly string[]).includes(verb)) return line
-        const head = `vx ${verb}`
-        const tail = term!.slice(head.length)
-        return `${indent}${paint('info', head, colors, true)}${tail === '' ? '' : paint('term', tail, colors)}${description}`
-      }
-      if (description === '') return line
-      if (/^(-|\(|[\w-]+#)/.test(term!))
-        return `${indent}${paint('term', term!, colors)}${description}`
-      return line
-    })
-    .join('\n')
+  let section = ''
+  const one = (line: string, i: number): string => {
+    if (line === '') return line
+    // A plugin verb's owning package ends its entry: dim, as a qualifier is.
+    if (section === 'Plugin commands' && /^\s/.test(line)) {
+      const owner = /^(.*?)( \([^()\s]+\))$/.exec(line)
+      if (owner !== null) return `${one(owner[1]!, i)}${paint('muted', owner[2]!, colors)}`
+    }
+    if (i === 0) {
+      const [name, ...rest] = line.split(' ')
+      return [paint('info', name!, colors, true), ...rest].join(' ')
+    }
+    const heading = /^([A-Z][^:]*?)( \(for [^)]*\))?:$/.exec(line)
+    if (heading !== null) {
+      section = heading[1]!
+      const qualifier = heading[2] === undefined ? '' : paint('muted', heading[2], colors)
+      return `${paint('strong', heading[1]!, colors)}${qualifier}${paint('strong', ':', colors)}`
+    }
+    // ` term description`: a term is a flag, a `vx` form, a selector.
+    const row = /^(\s+)(\S(?:.*?\S)?)(\s{2,}\S.*)?$/.exec(line)
+    if (row === null) return line
+    const [, indent, term, description = ''] = row
+    if (/^vx \S/.test(term!)) {
+      const verb = term!.split(' ')[1]!
+      // Prose that opens with `vx` (`vx core runs tasks…`) is not a form.
+      if (description === '' && !(CORE_VERBS as readonly string[]).includes(verb)) return line
+      const head = `vx ${verb}`
+      const tail = term!.slice(head.length)
+      return `${indent}${paint('info', head, colors, true)}${tail === '' ? '' : paint('term', tail, colors)}${description}`
+    }
+    if (description === '') return line
+    if (/^(-|\(|[\w-]+#)/.test(term!))
+      return `${indent}${paint('term', term!, colors)}${description}`
+    return line
+  }
+  return lines.map(one).join('\n')
 }
 
 /**

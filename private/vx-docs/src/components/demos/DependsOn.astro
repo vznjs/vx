@@ -1,0 +1,68 @@
+---
+// The dependsOn picker. Without JavaScript it shows the sample workspace
+// and what `^build` waits for. `depends-on.ts` reads `.entry`, `.say` and
+// each `[data-task]` box below.
+import Demo from '../Demo.astro'
+import { WORKSPACE, waitsOn } from './model/task-fields.js'
+
+const first = waitsOn('^build')
+const lit = new Set(first.ok ? first.tasks : [])
+const PRESETS = ['^build', 'gen-*', 'lint', 'api#build', 'ui#test']
+---
+
+<Demo name="depends-on">
+  <div class="vx-row">
+    {PRESETS.map((p) => <button type="button" data-entry={p} aria-pressed={p === '^build' ? 'true' : 'false'}>{p}</button>)}
+  </div>
+  <div class="vx-row">
+    <label class="vx-label" for="vx-dep-entry">web#build dependsOn:</label>
+    <input id="vx-dep-entry" class="entry" type="text" value="^build" spellcheck="false" />
+  </div>
+  <div class="projects">
+    {
+      Object.entries(WORKSPACE).map(([p, tasks]) => (
+        <div class="project">
+          <span class="vx-label">{p}</span>
+          {tasks.map((t) => {
+            const id = `${p}#${t}`
+            const cls = id === 'web#build' ? 'is-accent self' : lit.has(id) ? 'is-ok lit' : 'is-muted'
+            return <span class={`task ${cls}`} data-task={id}>{t}</span>
+          })}
+        </div>
+      ))
+    }
+  </div>
+  <p class="say vx-say" aria-live="polite">web#build waits for ui#build.</p>
+  <Fragment slot="caption">Pick an entry, or type your own. Green runs first.</Fragment>
+</Demo>
+
+<style>
+  .projects {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.75rem;
+  }
+  .project {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    min-width: 7rem;
+    padding: 0.5rem 0.75rem;
+    border: 1.5px solid var(--vx-border);
+    border-radius: 8px;
+  }
+  .task {
+    font-family: var(--vx-mono);
+    font-size: 13px;
+    padding: 0.15rem 0.5rem;
+    border: 1.5px solid var(--vx-border);
+    border-radius: 8px;
+  }
+  .task.lit {
+    border-color: var(--vx-ok);
+  }
+  .task.self {
+    border-color: var(--vx-accent);
+  }
+</style>

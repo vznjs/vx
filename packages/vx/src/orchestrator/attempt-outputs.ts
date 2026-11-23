@@ -3,7 +3,7 @@
 // files are the task's own to save. What it finds that no entry could
 // replay (a removed committed file, a found file a failed attempt touched)
 // makes `own()` answer undefined: the task saves nothing. A declared output
-// the pass never wrote fails it (`missingOutputs`).
+// the pass never wrote, if a literal path, fails it (`missingOutputs`).
 
 import { lstatSync, statSync } from 'node:fs'
 import path from 'node:path'
@@ -31,6 +31,8 @@ import {
   anyTaskGlob,
   asTrees,
   isLiteralPattern,
+  literalPath,
+  normalizeGlob,
   relPosix,
   span,
   splitNegations,
@@ -412,35 +414,75 @@ function ranBefore(args: ExecuteArgs): { id: string; window: readonly [number, n
   return out
 }
 
-// Every declared output is required (M 2026-11-22): a positive glob that
-// matches nothing once the command exited 0 fails the task. An empty artifact
-// would replay as a build that ran; a pattern against the wrong directory, a
-// sandbox with no write grant and an incremental tool that skipped its emit
-// all look like this.
+// A literal output is required, a wildcard is optional, and a task that
+// declares outputs writes at least one (M 2026-11-23): once the command
+// exited 0, a positive literal path (`dist/index.js`, `dist`) that matches
+// nothing fails the task, and so does a run that matched no output at all.
+// A wildcard (`dist/**`, `.next/**`) may match nothing beside one that
+// matched: a shared list fits a Vite app and a Next app alike. A missing
+// output is a pattern against the wrong directory, a sandbox with no write
+// grant or an incremental tool that skipped its emit.
 
 const SCAN = { onlyFiles: false, followSymlinks: false, dot: true } as const
 
+/** What `outputMatches` found: the literals that matched nothing fail the task. */
+interface OutputMatches {
+  /** Positive literal paths that match nothing. */
+  readonly required: string[]
+  /** Positive wildcard globs that match nothing (allowed). */
+  readonly optional: string[]
+  /** Positive globs declared. */
+  readonly declared: number
+}
+
+/** One side of a task's outputs: `outputs.files` under the project, or `outputs.workspaceFiles` under the root. */
+export interface OutputSet {
+  readonly base: string
+  readonly globs: readonly string[]
+  readonly nestedDirs: readonly string[]
+}
+
+/**
+ * The positive literal paths of `sets` that match no path a `!` leaves, or,
+ * when no positive glob of any set matched, every one: each fails the task.
+ * A wildcard may match nothing beside one that matched.
+ */
+export function missingOutputs(sets: readonly OutputSet[]): string[] {
+  const m = sets.map((s) => outputMatches(s.base, s.globs, s.nestedDirs))
+  const required = m.flatMap((x) => x.required)
+  const optional = m.flatMap((x) => x.optional)
+  const declared = m.reduce((n, x) => n + x.declared, 0)
+  return declared > 0 && required.length + optional.length === declared
+    ? [...required, ...optional]
+    : required
+}
+
 /**
  * The positive globs of `globs` (relative to `base`) that match no path a `!`
- * leaves. Each stops at its first match: `dist/**` costs one directory read,
- * not the walk the save does.
+ * leaves, split into literals and wildcards. Each stops at its first match:
+ * `dist/**` costs one directory read, not the walk the save does.
  */
-export function missingOutputs(
+function outputMatches(
   base: string,
   globs: readonly string[],
   nestedDirs: readonly string[],
-): string[] {
+): OutputMatches {
   const { positive, negative } = splitNegations(globs)
-  if (positive.length === 0) return []
+  const required: string[] = []
+  const optional: string[] = []
+  if (positive.length === 0) return { required, optional, declared: 0 }
   const takenBack = anyTaskGlob(negative)
   const nested = nestedDirs
     .map((d) => path.relative(base, d))
     .filter((r) => r !== '' && !r.startsWith('..'))
   const kept = (rel: string): boolean =>
     !takenBack(rel) && !nested.some((n) => rel === n || rel.startsWith(`${n}/`))
-  const missing: string[] = []
-  for (const g of positive) if (!matchesAny(base, g, kept)) missing.push(g)
-  return missing
+  for (const g of positive) {
+    if (matchesAny(base, g, kept)) continue
+    if (literalPath(normalizeGlob(g)) === null) optional.push(g)
+    else required.push(g)
+  }
+  return { required, optional, declared: positive.length }
 }
 
 function matchesAny(base: string, glob: string, kept: (rel: string) => boolean): boolean {

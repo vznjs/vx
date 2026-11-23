@@ -6,8 +6,9 @@
 import { describe, expect, it } from 'bun:test'
 import type { TaskOutcome } from '../src/graph/outcome.js'
 import type { TaskNode } from '../src/graph/task-graph.js'
-import { formatTaskBlock } from '../src/report/framed-output.js'
+import { formatTaskBlock, planList } from '../src/report/framed-output.js'
 import { formatRunSummary } from '../src/report/summary.js'
+import { whatChangedSection } from '../src/cli/why.js'
 
 const node = (id: string): TaskNode => {
   const [projectName, taskName] = id.split('#')
@@ -115,5 +116,75 @@ describe('on a terminal narrower than the footer', () => {
     expect(lines).toContain(
       '  info      4 workers · local cache · run 01a20842-c687-7468-9a61-298f70fa4b7f',
     )
+  })
+})
+
+// `vx run --affected --dry` puts why a task was kept beside its row: up to
+// 134 columns, so a 60-column terminal wrapped it into the next row.
+describe('a dry plan row with a reason, on a narrow terminal', () => {
+  const note = 'affected: packages/lib/src/index.ts changed (an input), via lib#build'
+  const plan = (columns?: number): string[] =>
+    planList([
+      {
+        node: node('app#build'),
+        status: 'run',
+        tone: 'info',
+        cache: 'miss',
+        cacheTone: 'muted',
+        blocks: 0,
+        worker: 'local',
+        note,
+      } as unknown as Parameters<typeof planList>[0][number],
+    ]).lines(columns === undefined ? { enabled: false } : { enabled: false, columns })
+
+  it('goes on its own line: under the task name where it fits, else at the gutter', () => {
+    const wide = plan(165)
+    expect(wide.length).toBe(2)
+    expect(wide[0]!.trimEnd().endsWith('app#build')).toBe(true)
+    expect(wide[1]!.indexOf(note)).toBe(wide[0]!.indexOf('app#build'))
+    expect(wide[1]!.length).toBeLessThanOrEqual(165)
+    const narrow = plan(60)
+    expect(narrow.length).toBe(2)
+    expect(narrow[1]).toBe(`${' '.repeat(12)}${note}`)
+  })
+
+  it('CONTROL: off a terminal, and on a wide one, it stays beside the row', () => {
+    for (const lines of [plan(), plan(200)]) {
+      expect(lines.length).toBe(1)
+      expect(lines[0]!.endsWith(`app#build  ${note}`)).toBe(true)
+    }
+  })
+})
+
+// `vx why`'s "What changed" row printed two whole 40-char git ids: a
+// 60-column terminal broke it mid-hash. There they are cut to 12, as git
+// cuts one; off a terminal they stay whole.
+describe("vx why's What changed table, on a narrow terminal", () => {
+  const a = 'a'.repeat(40)
+  const b = 'b'.repeat(40)
+  const table = (columns?: number): string[] =>
+    whatChangedSection({
+      runId: 'r',
+      taskId: 'app#build',
+      found: true,
+      previousRunId: 'p',
+      entries: [{ change: 'changed', kind: 'file', name: 'src/index.ts', before: a, after: b }],
+      unchangedCount: 3,
+      note: '',
+    } as Parameters<typeof whatChangedSection>[0]).lines(
+      columns === undefined ? { enabled: false } : { enabled: false, columns },
+    )
+
+  it('cuts each hash to 12 and fits 60 columns', () => {
+    const lines = table(60)
+    const row = lines.find((l) => l.includes('src/index.ts'))!
+    expect(row).toContain(`${a.slice(0, 12)} → ${b.slice(0, 12)}`)
+    expect(row).not.toContain(a)
+    for (const l of lines) expect(Bun.stringWidth(l)).toBeLessThanOrEqual(60)
+  })
+
+  it('CONTROL: off a terminal, and on a wide one, both stay whole', () => {
+    for (const lines of [table(), table(200)])
+      expect(lines.find((l) => l.includes('src/index.ts'))).toContain(`${a} → ${b}`)
   })
 })

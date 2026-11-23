@@ -17,6 +17,16 @@ const route = Astro.locals.starlightRoute
 const section = Astro.locals.vxSection
 const kind = section === 'blog' || section === 'releases' ? section : undefined
 const post = kind && route.entry.data.date ? await postAt(route.id) : undefined
+
+// A docs page's chapter: the sidebar group that lists it, numbered as the
+// sidebar numbers it (styles/docs.css), so the title says where in the story
+// the reader is.
+type Entry = (typeof route.sidebar)[number]
+const lists = (e: Entry): boolean =>
+  e.type === 'link' ? e.isCurrent : e.entries.some(lists)
+const chapters = section === 'docs' ? route.sidebar.filter((e) => e.type === 'group') : []
+const at = chapters.findIndex(lists)
+const chapter = at >= 0 ? { n: String(at + 1).padStart(2, '0'), label: chapters[at]!.label } : undefined
 ---
 
 {
@@ -48,6 +58,14 @@ const post = kind && route.entry.data.date ? await postAt(route.id) : undefined
         </svg>
         RSS
       </a>
+    </header>
+  ) : chapter ? (
+    <header class="vx-doc-head">
+      <p class="vx-doc-kicker">
+        <span class="vx-doc-chapter">{chapter.n}</span>
+        {chapter.label}
+      </p>
+      <h1 id={PAGE_TITLE_ID}>{route.entry.data.title}</h1>
     </header>
   ) : (
     <Default />

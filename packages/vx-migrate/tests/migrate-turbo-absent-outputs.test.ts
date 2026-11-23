@@ -41,26 +41,25 @@ async function todos(tasks: Record<string, unknown>, metas: PackageMeta[]) {
 }
 
 describe('migrateTurbo: outputs that match nothing now', () => {
-  it('names the shared output each built package never wrote', async () => {
+  it('names the shared literal output each built package never wrote', async () => {
     const vite = await pkg('vite-app', { 'dist/index.js': '' })
     const next = await pkg('next-app', { '.next/BUILD_ID': '' })
     expect(
-      await todos({ build: { outputs: ['dist/**', '.next/**', '!.next/cache/**'] } }, [vite, next]),
+      await todos({ build: { outputs: ['dist/index.js', '.next/BUILD_ID'] } }, [vite, next]),
     ).toEqual({
-      'vite-app#build': [absentOutputTodo(['.next/**'])],
-      'next-app#build': [absentOutputTodo(['dist/**'])],
+      'vite-app#build': [absentOutputTodo(['.next/BUILD_ID'])],
+      'next-app#build': [absentOutputTodo(['dist/index.js'])],
     })
   })
 
-  it('counts a file a `!` output takes back as absent', async () => {
+  // A wildcard may match nothing beside one that matched (M 2026-11-23):
+  // Turbo's shared `["dist/**", ".next/**"]` runs every package unchanged.
+  it('names no wildcard output beside one that matched', async () => {
     const vite = await pkg('vite-app', { 'dist/index.js': '' })
     const next = await pkg('next-app', { 'dist/x': '', '.next/cache/x': '' })
     expect(
       await todos({ build: { outputs: ['dist/**', '.next/**', '!.next/cache/**'] } }, [vite, next]),
-    ).toEqual({
-      'vite-app#build': [absentOutputTodo(['.next/**'])],
-      'next-app#build': [absentOutputTodo(['.next/**'])],
-    })
+    ).toEqual({ 'vite-app#build': [], 'next-app#build': [] })
   })
 
   it('names in one note the tasks whose outputs match nothing anywhere, not an uncached task', async () => {
@@ -95,8 +94,8 @@ describe('migrateTurbo: outputs that match nothing now', () => {
     await mkdir(path.join(root, 'out'), { recursive: true })
     await writeFile(path.join(root, 'out', 'a.txt'), '')
     expect(
-      await todos({ build: { outputs: ['$TURBO_ROOT$/out/**', '$TURBO_ROOT$/gone/**'] } }, [a]),
-    ).toEqual({ 'a#build': [absentOutputTodo(['gone/**'])] })
+      await todos({ build: { outputs: ['$TURBO_ROOT$/out/a.txt', '$TURBO_ROOT$/gone.txt'] } }, [a]),
+    ).toEqual({ 'a#build': [absentOutputTodo(['gone.txt'])] })
   })
 
   it('says one output or many', () => {
@@ -121,7 +120,7 @@ describe('migrateTurbo: a committed output is no sign a run wrote it', () => {
       })
     git('init', '-q')
     git('add', '-A')
-    const plan = await planOf({ build: { outputs: ['dist/**', 'styles/**'] } }, [a, b])
+    const plan = await planOf({ build: { outputs: ['dist/index.js', 'styles/x.json'] } }, [a, b])
     expect({
       todos: plan.projects.flatMap((p) => p.tasks.map((t) => [`${p.name}#${t.name}`, t.todos])),
       notes: plan.notes.filter((n) => n.startsWith('no package has a file')),
@@ -130,7 +129,7 @@ describe('migrateTurbo: a committed output is no sign a run wrote it', () => {
         ['a#build', []],
         ['b#build', []],
       ],
-      notes: [unbuiltOutputsNote(new Map([['build', ['dist/**', 'styles/**']]]))],
+      notes: [unbuiltOutputsNote(new Map([['build', ['dist/index.js', 'styles/x.json']]]))],
     })
   })
 })

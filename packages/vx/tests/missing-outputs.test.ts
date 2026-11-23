@@ -41,7 +41,7 @@ async function runTask(task: string): Promise<{ ok: boolean; status?: string; li
   }
 }
 
-describe('a declared output that matches no files', () => {
+describe('a declared literal output that matches no files', () => {
   beforeEach(async () => {
     root = await mkdtemp(path.join(os.tmpdir(), 'vx-missing-out-'))
     await writeFile(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
@@ -55,15 +55,19 @@ describe('a declared output that matches no files', () => {
       path.join(app, 'vx.config.mjs'),
       `export default { tasks: {
         lost: { exec: { command: 'true' },
-          inputs: { files: ['src/**'] }, outputs: { files: ['build/**'] }, cache: true },
-        uncached: { exec: { command: 'true' }, outputs: { files: ['gone/**'] } },
+          inputs: { files: ['src/**'] }, outputs: { files: ['build/index.js'] }, cache: true },
+        optional: { exec: { command: 'mkdir -p opt && echo x > opt/a.js' },
+          inputs: { files: ['src/**'] }, outputs: { files: ['.next/**', 'opt/**', '*.tsbuildinfo'] }, cache: true },
+        uncached: { exec: { command: 'true' }, outputs: { files: ['gone'] } },
+        wild: { exec: { command: 'true' },
+          inputs: { files: ['src/**'] }, outputs: { files: ['lost1/**', 'lost2/**'] }, cache: true },
         partial: { exec: { command: 'echo x > partial.info' },
-          inputs: { files: ['src/**'] }, outputs: { files: ['emit/**', 'partial.info'] }, cache: true },
+          inputs: { files: ['src/**'] }, outputs: { files: ['emit/a.js', 'emit/**', 'partial.info'] }, cache: true },
         literal: { exec: { command: 'mkdir -p lib && echo x > lib/a.js' },
           inputs: { files: ['src/**'] }, outputs: { files: ['lib/**', 'types.d.ts'] }, cache: true },
         wspartial: { exec: { command: 'echo x > stamp.info' },
           inputs: { files: ['src/**'] },
-          outputs: { files: ['stamp.info'], workspaceFiles: ['wsgone/**'] }, cache: true },
+          outputs: { files: ['stamp.info'], workspaceFiles: ['wsgone'] }, cache: true },
         takenback: { exec: { command: 'mkdir -p out && echo x > out/a.map' },
           inputs: { files: ['src/**'] }, outputs: { files: ['out/**', '!out/**/*.map'] }, cache: true },
         found: { exec: { command: 'mkdir -p dist && echo x > dist/a.js' },
@@ -87,7 +91,7 @@ describe('a declared output that matches no files', () => {
     expect(first.ok).toBe(false)
     expect(first.status).toBe('failed')
     expect(first.lines).toEqual([
-      '[vx] app#lost: outputs matched no files (build/**) — the command exited 0 but never wrote it, so the task fails and nothing is cached: write it, or fix the pattern',
+      '[vx] app#lost: outputs matched no files (build/index.js) — the command exited 0 but never wrote it, so the task fails and nothing is cached: write it, or fix the pattern',
     ])
     // Nothing was saved: the next run runs the command again and fails again.
     expect((await runTask('lost')).status).toBe('failed')
@@ -99,28 +103,41 @@ describe('a declared output that matches no files', () => {
     expect(r.lines).toHaveLength(1)
   })
 
-  it('names only the pattern that matched nothing, a wildcard or a literal', async () => {
+  it('names only the literal that matched nothing', async () => {
     expect((await runTask('partial')).lines).toEqual([
-      expect.stringContaining('app#partial: outputs matched no files (emit/**) —'),
+      expect.stringContaining('app#partial: outputs matched no files (emit/a.js) —'),
     ])
     expect((await runTask('literal')).lines).toEqual([
       expect.stringContaining('app#literal: outputs matched no files (types.d.ts) —'),
     ])
     expect((await runTask('wspartial')).lines).toEqual([
-      expect.stringContaining('app#wspartial: outputs matched no files (wsgone/**) —'),
+      expect.stringContaining('app#wspartial: outputs matched no files (wsgone) —'),
     ])
   })
 
-  it('counts a file a negation takes back as no match', async () => {
-    const r = await runTask('takenback')
-    expect(r.status).toBe('failed')
-    expect(r.lines).toEqual([expect.stringContaining('(out/**)')])
+  // A wildcard is optional beside one that matched (M 2026-11-23).
+  it('passes a wildcard that matched nothing beside one that matched', async () => {
+    for (const t of ['optional']) {
+      const r = await runTask(t)
+      expect([t, r.ok, r.lines.filter((l) => l.includes('task fails'))]).toEqual([t, true, []])
+      expect((await runTask(t)).status).toBe('cache-hit')
+    }
   })
 
-  it('fails a `dir/**` whose dir the command left empty', async () => {
-    const r = await runTask('emptyroot')
-    expect(r.status).toBe('failed')
-    expect(r.lines).toEqual([expect.stringContaining('(void/**)')])
+  // A task that declares outputs writes some (M 2026-11-23).
+  it('fails a task whose every wildcard matched nothing, naming them all', async () => {
+    for (const [t, globs] of [
+      ['wild', 'lost1/**, lost2/**'],
+      ['takenback', 'out/**'],
+      ['emptyroot', 'void/**'],
+    ]) {
+      const r = await runTask(t!)
+      expect([t, r.status, r.lines]).toEqual([
+        t,
+        'failed',
+        [expect.stringContaining(`(${globs}) —`)],
+      ])
+    }
   })
 
   // Said as a warning (the yellow `[vx]`, a dim body), as every other vx
@@ -128,7 +145,7 @@ describe('a declared output that matches no files', () => {
   // focused run, red inside a frame.
   it('is a warning: tagged in colour, plain without it, never task output', async () => {
     const body =
-      ' app#lost: outputs matched no files (build/**) — the command exited 0 but never wrote it, so the task fails and nothing is cached: write it, or fix the pattern'
+      ' app#lost: outputs matched no files (build/index.js) — the command exited 0 but never wrote it, so the task fails and nothing is cached: write it, or fix the pattern'
     for (const enabled of [true, false]) {
       const out: string[] = []
       const err: string[] = []

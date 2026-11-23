@@ -1,207 +1,405 @@
 ---
 title: Quickstart
-description: Cache your first task in two minutes, in a workspace you already have.
+description: Five minutes, one task, and a build that never does the same work twice.
+next:
+  link: /docs/workspace/
+  label: Workspace
 ---
 
-import { Steps, Aside, LinkCard, CardGrid } from '@astrojs/starlight/components'
+import { Aside } from '@astrojs/starlight/components'
+import Demo from '../../components/Demo.astro'
+import { Levels, Deeper, Concept, Walkthrough, Frame, Chart, Takeaway, NextStep } from '../../components/learn'
 
-Cache your first task in two minutes, in a workspace you already have.
+In five minutes your build runs once, then skips itself until your code changes.
 
 <Aside title="What you need">
-  [Bun](https://bun.com) 1.4.4 or later, Git, and macOS or Linux with glibc (not
-  Alpine's musl). On Windows, use WSL2.
+  macOS or Linux with glibc (not Alpine's musl), Git, and [Node.js](https://nodejs.org) 20.19 or later,
+  which vite runs on. Step 0 installs Bun.
 </Aside>
 
-<Steps>
+```sh
+bunx @vzn/vx init
+```
 
-1. **Set up vx**
+<Levels />
 
-   Run this at the root of your workspace, inside a git checkout:
+This is the line you are heading for. By the end of the page, your terminal prints it too:
 
-   ```sh
-   bunx @vzn/vx init
-   ```
+```ansi title="where this page ends"
+[2m└─[0m [1m[38;2;232;121;249mmy-app[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(5ms)[0m [2mup-to-date[0m
+```
 
-   It installs the `vx` command and writes your first files. Look at
-   `files`: `.vx/workspace.ts` marks the workspace root, and
-   `vx.config.ts` is where your tasks go.
+## 0. Make an app
 
-   ```ansi
-   [4m[58;2;110;118;129m  [1m[38;2;167;139;250mvx init 0.0.659[0m[4m[58;2;110;118;129m      [0m
-     [2mfrom     [0m  [38;2;203;213;225mno turbo.json or nx.json[0m
-     [2mfiles    [0m  [38;2;203;213;225m.vx/workspace.ts[0m
-                [38;2;203;213;225mvx.config.ts[0m
-                [38;2;203;213;225m.vx/.gitignore[0m
-                [38;2;203;213;225m.vx/.gitattributes[0m
-     [2minstalled[0m  [38;2;203;213;225mbun add -g @vzn/vx@0.0.659[0m
-                [38;2;203;213;225mbun add @vzn/vx@0.0.659 @vzn/vx-lockfile@0.0.659 --dev[0m
-     [2mlock     [0m  [38;2;203;213;225m1 project config → .vx/projects.lock, .vx/dependencies.lock[0m
+Have a workspace already? Skip to step 1. Otherwise install [Bun](https://bun.com) and make a small Vite app in a git repository:
 
-     [2mnext     [0m  [1mdeclare a task in vx.config.ts, then vx lock && vx run <task>[0m
-   ```
+```sh
+curl -fsSL https://bun.sh/install | bash
+```
 
-2. **Add a task**
+Open a new terminal so it finds `bun`, then make the app:
 
-   A task is one command, the files it reads and the files it writes.
-   `cache: true` lets vx skip it when nothing changed.
+```sh
+bun create vite my-app --template vanilla
+cd my-app && bun install && git init
+```
 
-   ```ts title="vx.config.ts" ins={5-10}
-   import type { ProjectConfig } from '@vzn/vx/config'
+This page grows one package, `my-app`. The chapters after it grow a workspace of many.
 
-   export default {
-     tasks: {
-       build: {
-         exec: { command: 'vite build' },
-         inputs: { files: ['src/**', 'index.html', 'vite.config.ts'] },
-         outputs: { files: ['dist/**'] },
-         cache: true,
-       },
-     },
-   } satisfies ProjectConfig
-   ```
+<Takeaway>go from an empty machine to an app with a build.</Takeaway>
 
-   Save the config to the lock. Every run reads the lock, so run this
-   after each config change:
+## 1. Set up vx
 
-   ```sh
-   vx lock
-   ```
+Run `vx init` inside your git checkout. It installs the `vx` command and writes your first files:
 
-   ```ansi
-   [38;2;34;197;94m✓[0m [1mvx lock[0m  [38;2;203;213;225m1 project config → .vx/projects.lock, .vx/dependencies.lock[0m
-   ```
+```ansi title="vx init"
+[2m$[0m bunx @vzn/vx init
 
-   Commit `.vx/`, `vx.config.ts` and the `vx.lock.json` beside it with
-   the rest of your code.
+  [2mfrom    [0m  [38;2;203;213;225mno turbo.json or nx.json[0m
+  [2mfiles   [0m  [38;2;203;213;225m.vx/workspace.ts[0m
+            [38;2;203;213;225mvx.config.ts[0m
+            [38;2;203;213;225m.vx/.gitignore[0m
+            [38;2;203;213;225m.vx/.gitattributes[0m
+  [2mlock    [0m  [38;2;203;213;225m1 project config → .vx/projects.lock, .vx/dependencies.lock[0m
 
-3. **Run it twice**
+  [2mnext    [0m  [1mbunx @vzn/vx-migrate to make package.json scripts tasks, or declare a task in vx.config.ts, then vx lock && vx run <task>[0m
+```
 
-   ```sh
-   vx run build
-   vx run build
-   ```
+Look at **files**. Two of them matter today:
 
-   The first run builds as usual. In its summary, `local 1↑` means vx
-   saved `dist/` to its cache. `my-app` is the `name` in your
-   `package.json`.
+| File | What it is |
+| --- | --- |
+| `.vx/workspace.ts` | marks the root of your **workspace** and lists its plugins |
+| `vx.config.ts` | your tasks. It starts empty |
 
-   ```ansi title="first run"
-   [2m┌─[0m [1m[38;2;232;121;249mmy-app[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m>[0m $ vite build
-   [36mvite v7.3.8 [32mbuilding client environment for production...[36m[39m
-   transforming...
-   [32m✓[39m 3 modules transformed.
-   rendering chunks...
-   computing gzip size...
-   [2mdist/[22m[32mindex.html                [39m[1m[2m0.08 kB[22m[1m[22m[2m │ gzip: 0.09 kB[22m
-   [2mdist/[22m[2massets/[22m[36mindex-CAtcZSpD.js  [39m[1m[2m0.74 kB[22m[1m[22m[2m │ gzip: 0.42 kB[22m
-   [32m✓ built in 90ms[39m
-   [0m[2m└─[0m [1m[38;2;232;121;249mmy-app[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(314ms)[0m [2msuccess[0m
+<Concept term="Workspace">
+  The folder vx works in: your git checkout. `.vx/workspace.ts` marks its root. Each project in it
+  can keep its tasks in its own `vx.config.ts`.
+</Concept>
 
+<Deeper level="details" title="Everything vx init writes and installs">
 
-   [4m[58;2;110;118;129m  [1m[38;2;167;139;250mSummary[0m[4m[58;2;110;118;129m      [2mvx 0.0.659[0m
-     [2mprojects[0m  [38;2;234;179;8m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
-               [38;2;234;179;8m1 in run[0m [2m·[0m [2m1 total[0m
-     [2mtasks   [0m  [38;2;34;197;94m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
-               [38;2;34;197;94m1 success[0m [2m·[0m [2m1 total[0m
-     [2mcache   [0m  [38;2;56;189;248m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
-               [2mlocal[0m [38;2;56;189;248m1↑[0m
+| Line | What it means |
+| --- | --- |
+| `from` | no `turbo.json` or `nx.json` here. With one, init converts it ([Migrate](../docs/migrate/)) |
+| `.vx/workspace.ts` | names one plugin, `bun()`, which reads `bun.lock` |
+| `vx.config.ts` | your project's tasks: none yet |
+| `.vx/.gitignore` | keeps `.vx/cache` and `.vx/tmp` out of git |
+| `.vx/.gitattributes` | GitHub hides the locks in a diff |
+| `lock` | the two lock files every run reads (step 2) |
 
-     [2minfo    [0m  4 workers [2m·[0m local cache [2m·[0m run 01a208ae-e6db-7256-9e90-72ff07fa997a
-     [2mtime    [0m  367ms
-   ```
+Init also installs `vx` for your shell, and `@vzn/vx` and `@vzn/vx-lockfile` as dev dependencies.
 
-   The second run sees nothing changed and does no work: it ends
-   `up-to-date` and prints the first run's saved log.
+The workspace file `vx init` writes for a Bun workspace:
 
-   ```ansi title="second run"
-   [2m┌─[0m [1m[38;2;232;121;249mmy-app[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m>[0m $ vite build
-   [36mvite v7.3.8 [32mbuilding client environment for production...[36m[39m
-   transforming...
-   [32m✓[39m 3 modules transformed.
-   rendering chunks...
-   computing gzip size...
-   [2mdist/[22m[32mindex.html                [39m[1m[2m0.08 kB[22m[1m[22m[2m │ gzip: 0.09 kB[22m
-   [2mdist/[22m[2massets/[22m[36mindex-CAtcZSpD.js  [39m[1m[2m0.74 kB[22m[1m[22m[2m │ gzip: 0.42 kB[22m
-   [32m✓ built in 90ms[39m
-   [2m└─[0m [1m[38;2;232;121;249mmy-app[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(6ms)[0m [2mup-to-date[0m
-   ```
+```ts title=".vx/workspace.ts"
+import type { WorkspaceConfig } from '@vzn/vx/config'
+import { bun } from '@vzn/vx-lockfile'
 
-4. **Get a cache hit**
+export default { plugins: [bun()] } satisfies WorkspaceConfig
+```
 
-   Delete the output and run again. vx puts `dist/` back from its cache
-   instead of running vite:
+With pnpm, npm or Yarn, it names `pnpm()`, `npm()` or `yarn()` instead. See [Lockfiles](../docs/lockfiles/).
 
-   ```sh
-   rm -rf dist
-   vx run build
-   ```
+</Deeper>
 
-   ```ansi
-   [2m┌─[0m [1m[38;2;232;121;249mmy-app[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m>[0m $ vite build
-   [36mvite v7.3.8 [32mbuilding client environment for production...[36m[39m
-   transforming...
-   [32m✓[39m 3 modules transformed.
-   rendering chunks...
-   computing gzip size...
-   [2mdist/[22m[32mindex.html                [39m[1m[2m0.08 kB[22m[1m[22m[2m │ gzip: 0.09 kB[22m
-   [2mdist/[22m[2massets/[22m[36mindex-CAtcZSpD.js  [39m[1m[2m0.74 kB[22m[1m[22m[2m │ gzip: 0.42 kB[22m
-   [32m✓ built in 90ms[39m
-   [2m└─[0m [1m[38;2;232;121;249mmy-app[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(25ms)[0m [2mrestored-local[0m
+<Takeaway>set up vx in any workspace with one command.</Takeaway>
 
-     [2mcache   [0m  [38;2;56;189;248m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
-               [2mlocal[0m [38;2;56;189;248m1↓[0m
-   ```
+## 2. Teach vx your build
 
-   Look for `restored-local` and `local 1↓`: the files came from the cache.
+<Concept term="Task">
+  One command vx runs for a project, plus the files it reads and the files it writes.
+</Concept>
 
-5. **Change a file and ask why**
+Paste this into `vx.config.ts`. It turns `vite build` into a task named `build`:
 
-   Edit a file in `src/` and run again: the task runs, because an input
-   changed. `vx why` names the file on its `verdict` line:
+```ts title="vx.config.ts" ins={5-10}
+import type { ProjectConfig } from '@vzn/vx/config'
 
-   ```sh
-   vx run build
-   vx why build
-   ```
+export default {
+  tasks: {
+    build: {
+      exec: { command: 'vite build' },
+      inputs: { files: ['src/**', 'public/**', 'index.html'] },
+      outputs: { files: ['dist/**'] },
+      cache: true,
+    },
+  },
+} satisfies ProjectConfig
+```
 
-   ```ansi
-   [4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhy[0m[4m[58;2;110;118;129m [2mmy-app#build[0m[4m[58;2;110;118;129m      [0m
-     [2mrun     [0m  [38;2;203;213;225m01a208ae-eb20-7023-87b7-4832be05e927[0m
-     [2mthis run[0m  [38;2;203;213;225m2026-11-23T13:53:30.941Z · success · executed · key b9363e7fbd47f9ea[0m
-     [2mprevious[0m  [38;2;203;213;225m2026-11-23T13:53:30.623Z · cache-hit · restored · key 8faea48d7c88c101[0m
-     [2mverdict [0m  [38;2;234;179;8mcache key changed: file src/main.js[0m
+Each line answers one question vx asks:
 
-   [4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhat changed[0m[4m[58;2;110;118;129m [2m1 of 8[0m[4m[58;2;110;118;129m      [0m
-     [2mchange   kind  name         before → after[0m
-     [38;2;234;179;8mchanged[0m  [38;2;203;213;225mfile[0m  [1msrc/main.js[0m  [38;2;203;213;225m1ab285265b552ce71d8c8635d726cc4a7d0b4dee → 838be8a72b128244a92a8f8f833c799b1cc85c31[0m
+| Field | Question | Here |
+| --- | --- | --- |
+| `exec.command` | What do I run? | `vite build` |
+| `inputs.files` | Which files does it read? | the source, `public/`, the page |
+| `outputs.files` | Which files does it write? | everything in `dist/` |
+| `cache` | May I skip it when nothing changed? | yes |
 
-   [4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhat to do[0m[4m[58;2;110;118;129m      [0m
-     [2mfile    [0m  [38;2;203;213;225man edit re-runs by design; a file the task does not read belongs out of inputs.files[0m
-   ```
+Now save the config to the lock. Every run reads the lock, not your config, so run this after each config change:
 
-</Steps>
+```ansi title="vx lock"
+[2m$[0m vx lock
 
-You now have a cached task. In a monorepo, give each package its own
-`vx.config.ts`, and build them all from the root with `vx run build --all`.
+[38;2;34;197;94m✓[0m [1mvx lock[0m  [38;2;203;213;225m1 project config → .vx/projects.lock, .vx/dependencies.lock[0m
+```
 
-## Start from an example
+<Aside type="tip">
+  `vx lock` also writes `vx.lock.json` beside your config. Commit it with `.vx/` and `vx.config.ts`:
+  a teammate who pulls gets the same tasks.
+</Aside>
 
-Each example is a small workspace with its tasks, cache and tests set up.
-Copy one and follow its `README.md`.
+<Deeper level="patterns" title="Add tests and lint the same way">
+
+The same four fields turn any command into a task. A task that writes no file says so with an empty list:
+
+```ts title="vx.config.ts" ins={11-22}
+import type { ProjectConfig } from '@vzn/vx/config'
+
+export default {
+  tasks: {
+    build: {
+      exec: { command: 'vite build' },
+      inputs: { files: ['src/**', 'public/**', 'index.html'] },
+      outputs: { files: ['dist/**'] },
+      cache: true,
+    },
+    test: {
+      exec: { command: 'vitest run --passWithNoTests' },
+      inputs: { files: ['src/**'] },
+      outputs: { files: [] },
+      cache: true,
+    },
+    lint: {
+      exec: { command: 'oxlint' },
+      inputs: { files: ['src/**'] },
+      outputs: { files: [] },
+      cache: true,
+    },
+  },
+} satisfies ProjectConfig
+```
+
+Install the two tools, then run `vx lock` and `vx run test` or `vx run lint`:
+
+```sh
+bun add -d vitest oxlint
+vx lock
+vx run lint
+```
+
+ A cached test run that passed is skipped until `src/` changes.
+
+</Deeper>
+
+<Deeper level="details" title="What each field accepts">
+
+- `exec.command` is one shell line. It calls the tool itself (`vite build`), never a package script.
+- `inputs.files` and `outputs.files` are globs, relative to the project. A leading `!` leaves files out: `'!src/**/*.test.ts'`.
+- A file outside `inputs.files` never makes the task run again. A file outside `outputs.files` is not saved.
+- `cache` is `false` when left out: the task runs every time.
+
+Every other field a task can have, from `dependsOn` to `env`, is on [Tasks](../docs/tasks/) and in the [config reference](../schema/).
+
+</Deeper>
+
+<Takeaway>turn any command into a task vx can skip.</Takeaway>
+
+## 3. Run it twice
+
+```sh
+vx run build
+vx run build
+```
+
+<Walkthrough title="Two runs, same code">
+<Frame title="1. First run: vite builds, vx keeps dist/">
+
+```ansi title="first run"
+[2m$[0m vx run build
+
+[2m┌─[0m [1m[38;2;232;121;249mmy-app[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m>[0m $ vite build
+[36mvite v8.3.8 [32mbuilding client environment for production...[36m[39m
+transforming...
+[32m✓[0m 9 modules transformed.
+rendering chunks...
+computing gzip size...
+[2mdist/[0m[32mindex.html                 [0m[1;2m 0.45 kB[0m[2m │ gzip: 0.29 kB[0m
+[2mdist/[0m[2massets/[0m[32mvite-BF8QNONU.svg   [0m[1;2m 8.70 kB[0m[2m │ gzip: 1.60 kB[0m
+[2mdist/[0m[2massets/[0m[32mhero-CLDdwZDr.png   [0m[1;2m13.05 kB[0m
+[2mdist/[0m[2massets/[0m[35mindex-CsUDhMuy.css  [0m[1;2m 4.10 kB[0m[2m │ gzip: 1.46 kB[0m
+[2mdist/[0m[2massets/[0m[36mindex-CAoPt-vL.js   [0m[1;2m 4.05 kB[0m[2m │ gzip: 1.77 kB[0m
+
+[32m✓ built in 140ms[39m
+[2m└─[0m [1m[38;2;232;121;249mmy-app[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(626ms)[0m [2msuccess[0m
+
+  [2mcache   [0m  [38;2;56;189;248m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
+            [2mlocal[0m [38;2;56;189;248m1↑[0m
+```
+
+Read the summary's **cache** row: `local 1↑` means vx saved `dist/` to its cache.
+
+</Frame>
+<Frame title="2. Second run: nothing changed, nothing runs">
+
+```ansi title="second run"
+[2m$[0m vx run build
+
+[2m┌─[0m [1m[38;2;232;121;249mmy-app[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m>[0m $ vite build
+[36mvite v8.3.8 [32mbuilding client environment for production...[36m[39m
+transforming...
+[32m✓[0m 9 modules transformed.
+rendering chunks...
+computing gzip size...
+[2mdist/[0m[32mindex.html                 [0m[1;2m 0.45 kB[0m[2m │ gzip: 0.29 kB[0m
+[2mdist/[0m[2massets/[0m[32mvite-BF8QNONU.svg   [0m[1;2m 8.70 kB[0m[2m │ gzip: 1.60 kB[0m
+[2mdist/[0m[2massets/[0m[32mhero-CLDdwZDr.png   [0m[1;2m13.05 kB[0m
+[2mdist/[0m[2massets/[0m[35mindex-CsUDhMuy.css  [0m[1;2m 4.10 kB[0m[2m │ gzip: 1.46 kB[0m
+[2mdist/[0m[2massets/[0m[36mindex-CAoPt-vL.js   [0m[1;2m 4.05 kB[0m[2m │ gzip: 1.77 kB[0m
+
+[32m✓ built in 140ms[39m
+[2m└─[0m [1m[38;2;232;121;249mmy-app[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(5ms)[0m [2mup-to-date[0m
+```
+
+Read the last line: **up-to-date**, in 5ms. vite did not run. The log above it is the first run's, replayed.
+
+</Frame>
+</Walkthrough>
+
+<Concept term="Up to date">
+  The task's outputs are already in place for these exact inputs. vite does not run and no file is
+  copied: vx shows the log it saved.
+</Concept>
+
+<Takeaway>skip a build that has nothing new to do.</Takeaway>
+
+## 4. Get dist/ back from the cache
+
+Delete the build's output and run again:
+
+```sh
+rm -rf dist
+vx run build
+```
+
+```ansi title="third run"
+[2m$[0m rm -rf dist
+[2m$[0m vx run build
+
+[2m└─[0m [1m[38;2;232;121;249mmy-app[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(10ms)[0m [2mrestored-local[0m
+
+  [2mcache   [0m  [38;2;56;189;248m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
+            [2mlocal[0m [38;2;56;189;248m1↓[0m
+```
+
+Read **restored-local** and `local 1↓`: vx copied `dist/` back from its cache. vite did not run.
+
+<Deeper level="details" title="Where the cache lives">
+
+`vx info` prints it. The saved outputs sit in `~/.vx/<workspace id>/cache`, shared by every checkout of this workspace. The workspace's run history sits in `.vx/cache`.
+
+To share the cache with CI and your team, see [Remote cache](../docs/remote-cache/).
+
+</Deeper>
+
+<Takeaway>get any output back without building it again.</Takeaway>
+
+## 5. Guess what runs
+
+Pick a change, guess whether vite runs, then see what vx printed for it.
+
+<Demo name="what-runs">
+  <p class="vx-say" aria-live="polite" hidden></p>
+  <div class="vx-row picks" hidden></div>
+  <div class="vx-row guess" hidden>
+    <button type="button" data-guess="yes">vite runs</button>
+    <button type="button" data-guess="no">vx skips it</button>
+  </div>
+  <p class="line" hidden></p>
+  <table>
+    <thead>
+      <tr><th>Change</th><th>Last line vx printed</th><th>Why</th></tr>
+    </thead>
+    <tbody>
+      <tr data-runs="no"><td>Change nothing</td><td><code>└─ my-app#build ── (5ms) up-to-date</code></td><td>Same inputs, and dist/ is in place. Nothing to do.</td></tr>
+      <tr data-runs="no"><td>Add a README.md</td><td><code>└─ my-app#build ── (5ms) up-to-date</code></td><td>README.md is not in inputs.files, so vx ignores it.</td></tr>
+      <tr data-runs="no"><td>Delete dist/</td><td><code>└─ my-app#build ── (10ms) restored-local</code></td><td>The inputs match a saved run, so vx copies dist/ back.</td></tr>
+      <tr data-runs="yes"><td>Edit src/main.js</td><td><code>└─ my-app#build ── (254ms) success</code></td><td>src/main.js matches src/**, so the inputs changed. vite builds.</td></tr>
+    </tbody>
+  </table>
+  <Fragment slot="caption">Every line is from a real run of the task above.</Fragment>
+</Demo>
+
+When a task runs and you did not expect it, ask vx. After the `src/main.js` edit:
+
+```ansi
+[2m$[0m vx why build
+
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhy[0m[4m[58;2;110;118;129m [2mmy-app#build[0m[4m[58;2;110;118;129m                                          [0m
+  [2mrun     [0m  [38;2;203;213;225m01a20a2b-fc49-70fd-b096-340febc436de[0m
+  [2mthis run[0m  [38;2;203;213;225m2026-11-23T20:49:44.543Z · success · executed ·[0m
+            [38;2;203;213;225mkey df4c985ceadf03e5[0m
+  [2mprevious[0m  [38;2;203;213;225m2026-11-23T20:49:38.907Z · cache-hit · restored[0m
+            [38;2;203;213;225m· key a41881d49b6b34e5[0m
+  [2mverdict [0m  [38;2;234;179;8mcache key changed: file src/main.js[0m
+
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhat changed[0m[4m[58;2;110;118;129m [2m1 of 14[0m[4m[58;2;110;118;129m                                      [0m
+  [2mchange   kind  name         before → after[0m
+  [38;2;234;179;8mchanged[0m  [38;2;203;213;225mfile[0m  [1msrc/main.js[0m  [38;2;203;213;225m223a4e510830 → 9606de7a8336[0m
+
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhat to do[0m[4m[58;2;110;118;129m                                                [0m
+  [2mfile    [0m  [38;2;203;213;225man edit re-runs by design; a file the task does[0m
+            [38;2;203;213;225mnot read belongs out of inputs.files[0m
+```
+
+Read **verdict**: the one file that made the task run.
+
+<Deeper level="details" title="How vx decides">
+
+Before it runs a task, vx hashes what the task reads: its input files, its config and the tasks it depends on. That hash is the **cache key**. A key vx has seen is a hit; a new key runs the task.
+
+[Caching](../docs/caching/) shows the key step by step, and [Why a task missed](../docs/caching/why-a-task-missed/) reads every line of `vx why`.
+
+</Deeper>
+
+<Takeaway>predict what runs, and ask vx when you are not sure.</Takeaway>
+
+## What you built
+
+One task, five runs. The bars are the task's own time, as vx printed it:
+
+<Chart
+  groups={[
+    {
+      title: 'my-app#build',
+      bars: [
+        { name: 'first run', ms: 626, value: '626ms', note: 'success' },
+        { name: 'nothing changed', ms: 5, value: '5ms', note: 'up-to-date', hero: true },
+        { name: 'dist/ deleted', ms: 10, value: '10ms', note: 'restored-local', hero: true },
+        { name: 'README.md added', ms: 5, value: '5ms', note: 'up-to-date', hero: true },
+        { name: 'src/main.js edited', ms: 254, value: '254ms', note: 'success' },
+      ],
+    },
+  ]}
+  caption="A small Vite app. vite ran only when its code changed."
+/>
+
+<Deeper level="patterns" title="Start from an example">
+
+Each example is a small workspace with its tasks, cache and tests set up. Copy one and follow its `README.md`.
 
 | Example | Tasks |
-| ------- | ----- |
+| --- | --- |
 | [Vite and Vitest](https://github.com/vznjs/vx/tree/main/examples/vite) | an app and a library: `vite build`, `vitest run`, `oxlint` |
 | [Next.js](https://github.com/vznjs/vx/tree/main/examples/next) | an app and a shared package: `next build`, `vitest run`, `oxlint` |
 
-## Next
+</Deeper>
 
-<CardGrid>
-  <LinkCard title="Build dependencies first" description="Build each package after the packages it uses." href="../docs/running/build-dependencies-first/" />
-  <LinkCard title="Configure tasks" description="Inputs, outputs, dependencies and environment." href="../docs/tasks/" />
-  <LinkCard title="Run on CI" description="GitHub Actions, GitLab, and only what a change reaches." href="../docs/ci/" />
-  <LinkCard title="Share the cache between CI jobs" description="A job restores what another job built." href="../docs/remote-cache/" />
-  <LinkCard title="Spread CI over many machines" description="One run, split across the runners your CI starts." href="../docs/distributed-task-execution/" />
-  <LinkCard title="Coming from Turborepo or Nx" description="Keep your config, or convert it." href="../docs/migrate/" />
-  <LinkCard title="Something looks wrong" description="Every message vx prints, and its fix." href="../docs/troubleshooting/" />
-</CardGrid>
+<Takeaway>cache any build, and tell up-to-date, restored and run apart.</Takeaway>
+
+Bringing a workspace you already have, with a Turborepo or Nx config? [Move it to vx](../docs/migrate/) in one command.
+
+<NextStep href="../docs/workspace/" title="Workspace">
+  Grow my-app into a workspace of projects that build each other.
+</NextStep>

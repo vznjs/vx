@@ -22,7 +22,7 @@ it('groups entries under the release tag that shipped them, newest first', () =>
   const brk = (n: string) => ({ subject: `feat!: ${n}`, body: `BREAKING CHANGE: do ${n}` })
   const md = page([brk('a'), { subject: 'fix: x', body: '', tag: 'v0.0.1' }, brk('b'), brk('c')])
   expect(md.slice(md.indexOf('## '))).toBe(
-    '## After v0.0.1\n\n### C\n\nDo c\n\n### B\n\nDo b\n\n## v0.0.1\n\n### A\n\nDo a\n',
+    '## Unreleased\n\n<Deeper level="details" title="In the next release">\n\n### C\n\nDo c\n\n### B\n\nDo b\n\n</Deeper>\n\n</div>\n\n<div data-release="v0.0.1">\n\n## v0.0.1\n\n### A\n\nDo a\n\n</div>\n\n{/* END of the generated releases. */}',
   )
 })
 
@@ -33,8 +33,9 @@ it('drops the scope and starts each entry with a capital', () => {
     { subject: 'feat(cli)!: drop x', body: 'BREAKING CHANGE: --x is gone' },
     { subject: 'feat(cache)!: grow y', body: '' },
   ])
-  expect(md).toContain('### Drop x\n\n--x is gone\n')
-  expect(md).toContain('### Grow y\n\nNothing to change beyond the steps above.\n')
+  expect(md).toContain('### Drop x\n\n`--x` is gone\n')
+  // An entry with nothing to do is left out.
+  expect(md).not.toContain('Grow y')
 })
 
 // A footer is history; the exact step a reader takes is added beside it,
@@ -45,7 +46,8 @@ it('adds the step after the footer and lists an unflagged change it names', () =
     { subject: 'feat(x)!: drop x (#1)', body: 'BREAKING CHANGE: x is gone' },
     { subject: `${subject} (#2)`, body: '' },
   ])
-  expect(md).toContain(`### ${step.title}\n\n${step.steps}\n`)
+  // The page states each step as the present rule: no "now".
+  expect(md).toContain(`### ${step.title}\n\n${step.steps.replace(/\bnow /g, '')}\n`)
   expect(md).toContain('### Drop x\n\nX is gone\n')
 })
 

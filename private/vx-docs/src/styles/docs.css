@@ -1,0 +1,398 @@
+/* The docs in the landing's look (M 2026-11-23: "a nicer design of docs
+   more fitting our website"): the landing's faint grid and green glow behind
+   each page's head, its mono kickers over display headlines, its rounded
+   cards for code, tables, asides and the pager, and the sidebar's chapters
+   numbered like the story they tell. Only --vx-* tokens (theme.css), so the
+   light theme is the same vx in daylight tones. Pages with no sidebar (the
+   landing, conformance, blog, releases) keep their own look. */
+
+:root {
+  --vx-radius: 12px;
+  --vx-grid: color-mix(in srgb, var(--vx-fg) 4%, transparent);
+  --vx-glow: color-mix(in srgb, var(--vx-accent) 9%, transparent);
+  --vx-glow-2: color-mix(in srgb, var(--vx-link) 6%, transparent);
+  --vx-title-ink: linear-gradient(
+    100deg,
+    var(--vx-fg) 30%,
+    color-mix(in srgb, var(--vx-accent) 70%, var(--vx-fg))
+  );
+}
+:root[data-theme='light'] {
+  --vx-grid: color-mix(in srgb, var(--vx-fg) 5%, transparent);
+  --vx-glow: color-mix(in srgb, var(--vx-accent) 12%, transparent);
+  --vx-glow-2: color-mix(in srgb, var(--vx-link) 7%, transparent);
+  --vx-title-ink: linear-gradient(100deg, var(--vx-fg) 40%, var(--vx-accent));
+}
+
+/* ───────────────────────────  Page head  ─────────────────────────── */
+
+/* The landing's backdrop, behind the head only: a grid that fades out and
+   a green glow from the top corner. */
+:root[data-has-sidebar] .main-pane {
+  position: relative;
+  isolation: isolate;
+}
+:root[data-has-sidebar] .main-pane::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: 26rem;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(50rem 20rem at 8% -5rem, var(--vx-glow), transparent 70%),
+    radial-gradient(36rem 16rem at 92% -6rem, var(--vx-glow-2), transparent 70%),
+    linear-gradient(var(--vx-grid) 1px, transparent 1px) 0 0 / 32px 32px,
+    linear-gradient(90deg, var(--vx-grid) 1px, transparent 1px) 0 0 / 32px 32px;
+  -webkit-mask-image: linear-gradient(#000 30%, transparent);
+  mask-image: linear-gradient(#000 30%, transparent);
+}
+
+:root[data-has-sidebar] main > .content-panel:first-child {
+  border-top: 0;
+  padding-top: clamp(1.75rem, 5vw, 3.25rem);
+  padding-bottom: 0.5rem;
+}
+:root[data-has-sidebar] main > .content-panel + .content-panel {
+  border-top: 0;
+}
+
+.vx-doc-head h1 {
+  margin: 0;
+  font-family: var(--vx-font-display);
+  font-weight: 700;
+  font-size: clamp(2.25rem, 1.4rem + 3.2vw, 3.5rem);
+  line-height: 1.02;
+  letter-spacing: -0.04em;
+  color: var(--vx-fg);
+  background: var(--vx-title-ink);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  text-wrap: balance;
+  padding-bottom: 0.06em;
+}
+.vx-doc-kicker {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin: 0 0 0.9rem;
+  font: 500 0.75rem / 1 var(--vx-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--vx-accent);
+}
+.vx-doc-chapter {
+  display: inline-grid;
+  place-items: center;
+  min-width: 2.2em;
+  padding: 0.35em 0.45em;
+  border: 1px solid color-mix(in srgb, var(--vx-accent) 45%, transparent);
+  border-radius: 6px;
+  background: var(--vx-accent-soft);
+  letter-spacing: 0.04em;
+}
+
+/* ───────────────────────────  Body  ─────────────────────────── */
+
+.sl-markdown-content :is(h2, h3) {
+  color: var(--vx-fg);
+  letter-spacing: -0.03em;
+}
+.sl-markdown-content h2 {
+  font-size: clamp(1.5rem, 1.2rem + 1.1vw, 1.95rem);
+  line-height: 1.15;
+}
+/* A section opens on a rule, as the landing's do. */
+.sl-markdown-content .sl-heading-wrapper.level-h2 {
+  margin-top: 3rem;
+  padding-top: 1.75rem;
+  border-top: 1px solid color-mix(in srgb, var(--vx-border) 70%, transparent);
+}
+.sl-markdown-content h3 {
+  font-size: 1.2rem;
+}
+.sl-markdown-content :is(h2, h3) code {
+  font-size: 0.85em;
+}
+
+.sl-markdown-content :is(strong, b) {
+  color: var(--vx-fg);
+}
+
+/* Inline code reads like the landing's: the accent in mono on a tinted chip. */
+.sl-markdown-content code:not(:where(.not-content *, pre *)) {
+  color: color-mix(in srgb, var(--vx-accent) 80%, var(--vx-fg));
+  background: color-mix(in srgb, var(--vx-accent) 9%, var(--vx-surface));
+  border: 1px solid color-mix(in srgb, var(--vx-accent) 16%, transparent);
+  border-radius: 5px;
+  font-size: 0.86em;
+}
+:root[data-theme='light'] .sl-markdown-content code:not(:where(.not-content *, pre *)) {
+  color: var(--sl-color-accent-high);
+}
+.sl-markdown-content a code:not(:where(.not-content *, pre *)) {
+  color: inherit;
+}
+
+/* Not in a file tree: its rows draw their own icons. */
+.sl-markdown-content :is(ul, ol):not(starlight-file-tree *) > li::marker {
+  color: var(--vx-accent);
+}
+.sl-markdown-content ul:not(starlight-file-tree *) > li::marker {
+  content: '▸  ';
+  font-size: 0.8em;
+}
+
+.sl-markdown-content hr {
+  border: 0;
+  height: 1px;
+  background: linear-gradient(90deg, var(--vx-accent), var(--vx-link) 40%, transparent);
+  opacity: 0.5;
+}
+
+/* ───────────────────────────  Code  ─────────────────────────── */
+
+.sl-markdown-content .expressive-code .frame {
+  --ec-brdRad: var(--vx-radius);
+  border-radius: var(--vx-radius);
+  box-shadow: 0 1px 0 color-mix(in srgb, var(--vx-fg) 4%, transparent) inset;
+}
+.sl-markdown-content .expressive-code .frame pre {
+  border-radius: var(--vx-radius);
+}
+.sl-markdown-content .expressive-code .frame.has-title pre,
+.sl-markdown-content .expressive-code .frame.is-terminal pre {
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+.sl-markdown-content .expressive-code .frame .header {
+  border-top-left-radius: var(--vx-radius);
+  border-top-right-radius: var(--vx-radius);
+}
+.sl-markdown-content .expressive-code .frame .title {
+  font-family: var(--vx-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
+  color: var(--vx-muted);
+}
+.sl-markdown-content .expressive-code .frame.is-terminal .title {
+  text-transform: none;
+}
+
+/* ───────────────────────────  Tables  ─────────────────────────── */
+
+.sl-markdown-content .vx-table-scroll {
+  border: 1px solid var(--vx-border);
+  border-radius: var(--vx-radius);
+  background: color-mix(in srgb, var(--vx-surface) 40%, var(--vx-bg));
+}
+.sl-markdown-content .vx-table-scroll th {
+  font-family: var(--vx-mono);
+  font-weight: 500;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--vx-muted);
+}
+
+/* ───────────────────────────  Asides  ─────────────────────────── */
+
+.sl-markdown-content .starlight-aside {
+  border-radius: var(--vx-radius);
+  background: color-mix(in srgb, var(--sl-color-asides-border) 7%, var(--vx-bg));
+}
+.sl-markdown-content .starlight-aside__title {
+  font: 500 0.75rem / 1.2 var(--vx-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+
+/* ───────────────────────────  Sidebar  ─────────────────────────── */
+
+/* The Docs' chapters, numbered: the page head says the same number. */
+.vx-sidebar[data-vx-section='docs'] ul.top-level {
+  counter-reset: vx-chapter;
+}
+.vx-sidebar[data-vx-section='docs'] ul.top-level > li:has(> details) {
+  counter-increment: vx-chapter;
+}
+.vx-sidebar[data-vx-section='docs'] ul.top-level > li > details .group-label .large::before {
+  content: counter(vx-chapter, decimal-leading-zero);
+  display: inline-block;
+  margin-inline-end: 0.7em;
+  color: var(--vx-muted);
+}
+.sidebar-content ul.top-level > li + li {
+  margin-top: 0.35rem;
+}
+.sidebar-content summary {
+  padding-block: 0.35rem;
+}
+.sidebar-content a {
+  border-radius: 6px;
+  color: var(--vx-text);
+  transition:
+    color 0.15s,
+    background-color 0.15s;
+}
+.sidebar-content a:hover {
+  color: var(--vx-fg);
+  background: color-mix(in srgb, var(--vx-fg) 5%, transparent);
+}
+.sidebar-content a[aria-current='page'],
+.sidebar-content a[aria-current='page']:hover,
+.sidebar-content a[aria-current='page']:focus {
+  color: var(--vx-accent);
+  font-weight: 600;
+  background: var(--vx-accent-soft);
+  box-shadow: inset 2px 0 0 var(--vx-accent);
+}
+:root[data-theme='light'] .sidebar-content a[aria-current='page'] {
+  color: var(--sl-color-accent-high);
+}
+.sidebar-content ul ul {
+  border-inline-start-color: color-mix(in srgb, var(--vx-border) 70%, transparent);
+}
+
+/* ───────────────────────────  On this page  ─────────────────────────── */
+
+.right-sidebar-panel h2 {
+  font: 500 0.72rem / 1 var(--vx-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--vx-accent);
+  margin-bottom: 0.75rem;
+}
+starlight-toc nav > ul {
+  border-inline-start: 1px solid color-mix(in srgb, var(--vx-border) 70%, transparent);
+}
+starlight-toc a {
+  color: var(--vx-muted);
+  margin-inline-start: -1px;
+  border-inline-start: 1px solid transparent;
+}
+starlight-toc a:hover {
+  color: var(--vx-fg);
+}
+starlight-toc a[aria-current='true'],
+starlight-toc a[aria-current='true']:hover {
+  color: var(--vx-accent);
+  border-inline-start-color: var(--vx-accent);
+}
+:root[data-theme='light'] starlight-toc a[aria-current='true'] {
+  color: var(--sl-color-accent-high);
+}
+
+/* ───────────────────────────  Pager  ─────────────────────────── */
+
+.pagination-links a {
+  border-radius: var(--vx-radius);
+  border-color: var(--vx-border);
+  background: color-mix(in srgb, var(--vx-surface) 55%, var(--vx-bg));
+  box-shadow: none;
+  font: 500 0.72rem / 1.3 var(--vx-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--vx-muted);
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
+}
+.pagination-links a:hover {
+  border-color: var(--vx-accent);
+  box-shadow: 0 0 24px var(--vx-glow);
+}
+.pagination-links .link-title {
+  display: inline-block;
+  margin-top: 0.35rem;
+  font-family: var(--vx-font-display);
+  font-size: var(--sl-text-xl);
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: -0.02em;
+  color: var(--vx-fg);
+}
+.pagination-links a svg {
+  color: var(--vx-accent);
+}
+
+/* ───────────────────────────  Phones  ─────────────────────────── */
+
+@media (max-width: 40rem) {
+  /* A table never scrolls sideways on a phone: each row is a card, each
+     value under its column's name (plugins/table-labels.ts writes it). The
+     first cell heads the card. */
+  .sl-markdown-content .vx-table-scroll {
+    overflow: visible;
+    border: 0;
+    background: none;
+  }
+  .sl-markdown-content .vx-table-scroll :is(table, tbody, tr, td) {
+    display: block;
+    width: 100%;
+  }
+  .sl-markdown-content .vx-table-scroll thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .sl-markdown-content .vx-table-scroll tr {
+    margin-bottom: 0.75rem;
+    padding: 0.7rem 0.95rem;
+    border: 1px solid var(--vx-border);
+    border-radius: var(--vx-radius);
+    background: color-mix(in srgb, var(--vx-surface) 45%, var(--vx-bg));
+  }
+  .sl-markdown-content .vx-table-scroll tr:last-child {
+    margin-bottom: 0;
+  }
+  .sl-markdown-content .vx-table-scroll :is(tr:nth-child(even), tr:hover) td,
+  .sl-markdown-content .vx-table-scroll td {
+    padding: 0.2rem 0;
+    border: 0;
+    background: none;
+    text-align: left;
+    white-space: normal;
+  }
+  .sl-markdown-content .vx-table-scroll td code {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  .sl-markdown-content .vx-table-scroll td:first-child {
+    padding-bottom: 0.4rem;
+    font-weight: 600;
+  }
+  .sl-markdown-content .vx-table-scroll td:not(:first-child)[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    font: 500 0.68rem / 1.6 var(--vx-mono);
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--vx-muted);
+  }
+  .sl-markdown-content .vx-table-scroll td:empty {
+    display: none;
+  }
+
+  /* A code line wider than the phone scrolls, and the edge that hides more
+     glows in the accent until the reader reaches it. */
+  .sl-markdown-content .expressive-code .frame pre {
+    --vx-code-bg: var(--code-background, var(--ec-codeBg));
+    --vx-edge: color-mix(in srgb, var(--vx-accent) 45%, transparent);
+    background:
+      linear-gradient(to right, var(--vx-code-bg) 40%, transparent) left / 2.5rem 100% no-repeat
+        local,
+      linear-gradient(to left, var(--vx-code-bg) 40%, transparent) right / 2.5rem 100% no-repeat
+        local,
+      linear-gradient(to right, var(--vx-edge), transparent) left / 0.9rem 100% no-repeat scroll,
+      linear-gradient(to left, var(--vx-edge), transparent) right / 0.9rem 100% no-repeat scroll,
+      var(--vx-code-bg);
+  }
+  .sl-markdown-content .expressive-code .frame.is-terminal pre {
+    font-size: 0.8rem;
+  }
+}

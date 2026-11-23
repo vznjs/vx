@@ -1,15 +1,18 @@
-// The site's "Upgrading vx" page, from git log: one entry per breaking
+// The release list of the site's "Upgrading vx" page, from git log: one entry per breaking
 // commit (`type!:` or a `BREAKING CHANGE:` footer), newest first, under the
 // release (`v*` tag) that shipped it, with the footer as what changed and
 // what to do. A commit's subject loses its
 // squash-merge `(#N)`, so a branch's own commit and the one main gets read
-// the same. tests/site-upgrading.unsafe.test.ts holds the page to the log.
+// the same. The page around the list is hand-written; the script rewrites only
+// what lies between BEGIN and END. tests/site-upgrading.unsafe.test.ts holds
+// the page to the log.
 //
-//   bun packages/vx/scripts/upgrading.ts           # rewrite the page
+//   bun packages/vx/scripts/upgrading.ts           # rewrite the release list
 //   bun packages/vx/scripts/upgrading.ts --check   # exit 1 if it would change
 import { readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { isBreaking, type Commit } from './release-notes.ts'
+import { API, AUTHORS, SAY, TITLE } from './upgrading-say.ts'
 
 /** A commit and the `v*` tag on it, if a release was cut there. */
 export interface TaggedCommit extends Commit {
@@ -18,7 +21,7 @@ export interface TaggedCommit extends Commit {
 
 export const PAGE = path.resolve(
   import.meta.dir,
-  '../../../private/vx-docs/src/content/docs/docs/upgrading.md',
+  '../../../private/vx-docs/src/content/docs/docs/upgrading/releases.mdx',
 )
 
 const HEADER = /^(\w+)(?:\(([^)]*)\))?!?: (.+?)(?: \(#\d+\))?$/
@@ -59,28 +62,32 @@ export const STEPS: Readonly<Record<string, { title?: string; steps: string }>> 
     steps: [
       'Replace each use:',
       '',
-      "- `--continue=never` or `run.continue: 'never'`: use `--fail-fast` or `run.failFast: true`. Tasks still running are now killed.",
-      "- `--continue`, `--continue=always`: remove it. A failed task's dependents never run now.",
+      "- `--continue=never` or `run.continue: 'never'`: use `--fail-fast` or `run.failFast: true`. Tasks still running are killed.",
+      "- `--continue`, `--continue=always`: remove it. A failed task's dependents never run.",
       '- `--continue=deps-ok`: remove it. That is the default.',
     ].join('\n'),
   },
   'feat(orchestrator)!: fail a task whose declared output matched nothing': {
-    steps:
-      'Run your tasks once after upgrading. A task that fails with `outputs matched no files (<glob>)` needs that glob fixed to match what the command writes, or removed from `cache.outputs.files`.',
+    title: 'Fail a task whose declared output path matched nothing',
+    steps: [
+      'An output named by path (`dist/index.js`, `dist`) must exist. A wildcard (`dist/**`) may match nothing, as long as one output matched.',
+      '',
+      'Run your tasks once after upgrading. A task that fails with `outputs matched no files (<glob>)` needs that glob fixed to match what the command writes, or removed from `outputs.files`.',
+    ].join('\n'),
   },
   'fix(cli): a --filter that matches nothing refuses beside a match': {
     title: 'A --filter that matches nothing refuses the run',
     steps:
-      'A `--filter` that matches no project, an exclusion too, now refuses the run even when another filter matched. Fix or remove it in your CI scripts and pipelines.',
+      'A `--filter` that matches no project, an exclusion too, refuses the run even when another filter matched. Fix or remove it in your CI scripts and pipelines.',
   },
   'fix(cache)!: a --force run replaces the entry its key held': {
     steps:
-      'A `--force` run now replaces the local entry under its key. A custom cache layer drops `kept()` and `stampWritten()`: vx no longer calls them.',
+      'A `--force` run replaces the local entry under its key. A custom cache layer drops `kept()` and `stampWritten()`: vx no longer calls them.',
   },
   'fix(graph): refuse every output pair that takes a common path': {
     title: 'Refuse two tasks whose outputs can share a path',
     steps:
-      '`vx lock` now refuses two tasks whose output globs can match one path, such as `*.js` beside `*b*`. Narrow one glob so the two tasks write no common path.',
+      '`vx lock` refuses two tasks whose output globs can match one path, such as `*.js` beside `*b*`. Narrow one glob so the two tasks write no common path.',
   },
   'fix(sandbox): withhold browser profiles, mask more secret names': {
     title: 'Sandboxed tasks no longer read credential stores',
@@ -89,14 +96,14 @@ export const STEPS: Readonly<Record<string, { title?: string; steps: string }>> 
       '',
       'A task that needs one names it in `exec.sandbox.allow.read`.',
       '',
-      'Variables whose names hold `PASSPHRASE` or end in `_PASS` are now masked in output.',
+      'Variables whose names hold `PASSPHRASE` or end in `_PASS` are masked in output.',
     ].join('\n'),
   },
   // The day PR's squash (#5622) took in feat(lock)'s step.
   'feat!: land 2026-11-23 alpha hardening, docs and locks': {
     title: 'Locks, lock problems, dry runs and edited configs',
     steps:
-      'After editing a `vx.config.ts`, run `vx lock` before `vx run`, `vx show`, `vx why` or `vx pipeline`: the run now refuses with `VX_E_LOCK`, naming the file, instead of running the config the lock holds.',
+      'After editing a `vx.config.ts`, run `vx lock` before `vx run`, `vx show`, `vx why` or `vx pipeline`: the run refuses with `VX_E_LOCK`, naming the file, instead of running the config the lock holds.',
   },
   "feat(report)!: name a failed task's directory and the piped columns": {
     title: 'Run history starts empty once',
@@ -110,7 +117,9 @@ function entry({ subject, body }: Commit): { title: string; footers: string[] } 
   const m = HEADER.exec(subject)
   // The heading is the change in plain words: the scope is code's word for
   // where it lives, which a reader upgrading does not need.
-  const title = sentence((m === null ? subject : m[3]!).replace(/ \([A-Z][A-Z0-9]*-\d+\)$/, ''))
+  const title = sentence(
+    lead((m === null ? subject : m[3]!).replace(/ \([A-Z][A-Z0-9]*-\d+\)$/, '')),
+  )
   const lines = body.split('\n')
   const breaking = (l: string): boolean => /^BREAKING[ -]CHANGE: /.test(l)
   const footers: string[] = []
@@ -128,7 +137,7 @@ function entry({ subject, body }: Commit): { title: string; footers: string[] } 
       .replace(/^BREAKING[ -]CHANGE: /, '')
       .replace(/\s+/g, ' ')
       .trim()
-    footers.push(sentence(footer))
+    footers.push(sentence(lead(footer)))
     start = end === -1 ? -1 : lines.findIndex((l, i) => i >= end && breaking(l))
   }
   return { title, footers }
@@ -140,59 +149,112 @@ const sentence = (text: string): string => text.replace(/^[a-z]/, (c) => c.toUpp
 // Old commits say `npx`; the site teaches `bunx` only (2026-10-22).
 const bunx = (text: string): string => text.replace(/\bnpx /g, 'bunx ')
 
+// The page is MDX: braces and `<` in a footer's prose would be parsed as code.
+const mdx = (text: string): string =>
+  text
+    .split(/(```[\s\S]*?```|``.*?``|`[^`\n]*`)/)
+    .map((part, i) =>
+      i % 2 === 1
+        ? part
+        : present(part).replace(/\{/g, '&#123;').replace(/\}/g, '&#125;').replace(/</g, '&lt;'),
+    )
+    .join('')
+
+// A page states the rule as it is (M's docs rules): "is now X" is "is X",
+// "no longer reads" is "does not read". Footers are history and say "now".
+const present = (prose: string): string =>
+  prose
+    .replace(/\b(is|are|was|were) no longer\b/gi, '$1 not')
+    .replace(/\bno longer (\w+)\b/gi, (_, verb: string) => {
+      const end = /(ies|sses|shes|ches|xes|s)$/.exec(verb)?.[1]
+      if (end === undefined) return `do not ${verb}`
+      const base = { ies: 'y', sses: 'ss', shes: 'sh', ches: 'ch', xes: 'x', s: '' }[end]
+      return `does not ${verb.slice(0, -end.length)}${base}`
+    })
+    // "does not write or reads": the second verb follows the first.
+    .replace(/\b(does not \w+) or (\w+?)s\b/g, '$1 or $2')
+    .replace(/\bno longer\b/gi, 'not')
+    .replace(/, now,/g, ',')
+    .replace(/ now\b/g, '')
+    .replace(/\bNow (?=[a-z])/g, '')
+
+// A heading or footer that opens with a command, a flag or a file keeps it
+// as typed, in code: `vx lock` records, never "Vx lock records".
+const lead = (text: string): string =>
+  text.replace(
+    /^(vx(?:-[a-z]+)+|vx(?: [a-z][a-z-]*)?(?=[\s:,;]|$)|--[a-z][a-z-]*|\.vx\/[\w.-]+|[a-z]\w*(?:\.\w+)+(?:\.\*)?|[a-z]\w*\([^)]*\))/i,
+    (m) => `\`${m}\``,
+  )
+
+export const BEGIN =
+  '{/* Generated from git log by packages/vx/scripts/upgrading.ts: do not hand-edit until END. */}'
+export const END = '{/* END of the generated releases. */}'
+
+/**
+ * The release list: one `<div data-release>` per release, newest first, the
+ * picker's input. A release's changes for plugin authors and server hosts
+ * sit in a closed Details block; changes not released yet sit in one too.
+ */
 export function page(commits: readonly TaggedCommit[]): string {
   // A squash commit's body can carry an earlier commit's footer again
   // (#2527 repeated #2521's); the commit that made the change keeps it.
   const seen = new Set<string>()
-  const releases: { name: string; entries: string[] }[] = []
-  let entries: string[] = []
-  let last = ''
+  type Entries = { users: string[]; authors: string[] }
+  const releases: { name: string; entries: Entries }[] = []
+  let entries: Entries = { users: [], authors: [] }
   for (const commit of commits) {
-    const step = STEPS[commit.subject.replace(/ \(#\d+\)$/, '')]
+    const subject = commit.subject.replace(/ \(#\d+\)$/, '')
+    const step = STEPS[subject]
     if (isBreaking(commit) || step !== undefined) {
       const { title, footers } = entry(commit)
       const fresh = footers.filter((f) => !seen.has(f))
-      if (footers.length === 0 || fresh.length > 0) {
+      const said = footers.length === 0 ? '' : (SAY[subject] ?? fresh.join('\n\n'))
+      const text = [said, step?.steps ?? ''].filter((t) => t !== '').join('\n\n')
+      // A breaking commit with no footer and no step has nothing to tell a reader.
+      if (text !== '' && (footers.length === 0 || fresh.length > 0)) {
         for (const f of fresh) seen.add(f)
-        const text = [...fresh, step?.steps ?? ''].filter((t) => t !== '').join('\n\n')
-        entries.push(
-          `### ${bunx(step?.title ?? title)}\n\n${bunx(text) || 'Nothing to change beyond the steps above.'}\n`,
+        const heading = step?.title ?? TITLE[subject] ?? title
+        ;(AUTHORS.has(subject) ? entries.authors : entries.users).push(
+          `### ${mdx(bunx(heading))}\n\n${mdx(bunx(text))}\n`,
         )
+        const api = API[subject]
+        if (api !== undefined)
+          entries.authors.push(`### ${mdx(heading)}: the JavaScript API\n\n${mdx(api)}\n`)
       }
     }
     if (commit.tag !== undefined) {
-      if (entries.length > 0) releases.push({ name: commit.tag, entries })
-      entries = []
-      last = commit.tag
+      if (entries.users.length + entries.authors.length > 0)
+        releases.push({ name: commit.tag, entries })
+      entries = { users: [], authors: [] }
     }
   }
-  if (entries.length > 0)
-    releases.push({ name: last === '' ? 'Unreleased' : `After ${last}`, entries })
-  const body = releases
-    .toReversed()
-    .map(({ name, entries }) => `## ${name}\n\n${entries.toReversed().join('\n')}`)
-  return `---
-title: Upgrading vx
-description: What each vx release changed that can break your setup, newest first, and what to do.
----
+  if (entries.users.length + entries.authors.length > 0)
+    releases.push({ name: 'Unreleased', entries })
+  const details = (title: string, items: string[]): string =>
+    `<Deeper level="details" title="${title}">\n\n${items.toReversed().join('\n')}\n</Deeper>\n`
+  const body = releases.toReversed().map(({ name, entries: { users, authors } }) => {
+    const list = [
+      users.toReversed().join('\n'),
+      authors.length > 0 ? details('For plugin authors and server hosts', authors) : '',
+    ].filter((p) => p !== '')
+    // The next release's changes stay closed: a reader acts on released ones.
+    const parts =
+      name === 'Unreleased'
+        ? [
+            `<Deeper level="details" title="In the next release">\n\n${list.join('\n')}\n</Deeper>\n`,
+          ]
+        : list
+    return `<div data-release="${name}">\n\n## ${name}\n\n${parts.filter((p) => p !== '').join('\n')}\n</div>\n`
+  })
+  return `${BEGIN}\n\n${body.join('\n')}\n${END}`
+}
 
-<!-- Generated by packages/vx/scripts/upgrading.ts from git log; do not hand-edit. -->
-
-Until 1.0, a release can change what the one before it did. Each change
-that can break your setup is listed below, newest first, with what to do.
-
-To upgrade:
-
-1. Run \`vx upgrade\` in the workspace and commit \`package.json\` and your
-   lockfile, so every machine and CI job gets the same vx.
-2. Read each release below that is newer than the one you ran.
-3. Run \`vx lock\` with the new vx and commit \`.vx/\`. An older vx
-   refuses a newer lock, so upgrade everyone together.
-
-After an upgrade every cached task misses once, since each key holds the vx
-version. \`vx cache clean --older-than 7d\` drops the old entries later.
-
-${body.join('\n')}`
+/** The page with its release list replaced by `list`. */
+export function spliced(text: string, list: string): string {
+  const start = text.indexOf(BEGIN)
+  const end = text.indexOf(END)
+  if (start === -1 || end < start) throw new Error(`${PAGE} lacks the BEGIN and END markers`)
+  return text.slice(0, start) + list + text.slice(end + END.length)
 }
 
 /**
@@ -229,10 +291,11 @@ export function taggedCommits(cwd: string): TaggedCommit[] {
 }
 
 if (import.meta.main) {
-  const want = page(taggedCommits(path.resolve(import.meta.dir, '../../..')))
+  const have = readFileSync(PAGE, 'utf8')
+  const want = spliced(have, page(taggedCommits(path.resolve(import.meta.dir, '../../..'))))
   if (process.argv.includes('--check')) {
-    if (readFileSync(PAGE, 'utf8') !== want) {
-      process.stderr.write('docs/upgrading.md does not match git log; run the script\n')
+    if (have !== want) {
+      process.stderr.write('docs/upgrading/releases.mdx does not match git log; run the script\n')
       process.exit(1)
     }
   } else writeFileSync(PAGE, want)

@@ -1,0 +1,215 @@
+---
+// One `vx run build test lint` over the story workspace, drawn as a
+// timeline: a lane per slot, a bar per task. Without JavaScript it shows the
+// default end state; `run-timeline.ts` unhides the controls and redraws
+// `.view`, `.cmd` and `.say` from the model.
+import '../demos/widget.css'
+import { STORY_TASKS, commandHtml, renderRun, sentence, simulate } from './model/run-timeline.js'
+
+interface Props {
+  /** Slots, 1 to 4: how many tasks run at once (`--concurrency`). */
+  concurrency?: number
+  /** A task id that fails, such as `@demo/ui#build`. Default: nothing fails. */
+  fail?: string
+}
+
+const { concurrency: asked = 2, fail } = Astro.props
+const concurrency = Math.min(4, Math.max(1, Math.round(asked)))
+if (fail !== undefined && !STORY_TASKS.some((t) => t.id === fail)) {
+  throw new Error(`<RunTimeline fail="${fail}">: no such task in the story workspace`)
+}
+const opts = { concurrency, fail, failFast: false }
+const run = simulate(opts)
+const choices = [undefined, '@demo/ui#build', '@demo/ui#test', '@demo/admin#build', '@demo/api#build']
+---
+
+<figure class="vx-demo not-content">
+  <vx-run-timeline data-concurrency={concurrency} data-fail={fail ?? ''}>
+    <div class="controls" hidden>
+      <div class="vx-row">
+        <span class="vx-label" id="vx-rt-slots">slots</span>
+        <button type="button" class="less" aria-label="One slot fewer">−</button>
+        <output class="slots" aria-labelledby="vx-rt-slots">{concurrency}</output>
+        <button type="button" class="more" aria-label="One slot more">+</button>
+        <button type="button" class="fail-fast" aria-pressed="false">--fail-fast</button>
+        <button type="button" class="run primary">Run</button>
+      </div>
+      <div class="vx-row" role="group" aria-label="Which task fails">
+        <span class="vx-label">fails:</span>
+        {
+          choices.map((id) => (
+            <button type="button" class="pick" data-fail={id ?? ''} aria-pressed={String(id === fail)}>
+              {id === undefined ? 'nothing' : id.replace('@demo/', '')}
+            </button>
+          ))
+        }
+      </div>
+    </div>
+    <pre class="cmd"><span class="is-muted">$</span> <span class="line" set:html={commandHtml(opts)} /></pre>
+    <div class="view" set:html={renderRun(run, opts)} />
+    <p class="say vx-say" aria-live="polite">{sentence(run, opts)}</p>
+  </vx-run-timeline>
+  <figcaption>Bar lengths are made up. The order and the outcomes are vx's rules.</figcaption>
+</figure>
+
+<script>
+  import './run-timeline.ts'
+</script>
+
+<style>
+  vx-run-timeline {
+    display: block;
+  }
+  .controls button {
+    min-height: 2rem;
+    min-width: 2rem;
+  }
+  .slots {
+    font-family: var(--vx-mono);
+    min-width: 1.5ch;
+    text-align: center;
+  }
+  .cmd :global(.w) {
+    white-space: nowrap;
+  }
+  vx-run-timeline pre.cmd {
+    margin-bottom: 0.75rem;
+    white-space: pre-wrap;
+  }
+  vx-run-timeline :global(.lanes) {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 0.4rem;
+  }
+  vx-run-timeline :global(.lane) {
+    display: grid;
+    grid-template-columns: 3.25rem 1fr;
+    align-items: center;
+    gap: 0.5rem;
+    margin: 0;
+  }
+  vx-run-timeline :global(.slot) {
+    font-family: var(--vx-mono);
+    font-size: 12px;
+    color: var(--vx-muted);
+  }
+  vx-run-timeline :global(.track) {
+    position: relative;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    height: 2.25rem;
+    border-radius: 8px;
+    background: var(--vx-surface-2);
+  }
+  vx-run-timeline :global(.bar) {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0 2px;
+    border-inline: 1px solid var(--vx-surface-2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+  }
+  vx-run-timeline :global(.fill) {
+    position: absolute;
+    inset: 0;
+    border: 1.5px solid currentColor;
+    border-radius: 8px;
+    transform-origin: left center;
+  }
+  vx-run-timeline :global(.is-success .fill) {
+    color: var(--vx-ok);
+    background: color-mix(in srgb, var(--vx-ok) 22%, var(--vx-surface));
+  }
+  vx-run-timeline :global(.is-failed .fill) {
+    color: var(--vx-danger);
+    background: color-mix(in srgb, var(--vx-danger) 30%, var(--vx-surface));
+  }
+  /* Killed mid-run: the same red as a failure, striped and open-ended. */
+  vx-run-timeline :global(.is-aborted .fill) {
+    color: var(--vx-danger);
+    border-style: dashed;
+    border-right-width: 0;
+    border-radius: 8px 0 0 8px;
+    background: repeating-linear-gradient(
+      -45deg,
+      color-mix(in srgb, var(--vx-danger) 22%, var(--vx-surface)) 0 4px,
+      var(--vx-surface) 4px 8px
+    );
+  }
+  vx-run-timeline :global(.bar.running .fill) {
+    color: var(--vx-accent);
+    border-style: solid;
+    border-right-width: 1.5px;
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--vx-accent) 15%, var(--vx-surface));
+  }
+  vx-run-timeline :global(.name) {
+    position: relative;
+    font-family: var(--vx-mono);
+    font-size: 11px;
+    color: var(--vx-fg);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  vx-run-timeline :global(.axis) {
+    display: flex;
+    justify-content: space-between;
+    margin: 0.25rem 0 0.75rem 3.75rem;
+    font-family: var(--vx-mono);
+    font-size: 12px;
+    color: var(--vx-muted);
+  }
+  vx-run-timeline :global(.never) {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4rem;
+  }
+  vx-run-timeline :global(.chip) {
+    padding: 0.2rem 0.55rem;
+    border: 1.5px dashed var(--vx-warn);
+    border-radius: 8px;
+    font-family: var(--vx-mono);
+    font-size: 12px;
+    color: var(--vx-fg);
+  }
+  vx-run-timeline :global(.term) {
+    margin-top: 0.75rem;
+    padding: 0.5rem 0.75rem;
+    border: 1.5px solid var(--vx-border);
+    border-radius: 8px;
+    background: var(--vx-surface-2);
+    font-family: var(--vx-mono);
+    font-size: 12.5px;
+    line-height: 1.5;
+  }
+  vx-run-timeline :global(.term pre) {
+    padding: 0;
+    border: 0;
+    margin-bottom: 0.75rem;
+  }
+  vx-run-timeline :global(.term .tasks) {
+    margin: 0;
+  }
+  vx-run-timeline :global(.term .id) {
+    color: var(--vx-accent);
+    font-weight: 700;
+  }
+  vx-run-timeline :global(.term .quiet) {
+    font-weight: 400;
+  }
+  vx-run-timeline.playing :global(.never),
+  vx-run-timeline.playing :global(.term),
+  vx-run-timeline.playing .say {
+    visibility: hidden;
+  }
+</style>

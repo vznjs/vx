@@ -1,58 +1,141 @@
 ---
 title: CI
-description: Run vx on GitHub Actions or GitLab CI, and test only what a pull request changed.
-# The job summary sample below carries its own headings; a table of contents
+description: Run vx on CI. A pull request runs only what it changed; a push to main runs everything.
+# The job summary sample carries its own headings; a table of contents
 # would list them as this page's sections.
 tableOfContents: false
 ---
 
-On CI, vx does two things. A push to `main` runs every task. A pull
-request runs only the projects it changed and the projects that depend
-on them.
+import Diagram from '../../../components/guide/diagram/Diagram.astro'
+import { ciPipelines, lockCheck } from '../../../components/docs/pictures/ci.ts'
+import AffectedPicker from '../../../components/docs/ci/AffectedPicker.astro'
+import { Aside, Steps } from '@astrojs/starlight/components'
+import { Levels, Deeper, Concept, Quiz, Walkthrough, Frame, Takeaway, NextStep } from '../../../components/learn'
 
-This page sets that up on GitHub Actions. You need no server and no
-token, only a workspace where `vx run` already works on your machine
-([Quickstart](../../quickstart/)).
+On CI, a pull request runs only the projects it changed. A push to `main` runs every project. One command does both:
 
-## GitHub Actions
+```sh
+vx pipeline pr
+```
 
-### 1. Install the CI plugin
+<Levels />
+
+<Diagram {...ciPipelines} />
+
+<Walkthrough title="The two pipelines, run in turn on one machine">
+<Frame title="1. A push to main: every task runs">
+
+```ansi title="vx pipeline main"
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mTasks[0m[4m[58;2;110;118;129m     [2mstatus  cache       time   task[0m[4m[58;2;110;118;129m                 [0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m       [38;2;203;213;225m266ms[0m   [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;232;121;249mlint[0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m       [38;2;203;213;225m289ms[0m   [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;232;121;249mlint[0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m       [38;2;203;213;225m494ms[0m   [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m       [38;2;203;213;225m308ms[0m   [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m       [38;2;203;213;225m1.01s[0m   [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;96;165;250mtest[0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m       [38;2;203;213;225m680ms[0m   [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;96;165;250mtest[0m
+
+
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mSummary[0m[4m[58;2;110;118;129m                                           [2mvx 0.0.0[0m
+  [2mprojects[0m  [38;2;234;179;8m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
+            [38;2;234;179;8m2 in run[0m [2m·[0m [2m2 total[0m
+  [2mtasks   [0m  [38;2;34;197;94m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
+            [38;2;34;197;94m6 success[0m [2m·[0m [2m6 total[0m
+  [2mcache   [0m  [38;2;56;189;248m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
+            [2mlocal[0m [38;2;56;189;248m6↑[0m
+
+  [2minfo    [0m  4 workers [2m·[0m local cache
+            run 01a20a26-d531-7757-8393-c012639c963c
+  [2mtime    [0m  1.23s [2m·[0m [2mmax 1.01s[0m [2m·[0m [2mavg 508ms[0m [2m·[0m [2mmin 266ms[0m
+```
+
+This chapter trims the demo to two projects: `@demo/web` builds on `@demo/ui`. Six tasks run. Each one stores its result in the cache: **local 6↑**.
+
+</Frame>
+<Frame title="2. A pull request edits packages/web: only web runs">
+
+```ansi title="vx pipeline pr"
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mTasks[0m[4m[58;2;110;118;129m     [2mstatus  cache       time   task[0m[4m[58;2;110;118;129m                 [0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m        [38;2;203;213;225m63ms[0m   [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;232;121;249mlint[0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m       [38;2;203;213;225m306ms[0m   [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m       [38;2;203;213;225m676ms[0m   [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;96;165;250mtest[0m
+
+
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mSummary[0m[4m[58;2;110;118;129m                                           [2mvx 0.0.0[0m
+  [2mprojects[0m  [38;2;234;179;8m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
+            [38;2;234;179;8m2 in run[0m [2m·[0m [2m2 total[0m
+  [2mtasks   [0m  [38;2;34;197;94m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
+            [38;2;34;197;94m4 success[0m [2m·[0m [2m4 total[0m
+  [2mcache   [0m  [38;2;34;197;94m▰▰▰▰▰▰▰▰▰▰▰▰[0m[38;2;56;189;248m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
+            [2mlocal[0m [38;2;34;197;94m1✓[0m [38;2;56;189;248m3↑[0m
+
+  [2minfo    [0m  4 workers [2m·[0m local cache
+            run 01a20a26-dbe0-73c2-b510-ac566e90e4d6
+  [2mtime    [0m  720ms [2m·[0m [2mmax 676ms[0m [2m·[0m [2mavg 348ms[0m [2m·[0m [2mmin 63ms[0m
+```
+
+Three tasks ran, all in `@demo/web`. Read the cache line: **1✓** is `@demo/ui#build`, which web needs, from frame 1's cache. A fresh CI machine runs it again unless a [remote cache](../remote-cache/) holds it.
+
+</Frame>
+<Frame title="3. On GitHub, a push to main breaks a test">
+
+`github()` writes this summary on the workflow run's page:
+
+> ## ❌ vx run
+>
+> **6** tasks · **6** executed · **0** cache hits · **1** failed · 1.1s
+>
+> ### Failures
+>
+> - **@demo/web#test** — exit 1
+>
+> | Task | Status | Duration |
+> | --- | --- | --- |
+> | @demo/web#test | ❌ failed | 776ms |
+> | @demo/ui#test | ✅ ran | 798ms |
+> | @demo/web#build | ✅ ran | 342ms |
+> | @demo/ui#build | ✅ ran | 308ms |
+> | @demo/web#lint | ✅ ran | 109ms |
+> | @demo/ui#lint | ✅ ran | 93ms |
+>
+> <sub>vx 0.0.659 · `vx pipeline main` · 5/6 passed · 0 up-to-date · 0 restored</sub>
+
+A fresh runner has an empty cache, so all six ran. The failure comes first; the full log stays in the job's output.
+
+</Frame>
+</Walkthrough>
+
+## Save the two runs
+
+<Concept term="Pipeline">
+  A run saved under a name in `.vx/workspace.ts`. `vx pipeline pr` runs the one named `pr`. Your
+  machine and CI run exactly the same thing.
+</Concept>
+
+Add the CI plugin:
 
 ```sh
 bun add -d @vzn/vx-ci
 ```
 
-### 2. Declare it
+Then declare it and two pipelines:
 
-`vx init` already wrote `.vx/workspace.ts` with your lockfile's plugin.
-Add `github()` beside it, and a pipeline for each kind of run:
-
-```ts
-// .vx/workspace.ts
+```ts title=".vx/workspace.ts" ins={2,6,7-10}
 import { defineWorkspace } from '@vzn/vx/config'
 import { github } from '@vzn/vx-ci'
 import { bun } from '@vzn/vx-lockfile'
 
 export default defineWorkspace({
-  plugins: [
-    // Reads bun.lock, so `^build` builds a package's dependencies first.
-    bun(),
-    // On GitHub Actions: the job summary, and the pull request's base for
-    // --affected. Anywhere else it does nothing.
-    github(),
-  ],
-  // What each CI job runs: `vx pipeline pr`, `vx pipeline main`.
+  plugins: [bun(), github()],
   pipelines: {
-    // A pull request: only the projects it changed and the ones that
-    // depend on them.
-    pr: { tasks: ['build', 'test'], affected: true },
-    // main and a merge queue: every project.
-    main: { tasks: ['build', 'test'] },
+    pr: { tasks: ['lint', 'test', 'build'], affected: true },
+    main: { tasks: ['lint', 'test', 'build'] },
   },
 })
 ```
 
-Then update the lock and commit:
+`affected: true` is the only difference: `pr` runs what the branch changed. `github()` finds the pull request's base and writes the job summary. Off GitHub Actions it does nothing.
+
+Run `vx lock` and commit:
 
 ```sh
 vx lock
@@ -60,34 +143,11 @@ git add -A
 git commit -m "ci: run vx on GitHub Actions"
 ```
 
-Try a pipeline on your machine first. On a branch that changed only
-`@demo/web`, `pr` builds and tests `@demo/web`, and `@demo/ui#build`, which
-it needs, comes from the cache (`local 1✓`):
+<Takeaway>run CI's exact checks on your own machine: `vx pipeline pr`.</Takeaway>
 
-```ansi
-[2m$[0m vx pipeline pr
+## GitHub Actions
 
-[4m[58;2;110;118;129m  [1m[38;2;167;139;250mTasks[0m[4m[58;2;110;118;129m     [2mstatus  cache     ±usual    time   cpu    mem outputs  blocks worker         task[0m[4m[58;2;110;118;129m                           [0m
-            [38;2;34;197;94msuccess[0m [2mmiss[0m       [2m−69ms[0m   [38;2;203;213;225m292ms[0m  [2m119%[0m  [2m104MB[0m    [2m926B[0m       [2m0[0m [2mlocal[0m          [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m
-            [38;2;34;197;94msuccess[0m [2mmiss[0m       [2m−10ms[0m   [38;2;203;213;225m618ms[0m  [2m168%[0m  [2m270MB[0m      [2m0B[0m       [2m0[0m [2mlocal[0m          [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;96;165;250mtest[0m
-
-
-[4m[58;2;110;118;129m  [1m[38;2;167;139;250mSummary[0m[4m[58;2;110;118;129m                                                                                                       [2mvx 0.0.0[0m
-  [2mprojects[0m  [38;2;234;179;8m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
-            [38;2;234;179;8m2 in run[0m [2m·[0m [2m2 total[0m
-  [2mtasks   [0m  [38;2;34;197;94m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
-            [38;2;34;197;94m3 success[0m [2m·[0m [2m3 total[0m
-  [2mcache   [0m  [38;2;34;197;94m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m[38;2;56;189;248m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
-            [2mlocal[0m [38;2;34;197;94m1✓[0m [38;2;56;189;248m2↑[0m
-
-  [2minfo    [0m  4 workers [2m·[0m local cache [2m·[0m run 01a2089b-f3b0-72e2-8c1d-1f60ba7d2716
-  [2mtime    [0m  661ms [2m·[0m [2mmax 618ms[0m [2m·[0m [2mavg 455ms[0m [2m·[0m [2mmin 292ms[0m
-```
-
-### 3. Add the workflow
-
-```yaml
-# .github/workflows/ci.yml
+```yaml title=".github/workflows/ci.yml" mark={17-18}
 name: ci
 on:
   pull_request:
@@ -103,114 +163,254 @@ jobs:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
-      # Fails if someone changed a vx.config.ts and did not run vx lock.
       - run: bun vx lock --check
-      # A pull request runs the `pr` pipeline of .vx/workspace.ts, main
-      # and a merge queue run `main`.
       - run: >
-          bun vx pipeline
-          ${{ github.event_name == 'pull_request' && 'pr' || 'main' }}
+          bun vx pipeline ${{ github.event_name == 'pull_request' && 'pr' || 'main' }}
 ```
 
-A pipeline names the tasks a job runs, in every project.
-`vx pipeline pr` runs the one named `pr`.
+`vx lock --check` fails the job when a config changed without `vx lock`. The last step picks `pr` on a pull request, `main` everywhere else.
 
-Any `vx run` flag is a key of the same name (`affected: true` is
-`--affected`), and a flag you type beats it
-([Pipelines](../../schema/workspace/#pipelines)).
+Push, and open a pull request to see it run.
 
-### 4. Push
+<Takeaway>run vx on every pull request and every push to `main`.</Takeaway>
 
-Open a pull request: its run builds and tests only what it changed.
-After it merges, the run on `main` runs everything.
+## Predict what a pull request runs
 
-Each run writes a summary on the workflow run's page:
+<Concept term="Affected">
+  A task is affected when the change touches its project, or a task it depends on is affected.
+</Concept>
 
-> ## ❌ vx run
->
-> **5** tasks · **2** executed · **2** cache hits (1 up-to-date, 1 restored, 1 from remote) · **1** failed · 21.4s
->
-> ### Failures
->
-> - **@acme/web#build** — exit 2
->
-> | Task | Status | Duration |
-> | --- | --- | --- |
-> | @acme/web#build | ❌ failed | 3.1s |
-> | @acme/web#test | ✅ ran | 4.2s |
-> | @acme/api#build | ☁️ restored remote | 0ms |
-> | @acme/ui#build | ✔️ up-to-date | 0ms |
-> | @acme/ui#lint | ⏭️ skipped |  |
->
-> <sub>vx 0.0.21 · `vx pipeline main` · 3/5 passed · 1 up-to-date · 1 restored</sub>
+Pick a file. The tasks light up as `vx pipeline pr` ran them:
 
-Each failed task also gets an error annotation on the run, with its
-exit code, and its output follows in the log.
+<AffectedPicker />
 
-A task that fails on inputs it passed on before is marked flaky in the
-log:
+Two steps decide. **Affected** picks the tasks; then the **cache** skips each one whose inputs did not change.
+
+<Quiz q="A pull request edits packages/ui/src/index.ts. Does @demo/web#test run?">
+  Yes. `@demo/web#test` depends on `@demo/ui#build` (`^build`), and that build is affected. Only
+  `@demo/web#lint` stays out: nothing it depends on changed.
+</Quiz>
+
+<Takeaway>tell, before you push, which tasks your pull request runs.</Takeaway>
+
+## Keep the lock fresh
+
+<Diagram {...lockCheck} />
+
+Runs read `.vx/projects.lock`, not your `vx.config.ts` files. The workflow's check fails when someone edited a config and forgot `vx lock`:
+
+```sh
+vx lock --check
+```
 
 ```ansi
-            [38;2;239;68;68mfailed[0m  [2mmiss[0m           [2m—[0m     [38;2;203;213;225m3ms[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m—[0m [2mlocal[0m          [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;96;165;250mtest[0m [2mflaky - passed 3× before[0m
+[38;2;239;68;68m✗[0m [1mvx lock --check[0m  [38;2;203;213;225mpackages/ui/vx.config.ts evaluates differently from the lock here — its config, a file it imports, or the environment it reads changed; run 'vx lock'[0m
+
+  [38;2;203;213;225mtasks.build.inputs.files[1]: (none) → "package.json"[0m
 ```
 
-### When to run `vx lock`
+It exits `1` and names the field that moved, before → after. Run `vx lock`, commit, push. Then the check passes:
 
-Every run reads `.vx/projects.lock`, not your `vx.config.ts` files.
-Run `vx lock` and commit the lock after you change any of these:
+```ansi
+[38;2;34;197;94m✓[0m [1mvx lock --check[0m  [38;2;203;213;225mup to date (2 projects)[0m
+```
 
-- a `vx.config.ts` or `.vx/workspace.ts`
-- a file a config imports
-- your dependencies (an install: a run refuses a lockfile changed since
-  `vx lock`, since it keys each task from the digests the lock records)
+<Takeaway>catch a forgotten `vx lock` before it reaches `main`.</Takeaway>
 
-Make `vx lock --check` the workflow's first vx step. When someone
-forgot, it fails and names the project.
+<Deeper level="patterns" title="Common setups">
 
-### Sandboxed tasks
+### Fix a merge conflict in the lock
 
-A task that declares `exec.sandbox` needs the OS sandbox on the runner.
-Add `- run: bun vx setup github` after `bun install`
-([vx-ci](../../plugins/vx-ci/#the-sandbox-runtime-vx-setup)).
+Two branches changed configs, and git left a conflict in the lock. Every run refuses it:
 
-### Common problems
+```sh
+vx run build --all
+```
 
-- **`--affected has no base here`.** The clone has no base branch and no `origin` to fetch it from. Set `baseBranch` in `.vx/workspace.ts`, or pass `--affected=<ref>`. When it says `fetching it from origin failed`, origin is unreachable (with `persist-credentials: false`, the checkout left no credentials for it): fetch the base in an earlier step, or pass `--affected=<ref>` to a commit the clone has.
-- **`--affected has no default on the base branch`.** On `main` there is nothing to compare with: run every project there, as the `main` pipeline above does. Skipping unchanged work needs a [remote cache](../remote-cache/) or a persisted `~/.vx`.
-- **The whole log lands in the job summary.** Don't redirect vx's output into `$GITHUB_STEP_SUMMARY`. `github()` writes the summary.
+```ansi
+[38;2;239;68;68m✗[0m [1mvx run[0m  [38;2;203;213;225m.vx/projects.lock holds a git merge conflict: run [0m[1m`vx lock`[0m[38;2;203;213;225m, which writes it anew from the configs[0m
+```
 
----
+Never edit the lock by hand:
 
-## GitLab CI
+<Steps>
 
-Declare `gitlab()` instead of `github()`:
+1. Resolve the conflicts in your `vx.config.ts` files, as for any code.
+
+2. Run `vx lock`. It writes the lock again from the merged configs:
+
+   ```sh
+   vx lock
+   ```
+
+   ```ansi
+   [38;2;34;197;94m✓[0m [1mvx lock[0m  [38;2;203;213;225m2 project configs → .vx/projects.lock, .vx/dependencies.lock[0m
+   ```
+
+3. Commit: `git add -A && git commit`.
+
+</Steps>
+
+`vx lock` also rewrites `.vx/dependencies.lock` and each `vx.lock.json`, so their conflicts go away too.
+
+### Stop a pull request at the first failure
+
+```ts mark={1}
+pr: { tasks: ['lint', 'test', 'build'], affected: true, failFast: true },
+```
+
+Without it, a failure skips only the tasks that depend on it, and the rest still report.
+
+### A nightly run that retries
+
+```ts
+nightly: { tasks: ['test', 'e2e'], retries: 1, timeout: '30m', force: true },
+```
+
+`force: true` runs every task again, ignoring the cache. Call it from a scheduled workflow: `bun vx pipeline nightly`.
+
+### Check a plan in a script
+
+```ts
+plan: { tasks: ['build', 'test'], affected: true, dry: true, format: 'json' },
+```
+
+`vx pipeline plan` runs nothing and prints one JSON document: every task, and whether it would hit the cache.
+
+### GitLab CI
+
+Declare `gitlab()` from the same package. In a merge request it gives `--affected` the request's base:
 
 ```ts title=".vx/workspace.ts"
 import { defineWorkspace } from '@vzn/vx/config'
 import { gitlab } from '@vzn/vx-ci'
 import { bun } from '@vzn/vx-lockfile'
 
-export default defineWorkspace({ plugins: [bun(), gitlab()] })
+export default defineWorkspace({
+  plugins: [bun(), gitlab()],
+  pipelines: {
+    pr: { tasks: ['lint', 'test', 'build'], affected: true },
+    main: { tasks: ['lint', 'test', 'build'] },
+  },
+})
 ```
 
-Run the same two lines as the GitHub workflow:
+Run `bun vx lock --check`, then `bun vx pipeline pr` in a merge request and `main` on the default branch. Each plugin does nothing outside its own CI, so you can declare both.
 
-```sh
-bun vx lock --check
-bun vx pipeline pr   # main on the default branch
+### Sandboxed tasks
+
+A task with [`exec.sandbox`](../sandboxing/) needs the OS sandbox on the runner. Add `bun vx setup github` (or `gitlab`) after `bun install` ([vx-ci](../../plugins/vx-ci/#the-sandbox-runtime-vx-setup)).
+
+### Flaky tasks
+
+A task that fails on inputs it passed on before is marked flaky in the log:
+
+```ansi
+            [38;2;239;68;68mfailed[0m  [2mmiss[0m           [2m—[0m     [38;2;203;213;225m3ms[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m—[0m [2mlocal[0m          [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;96;165;250mtest[0m [2mflaky - passed 3× before[0m
 ```
 
-In a merge request, `gitlab()` gives `--affected` the request's diff
-base. Each plugin does nothing outside its own CI, so you can declare
-both.
+<Takeaway>clear a lock conflict, and shape each CI job with one line in `.vx/workspace.ts`.</Takeaway>
 
-For sandboxed tasks, run `bun vx setup gitlab` before vx.
+</Deeper>
 
----
+<Deeper level="details" title="Every pipeline key">
 
-## Next
+### Pipeline keys
 
-- [Remote cache](../remote-cache/): let every runner reuse what another
-  one built.
-- [Distributed task execution](../distributed-task-execution/): spread one run over many
-  runners.
+A pipeline is a saved `vx run` over every project. Each key is its `vx run` flag in camelCase: `failFast` is `--fail-fast`. Only `tasks` is required.
+
+| Key | Takes | What it does |
+| --- | --- | --- |
+| `tasks` | `['lint', 'test']`, `'web#e2e'` | The tasks to run, in every project that declares each. **Required.** |
+| `filter` | `['./apps/*']` | Only these projects, plus what they depend on. |
+| `affected` | `true`, or a git ref | Only what a change since the base reaches. |
+| `excludeDependencies` | `true`, or names | Skip all `dependsOn` edges, or only those names. |
+| `env` | `{ NAME: 'value' }` | Set for vx and its plugins, never for a task. A variable already set wins. |
+| `concurrency` | `4`, `'50%'` | Most tasks at once. Default: the cores. |
+| `schedule` | `'most-work'`, `'critical-path'`, `'direct-dependents'`, `'ready-order'` | Which ready task starts first. Default `'most-work'`. |
+| `failFast` | `true` | Stop the run at the first failure. |
+| `retries` | `1` | Re-runs of a failed task. Default `0`. |
+| `timeout` | `'10m'` | Time limit per task. Default none. |
+| `branch` | `'nightly'` | The branch the run records in history. Default: git's. |
+| `cachePolicy` | `'local:rw,remote:r'` | What each cache may read and write. |
+| `noCache` | `true` | No cache reads or writes. |
+| `force` | `true` | Run every task again; still write the cache. |
+| `cacheDir` | `'.vx/cache'` | Where the local cache lives, from the workspace root. |
+| `cacheDownload` | `'all'`, `'toplevel'`, `'none'` | Which outputs of a remotely run task land here. Default `'all'`. |
+| `cacheConcurrencyDownload` | `32` | Remote downloads at once. |
+| `cacheConcurrencyUpload` | `32` | Uploads at once, per remote. |
+| `cacheConcurrencyRestore` | `16` | Local hits restoring at once. |
+| `outputLogs` | `'full'`, `'errors-only'`, `'hash-only'`, `'none'` | How much task output the log shows. |
+| `verbosity` | `1` | `1` adds a table of every task. Default `0`. |
+| `profile` | `true`, or a file | Write a Chrome trace of the run. |
+| `dry` | `true` | Print the plan; run nothing. |
+| `format` | `'json'` | With `dry`, print the plan as JSON. Default `'pretty'`. |
+
+**Who wins.** A flag you type beats its key: `vx pipeline main --filter @demo/web` runs main's tasks in `@demo/web` and what it needs. A flag's `VX_*` variable beats it too. The key beats `.vx/workspace.ts`'s own setting.
+
+**What a pipeline cannot do.** It has no `--all` key: it always starts from every project. Nothing goes after `--`, since forwarded args are for one task. A typo in `tasks` fails at `vx lock`, not in the CI job.
+
+Full reference: [Pipelines](../../schema/workspace/#pipelines).
+
+</Deeper>
+
+<Deeper level="details" title="github() and gitlab() options">
+
+### Plugin options
+
+Both work with no options. Each does nothing outside its own CI.
+
+| Option | Plugin | Default | What it does |
+| --- | --- | --- | --- |
+| `summaryFile` | `github()` | `$GITHUB_STEP_SUMMARY` | The file the job summary goes to. |
+| `title` | `github()` | `'vx run'` | The summary's heading. |
+| `cacheScope` | both | `true` | Name the base commit for `affected`, and keep a branch's remote cache entries apart. `false` turns it off. |
+
+```ts
+github({ title: 'web checks', cacheScope: false })
+```
+
+</Deeper>
+
+<Deeper level="details" title="Every error and its fix">
+
+### Common problems
+
+`pr` on `main` itself has no base to compare with:
+
+```ansi title="vx pipeline pr, on main"
+[38;2;239;68;68m✗[0m [1mvx pipeline[0m  [38;2;203;213;225m--affected has no default on the base branch (main): drop --affected, --all runs every project (the cache skips what did not change), or name the last good commit, --affected=<sha>[0m
+
+  [38;2;203;213;225m--affected is [0m[1m`pipelines.pr.affected`[0m[38;2;203;213;225m in .vx/workspace[0m
+```
+
+Run `main` there. The cache still skips what did not change.
+
+A pipeline name that does not exist names the closest one:
+
+```ansi title="vx pipeline prr"
+[38;2;239;68;68m✗[0m [1mvx pipeline[0m  [38;2;203;213;225mno pipeline named prr; pipelines: pr, main[0m
+
+  [2mfix[0m  [1mvx pipeline pr[0m
+```
+
+A config changed without `vx lock`:
+
+```ansi title="vx pipeline main"
+[38;2;239;68;68m✗[0m [1mvx pipeline[0m  [38;2;203;213;225mpackages/web/vx.config.ts changed since the last [0m[1m`vx lock`[0m[38;2;203;213;225m — run [0m[1m`vx lock`[0m
+```
+
+- **`--affected has no base here`.** The clone has no base branch and no `origin` to fetch it from. Set `baseBranch` in `.vx/workspace.ts`, or `affected: '<ref>'`.
+- **`fetching it from origin failed`.** The checkout left no credentials (`persist-credentials: false`). Fetch the base in an earlier step.
+- **`nothing affected since <ref>`.** The change touches no project. That is a pass, exit `0`.
+- **The whole log lands in the job summary.** Don't redirect vx's output into `$GITHUB_STEP_SUMMARY`. `github()` writes the summary.
+
+### When to run vx lock
+
+Run `vx lock` and commit after you edit a `vx.config.ts`, `.vx/workspace.ts`, a file a config imports, or your dependencies.
+
+</Deeper>
+
+<NextStep href="run-a-pipeline/" title="Run the same checks locally and on CI">
+  Preview a pipeline with `--dry` before you push, and read why each task is in it.
+</NextStep>

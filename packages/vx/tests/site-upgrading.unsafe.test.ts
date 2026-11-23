@@ -6,6 +6,7 @@
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { expect, it } from 'bun:test'
+import { SAY, TITLE } from '../scripts/upgrading-say.ts'
 import { page, PAGE, STEPS, taggedCommits } from '../scripts/upgrading.ts'
 import { fetchHistory } from './helpers/history.ts'
 
@@ -23,16 +24,16 @@ const shallow =
     .trim() === 'true'
 
 it('a footer ends at a git trailer with no blank line before it', () => {
-  const body = 'Why.\n\nBREAKING CHANGE: a is b\nnow.\nCo-Authored-By: C <c@c>\nClaude-Session: s'
-  expect(footers(page([{ subject: 'feat!: x', body }]))).toEqual(['A is b now.'])
+  const body = 'Why.\n\nBREAKING CHANGE: a is b\nthen.\nCo-Authored-By: C <c@c>\nClaude-Session: s'
+  expect(footers(page([{ subject: 'feat!: x', body }]))).toEqual(['A is b then.'])
 })
 
 it('each footer of a squash that holds several is its own paragraph', () => {
-  const body = 'Why.\n\nBREAKING CHANGE: a.\nBREAKING CHANGE: b\nnow.\nCo-Authored-By: C <c@c>'
-  expect(page([{ subject: 'feat!: x', body }])).toContain('### X\n\nA.\n\nB now.\n')
+  const body = 'Why.\n\nBREAKING CHANGE: a.\nBREAKING CHANGE: b\nthen.\nCo-Authored-By: C <c@c>'
+  expect(page([{ subject: 'feat!: x', body }])).toContain('### X\n\nA.\n\nB then.\n')
 })
 
-it('docs/upgrading.md carries every breaking footer in git log', () => {
+it('docs/upgrading.mdx carries every breaking footer in git log', () => {
   // A shallow checkout (actions/checkout's default depth 1, the macOS job)
   // holds none of the history: where CI sets VX_REQUIRE_TAGS, the job that
   // fetches it all, that is a failure, never a pass (as api-break's row).
@@ -47,8 +48,28 @@ it('docs/upgrading.md carries every breaking footer in git log', () => {
   expect(footers(readFileSync(PAGE, 'utf8'))).toEqual(want)
 })
 
-it('every step names a commit git log holds', () => {
+it('every paragraph of the release list reads on a phone', () => {
+  if (shallow) return
+  // Prose only: fences, headings, list items and markup lines are not paragraphs.
+  const long = page(taggedCommits(ROOT))
+    .replace(/```[\s\S]*?```/g, '')
+    .split(/\n\n+/)
+    .filter((p) => !/^\s*([#<{-]|\d+\.)/.test(p))
+    .map((p) =>
+      p
+        .replace(/&#123;/g, '{')
+        .replace(/&#125;/g, '}')
+        .replace(/&lt;/g, '<')
+        .replace(/`|\*\*/g, '')
+        .trim(),
+    )
+    .filter((p) => p.length > 200)
+  expect(long).toEqual([])
+})
+
+it('every step, rewording and heading names a commit git log holds', () => {
   if (shallow) return
   const subjects = new Set(taggedCommits(ROOT).map((c) => c.subject.replace(/ \(#\d+\)$/, '')))
-  expect(Object.keys(STEPS).filter((s) => !subjects.has(s))).toEqual([])
+  const keys = [...Object.keys(STEPS), ...Object.keys(SAY), ...Object.keys(TITLE)]
+  expect(keys.filter((s) => !subjects.has(s))).toEqual([])
 })

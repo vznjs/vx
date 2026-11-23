@@ -105,5 +105,5 @@ output. The [sandbox](../the-sandbox/) catches that.
 `vx why --format json` prints `{ taskId, runId, why, diff, roots }`.
 The [agent skill](../../docs/agents/) teaches it to coding agents.
 
-Guide: [Caching › Why did it re-run?](../../docs/caching/#why-did-it-re-run).
+Guide: [Caching › Find why a task ran again](../../docs/caching/#find-why-a-task-ran-again).
 More at [vznjs.github.io/vx](https://vznjs.github.io/vx/).

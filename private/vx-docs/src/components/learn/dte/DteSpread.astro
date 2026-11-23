@@ -1,0 +1,312 @@
+---
+// Tasks spreading over workers: pick a push and how many workers vx may
+// start (\`max\`), and replay the real run: where each task ran and when the
+// run ended. Rendered on the server for the first choice, so the page reads
+// the same without script; the buttons redraw it from the same runs.
+import { RUNS, longest, project, rows, seconds, type Bar, type Push, type Run } from './spread'
+
+const MAX = 3
+const SCALE = 1100 // ms across the track, fixed so a change shows as movement
+const first = RUNS[`all-${MAX}`]
+const chain = longest(first)
+const pct = (ms: number) => `${((ms / SCALE) * 100).toFixed(2)}%`
+// A restore takes a few ms: keep it visible.
+const width = (b: Bar) => pct(Math.max(b.end - b.start, 8))
+const place = (b: Bar, run: Run) => {
+  const h = 100 / rows(run)
+  return b.kind === 'task' ? `;top:${(b.slot ?? 0) * h}%;height:${h}%` : ''
+}
+const label = (b: Bar) =>
+  b.kind === 'warm' ? `${b.id} starts` : `${b.id}${b.kind === 'hit' ? ' from the cache' : ''}: ${seconds(b.end - b.start)}`
+const short = (id: string) => id.replace('@demo/', '')
+const pushes: Array<[Push, string]> = [
+  ['all', 'Every task changed'],
+  ['web', 'Edit in packages/web'],
+  ['none', 'Nothing changed'],
+]
+---
+
+<figure class="vx-spread" data-spread data-max={MAX} data-scale={SCALE}>
+  <figcaption class="vx-spread-head">
+    <span>A run of <code>build test lint</code> over workers</span>
+    <span class="vx-spread-sum" aria-live="polite" data-sum>
+      ends at <strong>{seconds(first.end)}</strong> · <strong>{first.workers}</strong> workers started
+    </span>
+  </figcaption>
+
+  <div class="vx-spread-controls not-content" hidden data-controls>
+    <div role="group" aria-label="What the push changed">
+      {pushes.map(([p, text], i) => <button type="button" data-push={p} aria-pressed={String(i === 0)}>{text}</button>)}
+    </div>
+    <div role="group" aria-label="Workers vx may start">
+      <span class="vx-spread-label">Workers allowed (<code>max</code>)</span>
+      {[1, 2, 3].map((n) => <button type="button" data-max-workers={n} aria-pressed={String(n === MAX)}>{n}</button>)}
+    </div>
+  </div>
+
+  <div class="vx-spread-lanes" data-lanes>
+    {Array.from({ length: MAX + 1 }, (_, lane) => (
+      <div class="vx-spread-lane" data-lane={lane}>
+        <span class="vx-spread-who">{lane === 0 ? 'CI job' : `worker ${lane}`}</span>
+        <span class="vx-spread-track">
+          {first.bars
+            .filter((b) => b.lane === lane)
+            .map((b) => (
+              <span
+                class={`vx-spread-bar vx-spread-${b.kind} vx-spread-${project(b.id)}${chain.has(b.id) ? ' vx-spread-chain' : ''}`}
+                style={`left:${pct(b.start)};width:${width(b)}${place(b, first)}`}
+                title={label(b)}
+              >
+                {b.kind === 'task' ? short(b.id) : ''}
+              </span>
+            ))}
+        </span>
+      </div>
+    ))}
+    <div class="vx-spread-lane vx-spread-axis" aria-hidden="true">
+      <span class="vx-spread-who"></span>
+      <span class="vx-spread-ticks">
+        {[0, 250, 500, 750, 1000].map((ms) => <span style={`left:${pct(ms)}`}>{ms / 1000}s</span>)}
+      </span>
+    </div>
+  </div>
+
+  <p class="vx-spread-key">
+    <span class="vx-spread-item"><span class="vx-spread-swatch vx-spread-warm"></span> worker starting</span>
+    <span class="vx-spread-item"><span class="vx-spread-swatch vx-spread-ui"></span> <code>@demo/ui</code></span>
+    <span class="vx-spread-item"><span class="vx-spread-swatch vx-spread-web"></span> <code>@demo/web</code></span>
+    <span class="vx-spread-item"><span class="vx-spread-swatch vx-spread-hit"></span> restored from the cache</span>
+    <span class="vx-spread-item"><span class="vx-spread-swatch vx-spread-chain-key"></span> longest path</span>
+  </p>
+  <p class="vx-spread-note">Nine real runs, one per choice, on 2-core <code>local()</code> workers. The output below is from the 3-worker runs.</p>
+</figure>
+
+<script>
+  import { RUNS, longest, project, rows, seconds, type Bar, type Push } from './spread'
+
+  for (const fig of document.querySelectorAll<HTMLElement>('[data-spread]')) {
+    const scale = Number(fig.dataset.scale)
+    let push: Push = 'all'
+    let max = Number(fig.dataset.max) as 1 | 2 | 3
+    const pct = (ms: number) => `${((ms / scale) * 100).toFixed(2)}%`
+    const still = matchMedia('(prefers-reduced-motion: reduce)').matches
+    const draw = () => {
+      const grow: Array<() => void> = []
+      const run = RUNS[`${push}-${max}`]
+      const chain = longest(run)
+      const h = 100 / rows(run)
+      for (const lane of fig.querySelectorAll<HTMLElement>('[data-lane]')) {
+        const n = Number(lane.dataset.lane)
+        const track = lane.querySelector<HTMLElement>('.vx-spread-track')!
+        lane.classList.toggle('vx-spread-off', n > max)
+        track.replaceChildren(
+          ...run.bars
+            .filter((b: Bar) => b.lane === n)
+            .map((b: Bar) => {
+              const el = document.createElement('span')
+              el.className = `vx-spread-bar vx-spread-${b.kind} vx-spread-${project(b.id)}${chain.has(b.id) ? ' vx-spread-chain' : ''}`
+              const w = pct(Math.max(b.end - b.start, 8))
+              el.style.left = pct(b.start)
+              el.style.width = still ? w : '0'
+              // Replay the run: each bar grows from its start, at half speed.
+              el.style.transition = still ? 'none' : `width ${(b.end - b.start) * 2}ms linear ${b.start * 2}ms`
+              grow.push(() => (el.style.width = w))
+              if (b.kind === 'task') {
+                el.style.top = `${(b.slot ?? 0) * h}%`
+                el.style.height = `${h}%`
+                el.textContent = b.id.replace('@demo/', '')
+              }
+              el.title =
+                b.kind === 'warm'
+                  ? `${b.id} starts`
+                  : `${b.id}${b.kind === 'hit' ? ' from the cache' : ''}: ${seconds(b.end - b.start)}`
+              return el
+            }),
+        )
+      }
+      requestAnimationFrame(() => requestAnimationFrame(() => grow.forEach((g) => g())))
+      const sum = fig.querySelector<HTMLElement>('[data-sum]')!
+      sum.innerHTML =
+        run.workers === 0
+          ? `ends at <strong>${seconds(run.end)}</strong> · <strong>no</strong> worker started`
+          : `ends at <strong>${seconds(run.end)}</strong> · <strong>${run.workers}</strong> worker${run.workers === 1 ? '' : 's'} started`
+      for (const b of fig.querySelectorAll<HTMLButtonElement>('[data-push]'))
+        b.setAttribute('aria-pressed', String(b.dataset.push === push))
+      for (const b of fig.querySelectorAll<HTMLButtonElement>('[data-max-workers]'))
+        b.setAttribute('aria-pressed', String(Number(b.dataset.maxWorkers) === max))
+    }
+    for (const b of fig.querySelectorAll<HTMLButtonElement>('[data-push]'))
+      b.addEventListener('click', () => ((push = b.dataset.push as Push), draw()))
+    for (const b of fig.querySelectorAll<HTMLButtonElement>('[data-max-workers]'))
+      b.addEventListener('click', () => ((max = Number(b.dataset.maxWorkers) as 1 | 2 | 3), draw()))
+    fig.querySelector<HTMLElement>('[data-controls]')!.hidden = false
+    // Replay once, when the reader scrolls to it.
+    const seen = new IntersectionObserver(
+      (entries) => {
+        if (!entries.some((e) => e.isIntersecting)) return
+        seen.disconnect()
+        draw()
+      },
+      { threshold: 0.4 },
+    )
+    seen.observe(fig)
+  }
+</script>
+
+<style is:global>
+  .vx-spread {
+    border: 1px solid var(--vx-border);
+    border-radius: 8px;
+    margin: 1.5rem 0;
+    padding: 0.8rem 1rem;
+    background: var(--vx-surface);
+  }
+  .vx-spread-head {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 0.4rem 1rem;
+    font-size: 0.85rem;
+    color: var(--vx-fg);
+  }
+  .vx-spread-sum strong {
+    color: var(--vx-accent);
+  }
+  .vx-spread-controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.6rem 1.2rem;
+    margin: 0.8rem 0 0.4rem;
+  }
+  .vx-spread-controls [role='group'] {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.3rem;
+  }
+  .vx-spread-label {
+    font-size: 0.75rem;
+    color: var(--vx-muted);
+    margin-right: 0.2rem;
+  }
+  .vx-spread-controls button {
+    font-family: var(--vx-mono);
+    font-size: 0.75rem;
+    color: var(--vx-text);
+    background: var(--vx-bg);
+    border: 1px solid var(--vx-border);
+    border-radius: 6px;
+    padding: 0.25rem 0.6rem;
+    cursor: pointer;
+  }
+  .vx-spread-controls button[aria-pressed='true'] {
+    border-color: var(--vx-accent);
+    color: var(--vx-accent);
+  }
+  .vx-spread-lanes {
+    display: grid;
+    gap: 0.35rem;
+    margin-top: 0.8rem;
+  }
+  .vx-spread-lane {
+    display: grid;
+    grid-template-columns: 6.5rem 1fr;
+    align-items: center;
+    gap: 0.5rem;
+    transition: opacity 0.3s ease;
+  }
+  .vx-spread-off {
+    opacity: 0.3;
+  }
+  .vx-spread-who {
+    font-family: var(--vx-mono);
+    font-size: 0.72rem;
+    color: var(--vx-muted);
+    white-space: nowrap;
+  }
+  .vx-spread-track {
+    position: relative;
+    height: 3rem;
+    border-radius: 4px;
+    background: var(--vx-bg);
+    overflow: hidden;
+  }
+  .vx-spread-bar {
+    position: absolute;
+    top: 0;
+    height: 100%;
+    border: 1px solid var(--vx-bg);
+    box-sizing: border-box;
+    border-radius: 3px;
+    font-family: var(--vx-mono);
+    font-size: 0.62rem;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    padding: 0 0.25rem;
+    overflow: hidden;
+    white-space: nowrap;
+    color: #0b0b12;
+  }
+  .vx-spread-swatch {
+    display: inline-block;
+    width: 0.8rem;
+    height: 0.6rem;
+    border-radius: 2px;
+    margin: 0 0.2rem 0 0.6rem;
+    vertical-align: middle;
+  }
+  .vx-spread-ui {
+    background: #c084fc;
+  }
+  .vx-spread-web {
+    background: #f472b6;
+  }
+  .vx-spread-warm {
+    background: repeating-linear-gradient(135deg, var(--vx-border) 0 4px, transparent 4px 8px);
+  }
+  .vx-spread-hit {
+    background: var(--vx-ok);
+  }
+  .vx-spread-chain {
+    box-shadow: inset 0 0 0 2px var(--vx-fg);
+  }
+  .vx-spread-chain-key {
+    box-shadow: inset 0 0 0 2px var(--vx-fg);
+  }
+  .vx-spread-ticks {
+    position: relative;
+    height: 1rem;
+    font-family: var(--vx-mono);
+    font-size: 0.62rem;
+    color: var(--vx-muted);
+  }
+  .vx-spread-ticks span {
+    position: absolute;
+    border-left: 1px solid var(--vx-border);
+    padding-left: 0.2rem;
+  }
+  .vx-spread-item {
+    white-space: nowrap;
+    margin-right: 0.8rem;
+  }
+  .vx-spread-key,
+  .vx-spread-note {
+    font-size: 0.72rem;
+    color: var(--vx-muted);
+    margin: 0.6rem 0 0;
+  }
+  .vx-spread-key .vx-spread-swatch {
+    margin-left: 0;
+  }
+  @media (max-width: 40rem) {
+    .vx-spread-lane {
+      grid-template-columns: 4rem 1fr;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .vx-spread-lane {
+      transition: none;
+    }
+  }
+</style>

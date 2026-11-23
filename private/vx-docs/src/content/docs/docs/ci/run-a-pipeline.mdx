@@ -1,0 +1,130 @@
+---
+title: Run the same checks locally and on CI
+description: Save a run under a name in .vx/workspace.ts, then call it with vx pipeline on your machine and on CI.
+---
+
+import { Levels, Deeper, Concept, Quiz, Takeaway, NextStep } from '../../../../components/learn'
+
+Write a run once in `.vx/workspace.ts`. Then you and CI type the same short command:
+
+```sh
+vx pipeline pr
+```
+
+<Levels />
+
+<Concept term="Pipeline">
+  A `vx run` saved under a name. Its keys are the `vx run` flags you would type:
+  `affected: true` is `--affected`.
+</Concept>
+
+## Save it
+
+```ts title=".vx/workspace.ts" mark={7-10}
+import { defineWorkspace } from '@vzn/vx/config'
+import { github } from '@vzn/vx-ci'
+import { bun } from '@vzn/vx-lockfile'
+
+export default defineWorkspace({
+  plugins: [bun(), github()],
+  pipelines: {
+    pr: { tasks: ['lint', 'test', 'build'], affected: true },
+    main: { tasks: ['lint', 'test', 'build'] },
+  },
+})
+```
+
+`pr` runs `lint`, `test` and `build` only where your branch changed something. `main` runs them in every project. Run `vx lock` after the edit.
+
+<Takeaway>name a run once and stop retyping its flags.</Takeaway>
+
+## Preview it
+
+On a branch, `--dry` shows what `pr` would run, and runs nothing:
+
+```sh
+vx pipeline pr --dry
+```
+
+```ansi
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mPlan[0m[4m[58;2;110;118;129m [2m4[0m[4m[58;2;110;118;129m    [2mstatus  cache       time   task[0m[4m[58;2;110;118;129m                 [0m
+            [38;2;6;182;212mrun[0m     [2mmiss[0m           [2m—[0m   [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;232;121;249mlint[0m
+            [2maffected: packages/web/src/index.ts changed (an input)[0m
+            [38;2;6;182;212mrun[0m     [2mmiss[0m           [2m—[0m   [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;96;165;250mtest[0m
+            [2maffected: packages/web/src/index.ts changed (an input)[0m
+            [38;2;34;197;94mcached[0m  [38;2;56;189;248mlocal[0m          [2m—[0m   [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;6;182;212mrun[0m     [2mmiss[0m           [2m—[0m   [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [2maffected: packages/web/src/index.ts changed (an input)[0m
+
+  [2mtasks    [0m  [38;2;203;213;225m4 planned · 1 cache hit (1 local) · 3 would run[0m
+  [2mpredicted[0m  [38;2;203;213;225m~680ms wall · ~1.28s total execution[0m
+```
+
+Read the line under each task: it says why the task is in the plan.
+
+Only `packages/web` changed. `@demo/ui#build` is listed because web's build and test need it, and it comes from the cache.
+
+<Quiz q="Why is @demo/ui#build in the plan, when packages/ui did not change?">
+  `@demo/web#build` depends on it (`^build`), so the run needs its output. It did not change, so
+  the plan reads it from the cache: **cached local**.
+</Quiz>
+
+<Takeaway>check a pull request's run before you push it.</Takeaway>
+
+## Call it on CI
+
+```yaml title=".github/workflows/ci.yml"
+- run: bun vx lock --check
+- run: >
+    bun vx pipeline ${{ github.event_name == 'pull_request' && 'pr' || 'main' }}
+```
+
+The same two steps as the [CI page](../#github-actions): `pr` on a pull request, `main` on a push or merge queue. `vx lock --check` fails the job when a config changed without `vx lock` ([Keep the lock fresh](../#keep-the-lock-fresh)).
+
+<Takeaway>run one command on your machine and get CI's exact result.</Takeaway>
+
+<Deeper level="patterns" title="Change a pipeline for one run">
+
+### Add a flag
+
+A flag you type beats the pipeline's key. This runs `main`'s tasks in `@demo/web`, plus the `@demo/ui#build` it needs:
+
+```sh
+vx pipeline main --filter @demo/web
+```
+
+### Plan without running
+
+`--dry` works on any pipeline. `vx pipeline main --dry` lists every task and whether the cache holds it.
+
+<Takeaway>reuse a saved pipeline for a one-off run.</Takeaway>
+
+</Deeper>
+
+<Deeper level="details" title="When vx refuses a pipeline">
+
+On `main` itself, `pr` has no base to compare with:
+
+```ansi title="vx pipeline pr, on main"
+[38;2;239;68;68m✗[0m [1mvx pipeline[0m  [38;2;203;213;225m--affected has no default on the base branch (main): drop --affected, --all runs every project (the cache skips what did not change), or name the last good commit, --affected=<sha>[0m
+
+  [38;2;203;213;225m--affected is [0m[1m`pipelines.pr.affected`[0m[38;2;203;213;225m in .vx/workspace[0m
+```
+
+Run `main` there: the cache still skips what did not change.
+
+A name no pipeline has names the closest one:
+
+```ansi title="vx pipeline prr"
+[38;2;239;68;68m✗[0m [1mvx pipeline[0m  [38;2;203;213;225mno pipeline named prr; pipelines: pr, main[0m
+
+  [2mfix[0m  [1mvx pipeline pr[0m
+```
+
+</Deeper>
+
+Every key a pipeline takes: [Pipeline keys](../#pipeline-keys), and [`vx pipeline`](../../../cli/pipeline/).
+
+<NextStep href="../../remote-cache/" title="Remote cache">
+  Each CI machine starts with an empty cache. Share one, and every runner reuses what another built.
+</NextStep>

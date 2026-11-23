@@ -18,6 +18,7 @@ import { keyedOutsideGrants, sandboxReads } from '../sandbox/index.js'
 import { isLocalExecutor, localExecutor } from './local-executor.js'
 import { printable, relPosix, span, UserError } from '../util/index.js'
 import { warnOf } from '../report/index.js'
+import { tagged } from '../ui/index.js'
 import { missingOutputs, outputsStep } from './attempt-outputs.js'
 import { buildRequest } from './attempt-request.js'
 import { bracketLiteralHint } from './miss-save.js'
@@ -443,7 +444,7 @@ async function classifyExit(
         ? 'killed (SIGKILL after the SIGTERM grace)'
         : 'killed (SIGTERM)'
     const after = policy.timeout === undefined ? '' : ` after ${policy.timeout}ms`
-    log.taskStderr(node, `${stream.nl()}[vx] timed out${after} — ${how}\n`)
+    log.taskStderr(node, `${stream.nl()}${vxLine(m, `[vx] timed out${after} — ${how}`)}\n`)
     // Non-zero even if the child TRAPPED SIGTERM and exited 0 (`trap 'exit
     // 0' TERM`): classified a success, its PARTIAL outputs were cached and
     // replayed forever. A genuinely killed child already reports 143.
@@ -479,11 +480,21 @@ async function classifyExit(
     })
     // The line quotes the command's first word, which a config may have
     // built from a secret: masked as the task's own output is.
-    if (verdict !== undefined) log.taskStderr(node, `${stream.nl()}${secrets.text(verdict)}\n`)
+    if (verdict !== undefined)
+      log.taskStderr(node, `${stream.nl()}${vxLine(m, secrets.text(verdict))}\n`)
     const unpassed = code === 0 ? undefined : unpassedEnv(stream.tail, m.env, process.env)
-    if (unpassed !== undefined) log.taskStderr(node, `${stream.nl()}${unpassed}\n`)
+    if (unpassed !== undefined)
+      log.taskStderr(node, `${stream.nl()}${vxLine(m, secrets.text(unpassed))}\n`)
   }
   return code
+}
+
+/**
+ * One of vx's own lines in the task's stream, tagged and coloured as a
+ * `[vx]` warning is: written plain, it read as the task's own white text.
+ */
+function vxLine(m: MissRun, line: string): string {
+  return tagged('warn', line, m.args.run.colors ?? { enabled: false })
 }
 
 /** The workspace-relative paths of `files` outside project `project` (workspace-relative). */
@@ -532,9 +543,11 @@ function unseenResult(
 }
 
 /**
- * A pass whose declared outputs did not all land here fails, said by the
- * globs that matched nothing. Outputs that land elsewhere (a remote
- * executor, a deferred download) are that executor's to check. Said as a
+ * A pass whose literal outputs did not all land here fails, said by the
+ * paths that matched nothing; so does one that wrote no output at all.
+ * Outputs that land elsewhere (a remote executor, a deferred download) are
+ * that executor's to check, and it says which matched nothing
+ * (`ExecuteResult.outputsMissing`). Said as a
  * warning, as the save's own output warnings are, not into the task's
  * stream: there it printed uncoloured, or red in a frame.
  */
@@ -542,18 +555,25 @@ function outputsMissing(m: MissRun, res: ExecuteResult): string[] | undefined {
   const { args, policy, secrets } = m
   const { node, log } = args
   if (policy.outputs.length + policy.wsOutputs.length === 0) return undefined
-  if (policy.deferred || res.outputs?.kind === 'deferred') return undefined
-  if (args.executor.capabilities?.remote === true) return undefined
+  const elsewhere =
+    policy.deferred ||
+    res.outputs?.kind === 'deferred' ||
+    args.executor.capabilities?.remote === true
   const nested = args.outputNestedDirs ?? args.nestedProjectDirs
-  const missing = [
-    ...missingOutputs(node.projectDir, policy.outputs, nested),
-    ...missingOutputs(args.run.workspaceRoot, policy.wsOutputs, []),
-  ]
-  if (missing.length === 0) return undefined
   const cfg = node.config
-  const left = m.state === undefined ? [] : stateLeft(m.state, node.projectDir)
   const noWrite =
     cfg.exec?.sandbox !== undefined && (cfg.exec.sandbox.allow?.write?.length ?? 0) === 0
+  let missing: string[]
+  let left: string[] = []
+  if (elsewhere) missing = [...(res.outputsMissing ?? [])]
+  else {
+    missing = missingOutputs([
+      { base: node.projectDir, globs: policy.outputs, nestedDirs: nested },
+      { base: args.run.workspaceRoot, globs: policy.wsOutputs, nestedDirs: [] },
+    ])
+    left = missing.length > 0 && m.state !== undefined ? stateLeft(m.state, node.projectDir) : []
+  }
+  if (missing.length === 0) return undefined
   const line =
     `[vx] ${node.id}: outputs matched no files (${missing.join(', ')}) — the command exited 0 ` +
     `but never wrote ${missing.length === 1 ? 'it' : 'them'}, so the task fails and nothing is cached: ` +

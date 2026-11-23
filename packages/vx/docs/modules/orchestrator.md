@@ -557,6 +557,8 @@ export function executeTask(args: ExecuteArgs): Promise<TaskOutcome>
 export function settleProbedHit(args: ExecuteArgs): (() => TaskOutcome) | undefined
 // watch-kept.ts: an outcome a later `vx watch` cycle may keep while its key holds
 export function keepsOutcome(o: TaskOutcome): boolean
+// attempt-outputs.ts: the declared globs a run matched no file for, where the files are (a remote executor's worker)
+export function missingOutputs(sets: readonly OutputSet[]): string[]
 ```
 
 Cache-key derivation (`ComputeHashArgs`, `computeTaskHash`,
@@ -1253,9 +1255,9 @@ the file in the outputs of the task that writes it.
    NOW, after the command.
 2. The empty-set warning (`outputs matched no files`) — a status
    line, once, on this miss; `outputs: []` is a deliberate cached no-op
-   and says nothing. Every declared output is required, so
+   and says nothing. Every literal output path is required, so
    `missingOutputs` (attempt-outputs.ts) has already failed the attempt in `classifyExit`
-   when a glob matched nothing (a synchronous scan that stops at the
+   when one matched nothing, or when no output matched at all (a synchronous scan that stops at the
    first match: the async one waited its turn on a busy run's loop with
    the slot held, 1.1 ms a build on the bench's cold run); the warning is left to an additive task,
    whose globs matched files its upstream wrote. When only literal outputs matched and every

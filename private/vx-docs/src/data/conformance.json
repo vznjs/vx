@@ -16,6 +16,7 @@
         "key-not-derived",
         "lock-edges",
         "may-hold-match",
+        "output-unreadable",
         "peak-memory-exact",
         "prepared-key",
         "project-stage-lock",
@@ -278,6 +279,7 @@
         "vx-cache-server/r2-put",
         "vx-cache-server/start-line",
         "vx-cache-server/worker",
+        "vx-cache/fault-fuzz",
         "vx-cache/oidc-endpoint",
         "vx-cache/oidc-said-once",
         "vx-cache/refusals",
@@ -398,10 +400,12 @@
         "vx-migrate/migrate-nx-npm-env",
         "vx-migrate/migrate-nx-workspace",
         "vx-migrate/migrate-scripts-cli",
+        "vx-migrate/migrate-turbo-absent-outputs",
         "vx-migrate/migrate-turbo-dotenv-named",
         "vx-migrate/migrate-turbo-drop-turbo",
         "vx-migrate/migrate-turbo-env-named",
         "vx-migrate/migrate-turbo-env-wildcard",
+        "vx-migrate/migrate-turbo-folded-tracked-output",
         "vx-migrate/migrate-turbo-framework-env",
         "vx-migrate/migrate-turbo-framework-prefix",
         "vx-migrate/migrate-turbo-lockfile-note",
@@ -457,6 +461,7 @@
         "vx-migrate/nx-negated-implicit",
         "vx-migrate/nx-no-package-json",
         "vx-migrate/nx-npm-tag-deps",
+        "vx-migrate/nx-optional-outputs",
         "vx-migrate/nx-outputs-outside",
         "vx-migrate/nx-own-output-input",
         "vx-migrate/nx-parity-live",
@@ -501,6 +506,7 @@
         "vx-migrate/remote-breaker",
         "vx-migrate/remote-cache-carry",
         "vx-migrate/remote-cache-degrade",
+        "vx-migrate/remote-cache-fault-fuzz",
         "vx-migrate/remote-cache-foreign-403",
         "vx-migrate/remote-retry",
         "vx-migrate/script-command",
@@ -736,6 +742,7 @@
         "index-schema-race",
         "index-write-wait",
         "inflight",
+        "internal-error-report",
         "invocation-secret-mask",
         "kept-hits",
         "key-vx-version",
@@ -756,6 +763,7 @@
         "memory-ceiling-scale.unsafe",
         "memory-ceiling-watch.unsafe",
         "miss-save-marks",
+        "missing-outputs-label",
         "narrow-terminal",
         "no-auto-install.unsafe",
         "no-cache-word",
@@ -917,7 +925,9 @@
         "caching-doc-drift",
         "ci-workflow.unsafe",
         "cli-doc-drift",
+        "cli-flags-explained",
         "cli-json-doc",
+        "config-fields-explained",
         "config-levels-doc",
         "conflict-markers",
         "contract-versioning-doc",
@@ -954,6 +964,7 @@
         "plugin-hooks-doc-drift.unsafe",
         "plugin-hostile-answers",
         "plugin-options-documented.unsafe",
+        "plugin-options-explained.unsafe",
         "readme-imports.unsafe",
         "readme-links.unsafe",
         "readme-words.unsafe",
@@ -985,6 +996,7 @@
         "turbo-nx-wording.unsafe",
         "upgrading-page",
         "upstream-ledger.unsafe",
+        "vx-lines-coloured",
         "workflow-runner.unsafe"
       ]
     },
@@ -1006,13 +1018,13 @@
   "scores": {
     "vx": {
       "all": {
-        "pass": 2128,
-        "can": 2128,
+        "pass": 2134,
+        "can": 2134,
         "of": 2203
       },
       "correctness": {
-        "pass": 1713,
-        "can": 1713,
+        "pass": 1719,
+        "can": 1719,
         "of": 1780
       },
       "efficiency": {
@@ -1036,8 +1048,8 @@
         "of": 88
       },
       "failure": {
-        "pass": 154,
-        "can": 154,
+        "pass": 155,
+        "can": 155,
         "of": 167
       },
       "affected": {
@@ -1061,8 +1073,8 @@
         "of": 149
       },
       "outputs": {
-        "pass": 298,
-        "can": 298,
+        "pass": 303,
+        "can": 303,
         "of": 314
       },
       "report": {
@@ -11193,14 +11205,13 @@
       "category": "outputs",
       "kind": "correctness",
       "title": "A stray file under an output glob the task never wrote to is gone after a replay",
-      "why": "A replay must leave the output tree as the task left it, and here the task wrote nothing. A tool that skips the clean when the entry is empty leaves a stray file in place. That file then ships, or gets tested, as if this build had made it, and the next clean build disagrees.",
+      "why": "A replay must leave the output tree as the task left it, and here the task wrote nothing under build. A tool that restores only the files it stored leaves a stray file in place. That file then ships, or gets tested, as if this build had made it, and the next clean build disagrees.",
       "from": [
         "cache-declaration-warnings"
       ],
       "outcomes": {
         "vx": {
-          "status": "n/a",
-          "detail": "Every output vx declares is required: a pattern that matches no file fails the task."
+          "status": "pass"
         },
         "turbo": {
           "status": "fail",
@@ -11222,8 +11233,8 @@
         },
         "moon": {
           "status": "fail",
-          "step": 1,
-          "detail": "exited 1, expected success"
+          "step": 4,
+          "detail": "packages/a/build/stray.js exists, expected none"
         }
       }
     },
@@ -11239,8 +11250,7 @@
       ],
       "outcomes": {
         "vx": {
-          "status": "n/a",
-          "detail": "Every output vx declares is required: a pattern that matches no file fails the task."
+          "status": "pass"
         },
         "turbo": {
           "status": "fail",
@@ -11262,8 +11272,8 @@
         },
         "moon": {
           "status": "fail",
-          "step": 1,
-          "detail": "exited 1, expected success"
+          "step": 4,
+          "detail": "nowhere/stray.js exists, expected none"
         }
       }
     },
@@ -17223,7 +17233,7 @@
       "category": "outputs",
       "kind": "correctness",
       "title": "An output tree and another task’s files beside it, one in a directory whose name extends it build, cache and restore side by side",
-      "why": "`dist/a/**` claims only the `dist/a` folder, while the other task writes `dist/ab/c.js` and `dist/b.js`. `dist/ab` starts with the same letters but is a different folder. A string-prefix check reads it as inside `dist/a`, then refuses the pair or deletes the file on a restore. Paths are compared by whole segments.",
+      "why": "`dist/a/**` claims only the `dist/a` folder, while the other task writes `dist/ab/c.js`. `dist/ab` starts with the same letters but is a different folder. A string-prefix check reads it as inside `dist/a`, then refuses the pair or deletes the file on a restore. Paths are compared by whole segments.",
       "from": [
         "output-collision"
       ],
@@ -33117,8 +33127,7 @@
       ],
       "outcomes": {
         "vx": {
-          "status": "n/a",
-          "detail": "Every output vx declares is required: a pattern that matches no file fails the task."
+          "status": "pass"
         },
         "turbo": {
           "status": "pass"
@@ -71033,8 +71042,7 @@
       ],
       "outcomes": {
         "vx": {
-          "status": "n/a",
-          "detail": "Every output vx declares is required: a pattern that matches no file fails the task."
+          "status": "pass"
         },
         "turbo": {
           "status": "pass"
@@ -71065,8 +71073,7 @@
       ],
       "outcomes": {
         "vx": {
-          "status": "n/a",
-          "detail": "Every output vx declares is required: a pattern that matches no file fails the task."
+          "status": "pass"
         },
         "turbo": {
           "status": "fail",
@@ -71683,8 +71690,7 @@
       ],
       "outcomes": {
         "vx": {
-          "status": "n/a",
-          "detail": "Every output vx declares is required: a pattern that matches no file fails the task."
+          "status": "pass"
         },
         "turbo": {
           "status": "pass"

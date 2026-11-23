@@ -1,0 +1,42 @@
+---
+// Two things side by side (a miss and a hit, before and after): slots
+// `left` and `right`, titled by `leftTitle` and `rightTitle` (a prop named
+// like a slot reaches the component as the slot, not the string). Stacks on
+// a phone.
+interface Props {
+  leftTitle: string
+  rightTitle: string
+}
+---
+
+<div class="vx-compare">
+  <div class="vx-compare-col"><p class="vx-compare-title">{Astro.props.leftTitle}</p><slot name="left" /></div>
+  <div class="vx-compare-col"><p class="vx-compare-title">{Astro.props.rightTitle}</p><slot name="right" /></div>
+</div>
+
+<style>
+  .vx-compare {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+    gap: 1rem;
+    margin: 1.25rem 0;
+  }
+  .vx-compare-col {
+    border: 1px solid var(--vx-border);
+    border-radius: 12px;
+    padding: 0.9rem 1.1rem;
+    background: color-mix(in srgb, var(--vx-surface) 45%, var(--vx-bg));
+    min-width: 0;
+  }
+  .vx-compare-col > :global(*:first-child) {
+    margin-top: 0;
+  }
+  .vx-compare-title {
+    font-family: var(--vx-mono);
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--vx-accent);
+    margin: 0 0 0.5rem;
+  }
+</style>

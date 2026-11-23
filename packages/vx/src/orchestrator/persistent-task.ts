@@ -2,6 +2,7 @@
 // spawned, and held until `readyWhen` matches. Never cached and never routed
 // through an executor.
 
+import { tagged } from '../ui/index.js'
 import type { ExecConfig } from '../config.js'
 import {
   lineEnds,
@@ -319,10 +320,14 @@ export async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutc
     // (an embedder) never saw a bare stderr write at all. What waited on
     // an open line goes first.
     ends.end()
-    log.taskStderr(node, ends.own(`[vx] ${node.id}: not ready: ${message}\n`))
+    const paint = args.run.colors ?? { enabled: false }
+    log.taskStderr(
+      node,
+      ends.own(`${tagged('warn', `[vx] ${node.id}: not ready: ${message}`, paint)}\n`),
+    )
     if (err instanceof PersistentReadyError && err.reason === 'exited')
       for (const line of exitNotes(err.exitCode, spawn.child?.signalCode ?? undefined))
-        log.taskStderr(node, `${line}\n`)
+        log.taskStderr(node, `${tagged('warn', line, paint)}\n`)
     // The server is dead or being torn down, so the sweep on its exit may
     // already be running: ask the shared one rather than starting a second.
     for (const p of await sweptUntouched()) {

@@ -10,6 +10,7 @@
 //   save      task-save.ts       the one save verdict, carried out
 //   outcome   miss-outcome.ts    what it all adds up to
 
+import { tagged } from '../ui/index.js'
 import path from 'node:path'
 import { fsClockNow, WORKSPACE_OUTPUT_PREFIX } from '../memo/index.js'
 import {
@@ -426,7 +427,10 @@ async function fetchDeferredUpstream(
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     // Nothing ran: the note is the frame's first line.
-    args.log.taskStderr(args.node, `[vx] ${msg}\n`)
+    args.log.taskStderr(
+      args.node,
+      `${tagged('warn', `[vx] ${msg}`, args.run.colors ?? { enabled: false })}\n`,
+    )
     return {
       node: args.node,
       status: 'failed',

@@ -1,160 +1,653 @@
 ---
 title: Tasks
-description: Declare what each task runs and what must finish first.
+description: Teach vx what to run, in what order, and when to skip it.
 ---
 
+import { Aside, Badge, Tabs, TabItem } from '@astrojs/starlight/components'
+import Timeline from '../../../components/running/Timeline.astro'
+import ProjectMap from '../../../components/running/ProjectMap.astro'
 import Diagram from '../../../components/guide/diagram/Diagram.astro'
-import { taskGraph } from '../../../components/docs/pictures.js'
-import { Aside } from '@astrojs/starlight/components'
+import { cacheKey, taskGraph } from '../../../components/docs/pictures.js'
 import GraphExplorer from '../../../components/demos/GraphExplorer.astro'
+import demoPlan from '../../../components/demos/model/graph-explorer-demo.json'
+import DependsOn from '../../../components/demos/DependsOn.astro'
+import OutputRule from '../../../components/demos/OutputRule.astro'
+import { Levels, Deeper, Concept, Quiz, Takeaway, NextStep } from '../../../components/learn'
+import { TaskGraph, GlobTester, ConfigExplorer } from '../../../components/play'
+import ErrorFinder from '../../../components/docs/troubleshooting/ErrorFinder.astro'
 
-A task is one shell command in a project's `vx.config.ts`. `dependsOn`
-says what must finish first; vx runs the rest in parallel.
+Your two projects, `@demo/ui` and `@demo/web`, have no tasks yet. By the
+end of this page they lint, build in order, and skip work already done.
 
-```ts title="packages/app/vx.config.ts"
+```ts title="packages/ui/vx.config.ts"
 import { defineProject } from '@vzn/vx/config'
 
 export default defineProject({
   tasks: {
-    codegen: {
-      exec: { command: 'graphql-codegen' },
-      inputs: { files: ['schema.graphql'] }, outputs: { files: ['src/gen/**'] }, cache: true,
+    lint: {
+      exec: { command: 'oxlint src' },
     },
-    build: {
-      description: 'bundle the app into dist/',
-      dependsOn: ['codegen', '^build'],
-      exec: { command: 'vite build' },
-      // codegen's output reaches this key through codegen's own key; a key
-      // that read it could not be known until codegen ran, so vx refuses it.
-      inputs: { files: ['src/**', '!src/gen/**'] }, outputs: { files: ['dist/**'] }, cache: true,
-    },
-    e2e: {
-      dependsOn: ['build', 'api#build'],
-      exec: { command: 'playwright test', timeout: '10m', retries: 1 },
-    },
-    // A group: no command, it only runs its dependencies.
-    ci: { dependsOn: ['build', 'e2e'] },
   },
 })
 ```
 
-<Diagram {...taskGraph} />
+<Levels />
 
----
+<Concept term="Task">
+  One command in one project, with a name. vx decides when it runs, and
+  whether it needs to run at all.
+</Concept>
 
-## `dependsOn`
+## 1. Run a command
 
-| `dependsOn`   | Runs first                                                        |
-| ------------- | ----------------------------------------------------------------- |
-| `'build'`     | `build` in this package                                           |
-| `'^build'`    | `build` in each package this one depends on ([a lockfile plugin's edges](../lockfiles/)) |
-| `'api#build'` | `build` in the `api` package                                      |
-| `'build.*'`   | every task in this package whose name matches                     |
-
-A task-name pattern is allowed: `dependsOn: ['build.*']`, or `'^build.*'`.
-Bare wildcards and negation (`*`, `!task`) are not.
-A cycle or a missing `'pkg#task'` is an error.
-
----
-
-## Groups
-
-A task with no `exec` is a group: it only runs its dependencies.
-
-```ts
-ci: { dependsOn: ['build', 'e2e'] },
-```
-
-<Aside title="A package with no build">
-  A package that declares no `build` gets a default one: a group behind
-  `^build`, keyed on all its files, so editing a package consumed as source
-  re-runs its dependents. `vx show` lists it as a group.
-</Aside>
-
----
-
-## When a task fails
-
-| Flag          | vx                                                          |
-| ------------- | ----------------------------------------------------------- |
-| (none)        | skips its transitive dependents and runs the rest           |
-| `--fail-fast` | kills the running tasks and stops the run at once           |
-
-Without the flag, a broken `@demo/ui#build` skips the two tasks that need
-it, and each row names the task that blocked it:
+The task's name is `lint`; `exec.command` is what runs, from the project's
+folder. Run it in every project that has it:
 
 ```ansi
-[2m$[0m vx run build test --all
+[2m$[0m vx run lint --all
 
-[4m[58;2;110;118;129m  [1m[38;2;167;139;250mTasks[0m[4m[58;2;110;118;129m     [2mstatus  cache     ±usual    time   cpu    mem outputs  blocks worker         task[0m[4m[58;2;110;118;129m                           [0m
-            [38;2;239;68;68mfailed[0m  [2mmiss[0m       [38;2;34;197;94m−68ms[0m   [38;2;203;213;225m212ms[0m  [2m117%[0m   [2m91MB[0m      [2m0B[0m       [38;2;203;213;225m2[0m [2mlocal[0m          [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m
-            [38;2;234;179;8mskipped[0m [2m—[0m              [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2m—[0m              [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m [2m• blocked by @demo/ui#build[0m
-            [38;2;234;179;8mskipped[0m [2m—[0m              [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2m—[0m              [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;96;165;250mtest[0m [2m• blocked by @demo/ui#build[0m
-
-[2m┌─[0m [1m[38;2;192;132;252m@demo/ui[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m>[0m [1m[38;2;239;68;68mfailed (exit 1)[0m
-
-[2mpackages/ui $ vite build[0m
-
-[2m├─[0m [1mOUTPUT[0m [2m────────────────────────────────────────────────────[0m
-
-[38;2;6;182;212mvite v7.1.5 [38;2;34;197;94mbuilding for production...[38;2;6;182;212m[39m
-transforming...
-[38;2;34;197;94m✓[39m 1 modules transformed.
-[38;2;239;68;68m✗[39m Build failed in 14ms
-[38;2;239;68;68merror during build:
-[38;2;239;68;68msrc/index.js (2:0): Expected ',', got '<eof>'[38;2;239;68;68m
-file: [38;2;6;182;212m/repo/packages/ui/src/index.js:2:0[38;2;239;68;68m
-[38;2;234;179;8m
-[38;2;239;68;68m1: export const greet = (name => name[0m
-[38;2;239;68;68m
-
-[2m└─[0m [1m[38;2;192;132;252m@demo/ui[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(212ms)[0m [1m[38;2;239;68;68mfailed (exit 1)[0m
+[4m  [0m[1;4;38;2;167;139;250mTasks[0m[4m     [0m[4;38;2;148;163;184mstatus  cache       time   task[0m[4m[0m
+            [38;2;34;197;94msuccess[0m [38;2;148;163;184mno-cache[0m    [38;2;203;213;225m58ms[0m   [38;2;192;132;252m@demo/ui[0m[38;2;148;163;184m#[0m[38;2;232;121;249mlint[0m
 ```
 
-```sh
-vx run test --all --fail-fast
-```
+The row says `success`. `no-cache` means vx ran it fresh, because you
+did not ask it to cache.
 
-A killed task ends `aborted` and saves nothing.
+<Takeaway>run any command through vx: a linter, a test runner, a script.</Takeaway>
+
+<Deeper level="patterns" title="Many steps, and a label">
+
+`exec.command` is one shell line. Join steps with `&&`:
+`'vite build && cp README.md dist/'`. One command per task keeps each
+step cacheable on its own, so two steps that cache apart are two tasks.
+
+`description` is a one-line label for `vx run`'s picker and `--dry`:
+`description: 'bundle the app into dist/'`.
+
+</Deeper>
 
 ---
 
-## Explore your graph
+<a id="dependson"></a>
 
-See what each task waits on and what waits on it, in your own workspace:
+## 2. Put tasks in order
+
+`web` imports `ui`, so `ui` must build first. `dependsOn` says so:
+
+```ts title="packages/web/vx.config.ts" mark={6}
+import { defineProject } from '@vzn/vx/config'
+
+export default defineProject({
+  tasks: {
+    build: {
+      dependsOn: ['^build'],
+      exec: { command: 'vite build' },
+    },
+  },
+})
+```
+
+The `^` means "`build` in **every project I import**". vx reads who
+imports whom from your lockfile, through a [lockfile plugin](../lockfiles/).
+
+```ansi
+[2m$[0m vx run build --all
+
+[4m  [0m[1;4;38;2;167;139;250mTasks[0m[4m     [0m[4;38;2;148;163;184mstatus  cache       time   task[0m[4m[0m
+            [38;2;34;197;94msuccess[0m [38;2;148;163;184mno-cache[0m   [38;2;203;213;225m321ms[0m   [38;2;192;132;252m@demo/ui[0m[38;2;148;163;184m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;34;197;94msuccess[0m [38;2;148;163;184mno-cache[0m   [38;2;203;213;225m199ms[0m   [38;2;244;114;182m@demo/web[0m[38;2;148;163;184m#[0m[38;2;244;114;182mbuild[0m
+```
+
+`@demo/ui#build` ran first and held back `@demo/web#build` until it was
+done. Tasks with nothing between them run at the same time.
+
+Try each kind of entry on `web#build` here:
+
+<DependsOn />
+
+| Entry | Waits for |
+| --- | --- |
+| `'lint'` | `lint` in this project |
+| `'^build'` | `build` in every project this one imports |
+| `'api#build'` | `build` in the `api` project |
+| `'gen-*'` | every task in this project whose name matches |
+| `'^gen-*'` | matching tasks in every project this one imports |
+
+<Quiz q="web imports ui. Which entry on web#test runs ui#build first?">
+  `'^build'`. Plain `'build'` would wait for `web#build` instead.
+</Quiz>
+
+<Aside type="caution" title="Refused before anything runs">
+  A task-name pattern is allowed: `dependsOn: ['build.*']`, or `'^build.*'`.
+  Bare wildcards and negation (`*`, `!task`) are refused, as are cycles and
+  a missing `'api#build'`.
+</Aside>
+
+<Takeaway>build a library before the app that imports it, every time.</Takeaway>
+
+Click a task to see what runs first, or edit a file to see what runs again:
+
+<TaskGraph task="@demo/web#build" />
+
+<a id="build-a-projects-dependencies-first"></a>
+
+<Deeper level="patterns" title="Watch the order on a real run">
+
+`@demo/web` uses `@demo/ui`. `web` imports `ui`
+through its `dist/`, so `vite build` in `web` needs `ui` built.
+
+<ProjectMap picked={['web', 'ui']} label="@demo/web uses @demo/ui" caption="Arrows point at the package being used." />
+
+Pick a tab and watch the run.
+
+<Tabs>
+<TabItem label="Without ^build">
+
+<Timeline
+  label="Both builds start at once; web fails at 187 ms because ui is not built yet; ui finishes at 194 ms"
+  end={420}
+  unit="ms"
+  lanes={[
+    { task: '@demo/ui#build', bars: [{ from: 0, to: 194, tone: 'ok', label: 'built' }] },
+    { task: '@demo/web#build', bars: [{ from: 0, to: 187, tone: 'danger', label: 'failed' }] },
+  ]}
+/>
+
+Both start at once. `vite` looks for `@demo/ui` before it is built:
+
+```ansi
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mTasks[0m[4m[58;2;110;118;129m     [2mstatus  cache       time   task[0m[4m[58;2;110;118;129m                 [0m
+            [38;2;239;68;68mfailed[0m  [2mmiss[0m       [38;2;203;213;225m187ms[0m   [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m       [38;2;203;213;225m194ms[0m   [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m
+
+[2m┌─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m>[0m [1m[38;2;239;68;68mfailed (exit 1)[0m
+
+[2mpackages/web $ vite build[0m
+
+[2m├─[0m [1mOUTPUT[0m [2m──────────────────────────────────────────────────[0m
+
+[36mvite v8.3.8 [32mbuilding client environment for production...[36m[39m
+transforming...
+[32m✓[0m 4 modules transformed.
+rendering chunks...
+computing gzip size...
+[2mdist/[0m[32mindex.html                [0m[1;2m0.13 kB[0m[2m │ gzip: 0.13 kB[0m
+[2mdist/[0m[2massets/[0m[36mindex-BSUu6s4j.js  [0m[1;2m0.76 kB[0m[2m │ gzip: 0.44 kB[0m
+
+[31m✗[39m Build failed in 40ms
+[31merror during build:
+[31mBuild failed with 1 error:
+
+[38;2;239;68;68mError: [vite]: Rolldown failed to resolve import "@demo/ui" from "/repo/packages/web/src/index.ts".[0m
+
+[2m└─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(187ms)[0m [1m[38;2;239;68;68mfailed (exit 1)[0m
+```
+
+</TabItem>
+<TabItem label="With ^build">
+
+<Timeline
+  label="ui builds first, 0 to 184 ms; web starts after it and builds by 383 ms"
+  end={420}
+  unit="ms"
+  lanes={[
+    { task: '@demo/ui#build', bars: [{ from: 0, to: 184, tone: 'ok', label: 'built' }] },
+    { task: '@demo/web#build', bars: [{ from: 184, to: 383, tone: 'ok', label: 'built' }] },
+  ]}
+/>
+
+`ui` builds first, then `web`:
+
+```ansi
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mTasks[0m[4m[58;2;110;118;129m     [2mstatus  cache       time   task[0m[4m[58;2;110;118;129m                 [0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m       [38;2;203;213;225m184ms[0m   [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m       [38;2;203;213;225m199ms[0m   [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m
+```
+
+</TabItem>
+</Tabs>
+
+<Takeaway>put every package after the packages it uses, with one line.</Takeaway>
+
+</Deeper>
+
+---
+
+## 3. Skip work already done
+
+Add three fields and vx skips a build whose files did not change:
+
+```ts title="packages/ui/vx.config.ts" ins={3-5}
+build: {
+  exec: { command: 'vite build' },
+  inputs: { files: ['src/**', 'vite.config.ts'] },
+  outputs: { files: ['dist/index.js'] },
+  cache: true,
+},
+```
+
+| Field | Says |
+| --- | --- |
+| `inputs.files` | the files that change the result |
+| `outputs.files` | the files the command makes |
+| `cache` | `true` to save and reuse them |
+
+vx hashes the inputs into a **key**. A key it has seen restores the
+outputs instead of running:
+
+<Diagram {...cacheKey} />
+
+Give `web`'s build the same three fields, then run it twice. The second
+run finds both keys:
+
+```ansi
+[2m$[0m vx run build --all
+
+[4m  [0m[1;4;38;2;167;139;250mSummary[0m[4m                                       [0m[4;38;2;148;163;184mvx 0.0.0[0m
+  [38;2;148;163;184mtasks   [0m  [38;2;34;197;94m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
+            [38;2;34;197;94m2 success[0m [38;2;148;163;184m·[0m [38;2;148;163;184m2 total[0m
+  [38;2;148;163;184mcache   [0m  [38;2;34;197;94m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
+            [38;2;148;163;184mlocal[0m [38;2;34;197;94m2✓[0m
+  [38;2;148;163;184mtime    [0m  20ms
+```
+
+`2✓` is two hits. The run took 20 ms, because no `vite build` ran.
+
+Type globs and watch which files a task reads. Files of other projects never match:
+
+<GlobTester mode="inputs" project="@demo/web" />
+
+### Outputs that must exist
+
+Declared outputs are a promise. When the command ends:
+
+- a plain path, like `dist/index.js`, **must exist**;
+- a wildcard, like `coverage/**`, may match nothing;
+- but **at least one** declared output must exist.
+
+<OutputRule />
+
+If `vite build` writes `dist/index.js` but you declared `dist/ui.js`, the
+task fails and nothing is saved:
+
+```ansi
+[2m$[0m vx run build --filter @demo/ui
+
+[4m  [0m[1;4;38;2;167;139;250mTasks[0m[4m     [0m[4;38;2;148;163;184mstatus  cache       time   task[0m[4m[0m
+            [38;2;239;68;68mfailed[0m  [38;2;148;163;184mmiss[0m       [38;2;203;213;225m271ms[0m   [38;2;192;132;252m@demo/ui[0m[38;2;148;163;184m#[0m[38;2;244;114;182mbuild[0m
+
+[38;2;148;163;184m┌─[0m [1;38;2;192;132;252m@demo/ui[0m[38;2;148;163;184m#[0m[1;38;2;244;114;182mbuild[0m [38;2;148;163;184m>[0m [1;38;2;239;68;68mfailed (exited 0, no file matched di[0m[1;38;2;239;68;68mst/ui.js)[0m
+
+[38;2;148;163;184mpackages/ui $ vite build[0m
+
+[38;2;148;163;184m├─[0m [1mOUTPUT[0m [38;2;148;163;184m──────────────────────────────────────────────[0m
+
+[36mvite v8.3.8 [0m[32mbuilding client environment for production..[0m[32m.[0m
+transforming...
+[32m✓[0m 2 modules transformed.
+rendering chunks...
+computing gzip size...
+[38;2;148;163;184mdist/[0m[36mindex.js  [0m[1;38;2;148;163;184m0.06 kB[0m[38;2;148;163;184m │ gzip: 0.08 kB[0m
+
+[32m✓ built in 65ms[0m
+
+[38;2;148;163;184m└─[0m [1;38;2;192;132;252m@demo/ui[0m[38;2;148;163;184m#[0m[1;38;2;244;114;182mbuild[0m [38;2;148;163;184m──[0m [38;2;148;163;184m(271ms)[0m [1;38;2;239;68;68mfailed (exited 0, no file m[0m[1;38;2;239;68;68matched dist/ui.js)[0m
+```
+
+The row names the missing file. Fix the path, or the command.
+
+<Takeaway>make a second build take milliseconds, restoring exactly the files the command made.</Takeaway>
+
+<Deeper level="details" title="Everything a key can read">
+
+| Field | What it adds to the key |
+| --- | --- |
+| `inputs.files` <Badge text="required" /> | project files, as globs; `!` excludes; `[]` for none |
+| `inputs.workspaceFiles` | files outside the project, from the workspace root (a root `tsconfig.json`) |
+| `inputs.env` | the values of these variables (does not pass them to the command) |
+| `inputs.tasks` | which upstream tasks' keys count; default all (`['*', '^*']`), `[]` for none, `'!name'` drops one |
+| `inputs.runtime` | the output of commands run in the project at hash time (`'node -v'`) |
+| `inputs.workspaceRuntime` | the same, run once at the root for the whole run |
+| `inputs.stability.strategy` | what a write to an input mid-run means: `'immutable'` (default) never saves, `'mutable'` allows a rewrite to the same bytes, `'unchecked'` skips the check |
+| `inputs.stability.severity` | `'warn'` (default) keeps the run green, `'error'` fails the task |
+
+An upstream task's key counts, never its files. That is why `inputs.files`
+leaves out a file another task generates: list that task in `dependsOn`
+instead.
+
+| Field | Does |
+| --- | --- |
+| `outputs.files` <Badge text="required" /> | project files the task makes; plain paths must exist, and at least one entry must match; `[]` when it makes none |
+| `outputs.workspaceFiles` | files it makes outside the project, from the workspace root |
+| `outputs.clean` | `false` keeps old outputs for the command (an incremental build); default `true` removes them first |
+
+`exec.remote` and `exec.worker` are the two `exec` fields left out of the
+key: where a task runs says nothing about what it makes.
+
+Every other field is in the key, so editing even `description` re-runs
+the task once. More in [Caching](../caching/).
+
+A task can read and write outside its project, named from the workspace
+root. Here a test reads the shared config and writes coverage at the root:
+
+```ts title="packages/web/vx.config.ts" mark={9,11}
+import { defineProject } from '@vzn/vx/config'
+
+export default defineProject({
+  tasks: {
+    test: {
+      exec: { command: 'vitest run --coverage --coverage.reportsDirectory=../../coverage/web' },
+      inputs: {
+        files: ['src/**', 'vitest.config.ts'],
+        workspaceFiles: ['tsconfig.base.json'],
+      },
+      outputs: { files: [], workspaceFiles: ['coverage/web/**'] },
+      cache: true,
+    },
+  },
+})
+```
+
+</Deeper>
+
+---
+
+## 4. Give the command its variables
+
+A task sees **no** variable from your shell unless you pass it:
+
+```ts title="packages/web/vx.config.ts" mark={4-8}
+build: {
+  exec: {
+    command: 'vite build',
+    env: {
+      define: { NODE_ENV: 'production' },
+      passThrough: ['CI', 'VITE_API_URL', 'SENTRY_AUTH_TOKEN'],
+      secret: ['SENTRY_AUTH_TOKEN'],
+    },
+  },
+  inputs: { files: ['src/**', 'index.html'], env: ['VITE_API_URL'] },
+},
+```
+
+| Field | The command sees | In the key |
+| --- | --- | --- |
+| `exec.env.define` | this exact value | yes |
+| `exec.env.passThrough` | your shell's value | no |
+| `exec.env.secret` | nothing new; a name it also gets is shown as `***` | no |
+| `inputs.env` | nothing (so `VITE_API_URL` is in `passThrough` too) | yes |
+
+<Aside type="note">
+  Names with `TOKEN`, `SECRET`, `KEY` or `PASSWORD` are masked anyway.
+  Full rules in [Environment variables](../environment-variables/).
+</Aside>
+
+<Takeaway>hand a build its API URL and a secret, and know which change re-runs it.</Takeaway>
+
+---
+
+<a id="when-a-task-fails"></a>
+
+## 5. Handle failures and hangs
+
+By default a failed task skips its transitive dependents and runs the
+rest, so one run shows every failure:
+
+```ansi
+[2m$[0m vx run build --all
+
+[4m  [0m[1;4;38;2;167;139;250mTasks[0m[4m     [0m[4;38;2;148;163;184mstatus  cache       time   task[0m[4m[0m
+            [38;2;239;68;68mfailed[0m  [38;2;148;163;184mmiss[0m       [38;2;203;213;225m169ms[0m   [38;2;192;132;252m@demo/ui[0m[38;2;148;163;184m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;234;179;8mskipped[0m [38;2;148;163;184m—[0m              [38;2;148;163;184m—[0m   [38;2;244;114;182m@demo/web[0m[38;2;148;163;184m#[0m[38;2;244;114;182mbuild[0m [38;2;148;163;184m•[0m[38;2;148;163;184m blocked by @demo/ui#build[0m
+
+[38;2;148;163;184m┌─[0m [1;38;2;192;132;252m@demo/ui[0m[38;2;148;163;184m#[0m[1;38;2;244;114;182mbuild[0m [38;2;148;163;184m>[0m [1;38;2;239;68;68mfailed (exit 1)[0m
+
+[38;2;148;163;184mpackages/ui $ vite build[0m
+
+[38;2;148;163;184m├─[0m [1mOUTPUT[0m [38;2;148;163;184m──────────────────────────────────────────────[0m
+
+[36mvite v8.3.8 [0m[32mbuilding client environment for production..[0m[32m.[0m
+transforming...
+[32m✓[0m 1 modules transformed.
+[31m✗[0m Build failed in 16ms
+[31merror during build:[0m
+[31mBuild failed with 1 error:[0m
+
+[31m[builtin:vite-transform] [0mExpected `)` but found `EOF`
+   [38;2;148;148;148m╭─[[0m src/index.ts:1:36 [38;2;148;148;148m][0m
+   [38;2;148;148;148m│[0m
+ [38;2;148;148;148m1 │[0m [38;2;178;178;178mexport const greet = (name => name[0m
+ [38;2;88;88;88m  │[0m                                    │
+ [38;2;88;88;88m  │[0m                                    ╰─ `)` expected
+[38;2;148;148;148m───╯[0m
+
+
+[38;2;148;163;184m└─[0m [1;38;2;192;132;252m@demo/ui[0m[38;2;148;163;184m#[0m[1;38;2;244;114;182mbuild[0m [38;2;148;163;184m──[0m [38;2;148;163;184m(169ms)[0m [1;38;2;239;68;68mfailed (exit 1)[0m
+```
+
+The skipped row names its blocker: `blocked by @demo/ui#build`. To
+stop everything at the first failure, add `--fail-fast`.
+
+Give a slow, flaky task a limit and a second chance:
+
+```ts title="packages/web/vx.config.ts"
+e2e: {
+  dependsOn: ['build'],
+  exec: { command: 'playwright test', timeout: '10m', retries: 1 },
+},
+```
+
+| Field | Does | Default |
+| --- | --- | --- |
+| `exec.timeout` | stops the task after this long; it fails and is not cached | no limit |
+| `exec.retries` | runs a failed task again, up to this many more times | `0` |
+
+<Takeaway>see every broken task in one run, and stop a hung one before it eats your CI minutes.</Takeaway>
+
+---
+
+## 6. Servers, prompts and other machines
+
+Some commands never exit, read the keyboard, or need a certain machine.
+Each has one field:
+
+```ts title="packages/web/vx.config.ts"
+dev: {
+  dependsOn: ['^build'],
+  exec: { command: 'vite', persistent: { readyWhen: 'Local:' } },
+},
+```
+
+vx starts `vite`, waits for the line holding `Local:`, then starts what
+waits on `dev`. It stops the server when the rest of the run ends.
+
+| Field | For | More |
+| --- | --- | --- |
+| `exec.persistent` | a server or watcher; `readyWhen` is a regex for the ready line | [Dev servers](../dev-servers/) |
+| `exec.interactive` | a prompt, a REPL, a TUI; runs alone, never cached | |
+| `exec.platforms` | only these machines: `linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64`; skipped elsewhere | |
+| `exec.sandbox` | only the files and network you allow | [Sandboxing](../sandboxing/) |
+| `exec.remote` | `false` keeps it on this machine; `'only'` never runs it here | [Remote execution](../remote-execution/) |
+| `exec.worker` | the worker type to run on, such as `'ubuntu'` | [Distributed task execution](../distributed-task-execution/) |
+
+<Takeaway>start a dev server after its libraries build, and keep a macOS-only task off Linux.</Takeaway>
+
+---
+
+## 7. Name a set of tasks
+
+<Concept term="Group">
+  A task with no `exec`. It runs nothing itself, only what it depends on.
+</Concept>
+
+```ts title="packages/web/vx.config.ts"
+ci: { dependsOn: ['lint', 'build', 'test'] },
+```
+
+`vx run ci` runs all three, each after what it needs:
+
+<Diagram {...taskGraph} />
+
+A group with `inputs` gets a key too, so tasks that depend on it re-run
+when those files change.
+
+<Aside type="note" title="A project with no build">
+  A project with no `build` task gets one: a group keyed on all its files.
+  So `^build` still re-runs `web` when `ui`'s source changes.
+</Aside>
+
+<Takeaway>run your whole check with one name.</Takeaway>
+
+---
+
+## 8. Explore your own graph
+
+Print what a run would do, without running it:
 
 ```sh
 vx run build --all --dry --format json > plan.json
 ```
 
-Drop `plan.json` below, or paste it, then type a task. Nothing is uploaded.
+A sample plan is open below. Drop your own `plan.json` on it, then type
+a task to see what it waits for. Nothing is uploaded.
 
-<GraphExplorer />
+<GraphExplorer sample={JSON.stringify(demoPlan)} pick="@demo/web#build" />
+
+<Takeaway>see what any task in your own workspace waits for, and why.</Takeaway>
 
 ---
 
-<details>
-<summary>Every <code>exec</code> field</summary>
+<Deeper level="details" title="Every task field">
 
-| Field             | Does                                                          |
-| ----------------- | ------------------------------------------------------------- |
-| `exec.command`    | the one shell command, run in the package's directory (join steps with `&&`) |
-| `exec.env`        | what the command sees ([Environment variables](../environment-variables/))       |
-| `exec.timeout`    | kill the task after this long                                 |
-| `exec.retries`    | re-run a failed task this many times                          |
-| `exec.persistent` | a server or watcher that does not exit ([Dev servers](../dev-servers/))  |
-| `exec.sandbox`    | only the declared files and network ([Sandboxing](../../docs/sandboxing/)) |
-| `exec.interactive` | reads the terminal: a prompt, a REPL, a TUI; runs alone, never cached |
-| `exec.platforms`  | the machines it runs on, such as `['darwin-arm64']`; elsewhere skipped, on CI refused |
-| `exec.remote`     | `false` keeps it here; `'only'` for a remote pool ([Remote execution](../../docs/remote-execution/)) |
-| `exec.worker`     | the [distributed](../distributed-task-execution/) worker type it runs on, such as `'ubuntu'`; ignored on your machine |
+Click any field to read what it does:
 
-`exec.remote` and `exec.worker` are the two `exec` fields left out of the
-key: where a task ran says nothing about what it made.
+<ConfigExplorer area="task" />
 
-Every other field is in the key, so editing even `description` re-runs
-the task once.
+| Field | Does |
+| --- | --- |
+| `description`<br/><small>string</small> | label in the picker and `--dry`. Default: none |
+| `dependsOn`<br/><small>string[]</small> | tasks that finish first ([section 2](#2-put-tasks-in-order)). Default: `[]` |
+| `exec`<br/><small>object</small> | what runs; no `exec` makes a group. Default: none |
+| `exec.env`<br/><small>object</small> | the variables the command sees ([section 4](#4-give-the-command-its-variables)). Default: none |
+| `exec.command`<br/><small>string</small> | the shell command, run in the project folder. Default: required |
+| `exec.env.define`<br/><small>record</small> | set values, in the key. Default: none |
+| `exec.env.passThrough`<br/><small>string[]</small> | variables passed from your shell. Default: none |
+| `exec.env.secret`<br/><small>string[]</small> | masks these values in output; pass them too. Default: none |
+| `exec.timeout`<br/><small>`'30s'`, `'10m'`…</small> | stop after this long. Default: no limit |
+| `exec.retries`<br/><small>number</small> | extra attempts after a failure. Default: `0` |
+| `exec.persistent`<br/><small>object</small> | a server or watcher: `{}`, or `{ readyWhen }`. Default: not persistent |
+| `exec.persistent.readyWhen`<br/><small>regex string</small> | the line that means ready. Default: ready at start |
+| `exec.interactive`<br/><small>boolean</small> | reads the terminal; runs alone. Default: `false` |
+| `exec.platforms`<br/><small>string[]</small> | machines it runs on. Default: anywhere |
+| `exec.sandbox`<br/><small>object</small> | confine reads, writes, network ([Sandboxing](../sandboxing/)). Default: none |
+| `exec.remote`<br/><small>`true`, `false`, `'only'`</small> | may run on a remote machine. Default: `true` |
+| `exec.worker`<br/><small>string</small> | worker type for distributed task execution. Default: first that fits |
+| `inputs.files`<br/><small>string[]</small> | project files in the key; `[]` for none. Required once `inputs` is set |
+| `inputs.workspaceFiles`<br/><small>string[]</small> | root-relative files in the key. Default: none |
+| `inputs.env`<br/><small>string[]</small> | variable values in the key. Default: none |
+| `inputs.tasks`<br/><small>string[]</small> | upstream keys in the key. Default: `['*', '^*']` |
+| `inputs.runtime`<br/><small>string[]</small> | command output in the key. Default: none |
+| `inputs.workspaceRuntime`<br/><small>string[]</small> | root command output in the key, once per run. Default: none |
+| `inputs.stability.strategy`<br/><small>`'immutable'`, `'mutable'`, `'unchecked'`</small> | input written mid-run. Default: `'immutable'` |
+| `inputs.stability.severity`<br/><small>`'warn'`, `'error'`</small> | what that write does to the run. Default: `'warn'` |
+| `outputs.files`<br/><small>string[]</small> | files saved and restored; `[]` for none. Required once `outputs` is set |
+| `outputs.workspaceFiles`<br/><small>string[]</small> | root-relative outputs. Default: none |
+| `outputs.clean`<br/><small>boolean</small> | remove old outputs before a miss runs. Default: `true` |
+| `cache`<br/><small>boolean</small> | save and reuse; needs `exec`, `inputs` and `outputs`, which a task without `cache` may leave out. Default: `false` |
 
-</details>
+One task with every field set, to copy from:
 
-See [Caching](../caching/) to skip a task whose inputs did not change, and [vx.config.ts](../../schema/) for every field.
+```ts title="packages/web/vx.config.ts"
+import { defineProject } from '@vzn/vx/config'
+
+export default defineProject({
+  tasks: {
+    lint: { exec: { command: 'oxlint src' } },
+    e2e: {
+      description: 'browser tests against the preview build',
+      dependsOn: ['lint', '^build'],
+      exec: {
+        command: 'playwright test',
+        env: { define: { CI: '1' }, passThrough: ['HOME'], secret: ['SENTRY_AUTH_TOKEN'] },
+        timeout: '10m',
+        retries: 1,
+        platforms: ['linux-x64', 'darwin-arm64'],
+        remote: false,
+        worker: 'ubuntu',
+        sandbox: {
+          allow: { read: ['.'], write: ['test-results'], network: ['localhost:4173'] },
+          deny: { network: ['*.analytics.example.com'] },
+          ignore: { read: ['/etc/ssl/**'] },
+        },
+      },
+      inputs: {
+        files: ['src/**', 'e2e/**'],
+        workspaceFiles: ['tsconfig.base.json'],
+        env: ['BASE_URL'],
+        tasks: ['*', '^*'],
+        runtime: ['playwright --version'],
+        workspaceRuntime: ['node -v'],
+        stability: { strategy: 'immutable', severity: 'warn' },
+      },
+      outputs: { files: ['test-results/**'], workspaceFiles: ['reports/web-e2e/**'], clean: true },
+      cache: true,
+    },
+  },
+})
+```
+
+`exec.persistent` and `exec.interactive` are left out: a cached task can
+use neither.
+
+`exec.sandbox` has its own fields (`allow`, `deny`, `ignore`, `hermetic`,
+`weakerWhenNested`, `weakerNetworkIsolation`): see [Sandboxing](../sandboxing/).
+
+Beside `tasks`, a project's `vx.config.ts` takes two fields:
+
+| Field | Does |
+| --- | --- |
+| `name`<br/><small>string</small> | the name filters and `dependsOn` use. Default: the `package.json` name, else the folder path |
+| `tags`<br/><small>string[]</small> | labels for `--filter tag:<name>`; in no key. Default: none |
+
+Workspace-wide defaults for `timeout`, `retries` and `outputs.clean`
+live in [Workspace](../workspace/).
+
+</Deeper>
+
+<Deeper level="details" title="When it goes wrong">
+
+`vx lock` checks every config before it writes the lock. A mistake stops it and points at the line:
+
+```ansi title="vx lock"
+[38;2;239;68;68m✗[0m [1mvx lock[0m  [38;2;203;213;225mlock not written[0m
+
+  [1mpackages/web/vx.config.ts:7:7[0m
+  [38;2;203;213;225mtasks.build.outputs must be an object (fields: clean, files, workspaceFiles), not an array[0m
+
+    5 |       exec: { command: 'vite build' },
+    6 |       inputs: { files: ['src/**', 'vite.config.ts'] },
+  > 7 |       outputs: ['dist/**'],
+      |       ^
+
+  [2mfix[0m  [1muse `{ files: [...] }`[0m
+```
+
+Paste what vx printed, or open a code:
+
+<ErrorFinder codes={['VX_E_CONFIG', 'VX_E_CYCLE', 'VX_E_DEPENDS_ON', 'VX_E_OUTPUT_OVERLAP', 'VX_E_INPUT_IS_OUTPUT', 'VX_E_NESTED_INPUT', 'VX_E_NESTED_OUTPUT', 'VX_E_DEPENDENCY_RULE']} />
+
+- **`… has unknown field "<key>"`.** A typo, or a Turbo or Nx key. The message lists the fields vx allows.
+- **`dependsOn cycle`.** Two tasks wait for each other: remove one `dependsOn` from the loop it prints.
+- **`dependsOn …, but` `no project is named …` / `… declares no task …`.** Use the name it suggests, or add that task to that package.
+- **`timed out after …`.** The task ran past its time limit: raise `exec.timeout` or `--timeout` ([Handle failures and hangs](#5-handle-failures-and-hangs)).
+
+- **`inputs matched no files`.** The globs find nothing. Paths are
+  relative to the project's folder: fix them.
+- **`outputs matched no files`.** The command never wrote what
+  `outputs.files` names: see [Skip work already done](#3-skip-work-already-done).
+
+<Takeaway>fix any config `vx lock` refuses, from the line it points at.</Takeaway>
+
+</Deeper>
+
+<NextStep href="../environment-variables/" title="Environment variables">Choose exactly what each command sees, and what re-runs it.</NextStep>

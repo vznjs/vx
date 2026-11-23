@@ -1,0 +1,300 @@
+---
+// The Troubleshooting page's error finder: every VX_E_ code on the path a
+// command takes (start → lock → run → tasks → ask), or the `codes` a
+// chapter page names. Every card renders without JavaScript; the script
+// only filters by stage and by typed text.
+import { ERRORS as ALL, STAGES as ALL_STAGES } from './errors'
+
+interface Props {
+  codes?: string[]
+}
+const pick = Astro.props.codes
+const ERRORS = pick === undefined ? ALL : ALL.filter((e) => pick.includes(e.code))
+const STAGES = ALL_STAGES.filter((s) => ERRORS.some((e) => e.stage === s.id))
+
+const code = (text: string): string =>
+  text
+    .split('`')
+    .map((part, i) =>
+      i % 2 === 1
+        ? `<code>${escape(part)}</code>`
+        : escape(part),
+    )
+    .join('')
+function escape(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+}
+const count = (id: string): number => ERRORS.filter((e) => e.stage === id).length
+---
+
+<div class="vx-ef not-content" data-error-finder>
+  <label class="vx-ef-search">
+    <span class="sr-only">Search errors</span>
+    <input
+      type="search"
+      placeholder="Paste what vx printed, or a code"
+      autocomplete="off"
+      spellcheck="false"
+      data-ef-query
+    />
+  </label>
+
+  <ol class="vx-ef-path" aria-label="Where a command can stop" hidden={STAGES.length < 2}>
+    <li>
+      <button type="button" class="vx-ef-stage" aria-pressed="true" data-ef-stage="all">
+        <span class="vx-ef-stage-title">All</span>
+        <span class="vx-ef-stage-when">{ERRORS.length} codes</span>
+      </button>
+    </li>
+    {
+      STAGES.map((s, i) => (
+        <li>
+          <button type="button" class="vx-ef-stage" aria-pressed="false" data-ef-stage={s.id}>
+            <span class="vx-ef-stage-title">
+              <span class="vx-ef-step">{i + 1}</span> {s.title}
+              <span class="vx-ef-count">{count(s.id)}</span>
+            </span>
+            <span class="vx-ef-stage-when" set:html={code(s.when)} />
+          </button>
+        </li>
+      ))
+    }
+  </ol>
+
+  <ul class="vx-ef-list">
+    {
+      ERRORS.map((e) => (
+        <li
+          class="vx-ef-item"
+          data-ef-item
+          data-stage={e.stage}
+          data-text={`${e.code} ${e.means} ${e.sees} ${e.fix}`.toLowerCase()}
+        >
+          <details>
+            <summary>
+              <code class="vx-ef-code">{e.code}</code>
+              <span class="vx-ef-means" set:html={code(e.means)} />
+            </summary>
+            <dl>
+              <dt>vx prints</dt>
+              <dd>
+                <span class="vx-ef-sees">{e.sees}</span>
+              </dd>
+              <dt>Do this</dt>
+              <dd set:html={code(e.fix)} />
+            </dl>
+            <a class="vx-ef-more" href={`../../cli/#${e.code.toLowerCase()}`}>
+              Every case of {e.code} →
+            </a>
+          </details>
+        </li>
+      ))
+    }
+  </ul>
+  <p class="vx-ef-none" hidden data-ef-none>
+    No code matches. Try fewer words, or pick <strong>All</strong>.
+  </p>
+</div>
+
+<script>
+  for (const root of document.querySelectorAll<HTMLElement>('[data-error-finder]')) {
+    const query = root.querySelector<HTMLInputElement>('[data-ef-query]')!
+    const stages = [...root.querySelectorAll<HTMLButtonElement>('[data-ef-stage]')]
+    const items = [...root.querySelectorAll<HTMLElement>('[data-ef-item]')]
+    const none = root.querySelector<HTMLElement>('[data-ef-none]')!
+    let stage = 'all'
+    const words = (s: string): string[] =>
+      s
+        .toLowerCase()
+        .split(/[^a-z0-9_@#./-]+/)
+        .filter((w) => w.length > 1)
+    const apply = (): void => {
+      const q = words(query.value)
+      const hits = new Map(
+        items.map((item) => [item, q.filter((w) => (item.dataset.text ?? '').includes(w)).length]),
+      )
+      // A pasted message has words vx filled in (paths, names): the cards
+      // that hold the most typed words win, if they hold most of them.
+      const inStage = items.filter((i) => stage === 'all' || i.dataset.stage === stage)
+      const best = Math.max(0, ...inStage.map((i) => hits.get(i)!))
+      const need = Math.max(1, Math.ceil(q.length * 0.6), best)
+      let shown = 0
+      for (const item of items) {
+        const ok = inStage.includes(item) && (q.length === 0 || hits.get(item)! >= need)
+        item.hidden = !ok
+        if (ok) shown++
+      }
+      none.hidden = shown > 0
+      if (q.length > 0 && shown === 1) {
+        items.find((i) => !i.hidden)?.querySelector('details')?.setAttribute('open', '')
+      }
+    }
+    for (const b of stages) {
+      b.addEventListener('click', () => {
+        stage = b.dataset.efStage ?? 'all'
+        for (const o of stages) o.setAttribute('aria-pressed', String(o === b))
+        apply()
+      })
+    }
+    query.addEventListener('input', apply)
+  }
+</script>
+
+<style>
+  .vx-ef {
+    margin: 1.25rem 0;
+  }
+  .vx-ef-search input {
+    width: 100%;
+    padding: 0.6rem 0.8rem;
+    border: 1px solid var(--vx-border);
+    border-radius: 8px;
+    background: var(--vx-surface);
+    color: var(--vx-fg);
+    font-family: var(--vx-mono);
+    font-size: 0.85rem;
+  }
+  .vx-ef-search input:focus {
+    outline: 2px solid var(--vx-accent);
+    outline-offset: 1px;
+  }
+  .vx-ef-path {
+    list-style: none;
+    padding: 0;
+    margin: 0.75rem 0;
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 0.4rem;
+  }
+  .vx-ef-path li {
+    margin: 0;
+  }
+  .vx-ef-stage {
+    width: 100%;
+    height: 100%;
+    display: grid;
+    gap: 0.15rem;
+    align-content: start;
+    text-align: left;
+    padding: 0.45rem 0.55rem;
+    border: 1px solid var(--vx-border);
+    border-radius: 8px;
+    background: var(--vx-bg);
+    color: var(--vx-text);
+    cursor: pointer;
+    font: inherit;
+  }
+  .vx-ef-stage[aria-pressed='true'] {
+    border-color: var(--vx-accent);
+    background: var(--vx-accent-soft);
+  }
+  .vx-ef-stage-title {
+    font-weight: 600;
+    color: var(--vx-fg);
+    font-size: 0.85rem;
+  }
+  .vx-ef-step {
+    font-family: var(--vx-mono);
+    color: var(--vx-accent);
+  }
+  .vx-ef-count {
+    margin-left: 0.2rem;
+    font-family: var(--vx-mono);
+    font-weight: 400;
+    color: var(--vx-muted);
+    font-size: 0.75rem;
+  }
+  .vx-ef-stage-when {
+    font-size: 0.72rem;
+    color: var(--vx-muted);
+    line-height: 1.3;
+  }
+  .vx-ef-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: grid;
+    gap: 0.35rem;
+  }
+  .vx-ef-item {
+    margin: 0;
+  }
+  .vx-ef-item details {
+    border: 1px solid var(--vx-border);
+    border-left: 3px solid var(--vx-danger);
+    border-radius: 6px;
+    background: var(--vx-bg);
+  }
+  .vx-ef-item summary {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem 0.7rem;
+    align-items: baseline;
+    padding: 0.5rem 0.75rem;
+    cursor: pointer;
+  }
+  .vx-ef-code {
+    font-family: var(--vx-mono);
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--vx-danger);
+    background: none;
+    padding: 0;
+  }
+  .vx-ef-means {
+    color: var(--vx-fg);
+  }
+  .vx-ef-item dl {
+    margin: 0;
+    padding: 0 0.75rem 0.25rem;
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 0.35rem 0.8rem;
+  }
+  .vx-ef-item dt {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--vx-muted);
+    margin: 0;
+    padding-top: 0.15rem;
+  }
+  .vx-ef-item dd {
+    margin: 0;
+    color: var(--vx-text);
+  }
+  .vx-ef-sees {
+    font-family: var(--vx-mono);
+    font-size: 0.8rem;
+    color: var(--vx-fg);
+    overflow-wrap: anywhere;
+  }
+  .vx-ef-item dd :global(code) {
+    font-size: 0.85em;
+  }
+  .vx-ef-more {
+    display: inline-block;
+    margin: 0.3rem 0.75rem 0.6rem;
+    font-size: 0.8rem;
+    color: var(--vx-link);
+  }
+  .vx-ef-none {
+    color: var(--vx-muted);
+    margin: 0.6rem 0;
+  }
+  .vx-ef [hidden] {
+    display: none;
+  }
+  @media (max-width: 50rem) {
+    .vx-ef-path {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+    .vx-ef-item dl {
+      grid-template-columns: 1fr;
+      gap: 0.1rem;
+    }
+    .vx-ef-item dd {
+      margin-bottom: 0.4rem;
+    }
+  }
+</style>

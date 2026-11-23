@@ -1,0 +1,129 @@
+---
+// The running pages' story workspace: `@demo/web` and `@demo/admin` both
+// use `@demo/ui`. One drawing, drawn at build time; a page passes which
+// projects a command picks, and which one a change touched, so each Tabs
+// item shows one answer. Small enough to read at phone width unscaled.
+type Name = 'web' | 'admin' | 'ui'
+
+interface Props {
+  /** The projects the command runs in. */
+  picked: Name[]
+  /** The project a git change touched. */
+  changed?: Name
+  /** What the picture says, for a reader who cannot see it. */
+  label: string
+  caption?: string
+}
+
+const { picked, changed, label, caption } = Astro.props
+const BOX = { w: 116, h: 40 }
+const at: Record<Name, { x: number; y: number }> = {
+  web: { x: 14, y: 12 },
+  admin: { x: 190, y: 12 },
+  ui: { x: 102, y: 108 },
+}
+const tone = (n: Name) => (picked.includes(n) ? 'accent' : 'muted')
+const edges: Array<[Name, Name]> = [
+  ['web', 'ui'],
+  ['admin', 'ui'],
+]
+---
+
+<figure class="vx-project-map not-content">
+  <svg viewBox="0 0 320 160" role="img" aria-label={label}>
+    <defs>
+      <marker id="vx-pm-head" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+        <path d="M0,0 L10,5 L0,10 z" class="head"></path>
+      </marker>
+    </defs>
+    {
+      edges.map(([from, to]) => {
+        const a = at[from]
+        const b = at[to]
+        return (
+          <g class="edge">
+            <line
+              x1={a.x + BOX.w / 2}
+              y1={a.y + BOX.h}
+              x2={b.x + BOX.w / 2 + (from === 'web' ? -18 : 18)}
+              y2={b.y}
+              marker-end="url(#vx-pm-head)"
+            />
+          </g>
+        )
+      })
+    }
+    <text x="160" y="80" class="uses">uses</text>
+    {
+      (Object.keys(at) as Name[]).map((n) => (
+        <g class:list={['box', `t-${tone(n)}`]}>
+          <rect x={at[n].x} y={at[n].y} width={BOX.w} height={BOX.h} rx="8" />
+          <text x={at[n].x + BOX.w / 2} y={at[n].y + 25}>
+            @demo/{n}
+          </text>
+          {changed === n && <circle cx={at[n].x + BOX.w - 4} cy={at[n].y + 4} r="7" class="dot" />}
+        </g>
+      ))
+    }
+  </svg>
+  {caption && <figcaption>{caption}</figcaption>}
+</figure>
+
+<style>
+  .vx-project-map {
+    margin: 1rem auto;
+    max-width: 22rem;
+    text-align: center;
+  }
+  svg {
+    width: 100%;
+    height: auto;
+    font-family: var(--vx-mono);
+    font-size: 13px;
+  }
+  .box rect {
+    fill: var(--vx-surface-2);
+    stroke: currentColor;
+    stroke-width: 1.5;
+  }
+  .box text {
+    fill: var(--vx-fg);
+    text-anchor: middle;
+  }
+  .t-accent {
+    color: var(--vx-accent);
+  }
+  .t-accent rect {
+    stroke-width: 2.5;
+    fill: color-mix(in srgb, var(--vx-accent) 16%, var(--vx-surface-2));
+  }
+  .t-muted {
+    color: var(--vx-muted);
+  }
+  .t-muted rect {
+    stroke-dasharray: 4 3;
+  }
+  .t-muted text {
+    fill: var(--vx-muted);
+  }
+  .edge line {
+    stroke: var(--vx-muted);
+    stroke-width: 1.5;
+  }
+  .head {
+    fill: var(--vx-muted);
+  }
+  .uses {
+    fill: var(--vx-muted);
+    text-anchor: middle;
+    font-size: 12px;
+  }
+  .dot {
+    fill: var(--vx-warn);
+  }
+  figcaption {
+    font-family: var(--vx-font-body);
+    font-size: 0.9rem;
+    color: var(--vx-muted);
+  }
+</style>

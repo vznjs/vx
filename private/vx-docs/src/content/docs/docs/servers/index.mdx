@@ -1,106 +1,67 @@
 ---
 title: Servers
-description: The three servers vx's plugins talk to, which you host, and the CI token rules they share.
+description: Three servers you host give every CI machine a shared cache, shared task timings and Distributed task execution.
 ---
 
-vx runs and caches on one machine with no server at all. Three servers
-add what one machine cannot. You host each one yourself, on Cloudflare
-Workers, Bun or Docker. You need only the ones you use.
+import Diagram from '../../../../components/guide/diagram/Diagram.astro'
+import AllowExplorer from '../../../../components/demos/AllowExplorer.astro'
+import { serversMap } from '../../../../components/docs/pictures/servers.js'
+import { Aside } from '@astrojs/starlight/components'
+import { Levels, Deeper, Concept, Quiz, Takeaway, NextStep } from '../../../../components/learn'
 
-| Server | What it gives you | Plugin |
+vx needs no server. Three servers you host add what one machine cannot. Start all three in one line:
+
+```sh
+docker compose up -d
+```
+
+<Levels />
+
+<Diagram {...serversMap} />
+
+<Concept term="OIDC token">
+  A short-lived pass your CI hands each job: "I am `ci.yml` of `acme/app`, on `main`". The servers
+  check it, so you store no password anywhere.
+</Concept>
+
+## Pick the servers you need
+
+Each server pairs with one plugin. Skip the ones you do not use.
+
+| Server | You get | Plugin |
 | --- | --- | --- |
-| [Cache server](cache/) | every machine reuses what another one built | `vxCache()` from `@vzn/vx-cache` |
-| [History server](history/) | a fresh CI runner knows how long each task takes, so it starts the long ones first | `vxHistory()` from `@vzn/vx-history` |
-| [DTE server](dte/) | [Distributed task execution](../distributed-task-execution/): one run split across several CI machines | `dte()` from `@vzn/vx-dte` |
+| [Cache server](cache/) | every CI machine reuses what another one built | `vxCache()` from `@vzn/vx-cache` |
+| [History server](history/) | a fresh runner starts the long tasks first | `vxHistory()` from `@vzn/vx-history` |
+| [Distributed task execution server](dte/) | [Distributed task execution](../distributed-task-execution/): one run over many machines | `dte()` from `@vzn/vx-dte` |
 
-None of them stores a password or a token. Each request carries the CI
-job's own OIDC token, which GitHub Actions or GitLab CI hands the job.
+Each runs on **Cloudflare Workers**, **Bun** or **Docker**, from one package.
 
-The server checks that token. A laptop has no such token, so off CI the
-plugins work locally.
+<Takeaway>choose the servers your workspace needs, and know which plugin talks to each.</Takeaway>
 
-## `ALLOW`: who takes part
+## Say who takes part: `ALLOW`
 
-The cache and history servers read one setting, `ALLOW`: who may take
-part, space separated, each `issuer:owner/repo:workflow`.
-
-This one lets in every run of `acme/app`'s `ci.yml` workflow on GitHub
-Actions:
+Every server reads one setting, `ALLOW`: the CI workflows it serves. One entry is `issuer:owner/repo:workflow`:
 
 ```sh
 ALLOW='https://token.actions.githubusercontent.com:acme/app:ci.yml'
 ```
 
-What that gives each run of `ci.yml`:
+That entry lets in `ci.yml` of `acme/app` on GitHub Actions. Try what it allows:
 
-- **A run of `acme/app`** reads its own branch, then the branch it merges
-  into, then `main`; a pull request first its merge ref, `refs/pull/<n>/merge`.
-- **A push to a branch**, such as `main`, writes that branch.
-- **A pull request from `feat-x`** writes its merge ref only, never a
-  branch: a fork names its own head branch, and could name `release`.
-- **A `pull_request_target`, `issue_comment` or `workflow_run` run**
-  reads and writes nothing: it runs on the base branch, maybe for a
-  fork's code.
-- **A run of another workflow or repository** is refused. With `ALLOW`
-  empty, a server does not start, and a Worker refuses every request:
-  `ALLOW is empty: set it to the CI workflows this server serves`.
+<AllowExplorer />
 
-On GitLab, the workflow is the CI file:
-`https://gitlab.com:acme/web:.gitlab-ci.yml`.
+Look at **pull request**: it writes only its merge ref. A fork could name its branch `main`, so no pull request ever writes a branch.
 
-A run writes only when the token's `source_project_path` and
-`job_project_path` name the project itself. A fork's merge request, or a
-child pipeline of one, writes nothing.
+<Quiz q="A release workflow, release.yml, asks the cache server for a result. What happens?">
+  It is refused: `ALLOW` names only `ci.yml`. Add a second entry, separated by a space, to let it
+  in.
+</Quiz>
 
-A merge request pipeline must name its source project (GitLab 19.5+).
+<Takeaway>write an `ALLOW` line and predict what each CI run may read and write.</Takeaway>
 
-A CI file kept in another project is named as GitLab names it:
-`.gitlab-ci.yml@acme/ci`.
+## Run all three with Docker Compose
 
-<details>
-<summary>What a merge queue writes</summary>
-
-A GitHub merge queue run (`merge_group`), on `refs/heads/gh-readonly-queue/main/pr-<n>-<sha>`,
-writes `main` before its code lands. A push to a branch of that name
-writes only that branch.
-
-Code you queue is code you trust, so run security checks on the pull
-request, before it is queued.
-
-</details>
-
-<details>
-<summary>What the server sees</summary>
-
-Every request names its issuer and repository, as
-`vxCache({ issuer, repository })` and `vxHistory({ issuer, repository })`
-declare them. A token of another repository is refused.
-
-The cache server gets each of them, and each branch, as the first 128
-bits of its SHA-256 in hex, so it never sees a name.
-
-The history server gets them as they are ([What it keeps](history/#what-it-keeps)).
-
-A renamed repository starts with an empty cache.
-
-`AUDIENCE` is the `aud` a token must name: the URL clients reach the
-server at. The cache and history servers read it as its origin, which is
-what their plugins ask the CI for.
-
-On Workers, leave it unset and it is that URL. On Bun and Docker, set
-it: there the URL is the request's `Host` header, which a client picks.
-
-`READ_ACCESS=public` lets a request with no token, such as a laptop's,
-read a repository `ALLOW` names. It writes nothing.
-
-</details>
-
-The DTE server has its own, shorter list, `ALLOW`
-([DTE server](dte/#settings)).
-
-## All three with Docker Compose
-
-Run the three side by side with this `compose.yaml`:
+Save this next to a `.env` file holding your settings:
 
 ```yaml title="compose.yaml"
 services:
@@ -111,7 +72,7 @@ services:
     restart: unless-stopped
   cache:
     image: ghcr.io/vznjs/vx-cache-server
-    environment: [ALLOW=${CACHE_ALLOW:-}, AUDIENCE=${CACHE_AUDIENCE:-}, READ_ACCESS=${CACHE_READ_ACCESS:-}, S3_BUCKET, S3_ENDPOINT, S3_REGION, S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY, MAX_CHECK_HASHES, MAX_UPLOAD_BYTES]
+    environment: [ALLOW=${CACHE_ALLOW:-}, AUDIENCE=${CACHE_AUDIENCE:-}, READ_ACCESS=${CACHE_READ_ACCESS:-}, S3_BUCKET, S3_ENDPOINT, S3_REGION, S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY, S3_SESSION_TOKEN, MAX_CHECK_HASHES, MAX_UPLOAD_BYTES]
     ports: ['${CACHE_PORT:-8081}:8080']
     restart: unless-stopped
   history:
@@ -124,10 +85,98 @@ volumes:
   history:
 ```
 
+```ini title=".env"
+DTE_ALLOW='https://token.actions.githubusercontent.com:acme/app:ci.yml https://token.actions.githubusercontent.com:acme/app:vx-worker.yml'
+DTE_AUDIENCE=https://dte.example.com
+CACHE_ALLOW=https://token.actions.githubusercontent.com:acme/app:ci.yml
+CACHE_AUDIENCE=https://cache.example.com
+S3_BUCKET=vx-cache
+S3_ENDPOINT=https://s3.us-east-1.amazonaws.com
+HISTORY_ALLOW=https://token.actions.githubusercontent.com:acme/app:ci.yml
+HISTORY_AUDIENCE=https://history.example.com
+```
+
 ```sh
 docker compose up -d                 # all three
 docker compose up -d cache history   # only the ones you need
 ```
+
+Each server says it is up in one green line:
+
+```ansi title="docker compose logs"
+[38;2;34;197;94m✓[0m [1mvx-dte-server[0m  listening on [38;2;6;182;212mhttp://0.0.0.0:8080[0m
+[38;2;34;197;94m✓[0m [1mvx-cache-server[0m  listening on [38;2;6;182;212mhttp://0.0.0.0:8080/[0m
+[38;2;34;197;94m✓[0m [1mvx-history-server[0m  listening on [38;2;6;182;212mhttp://0.0.0.0:8080/[0m
+```
+
+<Aside type="caution">
+  Put HTTPS in front of each server. A CI token is a bearer token: whoever reads it can use it until
+  it expires.
+</Aside>
+
+<Takeaway>start any mix of the three servers with one command.</Takeaway>
+
+<Deeper level="patterns" title="Common setups">
+
+### GitLab CI
+
+The workflow is the CI file. A CI file kept in another project is named as GitLab names it:
+
+```sh
+ALLOW='https://gitlab.com:acme/web:.gitlab-ci.yml https://gitlab.com:acme/api:.gitlab-ci.yml@acme/ci'
+```
+
+A run writes only when its token's `source_project_path` and `job_project_path` name the project itself. A fork's merge request, or a child pipeline of one, writes nothing.
+
+A merge request pipeline must name its source project, which GitLab does from 19.5.
+
+<Takeaway>serve GitLab projects, including ones whose CI file lives elsewhere.</Takeaway>
+
+### Several workflows and repositories
+
+List each one, separated by spaces. Each repository reads and writes only its own data:
+
+```sh
+ALLOW='https://token.actions.githubusercontent.com:acme/app:ci.yml https://token.actions.githubusercontent.com:acme/app:vx-worker.yml https://token.actions.githubusercontent.com:acme/site:ci.yml'
+```
+
+<Takeaway>share one server between workflows and repositories, each kept apart.</Takeaway>
+
+### Let laptops read
+
+`READ_ACCESS=public` lets a request with no token, such as a laptop's, read a repository `ALLOW` names. It never writes.
+
+The cache and history servers read it; the distributed task execution server does not.
+
+<Takeaway>give every laptop CI's results without handing out a token.</Takeaway>
+
+### A merge queue
+
+A GitHub merge queue run (`merge_group`) writes `main` before its code lands. Its ref is `refs/heads/gh-readonly-queue/main/pr-<n>-<sha>`.
+
+A plain push to a branch of that name writes only that branch.
+
+Code you queue is code you trust. Run security checks on the pull request, before it is queued.
+
+<Takeaway>use a merge queue and still keep `main`'s results trusted.</Takeaway>
+
+</Deeper>
+
+<Deeper level="details" title="Every shared setting">
+
+### `ALLOW`, `AUDIENCE`, `READ_ACCESS`
+
+| Setting | Default | What it does | Example |
+| --- | --- | --- | --- |
+| `ALLOW` | required | who takes part: space-separated `issuer:owner/repo:workflow` entries | `https://gitlab.com:acme/web:.gitlab-ci.yml` |
+| `AUDIENCE` | Workers: the URL the server is reached at. Bun and Docker: required | the `aud` every CI token must name, read as its origin | `https://cache.example.com` |
+| `READ_ACCESS` | unset: every request needs a token | `public`: a request with no token reads a repository `ALLOW` names. Cache and history servers only | `public` |
+
+On Workers, leave `AUDIENCE` unset. On Bun and Docker, set it: there the URL is the request's `Host` header, which a client picks.
+
+### Docker Compose settings
+
+Each setting gets its service's prefix in `.env`, so one file holds all three:
 
 | Service | Port | Settings it reads |
 | --- | --- | --- |
@@ -135,10 +184,42 @@ docker compose up -d cache history   # only the ones you need
 | `cache` | 8081 (`CACHE_PORT`) | `CACHE_ALLOW`, `CACHE_AUDIENCE`, `CACHE_READ_ACCESS`, `S3_*`, `MAX_*` |
 | `history` | 8082 (`HISTORY_PORT`) | `HISTORY_ALLOW`, `HISTORY_AUDIENCE`, `HISTORY_READ_ACCESS`, `TIMING_DAYS` |
 
-Settings come from your shell or a `.env` file next to `compose.yaml`.
-A setting each server reads under one name gets its service's prefix
-here, so one `.env` holds all three.
-
 The history server keeps its SQLite file in the `history` volume.
 
-Put HTTPS in front of each server: a CI token is a bearer token.
+### What each run may do
+
+| Run | Reads | Writes |
+| --- | --- | --- |
+| push to a branch | that branch, then the default branch | that branch |
+| `pull_request` | its merge ref, its branch, the branch it merges into, the default branch | its merge ref, `refs/pull/<n>/merge` |
+| `merge_group` | the branch it merges into | that branch |
+| `pull_request_target`, `issue_comment`, `workflow_run` | as its pull request | nothing |
+| another workflow or repository | nothing | nothing |
+| no token, `READ_ACCESS=public` | the repositories `ALLOW` names | nothing |
+
+### What the servers see
+
+Every request names its issuer and repository, as `vxCache({ issuer, repository })` and `vxHistory({ issuer, repository })` declare them. A token of another repository is refused.
+
+The cache server sees each of them, and each branch, only as the first 128 bits of its SHA-256 in hex. The history server sees them as they are ([What it keeps](history/#what-it-keeps)).
+
+A renamed repository starts with an empty cache.
+
+### When a server refuses to start
+
+The Bun server and its image refuse to start without `ALLOW` or `AUDIENCE`, and name what is missing:
+
+```ansi title="no ALLOW"
+[38;2;239;68;68m✗[0m [1mvx-cache-server[0m  set ALLOW
+[2musage: vx-cache-server [--port 8080] [--host 0.0.0.0][0m
+```
+
+```ansi title="an ALLOW entry with no issuer or workflow"
+[38;2;239;68;68m✗[0m [1mvx-dte-server[0m  ALLOW: acme/app is not issuer:owner/repo:workflow
+```
+
+A Worker with `ALLOW` empty starts, and refuses every request: `ALLOW is empty: set it to the CI workflows this server serves`.
+
+</Deeper>
+
+<NextStep href="history/" title="History server">Host the server that tells every fresh runner which tasks to start first.</NextStep>
