@@ -122,7 +122,7 @@ any target Nx marks `continuous`:
 | `dependsOn` (`^build`, …)             | `dependsOn`, same syntax                      |
 | `inputs` / `namedInputs` (resolved)   | `inputs.files`                          |
 | `{workspaceRoot}/file`                | `inputs.workspaceFiles`                 |
-| `outputs`                             | `outputs.files`                         |
+| `outputs` (each optional)             | `outputs.files` (each required: a note says so) |
 | `nx affected`                         | `vx run … --affected[=<base>]`                |
 | `nx run-many --projects`              | `vx run … --filter`                           |
 | `parallelism: false`                  | a TODO naming `--concurrency 1`               |
