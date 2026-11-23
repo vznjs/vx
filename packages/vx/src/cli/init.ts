@@ -421,10 +421,12 @@ async function scaffoldPlugin(seam: string, root: string, args: InitArgs): Promi
     [path.join('plugins', `${seam}.ts`), template.plugin],
     [path.join('plugins', `${seam}.test.ts`), template.test],
   ] as const
+  // Named from the cwd: run below the root, a root-relative path pointed nowhere.
+  const shown = (rel: string): string => path.relative(process.cwd(), path.join(root, rel))
   if (!args.force) {
     for (const [rel] of files) {
       if (occupied(path.join(root, rel))) {
-        sayNotice('error', 'vx init', `${rel} exists. --force overwrites it`)
+        sayNotice('error', 'vx init', `${shown(rel)} exists. --force overwrites it`)
         return 1
       }
     }
@@ -444,13 +446,13 @@ async function scaffoldPlugin(seam: string, root: string, args: InitArgs): Promi
   const factory = /^export function (\w+)/m.exec(template.plugin)![1]!
   const workspaceFile =
     WORKSPACE_CONFIG_FILENAMES.find((n) => existsSync(path.join(root, n))) ?? '.vx/workspace.ts'
-  const names = files.flatMap(([rel], i) => [...(i > 0 ? [' and '] : []), ui.strong(rel)])
+  const names = files.flatMap(([rel], i) => [...(i > 0 ? [' and '] : []), ui.strong(shown(rel))])
   ui.print('out', ui.line(ui.tone('ok', args.dry ? 'would write' : 'wrote', true), ' ', ...names))
   ui.print(
     'out',
     ui.line(
       'Declare it in ',
-      ui.path(workspaceFile),
+      ui.path(shown(workspaceFile)),
       ': ',
       ui.cmd(`import { ${factory} } from '../plugins/${seam}.ts'`),
       ', then ',
@@ -463,7 +465,11 @@ async function scaffoldPlugin(seam: string, root: string, args: InitArgs): Promi
   )
   ui.print(
     'out',
-    ui.line('Test it: ', ui.cmd(`bun test plugins/${seam}.test.ts`), ' (needs @vzn/vx installed)'),
+    ui.line(
+      'Test it: ',
+      ui.cmd(`bun test ${shown(path.join('plugins', `${seam}.test.ts`))}`),
+      ' (needs @vzn/vx installed)',
+    ),
   )
   return 0
 }

@@ -272,6 +272,41 @@ describe('vx init --plugin <hook>', () => {
     TIMEOUT,
   )
 
+  // Run below the workspace root, it wrote there but named the files from
+  // the root: `bun test plugins/executor.test.ts` matched nothing.
+  it(
+    'names the files from the directory it ran in',
+    async () => {
+      const root = await mkdtemp(path.join(os.tmpdir(), 'vx-init-plugin-below-'))
+      try {
+        await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'ws' }))
+        await mkdir(path.join(root, '.vx'))
+        await writeFile(path.join(root, '.vx', 'workspace.ts'), 'export default {}\n')
+        await mkdir(path.join(root, 'sub'))
+        const r = await vx(path.join(root, 'sub'), ['init', '--plugin', 'executor'])
+        expect([r.code, r.err, r.out.split('\n')]).toEqual([
+          0,
+          '',
+          [
+            'wrote ../plugins/executor.ts and ../plugins/executor.test.ts',
+            "Declare it in ../.vx/workspace.ts: import { shellExecutor } from '../plugins/executor.ts', then plugins: [shellExecutor(…)]",
+            'Test it: bun test ../plugins/executor.test.ts (needs @vzn/vx installed)',
+            '',
+          ],
+        ])
+        expect(existsSync(path.join(root, 'plugins', 'executor.ts'))).toBe(true)
+        const again = await vx(path.join(root, 'sub'), ['init', '--plugin', 'executor'])
+        expect([again.code, again.err]).toEqual([
+          1,
+          noticed('vx init: ../plugins/executor.ts exists. --force overwrites it\n'),
+        ])
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+
   it(
     'never writes through a symlink, dangling or not',
     async () => {
