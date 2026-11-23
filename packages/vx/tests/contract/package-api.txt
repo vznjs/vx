@@ -1168,7 +1168,13 @@ export interface Logger {
   taskStdout(node: TaskNode, chunk: string): void
   taskStderr(node: TaskNode, chunk: string): void
   taskComplete(node: TaskNode, outcome: TaskOutcome): void
-  runStart?(info: RunStartInfo): void
+  runStart?(info: {
+    total: number
+    concurrency?: number
+    requestedCount?: number
+    context?: RunContext
+    startedAtMs?: number
+  }): void
   taskStart?(node: TaskNode): void
   runEnd?(): void
   stepStart?(id: string): void

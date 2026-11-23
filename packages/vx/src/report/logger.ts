@@ -59,7 +59,7 @@ import {
   type StatusStream,
 } from '../ui/index.js'
 import { isCacheHit } from '../graph/index.js'
-import { outcomeLabel, outcomeWord, ranNoCache, type RunStartInfo } from './events.js'
+import { outcomeLabel, outcomeWord, ranNoCache } from './events.js'
 import type { BlockedTask, Forecast } from './forecast.js'
 
 export interface Logger {
@@ -84,7 +84,15 @@ export interface Logger {
    * Optional lifecycle hooks; the default logger drives its status line with
    * them.
    */
-  runStart?(info: RunStartInfo): void
+  runStart?(info: {
+    total: number
+    concurrency?: number
+    requestedCount?: number
+    /** Run banner context — so the live region footer matches the final summary. */
+    context?: RunContext
+    /** The run's canonical start (epoch ms) — equals the final summary's `startedAt`. */
+    startedAtMs?: number
+  }): void
   taskStart?(node: TaskNode): void
   /** The task graph finished (any outcome); vx's own closing steps follow. Idempotent. */
   runEnd?(): void
