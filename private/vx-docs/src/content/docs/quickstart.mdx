@@ -336,18 +336,21 @@ When a task runs and you did not expect it, ask vx. After the `src/main.js` edit
 ```ansi
 [2m$[0m vx why build
 
-[4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhy[0m[4m[58;2;110;118;129m [2mmy-app#build[0m[4m[58;2;110;118;129m                                                                                                      [0m
-  [2mrun     [0m  [38;2;203;213;225m01a20a05-3be0-73bb-a276-7da57c10a66f[0m
-  [2mthis run[0m  [38;2;203;213;225m2026-11-23T20:07:24.928Z · success · executed · key 6e362b6b162ed53f[0m
-  [2mprevious[0m  [38;2;203;213;225m2026-11-23T20:07:24.664Z · cache-hit · up-to-date · key 5ccf3a2ec5898854[0m
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhy[0m[4m[58;2;110;118;129m [2mmy-app#build[0m[4m[58;2;110;118;129m                                          [0m
+  [2mrun     [0m  [38;2;203;213;225m01a20a28-8386-7363-ba03-ec632c7cd59c[0m
+  [2mthis run[0m  [38;2;203;213;225m2026-11-23T20:45:57.030Z · success · executed ·[0m
+            [38;2;203;213;225mkey 92c85540139c7460[0m
+  [2mprevious[0m  [38;2;203;213;225m2026-11-23T20:45:56.792Z · cache-hit ·[0m
+            [38;2;203;213;225mup-to-date · key a41881d49b6b34e5[0m
   [2mverdict [0m  [38;2;234;179;8mcache key changed: file src/main.js[0m
 
-[4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhat changed[0m[4m[58;2;110;118;129m [2m1 of 14[0m[4m[58;2;110;118;129m                                                                                                  [0m
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhat changed[0m[4m[58;2;110;118;129m [2m1 of 14[0m[4m[58;2;110;118;129m                                      [0m
   [2mchange   kind  name         before → after[0m
-  [38;2;234;179;8mchanged[0m  [38;2;203;213;225mfile[0m  [1msrc/main.js[0m  [38;2;203;213;225m6d895a9c64dc8a5333f3ebf038aefecc80b8e4a1 → 223a4e5108308b053780f6df408ac726f40ef7cb[0m
+  [38;2;234;179;8mchanged[0m  [38;2;203;213;225mfile[0m  [1msrc/main.js[0m  [38;2;203;213;225m223a4e5108308b053780f6df408ac726f40ef7cb → 6535561aa6c1c5288b1405f5a228246c64698af7[0m
 
-[4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhat to do[0m[4m[58;2;110;118;129m                                                                                                            [0m
-  [2mfile    [0m  [38;2;203;213;225man edit re-runs by design; a file the task does not read belongs out of inputs.files[0m
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhat to do[0m[4m[58;2;110;118;129m                                                [0m
+  [2mfile    [0m  [38;2;203;213;225man edit re-runs by design; a file the task does[0m
+            [38;2;203;213;225mnot read belongs out of inputs.files[0m
 ```
 
 Read **verdict**: the one file that made the task run.
