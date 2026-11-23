@@ -9,7 +9,7 @@ import { Database } from 'bun:sqlite'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { gitIn, makeWorkspace as makeWorkspaceRoot } from './helpers/workspace.js'
-import { writeEdges } from './helpers/plugin.js'
+import { PLUGIN_IMPORT, pluginSource, writeEdges } from './helpers/plugin.js'
 import { ambiguousTask } from '../src/cli/help.js'
 import { parseShowArgs } from '../src/cli/show.js'
 import { parseWhyArgs } from '../src/cli/why.js'
@@ -1442,8 +1442,20 @@ describe('a bare name that ran in many projects', () => {
 })
 
 describe('vx why — what to do names who keyed the component', () => {
-  async function setup(): Promise<string> {
+  async function setup(plugin: boolean): Promise<string> {
     const root = await makeWorkspaceRoot({ prefix: 'vx-why-todo-', git: false })
+    if (plugin)
+      await Bun.write(
+        path.join(root, '.vx/workspace.mjs'),
+        `${PLUGIN_IMPORT}
+        export default { plugins: [${pluginSource(
+          'org/manifests',
+          `{ project(config) {
+            for (const t of Object.values(config.tasks ?? {}))
+              if (t.inputs !== undefined) t.inputs.files.push('package.json')
+          } }`,
+        )}] }\n`,
+      )
     const dir = path.join(root, 'packages', 'app')
     await mkdir(path.join(dir, 'src'), { recursive: true })
     await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name: 'app' }))
@@ -1453,15 +1465,37 @@ describe('vx why — what to do names who keyed the component', () => {
     gitIn(root)('add', '-A')
     return root
   }
+  // The test plugin replaces the default `packages()` one, so there core names the project by its path.
   const todo = async (root: string, id: string): Promise<string[]> => {
     const lines = (await vx(root, ['why', id])).out.split('\n')
     return lines.slice(lines.findIndex((l) => l === '  What to do') + 1, -1)
   }
 
   it(
+    'a file a plugin added to inputs.files is named as its, not advised out of the list',
+    async () => {
+      const root = await setup(true)
+      try {
+        expect((await vx(root, ['run', 'build', '--all'])).code).toBe(0)
+        await writeFile(
+          path.join(root, 'packages', 'app', 'package.json'),
+          JSON.stringify({ name: 'app', version: '1.0.0' }),
+        )
+        expect((await vx(root, ['run', 'build', '--all'])).code).toBe(0)
+        expect(await todo(root, 'packages/app#build')).toEqual([
+          "  file      a plugin's `project` stage adds packages/app/package.json to inputs.files; an edit re-runs by design",
+        ])
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+
+  it(
     'a name that joined inputs.env is said to have joined, not to have moved',
     async () => {
-      const root = await setup()
+      const root = await setup(false)
       try {
         expect((await vx(root, ['run', 'build', '--all'])).code).toBe(0)
         await writeFile(
