@@ -470,3 +470,50 @@ describe('vx pipeline with affected, on the base branch', () => {
     for (const r of [saved, typed, only]) expect(r.err).not.toContain('--all')
   }, 60_000)
 })
+
+// `vx lock` refuses a pipeline task no project declares, but the workspace
+// file is not in the lock: edited after it, the run named the task and
+// never the key that holds it.
+describe('vx pipeline naming a task no project declares', () => {
+  let root = ''
+  afterAll(async () => {
+    await rm(root, { recursive: true, force: true })
+  })
+
+  it('names the pipeline key that holds it', async () => {
+    root = await realpath(await makeWorkspace({ prefix: 'vx-pipeline-typo-' }))
+    await addProject(
+      root,
+      'a',
+      `export default { tasks: { build: { exec: { command: 'true' } } } }`,
+    )
+    const ws = (fields: string): Promise<void> =>
+      writeFile(
+        path.join(root, '.vx/workspace.mjs'),
+        localWorkspaceSource([], '', undefined, fields),
+      )
+    const vx = async (bin: string, ...args: string[]): Promise<{ code: number; err: string }> => {
+      const proc = Bun.spawn([process.execPath, bin, ...args], {
+        cwd: root,
+        stdout: 'pipe',
+        stderr: 'pipe',
+        env: { ...process.env, CI: '', GITHUB_ACTIONS: '', NO_COLOR: '1' },
+      })
+      const [err, code] = await Promise.all([new Response(proc.stderr).text(), proc.exited])
+      return { code, err }
+    }
+    await ws(`pipelines: { ok: { tasks: ['build'] } }`)
+    expect((await vx(BIN, 'pipeline', 'ok')).code).toBe(0)
+    await ws(`pipelines: { ok: { tasks: ['build'] }, typo: { tasks: ['biuld'] } }`)
+    const r = await vx(LOCK_BIN, 'pipeline', 'typo')
+    expect([r.code, r.err]).toEqual([
+      1,
+      expect.stringContaining('no projects declare task(s): biuld'),
+    ])
+    expect(r.err).toContain('tasks are `pipelines.typo.tasks` in .vx/workspace\n')
+    // CONTROL: `vx run` has no pipeline to name.
+    const run = await vx(LOCK_BIN, 'run', 'biuld', '--all')
+    expect(run.err).toContain('no projects declare task(s): biuld')
+    expect(run.err).not.toContain('`pipelines.')
+  }, 60_000)
+})

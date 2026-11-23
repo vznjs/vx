@@ -2052,7 +2052,8 @@ for one task in one project.
   flag (`VX_E_USAGE`); or a saved `cachePolicy`, or an `env` entry
   setting a `VX_*` variable, the run would refuse, naming that key
   (`VX_E_CONFIG`). A refusal that names a saved flag adds the key that
-  holds it (`--affected is \`pipelines.pr.affected\``).
+  holds it (`--affected is \`pipelines.pr.affected\``), and one naming a
+  task no project declares, the pipeline's `tasks` key.
 
 ## `vx cache clean`
 

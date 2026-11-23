@@ -622,13 +622,14 @@ const TASKS_SHOWN = 12
 /**
  * `invocation`: the line `vx last` replays, when it is not `vx run <args>`
  * (`vx pipeline pr`). `saved`: each flag a pipeline saved, to the key that
- * holds it. `affectedInstead`: the advice for a bare `--affected` on the base branch.
+ * holds it. `pipeline`: the pipeline it runs, and its advice for a bare
+ * `--affected` on the base branch.
  */
 export async function runCmd(
   args: readonly string[],
   invocation?: readonly string[],
   saved: ReadonlyMap<string, string> = new Map(),
-  affectedInstead?: string,
+  pipeline?: { name: string; affectedInstead: string },
 ): Promise<number> {
   // `vx pipeline pr` refuses as itself, not as the `vx run` it stands for.
   const verb = invocation?.[1] ?? 'run'
@@ -642,7 +643,11 @@ export async function runCmd(
 
   const cwd = process.cwd()
   const unknownTask = async (message: string): Promise<number> =>
-    refused(`${message}${await spacedHint(parsed, cwd)}`, 'VX_E_UNKNOWN_TASK')
+    refused(
+      // Its tasks are the pipeline's alone: `vx pipeline` takes none typed.
+      `${message}${await spacedHint(parsed, cwd)}${pipeline === undefined ? '' : `\n  tasks are \`pipelines.${pipeline.name}.tasks\` in .vx/workspace`}`,
+      'VX_E_UNKNOWN_TASK',
+    )
   if (parsed.profile !== undefined) {
     const problem = profileProblem(cwd, parsed.profile)
     if (problem !== undefined) return refused(problem, 'VX_E_USAGE')
@@ -733,7 +738,14 @@ export async function runCmd(
   }
 
   const scopeOut: { affectedBase?: string } = {}
-  const resolved = await resolveRunOptions(parsed, cwd, tasks, 'run', scopeOut, affectedInstead)
+  const resolved = await resolveRunOptions(
+    parsed,
+    cwd,
+    tasks,
+    'run',
+    scopeOut,
+    pipeline?.affectedInstead,
+  )
   if ('error' in resolved)
     return resolved.code === 'VX_E_UNKNOWN_TASK'
       ? unknownTask(resolved.error)

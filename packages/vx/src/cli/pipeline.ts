@@ -132,12 +132,10 @@ export async function pipelineCmd(args: readonly string[]): Promise<number> {
   for (const [key, { flag }] of Object.entries(PIPELINE_FLAGS))
     if (own.some((a) => a === flag || a.startsWith(`${flag}=`)))
       keys.set(flag, `\`pipelines.${name}.${key}\``)
-  return runCmd(
-    [...own, ...rest],
-    ['vx', 'pipeline', ...args],
-    keys,
-    affectedInstead(name, pipelines, keys.has('--affected')),
-  )
+  return runCmd([...own, ...rest], ['vx', 'pipeline', ...args], keys, {
+    name,
+    affectedInstead: affectedInstead(name, pipelines, keys.has('--affected')),
+  })
 }
 
 /**
