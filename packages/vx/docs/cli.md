@@ -3366,6 +3366,9 @@ For review, it also writes each project's resolved config, pretty, to
   `packages/ui: the plugins map it differently from the lock here`.
 - A run follows the record blindly, whatever plugins the workspace
   declares now.
+- When a plugin fails before the stage ran (a `discover` refusal),
+  `--check` names that failure alone: no config is compared with what
+  the stage recorded.
 - Both verbs name the projects with no config that the stage gives tasks,
   five names then `and N more`. Such a lock never reads like an audit of
   nothing:

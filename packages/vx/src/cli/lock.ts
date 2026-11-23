@@ -210,6 +210,7 @@ async function audit(root: string, warn: (message: string) => void): Promise<Gra
   const out: GraphCheck = {
     broken: null,
     loaded: false,
+    staged: false,
     fresh: { version: LOCKFILE_VERSION, projects: {} },
     all: [],
     tasked,
@@ -222,6 +223,7 @@ async function audit(root: string, warn: (message: string) => void): Promise<Gra
   try {
     const { workspaceConfig, plugins, cacheDir } = await loadCliWorkspace(root)
     out.reviewFiles = resolveSetting('lock.reviewFiles', workspaceConfig).value !== false
+    out.staged = !hasHook(plugins, 'project')
     const {
       configs: found,
       strayReviews,
@@ -296,6 +298,7 @@ async function audit(root: string, warn: (message: string) => void): Promise<Gra
     // edges (in the dependencies lock) and runs no hook, so a mapping is made
     // here and nowhere else (2026-11-21).
     out.fresh.projects = finalProjects(root, out.all, out.fresh.projects, stage)
+    out.staged = true
     out.loaded = true
     out.dependencies = await dependenciesOf(root, out.all, plugins, cacheDir, warn)
     checkBracketLiterals(root, projects.values())
@@ -448,6 +451,12 @@ interface GraphCheck {
   brokenParts?: RefusalParts
   /** Every config loaded and resolved: `broken`, if set, is a graph rule's refusal. */
   loaded: boolean
+  /**
+   * `fresh.projects` holds each config as the `project` stage leaves it:
+   * the stage ran, or no plugin fills it. A refusal before the stage
+   * leaves the configs as written, which no lock entry is.
+   */
+  staged: boolean
   /** The other configs that do not load, past `broken`. */
   alsoBroken?: readonly UserError[]
   /** The lock the configs evaluate to here. */
@@ -1146,7 +1155,7 @@ async function checkLock(root: string, json: boolean): Promise<number> {
         ? `${rel} is not in the lock — run 'vx lock'`
         : locked.file !== fresh.file
           ? `${rel} is not the ${locked.file} the lock holds for ${dir === '.' ? 'the workspace root project' : dir} — run 'vx lock'`
-          : !Bun.deepEquals(fresh.config, locked.config, true)
+          : check.staged && !Bun.deepEquals(fresh.config, locked.config, true)
             ? `${rel} evaluates differently from the lock here — its config, a file ` +
               `it imports, or the environment it reads changed; run 'vx lock'` +
               // What changed: a config that reads the environment shows no file diff.
