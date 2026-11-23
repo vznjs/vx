@@ -700,6 +700,28 @@ export function stagedOutputs(
   const words = [...wrapped.matchAll(/(?:'[^']*'|"[^"]*"|[^\s'"])+/g)]
   const end = words.findIndex((w) => w[0] === '--')
   if (end === -1) return undefined
+  // Only a directory the line names nowhere but in its own write bind is
+  // staged: a deny or mask in it (`.mcp.json`, `.git/hooks`) is a mount
+  // that moves with a renamed directory, so a staged one would let the task
+  // rebuild it unprotected and the restore land that on the host.
+  const own = (i: number, d: string): boolean =>
+    (words[i - 1]?.[0] === '--bind' &&
+      unquoted(words[i]![0]) === d &&
+      unquoted(words[i + 1]![0]) === d) ||
+    (words[i - 2]?.[0] === '--bind' &&
+      unquoted(words[i - 1]![0]) === d &&
+      unquoted(words[i]![0]) === d)
+  for (let k = dirs.length - 1; k >= 0; k--) {
+    const d = dirs[k]!
+    for (let i = 0; i < end; i++) {
+      const w = unquoted(words[i]![0])
+      if (!atOrUnder(w, d)) continue
+      if (w === d && own(i, d)) continue
+      dirs.splice(k, 1)
+      break
+    }
+  }
+  if (dirs.length === 0) return undefined
   // The deepest mask holding the task's directory is where the stage is bound.
   const masks: { at: number; path: string }[] = []
   for (let i = 0; i < end - 1; i++) {
@@ -762,9 +784,9 @@ export function stagedOutputs(
   // Drop each staged directory's binds; bind the stage as the task's directory after the mask.
   const drop = new Set<number>()
   for (let i = 0; i < end - 2; i++) {
-    if (words[i]![0] !== '--bind' && words[i]![0] !== '--ro-bind') continue
+    if (words[i]![0] !== '--bind') continue
     const dest = unquoted(words[i + 2]![0])
-    if (dirs.includes(dest))
+    if (dirs.includes(dest) && unquoted(words[i + 1]![0]) === dest)
       drop
         .add(i)
         .add(i + 1)

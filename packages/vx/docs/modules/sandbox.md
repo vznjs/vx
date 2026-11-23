@@ -1119,7 +1119,9 @@ host's goes too. A failed rename throws, so the task fails rather than
 saving stale bytes. The host's directory is never moved: a concurrent
 task reading it still sees it, and a killed run's staging, which holds
 only links, is swept as a restore's is (`sweepStaging`). Directories are
-not staged for a server, for a grant no output claims whole, where a mask
+not staged for a server, for a grant no output claims whole, for a
+directory the line names anywhere but its own write bind (a deny or mask
+in it is a mount that would move with it), where a mask
 sits at the task's directory (its later `--remount-ro` would cover the
 staging), or for a task whose directory a grant
 binds itself (`write: ['.']`, a file grant there). There a failed task

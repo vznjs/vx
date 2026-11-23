@@ -10,6 +10,7 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { initSandbox, resetSandbox } from '../src/sandbox/session.js'
 import { resolveSandboxConfig } from '../src/sandbox/grants.js'
+import { stagedOutputs } from '../src/sandbox/binds.js'
 import { runSandboxed } from '../src/sandbox/runtime.js'
 import { run as runVx } from './helpers/orchestrator.js'
 import { sandboxAvailable } from './helpers/sandbox-gate.js'
@@ -78,6 +79,46 @@ describe.skipIf(!available || process.platform !== 'linux')('removing a write gr
     )
     expect([r.exitCode, hints(r), existsSync(path.join(dir, 'dist'))]).toEqual([1, [], true])
   }, 30_000)
+})
+
+// A deny or mask inside a directory is a mount that moves with it: staged,
+// the task could move the protected tree aside, rebuild it, and the restore
+// would land that on the host (security review, 2026-11-23).
+describe.skipIf(process.platform !== 'linux')('staging an output directory', () => {
+  let dir = ''
+  beforeEach(async () => {
+    dir = realpathSync(await mkdtemp(path.join(os.tmpdir(), 'vx-stage-')))
+    await mkdir(path.join(dir, '.vx'))
+    await mkdir(path.join(dir, 'app', 'dist'), { recursive: true })
+    await writeFile(path.join(dir, 'app', 'dist', '.mcp.json'), '{}')
+  })
+  afterEach(() => rm(dir, { recursive: true, force: true }))
+  const dist = () => path.join(dir, 'app', 'dist')
+  const stage = (extra: string) =>
+    stagedOutputs(`bwrap --tmpfs ${dir} --bind ${dist()} ${dist()}${extra} -- sh`, {
+      cwd: path.join(dir, 'app'),
+      allowRead: [],
+      allowWrite: [dist()],
+      granted: [dist()],
+      owned: [dist()],
+      tag: '0123456789abcdef',
+    })
+
+  it('stages a directory the line names only in its own write bind', () => {
+    const s = stage('')
+    expect(s?.wrapped).toContain(`--bind ${dir}/.vx/tmp/`)
+    expect(s?.wrapped).not.toContain(`--bind ${dist()} ${dist()}`)
+    s?.restore()
+    expect(readdirSync(dist())).toEqual(['.mcp.json'])
+  })
+
+  it.each([
+    [' --ro-bind DIST/.mcp.json DIST/.mcp.json'],
+    [' --ro-bind DIST DIST'],
+    [' --tmpfs DIST/sub'],
+  ])('stages none the line names elsewhere:%s', (extra) => {
+    expect(stage(extra.replaceAll('DIST', dist()))).toBeUndefined()
+  })
 })
 
 // The orchestrator streams a task's output and captures none, so the hint
