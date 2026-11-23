@@ -249,7 +249,7 @@
 .vx-landing .cfm-cat[open] .cfm-name::before {
   transform: rotate(90deg);
 }
-.vx-landing .cfm-cat h3 {
+.vx-landing .cfm-cat :is(h2, h3) {
   display: inline;
   font: var(--fw-semibold) 18px / 1.3 var(--font-display);
   margin: 0;
@@ -490,4 +490,9 @@
     bottom: 16px;
     width: auto;
   }
+}
+/* A closed category's link to its own page, until opening it loads the cases. */
+.vx-landing .cfm-more {
+  margin: 0 0 14px;
+  font: 13px / 1.3 var(--font-mono);
 }

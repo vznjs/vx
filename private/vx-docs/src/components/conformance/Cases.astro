@@ -1,0 +1,73 @@
+---
+// One category's cases in the conformance table's columns: a row per case
+// with each tool's outcome. A failing cell opens its detail, an N/A cell
+// why the tool does not have the feature. The category's own page
+// (pages/conformance/[category].astro) draws it; the conformance page
+// fetches that page's table when the category is opened.
+import { agree, inline, note, RANKED, toolName, type Case } from '../../conformance/data.ts'
+
+interface Props {
+  cases: Case[]
+}
+const { cases } = Astro.props
+const MARK = { pass: '✓', fail: '✗', 'n/a': '–' } as const
+const SAY = { pass: 'passes', fail: 'fails', 'n/a': 'does not have this feature' } as const
+---
+
+{/* Two thousand case rows outranked every docs page in search. */}
+<table class="cfm-cases" data-pagefind-ignore>
+  <colgroup>
+    <col />
+    <col span={RANKED.length} class="cfm-col" />
+  </colgroup>
+  <thead class="cfm-sr">
+    <tr>
+      <th scope="col">Case</th>
+      {RANKED.map((t) => (
+        <th scope="col" class="cfm-tool">
+          {toolName(t)}
+        </th>
+      ))}
+    </tr>
+  </thead>
+  <tbody>
+    {cases.map((c) => (
+      <tr id={c.ref} data-case={c.id} data-agree={agree(c) ? '' : undefined}>
+        <th scope="row">
+          <span class="cfm-title" set:html={inline(c.title)} />
+          <details class="cfm-why">
+            <summary>Why this is right</summary>
+            <p set:html={inline(c.why)} />
+          </details>
+          <span class="cfm-meta">
+            <a href={`#${c.ref}`}>{c.ref}</a> · {c.id} · {c.kind}
+          </span>
+        </th>
+        {RANKED.map((t) => {
+          const o = c.outcomes[t] ?? { status: 'n/a' as const }
+          const label = `${toolName(t)} ${SAY[o.status]}`
+          return (
+            <td data-tool={t} data-status={o.status}>
+              {o.status !== 'pass' && note(o) !== '' ? (
+                <details>
+                  <summary aria-label={label} title={note(o)}>
+                    {MARK[o.status]}
+                  </summary>
+                  <p class="cfm-detail">
+                    <strong>
+                      {toolName(t)}
+                      {o.status === 'n/a' ? ': N/A' : ''}
+                    </strong>{' '}
+                    {note(o)}
+                  </p>
+                </details>
+              ) : (
+                <span aria-label={label}>{MARK[o.status]}</span>
+              )}
+            </td>
+          )
+        })}
+      </tr>
+    ))}
+  </tbody>
+</table>

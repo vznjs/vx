@@ -41,7 +41,10 @@ describe('search', () => {
   })
 
   it('leaves the conformance page’s case rows out of search', () => {
-    const html = read('conformance/index.html')
+    const html = readdirSync(path.join(DIST, 'conformance'))
+      .filter((d) => !d.includes('.'))
+      .map((d) => read(`conformance/${d}/index.html`))
+      .join('\n')
     const tables = [...html.matchAll(/<table class="cfm-cases"[^>]*>/g)].map((m) => m[0])
     expect(tables.length).toBeGreaterThan(5)
     expect(tables.filter((t) => !t.includes('data-pagefind-ignore'))).toEqual([])

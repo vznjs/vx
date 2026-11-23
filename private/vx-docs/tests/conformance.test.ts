@@ -1,7 +1,8 @@
 // The conformance page (src/pages/conformance/) against the suite's results
-// (src/data/conformance.json): the built page shows every case with each
+// (src/data/conformance.json): the built pages show every case with each
 // tool's outcome, a failing cell's detail, and each tool's score in every
-// group, so a page that drops or misreads a row fails here.
+// group, so a page that drops or misreads a row fails here. A category's
+// cases are on its own page, which the conformance page loads on opening.
 
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
@@ -22,6 +23,10 @@ import {
 
 const DIST = path.resolve(import.meta.dir, '../dist')
 const html = readFileSync(path.join(DIST, 'conformance/index.html'), 'utf8')
+/** Every category's page, one after another. */
+const pages = CATEGORIES.map((id) =>
+  readFileSync(path.join(DIST, `conformance/${id}/index.html`), 'utf8'),
+).join('\n')
 
 const unescape = (s: string): string =>
   s
@@ -34,9 +39,9 @@ const unescape = (s: string): string =>
 // Each case's rows, read in one pass: looking each of 2,000 cases up in
 // the 2 MB page took the suite past bun's 5 s default (2026-11-22).
 const ROWS = new Map<string, { at: number; rows: string[] }>()
-for (const m of html.matchAll(/data-case="([^"]+)"/g)) {
+for (const m of pages.matchAll(/data-case="([^"]+)"/g)) {
   const entry = ROWS.get(m[1]!) ?? { at: m.index, rows: [] }
-  entry.rows.push(html.slice(m.index, html.indexOf('</tr>', m.index)))
+  entry.rows.push(pages.slice(m.index, pages.indexOf('</tr>', m.index)))
   ROWS.set(m[1]!, entry)
 }
 
@@ -68,8 +73,8 @@ describe('the conformance page', () => {
         wrong.push(`${c.id}: not shown once`)
         continue
       }
-      const section = html.lastIndexOf('<details class="cfm-cat" id="', ROWS.get(c.id)!.at)
-      if (!html.startsWith(`<details class="cfm-cat" id="${c.category}"`, section))
+      const section = pages.lastIndexOf('<details class="cfm-cat" id="', ROWS.get(c.id)!.at)
+      if (!pages.startsWith(`<details class="cfm-cat" id="${c.category}"`, section))
         wrong.push(`${c.id}: not under ${c.category}`)
       const got = cells(row(c.id)).map(([t, s]) => [t, s])
       const want = RANKED.map((t) => [t, c.outcomes[t]?.status ?? 'n/a'])
@@ -87,14 +92,33 @@ describe('the conformance page', () => {
     for (const c of RESULTS.cases) {
       if (!/^[a-z0-9]{6}$/.test(c.ref)) wrong.push(`${c.id}: ref ${c.ref}`)
       const r = row(c.id)
-      if (!html.includes(`<tr id="${c.ref}" data-case="${c.id}"`)) wrong.push(`${c.id}: no anchor`)
+      if (!pages.includes(`<tr id="${c.ref}" data-case="${c.id}"`)) wrong.push(`${c.id}: no anchor`)
       if (!r.includes(`<a href="#${c.ref}">${c.ref}</a>`)) wrong.push(`${c.id}: no link`)
     }
     expect(wrong).toEqual([])
     expect(new Set(RESULTS.cases.map((c) => c.ref)).size).toBe(RESULTS.cases.length)
-    // A category is closed, so the script opens the one a link points into.
+    // A category is closed, so the script opens the one a link points into,
+    // found by the case's ref.
     expect(html).toContain('hashchange')
     expect(html).toContain('details.cfm-cat')
+    const refs = JSON.parse(
+      unescape(html.match(/<script type="application\/json" id="cfm-refs">([^<]*)<\/script>/)![1]!),
+    ) as Record<string, string>
+    expect(refs).toEqual(Object.fromEntries(RESULTS.cases.map((c) => [c.ref, c.category])))
+  })
+
+  it('loads a category’s cases from its own page, so the page stays small', () => {
+    const wrong: string[] = []
+    for (const id of CATEGORIES) {
+      const at = html.indexOf(`<details class="cfm-cat" id="${id}"`)
+      const body = html.slice(at, html.indexOf('</details>', at))
+      if (!body.includes(`<p class="cfm-more" data-cat="${id}"><a href="${id}/">`))
+        wrong.push(`${id}: no link to its page`)
+    }
+    expect(wrong).toEqual([])
+    expect(html).not.toContain('data-case=')
+    expect(html).toMatch(/querySelector\(.table\.cfm-cases.\)/)
+    expect(html.length).toBeLessThan(300_000)
   })
 
   it('shows each category closed, its summary its row of the score board', () => {
