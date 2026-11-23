@@ -344,14 +344,14 @@ describe('oidcClaims', () => {
       sub: 'repo:vznjs/vx:environment:npm',
       repository: 'vznjs/vx',
       environment: 'npm',
-      job_workflow_ref: 'vznjs/vx/.github/workflows/release.yml@refs/tags/v1.2.3',
+      job_workflow_ref: 'vznjs/vx/.github/workflows/npm.yml@refs/tags/v1.2.3',
       runner_environment: 'github-hosted',
     })}.sig`
     expect(oidcClaims(jwt)).toEqual({
       sub: 'repo:vznjs/vx:environment:npm',
       repository: 'vznjs/vx',
       environment: 'npm',
-      job_workflow_ref: 'vznjs/vx/.github/workflows/release.yml@refs/tags/v1.2.3',
+      job_workflow_ref: 'vznjs/vx/.github/workflows/npm.yml@refs/tags/v1.2.3',
     })
   })
 })

@@ -121,15 +121,15 @@ on main rewrites it (`deploy.github` in ci.yml's Linux run). Confirm the tag is 
 post names; if another release landed first and the number moved, rename
 the post in a follow-up PR before sharing it.
 
-Then wait until the release is published (`release.yml`'s darwin upload
+Then wait until the release is published (`npm.yml`'s darwin upload
 publishes the draft) and the post is live at
 `https://vznjs.github.io/vx/releases/vx-0-0-<N+1>/` (ci.yml's Linux run deploys
 main).
 
 Then check npm has it: `curl -s https://registry.npmjs.org/@vzn%2fvx | jq -r '."dist-tags".latest'`
-must print the new version. `release.yml` publishes the npm packages
+must print the new version. `npm.yml` publishes the npm packages
 after the GitHub release; if it failed or was cancelled (a macOS worker
-that never started), dispatch `release.yml` again on the tag `v<N+1>`
+that never started), dispatch `npm.yml` again on the tag `v<N+1>`
 (each step skips what is done), and share nothing until npm has it.
 
 ## 4. Share on Bluesky

@@ -106,7 +106,7 @@ async function buildRunners(dir: string, wanted: (name: string) => boolean): Pro
   const runners: Runner[] = []
 
   // vx — compile the standalone binary (the artifact real users install via
-  // npm / release.yml). Comparing TS-source startup against Turbo's
+  // npm.yml). Comparing TS-source startup against Turbo's
   // and Nx's precompiled binaries would handicap vx unfairly.
   if (wanted('vx')) {
     const vxBin = path.join(dir, '.vx-runner')
@@ -129,7 +129,7 @@ async function buildRunners(dir: string, wanted: (name: string) => boolean): Pro
     )
     // Bun 1.4.0's compiled binary carries a signature this macOS rejects
     // (SIGKILL on launch, exit 137 — see docs/benchmarks.md); an ad-hoc
-    // re-sign repairs it, exactly as release.yml does.
+    // re-sign repairs it, exactly as npm.yml does.
     if (compiled.ok && process.platform === 'darwin')
       await sh(['codesign', '-s', '-', '--force', vxBin], dir)
     const version = await sh([vxBin, '--version'], dir)

@@ -14,15 +14,7 @@ import { describe, expect, it } from 'bun:test'
 import config from '../vx.config.ts'
 import { binariesOf } from '../scripts/release-attest.ts'
 
-const workflow = path.resolve(
-  import.meta.dir,
-  '..',
-  '..',
-  '..',
-  '.github',
-  'workflows',
-  'release.yml',
-)
+const workflow = path.resolve(import.meta.dir, '..', '..', '..', '.github', 'workflows', 'npm.yml')
 const tasks = config.tasks ?? {}
 
 describe('a release attests what it ships (L-12)', () => {

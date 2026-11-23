@@ -65,13 +65,13 @@ export default defineWorkspace({
   run: { timeout: '2m' },
   // What each ci.yml job runs. main adds the main-only proofs and the
   // deploys; perf times the machine, so it names no relay and runs here.
-  // release is release.yml's, on a tag.
+  // release is npm.yml's, on a tag.
   pipelines: {
     pr: { tasks: checks, affected: true, ...ci },
     queue: { tasks: checks, ...ci },
     main: { tasks: [...checks, 'main'], ...ci },
     'perf-pr': { tasks: ['perf'], affected: true },
     perf: { tasks: ['perf'] },
-    release: { tasks: ['release'], ...ci },
+    npm: { tasks: ['release'], ...ci },
   },
 })

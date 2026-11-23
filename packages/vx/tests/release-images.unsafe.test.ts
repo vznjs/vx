@@ -89,7 +89,7 @@ describe('release.docker', () => {
 
   it('runs on every release, last, in a job that may push packages', () => {
     const doc = Bun.YAML.parse(
-      readFileSync(path.join(ROOT, '.github/workflows/release.yml'), 'utf8'),
+      readFileSync(path.join(ROOT, '.github/workflows/npm.yml'), 'utf8'),
     ) as { jobs: Record<string, { permissions?: Record<string, string> }> }
     expect(doc.jobs['release']?.permissions?.['packages']).toBe('write')
     expect(config.tasks?.['release']?.dependsOn).toEqual(['release.docker'])

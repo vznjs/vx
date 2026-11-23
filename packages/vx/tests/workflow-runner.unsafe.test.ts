@@ -91,7 +91,7 @@ describe('a Linux CI job that runs a vx task', () => {
   })
 
   it('leaves out only the distributed runs', () => {
-    expect(runs).toEqual(['ci.yml#linux', 'release.yml#release'])
+    expect(runs).toEqual(['ci.yml#linux', 'npm.yml#release'])
   })
 
   it('sets up the sandbox runtime before its first vx task', () => {
@@ -108,7 +108,7 @@ describe('a Linux CI job that runs a vx task', () => {
 // CI runs vx tasks, never commands of its own (2026-10-03): the
 // release logic lives in `release.*` tasks (scripts/release.ts,
 // scripts/auto-release.ts), where it is typed, tested and sandboxed. The
-// three release workflows run nothing but the install and vx tasks, and no
+// release workflows run nothing but the install and vx tasks, and no
 // workflow inlines a script or does a task's job itself.
 
 describe('a workflow `run:` step', () => {
@@ -128,7 +128,7 @@ describe('a workflow `run:` step', () => {
   })
 
   it('in a release workflow, is the install or one vx task', () => {
-    const release = steps.filter(({ at }) => /^(?:release|auto-release)\.yml#/.test(at))
+    const release = steps.filter(({ at }) => /^(?:npm|auto-release)\.yml#/.test(at))
     expect(release.length).toBeGreaterThan(5)
     const custom = release
       .filter(
@@ -136,7 +136,7 @@ describe('a workflow `run:` step', () => {
           run !== 'bun install --frozen-lockfile' &&
           run !== SETUP &&
           run !== 'bun packages/vx/src/bin.ts lock --check' &&
-          run !== 'bun packages/vx/src/bin.ts pipeline release' &&
+          run !== 'bun packages/vx/src/bin.ts pipeline npm' &&
           !/^bun packages\/vx\/src\/bin\.ts run [\w. -]+ --filter @vzn\/vx(?: --concurrency \d+)?$/.test(
             run,
           ),
