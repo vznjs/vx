@@ -46,8 +46,8 @@ folder. Run it in every project that has it:
 ```ansi
 [2m$[0m vx run lint --all
 
-[4m[58;2;110;118;129m  [1m[38;2;167;139;250mTasks[0m[4m[58;2;110;118;129m     [2mstatus  cache     ±usual    time   cpu    mem outputs  blocks worker         task[0m[4m[58;2;110;118;129m                           [0m
-            [38;2;34;197;94msuccess[0m [2mno-cache[0m       [2m—[0m    [38;2;203;213;225m66ms[0m   [2m91%[0m   [2m78MB[0m       [2m—[0m       [2m0[0m [2mlocal[0m          [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;232;121;249mlint[0m
+[4m  [0m[1;4;38;2;167;139;250mTasks[0m[4m     [0m[4;38;2;148;163;184mstatus  cache       time   task[0m[4m[0m
+            [38;2;34;197;94msuccess[0m [38;2;148;163;184mno-cache[0m    [38;2;203;213;225m58ms[0m   [38;2;192;132;252m@demo/ui[0m[38;2;148;163;184m#[0m[38;2;232;121;249mlint[0m
 ```
 
 The row says `success`. `no-cache` means vx ran it fresh, because you
@@ -93,9 +93,9 @@ imports whom from your lockfile, through a [lockfile plugin](../lockfiles/).
 ```ansi
 [2m$[0m vx run build --all
 
-[4m[58;2;110;118;129m  [1m[38;2;167;139;250mTasks[0m[4m[58;2;110;118;129m     [2mstatus  cache     ±usual    time   cpu    mem outputs  blocks worker         task[0m[4m[58;2;110;118;129m                           [0m
-            [38;2;34;197;94msuccess[0m [2mno-cache[0m   [2m−24ms[0m   [38;2;203;213;225m214ms[0m  [2m106%[0m  [2m112MB[0m       [2m—[0m       [38;2;203;213;225m1[0m [2mlocal[0m          [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m
-            [38;2;34;197;94msuccess[0m [2mno-cache[0m   [2m+20ms[0m   [38;2;203;213;225m196ms[0m  [2m113%[0m  [2m111MB[0m       [2m—[0m       [2m0[0m [2mlocal[0m          [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m
+[4m  [0m[1;4;38;2;167;139;250mTasks[0m[4m     [0m[4;38;2;148;163;184mstatus  cache       time   task[0m[4m[0m
+            [38;2;34;197;94msuccess[0m [38;2;148;163;184mno-cache[0m   [38;2;203;213;225m321ms[0m   [38;2;192;132;252m@demo/ui[0m[38;2;148;163;184m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;34;197;94msuccess[0m [38;2;148;163;184mno-cache[0m   [38;2;203;213;225m199ms[0m   [38;2;244;114;182m@demo/web[0m[38;2;148;163;184m#[0m[38;2;244;114;182mbuild[0m
 ```
 
 `@demo/ui#build` ran first and held back `@demo/web#build` until it was
@@ -133,10 +133,10 @@ Click a task to see what runs first, or edit a file to see what runs again:
 
 <Deeper level="patterns" title="Watch the order on a real run">
 
-`@demo/web` and `@demo/admin` both use `@demo/ui`. `web` imports `ui`
+`@demo/web` uses `@demo/ui`. `web` imports `ui`
 through its `dist/`, so `vite build` in `web` needs `ui` built.
 
-<ProjectMap picked={['web', 'ui']} label="@demo/web and @demo/admin both use @demo/ui" caption="Arrows point at the package being used." />
+<ProjectMap picked={['web', 'ui']} label="@demo/web uses @demo/ui" caption="Arrows point at the package being used." />
 
 Pick a tab and watch the run.
 
@@ -236,16 +236,15 @@ run finds both keys:
 ```ansi
 [2m$[0m vx run build --all
 
-[4m[58;2;110;118;129m  [1m[38;2;167;139;250mSummary[0m[4m[58;2;110;118;129m                                                                                                       [2mvx 0.0.0[0m
-  [2mtasks   [0m  [38;2;34;197;94m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
-            [38;2;34;197;94m2 success[0m [2m·[0m [2m2 total[0m
-  [2mcache   [0m  [38;2;34;197;94m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
-            [2mlocal[0m [38;2;34;197;94m2✓[0m
-
-  [2mtime    [0m  28ms
+[4m  [0m[1;4;38;2;167;139;250mSummary[0m[4m                                       [0m[4;38;2;148;163;184mvx 0.0.0[0m
+  [38;2;148;163;184mtasks   [0m  [38;2;34;197;94m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
+            [38;2;34;197;94m2 success[0m [38;2;148;163;184m·[0m [38;2;148;163;184m2 total[0m
+  [38;2;148;163;184mcache   [0m  [38;2;34;197;94m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
+            [38;2;148;163;184mlocal[0m [38;2;34;197;94m2✓[0m
+  [38;2;148;163;184mtime    [0m  20ms
 ```
 
-`2✓` is two hits. The run took 28 ms, because no `vite build` ran.
+`2✓` is two hits. The run took 20 ms, because no `vite build` ran.
 
 Type globs and watch which files a task reads. Files of other projects never match:
 
@@ -267,25 +266,25 @@ task fails and nothing is saved:
 ```ansi
 [2m$[0m vx run build --filter @demo/ui
 
-[4m[58;2;110;118;129m  [1m[38;2;167;139;250mTasks[0m[4m[58;2;110;118;129m     [2mstatus  cache     ±usual    time   cpu    mem outputs  blocks worker         task[0m[4m[58;2;110;118;129m                           [0m
-            [38;2;239;68;68mfailed[0m  [2mmiss[0m       [2m+10ms[0m   [38;2;203;213;225m213ms[0m  [2m110%[0m  [2m114MB[0m       [2m—[0m       [2m0[0m [2mlocal[0m          [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m
+[4m  [0m[1;4;38;2;167;139;250mTasks[0m[4m     [0m[4;38;2;148;163;184mstatus  cache       time   task[0m[4m[0m
+            [38;2;239;68;68mfailed[0m  [38;2;148;163;184mmiss[0m       [38;2;203;213;225m271ms[0m   [38;2;192;132;252m@demo/ui[0m[38;2;148;163;184m#[0m[38;2;244;114;182mbuild[0m
 
-[2m┌─[0m [1m[38;2;192;132;252m@demo/ui[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m>[0m [1m[38;2;239;68;68mfailed (exited 0, no file matched dist/ui.js)[0m
+[38;2;148;163;184m┌─[0m [1;38;2;192;132;252m@demo/ui[0m[38;2;148;163;184m#[0m[1;38;2;244;114;182mbuild[0m [38;2;148;163;184m>[0m [1;38;2;239;68;68mfailed (exited 0, no file matched di[0m[1;38;2;239;68;68mst/ui.js)[0m
 
-[2mpackages/ui $ vite build[0m
+[38;2;148;163;184mpackages/ui $ vite build[0m
 
-[2m├─[0m [1mOUTPUT[0m [2m────────────────────────────────────────────────────[0m
+[38;2;148;163;184m├─[0m [1mOUTPUT[0m [38;2;148;163;184m──────────────────────────────────────────────[0m
 
-[36mvite v8.3.8 [32mbuilding client environment for production...[36m[39m
+[36mvite v8.3.8 [0m[32mbuilding client environment for production..[0m[32m.[0m
 transforming...
 [32m✓[0m 2 modules transformed.
 rendering chunks...
 computing gzip size...
-[2mdist/[0m[36mindex.js  [0m[1;2m0.06 kB[0m[2m │ gzip: 0.08 kB[0m
+[38;2;148;163;184mdist/[0m[36mindex.js  [0m[1;38;2;148;163;184m0.06 kB[0m[38;2;148;163;184m │ gzip: 0.08 kB[0m
 
-[32m✓ built in 26ms[39m[0m
+[32m✓ built in 65ms[0m
 
-[2m└─[0m [1m[38;2;192;132;252m@demo/ui[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(213ms)[0m [1m[38;2;239;68;68mfailed (exited 0, no file matched dist/ui.js)[0m
+[38;2;148;163;184m└─[0m [1;38;2;192;132;252m@demo/ui[0m[38;2;148;163;184m#[0m[1;38;2;244;114;182mbuild[0m [38;2;148;163;184m──[0m [38;2;148;163;184m(271ms)[0m [1;38;2;239;68;68mfailed (exited 0, no file m[0m[1;38;2;239;68;68matched dist/ui.js)[0m
 ```
 
 The row names the missing file. Fix the path, or the command.
@@ -390,33 +389,33 @@ rest, so one run shows every failure:
 ```ansi
 [2m$[0m vx run build --all
 
-[4m[58;2;110;118;129m  [1m[38;2;167;139;250mTasks[0m[4m[58;2;110;118;129m     [2mstatus  cache     ±usual    time   cpu    mem outputs  blocks worker         task[0m[4m[58;2;110;118;129m                           [0m
-            [38;2;239;68;68mfailed[0m  [2mmiss[0m       [2m−20ms[0m   [38;2;203;213;225m183ms[0m  [2m111%[0m  [2m112MB[0m      [2m0B[0m       [38;2;203;213;225m1[0m [2mlocal[0m          [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m
-            [38;2;234;179;8mskipped[0m [2m—[0m              [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2m—[0m              [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m [2m• blocked by @demo/ui#build[0m
+[4m  [0m[1;4;38;2;167;139;250mTasks[0m[4m     [0m[4;38;2;148;163;184mstatus  cache       time   task[0m[4m[0m
+            [38;2;239;68;68mfailed[0m  [38;2;148;163;184mmiss[0m       [38;2;203;213;225m169ms[0m   [38;2;192;132;252m@demo/ui[0m[38;2;148;163;184m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;234;179;8mskipped[0m [38;2;148;163;184m—[0m              [38;2;148;163;184m—[0m   [38;2;244;114;182m@demo/web[0m[38;2;148;163;184m#[0m[38;2;244;114;182mbuild[0m [38;2;148;163;184m•[0m[38;2;148;163;184m blocked by @demo/ui#build[0m
 
-[2m┌─[0m [1m[38;2;192;132;252m@demo/ui[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m>[0m [1m[38;2;239;68;68mfailed (exit 1)[0m
+[38;2;148;163;184m┌─[0m [1;38;2;192;132;252m@demo/ui[0m[38;2;148;163;184m#[0m[1;38;2;244;114;182mbuild[0m [38;2;148;163;184m>[0m [1;38;2;239;68;68mfailed (exit 1)[0m
 
-[2mpackages/ui $ vite build[0m
+[38;2;148;163;184mpackages/ui $ vite build[0m
 
-[2m├─[0m [1mOUTPUT[0m [2m────────────────────────────────────────────────────[0m
+[38;2;148;163;184m├─[0m [1mOUTPUT[0m [38;2;148;163;184m──────────────────────────────────────────────[0m
 
-[36mvite v8.3.8 [32mbuilding client environment for production...[36m[39m
+[36mvite v8.3.8 [0m[32mbuilding client environment for production..[0m[32m.[0m
 transforming...
 [32m✓[0m 1 modules transformed.
-[31m✗[39m Build failed in 20ms
-[31merror during build:
-[31mBuild failed with 1 error:
+[31m✗[0m Build failed in 16ms
+[31merror during build:[0m
+[31mBuild failed with 1 error:[0m
 
 [31m[builtin:vite-transform] [0mExpected `)` but found `EOF`
-   [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m src/index.ts:1:36 [38;5;246m][0m
-   [38;5;246m│[0m
- [38;5;246m1 │[0m [38;5;249me[0m[38;5;249mx[0m[38;5;249mp[0m[38;5;249mo[0m[38;5;249mr[0m[38;5;249mt[0m[38;5;249m [0m[38;5;249mc[0m[38;5;249mo[0m[38;5;249mn[0m[38;5;249ms[0m[38;5;249mt[0m[38;5;249m [0m[38;5;249mg[0m[38;5;249mr[0m[38;5;249me[0m[38;5;249me[0m[38;5;249mt[0m[38;5;249m [0m[38;5;249m=[0m[38;5;249m [0m[38;5;249m([0m[38;5;249mn[0m[38;5;249ma[0m[38;5;249mm[0m[38;5;249me[0m[38;5;249m [0m[38;5;249m=[0m[38;5;249m>[0m[38;5;249m [0m[38;5;249mn[0m[38;5;249ma[0m[38;5;249mm[0m[38;5;249me[0m
- [38;5;240m  │[0m                                    │
- [38;5;240m  │[0m                                    ╰─ `)` expected
-[38;5;246m───╯[0m
-[31m
+   [38;2;148;148;148m╭─[[0m src/index.ts:1:36 [38;2;148;148;148m][0m
+   [38;2;148;148;148m│[0m
+ [38;2;148;148;148m1 │[0m [38;2;178;178;178mexport const greet = (name => name[0m
+ [38;2;88;88;88m  │[0m                                    │
+ [38;2;88;88;88m  │[0m                                    ╰─ `)` expected
+[38;2;148;148;148m───╯[0m
 
-[2m└─[0m [1m[38;2;192;132;252m@demo/ui[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(183ms)[0m [1m[38;2;239;68;68mfailed (exit 1)[0m
+
+[38;2;148;163;184m└─[0m [1;38;2;192;132;252m@demo/ui[0m[38;2;148;163;184m#[0m[1;38;2;244;114;182mbuild[0m [38;2;148;163;184m──[0m [38;2;148;163;184m(169ms)[0m [1;38;2;239;68;68mfailed (exit 1)[0m
 ```
 
 The skipped row names its blocker: `blocked by @demo/ui#build`. To
@@ -463,36 +462,6 @@ waits on `dev`. It stops the server when the rest of the run ends.
 | `exec.sandbox` | only the files and network you allow | [Sandboxing](../sandboxing/) |
 | `exec.remote` | `false` keeps it on this machine; `'only'` never runs it here | [Remote execution](../remote-execution/) |
 | `exec.worker` | the worker type to run on, such as `'ubuntu'` | [Distributed task execution](../distributed-task-execution/) |
-
-<Deeper level="patterns" title="Confine a task to what it declares">
-
-`exec.sandbox` lets a task touch only what you allow. This end-to-end test
-reads its project, writes its results, and reaches only the preview
-server:
-
-```ts title="packages/web/vx.config.ts"
-import { defineProject } from '@vzn/vx/config'
-
-export default defineProject({
-  tasks: {
-    e2e: {
-      exec: {
-        command: 'playwright test',
-        sandbox: {
-          allow: { read: ['.'], write: ['test-results'], network: ['localhost:4173'] },
-          deny: { network: ['*.analytics.example.com'] },
-          ignore: { read: ['/etc/ssl/**'] },
-        },
-      },
-    },
-  },
-})
-```
-
-`ignore` hides a denial from the report; it still blocks. Every sandbox
-field is on [Sandboxing](../sandboxing/).
-
-</Deeper>
 
 <Takeaway>start a dev server after its libraries build, and keep a macOS-only task off Linux.</Takeaway>
 
@@ -578,6 +547,50 @@ Click any field to read what it does:
 | `outputs.workspaceFiles`<br/><small>string[]</small> | root-relative outputs. Default: none |
 | `outputs.clean`<br/><small>boolean</small> | remove old outputs before a miss runs. Default: `true` |
 | `cache`<br/><small>boolean</small> | save and reuse; needs `exec`, `inputs` and `outputs`, which a task without `cache` may leave out. Default: `false` |
+
+One task with every field set, to copy from:
+
+```ts title="packages/web/vx.config.ts"
+import { defineProject } from '@vzn/vx/config'
+
+export default defineProject({
+  tasks: {
+    lint: { exec: { command: 'oxlint src' } },
+    e2e: {
+      description: 'browser tests against the preview build',
+      dependsOn: ['lint', '^build'],
+      exec: {
+        command: 'playwright test',
+        env: { define: { CI: '1' }, passThrough: ['HOME'], secret: ['SENTRY_AUTH_TOKEN'] },
+        timeout: '10m',
+        retries: 1,
+        platforms: ['linux-x64', 'darwin-arm64'],
+        remote: false,
+        worker: 'ubuntu',
+        sandbox: {
+          allow: { read: ['.'], write: ['test-results'], network: ['localhost:4173'] },
+          deny: { network: ['*.analytics.example.com'] },
+          ignore: { read: ['/etc/ssl/**'] },
+        },
+      },
+      inputs: {
+        files: ['src/**', 'e2e/**'],
+        workspaceFiles: ['tsconfig.base.json'],
+        env: ['BASE_URL'],
+        tasks: ['*', '^*'],
+        runtime: ['playwright --version'],
+        workspaceRuntime: ['node -v'],
+        stability: { strategy: 'immutable', severity: 'warn' },
+      },
+      outputs: { files: ['test-results/**'], workspaceFiles: ['reports/web-e2e/**'], clean: true },
+      cache: true,
+    },
+  },
+})
+```
+
+`exec.persistent` and `exec.interactive` are left out: a cached task can
+use neither.
 
 `exec.sandbox` has its own fields (`allow`, `deny`, `ignore`, `hermetic`,
 `weakerWhenNested`, `weakerNetworkIsolation`): see [Sandboxing](../sandboxing/).
