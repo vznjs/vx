@@ -43,6 +43,24 @@ it('docs/upgrading.mdx carries every breaking footer in git log', () => {
   expect(footers(readFileSync(PAGE, 'utf8'))).toEqual(want)
 })
 
+it('every paragraph of the release list reads on a phone', () => {
+  if (shallow) return
+  // Prose only: fences, headings, list items and markup lines are not paragraphs.
+  const long = page(taggedCommits(ROOT))
+    .replace(/```[\s\S]*?```/g, '')
+    .split(/\n\n+/)
+    .filter((p) => !/^\s*([#<{-]|\d+\.)/.test(p))
+    .map((p) =>
+      p
+        .replace(/\\([{}])/g, '$1')
+        .replace(/&lt;/g, '<')
+        .replace(/`|\*\*/g, '')
+        .trim(),
+    )
+    .filter((p) => p.length > 200)
+  expect(long).toEqual([])
+})
+
 it('every step, rewording and heading names a commit git log holds', () => {
   if (shallow) return
   const subjects = new Set(taggedCommits(ROOT).map((c) => c.subject.replace(/ \(#\d+\)$/, '')))

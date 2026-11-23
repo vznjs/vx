@@ -232,7 +232,9 @@ A `--filter` that matches no project, an exclusion too, now refuses the run even
 
 A declared output that matches no files fails the task instead of warning.
 
-An output named by path (`dist/index.js`, `dist`) is required, and a task must write at least one output; a wildcard (`dist/**`) may match nothing beside one that matched. Run your tasks once after upgrading. A task that fails with `outputs matched no files (<glob>)` needs that glob fixed to match what the command writes, or removed from `outputs.files`.
+An output named by path (`dist/index.js`, `dist`) must exist. A wildcard (`dist/**`) may match nothing, as long as one output matched.
+
+Run your tasks once after upgrading. A task that fails with `outputs matched no files (<glob>)` needs that glob fixed to match what the command writes, or removed from `outputs.files`.
 
 #### Replace --continue with --fail-fast
 
