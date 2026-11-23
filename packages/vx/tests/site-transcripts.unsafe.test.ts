@@ -759,3 +759,231 @@ describe("the CLI reference's samples", () => {
     expect(mask(sampleAfter('vx last --list'))).toBe(mask(out['last --list']!))
   })
 })
+
+// The running patterns' samples were run on a phone: a 60-column terminal,
+// where vx drops the columns a phone cannot show. Each run here is in a pty
+// that wide, its live redraws replayed to the final screen. The pages run
+// vite and vitest; the fixture runs shell, so vx's own lines are held.
+describe('the running patterns show what vx prints at phone width', () => {
+  let ws = ''
+  const ESC = String.fromCharCode(27)
+  /** The screen a live run leaves: cursor-up, erase-line and erase-below replayed. */
+  const settle = (raw: string): string => {
+    const lines = ['']
+    let row = 0
+    const token = new RegExp(
+      `${ESC}\\[(\\d*)A|${ESC}\\[2?K|${ESC}\\[J|\\n|[^${ESC}\\n]+|${ESC}\\[[0-9;:]*m|${ESC}`,
+      'g',
+    )
+    for (const m of raw.replace(/\r/g, '').matchAll(token)) {
+      const t = m[0]
+      if (t === '\n') {
+        row++
+        if (row === lines.length) lines.push('')
+      } else if (t.startsWith(`${ESC}[`) && t.endsWith('A'))
+        row = Math.max(0, row - Number(m[1] || 1))
+      else if (t === `${ESC}[2K` || t === `${ESC}[K`) lines[row] = ''
+      else if (t === `${ESC}[J`) {
+        lines[row] = ''
+        lines.length = row + 1
+      } else lines[row] += t
+    }
+    return lines.join('\n')
+  }
+  const phone = async (...args: string[]) => {
+    let out = ''
+    const decoder = new TextDecoder()
+    const p = Bun.spawn([process.execPath, BIN, ...args], {
+      cwd: ws,
+      env: UNCOLOURED,
+      terminal: { cols: 60, rows: 50, data: (_t, d) => void (out += decoder.decode(d)) },
+    })
+    const code = await p.exited
+    return { code, out: settle(out) }
+  }
+  const sh = (...args: string[]) => Bun.spawnSync({ cmd: args, cwd: ws, env: ENV }).exitCode
+  const vxSync = (...args: string[]) =>
+    Bun.spawnSync({ cmd: [process.execPath, BIN, ...args], cwd: ws, env: ENV }).exitCode
+  const guide = (rel: string) => readFileSync(path.join(GUIDES, rel), 'utf8')
+  /** The ansi block after `marker` on the page. */
+  const block = (page: string, marker: string) => {
+    const at = page.indexOf(marker)
+    expect(at).toBeGreaterThan(-1)
+    const open = page.indexOf('```ansi\n', at)
+    return page.slice(open + 8, page.indexOf('\n```', open + 8))
+  }
+  // A figure is a time, a size or a usual time; the critical-path mark
+  // follows timing, which a fixture's shell does not share with vitest.
+  const loose = (line: string) =>
+    plain(line)
+      .replace(/[~+−-]?\d+(?:\.\d+)?(?:ms|s|%|[KMG]?B)(?=[\s)]|$)/g, '<n>')
+      .replace(/◆/g, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+  /** vx's own lines of a sample: its tables, summaries and frame edges, not the tool's. */
+  const own = (sample: string) =>
+    sample
+      .split('\n')
+      .filter((l) =>
+        /^(?: {2}(?:Plan|Tasks|tasks|predicted)\b| {12}\S|\[vx\]|└─|┌─.* > failed)/.test(plain(l)),
+      )
+  const holds = (sample: string, out: string) => {
+    expect(sample).toContain(ESC)
+    const lines = own(sample)
+    expect(lines.length).toBeGreaterThan(0)
+    const printedLines = out.split('\n').map(loose)
+    for (const line of lines) expect(printedLines).toContain(loose(line))
+  }
+  const config = (name: string, tasks: string) => `export default {
+  name: '@demo/${name}',
+  tasks: {
+${tasks}
+  },
+}
+`
+  const build = (deps: boolean, command: string) => `    build: {
+${deps ? "      dependsOn: ['^build'],\n" : ''}      exec: { command: '${command}' },
+      inputs: { files: ['src/**'] },
+      outputs: { files: ['dist/**'] },
+      cache: true,
+    },`
+  const app = (name: string, deps: boolean) =>
+    config(
+      name,
+      `${build(deps, 'mkdir -p dist && cp ../ui/dist/index.js dist/')}
+    test: { exec: { command: 'sleep 1' } },${name === 'web' ? "\n    e2e: { exec: { command: 'sleep 30' } }," : ''}`,
+    )
+  const write = (rel: string, text: string) => writeFile(path.join(ws, rel), text)
+
+  beforeAll(async () => {
+    ws = await mkdtemp(path.join(os.tmpdir(), 'vx-site-phone-'))
+    await mkdir(path.join(ws, '.vx'))
+    await mkdir(path.join(ws, 'node_modules/@vzn'), { recursive: true })
+    await symlink(
+      path.resolve(import.meta.dir, '..', '..', 'vx-lockfile'),
+      path.join(ws, 'node_modules/@vzn/vx-lockfile'),
+    )
+    await write(
+      '.vx/workspace.mjs',
+      `import { bun } from '@vzn/vx-lockfile'\n\nexport default { plugins: [bun()] }\n`,
+    )
+    await write('.gitignore', 'node_modules\ndist\n')
+    await write(
+      'package.json',
+      '{ "name": "demo", "private": true, "workspaces": ["packages/*"] }\n',
+    )
+    const uses = { '@demo/ui': 'workspace:*' }
+    await write(
+      'bun.lock',
+      JSON.stringify({
+        lockfileVersion: 1,
+        workspaces: {
+          '': { name: 'demo' },
+          'packages/ui': { name: '@demo/ui', version: '1.0.0' },
+          'packages/web': { name: '@demo/web', version: '1.0.0', dependencies: uses },
+          'packages/admin': { name: '@demo/admin', version: '1.0.0', dependencies: uses },
+        },
+        packages: {
+          '@demo/ui': ['@demo/ui@workspace:packages/ui'],
+          '@demo/web': ['@demo/web@workspace:packages/web'],
+          '@demo/admin': ['@demo/admin@workspace:packages/admin'],
+        },
+      }),
+    )
+    for (const name of ['ui', 'web', 'admin']) {
+      await mkdir(path.join(ws, `packages/${name}/src`), { recursive: true })
+      await write(
+        `packages/${name}/package.json`,
+        JSON.stringify({
+          name: `@demo/${name}`,
+          version: '1.0.0',
+          ...(name === 'ui' ? {} : { dependencies: uses }),
+        }),
+      )
+      await write(`packages/${name}/src/${name === 'ui' ? 'index' : 'main'}.ts`, '1\n')
+      await write(
+        `packages/${name}/vx.config.mjs`,
+        name === 'ui'
+          ? config(
+              'ui',
+              `${build(false, 'sleep 0.3 && mkdir -p dist && cp src/index.ts dist/index.js')}
+    test: { exec: { command: "echo 'expected 1 to be 2' && exit 1" } },`,
+            )
+          : app(name, true),
+      )
+    }
+    await write('packages/ui/README.md', '# ui\n')
+    expect(sh('git', 'init', '-q', '-b', 'main')).toBe(0)
+    expect(vxSync('lock')).toBe(0)
+    expect(sh('git', 'add', '-A')).toBe(0)
+    expect(sh('git', 'commit', '-qm', 'one')).toBe(0)
+  })
+
+  afterAll(async () => {
+    if (ws !== '') await rm(ws, { recursive: true, force: true })
+  })
+
+  it('tasks: without ^build web races ui; with it ui builds first', async () => {
+    const page = guide('tasks.mdx')
+    await write('packages/web/vx.config.mjs', app('web', false))
+    expect(vxSync('lock')).toBe(0)
+    const race = await phone('run', 'build', '--filter', '@demo/web', '--filter', '@demo/ui')
+    expect(sh('git', 'checkout', '-q', '--', '.')).toBe(0)
+    expect(vxSync('lock')).toBe(0)
+    expect(vxSync('cache', 'clean')).toBe(0)
+    expect(sh('rm', '-rf', 'packages/ui/dist')).toBe(0)
+    expect(race.code).toBe(1)
+    holds(block(page, '<TabItem label="Without ^build">'), race.out)
+    const ordered = await phone('run', 'build', '--filter', '@demo/web')
+    expect(ordered.code).toBe(0)
+    holds(block(page, '<TabItem label="With ^build">'), ordered.out)
+  })
+
+  it('running-tasks: a filter brings what its tasks need', async () => {
+    const page = guide('running-tasks.mdx')
+    // History has timed both builds; an edit to each makes them misses.
+    expect(vxSync('run', 'build', '--all')).toBe(0)
+    await write('packages/ui/src/index.ts', '3\n')
+    await write('packages/web/src/main.ts', '3\n')
+    const r = await phone('run', 'build', '--filter', '@demo/web', '--dry')
+    expect(sh('git', 'checkout', '-q', '--', '.')).toBe(0)
+    expect(r.code).toBe(0)
+    holds(block(page, '<Deeper level="patterns" title="Run one project\'s tasks">'), r.out)
+  })
+
+  it('running-tasks: three edits, three plans', async () => {
+    const page = guide('running-tasks.mdx')
+    expect(vxSync('run', 'build', '--all')).toBe(0)
+    for (const [tab, file] of [
+      ['Edit ui/src', 'packages/ui/src/index.ts'],
+      ['Edit web/src', 'packages/web/src/main.ts'],
+      ['Edit ui/README.md', 'packages/ui/README.md'],
+    ] as const) {
+      expect(sh('git', 'checkout', '-qb', 'edit')).toBe(0)
+      await write(file, '2\n')
+      expect(sh('git', 'commit', '-qam', 'edit')).toBe(0)
+      const r = await phone('run', 'build', '--affected', '--dry')
+      expect(sh('git', 'checkout', '-q', 'main')).toBe(0)
+      expect(sh('git', 'branch', '-qD', 'edit')).toBe(0)
+      expect(r.code).toBe(0)
+      holds(block(page, `<TabItem label="${tab}">`), r.out)
+    }
+  })
+
+  it('running-tasks: the rest runs, then --fail-fast aborts it', async () => {
+    const page = guide('running-tasks.mdx')
+    const rest = await phone('run', 'test', '--all')
+    expect(rest.code).toBe(1)
+    holds(printed(page, 'vx run test --all'), rest.out)
+    const fast = await phone('run', 'test', '--all', '--fail-fast')
+    expect(fast.code).toBe(1)
+    holds(printed(page, 'vx run test --all --fail-fast'), fast.out)
+  })
+
+  it('running-tasks: --timeout fails the task', async () => {
+    const page = guide('running-tasks.mdx')
+    const r = await phone('run', '@demo/web#e2e', '--timeout', '3s')
+    expect(r.code).toBe(1)
+    holds(printed(page, 'vx run @demo/web#e2e --timeout 3s'), r.out)
+  })
+})
