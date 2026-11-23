@@ -15,6 +15,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { freePort } from './helpers/free-port.js'
 import { run } from './helpers/orchestrator.js'
 import { sandboxAvailable } from './helpers/sandbox-gate.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
@@ -114,14 +115,15 @@ describe.skipIf(!available || process.platform !== 'linux')(
       }
     })
 
+    // A port released for the run comes from below the ephemeral range:
+    // a `port: 0` pick was taken by another shard's listener before the
+    // run, and both tasks were refused (job 137499290330).
     // Two tasks of one run granted the same port: each wrap read the
     // table before either bridge had bound, both passed, the second
     // bridge's bind failed unseen, and that task's clients reached the
     // first task's server.
     it('two tasks of one run granted the same port: one is refused', async () => {
-      const probe = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: () => new Response('') })
-      const port = probe.port!
-      await probe.stop(true)
+      const port = freePort()
       const task = `{ exec: {
         command: 'sleep 1',
         sandbox: { allow: { read: ['.'], localBinding: [${port}] } },
@@ -155,9 +157,7 @@ describe.skipIf(!available || process.platform !== 'linux')(
     // failed the first of two tasks the test above expects one of to pass
     // (job 134553815528). The bridge here takes half a second to go.
     it('a port its own bridge is still leaving is waited for, not refused', async () => {
-      const probe = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: () => new Response('') })
-      const port = probe.port!
-      await probe.stop(true)
+      const port = freePort()
       const real = Bun.which('socat')!
       const bin = path.join(base, 'bin')
       mkdirSync(bin)
@@ -216,9 +216,7 @@ describe.skipIf(!available || process.platform !== 'linux')(
     })
 
     it('CONTROL: once the host lets it go, the same port bridges', async () => {
-      const host = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: () => new Response('host') })
-      const port = host.port!
-      await host.stop(true)
+      const port = freePort()
       expect(await outcome(port)).toEqual(['success', false, []])
     })
   },
