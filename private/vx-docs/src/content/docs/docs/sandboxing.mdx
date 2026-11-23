@@ -380,8 +380,14 @@ By default `/usr` and `~/.cache` are readable and outside the key. `hermetic: tr
 
 ```ts
 exec: {
-  command: '/opt/node-22/bin/node build.js',
-  sandbox: { hermetic: true, allow: { read: ['.', '/opt/node-22/'] } },
+  command: 'vite build',
+  sandbox: {
+    hermetic: true,
+    allow: {
+      read: ['.', '/opt/node-22/'], // the node vite runs on
+      write: ['dist/', 'node_modules/.vite-temp/'],
+    },
+  },
 },
 ```
 
@@ -488,7 +494,7 @@ A task never reaches another project, or a workspace root file you did not grant
 
 | `@demo/web#build` touches | What happens |
 | --- | --- |
-| `../ui/src/button.ts`, another project | hidden: no file, and no violation |
+| `../ui/src/index.ts`, another project | hidden: no file, and no violation |
 | `README.md`, its own file, not granted | a violation: the task fails |
 
 A refused write outside the project names the folder to grant, or the file itself when that folder holds the project (a root `bun.lock`).
