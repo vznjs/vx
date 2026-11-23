@@ -494,6 +494,7 @@ export async function planExecutorOf(
       workspaceRoot: prepared.workspaceRoot,
       cacheDir: prepared.cacheDir,
       warn: warnOf(log),
+      status: (line) => log.status(line),
       concurrency: machineParallelism(),
       artifacts: taskArtifacts(prepared.cache, prepared.workspaceRoot),
       cacheFacts: () => cacheFacts(prepared.remotes, prepared.cacheRefs),

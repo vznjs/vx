@@ -601,6 +601,8 @@ export interface OutputContext extends BaseContext {
 export interface ExecutorContext extends BaseContext {
   /** The run's worker count — an executor that paces itself reads it here. */
   readonly concurrency: number
+  /** Say a line that is no warning, such as a wait for a machine; the footer does not count it. */
+  status(message: string): void
   /** Task entries by key in the run's cache, for a task another machine ran (`TaskArtifacts`). */
   readonly artifacts: TaskArtifacts
   /**

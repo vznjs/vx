@@ -487,6 +487,7 @@ vx asks often, so keep it cheap and synchronous. Hits, pooled tasks and groups a
 | --- | --- |
 | `running` | the tasks holding a worker here now, read-only |
 | `concurrency` | the run's worker count |
+| `status(line)` | say a line that is no warning, such as a wait for a machine |
 
 **`measures(nodes)`** names work your plugin times that is no task: a map of `<plugin>#<name>` to a definition hash. vx asks before `schedule`, and only when some plugin has a `schedule` hook: with none, nothing reads them.
 

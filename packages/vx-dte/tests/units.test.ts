@@ -1071,6 +1071,7 @@ async function harness(
     sent?: Map<string, number>
     pinWaitMs?: number
     warn?: (m: string) => void
+    status?: (m: string) => void
     learnedOther?: (size: string) => number | undefined
     warmUp?: (size: string) => number | undefined
     starts?: Map<string, number>
@@ -1553,6 +1554,30 @@ it('says a task waited on a worker that never joined, once the run is over', asy
   expect(h.o.footer().map(([k, line]) => [k, ui.inline(line, { enabled: false })])).toEqual([
     ['workers', 'none joined: a task waited on one'],
   ])
+})
+
+// A run with no adapter and no worker yet sat silent on a pipe, and its
+// live footer said `4 workers` (this machine's pool) (2026-11-23).
+it('says once, as a status line, that it waits for a worker to join, and counts none joined', async () => {
+  const said: string[] = []
+  const warned: string[] = []
+  const h = await harness(new Map([node('t1')]), undefined, undefined, undefined, undefined, {
+    status: (m) => said.push(m),
+    warn: (m) => warned.push(m),
+  })
+  try {
+    void h.o.execute(h.req('t1'))
+    await Bun.sleep(50)
+    expect(h.o.footer().map(([k, line]) => [k, ui.inline(line, { enabled: false })])).toEqual([
+      ['workers', '0 joined · waiting for a worker to join the relay'],
+    ])
+    expect(said).toEqual([])
+    await Bun.sleep(1_500)
+    expect(said).toEqual([`[vx] waiting for a worker to join run ${R} on the relay…`])
+    expect(warned).toEqual([])
+  } finally {
+    await h.stop()
+  }
 })
 
 // A worker on another tree was refused while a task waited: only the

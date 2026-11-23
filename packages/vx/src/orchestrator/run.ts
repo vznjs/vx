@@ -712,6 +712,7 @@ async function runOnBus(
         workspaceRoot: prepared.workspaceRoot,
         cacheDir: prepared.cacheDir,
         warn: warnOf(log),
+        status: (line) => log.status(line),
         concurrency,
         artifacts: taskArtifacts(prepared.cache, prepared.workspaceRoot),
         cacheFacts: () => cacheFacts(prepared.remotes, prepared.cacheRefs),

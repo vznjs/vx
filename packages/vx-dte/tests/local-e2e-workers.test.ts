@@ -521,3 +521,42 @@ it('runs a retry on another worker than the attempt that failed', async () => {
   expect(where.length).toBe(2)
   expect(where[0]).not.toBe(where[1])
 }, 60_000)
+
+// A run on a relay with no worker yet said nothing on a pipe until one
+// joined, and its live footer read this machine's pool (2026-11-23).
+it('a run with no worker joined says once that it waits for one', async () => {
+  const { serveRelay } = await import('@vzn/vx-dte-server')
+  const relay = serveRelay({ port: 0, hostname: '127.0.0.1' })
+  try {
+    await writeFile(
+      path.join(root, '.vx/workspace.mjs'),
+      `import { dte } from ${JSON.stringify(DTE)}
+export default { plugins: [dte({ relay: ${JSON.stringify(relay.url)} })] }
+`,
+    )
+    const { VX_DTE_RUN: _, VX_DTE_WORKER: __, ...env } = process.env
+    const run = crypto.randomUUID()
+    const p = Bun.spawn([process.execPath, CORE_BIN, 'run', 'b#use', '--force'], {
+      cwd: root,
+      env: { ...env, VX_DTE_RUN: run, VX_DTE_SECRET: 's', NO_COLOR: '1' },
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+    const line = `[vx] waiting for a worker to join run ${run} on the relay…`
+    let out = ''
+    const read = (async () => {
+      for await (const c of p.stdout) out += new TextDecoder().decode(c)
+    })()
+    const until = Date.now() + 15_000
+    while (!out.includes(line) && Date.now() < until) await Bun.sleep(50)
+    await Bun.sleep(1_500)
+    p.kill('SIGINT')
+    await p.exited
+    await read
+    const all = out + (await new Response(p.stderr).text())
+    expect(all.split(line).length - 1).toBe(1)
+    expect(all).not.toMatch(/warnings? above/)
+  } finally {
+    await relay.stop()
+  }
+}, 30_000)

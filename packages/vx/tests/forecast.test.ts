@@ -8,7 +8,7 @@ import { createForecast } from '../src/report/forecast.js'
 import { defaultLogger } from '../src/report/logger.js'
 import { formatStatusRegion } from '../src/report/status-line.js'
 import { type StatusStream } from '../src/ui/live-region.js'
-import { formatSummarySection } from '../src/report/summary.js'
+import { formatSummarySection, type RunContext } from '../src/report/summary.js'
 import {
   notifyEscape,
   PROGRESS_CLEAR,
@@ -407,6 +407,39 @@ describe('the logger asks for a forecast only a second in', () => {
     expect(r.region).toContain('~4s left')
     // No terminal named: no escape at all.
     expect(r.all).not.toContain('\x1b]9;')
+  })
+
+  // A distributed run with no worker joined read `<1s left`: the forecast
+  // timed tasks no machine had begun as if they ran now (2026-11-23).
+  it('says no time left while no machine runs a task, only scheduled ones', async () => {
+    const out = tty()
+    const log = defaultLogger({ enabled: false }, { mode: 'broad' }, out, { env: {} })
+    let at: string | null = null
+    log.runStart?.({
+      total: 1,
+      concurrency: 1,
+      context: {
+        version: '0',
+        packageCount: 1,
+        remoteCacheEnabled: false,
+        whereRunning: () => at,
+      } as RunContext,
+    })
+    log.forecast(
+      () => () => ({ blockedBy: new Map(), waiting: 0 }),
+      async () => () => ({ etaMs: 4000, blockedBy: new Map(), waiting: 0 }),
+    )
+    log.taskStart?.(node('p#a'))
+    await Bun.sleep(1300)
+    const waiting = out.text()
+    at = 'small#1'
+    log.taskStdout(node('p#a'), 'x\n')
+    await Bun.sleep(600)
+    const begun = out.text().slice(waiting.length)
+    log.runEnd?.()
+    expect(waiting).toContain('1 scheduled')
+    expect(waiting).not.toMatch(/s left|s over/)
+    expect(begun).toContain('~4s left')
   })
 
   it('a run past its forecast counts up instead of going blank', async () => {

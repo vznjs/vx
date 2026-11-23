@@ -566,7 +566,9 @@ export function defaultLogger(
               ...(running > 0 ? { running } : {}),
               ...(scheduled > 0 ? { scheduled } : {}),
               ...(blockedCount > 0 && !tail && !stopping ? { blocked: blockedCount } : {}),
-              ...(etaMs !== undefined && !tail && !stopping
+              // No machine runs a task, only scheduled ones (a distributed run
+              // with no worker joined): the forecast timed them as begun now.
+              ...(etaMs !== undefined && !tail && !stopping && (running > 0 || scheduled === 0)
                 ? etaMs > 0
                   ? { etaMs }
                   : { overMs: -etaMs }

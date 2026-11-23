@@ -204,6 +204,7 @@ describe('plugin-host — capability consultation + fallbacks', () => {
     workspaceRoot: '/ws',
     cacheDir: '/ws/.vx/cache',
     warn: () => undefined,
+    status: () => undefined,
     scope: undefined,
     refs: [],
     artifacts: {

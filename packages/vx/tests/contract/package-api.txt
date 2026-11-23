@@ -903,6 +903,7 @@ export interface ExecutorCapabilities {
 == type ExecutorContext (src/orchestrator/plugin.ts)
 export interface ExecutorContext extends BaseContext {
   readonly concurrency: number
+  status(message: string): void
   readonly artifacts: TaskArtifacts
   cacheFacts(): Promise<CacheFacts>
 }
@@ -2216,6 +2217,7 @@ export interface TaskHistory {
   runs: number
   p50DurationMs: number | undefined
   p99DurationMs: number | undefined
+  forecastP99DurationMs?: number
   successRate: number
   hitRate: number
   failureMode: FailureMode

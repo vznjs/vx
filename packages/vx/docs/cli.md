@@ -1713,7 +1713,8 @@ The live summary section:
 - What is left uses each unfinished task's executed p50 from local history.
 - It is the longer of the longest unfinished chain and that work spread
   over the workers, a running task's spent time taken off its own.
-- It says nothing when history knows none of what is left.
+- It says nothing when history knows none of what is left, or while no
+  machine runs a task and some wait for one (`scheduled`).
 - Past the estimate it counts up how long the run has waited
   (`time  9.02s · +3s over`) until new work makes a forecast again.
 - A run that ends inside the second never reads history for it, and the

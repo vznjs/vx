@@ -629,7 +629,9 @@ export class RunReport<W extends RecordedWorker> {
                   : ui.dim('none started: no task needed one'),
             ],
           ]
-        : []
+        : this.waited
+          ? [['workers', ui.tone('info', '0 joined · waiting for a worker to join the relay')]]
+          : []
     const gone = new Set(this.gone)
     const all = [...this.workers.values(), ...this.gone]
     const joined = new Set(all.map((a) => a.label))

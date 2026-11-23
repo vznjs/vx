@@ -805,6 +805,7 @@ export function dte(options: DteOptions = {}) {
         keyOf: (id) => keys.get(id),
         planner: () => plannerOf(),
         spawn: (size) => spawnSize(size),
+        adapter: adapter !== undefined,
         home,
         joinedPlace,
         // One the plan let go before it joined: stopped, unless its adapter cannot, and then taken when it joins.
@@ -819,6 +820,7 @@ export function dte(options: DteOptions = {}) {
         stalled: (waiting) =>
           ctx.warn(`[vx] dte(): no task began or ended for a minute; waiting on\n${waiting}`),
         warn: ctx.warn,
+        status: ctx.status,
       })
       orchestrator = o
       let index = 0

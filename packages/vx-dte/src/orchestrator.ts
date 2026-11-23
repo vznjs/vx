@@ -102,6 +102,8 @@ const PIN_WAIT_MS = 10_000
 
 /** No task began or ended this long: the run says what it waits on, each time again. */
 const STALL_MS = 60_000
+/** As core's lock wait: a wait shorter than this says nothing. */
+const SAY_WAIT_MS = 1_000
 
 interface Worker extends RecordedWorker {
   readonly id: string
@@ -192,6 +194,10 @@ export interface OrchestratorOptions {
   readonly stalled?: (waiting: string) => void
   /** A fault the run works around (a message the relay would not take); default stderr. */
   readonly warn?: (message: string) => void
+  /** A line the run says that is no fault: a wait (`ExecutorContext.status`). */
+  readonly status?: (message: string) => void
+  /** An adapter starts the run's workers; without one they join when someone starts them. */
+  readonly adapter?: boolean
   /** Default `STALL_MS`. */
   readonly stallMs?: number
   /** How long a task waits on the worker holding its upstream's files (`PIN_WAIT_MS`). */
@@ -318,6 +324,8 @@ export class Orchestrator extends RunReport<Worker> {
   readonly trace = new Trace()
   /** When a task last began, ended or faulted, or the run last said it waits. */
   private movedAt = performance.now()
+  /** Says once that the run waits for a worker to join (`enqueue`). */
+  private sayWait: ReturnType<typeof setTimeout> | undefined
   private readonly stop = new AbortController()
   private readonly loop: Promise<void>
   private readonly realRoot: string
@@ -553,6 +561,7 @@ export class Orchestrator extends RunReport<Worker> {
 
   async close(): Promise<void> {
     clearTimeout(this.relend)
+    clearTimeout(this.sayWait)
     if (this.due !== undefined) clearTimeout(this.due.timer)
     this.ended = true
     this.endedAt = performance.now()
@@ -620,6 +629,17 @@ export class Orchestrator extends RunReport<Worker> {
       this.bound?.again(j.req.taskId, j.need.platform)
     }
     if (jobs.length > 0) this.waited = true
+    // With no adapter, no worker comes until someone starts one: a pipe sat
+    // silent and the footer said this machine's pool (2026-11-23).
+    if (jobs.length > 0 && this.o.adapter !== true && this.sayWait === undefined) {
+      this.sayWait = setTimeout(() => {
+        if (!this.ended && this.workers.size + this.gone.length === 0)
+          (this.o.status ?? this.o.warn ?? ((l) => ui.say('info', l)))(
+            `[vx] waiting for a worker to join run ${this.o.run} on the relay…`,
+          )
+      }, SAY_WAIT_MS)
+      this.sayWait.unref()
+    }
   }
 
   /** The run's clock for the planner: ms since it began. */
