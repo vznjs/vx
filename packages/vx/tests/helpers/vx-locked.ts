@@ -61,6 +61,9 @@ if (root !== null && !(audited && (await current()))) {
     writeSync(2, lock.stderr)
     rmSync(lockfilePath(root), { force: true })
   }
-  if (audited) process.execve(process.execPath, [process.execPath, BIN, ...args], process.env)
+  if (audited) {
+    if (process.execve === undefined) throw new Error('vx-locked.ts needs process.execve')
+    process.execve(process.execPath, [process.execPath, BIN, ...args], process.env)
+  }
 }
 await import(BIN)

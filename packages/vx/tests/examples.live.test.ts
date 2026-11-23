@@ -33,7 +33,8 @@ afterAll(() => {
 
 function sh(cmd: string[], cwd: string): string {
   const r = Bun.spawnSync({ cmd, cwd, env: ENV, stdout: 'pipe', stderr: 'pipe' })
-  if (r.exitCode !== 0) throw new Error(`${cmd.join(' ')}: ${r.stdout}${r.stderr}`)
+  if (r.exitCode !== 0)
+    throw new Error(`${cmd.join(' ')}: ${r.stdout.toString()}${r.stderr.toString()}`)
   return r.stdout.toString()
 }
 
@@ -76,7 +77,11 @@ function run(
     stdout: 'pipe',
     stderr: 'pipe',
   })
-  return { exit: r.exitCode, output: `${r.stdout}${r.stderr}`, status: lastStatus(root, ENV) }
+  return {
+    exit: r.exitCode,
+    output: `${r.stdout.toString()}${r.stderr.toString()}`,
+    status: lastStatus(root, ENV),
+  }
 }
 
 /** Each task of `ids` at `status`. */
