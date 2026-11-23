@@ -1,16 +1,248 @@
 ---
 title: Explore the task graph
-description: Browse your own task graph in the browser. Paste a vx plan to see what each task waits on, what waits on it, and why one task depends on another.
+description: See which tasks wait on which, which a run would skip, and why one task waits on another.
 ---
 
 import GraphExplorer from '../../../components/demos/GraphExplorer.astro'
+import demoPlan from '../../../components/demos/model/graph-explorer-demo.json'
+import { Aside, Steps } from '@astrojs/starlight/components'
+import { Levels, Deeper, Concept, Quiz, Takeaway, NextStep } from '../../../components/learn'
 
-Browse your task graph: what each task waits on, what waits on it, and why.
+See which tasks wait on which, and why. Ask vx for the plan of a run: nothing runs.
 
 ```sh
-vx run build --all --dry --format json > plan.json
+vx run test --all --dry --format json > plan.json
 ```
 
-Drop `plan.json` below, or paste it, then type a task. Click any task in a list to move to it. The plan stays in your browser: nothing is uploaded.
+<Levels />
 
-<GraphExplorer />
+This is that plan from the demo workspace, `@demo/web` on `@demo/ui` on `@demo/utils`. **Click any box.**
+
+<GraphExplorer sample={JSON.stringify(demoPlan)} pick="@demo/web#build" />
+
+<Concept term="Task graph">
+  Every task in a run and the tasks each one waits on. An arrow from A to B means B starts only
+  after A finishes.
+</Concept>
+
+## Read the picture
+
+The task you picked is in **bold**. Above it: what it **waits on**. Below it: what **waits on it**.
+
+- <span style="color: var(--vx-ok)">**Green**</span>: the cache has it, so the run restores it.
+- <span style="color: var(--vx-warn)">**Orange**</span>: it runs.
+
+<Quiz q="@demo/utils#build is green. Why does @demo/ui#build, right below it, still run?">
+  Its own file changed: `packages/ui/src/index.js` was edited. A green task above only means that
+  part of the key is the same. The edit gives `@demo/ui#build` a new key, and everything below it
+  too.
+</Quiz>
+
+<Takeaway>see what a task waits on, what waits on it, and which tasks a run would skip.</Takeaway>
+
+## See the plan in your terminal
+
+Drop `--format json` and vx prints the same plan as a table:
+
+```sh
+vx run test --all --dry
+```
+
+```ansi title="the demo workspace, one file edited in @demo/ui"
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mPlan[0m[4m[58;2;110;118;129m [2m6[0m[4m[58;2;110;118;129m    [2mstatus  cache      usual  blocks worker task[0m[4m[58;2;110;118;129m                           [0m
+            [38;2;6;182;212mrun[0m     [2mmiss[0m      [2m~405ms[0m       [2m0[0m [2mlocal[0m  [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;96;165;250mtest[0m
+            [38;2;6;182;212mrun[0m     [2mmiss[0m      [2m~161ms[0m       [38;2;203;213;225m3[0m [2mlocal[0m  [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;34;197;94mcached[0m  [38;2;56;189;248mlocal[0m          [2m—[0m       [38;2;203;213;225m5[0m [2mlocal[0m  [38;2;129;140;248m@demo/utils[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;34;197;94mcached[0m  [38;2;56;189;248mlocal[0m          [2m—[0m       [2m0[0m [2mlocal[0m  [38;2;129;140;248m@demo/utils[0m[2m#[0m[38;2;96;165;250mtest[0m
+            [38;2;6;182;212mrun[0m     [2mmiss[0m      [2m~227ms[0m       [2m0[0m [2mlocal[0m  [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;96;165;250mtest[0m
+            [38;2;6;182;212mrun[0m     [2mmiss[0m      [2m~182ms[0m       [38;2;203;213;225m1[0m [2mlocal[0m  [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m
+
+  [2mtasks    [0m  [38;2;203;213;225m6 planned · 2 cache hits (2 local) · 4 would run[0m
+  [2mpredicted[0m  [38;2;203;213;225m~570ms wall · ~975ms total execution[0m
+```
+
+Read **blocks**: how many tasks wait on that row. `@demo/utils#build` blocks 5, so a slow one there holds up the whole run.
+
+<Takeaway>spot the task that holds up the most work, before you run anything.</Takeaway>
+
+## Open your own graph
+
+<Steps>
+
+1. Write your plan to a file, from your workspace root:
+
+   ```sh
+   vx run build --all --dry --format json > plan.json
+   ```
+
+2. Under the picture, open **Open your own plan** and drop `plan.json` in the box. Or paste it, then press **Read plan**.
+
+3. Type a task, such as `web#build`. Part of a name is enough.
+
+</Steps>
+
+<Aside type="note" title="Your plan stays on your machine">
+  The page reads the file in your browser. Nothing is uploaded.
+</Aside>
+
+<Takeaway>draw any task of your own workspace and walk its graph box by box.</Takeaway>
+
+## Ask why one task waits on another
+
+Type a task in **Task** and another in **waits on?**. The path between them lights up.
+
+In the demo, `@demo/web#test` waits on `@demo/utils#build` through two steps:
+
+```sh
+@demo/web#test → @demo/web#build → @demo/ui#build → @demo/utils#build
+```
+
+Each arrow is one line of config. `build` in `dependsOn` is a task of the same project; `^build` is `build` in each package this one depends on ([Tasks](../tasks/)).
+
+<Quiz q="The path says @demo/web#build → @demo/ui#build. Which config line made that edge?">
+  `dependsOn: ['^build']` in `packages/web/vx.config.ts`. `@demo/web` depends on `@demo/ui` in its
+  `package.json`, so `^build` means `@demo/ui#build`.
+</Quiz>
+
+<Takeaway>trace any wait back to the `dependsOn` line that made it.</Takeaway>
+
+<Deeper level="patterns" title="Ask the plan from a script">
+
+### Which tasks would run?
+
+The plan is plain JSON, so `jq` answers questions the picture does not:
+
+```sh
+jq '[.tasks[] | select(.cacheStatus == "miss") | .id]' plan.json
+```
+
+```ansi title="the demo plan"
+[1;39m[
+  [0;32m"@demo/ui#test"[0m[1;39m,
+  [0;32m"@demo/ui#build"[0m[1;39m,
+  [0;32m"@demo/web#test"[0m[1;39m,
+  [0;32m"@demo/web#build"[0m[1;39m
+[1;39m][0m
+```
+
+### What sets the run's length?
+
+`predicted.criticalPath` is the longest path of tasks that run, by their usual times. `wallMs` is how long it takes:
+
+```sh
+jq '.predicted' plan.json
+```
+
+```ansi title="the demo plan"
+[1;39m{
+  [0m[1;34m"wallMs"[0m[1;39m: [0m[0;39m570[0m[1;39m,
+  [0m[1;34m"workMs"[0m[1;39m: [0m[0;39m975[0m[1;39m,
+  [0m[1;34m"unknownCount"[0m[1;39m: [0m[0;39m0[0m[1;39m,
+  [0m[1;34m"criticalPath"[0m[1;39m: [0m[1;39m[
+    [0;32m"@demo/ui#build"[0m[1;39m,
+    [0;32m"@demo/web#build"[0m[1;39m,
+    [0;32m"@demo/web#test"[0m[1;39m
+  [1;39m][0m[1;39m
+[1;39m}[0m
+```
+
+Make a task on that path faster and the whole run ends sooner. Speed up one off it and the run does not change.
+
+### Only part of the workspace
+
+Any run selection gives a plan of the same shape. Explore it the same way:
+
+```sh
+vx run build --filter @demo/web... --dry --format json > plan.json
+vx run test --affected --dry --format json > plan.json
+```
+
+`--filter @demo/web...` is `@demo/web` and everything it depends on. `--affected` is what your changes reach, and each task says why in `affected`.
+
+<Takeaway>answer "what runs, what is slow, what did my change touch" from one file.</Takeaway>
+
+</Deeper>
+
+<Deeper level="details" title="Every field in the plan">
+
+The plan's schema ships with vx as `schemas/plan.json`. A field marked *sometimes* is left out when it has no value.
+
+| Field | Holds |
+| --- | --- |
+| `tasks` | every task the run would start, one object each |
+| `predicted` | *sometimes*: the run's times, from the tasks' history |
+| `affectedBase` | *sometimes*: under `--affected`, the git ref the change was measured from |
+| `downloadDowngrades` | *sometimes*: under `--cache-download`, each task whose outputs vx must still download, as `taskId` and `reason` |
+
+Each task:
+
+| Field | Holds |
+| --- | --- |
+| `id` | `project#task`, such as `@demo/web#build` |
+| `project`, `task` | the two halves of `id` |
+| `hash` | the task's cache key; empty when the run computes none |
+| `cacheStatus` | what the run would do (table below) |
+| `deps` | the ids it waits on directly |
+| `p50Ms` | *sometimes*: its usual run time in milliseconds, from history |
+| `executor` | *sometimes*: where it would run, when the workspace has more than one place to run tasks |
+| `download` | *sometimes*: `deferred` when its outputs would stay in the remote cache (`--cache-download`) |
+| `description` | *sometimes*: the task's `description` |
+| `otherPlatform` | *sometimes*: a skipped task's `needs` (its `exec.platforms`) and this machine's `host` |
+| `blockedBy` | *sometimes*: a skipped task's root, the task it waits on that needs another platform |
+| `affected` | *sometimes*: under `--affected`, why the task is in the run: `kind`, and `file`, `project` or `via` |
+
+`predicted`:
+
+| Field | Holds |
+| --- | --- |
+| `wallMs` | how long the run would take, start to end |
+| `workMs` | the run times of every task that runs, added up |
+| `unknownCount` | tasks that would run with no history; above 0, both times are too low |
+| `criticalPath` | the path `wallMs` measures, first task first |
+
+`affected.kind`:
+
+| Kind | The task is in the run because |
+| --- | --- |
+| `input` | a changed file is one of its `inputs` |
+| `project` | a file in its project changed, and it reads the whole project |
+| `workspace` | a workspace-wide file changed, such as `.vx/workspace.ts` |
+| `package` | a package it depends on through `^` changed (`project` names it) |
+| `named` | you asked for it as `project#task` |
+| `selected` | another filter picked its project |
+
+`via` lists the `dependsOn` path, nearest first, from the task to the one the change reached.
+
+### What each status means
+
+| `cacheStatus` | The explorer says | Colour |
+| --- | --- | --- |
+| `hit-local` | cache hit (this machine) | <span style="color: var(--vx-ok)">green</span> |
+| `hit-remote` | cache hit (remote) | <span style="color: var(--vx-ok)">green</span> |
+| `miss` | cache miss: runs | <span style="color: var(--vx-warn)">orange</span> |
+| `no-cache` | not cached: runs | <span style="color: var(--vx-warn)">orange</span> |
+| `group` | group: runs nothing itself | grey |
+| `not-started` | not run: every task after it restores from the cache | grey |
+| `skipped` | skipped: needs another platform, or waits on a task that does | grey |
+
+### What the explorer reads
+
+It reads `id`, `deps`, `cacheStatus` and `predicted.criticalPath`, and ignores the rest. A task on the critical path is marked **longest path**.
+
+The picture holds the picked task, everything it waits on and everything that waits on it. Over 40 tasks, it shows only the lists.
+
+### Messages
+
+| The explorer says | Fix |
+| --- | --- |
+| `Not JSON.` | paste the whole output of `vx run <task> --all --dry --format json` |
+| `That is a vx error, not a plan.` | the command failed; run it again and fix what it prints |
+| `No "tasks" list.` | the JSON is not a plan; run the command above |
+| `A task without "id" or "deps".` | the plan was cut or edited; write it again |
+| `No task matches "…"` | no task id holds every word you typed |
+
+</Deeper>
+
+<NextStep href="../caching/why-a-task-missed/" title="Find why a task missed">
+  The graph shows what runs. `vx why` names the file that made it run.
+</NextStep>

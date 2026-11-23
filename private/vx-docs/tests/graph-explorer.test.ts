@@ -4,8 +4,11 @@
 
 import { describe, expect, it } from 'bun:test'
 import {
+  downstream,
+  layers,
   parsePlan,
   search,
+  statusTone,
   statusWords,
   upstream,
   whyDepends,
@@ -92,5 +95,38 @@ describe('questions the page answers', () => {
     expect(statusWords('hit-local')).toBe('cache hit (this machine)')
     expect(statusWords('group')).toBe('group: runs nothing itself')
     expect(statusWords('new-kind')).toBe('new-kind')
+  })
+})
+
+describe('the picture', () => {
+  it('downstream is everything that waits on a task, through others', () => {
+    expect([...downstream(graph, 'ui#build')].sort()).toEqual(['app#build', 'app#ci', 'app#test'])
+    expect(downstream(graph, 'app#ci').size).toBe(0)
+  })
+
+  it("draws a task's world in rows, every edge pointing down", () => {
+    const { rows, edges } = layers(graph, 'ui#build')
+    expect(rows).toEqual([['utils#build'], ['ui#build'], ['app#build'], ['app#test'], ['app#ci']])
+    // CONTROL: api#build feeds app#build but is not in ui#build's world.
+    expect(rows.flat()).not.toContain('api#build')
+    expect(edges).toContainEqual(['utils#build', 'ui#build'])
+    for (const [from, to] of edges) {
+      expect(rows.findIndex((r) => r.includes(from))).toBeLessThan(
+        rows.findIndex((r) => r.includes(to)),
+      )
+    }
+  })
+
+  it('a task one row below its lowest dependency', () => {
+    const { rows } = layers(graph, 'app#build')
+    expect(rows[0]).toEqual(['utils#build'])
+    expect(rows[1]).toEqual(['api#build', 'ui#build'])
+    expect(layers(graph, 'docs#build').rows).toEqual([['docs#build']])
+  })
+
+  it('colours a restore green, a run orange, the rest muted', () => {
+    expect(statusTone('hit-remote')).toBe('ok')
+    expect(statusTone('no-cache')).toBe('warn')
+    expect(statusTone('group')).toBe('muted')
   })
 })

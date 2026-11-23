@@ -1,0 +1,64 @@
+{
+  "tasks": [
+    {
+      "id": "@demo/ui#test",
+      "project": "@demo/ui",
+      "task": "test",
+      "hash": "3fdea519fc3f33ea",
+      "cacheStatus": "miss",
+      "deps": ["@demo/ui#build"],
+      "p50Ms": 405
+    },
+    {
+      "id": "@demo/ui#build",
+      "project": "@demo/ui",
+      "task": "build",
+      "hash": "33b13f319efdd97b",
+      "cacheStatus": "miss",
+      "deps": ["@demo/utils#build"],
+      "p50Ms": 161
+    },
+    {
+      "id": "@demo/utils#build",
+      "project": "@demo/utils",
+      "task": "build",
+      "hash": "0921bd53d073c0be",
+      "cacheStatus": "hit-local",
+      "deps": [],
+      "p50Ms": 202
+    },
+    {
+      "id": "@demo/utils#test",
+      "project": "@demo/utils",
+      "task": "test",
+      "hash": "cbccac88148ed0f5",
+      "cacheStatus": "hit-local",
+      "deps": ["@demo/utils#build"],
+      "p50Ms": 418
+    },
+    {
+      "id": "@demo/web#test",
+      "project": "@demo/web",
+      "task": "test",
+      "hash": "fc13109b7f415032",
+      "cacheStatus": "miss",
+      "deps": ["@demo/web#build"],
+      "p50Ms": 227
+    },
+    {
+      "id": "@demo/web#build",
+      "project": "@demo/web",
+      "task": "build",
+      "hash": "715e9a1da1d4eb10",
+      "cacheStatus": "miss",
+      "deps": ["@demo/ui#build"],
+      "p50Ms": 182
+    }
+  ],
+  "predicted": {
+    "wallMs": 570,
+    "workMs": 975,
+    "unknownCount": 0,
+    "criticalPath": ["@demo/ui#build", "@demo/web#build", "@demo/web#test"]
+  }
+}

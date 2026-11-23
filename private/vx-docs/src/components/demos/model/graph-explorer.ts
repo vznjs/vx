@@ -111,9 +111,62 @@ const STATUS_WORDS: Record<string, string> = {
   miss: 'cache miss: runs',
   'no-cache': 'not cached: runs',
   group: 'group: runs nothing itself',
+  'not-started': 'not run: every task after it restores from the cache',
+  skipped: 'skipped: needs another platform, or waits on a task that does',
+}
+
+/** The picture's tone for a predicted status: green restores, orange runs. */
+export function statusTone(status: string): 'ok' | 'warn' | 'muted' {
+  if (status === 'hit-local' || status === 'hit-remote') return 'ok'
+  if (status === 'miss' || status === 'no-cache') return 'warn'
+  return 'muted'
 }
 
 /** What the plan predicts for a task, in words. */
 export function statusWords(status: string): string {
   return STATUS_WORDS[status] ?? status
+}
+
+/** Every task that waits on `id`, directly or through others. */
+export function downstream(graph: Graph, id: string): Set<string> {
+  const seen = new Set<string>()
+  const walk = (n: string) => {
+    for (const d of graph.dependents.get(n) ?? []) {
+      if (seen.has(d)) continue
+      seen.add(d)
+      walk(d)
+    }
+  }
+  walk(id)
+  return seen
+}
+
+/**
+ * The picture of `id`'s world: it, everything it waits on and everything
+ * that waits on it, in rows. A task sits one row below the lowest task it
+ * waits on, so every edge points down. Edges run from the task waited on
+ * to the task that waits.
+ */
+export function layers(
+  graph: Graph,
+  id: string,
+): { rows: string[][]; edges: [from: string, to: string][] } {
+  const nodes = new Set([...upstream(graph, id), id, ...downstream(graph, id)])
+  const depth = new Map<string, number>()
+  const at = (n: string): number => {
+    const known = depth.get(n)
+    if (known !== undefined) return known
+    depth.set(n, 0)
+    const deps = (graph.tasks.get(n)?.deps ?? []).filter((d) => nodes.has(d))
+    const d = deps.length === 0 ? 0 : 1 + Math.max(...deps.map(at))
+    depth.set(n, d)
+    return d
+  }
+  const rows: string[][] = []
+  for (const n of [...nodes].sort()) (rows[at(n)] ??= []).push(n)
+  const edges: [string, string][] = []
+  for (const n of nodes) {
+    for (const d of graph.tasks.get(n)?.deps ?? []) if (nodes.has(d)) edges.push([d, n])
+  }
+  return { rows: rows.filter((r) => r !== undefined), edges }
 }
