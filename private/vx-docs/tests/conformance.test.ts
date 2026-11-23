@@ -19,6 +19,8 @@ import {
   supports,
   RANKED,
   TOOLS,
+  toolName,
+  toolShort,
 } from '../src/conformance/data.ts'
 
 const DIST = path.resolve(import.meta.dir, '../dist')
@@ -239,6 +241,70 @@ describe('the conformance page', () => {
     // (29 / 100) * 100 is 28.999…: an exact share must not lose a point.
     expect(percent({ pass: 29, can: 100, of: 100 })).toBe('29%')
     expect(supports({ pass: 0, can: 29, of: 100 })).toBe('29%')
+  })
+
+  it('says what each mark means: a fail is an issue, N/A is neither a pass nor an issue', () => {
+    const legend = unescape(
+      html.slice(
+        html.indexOf('class="cfm-legend"'),
+        html.indexOf('</ul>', html.indexOf('class="cfm-legend"')),
+      ),
+    )
+    expect(legend).toContain('data-status="pass"')
+    expect(legend).toMatch(
+      /data-status="fail"[\s\S]*Fail: an issue\.[\s\S]*has the feature but got the case wrong/,
+    )
+    expect(legend).toMatch(
+      /data-status="n\/a"[\s\S]*does not have the feature at all\. Not a pass, and not\s+an issue\./,
+    )
+  })
+
+  it('names the tool in every score and every mark, for a screen reader and a phone', () => {
+    const wrong: string[] = []
+    for (const m of html.matchAll(
+      /<span class="cfm-cell" data-tool="([^"]+)"[^>]*>([\s\S]*?)<span class="cfm-pct"/g,
+    ))
+      if (!m[2]!.includes(`>${toolName(m[1]!)}</span>`) || !m[2]!.includes('class="cfm-who"'))
+        wrong.push(`score ${m[1]}`)
+    for (const c of RESULTS.cases.slice(0, 200))
+      for (const [t, status, inner] of cells(row(c.id))) {
+        if (!inner.includes('class="cfm-who"')) wrong.push(`${c.id} ${t}: no name`)
+        if (!inner.includes(toolName(t))) wrong.push(`${c.id} ${t} ${status}: not named`)
+      }
+    expect(wrong).toEqual([])
+  })
+
+  it('finds a case from one small list of every case, fetched on first use', () => {
+    const list = JSON.parse(readFileSync(path.join(DIST, 'conformance/cases.json'), 'utf8')) as [
+      string,
+      string,
+      string,
+      string,
+      string,
+    ][]
+    expect(list.length).toBe(RESULTS.cases.length)
+    const wrong: string[] = []
+    for (const [i, c] of RESULTS.cases.entries()) {
+      const want = [
+        c.ref,
+        c.category,
+        c.id,
+        c.title,
+        RANKED.map(
+          (t) => ({ pass: 'p', fail: 'f', 'n/a': 'n' })[c.outcomes[t]?.status ?? 'n/a'],
+        ).join(''),
+      ]
+      if (JSON.stringify(list[i]) !== JSON.stringify(want)) wrong.push(c.id)
+    }
+    expect(wrong).toEqual([])
+    expect(html).toContain('id="cfm-q"')
+    expect(html).toMatch(/fetch\(.cases\.json.\)/)
+    const names = JSON.parse(
+      unescape(
+        html.match(/<script type="application\/json" id="cfm-tools">([^<]*)<\/script>/)![1]!,
+      ),
+    ) as string[]
+    expect(names).toEqual(RANKED.map(toolShort))
   })
 
   it('names each tool’s version, where the cases come from and the method', () => {

@@ -54,11 +54,6 @@ const REFS = Object.fromEntries(cases.map((c) => [c.ref, c.category]))
           the files left on disk, the exit code, and what the tool reports about the run. Every
           week the suite runs again on each tool's latest release.
         </p>
-        <p class="lede">
-          A case is N/A for a tool that does not have the feature at all. A tool that has the
-          feature but gets the case wrong fails it, even when it does things its own way: you would
-          hit it using that feature.
-        </p>
         <ul class="chips" aria-label="Tool versions">
           {
             RANKED.map((t) => (
@@ -84,10 +79,43 @@ const REFS = Object.fromEntries(cases.map((c) => [c.ref, c.category]))
           not a pass. The bar's red part is the tool's issues: cases it has the feature for but
           fails.
         </p>
+        <ul class="cfm-legend" aria-label="What each mark means">
+          <li data-status="pass">
+            <span class="cfm-mark" aria-hidden="true">✓</span>
+            <span><strong>Pass.</strong> The tool did what the case expects.</span>
+          </li>
+          <li data-status="fail">
+            <span class="cfm-mark" aria-hidden="true">✗</span>
+            <span>
+              <strong>Fail: an issue.</strong> The tool has the feature but got the case wrong, even
+              if it does things its own way: you would hit it using that feature.
+            </span>
+          </li>
+          <li data-status="n/a">
+            <span class="cfm-mark" aria-hidden="true">–</span>
+            <span>
+              <strong>N/A.</strong> The tool does not have the feature at all. Not a pass, and not
+              an issue.
+            </span>
+          </li>
+        </ul>
         <p class="cfm-sub">
-          Open a group to see its cases: ✓ passes, ✗ fails, – N/A. Open a ✗ to see what the tool did
-          instead, or a – to see which feature it does not have.
+          Open a group to see its cases. Open a ✗ to see what the tool did instead, or a – to see
+          which feature it does not have.
         </p>
+        <div class="cfm-search" role="search">
+          <label for="cfm-q" class="cfm-sr">Find a case</label>
+          <input
+            id="cfm-q"
+            type="search"
+            placeholder={`Find a case in ${cases.length}: words, id or #ref`}
+            autocomplete="off"
+            spellcheck="false"
+            aria-controls="cfm-hits"
+          />
+          <p id="cfm-said" class="cfm-said" aria-live="polite"></p>
+          <ol id="cfm-hits" class="cfm-hits" hidden></ol>
+        </div>
         <input type="checkbox" id="cfm-differ" class="cfm-toggle" />
         <label for="cfm-differ" class="cfm-switch">
           Only the {differ} cases where tools differ
@@ -141,6 +169,12 @@ const REFS = Object.fromEntries(cases.map((c) => [c.ref, c.category]))
 </FeaturesPage>
 
 <script type="application/json" id="cfm-refs" set:html={JSON.stringify(REFS)} />
+<script type="application/json" id="cfm-tools" set:html={JSON.stringify(RANKED.map(toolShort))} />
+<script
+  type="application/json"
+  id="cfm-cats"
+  set:html={JSON.stringify(Object.fromEntries(CATEGORIES.map((c) => [c, groupName(c)])))}
+/>
 
 <script>
   // A category's cases live on its own page (conformance/<category>/): the
@@ -201,8 +235,112 @@ const REFS = Object.fromEntries(cases.map((c) => [c.ref, c.category]))
       const detail = td.querySelector('details')
       if (detail) detail.open = td.dataset['tool'] === tool
     }
+    // `:target` misses a row loaded after the hash was set: mark it.
+    for (const was of document.querySelectorAll('.cfm-linked')) was.classList.remove('cfm-linked')
+    if (at !== cat) at.classList.add('cfm-linked')
     at.scrollIntoView()
   }
   void show()
   addEventListener('hashchange', () => void show())
+
+  // Case search: every case's ref, category, id, title and marks
+  // (conformance/cases.json), fetched the first time the box is used.
+  type Hit = [ref: string, cat: string, id: string, title: string, marks: string]
+  const box = document.querySelector<HTMLInputElement>('#cfm-q')
+  const hits = document.querySelector<HTMLOListElement>('#cfm-hits')
+  const said = document.querySelector<HTMLElement>('#cfm-said')
+  const NAMES = JSON.parse(document.getElementById('cfm-tools')?.textContent ?? '[]') as string[]
+  const CATS = JSON.parse(document.getElementById('cfm-cats')?.textContent ?? '{}') as Record<
+    string,
+    string
+  >
+  const MARK: Record<string, [string, string]> = {
+    p: ['✓', 'passes'],
+    f: ['✗', 'fails'],
+    n: ['–', 'N/A'],
+  }
+  const SHOW = 25
+  let all: Promise<Hit[]> | undefined
+  const index = (): Promise<Hit[]> =>
+    (all ??= fetch('cases.json')
+      .then((r) => (r.ok ? (r.json() as Promise<Hit[]>) : Promise.reject(new Error(String(r.status)))))
+      .catch((e: unknown) => {
+        all = undefined
+        throw e
+      }))
+
+  // A title's `code` spans in code font, built as nodes: no HTML from data.
+  const title = (text: string): DocumentFragment => {
+    const out = document.createDocumentFragment()
+    text.split('`').forEach((part, i) => {
+      if (i % 2 === 0) out.append(part)
+      else out.append(Object.assign(document.createElement('code'), { textContent: part }))
+    })
+    return out
+  }
+
+  const render = (q: string, list: Hit[]): void => {
+    if (!hits || !said) return
+    const words = q.toLowerCase().replace(/^#/, '').split(/\s+/).filter(Boolean)
+    hits.replaceChildren()
+    if (words.length === 0) {
+      hits.hidden = true
+      said.textContent = ''
+      return
+    }
+    const found = list.filter(([ref, cat, id, text]) => {
+      const hay = `${ref} ${id} ${CATS[cat] ?? cat} ${text}`.toLowerCase()
+      return words.every((w) => hay.includes(w))
+    })
+    for (const [ref, cat, , text, marks] of found.slice(0, SHOW)) {
+      const a = document.createElement('a')
+      a.href = `#${ref}`
+      const name = document.createElement('span')
+      name.className = 'cfm-hit-title'
+      name.append(title(text))
+      const meta = document.createElement('span')
+      meta.className = 'cfm-hit-meta'
+      meta.textContent = `${CATS[cat] ?? cat} · #${ref}`
+      const row = document.createElement('span')
+      row.className = 'cfm-hit-marks'
+      ;[...marks].forEach((m, i) => {
+        const [mark, says] = MARK[m] ?? MARK['n']!
+        const cell = document.createElement('span')
+        cell.dataset['status'] = m === 'p' ? 'pass' : m === 'f' ? 'fail' : 'n/a'
+        cell.title = `${NAMES[i]} ${says}`
+        cell.textContent = `${NAMES[i]} ${mark}`
+        row.append(cell)
+      })
+      a.append(name, meta, row)
+      const li = document.createElement('li')
+      li.append(a)
+      hits.append(li)
+    }
+    hits.hidden = found.length === 0
+    said.textContent =
+      found.length === 0
+        ? 'No case matches.'
+        : found.length > SHOW
+          ? `${found.length} cases match; the first ${SHOW} are shown.`
+          : `${found.length} ${found.length === 1 ? 'case matches' : 'cases match'}.`
+  }
+
+  if (box && hits) {
+    box.addEventListener('focus', () => void index().catch(() => {}), { once: true })
+    box.addEventListener('input', () => {
+      const q = box.value
+      index()
+        .then((list) => {
+          if (box.value === q) render(q, list)
+        })
+        .catch(() => {
+          if (said) said.textContent = 'The case list did not load. Try again.'
+        })
+    })
+    // Picking a case goes to it; the same case twice fires no hashchange.
+    hits.addEventListener('click', (e) => {
+      const a = (e.target as Element).closest('a')
+      if (a && a.getAttribute('href') === location.hash) void show()
+    })
+  }
 </script>
