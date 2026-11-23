@@ -371,6 +371,26 @@ describe('vx init --plugin <hook>', () => {
     },
     TIMEOUT,
   )
+
+  it(
+    'a project plugin says to run vx lock: a run reads the tasks it adds from the lock',
+    async () => {
+      const root = await mkdtemp(path.join(os.tmpdir(), 'vx-init-plugin-lock-'))
+      try {
+        await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'ws' }))
+        const project = await vx(root, ['init', '--plugin', 'project', '--dry'])
+        expect(project.out.split('\n')[1]).toEndWith(
+          ', then plugins: [scriptTasks(…)], then run vx lock: a run reads the tasks it adds from the lock',
+        )
+        // CONTROL: a hook every run calls needs no lock.
+        const key = await vx(root, ['init', '--plugin', 'key', '--dry'])
+        expect(key.out.split('\n')[1]).toEndWith(', then plugins: [envKey(…)]')
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
 })
 
 // A bare `bunx @vzn/vx-migrate` may be a day-old cached release, or newer
