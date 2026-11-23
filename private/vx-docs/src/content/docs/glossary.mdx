@@ -37,7 +37,7 @@ Coming from another tool? Each section ends with a table of the names Turborepo,
 
 ### Project
 
-**A folder with a `vx.config.ts`**, such as `packages/web`. Usually a package, in any language.
+**A folder with a `vx.config.ts`**, such as `packages/web`. Usually a package, in any language ([workspace](../docs/workspace/)).
 
 ### Task
 
@@ -45,11 +45,11 @@ Coming from another tool? Each section ends with a table of the names Turborepo,
 
 ### Task dependency
 
-**A task that must finish first.** `dependsOn: ['^build']` means: build the projects I depend on before me ([`dependsOn`](../schema/depends-on/)).
+**A task that must finish first.** `dependsOn: ['^build']` means: build the projects I depend on before me ([dependencies first](../docs/running/build-dependencies-first/)).
 
 ### Task graph
 
-**Every task a command will run, joined by its dependencies.** Read it when a run surprises you: `vx run build --dry`.
+**Every task a command will run, joined by its dependencies.** Read it when a run surprises you: `vx run build --dry` ([graph explorer](../docs/graph-explorer/)).
 
 ### Project graph
 
@@ -57,7 +57,7 @@ Coming from another tool? Each section ends with a table of the names Turborepo,
 
 ### Lock
 
-**Your configs, evaluated once.** `vx lock` writes `.vx/projects.lock`. Every run reads that file, never the configs.
+**Your configs, evaluated once.** `vx lock` writes `.vx/projects.lock`. Every run reads that file, never the configs ([check the lock](../docs/ci/check-the-lock/)).
 
 <Quiz q="You add a task to packages/web/vx.config.ts. What do you run before vx run sees it?">
   `vx lock`. Runs read only `.vx/projects.lock`, so the lock must include the new task.
@@ -84,11 +84,11 @@ Names checked against each tool's docs on 2026-09-24.
 
 ### Up to date
 
-**A task whose outputs are already in place.** vx runs nothing and copies nothing for it.
+**A task whose outputs are already in place.** vx runs nothing and copies nothing for it ([caching](../docs/caching/)).
 
 ### Affected
 
-**The projects a change can reach**: the ones you edited, plus everything that depends on them. `vx run test --affected` runs only those.
+**The projects a change can reach**: the ones you edited, plus everything that depends on them. `vx run test --affected` runs only those ([run what changed](../docs/running/run-what-changed/)).
 
 ### Persistent task
 
@@ -96,7 +96,7 @@ Names checked against each tool's docs on 2026-09-24.
 
 ### Critical path
 
-**The longest line of tasks that each wait on the one before.** No run ends sooner than it. The `@vzn/vx-history` plugin starts that line first.
+**The longest line of tasks that each wait on the one before.** No run ends sooner than it. The `@vzn/vx-history` plugin starts that line first ([history server](../docs/servers/history/)).
 
 <Takeaway>tell up to date from affected, and know why a dev server is never cached.</Takeaway>
 
@@ -118,19 +118,19 @@ Names checked against each tool's docs on 2026-09-24.
 
 ### Outputs
 
-**The files a task makes**, such as `dist/**`. vx stores them, and the task's terminal output too.
+**The files a task makes**, such as `dist/**`. vx stores them, and the task's terminal output too ([caching](../docs/caching/)).
 
 ### Cache key
 
-**A short code made from a task's inputs.** Same inputs, same key, same outputs. vx's key is a 16-character xxHash3 digest.
+**A short code made from a task's inputs.** Same inputs, same key, same outputs. vx's key is a 16-character xxHash3 digest ([how vx decides](../docs/caching/#how-vx-decides)).
 
 ### Hit and miss
 
-**A hit** finds the key and puts the stored outputs back. **A miss** runs the task, then stores what it made.
+**A hit** finds the key and puts the stored outputs back. **A miss** runs the task, then stores what it made ([how vx decides](../docs/caching/#how-vx-decides)).
 
 ### Stale hit
 
-**A hit that serves the wrong files**, because the task read something missing from its inputs. The run looks green. It is the worst thing a cache can do.
+**A hit that serves the wrong files**, because the task read something missing from its inputs. The run looks green. It is the worst thing a cache can do ([sandboxing](../docs/sandboxing/)).
 
 ### Remote cache
 
@@ -168,11 +168,11 @@ Names checked against each tool's docs on 2026-09-24.
 
 ### Worker
 
-**A CI job that runs tasks for a Distributed task execution run.** Its results come back through the remote cache.
+**A CI job that runs tasks for a Distributed task execution run.** Its results come back through the remote cache ([Distributed task execution](../docs/distributed-task-execution/)).
 
 ### Relay
 
-**The server that passes messages between a run and its workers.** You host it.
+**The server that passes messages between a run and its workers.** You host it ([DTE server](../docs/servers/dte/)).
 
 ### Remote execution
 
