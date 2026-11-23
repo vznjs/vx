@@ -402,9 +402,15 @@ describe('retierJit', () => {
   })
 
   it('once restarted, takes the option and its mark out of the environment', () => {
-    process.env['BUN_JSC_useFTLJIT'] = 'false'
-    process.env['VX_JIT_TIERED'] = '1'
-    retierJit(['run'], true)
-    expect('BUN_JSC_useFTLJIT' in process.env || 'VX_JIT_TIERED' in process.env).toBe(false)
+    const was = [process.env['BUN_JSC_useFTLJIT'], process.env['VX_JIT_TIERED']] as const
+    try {
+      process.env['BUN_JSC_useFTLJIT'] = 'false'
+      process.env['VX_JIT_TIERED'] = '1'
+      retierJit(['run'], true)
+      expect('BUN_JSC_useFTLJIT' in process.env || 'VX_JIT_TIERED' in process.env).toBe(false)
+    } finally {
+      if (was[0] !== undefined) process.env['BUN_JSC_useFTLJIT'] = was[0]
+      if (was[1] !== undefined) process.env['VX_JIT_TIERED'] = was[1]
+    }
   })
 })

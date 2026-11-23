@@ -11,7 +11,7 @@ const RUN_VERBS = new Set(['run', 'pipeline', 'watch', 'dte'])
 /**
  * Restart a compiled vx with JSC's top JIT tier (FTL) off, before anything
  * loads: its compiles never paid back within a run. A 9,603-task cold run
- * spent 1.2-2.3 s less of vx's own CPU in 6 of 6 paired rounds, a
+ * spent 0.7-3.6 s less of vx's own CPU in 3 of 3 paired rounds, a
  * nothing-changed run 13-17 % less, every wall time the same (2026-11-23).
  * JSC reads the option only at start, so it rides the environment; the
  * launcher (npm-launcher.sh) sets it on its `exec`, and the restart (~5 ms)
@@ -22,7 +22,7 @@ const RUN_VERBS = new Set(['run', 'pipeline', 'watch', 'dte'])
 export function retierJit(argv: readonly string[], compiled: boolean): void {
   if (process.env['VX_JIT_TIERED'] === '1') {
     delete process.env['VX_JIT_TIERED']
-    delete process.env['BUN_JSC_useFTLJIT']
+    if (process.env['BUN_JSC_useFTLJIT'] === 'false') delete process.env['BUN_JSC_useFTLJIT']
     return
   }
   if (!compiled || !RUN_VERBS.has(argv[0] ?? '') || process.env['BUN_JSC_useFTLJIT'] !== undefined)
