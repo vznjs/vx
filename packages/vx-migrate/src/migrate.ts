@@ -117,7 +117,7 @@ const HELP = [
   '  --no-install     Install nothing and skip vx lock.',
   '  --dry            Print the files instead of writing them.',
   '  --format json    With --dry: the plan as one JSON document.',
-  '  --force          Overwrite existing vx.config.* files.',
+  '  --force          Overwrite an existing .vx/workspace.* and vx.config.*.',
   '  --mjs            Write .mjs files (no type import) instead of .ts.',
 ].join('\n')
 

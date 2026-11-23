@@ -374,7 +374,7 @@ export function helpText(pluginCommands: readonly string[] = []): string {
     '                       or the Nx graph to vx (asking native or keep).',
     '      --dry            Print the generated files instead of writing them.',
     '      --format json    With --dry: the plan as one JSON document (schemas/init.json).',
-    '      --force          Overwrite existing vx.config.* files.',
+    '      --force          Overwrite an existing .vx/workspace.* and vx.config.*.',
     '      --mjs            Write .mjs files (no type import) instead of .ts.',
     '      --native         Turbo or Nx: write a vx.config.ts per package (no question).',
     '      --keep           Turbo or Nx: only .vx/workspace.ts, declaring turbo() or nx().',

@@ -8,6 +8,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, describe, expect, it } from 'bun:test'
+import { verbHelpText } from '../src/cli/help.js'
 import { initInstalls, notServed } from '../src/cli/init.js'
 import * as ui from '../src/ui/index.js'
 import { VERSION } from '../src/version.js'
@@ -143,6 +144,26 @@ describe('vx init with no package.json', () => {
       existsSync(path.join(root, 'vx.config.mjs')),
       await readFile(path.join(root, 'vx.config.ts'), 'utf8'),
     ]).toEqual([0, false, PROJECT])
+  })
+
+  // `vx init --help` said --force overwrites vx.config.* files; it replaces
+  // the workspace file too, and a user lost the plugins it declared.
+  it('--force replaces the workspace file, as its help says', async () => {
+    const root = await tmp('vx-init-bare-force-ws-')
+    await mkdir(path.join(root, '.vx'))
+    await writeFile(
+      path.join(root, '.vx', 'workspace.ts'),
+      'export default { plugins: [] } // mine\n',
+    )
+    const r = await vx(root, ['init', '--force'])
+    expect([r.code, await readFile(path.join(root, '.vx', 'workspace.ts'), 'utf8')]).toEqual([
+      0,
+      WORKSPACE,
+    ])
+    const line = verbHelpText('init')
+      .split('\n')
+      .find((l) => l.trimStart().startsWith('--force'))
+    expect(line).toContain('.vx/workspace.*')
   })
 
   // 2026-11-07: with vx.config.mjs and vx.config.ts both here, --force
