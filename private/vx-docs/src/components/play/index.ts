@@ -4,3 +4,4 @@
 export { default as CacheSim } from './CacheSim.astro'
 export { default as TaskGraph } from './TaskGraph.astro'
 export { default as GlobTester } from './GlobTester.astro'
+export { default as RunTimeline } from './RunTimeline.astro'

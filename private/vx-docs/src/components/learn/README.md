@@ -104,6 +104,7 @@ execution, plugins) and ends with `<NextStep>` to the next chapter.
 | `<CacheSim task?>` (`../play/`) | change a file, config or env, run, see hit / miss / up to date and why | caching pages; `import { CacheSim } from '../../../components/play'` |
 | `<TaskGraph task? mode?>` (`../play/`) | the story's tasks as a picture: click one to see what runs first, in waves; edit a file to see what reruns | `mode="order"` (default) or `"rerun"`; `import { TaskGraph } from '../../../components/play'` |
 | `<GlobTester mode? project? patterns?>` (`../play/`) | type `inputs.files` / `outputs.files` globs over the story tree: what matches, what is git-ignored, what is out of reach; outputs: literal required, wildcard optional | `mode="inputs"` (default) or `"outputs"`; `import { GlobTester } from '../../../components/play'` |
+| `<RunTimeline concurrency? fail?>` (`../play/`) | one `vx run build test lint` as lanes: slots, what waits, a failure skipping only its dependents vs `--fail-fast` | `fail="@demo/ui#build"`; `import { RunTimeline } from '../../../components/play'` |
 
 Real output stays ` ```ansi ` pasted from a real run (docs guide M4, M10).
 A Walkthrough frame is the place to put two outputs the reader compares.
