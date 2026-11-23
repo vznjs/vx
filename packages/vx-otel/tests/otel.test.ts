@@ -1651,8 +1651,11 @@ describe('OTLP envelopes, exactly', () => {
       timeUnixNano: '9',
       attributes,
     })
+    // Each run metric names its unit, as the task metrics do: without one a
+    // backend could not tell the run's time from its task counts.
     const sum = (name: string, dataPoints: unknown[]) => ({
       name,
+      unit: '{task}',
       sum: { dataPoints, aggregationTemporality: 1, isMonotonic: true },
     })
     expect(buildMetricsRequest('vx', summary, '9', '4')).toEqual({
@@ -1677,11 +1680,13 @@ describe('OTLP envelopes, exactly', () => {
                 sum('vx.tasks.cache_up_to_date', [point(3)]),
                 {
                   name: 'vx.run.duration_ms',
+                  unit: 'ms',
                   gauge: { dataPoints: [{ asDouble: 1234, timeUnixNano: '9', attributes: [] }] },
                 },
                 // The stored runs' time the hits skipped.
                 {
                   name: 'vx.run.time_saved_ms',
+                  unit: 'ms',
                   gauge: { dataPoints: [{ asDouble: 750, timeUnixNano: '9', attributes: [] }] },
                 },
               ],
