@@ -12,6 +12,7 @@
 import { readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { isBreaking, type Commit } from './release-notes.ts'
+import { SAY, TITLE } from './upgrading-say.ts'
 
 /** A commit and the `v*` tag on it, if a release was cut there. */
 export interface TaggedCommit extends Commit {
@@ -158,14 +159,16 @@ export function page(commits: readonly TaggedCommit[]): string {
   let entries: string[] = []
   let last = ''
   for (const commit of commits) {
-    const step = STEPS[commit.subject.replace(/ \(#\d+\)$/, '')]
+    const subject = commit.subject.replace(/ \(#\d+\)$/, '')
+    const step = STEPS[subject]
     if (isBreaking(commit) || step !== undefined) {
       const { title, footer } = entry(commit)
       if (footer === '' || !seen.has(footer)) {
         seen.add(footer)
-        const text = [footer, step?.steps ?? ''].filter((t) => t !== '').join('\n\n')
+        const said = footer === '' ? '' : (SAY[subject] ?? footer)
+        const text = [said, step?.steps ?? ''].filter((t) => t !== '').join('\n\n')
         entries.push(
-          `#### ${mdx(bunx(step?.title ?? title))}\n\n${mdx(bunx(text)) || 'Nothing to change beyond the steps above.'}\n`,
+          `#### ${mdx(bunx(step?.title ?? TITLE[subject] ?? title))}\n\n${mdx(bunx(text)) || 'Nothing to change beyond the steps above.'}\n`,
         )
       }
     }
