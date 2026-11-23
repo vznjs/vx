@@ -294,7 +294,7 @@ describe('scoped config loading', () => {
         ]),
       )
       const walks: Record<string, string[]> = {}
-      for (const seeds of ['all', ['c']] as const) {
+      for (const seeds of ['all', ['c'], ['a', 'b', 'c']] as const) {
         const asked: string[] = []
         const graph = buildPackageGraph([...metas])
         await loadProjects({
@@ -305,6 +305,7 @@ describe('scoped config loading', () => {
           packageGraph: {
             ...graph,
             transitiveDeps: (name) => (asked.push(name), graph.transitiveDeps(name)),
+            depsOf: (names) => (asked.push([...names].join('+')), graph.depsOf(names)),
           },
           seeds,
           closure: true,
@@ -314,7 +315,9 @@ describe('scoped config loading', () => {
         })
         walks[String(seeds)] = asked
       }
-      expect(walks).toEqual({ all: [], c: ['c', 'a', 'b'] })
+      // Many seeds are one walk (10,000 projects: 3,334 closures built and
+      // listed for one `--affected`).
+      expect(walks).toEqual({ all: [], c: ['c', 'a', 'b'], 'a,b,c': ['a+b+c'] })
     },
     TIMEOUT,
   )

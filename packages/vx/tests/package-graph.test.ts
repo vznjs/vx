@@ -127,6 +127,30 @@ describe('buildPackageGraph', () => {
     expect(g.transitiveDeps('a')).toEqual(['b', 'c'])
     expect(g.transitiveDependents('c')).toEqual(['a', 'b'])
   })
+
+  it("depsOf and dependentsOf are the union of each name's closure, cycles and reach included", () => {
+    // A 40-project graph from a fixed recurrence: forward edges, a cycle
+    // (p30 → p35 → p30) and a reach-only edge.
+    const metas = Array.from({ length: 40 }, (_, i) => {
+      const deps = [(i * 7) % 40, (i * 13 + 5) % 40].filter((j) => j < i).map((j) => `p${j}`)
+      if (i === 30) deps.push('p35')
+      if (i === 35) deps.push('p30')
+      return meta(`p${i}`, deps, i === 12 ? ['p39'] : undefined)
+    })
+    const g = buildPackageGraph(metas)
+    const union = (names: string[], one: (n: string) => string[]) =>
+      [...new Set(names.flatMap(one))].sort()
+    for (const seeds of [
+      [],
+      ['p0'],
+      ['p12', 'p30'],
+      ['p35', 'p39', 'p20'],
+      metas.map((m) => m.name),
+    ]) {
+      expect([...g.depsOf(seeds)].sort()).toEqual(union(seeds, g.transitiveDeps))
+      expect([...g.dependentsOf(seeds)].sort()).toEqual(union(seeds, g.transitiveDependents))
+    }
+  })
 })
 
 const BUILD = `export default {

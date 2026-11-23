@@ -12,6 +12,14 @@ export interface PackageGraph {
   transitiveDeps: (name: string) => string[]
   /** All projects a change here can reach (the reverse). */
   transitiveDependents: (name: string) => string[]
+  /**
+   * The union of `transitiveDeps` over `names`, in one walk. A loop over the
+   * names built every one's closure: at 10,000 projects a 3,334-project seed
+   * set materialised 5.5 M names through 12 MB of bitsets.
+   */
+  depsOf: (names: Iterable<string>) => Set<string>
+  /** The union of `transitiveDependents` over `names`, in one walk. */
+  dependentsOf: (names: Iterable<string>) => Set<string>
 }
 
 /**
@@ -219,10 +227,33 @@ export function buildPackageGraph(
     }
   }
 
+  // What any seed reaches through one edge or more: a seed is in only when
+  // another seed, or a cycle, reaches it, as in the union of its closures.
+  const walk = (
+    names: Iterable<string>,
+    next: (name: string) => readonly string[],
+  ): Set<string> => {
+    const seen = new Set<string>()
+    const stack: string[] = []
+    for (const name of names) stack.push(...next(name))
+    while (stack.length > 0) {
+      const cur = stack.pop()!
+      if (seen.has(cur)) continue
+      seen.add(cur)
+      for (const d of next(cur)) if (!seen.has(d)) stack.push(d)
+    }
+    return seen
+  }
+
   return {
     edgeSource,
     directDeps: (name) => directDeps.get(name) ?? [],
     transitiveDeps: makeAccessor(reachDeps, searchDeps),
     transitiveDependents: makeAccessor(directDependents),
+    depsOf: (names) => walk(names, reachOf),
+    dependentsOf: (names) => {
+      buildReach()
+      return walk(names, (name) => directDependents.get(name) ?? [])
+    },
   }
 }
