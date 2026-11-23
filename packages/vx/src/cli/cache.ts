@@ -22,6 +22,7 @@ import {
   errorCode,
   formatBytes,
   isUserError,
+  UserError,
   nearest,
   parseDuration,
   parseSize,
@@ -88,7 +89,14 @@ export async function cacheCmd(args: readonly string[]): Promise<number> {
   const [sub, ...rest] = args
   switch (sub) {
     case 'clean':
-      return await cleanCmd(rest)
+      // What it throws is the clean's: bin.ts labels an unnamed refusal by
+      // the first word typed, `vx cache`.
+      return await cleanCmd(rest).catch((err: unknown) => {
+        if (!isUserError(err) || err.message.startsWith('vx ')) throw err
+        const named = new UserError(`vx cache clean: ${err.message}`, errorCode(err))
+        if (err.parts !== undefined) named.parts = err.parts
+        throw named
+      })
     case undefined:
       // A bare `vx cache clean` refuses too: the hint names a whole command.
       return refuse(
