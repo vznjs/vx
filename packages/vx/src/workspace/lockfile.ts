@@ -181,13 +181,14 @@ export async function readLockfile(root: string): Promise<Lockfile | null> {
     }
     return null
   }
-  let text: string
+  let text: string | undefined
   let read: Decoded
   try {
     text = await file.text()
     read = decoded(text)
   } catch (err) {
     if (err instanceof UserError) throw err
+    if (text !== undefined && mergeConflicted(text)) throw lineBroken(text)
     throw new UserError(
       `${LOCKFILE_NAME} is not valid JSON — re-run \`vx lock\` or delete it`,
       'VX_E_LOCK',

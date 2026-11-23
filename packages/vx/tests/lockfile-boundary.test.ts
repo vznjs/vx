@@ -132,6 +132,13 @@ describe('readLockfile — the boundary rejects malformed input loudly', () => {
     await expect(readLockfile(root)).rejects.toThrow(/vx lock/)
   })
 
+  it('a conflict on the first line is a merge conflict, not bad JSON', async () => {
+    // Two branches that each bumped the lock's version conflict on its header:
+    // the run said "not valid JSON — delete it" instead of naming the merge.
+    await writeRaw('<<<<<<< HEAD\n{"version":9}\n=======\n{"version":8}\n>>>>>>> other\n')
+    await expect(readLockfile(root)).rejects.toThrow(/holds a git merge conflict/)
+  })
+
   it.each([
     ['a string', '"nope"'],
     ['a number', '42'],
