@@ -268,8 +268,9 @@ export class OutputIndex {
    * entry whose key folded its `oid` at its `rel` (that entry's
    * `entry_inputs`): bytes a save or restore here left under a key that took
    * git's version, not a hand edit some miss saved. Flushed and pending
-   * stamps; one scan of them. An entry a remote ingest wrote has no inputs
-   * here, so its bytes prove nothing until a local save.
+   * stamps; one scan of them. An ingest writes no inputs: a remote hit that
+   * restores a committed file records the ones this machine derived its key
+   * from (`recordInputs`).
    */
   foldedStamps(files: readonly StampProbe[]): Set<string> {
     const out = new Set<string>()

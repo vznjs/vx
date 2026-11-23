@@ -434,7 +434,8 @@ case it is.
   counted — with no config re-evaluation and no re-hash. A side with no
   fingerprints is named for why: a run that failed or wrote no cache,
   an entry a remote hit restored (a `cache-hit-remote` row of that key:
-  the artifact carries none), and only then a prune. Values are
+  the artifact carries none, and only a hit that restores a committed
+  file records this machine's), and only then a prune. Values are
   digests, never the material (an env value can be a secret), and a
   secret-named env input's digest leaves as `***` (unsalted, a short
   value is recoverable from it, M-62), as does one its task's
