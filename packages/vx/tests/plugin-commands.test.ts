@@ -479,6 +479,28 @@ describe('plugin commands', () => {
     )
   })
 
+  it('vx help says why it lists no plugin verbs when the workspace file fails to load', async () => {
+    // A verb with no `description` failed the load, and `vx help` printed the
+    // reference without it and exit 0, saying nothing: the author saw their
+    // verb missing and no reason. The reference stays on stdout, whole.
+    const NO_DESCRIPTION = pluginSource('org/bad', `{ commands: { hi: { run() { return 0 } } } }`)
+    await Bun.write(path.join(root, '.vx/workspace.mjs'), localWorkspaceSource([NO_DESCRIPTION]))
+    expect(await cli(['help'])).toBe(0)
+    expect(out.join('')).toContain('Usage:')
+    expect(out.join('')).not.toContain('Plugin commands:')
+    expect(err.join('')).toContain(
+      'plugin verbs could not be listed: .vx/workspace failed to load:',
+    )
+    expect(err.join('')).toContain(
+      "commands.hi` of plugin 'org/bad' must be { description: string, run: function }",
+    )
+    // A core verb's own help lists no plugin verb, so it has nothing to say.
+    err.length = 0
+    expect(await cli(['run', '--help'])).toBe(0)
+    expect(await cli(['help', 'run'])).toBe(0)
+    expect(err.join('')).toBe('')
+  })
+
   it('vx help lists plugin verbs with their description and plugin', async () => {
     await Bun.write(path.join(root, '.vx/workspace.mjs'), localWorkspaceSource([HELLO]))
     expect(await cli(['help'])).toBe(0)

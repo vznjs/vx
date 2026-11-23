@@ -43,7 +43,7 @@ export async function run(argv: readonly string[]): Promise<number> {
   // place `--help` is not being asked of vx. Core verbs only — a plugin verb
   // owns its own arguments, `--help` included.
   if (command !== undefined && wantsHelp(command, rest)) {
-    await printHelp(await (await plugins()).pluginCommandHelp(), command)
+    await printHelp([], command)
     return 0
   }
   if (command !== undefined && forwardsNothing(command, rest)) {
@@ -219,7 +219,11 @@ async function dispatch(command: string | undefined, rest: string[]): Promise<nu
         }
         return dispatch(verb, ['--help'])
       }
-      await printHelp(await (await plugins()).pluginCommandHelp(), core ? verb : undefined)
+      // A core verb's reference lists no plugin verb: no workspace load.
+      await printHelp(
+        core ? [] : await (await plugins()).pluginCommandHelp(),
+        core ? verb : undefined,
+      )
       return 0
     }
     case '--version':

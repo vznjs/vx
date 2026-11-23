@@ -4461,7 +4461,8 @@ a fraction, 256, which the OS would keep as 0 — fails naming the plugin
 and the verb), and a thrown `UserError` prints as
 cleanly as core's own. Anything else thrown fails in one line, no stack:
 `plugin '<p>' failed in command '<verb>': <msg>`. `vx help` lists every plugin verb under "Plugin
-commands", with the plugin's name.
+commands", with the plugin's name. When `.vx/workspace.ts` fails to load, it
+lists none and says why on stderr.
 
 An unknown verb is answered with what this workspace knows: the "did you
 mean" set is core's verbs AND the ones its plugins declare (the lookup

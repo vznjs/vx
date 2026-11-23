@@ -324,7 +324,18 @@ export async function pluginVerbs(cwd = process.cwd()): Promise<string[]> {
 /** `vx help` lines for every plugin verb in the workspace around `cwd`. */
 export async function pluginCommandHelp(cwd = process.cwd()): Promise<string[]> {
   const ws = await workspacePlugins(cwd).catch(() => null)
-  if (ws === null || 'loadError' in ws) return []
+  if (ws === null) return []
+  // The reference without them and exit 0 hid the broken file: a verb with
+  // no `description` just went missing. Said on stderr, so stdout stays the
+  // reference.
+  if ('loadError' in ws) {
+    ui.sayNotice(
+      'warn',
+      'vx help',
+      `plugin verbs could not be listed: .vx/workspace failed to load: ${ws.loadError}`,
+    )
+    return []
+  }
   // A verb has one owner, a package: the workspace load refuses two packages
   // declaring it, and of one package's plugins the first declared runs.
   const lines: string[] = []
