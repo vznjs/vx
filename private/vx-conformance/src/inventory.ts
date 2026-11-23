@@ -1337,6 +1337,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'ci-workflow.unsafe',
     'cli-doc-drift',
     'cli-json-doc',
+    'config-fields-explained',
     'config-levels-doc',
     'conflict-markers',
     'contract-versioning-doc',
