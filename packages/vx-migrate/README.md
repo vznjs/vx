@@ -497,7 +497,7 @@ A member whose package.json has no `name` is no project; one with a
 script is named in the report, to be given a name (remix's
 `packages/component/bench`).
 A member's script that runs another member's work (`pnpm -C ../pinia
-run build`, `yarn workspace <name>`, `-r` / `--filter`, a `cd` or `-C`
+run build`, `yarn workspace <name>`, `-r` / `--filter`, npm's `-w`, a `cd` or `-C`
 / `--cwd` / `--prefix` into another member) keeps its command and gets a
 TODO naming that part: the graph runs that member's task once, so name it
 under `dependsOn` and drop it from the command (pinia). A directory inside

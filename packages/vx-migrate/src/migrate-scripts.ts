@@ -601,6 +601,8 @@ function siblingRun(script: string, dir: string, others: readonly string[]): str
     for (let i = at + 1; i < words.length; i++) {
       const w = words[i]!
       if (ELSEWHERE_FLAG.test(w)) return s
+      // npm's `-w` is `--workspace`; pnpm's is the workspace root, no member.
+      if (words[at] === 'npm' && /^-w(=|$)/.test(w)) return s
       const flag = DIR_FLAG.exec(w)
       if (flag === null) continue
       const target = flag[2] ?? words[++i]
