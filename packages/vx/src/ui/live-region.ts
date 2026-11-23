@@ -148,8 +148,8 @@ export function createOutputWriter(
   // `regionRows`.
   let shownRows = 0
   let shownLines: readonly string[] = []
-  /** The cursor row's rows when drawn: see `eraseSeq`. */
-  let shownLastRows = 0
+  /** Each shown line's rows when drawn: see `eraseSeq`. */
+  let shownLineRows: readonly number[] = []
   let dead = false
   let holds = 0
   let lastDraw = -Infinity
@@ -238,17 +238,16 @@ export function createOutputWriter(
   // Erase sequence for whatever is currently shown. A single row keeps
   // the exact legacy bytes (ESC[2K\r); anything taller moves to its
   // top row and clears to end of screen.
-  // Counted at the width now: a terminal reflows its screen on a resize, so
-  // the rows the shown region takes are its lines' at the new width. The
-  // cursor's row is the exception: xterm.js (VS Code) cuts it instead, so it
-  // counts at the fewer of its rows then and now, since an erase one row
-  // short leaves junk and one row long destroys the log above.
+  // After a resize, each line counts at the fewer of its rows then and now:
+  // a terminal that rewraps (VTE, kitty) moves to the new count, one that
+  // does not (xterm, screen) keeps the old, and xterm.js (VS Code) rewraps
+  // all but the cursor's row. An erase one row short leaves a stale row
+  // once; one row long destroys the log above, on every terminal alike.
   const eraseSeq = (): string => {
     let rows = 0
-    if (shownRows > 0 && shownLines.length > 0) {
-      const last = shownLines.at(-1)!
-      rows = regionRows(shownLines.slice(0, -1)) + Math.min(lineRows(last), shownLastRows)
-    }
+    if (shownRows > 0)
+      for (let i = 0; i < shownLines.length; i++)
+        rows += Math.min(shownLineRows[i]!, lineRows(shownLines[i]!))
     return rows > 1 ? `\r\x1b[${rows - 1}A\x1b[J` : CLEAR
   }
 
@@ -303,7 +302,7 @@ export function createOutputWriter(
       shown = true
       shownRows = regionRows(lines)
       shownLines = lines
-      shownLastRows = lines.length > 0 ? lineRows(lines.at(-1)!) : 0
+      shownLineRows = lines.map(lineRows)
       shownText = region
     }
     if (text !== '') stream.write(rawBytes(text))

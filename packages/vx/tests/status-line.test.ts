@@ -1184,35 +1184,28 @@ describe('createOutputWriter region erase accounts for wrapped rows', () => {
     expect(s.chunks.at(-1)).toBe('\r\x1b[3A\x1b[Jn2')
   })
 
-  it('a resize between draws erases the rows the shown region takes NOW', () => {
-    // A terminal reflows its screen on a resize: a 30-column line drawn at 40
-    // wide becomes 3 rows at 10. The erase counted the rows at draw time, so
-    // a narrowed window kept the region's top rows on screen (xterm, 120 → 60).
+  it('a resize erases each line at the fewer of its rows then and now', () => {
+    // Terminals differ on a resize: VTE rewraps every row, xterm.js all but
+    // the cursor's, xterm and screen none. Counting at the new width erased
+    // a log line above the region where a row did not rewrap (a 100 → 50
+    // resize ate `1.8MB local p/a#fail` in xterm.js). A row short leaves a
+    // stale row once; a row long destroys output on every terminal.
     const s = ttyW(40)
     const w = createOutputWriter(s, { forceFloorMs: 0 })
-    w.setRegion(['q'.repeat(30), 'l2'], { force: true })
+    // Narrowed: 1 row then, 3 now → each counts 1: up 1.
+    w.setRegion(['q'.repeat(30), 'r'.repeat(30)], { force: true })
     s.columns = 10
     w.setRegion(['n'], { force: true })
-    expect(s.chunks.at(-1)).toBe('\r\x1b[3A\x1b[Jn')
-    // Widened back, the 3 rows reflow to 1: up 0 rows would leave none; the
-    // erase of a now 1-row region is the single-line one.
+    expect(s.chunks.at(-1)).toBe('\r\x1b[1A\x1b[Jn')
+    // Widened: 3 rows then, 1 now → 1 each: the single-line erase.
     w.setRegion(['w'.repeat(25)], { force: true })
     s.columns = 40
     w.setRegion(['m'], { force: true })
     expect(s.chunks.at(-1)).toBe('\x1b[2K\rm')
-  })
-
-  it('a resize counts the cursor row at its fewer rows: no reflow is promised for it', () => {
-    // xterm.js (VS Code's terminal) reflows every row but the cursor's, which
-    // it cuts: counting that row at the new width erased a row of the log
-    // above the region (a 100 → 50 resize ate `1.8MB local p/a#fail`).
-    // Under-erasing leaves a junk row; over-erasing destroys output.
-    const s = ttyW(40)
-    const w = createOutputWriter(s, { forceFloorMs: 0 })
-    w.setRegion(['q'.repeat(30), 'r'.repeat(30)], { force: true })
-    s.columns = 10
-    w.setRegion(['n'], { force: true })
-    expect(s.chunks.at(-1)).toBe('\r\x1b[3A\x1b[Jn')
+    // CONTROL: no resize, the rows as drawn.
+    w.setRegion(['z'.repeat(90), 'y'], { force: true })
+    w.setRegion(['k'], { force: true })
+    expect(s.chunks.at(-1)).toBe('\r\x1b[3A\x1b[Jk')
   })
 
   // Cursor-up stops at the top of the screen: rows that scrolled into the
