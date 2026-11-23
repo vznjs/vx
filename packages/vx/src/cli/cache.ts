@@ -288,7 +288,7 @@ function printPruned(
   dry: boolean,
   json: boolean,
 ): void {
-  const { historyRows = 0, historyBytes = 0 } = result
+  const { historyRows = 0, historyBytes = 0, historyWindowMs = 0 } = result
   if (json) {
     const { evicted, bytesFreed, orphans, orphanBytes } = result
     const history = dry || historyRows === 0 ? {} : { historyRows, historyBytes }
@@ -305,7 +305,7 @@ function printPruned(
       ? [plural(result.orphans, 'orphaned artifact', 'orphaned artifacts')]
       : []),
     ...(historyRows > 0
-      ? [plural(historyRows, 'history row', 'history rows') + ' past 30 days']
+      ? [`${plural(historyRows, 'history row', 'history rows')} past ${retention(historyWindowMs)}`]
       : []),
   ]
   ui.print(
@@ -316,6 +316,19 @@ function printPruned(
 }
 
 /** `✓ vx cache clean freed 1.3 GB`, `› … would free 1.3 GB (dry run)`, or nothing to free. */
+/** `history.retention` as its setting reads: `30 days`, `12 hours`, `45 seconds`. */
+function retention(ms: number): string {
+  for (const [unit, size] of [
+    ['day', 86_400_000],
+    ['hour', 3_600_000],
+    ['minute', 60_000],
+    ['second', 1000],
+  ] as const) {
+    if (ms >= size && ms % size === 0) return `${ms / size} ${unit}${ms === size ? '' : 's'}`
+  }
+  return `${ms} ms`
+}
+
 function freedStatus(dry: boolean, bytes: number, any: boolean): ui.Block {
   if (!any) return ui.status('info', 'vx cache clean', `nothing to free${dry ? ' (dry run)' : ''}`)
   return dry

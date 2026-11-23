@@ -175,12 +175,14 @@ export interface PruneResult {
   /** Bytes the reaped orphans occupied on disk. */
   orphanBytes: number
   /**
-   * Run history and hash-memo rows older than 30 days, dropped. Absent
-   * when none went, and on a dry run.
+   * Run history and hash-memo rows older than `historyWindowMs`, dropped.
+   * Absent when none went, and on a dry run.
    */
   historyRows?: number
   /** Bytes the index files shrank by once those rows' pages were given back. */
   historyBytes?: number
+  /** The retention those rows were past (`history.retention`, 30 days by default). */
+  historyWindowMs?: number
 }
 
 /**
