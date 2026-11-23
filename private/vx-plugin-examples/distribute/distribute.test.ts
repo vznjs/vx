@@ -81,10 +81,21 @@ it('runs each task on a worker, streams its output, and caches it as the floor w
 it('gives a task back to this machine when its worker dies under it', async () => {
   // On the worker the command kills it; given back, it runs here, where the
   // marker it left says not to. On Linux the shell's parent is vx-measure, a
-  // SIGKILL it cannot pass on, so the worker is that helper's parent.
+  // SIGKILL it cannot pass on, so the worker is that helper's parent. Linux
+  // walks /proc, not `ps`: a sandbox in an unprivileged container cannot
+  // mount its own /proc, so /proc and `ps` name an outer namespace's pids
+  // (2026-11-23), and the last NSpid entry is the pid `kill` takes here.
+  const linux = [
+    'read -r _ _ _ w _ < /proc/self/stat',
+    'case "$(cat /proc/$w/comm)" in vx-measure*) read -r _ _ _ w _ < /proc/$w/stat;; esac',
+    'kill -9 $(sed -n "s/^NSpid:.*[[:space:]]//p" /proc/$w/status)',
+  ].join('; ')
+  const mac =
+    'w=$PPID; case "$(ps -o comm= -p $w)" in vx-measure*) w=$(ps -o ppid= -p $w);; esac; kill -9 $w'
+  const kill = process.platform === 'linux' ? linux : mac
   const dir = await pkg(
     'a',
-    `export default { tasks: { hi: { exec: { command: 'if [ ! -e gone ]; then touch gone; w=$PPID; case "$(ps -o comm= -p $w)" in vx-measure*) w=$(ps -o ppid= -p $w);; esac; kill -9 $w; sleep 5; fi; echo here > here.txt' } } } }`,
+    `export default { tasks: { hi: { exec: { command: ${JSON.stringify(`if [ ! -e gone ]; then touch gone; ${kill}; sleep 5; fi; echo here > here.txt`)} } } } }`,
   )
   await workspace(1)
   const r = await run({ cwd: root, tasks: ['hi'], log: quiet(), handleSignals: false })
