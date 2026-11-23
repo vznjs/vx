@@ -157,6 +157,28 @@ describe('bun(): no install record, so the workspaces’ dependencies as Node re
   // cleans to 1.35.3 on publish and in every lockfile; the check read the
   // two as different installs and refused every run until an install that
   // changed nothing.
+  // `install-strategy=linked` (npm 10.9) records the hoisted paths and puts
+  // each package in node_modules/.store, linked only where a dependant is:
+  // the root's `node_modules/is-number` path is not there, and every run
+  // after a good install refused.
+  it('reads an install-strategy=linked package from node_modules/.store', async () => {
+    const stored = (v: string): Record<string, string> => ({
+      'node_modules/.package-lock.json': npmTree(v),
+      [`node_modules/.store/is-number@${v}-9C8BjRcRzDOrS4TE11sgJQ/node_modules/is-number/package.json`]:
+        pkg(v),
+    })
+    await write({ ...MANIFESTS, 'package-lock.json': npmLock('5.0.0'), ...stored('5.0.0') })
+    expect(await run(npm())).toBe('ok')
+    // `npm install --dry-run` rewrites the record, never the store.
+    await write({
+      'package-lock.json': npmLock('7.0.0'),
+      'node_modules/.package-lock.json': npmTree('7.0.0'),
+    })
+    expect(await run(npm())).toBe(
+      'node_modules was installed from a different package-lock.json (node_modules/is-number is not installed, node_modules/.package-lock.json names 7.0.0) — run `npm install`',
+    )
+  })
+
   it('reads a manifest version with a leading v as the version it cleans to', async () => {
     await write({
       ...MANIFESTS,

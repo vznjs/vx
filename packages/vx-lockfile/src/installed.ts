@@ -67,11 +67,12 @@ function npmCompare(lockText: string, markerText: string, root: string): string 
   const tree = obj(obj(JSON.parse(markerText))['packages'])
   // The record is not the tree: `npm install --dry-run` (npm 10.9) rewrites
   // it to the new lockfile and installs nothing.
+  const stored = npmStore(root)
   for (const [p, raw] of Object.entries(tree)) {
     const version = obj(raw)['version']
     if (!p.includes('node_modules/') || typeof version !== 'string') continue
     const installed = versionAt(root, p)
-    if (installed !== version) {
+    if (installed !== version && !stored(p, version)) {
       return `${p} is ${installed === undefined ? 'not installed' : String(installed)}, node_modules/.package-lock.json names ${String(version)}`
     }
   }
@@ -105,6 +106,34 @@ function npmCompare(lockText: string, markerText: string, root: string): string 
     }
   }
   return undefined
+}
+
+/**
+ * npm's `install-strategy=linked` (npm 10.9): the record keeps the hoisted
+ * paths, and each package sits in `node_modules/.store/<name>@<version>-<hash>`,
+ * linked only where something depends on it. Whether a recorded path's
+ * package is in the store at that version; never without a store.
+ */
+function npmStore(root: string): (p: string, version: string) => boolean {
+  const store = path.join(root, 'node_modules', '.store')
+  if (statSync(store, { throwIfNoEntry: false })?.isDirectory() !== true) return () => false
+  const listed = new Map<string, readonly string[]>()
+  return (p, version) => {
+    const name = p.slice(p.lastIndexOf('node_modules/') + 'node_modules/'.length)
+    const slash = name.lastIndexOf('/')
+    const dir = slash === -1 ? store : path.join(store, name.slice(0, slash))
+    let names = listed.get(dir)
+    if (names === undefined) {
+      try {
+        names = readdirSync(dir)
+      } catch {
+        names = []
+      }
+      listed.set(dir, names)
+    }
+    const prefix = `${name.slice(slash + 1)}@${version}-`
+    return names.some((n) => n.startsWith(prefix))
+  }
 }
 
 /**
