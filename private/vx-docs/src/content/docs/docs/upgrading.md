@@ -21,15 +21,13 @@ version. `vx cache clean --older-than 7d` drops the old entries later.
 
 ## After v0.0.659
 
-### Plan as JSON with vx run --dry --format json
+### Locks, lock problems, dry runs and edited configs
 
-`vx run --dry=json` → `vx run --dry --format json`; `--dry=pretty` → `--dry`; pipeline `dry: 'json'` → `dry: true, format: 'json'`.
-
-### Give each vx lock --check problem its error code
+.vx/projects.lock is version 9 and .vx/dependencies.lock version 6. Run `vx lock` once to rewrite both.
 
 Vx lock --check --format json problems are { code, message } objects, not strings.
 
-### A run refuses a config edited since vx lock
+`vx run --dry=json` → `vx run --dry --format json`; `--dry=pretty` → `--dry`; pipeline `dry: 'json'` → `dry: true, format: 'json'`.
 
 After editing a `vx.config.ts`, run `vx lock` before `vx run`, `vx show`, `vx why` or `vx pipeline`: the run now refuses with `VX_E_LOCK`, naming the file, instead of running the config the lock holds.
 
@@ -46,10 +44,6 @@ Variables whose names hold `PASSPHRASE` or end in `_PASS` are now masked in outp
 The local index schema is v58: it resets once, so the run history starts empty.
 
 Nothing to do. `vx last` and `vx why` show only runs made after the upgrade. A piped run prints the Tasks header once.
-
-### Write locks git merges cleanly
-
-.vx/projects.lock is version 9 and .vx/dependencies.lock version 6. Run `vx lock` once to rewrite both.
 
 ### A --force run replaces the entry its key held
 
