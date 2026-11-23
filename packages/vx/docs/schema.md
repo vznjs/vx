@@ -2022,7 +2022,16 @@ shares (L-41): `~/.ssh`, `~/.gnupg`, `~/.aws`, `~/.azure`, `~/.kube`,
 `~/.fly/config.yml`, `~/.supabase/access-token`, `~/.config/doctl`,
 `~/Library/Application Support/doctl`, `~/.config/stripe/config.toml`,
 `~/.config/op`, `~/.expo/state.json`, `~/.claude/.credentials.json`,
-`~/.codex/auth.json`. A store in home's `.config`, `.local/share` or
+`~/.codex/auth.json`, the browsers' profiles (`~/.mozilla/firefox`,
+`~/Library/Application Support/Firefox`, `~/.config/google-chrome`,
+`~/.config/chromium`, `~/.config/BraveSoftware`, `~/.config/microsoft-edge`,
+`~/Library/Application Support/Google/Chrome`,
+`~/Library/Application Support/Chromium`,
+`~/Library/Application Support/BraveSoftware`,
+`~/Library/Application Support/Microsoft Edge`, `~/Library/Cookies`),
+SOPS' age keys (`~/.config/sops/age`,
+`~/Library/Application Support/sops/age`), `~/.config/rclone`, `~/.my.cnf`,
+`~/.password-store`, `~/.sentryclirc`. A store in home's `.config`, `.local/share` or
 `.cache` is denied again under `$XDG_CONFIG_HOME`, `$XDG_DATA_HOME` or
 `$XDG_CACHE_HOME`, which a task sees.
 Each is looked for as each task starts, so a store an earlier task of
