@@ -441,6 +441,7 @@ export interface AffectedChanges {
   dirLinksIn?: ReadonlyMap<string, ReadonlySet<string>>
   untrackedIn?: ReadonlyMap<string, ReadonlySet<string>>
   untracked?: ReadonlySet<string>
+  configTasks?: ReadonlyMap<string, ReadonlySet<string>>
 }
 == type AffectedReason (src/orchestrator/affected-tasks.ts)
 export interface AffectedReason {
@@ -1292,6 +1293,7 @@ export interface OutcomeCache {
   unkeyed?: true
   driftedInput?: string | null
   keylessBy?: string
+  kept?: true
 }
 == type OutcomePlacement (src/graph/outcome.ts)
 export interface OutcomePlacement {

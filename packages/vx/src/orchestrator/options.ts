@@ -259,6 +259,12 @@ export interface RunHandoff {
    */
   commandWindows?: CommandWindows
   /**
+   * `vx watch`: the last result of each uncached or failed task, by id, that
+   * no path changed since reaches; the task keeps it while its key is the
+   * same (watch-kept.ts).
+   */
+  kept?: ReadonlyMap<string, TaskOutcome>
+  /**
    * Print the per-task table (`--verbosity 1`) just above the footer: the
    * footer is the run's last word, so the caller cannot print it after.
    */

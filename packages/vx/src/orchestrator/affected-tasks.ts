@@ -1,8 +1,9 @@
 // `--affected` per task. The diff seeds the tasks it reaches; a requested task
-// runs when its `dependsOn` closure holds one. So a change reaches another
-// project only along a task edge: `web#test` behind `^build` runs when
-// `ui#build` (or what it depends on) is reached, and a spec edit `ui#build`'s
-// inputs leave out stops at `ui`'s own tasks.
+// runs when its `dependsOn` closure holds one, through the edges its key folds
+// (`inputs.tasks`). So a change reaches another project only along a keyed
+// task edge: `web#test` behind `^build` runs when `ui#build` (or what it
+// depends on) is reached, and a spec edit `ui#build`'s inputs leave out stops
+// at `ui`'s own tasks.
 
 import path from 'node:path'
 import type { WorkspaceRules } from '../config.js'
@@ -11,6 +12,7 @@ import {
   buildTaskGraph,
   compileTaskPattern,
   expandRequested,
+  foldedDeps,
   isGroupTask,
   isTaskPattern,
   parseDependencySpec,
@@ -18,6 +20,7 @@ import {
 } from '../graph/index.js'
 import {
   type AffectedChanges,
+  LOCKFILE_NAME,
   type PackageGraph,
   PROJECT_CONFIG_FILENAMES,
   type ProjectEntry,
@@ -53,9 +56,13 @@ function wholeProjects(
     )
     const links = changes.dirLinksIn?.get(name)
     const loose = changes.untrackedIn?.get(name)
+    // The lock said which tasks a config edit moved (`configTasks`).
+    const perTaskConfig = changes.configTasks?.has(name) === true
     const unclaimed = (rel: string): boolean =>
-      KEYED_BY_EVERY_TASK.has(rel) ||
-      (!byKeys && !keyed.some((t) => declaresInput(t, rel, null, links?.has(rel), loose?.has(rel))))
+      KEYED_BY_EVERY_TASK.has(rel)
+        ? !perTaskConfig
+        : !byKeys &&
+          !keyed.some((t) => declaresInput(t, rel, null, links?.has(rel), loose?.has(rel)))
     const rel = rels.find(unclaimed)
     if (rel !== undefined) whole.set(name, rel)
   }
@@ -175,6 +182,22 @@ export function affectedRoots(
     }
     if (!changes.projects.has(n.projectName)) return false
     const rels = changes.paths.get(n.projectName) ?? []
+    // An unkeyed group runs nothing: it is reached through its deps.
+    if (
+      changes.configTasks?.get(n.projectName)?.has(n.taskName) === true &&
+      (keyed || !isGroupTask(n))
+    ) {
+      if (seeds !== null) {
+        const config = rels.find((r) => KEYED_BY_EVERY_TASK.has(r))
+        seeds.set(
+          n.id,
+          config === undefined
+            ? { kind: 'workspace', file: LOCKFILE_NAME }
+            : { ...inProject(n.projectName, config), kind: 'input' },
+        )
+      }
+      return true
+    }
     // An unkeyed group runs nothing. A task with no inputs may read anything
     // in its project: a root file another task of it declares
     // (`workspaceFiles`) is no change there.
@@ -193,6 +216,18 @@ export function affectedRoots(
     if (rel === undefined) return false
     if (seeds !== null) seeds.set(n.id, { ...inProject(n.projectName, rel), kind: 'input' })
     return true
+  }
+  // The deps a key folds (`inputs.tasks`, less order-only edges): one whose
+  // hash the key leaves out cannot move it, so a change there reaches the
+  // task no more than a run would miss it (nx task-level affected agrees).
+  const keyDeps = new Map<string, readonly string[]>()
+  const depsOf = (n: TaskNode): readonly string[] => {
+    let d = keyDeps.get(n.id)
+    if (d === undefined) {
+      d = foldedDeps(n, (id) => nodes.get(id)!).map((c) => c.node.id)
+      keyDeps.set(n.id, d)
+    }
+    return d
   }
   const reached = new Map<string, boolean>()
   // Post-order on an explicit stack: a closure is as deep as the graph, and
@@ -217,7 +252,7 @@ export function affectedRoots(
         }
         frame[1] = 0
       }
-      const deps = nodes.get(id)!.deps
+      const deps = depsOf(nodes.get(id)!)
       let i = frame[1]
       while (i < deps.length && reached.get(deps[i]!) === false) i++
       frame[1] = i

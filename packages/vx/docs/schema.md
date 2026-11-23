@@ -658,8 +658,9 @@ the run went on`), so a dependant failing against it reads why, with the line a 
   persistent tasks you requested, those a requested group stands for,
   and the persistent tasks they depend on: vx stays up after the summary
   until one of them exits or you press Ctrl-C, streaming what they write.
-  A run where anything else failed keeps none and exits 1 (`cli.md`
-  § Output, "Pinned persistent tasks").
+  A failure elsewhere skips only its dependants: the rest stay up, and
+  the run exits 1 when the session ends (`--fail-fast` stops them at
+  the first failure; `cli.md` § Output, "Pinned persistent tasks").
 - **`cache` is rejected.** The config loader throws on
   `cache + persistent` — persistent tasks don't terminate, so there's
   no exit code to cache and no outputs to capture at a well-defined
@@ -1393,6 +1394,10 @@ folded. Defaults:
 
 - **Omitted** → all upstream contribute (`['*', '^*']`). Most common.
 - **`[]`** → fully decoupled; no upstream contributes.
+
+`--affected` follows the same selection: a change reaches a task through a
+dependency only when its key folds that dependency, so with `[]` a change
+upstream selects the task no more than it would move its key.
 
 A list of **only negations** (`['!gen']`) is refused at load, as a
 negation-only `inputs.files` is: the selection starts empty and a `!`

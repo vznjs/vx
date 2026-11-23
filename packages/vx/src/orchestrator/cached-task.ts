@@ -42,6 +42,7 @@ import { isLocalExecutor } from './local-executor.js'
 import { isAborted, taskEnv } from './task-process.js'
 import { applySave, saveVerdict } from './task-save.js'
 import { stampUndeclaredState } from './undeclared-state.js'
+import { keptOutcome } from './watch-kept.js'
 
 /** Whether this task reads the cache: a cached, not remote-only task with a read axis on. */
 export function readsCache(args: ExecuteArgs): boolean {
@@ -123,6 +124,8 @@ export async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome>
     }
   }
 
+  const kept = keptOutcome(args, hash, taskStartNs)
+  if (kept !== undefined) return kept
   const hit = await probe(args, policy, hash, taskStartNs, got)
   if (hit !== null) return hit
   // It will spawn: the first such task starts the spare shells.

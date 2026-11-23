@@ -255,12 +255,17 @@ export async function handOff(bin: string, args: readonly string[]): Promise<nev
   // This vx waits out the whole run beside the tasks, and `run()`, which
   // hides the env on every verb, is never reached here. Imported here:
   // a start that hands off nothing pays nothing.
-  await (await import('./util/index.js')).hideEnvFromTasks()
+  const util = await import('./util/index.js')
+  await util.hideEnvFromTasks()
   // The handlers come first: a signal landing between the spawn and them killed
   // this vx and left the local one running, orphaned. A handler runs on the
   // event loop, after the spawn returned.
   let child: Bun.Subprocess | undefined
+  // One this vx was started deaf to (`&` in a script, nohup) stays so, here
+  // and in the local vx, which Bun spawns with every signal at its default.
+  const ignored = (['SIGINT', 'SIGHUP'] as const).filter((sig) => util.startedIgnoring(sig))
   for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP'] as const) {
+    if (sig !== 'SIGTERM' && ignored.includes(sig)) continue
     process.on(sig, () => {
       if (!inForeground()) child?.kill(sig)
     })
@@ -268,7 +273,12 @@ export async function handOff(bin: string, args: readonly string[]): Promise<nev
   child = Bun.spawn([bin, ...args], {
     stdio: ['inherit', 'inherit', 'inherit'],
     // A group stop reaches the local vx from here too (util/signal-relay.ts).
-    env: { ...process.env, VX_HANDED_OFF: process.execPath, VX_SIGNAL_RELAY: '1' },
+    env: {
+      ...process.env,
+      VX_HANDED_OFF: process.execPath,
+      VX_SIGNAL_RELAY: '1',
+      ...(ignored.length > 0 ? { [util.IGNORED_SIGNALS_ENV]: ignored.join(',') } : {}),
+    },
   })
   const code = await child.exited
   const signal = child.signalCode
@@ -278,7 +288,7 @@ export async function handOff(bin: string, args: readonly string[]): Promise<nev
   // SIGINT, and an exit 130 ran the script's next line. The code below is
   // the rest, and the fallback should the signal not land.
   if (signal === 'SIGINT' || signal === 'SIGTERM' || signal === 'SIGHUP') {
-    ;(await import('./util/index.js')).dieOf(signal)
+    util.dieOf(signal)
   }
   if (typeof signal === 'number') process.exit(128 + signal)
   const { constants } = await import('node:os')

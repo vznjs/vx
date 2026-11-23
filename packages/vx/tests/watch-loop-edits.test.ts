@@ -207,15 +207,23 @@ describe('vx watch loop (e2e)', () => {
     // macOS FSEvents split a checkout past the debounce window: the first
     // half started a cycle that read every file, and the late half, first
     // sightings stamped after the arm, started a second with nothing
-    // changed (macOS CI, 2026-11-12). The shim holds half the events back.
+    // changed (macOS CI, 2026-11-12). The shim holds half the events back,
+    // and every file's event until the checkout has returned: a slow Mac
+    // wrote the late half after the first half's debounce, so the cycle began
+    // mid-checkout and the second was a real change.
     const shim = path.join(f.root, 'late-events.ts')
+    const gate = `${shim}.open`
     await writeFile(
       shim,
       "import fs from 'node:fs'\n" +
         'const watch = fs.watch\n' +
+        `const gate = ${JSON.stringify(gate)}\n` +
+        'const after = (go: () => void): unknown =>\n' +
+        '  fs.existsSync(gate) ? go() : setTimeout(() => after(go), 20)\n' +
         'fs.watch = ((p: any, o: any, cb: any) => watch(p, o, (e: string, name: string) => {\n' +
-        '  if (/f1\\d\\.txt$/.test(String(name))) setTimeout(() => cb(e, name), 700)\n' +
-        '  else cb(e, name)\n' +
+        '  const n = String(name)\n' +
+        '  if (!/f\\d\\d\\.txt$/.test(n)) return cb(e, name)\n' +
+        '  after(() => (/f1\\d\\.txt$/.test(n) ? setTimeout(() => cb(e, name), 700) : cb(e, name)))\n' +
         '})) as typeof fs.watch\n',
     )
     const git = gitIn(f.root)
@@ -236,6 +244,7 @@ describe('vx watch loop (e2e)', () => {
     await initialOnly(w, f.log)
 
     git('checkout', '-q', 'feat')
+    await writeFile(gate, '')
     await until(async () => (await executions(f.log)) === 2, 'the re-run after the checkout')
     // The late half lands 700 ms on; a settle past it judges it.
     await Bun.sleep(700 + SETTLE_MS)

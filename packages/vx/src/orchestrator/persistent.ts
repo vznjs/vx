@@ -3,7 +3,7 @@
 // ownership moves to the run's registry, and this is the one place that
 // decides which of them outlive the graph and how the rest go down.
 
-import { isGroupTask, isPassStatus, type TaskNode, type TaskOutcome } from '../graph/index.js'
+import { isGroupTask, type TaskNode, type TaskOutcome } from '../graph/index.js'
 import { killGraceMs } from '../util/index.js'
 import { holdGroups, killTree, signalExitCode, untilGroupsGone } from '../exec/index.js'
 import type { HeldPersistent, HeldServer } from './options.js'
@@ -495,14 +495,12 @@ function holdAll(
 /**
  * The end of the graph for its servers: which stay up (`selectKeepAlive`, or
  * every one under a hold), the bounded shutdown of the rest, and each one that
- * died on its own failed. A run that failed elsewhere keeps nothing: `vx run
- * dev --all` with one server that never became ready sat on the others for
- * good, so a script hung, and the Ctrl-C that ended it read 130 over the
- * failure. A kept server's own crash ends the keep-alive wait as before. The
- * watch loop (`hold`)
- * still holds: a failing test in a cycle stopped the dev server the next change
- * would restart anyway. A kept server that has already died fails too; the
- * keep-alive wait names it.
+ * died on its own failed. A failure elsewhere keeps them too: it skips only
+ * its dependants, and a server is none (`vx run dev` stopped app#dev when an
+ * unrelated lib#dev failed; Nx keeps it). The run still exits 1 when the
+ * session ends (a Ctrl-C dies of its signal, as always); `--fail-fast` stops
+ * them all at the first failure. A kept server that has already died fails; the keep-alive wait
+ * names it.
  */
 export async function disposeServers(args: {
   registry: ReadonlyMap<string, Child>
@@ -528,15 +526,9 @@ export async function disposeServers(args: {
   // A hold keeps a dependency-only server too, for its next cycle to keep
   // while its key is unchanged: `vx watch e2e` over its db and api booted
   // the stack again every edit.
-  let keepAlive = args.hold
+  const keepAlive = args.hold
     ? holdAll(registry, args.nodes, args.keyed)
     : selectKeepAlive(registry, args.nodes, args.keep)
-  const failedElsewhere =
-    ![...outcomes.values()].every((o) => isPassStatus(o.status)) ||
-    [...registry.values()].some(
-      (c) => hasEnded(c) && c.exitCode !== 0 && !keepAlive.children.includes(c),
-    )
-  if (failedElsewhere && !args.hold) keepAlive = { nodes: [], children: [] }
   const crashed = (
     await shutdownPersistent(registry, keepAlive.children, undefined, serverUsers(args.nodes))
   ).filter((c) => endedBeforeStop?.has(registry.get(c.id)!) ?? true)
