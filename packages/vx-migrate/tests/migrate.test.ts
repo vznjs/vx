@@ -391,23 +391,23 @@ describe('vx migrate (turbo)', () => {
     // readiness note is no TODO (item 602). Each package's `deploy` (no
     // script anywhere) is an empty group, clean.
     expect(result.out).toContain('  tasks     2 clean · 7 todo\n')
-    // The report shows five ids per reason, so app#seed is one of "2 more".
+    // The report shows five ids per reason, so packages/app#seed is one of "2 more".
     const todos = todosOf(result.out)
     expect([...todos.keys()].sort()).toEqual([
-      'app#build',
-      'app#codegen',
-      'app#dev',
-      'app#lint',
-      'app#test',
-      'lib#build',
+      'packages/app#build',
+      'packages/app#codegen',
+      'packages/app#dev',
+      'packages/app#lint',
+      'packages/app#test',
+      'packages/lib#build',
     ])
-    expect(todos.get('app#build')!.map((r) => r.split(' ')[0])).toEqual([
+    expect(todos.get('packages/app#build')!.map((r) => r.split(' ')[0])).toEqual([
       'dependsOn',
       'env',
       "turbo.json's",
     ])
-    expect(todos.get('app#build')![0]).toContain('$TURBO_ROOT$')
-    expect(todos.get('lib#build')).toHaveLength(2) // and the global one, among "2 more"
+    expect(todos.get('packages/app#build')![0]).toContain('$TURBO_ROOT$')
+    expect(todos.get('packages/lib#build')).toHaveLength(2) // and the global one, among "2 more"
     expect(result.out).toContain(
       `turbo.json's global block (globalDependencies ["tsconfig.base.json"], globalEnv ` +
         '["GLOBAL_MODE"], globalPassThroughEnv ["AWS_PROFILE"]) is carried onto no task',
@@ -923,16 +923,16 @@ describe('vx migrate (nx)', () => {
     expect(result.out).not.toMatch(/\^production/)
     // {workspaceRoot}/<path> entries map to workspaceFiles — no TODO.
     const todos = todosOf(result.out)
-    const aBuild = todos.get('pkg-a#build')!.join('\n')
+    const aBuild = todos.get('packages/pkg-a#build')!.join('\n')
     expect(aBuild).not.toMatch(/workspaceRoot/)
     expect(aBuild).toMatch(/externalDependencies/)
     expect(aBuild).toMatch(/params/)
     // An executor is its nx-exec line, no gap to report. Nothing depends on
     // serve: no readiness note to report (item 602).
-    expect(todos.get('pkg-a#serve')).toBeUndefined()
+    expect(todos.get('packages/pkg-a#serve')).toBeUndefined()
     // No `inputs` is Nx's own default set, not a gap (item 591).
     expect(result.out).not.toMatch(/cache enabled with no declared inputs/)
-    expect(todos.get('pkg-b#build')?.join() ?? '').not.toMatch(/cwd/)
+    expect(todos.get('packages/pkg-b#build')?.join() ?? '').not.toMatch(/cwd/)
   })
 
   it(

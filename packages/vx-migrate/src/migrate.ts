@@ -382,12 +382,12 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
       ),
       // `--no-install` with no lockfile: the `vx lock` the report names
       // refused every `^build` written here.
-      notes:
-        !bare &&
-        !plugins.some((p) => p.pkg === '@vzn/vx-lockfile') &&
-        plan.projects.some(readsUpstream)
-          ? [...plan.notes, EDGELESS_NOTE]
-          : plan.notes,
+      ...(bare || plugins.some((p) => p.pkg === '@vzn/vx-lockfile')
+        ? {}
+        : {
+            projects: pathNamed(root, plan.projects),
+            notes: plan.projects.some(readsUpstream) ? [...plan.notes, EDGELESS_NOTE] : plan.notes,
+          }),
       extraFiles:
         existingWorkspace === undefined
           ? [...plan.extraFiles, { relPath: `.vx/workspace.${format}`, contents: workspaceText }]
@@ -855,6 +855,7 @@ async function scripts(
   const lone = plan.projects.length === 1 && metas.every((m) => m.dir === root)
   if ((edgeless || lone) && plan.projects.length === 1) dropUpstreamEdges(plan.projects[0]!)
   else if (edgeless && plan.projects.some(readsUpstream)) plan.notes.push(EDGELESS_NOTE)
+  if (edgeless) plan.projects = pathNamed(root, plan.projects)
   const empty = plan.projects.length === 0
   // Single-project mode with packages the root's missing `workspaces` never
   // reaches: the scripts exist, the globs do not.
@@ -1008,6 +1009,16 @@ function upstream(task: Record<string, unknown> | null): string[] | undefined {
 
 const EDGELESS_NOTE =
   'no lockfile here, so .vx/workspace.ts declares no lockfile plugin and `^build` has no project edges: install with the package manager, declare its pnpm() / bun() / npm() / yarn() from @vzn/vx-lockfile in .vx/workspace.ts, then run `vx lock`'
+
+/**
+ * The names vx gives `projects` when no plugin names them from their
+ * manifests: the report's `project#task` is then one `vx run` takes.
+ */
+function pathNamed(root: string, projects: GeneratedProject[]): GeneratedProject[] {
+  return projects.map((p) =>
+    p.writeName === true ? p : { ...p, name: relPosix(root, p.dir) || '//' },
+  )
+}
 
 function readsUpstream(project: GeneratedProject): boolean {
   return project.tasks.some((t) => upstream(t.task)?.some((d) => d.startsWith('^')) === true)

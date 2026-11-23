@@ -58,6 +58,16 @@ it('a Turbo repo with no lockfile plugin is told what gives `^build` its edges',
   expect(r.out).toContain(NOTE)
 })
 
+it('names each project as vx does with no lockfile plugin: by its path', async () => {
+  const root = await turboRepo()
+  await writeFile(
+    path.join(root, 'turbo.json'),
+    JSON.stringify({ tasks: { build: { dependsOn: ['^build'], env: ['NEXT_PUBLIC_*'] } } }),
+  )
+  const r = await migrate(root)
+  expect(r.out).toContain('packages/a#build, packages/b#build: env "NEXT_PUBLIC_*"')
+})
+
 it('says nothing of it once the lockfile names its plugin', async () => {
   const r = await migrate(await turboRepo('bun.lock'))
   expect([r.code, r.err]).toEqual([0, ''])
