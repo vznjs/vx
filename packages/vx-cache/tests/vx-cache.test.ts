@@ -1440,6 +1440,57 @@ describe('config', () => {
     }
   })
 
+  // A server down (connection refused) cost every request its 3 tries:
+  // a 300-task run took 30 s, not 1 s (2026-11-23).
+  it('turns the remote off for the run once a request finds no server, said once', async () => {
+    let asked = 0
+    const down: typeof fetch = Object.assign(
+      () => {
+        asked++
+        return Promise.reject(
+          Object.assign(new Error('Unable to connect'), { code: 'ECONNREFUSED' }),
+        )
+      },
+      { preconnect: fetch.preconnect },
+    )
+    const c = layer('http://127.0.0.1:1', 'token', [MAIN], down, 1)
+    ;(c as unknown as { wait: (ms: number) => Promise<void> }).wait = async () => {}
+    await expect(c.put('ab18', new Blob(['x']), { durationMs: 1 })).rejects.toThrow(
+      'Unable to connect; remote cache off for this run',
+    )
+    expect(asked).toBe(2)
+    expect(await c.put('ab19', new Blob(['x']), { durationMs: 1 })).toBe(false)
+    expect(await c.get('ab18')).toBeFalsy()
+    expect(asked).toBe(2)
+  })
+
+  it('CONTROL: a lost connection while the server answers others is that request alone', async () => {
+    const srv = server()
+    try {
+      const token = await srv.token(MAIN_JOB)
+      let c: VxCacheLayer
+      const flaky: typeof fetch = Object.assign(
+        async (input: string | URL | Request, init?: RequestInit) => {
+          const url = input instanceof Request ? input.url : input.toString()
+          if (init?.method === 'PUT' && url.includes('ab20')) {
+            // Another request is answered before this one's last try fails.
+            await c.put('ab21', new Blob(['y']), { durationMs: 1 })
+            throw Object.assign(new Error('socket closed'), { code: 'ECONNRESET' })
+          }
+          return fetch(input, init)
+        },
+        { preconnect: fetch.preconnect },
+      )
+      c = layer(srv.url, token, [MAIN], flaky, 0)
+      await expect(c.put('ab20', new Blob(['x']), { durationMs: 1 })).rejects.toThrow(
+        'socket closed',
+      )
+      expect(c.off).toBe(false)
+    } finally {
+      await srv.stop()
+    }
+  })
+
   it('refuses a retries it cannot use', () => {
     expect(() => vxCache({ ...NAMED, retries: -1 })).toThrow(
       'vxCache() option "retries" must be a whole number from 0 to 10, got -1',
