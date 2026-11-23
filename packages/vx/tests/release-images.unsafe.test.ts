@@ -92,7 +92,7 @@ describe('release.docker', () => {
       readFileSync(path.join(ROOT, '.github/workflows/npm.yml'), 'utf8'),
     ) as { jobs: Record<string, { permissions?: Record<string, string> }> }
     expect(doc.jobs['release']?.permissions?.['packages']).toBe('write')
-    expect(config.tasks?.['release']?.dependsOn).toEqual(['release.docker'])
+    expect(config.tasks?.['release']?.dependsOn).toEqual(['release.docker', 'release.github.darwin.upload'])
     expect(existsSync(path.join(ROOT, 'packages/vx/scripts/release-images.ts'))).toBe(true)
   })
 })

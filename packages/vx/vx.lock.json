@@ -6320,13 +6320,15 @@
     "release": {
       "description": "the whole release: GitHub assets, npm packages and server images",
       "dependsOn": [
-        "release.docker"
+        "release.docker",
+        "release.github.darwin.upload"
       ]
     },
     "release.npm.linux.check": {
       "description": "make sure npm can publish with provenance (>= 11.5.1, sigstore intact)",
       "exec": {
         "command": "bun scripts/release.ts npm",
+        "timeout": "5m",
         "platforms": [
           "linux-x64"
         ],
@@ -6357,6 +6359,7 @@
       ],
       "exec": {
         "command": "bun scripts/release.ts prove linux",
+        "timeout": "5m",
         "platforms": [
           "linux-x64"
         ],
@@ -6383,6 +6386,7 @@
       ],
       "exec": {
         "command": "bun scripts/release.ts assemble linux",
+        "timeout": "5m",
         "platforms": [
           "linux-x64"
         ],
@@ -6411,11 +6415,11 @@
       "description": "npm publish the linux packages under dist/npm, skipping any already on the registry",
       "dependsOn": [
         "release.npm.linux.assemble",
-        "release.npm.linux.check",
-        "release.github.darwin.upload"
+        "release.npm.linux.check"
       ],
       "exec": {
         "command": "bun scripts/release.ts publish linux",
+        "timeout": "30m",
         "platforms": [
           "linux-x64"
         ],
@@ -6472,6 +6476,7 @@
       ],
       "exec": {
         "command": "bun scripts/release-attest.ts linux",
+        "timeout": "5m",
         "platforms": [
           "linux-x64"
         ],
@@ -6518,6 +6523,7 @@
       ],
       "exec": {
         "command": "bun scripts/release-assets.ts linux",
+        "timeout": "10m",
         "platforms": [
           "linux-x64"
         ],
@@ -6554,6 +6560,7 @@
       "description": "make sure npm can publish with provenance (>= 11.5.1, sigstore intact)",
       "exec": {
         "command": "bun scripts/release.ts npm",
+        "timeout": "5m",
         "platforms": [
           "darwin-arm64"
         ],
@@ -6584,6 +6591,7 @@
       ],
       "exec": {
         "command": "bun scripts/release.ts prove darwin",
+        "timeout": "5m",
         "platforms": [
           "darwin-arm64"
         ],
@@ -6624,6 +6632,7 @@
       ],
       "exec": {
         "command": "bun scripts/release.ts assemble darwin",
+        "timeout": "5m",
         "platforms": [
           "darwin-arm64"
         ],
@@ -6656,6 +6665,7 @@
       ],
       "exec": {
         "command": "bun scripts/release.ts publish darwin",
+        "timeout": "30m",
         "platforms": [
           "darwin-arm64"
         ],
@@ -6710,6 +6720,7 @@
       ],
       "exec": {
         "command": "bun scripts/release-attest.ts darwin",
+        "timeout": "5m",
         "platforms": [
           "darwin-arm64"
         ],
@@ -6757,6 +6768,7 @@
       ],
       "exec": {
         "command": "bun scripts/release-assets.ts darwin --publish",
+        "timeout": "10m",
         "platforms": [
           "darwin-arm64"
         ],
@@ -6796,6 +6808,7 @@
       ],
       "exec": {
         "command": "bun scripts/release.ts served",
+        "timeout": "30m",
         "platforms": [
           "linux-x64"
         ],
@@ -6823,6 +6836,7 @@
       ],
       "exec": {
         "command": "bun scripts/release-images.ts",
+        "timeout": "20m",
         "platforms": [
           "linux-x64"
         ],
