@@ -443,27 +443,47 @@ function whyRows(runId: string, why: WhyDidThisRerun, diff: CacheKeyDiff): ui.Fi
 }
 
 /** Each moved key component, before and after. */
-function whatChangedSection(diff: CacheKeyDiff): ui.Block {
-  return ui.section(
-    'What changed',
-    `${diff.entries.length} of ${diff.entries.length + diff.unchangedCount}`,
-    ui.table(
-      ['change', 'kind', 'name', 'before → after'],
-      diff.entries.map((e) => [
-        ui.tone(CHANGE_HUE[e.change] ?? 'warn', e.change),
-        e.kind,
-        ui.strong(printable(e.name)),
-        // A secret-named env input shows its name and its change, no hash.
-        e.before === MASKED || e.after === MASKED
-          ? ''
-          : e.change === 'added'
-            ? `+ ${e.after}`
-            : e.change === 'removed'
-              ? `- ${e.before}`
-              : `${e.before} → ${e.after}`,
-      ]),
-    ),
-  )
+export function whatChangedSection(diff: CacheKeyDiff): ui.Block {
+  const at = (short: boolean): ui.Block =>
+    ui.section(
+      'What changed',
+      `${diff.entries.length} of ${diff.entries.length + diff.unchangedCount}`,
+      ui.table(
+        ['change', 'kind', 'name', 'before → after'],
+        diff.entries.map((e) => {
+          const h = (v: string | null): string =>
+            v === null ? String(v) : short ? shortHash(v) : v
+          return [
+            ui.tone(CHANGE_HUE[e.change] ?? 'warn', e.change),
+            e.kind,
+            ui.strong(printable(e.name)),
+            // A secret-named env input shows its name and its change, no hash.
+            e.before === MASKED || e.after === MASKED
+              ? ''
+              : e.change === 'added'
+                ? `+ ${h(e.after)}`
+                : e.change === 'removed'
+                  ? `- ${h(e.before)}`
+                  : `${h(e.before)} → ${h(e.after)}`,
+          ]
+        }),
+      ),
+    )
+  // Two full hashes break mid-hash on a narrow terminal: there they are cut
+  // to 12, as git cuts one. Off a terminal (a pipe, a log) they stay whole.
+  return {
+    lines: (c) => {
+      const full = at(false).lines(c)
+      if (c.columns === undefined || full.every((l) => Bun.stringWidth(l) <= c.columns!))
+        return full
+      return at(true).lines(c)
+    },
+  }
+}
+
+/** A git object id or a key's hex digest, cut to its first 12; any other value whole. */
+function shortHash(v: string): string {
+  return /^[0-9a-f]{16,64}$/.test(v) ? v.slice(0, 12) : v
 }
 
 /** Each root cause as its chain of tasks back to the inputs that moved. */

@@ -8,6 +8,7 @@ import type { TaskOutcome } from '../src/graph/outcome.js'
 import type { TaskNode } from '../src/graph/task-graph.js'
 import { formatTaskBlock, planList } from '../src/report/framed-output.js'
 import { formatRunSummary } from '../src/report/summary.js'
+import { whatChangedSection } from '../src/cli/why.js'
 
 const node = (id: string): TaskNode => {
   const [projectName, taskName] = id.split('#')
@@ -152,5 +153,38 @@ describe('a dry plan row with a reason, on a narrow terminal', () => {
       expect(lines.length).toBe(1)
       expect(lines[0]!.endsWith(`app#build  ${note}`)).toBe(true)
     }
+  })
+})
+
+// `vx why`'s "What changed" row printed two whole 40-char git ids: a
+// 60-column terminal broke it mid-hash. There they are cut to 12, as git
+// cuts one; off a terminal they stay whole.
+describe("vx why's What changed table, on a narrow terminal", () => {
+  const a = 'a'.repeat(40)
+  const b = 'b'.repeat(40)
+  const table = (columns?: number): string[] =>
+    whatChangedSection({
+      runId: 'r',
+      taskId: 'app#build',
+      found: true,
+      previousRunId: 'p',
+      entries: [{ change: 'changed', kind: 'file', name: 'src/index.ts', before: a, after: b }],
+      unchangedCount: 3,
+      note: '',
+    } as Parameters<typeof whatChangedSection>[0]).lines(
+      columns === undefined ? { enabled: false } : { enabled: false, columns },
+    )
+
+  it('cuts each hash to 12 and fits 60 columns', () => {
+    const lines = table(60)
+    const row = lines.find((l) => l.includes('src/index.ts'))!
+    expect(row).toContain(`${a.slice(0, 12)} → ${b.slice(0, 12)}`)
+    expect(row).not.toContain(a)
+    for (const l of lines) expect(Bun.stringWidth(l)).toBeLessThanOrEqual(60)
+  })
+
+  it('CONTROL: off a terminal, and on a wide one, both stay whole', () => {
+    for (const lines of [table(), table(200)])
+      expect(lines.find((l) => l.includes('src/index.ts'))).toContain(`${a} → ${b}`)
   })
 })
