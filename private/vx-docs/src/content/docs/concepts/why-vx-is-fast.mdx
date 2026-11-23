@@ -25,7 +25,7 @@ vx run build
   [2mtime    [0m  537ms [2m·[0m [2mmax 254ms[0m [2m·[0m [2mavg 237ms[0m [2m·[0m [2mmin 220ms[0m
 ```
 
-`@demo/ui` built first, then `@demo/web`: **success**. The time line counts both. vx stored what they made.
+vx shows the task you asked for: `@demo/web` built, **success**. `@demo/ui#build` ran before it, out of sight. The time line counts both.
 
 </Frame>
 <Frame title="2. Nothing changed: nothing runs">
@@ -151,7 +151,7 @@ A file outside `inputs.files` never moves the key. A smaller list means fewer re
 build: {
   dependsOn: ['^build'],
   exec: { command: 'vite build' },
-  inputs: { files: ['src/**', 'index.html', 'vite.config.js'] },
+  inputs: { files: ['src/**', 'index.html', 'vite.config.ts'] },
   outputs: { files: ['dist/**'] },
   cache: true,
 },
