@@ -46,7 +46,8 @@ it('adds the step after the footer and lists an unflagged change it names', () =
     { subject: 'feat(x)!: drop x (#1)', body: 'BREAKING CHANGE: x is gone' },
     { subject: `${subject} (#2)`, body: '' },
   ])
-  expect(md).toContain(`### ${step.title}\n\n${step.steps}\n`)
+  // The page states each step as the present rule: no "now".
+  expect(md).toContain(`### ${step.title}\n\n${step.steps.replace(/\bnow /g, '')}\n`)
   expect(md).toContain('### Drop x\n\nX is gone\n')
 })
 
