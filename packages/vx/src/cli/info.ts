@@ -86,7 +86,13 @@ function infoReport(f: InfoFacts): ui.Block {
     ['workspace root', tildePath(f.workspaceRoot)],
     ['projects', describeProjects(f)],
     ['plugins', describePlugins(f.plugins)],
-    ['workers', describeWorkers(f.workers)],
+    [
+      'workers',
+      // The count is the default a run never reaches: it refuses the setting.
+      f.settings['run.concurrency']?.refused === undefined
+        ? describeWorkers(f.workers)
+        : `— (${f.settings['run.concurrency'].source === 'env' ? envName('run.concurrency') : 'run.concurrency'} is refused: a run stops there)`,
+    ],
     ['memory', describeMemory(f.memory)],
     [
       'cache dir',

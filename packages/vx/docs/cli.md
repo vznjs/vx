@@ -3649,7 +3649,8 @@ unreported`: the sandbox still enforces, but a task that tolerates a
   `VX_RUN_CONCURRENCY` when set, else `.vx/workspace.ts`'s `run.concurrency`, else the cores this
   process may use — the CPU count, capped by the cgroup CPU quota a
   container runs under (`8 — the CPU count`, `2 — cgroup CPU quota 2 of
-8 cores`). `memory` is what a memory-packing policy budgets
+8 cores`). A `VX_RUN_CONCURRENCY` a run refuses reads `— (VX_RUN_CONCURRENCY
+is refused: a run stops there)`, and the `settings` row says why. `memory` is what a memory-packing policy budgets
   (`@vzn/vx-history`): the machine's total, capped by the
   cgroup limit — inside a container the raw numbers are the host's,
   and the doctor is where to see which one a run reads.

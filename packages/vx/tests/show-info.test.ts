@@ -918,6 +918,29 @@ describe('vx info — the rendered rows', () => {
     )
   })
 
+  it('a refused concurrency is no worker count: a run stops on it', () => {
+    // The row read "4 — the CPU count" while `vx run` refused the variable.
+    const row = (f: Partial<InfoFacts>): string | undefined =>
+      renderInfo({ ...healthy, ...f })
+        .split('\n')
+        .find((l) => l.startsWith('  workers'))
+    expect(
+      row({
+        settings: {
+          'run.concurrency': {
+            value: 'abc',
+            source: 'env',
+            refused: 'VX_RUN_CONCURRENCY must be…',
+          },
+        },
+      }),
+    ).toBe('  workers           — (VX_RUN_CONCURRENCY is refused: a run stops there)')
+    // CONTROL: an accepted one keeps the count.
+    expect(row({ settings: { 'run.concurrency': { value: '2', source: 'env' } } })).toBe(
+      '  workers           4 — the CPU count',
+    )
+  })
+
   it('names each setting a variable, the workspace or a plugin changed, and where', () => {
     const out = renderInfo({
       ...healthy,
