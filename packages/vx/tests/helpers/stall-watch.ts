@@ -33,6 +33,10 @@ const ticker = new Worker(URL.createObjectURL(new Blob([TICKER], { type: 'text/j
 ticker.postMessage(gap.buffer)
 ticker.unref()
 
+// Bound now: a test that swaps process.stderr.write to read a verb's output
+// (schema-reset-notice) read this line as the verb's own, and failed.
+const say = process.stderr.write.bind(process.stderr)
+
 const iso = (ms: number): string => new Date(ms).toISOString().slice(11, 23)
 
 let last = performance.now()
@@ -58,7 +62,7 @@ setInterval(() => {
       other >= lost / 2
         ? 'every thread of it stopped (the host froze or did not schedule it)'
         : 'its main thread was held in a call while another thread ran'
-    process.stderr.write(
+    say(
       `stall: this test process's event loop did not turn for ${(lost / 1000).toFixed(1)} s ` +
         `(${iso(end - lost)} to ${iso(end)} UTC): ${which}; a deadline across it lost that time\n`,
     )

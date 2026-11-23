@@ -623,7 +623,8 @@ export interface ExecEnv {
   /**
    * Names whose values are masked (`***`) wherever vx prints, stores or
    * exports the task's output or command. Names holding `TOKEN`, `SECRET`,
-   * `KEY`, `PASSWORD`, `PASSWD` or `CREDENTIAL` are masked anyway; this
+   * `KEY`, `PASSWORD`, `PASSWD`, `PASSPHRASE` or `CREDENTIAL`, or ending
+   * `_PASS`, are masked anyway; this
    * reaches `GH_PAT`, `NPM_AUTH`.
    */
   secret?: readonly string[]
