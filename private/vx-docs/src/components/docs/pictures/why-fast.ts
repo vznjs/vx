@@ -48,9 +48,9 @@ export const readyFirst: Picture = {
   boxes: [
     { id: 'ui', x: 10, y: 30, w: 170, label: 'ui build', sub: 'starts first', tone: 'accent' },
     { id: 'lint', x: 10, y: 150, w: 170, label: 'lint', sub: 'starts next', tone: 'muted' },
-    { id: 'a', x: 400, y: 10, w: 170, label: 'web build' },
-    { id: 'b', x: 400, y: 85, w: 170, label: 'web test' },
-    { id: 'c', x: 400, y: 160, w: 170, label: 'admin build' },
+    { id: 'a', x: 400, y: 10, w: 170, label: 'web', sub: 'build' },
+    { id: 'b', x: 400, y: 85, w: 170, label: 'web', sub: 'test' },
+    { id: 'c', x: 400, y: 160, w: 170, label: 'admin', sub: 'build' },
   ],
   arrows: [
     { from: 'ui', to: 'a', label: 'unblocks' },
@@ -63,9 +63,9 @@ export const readyFirst: Picture = {
     boxes: [
       { id: 'ui', x: 0, y: 10, w: 160, label: 'ui build', sub: 'starts first', tone: 'accent' },
       { id: 'lint', x: 180, y: 10, w: 160, label: 'lint', sub: 'starts next', tone: 'muted' },
-      { id: 'a', x: 0, y: 170, w: 108, label: 'web build' },
-      { id: 'b', x: 116, y: 170, w: 108, label: 'web test' },
-      { id: 'c', x: 232, y: 170, w: 108, label: 'admin build' },
+      { id: 'a', x: 0, y: 170, w: 108, label: 'web', sub: 'build' },
+      { id: 'b', x: 116, y: 170, w: 108, label: 'web', sub: 'test' },
+      { id: 'c', x: 232, y: 170, w: 108, label: 'admin', sub: 'build' },
     ],
     arrows: [
       { from: 'ui', to: 'a', label: 'unblocks' },
