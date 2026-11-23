@@ -42,8 +42,6 @@ const DOCS_FIRST: [string, string][] = [
   ['What is vx?', 'docs/'],
   ['Quickstart', 'quickstart/'],
   ['Move an existing workspace to vx', 'docs/migrate/'],
-  ['Work with AI agents', 'docs/agents/'],
-  ['Upgrading vx', 'docs/upgrading/'],
   ['Workspace', 'docs/workspace/'],
   ['Lockfiles', 'docs/lockfiles/'],
   ['Tasks', 'docs/tasks/'],

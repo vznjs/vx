@@ -17,7 +17,20 @@
 </script>
 
 <style is:global>
+  /* A terminal frame's long title ran over its three dots on a phone: the
+     title keeps clear of them and wraps instead. */
+  .expressive-code .frame.is-terminal .header .title {
+    padding-inline: calc(2.1rem + 1rem);
+    text-align: center;
+    overflow-wrap: anywhere;
+  }
   @media (max-width: 40rem) {
+    /* Terminal output wraps on a phone, so the word the text says to read
+       (a status, a fix) is on screen, not past the edge. */
+    .expressive-code pre[data-language='ansi'] .ec-line .code {
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
     .sl-markdown-content table[data-stack],
     .sl-markdown-content table[data-stack] tbody,
     .sl-markdown-content table[data-stack] tr,
