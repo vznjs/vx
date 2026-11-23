@@ -25,17 +25,17 @@ bunx @vzn/vx init --native
 }
 ```
 
-```jsonc title="packages/lib/package.json" wrap
-"build": "mkdir -p dist && cp src/*.js dist/"
+```jsonc title="packages/ui/package.json" wrap
+"build": "vite build"
 ```
 
 </div>
 <div slot="right">
 
-```ts title="packages/lib/vx.config.ts" wrap
+```ts title="packages/ui/vx.config.ts" wrap
 build: {
   exec: {
-    command: 'mkdir -p dist && cp src/*.js dist/',
+    command: 'vite build',
   },
   dependsOn: ['^build'],
   inputs: { files: ['src/**', 'package.json'] },
@@ -93,16 +93,16 @@ and the lock. Without `--native`, it asks you in the terminal first.
   - dependencies.lock
   - .gitignore keeps the cache out of git
 - packages/
-  - app/
+  - ui/
     - **vx.config.ts** one per package
-  - lib/
+  - web/
     - **vx.config.ts**
 - turbo.json delete it in step 4
 </FileTree>
 
 Commit all of it. Every run reads the lock, so a teammate's checkout runs the same tasks.
 
-<Quiz q="You edited packages/lib/vx.config.ts, then ran vx init --native again. Is your edit lost?">
+<Quiz q="You edited packages/ui/vx.config.ts, then ran vx init --native again. Is your edit lost?">
   No. init never overwrites a file unless you pass `--force`. Run `vx lock` instead to record your
   edit.
 </Quiz>
