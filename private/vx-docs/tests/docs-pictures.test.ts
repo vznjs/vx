@@ -22,6 +22,7 @@ const PAGES: Record<string, string> = {
   'docs/distributed-task-execution/': 'dte-run',
   'docs/tasks/': 'task-graph',
   'docs/remote-cache/': 'remote-cache',
+  'docs/lockfiles/': 'lockfile-slices',
 }
 
 const fits = (b: Box): boolean => {

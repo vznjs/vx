@@ -165,12 +165,12 @@ Read the last column. After the `clsx` bump, `@demo/web` builds too. It builds o
 
 <Takeaway>predict which projects an install re-runs: the ones whose dependencies it changed, and the projects built on them.</Takeaway>
 
-## Build dependencies first
+## Link projects to each other
 
-`dependsOn: ['^build']` means "build my dependencies first". The plugin is how vx knows them: it
-reads which project depends on which from the lockfile.
+The lockfile lists every project by its package name and what it depends on. The plugin hands both
+to vx, so `dependsOn: ['^build']` ("build my dependencies first") knows `@demo/ui` comes first.
 
-Without a plugin, `vx lock` refuses a `^` and names what to add:
+Without a plugin, projects go by their folder (`packages/ui`), and `vx lock` refuses a `^`:
 
 ```ansi title="no plugin in .vx/workspace.ts"
 [2m$[0m vx lock
@@ -247,17 +247,8 @@ Without that line, it does not build after it, its key leaves it out, and `--aff
 
 ### Options
 
-All four plugins take the same options.
-
-| Option | Values | Default | What it does |
-| --- | --- | --- | --- |
-| `scope` | `'project'`, `'workspace'` | `'project'` | `'project'`: each task's key holds only its project's slice. `'workspace'`: each key holds the whole lockfile. |
-
-```ts
-pnpm({ scope: 'workspace' })
-```
-
-Any other option or value stops vx and names it.
+All four plugins take one option, `scope`, shown [above](#one-key-for-the-whole-lockfile). Its values
+and default are in [every plugin option](../../docs/plugins/#pnpm-bun-npm-yarn).
 
 ### Which lockfiles each plugin reads
 
@@ -297,12 +288,14 @@ Each plugin also adds a project's manifest (`package.json`, or under `pnpm()` a 
   `pnpm()` reads those from `package.json`, and every key holds every project's dependencies.
 - **An unreadable lockfile** stops the run and names the install to re-run.
 - **A lockfile changed since `vx lock`** stops the run: `run vx lock`.
+- **A lockfile older than a `package.json`** (a dependency added, no install yet) stops `vx lock`
+  until you install.
 - **`vx why`** names the part `plugin @vzn/vx-lockfile/<manager>`, for example `plugin @vzn/vx-lockfile/pnpm`.
 
 See [`@vzn/vx-lockfile`](../../plugins/vx-lockfile/) for the plugin's own page.
 
 </Deeper>
 
-<NextStep href="../../docs/dev-servers/" title="Dev servers">
-  Start a dev server next to your tasks, and let your tests wait until it is ready.
+<NextStep href="../../docs/tasks/" title="Tasks">
+  Your workspace knows its projects and their dependencies. Now give each project its tasks.
 </NextStep>
