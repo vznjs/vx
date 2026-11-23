@@ -312,7 +312,7 @@ function sized(res: Response): Response {
   // Named as its length too: core refuses a body past its artifact ceiling
   // by its length before reading it, and read 100 MB of a 286 MB one first.
   const headers = new Headers(res.headers)
-  headers.set('content-length', named)
+  if (Number.isSafeInteger(size) && size >= 0) headers.set('content-length', named)
   return piped(
     res.body,
     { status: res.status, statusText: res.statusText, headers },
@@ -894,7 +894,8 @@ export class VxCacheLayer implements RemoteCacheLayer {
         res = await this.request(path, init)
       } catch (err) {
         if (!RESET.has((err as { code?: unknown }).code as string)) throw err
-        if (attempt > this.config.retries) return this.unreachable(err as Error, since)
+        if (attempt > this.config.retries)
+          return this.unreachable(err as Error & { code: string }, since)
         await this.wait(1000 * attempt)
         continue
       }
@@ -910,14 +911,15 @@ export class VxCacheLayer implements RemoteCacheLayer {
   }
 
   /**
-   * A request whose every try lost its connection, with no answer from the
-   * server to any request since it began: the server is gone, so the remote
-   * is off for the run, said once. Each of a run's requests tried it 3 times
-   * over 3 s: with the server down a 300-task run took 30 s, not 1 s. One a
-   * server answered others meanwhile is that request's loss alone.
+   * A download or upload whose every try was refused its connection, with no
+   * answer from the server to any request since it began: no server listens,
+   * so the remote is off for the run, said once. Each of a run's requests
+   * tried it 3 times over 3 s: with the server down a 300-task run took 30 s,
+   * not 1 s. A reset is that request's loss alone: a proxy's body limit or a
+   * stale pooled connection resets one while the server lives.
    */
-  private unreachable(err: Error, since: number): undefined {
-    if (this.answeredAt > since) throw err
+  private unreachable(err: Error & { code: string }, since: number): undefined {
+    if (err.code !== 'ECONNREFUSED' || this.answeredAt > since) throw err
     const first = !this.disabled
     this.disabled = true
     if (!first) return undefined

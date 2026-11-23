@@ -1518,6 +1518,18 @@ describe('config', () => {
     }
   })
 
+  // A proxy's body limit, or a pooled connection the server closed, resets
+  // one request while the server lives: only a refused connection says none listens.
+  it('CONTROL: a reset with nothing else asked is that request alone', async () => {
+    const reset: typeof fetch = Object.assign(
+      () => Promise.reject(Object.assign(new Error('socket closed'), { code: 'ECONNRESET' })),
+      { preconnect: fetch.preconnect },
+    )
+    const c = layer('http://127.0.0.1:1', 'token', [MAIN], reset, 0)
+    await expect(c.put('ab22', new Blob(['x']), { durationMs: 1 })).rejects.toThrow('socket closed')
+    expect(c.off).toBe(false)
+  })
+
   it('refuses a retries it cannot use', () => {
     expect(() => vxCache({ ...NAMED, retries: -1 })).toThrow(
       'vxCache() option "retries" must be a whole number from 0 to 10, got -1',

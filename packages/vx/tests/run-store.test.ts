@@ -79,6 +79,25 @@ describe('putRunEntry', () => {
     )
     expect([kept, said]).toEqual([true, ['upload of log failed: 503 from cache.example']])
   })
+
+  it("says a fault that turned the remote off as the run's, naming no entry", async () => {
+    const said: string[] = []
+    const gone: RemoteCacheLayer = {
+      off: true,
+      has: async () => null,
+      get: async () => null,
+      put: async () => {
+        throw new Error('Unable to connect; remote cache off for this run')
+      },
+    }
+    await putRunEntry(
+      [{ remote: gone, read: true, write: true, onError: (e) => said.push(e.message) }],
+      undefined,
+      'log',
+      new Blob([new Uint8Array([1])]),
+    )
+    expect(said).toEqual(['Unable to connect; remote cache off for this run'])
+  })
 })
 
 describe('packRunOutputs', () => {
