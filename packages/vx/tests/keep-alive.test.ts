@@ -671,7 +671,11 @@ describe('a persistent server that dies before the run stops it', () => {
   }
 
   it('a dependency-only server that exits non-zero fails the run and says so', async () => {
-    await addProject(root, 'app', crashing('echo READY; until [ -f go ]; do sleep 0.02; done; touch gone; exit 3'))
+    await addProject(
+      root,
+      'app',
+      crashing('echo READY; until [ -f go ]; do sleep 0.02; done; touch gone; exit 3'),
+    )
     expect(await run(root, ['e2e'])).toEqual({
       code: 1,
       // C-69: said when it happens, while the dependant still runs.
@@ -717,7 +721,11 @@ describe('a persistent server that dies before the run stops it', () => {
 
   // WD-10: its output block closed `running` under the line naming its exit.
   it("a crashed dependency-only server's output block closes failed", async () => {
-    await addProject(root, 'app', crashing('echo READY; until [ -f go ]; do sleep 0.02; done; echo dying; touch gone; exit 3'))
+    await addProject(
+      root,
+      'app',
+      crashing('echo READY; until [ -f go ]; do sleep 0.02; done; echo dying; touch gone; exit 3'),
+    )
     const proc = track(
       Bun.spawn([process.execPath, BIN, 'run', 'e2e', '--all'], {
         cwd: root,
@@ -774,7 +782,11 @@ describe('a persistent server that dies before the run stops it', () => {
 
   // Item 1102: a signal death printed the signal's name as its code.
   it('a dependency-only server killed by a signal is named by its exit code', async () => {
-    await addProject(root, 'app', crashing('echo READY; until [ -f go ]; do sleep 0.02; done; touch gone; kill -TERM $$'))
+    await addProject(
+      root,
+      'app',
+      crashing('echo READY; until [ -f go ]; do sleep 0.02; done; touch gone; kill -TERM $$'),
+    )
     expect((await run(root, ['e2e'])).said).toEqual([
       'vx: app#srv exited with code 143 while the run went on',
       'vx: app#srv exited with code 143 before the run stopped it',
@@ -784,7 +796,11 @@ describe('a persistent server that dies before the run stops it', () => {
   it('CONTROL: one that exits 0 on its own, and one the run stops, leave the run green', async () => {
     // The stopped server's own exit is the SIGTERM's (143): read after the
     // stop, it would fail every run that used a server.
-    await addProject(root, 'app', crashing('echo READY; until [ -f go ]; do sleep 0.02; done; touch gone; exit 0'))
+    await addProject(
+      root,
+      'app',
+      crashing('echo READY; until [ -f go ]; do sleep 0.02; done; touch gone; exit 0'),
+    )
     const green = { code: 0, said: [], pinned: [], tally: '2 success · 2 total' }
     expect(await run(root, ['e2e'])).toEqual(green)
     await rm(path.join(root, 'packages', 'app', 'gone'), { force: true })
@@ -851,7 +867,9 @@ describe('a persistent server that dies before the run stops it', () => {
 
   it('CONTROL: a server that died before the Ctrl-C is still named', async () => {
     expect(
-      await interrupted('echo $$ > srv.pid; echo READY; until [ -f go ]; do sleep 0.02; done; touch gone; sleep 0.3; exit 3'),
+      await interrupted(
+        'echo $$ > srv.pid; echo READY; until [ -f go ]; do sleep 0.02; done; touch gone; sleep 0.3; exit 3',
+      ),
     ).toEqual({
       code: 130,
       said: [
@@ -863,7 +881,11 @@ describe('a persistent server that dies before the run stops it', () => {
   }, 30_000)
 
   it('a requested server that died while its dependant ran is not pinned as running', async () => {
-    await addProject(root, 'app', crashing('echo READY; until [ -f go ]; do sleep 0.02; done; touch gone; exit 3'))
+    await addProject(
+      root,
+      'app',
+      crashing('echo READY; until [ -f go ]; do sleep 0.02; done; touch gone; exit 3'),
+    )
     expect(await run(root, ['srv', 'e2e'])).toEqual({
       code: 1,
       said: [
@@ -912,7 +934,11 @@ describe('a persistent server that dies before the run stops it', () => {
   }, 30_000)
 
   it('a dependency-only server that crashes after ready is told the verdict once', async () => {
-    await addProject(root, 'app', crashing('echo READY; until [ -f go ]; do sleep 0.02; done; touch gone; kill -SEGV $$'))
+    await addProject(
+      root,
+      'app',
+      crashing('echo READY; until [ -f go ]; do sleep 0.02; done; touch gone; kill -SEGV $$'),
+    )
     expect(await verdicts(['e2e'])).toEqual({
       code: 1,
       said: [
@@ -925,7 +951,11 @@ describe('a persistent server that dies before the run stops it', () => {
 
   // C-46: a kept server that ended cleanly before the end is no crash.
   it('a requested server that exited 0 while its dependant ran leaves the run green', async () => {
-    await addProject(root, 'app', crashing('echo READY; until [ -f go ]; do sleep 0.02; done; touch gone; exit 0'))
+    await addProject(
+      root,
+      'app',
+      crashing('echo READY; until [ -f go ]; do sleep 0.02; done; touch gone; exit 0'),
+    )
     expect(await run(root, ['srv', 'e2e'])).toEqual({
       code: 0,
       said: ['vx: app#srv exited with code 0'],
