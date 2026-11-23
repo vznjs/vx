@@ -6,7 +6,6 @@
 // upstream is a group: it records no run, so the graph names what it gathers.
 
 import type { Database } from 'bun:sqlite'
-import path from 'node:path'
 import { indexDb, indexError, Cache } from '../cache/index.js'
 import { ambiguousTask, anchoredSpecError, flagHint, formatValue, seeHelp } from './help.js'
 import { buildTaskGraph, isDefaultBuild, isGroupTask } from '../graph/index.js'
@@ -36,7 +35,7 @@ import type {
 } from '../history/index.js'
 import type { Style } from '../ui/index.js'
 import { runRules } from '../settings.js'
-import { buildPackageGraph, findWorkspaceRoot, loadProjectConfigs } from '../workspace/index.js'
+import { buildPackageGraph, findWorkspaceRoot } from '../workspace/index.js'
 import { findCwdProject } from './select.js'
 import {
   cliCacheDir,
@@ -348,14 +347,7 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
       blocks.push(whatChangedSection(diff))
       if (roots.length > 0) blocks.push(rootCauseSection(roots))
       if (writers.length > 0) blocks.push(writersSection(writers))
-      const todo = whatToDoRows(
-        taskId,
-        diff,
-        roots,
-        writers,
-        unrecorded,
-        await stageKeyed(at, taskId, diff.entries),
-      )
+      const todo = whatToDoRows(taskId, diff, roots, writers, unrecorded)
       if (todo.length > 0) blocks.push(ui.section('What to do', ui.fields(todo)))
     }
     ui.print('out', ...blocks)
@@ -539,8 +531,6 @@ function whatToDoRows(
   roots: readonly RootCause[],
   writers: readonly InputWriter[],
   unrecorded: readonly DiffEntry[],
-  /** Each moved file a plugin's `project` stage put in inputs.files. */
-  staged: ReadonlySet<string>,
 ): ui.FieldRow[] {
   const rootKinds = roots.flatMap((r) => r.entries.map((e) => e.kind))
   // An upstream row names the task to ask next: the command, not a
@@ -572,18 +562,6 @@ function whatToDoRows(
       todo.push([k, envTodo([...diff.entries, ...roots.flatMap((r) => r.entries)])])
       continue
     }
-    if (k === 'file' && staged.size > 0) {
-      const files = [...diff.entries, ...roots.flatMap((r) => r.entries)].filter(
-        (e) => e.kind === 'file',
-      )
-      // A file the user never listed: dropping it from their inputs is no fix.
-      if (files.some((e) => !staged.has(e.name))) todo.push([k, WHAT_TO_DO[k]!])
-      todo.push([
-        k,
-        `a plugin's \`project\` stage adds ${firstThree([...staged].map(printable))} to inputs.files; an edit re-runs by design`,
-      ])
-      continue
-    }
     todo.push([
       k,
       k === 'config'
@@ -611,44 +589,6 @@ function envTodo(entries: readonly { kind: string; change: string }[]): string {
     ...(changes.has('added') ? ['a name joined inputs.env, which re-keys the task by design'] : []),
     ...(changes.has('removed') ? ['a name left inputs.env, which re-keys the task by design'] : []),
   ].join('; ')
-}
-
-/**
- * Each of the task's own moved files that a plugin's `project` stage put in
- * its `inputs.files`: matched by a pattern the locked config lists and the
- * project's vx.config does not. Empty when none moved, or a config no
- * longer loads.
- */
-async function stageKeyed(
-  at: VerbWorkspace,
-  taskId: string,
-  entries: readonly DiffEntry[],
-): Promise<Set<string>> {
-  const out = new Set<string>()
-  const files = entries.filter((e) => e.kind === 'file' && e.change !== 'removed')
-  if (files.length === 0) return out
-  try {
-    const [project, task] = splitTaskId(taskId)
-    const metas = await at.projects()
-    const meta = metas.find((m) => m.name === project)
-    const locked = (await loadCliProjects(at.root, metas, [project])).get(project)
-    if (meta === undefined || locked === undefined) return out
-    const own = new Set(
-      meta.configPath === null
-        ? []
-        : ((await loadProjectConfigs([meta.configPath], at.root))[0]?.tasks?.[task]?.inputs
-            ?.files ?? []),
-    )
-    const dir = path.relative(at.root, meta.dir).split(path.sep).join('/')
-    for (const pattern of locked.config.tasks?.[task]?.inputs?.files ?? []) {
-      if (own.has(pattern) || pattern.startsWith('!')) continue
-      const glob = new Bun.Glob(dir === '' ? pattern : `${dir}/${pattern}`)
-      for (const e of files) if (glob.match(e.name)) out.add(e.name)
-    }
-  } catch {
-    // quiet: with no lock or a broken config, the generic advice stands
-  }
-  return out
 }
 
 const ROOTS_SHOWN = 5

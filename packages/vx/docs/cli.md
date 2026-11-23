@@ -4545,10 +4545,8 @@ persistent task.
 
 **What to do and root cause.** Under the rows, `what to do` gives one line per changed kind: what
 moves it and how to stop a move the task does not need. An `env` line
-says whether a value moved or a name joined or left `inputs.env`; a
-file a plugin's `project` stage put in `inputs.files` (a lockfile
-plugin's `package.json`) is named as the plugin's, not advised out of
-the list. An upstream
+says whether a value moved or a name joined or left `inputs.env`. An
+upstream
 row is only the carrier, so `vx why` follows each dependency that moved
 in the same run down to the tasks whose OWN inputs moved and prints
 them under `Root cause`, one chain per root (five at most, then a
