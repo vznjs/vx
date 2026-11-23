@@ -94,7 +94,10 @@ outcome is right and what the alternative costs a user, shown collapsed
 under the case on the site. `from`
 names the vx tests the case is drawn from. `needs` names a feature a
 tool may lack (affected, timeout, retries, persistent tasks, watch, a
-package manager…); a step that installs needs a package manager. A tool
+package manager…). What a step uses is added on its own: an install
+needs a package manager, a selector or `only` a filter, `force` forcing,
+a `report` of CPU time, memory, output size or duration the tool's
+report of it, and so on (`needsOf` in `src/spec.ts`). A tool
 without the feature scores the case N/A, and its adapter's `lacks` says
 why in one sentence the site shows. N/A is only for a feature the tool
 does not have at all: a tool that has the feature but does it its own way

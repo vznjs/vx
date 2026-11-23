@@ -398,6 +398,10 @@ export const nix: Adapter = {
     watch: 'nix-build has no watch mode.',
     'package-manager':
       'Nix reads no package.json or lockfile and installs nothing into node_modules: what a build depends on is written in Nix.',
+    'report-duration': 'nix-build lists the derivations it builds, never how long one took.',
+    'report-cpu': 'nix-build reports no build’s CPU time.',
+    'report-memory': 'nix-build reports no build’s peak memory.',
+    'report-output-bytes': 'nix-build reports no size of what a build wrote.',
   },
   env: { NO_COLOR: '1' },
   async configure(dir, given, command) {

@@ -54,6 +54,9 @@ export const nx: Adapter = {
     'read-only-cache': 'Nx has no run that reads the cache and writes nothing to it.',
     'dry-run': 'Nx has no run that plans and runs nothing.',
     sandbox: 'Nx keeps no task from files, network or home it never declared.',
+    'report-cpu': 'Nx’s run record (`run.json`) gives a task’s start and end, never its CPU time.',
+    'report-memory': 'Nx’s run record gives no task’s peak memory.',
+    'report-output-bytes': 'Nx’s run record gives no size of a task’s outputs.',
   },
   env: {
     NX_DAEMON: 'false',

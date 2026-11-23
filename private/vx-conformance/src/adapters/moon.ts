@@ -173,6 +173,10 @@ export const moon: Adapter = {
     sandbox: 'moon keeps no task from files, network or home it never declared.',
     watch: '`moon run` runs once: moon has no watch mode.',
     'dry-run': '`moon action-graph` draws the graph; no run plans and runs nothing.',
+    'report-cpu':
+      'moon’s run report (`runReport.json`) gives a task’s duration, never its CPU time.',
+    'report-memory': 'moon’s run report gives no task’s peak memory.',
+    'report-output-bytes': 'moon’s run report gives no size of a task’s outputs.',
   },
   env: { NO_COLOR: '1', DO_NOT_TRACK: '1' },
   async configure(dir, given, command) {

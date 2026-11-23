@@ -46,3 +46,14 @@ it('takes the rivals and their versions from the weekly run, vx and new cases fr
   expect(live.scores['turbo']!['all']).toEqual({ pass: 1, can: 2, of: 3 })
   expect(live.scores['vx']!['cache']).toEqual({ pass: 3, can: 3, of: 3 })
 })
+
+// A feature the adapter now lacks is N/A at once, without a rerun (2026-11-23).
+it('keeps a rival’s committed N/A over the weekly run’s outcome', () => {
+  const committed = results({ vx: 'this commit', turbo: '2.11.10' }, [
+    row('a', { vx: 'pass', turbo: 'n/a' }),
+  ])
+  const weekly = results({ vx: 'this commit', turbo: '2.11.13' }, [
+    row('a', { vx: 'pass', turbo: 'fail' }),
+  ])
+  expect(merge(committed, weekly).cases[0]!.outcomes['turbo']!.status).toBe('n/a')
+})
