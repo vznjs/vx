@@ -1903,6 +1903,29 @@ describe('runCommand — the rows its sweep asked for', () => {
     expect(r.stderr).toContain('the command, with the args after --, is 2930 KiB')
   })
 
+  // Over 128 KiB but under the argv total, the spawn succeeds and the exec
+  // in the child fails: Linux's measuring helper said only "cannot exec the
+  // task's shell", and the frame blamed a command missing from PATH.
+  it("a command over one argument's limit, under the total, says the limit too", async () => {
+    // As a run asks: it keeps no stderr of its own.
+    const r = await runCommand({
+      command: `true ${'x'.repeat(150_000)}`,
+      cwd: dir,
+      env: { PATH: process.env.PATH ?? '' },
+      capture: { stdout: false, stderr: false },
+    })
+    expect([r.exitCode, r.spawnFailed]).toEqual([127, true])
+    expect(r.stderr).toContain('E2BIG')
+    expect(r.stderr).toContain('the command, with the args after --, is 147 KiB')
+    // CONTROL: one just under the limit runs.
+    const ok = await runCommand({
+      command: `true ${'x'.repeat(120_000)}`,
+      cwd: dir,
+      env: { PATH: process.env.PATH ?? '' },
+    })
+    expect([ok.exitCode, ok.spawnFailed]).toEqual([0, undefined])
+  })
+
   // The limit counts the environment too: a task's `define` of 4.4 MB
   // failed with a line blaming its 1 KiB command.
   it('an environment too large to spawn is named, not the command', async () => {

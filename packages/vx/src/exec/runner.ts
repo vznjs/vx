@@ -1241,6 +1241,25 @@ function spawnErrorReason(
 
 const MAX_ARG_STRLEN = 128 * 1024
 
+/** vx-measure's own line when its child's execve of the shell failed (vx-measure.c). */
+const MEASURE_EXEC_FAILED = "vx: cannot exec the task's shell\n"
+
+/**
+ * Why the shell did not exec, as the error a spawn would have thrown: E2BIG
+ * when the command or an environment entry is over one argument's limit, or
+ * the two over the usual total (2 MiB); else the bare refusal.
+ */
+function execFailure(command: string, env: NodeJS.ProcessEnv): Error {
+  const vars = envSize(env)
+  const tooLong =
+    Buffer.byteLength(command) > MAX_ARG_STRLEN ||
+    vars.largestBytes > MAX_ARG_STRLEN ||
+    Buffer.byteLength(command) + vars.bytes > 2 * 1024 * 1024
+  return tooLong
+    ? Object.assign(new Error('argument list too long (E2BIG)'), { code: 'E2BIG' })
+    : new Error('the shell could not be executed')
+}
+
 /**
  * The command is one argument to `sh -c`, and Linux caps one argument at 128
  * KiB (MAX_ARG_STRLEN): forwarded file lists failed with a bare E2BIG.
@@ -1398,9 +1417,20 @@ export async function runCommand(opts: RunOptions): Promise<RunResult> {
   const [out, err] = pipes.streams(proc)
   const ends = lineEnds(opts.onStdout, opts.onStderr)
   const taken: StreamTally = { chars: 0 }
+  let errEnd = ''
   const streams = Promise.all([
     streamToString(out, ends.onStdout, ac.signal, opts.capture?.stdout ?? true, taken),
-    streamToString(err, ends.onStderr, ac.signal, opts.capture?.stderr ?? true, taken),
+    streamToString(
+      err,
+      (chunk) => {
+        // Kept whether or not stderr is: a run captures none (below).
+        errEnd = (errEnd + chunk).slice(-MEASURE_EXEC_FAILED.length)
+        ends.onStderr?.(chunk)
+      },
+      ac.signal,
+      opts.capture?.stderr ?? true,
+      taken,
+    ),
   ]).finally(() => pipes.close())
   // Gate on the child's exit, not stream EOF: an orphaned grandchild (`server &
   // echo up`, or after a timeout) keeps the pipe open. A timeout aborts the
@@ -1438,6 +1468,26 @@ export async function runCommand(opts: RunOptions): Promise<RunResult> {
       opts.cwd,
       'task',
     )
+    opts.onStderr?.(text)
+    return {
+      exitCode: 127,
+      durationMs: Math.round(runTime() - start),
+      stdout,
+      stderr: stderr + text,
+      spawnFailed: true,
+    }
+  }
+  // vx-measure's child could not become the shell (its execve failed): no
+  // shell ran, and its 127 read as a command missing from PATH. Over a
+  // size limit the kernel's answer was E2BIG, which the spawn thread
+  // never sees: the limit fails in the child, after the fork.
+  if (
+    measure !== undefined &&
+    onSpare === undefined &&
+    exited === 127 &&
+    errEnd === MEASURE_EXEC_FAILED
+  ) {
+    const text = spawnFailureText(execFailure(fullCommand, env), opts.cwd, 'task', fullCommand, env)
     opts.onStderr?.(text)
     return {
       exitCode: 127,
