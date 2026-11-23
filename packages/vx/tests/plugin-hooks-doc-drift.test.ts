@@ -53,7 +53,9 @@ describe('the plugin hook tables follow PLUGIN_HOOKS', () => {
     const readme = await Bun.file(
       path.resolve(import.meta.dir, '..', '..', '..', 'README.md'),
     ).text()
-    const m = /Plugins at every stage\*\* \((\d+) hooks, `commands` included\)/.exec(readme)
+    const m = /A plugin at every step of a run\*\* \((\d+) hooks, `commands` included\)/.exec(
+      readme,
+    )
     expect(m).not.toBeNull()
     expect(Number(m![1])).toBe(PLUGIN_HOOKS.length)
   })

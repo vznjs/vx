@@ -302,10 +302,10 @@ describe('examples/ci', () => {
   })
 })
 
-// The README's and the landing's terminal demo is this starter's real
-// output; the script re-runs it and compares all but timings and cores.
+// The README's terminal demo is a real run of the docs' ui/web workspace;
+// the script re-runs it and compares all but timings and cores.
 describe('the terminal demo', () => {
-  it('matches a real run of examples/basic', () => {
+  it("matches a real run of the docs' ui/web workspace", () => {
     const r = Bun.spawnSync({
       cmd: [
         process.execPath,
@@ -317,8 +317,8 @@ describe('the terminal demo', () => {
     })
     expect(r.stderr.toString()).toBe('')
     expect(r.exitCode).toBe(0)
-    // A whole vx run of the starter: a loaded gate took it past bun's
-    // 5 s default (5,006 ms) though it passes alone.
+    // Three vx runs of two real vite builds: a loaded gate took the old,
+    // lighter demo past bun's 5 s default (5,006 ms) though it passed alone.
   }, 30_000)
 })
 

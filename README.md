@@ -6,87 +6,72 @@
 
 <p align="center">
   <strong>Task orchestration you own.</strong><br>
-  Correct, sandboxed, extensible. No cloud, no account, no paywall.<br>
-  <a href="https://vznjs.github.io/vx/"><strong>vznjs.github.io/vx</strong></a>
+  vx runs the tasks of a JavaScript monorepo in the right order, many at once,<br>
+  and never does the same work twice. No cloud, no account, no paywall.
 </p>
 
 <p align="center">
   <a href="https://www.npmjs.com/package/@vzn/vx"><img src="https://img.shields.io/npm/v/@vzn/vx?color=7cb518" alt="npm"></a>
   <a href="https://github.com/vznjs/vx/actions/workflows/ci.yml?query=branch%3Amain+event%3Apush"><img src="https://github.com/vznjs/vx/actions/workflows/ci.yml/badge.svg?branch=main&event=push" alt="CI"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT license"></a>
+  <a href="https://github.com/vznjs/vx/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT license"></a>
   <a href="https://vznjs.github.io/vx/"><img src="https://img.shields.io/badge/docs-vznjs.github.io%2Fvx-c6f84e" alt="Documentation"></a>
 </p>
 
-## What vx is
+<p align="center">
+  <img src="https://vznjs.github.io/vx/demo.svg" alt="vx run build --all, twice. First run: @demo/ui#build, then @demo/web#build, both miss and save. Second run: both up to date in milliseconds.">
+</p>
 
-Task orchestration with a cache you can trust, on a core you can extend.
-Each task is one shell command with declared inputs and outputs; vx runs
-them in dependency order and replays results from a content-addressed cache.
+Above: a real run. `@demo/web` uses `@demo/ui`, so ui builds first. The
+second run finds nothing changed and runs nothing.
 
-## Quick start
-
-In a git repo:
+## Start
 
 ```sh
-bunx @vzn/vx init   # installs vx, writes an empty root vx.config.ts and the lockfile plugin
+bunx @vzn/vx init
 ```
 
-Needs [Bun](https://bun.com) 1.4.4 or later. A prebuilt binary for Linux
-(glibc, not Alpine's musl) and macOS, x64 and arm64. Windows: run vx
-inside WSL2.
+`init` installs vx and writes `.vx/workspace.ts`, which marks your
+workspace root. In a Turborepo or Nx workspace it converts that config too.
 
-A task runs its tool directly, never through a package script. Cache one by
-saying what it reads and writes:
+You need [Bun](https://bun.com) 1.4.4 or later for `bunx`. vx itself is a
+prebuilt binary for Linux (glibc, not Alpine's musl) and macOS.
+
+## A task is one command
+
+Each project lists its tasks in a `vx.config.ts`:
 
 ```ts
-// packages/app/vx.config.ts
-import { defineProject } from '@vzn/vx/config'
+// packages/web/vx.config.ts
+import type { ProjectConfig } from '@vzn/vx/config'
 
-export default defineProject({
+export default {
   tasks: {
     build: {
-      exec: { command: 'vite build' },
-      dependsOn: ['^build'], // dependencies build first
-      inputs: { files: ['src/**', 'index.html', 'vite.config.ts'] },
-      outputs: { files: ['dist/**'] },
-      cache: true,
+      dependsOn: ['^build'], // build what web uses first: @demo/ui
+      exec: { command: 'vite build' }, // the tool itself, never a package script
+      inputs: { files: ['src/**', 'index.html', 'vite.config.ts'] }, // what it reads
+      outputs: { files: ['dist/**'] }, // what it writes
+      cache: true, // skip it while the inputs stay the same
     },
   },
-})
+} satisfies ProjectConfig
 ```
+
+Save the config to the lock, then run:
 
 ```sh
-vx lock               # saves the config; runs read only the lock
-vx run build --all    # builds, in dependency order; stores the results
-vx run build --all    # nothing changed: up-to-date, in milliseconds
-rm -rf packages/*/dist
-vx run build --all    # restored from the cache, not rebuilt
+vx lock              # every run reads the lock, so lock after each config change
+vx run build --all   # ui, then web
+vx run build --all   # nothing changed: up to date
 ```
 
-<img src="https://vznjs.github.io/vx/demo.svg" width="760" alt="vx run ci --all on examples/basic: cold, three tasks run; again, three up-to-date.">
+Edit `packages/ui/src/index.ts` and both build again.
+`vx why @demo/web#build` names that file as the cause.
 
-### When to run `vx lock`
+**Next:** the [Quickstart](https://vznjs.github.io/vx/quickstart/)
+caches your first task in five minutes.
 
-`init` also writes `.vx/projects.lock`, every project's config as it evaluated.
-Commit it. Every run reads its configs from the lock, so run
-`vx lock` and commit the lock again after you:
-
-- edit any `vx.config.ts` or `.vx/workspace.ts`,
-- update dependencies or plugins,
-- change a file a config imports.
-
-Otherwise runs keep the old configs. On CI, `vx lock --check` fails a
-stale lock before any task runs.
-
-Starters: [`examples/basic`](examples/basic), and
-[`examples/ci`](examples/ci) with a GitHub Actions workflow; CI runs both
-on every commit. The [CI guide](https://vznjs.github.io/vx/docs/ci/)
-explains the workflow.
-More: [Quickstart](https://vznjs.github.io/vx/quickstart/) ·
-[Configure](https://vznjs.github.io/vx/docs/workspace/) ·
-[CLI](packages/vx/docs/cli.md) · [every config field](packages/vx/docs/schema.md).
-
-## A foundation you own
+## What you get
 
 - **A cache you can trust:** TypeScript configs are evaluated before
   hashing, so imports and computed values are in the key. Outputs are
@@ -94,42 +79,50 @@ More: [Quickstart](https://vznjs.github.io/vx/quickstart/) ·
 - **Sandboxed tasks:** opt in per task; a workspace file the task did
   not declare is out of its reach, so it cannot poison the cache.
 - **Clean exits:** Ctrl-C reaps each task's process group.
-- **Plugins at every stage** (16 hooks, `commands` included): remote cache, remote execution, telemetry,
-  CLI verbs. Core ships none and needs none.
+- **Distributed task execution:** split one CI run across workers your
+  own CI starts. No vendor in between.
+- **A plugin at every step of a run** (16 hooks, `commands` included):
+  remote cache, remote execution, telemetry, CLI verbs. Core needs none.
 - **Free:** MIT. No paywall, no cloud, no account.
+
+## Learn vx
+
+The [docs](https://vznjs.github.io/vx/docs/) are one story, in order:
+
+| You want to                                 | Read                                                                                      |
+| ------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| cache your first task                       | [Quickstart](https://vznjs.github.io/vx/quickstart/)                                      |
+| move from Turborepo or Nx                   | [Migrate](https://vznjs.github.io/vx/docs/migrate/)                                       |
+| run a task in every package, upstream first | [Tasks](https://vznjs.github.io/vx/docs/tasks/)                                           |
+| run only what a branch changed              | [Running tasks](https://vznjs.github.io/vx/docs/running-tasks/)                           |
+| know why a task ran again                   | [Caching](https://vznjs.github.io/vx/docs/caching/)                                       |
+| check every push on CI                      | [CI](https://vznjs.github.io/vx/docs/ci/)                                                 |
+| share the cache between CI jobs             | [Remote cache](https://vznjs.github.io/vx/docs/remote-cache/)                             |
+| split one CI run across machines            | [Distributed task execution](https://vznjs.github.io/vx/docs/distributed-task-execution/) |
+| add your own behaviour                      | [Plugins](https://vznjs.github.io/vx/docs/plugins/)                                       |
+| look up a command or a field                | [CLI](https://vznjs.github.io/vx/cli/), [config](https://vznjs.github.io/vx/schema/)      |
 
 ## Plugins
 
-What vx can do, not what it is limited to. Declared in `.vx/workspace.ts`; without any, vx runs and caches locally.
+Each adds what core leaves out. Declare it in `.vx/workspace.ts`; with
+none, vx runs and caches on your machine.
 
-| Package                                                | What it adds                                                                  |
-| ------------------------------------------------------ | ----------------------------------------------------------------------------- |
-| [`@vzn/vx-migrate`](packages/vx-migrate)               | Migrate from Turbo or Nx: write native configs, keep its remote cache         |
-| [`@vzn/vx-reapi`](packages/vx-reapi)                   | Remote cache and remote execution over Bazel's REAPI (NativeLink, BuildBuddy) |
-| [`@vzn/vx-lockfile`](packages/vx-lockfile)             | Key each project on its own lockfile slice: pnpm, bun, npm, yarn              |
-| [`@vzn/vx-otel`](packages/vx-otel)                     | OpenTelemetry traces, metrics and logs, no SDK                                |
-| [`@vzn/vx-ci`](packages/vx-ci)                         | GitHub Actions job summary                                                    |
-| [`@vzn/vx-history`](packages/vx-history)               | Schedule by the critical path learned from past runs                          |
-| [`@vzn/vx-cache`](packages/vx-cache)                   | Remote cache for CI jobs, on a vx cache server                                |
-| [`@vzn/vx-cache-server`](packages/vx-cache-server)     | The cache server you host: Bun or Docker with S3, or Workers with R2          |
-| [`@vzn/vx-history-server`](packages/vx-history-server) | The task timings server `vxHistory()` reads: Bun, Docker or Workers           |
-| [`@vzn/vx-devtools`](packages/vx-devtools)             | Code the servers and plugins share: the CI OIDC token check                   |
-| [`@vzn/vx-dte`](packages/vx-dte)                       | Spread one run over workers your own CI starts                                |
-| [`@vzn/vx-dte-server`](packages/vx-dte-server)         | The relay `dte()` meets its workers at: Workers, Bun or Docker                |
+| Package                                                                           | What it adds                                                         |
+| --------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| [`@vzn/vx-lockfile`](https://vznjs.github.io/vx/plugins/vx-lockfile/)             | Keys each project on its own dependencies: pnpm, bun, npm, yarn      |
+| [`@vzn/vx-migrate`](https://vznjs.github.io/vx/plugins/vx-migrate/)               | Converts Turborepo or Nx config, and keeps their remote cache        |
+| [`@vzn/vx-cache`](https://vznjs.github.io/vx/plugins/vx-cache/)                   | Remote cache for CI jobs, on your cache server                       |
+| [`@vzn/vx-cache-server`](https://vznjs.github.io/vx/plugins/vx-cache-server/)     | The cache server you host: Bun or Docker with S3, or Workers with R2 |
+| [`@vzn/vx-dte`](https://vznjs.github.io/vx/plugins/vx-dte/)                       | Distributed task execution over workers your CI starts               |
+| [`@vzn/vx-dte-server`](https://vznjs.github.io/vx/plugins/vx-dte-server/)         | The relay where a run meets its workers: Workers, Bun or Docker      |
+| [`@vzn/vx-history`](https://vznjs.github.io/vx/plugins/vx-history/)               | Starts first the tasks the rest wait on, learned from past runs      |
+| [`@vzn/vx-history-server`](https://vznjs.github.io/vx/plugins/vx-history-server/) | The task timings server `vxHistory()` reads: Bun, Docker or Workers  |
+| [`@vzn/vx-ci`](https://vznjs.github.io/vx/plugins/vx-ci/)                         | A GitHub Actions job summary                                         |
+| [`@vzn/vx-otel`](https://vznjs.github.io/vx/plugins/vx-otel/)                     | OpenTelemetry traces, metrics and logs, no SDK                       |
+| [`@vzn/vx-reapi`](https://vznjs.github.io/vx/plugins/vx-reapi/)                   | Remote cache and remote execution over Bazel's REAPI                 |
+| [`@vzn/vx-devtools`](https://vznjs.github.io/vx/plugins/vx-devtools/)             | The CI token check the servers and plugins share                     |
 
-Hosting the three servers: [servers docs](https://vznjs.github.io/vx/docs/servers/).
-
-Write your own: [plugin guide](https://vznjs.github.io/vx/docs/writing-plugins/) ·
-[architecture](packages/vx/docs/architecture.md).
-
-## Coming from Turbo or Nx
-
-Beside `turbo.json` or `nx.json`, `bunx @vzn/vx init` runs `@vzn/vx-migrate`:
-it writes a `vx.config.ts` per package from `turbo.json` or the Nx graph,
-and you keep those and delete the old config. `vx init --keep` writes only
-a `.vx/workspace.ts` that maps the old config instead, and its lock: a temporary start,
-not a way to run the workspace. The benchmark below uses native vx config.
-[Migration guide](https://vznjs.github.io/vx/guides/migrate/).
+Write your own: [Write a plugin](https://vznjs.github.io/vx/docs/writing-plugins/).
 
 ## How it compares
 
@@ -140,33 +133,27 @@ not a way to run the workspace. The benchmark below uses native vx config.
 | Clean-tree hashing | **No source reads** (git index OIDs)      | git OIDs                       | re-hash / daemon |
 | Daemon             | **None**                                  | None for `turbo run`           | On by default    |
 | Per-task sandbox   | **Yes**: kernel-level, opt-in, local      | No                             | On Nx Cloud only |
-| Plugin API         | **Yes**: every pipeline stage             | No                             | Yes (TS-tied)    |
+| Plugin API         | **Yes**: every step of a run              | No                             | Yes (TS-tied)    |
 | Install            | **Single binary**; no Bun, Node optional  | npm + Node                     | npm + Node       |
-
-Every gap: [comparison](packages/vx/docs/comparison.md) ·
-every tool on one suite of cases: [conformance](https://vznjs.github.io/vx/conformance/).
-
-## Fast, without trading correctness
 
 - **Nothing boots per task:** no daemon, no Node process; vx spawns your command.
 - **No source-file reads to hash:** on a clean tree, keys come from git's index; each project's `package.json` and the lockfile are still read.
-- **One pass:** one git walk per run; each stat and lookup happens once.
 
-The head-to-head against Turborepo, Nx and Vite Task, each in its own
-native config, is re-measured on every change to vx and published on the
-site: [benchmarks](https://vznjs.github.io/vx/benchmarks/).
+Every gap: [vx vs Turborepo vs Nx](https://vznjs.github.io/vx/comparison/).
+Every tool on one suite of cases: [conformance](https://vznjs.github.io/vx/conformance/).
+Re-measured on every change: [benchmarks](https://vznjs.github.io/vx/benchmarks/).
 
 ## Status
 
-**Pre-alpha**, dogfooded: this repo lints, tests and builds itself with
-vx. The schema may still change; 1.0's promise:
-[versioning-1.0.md](packages/vx/docs/design/versioning-1.0.md).
+**Pre-alpha.** This workspace lints, tests and builds itself with vx.
+The config may still change before 1.0.
 
-## Issues
-
-vx is maintained by VZN and takes issues, not pull requests: report a
-bug or ask for a feature in [issues](https://github.com/vznjs/vx/issues).
+vx takes issues, not pull requests: report a bug or ask for a feature in
+[issues](https://github.com/vznjs/vx/issues).
 
 ## License
 
-vx is [MIT](LICENSE) licensed. The prebuilt binaries embed Bun and a few npm packages under permissive licenses; their notices ship as [THIRD_PARTY_NOTICES.txt](packages/vx/THIRD_PARTY_NOTICES.txt) in each platform package and GitHub release.
+[MIT](https://github.com/vznjs/vx/blob/main/LICENSE). The prebuilt binaries
+embed Bun and a few npm packages under permissive licenses; their notices
+ship as [THIRD_PARTY_NOTICES.txt](https://github.com/vznjs/vx/blob/main/packages/vx/THIRD_PARTY_NOTICES.txt)
+in each platform package and GitHub release.

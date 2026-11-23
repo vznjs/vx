@@ -1,7 +1,8 @@
 #!/usr/bin/env bun
-// The terminal demo on the README and the landing: examples/basic run under
-// this checkout's vx, cold then warm, its real colored output drawn as an
-// SVG that prints line by line. Nothing in the picture is typed by hand;
+// The terminal demo on the README: the docs' one workspace (packages/ui, a
+// Vite library, used by packages/web, a Vite app) built with real `vite
+// build` under this checkout's vx, cold then warm, its real colored output
+// drawn as an SVG that prints line by line. Nothing in the picture is typed by hand;
 // `--check` re-runs it and fails when anything but a timing, the worker
 // count or the run id differs from the committed file (core's tests/examples.unsafe.test.ts
 // runs the check, the suite that may read examples/ and spawn git).
@@ -10,7 +11,6 @@
 //   bun private/vx-docs/scripts/terminal-demo.ts --check  # exit 1 if it drifted
 
 import {
-  cpSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -25,7 +25,7 @@ import path from 'node:path'
 
 const ROOT = path.resolve(import.meta.dir, '../../..')
 const OUT = path.join(ROOT, 'private/vx-docs/public/demo.svg')
-const COMMAND = 'vx run ci --all'
+const COMMAND = 'vx run build --all'
 
 /** One styled run of text. */
 type Span = { text: string; fg?: string; bold?: boolean; dim?: boolean }
@@ -75,7 +75,9 @@ const RUN = 0.6
 function render(lines: Span[][]): string {
   const lineH = 19
   const top = 44
-  const W = 760
+  // 13px monospace is 0.6em a cell: the widest line, plus the margins.
+  const cells = Math.max(...lines.map((l) => Bun.stringWidth(l.map((s) => s.text).join(''))))
+  const W = Math.ceil(cells * 7.8) + 36
   const H = top + lines.length * lineH + 14
   let at = 0
   const body = lines
@@ -97,7 +99,7 @@ function render(lines: Span[][]): string {
       return `  <text x="18" y="${top + i * lineH}" style="animation-delay:${delay.toFixed(2)}s">${tspans}</text>`
     })
     .join('\n')
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="vx run ci --all, cold: three tasks run; again: three up-to-date.">
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="vx run build --all, first: @demo/ui#build then @demo/web#build run; again: both up to date.">
   <style>
     text { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace; font-size: 13px; fill: #e6edf3; white-space: pre; animation: hide 0.01s backwards; }
     @keyframes hide { from, to { opacity: 0; } }
@@ -137,17 +139,81 @@ export function normalize(svg: string): string {
   )
 }
 
-const BASIC_LOCK = {
-  lockfileVersion: 1,
-  workspaces: {
-    '': { name: 'vx-example-basic' },
-    'packages/app': { name: 'app', dependencies: { lib: '*' } },
-    'packages/lib': { name: 'lib' },
+const PROJECT = `import type { ProjectConfig } from '@vzn/vx/config'
+
+export default {
+  tasks: {
+    build: {
+      dependsOn: ['^build'],
+      exec: { command: 'vite build' },
+      inputs: { files: ['src/**', 'index.html', 'vite.config.ts'] },
+      outputs: { files: ['dist/**'] },
+      cache: true,
+    },
   },
-  packages: {
-    app: ['app@workspace:packages/app'],
-    lib: ['lib@workspace:packages/lib'],
-  },
+} satisfies ProjectConfig
+`
+
+/** The docs' demo workspace, file by file. */
+const FILES: Record<string, string> = {
+  'package.json': '{ "name": "demo", "private": true, "workspaces": ["packages/*"] }\n',
+  '.gitignore': 'node_modules\ndist\n',
+  '.vx/workspace.ts': `import type { WorkspaceConfig } from '@vzn/vx/config'
+import { bun } from '@vzn/vx-lockfile'
+
+export default { plugins: [bun()] } satisfies WorkspaceConfig
+`,
+  'packages/ui/package.json':
+    '{ "name": "@demo/ui", "version": "1.0.0", "type": "module", "exports": "./dist/index.js" }\n',
+  'packages/ui/vite.config.ts': `import { defineConfig } from 'vite'
+
+export default defineConfig({
+  build: { lib: { entry: 'src/index.ts', formats: ['es'], fileName: 'index' } },
+})
+`,
+  'packages/ui/src/index.ts': `export function button(label: string): string {
+  return \`<button>\${label}</button>\`
+}
+`,
+  'packages/ui/vx.config.ts': PROJECT,
+  'packages/web/package.json':
+    '{ "name": "@demo/web", "version": "1.0.0", "type": "module", "dependencies": { "@demo/ui": "workspace:*" } }\n',
+  'packages/web/vite.config.ts': `import { defineConfig } from 'vite'
+
+export default defineConfig({})
+`,
+  'packages/web/index.html':
+    '<!doctype html>\n<div id="app"></div>\n<script type="module" src="/src/index.ts"></script>\n',
+  'packages/web/src/index.ts': `import { button } from '@demo/ui'
+
+document.querySelector('#app')!.innerHTML = button('Hello')
+`,
+  'packages/web/vx.config.ts': PROJECT,
+  // The workspace links \`bun install\` records, which bun() reads its edges from.
+  'bun.lock': JSON.stringify({
+    lockfileVersion: 1,
+    workspaces: {
+      '': { name: 'demo' },
+      'packages/ui': { name: '@demo/ui', version: '1.0.0' },
+      'packages/web': {
+        name: '@demo/web',
+        version: '1.0.0',
+        dependencies: { '@demo/ui': 'workspace:*' },
+      },
+    },
+    packages: {
+      '@demo/ui': ['@demo/ui@workspace:packages/ui'],
+      '@demo/web': ['@demo/web@workspace:packages/web'],
+    },
+  }),
+}
+
+/** The vite the site builds with: astro's, so the demo adds no dependency. */
+function vite(): string {
+  const astro = path.dirname(
+    Bun.resolveSync('astro/package.json', path.join(ROOT, 'private/vx-docs')),
+  )
+  return path.dirname(Bun.resolveSync('vite/package.json', astro))
 }
 
 function run(): string {
@@ -156,15 +222,20 @@ function run(): string {
   // demo's commit can carry the same id, so its cold run would hit.
   const home = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'vx-demo-home-')))
   try {
-    cpSync(path.join(ROOT, 'examples/basic'), root, { recursive: true })
-    mkdirSync(path.join(root, 'node_modules/@vzn'), { recursive: true })
-    symlinkSync(path.join(ROOT, 'packages/vx'), path.join(root, 'node_modules/@vzn/vx'))
-    symlinkSync(
-      path.join(ROOT, 'packages/vx-lockfile'),
-      path.join(root, 'node_modules/@vzn/vx-lockfile'),
-    )
-    // The workspace links `bun install` records, which bun() reads its edges from.
-    writeFileSync(path.join(root, 'bun.lock'), JSON.stringify(BASIC_LOCK))
+    for (const [file, text] of Object.entries(FILES)) {
+      mkdirSync(path.dirname(path.join(root, file)), { recursive: true })
+      writeFileSync(path.join(root, file), text)
+    }
+    const modules = path.join(root, 'node_modules')
+    mkdirSync(path.join(modules, '@vzn'), { recursive: true })
+    mkdirSync(path.join(modules, '@demo'), { recursive: true })
+    mkdirSync(path.join(modules, '.bin'), { recursive: true })
+    symlinkSync(path.join(ROOT, 'packages/vx'), path.join(modules, '@vzn/vx'))
+    symlinkSync(path.join(ROOT, 'packages/vx-lockfile'), path.join(modules, '@vzn/vx-lockfile'))
+    symlinkSync(path.join(root, 'packages/ui'), path.join(modules, '@demo/ui'))
+    symlinkSync(path.join(root, 'packages/web'), path.join(modules, '@demo/web'))
+    symlinkSync(vite(), path.join(modules, 'vite'))
+    symlinkSync('../vite/bin/vite.js', path.join(modules, '.bin/vite'))
     // And the README's `vx lock` after it: a run keys from what it records.
     const lock = Bun.spawnSync({
       cmd: [process.execPath, path.join(ROOT, 'packages/vx/src/bin.ts'), 'lock'],
@@ -192,7 +263,7 @@ function run(): string {
         process.execPath,
         path.join(ROOT, 'packages/vx/src/bin.ts'),
         'run',
-        'ci',
+        'build',
         '--all',
         '--no-cache',
       ],
@@ -202,7 +273,7 @@ function run(): string {
     if (history.exitCode !== 0) throw new Error(`history run failed: ${history.stderr.toString()}`)
     for (const pass of ['cold', 'warm']) {
       const r = Bun.spawnSync({
-        cmd: [process.execPath, path.join(ROOT, 'packages/vx/src/bin.ts'), 'run', 'ci', '--all'],
+        cmd: [process.execPath, path.join(ROOT, 'packages/vx/src/bin.ts'), 'run', 'build', '--all'],
         cwd: root,
         env: { ...process.env, HOME: home, FORCE_COLOR: '1', NO_COLOR: undefined, CI: undefined },
       })
