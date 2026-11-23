@@ -860,7 +860,7 @@ A task with `exec.sandbox` is offered only to an executor whose `capabilities` s
 
 ### Give a task back
 
-Reject with `executorFallback(reason)`, from `@vzn/vx`, to hand a task back. vx runs it on this machine and prints `reason` once.
+A `remote` executor rejects with `executorFallback(reason)`, from `@vzn/vx`, to hand a task back. vx runs it on this machine and prints `reason` once. From an executor that is not `remote`, the task fails and the error says so.
 
 ### Many machines
 

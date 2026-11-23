@@ -18,7 +18,11 @@ afterEach(() => {
   rmSync(root, { recursive: true, force: true })
 })
 
-async function fixture(remote: 'only' | undefined, exclusive = false): Promise<void> {
+async function fixture(
+  remote: 'only' | undefined,
+  exclusive = false,
+  remoteCap = true,
+): Promise<void> {
   await Bun.write(
     path.join(root, 'package.json'),
     JSON.stringify({ name: 'ws', workspaces: ['a'] }),
@@ -41,7 +45,7 @@ async function fixture(remote: 'only' | undefined, exclusive = false): Promise<v
           `{ executor() {
              return {
                name: 'gives-back',
-               capabilities: { remote: true${exclusive ? ', exclusive: true' : ''} },
+               ${remoteCap ? `capabilities: { remote: true${exclusive ? ', exclusive: true' : ''} },` : ''}
                async execute() {
                  throw executorFallback('no worker started it')
                },
@@ -114,6 +118,22 @@ describe('a remote executor that gives a task back', () => {
     await fixture(undefined, true)
     const named =
       "plugin 'org/gives-back' (executor 'gives-back') failed in execute: no worker started it, and gives-back runs no task on this machine"
+    expect(await runIt()).toEqual({
+      ok: false,
+      statuses: ['failed'],
+      out: 'absent',
+      said: [],
+      stderr: `[vx] a#gen: ${named}`,
+    })
+  })
+
+  it('fails a task a local executor gives back, saying only a remote can', async () => {
+    // A plugin executor without `capabilities.remote` that rejected with
+    // executorFallback failed its task with the bare reason: the author read
+    // "no worker started it" and no word of why it did not run here.
+    await fixture(undefined, false, false)
+    const named =
+      "plugin 'org/gives-back' (executor 'gives-back') failed in execute: no worker started it, but only an executor with capabilities.remote can give a task back"
     expect(await runIt()).toEqual({
       ok: false,
       statuses: ['failed'],

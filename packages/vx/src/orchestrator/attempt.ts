@@ -357,6 +357,12 @@ async function runAttempt(
           assertExecuteResult('local', node.id, local)
           return local
         }
+      } else if (isExecutorFallback(raw)) {
+        // The bare reason failed the task, and its author read no word of
+        // why it did not run here.
+        raw = new UserError(
+          `${secrets.text(raw.message)}, but only an executor with capabilities.remote can give a task back`,
+        )
       }
       const err = nameExecutorFailure(args.executor, raw)
       // A remote executor's message carries the server's own text, which may

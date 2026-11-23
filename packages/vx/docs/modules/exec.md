@@ -742,7 +742,8 @@ cacheable }` — what `accepts()` sees. Placement happens ONCE per task,
   (its own timeout) on the local executor. A task placed
   `remote: 'only'` fails naming `reason` instead, as does one an
   `exclusive` executor took. A non-remote executor's
-  fallback is an ordinary failure (B-100; `executor-fallback.test.ts`).
+  fallback fails the task, saying only a `remote` executor can give one
+  back (B-100; `executor-fallback.test.ts`).
   `@vzn/vx-reapi`'s `queueTimeoutMs` is its consumer.
 
 ### Rules
