@@ -820,12 +820,12 @@ segments. `layer` is `local` or `remote`; `flags` is any subset of `r`
 layer keeps its current value. Both `--cache-policy=<spec>` and the space form
 `--cache-policy <spec>` are accepted.
 
-| Spec                               | Effect                                                  |
-| ---------------------------------- | ------------------------------------------------------- |
-| `--cache-policy=local:rw,remote:r` | remote read-only (won't upload); local full             |
-| `--cache-policy=local:r`           | local read-only; remote untouched (still full)          |
-| `--cache-policy=remote:`           | remote fully off; local untouched                       |
-| `--cache-policy=local:,remote:rw`  | don't touch the local cache, but still upload to remote |
+| Spec                               | Effect                                                           |
+| ---------------------------------- | ---------------------------------------------------------------- |
+| `--cache-policy=local:rw,remote:r` | remote read-only (won't upload); local full                      |
+| `--cache-policy=local:r`           | local read-only; remote untouched (full on CI, read-only off CI) |
+| `--cache-policy=remote:`           | remote fully off; local untouched                                |
+| `--cache-policy=local:,remote:rw`  | don't touch the local cache, but still upload to remote          |
 
 `local:` means "don't serve hits out of the pre-existing local cache" —
 a remote hit is still delivered (the artifact has to land on disk to be
@@ -2068,7 +2068,8 @@ bound clears the cache. It operates on the entries and
 `<hash>.tar.zst` artifacts of the store a run opens
 (`~/.vx/<id>/cache`, shared by every checkout of the workspace), or of
 `<cacheDir>` itself when the workspace names one (`cache.dir`,
-`VX_CACHE_DIR`, `--cache-dir`).
+`VX_CACHE_DIR`, `--cache-dir`). It never contacts a remote cache: a remote is
+pruned where it is hosted.
 
 ### Usage
 
