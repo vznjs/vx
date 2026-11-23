@@ -1,6 +1,6 @@
 ---
 title: Try distributed task execution on your machine
-description: Start workers as local processes with local(), and watch tasks spread with no CI and nothing to host.
+description: Start workers as local processes with local(), and watch tasks run on them with no CI and nothing to host.
 ---
 
 import Diagram from '../../../../components/guide/diagram/Diagram.astro'
@@ -8,7 +8,7 @@ import { dteLocal } from '../../../../components/docs/pictures/dte-howtos.js'
 import { Aside, Steps } from '@astrojs/starlight/components'
 import { Levels, Deeper, Concept, Quiz, Walkthrough, Frame, Takeaway, NextStep } from '../../../../components/learn'
 
-See one run spread over several workers, on your laptop, before you touch CI.
+Run your tasks on workers on your laptop, before you touch CI.
 
 ```sh
 export VX_DTE_RUN=$(uuidgen)
@@ -63,7 +63,7 @@ vx lock
 
 <Takeaway>declare workers in five lines, with no CI and nothing to host.</Takeaway>
 
-## Watch a run spread
+## Watch a run on workers
 
 Workers see what git tracks, your edits included. So `git add` new files first, then name the run with `VX_DTE_RUN`:
 
@@ -74,30 +74,66 @@ vx run build test lint --all
 ```
 
 <Walkthrough title="The same build, twice">
-<Frame title="1. First run: workers share the tasks">
+<Frame title="1. First run: the run asks for the workers it needs">
 
 ```ansi
 [4m[58;2;110;118;129m  [1m[38;2;167;139;250mTasks[0m[4m[58;2;110;118;129m     [2mstatus  cache     ±usual    time   cpu    mem outputs  blocks worker         task[0m[4m[58;2;110;118;129m                           [0m
-            [38;2;34;197;94msuccess[0m [2mmiss[0m           [2m—[0m   [38;2;203;213;225m204ms[0m   [2m99%[0m  [2m119MB[0m     [2m80B[0m       [38;2;203;213;225m2[0m [38;2;244;114;182mlinux.cpu2[0m[2m#[0m[38;2;167;139;250m1[0m   [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m
-            [38;2;34;197;94msuccess[0m [2mmiss[0m           [2m—[0m    [38;2;203;213;225m93ms[0m   [2m57%[0m   [2m78MB[0m      [2m0B[0m       [2m0[0m [38;2;244;114;182mlinux.cpu2[0m[2m#[0m[38;2;167;139;250m1[0m   [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;232;121;249mlint[0m
-            [38;2;34;197;94msuccess[0m [2mmiss[0m           [2m—[0m    [38;2;203;213;225m58ms[0m   [2m77%[0m   [2m78MB[0m      [2m0B[0m       [2m0[0m [38;2;244;114;182mlinux.cpu2[0m[2m#[0m[38;2;167;139;250m1[0m   [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;232;121;249mlint[0m
-            [38;2;34;197;94msuccess[0m [2mmiss[0m           [2m—[0m   [38;2;203;213;225m533ms[0m   [2m93%[0m  [2m111MB[0m      [2m0B[0m       [2m0[0m [38;2;244;114;182mlinux.cpu2[0m[2m#[0m[38;2;167;139;250m1[0m   [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;96;165;250mtest[0m
-            [38;2;34;197;94msuccess[0m [2mmiss[0m           [2m—[0m   [38;2;203;213;225m162ms[0m   [2m99%[0m  [2m113MB[0m    [2m123B[0m       [2m0[0m [38;2;244;114;182mlinux.cpu2[0m[2m#[0m[38;2;167;139;250m1[0m   [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m
-            [38;2;34;197;94msuccess[0m [2mmiss[0m           [2m—[0m   [38;2;203;213;225m428ms[0m  [2m113%[0m  [2m138MB[0m      [2m0B[0m       [2m0[0m [38;2;244;114;182mlinux.cpu2[0m[2m#[0m[38;2;232;121;249m3[0m   [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;96;165;250mtest[0m
-  [2mworkers [0m  [38;2;244;114;182mlinux.cpu2[0m[2m#[0m[38;2;167;139;250m1[0m  left     5 done · warm-up 0.2s
-  [2m        [0m  [38;2;244;114;182mlinux.cpu2[0m[2m#[0m[38;2;96;165;250m2[0m  left     0 done · warm-up 0.3s
-  [2m        [0m  [38;2;244;114;182mlinux.cpu2[0m[2m#[0m[38;2;232;121;249m3[0m  stopped  1 done · warm-up 0.3s · @demo/web#test
+            [38;2;34;197;94msuccess[0m [2mmiss[0m           [2m—[0m   [38;2;203;213;225m258ms[0m   [2m15%[0m   [2m39MB[0m      [2m0B[0m       [2m0[0m [38;2;244;114;182mlinux.cpu2[0m[2m#[0m[38;2;167;139;250m1[0m   [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;232;121;249mlint[0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m           [2m—[0m   [38;2;203;213;225m224ms[0m   [2m18%[0m   [2m50MB[0m      [2m0B[0m       [2m0[0m [38;2;244;114;182mlinux.cpu2[0m[2m#[0m[38;2;167;139;250m1[0m   [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;232;121;249mlint[0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m           [2m—[0m   [38;2;203;213;225m1.38s[0m   [2m22%[0m  [2m102MB[0m     [2m68B[0m       [38;2;203;213;225m3[0m [38;2;244;114;182mlinux.cpu2[0m[2m#[0m[38;2;167;139;250m1[0m   [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m           [2m—[0m   [38;2;203;213;225m1.61s[0m   [2m18%[0m  [2m111MB[0m    [2m935B[0m       [38;2;203;213;225m1[0m [38;2;244;114;182mlinux.cpu2[0m[2m#[0m[38;2;167;139;250m1[0m   [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m           [2m—[0m   [38;2;203;213;225m2.79s[0m   [2m26%[0m   [2m24MB[0m      [2m0B[0m       [2m0[0m [38;2;244;114;182mlinux.cpu2[0m[2m#[0m[38;2;167;139;250m1[0m   [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;96;165;250mtest[0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m           [2m—[0m   [38;2;203;213;225m3.15s[0m   [2m23%[0m   [2m23MB[0m      [2m0B[0m       [2m0[0m [38;2;244;114;182mlinux.cpu2[0m[2m#[0m[38;2;167;139;250m1[0m   [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;96;165;250mtest[0m
+
+
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mSummary[0m[4m[58;2;110;118;129m                                                                                                       [2mvx 0.0.0[0m
+  [2mprojects[0m  [38;2;234;179;8m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
+            [38;2;234;179;8m2 in run[0m [2m·[0m [2m2 total[0m
+  [2mtasks   [0m  [38;2;34;197;94m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
+            [38;2;34;197;94m6 success[0m [2m·[0m [2m6 total[0m
+  [2mcache   [0m  [38;2;56;189;248m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
+            [2mlocal[0m [38;2;56;189;248m6↑[0m
+
+  [2mworkers [0m  [38;2;244;114;182mlinux.cpu2[0m[2m#[0m[38;2;167;139;250m1[0m  stopped  6 done · warm-up 1.2s
+  [2m        [0m  [2m              declared 2c/8G · actual [0m[38;2;239;68;68m4c/14G[0m
+  [2m        [0m  [2m              online 6.4s · busy 6.4s · idle 0.0s[0m
+  [2m        [0m  [2m              cpu peak 0.5 · used avg 0.3 cores · machine avg 4.0 · booked avg 1.5[0m
+  [2m        [0m  [2m              cpu utilization machine 100% · tasks 17% · worker 1%[0m
+  [2m        [0m  [2m              memory peak 159.5 MB · avg 82.6 MB[0m
+  [2m        [0m  [2m              sent 4 messages · 6 KB, received 6 messages · 4 KB[0m
+  [2m        [0m  [2mprobe         at 0.0s: 6 tasks left to run, 6 known misses[0m
+  [2m        [0m  [2masked         1 at 0.3s for 6 tasks (0 measured), estimate 20.0s[0m
+  [2m        [0m  [2mideal         7.5s: the best the workers it may start allow, its longest chain or each platform's work on all their cores[0m
+  [2m        [0m  [2mperfect       7.5s: its longest chain as long as it took, no task waiting for a worker, holding 12.1 core-s at least[0m
+  [2m        [0m  [2mdrift         +0.3s past ideal, +0.3s past perfect: workers joining 0.2s[0m
+  [2m        [0m  [2mbest          1 × linux.cpu2 (2c/8G linux-x64): 7.5s, the fewest of its sizes[0m
+  [2m        [0m  [2many           1 × (2c/8G linux-x64): 7.5s, of any cores, the least core time[0m
+  [2m        [0m  total         cpu utilization machine 100% · tasks 17% · worker 1% · held 15.3 core-s
+
+  [2minfo    [0m  local cache [2m·[0m run 01a20ab3-fb40-75fa-bf71-e006143c10ec
+  [2mtime    [0m  8.23s [2m·[0m [2mmax 3.15s[0m [2m·[0m [2mavg 1.57s[0m [2m·[0m [2mmin 224ms[0m
 ```
 
-Read the **worker** column: `linux.cpu2#1` is worker 1 of the `linux.cpu2` machines. It ran five tasks while `#3` ran `@demo/web#test`. `#2` joined, found nothing left and left.
+Read the **worker** column: `linux.cpu2#1` is worker 1 of the `linux.cpu2` machines. It ran all six tasks.
+
+The `asked` row: the run asked for one worker. The `best` row: one was all it could use, as each `test` waits for its `build`. More work side by side asks for more, up to `max`.
 
 </Frame>
 <Frame title="2. Again, nothing changed: no worker starts">
 
 ```ansi
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mSummary[0m[4m[58;2;110;118;129m                                                                                                       [2mvx 0.0.0[0m
+  [2mprojects[0m  [38;2;234;179;8m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
+            [38;2;234;179;8m2 in run[0m [2m·[0m [2m2 total[0m
+  [2mtasks   [0m  [38;2;34;197;94m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
+            [38;2;34;197;94m6 success[0m [2m·[0m [2m6 total[0m
   [2mcache   [0m  [38;2;34;197;94m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
             [2mlocal[0m [38;2;34;197;94m6✓[0m
+
   [2mworkers [0m  [2mnone started: no task needed one[0m
+
+  [2minfo    [0m  local cache [2m·[0m run 01a20ab4-4281-7342-b566-0ef3c6c72e68
+  [2mtime    [0m  611ms
 ```
 
 Every task came from the cache, so there was no work to hand out.
@@ -110,7 +146,7 @@ Every task came from the cache, so there was no work to hand out.
   Actions the run names itself, so you never set it there.
 </Quiz>
 
-<Takeaway>spread a run over workers and read who ran each task.</Takeaway>
+<Takeaway>run tasks on workers and read who ran each task.</Takeaway>
 
 <Deeper level="patterns" title="Common setups">
 
@@ -119,6 +155,23 @@ Every task came from the cache, so there was no work to hand out.
 A worker builds from what git tracks. A file git does not know fails the task and names it:
 
 ```ansi
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mTasks[0m[4m[58;2;110;118;129m     [2mstatus  cache     ±usual    time   cpu    mem outputs  blocks worker         task[0m[4m[58;2;110;118;129m                           [0m
+            [38;2;239;68;68mfailed[0m  [2mmiss[0m      [38;2;34;197;94m−192ms[0m     [38;2;203;213;225m0ms[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [38;2;147;197;253mdte[0m            [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;232;121;249mlint[0m
+            [38;2;239;68;68mfailed[0m  [2mmiss[0m      [38;2;34;197;94m−1.51s[0m     [38;2;203;213;225m0ms[0m     [2m—[0m      [2m—[0m       [2m—[0m       [38;2;203;213;225m3[0m [38;2;147;197;253mdte[0m            [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;234;179;8mskipped[0m [2m—[0m              [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [38;2;203;213;225m1[0m [2m—[0m              [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m [2m• blocked by @demo/ui#build[0m
+            [38;2;234;179;8mskipped[0m [2m—[0m              [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2m—[0m              [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;96;165;250mtest[0m [2m• blocked by @demo/ui#build[0m
+            [38;2;234;179;8mskipped[0m [2m—[0m              [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2m—[0m              [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;96;165;250mtest[0m [2m• blocked by @demo/ui#build[0m
+
+[2m┌─[0m [1m[38;2;192;132;252m@demo/ui[0m[2m#[0m[1m[38;2;232;121;249mlint[0m [2m>[0m [1m[38;2;239;68;68mfailed (exit 1)[0m
+
+[2mpackages/ui $ oxlint src[0m
+
+[2m├─[0m [1mOUTPUT[0m [2m────────────────────────────────────────────────────[0m
+
+[38;2;239;68;68m[vx] @demo/ui#lint: plugin '@vzn/vx-dte' (executor 'dte') failed in execute: @demo/ui#lint keys packages/ui/src/theme.ts, which git does not track, so no worker has it: git add it (and commit it for workers on CI), or leave it out of the task's inputs[0m
+
+[2m└─[0m [1m[38;2;192;132;252m@demo/ui[0m[2m#[0m[1m[38;2;232;121;249mlint[0m[2m ·[0m [38;2;147;197;253mdte[0m [2m──[0m [2m(0ms)[0m [1m[38;2;239;68;68mfailed (exit 1)[0m
+
 [2m┌─[0m [1m[38;2;192;132;252m@demo/ui[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m>[0m [1m[38;2;239;68;68mfailed (exit 1)[0m
 
 [2mpackages/ui $ vite build[0m
@@ -128,6 +181,20 @@ A worker builds from what git tracks. A file git does not know fails the task an
 [38;2;239;68;68m[vx] @demo/ui#build: plugin '@vzn/vx-dte' (executor 'dte') failed in execute: @demo/ui#build keys packages/ui/src/theme.ts, which git does not track, so no worker has it: git add it (and commit it for workers on CI), or leave it out of the task's inputs[0m
 
 [2m└─[0m [1m[38;2;192;132;252m@demo/ui[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m[2m ·[0m [38;2;147;197;253mdte[0m [2m──[0m [2m(0ms)[0m [1m[38;2;239;68;68mfailed (exit 1)[0m
+
+
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mSummary[0m[4m[58;2;110;118;129m                                                                                                       [2mvx 0.0.0[0m
+  [2mprojects[0m  [38;2;234;179;8m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
+            [38;2;234;179;8m2 in run[0m [2m·[0m [2m2 total[0m
+  [2mtasks   [0m  [38;2;239;68;68m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m[38;2;34;197;94m▰▰▰▰▰▰▰▰[0m[38;2;234;179;8m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
+            [1m[38;2;239;68;68m2 failed[0m [2m·[0m [38;2;34;197;94m1 success[0m [2m·[0m [38;2;234;179;8m3 skipped[0m [2m·[0m [2m6 total[0m
+  [2mcache   [0m  [38;2;239;68;68m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m[38;2;34;197;94m▰▰▰▰▰▰▰▰[0m[38;2;234;179;8m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
+            [2mlocal[0m [38;2;34;197;94m1✓[0m [2m·[0m [38;2;239;68;68m2 miss[0m
+
+  [2mworkers [0m  [2mnone started: no task needed one[0m
+
+  [2minfo    [0m  local cache [2m·[0m run 01a20ab2-5711-7024-919d-bc7c3dc06f3a
+  [2mtime    [0m  298ms
 ```
 
 Fix: `git add packages/ui/src/theme.ts`, then run again.
