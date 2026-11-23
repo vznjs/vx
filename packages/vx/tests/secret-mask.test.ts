@@ -150,6 +150,25 @@ describe('secretMask', () => {
       secretMask([{ NPM_TOKEN_FILE: '/run/secrets/npm', GIT_CONFIG_KEY_0: 'safe.directory' }]),
     ).toBeNull()
   })
+
+  it("names a passphrase and a password's short spelling, _PASS", () => {
+    const m = secretMask([
+      { GPG_PASSPHRASE: 'aaaaaaaa', SMTP_PASS: 'bbbbbbbb', REDIS_PASS: 'cccccccc' },
+    ])!
+    expect(m.mask('aaaaaaaa bbbbbbbb cccccccc')).toBe(`${MASKED} ${MASKED} ${MASKED}`)
+    // CONTROL: the shell's own directories, and a word that only holds PASS.
+    expect(
+      secretMask([
+        {
+          PWD: '/home/x/app',
+          OLDPWD: '/home/x',
+          ORIG_PWD: '/home/x/ws',
+          COMPASS: 'northwest',
+          BYPASS_X: 'yes-please',
+        },
+      ]),
+    ).toBeNull()
+  })
 })
 
 describe('a secret-named value in what vx prints, stores and exports', () => {

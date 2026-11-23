@@ -117,7 +117,12 @@ const shardTask = (i: number, n = SHARD_COUNT, flags = '') => ({
     command: `BUN_RUNTIME_TRANSPILER_CACHE_PATH="\${TMPDIR:-/tmp}/bun-transpiler" bun test --only-failures ${TEST_TIMEOUT} $(bun scripts/test-shard.ts ${i} ${n}${flags})`,
     ...(flags.includes('--platform') ? { platforms: MAC } : {}),
     env: {
-      passThrough: ['VX_REQUIRE_SANDBOX', 'VX_REQUIRE_WATCH_EVENTS', 'VX_REQUIRE_NONROOT'],
+      passThrough: [
+        'VX_REQUIRE_SANDBOX',
+        'VX_REQUIRE_WATCH_EVENTS',
+        'VX_REQUIRE_NONROOT',
+        'VX_REQUIRE_CLANG',
+      ],
       define: SUITE_ENV,
     },
     sandbox: {
