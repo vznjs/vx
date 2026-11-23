@@ -51,8 +51,8 @@
   --st-mut2: #9aa59a;
   --st-mut3: #8b938f;
   --st-mut4: #7f8a85;
-  --st-faint1: #69726d;
-  --st-faint2: #5b635f;
+  --st-faint1: #838b87;
+  --st-faint2: #838b87;
   --st-on-core: #14210a;
   --st-node: #0d1016;
   --st-void2: #05060a;
@@ -80,7 +80,7 @@
 }
 :root[data-theme='light'] .vx-stage-page {
   --tone-core: #4d7a00;
-  --tone-read: #0a7ea4;
+  --tone-read: #066586;
   --tone-remote: #c25e00;
   --tone-dte: #6f42e0;
   --tone-report: #c42a78;
@@ -119,8 +119,8 @@
   --st-mut2: #525a56;
   --st-mut3: #5b635f;
   --st-mut4: #5b635f;
-  --st-faint1: #6f7773;
-  --st-faint2: #7a827e;
+  --st-faint1: #5f6763;
+  --st-faint2: #5f6763;
   --st-on-core: #fbfcf9;
   --st-node: #ffffff;
   --st-void2: #ffffff;
@@ -1852,7 +1852,7 @@
   border: 0;
 }
 .t-p {
-  color: #5b635f;
+  color: #838b87;
 }
 .t-c {
   color: var(--tone-core);
@@ -1862,7 +1862,7 @@
   color: var(--tone-read);
 }
 .t-d {
-  color: #6c7570;
+  color: #838b87;
 }
 .t-w {
   color: var(--tone-remote);
