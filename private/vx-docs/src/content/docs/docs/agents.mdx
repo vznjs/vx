@@ -80,8 +80,9 @@ package's `schemas/`, with a closed key set.
 Three outputs tell an agent what to fix instead of re-running:
 
 - `--dry=json` with `--affected` gives each task the reason it was kept.
-- A failed row of `vx last --format json` carries the task's `output`
-  and the files it names (`locations`).
+- A failed row of `vx last --format json` carries the task's `output`,
+  the files it names (`locations`) and its project's directory (`dir`),
+  where the output's relative paths start.
 - `vx why --format json` gives each changed part of the key:
 
 ```json

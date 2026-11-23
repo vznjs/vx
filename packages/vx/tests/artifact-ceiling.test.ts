@@ -227,7 +227,7 @@ describe('an output set past the artifact ceiling', () => {
         .ingest('cc', new Blob([new Uint8Array(bound + 1)]), meta)
         .then(() => 'ingested', refusal)
       const msg = (h: string): string =>
-        `cache: corrupt artifact for ${h}: remote body runs past ${bound} bytes (the artifact ceiling's bound)`
+        `${h} runs past ${bound} bytes, the bound of this machine's 1.0 KB cache.artifactCeiling: a miss; every machine sharing a remote needs the same value`
       expect({ streamed, headed, blob, stopped: pulled < 4 * 1024 * 1024 }).toEqual({
         streamed: msg('aa'),
         headed: msg('bb'),

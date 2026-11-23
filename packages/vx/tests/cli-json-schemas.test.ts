@@ -546,8 +546,12 @@ describe('each schema object is its source type', () => {
     expect(def('last', 'task')).toEqual(
       keys<
         RunSummaryRow &
-          Pick<TaskFailure, 'inputMoved' | 'output' | 'locations' | 'sandboxFix' | 'fixedIn'>
+          Pick<
+            TaskFailure,
+            'dir' | 'inputMoved' | 'output' | 'locations' | 'sandboxFix' | 'fixedIn'
+          >
       >({
+        dir: true,
         runId: true,
         project: true,
         task: true,

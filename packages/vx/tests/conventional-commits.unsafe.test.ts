@@ -31,6 +31,8 @@ it("the PR's title is a Conventional Commits header", () => {
 // subject cannot change without rewriting the branch every landed PR
 // shares (2026-10-28).
 const KNOWN = new Set([
+  // #5582's CI-fix commit, pushed before its subject was cut: 75 chars.
+  '1e50db101acaa00e458c6c4aab8229645da984e7',
   // #5570's write-back directory fix, pushed before its subject was cut: 72 chars.
   '4632ae32b8bb27c5e9d51d9817707277a787625e',
   // #5524's bytecode temp cleanup fix, pushed before its subject was cut: 73 chars.
@@ -190,6 +192,8 @@ const KNOWN = new Set([
   '07efe75ec60e6dc3af54374d450694166c128603',
   // #5565's, type style; the branch takes no force push.
   'b7565359e45c5be3d672b11dc562f5923b227839',
+  // #5585's, 74 chars; the branch takes no force push.
+  'f785f34a0d367c90e2d0969a813f689c4308f83d',
 ])
 
 it('every commit the PR adds has a Conventional Commits subject', () => {

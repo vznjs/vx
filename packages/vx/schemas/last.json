@@ -333,6 +333,10 @@
           "type": "string",
           "description": "on a failed row: its output, plain text, bounded (first 8 KiB, last 56 KiB), secrets masked; '' when none was recorded"
         },
+        "dir": {
+          "type": "string",
+          "description": "on a failed row: its project's directory from the workspace root, '.' for the root; the relative paths in its output start there"
+        },
         "locations": {
           "type": "array",
           "description": "on a failed row: the existing files its output names, in order of first appearance; a file it also names with a line drops its bare mention",

@@ -1014,8 +1014,10 @@ export async function resolveOutputTree(args: {
   const emptyDirs = new Set<string>()
   const probe: SpecialProbe | undefined =
     args.special === undefined || args.special === false ? undefined : {}
-  const { files } = await scanOutputs(args, emptyDirs, probe)
-  return treeOf(args.projectDir, files, emptyDirs, args.special, probe)
+  const { files, absent } = await scanOutputs(args, emptyDirs, probe)
+  const tree = treeOf(args.projectDir, files, emptyDirs, args.special, probe)
+  if (absent.size > 0) tree.absent = absent
+  return tree
 }
 
 /** What `resolveOutputTree` and its workspace twin return. */
@@ -1024,6 +1026,8 @@ type OutputTree = {
   emptyDirs: string[]
   special: string[]
   findSpecial?: () => string[]
+  /** The glob heads the walk found absent, by absolute path (`DeclaredOutputs.absent`). */
+  absent?: ReadonlySet<string>
 }
 
 function treeOf(
@@ -1054,9 +1058,9 @@ async function scanOutputs(
   },
   emptyDirs?: Set<string>,
   special?: SpecialProbe,
-): Promise<{ files: string[] }> {
+): Promise<{ files: string[]; absent: ReadonlySet<string> }> {
   const { positive, negative } = splitNegations(args.outputs)
-  if (positive.length === 0) return { files: [] }
+  if (positive.length === 0) return { files: [], absent: new Set() }
   const excluded = outputExcludes(positive, negative, 'project')
   const trees = asTrees(positive)
   const absent = refuseDirLinkedOut(args.projectDir, trees, 'project', args.inputs)
@@ -1076,7 +1080,7 @@ async function scanOutputs(
   // what this returns, and `Bun.Glob.scan` walks `..` out of its cwd. Any
   // caller reaching the resolver by another route is contained.
   const contained = containedIn(args.projectDir, scanned)
-  return { files: outsideNested(args.nestedProjectDirs, contained).sort() }
+  return { files: outsideNested(args.nestedProjectDirs, contained).sort(), absent }
 }
 
 /**

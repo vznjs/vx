@@ -733,6 +733,7 @@ export interface ConfigContext extends WorkspaceHookContext {
 export interface DeclaredOutputs {
   files: readonly string[]
   workspaceFiles: readonly string[]
+  absent?: ReadonlySet<string>
 }
 == type DependencyRule (src/config.ts)
 export interface DependencyRule {
@@ -1714,6 +1715,7 @@ export interface ResolvedSandboxConfig {
 == type RunContext (src/report/summary.ts)
 export interface RunContext {
   version: string
+  workspaceRoot?: string
   packageCount: number
   runId?: string | undefined
   executorRows?: () => readonly (readonly [string, ui.Inline])[]

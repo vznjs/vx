@@ -1,11 +1,5 @@
 import path from 'node:path'
-
-/** `run.rules.dependencies`' entry, as core takes it. */
-interface DependencyRule {
-  from: string
-  allow?: string[]
-  deny?: string[]
-}
+import type { DependencyRule } from '../dependency-rules.js'
 
 const RULE_NAMES = ['@nx/enforce-module-boundaries', '@nrwl/nx/enforce-module-boundaries']
 const FLAT = ['eslint.config.mjs', 'eslint.config.js', 'eslint.config.cjs', 'eslint.config.ts']

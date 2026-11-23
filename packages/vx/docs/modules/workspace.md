@@ -906,8 +906,8 @@ plugins (`@vzn/vx-lockfile`'s `bun()`, `pnpm()`, `npm()`, `yarn()`)
 supply what the package manager installed. Used by `buildTaskGraph` to
 resolve `'^name'` edges (`directDeps`), by `workspace/filter.ts` for the
 `pkg...` / `...pkg` traversals and `--affected`'s dependents
-(`transitiveDeps` / `transitiveDependents`), and by `vx watch` to widen
-its scope to each watched project's transitive deps.
+(`depsOf` / `dependentsOf`), and by `vx watch` to widen its scope to
+the watched projects' transitive deps.
 
 ### Public surface
 
@@ -917,6 +917,8 @@ export interface PackageGraph {
   directDeps: (name: string) => string[] // immediate deps (sorted)
   transitiveDeps: (name: string) => string[] // all transitive deps
   transitiveDependents: (name: string) => string[] // all transitive dependents
+  depsOf: (names: Iterable<string>) => Set<string> // union of transitiveDeps, one walk, name order
+  dependentsOf: (names: Iterable<string>) => Set<string> // union of transitiveDependents, one walk
 }
 
 export function buildPackageGraph(
@@ -940,8 +942,11 @@ given, and no `deny` one. A selector is `tag:<glob>` or a name glob
 (`compileNameGlob`, `--filter`'s matcher).
 
 `directDeps` is the adjacency `buildTaskGraph` walks for `'^name'`
-frontier expansion; `transitiveDeps` / `transitiveDependents` serve
-`workspace/filter.ts`'s `pkg...` / `...pkg` traversals.
+frontier expansion; `depsOf` / `dependentsOf` serve
+`workspace/filter.ts`'s `pkg...` / `...pkg` traversals and a scoped
+config load: one walk from every seed. Asking each seed's closure apart
+built and listed every one (10,000 projects, a 3,334-project
+`--affected`: 12 MB of bitsets, 5.5 M names, 945 → 690 ms, #5595).
 
 ### Algorithm
 

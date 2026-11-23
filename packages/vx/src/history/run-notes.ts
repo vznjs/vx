@@ -22,6 +22,8 @@ export interface RunStep {
 /** A failed task's kept output: plain, bounded, secrets masked. */
 export interface KeptFailure {
   taskId: string
+  /** Its project's directory from the workspace root, '.' for the root: where its output's relative paths start. */
+  dir?: string
   inputMoved?: string
   output: string
   locations: readonly unknown[]
@@ -62,13 +64,14 @@ export function keepRunNotes(db: Database, runId: string, notes: RunNotes): void
     }
     if (failures.length > 0) {
       const insert = db.query(
-        `INSERT OR REPLACE INTO failures(run_id, task_id, input_moved, output, locations, sandbox_fix)
-         VALUES (?, ?, ?, ?, ?, ?)`,
+        `INSERT OR REPLACE INTO failures(run_id, task_id, dir, input_moved, output, locations, sandbox_fix)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
       )
       for (const f of failures) {
         insert.run(
           runId,
           f.taskId,
+          f.dir ?? null,
           f.inputMoved ?? null,
           f.output,
           JSON.stringify(f.locations),
@@ -100,10 +103,11 @@ export function keptWarnings(db: Database, runId: string): string[] {
 export function keptFailures(db: Database, runId: string): Map<string, KeptFailure> {
   const rows = db
     .query(
-      'SELECT task_id, input_moved, output, locations, sandbox_fix FROM failures WHERE run_id = ?',
+      'SELECT task_id, dir, input_moved, output, locations, sandbox_fix FROM failures WHERE run_id = ?',
     )
     .all(runId) as {
     task_id: string
+    dir: string | null
     input_moved: string | null
     output: string
     locations: string
@@ -113,6 +117,7 @@ export function keptFailures(db: Database, runId: string): Map<string, KeptFailu
   for (const r of rows) {
     kept.set(r.task_id, {
       taskId: r.task_id,
+      ...(r.dir !== null ? { dir: r.dir } : {}),
       ...(r.input_moved !== null ? { inputMoved: r.input_moved } : {}),
       output: r.output,
       locations: JSON.parse(r.locations) as unknown[],

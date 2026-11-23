@@ -25,6 +25,10 @@ version. `vx cache clean --older-than 7d` drops the old entries later.
 
 .vx/projects.lock is version 9 and .vx/dependencies.lock version 6. Run `vx lock` once to rewrite both.
 
+### Keep a failed task's directory in the index
+
+The local index schema is v58: it resets once, so the run history starts empty.
+
 ### Drop Cache.kept and the stampWritten memo hooks
 
 Nothing to change beyond the steps above.

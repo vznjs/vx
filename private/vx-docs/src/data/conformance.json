@@ -995,9 +995,9 @@
   "scores": {
     "vx": {
       "all": {
-        "pass": 2094,
-        "can": 2094,
-        "of": 2169
+        "pass": 2095,
+        "can": 2095,
+        "of": 2170
       },
       "correctness": {
         "pass": 1689,
@@ -1005,9 +1005,9 @@
         "of": 1756
       },
       "efficiency": {
-        "pass": 316,
-        "can": 316,
-        "of": 323
+        "pass": 317,
+        "can": 317,
+        "of": 324
       },
       "data": {
         "pass": 89,
@@ -1050,9 +1050,9 @@
         "of": 148
       },
       "outputs": {
-        "pass": 295,
-        "can": 295,
-        "of": 311
+        "pass": 296,
+        "can": 296,
+        "of": 312
       },
       "report": {
         "pass": 89,
@@ -1072,9 +1072,9 @@
     },
     "turbo": {
       "all": {
-        "pass": 1374,
-        "can": 1779,
-        "of": 2169
+        "pass": 1375,
+        "can": 1780,
+        "of": 2170
       },
       "correctness": {
         "pass": 1108,
@@ -1082,9 +1082,9 @@
         "of": 1756
       },
       "efficiency": {
-        "pass": 236,
-        "can": 307,
-        "of": 323
+        "pass": 237,
+        "can": 308,
+        "of": 324
       },
       "data": {
         "pass": 30,
@@ -1127,9 +1127,9 @@
         "of": 148
       },
       "outputs": {
-        "pass": 232,
-        "can": 298,
-        "of": 311
+        "pass": 233,
+        "can": 299,
+        "of": 312
       },
       "report": {
         "pass": 30,
@@ -1149,9 +1149,9 @@
     },
     "nx": {
       "all": {
-        "pass": 1375,
-        "can": 1814,
-        "of": 2169
+        "pass": 1376,
+        "can": 1815,
+        "of": 2170
       },
       "correctness": {
         "pass": 1068,
@@ -1159,9 +1159,9 @@
         "of": 1756
       },
       "efficiency": {
-        "pass": 277,
-        "can": 317,
-        "of": 323
+        "pass": 278,
+        "can": 318,
+        "of": 324
       },
       "data": {
         "pass": 30,
@@ -1204,9 +1204,9 @@
         "of": 148
       },
       "outputs": {
-        "pass": 222,
-        "can": 298,
-        "of": 311
+        "pass": 223,
+        "can": 299,
+        "of": 312
       },
       "report": {
         "pass": 30,
@@ -1226,9 +1226,9 @@
     },
     "vite-task": {
       "all": {
-        "pass": 1014,
-        "can": 1373,
-        "of": 2169
+        "pass": 1015,
+        "can": 1374,
+        "of": 2170
       },
       "correctness": {
         "pass": 855,
@@ -1236,9 +1236,9 @@
         "of": 1756
       },
       "efficiency": {
-        "pass": 150,
-        "can": 206,
-        "of": 323
+        "pass": 151,
+        "can": 207,
+        "of": 324
       },
       "data": {
         "pass": 9,
@@ -1281,9 +1281,9 @@
         "of": 148
       },
       "outputs": {
-        "pass": 204,
-        "can": 298,
-        "of": 311
+        "pass": 205,
+        "can": 299,
+        "of": 312
       },
       "report": {
         "pass": 9,
@@ -1303,9 +1303,9 @@
     },
     "nix": {
       "all": {
-        "pass": 1082,
-        "can": 1363,
-        "of": 2169
+        "pass": 1083,
+        "can": 1364,
+        "of": 2170
       },
       "correctness": {
         "pass": 928,
@@ -1313,9 +1313,9 @@
         "of": 1756
       },
       "efficiency": {
-        "pass": 144,
-        "can": 180,
-        "of": 323
+        "pass": 145,
+        "can": 181,
+        "of": 324
       },
       "data": {
         "pass": 10,
@@ -1358,9 +1358,9 @@
         "of": 148
       },
       "outputs": {
-        "pass": 230,
-        "can": 305,
-        "of": 311
+        "pass": 231,
+        "can": 306,
+        "of": 312
       },
       "report": {
         "pass": 10,
@@ -1380,9 +1380,9 @@
     },
     "moon": {
       "all": {
-        "pass": 1267,
-        "can": 1717,
-        "of": 2169
+        "pass": 1268,
+        "can": 1718,
+        "of": 2170
       },
       "correctness": {
         "pass": 1002,
@@ -1390,9 +1390,9 @@
         "of": 1756
       },
       "efficiency": {
-        "pass": 230,
-        "can": 276,
-        "of": 323
+        "pass": 231,
+        "can": 277,
+        "of": 324
       },
       "data": {
         "pass": 35,
@@ -1435,9 +1435,9 @@
         "of": 148
       },
       "outputs": {
-        "pass": 189,
-        "can": 301,
-        "of": 311
+        "pass": 190,
+        "can": 302,
+        "of": 312
       },
       "report": {
         "pass": 35,
@@ -9978,6 +9978,37 @@
           "status": "fail",
           "step": 4,
           "detail": "packages/a/src/routeTree.gen.txt is \"a.tsx\\n\", expected \"a.tsx\\nb.tsx\\n\""
+        }
+      }
+    },
+    {
+      "id": "outputs/committed-output-rewritten-each-run-still-replays",
+      "ref": "2nop2h",
+      "category": "outputs",
+      "kind": "efficiency",
+      "title": "A build that writes a fresh committed source map every run is replayed when nothing changed",
+      "why": "Many repos commit their build output, and some builds stamp it, like a source map with a build id. Keyed by the bytes on disk, each run’s own rewrite changes the next run’s key, so the build never replays though no source changed. Keyed by the version git holds, the second run is a replay, and an edit the user commits still moves the key.",
+      "from": [
+        "stale-hit-committed-output"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
         }
       }
     },

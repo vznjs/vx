@@ -56,6 +56,12 @@ export interface TaskBlockBody {
    */
   droppedStdout?: number
   droppedStderr?: number
+  /**
+   * Where the command ran, relative to the workspace root, before its `$`:
+   * a task names paths from its own directory, so a reader elsewhere (an
+   * agent at the root) opened the wrong file. '' or absent: the root.
+   */
+  dir?: string
 }
 
 export function formatTaskBlock(
@@ -89,7 +95,8 @@ export function formatTaskBlock(
   if (forceCommand || ranCommand(outcome)) {
     // No section label for the command (owner cut it) — the dim `$ `
     // line under the header reads as the command on its own.
-    lines.push('', corner(`$ ${shownCommand(node, forwardArgs)}`), '')
+    const at = body.dir === undefined || body.dir === '' ? '' : `${body.dir} `
+    lines.push('', corner(`${at}$ ${shownCommand(node, forwardArgs)}`), '')
   }
 
   const isFile = links && outcome.status === 'failed' ? fileMemo() : undefined
@@ -106,7 +113,7 @@ export function formatTaskBlock(
   lines.push(...violationSection(outcome, colors))
 
   lines.push(
-    `${corner('└─')} ${mark}${idPainted}${whereNote(outcome, colors)} ${corner('──')}${closeTail(node, outcome, colors)}`,
+    `${corner('└─')} ${mark}${idPainted}${whereNote(outcome, colors)} ${corner('──')}${closeTail(node, outcome, colors, false)}`,
     '',
   )
   // Not `+ '\n'`: a rope over a 100 MB frame was flattened into a copy.
@@ -341,21 +348,94 @@ export function formatTaskRow(
     CACHE_COL - Math.max(0, status.length - STATUS_COL),
     colors,
   )
-  const usual =
-    cells.usual === undefined || cells.usual.text === '' ? unknownUsual(colors) : cells.usual
-  const us = `${pad(USUAL_COL - usual.text.length)}${usual.painted}`
-  const cpu = cells.cpu == null ? UNKNOWN : `${Math.round(cells.cpu * 100)}%`
-  const mem = cells.memBytes == null ? UNKNOWN : formatSize(cells.memBytes)
-  const out = cells.outputBytes == null ? UNKNOWN : formatSize(cells.outputBytes)
-  const blocks = cells.blocks || UNKNOWN
-  const worker = workerName(cells.worker || UNKNOWN)
-  return (
-    `${ROW_LEAD}${st} ${ca} ${us} ${timeCell(ms, colors)} ` +
-    `${right(cpu, CPU_COL, colors)} ${right(mem, MEM_COL, colors)} ${right(out, OUT_COL, colors)} ` +
-    `${pad(BLOCKED_COL - blocks.length)}${paint(blocks === '0' || blocks === UNKNOWN ? 'muted' : 'value', blocks, colors)} ` +
-    `${placeCell(worker, colors)}${pad(WORKER_COL - worker.length)} ` +
-    `${cells.critical === true ? paint('warn', CRITICAL_MARK, colors) : ' '} ${paintedId}`
-  )
+  const shown = gridOf(colors)
+  let row = `${ROW_LEAD}${st} ${ca} `
+  if (shown.usual) {
+    const usual =
+      cells.usual === undefined || cells.usual.text === '' ? unknownUsual(colors) : cells.usual
+    row += `${pad(USUAL_COL - usual.text.length)}${usual.painted} `
+  }
+  row += `${timeCell(ms, colors)} `
+  if (shown.cpu)
+    row += `${right(cells.cpu == null ? UNKNOWN : `${Math.round(cells.cpu * 100)}%`, CPU_COL, colors)} `
+  if (shown.mem)
+    row += `${right(cells.memBytes == null ? UNKNOWN : formatSize(cells.memBytes), MEM_COL, colors)} `
+  if (shown.outputs)
+    row += `${right(cells.outputBytes == null ? UNKNOWN : formatSize(cells.outputBytes), OUT_COL, colors)} `
+  if (shown.blocks) {
+    const blocks = cells.blocks || UNKNOWN
+    row += `${pad(BLOCKED_COL - blocks.length)}${paint(blocks === '0' || blocks === UNKNOWN ? 'muted' : 'value', blocks, colors)} `
+  }
+  if (shown.worker) {
+    const worker = workerName(cells.worker || UNKNOWN)
+    row += `${placeCell(worker, colors)}${pad(WORKER_COL - worker.length)} `
+  }
+  return `${row}${cells.critical === true ? paint('warn', CRITICAL_MARK, colors) : ' '} ${paintedId}`
+}
+
+/** The grid's optional columns, each shown or left out. */
+interface Grid {
+  readonly usual: boolean
+  readonly cpu: boolean
+  readonly mem: boolean
+  readonly outputs: boolean
+  readonly blocks: boolean
+  readonly worker: boolean
+}
+
+const FULL_GRID: Grid = {
+  usual: true,
+  cpu: true,
+  mem: true,
+  outputs: true,
+  blocks: true,
+  worker: true,
+}
+
+// What a narrowing terminal gives up first: an 80-column one wrapped every
+// row and the header, the task's name on a line of its own. Status, cache
+// and time always stay.
+const DROP_ORDER: readonly (keyof Grid)[] = ['blocks', 'outputs', 'worker', 'cpu', 'mem', 'usual']
+const COL_WIDTH: Record<keyof Grid, number> = {
+  usual: USUAL_COL + 1,
+  cpu: CPU_COL + 1,
+  mem: MEM_COL + 1,
+  outputs: OUT_COL + 1,
+  blocks: BLOCKED_COL + 1,
+  worker: WORKER_COL + 1,
+}
+/** What a name gets before its row wraps: most ids fit. */
+const NAME_ROOM = 24
+const FULL_ROW =
+  GUTTER +
+  STATUS_COL +
+  1 +
+  CACHE_COL +
+  1 +
+  TIME_COL +
+  1 +
+  2 +
+  Object.values(COL_WIDTH).reduce((a, b) => a + b, 0)
+
+// One grid per width: thousands of rows ask it.
+const grids = new Map<number, Grid>()
+
+/** The columns a terminal `colors.columns` wide shows; every one off a terminal. */
+function gridOf(colors: ColorSupport): Grid {
+  const columns = colors.columns
+  if (columns === undefined || columns >= FULL_ROW + NAME_ROOM) return FULL_GRID
+  let grid = grids.get(columns)
+  if (grid === undefined) {
+    const shown = { ...FULL_GRID }
+    let width = FULL_ROW
+    for (const col of DROP_ORDER) {
+      if (width + NAME_ROOM <= columns) break
+      shown[col] = false
+      width -= COL_WIDTH[col]
+    }
+    grids.set(columns, (grid = shown))
+  }
+  return grid
 }
 
 /** A cell with nothing in it: unknown, or not applying to the row (a hit ran nothing). */
@@ -468,11 +548,16 @@ export function formatRunningHeader(colors: ColorSupport = NO_COLOR): string {
 }
 
 function header(usual: string, colors: ColorSupport): string {
-  const head =
-    `${'status'.padEnd(STATUS_COL)} ${'cache'.padEnd(CACHE_COL)} ${usual.padStart(USUAL_COL)} ` +
-    `${'time'.padStart(TIME_COL)} ${'cpu'.padStart(CPU_COL)} ` +
-    `${'mem'.padStart(MEM_COL)} ${'outputs'.padStart(OUT_COL)} ${'blocks'.padStart(BLOCKED_COL)} ${'worker'.padEnd(WORKER_COL)}   task`
-  return paint('muted', head, colors)
+  const shown = gridOf(colors)
+  let head = `${'status'.padEnd(STATUS_COL)} ${'cache'.padEnd(CACHE_COL)} `
+  if (shown.usual) head += `${usual.padStart(USUAL_COL)} `
+  head += `${'time'.padStart(TIME_COL)} `
+  if (shown.cpu) head += `${'cpu'.padStart(CPU_COL)} `
+  if (shown.mem) head += `${'mem'.padStart(MEM_COL)} `
+  if (shown.outputs) head += `${'outputs'.padStart(OUT_COL)} `
+  if (shown.blocks) head += `${'blocks'.padStart(BLOCKED_COL)} `
+  if (shown.worker) head += `${'worker'.padEnd(WORKER_COL)} `
+  return paint('muted', `${head}  task`, colors)
 }
 
 /**
@@ -865,10 +950,11 @@ export function formatFrameClose(
   node: TaskNode,
   outcome: TaskOutcome,
   colors: ColorSupport = NO_COLOR,
+  kept = false,
 ): string {
   const corner = (t: string) => paint('muted', t, colors)
   const mark = persistentMark(node, colors)
-  const close = `${corner('└─')} ${mark}${paintTaskId(node, colors, { bold: true })}${whereNote(outcome, colors)} ${corner('──')}${closeTail(node, outcome, colors)}`
+  const close = `${corner('└─')} ${mark}${paintTaskId(node, colors, { bold: true })}${whereNote(outcome, colors)} ${corner('──')}${closeTail(node, outcome, colors, kept)}`
   const violations = violationSection(outcome, colors)
   return violations.length === 0 ? close : `${violations.join('\n')}\n${close}`
 }
@@ -895,9 +981,10 @@ function serving(node: TaskNode, o: TaskOutcome): boolean {
   )
 }
 
-/** The frame's close after its id: ` (<dur>) <status>`, or `running` for a ready server. */
-function closeTail(node: TaskNode, o: TaskOutcome, colors: ColorSupport): string {
+/** The frame's close after its id: ` (<dur>) <status>`, `running` for a ready server, `still running` for a kept one. */
+function closeTail(node: TaskNode, o: TaskOutcome, colors: ColorSupport, kept: boolean): string {
   if (!serving(node, o)) return formatBlockFooter(o, colors)
+  if (kept) return ` ${paint('info', 'still running', colors)}`
   return ` ${paint('muted', `(${formatElapsed(o.durationMs)})`, colors)} ${paint('info', 'running', colors)}`
 }
 

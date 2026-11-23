@@ -5,6 +5,7 @@ package.json
 src/adopt.ts
 src/adoption-plugin.ts
 src/bin.ts
+src/dependency-rules.ts
 src/dotenv-probe.ts
 src/glob-grammar.ts
 src/index.ts

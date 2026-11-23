@@ -42,6 +42,7 @@ import {
   tailText,
   type Tail,
   envFlagOn,
+  relPosix,
 } from '../util/index.js'
 import * as ui from '../ui/index.js'
 import {
@@ -133,6 +134,8 @@ export interface DefaultLogger extends Logger {
   forecast(graph: () => Forecast, load: () => Promise<Forecast>): void
   /** Draw no live region until the returned release: a prompt waits on the terminal. */
   holdStatus(): () => void
+  /** `vx watch` kept this server up from the cycle before: its frame closes `still running`. */
+  serverKept(id: string): void
 }
 
 /**
@@ -254,6 +257,7 @@ export function defaultLogger(
   // apart; interleaved chunks are reordered. Held as string[] joined on flush:
   // `+=` is O(N²).
   const outputBuffers = new Map<string, OutputChunk[]>()
+  const keptServers = new Set<string>()
   // Blocks are blank-line-delimited on both sides, so raw frame content never
   // touches a one-liner. A block leaves its trailing blank; a one-liner or
   // streamed output since needs a leading one.
@@ -639,12 +643,21 @@ export function defaultLogger(
   }
   // The open panel: rows of one kind share one box (Tasks on the log's stream,
   // Warnings on stderr); anything else closes it and the next row reopens it.
-  // Painted, a box; plain on a terminal, a rule and header; piped, bare rows.
+  // Painted, a box; plain on a terminal, a rule and header; piped, the
+  // header once over bare rows: an agent reads a pipe, and `28B  3` with no
+  // column names said nothing.
   const panels = colors.enabled || writer.enabled
   let panelOpen: 'Tasks' | 'Warnings' | undefined
   let inPanel = false
+  let pipeHeaded = false
   const emitRow = (line: string): void => {
     if (!panels) {
+      // A run's rows: a bare logger (an embedder's, a test's) and a watch
+      // cycle (no footer, its rows its whole report) print only rows.
+      if (!pipeHeaded && runContext !== undefined && opts.footer !== false) {
+        pipeHeaded = true
+        emitLine(ui.panelTop('Tasks', colors, undefined, undefined, formatListHeader(colors)))
+      }
       emitLine(line)
       return
     }
@@ -696,6 +709,12 @@ export function defaultLogger(
     (framesTerminal && holdsTerminal(node)) ||
     (view.mode === 'focused' && isPrimary(node) && !isGroupTask(node) && requestedCount <= 1)
 
+  // A frame's `$` line names the task's directory; a run with no root (a
+  // test's bare logger) names none.
+  const where = (node: TaskNode): { dir?: string } => {
+    const root = runContext?.workspaceRoot
+    return root === undefined ? {} : { dir: relPosix(root, node.projectDir) }
+  }
   // How many tasks are downstream of each: every results row's `blocks`.
   const blocksOf = (id: string): number | undefined => runContext?.blocks?.().get(id)
   // A row's usual time: null for a task history never timed, undefined with no history to ask.
@@ -852,6 +871,7 @@ export function defaultLogger(
       refresh(true)
     },
     holdStatus: () => writer.hold(),
+    serverKept: (id) => void keptServers.add(id),
     forecast(graph, load) {
       if (statusDead || forecastTimer !== null) return
       graphForecast = graph
@@ -969,7 +989,7 @@ export function defaultLogger(
         formatTaskBlock(
           node,
           outcome,
-          { output, ...dropped },
+          { output, ...dropped, ...where(node) },
           colors,
           forceCommand,
           forwardArgs,
@@ -1082,7 +1102,7 @@ export function defaultLogger(
       }
       if (isGroupTask(node)) return
       if (holdsTerminal(node) && streamsLive(node) && outcome.status !== 'skipped') {
-        emitFrameClose(formatFrameClose(node, outcome, colors))
+        emitFrameClose(formatFrameClose(node, outcome, colors, keptServers.delete(node.id)))
         return
       }
       const isHit = isCacheHit(outcome.status)
@@ -1134,7 +1154,7 @@ export function defaultLogger(
             if (streamsLive(node)) {
               // Single requested task: output streamed live between the
               // frame-open and this close, for every outcome, hits included.
-              emitFrameClose(formatFrameClose(node, outcome, colors))
+              emitFrameClose(formatFrameClose(node, outcome, colors, keptServers.delete(node.id)))
               return
             }
             // Several requested tasks: no live frame (it would interleave).

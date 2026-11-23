@@ -17,7 +17,7 @@ import {
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, describe, expect, it } from 'bun:test'
-import { localVx, retierJit, upgradesOnlyItself } from '../src/handoff.js'
+import { localVx, RETIER_LOCK_BYTES, retierJit, upgradesOnlyItself } from '../src/handoff.js'
 
 const LAUNCHER = path.resolve(import.meta.dir, '..', 'npm-launcher.sh')
 const HANDOFF = path.resolve(import.meta.dir, '..', 'src', 'handoff.ts')
@@ -389,22 +389,38 @@ describe('the compiled binary hands off', () => {
 })
 
 // A compiled vx restarts a run with JSC's top JIT tier off (its compiles
-// never paid back within a run), once, and keeps the option and its mark
-// out of every process it starts. Driven through `bun run`: the restart
-// execs this Bun with the argv it was given.
+// never paid back within a run), once, in a workspace whose lock is big
+// enough for the tier to matter, and keeps the option and its mark out of
+// every process it starts. Driven through `bun run`: the restart execs this
+// Bun with the argv it was given.
 describe('retierJit', () => {
   const printer = path.join(root, 'print-env.ts')
   writeFileSync(
     printer,
     `console.log(JSON.stringify([process.env.BUN_JSC_useFTLJIT ?? null, process.env.VX_JIT_TIERED ?? null]))\n`,
   )
-  const restart = (env: Record<string, string>, compiled = true): string => {
+  const workspace = (name: string, lockBytes: number): string => {
+    const dir = path.join(root, name)
+    mkdirSync(path.join(dir, '.vx'), { recursive: true })
+    writeFileSync(path.join(dir, '.vx', 'workspace.ts'), 'export default {}\n')
+    writeFileSync(path.join(dir, '.vx', 'projects.lock'), 'x'.repeat(lockBytes))
+    return dir
+  }
+  const big = workspace('retier-big', RETIER_LOCK_BYTES)
+  const small = workspace('retier-small', RETIER_LOCK_BYTES - 1)
+  const restart = (
+    env: Record<string, string>,
+    compiled = true,
+    verb = 'run',
+    cwd = big,
+  ): string => {
     const p = Bun.spawnSync({
       cmd: [
         process.execPath,
         '-e',
-        `const { retierJit } = await import(${JSON.stringify(HANDOFF)}); retierJit(['run', ${JSON.stringify(printer)}], ${compiled}); console.log('not restarted')`,
+        `const { retierJit } = await import(${JSON.stringify(HANDOFF)}); await retierJit([${JSON.stringify(verb)}, ${JSON.stringify(printer)}], ${compiled}); console.log('not restarted')`,
       ],
+      cwd,
       env: { PATH: process.env['PATH'] ?? '', ...env },
       stdout: 'pipe',
       stderr: 'pipe',
@@ -419,23 +435,24 @@ describe('retierJit', () => {
   it('leaves alone one the user set, a source run and a verb that runs no tasks', () => {
     expect(restart({ BUN_JSC_useFTLJIT: 'true' })).toBe('not restarted')
     expect(restart({}, false)).toBe('not restarted')
-    const p = Bun.spawnSync({
-      cmd: [
-        process.execPath,
-        '-e',
-        `const { retierJit } = await import(${JSON.stringify(HANDOFF)}); retierJit(['show'], true); console.log('not restarted')`,
-      ],
-      stdout: 'pipe',
-    })
-    expect(p.stdout.toString().trim()).toBe('not restarted')
+    expect(restart({}, true, 'show')).toBe('not restarted')
   })
 
-  it('once restarted, takes the option and its mark out of the environment', () => {
+  // A short run never reaches the tier: its restart was ~6 ms of a
+  // 100-project nothing-changed run's 70.
+  it('leaves alone a run in a workspace whose lock is under the size, or with none', () => {
+    expect(restart({}, true, 'run', small)).toBe('not restarted')
+    expect(restart({}, true, 'run', mkdtempSync(path.join(os.tmpdir(), 'vx-no-ws-')))).toBe(
+      'not restarted',
+    )
+  })
+
+  it('once restarted, takes the option and its mark out of the environment', async () => {
     const was = [process.env['BUN_JSC_useFTLJIT'], process.env['VX_JIT_TIERED']] as const
     try {
       process.env['BUN_JSC_useFTLJIT'] = 'false'
       process.env['VX_JIT_TIERED'] = '1'
-      retierJit(['run'], true)
+      await retierJit(['run'], true)
       expect('BUN_JSC_useFTLJIT' in process.env || 'VX_JIT_TIERED' in process.env).toBe(false)
     } finally {
       if (was[0] !== undefined) process.env['BUN_JSC_useFTLJIT'] = was[0]

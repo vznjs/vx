@@ -56,6 +56,7 @@ export interface DefaultLogger extends Logger {
   readonly showsSteps: boolean // only where the live region draws; else run() times no step
   forecast(graph: () => Forecast, load: () => Promise<Forecast | undefined>): void // `graph` (no history) at the first free row; `load` only if the live region is still up 1 s in
   holdStatus(): () => void // no live region until the release: a secret prompt waits on the terminal
+  serverKept(id): void // `vx watch` kept this server up: its frame closes `still running`
 }
 
 export function defaultLogger(
@@ -400,6 +401,7 @@ export interface TaskBlockBody {
   output?: readonly OutputChunk[] // in the order written, under `├─ OUTPUT ──…`
   droppedStdout?: number // chars a bounded (persistent) capture dropped from the head
   droppedStderr?: number
+  dir?: string // the task's directory from the workspace root, before its `$` (none: the root)
 }
 
 export function formatTaskBlock(
@@ -469,7 +471,7 @@ export function unknownUsual(colors?): { text; painted }
 
 // Focused mode's live frame around a streamed task
 export function formatFrameOpen(node, colors?, forwardArgs?): string // `┌─ <id> > $ <cmd>`
-export function formatFrameClose(node, outcome, colors?): string
+export function formatFrameClose(node, outcome, colors?, kept?): string // kept: `still running`
 // A held persistent task's output since ready; '' for an empty body
 export function formatPersistentTailBlock(
   node,
@@ -605,6 +607,7 @@ export function cacheBucketOf(o: TaskOutcome): CacheBucket | undefined
 
 export interface RunContext {
   version: string
+  workspaceRoot?: string // a frame names its task's directory from it
   packageCount: number // projects with a task to run → the bar's "in run" half
   runId?: string | undefined // the whole id `vx last` takes (info row)
   executorRows?: () => readonly (readonly [string, ui.Inline])[] // executors' footer rows
