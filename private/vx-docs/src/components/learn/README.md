@@ -144,6 +144,10 @@ From `packages/vx` (pins that quote the site):
 GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 bun test tests/site-*.unsafe.test.ts tests/doc-references*.test.ts tests/schema-doc*.test.ts tests/config-levels-doc.test.ts
 ```
 
+A test file you touch also passes the type-aware lint (`bun test` cannot
+see a type error): from the repo root,
+`node_modules/.bin/oxlint --type-aware --type-check <file>`.
+
 A pin that quotes text you moved into a `<Deeper>` still passes: the
 text is on the page. A pin that quotes text you rewrote fails: update the pin
 only if the new text says the same true thing.
