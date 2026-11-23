@@ -184,6 +184,10 @@ export function hashFileSeen(
 // asks `hashFile` for it, and the error is that call's.
 export function hashFilesOf(memo: TaskMemo, files: readonly string[]): Promise<Map<string, string>>
 
+// How long `vx cache clean` keeps history rows (prune.ts): `history.retention`
+// (`VX_HISTORY_RETENTION`), 30 days by default. The clean line names it.
+export function historyRetentionMs(): number
+
 // What a symlinked directory input keys (linked-inputs.ts): every regular
 // file and link under `dir`, relative and sorted, `.git`, `node_modules`,
 // `.vx/cache` and `.yarn/cache` skipped. `vx watch` judges a change behind
