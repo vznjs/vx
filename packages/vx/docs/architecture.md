@@ -262,8 +262,8 @@ Additional subscribers attach without touching the producer: plugins,
 telemetry, any surface a caller wires up through `RunOptions.bus`, and
 `wireForwarder` — which projects events into the serializable
 `WireEvent` form (ids + decimal-string
-ns instead of live node refs and bigints) for anything crossing a
-process or socket.
+ns instead of live node refs and bigints, and `run:start` without the
+footer's live context) for anything crossing a process or socket.
 
 ### The cache cluster (`src/cache/`)
 

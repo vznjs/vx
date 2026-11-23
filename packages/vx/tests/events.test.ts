@@ -477,6 +477,30 @@ describe('toWireEvent', () => {
     }
   })
 
+  // The run's footer context holds live functions and maps: on the wire,
+  // `structuredClone` threw and a `vx last --live --follow` line printed
+  // the renderer's internals.
+  it('run:start carries the counts, not the footer context', () => {
+    const info = {
+      total: 2,
+      concurrency: 4,
+      requestedCount: 1,
+      startedAtMs: 7,
+      context: {
+        version: '0',
+        packageCount: 1,
+        remoteCacheEnabled: false,
+        blocks: () => new Map(),
+      },
+    }
+    const wire = toWireEvent({ kind: 'run:start', info })
+    expect(wire).toEqual({
+      kind: 'run:start',
+      info: { total: 2, concurrency: 4, requestedCount: 1, startedAtMs: 7 },
+    })
+    expect(() => structuredClone(wire)).not.toThrow()
+  })
+
   it('carries the TaskView on task:start and ids/views elsewhere', () => {
     const node = mkNode({ id: 'a#build', command: 'x' })
     const start = toWireEvent({ kind: 'run:start', info: { total: 1 } })

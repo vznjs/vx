@@ -495,7 +495,7 @@ export function projectOutcome(outcome: TaskOutcome): OutcomeView {
  * task events reference the id, which the consumer already holds.
  */
 export type WireEvent =
-  | { kind: 'run:start'; info: RunStartInfo }
+  | { kind: 'run:start'; info: Omit<RunStartInfo, 'context'> }
   | { kind: 'task:start'; task: TaskView }
   | { kind: 'task:stdout'; taskId: string; chunk: string }
   | { kind: 'task:stderr'; taskId: string; chunk: string }
@@ -513,8 +513,11 @@ export type WireEvent =
 /** Map an in-process event to its serializable wire form. */
 export function toWireEvent(event: RunEvent): WireEvent {
   switch (event.kind) {
-    case 'run:start':
-      return { kind: 'run:start', info: event.info }
+    case 'run:start': {
+      // `context` is the footer's live state (functions, maps), not data.
+      const { context: _, ...info } = event.info
+      return { kind: 'run:start', info }
+    }
     case 'task:start':
       return { kind: 'task:start', task: projectNode(event.node) }
     case 'task:stdout':
