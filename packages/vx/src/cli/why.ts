@@ -14,6 +14,7 @@ import {
   diffsOlderRun,
   expandHits,
   explainCacheKey,
+  getInvocation,
   inputWriters,
   latestRunId,
   LocalHistoryProvider,
@@ -315,8 +316,11 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
 
     const why = whyDidThisRerun(db, runId, taskId)
     if (!why.found) {
+      // A run with no header was stopped: `vx last RUNID` refuses it.
       throw new UserError(
-        `vx why: run ${runId} has no row for ${taskId}; \`vx last --list\` shows the recorded runs, \`vx last RUNID\` what one ran`,
+        getInvocation(db, runId) === null
+          ? `vx why: run ${runId} was stopped before ${taskId} ended, so vx kept no row for it`
+          : `vx why: run ${runId} has no row for ${taskId}; \`vx last --list\` shows the recorded runs, \`vx last RUNID\` what one ran`,
         'VX_E_NO_HISTORY',
       )
     }
