@@ -315,7 +315,6 @@ function printPruned(
   )
 }
 
-/** `✓ vx cache clean freed 1.3 GB`, `› … would free 1.3 GB (dry run)`, or nothing to free. */
 /** `history.retention` as its setting reads: `30 days`, `12 hours`, `45 seconds`. */
 function retention(ms: number): string {
   for (const [unit, size] of [
@@ -329,6 +328,7 @@ function retention(ms: number): string {
   return `${ms} ms`
 }
 
+/** `✓ vx cache clean freed 1.3 GB`, `› … would free 1.3 GB (dry run)`, or nothing to free. */
 function freedStatus(dry: boolean, bytes: number, any: boolean): ui.Block {
   if (!any) return ui.status('info', 'vx cache clean', `nothing to free${dry ? ' (dry run)' : ''}`)
   return dry
