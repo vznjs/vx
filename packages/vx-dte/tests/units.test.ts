@@ -1077,14 +1077,29 @@ async function harness(
     /** Sizes the plan may ask, each ask started through `spawn`. */
     sizes?: PlannerSize[]
     spawn?: (size: string) => string
+    /** Awaited before each send of the orchestrator's: a slow relay. */
+    sending?: (to: string, body: unknown) => Promise<void>
   } = {},
 ) {
   const store = fakeArtifacts()
   const cache: { facts: CacheFacts } = { facts: { refs: [], lent: {} } }
   const served = servedRelay(heartbeatMs === undefined ? {} : { heartbeatMs })
   const url = served.url
+  const me = await join(url, R, 'orchestrator', null, undefined)
+  const { sending } = more
   const o = new Orchestrator({
-    me: await join(url, R, 'orchestrator', null, undefined),
+    me:
+      sending === undefined
+        ? me
+        : new Proxy(me, {
+            get: (t, k) =>
+              k === 'send'
+                ? async (to: string, body: unknown) => {
+                    await sending(to, body)
+                    return t.send(to, body)
+                  }
+                : Reflect.get(t, k),
+          }),
     root: '/ws',
     tree: 'c',
     nodes: () => nodes,
@@ -1995,6 +2010,52 @@ for (const how of ['fails', 'is stopped'] as const)
       await h.stop()
     }
   })
+
+// A worker lost while a batch of several parts went out: a later part's
+// number was set on a task already sent again to another worker, so that
+// worker's report no longer showed the task gone, and it waited on it.
+it('a task sent again while its lost worker’s batch goes out keeps its new worker’s batch', async () => {
+  let held: Promise<void> | undefined
+  let slow = ''
+  const h = await harness(
+    new Map([node('t0'), node('t1'), node('t2')]),
+    undefined,
+    400,
+    undefined,
+    undefined,
+    {
+      sending: async (to, body) => {
+        if (to === slow && (body as { n?: number }).n === 2) await held
+      },
+    },
+  )
+  try {
+    const a = await h.worker(2)
+    slow = a.id
+    await Bun.sleep(50)
+    void h.o.execute(h.req('t0'))
+    expect(await a.batches()).toEqual([['t0']])
+    await a.finish('t0')
+    await Bun.sleep(50)
+    let release = () => {}
+    held = new Promise((r) => (release = r))
+    // Two orders past one frame: two parts, a's batches 2 and 3, the first held.
+    const big = { BIG: 'x'.repeat(300 * 1024) }
+    for (const id of ['t1', 't2']) void h.o.execute({ ...h.req(id), env: big })
+    await Bun.sleep(100)
+    h.o.failed('worker#1', 'exited 137')
+    const b = await h.worker(2)
+    expect([...(await b.batches()), ...(await b.batches())]).toEqual([['t1'], ['t2']])
+    release()
+    await Bun.sleep(100)
+    // b read both of its batches and runs t1 alone: t2 goes back at once.
+    await b.say({ type: 'report', running: ['t1'], batch: 2, load: { cpu: 0, memory: 0 } })
+    for (let i = 0; i < 20 && h.o.where('t2') !== null; i++) await Bun.sleep(25)
+    expect(h.o.where('t2')).toBeNull()
+  } finally {
+    await h.stop()
+  }
+})
 
 // Growth, 2026-10-21: four local() workers of 1 core on a 4-core host each
 // reported the host and took 4 tasks plus a prefetch, 16 wide on 4 cores.

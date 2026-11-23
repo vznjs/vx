@@ -323,10 +323,7 @@ export class Orchestrator extends RunReport<Worker> {
   private readonly deps = new WeakMap<ReadonlyMap<string, TaskNode>, Map<string, DepFiles | null>>()
   /** Each graph's tasks' uncached upstreams, whose files lie on one worker only (`pinUp`). */
   /** Each graph's dependants of each task, walked once (`skipped`). */
-  private readonly dependants = new WeakMap<
-    ReadonlyMap<string, TaskNode>,
-    Map<string, string[]>
-  >()
+  private readonly dependants = new WeakMap<ReadonlyMap<string, TaskNode>, Map<string, string[]>>()
   private readonly afterUncached = new WeakMap<
     ReadonlyMap<string, TaskNode>,
     Map<string, readonly string[]>
@@ -1401,7 +1398,8 @@ export class Orchestrator extends RunReport<Worker> {
             bytes += bytesOf(alone)
           }
           const n = ++a.batches
-          for (const { job } of part) job.batch = n
+          // One its worker's loss put back may be another's by now, under that one's batch.
+          for (const { job } of part) if (a.busy.get(job.req.taskId) === job) job.batch = n
           const batch = {
             type: 'batch',
             n,
