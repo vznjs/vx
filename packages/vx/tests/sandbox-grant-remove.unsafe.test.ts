@@ -9,8 +9,10 @@ import {
   existsSync,
   lstatSync,
   mkdirSync,
+  mkdtempSync,
   readdirSync,
   realpathSync,
+  rmSync,
   statSync,
 } from 'node:fs'
 import os from 'node:os'
@@ -228,18 +230,30 @@ describe.skipIf(!available || process.platform !== 'linux')(
 
     it('never puts a link the task made in its place on the host', async () => {
       const dir = await app('rm -rf dist && ln -s /etc dist', "'dist/'", owned)
-      const logs = () =>
-        existsSync(taskTmpRoot())
-          ? readdirSync(taskTmpRoot()).filter((n) => n.startsWith('vx-strace-'))
-          : []
-      const before = logs()
-      const r = await runVx({ cwd: root, tasks: ['t'], log: quiet })
-      expect([r.outcomes[0]?.status, lstatSync(path.join(dir, 'dist')).isDirectory()]).toEqual([
-        'failed',
-        true,
-      ])
-      // The failed restore let the attempt's trace log go too (2026-11-23).
-      expect(logs().filter((n) => !before.includes(n))).toEqual([])
+      // A temp root of its own: the shared one takes every other test
+      // process's trace logs, and one written beside this run read as its
+      // leak under load (2026-11-23).
+      const own = mkdtempSync(path.join(os.tmpdir(), 'vx-grant-rm-'))
+      const previous = process.env['CLAUDE_CODE_TMPDIR']
+      process.env['CLAUDE_CODE_TMPDIR'] = own
+      try {
+        const logs = () =>
+          existsSync(taskTmpRoot())
+            ? readdirSync(taskTmpRoot()).filter((n) => n.startsWith('vx-strace-'))
+            : []
+        const r = await runVx({ cwd: root, tasks: ['t'], log: quiet })
+        expect([r.outcomes[0]?.status, lstatSync(path.join(dir, 'dist')).isDirectory()]).toEqual([
+          'failed',
+          true,
+        ])
+        // The failed restore let the attempt's trace log go too (2026-11-23),
+        // from the root the run used.
+        expect([existsSync(taskTmpRoot()), logs()]).toEqual([true, []])
+      } finally {
+        if (previous === undefined) delete process.env['CLAUDE_CODE_TMPDIR']
+        else process.env['CLAUDE_CODE_TMPDIR'] = previous
+        rmSync(own, { recursive: true, force: true })
+      }
     }, 30_000)
 
     // A run killed between the restore's two renames left the host's
