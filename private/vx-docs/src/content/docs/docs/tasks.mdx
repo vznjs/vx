@@ -16,8 +16,8 @@ import { Levels, Deeper, Concept, Quiz, Takeaway, NextStep } from '../../../comp
 import { TaskGraph, GlobTester, ConfigExplorer } from '../../../components/play'
 import ErrorFinder from '../../../components/docs/troubleshooting/ErrorFinder.astro'
 
-Your two projects, `@demo/ui` and `@demo/web`, have no tasks yet. By the
-end of this page they lint, build in order, and skip work already done.
+`@demo/web` has the quickstart's `build`; `@demo/ui` has no tasks yet. By
+the end of this page they lint, build in order, and skip work already done.
 
 ```ts title="packages/ui/vx.config.ts"
 import { defineProject } from '@vzn/vx/config'
@@ -41,7 +41,13 @@ export default defineProject({
 ## 1. Run a command
 
 The task's name is `lint`; `exec.command` is what runs, from the project's
-folder. Run it in every project that has it:
+folder. Install `oxlint` at the root, run `vx lock`, then run `lint` in every
+project that has it:
+
+```sh
+bun add -d oxlint
+vx lock
+```
 
 ```ansi
 [2m$[0m vx run lint --all
