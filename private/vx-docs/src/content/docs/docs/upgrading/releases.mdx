@@ -18,6 +18,14 @@ Pick the vx you run, from `vx --version`. The list keeps only the releases after
 
 <Deeper level="details" title="In the next release">
 
+### Duplicate names, an empty deny and hook returns fail
+
+`vx lock` refuses a name listed twice in `inputs.env`, `exec.env.passThrough`, `exec.env.secret` or `tags`. Keep one of each.
+
+`vx lock` refuses a dependency rule whose only list is `deny: []`, which checked nothing. Delete the rule.
+
+A plugin's `setup` that returns a value (a disposer such as `return () => close()`) fails, and a `teardown` that returns one is warned. Close it in `teardown` and return nothing.
+
 ### A blank readyWhen is refused at vx lock
 
 `vx lock` refuses `exec.persistent.readyWhen: ''`, which matched any line. Omit `readyWhen` to be ready once the task starts.
