@@ -1787,7 +1787,8 @@ export interface Pipeline {
   outputLogs?: 'full' | 'errors-only' | 'hash-only' | 'none'
   verbosity?: number
   profile?: boolean | string
-  dry?: boolean | 'pretty' | 'json'
+  dry?: boolean
+  format?: 'pretty' | 'json'
 }
 ```
 
