@@ -65,7 +65,7 @@ describe.skipIf(ZSH === null)('zsh', () => {
   it('autoloaded from $fpath, the first call completes a verb and a flag', async () => {
     const verb = await zshCalls('autoload', ['vx', 'ca'], 'auto-verb')
     const flag = await zshCalls('autoload', ['vx', 'run', '--conc'], 'auto-flag')
-    expect([verb.length, verb[0]!.startsWith('compadd -- run watch cache')]).toEqual([1, true])
+    expect(verb).toEqual([`compadd -- ${CORE_VERBS.join(' ')}`])
     expect([flag.length, flag[0]!.split(' ').includes('--concurrency')]).toEqual([1, true])
   })
 
