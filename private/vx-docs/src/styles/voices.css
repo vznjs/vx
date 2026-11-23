@@ -109,3 +109,22 @@
     padding-left: 140px;
   }
 }
+
+/* The light theme: ink cards on paper, each still tinted by its voice. */
+:root[data-theme='light'] .bubble-in {
+  background: color-mix(in srgb, var(--tint, var(--tone-core)) 8%, #ffffff);
+  box-shadow: 0 10px 30px -18px color-mix(in srgb, var(--tint, var(--tone-core)) 60%, transparent);
+}
+:root[data-theme='light'] .bubble-in blockquote {
+  color: #14171b;
+}
+:root[data-theme='light'] .bubble-in figcaption,
+:root[data-theme='light'] .say-src {
+  color: #5b635f;
+}
+:root[data-theme='light'] .bubble-in figcaption strong {
+  color: #333b44;
+}
+:root[data-theme='light'] .say-src {
+  background: rgba(20, 23, 27, 0.05);
+}

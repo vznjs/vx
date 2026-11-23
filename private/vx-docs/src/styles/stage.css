@@ -1,6 +1,7 @@
-/* The landing (2026-11-12): one dark world under a retro sunset. The hero
+/* The landing (2026-11-12): one world under a retro sunset. The hero
    is a stage (the graph, gently tilted, before a striped sun sinking into
-   an endless grid), every band below is a panel of light on black. Display type is set huge and tight; labels are mono
+   an endless grid), every band below a panel on the page (light on black,
+   or ink on paper in the light theme). Display type is set huge and tight; labels are mono
    capitals. Tones match the graph: core chartreuse, reads cyan, remotes
    orange, Distributed task execution violet, reports pink.
    Motion lives in .js / .play, which only scripts set. */
@@ -20,7 +21,139 @@
   --hair: rgba(148, 170, 200, 0.14);
   --nav-h: var(--sl-nav-height, 4rem);
   background: var(--void);
+  /* Every other colour the stage paints: the dark theme's here, the light
+     theme's below. The terminal keeps its dark screen in both. */
+  --st-haze: 148 170 200;
+  --st-lime: 198 248 78;
+  --st-grid: 120 245 150;
+  --st-cyan: 94 224 255;
+  --st-glass: 10 12 16;
+  --st-wire: rgba(160, 190, 220, 0.28);
+  --st-sky-1: #040b08;
+  --st-sky-2: #07170f;
+  --st-sky-3: #0d2e1c;
+  --st-sky-4: #17502d;
+  --st-sky-horizon: #1d5a32;
+  --st-floor: #030805;
+  --st-floor-2: #020503;
+  --st-star: rgba(236, 255, 240, 0.5);
+  --st-horizon: rgba(210, 255, 170, 0.9);
+  --st-hi: #f2f5ef;
+  --st-hi2: #f5f8f0;
+  --st-hi3: #fff;
+  --st-tx1: #dfe6da;
+  --st-tx2: #dbe8de;
+  --st-tx3: #e7ede2;
+  --st-tx4: #d3dbcf;
+  --st-tx5: #d7e2cf;
+  --st-tx6: #c3ccbf;
+  --st-mut1: #aeb8ad;
+  --st-mut2: #9aa59a;
+  --st-mut3: #8b938f;
+  --st-mut4: #7f8a85;
+  --st-faint1: #838b87;
+  --st-faint2: #838b87;
+  --st-on-core: #14210a;
+  --st-node: #0d1016;
+  --st-void2: #05060a;
+  --st-chip: #0e1309;
+  --st-chip2: #151a12;
+  --st-slot: #0b0d12;
+  --st-dial: #080b0e;
+  --st-dot: #c9d2dc;
+  --st-bad: #ff5d5d;
+  --st-bad-text: #ff7b7b;
+  --st-spark: #f4ffd6;
+  --st-crit-edge: #6f8f22;
+  --st-dte-bg: #3b2d63;
+  --st-dte-fg: #f2ecff;
+  --st-dte-edge: #22193d;
+  --st-dte-mut: #b9b0cf;
+  --st-warm-bg: #4a2e10;
+  --st-warm-fg: #ffe2c2;
+  --st-warm-edge: #2a1a08;
+  --st-idle-bg: #1c2127;
+  --st-idle-line: #39424c;
+  --st-idle-edge: #101317;
+  --st-dte-label: #ece6ff;
+  --st-dte-label2: #f6f2ff;
 }
+:root[data-theme='light'] .vx-stage-page {
+  --tone-core: #4d7a00;
+  --tone-read: #066586;
+  --tone-remote: #c25e00;
+  --tone-dte: #6f42e0;
+  --tone-report: #c42a78;
+  --sun-1: #8fbf00;
+  --sun-2: #4d9a1a;
+  --sun-3: #12a37a;
+  --sun-4: #0a8fb8;
+  --void: #fbfcf9;
+  --panel: rgba(255, 255, 255, 0.82);
+  --hair: rgba(60, 75, 90, 0.18);
+  --st-haze: 70 85 100;
+  --st-lime: 98 150 10;
+  --st-grid: 40 150 85;
+  --st-cyan: 10 126 164;
+  --st-glass: 255 255 255;
+  --st-wire: rgba(60, 80, 100, 0.32);
+  --st-sky-1: #f6fbf1;
+  --st-sky-2: #eaf6e2;
+  --st-sky-3: #d4efd8;
+  --st-sky-4: #b9e6c6;
+  --st-sky-horizon: #a6dfb8;
+  --st-floor: #eef6ea;
+  --st-floor-2: #f6faf3;
+  --st-star: rgba(60, 120, 80, 0.35);
+  --st-horizon: rgba(60, 140, 40, 0.8);
+  --st-hi: #14171b;
+  --st-hi2: #14171b;
+  --st-hi3: #0a0b0d;
+  --st-tx1: #333b44;
+  --st-tx2: #333b44;
+  --st-tx3: #262c33;
+  --st-tx4: #333b44;
+  --st-tx5: #333b44;
+  --st-tx6: #3d454d;
+  --st-mut1: #4a524e;
+  --st-mut2: #525a56;
+  --st-mut3: #5b635f;
+  --st-mut4: #5b635f;
+  --st-faint1: #5f6763;
+  --st-faint2: #5f6763;
+  --st-on-core: #fbfcf9;
+  --st-node: #ffffff;
+  --st-void2: #ffffff;
+  --st-chip: #f1f6e6;
+  --st-chip2: #e5eadf;
+  --st-slot: #ffffff;
+  --st-dial: #ffffff;
+  --st-dot: #5b6672;
+  --st-bad: #d32f2f;
+  --st-bad-text: #c62828;
+  --st-spark: #4d7a00;
+  --st-crit-edge: #2e4a00;
+  --st-dte-bg: #ebe3ff;
+  --st-dte-fg: #3b2d63;
+  --st-dte-edge: #c9b8f5;
+  --st-dte-mut: #5b5378;
+  --st-warm-bg: #ffe8cc;
+  --st-warm-fg: #6b3a00;
+  --st-warm-edge: #f0c48f;
+  --st-idle-bg: #eef1ea;
+  --st-idle-line: #cfd6c9;
+  --st-idle-edge: #cfd6c9;
+  --st-dte-label: #3b2d63;
+  --st-dte-label2: #2a1f4a;
+}
+/* The terminal is a dark screen in both themes, in vx's own colours. */
+:root[data-theme='light'] .vx-stage-page .term {
+  --tone-core: #c6f84e;
+  --tone-read: #5ee0ff;
+  --tone-remote: #ff9d42;
+  --tone-report: #f472b6;
+}
+
 .vx-stage-page .tone-core {
   --tone: var(--tone-core);
 }
@@ -39,6 +172,9 @@
 :root:has(.vx-stage-page) header.header {
   background: #040b08;
 }
+:root[data-theme='light']:has(.vx-stage-page) header.header {
+  background: #f6fbf1;
+}
 
 /* Display type shared by the hero and every band. */
 .vx-stage-page h1,
@@ -48,7 +184,7 @@
   letter-spacing: -0.055em;
   line-height: 0.92;
   text-wrap: balance;
-  color: #f5f8f0;
+  color: var(--st-hi2);
 }
 .vx-stage-page h1 em,
 .vx-stage-page h2 em {
@@ -77,12 +213,12 @@
 .stage {
   position: relative;
   background: linear-gradient(
-    #040b08 0%,
-    #07170f 30%,
-    #0d2e1c 52%,
-    #17502d 58%,
-    #030805 58.2%,
-    #020503 100%
+    var(--st-sky-1) 0%,
+    var(--st-sky-2) 30%,
+    var(--st-sky-3) 52%,
+    var(--st-sky-4) 58%,
+    var(--st-floor) 58.2%,
+    var(--st-floor-2) 100%
   );
 }
 .stage-pin {
@@ -98,8 +234,8 @@
   position: absolute;
   inset: 40% -50% -20%;
   background-image:
-    linear-gradient(rgba(120, 245, 150, 0.3) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(120, 245, 150, 0.3) 1px, transparent 1px);
+    linear-gradient(rgb(var(--st-grid) / 0.3) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(var(--st-grid) / 0.3) 1px, transparent 1px);
   background-size: 64px 64px;
   transform: perspective(500px) rotateX(62deg);
   transform-origin: 50% 0;
@@ -166,8 +302,8 @@
   padding: 5px 14px 5px 5px;
   border: 1px solid var(--hair);
   border-radius: 999px;
-  background: rgba(10, 12, 16, 0.6);
-  color: #dfe6da;
+  background: rgb(var(--st-glass) / 0.6);
+  color: var(--st-tx1);
   font: 500 13px/1.2 var(--font-body);
   text-decoration: none;
 }
@@ -178,7 +314,7 @@
   padding: 3px 9px;
   border-radius: 999px;
   background: var(--tone-core);
-  color: #14210a;
+  color: var(--st-on-core);
   font: 700 11px/1 var(--font-mono);
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -210,7 +346,7 @@
   max-width: 34em;
   margin: 28px 0 0;
   font: 400 clamp(17px, 1.6vw, 21px) / 1.5 var(--font-body);
-  color: #dbe8de;
+  color: var(--st-tx2);
 }
 .stage-actions {
   display: flex;
@@ -228,8 +364,8 @@
 }
 .vx-stage-page .btn-ghost {
   border-color: var(--hair);
-  background: rgba(10, 12, 16, 0.5);
-  color: #e7ede2;
+  background: rgb(var(--st-glass) / 0.5);
+  color: var(--st-tx3);
 }
 .vx-stage-page .install-pill {
   height: 48px;
@@ -237,12 +373,12 @@
   padding: 0 18px;
   border-radius: 8px;
   border: 1px solid color-mix(in srgb, var(--tone-core) 45%, transparent);
-  background: rgba(12, 16, 10, 0.75);
+  background: rgb(var(--st-glass) / 0.75);
   box-shadow:
-    0 0 0 1px rgba(198, 248, 78, 0.05),
-    0 0 32px -10px rgba(198, 248, 78, 0.45);
+    0 0 0 1px rgb(var(--st-lime) / 0.05),
+    0 0 32px -10px rgb(var(--st-lime) / 0.45);
   font: 500 15px var(--font-mono);
-  color: #f2f5ef;
+  color: var(--st-hi);
   cursor: pointer;
 }
 .vx-stage-page .install-pill .dollar {
@@ -289,7 +425,7 @@
   font: 500 12px/1.3 var(--font-mono);
   text-transform: uppercase;
   letter-spacing: 0.12em;
-  color: #7f8a85;
+  color: var(--st-mut4);
 }
 
 /* the graph's world */
@@ -322,7 +458,7 @@
 }
 .map-svg .wire {
   fill: none;
-  stroke: rgba(160, 190, 220, 0.28);
+  stroke: var(--st-wire);
   stroke-width: 1.6;
   transition:
     stroke 0.35s,
@@ -353,11 +489,11 @@
   stroke: var(--tone-report);
 }
 .map-svg .node .edge {
-  fill: color-mix(in srgb, var(--tone) 30%, #05060a);
+  fill: color-mix(in srgb, var(--tone) 30%, var(--st-void2));
   stroke: none;
 }
 .map-svg .node .face {
-  fill: #0d1016;
+  fill: var(--st-node);
   stroke: color-mix(in srgb, var(--tone) 55%, transparent);
   stroke-width: 1.4;
   transition:
@@ -366,19 +502,19 @@
 }
 .map-svg .node-label {
   font: 600 15px var(--font-body);
-  fill: #f2f5ef;
+  fill: var(--st-hi);
 }
 .map-svg .node-sub {
   font: 400 11.5px var(--font-mono);
-  fill: #7f8a85;
+  fill: var(--st-mut4);
   transition: fill 0.35s;
 }
 .map-svg .node.on .face {
-  fill: color-mix(in srgb, var(--tone) 16%, #0d1016);
+  fill: color-mix(in srgb, var(--tone) 16%, var(--st-node));
   stroke: var(--tone);
 }
 .map-svg .node.on .edge {
-  fill: color-mix(in srgb, var(--tone) 55%, #05060a);
+  fill: color-mix(in srgb, var(--tone) 55%, var(--st-void2));
 }
 .map-svg .node.on .node-sub {
   fill: var(--tone);
@@ -393,7 +529,7 @@
 .map-svg .core .face {
   stroke: var(--tone-core);
   stroke-width: 2;
-  fill: #0e1309;
+  fill: var(--st-chip);
 }
 .map-svg .core-label {
   font: 700 50px var(--font-display);
@@ -402,24 +538,24 @@
 }
 .map-svg .core-sub {
   font: 400 13px var(--font-mono);
-  fill: #8b938f;
+  fill: var(--st-mut3);
 }
 .map-svg .chip rect {
-  fill: #151a12;
-  stroke: rgba(198, 248, 78, 0.25);
+  fill: var(--st-chip2);
+  stroke: rgb(var(--st-lime) / 0.25);
   stroke-width: 1;
   transition: fill 0.2s;
 }
 .map-svg .chip-title {
   font: 700 11px var(--font-body);
-  fill: #d7e2cf;
+  fill: var(--st-tx5);
 }
 .map-svg .chip.on rect {
   fill: var(--tone-core);
   stroke: var(--tone-core);
 }
 .map-svg .chip.on text {
-  fill: #14210a;
+  fill: var(--st-on-core);
 }
 .map-svg .core-clock {
   font: 500 12px var(--font-mono);
@@ -427,10 +563,10 @@
 }
 /* The workers' slots: always drawn, grey while no worker holds one. */
 .map-svg .slot-edge {
-  fill: color-mix(in srgb, var(--tone-dte) 30%, #05060a);
+  fill: color-mix(in srgb, var(--tone-dte) 30%, var(--st-void2));
 }
 .map-svg .slot-face {
-  fill: #0d1016;
+  fill: var(--st-node);
   stroke: color-mix(in srgb, var(--tone-dte) 55%, transparent);
   stroke-width: 1.2;
 }
@@ -439,7 +575,7 @@
 }
 .map-svg .slot-name {
   font: 600 12.5px var(--font-body);
-  fill: #ece6ff;
+  fill: var(--st-dte-label);
 }
 .map-svg .slot-state {
   font: 500 11px var(--font-mono);
@@ -465,7 +601,7 @@
   opacity: 0.6;
 }
 .map-svg .bar-face {
-  fill: color-mix(in srgb, var(--tone-dte) 30%, #0b0d12);
+  fill: color-mix(in srgb, var(--tone-dte) 30%, var(--st-slot));
   stroke: var(--tone-dte);
   stroke-width: 1;
 }
@@ -474,7 +610,7 @@
 }
 .map-svg .bar-label {
   font: 600 10.5px var(--font-mono);
-  fill: #f6f2ff;
+  fill: var(--st-dte-label2);
 }
 /* the story: at rest a list of the six hook groups */
 .stage-story {
@@ -488,7 +624,7 @@
   font: 500 12px var(--font-mono);
   letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: #7f8a85;
+  color: var(--st-mut4);
 }
 .story-steps {
   display: grid;
@@ -508,14 +644,14 @@
   letter-spacing: 0.1em;
 }
 .story-n .of {
-  color: #5b635f;
+  color: var(--st-faint2);
 }
 .story-title {
   display: block;
   margin-top: 4px;
   font: 700 22px/1.1 var(--font-display);
   letter-spacing: -0.03em;
-  color: #f2f5ef;
+  color: var(--st-hi);
 }
 .story-hooks {
   display: flex;
@@ -532,7 +668,7 @@
 .story-steps p {
   margin: 6px 0 0;
   font: 400 15px/1.5 var(--font-body);
-  color: #aeb8ad;
+  color: var(--st-mut1);
 }
 .story-rail,
 .stage-hint {
@@ -586,7 +722,7 @@
   border: 1px solid color-mix(in srgb, var(--tone) 40%, transparent);
   border-left: 3px solid var(--tone);
   border-radius: 10px;
-  background: rgba(8, 10, 14, 0.92);
+  background: rgb(var(--st-glass) / 0.92);
 }
 .stage.js .story-steps li.on {
   visibility: visible;
@@ -597,7 +733,7 @@
 }
 .stage.js .story-steps p {
   font-size: clamp(15px, 1.3vw, 18px);
-  color: #d3dbcf;
+  color: var(--st-tx4);
 }
 @keyframes step-in {
   from {
@@ -615,7 +751,7 @@
   width: 26px;
   height: 6px;
   border-radius: 3px;
-  background: rgba(148, 170, 200, 0.22);
+  background: rgb(var(--st-haze) / 0.22);
   transition: background 0.3s;
 }
 .story-rail button.on {
@@ -668,8 +804,8 @@
   position: absolute;
   inset: 0;
   background-image:
-    linear-gradient(rgba(94, 224, 255, 0.045) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(94, 224, 255, 0.045) 1px, transparent 1px);
+    linear-gradient(rgb(var(--st-cyan) / 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(var(--st-cyan) / 0.045) 1px, transparent 1px);
   background-size: 56px 56px;
   mask-image: radial-gradient(ellipse 70% 60% at 50% 40%, #000, transparent);
   pointer-events: none;
@@ -690,7 +826,7 @@
   max-width: 36em;
   margin: 24px 0 0;
   font: 400 clamp(16px, 1.5vw, 20px) / 1.5 var(--font-body);
-  color: #aeb8ad;
+  color: var(--st-mut1);
 }
 .band-sub code,
 .vows code {
@@ -705,13 +841,13 @@
   text-decoration: none;
 }
 .band-link:hover {
-  color: #fff;
+  color: var(--st-hi3);
 }
 .fine {
   max-width: 900px;
   margin: 10px 0 0;
   font: 400 12.5px/1.5 var(--font-mono);
-  color: #69726d;
+  color: var(--st-faint1);
 }
 
 /* ---- proof: the scoreboard ---- */
@@ -727,7 +863,7 @@
   font: 700 clamp(96px, 11vw, 196px) / 0.82 var(--font-display);
   letter-spacing: -0.07em;
   color: var(--tone-core);
-  text-shadow: 0 0 60px rgba(198, 248, 78, 0.35);
+  text-shadow: 0 0 60px rgb(var(--st-lime) / 0.35);
   font-variant-numeric: tabular-nums;
 }
 .score-big span {
@@ -736,7 +872,7 @@
   font: 500 14px var(--font-mono);
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: #9aa59a;
+  color: var(--st-mut2);
 }
 /* One row of every tool. The rows are shared (subgrid), so a name that wraps
    or vx's bigger percent never makes one bar shorter than the others. Inside
@@ -764,18 +900,18 @@
   align-self: end;
   font: 700 22px / 1 var(--font-display);
   letter-spacing: -0.03em;
-  color: #c3ccbf;
+  color: var(--st-tx6);
   font-variant-numeric: tabular-nums;
 }
 .col-pct small {
   font: 500 11px var(--font-body);
   letter-spacing: 0;
-  color: #8b938f;
+  color: var(--st-mut3);
 }
 .col-bar {
   position: relative;
   border-radius: 6px;
-  background: linear-gradient(rgba(148, 170, 200, 0.08), rgba(148, 170, 200, 0.02));
+  background: linear-gradient(rgb(var(--st-haze) / 0.08), rgb(var(--st-haze) / 0.02));
   border: 1px solid var(--hair);
   overflow: hidden;
 }
@@ -818,7 +954,7 @@
 }
 .col-name {
   font: 600 13px var(--font-body);
-  color: #dfe6da;
+  color: var(--st-tx1);
   overflow-wrap: anywhere;
 }
 .columns .vx .col-pct {
@@ -826,15 +962,15 @@
   font-size: 28px;
 }
 .columns .vx .col-bar {
-  border-color: rgba(198, 248, 78, 0.45);
+  border-color: rgb(var(--st-lime) / 0.45);
 }
 .columns .vx .col-can {
-  background: rgba(198, 248, 78, 0.16);
-  border-top-color: rgba(198, 248, 78, 0.7);
+  background: rgb(var(--st-lime) / 0.16);
+  border-top-color: rgb(var(--st-lime) / 0.7);
 }
 .columns .vx .col-pass {
-  background: linear-gradient(to top, rgba(198, 248, 78, 0.55), var(--tone-core));
-  box-shadow: 0 0 30px rgba(198, 248, 78, 0.5);
+  background: linear-gradient(to top, rgb(var(--st-lime) / 0.55), var(--tone-core));
+  box-shadow: 0 0 30px rgb(var(--st-lime) / 0.5);
 }
 .columns .vx .col-name {
   color: var(--tone-core);
@@ -877,14 +1013,14 @@
   border-radius: 12px;
   background: var(--panel);
   font: 400 15px/1.5 var(--font-body);
-  color: #aeb8ad;
+  color: var(--st-mut1);
   scroll-margin-top: calc(var(--nav-h) + 24px);
 }
 .vows strong {
   display: block;
   margin-bottom: 4px;
   font: 700 18px var(--font-display);
-  color: #f2f5ef;
+  color: var(--st-hi);
   letter-spacing: -0.02em;
 }
 
@@ -903,7 +1039,7 @@
   font: 500 12px var(--font-mono);
   letter-spacing: 0.16em;
   text-transform: uppercase;
-  color: #8b938f;
+  color: var(--st-mut3);
 }
 .lane {
   display: grid;
@@ -916,7 +1052,7 @@
 .lane-laps {
   font: 600 11px var(--font-mono);
   white-space: nowrap;
-  color: #69726d;
+  color: var(--st-faint1);
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
@@ -925,7 +1061,7 @@
 }
 .lane-name {
   font: 600 13px var(--font-body);
-  color: #9aa59a;
+  color: var(--st-mut2);
 }
 /* The ratio to the row's fastest, never a time (times move every run), and
    under it the lap count. */
@@ -936,7 +1072,7 @@
   line-height: 1.15;
   font-family: var(--font-mono);
   white-space: nowrap;
-  color: #9aa59a;
+  color: var(--st-mut2);
   font-variant-numeric: tabular-nums;
 }
 .lane-value b {
@@ -944,7 +1080,7 @@
   font-weight: 700;
 }
 .lane.best:not(.vx) .lane-value b {
-  color: #f2f5ef;
+  color: var(--st-hi);
 }
 .lane-track {
   position: relative;
@@ -961,7 +1097,7 @@
   transform: translateY(-50%);
   transform-origin: left;
   border-radius: 2px;
-  background: linear-gradient(90deg, transparent, rgba(148, 170, 200, 0.55));
+  background: linear-gradient(90deg, transparent, rgb(var(--st-haze) / 0.55));
 }
 .streak::after {
   content: '';
@@ -972,7 +1108,7 @@
   height: 7px;
   border-radius: 50%;
   transform: translateY(-50%);
-  background: #c9d2dc;
+  background: var(--st-dot);
 }
 .lane.vx .lane-name,
 .lane.vx .lane-value {
@@ -992,7 +1128,7 @@
   position: absolute;
   inset: 0;
   --tail-from: calc(100% - var(--tail) * 1%);
-  background: linear-gradient(90deg, transparent var(--tail-from), rgba(148, 170, 200, 0.5)) center
+  background: linear-gradient(90deg, transparent var(--tail-from), rgb(var(--st-haze) / 0.5)) center
     / 100% 3px no-repeat;
   transform: translateX(-100%);
 }
@@ -1005,7 +1141,7 @@
   height: 7px;
   border-radius: 50%;
   transform: translateY(-50%);
-  background: #c9d2dc;
+  background: var(--st-dot);
 }
 .runner::before {
   content: '';
@@ -1038,7 +1174,7 @@
   --cell-gap: 2px;
   position: absolute;
   inset: 4px 0;
-  background: rgba(148, 170, 200, 0.1);
+  background: rgb(var(--st-haze) / 0.1);
   mask:
     linear-gradient(90deg, #000 calc(100% - var(--cell-gap)), transparent 0) 0 0 /
       calc(100% / var(--cols)) 100%,
@@ -1046,11 +1182,11 @@
   mask-composite: intersect;
 }
 .cells.fire {
-  background: linear-gradient(90deg, #c9d2dc 0 14%, #ffc24d 34%, #ff8a3d 60%, #ff4b4b 100%);
+  background: linear-gradient(90deg, var(--st-dot) 0 14%, #ffc24d 34%, #ff8a3d 60%, #ff4b4b 100%);
 }
 .lane.vx .cells.fire {
   background: var(--tone-core);
-  filter: drop-shadow(0 0 6px rgba(198, 248, 78, 0.6));
+  filter: drop-shadow(0 0 6px rgb(var(--st-lime) / 0.6));
 }
 /* Set by the race's own script the first time it runs, so the runners
    never show without the clock that moves them. */
@@ -1086,7 +1222,7 @@
   border-bottom: 2px solid transparent;
   background: none;
   font: 600 13px var(--font-mono);
-  color: #7f8a85;
+  color: var(--st-mut4);
   cursor: pointer;
   transition: color 0.3s;
 }
@@ -1107,7 +1243,7 @@
   gap: 10px;
   min-width: 0;
   padding: 26px 26px 24px;
-  background: #080b0e;
+  background: var(--st-dial);
 }
 .dial-wide {
   grid-column: span 2;
@@ -1116,12 +1252,12 @@
   font: 500 11px var(--font-mono);
   letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: #7f8a85;
+  color: var(--st-mut4);
 }
 .dial strong {
   font: 700 clamp(30px, 3.6vw, 52px) / 1 var(--font-display);
   letter-spacing: -0.04em;
-  color: #f5f8f0;
+  color: var(--st-hi2);
   font-variant-numeric: tabular-nums;
 }
 .dial-wide strong {
@@ -1130,11 +1266,11 @@
 .dial strong small {
   font: 500 14px var(--font-mono);
   letter-spacing: 0;
-  color: #9aa59a;
+  color: var(--st-mut2);
 }
 .dial-s {
   font: 400 13px/1.4 var(--font-mono);
-  color: #8b938f;
+  color: var(--st-mut3);
 }
 .dial-s b {
   font-weight: 600;
@@ -1161,7 +1297,7 @@
   border: 1px solid var(--hair);
   border-radius: 12px;
   font: 400 14px/1.45 var(--font-body);
-  color: #aeb8ad;
+  color: var(--st-mut1);
   text-decoration: none;
   transition: border-color 0.3s;
 }
@@ -1208,13 +1344,13 @@
   font: 500 11px var(--font-mono);
   letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: #7f8a85;
+  color: var(--st-mut4);
 }
 .hop-slot {
   display: block;
   height: 46px;
   border-radius: 8px;
-  background: rgba(148, 170, 200, 0.06);
+  background: rgb(var(--st-haze) / 0.06);
 }
 .hop-task {
   position: relative;
@@ -1225,7 +1361,7 @@
   border-radius: 8px;
   overflow: hidden;
   font: 600 14px var(--font-mono);
-  color: #f5f8f0;
+  color: var(--st-hi2);
   isolation: isolate;
   transition: opacity 0.3s;
 }
@@ -1236,10 +1372,10 @@
   transition: background 0.3s;
 }
 .hop-from .hop-task i {
-  background: color-mix(in srgb, #ff5d5d 34%, #0d1016);
+  background: color-mix(in srgb, var(--st-bad) 34%, var(--st-node));
 }
 .hop-to .hop-task i {
-  background: color-mix(in srgb, var(--tone-core) 30%, #0d1016);
+  background: color-mix(in srgb, var(--tone-core) 30%, var(--st-node));
 }
 .hop-mark {
   font: 600 13px var(--font-mono);
@@ -1253,7 +1389,7 @@
   color: var(--tone-read);
 }
 .hop-from .hop-mark {
-  color: #ff7b7b;
+  color: var(--st-bad-text);
 }
 .hop-to .hop-mark {
   color: var(--tone-core);
@@ -1263,7 +1399,7 @@
   height: 2px;
   background: repeating-linear-gradient(
     90deg,
-    rgba(148, 170, 200, 0.4) 0 6px,
+    rgb(var(--st-haze) / 0.4) 0 6px,
     transparent 6px 12px
   );
 }
@@ -1275,15 +1411,15 @@
   height: 10px;
   margin: -5px 0 0 -5px;
   border-radius: 50%;
-  background: #f4ffd6;
-  box-shadow: 0 0 14px 4px rgba(198, 248, 78, 0.8);
+  background: var(--st-spark);
+  box-shadow: 0 0 14px 4px rgb(var(--st-lime) / 0.8);
   opacity: 0;
 }
 /* Played: 0 runs on worker 1, 1 fails, 2 runs on worker 2, 3 passes. A
    running task is a whole block: nobody knows how far along it is. */
 .band.play .hop[data-at='0'] .hop-from .hop-task i,
 .band.play .hop[data-at='2'] .hop-to .hop-task i {
-  background: color-mix(in srgb, var(--tone-read) 26%, #0d1016);
+  background: color-mix(in srgb, var(--tone-read) 26%, var(--st-node));
 }
 .band.play .hop[data-at='0'] .hop-from .hop-run,
 .band.play .hop[data-at='2'] .hop-to .hop-run {
@@ -1301,7 +1437,7 @@
 }
 .band.play .hop[data-at='1'] .hop-from,
 .band.play .hop[data-at='2'] .hop-from {
-  border-color: #ff5d5d;
+  border-color: var(--st-bad);
 }
 .band.play .hop[data-at='2'] .hop-arc span {
   left: 100%;
@@ -1315,7 +1451,7 @@
 }
 .band.play .hop[data-at='3'] .hop-to {
   border-color: var(--tone-core);
-  box-shadow: 0 0 40px -12px rgba(198, 248, 78, 0.6);
+  box-shadow: 0 0 40px -12px rgb(var(--st-lime) / 0.6);
 }
 @media (max-width: 720px) {
   .hop {
@@ -1325,7 +1461,7 @@
     width: 2px;
     height: 40px;
     margin: 0 auto;
-    background: repeating-linear-gradient(rgba(148, 170, 200, 0.4) 0 6px, transparent 6px 12px);
+    background: repeating-linear-gradient(rgb(var(--st-haze) / 0.4) 0 6px, transparent 6px 12px);
   }
   .hop-arc span {
     display: none;
@@ -1385,11 +1521,11 @@
 .dte-who strong {
   display: block;
   font: 600 14px var(--font-body);
-  color: #f2f5ef;
+  color: var(--st-hi);
 }
 .dte-who span {
   font: 400 12px var(--font-mono);
-  color: #69726d;
+  color: var(--st-faint1);
 }
 .dte-track {
   position: relative;
@@ -1397,7 +1533,7 @@
   border-radius: 8px;
   background: repeating-linear-gradient(
     90deg,
-    rgba(148, 170, 200, 0.07) 0 1px,
+    rgb(var(--st-haze) / 0.07) 0 1px,
     transparent 1px 10%
   );
 }
@@ -1422,16 +1558,16 @@
 }
 .dte-crit {
   background: var(--tone-core);
-  color: #14210a;
+  color: var(--st-on-core);
   box-shadow:
-    0 4px 0 #6f8f22,
-    0 0 24px -2px rgba(198, 248, 78, 0.7);
+    0 4px 0 var(--st-crit-edge),
+    0 0 24px -2px rgb(var(--st-lime) / 0.7);
 }
 .dte-task {
-  background: #3b2d63;
+  background: var(--st-dte-bg);
   border: 1px solid var(--tone-dte);
-  color: #f2ecff;
-  box-shadow: 0 4px 0 #22193d;
+  color: var(--st-dte-fg);
+  box-shadow: 0 4px 0 var(--st-dte-edge);
 }
 .dte-warm {
   background: repeating-linear-gradient(
@@ -1439,19 +1575,19 @@
     rgba(183, 148, 255, 0.45) 0 4px,
     transparent 4px 9px
   );
-  color: #b9b0cf;
+  color: var(--st-dte-mut);
 }
 .dte-hit {
-  background: #4a2e10;
+  background: var(--st-warm-bg);
   border: 1px solid var(--tone-remote);
-  color: #ffe2c2;
-  box-shadow: 0 4px 0 #2a1a08;
+  color: var(--st-warm-fg);
+  box-shadow: 0 4px 0 var(--st-warm-edge);
 }
 .dte-plan {
-  background: #1c2127;
-  border: 1px solid #39424c;
-  color: #d3dbcf;
-  box-shadow: 0 4px 0 #101317;
+  background: var(--st-idle-bg);
+  border: 1px solid var(--st-idle-line);
+  color: var(--st-tx4);
+  box-shadow: 0 4px 0 var(--st-idle-edge);
 }
 .dte-stop {
   position: absolute;
@@ -1459,7 +1595,7 @@
   bottom: 2px;
   left: calc(var(--s) * 1%);
   width: 2px;
-  background: #5b635f;
+  background: var(--st-faint2);
 }
 .dte-stop::after {
   content: 'stops';
@@ -1468,7 +1604,7 @@
   top: 50%;
   transform: translateY(-50%);
   font: 400 11px var(--font-mono);
-  color: #69726d;
+  color: var(--st-faint1);
 }
 .dte-axis {
   margin-top: 8px;
@@ -1498,7 +1634,7 @@
   padding: 0;
   list-style: none;
   font: 400 13px var(--font-mono);
-  color: #8b938f;
+  color: var(--st-mut3);
 }
 .dte-legend .sw {
   display: inline-block;
@@ -1524,13 +1660,13 @@
   background: var(--panel);
   border-radius: 0 0 10px 10px;
   font: 400 14.5px/1.5 var(--font-body);
-  color: #aeb8ad;
+  color: var(--st-mut1);
 }
 .dte-facts strong {
   display: block;
   margin-bottom: 4px;
   font: 700 17px var(--font-display);
-  color: #f2f5ef;
+  color: var(--st-hi);
 }
 .dte-run.js.go .dte-block {
   animation: draw calc((var(--e) - var(--s)) * var(--sweep) / 100) linear
@@ -1641,12 +1777,12 @@
   position: relative;
   font: 700 24px/1.1 var(--font-display);
   letter-spacing: -0.03em;
-  color: #f2f5ef;
+  color: var(--st-hi);
 }
 .part-line {
   position: relative;
   font: 400 15px/1.5 var(--font-body);
-  color: #aeb8ad;
+  color: var(--st-mut1);
 }
 .part-server {
   position: relative;
@@ -1716,7 +1852,7 @@
   border: 0;
 }
 .t-p {
-  color: #5b635f;
+  color: #838b87;
 }
 .t-c {
   color: var(--tone-core);
@@ -1726,7 +1862,7 @@
   color: var(--tone-read);
 }
 .t-d {
-  color: #6c7570;
+  color: #838b87;
 }
 .t-w {
   color: var(--tone-remote);
@@ -1777,12 +1913,12 @@
 }
 .steps-cmd code {
   font: 500 14px var(--font-mono);
-  color: #f2f5ef;
+  color: var(--st-hi);
   background: none;
 }
 .steps-cmd span {
   font: 400 14px var(--font-body);
-  color: #7f8a85;
+  color: var(--st-mut4);
 }
 .start-links {
   display: flex;

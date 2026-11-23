@@ -18,7 +18,7 @@
   --text-hi: #f2f5ef;
   --text: #cbd1c9;
   --text-mut: #8b938f;
-  --text-faint: #5b635f;
+  --text-faint: #838b87;
   --text-on-accent: #14210a;
 
   /* ---- Lines / borders ---- */
@@ -77,6 +77,43 @@
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
+/* The light theme, picked from the header or the system like every other
+   page's. */
+:root[data-theme='light']:has(.vx-landing) {
+  --ink-900: #fbfcf9;
+  --ink-850: #f3f5ef;
+  --ink-800: #ffffff;
+  --ink-700: #eef1ea;
+  --ink-600: #e5eadf;
+  --phosphor-bright: #3a5c00;
+  --phosphor: #4d7a00;
+  --phosphor-deep: #4d7a00;
+  --plasma: #066586;
+  --text-hi: #14171b;
+  --text: #333b44;
+  --text-mut: #5b635f;
+  --text-faint: #5f6763;
+  --text-on-accent: #fbfcf9;
+  --line: #dfe5d9;
+  --line-strong: #cfd6c9;
+  --line-faint: #eaeee5;
+  --glow-phosphor-sm: none;
+  --glow-phosphor: 0 2px 10px color-mix(in srgb, #4d7a00 25%, transparent);
+  --text-glow: none;
+  color-scheme: light;
+}
+:root[data-theme='light'] .vx-landing {
+  --vx-bg: #fbfcf9;
+  --vx-fg: #14171b;
+  --vx-text: #333b44;
+  --vx-muted: #5b635f;
+  --vx-surface: #f1f4ec;
+  --vx-surface-2: #e5eadf;
+  --vx-border: #cfd6c9;
+  --vx-accent: #4d7a00;
+  --vx-link: #066586;
+}
+
 /* ============================================================
    Base — scoped to the landing root
    ============================================================ */
@@ -95,7 +132,7 @@ body:has(.vx-landing) {
   overflow-x: clip;
 }
 .vx-landing {
-  /* theme.css's dark --vx-* tokens; features.css sets the light ones. */
+  /* theme.css's dark --vx-* tokens; the light ones are above. */
   --vx-bg: #0a0b0d;
   --vx-fg: #f2f5ef;
   --vx-text: #cbd1c9;

@@ -3,6 +3,7 @@
 // releases; a page with a sidebar lists the places at the head of
 // Starlight's own menu). A <details>, so it opens with no
 // script. The parent decides at which width it shows.
+import ThemeSelect from '@astrojs/starlight/components/ThemeSelect.astro'
 import { SECTIONS, type SectionId } from '../nav/sections.js'
 
 interface Props {
@@ -31,10 +32,16 @@ const base = import.meta.env.BASE_URL
       ))
     }
     <a href="https://github.com/vznjs/vx">GitHub</a>
+    <div class="vx-mm-theme"><ThemeSelect /></div>
   </nav>
 </details>
 
 <style>
+  .vx-mm-theme {
+    display: flex;
+    justify-content: flex-end;
+    padding-top: 14px;
+  }
   .vx-mm {
     position: relative;
   }

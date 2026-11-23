@@ -67,7 +67,8 @@
       fontFamily: 'inherit',
       // Charts in the site's accent on the page's own background, not
       // Mermaid's blue on a grey card.
-      themeVariables: { xyChart: chartColors(), ...pieColors() },
+      // An edge label on the dark theme's own grey read 4.4:1, under WCAG AA.
+      themeVariables: { xyChart: chartColors(), ...pieColors(), ...(dark ? { edgeLabelBackground: '#2c333b' } : {}) },
     })
 
     for (const el of blocks) {

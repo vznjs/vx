@@ -82,7 +82,7 @@ describe('code colours', () => {
           const color = new RegExp(`--${variant}:(#[0-9a-fA-F]+)`).exec(style)?.[1]
           if (color === undefined) continue
           seen++
-          const floor = hex(color).alpha < 1 ? 3 : 4.5
+          const floor = 4.5
           const ratio = contrast(color, bg)
           if (ratio < floor) {
             bad.add(
