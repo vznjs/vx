@@ -1943,9 +1943,18 @@ async function runOnBus(
       for (const line of formatOutcomeTable(list, colors)) log.status(line)
     // A stopped run keeps the tasks that ended under its id, which `vx last
     // <id> --log` and `vx why --run` open: the footer names it as any run's.
+    // One stopped before any task ended keeps nothing: its id answered "no
+    // recorded run".
+    const keptNothing =
+      stop.stoppedBy !== undefined &&
+      !list.some((o) => o.status !== 'aborted' && o.status !== 'skipped' && !isGroupTask(o.node))
     // A pipe with no colour gets no meters: their counts say it all.
     const meters = options.log !== undefined || colors.enabled || process.stdout.isTTY === true
-    const footerContext = meters ? runContext : { ...runContext, meters: false }
+    const footerContext = {
+      ...runContext,
+      ...(meters ? {} : { meters: false }),
+      ...(keptNothing ? { runId: undefined } : {}),
+    }
     if (options.footer !== false)
       for (const line of formatRunSummary(list, totalMs, colors, footerContext)) log.status(line)
 

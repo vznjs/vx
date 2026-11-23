@@ -3859,7 +3859,8 @@ still shows the run before it; nor does a `vx watch` cycle one stopped.
 Its id, which its footer, `vx why` and `vx last --log` print, works wherever
 a run id does: `vx last RUNID --log <task>` prints a task's output, `vx why
 <task> --run RUNID` explains it, and `vx last RUNID` says the run was
-stopped.
+stopped. A run stopped before any task ended keeps nothing, and its footer
+names no id.
 
 ### Usage
 
@@ -4512,8 +4513,8 @@ plugin's failed flush) gets a yellow `warn` row above `info`,
 warnings themselves are said once, where they happened. The
 `info` row ends with `run <id>`: the
 run's whole id, as `vx last <id>` takes it; a run a Ctrl-C (or
-SIGTERM, SIGHUP) stopped records no summary for `vx last <id>` to
-replay, so its footer names no id. The
+SIGTERM, SIGHUP) stopped before any task ended keeps nothing under it,
+so its footer names no id. The
 `time` row is the wall time, then the spread over executed tasks
 only — a hit's restore time never enters it. The footer never says a
 fact twice: a spread value already on the row is left out, so one
