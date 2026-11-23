@@ -31,6 +31,17 @@ it("the PR's title is a Conventional Commits header", () => {
 // subject cannot change without rewriting the branch every landed PR
 // shares (2026-10-28).
 const KNOWN = new Set([
+  // Pushed straight to the 2026-11-23 day branch: `style:` types and long subjects.
+  '5b353493c2f5fe0468d87dbf298c8c5bf04e752b',
+  '4fceceb23758d3b700b910816924f06194517068',
+  '12e1934b08add02d028fbf116e837b3b37062698',
+  '274e3b35087e6c6d83c5a52e67562cb0b38910f5',
+  'b5dd3192cda58c469001a16d391faeed199cff5f',
+  '91725cd331c7060eb78c0328d6b1ec08b46ad148',
+  'c026a4503eac598e52d8918174952ac04e5e0729',
+  'b8b079ba5caef830148eb8cc3af15f90e6db1bb7',
+  '0277876322badd54344f32624a0580a416bf65df',
+  '281f070d41f8f697e0402910dae8ebfbb3dc1117',
   // #5582's CI-fix commit, pushed before its subject was cut: 75 chars.
   '1e50db101acaa00e458c6c4aab8229645da984e7',
   // #5584's glob-read report fix, pushed before its subject was cut: 74 chars.

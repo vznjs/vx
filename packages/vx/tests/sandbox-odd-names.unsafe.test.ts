@@ -37,7 +37,10 @@ async function tree(dir: string): Promise<Record<string, string>> {
 
 describe.skipIf(!available)('a sandboxed task among odd names', () => {
   beforeAll(async () => {
-    root = await makeWorkspace({ prefix: `vx-sb odd ${NFD} [w]{s}"q-`, edges: {} })
+    // A seatbelt profile cannot spell a double quote (seatbelt.ts refuses one
+    // in a path it must name), so the Mac's root goes without it.
+    const quote = process.platform === 'darwin' ? '' : '"q'
+    root = await makeWorkspace({ prefix: `vx-sb odd ${NFD} [w]{s}${quote}-`, edges: {} })
     const files: Record<string, string> = {}
     for (const n of NAMES) files[`src/${n}`] = `v1 ${n}\n`
     const task = (command: string, outputs: string) => `{
