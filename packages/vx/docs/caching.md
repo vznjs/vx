@@ -2726,7 +2726,12 @@ moat.
   command output is resolved live at hash time, so it stays correct
   under the lock. Avoid baking versions via
   `define: { X: execSync(...) }` — that value freezes into the config
-  object at lock time and goes stale.
+  object at lock time and goes stale. The tool a command names is not
+  in the key either: one replaced at the same path, or a version
+  manager (nvm, Volta, mise) switching it, replays the old output unless a
+  probe asks it. A shim picks its version by directory, so a project
+  with its own pin probes in `runtime`, which runs in the project; a
+  `workspaceRuntime` probe runs at the root.
 - **Another language's manifests and lockfiles.** A lockfile plugin
   keys JS dependencies only; name the rest in `inputs.files`: Go's
   `go.mod` and `go.sum`, Rust's `Cargo.toml` and `Cargo.lock`, Python's
