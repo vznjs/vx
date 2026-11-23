@@ -285,7 +285,7 @@ const PROJECT_VALUES: Record<string, string> = {
   'tasks.*.exec.retries': '1',
   'tasks.*.inputs.files': "['src/**', 'vite.config.ts']",
   'tasks.*.inputs.workspaceFiles': "['.oxlintrc.json']",
-  'tasks.*.inputs.env': "['VITE_API_URL']",
+  'tasks.*.inputs.env': "['MODE']",
   'tasks.*.inputs.tasks': "['^build']",
   'tasks.*.inputs.runtime': "['bun --version']",
   'tasks.*.inputs.workspaceRuntime': "['bun --version']",
