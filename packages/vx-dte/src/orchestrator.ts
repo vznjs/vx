@@ -321,9 +321,9 @@ export class Orchestrator extends RunReport<Worker> {
   private readonly lenders = new Set<string>()
   /** Each graph's upstreams as orders name them (`dep`). */
   private readonly deps = new WeakMap<ReadonlyMap<string, TaskNode>, Map<string, DepFiles | null>>()
-  /** Each graph's tasks' uncached upstreams, whose files lie on one worker only (`pinUp`). */
   /** Each graph's dependants of each task, walked once (`skipped`). */
   private readonly dependants = new WeakMap<ReadonlyMap<string, TaskNode>, Map<string, string[]>>()
+  /** Each graph's tasks' uncached upstreams, whose files lie on one worker only (`pinUp`). */
   private readonly afterUncached = new WeakMap<
     ReadonlyMap<string, TaskNode>,
     Map<string, readonly string[]>

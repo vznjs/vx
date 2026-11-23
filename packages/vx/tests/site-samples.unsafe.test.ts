@@ -1974,7 +1974,7 @@ describe('the one-binary post says what the npm command starts', () => {
   it('the published bin is the sh launcher, and the post names its cost', () => {
     const core = path.resolve(import.meta.dir, '..')
     expect(readFileSync(path.join(core, 'scripts', 'build-npm.ts'), 'utf8')).toContain(
-      "bin: { vx: './launcher.cjs' }",
+      "bin: { vx: 'launcher.cjs' }",
     )
     expect(readFileSync(path.join(core, 'npm-launcher.sh'), 'utf8')).toStartWith('#!/bin/sh\n')
     const post = readFileSync(path.join(DOCS, 'blog', 'one-binary.md'), 'utf8').replace(/\s+/g, ' ')
