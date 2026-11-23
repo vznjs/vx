@@ -11,7 +11,10 @@ import { Levels, Deeper, Concept, Quiz, Takeaway, NextStep } from '../../../../c
 Give end-to-end tests machines of their own, while every other task shares the usual ones.
 
 ```ts
-exec: { command: 'playwright test', worker: 'e2e' }
+exec: {
+  command: 'playwright test',
+  worker: 'e2e',
+}
 ```
 
 <Levels />
@@ -25,7 +28,7 @@ exec: { command: 'playwright test', worker: 'e2e' }
 
 ## Declare a second type
 
-Add `e2e` next to `linux`. Order matters: tasks that name no type go to the **first** one that fits.
+Add `e2e` next to `linux`. Order matters: a task that names no type goes to the **first** one with a machine of its platform.
 
 ```ts title=".vx/workspace.ts" ins={4}
 dte({
@@ -41,10 +44,13 @@ dte({
 
 ## Name it on the task
 
-```ts title="apps/web/vx.config.ts" mark={3}
+```ts title="packages/web/vx.config.ts" mark={5}
 e2e: {
   dependsOn: ['build'],
-  exec: { command: 'playwright test', worker: 'e2e' },
+  exec: {
+    command: 'playwright test',
+    worker: 'e2e',
+  },
   inputs: { files: ['src/**', 'tests/**'] },
 },
 ```
@@ -63,8 +69,7 @@ Run `vx lock`, then `vx dte init` to add the new machines to `vx-worker.yml`. No
 Read the **worker** column: both builds ran on `linux.cpu4#1`, the tests on `e2e.cpu4#1`. Each worker left when its work was done.
 
 <Quiz q="You add a lint task with no exec.worker. Which machines run it?">
-  `linux`: it is listed first and fits. `e2e` only gets tasks that name it, or that no type before
-  it can take.
+  `linux`: it is listed first and runs on the same platform. `e2e` only gets tasks that name it.
 </Quiz>
 
 <Takeaway>send one task to its own machines and see it land there.</Takeaway>
@@ -77,27 +82,35 @@ Each type can run on different CI runners, with their own images and tools:
 
 ```ts title=".vx/workspace.ts"
 workers: {
+  // runsOn: a self-hosted runner label of yours
   alpine: { machines: { cpu4: { max: 8, cpu: 4, memory: '16GB', runsOn: 'alpine-4-cores' } } },
   ubuntu: { machines: { cpu4: { max: 2, cpu: 4, memory: '16GB' } } },
 },
 ```
 
-```ts title="apps/web/vx.config.ts"
+```ts title="packages/web/vx.config.ts"
 e2e: { exec: { command: 'playwright test', worker: 'ubuntu' } },
 ```
 
-### A catch-all type last
+### A type for another platform
 
-Put a big type last. It gets only what the types before it cannot take:
+A type listed later gets the tasks no type before it can run, such as tasks for macOS:
 
 ```ts
 workers: {
   linux: { machines: { cpu4: { max: 8, cpu: 4, memory: '16GB' } } },
-  big: { machines: { cpu16: { max: 1, cpu: 16, memory: '64GB', runsOn: 'ubuntu-latest-16-cores' } } },
+  mac: { machines: { m1: { max: 2, cpu: 3, memory: '7GB', platform: 'darwin-arm64' } } },
 },
 ```
 
-<Takeaway>split work by tools or by size with nothing but types and their order.</Takeaway>
+A task with `exec.platforms: ['darwin-arm64']` runs on `mac`. Every other task runs on `linux`.
+
+<Aside type="note">
+  Need bigger machines for heavy tasks? Add a size to the same type, not a new type:
+  [Give heavy tasks a bigger machine](../add-bigger-machines/).
+</Aside>
+
+<Takeaway>split work by tools or by platform with nothing but types and their order.</Takeaway>
 
 </Deeper>
 

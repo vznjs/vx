@@ -5,33 +5,48 @@ import type { Picture } from '../../guide/diagram/diagram.js'
 export const dteLocal: Picture = {
   name: 'dte-local',
   label:
-    'vx run in your shell sends tasks through a relay on this machine to two workers, each a process in its own git worktree.',
-  caption: 'Everything stays on your machine: one relay, one worktree per worker.',
-  height: 200,
+    'vx run in your shell sends tasks through a relay on this machine to two workers, each a process in its own git worktree. The workers save outputs to the cache on this machine, and vx run restores them from it.',
+  caption: 'Everything stays on your machine: one relay, one worktree per worker, one cache.',
+  height: 300,
   boxes: [
     { id: 'run', x: 10, y: 66, w: 140, label: 'vx run', sub: 'your shell' },
     { id: 'relay', x: 220, y: 66, w: 130, label: 'relay', sub: 'this machine', tone: 'accent' },
     { id: 'w1', x: 430, y: 10, w: 160, label: 'worker 1', sub: 'git worktree' },
     { id: 'w2', x: 430, y: 126, w: 160, label: 'worker 2', sub: 'git worktree' },
+    { id: 'cache', x: 220, y: 226, w: 130, label: 'cache', sub: 'this machine', tone: 'link' },
   ],
   arrows: [
     { from: 'run', to: 'relay', label: 'tasks' },
     { from: 'relay', to: 'w1', via: [[390, 40]] },
     { from: 'relay', to: 'w2', via: [[390, 156]] },
+    { from: 'w2', to: 'cache', dashed: true, via: [[510, 256]] },
+    { from: 'cache', to: 'run', label: 'outputs', dashed: true, via: [[80, 256]] },
   ],
   narrow: {
     width: 340,
-    height: 300,
+    height: 420,
     boxes: [
       { id: 'run', x: 100, y: 10, w: 140, label: 'vx run', sub: 'your shell' },
       { id: 'relay', x: 105, y: 120, w: 130, label: 'relay', sub: 'this machine', tone: 'accent' },
       { id: 'w1', x: 0, y: 230, w: 160, label: 'worker 1', sub: 'git worktree' },
       { id: 'w2', x: 180, y: 230, w: 160, label: 'worker 2', sub: 'git worktree' },
+      { id: 'cache', x: 105, y: 350, w: 130, label: 'cache', sub: 'this machine', tone: 'link' },
     ],
     arrows: [
       { from: 'run', to: 'relay', label: 'tasks' },
       { from: 'relay', to: 'w1' },
       { from: 'relay', to: 'w2' },
+      { from: 'w2', to: 'cache', dashed: true, via: [[260, 380]] },
+      {
+        from: 'cache',
+        to: 'run',
+        label: 'outputs',
+        dashed: true,
+        via: [
+          [6, 380],
+          [6, 40],
+        ],
+      },
     ],
   },
 }
@@ -74,28 +89,20 @@ export const dteWorkerTypes: Picture = {
     boxes: [
       { id: 'ui', x: 0, y: 10, w: 160, label: '@demo/ui#build' },
       { id: 'web', x: 180, y: 10, w: 160, label: '@demo/web#build' },
-      { id: 'e2e', x: 180, y: 160, w: 160, label: '@demo/web#e2e', tone: 'accent' },
-      { id: 'linux', x: 0, y: 160, w: 160, label: 'linux.cpu4', sub: 'first type' },
-      {
-        id: 'tests',
-        x: 180,
-        y: 260,
-        w: 160,
-        label: 'e2e.cpu4',
-        sub: 'its own type',
-        tone: 'accent',
-      },
+      { id: 'e2e', x: 0, y: 130, w: 160, label: '@demo/web#e2e', tone: 'accent' },
+      { id: 'linux', x: 180, y: 130, w: 160, label: 'linux.cpu4', sub: 'first type' },
+      { id: 'tests', x: 0, y: 260, w: 160, label: 'e2e.cpu4', sub: 'its own type', tone: 'accent' },
     ],
     arrows: [
-      { from: 'ui', to: 'linux' },
       {
-        from: 'web',
+        from: 'ui',
         to: 'linux',
         via: [
-          [260, 120],
-          [80, 120],
+          [80, 100],
+          [230, 100],
         ],
       },
+      { from: 'web', to: 'linux' },
       { from: 'e2e', to: 'tests', label: 'exec.worker', tone: 'accent' },
     ],
   },

@@ -19,20 +19,31 @@ vx dte init
 <Diagram {...dteRun} />
 
 <Concept term="Relay">
-  A small server you host, the [DTE server](../../servers/dte/). Your CI job and its workers meet
-  there to pass tasks and results. It stores nothing.
+  A small server you host, the [Distributed task execution server](../../servers/dte/). Your CI job
+  and its workers meet there to pass tasks and results. It stores nothing.
 </Concept>
 
 <Aside type="note" title="Before you start">
-  You need a [remote cache](../../remote-cache/) (workers hand files back through it) and a
-  deployed [DTE server](../../servers/dte/).
+  You need a [remote cache](../../remote-cache/): workers hand files back through it.
 </Aside>
+
+## Deploy the relay
+
+Follow [Distributed task execution server](../../servers/dte/) to deploy one. Come back with its URL, such as `https://vx-dte-server.acme.workers.dev`.
+
+<Takeaway>own the one server your workers need, on your own account.</Takeaway>
 
 ## Add `dte()`
 
-Add the plugin next to your cache. `github()` starts each worker as a GitHub Actions job.
+Install the plugin:
 
-```ts title=".vx/workspace.ts" ins={4,12-16}
+```sh
+bun add -d @vzn/vx-dte
+```
+
+Add it next to your cache. `github()` starts each worker as a GitHub Actions job.
+
+```ts title=".vx/workspace.ts" ins={4,16-22}
 import { defineWorkspace } from '@vzn/vx/config'
 import { vxCache } from '@vzn/vx-cache'
 import { github as ci } from '@vzn/vx-ci'
@@ -43,10 +54,16 @@ export default defineWorkspace({
   plugins: [
     bun(),
     ci(),
-    vxCache({ url: 'https://vx-cache-server.acme.workers.dev', issuer: 'https://token.actions.githubusercontent.com', repository: 'acme/app' }),
+    vxCache({
+      url: 'https://vx-cache-server.acme.workers.dev',
+      issuer: 'https://token.actions.githubusercontent.com',
+      repository: 'acme/app',
+    }),
     dte({
       relay: 'https://vx-dte-server.acme.workers.dev',
-      workers: { linux: { machines: { cpu4: { max: 8, cpu: 4, memory: '16GB' } } } },
+      workers: {
+        linux: { machines: { cpu4: { max: 8, cpu: 4, memory: '16GB' } } },
+      },
       adapter: github(),
     }),
   ],
@@ -60,7 +77,6 @@ Read the `workers` line as: up to **8** machines per run, each **4** cores and *
 ## Let vx write the workflows
 
 ```sh
-bun add -d @vzn/vx-dte
 vx lock
 vx dte init
 ```

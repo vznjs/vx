@@ -6,12 +6,13 @@ description: Declare several machine sizes for one worker type, and vx starts th
 import Diagram from '../../../../components/guide/diagram/Diagram.astro'
 import { dteBiggerMachine } from '../../../../components/docs/pictures/dte-howtos.js'
 import { Aside } from '@astrojs/starlight/components'
-import { Levels, Deeper, Concept, Quiz, Takeaway, NextStep } from '../../../../components/learn'
+import { Levels, Deeper, Concept, Quiz, Walkthrough, Frame, Takeaway, NextStep } from '../../../../components/learn'
 
 List two machine sizes. vx learns which tasks need the big one, and starts it only for them.
 
 ```ts
-machines: { cpu4: { … }, cpu16: { … } }
+cpu4: { max: 8, cpu: 4, memory: '16GB' },
+cpu16: { max: 2, cpu: 16, memory: '64GB' },
 ```
 
 <Levels />
@@ -42,8 +43,9 @@ dte({
 Read the new line as: up to **2** machines of **16** cores and **64GB**, on the `ubuntu-latest-16-cores` runner.
 
 <Aside type="caution" title="Say what the runner really has">
-  vx plans by `cpu` and `memory`. A size that says more than its runner has makes tasks wait on
-  each other.
+  vx plans by `cpu` and `memory` until a worker reports its machine. A runner with less shows in
+  red on the workers line, such as `declared 16c/64G · actual 4c/14G`, and tasks get fewer
+  cores than planned.
 </Aside>
 
 <Takeaway>offer a big machine without paying for it on every task.</Takeaway>
@@ -71,7 +73,35 @@ Look at the two keys: `linux.cpu4` and `linux.cpu16`, one per size.
   core keeps sharing a `cpu4`.
 </Quiz>
 
-<Takeaway>predict which tasks get the big machine, and why.</Takeaway>
+<Walkthrough title="One build, two runs">
+<Frame title="1. Run 1: the build fills linux.cpu4#1">
+
+```ansi
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mTasks[0m[4m[58;2;110;118;129m     [2mstatus  cache     ±usual    time   cpu    mem outputs  blocks worker         task[0m[4m[58;2;110;118;129m                           [0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m           [2m—[0m    [38;2;203;213;225m16ms[0m   [2m21%[0m  [2m2.1MB[0m     [2m23B[0m       [38;2;203;213;225m1[0m [38;2;96;165;250mlinux.cpu4[0m[2m#[0m[38;2;167;139;250m1[0m   [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m           [2m—[0m   [38;2;203;213;225m3.01s[0m  [2m396%[0m   [2m24MB[0m     [2m19B[0m       [2m0[0m [38;2;96;165;250mlinux.cpu4[0m[2m#[0m[38;2;167;139;250m1[0m   [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m
+  [2mworkers [0m  [38;2;96;165;250mlinux.cpu4[0m[2m#[0m[38;2;167;139;250m1[0m  stopped  2 done · warm-up 0.2s · @demo/ui#build, @demo/web#build
+```
+
+Read the **cpu** column: `@demo/web#build` used **396%**, every core of a 4-core machine.
+
+</Frame>
+<Frame title="2. Run 2: vx starts linux.cpu16#1 for it">
+
+```ansi
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mTasks[0m[4m[58;2;110;118;129m     [2mstatus  cache     ±usual    time   cpu    mem outputs  blocks worker         task[0m[4m[58;2;110;118;129m                           [0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m        [2m+3ms[0m    [38;2;203;213;225m19ms[0m   [2m18%[0m  [2m2.1MB[0m     [2m23B[0m       [38;2;203;213;225m1[0m [38;2;96;165;250mlinux.cpu4[0m[2m#[0m[38;2;167;139;250m1[0m   [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m       [2m+12ms[0m   [38;2;203;213;225m3.02s[0m  [2m394%[0m   [2m23MB[0m     [2m19B[0m       [2m0[0m [38;2;129;140;248mlinux.cpu16…[0m   [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m
+  [2mworkers [0m  [38;2;96;165;250mlinux.cpu4[0m[2m#[0m[38;2;167;139;250m1[0m   left     1 done · warm-up 0.1s · @demo/ui#build
+  [2m        [0m  [38;2;232;121;249mlinux.cpu16[0m[2m#[0m[38;2;167;139;250m1[0m  stopped  1 done · warm-up 0.1s · @demo/web#build
+```
+
+The small build stays on `linux.cpu4#1`. The heavy one gets `linux.cpu16#1`: the worker column cuts long names, the workers line names it in full.
+
+</Frame>
+</Walkthrough>
+
+<Takeaway>predict which tasks get the big machine, and see it happen.</Takeaway>
 
 <Deeper level="patterns" title="Common setups">
 
@@ -95,7 +125,7 @@ cpu4: { cpu: 4, memory: '16GB' },
 
 ### Count new tasks bigger
 
-To decide how many machines to start, vx counts a task with no history as 2 cores and 4GB. Raise it if most of yours are heavy:
+`unmeasured` changes the 2 cores and 4GB of step 1. Raise it if most of your tasks are heavy:
 
 ```ts
 dte({ unmeasured: { cpu: 4, memory: '8GB' }, /* … */ }),
@@ -131,6 +161,6 @@ All of `dte()`'s options: [Spread a CI run over several machines](../spread-ci-o
 
 </Deeper>
 
-<NextStep href="../../servers/dte/" title="Host the DTE server">
+<NextStep href="../../servers/dte/" title="Host the Distributed task execution server">
   Deploy the relay your CI job and its workers meet at.
 </NextStep>

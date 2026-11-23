@@ -11,7 +11,8 @@ import { Levels, Deeper, Concept, Quiz, Walkthrough, Frame, Takeaway, NextStep }
 See one run spread over several workers, on your laptop, before you touch CI.
 
 ```sh
-VX_DTE_RUN=$(uuidgen) vx run build --all
+export VX_DTE_RUN=$(uuidgen)
+vx run build test lint --all
 ```
 
 <Levels />
@@ -27,7 +28,7 @@ VX_DTE_RUN=$(uuidgen) vx run build --all
 
 Give `dte()` one group of workers, here named `linux`. `local()` starts each worker as a process in its own **git worktree**: a second checkout of your workspace, made by git.
 
-```ts title=".vx/workspace.ts" ins={2,8-11}
+```ts title=".vx/workspace.ts" ins={2,8-13}
 import { defineWorkspace } from '@vzn/vx/config'
 import { dte, local } from '@vzn/vx-dte'
 import { bun } from '@vzn/vx-lockfile'
@@ -36,14 +37,16 @@ export default defineWorkspace({
   plugins: [
     bun(),
     dte({
-      workers: { linux: { machines: { cpu4: { max: 2, cpu: 4, memory: '8GB' } } } },
+      workers: {
+        linux: { machines: { cpu2: { max: 3, cpu: 2, memory: '8GB' } } },
+      },
       adapter: local({ prepare: 'bun install' }),
     }),
   ],
 })
 ```
 
-Read it as: up to **2** workers (`max`), each counted as **4** cores and **8GB**. `prepare` installs packages in each worktree.
+Read it as: up to **3** workers (`max`), each counted as **2** cores and **8GB**. `prepare` installs packages in each worktree.
 
 ```sh
 bun add -d @vzn/vx-dte
@@ -58,28 +61,34 @@ Workers see what git tracks, your edits included. So `git add` new files first, 
 
 ```sh
 git add -A
-VX_DTE_RUN=$(uuidgen) vx run build --all
+export VX_DTE_RUN=$(uuidgen)
+vx run build test lint --all
 ```
 
 <Walkthrough title="The same build, twice">
-<Frame title="1. First run: a worker builds both projects">
+<Frame title="1. First run: workers share the tasks">
 
 ```ansi
 [4m[58;2;110;118;129m  [1m[38;2;167;139;250mTasks[0m[4m[58;2;110;118;129m     [2mstatus  cache     ±usual    time   cpu    mem outputs  blocks worker         task[0m[4m[58;2;110;118;129m                           [0m
-            [38;2;34;197;94msuccess[0m [2mmiss[0m        [2m+0ms[0m    [38;2;203;213;225m15ms[0m   [2m20%[0m  [2m1.8MB[0m      [2m3B[0m       [38;2;203;213;225m1[0m [38;2;96;165;250mlinux.cpu4[0m[2m#[0m[38;2;167;139;250m1[0m   [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m
-            [38;2;34;197;94msuccess[0m [2mmiss[0m        [2m+0ms[0m     [38;2;203;213;225m3ms[0m  [2m103%[0m  [2m1.8MB[0m      [2m2B[0m       [2m0[0m [38;2;96;165;250mlinux.cpu4[0m[2m#[0m[38;2;167;139;250m1[0m   [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m
-  [2mworkers [0m  [38;2;96;165;250mlinux.cpu4[0m[2m#[0m[38;2;167;139;250m1[0m  stopped  2 done · warm-up 0.1s · @demo/ui#build, @demo/web#build
+            [38;2;34;197;94msuccess[0m [2mmiss[0m           [2m—[0m   [38;2;203;213;225m204ms[0m   [2m99%[0m  [2m119MB[0m     [2m80B[0m       [38;2;203;213;225m2[0m [38;2;244;114;182mlinux.cpu2[0m[2m#[0m[38;2;167;139;250m1[0m   [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m           [2m—[0m    [38;2;203;213;225m93ms[0m   [2m57%[0m   [2m78MB[0m      [2m0B[0m       [2m0[0m [38;2;244;114;182mlinux.cpu2[0m[2m#[0m[38;2;167;139;250m1[0m   [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;232;121;249mlint[0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m           [2m—[0m    [38;2;203;213;225m58ms[0m   [2m77%[0m   [2m78MB[0m      [2m0B[0m       [2m0[0m [38;2;244;114;182mlinux.cpu2[0m[2m#[0m[38;2;167;139;250m1[0m   [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;232;121;249mlint[0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m           [2m—[0m   [38;2;203;213;225m533ms[0m   [2m93%[0m  [2m111MB[0m      [2m0B[0m       [2m0[0m [38;2;244;114;182mlinux.cpu2[0m[2m#[0m[38;2;167;139;250m1[0m   [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;96;165;250mtest[0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m           [2m—[0m   [38;2;203;213;225m162ms[0m   [2m99%[0m  [2m113MB[0m    [2m123B[0m       [2m0[0m [38;2;244;114;182mlinux.cpu2[0m[2m#[0m[38;2;167;139;250m1[0m   [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m           [2m—[0m   [38;2;203;213;225m428ms[0m  [2m113%[0m  [2m138MB[0m      [2m0B[0m       [2m0[0m [38;2;244;114;182mlinux.cpu2[0m[2m#[0m[38;2;232;121;249m3[0m   [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;96;165;250mtest[0m
+  [2mworkers [0m  [38;2;244;114;182mlinux.cpu2[0m[2m#[0m[38;2;167;139;250m1[0m  left     5 done · warm-up 0.2s
+  [2m        [0m  [38;2;244;114;182mlinux.cpu2[0m[2m#[0m[38;2;96;165;250m2[0m  left     0 done · warm-up 0.3s
+  [2m        [0m  [38;2;244;114;182mlinux.cpu2[0m[2m#[0m[38;2;232;121;249m3[0m  stopped  1 done · warm-up 0.3s · @demo/web#test
 ```
 
-Read the **worker** column: `linux.cpu4#1` is worker 1 of the `linux.cpu4` machines. The **workers** line says it ran 2 tasks, then stopped.
+Read the **worker** column: `linux.cpu2#1` is worker 1 of the `linux.cpu2` machines. It ran five tasks while `#3` ran `@demo/web#test`. `#2` joined, found nothing left and left.
 
 </Frame>
 <Frame title="2. Again, nothing changed: no worker starts">
 
 ```ansi
   [2mcache   [0m  [38;2;34;197;94m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
-            [2mlocal[0m [38;2;34;197;94m2✓[0m
-
+            [2mlocal[0m [38;2;34;197;94m6✓[0m
   [2mworkers [0m  [2mnone started: no task needed one[0m
 ```
 
@@ -102,10 +111,18 @@ Every task came from the cache, so there was no work to hand out.
 A worker builds from what git tracks. A file git does not know fails the task and names it:
 
 ```ansi
-[38;2;239;68;68m[vx] @demo/ui#build: plugin '@vzn/vx-dte' (executor 'dte') failed in execute: @demo/ui#build keys packages/ui/src/notes.ts, which git does not track, so no worker has it: git add it (and commit it for workers on CI), or leave it out of the task's inputs[0m
+[2m┌─[0m [1m[38;2;192;132;252m@demo/ui[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m>[0m [1m[38;2;239;68;68mfailed (exit 1)[0m
+
+[2mpackages/ui $ vite build[0m
+
+[2m├─[0m [1mOUTPUT[0m [2m────────────────────────────────────────────────────[0m
+
+[38;2;239;68;68m[vx] @demo/ui#build: plugin '@vzn/vx-dte' (executor 'dte') failed in execute: @demo/ui#build keys packages/ui/src/theme.ts, which git does not track, so no worker has it: git add it (and commit it for workers on CI), or leave it out of the task's inputs[0m
+
+[2m└─[0m [1m[38;2;192;132;252m@demo/ui[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m[2m ·[0m [38;2;147;197;253mdte[0m [2m──[0m [2m(0ms)[0m [1m[38;2;239;68;68mfailed (exit 1)[0m
 ```
 
-Fix: `git add packages/ui/src/notes.ts`, then run again.
+Fix: `git add packages/ui/src/theme.ts`, then run again.
 
 ### A slow install
 
@@ -119,8 +136,10 @@ adapter: local({ prepare: 'bun install --frozen-lockfile' }),
 
 Raise `max`. Each worker is a full process, so stay near your core count:
 
-```ts mark={1}
-workers: { linux: { machines: { cpu4: { max: 4, cpu: 4, memory: '8GB' } } } },
+```ts mark={2}
+workers: {
+  linux: { machines: { cpu2: { max: 4, cpu: 2, memory: '8GB' } } },
+},
 ```
 
 <Takeaway>fix an untracked file, a custom install and the worker count.</Takeaway>
@@ -139,7 +158,7 @@ workers: { linux: { machines: { cpu4: { max: 4, cpu: 4, memory: '8GB' } } } },
 
 | Name | What it does |
 | --- | --- |
-| `VX_DTE_RUN` | Names the run and turns distribution on. Any unique value; `uuidgen` makes one. Unset, `vx run` stays on this machine. |
+| `VX_DTE_RUN` | Names the run and turns distribution on. A random UUID, so no one can guess the run: `uuidgen` prints one. Any other value is refused. Unset, `vx run` stays on this machine. |
 
 #### What a worker sees
 
