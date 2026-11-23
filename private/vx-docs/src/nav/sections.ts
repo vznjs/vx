@@ -114,9 +114,6 @@ const SIDEBAR_GROUPS: Record<'Docs', SidebarItem[]> = {
       items: [
         { label: 'CI', link: '/docs/ci/' },
         { label: 'Run the same checks locally and on CI', link: '/docs/ci/run-a-pipeline/' },
-        // FOLD these two into CI
-        { label: 'Fail CI when the lock is stale', link: '/docs/ci/check-the-lock/' },
-        { label: 'Fix a merge conflict in the lock', link: '/docs/ci/fix-a-lock-conflict/' },
         { label: 'Remote cache', link: '/docs/remote-cache/' },
         { label: 'Cache server', link: '/docs/servers/cache/' },
       ],

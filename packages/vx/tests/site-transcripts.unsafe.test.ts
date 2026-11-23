@@ -233,7 +233,7 @@ describe('the one-task guides show what vx prints', () => {
   })
 
   it('check-the-lock: a drifted config, then a current lock', async () => {
-    const page = guide('ci/check-the-lock.md')
+    const page = readFileSync(path.join(GUIDES, '..', 'docs', 'ci.mdx'), 'utf8')
     const file = path.join(two, 'packages/ui/vx.config.ts')
     await writeFile(file, config('ui', '').replace("'src/**'", "'src/**', 'package.json'"))
     const drift = runColour('lock', '--check')
@@ -481,7 +481,7 @@ export default {
   })
 
   it('run-a-pipeline: pr on a branch runs what the change reaches', async () => {
-    const page = guide('ci/run-a-pipeline.md')
+    const page = guide('ci/run-a-pipeline.mdx')
     expect(run('run', 'build', '--all').code).toBe(0)
     expect(sh('git', 'checkout', '-qb', 'feature')).toBe(0)
     await writeFile(path.join(ws, 'packages/web/src/index.ts'), '2\n')
@@ -493,7 +493,7 @@ export default {
   })
 
   it('fix-a-lock-conflict: a run refuses the merged lock, vx lock writes it again', async () => {
-    const page = guide('ci/fix-a-lock-conflict.md')
+    const page = readFileSync(path.join(GUIDES, '..', 'docs', 'ci.mdx'), 'utf8')
     const edit = async (file: string) => {
       await writeFile(
         ui(),

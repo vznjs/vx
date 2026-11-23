@@ -165,7 +165,7 @@ When a git merge leaves a conflict in the lock, every run refuses it:
 Resolve the `vx.config.ts` files, then run `vx lock`. It writes both locks from the merged configs.
 
 <Aside type="tip">
-  On CI, `vx lock --check` fails a change that skipped `vx lock` ([Check the lock](../ci/check-the-lock/)).
+  On CI, `vx lock --check` fails a change that skipped `vx lock` ([Keep the lock fresh](../ci/#keep-the-lock-fresh)).
 </Aside>
 
 <Quiz q="You edit apps/web/vx.config.ts and run vx run build. Which config does the run use?">

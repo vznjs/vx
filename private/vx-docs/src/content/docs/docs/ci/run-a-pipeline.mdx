@@ -3,8 +3,21 @@ title: Run the same checks locally and on CI
 description: Save a run under a name in .vx/workspace.ts, then call it with vx pipeline on your machine and on CI.
 ---
 
-A pipeline is a run saved under a name. Write it once in
-`.vx/workspace.ts`, and you and CI run exactly the same thing.
+import { Aside } from '@astrojs/starlight/components'
+import { Concept, Quiz, Takeaway, NextStep } from '../../../../components/learn'
+
+Write a run once in `.vx/workspace.ts`. Then you and CI type the same short command:
+
+```sh
+vx pipeline pr
+```
+
+<Concept term="Pipeline">
+  A `vx run` saved under a name. Its keys are the `vx run` flags you would type:
+  `affected: true` is `--affected`.
+</Concept>
+
+## Save it
 
 ```ts title=".vx/workspace.ts" mark={6-7}
 import type { WorkspaceConfig } from '@vzn/vx/config'
@@ -19,13 +32,13 @@ export default {
 } satisfies WorkspaceConfig
 ```
 
-`pr` runs `build` and `test` only where your branch changed something.
-`main` runs them in every project. A pipeline needs no `vx lock`:
-`vx pipeline` reads it from the file.
+`pr` runs `build` and `test` only where your branch changed something. `main` runs them in every project. Run `vx lock` after the edit.
 
----
+<Takeaway>name a run once and stop retyping its flags.</Takeaway>
 
-On a branch, check what `pr` would run with `--dry`:
+## Preview it
+
+On a branch, `--dry` shows what `pr` would run, and runs nothing:
 
 ```sh
 vx pipeline pr --dry
@@ -41,12 +54,16 @@ vx pipeline pr --dry
   [2mpredicted[0m  [38;2;203;213;225m~1.01s wall · ~1.01s total execution[0m
 ```
 
-Only `packages/web` changed. `@demo/ui#build` is listed because
-`@demo/web#build` needs it, and it comes from the cache.
+Read the last column: each task says why it is in the plan. Only `packages/web` changed. `@demo/ui#build` is listed because `@demo/web#build` needs it, and it comes from the cache.
 
----
+<Quiz q="Why is @demo/ui#build in the plan, when packages/ui did not change?">
+  `@demo/web#build` depends on it (`^build`), so the run needs its output. It did not change, so
+  the plan reads it from the cache: **cached local**.
+</Quiz>
 
-On CI, call the same names:
+<Takeaway>check a pull request's run before you push it.</Takeaway>
+
+## Call it on CI
 
 ```yaml title=".github/workflows/ci.yml"
 - run: bun vx lock --check
@@ -56,16 +73,17 @@ On CI, call the same names:
   run: bun vx pipeline main
 ```
 
-`vx lock --check` fails the job when a config changed without `vx lock`
-([guide](../check-the-lock/)).
+`vx lock --check` fails the job when a config changed without `vx lock` ([Keep the lock fresh](../#keep-the-lock-fresh)).
 
-:::note
-On `main` itself, `pr` has nothing to compare with, so vx refuses it.
-Run `main` there: the cache still skips what did not change.
-:::
+<Aside type="caution">
+  On `main` itself, `pr` has no base to compare with, so vx refuses it. Run `main` there: the cache
+  still skips what did not change.
+</Aside>
 
-:::tip[Next]
-One CI job too slow? [Spread the run over several machines](../../../docs/distributed-task-execution/spread-ci-over-machines/).
-:::
+<Takeaway>run one command on your machine and get CI's exact result.</Takeaway>
 
-See [`vx pipeline`](../../../cli/pipeline/) and [CI](../../../docs/ci/).
+Every key a pipeline takes: [Pipeline keys](../#pipeline-keys), and [`vx pipeline`](../../../cli/pipeline/).
+
+<NextStep href="../../remote-cache/" title="Remote cache">
+  Each CI machine starts with an empty cache. Share one, and every runner reuses what another built.
+</NextStep>

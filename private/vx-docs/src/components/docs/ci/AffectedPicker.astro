@@ -1,0 +1,180 @@
+---
+// "Which tasks does `vx pipeline pr` run?" Pick the file a pull request
+// edits; the six tasks of the demo light up as a real `vx pipeline pr --dry`
+// planned them (2026-11-23, @demo/web depends on @demo/ui). No script:
+// radio inputs and CSS, so it works without JavaScript.
+type State = 'run' | 'cache' | 'out'
+interface Choice {
+  id: string
+  file: string
+  states: Record<string, State>
+  says: string
+}
+
+const TASKS = ['@demo/ui#lint', '@demo/ui#test', '@demo/ui#build', '@demo/web#lint', '@demo/web#test', '@demo/web#build']
+const all = (s: State): Record<string, State> => Object.fromEntries(TASKS.map((t) => [t, s]))
+
+const CHOICES: Choice[] = [
+  {
+    id: 'web-src',
+    file: 'packages/web/src/index.js',
+    states: { ...all('out'), '@demo/web#lint': 'run', '@demo/web#test': 'run', '@demo/web#build': 'run', '@demo/ui#build': 'cache' },
+    says: '@demo/web runs. @demo/ui#build comes from the cache: web needs it, and it did not change.',
+  },
+  {
+    id: 'ui-src',
+    file: 'packages/ui/src/index.js',
+    states: { ...all('run'), '@demo/web#lint': 'out', '@demo/web#test': 'out' },
+    says: 'All of @demo/ui runs, and @demo/web#build, which builds on it. Web’s lint and test do not read ui, so they stay out.',
+  },
+  {
+    id: 'web-readme',
+    file: 'packages/web/README.md',
+    states: { ...all('out'), '@demo/web#lint': 'cache', '@demo/web#test': 'cache', '@demo/web#build': 'cache', '@demo/ui#build': 'cache' },
+    says: '@demo/web is picked, since the file is in it. No task reads README.md, so every one is a cache hit.',
+  },
+  {
+    id: 'root-readme',
+    file: 'README.md',
+    states: all('out'),
+    says: 'No project holds the file. vx prints “nothing affected since origin/main” and exits 0.',
+  },
+]
+const LABEL: Record<State, string> = { run: 'runs', cache: 'from cache', out: 'not in the run' }
+---
+
+<figure class="vx-affected not-content" aria-label="Pick the file a pull request edits to see which tasks vx pipeline pr runs">
+  <fieldset>
+    <legend>A pull request edits…</legend>
+    {
+      CHOICES.map((c, i) => (
+        <label>
+          <input type="radio" name="vx-affected" value={c.id} checked={i === 0} />
+          <code>{c.file}</code>
+        </label>
+      ))
+    }
+  </fieldset>
+  {
+    CHOICES.map((c) => (
+      <div class="vx-affected-panel" data-for={c.id}>
+        <ul>
+          {TASKS.map((t) => (
+            <li class={c.states[t]}>
+              <code>{t}</code>
+              <span>{LABEL[c.states[t]!]}</span>
+            </li>
+          ))}
+        </ul>
+        <p>{c.says}</p>
+      </div>
+    ))
+  }
+  <figcaption>What <code>vx pipeline pr</code> does with each edit, from real runs of the demo.</figcaption>
+</figure>
+
+<style>
+  .vx-affected {
+    margin: 1.5rem 0;
+    padding: 1rem;
+    border: 1px solid var(--vx-border);
+    border-radius: 8px;
+    background: var(--vx-surface);
+  }
+  fieldset {
+    border: 0;
+    margin: 0 0 0.75rem;
+    padding: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+  }
+  legend {
+    font-size: 0.85rem;
+    color: var(--vx-muted);
+    margin-bottom: 0.4rem;
+  }
+  label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.25rem 0.6rem;
+    border: 1px solid var(--vx-border);
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 0.8rem;
+  }
+  label:has(input:checked) {
+    border-color: var(--vx-accent);
+    background: var(--vx-accent-soft);
+  }
+  label:has(input:focus-visible) {
+    outline: 2px solid var(--vx-accent);
+    outline-offset: 2px;
+  }
+  input {
+    accent-color: var(--vx-accent);
+    margin: 0;
+  }
+  .vx-affected-panel {
+    display: none;
+  }
+  .vx-affected:has(input[value='web-src']:checked) [data-for='web-src'],
+  .vx-affected:has(input[value='ui-src']:checked) [data-for='ui-src'],
+  .vx-affected:has(input[value='web-readme']:checked) [data-for='web-readme'],
+  .vx-affected:has(input[value='root-readme']:checked) [data-for='root-readme'] {
+    display: block;
+  }
+  ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr));
+    gap: 0.4rem;
+  }
+  li {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.35rem 0.6rem;
+    border-radius: 8px;
+    border: 1.5px solid var(--vx-border);
+    font-family: var(--vx-mono);
+    font-size: 0.75rem;
+    margin: 0;
+  }
+  li span {
+    color: var(--vx-muted);
+  }
+  li.run {
+    border-color: var(--vx-accent);
+  }
+  li.run span {
+    color: var(--vx-accent);
+  }
+  li.cache {
+    border-color: var(--vx-ok);
+  }
+  li.cache span {
+    color: var(--vx-ok);
+  }
+  li.out {
+    border-style: dashed;
+    opacity: 0.6;
+  }
+  p {
+    margin: 0.75rem 0 0;
+    font-size: 0.9rem;
+  }
+  figcaption {
+    margin-top: 0.75rem;
+    font-size: 0.8rem;
+    color: var(--vx-muted);
+  }
+  code {
+    font-size: inherit;
+    background: none;
+    padding: 0;
+  }
+</style>
