@@ -235,7 +235,8 @@ nothing. `tests/sandbox-parent-env.unsafe.test.ts` prints the cost of one
 ## Secrets
 
 The value, of 6 characters or more, of a variable whose name holds
-`TOKEN`, `SECRET`, `KEY`, `PASSWORD`, `PASSWD` or `CREDENTIAL` (not one
+`TOKEN`, `SECRET`, `KEY`, `PASSWORD`, `PASSWD`, `PASSPHRASE` or
+`CREDENTIAL`, or that ends `_PASS` or `_PWD` (not one
 ending `_FILE`, `_PATH` or `_DIR`, nor `GIT_CONFIG_KEY_<n>`), or that a
 task lists in `exec.env.secret`, the password, also of 6 characters or more, of a URL
 (`scheme://user:<password>@`, split at the last `@` before the path as a

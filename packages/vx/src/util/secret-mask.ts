@@ -8,8 +8,12 @@
 import { ownEnv } from './essential-env.js'
 import { limitSetting } from './settle.js'
 
-/** A variable whose value is masked, by the words its name holds. */
-const SECRET_NAME = /TOKEN|SECRET|KEY|PASSWORD|PASSWD|CREDENTIAL/i
+/**
+ * A variable whose value is masked, by the words its name holds: a
+ * passphrase (`GPG_PASSPHRASE`) too, and a password's short spellings as a
+ * last word (`SMTP_PASS`, `MYSQL_PWD`), never the shell's own `PWD`.
+ */
+const SECRET_NAME = /TOKEN|SECRET|KEY|PASSWORD|PASSWD|PASSPHRASE|CREDENTIAL|_PASS$|_PWD$/i
 
 /**
  * Names that hold such a word but a value that is no secret: where a

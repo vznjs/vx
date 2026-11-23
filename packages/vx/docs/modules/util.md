@@ -1599,7 +1599,8 @@ export function maskStreams(
 ```
 
 A variable is masked when its name holds `TOKEN`, `SECRET`, `KEY`,
-`PASSWORD`, `PASSWD` or `CREDENTIAL`, it does not end `_FILE`, `_PATH`
+`PASSWORD`, `PASSWD`, `PASSPHRASE` or `CREDENTIAL`, or ends `_PASS` or
+`_PWD`, it does not end `_FILE`, `_PATH`
 or `_DIR` and is not git's `GIT_CONFIG_KEY_<n>`, or the task names it in
 `exec.env.secret` (L-14), and its value has six characters or more. No such variable: `secretMask` is null and nothing is
 paid per byte. Any variable's value also masks a URL's password, split
