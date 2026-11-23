@@ -14,7 +14,8 @@ const vx = (...args: string[]): string => {
     cwd: path.join(root, 'packages/app'),
     env: { ...process.env, NO_COLOR: '1', CI: '' },
   })
-  if (p.exitCode !== 0) throw new Error(`vx ${args.join(' ')}: ${p.stderr.toString()}${p.stdout.toString()}`)
+  if (p.exitCode !== 0)
+    throw new Error(`vx ${args.join(' ')}: ${p.stderr.toString()}${p.stdout.toString()}`)
   return p.stdout.toString()
 }
 const out = (): Promise<string> => readFile(path.join(root, 'packages/app/dist/n.txt'), 'utf8')

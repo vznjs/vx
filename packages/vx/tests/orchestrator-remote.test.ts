@@ -883,7 +883,7 @@ describe('orchestrator e2e: injected remote cache (stub HTTP layer)', () => {
     )
 
     it(
-      'the local entry under the same key is kept, not rewritten',
+      'the local entry under the same key is rewritten with this run’s save',
       async () => {
         const { fixture, remote } = await seeded()
         try {
@@ -900,10 +900,17 @@ describe('orchestrator e2e: injected remote cache (stub HTTP layer)', () => {
             cacheFlags: { force: true },
           })
           const after = db()
-          expect(after.query('SELECT hash, accessed_at FROM entries ORDER BY hash').all()).toEqual(
-            stored,
-          )
+          const now = after
+            .query('SELECT hash, accessed_at FROM entries ORDER BY hash')
+            .all() as typeof stored
           after.close()
+          expect(now.map((r) => (r as { hash: string }).hash)).toEqual(
+            stored.map((r) => (r as { hash: string }).hash),
+          )
+          for (const [i, r] of now.entries())
+            expect((r as { accessed_at: number }).accessed_at).toBeGreaterThan(
+              (stored[i] as { accessed_at: number }).accessed_at,
+            )
         } finally {
           await rm(fixture.root, { recursive: true, force: true })
         }
@@ -1815,7 +1822,7 @@ describe('orchestrator: injected RemoteCacheLayer (RunOptions.remoteCache)', () 
   // a held key is not sent, so it is counted nowhere (Docs, 2026-10-16:
   // the footer read `remote 1↑` with no PUT made).
   it(
-    'a --force run counts no upload for a key a has-only remote holds',
+    'a --force run counts no upload for a key a has-only remote holds, only its local save',
     async () => {
       const fixture = await makeFixture('vx-remote-e2e-')
       try {
@@ -1848,7 +1855,7 @@ describe('orchestrator: injected RemoteCacheLayer (RunOptions.remoteCache)', () 
         })
         expect(forced.outcomes[0]!.status).toBe('success')
         const legend = fixture.log[fixture.log.findIndex((l) => l.startsWith('  cache')) + 1]
-        expect({ puts, legend: legend?.trim() }).toEqual({ puts: 1, legend: '1 not saved' })
+        expect({ puts, legend: legend?.trim() }).toEqual({ puts: 1, legend: 'local 1↑' })
       } finally {
         await rm(fixture.root, { recursive: true, force: true })
       }
