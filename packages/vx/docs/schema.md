@@ -2779,7 +2779,7 @@ export default defineWorkspace({
 })
 ```
 
-Every key, each at a value its flag takes:
+Every key but `format` (which needs `dry: true`), each at a value its flag takes:
 
 ```ts
 import { defineWorkspace } from '@vzn/vx/config'
