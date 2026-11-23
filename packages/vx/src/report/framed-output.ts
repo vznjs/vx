@@ -90,7 +90,11 @@ export function formatTaskBlock(
   const header = serving(node, outcome)
     ? paint('info', 'running', colors)
     : formatBlockHeader(outcome, colors)
-  const lines: string[] = [`${corner('┌─')} ${mark}${idPainted} ${corner('>')} ${header}`]
+  const close = `${whereNote(outcome, colors)} ${corner('──')}${closeTail(node, outcome, colors, false)}`
+  const edgeId = cutTaskId(node, colors, [`${mark} ${corner('>')} ${header}`, `${mark}${close}`])
+  const lines: string[] = [`${corner('┌─')} ${mark}${edgeId} ${corner('>')} ${header}`]
+  // The edges cut the id: the body says it whole, once.
+  if (edgeId !== idPainted) lines.push('', idPainted)
 
   // The command section shows what ran. Hits skip it, unless `forceCommand`.
   if (forceCommand || ranCommand(outcome)) {
@@ -113,10 +117,7 @@ export function formatTaskBlock(
 
   lines.push(...violationSection(outcome, colors))
 
-  lines.push(
-    `${corner('└─')} ${mark}${idPainted}${whereNote(outcome, colors)} ${corner('──')}${closeTail(node, outcome, colors, false)}`,
-    '',
-  )
+  lines.push(`${corner('└─')} ${mark}${edgeId}${close}`, '')
   // Not `+ '\n'`: a rope over a 100 MB frame was flattened into a copy.
   return lines.join('\n')
 }
@@ -228,6 +229,57 @@ function pushBodyLines(lines: string[], text: string): void {
 
 function paintTaskId(node: TaskNode, colors: ColorSupport, opts: { bold?: boolean } = {}): string {
   return idParts(node.projectName, node.projectName, node.taskName, colors, opts)
+}
+
+/**
+ * The id a frame's edge has room for beside `rest` (each edge's other
+ * text, painted): a terminal too narrow for an edge wrapped it. The
+ * project's name gives way first, cut in its middle, then the task's end;
+ * off a terminal the id stays whole.
+ */
+function cutTaskId(node: TaskNode, colors: ColorSupport, rest: readonly string[]): string {
+  const whole = paintTaskId(node, colors, { bold: true })
+  if (colors.columns === undefined) return whole
+  // `┌─ ` / `└─ ` lead each edge.
+  const room = colors.columns - 3 - Math.max(...rest.map((r) => Bun.stringWidth(Bun.stripANSI(r))))
+  const width = Bun.stringWidth(node.id)
+  if (width <= room) return whole
+  const task = node.taskName
+  const projectRoom = room - 1 - Bun.stringWidth(task)
+  const [project, taskText] =
+    projectRoom >= 5
+      ? [cutMiddle(node.projectName, projectRoom), task]
+      : [cutMiddle(node.projectName, 5), cutEnd(task, Math.max(2, room - 6))]
+  return idParts(node.projectName, project, taskText, colors, { bold: true })
+}
+
+/** `text` at most `room` columns, its middle given to `…`. */
+function cutMiddle(text: string, room: number): string {
+  const chars = Array.from(text)
+  if (Bun.stringWidth(text) <= room) return text
+  const head = Math.ceil((room - 1) / 2)
+  let a = ''
+  for (const ch of chars) {
+    if (Bun.stringWidth(a + ch) > head) break
+    a += ch
+  }
+  let b = ''
+  for (const ch of chars.reverse()) {
+    if (Bun.stringWidth(a + ch + b) + 1 > room) break
+    b = ch + b
+  }
+  return `${a}…${b}`
+}
+
+/** `text` at most `room` columns, its end given to `…`. */
+function cutEnd(text: string, room: number): string {
+  if (Bun.stringWidth(text) <= room) return text
+  let out = ''
+  for (const ch of Array.from(text)) {
+    if (Bun.stringWidth(out + ch) + 1 > room) break
+    out += ch
+  }
+  return `${out}…`
 }
 
 // ── Reported-line grid: status · cache · usual · time · … · name ──────── No
@@ -975,7 +1027,9 @@ export function formatFrameClose(
 ): string {
   const corner = (t: string) => paint('muted', t, colors)
   const mark = persistentMark(node, colors)
-  const close = `${corner('└─')} ${mark}${paintTaskId(node, colors, { bold: true })}${whereNote(outcome, colors)} ${corner('──')}${closeTail(node, outcome, colors, kept)}`
+  // The opening edge, above the output, named the id whole.
+  const tail = `${whereNote(outcome, colors)} ${corner('──')}${closeTail(node, outcome, colors, kept)}`
+  const close = `${corner('└─')} ${mark}${cutTaskId(node, colors, [`${mark}${tail}`])}${tail}`
   const violations = violationSection(outcome, colors)
   return violations.length === 0 ? close : `${violations.join('\n')}\n${close}`
 }

@@ -907,6 +907,9 @@ What the shapes mean in each column:
   emitted atomically (see below). Every outcome that ran or was cached
   gets one — including an `up-to-date` hit, whose frame carries the
   `$ cmd` line so a requested task looks the same whether it ran or not.
+  On a terminal too narrow for an edge, the edge cuts the project's name
+  in the middle (`@acme/…-ui#build`), and the task's name after it; the
+  frame names the whole id under its opening edge.
 - **skipped** is the exception: it never started, so no frame was opened,
   and it produced nothing a frame could hold. The one-liner says
   everything, the blocker included (`skipped … @demo/web#deploy • blocked by

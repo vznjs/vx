@@ -7,6 +7,7 @@ import { describe, expect, it } from 'bun:test'
 import type { TaskOutcome } from '../src/graph/outcome.js'
 import type { TaskNode } from '../src/graph/task-graph.js'
 import {
+  formatFrameClose,
   formatRecordedRow,
   formatTaskBlock,
   planList,
@@ -295,5 +296,51 @@ describe("a refusal's source frame, in colour", () => {
 
   it('CONTROL: off colour the frame is as written', () => {
     expect(ui.code(frame).lines({ enabled: false })).toEqual(frame.split('\n').map((l) => `  ${l}`))
+  })
+})
+
+// A failed frame's edges, `┌─ <id> > failed (exit 1)` and `└─ <id> ── (12.35s)
+// failed (exit 1)`, wrapped at 60 columns once the id ran past ~40. On a
+// terminal the edges cut the project's name in the middle; the body keeps
+// the whole id.
+describe("a frame's edges with a long task id, on a narrow terminal", () => {
+  const id = '@acme/very-long-package-name-here#typecheck.strict'
+  const block = (columns?: number): string[] =>
+    formatTaskBlock(
+      node(id),
+      { ...outcome(id, 'failed'), durationMs: 12345 },
+      { output: [{ text: 'boom\n', err: true }] },
+      columns === undefined ? { enabled: false } : { enabled: false, columns },
+    ).split('\n')
+  const edges = (lines: string[]): string[] => lines.filter((l) => /^[┌└]─/.test(l))
+
+  it.each([50, 60])('both edges fit %i columns and the body names the whole id', (columns) => {
+    const lines = block(columns)
+    expect(edges(lines).length).toBe(2)
+    for (const e of edges(lines)) {
+      expect(Bun.stringWidth(e)).toBeLessThanOrEqual(columns)
+      expect(e).toContain('…')
+      // At 50 the task's name gives way too.
+      if (columns === 60) expect(e).toContain('#typecheck.strict')
+    }
+    expect(lines.filter((l) => l === id).length).toBe(1)
+  })
+
+  it("a focused frame's closing edge fits 60 columns too", () => {
+    const close = formatFrameClose(
+      node(id),
+      { ...outcome(id, 'failed'), durationMs: 12345 },
+      { enabled: false, columns: 60 },
+    )
+    expect(Bun.stringWidth(close)).toBeLessThanOrEqual(60)
+    expect(close).toContain('…-here#typecheck.strict')
+    expect(formatFrameClose(node(id), outcome(id, 'failed'))).toContain(id)
+  })
+
+  it('CONTROL: off a terminal, and on a wide one, the edges carry the whole id', () => {
+    for (const lines of [block(), block(200)]) {
+      for (const e of edges(lines)) expect(e).toContain(id)
+      expect(lines).not.toContain(id)
+    }
   })
 })
