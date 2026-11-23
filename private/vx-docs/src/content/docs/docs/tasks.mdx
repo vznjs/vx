@@ -117,8 +117,9 @@ Try each kind of entry on `web#build` here:
 </Quiz>
 
 <Aside type="caution" title="Refused before anything runs">
-  A cycle, a missing `'api#build'`, a bare `'*'` and `'!name'` stop the
-  run with an error.
+  A task-name pattern is allowed: `dependsOn: ['build.*']`, or `'^build.*'`.
+  Bare wildcards and negation (`*`, `!task`) are refused, as are cycles and
+  a missing `'api#build'`.
 </Aside>
 
 <Takeaway>build a library before the app that imports it, every time.</Takeaway>
@@ -322,9 +323,32 @@ instead.
 | `outputs.workspaceFiles` | files it makes outside the project, from the workspace root |
 | `outputs.clean` | `false` keeps old outputs for the command (an incremental build); default `true` removes them first |
 
-Every field of a task is in its key, `description` included, except
-`exec.remote` and `exec.worker`: where a task runs says nothing about what
-it makes. More in [Caching](../caching/).
+`exec.remote` and `exec.worker` are the two `exec` fields left out of the
+key: where a task runs says nothing about what it makes.
+
+Every other field is in the key, so editing even `description` re-runs
+the task once. More in [Caching](../caching/).
+
+A task can read and write outside its project, named from the workspace
+root. Here a test reads the shared config and writes coverage at the root:
+
+```ts title="packages/web/vx.config.ts" mark={9,11}
+import { defineProject } from '@vzn/vx/config'
+
+export default defineProject({
+  tasks: {
+    test: {
+      exec: { command: 'vitest run --coverage --coverage.reportsDirectory=../../coverage/web' },
+      inputs: {
+        files: ['src/**', 'vitest.config.ts'],
+        workspaceFiles: ['tsconfig.base.json'],
+      },
+      outputs: { files: [], workspaceFiles: ['coverage/web/**'] },
+      cache: true,
+    },
+  },
+})
+```
 
 </Deeper>
 
@@ -368,8 +392,8 @@ build: {
 
 ## 5. Handle failures and hangs
 
-By default a failed task skips only what waits on it. Everything else
-runs to the end, so one run shows every failure:
+By default a failed task skips its transitive dependents and runs the
+rest, so one run shows every failure:
 
 ```ansi
 [2m$[0m vx run build test --all
@@ -444,6 +468,36 @@ waits on `dev`. It stops the server when the rest of the run ends.
 | `exec.remote` | `false` keeps it on this machine; `'only'` never runs it here | [Remote execution](../remote-execution/) |
 | `exec.worker` | the worker type to run on, such as `'ubuntu'` | [Distributed task execution](../distributed-task-execution/) |
 
+<Deeper level="patterns" title="Confine a task to what it declares">
+
+`exec.sandbox` lets a task touch only what you allow. This end-to-end test
+reads its project, writes its results, and reaches only the preview
+server:
+
+```ts title="packages/web/vx.config.ts"
+import { defineProject } from '@vzn/vx/config'
+
+export default defineProject({
+  tasks: {
+    e2e: {
+      exec: {
+        command: 'playwright test',
+        sandbox: {
+          allow: { read: ['.'], write: ['test-results'], network: ['localhost:4173'] },
+          deny: { network: ['*.analytics.example.com'] },
+          ignore: { read: ['/etc/ssl/**'] },
+        },
+      },
+    },
+  },
+})
+```
+
+`ignore` hides a denial from the report; it still blocks. Every sandbox
+field is on [Sandboxing](../sandboxing/).
+
+</Deeper>
+
 <Takeaway>start a dev server after its libraries build, and keep a macOS-only task off Linux.</Takeaway>
 
 ---
@@ -499,6 +553,7 @@ for and what waits for it. Nothing is uploaded.
 | `description` | string | none | label in the picker and `--dry` |
 | `dependsOn` | string[] | `[]` | tasks that finish first ([section 2](#2-put-tasks-in-order)) |
 | `exec` | object | none | what runs; no `exec` makes a group |
+| `exec.env` | object | none | the variables the command sees ([section 4](#4-give-the-command-its-variables)) |
 | `exec.command` | string | required | the shell command, run in the project folder |
 | `exec.env.define` | record | none | set values, in the key |
 | `exec.env.passThrough` | string[] | none | variables passed from your shell |
