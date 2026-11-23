@@ -229,7 +229,7 @@ describe('the CI guide states the wire chunk sizes', () => {
     expect(chunk).not.toBeNull()
     expect(safe).not.toBeNull()
     const page = readFileSync(path.join(DOCS, 'docs', 'remote-execution.mdx'), 'utf8')
-    const m = /- Uploads chunk at (\d+) bytes \(`SAFE_CHUNK_BYTES`\)/.exec(page)
+    const m = /- Uploads go in chunks of (\d+) bytes/.exec(page)
     expect(m).not.toBeNull()
     expect([m![1], chunk![1]]).toEqual([safe![1], safe![1]])
   })

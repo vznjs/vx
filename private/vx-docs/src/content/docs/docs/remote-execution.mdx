@@ -274,7 +274,7 @@ computing gzip size...
 [0m[2m└─[0m [1m[38;2;192;132;252m@demo/ui[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(226ms)[0m [2msuccess[0m
 ```
 
-Read the yellow line: the pool was full, so the build ran here and still passed.
+Read the **[vx]** line: the pool was full, so the build ran here and still passed.
 
 <Takeaway>connect any pool, pass values safely, and skip a full queue.</Takeaway>
 
@@ -324,8 +324,7 @@ The connection options (`endpoint`, `headers`, TLS, timeouts, `chunkBytes`) are 
 - No worker starts a task within `queueTimeoutMs`: it runs here. An `'only'` task fails instead.
 - A dropped connection: vx re-attaches to the running task instead of starting it again.
 - A task already run on the pool with the same key: vx skips the worker and replays the result.
-- Uploads chunk at 65535 bytes (`SAFE_CHUNK_BYTES`), about 64 KB; `chunkBytes` changes it.
-  A larger size that stalls retries once at 64 KB.
+- Uploads go in chunks of 65535 bytes (about 64 KB); `chunkBytes` changes it. A larger size that stalls retries once at 64 KB.
 
 Every wire detail: [`@vzn/vx-reapi`](../../plugins/vx-reapi/).
 
