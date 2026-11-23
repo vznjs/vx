@@ -270,6 +270,8 @@ export default defineProject({
           // reads the kit's styles, the widgets' and the theme's tokens, and
           // with landing.test.ts the landing's picture.
           'src/nav/**',
+          // llms.test.ts holds the agents' markdown and its reading order.
+          'src/llms/**',
           // features.test.ts holds the feature data's copy, commands and
           // config examples, and its images on disk.
           'src/features/**',

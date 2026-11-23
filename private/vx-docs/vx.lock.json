@@ -280,6 +280,7 @@
           "src/conformance/**",
           "src/data/conformance.json",
           "src/nav/**",
+          "src/llms/**",
           "src/features/**",
           "src/assets/features/**",
           "src/components/guide/**",

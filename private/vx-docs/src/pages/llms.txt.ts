@@ -1,47 +1,31 @@
 import type { APIRoute } from 'astro'
-import { agentPages, isInternal, markdownUrl } from '../llms/pages.ts'
-import { SIDEBAR } from '../nav/sections.ts'
-
-type Item = { link?: string; items?: Item[] }
-const ids = (items: readonly Item[]): string[] =>
-  items.flatMap((i) => (i.items ? ids(i.items) : i.link ? [i.link.replace(/^\/|\/$/g, '')] : []))
-/** The page ids a top-level sidebar group lists (`docs` for `/docs/`). */
-function listed(label: string): (id: string) => boolean {
-  const own = new Set(
-    ids((SIDEBAR as Item[]).filter((g) => (g as { label?: string }).label === label)),
-  )
-  return (id) => own.has(id === 'docs/index' ? 'docs' : id)
-}
-
-const SECTIONS: readonly [string, (id: string) => boolean][] = [
-  ['Docs', listed('Docs')],
-  ['More docs', (id) => !/^(blog|releases)\//.test(id) && !isInternal(id)],
-  ['Blog', (id) => id.startsWith('blog/')],
-  ['Releases', (id) => id.startsWith('releases/')],
-  ['How vx is built', isInternal],
-]
+import { agentPages, isInternal, markdownUrl, readingOrder, type Page } from '../llms/pages.ts'
 
 export const GET: APIRoute = async ({ site }) => {
   const base = new URL(import.meta.env.BASE_URL, site).href
   const pages = await agentPages()
-  const seen = new Set<string>()
-  const sections = SECTIONS.map(([name, owns]) => {
-    const lines = pages
-      .filter((p) => !seen.has(p.id) && owns(p.id))
-      .map((p) => {
-        seen.add(p.id)
-        const note = p.data.description ? `: ${p.data.description}` : ''
-        return `- [${p.data.title}](${markdownUrl(p, base)})${note}`
-      })
-    return `## ${name}\n\n${lines.join('\n')}`
-  })
+  const line = (p: Page): string => {
+    const note = p.data.description ? `: ${p.data.description}` : ''
+    return `- [${p.data.title}](${markdownUrl(p, base)})${note}`
+  }
+  const docs = readingOrder(pages)
+  const listed = new Set(docs.flatMap(([, ps]) => ps.map((p) => p.id)))
+  const sections: [string, Page[]][] = [
+    ...docs,
+    ['Blog', pages.filter((p) => p.id.startsWith('blog/'))],
+    ['Releases', pages.filter((p) => p.id.startsWith('releases/'))],
+    ['How vx is built', pages.filter((p) => isInternal(p.id) && !listed.has(p.id))],
+  ]
   const body = `# vx
 
 > vx is a Bun-native task runner and content-addressed cache for JavaScript monorepos. Tasks live in TypeScript configs (\`vx.config.ts\`), a run is \`vx run <task>\`, and plugins decide where tasks run and where the cache lives.
 
-Every page below is plain markdown. Every docs page in one file: ${base}llms-full.txt. An agent in a vx workspace can also ask the workspace itself: \`--format json\` on \`vx show\`, \`vx info\`, \`vx why\` and \`vx last\` (${base}docs/agents.md).
+Every page below is plain markdown, the docs in reading order: start with the Quickstart, then AI agents. The docs in one file, in the same order: ${base}llms-full.txt. In a vx workspace, \`bunx skills add vznjs/vx\` installs the vx skill, and \`--format json\` on \`vx show\`, \`vx info\`, \`vx why\` and \`vx last\` answers from the workspace itself (${base}docs/agents.md).
 
-${sections.join('\n\n')}
+${sections
+  .filter(([, ps]) => ps.length > 0)
+  .map(([name, ps]) => `## ${name}\n\n${ps.map(line).join('\n')}`)
+  .join('\n\n')}
 `
   return new Response(body, { headers: { 'Content-Type': 'text/plain; charset=utf-8' } })
 }
