@@ -995,14 +995,14 @@
   "scores": {
     "vx": {
       "all": {
-        "pass": 2094,
-        "can": 2094,
-        "of": 2169
+        "pass": 2095,
+        "can": 2095,
+        "of": 2170
       },
       "correctness": {
-        "pass": 1689,
-        "can": 1689,
-        "of": 1756
+        "pass": 1690,
+        "can": 1690,
+        "of": 1757
       },
       "efficiency": {
         "pass": 316,
@@ -1065,21 +1065,21 @@
         "of": 132
       },
       "watch": {
-        "pass": 122,
-        "can": 122,
-        "of": 122
+        "pass": 123,
+        "can": 123,
+        "of": 123
       }
     },
     "turbo": {
       "all": {
-        "pass": 1374,
-        "can": 1833,
-        "of": 2169
+        "pass": 1375,
+        "can": 1834,
+        "of": 2170
       },
       "correctness": {
-        "pass": 1108,
-        "can": 1442,
-        "of": 1756
+        "pass": 1109,
+        "can": 1443,
+        "of": 1757
       },
       "efficiency": {
         "pass": 236,
@@ -1142,21 +1142,21 @@
         "of": 132
       },
       "watch": {
-        "pass": 103,
-        "can": 117,
-        "of": 122
+        "pass": 104,
+        "can": 118,
+        "of": 123
       }
     },
     "nx": {
       "all": {
-        "pass": 1375,
-        "can": 1867,
-        "of": 2169
+        "pass": 1376,
+        "can": 1868,
+        "of": 2170
       },
       "correctness": {
-        "pass": 1068,
-        "can": 1467,
-        "of": 1756
+        "pass": 1069,
+        "can": 1468,
+        "of": 1757
       },
       "efficiency": {
         "pass": 277,
@@ -1219,21 +1219,21 @@
         "of": 132
       },
       "watch": {
-        "pass": 95,
-        "can": 120,
-        "of": 122
+        "pass": 96,
+        "can": 121,
+        "of": 123
       }
     },
     "vite-task": {
       "all": {
         "pass": 1014,
         "can": 1442,
-        "of": 2169
+        "of": 2170
       },
       "correctness": {
         "pass": 855,
         "can": 1158,
-        "of": 1756
+        "of": 1757
       },
       "efficiency": {
         "pass": 150,
@@ -1298,19 +1298,19 @@
       "watch": {
         "pass": 0,
         "can": 0,
-        "of": 122
+        "of": 123
       }
     },
     "nix": {
       "all": {
         "pass": 1083,
         "can": 1436,
-        "of": 2169
+        "of": 2170
       },
       "correctness": {
         "pass": 929,
         "can": 1176,
-        "of": 1756
+        "of": 1757
       },
       "efficiency": {
         "pass": 144,
@@ -1375,19 +1375,19 @@
       "watch": {
         "pass": 0,
         "can": 0,
-        "of": 122
+        "of": 123
       }
     },
     "moon": {
       "all": {
         "pass": 1267,
         "can": 1772,
-        "of": 2169
+        "of": 2170
       },
       "correctness": {
         "pass": 1002,
         "can": 1406,
-        "of": 1756
+        "of": 1757
       },
       "efficiency": {
         "pass": 230,
@@ -1452,7 +1452,7 @@
       "watch": {
         "pass": 0,
         "can": 0,
-        "of": 122
+        "of": 123
       }
     }
   },
@@ -35410,6 +35410,41 @@
         "nix": {
           "status": "n/a",
           "detail": "nix-build has no watch mode."
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "`moon run` runs once: moon has no watch mode."
+        }
+      }
+    },
+    {
+      "id": "watch/edit-in-one-app-keeps-another-server-up",
+      "ref": "8kxk6c",
+      "category": "watch",
+      "kind": "correctness",
+      "title": "Saving a file in one app leaves another app’s dev server running",
+      "why": "Two apps under one watch each run a dev server, and a save in one changes nothing the other reads. The other server must keep running, neither restarted nor stopped, so the page or API it serves stays up. A watch that stops it on an unrelated save leaves the user with a dead server and a watch that still looks alive.",
+      "from": [
+        "watch-initial-edit-server",
+        "watch-loop-members"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "`vp run` has no watch mode. Vite Task has no long-running task it stops when the run ends."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build has no watch mode. A derivation is a build that ends: Nix has no long-running task."
         },
         "moon": {
           "status": "n/a",
