@@ -728,7 +728,7 @@ describe('persistent task framing', () => {
   // `(0ms) running` each cycle, as if the server had just restarted.
   it('a server a watch cycle kept closes as still running, with no time', () => {
     const n = persistentNode('app#dev', 'vite')
-    const close = formatFrameClose(n, outcome('app#dev', 'success', { serverKept: true }))
+    const close = formatFrameClose(n, outcome('app#dev', 'success'), undefined, true)
     expect(close).toBe('└─ ▸ app#dev ── still running')
   })
 

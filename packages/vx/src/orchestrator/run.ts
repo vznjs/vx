@@ -1406,6 +1406,7 @@ async function runOnBus(
       server.out.bus = bus
       serverOut.adopt(node.id, server.out)
       persistentRegistry.set(node.id, server.child)
+      terminal?.serverKept(node.id)
       const at = process.hrtime.bigint() - runStartHrTimeNs
       return {
         node,
@@ -1413,7 +1414,6 @@ async function runOnBus(
         exitCode: 0,
         durationMs: 0,
         timing: { startNs: at, endNs: at },
-        serverKept: true,
       }
     }
     let lockBroken: boolean | undefined

@@ -337,15 +337,12 @@ export interface SucceededOutcome
    * went on, so no label calls it running.
    */
   serverExit?: number
-  /** A server `vx watch` kept up from the cycle before: this cycle started nothing. */
-  serverKept?: true
 }
 
 export interface FailedOutcome
   extends StartedOutcome, FailureFacts, None<BlockFacts>, None<PlatformFacts> {
   status: 'failed'
   serverExit?: never
-  serverKept?: never
 }
 
 /**
@@ -358,7 +355,6 @@ export interface AbortedOutcome
   status: 'aborted'
   /** A server the session's end stopped, whose child had exited on its own before. */
   serverExit?: number
-  serverKept?: never
 }
 
 /** It never started, so it has no exit; a key only when fail-fast stopped it after deriving one. */
@@ -368,7 +364,6 @@ export interface SkippedOutcome extends OutcomeBase, None<FailureFacts>, BlockFa
   /** Its key, when fail-fast stopped it after the key was derived and before its command began. */
   hash?: string
   serverExit?: never
-  serverKept?: never
 }
 
 export type TaskOutcome = SucceededOutcome | FailedOutcome | AbortedOutcome | SkippedOutcome
