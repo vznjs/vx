@@ -10,10 +10,14 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { statSync } from 'node:fs'
 import { indexDb, Cache } from '../src/cache/index.js'
 import { FILE_HASH_RACY_MS } from '../src/memo/index.js'
+import { setFsClockLag } from '../src/memo/fs-clock.js'
 
 let dir: string
 let cache: Cache
 beforeEach(async () => {
+  // The lag is process-wide: a run() an earlier file made on a loaded box
+  // measured one, and it widens every window `aged` waits out.
+  setFsClockLag(0)
   dir = await mkdtemp(path.join(os.tmpdir(), 'vx-hash-files-'))
   cache = new Cache(path.join(dir, 'cache'), { read: true, write: true })
 })
