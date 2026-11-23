@@ -21,6 +21,10 @@ version. `vx cache clean --older-than 7d` drops the old entries later.
 
 ## After v0.0.659
 
+### Keep a failed task's directory in the index
+
+The local index schema is v58: it resets once, so the run history starts empty.
+
 ### Drop Cache.kept and the stampWritten memo hooks
 
 Nothing to change beyond the steps above.

@@ -851,7 +851,9 @@ values start, and its colour carries the outcome. The cache word is the
 cache axis. An empty cell shows `—`. A terminal too narrow for the
 whole row drops `blocks`, `outputs`, `worker`, `cpu`, `mem` and
 `±usual`, in that order, until a task's name has 24 columns; status,
-cache and time always stay. Logs off a terminal keep every column.
+cache and time always stay. Logs off a terminal keep every column. A
+terminal titles the rows with a `Tasks` line holding the column names;
+a pipe (an agent's shell) gets that line once, above its first row.
 
 | Status     | Colour | Meaning                                                |
 | ---------- | ------ | ------------------------------------------------------ |
@@ -3465,7 +3467,7 @@ vx info
   [2mmemory          [0m  [38;2;203;213;225m13 GB usable — cgroup limit; the machine has 16 GB[0m
   [2mcache dir       [0m  [38;2;203;213;225m/work/repo/.vx/cache (332 KB, this workspace's run history)[0m
   [2mcache store     [0m  [38;2;203;213;225m~/.vx/c46f226815d1a23e/cache (284 MB, shared by this workspace's checkouts)[0m
-  [2mcache versions  [0m  [38;2;203;213;225mkeys vx-cache-v56 · index schema v57[0m
+  [2mcache versions  [0m  [38;2;203;213;225mkeys vx-cache-v56 · index schema v58[0m
   [2mcache entries   [0m  [38;2;203;213;225m37 (284 MB)[0m
   [2mtask runs (24h) [0m  [38;2;203;213;225m34 (11 cache hits: 2 up-to-date, 9 restored)[0m
   [2mflaky tasks     [0m  [38;2;203;213;225m1 — app#test (2 of 5 runs failed on unchanged inputs)[0m
@@ -4083,7 +4085,7 @@ per run, joined on `run_id`: status, duration, cache hit, cpu, peak and
 mean memory, attempts, timeout, skip and remote reasons, where it ran),
 `steps` (`run_id`, `seq`, `step`, `duration_ms`, `ok`: the steps a run
 did not wait on), `warnings` (`run_id`, `seq`, `text`), `failures`
-(`run_id`, `task_id`, `input_moved`, `output`, `locations`,
+(`run_id`, `task_id`, `dir`, `input_moved`, `output`, `locations`,
 `sandbox_fix`: a failed task's output; the last two JSON), `entries`
 (the cached keys), `entry_inputs` (each key's input components),
 `task_durations` and `task_outcomes` (what forecasts and flakiness
@@ -4110,7 +4112,8 @@ change with `SCHEMA_VERSION`; read `sqlite_schema` rather than assume.
 emits `{ invocation, tasks, steps, warnings }` for scripting (`steps`
 and `warnings` only when the run kept some, above); `--list --format json`
 an array of the same `invocation` objects, newest first. A failed task's row adds
-`output` (its output as plain text, the first 8 KiB and last 56 KiB,
+`dir` (its project's directory from the workspace root, `.` for the root,
+where the relative paths in its output start), `output` (its output as plain text, the first 8 KiB and last 56 KiB,
 secrets masked) and `locations` (the existing files it names,
 `{ file, line?, col? }`, file absolute; a file also named with a line
 drops its bare mention, such as bun test's `app.test.js:` header), so an
@@ -4348,7 +4351,7 @@ Frame anatomy:
 ```ansi
 [2m┌─[0m [1m[38;2;147;197;253mapp[0m[2m#[0m[1m[38;2;96;165;250mtest[0m [2m>[0m [1m[38;2;239;68;68mfailed (exit 1, 1 sandbox violation)[0m
 
-[2m$ bun test[0m
+[2mpackages/app $ bun test[0m
 
 [2m├─[0m [1mOUTPUT[0m [2m────────────────────────────────────────────────────[0m
 
@@ -4365,7 +4368,10 @@ write ../shared/notes.txt
 
 Every section is conditional: the `$ <command>` line only for an
 executed task (success or failed — a hit replays its stored output and
-shows none), `OUTPUT` only when the task wrote something,
+shows none), led by the directory it ran in from the workspace root
+(none for a project at the root), as a shell prompt would be: a task
+names paths from its own directory, so `src/index.js` in its output is
+`packages/app/src/index.js`, `OUTPUT` only when the task wrote something,
 `SANDBOX VIOLATIONS (N)` only when the sandbox recorded some (`N`
 counts them) or `SANDBOX` when vx has only a note on a failure. The
 header carries the outcome (`restored-local • abc12345`, `failed (exit

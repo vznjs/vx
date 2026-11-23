@@ -1,6 +1,6 @@
 {
   "index": {
-    "version": "v57",
+    "version": "v58",
     "layout": [
       "CREATE INDEX invocations_branch  ON invocations(branch)",
       "",
@@ -73,6 +73,7 @@
       "CREATE TABLE failures (",
       "run_id      TEXT NOT NULL,",
       "task_id     TEXT NOT NULL,",
+      "dir         TEXT,",
       "input_moved TEXT,",
       "output      TEXT NOT NULL,",
       "locations   TEXT NOT NULL,",

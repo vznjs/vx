@@ -358,6 +358,7 @@ export function createTables(db: Database, store: 'main' | 'store' = 'main'): vo
     CREATE TABLE IF NOT EXISTS main.failures (
       run_id      TEXT NOT NULL,
       task_id     TEXT NOT NULL,
+      dir         TEXT,
       input_moved TEXT,
       output      TEXT NOT NULL,
       locations   TEXT NOT NULL,
@@ -547,7 +548,7 @@ export function pruneHistoryRows(db: Database, cutoff: number): number {
 
 // The index's schema. A mismatch drops and recreates the index: no
 // migrations, so any change to what it stores bumps this.
-export const SCHEMA_VERSION = 'v57'
+export const SCHEMA_VERSION = 'v58'
 
 /**
  * SQL predicate selecting `runs` rows that record an EXECUTION.

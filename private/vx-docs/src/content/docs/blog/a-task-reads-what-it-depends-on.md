@@ -39,7 +39,7 @@ The output reads fine. The source does not exist for this task:
 ```ansi
 [2m┌─[0m [1m[38;2;147;197;253mpackages/app[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m>[0m [1m[38;2;239;68;68mfailed (exit 1)[0m
 
-[2m$ cat ../tools/out/bin/greet ../tools/src/greet.sh > greeting.txt[0m
+[2mpackages/app $ cat ../tools/out/bin/greet ../tools/src/greet.sh > greeting.txt[0m
 
 [2m├─[0m [1mOUTPUT[0m [2m────────────────────────────────────────────────────[0m
 
@@ -65,7 +65,7 @@ wall to `/`. The task reads only what you grant, plus the shell vx needs.
 ```ansi
 [2m┌─[0m [1m[38;2;147;197;253mpackages/app[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m>[0m [1m[38;2;239;68;68mfailed (exit 127)[0m
 
-[2m$ cat ../tools/src/greet.sh > greeting.txt[0m
+[2mpackages/app $ cat ../tools/src/greet.sh > greeting.txt[0m
 
 [2m├─[0m [1mOUTPUT[0m [2m────────────────────────────────────────────────────[0m
 

@@ -48,13 +48,13 @@ describe('a task under a vx that runs on a terminal', () => {
       })
       const code = await proc.exited
       proc.terminal?.close()
-      // The echoed command line holds every marker, so the task's own
+      // The echoed command line (`<dir> $ …`) holds every marker, so the task's own
       // output is read as whole lines.
       const lines = screen.split(/\r?\n/)
       expect({
         code,
         answers: lines.filter((l) => ['HAD-TTY', 'NO-TTY', 'AFTER-READ'].includes(l)),
-        refusals: lines.filter((l) => l.includes('/dev/tty') && !l.startsWith('$ ')).length,
+        refusals: lines.filter((l) => l.includes('/dev/tty') && !/^(\S+ )?\$ /.test(l)).length,
       }).toEqual({ code: 0, answers: ['NO-TTY', 'AFTER-READ'], refusals: 2 })
     } finally {
       await rm(root, { recursive: true, force: true })
