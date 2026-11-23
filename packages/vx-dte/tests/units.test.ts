@@ -1960,6 +1960,42 @@ for (const how of ['fault', 'report'] as const)
     }
   })
 
+// A task that failed or was stopped hands over none of its dependants, yet
+// the plan still counted them and asked a worker for them, which joined to
+// nothing (a Ctrl-C asked one as the run stopped).
+for (const how of ['fails', 'is stopped'] as const)
+  it(`asks no worker for the dependants of a task that ${how}`, async () => {
+    const asked: string[] = []
+    let o: Orchestrator | undefined
+    const nodes = new Map([node('t1'), node('t2', ['t1']), node('t3')])
+    const h = await harness(nodes, undefined, 400, undefined, () => 1000, {
+      sizes: [{ name: 'small', max: 3, cores: 1, memory: 100, platform: '', warmUpMs: 10 }],
+      spawn: (size) => {
+        const id = `${size}#${asked.length + 1}`
+        o!.spawned(id, { size, cpu: 1, memory: 100 })
+        asked.push(id)
+        return id
+      },
+    })
+    o = h.o
+    try {
+      const stop = new AbortController()
+      const t1 = h.o.execute({ ...h.req('t1'), signal: stop.signal })
+      void h.o.execute(h.req('t3'))
+      for (let i = 0; i < 40 && asked.length === 0; i++) await Bun.sleep(25)
+      const a = await h.worker(1, 'small#1')
+      expect(await a.batches()).toEqual([['t1']])
+      if (how === 'is stopped') stop.abort()
+      await a.finish('t1', 'k-t1', { exitCode: how === 'fails' ? 1 : 143, durationMs: 5 })
+      expect((await t1).exitCode).not.toBe(0)
+      expect(await a.batches()).toEqual([['t3']])
+      await Bun.sleep(100)
+      expect(asked).toEqual(['small#1'])
+    } finally {
+      await h.stop()
+    }
+  })
+
 // Growth, 2026-10-21: four local() workers of 1 core on a 4-core host each
 // reported the host and took 4 tasks plus a prefetch, 16 wide on 4 cores.
 // Its load is its host's, so the run counts what it booked.

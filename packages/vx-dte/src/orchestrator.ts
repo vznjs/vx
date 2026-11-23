@@ -322,6 +322,11 @@ export class Orchestrator extends RunReport<Worker> {
   /** Each graph's upstreams as orders name them (`dep`). */
   private readonly deps = new WeakMap<ReadonlyMap<string, TaskNode>, Map<string, DepFiles | null>>()
   /** Each graph's tasks' uncached upstreams, whose files lie on one worker only (`pinUp`). */
+  /** Each graph's dependants of each task, walked once (`skipped`). */
+  private readonly dependants = new WeakMap<
+    ReadonlyMap<string, TaskNode>,
+    Map<string, string[]>
+  >()
   private readonly afterUncached = new WeakMap<
     ReadonlyMap<string, TaskNode>,
     Map<string, readonly string[]>
@@ -432,19 +437,60 @@ export class Orchestrator extends RunReport<Worker> {
         ...(nodes?.has(req.taskId) === true ? { up } : {}),
         need: { ...need, platform: req.platform ?? this.o.home },
         queuedAt: performance.now(),
-        resolve,
-        reject,
+        // Failed or stopped, it hands over none of its dependants: the plan
+        // asked a worker for them, idle on arrival.
+        resolve: (r) => {
+          if (r.exitCode !== 0) this.skipped(req.taskId)
+          resolve(r)
+        },
+        reject: (err) => {
+          this.skipped(req.taskId)
+          reject(err)
+        },
       }
       // A retry runs elsewhere: the worker, or what ran beside it, may be the flake.
       const last = (req.attempt ?? 1) > 1 ? this.ranOn.get(req.taskId) : undefined
       if (last !== undefined) job.avoid = last
       this.handed.delete(req.taskId)
       // A signal aborted already fires no `abort`.
-      if (req.signal?.aborted === true) return resolve(stopped())
+      if (req.signal?.aborted === true) return job.resolve(stopped())
       req.signal?.addEventListener('abort', () => this.abort(job), { once: true })
       this.enqueue([job])
       this.pumpSoon()
     })
+  }
+
+  /**
+   * `id` failed or stopped: core skips its dependants, so the plan counts
+   * them no more. A retry of `id`, or a dependant core hands over after
+   * all, is queued again (`enqueue`).
+   */
+  private skipped(id: string): void {
+    const p = this.bound
+    const nodes = this.o.nodes()
+    if (p === undefined || nodes === undefined) return
+    let down = this.dependants.get(nodes)
+    if (down === undefined) {
+      down = new Map()
+      for (const [t, n] of nodes)
+        for (const d of n.deps) {
+          const list = down.get(d)
+          if (list === undefined) down.set(d, [t])
+          else list.push(t)
+        }
+      this.dependants.set(nodes, down)
+    }
+    const now = this.clock()
+    const seen = new Set<string>()
+    const stack = [...(down.get(id) ?? [])]
+    while (stack.length > 0) {
+      const t = stack.pop()!
+      if (seen.has(t)) continue
+      seen.add(t)
+      if (this.waiting.has(t) || this.handed.has(t) || this.where(t) !== undefined) continue
+      p.drop(t, now)
+      stack.push(...(down.get(t) ?? []))
+    }
   }
 
   /** The run's cache facts; once they end, every worker is sent them again before then. */
