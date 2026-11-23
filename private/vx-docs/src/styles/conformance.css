@@ -175,6 +175,9 @@
 .vx-landing .cfm-all {
   border-bottom-color: var(--line-strong);
 }
+.vx-landing .cfm-who {
+  display: none;
+}
 .vx-landing .cfm-sr {
   position: absolute;
   width: 1px;
@@ -286,20 +289,21 @@
 .vx-landing .cfm-cat[open] {
   margin-bottom: 24px;
 }
-/* A linked case lands under the tools' names and its category's scores. */
+/* A linked case lands under the site's bar, the tools' names and its
+   category's sticky scores (about 100px), not behind them. */
 .vx-landing .cfm-cases tbody tr {
-  scroll-margin-top: 108px;
+  scroll-margin-top: calc(var(--sl-nav-height, 64px) + var(--cfm-head) + 116px);
 }
 /* The case a link points at. */
-.vx-landing .cfm .cfm-cases tbody tr:target > th[scope='row'] {
+.vx-landing .cfm .cfm-cases tbody tr:is(:target, .cfm-linked) > th[scope='row'] {
   padding-left: 12px;
   background: color-mix(in srgb, var(--phosphor) 10%, var(--bg-page));
   box-shadow: inset 3px 0 0 var(--phosphor);
 }
-.vx-landing .cfm-cases tbody tr:target {
+.vx-landing .cfm-cases tbody tr:is(:target, .cfm-linked) {
   background: color-mix(in srgb, var(--phosphor) 10%, var(--bg-page));
 }
-.vx-landing .cfm .cfm-cases tbody tr:target .cfm-meta a {
+.vx-landing .cfm .cfm-cases tbody tr:is(:target, .cfm-linked) .cfm-meta a {
   color: var(--phosphor);
 }
 .vx-landing .cfm-cases th[scope='row'] {
@@ -418,44 +422,57 @@
   .vx-landing .cfm table {
     font-size: 14px;
   }
-  /* Six tools leave a phone no room: the board keeps its width and
-     scrolls sideways, each row's name pinned at the left. A scroller
-     cannot hold a sticky top, so the tools' names scroll with it. */
-  .vx-landing .cfm {
-    --cfm-col: 96px;
+  /* Six columns leave a phone no room: each row stacks. A category's
+     name spans the row and its six scores sit three by two; a case's
+     title spans the row and its six marks sit under it. Each cell names
+     its own tool, so the board's head is not needed and nothing scrolls
+     sideways. */
+  .vx-landing .cfm-head {
+    display: none;
   }
-  .vx-landing .cfm-board {
-    overflow-x: auto;
-    margin-right: calc(-1 * var(--gutter));
-    padding-right: var(--gutter);
+  .vx-landing .cfm-row {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    padding-bottom: 6px;
   }
-  .vx-landing .cfm-board > * {
-    min-width: calc(170px + 6 * var(--cfm-col));
+  .vx-landing .cfm-row > .cfm-name {
+    grid-column: 1 / -1;
+    padding-bottom: 4px;
   }
-  .vx-landing .cfm-head,
   .vx-landing .cfm-cat[open] > summary {
     position: static;
   }
   .vx-landing .cfm-cases tbody tr {
     scroll-margin-top: 80px;
   }
-  .vx-landing .cfm-name,
-  .vx-landing .cfm .cfm-cases tbody tr > th[scope='row'] {
-    position: sticky;
-    left: 0;
-    z-index: 1;
-    background: var(--bg-page);
+  .vx-landing .cfm .cfm-who {
+    display: block;
+    font: var(--fw-medium) 10px / 1.2 var(--font-mono);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-mut);
+    margin-bottom: 4px;
   }
-  .vx-landing .cfm-cat-about {
-    position: sticky;
-    left: 0;
-    max-width: calc(100vw - 2 * var(--gutter));
+  .vx-landing .cfm .cfm-cases,
+  .vx-landing .cfm .cfm-cases tbody {
+    display: block;
   }
-  .vx-landing .cfm-long {
+  .vx-landing .cfm .cfm-cases colgroup {
     display: none;
   }
-  .vx-landing .cfm-short {
-    display: inline;
+  .vx-landing .cfm .cfm-cases tbody tr {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    border-bottom: 1px solid var(--line);
+  }
+  .vx-landing .cfm .cfm-cases tbody tr > * {
+    border-bottom: 0;
+  }
+  .vx-landing .cfm .cfm-cases tbody tr > th[scope='row'] {
+    grid-column: 1 / -1;
+    padding: 12px 0 4px;
+  }
+  .vx-landing .cfm .cfm-cases tbody tr:is(:target, .cfm-linked) > th[scope='row'] {
+    padding-left: 12px;
   }
   .vx-landing .cfm-head .cfm-tool {
     padding: 0 4px 10px;
@@ -463,7 +480,7 @@
     letter-spacing: 0;
   }
   .vx-landing .cfm-cell {
-    padding: 10px 4px;
+    padding: 8px 4px;
   }
   .vx-landing .cfm-pct {
     font-size: 17px;
@@ -475,7 +492,7 @@
     font-size: 11px;
   }
   .vx-landing .cfm-cases td {
-    padding: 12px 4px;
+    padding: 6px 4px 12px;
     font-size: 16px;
   }
   .vx-landing .cfm-why {
@@ -495,4 +512,123 @@
 .vx-landing .cfm-more {
   margin: 0 0 14px;
   font: 13px / 1.3 var(--font-mono);
+}
+
+/* ---- what each mark means ---- */
+.vx-landing .cfm-legend {
+  display: grid;
+  gap: 10px;
+  margin: 0 0 20px;
+  padding: 0;
+  max-width: 44em;
+  list-style: none;
+  font: var(--fw-regular) 15px / 1.5 var(--font-body);
+  color: var(--text-mut);
+}
+.vx-landing .cfm-legend li {
+  display: flex;
+  gap: 12px;
+  align-items: baseline;
+}
+.vx-landing .cfm-legend strong {
+  color: var(--text-hi);
+  font-weight: var(--fw-semibold);
+}
+.vx-landing .cfm-mark {
+  flex: none;
+  width: 1.2em;
+  font: var(--fw-bold) 18px / 1 var(--font-body);
+  text-align: center;
+}
+.vx-landing .cfm [data-status='pass'] > .cfm-mark,
+.vx-landing .cfm-legend [data-status='pass'] strong {
+  color: var(--cfm-pass);
+}
+.vx-landing .cfm [data-status='fail'] > .cfm-mark,
+.vx-landing .cfm-legend [data-status='fail'] strong {
+  color: var(--cfm-fail);
+}
+.vx-landing .cfm [data-status='n/a'] > .cfm-mark {
+  color: var(--cfm-na);
+}
+
+/* ---- case search ---- */
+.vx-landing .cfm-search {
+  margin: 0 0 20px;
+  max-width: 44em;
+}
+.vx-landing .cfm-search input {
+  box-sizing: border-box;
+  width: 100%;
+  height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  font: var(--fw-regular) 15px / 1 var(--font-body);
+  color: var(--text-hi);
+  background: var(--surface-card);
+}
+.vx-landing .cfm-search input::placeholder {
+  color: var(--text-faint);
+}
+.vx-landing .cfm-search input:focus-visible {
+  outline: 2px solid var(--phosphor);
+  outline-offset: 1px;
+}
+.vx-landing .cfm-said {
+  margin: 8px 0 0;
+  font: 12px / 1.3 var(--font-mono);
+  color: var(--text-faint);
+}
+.vx-landing .cfm-said:empty {
+  display: none;
+}
+.vx-landing .cfm-hits {
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  max-height: 60vh;
+  overflow-y: auto;
+}
+.vx-landing .cfm-hits li + li {
+  border-top: 1px solid var(--line);
+}
+.vx-landing .cfm .cfm-hits a {
+  display: block;
+  padding: 10px 14px;
+  color: var(--text);
+  text-decoration: none;
+}
+.vx-landing .cfm .cfm-hits a:hover,
+.vx-landing .cfm .cfm-hits a:focus-visible {
+  background: color-mix(in srgb, var(--phosphor) 6%, transparent);
+  outline: none;
+}
+.vx-landing .cfm-hit-title {
+  display: block;
+  color: var(--text-hi);
+}
+.vx-landing .cfm-hit-meta {
+  display: block;
+  margin-top: 2px;
+  font: 12px / 1.4 var(--font-mono);
+  color: var(--text-faint);
+}
+.vx-landing .cfm-hit-marks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin-top: 6px;
+  font: var(--fw-medium) 12px / 1.3 var(--font-mono);
+}
+.vx-landing .cfm-hit-marks [data-status='pass'] {
+  color: var(--cfm-pass);
+}
+.vx-landing .cfm-hit-marks [data-status='fail'] {
+  color: var(--cfm-fail);
+}
+.vx-landing .cfm-hit-marks [data-status='n/a'] {
+  color: var(--cfm-na);
 }

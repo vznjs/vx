@@ -4,7 +4,7 @@
 // why the tool does not have the feature. The category's own page
 // (pages/conformance/[category].astro) draws it; the conformance page
 // fetches that page's table when the category is opened.
-import { agree, inline, note, RANKED, toolName, type Case } from '../../conformance/data.ts'
+import { agree, inline, note, RANKED, toolName, toolShort, type Case } from '../../conformance/data.ts'
 
 interface Props {
   cases: Case[]
@@ -48,6 +48,9 @@ const SAY = { pass: 'passes', fail: 'fails', 'n/a': 'does not have this feature'
           const label = `${toolName(t)} ${SAY[o.status]}`
           return (
             <td data-tool={t} data-status={o.status}>
+              <span class="cfm-who" aria-hidden="true">
+                {toolShort(t)}
+              </span>
               {o.status !== 'pass' && note(o) !== '' ? (
                 <details>
                   <summary aria-label={label} title={note(o)}>
@@ -62,7 +65,10 @@ const SAY = { pass: 'passes', fail: 'fails', 'n/a': 'does not have this feature'
                   </p>
                 </details>
               ) : (
-                <span aria-label={label}>{MARK[o.status]}</span>
+                <span>
+                  <span aria-hidden="true">{MARK[o.status]}</span>
+                  <span class="cfm-sr">{label}</span>
+                </span>
               )}
             </td>
           )
