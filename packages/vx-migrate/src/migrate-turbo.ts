@@ -138,8 +138,9 @@ export function absentOutputTodo(globs: readonly string[]): string {
   return (
     `${one ? 'output' : 'outputs'} ${globs.map((g) => JSON.stringify(g)).join(', ')} ` +
     `match${one ? 'es' : ''} no file here, though this task's outputs match files in other packages: ` +
-    'vx requires every output path and at least one output file (Turbo cached what was present), so a run ' +
-    'that writes none of them fails and caches nothing — keep only the outputs this command always writes'
+    'a vx run fails when it misses an output path or writes none of its outputs; a wildcard ' +
+    'may match nothing beside one that matched (Turbo cached what was present) — ' +
+    'keep only the outputs this command always writes'
   )
 }
 
@@ -150,8 +151,9 @@ export function unbuiltOutputsNote(tasks: ReadonlyMap<string, readonly string[]>
   )
   return (
     `no package has a file the outputs of ${said.join(', ')} match yet, so they were not checked: ` +
-    'vx requires every output path and at least one output file (Turbo cached what was present), so a run ' +
-    'that writes none of them fails and caches nothing — keep only the outputs each command always writes'
+    'a vx run fails when it misses an output path or writes none of its outputs; a wildcard ' +
+    'may match nothing beside one that matched (Turbo cached what was present) — ' +
+    'keep only the outputs each command always writes'
   )
 }
 

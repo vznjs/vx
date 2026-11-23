@@ -129,7 +129,7 @@ bunx @vzn/vx init --native
             [38;2;203;213;225m.vx/.gitignore[0m
   [2mlock    [0m  [38;2;203;213;225m2 project configs → .vx/projects.lock, .vx/dependencies.lock[0m
   [2mnote    [0m  [38;2;203;213;225mTurbo passes its builtin env (HOME, CI, PATH, VERCEL_* and the rest) to each task; vx passes the names a task lists — add the ones a task reads to exec.env.passThrough[0m
-            [38;2;203;213;225mno package has a file the outputs of build ("dist/**") match yet, so they were not checked: vx requires every output path and at least one output file (Turbo cached what was present), so a run that writes none of them fails and caches nothing — keep only the outputs each command always writes[0m
+            [38;2;203;213;225mno package has a file the outputs of build ("dist/**") match yet, so they were not checked: a vx run fails when it misses an output path or writes none of its outputs; a wildcard may match nothing beside one that matched (Turbo cached what was present) — keep only the outputs each command always writes[0m
 
   [2mnext    [0m  [1mvx run build --all[0m
 ```
