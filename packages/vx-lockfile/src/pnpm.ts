@@ -65,6 +65,8 @@ const PER_IMPORTER = new Set([
   'patchedDependencies',
   'catalogs',
   'overrides',
+  // What an extension added is in the extended package's snapshot.
+  'packageExtensionsChecksum',
 ])
 
 export function parseLockfile(text: string): Lockfile {

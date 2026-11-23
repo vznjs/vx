@@ -64,6 +64,17 @@ it('a catalog in pnpm-workspace.yaml keys no task by itself', async () => {
   expect(await affected(catalogs('^18.0.0'), catalogs('^19.0.0'))).toEqual([])
 })
 
+// pnpm-lock.yaml records what an extension added in the extended
+// package's snapshot (probed, pnpm 10.28), so the projects reaching it move.
+it('a packageExtensions entry in pnpm-workspace.yaml keys no task by itself', async () => {
+  await write(BASE)
+  const base = await key()
+  const EXTENDED = `${BASE}packageExtensions:\n  is-odd:\n    dependencies:\n      kind-of: ^6.0.0\n`
+  await write(EXTENDED)
+  expect(await key()).toBe(base)
+  expect(await affected(BASE, EXTENDED)).toEqual([])
+})
+
 it('a catalog entry no importer names keys no task either', async () => {
   // pnpm-lock.yaml records what each catalog entry resolved to and the
   // importers naming it (probed, pnpm 10.28: a bump re-keys b and c, its

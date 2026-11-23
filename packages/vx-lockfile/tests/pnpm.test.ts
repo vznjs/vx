@@ -1047,11 +1047,6 @@ packages:
   it.each([
     ['settings', 'settings:\n  autoInstallPeers: true\n', 'settings:\n  autoInstallPeers: false\n'],
     [
-      'packageExtensionsChecksum',
-      'packageExtensionsChecksum: aa\n',
-      'packageExtensionsChecksum: bb\n',
-    ],
-    [
       'ignoredOptionalDependencies',
       'ignoredOptionalDependencies:\n  - fsevents\n',
       'ignoredOptionalDependencies:\n  - esbuild\n',
@@ -1089,6 +1084,20 @@ packages:
     expect(after).not.toBe(before)
     expect(movedDirs(before, after).sort()).toEqual([...digests(before).keys()].sort())
     expect(digests(before).size).toBeGreaterThan(1)
+  })
+
+  // pnpm records what a `packageExtensions` entry added in the extended
+  // package's snapshot, and only a checksum of the setting at the top
+  // (probed, pnpm 10.28): folded globally, one extension of a package only
+  // `c` reaches re-keyed every project.
+  it('the `packageExtensionsChecksum` alone moves no importer', () => {
+    const before = v9()
+    const after = before.replace(
+      "lockfileVersion: '9.0'\n",
+      "lockfileVersion: '9.0'\n\npackageExtensionsChecksum: sha256-x\n",
+    )
+    expect(after).not.toBe(before)
+    expect(movedDirs(before, after)).toEqual([])
   })
 
   it('the lockfile version alone moves every importer', () => {
