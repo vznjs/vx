@@ -42,6 +42,21 @@ describe('configErrorFrame', () => {
     )
   })
 
+  it('puts the caret under the field when a wide (CJK) name comes before it', async () => {
+    const wide = path.join(dir, 'wide')
+    await mkdir(wide)
+    await writeFile(
+      path.join(wide, 'vx.config.ts'),
+      "export default {\n  tasks: {\n    '漢字': { exec: { comand: 'x' } },\n  },\n}\n",
+    )
+    const frame = configErrorFrame(
+      `${path.join(wide, 'vx.config.ts')}: tasks.漢字.exec has unknown field "comand"`,
+      wide,
+    )!.split('\n')
+    const [line, caret] = frame.slice(-2) as [string, string]
+    expect(Bun.stringWidth(caret) - 1).toBe(Bun.stringWidth(line.slice(0, line.indexOf('comand'))))
+  })
+
   it('finds a path field after the one before it, and a quoted dotted task name', () => {
     // `exec` appears under build first; the walk starts past `lint.fix`.
     expect(
