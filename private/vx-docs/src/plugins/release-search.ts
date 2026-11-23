@@ -9,13 +9,23 @@
 //
 // `pagefind` is a dependency for this run alone: Starlight's own index
 // takes the whole site and has no way to set a section apart.
+//
+// The bundle is taken in memory and written here. Pagefind's `writeFiles`
+// answers before its writes land (tokio file writes, never flushed), and
+// `close()` kills its backend: on a loaded CI worker pagefind-entry.json was
+// cut short in the cached build (main run 45164679360; a probe under load cut
+// 12 of 60, 0 of 60 this way).
 import type { AstroIntegration } from 'astro'
+import { mkdir, writeFile } from 'node:fs/promises'
+import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import * as pagefind from 'pagefind'
 
 export const RELEASES_BUNDLE = 'pagefind-releases'
 
-export function releaseSearch(): AstroIntegration {
+export function releaseSearch(
+  api: Pick<typeof pagefind, 'createIndex' | 'close'> = pagefind,
+): AstroIntegration {
   return {
     name: 'vx-release-search',
     hooks: {
@@ -25,17 +35,25 @@ export function releaseSearch(): AstroIntegration {
           return r
         }
         try {
-          const { index } = check(await pagefind.createIndex({ rootSelector: 'main' }))
+          const { index } = check(await api.createIndex({ rootSelector: 'main' }))
           if (!index) throw new Error('pagefind: no index')
           const site = fileURLToPath(dir)
           const { page_count } = check(
             await index.addDirectory({ path: site, glob: 'releases/vx-*/index.html' }),
           )
           if (page_count === 0) throw new Error('pagefind: no release notes found')
-          check(await index.writeFiles({ outputPath: `${site}${RELEASES_BUNDLE}/` }))
+          const { files } = check(await index.getFiles())
+          const out = path.join(site, RELEASES_BUNDLE)
+          await Promise.all(
+            files.map(async (f) => {
+              const to = path.join(out, f.path)
+              await mkdir(path.dirname(to), { recursive: true })
+              await writeFile(to, f.content)
+            }),
+          )
           logger.info(`Indexed ${page_count} release notes apart.`)
         } finally {
-          await pagefind.close()
+          await api.close()
         }
       },
     },
