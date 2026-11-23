@@ -3006,7 +3006,7 @@ workspace's own setting (or vx's default) applies.
   sets only one of `dry` and `profile`, and `format` only with `dry: true`. A typed `--cache-policy` or its variable drops a saved
   `noCache` and `force`, and a typed `--force` a saved `noCache`: a run
   applies those over the policy, so the saved key would beat the typed
-  flag.
+  flag. A saved `true` has no typed flag that turns it off: `failFast` yields to `VX_RUN_FAIL_FAST=false`, `noCache` and `force` to a typed `--cache-policy` or `VX_CACHE_POLICY`, `dry` to a typed `--profile`, and `affected` only to another base, `--affected=<ref>`. Otherwise edit the pipeline.
 - **`env`** is set before the run's plugins start, for vx and the plugins
   only (a plugin's on/off switch): every task reads it as unset, in its
   command, its key and its `inputs.runtime` probes. A variable already set in the shell wins. A

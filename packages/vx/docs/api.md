@@ -1847,7 +1847,7 @@ type · `src/config.ts`
 `WorkspaceConfig.pipelines[name]`: a saved `vx run` over every project.
 Each key is its `vx run` flag in camelCase (`cachePolicy` is
 `--cache-policy`); a flag given to `vx pipeline` beats it, and so does
-the flag's `VX_*` variable.
+the flag's `VX_*` variable. No typed flag turns off a saved `true`.
 
 ```ts
 export interface Pipeline {

@@ -491,7 +491,7 @@ Each field, its default, and what it does. "Also" lists its variable and flag.
 
 ### Every pipeline key
 
-Each key but `tasks` and `env` is a `vx run` flag in camelCase: `cachePolicy` is `--cache-policy`. A flag typed with `vx pipeline` beats its key.
+Each key but `tasks` and `env` is a `vx run` flag in camelCase: `cachePolicy` is `--cache-policy`. A flag typed with `vx pipeline` beats its key, but no typed flag turns off a saved `true`: see [Who wins](../ci/#pipeline-keys).
 
 ```ts title=".vx/workspace.ts"
 import { defineWorkspace } from '@vzn/vx/config'

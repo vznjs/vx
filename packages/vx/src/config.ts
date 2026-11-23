@@ -55,7 +55,7 @@ export interface WorkspaceConfig {
  * `WorkspaceConfig.pipelines[name]`: a saved `vx run` over every project.
  * Each key is its `vx run` flag in camelCase (`cachePolicy` is
  * `--cache-policy`); a flag given to `vx pipeline` beats it, and so does
- * the flag's `VX_*` variable.
+ * the flag's `VX_*` variable. No typed flag turns off a saved `true`.
  */
 export interface Pipeline {
   /** The tasks, in every project that declares each (`'pkg#task'` names one); their order is `dependsOn`'s. */
