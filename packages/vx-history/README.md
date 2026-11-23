@@ -201,7 +201,7 @@ A committed file stays tracked whatever `.gitignore` says: `git rm --cached` it.
 
 <details><summary>Details</summary>
 
-The file is `{ "version": 1, "tasks": { "<task id>": <ms> } }`, keys sorted. An entry that is not a number of ms from 0 to 2^53 is dropped.
+The file is `{ "version": 1, "tasks": { "<task id>": <ms> } }`, keys sorted. An entry that is not a number of ms from 0 to 2^53 is dropped, with one warning naming its task ids, as `assume` drops one.
 
 A p50 recorded on this machine wins over the file, and the file wins over `assume`. Like `assume`, it never feeds the workspace median.
 

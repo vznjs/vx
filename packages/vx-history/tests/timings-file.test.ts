@@ -74,6 +74,10 @@ describe('readTimings / writeTimings', () => {
     expect(warnings).toHaveLength(3)
     await writeFile(file, '{"version":1,"tasks":{"a":1,"b":"2","c":-1,"d":null}}')
     expect(readTimings(file, (m) => warnings.push(m))).toEqual({ a: 1 })
+    // Dropped by name, as `assume` drops one: it went unsaid.
+    expect(warnings.slice(3)).toEqual([
+      `[vx] vx-history: timings file ${file} ignores "b", "c", "d" — each must be a number of ms from 0 to 2^53`,
+    ])
   })
 
   // Filtered in place, read once: a copy of an 8,002-task file, filtered
@@ -498,7 +502,10 @@ it(
     })
     expect([summary.ok, warnings.filter((w) => w.includes('vx-history'))]).toEqual([
       true,
-      ['[vx] vx-history: assume ignores "a#lint" — each must be a number of ms from 0 to 2^53'],
+      [
+        `[vx] vx-history: timings file ${path.join(root, 't.json')} ignores "a#build", "a#test" — each must be a number of ms from 0 to 2^53`,
+        '[vx] vx-history: assume ignores "a#lint" — each must be a number of ms from 0 to 2^53',
+      ],
     ])
     // The rewrite keeps no such duration either.
     const kept = readTimings(path.join(root, 't.json'), () => {}) ?? {}

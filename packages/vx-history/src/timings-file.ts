@@ -47,11 +47,20 @@ export function readTimings(
   // 8,002-task file, filtered again by the caller, was ~6 ms of each all-cached
   // run's teardown.
   const out = tasks as Record<string, unknown>
+  const bad: string[] = []
   for (const id in out) {
     const ms = out[id]
     // Bounded so no chain of them sums past a number: core refuses a
     // weight that is not finite, and the run failed on a hint.
-    if (!(typeof ms === 'number' && ms >= 0 && ms <= Number.MAX_SAFE_INTEGER)) delete out[id]
+    if (!(typeof ms === 'number' && ms >= 0 && ms <= Number.MAX_SAFE_INTEGER)) {
+      bad.push(id)
+      delete out[id]
+    }
+  }
+  if (bad.length > 0) {
+    warn(
+      `[vx] vx-history: timings file ${file} ignores ${bad.map((id) => JSON.stringify(id)).join(', ')} — each must be a number of ms from 0 to 2^53`,
+    )
   }
   return out as Record<string, number>
 }
