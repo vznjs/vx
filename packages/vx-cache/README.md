@@ -54,8 +54,11 @@ export default {
   each `uploadTimeoutMs`, then be answered within one. A big artifact
   still moving is not cut off, and one trickling or stalled is: it fails
   the transfer, said as any cache error. A read or check the server does
-  not answer within `timeoutMs` is said once and turns the remote off for
-  the run, reads and writes: the next would wait as long. Each is ms above 0 and up to 2³¹−1 (the
+  not answer within `timeoutMs` is asked once more; unanswered again,
+  while the server answered nothing else, it is said once and turns the
+  remote off for the run, reads and writes: the next would wait as long.
+  So a server that takes the connection and never answers costs twice
+  `timeoutMs`. Each is ms above 0 and up to 2³¹−1 (the
   longest a timer holds), or `vxCache()` refuses it.
 - `headers` are sent on every request to the server, for a proxy in
   front of it, such as a Cloudflare Access service token:
