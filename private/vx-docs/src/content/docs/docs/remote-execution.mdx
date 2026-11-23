@@ -276,28 +276,17 @@ Read the yellow line: the pool was full, so the build ran here and still passed.
 
 <Deeper level="details" title="Every option">
 
-### `reapi()` options
+### `reapi()` options for running
 
 | Option | What it does | Default |
 | --- | --- | --- |
-| `endpoint` | The server: `grpcs://host:port`, `grpc://` for plaintext, or `unix:`/`dns:`/`ipv4:`/`ipv6:` targets | unset: the plugin does nothing |
 | `execute` | Run tasks on the pool, not only cache there. A boolean only | `false` |
 | `platform` | REAPI platform properties that pick a worker (`OSFamily`, `container-image`, …). String values | none |
 | `capacity` | Tasks on the pool at once; a positive integer | unset: pool tasks share your local slots |
 | `queueTimeoutMs` | Longest wait for a worker to start a task; past it, the task runs here | unset: the task's `exec.timeout` bounds it |
 | `executeTimeoutMs` | Longest a started task may run on a worker; `exec.timeout` wins | `600000` (10 minutes) |
-| `instanceName` | The REAPI instance name, for a server that hosts several | none |
-| `headers` | gRPC metadata on every call, such as an API key | none |
-| `tls` | Force TLS on or off | on, except `grpc://`, `http://` and `unix:` |
-| `tlsCertificate` | PEM file of a private CA that signed the server | system roots |
-| `tlsClientCertificate`, `tlsClientKey` | PEM files for mutual TLS, set as a pair | none |
-| `toolName`, `toolVersion` | What the server's UI shows as the client | `vx`, `0.0.0` |
-| `correlatedInvocationsId` | Groups several runs as one build in the server's UI | none |
-| `metaTimeoutMs` | Deadline for small calls (lookups, existence checks) | `min(callTimeoutMs, 15000)` |
-| `callTimeoutMs` | Deadline for one file transfer | `30000` |
-| `chunkBytes` | Upload chunk size | `65535` |
 
-A bad endpoint, header name or unreadable PEM file stops the run at startup, naming the option. A TLS endpoint needs a host name, not an IP.
+The connection options (`endpoint`, `headers`, TLS, timeouts, `chunkBytes`) are the same as for the remote cache: [every `reapi()` option](../plugins/#reapi).
 
 ### `exec.remote`
 
