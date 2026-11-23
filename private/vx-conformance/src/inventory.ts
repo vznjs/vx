@@ -720,6 +720,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'vx-migrate/migrate-turbo-tsc-reach',
     'vx-migrate/migrate-undecodable-member',
     'vx-migrate/migrate-vite-task',
+    'vx-migrate/migrate-workspace-rules',
     'vx-migrate/migration-member-link',
     'vx-migrate/no-conflict-markers',
     'vx-migrate/no-install-next',
