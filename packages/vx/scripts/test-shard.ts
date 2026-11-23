@@ -32,6 +32,9 @@ const TABLES: Record<Suite, string> = {
   unsafe: path.join(TESTS, 'unsafe-shard-weights.json'),
 }
 const isUnsafe = (f: string): boolean => f.endsWith('.unsafe.test.ts')
+// A `.live` file installs from the network and runs as its own task
+// (`test.bun.examples`), so no shard takes it.
+const isLive = (f: string): boolean => f.endsWith('.live.test.ts')
 
 /**
  * The files whose outcome is the platform's: tar and archives, restore and
@@ -49,6 +52,7 @@ export function testFiles(suite: Suite = 'safe', platform = false): string[] {
     .filter(
       (f) =>
         f.endsWith('.test.ts') &&
+        !isLive(f) &&
         isUnsafe(f) === (suite === 'unsafe') &&
         (!platform || PLATFORM_TESTS.test(f)),
     )
