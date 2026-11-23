@@ -1184,6 +1184,24 @@ describe('createOutputWriter region erase accounts for wrapped rows', () => {
     expect(s.chunks.at(-1)).toBe('\r\x1b[3A\x1b[Jn2')
   })
 
+  it('a resize between draws erases the rows the shown region takes NOW', () => {
+    // A terminal reflows its screen on a resize: a 30-column line drawn at 40
+    // wide becomes 3 rows at 10. The erase counted the rows at draw time, so
+    // a narrowed window kept the region's top rows on screen (xterm, 120 → 60).
+    const s = ttyW(40)
+    const w = createOutputWriter(s, { forceFloorMs: 0 })
+    w.setRegion(['q'.repeat(30), 'l2'], { force: true })
+    s.columns = 10
+    w.setRegion(['n'], { force: true })
+    expect(s.chunks.at(-1)).toBe('\r\x1b[3A\x1b[Jn')
+    // Widened back, the 3 rows reflow to 1: up 0 rows would leave none; the
+    // erase of a now 1-row region is the single-line one.
+    w.setRegion(['w'.repeat(25)], { force: true })
+    s.columns = 40
+    w.setRegion(['m'], { force: true })
+    expect(s.chunks.at(-1)).toBe('\x1b[2K\rm')
+  })
+
   // Cursor-up stops at the top of the screen: rows that scrolled into the
   // scrollback cannot be erased. A region taller than the terminal left its
   // top behind on every redraw, so each tick stacked a new block (VS Code's

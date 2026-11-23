@@ -147,6 +147,7 @@ export function createOutputWriter(
   // PHYSICAL rows the shown region occupies, not logical lines — see
   // `regionRows`.
   let shownRows = 0
+  let shownLines: readonly string[] = []
   let dead = false
   let holds = 0
   let lastDraw = -Infinity
@@ -235,7 +236,12 @@ export function createOutputWriter(
   // Erase sequence for whatever is currently shown. A single row keeps
   // the exact legacy bytes (ESC[2K\r); anything taller moves to its
   // top row and clears to end of screen.
-  const eraseSeq = (): string => (shownRows > 1 ? `\r\x1b[${shownRows - 1}A\x1b[J` : CLEAR)
+  // Counted at the width now: a terminal reflows its screen on a resize, so
+  // the rows the shown region takes are its lines' at the new width.
+  const eraseSeq = (): string => {
+    const rows = shownRows > 0 ? regionRows(shownLines) : 0
+    return rows > 1 ? `\r\x1b[${rows - 1}A\x1b[J` : CLEAR
+  }
 
   // Content written since the last frame, drawn with it: one write per
   // frame, the region erased and redrawn once around all of it. Each row
@@ -287,6 +293,7 @@ export function createOutputWriter(
       text += (shown ? eraseSeq() : CLEAR) + region
       shown = true
       shownRows = regionRows(lines)
+      shownLines = lines
       shownText = region
     }
     if (text !== '') stream.write(rawBytes(text))
