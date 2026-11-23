@@ -1811,7 +1811,8 @@ async function runOnBus(
     ): void => {
       if (keeps) writeRunFailures(into, runId, final, warnOf(log), workspaceRoot)
     }
-    if (stop.stoppedBy === undefined && !historyAfterWait) {
+    const bundled = stop.stoppedBy === undefined && !historyAfterWait
+    if (bundled) {
       stepSync('vx:history', () => {
         recordHistory(() =>
           runHistory(prepared.localCache).recordRunBundle({
@@ -1856,6 +1857,18 @@ async function runOnBus(
       await prefetchDone
       await Promise.all([cache.drainUploads?.(), keeper?.settled()])
     })
+    // The run ends once its uploads have: the footer is printed after them, and
+    // a slow remote's drain read as no time at all (a 6.4 s run said 3.2 s).
+    const runEnd = prepared.hasRemoteLayer
+      ? {
+          at: Math.ceil(wallNow()),
+          totalMs: Number(process.hrtime.bigint() - runStartHrTimeNs) / 1_000_000,
+        }
+      : { at: endedAtMs, totalMs }
+    if (runEnd.at !== endedAtMs && bundled)
+      recordHistory(() =>
+        runHistory(prepared.localCache).recordRunEnd(runId, runEnd.at, Math.round(runEnd.totalMs)),
+      )
     if (keeps) {
       // Beside the run's rows (cache/run-notes.ts); a refused write costs only them.
       try {
@@ -1894,7 +1907,7 @@ async function runOnBus(
     ): Promise<void> => {
       if (sinks === undefined || runContextRecord === undefined) return
       sinks.endServers(final)
-      const ended = after ?? { at: endedAtMs, totalMs }
+      const ended = after ?? runEnd
       const timed = after === undefined ? step : undefined
       const tasks =
         after === undefined ? records.telemetryTasks : recordsOf(final, runOk).telemetryTasks
@@ -1969,7 +1982,8 @@ async function runOnBus(
       ...(keptNothing ? { runId: undefined } : {}),
     }
     if (options.footer !== false)
-      for (const line of formatRunSummary(list, totalMs, colors, footerContext)) log.status(line)
+      for (const line of formatRunSummary(list, runEnd.totalMs, colors, footerContext))
+        log.status(line)
 
     // A requested persistent task (dev server, watcher): the run is done in
     // every bookkeeping sense but the server is the point, so stay in the

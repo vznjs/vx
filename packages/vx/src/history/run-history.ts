@@ -473,6 +473,13 @@ export class RunHistory {
       })
       .immediate()
   }
+
+  /** The run's end, once its uploads drained after its rows went in. */
+  recordRunEnd(runId: string, endedAt: number, totalDurationMs: number): void {
+    this.db
+      .query('UPDATE main.invocations SET ended_at = ?, total_duration_ms = ? WHERE run_id = ?')
+      .run(endedAt, totalDurationMs, runId)
+  }
 }
 
 /** A RunRecord as one value per `RUN_COLUMNS` entry, in its order. */
@@ -710,6 +717,7 @@ export interface HistoryWrites {
     hits?: RunHits
   }): void
   recordRemoteErrors(runId: string, errors: readonly (readonly [string, string])[]): void
+  recordRunEnd(runId: string, endedAt: number, totalDurationMs: number): void
 }
 
 const writers = new WeakMap<Cache, HistoryWrites>()
@@ -745,5 +753,7 @@ function historyWrites(cache: Cache): HistoryWrites {
     },
     recordRunBundle: (bundle) => write(() => history.recordRunBundle(bundle)),
     recordRemoteErrors: (runId, errors) => write(() => history.recordRemoteErrors(runId, errors)),
+    recordRunEnd: (runId, endedAt, totalMs) =>
+      write(() => history.recordRunEnd(runId, endedAt, totalMs)),
   }
 }
