@@ -171,6 +171,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'signal-tstp',
     'sparse-checkout-config',
     'stale-hit',
+    'stale-hit-committed-output',
     'stale-hit-digest',
     'stale-hit-git',
     'stale-hit-git-enumeration',

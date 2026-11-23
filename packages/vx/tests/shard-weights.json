@@ -771,5 +771,6 @@
   "workspace-unreadable.test.ts": 596,
   "workspace.test.ts": 401,
   "write-through-link.test.ts": 1284,
-  "zstd-frames.test.ts": 59
+  "zstd-frames.test.ts": 59,
+  "stale-hit-committed-output.test.ts": 15800
 }
