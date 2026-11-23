@@ -1,7 +1,7 @@
 #!/usr/bin/env -S bun --no-env-file --no-install
 // Wrapped in an explicit async main so `bun build --compile` accepts
 // the file. The compile target doesn't allow top-level await.
-import { handOff, localVx, upgradesOnlyItself, vxPath } from './handoff.js'
+import { handOff, localVx, retierJit, upgradesOnlyItself, vxPath } from './handoff.js'
 import { takeSignalRelay } from './util/signal-relay.js'
 
 let settled = false
@@ -10,6 +10,9 @@ let rejected = false
 
 async function main(): Promise<void> {
   const argv = process.argv.slice(2)
+  const compiled = Bun.main.startsWith('/$bunfs') || (process.argv[1] ?? '').startsWith('/$bunfs')
+  // First: the restart takes the environment as the launcher gave it.
+  retierJit(argv, compiled)
   // Out of the env before anything spawns: no task, and no vx this one hands off to, inherits it.
   takeSignalRelay()
   // A rejection nothing awaited (a plugin verb's floating promise) is a
@@ -34,11 +37,7 @@ async function main(): Promise<void> {
     // and that is a one-line UserError below, not a stack.
     const local = upgradesOnlyItself(argv)
       ? null
-      : await localVx(
-          process.cwd(),
-          process.execPath,
-          Bun.main.startsWith('/$bunfs') || (process.argv[1] ?? '').startsWith('/$bunfs'),
-        )
+      : await localVx(process.cwd(), process.execPath, compiled)
     if (local !== null) await handOff(local, argv)
     // `vx --version` needs one leaf module; the dispatcher and the util barrel
     // it pulled in were 20 ms of its 28.
