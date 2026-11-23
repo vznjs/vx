@@ -29,6 +29,10 @@ version. `vx cache clean --older-than 7d` drops the old entries later.
 
 Vx lock --check --format json problems are { code, message } objects, not strings.
 
+### A run refuses a config edited since vx lock
+
+After editing a `vx.config.ts`, run `vx lock` before `vx run`, `vx show`, `vx why` or `vx pipeline`: the run now refuses with `VX_E_LOCK`, naming the file, instead of running the config the lock holds.
+
 ### Sandboxed tasks no longer read credential stores
 
 A sandboxed task no longer reads browser profiles, `~/.config/sops/age`, `~/.config/rclone`, `~/.my.cnf`, `~/.password-store` or `~/.sentryclirc`.

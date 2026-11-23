@@ -31,6 +31,11 @@ const HEADER = /^(\w+)(?:\(([^)]*)\))?!?: (.+?)(?: \(#\d+\))?$/
  * same PR.
  */
 export const STEPS: Readonly<Record<string, { title?: string; steps: string }>> = {
+  'feat(lock): a run refuses a config edited since vx lock': {
+    title: 'A run refuses a config edited since vx lock',
+    steps:
+      'After editing a `vx.config.ts`, run `vx lock` before `vx run`, `vx show`, `vx why` or `vx pipeline`: the run now refuses with `VX_E_LOCK`, naming the file, instead of running the config the lock holds.',
+  },
   'refactor(cli)!: drop the lock merge driver, name it .vx/projects.lock': {
     steps: [
       'Delete the old lock, the old attributes file and the merge driver, then lock again:',
