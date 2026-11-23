@@ -156,6 +156,9 @@ export default { plugins: [dte({ relay: ${JSON.stringify(aud)} })] }
       })
       const err = await new Response(p.stderr).text()
       expect([args, await p.exited, err]).toEqual([args, 1, expect.stringContaining(hint)])
+      // The worker's refusal is its own line, not the plugin's crash: it read
+      // "plugin '@vzn/vx-dte' failed in command 'dte': …".
+      if (args[0] === 'dte') expect(err).toStartWith(`✗ vx dte worker  cannot connect to the relay`)
     }
   } finally {
     await relay.stop()

@@ -1060,7 +1060,9 @@ HEAD^`), and every task after one (`src/forecast.ts`): a lockfile or
   `relay`), `VX_DTE_SECRET` (the run's) and, when the run started it,
   `VX_DTE_WORKER` (its name). It is
   described only by the cores and memory its machine reports. It exits 0
-  when the run ended before it joined. On SIGINT or SIGTERM it stops its
+  when the run ended before it joined. A relay that refuses it or cannot
+  be reached is one line, `vx dte worker: cannot connect to the relay …`,
+  and exit 1. On SIGINT or SIGTERM it stops its
   tasks, leaves the run, which runs them again on another worker, and
   exits 130 or 143; a second signal ends it at once.
 - `DteAdapter` is `{ spawn(worker: WorkerSpawn), relay?(), close?(), cancel?(ids), init?(setup: DteSetup), runId?(), workerId?(), handed?(), over?(), adopt?(worker), report?(warn), keyless?, workerRuns?() }`; `init` gets a `DteSetup` (workspace root, its directory in the repository, relay, sizes, the `PackageManager` read from the lockfile, the tasks asked for) and returns a `DteInit`: the CI files `vx dte init` writes and the steps it prints; `report` hands it the run's warning channel as the run starts, where `github()` says a status poll or a cancel the CI API refused, by status and body; `adopt` hands each worker the CI started before the run to `worker(id, size)`, which counts it and returns its spawn; `cancel` stops workers the run no longer needs that have not joined, and may answer with those it left running, which the run takes; `runId` names the run, in the adapter's own CI, when `VX_DTE_RUN` is unset; `workerId` names a worker in a job its CI started for several, when `VX_DTE_WORKER` is unset; `keyless` workers prove themselves by GitHub OIDC, and `workerRuns` names the workflow runs whose jobs alone may join as them (`undefined`: any job of the repository). In a worker's job, `handed` returns the `Handed` its CI gave it (`{ run?, relay?, env }`, which `vx dte worker` reads before it joins), and `over` stops the workers its CI still holds for a run that ended before this one joined.

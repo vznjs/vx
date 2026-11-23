@@ -551,7 +551,7 @@ export function dte(options: DteOptions = {}) {
             import('./seal.js'),
           ])
           const id = process.env['VX_DTE_WORKER'] || adapter?.workerId?.()
-          return runWorker({
+          const working = runWorker({
             relay,
             run,
             ...(id === undefined || id === '' ? {} : { id }),
@@ -561,6 +561,13 @@ export function dte(options: DteOptions = {}) {
             proof: secret === undefined ? seal.githubProof() : seal.secretProof(secret),
             artifacts: ctx.artifactsFor,
             ...(adapter?.over === undefined ? {} : { over: () => adapter.over!() }),
+          })
+          // A relay that refuses or cannot be reached is the user's setup, not
+          // the plugin's crash: "plugin '@vzn/vx-dte' failed in command 'dte'".
+          const { RelayError } = await import('./wire.js')
+          return await working.catch((err: unknown) => {
+            if (err instanceof RelayError) throw new UserError(`vx dte worker: ${err.message}`)
+            throw err
           })
         },
       },
