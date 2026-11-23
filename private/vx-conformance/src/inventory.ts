@@ -1140,6 +1140,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'ready-wait-notice',
     'real-path',
     'recursive-run',
+    'refusal-next-step',
     'refusal-notice',
     'refused-run-region.unsafe',
     'rel-posix',

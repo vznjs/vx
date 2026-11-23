@@ -74,7 +74,7 @@ describe.skipIf(skipAsRoot('a workspace file this user may not read'))(
     it('names a project config it may not read as a read', async () => {
       expect(await run('packages/b/vx.config.mjs', 0o000, ['lock'])).toEqual({
         code: 1,
-        err: '✗ vx lock  lock not written\n\n  <root>/packages/b/vx.config.mjs: not readable by this user (EACCES)',
+        err: '✗ vx lock  lock not written\n\n  <root>/packages/b/vx.config.mjs: not readable by this user (EACCES) — give this user read access to it, then re-run',
         planned: [],
       })
     })
@@ -84,7 +84,7 @@ describe.skipIf(skipAsRoot('a workspace file this user may not read'))(
       // run `vx lock`", and re-locking could not help.
       expect(await run('packages/b')).toEqual({
         code: 1,
-        err: '✗ vx run  .vx/projects.lock locks packages/b, but its vx.config.mjs is not readable by this user (EACCES)',
+        err: '✗ vx run  .vx/projects.lock locks packages/b, but its vx.config.mjs is not readable by this user (EACCES) — give this user read access to it, then re-run',
         planned: [],
       })
     })
