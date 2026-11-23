@@ -280,3 +280,31 @@ it('never merges a task added on one branch onto a pointer the other branch drop
   writeFileSync(path.join(root, '.vx/projects.lock'), m.text)
   expect((await readLockfile(root))!.projects['apps/web']!.config!.tasks!['build']).toEqual(build)
 })
+
+it('refuses a pool pointer cut short or written twice, so a reader sees the body a task gets', async () => {
+  const p = path.join(root, '.vx/projects.lock')
+  const lines = [
+    '{"version":9}',
+    '#abc',
+    '{"x":1}',
+    JSON.stringify(build),
+    'app\t{"path":"app"}',
+    '\tbuild',
+    '#abc',
+    '{"x":1}',
+  ]
+  writeFileSync(p, `${lines.join('\n')}\n`)
+  expect(readLockfile(root)).rejects.toThrow('run `vx lock`')
+  const twice = [
+    '{"version":9}',
+    '#aaaaaaa',
+    JSON.stringify(lint),
+    '#aaaaaaa',
+    JSON.stringify(build),
+    'app\t{"path":"app"}',
+    '\tbuild',
+    '#aaaaaaa',
+  ]
+  writeFileSync(p, `${twice.join('\n')}\n`)
+  expect(readLockfile(root)).rejects.toThrow('run `vx lock`')
+})

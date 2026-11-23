@@ -301,8 +301,16 @@ function decoded(text: string): Decoded {
   while (text.charCodeAt(a) === 35) {
     // A pointer is `#` and 7 characters, a line of its own.
     const e = a + 8
-    if (text.charCodeAt(e) !== 10 || text.charCodeAt(e + 1) !== 123) throw lineBroken(text)
-    bodyAt.set(text.slice(a, e), e + 1)
+    // A shorter one would read the next line as its own; one twice, which body wins.
+    const ref = text.slice(a, e)
+    if (
+      text.charCodeAt(e) !== 10 ||
+      text.charCodeAt(e + 1) !== 123 ||
+      ref.includes('\n') ||
+      bodyAt.has(ref)
+    )
+      throw lineBroken(text)
+    bodyAt.set(ref, e + 1)
     a = end(e + 1) + 1
   }
   const tasks = new Map<string, unknown>()
