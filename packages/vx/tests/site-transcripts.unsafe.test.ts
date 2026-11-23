@@ -39,11 +39,6 @@ function vx(...args: string[]): { code: number | null; stdout: string; stderr: s
   return { code: r.exitCode, stdout: r.stdout.toString(), stderr: r.stderr.toString() }
 }
 
-function vxColour(...args: string[]): { code: number | null; stderr: string } {
-  const r = Bun.spawnSync({ cmd: [process.execPath, BIN, ...args], cwd: root, env: COLOUR })
-  return { code: r.exitCode, stderr: r.stderr.toString() }
-}
-
 /** The fenced block after the one whose line is `command`. */
 function printed(page: string, command: string): string {
   const at = page.indexOf(`\n${command}\n`)
