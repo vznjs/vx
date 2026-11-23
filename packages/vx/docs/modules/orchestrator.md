@@ -3217,6 +3217,7 @@ interface LoadProjectsBase {
   warn: (m: string) => void
   lock?: boolean // `vx lock`'s audit: the one load that runs the `project` hooks
   staged?: ReadonlyMap<string, ProjectEntry> // entries a load in this process already produced
+  asLocked?: boolean // read the lock though a config was edited since (`vx watch`'s watched set)
 }
 export interface LoadedProjects {
   projects: Map<string, ProjectEntry>

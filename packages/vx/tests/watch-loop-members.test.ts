@@ -455,7 +455,9 @@ describe('vx watch loop (e2e): the watched set', () => {
     await initialOnly(w, f.log)
 
     await writeFile(path.join(outside, 'armed'), '')
+    // Locked: a config edit with no `vx lock` is refused, and runs nothing.
     await writeFile(file, `${config('')}// edited\n`)
+    relock()
     await until(async () => (await executions(f.log)) >= 2, "the config edit's cycle")
     await until(async () => (await executions(f.log)) >= 3, "the new lock's cycle")
   }, 40_000)

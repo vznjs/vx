@@ -370,6 +370,12 @@ interface LoadProjectsBase {
    * so the stage's cost and warnings come once per run. Never across runs.
    */
   staged?: ReadonlyMap<string, ProjectEntry>
+  /**
+   * Read the lock as it stands though a config was edited since: `vx
+   * watch`'s map of what to hear. Refused, it heard every project until
+   * the next `vx lock`; the run the edit starts still refuses it.
+   */
+  asLocked?: boolean
 }
 
 export interface LoadedProjects {
@@ -540,16 +546,19 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
     const fromLock = withFile.filter((m) => recordedOf(m) === undefined)
     // A run reads the lock, never the config: one edited with no `vx lock`
     // after it would run as it was, green.
-    const edited = await configsEditedSinceLock(
-      workspaceRoot,
-      args.cacheDir,
-      fromLock.length === 0 ? undefined : lockDigest(await lock()),
-      withFile.flatMap((m, i) =>
-        recordedOf(m) === undefined
-          ? [{ file: m.configPath, size: stats[i]!.size, mtimeMs: stats[i]!.mtimeMs }]
-          : [],
-      ),
-    )
+    const edited =
+      args.asLocked === true
+        ? []
+        : await configsEditedSinceLock(
+            workspaceRoot,
+            args.cacheDir,
+            fromLock.length === 0 ? undefined : lockDigest(await lock()),
+            withFile.flatMap((m, i) =>
+              recordedOf(m) === undefined
+                ? [{ file: m.configPath, size: stats[i]!.size, mtimeMs: stats[i]!.mtimeMs }]
+                : [],
+            ),
+          )
     if (edited.length > 0)
       throw new UserError(
         `${listed(edited, 5)} changed since the last \`vx lock\` — run \`vx lock\``,
