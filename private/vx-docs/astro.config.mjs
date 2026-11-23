@@ -55,6 +55,8 @@ export default defineConfig({
     '/blog/vx-prune/': `${root}blog/`,
     '/blog/prune-production/': `${root}blog/`,
     '/add-to-existing-repo/': `${root}quickstart/`,
+    // Guides joined the Docs (2026-11-23): the index is the Docs' first page.
+    '/guides/': `${root}docs/`,
     '/guides/tasks/': `${root}docs/tasks/`,
     '/guides/task-dependencies/': `${root}docs/tasks/`,
     '/guides/caching/': `${root}docs/caching/`,

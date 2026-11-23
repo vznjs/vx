@@ -2,8 +2,7 @@
 // only, and its prev/next links stay inside that section. The section is the
 // top-level group that lists the page; a page no group lists goes by its
 // path: the blog's to the Blog, a release note's to Releases, and every
-// other one, internals included, to the Reference, which is where the
-// internals index is linked from; the landing and the feature pages go to
+// other one, internals included, to the Docs; the landing and the feature pages go to
 // their own, as does the conformance table. Those have no sidebar, no table of contents and no
 // prev/next: their pages are a listing and posts read one column wide
 // (components/blog/), or run full width in the landing's look.
@@ -25,7 +24,7 @@ function sectionByPath(id: string): SectionId {
   if (top === '' || top === 'index') return 'home'
   return top === 'blog' || top === 'releases' || top === 'features' || top === 'conformance'
     ? top
-    : 'reference'
+    : 'docs'
 }
 
 export const onRequest = defineRouteMiddleware(async (context) => {
@@ -34,7 +33,7 @@ export const onRequest = defineRouteMiddleware(async (context) => {
   const listed = groups.find((g) => links(g.entries).some((l) => l.isCurrent))
   const section = listed === undefined ? sectionByPath(route.id) : GROUP_SECTION[listed.label]!
   context.locals.vxSection = section
-  if (section !== 'docs' && section !== 'guides' && section !== 'reference') {
+  if (section !== 'docs') {
     route.hasSidebar = false
     route.toc = undefined
     route.pagination = { prev: undefined, next: undefined }

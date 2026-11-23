@@ -1611,10 +1611,7 @@ CI jobs on one checkout) take turns: a run takes the workspace's run
 lock before it opens the cache and releases it with its cache handle — before
 a persistent task's wait, so a dev server never holds it — and the
 second run waits, saying after a second whom it waits for:
-
-```ansi
-[vx] waiting for another vx run (pid 6074) on this workspace to finish…
-```
+`[vx] waiting for another vx run (pid 6074) on this workspace to finish…`.
 
 The cache itself was always safe (SQLite waits on its lock, artifacts
 land by rename; a transaction that reads before it writes takes the

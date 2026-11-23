@@ -1,10 +1,9 @@
-// The site's places and three sidebars (design/site-short-2026-09.md §
-// The shape; Features, standalone pages, and Guides, as Bun's docs have
-// them, came after), read from the built HTML: what a reader sees, not what
-// the config says. The Docs' sidebar is its pages; the
-// Guides' is the index, then one group per area; the Reference ends with the
-// glossary. Every page shows exactly one of the three (the blog keeps its
-// own), and no sidebar links an internals page.
+// The site's places and its one Docs sidebar (M 2026-11-23: "merge guides
+// and docs", "merge references into docs as well"), read from the built
+// HTML: what a reader sees, not what the config says. The most important
+// features come first; the reference ends with the glossary. Every page with
+// a sidebar shows that one (the blog keeps its own), and no sidebar links an
+// internals page.
 
 import { readdirSync, readFileSync } from 'node:fs'
 import path from 'node:path'
@@ -17,41 +16,38 @@ const BASE = (process.env['BASE_PATH'] ?? '/vx').replace(/\/?$/, '/')
 const PLACES: [string, string][] = [
   ['Features', 'features/'],
   ['Docs', 'docs/'],
-  ['Guides', 'guides/'],
-  ['Reference', 'cli/'],
   ['Conformance', 'conformance/'],
   ['Blog', 'blog/'],
   ['Releases', 'releases/'],
 ]
-// The Docs are one page per feature, in groups by area.
-const DOCS_PAGES: [string, string][] = [
+// The path a new user walks (M 2026-11-23): start, define tasks, run them,
+// cache them, CI, then distributed task execution; the reference groups
+// close the list.
+const DOCS_GROUPS = [
+  'Get started',
+  'Define tasks',
+  'Run tasks',
+  'Cache',
+  'CI',
+  'Distributed task execution',
+  'Plugins',
+  'Debugging',
+  'CLI reference',
+  'Config reference',
+  'Benchmarks',
+  'Compare',
+  'Plugin reference',
+  'Protocols',
+]
+const DOCS_FIRST: [string, string][] = [
   ['What is vx?', 'docs/'],
   ['Quickstart', 'quickstart/'],
-  ['Upgrading vx', 'guides/upgrading/'],
+  ['Migrate from Turborepo, Nx or Vite Task', 'guides/migrate/'],
   ['AI agents', 'docs/agents/'],
+  ['Upgrading vx', 'guides/upgrading/'],
   ['Workspace', 'docs/workspace/'],
   ['Tasks', 'docs/tasks/'],
-  ['Caching', 'docs/caching/'],
-  ['Environment variables', 'docs/environment-variables/'],
-  ['Dev servers', 'docs/dev-servers/'],
-  ['Running tasks', 'docs/running-tasks/'],
-  ['Sandboxing', 'docs/sandboxing/'],
-  ['CI', 'docs/ci/'],
-  ['Plugins', 'docs/plugins/'],
-  ['Lockfiles', 'docs/lockfiles/'],
-  ['Remote cache', 'docs/remote-cache/'],
-  ['Distributed task execution', 'docs/distributed-task-execution/'],
-  ['Remote execution', 'docs/remote-execution/'],
-  ['Servers', 'docs/servers/'],
-  ['Cache server', 'docs/servers/cache/'],
-  ['History server', 'docs/servers/history/'],
-  ['DTE server', 'docs/servers/dte/'],
-  ['Write a plugin', 'docs/writing-plugins/'],
 ]
-// Everything that is not core sits under Plugins (2026-10-26).
-const DOCS_GROUPS = ['Get started', 'Configure', 'Run', 'Plugins']
-const GUIDES_GROUPS = ['Get started', 'Running', 'Caching', 'CI', 'Debugging']
-const REFERENCE_GROUPS = ['CLI', 'Config', 'Benchmarks', 'Compare', 'Plugins', 'Protocols']
 const INTERNALS_TOP = ['overview/', 'architecture/', 'optimizations/', 'patterns/', 'flows/']
 const INTERNALS_DIRS = ['modules/', 'design/']
 
@@ -125,77 +121,43 @@ function places(page: string): { links: string[][]; current: string[] } {
   }
 }
 
-describe('the sidebars', () => {
+describe('the sidebar', () => {
   const all = pages()
   const docs = sidebarList(html('quickstart/'))!
-  const guides = sidebarList(html('guides/'))!
-  const reference = sidebarList(html('cli/'))!
 
-  it('the Docs are their pages, in groups', () => {
+  it('is one Docs list along the path a new user walks, the reference last', () => {
     expect(groupLabels(docs)).toEqual(DOCS_GROUPS)
-    expect(sidebarLinks(docs)).toEqual(DOCS_PAGES)
-  })
-
-  // The index lists every guide the sidebar does, so neither drifts.
-  it('the Guides are the index, then one group per area, each a guide the index lists', () => {
-    expect(groupLabels(guides)).toEqual(GUIDES_GROUPS)
-    const links = sidebarLinks(guides)
-    expect(links[0]).toEqual(['All guides', 'guides/'])
-    const page = html('guides/')
-    const index = page.slice(page.indexOf('sl-markdown-content'), page.indexOf('<footer'))
-    const listed = [...index.matchAll(/<li><a href="([^"]*)"/g)]
-      .map((m) => m[1]!)
-      .map((h) => (h.startsWith(BASE) ? h.slice(BASE.length) : `guides/${h}`))
-    expect(listed.sort()).toEqual(
-      links
-        .slice(1)
-        .map(([, h]) => h)
-        .sort(),
-    )
-  })
-
-  // vx takes issues, not contributions (2026-10-20): no contributor
-  // index ends the Reference.
-  it('the Reference is its groups, ending with the glossary', () => {
-    expect(groupLabels(reference)).toEqual(REFERENCE_GROUPS)
-    const links = sidebarLinks(reference)
+    const links = sidebarLinks(docs)
+    expect(links.slice(0, DOCS_FIRST.length)).toEqual(DOCS_FIRST)
     expect(links.at(-1)).toEqual(['Glossary', 'glossary/'])
-    expect(links.map(([, href]) => href)).toContain('cli/')
+    const hrefs = links.map(([, h]) => h)
+    for (const h of ['docs/caching/', 'guides/caching/why-a-task-missed/', 'cli/', 'schema/'])
+      expect(hrefs).toContain(h)
+    expect(new Set(hrefs).size).toBe(hrefs.length)
   })
 
-  it('the three share no page', () => {
-    const sets = [docs, guides, reference].map((l) => sidebarLinks(l).map(([, h]) => h))
-    const seen = sets.flat()
-    expect(new Set(seen).size).toBe(seen.length)
-  })
-
-  it('every page shows exactly one of the three, the one its section owns', () => {
-    const lists = { Docs: docs, Guides: guides, Reference: reference }
+  it('every page with a sidebar shows the Docs one and marks Docs', () => {
+    const want = JSON.stringify(sidebarLinks(docs).map(([, h]) => h))
     const wrong: string[] = []
     for (const rel of all) {
       if (rel === '' || /^(?:blog|releases)\//.test(rel)) continue
       const page = html(rel)
       const list = sidebarList(page)
       if (list === undefined) continue
-      const hrefs = JSON.stringify(sidebarLinks(list).map(([, h]) => h))
-      const match = Object.entries(lists).filter(
-        ([, l]) => JSON.stringify(sidebarLinks(l).map(([, h]) => h)) === hrefs,
-      )
-      const current = places(page).current
-      if (match.length !== 1) wrong.push(`${rel}: a sidebar that is none of the two`)
-      else if (current.length !== 1 || current[0] !== match[0]![0]) {
-        wrong.push(`${rel}: shows the ${match[0]![0]} sidebar, marks ${JSON.stringify(current)}`)
-      }
+      if (JSON.stringify(sidebarLinks(list).map(([, h]) => h)) !== want)
+        wrong.push(`${rel}: another sidebar`)
+      else if (JSON.stringify(places(page).current) !== '["Docs"]')
+        wrong.push(`${rel}: marks ${JSON.stringify(places(page).current)}`)
     }
     expect(wrong).toEqual([])
   })
 
-  it('puts a Docs page, a guide, a Reference page and a post each in its own section', () => {
+  it('puts a doc, a how-to, a reference page and a post each in its section', () => {
     expect(places(html('docs/tasks/')).current).toEqual(['Docs'])
-    expect(places(html('guides/migrate/')).current).toEqual(['Guides'])
-    expect(places(html('guides/caching/why-a-task-missed/')).current).toEqual(['Guides'])
-    expect(places(html('caching/')).current).toEqual(['Reference'])
-    expect(places(html('modules/')).current).toEqual(['Reference'])
+    expect(places(html('guides/migrate/')).current).toEqual(['Docs'])
+    expect(places(html('guides/caching/why-a-task-missed/')).current).toEqual(['Docs'])
+    expect(places(html('caching/')).current).toEqual(['Docs'])
+    expect(places(html('modules/')).current).toEqual(['Docs'])
     expect(places(html('blog/')).current).toEqual(['Blog'])
     expect(places(html('releases/')).current).toEqual(['Releases'])
     expect(places(html('releases/vx-0-0-625/')).current).toEqual(['Releases'])
