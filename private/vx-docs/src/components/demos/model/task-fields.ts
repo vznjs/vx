@@ -57,11 +57,15 @@ export type OutputsVerdict = { ok: true } | { ok: false; why: string }
  * matched a file: every plain path must exist, and a task that declares
  * outputs must write at least one of them.
  */
-export function outputsVerdict(declared: readonly string[], matched: ReadonlySet<string>): OutputsVerdict {
+export function outputsVerdict(
+  declared: readonly string[],
+  matched: ReadonlySet<string>,
+): OutputsVerdict {
   const paths = declared.map((p) => p.trim()).filter((p) => p !== '')
   if (paths.length === 0) return { ok: true }
   const missing = paths.find((p) => outputRule(p) === 'required' && !matched.has(p))
   if (missing !== undefined) return { ok: false, why: `${missing} was never written` }
-  if (!paths.some((p) => matched.has(p))) return { ok: false, why: 'no declared output was written' }
+  if (!paths.some((p) => matched.has(p)))
+    return { ok: false, why: 'no declared output was written' }
   return { ok: true }
 }

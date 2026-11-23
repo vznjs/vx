@@ -17,7 +17,9 @@ class OutputRule extends HTMLElement {
     const buttons = [...this.querySelectorAll<HTMLButtonElement>('[data-path]')]
     const declared = buttons.map((b) => b.dataset['path']!)
     const wrote = new Set(
-      buttons.filter((b) => b.getAttribute('aria-pressed') === 'true').map((b) => b.dataset['path']!),
+      buttons
+        .filter((b) => b.getAttribute('aria-pressed') === 'true')
+        .map((b) => b.dataset['path']!),
     )
     const v = outputsVerdict(declared, wrote)
     const say = this.querySelector<HTMLElement>('.say')!
