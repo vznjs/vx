@@ -73,7 +73,11 @@ export async function describeMiss(
     ? undefined
     : pre !== undefined
       ? pre.described
-      : await describeTaskInputs({ ...hashArgsOf(args, true), captureInto: captured })
+      : await describeTaskInputs({
+          ...hashArgsOf(args),
+          probesAfterWrites: args.run.probesAfterWrites,
+          captureInto: captured,
+        })
   const commandFrom = policy.cacheable
     ? fsClockNow(args.run.cacheDir ?? path.join(args.run.workspaceRoot, '.vx'))
     : 0

@@ -342,9 +342,9 @@ describe('the published plugin packages', async () => {
 
   it('are published by the release workflow, after @vzn/vx', async () => {
     const wf = await Bun.file(path.join(REPO, '.github', 'workflows', 'npm.yml')).text()
-    const assemble = wf.indexOf('run release.assemble.linux --filter @vzn/vx')
+    const assemble = wf.indexOf('run release.npm.linux.assemble --filter @vzn/vx')
     expect(assemble).toBeGreaterThan(-1)
-    expect(wf.indexOf('run release.publish.linux --filter @vzn/vx')).toBeGreaterThan(assemble)
+    expect(wf.indexOf('run release.npm.linux.publish --filter @vzn/vx')).toBeGreaterThan(assemble)
     const names = emitted.map((e) => path.basename(e.dir)).sort()
     expect(publishOrder('linux', names)).toEqual([
       '@vzn/vx-linux-x64',

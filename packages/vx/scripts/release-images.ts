@@ -1,4 +1,4 @@
-// npm.yml's `images` job, the `release.images` task: push each server's
+// npm.yml's `images` job, the `release.docker` task: push each server's
 // image to ghcr.io/vznjs/<server> at VX_RELEASE_VERSION, for linux/amd64
 // and linux/arm64, and move `latest` to it unless an older tag is being
 // rebuilt. The docs tell users to `docker run` these names.
@@ -7,7 +7,7 @@
 
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
-import { env, runMain } from './github.ts'
+import { env } from './github.ts'
 import { releaseVersion } from './release.ts'
 
 const ROOT = path.resolve(import.meta.dir, '..', '..', '..')
@@ -100,4 +100,11 @@ async function main(): Promise<void> {
   }
 }
 
-if (import.meta.main) await runMain(main, 'release-images: ')
+if (import.meta.main) {
+  try {
+    await main()
+  } catch (e) {
+    process.stderr.write(`release-images: ${(e as Error).message}\n`)
+    process.exitCode = 1
+  }
+}

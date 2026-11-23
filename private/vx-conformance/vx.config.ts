@@ -12,13 +12,17 @@ export default defineProject({
       dependsOn: ['^build'],
     },
 
+    conformance: {
+      dependsOn: ['conformance.cases'],
+    },
+
     // Every case against every tool: rewrites the site's conformance data.
     // In no pipeline: weekly on its own runner (conformance.yml), and after a
     // case changes. The rivals install at npm's latest inside the run
     // (src/tools.ts), which no key sees. No sandbox: the harness runs each
     // tool in a bubblewrap sandbox of its own, which vx's sandbox cannot
     // nest, and the install needs the registry.
-    conformance: {
+    'conformance.cases': {
       description:
         'bun src/cli.ts: every case against vx, Turborepo, Nx, Vite Task, Nix and moon → vx-docs/src/data/conformance.json',
       dependsOn: ['install'],
@@ -33,8 +37,8 @@ export default defineProject({
     },
 
     // A sharded run's results (conformance.yml: one job per tool and share
-    // of the cases, each `conformance -- --tool <t> --shard <i>/<n>`), joined.
-    'conformance.merge': {
+    // of the cases, each `conformance.cases -- --tool <t> --shard <i>/<n>`), joined.
+    'conformance.cases.merge': {
       description: 'bun src/merge.ts: the shards in shards/ → conformance.json',
       dependsOn: ['install'],
       exec: {

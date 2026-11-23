@@ -2,7 +2,7 @@
 // a `bun src/bin.ts` below it starts fine and answers wrongly (STATUS item
 // 366 measured which answers: a truncated JSON write, no usage numbers, a
 // config syntax error arriving as an internal error). `vx info` says so,
-// and the gate's `check.bun` refuses to run below it.
+// and the gate's `check.bun.version` refuses to run below it.
 //
 // The entry case asserts the behaviour AGAINST THE RUNNING BUN rather than a
 // fixed expectation, so it is the same claim on a conforming runtime and on

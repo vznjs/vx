@@ -27,7 +27,7 @@ Conformance workflow (`.github/workflows/conformance.yml`) runs the whole
 suite weekly, after the Monday rival sweep dispatches it, with Nix from
 its installer's latest. Each of its jobs runs one tool on a share of the
 cases sized to about 90 s (`--shard 2/14`; Nx's 14, moon's 10),
-all at once, under the task's 5-minute limit, and `conformance.merge` joins their
+all at once, under the task's 5-minute limit, and `conformance.cases.merge` joins their
 results (`src/merge.ts`). Main's deploy shows the rivals' outcomes and
 versions from its newest run and vx's from the commit
 (`private/vx-docs/scripts/live-conformance.ts`). A case vx fails fails

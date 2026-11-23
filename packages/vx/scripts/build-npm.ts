@@ -18,7 +18,7 @@
 // Bun and no install-time download.
 //
 // A release assembles its tree with these emitters and publishes it from
-// scripts/release.ts (`release.assemble.<os>`, `release.publish.<os>`);
+// scripts/release.ts (`release.npm.<os>.assemble`, `release.npm.<os>.publish`);
 // this script only builds the tree.
 //
 //   bun packages/vx/scripts/build-npm.ts <version> [--out=dist/npm] [--only=linux-x64|plugins]

@@ -7,10 +7,10 @@
     },
     "perf": {
       "dependsOn": [
-        "perf.bench"
+        "perf.*"
       ]
     },
-    "perf.bench": {
+    "perf.vx": {
       "description": "perf-guard.ts then pr-bench.ts: hot-path counts, and vx against the base commit and every rival",
       "dependsOn": [
         "install"
@@ -53,7 +53,12 @@
       },
       "cache": true
     },
-    "perf.update": {
+    "update": {
+      "dependsOn": [
+        "update.*"
+      ]
+    },
+    "update.bench.baseline": {
       "description": "perf-guard.ts --update: rewrite perf-baseline.json for this platform",
       "dependsOn": [
         "install"
@@ -79,6 +84,11 @@
           }
         }
       }
+    },
+    "bench": {
+      "dependsOn": [
+        "bench.*"
+      ]
     },
     "bench.vx": {
       "description": "compare.ts: vx on the 9,603-task head-to-head → site/vx.json",

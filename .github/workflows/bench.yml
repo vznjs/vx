@@ -1,6 +1,6 @@
 name: Bench
 
-# The site's head-to-head data (@vzn/vx-docs#bench.data), on a runner of
+# The site's head-to-head data (@vzn/vx-docs#bench.bun.data), on a runner of
 # its own and one runner at a time: a benchmark never runs under DTE,
 # where a worker is packed beside other tasks. `--force` measures every
 # runner in this one job, on this one machine: rows restored from another

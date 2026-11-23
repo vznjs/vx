@@ -138,13 +138,10 @@ describe('examples/basic', () => {
   })
 })
 
-// The migrate guide's temporary start: turbo() maps the Turbo repo until
+// The migrate guide's check (`init --keep`): turbo() maps the Turbo repo until
 // `vx-migrate` writes native configs. Those hold only what each task
 // declares, without the Turbo env turbo() keys, so each task runs once more.
-// Each step's output is what the guide's "Try it in five minutes" block
-// says in its comments.
 describe('examples/turbo', () => {
-  const said: string[] = []
   const root = fixture('turbo', ['vx', 'vx-migrate'])
   const all = (status: string) => ({
     'app#build': status,
@@ -156,11 +153,9 @@ describe('examples/turbo', () => {
     const cold = run(root, 'test')
     expect(cold.exit).toBe(0)
     expect(cold.status).toEqual(all('success'))
-    said.push(`${cold.cache}: ${Object.keys(cold.status).toSorted().join(', ')}`)
     const warm = run(root, 'test')
     expect(warm.exit).toBe(0)
     expect(warm.status).toEqual(all('cache-hit'))
-    said.push(warm.cache)
   })
 
   // The migrate guide's steps as written: the workspace file stays (the
@@ -176,12 +171,7 @@ describe('examples/turbo', () => {
     expect(migrate.exitCode).toBe(0)
     const out = migrate.stdout.toString()
     const lines = out.split('\n')
-    said.push(
-      lines
-        .find((l) => l.startsWith('  tasks '))!
-        .trim()
-        .replace(/\s+/, ' '),
-    )
+    expect(lines.find((l) => l.startsWith('  tasks '))?.replace(/\s+/g, ' ')).toBe(' tasks 3 clean')
     const files = lines.findIndex((l) => l.startsWith('  files '))
     expect(lines.slice(files, files + 2)).toEqual([
       '  files     packages/app/vx.config.ts',
@@ -192,7 +182,6 @@ describe('examples/turbo', () => {
     const kept = run(root, 'test')
     expect(kept.exit).toBe(0)
     expect(kept.status).toEqual(all('success'))
-    said.push(kept.cache)
 
     // The file stays: it marks the root, and bun() keeps the edges.
     mkdirSync(path.join(root, '.vx'), { recursive: true })
@@ -204,35 +193,6 @@ describe('examples/turbo', () => {
     const alone = run(root, 'test')
     expect(alone.exit).toBe(0)
     expect(alone.status).toEqual(all('cache-hit'))
-    said.push(alone.cache)
-  })
-
-  it('says in the migrate guide what each step printed', () => {
-    const guide = readFileSync(
-      path.join(
-        PACKAGES,
-        '..',
-        'private',
-        'vx-docs',
-        'src',
-        'content',
-        'docs',
-        'guides',
-        'migrate.mdx',
-      ),
-      'utf8',
-    )
-    const block = /### Try it in five minutes[\s\S]*?```sh\n([\s\S]*?)```/.exec(guide)![1]!
-    const comments = block
-      .split('\n')
-      .filter((l) => /^(vx run|bunx @vzn\/vx-migrate)/.test(l))
-      .map((l) => l.slice(l.indexOf('# ') + 2))
-    // The first comment lists the tasks that missed; the rest name only the legend.
-    const [legend, missed] = comments[0]!.split(': ')
-    expect([
-      `${legend}: ${missed!.split(', ').toSorted().join(', ')}`,
-      ...comments.slice(1).map((c) => c.split(':')[0]),
-    ]).toEqual(said)
   })
 })
 

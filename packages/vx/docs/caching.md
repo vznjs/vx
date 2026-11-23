@@ -523,7 +523,12 @@ On a hit:
    the workspace's `.vx/tmp/` (never an output folder), and only once the
    whole archive has staged is each renamed over the file it replaces.
    A folder missing on the way (a cleaned `dist/`) is built whole there
-   and renamed in once, so a reader sees it complete or not at all; one
+   and renamed in once, so a reader sees it complete or not at all. It
+   lands only where nothing stands: a folder made there since (a sibling
+   task's `mkdir -p dist` in the same run) is filled in place, never
+   replaced, as a rename over an empty folder would (its writer's next
+   write failed "Directory nonexistent" until 2026-11-23,
+   `tests/restore-sibling-dir.test.ts`). One
    rename per file, each across directories out of one staging
    directory, doubled a 5,000-artifact restore's kernel time. An entry
    kept as plain files, and an inline one holding only the project's

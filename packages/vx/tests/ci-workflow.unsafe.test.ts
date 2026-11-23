@@ -76,6 +76,11 @@ describe('ci.yml', () => {
   it('runs the benchmarks off the DTE run', () => {
     const perf = doc.jobs['perf']!
     expect(JSON.stringify(perf)).not.toContain('VX_DTE')
+    // The bench fetches the base itself (pr-bench-base.ts fetchBase): the job only names it.
+    expect(perf.env?.['VX_BENCH_BASE']).toBe(
+      '${{ github.event.pull_request.base.sha || github.event.before }}',
+    )
+    expect(perf.steps!.some((s) => /git fetch/.test(s.run ?? ''))).toBe(false)
     expect(perf.steps?.at(-1)?.run).toBe(
       "bun packages/vx/src/bin.ts pipeline ${{ github.event_name == 'pull_request' && 'perf-pr' || 'perf' }}",
     )
@@ -157,10 +162,15 @@ describe('ci.yml', () => {
     expect(steps.filter((s) => /sandbox-canary\.ts|--cache-policy/.test(s.run ?? ''))).toEqual([])
     for (const name of ['pr', 'queue', 'main'])
       expect(pipelines[name]!.tasks).toEqual(expect.arrayContaining(['test', 'check', 'compile']))
-    expect(pipelines['main']!.tasks).toContain('canary')
+    expect(pipelines['main']!.tasks).toContain('main')
     const core = readFileSync(path.join(dir, '../../packages/vx/vx.config.ts'), 'utf8')
+    expect(core).toContain("dependsOn: ['canary', 'deploy']")
     expect(core).toContain("...shards('test.bun.platform', PLATFORM_SHARD_COUNT")
-    for (const task of ['canary.sandbox', 'canary.build-cold', 'canary.binary.darwin-arm64'])
+    for (const task of [
+      'canary.sandbox.leaks',
+      'canary.sandbox.cold-build',
+      'canary.bun.darwin-arm64',
+    ])
       expect(core).toContain(`'${task}':`)
   })
 
@@ -184,8 +194,9 @@ describe('ci.yml', () => {
     expect(names.indexOf('Hand the Pages token to the run')).toBeLessThan(
       names.indexOf('vx pipeline'),
     )
-    expect(pipelines['main']!.tasks).toContain('deploy')
+    expect(pipelines['main']!.tasks).toContain('main')
     const docs = readFileSync(path.join(dir, '../../private/vx-docs/vx.config.ts'), 'utf8')
+    expect(docs).toContain("main: {\n      dependsOn: ['deploy'],")
     expect(docs).toContain('${ASTRO_BUILD} --outDir dist-live`')
     expect(docs).toContain("dependsOn: ['lint', 'build', 'test', 'deploy.pages.build']")
     expect(docs).toContain("command: 'bun scripts/deploy-pages.ts dist-live'")
@@ -262,8 +273,8 @@ describe('ci.yml', () => {
   // release-notes.yml was a workflow of its own for one task.
   it('syncs the release notes as a task of the Linux run, on a push', () => {
     const job = doc.jobs['linux']!
-    expect(pipelines['main']!.tasks).toContain('deploy')
-    expect(pipelines['queue']!.tasks).not.toContain('deploy')
+    expect(pipelines['main']!.tasks).toContain('main')
+    expect(pipelines['queue']!.tasks).not.toContain('main')
     expect([job.env?.['GH_TOKEN'], job.permissions?.['contents']]).toEqual([
       '${{ github.token }}',
       'write',
@@ -476,12 +487,12 @@ describe('conformance.yml', () => {
       '${{ fromJSON(needs.plan.outputs.matrix) }}',
     )
     expect(job.steps?.find((s) => s.name === 'vx run conformance')?.run).toBe(
-      'bun packages/vx/src/bin.ts run @vzn/vx-conformance#conformance -- --tool ${{ matrix.tool }} --shard ${{ matrix.shard }} --out shard.json',
+      'bun packages/vx/src/bin.ts run @vzn/vx-conformance#conformance.cases -- --tool ${{ matrix.tool }} --shard ${{ matrix.shard }} --out shard.json',
     )
     expect((merge as { needs?: unknown }).needs).toBe('conformance')
     expect((merge as { if?: unknown }).if).toBe('always()')
-    expect(merge.steps?.find((s) => s.name === 'vx run conformance.merge')?.run).toBe(
-      'bun packages/vx/src/bin.ts run @vzn/vx-conformance#conformance.merge',
+    expect(merge.steps?.find((s) => s.name === 'vx run conformance.cases.merge')?.run).toBe(
+      'bun packages/vx/src/bin.ts run @vzn/vx-conformance#conformance.cases.merge',
     )
   })
 

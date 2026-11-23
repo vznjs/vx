@@ -1,5 +1,5 @@
 // auto-release.yml releases on demand a commit whose CI went green on main:
-// its `release.auto` task (scripts/auto-release.ts) picks it, tags it, creates the GitHub release as a
+// its `release.github.tag` task (scripts/auto-release.ts) picks it, tags it, creates the GitHub release as a
 // draft (release.yml's last upload publishes it), and
 // dispatches release.yml and npm.yml — a release made with the workflow token
 // fires no `release` event, so without those dispatches the tag would exist
@@ -63,12 +63,12 @@ describe('auto-release.yml', () => {
     expect(job?.if).toBeUndefined()
   })
 
-  it('runs release.auto on main with every tag checked out, for the dispatched commit', () => {
+  it('runs release.github.tag on main with every tag checked out, for the dispatched commit', () => {
     expect(runs.map((s) => [s.run, s.env])).toEqual([
       ['bun install --frozen-lockfile', undefined],
       ['bun packages/vx/src/bin.ts setup github', undefined],
       [
-        'bun packages/vx/src/bin.ts run release.auto --filter @vzn/vx',
+        'bun packages/vx/src/bin.ts run release.github.tag --filter @vzn/vx',
         {
           VX_RELEASE_SHA: '${{ inputs.sha }}',
           GH_TOKEN: '${{ github.token }}',

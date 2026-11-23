@@ -64,8 +64,16 @@ const SIDEBAR_GROUPS: Record<'Docs', SidebarItem[]> = {
         },
         { label: 'Group tasks under one name', link: '/guides/running/group-tasks/' },
         { label: 'Environment variables', link: '/docs/environment-variables/' },
+        {
+          label: 'Pass an environment variable to a task',
+          link: '/guides/running/pass-an-environment-variable/',
+        },
         { label: 'Lockfiles', link: '/docs/lockfiles/' },
         { label: 'Dev servers', link: '/docs/dev-servers/' },
+        {
+          label: 'Start a dev server before your tests',
+          link: '/guides/running/start-a-dev-server/',
+        },
       ],
     },
     {

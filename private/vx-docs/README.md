@@ -48,7 +48,7 @@ The nav and footer are `src/components/landing/Nav.astro` and
 The last section, `#features`, is a strip of eight feature cards and the
 link to all of them.
 
-- **The numbers** are measured, never typed: `bench.data` gathers the
+- **The numbers** are measured, never typed: `bench.bun.data` gathers the
   rows of `@vzn/vx-bench#bench.site` into `src/data/bench.json`, and the
   chart, the kicker and every `%bench.…%` token on a page read it
   (`src/bench/format.ts`; `tests/bench-figures.test.ts` holds it).
@@ -92,7 +92,7 @@ with a dark and a light theme, the one the docs store.
 - The data is `src/features/features.ts`: `CATEGORIES` and `FEATURES`,
   in the order the hub lists them. Images are in
   `src/assets/features/` (1600×900 PNG, palette-quantized); the
-  `build.images` task resizes them to WebP (`scripts/build-images.ts`),
+  `build.bun.images` task resizes them to WebP (`scripts/build-images.ts`),
   and `FeatureImage.astro` writes the srcset. A new layout width goes in
   that script's `SETS`.
 - To add one: an entry in `FEATURES` under its category, its image in
@@ -178,7 +178,7 @@ metadata, shown as a `v0.0.637` chip beside the date, read from the
 slug. Every post has a cover (`src/assets/blog/vx-0-0-<version>.png`,
 1200×630). The slug is `vx-0-0-<version>`, the tag `release`, and the
 date the release's day. The GitHub release's body is the post
-(`deploy.releases`, in ci.yml's Linux run on main, keeps it current). Old `/blog/vx-0-0-*/` URLs
+(`deploy.github`, in ci.yml's Linux run on main, keeps it current). Old `/blog/vx-0-0-*/` URLs
 redirect (`astro.config.mjs`).
 
 ## Commands
@@ -197,7 +197,7 @@ bun packages/vx/src/bin.ts run test --filter @vzn/vx-docs     # the pins below
 bun packages/vx/src/bin.ts run lint --filter @vzn/vx-docs     # oxlint (type-checked) + oxfmt
 ```
 
-The build depends on `bench.data`, which depends on the benchmark tasks
+The build depends on `bench.bun.data`, which depends on the benchmark tasks
 (`@vzn/vx-bench#bench.*`). Off CI they restore from main's remote cache.
 
 Measured here they take about 20 minutes, one runner at a time:

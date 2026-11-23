@@ -216,12 +216,12 @@ describe('no benchmark figure on the site is typed by hand', () => {
   // runner at a time on a machine of its own. A build that depended on
   // the rows ran all four on a fresh clone's `vx run build --all`
   // (check.build-cold, main 7813301) and on DTE workers.
-  it('no task but bench.data depends on the benchmarks', () => {
+  it('no task but bench.bun.data depends on the benchmarks', () => {
     const tasks = docs.tasks as Record<string, { dependsOn?: readonly string[] }>
     const pulling = Object.entries(tasks)
-      .filter(([name]) => name !== 'bench.data')
+      .filter(([name]) => name !== 'bench.bun.data')
       .filter(([, t]) =>
-        (t.dependsOn ?? []).some((d) => d === 'bench.data' || d.startsWith('@vzn/vx-bench#')),
+        (t.dependsOn ?? []).some((d) => d === 'bench.bun.data' || d.startsWith('@vzn/vx-bench#')),
       )
       .map(([name]) => name)
     expect(pulling).toEqual([])

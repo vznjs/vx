@@ -68,7 +68,7 @@ export default defineWorkspace({
   pipelines: {
     pr: { tasks: checks, affected: true, ...ci },
     queue: { tasks: checks, ...ci },
-    main: { tasks: [...checks, 'canary', 'deploy'], ...ci },
+    main: { tasks: [...checks, 'main'], ...ci },
     'perf-pr': { tasks: ['perf'], affected: true },
     perf: { tasks: ['perf'] },
   },

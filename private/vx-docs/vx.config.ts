@@ -19,7 +19,7 @@ const PROOFS = [
 const REAL_ROWS = 'private/vx-bench/real-repos.json'
 const REAL_ROWS_READ = '../vx-bench/real-repos.json'
 
-// What `build.import` generates from packages/vx/docs: a hit restores only these,
+// What `build.bun.import` generates from packages/vx/docs: a hit restores only these,
 // so a page missing here vanishes from the site on a hit. Pinned to the
 // .gitignore manifest by tests/sidebar-coverage.test.ts.
 const IMPORTED = [
@@ -143,7 +143,7 @@ export default defineProject({
     // marker and lives beside the hand-written ones, so the outputs are the
     // generated set by name — a hit restores exactly them and never wipes
     // a tracked page.
-    'build.import': {
+    'build.bun.import': {
       description:
         'generate src/content/docs from packages/vx/docs, the plugin READMEs and the relay protocol',
       dependsOn: ['install'],
@@ -187,7 +187,7 @@ export default defineProject({
       dependsOn: ['bench.*'],
     },
 
-    'bench.data': {
+    'bench.bun.data': {
       description: 'gather the head-to-head rows of @vzn/vx-bench#bench.site → measured/bench.json',
       dependsOn: ['install', '@vzn/vx-bench#bench.site'],
       exec: {
@@ -302,12 +302,12 @@ export default defineProject({
 
     // The images, resized before the build and keyed on the images alone:
     // a page edit never re-encodes them, and on a miss they encode beside
-    // `build.import` instead of inside `build.astro`.
+    // `build.bun.import` instead of inside `build.astro`.
     build: {
       dependsOn: ['build.*'],
     },
 
-    'build.images': {
+    'build.bun.images': {
       description: 'resize src/assets/{blog,features} → public/_img/',
       dependsOn: ['install'],
       exec: {
@@ -334,7 +334,7 @@ export default defineProject({
 
     'build.astro': {
       description: 'astro build → dist/',
-      dependsOn: ['install', 'build.import', 'build.images'],
+      dependsOn: ['install', 'build.bun.import', 'build.bun.images'],
       exec: {
         // Under Bun, prerender included. `bun --bun` runs astro's bin on Bun,
         // but astro prerenders in a CHILD process it starts as `node`, and
@@ -377,7 +377,7 @@ export default defineProject({
         },
       },
       // The generated pages are gitignored, so `**/*` does not see them;
-      // `build.import`'s key does (its inputs are the docs), and it cascades
+      // `build.bun.import`'s key does (its inputs are the docs), and it cascades
       // through `dependsOn`. This used to name `docs/**` at the workspace
       // root — a path that stopped existing when core moved under
       // `packages/`, so a docs edit never re-keyed the build.
@@ -403,7 +403,7 @@ export default defineProject({
     'deploy.pages.build': {
       description:
         "build the site with main's newest bench and conformance runs → dist-live/ (GitHub Actions only)",
-      dependsOn: ['install', 'build.import', 'build.images'],
+      dependsOn: ['install', 'build.bun.import', 'build.bun.images'],
       exec: {
         command: `bun scripts/live-bench.ts && bun scripts/live-conformance.ts && rm -rf .astro/live && ${ASTRO_BUILD} --outDir dist-live`,
         env: {
@@ -430,6 +430,10 @@ export default defineProject({
           },
         },
       },
+    },
+    // What only a push to main runs (.vx/workspace.ts's `main` pipeline).
+    main: {
+      dependsOn: ['deploy'],
     },
     deploy: {
       dependsOn: ['deploy.*'],
@@ -469,8 +473,12 @@ export default defineProject({
     },
 
     dev: {
+      dependsOn: ['dev.*'],
+    },
+
+    'dev.astro': {
       description: 'astro dev server (persistent)',
-      dependsOn: ['install', 'build.images'],
+      dependsOn: ['install', 'build.bun.images'],
       exec: {
         command: 'bun --bun astro dev',
         env: { define: { ASTRO_TELEMETRY_DISABLED: '1' } },
@@ -489,6 +497,10 @@ export default defineProject({
     },
 
     preview: {
+      dependsOn: ['preview.*'],
+    },
+
+    'preview.astro': {
       description: 'serve the built dist/ (persistent)',
       dependsOn: ['build'],
       exec: {

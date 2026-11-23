@@ -10,7 +10,7 @@ name: Release assets
 # fire only once the release can no longer take assets.
 # A manual release's body is the maintainer's; an auto-release's is its
 # release post (packages/vx/scripts/release-notes.ts), kept current by
-# deploy.releases in ci.yml's Linux run on main.
+# deploy.github in ci.yml's Linux run on main.
 
 on:
   workflow_dispatch:
@@ -73,7 +73,7 @@ jobs:
       # compiling — `src/version.ts` inlines THAT manifest under
       # `bun build --compile` (scripts/release.ts says why that file).
       # Ephemeral (CI only); sign-darwin proves it took.
-      - run: bun packages/vx/src/bin.ts run release.stamp --filter @vzn/vx
+      - run: bun packages/vx/src/bin.ts run release.npm.stamp --filter @vzn/vx
 
       # Dogfood: `compile` fans out to `compile.bun.<target>` (four
       # compiles). Each sub-task is individually cached, so re-running this
@@ -99,7 +99,7 @@ jobs:
         with:
           subject-path: packages/vx/dist/vx-linux-*
 
-      - run: bun packages/vx/src/bin.ts run release.upload.linux --filter @vzn/vx
+      - run: bun packages/vx/src/bin.ts run release.github.linux --filter @vzn/vx
 
   sign-darwin:
     needs: assets
@@ -131,7 +131,7 @@ jobs:
           name: darwin-unsigned
           path: packages/vx/dist
       - name: Prove the darwin binaries launch (re-signed ad hoc where macOS refuses)
-        run: bun packages/vx/src/bin.ts run release.prove.darwin --filter @vzn/vx
+        run: bun packages/vx/src/bin.ts run release.npm.darwin.prove --filter @vzn/vx
       # Attested after any re-sign: the bytes that ship are the signed ones.
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
@@ -139,4 +139,4 @@ jobs:
 
       # The last upload publishes the draft: an immutable release takes
       # assets only before it is published (scripts/release-assets.ts).
-      - run: bun packages/vx/src/bin.ts run release.upload.darwin --filter @vzn/vx
+      - run: bun packages/vx/src/bin.ts run release.github.darwin --filter @vzn/vx

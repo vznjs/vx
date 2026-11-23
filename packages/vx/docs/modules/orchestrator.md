@@ -1051,7 +1051,7 @@ the previous commit, each arm in its own copy: cold (cache wiped), min of
 is the suites' own); warm, min / median of 15, 0.49 / 0.59 s before and
 0.51 / 0.62 s after. The warm stage table is equal through `classify +
 probe` (60 / 61 ms), `task hash` and `stable keys`; what differs lies in
-`run graph`, which on a warm gate is `check.bun`, the one uncached
+`run graph`, which on a warm gate is `check.bun.version`, the one uncached
 sandboxed task, and whose median favoured the after arm (462 ms, against 477).
 
 ### Tests

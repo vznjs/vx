@@ -117,7 +117,7 @@ Bench, which gates nothing), then dispatch
 It refuses a commit CI did not pass; a run still in Bench counts as
 passed once its other jobs did. The GitHub release's body is the
 post (`scripts/release-notes.ts`, `postNotes`); a later edit of the post
-on main rewrites it (`deploy.releases` in ci.yml's Linux run). Confirm the tag is the version the
+on main rewrites it (`deploy.github` in ci.yml's Linux run). Confirm the tag is the version the
 post names; if another release landed first and the number moved, rename
 the post in a follow-up PR before sharing it.
 
