@@ -18,6 +18,7 @@ import { keyedOutsideGrants, sandboxReads } from '../sandbox/index.js'
 import { isLocalExecutor, localExecutor } from './local-executor.js'
 import { printable, relPosix, span, UserError } from '../util/index.js'
 import { warnOf } from '../report/index.js'
+import { tagged } from '../ui/index.js'
 import { missingOutputs, outputsStep } from './attempt-outputs.js'
 import { buildRequest } from './attempt-request.js'
 import { bracketLiteralHint } from './miss-save.js'
@@ -443,7 +444,7 @@ async function classifyExit(
         ? 'killed (SIGKILL after the SIGTERM grace)'
         : 'killed (SIGTERM)'
     const after = policy.timeout === undefined ? '' : ` after ${policy.timeout}ms`
-    log.taskStderr(node, `${stream.nl()}[vx] timed out${after} — ${how}\n`)
+    log.taskStderr(node, `${stream.nl()}${vxLine(m, `[vx] timed out${after} — ${how}`)}\n`)
     // Non-zero even if the child TRAPPED SIGTERM and exited 0 (`trap 'exit
     // 0' TERM`): classified a success, its PARTIAL outputs were cached and
     // replayed forever. A genuinely killed child already reports 143.
@@ -479,11 +480,21 @@ async function classifyExit(
     })
     // The line quotes the command's first word, which a config may have
     // built from a secret: masked as the task's own output is.
-    if (verdict !== undefined) log.taskStderr(node, `${stream.nl()}${secrets.text(verdict)}\n`)
+    if (verdict !== undefined)
+      log.taskStderr(node, `${stream.nl()}${vxLine(m, secrets.text(verdict))}\n`)
     const unpassed = code === 0 ? undefined : unpassedEnv(stream.tail, m.env, process.env)
-    if (unpassed !== undefined) log.taskStderr(node, `${stream.nl()}${unpassed}\n`)
+    if (unpassed !== undefined)
+      log.taskStderr(node, `${stream.nl()}${vxLine(m, secrets.text(unpassed))}\n`)
   }
   return code
+}
+
+/**
+ * One of vx's own lines in the task's stream, tagged and coloured as a
+ * `[vx]` warning is: written plain, it read as the task's own white text.
+ */
+function vxLine(m: MissRun, line: string): string {
+  return tagged('warn', line, m.args.run.colors ?? { enabled: false })
 }
 
 /** The workspace-relative paths of `files` outside project `project` (workspace-relative). */

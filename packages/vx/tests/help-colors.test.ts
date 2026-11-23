@@ -67,6 +67,22 @@ describe('paintHelp', () => {
     expect(out.split('\n')[3]).toBe('  vx core runs tasks in-process and nothing else.')
   })
 
+  // The owning package printed plain white after the verb's description.
+  it("dims a plugin verb's owning package, wrapped or not", () => {
+    const text = [
+      'vx — title',
+      'Plugin commands:',
+      '  vx deploy            Ship it (@acme/vx-deploy)',
+      '  vx dte               Write a run.',
+      '                       (@vzn/vx-dte)',
+    ].join('\n')
+    const out = paintHelp(text, ON, paint)
+    const lines = out.split('\n')
+    expect(lines[2]!.endsWith(paint('muted', ' (@acme/vx-deploy)', ON))).toBe(true)
+    expect(lines[4]).toBe(`${' '.repeat(22)}${paint('muted', ' (@vzn/vx-dte)', ON)}`)
+    expect(strip(out)).toBe(text)
+  })
+
   it('bolds a heading and dims its (for <verb>)', () => {
     expect(paintHelp('t\nSelection (for run):', ON, paint).split('\n')[1]).toBe(
       `${paint('strong', 'Selection', ON)}${paint('muted', ' (for run)', ON)}${paint('strong', ':', ON)}`,
