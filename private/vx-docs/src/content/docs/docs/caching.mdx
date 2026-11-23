@@ -426,7 +426,7 @@ With both flags, the age cut runs first, then the size cap.
 
 ### Free every workspace's cache
 
-`--global` clears the stores of every workspace on this machine, under `~/.vx`:
+`--global` clears the stores of every workspace on this machine, under `~/.vx`, and this workspace's run history, so `vx last` and `vx why` start over:
 
 ```sh
 vx cache clean --global --dry
