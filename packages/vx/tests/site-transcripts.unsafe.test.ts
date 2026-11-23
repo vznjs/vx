@@ -651,9 +651,8 @@ describe("the sandboxing guide's failures", () => {
 describe("the quickstart's output", () => {
   it('the second run is up-to-date, and vx why names the edited file', async () => {
     const page = readFileSync(path.resolve(GUIDES, '..', 'quickstart.mdx'), 'utf8')
-    // Each sits in a step, indented three spaces.
-    const hit = /```ansi title="second run"\n(?: {3}.*\n)*? {3}(.*└─.*)\n/.exec(page)![1]!
-    const verdict = plain(/```ansi\n(?: {3}.*\n)*? {3}(.*verdict.*)\n/.exec(page)![1]!)
+    const hit = /```ansi title="second run"\n(?:.*\n)*?(.*└─.*)\n/.exec(page)![1]!
+    const verdict = plain(/```ansi\n(?:.*\n)*?(.*verdict.*)\n/.exec(page)![1]!)
     const dir = await mkdtemp(path.join(os.tmpdir(), 'vx-site-quickstart-'))
     try {
       await mkdir(path.join(dir, '.vx'))

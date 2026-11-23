@@ -1,22 +1,83 @@
 ---
 title: What is vx?
-description: A task runner and cache for JavaScript monorepos, built on Bun.
+description: vx runs the tasks of a JavaScript monorepo in the right order and never does the same work twice.
 ---
 
-import { CardGrid, LinkCard } from '@astrojs/starlight/components'
+import Diagram from '../../../components/guide/diagram/Diagram.astro'
+import { learningPath } from '../../../components/docs/pictures/start.js'
+import { Levels, Deeper, Concept, Walkthrough, Frame, Quiz, Takeaway, NextStep } from '../../../components/learn'
 
-vx is a task runner and cache for JavaScript monorepos. Each project
-declares its tasks in a `vx.config.ts`.
-
-`vx run` runs them in dependency order, in parallel, and skips any task
-whose inputs did not change.
+vx runs the tasks of a JavaScript monorepo in the right order, many at once, and never does the same work twice.
 
 ```sh
 bunx @vzn/vx init
 vx run build --all
 ```
 
-```ts title="packages/app/vx.config.ts"
+<Levels />
+
+## See it in three runs
+
+A small workspace: `@demo/web`, a Vite app, uses `@demo/ui`, a component library. Each has a `build` task. Step through what vx does:
+
+<Walkthrough title="One workspace, three runs">
+<Frame title="1. First run: ui builds first, because web uses it">
+
+```ansi title="first run"
+[2m$[0m vx run build --all
+
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mTasks[0m[4m[58;2;110;118;129m     [2mstatus  cache     ±usual    time   task[0m[4m[58;2;110;118;129m                         [0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m           [2m—[0m   [38;2;203;213;225m253ms[0m   [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m           [2m—[0m   [38;2;203;213;225m234ms[0m   [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m
+
+  [2mcache   [0m  [38;2;56;189;248m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
+            [2mlocal[0m [38;2;56;189;248m2↑[0m
+```
+
+`@demo/ui#build` finished first: web waited for it. `local 2↑`: vx saved both outputs.
+
+</Frame>
+<Frame title="2. Second run: nothing changed, nothing runs">
+
+```ansi title="second run"
+[2m$[0m vx run build --all
+
+  [2mcache   [0m  [38;2;34;197;94m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
+            [2mlocal[0m [38;2;34;197;94m2✓[0m
+
+  [2mtime    [0m  26ms
+```
+
+`local 2✓`: both builds are up to date. Nothing ran.
+
+</Frame>
+<Frame title="3. Edit one file in ui: both build again">
+
+```ansi title="after an edit to packages/ui/src/index.js"
+[2m$[0m vx run build --all
+
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mTasks[0m[4m[58;2;110;118;129m     [2mstatus  cache     ±usual    time   task[0m[4m[58;2;110;118;129m                         [0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m       [38;2;34;197;94m−53ms[0m   [38;2;203;213;225m200ms[0m   [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m       [2m−24ms[0m   [38;2;203;213;225m210ms[0m   [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m
+
+[2m$[0m vx why @demo/web#build
+
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mRoot cause[0m[4m[58;2;110;118;129m                                                                [0m
+  [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m[2m ← [0m[38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m[2m ← [0m[1mfile packages/ui/src/index.js[0m
+```
+
+web rebuilt because ui changed. `vx why` traces it back to the one file.
+
+</Frame>
+</Walkthrough>
+
+<Takeaway>picture what vx does with your workspace before you install it.</Takeaway>
+
+## Three ideas run everything
+
+Each project lists its tasks in a `vx.config.ts`:
+
+```ts title="packages/web/vx.config.ts" mark={6,8,9,10}
 import { defineProject } from '@vzn/vx/config'
 
 export default defineProject({
@@ -32,33 +93,59 @@ export default defineProject({
 })
 ```
 
-vx runs on [Bun](https://bun.com), on macOS and Linux (glibc). On Windows, use WSL2.
+<Concept term="Task">
+  One command for one project (`vite build`), with the files it reads (`inputs`) and writes
+  (`outputs`).
+</Concept>
 
----
+<Concept term="Dependencies first">
+  `^build` means: build every package this one uses before this one. That is why ui ran before web.
+</Concept>
 
-## What it does
+<Concept term="Cache">
+  vx remembers each task's outputs under a key made from its inputs. Same inputs: vx skips the task
+  or copies the outputs back.
+</Concept>
 
-| You want to                         | vx                                                                             |
-| ----------------------------------- | ------------------------------------------------------------------------------ |
-| run a task in every package         | `vx run build --all`, upstream first ([Tasks](./tasks/))                       |
-| skip work that is already done      | restores `dist/` when the inputs match ([Caching](./caching/))                 |
-| know why a task re-ran              | `vx why app#build` names the file or variable that changed                     |
-| run only what a branch touched      | `vx run test --affected` ([Running tasks](./running-tasks/))                   |
-| prove a task's inputs are complete  | `exec.sandbox` fails a read outside them ([Sandboxing](./sandboxing/))         |
-| share the cache with CI             | a remote cache plugin ([Remote cache](./remote-cache/))                        |
-| spread a run over CI machines       | `dte()` hands tasks to workers your CI starts ([Distributed task execution](./distributed-task-execution/)) |
-| move from Turborepo or Nx           | `vx init` writes a `vx.config.ts` per package from your config ([Migrate](./migrate/)) |
+<Quiz q="You edit a file in packages/web/src. Which builds run?">
+  Only `@demo/web#build`. ui does not read web's files, so its key stays the same and it is up to
+  date.
+</Quiz>
 
-Nothing is inferred. A task is cached only when it says what it reads
-(`inputs`) and what it writes (`outputs`).
+<Deeper level="details" title="What vx never does">
 
----
+- **Guess.** Nothing is inferred. A task is cached only when it lists what it reads and writes.
+- **Wrap other runners.** A task calls the tool itself (`vite build`, `vitest run`, `oxlint`), never a package script.
+- **Need an account.** Everything runs on your machines and your CI. There is no cloud.
 
-## Next
+vx runs on [Bun](https://bun.com) 1.4.4 or later, on macOS and Linux (glibc).
 
-<CardGrid>
-  <LinkCard title="Quickstart" description="Cache your first task in two minutes." href="../quickstart/" />
-  <LinkCard title="Distributed task execution" description="Spread one CI run over many machines." href="./distributed-task-execution/" />
-  <LinkCard title="CLI" description="Every command and flag." href="../cli/" />
-  <LinkCard title="vx.config.ts" description="Every config field." href="../schema/" />
-</CardGrid>
+</Deeper>
+
+<Takeaway>read any `vx.config.ts` and say what it does.</Takeaway>
+
+## Find your path
+
+The docs are one story, in order. Each chapter gives you one new power:
+
+<Diagram {...learningPath} />
+
+| You want to | Go to |
+| --- | --- |
+| cache your first task, in five minutes | [Quickstart](../quickstart/) |
+| run a task in every package, upstream first | [Tasks](./tasks/) |
+| run one project, or only what a branch changed | [Running tasks](./running-tasks/) |
+| know why a task ran again | [Why a task missed](./caching/why-a-task-missed/) |
+| prove a task lists every file it reads | [Sandboxing](./sandboxing/) |
+| check every push on CI | [CI](./ci/) |
+| share the cache between CI jobs and your team | [Remote cache](./remote-cache/) |
+| split one CI run across many machines | [Distributed task execution](./distributed-task-execution/) |
+| move from Turborepo or Nx | [Migrate](./migrate/) |
+| add your own behaviour | [Plugins](./plugins/) |
+| look up a command or a config field | [CLI](../cli/), [config reference](../schema/) |
+
+<Takeaway>pick the chapter for what you need today.</Takeaway>
+
+<NextStep href="../quickstart/" title="Quickstart">
+  Five minutes from `vx init` to a build that skips itself.
+</NextStep>
