@@ -485,7 +485,11 @@ export default defineWorkspace({
       verbosity: 1,
       profile: 'nightly.json', // true writes profile.json
       dry: false, // true prints the plan, runs nothing
-      format: 'pretty', // 'json': the dry plan as JSON
+    },
+    plan: {
+      tasks: ['build'],
+      dry: true, // a dry run writes no profile, so it sets none
+      format: 'json', // the plan as JSON; default 'pretty'
     },
   },
 })
