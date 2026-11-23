@@ -1,7 +1,10 @@
 // A squash message can hold its git trailers in the footer's own
 // paragraph (#4876's did); the page shows the footer, never the trailers.
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
 import { expect, it } from 'bun:test'
-import { page, STEPS } from '../scripts/upgrading.ts'
+import { page, STEPS, taggedCommits } from '../scripts/upgrading.ts'
 
 it('ends a footer at the git trailers that follow it', () => {
   const md = page([
@@ -44,4 +47,34 @@ it('adds the step after the footer and lists an unflagged change it names', () =
   ])
   expect(md).toContain(`### ${step.title}\n\n${step.steps}\n`)
   expect(md).toContain('### Drop x\n\nX is gone\n')
+})
+
+// Regenerated in a shallow clone, the page lost every release before the
+// clone's first commit (2026-11-23 day branch).
+it('refuses to read the history of a shallow clone', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'vx-upgrading-'))
+  try {
+    const git = (cwd: string, ...args: string[]) =>
+      expect(Bun.spawnSync(['git', ...args], { cwd }).exitCode).toBe(0)
+    const src = path.join(dir, 'src')
+    git(dir, 'init', '-q', src)
+    for (const n of ['a', 'b'])
+      git(
+        src,
+        '-c',
+        'user.name=t',
+        '-c',
+        'user.email=t@t',
+        'commit',
+        '-q',
+        '--allow-empty',
+        '-m',
+        n,
+      )
+    git(dir, 'clone', '-q', '--depth=1', `file://${src}`, 'shallow')
+    expect(taggedCommits(src).map((c) => c.subject)).toEqual(['a', 'b'])
+    expect(() => taggedCommits(path.join(dir, 'shallow'))).toThrow('git fetch --unshallow')
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
 })

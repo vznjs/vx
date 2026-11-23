@@ -182,8 +182,15 @@ version. \`vx cache clean --older-than 7d\` drops the old entries later.
 ${body.join('\n')}`
 }
 
-/** Every commit up to HEAD, oldest first, each with its `v*` tag. */
+/**
+ * Every commit up to HEAD, oldest first, each with its `v*` tag. A shallow
+ * clone holds a few commits only: the page written from it dropped every
+ * older release (1,060 lines on the 2026-11-23 day branch), so it refuses.
+ */
 export function taggedCommits(cwd: string): TaggedCommit[] {
+  const shallow = Bun.spawnSync(['git', 'rev-parse', '--is-shallow-repository'], { cwd })
+  if (shallow.stdout.toString().trim() === 'true')
+    throw new Error('a shallow clone lacks the history: run `git fetch --unshallow` first')
   const r = Bun.spawnSync(
     [
       'git',
