@@ -47,7 +47,7 @@ Same graph, commands and concurrency, each tool in its own native config: [how i
 | Why a task missed          | `vx why` diffs two keys: the file, env var or upstream that moved                          | `--summarize` shows hashes, not the diff     |
 | Watch mode                 | `vx watch <task>`                                                                          | `turbo watch`                                |
 | Prune for Docker           | No equivalent                                                                              | `turbo prune`                                |
-| Import boundaries          | No: a lint's job                                                                           | `boundaries`                                 |
+| Import boundaries          | Tag rules on package dependencies (`run.rules.dependencies`); imports are a lint's job     | `boundaries`                                 |
 | Non-JS projects            | Yes: any directory with a `vx.config`; edges are declared, not read from Cargo or Go files | Experimental: Go, Cargo, uv                  |
 | Terminal output            | Streamed blocks you can scroll, copy and pipe                                              | Terminal UI                                  |
 | Windows                    | WSL2                                                                                       | Native                                       |
@@ -86,8 +86,9 @@ Pick Turborepo if one of these decides it for you:
 - **A stable release with a support policy, today.** vx is pre-alpha:
   0.0.x on npm, no
   [support policy](https://turborepo.com/docs/support-policy) yet.
-- **A terminal UI and import boundaries.** Both ship in Turborepo. vx
-  streams plain blocks and leaves boundaries to your linter.
+- **A terminal UI and import checks.** Both ship in Turborepo. vx
+  streams plain blocks, checks tag rules on package dependencies, and
+  leaves source imports to your linter.
 - **Go, Cargo or uv in the graph.** Turborepo has experimental support.
   vx runs JavaScript workspaces only.
 

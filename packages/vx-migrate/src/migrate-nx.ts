@@ -10,6 +10,8 @@ import {
 } from '@vzn/vx'
 import type { PackageMeta } from './packages.js'
 import { mapNxWorkspace, parseNxGraph, readNxJson } from './nx/nx-map.js'
+import { nxDependencyRules } from './nx/nx-boundaries.js'
+import { rulesSource } from './dependency-rules.js'
 import { spareTrackedTodos, trackedFiles, trackedKinds } from './tracked-outputs.js'
 import { adoptedToolNotes } from './workspace-notes.js'
 
@@ -72,7 +74,7 @@ export async function migrateNx(
     notes: [
       ...mapped.notes,
       ...(bare ? bareNotes(mapped.projects) : []),
-      ...nxWorkspaceFields((await readNxJson(root).catch(() => null))?.json)
+      ...(await nxWorkspaceFieldsOf(root))
         .filter((f) => !writesWorkspace || f.source === undefined)
         .map((f) => f.note),
     ],
@@ -140,11 +142,30 @@ function nameUnlisted(
 /** A `.vx/workspace.ts` field nx.json's run settings call for. */
 export interface NxWorkspaceField {
   /** The setting's path: its group, then its field, or a top-level key. */
-  readonly field: 'run.concurrency' | 'baseBranch'
+  readonly field: 'run.concurrency' | 'run.rules' | 'cache.dir' | 'baseBranch'
   /** The value as TypeScript source; undefined when vx cannot read it. */
   readonly source: string | undefined
   /** What to tell a user whose workspace file this run does not write. */
   readonly note: string
+}
+
+/**
+ * `nxWorkspaceFields` and the root ESLint config's module boundaries, which
+ * `nx()` applies live as `run.rules.dependencies`: a migration that wrote
+ * neither checked no boundary once `nx()` was gone.
+ */
+export async function nxWorkspaceFieldsOf(root: string): Promise<NxWorkspaceField[]> {
+  const fields = nxWorkspaceFields((await readNxJson(root).catch(() => null))?.json)
+  const rules = await nxDependencyRules(root)
+  if (rules !== undefined && rules.length > 0) {
+    const source = rulesSource(rules)
+    fields.push({
+      field: 'run.rules',
+      source,
+      note: `@nx/enforce-module-boundaries' depConstraints: add \`run: { rules: ${source} }\` to .vx/workspace.ts`,
+    })
+  }
+  return fields
 }
 
 /**

@@ -13,7 +13,9 @@ import {
 } from '@vzn/vx'
 import type { PackageMeta } from './packages.js'
 import { mapTurboWorkspace, type TurboMappedProject } from './turbo/turbo-map.js'
-import { rootTaskProject } from './turbo/turbo-reads.js'
+import { rootTaskProject, turboConfigFile } from './turbo/turbo-reads.js'
+import { rulesSource, turboBoundaryRules } from './dependency-rules.js'
+import type { NxWorkspaceField as WorkspaceField } from './migrate-nx.js'
 import { ROOT_ENGINES_PROBE } from './turbo/root-engines.js'
 import {
   gitIgnored,
@@ -38,6 +40,8 @@ export async function migrateTurbo(
   root: string,
   metas: readonly PackageMeta[],
   format: MigrationFormat = 'ts',
+  /** This run writes `.vx/workspace.ts`, with turbo.json's run settings as fields. */
+  writesWorkspace = false,
 ): Promise<MigrationPlan> {
   const tracked = await trackedFiles(root)
   const tsc = onceReader()
@@ -76,6 +80,11 @@ export async function migrateTurbo(
       for (const t of p.tasks) if (t.task?.['exec'] !== undefined) t.todos.push(GLOBAL_TODO)
   }
 
+  const raw = await turboJsonOf(root)
+  for (const f of turboFieldsOf(raw))
+    if (!writesWorkspace || f.source === undefined) notes.push(f.note)
+  notes.push(...turboBoundaryRules(raw).gaps, ...turboKeyNotes(raw))
+
   // Long values are named once at the top of the config that uses them.
   const shared = hoistTaskEnv(mapping.projects)
   const probes = nameProbes(mapping.projects)
@@ -109,6 +118,85 @@ export async function migrateTurbo(
     extraFiles: [],
     notes,
   }
+}
+
+async function turboJsonOf(root: string): Promise<Record<string, unknown> | undefined> {
+  const file = await turboConfigFile(root)
+  if (file === null) return undefined
+  try {
+    return (Bun.JSONC.parse(await Bun.file(file).text()) ?? undefined) as
+      | Record<string, unknown>
+      | undefined
+  } catch {
+    return undefined // the mapping refuses the file, naming it
+  }
+}
+
+/** turbo.json's run-wide settings, as `.vx/workspace.ts` fields. */
+export async function turboWorkspaceFields(root: string): Promise<WorkspaceField[]> {
+  return turboFieldsOf(await turboJsonOf(root))
+}
+
+/**
+ * turbo.json's top-level settings vx has a home for: `concurrency` (`"4"`,
+ * `"50%"`, as `run.concurrency` takes both), `cacheDir` (`cache.dir`) and
+ * `boundaries` (`run.rules.dependencies`). Unwritten, a migrated repo that
+ * ran four tasks at a time ran on every core and checked no boundary.
+ */
+function turboFieldsOf(raw: Record<string, unknown> | undefined): WorkspaceField[] {
+  if (raw === undefined) return []
+  const global = (typeof raw['global'] === 'object' ? raw['global'] : null) as Record<
+    string,
+    unknown
+  > | null
+  const out: WorkspaceField[] = []
+  const c = global?.['concurrency'] ?? raw['concurrency']
+  if (typeof c === 'string' || typeof c === 'number') {
+    const v = String(c).trim()
+    const source = /^[1-9]\d*$/.test(v) ? v : /^[1-9]\d*%$/.test(v) ? quote(v) : undefined
+    out.push({
+      field: 'run.concurrency',
+      source,
+      note:
+        source === undefined
+          ? `turbo.json \`concurrency: ${JSON.stringify(c)}\` is no count or share of cores: set \`run: { concurrency }\` in .vx/workspace.ts by hand`
+          : `turbo.json \`concurrency: ${JSON.stringify(c)}\`: add \`run: { concurrency: ${source} }\` to .vx/workspace.ts`,
+    })
+  }
+  const dir = raw['cacheDir']
+  if (typeof dir === 'string' && dir.trim() !== '')
+    out.push({
+      field: 'cache.dir',
+      source: quote(dir.trim()),
+      note: `turbo.json \`cacheDir: ${JSON.stringify(dir)}\`: add \`cache: { dir: ${quote(dir.trim())} }\` to .vx/workspace.ts`,
+    })
+  const { rules } = turboBoundaryRules(raw)
+  if (rules.length > 0) {
+    const source = rulesSource(rules)
+    out.push({
+      field: 'run.rules',
+      source,
+      note: `turbo.json \`boundaries\`: add \`run: { rules: ${source} }\` to .vx/workspace.ts`,
+    })
+  }
+  return out
+}
+
+/** turbo.json settings with no vx field, each named with what does the job instead. */
+function turboKeyNotes(raw: Record<string, unknown> | undefined): string[] {
+  if (raw === undefined) return []
+  const out: string[] = []
+  const age = raw['cacheMaxAge']
+  const size = raw['cacheMaxSize']
+  if (typeof age === 'string' || typeof size === 'string')
+    out.push(
+      `turbo.json ${[typeof age === 'string' ? `\`cacheMaxAge: ${JSON.stringify(age)}\`` : '', typeof size === 'string' ? `\`cacheMaxSize: ${JSON.stringify(size)}\`` : ''].filter(Boolean).join(' and ')}: vx evicts on demand — run \`vx cache clean${typeof age === 'string' ? ` --older-than ${age}` : ''}${typeof size === 'string' ? ` --max-size ${size}` : ''}\``,
+    )
+  if (raw['experimentalObservability'] !== undefined)
+    out.push(
+      'turbo.json `experimentalObservability`: declare `otel()` from @vzn/vx-otel in .vx/workspace.ts to export run and task telemetry',
+    )
+  return out
 }
 
 /**
