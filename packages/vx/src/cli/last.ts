@@ -391,6 +391,23 @@ async function printStats(
       maxCpuParallelism: h.maxCpuParallelism ?? null,
     }))
   if (stats.length === 0 && target !== undefined) {
+    // The window may hold runs of the task under another definition, or of a
+    // task gone from the lock: "no recorded run" denied runs `vx last` lists.
+    const older =
+      defs === undefined
+        ? []
+        : [...(await new LocalHistoryProvider(db, undefined, branch).loadAll())].filter(([id]) =>
+            matches(id),
+          )
+    if (older.length > 0) {
+      const runs = older.reduce((n, [, h]) => n + h.runs, 0)
+      throw new UserError(
+        older.some(([id]) => defs!.has(id))
+          ? `vx last: ${target} has no run since its command or env.define changed; the last ${provider.recent} runs hold ${runs} of the old one`
+          : `vx last: ${target} is no task now (removed or renamed); the last ${provider.recent} runs hold ${runs} of it`,
+        'VX_E_NO_HISTORY',
+      )
+    }
     throw new UserError(
       `vx last: no recorded run of ${target} in the last ${provider.recent} runs`,
       'VX_E_NO_HISTORY',
