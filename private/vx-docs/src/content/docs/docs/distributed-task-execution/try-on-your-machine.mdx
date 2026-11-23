@@ -1,0 +1,157 @@
+---
+title: Try distributed task execution on your machine
+description: Start workers as local processes with local(), and watch tasks spread with no CI and no relay.
+---
+
+import Diagram from '../../../../components/guide/diagram/Diagram.astro'
+import { dteLocal } from '../../../../components/docs/pictures/dte-howtos.js'
+import { Aside, Steps } from '@astrojs/starlight/components'
+import { Levels, Deeper, Concept, Quiz, Walkthrough, Frame, Takeaway, NextStep } from '../../../../components/learn'
+
+See one run spread over several workers, on your laptop, before you touch CI.
+
+```sh
+VX_DTE_RUN=$(uuidgen) vx run build --all
+```
+
+<Levels />
+
+<Diagram {...dteLocal} />
+
+<Concept term="Worker">
+  A machine (or here, a process) that takes tasks from your run, runs them and hands back the
+  result. Your run still prints one result.
+</Concept>
+
+## Add `local()`
+
+Install the plugin and give it one worker type. `local()` starts each worker as a process in its own **git worktree**.
+
+```ts title=".vx/workspace.ts" ins={2,8-11}
+import { defineWorkspace } from '@vzn/vx/config'
+import { dte, local } from '@vzn/vx-dte'
+import { bun } from '@vzn/vx-lockfile'
+
+export default defineWorkspace({
+  plugins: [
+    bun(),
+    dte({
+      workers: { linux: { machines: { cpu4: { max: 2, cpu: 4, memory: '8GB' } } } },
+      adapter: local({ prepare: 'bun install' }),
+    }),
+  ],
+})
+```
+
+Read it as: up to **2** workers (`max`), each counted as **4** cores and **8GB**. `prepare` installs packages in each worktree.
+
+```sh
+bun add -d @vzn/vx-dte
+vx lock
+```
+
+<Takeaway>declare workers in five lines, with no CI and no server.</Takeaway>
+
+## Watch a run spread
+
+Workers see what git tracks, your edits included. So `git add` new files first, then name the run with `VX_DTE_RUN`:
+
+```sh
+git add -A
+VX_DTE_RUN=$(uuidgen) vx run build --all
+```
+
+<Walkthrough title="The same build, twice">
+<Frame title="1. First run: a worker builds both projects">
+
+```ansi
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mTasks[0m[4m[58;2;110;118;129m     [2mstatus  cache     ±usual    time   cpu    mem outputs  blocks worker         task[0m[4m[58;2;110;118;129m                           [0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m        [2m+0ms[0m    [38;2;203;213;225m15ms[0m   [2m20%[0m  [2m1.8MB[0m      [2m3B[0m       [38;2;203;213;225m1[0m [38;2;96;165;250mlinux.cpu4[0m[2m#[0m[38;2;167;139;250m1[0m   [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m        [2m+0ms[0m     [38;2;203;213;225m3ms[0m  [2m103%[0m  [2m1.8MB[0m      [2m2B[0m       [2m0[0m [38;2;96;165;250mlinux.cpu4[0m[2m#[0m[38;2;167;139;250m1[0m   [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m
+  [2mworkers [0m  [38;2;96;165;250mlinux.cpu4[0m[2m#[0m[38;2;167;139;250m1[0m  stopped  2 done · warm-up 0.1s · @demo/ui#build, @demo/web#build
+```
+
+Read the **worker** column: `linux.cpu4#1` is worker 1 of the `linux.cpu4` machines. The **workers** line says it ran 2 tasks, then stopped.
+
+</Frame>
+<Frame title="2. Again, nothing changed: no worker starts">
+
+```ansi
+  [2mcache   [0m  [38;2;34;197;94m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
+            [2mlocal[0m [38;2;34;197;94m2✓[0m
+
+  [2mworkers [0m  [2mnone started: no task needed one[0m
+```
+
+Every task came from the cache, so there was no work to hand out.
+
+</Frame>
+</Walkthrough>
+
+<Quiz q="You run vx run build --all without VX_DTE_RUN. What happens?">
+  The run stays on this machine, as always. `VX_DTE_RUN` is what turns workers on here. On GitHub
+  Actions the run names itself, so you never set it there.
+</Quiz>
+
+<Takeaway>spread a run over workers and read who ran each task.</Takeaway>
+
+<Deeper level="patterns" title="Common setups">
+
+### A new file the task reads
+
+A worker builds from what git tracks. A file git does not know fails the task and names it:
+
+```ansi
+[38;2;239;68;68m[vx] @demo/ui#build: plugin '@vzn/vx-dte' (executor 'dte') failed in execute: @demo/ui#build keys packages/ui/src/notes.ts, which git does not track, so no worker has it: git add it (and commit it for workers on CI), or leave it out of the task's inputs[0m
+```
+
+Fix: `git add packages/ui/src/notes.ts`, then run again.
+
+### A slow install
+
+`prepare` runs once per worktree, before its worker starts. Point it at what your workspace needs:
+
+```ts
+adapter: local({ prepare: 'pnpm install --frozen-lockfile' }),
+```
+
+### More workers at once
+
+Raise `max`. Each worker is a full process, so stay near your core count:
+
+```ts mark={1}
+workers: { linux: { machines: { cpu4: { max: 4, cpu: 4, memory: '8GB' } } } },
+```
+
+<Takeaway>fix an untracked file, a custom install and the worker count.</Takeaway>
+
+</Deeper>
+
+<Deeper level="details" title="Every option">
+
+#### `local(options?)`
+
+| Option | What it does | Default | Example |
+| --- | --- | --- | --- |
+| `prepare` | A shell line each worktree runs before its worker starts. A non-zero exit fails that worker and prints why. | none | `'bun install'` |
+
+#### What turns it on
+
+| Name | What it does |
+| --- | --- |
+| `VX_DTE_RUN` | Names the run and turns distribution on. Any unique value; `uuidgen` makes one. Unset, `vx run` stays on this machine. |
+
+#### What a worker sees
+
+- A worktree of your tracked files as the run saw them at its start, uncommitted edits included.
+- The bytes git stores, with git's filters undone: line endings, `ident`, LFS. A task whose input differs on disk, such as a CRLF checkout, fails and names the file.
+- Its own relay on loopback, which `local()` starts for the run. No relay to host.
+- The same cache as the run, so outputs come home at once.
+
+`dte()`'s own options (`workers`, `relay`, `unmeasured` and the rest): [Spread a CI run over several machines](../spread-ci-over-machines/#dteoptions).
+
+</Deeper>
+
+<NextStep href="../spread-ci-over-machines/" title="Spread a CI run over several machines">
+  The same run, with workers your CI starts.
+</NextStep>

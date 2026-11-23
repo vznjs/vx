@@ -1,0 +1,185 @@
+---
+title: Spread a CI run over several machines
+description: Add dte() and one CI job hands its tasks to worker jobs it starts, then reports one result.
+---
+
+import Diagram from '../../../../components/guide/diagram/Diagram.astro'
+import { dteRun } from '../../../../components/docs/pictures.js'
+import { Aside, Steps } from '@astrojs/starlight/components'
+import { Levels, Deeper, Concept, Quiz, Takeaway, NextStep } from '../../../../components/learn'
+
+One CI job starts more jobs, gives them its tasks, and still reports **one** result.
+
+```sh
+vx dte init
+```
+
+<Levels />
+
+<Diagram {...dteRun} />
+
+<Concept term="Relay">
+  A small server you host, the [DTE server](../../servers/dte/). Your CI job and its workers meet
+  there to pass tasks and results. It stores nothing.
+</Concept>
+
+<Aside type="note" title="Before you start">
+  You need a [remote cache](../../remote-cache/) (workers hand files back through it) and a
+  deployed [DTE server](../../servers/dte/).
+</Aside>
+
+## Add `dte()`
+
+Add the plugin next to your cache. `github()` starts each worker as a GitHub Actions job.
+
+```ts title=".vx/workspace.ts" ins={4,12-16}
+import { defineWorkspace } from '@vzn/vx/config'
+import { vxCache } from '@vzn/vx-cache'
+import { github as ci } from '@vzn/vx-ci'
+import { dte, github } from '@vzn/vx-dte'
+import { bun } from '@vzn/vx-lockfile'
+
+export default defineWorkspace({
+  plugins: [
+    bun(),
+    ci(),
+    vxCache({ url: 'https://vx-cache-server.acme.workers.dev', issuer: 'https://token.actions.githubusercontent.com', repository: 'acme/app' }),
+    dte({
+      relay: 'https://vx-dte-server.acme.workers.dev',
+      workers: { linux: { machines: { cpu4: { max: 8, cpu: 4, memory: '16GB' } } } },
+      adapter: github(),
+    }),
+  ],
+})
+```
+
+Read the `workers` line as: up to **8** machines per run, each **4** cores and **16GB**.
+
+<Takeaway>tell vx where workers meet (`relay`), what they are (`workers`) and who starts them (`adapter`).</Takeaway>
+
+## Let vx write the workflows
+
+```sh
+bun add -d @vzn/vx-dte
+vx lock
+vx dte init
+```
+
+```ansi
+[1m[38;2;6;182;212mvx dte init:[0m[2m wrote .github/workflows/ci.yml[0m
+[1m[38;2;6;182;212mvx dte init:[0m[2m wrote .github/workflows/vx-worker.yml[0m
+
+[38;2;6;182;212mNext:[0m
+[38;2;6;182;212m  1. Let these workflows use the relay at https://vx-dte-server.acme.workers.dev: set its ALLOW.[0m
+[38;2;6;182;212m     Its ALLOW (a plain var, no secret): https://token.actions.githubusercontent.com:acme/app:ci.yml https://token.actions.githubusercontent.com:acme/app:vx-worker.yml[0m
+[38;2;6;182;212m  2. A remote cache the run and the workers share: workers hand back outputs only through it. https://vznjs.github.io/vx/docs/remote-cache/[0m
+[38;2;6;182;212m  3. Commit .github/workflows/ci.yml, .github/workflows/vx-worker.yml, .vx/workspace.ts and the lock (vx lock), and push.[0m
+[38;2;6;182;212m  How a run spreads over workers: https://vznjs.github.io/vx/docs/distributed-task-execution/[0m
+```
+
+Two files appear:
+
+| File | What it does |
+| --- | --- |
+| `ci.yml` | your CI job: runs `vx run`, which starts workers as needed |
+| `vx-worker.yml` | one worker's job: check out, install, `vx dte worker` |
+
+<Takeaway>get both workflows written for you, with nothing to edit.</Takeaway>
+
+## Let the workflows in and push
+
+<Steps>
+
+1. Copy the `ALLOW` line `vx dte init` printed into the relay's settings and deploy it again ([how](../../servers/dte/#2-say-who-may-use-it-allow)).
+
+2. Commit the two workflows, `.vx/workspace.ts` and the lock files.
+
+3. Push.
+
+</Steps>
+
+No secret goes into your repository: workers prove who they are with GitHub's own token.
+
+The run's log and job summary name the worker beside each task, as in [the local run](../try-on-your-machine/#watch-a-run-spread).
+
+<Quiz q="You push a commit that changes only README.md. How many workers start?">
+  None, if no task reads README.md. Every task is a cache hit, and a hit needs no worker.
+</Quiz>
+
+<Takeaway>run CI over up to eight machines and pay only for the work that changed.</Takeaway>
+
+<Deeper level="patterns" title="Common setups">
+
+### Choose what CI runs
+
+Edit the last line of `ci.yml`. Here a pull request runs only what it changed:
+
+```yaml title=".github/workflows/ci.yml"
+      - run: bun vx run build test ${{ github.event_name == 'pull_request' && '--affected' || '--all' }}
+```
+
+### Hand workers a value from the run
+
+`github({ env })` passes variables the run's job decides, such as a preview server's URL:
+
+```ts
+adapter: github({ env: { API_URL: process.env.API_URL } }),
+```
+
+### A proxy in front of the relay
+
+`headers` go on every call to the relay, for example a Cloudflare Access service token:
+
+```ts
+dte({
+  relay: 'https://vx-dte-server.acme.workers.dev',
+  headers: { 'CF-Access-Client-Id': process.env.CF_ACCESS_CLIENT_ID },
+  // …
+}),
+```
+
+<Takeaway>pick the tasks, pass values to workers and reach a relay behind a proxy.</Takeaway>
+
+</Deeper>
+
+<Deeper level="details" title="Every option">
+
+#### `dte(options)`
+
+| Option | What it does | Default |
+| --- | --- | --- |
+| `workers` | Worker types by name, in order of preference. Each has `machines`: sizes the adapter may start, named `<type>.<machine>`. | none |
+| `adapter` | What starts workers: `github()`, `gitlab()`, `local()` or `docker()`. | none: the run uses workers that join it |
+| `relay` | The relay's URL. `VX_DTE_RELAY` overrides it. | the adapter's own (`local()` has one) |
+| `token` | A function returning the bearer token for the relay. | `VX_DTE_TOKEN`, else GitHub's OIDC token |
+| `unmeasured` | What a task with no history counts for when vx sizes the run: `{ cpu, memory }`. | `{ cpu: 2, memory: '4GB' }` |
+| `headers` | Headers on every call to the relay. An unset value is left out. | none |
+
+Each machine's fields (`max`, `cpu`, `memory`, `platform`, `runsOn`): [Give heavy tasks a bigger machine](../add-bigger-machines/#a-machine-size).
+
+#### `github(options?)`
+
+| Option | What it does | Default |
+| --- | --- | --- |
+| `workflow` | The workers' workflow file in `.github/workflows`. | `'vx-worker.yml'` |
+| `env` | Variables handed to every worker. An unset value is left out. | none |
+
+#### Other adapters
+
+| Adapter | Option | What it does |
+| --- | --- | --- |
+| `gitlab()` | `tags` | Runner tags per machine, `{ 'linux.cpu4': ['saas-linux-medium-amd64'] }`. |
+| `docker()` | `image` | An image with Bun and git. Required. |
+| `docker()` | `prepare` | A shell line the clone runs first, such as `bun install`. |
+| `local()` | `prepare` | The same, in each worktree ([try it](../try-on-your-machine/)). |
+
+#### What `vx dte init` writes
+
+- `ci.yml` runs `vx run`; `vx-worker.yml` runs each worker. Run it again after you change `workers`.
+- It prints the `ALLOW` line naming both workflows. The relay accepts only them.
+
+</Deeper>
+
+<NextStep href="../run-a-task-on-its-own-machine/" title="Run one task on a different machine">
+  Give end-to-end tests machines of their own.
+</NextStep>

@@ -1,0 +1,131 @@
+---
+title: Run one task on a different machine
+description: Give a worker type its own machines and name it on the task with exec.worker.
+---
+
+import Diagram from '../../../../components/guide/diagram/Diagram.astro'
+import { dteWorkerTypes } from '../../../../components/docs/pictures/dte-howtos.js'
+import { Aside } from '@astrojs/starlight/components'
+import { Levels, Deeper, Concept, Quiz, Takeaway, NextStep } from '../../../../components/learn'
+
+Give end-to-end tests machines of their own, while every other task shares the usual ones.
+
+```ts
+exec: { command: 'playwright test', worker: 'e2e' }
+```
+
+<Levels />
+
+<Diagram {...dteWorkerTypes} />
+
+<Concept term="Worker type">
+  A named group of machines in `dte({ workers })`, such as `linux` or `e2e`. A task can ask for one
+  by name.
+</Concept>
+
+## Declare a second type
+
+Add `e2e` next to `linux`. Order matters: tasks that name no type go to the **first** one that fits.
+
+```ts title=".vx/workspace.ts" ins={4}
+dte({
+  workers: {
+    linux: { machines: { cpu4: { max: 8, cpu: 4, memory: '8GB' } } },
+    e2e: { machines: { cpu4: { max: 2, cpu: 4, memory: '8GB' } } },
+  },
+  adapter: github(),
+}),
+```
+
+<Takeaway>keep a separate pool of machines for one kind of work.</Takeaway>
+
+## Name it on the task
+
+```ts title="apps/web/vx.config.ts" mark={3}
+e2e: {
+  dependsOn: ['build'],
+  exec: { command: 'playwright test', worker: 'e2e' },
+  inputs: { files: ['src/**', 'tests/**'] },
+},
+```
+
+Run `vx lock`, then `vx dte init` to add the new machines to `vx-worker.yml`. Now run it:
+
+```ansi
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mTasks[0m[4m[58;2;110;118;129m     [2mstatus  cache     ±usual    time   cpu    mem outputs  blocks worker         task[0m[4m[58;2;110;118;129m                           [0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m        [2m+1ms[0m    [38;2;203;213;225m16ms[0m   [2m24%[0m  [2m1.8MB[0m      [2m3B[0m       [38;2;203;213;225m2[0m [38;2;96;165;250mlinux.cpu4[0m[2m#[0m[38;2;167;139;250m1[0m   [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m        [2m+0ms[0m     [38;2;203;213;225m3ms[0m  [2m141%[0m  [2m1.8MB[0m      [2m3B[0m       [38;2;203;213;225m1[0m [38;2;96;165;250mlinux.cpu4[0m[2m#[0m[38;2;167;139;250m1[0m   [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m        [2m+1ms[0m    [38;2;203;213;225m19ms[0m    [2m5%[0m  [2m1.7MB[0m      [2m0B[0m       [2m0[0m [38;2;244;114;182me2e.cpu4[0m[2m#[0m[38;2;167;139;250m1[0m     [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;147;197;253me2e[0m
+  [2mworkers [0m  [38;2;244;114;182me2e.cpu4[0m[2m#[0m[38;2;167;139;250m1[0m    stopped  1 done · warm-up 0.2s · @demo/web#e2e
+  [2m        [0m  [38;2;96;165;250mlinux.cpu4[0m[2m#[0m[38;2;167;139;250m1[0m  left     2 done · warm-up 0.1s · @demo/ui#build, @demo/web#build
+```
+
+Read the **worker** column: both builds ran on `linux.cpu4#1`, the tests on `e2e.cpu4#1`. Each worker left when its work was done.
+
+<Quiz q="You add a lint task with no exec.worker. Which machines run it?">
+  `linux`: it is listed first and fits. `e2e` only gets tasks that name it, or that no type before
+  it can take.
+</Quiz>
+
+<Takeaway>send one task to its own machines and see it land there.</Takeaway>
+
+<Deeper level="patterns" title="Common setups">
+
+### Playwright on Ubuntu, the rest on Alpine
+
+Each type can run on different CI runners, with their own images and tools:
+
+```ts title=".vx/workspace.ts"
+workers: {
+  alpine: { machines: { cpu4: { max: 8, cpu: 4, memory: '16GB', runsOn: 'alpine-4-cores' } } },
+  ubuntu: { machines: { cpu4: { max: 2, cpu: 4, memory: '16GB' } } },
+},
+```
+
+```ts title="apps/web/vx.config.ts"
+e2e: { exec: { command: 'playwright test', worker: 'ubuntu' } },
+```
+
+### A catch-all type last
+
+Put a big type last. It gets only what the types before it cannot take:
+
+```ts
+workers: {
+  linux: { machines: { cpu4: { max: 8, cpu: 4, memory: '16GB' } } },
+  big: { machines: { cpu16: { max: 1, cpu: 16, memory: '64GB', runsOn: 'ubuntu-latest-16-cores' } } },
+},
+```
+
+<Takeaway>split work by tools or by size with nothing but types and their order.</Takeaway>
+
+</Deeper>
+
+<Deeper level="details" title="Every rule">
+
+#### `exec.worker`
+
+| Fact | `exec.worker` |
+| --- | --- |
+| What it does | Runs the task only on machines of that worker type. |
+| Default | none: the first type in `workers` that fits the task. |
+| Value | a type's name from `dte({ workers })`. |
+| In the cache key | no: moving a task to another type never changes its key. |
+| On your machine | ignored: a run without workers runs it here. |
+
+#### Where a task goes
+
+- A task that names no type goes to the first type with a machine of its platform.
+- A task with [`exec.platforms`](../../tasks/) runs only on a worker of one of them.
+- A task no worker can take stops the run before any task starts, and names it.
+- A task that reads what an uncached task leaves on its worker, where `exec.worker` or `exec.platforms` rule out the reader's machine, stops the run too. Cache the upstream task, or run both alike.
+
+<Aside type="tip">
+  Every rule for placing tasks: [What runs where](../../distributed-task-execution/#what-runs-where).
+</Aside>
+
+</Deeper>
+
+<NextStep href="../add-bigger-machines/" title="Give heavy tasks a bigger machine">
+  Let vx pick the size each task needs.
+</NextStep>

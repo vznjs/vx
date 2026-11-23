@@ -1,0 +1,136 @@
+---
+title: Give heavy tasks a bigger machine
+description: Declare several machine sizes for one worker type, and vx starts the size each task needs.
+---
+
+import Diagram from '../../../../components/guide/diagram/Diagram.astro'
+import { dteBiggerMachine } from '../../../../components/docs/pictures/dte-howtos.js'
+import { Aside } from '@astrojs/starlight/components'
+import { Levels, Deeper, Concept, Quiz, Takeaway, NextStep } from '../../../../components/learn'
+
+List two machine sizes. vx learns which tasks need the big one, and starts it only for them.
+
+```ts
+machines: { cpu4: { … }, cpu16: { … } }
+```
+
+<Levels />
+
+<Diagram {...dteBiggerMachine} />
+
+<Concept term="Machine size">
+  One kind of machine a worker type can start, such as `cpu4` or `cpu16`. A worker's name says both:
+  `linux.cpu16#1` is worker 1 of the `cpu16` size of the `linux` type.
+</Concept>
+
+## Declare two sizes
+
+```ts title=".vx/workspace.ts" ins={6}
+dte({
+  workers: {
+    linux: {
+      machines: {
+        cpu4: { max: 8, cpu: 4, memory: '16GB' },
+        cpu16: { max: 2, cpu: 16, memory: '64GB', runsOn: 'ubuntu-latest-16-cores' },
+      },
+    },
+  },
+  adapter: github(),
+}),
+```
+
+Read the new line as: up to **2** machines of **16** cores and **64GB**, on the `ubuntu-latest-16-cores` runner.
+
+<Aside type="caution" title="Say what the runner really has">
+  vx plans by `cpu` and `memory`. A size that says more than its runner has makes tasks wait on
+  each other.
+</Aside>
+
+<Takeaway>offer a big machine without paying for it on every task.</Takeaway>
+
+## Send each size to its runner
+
+Run `vx dte init` again. `vx-worker.yml` now maps each size to its runner:
+
+```yaml title=".github/workflows/vx-worker.yml"
+    runs-on: ${{ fromJSON('{"linux.cpu4":"ubuntu-latest","linux.cpu16":"ubuntu-latest-16-cores"}')[inputs.size] }}
+```
+
+Look at the two keys: `linux.cpu4` and `linux.cpu16`, one per size.
+
+<Takeaway>run each size on the CI runner you pay for.</Takeaway>
+
+## How vx picks the size
+
+1. A task with no history runs on any free core. vx counts it as 2 cores and 4GB when it decides how many machines to start.
+2. vx records the cores and memory it used.
+3. A task that used about all of its machine runs on a **bigger** size next time.
+
+<Quiz q="A vite build used every core of a cpu4 machine in its last run. Where does it run next?">
+  On `cpu16`. A task that filled its machine only goes to a bigger one. A lint task that used one
+  core keeps sharing a `cpu4`.
+</Quiz>
+
+<Takeaway>predict which tasks get the big machine, and why.</Takeaway>
+
+<Deeper level="patterns" title="Common setups">
+
+### Some tasks on macOS
+
+Add a type whose machine names its platform. `vx dte init` runs it on `macos-latest`:
+
+```ts title=".vx/workspace.ts"
+mac: { machines: { m1: { max: 2, cpu: 3, memory: '7GB', platform: 'darwin-arm64' } } },
+```
+
+A task with `exec.platforms: ['darwin-arm64']` runs only there.
+
+### No cap on a size
+
+Leave out `max` and a run starts as many as its work needs:
+
+```ts
+cpu4: { cpu: 4, memory: '16GB' },
+```
+
+### Count new tasks bigger
+
+Tasks with no history count as 2 cores and 4GB. Raise it if most of yours are heavy:
+
+```ts
+dte({ unmeasured: { cpu: 4, memory: '8GB' }, /* … */ }),
+```
+
+<Takeaway>add macOS, lift a cap and tune how new tasks are counted.</Takeaway>
+
+</Deeper>
+
+<Deeper level="details" title="Every option">
+
+#### A machine size
+
+| Field | What it does | Default | Example |
+| --- | --- | --- | --- |
+| `cpu` | Its cores. vx counts on them until the worker reports its real machine. Required. | none | `4` |
+| `memory` | Its memory, in bytes or as text. Required. | none | `'16GB'`, `'512MiB'` |
+| `max` | How many one run may start. | no cap | `8` |
+| `platform` | `linux-x64`, `linux-arm64`, `darwin-x64` or `darwin-arm64`. A worker that joins on another is refused. | this machine's, not checked | `'darwin-arm64'` |
+| `runsOn` | The CI runner label `vx dte init` writes for it. | the platform's GitHub-hosted runner | `'ubuntu-latest-16-cores'` |
+
+Names of types and sizes use letters, digits, `_` and `-`. A field vx does not know, such as `maxx`, is refused.
+
+#### How a run sizes itself
+
+- Only work counts: a task that missed the cache, or waits on one that did, and every uncached task.
+- A task with history books its average cores (a whole core at least) and its peak memory.
+- A task that used 90% or more of its machine's cores or memory takes a whole bigger machine next time.
+- Change a size's cores, memory, platform or runner, and vx forgets what it measured for that size.
+- A worker that is idle, with nothing left it could take, leaves.
+
+All of `dte()`'s options: [Spread a CI run over several machines](../spread-ci-over-machines/#dteoptions).
+
+</Deeper>
+
+<NextStep href="../../distributed-task-execution/" title="Distributed task execution">
+  How the whole run fits together, and every rule for what runs where.
+</NextStep>
