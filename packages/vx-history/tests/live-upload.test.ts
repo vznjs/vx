@@ -175,6 +175,10 @@ ${quick.join('\n')}
       process.stdout.write = write.out
       process.stderr.write = write.err
     }
-    expect(said.join('').match(/\[vx\] vx-history: [^\n]*the token was refused/g)?.length).toBe(1)
+    // A run under vx (FORCE_COLOR) colours the `[vx]` prefix apart from the rest.
+    const plain = said
+      .join('')
+      .replace(new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, 'g'), '')
+    expect(plain.match(/\[vx\] vx-history: [^\n]*the token was refused/g)?.length).toBe(1)
   }, 30_000)
 })
