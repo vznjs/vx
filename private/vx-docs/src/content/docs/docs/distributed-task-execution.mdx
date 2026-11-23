@@ -3,6 +3,9 @@ title: Distributed task execution
 description: Run your tasks on several CI machines at once, and get one result.
 ---
 
+import Diagram from '../../../components/guide/diagram/Diagram.astro'
+import { dteRun } from '../../../components/docs/pictures.js'
+
 When one CI machine is too slow for your build, vx can run your tasks
 on several machines at once. You still start one CI job, and you still
 get one result.
@@ -18,15 +21,7 @@ starts no workers.
 
 ## How it works
 
-```mermaid
-flowchart LR
-  R["vx run (your job)"] <-->|orders, status| Relay((relay))
-  Relay <--> W1["worker linux.small#1"]
-  Relay <--> W2["worker linux.small#2"]
-  R <-->|outputs| C[(remote cache)]
-  W1 <--> C
-  W2 <--> C
-```
+<Diagram {...dteRun} />
 
 - **A relay** connects the run to its workers, because a CI runner
   accepts no incoming connection. You host it: the
@@ -71,7 +66,7 @@ export default defineWorkspace({
     dte({
       relay: 'https://vx-dte-server.acme.workers.dev',
       workers: {
-        linux: { machines: { small: { max: 8, cpu: 4, memory: '16GB' } } },
+        linux: { machines: { cpu4: { max: 8, cpu: 4, memory: '16GB' } } },
       },
       adapter: github(),
     }),
@@ -80,23 +75,26 @@ export default defineWorkspace({
 ```
 
 `workers` names the **worker types** the run may start, and each type's
-**machines**. Here: one type, `linux`, of up to 8 `small` machines with
+**machines**. Here: one type, `linux`, of up to 8 `cpu4` machines with
 4 cores and 16 GB each, as GitHub's `ubuntu-latest` has for a public repository.
 
-Declare what your runners really have: vx plans by it. For other
-runners, add a machine and name its label:
-`large: { cpu: 16, memory: '64GB', runsOn: 'ubuntu-latest-16-cores' }`.
+Declare what your runners really have: vx plans by it. For bigger
+runners, add a machine that names its label in `runsOn`
+([Give heavy tasks a bigger machine](add-bigger-machines/)).
 
 ### 3. Write the workflows
 
+Lock the config, then let vx write both workflows:
+
 ```sh
+vx lock
 vx dte init
 ```
 
 ```ansi
-[1m[38;2;6;182;212mvx dte init:[0m wrote .github/workflows/ci.yml
-[1m[38;2;6;182;212mvx dte init:[0m wrote .github/workflows/vx-worker.yml
-[38;2;6;182;212m[0m
+[1m[38;2;6;182;212mvx dte init:[0m[2m wrote .github/workflows/ci.yml[0m
+[1m[38;2;6;182;212mvx dte init:[0m[2m wrote .github/workflows/vx-worker.yml[0m
+
 [38;2;6;182;212mNext:[0m
 [38;2;6;182;212m  1. Let these workflows use the relay at https://vx-dte-server.acme.workers.dev: set its ALLOW.[0m
 [38;2;6;182;212m     Its ALLOW (a plain var, no secret): https://token.actions.githubusercontent.com:acme/app:ci.yml https://token.actions.githubusercontent.com:acme/app:vx-worker.yml[0m
@@ -132,52 +130,9 @@ The run's log and job summary show each worker beside the tasks it ran.
 
 ## Try it on your machine
 
-`local()` starts each worker as a process in its own git worktree, so
-you can watch a DTE run with no CI and no relay:
-
-```sh
-bun add -d @vzn/vx-dte @vzn/vx-lockfile
-```
-
-```ts title=".vx/workspace.ts"
-import { defineWorkspace } from '@vzn/vx/config'
-import { dte, local } from '@vzn/vx-dte'
-import { bun } from '@vzn/vx-lockfile'
-
-export default defineWorkspace({
-  plugins: [
-    bun(),
-    dte({
-      workers: { linux: { machines: { small: { max: 2, cpu: 1, memory: '1GB' } } } },
-      adapter: local({ prepare: 'bun install' }),
-    }),
-  ],
-})
-```
-
-```sh
-vx lock
-git add -A && git commit -m "try vx-dte"
-VX_DTE_RUN=$(uuidgen) vx run build --all
-```
-
-```ansi
-            [38;2;34;197;94msuccess[0m [2mmiss[0m           [2m—[0m   [38;2;203;213;225m1.35s[0m     [2m—[0m      [2m—[0m       [2m—[0m       [38;2;203;213;225m1[0m [38;2;192;132;252msmall[0m[2m#[0m[38;2;167;139;250m1[0m        [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m
-            [38;2;34;197;94msuccess[0m [2mmiss[0m           [2m—[0m   [38;2;203;213;225m1.55s[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [38;2;192;132;252msmall[0m[2m#[0m[38;2;167;139;250m1[0m        [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m
-
-  [2mworkers [0m  [38;2;192;132;252msmall[0m[2m#[0m[38;2;167;139;250m1[0m  stopped  2 done · warm-up 0.4s · @demo/ui#build, @demo/web#build
-```
-
-`VX_DTE_RUN` names the run and turns distribution on. Without it,
-`vx run` runs here as always. On GitHub Actions the run names itself.
-
-A worker checks out your files as git has them, uncommitted changes
-included. A file git does not track is not there: a task that reads one
-fails, naming it.
-
-A worker builds on the bytes and modes git stores, with its filters
-undone (line endings, `ident`, LFS). A task whose input differs on disk,
-such as a CRLF checkout, fails, naming it.
+`local()` starts each worker as a process in its own git worktree, so you
+can watch a run spread with no CI and no relay:
+[Try distributed task execution on your machine](try-on-your-machine/).
 
 ---
 
@@ -223,8 +178,8 @@ and name it on the task.
 
 ```ts title=".vx/workspace.ts"
 workers: {
-  alpine: { machines: { small: { max: 8, cpu: 4, memory: '16GB' } } },
-  ubuntu: { machines: { small: { max: 2, cpu: 4, memory: '16GB' } } },
+  alpine: { machines: { cpu4: { max: 8, cpu: 4, memory: '16GB' } } },
+  ubuntu: { machines: { cpu4: { max: 2, cpu: 4, memory: '16GB' } } },
 },
 ```
 

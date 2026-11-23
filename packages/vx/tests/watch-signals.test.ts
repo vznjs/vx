@@ -247,7 +247,7 @@ describe('vx watch under a signal (e2e)', () => {
   // WD-22: the server's TERM trap writes got.txt, then takes 0.6 s to exit,
   // so the SIGINT lands while the cycle is still stopping it. A server is
   // stopped only when its own locked config changed, so the edit is to
-  // that and the re-lock starts the cycle; the edit's own cycle keeps it.
+  // that and the re-lock starts the cycle.
   it('SIGINT while a cycle stops the held server runs no cycle after it', async () => {
     const config = (nap: string): string => `
         export default {
@@ -274,10 +274,8 @@ describe('vx watch under a signal (e2e)', () => {
       for await (const chunk of proc.stdout) out += new TextDecoder().decode(chunk)
     })()
     await waitForText(async () => out, 'watching', 10_000)
+    // The edit alone is refused until `vx lock`; the re-lock's cycle stops the server.
     await Bun.write(path.join(dir, 'vx.config.mjs'), config('0.06'))
-    // One `app#dev` row per run: the edit's cycle has settled it.
-    const runsEnded = (): number => out.match(/ app#dev$/gm)?.length ?? 0
-    await waitForText(async () => (runsEnded() === 2 ? 'yes' : ''), 'yes', 10_000)
     lock(root)
     const got = path.join(dir, 'got.txt')
     await waitForText(async () => ((await Bun.file(got).exists()) ? 'yes' : ''), 'yes', 10_000)

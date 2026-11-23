@@ -272,7 +272,7 @@ export interface RunReportTask {
 }
 
 /** Shared, read-only context every capability factory receives. */
-interface BaseContext {
+export interface BaseContext {
   readonly workspaceRoot: string
   readonly cacheDir: string
   /** Funnel warnings into the run:status channel (framed output). */
@@ -800,7 +800,16 @@ export function refuseUnknownOptions<T>(
 ): void {
   if (options === undefined) return
   if (options === null || typeof options !== 'object' || Array.isArray(options)) {
-    throw new UserError(`${factory}: options must be an object`)
+    const got = Array.isArray(options)
+      ? 'an array'
+      : typeof options === 'function'
+        ? 'a function'
+        : typeof options === 'bigint' || typeof options === 'symbol'
+          ? options.toString()
+          : JSON.stringify(options)
+    throw new UserError(
+      `${factory}: options must be an object of named options, as in { name: value }; got ${got}`,
+    )
   }
   const known = kinds as Readonly<Record<string, string>>
   const names = Object.keys(known)

@@ -60,6 +60,7 @@ import {
   type StatusStream,
 } from '../ui/index.js'
 import { isCacheHit } from '../graph/index.js'
+import { runTime } from '../exec/index.js'
 import { outcomeLabel, outcomeWord, ranNoCache } from './events.js'
 import type { BlockedTask, Forecast } from './forecast.js'
 
@@ -149,7 +150,7 @@ export interface DefaultLogger extends Logger {
  *
  * `gha` (GitHub Actions): task output is fenced from workflow commands; in full
  * mode each block is a collapsible group, except failures, which stay open with
- * an `::error` annotation.
+ * an `::error` annotation, as each deferred failure frame has in the list views.
  *
  * `ci`: suppresses the status line even on a TTY.
  */
@@ -253,6 +254,9 @@ export function defaultLogger(
 ): DefaultLogger {
   const forwardArgs = opts.forwardArgs ?? []
   const errOut = opts.err ?? process.stderr
+  // stderr decides its own colour: `vx run 2> warn.log` on a terminal wrote
+  // escapes into the file. A given stream is the caller's and takes `colors`.
+  const errColors = opts.err === undefined && colors.enabled ? detectColors(process.stderr) : colors
   // Per-task buffers, split by stream so the frame can show stdout and stderr
   // apart; interleaved chunks are reordered. Held as string[] joined on flush:
   // `+=` is O(N²).
@@ -380,7 +384,9 @@ export function defaultLogger(
   // The pinned zone above the worker rows: persistent tasks pin at ready and
   // stay until runEnd. A failure is not pinned: it is a permanent failed row at
   // once, its frame deferred to runEnd. 'full'/CI keeps frames inline.
-  const deferredFailures: string[] = []
+  // `note`: a failure's `::error` annotation on GitHub Actions, as `full`
+  // writes one: CI's default view wrote none, and a failed check named no task.
+  const deferredFailures: { block: string; note: string }[] = []
   // Each ready server's outcome: one whose child has exited (`serverExit`) is no longer pinned.
   const pinnedPersistent: TaskOutcome[] = []
   let flushedFailures = false
@@ -447,7 +453,9 @@ export function defaultLogger(
   const buildRegion = (): readonly string[] => {
     let force = forcePending
     forcePending = false
-    const now = Date.now()
+    // Rows, steps and the forecast read the clock a task's duration reads:
+    // a Ctrl-Z stops it, so a row does not count the time vx was stopped.
+    const now = runTime()
     // A task its executor still holds has not begun: its clock starts at
     // the first frame a machine runs it.
     const where = runContext?.whereRunning
@@ -484,7 +492,7 @@ export function defaultLogger(
     }
     const etaMs = deadlineMs === undefined ? undefined : deadlineMs - now
     if (signals.progress && total > 0) {
-      const elapsed = now - startedAtMs
+      const elapsed = Date.now() - startedAtMs
       const pct = Math.floor(
         etaMs !== undefined && etaMs > 0
           ? (elapsed / (elapsed + etaMs)) * 100
@@ -562,7 +570,7 @@ export function defaultLogger(
         ...(blockedBy !== undefined && !stopping ? { blockedBy } : {}),
         ...(stopping ? { stopping } : {}),
         ...(shownSteps.length > 0 ? { steps: shownSteps } : {}),
-        nowMs: Date.now(),
+        nowMs: now,
         summaryLines,
         ...(runContext?.whereRunning !== undefined ? { where: runContext.whereRunning } : {}),
         ...(runContext?.usage !== undefined ? { usage: runContext.usage } : {}),
@@ -787,18 +795,18 @@ export function defaultLogger(
     warn(line) {
       flushKept()
       endStreamLine()
-      if (!colors.enabled || liveFrames > 0) {
-        writer.writeTo(errOut, `${ui.tagged('warn', line, colors)}\n`)
+      if (!errColors.enabled || liveFrames > 0) {
+        writer.writeTo(errOut, `${ui.tagged('warn', line, errColors)}\n`)
         return
       }
       if (panelOpen !== 'Warnings') {
-        writer.writeTo(errOut, `${ui.panelTop('Warnings', colors)}\n`)
+        writer.writeTo(errOut, `${ui.panelTop('Warnings', errColors)}\n`)
         panelOpen = 'Warnings'
       }
       const rows = line
         .replace(/\n+$/, '')
         .split('\n')
-        .map((l) => ui.tagged('warn', l, colors))
+        .map((l) => ui.tagged('warn', l, errColors))
       writer.writeTo(errOut, `${rows.join('\n')}\n`)
     },
     runStart(info) {
@@ -817,7 +825,7 @@ export function defaultLogger(
       refresh(true)
     },
     stepStart(id) {
-      steps.set(id, Date.now())
+      steps.set(id, runTime())
       // Drawn by the ticker once it passes STEP_SHOWN_MS; a quicker one never is.
       tick()
     },
@@ -867,7 +875,7 @@ export function defaultLogger(
       if (statusDead) return
       const slot: WorkerSlot = {
         id: node.id,
-        startedMs: Date.now(),
+        startedMs: runTime(),
         cache: ranNoCache({ node }) ? 'no-cache' : 'miss',
       }
       const free = slots.indexOf(null)
@@ -951,7 +959,15 @@ export function defaultLogger(
       // where eyes land. Guarded for repeat runEnd calls.
       if (!flushedFailures && deferredFailures.length > 0) {
         flushedFailures = true
-        for (const block of deferredFailures) emitBlock(fenced(block))
+        for (const { block, note } of deferredFailures) {
+          if (note === '') emitBlock(fenced(block))
+          // A frame with nothing in it still names its failure.
+          else if (block.length === 0) logWrite(note)
+          else {
+            const [open, close] = ghaFenceEnds(ghaToken)
+            emitBlock(block, `${note}${open}`, close)
+          }
+        }
       }
       panelOpen = undefined
       // The summary and the CLI's own lines follow on the stream directly:
@@ -1003,7 +1019,14 @@ export function defaultLogger(
       // The failed row now; its frame replays with the others at runEnd.
       const deferFailure = (): void => {
         emitRow(failureRow(node, outcome))
-        deferredFailures.push(frame(false))
+        deferredFailures.push({
+          block: frame(false),
+          // The message is ours; only the title carries user input.
+          note:
+            view.gha === true
+              ? `::error title=${ghaProperty(node.id)}::${outcomeLabel(outcome)}\n`
+              : '',
+        })
       }
       // An aborted task frees its slot and counts as the footer will: `aborted`
       // or `not run`.
@@ -1035,7 +1058,7 @@ export function defaultLogger(
           // with the deferred failures above the summary.
           if (view.mode === 'broad' || view.mode === 'errors-only') {
             emitRow(formatTaskAbortedLine(node, outcome, colors, blocksOf(node.id)))
-            deferredFailures.push(frame(true))
+            deferredFailures.push({ block: frame(true), note: '' })
             return
           }
           emitBlock(fenced(frame(true)))
@@ -1144,6 +1167,14 @@ export function defaultLogger(
                 usualMsOf(node.id),
               ),
             )
+            // A ready server's address is news: `vx run dev --all` dropped
+            // each server's pre-ready lines, `Local: http://…` among them.
+            if (
+              node.config.exec?.persistent !== undefined &&
+              output.some((c) => c.text.trim().length > 0)
+            ) {
+              emitBlock(fenced(frame(true)))
+            }
           } else if (outcome.status === 'skipped') {
             emitRow(formatTaskSkippedLine(node, colors, outcome, blocksOf(node.id)))
           }

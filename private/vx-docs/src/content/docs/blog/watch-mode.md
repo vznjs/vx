@@ -84,8 +84,8 @@ is heard.
 - A failed cycle prints its failure and waits for the next change.
 - Ctrl-C prints `vx watch: stopped`, tears down the cycle's children,
   and exits 0 once they are gone.
-- Flags that describe one run (`--dry`, `--profile`, `--verbosity`
-  above 0) are refused up front: a loop has no single run.
+- Flags that describe one run (`--dry`, `--format`, `--profile`,
+  `--verbosity` above 0) are refused up front: a loop has no single run.
 - A persistent task starts once and stays up. It restarts only when its
   own config or forwarded args change, or when it dies.
 

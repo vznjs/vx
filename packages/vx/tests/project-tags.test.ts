@@ -89,12 +89,28 @@ describe('--filter tag:<pattern>', () => {
   it(
     'an unknown tag fails as an unknown name does, naming the nearest tag',
     async () => {
-      const r = await vx(root, ['run', 'build', '--filter', 'tag:scope:wbe', '--dry=json'])
+      const r = await vx(root, [
+        'run',
+        'build',
+        '--filter',
+        'tag:scope:wbe',
+        '--dry',
+        '--format',
+        'json',
+      ])
       expect(r.code).toBe(1)
       expect(r.err).toContain(
         'no projects matched filter(s): "tag:scope:wbe"\n\n  fix  tag:scope:web',
       )
-      const far = await vx(root, ['run', 'build', '--filter', 'tag:zzzzzz', '--dry=json'])
+      const far = await vx(root, [
+        'run',
+        'build',
+        '--filter',
+        'tag:zzzzzz',
+        '--dry',
+        '--format',
+        'json',
+      ])
       expect(far.err).toContain(
         'no projects matched filter(s): "tag:zzzzzz"\n\n  Tags: scope:web, type:app, type:docs, type:lib',
       )

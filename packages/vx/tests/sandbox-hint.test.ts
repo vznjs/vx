@@ -59,6 +59,20 @@ describe('the sandbox-unavailable hint names a field the loader accepts', () => 
     expect(proc).toContain('set `sandbox.weakerWhenNested: true` on every sandboxed task')
   })
 
+  // A bwrap outside /usr/bin on Ubuntu 23.10+, or a kernel with user
+  // namespaces off: the bare line named neither (2026-11-23).
+  it("names the user-namespace remedy when bwrap's own is refused", () => {
+    for (const err of [
+      'bwrap: setting up uid map: Permission denied',
+      'bwrap: loopback: Failed RTM_NEWADDR: Operation not permitted',
+    ]) {
+      const why = unavailableReason(1, err)
+      expect(why).toContain('allows one only to its own /usr/bin/bwrap')
+      expect(why).toContain('kernel.apparmor_restrict_unprivileged_userns=0')
+      expect(why).not.toContain('weakerWhenNested')
+    }
+  })
+
   it('a failure that is not the nested namespace carries no remedy', () => {
     const other = unavailableReason(127, 'bwrap: No such file or directory')
     expect(other).toBe('a sandboxed `true` failed (exit 127): bwrap: No such file or directory')

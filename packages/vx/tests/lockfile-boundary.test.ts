@@ -132,6 +132,13 @@ describe('readLockfile — the boundary rejects malformed input loudly', () => {
     await expect(readLockfile(root)).rejects.toThrow(/vx lock/)
   })
 
+  it('a conflict on the first line is a merge conflict, not bad JSON', async () => {
+    // Two branches that each bumped the lock's version conflict on its header:
+    // the run said "not valid JSON — delete it" instead of naming the merge.
+    await writeRaw('<<<<<<< HEAD\n{"version":9}\n=======\n{"version":8}\n>>>>>>> other\n')
+    await expect(readLockfile(root)).rejects.toThrow(/holds a git merge conflict/)
+  })
+
   it.each([
     ['a string', '"nope"'],
     ['a number', '42'],
@@ -194,7 +201,10 @@ describe('readLockfile — the boundary rejects malformed input loudly', () => {
   // `vx lock` never writes says so, never a raw crash at a lookup.
   it.each([
     ['a line with no tab', jsonl('pkg {"path":"pkg"}')],
-    ['two lines of one name', jsonl('pkg\t{"path":"a"}', 'pkg\t{"path":"b"}')],
+    [
+      'two lines of one name',
+      jsonl('pkg\t{"path":"a","file":null}', 'pkg\t{"path":"b","file":null}'),
+    ],
     ['an entry that is no object', jsonl('pkg\tnull')],
     ['an entry that is a list', jsonl('pkg\t[]')],
     ['an empty name', jsonl('\t{"path":"pkg"}')],
@@ -222,20 +232,15 @@ describe('readLockfile — the boundary rejects malformed input loudly', () => {
   })
 
   it('a string dependsOn is refused, not walked per character ("dependsOn b#a")', async () => {
-    const config = { tasks: { b: '#t' } }
     await writeRaw(
-      jsonl(
-        '#t\t{"dependsOn":"a#build"}',
-        `pkg\t${JSON.stringify({ path: 'pkg', file: 'vx.config.ts', config })}`,
-      ),
+      jsonl('#ttttttt', '{"dependsOn":"a#build"}', 'pkg\t{"path":"pkg"}', '\tb', '#ttttttt'),
     )
     await expect(readLockfile(root)).rejects.toThrow('entry for "pkg" is malformed')
   })
 
   it('a task line no entry has refuses, naming it', async () => {
-    const config = { tasks: { b: '#gone' } }
-    await writeRaw(jsonl(`pkg\t${JSON.stringify({ path: 'pkg', file: 'vx.config.ts', config })}`))
-    await expect(readLockfile(root)).rejects.toThrow('no task #gone')
+    await writeRaw(jsonl('pkg\t{"path":"pkg"}', '\tb', '#goneaaa'))
+    await expect(readLockfile(root)).rejects.toThrow('no task #goneaaa')
     // What a crash path reads to tell "re-run `vx lock`" from a vx bug.
     expect(lockEntryBroken(root)).toBe(true)
   })
@@ -261,23 +266,25 @@ describe('readLockfile — the boundary rejects malformed input loudly', () => {
     // A run joined `../evil` onto the root and ran a project outside the
     // workspace; `/tmp` read as a project `tmp` at `<root>/tmp`.
     for (const dir of ['../evil', 'a/../../x', '/tmp', 'a/', './a', 'a//b', '']) {
-      await writeRaw(jsonl(`pkg\t${JSON.stringify({ path: dir })}`))
+      await writeRaw(jsonl(`pkg\t${JSON.stringify({ path: dir, file: null })}`))
       expect((await rejection(readLockfile(root))).message).toBe(
         `${LOCKFILE_NAME}: "${dir}" is not a directory under the workspace root — re-run \`vx lock\``,
       )
     }
     for (const dir of ['.', 'a', 'a/b', '.github/actions/x', 'a..b']) {
-      await writeRaw(jsonl(`pkg\t${JSON.stringify({ path: dir })}`))
+      await writeRaw(jsonl(`pkg\t${JSON.stringify({ path: dir, file: null })}`))
       expect(Object.keys((await readLockfile(root))!.projects)).toEqual([dir])
     }
   })
 })
 
 describe('writeLockfile — the file is committed, so its shape is a contract', () => {
-  it('writes a header, each task once, then a line per project by name', async () => {
-    // A line per project keyed by its name, sorted, so a merge touches only
-    // the projects each branch changed; a task two projects declare alike is
-    // one line. A missing trailing newline makes git complain on every write.
+  it('writes a header, each task once, then each project with its tasks by pointer', async () => {
+    // A task two projects declare alike is one pool entry, its pointer on a
+    // line, its JSON on the next; each project, in name-hash order, lists
+    // its tasks as a name line and a pointer line; `vx.config.ts` is the
+    // file a line leaves out. A missing trailing newline makes git complain
+    // on every write.
     const build = { exec: { command: 'echo hi' } }
     await writeLockfile(root, {
       version: LOCKFILE_VERSION,
@@ -287,13 +294,18 @@ describe('writeLockfile — the file is committed, so its shape is a contract', 
         docs: { name: 'docs', by: '@vzn/vx-migrate' },
       },
     })
-    const id = Bun.hash.xxHash3(JSON.stringify(build)).toString(36)
+    const id = `#${Bun.hash.xxHash3(JSON.stringify(build)).toString(36).padStart(7, '0').slice(0, 7)}`
+    const lines: Record<string, string> = {
+      api: `api\t{"path":"api","config":{"name":"api"}}\n\tbuild\n${id}\n`,
+      docs: 'docs\t{"path":"docs","by":"@vzn/vx-migrate"}\n',
+      web: `web\t{"path":"web"}\n\tbuild\n${id}\n`,
+    }
+    const order = Object.keys(lines).sort((a, b) =>
+      Bun.hash.xxHash3(a) < Bun.hash.xxHash3(b) ? -1 : 1,
+    )
     expect(await Bun.file(lockfilePath(root)).text()).toBe(
-      `{"version":${LOCKFILE_VERSION}}\n` +
-        `#${id}\t{"exec":{"command":"echo hi"}}\n` +
-        `api\t{"path":"api","file":"vx.config.ts","config":{"name":"api","tasks":{"build":"#${id}"}}}\n` +
-        `docs\t{"path":"docs","by":"@vzn/vx-migrate"}\n` +
-        `web\t{"path":"web","file":"vx.config.ts","config":{"tasks":{"build":"#${id}"}}}\n`,
+      `{"version":${LOCKFILE_VERSION}}\n${id}\n{"exec":{"command":"echo hi"}}\n` +
+        order.map((n) => lines[n]).join(''),
     )
     const read = (await readLockfile(root))!
     expect(read.projects['web']!.config!.tasks!['build']).toBe(
@@ -317,7 +329,7 @@ describe('writeLockfile — the file is committed, so its shape is a contract', 
 
   // 2026-10-25: a key hashes a task's config JSON, so moving `cache` above
   // `exec`, or listing a define in another order, missed every key.
-  it("sorts each task's keys, keeping the tasks in their order", async () => {
+  it("sorts each task's keys, and the tasks by name", async () => {
     const write = async (tasks: NonNullable<ProjectConfig['tasks']>) => {
       await writeLockfile(root, { version: LOCKFILE_VERSION, projects: { pkg: entry({ tasks }) } })
       return Bun.file(lockfilePath(root)).text()
@@ -332,8 +344,8 @@ describe('writeLockfile — the file is committed, so its shape is a contract', 
     })
     expect(b).toBe(a)
     expect(Object.keys((await readLockfile(root))!.projects['pkg']!.config!.tasks!)).toEqual([
-      'z',
       'a',
+      'z',
     ])
   })
 
@@ -462,7 +474,10 @@ describe('frozenProjectConfig — the trust model', () => {
     // which is the drift that actually matters).
     //
     // So the lock is trusted exactly as far as the repo it lives in is
-    // trusted, and `--check` is the audit. Anyone tightening this should
+    // trusted, and `--check` is the audit. The one check a run makes,
+    // a config FILE edited since this machine's `vx lock`
+    // (memo/config-stamps.ts), is a reminder, not an audit: it asks
+    // nothing of a lock it did not see written, as this one. Anyone tightening this should
     // change `--check`, not this path.
     const tampered = lock({
       projects: { pkg: entry({ tasks: { build: { exec: { command: 'echo TAMPERED' } } } }) },

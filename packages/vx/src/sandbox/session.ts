@@ -21,6 +21,7 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { mkdir, unlink } from 'node:fs/promises'
+import type { ProjectConfig } from '../config.js'
 import { shellQuote, guardSession } from '../exec/index.js'
 import { applySeccompPath, observePath } from './seccomp-helper.js'
 import {
@@ -521,7 +522,16 @@ function assertDomains(
   allowed: readonly string[],
   denied: readonly string[],
 ): void {
-  const bad = [
+  const bad = badDomains(schema, allowed, denied)
+  if (bad.length > 0) throw new UserError(`sandbox: ${domainsRefusal(bad)}`)
+}
+
+function badDomains(
+  schema: SrtModule['NetworkConfigSchema'],
+  allowed: readonly string[],
+  denied: readonly string[],
+): string[] {
+  return [
     ...allowed
       .filter((d) => !schema.shape.allowedDomains.safeParse([d]).success)
       .map((d) => `allow.network "${d}"`),
@@ -529,12 +539,43 @@ function assertDomains(
       .filter((d) => !schema.shape.deniedDomains.safeParse([d]).success)
       .map((d) => `deny.network "${d}"`),
   ]
-  if (bad.length === 0) return
-  throw new UserError(
-    `sandbox: ${bad.join(', ')} is not a host pattern: name a host ("example.com"), a ` +
-      `subdomain wildcard ("*.example.com") or either with a port ("example.com:443"); no ` +
-      `scheme or path, and "*" or "*.com" is refused as too broad (a bare "*" only in deny)`,
+}
+
+function domainsRefusal(bad: readonly string[]): string {
+  return (
+    `${bad.join(', ')} is not a host pattern: name a host ("example.com"), a ` +
+    `subdomain wildcard ("*.example.com") or either with a port ("example.com:443"); no ` +
+    `scheme or path, and "*" or "*.com" is refused as too broad (a bare "*" only in deny)`
   )
+}
+
+/**
+ * The network entries `vx lock` refuses, by task. The run's check above
+ * judges the union of every sandboxed task in the run as the sandbox
+ * starts, so one task's bad entry failed every sandboxed task of the run,
+ * each with the same line and none naming the task that wrote it, while
+ * `vx lock` had passed the config (2026-11-23).
+ */
+export async function networkPatternRefusal(
+  projects: Iterable<{ readonly name: string; readonly config: ProjectConfig }>,
+): Promise<string | undefined> {
+  const tasks: [string, readonly string[], readonly string[]][] = []
+  for (const p of projects) {
+    for (const [task, t] of Object.entries(p.config.tasks ?? {})) {
+      const sandbox = t.exec?.sandbox
+      const net = sandbox?.allow?.network
+      const allowed = Array.isArray(net) ? net : []
+      const denied = sandbox?.deny?.network ?? []
+      if (allowed.length + denied.length > 0) tasks.push([`${p.name}#${task}`, allowed, denied])
+    }
+  }
+  if (tasks.length === 0) return undefined
+  const { NetworkConfigSchema } = await loadSrt()
+  for (const [id, allowed, denied] of tasks) {
+    const bad = badDomains(NetworkConfigSchema, allowed, denied)
+    if (bad.length > 0) return `${id} exec.sandbox: ${domainsRefusal(bad)}`
+  }
+  return undefined
 }
 
 /**

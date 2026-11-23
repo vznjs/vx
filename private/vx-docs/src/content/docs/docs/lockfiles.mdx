@@ -50,6 +50,53 @@ Then each package is keyed on its own dependencies, `^build` follows what
 the manager installed, and `--affected` follows both. `pnpm({ scope:
 'workspace' })` keys the whole file instead.
 
+Add a dependency to `@demo/web` only, and only its build runs again;
+`@demo/ui` is a hit (`local 1✓ 1↑`):
+
+```sh
+cd packages/web && bun add nanoid && cd ../..
+vx lock
+vx run build --all
+```
+
+```ansi
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mTasks[0m[4m[58;2;110;118;129m     [2mstatus  cache     ±usual    time   cpu    mem outputs  blocks worker         task[0m[4m[58;2;110;118;129m                           [0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m       [2m+18ms[0m   [38;2;203;213;225m286ms[0m  [2m123%[0m  [2m111MB[0m    [2m926B[0m       [2m0[0m [2mlocal[0m          [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m
+
+
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mSummary[0m[4m[58;2;110;118;129m                                                                                                       [2mvx 0.0.0[0m
+  [2mprojects[0m  [38;2;234;179;8m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
+            [38;2;234;179;8m2 in run[0m [2m·[0m [2m2 total[0m
+  [2mtasks   [0m  [38;2;34;197;94m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
+            [38;2;34;197;94m2 success[0m [2m·[0m [2m2 total[0m
+  [2mcache   [0m  [38;2;34;197;94m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m[38;2;56;189;248m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
+            [2mlocal[0m [38;2;34;197;94m1✓[0m [38;2;56;189;248m1↑[0m
+
+  [2minfo    [0m  4 workers [2m·[0m local cache [2m·[0m run 01a2089b-6ecc-7526-82ed-e1513785becb
+  [2mtime    [0m  364ms
+```
+
+`vx why` names the lockfile plugin's part of the key:
+
+```ansi
+[2m$[0m vx why @demo/web#build
+
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhy[0m[4m[58;2;110;118;129m [2m@demo/web#build[0m[4m[58;2;110;118;129m                                                                                                   [0m
+  [2mrun     [0m  [38;2;203;213;225m01a2089b-6ecc-7526-82ed-e1513785becb[0m
+  [2mthis run[0m  [38;2;203;213;225m2026-11-23T13:32:13.936Z · success · executed · key 021e29ebb6494f71[0m
+  [2mprevious[0m  [38;2;203;213;225m2026-11-23T13:32:13.374Z · cache-hit · restored · key 433035ef17a9e7c1[0m
+  [2mverdict [0m  [38;2;234;179;8mcache key changed: file packages/web/package.json, plugin @vzn/vx-lockfile/bun[0m
+
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhat changed[0m[4m[58;2;110;118;129m [2m2 of 8[0m[4m[58;2;110;118;129m                                                                                                   [0m
+  [2mchange   kind    name                       before → after[0m
+  [38;2;234;179;8mchanged[0m  [38;2;203;213;225mfile[0m    [1mpackages/web/package.json[0m  [38;2;203;213;225med71bbbab55c4d78de37f226a215b4ce3974dec4 → 25b8ecc72f552de4fd3eefb843a2392103b6fcc2[0m
+  [38;2;234;179;8mchanged[0m  [38;2;203;213;225mplugin[0m  [1m@vzn/vx-lockfile/bun[0m       [38;2;203;213;225m15c3a1af713459c7 → 61836dec183214a6[0m
+
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhat to do[0m[4m[58;2;110;118;129m                                                                                                            [0m
+  [2mfile    [0m  [38;2;203;213;225man edit re-runs by design; a file the task does not read belongs out of inputs.files[0m
+  [2mplugin  [0m  [38;2;203;213;225ma key plugin's material changed; that plugin decides what goes into the key[0m
+```
+
 ---
 
 <details>
@@ -57,7 +104,7 @@ the manager installed, and `--affected` follows both. `pnpm({ scope:
 
 | Plugin   | A package's key includes                                                              | Install-wide, for every package |
 | -------- | ------------------------------------------------------------------------------------- | ------------------------------- |
-| `pnpm()` | every package it reaches, by name, version and resolved peers, with integrity and any patch; under `nodeLinker: hoisted`, every peer variant of each | every top-level field but `importers`, `packages`, `snapshots`, `patchedDependencies`, `catalogs` and `overrides` (`settings`, `onlyBuiltDependencies`, …) |
+| `pnpm()` | every package it reaches, by name, version and resolved peers, with integrity and any patch; under `nodeLinker: hoisted`, every peer variant of each | every top-level field but `importers`, `packages`, `snapshots`, `patchedDependencies`, `catalogs`, `overrides`, `packageExtensionsChecksum` and `ignoredOptionalDependencies` (`settings`, `onlyBuiltDependencies`, …) |
 | `bun()`  | the same, through Bun's hoisted layout; a peer reaches every installed copy of its name | every top-level field but `workspaces`, `packages`, `catalog`, `catalogs`, `overrides` and `patchedDependencies` (`trustedDependencies`, …) |
 | `npm()`  | the same, from `npm-shrinkwrap.json` or `package-lock.json` versions 2 and 3                                | the `lockfileVersion`; root `overrides` reach a package through the entries they force |
 | `yarn()` | the same, from a berry lockfile, each entry with every field but its dependency lists; a yarn 1 lockfile records no workspaces, so every package's key includes the whole file | `__metadata`'s `version` and `cacheKey`, and the root workspace's entry (its `dependenciesMeta`) through the root's closure |
@@ -79,10 +126,10 @@ key, and adds a package's manifest (`package.json`, or under `pnpm()` a
 
 | Plugin | Install settings in the key |
 | --- | --- |
-| `pnpm()` | `pnpm-workspace.yaml` except `patchedDependencies`, `overrides` and the catalogs (the lockfile records their effect per package), `.npmrc`, the root manifest's `pnpm` field |
+| `pnpm()` | `pnpm-workspace.yaml` except `patchedDependencies`, `overrides`, `packageExtensions`, `ignoredOptionalDependencies` and the catalogs (the lockfile records their effect per package), `.npmrc`, the root manifest's `pnpm` field |
 | `bun()` | `bunfig.toml`, `.npmrc` |
 | `npm()` | `.npmrc` |
-| `yarn()` | `.yarnrc.yml`, `.yarnrc` and `.npmrc` (yarn 1), the root `package.json`'s `workspaces.nohoist`, `installConfig`, `resolutions` and dependency ranges |
+| `yarn()` | `.yarnrc.yml` except the catalogs (each project reads its own through yarn.lock), `.yarnrc` and `.npmrc` (yarn 1), the root `package.json`'s `workspaces.nohoist`, `installConfig`, `resolutions` and dependency ranges |
 
 A yarn 1 lockfile records no workspaces, so `yarn()` reads which package
 depends on which from the workspaces' `package.json` files.

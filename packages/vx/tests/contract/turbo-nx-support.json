@@ -147,7 +147,7 @@
   {
     "key": "turbo.json tasks.*.outputs",
     "status": "mapped",
-    "reason": "Become `outputs.files`, negations kept, sorted with the negations last, as Turbo sorts them before hashing, so a reorder keeps the hit; vx cleans outputs, so a wildcard first segment (`*/**`) stays cached with a note that the clean deletes the untracked files it reaches (without git, the task runs uncached with a TODO); core never cleans a file git tracks, committed or only `git add`ed; the project's own `package.json` or vx.config is taken back with `!` (a build that writes `package.json` also gets `inputs.stability: { strategy: 'mutable' }`)."
+    "reason": "Become `outputs.files`, negations kept, sorted with the negations last, as Turbo sorts them before hashing, so a reorder keeps the hit; vx cleans outputs, so a wildcard first segment (`*/**`) stays cached with a note that the clean deletes the untracked files it reaches (without git, the task runs uncached with a TODO); core never cleans a file git tracks, committed or only `git add`ed; the project's own `package.json` or vx.config is taken back with `!` (a build that writes `package.json` also gets `inputs.stability: { strategy: 'mutable' }`). Every vx output is required, where Turbo caches what is present: a migration names on its task each output that matches no file where the task's outputs match files a run wrote (not committed ones) in other packages, and in one note the tasks whose outputs match no file anywhere yet."
   },
   {
     "key": "turbo.json tasks.*.passThroughEnv",

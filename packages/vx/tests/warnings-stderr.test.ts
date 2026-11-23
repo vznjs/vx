@@ -54,3 +54,30 @@ it(
   },
   TIMEOUT,
 )
+
+it('a warning is painted by stderr’s own terminal, not stdout’s: `2> warn.log` gets no escapes', () => {
+  const tty = { ...pipe(), isTTY: true, columns: 80 }
+  const keys = ['CI', 'GITHUB_ACTIONS', 'FORCE_COLOR', 'NO_COLOR', 'TERM'] as const
+  const saved = keys.map((k) => process.env[k])
+  const wasTTY = process.stderr.isTTY
+  const written: string[] = []
+  const write = process.stderr.write
+  for (const k of keys) delete process.env[k]
+  process.stderr.write = ((c: string) => (written.push(String(c)), true)) as typeof write
+  try {
+    for (const isTTY of [false, true]) {
+      Object.defineProperty(process.stderr, 'isTTY', { value: isTTY, configurable: true })
+      written.length = 0
+      defaultLogger({ enabled: true }, { mode: 'broad' }, tty).warn!('app#build: odd')
+      expect(written.join('')).toContain('app#build: odd')
+      expect(written.join('').includes('\x1b')).toBe(isTTY)
+    }
+  } finally {
+    process.stderr.write = write
+    Object.defineProperty(process.stderr, 'isTTY', { value: wasTTY, configurable: true })
+    keys.forEach((k, i) => {
+      if (saved[i] === undefined) delete process.env[k]
+      else process.env[k] = saved[i]
+    })
+  }
+})

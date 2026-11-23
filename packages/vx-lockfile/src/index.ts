@@ -63,7 +63,7 @@ export interface LockfileOptions {
 const FACTS = '\0'
 
 /** Bumps when a digest folds differently or the memo holds more (its identity). */
-const DIGEST_VERSION = 26
+const DIGEST_VERSION = 30
 
 let memoVersion: number | undefined
 /**
@@ -122,6 +122,13 @@ interface Manager {
    * records part of what it says per project; undefined folds them whole.
    */
   readonly settingsText?: (file: string, text: string) => string | undefined
+  /**
+   * The settings text an `--affected` diff compares, where it is not the
+   * key's: the key reads Yarn's catalogs through the digest, but the base
+   * side's digest reads the working tree's `.yarnrc.yml`, so a catalog edit
+   * selects every project. Default `settingsText`.
+   */
+  readonly affectedText?: (file: string, text: string) => string | undefined
   /**
    * Whether the manager lists a manifest its workspace globs match;
    * undefined lists every one.
@@ -274,7 +281,13 @@ const MANAGERS = {
         lock.generation === 'berry'
           ? yarnLock().resolutionsOf(readText(path.join(root, 'package.json')))
           : []
-      return yarnLock().importerDigests(lock, files, yarnLock().packageExtensions(rc), resolutions)
+      return yarnLock().importerDigests(
+        lock,
+        files,
+        yarnLock().packageExtensions(rc),
+        resolutions,
+        yarnLock().catalogsOf(rc),
+      )
     },
     importers: (t) => yarnLock().importerLinks(yarnParse(t)),
     extraFiles: (t, root, affected) => {
@@ -308,6 +321,12 @@ const MANAGERS = {
     // and the lockfile does not record (yarn-settings.ts).
     settings: ['.yarnrc.yml', '.yarnrc', '.npmrc', 'package.json'],
     settingsText: (file, text) =>
+      file === 'package.json'
+        ? yarnSettings().packageSettings(text)
+        : file === '.yarnrc.yml'
+          ? yarnSettings().yarnrcSettings(text)
+          : undefined,
+    affectedText: (file, text) =>
       file === 'package.json' ? yarnSettings().packageSettings(text) : undefined,
     async manifestImporters(t, root, manifest) {
       const lock = yarnParse(t)
@@ -471,7 +490,10 @@ function plugin(manager: Manager, options: LockfileOptions): VxPlugin {
         const folded = (bytes: Uint8Array | null): string | undefined =>
           bytes === null
             ? undefined
-            : manager.settingsText?.(change.file, new TextDecoder().decode(bytes))
+            : (manager.affectedText ?? manager.settingsText)?.(
+                change.file,
+                new TextDecoder().decode(bytes),
+              )
         const before = folded(change.before)
         return before !== undefined && before === folded(change.after) ? [] : undefined
       },

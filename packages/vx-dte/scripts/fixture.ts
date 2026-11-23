@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// A sim fixture from a real run: the graph `vx run --dry=json` printed for
+// A sim fixture from a real run: the graph `vx run --dry --format json` printed for
 // the run's tasks, and how each task that ran took from the run's
 // `--profile` (its ms, cores as cpu over wall, peak RSS, and the platform
 // of the worker it ran on). What tests/sim.test.ts plays.

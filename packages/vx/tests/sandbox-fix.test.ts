@@ -320,6 +320,26 @@ describe('sandboxFix', () => {
     )
     expect(fix).toEqual({ read: ['tok-***'] })
   })
+  it('grants a write under a control character as the directory above it, a grant the config accepts', () => {
+    // `write: ['ta\tb/']` was the fix, and the config refuses a write grant
+    // holding a control character: applying it failed `vx lock`.
+    const at = (p: string) => path.join(dir, p)
+    const mk = (p: string) => v(`mkdir(${at(p)}) = a write no grant covers`, ['write'], at(p))
+    const fix = sandboxFix([mk('ta\tb'), mk('gen/new\nl'), mk('gen/sub')], dir, dir)
+    expect(fix).toEqual({ write: ['.'] })
+    const nested = sandboxFix([mk('gen/new\nl')], dir, dir)
+    expect(nested).toEqual({ write: ['gen/'] })
+    for (const write of [fix!.write!, nested!.write!]) {
+      const cfg = { tasks: { t: { exec: { command: 'x', sandbox: { allow: { write } } } } } }
+      expect(() => validateProjectConfig(cfg, 'vx.config.ts')).not.toThrow()
+    }
+    // CONTROL: the same grant spelled with the character is refused.
+    const refused = {
+      tasks: { t: { exec: { command: 'x', sandbox: { allow: { write: ['ta\tb/'] } } } } },
+    }
+    expect(() => validateProjectConfig(refused, 'vx.config.ts')).toThrow(/control character/)
+  })
+
   it('escapes a path the grant would read as a pattern, and names the directory of one no grant spells', () => {
     // Raw, `pages/[id].tsx` granted the class `pages/i.tsx` and keyed it:
     // applying the fix failed the run again on the same read, forever.

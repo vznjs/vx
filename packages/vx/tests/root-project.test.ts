@@ -184,7 +184,9 @@ describe('a root vx.config makes the root a project (D-39)', () => {
           path.join(import.meta.dir, 'helpers', 'vx-locked.ts'),
           'run',
           'build',
-          '--dry=json',
+          '--dry',
+          '--format',
+          'json',
         ],
         cwd,
         env: { ...process.env, NO_COLOR: '1', CI: '' },
@@ -222,7 +224,7 @@ describe('a root vx.config makes the root a project (D-39)', () => {
     const bin = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
     const planned = (...args: string[]): unknown => {
       const p = Bun.spawnSync({
-        cmd: [process.execPath, bin, 'run', 'build', ...args, '--dry=json'],
+        cmd: [process.execPath, bin, 'run', 'build', ...args, '--dry', '--format', 'json'],
         cwd: fixture.root,
         env: { ...process.env, NO_COLOR: '1' },
       })

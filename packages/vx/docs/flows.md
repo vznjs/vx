@@ -59,7 +59,7 @@ sequenceDiagram
     C-->>X: CacheEntry {outputFiles, source: 'local'}
     X->>H: restoreHit
     H->>H: output set unchanged? directory-mtime<br/>short-circuit, else walk the output globs
-    H->>C: isOutputsCurrent? stat each output_files row<br/>(size + mode + millisecond mtime,<br/>inode + ctime stamp; from 2,048 files<br/>stat'ed ahead on a thread, while git walks)
+    H->>C: isOutputsCurrent? stat each output_files row<br/>(size + mode + millisecond mtime,<br/>inode + ctime stamp, from 2,048 files<br/>stat'ed ahead on a thread, while git walks)
     alt every output already current
         Note over H: skip extraction entirely —<br/>the warm-warm path costs N stats, zero writes
     else any output stale/missing
@@ -310,7 +310,7 @@ flowchart LR
     B --> C[local probe: cache.has<br/>remote probe: has existence check<br/>no download, no ingest, no accessed_at bump]
     C --> D{format}
     D -->|--dry| E[human table:<br/>task, hash, predicted hit/miss]
-    D -->|--dry=json| F[machine JSON]
+    D -->|--dry --format json| F[machine JSON]
 ```
 
 Because the plan path and `execute-task` share the same key

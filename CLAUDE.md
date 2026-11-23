@@ -172,7 +172,8 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
   (builds and runs the relay's image), `@vzn/vx-cache-server#test.docker` and
   `@vzn/vx-history-server#test.docker` (each builds and runs its image),
   `@vzn/vx-servers#test.docker` (brings up the compose file of all three), `@vzn/vx-migrate#test.bun.live.nx`
-  (the npm registry), `release.docker` (pushes the server images through Docker),
+  (the npm registry), `test.bun.examples` (installs the stack starters
+  from npm), `release.docker` (pushes the server images through Docker),
   `canary.sandbox.leaks` and
   `canary.sandbox.cold-build` (each drives the sandbox itself, on a Mac worker) and
   `@vzn/vx-bench#bench.{vx,turbo,nx,vite-task,real}` and `#perf.vx` (the tracer would be timed), and

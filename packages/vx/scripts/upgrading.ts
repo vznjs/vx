@@ -23,6 +23,87 @@ export const PAGE = path.resolve(
 
 const HEADER = /^(\w+)(?:\(([^)]*)\))?!?: (.+?)(?: \(#\d+\))?$/
 
+/**
+ * The exact step for a change whose footer names what changed but not what
+ * to do, or that merged with no footer at all, keyed by the commit's subject
+ * without its `(#N)`. A footer is history and cannot be edited; the step
+ * follows it, and `title` replaces a heading that names another part of the
+ * same PR.
+ */
+export const STEPS: Readonly<Record<string, { title?: string; steps: string }>> = {
+  'feat(lock): a run refuses a config edited since vx lock': {
+    title: 'A run refuses a config edited since vx lock',
+    steps:
+      'After editing a `vx.config.ts`, run `vx lock` before `vx run`, `vx show`, `vx why` or `vx pipeline`: the run now refuses with `VX_E_LOCK`, naming the file, instead of running the config the lock holds.',
+  },
+  'refactor(cli)!: drop the lock merge driver, name it .vx/projects.lock': {
+    steps: [
+      'Delete the old lock, the old attributes file and the merge driver, then lock again:',
+      '',
+      '```sh',
+      'git rm .vx/projects.lock.jsonl .vx/.gitattributes',
+      'git config --remove-section merge.vx-lock',
+      'vx lock',
+      'git add .vx',
+      '```',
+      '',
+      '`vx lock` writes `.vx/.gitattributes` only when none exists, so the old one goes first. After a merge conflict in a lock, run `vx lock` and commit.',
+    ].join('\n'),
+  },
+  'feat(cli): add vx pipeline, named runs in .vx/workspace.ts': {
+    title: 'Forwarded args reach one task, CI prints failed tasks only',
+    steps: [
+      'Args after `--` go to one task in one project. A run with `--affected`, several tasks, or a filter that picks the task in two projects is refused.',
+      '',
+      'Run each task on its own: `vx run test --filter ui -- --watch`.',
+      '',
+      'On CI a run prints only failed tasks. To see every task, pass `--output-logs full` or set `VX_RUN_OUTPUT_LOGS=full`.',
+    ].join('\n'),
+  },
+  'feat(orchestrator)!: replace --continue with --fail-fast': {
+    steps: [
+      'Replace each use:',
+      '',
+      "- `--continue=never` or `run.continue: 'never'`: use `--fail-fast` or `run.failFast: true`. Tasks still running are now killed.",
+      "- `--continue`, `--continue=always`: remove it. A failed task's dependents never run now.",
+      '- `--continue=deps-ok`: remove it. That is the default.',
+    ].join('\n'),
+  },
+  'feat(orchestrator)!: fail a task whose declared output matched nothing': {
+    steps:
+      'Run your tasks once after upgrading. A task that fails with `outputs matched no files (<glob>)` needs that glob fixed to match what the command writes, or removed from `cache.outputs.files`.',
+  },
+  'fix(cli): a --filter that matches nothing refuses beside a match': {
+    title: 'A --filter that matches nothing refuses the run',
+    steps:
+      'A `--filter` that matches no project, an exclusion too, now refuses the run even when another filter matched. Fix or remove it in your CI scripts and pipelines.',
+  },
+  'fix(cache)!: a --force run replaces the entry its key held': {
+    steps:
+      'A `--force` run now replaces the local entry under its key. A custom cache layer drops `kept()` and `stampWritten()`: vx no longer calls them.',
+  },
+  'fix(graph): refuse every output pair that takes a common path': {
+    title: 'Refuse two tasks whose outputs can share a path',
+    steps:
+      '`vx lock` now refuses two tasks whose output globs can match one path, such as `*.js` beside `*b*`. Narrow one glob so the two tasks write no common path.',
+  },
+  'fix(sandbox): withhold browser profiles, mask more secret names': {
+    title: 'Sandboxed tasks no longer read credential stores',
+    steps: [
+      'A sandboxed task no longer reads browser profiles, `~/.config/sops/age`, `~/.config/rclone`, `~/.my.cnf`, `~/.password-store` or `~/.sentryclirc`.',
+      '',
+      'A task that needs one names it in `exec.sandbox.allow.read`.',
+      '',
+      'Variables whose names hold `PASSPHRASE` or end in `_PASS` are now masked in output.',
+    ].join('\n'),
+  },
+  "feat(report)!: name a failed task's directory and the piped columns": {
+    title: 'Run history starts empty once',
+    steps:
+      'Nothing to do. `vx last` and `vx why` show only runs made after the upgrade. A piped run prints the Tasks header once.',
+  },
+}
+
 /** A breaking commit's title line and its footer, as the page shows them. */
 function entry({ subject, body }: Commit): { title: string; footer: string } {
   const m = HEADER.exec(subject)
@@ -60,12 +141,14 @@ export function page(commits: readonly TaggedCommit[]): string {
   let entries: string[] = []
   let last = ''
   for (const commit of commits) {
-    if (isBreaking(commit)) {
+    const step = STEPS[commit.subject.replace(/ \(#\d+\)$/, '')]
+    if (isBreaking(commit) || step !== undefined) {
       const { title, footer } = entry(commit)
       if (footer === '' || !seen.has(footer)) {
         seen.add(footer)
+        const text = [footer, step?.steps ?? ''].filter((t) => t !== '').join('\n\n')
         entries.push(
-          `### ${bunx(title)}\n\n${bunx(footer) || 'Nothing to change beyond the steps above.'}\n`,
+          `### ${bunx(step?.title ?? title)}\n\n${bunx(text) || 'Nothing to change beyond the steps above.'}\n`,
         )
       }
     }
@@ -104,8 +187,15 @@ version. \`vx cache clean --older-than 7d\` drops the old entries later.
 ${body.join('\n')}`
 }
 
-/** Every commit up to HEAD, oldest first, each with its `v*` tag. */
+/**
+ * Every commit up to HEAD, oldest first, each with its `v*` tag. A shallow
+ * clone holds a few commits only: the page written from it dropped every
+ * older release (1,060 lines on the 2026-11-23 day branch), so it refuses.
+ */
 export function taggedCommits(cwd: string): TaggedCommit[] {
+  const shallow = Bun.spawnSync(['git', 'rev-parse', '--is-shallow-repository'], { cwd })
+  if (shallow.stdout.toString().trim() === 'true')
+    throw new Error('a shallow clone lacks the history: run `git fetch --unshallow` first')
   const r = Bun.spawnSync(
     [
       'git',

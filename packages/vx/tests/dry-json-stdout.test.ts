@@ -1,4 +1,4 @@
-// `vx run --dry=json` is a machine's input: stdout carries the plan and
+// `vx run --dry --format json` is a machine's input: stdout carries the plan and
 // nothing else. A plugin stage's warning (turbo() warned in its `project`
 // stage; only `vx lock` runs that and `discover` since 2026-11-11, and
 // `config` runs on every verb) went through the plan's default logger to
@@ -37,9 +37,9 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true })
 })
 
-it('a stage warning goes to stderr, and --dry=json stdout parses', () => {
+it('a stage warning goes to stderr, and --dry --format json stdout parses', () => {
   const p = Bun.spawnSync({
-    cmd: ['bun', CLI, 'run', 'build', '--all', '--dry=json'],
+    cmd: ['bun', CLI, 'run', 'build', '--all', '--dry', '--format', 'json'],
     cwd: root,
     stdout: 'pipe',
     stderr: 'pipe',
@@ -146,7 +146,7 @@ it('each verb runs the config stage once', () => {
 // vercel/turborepo#2067: "Remote computation caching enabled" printed on
 // stdout ahead of the JSON. A remote layer that answers and one that fails
 // each leave stdout the plan alone.
-it('--dry=json stdout parses with a remote cache layer, answering or failing', () => {
+it('--dry --format json stdout parses with a remote cache layer, answering or failing', () => {
   writeFileSync(
     path.join(root, 'pkgs', 'app', 'vx.config.mjs'),
     `export default { tasks: { build: { exec: { command: 'true' }, inputs: { files: ['package.json'] }, outputs: { files: [] }, cache: true } } }\n`,
@@ -167,7 +167,7 @@ it('--dry=json stdout parses with a remote cache layer, answering or failing', (
       ]),
     )
     const p = Bun.spawnSync({
-      cmd: ['bun', CLI, 'run', 'build', '--all', '--dry=json'],
+      cmd: ['bun', CLI, 'run', 'build', '--all', '--dry', '--format', 'json'],
       cwd: root,
       stdout: 'pipe',
       stderr: 'pipe',
@@ -193,7 +193,7 @@ it('--dry=json stdout parses with a remote cache layer, answering or failing', (
 
 // Turbo #10375: `--dry` refused what only a real run's resources decide
 // (more persistent tasks than `--concurrency`, interactive tasks off a TTY).
-it('--dry=json plans three servers at --concurrency 1, off a TTY', () => {
+it('--dry --format json plans three servers at --concurrency 1, off a TTY', () => {
   writeFileSync(
     path.join(root, 'pkgs', 'app', 'vx.config.mjs'),
     `export default { tasks: Object.fromEntries(['a', 'b', 'c'].map((t) => [t, { exec: { command: 'sleep 30', persistent: {}, interactive: true } }])) }\n`,
@@ -208,7 +208,9 @@ it('--dry=json plans three servers at --concurrency 1, off a TTY', () => {
       'app#c',
       '--concurrency',
       '1',
-      '--dry=json',
+      '--dry',
+      '--format',
+      'json',
     ],
     cwd: root,
     env: { ...process.env, CI: '', GITHUB_ACTIONS: '', NO_COLOR: '1' },

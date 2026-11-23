@@ -1161,7 +1161,7 @@ describe('vx why — a task that never records a key', () => {
         expect(lines[2]).toMatch(/^ {2}this run {2}\S+ · success · executed · no key$/)
         expect(lines.slice(3)).toEqual([
           '  previous  none with a cache key',
-          '  verdict   this task recorded no cache key (skipped, or a persistent task) — nothing to compare',
+          '  verdict   this task is persistent: it records no cache key — nothing to compare',
           '',
         ])
       } finally {

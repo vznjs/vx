@@ -68,6 +68,7 @@
       "--fail-fast",
       "--filter",
       "--force",
+      "--format",
       "--help",
       "--no-cache",
       "--output-logs",
@@ -93,6 +94,7 @@
       "--fail-fast",
       "--filter",
       "--force",
+      "--format",
       "--help",
       "--no-cache",
       "--output-logs",
@@ -264,15 +266,15 @@
       "10",
       "2"
     ],
-    "pipeline --dry": [
-      "json",
-      "pretty"
-    ],
     "pipeline --exclude-dependencies": [
       "*"
     ],
     "pipeline --filter": [
       "*"
+    ],
+    "pipeline --format": [
+      "json",
+      "pretty"
     ],
     "pipeline --output-logs": [
       "errors-only",
@@ -349,15 +351,15 @@
       "10",
       "2"
     ],
-    "run --dry": [
-      "json",
-      "pretty"
-    ],
     "run --exclude-dependencies": [
       "*"
     ],
     "run --filter": [
       "*"
+    ],
+    "run --format": [
+      "json",
+      "pretty"
     ],
     "run --output-logs": [
       "errors-only",

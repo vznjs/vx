@@ -26,6 +26,21 @@ export default defineWorkspace({
 vx applies no plugin by default. With none, it runs and caches on this
 machine. A plugin that declines a task hands it back to this machine.
 
+`vx info` lists the plugins a run loads and the hooks each fills:
+
+```ansi
+[2m$[0m vx info
+
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mvx info[0m[4m[58;2;110;118;129m                                                                                                               [0m
+  [2mvx              [0m  [38;2;203;213;225m0.0.659 (/home/me/.bun/bin/vx)[0m
+  [2mbun             [0m  [38;2;203;213;225m1.4.4[0m
+  [2mgit             [0m  [38;2;203;213;225m2.43.0[0m
+  [2mgit status cache[0m  [38;2;203;213;225mcore.fsmonitor, core.untrackedCache off[0m
+  [2mworkspace root  [0m  [38;2;203;213;225m/repo[0m
+  [2mprojects        [0m  [38;2;203;213;225m2 (5 tasks)[0m
+  [2mplugins         [0m  [38;2;203;213;225m1 — @vzn/vx-lockfile (discover, project, key, fingerprint)[0m
+```
+
 ---
 
 ## Plugins that ship

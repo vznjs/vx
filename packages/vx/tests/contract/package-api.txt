@@ -504,7 +504,7 @@ export interface ArtifactTask {
 == type At (src/config.ts)
 type At<T, P extends PropertyKey> = T extends { readonly [Q in P]?: infer V } ? V : unknown
 == type BaseContext (src/orchestrator/plugin.ts)
-interface BaseContext {
+export interface BaseContext {
   readonly workspaceRoot: string
   readonly cacheDir: string
   warn(message: string): void
@@ -902,6 +902,7 @@ interface FailureFacts {
   timedOut?: true
   notReady?: 'timeout' | 'exited' | 'spawn'
   inputMoved?: string
+  outputsMissing?: readonly string[]
   restoreFailed?: true
   failedOutput?: string
 }
@@ -1347,6 +1348,7 @@ export interface OutcomeView {
   timedOut?: true
   notReady?: 'timeout' | 'exited' | 'spawn'
   inputMoved?: string
+  outputsMissing?: readonly string[]
   blockedBy?: string
   otherPlatform?: { readonly needs: readonly string[]; readonly host: string }
   admissionHeldMs?: number
@@ -1415,7 +1417,8 @@ export interface Pipeline {
   outputLogs?: 'full' | 'errors-only' | 'hash-only' | 'none'
   verbosity?: number
   profile?: boolean | string
-  dry?: boolean | 'pretty' | 'json'
+  dry?: boolean
+  format?: 'pretty' | 'json'
 }
 == type PlannedTask (src/orchestrator/plan.ts)
 export interface PlannedTask {
@@ -1692,6 +1695,7 @@ export interface ResolvedSandboxConfig {
   pendingWrites?: readonly string[]
   writeGlobs?: readonly string[]
   linkedWrites?: readonly { readonly link: string; readonly target: string }[]
+  linkedReads?: readonly { readonly at: string; readonly text: string }[]
   network?: true | readonly string[]
   denyNetwork?: readonly string[]
   systemInfo?: readonly string[]
@@ -1716,6 +1720,7 @@ export interface ResolvedSandboxConfig {
 export interface RunContext {
   version: string
   workspaceRoot?: string
+  meters?: boolean
   packageCount: number
   runId?: string | undefined
   executorRows?: () => readonly (readonly [string, ui.Inline])[]

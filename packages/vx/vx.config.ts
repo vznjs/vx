@@ -253,6 +253,31 @@ const unsafeShardTasks = {
   ),
 }
 
+// The stack starters (examples/vite, next) run the real tools, so each is
+// installed from the npm registry: no sandbox,
+// and not a shard (scripts/test-shard.ts deals no `.live` file). Cached: each
+// starter pins its tools, so the key sees what it installs.
+const examplesTask = {
+  description:
+    'bun test, the stack starters under examples/, installed and run cold, warm and edited',
+  dependsOn: ['install'],
+  exec: {
+    command: `bun test --only-failures --timeout=120000 ./tests/examples.live.test.ts`,
+    timeout: '5m',
+    env: {
+      passThrough: ['NODE_EXTRA_CA_CERTS'],
+      define: SUITE_ENV,
+    },
+  },
+  inputs: {
+    files: SOURCES,
+    runtime: BUN_VERSION,
+    workspaceFiles: ['examples/**', 'packages/vx-lockfile/**'],
+  },
+  outputs: { files: [] as string[] },
+  cache: true,
+}
+
 const compileTasks = Object.fromEntries(
   (['linux-x64', 'linux-arm64', 'darwin-x64', 'darwin-arm64'] as const).map((target) => [
     `compile.bun.${target}`,
@@ -556,6 +581,7 @@ export default defineProject({
   tasks: {
     ...shardTasks,
     ...unsafeShardTasks,
+    'test.bun.examples': examplesTask,
     ...releaseTasks,
 
     // `check.bun.version` sits under install so that every shard, the unsafe suite,

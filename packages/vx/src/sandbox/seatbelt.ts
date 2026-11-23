@@ -134,7 +134,9 @@ function seatbeltSpells(grant: string, kind: 'read' | 'write', name: boolean): b
  */
 function sbplToken(value: string, field: string): string {
   if (!/^[A-Za-z0-9._-]+$/.test(value)) {
-    throw new UserError(`${field}: '${value}' is not a valid name`)
+    throw new UserError(
+      `${field}: '${value}' is not a valid name — use only letters, digits, '.', '_' and '-'`,
+    )
   }
   return value
 }
@@ -212,7 +214,9 @@ export function macProfileRules(c: ResolvedSandboxConfig): string[] {
  */
 function sbplPath(value: string, field: string): string {
   if (!/^[A-Za-z0-9._\-/@+]+$/.test(value) || value.includes('..')) {
-    throw new UserError(`${field}: '${value}' is not a valid path`)
+    throw new UserError(
+      `${field}: '${value}' is not a valid path — use only letters, digits and . _ - / @ +, with no '..'`,
+    )
   }
   return value
 }

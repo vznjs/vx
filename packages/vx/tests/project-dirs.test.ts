@@ -17,9 +17,9 @@ const TIMEOUT = 30_000
 const vx = (cwd: string, ...args: string[]) =>
   vxSync(cwd, args, { bin: BIN, env: { VX_LOCK_REVIEW_FILES: 'false' } })
 
-/** The task ids `vx run <tasks…> --dry=json` plans, or the refusal. */
+/** The task ids `vx run <tasks…> --dry --format json` plans, or the refusal. */
 function planned(cwd: string, ...args: string[]): string[] | string {
-  const r = vx(cwd, 'run', ...args, '--dry=json')
+  const r = vx(cwd, 'run', ...args, '--dry', '--format', 'json')
   if (r.code !== 0) return `exit ${r.code}: ${r.err.trim()}`
   return (JSON.parse(r.out.slice(r.out.indexOf('{'))) as { tasks: { id: string }[] }).tasks
     .map((t) => t.id)
@@ -269,7 +269,7 @@ describe('a project is a directory with a vx.config', () => {
         JSON.stringify({ version: 2, projects: { a: { tasks: {} } } }),
       )
       expect(planned(root, 'hello', '--all')).toBe(
-        'exit 1: ✗ vx run  .vx/projects.lock has unsupported version 2 (this vx expects 8) — re-run `vx lock`',
+        'exit 1: ✗ vx run  .vx/projects.lock has unsupported version 2 (this vx expects 9) — re-run `vx lock`',
       )
     },
     TIMEOUT,

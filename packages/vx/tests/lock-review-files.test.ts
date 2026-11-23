@@ -30,11 +30,11 @@ it('writes the lock a line per project, a pretty review copy per config, and .vx
   const dir = await addProject(r, 'a', { config: CONFIG })
   expect(vx(r, 'lock').code).toBe(0)
   const lock = (await text(path.join(r, '.vx', 'projects.lock')))!
-  // The header, the task's line, the project's line.
-  expect(lock.trimEnd().split('\n')).toHaveLength(3)
-  expect(lock).toContain(
-    '\na\t{"path":"packages/a","file":"vx.config.mjs","config":{"tasks":{"build":"#',
-  )
+  // The header, the task's pointer and JSON, the project's line, its task's name and pointer.
+  const lines = lock.trimEnd().split('\n')
+  expect(lines).toHaveLength(6)
+  expect(lines.slice(3, 5)).toEqual(['a\t{"path":"packages/a","file":"vx.config.mjs"}', '\tbuild'])
+  expect(lines[5]).toBe(lines[1])
   const review = (await text(path.join(dir, 'vx.lock.json')))!
   const locked = (await readLockfile(r))!.projects['packages/a']!.config!
   expect(JSON.parse(review)).toMatchObject(locked)

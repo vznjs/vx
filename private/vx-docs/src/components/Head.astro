@@ -3,13 +3,18 @@
 // Mermaid renderer (MermaidLoader.astro).
 import Default from '@astrojs/starlight/components/Head.astro'
 import MermaidLoader from './MermaidLoader.astro'
+
+const FONTS =
+  'https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&family=Hanken+Grotesk:wght@400;500;600;700;800&display=swap'
 ---
 
 <Default><slot /></Default>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link
-  rel="stylesheet"
-  href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&family=Hanken+Grotesk:wght@400;500;600;700;800&display=swap"
-/>
+<!-- Loaded without blocking the first paint: the system fonts in each
+  stack draw the page until these swap in (display=swap did that already,
+  after the stylesheet's round trip). -->
+<link rel="preload" as="style" href={FONTS} />
+<link rel="stylesheet" href={FONTS} media="print" onload="this.media='all'" />
+<noscript><link rel="stylesheet" href={FONTS} /></noscript>
 <MermaidLoader />

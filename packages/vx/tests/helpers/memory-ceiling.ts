@@ -36,7 +36,13 @@ export function scratch(dir: string): string {
 /** A committed, locked workspace of `projects` (name → vx.config.mjs source). */
 export async function workspace(
   projects: Record<string, string>,
-  opts: { plugins?: readonly string[]; fields?: string; edges?: Record<string, string[]> } = {},
+  opts: {
+    plugins?: readonly string[]
+    fields?: string
+    edges?: Record<string, string[]>
+    /** Source files per project, `src/a.txt` and `src/f<i>.txt` (default 1). */
+    files?: number
+  } = {},
 ): Promise<string> {
   const root = scratch(
     await makeWorkspace({
@@ -51,7 +57,16 @@ export async function workspace(
       localWorkspaceSource(opts.plugins, '', undefined, opts.fields),
     )
   for (const [name, config] of Object.entries(projects))
-    await addProject(root, name, { config, files: { 'src/a.txt': name } })
+    await addProject(root, name, {
+      config,
+      files: Object.fromEntries([
+        ['src/a.txt', name],
+        ...Array.from({ length: Math.max(0, (opts.files ?? 1) - 1) }, (_, i) => [
+          `src/f${i}.txt`,
+          `${i}`,
+        ]),
+      ]),
+    })
   gitInitCommit(root)
   const lock = Bun.spawnSync([process.execPath, BIN, 'lock'], {
     cwd: root,

@@ -3,15 +3,18 @@
 // declare and nothing else: turbo.json's global block is not carried, and
 // each task that lost it says so, for the user to list what it reads.
 
+import { existsSync } from 'node:fs'
 import path from 'node:path'
 import {
   type GeneratedProject,
+  isLiteralPattern,
   type MigrationFormat,
   type MigrationPlan,
   PERSISTENT_TODO,
   quoteTsLiteral as quote,
 } from '@vzn/vx'
 import type { PackageMeta } from './packages.js'
+import { relPosix } from './paths.js'
 import { mapTurboWorkspace, type TurboMappedProject } from './turbo/turbo-map.js'
 import { rootTaskProject, turboConfigFile } from './turbo/turbo-reads.js'
 import { rulesSource, turboBoundaryRules } from './dependency-rules.js'
@@ -67,10 +70,11 @@ export async function migrateTurbo(
   // A reader whose `!` hides a committed file under another task's output
   // runs uncached, as under turbo().
   spareTrackedTodos(root, mapping.projects, tracked)
+  const absentNotes = absentOutputTodos(root, mapping.projects, tracked)
 
   // vx keys a task on what it declares, nothing global: the user lists
   // what each task reads (M, 2026-11-21).
-  const notes = [...mapping.notes]
+  const notes = [...mapping.notes, ...absentNotes]
   if (mapping.dropped.length > 0) {
     notes.push(
       `turbo.json's global block (${mapping.dropped.join(', ')}) is carried onto no task: ` +
@@ -118,6 +122,126 @@ export async function migrateTurbo(
     extraFiles: [],
     notes,
   }
+}
+
+/**
+ * Turbo caches the outputs a run wrote and skips the rest; vx requires each
+ * one, and a run that writes no file a positive output names fails. A
+ * shared `build.outputs ["dist/**", ".next/**"]` failed every Vite package,
+ * and create-t3-turbo's `.cache/.eslintcache` failed every `eslint` without
+ * `--cache`. The migration cannot run a command, so it reads what earlier
+ * runs left: where a task name's outputs match a file in some package, each
+ * of its tasks names the outputs that match none; where they match nothing
+ * anywhere (an unbuilt checkout), one note names them.
+ */
+export function absentOutputTodo(globs: readonly string[]): string {
+  const one = globs.length === 1
+  return (
+    `${one ? 'output' : 'outputs'} ${globs.map((g) => JSON.stringify(g)).join(', ')} ` +
+    `match${one ? 'es' : ''} no file here, though this task's outputs match files in other packages: ` +
+    'vx requires every output (Turbo cached what was present), and a run that writes no file ' +
+    `${one ? 'it names' : 'one of them names'} fails and caches nothing — keep only the outputs this command always writes`
+  )
+}
+
+/** The note for task names whose outputs match no file in any package. */
+export function unbuiltOutputsNote(tasks: ReadonlyMap<string, readonly string[]>): string {
+  const said = [...tasks].map(
+    ([name, globs]) => `${name} (${globs.map((g) => JSON.stringify(g)).join(', ')})`,
+  )
+  return (
+    `no package has a file the outputs of ${said.join(', ')} match yet, so they were not checked: ` +
+    'vx requires every output (Turbo cached what was present), and a run that writes no file one ' +
+    'names fails and caches nothing — keep only the outputs each command always writes'
+  )
+}
+
+function absentOutputTodos(
+  root: string,
+  projects: readonly TurboMappedProject[],
+  tracked: readonly string[] | null,
+): string[] {
+  // A committed file is in every checkout: no sign a run wrote it.
+  const committed = new Set(tracked ?? [])
+  const byName = new Map<string, { todos: string[]; absent: string[] }[]>()
+  const seen = new Set<string>()
+  for (const p of projects)
+    for (const t of p.tasks) {
+      if (t.task?.['cache'] !== true) continue
+      const o = t.task['outputs'] as { files?: string[]; workspaceFiles?: string[] } | undefined
+      const files = o?.files ?? []
+      const ws = o?.workspaceFiles ?? []
+      if (![...files, ...ws].some((g) => !g.startsWith('!'))) continue
+      const own = matched(root, p.dir, files, committed)
+      const top = matched(root, root, ws, committed)
+      if (own.written || top.written) seen.add(t.name)
+      const list = byName.get(t.name) ?? []
+      list.push({ todos: t.todos, absent: [...own.absent, ...top.absent] })
+      byName.set(t.name, list)
+    }
+  const unbuilt = new Map<string, string[]>()
+  for (const [name, list] of byName) {
+    if (seen.has(name)) {
+      for (const { todos, absent } of list)
+        if (absent.length > 0) todos.push(absentOutputTodo(absent))
+      continue
+    }
+    const absent = [...new Set(list.flatMap((x) => x.absent))].sort()
+    if (absent.length > 0) unbuilt.set(name, absent)
+  }
+  return unbuilt.size === 0 ? [] : [unbuiltOutputsNote(unbuilt)]
+}
+
+/**
+ * The positive globs that match no file under `base` a `!` leaves, and
+ * whether any matched file is one git does not track (a run wrote it).
+ */
+function matched(
+  root: string,
+  base: string,
+  globs: readonly string[],
+  committed: ReadonlySet<string>,
+): { absent: string[]; written: boolean } {
+  const back = globs.filter((g) => g.startsWith('!')).map((g) => new Bun.Glob(g.slice(1)))
+  const kept = (rel: string) => !back.some((b) => b.match(rel))
+  const untracked = (rel: string) => !committed.has(relPosix(root, path.join(base, rel)))
+  const absent: string[] = []
+  let written = false
+  for (const glob of globs) {
+    if (glob.startsWith('!')) continue
+    const found = scan(base, glob.replace(/^(\.\/)+/, ''), kept, written ? null : untracked)
+    if (found === 'none') absent.push(glob)
+    if (found === 'written') written = true
+  }
+  return { absent, written }
+}
+
+/** Stops at the first match, or at the first untracked one when `untracked` is asked. */
+function scan(
+  base: string,
+  glob: string,
+  kept: (rel: string) => boolean,
+  untracked: ((rel: string) => boolean) | null,
+): 'none' | 'committed' | 'written' {
+  const hit = (rel: string) => (untracked === null || !untracked(rel) ? 'committed' : 'written')
+  if (isLiteralPattern(glob))
+    return kept(glob) && existsSync(path.join(base, glob)) ? hit(glob) : 'none'
+  let any = false
+  try {
+    for (const rel of new Bun.Glob(glob).scanSync({
+      cwd: base,
+      dot: true,
+      followSymlinks: false,
+    })) {
+      if (!kept(rel)) continue
+      any = true
+      if (hit(rel) === 'written' || untracked === null) return hit(rel)
+    }
+  } catch (err) {
+    // A directory it cannot list holds something; a missing one, nothing.
+    return (err as { code?: unknown }).code === 'ENOENT' ? (any ? 'committed' : 'none') : 'written'
+  }
+  return any ? 'committed' : 'none'
 }
 
 async function turboJsonOf(root: string): Promise<Record<string, unknown> | undefined> {

@@ -195,6 +195,13 @@ export interface RunHandoff {
    */
   selectedByDiff?: boolean
   /**
+   * `projects` came from `--filter` (or `--affected`), not the cwd project:
+   * `--all` beside a filter is the filter's selection, so a task only
+   * projects outside it declare is reached by widening the filter, never by
+   * `--all` (every pipeline passes `--all`).
+   */
+  selectedByFilter?: boolean
+  /**
    * The projects an include other than `--affected` selected (`--filter
    * other`): every include is a union, so their requested tasks run whether or
    * not `affected` reaches them.

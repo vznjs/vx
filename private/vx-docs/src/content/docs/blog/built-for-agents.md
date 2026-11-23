@@ -52,7 +52,7 @@ $ vx last --format json | jq '.tasks[0] | {project, task, status, exitCode, dura
 ```
 
 `vx show`, `vx info`, `vx why` and `vx cache clean` take the same
-`--format json`, and `vx run --dry=json` prints the plan before a run.
+`--format json`, and `vx run --dry --format json` prints the plan before a run.
 
 ## Every shape has a schema
 

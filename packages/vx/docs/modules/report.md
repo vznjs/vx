@@ -121,7 +121,11 @@ the mode; `ci: true` whenever `CI` is truthy.
   `::error title=<id>::failed (exit N)` (`failedLabel`: above 128 the
   signal is named, `failed (exit 137, 128 + SIGKILL)`; a timeout its
   reason, `failed (timed out, exit 143)`; a persistent task that never
-  became ready, `never ready: …`; a sandboxed task its violation count).
+  became ready, `never ready: …`; a command that exited 0 but left an
+  output glob matching nothing, `failed (exited 0, no file matched <glob>)`;
+  a sandboxed task its violation count).
+  The views that defer a failure's frame to the run's end (`errors-only`,
+  `broad`, `focused`) write the same annotation above it, with `gha`.
 - **`focused`** — requested non-group nodes stream stdout/stderr raw
   and live (cache-hit replay included); a quiet hit prints a full
   frame; a skipped requested task prints the skipped one-liner
@@ -608,6 +612,7 @@ export function cacheBucketOf(o: TaskOutcome): CacheBucket | undefined
 export interface RunContext {
   version: string
   workspaceRoot?: string // a frame names its task's directory from it
+  meters?: boolean // false: a pipe with no colour, each row its legend alone
   packageCount: number // projects with a task to run → the bar's "in run" half
   runId?: string | undefined // the whole id `vx last` takes (info row)
   executorRows?: () => readonly (readonly [string, ui.Inline])[] // executors' footer rows
@@ -880,7 +885,9 @@ run removes on its way out (`orchestrator.md`).
   `isKeyFailed(outcome)`, which is not on the wire; `failed (cache save
 failed)` / `failed (output clean failed)` for a miss whose save or clean
   vx refused, `outputsFailedOf(outcome)`, which `projectOutcome` copies
-  onto the view), `failedLabel`, `skippedReason`, and
+  onto the view; `failed (exited 0, no file matched dist/**)` for an exit 0
+  that wrote no declared output, `OutcomeView.outputsMissing`, the reason
+  `missingOutputsReason` gives `vx last` too), `failedLabel`, `skippedReason`, and
   `ranNoCache` (a task no cache answered for: no
   `cache: true`, or `TaskOutcome.cache.off` — `no-cache`, never a miss;
   `--dry`'s plan asks it too). The frame footer and
@@ -903,7 +910,7 @@ failed)` / `failed (output clean failed)` for a miss whose save or clean
 
 `drawMigration`: what `workspace`'s `writeMigration` answered, drawn.
 Under `--dry`, each file as an excerpt; a lock refusal above; then the
-`from` … `next` rows. Under `--json`, the one document on stdout. It
+`from` … `next` rows. Under `--dry --format json`, the one document on stdout. It
 writes no file; `orchestrator/migration.ts` composes write and draw.
 
 ### Public surface

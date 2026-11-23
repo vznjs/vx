@@ -131,25 +131,20 @@ function execThroughRestores(
   return view ?? exec
 }
 
-/**
- * For each task, how many other tasks are transitively blocked on it. The
- * highest go first: they unlock the most work and minimize idle workers at the
- * end. Nx ranks by direct dependents only.
- */
-export function computeReverseDepCount(
-  nodes: ReadonlyMap<string, TaskNode>,
-  /** Count only these dependents (the exec tier); every one when absent. */
-  counted?: ReadonlyMap<string, unknown>,
-): Map<string, number> {
-  // Exact transitive counts need closure sets (diamonds double-count when
-  // summed). String sets are O(N²) and took 8.5s on 1,090 packages; bitsets
-  // are O(E·N/32) over N²/8 bits (3,270 tasks ≈ 1.3 MB), single-digit ms.
-  const ids = [...nodes.keys()]
-  const n = ids.length
-  const index = new Map<string, number>()
-  for (let i = 0; i < n; i++) index.set(ids[i]!, i)
+/** Direct dependents as one flat list: node `i`'s are `dependents[offset[i]..offset[i + 1]]`. */
+interface DependentLists {
+  offset: Int32Array
+  dependents: Int32Array
+  /** Each node's count of deps inside the graph. */
+  indegree: Uint32Array
+}
 
-  // Direct dependents as one flat list (offsets per node) + in-degree.
+function dependentLists(
+  nodes: ReadonlyMap<string, TaskNode>,
+  ids: readonly string[],
+  index: ReadonlyMap<string, number>,
+): DependentLists {
+  const n = ids.length
   const from: number[] = []
   const to: number[] = []
   const offset = new Int32Array(n + 1)
@@ -168,9 +163,20 @@ export function computeReverseDepCount(
   const next = offset.slice(0, n)
   const dependents = new Int32Array(from.length)
   for (let e = 0; e < from.length; e++) dependents[next[from[e]!]!++] = to[e]!
+  return { offset, dependents, indegree }
+}
 
-  // Kahn topo order: buildTaskGraph's insertion order is topo today, but
-  // correctness must not hinge on that.
+/**
+ * Kahn's topological order, dependencies first. Its length (`tail`) falls
+ * short of the node count only on a cycle, which the builder refuses.
+ * buildTaskGraph's insertion order is topo today, but correctness must not
+ * hinge on that. Consumes `indegree`.
+ */
+function topoOrder({ offset, dependents, indegree }: DependentLists): {
+  topo: Int32Array
+  tail: number
+} {
+  const n = indegree.length
   const topo = new Int32Array(n)
   let head = 0
   let tail = 0
@@ -182,6 +188,37 @@ export function computeReverseDepCount(
       if (--indegree[r]! === 0) topo[tail++] = r
     }
   }
+  return { topo, tail }
+}
+
+/** Set bits in a 32-bit word (SWAR popcount). */
+function popcount(v: number): number {
+  v = v - ((v >>> 1) & 0x55555555)
+  v = (v & 0x33333333) + ((v >>> 2) & 0x33333333)
+  return (((v + (v >>> 4)) & 0x0f0f0f0f) * 0x01010101) >>> 24
+}
+
+/**
+ * For each task, how many other tasks are transitively blocked on it. The
+ * highest go first: they unlock the most work and minimize idle workers at the
+ * end. Nx ranks by direct dependents only.
+ */
+export function computeReverseDepCount(
+  nodes: ReadonlyMap<string, TaskNode>,
+  /** Count only these dependents (the exec tier); every one when absent. */
+  counted?: ReadonlyMap<string, unknown>,
+): Map<string, number> {
+  // Exact transitive counts need closure sets (diamonds double-count when
+  // summed). String sets are O(N²) and took 8.5s on 1,090 packages; bitsets
+  // are O(E·N/32) over N²/8 bits (3,270 tasks ≈ 1.3 MB), single-digit ms.
+  const ids = [...nodes.keys()]
+  const n = ids.length
+  const index = new Map<string, number>()
+  for (let i = 0; i < n; i++) index.set(ids[i]!, i)
+
+  const lists = dependentLists(nodes, ids, index)
+  const { offset, dependents } = lists
+  const { topo, tail } = topoOrder(lists)
 
   // The same lists by topo POSITION. A dependent sits after its
   // dependency, so a closure holds only bits past its own position.
@@ -227,11 +264,8 @@ export function computeReverseDepCount(
       }
       let count = 0
       for (let w = t >>> 5 > w0 ? (t >>> 5) - w0 : 0; w < width; w++) {
-        let v = closure[base + w]! & mask[w0 + w]!
-        if (v === 0) continue
-        v = v - ((v >>> 1) & 0x55555555)
-        v = (v & 0x33333333) + ((v >>> 2) & 0x33333333)
-        count += (((v + (v >>> 4)) & 0x0f0f0f0f) * 0x01010101) >>> 24
+        const v = closure[base + w]! & mask[w0 + w]!
+        if (v !== 0) count += popcount(v)
       }
       total[t]! += count
     }

@@ -11,9 +11,9 @@ import { addProject, makeWorkspace } from './helpers/workspace.js'
 import { noticed } from './helpers/notice.js'
 import { vx } from './helpers/vx.js'
 
-/** The task ids a `--dry=json` plan holds, sorted. */
+/** The task ids a `--dry --format json` plan holds, sorted. */
 async function planned(cwd: string, args: string[]): Promise<string[]> {
-  const r = await vx(cwd, ['run', ...args, '--dry=json'])
+  const r = await vx(cwd, ['run', ...args, '--dry', '--format', 'json'])
   expect(r.code).toBe(0)
   const plan = JSON.parse(r.text) as { tasks: Array<{ id: string }> }
   return plan.tasks.map((t) => t.id).sort()
@@ -70,7 +70,7 @@ describe('a bare name does not select a default build', () => {
     await addProject(root, 'app', {
       config: `export default { tasks: { build: { dependsOn: ['^build'], exec: { command: 'true' } } } }\n`,
     })
-    const r = await vx(root, ['run', 'build', '--all', '--dry=json'])
+    const r = await vx(root, ['run', 'build', '--all', '--dry', '--format', 'json'])
     expect(r.code).toBe(0)
     const plan = JSON.parse(r.text) as { tasks: Array<{ id: string; requested?: boolean }> }
     expect(plan.tasks.map((t) => t.id).sort()).toEqual(['app#build', 'lib#build'])

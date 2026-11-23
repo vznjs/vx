@@ -28,6 +28,31 @@ it('ends on a frame that is not the relay’s, and says what it was', async () =
   }
 }, 30_000)
 
+// JSON of the wrong shape threw a TypeError out of the same handler.
+it('ends on a frame of the wrong shape', async () => {
+  for (const text of [
+    '[]',
+    '{"messages":5}',
+    '{"messages":[null]}',
+    '{"messages":[{"from":5,"body":{"type":"left"}}]}',
+    '{"joined":null}',
+    '{"joined":{"id":"w","heartbeatMs":-1}}',
+    '{"results":5}',
+    '{"close":"a"}',
+  ]) {
+    const { url, garble } = dropping()
+    const o = await join(url, R2, 'orchestrator', null, undefined)
+    const a = await join(url, R2, 'worker', null, undefined)
+    await o.poll()
+    garble(a.id, text)
+    let err: unknown
+    for (let i = 0; i < 10 && err === undefined; i++)
+      await a.poll().catch((e: unknown) => (err = e))
+    expect((err as RelayError).message).toBe(`relay: a frame that is not its protocol: ${text}`)
+    await o.leave()
+  }
+}, 30_000)
+
 // A socket a network stops carrying sends no close: on a CI runner a worker's
 // `held` frames waited on acks that never came, its lease lapsed mid-task, and
 // its polls read nothing while the relay queued its next batch (2026-10-22).

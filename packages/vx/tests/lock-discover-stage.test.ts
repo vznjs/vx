@@ -49,7 +49,7 @@ it('vx lock freezes the discovered project, so lock --check && run succeeds', as
   expect(`${check.code}\n${check.err}`).toStartWith('0\n')
   const locked = Object.keys((await readLockfile(root))!.projects)
   // By directory: a project with a config is locked whoever names it.
-  expect(locked).toEqual(['packages/app', 'tools/gen'])
+  expect(locked.sort()).toEqual(['packages/app', 'tools/gen'])
   const run = await vx(root, ['run', 'build', '--all'], BIN)
   expect(`${run.code}\n${run.err}`).toStartWith('0\n')
   expect(run.out).toContain('gen#build')

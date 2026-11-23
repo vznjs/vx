@@ -3,7 +3,20 @@
 // a read grant punched around the write grants inside it, the network
 // lists SRT insists on receiving in full.
 
-import { lstatSync, readdirSync, readlinkSync, statSync } from 'node:fs'
+import {
+  chmodSync,
+  linkSync,
+  lstatSync,
+  mkdirSync,
+  readdirSync,
+  readlinkSync,
+  realpathSync,
+  renameSync,
+  rmSync,
+  statSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs'
 import path from 'node:path'
 import {
   atOrUnder,
@@ -15,6 +28,7 @@ import {
   unique,
 } from './paths.js'
 import { notify } from '../util/index.js'
+import { STAGE_PUT_BACK } from '../cache/index.js'
 import { shellQuote } from '../exec/index.js'
 import type { ResolvedSandboxConfig } from '../exec/index.js'
 import type { SandboxedRunArgs } from './runtime.js'
@@ -248,17 +262,32 @@ export const globDir = (glob: string): string => path.dirname(glob.slice(0, wild
  * there the glob does not cover is judged as one under a widened grant
  * (`refusedWrites`). A directory holding a wall never reaches here
  * (`wallOff` drops its glob).
+ *
+ * In the task's own directory the glob's directory is bound whether or not
+ * a read grant shows it, where a tracer runs (it is made before, as an
+ * output's static head is, `prepareOutputsForBind`): an output `*.js` at
+ * the project root, `dist/*.js` before `dist` exists, or a recursive one,
+ * fell into the scratch and failed the task as a write gone with the
+ * sandbox (conformance sandbox/root-glob-output-passes). What was there
+ * at the start is judged as a widened grant's is: a read of it no grant
+ * covers is a violation (`parseStraceViolations`).
  */
 function punchedWriteGlobs(
   globs: readonly string[],
   shown: readonly string[],
   writeBinds: readonly string[],
+  own?: string,
 ): Map<string, string[]> {
   const out = new Map<string, string[]>()
   if (process.platform !== 'linux') return out
   for (const glob of globs) {
     const dir = globDir(glob)
-    if (!shown.some((r) => atOrUnder(dir, r)) || writeBinds.some((b) => atOrUnder(dir, b))) continue
+    const mine = own !== undefined && atOrUnder(dir, own)
+    if (
+      (!mine && !shown.some((r) => atOrUnder(dir, r))) ||
+      writeBinds.some((b) => atOrUnder(dir, b))
+    )
+      continue
     try {
       if (!statSync(dir).isDirectory()) continue
     } catch {
@@ -511,6 +540,8 @@ export function buildCustomConfig(
   baselines: {
     allowRead: readonly string[]
     denyRead: readonly string[]
+    /** The task's directory: a write glob's directory in it is bound even unshown. */
+    cwd?: string | undefined
   },
 ): TaskSandboxConfig {
   const c = args.config
@@ -534,7 +565,9 @@ export function buildCustomConfig(
     )
   }
   let allowRead = unique(reads.flatMap((r) => punchWritePaths(r, punched, reachable)))
-  const split = [...punchedWriteGlobs(c.writeGlobs ?? [], c.allowRead, allowWrite).keys()]
+  const split = [
+    ...punchedWriteGlobs(c.writeGlobs ?? [], c.allowRead, allowWrite, baselines.cwd).keys(),
+  ]
   if (split.length > 0) {
     allowWrite.push(...split)
     punched.push(...split)
@@ -611,3 +644,207 @@ export function readOnlyMasks(wrapped: string, scratch: readonly string[] = []):
 /** A word as SRT's `quote` spells it, read back: single-quoted runs and `"'"`. */
 const unquoted = (word: string): string =>
   word.replace(/'([^']*)'|"([^"]*)"/g, (_, a: string | undefined, b: string | undefined) => a ?? b!)
+
+/**
+ * Linux: the task's output directories, staged so the task may remove
+ * them. A write grant is a bind, and a mount point cannot be removed:
+ * `rm -rf dist && tsc` under `dist/` met "Read-only file system"
+ * (conformance sandbox/clean-and-rebuild-output-dir-passes). Where the
+ * task's directory is held by a read-only mask (no grant binds it, or
+ * anything above it), each granted directory there that the task's
+ * outputs claim whole (`dist/**`) is linked, file by file, into a stage
+ * of vx's own (`.vx/tmp/<pid>-<tag>`, on the workspace's filesystem), and
+ * the stage is bound AS the task's directory, under the binds of its
+ * other grants; the output directory is then a plain directory inside it.
+ * The host's directory stays as it was meanwhile: a concurrent task still
+ * reads it, and a killed run loses nothing (its stage is swept). After the
+ * task each staged directory replaces the host's (the host's goes when
+ * the task removed it and made none); the rest (mount points bwrap made,
+ * a stray write vx reports) goes with the stage. Returns the line and the
+ * restore, which throws when a replace fails, or undefined where nothing
+ * is staged.
+ */
+export function stagedOutputs(
+  wrapped: string,
+  opts: {
+    cwd: string
+    allowRead: readonly string[]
+    allowWrite: readonly string[]
+    /** The write grants as the task declared them, canonical. */
+    granted: readonly string[]
+    /** Grants spelled through a link: bound at the link too, so left in place. */
+    linked?: readonly { link: string; target: string }[] | undefined
+    /** Directories the task's outputs claim whole: nothing else is staged. */
+    owned: readonly string[]
+    tag: string
+  },
+): { wrapped: string; restore: () => void } | undefined {
+  const { cwd } = opts
+  if (process.platform !== 'linux') return undefined
+  // The task's directory is bound itself, or under a bind: nothing to stage there.
+  if ([...opts.allowRead, ...opts.allowWrite].some((g) => atOrUnder(cwd, g))) return undefined
+  const owned = opts.owned.map((o) => {
+    try {
+      return realpathSync(o)
+    } catch {
+      return o
+    }
+  })
+  const dirs = opts.granted.filter((g) => {
+    if (path.dirname(g) !== cwd || !isMountableLiteral(g) || !owned.includes(g)) return false
+    if (opts.linked?.some((l) => l.target === g || atOrUnder(l.target, g))) return false
+    try {
+      return lstatSync(g).isDirectory()
+    } catch {
+      return false
+    }
+  })
+  if (dirs.length === 0) return undefined
+  const words = [...wrapped.matchAll(/(?:'[^']*'|"[^"]*"|[^\s'"])+/g)]
+  const end = words.findIndex((w) => w[0] === '--')
+  if (end === -1) return undefined
+  // Only a directory the line names nowhere but in its own write bind is
+  // staged: a deny or mask in it (`.mcp.json`, `.git/hooks`) is a mount
+  // that moves with a renamed directory, so a staged one would let the task
+  // rebuild it unprotected and the restore land that on the host.
+  const own = (i: number, d: string): boolean =>
+    (words[i - 1]?.[0] === '--bind' &&
+      unquoted(words[i]![0]) === d &&
+      unquoted(words[i + 1]![0]) === d) ||
+    (words[i - 2]?.[0] === '--bind' &&
+      unquoted(words[i - 1]![0]) === d &&
+      unquoted(words[i]![0]) === d)
+  for (let k = dirs.length - 1; k >= 0; k--) {
+    const d = dirs[k]!
+    for (let i = 0; i < end; i++) {
+      const w = unquoted(words[i]![0])
+      if (!atOrUnder(w, d)) continue
+      if (w === d && own(i, d)) continue
+      dirs.splice(k, 1)
+      break
+    }
+  }
+  if (dirs.length === 0) return undefined
+  // The deepest mask holding the task's directory is where the stage is bound.
+  const masks: { at: number; path: string }[] = []
+  for (let i = 0; i < end - 1; i++) {
+    if (words[i]![0] !== '--tmpfs') continue
+    const m = unquoted(words[i + 1]![0])
+    if (atOrUnder(cwd, m)) masks.push({ at: i + 1, path: m })
+  }
+  // A mask AT the task's directory is remounted read-only after the stage
+  // would be bound there, and the stage with it.
+  if (masks.length === 0 || masks.some((m) => m.path === cwd)) return undefined
+  masks.sort((a, b) => b.path.length - a.path.length || b.at - a.at)
+  const mask = masks[0]!
+  const stageRoot = nearestVx(cwd)
+  if (stageRoot === undefined) return undefined
+  // Named as a restore's staging is, so a killed run's is swept (`sweepStaging`).
+  const stage = path.join(stageRoot, 'tmp', `${process.pid.toString(36)}-${opts.tag}`)
+  const restore = (): void => {
+    const failed: string[] = []
+    // Each host directory set aside below is named first, after the task
+    // and over anything it left at these names: a kill between the two
+    // renames otherwise left it only in the stage, which the next run
+    // sweeps (`sweepStaging` puts it back).
+    for (const d of dirs)
+      rmSync(path.join(stage, `.host-${path.basename(d)}`), { recursive: true, force: true })
+    rmSync(path.join(stage, STAGE_PUT_BACK), { recursive: true, force: true })
+    writeFileSync(path.join(stage, STAGE_PUT_BACK), dirs.join('\n'))
+    for (const d of dirs) {
+      const fresh = path.join(stage, path.basename(d))
+      const old = path.join(stage, `.host-${path.basename(d)}`)
+      const made = lstatSync(fresh, { throwIfNoEntry: false })
+      // A link or file in its place would land on the host where the grant
+      // let the task write only inside a directory.
+      if (made !== undefined && !made.isDirectory()) {
+        failed.push(d)
+        continue
+      }
+      try {
+        renameSync(d, old)
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+          failed.push(d)
+          continue
+        }
+      }
+      if (made === undefined) continue
+      try {
+        renameSync(fresh, d)
+      } catch {
+        failed.push(d)
+        try {
+          renameSync(old, d)
+        } catch {
+          // Something made it meanwhile: what the task left is lost, and said so below.
+        }
+      }
+    }
+    rmSync(stage, { recursive: true, force: true })
+    if (failed.length > 0)
+      throw new Error(`vx: could not put the task's output back in place: ${failed.join(', ')}`)
+  }
+  try {
+    mkdirSync(stage, { recursive: true })
+    for (const d of dirs) linkTree(d, path.join(stage, path.basename(d)))
+  } catch {
+    rmSync(stage, { recursive: true, force: true })
+    return undefined
+  }
+  // Drop each staged directory's binds; bind the stage as the task's directory after the mask.
+  const drop = new Set<number>()
+  for (let i = 0; i < end - 2; i++) {
+    if (words[i]![0] !== '--bind') continue
+    const dest = unquoted(words[i + 2]![0])
+    if (dirs.includes(dest) && unquoted(words[i + 1]![0]) === dest)
+      drop
+        .add(i)
+        .add(i + 1)
+        .add(i + 2)
+  }
+  let out = ''
+  let last = 0
+  for (let i = 0; i < words.length; i++) {
+    const w = words[i]!
+    if (drop.has(i)) {
+      out += wrapped.slice(last, w.index)
+      last = w.index! + w[0].length
+      continue
+    }
+    if (i === mask.at) {
+      out += wrapped.slice(last, w.index! + w[0].length)
+      out += ` --bind ${shellQuote(stage)} ${shellQuote(cwd)}`
+      last = w.index! + w[0].length
+    }
+  }
+  out += wrapped.slice(last)
+  return { wrapped: out, restore }
+}
+
+/** The `.vx` nearest above `dir`: the workspace's, which `sweepStaging` sweeps. */
+function nearestVx(dir: string): string | undefined {
+  for (let d = dir; ; d = path.dirname(d)) {
+    const vx = path.join(d, '.vx')
+    if (statSync(vx, { throwIfNoEntry: false })?.isDirectory() === true) return vx
+    if (path.dirname(d) === d) return undefined
+  }
+}
+
+/**
+ * A copy of `from` at `to` whose files are hard links: no byte is copied.
+ * Each directory keeps its mode, set once filled (a read-only one could
+ * take nothing): the restore puts the copy on the host, and a 0700 one
+ * came back at the umask's mode.
+ */
+function linkTree(from: string, to: string): void {
+  mkdirSync(to)
+  for (const e of readdirSync(from, { withFileTypes: true })) {
+    const src = path.join(from, e.name)
+    const dst = path.join(to, e.name)
+    if (e.isDirectory()) linkTree(src, dst)
+    else if (e.isSymbolicLink()) symlinkSync(readlinkSync(src), dst)
+    else linkSync(src, dst)
+  }
+  chmodSync(to, statSync(from).mode & 0o7777)
+}

@@ -103,7 +103,10 @@ export async function setup(o: SetupOptions): Promise<number> {
         ...PACKAGES,
       ])
       await run(['rm', '-rf', path.join(o.debs, 'partial'), path.join(o.debs, 'lock')])
-      await run(['chown', '-R', os.userInfo().username, o.debs])
+      // By id: a container's root has no name in Bun's userInfo ("unknown",
+      // which chown refused); root itself owns what apt-get wrote.
+      if (sudo.length > 0)
+        await run(['chown', '-R', `${process.getuid!()}:${process.getgid!()}`, o.debs])
       fetched = true
     } else if (has('apk')) {
       await run(['apk', 'add', '--no-cache', ...PACKAGES])

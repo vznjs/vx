@@ -2,7 +2,7 @@
 // line on stdout, `{ ok: false, error: { code, message } }`, so an agent
 // branches on the code instead of parsing prose. stderr and the exit code
 // stay as they were.
-import { readdirSync, readFileSync } from 'node:fs'
+import { readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { mkdir, mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -93,14 +93,16 @@ describe('a refusal under --format json', () => {
   // 3-core macOS runner; side by side they take the time of one.
   it('names the refusal by its code', async () => {
     const codes = await Promise.all([
-      refusal(['run', 'nope', '--all', '--dry=json']),
-      refusal(['run', 'build', '--bogus', '--dry=json']),
-      refusal(['run', 'build', '--dry=json'], bare),
-      refusal(['run', 'build', '--affected=a..b', '--dry=json']),
-      refusal(['run', 'build', '--all', '--dry=json'], badPolicy),
-      refusal(['run', 'build', '--all', '--cache-policy=disk:r', '--dry=json']),
-      refusal(['run', 'build', '--all', '--dry=json'], root, { VX_CACHE_POLICY: 'disk:r' }),
-      refusal(['run', 'build', '--all', '--dry=json'], root, {
+      refusal(['run', 'nope', '--all', '--dry', '--format', 'json']),
+      refusal(['run', 'build', '--bogus', '--dry', '--format', 'json']),
+      refusal(['run', 'build', '--dry', '--format', 'json'], bare),
+      refusal(['run', 'build', '--affected=a..b', '--dry', '--format', 'json']),
+      refusal(['run', 'build', '--all', '--dry', '--format', 'json'], badPolicy),
+      refusal(['run', 'build', '--all', '--cache-policy=disk:r', '--dry', '--format', 'json']),
+      refusal(['run', 'build', '--all', '--dry', '--format', 'json'], root, {
+        VX_CACHE_POLICY: 'disk:r',
+      }),
+      refusal(['run', 'build', '--all', '--dry', '--format', 'json'], root, {
         VX_INPUTS_STABILITY_STRATEGY: 'bogus',
       }),
     ])
@@ -133,7 +135,7 @@ describe('a refusal under --format json', () => {
       said[name] = [
         p.exitCode,
         p.stderr.toString().replaceAll(cwd, '<root>'),
-        await refusal(['run', 'b', '--all', '--dry=json'], cwd),
+        await refusal(['run', 'b', '--all', '--dry', '--format', 'json'], cwd),
       ]
     }
     const refused = (why: string): [number, string, string] => [
@@ -176,11 +178,14 @@ describe('a refusal under --format json', () => {
     const runWith = async (text: string | null): Promise<string> => {
       if (text === null) await rm(lockFile, { force: true })
       else await Bun.write(lockFile, text)
-      const p = Bun.spawnSync([process.execPath, REAL_BIN, 'run', 'build', '--all', '--dry=json'], {
-        cwd: root,
-        stdout: 'pipe',
-        stderr: 'pipe',
-      })
+      const p = Bun.spawnSync(
+        [process.execPath, REAL_BIN, 'run', 'build', '--all', '--dry', '--format', 'json'],
+        {
+          cwd: root,
+          stdout: 'pipe',
+          stderr: 'pipe',
+        },
+      )
       expect(p.exitCode).toBe(1)
       return (JSON.parse(p.stdout.toString()) as { error: { code: string } }).error.code
     }
@@ -226,13 +231,16 @@ describe('a refusal under --format json', () => {
         return (JSON.parse(p.stdout.toString()) as { error: { code: string } }).error.code
       }
       const unlocked = {
-        named: code(['run', 'c#build', '--dry=json']),
-        cwd: code(['run', 'build', '--dry=json'], c),
-        filter: code(['run', 'build', '--filter', 'c', '--dry=json']),
+        named: code(['run', 'c#build', '--dry', '--format', 'json']),
+        cwd: code(['run', 'build', '--dry', '--format', 'json'], c),
+        filter: code(['run', 'build', '--filter', 'c', '--dry', '--format', 'json']),
       }
       await rm(path.join(c, 'vx.config.mjs'))
       await rm(path.join(d, 'vx.config.mjs'))
-      expect({ ...unlocked, gone: code(['run', 'build', '--all', '--dry=json']) }).toEqual({
+      expect({
+        ...unlocked,
+        gone: code(['run', 'build', '--all', '--dry', '--format', 'json']),
+      }).toEqual({
         named: 'VX_E_LOCK',
         cwd: 'VX_E_LOCK',
         filter: 'VX_E_LOCK',
@@ -337,11 +345,14 @@ describe('a refusal under --format json', () => {
         'not an index, but long enough to be read as one',
       )
       // The real bin: vx-locked.ts would re-lock over the broken index.
-      const p = Bun.spawnSync([process.execPath, REAL_BIN, 'run', 'b', '--all', '--dry=json'], {
-        cwd: ws,
-        stdout: 'pipe',
-        stderr: 'pipe',
-      })
+      const p = Bun.spawnSync(
+        [process.execPath, REAL_BIN, 'run', 'b', '--all', '--dry', '--format', 'json'],
+        {
+          cwd: ws,
+          stdout: 'pipe',
+          stderr: 'pipe',
+        },
+      )
       const r = { code: p.exitCode, stdout: p.stdout.toString() }
       const { code, message } = (
         JSON.parse(r.stdout) as { error: { code: string; message: string } }
@@ -366,8 +377,10 @@ describe('a refusal under --format json', () => {
     try {
       await addProject(ws, 'a', `export default { tasks: { b: { exec: { command: 'true' } } } }\n`)
       expect({
-        noTree: await refusal(['run', 'b', '--all', '--dry=json'], ws),
-        noGit: await refusal(['run', 'b', '--all', '--dry=json'], ws, { PATH: noPath }),
+        noTree: await refusal(['run', 'b', '--all', '--dry', '--format', 'json'], ws),
+        noGit: await refusal(['run', 'b', '--all', '--dry', '--format', 'json'], ws, {
+          PATH: noPath,
+        }),
       }).toEqual({ noTree: 'VX_E_NO_GIT', noGit: 'VX_E_NO_GIT' })
     } finally {
       await rm(ws, { recursive: true, force: true })
@@ -439,7 +452,7 @@ describe('a refusal under --format json', () => {
         bare,
       ),
       cacheSub: await refusal(['cache', 'bogus', '--format', 'json']),
-      runNoTask: await refusal(['run', '--dry=json']),
+      runNoTask: await refusal(['run', '--dry', '--format', 'json']),
       verb: await refusal(['bogus', '--format', 'json']),
       taskAsVerb: await refusal(['build', '--format', 'json']),
       topFlag: await refusal(['--bogus', '--format', 'json']),
@@ -474,7 +487,7 @@ describe('a refusal under --format json', () => {
       refusal(['version', '--format', 'json']),
       // Verbs that print no JSON refuse the request, as a usage error.
       refusal(['watch', 'build', '--format', 'json']),
-      refusal(['watch', 'build', '--dry=json']),
+      refusal(['watch', 'build', '--dry', '--format', 'json']),
       refusal(['upgrade', '--format', 'json']),
       refusal(['completions', '--format', 'json']),
     ])
@@ -545,7 +558,7 @@ describe('a refusal under --format json', () => {
 
   it('CONTROLS: without JSON, or with it only after `--`, stdout stays empty', async () => {
     const plain = await vx(['run', 'nope', '--all'])
-    const forwarded = await vx(['run', 'nope', '--all', '--', '--dry=json'])
+    const forwarded = await vx(['run', 'nope', '--all', '--', '--dry', '--format', 'json'])
     expect([plain.code, plain.out, forwarded.code, forwarded.out]).toEqual([1, '', 1, ''])
     expect(plain.err).toContain('no projects declare task(s): nope')
   })
@@ -603,7 +616,7 @@ describe('errorCode', () => {
     expect([
       wantsJson(['run', 'b', '--format', 'json']),
       wantsJson(['run', 'b', '--format=json']),
-      wantsJson(['run', 'b', '--dry=json']),
+      wantsJson(['run', 'b', '--dry', '--format', 'json']),
       wantsJson(['run', 'b', '--format', 'pretty']),
       wantsJson(['run', 'b', '--', '--format=json']),
     ]).toEqual([true, true, true, false, false])
@@ -611,24 +624,24 @@ describe('errorCode', () => {
 
   // A value flag keeps its last value, so `--format json --format pretty`
   // printed pretty on success and a JSON document on a refusal.
-  it('wantsJson reads the last --format and the last --dry, as the parsers do', () => {
+  it('wantsJson reads the last --format, as the parsers do', () => {
     expect([
       wantsJson(['show', '--format', 'json', '--format', 'pretty', 'x']),
       wantsJson(['show', '--format=json', '--format=pretty']),
       wantsJson(['show', '--format', 'pretty', '--format=json']),
-      wantsJson(['run', '--dry=json', '--dry', 'x']),
-      wantsJson(['run', '--dry', '--dry=json', 'x']),
-      wantsJson(['run', '--dry=json', '--dry=pretty']),
-      // `--dry` is a switch beside `--format` on cache clean and init.
+      wantsJson(['run', '--dry', '--format', 'json', '--format', 'pretty']),
+      wantsJson(['run', '--dry', 'x']),
+      wantsJson(['run', '--dry', '--format', 'json', 'x']),
+      // `--dry` is a switch beside `--format` on run, cache clean and init.
       wantsJson(['cache', 'clean', '--format', 'json', '--dry']),
       wantsJson(['init', '--dry', '--format', 'json']),
-    ]).toEqual([false, false, true, false, true, false, true, true])
+    ]).toEqual([false, false, true, false, false, true, true, true])
   })
 
   it('a refusal after an overridden json flag is prose only', async () => {
     const [show, run] = await Promise.all([
       vx(['show', '--format', 'json', '--format', 'pretty', 'nosuch']),
-      vx(['run', '--dry=json', '--dry', 'nosuch', '--all']),
+      vx(['run', '--dry', '--format', 'json', '--format', 'pretty', 'nosuch', '--all']),
     ])
     expect([show.code, show.out, run.code, run.out]).toEqual([1, '', 1, ''])
   }, 30_000)
@@ -651,6 +664,19 @@ describe('every core code has a section that says what to do', () => {
   it('a heading per code the source names, and none it does not', () => {
     expect(thrown.size).toBeGreaterThan(10)
     expect(headed.toSorted()).toEqual([...thrown].toSorted())
+  })
+
+  // The codes are what an agent branches on, yet the break law read them
+  // only from error.json's description, prose it never compares: a
+  // dropped or renamed code shipped as no break. The record is one code a
+  // line, read by lost lines. Regenerate after a deliberate change:
+  //   VX_UPDATE_CONTRACT=1 bun test tests/error-codes.test.ts
+  it('tests/contract/error-codes.txt records every code', () => {
+    const record = path.resolve(import.meta.dir, 'contract', 'error-codes.txt')
+    const text = `${headed.toSorted().join('\n')}\n`
+    if (process.env['VX_UPDATE_CONTRACT'] === '1' && process.env['CI'] !== 'true')
+      writeFileSync(record, text)
+    expect(readFileSync(record, 'utf8')).toBe(text)
   })
 
   // The schema an agent reads named 14 of 21 codes (2026-10-28).

@@ -28,6 +28,7 @@ async function lock(tasks: string): Promise<{ code: number; err: string }> {
   await writeFile(path.join(dir, 'src', 'main.js'), 'export {}\n')
   await writeFile(path.join(dir, '.env'), 'A=1\n')
   await writeFile(path.join(dir, '.env.production.local'), 'A=2\n')
+  await writeFile(path.join(dir, '.env.example'), 'A=\n')
   await writeFile(path.join(dir, 'gen.local'), 'out\n')
   await writeFile(path.join(dir, 'vx.config.mjs'), `export default { tasks: { ${tasks} } }\n`)
   expect(Bun.spawnSync(['git', 'init', '-q'], { cwd: root }).exitCode).toBe(0)
@@ -113,7 +114,11 @@ describe('vx lock and what a key never sees', () => {
           { files: ['src/**', '.env*', '.env.production.local'], env: ['VITE_API_URL'] },
           { passThrough: ['VITE_API_URL', 'CI'] },
         ),
-        task('secret', { files: ['src/**'] }, { passThrough: ['VITE_DSN'], secret: ['VITE_DSN'] }),
+        task(
+          'secret',
+          { files: ['src/**', '!.env*'] },
+          { passThrough: ['VITE_DSN'], secret: ['VITE_DSN'] },
+        ),
         task('excluded', { files: ['src/**', '.env*', '!.env.production.local'] }),
         task('dev', { files: ['src/**'] }, { passThrough: ['VITE_API_URL'] }, false),
       ].join(', '),
@@ -130,5 +135,34 @@ describe('vx lock and what a key never sees', () => {
     )
     expect(r.err).not.toContain('gen.local')
     expect(r.err.match(/inputs leave out/g)?.length).toBe(1)
+  })
+
+  // Vite, Next and Bun load `.env` and `.env.<mode>.local` beside the config
+  // on their own: `src/**` alone replayed the old bundle after an edit.
+  it('names a dotenv file beside the config that no input of a build names', async () => {
+    const r = await lock(
+      [task('build', { files: ['src/**'] }), task('lint', { files: ['src/**'] })]
+        .join(', ')
+        .replace(`"outputs":{"files":["lint/**"]}`, `"outputs":{"files":[]}`),
+    )
+    expect(r.code).toBe(0)
+    expect(r.err).toContain(
+      "packages/app#build: .env, .env.production.local beside its config are in no input, and Vite, Next and Bun load them on their own — add '.env*' to inputs.files, or '!.env*' if the task reads none",
+    )
+    // A task with no outputs builds nothing a value is inlined into.
+    expect(r.err).not.toContain('app#lint')
+  })
+
+  it('names Bun and Nx public variables only passThrough names', async () => {
+    const r = await lock(
+      task(
+        'build',
+        { files: ['src/**', '.env*', '.env.production.local'] },
+        { passThrough: ['BUN_PUBLIC_API', 'NX_PUBLIC_SITE'] },
+      ),
+    )
+    expect(r.err).toContain(
+      'packages/app#build: exec.env.passThrough forwards BUN_PUBLIC_API, NX_PUBLIC_SITE, which a bundler writes into its output',
+    )
   })
 })

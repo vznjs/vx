@@ -6,15 +6,20 @@ import Byline from './Byline.astro'
 import Cover from './Cover.astro'
 import { coverShowsTitle, type Post } from '../../blog/posts.js'
 
-type Props = { post: Post }
-const { post } = Astro.props
+// A card's headline sits one level under the heading above it: h3 under
+// the index's lead post, h2 on a filter's page, which has no lead.
+type Props = { post: Post; level?: 2 | 3 }
+const { post, level = 3 } = Astro.props
+const Heading = level === 2 ? 'h2' : 'h3'
 ---
 
 <article class="vx-card">
   <Cover post={post} sizes="(min-width: 1100px) 380px, (min-width: 700px) 50vw, 100vw" />
   <div class="vx-card-body">
     <Byline post={post} />
-    <h3 class:list={{ 'vx-title-in-cover': coverShowsTitle(post) }}><a href={post.href}>{post.title}</a></h3>
+    <Heading class:list={['vx-card-title', { 'vx-title-in-cover': coverShowsTitle(post) }]}>
+      <a href={post.href}>{post.title}</a>
+    </Heading>
     <p class="vx-card-excerpt">{post.excerpt}</p>
   </div>
 </article>

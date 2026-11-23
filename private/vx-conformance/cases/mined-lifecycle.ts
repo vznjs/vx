@@ -1377,9 +1377,6 @@ export default [
       },
     ],
   }),
-] as Case[]
-
-export const pending: Case[] = [
   // vx task-tree-kill: a vx started with SIGHUP ignored (nohup) runs on, as a script's `&` job does for SIGINT
   defineCase({
     id: 'failure/run-with-sigint-ignored-runs-through-ctrl-c',
@@ -1435,4 +1432,6 @@ export const pending: Case[] = [
       },
     ],
   }),
-]
+] as Case[]
+
+export const pending: Case[] = []

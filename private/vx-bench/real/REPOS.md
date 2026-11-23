@@ -356,7 +356,7 @@ filters of the repo's own `build` script — `astro create-astro
   each package's own outputs are in its hash: Turbo's first run after a
   restore rebuilt all 32 (59.6 s) and, 19 builds not being
   byte-reproducible, the run after that rebuilt those 19 (48.8 s, 13
-  cached), forever. Probed with `--dry=json`: one byte appended to a
+  cached), forever. Probed with `--dry --format json`: one byte appended to a
   gitignored `dist/index.js` changes the hash. vx excludes a task's
   declared outputs from its inputs on the same config.
 - The wide set (`build test`, 55) is dropped: `test` depends on `^test`
@@ -475,7 +475,7 @@ The same arms against the repo's own Nx (`NX_DAEMON=false`,
 `NX_NO_CLOUD=true`: local runner against local runner), on the
 `vx.config` files `bunx @vzn/vx-migrate --from nx` wrote from the
 repo's exported graph. Parity is the task graph Nx plans
-(`nx run-many … --graph=<file>`) against vx's `--dry=json`. Two
+(`nx run-many … --graph=<file>`) against vx's `--dry --format json`. Two
 bench-side rules for every Nx repo, named here: the generated configs
 are rewritten from `.ts` to `.mjs` (the type import dropped), because
 a package's `tsc --build` includes every `.ts` under it and compiled

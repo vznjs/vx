@@ -32,3 +32,17 @@ describe('the site guides follow PLUGIN_HOOKS', () => {
     })
   }
 })
+
+// The guide said a throw in `measures` or the `output` hook stopped the run;
+// core warns and goes on for both (plugin-host.ts `measuresOf`,
+// output-host.ts). Each hook core does not stop on is named in the list of
+// what a throw costs, so "any other hook stops the run" stays true.
+it('writing-plugins.mdx names every hook whose throw does not stop the run', async () => {
+  const text = await Bun.file(path.join(GUIDES, 'writing-plugins.mdx')).text()
+  const section = text.slice(text.indexOf('## What core refuses'), text.indexOf('## Next'))
+  const before = section.slice(0, section.indexOf('A throw in any other hook stops the run'))
+  for (const hook of ['telemetry', 'admit', 'output', 'measures', 'teardown'] as const) {
+    expect(PLUGIN_HOOKS).toContain(hook)
+    expect(before).toContain(`\`${hook}\``)
+  }
+})

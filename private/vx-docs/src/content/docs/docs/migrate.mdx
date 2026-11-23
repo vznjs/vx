@@ -48,22 +48,27 @@ bunx @vzn/vx init --native
 ```
 
 ```ansi
-[4m[58;2;110;118;129m  [1m[38;2;167;139;250mvx-migrate 0.0.0[0m[4m[58;2;110;118;129m[0m
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mvx-migrate 0.0.659[0m[4m[58;2;110;118;129m[0m
   [2mfrom    [0m  [38;2;203;213;225mturbo.json[0m
-  [2mran     [0m  [38;2;203;213;225mnpm install -D @vzn/vx-lockfile @vzn/vx-history[0m
-  [2mran     [0m  [38;2;203;213;225mnpm uninstall @vzn/vx-migrate[0m
+  [2mran     [0m  [38;2;203;213;225mnpm install -D @vzn/vx@0.0.659 @vzn/vx-lockfile@0.0.659 @vzn/vx-history@0.0.659[0m
   [2mtasks   [0m  [38;2;34;197;94m3 clean[0m
   [2mfiles   [0m  [38;2;203;213;225mpackages/app/vx.config.ts[0m
             [38;2;203;213;225mpackages/lib/vx.config.ts[0m
             [38;2;203;213;225m.vx/workspace.ts[0m
+            [38;2;203;213;225m.vx/.gitignore[0m
   [2mlock    [0m  [38;2;203;213;225m2 project configs → .vx/projects.lock, .vx/dependencies.lock[0m
   [2mnote    [0m  [38;2;203;213;225mTurbo passes its builtin env (HOME, CI, PATH, VERCEL_* and the rest) to each task; vx passes the names a task lists — add the ones a task reads to exec.env.passThrough[0m
+            [38;2;203;213;225mno package has a file the outputs of build ("dist/**") match yet, so they were not checked: vx requires every output (Turbo cached what was present), and a run that writes no file one names fails and caches nothing — keep only the outputs each command always writes[0m
 
   [2mnext    [0m  [1mvx run build --all[0m
 ```
 
-Under `files`, each package got a `vx.config.ts`. The `note` line is the
-one thing to check: a task sees only the environment variables it lists.
+Under `files`, each package got a `vx.config.ts`. Check the `note` lines:
+a task sees only the environment variables it lists.
+
+Every output is **required**: vx fails a run that writes no file an output
+names, where Turbo cached what was there. A `TODO` or note names each
+output that may match nothing.
 
 This is `packages/lib/vx.config.ts`, as written:
 
@@ -118,7 +123,7 @@ task. Each task gets a `TODO` instead, so you list what it reads.
 | `tasks` / `pipeline`                                        | `tasks`                                                                  |
 | `dependsOn`                                                 | `dependsOn`, the same `'build'`, `'^build'`, `'pkg#build'` syntax        |
 | `inputs`                                                    | `inputs.files`; a glob that reaches a nested workspace package also in `inputs.workspaceFiles` |
-| `outputs`                                                   | `outputs.files`, plus the `.tsbuildinfo` a `tsc -b` writes outside them |
+| `outputs`                                                   | `outputs.files`, plus the `.tsbuildinfo` a `tsc -b` writes outside them; each one is required, so one that matches no file yet is named |
 | `env`                                                       | `inputs.env` **and** `exec.env.passThrough`                        |
 | `passThroughEnv`                                            | `exec.env.passThrough`                                                   |
 | `cache: false`                                              | no `cache: true`: the task always runs, keyed on its `inputs`            |
@@ -167,10 +172,9 @@ bunx @vzn/vx init --native
 ```
 
 ```ansi
-[4m[58;2;110;118;129m  [1m[38;2;167;139;250mvx-migrate 0.0.0[0m[4m[58;2;110;118;129m[0m
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mvx-migrate 0.0.659[0m[4m[58;2;110;118;129m[0m
   [2mfrom    [0m  [38;2;203;213;225mnx graph[0m
-  [2mran     [0m  [38;2;203;213;225mnpm install -D @vzn/vx-lockfile @vzn/vx-history[0m
-  [2mran     [0m  [38;2;203;213;225mnpm uninstall @vzn/vx-migrate[0m
+  [2mran     [0m  [38;2;203;213;225mnpm install -D @vzn/vx@0.0.659 @vzn/vx-lockfile@0.0.659 @vzn/vx-history@0.0.659[0m
   [2mtasks   [0m  [38;2;34;197;94m2 clean[0m
   [2mfiles   [0m  [38;2;203;213;225mpackages/app/vx.config.ts[0m
             [38;2;203;213;225mpackages/lib/vx.config.ts[0m
@@ -178,6 +182,7 @@ bunx @vzn/vx init --native
             [38;2;203;213;225m.vx/.gitignore[0m
   [2mlock    [0m  [38;2;203;213;225m2 project configs → .vx/projects.lock, .vx/dependencies.lock[0m
   [2mnote    [0m  [38;2;203;213;225mmigrating from the resolved project-graph snapshot — plugin-inferred targets are frozen as static config; [0m[1m`nx:run-commands`[0m[38;2;203;213;225m targets are their shell lines[0m
+            [38;2;203;213;225mNx caches whichever of a target's outputs exist; vx fails a task when one of its output patterns matches nothing ("outputs matched no files"): 2 tasks declare outputs — remove each pattern its command never writes[0m
 
   [2mnext    [0m  [1mvx run build --all[0m
 ```
@@ -240,7 +245,7 @@ To drop Nx, rewrite each one as the command it wraps: `jest`,
 | `nx build app`                       | `vx run app#build`                                        |
 | `nx run app:build:production`        | `vx run app#build:production`                             |
 | `nx affected -t test`                | `vx run test --affected` (`nx()` takes `NX_BASE` or `defaultBase` as its base) |
-| `nx graph`                           | `vx run build --all --dry=json` (tasks and their deps), and the [graph explorer](../graph-explorer/) |
+| `nx graph`                           | `vx run build --all --dry --format json` (tasks and their deps), and the [graph explorer](../graph-explorer/) |
 | `nx reset`                           | `vx cache clean` clears it all; `--older-than <age>` trims it; there is no daemon |
 | Nx Cloud cache                       | [`nxCache()`](../../docs/remote-cache/) for a self-hosted Nx cache |
 
@@ -304,12 +309,13 @@ export default {
 ```
 
 ```ansi
-[4m[58;2;110;118;129m  [1m[38;2;167;139;250mvx-migrate 0.0.0[0m[4m[58;2;110;118;129m[0m
-  [2mfrom    [0m  turbo.json, run by turbo() from @vzn/vx-migrate
-  [2mran     [0m  npm install -D @vzn/vx-lockfile @vzn/vx-history
-  [2mfiles   [0m  .vx/workspace.ts
-  [2mlock    [0m  0 project configs → .vx/projects.lock, .vx/dependencies.lock (and the tasks a plugin maps for app, lib)
-  [2mnote    [0m  a temporary start: vx init --native writes native config
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mvx-migrate 0.0.659[0m[4m[58;2;110;118;129m[0m
+  [2mfrom    [0m  [38;2;203;213;225mturbo.json, run by turbo() from @vzn/vx-migrate[0m
+  [2mran     [0m  [38;2;203;213;225mnpm install -D @vzn/vx@0.0.659 @vzn/vx-migrate@0.0.659 @vzn/vx-lockfile@0.0.659 @vzn/vx-history@0.0.659[0m
+  [2mfiles   [0m  [38;2;203;213;225m.vx/workspace.ts[0m
+            [38;2;203;213;225m.vx/.gitignore[0m
+  [2mlock    [0m  [38;2;203;213;225m0 project configs → .vx/projects.lock, .vx/dependencies.lock (and the tasks a plugin maps for app, lib)[0m
+  [2mnote    [0m  [38;2;203;213;225ma temporary start: vx init --native writes native config[0m
 
   [2mnext    [0m  [1mvx run build --all[0m
 ```
@@ -340,13 +346,13 @@ export default {
 ```
 
 ```ansi
-[4m[58;2;110;118;129m  [1m[38;2;167;139;250mvx-migrate 0.0.0[0m[4m[58;2;110;118;129m[0m
-  [2mfrom    [0m  nx.json, run by nx() from @vzn/vx-migrate
-  [2mran     [0m  npm install -D @vzn/vx-lockfile @vzn/vx-history
-  [2mfiles   [0m  .vx/workspace.ts
-            .vx/.gitignore
-  [2mlock    [0m  0 project configs → .vx/projects.lock, .vx/dependencies.lock (and the tasks a plugin maps for app, lib)
-  [2mnote    [0m  a temporary start: vx init --native writes native config
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mvx-migrate 0.0.659[0m[4m[58;2;110;118;129m[0m
+  [2mfrom    [0m  [38;2;203;213;225mnx.json, run by nx() from @vzn/vx-migrate[0m
+  [2mran     [0m  [38;2;203;213;225mnpm install -D @vzn/vx@0.0.659 @vzn/vx-migrate@0.0.659 @vzn/vx-lockfile@0.0.659 @vzn/vx-history@0.0.659[0m
+  [2mfiles   [0m  [38;2;203;213;225m.vx/workspace.ts[0m
+            [38;2;203;213;225m.vx/.gitignore[0m
+  [2mlock    [0m  [38;2;203;213;225m0 project configs → .vx/projects.lock, .vx/dependencies.lock (and the tasks a plugin maps for app, lib)[0m
+  [2mnote    [0m  [38;2;203;213;225ma temporary start: vx init --native writes native config[0m
 
   [2mnext    [0m  [1mvx run build --all[0m
 ```

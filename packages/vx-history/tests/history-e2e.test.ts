@@ -444,6 +444,36 @@ describe('vx-history plugin end to end', () => {
     TIMEOUT,
   )
 
+  // A group runs no command, so it has no timing to learn: `vx history`
+  // listed each (the default `build` of a project with none) as a task
+  // "with no execution in the window", one the schedule never asks about.
+  it(
+    '`vx history` lists no group, as the schedule asks about none',
+    async () => {
+      await pkg(
+        'a',
+        "export default { tasks: { build: { exec: { command: 'true' } }, all: { dependsOn: ['build'] } } }\n",
+      )
+      await Bun.write(
+        path.join(root, '.vx/workspace.mjs'),
+        `import { vxHistory } from ${JSON.stringify(PLUGIN_INDEX)}\n` +
+          localWorkspaceSource(['vxHistory()']),
+      )
+      Bun.spawnSync({ cmd: [process.execPath, CORE_BIN, 'lock'], cwd: root })
+      const r = await run({ cwd: root, tasks: ['all'], log: silent(), handleSignals: false })
+      expect(r.ok).toBe(true)
+      const json = Bun.spawnSync({
+        cmd: [process.execPath, CORE_BIN, 'history', '--format', 'json'],
+        cwd: root,
+      })
+      const out = JSON.parse(json.stdout.toString()) as { tasks: { id: string }[] }
+      expect(out.tasks.map((t) => t.id)).toEqual(['a#build'])
+      const pretty = Bun.spawnSync({ cmd: [process.execPath, CORE_BIN, 'history'], cwd: root })
+      expect(pretty.stdout.toString()).not.toContain('no execution in the window')
+    },
+    TIMEOUT,
+  )
+
   it(
     'an assumed duration orders the very first run, before any history exists',
     async () => {

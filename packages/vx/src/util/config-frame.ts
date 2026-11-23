@@ -448,7 +448,8 @@ function framed(
   }
   const lead = lines[at.line - 1]!.slice(0, at.col - 1)
     .replace(/\t/g, '  ')
-    .replace(/\S/g, ' ')
+    // As many columns as the character takes on screen: a CJK name takes two.
+    .replace(/\S/gu, (ch) => ' '.repeat(Bun.stringWidth(ch)))
   frame.push(`  ${' '.repeat(width)} | ${lead}^`)
   return { line: `${shownPath(file, cwd)}:${at.line}:${at.col}${rest}`, frame: frame.join('\n') }
 }

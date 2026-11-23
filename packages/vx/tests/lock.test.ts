@@ -15,7 +15,7 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { addProject, makeWorkspace as makeWorkspaceRoot } from './helpers/workspace.js'
 import { noticed } from './helpers/notice.js'
-import { readLockfile } from '../src/workspace/lockfile.js'
+import { LOCKFILE_VERSION, readLockfile } from '../src/workspace/lockfile.js'
 import { BIN, vx as spawnVx } from './helpers/vx.js'
 
 const TIMEOUT = 30_000
@@ -133,7 +133,7 @@ describe('vx lock (e2e)', () => {
       const lock = await vx(root, ['lock'], { X: 'a' })
       expect(lock.code).toBe(0)
       const lockJson = (await readLockfile(root))!
-      expect(lockJson.version).toBe(8)
+      expect(lockJson.version).toBe(LOCKFILE_VERSION)
       const app = lockJson.projects['packages/app']!
       expect([app.file, app.config!.tasks!['build']!.exec!.command]).toEqual([
         'vx.config.mjs',
@@ -169,7 +169,7 @@ describe('vx lock (e2e)', () => {
   )
 
   it(
-    'a changed config file: a run keeps the freeze until re-lock',
+    'a changed config file: a run refuses it until re-lock',
     async () => {
       const dir = await addProject(root, 'app', ENV_CONFIG)
       expect((await vx(root, ['lock'], { X: 'a' })).code).toBe(0)
@@ -183,9 +183,8 @@ describe('vx lock (e2e)', () => {
       expect(check.code).toBe(1)
       expect(check.err).toBe(DRIFT('tasks.build.exec.command: "echo flavor-a" → "echo edited"'))
 
-      // A run trusts the lock outright — no staleness checks; the
-      // pipeline's `vx lock --check` (above, exit 1) is the guard.
-      // It runs the FROZEN config, not the edited file.
+      // A run reads the lock, never the config: it names the edit and
+      // refuses, and leaves the lock as it was.
       const frozen = await vx(
         root,
         ['run', 'build', '--all', '--no-cache', '--output-logs', 'full'],
@@ -193,9 +192,11 @@ describe('vx lock (e2e)', () => {
           X: 'a',
         },
       )
-      expect(frozen.code).toBe(0)
-      expect(frozen.out).toContain('flavor-a')
-      expect(frozen.out).not.toContain('edited')
+      expect(frozen.code).toBe(1)
+      expect(frozen.err).toContain(
+        'packages/app/vx.config.mjs changed since the last `vx lock` — run `vx lock`',
+      )
+      expect(frozen.out).not.toContain('flavor-a')
 
       // Re-lock brings the edit into the frozen graph.
       expect((await vx(root, ['lock'], { X: 'a' })).code).toBe(0)
@@ -276,7 +277,9 @@ describe('vx lock (e2e)', () => {
       const ours = await Bun.file(file).text()
       await writeFile(file, `<<<<<<< HEAD\n${ours}=======\n${ours}>>>>>>> other\n`)
       const invalid = (verb: string): string =>
-        noticed(`vx ${verb}: .vx/projects.lock is not valid JSON — re-run \`vx lock\` or delete it`)
+        noticed(
+          `vx ${verb}: .vx/projects.lock holds a git merge conflict: run \`vx lock\`, which writes it anew from the configs`,
+        )
       const run = await vx(root, ['run', 'build', '--all', '--no-cache'], { X: 'a' })
       expect([run.code, run.err]).toEqual([1, invalid('run')])
       const check = await vx(root, ['lock', '--check'], { X: 'a' })
@@ -315,9 +318,8 @@ describe('vx lock (e2e)', () => {
           await writeFile(
             file,
             bom +
-              `{"version":8}\n` +
-              `#t\t${JSON.stringify(app.tasks.build)}\n` +
-              `app\t${JSON.stringify({ path: 'packages/app', file: 'vx.config.mjs', config: { tasks: { build: '#t' } } })}\n`,
+              `{"version":${LOCKFILE_VERSION}}\n#ttttttt\n${JSON.stringify(app.tasks.build)}\n` +
+              `app\t{"path":"packages/app","file":"vx.config.mjs"}\n\tbuild\n#ttttttt\n`,
           )
           const run = await vx(root, ['run', 'build', '--all', '--no-cache'], { X: 'a' })
           expect(run.code).toBe(1)

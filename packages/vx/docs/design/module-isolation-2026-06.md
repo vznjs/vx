@@ -89,7 +89,7 @@ façade — exports unchanged), `version.ts` (new).
 
 ### Allowed dependency matrix (rows import columns, via index only)
 
-|                  | util | config | version | workspace | graph | cache | exec | orchestrator | cli |
+| Module           | util | config | version | workspace | graph | cache | exec | orchestrator | cli |
 | ---------------- | ---- | ------ | ------- | --------- | ----- | ----- | ---- | ------------ | --- |
 | **workspace**    | ✓    | ✓      |         | —         |       |       |      |              |     |
 | **graph**        | ✓    | ✓      |         | ✓         | —     |       |      |              |     |

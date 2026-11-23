@@ -22,3 +22,10 @@ it('NO_COLOR wins over FORCE_COLOR, and a refusal keeps its usage lines', () => 
     '✗ vx-x  bad port\nusage: vx-x\n',
   )
 })
+
+it('paints a URL without the punctuation that follows it', () => {
+  process.env['FORCE_COLOR'] = '1'
+  delete process.env['NO_COLOR']
+  const line = statusLine('err', 'vx-x', 'AUDIENCE: the origin (https://c.example.com), not x', {})
+  expect(line).toContain('\x1b[38;2;6;182;212mhttps://c.example.com\x1b[0m),')
+})

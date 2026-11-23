@@ -1,0 +1,11 @@
+{
+  "name": "site",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "format": "workspace:*",
+    "next": "16.4.6",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  }
+}

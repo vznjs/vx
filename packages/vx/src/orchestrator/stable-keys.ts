@@ -71,6 +71,76 @@ export interface StableKey {
 }
 
 /**
+ * Every project's declared `outputs.files`, over all its tasks: a superset of
+ * what any one reader's upstream producers declare. Also where an uncached
+ * sandboxed task's write grants let it write in its project: those writes are
+ * bounded like declared outputs, so the task is not one whose writes land
+ * anywhere (`grantedWriteGlobs`); `boundedWriters` names those tasks.
+ */
+function projectWriteGlobs(
+  nodes: ReadonlyMap<string, TaskNode>,
+  workspaceRoot: string,
+): { outputsOf: Map<string, string[]>; boundedWriters: Set<string> } {
+  const outputsOf = new Map<string, string[]>()
+  const boundedWriters = new Set<string>()
+  for (const n of nodes.values()) {
+    let files = n.config.outputs?.files ?? []
+    if (
+      n.config.exec?.sandbox !== undefined &&
+      undeclaredWriteReach(n, workspaceRoot) === 'project'
+    ) {
+      const granted = grantedWriteGlobs(n)
+      if (granted !== undefined) {
+        boundedWriters.add(n.id)
+        files = [...files, ...granted]
+      }
+    }
+    if (files.length === 0) continue
+    const list = outputsOf.get(n.projectName)
+    if (list === undefined) outputsOf.set(n.projectName, [...files])
+    else list.push(...files)
+  }
+  return { outputsOf, boundedWriters }
+}
+
+/** Whether any task's key leaves a dependency out (`inputs.tasks`). */
+function anyTaskFilter(nodes: ReadonlyMap<string, TaskNode>): boolean {
+  for (const n of nodes.values()) if (n.config.inputs?.tasks !== undefined) return true
+  return false
+}
+
+/** Each project's directory relative to the workspace root. */
+function projectDirs(
+  nodes: ReadonlyMap<string, TaskNode>,
+  workspaceRoot: string,
+): Map<string, string> {
+  const dirs = new Map<string, string>()
+  for (const node of nodes.values()) {
+    if (!dirs.has(node.projectName))
+      dirs.set(node.projectName, relPosix(workspaceRoot, node.projectDir))
+  }
+  return dirs
+}
+
+/** What `computeTaskHash` reads for `node`. */
+function hashInputs(
+  args: DeriveStableKeysArgs,
+  node: TaskNode,
+  upstream: Parameters<typeof computeTaskHash>[0]['upstream'],
+): Parameters<typeof computeTaskHash>[0] {
+  return {
+    node,
+    upstream,
+    workspaceRoot: args.workspaceRoot,
+    cache: args.cache,
+    forwardArgs: args.forwardArgs,
+    nestedProjectDirs: args.nestedDirsByProject.get(node.projectName) ?? [],
+    gitFilesCache: args.gitFilesCache,
+    hashCache: args.hashCache,
+  }
+}
+
+/**
  * Walk the graph in topo order, deriving each task's key as execute-task does
  * and classifying it stable or unstable. Returns the stable, cached, non-group
  * tasks with their keys.
@@ -106,30 +176,7 @@ export async function deriveStableKeys(args: DeriveStableKeysArgs): Promise<Stab
   const projects = new ProjectIndex(args.nodes)
   const outputProjectsById = new Map<string, ProjectSet>()
   const wideById = new Map<string, ProjectSet>()
-  // Every project's declared `outputs.files`, over all its tasks: a superset
-  // of what any one reader's upstream producers declare.
-  const outputsOf = new Map<string, string[]>()
-  // And where an uncached sandboxed task's write grants let it write in its
-  // project: those writes are bounded like declared outputs, so the task
-  // is not one whose writes land anywhere (`grantedWriteGlobs`).
-  const boundedWriters = new Set<string>()
-  for (const n of args.nodes.values()) {
-    let files = n.config.outputs?.files ?? []
-    if (
-      n.config.exec?.sandbox !== undefined &&
-      undeclaredWriteReach(n, args.workspaceRoot) === 'project'
-    ) {
-      const granted = grantedWriteGlobs(n)
-      if (granted !== undefined) {
-        boundedWriters.add(n.id)
-        files = [...files, ...granted]
-      }
-    }
-    if (files.length === 0) continue
-    const list = outputsOf.get(n.projectName)
-    if (list === undefined) outputsOf.set(n.projectName, [...files])
-    else list.push(...files)
-  }
+  const { outputsOf, boundedWriters } = projectWriteGlobs(args.nodes, args.workspaceRoot)
   const readableOf = readableOutputs(outputsOf, args.nodes, args.workspaceRoot, args.gitFilesCache)
   const rewritersById = new Map<string, ProjectSet>()
   const unfoldedById = new Map<string, ProjectSet>()
@@ -137,13 +184,7 @@ export async function deriveStableKeys(args: DeriveStableKeysArgs): Promise<Stab
   // A cached rewriter matters only to a key that leaves a dependency out (an
   // `inputs.tasks` filter). With none in the graph the sets stay empty and are
   // not built.
-  let anyUnfolded = false
-  for (const n of args.nodes.values()) {
-    if (n.config.inputs?.tasks !== undefined) {
-      anyUnfolded = true
-      break
-    }
-  }
+  const anyUnfolded = anyTaskFilter(args.nodes)
   const wsOutputUpstreamById = new Map<string, boolean>()
   const upstreamByDeps = new Map<
     string,
@@ -153,12 +194,7 @@ export async function deriveStableKeys(args: DeriveStableKeysArgs): Promise<Stab
   const stableKeys: StableKey[] = []
   // Workspace-relative project dirs, for the reach test of a
   // `workspaceFiles` reader against its upstream producers.
-  const dirByProject = new Map<string, string>()
-  for (const node of args.nodes.values()) {
-    if (!dirByProject.has(node.projectName)) {
-      dirByProject.set(node.projectName, relPosix(args.workspaceRoot, node.projectDir))
-    }
-  }
+  const dirByProject = projectDirs(args.nodes, args.workspaceRoot)
 
   for (const id of order) {
     const node = args.nodes.get(id)!
@@ -273,34 +309,13 @@ export async function deriveStableKeys(args: DeriveStableKeysArgs): Promise<Stab
         keyById.set(id, key)
         args.groupKeys?.set(id, { key, upstream })
       } else {
-        keyById.set(
-          id,
-          await computeTaskHash({
-            node,
-            upstream,
-            workspaceRoot: args.workspaceRoot,
-            cache: args.cache,
-            forwardArgs: args.forwardArgs,
-            nestedProjectDirs: args.nestedDirsByProject.get(node.projectName) ?? [],
-            gitFilesCache: args.gitFilesCache,
-            hashCache: args.hashCache,
-          }),
-        )
+        keyById.set(id, await computeTaskHash(hashInputs(args, node, upstream)))
       }
       if (node.deps.some((d) => unstableById.has(d))) unstableById.add(id)
       continue
     }
 
-    const hash = await computeTaskHash({
-      node,
-      upstream,
-      workspaceRoot: args.workspaceRoot,
-      cache: args.cache,
-      forwardArgs: args.forwardArgs,
-      nestedProjectDirs: args.nestedDirsByProject.get(node.projectName) ?? [],
-      gitFilesCache: args.gitFilesCache,
-      hashCache: args.hashCache,
-    })
+    const hash = await computeTaskHash(hashInputs(args, node, upstream))
     keyById.set(id, hash)
 
     const unstable =
@@ -355,16 +370,7 @@ export async function rederiveKeys(
       id,
       isGroupTask(node) && node.config.inputs === undefined
         ? computeGroupHash(upstream)
-        : await computeTaskHash({
-            node,
-            upstream,
-            workspaceRoot: args.workspaceRoot,
-            cache: args.cache,
-            forwardArgs: args.forwardArgs,
-            nestedProjectDirs: args.nestedDirsByProject.get(node.projectName) ?? [],
-            gitFilesCache: args.gitFilesCache,
-            hashCache: args.hashCache,
-          }),
+        : await computeTaskHash(hashInputs(args, node, upstream)),
     )
   }
 }

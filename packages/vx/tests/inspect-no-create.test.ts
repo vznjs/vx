@@ -3,7 +3,7 @@
 // then said "no recorded runs yet"; so did `why`, `info` and a dry prune,
 // and on a fresh workspace each of them created `.vx` before any run.
 
-import { existsSync, realpathSync } from 'node:fs'
+import { existsSync, readdirSync, realpathSync } from 'node:fs'
 import { rm } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
@@ -46,12 +46,16 @@ describe('a reading verb makes nothing on disk', () => {
     async () => {
       // `show` takes no --cache-dir, so it is not in VERBS; it evaluated
       // configs through the cache and opened (made) one (E-38).
+      // `vx lock` (which `info` and `show` take first here) keeps its config
+      // stamps and bundle there; a reading verb adds nothing to that.
+      expect((await vx(root, ['lock'])).code).toBe(0)
+      const cache = path.join(root, '.vx', 'cache')
+      const listing = () => (existsSync(cache) ? readdirSync(cache).sort() : [])
+      const locked = listing()
+      expect(locked).not.toContain('cache.db')
       for (const args of [...VERBS, ['show'], ['show', 'app#build']]) {
         await vx(root, args)
-        expect({ args, made: existsSync(path.join(root, '.vx', 'cache')) }).toEqual({
-          args,
-          made: false,
-        })
+        expect({ args, made: listing() }).toEqual({ args, made: locked })
       }
       // The positive: a run does make it, so the check above can see one.
       expect((await vx(root, ['run', 'build', '--all'])).code).toBe(0)
@@ -83,7 +87,7 @@ describe('a reading verb makes nothing on disk', () => {
         expect({ args, code: r.code, err: r.err, made: existsSync(typo) }).toEqual({
           args,
           code: 1,
-          err: `✗ vx ${args[0]}  --cache-dir .vx/cahce: no such directory (${typo})`,
+          err: `✗ vx ${args[0]}  --cache-dir .vx/cahce: no such directory (${typo}) — check the path, or drop --cache-dir to read the workspace's own cache`,
           made: false,
         })
       }

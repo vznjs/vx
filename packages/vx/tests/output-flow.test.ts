@@ -204,6 +204,22 @@ describe('defaultLogger visibility matrix — broad', () => {
     ])
   })
 
+  // `vx run dev --all` hid every server's address: a ready server is a
+  // success row, and its pre-ready output (`Local: http://…`) was dropped.
+  it('a ready server → its row, then its frame with what it printed before ready', () => {
+    const out = sink()
+    const log = defaultLogger(NO_COLORS, { mode: 'broad' }, out)
+    const n = mkNode('web#dev', { requested: true })
+    ;(n.config.exec as { persistent?: unknown }).persistent = { readyWhen: 'Local:' }
+    log.taskStart?.(n)
+    log.taskStdout(n, '  ➜  Local:   http://localhost:5173/\n')
+    log.taskComplete(n, mkOutcome(n, 'success'))
+    const text = out.text()
+    expect(text).toContain('web#dev')
+    expect(text).toContain('┌─ ▸ web#dev')
+    expect(text).toContain('Local:   http://localhost:5173/')
+  })
+
   it('group tasks → silent', () => {
     const out = sink()
     const log = defaultLogger(NO_COLORS, { mode: 'broad' }, out)
@@ -850,6 +866,33 @@ describe('GitHub Actions renderer (full mode + gha)', () => {
     expect(text).toContain('┌─ one#boom')
     expect(text).not.toContain('::group::')
     expect(text).not.toContain('::endgroup::')
+  })
+
+  // CI's default view deferred the frame and wrote no annotation: a red
+  // check named no task (2026-11-23).
+  it("errors-only, CI's default, annotates each failure above its fenced frame", () => {
+    const out = sink()
+    const log = defaultLogger(NO_COLORS, { mode: 'errors-only', gha: true, ci: true }, out)
+    const n = mkNode('one#boom')
+    log.taskStderr(n, '::warning::from the task\n')
+    log.taskComplete(n, mkOutcome(n, 'failed', { exitCode: 137 }))
+    const ok = mkNode('one#ok')
+    log.taskComplete(ok, mkOutcome(ok, 'success'))
+    log.runEnd?.()
+    const text = out.text()
+    const note = text.indexOf('::error title=one#boom::failed (exit 137, 128 + SIGKILL)\n')
+    expect(note).toBeGreaterThan(-1)
+    expect(text.indexOf('::stop-commands::')).toBeGreaterThan(note)
+    expect(text.indexOf('::warning::from the task')).toBeGreaterThan(
+      text.indexOf('::stop-commands::'),
+    )
+    expect(text.match(/::error /g)).toHaveLength(1)
+    // CONTROL: off Actions, no workflow command.
+    const plain = sink()
+    const off = defaultLogger(NO_COLORS, { mode: 'errors-only', ci: true }, plain)
+    off.taskComplete(n, mkOutcome(n, 'failed', { exitCode: 1 }))
+    off.runEnd?.()
+    expect(plain.text()).not.toContain('::')
   })
 
   it('the annotation names the signal an exit above 128 stands for', () => {

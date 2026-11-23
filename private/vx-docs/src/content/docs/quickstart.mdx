@@ -8,7 +8,8 @@ import { Steps, Aside, LinkCard, CardGrid } from '@astrojs/starlight/components'
 Cache your first task in two minutes, in a workspace you already have.
 
 <Aside title="What you need">
-  Git, and macOS or Linux with glibc (not Alpine's musl). On Windows, use WSL2.
+  [Bun](https://bun.com) 1.4.4 or later, Git, and macOS or Linux with glibc (not
+  Alpine's musl). On Windows, use WSL2.
 </Aside>
 
 <Steps>
@@ -21,14 +22,28 @@ Cache your first task in two minutes, in a workspace you already have.
    bunx @vzn/vx init
    ```
 
-   It installs `vx` and writes two files. `.vx/workspace.ts` marks the
-   workspace root and names your lockfile's plugin, such as `bun()`. The
-   empty `vx.config.ts` is where your tasks go.
+   It installs the `vx` command and writes your first files. Look at
+   `files`: `.vx/workspace.ts` marks the workspace root, and
+   `vx.config.ts` is where your tasks go.
+
+   ```ansi
+   [4m[58;2;110;118;129m  [1m[38;2;167;139;250mvx init 0.0.659[0m[4m[58;2;110;118;129m      [0m
+     [2mfrom     [0m  [38;2;203;213;225mno turbo.json or nx.json[0m
+     [2mfiles    [0m  [38;2;203;213;225m.vx/workspace.ts[0m
+                [38;2;203;213;225mvx.config.ts[0m
+                [38;2;203;213;225m.vx/.gitignore[0m
+                [38;2;203;213;225m.vx/.gitattributes[0m
+     [2minstalled[0m  [38;2;203;213;225mbun add -g @vzn/vx@0.0.659[0m
+                [38;2;203;213;225mbun add @vzn/vx@0.0.659 @vzn/vx-lockfile@0.0.659 --dev[0m
+     [2mlock     [0m  [38;2;203;213;225m1 project config → .vx/projects.lock, .vx/dependencies.lock[0m
+
+     [2mnext     [0m  [1mdeclare a task in vx.config.ts, then vx lock && vx run <task>[0m
+   ```
 
 2. **Add a task**
 
-   A task is one command. Tell vx what to run, which files it reads and
-   which files it writes. `cache: true` lets vx skip it when nothing changed.
+   A task is one command, the files it reads and the files it writes.
+   `cache: true` lets vx skip it when nothing changed.
 
    ```ts title="vx.config.ts" ins={5-10}
    import type { ProjectConfig } from '@vzn/vx/config'
@@ -45,15 +60,19 @@ Cache your first task in two minutes, in a workspace you already have.
    } satisfies ProjectConfig
    ```
 
-   Then save your config to the lock. Every run reads the lock, so run
-   this after each config change:
+   Save the config to the lock. Every run reads the lock, so run this
+   after each config change:
 
    ```sh
    vx lock
    ```
 
-   Commit `.vx/` and the `vx.lock.json` beside your config with the rest
-   of your code.
+   ```ansi
+   [38;2;34;197;94m✓[0m [1mvx lock[0m  [38;2;203;213;225m1 project config → .vx/projects.lock, .vx/dependencies.lock[0m
+   ```
+
+   Commit `.vx/`, `vx.config.ts` and the `vx.lock.json` beside it with
+   the rest of your code.
 
 3. **Run it twice**
 
@@ -62,19 +81,83 @@ Cache your first task in two minutes, in a workspace you already have.
    vx run build
    ```
 
-   The first run builds and saves `dist/`. The second sees nothing changed
-   and does no work: it ends `up-to-date`. `my-app` is the `name` in your
+   The first run builds as usual. In its summary, `local 1↑` means vx
+   saved `dist/` to its cache. `my-app` is the `name` in your
    `package.json`.
+
+   ```ansi title="first run"
+   [2m┌─[0m [1m[38;2;232;121;249mmy-app[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m>[0m $ vite build
+   [36mvite v7.3.8 [32mbuilding client environment for production...[36m[39m
+   transforming...
+   [32m✓[39m 3 modules transformed.
+   rendering chunks...
+   computing gzip size...
+   [2mdist/[22m[32mindex.html                [39m[1m[2m0.08 kB[22m[1m[22m[2m │ gzip: 0.09 kB[22m
+   [2mdist/[22m[2massets/[22m[36mindex-CAtcZSpD.js  [39m[1m[2m0.74 kB[22m[1m[22m[2m │ gzip: 0.42 kB[22m
+   [32m✓ built in 90ms[39m
+   [0m[2m└─[0m [1m[38;2;232;121;249mmy-app[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(314ms)[0m [2msuccess[0m
+
+
+   [4m[58;2;110;118;129m  [1m[38;2;167;139;250mSummary[0m[4m[58;2;110;118;129m      [2mvx 0.0.659[0m
+     [2mprojects[0m  [38;2;234;179;8m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
+               [38;2;234;179;8m1 in run[0m [2m·[0m [2m1 total[0m
+     [2mtasks   [0m  [38;2;34;197;94m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
+               [38;2;34;197;94m1 success[0m [2m·[0m [2m1 total[0m
+     [2mcache   [0m  [38;2;56;189;248m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
+               [2mlocal[0m [38;2;56;189;248m1↑[0m
+
+     [2minfo    [0m  4 workers [2m·[0m local cache [2m·[0m run 01a208ae-e6db-7256-9e90-72ff07fa997a
+     [2mtime    [0m  367ms
+   ```
+
+   The second run sees nothing changed and does no work: it ends
+   `up-to-date` and prints the first run's saved log.
 
    ```ansi title="second run"
    [2m┌─[0m [1m[38;2;232;121;249mmy-app[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m>[0m $ vite build
-   [2m└─[0m [1m[38;2;232;121;249mmy-app[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(3ms)[0m [2mup-to-date[0m
+   [36mvite v7.3.8 [32mbuilding client environment for production...[36m[39m
+   transforming...
+   [32m✓[39m 3 modules transformed.
+   rendering chunks...
+   computing gzip size...
+   [2mdist/[22m[32mindex.html                [39m[1m[2m0.08 kB[22m[1m[22m[2m │ gzip: 0.09 kB[22m
+   [2mdist/[22m[2massets/[22m[36mindex-CAtcZSpD.js  [39m[1m[2m0.74 kB[22m[1m[22m[2m │ gzip: 0.42 kB[22m
+   [32m✓ built in 90ms[39m
+   [2m└─[0m [1m[38;2;232;121;249mmy-app[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(6ms)[0m [2mup-to-date[0m
    ```
 
-4. **Change a file and ask why**
+4. **Get a cache hit**
+
+   Delete the output and run again. vx puts `dist/` back from its cache
+   instead of running vite:
+
+   ```sh
+   rm -rf dist
+   vx run build
+   ```
+
+   ```ansi
+   [2m┌─[0m [1m[38;2;232;121;249mmy-app[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m>[0m $ vite build
+   [36mvite v7.3.8 [32mbuilding client environment for production...[36m[39m
+   transforming...
+   [32m✓[39m 3 modules transformed.
+   rendering chunks...
+   computing gzip size...
+   [2mdist/[22m[32mindex.html                [39m[1m[2m0.08 kB[22m[1m[22m[2m │ gzip: 0.09 kB[22m
+   [2mdist/[22m[2massets/[22m[36mindex-CAtcZSpD.js  [39m[1m[2m0.74 kB[22m[1m[22m[2m │ gzip: 0.42 kB[22m
+   [32m✓ built in 90ms[39m
+   [2m└─[0m [1m[38;2;232;121;249mmy-app[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(25ms)[0m [2mrestored-local[0m
+
+     [2mcache   [0m  [38;2;56;189;248m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
+               [2mlocal[0m [38;2;56;189;248m1↓[0m
+   ```
+
+   Look for `restored-local` and `local 1↓`: the files came from the cache.
+
+5. **Change a file and ask why**
 
    Edit a file in `src/` and run again: the task runs, because an input
-   changed. `vx why` names the file. Look at the `verdict` line:
+   changed. `vx why` names the file on its `verdict` line:
 
    ```sh
    vx run build
@@ -82,25 +165,34 @@ Cache your first task in two minutes, in a workspace you already have.
    ```
 
    ```ansi
-   [4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhy[0m[4m[58;2;110;118;129m [2mmy-app#build[0m[4m[58;2;110;118;129m[0m
-     [2mrun     [0m  [38;2;203;213;225m01a1a6e5-f341-73e6-9beb-422ab5657b82[0m
-     [2mthis run[0m  [38;2;203;213;225m2026-11-04T14:10:50.333Z · success · executed · key e5165ba21c5d5286[0m
-     [2mprevious[0m  [38;2;203;213;225m2026-11-04T14:10:50.163Z · cache-hit · up-to-date · key 1d1cb0c5a5a357f3[0m
-     [2mverdict [0m  [38;2;234;179;8mcache key changed: file src/index.ts[0m
+   [4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhy[0m[4m[58;2;110;118;129m [2mmy-app#build[0m[4m[58;2;110;118;129m      [0m
+     [2mrun     [0m  [38;2;203;213;225m01a208ae-eb20-7023-87b7-4832be05e927[0m
+     [2mthis run[0m  [38;2;203;213;225m2026-11-23T13:53:30.941Z · success · executed · key b9363e7fbd47f9ea[0m
+     [2mprevious[0m  [38;2;203;213;225m2026-11-23T13:53:30.623Z · cache-hit · restored · key 8faea48d7c88c101[0m
+     [2mverdict [0m  [38;2;234;179;8mcache key changed: file src/main.js[0m
 
-   [4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhat changed[0m[4m[58;2;110;118;129m [2m1 of 7[0m[4m[58;2;110;118;129m[0m
-     [2mchange   kind  name          before → after[0m
-     [38;2;234;179;8mchanged[0m  [38;2;203;213;225mfile[0m  [1msrc/index.ts[0m  [38;2;203;213;225md00491fd7e5bb6fa28c517a0bb32b8b506539d4d → 0cfbf08886fca9a91cb753ec8734c84fcbe52c9f[0m
+   [4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhat changed[0m[4m[58;2;110;118;129m [2m1 of 8[0m[4m[58;2;110;118;129m      [0m
+     [2mchange   kind  name         before → after[0m
+     [38;2;234;179;8mchanged[0m  [38;2;203;213;225mfile[0m  [1msrc/main.js[0m  [38;2;203;213;225m1ab285265b552ce71d8c8635d726cc4a7d0b4dee → 838be8a72b128244a92a8f8f833c799b1cc85c31[0m
 
-   [4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhat to do[0m[4m[58;2;110;118;129m[0m
+   [4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhat to do[0m[4m[58;2;110;118;129m      [0m
      [2mfile    [0m  [38;2;203;213;225man edit re-runs by design; a file the task does not read belongs out of inputs.files[0m
    ```
 
 </Steps>
 
 You now have a cached task. In a monorepo, give each package its own
-`vx.config.ts`, and run every package's build from the root with
-`vx run build --all`.
+`vx.config.ts`, and build them all from the root with `vx run build --all`.
+
+## Start from an example
+
+Each example is a small workspace with its tasks, cache and tests set up.
+Copy one and follow its `README.md`.
+
+| Example | Tasks |
+| ------- | ----- |
+| [Vite and Vitest](https://github.com/vznjs/vx/tree/main/examples/vite) | an app and a library: `vite build`, `vitest run`, `oxlint` |
+| [Next.js](https://github.com/vznjs/vx/tree/main/examples/next) | an app and a shared package: `next build`, `vitest run`, `oxlint` |
 
 ## Next
 

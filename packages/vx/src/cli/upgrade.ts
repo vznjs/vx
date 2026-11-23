@@ -81,7 +81,9 @@ function platformPackage(): string {
   const os = process.platform
   const arch = process.arch === 'x64' || process.arch === 'arm64' ? process.arch : null
   if ((os !== 'darwin' && os !== 'linux') || arch === null) {
-    throw new UserError(`vx upgrade: unsupported platform ${process.platform}/${process.arch}`)
+    throw new UserError(
+      `vx upgrade: unsupported platform ${process.platform}/${process.arch} — vx ships binaries for linux and darwin on x64 and arm64; run it from source with bunx @vzn/vx instead`,
+    )
   }
   return `${PACKAGE}-${os}-${arch}`
 }
@@ -376,7 +378,9 @@ export function binaryFromTarball(tgz: Uint8Array): Uint8Array {
   try {
     tar = Bun.gunzipSync(tgz as Uint8Array<ArrayBuffer>)
   } catch {
-    throw new UserError('vx upgrade: the release tarball is not gzip — nothing replaced')
+    throw new UserError(
+      'vx upgrade: the release tarball is not gzip — nothing replaced; check that the registry or mirror serves npm tarballs as published',
+    )
   }
   const text = (b: Uint8Array): string => new TextDecoder().decode(b).replace(/\0[\s\S]*$/, '')
   for (let at = 0; at + 512 <= tar.length;) {
@@ -395,7 +399,9 @@ export function binaryFromTarball(tgz: Uint8Array): Uint8Array {
     }
     at = body + Math.ceil(size / 512) * 512
   }
-  throw new UserError('vx upgrade: the release tarball holds no package/vx — nothing replaced')
+  throw new UserError(
+    'vx upgrade: the release tarball holds no package/vx — nothing replaced; check that the registry or mirror serves npm tarballs as published',
+  )
 }
 
 /**
@@ -560,7 +566,9 @@ function readJson(file: string): Record<string, unknown> | null {
   } catch (err) {
     const code = (err as NodeJS.ErrnoException).code
     if (code === 'ENOENT' || code === 'ENOTDIR' || code === 'EISDIR') return null
-    throw new UserError(`vx upgrade: could not read ${file} (${(err as Error).message})`)
+    throw new UserError(
+      `vx upgrade: could not read ${file} (${(err as Error).message}) — give this user read access to it, then run vx upgrade again`,
+    )
   }
   let v: unknown
   try {
@@ -653,6 +661,13 @@ export function projectManager(dir: string, execPath: string): ManagedInstall['m
   return execPath.includes(`${path.sep}node_modules${path.sep}.pnpm${path.sep}`) ? 'pnpm' : 'npm'
 }
 
+/** `$name` as a POSIX path with `tail` after it; undefined when unset or relative. */
+function underEnv(name: string, tail: string): string | undefined {
+  const dir = process.env[name]
+  if (dir === undefined || !path.isAbsolute(dir)) return undefined
+  return `${dir.split(path.sep).join('/').replace(/\/+$/, '')}${tail}`
+}
+
 /**
  * How a package manager installed the binary at `execPath`, or null
  * (hand-installed). The path names the tree: a manager's global dir, or a
@@ -665,14 +680,28 @@ export function managedInstall(execPath: string, cwd: string): ManagedInstall | 
   if (owner === null) return null
   const p = execPath.split(path.sep).join('/')
   const root = p.slice(0, `${p}/`.indexOf('/node_modules/'))
-  if (p.includes('/_npx/') || /\/bunx-[^/]*\//.test(p)) {
+  // bunx: `<tmp>/bunx-<uid>-…` (older Bun), `<cache>/.bunx-<uid>/…` (1.4);
+  // pnpm dlx: `<cache>/pnpm/dlx/…`; yarn dlx: `<tmp>/dlx-<pid>/…`. Read as a
+  // project, the cache's own package.json had the manager add there.
+  if (p.includes('/_npx/') || /\/\.?bunx-[^/]*\/|\/pnpm\/dlx\/|\/dlx-[^/]*\//.test(p)) {
     throw new UserError(
       `vx upgrade: this vx runs from a package-manager cache (${execPath}) — nothing is installed to upgrade; ask for the version you want instead: bunx @vzn/vx@latest`,
     )
   }
-  if (p.includes('/.bun/install/global/')) return { manager: 'bun', scope: 'global', cwd: root }
+  // A global dir moved by BUN_INSTALL or PNPM_HOME read as a project, which
+  // `vx upgrade -g` refused as "the project's own".
+  if (p.includes('/.bun/install/global/') || root === underEnv('BUN_INSTALL', '/install/global'))
+    return { manager: 'bun', scope: 'global', cwd: root }
+  const pnpmHome = underEnv('PNPM_HOME', '/global/')
   if (/\/pnpm\/global\/|\/pnpm-global\//.test(p))
     return { manager: 'pnpm', scope: 'global', cwd: root }
+  // pnpm's global dir is `<PNPM_HOME>/global/<layout>`, its store `.pnpm` in it.
+  const layout =
+    pnpmHome !== undefined && p.startsWith(pnpmHome)
+      ? /^\d+\//.exec(p.slice(pnpmHome.length))
+      : null
+  if (layout !== null)
+    return { manager: 'pnpm', scope: 'global', cwd: `${pnpmHome}${layout[0].slice(0, -1)}` }
   if (/\/yarn\/global\//.test(p)) return { manager: 'yarn', scope: 'global', cwd: root }
   const field = listingField(root)
   if (field !== undefined) {
@@ -766,7 +795,9 @@ export async function targetVersion(tag: string | undefined, verb = 'vx upgrade'
   const v = ((await fetchManifest(PACKAGE, 'latest', verb)) as { version?: unknown } | null)
     ?.version
   if (typeof v !== 'string' || !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(v)) {
-    throw new UserError(`${verb}: the npm registry named no latest version of ${PACKAGE}`)
+    throw new UserError(
+      `${verb}: the npm registry named no latest version of ${PACKAGE} — check the registry this machine uses, or name a version: vx upgrade v<major>.<minor>.<patch>`,
+    )
   }
   return v
 }
@@ -895,7 +926,9 @@ export async function upgradeGlobal(
   await named(`global vx ${from}`, async () => {
     const current = answeredVersion(from)
     if (current === undefined) {
-      throw new UserError('vx upgrade: it did not answer `--version`, so it is left as it is')
+      throw new UserError(
+        'vx upgrade: it did not answer `--version`, so it is left as it is; run it with --version to see why, or reinstall it',
+      )
     }
     if (current === version) {
       ui.print('out', ui.status('info', 'vx upgrade', `global already at ${current}`))

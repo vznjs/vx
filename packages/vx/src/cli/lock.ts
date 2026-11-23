@@ -18,15 +18,18 @@ import {
   acquireRunLock,
   addedByPlugin,
   applyGraphStage,
+  captureGitContext,
   claimedDigests,
   lockDiscovery,
   fingerprintClaims,
   hasHook,
   ignoredConfigRefusal,
   loadProjects,
+  networkPatternRefusal,
 } from '../orchestrator/index.js'
 import { resolveSetting, runRules } from '../settings.js'
 import {
+  anyTaskGlob,
   checkIgnoreSync,
   configErrorFrame,
   configRefusal,
@@ -45,6 +48,7 @@ import {
   relPosix,
   type RefusalParts,
   UserError,
+  errorCode,
   secretMask,
   secretNamed,
   type SecretMask,
@@ -53,6 +57,8 @@ import {
   writeAllOrNone,
   writeNoFollow,
 } from '../util/index.js'
+import { makeIgnoredCacheDir } from '../cache/index.js'
+import { type ConfigStamps, takeConfigStamps, writeConfigStamps } from '../memo/index.js'
 import * as ui from '../ui/index.js'
 import { refusalNotice, sayNotice } from '../ui/index.js'
 import {
@@ -73,6 +79,7 @@ import {
   lockfileWrite,
   DEPENDENCIES_LOCK_NAME,
   dependenciesLock,
+  dependenciesLockRefusal,
   sameRecord,
   parseDependenciesLock,
   dependenciesLockWrite,
@@ -238,6 +245,14 @@ async function audit(root: string, warn: (message: string) => void): Promise<Gra
     }
     out.strayReviews = strayReviews
     out.shadowed = shadowed
+    out.stamps = {
+      cacheDir,
+      taken: await takeConfigStamps(
+        root,
+        found.map((f) => f.configPath),
+        captureGitContext(root).commitSha,
+      ),
+    }
     // The one load that evaluates: every reader reads the lock this writes.
     const configs = await loadProjectConfigs(
       found.map((f) => f.configPath),
@@ -286,6 +301,8 @@ async function audit(root: string, warn: (message: string) => void): Promise<Gra
     out.loaded = true
     out.dependencies = await dependenciesOf(root, out.all, plugins, cacheDir, warn)
     checkBracketLiterals(root, projects.values())
+    const badNetwork = await networkPatternRefusal(projects.values())
+    if (badNetwork !== undefined) throw new UserError(badNetwork, 'VX_E_LOCK')
     const names = new Set<string>()
     for (const entry of projects.values()) {
       const tasks = Object.entries(entry.config.tasks ?? {})
@@ -345,6 +362,7 @@ async function audit(root: string, warn: (message: string) => void): Promise<Gra
       return {
         ...out,
         broken: placedDependsOn(err, out.all, root) ?? err.message,
+        brokenCode: errorCode(err),
         ...(err.parts ? { brokenParts: err.parts } : {}),
         ...(err instanceof ConfigsRefused ? { alsoBroken: err.all.slice(1) } : {}),
       }
@@ -427,6 +445,8 @@ function everyGraphRefusal(
 interface GraphCheck {
   /** A graph rule's refusal, or a config that does not load; null when sound. */
   broken: string | null
+  /** `broken`'s error code (`VX_E_CYCLE`, `VX_E_CONFIG`, …). */
+  brokenCode?: string
   brokenParts?: RefusalParts
   /** Every config loaded and resolved: `broken`, if set, is a graph rule's refusal. */
   loaded: boolean
@@ -448,6 +468,8 @@ interface GraphCheck {
   shadowed: { file: string; read: string }[]
   /** What the dependencies resolve to here; null when the configs did not load. */
   dependencies: DependenciesLock | null
+  /** Each config as read before its evaluation, and where a run reads it back. */
+  stamps?: { cacheDir: string; taken: ConfigStamps }
 }
 
 /** Each project's edges and each claimed file's digests, as `--affected` reads them back. */
@@ -694,6 +716,7 @@ async function writeLock(
     root,
   )
   await writeIfMissing(path.join(root, '.vx', '.gitattributes'), DOT_VX_GITATTRIBUTES)
+  if (check.stamps) await keepConfigStamps(root, check.stamps)
   const n = metas.length
   say(
     `${n} project config${n === 1 ? '' : 's'} → ${LOCKFILE_NAME}, ${DEPENDENCIES_LOCK_NAME}${bareNote(bare)}`,
@@ -719,12 +742,33 @@ async function writeLock(
 
 /**
  * Variables a bundler writes into what it builds: Vite's, Next's, CRA's,
- * Astro's and SvelteKit's, Expo's, Gatsby's, Storybook's and Vue CLI's
- * public prefixes, and `NODE_ENV`. Only these: `passThrough` exists for
- * values that do not change the output (`CI`, a region, a token).
+ * Astro's and SvelteKit's, Expo's, Gatsby's, Storybook's, Vue CLI's, Bun's,
+ * Nx's, Nuxt's, Redwood's and Sanity's public prefixes, and `NODE_ENV`.
+ * Only these: `passThrough` exists for values that do not change the output
+ * (`CI`, a region, a token).
  */
 const INLINED_ENV =
-  /^(?:VITE_|NEXT_PUBLIC_|REACT_APP_|PUBLIC_|EXPO_PUBLIC_|GATSBY_|STORYBOOK_|VUE_APP_)|^NODE_ENV$/
+  /^(?:VITE_|NEXT_PUBLIC_|REACT_APP_|PUBLIC_|EXPO_PUBLIC_|GATSBY_|STORYBOOK_|VUE_APP_|BUN_PUBLIC_|NX_PUBLIC_|NUXT_ENV_|NUXT_PUBLIC_|REDWOOD_ENV_|SANITY_STUDIO_)|^NODE_ENV$/
+
+/**
+ * A dotenv file Vite, Next and Bun load from a project's directory on their
+ * own: `.env`, `.env.local`, `.env.<mode>`, `.env.<mode>.local`. A template
+ * (`.env.example`) is read by none.
+ */
+const LOADED_DOTENV =
+  /^\.env(?:\.(?!(?:example|sample|template|dist|defaults)(?:\.|$))[^.]+)?(?:\.local)?$/
+
+/** The loaded dotenv files in `dir`, sorted; one listing per project. */
+function dotenvFiles(dir: string): string[] {
+  try {
+    return readdirSync(dir, { withFileTypes: true })
+      .filter((e) => e.isFile() && LOADED_DOTENV.test(e.name))
+      .map((e) => e.name)
+      .sort()
+  } catch {
+    return []
+  }
+}
 
 /**
  * What a task reads that its key never sees, said where the lock evaluates
@@ -745,6 +789,7 @@ function unkeyedReads(root: string, check: GraphCheck): string[] {
     else tasks.push(task)
   }
   const found: { task: string; ws: string; rel: string; glob: string }[] = []
+  let dotenvOf: Map<string, string[]> | undefined
   for (const m of check.all) {
     for (const [name, t] of Object.entries(check.resolved.get(m.name)?.tasks ?? {})) {
       const task = `${m.name}#${name}`
@@ -762,10 +807,27 @@ function unkeyedReads(root: string, check: GraphCheck): string[] {
       ]) {
         const ws = relPosix(root, abs)
         // A `**` reader with no cache has no key to go stale.
-        if (glob.startsWith('**') && t.cache !== true) continue
+        if (glob.includes('**') && t.cache !== true) continue
         if (!own(relPosix(m.dir, abs)) && !ownWs(ws)) found.push({ task, ws, rel, glob })
       }
       if (t.cache !== true) continue
+      // A build that leaves a `.env` beside its config out of its inputs
+      // replays the old bundle after an edit to it: Vite inlines its values.
+      const outputs = (t.outputs?.files?.length ?? 0) + (t.outputs?.workspaceFiles?.length ?? 0)
+      if (outputs > 0) {
+        const files = t.inputs?.files ?? []
+        const keyed = anyTaskGlob(files.filter((g) => !g.startsWith('!')))
+        const excluded = anyTaskGlob(files.filter((g) => g.startsWith('!')).map((g) => g.slice(1)))
+        dotenvOf ??= new Map()
+        let env = dotenvOf.get(m.dir)
+        if (env === undefined) dotenvOf.set(m.dir, (env = dotenvFiles(m.dir)))
+        const unread = env.filter((f) => !keyed(f) && !excluded(f))
+        if (unread.length > 0)
+          said(
+            task,
+            `${unread.join(', ')} beside its config ${unread.length === 1 ? 'is' : 'are'} in no input, and Vite, Next and Bun load ${unread.length === 1 ? 'it' : 'them'} on their own — add '.env*' to inputs.files, or '!.env*' if the task reads none`,
+          )
+      }
       const quiet = new Set([...(t.inputs?.env ?? []), ...(t.exec?.env?.secret ?? [])])
       const unkeyed = (t.exec?.env?.passThrough ?? []).filter(
         (v) => INLINED_ENV.test(v) && !quiet.has(v) && !secretNamed(v),
@@ -1024,6 +1086,15 @@ function warnShadowed(root: string, check: GraphCheck, verb: string): void {
     )
 }
 
+/** One `vx lock --check` problem: its code is what an agent branches on. */
+interface LockProblem {
+  code: string
+  message: string
+}
+
+/** Drift `vx lock` fixes. */
+const stale = (message: string): LockProblem => ({ code: 'VX_E_LOCK', message })
+
 /**
  * Audit the lock: find and re-evaluate every config in the CURRENT
  * environment and deep-compare it with the locked object. That sees an
@@ -1038,7 +1109,7 @@ async function checkLock(root: string, json: boolean): Promise<number> {
   const { broken } = check
   const metas = configured(check.all)
   const bare = bareProjects(check.all, check.tasked)
-  const answer = (problems: string[]): number => {
+  const answer = (problems: LockProblem[]): number => {
     if (json) {
       const out = {
         upToDate: problems.length === 0,
@@ -1059,14 +1130,14 @@ async function checkLock(root: string, json: boolean): Promise<number> {
   } catch (err) {
     if (!isUserError(err)) throw err
     if (!json) sayNotice('error', 'vx lock --check', err.message)
-    return answer([err.message])
+    return answer([{ code: errorCode(err), message: err.message }])
   }
   if (!lock) {
     const problem = `no ${LOCKFILE_NAME} at ${root} — run \`vx lock\` first`
     if (!json) sayNotice('error', 'vx lock --check', problem)
-    return answer([problem])
+    return answer([stale(problem)])
   }
-  const failures: string[] = []
+  const failures: LockProblem[] = []
   const drifted = new Set<string>()
   for (const [dir, fresh] of Object.entries(check.fresh.projects)) {
     if (fresh.file === undefined) continue
@@ -1086,24 +1157,28 @@ async function checkLock(root: string, json: boolean): Promise<number> {
                 .join('')
             : null
     if (problem === null) continue
-    failures.push(problem)
+    failures.push(stale(problem))
     drifted.add(dir)
   }
   const lockedWalls = lock.nestedWorkspaces ?? []
   const walls = check.fresh.nestedWorkspaces ?? []
   for (const dir of walls)
     if (!lockedWalls.includes(dir))
-      failures.push(`${dir} is a nested workspace the lock does not hold — run 'vx lock'`)
+      failures.push(stale(`${dir} is a nested workspace the lock does not hold — run 'vx lock'`))
   for (const dir of lockedWalls)
     if (!walls.includes(dir))
       failures.push(
-        `the lock holds ${dir} as a nested workspace, which it is not now — run 'vx lock'`,
+        stale(`the lock holds ${dir} as a nested workspace, which it is not now — run 'vx lock'`),
       )
-  if (check.loaded) failures.push(...pluginDrift(lock, check.fresh, drifted))
-  // Every graph refusal, root-relative as the rest of the audit.
+  if (check.loaded) failures.push(...pluginDrift(lock, check.fresh, drifted).map(stale))
+  // Every graph refusal, root-relative as the rest of the audit, by its own
+  // code: the lock's audit is the one place an agent reads VX_E_CYCLE.
   if (broken !== null && check.loaded)
-    for (const m of [broken, ...(check.alsoBroken ?? []).map((e) => e.message)])
-      failures.push(m.startsWith(`${root}/`) ? m.slice(root.length + 1) : m)
+    for (const [code, m] of [
+      [check.brokenCode ?? 'VX_E_REFUSED', broken] as const,
+      ...(check.alsoBroken ?? []).map((e) => [errorCode(e), e.message] as const),
+    ])
+      failures.push({ code, message: m.startsWith(`${root}/`) ? m.slice(root.length + 1) : m })
   // What `vx lock` refuses to write here fails here too: a lock written
   // where the value was no secret passed in an env where it is one.
   if (check.loaded)
@@ -1116,24 +1191,31 @@ async function checkLock(root: string, json: boolean): Promise<number> {
       ),
       check.reviewFiles ? reviewsOf(metas, check.resolved) : [],
     ))
-      failures.push(
-        `${l.at}, a secret value here — the lock is committed, so the secret is too; let the shell expand $${l.name} instead of reading process.env in the config, then run 'vx lock'`,
-      )
+      // The config is what changes, as `vx lock` refusing it says.
+      failures.push({
+        code: 'VX_E_CONFIG',
+        message: `${l.at}, a secret value here — the lock is committed, so the secret is too; let the shell expand $${l.name} instead of reading process.env in the config, then run 'vx lock'`,
+      })
   // Each config that does not load, as `vx lock` names them: a CI fixing
   // one at a time re-ran the gate once per broken config.
-  const refused: { message: string; parts?: RefusalParts }[] =
+  const refused: { code: string; message: string; parts?: RefusalParts }[] =
     broken === null || check.loaded
       ? []
       : [
-          { message: broken, ...(check.brokenParts ? { parts: check.brokenParts } : {}) },
+          {
+            code: check.brokenCode ?? 'VX_E_REFUSED',
+            message: broken,
+            ...(check.brokenParts ? { parts: check.brokenParts } : {}),
+          },
           ...(check.alsoBroken ?? []).map((e) => ({
+            code: errorCode(e),
             message: e.message,
             ...(e.parts ? { parts: e.parts } : {}),
           })),
         ]
   if (check.reviewFiles && check.loaded) {
     // A project the lock already fails is named once.
-    const stale = await Promise.all(
+    const copies = await Promise.all(
       reviewsOf(
         metas.filter((m) => !drifted.has(lockKey(root, m.dir))),
         check.resolved,
@@ -1153,15 +1235,15 @@ async function checkLock(root: string, json: boolean): Promise<number> {
             : `"${r.name}" (${rel}) is not what its config resolves to here — run 'vx lock'`
       }),
     )
-    for (const f of stale) if (f !== null) failures.push(f)
-    for (const file of await strayCopies(check)) failures.push(strayLine(root, file))
+    for (const f of copies) if (f !== null) failures.push(stale(f))
+    for (const file of await strayCopies(check)) failures.push(stale(strayLine(root, file)))
   }
   // A config that does not load evaluated none: every locked project
   // read as gone, the healthy ones too.
   for (const dir of check.loaded ? Object.keys(lock.projects) : []) {
     if (lock.projects[dir]!.file !== undefined && !Object.hasOwn(check.fresh.projects, dir)) {
       const what = dir === '.' ? 'the workspace root project' : dir
-      failures.push(`the lock holds ${what}, which has no vx.config now — run 'vx lock'`)
+      failures.push(stale(`the lock holds ${what}, which has no vx.config now — run 'vx lock'`))
     }
   }
   // Named only over a lock that holds: a config drift moves the record too.
@@ -1172,23 +1254,48 @@ async function checkLock(root: string, json: boolean): Promise<number> {
     const read = parseDependenciesLock(text)
     if (read === null || !sameRecord(read, check.dependencies))
       failures.push(
-        `${DEPENDENCIES_LOCK_NAME} ${text === null ? 'is missing' : 'is not what the dependencies resolve to here'} — run 'vx lock'`,
+        stale(
+          text === null
+            ? `${DEPENDENCIES_LOCK_NAME} is missing — run 'vx lock'`
+            : read === null
+              ? // As a run refuses it: a merge conflict is named, not called drift.
+                dependenciesLockRefusal(new TextDecoder().decode(text))
+              : `${DEPENDENCIES_LOCK_NAME} is not what the dependencies resolve to here — run 'vx lock'`,
+        ),
       )
   }
   if (json)
     // Root-relative, as every other problem: the loader names the absolute path.
     return answer([
-      ...refused.map((r) => r.message.split(`${root}${path.sep}`).join('')),
+      ...refused.map((r) => ({
+        code: r.code,
+        message: r.message.split(`${root}${path.sep}`).join(''),
+      })),
       ...failures,
     ])
   if (failures.length + refused.length > 0) {
     for (const r of refused) ui.print('err', refusalNotice('vx lock --check', r.message, r.parts))
-    for (const f of failures) sayNotice('error', 'vx lock --check', f)
+    for (const f of failures) sayNotice('error', 'vx lock --check', f.message)
     return 1
   }
   const n = metas.length
   const audited = `${n} project${n === 1 ? '' : 's'}`
   const mapped = bare.length === 0 ? '' : `; mapped by a plugin: ${bareNames(bare)}`
+  // The configs read as locked: a run that finds one edited since says so.
+  if (check.stamps) await keepConfigStamps(root, check.stamps)
   ui.print('out', ui.status('ok', 'vx lock --check', `up to date (${audited}${mapped})`))
   return 0
+}
+
+/** The configs as read, beside the lock; a cache dir that cannot be made keeps none (a warning light only). */
+async function keepConfigStamps(
+  root: string,
+  stamps: { cacheDir: string; taken: ConfigStamps },
+): Promise<void> {
+  try {
+    makeIgnoredCacheDir(stamps.cacheDir)
+  } catch {
+    return
+  }
+  await writeConfigStamps(root, stamps.cacheDir, stamps.taken)
 }

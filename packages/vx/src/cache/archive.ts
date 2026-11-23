@@ -733,7 +733,7 @@ export function planOfTree(
 }
 
 /** What a scan of an artifact reads out of it. */
-interface ArtifactScan {
+export interface ArtifactScan {
   entries: ArchiveEntry[]
   /** The sidecar's empty directories, each name proven safe. */
   dirs: string[]

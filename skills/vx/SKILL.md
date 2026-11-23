@@ -9,12 +9,18 @@ vx is the workspace's task runner and build cache. Run tasks through it, not
 through package scripts, so results are cached and ordered by their
 dependencies.
 
+Call `vx` (on PATH after `vx init`), or `bun vx` in a script or CI job.
+Never run it through bunx or npx: the npm package named `vx` is another tool.
+
+A project's name is its `package.json` `name`: `vx run @acme/app#build`,
+not `app#build`. `vx show --format json` lists the names.
+
 ## Run
 
 ```sh
 vx run build --all                  # a task in every project that declares it
 vx run test --affected=origin/main  # only what the diff since origin/main reaches
-vx run app#build                    # one project's task (and what it depends on)
+vx run @acme/app#build              # one project's task (and what it depends on)
 vx run test --all --fail-fast       # stop at the first failure, killing running tasks
 vx pipeline pr                      # a named run saved in .vx/workspace.ts (what CI runs)
 vx last --format json               # the last run's result as JSON
@@ -23,7 +29,7 @@ vx last --format json               # the last run's result as JSON
 The exit code is the verdict: `0` every task passed or hit the cache, `1` a
 task failed or was skipped, or the command was refused. `vx last --format
 json` prints the run as JSON afterwards, a row per task. A refusal under
-`--format json` (or `--dry=json`) is one line on stdout,
+`--format json` is one line on stdout,
 `{"ok":false,"error":{"code","message","docs"}}`: branch on `code`;
 `docs` (or `vx docs <code>`) says what to do.
 Without a TTY a missing task name never prompts: vx exits 1 and lists the
@@ -36,24 +42,30 @@ vx lock   # after any edit to a vx.config.ts or .vx/workspace.ts
 ```
 
 A run reads every config from `.vx/projects.lock`, never the files:
-a task you add, or an edit to one, does nothing until `vx lock`. Commit
-the lock with the config. After a merge conflict in `.vx/projects.lock`,
-resolve the configs and run `vx lock`; never edit a lock by hand.
+a task you add, or an edit to one, does nothing until `vx lock`, and a
+run after an edit refuses with `<file> changed since the last vx lock`.
+Commit the lock with the config. After a merge conflict in
+`.vx/projects.lock`, resolve the configs and run `vx lock`; never edit a
+lock by hand. A new package needs `bun install` (or your package
+manager's install), then `vx lock`.
+
+One forwarded argument list reaches one task:
+`vx run @acme/lib#test -- -t greet`.
 
 ## Look before running
 
 ```sh
 vx show --format json                          # projects and their tasks
 vx show app --format json                      # one project's tasks as a run reads them
-vx run test --affected=origin/main --dry=json  # what would run, cache hit or miss, and why
+vx run test --affected=origin/main --dry --format json  # what would run, cache hit or miss, and why
 ```
 
-Under `--affected`, `--dry=json` states `affectedBase` (the ref it diffed
+Under `--affected`, `--dry --format json` states `affectedBase` (the ref it diffed
 against; name one, `--affected=origin/main`, rather than trust the guess)
 and each task you asked for carries `affected` (a dependency it pulls in
 does not):
 `{ kind, file?, project?, via? }`, where `kind` is `input` (a changed file
-is one of its inputs), `project`, `package`, `named` or `selected`, and
+is one of its inputs), `project`, `workspace`, `package`, `named` or `selected`, and
 `via` is the `dependsOn` chain that carried the change.
 
 ## While a run is in progress
@@ -67,7 +79,7 @@ vx last --live --follow --format json   # then each event (output included), one
 
 ```sh
 vx last --failed --format json   # the last failed run; a failed row has output and locations
-vx last --log app#build          # one task's output: a failure's, or its cached log
+vx last --log @acme/app#build    # one task's output: a failure's, or its cached log
 ```
 
 `warnings` holds what the run warned of (absent when nothing).
@@ -80,7 +92,7 @@ files, fix, and re-run the same command: cached tasks that passed replay from th
 ## When a task re-ran unexpectedly
 
 ```sh
-vx why app#build --format json   # which input changed, down to the root cause
+vx why @acme/app#build --format json  # which input changed, down to the root cause
 ```
 
 ## Run history
@@ -88,7 +100,7 @@ vx why app#build --format json   # which input changed, down to the root cause
 ```sh
 vx last --stats --format json            # per task: p50 (the live estimate's), p99, pass and hit rate, failure mode, peak RSS
 vx last --stats --branch main --format json  # p50 from main's timings
-vx last --stats app#build --format json  # one task; a task name covers every project
+vx last --stats @acme/app#build --format json  # one task; a task name covers every project
 vx last --list --format json             # recent runs, newest first
 vx last --sql "SELECT name, sql FROM sqlite_schema" --format json  # the history's tables
 ```
@@ -118,6 +130,15 @@ vx lock --check --format json  # a vx.config that changed since the lock, or no 
 - Every declared `outputs.files` pattern must match a file the task
   wrote, or the task fails (`outputs matched no files`). Fix the pattern
   or the command; a file written only sometimes is not an output.
+- A task that imports a workspace dependency's built files (a test of
+  `@acme/app` importing `@acme/lib`'s `dist/`) needs
+  `dependsOn: ['^build']`, or it reads a stale or missing build.
+- Setting up CI, a remote cache, distributed task execution or a
+  migration: read its docs page first (below), then follow it. On CI,
+  run `bun vx pipeline <name>` with the `github()` plugin (`docs/ci`).
+  Never cache `.vx/cache` with `actions/cache`: the local cache lives in
+  `~/.vx`; machines share one through a remote cache plugin
+  (`docs/remote-cache`).
 - Every JSON shape is a JSON Schema in `node_modules/@vzn/vx/schemas/`.
 - Reference: `vx docs <words> --format json` searches the reference pages at
   this vx's release tag on GitHub (online); the sections holding every word
@@ -125,8 +146,9 @@ vx lock --check --format json  # a vx.config that changed since the lock, or no 
 - Docs as markdown: https://vznjs.github.io/vx/llms.txt (its index).
   When that host is unreachable, the same pages are
   `https://raw.githubusercontent.com/vznjs/vx/main/private/vx-docs/src/content/docs/<page>.mdx`:
-  `quickstart`, `docs/migrate`, `docs/workspace`, `docs/agents`,
-  `docs/troubleshooting`, `docs/ci`, `docs/plugins`.
+  `quickstart`, `docs/tasks`, `docs/caching`, `docs/workspace`,
+  `docs/sandboxing`, `docs/ci`, `docs/remote-cache`, `docs/migrate`,
+  `docs/troubleshooting`, `docs/plugins`, `docs/agents`.
 
 ## Install
 

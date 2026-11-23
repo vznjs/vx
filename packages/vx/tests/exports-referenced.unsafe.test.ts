@@ -21,9 +21,11 @@ import { describe, expect, it } from 'bun:test'
 
 const repo = path.resolve(import.meta.dir, '..', '..', '..')
 
-const CODE = /\.(?:ts|mts|cts|js|mjs|cjs|astro)$/
+// A site page (`.mdx`) imports what it draws (`components/docs/pictures.ts`);
+// its code samples' exports are prose, so it is read only as a user (SKIP).
+const CODE = /\.(?:ts|mts|cts|js|mjs|cjs|astro|mdx)$/
 const SKIP =
-  /(?:^|\/)(?:index\.ts|bin\.ts|content\.config\.ts|vx\.config\.ts|vx\.workspace\.ts|astro\.config\.mjs)$|^private\/vx-docs\/src\/nav\/route-data\.ts$/
+  /(?:^|\/)(?:index\.ts|bin\.ts|content\.config\.ts|vx\.config\.ts|vx\.workspace\.ts|astro\.config\.mjs)$|\.mdx$|^private\/vx-docs\/src\/nav\/route-data\.ts$/
 const FRAMEWORK_READ = (file: string, name: string): boolean =>
   name === 'getStaticPaths' && /^private\/vx-docs\/src\/pages\/.*\.(?:astro|ts)$/.test(file)
 const DECLARATION =
@@ -46,7 +48,7 @@ function trackedCode(): string[] {
 const TS = new Bun.Transpiler({ loader: 'ts', trimUnusedImports: false })
 const JS = new Bun.Transpiler({ loader: 'js', trimUnusedImports: false })
 const code = (f: string, s: string): string =>
-  f.endsWith('.astro') ? s : (/\.[cm]?js$/.test(f) ? JS : TS).transformSync(s)
+  /\.(?:astro|mdx)$/.test(f) ? s : (/\.[cm]?js$/.test(f) ? JS : TS).transformSync(s)
 
 describe('every exported value is used by another file', () => {
   const files = trackedCode()

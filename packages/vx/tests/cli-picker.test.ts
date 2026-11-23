@@ -156,6 +156,34 @@ describe('vx run interactive picker', () => {
   // Within a project the menu is sorted, not the config's key order: the
   // numbers a user learns stay put when a config is reordered (E-11's sweep
   // dropped the sort with the suite green).
+  it('lines up the descriptions on screen when a name is wide (CJK)', async () => {
+    const dir = path.join(root, 'packages', '漢字')
+    await mkdir(dir, { recursive: true })
+    await writeFile(
+      path.join(dir, 'package.json'),
+      JSON.stringify({ name: '漢字', version: '0.0.0' }),
+    )
+    await writeFile(
+      path.join(dir, 'vx.config.mjs'),
+      `export default { tasks: { build: { exec: { command: 'true' }, description: 'wide build' } } }`,
+    )
+    const input = new PassThrough()
+    const output = new PassThrough()
+    let printed = ''
+    output.on('data', (c: Buffer) => {
+      printed += c.toString()
+    })
+    const picking = pick(root, { input, output })
+    await Bun.sleep(50)
+    input.write('1\n')
+    await picking
+    const rows = printed.split('\n').filter((l) => l.includes('#build'))
+    expect(rows).toHaveLength(3)
+    // Where each description starts, in terminal columns.
+    const at = rows.map((l) => Bun.stringWidth(l.slice(0, l.search(/\S+ build$/))))
+    expect(new Set(at).size).toBe(1)
+  })
+
   it("lists a project's tasks sorted by name, whatever order the config declares", async () => {
     await writeFile(
       path.join(root, 'packages', 'alpha', 'vx.config.mjs'),

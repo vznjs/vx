@@ -108,15 +108,15 @@ export interface DryTask {
   affected?: { kind: string; file?: string; via?: string[] }
 }
 
-/** `vx run … --dry=json`, parsed; throws on a non-zero exit so a test reads the reason. */
+/** `vx run … --dry --format json`, parsed; throws on a non-zero exit so a test reads the reason. */
 export async function dry(
   root: string,
   args: readonly string[],
   env: Record<string, string> = {},
 ): Promise<DryTask[]> {
-  const r = await vx(root, ['run', ...args, '--dry=json'], env)
+  const r = await vx(root, ['run', ...args, '--dry', '--format', 'json'], env)
   if (r.code !== 0)
-    throw new Error(`vx run ${args.join(' ')} --dry=json exited ${r.code}: ${r.err}`)
+    throw new Error(`vx run ${args.join(' ')} --dry --format json exited ${r.code}: ${r.err}`)
   return (JSON.parse(r.out) as { tasks: DryTask[] }).tasks
 }
 

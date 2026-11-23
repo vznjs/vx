@@ -40,7 +40,7 @@ import { nestedIn, Orchestrator, runKey } from '../src/orchestrator.js'
 import type { Need, PlanTask, Size } from '../src/plan/model.js'
 import { advise } from '../src/plan/advise.js'
 import { playAside } from '../src/replays.js'
-import { Planner } from '../src/plan/planner.js'
+import { Planner, type PlannerSize } from '../src/plan/planner.js'
 import { names, outputFiles } from '../src/outputs.js'
 import { Usage } from '../src/usage.js'
 import { join, RelayError } from '../src/wire.js'
@@ -272,6 +272,66 @@ it('a worker with other tracked files than the run is refused', async () => {
           reason:
             'checked out tree bbb, the run is on aaa: it changed tracked bun.lock, a, b and more after checkout, as a prepare step (an install) can',
         },
+      },
+    ])
+    await o.close()
+  } finally {
+    await served.stop()
+  }
+})
+
+// The relay carries a worker's frames: a null body, or a `part` list that
+// was no array, threw out of the orchestrator's loop and ended the run.
+it('a worker message of the wrong shape is dropped, and the run hears the next', async () => {
+  const served = servedRelay()
+  const url = served.url
+  const warned: string[] = []
+  try {
+    const o = new Orchestrator({
+      me: await join(url, R, 'orchestrator', null, undefined),
+      root: '/ws',
+      tree: 'aaa',
+      nodes: () => undefined,
+      need: () => ({ cores: 1, memory: 0 }),
+      artifacts: fakeArtifacts().artifacts,
+      cacheFacts: async () => ({ refs: [], lent: {} }),
+      run: R,
+      keyOf: () => undefined,
+      warn: (m) => warned.push(m),
+    })
+    const worker = await join(
+      url,
+      R,
+      'worker',
+      { v: 1, cores: 1, memory: 1, tree: 'aaa' },
+      undefined,
+    )
+    const bad = [
+      null,
+      5,
+      { type: 'together', messages: 5 },
+      { type: 'together', messages: [null] },
+      { type: 'report', batch: 0, load: {} },
+      { type: 'part', task: 't', violations: 5 },
+      { type: 'end', task: 't' },
+      { type: 'ran', task: 't', load: 5 },
+    ]
+    for (const body of bad) await worker.send('orchestrator', body)
+    for (let i = 0; i < 50 && warned.length < bad.length; i++) await Bun.sleep(20)
+    expect(warned.filter((m) => m.includes('not its protocol'))).toHaveLength(bad.length)
+    const other = await join(
+      url,
+      R,
+      'worker',
+      { v: 1, cores: 1, memory: 1, tree: 'bbb' },
+      undefined,
+    )
+    let got: unknown[] = []
+    for (let i = 0; i < 20 && got.length === 0; i++) got = await other.poll()
+    expect(got).toEqual([
+      {
+        from: 'orchestrator',
+        body: { type: 'refused', reason: 'checked out tree bbb, the run is on aaa' },
       },
     ])
     await o.close()
@@ -1014,14 +1074,32 @@ async function harness(
     learnedOther?: (size: string) => number | undefined
     warmUp?: (size: string) => number | undefined
     starts?: Map<string, number>
+    /** Sizes the plan may ask, each ask started through `spawn`. */
+    sizes?: PlannerSize[]
+    spawn?: (size: string) => string
+    /** Awaited before each send of the orchestrator's: a slow relay. */
+    sending?: (to: string, body: unknown) => Promise<void>
   } = {},
 ) {
   const store = fakeArtifacts()
   const cache: { facts: CacheFacts } = { facts: { refs: [], lent: {} } }
   const served = servedRelay(heartbeatMs === undefined ? {} : { heartbeatMs })
   const url = served.url
+  const me = await join(url, R, 'orchestrator', null, undefined)
+  const { sending } = more
   const o = new Orchestrator({
-    me: await join(url, R, 'orchestrator', null, undefined),
+    me:
+      sending === undefined
+        ? me
+        : new Proxy(me, {
+            get: (t, k) =>
+              k === 'send'
+                ? async (to: string, body: unknown) => {
+                    await sending(to, body)
+                    return t.send(to, body)
+                  }
+                : Reflect.get(t, k),
+          }),
     root: '/ws',
     tree: 'c',
     nodes: () => nodes,
@@ -1035,7 +1113,7 @@ async function harness(
       (planner ??= new Planner({
         nodes,
         platform: (n) => n.platform ?? more.home ?? '',
-        sizes: [],
+        sizes: more.sizes ?? [],
         known: (id) => {
           const c = need(id).cores
           return { ms: tail?.(id), cores: Number.isFinite(c) ? c : undefined }
@@ -1854,6 +1932,126 @@ it('an idle worker that faulted is let go', async () => {
     expect(await b.batches()).toEqual([['t1']])
     h.o.release([])
     expect(await a.bodies()).toEqual([{ type: 'exit' }])
+  } finally {
+    await h.stop()
+  }
+})
+
+// A worker that faulted a task, or dropped one it began, failed the run at
+// once when it was the only one, its sizes allowing more: a lost worker was
+// replaced, as the plan asked again before the run counted who is left.
+for (const how of ['fault', 'report'] as const)
+  it(`the only worker ${how === 'fault' ? 'faulting a task' : 'dropping a task it began'} is replaced when its size allows another`, async () => {
+    const asked: string[] = []
+    let o: Orchestrator | undefined
+    const h = await harness(new Map([node('t1')]), undefined, 400, undefined, () => 1000, {
+      sizes: [{ name: 'small', max: 2, cores: 1, memory: 100, platform: '', warmUpMs: 10 }],
+      spawn: (size) => {
+        const id = `${size}#${asked.length + 1}`
+        o!.spawned(id, { size, cpu: 1, memory: 100 })
+        asked.push(id)
+        return id
+      },
+    })
+    o = h.o
+    try {
+      const t1 = h.o.execute(h.req('t1'))
+      for (let i = 0; i < 40 && asked.length === 0; i++) await Bun.sleep(25)
+      const a = await h.worker(1, 'small#1')
+      expect(await a.batches()).toEqual([['t1']])
+      await a.say(
+        how === 'fault'
+          ? { type: 'fault', task: 't1', reason: 'ENOSPC' }
+          : { type: 'report', running: [], batch: 1, load: { cpu: 0, memory: 0 } },
+      )
+      for (let i = 0; i < 40 && asked.length === 1; i++) await Bun.sleep(25)
+      expect(asked).toEqual(['small#1', 'small#2'])
+      const b = await h.worker(1, 'small#2')
+      expect(await b.batches()).toEqual([['t1']])
+      await b.finish('t1')
+      expect((await t1).exitCode).toBe(0)
+    } finally {
+      await h.stop()
+    }
+  })
+
+// A task that failed or was stopped hands over none of its dependants, yet
+// the plan still counted them and asked a worker for them, which joined to
+// nothing (a Ctrl-C asked one as the run stopped).
+for (const how of ['fails', 'is stopped'] as const)
+  it(`asks no worker for the dependants of a task that ${how}`, async () => {
+    const asked: string[] = []
+    let o: Orchestrator | undefined
+    const nodes = new Map([node('t1'), node('t2', ['t1']), node('t3')])
+    const h = await harness(nodes, undefined, 400, undefined, () => 1000, {
+      sizes: [{ name: 'small', max: 3, cores: 1, memory: 100, platform: '', warmUpMs: 10 }],
+      spawn: (size) => {
+        const id = `${size}#${asked.length + 1}`
+        o!.spawned(id, { size, cpu: 1, memory: 100 })
+        asked.push(id)
+        return id
+      },
+    })
+    o = h.o
+    try {
+      const stop = new AbortController()
+      const t1 = h.o.execute({ ...h.req('t1'), signal: stop.signal })
+      void h.o.execute(h.req('t3'))
+      for (let i = 0; i < 40 && asked.length === 0; i++) await Bun.sleep(25)
+      const a = await h.worker(1, 'small#1')
+      expect(await a.batches()).toEqual([['t1']])
+      if (how === 'is stopped') stop.abort()
+      await a.finish('t1', 'k-t1', { exitCode: how === 'fails' ? 1 : 143, durationMs: 5 })
+      expect((await t1).exitCode).not.toBe(0)
+      expect(await a.batches()).toEqual([['t3']])
+      await Bun.sleep(100)
+      expect(asked).toEqual(['small#1'])
+    } finally {
+      await h.stop()
+    }
+  })
+
+// A worker lost while a batch of several parts went out: a later part's
+// number was set on a task already sent again to another worker, so that
+// worker's report no longer showed the task gone, and it waited on it.
+it('a task sent again while its lost worker’s batch goes out keeps its new worker’s batch', async () => {
+  let held: Promise<void> | undefined
+  let slow = ''
+  const h = await harness(
+    new Map([node('t0'), node('t1'), node('t2')]),
+    undefined,
+    400,
+    undefined,
+    undefined,
+    {
+      sending: async (to, body) => {
+        if (to === slow && (body as { n?: number }).n === 2) await held
+      },
+    },
+  )
+  try {
+    const a = await h.worker(2)
+    slow = a.id
+    await Bun.sleep(50)
+    void h.o.execute(h.req('t0'))
+    expect(await a.batches()).toEqual([['t0']])
+    await a.finish('t0')
+    await Bun.sleep(50)
+    let release = () => {}
+    held = new Promise((r) => (release = r))
+    // Two orders past one frame: two parts, a's batches 2 and 3, the first held.
+    const big = { BIG: 'x'.repeat(300 * 1024) }
+    for (const id of ['t1', 't2']) void h.o.execute({ ...h.req(id), env: big })
+    await Bun.sleep(100)
+    h.o.failed('worker#1', 'exited 137')
+    const b = await h.worker(2)
+    expect([...(await b.batches()), ...(await b.batches())]).toEqual([['t1'], ['t2']])
+    release()
+    await Bun.sleep(100)
+    // b read both of its batches and runs t1 alone: t2 goes back at once.
+    await b.say({ type: 'report', running: ['t1'], batch: 2, load: { cpu: 0, memory: 0 } })
+    for (let i = 0; i < 20 && h.o.where('t2') !== null; i++) await Bun.sleep(25)
+    expect(h.o.where('t2')).toBeNull()
   } finally {
     await h.stop()
   }

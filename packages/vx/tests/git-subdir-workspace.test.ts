@@ -312,7 +312,7 @@ describe('vx run inside a git pre-commit hook', () => {
     await writeFile(
       hook,
       `#!/bin/sh
-"$VX_HOOK_BUN" "$VX_HOOK_BIN" run lint --all --dry=json > "$VX_HOOK_OUT" || exit 1
+"$VX_HOOK_BUN" "$VX_HOOK_BIN" run lint --all --dry --format json > "$VX_HOOK_OUT" || exit 1
 exec "$VX_HOOK_BUN" "$VX_HOOK_BIN" run lint --all
 `,
       { mode: 0o755 },

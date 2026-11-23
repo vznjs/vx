@@ -71,3 +71,30 @@ it('every line of every verb is painted', () => {
   })
   expect(plain).toEqual([])
 }, 60_000)
+
+// `✓ vx lock  1 project config → .vx/projects.lock, …`: the mark and the verb
+// were painted, so the line passed the law above, but its words were plain
+// white, as the quickstart showed them (2026-11-23). Text outside any SGR
+// state is unpainted.
+const SGR = new RegExp(`(${String.fromCharCode(27)}\\[[0-9;:]*m)`)
+const RESET = new RegExp(`^${String.fromCharCode(27)}\\[0?m$`)
+function bareWords(out: string): string[] {
+  const bare: string[] = []
+  for (const line of out.split('\n')) {
+    let painted = false
+    let words = ''
+    for (const part of line.split(SGR)) {
+      if (SGR.test(part)) painted = !RESET.test(part)
+      else if (!painted) words += part
+    }
+    if (/[A-Za-z0-9]/.test(words)) bare.push(line)
+  }
+  return bare
+}
+
+it('a done line paints its words, not only its mark', () => {
+  const done = [['lock'], ['lock', '--check'], ['cache', 'clean']].flatMap((args) =>
+    bareWords(vx(...args)).map((l) => `vx ${args.join(' ')}: ${l}`),
+  )
+  expect(done).toEqual([])
+}, 30_000)

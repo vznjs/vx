@@ -57,8 +57,10 @@ metrics.resourceMetrics[].resource.attributes.vx.ci.job: stringValue
 metrics.resourceMetrics[].resource.attributes.vx.workspace.path: stringValue
 metrics.resourceMetrics[].scopeMetrics[].metrics[vx.run.duration_ms].gauge.dataPoints[].asDouble: number
 metrics.resourceMetrics[].scopeMetrics[].metrics[vx.run.duration_ms].gauge.dataPoints[].timeUnixNano: string
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.run.duration_ms].unit = "ms"
 metrics.resourceMetrics[].scopeMetrics[].metrics[vx.run.time_saved_ms].gauge.dataPoints[].asDouble: number
 metrics.resourceMetrics[].scopeMetrics[].metrics[vx.run.time_saved_ms].gauge.dataPoints[].timeUnixNano: string
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.run.time_saved_ms].unit = "ms"
 metrics.resourceMetrics[].scopeMetrics[].metrics[vx.task.admission_held].gauge.dataPoints[].asDouble: number
 metrics.resourceMetrics[].scopeMetrics[].metrics[vx.task.admission_held].gauge.dataPoints[].attributes.cicd.pipeline.task.name: stringValue
 metrics.resourceMetrics[].scopeMetrics[].metrics[vx.task.admission_held].gauge.dataPoints[].attributes.vx.cache.source: stringValue
@@ -193,27 +195,32 @@ metrics.resourceMetrics[].scopeMetrics[].metrics[vx.tasks.cache_hits].sum.dataPo
 metrics.resourceMetrics[].scopeMetrics[].metrics[vx.tasks.cache_hits].sum.dataPoints[].startTimeUnixNano: string
 metrics.resourceMetrics[].scopeMetrics[].metrics[vx.tasks.cache_hits].sum.dataPoints[].timeUnixNano: string
 metrics.resourceMetrics[].scopeMetrics[].metrics[vx.tasks.cache_hits].sum.isMonotonic = true
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.tasks.cache_hits].unit = "{task}"
 metrics.resourceMetrics[].scopeMetrics[].metrics[vx.tasks.cache_restored].sum.aggregationTemporality = 1
 metrics.resourceMetrics[].scopeMetrics[].metrics[vx.tasks.cache_restored].sum.dataPoints[].asInt: string
 metrics.resourceMetrics[].scopeMetrics[].metrics[vx.tasks.cache_restored].sum.dataPoints[].attributes.source: stringValue
 metrics.resourceMetrics[].scopeMetrics[].metrics[vx.tasks.cache_restored].sum.dataPoints[].startTimeUnixNano: string
 metrics.resourceMetrics[].scopeMetrics[].metrics[vx.tasks.cache_restored].sum.dataPoints[].timeUnixNano: string
 metrics.resourceMetrics[].scopeMetrics[].metrics[vx.tasks.cache_restored].sum.isMonotonic = true
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.tasks.cache_restored].unit = "{task}"
 metrics.resourceMetrics[].scopeMetrics[].metrics[vx.tasks.cache_up_to_date].sum.aggregationTemporality = 1
 metrics.resourceMetrics[].scopeMetrics[].metrics[vx.tasks.cache_up_to_date].sum.dataPoints[].asInt: string
 metrics.resourceMetrics[].scopeMetrics[].metrics[vx.tasks.cache_up_to_date].sum.dataPoints[].startTimeUnixNano: string
 metrics.resourceMetrics[].scopeMetrics[].metrics[vx.tasks.cache_up_to_date].sum.dataPoints[].timeUnixNano: string
 metrics.resourceMetrics[].scopeMetrics[].metrics[vx.tasks.cache_up_to_date].sum.isMonotonic = true
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.tasks.cache_up_to_date].unit = "{task}"
 metrics.resourceMetrics[].scopeMetrics[].metrics[vx.tasks.failed].sum.aggregationTemporality = 1
 metrics.resourceMetrics[].scopeMetrics[].metrics[vx.tasks.failed].sum.dataPoints[].asInt: string
 metrics.resourceMetrics[].scopeMetrics[].metrics[vx.tasks.failed].sum.dataPoints[].startTimeUnixNano: string
 metrics.resourceMetrics[].scopeMetrics[].metrics[vx.tasks.failed].sum.dataPoints[].timeUnixNano: string
 metrics.resourceMetrics[].scopeMetrics[].metrics[vx.tasks.failed].sum.isMonotonic = true
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.tasks.failed].unit = "{task}"
 metrics.resourceMetrics[].scopeMetrics[].metrics[vx.tasks.total].sum.aggregationTemporality = 1
 metrics.resourceMetrics[].scopeMetrics[].metrics[vx.tasks.total].sum.dataPoints[].asInt: string
 metrics.resourceMetrics[].scopeMetrics[].metrics[vx.tasks.total].sum.dataPoints[].startTimeUnixNano: string
 metrics.resourceMetrics[].scopeMetrics[].metrics[vx.tasks.total].sum.dataPoints[].timeUnixNano: string
 metrics.resourceMetrics[].scopeMetrics[].metrics[vx.tasks.total].sum.isMonotonic = true
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.tasks.total].unit = "{task}"
 metrics.resourceMetrics[].scopeMetrics[].scope.name: string
 metrics.resourceMetrics[].scopeMetrics[].scope.version: string
 traces.resourceSpans[].resource.attributes.cicd.pipeline.name: stringValue

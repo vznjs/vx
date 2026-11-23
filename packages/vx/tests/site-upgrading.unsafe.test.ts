@@ -6,7 +6,7 @@
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { expect, it } from 'bun:test'
-import { page, PAGE, taggedCommits } from '../scripts/upgrading.ts'
+import { page, PAGE, STEPS, taggedCommits } from '../scripts/upgrading.ts'
 import { fetchHistory } from './helpers/history.ts'
 
 const ROOT = path.resolve(import.meta.dir, '../../..')
@@ -40,4 +40,10 @@ it('docs/upgrading.md carries every breaking footer in git log', () => {
   const want = footers(page(taggedCommits(ROOT)))
   expect(want.length).toBeGreaterThanOrEqual(11)
   expect(footers(readFileSync(PAGE, 'utf8'))).toEqual(want)
+})
+
+it('every step names a commit git log holds', () => {
+  if (shallow) return
+  const subjects = new Set(taggedCommits(ROOT).map((c) => c.subject.replace(/ \(#\d+\)$/, '')))
+  expect(Object.keys(STEPS).filter((s) => !subjects.has(s))).toEqual([])
 })

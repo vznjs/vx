@@ -122,7 +122,7 @@ any target Nx marks `continuous`:
 | `dependsOn` (`^build`, …)             | `dependsOn`, same syntax                      |
 | `inputs` / `namedInputs` (resolved)   | `inputs.files`                          |
 | `{workspaceRoot}/file`                | `inputs.workspaceFiles`                 |
-| `outputs`                             | `outputs.files`                         |
+| `outputs` (each optional)             | `outputs.files` (each required: a note says so) |
 | `nx affected`                         | `vx run … --affected[=<base>]`                |
 | `nx run-many --projects`              | `vx run … --filter`                           |
 | `parallelism: false`                  | a TODO naming `--concurrency 1`               |
@@ -146,7 +146,7 @@ any target Nx marks `continuous`:
   Bazel pool.
 - **Remote cache:** `nxCache()` speaks the self-hosted `/v1/cache` wire.
 - **Flaky tests:** [from local run history](../flaky-tasks/).
-- **Graph view:** `vx run build --all --dry=json` or `vx show`.
+- **Graph view:** `vx run build --all --dry --format json` or `vx show`.
 
 Generators have no vx replacement. Guide: [Migrate from
 Nx](../../docs/migrate/#nx). More at

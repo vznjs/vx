@@ -32,21 +32,27 @@ const TABLES: Record<Suite, string> = {
   unsafe: path.join(TESTS, 'unsafe-shard-weights.json'),
 }
 const isUnsafe = (f: string): boolean => f.endsWith('.unsafe.test.ts')
+// A `.live` file installs from the network and runs as its own task
+// (`test.bun.examples`), so no shard takes it.
+const isLive = (f: string): boolean => f.endsWith('.live.test.ts')
 
 /**
  * The files whose outcome is the platform's: tar and archives, restore and
  * links, the sandbox, signals and process trees, file watching, SQLite,
- * umask, clocks, procfs and descriptors held across runs. The macOS run takes only these: the rest is
- * the same code on the same Bun (2026-10-22).
+ * umask, clocks, procfs and descriptors held across runs, APFS's names
+ * (Unicode forms, case), the shells a Mac has, and every file that branches
+ * on darwin (tests/shard-partition.test.ts). The macOS run takes only these:
+ * the rest is the same code on the same Bun (2026-10-22).
  */
 const PLATFORM_TESTS =
-  /^(archive|artifact|restore|builtins-restore|tar|scan-tar|zstd|sandbox|seatbelt|kill-tree|task-tree-kill|signal|stop-signal|watch|sqlite|config-umask|fs-clock|cache-(close|disk-full|open-busy|out-of-fds|store|unreadable)|disk-full|committed-case|tmpdir|util-procfs|proc-sample|runner|linked-inputs|output-(links|empty-dir)|file-url-paths|repeated-runs)[-.]/
+  /^(archive|artifact|restore|builtins-restore|tar|scan-tar|zstd|sandbox|seatbelt|kill-tree|task-tree-kill|signal|stop-signal|watch|sqlite|config-umask|fs-clock|cache(?=\.)|cache-(close|disk-full|open-busy|out-of-fds|store|unreadable)|disk-full|committed-case|tmpdir|util-procfs|util-which|proc-sample|runner|linked-inputs|output-(links|empty-dir)|file-url-paths|repeated-runs|affected-unicode|git-enum-unicode|stale-hit-git-enumeration|bun-test-import-descriptors|completions-shells|hide-env)[-.]/
 
 export function testFiles(suite: Suite = 'safe', platform = false): string[] {
   return readdirSync(TESTS)
     .filter(
       (f) =>
         f.endsWith('.test.ts') &&
+        !isLive(f) &&
         isUnsafe(f) === (suite === 'unsafe') &&
         (!platform || PLATFORM_TESTS.test(f)),
     )

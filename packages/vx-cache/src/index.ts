@@ -71,6 +71,17 @@ function expiryOf(jwt: string): number {
 const LEND_MARGIN_MS = 5 * 60_000
 /** A connection that dropped, not a server that answered: an upload is sent again. */
 const RESET = new Set(['ECONNRESET', 'EPIPE', 'ECONNREFUSED'])
+/**
+ * No server to reach: the connection refused, or no route or address for
+ * its host (no network, a mistyped url). Only a refusal is asked again,
+ * and a request whose lookup said EAI_AGAIN, once, before the remote goes off.
+ */
+const NO_SERVER = new Set(['ECONNREFUSED', 'ENOTFOUND', 'EAI_AGAIN', 'ENETUNREACH', 'EHOSTUNREACH'])
+
+const codeOf = (err: unknown): string | undefined => {
+  const code = (err as { code?: unknown } | null)?.code
+  return typeof code === 'string' ? code : undefined
+}
 
 /**
  * The names a request sets itself: one of them in `headers`, in another
@@ -188,6 +199,12 @@ async function refusal(res: Response, hide: (text: string) => string): Promise<E
     } catch {
       // quiet: not JSON, so the text is what it said
       said = text
+    }
+    // A gateway's error page (Cloudflare's 521, a proxy's 502): its first
+    // 200 characters were markup and said nothing, its title says what failed.
+    if (/^\s*</.test(said) && /<html|<!doctype/i.test(said)) {
+      const title = /<title[^>]*>([^<]*)/i.exec(said)?.[1]?.trim().slice(0, 80)
+      said = `an HTML page${title ? ` titled "${title}"` : ''}, not the server's answer: a proxy or gateway in front of it?`
     }
   } catch {
     // quiet: the status alone still names the refusal
@@ -584,10 +601,20 @@ export class VxCacheLayer implements RemoteCacheLayer {
   private async request(path: string, init: RequestInit = {}): Promise<Response | undefined> {
     const since = performance.now()
     try {
-      return await this.ask(path, init, since, false)
+      try {
+        return await this.ask(path, init, since, false)
+      } catch (err) {
+        // EAI_AGAIN is the resolver's own "try again": one lookup lost
+        // turned the remote off for the whole run.
+        if (!(err instanceof Unanswered) && codeOf(err) !== 'EAI_AGAIN') throw err
+        return await this.ask(path, init, since, true)
+      }
     } catch (err) {
-      if (!(err instanceof Unanswered)) throw err
-      return this.ask(path, init, since, true)
+      // A check found no server: each task's check after it failed the same
+      // way, and with no network each paid its own DNS lookup. `retried`
+      // decides for the requests it sends again.
+      if (init.retried === true || !NO_SERVER.has(codeOf(err) ?? '')) throw err
+      return this.unreachable(err as Error & { code: string }, since)
     }
   }
 
@@ -891,13 +918,15 @@ export class VxCacheLayer implements RemoteCacheLayer {
       if (attempt > 1 && this.disabled) return undefined
       let res: Response | undefined
       try {
-        res = await this.request(path, init)
+        res = await this.request(path, { ...init, retried: true })
       } catch (err) {
-        if (!RESET.has((err as { code?: unknown }).code as string)) throw err
-        if (attempt > this.config.retries)
-          return this.unreachable(err as Error & { code: string }, since)
-        await this.wait(1000 * attempt)
-        continue
+        const code = codeOf(err) ?? ''
+        if (RESET.has(code) && attempt <= this.config.retries) {
+          await this.wait(1000 * attempt)
+          continue
+        }
+        if (!NO_SERVER.has(code)) throw err
+        return this.unreachable(err as Error & { code: string }, since)
       }
       if (
         res === undefined ||
@@ -911,15 +940,15 @@ export class VxCacheLayer implements RemoteCacheLayer {
   }
 
   /**
-   * A download or upload whose every try was refused its connection, with no
-   * answer from the server to any request since it began: no server listens,
+   * A request whose every try found no server (`NO_SERVER`), with no
+   * answer from the server to any request since it began: none listens,
    * so the remote is off for the run, said once. Each of a run's requests
    * tried it 3 times over 3 s: with the server down a 300-task run took 30 s,
    * not 1 s. A reset is that request's loss alone: a proxy's body limit or a
    * stale pooled connection resets one while the server lives.
    */
   private unreachable(err: Error & { code: string }, since: number): undefined {
-    if (err.code !== 'ECONNREFUSED' || this.answeredAt > since) throw err
+    if (this.answeredAt > since) throw err
     const first = !this.disabled
     this.disabled = true
     if (!first) return undefined
@@ -1029,6 +1058,8 @@ interface RequestInit {
   streamed?: boolean
   /** A body sent at its own pace: the deadline bounds its pace, then the answer (`paced`). */
   paced?: boolean
+  /** Sent by `retried`, which judges a request that found no server. */
+  retried?: boolean
 }
 
 /** A check refused for its size: sent again in checks of `max` lookups. */

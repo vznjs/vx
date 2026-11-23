@@ -36,9 +36,15 @@ it('a key named like an Object member is unknown, not a kind', () => {
 })
 
 it('options that are not an object are refused', () => {
-  expect(refusal('grpc://x')).toBe('demo(): options must be an object')
-  expect(refusal(null)).toBe('demo(): options must be an object')
-  expect(refusal(['endpoint'])).toBe('demo(): options must be an object')
+  expect(refusal('grpc://x')).toBe(
+    'demo(): options must be an object of named options, as in { name: value }; got "grpc://x"',
+  )
+  expect(refusal(null)).toBe(
+    'demo(): options must be an object of named options, as in { name: value }; got null',
+  )
+  expect(refusal(['endpoint'])).toBe(
+    'demo(): options must be an object of named options, as in { name: value }; got an array',
+  )
 })
 
 it('no options, and every known key, are taken', () => {

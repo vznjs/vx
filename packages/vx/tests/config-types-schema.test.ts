@@ -68,6 +68,7 @@ const PIPELINE = [
   'failFast',
   'filter',
   'force',
+  'format',
   'noCache',
   'outputLogs',
   'profile',

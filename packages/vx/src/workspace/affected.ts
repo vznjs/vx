@@ -1071,7 +1071,10 @@ async function gitBlobsAt(
     proc.exited,
   ])
   if (exit !== 0) {
-    throw new UserError(`git cat-file --batch failed (exit ${exit}): ${stderr.trim()}`, 'VX_E_GIT')
+    throw new UserError(
+      `git cat-file --batch failed (exit ${exit}) in ${workspaceRoot}: ${stderr.trim() || 'no output'}. Run \`git fsck\` there to see why.`,
+      'VX_E_GIT',
+    )
   }
   let at = 0
   for (const file of batched) {
@@ -1113,7 +1116,7 @@ async function gitBytesAt(
   // are the file being absent at the ref; anything else is git failing.
   if (/does not exist in|exists on disk, but not in/.test(stderr)) return null
   throw new UserError(
-    `git show ${ref}:./${file} failed (exit ${exit}): ${stderr.trim()}`,
+    `git show ${ref}:./${file} failed (exit ${exit}): ${stderr.trim() || 'no output'}. Run it in the workspace root to see why.`,
     'VX_E_GIT',
   )
 }
@@ -1211,7 +1214,10 @@ async function flaggedChanges(
     proc.exited,
   ])
   if (exit !== 0) {
-    throw new UserError(`git hash-object failed (exit ${exit}): ${stderr.trim()}`, 'VX_E_GIT')
+    throw new UserError(
+      `git hash-object failed (exit ${exit}): ${stderr.trim() || 'no output'}. Check that this user can read the changed files.`,
+      'VX_E_GIT',
+    )
   }
   const oids = stdout.split('\n')
   hash.forEach((e, i) => {
@@ -1328,7 +1334,7 @@ async function gitPaths(workspaceRoot: string, cmd: string[]): Promise<string[]>
   const exit = await proc.exited
   if (exit !== 0) {
     throw new UserError(
-      `git ${cmd.find((a, i) => a !== '-c' && cmd[i - 1] !== '-c')} failed (exit ${exit}): ${stderr.trim()}`,
+      `git ${cmd.find((a, i) => a !== '-c' && cmd[i - 1] !== '-c')} failed (exit ${exit}) in ${workspaceRoot}: ${stderr.trim() || 'no output'}. Run it there to see why.`,
       'VX_E_GIT',
     )
   }
@@ -2046,8 +2052,8 @@ async function verifyRef(workspaceRoot: string, ref: string): Promise<void> {
       }
     }
     throw new UserError(
-      `git rev-parse failed (exit ${proc.exitCode}) in ${workspaceRoot}` +
-        (stderr.length > 0 ? `: ${stderr}` : ''),
+      `git rev-parse failed (exit ${proc.exitCode}) in ${workspaceRoot}: ${stderr || 'no output'}. ` +
+        `Run \`git rev-parse ${ref}\` there to see why.`,
       'VX_E_GIT',
     )
   }

@@ -45,10 +45,46 @@ describe('pipelines in .vx/workspace', () => {
     )
     expect(refusal({ pr: { tasks: ['a'], env: { A: 1 } } })).toContain('`pipelines.pr.env`')
     expect(refusal({ pr: { tasks: ['a'], dry: 'yaml' } })).toContain('`pipelines.pr.dry`')
+    // M 2026-11-23: the plan's format is its own key, as `--format` is.
+    expect(refusal({ pr: { tasks: ['a'], dry: 'json' } })).toContain('`pipelines.pr.dry`')
+    expect(refusal({ pr: { tasks: ['a'], dry: true, format: 'json' } })).toBeUndefined()
+    expect(refusal({ pr: { tasks: ['a'], format: 'json' } })).toBe(
+      'ws.ts: `pipelines.pr.format` formats the plan, so it needs dry: true',
+    )
     expect(refusal({ pr: { tasks: ['a'], dry: true, profile: true } })).toBe(
       'ws.ts: `pipelines.pr` sets dry and profile: a dry run writes no profile; drop one',
     )
     expect(refusal({ 'p r': { tasks: ['a'] } })).toContain('pipeline name "p r"')
+    // A name no task can carry: `--force` was read as the flag and refused
+    // as "vx run missing task name", `^build` at the run.
+    expect(refusal({ pr: { tasks: ['--force'] } })).toBe(
+      "ws.ts: `pipelines.pr.tasks` names \"--force\": it starts with '-', which the CLI reads as a flag; name a task, or 'pkg#task'",
+    )
+    for (const bad of [
+      '^build',
+      'a#',
+      '#build',
+      'a#^b',
+      'build ',
+      'b*',
+      '--force#build',
+      'a #b',
+      '^a#b',
+    ])
+      expect(refusal({ pr: { tasks: [bad] } })).toContain('`pipelines.pr.tasks` names')
+    expect(refusal({ pr: { tasks: ['build', 'a#build', '@s/a#test'] } })).toBeUndefined()
+    // Its `env` and a key both setting one setting: the variable silently won.
+    expect(refusal({ pr: { tasks: ['a'], retries: 1, env: { VX_RUN_RETRIES: '2' } } })).toBe(
+      'ws.ts: `pipelines.pr.env.VX_RUN_RETRIES` sets what `pipelines.pr.retries` sets: drop one',
+    )
+    expect(refusal({ pr: { tasks: ['a'], env: { VX_RUN_RETRIES: '2' } } })).toBeUndefined()
+    // A key that saves no flag, or a value that sets nothing, is no second say.
+    expect(
+      refusal({ pr: { tasks: ['a'], failFast: false, env: { VX_RUN_FAIL_FAST: 'true' } } }),
+    ).toBeUndefined()
+    expect(
+      refusal({ pr: { tasks: ['a'], retries: 1, env: { VX_RUN_RETRIES: '' } } }),
+    ).toBeUndefined()
     expect(refusal(['pr'])).toContain('`pipelines` must be an object')
   })
 
@@ -89,6 +125,9 @@ describe('pipelines in .vx/workspace', () => {
     // A typed --dry previews it: the saved profile needs a real run.
     expect(pipelineRunArgs({ tasks: ['a'], profile: true }, ['--dry'], {})).toEqual(['a', '--all'])
     expect(pipelineRunArgs({ tasks: ['a'], dry: true }, ['--profile'], {})).toEqual(['a', '--all'])
+    const plan: Pipeline = { tasks: ['a'], dry: true, format: 'json' }
+    expect(pipelineRunArgs(plan, [], {})).toEqual(['a', '--all', '--dry', '--format=json'])
+    expect(pipelineRunArgs(plan, ['--profile'], {})).toEqual(['a', '--all'])
     // A run applies --no-cache over every cache policy and --force over the
     // policy's reads, so a typed policy or --force (or the policy's variable)
     // stands in for a saved noCache, and a typed policy for a saved force.
@@ -149,7 +188,7 @@ describe('vx pipeline <name>', () => {
     return { code, out, err }
   }
   const planned = async (...args: string[]): Promise<string[]> => {
-    const r = await vx('pipeline', ...args, '--dry=json')
+    const r = await vx('pipeline', ...args, '--dry', '--format', 'json')
     expect(r.err).toBe('')
     return (JSON.parse(r.out) as { tasks: { id: string }[] }).tasks.map((t) => t.id).sort()
   }
@@ -165,11 +204,14 @@ describe('vx pipeline <name>', () => {
         `pipelines: {
           check: { tasks: ['build'] },
           one: { tasks: ['build'], filter: ['a'] },
-          env: { tasks: ['show'], filter: ['a'], env: { SHOWN: 'vx-only' } },
+          env: { tasks: ['show', 'probe'], filter: ['a'], env: { SHOWN: 'vx-only', CI: 'vx-only' } },
           quiet: { tasks: ['show'], filter: ['a'], env: { VX_RUN_OUTPUT_LOGS: 'none' } },
           paths: { tasks: ['keep'], filter: ['a'], cacheDir: 'saved-cache', profile: 'saved.json' },
           policy: { tasks: ['build'], cachePolicy: 'bogus' },
           badenv: { tasks: ['build'], env: { VX_RUN_RETRIES: 'x', VX_CACHE_POLICY: 'local:q' } },
+          own: { tasks: ['keep'], filter: ['a'], noCache: true, env: { VX_CACHE_POLICY: 'local:rw' } },
+          base: { tasks: ['build'], affected: true },
+          solo: { tasks: ['solo'], filter: ['a'] },
         }`,
       ),
     )
@@ -180,9 +222,11 @@ describe('vx pipeline <name>', () => {
         `export default { tasks: {
           build: { exec: { command: 'true' } },
           show: { exec: { command: 'echo "shown=[$SHOWN]"', env: { passThrough: ['SHOWN'] } } },
+          probe: { exec: { command: 'true' }, inputs: { files: ['package.json'], runtime: ['echo "ci=[$CI]" > probe.txt'] }, outputs: { files: [] }, cache: true },
           keep: { exec: { command: 'echo k > k.txt' }, inputs: { files: ['package.json'] }, outputs: { files: ['k.txt'] }, cache: true },
         } }`,
       )
+    await addProject(root, 'c', `export default { tasks: { solo: { exec: { command: 'true' } } } }`)
   })
   afterAll(async () => {
     await rm(root, { recursive: true, force: true })
@@ -198,6 +242,8 @@ describe('vx pipeline <name>', () => {
   it('sets its env for vx, and a task reads it as unset', async () => {
     const shown = await vx('pipeline', 'env', '--output-logs=full')
     expect([shown.code, shown.out]).toEqual([0, expect.stringContaining('shown=[]')])
+    // A runtime probe reads the env its task does: CI is vx's alone.
+    expect(await Bun.file(path.join(root, 'packages', 'a', 'probe.txt')).text()).toBe('ci=[]\n')
     // vx itself reads it: the run's output is off.
     const quiet = await vx('pipeline', 'quiet')
     expect([quiet.code, quiet.out.includes('shown=')]).toEqual([0, false])
@@ -215,7 +261,8 @@ describe('vx pipeline <name>', () => {
       expect([r.code, r.err]).toEqual([0, ''])
     } finally {
       cwd = ''
-      process.env['VX_CACHE_DIR'] = dir
+      if (dir === undefined) delete process.env['VX_CACHE_DIR']
+      else process.env['VX_CACHE_DIR'] = dir
     }
     expect(existsSync(path.join(root, 'saved-cache'))).toBe(true)
     expect(existsSync(path.join(root, 'saved.json'))).toBe(true)
@@ -242,6 +289,55 @@ describe('vx pipeline <name>', () => {
     expect(typed.err).toContain("`pipelines.badenv.env.VX_CACHE_POLICY` invalid flag 'q'")
     const both = await vx('pipeline', 'badenv', '--retries=0', '--cache-policy=local:rw')
     expect([both.code, both.err]).toEqual([0, ''])
+  }, 30_000)
+
+  // Its own `env` is saved as its keys are: its policy variable dropped its
+  // `noCache`, as only a typed one (or one already set) should.
+  it('keeps a saved key over its own env', async () => {
+    const dir = process.env['VX_CACHE_DIR']
+    process.env['VX_CACHE_DIR'] = path.join(root, 'own-cache')
+    try {
+      expect((await vx('pipeline', 'own')).code).toBe(0)
+      const r = await vx('pipeline', 'own', '--dry', '--format', 'json')
+      expect(r.err).toBe('')
+      const plan = JSON.parse(r.out) as { tasks: { cacheStatus: string }[] }
+      expect(plan.tasks.map((t) => t.cacheStatus)).toEqual(['no-cache'])
+    } finally {
+      if (dir === undefined) delete process.env['VX_CACHE_DIR']
+      else process.env['VX_CACHE_DIR'] = dir
+    }
+  }, 30_000)
+
+  // `--affected` was never typed: the refusal said to drop it.
+  it('names the key behind a refused saved flag', async () => {
+    const r = await vx('pipeline', 'base')
+    expect([r.code, r.err]).toEqual([1, expect.stringContaining('--affected has no base here')])
+    expect(r.err).toContain('--affected is `pipelines.base.affected` in .vx/workspace\n')
+    const typed = await vx('pipeline', 'check', '--affected')
+    expect(typed.err).toContain('--affected has no base here')
+    expect(typed.err).not.toContain('`pipelines.')
+  }, 30_000)
+
+  // Every pipeline passes --all, and --all beside a filter is the filter's
+  // selection: the hint said "pass --all", which `vx pipeline` refuses and
+  // `vx run --all --filter a` had already taken.
+  it('widens the filter, not --all, for a task only projects outside it declare', async () => {
+    const hint =
+      'Only projects outside the selection declare solo — widen --filter to include them, or drop it'
+    const saved = await vx('pipeline', 'solo')
+    expect([saved.code, saved.err]).toEqual([1, expect.stringContaining(hint)])
+    expect(saved.err).toContain('--filter is `pipelines.solo.filter` in .vx/workspace')
+    expect(saved.err).not.toContain('pass --all')
+    expect((await vx('pipeline', 'check', '--filter', 'b', '--dry')).err).toBe('')
+    expect((await vx('run', 'solo', '--all', '--filter', 'a')).err).toContain(hint)
+    // CONTROL: a run scoped to the project it stands in is widened by --all.
+    cwd = path.join(root, 'packages', 'a')
+    try {
+      const here = await vx('run', 'solo')
+      expect(here.err).toContain('— pass --all, or a --filter that includes them')
+    } finally {
+      cwd = ''
+    }
   }, 30_000)
 
   it('refuses no name, an unknown one, a task and --all, naming the fix', async () => {

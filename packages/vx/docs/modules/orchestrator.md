@@ -467,6 +467,7 @@ export interface RunHandoff {
   staged?: ReadonlyMap<string, ProjectEntry> // the CLI's own selection load, reused once (below)
   discovered?: { root: string; projects: ProjectMeta[] } // the selection pass's discovery, reused once when the root matches
   selectedByDiff?: boolean // `projects` came from a git diff: bare names judged workspace-wide (item 1024)
+  selectedByFilter?: boolean // `projects` came from --filter or --affected: --all beside it is the filter's selection, widened for a task only others declare
   selectedOutright?: readonly string[] // projects a non-affected --filter named: their tasks run beside affected ones (X-10)
   affectedReasons?: Map<string, AffectedReason> // planRun (`--dry`) collects why `--affected` kept each request
   remoteRequested?: string // the setting whose spec named a remote axis ('--cache-policy')
@@ -561,6 +562,11 @@ export function keepsOutcome(o: TaskOutcome): boolean
 Cache-key derivation (`ComputeHashArgs`, `computeTaskHash`,
 `computeGroupKey`) moved to `src/orchestrator/task-hash.ts` —
 [`orchestrator.md`](#srcorchestratortask-hashts--cache-key-derivation).
+
+`FailedAttempt` (`attempt.ts`) is an attempt a retry replaced: when it
+ended, its exit code, and whether vx's `timeout` ended it. The façade
+exports it from `telemetry.ts`, where `TaskTelemetry.failedAttempts`
+carries the same shape.
 
 ### Three execution paths
 
@@ -2196,7 +2202,7 @@ the typo refusal under the flag; `tests/taint-tracker.test.ts` ›
 
 Walk the task graph, compute every task's cache key, and probe the
 cache to predict what `vx run` would do — _without executing_. Drives
-the `--dry` and `--dry=json` output formats.
+the `--dry` and `--dry --format json` output formats.
 
 ### Public surface
 
@@ -3217,6 +3223,7 @@ interface LoadProjectsBase {
   warn: (m: string) => void
   lock?: boolean // `vx lock`'s audit: the one load that runs the `project` hooks
   staged?: ReadonlyMap<string, ProjectEntry> // entries a load in this process already produced
+  asLocked?: boolean // read the lock though a config was edited since (`vx watch`'s watched set)
 }
 export interface LoadedProjects {
   projects: Map<string, ProjectEntry>
@@ -3713,6 +3720,8 @@ is pre-folded, bigint wallclock spans are decimal strings.
   receiver can refuse what it cannot read.
 - `taskLogMasks` — each running task's secret mask, which
   `execute-task.ts` sets; `task.log` masks the live chunks again through it.
+- `FailedAttempt`, `RunStage` — the shapes of `TaskTelemetry.failedAttempts`
+  and `RunSummaryRecord.stages`, exported so a sink can name them.
 
 ### Records
 

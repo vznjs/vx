@@ -74,6 +74,9 @@ export function missOutcome(
             : {}),
           ...(result.timedOut === true ? { timedOut: true as const } : {}),
           ...(check.movedFails !== undefined ? { inputMoved: check.movedFails } : {}),
+          ...(check.movedFails === undefined && m.outputsMissing !== undefined
+            ? { outputsMissing: m.outputsMissing }
+            : {}),
         }
   outcome.timing = { startNs: wallclock.startNs, endNs: wallclock.endNs }
   if (ran.attempts > 1 || ran.failedAttempts.length > 0) {

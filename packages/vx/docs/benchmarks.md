@@ -47,7 +47,11 @@ Same repo, same commands, every tool at concurrency %bench.concurrency%,
 each in its own native config.
 
 Turborepo reads `turbo.json` and runs no daemon (it uses none for
-`turbo run` since 2.8.11). Nx runs its own graph (`nx:run-commands` targets, `^` inputs,
+`turbo run` since 2.8.11). It runs with the `futureFlags` its
+[Conformance](https://vznjs.github.io/vx/conformance/) score is measured
+on, so one Turbo is timed and scored. They cost it about 0.1 to 0.2 s of
+the nothing-changed run (Turbo 2.11.13, 4-core Linux, `BENCH_BUILD_MS=0`,
+seven interleaved runs each, 2026-11-23). Nx runs its own graph (`nx:run-commands` targets, `^` inputs,
 `.env` loading off).
 
 Vite Task runs `vp run` over each `vite.config.ts`.
@@ -60,7 +64,7 @@ holds each task's own duration, as CI would carry it from an earlier run.
 
 **Time each tool adds over the ideal run:**
 
-|                                       | vx                 | Turborepo             | Nx                 | Vite Task          |
+| Scenario                              | vx                 | Turborepo             | Nx                 | Vite Task          |
 | ------------------------------------- | ------------------ | --------------------- | ------------------ | ------------------ |
 | **Nothing changed**                   | %bench.vx.warm%    | %bench.turbo.warm%    | %bench.nx.warm%    | %bench.vt.warm%    |
 | **Nothing changed, outputs restored** | %bench.vx.restore% | %bench.turbo.restore% | %bench.nx.restore% | %bench.vt.restore% |
@@ -250,7 +254,8 @@ never fight for CPU.
 Turborepo, Nx and vite-plus are never pinned: each run installs them at
 npm latest right before it starts and links them into the workspace. The
 page names the versions it measured.
-Cold is one run; nothing changed and restore are the median of 3.
+Cold is the median of `COLD_REPS` runs (default 1; the site's tasks set 3,
+and 1 for Nx); nothing changed and restore are the median of 3.
 
 ```bash
 bun private/vx-bench/compare.ts                      # every runner, 3 reps (about 20 min)
@@ -285,8 +290,8 @@ whatever a config would read from the environment. In your repo:
 Public repos, each moved to native vx config and timed against the
 tool it ships with, through `private/vx-bench/real/nightly.ts`, which
 drives `nx-repo.sh` (Nx) or `turbo-repo.sh` (Turbo): both tools run the
-same tasks with the same worker count, three interleaved reps,
-best of each case. `cold` wipes the outputs and the tool's cache, once
+same tasks with the same worker count, interleaved reps (five in
+`bench.real`), best of each case. `cold` wipes the outputs and the tool's cache, once
 a rep; `restore` wipes the outputs and keeps the cache; `noop` wipes
 nothing. Each rep runs restore and noop in up to ten rounds, tools
 alternating, within 20 s: one sample of a 60 ms run swings 15 ms. Nx runs with `NX_DAEMON=false` and no Nx Cloud.
@@ -301,23 +306,12 @@ clone pinned to a full SHA (solid, vueuse, create-t3-turbo;
 ### Real repos on native config
 
 Each repo on its overlay's native config, 10 workers each, best of five
-interleaved runs; vx at main with #5206, pnpm per repo, Node 22.23, linux x64, 4 cores, 2026-11-11.
-`real-repos.json` holds the rows and the site's
+interleaved runs, on the Real repos workflow's 4-core Linux runner.
+`real-repos.json` holds the rows, each with its date, commit, tool
+version and load, and the site's
 [real repos](https://vznjs.github.io/vx/compare/real-repos/) page renders
 them; the nightly waits up to two minutes for a 1-minute load under 1
 before each workspace, prints every rep and records the load in the row.
-
-| Repo                                      | Case        | vx      | Turbo   |
-| ----------------------------------------- | ----------- | ------- | ------- |
-| solid `b25c557`, 4 tasks, 2.10.10         | Cold build  | 30.45 s | 36.01 s |
-| solid                                     | Restore     | 0.075 s | 0.075 s |
-| solid                                     | Nothing new | 0.064 s | 0.066 s |
-| vueuse `efdd69a`, 12 tasks, 2.10.12       | Cold build  | 14.77 s | 17.05 s |
-| vueuse                                    | Restore     | 0.074 s | 0.081 s |
-| vueuse                                    | Nothing new | 0.066 s | 0.075 s |
-| create-t3-turbo `8f945b7`, 3 tasks, 2.5.8 | Cold build  | 5.37 s  | 6.47 s  |
-| create-t3-turbo                           | Restore     | 0.078 s | 0.408 s |
-| create-t3-turbo                           | Nothing new | 0.071 s | 0.407 s |
 
 The harness's restore follows a cold run and its "nothing new" that
 restore, and vx paid two stalls there that the run after did not. A

@@ -67,6 +67,19 @@ it('installs from apt by sudo, keeps the packages and says it fetched them', asy
   expect(readFileSync(output, 'utf8')).toBe('fetched=true\n')
 })
 
+// A container's root has no name in Bun's userInfo: `chown -R unknown`
+// failed `vx setup` after a whole install (2026-11-23).
+it('gives the fetched packages back to the job by id, and as root leaves them', async () => {
+  const bySudo = machine({ bins: ['apt-get'] })
+  await bySudo.go()
+  expect(bySudo.ran).toContain(
+    `sudo chown -R ${process.getuid!()}:${process.getgid!()} ${bySudo.debs}`,
+  )
+  const asRoot = machine({ bins: ['apt-get'], root: true })
+  expect(await asRoot.go()).toBe(0)
+  expect(asRoot.ran.filter((c) => c.startsWith('chown'))).toEqual([])
+})
+
 it('installs the kept packages with no index fetch, as root without sudo', async () => {
   const m = machine({ bins: ['apt-get', 'dpkg'], root: true })
   for (const p of KEPT) writeFileSync(path.join(m.debs, `${p}.deb`), '')

@@ -69,6 +69,10 @@ const memberManifest = (name: string, deps: string[] = []) =>
     2,
   )
 
+/** A dev server that counts its starts in `starts.txt` and notes a stop in `stopped.txt`. */
+const SERVER = (name: string) =>
+  `echo s >> starts.txt; trap "echo x > stopped.txt; exit 0" TERM INT; echo Listening on ${name}; sleep 600 & wait`
+
 const initial = (tasks: string[], files: Record<string, string | null> = {}): WatchPhase => ({
   expect: { ran: tasks, files },
 })
@@ -1484,10 +1488,6 @@ export default [
       { write: { [A]: 'a2\n' }, expect: { ran: ['app#build'], files: { [OUT]: 'a2\n' } } },
     ],
   }),
-] satisfies Case[]
-
-// vx fails these; each is listed in the hand-off report with its output.
-export const pending: Case[] = [
   // Turborepo watch: a run covers the packages a change reaches, not every package
   watchCase({
     id: 'watch/failed-task-not-rerun-by-unrelated-edit',
@@ -1532,4 +1532,163 @@ export const pending: Case[] = [
       },
     ],
   }),
-]
+
+  // Turborepo #12654: `turbo watch dev` restarted a library's dev server when
+  // the app that depends on it changed
+  watchCase({
+    id: 'watch/app-edit-leaves-library-server-up',
+    kind: 'correctness',
+    title: 'Saving a file in an app leaves the dev server of the library it uses running',
+    why: 'The app depends on the library, not the other way round, so an edit in the app changes nothing the library’s server reads. That server must keep running. A watch that restarts it on every app save drops its connections and state for no reason, and walks the graph the wrong way.',
+    from: ['watch-initial-edit-server', 'watch-loop-members'],
+    alsoNeeds: ['persistent'],
+    task: 'dev',
+    workspace: {
+      projects: {
+        lib: {
+          tasks: { dev: { command: SERVER('lib'), persistent: true, inputs: ['src/**'] } },
+          files: { 'src/a.txt': 'lib1\n' },
+        },
+        app: {
+          deps: ['lib'],
+          tasks: { dev: { command: SERVER('app'), persistent: true, inputs: ['src/**'] } },
+          files: { 'src/a.txt': 'app1\n' },
+        },
+      },
+    },
+    phases: [
+      {
+        expect: {
+          files: { 'packages/lib/starts.txt': 's\n', 'packages/app/starts.txt': 's\n' },
+          inFlight: true,
+        },
+      },
+      {
+        write: { 'packages/app/src/a.txt': 'app2\n' },
+        expect: { files: { 'packages/lib/starts.txt': 's\n', 'packages/lib/stopped.txt': null } },
+      },
+    ],
+  }),
+
+  // Turborepo #8673: under watch, persistent tasks did not wait for the first
+  // run of their dependencies
+  watchCase({
+    id: 'watch/server-starts-after-dependency-first-build',
+    kind: 'correctness',
+    title: 'Under watch, a dev server starts only after the first build of the library it needs',
+    why: 'The server depends on the library’s build, so the build must be on disk before the server starts, as in a plain run. A server started early reads a missing or old library and serves broken pages until someone restarts it. The watch’s first cycle must keep the same order a run keeps.',
+    from: ['watch-initial-readiness', 'watch-initial-edit-server'],
+    alsoNeeds: ['persistent'],
+    task: 'dev',
+    projects: ['app'],
+    workspace: {
+      projects: {
+        lib: {
+          tasks: { build: build('sleep 1; mkdir -p dist && cat src/*.txt > dist/out.txt') },
+          files: { 'src/a.txt': 'lib1\n' },
+        },
+        app: {
+          deps: ['lib'],
+          tasks: {
+            dev: {
+              command:
+                '{ cat ../lib/dist/out.txt 2>/dev/null || echo missing; } > seen.txt; echo up; sleep 600',
+              persistent: true,
+              dependsOn: ['^build'],
+              inputs: ['src/**'],
+            },
+          },
+          files: { 'src/a.txt': 'app1\n' },
+        },
+      },
+    },
+    phases: [
+      {
+        expect: {
+          ran: ['lib#build'],
+          files: { 'packages/app/seen.txt': 'lib1\n' },
+          inFlight: true,
+        },
+      },
+    ],
+  }),
+
+  // Turborepo #13115: `turbo watch` stopped a persistent task on a change
+  // outside the task's inputs
+  watchCase({
+    id: 'watch/edit-outside-server-inputs-keeps-it-up',
+    kind: 'correctness',
+    title: 'Saving a file outside a dev server’s inputs leaves the server running',
+    why: 'A file the server’s task does not list, a note or a test fixture, changes nothing it serves. The server must keep running, neither restarted nor stopped. A watch that stops it here leaves the user with a dead server after an unrelated save.',
+    from: ['watch-initial-edit-server', 'watch-loop-members'],
+    alsoNeeds: ['persistent'],
+    task: 'dev',
+    workspace: {
+      projects: {
+        app: {
+          tasks: { dev: { command: SERVER('app'), persistent: true, inputs: ['src/**'] } },
+          files: { 'src/a.txt': 'app1\n', 'notes.txt': 'n1\n' },
+        },
+      },
+    },
+    phases: [
+      { expect: { files: { 'packages/app/starts.txt': 's\n' }, inFlight: true } },
+      {
+        write: { 'packages/app/notes.txt': 'n2\n' },
+        expect: { files: { 'packages/app/starts.txt': 's\n', 'packages/app/stopped.txt': null } },
+      },
+    ],
+  }),
+
+  // Turborepo #12505 / #9421, the other side: a rebuilt dependency is the dev
+  // tool's to reload, not the watch's to restart
+  watchCase({
+    id: 'watch/dependency-rebuild-keeps-server-up',
+    kind: 'correctness',
+    title: 'Under watch, rebuilding the library a dev server needs leaves the server running',
+    why: 'A dev server reloads what its dependencies rebuild on its own; that is what it is for. The watch must rebuild the library and keep the server up, so the page reloads in place and its port stays held. Stopping or restarting the server on every library edit throws away its state and drops every open connection.',
+    from: ['watch-initial-edit-server', 'watch-initial-readiness'],
+    alsoNeeds: ['persistent'],
+    task: 'dev',
+    projects: ['app'],
+    workspace: {
+      projects: {
+        lib: { tasks: { build: build() }, files: { 'src/a.txt': 'lib1\n' } },
+        app: {
+          deps: ['lib'],
+          tasks: {
+            dev: {
+              command: SERVER('app'),
+              persistent: true,
+              dependsOn: ['^build'],
+              inputs: ['src/**'],
+            },
+          },
+          files: { 'src/a.txt': 'app1\n' },
+        },
+      },
+    },
+    phases: [
+      {
+        expect: {
+          ran: ['lib#build'],
+          files: { 'packages/app/starts.txt': 's\n', 'packages/lib/dist/out.txt': 'lib1\n' },
+          inFlight: true,
+        },
+      },
+      {
+        write: { 'packages/lib/src/a.txt': 'lib2\n' },
+        expect: {
+          ran: ['lib#build'],
+          files: {
+            'packages/lib/dist/out.txt': 'lib2\n',
+            'packages/app/starts.txt': 's\n',
+            'packages/app/stopped.txt': null,
+          },
+        },
+      },
+    ],
+  }),
+] satisfies Case[]
+
+export const pending: Case[] = []

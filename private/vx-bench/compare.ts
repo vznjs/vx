@@ -35,7 +35,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { summarize } from './ab.js'
-import { vxCompileEntries } from './compile-entries.js'
+import { vxCompileEntries, vxCompileFlags } from './compile-entries.js'
 import { listSchedule } from './ideal.js'
 import { deleteDist, missingDist } from './outputs.js'
 import {
@@ -116,10 +116,7 @@ async function buildRunners(dir: string, wanted: (name: string) => boolean): Pro
         'bun',
         'build',
         '--compile',
-        '--minify',
-        '--bytecode',
-        '--format=esm',
-        '--splitting',
+        ...vxCompileFlags(),
         `--target=${target}`,
         ...vxCompileEntries(path.join(modules, '@vzn', 'vx', 'src', 'bin.ts')),
         '--outfile',

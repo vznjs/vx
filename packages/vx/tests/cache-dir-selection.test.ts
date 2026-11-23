@@ -5,7 +5,7 @@
 // one the user pointed at, and printed the schema notice against the
 // wrong index.
 
-import { existsSync } from 'node:fs'
+import { existsSync, readdirSync } from 'node:fs'
 import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -197,13 +197,16 @@ describe.skipIf(skipAsRoot('a cache directory this user cannot write into'))(
         for (const f of await readdir(own)) await chmod(path.join(own, f), 0o444)
         await chmod(own, 0o555)
         try {
-          // A changed config misses the file-hash memo, the store a reader
-          // would write; it is a quiet no-op.
-          const config = path.join(root, 'packages', 'app', 'vx.config.mjs')
-          await Bun.write(config, `${await Bun.file(config).text()}\n// changed\n`)
           const shown = await vx(['show'], null)
           expect(`${shown.code}\n${shown.err}`).toStartWith('0\n')
           expect(shown.out).toContain('app')
+          // A config edited since `vx lock` is refused by name, not a store crash.
+          const config = path.join(root, 'packages', 'app', 'vx.config.mjs')
+          await Bun.write(config, `${await Bun.file(config).text()}\n// changed\n`)
+          const edited = await vx(['show'], null)
+          expect(`${edited.code}\n${edited.err}`).toBe(
+            '1\n✗ vx show  packages/app/vx.config.mjs changed since the last `vx lock` — run `vx lock`\n',
+          )
         } finally {
           await chmod(own, 0o755)
           // 0o755, not 0o644: the run leaves a directory there too (the
@@ -237,8 +240,10 @@ describe.skipIf(skipAsRoot('a cache directory this user cannot write into'))(
       async () => {
         // `.vx` stops being writable: the cache directory cannot be created
         // under it, and neither can .vx/projects.lock.
-        const { chmod } = await import('node:fs/promises')
+        const { chmod, rm } = await import('node:fs/promises')
         expect((await vx(['lock'], null)).code).toBe(0)
+        // A fresh checkout has no .vx/cache (gitignored), though `vx lock` made one here.
+        await rm(path.join(root, '.vx', 'cache'), { recursive: true, force: true })
         await chmod(path.join(root, '.vx'), 0o555)
         try {
           const ran = await vx(['run', 'build', '--all'], null, VX)
@@ -268,6 +273,13 @@ describe.skipIf(skipAsRoot('a cache directory this user cannot write into'))(
 describe('the run’s --cache-dir reaches selection', () => {
   let root: string
   let elsewhere: string
+  // What the workspace's own cache dir holds besides `vx lock`'s config
+  // stamps and the config bundle, which live there whatever `cache.dir` says.
+  const defaultCache = (dir: string): string[] => {
+    const cache = path.join(dir, '.vx', 'cache')
+    const own = new Set(['config-stamps.json', 'compiled'])
+    return existsSync(cache) ? readdirSync(cache).filter((n) => !own.has(n)) : []
+  }
   beforeEach(async () => {
     root = await makeWorkspace({ prefix: 'vx-cache-dir-sel-' })
     elsewhere = await mkdtemp(path.join(os.tmpdir(), 'vx-cache-dir-elsewhere-'))
@@ -288,7 +300,7 @@ describe('the run’s --cache-dir reaches selection', () => {
     const staged = await loadCliProjects(root, metas, 'all', { cacheDir: elsewhere })
     expect([...staged.keys()]).toEqual(['app'])
     expect(existsSync(path.join(elsewhere, 'cache.db'))).toBe(false)
-    expect(existsSync(path.join(root, '.vx', 'cache'))).toBe(false)
+    expect(defaultCache(root)).toEqual([])
   })
 
   it(
@@ -309,7 +321,7 @@ describe('the run’s --cache-dir reaches selection', () => {
       expect(`${code}\n${err}${out}`).toStartWith('0\n')
       expect(out + err).toContain('app')
       expect(existsSync(path.join(elsewhere, 'cache.db'))).toBe(true)
-      expect(existsSync(path.join(root, '.vx', 'cache'))).toBe(false)
+      expect(defaultCache(root)).toEqual([])
     },
     TIMEOUT,
   )

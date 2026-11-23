@@ -6,7 +6,12 @@ import { parseCachePolicy } from '../cache/index.js'
 import type { Pipeline } from '../config.js'
 import { envName, parseSettingValue, SETTINGS, settingRefusal } from '../settings.js'
 import { setVxOnlyEnv, nearest } from '../util/index.js'
-import { findWorkspaceRoot, loadWorkspaceConfig, pipelineRunArgs } from '../workspace/index.js'
+import {
+  findWorkspaceRoot,
+  loadWorkspaceConfig,
+  PIPELINE_FLAGS,
+  pipelineRunArgs,
+} from '../workspace/index.js'
 import { refuse, seeHelp } from './help.js'
 import { parseRunArgs, runCmd } from './run.js'
 
@@ -103,9 +108,6 @@ export async function pipelineCmd(args: readonly string[]): Promise<number> {
   // variable the user never set: name the key that holds it.
   const refused = savedRefusal(name, pipeline, rest)
   if (refused !== undefined) return refuse('pipeline', args, refused, 'VX_E_CONFIG')
-  // A variable already set wins, as it beats every setting the file holds.
-  for (const [k, v] of Object.entries(pipeline.env ?? {}))
-    if ((process.env[k] ?? '') === '') setVxOnlyEnv(k, v)
   // Its paths are the workspace file's, so they stand from the root, as
   // `cache.dir` there does: from a project's directory a relative
   // `cacheDir` put a second cache inside that project.
@@ -117,5 +119,15 @@ export async function pipelineCmd(args: readonly string[]): Promise<number> {
       ? { profile: rooted(pipeline.profile === true ? 'profile.json' : pipeline.profile) }
       : {}),
   }
-  return runCmd([...pipelineRunArgs(saved, rest), ...rest], ['vx', 'pipeline', ...args])
+  // Read before its own `env` is set: that is saved as its keys are, so a
+  // policy variable there dropped its `noCache` as a typed one does.
+  const own = pipelineRunArgs(saved, rest)
+  // A variable already set wins, as it beats every setting the file holds.
+  for (const [k, v] of Object.entries(pipeline.env ?? {}))
+    if ((process.env[k] ?? '') === '') setVxOnlyEnv(k, v)
+  const keys = new Map<string, string>()
+  for (const [key, { flag }] of Object.entries(PIPELINE_FLAGS))
+    if (own.some((a) => a === flag || a.startsWith(`${flag}=`)))
+      keys.set(flag, `\`pipelines.${name}.${key}\``)
+  return runCmd([...own, ...rest], ['vx', 'pipeline', ...args], keys)
 }

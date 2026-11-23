@@ -5,7 +5,8 @@
 //
 // Each manager leaves a record of what it installed beside the tree (npm
 // `node_modules/.package-lock.json`, pnpm `node_modules/.pnpm/lock.yaml`,
-// Yarn 1 `node_modules/.yarn-integrity`, Yarn 2+ `node_modules/.yarn-state.yml`);
+// Yarn 1 `node_modules/.yarn-integrity`, Yarn 2+ `node_modules/.yarn-state.yml`,
+// or under `nodeLinker: pnpm` its `node_modules/.store`);
 // Bun leaves none (1.4.4, either linker), so its workspaces' dependencies
 // are read where Node resolves them, and every package where its linker
 // put it. The answer is a pure function of the
@@ -29,6 +30,7 @@ const load = createRequire(import.meta.url)
 const bunLock = (): typeof import('./bun.js') => load('./bun.js')
 const npmLock = (): typeof import('./npm.js') => load('./npm.js')
 const pnpmLock = (): typeof import('./pnpm.js') => load('./pnpm.js')
+const yarnLock = (): typeof import('./yarn.js') => load('./yarn.js')
 
 /** What the install left that disagrees with the lockfile; `dirs`: what the kept match stats too. */
 interface Verdict {
@@ -65,11 +67,12 @@ function npmCompare(lockText: string, markerText: string, root: string): string 
   const tree = obj(obj(JSON.parse(markerText))['packages'])
   // The record is not the tree: `npm install --dry-run` (npm 10.9) rewrites
   // it to the new lockfile and installs nothing.
+  const stored = npmStore(root)
   for (const [p, raw] of Object.entries(tree)) {
     const version = obj(raw)['version']
     if (!p.includes('node_modules/') || typeof version !== 'string') continue
     const installed = versionAt(root, p)
-    if (installed !== version) {
+    if (installed !== version && (installed !== undefined || !stored(p, version))) {
       return `${p} is ${installed === undefined ? 'not installed' : String(installed)}, node_modules/.package-lock.json names ${String(version)}`
     }
   }
@@ -103,6 +106,35 @@ function npmCompare(lockText: string, markerText: string, root: string): string 
     }
   }
   return undefined
+}
+
+/**
+ * npm's `install-strategy=linked` (npm 10.9): the record keeps the hoisted
+ * paths, and each package sits in `node_modules/.store/<name>@<version>-<hash>`,
+ * linked only where something depends on it. Whether a recorded path's
+ * package is in the store at that version; never without a store.
+ */
+function npmStore(root: string): (p: string, version: string) => boolean {
+  const store = path.join(root, 'node_modules', '.store')
+  if (statSync(store, { throwIfNoEntry: false })?.isDirectory() !== true) return () => false
+  const listed = new Map<string, readonly string[]>()
+  return (p, version) => {
+    const name = p.slice(p.lastIndexOf('node_modules/') + 'node_modules/'.length)
+    const slash = name.lastIndexOf('/')
+    const dir = slash === -1 ? store : path.join(store, name.slice(0, slash))
+    let names = listed.get(dir)
+    if (names === undefined) {
+      try {
+        names = readdirSync(dir)
+      } catch {
+        names = []
+      }
+      listed.set(dir, names)
+    }
+    // `<name>@<version>-<22 base64url>`: a prerelease's `1.0.0-beta.1-…` is not 1.0.0's.
+    const prefix = `${name.slice(slash + 1)}@${version}-`
+    return names.some((n) => n.startsWith(prefix) && /^[\w-]{22}$/.test(n.slice(prefix.length)))
+  }
 }
 
 /**
@@ -185,18 +217,81 @@ function yarnClassicCompare(
  * Yarn 2+'s node_modules state: the packages it installed by locator. A
  * locator the lockfile does not resolve to is another install; a missing
  * one may be a platform's optional package, so only the extra counts.
+ * Then each workspace the state lists (a focused install lists only
+ * those it installed): its registry dependencies where Node resolves
+ * them. A pull that moves a workspace to a version another package
+ * already holds leaves no extra locator, only the old copy where the
+ * workspace loads it.
  */
 function yarnBerryCompare(
   lock: import('./yarn.js').Lockfile,
   markerText: string,
-): string | undefined {
+  root: string,
+): Verdict {
+  const listed = new Set<string>()
   for (const line of markerText.split('\n')) {
     const m = /^"?([^\s"].*?)"?:$/.exec(line)
     if (m === null || m[1] === '__metadata') continue
     // A virtual locator is its package's, per peer set.
     const locator = m[1]!.replace(/@virtual:[^#]+#/, '@')
     if (!lock.entries.has(locator))
-      return `${locator} is installed, and the lockfile does not list it`
+      return { mismatch: `${locator} is installed, and the lockfile does not list it` }
+    listed.add(locator)
+  }
+  let rc: string | undefined
+  try {
+    rc = readUtf8(path.join(root, yarnLock().YARNRC))
+  } catch {
+    // None: no catalog to read.
+  }
+  // A focused install (`yarn workspaces focus`) lists the root without its
+  // dependencies, and the focused workspaces maybe without their dev ones:
+  // what Node finds above them is another package's copy (probed on babel,
+  // Yarn 4.19). Only a full install, listing every workspace, is checked.
+  for (const id of lock.workspaces.values()) if (!listed.has(id)) return { dirs: [] }
+  const direct = yarnLock().directVersions(lock, yarnLock().catalogsOf(rc))
+  for (const [dir] of lock.workspaces) {
+    for (const [name, version] of direct.get(dir)!) {
+      for (let d = dir; ; d = path.posix.dirname(d)) {
+        const installed = versionAt(
+          root,
+          d === '.' ? `node_modules/${name}` : `${d}/node_modules/${name}`,
+        )
+        if (installed !== undefined) {
+          if (installed !== version)
+            return { mismatch: `${dir}'s ${name} is ${installed}, the lockfile names ${version}` }
+          break
+        }
+        if (d === '.') break
+      }
+    }
+  }
+  // The catalogs it read: an edit naming another entry, before the install,
+  // leaves yarn.lock and the state as they were.
+  return { dirs: [yarnLock().YARNRC] }
+}
+
+/**
+ * Yarn 2+'s `nodeLinker: pnpm` store, which writes no .yarn-state.yml: one
+ * directory per locator, its name ending in the first 10 hex of the
+ * locator's hash (Yarn's `slugifyLocator`). One no lockfile entry hashes
+ * to is another install's; a peer set's copy (`-virtual-`) names none.
+ */
+function yarnStoreCompare(lock: import('./yarn.js').Lockfile, root: string): string | undefined {
+  const sha = (s: string): string => new Bun.CryptoHasher('sha512').update(s).digest('hex')
+  const hashes = new Set<string>()
+  for (const locator of lock.entries.keys()) {
+    const at = locator.indexOf('@', 1)
+    const ident = locator.slice(0, at)
+    const slash = ident.startsWith('@') ? ident.indexOf('/') : -1
+    const identHash =
+      slash === -1 ? sha(ident) : sha(ident.slice(1, slash) + ident.slice(slash + 1))
+    hashes.add(sha(identHash + locator.slice(at + 1)).slice(0, 10))
+  }
+  for (const dir of readdirSync(path.join(root, 'node_modules', '.store'))) {
+    const m = /-([0-9a-f]{10})$/.exec(dir)
+    if (m === null || dir.endsWith(`-virtual-${m[1]}`) || hashes.has(m[1]!)) continue
+    return `node_modules/.store/${dir} is installed, and the lockfile does not list it`
   }
   return undefined
 }
@@ -357,13 +452,19 @@ const INSTALL_CHECKS: Readonly<Record<string, InstallCheck>> = {
     }),
   },
   yarn: {
-    markers: ['node_modules/.yarn-integrity', 'node_modules/.yarn-state.yml'],
-    compare: (lock, parse, marker) => {
+    markers: [
+      'node_modules/.yarn-integrity',
+      'node_modules/.yarn-state.yml',
+      'node_modules/.store',
+    ],
+    compare: (lock, parse, marker, root) => {
       const parsed = parse(lock) as import('./yarn.js').Lockfile
+      if (marker!.file.endsWith('.yarn-state.yml'))
+        return yarnBerryCompare(parsed, marker!.text, root)
       return {
         mismatch: marker!.file.endsWith('.yarn-integrity')
           ? yarnClassicCompare(parsed, marker!.text)
-          : yarnBerryCompare(parsed, marker!.text),
+          : yarnStoreCompare(parsed, root),
       }
     },
   },
@@ -430,7 +531,13 @@ export function checkInstalled(
     verdict = check.compare(
       readUtf8(path.join(root, lockFile)),
       parse,
-      marker === undefined ? undefined : { file: marker, text: readUtf8(path.join(root, marker)) },
+      marker === undefined
+        ? undefined
+        : // The store is a directory: its compare lists it.
+          {
+            file: marker,
+            text: marker.endsWith('.store') ? '' : readUtf8(path.join(root, marker)),
+          },
       root,
     )
   } catch (err) {

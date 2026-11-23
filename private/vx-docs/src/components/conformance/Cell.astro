@@ -2,7 +2,7 @@
 // One tool's score in one group of the conformance board: the share of
 // every case it passes, a bar of every case (solid: passed, red: its
 // issues, the cases it has the feature for but fails), and the counts.
-import { issues, percent, RESULTS } from '../../conformance/data.ts'
+import { issues, percent, RESULTS, toolName, toolShort } from '../../conformance/data.ts'
 
 interface Props {
   t: string
@@ -14,6 +14,9 @@ const share = (n: number) => (s && s.of > 0 ? (n / s.of) * 100 : 0)
 ---
 
 <span class="cfm-cell" data-tool={t}>
+  {/* The board's head names the columns on a wide screen; a phone stacks the cells, each under its own name. */}
+  <span class="cfm-who" aria-hidden="true">{toolShort(t)}</span>
+  <span class="cfm-sr">{toolName(t)}</span>
   <span class="cfm-pct">{percent(s)}</span>
   <span class="cfm-bar" aria-hidden="true">
     <span class="cfm-can" style={`width:${share(s?.can ?? 0)}%`} />

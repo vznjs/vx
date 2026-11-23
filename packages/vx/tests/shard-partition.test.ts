@@ -150,6 +150,21 @@ describe('platform shards', () => {
     expect(testFiles('unsafe', true)).not.toContain('skills-install.unsafe.test.ts')
   })
 
+  // A file that branches on the host being a Mac says what a Mac must do;
+  // dealt only to Linux, that branch never ran (a darwin-only describe ran
+  // nowhere at all).
+  it('deal every file that branches on darwin to the Mac', () => {
+    const branches = /process\.platform\s*[!=]==?\s*'darwin'/
+    for (const suite of ['safe', 'unsafe'] as const) {
+      const mac = testFiles(suite, true)
+      const missed = testFiles(suite).filter(
+        (f) =>
+          !mac.includes(f) && branches.test(readFileSync(path.join(import.meta.dir, f), 'utf8')),
+      )
+      expect([suite, missed]).toEqual([suite, []])
+    }
+  })
+
   // A Mac skips the Linux sandbox's tests and runs its own: dealt by the
   // Linux table, its six shards ran 57 to 84 s (2026-11-18), and the Mac
   // work ends a distributed run as often as the Linux work does.

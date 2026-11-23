@@ -45,6 +45,8 @@ const SKIP = [
   /^packages\/vx\/docs\/(history|design)\//,
   /^packages\/vx\/docs\/STATUS\.md$/,
   /^private\/vx-docs\/src\/content\/docs\/docs\/upgrading\.md$/,
+  // The upgrading page's steps, which name the old file to delete.
+  /^packages\/vx\/scripts\/upgrading\.ts$/,
 ]
 
 // A post is kept current, with no note on what changed

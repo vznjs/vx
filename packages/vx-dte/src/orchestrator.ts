@@ -321,6 +321,8 @@ export class Orchestrator extends RunReport<Worker> {
   private readonly lenders = new Set<string>()
   /** Each graph's upstreams as orders name them (`dep`). */
   private readonly deps = new WeakMap<ReadonlyMap<string, TaskNode>, Map<string, DepFiles | null>>()
+  /** Each graph's dependants of each task, walked once (`skipped`). */
+  private readonly dependants = new WeakMap<ReadonlyMap<string, TaskNode>, Map<string, string[]>>()
   /** Each graph's tasks' uncached upstreams, whose files lie on one worker only (`pinUp`). */
   private readonly afterUncached = new WeakMap<
     ReadonlyMap<string, TaskNode>,
@@ -432,19 +434,60 @@ export class Orchestrator extends RunReport<Worker> {
         ...(nodes?.has(req.taskId) === true ? { up } : {}),
         need: { ...need, platform: req.platform ?? this.o.home },
         queuedAt: performance.now(),
-        resolve,
-        reject,
+        // Failed or stopped, it hands over none of its dependants: the plan
+        // asked a worker for them, idle on arrival.
+        resolve: (r) => {
+          if (r.exitCode !== 0) this.skipped(req.taskId)
+          resolve(r)
+        },
+        reject: (err) => {
+          this.skipped(req.taskId)
+          reject(err)
+        },
       }
       // A retry runs elsewhere: the worker, or what ran beside it, may be the flake.
       const last = (req.attempt ?? 1) > 1 ? this.ranOn.get(req.taskId) : undefined
       if (last !== undefined) job.avoid = last
       this.handed.delete(req.taskId)
       // A signal aborted already fires no `abort`.
-      if (req.signal?.aborted === true) return resolve(stopped())
+      if (req.signal?.aborted === true) return job.resolve(stopped())
       req.signal?.addEventListener('abort', () => this.abort(job), { once: true })
       this.enqueue([job])
       this.pumpSoon()
     })
+  }
+
+  /**
+   * `id` failed or stopped: core skips its dependants, so the plan counts
+   * them no more. A retry of `id`, or a dependant core hands over after
+   * all, is queued again (`enqueue`).
+   */
+  private skipped(id: string): void {
+    const p = this.bound
+    const nodes = this.o.nodes()
+    if (p === undefined || nodes === undefined) return
+    let down = this.dependants.get(nodes)
+    if (down === undefined) {
+      down = new Map()
+      for (const [t, n] of nodes)
+        for (const d of n.deps) {
+          const list = down.get(d)
+          if (list === undefined) down.set(d, [t])
+          else list.push(t)
+        }
+      this.dependants.set(nodes, down)
+    }
+    const now = this.clock()
+    const seen = new Set<string>()
+    const stack = [...(down.get(id) ?? [])]
+    while (stack.length > 0) {
+      const t = stack.pop()!
+      if (seen.has(t)) continue
+      seen.add(t)
+      if (this.waiting.has(t) || this.handed.has(t) || this.where(t) !== undefined) continue
+      p.drop(t, now)
+      stack.push(...(down.get(t) ?? []))
+    }
   }
 
   /** The run's cache facts; once they end, every worker is sent them again before then. */
@@ -1355,7 +1398,8 @@ export class Orchestrator extends RunReport<Worker> {
             bytes += bytesOf(alone)
           }
           const n = ++a.batches
-          for (const { job } of part) job.batch = n
+          // One its worker's loss put back may be another's by now, under that one's batch.
+          for (const { job } of part) if (a.busy.get(job.req.taskId) === job) job.batch = n
           const batch = {
             type: 'batch',
             n,
@@ -2007,8 +2051,11 @@ export class Orchestrator extends RunReport<Worker> {
         }
         const a = this.workers.get(from)
         if (a === undefined) continue
-        const said = body as ToOrchestrator
-        const frame = said.type === 'together' ? said.messages : [said]
+        const frame = wiredFrame(body)
+        if (frame === undefined) {
+          this.warn(`dte: dropped a message from ${a.label} that is not its protocol`)
+          continue
+        }
         // A worker's times, read against its clock as this frame left it:
         // no two machines' clocks agree.
         const now = performance.now()
@@ -2040,6 +2087,8 @@ export class Orchestrator extends RunReport<Worker> {
             if (back.length > 0) {
               this.enqueue(back)
               this.o.faulted?.()
+              // Now, as a loss does: a worker the plan asks in its place keeps the run from stranding.
+              this.pump()
               if (this.spawnedAt.size > 0)
                 this.stranded(`${a.label} no longer runs a task it began and no worker is left`)
             }
@@ -2062,6 +2111,8 @@ export class Orchestrator extends RunReport<Worker> {
             this.begun(a, m.task)
             if (this.retry(a, j, m.reason) !== undefined) this.enqueue([j])
             if (a.faulty) this.o.faulted?.()
+            // Now, as a loss does: a worker the plan asks in its place keeps the run from stranding.
+            this.pump()
             if (a.faulty && this.spawnedAt.size > 0)
               this.stranded(
                 `${a.label} could not run ${m.task} (${m.reason}) and no worker is left`,
@@ -2310,6 +2361,33 @@ export class Orchestrator extends RunReport<Worker> {
 
   /** Why the relay was given up on; then every task runs here. */
   lost: string | undefined
+}
+
+/**
+ * A worker's frame as messages the loop reads without throwing, or undefined:
+ * the relay carries it, and a null body or a `part` list that was no array
+ * threw out of the loop and ended the run on a TypeError.
+ */
+function wiredFrame(body: unknown): ToOrchestrator[] | undefined {
+  const record = (v: unknown): v is Record<string, unknown> =>
+    typeof v === 'object' && v !== null && !Array.isArray(v)
+  if (!record(body)) return undefined
+  const frame = body['type'] === 'together' ? body['messages'] : [body]
+  if (!Array.isArray(frame)) return undefined
+  for (const m of frame as unknown[]) {
+    if (!record(m) || typeof m['type'] !== 'string') return undefined
+    if (m['load'] !== undefined && !record(m['load'])) return undefined
+    if (m['type'] === 'report') {
+      if (!Array.isArray(m['running'])) return undefined
+    } else if (['ran', 'fault', 'part', 'end'].includes(m['type'])) {
+      if (typeof m['task'] !== 'string') return undefined
+      const lists = m['type'] === 'end' ? m['result'] : m
+      if (!record(lists)) return undefined
+      if (PART_LISTS.some((l) => lists[l] !== undefined && !Array.isArray(lists[l])))
+        return undefined
+    }
+  }
+  return frame as ToOrchestrator[]
 }
 
 /** An `end`'s `log` as chunks, or undefined when it is not one: a worker's word, checked. */

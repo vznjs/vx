@@ -17,6 +17,7 @@ import {
   isCacheHit,
   isGroupTask,
   isKeyFailed,
+  markKeyFailed,
   type SandboxFix,
   type TaskNode,
   type TaskOutcome,
@@ -583,6 +584,8 @@ export interface RecordedRow {
   placement: string | null
   outputBytes: number | null
   blocks: number | null
+  /** Its key was not derived: no command ran and no cache was asked. */
+  keyNotDerived?: boolean
 }
 
 /**
@@ -619,6 +622,7 @@ export function formatRecordedRow(
     },
     ...(r.placement !== null ? { placement: { where: r.placement } } : {}),
   } as TaskOutcome
+  if (r.keyNotDerived === true) markKeyFailed(o)
   const blocks = r.blocks ?? undefined
   const row =
     o.status === 'skipped'

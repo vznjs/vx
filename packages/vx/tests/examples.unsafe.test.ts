@@ -336,12 +336,17 @@ function starters(): string[] {
     .sort()
 }
 
-// The runs above name their starters; one added to examples/ without a
-// describe block here would ship unrun. The set is read from the tree.
-describe('every starter under examples/ has a run in this suite', () => {
-  it('the directories are the ones the describe blocks above drive', () => {
+// The runs above and examples.live.test.ts's (the stacks, installed from
+// npm) name their starters; one added to examples/ without a describe
+// block would ship unrun. The set is read from the tree.
+describe('every starter under examples/ has a run in this suite or the live one', () => {
+  it('the directories are the ones the describe blocks drive', () => {
+    const live = path.join(import.meta.dir, 'examples.live.test.ts')
     const driven = [
-      ...readFileSync(import.meta.path, 'utf8').matchAll(/^describe\('examples\/(\w+)'/gm),
+      ...[import.meta.path, live]
+        .map((f) => readFileSync(f, 'utf8'))
+        .join('\n')
+        .matchAll(/^describe\('examples\/(\w+)'/gm),
     ]
       .map((m) => m[1]!)
       .sort()

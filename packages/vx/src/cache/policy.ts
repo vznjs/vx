@@ -68,7 +68,9 @@ export function parseCachePolicy(spec: string, base: CachePolicy = FULL_CACHE_PO
     const flagSet = new Set<string>()
     for (const ch of flags) {
       if (ch !== 'r' && ch !== 'w') {
-        throw new UserError(`invalid flag '${ch}' for '${layer}': expected 'r' and/or 'w'`)
+        throw new UserError(
+          `invalid flag '${ch}' for '${layer}': expected 'r' and/or 'w', as in '${layer}:rw'`,
+        )
       }
       if (flagSet.has(ch)) {
         throw new UserError(

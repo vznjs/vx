@@ -74,9 +74,9 @@ describe('restoring into an output directory that links out of the project', () 
         // (neither a miss nor its layer's hit), and ran no command. (Its grid
         // row is pinned by `vx last` below: CI's static output draws no grid.)
         expect(r.text).toContain('└─ app#build ── (0ms) failed (cache restore failed)')
-        expect(r.text).toMatch(/^ {12}1 failed · 1 total$/m)
-        // The cache bar fills with it, as the tasks bar does; no legend counts it.
-        expect(r.text).toMatch(/^ {2}cache +▰+\n\n/m)
+        expect(r.text).toMatch(/^ {2}tasks {5}1 failed · 1 total$/m)
+        // A piped summary draws no meters, and no legend counts it: no cache row.
+        expect(r.text).not.toMatch(/^ {2}cache /m)
         expect(r.text).not.toMatch(/miss|local 1|↓/)
         expect(r.text).not.toContain('$ mkdir')
       }
@@ -84,6 +84,9 @@ describe('restoring into an output directory that links out of the project', () 
       const last = await vx(root, ['last'])
       expect(last.text).toMatch(/^ +failed  — .* app#build  cache restore failed$/m)
       expect(last.text).not.toMatch(/miss|executed/)
+      // …and vx why names the restore, not a key never derived.
+      const why = await vx(root, ['why', 'app#build'])
+      expect(why.text).toContain('this task hit the cache and its restore failed')
 
       // CONTROL: a link that stays inside the project is written through.
       const inside = path.join(appDir, 'real-out')

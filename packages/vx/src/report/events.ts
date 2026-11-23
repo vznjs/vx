@@ -283,6 +283,8 @@ export interface OutcomeView {
   notReady?: 'timeout' | 'exited' | 'spawn'
   /** The input that changed while the command ran (see `TaskOutcome`). */
   inputMoved?: string
+  /** The output globs an exit 0 left matching nothing (see `TaskOutcome`). */
+  outputsMissing?: readonly string[]
   /** A skipped task: the failed (or aborted) task at the root of the block
    *  (see `TaskOutcome`); absent for fail-fast's skip, which nothing blocked. */
   blockedBy?: string
@@ -352,6 +354,7 @@ export function outcomeLabel(
         | 'sandboxViolations'
         | 'notReady'
         | 'inputMoved'
+        | 'outputsMissing'
         | 'blockedBy'
         | 'otherPlatform'
       >,
@@ -363,6 +366,7 @@ export function outcomeLabel(
     return step === 'save' ? 'failed (cache save failed)' : 'failed (output clean failed)'
   if (o.status === 'failed') {
     const violations = 'taskId' in o ? o.sandboxViolations : o.sandbox?.violations
+    if (o.outputsMissing !== undefined) return missingOutputsLabel(o.outputsMissing, violations)
     return failedLabel(o.exitCode, o.timedOut, violations, o.notReady, o.inputMoved)
   }
   if (o.status === 'skipped') return skippedLabel(o)
@@ -387,6 +391,23 @@ type SkipView = Pick<OutcomeView, 'blockedBy' | 'otherPlatform'>
 function skippedLabel(o: SkipView): string {
   const why = skippedReason(o)
   return why === '' ? 'skipped' : `skipped (${why})`
+}
+
+/**
+ * A command that exited 0 but left a declared output matching nothing: its
+ * exit 1 is vx's, so the globs are the reason, not `exit 1`.
+ */
+function missingOutputsLabel(globs: readonly string[], sandboxViolations?: number): string {
+  const violations =
+    sandboxViolations === undefined || sandboxViolations === 0
+      ? ''
+      : `, ${sandboxViolations} sandbox violation${sandboxViolations === 1 ? '' : 's'}`
+  return `failed (${missingOutputsReason(globs)}${violations})`
+}
+
+/** Why a task whose exit 0 wrote none of `globs` failed, as its row and `vx last` say it. */
+export function missingOutputsReason(globs: readonly string[]): string {
+  return `exited 0, no file matched ${globs.join(', ')}`
 }
 
 /**
@@ -475,6 +496,7 @@ export function projectOutcome(outcome: TaskOutcome): OutcomeView {
   if (outcome.timedOut === true) view.timedOut = true
   if (outcome.notReady !== undefined) view.notReady = outcome.notReady
   if (outcome.inputMoved !== undefined) view.inputMoved = outcome.inputMoved
+  if (outcome.outputsMissing !== undefined) view.outputsMissing = outcome.outputsMissing
   if (outcome.blockedBy !== undefined) view.blockedBy = outcome.blockedBy
   if (outcome.otherPlatform !== undefined) view.otherPlatform = outcome.otherPlatform
   if (outcome.cache?.restored !== undefined) view.restored = outcome.cache.restored
@@ -495,7 +517,7 @@ export function projectOutcome(outcome: TaskOutcome): OutcomeView {
  * task events reference the id, which the consumer already holds.
  */
 export type WireEvent =
-  | { kind: 'run:start'; info: RunStartInfo }
+  | { kind: 'run:start'; info: Omit<RunStartInfo, 'context'> }
   | { kind: 'task:start'; task: TaskView }
   | { kind: 'task:stdout'; taskId: string; chunk: string }
   | { kind: 'task:stderr'; taskId: string; chunk: string }
@@ -513,8 +535,11 @@ export type WireEvent =
 /** Map an in-process event to its serializable wire form. */
 export function toWireEvent(event: RunEvent): WireEvent {
   switch (event.kind) {
-    case 'run:start':
-      return { kind: 'run:start', info: event.info }
+    case 'run:start': {
+      // `context` is the footer's live state (functions, maps), not data.
+      const { context: _, ...info } = event.info
+      return { kind: 'run:start', info }
+    }
     case 'task:start':
       return { kind: 'task:start', task: projectNode(event.node) }
     case 'task:stdout':

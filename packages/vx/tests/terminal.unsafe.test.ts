@@ -290,7 +290,9 @@ describe('the picker outside a git work tree', () => {
           NO_COLOR: '1',
           GIT_CEILING_DIRECTORIES: path.dirname(root),
         },
+        // Wide enough for the temp path: a narrow terminal wraps the line.
         terminal: {
+          cols: 300,
           data: (_term, data) => {
             screen += new TextDecoder().decode(data)
           },

@@ -22,9 +22,7 @@ function links(entries: Entry[]): Link[] {
 function sectionByPath(id: string): SectionId {
   const top = id.split('/')[0]
   if (top === '' || top === 'index') return 'home'
-  return top === 'blog' || top === 'releases' || top === 'features' || top === 'conformance'
-    ? top
-    : 'docs'
+  return top === 'blog' || top === 'releases' || top === 'conformance' ? top : 'docs'
 }
 
 export const onRequest = defineRouteMiddleware(async (context) => {

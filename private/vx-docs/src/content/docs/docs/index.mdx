@@ -47,7 +47,7 @@ vx runs on [Bun](https://bun.com), on macOS and Linux (glibc). On Windows, use W
 | prove a task's inputs are complete  | `exec.sandbox` fails a read outside them ([Sandboxing](./sandboxing/))         |
 | share the cache with CI             | a remote cache plugin ([Remote cache](./remote-cache/))                        |
 | spread a run over CI machines       | `dte()` hands tasks to workers your CI starts ([Distributed task execution](./distributed-task-execution/)) |
-| keep a Turborepo or Nx config       | `@vzn/vx-migrate` runs it unchanged ([Migrate](./migrate/))                      |
+| move from Turborepo or Nx           | `vx init` writes a `vx.config.ts` per package from your config ([Migrate](./migrate/)) |
 
 Nothing is inferred. A task is cached only when it says what it reads
 (`inputs`) and what it writes (`outputs`).

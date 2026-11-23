@@ -1291,8 +1291,6 @@ function decodeGitZ(bytes: Uint8Array): { text: string; undecodable: Set<string>
 const LOSSY_UTF8 = new TextDecoder('utf-8', { ignoreBOM: true })
 const FATAL_UTF8 = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true })
 
-const LS_FILES_STAGE_RE = /^(?:([A-Za-z]) )?([0-7]{6}) ([0-9a-f]{40,64}) ([0-3])\t/
-
 const UNOPENED = "warning: could not open directory '"
 /** The reasons (ENOENT, ENOTDIR) git gives for a directory that was not there when it looked. */
 const GONE = new Set(['No such file or directory', 'Not a directory'])
@@ -1420,7 +1418,7 @@ export function runGitLsFiles(cwd: string, env = gitEnv()): GitLsResult {
   }
   refuseUnopenedDirs(cwd, new TextDecoder().decode(proc.stderr))
   const { text, undecodable } = decodeGitZ(proc.stdout)
-  const parsed = parseLsFilesOutput(text.length === 0 ? [] : text.split('\0'), undecodable)
+  const parsed = parseLsFilesOutput(text, undecodable)
   const nested = expandNestedRepos(cwd, parsed.files, parsed.gitlinks)
   parsed.files = nested.files
   parsed.undecodable.push(...nested.undecodable)
@@ -1586,7 +1584,7 @@ function walkFiles(dir: string, rel = ''): string[] {
 // `debug`, for a `--debug` listing: each record's recorded size (aligned
 // with `records`) in, and each regular stage-0 entry's raw OID and size out.
 function parseLsFilesOutput(
-  records: readonly string[],
+  records: string | readonly string[],
   undecodableRecords: ReadonlySet<string>,
   debug?: {
     sizes: readonly number[]
@@ -1600,31 +1598,62 @@ function parseLsFilesOutput(
   const flagged = new Set<string>()
   const gitlinks = new Set<string>()
   const undecodable: string[] = []
-  // NUL-separated; trailing NUL produces an empty segment we skip.
-  for (let i = 0; i < records.length; i++) {
-    const record = records[i]!
-    if (record.length === 0) continue
-    const m = LS_FILES_STAGE_RE.exec(record)
-    const filePath = m === null ? record : record.slice(m[0].length) // --others: bare path
-    if (m === null && isInstalledPath(filePath)) continue
+  // One listing is read in place: a record per path split out of it, then
+  // a regex match per record, was ~40 MB of garbage and 70 ms at 130,000
+  // files, against ~40 ms for this scan (2026-11-23). A record array (the
+  // `--debug` listing's) is scanned one record at a time.
+  const text = typeof records === 'string' ? records : undefined
+  const list = typeof records === 'string' ? undefined : records
+  let next = 0
+  for (let i = 0; ; i++) {
+    let record: string
+    let at: number
+    let end: number
+    if (text !== undefined) {
+      if (next >= text.length) break
+      at = next
+      end = text.indexOf('\0', at)
+      if (end < 0) end = text.length
+      next = end + 1
+      record = text
+    } else {
+      if (i >= list!.length) break
+      record = list![i]!
+      at = 0
+      end = record.length
+    }
+    if (end === at) continue
+    const head = stageHead(record, at, end)
+    const filePath = head === undefined ? record.slice(at, end) : record.slice(head.path, end)
+    if (head === undefined && isInstalledPath(filePath)) continue
     // An unmerged path prints once per stage (1, 2, 3), in a row. Listed
     // each time, the key folded the file once per stage, so a conflict
     // resolved on disk keyed apart from the same bytes once added. It
     // carries no OID either way: its worktree bytes are what folds.
-    if (m !== null && m[4] !== '0' && files.length > 0 && files[files.length - 1] === filePath) {
-      if (m[2] === '160000') gitlinks.add(filePath)
+    const stage = head === undefined ? 0 : record.charCodeAt(head.path - 2)
+    const mode = head === undefined ? '' : record.slice(head.mode, head.mode + 6)
+    if (
+      head !== undefined &&
+      stage !== 48 &&
+      files.length > 0 &&
+      files[files.length - 1] === filePath
+    ) {
+      if (mode === '160000') gitlinks.add(filePath)
       continue
     }
     files.push(filePath)
-    if (undecodableRecords.size > 0 && undecodableRecords.has(record)) undecodable.push(filePath)
-    if (m === null) continue
-    const mode = m[2]!
-    const stage = m[4]!
-    if ((mode === '100644' || mode === '100755' || mode === '120000') && stage === '0') {
-      oids.set(filePath, fileIdentity(mode, m[3]!))
+    if (
+      undecodableRecords.size > 0 &&
+      undecodableRecords.has(text === undefined ? record : record.slice(at, end))
+    )
+      undecodable.push(filePath)
+    if (head === undefined) continue
+    if ((mode === '100644' || mode === '100755' || mode === '120000') && stage === 48) {
+      const oid = record.slice(head.mode + 7, head.path - 3)
+      oids.set(filePath, fileIdentity(mode, oid))
       if (debug !== undefined && mode !== '120000') {
         debug.indexed.set(filePath, {
-          oid: m[3]!,
+          oid,
           size: debug.sizes[i]!,
           ctime: debug.ctimes[i]!,
           mtime: debug.mtimes[i]!,
@@ -1636,10 +1665,44 @@ function parseLsFilesOutput(
     // A LOWERCASE letter means skip-worktree or assume-unchanged (`S` is the
     // older spelling of skip-worktree): git has been told to stop looking at
     // the worktree file, so its index OID says nothing about the disk.
-    const flag = m[1]
-    if (flag !== undefined && (flag === 'S' || (flag >= 'a' && flag <= 'z'))) flagged.add(filePath)
+    const flag = head.flag
+    if (flag === 83 || (flag >= 97 && flag <= 122)) flagged.add(filePath)
   }
   return { files, oids, flagged, gitlinks, undecodable }
+}
+
+const isOctal = (c: number): boolean => c >= 48 && c <= 55
+const isHex = (c: number): boolean => (c >= 48 && c <= 57) || (c >= 97 && c <= 102)
+const isLetter = (c: number): boolean => (c >= 65 && c <= 90) || (c >= 97 && c <= 122)
+
+/**
+ * Where a staged record's fields start, as `[<flag> ]<mode> <oid> <stage>\t`
+ * reads at `at` (the char code of a flag letter, -1 for none); undefined
+ * for a bare `--others` path. The checks a regex made, without its match.
+ */
+function stageHead(
+  s: string,
+  at: number,
+  end: number,
+): { flag: number; mode: number; path: number } | undefined {
+  let flag = -1
+  let i = at
+  if (end - at > 1 && isLetter(s.charCodeAt(at)) && s.charCodeAt(at + 1) === 32) {
+    flag = s.charCodeAt(at)
+    i += 2
+  }
+  const mode = i
+  for (let k = 0; k < 6; k++) if (i + k >= end || !isOctal(s.charCodeAt(i + k))) return undefined
+  i += 6
+  if (s.charCodeAt(i) !== 32) return undefined
+  i++
+  const oid = i
+  while (i < end && isHex(s.charCodeAt(i))) i++
+  if (i - oid < 40 || i - oid > 64 || s.charCodeAt(i) !== 32) return undefined
+  i++
+  const stage = s.charCodeAt(i)
+  if (stage < 48 || stage > 51 || s.charCodeAt(i + 1) !== 9 || i + 1 >= end) return undefined
+  return { flag, mode, path: i + 2 }
 }
 
 /**
@@ -2118,8 +2181,18 @@ function fileModeIgnored(gitVars: string): boolean {
 }
 
 /**
- * Under `core.fileMode=false`, each trusted identity's mode from an lstat of
- * the worktree file, as `hashFile` takes it; the OID stays the index's. The
+ * `true` under `core.symlinks=false`: git checks a link out as a plain file
+ * holding its target and keeps the index mode 120000. Keyed by that mode, the
+ * file folded as a link (its target too) once its entry was trusted and as a
+ * plain file while racy, so a commit or a second's wait moved the key.
+ */
+function symlinksIgnored(gitVars: string): boolean {
+  return gitBool(gitVarList(gitVars).get('core.symlinks')) === false
+}
+
+/**
+ * Under `core.fileMode=false` or `core.symlinks=false`, each trusted
+ * identity's mode from an lstat of the worktree file, as `hashFile` takes it; the OID stays the index's. The
  * index mode alone kept the key through a `chmod +x`, and the task replayed
  * the output a 644 input built. A path that does not stat goes
  * back to the probe.
@@ -2743,9 +2816,7 @@ export async function startGitEnumeration(
   const gitDir = facts?.commonDir ?? ''
   const ls = await listing
   const parsedLs =
-    ls !== null && ls.exitCode === 0
-      ? parseLsFilesOutput(ls.stdout.length === 0 ? [] : ls.stdout.split('\0'), ls.undecodable)
-      : undefined
+    ls !== null && ls.exitCode === 0 ? parseLsFilesOutput(ls.stdout, ls.undecodable) : undefined
   const early =
     parsedLs !== undefined &&
     parsedLs.oids.size > 0 &&
@@ -2882,7 +2953,11 @@ export async function startGitEnumeration(
     },
     staged,
   )
-  if (vars !== null && vars.exitCode === 0 && fileModeIgnored(vars.stdout)) {
+  if (
+    vars !== null &&
+    vars.exitCode === 0 &&
+    (fileModeIgnored(vars.stdout) || symlinksIgnored(vars.stdout))
+  ) {
     restampModes(trusted, workspaceRoot)
     // As a clean file is keyed, or a rewrite's mode moved the key.
     restampModes(staged, workspaceRoot)

@@ -221,6 +221,12 @@ pre.mermaid svg {
   max-width: 100%;
   height: auto;
 }
+/* Until it draws, the block holds the diagram's source, whose long lines
+   made it a sideways-scrolling region no keyboard could reach (axe's
+   scrollable-region-focusable). The drawn svg fits the column. */
+pre.mermaid:not([data-processed]) {
+  overflow: hidden;
+}
 
 /* Tables (2026-10-24: "ugly and unreadable"): a tinted header, row
    rules and a faint zebra, figures right-aligned on tabular digits

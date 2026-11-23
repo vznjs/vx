@@ -710,8 +710,42 @@ export async function mapNxWorkspace(
       `\`syncGenerators\` (${gens}) on ${n} task${n === 1 ? '' : 's'}: ` +
         `Nx runs them before those targets, and vx does not — ${syncAdvice}`,
     )
+  // Once, as the plan is written; `nx()` would say it on every `vx lock`,
+  // and the run names each task whose pattern matched nothing.
+  const optional = opts.migration === true ? optionalOutputsNote(projects) : undefined
+  if (optional !== undefined) notes.push(optional)
   refuseTaskNames(projects, 'target')
   return { projects, notes }
+}
+
+/**
+ * Nx caches whichever of a target's outputs exist, and vx fails a task one
+ * of whose output patterns matched nothing: TanStack/store's shared
+ * `build` outputs (`build`, `dist`) failed every project that writes only
+ * `dist` (2026-11-23). Said once, naming the tasks most likely to miss one.
+ */
+function optionalOutputsNote(projects: readonly GeneratedProject[]): string | undefined {
+  const declared: { id: string; n: number }[] = []
+  for (const p of projects)
+    for (const t of p.tasks) {
+      const o = t.task?.['outputs'] as { files?: unknown; workspaceFiles?: unknown } | undefined
+      const n = [o?.files, o?.workspaceFiles]
+        .flatMap((l) => (Array.isArray(l) ? l : []))
+        .filter((g) => typeof g === 'string' && !g.startsWith('!')).length
+      if (n > 0) declared.push({ id: `${p.name}#${t.name}`, n })
+    }
+  if (declared.length === 0) return undefined
+  const many = declared.filter((d) => d.n > 1).map((d) => d.id)
+  const shown = many.slice(0, 3).join(', ')
+  return (
+    `Nx caches whichever of a target's outputs exist; vx fails a task when one of its output ` +
+    `patterns matches nothing ("outputs matched no files"): ${declared.length} ` +
+    `task${declared.length === 1 ? '' : 's'} declare${declared.length === 1 ? 's' : ''} outputs` +
+    (many.length === 0
+      ? ''
+      : `, ${many.length} more than one (${shown}${many.length > 3 ? ', …' : ''})`) +
+    ' — remove each pattern its command never writes'
+  )
 }
 
 /**
@@ -1021,8 +1055,13 @@ function buildTask(
   // did not migrate: nx-examples'.NET ProductsApi), the key saw nothing the
   // task reads, and a changed document replayed the old generated client
   // (Growth).
-  const orphanReader =
-    inputs.dependentOutputs.length > 0 && !deps.some((d) => !d.includes('#inputs:'))
+  // A target with no `dependsOn` has no dependent task: Nx hashes nothing
+  // there and caches it (@nx/vitest infers the input on every test target).
+  const readsDependents =
+    inputs.dependentOutputs.length > 0 &&
+    Array.isArray(target.dependsOn) &&
+    target.dependsOn.length > 0
+  const orphanReader = readsDependents && !deps.some((d) => !d.includes('#inputs:'))
   if (orphanReader && cacheWanted && !persistent) {
     todos.push(orphanReaderTodo(inputs.dependentOutputs, target.dependsOn))
   }
@@ -1152,7 +1191,7 @@ function buildTask(
   }
 
   const generated: GeneratedTask = { name: variant.name, todos, task }
-  if (cacheEnabled && inputs.dependentOutputs.length > 0)
+  if (cacheEnabled && readsDependents)
     dependentReaders.set(generated, {
       globs: inputs.dependentOutputs,
       transitive: inputs.transitiveOutputs,

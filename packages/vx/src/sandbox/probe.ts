@@ -59,7 +59,11 @@ export function unavailableReason(exitCode: number | null, stderr: string): stri
       ? " — the runtime's seccomp helper cannot create its nested user namespace here (root inside a container, or a kernel that forbids nested user namespaces): run as a non-root user, or set `sandbox.weakerWhenNested: true` on every sandboxed task"
       : stderr.includes("Can't mount proc")
         ? ' — a fresh /proc cannot be mounted here (an unprivileged container, or a sandbox around vx): set `sandbox.weakerWhenNested: true` on every sandboxed task'
-        : ''
+        : stderr.includes('setting up uid map') || stderr.includes('RTM_NEWADDR')
+          ? // bwrap's own user namespace, refused (2026-11-23): Ubuntu 23.10+
+            // grants one only to the distribution's /usr/bin/bwrap.
+            " — bubblewrap may not create a user namespace here: Ubuntu's AppArmor allows one only to its own /usr/bin/bwrap (install the distribution's bubblewrap, or `sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0`); elsewhere the kernel has them off (`sysctl user.max_user_namespaces`)"
+          : ''
   return `a sandboxed \`true\` failed (exit ${exitCode}): ${stderr.slice(0, 200)}${hint}`
 }
 

@@ -4,6 +4,8 @@
 import { handOff, localVx, retierJit, upgradesOnlyItself, vxPath } from './handoff.js'
 import { takeSignalRelay } from './util/signal-relay.js'
 
+const ISSUES_URL = 'https://github.com/vznjs/vx/issues'
+
 let settled = false
 /** A rejection nothing awaited was reported: the run fails whatever code its verb returns. */
 let rejected = false
@@ -120,6 +122,7 @@ async function main(): Promise<void> {
       say(`vx: ${err.message} — ${fsRefusalHint(err)}\n`)
     } else {
       say(`vx: ${withCauses(err)}\n`)
+      say(`vx: this is a bug in vx — report it with the lines above at ${ISSUES_URL}\n`)
     }
     // A verb asked for JSON answers JSON on a refusal too: an agent reading
     // stdout got nothing to parse, and only prose on stderr to branch on.

@@ -76,7 +76,7 @@ export default defineProject({
       description: 'oxlint with tsgolint-backed type-aware checks',
       exec: {
         command:
-          'oxlint --type-aware --type-check astro.config.mjs scripts src/bench src/components src/conformance src/features src/nav src/pages src/plugins tests',
+          'oxlint --type-aware --type-check astro.config.mjs scripts src/bench src/components src/conformance src/nav src/pages src/plugins tests',
         sandbox: {
           allow: {
             read: ['**/*', '../../packages/vx/src/**', REAL_ROWS_READ],
@@ -98,7 +98,6 @@ export default defineProject({
           'src/data/conformance.json',
           'src/blog/**',
           'src/components/**',
-          'src/features/**',
           'src/llms/**',
           'src/nav/**',
           'src/pages/**',
@@ -270,10 +269,11 @@ export default defineProject({
           // reads the kit's styles, the widgets' and the theme's tokens, and
           // with landing.test.ts the landing's picture.
           'src/nav/**',
-          // features.test.ts holds the feature data's copy, commands and
+          // llms.test.ts holds the agents' markdown and its reading order.
+          'src/llms/**',
+          // a11y-static.test.ts finds the code-region script by its marker.
+          'src/plugins/code-region-names.ts',
           // config examples, and its images on disk.
-          'src/features/**',
-          'src/assets/features/**',
           'src/components/guide/**',
           'src/components/landing/**',
           'src/components/Demo.astro',
@@ -308,7 +308,7 @@ export default defineProject({
     },
 
     'build.bun.images': {
-      description: 'resize src/assets/{blog,features} → public/_img/',
+      description: 'resize src/assets/blog → public/_img/',
       dependsOn: ['install'],
       exec: {
         command: 'bun scripts/build-images.ts',
@@ -321,12 +321,7 @@ export default defineProject({
         },
       },
       inputs: {
-        files: [
-          'scripts/build-images.ts',
-          'src/assets/blog/**',
-          'src/assets/features/**',
-          'package.json',
-        ],
+        files: ['scripts/build-images.ts', 'src/assets/blog/**', 'package.json'],
       },
       outputs: { files: ['public/_img/**'] },
       cache: true,

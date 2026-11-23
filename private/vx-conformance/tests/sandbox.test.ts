@@ -55,6 +55,28 @@ describe.skipIf(!sandboxAvailable() && !process.env['VX_REQUIRE_SANDBOX'])('sand
     expect(r.exit).not.toBe(0)
   })
 
+  // A sandbox case shares the host's /proc: every process of the machine
+  // was "left running", and one the run left without its tag (a tool's
+  // sandbox clears the environment) was found by nothing but the subreaper.
+  test('on the host’s /proc, what a run left behind is its own processes only', async () => {
+    const left = async (script: string) => {
+      const argv = [
+        process.execPath,
+        SUPERVISE,
+        JSON.stringify({ left: '.left' }),
+        'sh',
+        '-c',
+        script,
+      ]
+      expect((await sandboxed(root, root, argv, {}, { hostProc: true })).exit).toBe(0)
+      return JSON.parse(readFileSync(path.join(root, '.left'), 'utf8')) as string[]
+    }
+    expect(await left('true')).toEqual([])
+    expect(await left("(env -i setsid sh -c 'sleep 36' >/dev/null 2>&1 &) ; sleep 0.3")).toContain(
+      'sleep 36',
+    )
+  })
+
   test('a process left in the background dies with the run', async () => {
     const r = await sh('(sleep 30; echo late > late) >/dev/null 2>&1 & echo $!')
     expect(r.exit).toBe(0)

@@ -553,6 +553,7 @@ interface FailureFacts { // failed only
   timedOut?: true // vx's own `timeout` killed the final attempt
   notReady?: 'timeout' | 'exited' | 'spawn' // failed persistent task: why it never became ready
   inputMoved?: string // failed by inputs.stability.severity 'error': the input that changed ('' unnamed)
+  outputsMissing?: readonly string[] // failed by vx's exit 1: the output globs an exit 0 left matching nothing
   restoreFailed?: true // a hit whose restore threw; in no cache count
   failedOutput?: string // failed command: its output log (output-log.ts), first 8 KiB + last 56 KiB, masked
 }

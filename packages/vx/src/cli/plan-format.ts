@@ -197,7 +197,7 @@ function shownDescription(t: RunPlan['tasks'][number]): string | undefined {
   return description === undefined ? undefined : maskedCommand(description, exec?.env)
 }
 
-/** One task of `vx run --dry=json`: the wire, stated by `schemas/plan.json`. */
+/** One task of `vx run --dry --format json`: the wire, stated by `schemas/plan.json`. */
 export interface PlanTaskJson {
   id: string
   project: string

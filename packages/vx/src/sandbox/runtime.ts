@@ -81,8 +81,9 @@ import {
   withCwd,
   widenedEntries,
   withLinkedWrites,
+  stagedOutputs,
 } from './binds.js'
-import { loopbackPorts, MOUNT_WILDCARDS, toRealPath } from './paths.js'
+import { atOrUnder, loopbackPorts, MOUNT_WILDCARDS, toRealPath } from './paths.js'
 import { scopedMandatoryDenies, srtDefaultWritePaths } from './deny-scan.js'
 import {
   observedWrites,
@@ -106,6 +107,7 @@ import {
   type CanonicalBaselines,
   canonicalBaselines,
   baselineLinks,
+  readGrantLinks,
   pendingWriteGrants,
   cwdMounted,
 } from './grants.js'
@@ -202,6 +204,12 @@ export interface SandboxedRunArgs {
   /** `ExecuteSandbox.dependencyReads` and `dependencyReported`: the dependencies' outputs. */
   readonly upstreamOutputs?: readonly string[]
   /**
+   * Directories the task's declared outputs claim whole (`dist/**`),
+   * absolute: only these may be staged (`stagedOutputs`), since no other
+   * task may write or rely on what is in them while it runs.
+   */
+  readonly ownedOutputs?: readonly string[]
+  /**
    * User-declared sandbox block (after path-resolution). Path lists are
    * unioned with the baselines; bool/object fields fall through to SRT.
    */
@@ -250,7 +258,10 @@ function javaToolOptionsFix(host: string | undefined, task: string | undefined):
  * exit). Returns the wrapped command and the tag the store keys by.
  */
 export async function wrapSandboxedCommand(
-  args: Pick<SandboxedRunArgs, 'command' | 'cwd' | 'forwardArgs' | 'config' | 'env'> &
+  args: Pick<
+    SandboxedRunArgs,
+    'command' | 'cwd' | 'forwardArgs' | 'config' | 'env' | 'ownedOutputs'
+  > &
     Pick<SandboxedRunArgs, 'baseAllowRead' | 'baseDenyRead'> & {
       /** A persistent server: the sandbox outlives a run's reset until `releaseBridges(tag)`. */
       server?: boolean
@@ -268,8 +279,13 @@ export async function wrapSandboxedCommand(
   baselines: CanonicalBaselines
   /** The pending write globs a write may still land under (`scratchWrites`). */
   scratch: string[]
-  /** The pending write globs `punchedWriteGlobs` bound, and their directories. */
-  held: { dirs: string[]; globs: string[] }
+  /**
+   * The pending write globs `punchedWriteGlobs` bound, and their directories;
+   * `unshown`, those no read grant shows, whose reads are judged too.
+   */
+  held: { dirs: string[]; globs: string[]; unshown: string[] }
+  /** Moves the output directories staged for the task back (`stagedOutputs`): once, after it ends. */
+  unstage?: () => void
   /** The command reads its polite signals off fd 3: spawn it with one and `signalThrough` it. */
   forwardsSignals: boolean
   /** The command writes its trace to fd TRACE_FD: spawn it with the log there. */
@@ -315,20 +331,29 @@ async function wrapIn(
   const taggedCommand = `: 'vx-${tag}'; ${inTmp}`
 
   const baselines = canonicalBaselines(args)
-  const customConfig = buildCustomConfig(args, baselines)
+  // A write glob's directory no read grant shows is bound only where a
+  // tracer judges what the task reads there: with none, it would be read unseen.
+  const customConfig = buildCustomConfig(args, {
+    ...baselines,
+    ...(args.trace === undefined ? { cwd: undefined } : {}),
+  })
   const filesystem = customConfig.filesystem!
   const allowRead = filesystem.allowRead!
   const links = [
     ...punchedLinks([...baselines.allowRead, ...args.config.allowRead], allowRead),
     ...baselineLinks(args.baseAllowRead, allowRead),
+    ...readGrantLinks(args.config.linkedReads, [...allowRead, ...filesystem.allowWrite]),
   ]
   // The directories `punchedWriteGlobs` bound, and the write globs: a write
   // one matches is granted in any bound directory, a match's widened one
   // too (`dist/a.js` there binds `dist`, where a new `dist/b.js` lands).
   const own = new Set(bindableWrites(args.config.allowWrite))
+  const heldDirs = filesystem.allowWrite.filter((w) => !own.has(w))
+  const shownBy = [...baselines.allowRead, ...args.config.allowRead]
   const globsHeld = {
-    dirs: filesystem.allowWrite.filter((w) => !own.has(w)),
+    dirs: heldDirs,
     globs: [...(args.config.writeGlobs ?? [])],
+    unshown: heldDirs.filter((d) => !shownBy.some((r) => atOrUnder(d, r))),
   }
   const scratch = pendingWriteGrants(args.config, filesystem, baselines.denyRead, baselines.cwd)
   filesystem.denyRead.push(toRealPath(taskTmpRoot()))
@@ -400,7 +425,8 @@ async function wrapIn(
               ? undefined
               : { observer }
             : args.trace,
-          args.tracePaths === true,
+          // A glob's directory no read grant shows is judged as a widened grant's.
+          args.tracePaths === true || globsHeld.unshown.length > 0,
         )
       : { command: taggedCommand, forwards: false, traced: false, trace: undefined }
   // The tag leads: SRT keys a record by the wrap's first 100 characters,
@@ -493,6 +519,20 @@ async function wrapIn(
     spawnHostBridges(tag)
     if (ports.length > 0) await hostBridgesListen(ports, tag)
   }
+  // A server outlives the attempt that would move its outputs back.
+  const staged =
+    args.server === true
+      ? undefined
+      : stagedOutputs(wrapped, {
+          cwd: baselines.cwd,
+          allowRead: filesystem.allowRead!,
+          allowWrite: filesystem.allowWrite,
+          granted: args.config.allowWrite,
+          linked: args.config.linkedWrites,
+          owned: args.ownedOutputs ?? [],
+          tag,
+        })
+  if (staged !== undefined) wrapped = staged.wrapped
   return {
     wrapped,
     tag,
@@ -501,6 +541,7 @@ async function wrapIn(
     baselines,
     scratch,
     held: globsHeld,
+    ...(staged === undefined ? {} : { unstage: staged.restore }),
     forwardsSignals: grouped.forwards,
     traced: grouped.traced,
     observed: grouped.traced && typeof grouped.trace === 'object',
@@ -699,6 +740,8 @@ interface Prepared {
   widened: Map<string, Set<string>>
   /** `widened`, plus each directory bound for a glob, judged as a widened one (`refusedWrites`). */
   heldEntries: Map<string, Set<string>>
+  /** `widened`, plus each glob's directory no read grant shows: whose reads are judged. */
+  readJudged: Map<string, Set<string>>
 }
 
 /**
@@ -757,7 +800,12 @@ async function prepareAttempt(
       // Gone: nothing there to judge.
     }
   }
-  return { prepared: { wrap, widened, heldEntries } }
+  const readJudged = new Map(widened)
+  for (const dir of wrap.held.unshown) {
+    const entries = heldEntries.get(dir)
+    if (entries !== undefined) readJudged.set(dir, entries)
+  }
+  return { prepared: { wrap, widened, heldEntries, readJudged } }
 }
 
 /** The sandboxed command, spawned, and the trace log it writes. */
@@ -1028,9 +1076,12 @@ async function attemptDenials(
     process.platform === 'linux'
       ? [
           ...(trace.length > 0
-            ? await parseStraceViolations({ text: trace }, args, baselines, prepared.widened).catch(
-                () => [],
-              )
+            ? await parseStraceViolations(
+                { text: trace },
+                args,
+                baselines,
+                prepared.readJudged,
+              ).catch(() => [])
             : []),
           ...refusedWrites(
             // Keyed by what SRT wrapped, the in-sandbox group wrapper
@@ -1085,15 +1136,49 @@ async function runSandboxedOnce(args: SandboxedRunArgs): Promise<AttemptResult> 
   if ('result' in ready) return ready.result
   const { prepared } = ready
   const { wrapped, tag, srtCommand, baselines } = prepared.wrap
-  const takeRecords = collectRecords(
-    SandboxManager.getSandboxViolationStore(),
-    srtCommand,
-    observerSocket(wrapped),
-  )
-  const started = spawnAttempt(args, prepared.wrap, takeRecords, SandboxManager, start)
-  if ('result' in started) return started.result
+  let takeRecords: ReturnType<typeof collectRecords>
+  let ended!: Ended
+  let started: ReturnType<typeof spawnAttempt>
+  try {
+    takeRecords = collectRecords(
+      SandboxManager.getSandboxViolationStore(),
+      srtCommand,
+      observerSocket(wrapped),
+    )
+    started = spawnAttempt(args, prepared.wrap, takeRecords, SandboxManager, start)
+    if (!('result' in started)) ended = await awaitAttempt(args, started.spawned, tag)
+  } catch (err) {
+    try {
+      prepared.wrap.unstage?.()
+    } catch {
+      // The attempt's own failure is the one to say.
+    }
+    throw err
+  }
+  let unstaged: unknown
+  try {
+    prepared.wrap.unstage?.()
+  } catch (err) {
+    unstaged = err
+  }
+  if ('result' in started) {
+    if (unstaged !== undefined) throw unstaged
+    return started.result
+  }
   const { proc, straceLog } = started.spawned
-  const ended = await awaitAttempt(args, started.spawned, tag)
+  // A restore that failed fails the task, after what the attempt holds is
+  // let go: thrown from the cleanup above, the trace log stayed on disk
+  // until vx exited and the command's records and mount points stayed
+  // held (a watch session gathered one of each per failure, 2026-11-23).
+  if (unstaged !== undefined) {
+    await takeRecords(false)
+    if (straceLog) {
+      await unlink(straceLog).catch(() => undefined)
+      liveTempFiles.delete(straceLog)
+    }
+    afterCommand(SandboxManager)
+    throw unstaged
+  }
   // Linux: the write observer's records arrive over a socket, not with the
   // exit; `takeRecords(true)` waits until all it sent are read.
   const denials = await attemptDenials(args, prepared, await takeRecords(true), straceLog)

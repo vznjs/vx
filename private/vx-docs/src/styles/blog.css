@@ -382,26 +382,41 @@
   margin: 0 !important;
 }
 
-.vx-card h3 {
+.vx-card-title {
   margin: 0.75rem 0 0;
   font: 600 1.3rem / 1.25 var(--vx-font-display);
   letter-spacing: -0.02em;
   text-wrap: balance;
 }
 
-.vx-card h3 a {
+.vx-card-title a {
   color: var(--vx-fg);
   text-decoration: none;
 }
 
-.vx-card h3 a::after {
+.vx-card-title a::after {
   content: '';
   position: absolute;
   inset: 0;
 }
 
-.vx-card:hover h3 a {
+.vx-card:hover .vx-card-title a {
   color: var(--vx-accent);
+}
+
+/* The link's own box is the title, which is 0 px tall when the cover draws
+   it: its focus ring would not show. The ring goes on the ::after that
+   covers the whole card. */
+.vx-card-title a:focus-visible,
+.vx-feature h2 a:focus-visible {
+  outline: none;
+}
+
+.vx-card-title a:focus-visible::after,
+.vx-feature h2 a:focus-visible::after {
+  outline: 2px solid var(--vx-accent);
+  outline-offset: 4px;
+  border-radius: 12px;
 }
 
 .vx-card-excerpt {

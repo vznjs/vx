@@ -1,7 +1,10 @@
 // A squash message can hold its git trailers in the footer's own
 // paragraph (#4876's did); the page shows the footer, never the trailers.
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
 import { expect, it } from 'bun:test'
-import { page } from '../scripts/upgrading.ts'
+import { page, STEPS, taggedCommits } from '../scripts/upgrading.ts'
 
 it('ends a footer at the git trailers that follow it', () => {
   const md = page([
@@ -32,4 +35,46 @@ it('drops the scope and starts each entry with a capital', () => {
   ])
   expect(md).toContain('### Drop x\n\n--x is gone\n')
   expect(md).toContain('### Grow y\n\nNothing to change beyond the steps above.\n')
+})
+
+// A footer is history; the exact step a reader takes is added beside it,
+// and a change that merged with no footer still gets its entry.
+it('adds the step after the footer and lists an unflagged change it names', () => {
+  const [subject, step] = Object.entries(STEPS).find(([, s]) => s.title !== undefined)!
+  const md = page([
+    { subject: 'feat(x)!: drop x (#1)', body: 'BREAKING CHANGE: x is gone' },
+    { subject: `${subject} (#2)`, body: '' },
+  ])
+  expect(md).toContain(`### ${step.title}\n\n${step.steps}\n`)
+  expect(md).toContain('### Drop x\n\nX is gone\n')
+})
+
+// Regenerated in a shallow clone, the page lost every release before the
+// clone's first commit (2026-11-23 day branch).
+it('refuses to read the history of a shallow clone', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'vx-upgrading-'))
+  try {
+    const git = (cwd: string, ...args: string[]) =>
+      expect(Bun.spawnSync(['git', ...args], { cwd }).exitCode).toBe(0)
+    const src = path.join(dir, 'src')
+    git(dir, 'init', '-q', src)
+    for (const n of ['a', 'b'])
+      git(
+        src,
+        '-c',
+        'user.name=t',
+        '-c',
+        'user.email=t@t',
+        'commit',
+        '-q',
+        '--allow-empty',
+        '-m',
+        n,
+      )
+    git(dir, 'clone', '-q', '--depth=1', `file://${src}`, 'shallow')
+    expect(taggedCommits(src).map((c) => c.subject)).toEqual(['a', 'b'])
+    expect(() => taggedCommits(path.join(dir, 'shallow'))).toThrow('git fetch --unshallow')
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
 })

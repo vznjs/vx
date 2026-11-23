@@ -737,10 +737,10 @@ describe('binaryFromTarball', () => {
   it('takes package/vx, and refuses a tarball without it or not gzip', () => {
     expect(new TextDecoder().decode(binaryFromTarball(TGZ))).toBe(FAKE)
     expect(() => binaryFromTarball(tarball({ 'package/README.md': 'hi' }))).toThrow(
-      'vx upgrade: the release tarball holds no package/vx — nothing replaced',
+      'vx upgrade: the release tarball holds no package/vx — nothing replaced; check that the registry or mirror serves npm tarballs as published',
     )
     expect(() => binaryFromTarball(new TextEncoder().encode('plain'))).toThrow(
-      'vx upgrade: the release tarball is not gzip — nothing replaced',
+      'vx upgrade: the release tarball is not gzip — nothing replaced; check that the registry or mirror serves npm tarballs as published',
     )
   })
 })
@@ -819,6 +819,38 @@ describe('managedInstall', () => {
       scope: 'global',
       cwd: `${home}/.config/yarn/global`,
     })
+  })
+
+  // Moved by BUN_INSTALL or PNPM_HOME, each read as a project: `vx upgrade -g`
+  // refused it as "the project's own".
+  it('names a global dir that BUN_INSTALL or PNPM_HOME moved', () => {
+    const saved = { bun: process.env['BUN_INSTALL'], pnpm: process.env['PNPM_HOME'] }
+    process.env['BUN_INSTALL'] = '/opt/bun/'
+    process.env['PNPM_HOME'] = '/opt/pnpm-home'
+    try {
+      expect(managedInstall(`/opt/bun/install/global/${BIN}`, '/')).toEqual({
+        manager: 'bun',
+        scope: 'global',
+        cwd: '/opt/bun/install/global',
+      })
+      expect(
+        managedInstall(
+          `/opt/pnpm-home/global/5/node_modules/.pnpm/@vzn+vx-linux-x64@0.0.1/${BIN}`,
+          '/',
+        ),
+      ).toEqual({ manager: 'pnpm', scope: 'global', cwd: '/opt/pnpm-home/global/5' })
+      // pnpm 10 keeps its store beside node_modules, where the bin resolves.
+      expect(
+        managedInstall(`/opt/pnpm-home/global/5/.pnpm/@vzn+vx-linux-x64@0.0.1/${BIN}`, '/'),
+      ).toEqual({ manager: 'pnpm', scope: 'global', cwd: '/opt/pnpm-home/global/5' })
+    } finally {
+      for (const [k, v] of [
+        ['BUN_INSTALL', saved.bun],
+        ['PNPM_HOME', saved.pnpm],
+      ] as const)
+        if (v === undefined) delete process.env[k]
+        else process.env[k] = v
+    }
   })
 
   it("names a project's manager by its lockfile, and the field that lists vx", async () => {
@@ -978,6 +1010,15 @@ describe('managedInstall', () => {
     expect(() => managedInstall(`/tmp/bunx-1000-@vzn/vx@latest/${BIN}`, '/home/me')).toThrow(
       /runs from a package-manager cache/,
     )
+    // Bun 1.4's bunx and pnpm dlx read as projects: upgrade ran `bun add` /
+    // `pnpm add` inside the cache.
+    for (const cache of [
+      '/home/me/.bun/install/cache/.bunx-0/@vzn/vx@0.0.661',
+      '/home/me/.cache/pnpm/dlx/1323/1a2-245f',
+    ])
+      expect(() => managedInstall(`${cache}/${BIN}`, '/home/me')).toThrow(
+        /runs from a package-manager cache/,
+      )
   })
 
   it('the cache refusal suggests bunx, never npx', () => {

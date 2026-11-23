@@ -67,16 +67,16 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true })
 })
 
-/** The task ids `vx run <tasks> <args> --dry=json` plans, sorted. */
+/** The task ids `vx run <tasks> <args> --dry --format json` plans, sorted. */
 function planned(tasks: string[], ...args: string[]): string[] | string {
-  const r = vx(root, 'run', ...tasks, ...args, '--dry=json')
+  const r = vx(root, 'run', ...tasks, ...args, '--dry', '--format', 'json')
   if (r.code !== 0) return r.text
   const out = r.text.slice(r.text.indexOf('{'))
   return (JSON.parse(out) as { tasks: { id: string }[] }).tasks.map((t) => t.id).sort()
 }
 
 function appBuildHash(): string {
-  const r = vx(root, 'run', 'build', '--filter', 'app', '--dry=json')
+  const r = vx(root, 'run', 'build', '--filter', 'app', '--dry', '--format', 'json')
   const out = r.text.slice(r.text.indexOf('{'))
   const tasks = (JSON.parse(out) as { tasks: { id: string; hash: string }[] }).tasks
   return tasks.find((t) => t.id === 'app#build')!.hash

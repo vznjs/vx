@@ -122,7 +122,8 @@ function commit(root: string): void {
 function turboRepo(): string {
   const root = tmp('turbo')
   cpSync(path.join(REPO, 'examples', 'turbo'), root, { recursive: true })
-  rmSync(path.join(root, '.vx/workspace.ts'))
+  // A Turbo repo before vx: the example's own .vx is what init writes.
+  rmSync(path.join(root, '.vx'), { recursive: true })
   return root
 }
 
@@ -268,9 +269,28 @@ function printedPlain(fence: string): string {
   return versionless(`\n${fence.replace(SGR, '')}`)
 }
 
-/** A report's title names the version: a checkout's is 0.0.0, the guide's a release. */
+/**
+ * A report as any release prints it. Its title names the version (a
+ * checkout's is 0.0.0, the guide's a release), and a release pins each
+ * install. The guide's reader runs vx-migrate through bun x, so a release
+ * also installs @vzn/vx and @vzn/vx-migrate; here both are installed
+ * first, so a checkout installs neither and removes the vx-migrate a
+ * native run no longer needs.
+ */
 function versionless(out: string): string {
-  return out.replace(/^  (vx-migrate|vx init) \S+$/m, '  $1')
+  return out
+    .replace(/^  (vx-migrate|vx init) \S+$/m, '  $1')
+    .replace(/^  ran +npm uninstall @vzn\/vx-migrate\n/m, '')
+    .replace(
+      /^(  ran +npm install -D )(.*)$/gm,
+      (_, ran: string, pkgs: string) =>
+        ran +
+        pkgs
+          .split(' ')
+          .map((p) => p.replace(/(.)@\d\S*$/, '$1'))
+          .filter((p) => p !== '@vzn/vx' && p !== '@vzn/vx-migrate')
+          .join(' '),
+    )
 }
 
 // The migrate guide shows what `vx init` writes and prints in a Turbo and an

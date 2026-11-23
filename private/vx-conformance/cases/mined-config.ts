@@ -1455,12 +1455,6 @@ export default [
     },
     { command: 'mkdir -p dist && echo \ud800 > dist/out.txt' },
   ),
-] satisfies Case[]
-
-// vx refuses a dependency added to package.json before `bun install`, as a
-// stale lock, but takes an array, which `bun install` itself refuses, and runs
-// on the old lock.
-export const pending: Case[] = [
   badManifest(
     {
       slug: 'manifest-dependencies-array-refused',
@@ -1469,4 +1463,6 @@ export const pending: Case[] = [
     },
     '{ "name": "b", "version": "0.0.0", "dependencies": ["a"] }\n',
   ),
-]
+] satisfies Case[]
+
+export const pending: Case[] = []

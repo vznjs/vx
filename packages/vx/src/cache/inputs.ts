@@ -12,6 +12,7 @@ import {
   lstatSync,
   mkdirSync,
   readdirSync,
+  readFileSync,
   realpathSync,
   renameSync,
   rmdirSync,
@@ -42,6 +43,7 @@ import {
   slashBraceExpansions,
   braceAlternatives,
   ESSENTIAL_ENV,
+  taskEnvSource,
   ownEnv,
   POST_EXIT_DRAIN_MS,
   splitNegations,
@@ -496,7 +498,8 @@ function resolveWorkspaceFiles(args: {
     isInput: (rel) =>
       (isPositive ??= throughLinks(positive, anyTaskGlob(asTrees(positive))))(rel) &&
       !excludedByDeclaration(rel) &&
-      !own(rel),
+      !own(rel) &&
+      !linkTakenBack(negative, excludedByDeclaration, rel, path.join(args.workspaceRoot, rel)),
     linked: (rel) =>
       (mayHold ??= mayHoldMatch(positive))(rel) &&
       !excludedBeneath(excludedByDeclaration, rel) &&
@@ -513,7 +516,14 @@ function resolveWorkspaceFiles(args: {
   if (hit !== undefined && hit.snapshot === gitFiles) base = hit.result
   if (base === undefined) {
     isPositive ??= throughLinks(positive, anyTaskGlob(asTrees(positive)))
-    base = resolveWorkspaceFilesOver(args, gitFiles, positive, isPositive, excludedByDeclaration)
+    base = resolveWorkspaceFilesOver(
+      args,
+      gitFiles,
+      positive,
+      negative,
+      isPositive,
+      excludedByDeclaration,
+    )
     args.memo?.set(declared, { snapshot: gitFiles, result: base })
   }
   const ownsAny =
@@ -534,7 +544,11 @@ function resolveWorkspaceFiles(args: {
     const extra = ignoredInputs(
       args.workspaceRoot,
       reach,
-      (rel) => accept(rel) && !excludedByDeclaration(rel) && !own(rel),
+      (rel) =>
+        accept(rel) &&
+        !excludedByDeclaration(rel) &&
+        !own(rel) &&
+        !linkTakenBack(negative, excludedByDeclaration, rel, path.join(args.workspaceRoot, rel)),
       listing.linked,
       args.gitFilesCache?.vxDirs,
     )
@@ -547,6 +561,7 @@ async function resolveWorkspaceFilesOver(
   args: { workspaceRoot: string; gitFilesCache?: GitFilesCache },
   gitFiles: readonly string[],
   positive: readonly string[],
+  negative: readonly string[],
   isPositive: (rel: string) => boolean,
   excluded: (rel: string) => boolean,
 ): Promise<string[]> {
@@ -555,8 +570,10 @@ async function resolveWorkspaceFilesOver(
   const oids = args.gitFilesCache?.oidsFor(args.workspaceRoot)
   const mayHold = mayHoldMatch(positive)
   for (const rel of gitFiles) {
-    if (isPositive(rel) && !excluded(rel)) candidates.push(path.resolve(args.workspaceRoot, rel))
-    else if (mayHold(rel) && !excludedBeneath(excluded, rel)) {
+    if (isPositive(rel) && !excluded(rel)) {
+      const abs = path.resolve(args.workspaceRoot, rel)
+      if (!linkTakenBack(negative, excluded, rel, abs, oids)) candidates.push(abs)
+    } else if (mayHold(rel) && !excludedBeneath(excluded, rel)) {
       const abs = path.resolve(args.workspaceRoot, rel)
       if (dirLinkInput(abs, oids)) candidates.push(abs)
     }
@@ -657,11 +674,15 @@ function inputOnDisk(abs: string, run: GitFilesCache | undefined): boolean {
   return st !== undefined && (st.isFile() || st.isSymbolicLink())
 }
 
-/** vx's values of `ESSENTIAL_ENV`: the one environment every probe gets. */
-function probeEnv(): Record<string, string> {
+/**
+ * vx's values of `ESSENTIAL_ENV`, as a task reads them: the one environment
+ * every probe gets. A pipeline's `env` is vx's alone; a probe saw its `CI`
+ * that the task it keys never did.
+ */
+function probeEnv(source: NodeJS.ProcessEnv): Record<string, string> {
   const env: Record<string, string> = {}
   for (const name of ESSENTIAL_ENV) {
-    const value = process.env[name]
+    const value = source[name]
     if (value !== undefined) env[name] = value
   }
   return env
@@ -744,8 +765,9 @@ async function runRuntimeCommand(
   field: RuntimeField,
 ): Promise<string> {
   const probe = `inputs.${field} probe`
+  const source = taskEnvSource()
   // As a task's (exec/env.ts): no member's bin inherited from `npm run`.
-  const ambient = withoutWorkspaceBins(process.env['PATH'] ?? '', workspaceRoot)
+  const ambient = withoutWorkspaceBins(source['PATH'] ?? '', workspaceRoot)
   // As the task's PATH: a dir holding the delimiter splits into a relative
   // entry.
   const PATH = [...binDirs.filter((dir) => !dir.includes(path.delimiter)), ambient]
@@ -757,7 +779,7 @@ async function runRuntimeCommand(
     // project's `.bin`: a dependency's `sh` bin would run every probe.
     proc = Bun.spawn(shellArgv(command), {
       cwd,
-      env: { ...probeEnv(), PATH },
+      env: { ...probeEnv(source), PATH },
       stdin: 'ignore',
       stdout: 'pipe',
       stderr: 'pipe',
@@ -1430,8 +1452,17 @@ export function sweepRestoreTemps(
 }
 
 /**
+ * In a sandbox's stage (`stagedOutputs`), the host directories its restore
+ * is moving, one absolute path a line, each set aside in the stage as
+ * `.host-<name>` until the task's own takes its place.
+ */
+export const STAGE_PUT_BACK = '.vx-put-back'
+
+/**
  * Empty `.vx/tmp/` of the staging directories a killed run left, once per run;
- * a live writer's is left.
+ * a live writer's is left. A host directory a restore had set aside when the
+ * run was killed goes back first, where nothing took its place: swept, the
+ * task's previous output was gone from the host (2026-11-23).
  */
 export function sweepStaging(workspaceRoot: string): void {
   const top = path.join(workspaceRoot, '.vx', 'tmp')
@@ -1446,7 +1477,28 @@ export function sweepStaging(workspaceRoot: string): void {
     if (m === null) continue
     const pid = Number.parseInt(m[1]!, 36)
     if (pid === process.pid || writerAlive(pid)) continue
+    putBack(path.join(top, name))
     rmSync(path.join(top, name), { recursive: true, force: true })
+  }
+}
+
+function putBack(stage: string): void {
+  let list: string
+  try {
+    list = readFileSync(path.join(stage, STAGE_PUT_BACK), 'utf8')
+  } catch {
+    return
+  }
+  for (const to of list.split('\n')) {
+    if (!path.isAbsolute(to)) continue
+    const from = path.join(stage, `.host-${path.basename(to)}`)
+    if (lstatSync(from, { throwIfNoEntry: false })?.isDirectory() !== true) continue
+    if (lstatSync(to, { throwIfNoEntry: false }) !== undefined) continue
+    try {
+      renameSync(from, to)
+    } catch {
+      // Its directory is gone too: nothing to put it back in.
+    }
   }
 }
 
@@ -2262,6 +2314,8 @@ interface FilesPlan {
    * path is matched once per plan.
    */
   verdicts: Map<string, boolean>
+  /** `excludedBeneath`, memoised: asked only of a path that may be a link. */
+  beneath: Map<string, boolean>
   /**
    * Whether a path is under the task's own outputs and not vx's: one git tracks
    * is an input whether or not a glob reaches it, since a hit writes over it. A
@@ -2311,6 +2365,7 @@ function filesPlan(
           mayHold: mayHoldMatch(positive),
           ...reachOf(positive),
           verdicts: new Map<string, boolean>(),
+          beneath: new Map<string, boolean>(),
           ownOnly: new Map<string, boolean>(),
           isIgnored: anyTaskGlob(ALWAYS_IGNORE),
         }
@@ -2442,7 +2497,10 @@ export function declaresInput(
   if (projectRel !== null) {
     // Under the task's own outputs the key folds only what git tracks.
     const plan = filesPlan(inputs.files, task.outputs?.files ?? [])
-    if (plan !== null && (inPlan(plan, projectRel) || (!untracked && ownOnly(plan, projectRel)))) {
+    if (
+      plan !== null &&
+      (inPlan(plan, projectRel, '', dirLink) || (!untracked && ownOnly(plan, projectRel)))
+    ) {
       return true
     }
     if (
@@ -2491,13 +2549,41 @@ export function namedOutright(task: TaskConfig): { files: string[]; workspaceFil
   }
 }
 
-function inPlan(plan: FilesPlan, rel: string): boolean {
+function inPlan(plan: FilesPlan, rel: string, abs: string, dirLink?: boolean): boolean {
   let input = plan.verdicts.get(rel)
   if (input === undefined) {
     input = plan.isPositive(rel) && !plan.isExcluded(rel) && !plan.ownOutput(rel)
     plan.verdicts.set(rel, input)
   }
-  return input
+  return input && !(takenBeneath(plan, rel) && (dirLink ?? dirLinkInput(abs, undefined)))
+}
+
+/** Whether the `!` entries take back every path under `rel`, memoised per plan. */
+function takenBeneath(plan: FilesPlan, rel: string): boolean {
+  if (plan.negative.length === 0) return false
+  let taken = plan.beneath.get(rel)
+  if (taken === undefined) plan.beneath.set(rel, (taken = excludedBeneath(plan.isExcluded, rel)))
+  return taken
+}
+
+/**
+ * A link to a directory that a positive glob matches by its name (`src/**`
+ * over `src/l`) while the `!` entries take back every path beneath it
+ * (`!src/l/**`): out. A negation is asked of what is under a directory link,
+ * never its name, as of a real directory's files there.
+ */
+function linkTakenBack(
+  negative: readonly string[],
+  isExcluded: (rel: string) => boolean,
+  rel: string,
+  abs: string,
+  oids?: ReadonlyMap<string, string>,
+): boolean {
+  if (negative.length === 0) return false
+  // A trusted OID that is no link's answers with no match and no syscall.
+  const oid = oids?.get(abs)
+  if (oid !== undefined && !oid.startsWith('120000:')) return false
+  return excludedBeneath(isExcluded, rel) && dirLinkInput(abs, oids)
 }
 
 /**
@@ -2558,8 +2644,10 @@ function workspaceMatcher(decl: readonly string[]): (rel: string, dirLink: boole
   const isPositive = throughLinks(positive, anyTaskGlob(asTrees(positive)))
   const mayHold = mayHoldMatch(positive)
   const isExcluded = anyTaskGlob([...WORKSPACE_ALWAYS_IGNORE, ...asTrees(negative)])
+  const takesBack = (rel: string): boolean =>
+    negative.length > 0 && excludedBeneath(isExcluded, rel)
   m = (rel, dirLink) =>
-    (isPositive(rel) && !isExcluded(rel)) ||
+    (isPositive(rel) && !isExcluded(rel) && !(dirLink && takesBack(rel))) ||
     (dirLink && mayHold(rel) && !excludedBeneath(isExcluded, rel))
   workspaceMatchers.set(key, m)
   return m
@@ -2660,9 +2748,14 @@ async function resolveFiles(
   refuseUndecodable(candidates, undecodable, args.projectDir, 'files')
   // Existence check only for paths without a trusted OID: a clean tracked file
   // exists. `git ls-files -s` can list a staged entry whose file is gone.
-  const resolved = candidates.filter(
-    (abs) => oids?.has(abs) === true || inputOnDisk(abs, args.gitFilesCache),
-  )
+  // A trusted OID that is no link's needs no other look (`linkTakenBack`).
+  const resolved = candidates.filter((abs) => {
+    const oid = oids?.get(abs)
+    if (oid !== undefined && !oid.startsWith('120000:')) return true
+    if (oid === undefined && !inputOnDisk(abs, args.gitFilesCache)) return false
+    const rel = relPosix(args.projectDir, abs)
+    return !(takenBeneath(plan, rel) && dirLinkInput(abs, oids))
+  })
   // Git's slice comes sorted and a common prefix keeps it so: one pass proves
   // it.
   for (let i = 1; i < resolved.length; i++) {
@@ -2700,7 +2793,7 @@ function withIgnored(
   const extra = ignoredInputs(
     projectDir,
     reach,
-    (rel) => inPlan(plan, rel) && !nested(rel) && !ownWsOutput(rel),
+    (rel) => inPlan(plan, rel, path.join(projectDir, rel)) && !nested(rel) && !ownWsOutput(rel),
     (rel) =>
       plan.mayHold(rel) &&
       !excludedBeneath(plan.isExcluded, rel) &&
@@ -2726,7 +2819,7 @@ function listingFor(
     workspaceRoot: args.workspaceRoot,
     listed,
     isInput: (rel) =>
-      (inPlan(plan, rel) ||
+      (inPlan(plan, rel, path.join(root, rel)) ||
         (ownOnly(plan, rel) &&
           (committed ??= committedFiles(args.gitFilesCache, root))(path.join(root, rel)))) &&
       !ownWsOutput(rel),

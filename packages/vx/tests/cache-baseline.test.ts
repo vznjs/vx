@@ -38,26 +38,39 @@ const DEFAULT_SCALE = process.env.CI === 'true' ? 3 : 1
 const SCALE = Number(process.env.VX_PERF_SCALE ?? String(DEFAULT_SCALE))
 const SKIP = process.env.VX_PERF === '0'
 
-/** Run `fn` `iters` times after `warmup` warmup iterations. Returns median + p99 ns. */
+/**
+ * Run `fn` `iters` times after `warmup` warmup iterations, in `trials`
+ * rounds, and return the round with the lowest median. Noise only adds
+ * time: the restore row's one round read 32-47 ms against its 30 ms budget
+ * while sixteen test files shared four cores, and ~2 ms under like load in
+ * another run (2026-11-23). A regression slows every round; a stalled
+ * window slows one. Ratio guards min their own trials (`benchRatioSides`).
+ */
 async function bench(
   iters: number,
   fn: () => void | Promise<void>,
   warmup = 5,
+  trials = 3,
 ): Promise<{ medianNs: number; p99Ns: number; minNs: number; maxNs: number }> {
   for (let i = 0; i < warmup; i++) await fn()
-  const samples: number[] = []
-  for (let i = 0; i < iters; i++) {
-    const t0 = Bun.nanoseconds()
-    await fn()
-    samples.push(Bun.nanoseconds() - t0)
+  let best: { medianNs: number; p99Ns: number; minNs: number; maxNs: number } | undefined
+  for (let t = 0; t < trials; t++) {
+    const samples: number[] = []
+    for (let i = 0; i < iters; i++) {
+      const t0 = Bun.nanoseconds()
+      await fn()
+      samples.push(Bun.nanoseconds() - t0)
+    }
+    samples.sort((a, b) => a - b)
+    const round = {
+      medianNs: samples[Math.floor(samples.length / 2)]!,
+      p99Ns: samples[Math.floor(samples.length * 0.99)]!,
+      minNs: samples[0]!,
+      maxNs: samples[samples.length - 1]!,
+    }
+    if (best === undefined || round.medianNs < best.medianNs) best = round
   }
-  samples.sort((a, b) => a - b)
-  return {
-    medianNs: samples[Math.floor(samples.length / 2)]!,
-    p99Ns: samples[Math.floor(samples.length * 0.99)]!,
-    minNs: samples[0]!,
-    maxNs: samples[samples.length - 1]!,
-  }
+  return best!
 }
 
 function budgetUs(name: string, baseUs: number): number {
@@ -265,8 +278,9 @@ describePerf('cache baseline: hashFile', () => {
             await cache.memo.hashFile(f)
           },
           3,
+          1,
         ),
-      () => bench(2000, async () => void (await cache.memo.hashFile(warmFile))),
+      () => bench(2000, async () => void (await cache.memo.hashFile(warmFile)), 5, 1),
     )
     const ratio = coldMinNs / warmMinNs
     expect(ratio).toBeGreaterThanOrEqual(5)
@@ -366,10 +380,16 @@ describePerf('cache baseline: Cache.key', () => {
     const f1000 = await makeInputFiles('lin-1000', 1000)
     const { aMinNs, bMinNs } = await benchRatioSides(
       () =>
-        bench(20, async () => {
-          for (let k = 0; k < 10; k++) await cache.key({ ...baseInput, inputFiles: f100 })
-        }),
-      () => bench(20, async () => void (await cache.key({ ...baseInput, inputFiles: f1000 }))),
+        bench(
+          20,
+          async () => {
+            for (let k = 0; k < 10; k++) await cache.key({ ...baseInput, inputFiles: f100 })
+          },
+          5,
+          1,
+        ),
+      () =>
+        bench(20, async () => void (await cache.key({ ...baseInput, inputFiles: f1000 })), 5, 1),
     )
     const ratio = bMinNs / aMinNs
     expect(ratio).toBeLessThanOrEqual(3)

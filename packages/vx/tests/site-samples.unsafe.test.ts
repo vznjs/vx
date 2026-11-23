@@ -89,7 +89,7 @@ function fencedBlock(page: string, lang: string, firstLine: string): string {
 describe('the CI guide shows what --dry prints', () => {
   it('its plan is formatPlanText on two local hits', () => {
     const page = readFileSync(path.join(DOCS, 'docs', 'running-tasks.mdx'), 'utf8')
-    const task = (id: string, hash: string) => ({
+    const task = (id: string, hash: string, deps: string[] = []) => ({
       node: {
         id,
         projectName: id.split('#')[0]!,
@@ -98,12 +98,13 @@ describe('the CI guide shows what --dry prints', () => {
       } as unknown as TaskNode,
       hash,
       cacheStatus: 'hit-local' as const,
-      deps: [],
+      deps,
     })
     const plan: RunPlan = {
       tasks: [
         task('@demo/ui#build', 'e04649970f18ba23'),
-        task('@demo/web#build', 'b421f74f0107bb20'),
+        // web builds on ui: a cached ui still blocks it.
+        task('@demo/web#build', 'b421f74f0107bb20', ['@demo/ui#build']),
       ],
     }
     // The page shows vx's colours (an `ansi` block); its text is the plain plan.
@@ -292,10 +293,11 @@ describe('the caching page quotes what vx why says', () => {
     const verdicts = src.slice(from, src.indexOf('\n// ----', from))
     // A template literal's interpolated group reads `(…)` on the pages; a
     // quote-only match missed one (J2-13).
+    // A bare interpolation (a task id) reads `…`.
     const notes = [...verdicts.matchAll(/(['`])((?:cache key|this task )(?:(?!\1)[^\\])*)\1/g)].map(
-      (m) => m[2]!.replace(/\([^()]*\$\{[^}]*\}[^()]*\)/g, '(…)'),
+      (m) => m[2]!.replace(/\([^()]*\$\{[^}]*\}[^()]*\)/g, '(…)').replace(/\$\{[^}]*\}/g, '…'),
     )
-    expect(notes.length).toBe(16)
+    expect(notes.length).toBe(19)
     for (const note of notes) {
       expect(guide).toContain(note)
       expect(post).toContain(note)
@@ -308,7 +310,8 @@ describe('the why-vx-is-fast concept quotes the benchmarks page', () => {
     const page = readFileSync(path.join(DOCS, 'concepts', 'why-vx-is-fast.md'), 'utf8')
     const bench = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'benchmarks.md'), 'utf8')
     // The head-to-head's figures are tokens the site fills from the measured
-    // data (2026-10-29); the run.ts ones are dated quotations.
+    // data (2026-10-29); none is typed by hand (2026-11-23: run.ts's
+    // 2026-09-02 figures stood beside each week's live ones).
     for (const figure of [
       '%bench.ideal.cold%',
       '%bench.vx.cold%',
@@ -320,8 +323,7 @@ describe('the why-vx-is-fast concept quotes the benchmarks page', () => {
       '%bench.nx.warm%',
       '%bench.vt.warm%',
       '%bench.tasks%',
-      '74 ms',
-      '172 ms',
+      '%bench.vx.restore%',
     ]) {
       expect(page).toContain(figure)
       expect(bench).toContain(figure)
@@ -509,6 +511,10 @@ describe('the watch-mode post states what watch.ts does', () => {
     for (const m of src.matchAll(/vx watch: ([^\n]*?) (?:is|are) not supported in watch mode/g)) {
       for (const f of m[1]!.matchAll(/--[\w-]+/g)) refused.add(f[0])
     }
+    // --format is no watch flag at all: help.ts refuses it as unknown, naming why.
+    const help = readFileSync(path.resolve(import.meta.dir, '..', 'src', 'cli', 'help.ts'), 'utf8')
+    for (const m of help.matchAll(/name === '(--[\w-]+)'[^\n]*verb === 'watch'/g))
+      refused.add(m[1]!)
     expect(refused.size).toBeGreaterThan(2)
     const sentence = /Flags that describe one run \(([^)]*)\)/.exec(page)
     expect(sentence).not.toBeNull()
@@ -1055,7 +1061,7 @@ describe('the tasks that decline the sandbox (CLAUDE.md)', () => {
       }
     }
     // vx#canary.sandbox.cold-build and vx#canary.sandbox.leaks (each drives the
-    // sandbox itself), vx#release.docker (Docker), vx#test.bun.unsafe's and vx#test.bun.platform-unsafe's
+    // sandbox itself), vx#release.docker (Docker), vx#test.bun.examples (npm), vx#test.bun.unsafe's and vx#test.bun.platform-unsafe's
     // shards, vx-cache-server#, vx-dte-server# and vx-history-server#test.docker, vx-migrate#test.bun.live.nx,
     // vx-reapi#test's shards, #test.bun.live and its two services. If none are found the reader is broken, not the docs.
     expect(found.sort()).toEqual(
@@ -1063,6 +1069,7 @@ describe('the tasks that decline the sandbox (CLAUDE.md)', () => {
         'vx#canary.sandbox.cold-build',
         'vx#canary.sandbox.leaks',
         'vx#release.docker',
+        'vx#test.bun.examples',
         ...Array.from(
           { length: UNSAFE_SHARD_COUNT },
           (_, k) => `vx#test.bun.unsafe.shard-${k + 1}`,
@@ -1145,7 +1152,9 @@ describe('the CI guide quotes only run figures benchmarks.md measured', () => {
     const bench = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'benchmarks.md'), 'utf8')
     const ci = section(readFileSync(path.join(DOCS, 'docs', 'ci.mdx'), 'utf8'), 'GitHub Actions')
     expect(ci).toContain('`vx lock --check`')
-    for (const m of ci.matchAll(/(\d+(?:[–-]\d+)?)\s?(%|ms)\b/g)) {
+    // A recorded run's transcript (```ansi) shows that run's own timings.
+    const prose = ci.replace(/```ansi[\s\S]*?```/g, '')
+    for (const m of prose.matchAll(/(\d+(?:[–-]\d+)?)\s?(%|ms)\b/g)) {
       expect(m[0]).toBe(bench.includes(m[1]!) ? m[0] : `${m[0]} — not on benchmarks.md`)
     }
     expect(ci).not.toMatch(/10–21%/)
@@ -1299,7 +1308,7 @@ describe.each(['pnpm', 'bun'])(
       const set = /const PER_\w+ = new Set\(\[([\s\S]*?)\]\)/.exec(src)
       expect(set).not.toBeNull()
       const keys = [...set![1]!.matchAll(/'(\w+)'/g)].map((m) => m[1]!)
-      expect(keys.length).toBe(6)
+      expect(keys.length).toBe({ pnpm: 8, bun: 6 }[manager])
       const page = readFileSync(path.join(DOCS, 'docs', 'lockfiles.mdx'), 'utf8')
       // That manager's OWN row, not the page: a whole-page search lets one
       // row cover for the other's omission — which is how the bun list lost
@@ -1394,7 +1403,8 @@ describe('the tasks guide states which wildcards dependsOn takes', () => {
       expect(src).toContain(refusal)
     }
     // The legal case: a self pattern expands over the project's task names.
-    expect(src).toContain('if (isTaskPattern(spec.task))')
+    expect(src).toContain('function resolveSelf(frame: Frame, task: string)')
+    expect(src).toContain('if (!isTaskPattern(task))')
     const page = readFileSync(path.join(DOCS, 'docs', 'tasks.mdx'), 'utf8').replace(/\s+/g, ' ')
     expect(page).toContain('A task-name pattern is allowed')
     expect(page).toContain("`dependsOn: ['build.*']`")
@@ -1964,7 +1974,7 @@ describe('the one-binary post says what the npm command starts', () => {
   it('the published bin is the sh launcher, and the post names its cost', () => {
     const core = path.resolve(import.meta.dir, '..')
     expect(readFileSync(path.join(core, 'scripts', 'build-npm.ts'), 'utf8')).toContain(
-      "bin: { vx: './launcher.cjs' }",
+      "bin: { vx: 'launcher.cjs' }",
     )
     expect(readFileSync(path.join(core, 'npm-launcher.sh'), 'utf8')).toStartWith('#!/bin/sh\n')
     const post = readFileSync(path.join(DOCS, 'blog', 'one-binary.md'), 'utf8').replace(/\s+/g, ' ')
@@ -2001,21 +2011,25 @@ describe('the posts state the daemons as the benchmark ran them', () => {
   })
 })
 
-describe("the concepts page reads run.ts's restore row as it is measured", () => {
+describe("the concepts page reads the head-to-head's restore row as it is measured", () => {
   // J2-17's class on a second page: "a restore costs about the same as an
   // untouched tree", of a harness whose restore row deletes the outputs
   // (J2-22).
-  it('the restore row extracts, and the page says so', () => {
+  it('the restore row deletes every output first, and the page says so', () => {
     const harness = readFileSync(
-      path.resolve(import.meta.dir, '..', '..', '..', 'private', 'vx-bench', 'run.ts'),
+      path.resolve(import.meta.dir, '..', '..', '..', 'private', 'vx-bench', 'compare.ts'),
       'utf8',
     )
-    expect(harness).toContain('warm-restore   — outputs deleted, cache intact (full extract path)')
+    expect(harness).toMatch(
+      /await deleteDist\(dir\)\n\s*const res = await timed\(r, dir, 'restoring'\)/,
+    )
     const page = readFileSync(path.join(DOCS, 'concepts', 'why-vx-is-fast.md'), 'utf8').replace(
       /\s+/g,
       ' ',
     )
-    expect(page).toContain('Its restore row deletes the outputs first and extracts every artifact')
+    expect(page).toContain(
+      'With every output deleted first, it restores them all in %bench.vx.restore%',
+    )
     expect(page).not.toContain('a restore costs about the same as an untouched tree')
   })
 })

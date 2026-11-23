@@ -184,6 +184,29 @@ describe('tscCompilesConfigNotes', () => {
     ])
   })
 
+  // TanStack/store and TanStack/form: each Angular example's tsconfig.json
+  // (outDir, no "include") is the base tsconfig.app.json and
+  // tsconfig.spec.json extend, each naming its files; `ng build` compiles
+  // those, and the note claimed an output that never moves.
+  it('says nothing of a base every sibling extends with its own files', () => {
+    const angular = `{ "compilerOptions": { "outDir": "./dist/out-tsc" } }`
+    writeFileSync(
+      path.join(dir, 'tsconfig.app.json'),
+      `{ "extends": "./tsconfig.json", "files": ["src/main.ts"], "include": ["src/**/*.d.ts"] }`,
+    )
+    writeFileSync(
+      path.join(dir, 'tsconfig.spec.json'),
+      `{ "extends": "./tsconfig.json", "include": ["src/**/*.spec.ts"] }`,
+    )
+    expect(notes(angular)).toEqual([])
+    // CONTROL: a sibling that adds no file list compiles what the base does.
+    writeFileSync(
+      path.join(dir, 'tsconfig.spec.json'),
+      `{ "extends": "./tsconfig.json", "exclude": ["dist"] }`,
+    )
+    expect(notes(angular)).toHaveLength(1)
+  })
+
   it('says nothing where tsc leaves the config alone', () => {
     const out = `"compilerOptions": { "outDir": "dist" }`
     expect(notes(`{ ${out}, "include": ["src"] }`)).toEqual([])

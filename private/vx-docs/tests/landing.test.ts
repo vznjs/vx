@@ -201,7 +201,7 @@ describe('the landing page', () => {
       ...stage.matchAll(/<li>\s*<strong>([\s\S]*?)<\/strong>\s*<span>([\s\S]*?)<\/span>/g),
     ]
     expect(specs.map((m) => `${text(m[1]!)} ${text(m[2]!)}`)).toEqual([
-      '15 stages a plugin can take over',
+      `${PLUGIN_HOOKS.length} stages a plugin can take over`,
       'MIT every piece, no paid tier',
       '0 daemons, accounts or clouds',
     ])
@@ -373,7 +373,7 @@ describe('the landing page', () => {
       'vx run build',
     ])
     expect(text(steps[1]![2]!)).toContain('declare a task')
-    expect(hrefs(start)).toEqual([`${BASE}quickstart/`, `${BASE}docs/migrate/`, `${BASE}features/`])
+    expect(hrefs(start)).toEqual([`${BASE}quickstart/`, `${BASE}docs/migrate/`, `${BASE}docs/`])
     expect(text(start)).not.toMatch(/turbo\.json|nx\.json|unchanged|faster/i)
   })
 
@@ -445,9 +445,9 @@ describe('the landing page', () => {
     expect(dials).toEqual(['Time', 'CPU', 'Peak memory', 'Outputs', 'Cache', 'History'])
     expect(text(data)).toContain('An example run')
     expect(hrefs(data)).toEqual([
-      `${BASE}features/vx-last/`,
-      `${BASE}features/vx-why/`,
-      `${BASE}features/run-analytics/`,
+      `${BASE}cli/last/`,
+      `${BASE}cli/why/`,
+      `${BASE}caching/#history`,
       `${BASE}plugins/vx-otel/`,
     ])
   })
@@ -754,7 +754,7 @@ describe("the pages in the landing's look", () => {
   const css = readFileSync(path.resolve(import.meta.dir, '../src/styles/landing.css'), 'utf8')
 
   it("end on their own footer, not Starlight's", () => {
-    for (const page of ['index.html', 'features/index.html', 'conformance/index.html']) {
+    for (const page of ['index.html', 'conformance/index.html']) {
       const html = readFileSync(path.join(DIST, page), 'utf8')
       expect(html).toContain('<footer class="footer"')
     }

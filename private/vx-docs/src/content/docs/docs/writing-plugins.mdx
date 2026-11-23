@@ -3,16 +3,15 @@ title: Write a plugin
 description: Write a plugin that fills one or more stages of every run.
 ---
 
+import Diagram from '../../../components/guide/diagram/Diagram.astro'
+import { pluginStages } from '../../../components/docs/pictures.js'
 import { Steps, Aside, CardGrid, LinkCard } from '@astrojs/starlight/components'
 
 Change every run from one place: add tasks, key material, a cache, an
 exporter or a CLI verb. A plugin fills one or more stages of the run;
 everything else stays core's.
 
-```mermaid
-flowchart LR
-  config --> discover --> project --> G["graph"] --> key --> fingerprint --> measures --> schedule --> admit --> E["executor / cache"] --> T["telemetry / output"]
-```
+<Diagram {...pluginStages} />
 
 ---
 
@@ -610,8 +609,10 @@ project's hooks have run, so a write to it changes nothing.
 A write to them throws, so a handler can never turn a failed task into
 a pass, nor a hook change a command after its key is taken.
 
-A `telemetry` hook or sink, `ctx.on` handler, `admit` or `Logger` that
-throws is switched off for the run with one warning.
+A `telemetry` hook or sink, `ctx.on` handler, `admit`, `output` hook or
+`Logger` that throws is switched off for the run with one warning.
+
+A `measures` hook that throws has its measures left out, with one warning.
 
 A `teardown` that throws leaves the run's result as it was. A verb that
 throws fails in one line.

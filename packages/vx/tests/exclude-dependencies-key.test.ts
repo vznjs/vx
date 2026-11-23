@@ -91,7 +91,9 @@ describe('--exclude-dependencies keys on the dependency it skips', () => {
   }
 
   const appHash = (...flags: string[]): string => {
-    const plan = JSON.parse(vx(root, 'run', 'app#build', '--dry=json', ...flags)) as {
+    const plan = JSON.parse(
+      vx(root, 'run', 'app#build', '--dry', '--format', 'json', ...flags),
+    ) as {
       tasks: Array<{ id: string; hash: string }>
     }
     return plan.tasks.find((t) => t.id === 'app#build')!.hash
@@ -182,7 +184,16 @@ describe('--exclude-dependencies keys on the dependency it skips', () => {
       await baseLibApp()
       const full = appHash()
       const plan = JSON.parse(
-        vx(root, 'run', 'app#build', 'base#build', '--dry=json', '--exclude-dependencies=build'),
+        vx(
+          root,
+          'run',
+          'app#build',
+          'base#build',
+          '--dry',
+          '--format',
+          'json',
+          '--exclude-dependencies=build',
+        ),
       ) as { tasks: Array<{ id: string; hash: string; deps: string[] }> }
       const app = plan.tasks.find((t) => t.id === 'app#build')!
       expect({ deps: app.deps, hash: app.hash }).toEqual({ deps: ['base#build'], hash: full })
@@ -217,7 +228,16 @@ describe('--exclude-dependencies keys on the dependency it skips', () => {
       git(root, 'commit', '-q', '-m', 'gen')
       const full = appHash()
       const plan = JSON.parse(
-        vx(root, 'run', 'build', '--all', '--dry=json', '--exclude-dependencies=gen'),
+        vx(
+          root,
+          'run',
+          'build',
+          '--all',
+          '--dry',
+          '--format',
+          'json',
+          '--exclude-dependencies=gen',
+        ),
       ) as { tasks: Array<{ id: string; hash: string; deps: string[] }> }
       const byId = new Map(plan.tasks.map((t) => [t.id, t]))
       expect({
@@ -292,7 +312,7 @@ describe('--exclude-dependencies keys on the dependency it skips', () => {
       git(root, 'add', '-A')
       git(root, 'commit', '-q', '-m', 'app reads its own source')
       expect(vx(root, 'run', 'app#build')).toContain('1↑')
-      const plan = JSON.parse(vx(root, 'run', 'app#build', '--dry=json')) as {
+      const plan = JSON.parse(vx(root, 'run', 'app#build', '--dry', '--format', 'json')) as {
         tasks: Array<{ id: string; hash: string; cacheStatus: string }>
       }
       expect(plan.tasks.map((t) => [t.id, t.cacheStatus])).toEqual([
@@ -396,7 +416,7 @@ describe('--exclude-dependencies keys on the dependency it skips', () => {
       git(root, 'commit', '-q', '-m', 'two dependants')
       const hashes = (...flags: string[]): string[] => {
         const plan = JSON.parse(
-          vx(root, 'run', 'app#build', 'top#build', '--dry=json', ...flags),
+          vx(root, 'run', 'app#build', 'top#build', '--dry', '--format', 'json', ...flags),
         ) as { tasks: Array<{ id: string; hash: string }> }
         return ['app#build', 'top#build'].map((id) => plan.tasks.find((t) => t.id === id)!.hash)
       }

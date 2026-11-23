@@ -967,6 +967,19 @@ describe('formatOutcomeTable', () => {
     expect(plain.join('\n')).not.toContain('\x1b')
   })
 
+  it('keeps its columns on screen when a name is wide (CJK)', () => {
+    const lines = formatOutcomeTable([
+      ...rows,
+      { node: node('漢字#build'), status: 'success', exitCode: 0, durationMs: 5 },
+    ])
+    const body = lines.slice(1).filter((l) => !l.startsWith('-'))
+    // Where STATUS / each status word starts, in terminal columns.
+    const at = body.map((l) => Bun.stringWidth(l.slice(0, l.search(/ {2}\S/))))
+    expect(new Set(at).size).toBe(1)
+    // Every row as wide as the header: DURATION right-aligned under it.
+    expect(new Set(body.map((l) => Bun.stringWidth(l))).size).toBe(1)
+  })
+
   it('names a task the stop reached before it ran `not run`, as its row and the footer do', () => {
     const killed: TaskOutcome = { ...outcome('a#x', 'aborted', 130), timing: { startNs: 1n } }
     const lines = formatOutcomeTable([killed, outcome('b#x', 'aborted', 1)])

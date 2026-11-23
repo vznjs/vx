@@ -19,6 +19,8 @@ export {
   workspaceCachePolicy,
   type PreparedRun,
 } from './prepare.js'
+// `vx lock` judges every task's network entries, as a run's sandbox would.
+export { networkPatternRefusal } from '../sandbox/index.js'
 export { affectedTaskProjects } from './affected-tasks.js'
 export { applyGraphStage } from './graph-stage.js'
 export { applyMigration } from './migration.js'
@@ -94,6 +96,7 @@ export {
   type PluginContext,
   type PluginHookHandlers,
   type PluginHookName,
+  type BaseContext,
   type PluginSetupContext,
   type RunReport,
   type RunReportTask,
@@ -140,7 +143,9 @@ export { LOG_WIRE_VERSION, TaskLogBuffer } from './task-log-buffer.js'
 export type { TaskLogBundle, TaskLogEntry } from './task-log-buffer.js'
 export { assembleRunSummary, createTelemetrySource, TELEMETRY_SCHEMA_VERSION } from './telemetry.js'
 export type {
+  FailedAttempt,
   RunContextRecord,
+  RunStage,
   RunSummaryRecord,
   TaskTelemetry,
   TelemetryContext,

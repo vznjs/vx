@@ -1,0 +1,41 @@
+---
+// The frame of a wide page with no sidebar (the conformance pages): the
+// landing's look (landing.css) inside the site's one Starlight shell
+// (header, search, theme, phone menu), so the page is found by search.
+import StarlightPage from '@astrojs/starlight/components/StarlightPage.astro'
+import Footer from './landing/Footer.astro'
+import '../styles/landing.css'
+import '../styles/page-hero.css'
+
+interface Props {
+  title: string
+  description: string
+  ogImage?: string
+  /** The source the page's edit link opens, under private/vx-docs/. */
+  edit: string
+}
+const { title, description, ogImage, edit } = Astro.props
+const head = ogImage
+  ? [{ tag: 'meta' as const, attrs: { property: 'og:image', content: ogImage } }]
+  : []
+---
+
+<StarlightPage
+  frontmatter={{
+    title,
+    description,
+    template: 'splash',
+    head,
+  }}
+  hasSidebar={false}
+>
+  <div class="not-content vx-landing vx-wide">
+    <slot />
+    <div class="fedit">
+      <p class="container">
+        <a href={`https://github.com/vznjs/vx/edit/main/private/vx-docs/${edit}`}>Edit this page</a>
+      </p>
+    </div>
+    <Footer />
+  </div>
+</StarlightPage>

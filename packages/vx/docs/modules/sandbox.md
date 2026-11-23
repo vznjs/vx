@@ -252,6 +252,10 @@ export function initSandbox(opts?: {
   allowAllUnixSockets?: boolean // some task asks; the lift is set per task's wrap
 }): Promise<void>
 export function resetSandbox(): Promise<void>
+// `vx lock`: the first task whose network entry the runtime would refuse, named, or undefined
+export function networkPatternRefusal(
+  projects: Iterable<{ name: string; config: ProjectConfig }>,
+): Promise<string | undefined>
 // why sandboxed tasks run untraced (no observer and no working strace), or null; `vx info` says it
 export function untracedReason(): Promise<string | null>
 
@@ -575,7 +579,7 @@ On Linux the command runs in a session, and so a process group, of its own insid
 
 On Linux the wrapped command is `exec /abs/bwrap …`, behind `GIT_DISCOVERY_ACROSS_FILESYSTEM=${…-1}` for a task whose grants name a `.git`: every mask and bind is a mount point, and git's discovery stops at one, so such a task read "Stopping at filesystem boundary" (2026-10-03, `sandbox-git-discovery.unsafe.test.ts`). Only such a task: git-aware tools read the variable, vx's own repo probe among them. The bwrap: SRT wrote a bare `bwrap` into a command the task's shell runs with the TASK's environment, so a dependency's `node_modules/.bin/bwrap` ran in its place and the task ran unsandboxed, exit 0; `initSandbox` now hands SRT vx's own paths for `bwrap` and `socat` (B-19). the spawn's shell execs bwrap, so bwrap is vx's own child and its `--die-with-parent` fires when vx dies, a `kill -9` included. The pid namespace then takes every descendant, one that called `setsid` too. Behind a shell that waited on it, bwrap's parent was that shell, which outlived vx, and a sandboxed server's whole tree ran on under init (turborepo#9666; item 801, `sandbox-runtime.unsafe.test.ts` › "a sandboxed server’s backgrounded and setsid children die with vx"). A one-shot task traced for violations is the same `exec bwrap …`: its strace runs inside (B-11). A persistent task is never traced. strace failing on its own (a stderr line of its own, `strace: …`) ends only the attempt: the task runs once more, with a line saying why, and the second attempt is its verdict — unless the run is stopping (`ExecuteRequest.signal` aborted): its kill already took the children it held, and a retry would be spawned after it (B-36). The second attempt runs in what the first left of `timeoutMs`, not a fresh window: `timeout` bounds the task's whole run (`schema.md`), and a fresh one let a task run near twice its timeout. Its exit is no longer the task's — a tracer that dies leaves the command running untraced — so the line, not the exit, is the sign: the trace stopped short, and a denial after it would go unreported. Inside, the tracer shares the task's pid namespace and uid, so a task can end it or reach its log through `/proc`: the violation REPORT is at the task's mercy, as it never is for enforcement, which is bwrap's mounts. The sandbox kept the first attempt's writes to what it declared, so the second redoes rather than doubles them (STATUS Next 24, `sandbox-tracer-retry.unsafe.test.ts`). A mount gone as bwrap set the sandbox up (`bwrap: Can't …: No such file or directory`: a `docker build` beside the task left a transient mount under /tmp, read from the mount table and gone by its remount; `… remount "…": Invalid argument` when the mount is gone but its directory is not yet) is retried the same way, once: the command never started (`sandbox-mount-race.unsafe.test.ts`). The trace log is the task's own file beside the task directories (L-25), removed once it is read; a second signal's exit (`process.exit`) never reaches that read, so the process's `exit` event removes every log still listed (item 848, `sandbox-runtime.unsafe.test.ts` › "a second signal exit leaves no strace log behind"). A first signal lets the run end and read the log itself (item 849).
 
-A write grant under a directory with SYMLINKED entries (Bun's isolated `node_modules` layout: every package is a link into `.bun/`) punches the read grant into that directory's children, and bwrap mounts a linked child as the directory it points at — inside the sandbox the link is gone and a package resolved through it cannot see the `.bun/` siblings its own dependencies live in (`Cannot find package 'yargs-parser'`, the docs build, 2026-09-05 → 09-09). SRT's config has no `--symlink`, so the punch hands a linked child over by its name and vx lays it as the link it is, before bwrap's `--` and the masks' read-only remount (`punchedLinks`, `withPunchedLinks`): pnpm's Vite template, whose `tsc -b` writes `node_modules/.tmp/*.tsbuildinfo`, failed `Cannot find package 'picomatch'` under the grant the fix line named, and a warning said to move the grant (`sandbox-write-through-link.unsafe.test.ts`). A linked child that points INTO a write grant writes through to it. A write grant spelled through a link in the project (`gen/` over `gen -> real`) resolves to `real`, and SRT skips a sibling link as a write path, so `resolveSandboxConfig` records it (`linkedWrites`) and vx binds the target at the link's spelling itself, last before bwrap's `--` (`linkedWriteBinds`, `withLinkedWrites`); the read punch goes around that bind too. A linked child whose target lies under the deny anchor (the workspace root) and inside no read grant is dropped, not bound: `node_modules -> ..` or `shared -> ../b` under a `read: ['.']` punched around `dist/` bound the root or a sibling no key answers for, where the grant bound whole keeps the link a link into the deny (item 1006's glob hit, through the punch).
+A write grant under a directory with SYMLINKED entries (Bun's isolated `node_modules` layout: every package is a link into `.bun/`) punches the read grant into that directory's children, and bwrap mounts a linked child as the directory it points at — inside the sandbox the link is gone and a package resolved through it cannot see the `.bun/` siblings its own dependencies live in (`Cannot find package 'yargs-parser'`, the docs build, 2026-09-05 → 09-09). SRT's config has no `--symlink`, so the punch hands a linked child over by its name and vx lays it as the link it is, before bwrap's `--` and the masks' read-only remount (`punchedLinks`, `withPunchedLinks`): pnpm's Vite template, whose `tsc -b` writes `node_modules/.tmp/*.tsbuildinfo`, failed `Cannot find package 'picomatch'` under the grant the fix line named, and a warning said to move the grant (`sandbox-write-through-link.unsafe.test.ts`). A linked child that points INTO a write grant writes through to it. A write grant spelled through a link in the project (`gen/` over `gen -> real`) resolves to `real`, and SRT skips a sibling link as a write path, so `resolveSandboxConfig` records it (`linkedWrites`) and vx binds the target at the link's spelling itself, last before bwrap's `--` (`linkedWriteBinds`, `withLinkedWrites`); the read punch goes around that bind too. A literal read grant spelled through links in the project (`src/` over `src -> lib2 -> lib`) records each hop (`linkedReads`), and vx lays every one no bound grant above already shows (`readGrantLinks`, through `withPunchedLinks`): SRT binds only `lib`, so `src/a.txt` met ENOENT under its own grant (`sandbox-grant-through-link.unsafe.test.ts`). A linked child whose target lies under the deny anchor (the workspace root) and inside no read grant is dropped, not bound: `node_modules -> ..` or `shared -> ../b` under a `read: ['.']` punched around `dist/` bound the root or a sibling no key answers for, where the grant bound whole keeps the link a link into the deny (item 1006's glob hit, through the punch).
 
 The strace pass closes the silent-swallow gap on Linux (tools that read
 an undeclared path, catch the `ENOENT`, and keep running): the denial is
@@ -1102,14 +1106,38 @@ sandbox at all.
 ### A write grant cannot be removed (Linux)
 
 A directory grant is a bind mount, and a mount point cannot be removed or
-renamed: under `write: ['dist/']`, `rm -rf dist && tsc` empties `dist`,
-then fails with `Read-only file system` (EBUSY under a writable parent).
-macOS allows it. No bind makes it work and keeps "a task writes only its
-grants": binding the parent lets the task write beside the grant. So a
-failed task whose stderr names a grant root (absolute, or
-relative to the cwd, `./` allowed) on a line holding `Read-only file
-system`, `EROFS`, `EBUSY` or `resource busy` gets a hint naming the grant
-and the removal that works, `rm -rf dist/*` (`grantRemovalHint`; X-90,
+renamed: under `write: ['dist/']`, `rm -rf dist && tsc` emptied `dist`,
+then failed with `Read-only file system` (EBUSY under a writable parent).
+macOS allows it. Binding the host's parent would let the task write
+beside the grant, so `stagedOutputs` binds vx's own directory there
+instead. Each directory grant in the task's directory that the task's
+outputs claim whole (`dist/**` with no `!` exclusion under it, handed
+down as `ownedOutputs`) is copied as hard links (`linkTree`) into
+`.vx/tmp/<pid>-<tag>` in the nearest `.vx`. That staging is mounted as
+the task's directory under the mask, and the other grants bind into it
+as before. The output directory is a plain directory there. What the
+task writes beside it lands in the staging, is reported (no grant covers
+it) and goes with the staging. After the task, each staged directory is
+renamed over the host's; if the task removed it and made none, the
+host's goes too. A failed rename throws, so the task fails rather than
+saving stale bytes, once the attempt's trace log and records are let go.
+The host's directory is not moved while the task runs: a concurrent
+task reading it still sees it, and a killed run's staging, which holds
+only links, is swept as a restore's is (`sweepStaging`). The restore sets
+each host directory aside in the staging (`.host-<name>`) before the
+task's takes its place, naming it first in the staging's `.vx-put-back`
+(`STAGE_PUT_BACK`): a run killed between the two renames has the sweep put
+it back where nothing took its place. Directories are
+not staged for a server, for a grant no output claims whole, for a
+directory the line names anywhere but its own write bind (a deny or mask
+in it is a mount that would move with it), where a mask
+sits at the task's directory (its later `--remount-ro` would cover the
+staging), or for a task whose directory a grant
+binds itself (`write: ['.']`, a file grant there). There a failed task
+whose stderr names a grant root (absolute, or relative to the cwd, `./`
+allowed) on a line holding `Read-only file system`, `EROFS`, `EBUSY` or
+`resource busy` gets a hint naming the grant and the removal that works,
+`rm -rf dist/*` (`grantRemovalHint`; X-90,
 `sandbox-grant-remove.unsafe.test.ts`). The lines are kept as stderr
 streams, as `GIT_NO_REPO`'s are: a run captures no output.
 
@@ -1152,7 +1180,12 @@ task per spelling, each writing the files it declares:
 | `g/[ab].txt`  | same                                               |
 
 (`g/*` and its siblings ran with `read: ['.']`, which mounts `g`
-read-only.) That is the documented contract rather than a defect, but
+read-only.) A glob's directory in the task's own directory is bound now
+(`punchedWriteGlobs`, made first when missing), so each of these lands;
+what the directory held at the start is judged as a widened grant's
+(`heldEntries`, read by `parseStraceViolations`), and a directory the
+glob may still match beneath is no violation (`holdsMatchUnder`). The
+table holds outside it. That is the documented contract rather than a defect, but
 the failure names neither vx nor the grant, so `expandGrants` hands the
 grant over as `pendingWrites`, and `pendingWriteGrants` reports it —
 once per grant, before the task runs — and names the directory to grant
@@ -1198,7 +1231,10 @@ same regex again.
 
 A write refused OUTSIDE the project is no violation (nothing a key
 reads), but it may be why the task failed: a failed task gets one note
-naming those paths and the directory to grant, or, for a path under the
+naming those paths and the directory to grant (the file itself where
+that directory is home or holds the project: a task writing
+`../shared.txt` was told to grant `../`, every sibling project
+writable), or, for a path under the
 host's shared temp directory (`/tmp`, `/var/tmp`, `os.tmpdir()`) that no
 wall holds, `$TMPDIR` instead: the task has an empty temp directory of
 its own, and a grant would open the shared one to every write (#2424)

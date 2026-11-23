@@ -13,8 +13,8 @@ re-exported from `@vzn/vx`.
 ├── vx.config.ts                 (optional: the root project, named `//`)
 ├── .vx/
 │   ├── workspace.ts             (required: marks the root; workspace-wide settings)
-│   ├── projects.lock      (`vx lock`: configs, a line per project; committed)
-│   ├── dependencies.lock        (`vx lock`: edges and digests, a line per project; committed)
+│   ├── projects.lock      (`vx lock`: configs, each task once; committed)
+│   ├── dependencies.lock        (`vx lock`: edges and digests per project; committed)
 │   ├── .gitattributes           (both locks `linguist-generated eol=lf`; written when missing)
 │   ├── .gitignore               (`/cache`; written by `vx init` and the cache when missing)
 │   └── cache/                   (machine-local state; the only part git ignores)
@@ -191,7 +191,7 @@ places:
   printed to the right of each `pkg#task` id.
 - The `--dry` text preview — printed on a second indented line under
   the cache-status row.
-- The `--dry=json` output — `description` lives on each task entry.
+- The `--dry --format json` output — `description` lives on each task entry.
 
 ```ts
 test: {
@@ -625,7 +625,7 @@ Semantics:
   server's write grants reach, or any there when the server is not
   sandboxed) is not probed ahead of it, so there the
   server still starts. `vx run --dry` says so: such a server is
-  `not started` (`not-started` in `--dry=json`), not `would exec`.
+  `not started` (`not-started` in `--dry --format json`), not `would exec`.
 - **Exit before ready.** A persistent task that exits 0 before
   `readyWhen` matches is ready: a setup step (migrate, seed) that did its
   work, and its dependants run. One that crashes or exits non-zero first
@@ -779,7 +779,9 @@ highest priority:
    A value a bundler writes into its output is none of these: `vx lock`
    names a cached task's `passThrough` name with a public bundler prefix
    (`VITE_`, `NEXT_PUBLIC_`, `REACT_APP_`, `PUBLIC_`, `EXPO_PUBLIC_`,
-   `GATSBY_`, `STORYBOOK_`, `VUE_APP_`) or `NODE_ENV` that `inputs.env`
+   `GATSBY_`, `STORYBOOK_`, `VUE_APP_`, `BUN_PUBLIC_`, `NX_PUBLIC_`,
+   `NUXT_ENV_`, `NUXT_PUBLIC_`, `REDWOOD_ENV_`, `SANITY_STUDIO_`) or
+   `NODE_ENV` that `inputs.env`
    leaves out and that is no secret (by name or `secret`), once per task: add it to
    `inputs.env`, or a build with another `VITE_API_URL` replays the old
    bundle. It also names such a name `inputs.env` keys that neither
@@ -1089,7 +1091,10 @@ million took a run gigabytes. A class range that runs backwards
 (`[z-a]`) matches no character and is refused, naming `[a-z]`. A leading `!` is still the negation, so `!(group)/**`
 takes a route group back; any other `!` is the character, one that
 starts a name (`out/*/!a`) or a brace alternative (`{x,!a}`) too. A
-negated class never matches a `/`: `gen[!.]*` is not `gen/notes.txt`. This holds for every task glob — `inputs.files`,
+negated class never matches a `/`: `gen[!.]*` is not `gen/notes.txt`.
+Wildcards match dotfiles: `*` folds `.eslintrc`, `src/*` folds
+`src/.env` and `**` enters `src/.cache/`. `'!**/.*'` takes back the
+dotfiles and `'!**/.*/**'` the files in dot directories. This holds for every task glob — `inputs.files`,
 `inputs.workspaceFiles`, `outputs.files`, `outputs.workspaceFiles` — and
 for everything read from them (`--affected`, `vx watch`, the
 overlapping-output refusal). Package-manager member globs (`workspaces`,
@@ -1114,7 +1119,10 @@ lockfile change when a lockfile plugin (`@vzn/vx-lockfile`) is declared.
 
 Always applied to every glob pass (regardless of what you wrote):
 
-- **gitignore filter** — workspace-root + project `.gitignore`, unless
+- **gitignore filter** — every rule git applies: each `.gitignore` at any
+  depth, `.git/info/exclude` and the user's `core.excludesFile`. The last
+  differs per machine, so a file it ignores on one machine is an input on
+  another; ignore shared paths in a committed `.gitignore`. Unless
   an entry names the ignored path outright: a literal (`.env.local`,
   `.env.production.local`; `vx lock` and a miss name an ignored file a
   glob's last segment matches, `.env*` over it), or
@@ -1671,7 +1679,7 @@ or a read-only `--cache-policy=local:r`) — the user is debugging and
 managing the tree themselves. `--force` keeps writes on, so it does
 clean.
 
-##### `outputs.workspaceFiles` (optional, default `[]`)
+#### `outputs.workspaceFiles` (optional, default `[]`)
 
 Workspace-root-relative globs for outputs the task writes OUTSIDE its
 project dir (e.g. a root-level generated file). Same capture / restore
@@ -1885,7 +1893,13 @@ newline) is refused at load on every platform: the Linux report of a
 write spells a tab as a space, so a write the grant covers read as a
 violation of `a b`, and a refused write to `a b` would read the same.
 
-A Linux WRITE glob's directory that no read grant shows is not bound.
+A Linux WRITE glob's directory in the task's own directory is bound
+writable, made first when missing (`*.js` at the project root,
+`dist/*.js` before `dist` exists, `dist/**/*.js`), and judged as a
+widened file grant's directory is (below): a read or write there that no
+grant covers is a violation. Until 2026-11-23 it was bound only where a
+read grant showed it, and a new match failed the task.
+Elsewhere, a glob's directory that no read grant shows is not bound.
 Where the host's read-only root holds it (outside the workspace), or
 binding it would make a nested project or `.git` writable (`*.log` in a
 root project), a glob matching nothing at the start mounts nothing: the
@@ -1919,7 +1933,9 @@ A grant that leaves the project through a symlink is refused: the grant
 binds the path it names, and vx follows no link out of the project. One
 spelled through a link that stays inside (`write: ['gen/']` over
 `gen -> real`) binds at both spellings, so a write through `gen` lands in
-`real`. A link into a write grant that is not itself granted is a
+`real`. A read grant spelled through links in the project (`read: ['src/']`
+over `src -> lib`) has each link laid as it is on Linux, so the task reads
+`src/` as granted; until 2026-11-23 only `lib` was there. A link into a write grant that is not itself granted is a
 read-only view of it on Linux (a write through it is refused, and vx
 says so before the task runs); grant the link too to write through it. So
 is one whose bind would make `.git`, `.vx/cache`, the cache directory or a
@@ -1953,10 +1969,11 @@ mounting, so a file grant stays exact there. Pinned in
 **A `network` entry is a host pattern**: `example.com`, `*.example.com`,
 either with a port (`example.com:443`), or `localhost`. A scheme or path
 (`https://example.com`), a dotless host, a bad port, and `*` or `*.com`
-(too broad) refuse the run with the entry named; `deny.network` also
+(too broad) are refused by `vx lock`, naming the task and the entry; `deny.network` also
 takes a bare `*` (deny all, `*:22` for one port). Until 2026-10-02 such an
 entry matched nothing with no word, and an allowed `*` opened every host
-to every sandboxed task of the run.
+to every sandboxed task of the run; until 2026-11-23 the lock took it and
+the run refused it, failing every sandboxed task of the run, naming none.
 
 **A server on this machine is `localhost:<port>`.** A sandboxed client
 of a server another task runs (an e2e against `vite preview`) grants
@@ -2161,14 +2178,19 @@ task, never counted, with a grant for each refused write (a refused
 `mkdir ~/.cache` is granted as `'~/.cache/'`, never home itself). The
 remedy is to declare it: `allow: { write: [...] }`.
 
-**A write grant cannot be removed on Linux.** A directory grant is
-mounted in place, so `rm -rf dist && tsc` under `write: ['dist/']`
-empties `dist` and then fails with `Read-only file system`; a failed
-task names the grant, whether it said so on stderr or, as Playwright
-does, on stdout. Remove its contents instead: `rm -rf dist/*`. A tool
-that removes its own output directory writes one inside the grant:
-`playwright test --output test-results/run` under
-`write: ['test-results/']`.
+**A task may remove its own output directory.** `rm -rf dist && tsc`
+under `write: ['dist/']` and `outputs.files: ['dist/**']` works on Linux
+too. A directory grant in the task's directory that its outputs claim
+whole (`dist/**`, no `!dist/...` exclusion) is copied into vx's staging
+(`.vx/tmp/`) as hard links, so no bytes are copied. The staging is
+mounted as the task's directory, and after the task its copy replaces
+the host's. The host's directory is untouched while the task runs, so a
+concurrent task still reads it and a killed run loses nothing. Until
+2026-11-23 the grant was mounted in place and the removal failed with
+`Read-only file system`. It is still mounted in place where the task's
+directory is itself granted (`write: ['.']`, or a file grant there) or
+no output claims the whole directory. There, remove its contents instead
+(`rm -rf dist/*`); a failed task names the grant.
 
 **The boundary is the workspace root.** A task may not leave its own
 project, so every sibling project and every root file is denied. Being
@@ -2715,7 +2737,7 @@ to <reader>'s inputs.<field>, or depend on <writer> and leave it out of
   all, the local store last). An `undefined`, `null` or `false` entry
   is skipped, as Vite skips one: a factory that declines (`github()` off
   Actions) or `cond && plugin()` needs no filter. Each entry is a `VxPlugin` contributing
-  any subset of the fifteen hooks, in pipeline order: `config` (edit
+  any subset of the sixteen hooks, in pipeline order: `config` (edit
   the workspace config before anything derives from it), `discover`
   (name directories to make projects beyond the members), `project`
   (edit a loaded project's tasks — inject, remove, rewrite;
@@ -2766,7 +2788,7 @@ export default defineWorkspace({
 })
 ```
 
-Every key, each at a value its flag takes:
+Every key but `format` (which needs `dry: true`), each at a value its flag takes:
 
 ```ts
 import { defineWorkspace } from '@vzn/vx/config'
@@ -2802,6 +2824,18 @@ export default defineWorkspace({
 })
 ```
 
+A dry pipeline can print its plan as JSON:
+
+```ts
+import { defineWorkspace } from '@vzn/vx/config'
+
+export default defineWorkspace({
+  pipelines: {
+    plan: { tasks: ['build', 'test'], dry: true, format: 'json' },
+  },
+})
+```
+
 ```ts
 interface Pipeline {
   /** The tasks, in every project that declares each (`'pkg#task'` names one); their order is `dependsOn`'s. */
@@ -2832,7 +2866,10 @@ interface Pipeline {
   verbosity?: number
   /** `--profile`: `true` writes profile.json, a string names the file. */
   profile?: boolean | string
-  dry?: boolean | 'pretty' | 'json'
+  /** `--dry`: plan, run nothing. */
+  dry?: boolean
+  /** `--format`, with `dry`: the plan as `'pretty'` (default) or `'json'`. */
+  format?: 'pretty' | 'json'
 }
 ```
 
@@ -2845,16 +2882,23 @@ interface Pipeline {
 - **Precedence.** A flag typed with `vx pipeline` beats its key, and so
   does the flag's `VX_*` variable; the key beats `.vx/workspace`'s
   setting. A typed `--dry` also drops a saved `profile` (a dry run writes
-  none), and a typed `--profile` a saved `dry`; one pipeline sets only one
-  of the two. A typed `--cache-policy` or its variable drops a saved
+  none), and a typed `--profile` a saved `dry` and `format`; one pipeline
+  sets only one of `dry` and `profile`, and `format` only with `dry: true`. A typed `--cache-policy` or its variable drops a saved
   `noCache` and `force`, and a typed `--force` a saved `noCache`: a run
   applies those over the policy, so the saved key would beat the typed
   flag.
 - **`env`** is set before the run's plugins start, for vx and the plugins
   only (a plugin's on/off switch): every task reads it as unset, in its
-  command and its key. A variable already set in the shell wins. A
+  command, its key and its `inputs.runtime` probes. A variable already set in the shell wins. A
   plugin reads it from its setup on; `.vx/workspace.ts`'s own top level
-  ran before it was set, so a value read there misses it.
+  ran before it was set, so a value read there misses it. It is saved as
+  the keys are: its `VX_CACHE_POLICY` drops no saved `noCache`, and an
+  entry for a key's setting beside that key (`VX_RUN_RETRIES` with
+  `retries`) is refused: drop one.
+- **`tasks`** are names as `vx run` takes them, or `'pkg#task'`: a
+  `'--force'` or `'^build'` is refused when the file loads.
+- **A refusal names the key.** One that names a flag the pipeline saved
+  says which key holds it (`--affected is \`pipelines.pr.affected\``).
 - **No forwarded args.** `-- <args>` reach one task in one project, and a
   pipeline is never one.
 
@@ -3132,6 +3176,7 @@ image the test's own inputs already pin.
     files: ['src/**', 'integration/**', 'compose.yaml'],
     tasks: [],   // db:up only orders; compose.yaml pins what it starts
   },
+  outputs: { files: [] },
   cache: true,
 }
 ```
@@ -3169,7 +3214,7 @@ opens it on click), and the lines up to it with a caret under the field
 (`util/config-frame.ts`):
 
 ```ansi
-[38;2;239;68;68m✗[0m [1mvx lock[0m  lock not written
+[38;2;239;68;68m✗[0m [1mvx lock[0m  [38;2;203;213;225mlock not written[0m
 
   [1mpackages/app/vx.config.ts:6:15[0m
   [38;2;203;213;225mtasks.build.exec has unknown field "comand"[0m
@@ -3289,9 +3334,9 @@ Project-discovery errors (`src/workspace/workspace.ts`, `src/orchestrator/projec
 | `<dir>: "//" names the workspace root — set another \`name\``                                                        | A config away from the root says `name: '//'`.                                                                                      |
 | `.vx/projects.lock locks <dir>, but its <file> is gone — run \`vx lock\``                                            | A locked project's config was deleted or renamed (X-144).                                                                           |
 | `.vx/projects.lock locks <dir>, but its <file> is not readable by this user (<code>) — give this user read access…`  | This user may not search the project's directory (D-132).                                                                           |
-| `.vx/projects.lock has unsupported version <n> (this vx expects 8) — re-run \`vx lock\``                             | A lock an earlier vx wrote.                                                                                                         |
-| `.vx/dependencies.lock has unsupported version <n> (this vx expects 5) — re-run \`vx lock\``                         | A dependencies lock an earlier vx wrote.                                                                                            |
-| `.vx/projects.lock was written by a newer vx (version <n>; this vx reads 8) — upgrade vx`                            | A lock a later vx wrote: re-locking would write the older version.                                                                  |
+| `.vx/projects.lock has unsupported version <n> (this vx expects 9) — re-run \`vx lock\``                             | A lock an earlier vx wrote.                                                                                                         |
+| `.vx/dependencies.lock has unsupported version <n> (this vx expects 6) — re-run \`vx lock\``                         | A dependencies lock an earlier vx wrote.                                                                                            |
+| `.vx/projects.lock was written by a newer vx (version <n>; this vx reads 9) — upgrade vx`                            | A lock a later vx wrote: re-locking would write the older version.                                                                  |
 | `<dir> is outside this sparse checkout, so vx lock cannot read its <file> — run \`git sparse-checkout add <dir>\``   | `vx lock` or `--check` where a sparse checkout left a config out.                                                                   |
 | `.vx/projects.lock: no task #<id> — re-run \`vx lock\``                                                              | A hand-edited lock names a task line it does not hold.                                                                              |
 | `.vx/projects.lock holds a line \`vx lock\` never writes — re-run \`vx lock\``                                       | A line with no tab, or a name twice.                                                                                                |

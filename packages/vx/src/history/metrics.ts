@@ -516,6 +516,45 @@ export function latestRunId(db: Database, taskId: string): string | null {
   return row?.runId ?? null
 }
 
+/** A failure with no key that spawned nothing and is no server that never got ready: its key was not derived. */
+const keyNotDerived = (r: {
+  hash: string
+  status: string
+  cacheHit: number | null
+  spawned: number | null
+  notReady: string | null
+}): boolean =>
+  r.hash === '' &&
+  r.status === 'failed' &&
+  // A hit whose restore failed leaves cache_hit NULL; a key never derived, 0.
+  r.cacheHit !== null &&
+  r.spawned === null &&
+  r.notReady === null
+
+/** Why a row holds no key (`hash = ''`), from what the row says: one cause, not a list to guess from. */
+function noKeyCause(
+  runId: string,
+  taskId: string,
+  r: {
+    hash: string
+    status: string
+    cacheHit: number | null
+    blockedBy: string | null
+    spawned: number | null
+    notReady: string | null
+  },
+): string {
+  if (r.status === 'skipped')
+    return r.blockedBy === null
+      ? 'this task was skipped: it needs another platform, so it recorded no cache key'
+      : `this task never ran: ${r.blockedBy} did not pass, so it recorded no cache key`
+  if (keyNotDerived(r))
+    return `this task's cache key could not be derived, so its command never ran (\`vx last ${runId} --log ${taskId}\` says why)`
+  if (r.status === 'failed' && r.cacheHit === null)
+    return 'this task hit the cache and its restore failed, so it recorded no cache key'
+  return 'this task is persistent: it records no cache key'
+}
+
 /** Why a key that folds a task with no `inputs` never hits, and the fix. */
 function keylessNote(taskId: string, keylessBy: string): string {
   return keylessBy === taskId
@@ -529,7 +568,8 @@ export function whyDidThisRerun(db: Database, runId: string, taskId: string): Wh
   const this_ = db
     .query(
       `SELECT id, hash, status, cache_hit AS cacheHit, restored, cached, started_at AS startedAt,
-              keyless_by AS keylessBy
+              keyless_by AS keylessBy, blocked_by AS blockedBy,
+              wallclock_start_ns AS spawned, not_ready AS notReady
        FROM runs WHERE run_id = ? AND project = ? AND task = ?`,
     )
     .get(runId, project, task) as
@@ -542,6 +582,9 @@ export function whyDidThisRerun(db: Database, runId: string, taskId: string): Wh
         cached: number | null
         startedAt: number
         keylessBy: string | null
+        blockedBy: string | null
+        spawned: number | null
+        notReady: string | null
       }
     | undefined
   if (!this_) {
@@ -581,7 +624,8 @@ export function whyDidThisRerun(db: Database, runId: string, taskId: string): Wh
     thisRun: {
       hash: this_.hash,
       status: this_.status,
-      cacheHit: this_.cacheHit === null ? null : Boolean(this_.cacheHit),
+      // A task with no key never asked the cache: neither a hit nor a miss.
+      cacheHit: this_.cacheHit === null || keyNotDerived(this_) ? null : Boolean(this_.cacheHit),
       restored: this_.restored === null ? null : Boolean(this_.restored),
       cached: this_.cached === null ? null : Boolean(this_.cached),
       startedAt: this_.startedAt,
@@ -597,7 +641,7 @@ export function whyDidThisRerun(db: Database, runId: string, taskId: string): Wh
       : null,
     hashChanged: prev && !noKey ? prev.hash !== this_.hash : null,
     note: noKey
-      ? 'this task recorded no cache key (skipped, or a persistent task) — nothing to compare'
+      ? `${noKeyCause(runId, taskId, this_)} — nothing to compare`
       : this_.cached === 0
         ? // Not a cache decision at all: the task runs every time by design,
           // and its key is derived only so dependents can fold it. A keyless one's is new each run,
@@ -718,16 +762,20 @@ export function cacheKeyDiff(db: Database, runId: string, taskId: string): Cache
   const [project, task] = splitTaskId(taskId)
   const this_ = db
     .query(
-      'SELECT id, hash, cached, status, started_at AS startedAt, keyless_by AS keylessBy FROM runs WHERE run_id = ? AND project = ? AND task = ?',
+      'SELECT id, hash, cached, cache_hit AS cacheHit, status, started_at AS startedAt, keyless_by AS keylessBy, blocked_by AS blockedBy, wallclock_start_ns AS spawned, not_ready AS notReady FROM runs WHERE run_id = ? AND project = ? AND task = ?',
     )
     .get(runId, project, task) as
     | {
         id: number
         hash: string
         cached: number | null
+        cacheHit: number | null
         status: string
         startedAt: number
         keylessBy: string | null
+        blockedBy: string | null
+        spawned: number | null
+        notReady: string | null
       }
     | undefined
   if (!this_) {
@@ -752,7 +800,7 @@ export function cacheKeyDiff(db: Database, runId: string, taskId: string): Cache
       previousRunId: null,
       entries: [],
       unchangedCount: 0,
-      note: 'this task recorded no cache key (skipped, or a persistent task) — nothing to diff',
+      note: `${noKeyCause(runId, taskId, this_)} — nothing to diff`,
     }
   }
 

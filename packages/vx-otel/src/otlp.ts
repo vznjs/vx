@@ -617,12 +617,15 @@ export function buildMetricsRequest(
     timeUnixNano: nowUnixNano,
     attributes: attrs,
   })
+  // Units as the task metrics name theirs: a count of tasks, a time in ms.
   const sum = (name: string, dataPoints: ReturnType<typeof point>[]) => ({
     name,
+    unit: '{task}',
     sum: { dataPoints, aggregationTemporality: AGG_DELTA, isMonotonic: true },
   })
   const gauge = (name: string, value: number) => ({
     name,
+    unit: 'ms',
     gauge: {
       dataPoints: [{ asDouble: value, timeUnixNano: nowUnixNano, attributes: [] }],
     },

@@ -3,6 +3,7 @@
 // adapter's loopback relay. Its tests are split over two files, each a
 // task of its own, so neither is the run's longest.
 
+import { readdirSync, readFileSync, readlinkSync } from 'node:fs'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -232,18 +233,64 @@ export async function workerOf(
 }
 
 /**
- * The pids under `pid`, by `pgrep -P`: macOS's `ps` is setuid, which the
- * sandbox will not spawn (EPERM on a developer Mac, 2026-10-21).
+ * The children of `pid` (those whose command line holds `match`, if given),
+ * named as this process's pid namespace names them. A sandbox in an
+ * unprivileged container cannot mount its own /proc (EPERM), so /proc and
+ * `pgrep` there name an outer namespace's pids: `pgrep -P <our pid>` found no
+ * worker and every pid it gave was another process (2026-11-23). Each
+ * process's `NSpid` lists its pid at every level from /proc's down, and ours
+ * is the level at which /proc names this process `process.pid`. macOS has no
+ * /proc: `pgrep` there (its `ps` is setuid, which the sandbox will not spawn).
  */
+export function children(pid: number, match?: string): number[] {
+  if (process.platform !== 'linux') {
+    const args = ['pgrep', '-P', String(pid), ...(match === undefined ? [] : ['-f', match])]
+    return Bun.spawnSync(args).stdout.toString().split('\n').filter(Boolean).map(Number)
+  }
+  const nspid = (status: string): number[] =>
+    (/^NSpid:\s*(.*)$/m.exec(status)?.[1] ?? '').split(/\s+/).filter(Boolean).map(Number)
+  const level = nspid(readFileSync('/proc/self/status', 'utf8')).indexOf(process.pid)
+  const rows: Array<{ dir: string; pid: number | undefined; ppid: number }> = []
+  for (const dir of readdirSync('/proc')) {
+    if (!/^\d+$/.test(dir)) continue
+    try {
+      const status = readFileSync(`/proc/${dir}/status`, 'utf8')
+      const ppid = Number(/^PPid:\s*(\d+)/m.exec(status)?.[1])
+      rows.push({ dir, pid: nspid(status)[level], ppid })
+    } catch {
+      // Gone since the listing.
+    }
+  }
+  const ours = new Map(rows.map((r) => [Number(r.dir), r.pid]))
+  return rows
+    .filter((r) => r.pid !== undefined && ours.get(r.ppid) === pid)
+    .filter((r) => {
+      if (match === undefined) return true
+      try {
+        return readFileSync(`/proc/${r.dir}/cmdline`, 'utf8').replaceAll('\0', ' ').includes(match)
+      } catch {
+        return false
+      }
+    })
+    .map((r) => r.pid!)
+}
+
+/**
+ * Does /proc name this namespace's processes? Where it does not (`children`),
+ * vx reads no process tree: a table of strangers is no answer.
+ */
+export function procfsOwn(): boolean {
+  try {
+    return readlinkSync('/proc/self') === String(process.pid)
+  } catch {
+    return false
+  }
+}
+
+/** The pids under `pid`, at every depth (`children`). */
 export function descendants(pid: number): number[] {
-  const kids = (p: number): number[] =>
-    Bun.spawnSync(['pgrep', '-P', String(p)])
-      .stdout.toString()
-      .split('\n')
-      .filter(Boolean)
-      .map(Number)
   const out: number[] = []
-  for (let i = -1; i < out.length; i++) out.push(...kids(i < 0 ? pid : out[i]!))
+  for (let i = -1; i < out.length; i++) out.push(...children(i < 0 ? pid : out[i]!))
   return out
 }
 

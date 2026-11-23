@@ -11,6 +11,7 @@
 import { rm, symlink } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { workspaceWith } from './helpers/local-workspace.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 import { vx } from './helpers/vx.js'
 
@@ -73,6 +74,30 @@ describe('vx run inside a task', () => {
     const r = await runVx(root, ['ci', '--all'])
     expect(r.code).toBe(1)
     expect(r.text).toContain('task app#ci runs `vx run` inside its own workspace')
+  }, 30_000)
+
+  // A pipeline is a run too: the refusal named `vx run`, which the task's
+  // command never typed.
+  it('names vx pipeline when a pipeline task runs one', async () => {
+    await Bun.write(
+      path.join(root, '.vx/workspace.mjs'),
+      workspaceWith(`pipelines: { outer: { tasks: ['ci'] }, inner: { tasks: ['lint'] } }`),
+    )
+    await addProject(
+      root,
+      'app',
+      `
+        export default {
+          tasks: {
+            lint: { exec: { command: 'echo lint' } },
+            ci: { exec: { command: '${VX} pipeline inner' } },
+          },
+        }
+      `,
+    )
+    const r = await vx(root, ['pipeline', 'outer'])
+    expect(r.code).toBe(1)
+    expect(r.text).toContain('task app#ci runs `vx pipeline` inside its own workspace')
   }, 30_000)
 
   // An outer run started at a root reached through a symlink (`run({ cwd })`,

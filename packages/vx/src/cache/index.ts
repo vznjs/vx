@@ -38,6 +38,7 @@ export {
   storedLog,
   taskEntryHashes,
   vxCacheEntries,
+  makeIgnoredCacheDir,
 } from './cache.js'
 export { historyRetentionMs } from './prune.js'
 export { ABSENT_INPUT, absentOr, CACHE_VERSION, foldHead } from './key-fold.js'
@@ -64,6 +65,7 @@ export {
   resolveWorkspaceOutputTree,
   sweepRestoreTemps,
   sweepStaging,
+  STAGE_PUT_BACK,
   type ProjectFilesCache,
   type WorkspaceFilesCache,
   cleanOutputPaths,

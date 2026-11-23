@@ -86,7 +86,10 @@ export interface Pipeline {
   verbosity?: number
   /** `--profile`: `true` writes profile.json, a string names the file. */
   profile?: boolean | string
-  dry?: boolean | 'pretty' | 'json'
+  /** `--dry`: plan, run nothing. */
+  dry?: boolean
+  /** `--format`, with `dry`: the plan as `'pretty'` (default) or `'json'`. */
+  format?: 'pretty' | 'json'
 }
 
 /** `WorkspaceConfig.run`: how a run runs. */

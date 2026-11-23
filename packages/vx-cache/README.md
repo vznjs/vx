@@ -41,9 +41,11 @@ export default {
   server refuses a token of another repository.
 - `retries` (default 2, 0 to 10) is how many times a request answered
   with a 5xx or 429, or whose connection reset, is sent again, 1 s, 2 s, …
-  apart; GitHub's OIDC endpoint is asked again the same way. A download or upload whose
-  every try was refused its connection, while the server answered nothing else,
-  turns the remote off for the run, said once: no server listens. A reset
+  apart; GitHub's OIDC endpoint is asked again the same way. A request that finds no
+  server (every try refused its connection, or its host has no address or
+  route: no network, a mistyped url; a lookup told to try again is tried
+  once more), while the server answered nothing else, turns the remote off
+  for the run, said once. A reset
   connection is that request's loss alone.
 - `timeoutMs` (default 30 000) bounds each read and query, and
   `uploadTimeoutMs` (default 60 000) each upload. A download is bounded
@@ -106,7 +108,7 @@ expires it (`@vzn/vx-cache-server`'s Expiry). A download that ends
 short of the size the server names (`vx-size`) is a transfer that
 failed, not a corrupt artifact: a miss, asked again next run.
 
-A refused token, a read with no answer in time twice running, or a download or upload whose every try was refused its connection, each while the server answered nothing else, is said once (the run's, counted on no task) and turns the remote off for the run; a
+A refused token, a read with no answer in time twice running, or a request that found no server (every try refused, or no address or route for its host), each while the server answered nothing else, is said once (the run's, counted on no task) and turns the remote off for the run; a
 refused write (a job that reads only) turns off writes alone. Any other
 refusal is a warning naming the server's own words, and the task reads
 as a miss. A token the request sent (the job's OIDC token, a lent one,

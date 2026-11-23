@@ -204,7 +204,7 @@ async function loadDefaultExport(
       : null
   if (literal && source === null) {
     throw new UserError(
-      `${kind} config ${configPath} sits under a path that holds ${configPath.includes('\\') ? 'a backslash' : 'a question mark'}, which Bun loads only as an ES module in UTF-8`,
+      `${kind} config ${configPath} sits under a path that holds ${configPath.includes('\\') ? 'a backslash' : 'a question mark'}, which Bun loads only as an ES module in UTF-8 — move the workspace to a path without one, or write the config as an ES module`,
     )
   }
   const hash = xxh3hex(bytes)

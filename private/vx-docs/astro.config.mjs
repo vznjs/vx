@@ -50,8 +50,6 @@ export default defineConfig({
     '/docs/relay/': `${root}docs/servers/dte/`,
     '/docs/distributed-runs/': `${root}docs/distributed-task-execution/`,
     '/introduction/': `${root}quickstart/`,
-    '/features/fastest/': `${root}features/benchmarks/`,
-    '/features/vx-prune/': `${root}features/`,
     '/blog/vx-prune/': `${root}blog/`,
     '/blog/prune-production/': `${root}blog/`,
     '/add-to-existing-repo/': `${root}quickstart/`,
@@ -110,7 +108,6 @@ export default defineConfig({
     '/learn/labs/': `${root}quickstart/`,
     '/playground/': `${root}quickstart/`,
     '/blog/the-playground/': `${root}quickstart/`,
-    '/features/playground/': `${root}quickstart/`,
     '/learn/choosing/': `${root}conformance/`,
     '/compare/': `${root}conformance/`,
     '/learn/glossary/': `${root}glossary/`,
@@ -163,7 +160,9 @@ export default defineConfig({
         'Correct, sandboxed, extensible task orchestration. Plugins decide where tasks run and where the cache lives. MIT, no cloud, no account.',
       logo: {
         src: './src/assets/logo.svg',
-        alt: 'vx',
+        // The title text beside it already says vx: a screen reader would
+        // read it twice.
+        alt: '',
         replacesTitle: false,
       },
       favicon: '/favicon.svg',

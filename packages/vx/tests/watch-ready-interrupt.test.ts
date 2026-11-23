@@ -204,3 +204,44 @@ it("a waiting server's own boot write does not restart it for good", async () =>
   w.proc.kill('SIGTERM')
   expect(await w.proc.exited).toBe(0)
 }, 40_000)
+
+// The boot-write rule above took a user's second save of a new file (one
+// git does not track yet) in a booting server's project for the server's
+// own write: an input of the build the server depends on, saved again
+// while the restarted server booted, stopped no cycle, and the build and
+// the server stayed on the first save for good. A path a task's inputs
+// name is the user's edit: the key reads it, so the run must.
+it("a second save of a new input while its server boots is not taken for the server's write", async () => {
+  root = await makeWorkspace({ prefix: 'vx-watch-ready-' })
+  outside = await mkdtemp(path.join(os.tmpdir(), 'vx-watch-ready-marks-'))
+  const pids = path.join(outside, 'pids')
+  const dir = await addProject(
+    root,
+    'web',
+    `export default { tasks: {
+      build: {
+        inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
+        exec: { command: 'mkdir -p dist && cat src/*.txt > dist/out.txt' },
+      },
+      dev: {
+        dependsOn: ['build'],
+        exec: {
+          command: 'echo $$ >> ${pids}; exec sleep 1000',
+          persistent: { readyWhen: 'READY' },
+        },
+      },
+    } }`,
+  )
+  await Bun.write(path.join(dir, 'src', 'a.txt'), 'a\n')
+  watch = startWatch(root, ['--all'], {}, 'dev')
+  const w = watch
+  await until(() => w.out().includes('watching '), 'the watching marker')
+  await until(async () => (await lines('pids')).length === 1, 'the first server')
+  await writeFile(path.join(dir, 'src', 'new.txt'), 'save 1\n')
+  await until(async () => (await lines('pids')).length === 2, 'the server after the first save')
+  await writeFile(path.join(dir, 'src', 'new.txt'), 'save 2\n')
+  await until(async () => (await lines('pids')).length === 3, 'the server after the second save')
+  expect(await Bun.file(path.join(dir, 'dist', 'out.txt')).text()).toBe('a\nsave 2\n')
+  w.proc.kill('SIGTERM')
+  expect(await w.proc.exited).toBe(0)
+}, 40_000)

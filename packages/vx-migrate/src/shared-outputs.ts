@@ -279,6 +279,12 @@ export function resolveSharedOutputs(tasks: GeneratedTask[]): GeneratedTask[] {
         c.files = c.files.filter((g) => !sharedFiles.includes(g))
         const outputs = t.task!['outputs'] as { files: string[] }
         outputs.files = outputs.files.filter((g) => !sharedFiles.includes(g))
+        // Dropped from the outputs, so said: a hit restores no tsc state.
+        t.todos.push(
+          `declares the output ${sharing(sharedFiles[0]!, sharedFiles[0]!, JSON.stringify(clash.name))} — ` +
+            "one path belongs to one cached task in vx, so it is dropped from this task's outputs " +
+            'and a hit restores no tsc state here; point its tsBuildInfoFile elsewhere to keep it',
+        )
         kept.push(c)
         continue
       }

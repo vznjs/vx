@@ -39,18 +39,21 @@ Runs read configs from `.vx/projects.lock`, never from the files.
 After you add or edit a `vx.config.ts`, run `vx lock` and commit what it
 writes: the lock, and the `vx.lock.json` beside each config.
 
+If you forget, the next run stops and names the config you edited
+since your last `vx lock`.
+
 ```sh
 vx lock
 ```
 
 ```ansi
-[38;2;34;197;94m✓[0m [1mvx lock[0m  2 project configs → .vx/projects.lock, .vx/dependencies.lock
+[38;2;34;197;94m✓[0m [1mvx lock[0m  [38;2;203;213;225m2 project configs → .vx/projects.lock, .vx/dependencies.lock[0m
 ```
 
 When a merge leaves a conflict in the lock, every run refuses it:
 
 ```ansi
-[38;2;239;68;68m✗[0m [1mvx run[0m  .vx/projects.lock holds a git merge conflict: run `vx lock`, which writes it anew from the configs
+[38;2;239;68;68m✗[0m [1mvx run[0m  [38;2;203;213;225m.vx/projects.lock holds a git merge conflict: run [0m[1m`vx lock`[0m[38;2;203;213;225m, which writes it anew from the configs[0m
 ```
 
 Resolve the `vx.config.ts` files, then run `vx lock`. It writes both

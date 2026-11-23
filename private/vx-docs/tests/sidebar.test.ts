@@ -14,7 +14,6 @@ const BASE = (process.env['BASE_PATH'] ?? '/vx').replace(/\/?$/, '/')
 
 // Written by hand from the design, not read from src/nav/sections.ts.
 const PLACES: [string, string][] = [
-  ['Features', 'features/'],
   ['Docs', 'docs/'],
   ['Conformance', 'conformance/'],
   ['Blog', 'blog/'],
@@ -42,7 +41,7 @@ const DOCS_GROUPS = [
 const DOCS_FIRST: [string, string][] = [
   ['What is vx?', 'docs/'],
   ['Quickstart', 'quickstart/'],
-  ['Migrate from Turborepo, Nx or Vite Task', 'docs/migrate/'],
+  ['Migrate from Turbo, Nx or Vite Task', 'docs/migrate/'],
   ['AI agents', 'docs/agents/'],
   ['Upgrading vx', 'docs/upgrading/'],
   ['Workspace', 'docs/workspace/'],

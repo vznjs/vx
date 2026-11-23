@@ -21,25 +21,86 @@ version. `vx cache clean --older-than 7d` drops the old entries later.
 
 ## After v0.0.659
 
-### Keep a failed task's directory in the index
+### Plan as JSON with vx run --dry --format json
+
+`vx run --dry=json` → `vx run --dry --format json`; `--dry=pretty` → `--dry`; pipeline `dry: 'json'` → `dry: true, format: 'json'`.
+
+### Give each vx lock --check problem its error code
+
+Vx lock --check --format json problems are { code, message } objects, not strings.
+
+### A run refuses a config edited since vx lock
+
+After editing a `vx.config.ts`, run `vx lock` before `vx run`, `vx show`, `vx why` or `vx pipeline`: the run now refuses with `VX_E_LOCK`, naming the file, instead of running the config the lock holds.
+
+### Sandboxed tasks no longer read credential stores
+
+A sandboxed task no longer reads browser profiles, `~/.config/sops/age`, `~/.config/rclone`, `~/.my.cnf`, `~/.password-store` or `~/.sentryclirc`.
+
+A task that needs one names it in `exec.sandbox.allow.read`.
+
+Variables whose names hold `PASSPHRASE` or end in `_PASS` are now masked in output.
+
+### Run history starts empty once
 
 The local index schema is v58: it resets once, so the run history starts empty.
 
-### Drop Cache.kept and the stampWritten memo hooks
+Nothing to do. `vx last` and `vx why` show only runs made after the upgrade. A piped run prints the Tasks header once.
 
-Nothing to change beyond the steps above.
+### Write locks git merges cleanly
+
+.vx/projects.lock is version 9 and .vx/dependencies.lock version 6. Run `vx lock` once to rewrite both.
+
+### A --force run replaces the entry its key held
+
+A `--force` run now replaces the local entry under its key. A custom cache layer drops `kept()` and `stampWritten()`: vx no longer calls them.
+
+### A --filter that matches nothing refuses the run
+
+A `--filter` that matches no project, an exclusion too, now refuses the run even when another filter matched. Fix or remove it in your CI scripts and pipelines.
 
 ### Fail a task whose declared output matched nothing
 
 A declared output that matches no files fails the task instead of warning.
 
+Run your tasks once after upgrading. A task that fails with `outputs matched no files (<glob>)` needs that glob fixed to match what the command writes, or removed from `cache.outputs.files`.
+
 ### Replace --continue with --fail-fast
 
 --continue, run.continue, VX_RUN_CONTINUE and the pipeline key continue are gone; use --fail-fast / run.failFast / VX_RUN_FAIL_FAST / failFast. RunOptions.continueMode is now failFast.
 
+Replace each use:
+
+- `--continue=never` or `run.continue: 'never'`: use `--fail-fast` or `run.failFast: true`. Tasks still running are now killed.
+- `--continue`, `--continue=always`: remove it. A failed task's dependents never run now.
+- `--continue=deps-ok`: remove it. That is the default.
+
 ### Drop the lock merge driver, name it .vx/projects.lock
 
 .vx/projects.lock.jsonl is now .vx/projects.lock (run vx lock); vx lock --merge is removed.
+
+Delete the old lock, the old attributes file and the merge driver, then lock again:
+
+```sh
+git rm .vx/projects.lock.jsonl .vx/.gitattributes
+git config --remove-section merge.vx-lock
+vx lock
+git add .vx
+```
+
+`vx lock` writes `.vx/.gitattributes` only when none exists, so the old one goes first. After a merge conflict in a lock, run `vx lock` and commit.
+
+### Forwarded args reach one task, CI prints failed tasks only
+
+Args after `--` go to one task in one project. A run with `--affected`, several tasks, or a filter that picks the task in two projects is refused.
+
+Run each task on its own: `vx run test --filter ui -- --watch`.
+
+On CI a run prints only failed tasks. To see every task, pass `--output-logs full` or set `VX_RUN_OUTPUT_LOGS=full`.
+
+### Refuse two tasks whose outputs can share a path
+
+`vx lock` now refuses two tasks whose output globs can match one path, such as `*.js` beside `*b*`. Narrow one glob so the two tasks write no common path.
 
 ## v0.0.659
 

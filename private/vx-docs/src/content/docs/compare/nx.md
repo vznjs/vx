@@ -38,11 +38,12 @@ Every Nx task is an `nx:run-commands` target running the same command vx
 runs, with Nx's daemon off as in CI.
 
 The daemon does not help here: with it on, a nothing-changed run of this
-benchmark took 87 s against 25 s off (Nx 23.3.0, 2026-10-12).
+benchmark took 70 s against 23 s off (Nx 24.0.6, a 4-core Linux
+container, best of three each, 2026-11-23).
 
 ## Feature by feature
 
-|                                     | vx                                                                                         | Nx                                                      |
+| Feature                             | vx                                                                                         | Nx                                                      |
 | ----------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------------------- |
 | Config                              | TypeScript, evaluated into the cache key                                                   | JSON (`project.json`, `nx.json`), plus inferred targets |
 | Daemon                              | None; nothing boots per task                                                               | On by default locally                                   |
@@ -52,7 +53,7 @@ benchmark took 87 s against 25 s off (Nx 23.3.0, 2026-10-12).
 | Flaky task detection                | Local: the same key failed after it passed                                                 | Nx Cloud                                                |
 | Why a task missed                   | `vx why` diffs two keys: the file, env var or upstream that moved                          | Shows hashes, not the diff                              |
 | Tasks on other machines             | `@vzn/vx-reapi` over Bazel's REAPI, on servers you run or rent                             | Nx Agents on Nx Cloud                                   |
-| Plugins                             | Every pipeline stage, 15 hooks; core applies none                                          | Inferred tasks, graph data, generators, executors       |
+| Plugins                             | Every pipeline stage, 16 hooks; core applies none                                          | Inferred tasks, graph data, generators, executors       |
 | Non-JS projects                     | Yes: any directory with a `vx.config`; edges are declared, not read from Cargo or Go files | Gradle, Maven and .NET                                  |
 | One task, many modes (`build:prod`) | No: a TypeScript function per mode, two tasks                                              | `configurations` and `-c`                               |
 | Terminal output                     | Streamed blocks you can scroll, copy and pipe                                              | Terminal UI                                             |

@@ -46,7 +46,7 @@ encrypts a message, so a leaked one opens no past run.
 
 It runs workers with `local()`, `docker()`, `github()` and `gitlab()`.
 
-### Bodies
+## Bodies
 
 What vx-dte puts in Switchboard's `info` and `body`, for anyone writing a
 worker or orchestrator of their own. Each worker and the orchestrator run

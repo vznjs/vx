@@ -157,6 +157,41 @@ describe('bun(): no install record, so the workspaces’ dependencies as Node re
   // cleans to 1.35.3 on publish and in every lockfile; the check read the
   // two as different installs and refused every run until an install that
   // changed nothing.
+  // `install-strategy=linked` (npm 10.9) records the hoisted paths and puts
+  // each package in node_modules/.store, linked only where a dependant is:
+  // the root's `node_modules/is-number` path is not there, and every run
+  // after a good install refused.
+  it('reads an install-strategy=linked package from node_modules/.store', async () => {
+    const stored = (v: string): Record<string, string> => ({
+      'node_modules/.package-lock.json': npmTree(v),
+      [`node_modules/.store/is-number@${v}-9C8BjRcRzDOrS4TE11sgJQ/node_modules/is-number/package.json`]:
+        pkg(v),
+    })
+    await write({ ...MANIFESTS, 'package-lock.json': npmLock('5.0.0'), ...stored('5.0.0') })
+    expect(await run(npm())).toBe('ok')
+    // `npm install --dry-run` rewrites the record, never the store.
+    await write({
+      'package-lock.json': npmLock('7.0.0'),
+      'node_modules/.package-lock.json': npmTree('7.0.0'),
+    })
+    expect(await run(npm())).toBe(
+      'node_modules was installed from a different package-lock.json (node_modules/is-number is not installed, node_modules/.package-lock.json names 7.0.0) — run `npm install`',
+    )
+    // A prerelease of the version is not it.
+    await write({
+      'node_modules/.store/is-number@7.0.0-beta.1-9C8BjRcRzDOrS4TE11sgJQ/node_modules/is-number/package.json':
+        pkg('7.0.0-beta.1'),
+    })
+    expect(await run(npm())).toContain('(node_modules/is-number is not installed')
+    // The store holds the version, but the path links another: not installed as recorded.
+    await write({
+      'node_modules/.store/is-number@7.0.0-9C8BjRcRzDOrS4TE11sgJQ/node_modules/is-number/package.json':
+        pkg('7.0.0'),
+      'node_modules/is-number/package.json': pkg('5.0.0'),
+    })
+    expect(await run(npm())).toContain('(node_modules/is-number is 5.0.0,')
+  })
+
   it('reads a manifest version with a leading v as the version it cleans to', async () => {
     await write({
       ...MANIFESTS,
@@ -633,6 +668,88 @@ kleur@4.1.5:
       'node_modules was installed from a different yarn.lock (is-number@npm:7.0.0 is installed, and the lockfile does not list it) — run `yarn install`',
     )
     await write({ 'node_modules/.yarn-state.yml': yarnState('5.0.0') })
+    expect(await run(yarn())).toBe('ok')
+  })
+
+  // A pull that moves a workspace to a version the lockfile already holds
+  // for another package (is-odd keeps is-number 6): the old install has no
+  // package the new lockfile lacks, only one it now lacks (Yarn 4.19).
+  it('refuses a Yarn 2+ workspace dependency installed at another version than the lockfile names', async () => {
+    const both = yarnBerry('7.0.0').replace(
+      '"is-number@npm:7.0.0":',
+      `"is-number@npm:6.0.0":
+  version: 6.0.0
+  resolution: "is-number@npm:6.0.0"
+  checksum: 10c0/6.0.0
+  languageName: node
+  linkType: hard
+
+"is-number@npm:7.0.0":`,
+    )
+    await write({
+      ...MANIFESTS,
+      'yarn.lock': both,
+      'node_modules/.yarn-state.yml': yarnState('6.0.0'),
+      'node_modules/is-number/package.json': pkg('6.0.0'),
+    })
+    expect(await run(yarn())).toBe(
+      "node_modules was installed from a different yarn.lock (packages/a's is-number is 6.0.0, the lockfile names 7.0.0) — run `yarn install`",
+    )
+    await write({ 'node_modules/is-number/package.json': pkg('7.0.0') })
+    expect(await run(yarn())).toBe('ok')
+    // A catalog edit naming the entry already installed, before the install:
+    // yarn.lock and the state stay as they were, the kept match does not.
+    await write({
+      'yarn.lock': both.replace('is-number: "npm:7.0.0"', 'is-number: "catalog:"'),
+      '.yarnrc.yml': 'catalog:\n  is-number: 6.0.0\n',
+    })
+    await write({ 'node_modules/is-number/package.json': pkg('6.0.0') })
+    const past = new Date(Date.now() - 60_000)
+    for (const rel of ['yarn.lock', '.yarnrc.yml', 'node_modules/.yarn-state.yml']) {
+      await utimes(path.join(root, rel), past, past)
+    }
+    expect(await run(yarn())).toBe('ok')
+    await write({ '.yarnrc.yml': 'catalog:\n  is-number: 7.0.0\n' })
+    expect(await run(yarn())).toBe(
+      "node_modules was installed from a different yarn.lock (packages/a's is-number is 6.0.0, the lockfile names 7.0.0) — run `yarn install`",
+    )
+    await write({ 'yarn.lock': both, '.yarnrc.yml': '' })
+    // A focused install lists only the workspaces it installed, the root
+    // always, without its dependencies: not checked.
+    await write({
+      'node_modules/is-number/package.json': pkg('6.0.0'),
+      'node_modules/.yarn-state.yml': yarnState('6.0.0').replace(/"a@workspace[^]*?\n\n/, ''),
+    })
+    expect(await run(yarn())).toBe('ok')
+    // The root is listed by every focus, its dependencies not installed:
+    // its is-number found is the focused workspace's (probed on babel).
+    const rooted = both.replace(
+      '  resolution: "root@workspace:."\n',
+      '  resolution: "root@workspace:."\n  dependencies:\n    is-number: "npm:7.0.0"\n',
+    )
+    expect(rooted).not.toBe(both)
+    const state = yarnState('6.0.0').replace(/"a@workspace[^]*?\n\n/, '')
+    await write({
+      'yarn.lock': rooted,
+      'node_modules/.yarn-state.yml': `${state}\n"root@workspace:.":\n  locations:\n    - ""\n`,
+    })
+    expect(await run(yarn())).toBe('ok')
+  })
+
+  // `nodeLinker: pnpm` writes no .yarn-state.yml: its record is the store,
+  // one directory per locator, named after the locator's hash (Yarn 4.19).
+  it('refuses a package Yarn 2+ put in its pnpm store that the lockfile does not resolve to', async () => {
+    const store = (v: string): Record<string, string> => ({
+      [`node_modules/.store/is-number-npm-${v}-${v === '7.0.0' ? '060086935c' : 'ffffffffff'}/package/package.json`]:
+        pkg(v),
+      // A peer set's copy: virtual, named after no lockfile entry.
+      'node_modules/.store/a-virtual-8d387c295e/package/package.json': '{}',
+    })
+    await write({ ...MANIFESTS, 'yarn.lock': yarnBerry('5.0.0'), ...store('7.0.0') })
+    expect(await run(yarn())).toBe(
+      'node_modules was installed from a different yarn.lock (node_modules/.store/is-number-npm-7.0.0-060086935c is installed, and the lockfile does not list it) — run `yarn install`',
+    )
+    await write({ 'yarn.lock': yarnBerry('7.0.0') })
     expect(await run(yarn())).toBe('ok')
   })
 })

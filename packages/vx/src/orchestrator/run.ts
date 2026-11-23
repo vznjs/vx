@@ -50,6 +50,7 @@ import {
 } from '../exec/index.js'
 import { resetSandbox } from '../sandbox/index.js'
 import { DeferredOutputs } from './deferred-outputs.js'
+import { encodeOutputLog } from './output-log.js'
 import { workspaceCleanOf } from './task-hash.js'
 import { resolveDownloadModes } from './download-policy.js'
 import { trailable, TrailingOutputs } from './trailing-outputs.js'
@@ -592,8 +593,10 @@ async function runOnBus(
   const outerRoot = process.env[VX_RUN_WORKSPACE_ENV] || undefined
   if (outerRoot !== undefined && canonical(outerRoot) === canonical(prepared.workspaceRoot)) {
     await leaveUnrun()
+    // `vx pipeline pr` is no `vx run` to the user who typed it.
+    const verb = /^vx [\w-]+/.exec(options.command ?? '')?.[0] ?? 'vx run'
     throw new UserError(
-      `task ${process.env[VX_RUN_TASK_ENV] ?? '<unknown>'} runs \`vx run\` inside its own workspace: a nested run is invisible to the outer graph (its tasks escape the schedule, the concurrency budget and the cache key) and a loop back to this task forks without bound. Declare what it needs with dependsOn instead.`,
+      `task ${process.env[VX_RUN_TASK_ENV] ?? '<unknown>'} runs \`${verb}\` inside its own workspace: a nested run is invisible to the outer graph (its tasks escape the schedule, the concurrency budget and the cache key) and a loop back to this task forks without bound. Declare what it needs with dependsOn instead.`,
     )
   }
   const nothing = await abandoning(() => nothingToRun(prepared, options, log))
@@ -1459,6 +1462,10 @@ async function runOnBus(
     })
     // Tasks a plugin's executor threw on, and its name: the throw left no `where`.
     const thrownOn = new Map<string, string>()
+    // The line vx said for a task whose execute threw: what `vx last --log`
+    // keeps when the task printed nothing (its key not derived, a restore
+    // that threw), or it read as a log the history dropped.
+    const thrownSaid = new Map<string, string>()
     // A spare shell for each slot the first tasks fill (`primeSpares`).
     let firstWave = 0
     for (const n of nodes.values()) {
@@ -1514,6 +1521,11 @@ async function runOnBus(
           const where = thrownOn.get(o.node.id)
           if (where !== undefined) (o.placement ??= {}).where = where
         }
+        if (o.status === 'failed' && o.failedOutput === undefined) {
+          const said = thrownSaid.get(o.node.id)
+          if (said !== undefined)
+            o.failedOutput = encodeOutputLog([{ text: maskInvocation(said), err: true }])
+        }
         if (cacheOff) (o.cache ??= {}).off = true
         const root = taintedRan.get(o.node.id)
         if (root !== undefined && o.blockedBy === undefined) o.taintedBy = root
@@ -1542,12 +1554,12 @@ async function runOnBus(
       onError: (node, line, err) => {
         const on = executorFailedOn(err)
         if (on !== undefined) thrownOn.set(node.id, on)
-        log.taskStderr(
-          node,
+        const said =
           !isUserError(err) && !isFsRefusal(err) && (lockBroken ??= lockEntryBroken(workspaceRoot))
             ? `[vx] ${node.id}: ${LOCK_INVALID}\n`
-            : line,
-        )
+            : line
+        thrownSaid.set(node.id, said)
+        log.taskStderr(node, said)
       },
       execute: (node, upstream) => {
         const skip = platformSkip(node)
@@ -1941,9 +1953,20 @@ async function runOnBus(
     log.runDone?.()
     if (options.handoff?.summaryTable === true)
       for (const line of formatOutcomeTable(list, colors)) log.status(line)
-    // A run a signal stopped records nothing `vx last` opens: no id to copy.
-    const footerContext =
-      stop.stoppedBy === undefined ? runContext : { ...runContext, runId: undefined }
+    // A stopped run keeps the tasks that ended under its id, which `vx last
+    // <id> --log` and `vx why --run` open: the footer names it as any run's.
+    // One stopped before any task ended keeps nothing: its id answered "no
+    // recorded run".
+    const keptNothing =
+      stop.stoppedBy !== undefined &&
+      !list.some((o) => o.status !== 'aborted' && o.status !== 'skipped' && !isGroupTask(o.node))
+    // A pipe with no colour gets no meters: their counts say it all.
+    const meters = options.log !== undefined || colors.enabled || process.stdout.isTTY === true
+    const footerContext = {
+      ...runContext,
+      ...(meters ? {} : { meters: false }),
+      ...(keptNothing ? { runId: undefined } : {}),
+    }
     if (options.footer !== false)
       for (const line of formatRunSummary(list, totalMs, colors, footerContext)) log.status(line)
 
@@ -2120,7 +2143,7 @@ async function nothingToRun(
   log: Logger,
 ): Promise<RunSummary | undefined> {
   if (prepared.unresolvedTasks.length > 0) {
-    const refused = `no projects declare task(s): ${prepared.unresolvedTasks.join(', ')}.${await unresolvedHint(prepared, options.projects)}`
+    const refused = `no projects declare task(s): ${prepared.unresolvedTasks.join(', ')}.${await unresolvedHint(prepared, options.projects, options.handoff?.selectedByFilter === true)}`
     return { ok: false, outcomes: [], refused }
   }
   if (prepared.empty === 'none-affected') {
@@ -2132,7 +2155,13 @@ async function nothingToRun(
   // 1. `empty-graph` is defensive, unreachable today.
   const refused =
     prepared.empty === 'no-tasks-declared'
-      ? `no projects declare task(s): ${options.tasks.join(', ')}.${elsewhereHint(prepared.declaredElsewhere, true, options.projects, prepared.projects)}${await initHint(prepared)}`
+      ? `no projects declare task(s): ${options.tasks.join(', ')}.${elsewhereHint(
+          prepared.declaredElsewhere,
+          true,
+          options.projects,
+          prepared.projects,
+          options.handoff?.selectedByFilter === true,
+        )}${await initHint(prepared)}`
       : 'no tasks to run.'
   return { ok: false, outcomes: [], refused }
 }
@@ -2188,7 +2217,7 @@ export async function planRun(options: RunOptions): Promise<RunPlan> {
 /** `planRun` as vx's CLI calls it, with its hand-off. */
 export async function planCore(options: CoreRunOptions): Promise<RunPlan> {
   refuseRunOptions(options)
-  // The plan is the product and goes to stdout (`--dry=json` is parsed): what a
+  // The plan is the product and goes to stdout (`--dry --format json` is parsed): what a
   // stage says on the way goes to stderr.
   const log = options.log ?? defaultLogger(undefined, undefined, process.stderr)
   const reasons = new Map<string, AffectedReason>()
@@ -2205,7 +2234,11 @@ export async function planCore(options: CoreRunOptions): Promise<RunPlan> {
       return {
         tasks: [],
         unresolvedTasks: prepared.unresolvedTasks,
-        unresolvedHint: await unresolvedHint(prepared, options.projects),
+        unresolvedHint: await unresolvedHint(
+          prepared,
+          options.projects,
+          options.handoff?.selectedByFilter === true,
+        ),
       }
     }
     if (prepared.empty === 'no-tasks-declared' && prepared.declaredElsewhere.length > 0) {
@@ -2217,6 +2250,7 @@ export async function planCore(options: CoreRunOptions): Promise<RunPlan> {
           true,
           options.projects,
           prepared.projects,
+          options.handoff?.selectedByFilter === true,
         ),
       }
     }
@@ -2315,10 +2349,14 @@ function elsewhereHint(
   lock: boolean,
   selected: readonly string[] | undefined,
   projects: ReadonlyMap<string, ProjectEntry>,
+  byFilter: boolean,
 ): string {
   if (names.length === 0) return ''
   const own = ownDefaultBuild(names, selected, projects)
-  return ` Only projects outside the selection declare ${names.join(', ')} — pass --all, or a --filter that includes them.${own}${lock && own === '' ? LOCK_HINT : ''}`
+  const reach = byFilter
+    ? 'widen --filter to include them, or drop it'
+    : 'pass --all, or a --filter that includes them'
+  return ` Only projects outside the selection declare ${names.join(', ')} — ${reach}.${own}${lock && own === '' ? LOCK_HINT : ''}`
 }
 
 /**
@@ -2354,8 +2392,15 @@ async function unresolvedHint(
     projects: ReadonlyMap<string, ProjectEntry>
   },
   selected: readonly string[] | undefined,
+  byFilter: boolean,
 ): Promise<string> {
-  const elsewhere = elsewhereHint(prepared.declaredElsewhere, false, selected, prepared.projects)
+  const elsewhere = elsewhereHint(
+    prepared.declaredElsewhere,
+    false,
+    selected,
+    prepared.projects,
+    byFilter,
+  )
   const near = didYouMean(
     prepared.unresolvedTasks,
     prepared.hintProjects,

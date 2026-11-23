@@ -1,5 +1,5 @@
-// A run runs what the lock records: an EDITED config still runs as
-// locked, and a RENAMED one is refused (D-88). A DELETED config is neither:
+// A run runs what the lock records: an EDITED config is refused (it ran as
+// locked, green, until 2026-11-23), and a RENAMED one is refused (D-88). A DELETED config is neither:
 // the project loads live as config-less, its locked tasks vanish, and the
 // run exited 0 having run only the other project's build (X-144).
 import { rename, rm, unlink } from 'node:fs/promises'
@@ -34,14 +34,17 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 })
 })
 
-it('control: an edited config still runs as locked', async () => {
+it('an edited config is refused, not run as locked', async () => {
   await Bun.write(
     config,
     `export default { tasks: { build: { exec: { command: 'echo EDITED' } } } }\n`,
   )
   const r = await vx(root, ['run', 'build', '--all', '--output-logs=full'])
-  expect(`${r.code}\n${r.err}`).toStartWith('0\n')
-  expect(r.out).toContain('LOCKED-BUILD')
+  expect([r.code, r.out.includes('LOCKED-BUILD'), r.err.trim()]).toEqual([
+    1,
+    false,
+    '✗ vx run  packages/app/vx.config.mjs changed since the last `vx lock` — run `vx lock`',
+  ])
 }, 30_000)
 
 it('a deleted config the lock holds is refused, not silently dropped', async () => {

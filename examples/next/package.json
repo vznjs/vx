@@ -1,0 +1,15 @@
+{
+  "name": "vx-example-next",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "devDependencies": {
+    "@vzn/vx": "latest",
+    "@vzn/vx-lockfile": "latest",
+    "oxlint": "1.94.0",
+    "vitest": "5.1.1"
+  }
+}

@@ -56,11 +56,11 @@ tasks overlap.
 {"id":"packages/a#build","project":"packages/a","task":"build","hash":"4ab2bc0d55dd78a0","cacheStatus":"hit-local","deps":[],"p50Ms":22}
 ```
 
-`--dry=json` gives one object per task. An agent can check if a run is
+`--dry --format json` gives one object per task. An agent can check if a run is
 worth starting, or show a reviewer what a change rebuilds:
 
 ```sh frame="terminal"
-vx run build --affected --dry=json
+vx run build --affected --dry --format json
 ```
 
 ## Draw the graph
@@ -68,7 +68,7 @@ vx run build --affected --dry=json
 Each task lists its `deps`, so Graphviz is one `jq` away:
 
 ```sh frame="terminal"
-vx run build --all --dry=json \
+vx run build --all --dry --format json \
   | jq -r '"digraph G {", (.tasks[] | .id as $t | .deps[] | "  \"\(.)\" -> \"\($t)\""), "}"' > graph.dot
 dot -Tsvg graph.dot > graph.svg
 ```

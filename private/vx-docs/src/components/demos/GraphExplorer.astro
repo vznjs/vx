@@ -9,11 +9,11 @@ import Demo from '../Demo.astro'
 
 <Demo name="graph-explorer">
   <p class="js-hint">
-    Run <code>vx run build --all --dry=json &gt; plan.json</code> in your repo. With JavaScript on,
+    Run <code>vx run build --all --dry --format json &gt; plan.json</code> in your repo. With JavaScript on,
     paste it here to browse what each task waits on and why.
   </p>
   <div class="controls" hidden>
-    <label class="vx-label" for="vx-graph-plan">Plan (<code>--dry=json</code> output)</label>
+    <label class="vx-label" for="vx-graph-plan">Plan (<code>--dry --format json</code> output)</label>
     <textarea id="vx-graph-plan" class="plan" rows="6" spellcheck="false"
       placeholder="Drop plan.json here, or paste it"></textarea>
     <div class="vx-row">

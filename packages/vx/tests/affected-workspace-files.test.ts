@@ -184,7 +184,7 @@ describe('--affected sees a workspaceFiles change', () => {
       )
       git(root, 'commit', '-qam', 'root manifest')
       const plan = (...args: string[]) => {
-        const r = vx(root, 'run', 'build', ...args, '--dry=json')
+        const r = vx(root, 'run', 'build', ...args, '--dry', '--format', 'json')
         if (r.code !== 0) return r.text
         return (JSON.parse(r.out) as { tasks: { id: string; cacheStatus: string }[] }).tasks.map(
           (t) => `${t.id} ${t.cacheStatus}`,
@@ -221,7 +221,7 @@ describe('--affected sees a workspaceFiles change', () => {
       git(root, 'add', '-A')
       git(root, 'commit', '-qm', 'app lints')
       const planned = (): string[] | string => {
-        const r = vx(root, 'run', 'build', 'lint', '--affected=HEAD~1', '--dry=json')
+        const r = vx(root, 'run', 'build', 'lint', '--affected=HEAD~1', '--dry', '--format', 'json')
         if (r.code !== 0) return r.text
         return (JSON.parse(r.out) as { tasks: { id: string }[] }).tasks.map((t) => t.id).sort()
       }
@@ -269,7 +269,7 @@ describe('--affected sees a workspaceFiles change', () => {
       git(root, 'add', '-A')
       git(root, 'commit', '-qm', 'two root configs')
       const planned = (): string[] | string => {
-        const r = vx(root, 'run', 'build', 'test', '--affected=HEAD~1', '--dry=json')
+        const r = vx(root, 'run', 'build', 'test', '--affected=HEAD~1', '--dry', '--format', 'json')
         if (r.code !== 0) return r.text
         return (JSON.parse(r.out) as { tasks: { id: string }[] }).tasks.map((t) => t.id).sort()
       }
@@ -314,7 +314,7 @@ describe('--affected sees a workspaceFiles change', () => {
       git(root, 'add', '-A')
       git(root, 'commit', '-qm', 'readers of vendor')
       const planned = (): string[] | string => {
-        const r = vx(root, 'run', 'build', '--affected=HEAD', '--dry=json')
+        const r = vx(root, 'run', 'build', '--affected=HEAD', '--dry', '--format', 'json')
         if (r.code !== 0) return r.text
         const ids = (JSON.parse(r.out) as { tasks: { id: string }[] }).tasks.map((t) => t.id)
         // Nothing to run: the note on stderr says why.
@@ -340,7 +340,7 @@ describe('--affected and a directory link below a glob', () => {
   // not match, while the key folds what is behind it. The diff names the
   // link when that content changes, and selection matched it as a file.
   const planned = (task: string): string[] | string => {
-    const r = vx(root, 'run', task, '--affected=HEAD~1', '--dry=json')
+    const r = vx(root, 'run', task, '--affected=HEAD~1', '--dry', '--format', 'json')
     if (r.code !== 0) return r.text
     const ids = (JSON.parse(r.out) as { tasks: { id: string }[] }).tasks.map((t) => t.id)
     return ids.length === 0 ? r.text : ids.sort()

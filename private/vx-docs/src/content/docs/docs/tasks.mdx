@@ -3,6 +3,8 @@ title: Tasks
 description: Declare what each task runs and what must finish first.
 ---
 
+import Diagram from '../../../components/guide/diagram/Diagram.astro'
+import { taskGraph } from '../../../components/docs/pictures.js'
 import { Aside } from '@astrojs/starlight/components'
 import GraphExplorer from '../../../components/demos/GraphExplorer.astro'
 
@@ -36,15 +38,7 @@ export default defineProject({
 })
 ```
 
-```mermaid
-flowchart LR
-  codegen --> build
-  ubuild["ui#build"] -->|^build| build
-  build --> e2e
-  apibuild["api#build"] --> e2e
-  build --> ci
-  e2e --> ci
-```
+<Diagram {...taskGraph} />
 
 ---
 
@@ -86,6 +80,37 @@ ci: { dependsOn: ['build', 'e2e'] },
 | (none)        | skips its transitive dependents and runs the rest           |
 | `--fail-fast` | kills the running tasks and stops the run at once           |
 
+Without the flag, a broken `@demo/ui#build` skips the two tasks that need
+it, and each row names the task that blocked it:
+
+```ansi
+[2m$[0m vx run build test --all
+
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mTasks[0m[4m[58;2;110;118;129m     [2mstatus  cache     ±usual    time   cpu    mem outputs  blocks worker         task[0m[4m[58;2;110;118;129m                           [0m
+            [38;2;239;68;68mfailed[0m  [2mmiss[0m       [38;2;34;197;94m−68ms[0m   [38;2;203;213;225m212ms[0m  [2m117%[0m   [2m91MB[0m      [2m0B[0m       [38;2;203;213;225m2[0m [2mlocal[0m          [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;234;179;8mskipped[0m [2m—[0m              [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2m—[0m              [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m [2m• blocked by @demo/ui#build[0m
+            [38;2;234;179;8mskipped[0m [2m—[0m              [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2m—[0m              [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;96;165;250mtest[0m [2m• blocked by @demo/ui#build[0m
+
+[2m┌─[0m [1m[38;2;192;132;252m@demo/ui[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m>[0m [1m[38;2;239;68;68mfailed (exit 1)[0m
+
+[2mpackages/ui $ vite build[0m
+
+[2m├─[0m [1mOUTPUT[0m [2m────────────────────────────────────────────────────[0m
+
+[38;2;6;182;212mvite v7.1.5 [38;2;34;197;94mbuilding for production...[38;2;6;182;212m[39m
+transforming...
+[38;2;34;197;94m✓[39m 1 modules transformed.
+[38;2;239;68;68m✗[39m Build failed in 14ms
+[38;2;239;68;68merror during build:
+[38;2;239;68;68msrc/index.js (2:0): Expected ',', got '<eof>'[38;2;239;68;68m
+file: [38;2;6;182;212m/repo/packages/ui/src/index.js:2:0[38;2;239;68;68m
+[38;2;234;179;8m
+[38;2;239;68;68m1: export const greet = (name => name[0m
+[38;2;239;68;68m
+
+[2m└─[0m [1m[38;2;192;132;252m@demo/ui[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(212ms)[0m [1m[38;2;239;68;68mfailed (exit 1)[0m
+```
+
 ```sh
 vx run test --all --fail-fast
 ```
@@ -99,7 +124,7 @@ A killed task ends `aborted` and saves nothing.
 See what each task waits on and what waits on it, in your own workspace:
 
 ```sh
-vx run build --all --dry=json > plan.json
+vx run build --all --dry --format json > plan.json
 ```
 
 Drop `plan.json` below, or paste it, then type a task. Nothing is uploaded.

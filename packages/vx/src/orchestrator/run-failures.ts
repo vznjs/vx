@@ -259,7 +259,8 @@ export function taskLog(db: Database, taskId: string, runId?: string): TaskLog |
     }
   }
   // A pass with no entry that took a retry still kept its failed attempts,
-  // then says the last passed: without it the log read as a failure.
+  // then says the last passed: without it the log read as a failure. No
+  // entry holds what the pass printed, and a bare heading read as nothing.
   const kept = row.status === 'failed' ? undefined : keptFailures(db, row.runId).get(taskId)
   if (kept !== undefined) {
     const tries = (
@@ -269,7 +270,8 @@ export function taskLog(db: Database, taskId: string, runId?: string): TaskLog |
         )
         .get(row.runId, project, task) as { attempts: number | null } | null
     )?.attempts
-    const passed = typeof tries === 'number' ? attemptHeading(tries, tries, 'passed') : ''
+    const passed =
+      typeof tries === 'number' ? attemptHeading(tries, tries, 'passed, output not kept') : ''
     return { ...base, source: 'failure', output: kept.output + passed }
   }
   return { ...base, source: null, output: '' }

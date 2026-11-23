@@ -38,6 +38,7 @@ export const PIPELINE_FLAGS: Readonly<Record<FlagKey, { flag: string; setting?: 
   verbosity: { flag: '--verbosity' },
   profile: { flag: '--profile' },
   dry: { flag: '--dry' },
+  format: { flag: '--format' },
 }
 
 /** The flag words one key's value stands for: none for `false`. */
@@ -57,6 +58,7 @@ function words(key: FlagKey, flag: string, v: unknown): string[] {
 const DISPLACES: Readonly<Partial<Record<FlagKey, readonly FlagKey[]>>> = {
   profile: ['dry'],
   dry: ['profile'],
+  format: ['profile'],
   noCache: ['cachePolicy', 'force'],
   force: ['cachePolicy'],
 }

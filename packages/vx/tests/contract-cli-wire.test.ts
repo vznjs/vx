@@ -1,5 +1,5 @@
 // The machine-readable run outputs are a 1.0 contract surface
-// (docs/design/versioning-1.0.md): a script reads `--dry=json` instead of
+// (docs/design/versioning-1.0.md): a script reads `--dry --format json` instead of
 // the terminal. The plan is a hand-enumerated wire
 // object (`formatPlanJson`), not a serialized type, so
 // the type pin (contract-package-api.test.ts) does not hold them: a renamed
@@ -128,8 +128,8 @@ describe('the machine-readable run outputs (versioning-1.0.md)', () => {
   it('docs/cli.md shows only keys the wire has, with the types it has', async () => {
     const cases: Array<[string, unknown, unknown]> = [
       [
-        '`--dry=json` emits the same data',
-        docSample('`--dry=json` emits the same data'),
+        '`--dry --format json` emits the same data',
+        docSample('`--dry --format json` emits the same data'),
         dryJson(),
       ],
     ]

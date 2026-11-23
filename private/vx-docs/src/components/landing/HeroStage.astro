@@ -19,7 +19,7 @@ const href = (p: string) => `${base}${p}`
 const codeHtml = (s: string): string => s.replace(/`([^`]+)`/g, '<code>$1</code>')
 const data = { ...play(run as Run), travel: TRAVEL_MS, ends: Object.fromEntries(WIRES.map((w) => [w.id, [w.from, w.to]])) }
 const specs = [
-  { n: '15', line: 'stages a plugin can take over' },
+  { n: '16', line: 'stages a plugin can take over' },
   { n: 'MIT', line: 'every piece, no paid tier' },
   { n: '0', line: 'daemons, accounts or clouds' },
 ]

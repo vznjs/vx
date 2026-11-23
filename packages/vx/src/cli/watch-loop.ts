@@ -28,6 +28,7 @@ import {
   gitFiles,
   makeFence,
   makeRootEventFilter,
+  makeInputMatcher,
   makeWatchIgnore,
   shapesWatchedSet,
 } from './watch-filter.js'
@@ -260,6 +261,7 @@ class WatchLoop {
   private isIgnoredPath: ReturnType<typeof makeWatchIgnore>
   /** A declared output, tracked or not: the cycle notice's advice turns on it. */
   private isOutputPath: ReturnType<typeof makeWatchIgnore>
+  private isInputPath: (abs: string) => boolean
   private fenced: ReturnType<typeof makeFence>
   /** Every project's directory, in scope or not (`WatchLoopArgs.fenceDirs`). */
   private allDirs: readonly string[]
@@ -350,6 +352,7 @@ class WatchLoop {
       this.atArm?.tracked,
     )
     this.isOutputPath = makeWatchIgnore(this.cacheDir, this.outputs)
+    this.isInputPath = makeInputMatcher(this.inputs)
     this.fenced = makeFence(args.fenceDirs)
     this.allDirs = args.fenceDirs
     this.matters = makeRootEventFilter(
@@ -503,12 +506,17 @@ class WatchLoop {
       const label = changes.judge()
       if (label === undefined) return
       // What a server writes in its project as it boots (a timestamped bundle,
-      // a route tree) is an edit: it stopped the cycle and the loop restarted
-      // the server forever. A path that stopped the last such cycle, untracked
-      // and in a waiting server's project, is the server's own write.
+      // a pid) is an edit: it stopped the cycle and the loop restarted the
+      // server forever. A path that stopped the last such cycle, untracked
+      // and in a waiting server's project, is the server's own write; not one
+      // a task's inputs name: a new source file saved twice while the server
+      // booted was dropped, and the build stayed on the first save.
       const dirs = c.serverDirs()
       const own = changes.changed.filter(
-        (p) => dirs.some((d) => p.startsWith(d + path.sep)) && !changes.tracked(p),
+        (p) =>
+          dirs.some((d) => p.startsWith(d + path.sep)) &&
+          !changes.tracked(p) &&
+          !this.isInputPath(p),
       )
       const again =
         own.length === changes.changed.length && own.every((p) => this.stoppedLast.has(p))
@@ -1134,6 +1142,7 @@ class WatchLoop {
       this.atArm?.tracked,
     )
     this.isOutputPath = makeWatchIgnore(this.cacheDir, this.outputs)
+    this.isInputPath = makeInputMatcher(this.inputs)
     this.fenced = makeFence(next.fenceDirs)
     this.allDirs = next.fenceDirs
     this.matters = makeRootEventFilter(

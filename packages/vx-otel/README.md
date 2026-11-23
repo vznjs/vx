@@ -147,7 +147,7 @@ otel({
 `vx.tasks.cache_hits{source=local|remote}`, what those hits did to the disk as
 `vx.tasks.cache_restored{source=local|remote}` and `vx.tasks.cache_up_to_date`,
 and the `vx.run.duration_ms` and `vx.run.time_saved_ms` (what the hits'
-stored runs took) gauges. The `vx.run` span carries the same counts
+stored runs took) gauges, unit `ms` (the counts' unit is `{task}`). The `vx.run` span carries the same counts
 (`vx.run.hit_count`, `vx.run.up_to_date_count`, `vx.run.restored_local_count`,
 `vx.run.restored_remote_count`).
 The counts are DELTA sums over the run's own interval (start to end), so a

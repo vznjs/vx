@@ -167,9 +167,21 @@ export async function deploy(
   )
   log(`deploy-pages: artifact ${artifactId}, ${zip.length} bytes`)
 
-  const oidc = await fetch(env.ACTIONS_ID_TOKEN_REQUEST_URL, {
-    headers: { authorization: `Bearer ${env.ACTIONS_ID_TOKEN_REQUEST_TOKEN}` },
-  }).then((r) => call('OIDC token', r))
+  // GitHub's token service answered 504 once and failed main's deploy
+  // (2026-11-23, run 45155852651); the token is a GET, safe to ask again.
+  const oidc = await (async () => {
+    for (let tries = 1; ; tries++) {
+      try {
+        return await fetch(env.ACTIONS_ID_TOKEN_REQUEST_URL, {
+          headers: { authorization: `Bearer ${env.ACTIONS_ID_TOKEN_REQUEST_TOKEN}` },
+        }).then((r) => call('OIDC token', r))
+      } catch (err) {
+        if (tries >= 3 || /: 4\d\d /.test((err as Error).message)) throw err
+        log(`${(err as Error).message}; asking again`)
+        await Bun.sleep(opts.every ?? 2_000)
+      }
+    }
+  })()
   const gh = { authorization: `Bearer ${env.GITHUB_TOKEN}`, accept: 'application/vnd.github+json' }
   const deployment = await fetch(`${api}/repos/${env.GITHUB_REPOSITORY}/pages/deployments`, {
     method: 'POST',

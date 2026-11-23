@@ -57,7 +57,7 @@ describe('no benchmark figure on the site is typed by hand', () => {
     for (const file of pages()) {
       const lines = readFileSync(file, 'utf8').split('\n')
       // A head-to-head table is headed by the ideal run, by the task count,
-      // or by nothing, with its four rows; or, transposed, it has a column
+      // or by "Scenario", with its four rows; or, transposed, it has a column
       // per row. A real repo's run (`| Run | vx | Nx |`) is its own
       // measurement, dated where it is printed.
       let header: string[] | undefined
@@ -72,7 +72,7 @@ describe('no benchmark figure on the site is typed by hand', () => {
           continue
         }
         const first = header[0]!
-        const headed = first === '' || /ideal run|%bench.tasks%/.test(first)
+        const headed = first === 'Scenario' || /ideal run|%bench.tasks%/.test(first)
         const transposed = header.some((c) => ROW_LABELS.has(c) || c === 'Cold build overhead')
         const isRow = (headed && ROW_LABELS.has(cells[0]!)) || (transposed && TOOLS.has(cells[0]!))
         if (!isRow || /^\|\s*-/.test(line)) continue
@@ -102,7 +102,7 @@ describe('no benchmark figure on the site is typed by hand', () => {
     expect(typed).toEqual([])
   })
 
-  it('the landing chart and the feature pages read the measured data', () => {
+  it('the landing chart reads the measured data', () => {
     const landing = readFileSync(path.join(site, 'src', 'pages', 'index.astro'), 'utf8')
     expect(landing).toContain("from '../bench/data.ts'")
     const block = landing.slice(
@@ -111,10 +111,6 @@ describe('no benchmark figure on the site is typed by hand', () => {
     )
     expect(block.length).toBeGreaterThan(0)
     expect(block.match(/['`]\d[\d,.]*\s?(?:ms|s|min)\b/g)).toBeNull()
-    const features = readFileSync(path.join(site, 'src', 'features', 'features.ts'), 'utf8')
-    const claims = features.split('\n').filter((l) => /over the ideal run/.test(l))
-    expect(claims.length).toBeGreaterThan(0)
-    expect(claims.filter((l) => FIGURE.test(l.replace(TOKEN, '')))).toEqual([])
   })
 
   it('every token a page names is one the data fills', () => {
@@ -153,11 +149,7 @@ describe('no benchmark figure on the site is typed by hand', () => {
     }
     // The real-repo tokens are the rows the bench wrote, not a fixture's.
     const known = new Map([...figures(data), ...realFigures(real.rows as RealRow[])])
-    const sources = [
-      ...pages(),
-      path.join(site, 'src', 'pages', 'index.astro'),
-      path.join(site, 'src', 'features', 'features.ts'),
-    ]
+    const sources = [...pages(), path.join(site, 'src', 'pages', 'index.astro')]
     const used = new Set<string>()
     const unknown: string[] = []
     for (const file of sources)

@@ -1,0 +1,6 @@
+{
+  "name": "ui",
+  "private": true,
+  "type": "module",
+  "exports": "./dist/ui.js"
+}

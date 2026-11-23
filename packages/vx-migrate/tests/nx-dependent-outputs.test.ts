@@ -140,3 +140,24 @@ it('a leaf’s `^build` reader stays cached: Nx links no dependency, so it reads
   expect(t.task!['cache']).toBe(true)
   expect(t.todos.join('\n')).not.toContain('dependsOn')
 })
+
+it('a reader with no `dependsOn` stays cached: Nx has no task to read outputs from', async () => {
+  // @nx/vitest infers `dependentTasksOutputFiles: "**/*.js"` on every test
+  // target, with no `dependsOn`; Nx caches it, and the migration ran
+  // analog's e2e `vitest` targets uncached with a todo naming a producer
+  // that never existed (analogjs/analog, 2026-11-23).
+  const metas = [await meta('app')]
+  const vitest = {
+    command: 'vitest run',
+    cache: true,
+    inputs: ['{projectRoot}/**/*', { dependentTasksOutputFiles: '**/*.js', transitive: true }],
+    outputs: ['{workspaceRoot}/coverage/{projectRoot}'],
+  }
+  const nodes = { app: { data: { root: 'libs/app', targets: { vitest } } } }
+  const m = await mapNxWorkspace(root, metas, { nodes, dependencies: { app: [] } } as NxGraph, {
+    cacheable: new Set(),
+  })
+  const t = m.projects.find((p) => p.name === 'app')!.tasks.find((t) => t.name === 'vitest')!
+  expect(t.task!['cache']).toBe(true)
+  expect(t.todos.join('\n')).not.toContain('depends on')
+})

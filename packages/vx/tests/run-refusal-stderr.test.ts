@@ -50,18 +50,30 @@ it('a task the lock does not hold yet names `vx lock` as the fix', async () => {
     path.join(root, 'packages', 'app', 'vx.config.mjs'),
     "export default { tasks: { build: { exec: { command: 'true' } }, lint: { exec: { command: 'true' } } } }\n",
   )
-  const p = Bun.spawnSync({
-    cmd: [
-      process.execPath,
-      path.resolve(import.meta.dir, '..', 'src', 'bin.ts'),
-      'run',
-      'lint',
-      '--all',
-    ],
-    cwd: root,
-  })
+  const run = () =>
+    Bun.spawnSync({
+      cmd: [
+        process.execPath,
+        path.resolve(import.meta.dir, '..', 'src', 'bin.ts'),
+        'run',
+        'lint',
+        '--all',
+      ],
+      cwd: root,
+    })
+  // The config's stamp from `vx lock` names the edited file.
+  const p = run()
   expect(p.exitCode).toBe(1)
   expect(p.stderr.toString()).toBe(
+    noticed(
+      'vx run: packages/app/vx.config.mjs changed since the last `vx lock` — run `vx lock`\n',
+    ),
+  )
+  // With no stamp (another clone's lock), the missing task still names it.
+  await rm(path.join(root, '.vx', 'cache', 'config-stamps.json'))
+  const q = run()
+  expect(q.exitCode).toBe(1)
+  expect(q.stderr.toString()).toBe(
     noticed(
       'vx run: no projects declare task(s): lint. Tasks: build. A run reads the lock: after editing a vx.config, run `vx lock`.\n',
     ),

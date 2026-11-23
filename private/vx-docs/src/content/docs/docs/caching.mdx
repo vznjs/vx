@@ -3,6 +3,8 @@ title: Caching
 description: Declare what a task reads and writes, so vx runs it once per set of inputs.
 ---
 
+import Diagram from '../../../components/guide/diagram/Diagram.astro'
+import { cacheKey } from '../../../components/docs/pictures.js'
 import { Aside } from '@astrojs/starlight/components'
 
 A task with `cache: true` runs once per set of inputs. List what the
@@ -15,7 +17,37 @@ vx run build
 ```
 
 The first run executes the task and stores `dist/`. The second finds the
-same inputs and skips the work.
+same inputs and skips the work: it replays the log and ends `up-to-date`.
+
+```ansi title="first run"
+[2m$[0m vx run build
+
+[2m┌─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m>[0m $ vite build
+[36mvite v7.3.8 [32mbuilding client environment for production...[36m[39m
+transforming...
+[32m✓[39m 3 modules transformed.
+rendering chunks...
+computing gzip size...
+[2mdist/[22m[32mindex.html                [39m[1m[2m0.08 kB[22m[1m[22m[2m │ gzip: 0.09 kB[22m
+[2mdist/[22m[2massets/[22m[36mindex-7C0y1bbr.js  [39m[1m[2m0.74 kB[22m[1m[22m[2m │ gzip: 0.42 kB[22m
+[32m✓ built in 67ms[39m
+[0m[2m└─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(211ms)[0m [2msuccess[0m
+```
+
+```ansi title="second run"
+[2m$[0m vx run build
+
+[2m┌─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m>[0m $ vite build
+[36mvite v7.3.8 [32mbuilding client environment for production...[36m[39m
+transforming...
+[32m✓[39m 3 modules transformed.
+rendering chunks...
+computing gzip size...
+[2mdist/[22m[32mindex.html                [39m[1m[2m0.08 kB[22m[1m[22m[2m │ gzip: 0.09 kB[22m
+[2mdist/[22m[2massets/[22m[36mindex-7C0y1bbr.js  [39m[1m[2m0.74 kB[22m[1m[22m[2m │ gzip: 0.42 kB[22m
+[32m✓ built in 67ms[39m
+[0m[2m└─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(6ms)[0m [2mup-to-date[0m
+```
 
 ```ts title="packages/app/vx.config.ts" {8-14}
 import { defineProject } from '@vzn/vx/config'
@@ -37,12 +69,7 @@ export default defineProject({
 })
 ```
 
-```mermaid
-flowchart LR
-  I["inputs + config + upstream keys"] --> K((key))
-  K -->|stored| H["hit: restore dist/"]
-  K -->|new| R["miss: run, then store"]
-```
+<Diagram {...cacheKey} />
 
 ---
 
@@ -85,6 +112,20 @@ Every part, in order: [Caching in depth](../../caching/).
 - Every declared output must be written. A pattern that matches no file
   once the command exits 0 fails the task, and nothing is saved
   ([fix](../../docs/troubleshooting/)).
+
+  ```ansi title="outputs: { files: ['build/**'] }, but vite writes dist/"
+  [2m┌─[0m [1m[38;2;192;132;252m@demo/ui[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m>[0m $ vite build
+  [36mvite v7.1.5 [32mbuilding for production...[36m[39m
+  transforming...
+  [32m✓[39m 1 modules transformed.
+  rendering chunks...
+  computing gzip size...
+  [2mdist/[22m[36mindex.js  [39m[1m[2m0.06 kB[22m[1m[22m[2m │ gzip: 0.08 kB[22m
+  [32m✓ built in 44ms[39m
+  [0m[1m[38;2;234;179;8m[vx][0m[2m @demo/ui#build: outputs matched no files (build/**) — the command exited 0 but never wrote it, so the task fails and nothing is cached: write it, or fix the pattern[0m
+  [2m└─[0m [1m[38;2;192;132;252m@demo/ui[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(1.64s)[0m [1m[38;2;239;68;68mfailed (exited 0, no file matched build/**)[0m
+  ```
+
 - A failed task is never saved.
 - `--force` runs everything and replaces what the local cache holds (a remote keeps the keys it has); `--no-cache` ignores it.
 
@@ -96,7 +137,25 @@ Every part, in order: [Caching in depth](../../caching/).
 ([guide](../../docs/caching/why-a-task-missed/)):
 
 ```sh
-vx why app#build
+vx why @demo/web#build
+```
+
+```ansi title="after an edit to packages/ui/src/index.js"
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhy[0m[4m[58;2;110;118;129m [2m@demo/web#build[0m[4m[58;2;110;118;129m                                                                                                   [0m
+  [2mrun     [0m  [38;2;203;213;225m01a20899-8a34-72d9-ae6f-555621174f8a[0m
+  [2mthis run[0m  [38;2;203;213;225m2026-11-23T13:30:10.166Z · success · executed · key dac9b52ef101f859[0m
+  [2mprevious[0m  [38;2;203;213;225m2026-11-23T13:30:02.239Z · cache-hit · up-to-date · key 433035ef17a9e7c1[0m
+  [2mverdict [0m  [38;2;234;179;8mcache key changed: upstream @demo/ui#build[0m
+
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhat changed[0m[4m[58;2;110;118;129m [2m1 of 8[0m[4m[58;2;110;118;129m                                                                                                   [0m
+  [2mchange   kind      name            before → after[0m
+  [38;2;234;179;8mchanged[0m  [38;2;203;213;225mupstream[0m  [1m@demo/ui#build[0m  [38;2;203;213;225mb81d6aaad67ade9b → 7d69d37611e0da71[0m
+
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mRoot cause[0m[4m[58;2;110;118;129m                                                                                                            [0m
+  [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m[2m ← [0m[38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m[2m ← [0m[1mfile packages/ui/src/index.js[0m
+
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhat to do[0m[4m[58;2;110;118;129m                                                                                                            [0m
+  [2mfile    [0m  [38;2;203;213;225man edit re-runs by design; a file the task does not read belongs out of inputs.files[0m
 ```
 
 A hit after you changed something means that something is not declared.
@@ -124,7 +183,11 @@ A hit after you changed something means that something is not declared.
 | `cache key unchanged — this run recorded no cache outcome, so whether it re-ran is unknown` | vx does not guess |
 | `` this task declares no `cache: true` — it runs on every invocation; a change to its inputs still re-runs the tasks that depend on it `` | not cached at all |
 | `` this task declares no `cache: true` — it runs on every invocation; it declares no `inputs` either, so each run derives a new key and every task that depends on it misses; declare its `inputs` (and `outputs` with `cache: true` to cache it too) `` | not cached, and no task depending on it can hit |
-| `this task recorded no cache key (skipped, or a persistent task) — nothing to compare` | no key to compare |
+| `this task was skipped: it needs another platform, so it recorded no cache key` | it waits for a worker of that platform |
+| `this task never ran: … did not pass, so it recorded no cache key` | a task it depends on failed or was skipped |
+| ``this task's cache key could not be derived, so its command never ran (…)`` | the line names the `vx last` command that shows why |
+| `this task hit the cache and its restore failed, so it recorded no cache key` | the restore was refused or failed; the line in its log says why |
+| `this task is persistent: it records no cache key` | a server or watcher has no key to compare |
 | `no prior run for this (project, task)` | nothing to compare with yet |
 
 </details>

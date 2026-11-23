@@ -15,6 +15,7 @@
 //   conflict (stage 1/2/3)       → path repeated once per stage; the
 //                                  parser lists it once
 
+import { lstatSync } from 'node:fs'
 import { chmod, mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -281,6 +282,13 @@ describe('populateGitFilesCache — index OID harvesting', () => {
     await writeFile(path.join(pkgDir, 'run.sh'), '#!/bin/sh\necho hi\n')
     await chmod(path.join(pkgDir, 'run.sh'), 0o755)
     await symlink('plain.ts', path.join(pkgDir, 'link.ts'))
+    // The chmod stamps run.sh's ctime after its mtime. An index written in
+    // the ctime's second with the mtime in an earlier one is the case git
+    // cannot see a same-second rewrite in (`sameSecond`), so vx rightly
+    // drops that OID: under load the write and the chmod straddled a second
+    // and this row failed (2026-11-23). Stage only once that second is over.
+    const changedSec = Math.floor(lstatSync(path.join(pkgDir, 'run.sh')).ctimeMs / 1000)
+    while (Date.now() < (changedSec + 1) * 1000 + 50) await Bun.sleep(10)
     git(root, 'add', '-A')
     git(root, 'commit', '-qm', 'init')
     const head = git(root, 'rev-parse', 'HEAD').trim()

@@ -885,4 +885,53 @@ export default [
       { write: { [A]: 'app3\n' }, expect: { ran: ['app#build'], files: { [OUT]: 'app3\n' } } },
     ],
   }),
+
+  defineCase({
+    id: 'watch/edit-in-one-app-keeps-another-server-up',
+    category: 'watch',
+    kind: 'correctness',
+    title: 'Saving a file in one app leaves another app’s dev server running',
+    why: 'Two apps under one watch each run a dev server, and a save in one changes nothing the other reads. The other server must keep running, neither restarted nor stopped, so the page or API it serves stays up. A watch that stops it on an unrelated save leaves the user with a dead server and a watch that still looks alive.',
+    from: ['watch-initial-edit-server', 'watch-loop-members'],
+    needs: ['watch', 'persistent'],
+    workspace: {
+      projects: {
+        api: {
+          tasks: {
+            dev: {
+              command:
+                'echo s >> starts.txt; trap "echo x > stopped.txt; exit 0" TERM INT; echo Listening on api; sleep 600 & wait',
+              persistent: true,
+              inputs: ['src/**'],
+            },
+          },
+          files: { 'src/a.txt': 'api1\n' },
+        },
+        web: {
+          tasks: {
+            dev: {
+              command: 'echo Listening on web; sleep 600',
+              persistent: true,
+              inputs: ['src/**'],
+            },
+          },
+          files: { 'src/a.txt': 'web1\n' },
+        },
+      },
+    },
+    steps: [
+      {
+        watch: 'dev',
+        phases: [
+          { expect: { files: { 'packages/api/starts.txt': 's\n' }, inFlight: true } },
+          {
+            write: { 'packages/web/src/a.txt': 'web2\n' },
+            expect: {
+              files: { 'packages/api/starts.txt': 's\n', 'packages/api/stopped.txt': null },
+            },
+          },
+        ],
+      },
+    ],
+  }),
 ]

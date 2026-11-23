@@ -26,7 +26,14 @@ export {
   BoundedCapture,
   type CapturedChunk,
 } from './runner.js'
-export { holdGroups, killTree, markStopped, pauseTree, untilGroupsGone } from './kill-tree.js'
+export {
+  holdGroups,
+  killTree,
+  markStopped,
+  pauseTree,
+  runTime,
+  untilGroupsGone,
+} from './kill-tree.js'
 export { sampleTrees, type TreeUsage } from './proc-sample.js'
 export {
   assertExecuteResult,
@@ -72,7 +79,6 @@ export {
   closeSignalChannel,
   groupOutlives,
   releaseGroup,
-  runTime,
   signalThrough,
   guardLine,
   guardSession,

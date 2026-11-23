@@ -38,6 +38,7 @@ export {
 export {
   DEPENDENCIES_LOCK_NAME,
   dependenciesLock,
+  dependenciesLockRefusal,
   parseDependenciesLock,
   readDependenciesLock,
   sameRecord,
