@@ -36,7 +36,7 @@ describe('the refused outside writes hint', () => {
     expect(
       hint([`${home}/.npmrc`, `${home}/.cache/a/f`, `${home}/.cache`], [`${home}/.cache`]),
     ).toEndWith(
-      'If the task needs them, grant their directories, e.g. ' +
+      'If the task needs them, grant them, e.g. ' +
         "`allow: { write: ['~/.npmrc', '~/.cache/'] }`.",
     )
   })
@@ -61,6 +61,17 @@ describe('the refused outside writes hint', () => {
     expect(line).not.toContain('$TMPDIR')
     expect(line).toEndWith(
       "If the task needs one, grant its directory, e.g. `allow: { write: ['~/.cache/go-build/'] }`.",
+    )
+  })
+
+  // A sandboxed `cargo build` in a crate of a Cargo workspace rewrote the
+  // root's `Cargo.lock`, and the hint granted the lock's directory, the
+  // workspace root: every project's sources made writable (2026-11-23).
+  it('a file in a directory holding the project is its own grant', () => {
+    const ws = path.join(base, 'ws')
+    expect(hint([`${ws}/Cargo.lock`, `${ws}/target/.rustc_info.json`], [])).toEndWith(
+      'If the task needs them, grant them, e.g. ' +
+        `\`allow: { write: ['../Cargo.lock', '../target/'] }\`.`,
     )
   })
 

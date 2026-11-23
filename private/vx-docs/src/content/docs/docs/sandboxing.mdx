@@ -187,9 +187,10 @@ That wall is silent.
 Touching one of its own files that it did not declare fails the task, and
 a failed task is never cached.
 
-A refused write outside the project names the directory to grant. Under
-the host's temp directory, it names `$TMPDIR` instead: the task's own
-empty temp directory.
+A refused write outside the project names the directory to grant, or
+the file itself when that directory holds the project (a root
+`Cargo.lock`). Under the host's temp directory, it names `$TMPDIR`
+instead: the task's own empty temp directory.
 
 The one way through is an edge. A task reads the declared outputs of the
 tasks it depends on, in any project, never their sources. Its key already

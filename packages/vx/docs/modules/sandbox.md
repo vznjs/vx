@@ -1198,7 +1198,10 @@ same regex again.
 
 A write refused OUTSIDE the project is no violation (nothing a key
 reads), but it may be why the task failed: a failed task gets one note
-naming those paths and the directory to grant, or, for a path under the
+naming those paths and the directory to grant (the file itself where
+that directory is home or holds the project: `cargo build` in a crate
+rewrote the workspace root's `Cargo.lock`, and the root's grant made
+every project writable), or, for a path under the
 host's shared temp directory (`/tmp`, `/var/tmp`, `os.tmpdir()`) that no
 wall holds, `$TMPDIR` instead: the task has an empty temp directory of
 its own, and a grant would open the shared one to every write (#2424)

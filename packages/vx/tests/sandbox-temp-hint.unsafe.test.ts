@@ -49,8 +49,8 @@ describe.skipIf(!available || process.platform !== 'linux')('a refused write', (
 
   it('CONTROL: in a workspace kept under it, names the grant', async () => {
     expect(await lines('../../out.txt')).toEqual([
-      `${REFUSED} ${root}/out.txt. If the task needs one, grant its directory, e.g. ` +
-        "`allow: { write: ['../../'] }`.",
+      `${REFUSED} ${root}/out.txt. If the task needs one, grant it, e.g. ` +
+        "`allow: { write: ['../../out.txt'] }`.",
     ])
   })
 })

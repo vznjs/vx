@@ -18,7 +18,7 @@ $ vx run packages/d#gen
 /usr/bin/sh: 1: cannot create ../shared.txt: Read-only file system
 ├─ SANDBOX ───────────────────────────────────────────────────
 
-vx: the sandbox refused writes outside the project, which are not reported as violations: …/demo/packages/shared.txt. If the task needs one, grant its directory, e.g. `allow: { write: ['../'] }`.
+vx: the sandbox refused writes outside the project, which are not reported as violations: …/demo/packages/shared.txt. If the task needs one, grant it, e.g. `allow: { write: ['../shared.txt'] }`.
 └─ packages/d#gen ── (44ms) failed (exit 2)
 ```
 
