@@ -49,6 +49,7 @@ const SHARDS: readonly (readonly string[])[] = [
     'decode-sweep',
     'execute-retry',
     'executor-helpers-sweep',
+    'executor-missing-outputs',
     'integrity',
     'materialise-concurrency',
     'no-env',
