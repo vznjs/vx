@@ -53,6 +53,14 @@ export function shellVerdict(args: {
   if (found !== null && args.hidden!(found)) {
     return `[vx] exit 127 is the shell's "command not found": ${word} is ${found} on the host, but no sandbox grant reads it, so inside the sandbox it is not there — add it (or its directory) to exec.sandbox.allow.read`
   }
+  // The program is there, and what it needs is not: its `#!` runtime
+  // (`/usr/bin/env node` under a hermetic task) or a library the runtime
+  // links. Said "not on PATH, install it", which sent the reader the wrong way.
+  if (word !== undefined && args.hidden !== undefined) {
+    const runtime = hiddenRuntime(found, args.hidden, args.stderr)
+    if (runtime !== undefined)
+      return `[vx] exit 127 is the shell's "not found": ${word} is there, but ${runtime}, so inside the sandbox it is not there — add it (or its directory) to exec.sandbox.allow.read`
+  }
   const unnamed = args.bins.find((dir) => dir.includes(path.delimiter))
   if (unnamed !== undefined) {
     return `[vx] exit 127 is the shell's "command not found": ${what} is not on this task's PATH — ${unnamed} holds "${path.delimiter}", which PATH reads as a separator, so vx cannot put it there; move the workspace to a path without "${path.delimiter}"`
@@ -75,6 +83,66 @@ function notFoundWord(stderr: string | undefined): string | undefined {
     if (m !== null) return m[1]
   }
   return undefined
+}
+
+/** Where a loader looks for a library, by convention: a hidden one is named by its host path. */
+const LIBRARY_DIRS = [
+  '/lib/x86_64-linux-gnu',
+  '/usr/lib/x86_64-linux-gnu',
+  '/lib/aarch64-linux-gnu',
+  '/usr/lib/aarch64-linux-gnu',
+  '/lib64',
+  '/usr/lib64',
+  '/lib',
+  '/usr/lib',
+]
+
+/**
+ * What a found program needs that the sandbox hides, said as a clause: the
+ * library its loader could not open, or the runtime its `#!/usr/bin/env`
+ * line names, looked up on the host's PATH.
+ */
+function hiddenRuntime(
+  found: string | null,
+  hidden: (file: string) => boolean,
+  stderr: string | undefined,
+): string | undefined {
+  const lib =
+    /error while loading shared libraries: ([^:\s]+): cannot open shared object file/.exec(
+      stderr ?? '',
+    )?.[1]
+  if (lib !== undefined) {
+    const at = LIBRARY_DIRS.map((d) => path.join(d, lib)).find((f) => existsSync(f) && hidden(f))
+    return at === undefined
+      ? `the loader could not open ${lib}, a library its runtime links, which no sandbox grant reads`
+      : `the library its runtime links, ${at} on the host, is read by no sandbox grant`
+  }
+  // env's own line names the runtime it looked for: `/usr/bin/env: 'node':
+  // No such file or directory`. The host's copy is where to grant.
+  const missing = /env: '?([^':\s]+)'?: No such file or directory/.exec(stderr ?? '')?.[1]
+  const name = missing ?? (found === null ? undefined : envRuntime(found))
+  if (name === undefined) return undefined
+  const runtime = Bun.which(name, { PATH: process.env['PATH'] ?? '' })
+  if (runtime === null || (missing === undefined && !hidden(runtime))) return undefined
+  return `its runtime ${name} is ${runtime} on the host, read by no sandbox grant`
+}
+
+/** The runtime a `#!/usr/bin/env <name>` line names; none for any other line. */
+function envRuntime(file: string): string | undefined {
+  let head: string
+  try {
+    head = readFileSync(file).subarray(0, 256).toString('utf8')
+  } catch {
+    return undefined
+  }
+  if (!head.startsWith('#!')) return undefined
+  const nl = head.indexOf('\n')
+  const [interp = '', arg] = head
+    .slice(2, nl === -1 ? head.length : nl)
+    .trim()
+    .split(/\s+/)
+  if (path.basename(interp) !== 'env' || arg === undefined || arg.startsWith('-')) return undefined
+  return arg
 }
 
 /** Why the shell could not run a file, read from the file. */

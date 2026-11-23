@@ -2146,7 +2146,9 @@ libraries they link.
 Any other tool is yours to grant, with its libraries: `ldd $(command -v
 node)` lists them. The task then cannot lean on the machine unseen.
 A command the host has but no grant reads exits 127, and vx names its
-host path and the grant (`tests/shell-verdict-sandbox.test.ts`).
+host path and the grant. So does a command found whose runtime is hidden:
+the `node` its `#!/usr/bin/env node` line asks for, or a library that
+runtime links (`tests/shell-verdict-sandbox.test.ts`).
 
 A grant says what a task may read; `inputs.runtime` says what moves its
 key. Declare both for a tool.
