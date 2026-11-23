@@ -487,7 +487,6 @@ vx asks often, so keep it cheap and synchronous. Hits, pooled tasks and groups a
 | --- | --- |
 | `running` | the tasks holding a worker here now, read-only |
 | `concurrency` | the run's worker count |
-| `status(line)` | say a line that is no warning, such as a wait for a machine |
 
 **`measures(nodes)`** names work your plugin times that is no task: a map of `<plugin>#<name>` to a definition hash. vx asks before `schedule`, and only when some plugin has a `schedule` hook: with none, nothing reads them.
 
@@ -882,6 +881,7 @@ vx asks `executor(ctx)` once per run. Per task, the first executor whose `accept
 | `workspaceRoot`, `cacheDir`, `warn` | as above |
 | `concurrency` | the run's worker count |
 | `artifacts` | task results by key, for a task another machine ran |
+| `status(line)` | say a line that is no warning, such as a wait for a machine |
 | `cacheFacts()` | what a machine running this run's tasks reads the cache under: refs and lent access. Ask again before it expires |
 
 | Executor field | What it does |
