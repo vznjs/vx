@@ -285,7 +285,16 @@ export default [
     from: ['task-graph', 'run-failures-store'],
     workspace: {
       projects: {
-        x: { tasks: { build: { command: 'exit 1', cache: false } } },
+        // x fails only once b has built: a tool that stops at the first failure still meets the graph.
+        x: {
+          tasks: {
+            build: {
+              command:
+                'i=0; while [ ! -e ../b/out.txt ] && [ $i -lt 400 ]; do sleep 0.05; i=$((i+1)); done; sleep 0.2; exit 1',
+              cache: false,
+            },
+          },
+        },
         y: {
           tasks: { build: { command: 'mkdir -p dist && echo y > dist/out.txt', cache: false } },
         },

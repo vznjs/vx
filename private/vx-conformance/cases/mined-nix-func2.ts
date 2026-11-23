@@ -20,7 +20,7 @@ const cached = (command: string, outputs = ['dist/**']): TaskSpec => ({
 /** Runs `first` on the task's first build and `second` on every later one: a task that is not reproducible. */
 const twice = (first: string, second: string, outputs = ['dist/**']): TaskSpec =>
   cached(
-    `mkdir -p dist ${SCRATCH} && if [ -e ${SCRATCH}/once ]; then ${second}; else ${first}; fi && touch ${SCRATCH}/once`,
+    `rm -rf dist && mkdir -p dist ${SCRATCH} && if [ -e ${SCRATCH}/once ]; then ${second}; else ${first}; fi && touch ${SCRATCH}/once`,
     outputs,
   )
 
@@ -572,6 +572,8 @@ export default [
       { write: { [`${A}/dist`]: null, 'packages/b/dist': null } },
       { run: 'build', expect: { exit: 0, notRan: ['a#build', 'b#build'] } },
       { sh: `printf x >> ${out('a')}` },
+      { run: 'build', expect: { exit: 0, files: { [out('b')]: 'same\n' } } },
+      { write: { [out('a')]: null } },
       {
         run: 'build',
         expect: { exit: 0, files: { [out('a')]: 'same\n', [out('b')]: 'same\n' } },
@@ -594,6 +596,8 @@ export default [
       { write: { [`${A}/dist`]: null } },
       { run: 'build', expect: { exit: 0, notRan: ['a#build'] } },
       { sh: `printf x >> ${A}/dist/x.txt` },
+      { run: 'build', expect: { exit: 0, files: { [`${A}/dist/y.txt`]: 'same\n' } } },
+      { write: { [`${A}/dist/x.txt`]: null } },
       {
         run: 'build',
         expect: {

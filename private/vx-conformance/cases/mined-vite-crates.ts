@@ -599,5 +599,3 @@ export default [
     ],
   }),
 ] satisfies Case[]
-
-export const pending: Case[] = []

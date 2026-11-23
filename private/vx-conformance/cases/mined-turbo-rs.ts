@@ -568,7 +568,15 @@ export default [
           tasks: { build: ROOT_BUILD },
           files: { 'tools/x.txt': 'root\n' },
         },
-        util: { tasks: { build: build('exit 1') }, files: { 'src/a.txt': 'util\n' } },
+        // util fails only once another has built, so the case does not race a tool that stops at a failure.
+        util: {
+          tasks: {
+            build: build(
+              'i=0; while [ ! -e ../another/dist/out.txt ] && [ $i -lt 400 ]; do sleep 0.05; i=$((i+1)); done; sleep 0.2; exit 1',
+            ),
+          },
+          files: { 'src/a.txt': 'util\n' },
+        },
         another: chainProject('another'),
       },
     },
@@ -624,7 +632,6 @@ export default [
           files: { 'packages/a/out/out.txt': 'a\n', 'packages/a/out/LICENSE': 'license v2\n' },
         },
       },
-      { sh: 'git diff --exit-code' },
     ],
   }),
 

@@ -1015,6 +1015,7 @@
     "moon fetched no toolchain plugins (exit 1, found none), so it runs without them:\nError: plugin::loader::registry::load_failure\n\n  × Failed to load plugin from ghcr.io/moonrepo/bun_toolchain:1.0.5 registry.\n  ├─▶ error sending request for url (https://ghcr.io/v2/moonrepo/\n  │   bun_toolchain/blobs/\n  │   sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a)\n  ├─▶ client error (Connect)\n  ╰─▶ tunnel error: unsuccessful\n\n",
     "nx failed 1 of 1 cases; one: exited 1, expected success\n$ /tmp/conf-nx-eGC80s/node_modules/.bin/nx run-many -t build --outputStyle=stream\n\n NX   Running target build for 2 projects:\n\n- app\n- lib\n\n\n\n> nx run app:build\n\n\n> nx run lib:build\n\napp: cat: ../lib/dist/out.txt: No such file or directory\n\n\n  Run duration:      32ms\n  Cache:             0/1 hit (0%)\n  Critical path:     29ms (1 task)\n  Recoverable time:  <1ms\n\n NX   Running target build for 2 projects failed\n\nFailed tasks:\n\n- app:build\n\n",
     "vite-task failed 1 of 1 cases; one: app#build started before lib#build finished\n$ /tmp/conf-vite-task-jYUe9A/node_modules/.bin/vp run -r build\n~/packages/lib$ printf '+%s\\n' 'lib#build' >> ../../.ran && (mkdir -p dist && cat  src/*.txt > dist/out.txt) && printf -- '-%s\\n' 'lib#build' >> ../../.ran\n~/packages/app$ printf '+%s\\n' 'app#build' >> ../../.ran && (mkdir -p dist && cat ../lib/dist/out.txt src/*.txt > dist/out.txt) && printf -- '-%s\\n' 'app#build' >> ../../.ran\n\n\n---\nvp run: 0/2 cache hit (0%), 2/2 successful. (Run `vp run --last-details` for full details)\n",
+    "moon fetched no toolchain plugins (exit 1, found none), so it runs without them:\nError: plugin::loader::registry::load_failure\n\n  × Failed to load plugin from ghcr.io/moonrepo/bun_toolchain:1.0.5 registry.\n  ├─▶ error sending request for url (https://ghcr.io/v2/moonrepo/\n  │   bun_toolchain/blobs/\n  │   sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a)\n  ├─▶ client error (Connect)\n  ╰─▶ tunnel error: unsuccessful\n\n",
     "moon fetched no toolchain plugins (exit 1, found none), so it runs without them:\nError: plugin::loader::registry::load_failure\n\n  × Failed to load plugin from ghcr.io/moonrepo/bun_toolchain:1.0.5 registry.\n  ├─▶ error sending request for url (https://ghcr.io/v2/moonrepo/\n  │   bun_toolchain/blobs/\n  │   sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a)\n  ├─▶ client error (Connect)\n  ╰─▶ tunnel error: unsuccessful\n\n"
   ],
   "tools": {
@@ -1259,12 +1260,12 @@
     },
     "vite-task": {
       "all": {
-        "pass": 1011,
+        "pass": 1012,
         "can": 1437,
         "of": 2159
       },
       "correctness": {
-        "pass": 852,
+        "pass": 853,
         "can": 1153,
         "of": 1750
       },
@@ -1289,7 +1290,7 @@
         "of": 87
       },
       "failure": {
-        "pass": 60,
+        "pass": 61,
         "can": 81,
         "of": 164
       },
@@ -1336,12 +1337,12 @@
     },
     "nix": {
       "all": {
-        "pass": 1079,
+        "pass": 1080,
         "can": 1433,
         "of": 2159
       },
       "correctness": {
-        "pass": 926,
+        "pass": 927,
         "can": 1174,
         "of": 1750
       },
@@ -1366,7 +1367,7 @@
         "of": 87
       },
       "failure": {
-        "pass": 59,
+        "pass": 60,
         "can": 91,
         "of": 164
       },
@@ -1413,12 +1414,12 @@
     },
     "moon": {
       "all": {
-        "pass": 1262,
+        "pass": 1264,
         "can": 1762,
         "of": 2159
       },
       "correctness": {
-        "pass": 997,
+        "pass": 999,
         "can": 1400,
         "of": 1750
       },
@@ -1468,7 +1469,7 @@
         "of": 148
       },
       "outputs": {
-        "pass": 187,
+        "pass": 189,
         "can": 301,
         "of": 311
       },
@@ -73481,25 +73482,21 @@
         "turbo": {
           "status": "fail",
           "step": 1,
-          "detail": "ran a#build, expected it replayed or left out"
+          "detail": "did not run y#build"
         },
         "nx": {
           "status": "pass"
         },
         "vite-task": {
-          "status": "fail",
-          "step": 1,
-          "detail": "did not run b#build"
+          "status": "pass"
         },
         "nix": {
-          "status": "fail",
-          "step": 1,
-          "detail": "did not run y#build, b#build"
+          "status": "pass"
         },
         "moon": {
           "status": "fail",
           "step": 1,
-          "detail": "did not run b#build"
+          "detail": "did not run y#build"
         }
       }
     },
@@ -76264,9 +76261,7 @@
           "status": "pass"
         },
         "moon": {
-          "status": "fail",
-          "step": 5,
-          "detail": "packages/a/dist/out.txt is \"same\\nx\", expected \"same\\n\""
+          "status": "pass"
         }
       }
     },
@@ -76297,9 +76292,7 @@
           "status": "pass"
         },
         "moon": {
-          "status": "fail",
-          "step": 5,
-          "detail": "packages/a/dist/x.txt is \"same\\nx\", expected \"same\\n\""
+          "status": "pass"
         }
       }
     },
