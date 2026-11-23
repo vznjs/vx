@@ -365,8 +365,9 @@ export interface ExecuteResult extends RunResult {
    * A `servers` executor's: each server of the request that failed where it
    * ran, with its exit. `began` false: it died or never became ready before
    * the command began, which then never ran, and core skips the task blocked
-   * by it, as a server here skips its dependants. Core fails each server's
-   * row either way: it was carried, so this machine never saw it end.
+   * by it, as a server here skips its dependants; true: the task's exit
+   * stands and core saves neither it nor what builds on it. Core fails each
+   * server's row either way: it was carried, so this machine never saw it end.
    */
   readonly deadServers?: readonly {
     readonly taskId: string

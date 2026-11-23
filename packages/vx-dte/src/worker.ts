@@ -657,7 +657,8 @@ async function serve(
       // this entry is withheld for any. Nor for an additive task that removed
       // an upstream's file: a hit left the file in place, and core saves none
       // once this machine removes it too. Nor for one that removed a committed
-      // file under its outputs: a hit leaves that in place too.
+      // file under its outputs: a hit leaves that in place too. Nor for one a
+      // server crashed under: built against a dead server, as core saves none.
       const changed = [
         ...(await changedTracked(opts.root, base.commit, m, names(m.project, m.outputs))),
         ...strays,
@@ -673,6 +674,7 @@ async function serve(
         res.leftRunning !== true &&
         !stop.signal.aborted &&
         res.violations.length === 0 &&
+        res.deadServers === undefined &&
         changed.length === 0 &&
         removed.length === 0 &&
         outputsMissing.length === 0 &&

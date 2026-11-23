@@ -1181,7 +1181,10 @@ async function runOnBus(
     }
     // A server that ended on its own is failed (the end of the run says so);
     // what has not yet started hears it before it dispatches.
+    // Carried servers that died where they ran (`carriedDied`).
+    const carriedDead = new Set<string>()
     const serverDied = (id: string): boolean => {
+      if (carriedDead.has(id)) return true
       const child = persistentRegistry.get(id)
       return child !== undefined && hasEnded(child) && child.exitCode !== 0
     }
@@ -1243,6 +1246,7 @@ async function runOnBus(
       colors,
       inputStability,
       serverReady: serverOut.ready,
+      carriedDied: (id) => carriedDead.add(id),
     }
     if (hasServers)
       scope.serverDiedUnder = async (node) => {

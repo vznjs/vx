@@ -101,9 +101,18 @@ export async function runAttempts(
       }
     const result = a.result
     // A server carried to the machine that ran it died there: its row fails,
-    // and a dependant it left unbegun is skipped behind it, as here.
+    // a dependant it left unbegun is skipped behind it, and one that ran
+    // against it is not saved, nor what builds on it, as here.
     if (result.deadServers !== undefined) {
-      for (const d of result.deadServers) failCarried(args.upstream, d.taskId, d.exitCode)
+      for (const d of result.deadServers) {
+        failCarried(args.upstream, d.taskId, d.exitCode)
+        args.run.carriedDied?.(d.taskId)
+        // A pass shows no frame: said as a server here says it.
+        if (d.began)
+          warnOf(log)(
+            `[vx] ${d.taskId}, which ${node.id} depends on, exited with code ${d.exitCode} while it ran`,
+          )
+      }
       const first = result.deadServers.find((d) => !d.began)
       // A skip shows no output: the why, which a server here says in its own frame, is said here.
       if (first !== undefined) {

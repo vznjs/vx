@@ -242,12 +242,13 @@ export function localFloor(
 }
 
 /**
- * `res`, failed when a server it ran against crashed while it ran. Its
- * server is no task of this machine's run: the orchestrator reported it up
- * and heard nothing more, so the run went green over a dead server and the
- * dependant was saved, where a run on one machine fails (2026-11-23). A
- * crash that lands in the task's own last event-loop turn is heard a turn
- * later. A stopped task's servers, and one this stopped, did not crash.
+ * `res`, naming each server it ran against that crashed while it ran
+ * (`deadServers`). Its server is no task of this machine's run: the
+ * orchestrator reported it up and heard nothing more, so the run went green
+ * over a dead server and the dependant was saved (2026-11-23). Its own exit
+ * stands: as on one machine, the server fails and the dependant is not
+ * saved. A crash that lands in the task's own last event-loop turn is heard
+ * a turn later. A stopped task's servers, and one this stopped, did not crash.
  */
 async function servedBy(
   req: ExecuteRequest,
@@ -268,10 +269,5 @@ async function servedBy(
   }
   if (said === '') return res
   req.onStderr(said)
-  return {
-    ...res,
-    exitCode: res.exitCode === 0 ? 1 : res.exitCode,
-    stderr: res.stderr + said,
-    deadServers: dead,
-  }
+  return { ...res, stderr: res.stderr + said, deadServers: dead }
 }

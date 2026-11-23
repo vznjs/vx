@@ -666,7 +666,9 @@ cacheable }` — what `accepts()` sees. Placement happens ONCE per task,
   that failed where it ran (`{ taskId, exitCode, began }`): core fails
   that server's row, and with `began: false` (it died or never became
   ready before the command began) skips the task blocked by it and says
-  why as a warning, as a server here skips its dependants.
+  why as a warning, as a server here skips its dependants; with `true`
+  the task's own exit stands and neither it nor what builds on it is
+  saved, as when a server here dies under it.
   `spawnFailed: true` says the command never started (its 127 is the
   executor's, so no "command not found" line follows; A-41).
   `leftRunning: true` says a process the command left still ran when

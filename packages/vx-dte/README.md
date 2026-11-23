@@ -537,8 +537,9 @@ use your own instead.
   that starts the server, in placement and in the plan, and kept in
   history for the next run, as warm-ups are. A server that crashes (a
   non-zero exit) or never becomes ready fails, as on one machine: a
-  dependant that ran against it fails too, naming it, and one that had
-  not begun is skipped, blocked by it, with why as a warning.
+  dependant that ran against it ends as its command did but is not
+  saved, nor is what builds on it, and one that had not begun is
+  skipped, blocked by it, each with why as a warning.
 - A task whose key hashes a runtime probe (`inputs.runtime`, such as
   `bun --version`) runs on a worker, which answers the probe first and
   fails the task when it answers otherwise than this machine did. A path
