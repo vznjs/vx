@@ -3155,6 +3155,7 @@ image the test's own inputs already pin.
     files: ['src/**', 'integration/**', 'compose.yaml'],
     tasks: [],   // db:up only orders; compose.yaml pins what it starts
   },
+  outputs: { files: [] },
   cache: true,
 }
 ```

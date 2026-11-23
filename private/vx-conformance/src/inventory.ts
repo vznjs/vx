@@ -1374,6 +1374,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'release-notes',
     'release-provenance.unsafe',
     'schema-doc-drift',
+    'schema-doc-samples',
     'shard-partition',
     'signed-cache-guide.unsafe',
     'site-bench-percent.unsafe',
