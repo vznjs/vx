@@ -7,6 +7,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { writeLocalWorkspace } from './helpers/local-workspace.js'
+import { git, gitInit } from './helpers/workspace.js'
 
 const TIMEOUT = 60_000
 const CLI = path.join(import.meta.dir, 'helpers', 'vx-locked.ts')
@@ -14,38 +15,6 @@ const CLI = path.join(import.meta.dir, 'helpers', 'vx-locked.ts')
 async function write(p: string, content: string): Promise<void> {
   await mkdir(path.dirname(p), { recursive: true })
   await writeFile(p, content)
-}
-
-function git(cwd: string, ...args: string[]): void {
-  const p = Bun.spawnSync({
-    // Identity and signing on the HELPER, not on each row: every case here
-    // commits, and a runner with no global git identity refuses to
-    // (`empty ident name`). Eighteen call sites set it by hand and two new
-    // ones forgot, which only showed up on CI — this box has a global
-    // identity and the runner does not.
-    cmd: [
-      'git',
-      '-c',
-      'commit.gpgsign=false',
-      '-c',
-      'user.email=test@vx.local',
-      '-c',
-      'user.name=vx test',
-      ...args,
-    ],
-    cwd,
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
-  if (p.exitCode !== 0) {
-    const detail = [
-      new TextDecoder().decode(p.stderr).trim(),
-      new TextDecoder().decode(p.stdout).trim(),
-    ]
-      .filter((s) => s.length > 0)
-      .join(' | ')
-    throw new Error(`git ${args.join(' ')} exited ${p.exitCode}: ${detail}`)
-  }
 }
 
 /** Run the real CLI and return its combined output. */
@@ -139,9 +108,7 @@ describe('stale cache hits', () => {
          }`,
       )
       await write(path.join(root, 'src/in.txt'), 'AAA')
-      git(root, 'init', '-q')
-      git(root, 'config', 'user.email', 'test@vx.local')
-      git(root, 'config', 'user.name', 'vx test')
+      gitInit(root)
       // Left UNTRACKED on purpose: a tracked+clean file takes the git index
       // OID path instead, which never consults this memo.
       await write(path.join(root, '.gitignore'), 'dist/\n.vx/cache/\n')
@@ -198,9 +165,7 @@ describe('stale cache hits', () => {
       await write(path.join(root, 'gen/a.js'), 'a')
       await write(path.join(root, 'gen/b.ts'), 'content-of-b')
       await write(path.join(root, '.gitignore'), 'out/\n.vx/cache/\n')
-      git(root, 'init', '-q')
-      git(root, 'config', 'user.email', 'test@vx.local')
-      git(root, 'config', 'user.name', 'vx test')
+      gitInit(root)
       git(root, 'add', '-A')
       git(root, 'commit', '-q', '-m', 'initial')
 
@@ -239,9 +204,7 @@ describe('stale cache hits', () => {
       await write(path.join(root, '.gitignore'), '.vx/cache/\n')
       const sub = path.join(root, 'gen/sub')
       for (const dir of [sub, root]) {
-        git(dir, 'init', '-q')
-        git(dir, 'config', 'user.email', 'test@vx.local')
-        git(dir, 'config', 'user.name', 'vx test')
+        gitInit(dir)
       }
       git(sub, 'add', '-A')
       git(sub, 'commit', '-q', '-m', 'sub')
@@ -298,9 +261,7 @@ describe('stale cache hits', () => {
       await write(path.join(root, 'gen/a.js'), 'a')
       await write(path.join(root, 'gen/b.ts'), 'content-of-b')
       await write(path.join(root, '.gitignore'), 'out/\n.vx/cache/\n')
-      git(root, 'init', '-q')
-      git(root, 'config', 'user.email', 'test@vx.local')
-      git(root, 'config', 'user.name', 'vx test')
+      gitInit(root)
       git(root, 'add', '-A')
       git(root, 'commit', '-q', '-m', 'initial')
 
@@ -360,9 +321,7 @@ describe('stale cache hits', () => {
       )
       await write(path.join(root, 'emit.sh'), 'mkdir -p gen\nprintf content-of-b > gen/b.ts\n')
       await write(path.join(root, '.gitignore'), 'out/\n.vx/cache/\n')
-      git(root, 'init', '-q')
-      git(root, 'config', 'user.email', 'test@vx.local')
-      git(root, 'config', 'user.name', 'vx test')
+      gitInit(root)
       git(root, 'add', '-A')
       git(root, 'commit', '-q', '-m', 'initial')
 
@@ -413,9 +372,7 @@ describe('stale cache hits', () => {
       await write(path.join(root, 'emit.sh'), 'mkdir -p gen\nprintf b > gen/b.js\n')
       await write(path.join(root, 'gen/old.ts'), 'content-of-old')
       await write(path.join(root, '.gitignore'), 'out/\n.vx/cache/\n')
-      git(root, 'init', '-q')
-      git(root, 'config', 'user.email', 'test@vx.local')
-      git(root, 'config', 'user.name', 'vx test')
+      gitInit(root)
       git(root, 'add', '-A')
       git(root, 'commit', '-q', '-m', 'initial')
 
@@ -468,9 +425,7 @@ describe('stale cache hits', () => {
       await write(path.join(root, 'emit.sh'), 'mkdir -p gen\nprintf b > gen/b.js\n')
       await write(path.join(root, 'gen/old.ts'), 'content-of-old')
       await write(path.join(root, '.gitignore'), 'out/\n.vx/cache/\n')
-      git(root, 'init', '-q')
-      git(root, 'config', 'user.email', 'test@vx.local')
-      git(root, 'config', 'user.name', 'vx test')
+      gitInit(root)
       git(root, 'add', '-A')
       git(root, 'commit', '-q', '-m', 'initial')
 
@@ -524,9 +479,7 @@ describe('stale cache hits', () => {
          }`,
       )
       await write(path.join(root, '.gitignore'), 'out/\n.vx/cache/\nruns.log\n')
-      git(root, 'init', '-q')
-      git(root, 'config', 'user.email', 'test@vx.local')
-      git(root, 'config', 'user.name', 'vx test')
+      gitInit(root)
       git(root, 'add', '-A')
       git(root, 'commit', '-q', '-m', 'initial')
 

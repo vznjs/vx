@@ -8,6 +8,7 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { writeLocalWorkspace } from './helpers/local-workspace.js'
 import { edgesSource, writeEdges } from './helpers/plugin.js'
+import { git } from './helpers/workspace.js'
 
 const TIMEOUT = 60_000
 const CLI = path.join(import.meta.dir, 'helpers', 'vx-locked.ts')
@@ -15,38 +16,6 @@ const CLI = path.join(import.meta.dir, 'helpers', 'vx-locked.ts')
 async function write(p: string, content: string): Promise<void> {
   await mkdir(path.dirname(p), { recursive: true })
   await writeFile(p, content)
-}
-
-function git(cwd: string, ...args: string[]): void {
-  const p = Bun.spawnSync({
-    // Identity and signing on the HELPER, not on each row: every case here
-    // commits, and a runner with no global git identity refuses to
-    // (`empty ident name`). Eighteen call sites set it by hand and two new
-    // ones forgot, which only showed up on CI — this box has a global
-    // identity and the runner does not.
-    cmd: [
-      'git',
-      '-c',
-      'commit.gpgsign=false',
-      '-c',
-      'user.email=test@vx.local',
-      '-c',
-      'user.name=vx test',
-      ...args,
-    ],
-    cwd,
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
-  if (p.exitCode !== 0) {
-    const detail = [
-      new TextDecoder().decode(p.stderr).trim(),
-      new TextDecoder().decode(p.stdout).trim(),
-    ]
-      .filter((s) => s.length > 0)
-      .join(' | ')
-    throw new Error(`git ${args.join(' ')} exited ${p.exitCode}: ${detail}`)
-  }
 }
 
 /** Run the real CLI and return its combined output. */

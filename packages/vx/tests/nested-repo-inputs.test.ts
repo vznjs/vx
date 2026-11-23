@@ -19,26 +19,13 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { GitFilesCache, populateGitFilesCache } from '../src/cache/git-inputs.js'
 import { addedInput, resolveInputs } from '../src/cache/inputs.js'
 import { writeLocalWorkspace } from './helpers/local-workspace.js'
+import { git, gitInit } from './helpers/workspace.js'
 
 const TIMEOUT = 60_000
 const CLI = path.join(import.meta.dir, 'helpers', 'vx-locked.ts')
 
-function git(cwd: string, ...args: string[]): void {
-  const p = Bun.spawnSync({
-    cmd: ['git', '-c', 'commit.gpgsign=false', ...args],
-    cwd,
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
-  if (p.exitCode !== 0) {
-    throw new Error(`git ${args.join(' ')}: ${new TextDecoder().decode(p.stderr)}`)
-  }
-}
-
 function initRepo(dir: string): void {
-  git(dir, 'init', '-q')
-  git(dir, 'config', 'user.email', 't@t')
-  git(dir, 'config', 'user.name', 't')
+  gitInit(dir)
 }
 
 async function write(p: string, content: string): Promise<void> {

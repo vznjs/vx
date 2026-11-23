@@ -72,8 +72,8 @@ describe('makeWorkspace', () => {
     })
     expect(await text(path.join(root, '.vx/workspace.mjs'))).toBe(localWorkspaceSource())
     const git = gitIn(root)
-    expect(git('config', 'user.email').trim()).toBe('test@vx.local')
-    expect(git('config', 'user.name').trim()).toBe('vx test')
+    expect(git('config', '--file', '.git/config', 'user.email').trim()).toBe('test@vx.local')
+    expect(git('config', '--file', '.git/config', 'user.name').trim()).toBe('vx test')
     // init, not commit: nothing is tracked yet.
     expect(git('ls-files')).toBe('')
   })

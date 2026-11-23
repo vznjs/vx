@@ -10,26 +10,13 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, setDefaultTimeout } from 'bun:test'
 import { edgesSource, PLUGIN_IMPORT, pluginSource, writeEdges } from './helpers/plugin.js'
 import { noticed } from './helpers/notice.js'
+import { git, gitInit } from './helpers/workspace.js'
 
 const CLI = path.join(import.meta.dir, 'helpers', 'vx-locked.ts')
 
 // A test spawns vx up to seven times: past bun's 5 s default on a loaded
 // shard, bun killed the running vx and the next assertion read `exit 1: `.
 setDefaultTimeout(30_000)
-
-function git(cwd: string, ...args: string[]): void {
-  const p = Bun.spawnSync({
-    cmd: ['git', '-c', 'commit.gpgsign=false', ...args],
-    cwd,
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
-  if (p.exitCode !== 0) {
-    throw new Error(
-      `git ${args.join(' ')} exited ${p.exitCode}: ${new TextDecoder().decode(p.stderr).trim()}`,
-    )
-  }
-}
 
 function vx(cwd: string, ...args: string[]): { out: string; exitCode: number } {
   const p = Bun.spawnSync({
@@ -63,9 +50,7 @@ beforeEach(async () => {
   )
   await writeFile(path.join(root, 'pkgs/app/src/a.txt'), 'a1\n')
   await writeFile(path.join(root, '.gitignore'), 'out.txt\n.vx/cache/\n')
-  git(root, 'init', '-q', '-b', 'feat')
-  git(root, 'config', 'user.email', 'test@vx.local')
-  git(root, 'config', 'user.name', 'vx test')
+  gitInit(root, '-b', 'feat')
   git(root, 'add', '-A')
   git(root, 'commit', '-q', '-m', 'one')
 })

@@ -16,7 +16,12 @@ import { mkdir, mkdtemp, readFile, rm, utimes, writeFile } from 'node:fs/promise
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { addProject, gitInit, makeWorkspace as makeWorkspaceRoot } from './helpers/workspace.js'
+import {
+  addProject,
+  git,
+  gitInit,
+  makeWorkspace as makeWorkspaceRoot,
+} from './helpers/workspace.js'
 import { Cache } from '../src/cache/cache.js'
 import { GitFilesCache, populateGitFilesCache } from '../src/cache/git-inputs.js'
 import { resolveInputs } from '../src/cache/inputs.js'
@@ -33,18 +38,6 @@ const TIMEOUT = 30_000
 async function write(p: string, content = 'x'): Promise<void> {
   await mkdir(path.dirname(p), { recursive: true })
   await writeFile(p, content)
-}
-
-function git(cwd: string, ...args: string[]): void {
-  const p = Bun.spawnSync({
-    cmd: ['git', '-c', 'commit.gpgsign=false', ...args],
-    cwd,
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
-  if (p.exitCode !== 0) {
-    throw new Error(`git ${args.join(' ')} failed: ${new TextDecoder().decode(p.stderr)}`)
-  }
 }
 
 // ─── Loader validation ───────────────────────────────────────────────

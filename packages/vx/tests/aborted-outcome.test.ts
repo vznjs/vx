@@ -24,6 +24,7 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { writeLocalWorkspace } from './helpers/local-workspace.js'
 import { writeEdges } from './helpers/plugin.js'
+import { git, gitInit } from './helpers/workspace.js'
 
 const TIMEOUT = 60_000
 const CLI = path.join(import.meta.dir, 'helpers', 'vx-locked.ts')
@@ -33,24 +34,6 @@ let root: string
 async function write(p: string, content: string): Promise<void> {
   await mkdir(path.dirname(p), { recursive: true })
   await writeFile(p, content)
-}
-
-function git(cwd: string, ...args: string[]): void {
-  const p = Bun.spawnSync({
-    cmd: ['git', '-c', 'commit.gpgsign=false', ...args],
-    cwd,
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
-  if (p.exitCode !== 0) {
-    const detail = [
-      new TextDecoder().decode(p.stderr).trim(),
-      new TextDecoder().decode(p.stdout).trim(),
-    ]
-      .filter((s) => s.length > 0)
-      .join(' | ')
-    throw new Error(`git ${args.join(' ')} exited ${p.exitCode}: ${detail}`)
-  }
 }
 
 function vx(cwd: string, ...args: string[]): { out: string; code: number } {
@@ -122,9 +105,7 @@ describe('a task killed by a shutdown signal', () => {
          }`,
       )
 
-      git(root, 'init', '-q')
-      git(root, 'config', 'user.email', 'test@vx.local')
-      git(root, 'config', 'user.name', 'vx test')
+      gitInit(root)
       git(root, 'add', '-A')
       git(root, 'commit', '-qm', 'init')
 
@@ -163,9 +144,7 @@ describe('a task killed by a shutdown signal', () => {
            },
          }`,
       )
-      git(root, 'init', '-q')
-      git(root, 'config', 'user.email', 'test@vx.local')
-      git(root, 'config', 'user.name', 'vx test')
+      gitInit(root)
       git(root, 'add', '-A')
       git(root, 'commit', '-qm', 'init')
 
@@ -256,9 +235,7 @@ describe('a task killed by a shutdown signal', () => {
         path.join(root, 'vx.config.mjs'),
         `export default { tasks: { fine: { exec: { command: 'echo fine' } } } }`,
       )
-      git(root, 'init', '-q')
-      git(root, 'config', 'user.email', 'test@vx.local')
-      git(root, 'config', 'user.name', 'vx test')
+      gitInit(root)
       git(root, 'add', '-A')
       git(root, 'commit', '-qm', 'init')
 

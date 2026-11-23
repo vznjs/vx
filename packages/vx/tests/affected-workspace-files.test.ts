@@ -20,23 +20,10 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { writeLocalWorkspace } from './helpers/local-workspace.js'
+import { git, gitInit } from './helpers/workspace.js'
 
 const TIMEOUT = 60_000
 const CLI = path.join(import.meta.dir, 'helpers', 'vx-locked.ts')
-
-function git(cwd: string, ...args: string[]): void {
-  const p = Bun.spawnSync({
-    cmd: ['git', '-c', 'commit.gpgsign=false', ...args],
-    cwd,
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
-  if (p.exitCode !== 0) {
-    throw new Error(
-      `git ${args.join(' ')} exited ${p.exitCode}: ${new TextDecoder().decode(p.stderr).trim()}`,
-    )
-  }
-}
 
 async function write(p: string, content: string): Promise<void> {
   await mkdir(path.dirname(p), { recursive: true })
@@ -101,9 +88,7 @@ beforeEach(async () => {
       '',
     ].join('\n'),
   )
-  git(root, 'init', '-q')
-  git(root, 'config', 'user.email', 't@vx.local')
-  git(root, 'config', 'user.name', 'vx')
+  gitInit(root)
   git(root, 'add', '-A')
   git(root, 'commit', '-qm', 'initial')
 })
@@ -340,9 +325,7 @@ describe('--affected sees a workspaceFiles change', () => {
       // "nothing affected" over a stale key.
       const sub = path.join(root, 'vendor/sub')
       await write(path.join(sub, 'f.txt'), '1')
-      git(sub, 'init', '-q')
-      git(sub, 'config', 'user.email', 't@vx.local')
-      git(sub, 'config', 'user.name', 'vx')
+      gitInit(sub)
       git(sub, 'add', '-A')
       git(sub, 'commit', '-qm', 'sub')
       for (const [name, glob] of [

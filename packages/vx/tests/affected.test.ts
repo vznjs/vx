@@ -14,48 +14,10 @@ import { claimedAffected } from '../src/orchestrator/index.js'
 import { lock } from './helpers/orchestrator.js'
 import type { FingerprintContext, VxPlugin } from '../src/index.js'
 import { UserError } from '../src/util/index.js'
-import { addProject, gitInitCommit, makeWorkspace } from './helpers/workspace.js'
+import { addProject, git, gitInitCommit, makeWorkspace } from './helpers/workspace.js'
 import { declaresInput, startGitEnumeration, workspaceFilesReachInto } from '../src/cache/index.js'
 
 const CORE_BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
-
-async function git(cwd: string, ...args: string[]): Promise<void> {
-  // -c commit.gpgsign=false defends against environments (CI sandboxes,
-  // signing proxies) that globally enforce commit signing and would
-  // reject our throwaway fixture commits. The identity rides here, not in
-  // two `git config` spawns per repository: ~100 rows init one, and under
-  // the gate's sandbox a spawn is the fixture's main cost.
-  const proc = Bun.spawn({
-    cmd: [
-      'git',
-      '-c',
-      'commit.gpgsign=false',
-      '-c',
-      'tag.gpgSign=false',
-      '-c',
-      'user.email=test@vx.local',
-      '-c',
-      'user.name=vx test',
-      ...args,
-    ],
-    cwd,
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
-  // Drain BOTH streams and report both: git sends its most useful failure
-  // messages to stdout, not stderr — `git commit` with nothing staged exits 1
-  // saying "nothing to commit" on stdout and writes NOTHING to stderr, so a
-  // stderr-only error reads as a blank `exited 1: ` and explains nothing.
-  const [stdout, stderr, exit] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ])
-  if (exit !== 0) {
-    const detail = [stderr.trim(), stdout.trim()].filter((s) => s.length > 0).join(' | ')
-    throw new Error(`git ${args.join(' ')} (cwd=${cwd}) exited ${exit}: ${detail}`)
-  }
-}
 
 /**
  * Commit `commits` on top of HEAD's branch in one `git fast-import`, then
@@ -91,7 +53,7 @@ async function fastCommits(
   })
   const [stderr, exit] = await Promise.all([new Response(proc.stderr).text(), proc.exited])
   if (exit !== 0) throw new Error(`git fast-import (cwd=${cwd}) exited ${exit}: ${stderr.trim()}`)
-  await git(cwd, 'reset', '-q', reset)
+  git(cwd, 'reset', '-q', reset)
 }
 
 describe('affectedProjects', () => {
@@ -117,9 +79,9 @@ describe('affectedProjects', () => {
       },
     ]
 
-    await git(root, 'init', '-q')
-    await git(root, 'add', '.')
-    await git(root, 'commit', '-q', '-m', 'initial')
+    git(root, 'init', '-q')
+    git(root, 'add', '.')
+    git(root, 'commit', '-q', '-m', 'initial')
   })
 
   afterEach(async () => {
@@ -145,8 +107,8 @@ describe('affectedProjects', () => {
     )
     await mkdir(path.join(root, 'packages/b/fixtures/node_modules/dep'), { recursive: true })
     await writeFile(path.join(root, 'packages/b/fixtures/node_modules/dep/index.js'), 'v1')
-    await git(root, 'add', '-f', 'packages/b/fixtures')
-    await git(root, 'commit', '-q', '-m', 'fixture')
+    git(root, 'add', '-f', 'packages/b/fixtures')
+    git(root, 'commit', '-q', '-m', 'fixture')
     await writeFile(path.join(root, 'packages/b/fixtures/node_modules/dep/index.js'), 'v2')
     expect([...(await affectedProjects({ workspaceRoot: root, since: 'HEAD', projects }))]).toEqual(
       ['b'],
@@ -160,8 +122,8 @@ describe('affectedProjects', () => {
     await mkdir(path.join(root, 'ext/c'), { recursive: true })
     await writeFile(path.join(root, 'ext/c/file.txt'), 'c-initial')
     await symlink('../ext/c', path.join(root, 'packages/c'))
-    await git(root, 'add', '.')
-    await git(root, 'commit', '-q', '-m', 'linked member')
+    git(root, 'add', '.')
+    git(root, 'commit', '-q', '-m', 'linked member')
     const withC = [
       ...projects,
       {
@@ -185,8 +147,8 @@ describe('affectedProjects', () => {
   it('returns commits-since-base when comparing against an earlier ref', async () => {
     // Commit a change to a, then ask for changes since the first commit.
     await writeFile(path.join(root, 'packages/a/file.txt'), 'a-rev2')
-    await git(root, 'add', '.')
-    await git(root, 'commit', '-q', '-m', 'rev2')
+    git(root, 'add', '.')
+    git(root, 'commit', '-q', '-m', 'rev2')
 
     const out = await affectedProjects({ workspaceRoot: root, since: 'HEAD~1', projects })
     expect([...out]).toEqual(['a'])
@@ -197,16 +159,16 @@ describe('affectedProjects', () => {
     // `main` separately changes `b`. Since main, only `a` is this branch's
     // work — a two-dot diff against `main` would select `b` too, and would
     // HIDE `a` if main later landed the same bytes.
-    await git(root, 'branch', '-m', 'main')
-    await git(root, 'checkout', '-q', '-b', 'feature')
+    git(root, 'branch', '-m', 'main')
+    git(root, 'checkout', '-q', '-b', 'feature')
     await writeFile(path.join(root, 'packages/a/file.txt'), 'a-on-feature')
-    await git(root, 'add', '.')
-    await git(root, 'commit', '-q', '-m', 'feature: a')
-    await git(root, 'checkout', '-q', 'main')
+    git(root, 'add', '.')
+    git(root, 'commit', '-q', '-m', 'feature: a')
+    git(root, 'checkout', '-q', 'main')
     await writeFile(path.join(root, 'packages/b/file.txt'), 'b-on-main')
-    await git(root, 'add', '.')
-    await git(root, 'commit', '-q', '-m', 'main: b')
-    await git(root, 'checkout', '-q', 'feature')
+    git(root, 'add', '.')
+    git(root, 'commit', '-q', '-m', 'main: b')
+    git(root, 'checkout', '-q', 'feature')
 
     const out = await affectedProjects({ workspaceRoot: root, since: 'main', projects })
     expect([...out]).toEqual(['a'])
@@ -265,16 +227,16 @@ describe('affectedProjects', () => {
   // and `[main..HEAD]` (since main itself): vx refused both, though an end
   // at HEAD is the working tree vx diffs against.
   it('takes a range ending at HEAD: `...` from the merge base, `..` from the start', async () => {
-    await git(root, 'branch', '-m', 'main')
-    await git(root, 'checkout', '-q', '-b', 'feature')
+    git(root, 'branch', '-m', 'main')
+    git(root, 'checkout', '-q', '-b', 'feature')
     await writeFile(path.join(root, 'packages/a/file.txt'), 'a-on-feature')
-    await git(root, 'add', '.')
-    await git(root, 'commit', '-q', '-m', 'feature: a')
-    await git(root, 'checkout', '-q', 'main')
+    git(root, 'add', '.')
+    git(root, 'commit', '-q', '-m', 'feature: a')
+    git(root, 'checkout', '-q', 'main')
     await writeFile(path.join(root, 'packages/b/file.txt'), 'b-on-main')
-    await git(root, 'add', '.')
-    await git(root, 'commit', '-q', '-m', 'main: b')
-    await git(root, 'checkout', '-q', 'feature')
+    git(root, 'add', '.')
+    git(root, 'commit', '-q', '-m', 'main: b')
+    git(root, 'checkout', '-q', 'feature')
     const sel = async (since: string) =>
       [...(await affectedProjects({ workspaceRoot: root, since, projects }))].sort()
     expect(await sel('main...HEAD')).toEqual(['a'])
@@ -346,16 +308,16 @@ describe('affectedProjects', () => {
   })
 
   it('refuses a base written as an exclusion (`^<ref>`)', async () => {
-    await git(root, 'branch', '-m', 'main')
-    await git(root, 'checkout', '-q', '-b', 'feature')
+    git(root, 'branch', '-m', 'main')
+    git(root, 'checkout', '-q', '-b', 'feature')
     await writeFile(path.join(root, 'packages/a/file.txt'), 'a-on-feature')
-    await git(root, 'add', '.')
-    await git(root, 'commit', '-q', '-m', 'feature: a')
-    await git(root, 'checkout', '-q', 'main')
+    git(root, 'add', '.')
+    git(root, 'commit', '-q', '-m', 'feature: a')
+    git(root, 'checkout', '-q', 'main')
     await writeFile(path.join(root, 'packages/b/file.txt'), 'b-on-main')
-    await git(root, 'add', '.')
-    await git(root, 'commit', '-q', '-m', 'main: b')
-    await git(root, 'checkout', '-q', 'feature')
+    git(root, 'add', '.')
+    git(root, 'commit', '-q', '-m', 'main: b')
+    git(root, 'checkout', '-q', 'feature')
     const sel = (since: string) =>
       affectedProjects({ workspaceRoot: root, since, projects }).then(
         (s) => [...s].sort(),
@@ -373,8 +335,8 @@ describe('affectedProjects', () => {
 
   it('CONTROL: the base a range refusal names works on its own', async () => {
     await writeFile(path.join(root, 'packages/a/file.txt'), 'a-rev2')
-    await git(root, 'add', '.')
-    await git(root, 'commit', '-q', '-m', 'rev2')
+    git(root, 'add', '.')
+    git(root, 'commit', '-q', '-m', 'rev2')
     const out = await affectedProjects({ workspaceRoot: root, since: 'HEAD~1', projects })
     expect([...out]).toEqual(['a'])
   })
@@ -447,12 +409,12 @@ describe('affectedProjects', () => {
     const subC = path.join(root, 'vendor/sub/c')
     await mkdir(subC, { recursive: true })
     await writeFile(path.join(subC, 'file.txt'), 'c-initial')
-    await git(path.join(root, 'vendor/sub'), 'init', '-q')
-    await git(path.join(root, 'vendor/sub'), 'add', '.')
-    await git(path.join(root, 'vendor/sub'), 'commit', '-q', '-m', 'c')
+    git(path.join(root, 'vendor/sub'), 'init', '-q')
+    git(path.join(root, 'vendor/sub'), 'add', '.')
+    git(path.join(root, 'vendor/sub'), 'commit', '-q', '-m', 'c')
     // `git add` of an embedded repository records a gitlink — what a submodule is.
-    await git(root, 'add', 'vendor/sub')
-    await git(root, 'commit', '-q', '-m', 'gitlink')
+    git(root, 'add', 'vendor/sub')
+    git(root, 'commit', '-q', '-m', 'gitlink')
     const nested = [...projects, { name: 'c', dir: subC, configPath: null }]
     // Control: a clean tree selects nothing, and a change beside it only its own project.
     expect([
@@ -471,24 +433,24 @@ describe('affectedProjects', () => {
     // A repository that asks git to hide its submodules (`diff.ignoreSubmodules`,
     // or `submodule.<name>.ignore` in `.gitmodules`) hid the edit, and a
     // committed bump too, while the task's key moved (item 951).
-    await git(root, 'config', 'diff.ignoreSubmodules', 'all')
+    git(root, 'config', 'diff.ignoreSubmodules', 'all')
     expect([
       ...(await affectedProjects({ workspaceRoot: root, since: 'HEAD', projects: nested })),
     ]).toEqual(['c'])
-    await git(root, 'config', '--unset', 'diff.ignoreSubmodules')
-    await git(path.join(root, 'vendor/sub'), 'commit', '-qam', 'bump')
-    await git(root, 'commit', '-qam', 'bump gitlink')
-    await git(root, 'config', 'diff.ignoreSubmodules', 'all')
+    git(root, 'config', '--unset', 'diff.ignoreSubmodules')
+    git(path.join(root, 'vendor/sub'), 'commit', '-qam', 'bump')
+    git(root, 'commit', '-qam', 'bump gitlink')
+    git(root, 'config', 'diff.ignoreSubmodules', 'all')
     expect([
       ...(await affectedProjects({ workspaceRoot: root, since: 'HEAD~1', projects: nested })),
     ]).toEqual(['c'])
-    await git(root, 'config', '--unset', 'diff.ignoreSubmodules')
+    git(root, 'config', '--unset', 'diff.ignoreSubmodules')
     await writeFile(path.join(subC, 'file.txt'), 'c-dirty-again')
     // An untracked embedded repository is new work: git reports `vendor/nested/`.
     const nestedD = path.join(root, 'vendor/nested/d')
     await mkdir(nestedD, { recursive: true })
     await writeFile(path.join(nestedD, 'file.txt'), 'd')
-    await git(path.join(root, 'vendor/nested'), 'init', '-q')
+    git(path.join(root, 'vendor/nested'), 'init', '-q')
     const withD = [...nested, { name: 'd', dir: nestedD, configPath: null }]
     expect(
       [...(await affectedProjects({ workspaceRoot: root, since: 'HEAD', projects: withD }))].sort(),
@@ -499,8 +461,8 @@ describe('affectedProjects', () => {
     // Its plugins' `project` and `config` stages shape every resolved config,
     // so the edit can re-key any task; it selected nothing (item 953).
     await Bun.write(path.join(root, '.vx/workspace.mjs'), 'export default { plugins: [] }\n')
-    await git(root, 'add', '.')
-    await git(root, 'commit', '-q', '-m', 'workspace config')
+    git(root, 'add', '.')
+    git(root, 'commit', '-q', '-m', 'workspace config')
     const all = () =>
       affectedProjects({ workspaceRoot: root, since: 'HEAD', projects }).then((s) => [...s].sort())
     // Control: an unrelated root file selects nothing.
@@ -534,8 +496,8 @@ describe('affectedProjects', () => {
     // Control: a lock the base did not have ran nothing there to compare.
     await Bun.write(path.join(root, LOCKFILE_NAME), lockOf('one'))
     expect(await all()).toEqual([])
-    await git(root, 'add', '.')
-    await git(root, 'commit', '-q', '-m', 'lock')
+    git(root, 'add', '.')
+    git(root, 'commit', '-q', '-m', 'lock')
     // Control: the same entries, written again in another layout.
     await Bun.write(path.join(root, LOCKFILE_NAME), `${lockOf('one', true)}\n`)
     expect(await all()).toEqual([])
@@ -549,8 +511,8 @@ describe('affectedProjects', () => {
     // change to `sub` alone.
     await mkdir(path.join(root, 'packages/a/sub'), { recursive: true })
     await writeFile(path.join(root, 'packages/a/sub/data.txt'), 'data')
-    await git(root, 'add', '-A')
-    await git(root, 'commit', '-q', '-m', 'sub')
+    git(root, 'add', '-A')
+    git(root, 'commit', '-q', '-m', 'sub')
     const sub: ProjectMeta = {
       name: 'sub',
       dir: path.join(root, 'packages/a/sub'),
@@ -564,13 +526,13 @@ describe('affectedProjects', () => {
       writeFile(path.join(root, 'packages/a/sub/vx.config.mjs'), `export default ${body}\n`)
     // A config at the base made it a project already: an edit is sub's alone.
     await config('{}')
-    await git(root, 'add', '-A')
-    await git(root, 'commit', '-q', '-m', 'sub config')
+    git(root, 'add', '-A')
+    git(root, 'commit', '-q', '-m', 'sub config')
     await config('{ tags: [] }')
     expect(await select()).toEqual(['sub'])
     // A config the base did not have is a new project: `a` lost its files.
-    await git(root, 'rm', '-q', '--cached', 'packages/a/sub/vx.config.mjs')
-    await git(root, 'commit', '-q', '-m', 'drop sub config')
+    git(root, 'rm', '-q', '--cached', 'packages/a/sub/vx.config.mjs')
+    git(root, 'commit', '-q', '-m', 'drop sub config')
     expect(await select()).toEqual(['a', 'sub'])
   })
 
@@ -579,8 +541,8 @@ describe('affectedProjects', () => {
     // file is what made `sub` a project, and `a` lost `sub`'s files.
     await mkdir(path.join(root, 'packages/a/sub'), { recursive: true })
     await writeFile(path.join(root, 'packages/a/sub/data.txt'), 'data')
-    await git(root, 'add', '-A')
-    await git(root, 'commit', '-q', '-m', 'sub')
+    git(root, 'add', '-A')
+    git(root, 'commit', '-q', '-m', 'sub')
     const sub: ProjectMeta = {
       name: 'sub',
       dir: path.join(root, 'packages/a/sub'),
@@ -594,8 +556,8 @@ describe('affectedProjects', () => {
     await writeFile(manifest, JSON.stringify({ name: 'sub' }))
     expect(await select()).toEqual(['a', 'sub'])
     // A manifest the base had already: an edit is sub's alone.
-    await git(root, 'add', '-A')
-    await git(root, 'commit', '-q', '-m', 'sub manifest')
+    git(root, 'add', '-A')
+    git(root, 'commit', '-q', '-m', 'sub manifest')
     await writeFile(manifest, JSON.stringify({ name: 'sub', version: '1.0.0' }))
     expect(await select()).toEqual(['sub'])
   })
@@ -615,8 +577,8 @@ describe('affectedProjects', () => {
     // edits to them.
     await Bun.write(path.join(root, '.vx/projects.lock'), '{"v":1}')
     await writeFile(path.join(root, 'README.md'), 'v1')
-    await git(root, 'add', '.')
-    await git(root, 'commit', '-q', '-m', 'add lock + readme')
+    git(root, 'add', '.')
+    git(root, 'commit', '-q', '-m', 'add lock + readme')
 
     // Editing only the lock → nothing affected.
     await Bun.write(path.join(root, '.vx/projects.lock'), '{"v":2}')
@@ -637,7 +599,7 @@ describe('affectedProjects', () => {
     // which includes staged + unstaged. A `git add`-then-no-commit
     // workflow should still surface the change.
     await writeFile(path.join(root, 'packages/a/file.txt'), 'a-staged')
-    await git(root, 'add', '.')
+    git(root, 'add', '.')
     const out = await affectedProjects({ workspaceRoot: root, since: 'HEAD', projects })
     expect([...out]).toEqual(['a'])
   })
@@ -649,8 +611,8 @@ describe('affectedProjects', () => {
     // projects by dir-length descending to honor this.
     await mkdir(path.join(root, 'packages/a/inner'), { recursive: true })
     await writeFile(path.join(root, 'packages/a/inner/file.txt'), 'inner-initial')
-    await git(root, 'add', '.')
-    await git(root, 'commit', '-q', '-m', 'add inner')
+    git(root, 'add', '.')
+    git(root, 'commit', '-q', '-m', 'add inner')
     const nestedProjects: ProjectMeta[] = [
       ...projects,
       {
@@ -676,8 +638,8 @@ describe('affectedProjects', () => {
       await mkdir(path.join(root, 'packages', name), { recursive: true })
       await writeFile(path.join(root, 'packages', name, 'file.txt'), `${name}-initial`)
     }
-    await git(root, 'add', '.')
-    await git(root, 'commit', '-q', '-m', 'siblings')
+    git(root, 'add', '.')
+    git(root, 'commit', '-q', '-m', 'siblings')
     const siblings: ProjectMeta[] = names.map((name) => ({
       name,
       dir: path.join(root, 'packages', name),
@@ -691,8 +653,8 @@ describe('affectedProjects', () => {
   it('selects via committed-only history (no working-tree changes)', async () => {
     // Compare to HEAD~1; the change is committed; working tree clean.
     await writeFile(path.join(root, 'packages/b/file.txt'), 'b-committed')
-    await git(root, 'add', '.')
-    await git(root, 'commit', '-q', '-m', 'commit-b')
+    git(root, 'add', '.')
+    git(root, 'commit', '-q', '-m', 'commit-b')
     const out = await affectedProjects({ workspaceRoot: root, since: 'HEAD~1', projects })
     expect([...out]).toEqual(['b'])
   })
@@ -711,13 +673,13 @@ describe('affectedProjects', () => {
     // one under b (added). Both projects are affected — a lost an
     // input, b gained one. Pinning this behavior catches the bug
     // where rename detection collapses to the destination only.
-    await git(root, 'mv', 'packages/a/file.txt', 'packages/b/file-from-a.txt')
+    git(root, 'mv', 'packages/a/file.txt', 'packages/b/file-from-a.txt')
     const out = await affectedProjects({ workspaceRoot: root, since: 'HEAD', projects })
     expect([...out].sort()).toEqual(['a', 'b'])
   })
 
   it('selects the project on a same-project rename (input set changed)', async () => {
-    await git(root, 'mv', 'packages/a/file.txt', 'packages/a/renamed.txt')
+    git(root, 'mv', 'packages/a/file.txt', 'packages/a/renamed.txt')
     const out = await affectedProjects({ workspaceRoot: root, since: 'HEAD', projects })
     expect([...out]).toEqual(['a'])
   })
@@ -758,8 +720,8 @@ describe('affectedProjects', () => {
 
   it('ignores untracked files that git excludes', async () => {
     await writeFile(path.join(root, '.gitignore'), 'ignored/\n')
-    await git(root, 'add', '.')
-    await git(root, 'commit', '-q', '-m', 'gitignore')
+    git(root, 'add', '.')
+    git(root, 'commit', '-q', '-m', 'gitignore')
     await mkdir(path.join(root, 'packages/a/ignored'), { recursive: true })
     await writeFile(path.join(root, 'packages/a/ignored/blob.bin'), 'junk')
     const out = await affectedProjects({ workspaceRoot: root, since: 'HEAD', projects })
@@ -768,15 +730,15 @@ describe('affectedProjects', () => {
 
   it("reads the run's walk for untracked files: `git ls-files --others`' set", async () => {
     await writeFile(path.join(root, '.gitignore'), 'ignored/\n')
-    await git(root, 'add', '.')
-    await git(root, 'commit', '-q', '-m', 'gitignore')
+    git(root, 'add', '.')
+    git(root, 'commit', '-q', '-m', 'gitignore')
     await mkdir(path.join(root, 'packages/a/ignored'), { recursive: true })
     await writeFile(path.join(root, 'packages/a/ignored/blob.bin'), 'junk')
     await writeFile(path.join(root, 'packages/a/new.ts'), 'x')
     await mkdir(path.join(root, 'packages/b/deep/dir'), { recursive: true })
     await writeFile(path.join(root, 'packages/b/deep/dir/y.ts'), 'y')
     await mkdir(path.join(root, 'packages/b/inner'), { recursive: true })
-    await git(path.join(root, 'packages/b/inner'), 'init', '-q')
+    git(path.join(root, 'packages/b/inner'), 'init', '-q')
     await writeFile(path.join(root, 'packages/b/inner/z.ts'), 'z')
     const others = Bun.spawnSync({
       cmd: ['git', 'ls-files', '--others', '--exclude-standard', '-z'],
@@ -814,8 +776,8 @@ describe('affectedProjects', () => {
 
     it('with no claim, a lockfile edit, add or delete selects nothing', async () => {
       await writeFile(path.join(root, 'bun.lock'), '{"lockfileVersion":1}')
-      await git(root, 'add', '.')
-      await git(root, 'commit', '-q', '-m', 'add lockfile')
+      git(root, 'add', '.')
+      git(root, 'commit', '-q', '-m', 'add lockfile')
       await writeFile(path.join(root, 'bun.lock'), '{"lockfileVersion":1,"packages":{}}')
       await writeFile(path.join(root, '.npmrc'), 'node-linker=hoisted\n')
       const edited = await affectedProjects({ workspaceRoot: root, since: 'HEAD', projects })
@@ -833,8 +795,8 @@ describe('affectedProjects', () => {
       await mkdir(path.join(root, 'patches'), { recursive: true })
       await writeFile(path.join(root, 'patches/x@1.0.0.patch'), 'v1\n')
       await writeFile(path.join(root, 'patches/other.patch'), 'v1\n')
-      await git(root, 'add', '.')
-      await git(root, 'commit', '-q', '-m', 'patch')
+      git(root, 'add', '.')
+      git(root, 'commit', '-q', '-m', 'patch')
       const bunClaim = async () => ({
         files: new Set(['bun.lock']),
         affected: async () => new Set<string>(),
@@ -868,8 +830,8 @@ describe('affectedProjects', () => {
       await writeFile(path.join(root, 'bun.lock'), lock)
       await mkdir(path.join(root, 'patches'), { recursive: true })
       await writeFile(path.join(root, 'patches/x.patch'), 'v1\n')
-      await git(root, 'add', '.')
-      await git(root, 'commit', '-q', '-m', 'patch')
+      git(root, 'add', '.')
+      git(root, 'commit', '-q', '-m', 'patch')
       await writeFile(path.join(root, 'patches/x.patch'), 'v2\n')
       const asked: { file: string; extras?: ReadonlyMap<string, unknown> }[] = []
       const out = await affectedProjects({
@@ -924,8 +886,8 @@ describe('affectedProjects', () => {
 
       it("selects the plugin's projects, given the base-ref and working-tree bytes", async () => {
         await writeFile(path.join(root, 'pnpm-lock.yaml'), 'lockfileVersion: 9\nv1\n')
-        await git(root, 'add', '.')
-        await git(root, 'commit', '-q', '-m', 'add lockfile')
+        git(root, 'add', '.')
+        git(root, 'commit', '-q', '-m', 'add lockfile')
         await writeFile(path.join(root, 'pnpm-lock.yaml'), 'lockfileVersion: 9\nv2\n')
 
         const out = await affectedProjects({
@@ -946,8 +908,8 @@ describe('affectedProjects', () => {
 
       it('unions the answer with the path-owned projects', async () => {
         await writeFile(path.join(root, 'pnpm-lock.yaml'), 'v1')
-        await git(root, 'add', '.')
-        await git(root, 'commit', '-q', '-m', 'add lockfile')
+        git(root, 'add', '.')
+        git(root, 'commit', '-q', '-m', 'add lockfile')
         await writeFile(path.join(root, 'pnpm-lock.yaml'), 'v2')
         await writeFile(path.join(root, 'packages/a/file.txt'), 'a-changed')
         const out = await affectedProjects({
@@ -988,8 +950,8 @@ describe('affectedProjects', () => {
         })
         expect(asked[0]!.before).toBeNull()
         expect(asked[0]!.after).not.toBeNull()
-        await git(root, 'add', '.')
-        await git(root, 'commit', '-q', '-m', 'add lockfile')
+        git(root, 'add', '.')
+        git(root, 'commit', '-q', '-m', 'add lockfile')
         await rm(path.join(root, 'pnpm-lock.yaml'))
         asked.splice(0)
         await affectedProjects({
@@ -1020,8 +982,8 @@ describe('affectedProjects', () => {
         // bytes at the base, so it is parsed once and never read from git.
         const loaded = { count: 0 }
         await writeFile(path.join(root, 'pnpm-lock.yaml'), 'lockfileVersion: 9\nv1\n')
-        await git(root, 'add', '.')
-        await git(root, 'commit', '-q', '-m', 'add lockfile')
+        git(root, 'add', '.')
+        git(root, 'commit', '-q', '-m', 'add lockfile')
         await writeFile(path.join(root, 'packages/a/file.txt'), 'a-changed')
         const parsed: string[] = []
         const out = await affectedProjects({
@@ -1048,8 +1010,8 @@ describe('affectedProjects', () => {
         // `--affected` selected nothing.
         await writeFile(path.join(root, 'turbo.json'), '{"tasks":{}}')
         await writeFile(path.join(root, 'README.md'), 'v1')
-        await git(root, 'add', '.')
-        await git(root, 'commit', '-q', '-m', 'turbo.json')
+        git(root, 'add', '.')
+        git(root, 'commit', '-q', '-m', 'turbo.json')
         const readsTurbo = (answer: readonly string[] | undefined) => async () => ({
           files: new Set(['turbo.json']),
           affected: async (c: Change) => {
@@ -1250,8 +1212,8 @@ describe('affectedProjects', () => {
       // believing it does something. The exclusion lives in exactly one place.
       const withRoot: ProjectMeta[] = [...projects, { name: 'root', dir: root, configPath: null }]
       await Bun.write(path.join(root, '.vx/projects.lock'), '{"v":1}')
-      await git(root, 'add', '.')
-      await git(root, 'commit', '-q', '-m', 'add vx lock')
+      git(root, 'add', '.')
+      git(root, 'commit', '-q', '-m', 'add vx lock')
 
       await Bun.write(path.join(root, '.vx/projects.lock'), '{"v":2}')
       const out = await affectedProjects({
@@ -1290,8 +1252,8 @@ describe('affectedProjects', () => {
       // The CI shape: the merge base is behind, the lockfile bump is already
       // committed, the working tree is clean.
       await writeFile(path.join(root, 'npm-shrinkwrap.json'), '{"lockfileVersion":3}')
-      await git(root, 'add', '.')
-      await git(root, 'commit', '-q', '-m', 'bump deps')
+      git(root, 'add', '.')
+      git(root, 'commit', '-q', '-m', 'bump deps')
       const out = await affectedProjects({
         workspaceRoot: root,
         since: 'HEAD~1',
@@ -1386,8 +1348,8 @@ describe('affectedProjects', () => {
   // nx#18112, nx#20691: deleting a whole project marked every project
   // affected (or failed on the missing one).
   it('a deleted project directory selects no remaining project', async () => {
-    await git(root, 'rm', '-r', '-q', 'packages/a')
-    await git(root, 'commit', '-q', '-m', 'drop a')
+    git(root, 'rm', '-r', '-q', 'packages/a')
+    git(root, 'commit', '-q', '-m', 'drop a')
     const remaining = projects.filter((p) => p.name !== 'a')
     const out = await affectedProjects({
       workspaceRoot: root,
@@ -1404,10 +1366,10 @@ describe('affectedProjects', () => {
 describe('defaultAffectedBase', () => {
   const repo = async (prefix: string, branch: string): Promise<string> => {
     const root = await mkdtemp(path.join(os.tmpdir(), prefix))
-    await git(root, 'init', '-q', '-b', branch)
+    git(root, 'init', '-q', '-b', branch)
     await writeFile(path.join(root, 'a'), 'x')
-    await git(root, 'add', '.')
-    await git(root, 'commit', '-q', '-m', 'one')
+    git(root, 'add', '.')
+    git(root, 'commit', '-q', '-m', 'one')
     return root
   }
 
@@ -1435,17 +1397,17 @@ describe('defaultAffectedBase', () => {
       await expect(defaultAffectedBase(root, undefined)).rejects.toThrow(
         '--affected has no default on the base branch (main): run --all (the cache skips what did not change), or name the last good commit, --affected=<sha>',
       )
-      await git(root, 'checkout', '-q', '-b', 'feat')
+      git(root, 'checkout', '-q', '-b', 'feat')
       expect(await defaultAffectedBase(root, undefined)).toBe('main')
       // The remote's before a local one, `main` before `master`.
-      await git(root, 'update-ref', 'refs/remotes/origin/master', 'main')
+      git(root, 'update-ref', 'refs/remotes/origin/master', 'main')
       expect(await defaultAffectedBase(root, undefined)).toBe('origin/master')
-      await git(root, 'update-ref', 'refs/remotes/origin/main', 'main')
+      git(root, 'update-ref', 'refs/remotes/origin/main', 'main')
       expect(await defaultAffectedBase(root, undefined)).toBe('origin/main')
       // A configured base branch names it, and on it there is no default either.
-      await git(root, 'update-ref', 'refs/remotes/origin/develop', 'main')
+      git(root, 'update-ref', 'refs/remotes/origin/develop', 'main')
       expect(await defaultAffectedBase(root, 'develop')).toBe('origin/develop')
-      await git(root, 'checkout', '-q', '-b', 'develop')
+      git(root, 'checkout', '-q', '-b', 'develop')
       await expect(defaultAffectedBase(root, 'develop')).rejects.toThrow(
         'no default on the base branch (develop)',
       )
@@ -1459,22 +1421,22 @@ describe('defaultAffectedBase', () => {
   it('a detached HEAD the base branch holds is on it: no default', async () => {
     const root = await repo('vx-affected-detached-', 'main')
     try {
-      await git(root, 'update-ref', 'refs/remotes/origin/main', 'HEAD')
+      git(root, 'update-ref', 'refs/remotes/origin/main', 'HEAD')
       await writeFile(path.join(root, 'a'), 'y')
-      await git(root, 'commit', '-q', '-am', 'two')
-      await git(root, 'update-ref', 'refs/remotes/origin/main', 'HEAD')
-      await git(root, 'checkout', '-q', '--detach')
+      git(root, 'commit', '-q', '-am', 'two')
+      git(root, 'update-ref', 'refs/remotes/origin/main', 'HEAD')
+      git(root, 'checkout', '-q', '--detach')
       await expect(defaultAffectedBase(root, undefined)).rejects.toThrow(
         'no default on the base branch (main)',
       )
       // A rerun of an older commit of it.
-      await git(root, 'checkout', '-q', '--detach', 'HEAD~1')
+      git(root, 'checkout', '-q', '--detach', 'HEAD~1')
       await expect(defaultAffectedBase(root, undefined)).rejects.toThrow(
         'no default on the base branch (main)',
       )
       // CONTROL: a detached commit of its own (a PR's merge checkout) has the default.
       await writeFile(path.join(root, 'a'), 'z')
-      await git(root, 'commit', '-q', '-am', 'three')
+      git(root, 'commit', '-q', '-am', 'three')
       expect(await defaultAffectedBase(root, undefined)).toBe('origin/main')
     } finally {
       await rm(root, { recursive: true, force: true })
@@ -1488,27 +1450,27 @@ describe('defaultAffectedBase', () => {
     const root = await repo('vx-affected-rebase-', 'main')
     const tree = `${root}-wt`
     try {
-      await git(root, 'checkout', '-q', '-b', 'feat-a')
+      git(root, 'checkout', '-q', '-b', 'feat-a')
       await writeFile(path.join(root, 'a'), 'feat')
-      await git(root, 'commit', '-q', '-am', 'feat')
-      await git(root, 'checkout', '-q', 'main')
+      git(root, 'commit', '-q', '-am', 'feat')
+      git(root, 'checkout', '-q', 'main')
       await writeFile(path.join(root, 'a'), 'main')
-      await git(root, 'commit', '-q', '-am', 'main moved')
-      await git(root, 'update-ref', 'refs/remotes/origin/main', 'HEAD')
-      await git(root, 'branch', '-q', 'feat-b', 'feat-a')
-      await git(root, 'worktree', 'add', '-q', tree, 'feat-b')
-      await git(root, 'checkout', '-q', 'feat-a')
+      git(root, 'commit', '-q', '-am', 'main moved')
+      git(root, 'update-ref', 'refs/remotes/origin/main', 'HEAD')
+      git(root, 'branch', '-q', 'feat-b', 'feat-a')
+      git(root, 'worktree', 'add', '-q', tree, 'feat-b')
+      git(root, 'checkout', '-q', 'feat-a')
       for (const [cwd, backend] of [
         [root, '--merge'],
         [tree, '--apply'],
       ] as const) {
-        await expect(git(cwd, 'rebase', backend, 'origin/main')).rejects.toThrow(/conflict/i)
+        expect(() => git(cwd, 'rebase', backend, 'origin/main')).toThrow(/conflict/i)
         expect(await defaultAffectedBase(cwd, undefined)).toBe('origin/main')
-        await git(cwd, 'rebase', '--abort')
+        git(cwd, 'rebase', '--abort')
       }
       // CONTROL: rebasing the base branch itself is still on it.
-      await git(root, 'checkout', '-q', '-B', 'main', 'feat-a')
-      await expect(git(root, 'rebase', 'origin/main')).rejects.toThrow(/conflict/i)
+      git(root, 'checkout', '-q', '-B', 'main', 'feat-a')
+      expect(() => git(root, 'rebase', 'origin/main')).toThrow(/conflict/i)
       await expect(defaultAffectedBase(root, undefined)).rejects.toThrow(
         'no default on the base branch (main)',
       )
@@ -1521,19 +1483,19 @@ describe('defaultAffectedBase', () => {
   it("the remote's HEAD branch names the base branch when origin/HEAD is set", async () => {
     const root = await repo('vx-affected-symref-', 'feat')
     try {
-      await git(root, 'update-ref', 'refs/remotes/origin/trunk', 'HEAD')
-      await git(root, 'symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/trunk')
+      git(root, 'update-ref', 'refs/remotes/origin/trunk', 'HEAD')
+      git(root, 'symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/trunk')
       expect(await defaultAffectedBase(root, undefined)).toBe('origin/trunk')
       // A single-branch clone whose origin/HEAD is this branch: on it, no default.
-      await git(root, 'update-ref', 'refs/remotes/origin/feat', 'HEAD')
-      await git(root, 'symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/feat')
+      git(root, 'update-ref', 'refs/remotes/origin/feat', 'HEAD')
+      git(root, 'symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/feat')
       await expect(defaultAffectedBase(root, undefined)).rejects.toThrow(
         'no default on the base branch (feat)',
       )
       expect(headBase(root, 'origin/feat')).toBe('origin/feat')
       expect(headBase(root, 'origin/feat...HEAD')).toBe('origin/feat')
       await writeFile(path.join(root, 'a'), 'y')
-      await git(root, 'commit', '-q', '-am', 'two')
+      git(root, 'commit', '-q', '-am', 'two')
       expect(headBase(root, 'origin/feat')).toBeUndefined()
       expect(headBase(root, 'no-such-ref')).toBeUndefined()
     } finally {
@@ -1546,14 +1508,14 @@ describe('defaultAffectedBase', () => {
     // bare --affected failed `git ref "origin/master" did not resolve`.
     const root = await repo('vx-affected-gone-', 'feat')
     try {
-      await git(root, 'symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/master')
+      git(root, 'symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/master')
       await expect(defaultAffectedBase(root, undefined)).rejects.toThrow(
         /--affected has no base here/,
       )
-      await git(root, 'update-ref', 'refs/remotes/origin/main', 'HEAD')
+      git(root, 'update-ref', 'refs/remotes/origin/main', 'HEAD')
       expect(await defaultAffectedBase(root, undefined)).toBe('origin/main')
       // CONTROL: the branch back, the symref is the base again.
-      await git(root, 'update-ref', 'refs/remotes/origin/master', 'HEAD')
+      git(root, 'update-ref', 'refs/remotes/origin/master', 'HEAD')
       expect(await defaultAffectedBase(root, undefined)).toBe('origin/master')
     } finally {
       await rm(root, { recursive: true, force: true })
@@ -1653,9 +1615,9 @@ describe('affectedProjects workspaceFiles gate', () => {
         configPath: null,
       },
     ]
-    await git(root, 'init', '-q')
-    await git(root, 'add', '.')
-    await git(root, 'commit', '-q', '-m', 'initial')
+    git(root, 'init', '-q')
+    git(root, 'add', '.')
+    git(root, 'commit', '-q', '-m', 'initial')
   })
 
   afterEach(async () => {
@@ -1793,9 +1755,9 @@ describe('affectedProjects: config import closures', () => {
     })
     projects = [meta('app', 'packages/app'), meta('lib', 'packages/lib'), meta('x', 'apps/x')]
 
-    await git(root, 'init', '-q')
-    await git(root, 'add', '-A')
-    await git(root, 'commit', '-q', '-m', 'initial')
+    git(root, 'init', '-q')
+    git(root, 'add', '-A')
+    git(root, 'commit', '-q', '-m', 'initial')
   })
 
   afterEach(async () => {
@@ -1841,8 +1803,8 @@ describe('affectedProjects: config import closures', () => {
       path.join(root, '.vx/desc.mjs'),
       `import { DEEP } from '../shared/deep.mjs'\nexport const DESC = DEEP\n`,
     )
-    await git(root, 'add', '-A')
-    await git(root, 'commit', '-q', '-m', 'workspace config')
+    git(root, 'add', '-A')
+    git(root, 'commit', '-q', '-m', 'workspace config')
     expect(await editThenSelect('tools/build-helper.mjs', `export const helper = 2\n`)).toEqual([])
     expect(await editThenSelect('shared/deep.mjs', `export const DEEP = 2\n`)).toEqual([
       'app',
@@ -1864,8 +1826,8 @@ describe('affectedProjects: config import closures', () => {
       `import { O } from '../../shared/own.mjs'\nexport const T = O\n`,
     )
     await writeFile(path.join(root, 'shared/own.mjs'), `export const O = 1\n`)
-    await git(root, 'add', '-A')
-    await git(root, 'commit', '-q', '-m', 'own helper')
+    git(root, 'add', '-A')
+    git(root, 'commit', '-q', '-m', 'own helper')
     expect(await editThenSelect('shared/own.mjs', `export const O = 2\n`)).toEqual(['lib'])
   })
 
@@ -1910,8 +1872,8 @@ describe('affectedProjects: config import closures', () => {
       path.join(root, 'packages/lib/vx.config.mjs'),
       "import { B } from '\\x2e\\x2e/\\x2e\\x2e/shared/b.mjs'\nexport default { tasks: {} }\n",
     )
-    await git(root, 'add', '-A')
-    await git(root, 'commit', '-q', '-m', 'lib imports b, escaped')
+    git(root, 'add', '-A')
+    git(root, 'commit', '-q', '-m', 'lib imports b, escaped')
     expect(await editThenSelect('shared/b.mjs', 'export const B = 2\n')).toEqual(['lib'])
   })
 
@@ -1920,8 +1882,8 @@ describe('affectedProjects: config import closures', () => {
       path.join(root, 'packages/lib/vx.config.mjs'),
       `import { B } from '../../shared/b'\nexport default { tasks: {} }\n`,
     )
-    await git(root, 'add', '-A')
-    await git(root, 'commit', '-q', '-m', 'lib imports b')
+    git(root, 'add', '-A')
+    git(root, 'commit', '-q', '-m', 'lib imports b')
     await rm(path.join(root, 'shared/b.mjs'))
     const out = await affectedProjects({ workspaceRoot: root, since: 'HEAD', projects })
     expect([...out].sort()).toEqual(['lib'])
@@ -1934,8 +1896,8 @@ describe('affectedProjects: config import closures', () => {
       path.join(root, 'packages/lib/vx.config.mjs'),
       `import { C } from '../../shared/c'\nexport default { tasks: {} }\n`,
     )
-    await git(root, 'add', '-A')
-    await git(root, 'commit', '-q', '-m', 'lib imports c')
+    git(root, 'add', '-A')
+    git(root, 'commit', '-q', '-m', 'lib imports c')
     await rm(path.join(root, 'shared/c'), { recursive: true })
     const out = await affectedProjects({ workspaceRoot: root, since: 'HEAD', projects })
     expect([...out].sort()).toEqual(['lib'])
@@ -1953,8 +1915,8 @@ describe('affectedProjects: config import closures', () => {
       path.join(root, 'packages/lib/vx.config.mjs'),
       `import { FLAG } from '@shared/flag.mjs'\nexport default { tasks: {} }\n`,
     )
-    await git(root, 'add', '-A')
-    await git(root, 'commit', '-q', '-m', 'lib imports flag by alias')
+    git(root, 'add', '-A')
+    git(root, 'commit', '-q', '-m', 'lib imports flag by alias')
     expect(
       await editThenSelect('shared/flag.mjs', `import './deep.mjs'\nexport const FLAG=2\n`),
     ).toEqual(['app', 'lib'])
@@ -1979,8 +1941,8 @@ describe('affectedProjects: config import closures', () => {
       path.join(root, 'packages/lib/vx.config.mjs'),
       `import { B } from '@l/b.mjs'\nexport default { tasks: {} }\n`,
     )
-    await git(root, 'add', '-A')
-    await git(root, 'commit', '-q', '-m', 'lib imports b through a link')
+    git(root, 'add', '-A')
+    git(root, 'commit', '-q', '-m', 'lib imports b through a link')
     expect(await editThenSelect('shared/b.mjs', 'export const B = 2\n')).toEqual(['lib'])
   })
 })
@@ -2024,9 +1986,9 @@ describe('affectedProjects: a workspace whose ROOT is itself a project', () => {
         configPath: path.join(root, 'packages/app/vx.config.mjs'),
       },
     ]
-    await git(root, 'init', '-q')
-    await git(root, 'add', '-A')
-    await git(root, 'commit', '-q', '-m', 'initial')
+    git(root, 'init', '-q')
+    git(root, 'add', '-A')
+    git(root, 'commit', '-q', '-m', 'initial')
   })
 
   afterEach(async () => {
@@ -2358,9 +2320,9 @@ describe('a fingerprint claim in a workspace BELOW the git root', () => {
     // "resolved from the repo root", not merely "found nothing".
     await writeFile(path.join(repo, 'pnpm-lock.yaml'), 'lockfileVersion: 9\nDECOY\n')
     projects = [{ name: 'a', dir: path.join(ws, 'packages/a'), configPath: null }]
-    await git(repo, 'init', '-q')
-    await git(repo, 'add', '.')
-    await git(repo, 'commit', '-q', '-m', 'initial')
+    git(repo, 'init', '-q')
+    git(repo, 'add', '.')
+    git(repo, 'commit', '-q', '-m', 'initial')
   })
 
   afterEach(async () => {

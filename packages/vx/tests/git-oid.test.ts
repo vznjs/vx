@@ -25,19 +25,7 @@ import { resolveInputs } from '../src/cache/inputs.js'
 import { runGitLsFiles } from '../src/cache/git-inputs.js'
 import { computeTaskHash, createHashCache } from '../src/orchestrator/task-hash.js'
 import type { TaskNode } from '../src/graph/task-graph.js'
-
-function git(cwd: string, ...args: string[]): string {
-  const p = Bun.spawnSync({
-    cmd: ['git', '-c', 'commit.gpgsign=false', ...args],
-    cwd,
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
-  if (p.exitCode !== 0) {
-    throw new Error(`git ${args.join(' ')}: ${new TextDecoder().decode(p.stderr)}`)
-  }
-  return new TextDecoder().decode(p.stdout).trim()
-}
+import { git, gitInit } from './helpers/workspace.js'
 
 /** The index OID of a tracked path, from `git ls-files -s`. */
 function indexOid(root: string, rel: string): string {
@@ -48,9 +36,7 @@ function indexOid(root: string, rel: string): string {
 }
 
 function initRepo(root: string): void {
-  git(root, 'init', '-q')
-  git(root, 'config', 'user.email', 't@vx.local')
-  git(root, 'config', 'user.name', 'vx test')
+  gitInit(root)
 }
 
 describe('Cache.hashFile — git blob OID domain', () => {
@@ -71,7 +57,7 @@ describe('Cache.hashFile — git blob OID domain', () => {
   it('matches `git hash-object` for a fixture file', async () => {
     const f = path.join(root, 'a.txt')
     await writeFile(f, 'hello blob\n')
-    const expected = git(root, 'hash-object', f)
+    const expected = git(root, 'hash-object', f).trim()
     expect(await cache.memo.hashFile(f)).toBe(expected)
   })
 
@@ -80,8 +66,8 @@ describe('Cache.hashFile — git blob OID domain', () => {
     await writeFile(empty, '')
     const bin = path.join(root, 'data.bin')
     await writeFile(bin, Buffer.from([0, 1, 2, 255, 0, 42]))
-    expect(await cache.memo.hashFile(empty)).toBe(git(root, 'hash-object', empty))
-    expect(await cache.memo.hashFile(bin)).toBe(git(root, 'hash-object', bin))
+    expect(await cache.memo.hashFile(empty)).toBe(git(root, 'hash-object', empty).trim())
+    expect(await cache.memo.hashFile(bin)).toBe(git(root, 'hash-object', bin).trim())
   })
 
   it('matches `git hash-object` for a file big enough to stream, one by one and in a batch', async () => {
@@ -89,7 +75,7 @@ describe('Cache.hashFile — git blob OID domain', () => {
     const bytes = new Uint8Array(9 * 1024 * 1024 + 7)
     for (let i = 0; i < bytes.length; i++) bytes[i] = (i * 31) & 255
     await writeFile(big, bytes)
-    const expected = git(root, 'hash-object', big)
+    const expected = git(root, 'hash-object', big).trim()
     expect(await cache.memo.hashFile(big)).toBe(expected)
     const other = new Cache(path.join(root, '.vx', 'cache2'))
     try {
@@ -115,7 +101,7 @@ describe('Cache.hashFile — git blob OID domain', () => {
       try {
         const h = await c2.memo.hashFile(f)
         expect(h).toHaveLength(64)
-        expect(h).toBe(git(dir, 'hash-object', f))
+        expect(h).toBe(git(dir, 'hash-object', f).trim())
       } finally {
         c2.close()
       }
@@ -154,7 +140,7 @@ describe('Cache.hashFile — git blob OID domain', () => {
     const first = await cache.memo.hashFile(f)
     const second = await cache.memo.hashFile(f)
     expect(second).toBe(first)
-    expect(first).toBe(git(root, 'hash-object', f))
+    expect(first).toBe(git(root, 'hash-object', f).trim())
   })
 })
 
@@ -200,7 +186,7 @@ describe('populateGitFilesCache — index OID harvesting', () => {
     const oids = memo.oidsFor(pkgDir)
     expect(oids).toBeDefined()
     const cleanAbs = path.join(pkgDir, 'src', 'clean.ts')
-    expect(oids!.get(cleanAbs)).toBe(git(root, 'hash-object', cleanAbs))
+    expect(oids!.get(cleanAbs)).toBe(git(root, 'hash-object', cleanAbs).trim())
     expect(oids!.has(path.join(pkgDir, 'src', 'dirty.ts'))).toBe(false) // modified → untrusted
     expect(oids!.has(path.join(pkgDir, 'src', 'new.ts'))).toBe(false) // untracked → no OID
     // A clean symlink's OID is the blob of its target STRING — the same
@@ -297,7 +283,7 @@ describe('populateGitFilesCache — index OID harvesting', () => {
     await symlink('plain.ts', path.join(pkgDir, 'link.ts'))
     git(root, 'add', '-A')
     git(root, 'commit', '-qm', 'init')
-    const head = git(root, 'rev-parse', 'HEAD')
+    const head = git(root, 'rev-parse', 'HEAD').trim()
     git(root, 'update-index', '--add', '--cacheinfo', `160000,${head},pkg/sub`)
 
     const memo = new GitFilesCache()
@@ -417,7 +403,7 @@ describe('populateGitFilesCache — index OID harvesting', () => {
     await writeFile(path.join(pkgDir, 'f.ts'), 'base\n')
     git(root, 'add', '-A')
     git(root, 'commit', '-qm', 'base')
-    const branch = git(root, 'rev-parse', '--abbrev-ref', 'HEAD')
+    const branch = git(root, 'rev-parse', '--abbrev-ref', 'HEAD').trim()
     git(root, 'checkout', '-q', '-b', 'side')
     await writeFile(path.join(pkgDir, 'f.ts'), 'side\n')
     git(root, 'commit', '-aqm', 'side')
@@ -543,7 +529,7 @@ describe('Cache.key — fileHashes seam', () => {
   it('mapped paths never touch hashFile (zero stats, zero SQLite)', async () => {
     const f = path.join(dir, 'a.ts')
     await writeFile(f, 'content\n')
-    const oid = git(dir, 'hash-object', f)
+    const oid = git(dir, 'hash-object', f).trim()
     const spy = vi.spyOn(cache.memo, 'hashFile')
     await cache.key({ ...baseKeyInput([f]), fileHashes: new Map([[f, oid]]) })
     expect(spy).not.toHaveBeenCalled()
@@ -552,7 +538,7 @@ describe('Cache.key — fileHashes seam', () => {
   it('map-fed key equals fallback key for identical content (uniform domain)', async () => {
     const f = path.join(dir, 'a.ts')
     await writeFile(f, 'same bytes\n')
-    const oid = git(dir, 'hash-object', f)
+    const oid = git(dir, 'hash-object', f).trim()
     const viaMap = await cache.key({ ...baseKeyInput([f]), fileHashes: new Map([[f, oid]]) })
     const viaDisk = await cache.key(baseKeyInput([f]))
     expect(viaMap).toBe(viaDisk)
@@ -565,7 +551,7 @@ describe('Cache.key — fileHashes seam', () => {
     await writeFile(b, 'bbb\n')
     const partial = await cache.key({
       ...baseKeyInput([a, b]),
-      fileHashes: new Map([[a, git(dir, 'hash-object', a)]]),
+      fileHashes: new Map([[a, git(dir, 'hash-object', a).trim()]]),
     })
     const full = await cache.key(baseKeyInput([a, b]))
     expect(partial).toBe(full)
@@ -685,7 +671,7 @@ describe('semantic guardrails — key stability across dirty↔clean transitions
 
   it('an unmerged path keys its worktree bytes, once: resolved = staged key, markers ≠ either side', async () => {
     const f = path.join(pkgDir, 'src', 'main.ts')
-    const branch = git(root, 'rev-parse', '--abbrev-ref', 'HEAD')
+    const branch = git(root, 'rev-parse', '--abbrev-ref', 'HEAD').trim()
     git(root, 'checkout', '-q', '-b', 'side')
     await writeFile(f, 'side\n')
     git(root, 'commit', '-aqm', 'side')
@@ -694,7 +680,7 @@ describe('semantic guardrails — key stability across dirty↔clean transitions
     git(root, 'commit', '-aqm', 'main')
     const before = await keyNow()
     Bun.spawnSync({ cmd: ['git', 'merge', 'side'], cwd: root, stdout: 'pipe', stderr: 'pipe' })
-    expect(git(root, 'ls-files', '-u').split('\n')).toHaveLength(3)
+    expect(git(root, 'ls-files', '-u').trim().split('\n')).toHaveLength(3)
     // The worktree holds conflict markers: no stage's blob may stand in for it.
     const markers = await keyNow()
     expect(markers).not.toBe(before)

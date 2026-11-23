@@ -9,20 +9,11 @@ import path from 'node:path'
 import { afterEach, beforeEach, expect, it, setDefaultTimeout } from 'bun:test'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
 import { pluginSource } from './helpers/plugin.js'
+import { git, gitInit } from './helpers/workspace.js'
 
 const BIN = path.join(import.meta.dir, '..', 'src', 'bin.ts')
 
 setDefaultTimeout(30_000)
-
-function git(cwd: string, ...args: string[]): void {
-  const p = Bun.spawnSync({
-    cmd: ['git', '-c', 'commit.gpgsign=false', ...args],
-    cwd,
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
-  if (p.exitCode !== 0) throw new Error(`git ${args.join(' ')}: ${p.stderr.toString()}`)
-}
 
 let root: string
 let shimDir: string
@@ -71,9 +62,7 @@ beforeEach(async () => {
   }
   await writeFile(path.join(root, '.gitignore'), '.vx/cache/\n')
   expect(Bun.spawnSync([process.execPath, BIN, 'lock'], { cwd: root }).exitCode).toBe(0)
-  git(root, 'init', '-q', '-b', 'main')
-  git(root, 'config', 'user.email', 'test@vx.local')
-  git(root, 'config', 'user.name', 'vx test')
+  gitInit(root, '-b', 'main')
   git(root, 'add', '-A')
   git(root, 'commit', '-q', '-m', 'one')
   git(root, 'checkout', '-q', '-b', 'feat')

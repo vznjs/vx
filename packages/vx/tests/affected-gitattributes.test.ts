@@ -11,21 +11,10 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
 import { writeLocalWorkspace } from './helpers/local-workspace.js'
+import { git, gitInit } from './helpers/workspace.js'
 
 const TIMEOUT = 60_000
 const CLI = path.join(import.meta.dir, 'helpers', 'vx-locked.ts')
-
-function git(cwd: string, ...args: string[]): void {
-  const p = Bun.spawnSync({
-    cmd: ['git', '-c', 'commit.gpgsign=false', ...args],
-    cwd,
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
-  if (p.exitCode !== 0) {
-    throw new Error(`git ${args.join(' ')} exited ${p.exitCode}: ${p.stderr.toString().trim()}`)
-  }
-}
 
 async function write(p: string, content: string): Promise<void> {
   await mkdir(path.dirname(p), { recursive: true })
@@ -76,9 +65,7 @@ beforeEach(async () => {
     await write(path.join(root, `pkgs/${name}/vx.config.mjs`), project(name))
   }
   await write(path.join(root, 'tools/.keep'), '')
-  git(root, 'init', '-q')
-  git(root, 'config', 'user.email', 't@vx.local')
-  git(root, 'config', 'user.name', 'vx')
+  gitInit(root)
   git(root, 'add', '-A')
   git(root, 'commit', '-qm', 'initial')
 })

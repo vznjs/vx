@@ -9,21 +9,11 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, setDefaultTimeout } from 'bun:test'
 import { writeEdges } from './helpers/plugin.js'
+import { git, gitInit } from './helpers/workspace.js'
 
 setDefaultTimeout(30_000)
 
 const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
-
-function git(cwd: string, ...args: string[]): void {
-  const p = Bun.spawnSync({
-    cmd: ['git', '-c', 'commit.gpgsign=false', ...args],
-    cwd,
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
-  if (p.exitCode !== 0)
-    throw new Error(`git ${args.join(' ')}: ${new TextDecoder().decode(p.stderr)}`)
-}
 
 async function vx(cwd: string, args: string[]) {
   const proc = Bun.spawn([process.execPath, BIN, ...args], {
@@ -98,9 +88,7 @@ describe('running from inside a workspace member', () => {
     )
     await writeFile(path.join(a, 'src', 'in.txt'), 'v1')
 
-    git(root, 'init', '-q')
-    git(root, 'config', 'user.email', 't@vx.local')
-    git(root, 'config', 'user.name', 'vx')
+    gitInit(root)
     git(root, 'add', '-A')
     git(root, 'commit', '-qm', 'init')
   })

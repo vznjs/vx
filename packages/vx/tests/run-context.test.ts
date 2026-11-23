@@ -14,6 +14,7 @@ import {
 } from '../src/orchestrator/run-context.js'
 import { GitFilesCache, populateGitFilesCache } from '../src/cache/git-inputs.js'
 import { xxh3hex } from '../src/util/index.js'
+import { git, gitInit } from './helpers/workspace.js'
 
 /** The `git` spawns `fn` makes, by `Bun.spawnSync`. */
 function gitSpawnsIn(fn: () => void): number {
@@ -33,13 +34,6 @@ function gitSpawnsIn(fn: () => void): number {
   return n
 }
 
-function git(cwd: string, args: string[]): void {
-  const proc = Bun.spawnSync({ cmd: ['git', ...args], cwd, stdout: 'pipe', stderr: 'pipe' })
-  if (proc.exitCode !== 0) {
-    throw new Error(`git ${args.join(' ')} failed: ${new TextDecoder().decode(proc.stderr)}`)
-  }
-}
-
 describe('captureGitContext', () => {
   let dir: string
 
@@ -52,12 +46,10 @@ describe('captureGitContext', () => {
   })
 
   it('reports commit sha + branch from one spawn in a committed repo', async () => {
-    git(dir, ['init', '-q', '-b', 'main'])
-    git(dir, ['config', 'user.email', 'test@example.com'])
-    git(dir, ['config', 'user.name', 'Test'])
+    gitInit(dir, '-b', 'main')
     await writeFile(path.join(dir, 'a.txt'), 'one')
-    git(dir, ['add', '.'])
-    git(dir, ['-c', 'commit.gpgsign=false', 'commit', '-q', '-m', 'init'])
+    git(dir, 'add', '.')
+    git(dir, 'commit', '-q', '-m', 'init')
 
     const ctx = captureGitContext(dir)
     expect(ctx.commitSha).toMatch(/^[0-9a-f]{40,64}$/)
@@ -69,9 +61,7 @@ describe('captureGitContext', () => {
   })
 
   it('passes the supplied dirty flag straight through (no extra spawn)', () => {
-    git(dir, ['init', '-q', '-b', 'main'])
-    git(dir, ['config', 'user.email', 'test@example.com'])
-    git(dir, ['config', 'user.name', 'Test'])
+    gitInit(dir, '-b', 'main')
 
     expect(captureGitContext(dir, true).dirty).toBe(true)
     expect(captureGitContext(dir, false).dirty).toBe(false)
@@ -93,11 +83,9 @@ describe('captureGitContext', () => {
     // `null` is the honest answer and every consumer already handles it: the
     // trunk test requires both sides non-null, so an unknown branch is scoped
     // to nothing rather than to a shared fiction.
-    git(dir, ['init', '-q', '-b', 'main'])
-    git(dir, ['config', 'user.email', 'test@example.com'])
-    git(dir, ['config', 'user.name', 'Test'])
-    git(dir, ['-c', 'commit.gpgsign=false', 'commit', '-q', '--allow-empty', '-m', 'init'])
-    git(dir, ['checkout', '--detach', '-q', 'HEAD'])
+    gitInit(dir, '-b', 'main')
+    git(dir, 'commit', '-q', '--allow-empty', '-m', 'init')
+    git(dir, 'checkout', '--detach', '-q', 'HEAD')
 
     // An EXPLICIT empty env: this test is about what git alone answers, and
     // omitting the argument reads process.env — on a real CI box
@@ -115,11 +103,9 @@ describe('captureGitContext', () => {
     // provider says so. Preferring that over the git symbolic name is the same
     // most-reliable-first ladder `captureDefaultBranch` already uses, and it is
     // what keeps PR scopes distinct.
-    git(dir, ['init', '-q', '-b', 'main'])
-    git(dir, ['config', 'user.email', 'test@example.com'])
-    git(dir, ['config', 'user.name', 'Test'])
-    git(dir, ['-c', 'commit.gpgsign=false', 'commit', '-q', '--allow-empty', '-m', 'init'])
-    git(dir, ['checkout', '--detach', '-q', 'HEAD'])
+    gitInit(dir, '-b', 'main')
+    git(dir, 'commit', '-q', '--allow-empty', '-m', 'init')
+    git(dir, 'checkout', '--detach', '-q', 'HEAD')
 
     // GitHub pull_request: GITHUB_REF_NAME is "<n>/merge", so the HEAD branch
     // is the only one that names the contributor's actual branch.
@@ -143,10 +129,8 @@ describe('captureGitContext', () => {
     // A real checked-out branch is ground truth for what this working tree is.
     // The CI vars exist to answer the case git cannot, not to override it —
     // otherwise a stale exported var would relabel a local run.
-    git(dir, ['init', '-q', '-b', 'main'])
-    git(dir, ['config', 'user.email', 'test@example.com'])
-    git(dir, ['config', 'user.name', 'Test'])
-    git(dir, ['-c', 'commit.gpgsign=false', 'commit', '-q', '--allow-empty', '-m', 'init'])
+    gitInit(dir, '-b', 'main')
+    git(dir, 'commit', '-q', '--allow-empty', '-m', 'init')
 
     expect(captureGitContext(dir, null, { GITHUB_HEAD_REF: 'something-else' }).branch).toBe('main')
   })
@@ -154,11 +138,9 @@ describe('captureGitContext', () => {
   // vercel/turborepo#13882: `--abbrev-ref` answers `heads/main` when a tag
   // shares the branch's name; the files say `main`, so the spawn must too.
   it('a tag named like the branch never renames it, read from the files or asked of git', async () => {
-    git(dir, ['init', '-q', '-b', 'main'])
-    git(dir, ['config', 'user.email', 'test@example.com'])
-    git(dir, ['config', 'user.name', 'Test'])
-    git(dir, ['-c', 'commit.gpgsign=false', 'commit', '-q', '--allow-empty', '-m', 'init'])
-    git(dir, ['tag', 'main'])
+    gitInit(dir, '-b', 'main')
+    git(dir, 'commit', '-q', '--allow-empty', '-m', 'init')
+    git(dir, 'tag', 'main')
     const sub = path.join(dir, 'ws')
     await mkdir(sub)
     expect(captureGitContext(dir, null, {}).branch).toBe('main')
@@ -171,7 +153,7 @@ describe('captureGitContext', () => {
   // vercel/turborepo#13882: before the first commit HEAD already names the
   // branch it lands on; `rev-parse HEAD` fails there.
   it('a repository with no commit yet reports its branch and no commit', async () => {
-    git(dir, ['init', '-q', '-b', 'trunk'])
+    git(dir, 'init', '-q', '-b', 'trunk')
     expect(captureGitContext(dir, null, {})).toEqual({
       commitSha: null,
       branch: 'trunk',
@@ -200,10 +182,8 @@ describe('currentBranch', () => {
 
   beforeEach(async () => {
     dir = await mkdtemp(path.join(os.tmpdir(), 'vx-branch-'))
-    git(dir, ['init', '-q', '-b', 'main'])
-    git(dir, ['config', 'user.email', 'test@example.com'])
-    git(dir, ['config', 'user.name', 'Test'])
-    git(dir, ['-c', 'commit.gpgsign=false', 'commit', '-q', '--allow-empty', '-m', 'init'])
+    gitInit(dir, '-b', 'main')
+    git(dir, 'commit', '-q', '--allow-empty', '-m', 'init')
   })
 
   afterEach(async () => {
@@ -227,7 +207,7 @@ describe('currentBranch', () => {
 
   it("falls back to git's branch, then the CI provider's", () => {
     expect(currentBranch(dir, {}, undefined, { GITHUB_HEAD_REF: 'from-ci' })).toBe('main')
-    git(dir, ['checkout', '--detach', '-q', 'HEAD'])
+    git(dir, 'checkout', '--detach', '-q', 'HEAD')
     expect(currentBranch(dir, {}, undefined, { GITHUB_HEAD_REF: 'from-ci' })).toBe('from-ci')
     expect(currentBranch(dir, {}, undefined, {})).toBeNull()
   })
@@ -265,16 +245,14 @@ describe('captureDefaultBranch', () => {
   })
 
   it('falls back to git origin/HEAD, stripping the remote prefix', () => {
-    git(dir, ['init', '-q', '-b', 'main'])
-    git(dir, ['config', 'user.email', 'test@example.com'])
-    git(dir, ['config', 'user.name', 'Test'])
+    gitInit(dir, '-b', 'main')
     // A bare "remote" repo to point origin at + set origin/HEAD.
-    git(dir, ['symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/main'])
+    git(dir, 'symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/main')
     expect(captureDefaultBranch({}, dir)).toBe('main')
   })
 
   it('returns null when nothing resolves (no env, no remote HEAD)', () => {
-    git(dir, ['init', '-q', '-b', 'main'])
+    git(dir, 'init', '-q', '-b', 'main')
     // no origin/HEAD ref set
     expect(captureDefaultBranch({}, dir)).toBeNull()
   })
@@ -282,27 +260,27 @@ describe('captureDefaultBranch', () => {
   it('reads origin/HEAD from the files, in a linked worktree too, with no spawn (U-4)', () => {
     // The spawn was ~8 ms of every run a telemetry plugin is declared in.
     const main = path.join(dir, 'main')
-    git(dir, ['init', '-q', '-b', 'main', main])
-    git(main, ['config', 'user.email', 'test@example.com'])
-    git(main, ['config', 'user.name', 'Test'])
-    git(main, ['commit', '-q', '--allow-empty', '-m', 'c'])
-    git(main, ['symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/trunk'])
+    git(dir, 'init', '-q', '-b', 'main', main)
+    git(main, 'config', 'user.email', 'test@example.com')
+    git(main, 'config', 'user.name', 'Test')
+    git(main, 'commit', '-q', '--allow-empty', '-m', 'c')
+    git(main, 'symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/trunk')
     let got = null as string | null
     expect(gitSpawnsIn(() => (got = captureDefaultBranch({}, main)))).toBe(0)
     expect(got).toBe('trunk')
     const linked = path.join(dir, 'linked')
-    git(main, ['worktree', 'add', '-q', linked])
+    git(main, 'worktree', 'add', '-q', linked)
     expect(gitSpawnsIn(() => (got = captureDefaultBranch({}, linked)))).toBe(0)
     expect(got).toBe('trunk')
     // No such ref: null, still from the files.
-    git(main, ['symbolic-ref', '--delete', 'refs/remotes/origin/HEAD'])
+    git(main, 'symbolic-ref', '--delete', 'refs/remotes/origin/HEAD')
     expect(gitSpawnsIn(() => (got = captureDefaultBranch({}, main)))).toBe(0)
     expect(got).toBeNull()
   })
 
   it('asks git when the root holds no .git (a workspace in a subdirectory)', async () => {
-    git(dir, ['init', '-q', '-b', 'main'])
-    git(dir, ['symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/trunk'])
+    git(dir, 'init', '-q', '-b', 'main')
+    git(dir, 'symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/trunk')
     const sub = path.join(dir, 'ws')
     await Bun.write(path.join(sub, 'package.json'), '{}')
     let got = null as string | null
@@ -503,16 +481,11 @@ describe('captureWorkspaceIdentity', () => {
     await rm(dir, { recursive: true, force: true })
   })
 
-  const git = (...args: string[]): void => {
-    const p = Bun.spawnSync({ cmd: ['git', '-C', dir, ...args], stdout: 'pipe', stderr: 'pipe' })
-    if (p.exitCode !== 0) throw new Error(new TextDecoder().decode(p.stderr))
-  }
-
   it('derives the SAME id from ssh and https remotes of one repo', () => {
-    git('init', '-q')
-    git('remote', 'add', 'origin', 'git@github.com:vznjs/vx.git')
+    git(dir, 'init', '-q')
+    git(dir, 'remote', 'add', 'origin', 'git@github.com:vznjs/vx.git')
     const a = captureWorkspaceIdentity(dir)
-    git('remote', 'set-url', 'origin', 'https://github.com/vznjs/vx.git')
+    git(dir, 'remote', 'set-url', 'origin', 'https://github.com/vznjs/vx.git')
     const b = captureWorkspaceIdentity(dir)
     expect(a.id).toBe(b.id)
     expect(a.name).toBe('vx')
@@ -520,7 +493,7 @@ describe('captureWorkspaceIdentity', () => {
   })
 
   it('no remote → persists a salt in .vx/cache/workspace-id and stays stable', async () => {
-    git('init', '-q')
+    git(dir, 'init', '-q')
     const a = captureWorkspaceIdentity(dir)
     const b = captureWorkspaceIdentity(dir)
     expect(a.id).toBe(b.id)
@@ -543,17 +516,17 @@ describe('captureWorkspaceIdentity', () => {
   }
 
   it('the salt it writes is no untracked file, whatever `.vx/.gitignore` says', async () => {
-    git('init', '-q')
+    git(dir, 'init', '-q')
     await mkdir(path.join(dir, '.vx'))
     await writeFile(path.join(dir, '.vx', '.gitignore'), '/elsewhere\n')
-    git('add', '-A')
-    git('-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-qm', 'init')
+    git(dir, 'add', '-A')
+    git(dir, 'commit', '-qm', 'init')
     captureWorkspaceIdentity(dir, null)
     expect(untracked()).toBe('')
   })
 
   it('a salt an older vx left unignored is ignored at the next capture', async () => {
-    git('init', '-q')
+    git(dir, 'init', '-q')
     await mkdir(path.join(dir, '.vx', 'cache'), { recursive: true })
     await writeFile(path.join(dir, '.vx', 'cache', 'workspace-id'), 'old-salt\n')
     expect(untracked()).toBe('?? .vx/cache/workspace-id\n')
@@ -563,8 +536,8 @@ describe('captureWorkspaceIdentity', () => {
   })
 
   it("takes the enumeration's remote URL with no spawn, and the salt for none (U-4)", async () => {
-    git('init', '-q')
-    git('remote', 'add', 'origin', 'git@github.com:vznjs/vx.git')
+    git(dir, 'init', '-q')
+    git(dir, 'remote', 'add', 'origin', 'git@github.com:vznjs/vx.git')
     await Bun.write(path.join(dir, 'a.txt'), 'a')
     const cache = new GitFilesCache()
     await populateGitFilesCache(dir, [dir], cache)
@@ -591,8 +564,8 @@ describe('captureWorkspaceIdentity', () => {
   })
 
   it('names the repository and where in it the workspace sits', async () => {
-    git('init', '-q')
-    git('remote', 'add', 'origin', 'git@github.com:vznjs/vx.git')
+    git(dir, 'init', '-q')
+    git(dir, 'remote', 'add', 'origin', 'git@github.com:vznjs/vx.git')
     const nested = path.join(dir, 'tools', 'ws')
     await mkdir(nested, { recursive: true })
     const top = captureWorkspaceIdentity(dir)
@@ -675,18 +648,8 @@ describe('cacheRefs', () => {
     let dir: string
     beforeEach(async () => {
       dir = await mkdtemp(path.join(os.tmpdir(), 'vx-refs-'))
-      git(dir, ['init', '-q', '-b', 'feature'])
-      git(dir, [
-        '-c',
-        'user.name=t',
-        '-c',
-        'user.email=t@t',
-        'commit',
-        '-q',
-        '--allow-empty',
-        '-m',
-        'x',
-      ])
+      git(dir, 'init', '-q', '-b', 'feature')
+      git(dir, 'commit', '-q', '--allow-empty', '-m', 'x')
     })
     afterEach(async () => {
       await rm(dir, { recursive: true, force: true })
@@ -705,13 +668,13 @@ describe('cacheRefs', () => {
     // feature branch missed what CI saved for main, with no warning.
     it('with no origin/HEAD, the default is origin/main, then origin/master, then a local one', () => {
       expect(cacheRefs(dir, undefined, undefined, {})).toEqual(['refs/heads/feature'])
-      git(dir, ['branch', 'master'])
+      git(dir, 'branch', 'master')
       expect(cacheRefs(dir, undefined, undefined, {})).toEqual([
         'refs/heads/feature',
         'refs/heads/master',
       ])
-      git(dir, ['update-ref', 'refs/remotes/origin/main', 'HEAD'])
-      git(dir, ['pack-refs', '--all'])
+      git(dir, 'update-ref', 'refs/remotes/origin/main', 'HEAD')
+      git(dir, 'pack-refs', '--all')
       expect(cacheRefs(dir, undefined, undefined, {})).toEqual([
         'refs/heads/feature',
         'refs/heads/main',

@@ -17,6 +17,7 @@ import {
   populateGitFilesCache,
   runGitLsFiles,
 } from '../src/cache/git-inputs.js'
+import { git, gitInit } from './helpers/workspace.js'
 
 const TIMEOUT = 60_000
 const CLI = path.join(import.meta.dir, 'helpers', 'vx-locked.ts')
@@ -24,38 +25,6 @@ const CLI = path.join(import.meta.dir, 'helpers', 'vx-locked.ts')
 async function write(p: string, content: string): Promise<void> {
   await mkdir(path.dirname(p), { recursive: true })
   await writeFile(p, content)
-}
-
-function git(cwd: string, ...args: string[]): void {
-  const p = Bun.spawnSync({
-    // Identity and signing on the HELPER, not on each row: every case here
-    // commits, and a runner with no global git identity refuses to
-    // (`empty ident name`). Eighteen call sites set it by hand and two new
-    // ones forgot, which only showed up on CI — this box has a global
-    // identity and the runner does not.
-    cmd: [
-      'git',
-      '-c',
-      'commit.gpgsign=false',
-      '-c',
-      'user.email=test@vx.local',
-      '-c',
-      'user.name=vx test',
-      ...args,
-    ],
-    cwd,
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
-  if (p.exitCode !== 0) {
-    const detail = [
-      new TextDecoder().decode(p.stderr).trim(),
-      new TextDecoder().decode(p.stdout).trim(),
-    ]
-      .filter((s) => s.length > 0)
-      .join(' | ')
-    throw new Error(`git ${args.join(' ')} exited ${p.exitCode}: ${detail}`)
-  }
 }
 
 /** Run the real CLI and return its combined output. */
@@ -193,9 +162,7 @@ describe('stale cache hits', () => {
     'the index OIDs are kept under the default stat and dropped under a weakened one',
     async () => {
       await write(path.join(root, 'src/a.txt'), 'AAAA')
-      git(root, 'init', '-q')
-      git(root, 'config', 'user.email', 'test@vx.local')
-      git(root, 'config', 'user.name', 'vx test')
+      gitInit(root)
       // Pinned here: a machine's global config may weaken either (this
       // container's does both).
       git(root, 'config', 'core.trustctime', 'true')
@@ -221,9 +188,7 @@ describe('stale cache hits', () => {
       // ever spawns check-attr, every warm run in every plain repo just got a
       // serial git round-trip it does not need.
       await write(path.join(root, 'pkg/src/a.ts'), 'export const a = 1')
-      git(root, 'init', '-q')
-      git(root, 'config', 'user.email', 'test@vx.local')
-      git(root, 'config', 'user.name', 'vx test')
+      gitInit(root)
       git(root, 'add', '-A')
       git(root, 'commit', '-q', '-m', 'initial')
 
@@ -259,9 +224,7 @@ describe('stale cache hits', () => {
       // check answers for. Control: an `ident` line in the same file does.
       await write(path.join(root, 'pkg/src/a.ts'), 'export const a = 1')
       await write(path.join(root, 'pkg/.gitattributes'), 'projects.lock linguist-generated\n')
-      git(root, 'init', '-q')
-      git(root, 'config', 'user.email', 'test@vx.local')
-      git(root, 'config', 'user.name', 'vx test')
+      gitInit(root)
       git(root, 'add', '-A')
       git(root, 'commit', '-q', '-m', 'initial')
 
@@ -304,9 +267,7 @@ describe('stale cache hits', () => {
       await write(path.join(root, '.gitattributes'), '*.txt ident\n')
       await write(path.join(root, 'pkg/src/a.txt'), 'a\n')
       await write(path.join(root, 'pkg/src/b.ts'), 'export const b = 1\n')
-      git(root, 'init', '-q')
-      git(root, 'config', 'user.email', 'test@vx.local')
-      git(root, 'config', 'user.name', 'vx test')
+      gitInit(root)
       git(root, 'add', '-A')
       git(root, 'commit', '-q', '-m', 'initial')
 
@@ -366,9 +327,7 @@ describe('stale cache hits', () => {
       await write(path.join(root, '.gitattributes'), '* text=auto eol=lf\n')
       await write(lf, 'a\nb\n')
       await write(crlf, 'a\r\nb\r\n')
-      git(root, 'init', '-q')
-      git(root, 'config', 'user.email', 'test@vx.local')
-      git(root, 'config', 'user.name', 'vx test')
+      gitInit(root)
       git(root, 'add', '-A')
       git(root, 'commit', '-q', '-m', 'initial')
       const trusted = async (): Promise<boolean[]> => {
@@ -442,9 +401,7 @@ describe('stale cache hits', () => {
       )
       // Seeded with a value no cycle uses, so every cycle's commit is real.
       await write(path.join(root, 'pkgs/gen/src/version.txt'), 'v0')
-      git(root, 'init', '-q')
-      git(root, 'config', 'user.email', 't@vx.local')
-      git(root, 'config', 'user.name', 'vx')
+      gitInit(root)
       git(root, 'add', '-A')
       git(root, 'commit', '-qm', 'initial')
 

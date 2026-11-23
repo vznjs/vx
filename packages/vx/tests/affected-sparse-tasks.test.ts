@@ -6,22 +6,9 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { writeLocalWorkspace } from './helpers/local-workspace.js'
+import { git, gitInit } from './helpers/workspace.js'
 
 const CLI = path.join(import.meta.dir, 'helpers', 'vx-locked.ts')
-
-function git(cwd: string, ...args: string[]): void {
-  const p = Bun.spawnSync({
-    cmd: ['git', '-c', 'commit.gpgsign=false', ...args],
-    cwd,
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
-  if (p.exitCode !== 0) {
-    throw new Error(
-      `git ${args.join(' ')} exited ${p.exitCode}: ${new TextDecoder().decode(p.stderr).trim()}`,
-    )
-  }
-}
 
 function vx(cwd: string, ...args: string[]): { out: string; exitCode: number } {
   const p = Bun.spawnSync({
@@ -60,9 +47,7 @@ beforeEach(async () => {
     await writeFile(path.join(root, 'pkgs', name, 'in.txt'), 'x\n')
   }
   await writeFile(path.join(root, '.gitignore'), '.vx/cache/\n')
-  git(root, 'init', '-q', '-b', 'feat')
-  git(root, 'config', 'user.email', 'test@vx.local')
-  git(root, 'config', 'user.name', 'vx test')
+  gitInit(root, '-b', 'feat')
   git(root, 'add', '-A')
   git(root, 'commit', '-q', '-m', 'one')
   await writeFile(path.join(root, 'pkgs', 'docs', 'in.txt'), 'y\n')

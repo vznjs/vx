@@ -23,6 +23,7 @@ import {
   storedArtifact,
 } from './helpers/stored-artifact.js'
 import { TAR_STORE } from './helpers/tar-store.js'
+import { git, gitInit } from './helpers/workspace.js'
 
 const TIMEOUT = 60_000
 const CLI = path.join(import.meta.dir, 'helpers', 'vx-locked.ts')
@@ -30,24 +31,6 @@ const CLI = path.join(import.meta.dir, 'helpers', 'vx-locked.ts')
 async function write(p: string, content: string): Promise<void> {
   await mkdir(path.dirname(p), { recursive: true })
   await writeFile(p, content)
-}
-
-function git(cwd: string, ...args: string[]): void {
-  const p = Bun.spawnSync({
-    cmd: ['git', '-c', 'commit.gpgsign=false', ...args],
-    cwd,
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
-  if (p.exitCode !== 0) {
-    const detail = [
-      new TextDecoder().decode(p.stderr).trim(),
-      new TextDecoder().decode(p.stdout).trim(),
-    ]
-      .filter((s) => s.length > 0)
-      .join(' | ')
-    throw new Error(`git ${args.join(' ')} exited ${p.exitCode}: ${detail}`)
-  }
 }
 
 function vx(cwd: string, ...args: string[]): { out: string; exitCode: number } {
@@ -136,9 +119,7 @@ describe('artifact round-trip', () => {
          }`,
       )
       await write(path.join(root, 'src/in.txt'), 'PRODUCED-CONTENT')
-      git(root, 'init', '-q')
-      git(root, 'config', 'user.email', 'test@vx.local')
-      git(root, 'config', 'user.name', 'vx test')
+      gitInit(root)
       git(root, 'add', '-A')
       git(root, 'commit', '-qm', 'init')
 
@@ -196,9 +177,7 @@ describe('artifact round-trip', () => {
          }`,
       )
       await write(path.join(root, 'src/in.txt'), 'SNAPSHOT')
-      git(root, 'init', '-q')
-      git(root, 'config', 'user.email', 'test@vx.local')
-      git(root, 'config', 'user.name', 'vx test')
+      gitInit(root)
       git(root, 'add', '-A')
       git(root, 'commit', '-qm', 'init')
 
@@ -224,9 +203,7 @@ describe('artifact round-trip', () => {
        }`,
     )
     await write(path.join(root, 'src/in.txt'), 'IN')
-    git(root, 'init', '-q')
-    git(root, 'config', 'user.email', 'test@vx.local')
-    git(root, 'config', 'user.name', 'vx test')
+    gitInit(root)
     git(root, 'add', '-A')
     git(root, 'commit', '-qm', 'init')
   }
@@ -339,9 +316,7 @@ describe('artifact round-trip — odd names', () => {
          }`,
       )
       await write(path.join(root, 'src/in.txt'), 'ODD-CONTENT')
-      git(root, 'init', '-q')
-      git(root, 'config', 'user.email', 'test@vx.local')
-      git(root, 'config', 'user.name', 'vx test')
+      gitInit(root)
       git(root, 'add', '-A')
       git(root, 'commit', '-qm', 'init')
 

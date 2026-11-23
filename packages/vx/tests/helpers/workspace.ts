@@ -7,6 +7,7 @@
 // workspace root inside a git subdirectory, a 6,000-package generator)
 // keeps its own; the rest use this.
 
+import { appendFileSync } from 'node:fs'
 import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -42,36 +43,58 @@ export interface WorkspaceOptions {
   git?: 'init' | 'commit' | false
 }
 
-/** A runner for git in `cwd` that throws on failure; signing is off. */
-export function gitIn(cwd: string): (...args: string[]) => string {
-  return (...args) => {
-    const p = Bun.spawnSync({
-      cmd: ['git', '-c', 'commit.gpgsign=false', '-c', 'tag.gpgSign=false', ...args],
-      cwd,
-      stdout: 'pipe',
-      stderr: 'pipe',
-    })
-    if (p.exitCode !== 0) {
-      throw new Error(`git ${args.join(' ')} failed: ${new TextDecoder().decode(p.stderr)}`)
-    }
-    return new TextDecoder().decode(p.stdout)
+/**
+ * Runs git in `cwd` and returns its stdout; a failure throws with both
+ * streams (`git commit` with nothing staged says why on stdout only).
+ * Signing is off and a test identity rides on every call, so a repo
+ * inited by hand commits on a runner with no global identity.
+ */
+export function git(cwd: string, ...args: string[]): string {
+  const p = Bun.spawnSync({
+    cmd: [
+      'git',
+      '-c',
+      'commit.gpgsign=false',
+      '-c',
+      'tag.gpgSign=false',
+      '-c',
+      'user.email=test@vx.local',
+      '-c',
+      'user.name=vx test',
+      ...args,
+    ],
+    cwd,
+    stdout: 'pipe',
+    stderr: 'pipe',
+  })
+  const out = p.stdout.toString()
+  if (p.exitCode !== 0) {
+    throw new Error(`git ${args.join(' ')} failed: ${p.stderr.toString()}${out}`)
   }
+  return out
 }
 
-/** `git init` with a test identity, so a later commit needs no flags. */
-export function gitInit(cwd: string): void {
-  const git = gitIn(cwd)
-  git('init', '-q')
-  git('config', 'user.email', 'test@vx.local')
-  git('config', 'user.name', 'vx test')
+/** `git` bound to `cwd`. */
+export function gitIn(cwd: string): (...args: string[]) => string {
+  return (...args) => git(cwd, ...args)
 }
+
+/**
+ * `git init -q <args>` with the test identity in the repo's config, so a
+ * commit by any process (a hook, a raw spawn, a task) needs no flags.
+ */
+export function gitInit(cwd: string, ...args: string[]): void {
+  git(cwd, 'init', '-q', ...args)
+  appendFileSync(path.join(cwd, '.git', 'config'), USER_SECTION)
+}
+
+const USER_SECTION = '[user]\n\temail = test@vx.local\n\tname = vx test\n'
 
 /** Init, stage everything, commit: every file written so far is tracked-clean. */
 export function gitInitCommit(cwd: string, message = 'init'): void {
   gitInit(cwd)
-  const git = gitIn(cwd)
-  git('add', '-A')
-  git('commit', '-q', '-m', message)
+  git(cwd, 'add', '-A')
+  git(cwd, 'commit', '-q', '-m', message)
 }
 
 /** A pnpm-style workspace root with `packages/*`; returns the root. */

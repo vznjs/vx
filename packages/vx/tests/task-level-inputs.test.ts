@@ -11,6 +11,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { validateProjectConfig } from '../src/workspace/index.js'
+import { git } from './helpers/workspace.js'
 
 const TIMEOUT = 60_000
 const CLI = path.join(import.meta.dir, 'helpers', 'vx-locked.ts')
@@ -28,25 +29,6 @@ afterEach(async () => {
 async function write(rel: string, content: string): Promise<void> {
   await mkdir(path.dirname(path.join(root, rel)), { recursive: true })
   await writeFile(path.join(root, rel), content)
-}
-
-function git(...args: string[]): void {
-  const p = Bun.spawnSync({
-    cmd: [
-      'git',
-      '-c',
-      'commit.gpgsign=false',
-      '-c',
-      'user.email=t@t',
-      '-c',
-      'user.name=t',
-      ...args,
-    ],
-    cwd: root,
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
-  if (p.exitCode !== 0) throw new Error(`git ${args.join(' ')}: ${p.stderr.toString()}`)
 }
 
 /** `vx run b#build`, and what b's build printed. */
@@ -86,9 +68,9 @@ async function fixture(gen: string): Promise<void> {
   )
   await write('b/src/.keep', '')
   await write('shared/schema.txt', 'SCHEMA1\n')
-  git('init', '-q')
-  git('add', '-A')
-  git('commit', '-qm', 'init')
+  git(root, 'init', '-q')
+  git(root, 'add', '-A')
+  git(root, 'commit', '-qm', 'init')
 }
 
 describe('an uncached task is keyed on its inputs', () => {
@@ -117,7 +99,7 @@ describe('an uncached task is keyed on its inputs', () => {
       }`)
       expect(await build()).toBe('SCHEMA1')
       await write('shared/schema.txt', 'SCHEMA2\n')
-      git('commit', '-qam', 's2')
+      git(root, 'commit', '-qam', 's2')
       expect(await build()).toBe('SCHEMA2')
     },
     TIMEOUT,
@@ -144,7 +126,7 @@ describe('an uncached task is keyed on its inputs', () => {
       await fixture(`{ exec: { command: 'cp ../shared/schema.txt ../b/src/gen.txt' } }`)
       expect(await build()).toBe('SCHEMA1')
       await write('shared/schema.txt', 'SCHEMA2\n')
-      git('commit', '-qam', 's2')
+      git(root, 'commit', '-qam', 's2')
       expect(await build()).toBe('SCHEMA2')
       // Nothing changed, and still no hit: the key is unknown, not unchanged.
       expect(await build()).toBe('SCHEMA2')
@@ -169,11 +151,11 @@ describe('a keyed group is a task with `inputs` and no command', () => {
           cache: true,
         } } }\n`,
       )
-      git('add', '-A')
-      git('commit', '-qm', 'b')
+      git(root, 'add', '-A')
+      git(root, 'commit', '-qm', 'b')
       expect(await build()).toBe('SCHEMA1')
       await write('shared/schema.txt', 'SCHEMA2\n')
-      git('commit', '-qam', 's2')
+      git(root, 'commit', '-qam', 's2')
       expect(await build()).toBe('SCHEMA2')
     },
     TIMEOUT,

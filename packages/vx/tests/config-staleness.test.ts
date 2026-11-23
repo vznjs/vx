@@ -31,22 +31,9 @@ import { loadProjectConfig, loadProjectConfigs } from '../src/workspace/project-
 import { configEvalWorkerCount } from '../src/workspace/config-eval.js'
 import { type Logger } from '../src/report/index.js'
 import { run } from './helpers/orchestrator.js'
+import { git, gitInit } from './helpers/workspace.js'
 
 const TIMEOUT = 30_000
-
-function git(cwd: string, ...args: string[]): void {
-  const p = Bun.spawnSync({
-    cmd: ['git', '-c', 'commit.gpgsign=false', ...args],
-    cwd,
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
-  if (p.exitCode !== 0) {
-    const out = new TextDecoder().decode(p.stdout)
-    const err = new TextDecoder().decode(p.stderr)
-    throw new Error(`git ${args.join(' ')} exited ${p.exitCode}: ${err}${out}`)
-  }
-}
 
 const silentLogger = (): Logger => ({
   status() {},
@@ -112,9 +99,7 @@ describe('config import closure freshness', () => {
           `  },\n` +
           `}\n`,
       )
-      git(root, 'init', '-q')
-      git(root, 'config', 'user.email', 'test@vx.local')
-      git(root, 'config', 'user.name', 'vx test')
+      gitInit(root)
 
       const doRun = async (): Promise<string | undefined> => {
         const summary = await run({ cwd: root, tasks: ['build'], log: silentLogger() })
@@ -301,9 +286,7 @@ describe('a typo in a cache-key field', () => {
           },
         }\n`,
       )
-      git(root, 'init', '-q')
-      git(root, 'config', 'user.email', 'test@vx.local')
-      git(root, 'config', 'user.name', 'vx test')
+      gitInit(root)
 
       const bin = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
       const proc = Bun.spawn([process.execPath, bin, 'run', 'build'], {

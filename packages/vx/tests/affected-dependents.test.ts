@@ -12,23 +12,10 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
 import { edgesSource, pluginSource } from './helpers/plugin.js'
+import { git } from './helpers/workspace.js'
 
 const TIMEOUT = 60_000
 const CLI = path.join(import.meta.dir, 'helpers', 'vx-locked.ts')
-
-function git(cwd: string, ...args: string[]): void {
-  const p = Bun.spawnSync({
-    cmd: ['git', '-c', 'commit.gpgsign=false', ...args],
-    cwd,
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
-  if (p.exitCode !== 0) {
-    throw new Error(
-      `git ${args.join(' ')} exited ${p.exitCode}: ${new TextDecoder().decode(p.stderr).trim()}`,
-    )
-  }
-}
 
 async function write(p: string, content: string): Promise<void> {
   await mkdir(path.dirname(p), { recursive: true })
@@ -87,10 +74,10 @@ beforeEach(async () => {
   }
   git(root, 'init', '-q')
   git(root, 'add', '-A')
-  git(root, '-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qm', 'init')
+  git(root, 'commit', '-qm', 'init')
   await write(path.join(root, 'pkgs/lib/src/index.ts'), 'export const x = 2')
   git(root, 'add', '-A')
-  git(root, '-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qm', 'edit lib')
+  git(root, 'commit', '-qm', 'edit lib')
 })
 
 afterEach(async () => {
@@ -115,7 +102,7 @@ function appBuildHash(): string {
 async function commitEdit(rel: string, content: string): Promise<void> {
   await write(path.join(root, rel), content)
   git(root, 'add', '-A')
-  git(root, '-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qm', `edit ${rel}`)
+  git(root, 'commit', '-qm', `edit ${rel}`)
 }
 
 describe('--affected and the dependents of what changed', () => {
@@ -271,7 +258,7 @@ describe('--affected follows task edges (2026-10-04)', () => {
         `export default { tasks: { toString: { exec: { command: 'true' } } } }\n`,
       )
       git(root, 'add', '-A')
-      git(root, '-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qm', 'toString')
+      git(root, 'commit', '-qm', 'toString')
       await commitEdit('pkgs/lib/src/index.ts', 'export const x = 3')
       const r = vx(root, 'run', 'toString', '--affected=HEAD~1')
       expect(r.exitCode).toBe(0)
@@ -304,7 +291,7 @@ describe('--affected follows task edges (2026-10-04)', () => {
         `export default { tasks: { build: { exec: { command: 'true' } } } }\n`,
       )
       git(root, 'add', '-A')
-      git(root, '-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qm', 'unlink')
+      git(root, 'commit', '-qm', 'unlink')
       await commitEdit('pkgs/lib/src/index.ts', 'export const x = 3')
       expect(planned(['build'], '--affected=HEAD~1')).toEqual(['lib#build'])
     },
@@ -321,7 +308,7 @@ describe('--affected follows task edges (2026-10-04)', () => {
         `export default { tasks: { test: { exec: { command: 'true' }, inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true } } }\n`,
       )
       git(root, 'add', '-A')
-      git(root, '-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qm', 'no build')
+      git(root, 'commit', '-qm', 'no build')
       await commitEdit('pkgs/lib/src/index.test.ts', 'test 2')
       expect(planned(['test'], '--affected=HEAD~1')).toEqual([
         'app#build',
@@ -362,7 +349,7 @@ describe('--affected follows the graph a `graph` plugin leaves', () => {
       localWorkspaceSource([EDGES, pluginSource('org/edge', `{ graph(nodes) { ${body} } }`)]),
     )
     git(root, 'add', '-A')
-    git(root, '-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qm', 'plugin')
+    git(root, 'commit', '-qm', 'plugin')
   }
 
   it(

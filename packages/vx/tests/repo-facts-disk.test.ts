@@ -8,6 +8,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import { repoFacts } from '../src/cache/git-inputs.js'
+import { git } from './helpers/workspace.js'
 
 let tmp: string
 
@@ -17,12 +18,6 @@ beforeEach(async () => {
 afterEach(async () => {
   await rm(tmp, { recursive: true, force: true })
 })
-
-function git(cwd: string, ...args: string[]): string {
-  const p = Bun.spawnSync({ cmd: ['git', ...args], cwd, stdout: 'pipe', stderr: 'pipe' })
-  if (p.exitCode !== 0) throw new Error(`git ${args.join(' ')}: ${p.stderr.toString()}`)
-  return p.stdout.toString()
-}
 
 /** What git says, in `repoFacts`' shape. */
 function asked(dir: string): unknown {
@@ -91,18 +86,7 @@ describe('repoFacts', () => {
   it('asks git about a linked worktree, whose .git is a file', async () => {
     git(tmp, 'init', '-q', 'repo')
     const root = path.join(tmp, 'repo')
-    git(
-      root,
-      '-c',
-      'user.name=t',
-      '-c',
-      'user.email=t@t',
-      'commit',
-      '-q',
-      '--allow-empty',
-      '-m',
-      'x',
-    )
+    git(root, 'commit', '-q', '--allow-empty', '-m', 'x')
     git(root, 'worktree', 'add', '-q', path.join(tmp, 'wt'))
     const wt = path.join(tmp, 'wt')
     expect(facts(wt)).toEqual({ facts: asked(wt), spawned: true })

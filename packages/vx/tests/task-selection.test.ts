@@ -15,6 +15,7 @@ import { writeLocalWorkspace } from './helpers/local-workspace.js'
 import type { Logger } from '../src/report/index.js'
 import { lock, planRun, run } from './helpers/orchestrator.js'
 import { resolveRunOptions, parseRunArgs } from '../src/cli/run.js'
+import { git, gitInit } from './helpers/workspace.js'
 
 const TIMEOUT = 30_000
 let root: string
@@ -30,16 +31,6 @@ function silent(): Logger & { lines: string[] } {
     taskStderr() {},
     taskComplete() {},
   }
-}
-
-function git(...a: string[]): void {
-  const p = Bun.spawnSync({
-    cmd: ['git', '-c', 'commit.gpgsign=false', ...a],
-    cwd: root,
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
-  if (p.exitCode !== 0) throw new Error(new TextDecoder().decode(p.stderr))
 }
 
 async function addProject(name: string, tasks: string[]): Promise<void> {
@@ -65,9 +56,7 @@ describe('task selection', () => {
     await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'r', private: true }))
     await writeLocalWorkspace(root)
     await mkdir(path.join(root, 'packages'), { recursive: true })
-    git('init', '-q')
-    git('config', 'user.email', 't@t')
-    git('config', 'user.name', 't')
+    gitInit(root)
   })
 
   afterEach(async () => {
@@ -292,8 +281,8 @@ describe('task selection', () => {
       await addProject('a', ['build'])
       // An `--affected` selection reads the configs from the lock, as the run does.
       await lock(root)
-      git('add', '-A')
-      git('commit', '-qm', 'init')
+      git(root, 'add', '-A')
+      git(root, 'commit', '-qm', 'init')
 
       // `--affected=HEAD` selects nothing (clean tree at HEAD). The bare
       // `build` has no scope left — but `a#build` was named explicitly.
@@ -316,8 +305,8 @@ describe('task selection', () => {
     async (flags) => {
       await addProject('a', ['build'])
       await lock(root)
-      git('add', '-A')
-      git('commit', '-qm', 'init')
+      git(root, 'add', '-A')
+      git(root, 'commit', '-qm', 'init')
       const resolve = async (args: string[]) => {
         const parsed = parseRunArgs(args)
         expect(parsed.error).toBeUndefined()
@@ -412,8 +401,8 @@ describe('task selection', () => {
     async () => {
       await addProject('a', ['build'])
       await lock(root)
-      git('add', '-A')
-      git('commit', '-qm', 'init')
+      git(root, 'add', '-A')
+      git(root, 'commit', '-qm', 'init')
 
       const parsed = parseRunArgs(['build', '--affected=HEAD'])
       const resolved = await resolveRunOptions(parsed, root, parsed.tasks)
