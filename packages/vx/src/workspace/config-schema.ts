@@ -225,6 +225,10 @@ function validateDependencyRules(value: unknown, where: string, configPath: stri
       throw new UserError(
         `${at(i)} names neither \`allow\` nor \`deny\`: add one, or drop the rule`,
       )
+    if (allow === undefined && (deny as unknown[]).length === 0)
+      throw new UserError(
+        `${at(i, '.deny')} is empty and there is no \`allow\`: the rule checks nothing; add a selector, or drop the rule`,
+      )
   }
 }
 

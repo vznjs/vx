@@ -2776,7 +2776,8 @@ own output path, or set run.rules.exclusiveOutputs: false in
     with `VX_E_DEPENDENCY_RULE`:
     `lib depends on app, which run.rules.dependencies[0] (from 'tag:lib') denies`,
     every broken edge on its own line. A rule with neither `allow` nor
-    `deny` is refused.
+    `deny`, or with an empty `deny` and no `allow`, is refused: it checks
+    nothing. An empty `allow` allows no dependency.
 - **Inputs over outputs** (X-54, always checked, no setting) — a cached task whose `inputs.files` can
   match a same-project task's `outputs.files`, or whose
   `inputs.workspaceFiles` can match any task's `outputs.workspaceFiles`
