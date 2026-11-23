@@ -1039,6 +1039,76 @@ describe('vx run with vxHistory({ url })', () => {
     }
   }, 30_000)
 
+  // A never-fail plugin still warns (CLAUDE.md): a query that failed after
+  // the run's last task was dropped unsaid, the run ordered on less.
+  it('says a query that fails after the run has ended', async () => {
+    const late = Bun.serve({
+      port: 0,
+      hostname: '127.0.0.1',
+      fetch: async (req) => {
+        if (new URL(req.url).pathname === '/v1/timings/query') {
+          await Bun.sleep(700)
+          return new Response('{"message":"busy"}', { status: 500 })
+        }
+        return new Response(null, { status: 204 })
+      },
+    })
+    const at = `http://127.0.0.1:${late.port}`
+    const other = await mkdtemp(path.join(tmpdir(), 'vx-history-late-'))
+    try {
+      await mkdir(path.join(other, 'pkg'), { recursive: true })
+      await writeFile(
+        path.join(other, 'pkg', 'vx.config.mjs'),
+        "export default { tasks: { build: { exec: { command: 'true' }, inputs: { files: [] } } } }\n",
+      )
+      await Bun.write(
+        path.join(other, '.vx/workspace.mjs'),
+        `import { vxHistory } from ${JSON.stringify(path.resolve(import.meta.dir, '..', 'src', 'index.ts'))}\n` +
+          `export default { plugins: [vxHistory({ url: ${JSON.stringify(at)}, retries: 0, ...${JSON.stringify(NAMED)} })] }\n`,
+      )
+      Bun.spawnSync({ cmd: ['git', 'init', '-q', '-b', 'main'], cwd: other })
+      Bun.spawnSync({
+        cmd: [
+          'git',
+          '-c',
+          'user.name=t',
+          '-c',
+          'user.email=t@t',
+          'commit',
+          '-q',
+          '--allow-empty',
+          '-m',
+          'x',
+        ],
+        cwd: other,
+      })
+      const bin = path.resolve(import.meta.dir, '..', '..', 'vx', 'src', 'bin.ts')
+      Bun.spawnSync({ cmd: [process.execPath, bin, 'lock'], cwd: other })
+      const cli = Bun.spawn({
+        cmd: [process.execPath, bin, 'run', 'build', '--all'],
+        cwd: other,
+        env: { ...Bun.env, NO_COLOR: '1' },
+        stdout: 'pipe',
+        stderr: 'pipe',
+      })
+      const [out, err, code] = await Promise.all([
+        new Response(cli.stdout).text(),
+        new Response(cli.stderr).text(),
+        cli.exited,
+      ])
+      const said = `${out}${err}`.split('\n').filter((l) => l.startsWith('[vx] vx-history:'))
+      expect([code, said]).toEqual([
+        0,
+        [
+          `[vx] vx-history: the timings of the history server at ${at} were not applied: HTTP 500: busy`,
+        ],
+      ])
+    } finally {
+      await late.stop(true)
+      await rm(other, { recursive: true, force: true })
+    }
+  }, 30_000)
+
   it('says how many timings it dropped when the server does not answer in time', async () => {
     const slow = Bun.serve({
       port: 0,

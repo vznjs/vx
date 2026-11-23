@@ -101,7 +101,7 @@ A run that reads no ref (a detached HEAD with no default branch) asks nothing.
 
 A ref over the 512 characters a server takes is said and not read. The run reads the others.
 
-The run starts on its local history and re-ranks the tasks not yet started when the answer lands. It never waits for it.
+The run starts on its local history and re-ranks the tasks not yet started when the answer lands. It never waits for it. A query that fails is said even when the run has already ended; one with no answer within the 2 s teardown waits is said too.
 
 ### What a run sends
 

@@ -500,6 +500,7 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
         const server = remote
         let late = false
         stopImport = () => (late = true)
+        let abandoned = false
         const weights = (async () => {
           const hashes = [...new Set(timed.flatMap((id) => timedDefs.get(id) ?? []))]
           const { timings: got, flaky } = await server.query(refs, hashes)
@@ -525,13 +526,23 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
           reservations = reservationsFor(nodes.keys(), fresh, options)
           return order(fresh)
         })().catch((err: unknown) => {
-          if (!late) {
+          // Said after the run too, while teardown waits for it: a
+          // never-fail plugin still warns. Past that wait, teardown said it.
+          if (!abandoned)
             ctx.warn(
               `[vx] vx-history: the timings of the history server at ${shown(server.url)} were not applied: ${err instanceof Error ? err.message : String(err)}`,
             )
-          }
           return undefined
         })
+        querying = {
+          settled: weights.then(() => true as const),
+          abandon: () => {
+            abandoned = true
+            ctx.warn(
+              `[vx] vx-history: the timings of the history server at ${shown(server.url)} were not applied: no answer in the ${UPLOAD_WAIT_MS} ms a teardown waits`,
+            )
+          },
+        }
         ctx.refine(weights)
       }
       return order(table)
@@ -555,6 +566,8 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
   // Stops the server's answer from landing once the run is over: no row
   // lands after the cache closes.
   let stopImport: (() => void) | undefined
+  // The run's query, settled or not: teardown waits for it within its bound.
+  let querying: { settled: Promise<true>; abandon: () => void } | undefined
   // The timings file is written for a run only: `schedule` also orders a
   // `--dry` plan, which has no `setup` and records nothing.
   let scheduled:
@@ -646,6 +659,14 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
   hooks.teardown = async () => {
     stopImport?.()
     stopImport = undefined
+    // Waited beside the file and the upload, under the same bound.
+    const query = querying
+    querying = undefined
+    const queryWait = query === undefined ? undefined : waitFor(UPLOAD_WAIT_MS)
+    const queried =
+      query === undefined
+        ? undefined
+        : Promise.race([query.settled, queryWait!.done.then(() => false as const)])
     const server = remote
     const sent = reported
     remote = undefined
@@ -716,6 +737,8 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
           )
         }
       }
+      if ((await queried) === false) query!.abandon()
+      queryWait?.cancel()
     }
   }
   // What the run's tasks reserve, learned in `schedule` (one history read
