@@ -1,5 +1,5 @@
 import { EventEmitter } from 'node:events'
-import { existsSync, fstatSync } from 'node:fs'
+import { existsSync, fstatSync, writeFileSync } from 'node:fs'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -208,21 +208,28 @@ describe('runCommand', () => {
   // The cut line opens a line of its own, and only that: its leading
   // newline printed a blank line under the task's last line, and none
   // would glue it to a line the task left open.
+  // The child holds the pipe until the test lets it go: a `sleep 1` ended
+  // inside the drain when vx saw the exit late under load, and no cut came
+  // (2026-11-23).
   it('the cut line breaks a line only when the output ends mid-line', async () => {
-    const run = async (command: string): Promise<string[]> => {
+    const run = async (rest: string, release: string): Promise<string[]> => {
       const live: string[] = []
-      await runCommand({
-        command,
-        cwd,
-        env: { PATH: process.env.PATH ?? '' },
-        onStdout: () => {},
-        onStderr: (chunk) => live.push(chunk),
-      })
+      try {
+        await runCommand({
+          command: `(until [ -e ${release} ]; do sleep 0.05; done; echo late) & ${rest}`,
+          cwd,
+          env: { PATH: process.env.PATH ?? '' },
+          onStdout: () => {},
+          onStderr: (chunk) => live.push(chunk),
+        })
+      } finally {
+        writeFileSync(path.join(cwd, release), '')
+      }
       return live
     }
     expect([
-      await run('(sleep 1; echo late) & echo whole'),
-      await run('(sleep 1; echo late) & printf half'),
+      await run('echo whole', 'cut-whole'),
+      await run('printf half', 'cut-half'),
     ]).toEqual([[POST_EXIT_CUT_LINE], [`\n${POST_EXIT_CUT_LINE}`]])
     expect(POST_EXIT_CUT_LINE).toStartWith('[vx] ')
   }, 30_000)
