@@ -4738,8 +4738,10 @@ always has a name above it:
 ```
 
 A skip's cause is followed through a chain of skips to the failure at
-its root; a skip with no failed upstream is fail-fast's and carries no
-suffix. A blocked group (a task with no command) has no row: it never
+its root. A dependency a stop or `--fail-fast` killed is a root too:
+the skip names it (`blocked by @demo/ui#build`, the task that was
+aborted), not the failure that stopped the run. A skip with no failed
+or aborted upstream is fail-fast's and carries no suffix. A blocked group (a task with no command) has no row: it never
 starts by definition and no counter counts it.
 
 **Aborted and not-run rows.** A stop (Ctrl-C, a shutdown signal)
