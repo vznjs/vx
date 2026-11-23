@@ -1241,6 +1241,16 @@ The name is the contract that survives the copy boundary.
 export function isUserError(err: unknown): err is UserError
 ```
 
+## `jsonErrorAt`
+
+function · `src/util/json-position.ts`
+
+The 1-based `line:column` of the first syntax error in `text`, or undefined when it finds none.
+
+```ts
+export function jsonErrorAt(text: string, jsonc = false): string | undefined
+```
+
 ## `KeyHookContext`
 
 type · `src/orchestrator/plugin.ts`

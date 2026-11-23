@@ -146,6 +146,27 @@ describe('vx init with no package.json', () => {
     ]).toEqual([0, false, PROJECT])
   })
 
+  // A root package.json that does not parse read as none: init wrote the
+  // starter, locked, and said nothing of the file every manager refuses.
+  it('a package.json that does not parse is refused, by file and position', async () => {
+    const root = await tmp('vx-init-bare-bad-manifest-')
+    await writeFile(path.join(root, 'package.json'), '{\n  "name": "x",\n  "scripts": oops\n}\n')
+    await mkdir(path.join(root, 'sub'))
+    for (const cwd of [root, path.join(root, 'sub')]) {
+      const r = await vx(cwd, ['init'])
+      // `bun bin.ts` prints Bun's own dump of the file first; a compiled vx does not.
+      const said = r.err.slice(r.err.indexOf('✗ vx init'))
+      expect([r.code, said.replace(/ \(JSONC? Parse error[^)]*\)/, ' (…)')]).toEqual([
+        1,
+        `✗ vx init  ${path.relative(cwd, path.join(root, 'package.json'))}:3:14: not JSON (…); fix it, then run vx init again\n`,
+      ])
+    }
+    expect(existsSync(path.join(root, '.vx'))).toBe(false)
+    // CONTROL: bun takes comments and a trailing comma, so init does too.
+    await writeFile(path.join(root, 'package.json'), '{\n  // x\n  "name": "x",\n}\n')
+    expect((await vx(root, ['init'])).code).toBe(0)
+  })
+
   // `vx init --help` said --force overwrites vx.config.* files; it replaces
   // the workspace file too, and a user lost the plugins it declared.
   it('--force replaces the workspace file, as its help says', async () => {

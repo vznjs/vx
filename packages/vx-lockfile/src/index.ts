@@ -28,6 +28,7 @@ import {
   type PluginOptionKinds,
   type ProjectMeta,
   definePlugin,
+  jsonErrorAt,
   lockfileClaim,
   reachDigests,
   type VxPlugin,
@@ -791,8 +792,10 @@ async function manifestOf(
   try {
     pkg = parse(text)
   } catch (err) {
+    // Bun's parsers name what they met, never where.
+    const at = kind === 'JSON' ? jsonErrorAt(text, jsonc) : undefined
     throw new UserError(
-      `${name}: not ${kind} (${err instanceof Error ? err.message : String(err)})`,
+      `${name}${at === undefined ? '' : `:${at}`}: not ${kind} (${err instanceof Error ? err.message : String(err)})`,
     )
   }
   if (pkg === null || typeof pkg !== 'object' || Array.isArray(pkg)) {

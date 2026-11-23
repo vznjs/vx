@@ -315,6 +315,8 @@ export function isSecretUnavailable(err: unknown): err is SecretUnavailable
 export function isStarterConfig(file: string): boolean
 == function isUserError (src/util/errors.ts)
 export function isUserError(err: unknown): err is UserError
+== function jsonErrorAt (src/util/json-position.ts)
+export function jsonErrorAt(text: string, jsonc = false): string | undefined
 == function line (src/ui/components.ts)
 export function line(...items: Inline[]): Block
 == function loadProjectConfig (src/workspace/project-loader.ts)

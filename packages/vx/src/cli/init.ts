@@ -29,6 +29,7 @@ import { VERSION } from '../version.js'
 import {
   DOT_VX_GITATTRIBUTES,
   DOT_VX_GITIGNORE,
+  jsonErrorAt,
   refuseSymlink,
   UserError,
   writeNoFollow,
@@ -494,6 +495,29 @@ function lockfilePlugin(pkgRoot: string | null): 'pnpm' | 'bun' | 'yarn' | 'npm'
 }
 
 /**
+ * Refuse a package.json that does not parse, by file and position: read as
+ * none, init wrote the starter and locked over the file every manager
+ * refuses. JSONC, as bun takes comments and a trailing comma.
+ */
+function refuseUnparsed(file: string): void {
+  let text: string
+  try {
+    text = readFileSync(file, 'utf8').replace(/^\uFEFF/, '')
+  } catch {
+    // quiet: none here, or unreadable, which the install names
+    return
+  }
+  try {
+    Bun.JSONC.parse(text)
+  } catch (err) {
+    const at = jsonErrorAt(text, true)
+    throw new UserError(
+      `vx init: ${path.relative(process.cwd(), file)}${at === undefined ? '' : `:${at}`}: not JSON (${(err as Error).message}); fix it, then run vx init again`,
+    )
+  }
+}
+
+/**
  * Whether `pkgRoot` has package.json scripts to map: its own, or a workspace's
  * members (`workspaces`, `pnpm-workspace.yaml`). Core maps none, so `next`
  * names the tool that does.
@@ -549,6 +573,7 @@ async function starter(
       'VX_E_USAGE',
     )
   }
+  if (pkgRoot !== null) refuseUnparsed(path.join(pkgRoot, 'package.json'))
   // A source checkout installs nothing, so it declares the plugin only where one is.
   const found = lockfilePlugin(pkgRoot)
   const plugin =

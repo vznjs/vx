@@ -125,6 +125,7 @@ here, itself or in a brace group.
 | [`report.md`](./report.md#srcreportframed-outputts--turbo-style-framed-blocks)   | `src/report/framed-output.ts` — `┌─ task ─┐` border helpers + one-liners.                                           |
 | [`ui.md`](./ui.md#srcui--the-ui-kit)                                             | `src/report/plain-output.ts` — task output stripped of ANSI where no terminal reads it (see ui.md) .                |
 |                                                                                  | `src/util/plain-text.ts` — `stripEscapes`: escapes stripped, an unterminated string escape ending at its line.      |
+|                                                                                  | `src/util/json-position.ts` — `jsonErrorAt`: the `line:column` where a refused package.json stops parsing.          |
 | [`util.md`](./util.md#srcexecrunnerts--child-process-invocation--rusage-capture) | `src/util/raw-utf8.ts` — task output decoded with each non-UTF-8 byte kept, and written back as that byte.          |
 | [`report.md`](./report.md#srcreportsummaryts--end-of-run-summary-lines)          | `src/report/summary.ts` — the footer: `projects` / `tasks` / `cache` meters, `info` and `time` rows.                |
 | [`report.md`](./report.md#srcreporttallyts--outcome-tally)                       | `src/report/tally.ts` — outcome tally for the end-of-run footer.                                                    |

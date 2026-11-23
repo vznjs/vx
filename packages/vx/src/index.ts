@@ -10,6 +10,8 @@ export { VERSION } from './version.js'
 
 // Clean error type — user-input failures print a message without a stack.
 export { UserError, isUserError } from './util/index.js'
+// Where a refused package.json stops parsing: Bun's parsers never say.
+export { jsonErrorAt } from './util/index.js'
 // Every hook a plugin may fill, in pipeline order — the one list the
 // loader, the host and `vx info` read; exported so a doc pin outside core
 // (the site's guides) holds its tables to the same list.

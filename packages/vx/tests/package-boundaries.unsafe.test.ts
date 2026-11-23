@@ -181,6 +181,8 @@ describe('package boundaries', () => {
       // Widened 2026-10-26: `@vzn/vx-migrate` maps over `vx init`'s untouched starter.
       'isStarterConfig',
       'isUserError',
+      // Widened 2026-11-23: @vzn/vx-lockfile names where a package.json stops parsing.
+      'jsonErrorAt',
       'loadProjectConfig',
       'loadResolvedProjects',
       // 2026-10-29: run history reaches a plugin as rows, never as a handle on cache.db.
