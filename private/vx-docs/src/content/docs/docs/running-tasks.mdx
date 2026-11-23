@@ -106,8 +106,8 @@ rendering chunks...
 computing gzip size...
 [2mdist/[0m[36mindex.js  [0m[1;2m0.04 kB[0m[2m │ gzip: 0.06 kB[0m
 
-[32m✓ built in 23ms[39m
-[0m[2m└─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(175ms)[0m [2msuccess[0m
+[32m✓ built in 29ms[39m
+[0m[2m└─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(238ms)[0m [2msuccess[0m
 
 [4m[58;2;110;118;129m  [1m[38;2;167;139;250mSummary[0m[4m[58;2;110;118;129m                                           [2mvx 0.0.0[0m
   [2mprojects[0m  [38;2;234;179;8m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m[2m▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱[0m
@@ -118,8 +118,8 @@ computing gzip size...
             [2mlocal[0m [38;2;56;189;248m2↑[0m
 
   [2minfo    [0m  4 workers [2m·[0m local cache
-            run 01a209e3-0de6-71d5-ab92-cdade8d7e559
-  [2mtime    [0m  2.16s [2m·[0m [2mmax 1.89s[0m [2m·[0m [2mavg 1.03s[0m [2m·[0m [2mmin 175ms[0m
+            run 01a20a08-fb9f-74bc-9f3f-dbe43cbf6268
+  [2mtime    [0m  687ms [2m·[0m [2mmax 369ms[0m [2m·[0m [2mavg 304ms[0m [2m·[0m [2mmin 238ms[0m
 ```
 
 Look at `2 in run`. You asked for one build and got two: `@demo/ui`
@@ -138,8 +138,8 @@ declares it. Step through three runs of the same command:
 
 ```ansi
 [4m[58;2;110;118;129m  [1m[38;2;167;139;250mTasks[0m[4m[58;2;110;118;129m     [2mstatus  cache       time   task[0m[4m[58;2;110;118;129m                 [0m
-            [38;2;34;197;94msuccess[0m [2mmiss[0m       [38;2;203;213;225m239ms[0m   [38;2;129;140;248m@demo/admin[0m[2m#[0m[38;2;244;114;182mbuild[0m
-            [38;2;34;197;94msuccess[0m [2mmiss[0m       [38;2;203;213;225m250ms[0m   [38;2;232;121;249m@demo/api[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m       [38;2;203;213;225m210ms[0m   [38;2;232;121;249m@demo/api[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m       [38;2;203;213;225m214ms[0m   [38;2;129;140;248m@demo/admin[0m[2m#[0m[38;2;244;114;182mbuild[0m
 
 [4m[58;2;110;118;129m  [1m[38;2;167;139;250mSummary[0m[4m[58;2;110;118;129m                                           [2mvx 0.0.0[0m
   [2mprojects[0m  [38;2;234;179;8m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
@@ -150,8 +150,8 @@ declares it. Step through three runs of the same command:
             [2mlocal[0m [38;2;34;197;94m2✓[0m [38;2;56;189;248m2↑[0m
 
   [2minfo    [0m  4 workers [2m·[0m local cache
-            run 01a209e3-1732-778a-91fc-b29646d51ca2
-  [2mtime    [0m  335ms [2m·[0m [2mmax 250ms[0m [2m·[0m [2mavg 245ms[0m [2m·[0m [2mmin 239ms[0m
+            run 01a20a08-ff47-722d-8655-ed02f8a7b23f
+  [2mtime    [0m  295ms [2m·[0m [2mmax 214ms[0m [2m·[0m [2mavg 212ms[0m [2m·[0m [2mmin 210ms[0m
 ```
 
 Only `api` and `admin` ran. `ui` and `web` were built in section 1, so
@@ -170,11 +170,11 @@ the `cache` line counts them as `2✓`.
             [2mlocal[0m [38;2;34;197;94m4✓[0m
 
   [2minfo    [0m  4 workers [2m·[0m local cache
-            run 01a209e3-1955-7040-9ef8-c6e9ce4e0285
-  [2mtime    [0m  27ms
+            run 01a20a09-0155-7323-935b-2fd8173f6a63
+  [2mtime    [0m  25ms
 ```
 
-`4✓` in 27 ms. Every output is already on disk.
+`4✓` in 25 ms. Every output is already on disk.
 
 </Frame>
 <Frame title="3. Delete every dist/, then run again">
@@ -194,8 +194,8 @@ vx run build --all
             [2mlocal[0m [38;2;56;189;248m4↓[0m
 
   [2minfo    [0m  4 workers [2m·[0m local cache
-            run 01a209e3-1a30-7505-94b8-cf81ab7d820f
-  [2mtime    [0m  53ms
+            run 01a20a09-0242-767c-a294-c02f8049c5b0
+  [2mtime    [0m  46ms
 ```
 
 `4↓`: vx put each `dist/` back from its cache instead of building.
@@ -339,14 +339,18 @@ vx run test --affected=main --dry
 
 ```ansi
 [4m[58;2;110;118;129m  [1m[38;2;167;139;250mPlan[0m[4m[58;2;110;118;129m [2m5[0m[4m[58;2;110;118;129m    [2mstatus  cache       time   task[0m[4m[58;2;110;118;129m                 [0m
-            [38;2;6;182;212mrun[0m     [2mmiss[0m           [2m—[0m   [38;2;129;140;248m@demo/admin[0m[2m#[0m[38;2;96;165;250mtest[0m  [2maffected: packages/ui/src/index.ts changed (an input), via @demo/ui#build[0m
+            [38;2;6;182;212mrun[0m     [2mmiss[0m           [2m—[0m   [38;2;129;140;248m@demo/admin[0m[2m#[0m[38;2;96;165;250mtest[0m
+            [2maffected: packages/ui/src/index.ts changed (an input), via @demo/ui#build[0m
             [38;2;6;182;212mrun[0m     [2mmiss[0m           [2m—[0m   [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m
-            [38;2;6;182;212mrun[0m     [2mmiss[0m           [2m—[0m   [38;2;232;121;249m@demo/api[0m[2m#[0m[38;2;96;165;250mtest[0m  [2maffected: packages/api/src/index.ts changed (an input)[0m
-            [38;2;6;182;212mrun[0m     [2mmiss[0m           [2m—[0m   [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;96;165;250mtest[0m  [2maffected: packages/ui/src/index.ts changed (an input)[0m
-            [38;2;6;182;212mrun[0m     [2mmiss[0m           [2m—[0m   [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;96;165;250mtest[0m  [2maffected: packages/ui/src/index.ts changed (an input), via @demo/ui#build[0m
+            [38;2;6;182;212mrun[0m     [2mmiss[0m           [2m—[0m   [38;2;232;121;249m@demo/api[0m[2m#[0m[38;2;96;165;250mtest[0m
+            [2maffected: packages/api/src/index.ts changed (an input)[0m
+            [38;2;6;182;212mrun[0m     [2mmiss[0m           [2m—[0m   [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;96;165;250mtest[0m
+            [2maffected: packages/ui/src/index.ts changed (an input)[0m
+            [38;2;6;182;212mrun[0m     [2mmiss[0m           [2m—[0m   [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;96;165;250mtest[0m
+            [2maffected: packages/ui/src/index.ts changed (an input), via @demo/ui#build[0m
 
   [2mtasks    [0m  [38;2;203;213;225m5 planned · 5 would run[0m
-  [2mpredicted[0m  [38;2;203;213;225m~1.89s wall · ~1.89s total execution · 4 tasks[0m
+  [2mpredicted[0m  [38;2;203;213;225m~369ms wall · ~369ms total execution · 4 tasks[0m
              [38;2;203;213;225mnever timed (+?)[0m
 ```
 
@@ -464,8 +468,8 @@ vx run lint test --filter @demo/api
 
 ```ansi
 [4m[58;2;110;118;129m  [1m[38;2;167;139;250mTasks[0m[4m[58;2;110;118;129m     [2mstatus  cache       time   task[0m[4m[58;2;110;118;129m                 [0m
-            [38;2;34;197;94msuccess[0m [2mmiss[0m       [38;2;203;213;225m1.28s[0m   [38;2;232;121;249m@demo/api[0m[2m#[0m[38;2;232;121;249mlint[0m
-            [38;2;34;197;94msuccess[0m [2mmiss[0m       [38;2;203;213;225m2.04s[0m   [38;2;232;121;249m@demo/api[0m[2m#[0m[38;2;96;165;250mtest[0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m       [38;2;203;213;225m121ms[0m   [38;2;232;121;249m@demo/api[0m[2m#[0m[38;2;232;121;249mlint[0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m       [38;2;203;213;225m493ms[0m   [38;2;232;121;249m@demo/api[0m[2m#[0m[38;2;96;165;250mtest[0m
 
 [4m[58;2;110;118;129m  [1m[38;2;167;139;250mSummary[0m[4m[58;2;110;118;129m                                           [2mvx 0.0.0[0m
   [2mprojects[0m  [38;2;234;179;8m▰▰▰▰▰▰▰▰▰▰▰▰[0m[2m▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱[0m
@@ -476,8 +480,8 @@ vx run lint test --filter @demo/api
             [2mlocal[0m [38;2;56;189;248m2↑[0m
 
   [2minfo    [0m  4 workers [2m·[0m local cache
-            run 01a209e3-1ebb-7511-95b7-9e3549f5073a
-  [2mtime    [0m  2.08s [2m·[0m [2mmax 2.04s[0m [2m·[0m [2mavg 1.66s[0m [2m·[0m [2mmin 1.28s[0m
+            run 01a20a09-0623-70a5-9d19-ab7cefc9e009
+  [2mtime    [0m  551ms [2m·[0m [2mmax 493ms[0m [2m·[0m [2mavg 307ms[0m [2m·[0m [2mmin 121ms[0m
 ```
 
 Two more ways to name tasks, from anywhere in the workspace:
@@ -508,10 +512,10 @@ vx run @demo/web#test -- --reporter=dot
 
 [2m Test Files [22m [1m[32m1 passed[39m[22m[90m (1)[39m
 [2m      Tests [22m [1m[32m1 passed[39m[22m[90m (1)[39m
-[2m   Start at [22m 19:30:12
-[2m   Duration [22m 163ms[2m (import 43%, transform 33%, worker 13%, tests 10%, environment 1%)[22m
+[2m   Start at [22m 20:11:34
+[2m   Duration [22m 107ms[2m (import 44%, transform 35%, worker 11%, tests 9%)[22m
 
-[0m[2m└─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;96;165;250mtest[0m [2m──[0m [2m(479ms)[0m [2msuccess[0m
+[0m[2m└─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;96;165;250mtest[0m [2m──[0m [2m(374ms)[0m [2msuccess[0m
 
 [4m[58;2;110;118;129m  [1m[38;2;167;139;250mSummary[0m[4m[58;2;110;118;129m                                           [2mvx 0.0.0[0m
   [2mprojects[0m  [38;2;234;179;8m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m[2m▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱[0m
@@ -522,8 +526,8 @@ vx run @demo/web#test -- --reporter=dot
             [2mlocal[0m [38;2;56;189;248m2↑[0m
 
   [2minfo    [0m  4 workers [2m·[0m local cache
-            run 01a209e3-27ab-73e4-abe4-c07131ecbe3c
-  [2mtime    [0m  743ms [2m·[0m [2mmax 479ms[0m [2m·[0m [2mavg 335ms[0m [2m·[0m [2mmin 191ms[0m
+            run 01a20a09-0915-77c4-b8c8-30d1a4bc3e67
+  [2mtime    [0m  629ms [2m·[0m [2mmax 374ms[0m [2m·[0m [2mavg 279ms[0m [2m·[0m [2mmin 183ms[0m
 ```
 
 The first line shows what ran: `vitest run --reporter=dot`. The
@@ -588,7 +592,7 @@ vx run build --all --dry
             [38;2;6;182;212mrun[0m     [2mmiss[0m           [2m—[0m   [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m
 
   [2mtasks    [0m  [38;2;203;213;225m4 planned · 1 cache hit (1 local) · 3 would run[0m
-  [2mpredicted[0m  [38;2;203;213;225m~2.13s wall · ~2.30s total execution[0m
+  [2mpredicted[0m  [38;2;203;213;225m~607ms wall · ~821ms total execution[0m
 ```
 
 Nothing ran. Read it row by row:
@@ -596,7 +600,7 @@ Nothing ran. Read it row by row:
 - `api#build` is `cached local`: it comes from the cache, since `api`
   did not change.
 - The other three `run`: `ui` changed, and `web` and `admin` build on it.
-- `predicted` adds up how long these tasks took last time: about 2 s.
+- `predicted` adds up how long these tasks took last time: about 600 ms.
 
 `--dry --format json` prints the same plan for scripts. The next page
 browses it.
