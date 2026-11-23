@@ -30,7 +30,7 @@ import {
   resolveFilters,
 } from './select.js'
 import { nxTargetHint, taskNamesHere, undeclaredTasks } from './task-verb.js'
-import { ciProvider, hasControl, parseDecimalInt } from '../util/index.js'
+import { ciProvider, hasControl, parseDecimalInt, UserError } from '../util/index.js'
 import * as ui from '../ui/index.js'
 import { sayNotice, sayLine } from '../ui/index.js'
 import { kindHint, parseSettingValue, type Setting, SETTINGS, settingRefusal } from '../settings.js'
@@ -554,7 +554,12 @@ export async function resolveRunOptions(
     discovered = await findAllSelection(
       cwd,
       parsed.cacheDir !== undefined ? { cacheDir: parsed.cacheDir } : {},
-    )
+    ).catch((err: unknown) => {
+      // Watch keeps watching a workspace whose lock is missing or behind:
+      // its first cycle fails on it, and a `vx lock` re-runs (item 1017).
+      if (verb === 'watch' && err instanceof UserError && err.code === 'VX_E_LOCK') return undefined
+      throw err
+    })
   } else {
     const cwdProject = await findCwdSelection(
       cwd,
