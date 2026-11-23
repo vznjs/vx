@@ -13,6 +13,7 @@ export {
   runCommand,
   restoreTerminalModes,
   runPersistent,
+  serverExited,
   PersistentReadyError,
   withForwardArgs,
   shellQuote,

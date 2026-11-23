@@ -933,6 +933,39 @@ describe('a persistent server that dies before the run stops it', () => {
     expect(r.said).toHaveLength(2)
   }, 30_000)
 
+  // A server's last words before it dies are its crash message: the exit
+  // line went out and the run returned while the pipe still held them, and
+  // the user read "exited with code 1" with no reason (4 of 5 runs).
+  it('a requested server that dies after ready has its last output shown first', async () => {
+    await addProject(
+      root,
+      'app',
+      `export default { tasks: { dev: { exec: { command: 'echo READY; sleep 0.2; echo boom-last-words >&2; exit 1', persistent: { readyWhen: 'READY' } } } } }`,
+    )
+    // Lost in 4 of 5 runs: three in a row all keep it.
+    for (let i = 0; i < 3; i++) {
+      const proc = track(
+        Bun.spawn([process.execPath, BIN, 'run', 'dev', '--all'], {
+          cwd: root,
+          stdout: 'pipe',
+          stderr: 'pipe',
+          env: { ...process.env, VX_RUN_KILL_GRACE: '200ms' },
+        }),
+      )
+      const [out, err, code] = await Promise.all([
+        new Response(proc.stdout).text(),
+        new Response(proc.stderr).text(),
+        proc.exited,
+      ])
+      const lines = (out + err).split('\n')
+      expect({
+        code,
+        said: lines.filter((l) => l.startsWith('vx: ')),
+        last: lines.filter((l) => l.endsWith('boom-last-words')).length,
+      }).toEqual({ code: 1, said: ['vx: app#dev exited with code 1'], last: 1 })
+    }
+  }, 30_000)
+
   it('a dependency-only server that crashes after ready is told the verdict once', async () => {
     await addProject(
       root,

@@ -8,6 +8,7 @@ import { killGraceMs } from '../util/index.js'
 import {
   holdGroups,
   killTree,
+  serverExited,
   signalExitCode,
   type TaskExecutor,
   untilGroupsGone,
@@ -364,7 +365,7 @@ export function onServerExit(child: Child, slot: string, fn: (code: number) => v
     const own = new Map<string, (code: number) => void>()
     exitSlots.set(child, own)
     slots = own
-    void child.exited.then((code) => {
+    void serverExited(child).then((code) => {
       for (const f of own.values()) f(code)
     })
   }
@@ -442,7 +443,7 @@ export function sessionEnd(keepAlive: KeepAlive): Promise<{ code: number; i: num
   return new Promise((resolve) => {
     let left = keepAlive.children.length
     keepAlive.children.forEach((c, i) => {
-      void c.exited.then((code) => {
+      void serverExited(c).then((code) => {
         left--
         const n = keepAlive.nodes[i]!
         if (code !== 0 || n.requested || n.surfaced === true || left === 0) resolve({ code, i })

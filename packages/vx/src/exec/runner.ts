@@ -906,6 +906,16 @@ export interface PersistentOptions extends Omit<RunOptions, 'forwardArgs' | 'cap
   signalChannel?: boolean
 }
 
+const serverExits = new WeakMap<object, Promise<number>>()
+
+/**
+ * A persistent task's exit code once what it wrote before it exited has
+ * reached its callbacks (`runPersistent`); a child spawned elsewhere, at its exit.
+ */
+export function serverExited(child: ReturnType<typeof Bun.spawn>): Promise<number> {
+  return serverExits.get(child) ?? child.exited
+}
+
 /**
  * Spawn a long-running task, returning once it is ready, not at exit. The
  * caller owns `child` and must SIGTERM it; output keeps streaming to the
@@ -1092,6 +1102,20 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
     () => pipes.close(),
   )
   void Promise.allSettled([readers, child.exited]).then(() => pipes.closeStdin())
+  // A ready server's exit, said once its pipes are read (bounded, for a
+  // grandchild holding them): its last words are its crash message, and the
+  // exit line and the run's end went out while the pipe still held them.
+  const spawned = child
+  serverExits.set(
+    child,
+    spawned.exited.then(async (code) => {
+      await Promise.race([
+        readers,
+        new Promise((resolve) => setTimeout(resolve, POST_EXIT_DRAIN_MS).unref?.()),
+      ])
+      return code
+    }),
+  )
 
   opts.liveChildren?.add(child)
   opts.onSpawn?.(child.pid)

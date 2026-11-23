@@ -237,7 +237,9 @@ export interface RunSummary {
 16. **Keep-alive block.** If the user requested a persistent task,
     block on its exit AFTER everything above (`sessionEnd` picks the
     exit that ends the session) — Ctrl-C reaps the process group; the
-    run stays in the foreground on purpose.
+    run stays in the foreground on purpose. A server's exit counts once
+    its pipes are read, `POST_EXIT_DRAIN_MS` at most (`serverExited`):
+    its last words are its crash message.
 
 `planRun()` mirrors steps 1–3 via the same `prepareRun`, then
 delegates to `orchestrator/plan.ts:plan(...)` inside a try/finally
