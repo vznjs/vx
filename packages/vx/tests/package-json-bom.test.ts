@@ -9,8 +9,8 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterAll, describe, expect, it } from 'bun:test'
 import { managedInstall, projectManager } from '../src/cli/upgrade.js'
+import { BIN } from './helpers/vx.js'
 
-const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 const roots: string[] = []
 afterAll(() => {
   for (const r of roots) rmSync(r, { recursive: true, force: true })

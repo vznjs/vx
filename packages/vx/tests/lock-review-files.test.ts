@@ -8,8 +8,8 @@ import { afterEach, expect, it } from 'bun:test'
 import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
 import { noticed } from './helpers/notice.js'
 import { readLockfile } from '../src/workspace/lockfile.js'
+import { BIN, vxSync } from './helpers/vx.js'
 
-const BIN = path.join(import.meta.dir, '..', 'src', 'bin.ts')
 const CONFIG = `export default { tasks: { build: { exec: { command: 'true' } } } }\n`
 
 let root: string | undefined
@@ -18,15 +18,7 @@ afterEach(async () => {
   root = undefined
 })
 
-function vx(cwd: string, ...args: string[]): { code: number; out: string; err: string } {
-  const p = Bun.spawnSync({
-    cmd: [process.execPath, BIN, ...args],
-    cwd,
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
-  return { code: p.exitCode, out: p.stdout.toString(), err: p.stderr.toString() }
-}
+const vx = (cwd: string, ...args: string[]) => vxSync(cwd, args, { bin: BIN })
 
 const text = (p: string): Promise<string | null> =>
   Bun.file(p)

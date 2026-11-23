@@ -6,23 +6,7 @@ import { rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
-
-const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
-
-async function vx(cwd: string, args: string[]): Promise<{ code: number; text: string }> {
-  const proc = Bun.spawn([process.execPath, BIN, ...args], {
-    cwd,
-    stdout: 'pipe',
-    stderr: 'pipe',
-    env: { ...process.env, NO_COLOR: '1' },
-  })
-  const [out, err, code] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ])
-  return { code, text: out + err }
-}
+import { vx } from './helpers/vx.js'
 
 describe('default builds on a package cycle', () => {
   let root: string

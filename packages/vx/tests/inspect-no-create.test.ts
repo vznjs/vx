@@ -8,8 +8,8 @@ import { rm } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
+import { vx as spawnVx } from './helpers/vx.js'
 
-const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
 const TIMEOUT = 30_000
 
 const VERBS = [
@@ -22,22 +22,9 @@ const VERBS = [
   ['cache', 'clean', '--older-than', '1d'],
 ]
 
-async function vx(
-  cwd: string,
-  args: string[],
-): Promise<{ code: number; out: string; err: string }> {
-  const proc = Bun.spawn([process.execPath, BIN, ...args], {
-    cwd,
-    stdout: 'pipe',
-    stderr: 'pipe',
-    env: { ...process.env, NO_COLOR: '1' },
-  })
-  const [out, err, code] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ])
-  return { code, out, err: err.trim() }
+const vx = async (cwd: string, args: string[]) => {
+  const r = await spawnVx(cwd, args)
+  return { code: r.code, out: r.out, err: r.err.trim() }
 }
 
 describe('a reading verb makes nothing on disk', () => {

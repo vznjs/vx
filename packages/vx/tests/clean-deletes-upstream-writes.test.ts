@@ -10,23 +10,7 @@ import path from 'node:path'
 import { afterEach, expect, it } from 'bun:test'
 import { existsSync, rmSync } from 'node:fs'
 import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
-
-const BIN = path.join(import.meta.dir, 'helpers', 'vx-locked.ts')
-
-async function vx(cwd: string, args: string[]): Promise<{ code: number; text: string }> {
-  const proc = Bun.spawn([process.execPath, BIN, ...args], {
-    cwd,
-    env: { ...process.env, CI: '', GITHUB_ACTIONS: '' },
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
-  const [out, err, code] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ])
-  return { code, text: `${out}${err}` }
-}
+import { vx } from './helpers/vx.js'
 
 const made: string[] = []
 afterEach(() => {

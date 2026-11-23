@@ -6,48 +6,18 @@
 // task of the project when no cached task declares the path), and a requested
 // task runs when its `dependsOn` closure holds a seeded one. This drives the
 // real CLI on a git fixture with a manifest edge.
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
 import { edgesSource, pluginSource } from './helpers/plugin.js'
+import { git } from './helpers/workspace.js'
+import { vxSync } from './helpers/vx.js'
 
 const TIMEOUT = 60_000
-const CLI = path.join(import.meta.dir, 'helpers', 'vx-locked.ts')
 
-function git(cwd: string, ...args: string[]): void {
-  const p = Bun.spawnSync({
-    cmd: ['git', '-c', 'commit.gpgsign=false', ...args],
-    cwd,
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
-  if (p.exitCode !== 0) {
-    throw new Error(
-      `git ${args.join(' ')} exited ${p.exitCode}: ${new TextDecoder().decode(p.stderr).trim()}`,
-    )
-  }
-}
-
-async function write(p: string, content: string): Promise<void> {
-  await mkdir(path.dirname(p), { recursive: true })
-  await writeFile(p, content)
-}
-
-function vx(cwd: string, ...args: string[]): { stdout: string; exitCode: number } {
-  const p = Bun.spawnSync({
-    cmd: ['bun', CLI, ...args],
-    cwd,
-    stdout: 'pipe',
-    stderr: 'pipe',
-    env: { ...process.env, CI: '', GITHUB_ACTIONS: '', NO_COLOR: '1' },
-  })
-  return {
-    stdout: new TextDecoder().decode(p.stdout) + new TextDecoder().decode(p.stderr),
-    exitCode: p.exitCode ?? 1,
-  }
-}
+const vx = (cwd: string, ...args: string[]) => vxSync(cwd, args)
 
 const CONFIG = `export default {
   tasks: {
@@ -72,25 +42,25 @@ const EDGES = edgesSource({ app: ['lib'] })
 /** `app` depends on `lib` through a plugin's edge; `tool` depends on nothing. */
 beforeEach(async () => {
   root = await mkdtemp(path.join(os.tmpdir(), 'vx-affected-deps-'))
-  await write(
+  await Bun.write(
     path.join(root, 'package.json'),
     JSON.stringify({ name: 'r', workspaces: ['pkgs/*'] }),
   )
-  await write(path.join(root, '.vx/workspace.mjs'), localWorkspaceSource([EDGES]))
-  await write(path.join(root, 'pkgs/lib/package.json'), JSON.stringify({ name: 'lib' }))
-  await write(path.join(root, 'pkgs/app/package.json'), JSON.stringify({ name: 'app' }))
-  await write(path.join(root, 'pkgs/tool/package.json'), JSON.stringify({ name: 'tool' }))
+  await Bun.write(path.join(root, '.vx/workspace.mjs'), localWorkspaceSource([EDGES]))
+  await Bun.write(path.join(root, 'pkgs/lib/package.json'), JSON.stringify({ name: 'lib' }))
+  await Bun.write(path.join(root, 'pkgs/app/package.json'), JSON.stringify({ name: 'app' }))
+  await Bun.write(path.join(root, 'pkgs/tool/package.json'), JSON.stringify({ name: 'tool' }))
   for (const p of ['lib', 'app', 'tool']) {
-    await write(path.join(root, `pkgs/${p}/src/index.ts`), 'export const x = 1')
-    await write(path.join(root, `pkgs/${p}/src/index.test.ts`), 'test')
-    await write(path.join(root, `pkgs/${p}/vx.config.mjs`), CONFIG)
+    await Bun.write(path.join(root, `pkgs/${p}/src/index.ts`), 'export const x = 1')
+    await Bun.write(path.join(root, `pkgs/${p}/src/index.test.ts`), 'test')
+    await Bun.write(path.join(root, `pkgs/${p}/vx.config.mjs`), CONFIG)
   }
   git(root, 'init', '-q')
   git(root, 'add', '-A')
-  git(root, '-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qm', 'init')
-  await write(path.join(root, 'pkgs/lib/src/index.ts'), 'export const x = 2')
+  git(root, 'commit', '-qm', 'init')
+  await Bun.write(path.join(root, 'pkgs/lib/src/index.ts'), 'export const x = 2')
   git(root, 'add', '-A')
-  git(root, '-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qm', 'edit lib')
+  git(root, 'commit', '-qm', 'edit lib')
 })
 
 afterEach(async () => {
@@ -100,22 +70,22 @@ afterEach(async () => {
 /** The task ids `vx run <tasks> <args> --dry=json` plans, sorted. */
 function planned(tasks: string[], ...args: string[]): string[] | string {
   const r = vx(root, 'run', ...tasks, ...args, '--dry=json')
-  if (r.exitCode !== 0) return r.stdout
-  const out = r.stdout.slice(r.stdout.indexOf('{'))
+  if (r.code !== 0) return r.text
+  const out = r.text.slice(r.text.indexOf('{'))
   return (JSON.parse(out) as { tasks: { id: string }[] }).tasks.map((t) => t.id).sort()
 }
 
 function appBuildHash(): string {
   const r = vx(root, 'run', 'build', '--filter', 'app', '--dry=json')
-  const out = r.stdout.slice(r.stdout.indexOf('{'))
+  const out = r.text.slice(r.text.indexOf('{'))
   const tasks = (JSON.parse(out) as { tasks: { id: string; hash: string }[] }).tasks
   return tasks.find((t) => t.id === 'app#build')!.hash
 }
 
 async function commitEdit(rel: string, content: string): Promise<void> {
-  await write(path.join(root, rel), content)
+  await Bun.write(path.join(root, rel), content)
   git(root, 'add', '-A')
-  git(root, '-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qm', `edit ${rel}`)
+  git(root, 'commit', '-qm', `edit ${rel}`)
 }
 
 describe('--affected and the dependents of what changed', () => {
@@ -123,10 +93,10 @@ describe('--affected and the dependents of what changed', () => {
     'an edit to lib selects lib AND app, never tool',
     () => {
       const r = vx(root, 'run', 'build', '--affected=HEAD~1')
-      expect(r.exitCode).toBe(0)
-      expect(r.stdout).toContain('lib#build')
-      expect(r.stdout).toContain('app#build')
-      expect(r.stdout).not.toContain('tool#build')
+      expect(r.code).toBe(0)
+      expect(r.text).toContain('lib#build')
+      expect(r.text).toContain('app#build')
+      expect(r.text).not.toContain('tool#build')
     },
     TIMEOUT,
   )
@@ -135,10 +105,10 @@ describe('--affected and the dependents of what changed', () => {
     'CONTROL: the plain [<base>] filter is only what changed',
     () => {
       const r = vx(root, 'run', 'build', '--filter', '[HEAD~1]')
-      expect(r.exitCode).toBe(0)
-      expect(r.stdout).toContain('lib#build')
-      expect(r.stdout).not.toContain('app#build')
-      expect(r.stdout).toContain('1 in run · 3 total')
+      expect(r.code).toBe(0)
+      expect(r.text).toContain('lib#build')
+      expect(r.text).not.toContain('app#build')
+      expect(r.text).toContain('1 in run · 3 total')
     },
     TIMEOUT,
   )
@@ -188,9 +158,9 @@ describe('--affected follows task edges (2026-10-04)', () => {
       expect(planned(['build'], '--affected=HEAD~1')).toEqual(['app#build', 'lib#build'])
       // A cold cache: the upstream runs before app, so app finds its inputs.
       const r = vx(root, 'run', 'build', '--affected=HEAD~1')
-      expect(r.exitCode).toBe(0)
-      expect(r.stdout).toContain('lib#build')
-      expect(r.stdout).not.toContain('tool#build')
+      expect(r.code).toBe(0)
+      expect(r.text).toContain('lib#build')
+      expect(r.text).not.toContain('tool#build')
     },
     TIMEOUT,
   )
@@ -203,7 +173,7 @@ describe('--affected follows task edges (2026-10-04)', () => {
         CONFIG.replace("['src/**', '!src/**/*.test.ts']", "['./src/**', '!./src//**/*.test.ts']"),
       )
       await commitEdit('pkgs/lib/src/index.test.ts', 'test 2')
-      expect(vx(root, 'run', 'build', '--affected=HEAD~1', '--dry').stdout).toContain(
+      expect(vx(root, 'run', 'build', '--affected=HEAD~1', '--dry').text).toContain(
         'Nothing affected: the change reaches no build task',
       )
       await commitEdit('pkgs/lib/src/index.ts', 'export const x = 3')
@@ -223,8 +193,8 @@ describe('--affected follows task edges (2026-10-04)', () => {
       expect(planned(['all'], '--affected=HEAD~1')).toEqual(['app#all', 'app#build', 'lib#build'])
       // CONTROL: a change its closure does not reach leaves it out.
       await commitEdit('pkgs/tool/src/index.ts', 'export const x = 3')
-      expect(vx(root, 'run', 'all', '--affected=HEAD~1', '--dry').exitCode).toBe(0)
-      expect(vx(root, 'run', 'all', '--affected=HEAD~1', '--dry').stdout).not.toContain('app#all')
+      expect(vx(root, 'run', 'all', '--affected=HEAD~1', '--dry').code).toBe(0)
+      expect(vx(root, 'run', 'all', '--affected=HEAD~1', '--dry').text).not.toContain('app#all')
     },
     TIMEOUT,
   )
@@ -247,13 +217,13 @@ describe('--affected follows task edges (2026-10-04)', () => {
     async () => {
       await commitEdit('pkgs/lib/src/index.test.ts', 'test 2')
       const r = vx(root, 'run', 'build', '--affected=HEAD~1')
-      expect(r.exitCode).toBe(0)
-      expect(r.stdout).not.toContain('#build')
-      expect(r.stdout).toContain('Nothing affected: the change reaches no build task')
+      expect(r.code).toBe(0)
+      expect(r.text).not.toContain('#build')
+      expect(r.text).toContain('Nothing affected: the change reaches no build task')
       // `--dry` says the run's line, not that no affected project declares
       // a task `lib` does declare (X-141).
       const dry = vx(root, 'run', 'build', '--affected=HEAD~1', '--dry')
-      expect([dry.exitCode, dry.stdout.trim()]).toEqual([
+      expect([dry.code, dry.text.trim()]).toEqual([
         0,
         '› vx run  Nothing affected: the change reaches no build task',
       ])
@@ -266,16 +236,16 @@ describe('--affected follows task edges (2026-10-04)', () => {
     async () => {
       // Only tool declares toString; lib's edit reaches lib and app, which
       // inherit `toString` from Object and must not read as declaring it.
-      await write(
+      await Bun.write(
         path.join(root, 'pkgs/tool/vx.config.mjs'),
         `export default { tasks: { toString: { exec: { command: 'true' } } } }\n`,
       )
       git(root, 'add', '-A')
-      git(root, '-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qm', 'toString')
+      git(root, 'commit', '-qm', 'toString')
       await commitEdit('pkgs/lib/src/index.ts', 'export const x = 3')
       const r = vx(root, 'run', 'toString', '--affected=HEAD~1')
-      expect(r.exitCode).toBe(0)
-      expect(r.stdout).toContain('No affected project declares task(s): toString.')
+      expect(r.code).toBe(0)
+      expect(r.text).toContain('No affected project declares task(s): toString.')
     },
     TIMEOUT,
   )
@@ -299,12 +269,12 @@ describe('--affected follows task edges (2026-10-04)', () => {
   it(
     'a dependent with no task edge to the change is not affected',
     async () => {
-      await write(
+      await Bun.write(
         path.join(root, 'pkgs/app/vx.config.mjs'),
         `export default { tasks: { build: { exec: { command: 'true' } } } }\n`,
       )
       git(root, 'add', '-A')
-      git(root, '-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qm', 'unlink')
+      git(root, 'commit', '-qm', 'unlink')
       await commitEdit('pkgs/lib/src/index.ts', 'export const x = 3')
       expect(planned(['build'], '--affected=HEAD~1')).toEqual(['lib#build'])
     },
@@ -316,12 +286,12 @@ describe('--affected follows task edges (2026-10-04)', () => {
     async () => {
       // lib declares no build, so it gets the default: a group behind ^build
       // keyed on every file of lib (2026-10-04).
-      await write(
+      await Bun.write(
         path.join(root, 'pkgs/lib/vx.config.mjs'),
         `export default { tasks: { test: { exec: { command: 'true' }, inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true } } }\n`,
       )
       git(root, 'add', '-A')
-      git(root, '-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qm', 'no build')
+      git(root, 'commit', '-qm', 'no build')
       await commitEdit('pkgs/lib/src/index.test.ts', 'test 2')
       expect(planned(['test'], '--affected=HEAD~1')).toEqual([
         'app#build',
@@ -357,12 +327,12 @@ describe('--affected follows task edges (2026-10-04)', () => {
 describe('--affected follows the graph a `graph` plugin leaves', () => {
   /** Commits a workspace whose plugin runs `body` as its `graph` hook. */
   async function graphPlugin(body: string): Promise<void> {
-    await write(
+    await Bun.write(
       path.join(root, '.vx/workspace.mjs'),
       localWorkspaceSource([EDGES, pluginSource('org/edge', `{ graph(nodes) { ${body} } }`)]),
     )
     git(root, 'add', '-A')
-    git(root, '-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qm', 'plugin')
+    git(root, 'commit', '-qm', 'plugin')
   }
 
   it(
@@ -420,7 +390,7 @@ describe('--affected follows the graph a `graph` plugin leaves', () => {
     async () => {
       // A run judged `^nope` only for the tasks the diff kept; a run now
       // checks no rule, and the lock checks every task.
-      await write(
+      await Bun.write(
         path.join(root, 'pkgs/tool/vx.config.mjs'),
         CONFIG.replace("dependsOn: ['^build']", "dependsOn: ['^build', '^nope']"),
       )

@@ -477,7 +477,7 @@ function ancestorDirs(
 }
 
 /** The first index of sorted `paths` not below `key`. */
-function lowerBoundOf(paths: readonly string[], key: string): number {
+export function lowerBoundOf(paths: readonly string[], key: string): number {
   let lo = 0
   let hi = paths.length
   while (lo < hi) {

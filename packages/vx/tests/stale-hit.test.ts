@@ -8,63 +8,17 @@
 // bytes built from inputs that have since changed. Every case here was
 // reproduced against the pre-fix tree before the fix landed.
 
-import { chmod, mkdir, mkdtemp, readFile, rm, writeFile, symlink } from 'node:fs/promises'
+import { chmod, mkdtemp, readFile, rm, symlink } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { writeLocalWorkspace } from './helpers/local-workspace.js'
+import { git } from './helpers/workspace.js'
+import { vxSync } from './helpers/vx.js'
 
 const TIMEOUT = 60_000
-const CLI = path.join(import.meta.dir, 'helpers', 'vx-locked.ts')
 
-async function write(p: string, content: string): Promise<void> {
-  await mkdir(path.dirname(p), { recursive: true })
-  await writeFile(p, content)
-}
-
-function git(cwd: string, ...args: string[]): void {
-  const p = Bun.spawnSync({
-    // Identity and signing on the HELPER, not on each row: every case here
-    // commits, and a runner with no global git identity refuses to
-    // (`empty ident name`). Eighteen call sites set it by hand and two new
-    // ones forgot, which only showed up on CI — this box has a global
-    // identity and the runner does not.
-    cmd: [
-      'git',
-      '-c',
-      'commit.gpgsign=false',
-      '-c',
-      'user.email=test@vx.local',
-      '-c',
-      'user.name=vx test',
-      ...args,
-    ],
-    cwd,
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
-  if (p.exitCode !== 0) {
-    const detail = [
-      new TextDecoder().decode(p.stderr).trim(),
-      new TextDecoder().decode(p.stdout).trim(),
-    ]
-      .filter((s) => s.length > 0)
-      .join(' | ')
-    throw new Error(`git ${args.join(' ')} exited ${p.exitCode}: ${detail}`)
-  }
-}
-
-/** Run the real CLI and return its combined output. */
-function vx(cwd: string, ...args: string[]): string {
-  const p = Bun.spawnSync({
-    cmd: ['bun', CLI, ...args],
-    cwd,
-    stdout: 'pipe',
-    stderr: 'pipe',
-    env: { ...process.env, CI: '', GITHUB_ACTIONS: '', NO_COLOR: '1' },
-  })
-  return new TextDecoder().decode(p.stdout) + new TextDecoder().decode(p.stderr)
-}
+const vx = (cwd: string, ...args: string[]) => vxSync(cwd, args).text
 
 let root: string
 
@@ -85,15 +39,21 @@ describe('stale cache hits', () => {
       // output, committed or not (item 887). The index path (clean) and
       // the stat path (dirty) must spell the mode alike: the committed
       // state after a dirty miss is a hit.
-      await write(path.join(root, 'package.json'), JSON.stringify({ name: 'root', private: true }))
-      await write(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
+      await Bun.write(
+        path.join(root, 'package.json'),
+        JSON.stringify({ name: 'root', private: true }),
+      )
+      await Bun.write(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
       await writeLocalWorkspace(root)
       const pkg = path.join(root, 'packages', 'p')
-      await write(path.join(pkg, 'package.json'), JSON.stringify({ name: 'p', version: '1.0.0' }))
-      await write(path.join(pkg, 'src', 'run.sh'), 'echo hi\n')
-      await write(path.join(pkg, 'src', 't.txt'), 'real')
+      await Bun.write(
+        path.join(pkg, 'package.json'),
+        JSON.stringify({ name: 'p', version: '1.0.0' }),
+      )
+      await Bun.write(path.join(pkg, 'src', 'run.sh'), 'echo hi\n')
+      await Bun.write(path.join(pkg, 'src', 't.txt'), 'real')
       await symlink('t.txt', path.join(pkg, 'src', 'l.txt'))
-      await write(
+      await Bun.write(
         path.join(pkg, 'vx.config.mjs'),
         `export default { tasks: { build: {
            exec: { command: 'mkdir -p dist && (test -x src/run.sh && echo exec || echo plain) > dist/o && cat src/l.txt >> dist/o' },
@@ -115,7 +75,7 @@ describe('stale cache hits', () => {
       git(root, 'commit', '-q', '-am', 'exec')
       seen.push(await step())
       await rm(path.join(pkg, 'src', 'l.txt'))
-      await write(path.join(pkg, 'src', 'l.txt'), 't.txt')
+      await Bun.write(path.join(pkg, 'src', 'l.txt'), 't.txt')
       seen.push(await step())
       expect(seen).toEqual([
         ['miss', 'plain real'],
@@ -132,11 +92,14 @@ describe('stale cache hits', () => {
       // Port of Vite Task's input_glob_meta_in_path: joined unescaped, the
       // project dir `packages/[lib]` reads as a class matching one of l, i,
       // b, and the task's inputs match nothing.
-      await write(path.join(root, 'package.json'), JSON.stringify({ name: 'root', private: true }))
+      await Bun.write(
+        path.join(root, 'package.json'),
+        JSON.stringify({ name: 'root', private: true }),
+      )
       await writeLocalWorkspace(root)
       const pkg = path.join(root, 'packages', '[lib]')
-      await write(path.join(pkg, 'src', 'main.ts'), 'initial')
-      await write(
+      await Bun.write(path.join(pkg, 'src', 'main.ts'), 'initial')
+      await Bun.write(
         path.join(pkg, 'vx.config.mjs'),
         `export default { name: 'lib', tasks: { build: {
            exec: { command: 'mkdir -p dist && cat src/* > dist/o' },
@@ -152,11 +115,11 @@ describe('stale cache hits', () => {
         return [word, await readFile(path.join(pkg, 'dist', 'o'), 'utf8')]
       }
       const seen: Array<[string, string]> = [await step(), await step()]
-      await write(path.join(pkg, 'src', 'main.ts'), 'modified')
+      await Bun.write(path.join(pkg, 'src', 'main.ts'), 'modified')
       seen.push(await step())
       git(root, 'commit', '-q', '-am', 'edit')
       seen.push(await step())
-      await write(path.join(pkg, 'src', 'b.ts'), '+new')
+      await Bun.write(path.join(pkg, 'src', 'b.ts'), '+new')
       seen.push(await step())
       expect(seen).toEqual([
         ['miss', 'initial'],
@@ -175,11 +138,14 @@ describe('stale cache hits', () => {
       // the workspace's paths must still resolve inside git's top level.
       const real = path.join(root, 'real')
       const link = path.join(root, 'link')
-      await write(path.join(real, 'package.json'), JSON.stringify({ name: 'root', private: true }))
+      await Bun.write(
+        path.join(real, 'package.json'),
+        JSON.stringify({ name: 'root', private: true }),
+      )
       await writeLocalWorkspace(real)
       const pkg = path.join(real, 'packages', 'lib')
-      await write(path.join(pkg, 'src', 'a'), '1')
-      await write(
+      await Bun.write(path.join(pkg, 'src', 'a'), '1')
+      await Bun.write(
         path.join(pkg, 'vx.config.mjs'),
         `export default { name: 'lib', tasks: { build: {
            exec: { command: 'mkdir -p dist && cat src/a > dist/o' },
@@ -199,7 +165,7 @@ describe('stale cache hits', () => {
         [path.join(link, 'packages', 'lib'), '3'],
         [real, '3'],
       ] as const) {
-        await write(path.join(pkg, 'src', 'a'), v)
+        await Bun.write(path.join(pkg, 'src', 'a'), v)
         const word = /1↑/.test(vx(cwd, 'run', 'build', '--all')) ? 'miss' : 'hit'
         seen.push(`${word} ${await readFile(path.join(pkg, 'dist', 'o'), 'utf8')}`)
       }
@@ -213,11 +179,14 @@ describe('stale cache hits', () => {
       // Port of Nx's git-worktrees nestedWorktreeRoots: git lists a nested
       // worktree as one untracked directory and never descends into it, so
       // its files must still reach the key through vx's own walk.
-      await write(path.join(root, 'package.json'), JSON.stringify({ name: 'root', private: true }))
+      await Bun.write(
+        path.join(root, 'package.json'),
+        JSON.stringify({ name: 'root', private: true }),
+      )
       await writeLocalWorkspace(root)
       const pkg = path.join(root, 'packages', 'lib')
-      await write(path.join(pkg, 'src', 'a'), '1')
-      await write(
+      await Bun.write(path.join(pkg, 'src', 'a'), '1')
+      await Bun.write(
         path.join(pkg, 'vx.config.mjs'),
         `export default { name: 'lib', tasks: { build: {
            exec: { command: 'mkdir -p dist && cat src/a src/wt/packages/lib/src/a > dist/o' },
@@ -233,7 +202,7 @@ describe('stale cache hits', () => {
         return `${word} ${await readFile(path.join(pkg, 'dist', 'o'), 'utf8')}`
       }
       const seen = [await step(), await step()]
-      await write(path.join(pkg, 'src', 'wt', 'packages', 'lib', 'src', 'a'), '2')
+      await Bun.write(path.join(pkg, 'src', 'wt', 'packages', 'lib', 'src', 'a'), '2')
       seen.push(await step())
       expect(seen).toEqual(['miss 11', 'hit 11', 'miss 12'])
     },
@@ -248,16 +217,19 @@ describe('stale cache hits', () => {
         // git reports no chmod then, so the file stays trusted at its index
         // mode, and the task replayed the output a plain input built (item
         // 1076). WSL's DrvFs writes this setting.
-        await write(
+        await Bun.write(
           path.join(root, 'package.json'),
           JSON.stringify({ name: 'root', private: true }),
         )
-        await write(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
+        await Bun.write(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
         await writeLocalWorkspace(root)
         const pkg = path.join(root, 'packages', 'p')
-        await write(path.join(pkg, 'package.json'), JSON.stringify({ name: 'p', version: '1.0.0' }))
-        await write(path.join(pkg, 'src', 'run.sh'), 'echo hi\n')
-        await write(
+        await Bun.write(
+          path.join(pkg, 'package.json'),
+          JSON.stringify({ name: 'p', version: '1.0.0' }),
+        )
+        await Bun.write(path.join(pkg, 'src', 'run.sh'), 'echo hi\n')
+        await Bun.write(
           path.join(pkg, 'vx.config.mjs'),
           `export default { tasks: { build: {
            exec: { command: 'mkdir -p dist && (test -x src/run.sh && echo exec || echo plain) > dist/o' },
@@ -297,12 +269,18 @@ describe('stale cache hits', () => {
       // (size, mode, mtime) rows. Back on v1 with v2's bytes on disk, the
       // skip check matched v1's rows and reported up-to-date over v2's
       // bytes (item 886).
-      await write(path.join(root, 'package.json'), JSON.stringify({ name: 'root', private: true }))
-      await write(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
+      await Bun.write(
+        path.join(root, 'package.json'),
+        JSON.stringify({ name: 'root', private: true }),
+      )
+      await Bun.write(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
       await writeLocalWorkspace(root)
       const pkg = path.join(root, 'packages', 'p')
-      await write(path.join(pkg, 'package.json'), JSON.stringify({ name: 'p', version: '1.0.0' }))
-      await write(
+      await Bun.write(
+        path.join(pkg, 'package.json'),
+        JSON.stringify({ name: 'p', version: '1.0.0' }),
+      )
+      await Bun.write(
         path.join(pkg, 'vx.config.mjs'),
         `export default { tasks: { build: {
            exec: { command: 'mkdir -p dist && cp src/v.txt dist/v.txt && touch -t 200109090146.40 dist/v.txt' },
@@ -313,7 +291,7 @@ describe('stale cache hits', () => {
       const out = path.join(pkg, 'dist', 'v.txt')
       const seen: string[] = []
       for (const v of ['v1', 'v2', 'v1', 'v2', 'v2']) {
-        await write(path.join(pkg, 'src', 'v.txt'), v)
+        await Bun.write(path.join(pkg, 'src', 'v.txt'), v)
         vx(root, 'run', 'build', '--all')
         seen.push(await readFile(out, 'utf8'))
       }
@@ -331,13 +309,19 @@ describe('stale cache hits', () => {
       // was pinned: dropping the workspace half left the whole repo green
       // while a root-anchored output that had been edited on disk stayed
       // edited, under a run that reported success.
-      await write(path.join(root, 'package.json'), JSON.stringify({ name: 'root', private: true }))
-      await write(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
+      await Bun.write(
+        path.join(root, 'package.json'),
+        JSON.stringify({ name: 'root', private: true }),
+      )
+      await Bun.write(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
       await writeLocalWorkspace(root)
       const pkg = path.join(root, 'packages', 'p')
-      await write(path.join(pkg, 'package.json'), JSON.stringify({ name: 'p', version: '1.0.0' }))
-      await write(path.join(pkg, 'src', 'in.txt'), 's')
-      await write(
+      await Bun.write(
+        path.join(pkg, 'package.json'),
+        JSON.stringify({ name: 'p', version: '1.0.0' }),
+      )
+      await Bun.write(path.join(pkg, 'src', 'in.txt'), 's')
+      await Bun.write(
         path.join(pkg, 'vx.config.mjs'),
         `export default { tasks: { gen: {
            exec: { command: 'mkdir -p ../../shared && printf g > ../../shared/g.txt' },
@@ -354,7 +338,7 @@ describe('stale cache hits', () => {
       expect(await readFile(path.join(root, 'shared', 'g.txt'), 'utf8')).toBe('g')
 
       // Edit the root-anchored output in place: same path set, wrong bytes.
-      await write(path.join(root, 'shared', 'g.txt'), 'CORRUPT')
+      await Bun.write(path.join(root, 'shared', 'g.txt'), 'CORRUPT')
       vx(root, 'run', 'gen', '--all')
       expect(await readFile(path.join(root, 'shared', 'g.txt'), 'utf8')).toBe('g')
     },
@@ -372,10 +356,10 @@ describe('stale cache hits', () => {
       // the whole repo green — while a STRAY file survived a run that
       // reported `up-to-date`, leaving a tree that does not match the
       // artifact vx just claimed to have.
-      await write(path.join(root, 'package.json'), JSON.stringify({ name: 'demo' }))
+      await Bun.write(path.join(root, 'package.json'), JSON.stringify({ name: 'demo' }))
       await writeLocalWorkspace(root)
-      await write(path.join(root, 'src', 'in.txt'), 's')
-      await write(
+      await Bun.write(path.join(root, 'src', 'in.txt'), 's')
+      await Bun.write(
         path.join(root, 'vx.config.mjs'),
         `export default { tasks: { build: {
            exec: { command: 'mkdir -p dist && printf a > dist/a.txt && printf b > dist/b.txt' },
@@ -388,7 +372,7 @@ describe('stale cache hits', () => {
 
       vx(root, 'run', 'build')
       // A stray alongside the expected outputs: same fingerprints, wrong SET.
-      await write(path.join(root, 'dist', 'STRAY.txt'), 'zzz')
+      await Bun.write(path.join(root, 'dist', 'STRAY.txt'), 'zzz')
 
       const out = vx(root, 'run', 'build')
       expect(out).toContain('restored-local')

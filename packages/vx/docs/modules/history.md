@@ -320,7 +320,7 @@ rootCauses(db, runId, taskId, entries, groups?): RootCause[] // under moved upst
 recordedTasks(db, runId): Set<string>               // the run's rows as project#task, read once
 upstreamTask(name): string                           // the task an upstream row names, past a group (GROUP_VIA)
 inputWriters(db, runId, root, taskId, entries, roots): InputWriter[] // tasks running when a moved input file last changed, if not after run runId ended (stats and asks once per file)
-loadEntryInputs(db, entryHash): TaskInputComponent[] // one entry's key components, [] when none
+createMissExplainer(db): MissExplainer               // what a miss's key changed since the task's last saved entry (below)
 diffKeyComponents(before, after): { entries, unchangedCount } // the join, no store
 
 // The argument and row types, exported from the module index:
@@ -474,17 +474,13 @@ join, `diffKeyComponents`, needs no store and is reused as it is, and
 results, so such a reader supplies its own); the CLI verbs format, they
 do not query.
 
-## `src/history/miss-reason.ts` — what a miss's key changed
-
-### Purpose
+### What a miss's key changed, at run time
 
 A telemetry sink wants to say why a task ran: "rebuilt because a source file changed". `vx why` answers that after a run, from the run
 history; this answers it during one, so a live export carries it. A
 missed task's key components (captured before its command spawns)
 are joined with those of the last entry the cache saved for the same
 task, by `diffKeyComponents`, the rule `vx why` uses.
-
-### Public surface
 
 ```ts
 export type MissExplainer = (
@@ -500,16 +496,16 @@ export function createMissExplainer(db: Database): MissExplainer
 - Names the first ten changes; `count` is all of them. Hashes are left
   out, so a secret input's value never reaches a sink.
 
-### Cost
-
 `run()` creates one only when a telemetry sink exists. The first miss
 reads the newest entry per task (one `GROUP BY` over `entries`); each
 miss then reads its entry's `entry_inputs` by primary key. A hit asks
 nothing.
 
-## `src/history/history-writes.ts` — a run's rows into the store's index
+## `src/history/run-history.ts` — the `runs`, `invocations` and timing rows
 
 ### Purpose
+
+`RunHistory`: `runs` + `invocations` writes (one transaction per run, plus one per streamed batch of hits), the SQL binders, and the 30-day retention (run by a prune only, never a run's close; a dry-run prune deletes nothing, item 1004).
 
 `runHistory(cache)` is the one writer of a run's history: `RunHistory`
 over the handle the cache exposes (`indexDb`), gated as the cache's own
@@ -546,17 +542,7 @@ export interface HistoryWrites {
   recordRemoteErrors(runId: string, errors: readonly (readonly [string, string])[]): void
 }
 export function runHistory(cache: Cache): HistoryWrites
-```
 
-## `src/history/run-history.ts` — the `runs`, `invocations` and timing rows
-
-### Purpose
-
-`RunHistory`: `runs` + `invocations` writes (one transaction per run, plus one per streamed batch of hits), the SQL binders, and the 30-day retention (run by a prune only, never a run's close; a dry-run prune deletes nothing, item 1004).
-
-### Public surface
-
-```ts
 // (Tier 3) One header row per `vx run` invocation — see the
 // `invocations` table in docs/caching.md.
 export interface InvocationRecord {

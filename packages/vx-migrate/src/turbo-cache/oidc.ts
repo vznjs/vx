@@ -4,8 +4,7 @@
 // (vercel/setup-turborepo-remote-cache-action, read); any other server names
 // its token URL.
 
-import { deadline } from '../remote-deadline.js'
-import { hideTokens } from '../remote-refusal.js'
+import { deadline, hideTokens } from '../remote-http.js'
 
 /** `turboCache({ oidc })`: `true` is Vercel's hosted cache with its defaults. */
 export interface TurboOidcOptions {

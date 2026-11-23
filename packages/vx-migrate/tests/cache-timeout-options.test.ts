@@ -7,7 +7,7 @@
 import { expect, it } from 'bun:test'
 import { nxCache } from '../src/nx-cache/index.js'
 import { turboCache } from '../src/turbo-cache/index.js'
-import { deadline } from '../src/remote-deadline.js'
+import { deadline } from '../src/remote-http.js'
 
 const said = (make: () => unknown): string => {
   try {

@@ -14,9 +14,9 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { FILE_HASH_RACY_MS, racyWindowMs } from '../src/memo/index.js'
 import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
 import { lock } from './helpers/orchestrator.js'
+import { BIN } from './helpers/vx.js'
 
 // Core's bin over a lock written first: `vx lock` walks for configs, a run does not.
-const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 const TIMEOUT = 30_000
 
 const CONFIG = `

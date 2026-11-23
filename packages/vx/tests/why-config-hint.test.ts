@@ -5,23 +5,15 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterAll, describe, expect, it } from 'bun:test'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
+import { vxSync } from './helpers/vx.js'
 
-const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
 let root: string | undefined
 
 afterAll(async () => {
   if (root !== undefined) await rm(root, { recursive: true, force: true })
 })
 
-function vx(cwd: string, ...args: string[]): { code: number | null; out: string; err: string } {
-  const r = Bun.spawnSync({
-    cmd: [process.execPath, BIN, ...args],
-    cwd,
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
-  return { code: r.exitCode, out: r.stdout.toString(), err: r.stderr.toString() }
-}
+const vx = (cwd: string, ...args: string[]) => vxSync(cwd, args)
 
 const config = (cmd: string): string =>
   `export default { tasks: { build: { exec: { command: '${cmd}' }, inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true } } }\n`

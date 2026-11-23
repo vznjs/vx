@@ -8,30 +8,12 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { GitFilesCache, populateGitFilesCache, runGitLsFiles } from '../src/cache/inputs.js'
+import { GitFilesCache, populateGitFilesCache, runGitLsFiles } from '../src/cache/git-inputs.js'
 import { gitFiles } from '../src/cli/watch-filter.js'
 import { listedSync } from '../src/util/git-ignored.js'
 import { affectedProjects } from '../src/workspace/affected.js'
 import { findProjectConfigs } from '../src/workspace/workspace.js'
-
-function git(cwd: string, ...args: string[]): void {
-  const p = Bun.spawnSync({
-    cmd: [
-      'git',
-      '-c',
-      'commit.gpgsign=false',
-      '-c',
-      'user.email=test@vx.local',
-      '-c',
-      'user.name=vx test',
-      ...args,
-    ],
-    cwd,
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
-  if (p.exitCode !== 0) throw new Error(`git ${args.join(' ')}: ${p.stderr.toString()}`)
-}
+import { git } from './helpers/workspace.js'
 
 let root: string
 

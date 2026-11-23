@@ -8,23 +8,10 @@ import { rm } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
+import { vx as spawnVx } from './helpers/vx.js'
 
-const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
-
-async function vx(root: string, args: string[]): Promise<string> {
-  const proc = Bun.spawn([process.execPath, BIN, 'run', ...args], {
-    cwd: root,
-    stdout: 'pipe',
-    stderr: 'pipe',
-    env: { ...process.env, NO_COLOR: '1', VX_DEBUG_TIMING: '1' },
-  })
-  const [out, err] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-  ])
-  await proc.exited
-  return out + err
-}
+const vx = async (root: string, args: string[]) =>
+  (await spawnVx(root, ['run', ...args], { env: { VX_DEBUG_TIMING: '1' } })).text
 
 describe('a cache hit on a task with no outputs', () => {
   let root: string

@@ -12,8 +12,8 @@ import path from 'node:path'
 import { afterAll, describe, expect, it } from 'bun:test'
 import { sandboxAvailable } from './helpers/sandbox-gate.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
+import { BIN } from './helpers/vx.js'
 
-const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 const linux = process.platform === 'linux'
 const available = linux && (await sandboxAvailable('sandbox host helpers test'))
 const dirs: string[] = []

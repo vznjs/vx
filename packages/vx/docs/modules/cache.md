@@ -267,7 +267,7 @@ export interface CacheKeyInput {
 }
 
 // One key component as `key()` folded it (a `captureInto` row); task-hash,
-// miss-save, metrics and miss-reason pass these, never redeclaring the shape.
+// miss-save and metrics pass these, never redeclaring the shape.
 export interface TaskInputComponent {
   kind: string
   name: string
@@ -1223,12 +1223,7 @@ Plus the helpers that resolve and clean `outputs.files` and
 
 ### Public surface
 
-The git side is `git-inputs.ts` (see git-inputs.md); this module
-re-exports it for readers that reach it here: `GitFilesCache`,
-`populateGitFilesCache`, `runGitLsFiles`, `startGitEnumeration`,
-`applyGitEnumeration`, `gitPathspecs`, `parseCheckAttrOutput`,
-`autocrlfConverts`, `gitStatWeakened`, `attributeFilesOutsideTree` and
-the `GitEnumeration` type.
+The git side is `git-inputs.ts` (see git-inputs.md); import it from there.
 
 ```ts
 /** Does `task` declare this changed path an input? A project-relative
@@ -1442,9 +1437,6 @@ export function committedFiles(
   dir: string,
 ): (abs: string) => boolean
 
-/** A literal entry compiles to itself plus its subtree: `src/` → `src`, `src/**`. */
-export function asTrees(patterns: readonly string[]): string[]
-
 // An ADDITIVE task (its outputs overlap an upstream's, with the edge that
 // orders them; item 588) owns what its run added or changed, not what
 // its glob selects: the stamp before, the diff after, and a clean by
@@ -1558,7 +1550,7 @@ other walker: a project outside a git work tree is a `UserError`
    set via `Bun.Glob.match`. A literal entry — no glob character —
    means the file or its whole tree: `src/`, `src` and `dist` all
    compile to the path plus `<path>/**` (`asTrees`, defined in
-   `util/paths.ts` and re-exported here — the graph's
+   `util/paths.ts` — the graph's
    overlapping-output refusal reads the same rule), as in Turbo and
    every `.gitignore`. An entry git answers nothing for — a literal, or
    a glob's fixed prefix (`dist` of `dist/**`), with no listed path at

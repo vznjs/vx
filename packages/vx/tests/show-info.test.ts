@@ -19,9 +19,9 @@ import { SCHEMA_VERSION } from '../src/index-db/index.js'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
 import { edgesSource, packagesSource, PLUGIN_IMPORT, pluginSource } from './helpers/plugin.js'
 import { noticed } from './helpers/notice.js'
+import { vx } from './helpers/vx.js'
 
 // `vx lock`, then the verb: show and info read the lock.
-const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
 const TIMEOUT = 30_000
 
 const APP_CONFIG = `
@@ -114,27 +114,6 @@ async function makeWorkspace(): Promise<string> {
   await mkdir(bareDir, { recursive: true })
   await writeFile(path.join(bareDir, 'package.json'), JSON.stringify({ name: 'bare' }))
   return root
-}
-
-interface VxResult {
-  code: number
-  out: string
-  err: string
-}
-
-async function vx(root: string, args: string[]): Promise<VxResult> {
-  const proc = Bun.spawn([process.execPath, BIN, ...args], {
-    cwd: root,
-    env: { ...process.env },
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
-  const [out, err, code] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ])
-  return { code, out, err }
 }
 
 describe('vx show (e2e)', () => {

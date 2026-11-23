@@ -6,7 +6,8 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, expect, it } from 'bun:test'
-import { BIN, startWatch, until, type Watch } from './helpers/watch-loop.js'
+import { startWatch, until, type Watch } from './helpers/watch-loop.js'
+import { BIN } from './helpers/vx.js'
 import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
 
 const made: string[] = []

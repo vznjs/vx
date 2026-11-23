@@ -9,10 +9,10 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { CORE_INDEX } from './helpers/local-workspace.js'
+import { BIN } from './helpers/vx.js'
 
 const CORE_ALIAS = path.resolve(import.meta.dir, '..', 'src', 'cli', 'core-alias.ts')
 const CORE_CONFIG = path.resolve(import.meta.dir, '..', 'src', 'config.ts')
-const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 
 let root: string
 beforeAll(async () => {

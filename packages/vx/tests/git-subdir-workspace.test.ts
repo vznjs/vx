@@ -5,12 +5,20 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { affectedProjects } from '../src/workspace/index.js'
 import { GitFilesCache, repoRootOf } from '../src/cache/index.js'
-import { populateGitFilesCache } from '../src/cache/inputs.js'
+import { populateGitFilesCache } from '../src/cache/git-inputs.js'
 import { type Logger } from '../src/report/index.js'
 import { run } from './helpers/orchestrator.js'
 import { dry, type DryTask } from './helpers/parity.js'
-import { BIN, SETTLE_MS, executions, initialOnly, startWatch, until } from './helpers/watch-loop.js'
-import { addProject, gitIn, gitInitCommit, makeWorkspace } from './helpers/workspace.js'
+import { SETTLE_MS, executions, initialOnly, startWatch, until } from './helpers/watch-loop.js'
+import { BIN } from './helpers/vx.js'
+import {
+  addProject,
+  git,
+  gitIn,
+  gitInit,
+  gitInitCommit,
+  makeWorkspace,
+} from './helpers/workspace.js'
 
 const quiet: Logger = { status() {}, taskStdout() {}, taskStderr() {}, taskComplete() {} }
 
@@ -26,17 +34,6 @@ const quiet: Logger = { status() {}, taskStdout() {}, taskStderr() {}, taskCompl
 // SANDBOXED task cannot reach — so a fixture that commits passes when the
 // file is run alone and fails inside the gate's shard. One row remembered
 // the flag and the next did not (2026-09-20); the helper now owns it.
-async function git(cwd: string, args: string[]): Promise<void> {
-  const p = Bun.spawnSync({
-    cmd: ['git', '-c', 'commit.gpgsign=false', '-c', 'tag.gpgSign=false', ...args],
-    cwd,
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
-  if (p.exitCode !== 0)
-    throw new Error(`git ${args.join(' ')}: ${new TextDecoder().decode(p.stderr)}`)
-}
-
 describe('workspace root is a subdirectory of the git repo', () => {
   let repo: string
   let ws: string // the workspace root = <repo>/code
@@ -46,14 +43,12 @@ describe('workspace root is a subdirectory of the git repo', () => {
     ws = path.join(repo, 'code')
     await mkdir(path.join(ws, 'pkg-a'), { recursive: true })
     await mkdir(path.join(ws, 'pkg-b'), { recursive: true })
-    await git(repo, ['init', '-q', '-b', 'main'])
-    await git(repo, ['config', 'user.email', 't@t.co'])
-    await git(repo, ['config', 'user.name', 't'])
+    gitInit(repo, '-b', 'main')
     await writeFile(path.join(ws, 'pkg-a', 'in.txt'), 'v1')
     await writeFile(path.join(ws, 'pkg-b', 'in.txt'), 'b')
     await writeFile(path.join(repo, 'toplevel.txt'), 'root') // outside the workspace
-    await git(repo, ['add', '-A'])
-    await git(repo, ['commit', '-q', '-m', 'init'])
+    git(repo, 'add', '-A')
+    git(repo, 'commit', '-q', '-m', 'init')
   })
 
   afterEach(async () => {
@@ -106,18 +101,9 @@ describe('a root project in a workspace below the git top-level', () => {
       )
       await writeFile(path.join(ws, 'in.txt'), 'v1')
       await writeFile(path.join(repo, 'beside.txt'), 'v1')
-      await git(repo, ['init', '-q', '-b', 'main'])
-      await git(repo, ['-c', 'user.email=t@t.co', '-c', 'user.name=t', 'add', '-A'])
-      await git(repo, [
-        '-c',
-        'user.email=t@t.co',
-        '-c',
-        'user.name=t',
-        'commit',
-        '-q',
-        '-m',
-        'init',
-      ])
+      git(repo, 'init', '-q', '-b', 'main')
+      git(repo, 'add', '-A')
+      git(repo, 'commit', '-q', '-m', 'init')
       const key = async (): Promise<string> =>
         (await dry(ws, ['build', '--all'])).find((t) => t.id === 'fixture-root#build')!.hash
       const k0 = await key()
@@ -149,13 +135,11 @@ describe('the repo root the attributes gate stops at', () => {
       const main = path.join(root, 'main')
       await mkdir(path.join(main, 'code', 'pkg'), { recursive: true })
       await writeFile(path.join(main, 'code', 'pkg', 'a.txt'), 'a\n')
-      await git(main, ['init', '-q'])
-      await git(main, ['config', 'user.email', 'test@vx.local'])
-      await git(main, ['config', 'user.name', 'vx test'])
-      await git(main, ['add', '-A'])
-      await git(main, ['commit', '-q', '-m', 'init'])
+      gitInit(main)
+      git(main, 'add', '-A')
+      git(main, 'commit', '-q', '-m', 'init')
       const wt = path.join(root, 'wt')
-      await git(main, ['worktree', 'add', '-q', wt])
+      git(main, 'worktree', 'add', '-q', wt)
 
       const ask = (cwd: string, args: string[]): string => {
         const p = Bun.spawnSync({ cmd: ['git', ...args], cwd, stdout: 'pipe', stderr: 'pipe' })
@@ -202,10 +186,10 @@ describe('workspace inside a linked git worktree', () => {
       `,
       files: { 'src/in.txt': 'v1' },
     })
-    await git(main, ['add', '-A'])
-    await git(main, ['commit', '-q', '-m', 'init'])
+    git(main, 'add', '-A')
+    git(main, 'commit', '-q', '-m', 'init')
     linked = await mkdtemp(path.join(tmpdir(), 'vx-wt-linked-'))
-    await git(main, ['worktree', 'add', '-q', linked])
+    git(main, 'worktree', 'add', '-q', linked)
   })
 
   afterEach(async () => {
@@ -251,11 +235,11 @@ describe('workspace inside a linked git worktree', () => {
         }
       `,
     )
-    await git(main, ['add', '-A'])
-    await git(main, ['commit', '-q', '-m', 'workspace input'])
+    git(main, 'add', '-A')
+    git(main, 'commit', '-q', '-m', 'workspace input')
     const deep = path.join(linked, 'a', 'much', 'longer', 'checkout')
     await mkdir(path.dirname(deep), { recursive: true })
-    await git(main, ['worktree', 'add', '-q', deep])
+    git(main, 'worktree', 'add', '-q', deep)
     for (const root of [main, deep]) {
       await writeFile(path.join(root, 'packages', 'app', 'src', 'untracked.txt'), 'u')
     }
@@ -314,9 +298,7 @@ describe('vx run inside a git pre-commit hook', () => {
       `,
       files: { 'src/a.txt': 'a1', 'src/b.txt': 'b1' },
     })
-    await git(root, ['init', '-q'])
-    await git(root, ['config', 'user.email', 'test@vx.local'])
-    await git(root, ['config', 'user.name', 'vx test'])
+    gitInit(root)
     // The hook runs from the committed lock, as a checkout does.
     expect(
       Bun.spawnSync([process.execPath, BIN, 'lock'], {
@@ -324,8 +306,8 @@ describe('vx run inside a git pre-commit hook', () => {
         env: { ...process.env, VX_LOCK_REVIEW_FILES: 'false' },
       }).exitCode,
     ).toBe(0)
-    await git(root, ['add', '-A'])
-    await git(root, ['commit', '-q', '-m', 'init'])
+    git(root, 'add', '-A')
+    git(root, 'commit', '-q', '-m', 'init')
     const hook = path.join(root, '.git', 'hooks', 'pre-commit')
     await writeFile(
       hook,
@@ -353,7 +335,7 @@ exec "$VX_HOOK_BUN" "$VX_HOOK_BIN" run lint --all
     // The truth is the key of the same bytes with the index agreeing with
     // the tree: keys are content-addressed, so every file staged.
     const settledKey = async () => {
-      await git(root, ['add', '-A'])
+      git(root, 'add', '-A')
       return (await dry(root, ['lint', '--all'])).map((t) => t.hash)
     }
     const committed = async (...args: string[]) => {
@@ -366,7 +348,7 @@ exec "$VX_HOOK_BUN" "$VX_HOOK_BIN" run lint --all
     const app = path.join(root, 'packages', 'app', 'src')
     try {
       await writeFile(path.join(app, 'a.txt'), 'a2')
-      await git(root, ['add', '-A'])
+      git(root, 'add', '-A')
       await committed('-m', 'plain')
 
       await writeFile(path.join(app, 'a.txt'), 'a3')

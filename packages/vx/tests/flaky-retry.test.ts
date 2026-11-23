@@ -7,8 +7,8 @@ import { rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
+import { vx } from './helpers/vx.js'
 
-const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
 const TIMEOUT = 60_000
 
 // Fails once per `once` file outside its inputs: the key never moves.
@@ -22,21 +22,6 @@ const flip = (name: string, exec: string, fail = 'exit 1'): string => `
     },
   }
 `
-
-async function vx(root: string, args: string[]) {
-  const proc = Bun.spawn([process.execPath, BIN, ...args], {
-    cwd: root,
-    env: { ...process.env, CI: '', GITHUB_ACTIONS: '' },
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
-  const [out, err, code] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ])
-  return { code, text: out + err }
-}
 
 describe('a known-flaky task is retried once', () => {
   let root: string

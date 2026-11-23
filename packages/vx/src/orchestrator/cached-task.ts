@@ -5,7 +5,7 @@
 //   key       here               its key, taken mid-run
 //   probe     here               a hit restored, or a miss
 //   describe  miss-inputs.ts     the miss's input set, once
-//   attempts  attempts.ts        the retry loop over attempt.ts
+//   attempts  attempt.ts         the retry loop and each attempt
 //   recheck   input-recheck.ts   do the key's inputs still hold
 //   save      task-save.ts       the one save verdict, carried out
 //   outcome   miss-outcome.ts    what it all adds up to
@@ -24,17 +24,15 @@ import { span } from '../util/index.js'
 import { warnOf } from '../report/index.js'
 import { hashArgsOf } from './execute-args.js'
 import type { ExecuteArgs } from './execute-task.js'
-import { AttemptSignal } from './attempt-signal.js'
-import { AttemptStream } from './attempt-stream.js'
 import { OutputGuard } from './attempt-outputs.js'
 import { upstreamOutputsHere } from './attempt-request.js'
-import { runAttempts } from './attempts.js'
+import { runAttempts } from './attempt.js'
 import { restoreHit } from './hit-restore.js'
 import { fingerprintMoved, type KeyCheck, type StateStamp } from './input-recheck.js'
 import { describeMiss, type PreDescribed } from './miss-inputs.js'
 import { missOutcome } from './miss-outcome.js'
 import { type SaveFacts, withCheckFacts } from './miss-save.js'
-import type { MissRun } from './miss-run.js'
+import { AttemptSignal, AttemptStream, type MissRun } from './miss-run.js'
 import { getContext } from './remote-prefetch.js'
 import { forwardedSignal } from './signals.js'
 import { computeTaskHash, keyOf, keyOrDescribe } from './task-hash.js'

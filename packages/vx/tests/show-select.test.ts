@@ -6,29 +6,11 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { writeEdges } from './helpers/plugin.js'
+import { git } from './helpers/workspace.js'
 
 // `vx lock`, then `vx show`: show reads the lock.
 const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
 let root: string
-
-function git(...args: string[]): void {
-  const r = Bun.spawnSync({
-    cmd: [
-      'git',
-      '-c',
-      'commit.gpgsign=false',
-      '-c',
-      'user.name=t',
-      '-c',
-      'user.email=t@t',
-      ...args,
-    ],
-    cwd: root,
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
-  if (r.exitCode !== 0) throw new Error(`git ${args.join(' ')}: ${r.stderr.toString()}`)
-}
 
 async function write(rel: string, content: string): Promise<void> {
   await mkdir(path.dirname(path.join(root, rel)), { recursive: true })
@@ -66,9 +48,9 @@ beforeAll(async () => {
   await write('pkgs/app/package.json', JSON.stringify({ name: 'app' }))
   await write('pkgs/tool/package.json', JSON.stringify({ name: 'tool' }))
   await write('pkgs/tool/vx.config.mjs', LINT)
-  git('init', '-q')
-  git('add', '-A')
-  git('commit', '-qm', 'init')
+  git(root, 'init', '-q')
+  git(root, 'add', '-A')
+  git(root, 'commit', '-qm', 'init')
   await write('pkgs/lib/src.ts', 'export {}\n')
 })
 

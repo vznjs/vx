@@ -13,7 +13,7 @@
 
 import { readdirSync } from 'node:fs'
 import path from 'node:path'
-import { env } from './env.ts'
+import { env, github, runMain } from './github.ts'
 import { releaseVersion } from './release.ts'
 
 const DIST = path.join(import.meta.dir, '..', 'dist')
@@ -67,41 +67,17 @@ async function main(): Promise<void> {
     throw new Error('usage: release-assets.ts <linux|darwin> [--publish]')
   const tag = `v${releaseVersion(process.env.VX_RELEASE_VERSION)}`
   const repo = env('GITHUB_REPOSITORY')
-  const headers = {
-    authorization: `Bearer ${env('GH_TOKEN')}`,
-    accept: 'application/vnd.github+json',
-    'x-github-api-version': '2022-11-28',
-  }
-  const call = async (
-    url: string,
-    init: {
-      method?: string
-      body?: string | Blob
-      headers?: Record<string, string>
-      signal?: AbortSignal
-    } = {},
-  ): Promise<unknown> => {
-    const res = await fetch(url, { ...init, headers: { ...headers, ...init.headers } })
-    if (!res.ok)
-      throw new Error(
-        `${init.method ?? 'GET'} ${url}: ${res.status} ${res.statusText}\n${await res.text()}`,
-      )
-    return res.status === 204 ? null : res.json()
-  }
+  const call = github()
   // Drafts have no tag lookup; the list shows them, first, to a token that can write.
-  const releases = (await call(
-    `https://api.github.com/repos/${repo}/releases?per_page=50`,
-  )) as Release[]
-  let release = releaseFor(releases, tag)
-  const api = `https://api.github.com/repos/${repo}/releases`
+  let release = releaseFor((await call('releases?per_page=50')) as Release[], tag)
   // A cut upload can still land server-side (v0.0.575's did): re-read before
   // each try, keep a finished asset, delete a partial one.
   const attached = async (name: string): Promise<boolean> => {
-    release = (await call(`${api}/${release.id}`)) as Release
+    release = (await call(`releases/${release.id}`)) as Release
     for (const a of release.assets) {
       if (a.name !== name) continue
       if (!isPartial(a)) return true
-      await call(`${api}/assets/${a.id}`, { method: 'DELETE' })
+      await call(`releases/assets/${a.id}`, { method: 'DELETE' })
     }
     return false
   }
@@ -133,7 +109,7 @@ async function main(): Promise<void> {
     console.log(`attached ${name} to ${tag}`)
   }
   if (process.argv.includes('--publish')) {
-    await call(`https://api.github.com/repos/${repo}/releases/${release.id}`, {
+    await call(`releases/${release.id}`, {
       method: 'PATCH',
       body: JSON.stringify({ draft: false }),
     })
@@ -141,11 +117,4 @@ async function main(): Promise<void> {
   }
 }
 
-if (import.meta.main) {
-  try {
-    await main()
-  } catch (e) {
-    process.stderr.write(`${(e as Error).message}\n`)
-    process.exitCode = 1
-  }
-}
+if (import.meta.main) await runMain(main)

@@ -11,6 +11,7 @@ import { pluginSource } from './helpers/plugin.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 import { parseDependenciesLock } from '../src/workspace/dependencies-lock.js'
 import { readLockfile } from '../src/workspace/lockfile.js'
+import { BIN, vx as spawnVx } from './helpers/vx.js'
 
 const edgesIn = async (root: string) => {
   const bytes = new Uint8Array(
@@ -20,22 +21,8 @@ const edgesIn = async (root: string) => {
   return Object.fromEntries(lock.names.map((n) => [n, lock.edges(n)!.deps]))
 }
 
-const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
-
-async function vx(root: string, args: string[]) {
-  const proc = Bun.spawn([process.execPath, BIN, ...args], {
-    cwd: root,
-    stdout: 'pipe',
-    stderr: 'pipe',
-    env: { ...process.env, NO_COLOR: '1', VX_LOCK_REVIEW_FILES: 'false' },
-  })
-  const [out, err, code] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ])
-  return { code, out, err }
-}
+const vx = (root: string, args: string[]) =>
+  spawnVx(root, args, { bin: BIN, env: { VX_LOCK_REVIEW_FILES: 'false' } })
 
 // The answer reads `edges.txt` at the root, as nx() reads Nx's graph, and
 // logs each call: `b-on-a` gives b an edge to a; `gen` names tools/gen

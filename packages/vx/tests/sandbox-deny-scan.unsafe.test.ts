@@ -12,12 +12,9 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterAll, afterEach, beforeAll, describe, expect, it, spyOn } from 'bun:test'
 import { SandboxManager } from '@anthropic-ai/sandbox-runtime'
-import {
-  initSandbox,
-  resetSandbox,
-  resolveSandboxConfig,
-  wrapSandboxedCommand,
-} from '../src/sandbox/runtime.js'
+import { initSandbox, resetSandbox } from '../src/sandbox/session.js'
+import { resolveSandboxConfig } from '../src/sandbox/grants.js'
+import { wrapSandboxedCommand } from '../src/sandbox/runtime.js'
 import { scopedMandatoryDenies, srtDefaultWritePaths } from '../src/sandbox/deny-scan.js'
 import { sandboxAvailable } from './helpers/sandbox-gate.js'
 

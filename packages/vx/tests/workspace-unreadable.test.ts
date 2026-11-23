@@ -10,8 +10,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { skipAsRoot } from './helpers/nonroot-gate.js'
-
-const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
+import { BIN } from './helpers/vx.js'
 
 describe.skipIf(skipAsRoot('a workspace file this user may not read'))(
   'a workspace file this user may not read',

@@ -7,38 +7,12 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { writeEdges } from './helpers/plugin.js'
+import { git } from './helpers/workspace.js'
+import { vxSync } from './helpers/vx.js'
 
-const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
 const roots: string[] = []
 
-function git(root: string, ...args: string[]): void {
-  const r = Bun.spawnSync({
-    cmd: [
-      'git',
-      '-c',
-      'commit.gpgsign=false',
-      '-c',
-      'user.name=t',
-      '-c',
-      'user.email=t@t',
-      ...args,
-    ],
-    cwd: root,
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
-  if (r.exitCode !== 0) throw new Error(`git ${args.join(' ')}: ${r.stderr.toString()}`)
-}
-
-function vx(root: string, ...args: string[]): { code: number | null; out: string; err: string } {
-  const r = Bun.spawnSync({
-    cmd: [process.execPath, BIN, ...args],
-    cwd: root,
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
-  return { code: r.exitCode, out: r.stdout.toString(), err: r.stderr.toString() }
-}
+const vx = (root: string, ...args: string[]) => vxSync(root, args)
 
 function shown(root: string, ...args: string[]): string[] {
   const r = vx(root, 'show', ...args, '--format', 'json')

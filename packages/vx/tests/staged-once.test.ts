@@ -13,8 +13,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
 import { PLUGIN_IMPORT } from './helpers/local-workspace.js'
 import { edgesSource, pluginSource } from './helpers/plugin.js'
-
-const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
+import { BIN } from './helpers/vx.js'
 
 async function stageCalls(file: string): Promise<string[]> {
   const f = Bun.file(file)

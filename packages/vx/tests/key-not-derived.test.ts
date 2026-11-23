@@ -8,8 +8,8 @@ import { rm } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
+import { vx as spawnVx } from './helpers/vx.js'
 
-const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
 let root: string
 beforeEach(async () => {
   root = realpathSync(await makeWorkspace({ prefix: 'vx-key-fail-' }))
@@ -34,20 +34,7 @@ async function project(inputs: string): Promise<void> {
   )
 }
 
-async function vx(...args: string[]): Promise<{ code: number; out: string; err: string }> {
-  const proc = Bun.spawn([process.execPath, BIN, ...args], {
-    cwd: root,
-    env: { ...process.env, CI: '', GITHUB_ACTIONS: '', NO_COLOR: '1' },
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
-  const [out, err, code] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ])
-  return { code, out, err }
-}
+const vx = (...args: string[]) => spawnVx(root, args)
 
 it("--dry exits 1 with the run's error line when a task's key cannot be derived", async () => {
   await project(`runtime: ['exit 7']`)

@@ -20,6 +20,7 @@ import {
 } from '../src/orchestrator/output-log.js'
 import { fileLocations } from '../src/ui/links.js'
 import { gitInitCommit, makeWorkspace } from './helpers/workspace.js'
+import { vx } from './helpers/vx.js'
 
 const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
 const TIMEOUT = 30_000
@@ -196,17 +197,6 @@ const CONFIG = `
     },
   }
 `
-
-async function vx(root: string, args: string[]): Promise<{ code: number; out: string }> {
-  const proc = Bun.spawn([process.execPath, BIN, ...args], {
-    cwd: root,
-    env: { ...process.env },
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
-  const [out, code] = await Promise.all([new Response(proc.stdout).text(), proc.exited])
-  return { code, out }
-}
 
 interface Row {
   task: string

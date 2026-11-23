@@ -7,14 +7,10 @@ import { realpathSync } from 'node:fs'
 import { mkdir, rm } from 'node:fs/promises'
 import { SandboxManager } from '@anthropic-ai/sandbox-runtime'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import {
-  collectRecords,
-  initSandbox,
-  releaseBridges,
-  resetSandbox,
-  resolveSandboxConfig,
-  wrapSandboxedCommand,
-} from '../src/sandbox/runtime.js'
+import { collectRecords } from '../src/sandbox/trace.js'
+import { initSandbox, releaseBridges, resetSandbox } from '../src/sandbox/session.js'
+import { resolveSandboxConfig } from '../src/sandbox/grants.js'
+import { wrapSandboxedCommand } from '../src/sandbox/runtime.js'
 import { run } from './helpers/orchestrator.js'
 import { sandboxAvailable } from './helpers/sandbox-gate.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'

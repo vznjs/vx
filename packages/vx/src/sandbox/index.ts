@@ -3,14 +3,9 @@
 // and returns its result plus the violations it saw; what it exports is
 // only what the orchestrator and the façade call.
 
-export {
-  probeSandbox,
-  releaseBridges,
-  resetSandbox,
-  runSandboxed,
-  untracedReason,
-  wrapSandboxedCommand,
-} from './runtime.js'
+export { probeSandbox, releaseBridges, resetSandbox } from './session.js'
+export { runSandboxed, wrapSandboxedCommand } from './runtime.js'
+export { untracedReason } from './trace.js'
 export { atOrUnder, replacedBySandbox, sandboxReads, toRealPath, wildcardAt } from './paths.js'
 export { keyedOutsideGrants } from './binds.js'
 export {

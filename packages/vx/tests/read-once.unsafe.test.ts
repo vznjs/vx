@@ -26,8 +26,8 @@ import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { gitInitCommit } from './helpers/workspace.js'
 import { CORE_INDEX } from './helpers/core-index.js'
 import { pluginOrigin } from './helpers/plugin.js'
+import { BIN } from './helpers/vx.js'
 
-const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 const TIMEOUT = 60_000
 
 function required(): boolean {

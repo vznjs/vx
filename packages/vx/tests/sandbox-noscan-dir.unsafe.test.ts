@@ -20,7 +20,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { sandboxAvailable } from './helpers/sandbox-gate.js'
 
 const available = await sandboxAvailable('sandbox noscan directory test')
-const EXEC = path.resolve(import.meta.dir, '..', 'src', 'sandbox', 'runtime.js')
+const EXEC = path.resolve(import.meta.dir, '..', 'src', 'sandbox', 'session.js')
 
 /** The scan command a fresh process hands SRT under `tmp`. */
 async function scanCommand(tmp: string): Promise<string> {

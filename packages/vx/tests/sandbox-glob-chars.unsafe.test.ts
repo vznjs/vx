@@ -9,12 +9,9 @@ import { realpathSync, statSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
-import {
-  initSandbox,
-  resetSandbox,
-  resolveSandboxConfig,
-  runSandboxed,
-} from '../src/sandbox/runtime.js'
+import { initSandbox, resetSandbox } from '../src/sandbox/session.js'
+import { resolveSandboxConfig } from '../src/sandbox/grants.js'
+import { runSandboxed } from '../src/sandbox/runtime.js'
 import { bindableReads, bindableWrites } from '../src/sandbox/binds.js'
 import { sandboxRequestFor } from '../src/sandbox/request.js'
 import type { TaskNode } from '../src/graph/index.js'

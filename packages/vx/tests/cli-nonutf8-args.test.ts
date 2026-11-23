@@ -5,8 +5,7 @@ import { describe, expect, it } from 'bun:test'
 import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-
-const BIN = path.resolve(import.meta.dir, '../src/bin.ts')
+import { BIN } from './helpers/vx.js'
 
 async function vx(args: string): Promise<{ code: number; stderr: string }> {
   const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'vx-nonutf8-'))

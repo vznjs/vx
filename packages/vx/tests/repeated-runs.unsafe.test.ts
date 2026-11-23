@@ -14,7 +14,7 @@ import { rm } from 'node:fs/promises'
 import { afterAll, beforeAll, expect, it } from 'bun:test'
 import type { Logger } from '../src/report/index.js'
 import { run } from './helpers/orchestrator.js'
-import { probeSandbox } from '../src/sandbox/runtime.js'
+import { probeSandbox } from '../src/sandbox/session.js'
 import { addProject, gitInitCommit, makeWorkspace } from './helpers/workspace.js'
 
 const silent: Logger = {

@@ -14,7 +14,6 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { isAlive, killIfAlive, waitForDead } from './helpers/alive.js'
 import { addProject, gitInit, makeWorkspace } from './helpers/workspace.js'
 import {
-  BIN,
   SETTLE_MS,
   executions,
   initialOnly,
@@ -23,6 +22,7 @@ import {
   useWatchFixture,
   type Watch,
 } from './helpers/watch-loop.js'
+import { BIN } from './helpers/vx.js'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
 import { noticed } from './helpers/notice.js'
 

@@ -8,28 +8,10 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { writeEdges } from './helpers/plugin.js'
+import { vx } from './helpers/vx.js'
 
 // `vx lock`, then `vx show`: show reads the lock.
-const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
 const TIMEOUT = 30_000
-
-async function vx(
-  root: string,
-  args: string[],
-): Promise<{ code: number; out: string; err: string }> {
-  const proc = Bun.spawn([process.execPath, BIN, ...args], {
-    cwd: root,
-    env: { ...process.env },
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
-  const [out, err, code] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ])
-  return { code, out, err }
-}
 
 describe('vx show and the default build of a dependency', () => {
   let root: string

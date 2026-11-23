@@ -18,9 +18,9 @@ import { type Logger } from '../src/report/index.js'
 import { parseRunArgs, resolveRunOptions } from '../src/cli/run.js'
 import { gitInit } from './helpers/workspace.js'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
+import { BIN } from './helpers/vx.js'
 
 const TIMEOUT = 30_000
-const BIN = path.join(import.meta.dir, '..', 'src', 'bin.ts')
 
 const log: Logger = {
   status() {},

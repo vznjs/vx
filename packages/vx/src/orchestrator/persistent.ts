@@ -5,7 +5,13 @@
 
 import { isGroupTask, type TaskNode, type TaskOutcome } from '../graph/index.js'
 import { killGraceMs } from '../util/index.js'
-import { holdGroups, killTree, signalExitCode, untilGroupsGone } from '../exec/index.js'
+import {
+  holdGroups,
+  killTree,
+  signalExitCode,
+  type TaskExecutor,
+  untilGroupsGone,
+} from '../exec/index.js'
 import type { HeldPersistent, HeldServer } from './options.js'
 import { terminateChildren } from './signals.js'
 
@@ -198,6 +204,70 @@ export function serverUsers(
     }
   }
   return users
+}
+
+/** The dependency-only servers a run stops as their last users finish. */
+export interface ServerRelease {
+  /** `id` finished: stop each server it was the last user of. */
+  release(id: string): void
+  /** The servers it stopped: their exit is no crash. */
+  readonly released: ReadonlySet<string>
+  /** Their stops, awaited before the run disposes the rest. */
+  readonly stopping: readonly Promise<void>[]
+}
+
+/**
+ * Stop each server once no task left needs it (`unneededServers`), after the
+ * servers using it (`serverUsers`), which the same release reached first.
+ * Under a `hold` nothing stops: the next cycle may reuse it.
+ */
+export function serverRelease(args: {
+  nodes: ReadonlyMap<string, TaskNode>
+  hold: boolean
+  foreground: boolean
+  executors: readonly TaskExecutor[]
+  registry: Map<string, Child>
+  stopped: () => boolean
+}): ServerRelease {
+  const released = new Set<string>()
+  const stopping: Promise<void>[] = []
+  if (args.hold) return { release: () => {}, released, stopping }
+  const { registry } = args
+  const unneeded = unneededServers(args.nodes, args.foreground)
+  const usersOf = serverUsers(args.nodes)
+  const serving = args.executors.filter(
+    (e) => e.capabilities?.servers === true && e.distribution?.unneeded !== undefined,
+  )
+  const stops = new Map<string, Promise<void>>()
+  const release = (id: string): void => {
+    if (args.stopped()) return
+    for (const s of unneeded(id)) {
+      // Copies an executor started beside the dependants it ran.
+      for (const e of serving)
+        try {
+          e.distribution!.unneeded!(s)
+        } catch {
+          // Its copies stop at its teardown, as before.
+        }
+      const child = registry.get(s)
+      // One that died on its own stays: the end of the graph reports it.
+      if (child === undefined || hasEnded(child)) continue
+      released.add(s)
+      registry.delete(s)
+      const users: Promise<void>[] = []
+      for (const u of usersOf.get(s) ?? []) {
+        const p = stops.get(u)
+        if (p !== undefined) users.push(p)
+      }
+      const p =
+        users.length === 0
+          ? stopServer(child)
+          : Promise.allSettled(users).then(() => stopServer(child))
+      stops.set(s, p)
+      stopping.push(p)
+    }
+  }
+  return { release, released, stopping }
 }
 
 /** Stop one server as `shutdownPersistent` stops the rest: SIGTERM, then SIGKILL past the grace. */

@@ -1,6 +1,6 @@
 // A sandboxed task with no write grant writes into the sandbox's scratch,
 // never the disk, and may still exit 0: the missing-output failure names
-// that cause (missing-outputs.ts). Unsafe: it runs a sandbox, which cannot nest
+// that cause (attempt-outputs.ts `missingOutputs`). Unsafe: it runs a sandbox, which cannot nest
 // inside a sandboxed shard (A-24).
 
 import { rm } from 'node:fs/promises'

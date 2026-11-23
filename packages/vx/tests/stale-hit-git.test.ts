@@ -2,63 +2,18 @@
 // neither file holds a test shard alone (117 s as one file, 2026-10-22).
 // The same shape: the real CLI against a real git-backed fixture.
 
-import { mkdir, mkdtemp, readdir, readFile, rm, writeFile, utimes } from 'node:fs/promises'
+import { mkdtemp, readdir, readFile, rm, writeFile, utimes } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { writeLocalWorkspace } from './helpers/local-workspace.js'
+import { git, gitInit } from './helpers/workspace.js'
+import { vxSync } from './helpers/vx.js'
 
 const TIMEOUT = 60_000
 const CLI = path.join(import.meta.dir, 'helpers', 'vx-locked.ts')
 
-async function write(p: string, content: string): Promise<void> {
-  await mkdir(path.dirname(p), { recursive: true })
-  await writeFile(p, content)
-}
-
-function git(cwd: string, ...args: string[]): void {
-  const p = Bun.spawnSync({
-    // Identity and signing on the HELPER, not on each row: every case here
-    // commits, and a runner with no global git identity refuses to
-    // (`empty ident name`). Eighteen call sites set it by hand and two new
-    // ones forgot, which only showed up on CI — this box has a global
-    // identity and the runner does not.
-    cmd: [
-      'git',
-      '-c',
-      'commit.gpgsign=false',
-      '-c',
-      'user.email=test@vx.local',
-      '-c',
-      'user.name=vx test',
-      ...args,
-    ],
-    cwd,
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
-  if (p.exitCode !== 0) {
-    const detail = [
-      new TextDecoder().decode(p.stderr).trim(),
-      new TextDecoder().decode(p.stdout).trim(),
-    ]
-      .filter((s) => s.length > 0)
-      .join(' | ')
-    throw new Error(`git ${args.join(' ')} exited ${p.exitCode}: ${detail}`)
-  }
-}
-
-/** Run the real CLI and return its combined output. */
-function vx(cwd: string, ...args: string[]): string {
-  const p = Bun.spawnSync({
-    cmd: ['bun', CLI, ...args],
-    cwd,
-    stdout: 'pipe',
-    stderr: 'pipe',
-    env: { ...process.env, CI: '', GITHUB_ACTIONS: '', NO_COLOR: '1' },
-  })
-  return new TextDecoder().decode(p.stdout) + new TextDecoder().decode(p.stderr)
-}
+const vx = (cwd: string, ...args: string[]) => vxSync(cwd, args).text
 
 let root: string
 
@@ -76,9 +31,9 @@ describe('stale cache hits', () => {
   it(
     'repo git config for colour, short status and quoted paths still sees an edit',
     async () => {
-      await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
+      await Bun.write(path.join(root, 'package.json'), '{"name":"r","private":true}')
       await writeLocalWorkspace(root)
-      await write(
+      await Bun.write(
         path.join(root, 'a/vx.config.mjs'),
         `export default { tasks: { build: {
            exec: { command: 'cat src/* > out.txt' },
@@ -86,8 +41,8 @@ describe('stale cache hits', () => {
          } } }`,
       )
       const file = path.join(root, 'a/src/zaż "ó"\tx.txt')
-      await write(file, 'v1')
-      await write(path.join(root, '.gitignore'), '.vx/cache/\nout.txt\n')
+      await Bun.write(file, 'v1')
+      await Bun.write(path.join(root, '.gitignore'), '.vx/cache/\nout.txt\n')
       git(root, 'init', '-q')
       for (const [k, v] of [
         ['color.ui', 'always'],
@@ -103,7 +58,7 @@ describe('stale cache hits', () => {
       expect(vx(root, 'lock')).not.toMatch(/✗/)
       expect(vx(root, 'run', 'a#build')).not.toMatch(/up-to-date/)
       expect(vx(root, 'run', 'a#build')).toMatch(/a#build[^\n]*up-to-date/)
-      await write(file, 'v2')
+      await Bun.write(file, 'v2')
       expect(vx(root, 'show', '--affected=HEAD')).toMatch(/^  a +a +1 task$/m)
       expect(vx(root, 'run', 'a#build')).not.toMatch(/up-to-date/)
       expect(await readFile(path.join(root, 'a/out.txt'), 'utf8')).toBe('v2')
@@ -119,9 +74,9 @@ describe('stale cache hits', () => {
       // a committed one stays IN it (`committedFiles`): left out, an edit to
       // it hit and replayed the old build. The build also rewrites it,
       // which keeps the save: the bytes it leaves are an output.
-      await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
+      await Bun.write(path.join(root, 'package.json'), '{"name":"r","private":true}')
       await writeLocalWorkspace(root)
-      await write(
+      await Bun.write(
         path.join(root, 'vx.config.mjs'),
         `export default {
            tasks: {
@@ -132,18 +87,16 @@ describe('stale cache hits', () => {
            },
          }`,
       )
-      await write(path.join(root, 'data/sponsors.json'), '["a"]')
-      await write(path.join(root, '.gitignore'), '.vx/cache/\ndata/gen.json\n')
-      git(root, 'init', '-q')
-      git(root, 'config', 'user.email', 'test@vx.local')
-      git(root, 'config', 'user.name', 'vx test')
+      await Bun.write(path.join(root, 'data/sponsors.json'), '["a"]')
+      await Bun.write(path.join(root, '.gitignore'), '.vx/cache/\ndata/gen.json\n')
+      gitInit(root)
       git(root, 'add', '-A')
       git(root, 'commit', '-q', '-m', 'initial')
 
       await writeLocalWorkspace(root)
       expect(vx(root, 'run', 'build')).not.toMatch(/not saved/)
       expect(vx(root, 'run', 'build')).toMatch(/build[^\n]*up-to-date/)
-      await write(path.join(root, 'data/sponsors.json'), '["b"]')
+      await Bun.write(path.join(root, 'data/sponsors.json'), '["b"]')
       const third = vx(root, 'run', 'build')
       expect(third).not.toMatch(/build[^\n]*up-to-date/)
       expect(await readFile(path.join(root, 'data/gen.json'), 'utf8')).toBe('["b"]')
@@ -163,9 +116,9 @@ describe('stale cache hits', () => {
         // writes the artifact's copy of it back, so the key must fold it: left
         // out, a committed edit hit and the restore put the old bytes back
         // (turborepo#14831).
-        await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
+        await Bun.write(path.join(root, 'package.json'), '{"name":"r","private":true}')
         await writeLocalWorkspace(root)
-        await write(
+        await Bun.write(
           path.join(root, 'vx.config.mjs'),
           `export default {
            tasks: {
@@ -176,9 +129,9 @@ describe('stale cache hits', () => {
            },
          }`,
         )
-        await write(path.join(root, 'src/a.txt'), 'a')
-        await write(path.join(root, 'dist/LICENSE'), 'license v1')
-        await write(path.join(root, '.gitignore'), '.vx/cache/\ndist/out.txt\n')
+        await Bun.write(path.join(root, 'src/a.txt'), 'a')
+        await Bun.write(path.join(root, 'dist/LICENSE'), 'license v1')
+        await Bun.write(path.join(root, '.gitignore'), '.vx/cache/\ndist/out.txt\n')
         git(root, 'init', '-q')
         git(root, 'add', '-A')
         git(root, 'commit', '-q', '-m', 'initial')
@@ -186,7 +139,7 @@ describe('stale cache hits', () => {
         await writeLocalWorkspace(root)
         vx(root, 'run', 'build')
         expect(vx(root, 'run', 'build')).toMatch(/build[^\n]*up-to-date/)
-        await write(path.join(root, 'dist/LICENSE'), 'license v2')
+        await Bun.write(path.join(root, 'dist/LICENSE'), 'license v2')
         git(root, 'commit', '-q', '-am', 'license v2')
         expect(vx(root, 'run', 'build')).not.toMatch(/build[^\n]*(up-to-date|restored)/)
         expect(await readFile(path.join(root, 'dist/LICENSE'), 'utf8')).toBe('license v2')
@@ -203,9 +156,9 @@ describe('stale cache hits', () => {
       // on that state writes the new bytes, as the run would. Keyed as a
       // plain input, the rewrite read as an input moved mid-run: not saved,
       // and a failure under `inputStability.severity: 'error'`.
-      await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
+      await Bun.write(path.join(root, 'package.json'), '{"name":"r","private":true}')
       await writeLocalWorkspace(root)
-      await write(
+      await Bun.write(
         path.join(root, 'vx.config.mjs'),
         `export default {
            tasks: {
@@ -218,17 +171,15 @@ describe('stale cache hits', () => {
            },
          }`,
       )
-      await write(path.join(root, 'routes/a.tsx'), 'a')
-      await write(path.join(root, 'src/routeTree.gen.ts'), 'a.tsx\n')
-      await write(path.join(root, '.gitignore'), '.vx/cache/\n')
-      git(root, 'init', '-q')
-      git(root, 'config', 'user.email', 'test@vx.local')
-      git(root, 'config', 'user.name', 'vx test')
+      await Bun.write(path.join(root, 'routes/a.tsx'), 'a')
+      await Bun.write(path.join(root, 'src/routeTree.gen.ts'), 'a.tsx\n')
+      await Bun.write(path.join(root, '.gitignore'), '.vx/cache/\n')
+      gitInit(root)
       git(root, 'add', '-A')
       git(root, 'commit', '-q', '-m', 'initial')
 
       await writeLocalWorkspace(root)
-      await write(path.join(root, 'routes/b.tsx'), 'b')
+      await Bun.write(path.join(root, 'routes/b.tsx'), 'b')
       expect(vx(root, 'run', 'build')).not.toMatch(/changed after its key/)
       expect(await readFile(path.join(root, 'src/routeTree.gen.ts'), 'utf8')).toBe('a.tsx\nb.tsx\n')
       git(root, 'checkout', '--', 'src/routeTree.gen.ts')
@@ -246,13 +197,13 @@ describe('stale cache hits', () => {
     it(
       `a run that removes a committed file under its outputs saves nothing (${shape})`,
       async () => {
-        await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
+        await Bun.write(path.join(root, 'package.json'), '{"name":"r","private":true}')
         await writeLocalWorkspace(root)
         const outputs =
           shape === 'files'
             ? `{ files: ['dist/**'] }`
             : `{ files: [], workspaceFiles: ['dist/**'] }`
-        await write(
+        await Bun.write(
           path.join(root, 'vx.config.mjs'),
           `export default {
            tasks: {
@@ -263,9 +214,9 @@ describe('stale cache hits', () => {
            },
          }`,
         )
-        await write(path.join(root, 'src/a.txt'), 'a')
-        await write(path.join(root, 'dist/tracked.txt'), 'T')
-        await write(path.join(root, '.gitignore'), '.vx/cache/\ndist/a\n')
+        await Bun.write(path.join(root, 'src/a.txt'), 'a')
+        await Bun.write(path.join(root, 'dist/tracked.txt'), 'T')
+        await Bun.write(path.join(root, '.gitignore'), '.vx/cache/\ndist/a\n')
         git(root, 'init', '-q')
         git(root, 'add', '-A')
         git(root, 'commit', '-q', '-m', 'initial')
@@ -294,10 +245,10 @@ describe('stale cache hits', () => {
     it(
       `a retry that passes is not saved when a failed attempt changed a committed ${scope} output`,
       async () => {
-        await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
+        await Bun.write(path.join(root, 'package.json'), '{"name":"r","private":true}')
         await writeLocalWorkspace(root)
         const marker = path.join(root, 'tried')
-        await write(
+        await Bun.write(
           path.join(root, 'p/vx.config.mjs'),
           `export default { tasks: { build: {
              exec: {
@@ -309,9 +260,9 @@ describe('stale cache hits', () => {
              cache: true,
            } } }`,
         )
-        await write(path.join(root, 'p/src/a'), 'x')
-        await write(path.join(root, file), 'original\n')
-        await write(path.join(root, '.gitignore'), '.vx/cache/\ntried\n')
+        await Bun.write(path.join(root, 'p/src/a'), 'x')
+        await Bun.write(path.join(root, file), 'original\n')
+        await Bun.write(path.join(root, '.gitignore'), '.vx/cache/\ntried\n')
         git(root, 'init', '-q')
         expect(vx(root, 'lock')).not.toMatch(/✗/)
         git(root, 'add', '-A')
@@ -334,9 +285,9 @@ describe('stale cache hits', () => {
     async () => {
       // The twin of the project case above: `cleanWorkspaceOutputs` can
       // reach another project's directory, and leaves committed files too.
-      await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
+      await Bun.write(path.join(root, 'package.json'), '{"name":"r","private":true}')
       await writeLocalWorkspace(root)
-      await write(
+      await Bun.write(
         path.join(root, 'vx.config.mjs'),
         `export default {
            tasks: {
@@ -356,13 +307,13 @@ describe('stale cache hits', () => {
            },
          }`,
       )
-      await write(
+      await Bun.write(
         path.join(root, 'emit.sh'),
         'mkdir -p gen\nprintf a > gen/a.js\nprintf content-of-b > gen/b.ts\n',
       )
-      await write(path.join(root, 'gen/a.js'), 'a')
-      await write(path.join(root, 'gen/b.ts'), 'content-of-b')
-      await write(path.join(root, '.gitignore'), 'out/\n.vx/cache/\n')
+      await Bun.write(path.join(root, 'gen/a.js'), 'a')
+      await Bun.write(path.join(root, 'gen/b.ts'), 'content-of-b')
+      await Bun.write(path.join(root, '.gitignore'), 'out/\n.vx/cache/\n')
       git(root, 'init', '-q')
       git(root, 'add', '-A')
       git(root, 'commit', '-q', '-m', 'initial')
@@ -371,7 +322,7 @@ describe('stale cache hits', () => {
       vx(root, 'run', 'consume')
       expect(await readFile(path.join(root, 'out/all.txt'), 'utf8')).toBe('content-of-b')
 
-      await write(path.join(root, 'emit.sh'), 'mkdir -p gen\nprintf a > gen/a.js\n')
+      await Bun.write(path.join(root, 'emit.sh'), 'mkdir -p gen\nprintf a > gen/a.js\n')
 
       vx(root, 'run', 'consume')
       expect(await readFile(path.join(root, 'out/all.txt'), 'utf8')).toBe('content-of-b')
@@ -387,9 +338,9 @@ describe('stale cache hits', () => {
       // existence probe for OID-carrying paths. A run executed while a
       // sparse-checkout path was absent would then be replayed once the path
       // was materialised, because no key ever moved.
-      await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
+      await Bun.write(path.join(root, 'package.json'), '{"name":"r","private":true}')
       await writeLocalWorkspace(root)
-      await write(
+      await Bun.write(
         path.join(root, 'vx.config.mjs'),
         `export default {
            tasks: {
@@ -400,12 +351,10 @@ describe('stale cache hits', () => {
            },
          }`,
       )
-      await write(path.join(root, 'src/a.txt'), 'A')
-      await write(path.join(root, 'src/sparse.txt'), 'SPARSE')
-      await write(path.join(root, '.gitignore'), 'dist/\n.vx/cache/\n')
-      git(root, 'init', '-q')
-      git(root, 'config', 'user.email', 'test@vx.local')
-      git(root, 'config', 'user.name', 'vx test')
+      await Bun.write(path.join(root, 'src/a.txt'), 'A')
+      await Bun.write(path.join(root, 'src/sparse.txt'), 'SPARSE')
+      await Bun.write(path.join(root, '.gitignore'), 'dist/\n.vx/cache/\n')
+      gitInit(root)
       git(root, 'add', '-A')
       git(root, 'commit', '-q', '-m', 'initial')
 
@@ -417,7 +366,7 @@ describe('stale cache hits', () => {
       expect(await readFile(path.join(root, 'dist/out.txt'), 'utf8')).toBe('A')
 
       // Materialise it. The real input set changed, so the output must too.
-      await write(path.join(root, 'src/sparse.txt'), 'SPARSE')
+      await Bun.write(path.join(root, 'src/sparse.txt'), 'SPARSE')
       vx(root, 'run', 'build')
       expect(await readFile(path.join(root, 'dist/out.txt'), 'utf8')).toBe('ASPARSE')
     },
@@ -439,9 +388,9 @@ describe('stale cache hits', () => {
         // Both are silent in `git status --porcelain`, so both keep a
         // trusted index OID that no longer describes the disk. Dropping
         // only the lowercase half of that guard passes the entire repo.
-        await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
+        await Bun.write(path.join(root, 'package.json'), '{"name":"r","private":true}')
         await writeLocalWorkspace(root)
-        await write(
+        await Bun.write(
           path.join(root, 'vx.config.mjs'),
           `export default {
            tasks: {
@@ -452,12 +401,10 @@ describe('stale cache hits', () => {
            },
          }`,
         )
-        await write(path.join(root, 'src/a.txt'), 'A')
-        await write(path.join(root, '.gitignore'), 'dist/\n')
-        await write(path.join(root, '.vx/.gitignore'), '/cache\n')
-        git(root, 'init', '-q')
-        git(root, 'config', 'user.email', 'test@vx.local')
-        git(root, 'config', 'user.name', 'vx test')
+        await Bun.write(path.join(root, 'src/a.txt'), 'A')
+        await Bun.write(path.join(root, '.gitignore'), 'dist/\n')
+        await Bun.write(path.join(root, '.vx/.gitignore'), '/cache\n')
+        gitInit(root)
         // Committed with the rest, so the status below holds only the flagged file.
         vx(root, 'lock')
         git(root, 'add', '-A')
@@ -469,7 +416,7 @@ describe('stale cache hits', () => {
 
         // git still reports nothing — that is the whole point of the flag —
         // so the only thing that can move the key is vx distrusting the OID.
-        await write(path.join(root, 'src/a.txt'), 'B')
+        await Bun.write(path.join(root, 'src/a.txt'), 'B')
         const status = Bun.spawnSync({ cmd: ['git', 'status', '--porcelain'], cwd: root })
         expect(status.stdout.toString().trim()).toBe('')
         vx(root, 'run', 'build')
@@ -491,12 +438,12 @@ describe('stale cache hits', () => {
       // CRLF byte count. Both arms run here, because the pair IS the
       // evidence — the unscoped one was correct all along and is the
       // control that keeps this row from passing for the wrong reason.
-      await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
-      await write(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
+      await Bun.write(path.join(root, 'package.json'), '{"name":"r","private":true}')
+      await Bun.write(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
       await writeLocalWorkspace(root)
       const proj = path.join(root, 'packages', 'app')
-      await write(path.join(proj, 'package.json'), '{"name":"app","version":"1.0.0"}')
-      await write(
+      await Bun.write(path.join(proj, 'package.json'), '{"name":"app","version":"1.0.0"}')
+      await Bun.write(
         path.join(proj, 'vx.config.mjs'),
         `export default {
            tasks: {
@@ -507,31 +454,29 @@ describe('stale cache hits', () => {
            },
          }`,
       )
-      await write(path.join(root, '.gitattributes'), '* text=auto\n')
-      await write(path.join(root, '.gitignore'), 'dist/\n.vx/cache/\n')
-      await write(path.join(proj, 'src/a.txt'), 'one\r\ntwo\r\n')
-      git(root, 'init', '-q')
-      git(root, 'config', 'user.email', 'test@vx.local')
-      git(root, 'config', 'user.name', 'vx test')
+      await Bun.write(path.join(root, '.gitattributes'), '* text=auto\n')
+      await Bun.write(path.join(root, '.gitignore'), 'dist/\n.vx/cache/\n')
+      await Bun.write(path.join(proj, 'src/a.txt'), 'one\r\ntwo\r\n')
+      gitInit(root)
       git(root, 'add', '-A')
       git(root, 'commit', '-q', '-m', 'initial')
       // `git add` normalized the index to LF; checkout does not convert back
       // on Linux. Worktree CRLF, index LF, status clean — the defect's state.
-      await write(path.join(proj, 'src/a.txt'), 'one\r\ntwo\r\n')
+      await Bun.write(path.join(proj, 'src/a.txt'), 'one\r\ntwo\r\n')
 
       const out = path.join(proj, 'dist/out.txt')
       vx(root, 'run', 'build', '--filter', 'app')
       expect((await readFile(out, 'utf8')).trim()).toBe('10')
-      await write(path.join(proj, 'src/a.txt'), 'one\ntwo\n')
+      await Bun.write(path.join(proj, 'src/a.txt'), 'one\ntwo\n')
       vx(root, 'run', 'build', '--filter', 'app')
       expect((await readFile(out, 'utf8')).trim()).toBe('8')
 
       // CONTROL: the unscoped arm, whose pathspec is `.` so the root file
       // was always listed. It passed before the fix and must still pass.
-      await write(path.join(proj, 'src/a.txt'), 'one\r\ntwo\r\n')
+      await Bun.write(path.join(proj, 'src/a.txt'), 'one\r\ntwo\r\n')
       vx(root, 'run', 'build', '--all')
       expect((await readFile(out, 'utf8')).trim()).toBe('10')
-      await write(path.join(proj, 'src/a.txt'), 'one\ntwo\n')
+      await Bun.write(path.join(proj, 'src/a.txt'), 'one\ntwo\n')
       vx(root, 'run', 'build', '--all')
       expect((await readFile(out, 'utf8')).trim()).toBe('8')
     },
@@ -545,9 +490,9 @@ describe('stale cache hits', () => {
       // task reads. Under `text=auto` git stores the LF form, so `git status`
       // (which compares after filtering) calls a CRLF worktree file clean and
       // it keeps its OID — the CRLF and LF states then fold the SAME key.
-      await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
+      await Bun.write(path.join(root, 'package.json'), '{"name":"r","private":true}')
       await writeLocalWorkspace(root)
-      await write(
+      await Bun.write(
         path.join(root, 'vx.config.mjs'),
         `export default {
            tasks: {
@@ -558,23 +503,21 @@ describe('stale cache hits', () => {
            },
          }`,
       )
-      await write(path.join(root, '.gitattributes'), '* text=auto\n')
-      await write(path.join(root, '.gitignore'), 'dist/\n.vx/cache/\n')
-      await write(path.join(root, 'src/a.txt'), 'one\r\ntwo\r\n')
-      git(root, 'init', '-q')
-      git(root, 'config', 'user.email', 'test@vx.local')
-      git(root, 'config', 'user.name', 'vx test')
+      await Bun.write(path.join(root, '.gitattributes'), '* text=auto\n')
+      await Bun.write(path.join(root, '.gitignore'), 'dist/\n.vx/cache/\n')
+      await Bun.write(path.join(root, 'src/a.txt'), 'one\r\ntwo\r\n')
+      gitInit(root)
       git(root, 'add', '-A')
       git(root, 'commit', '-q', '-m', 'initial')
       // Restore CRLF: `git add` normalized the index to LF, and checkout does
       // not convert back on Linux. This is the state the defect lives in —
       // worktree CRLF, index LF, status clean.
-      await write(path.join(root, 'src/a.txt'), 'one\r\ntwo\r\n')
+      await Bun.write(path.join(root, 'src/a.txt'), 'one\r\ntwo\r\n')
 
       vx(root, 'run', 'build')
       expect((await readFile(path.join(root, 'dist/out.txt'), 'utf8')).trim()).toBe('10')
 
-      await write(path.join(root, 'src/a.txt'), 'one\ntwo\n')
+      await Bun.write(path.join(root, 'src/a.txt'), 'one\ntwo\n')
       vx(root, 'run', 'build')
       expect((await readFile(path.join(root, 'dist/out.txt'), 'utf8')).trim()).toBe('8')
     },
@@ -588,12 +531,12 @@ describe('stale cache hits', () => {
   it(
     'a same-size line-ending swap git calls clean is not served from cache',
     async () => {
-      await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
-      await write(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
+      await Bun.write(path.join(root, 'package.json'), '{"name":"r","private":true}')
+      await Bun.write(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
       await writeLocalWorkspace(root)
       const proj = path.join(root, 'packages', 'app')
-      await write(path.join(proj, 'package.json'), '{"name":"app","version":"1.0.0"}')
-      await write(
+      await Bun.write(path.join(proj, 'package.json'), '{"name":"app","version":"1.0.0"}')
+      await Bun.write(
         path.join(proj, 'vx.config.mjs'),
         `export default {
            tasks: {
@@ -609,10 +552,10 @@ describe('stale cache hits', () => {
            },
          }`,
       )
-      await write(path.join(root, '.gitattributes'), '* text=auto eol=lf\n')
-      await write(path.join(root, '.gitignore'), 'dist/\n.vx/cache/\n')
+      await Bun.write(path.join(root, '.gitattributes'), '* text=auto eol=lf\n')
+      await Bun.write(path.join(root, '.gitignore'), 'dist/\n.vx/cache/\n')
       const files = [path.join(proj, 'src/a.txt'), path.join(root, 'shared/a.txt')]
-      for (const f of files) await write(f, 'a\r\nb\n')
+      for (const f of files) await Bun.write(f, 'a\r\nb\n')
       git(root, 'init', '-q')
       git(root, 'add', '-A')
       git(root, 'commit', '-q', '-m', 'initial')
@@ -622,7 +565,7 @@ describe('stale cache hits', () => {
         vx(root, 'run', `app#${task}`)
         expect(await out(task)).toBe('a\r\nb\n')
       }
-      for (const f of files) await write(f, 'a\nb\r\n')
+      for (const f of files) await Bun.write(f, 'a\nb\r\n')
       const status = Bun.spawnSync({
         cmd: ['git', '--no-optional-locks', 'status', '--porcelain', '--', 'packages', 'shared'],
         cwd: root,
@@ -651,7 +594,7 @@ describe('stale cache hits', () => {
         const home = await mkdtemp(path.join(os.tmpdir(), 'vx-home-'))
         try {
           const config = where === 'HOME' ? path.join(home, '.config') : path.join(home, 'xdg')
-          await write(path.join(config, 'git', 'attributes'), '* text\n')
+          await Bun.write(path.join(config, 'git', 'attributes'), '* text\n')
           const env: Record<string, string | undefined> = {
             ...process.env,
             HOME: home,
@@ -664,17 +607,17 @@ describe('stale cache hits', () => {
           const run = (): void => {
             Bun.spawnSync({ cmd: ['bun', CLI, 'run', 'build'], cwd: root, env, stdout: 'pipe' })
           }
-          await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
+          await Bun.write(path.join(root, 'package.json'), '{"name":"r","private":true}')
           await writeLocalWorkspace(root)
-          await write(
+          await Bun.write(
             path.join(root, 'vx.config.mjs'),
             `export default { tasks: { build: {
                exec: { command: 'mkdir -p dist && wc -c < src/a.txt > dist/out.txt' },
                inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
              } } }`,
           )
-          await write(path.join(root, '.gitignore'), 'dist/\n.vx/cache/\n')
-          await write(path.join(root, 'src/a.txt'), 'one\r\ntwo\r\n')
+          await Bun.write(path.join(root, '.gitignore'), 'dist/\n.vx/cache/\n')
+          await Bun.write(path.join(root, 'src/a.txt'), 'one\r\ntwo\r\n')
           git(root, 'init', '-q')
           git(root, 'add', '-A')
           git(root, 'commit', '-q', '-m', 'initial')
@@ -699,11 +642,11 @@ describe('stale cache hits', () => {
             cwd: root,
             env,
           })
-          await write(path.join(root, 'src/a.txt'), 'one\r\ntwo\r\n')
+          await Bun.write(path.join(root, 'src/a.txt'), 'one\r\ntwo\r\n')
 
           run()
           expect((await readFile(path.join(root, 'dist/out.txt'), 'utf8')).trim()).toBe('10')
-          await write(path.join(root, 'src/a.txt'), 'one\ntwo\n')
+          await Bun.write(path.join(root, 'src/a.txt'), 'one\ntwo\n')
           run()
           expect((await readFile(path.join(root, 'dist/out.txt'), 'utf8')).trim()).toBe('8')
         } finally {
@@ -722,18 +665,18 @@ describe('stale cache hits', () => {
     'a relative core.attributesFile is found from the repo top, not the workspace',
     async () => {
       const ws = path.join(root, 'ws')
-      await write(path.join(ws, 'package.json'), '{"name":"r","private":true}')
+      await Bun.write(path.join(ws, 'package.json'), '{"name":"r","private":true}')
       await writeLocalWorkspace(ws)
-      await write(
+      await Bun.write(
         path.join(ws, 'vx.config.mjs'),
         `export default { tasks: { build: {
            exec: { command: 'mkdir -p dist && cat src/a.txt > dist/out.txt' },
            inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
          } } }`,
       )
-      await write(path.join(root, '.gitignore'), 'dist/\n.vx/cache/\n')
-      await write(path.join(ws, 'src/a.txt'), 'abc\n')
-      await write(path.join(root, 'myattrs'), '*.txt filter=low\n')
+      await Bun.write(path.join(root, '.gitignore'), 'dist/\n.vx/cache/\n')
+      await Bun.write(path.join(ws, 'src/a.txt'), 'abc\n')
+      await Bun.write(path.join(root, 'myattrs'), '*.txt filter=low\n')
       git(root, 'init', '-q')
       git(root, 'config', 'filter.low.clean', 'tr A-Z a-z')
       git(root, 'config', 'filter.low.smudge', 'cat')
@@ -742,7 +685,7 @@ describe('stale cache hits', () => {
       git(root, 'commit', '-q', '-m', 'initial')
       vx(ws, 'run', 'build')
       expect(await readFile(path.join(ws, 'dist/out.txt'), 'utf8')).toBe('abc\n')
-      await write(path.join(ws, 'src/a.txt'), 'Abc\n')
+      await Bun.write(path.join(ws, 'src/a.txt'), 'Abc\n')
       vx(ws, 'run', 'build')
       expect(await readFile(path.join(ws, 'dist/out.txt'), 'utf8')).toBe('Abc\n')
     },
@@ -755,9 +698,9 @@ describe('stale cache hits', () => {
       // The same divergence with NO .gitattributes at all: `core.autocrlf`
       // converts every auto-detected text file, so no attribute names it and
       // an attributes-only gate would miss this entirely.
-      await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
+      await Bun.write(path.join(root, 'package.json'), '{"name":"r","private":true}')
       await writeLocalWorkspace(root)
-      await write(
+      await Bun.write(
         path.join(root, 'vx.config.mjs'),
         `export default {
            tasks: {
@@ -768,20 +711,18 @@ describe('stale cache hits', () => {
            },
          }`,
       )
-      await write(path.join(root, '.gitignore'), 'dist/\n.vx/cache/\n')
-      await write(path.join(root, 'src/a.txt'), 'one\r\ntwo\r\n')
-      git(root, 'init', '-q')
-      git(root, 'config', 'user.email', 'test@vx.local')
-      git(root, 'config', 'user.name', 'vx test')
+      await Bun.write(path.join(root, '.gitignore'), 'dist/\n.vx/cache/\n')
+      await Bun.write(path.join(root, 'src/a.txt'), 'one\r\ntwo\r\n')
+      gitInit(root)
       git(root, 'config', 'core.autocrlf', 'true')
       git(root, 'add', '-A')
       git(root, 'commit', '-q', '-m', 'initial')
-      await write(path.join(root, 'src/a.txt'), 'one\r\ntwo\r\n')
+      await Bun.write(path.join(root, 'src/a.txt'), 'one\r\ntwo\r\n')
 
       vx(root, 'run', 'build')
       expect((await readFile(path.join(root, 'dist/out.txt'), 'utf8')).trim()).toBe('10')
 
-      await write(path.join(root, 'src/a.txt'), 'one\ntwo\n')
+      await Bun.write(path.join(root, 'src/a.txt'), 'one\ntwo\n')
       vx(root, 'run', 'build')
       expect((await readFile(path.join(root, 'dist/out.txt'), 'utf8')).trim()).toBe('8')
     },
@@ -798,9 +739,9 @@ describe('stale cache hits', () => {
         // git then judges the file by mtime and size alone (with minimal,
         // whole seconds): `cp -p` or `tar -x` over a tracked input reads
         // clean, and its index OID keyed the old bytes.
-        await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
+        await Bun.write(path.join(root, 'package.json'), '{"name":"r","private":true}')
         await writeLocalWorkspace(root)
-        await write(
+        await Bun.write(
           path.join(root, 'vx.config.mjs'),
           `export default {
              tasks: {
@@ -811,16 +752,14 @@ describe('stale cache hits', () => {
              },
            }`,
         )
-        await write(path.join(root, '.gitignore'), 'dist/\n.vx/cache/\n')
+        await Bun.write(path.join(root, '.gitignore'), 'dist/\n.vx/cache/\n')
         const src = path.join(root, 'src/a.txt')
-        await write(src, 'AAAA')
+        await Bun.write(src, 'AAAA')
         // An mtime well before the index is written, so git's own racy
         // check does not re-read the file.
         const old = new Date(1_600_000_000_000)
         await utimes(src, old, old)
-        git(root, 'init', '-q')
-        git(root, 'config', 'user.email', 'test@vx.local')
-        git(root, 'config', 'user.name', 'vx test')
+        gitInit(root)
         git(root, 'config', key, value)
         git(root, 'add', '-A')
         git(root, 'commit', '-q', '-m', 'initial')

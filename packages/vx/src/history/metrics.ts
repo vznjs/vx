@@ -14,7 +14,7 @@ import { KEYED_RUNS_SQL } from '../index-db/index.js'
 import { expandHits } from './run-history.js'
 import { keptWarnings } from './run-notes.js'
 import { type TaskInputComponent } from '../cache/index.js'
-import { isPassStatus } from '../graph/index.js'
+import { type InputChanges, isPassStatus } from '../graph/index.js'
 import { clampInt, MASKED, secretNamed, splitTaskId } from '../util/index.js'
 
 // A recorded `cache_policy` is the `--cache-policy` spec (`local:rw,remote:r`).
@@ -650,7 +650,7 @@ export interface CacheKeyDiff {
 }
 
 /** An entry's key components, from its one `entry_inputs` row (v34); none when it has none. */
-export function loadEntryInputs(db: Database, entryHash: string): TaskInputComponent[] {
+function loadEntryInputs(db: Database, entryHash: string): TaskInputComponent[] {
   const row = db
     .query('SELECT components FROM entry_inputs WHERE entry_hash = ?')
     .get(entryHash) as { components: string } | null
@@ -1141,4 +1141,55 @@ export function inputWriters(
 // Run comparison — diff a run against the immediately-previous invocation
 // ---------------------------------------------------------------------------
 
-/** One task's outcome on one side of a comparison. */
+// ---------------------------------------------------------------------------
+// Why a task missed, at run time
+// ---------------------------------------------------------------------------
+
+// For telemetry: a miss's key components against the last entry this cache
+// saved for the same task. The `vx why` join (`diffKeyComponents`), asked at
+// run time instead of after it.
+//
+// Paid only when a telemetry sink exists, and only on a miss: one scan of
+// `entries` for the newest entry per task, the first time a miss asks, then
+// one primary-key read of that entry's `entry_inputs` row per miss.
+
+/** How many changed components a miss names; `count` says how many there were. */
+const NAMED = 10
+
+export type MissExplainer = (
+  taskId: string,
+  components: readonly TaskInputComponent[],
+) => InputChanges | undefined
+
+export function createMissExplainer(db: Database): MissExplainer {
+  let newest: Map<string, string> | undefined
+  return (taskId, components) => {
+    try {
+      // Each task asks before its own command runs, so its own new entry is
+      // never the one it is compared with.
+      newest ??= new Map(
+        (
+          db
+            // A bare column beside MAX() comes from the row that has it.
+            .query(
+              'SELECT project, task, hash, MAX(created_at) FROM entries GROUP BY project, task',
+            )
+            .all() as { project: string; task: string; hash: string }[]
+        ).map((r) => [`${r.project}#${r.task}`, r.hash]),
+      )
+      const prev = newest.get(taskId)
+      if (prev === undefined) return undefined
+      const before = loadEntryInputs(db, prev)
+      // Pruned, or saved before fingerprints were kept: nothing to compare.
+      if (before.length === 0) return undefined
+      const { entries } = diffKeyComponents(before, components)
+      return {
+        count: entries.length,
+        first: entries.slice(0, NAMED).map(({ kind, name, change }) => ({ kind, name, change })),
+      }
+    } catch {
+      // History is observability: an unreadable one explains nothing.
+      return undefined
+    }
+  }
+}

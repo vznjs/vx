@@ -1,19 +1,20 @@
 // The parts one attempt of a miss is built from, each on its own: its
-// stream (attempt-stream.ts), its signal (attempt-signal.ts), the task's
-// secrets (task-secrets.ts) and the outcome a miss adds up to
-// (miss-outcome.ts).
+// stream, its signal and the task's secrets (miss-run.ts), and the outcome
+// a miss adds up to (miss-outcome.ts).
 import { describe, expect, it } from 'bun:test'
 import type { TaskConfig } from '../src/config.js'
 import type { CacheLayer } from '../src/cache/index.js'
 import type { TaskNode } from '../src/graph/index.js'
 import type { ExecuteArgs, RunContext } from '../src/orchestrator/execute-task.js'
-import type { Attempts } from '../src/orchestrator/attempts.js'
-import { AttemptSignal } from '../src/orchestrator/attempt-signal.js'
-import { AttemptStream } from '../src/orchestrator/attempt-stream.js'
-import type { MissRun } from '../src/orchestrator/miss-run.js'
+import type { Attempts } from '../src/orchestrator/attempt.js'
+import {
+  AttemptSignal,
+  AttemptStream,
+  type MissRun,
+  TaskSecrets,
+} from '../src/orchestrator/miss-run.js'
 import { missOutcome } from '../src/orchestrator/miss-outcome.js'
 import { taskPolicy } from '../src/orchestrator/task-policy.js'
-import { TaskSecrets } from '../src/orchestrator/task-secrets.js'
 import { localExecutor } from '../src/orchestrator/local-executor.js'
 
 type ArgsOver = Partial<Omit<ExecuteArgs, 'run'>> & { run?: Partial<RunContext> }

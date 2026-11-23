@@ -14,14 +14,9 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import { addProject, makeWorkspace as makeWorkspaceRoot } from './helpers/workspace.js'
-import {
-  initSandbox,
-  pendingWriteGrants,
-  probeSandbox,
-  resetSandbox,
-  resolveSandboxConfig,
-  runSandboxed,
-} from '../src/sandbox/runtime.js'
+import { initSandbox, probeSandbox, resetSandbox } from '../src/sandbox/session.js'
+import { pendingWriteGrants, resolveSandboxConfig } from '../src/sandbox/grants.js'
+import { runSandboxed } from '../src/sandbox/runtime.js'
 import type { SandboxViolation } from '../src/exec/index.js'
 import { bindableWrites, buildCustomConfig, scratchWrites } from '../src/sandbox/binds.js'
 import {

@@ -12,8 +12,8 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, expect, it } from 'bun:test'
+import { BIN, vxSync } from './helpers/vx.js'
 
-const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 const RECORD = path.join(import.meta.dir, 'contract', 'exit-codes-init.json')
 
 // No Turbo or Nx config: core writes the starter itself. With one, `vx init`
@@ -30,16 +30,7 @@ afterAll(async () => {
   await rm(dry, { recursive: true, force: true })
 })
 
-function vx(cwd: string, ...args: string[]): number {
-  return Bun.spawnSync({
-    cmd: [process.execPath, BIN, ...args],
-    cwd,
-    env: { ...process.env, NO_COLOR: '1' },
-    stdin: 'ignore',
-    stdout: 'pipe',
-    stderr: 'pipe',
-  }).exitCode
-}
+const vx = (cwd: string, ...args: string[]) => vxSync(cwd, args, { bin: BIN }).code
 
 it('each vx init outcome exits as tests/contract/exit-codes-init.json records', () => {
   const live: Record<string, number> = {}

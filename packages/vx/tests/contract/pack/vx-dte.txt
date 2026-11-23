@@ -25,6 +25,7 @@ src/plugin.ts
 src/printable.ts
 src/replay-thread.ts
 src/replays.ts
+src/report.ts
 src/seal.ts
 src/server-fit.ts
 src/trace.ts

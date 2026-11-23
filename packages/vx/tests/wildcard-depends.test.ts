@@ -11,10 +11,9 @@ import {
   gitIn,
   makeWorkspace as makeWorkspaceRoot,
 } from './helpers/workspace.js'
+import { vx } from './helpers/vx.js'
 
 setDefaultTimeout(30_000)
-
-const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
 
 function makeWorkspace(): Promise<string> {
   return makeWorkspaceRoot({ prefix: 'vx-wildcard-e2e-', rootName: 'root' })
@@ -31,21 +30,6 @@ async function addProject(
   await addProjectTo(root, name, { config })
   edges[name] = [...deps]
   await writeEdges(root, edges)
-}
-
-async function vx(root: string, args: string[]) {
-  const proc = Bun.spawn([process.execPath, BIN, ...args], {
-    cwd: root,
-    env: { ...process.env, CI: '', GITHUB_ACTIONS: '' },
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
-  const [out, err, code] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ])
-  return { out, err, code }
 }
 
 let root: string

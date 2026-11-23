@@ -18,54 +18,20 @@
 // The fixtures self-SIGTERM (`kill -TERM $$`) so the signal arrives without
 // vx's handler running: exactly the shape that reaches a summary.
 
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { writeLocalWorkspace } from './helpers/local-workspace.js'
 import { writeEdges } from './helpers/plugin.js'
+import { git, gitInit } from './helpers/workspace.js'
+import { vxSync } from './helpers/vx.js'
 
 const TIMEOUT = 60_000
-const CLI = path.join(import.meta.dir, 'helpers', 'vx-locked.ts')
 
 let root: string
 
-async function write(p: string, content: string): Promise<void> {
-  await mkdir(path.dirname(p), { recursive: true })
-  await writeFile(p, content)
-}
-
-function git(cwd: string, ...args: string[]): void {
-  const p = Bun.spawnSync({
-    cmd: ['git', '-c', 'commit.gpgsign=false', ...args],
-    cwd,
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
-  if (p.exitCode !== 0) {
-    const detail = [
-      new TextDecoder().decode(p.stderr).trim(),
-      new TextDecoder().decode(p.stdout).trim(),
-    ]
-      .filter((s) => s.length > 0)
-      .join(' | ')
-    throw new Error(`git ${args.join(' ')} exited ${p.exitCode}: ${detail}`)
-  }
-}
-
-function vx(cwd: string, ...args: string[]): { out: string; code: number } {
-  const p = Bun.spawnSync({
-    cmd: ['bun', CLI, ...args],
-    cwd,
-    stdout: 'pipe',
-    stderr: 'pipe',
-    env: { ...process.env, CI: '', GITHUB_ACTIONS: '', NO_COLOR: '1' },
-  })
-  return {
-    out: new TextDecoder().decode(p.stdout) + new TextDecoder().decode(p.stderr),
-    code: p.exitCode ?? -1,
-  }
-}
+const vx = (cwd: string, ...args: string[]) => vxSync(cwd, args)
 
 beforeEach(async () => {
   root = await mkdtemp(path.join(os.tmpdir(), 'vx-aborted-'))
@@ -85,14 +51,14 @@ describe('a task killed by a shutdown signal', () => {
       // cache key — and therefore b's, which folds a's INPUT key — is
       // IDENTICAL across both runs. Whatever b caches in run 1 is keyed
       // exactly as a healthy run would key it.
-      await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
+      await Bun.write(path.join(root, 'package.json'), '{"name":"r","private":true}')
       await writeEdges(root, { b: ['a'] })
-      await write(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
-      await write(path.join(root, '.gitignore'), 'dist/\n.vx/cache/\nkill.flag\n')
+      await Bun.write(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
+      await Bun.write(path.join(root, '.gitignore'), 'dist/\n.vx/cache/\nkill.flag\n')
 
-      await write(path.join(root, 'packages/a/package.json'), '{"name":"a","version":"0.0.0"}')
-      await write(path.join(root, 'packages/a/src/in.txt'), 'a-source')
-      await write(
+      await Bun.write(path.join(root, 'packages/a/package.json'), '{"name":"a","version":"0.0.0"}')
+      await Bun.write(path.join(root, 'packages/a/src/in.txt'), 'a-source')
+      await Bun.write(
         path.join(root, 'packages/a/vx.config.mjs'),
         `export default {
            tasks: {
@@ -107,9 +73,9 @@ describe('a task killed by a shutdown signal', () => {
          }`,
       )
 
-      await write(path.join(root, 'packages/b/package.json'), '{"name":"b","version":"0.0.0"}')
-      await write(path.join(root, 'packages/b/src/in.txt'), 'b-source')
-      await write(
+      await Bun.write(path.join(root, 'packages/b/package.json'), '{"name":"b","version":"0.0.0"}')
+      await Bun.write(path.join(root, 'packages/b/src/in.txt'), 'b-source')
+      await Bun.write(
         path.join(root, 'packages/b/vx.config.mjs'),
         `export default {
            tasks: {
@@ -122,17 +88,15 @@ describe('a task killed by a shutdown signal', () => {
          }`,
       )
 
-      git(root, 'init', '-q')
-      git(root, 'config', 'user.email', 'test@vx.local')
-      git(root, 'config', 'user.name', 'vx test')
+      gitInit(root)
       git(root, 'add', '-A')
       git(root, 'commit', '-qm', 'init')
 
-      await write(path.join(root, 'kill.flag'), '')
+      await Bun.write(path.join(root, 'kill.flag'), '')
       const first = vx(root, 'run', 'build', '--all')
       expect(first.code).not.toBe(0)
       // b never ran, so it cached nothing built from a's partial tree.
-      expect(first.out).toMatch(/skipped/)
+      expect(first.text).toMatch(/skipped/)
 
       // Run 2 is entirely healthy: a completes and writes COMPLETE.
       await rm(path.join(root, 'kill.flag'))
@@ -151,10 +115,10 @@ describe('a task killed by a shutdown signal', () => {
   it(
     'is named in the summary and the markdown report when the run reaches them',
     async () => {
-      await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
+      await Bun.write(path.join(root, 'package.json'), '{"name":"r","private":true}')
       await writeLocalWorkspace(root)
-      await write(path.join(root, '.gitignore'), '.vx/cache/\n')
-      await write(
+      await Bun.write(path.join(root, '.gitignore'), '.vx/cache/\n')
+      await Bun.write(
         path.join(root, 'vx.config.mjs'),
         `export default {
            tasks: {
@@ -163,9 +127,7 @@ describe('a task killed by a shutdown signal', () => {
            },
          }`,
       )
-      git(root, 'init', '-q')
-      git(root, 'config', 'user.email', 'test@vx.local')
-      git(root, 'config', 'user.name', 'vx test')
+      gitInit(root)
       git(root, 'add', '-A')
       git(root, 'commit', '-qm', 'init')
 
@@ -176,8 +138,8 @@ describe('a task killed by a shutdown signal', () => {
       expect(r.code).not.toBe(0)
       // Requested, it printed, so its frame is its entry in the list; the
       // footer counts it in the total.
-      expect(r.out).toMatch(/\n└─ r#doomed ── \([\d.]+m?s\) aborted\n/)
-      expect(r.out).toContain('\n            1 success · 1 aborted · 2 total\n')
+      expect(r.text).toMatch(/\n└─ r#doomed ── \([\d.]+m?s\) aborted\n/)
+      expect(r.text).toContain('\n            1 success · 1 aborted · 2 total\n')
     },
     TIMEOUT,
   )
@@ -188,13 +150,13 @@ describe('a task killed by a shutdown signal', () => {
   it(
     'a task killed by a signal vx did not send is a failure: retried, shown, and fail-fast trips',
     async () => {
-      await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
+      await Bun.write(path.join(root, 'package.json'), '{"name":"r","private":true}')
       await writeLocalWorkspace(root)
-      await write(path.join(root, '.gitignore'), '.vx/cache/\n')
+      await Bun.write(path.join(root, '.gitignore'), '.vx/cache/\n')
       // `slow` holds `later` back until selfkill's third attempt, then
       // 0.3 s: a flat `sleep 0.3` raced three spawns and lost under gate
       // load, so `later` ran before fail-fast tripped (C-44).
-      await write(
+      await Bun.write(
         path.join(root, 'vx.config.mjs'),
         `export default {
            tasks: {
@@ -210,13 +172,13 @@ describe('a task killed by a shutdown signal', () => {
       expect(
         (await Bun.file(path.join(root, 'attempts')).text()).split('\n').filter(Boolean),
       ).toEqual(['x', 'x', 'x'])
-      expect(r.out).toContain('DIAGNOSTIC')
-      expect(r.out).toContain('failed (exit 143, 128 + SIGTERM)')
+      expect(r.text).toContain('DIAGNOSTIC')
+      expect(r.text).toContain('failed (exit 143, 128 + SIGTERM)')
       // Why, in its frame: the line a pipeline's same 143 already got.
-      expect(r.out).toContain(
+      expect(r.text).toContain(
         '[vx] exit 143 is how the shell reports a death by SIGTERM (15): something outside vx asked the process to stop',
       )
-      expect(r.out).not.toContain('killed by a shutdown signal')
+      expect(r.text).not.toContain('killed by a shutdown signal')
       expect(await Bun.file(path.join(root, 'later.txt')).exists()).toBe(false)
     },
     TIMEOUT,
@@ -228,10 +190,10 @@ describe('a task killed by a shutdown signal', () => {
   it(
     'a task that dies with the run it stopped gets no outside-vx line',
     async () => {
-      await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
+      await Bun.write(path.join(root, 'package.json'), '{"name":"r","private":true}')
       await writeLocalWorkspace(root)
-      await write(path.join(root, '.gitignore'), '.vx/cache/\n')
-      await write(
+      await Bun.write(path.join(root, '.gitignore'), '.vx/cache/\n')
+      await Bun.write(
         path.join(root, 'vx.config.mjs'),
         `export default { tasks: { doomed: { exec: { command: 'echo working; kill -TERM $PPID $$' } } } }`,
       )
@@ -239,8 +201,8 @@ describe('a task killed by a shutdown signal', () => {
       for (let i = 0; i < 5; i++) {
         const r = vx(root, 'run', 'doomed')
         expect(r.code).not.toBe(0)
-        expect(r.out).toContain('aborted')
-        expect(r.out).not.toContain('something outside vx')
+        expect(r.text).toContain('aborted')
+        expect(r.text).not.toContain('something outside vx')
       }
     },
     TIMEOUT,
@@ -249,23 +211,21 @@ describe('a task killed by a shutdown signal', () => {
   it(
     'leaves a run with nothing aborted byte-identical — no aborted row or count',
     async () => {
-      await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
+      await Bun.write(path.join(root, 'package.json'), '{"name":"r","private":true}')
       await writeLocalWorkspace(root)
-      await write(path.join(root, '.gitignore'), '.vx/cache/\n')
-      await write(
+      await Bun.write(path.join(root, '.gitignore'), '.vx/cache/\n')
+      await Bun.write(
         path.join(root, 'vx.config.mjs'),
         `export default { tasks: { fine: { exec: { command: 'echo fine' } } } }`,
       )
-      git(root, 'init', '-q')
-      git(root, 'config', 'user.email', 'test@vx.local')
-      git(root, 'config', 'user.name', 'vx test')
+      gitInit(root)
       git(root, 'add', '-A')
       git(root, 'commit', '-qm', 'init')
 
       const r = vx(root, 'run', 'fine')
       expect(r.code).toBe(0)
-      expect(r.out).not.toMatch(/not run/)
-      expect(r.out).not.toMatch(/aborted/)
+      expect(r.text).not.toMatch(/not run/)
+      expect(r.text).not.toMatch(/aborted/)
     },
     TIMEOUT,
   )

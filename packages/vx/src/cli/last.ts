@@ -16,8 +16,10 @@ import {
   keptWarnings,
   listInvocations,
   LocalHistoryProvider,
+  resolveRunId,
   type RunStep,
   type RunSummaryRow,
+  shortRunId,
 } from '../history/index.js'
 import { buildTaskGraph, expandRequested, isDefaultBuild, taskDefinitions } from '../graph/index.js'
 import { flagHint, formatValue, seeHelp } from './help.js'
@@ -28,10 +30,8 @@ import {
   type LiveSnapshot,
   liveSocketPath,
   exitSignal,
-  resolveRunId,
   runFailures,
   shellQuote,
-  shortRunId,
   taskLog,
 } from '../orchestrator/index.js'
 import {

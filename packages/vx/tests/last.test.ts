@@ -10,12 +10,12 @@ import { formatRunList, formatTaskRows } from '../src/cli/last.js'
 import type { RunSummaryRow } from '../src/history/index.js'
 import { noticed } from './helpers/notice.js'
 import * as ui from '../src/ui/index.js'
+import { vx } from './helpers/vx.js'
 
 /** A block's lines, as plain text unless `c` paints. */
 const L = (b: ui.Block | readonly ui.Block[], c: ui.ColorSupport = { enabled: false }): string[] =>
   [b].flat().flatMap((x) => x.lines(c))
 
-const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
 const TIMEOUT = 30_000
 
 const APP_CONFIG = `
@@ -66,27 +66,6 @@ async function makeWorkspace(): Promise<string> {
   git('init', '-q')
   git('add', '-A')
   return root
-}
-
-interface VxResult {
-  code: number
-  out: string
-  err: string
-}
-
-async function vx(root: string, args: string[]): Promise<VxResult> {
-  const proc = Bun.spawn([process.execPath, BIN, ...args], {
-    cwd: root,
-    env: { ...process.env },
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
-  const [out, err, code] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ])
-  return { code, out, err }
 }
 
 describe('vx last (e2e)', () => {

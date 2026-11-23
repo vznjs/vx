@@ -8,8 +8,8 @@ import { rm } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
+import { BIN, vx as spawnVx } from './helpers/vx.js'
 
-const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 const TIMEOUT = 30_000
 
 // The shared-file glob exists only when SHARED names it.
@@ -29,26 +29,9 @@ const CONFIG = `
   }
 `
 
-async function vx(
-  root: string,
-  args: string[],
-  env: Record<string, string> = {},
-): Promise<{ code: number; out: string; err: string }> {
-  // SHARED must be ABSENT, not empty: the lock alone names the glob.
-  const { SHARED: _inherited, ...inherited } = process.env
-  const proc = Bun.spawn([process.execPath, BIN, ...args], {
-    cwd: root,
-    stdout: 'pipe',
-    stderr: 'pipe',
-    env: { ...inherited, NO_COLOR: '1', ...env },
-  })
-  const [out, err, code] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ])
-  return { code, out, err }
-}
+// SHARED must be ABSENT, not empty: the lock alone names the glob.
+const vx = (root: string, args: string[], env: Record<string, string> = {}) =>
+  spawnVx(root, args, { bin: BIN, env: { SHARED: undefined, ...env } })
 
 describe('selection reads the lock', () => {
   let root: string

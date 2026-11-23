@@ -5,6 +5,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import {
+  asTrees,
   executablePath,
   gitCaseArgs,
   gitEnv,
@@ -15,7 +16,6 @@ import {
   staticPrefix,
   taskGlob,
 } from '../util/index.js'
-import { asTrees } from '../cache/index.js'
 import {
   DEPENDENCIES_LOCK_NAME,
   parseDependenciesLock,

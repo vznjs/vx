@@ -11,8 +11,7 @@ import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
 import { gitInit } from './helpers/workspace.js'
 import { PLUGIN_IMPORT, pluginSource } from './helpers/plugin.js'
-
-const BIN = path.join(import.meta.dir, '..', 'src', 'bin.ts')
+import { BIN, vxSync } from './helpers/vx.js'
 
 let root: string
 beforeEach(async () => {
@@ -23,22 +22,8 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true })
 })
 
-function vx(cwd: string, ...args: string[]): { code: number; err: string } {
-  const p = Bun.spawnSync({
-    cmd: [process.execPath, BIN, ...args],
-    cwd,
-    stdout: 'pipe',
-    stderr: 'pipe',
-    env: {
-      ...process.env,
-      NO_COLOR: '1',
-      CI: '',
-      GITHUB_ACTIONS: '',
-      VX_LOCK_REVIEW_FILES: 'false',
-    },
-  })
-  return { code: p.exitCode ?? 1, err: p.stderr.toString() }
-}
+const vx = (cwd: string, ...args: string[]) =>
+  vxSync(cwd, args, { bin: BIN, env: { VX_LOCK_REVIEW_FILES: 'false' } })
 
 it('every stage of a --cache-dir run is told the one resolved directory', async () => {
   const log = path.join(root, 'seen.log')

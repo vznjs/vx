@@ -13,8 +13,7 @@ import { addProject, makeWorkspace } from './helpers/workspace.js'
 import { type Logger } from '../src/report/index.js'
 import { run } from './helpers/orchestrator.js'
 import { loadProjectConfig } from '../src/workspace/index.js'
-import { asTrees } from '../src/cache/index.js'
-import { normalizeGlob } from '../src/util/index.js'
+import { asTrees, normalizeGlob } from '../src/util/index.js'
 
 const silent: Logger = { status() {}, taskStdout() {}, taskStderr() {}, taskComplete() {} }
 

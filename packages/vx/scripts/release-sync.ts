@@ -8,7 +8,7 @@
 
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
-import { env } from './env.ts'
+import { github, runMain } from './github.ts'
 import { postNotes, postPath } from './release-notes.ts'
 
 /** A release as the releases API lists it. */
@@ -33,39 +33,18 @@ export function stale(
 }
 
 async function main(): Promise<void> {
-  const repo = env('GITHUB_REPOSITORY')
-  const headers = {
-    authorization: `Bearer ${env('GH_TOKEN')}`,
-    accept: 'application/vnd.github+json',
-    'x-github-api-version': '2022-11-28',
-  }
+  const gh = github()
   const root = path.resolve(import.meta.dir, '../../..')
-  const listed = await fetch(`https://api.github.com/repos/${repo}/releases?per_page=100`, {
-    headers,
-  })
-  if (!listed.ok) throw new Error(`GET releases: ${listed.status} ${await listed.text()}`)
   const post = (version: string): string | undefined => {
     const file = path.join(root, postPath(version))
     return existsSync(file) ? readFileSync(file, 'utf8') : undefined
   }
-  const changes = stale((await listed.json()) as Release[], post)
+  const changes = stale((await gh('releases?per_page=100')) as Release[], post)
   for (const { id, tag, body } of changes) {
-    const res = await fetch(`https://api.github.com/repos/${repo}/releases/${id}`, {
-      method: 'PATCH',
-      headers,
-      body: JSON.stringify({ body }),
-    })
-    if (!res.ok) throw new Error(`PATCH ${tag}: ${res.status} ${await res.text()}`)
+    await gh(`releases/${id}`, { method: 'PATCH', body: JSON.stringify({ body }) })
     console.log(`${tag}: body set from its post`)
   }
   if (changes.length === 0) console.log('every release already matches its post')
 }
 
-if (import.meta.main) {
-  try {
-    await main()
-  } catch (e) {
-    process.stderr.write(`${(e as Error).message}\n`)
-    process.exitCode = 1
-  }
-}
+if (import.meta.main) await runMain(main)

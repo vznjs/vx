@@ -2,7 +2,7 @@
 // (cacheStatus `group`, nothing runs). The footer's `N affected` counted that
 // project, so a Turbo repo whose shared config package has no build said
 // `2 affected` while one project ran (bug hunt round 2, 2026-10-15).
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
@@ -12,25 +12,20 @@ import { edgesSource } from './helpers/plugin.js'
 const CLI = path.join(import.meta.dir, 'helpers', 'vx-locked.ts')
 let root: string
 
-async function write(p: string, content: string): Promise<void> {
-  await mkdir(path.dirname(p), { recursive: true })
-  await writeFile(p, content)
-}
-
 beforeEach(async () => {
   root = await mkdtemp(path.join(os.tmpdir(), 'vx-affected-count-'))
-  await write(
+  await Bun.write(
     path.join(root, 'package.json'),
     JSON.stringify({ name: 'r', workspaces: ['pkgs/*'] }),
   )
-  await write(
+  await Bun.write(
     path.join(root, '.vx/workspace.mjs'),
     localWorkspaceSource([edgesSource({ app: ['config'] })]),
   )
-  await write(path.join(root, 'pkgs/config/package.json'), JSON.stringify({ name: 'config' }))
-  await write(path.join(root, 'pkgs/config/vx.config.mjs'), `export default { tasks: {} }\n`)
-  await write(path.join(root, 'pkgs/app/package.json'), JSON.stringify({ name: 'app' }))
-  await write(
+  await Bun.write(path.join(root, 'pkgs/config/package.json'), JSON.stringify({ name: 'config' }))
+  await Bun.write(path.join(root, 'pkgs/config/vx.config.mjs'), `export default { tasks: {} }\n`)
+  await Bun.write(path.join(root, 'pkgs/app/package.json'), JSON.stringify({ name: 'app' }))
+  await Bun.write(
     path.join(root, 'pkgs/app/vx.config.mjs'),
     `export default {
   tasks: { build: { dependsOn: ['^build'], exec: { command: 'true' } } },

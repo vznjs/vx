@@ -13,7 +13,9 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, expect, it } from 'bun:test'
-import { GitFilesCache, populateGitFilesCache, resolveInputs } from '../src/cache/inputs.js'
+import { GitFilesCache, populateGitFilesCache } from '../src/cache/git-inputs.js'
+import { resolveInputs } from '../src/cache/inputs.js'
+import { git } from './helpers/workspace.js'
 
 function mulberry32(seed: number): () => number {
   let a = seed >>> 0
@@ -72,11 +74,6 @@ const roots: string[] = []
 afterAll(async () => {
   for (const r of roots) await rm(r, { recursive: true, force: true })
 })
-
-function git(cwd: string, ...args: string[]): void {
-  const p = Bun.spawnSync({ cmd: ['git', ...args], cwd, stdout: 'pipe', stderr: 'pipe' })
-  if (p.exitCode !== 0) throw new Error(`git ${args.join(' ')}: ${p.stderr.toString()}`)
-}
 
 function walk(dir: string, rel = ''): string[] {
   const out: string[] = []

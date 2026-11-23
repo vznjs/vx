@@ -1115,7 +1115,7 @@ or not it saves. It is said too when every wildcard glob matched nothing
 and only literal files did (`scr/**` beside the `package.json` a
 lockfile plugin appends), naming the wildcard globs.
 
-**Every declared output is required** (`orchestrator/missing-outputs.ts`).
+**Every declared output is required** (`orchestrator/attempt-outputs.ts`, `missingOutputs`).
 Once the command exits 0, each positive glob of `outputs.files` and
 `outputs.workspaceFiles` must match a path that no `!` entry takes back.
 An empty `dist/` does not satisfy `dist/**`, since the clean keeps that

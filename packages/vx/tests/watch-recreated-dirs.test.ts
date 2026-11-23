@@ -11,7 +11,6 @@ import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import { makeWorkspace } from './helpers/workspace.js'
 import {
-  BIN,
   executions,
   initialOnly,
   ARMS,
@@ -21,6 +20,7 @@ import {
   until,
   useWatchFixture,
 } from './helpers/watch-loop.js'
+import { BIN } from './helpers/vx.js'
 
 async function recreate(root: string, pause: boolean, wait?: () => Promise<void>) {
   const copy = await mkdtemp(path.join(os.tmpdir(), 'vx-base-copy-'))

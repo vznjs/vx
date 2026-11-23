@@ -6,8 +6,8 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, expect, it } from 'bun:test'
+import { BIN } from './helpers/vx.js'
 
-const BIN = path.join(import.meta.dir, '..', 'src', 'bin.ts')
 const LOADER = path.resolve(import.meta.dir, '../src/workspace/project-loader.ts')
 const PRINTS =
   "import fs, { writeSync, writeFileSync } from 'node:fs'\n" +

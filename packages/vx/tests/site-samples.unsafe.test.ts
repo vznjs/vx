@@ -857,7 +857,7 @@ describe.each([
 describe('the sandboxing guide says what gitConfig grants', () => {
   it('the flag reaches the wrap per task, and the guide does not call it inert', () => {
     const runtime = readFileSync(
-      path.resolve(import.meta.dir, '..', 'src', 'sandbox', 'runtime.ts'),
+      path.resolve(import.meta.dir, '..', 'src', 'sandbox', 'session.ts'),
       'utf8',
     )
     const binds = readFileSync(
@@ -880,9 +880,9 @@ describe('the sandboxing guide says what gitConfig grants', () => {
 // (item 381, 2026-09-19). Found rather than listed, and each binary is
 // satisfied by either spelling — a negative grep is a claim about every one.
 describe('every page naming the Linux sandbox binaries names all three', () => {
-  it('each is the set sandbox/runtime.ts checks for, in either spelling', () => {
+  it('each is the set sandbox/probe.ts checks for, in either spelling', () => {
     const runtime = readFileSync(
-      path.resolve(import.meta.dir, '..', 'src', 'sandbox', 'runtime.ts'),
+      path.resolve(import.meta.dir, '..', 'src', 'sandbox', 'probe.ts'),
       'utf8',
     )
     const m = /'the sandbox runtime needs ([^']*) on PATH'/.exec(runtime)
@@ -2299,7 +2299,7 @@ describe('the sandbox pages say a refused temp write points at $TMPDIR', () => {
   // refused write outside the project names the directory to grant (J2-32).
   it('the hint names $TMPDIR there, and both pages say so', () => {
     const core = path.resolve(import.meta.dir, '..')
-    expect(readFileSync(path.join(core, 'src', 'sandbox', 'runtime.ts'), 'utf8')).toContain(
+    expect(readFileSync(path.join(core, 'src', 'sandbox', 'hints.ts'), 'utf8')).toContain(
       'The task has its own temp directory, empty at its start: write under',
     )
     const flat = (p: string): string => readFileSync(p, 'utf8').replace(/\s+/g, ' ')

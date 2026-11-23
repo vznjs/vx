@@ -27,18 +27,22 @@ import {
   UserError,
   type PluginOptionKinds,
 } from '@vzn/vx'
-import { deadline, MAX_TIMER_MS } from '../remote-deadline.js'
-import { checkRemoteUrl } from '../remote-url.js'
-import { hideTokens, hidingErrors, refusal } from '../remote-refusal.js'
-import { keyedByRef, readScopes, remoteScope, type RemoteScope } from './scope.js'
-import { OutageBreaker } from '../remote-breaker.js'
-import { Cooldown, withRetry } from '../remote-retry.js'
 import {
+  checkRemoteUrl,
+  Cooldown,
+  deadline,
   headerValueFault,
+  hideTokens,
+  hidingErrors,
   type KeychainRemote,
   keychainToken,
+  MAX_TIMER_MS,
+  OutageBreaker,
+  refusal,
   remoteLabel,
-} from '../remote-token.js'
+  withRetry,
+} from '../remote-http.js'
+import { keyedByRef, readScopes, remoteScope, type RemoteScope } from './scope.js'
 import {
   exchangeOidc,
   type OidcConfig,
@@ -256,7 +260,7 @@ function tagsEqual(expected: string, actual: string): boolean {
 }
 
 /** Where `turbo` itself sends a token with no `url`: Vercel's hosted Remote Cache. */
-export const VERCEL_API = 'https://vercel.com/api'
+const VERCEL_API = 'https://vercel.com/api'
 
 /** Resolve options over Turbo's environment; `undefined` = not configured. */
 export function resolveTurboCacheConfig(

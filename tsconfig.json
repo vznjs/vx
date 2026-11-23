@@ -19,5 +19,5 @@
     "allowImportingTsExtensions": true,
     "types": ["bun"]
   },
-  "include": ["bench/**/*", "scripts/**/*"]
+  "include": [".vx/*.ts"]
 }

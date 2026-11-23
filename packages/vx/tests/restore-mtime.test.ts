@@ -5,51 +5,19 @@
 // the copy, and saved the other upstream's bytes under this key, which
 // every machine then hit.
 
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { statSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
 import { writeLocalWorkspace } from './helpers/local-workspace.js'
 import { fsClockNow } from '../src/memo/index.js'
+import { git } from './helpers/workspace.js'
+import { vxSync } from './helpers/vx.js'
 
 const TIMEOUT = 60_000
-const CLI = path.join(import.meta.dir, 'helpers', 'vx-locked.ts')
 
-async function write(p: string, content: string): Promise<void> {
-  await mkdir(path.dirname(p), { recursive: true })
-  await writeFile(p, content)
-}
-
-function git(cwd: string, ...args: string[]): void {
-  const p = Bun.spawnSync({
-    cmd: [
-      'git',
-      '-c',
-      'commit.gpgsign=false',
-      '-c',
-      'user.email=t@vx.local',
-      '-c',
-      'user.name=t',
-      ...args,
-    ],
-    cwd,
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
-  if (p.exitCode !== 0) throw new Error(`git ${args.join(' ')}: ${p.stderr.toString()}`)
-}
-
-function vx(cwd: string, ...args: string[]): string {
-  const p = Bun.spawnSync({
-    cmd: ['bun', CLI, ...args],
-    cwd,
-    stdout: 'pipe',
-    stderr: 'pipe',
-    env: { ...process.env, CI: '', GITHUB_ACTIONS: '', NO_COLOR: '1' },
-  })
-  return p.stdout.toString() + p.stderr.toString()
-}
+const vx = (cwd: string, ...args: string[]) => vxSync(cwd, args).text
 
 let root: string
 beforeEach(async () => {
@@ -62,22 +30,25 @@ afterEach(async () => {
 it(
   'a restored upstream output is newer than a make-style dependant output',
   async () => {
-    await write(path.join(root, 'package.json'), JSON.stringify({ name: 'root', private: true }))
-    await write(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
-    await write(path.join(root, '.gitignore'), 'dist\n')
+    await Bun.write(
+      path.join(root, 'package.json'),
+      JSON.stringify({ name: 'root', private: true }),
+    )
+    await Bun.write(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
+    await Bun.write(path.join(root, '.gitignore'), 'dist\n')
     await writeLocalWorkspace(root)
     const a = path.join(root, 'packages', 'a')
     const b = path.join(root, 'packages', 'b')
-    await write(path.join(a, 'package.json'), JSON.stringify({ name: 'a', version: '1.0.0' }))
-    await write(path.join(b, 'package.json'), JSON.stringify({ name: 'b', version: '1.0.0' }))
-    await write(
+    await Bun.write(path.join(a, 'package.json'), JSON.stringify({ name: 'a', version: '1.0.0' }))
+    await Bun.write(path.join(b, 'package.json'), JSON.stringify({ name: 'b', version: '1.0.0' }))
+    await Bun.write(
       path.join(a, 'vx.config.mjs'),
       `export default { tasks: { build: {
          exec: { command: 'mkdir -p dist && cp src/lib.txt dist/lib' },
          inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
        } } }\n`,
     )
-    await write(
+    await Bun.write(
       path.join(b, 'vx.config.mjs'),
       `export default { tasks: { build: {
          exec: { command: 'mkdir -p dist && if [ dist/out -nt ../a/dist/lib ]; then :; else cp ../a/dist/lib dist/out; fi' },
@@ -85,8 +56,8 @@ it(
          dependsOn: ['a#build'], cache: true,
        } } }\n`,
     )
-    await write(path.join(a, 'src', 'lib.txt'), 'v1')
-    await write(path.join(b, 'src', 'readme'), 'note')
+    await Bun.write(path.join(a, 'src', 'lib.txt'), 'v1')
+    await Bun.write(path.join(b, 'src', 'readme'), 'note')
     git(root, 'init', '-q')
     git(root, 'add', '-A')
     git(root, 'commit', '-q', '-m', 'init')
@@ -94,12 +65,12 @@ it(
     const lib = path.join(a, 'dist', 'lib')
 
     vx(root, 'run', 'build', '--all')
-    await write(path.join(a, 'src', 'lib.txt'), 'v2')
+    await Bun.write(path.join(a, 'src', 'lib.txt'), 'v2')
     vx(root, 'run', 'build', '--all')
     expect(await readFile(out, 'utf8')).toBe('v2')
     // Back to v1 with b's input edited: a restores, b runs over it.
-    await write(path.join(a, 'src', 'lib.txt'), 'v1')
-    await write(path.join(b, 'src', 'readme'), 'edited')
+    await Bun.write(path.join(a, 'src', 'lib.txt'), 'v1')
+    await Bun.write(path.join(b, 'src', 'readme'), 'edited')
     const before = Math.floor(fsClockNow(root))
     vx(root, 'run', 'build', '--all')
     expect(await readFile(out, 'utf8')).toBe('v1')

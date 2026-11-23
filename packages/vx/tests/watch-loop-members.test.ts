@@ -9,7 +9,6 @@ import { describe, expect, it } from 'bun:test'
 import { PLUGIN_IMPORT, packagesSource, pluginSource, writeEdges } from './helpers/plugin.js'
 import { addProject } from './helpers/workspace.js'
 import {
-  BIN,
   SETTLE_MS,
   executions,
   initialOnly,
@@ -20,6 +19,7 @@ import {
   until,
   useWatchFixture,
 } from './helpers/watch-loop.js'
+import { BIN } from './helpers/vx.js'
 
 /**
  * Edges from a root `edges.json` (`{ "<dir>": ["<dep dir>"] }`) the plugin

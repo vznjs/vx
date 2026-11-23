@@ -75,41 +75,36 @@ async function writeJson(path: string, value: unknown): Promise<void> {
   await Bun.write(path, JSON.stringify(value, null, 2) + '\n')
 }
 
-/** All four `<mainName>-<target>` optionalDependencies at `version`. The
+/** All four `@vzn/vx-<target>` optionalDependencies at `version`. The
  *  published manifest always lists all four (the registry resolves the matching
  *  one); a `--only` local build emits just one but still declares all four. */
-function allOptional(mainName: string, version: string): Record<string, string> {
-  const out: Record<string, string> = {}
-  for (const t of TARGETS) out[`${mainName}-${t.target}`] = version
-  return out
+function allOptional(version: string): Record<string, string> {
+  return Object.fromEntries(TARGETS.map((t) => [`@vzn/vx-${t.target}`, version]))
 }
 
 /**
- * Emit the per-platform binary packages. Each is `<mainName>-<target>`
- * carrying the raw binary (named `<base>`) + an os/cpu manifest, copied from
- * `dist/<distPrefix>-<target>`.
+ * Emit the per-platform binary packages. Each is `@vzn/vx-<target>`
+ * carrying the raw `vx` binary + an os/cpu manifest, copied from
+ * `dist/vx-<target>`.
  */
 export async function emitPlatformPackages(args: {
-  mainName: string
-  base: string
-  distPrefix: string
   targets: readonly Target[]
   version: string
   outDir: string
   /** Where the compiled binaries are; a test hands in its own. */
   distDir?: string
 }): Promise<void> {
-  const { mainName, base, distPrefix, targets, version, outDir } = args
+  const { targets, version, outDir } = args
   const distDir = args.distDir ?? join(CORE, 'dist')
   for (const t of targets) {
-    const pkgName = `${mainName}-${t.target}`
-    const binSrc = join(distDir, `${distPrefix}-${t.target}`)
+    const pkgName = `@vzn/vx-${t.target}`
+    const binSrc = join(distDir, `vx-${t.target}`)
     if (!(await Bun.file(binSrc).exists())) {
       throw new Error(`missing binary ${binSrc} — run \`vx run build\` first`)
     }
     const pkgDir = join(outDir, pkgName)
     await mkdir(pkgDir, { recursive: true })
-    const binDst = join(pkgDir, base)
+    const binDst = join(pkgDir, 'vx')
     await cp(binSrc, binDst)
     await chmod(binDst, 0o755)
     // The binary embeds Bun and npm code whose licenses require their
@@ -120,18 +115,18 @@ export async function emitPlatformPackages(args: {
     await writeJson(join(pkgDir, 'package.json'), {
       name: pkgName,
       version,
-      description: `Prebuilt ${base} binary for ${t.os}-${t.cpu}.`,
+      description: `Prebuilt vx binary for ${t.os}-${t.cpu}.`,
       license: 'MIT',
       repository: REPOSITORY,
       os: [t.os],
       cpu: [t.cpu],
       // Yarn Plug'n'Play keeps a package zipped, where no binary can run.
       preferUnplugged: true,
-      files: [base, 'LICENSE', NOTICES_FILE],
+      files: ['vx', 'LICENSE', NOTICES_FILE],
     })
     await Bun.write(
       join(pkgDir, 'README.md'),
-      `# ${pkgName}\n\nThe ${t.os}-${t.cpu} prebuilt binary for [\`${mainName}\`](${REPO_URL}).\n\nYou don't install this directly — it's an optionalDependency of \`${mainName}\`, which npm installs automatically on a matching platform.\n`,
+      `# ${pkgName}\n\nThe ${t.os}-${t.cpu} prebuilt binary for [\`@vzn/vx\`](${REPO_URL}).\n\nYou don't install this directly — it's an optionalDependency of \`@vzn/vx\`, which npm installs automatically on a matching platform.\n`,
     )
   }
 }
@@ -209,7 +204,7 @@ export async function emitMainPackage(args: { version: string; outDir: string })
     // Node start on the common path), Node's when run by `node` (Yarn 2+).
     bin: { vx: './launcher.cjs' },
     engines: { node: '>=18' },
-    optionalDependencies: allOptional('@vzn/vx', version),
+    optionalDependencies: allOptional(version),
     // Runtime deps the library source needs when imported (the binary embeds
     // its own copy). Mirrors the workspace root so versions never drift.
     dependencies: corePkg.dependencies ?? {},
@@ -318,14 +313,7 @@ async function main(): Promise<void> {
   await rm(outDir, { recursive: true, force: true })
 
   // --- @vzn/vx: platform binaries + the library/launcher package -----------
-  await emitPlatformPackages({
-    mainName: '@vzn/vx',
-    base: 'vx',
-    distPrefix: 'vx',
-    targets,
-    version,
-    outDir,
-  })
+  await emitPlatformPackages({ targets, version, outDir })
 
   await emitMainPackage({ version, outDir })
 

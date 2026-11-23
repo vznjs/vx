@@ -2,7 +2,7 @@
 // asked three times, then left alone for 30 s, then probed once.
 
 import { afterAll, describe, expect, it } from 'bun:test'
-import { OutageBreaker } from '../src/remote-breaker.js'
+import { OutageBreaker } from '../src/remote-http.js'
 import { NxRemoteCache, resolveNxCacheConfig } from '../src/nx-cache/index.js'
 import { resolveTurboCacheConfig, TurboRemoteCache } from '../src/turbo-cache/index.js'
 

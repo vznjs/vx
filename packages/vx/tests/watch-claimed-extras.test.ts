@@ -12,13 +12,13 @@ import { afterEach, describe, expect, it } from 'bun:test'
 import { PLUGIN_IMPORT, packagesSource, pluginSource } from './helpers/plugin.js'
 import {
   ARMS,
-  BIN,
   arms,
   initialOnly,
   startWatch,
   until,
   useWatchFixture,
 } from './helpers/watch-loop.js'
+import { BIN } from './helpers/vx.js'
 
 const claimant = (extras: readonly string[]): string =>
   `${PLUGIN_IMPORT}export default { plugins: [${packagesSource()}, ${pluginSource(

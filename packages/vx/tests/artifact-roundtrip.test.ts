@@ -9,7 +9,7 @@
 // while `packArtifact` still stages the wrong mode, and vice versa — only the
 // full produce → cache → wipe → restore loop pins the property that matters.
 
-import { chmod, mkdir, mkdtemp, readdir, rm, stat, utimes, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, readdir, rm, stat, utimes } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
@@ -23,46 +23,12 @@ import {
   storedArtifact,
 } from './helpers/stored-artifact.js'
 import { TAR_STORE } from './helpers/tar-store.js'
+import { git, gitInit } from './helpers/workspace.js'
+import { vxSync } from './helpers/vx.js'
 
 const TIMEOUT = 60_000
-const CLI = path.join(import.meta.dir, 'helpers', 'vx-locked.ts')
 
-async function write(p: string, content: string): Promise<void> {
-  await mkdir(path.dirname(p), { recursive: true })
-  await writeFile(p, content)
-}
-
-function git(cwd: string, ...args: string[]): void {
-  const p = Bun.spawnSync({
-    cmd: ['git', '-c', 'commit.gpgsign=false', ...args],
-    cwd,
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
-  if (p.exitCode !== 0) {
-    const detail = [
-      new TextDecoder().decode(p.stderr).trim(),
-      new TextDecoder().decode(p.stdout).trim(),
-    ]
-      .filter((s) => s.length > 0)
-      .join(' | ')
-    throw new Error(`git ${args.join(' ')} exited ${p.exitCode}: ${detail}`)
-  }
-}
-
-function vx(cwd: string, ...args: string[]): { out: string; exitCode: number } {
-  const p = Bun.spawnSync({
-    cmd: ['bun', CLI, ...args],
-    cwd,
-    stdout: 'pipe',
-    stderr: 'pipe',
-    env: { ...process.env, CI: '', GITHUB_ACTIONS: '', NO_COLOR: '1' },
-  })
-  return {
-    out: new TextDecoder().decode(p.stdout) + new TextDecoder().decode(p.stderr),
-    exitCode: p.exitCode ?? -1,
-  }
-}
+const vx = (cwd: string, ...args: string[]) => vxSync(cwd, args)
 
 /** Every file under `dir`, as rel → { bytes, mode }. The full restore contract. */
 async function snapshotTree(dir: string): Promise<Map<string, { text: string; mode: number }>> {
@@ -110,12 +76,12 @@ describe('artifact round-trip', () => {
       //   - ordinary nested files, as the control
       const deepDir = 'dist/packages/design-system-components/esm/react/primitives/button'
       const longName = `${'x'.repeat(120)}.js`
-      await write(
+      await Bun.write(
         path.join(root, 'package.json'),
         '{"name":"@acme/app","version":"1.0.0","private":true}',
       )
       await writeLocalWorkspace(root)
-      await write(
+      await Bun.write(
         path.join(root, 'vx.config.mjs'),
         `export default {
            tasks: {
@@ -135,10 +101,8 @@ describe('artifact round-trip', () => {
            },
          }`,
       )
-      await write(path.join(root, 'src/in.txt'), 'PRODUCED-CONTENT')
-      git(root, 'init', '-q')
-      git(root, 'config', 'user.email', 'test@vx.local')
-      git(root, 'config', 'user.name', 'vx test')
+      await Bun.write(path.join(root, 'src/in.txt'), 'PRODUCED-CONTENT')
+      gitInit(root)
       git(root, 'add', '-A')
       git(root, 'commit', '-qm', 'init')
 
@@ -146,7 +110,7 @@ describe('artifact round-trip', () => {
       // express one of these names fails HERE, turning a working build into a
       // failed run.
       const cold = vx(root, 'run', 'build')
-      expect(cold.exitCode).toBe(0)
+      expect(cold.code).toBe(0)
 
       const produced = await snapshotTree(path.join(root, 'dist'))
       // Guard the fixture itself before trusting the comparison.
@@ -164,7 +128,7 @@ describe('artifact round-trip', () => {
       // Wipe and replay from cache.
       await rm(path.join(root, 'dist'), { recursive: true, force: true })
       const warm = vx(root, 'run', 'build')
-      expect(warm.exitCode).toBe(0)
+      expect(warm.code).toBe(0)
 
       const restored = await snapshotTree(path.join(root, 'dist'))
       // Full equality: no missing entry, no extra entry, same bytes, same mode.
@@ -182,9 +146,9 @@ describe('artifact round-trip', () => {
       // ustar refuses a name it cannot split ("file name is too long (cannot
       // be split)", exit 2) — and `packArtifact` runs AFTER the task already
       // succeeded, so the failure was reported as a failed build.
-      await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
+      await Bun.write(path.join(root, 'package.json'), '{"name":"r","private":true}')
       await writeLocalWorkspace(root)
-      await write(
+      await Bun.write(
         path.join(root, 'vx.config.mjs'),
         `export default {
            tasks: {
@@ -195,24 +159,22 @@ describe('artifact round-trip', () => {
            },
          }`,
       )
-      await write(path.join(root, 'src/in.txt'), 'SNAPSHOT')
-      git(root, 'init', '-q')
-      git(root, 'config', 'user.email', 'test@vx.local')
-      git(root, 'config', 'user.name', 'vx test')
+      await Bun.write(path.join(root, 'src/in.txt'), 'SNAPSHOT')
+      gitInit(root)
       git(root, 'add', '-A')
       git(root, 'commit', '-qm', 'init')
 
       const res = vx(root, 'run', 'snap')
-      expect(res.out).not.toContain('file name is too long')
-      expect(res.exitCode).toBe(0)
+      expect(res.text).not.toContain('file name is too long')
+      expect(res.code).toBe(0)
     },
     TIMEOUT,
   )
 
   const project = async (outputs: string[], command: string): Promise<void> => {
-    await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
+    await Bun.write(path.join(root, 'package.json'), '{"name":"r","private":true}')
     await writeLocalWorkspace(root)
-    await write(
+    await Bun.write(
       path.join(root, 'vx.config.mjs'),
       `export default {
          tasks: {
@@ -223,10 +185,8 @@ describe('artifact round-trip', () => {
          },
        }`,
     )
-    await write(path.join(root, 'src/in.txt'), 'IN')
-    git(root, 'init', '-q')
-    git(root, 'config', 'user.email', 'test@vx.local')
-    git(root, 'config', 'user.name', 'vx test')
+    await Bun.write(path.join(root, 'src/in.txt'), 'IN')
+    gitInit(root)
     git(root, 'add', '-A')
     git(root, 'commit', '-qm', 'init')
   }
@@ -253,7 +213,7 @@ describe('artifact round-trip', () => {
           'echo p > .next/server/page.js',
         ].join(' && '),
       )
-      expect(vx(root, 'run', 'build').exitCode).toBe(0)
+      expect(vx(root, 'run', 'build').code).toBe(0)
       const produced = await snapshotTree(path.join(root, '.next'))
       expect([...produced.keys()].sort()).toEqual([
         'a.json',
@@ -262,11 +222,11 @@ describe('artifact round-trip', () => {
         'standalone/server.js',
       ])
       await rm(path.join(root, '.next'), { recursive: true, force: true })
-      expect(vx(root, 'run', 'build').exitCode).toBe(0)
+      expect(vx(root, 'run', 'build').code).toBe(0)
       expect(await snapshotTree(path.join(root, '.next'))).toEqual(produced)
       const again = vx(root, 'run', 'build')
-      expect(again.exitCode).toBe(0)
-      expect(again.out).toContain('up-to-date')
+      expect(again.code).toBe(0)
+      expect(again.text).toContain('up-to-date')
     },
     TIMEOUT,
   )
@@ -285,9 +245,9 @@ describe('artifact round-trip', () => {
           'echo css > .build/c.css',
         ].join(' && '),
       )
-      expect(vx(root, 'run', 'build').exitCode).toBe(0)
+      expect(vx(root, 'run', 'build').code).toBe(0)
       await rm(path.join(root, '.build'), { recursive: true, force: true })
-      expect(vx(root, 'run', 'build').exitCode).toBe(0)
+      expect(vx(root, 'run', 'build').code).toBe(0)
       expect([...(await snapshotTree(path.join(root, '.build'))).keys()].sort()).toEqual([
         'a.js',
         'b.ts',
@@ -314,12 +274,12 @@ describe('artifact round-trip — odd names', () => {
       // the tar side: the entry name goes through the ustar header and the
       // extractor's containment checks, and the file must come back under
       // exactly the name the task wrote.
-      await write(
+      await Bun.write(
         path.join(root, 'package.json'),
         '{"name":"@acme/odd","version":"1.0.0","private":true}',
       )
       await writeLocalWorkspace(root)
-      await write(
+      await Bun.write(
         path.join(root, 'vx.config.mjs'),
         `export default {
            tasks: {
@@ -338,18 +298,16 @@ describe('artifact round-trip — odd names', () => {
            },
          }`,
       )
-      await write(path.join(root, 'src/in.txt'), 'ODD-CONTENT')
-      git(root, 'init', '-q')
-      git(root, 'config', 'user.email', 'test@vx.local')
-      git(root, 'config', 'user.name', 'vx test')
+      await Bun.write(path.join(root, 'src/in.txt'), 'ODD-CONTENT')
+      gitInit(root)
       git(root, 'add', '-A')
       git(root, 'commit', '-qm', 'init')
 
       const cold = vx(root, 'run', 'build')
-      expect(cold.exitCode).toBe(0)
+      expect(cold.code).toBe(0)
       // Until X-65 the save refused the backslash name, and the warm run
       // re-ran the task, so the tree matched without a hit.
-      expect(cold.out).not.toContain('cache save failed')
+      expect(cold.text).not.toContain('cache save failed')
       const produced = await snapshotTree(path.join(root, 'dist'))
       expect([...produced.keys()].sort()).toEqual(
         ['with spaces.js', 'café.js', 'quo"te.js', 'back\\slash.js'].sort(),
@@ -357,8 +315,8 @@ describe('artifact round-trip — odd names', () => {
 
       await rm(path.join(root, 'dist'), { recursive: true, force: true })
       const warm = vx(root, 'run', 'build')
-      expect(warm.exitCode).toBe(0)
-      expect(warm.out).toContain('local 1↓')
+      expect(warm.code).toBe(0)
+      expect(warm.text).toContain('local 1↓')
       const restored = await snapshotTree(path.join(root, 'dist'))
       expect([...restored.keys()].sort()).toEqual([...produced.keys()].sort())
       for (const [rel, want] of produced) expect(restored.get(rel)).toEqual(want)
@@ -384,7 +342,7 @@ describe('restoreOutputs refuses to report a hit it cannot materialize', () => {
   })
 
   async function saveEntry(hash: string): Promise<void> {
-    await write(path.join(projectDir, 'dist/app.js'), 'BUILT')
+    await Bun.write(path.join(projectDir, 'dist/app.js'), 'BUILT')
     await chmod(path.join(projectDir, 'dist/app.js'), 0o755)
     await cache.save({
       hash,
@@ -437,7 +395,7 @@ describe('restoreOutputs refuses to report a hit it cannot materialize', () => {
     // `dist//…`, and the refusal failed the task on every run, the entry
     // never dropped.
     const long = `.${'x'.repeat(120)}.js`
-    await write(path.join(projectDir, 'dist', long), 'BUILT')
+    await Bun.write(path.join(projectDir, 'dist', long), 'BUILT')
     await cache.save({
       hash: 'flipped',
       entry: { taskId: 'a#build', command: 'build', durationMs: 1, stdout: '' },
@@ -508,7 +466,7 @@ describe('restoreOutputs refuses to report a hit it cannot materialize', () => {
     await rm(path.join(projectDir, 'dist'), { recursive: true, force: true })
     await saveEntry('stray2')
     await rm(path.join(projectDir, 'dist'), { recursive: true, force: true })
-    await write(path.join(projectDir, 'dist'), 'I AM A FILE')
+    await Bun.write(path.join(projectDir, 'dist'), 'I AM A FILE')
     const blocked = await cache.restoreOutputs('stray2', projectDir).catch((e: Error) => e.message)
     expect(blocked).toMatch(/was blocked by what is on disk \(EEXIST/)
     // X-7: the file case was described as its reverse, and the code doubled.
@@ -595,7 +553,7 @@ describe('restoreOutputs decodes a large artifact as a stream', () => {
   it('restores byte-exact with the sidecar mode, each file dated when written', async () => {
     await mkdir(path.join(projectDir, 'dist'), { recursive: true })
     await Bun.write(path.join(projectDir, 'dist/big.bin'), big)
-    await write(path.join(projectDir, 'dist/run.sh'), '#!/bin/sh\n')
+    await Bun.write(path.join(projectDir, 'dist/run.sh'), '#!/bin/sh\n')
     await chmod(path.join(projectDir, 'dist/run.sh'), 0o755)
     const stamp = new Date('2024-05-06T07:08:09.123Z')
     await utimes(path.join(projectDir, 'dist/run.sh'), stamp, stamp)
@@ -762,7 +720,7 @@ describe('a project output under the reserved workspace-outputs/', () => {
     })
 
   it('is refused at save, and nothing is stored', async () => {
-    await write(path.join(projectDir, 'workspace-outputs/a.js'), 'A')
+    await Bun.write(path.join(projectDir, 'workspace-outputs/a.js'), 'A')
     const err = await save('reserved', 'workspace-outputs/a.js').catch((e: unknown) => e)
     expect((err as Error).message).toBe(
       "output workspace-outputs/a.js is under workspace-outputs/, a name vx's artifacts reserve " +
@@ -775,7 +733,7 @@ describe('a project output under the reserved workspace-outputs/', () => {
   // Controls: a neighbour's name and a nested one are ordinary outputs.
   for (const rel of ['workspace-outputs2/a.js', 'out/workspace-outputs/a.js']) {
     it(`${rel} saves and restores`, async () => {
-      await write(path.join(projectDir, rel), 'A')
+      await Bun.write(path.join(projectDir, rel), 'A')
       await save('neighbour', rel)
       await rm(path.join(projectDir, rel))
       await cache.restoreOutputs('neighbour', projectDir, root)

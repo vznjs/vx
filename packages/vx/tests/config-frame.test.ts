@@ -6,8 +6,7 @@ import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { configErrorFrame, configRefusal } from '../src/util/index.js'
 import { makeWorkspace } from './helpers/workspace.js'
-
-const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
+import { BIN } from './helpers/vx.js'
 
 const CONFIG = `export default {
   tasks: {

@@ -14,9 +14,9 @@ import type { Logger } from '../src/report/index.js'
 import { run } from './helpers/orchestrator.js'
 import { parseRunArgs } from '../src/cli/run.js'
 import { loadProjectConfig } from '../src/workspace/project-loader.js'
+import { vx } from './helpers/vx.js'
 
 const TIMEOUT = 30_000
-const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
 
 interface Fixture {
   root: string
@@ -40,21 +40,6 @@ const capturingLogger = (f: Fixture): Logger => ({
 async function makeWorkspace(): Promise<Fixture> {
   const root = await makeWorkspaceRoot({ prefix: 'vx-retries-' })
   return { root, out: [], err: [] }
-}
-
-async function vx(root: string, args: string[]) {
-  const proc = Bun.spawn([process.execPath, BIN, ...args], {
-    cwd: root,
-    env: { ...process.env, CI: '', GITHUB_ACTIONS: '' },
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
-  const [out, err, code] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ])
-  return { code, out, err }
 }
 
 function lineCount(file: string): number {

@@ -10,8 +10,8 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterAll, describe, expect, it } from 'bun:test'
 import { sandboxAvailable } from './helpers/sandbox-gate.js'
+import { BIN } from './helpers/vx.js'
 
-const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 const lock = (ws: string): void => {
   const r = Bun.spawnSync({ cmd: [process.execPath, BIN, 'lock'], cwd: ws, stderr: 'pipe' })
   expect(r.exitCode, r.stderr.toString()).toBe(0)

@@ -12,13 +12,13 @@ import { addProject } from './helpers/workspace.js'
 import {
   ARMS,
   arms,
-  BIN,
   executions,
   initialOnly,
   startWatch,
   until,
   useWatchFixture,
 } from './helpers/watch-loop.js'
+import { BIN } from './helpers/vx.js'
 
 describe('vx watch with a workspace-wide watcher (e2e)', () => {
   const f = useWatchFixture()

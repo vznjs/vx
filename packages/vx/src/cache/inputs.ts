@@ -58,24 +58,11 @@ import {
   listingEnv,
   relistedFilesDigest,
   lstatOrAbsent,
+  lowerBoundOf,
   newFilesIgnoredIn,
   runGitLsFiles,
 } from './git-inputs.js'
 import { FILE_HASH_RACY_MS, racyWindowMs } from '../memo/index.js'
-
-// git-inputs.ts's surface, re-exported for readers that reach it through here.
-export {
-  GitFilesCache,
-  populateGitFilesCache,
-  runGitLsFiles,
-  startGitEnumeration,
-  applyGitEnumeration,
-  gitPathspecs,
-  autocrlfConverts,
-  gitStatWeakened,
-  attributeFilesOutsideTree,
-  type GitEnumeration,
-} from './git-inputs.js'
 
 // vx's own files are never task inputs, or a re-lock would move every `**`
 // reader's key. Relative to the project, so only where vx writes them: a
@@ -2033,10 +2020,6 @@ function realOrNull(p: string): string | null {
   }
 }
 
-// Re-exported from `util/paths.ts`, where the graph's overlap refusal can read
-// the same rule.
-export { asTrees } from '../util/index.js'
-
 /**
  * The literals no path in `files` answers (by itself or anything under it). Git
  * lists in order, so a binary search answers; a listing out of code-unit order
@@ -2046,20 +2029,18 @@ function unanswered(
   literals: readonly string[],
   files: readonly string[],
   newIgnored?: (lit: string) => boolean,
-): Set<string> {
-  return new Set(
-    reachingIgnored(
-      literals,
-      (lit) => {
-        const under = `${lit}/`
-        return (
-          files[lowerBound(files, lit)] === lit ||
-          files[lowerBound(files, under)]?.startsWith(under) === true ||
-          files.some((rel) => rel === lit || rel.startsWith(under))
-        )
-      },
-      newIgnored,
-    ),
+): string[] {
+  return reachingIgnored(
+    literals,
+    (lit) => {
+      const under = `${lit}/`
+      return (
+        files[lowerBoundOf(files, lit)] === lit ||
+        files[lowerBoundOf(files, under)]?.startsWith(under) === true ||
+        files.some((rel) => rel === lit || rel.startsWith(under))
+      )
+    },
+    newIgnored,
   )
 }
 
@@ -2099,18 +2080,6 @@ export function namedIgnoredReach(
   )
 }
 
-/** The first index whose path is not below `key`. */
-function lowerBound(files: readonly string[], key: string): number {
-  let lo = 0
-  let hi = files.length
-  while (lo < hi) {
-    const mid = (lo + hi) >>> 1
-    if (files[mid]! < key) lo = mid + 1
-    else hi = mid
-  }
-  return lo
-}
-
 /**
  * The entries a declaration names outright that git answers nothing for: a
  * literal or a glob's fixed prefix with no listed path under it. Naming it is
@@ -2138,7 +2107,7 @@ function ignoredReach(
       cache === undefined
         ? undefined
         : (lit: string) => cache.newFilesIgnored(path.resolve(ignoredIn!.dir, lit))
-    memo.set(key, (left = [...unanswered(named, listed, newIgnored)]))
+    memo.set(key, (left = unanswered(named, listed, newIgnored)))
   }
   return left
 }
@@ -2190,7 +2159,7 @@ function ignoredInputs(
       continue
     }
     try {
-      for (const rel of WALK.scanSync({
+      for (const rel of WHOLE_TREE.scanSync({
         cwd: abs,
         onlyFiles: false,
         followSymlinks: false,
@@ -2217,8 +2186,6 @@ function ignoredInputs(
   }
   return [...found].sort()
 }
-
-const WALK = new Bun.Glob('**')
 
 interface ResolveFilesArgs {
   projectDir: string

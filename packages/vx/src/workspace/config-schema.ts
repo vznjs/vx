@@ -923,7 +923,7 @@ function validateLongRunning(exec: object, where: string, cache: unknown, retrie
     }
     // bwrap's --new-session keeps the terminal usable (probed), but the
     // sandboxed spawn pipes the task's streams: its stderr is read for
-    // the tracer's own errors (sandbox/runtime.ts).
+    // the tracer's own errors (sandbox/trace.ts).
     if ((exec as { sandbox?: unknown }).sandbox !== undefined) {
       throw new UserError(
         `${where}: \`sandbox\` is not allowed on an interactive task — a sandboxed ` +

@@ -3,7 +3,7 @@
 import { describe, expect, it } from 'bun:test'
 import { nxCache } from '../src/nx-cache/index.js'
 import { turboCache } from '../src/turbo-cache/index.js'
-import { Cooldown, withRetry } from '../src/remote-retry.js'
+import { Cooldown, withRetry } from '../src/remote-http.js'
 
 type Answer = Response | Error
 

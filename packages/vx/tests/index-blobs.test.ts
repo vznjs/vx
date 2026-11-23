@@ -9,6 +9,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
 import { indexBlobsOf } from '../src/cache/git-inputs.js'
+import { git } from './helpers/workspace.js'
 
 let root: string
 beforeEach(async () => {
@@ -17,15 +18,6 @@ beforeEach(async () => {
 afterEach(async () => {
   await rm(root, { recursive: true, force: true })
 })
-
-function git(cwd: string, ...args: string[]): string {
-  const p = Bun.spawnSync(
-    ['git', '-c', 'commit.gpgsign=false', '-c', 'user.email=t@t', '-c', 'user.name=t', ...args],
-    { cwd, stdout: 'pipe', stderr: 'pipe' },
-  )
-  if (p.exitCode !== 0) throw new Error(`git ${args.join(' ')}: ${p.stderr.toString()}`)
-  return p.stdout.toString()
-}
 
 /** What `ls-files -s -z --debug` lists from `cwd`: stage-0 regular entries. */
 function listed(cwd: string, pathspecs: readonly string[], writtenSec: number) {

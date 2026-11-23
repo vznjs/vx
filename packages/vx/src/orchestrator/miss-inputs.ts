@@ -28,7 +28,7 @@ import type { ExecuteArgs, RunContext } from './execute-task.js'
 import { bracketLiteralHint } from './miss-save.js'
 import type { TaskPolicy } from './task-policy.js'
 import { describeTaskInputs, type InputFact } from './task-hash.js'
-import { TaskSecrets } from './task-secrets.js'
+import { TaskSecrets } from './miss-run.js'
 
 export type Described = Awaited<ReturnType<typeof describeTaskInputs>>
 

@@ -11,7 +11,6 @@ import { afterEach, describe, expect, it } from 'bun:test'
 import { makeWatchIgnore } from '../src/cli/watch-filter.js'
 import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
 import {
-  BIN,
   SETTLE_MS,
   executions,
   initialOnly,
@@ -19,6 +18,7 @@ import {
   until,
   type Watch,
 } from './helpers/watch-loop.js'
+import { BIN } from './helpers/vx.js'
 
 describe('the ignore filter: node_modules', () => {
   const dir = path.resolve('/w/app')

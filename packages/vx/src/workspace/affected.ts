@@ -88,11 +88,6 @@ export interface AffectedArgs {
   /** A promise when the caller is still discovering them: the git calls start first. */
   projects: readonly ProjectMeta[] | Promise<readonly ProjectMeta[]>
   /**
-   * False skips the scan of each config's imports: the cache scope's split,
-   * where a wrong answer costs a miss, never a stale hit.
-   */
-  configImports?: false
-  /**
    * Which projects declare an `inputs.workspaceFiles` glob matching one of
    * these paths. Mapping paths to project dirs cannot see such globs, and
    * answering needs resolved configs, so it is a callback asked only when
@@ -297,24 +292,22 @@ export async function affectedChanges(
   // config often imports from another project (`../../src/index.ts`). That
   // re-keys every task of the project. A file the workspace config imports
   // widens as the config does.
-  if (args.configImports !== false) {
-    const imports = await configImportOwners({
-      workspaceRoot: args.workspaceRoot,
-      projects: diff.projects,
-      changed,
-      skip: perTask ? new Set() : owned,
-      workspaceConfigs: WORKSPACE_CONFIG_FILENAMES.map((n) => path.join(diff.rootDir, n)),
-    })
-    if (imports.workspace !== undefined) return everything(imports.workspace)
-    if (imports.outside !== undefined) {
-      const moved = await outsideChanged(args.workspaceRoot, base, imports.outside)
-      if (moved !== undefined) return everything(moved)
-    }
-    for (const name of imports.owners) {
-      owned.add(name)
-      // A run reads the config from the lock: its diff said which tasks moved.
-      if (!configTasks.has(name)) whole.add(name)
-    }
+  const imports = await configImportOwners({
+    workspaceRoot: args.workspaceRoot,
+    projects: diff.projects,
+    changed,
+    skip: perTask ? new Set() : owned,
+    workspaceConfigs: WORKSPACE_CONFIG_FILENAMES.map((n) => path.join(diff.rootDir, n)),
+  })
+  if (imports.workspace !== undefined) return everything(imports.workspace)
+  if (imports.outside !== undefined) {
+    const moved = await outsideChanged(args.workspaceRoot, base, imports.outside)
+    if (moved !== undefined) return everything(moved)
+  }
+  for (const name of imports.owners) {
+    owned.add(name)
+    // A run reads the config from the lock: its diff said which tasks moved.
+    if (!configTasks.has(name)) whole.add(name)
   }
 
   const { dirLinks } = diff

@@ -8,8 +8,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
-
-const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
+import { vxSync } from './helpers/vx.js'
 
 /** A PATH of bun, the shells and git alone: no `tsc` from the box. */
 async function bareBin(): Promise<string> {
@@ -31,19 +30,7 @@ async function fakeTool(dir: string): Promise<void> {
   await chmod(tool, 0o755)
 }
 
-function vx(cwd: string, bin: string, args: string[]): { code: number; text: string } {
-  const p = Bun.spawnSync({
-    cmd: [process.execPath, BIN, ...args],
-    cwd,
-    stdout: 'pipe',
-    stderr: 'pipe',
-    env: { ...process.env, PATH: bin, NO_COLOR: '1', CI: '' },
-  })
-  return {
-    code: p.exitCode ?? 1,
-    text: new TextDecoder().decode(p.stdout) + new TextDecoder().decode(p.stderr),
-  }
-}
+const vx = (cwd: string, bin: string, args: string[]) => vxSync(cwd, args, { env: { PATH: bin } })
 
 describe('a tool that is not on the PATH vx built', () => {
   let root: string

@@ -8,8 +8,8 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterAll, describe, expect, it } from 'bun:test'
 import { TIMEOUT } from './helpers/orchestrator-fixture.js'
+import { BIN, vxSync } from './helpers/vx.js'
 
-const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 const roots: string[] = []
 
 afterAll(async () => {
@@ -41,16 +41,8 @@ async function workspace(task: string): Promise<string> {
   return root
 }
 
-function vx(root: string, args: string[]) {
-  const r = Bun.spawnSync({
-    cmd: [process.execPath, BIN, ...args],
-    cwd: root,
-    env: { ...process.env, CI: '', VX_LOCK_REVIEW_FILES: 'false' },
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
-  return { code: r.exitCode, out: r.stdout.toString(), err: r.stderr.toString() }
-}
+const vx = (root: string, args: string[]) =>
+  vxSync(root, args, { bin: BIN, env: { VX_LOCK_REVIEW_FILES: 'false' } })
 
 const task = (inputs: string[], outputs: string[] = []) =>
   `{ exec: { command: 'cat app/*/page.ts' }, inputs: { files: ${JSON.stringify(inputs)} }, outputs: { files: ${JSON.stringify(outputs)} }, cache: true }`

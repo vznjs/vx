@@ -12,8 +12,7 @@ import { errorCode, errorDocument, UserError, wantsJson } from '../src/util/inde
 import { LOCKFILE_VERSION } from '../src/workspace/index.js'
 import { docsIn } from './helpers/docs-pages.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
-
-const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
+import { vx as spawnVx } from './helpers/vx.js'
 
 const REAL_BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 
@@ -67,20 +66,8 @@ afterAll(async () => {
   await rm(badPolicy, { recursive: true, force: true })
 })
 
-async function vx(args: string[], cwd = root, env: Record<string, string> = {}) {
-  const p = Bun.spawn([process.execPath, BIN, ...args], {
-    cwd,
-    env: { ...process.env, ...env },
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
-  const [code, stdout, stderr] = await Promise.all([
-    p.exited,
-    new Response(p.stdout).text(),
-    new Response(p.stderr).text(),
-  ])
-  return { code, stdout, stderr }
-}
+const vx = (args: string[], cwd = root, env: Record<string, string> = {}) =>
+  spawnVx(cwd, args, { env })
 
 /** The code of the one JSON line on stdout; stderr still says it in prose. */
 async function refusal(
@@ -90,13 +77,13 @@ async function refusal(
 ): Promise<string> {
   const r = await vx(args, cwd, env)
   expect(r.code).toBe(1)
-  const doc = JSON.parse(r.stdout) as {
+  const doc = JSON.parse(r.out) as {
     ok: boolean
     error: { code: string; message: string; docs?: string }
   }
   expect(doc.ok).toBe(false)
   expect(doc.error.docs).toBe(`https://vznjs.github.io/vx/cli/#${doc.error.code.toLowerCase()}`)
-  expect(r.stderr).toMatch(/^([✗›] )?vx/)
+  expect(r.err).toMatch(/^([✗›] )?vx/)
   expect(doc.error.message.length).toBeGreaterThan(0)
   return doc.error.code
 }
@@ -267,14 +254,14 @@ describe('a refusal under --format json', () => {
         `const plugin = () => { throw new Error('plugin(): issuer must be a URL') }\nexport default { plugins: [plugin()] }\n`,
       )
       const r = await vx(['show', '--format', 'json'], ws)
-      const doc = JSON.parse(r.stdout) as { error: { code: string; message: string } }
-      expect([r.code, doc.error.code, r.stderr.replaceAll(ws, '<root>')]).toEqual([
+      const doc = JSON.parse(r.out) as { error: { code: string; message: string } }
+      expect([r.code, doc.error.code, r.err.replaceAll(ws, '<root>')]).toEqual([
         1,
         'VX_E_CONFIG',
         expect.stringContaining('.vx/workspace.mjs:1:34\n  threw: plugin(): issuer must be a URL'),
       ])
-      expect(r.stderr).toContain('.vx/workspace.mjs:1:')
-      expect(r.stderr).not.toContain('    at ')
+      expect(r.err).toContain('.vx/workspace.mjs:1:')
+      expect(r.err).not.toContain('    at ')
     } finally {
       await rm(ws, { recursive: true, force: true })
     }
@@ -288,9 +275,8 @@ describe('a refusal under --format json', () => {
     try {
       await Bun.write(path.join(ws, '.vx/workspace.mjs'), 'export default { plugins: 5 }\n')
       const r = await vx(['boom', '--format', 'json'], ws)
-      const { code, message } = (
-        JSON.parse(r.stdout) as { error: { code: string; message: string } }
-      ).error
+      const { code, message } = (JSON.parse(r.out) as { error: { code: string; message: string } })
+        .error
       expect([r.code, code, message.replaceAll(ws, '<root>')]).toEqual([
         1,
         'VX_E_CONFIG',
@@ -309,7 +295,7 @@ describe('a refusal under --format json', () => {
       await Bun.write(path.join(ws, '.vx/workspace.mjs'), source)
       const r = await vx(['show', '--format', 'json'], ws)
       expect(r.code).toBe(1)
-      return (JSON.parse(r.stdout) as { error: { code: string } }).error.code
+      return (JSON.parse(r.out) as { error: { code: string } }).error.code
     }
     try {
       expect({
@@ -345,7 +331,7 @@ describe('a refusal under --format json', () => {
         `export default { tasks: { b: { exec: { command: 'true' }, inputs: { files: ['**'] }, outputs: { files: [] }, cache: true } } }\n`,
       )
       const first = await vx(['run', 'b', '--all', '--dry'], ws)
-      expect([first.code, first.stderr]).toEqual([0, ''])
+      expect([first.code, first.err]).toEqual([0, ''])
       await Bun.write(
         path.join(ws, '.git', 'index'),
         'not an index, but long enough to be read as one',
@@ -399,15 +385,9 @@ describe('a refusal under --format json', () => {
       await rm(db, { recursive: true, force: true })
       await mkdir(db, { recursive: true })
       const r = await vx(['last', '--format', 'json'], ws)
-      const { code, message } = (
-        JSON.parse(r.stdout) as { error: { code: string; message: string } }
-      ).error
-      expect([
-        r.code,
-        code,
-        message.replaceAll(ws, '<root>'),
-        r.stderr.includes('    at '),
-      ]).toEqual([
+      const { code, message } = (JSON.parse(r.out) as { error: { code: string; message: string } })
+        .error
+      expect([r.code, code, message.replaceAll(ws, '<root>'), r.err.includes('    at ')]).toEqual([
         1,
         'VX_E_FS',
         expect.stringContaining('the cache index <root>/.vx/cache/cache.db could not be opened'),
@@ -550,7 +530,7 @@ describe('a refusal under --format json', () => {
       )
       expect((await vx(['run', 'build', '--all'], ws)).code).toBe(0)
       const r = await vx(['last', '--log', 'a#lint', '--format', 'json'], ws)
-      expect([r.code, JSON.parse(r.stdout).error]).toEqual([
+      expect([r.code, JSON.parse(r.out).error]).toEqual([
         1,
         {
           code: 'VX_E_NO_HISTORY',
@@ -566,8 +546,8 @@ describe('a refusal under --format json', () => {
   it('CONTROLS: without JSON, or with it only after `--`, stdout stays empty', async () => {
     const plain = await vx(['run', 'nope', '--all'])
     const forwarded = await vx(['run', 'nope', '--all', '--', '--dry=json'])
-    expect([plain.code, plain.stdout, forwarded.code, forwarded.stdout]).toEqual([1, '', 1, ''])
-    expect(plain.stderr).toContain('no projects declare task(s): nope')
+    expect([plain.code, plain.out, forwarded.code, forwarded.out]).toEqual([1, '', 1, ''])
+    expect(plain.err).toContain('no projects declare task(s): nope')
   })
 
   // A run-id prefix two runs share answered VX_E_REFUSED, a plugin's or a
@@ -650,7 +630,7 @@ describe('errorCode', () => {
       vx(['show', '--format', 'json', '--format', 'pretty', 'nosuch']),
       vx(['run', '--dry=json', '--dry', 'nosuch', '--all']),
     ])
-    expect([show.code, show.stdout, run.code, run.stdout]).toEqual([1, '', 1, ''])
+    expect([show.code, show.out, run.code, run.out]).toEqual([1, '', 1, ''])
   }, 30_000)
 })
 

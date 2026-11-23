@@ -3,25 +3,9 @@
 // it — a SIGKILL the runner saw, and a SIGSEGV a pipeline's exit code alone
 // carries. The control: vx's own timeout keeps its own line, no verdict.
 import { rm } from 'node:fs/promises'
-import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
-
-const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
-
-function vx(cwd: string, args: string[]): { code: number; text: string } {
-  const p = Bun.spawnSync({
-    cmd: [process.execPath, BIN, ...args],
-    cwd,
-    stdout: 'pipe',
-    stderr: 'pipe',
-    env: { ...process.env, NO_COLOR: '1', CI: '' },
-  })
-  return {
-    code: p.exitCode ?? 1,
-    text: new TextDecoder().decode(p.stdout) + new TextDecoder().decode(p.stderr),
-  }
-}
+import { vxSync } from './helpers/vx.js'
 
 describe('a task killed by a signal', () => {
   let root: string
@@ -56,7 +40,7 @@ describe('a task killed by a signal', () => {
   })
 
   it('a SIGKILL the runner saw is named with the OOM killer and a kill', () => {
-    const r = vx(root, ['run', 'killed', '--all'])
+    const r = vxSync(root, ['run', 'killed', '--all'])
     expect(r.code).toBe(1)
     expect(r.text).toContain('failed (exit 137, 128 + SIGKILL)')
     expect(r.text).toContain(
@@ -65,7 +49,7 @@ describe('a task killed by a signal', () => {
   })
 
   it('a 139 the shell reports for a subshell is named as SIGSEGV or its own exit', () => {
-    const r = vx(root, ['run', 'segv', '--all'])
+    const r = vxSync(root, ['run', 'segv', '--all'])
     expect(r.code).toBe(1)
     expect(r.text).toContain('failed (exit 139, 128 + SIGSEGV)')
     expect(r.text).toContain(
@@ -78,8 +62,8 @@ describe('a task killed by a signal', () => {
   it.if(process.platform === 'linux')('a signal with no name is named by its number', () => {
     const want =
       '[vx] exit 162 is how the shell reports a death by signal 34: the process was killed by that signal'
-    const r = vx(root, ['run', 'rt', '--all'])
-    const dev = vx(root, ['run', 'rtdev', '--all'])
+    const r = vxSync(root, ['run', 'rt', '--all'])
+    const dev = vxSync(root, ['run', 'rtdev', '--all'])
     expect([r.code, r.text.includes(want), dev.code, dev.text.includes(want)]).toEqual([
       1,
       true,
@@ -90,7 +74,7 @@ describe('a task killed by a signal', () => {
 
   // CONTROL: vx's own timeout is a SIGTERM the task already explains.
   it("vx's own timeout keeps its line and gets no signal verdict", () => {
-    const r = vx(root, ['run', 'slow', '--all'])
+    const r = vxSync(root, ['run', 'slow', '--all'])
     expect(r.code).toBe(1)
     expect(r.text).toContain('[vx] timed out after 300ms — killed (SIGTERM)')
     expect(r.text).not.toContain('is how the shell reports')
@@ -102,7 +86,7 @@ describe('a task killed by a signal', () => {
   it("vx's note starts on its own line with no blank line before it", () => {
     const rule = /├─ OUTPUT ─+\n\n/
     const at = (name: string): string => {
-      const r = vx(root, ['run', name, '--all'])
+      const r = vxSync(root, ['run', name, '--all'])
       const frame = r.text.slice(r.text.indexOf(`┌─ app#${name}`))
       return frame.slice(frame.search(rule)).replace(rule, '').split('\n└─')[0]!
     }

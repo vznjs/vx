@@ -12,28 +12,13 @@ import { rm, symlink } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
+import { vx } from './helpers/vx.js'
 
 const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
 const VX = `${process.execPath} ${BIN}`
 
-async function runVx(
-  root: string,
-  args: string[],
-  env: Record<string, string> = {},
-): Promise<{ code: number; text: string }> {
-  const proc = Bun.spawn([process.execPath, BIN, 'run', ...args], {
-    cwd: root,
-    env: { ...process.env, ...env },
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
-  const [out, err, code] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ])
-  return { code, text: out + err }
-}
+const runVx = (root: string, args: string[], env: Record<string, string> = {}) =>
+  vx(root, ['run', ...args], { env })
 
 describe('vx run inside a task', () => {
   let root: string

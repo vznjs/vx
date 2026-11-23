@@ -15,7 +15,7 @@ import { mkdir, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { gitInit, gitIn, makeWorkspace } from './helpers/workspace.js'
-import { GitFilesCache, populateGitFilesCache } from '../src/cache/inputs.js'
+import { GitFilesCache, populateGitFilesCache } from '../src/cache/git-inputs.js'
 import { gitPathspecs } from '../src/cache/git-inputs.js'
 import { rng } from './helpers/rng.js'
 

@@ -61,9 +61,6 @@ describe('third-party notices', () => {
     for (const t of TARGETS) writeFileSync(path.join(dist, `vx-${t.target}`), '')
     const out = path.join(root, 'npm')
     await emitPlatformPackages({
-      mainName: '@vzn/vx',
-      base: 'vx',
-      distPrefix: 'vx',
       targets: TARGETS,
       version: '9.9.9',
       outDir: out,

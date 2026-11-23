@@ -12,42 +12,20 @@
 // was a green hit on the old output while `git status` named the path
 // (2026-09-27, A-1). Its entry is replaced by what its own git lists.
 
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import {
-  addedInput,
-  GitFilesCache,
-  populateGitFilesCache,
-  resolveInputs,
-} from '../src/cache/inputs.js'
+import { GitFilesCache, populateGitFilesCache } from '../src/cache/git-inputs.js'
+import { addedInput, resolveInputs } from '../src/cache/inputs.js'
 import { writeLocalWorkspace } from './helpers/local-workspace.js'
+import { git, gitInit } from './helpers/workspace.js'
 
 const TIMEOUT = 60_000
 const CLI = path.join(import.meta.dir, 'helpers', 'vx-locked.ts')
 
-function git(cwd: string, ...args: string[]): void {
-  const p = Bun.spawnSync({
-    cmd: ['git', '-c', 'commit.gpgsign=false', ...args],
-    cwd,
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
-  if (p.exitCode !== 0) {
-    throw new Error(`git ${args.join(' ')}: ${new TextDecoder().decode(p.stderr)}`)
-  }
-}
-
 function initRepo(dir: string): void {
-  git(dir, 'init', '-q')
-  git(dir, 'config', 'user.email', 't@t')
-  git(dir, 'config', 'user.name', 't')
-}
-
-async function write(p: string, content: string): Promise<void> {
-  await mkdir(path.dirname(p), { recursive: true })
-  await writeFile(p, content)
+  gitInit(dir)
 }
 
 const CONFIG = `export default {
@@ -66,7 +44,7 @@ const CONFIG = `export default {
  * left untracked.
  */
 async function fixture(root: string): Promise<{ a: string; b: string; c: string }> {
-  await write(
+  await Bun.write(
     path.join(root, 'package.json'),
     JSON.stringify({
       name: 'r',
@@ -81,9 +59,9 @@ async function fixture(root: string): Promise<{ a: string; b: string; c: string 
     c: path.join(root, 'vendor/nested/c'),
   }
   for (const [name, dir] of Object.entries(dirs)) {
-    await write(path.join(dir, 'package.json'), JSON.stringify({ name }))
-    await write(path.join(dir, 'vx.config.mjs'), CONFIG)
-    await write(path.join(dir, 'src/x.txt'), 'one')
+    await Bun.write(path.join(dir, 'package.json'), JSON.stringify({ name }))
+    await Bun.write(path.join(dir, 'vx.config.mjs'), CONFIG)
+    await Bun.write(path.join(dir, 'src/x.txt'), 'one')
   }
   for (const sub of ['vendor/sub', 'vendor/nested']) {
     initRepo(path.join(root, sub))
@@ -145,9 +123,9 @@ describe('a project inside a nested repository', () => {
       const dirs = await fixture(root)
       for (const sub of ['vendor/sub', 'vendor/nested']) {
         const repo = path.join(root, sub)
-        await write(path.join(repo, '.gitignore'), '*.gen\n')
+        await Bun.write(path.join(repo, '.gitignore'), '*.gen\n')
         const project = sub === 'vendor/sub' ? 'b' : 'c'
-        await write(path.join(repo, project, 'src/keep.gen'), 'one')
+        await Bun.write(path.join(repo, project, 'src/keep.gen'), 'one')
         git(repo, 'add', '-f', '.gitignore', `${project}/src/keep.gen`)
         git(repo, 'commit', '-qm', 'gen')
       }
@@ -191,7 +169,7 @@ describe('a project inside a nested repository', () => {
       // and the entry was saved under a key without it.
       const dirs = await fixture(root)
       const repo = path.join(root, 'vendor/sub')
-      await write(path.join(repo, '.gitignore'), '*.gen\n')
+      await Bun.write(path.join(repo, '.gitignore'), '*.gen\n')
       git(repo, 'add', '.gitignore')
       git(repo, 'commit', '-qm', 'ignore')
       const resolved = await resolveInputs({
@@ -204,7 +182,7 @@ describe('a project inside a nested repository', () => {
       })
       const listedAt = Date.now() - 1000
       const added = path.join(dirs.b, 'src/keep.gen')
-      await write(added, 'one')
+      await Bun.write(added, 'one')
       git(repo, 'add', '-f', 'b/src/keep.gen')
       process.env['GIT_INDEX_FILE'] = path.join(root, '.git', 'index')
       try {
@@ -234,7 +212,7 @@ describe('a project inside a nested repository', () => {
       const cold = run()
       expect(cold).not.toContain('matched no files')
       expect(cold).toMatch(/local 3↑/)
-      for (const dir of Object.values(dirs)) await write(path.join(dir, 'src/x.txt'), 'two')
+      for (const dir of Object.values(dirs)) await Bun.write(path.join(dir, 'src/x.txt'), 'two')
       const warm = run()
       expect(warm).toMatch(/local 3↑/)
       for (const dir of Object.values(dirs)) {
@@ -252,14 +230,14 @@ describe('a project inside a nested repository', () => {
  * initialised).
  */
 async function vendoredFixture(root: string): Promise<string> {
-  await write(
+  await Bun.write(
     path.join(root, 'package.json'),
     JSON.stringify({ name: 'r', private: true, workspaces: ['packages/*'] }),
   )
   initRepo(root)
   const a = path.join(root, 'packages/a')
-  await write(path.join(a, 'package.json'), JSON.stringify({ name: 'a' }))
-  await write(
+  await Bun.write(path.join(a, 'package.json'), JSON.stringify({ name: 'a' }))
+  await Bun.write(
     path.join(a, 'vx.config.mjs'),
     `export default {
       tasks: {
@@ -270,13 +248,13 @@ async function vendoredFixture(root: string): Promise<string> {
       },
     }`,
   )
-  await write(path.join(root, '.gitignore'), '.vx/cache/\ndist/\n')
+  await Bun.write(path.join(root, '.gitignore'), '.vx/cache/\ndist/\n')
   for (const [sub, file] of [
     ['vendor/lib', 'x.txt'],
     ['vendor/loose', 'y.txt'],
     ['vendor/empty', 'z.txt'],
   ] as const) {
-    await write(path.join(a, sub, file), 'one')
+    await Bun.write(path.join(a, sub, file), 'one')
     initRepo(path.join(a, sub))
     git(path.join(a, sub), 'add', '-A')
     git(path.join(a, sub), 'commit', '-qm', 'init')
@@ -333,8 +311,8 @@ describe('a nested repository inside a project', () => {
       // fell out of the inputs: its edits were a stale hit.
       const a = await vendoredFixture(root)
       const lib = path.join(a, 'vendor/lib')
-      await write(path.join(lib, '.gitignore'), '*.gen\n')
-      await write(path.join(lib, 'keep.gen'), 'one')
+      await Bun.write(path.join(lib, '.gitignore'), '*.gen\n')
+      await Bun.write(path.join(lib, 'keep.gen'), 'one')
       git(lib, 'add', '-f', '.gitignore', 'keep.gen')
       git(lib, 'commit', '-qm', 'gen')
       for (const [name, value] of [
@@ -375,7 +353,7 @@ describe('a nested repository inside a project', () => {
         ['vendor/lib', 'x.txt'],
         ['vendor/loose', 'y.txt'],
       ] as const) {
-        await write(path.join(a, sub, file), `two ${sub}`)
+        await Bun.write(path.join(a, sub, file), `two ${sub}`)
         expect(run()).toMatch(/local 1↑/)
       }
       expect(await readFile(path.join(a, 'dist/out.txt'), 'utf8')).toBe(

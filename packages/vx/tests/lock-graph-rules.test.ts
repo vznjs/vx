@@ -9,8 +9,8 @@ import { afterAll, describe, expect, it } from 'bun:test'
 import { checkGraph, type TaskNode } from '../src/graph/index.js'
 import { TIMEOUT } from './helpers/orchestrator-fixture.js'
 import { readLockfile, writeLockfile } from '../src/workspace/lockfile.js'
+import { BIN, vxSync } from './helpers/vx.js'
 
-const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 const roots: string[] = []
 
 afterAll(async () => {
@@ -44,16 +44,8 @@ async function workspace(tasks: string): Promise<string> {
   return root
 }
 
-function vx(root: string, args: string[], env: Record<string, string | undefined> = {}) {
-  const r = Bun.spawnSync({
-    cmd: [process.execPath, BIN, ...args],
-    cwd: root,
-    env: { ...process.env, CI: '', VX_LOCK_REVIEW_FILES: 'false', ...env },
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
-  return { code: r.exitCode, out: r.stdout.toString(), err: r.stderr.toString() }
-}
+const vx = (root: string, args: string[], env: Record<string, string | undefined> = {}) =>
+  vxSync(root, args, { bin: BIN, env: { VX_LOCK_REVIEW_FILES: 'false', ...env } })
 
 const OVERLAP = `{ a: ${task(['dist/**'])}, b: ${task(['dist/**'])} }`
 

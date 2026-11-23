@@ -9,8 +9,8 @@ import { afterAll, beforeAll, expect, it } from 'bun:test'
 import { lock } from './helpers/orchestrator.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 import { noticed } from './helpers/notice.js'
+import { BIN } from './helpers/vx.js'
 
-const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 const TASKS = `export default { tasks: { build: { exec: { command: 'true' } }, typecheck: { exec: { command: 'true' } } } }`
 
 let root: string

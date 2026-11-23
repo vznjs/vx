@@ -9,11 +9,11 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { sandboxAvailable } from './helpers/sandbox-gate.js'
+import { BIN } from './helpers/vx.js'
 
 const available = await sandboxAvailable('dte sandbox test')
 const DTE = path.resolve(import.meta.dir, '../../vx-dte/src/index.ts')
 const RELAY = path.resolve(import.meta.dir, '../../vx-dte-server/src/index.ts')
-const BIN = path.resolve(import.meta.dir, '../src/bin.ts')
 
 describe.skipIf(!available)('a sandboxed task on a worker', () => {
   let root = ''

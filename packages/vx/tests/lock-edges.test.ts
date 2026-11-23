@@ -7,8 +7,8 @@ import { afterEach, beforeEach, expect, it } from 'bun:test'
 import { acquireRunLock } from '../src/orchestrator/index.js'
 import { findProjectConfigs } from '../src/workspace/workspace.js'
 import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
+import { BIN } from './helpers/vx.js'
 
-const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 const config = (v: string) =>
   `export default { tasks: { build: { exec: { command: 'echo ${v}' } } } }\n`
 

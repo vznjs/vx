@@ -4,26 +4,12 @@
 // table was silent under `--dry` and the profile needed a 2.3 GB install).
 
 import { rm } from 'node:fs/promises'
-import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
+import { vx as spawnVx } from './helpers/vx.js'
 
-const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
-
-async function vx(root: string, args: string[], env: Record<string, string>): Promise<string> {
-  const proc = Bun.spawn([process.execPath, BIN, 'run', ...args], {
-    cwd: root,
-    stdout: 'pipe',
-    stderr: 'pipe',
-    env: { ...process.env, NO_COLOR: '1', VX_DEBUG_TIMING: '', ...env },
-  })
-  const [out, err] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-  ])
-  await proc.exited
-  return out + err
-}
+const vx = async (root: string, args: string[], env: Record<string, string>) =>
+  (await spawnVx(root, ['run', ...args], { env: { VX_DEBUG_TIMING: '', ...env } })).text
 
 describe('VX_DEBUG_TIMING on a dry run', () => {
   let root: string

@@ -14,7 +14,7 @@
 //
 //   [VX_RELEASE_SHA=<sha>] GH_TOKEN=… GITHUB_REPOSITORY=owner/repo bun scripts/auto-release.ts
 
-import { env } from './env.ts'
+import { github, runMain } from './github.ts'
 import { commitsBetween, nextVersion, postNotes, postPath, releaseNotes } from './release-notes.ts'
 
 /** `git <args>`: whether it exited 0, and its stdout. */
@@ -106,33 +106,18 @@ const git: Git = (args) => {
 }
 
 async function main(): Promise<void> {
-  const repo = env('GITHUB_REPOSITORY')
-  const token = env('GH_TOKEN')
-  const headers = {
-    authorization: `Bearer ${token}`,
-    accept: 'application/vnd.github+json',
-    'x-github-api-version': '2022-11-28',
-  }
+  const gh = github()
   const asked = process.env['VX_RELEASE_SHA'] ?? ''
   const query = new URLSearchParams({ branch: 'main', event: 'push', per_page: '100' })
   if (asked !== '') query.set('head_sha', asked)
-  const listed = await fetch(
-    `https://api.github.com/repos/${repo}/actions/workflows/ci.yml/runs?${query.toString()}`,
-    { headers },
-  )
-  if (!listed.ok) throw new Error(`GET ci.yml runs: ${listed.status} ${await listed.text()}`)
-  const runs = ((await listed.json()) as { workflow_runs: Array<CiRun & { id: number }> })
-    .workflow_runs
+  const { workflow_runs: runs } = (await gh(
+    `actions/workflows/ci.yml/runs?${query.toString()}`,
+  )) as { workflow_runs: Array<CiRun & { id: number }> }
   // Only a run newer than the newest success can change the pick, so only
   // those runs' jobs are asked for.
   for (const run of runs) {
     if (run.conclusion === 'success') break
-    const jobs = await fetch(
-      `https://api.github.com/repos/${repo}/actions/runs/${run.id}/jobs?per_page=100`,
-      { headers },
-    )
-    if (!jobs.ok) throw new Error(`GET run ${run.id} jobs: ${jobs.status} ${await jobs.text()}`)
-    run.jobs = ((await jobs.json()) as { jobs: CiJob[] }).jobs
+    run.jobs = ((await gh(`actions/runs/${run.id}/jobs?per_page=100`)) as { jobs: CiJob[] }).jobs
   }
   const picked = greenCommit(asked, runs)
   if ('refuse' in picked) throw new Error(picked.refuse)
@@ -145,16 +130,8 @@ async function main(): Promise<void> {
   const { last } = decision
   const commits = commitsBetween(last, sha)
   const version = nextVersion(last, commits)
-  const api = async (route: string, body: unknown): Promise<void> => {
-    const res = await fetch(`https://api.github.com/repos/${repo}/${route}`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(body),
-    })
-    if (!res.ok) {
-      throw new Error(`POST ${route}: ${res.status} ${res.statusText}\n${await res.text()}`)
-    }
-  }
+  const api = (route: string, body: unknown) =>
+    gh(route, { method: 'POST', body: JSON.stringify(body) })
   const post = git(['show', `${sha}:${postPath(version)}`])
   console.log(`releasing ${sha} as v${version} (after ${last || 'no tag'})`)
   // The tag first, then the release as a draft on it: npm.yml checks the
@@ -173,11 +150,4 @@ async function main(): Promise<void> {
   console.log(`released v${version} — assets: release.yml, npm: npm.yml`)
 }
 
-if (import.meta.main) {
-  try {
-    await main()
-  } catch (e) {
-    process.stderr.write(`${(e as Error).message}\n`)
-    process.exitCode = 1
-  }
-}
+if (import.meta.main) await runMain(main)

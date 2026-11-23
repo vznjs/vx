@@ -9,9 +9,11 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, expect, it, setDefaultTimeout } from 'bun:test'
-import { GitFilesCache, populateGitFilesCache, resolveInputs } from '../src/cache/inputs.js'
+import { GitFilesCache, populateGitFilesCache } from '../src/cache/git-inputs.js'
+import { resolveInputs } from '../src/cache/inputs.js'
 import { relPosix } from '../src/util/index.js'
 import { rng } from './helpers/rng.js'
+import { git } from './helpers/workspace.js'
 
 setDefaultTimeout(60_000)
 
@@ -77,11 +79,6 @@ const roots: string[] = []
 afterAll(async () => {
   for (const r of roots) await rm(r, { recursive: true, force: true })
 })
-
-function git(cwd: string, ...args: string[]): void {
-  const p = Bun.spawnSync({ cmd: ['git', ...args], cwd, stdout: 'pipe', stderr: 'pipe' })
-  if (p.exitCode !== 0) throw new Error(`git ${args.join(' ')}: ${p.stderr.toString()}`)
-}
 
 async function build(rand: () => number): Promise<Fixture> {
   const pick = <T>(xs: readonly T[]): T => xs[Math.floor(rand() * xs.length)]!
