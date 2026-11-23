@@ -4323,7 +4323,7 @@ vx sets three variables on every task's environment: `VX_RUN_WORKSPACE`
 (a token per spawn). A `vx run` a task starts reads the first two back:
 one in the same workspace is refused, since a nested run is invisible to
 the outer graph and a loop back to its own task forks without bound
-(`docs/schema.md` § `env`). A stop (a timeout, Ctrl-C, a server's end)
+(`docs/schema.md` § `env`). A stop (Ctrl-C, `--fail-fast`, a server's end)
 signals every process holding the task's `VX_RUN_TREE`, so a daemon that
 left the task's process group with `setsid` goes with it
 (`docs/execution.md`).

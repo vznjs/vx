@@ -1,5 +1,5 @@
 // A daemon that calls setsid leaves its task's process group, which is all a
-// group signal reaches: a stopped dev server's daemon, or a timed-out task's,
+// group signal reaches: a stopped dev server's daemon, or a Ctrl-C'd task's,
 // ran on under init. Each spawn carries a token in its environment
 // (`VX_RUN_TREE`) that every descendant inherits, so a stop finds them by it:
 // /proc on Linux, `ps -E` on macOS. Unsafe: a sandboxed shard's /proc is
@@ -107,7 +107,32 @@ describe.skipIf(process.platform !== 'linux' && process.platform !== 'darwin')(
       }
     }, 30_000)
 
-    it('is stopped with a task that timed out', async () => {
+    it('is stopped with a task a Ctrl-C stops', async () => {
+      const d = startDaemon()
+      const live = new Set<ReturnType<typeof Bun.spawn>>()
+      let pid: number | undefined
+      try {
+        const running = runCommand({
+          command: `${d.line} && exec sleep 60`,
+          cwd: dir,
+          env,
+          liveChildren: live,
+        })
+        pid = await daemonPid(d.pidFile)
+        // The sweep a run's stop runs (terminateChildren).
+        const children = [...live]
+        for (const c of children) killTree(c, 'SIGINT')
+        for (const c of await untilGroupsGone(children, 500)) killTree(c, 'SIGKILL')
+        await running
+        expect(await goneWithin(pid, 5_000)).toBe(true)
+      } finally {
+        if (pid !== undefined) kill(pid)
+      }
+    }, 30_000)
+
+    // The run goes on past a timeout, and the daemon may serve a task still
+    // running (sccache): only the task's group is stopped.
+    it('outlives a task that timed out', async () => {
       const d = startDaemon()
       let pid: number | undefined
       try {
@@ -119,7 +144,8 @@ describe.skipIf(process.platform !== 'linux' && process.platform !== 'darwin')(
         })
         expect(result.timedOut).toBe(true)
         pid = await daemonPid(d.pidFile)
-        expect(await goneWithin(pid, 10_000)).toBe(true)
+        await Bun.sleep(300)
+        expect(alive(pid)).toBe(true)
       } finally {
         if (pid !== undefined) kill(pid)
       }

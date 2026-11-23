@@ -589,8 +589,9 @@ group (`setsid`, a daemon that double-forks) and holds no pipe is not
 waited for: the task is saved with its outputs as they stood at exit,
 and a hit replays that. Such a process would equally be a shared daemon
 the task started for the next build (sccache, Gradle's, Bazel's server),
-so a task that ends on its own leaves it running. A task vx stops (a
-timeout, Ctrl-C, `--fail-fast`, a server stopped at the run's end or by
+so a task that ends on its own leaves it running, and so does one that
+timed out, as the run goes on and another task may be using it. A task
+vx stops (Ctrl-C, `--fail-fast`, a server stopped at the run's end or by
 a `vx watch` restart) takes it down too: every spawn carries
 `VX_RUN_TREE` in its environment, each descendant inherits it, and the
 stop signals the processes holding it outside the group, then SIGKILLs

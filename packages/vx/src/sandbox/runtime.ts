@@ -62,7 +62,10 @@ import {
   runTime,
   signalThrough,
   guardLine,
+  markTree,
   spawnGuarded,
+  treeToken,
+  VX_RUN_TREE_ENV,
 } from '../exec/index.js'
 import { observePath } from './seccomp-helper.js'
 import { taskShell, POST_EXIT_DRAIN_MS, UserError, xxh3hex } from '../util/index.js'
@@ -796,13 +799,19 @@ function spawnAttempt(
     // project's node_modules/.bin comes first.
     const sh = taskShell()
     if (straceLog) traceFd = openSync(straceLog, 'w')
+    // What a seatbelt task starts carries it: a stop finds what left its
+    // group. A Linux one's pid namespace takes that (kill-tree.ts, `markTree`).
+    const tree = forwardsSignals ? undefined : treeToken()
     // Descriptors: 3 the signal channel the in-sandbox watcher reads, 4 the
     // guard's pipe (kill-tree.ts), TRACE_FD the trace log; a gap is 'ignore'.
     proc = spawnGuarded((guard) =>
       Bun.spawn([sh, '-c', (guard === undefined ? '' : guardLine(4)) + wrapped], {
         argv0: 'sh',
         cwd: args.cwd,
-        env: args.env as Record<string, string>,
+        env: (tree === undefined ? args.env : { ...args.env, [VX_RUN_TREE_ENV]: tree }) as Record<
+          string,
+          string
+        >,
         stdio: [
           'ignore',
           ...pipes.stdio,
@@ -814,6 +823,7 @@ function spawnAttempt(
         detached: true,
       }),
     )
+    if (tree !== undefined) markTree(proc, tree)
     if (forwardsSignals) signalThrough(proc, proc.stdio[3] as number)
   } catch (err) {
     pipes.close()

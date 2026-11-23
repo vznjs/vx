@@ -15,23 +15,32 @@ already died — the group outlives its leader — so the order of death
 does not matter.
 
 A daemon that calls `setsid` (or double-forks into a group of its own)
-leaves the group, so every spawn also carries `VX_RUN_TREE=<vx pid>.<n>`
-in its environment, which each descendant inherits. `killTree` signals
-the processes carrying the child's token outside its group too, found
-in /proc on Linux and with `ps -E` on macOS (each shows a process's
-environment to its owner), and `untilGroupsGone` waits for them as for
-the group, so one trapping SIGTERM is SIGKILLed past the grace. Only a
-stop looks: a task that ends on its own leaves its daemons running, as a
-shared one (sccache, Gradle's) is the next build's.
+leaves the group, so every spawn also carries
+`VX_RUN_TREE=<vx pid>.<random>.<n>` in its environment, which each
+descendant inherits (the random part: a nested vx in a sandbox can hold
+the outer one's pid). `killTree` signals the processes carrying the
+child's token outside its group too, found by one scan per turn of
+/proc on Linux or `ps -E` on macOS (each shows a process's environment
+to its owner), and `untilGroupsGone` waits for them as for the group, so
+one trapping SIGTERM is SIGKILLed past the grace. Only a stop of the run
+or a server looks: a task that ends on its own, or times out
+(`escapees` false) while the run goes on, leaves its daemons running, as
+a shared one (sccache, Gradle's) may serve another task. A Linux
+sandboxed child carries no token: its pid namespace takes what it
+starts, and its runtime's shells sit outside the command's group.
 
 ### Public surface
 
 ```ts
 export type Child = ReturnType<typeof Bun.spawn>
 export const VX_RUN_TREE_ENV = 'VX_RUN_TREE' // the token every spawn's environment carries
-export function treeToken(): string // `<vx pid>.<n>`, fresh per spawn
+export function treeToken(): string // `<vx pid>.<random>.<n>`, fresh per spawn
 export function markTree(child: Child, token: string): void // `child` was spawned with `token`
-export function killTree(child: Child, signal: 'SIGINT' | 'SIGTERM' | 'SIGKILL'): void
+export function killTree(
+  child: Child,
+  signal: 'SIGINT' | 'SIGTERM' | 'SIGKILL',
+  escapees?: boolean,
+): void
 export function pauseTree(child: Child, signal: 'SIGSTOP' | 'SIGCONT'): void // Ctrl-Z, fg: the group, never the channel
 export function markStopped(stopped: boolean): void // Ctrl-Z, fg: a task's timeout skips the time stopped
 export function runTime(): number // performance.now() less the time stopped: the clock a task's duration reads

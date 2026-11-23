@@ -19,15 +19,22 @@ export type Child = ReturnType<typeof Bun.spawn>
  */
 export const VX_RUN_TREE_ENV = 'VX_RUN_TREE'
 
+// Random per process: a pid is unique only in its namespace, and a nested vx
+// in a sandbox can hold the outer one's pid and count from 1 too.
+const treeNonce = Math.random().toString(36).slice(2, 10)
 let treeSeq = 0
 const trees = new WeakMap<Child, string>()
 
-/** A fresh tree token: vx's pid and a count, so no two spawns of any vx share one. */
+/** A fresh tree token, shared by no two spawns of any vx. */
 export function treeToken(): string {
-  return `${process.pid}.${++treeSeq}`
+  return `${process.pid}.${treeNonce}.${++treeSeq}`
 }
 
-/** `child` was spawned with `token` in its environment. */
+/**
+ * `child` was spawned with `token` in its environment. Not for a Linux
+ * sandboxed child: its pid namespace takes what it starts, and its runtime's
+ * own shells sit outside the command's group.
+ */
 export function markTree(child: Child, token: string): void {
   trees.set(child, token)
 }
@@ -35,87 +42,109 @@ export function markTree(child: Child, token: string): void {
 /** What a stop has signalled outside each child's group, polled until gone. */
 const escaped = new WeakMap<Child, Set<number>>()
 
-/**
- * The processes carrying `child`'s token outside its group: a daemon that
- * called setsid, or double-forked into a group of its own. A stop runs this
- * only after its group signal, so the scan costs a warm run nothing. Linux
- * reads /proc (this namespace's); macOS asks `ps -E`, which shows a process's
- * environment to its owner. Elsewhere, none are found.
- */
-function escapees(child: Child): number[] {
-  const token = trees.get(child)
-  if (token === undefined) return []
-  const mark = `${VX_RUN_TREE_ENV}=${token}`
-  if (procfsIsOwn()) return procEscapees(child.pid, mark)
-  if (process.platform === 'darwin') return psEscapees(child.pid, mark)
-  return []
+interface Tracked {
+  pid: number
+  pgid: number
 }
 
-function procEscapees(pgid: number, mark: string): number[] {
+/**
+ * Each token's processes, from one scan for every stop in a turn: a Ctrl-C
+ * stops each child in one loop, and a scan apiece was a `ps` apiece on macOS.
+ */
+let scanned: Map<string, Tracked[]> | undefined
+
+function scan(): Map<string, Tracked[]> {
+  if (scanned !== undefined) return scanned
+  const found = new Map<string, Tracked[]>()
+  const add = (token: string, t: Tracked): void => {
+    const list = found.get(token)
+    if (list === undefined) found.set(token, [t])
+    else list.push(t)
+  }
+  if (procfsIsOwn()) procScan(add)
+  else if (process.platform === 'darwin') psScan(add)
+  scanned = found
+  setImmediate(() => {
+    scanned = undefined
+  })
+  return found
+}
+
+const TREE_NEEDLE = Buffer.from(`${VX_RUN_TREE_ENV}=`)
+
+function procScan(add: (token: string, t: Tracked) => void): void {
   let entries: string[]
   try {
     entries = readdirSync('/proc')
   } catch {
-    return []
+    return
   }
-  const needle = Buffer.from(`${mark}\0`)
-  const found: number[] = []
   for (const entry of entries) {
     const first = entry.charCodeAt(0)
     if (first < 48 || first > 57) continue
     const pid = Number(entry)
     if (pid === process.pid) continue
-    let stat: string
     let environ: Buffer
+    let stat: string
     try {
-      stat = readFileSync(`/proc/${entry}/stat`, 'utf8')
       // Another user's is EACCES: not this task's.
       environ = readFileSync(`/proc/${entry}/environ`)
+      let at = environ.indexOf(TREE_NEEDLE)
+      while (at > 0 && environ[at - 1] !== 0) at = environ.indexOf(TREE_NEEDLE, at + 1)
+      if (at < 0) continue
+      const start = at + TREE_NEEDLE.length
+      const end = environ.indexOf(0, start)
+      const token = environ.toString('utf8', start, end < 0 ? environ.length : end)
+      stat = readFileSync(`/proc/${entry}/stat`, 'utf8')
+      const fields = stat.slice(stat.lastIndexOf(')') + 2).split(' ', 3)
+      if (fields[0] === 'Z' || fields[0] === 'X') continue
+      add(token, { pid, pgid: Number(fields[2]) })
     } catch {
       continue
     }
-    const fields = stat.slice(stat.lastIndexOf(')') + 2).split(' ', 3)
-    if (Number(fields[2]) === pgid || fields[0] === 'Z' || fields[0] === 'X') continue
-    const at = environ.indexOf(needle)
-    if (at === 0 || (at > 0 && environ[at - 1] === 0)) found.push(pid)
   }
-  return found
 }
 
-function psEscapees(pgid: number, mark: string): number[] {
+function psScan(add: (token: string, t: Tracked) => void): void {
   let text: string
   try {
     const out = Bun.spawnSync(['ps', '-E', '-ww', '-x', '-o', 'pid=,pgid=,stat=,command='], {
       env: helperEnv(),
       stdio: ['ignore', 'pipe', 'ignore'],
     })
-    if (out.exitCode !== 0) return []
+    if (out.exitCode !== 0) return
     text = out.stdout.toString()
   } catch {
-    return []
+    return
   }
-  const found: number[] = []
+  // The environment follows the command, space-separated.
+  const mark = new RegExp(` ${VX_RUN_TREE_ENV}=(\\S+)`)
   for (const line of text.split('\n')) {
     const m = /^\s*(\d+)\s+(\d+)\s+(\S+)\s(.*)$/.exec(line)
     if (m === null) continue
     const pid = Number(m[1])
-    if (pid === process.pid || Number(m[2]) === pgid || m[3]!.startsWith('Z')) continue
-    // The environment follows the command, space-separated.
-    const at = m[4]!.indexOf(` ${mark}`)
-    if (at < 0) continue
-    const end = at + 1 + mark.length
-    if (end === m[4]!.length || m[4]![end] === ' ') found.push(pid)
+    if (pid === process.pid || m[3]!.startsWith('Z')) continue
+    const token = mark.exec(m[4]!)
+    if (token !== null) add(token[1]!, { pid, pgid: Number(m[2]) })
   }
-  return found
 }
 
-/** Signal what left `child`'s group with its token, and remember it for `untilGroupsGone`. */
+/**
+ * Signal the processes carrying `child`'s token outside its group (a daemon
+ * that called setsid, or double-forked into a group of its own), and remember
+ * them for `untilGroupsGone`. Elsewhere than Linux's own /proc and macOS, none
+ * are found.
+ */
 function signalEscapees(child: Child, signal: 'SIGINT' | 'SIGTERM' | 'SIGKILL'): void {
-  const pids = escapees(child)
-  if (pids.length === 0) return
+  const token = trees.get(child)
+  if (token === undefined) return
+  const tracked = scan().get(token)
+  if (tracked === undefined) return
   let seen = escaped.get(child)
-  if (seen === undefined) escaped.set(child, (seen = new Set()))
-  for (const pid of pids) {
+  for (const { pid, pgid } of tracked) {
+    // The group signal reaches these.
+    if (pgid === child.pid) continue
+    if (seen === undefined) escaped.set(child, (seen = new Set()))
     seen.add(pid)
     try {
       process.kill(pid, signal)
@@ -133,11 +162,12 @@ function escapeesAlive(child: Child): boolean {
   return seen.size > 0
 }
 
+/** An escapee is this user's: a pid another user's process took since is not it. */
 function pidAlive(pid: number): boolean {
   try {
     process.kill(pid, 0)
-  } catch (err) {
-    return (err as NodeJS.ErrnoException).code === 'EPERM'
+  } catch {
+    return false
   }
   if (!procfsIsOwn()) return true
   try {
@@ -458,12 +488,21 @@ export function releaseServerGroup(child: Child): void {
   releaseGroup(child)
 }
 
-export function killTree(child: Child, signal: 'SIGINT' | 'SIGTERM' | 'SIGKILL'): void {
+/**
+ * Signal `child`'s tree: its group, and with `escapees` what left the group
+ * carrying its token. A timeout passes false: the run goes on, and a shared
+ * daemon the task started (sccache) may serve a task still running.
+ */
+export function killTree(
+  child: Child,
+  signal: 'SIGINT' | 'SIGTERM' | 'SIGKILL',
+  escapees = true,
+): void {
   // A pid of 0 would name OUR group (kill(0)): a child that never
   // spawned has nothing to kill.
   if (!(child.pid > 0)) return
-  // Before the group: a server whose shell is gone may have left only these.
-  signalEscapees(child, signal)
+  // A server whose shell is gone may have left only these.
+  if (escapees) signalEscapees(child, signal)
   if (goneGroups.has(child)) return
   const fd = signal === 'SIGKILL' ? undefined : channels.get(child)
   if (fd !== undefined) {
