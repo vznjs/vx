@@ -116,6 +116,8 @@ export const SAY: Readonly<Record<string, string>> = {
     '`vx run --tag` is gone, and `@vzn/vx-otel` drops its `vx.tag.<key>` attributes.',
   // Native Windows support does not exist; the page never names it.
   'refactor!: drop native Windows code paths': '',
+  'refactor(cli)!: drop the lock merge driver, name it .vx/projects.lock':
+    '`vx lock` writes `.vx/projects.lock`, not `.vx/projects.lock.jsonl`, and `vx lock --merge` is gone.',
 }
 
 /** A heading for a commit whose subject uses a word readers do not know. */

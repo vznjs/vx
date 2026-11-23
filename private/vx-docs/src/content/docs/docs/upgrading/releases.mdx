@@ -82,7 +82,7 @@ Replace each use:
 
 ### Drop the lock merge driver, name it .vx/projects.lock
 
-`.vx/projects.lock.jsonl` is .vx/projects.lock (run vx lock); vx lock --merge is removed.
+`vx lock` writes `.vx/projects.lock`, not `.vx/projects.lock.jsonl`, and `vx lock --merge` is gone.
 
 Delete the old lock, the old attributes file and the merge driver, then lock again:
 
@@ -107,9 +107,13 @@ On CI a run prints only failed tasks. To see every task, pass `--output-logs ful
 
 `vx lock` refuses two tasks whose output globs can match one path, such as `*.js` beside `*b*`. Narrow one glob so the two tasks write no common path.
 
-### Replace --continue with --fail-fast
+<Deeper level="details" title="For plugin authors and server hosts">
+
+### Replace --continue with --fail-fast: the JavaScript API
 
 `RunOptions.continueMode` is `failFast`.
+
+</Deeper>
 
 </Deeper>
 
@@ -129,7 +133,7 @@ The default artifact ceiling is 1 GiB, not 2 GiB. Raise it with `cache.artifactC
 
 `PreparedRun.keepRunEntry` takes (name, body: Blob), not (name, bytes: Uint8Array).
 
-### Make the artifact ceiling a setting, 1 GiB by default
+### Make the artifact ceiling a setting, 1 GiB by default: the JavaScript API
 
 `RunOptions.artifactCeiling` is removed.
 
@@ -1059,7 +1063,7 @@ Removed fields: `RunOptions.summarize` / `json`, `RunSummary.json`, `OutputConte
 
 `CacheLayer.save` does not take `skipLocalWrite`. Only core's own ChainedCache set it; a caller passing it drops the field.
 
-### Remove vx run --tag
+### Remove vx run --tag: the JavaScript API
 
 `RunOptions.tags` and `RunContextRecord.tags` are removed (`TELEMETRY_SCHEMA_VERSION` 4).
 

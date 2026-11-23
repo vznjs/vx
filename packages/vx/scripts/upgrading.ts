@@ -210,7 +210,8 @@ export function page(commits: readonly TaggedCommit[]): string {
           `### ${mdx(bunx(heading))}\n\n${mdx(bunx(text))}\n`,
         )
         const api = API[subject]
-        if (api !== undefined) entries.authors.push(`### ${mdx(heading)}\n\n${mdx(api)}\n`)
+        if (api !== undefined)
+          entries.authors.push(`### ${mdx(heading)}: the JavaScript API\n\n${mdx(api)}\n`)
       }
     }
     if (commit.tag !== undefined) {
@@ -224,13 +225,17 @@ export function page(commits: readonly TaggedCommit[]): string {
   const details = (title: string, items: string[]): string =>
     `<Deeper level="details" title="${title}">\n\n${items.toReversed().join('\n')}\n</Deeper>\n`
   const body = releases.toReversed().map(({ name, entries: { users, authors } }) => {
+    const list = [
+      users.toReversed().join('\n'),
+      authors.length > 0 ? details('For plugin authors and server hosts', authors) : '',
+    ].filter((p) => p !== '')
+    // The next release's changes stay closed: a reader acts on released ones.
     const parts =
       name === 'Unreleased'
-        ? [details('In the next release', [...authors, ...users])]
-        : [
-            users.toReversed().join('\n'),
-            authors.length > 0 ? details('For plugin authors and server hosts', authors) : '',
+        ? [
+            `<Deeper level="details" title="In the next release">\n\n${list.join('\n')}\n</Deeper>\n`,
           ]
+        : list
     return `<div data-release="${name}">\n\n## ${name}\n\n${parts.filter((p) => p !== '').join('\n')}\n</div>\n`
   })
   return `${BEGIN}\n\n${body.join('\n')}\n${END}`
