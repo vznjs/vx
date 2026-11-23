@@ -110,6 +110,20 @@
       "def": "799528e02eedfeac"
     },
     {
+      "project": "b",
+      "task": "pack",
+      "status": "failed",
+      "exitCode": 1,
+      "durationMs": 8,
+      "startedAt": 1004992,
+      "endedAt": 1005000,
+      "runId": "run-1",
+      "cached": true,
+      "cacheHit": false,
+      "hash": "h-pack",
+      "def": "f11e4a5bab26809a"
+    },
+    {
       "project": "c",
       "task": "docs",
       "status": "skipped",
@@ -276,6 +290,17 @@
       "hash": "h-restore"
     },
     {
+      "taskId": "b#pack",
+      "project": "b",
+      "task": "pack",
+      "status": "failed",
+      "cacheSource": "miss",
+      "exitCode": 1,
+      "durationMs": 8,
+      "hash": "h-pack",
+      "outputsMissing": ["dist/**"]
+    },
+    {
       "taskId": "c#e2e",
       "project": "c",
       "task": "e2e",
@@ -419,6 +444,16 @@
       "durationMs": 3,
       "restoreFailed": true,
       "hash": "h-restore",
+      "startedAt": 0,
+      "endedAt": 0
+    },
+    {
+      "taskId": "b#pack",
+      "status": "failed",
+      "exitCode": 1,
+      "durationMs": 8,
+      "hash": "h-pack",
+      "outputsMissing": ["dist/**"],
       "startedAt": 0,
       "endedAt": 0
     },

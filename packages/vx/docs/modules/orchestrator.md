@@ -3780,6 +3780,7 @@ interface TaskTelemetry {
   blockedBy?: string // on a skipped task, the failure at the root of it
   otherPlatform?: { needs: readonly string[]; host: string } // on a skipped task, its `exec.platforms` leave the machine out
   timedOut?: true // on a failed task, vx's own timeout killed it
+  outputsMissing?: readonly string[] // on a failed task whose command exited 0: the outputs that matched no file
   sandboxViolations?: number
   notReady?: 'timeout' | 'exited' | 'spawn' // a persistent task never ready
   failedAttempts?: readonly FailedAttempt[] // a retried task's attempts that failed, in order

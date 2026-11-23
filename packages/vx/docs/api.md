@@ -3310,6 +3310,7 @@ export interface TaskTelemetry {
   blockedBy?: string
   otherPlatform?: { readonly needs: readonly string[]; readonly host: string }
   timedOut?: true
+  outputsMissing?: readonly string[]
   sandboxViolations?: number
   notReady?: 'timeout' | 'exited' | 'spawn'
   failedAttempts?: readonly FailedAttempt[]

@@ -415,6 +415,15 @@ describe('renderJobSummary', () => {
     expect(md).toContain('- **b#build** — cache save failed\n')
   })
 
+  it('a pass that wrote none of its outputs names the glob, not exit 1', () => {
+    const md = renderJobSummary(
+      summary([
+        task({ taskId: 'b#build', status: 'failed', exitCode: 1, outputsMissing: ['dist/*_x_*'] }),
+      ]),
+    )
+    expect(md).toContain('- **b#build** — exited 0, no file matched dist/\\*\\_x\\_\\*\n')
+  })
+
   it('escapes pipes in task ids — a hostile name cannot break the table', () => {
     const md = renderJobSummary(summary([task({ taskId: 'a#e|vil' })]))
     expect(md).toContain('a#e\\|vil')
@@ -600,6 +609,48 @@ describe('vx run with github() — the composition proof', () => {
       expect(md).toContain('## ✅ vx run')
       expect(md).toContain('pkg#build')
       expect(md).toContain('✅ ran')
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('vx run with github() — a pass that wrote none of its outputs', () => {
+  it('its failure line names the glob, as the frame does, not exit 1', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'vx-run-github-missing-'))
+    try {
+      const summaryFile = path.join(root, 'step-summary.md')
+      await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'fixture' }))
+      await writeFile(path.join(root, 'pnpm-workspace.yaml'), "packages:\n  - 'pkg'\n")
+      await mkdir(path.join(root, 'pkg'), { recursive: true })
+      await writeFile(path.join(root, 'pkg', 'package.json'), JSON.stringify({ name: 'pkg' }))
+      await writeFile(
+        path.join(root, 'pkg', 'vx.config.mjs'),
+        `export default { tasks: {
+           build: {
+             exec: { command: 'echo hi' },
+             inputs: { files: ['vx.config.mjs'] }, outputs: { files: ['dist/index.js'] }, cache: true,
+           },
+         } }`,
+      )
+      await Bun.write(
+        path.join(root, '.vx/workspace.mjs'),
+        localWorkspaceSource(
+          [`github({ summaryFile: ${JSON.stringify(summaryFile)} })`],
+          `import { github } from ${JSON.stringify(GITHUB_INDEX)}\n`,
+        ),
+      )
+      Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root })
+      const r = await run({
+        cwd: root,
+        projects: ['pkg'],
+        tasks: ['build'],
+        log: { status: () => undefined, error: () => undefined } as never,
+        handleSignals: false,
+      })
+      expect(r.ok).toBe(false)
+      const md = await readFile(summaryFile, 'utf8')
+      expect(md).toContain('- **pkg#build** — exited 0, no file matched dist/index\\.js\n')
     } finally {
       await rm(root, { recursive: true, force: true })
     }

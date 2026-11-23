@@ -110,6 +110,8 @@ otel({
   blocker (`vx.task.blocked_by`) or, skipped for its `exec.platforms`, what it
   needs and this machine's (`vx.task.platforms_needed`, `vx.task.platform_host`),
   on a server each dependant's worker ran `vx.task.carried`, on a timed-out one `vx.task.timed_out`, on
+  one whose command exited 0 but left a declared output matching no file
+  those outputs (`vx.task.outputs_missing`; the exit code 1 is vx's), on
   a sandboxed one its violation count (`vx.task.sandbox_violations`), on a
   persistent one that never became ready why (`vx.task.not_ready`), its
   command (`vx.task.command`, secrets masked), on a flaky one its record

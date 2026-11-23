@@ -32,6 +32,7 @@ stands for (`exit 137 (128 + SIGKILL)`, as the run's own frame and
 `vx last` say it), a timeout as `timed out, exit 143`, a persistent task
 that never became ready as `never ready (timed out)`, a hit whose restore
 failed as `cache restore failed` (a failure, not executed and not a hit), a task whose
+command exited 0 but left a declared output matching no file as `exited 0, no file matched dist/**`, one whose
 command exited 0 but whose save vx refused as `cache save failed`, a sandboxed task's
 violation count, and the tasks each failure blocked. A task that retried
 or proved flaky carries the run's own row mark after its status

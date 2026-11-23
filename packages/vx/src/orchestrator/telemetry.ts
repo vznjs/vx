@@ -143,6 +143,11 @@ export interface TaskTelemetry {
   otherPlatform?: { readonly needs: readonly string[]; readonly host: string }
   /** On a `failed` task: vx's own `timeout` killed it (exit 143 is the deadline, not a signal). Additive. */
   timedOut?: true
+  /**
+   * On a `failed` task whose command exited 0: the declared outputs that
+   * matched no file (`exitCode` 1 is vx's, not the command's). Additive.
+   */
+  outputsMissing?: readonly string[]
   /** On a sandboxed task: how many declared-boundary violations the sandbox recorded (a failure on its own). Additive. */
   sandboxViolations?: number
   /** On a failed persistent task: why it never became ready. `exitCode` is the child's own when it exited. Additive. */
@@ -859,6 +864,7 @@ export function taskTelemetryOf(o: TaskOutcome): TaskTelemetry {
   if (o.blockedBy !== undefined) t.blockedBy = o.blockedBy
   if (o.otherPlatform !== undefined) t.otherPlatform = o.otherPlatform
   if (o.timedOut === true) t.timedOut = true
+  if (o.outputsMissing !== undefined) t.outputsMissing = o.outputsMissing
   if (o.sandbox?.violations !== undefined) t.sandboxViolations = o.sandbox.violations
   if (o.notReady !== undefined) t.notReady = o.notReady
   if (o.attempts?.failed !== undefined) t.failedAttempts = o.attempts.failed

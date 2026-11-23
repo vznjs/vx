@@ -141,6 +141,7 @@ const VX_ATTR = {
   taskPlatformsNeeded: 'vx.task.platforms_needed',
   taskPlatformHost: 'vx.task.platform_host',
   taskTimedOut: 'vx.task.timed_out',
+  taskOutputsMissing: 'vx.task.outputs_missing',
   taskSandboxViolations: 'vx.task.sandbox_violations',
   taskNotReady: 'vx.task.not_ready',
   taskOutputs: 'vx.task.outputs',
@@ -529,6 +530,10 @@ export function taskSpanAttributes(t: TaskTelemetry, run: TaskSpanRunContext): K
   }
   // vx's own deadline killed the task: the 143 is a timeout, not a signal.
   if (t.timedOut === true) attrs.push(boolAttr(VX_ATTR.taskTimedOut, true))
+  // The command exited 0 and these declared outputs matched no file: the
+  // exit code 1 is vx's.
+  if (t.outputsMissing !== undefined)
+    attrs.push(strArrayAttr(VX_ATTR.taskOutputsMissing, t.outputsMissing))
   if (t.sandboxViolations !== undefined)
     attrs.push(intAttr(VX_ATTR.taskSandboxViolations, t.sandboxViolations))
   // Why a persistent task never became ready ('timeout' | 'exited' | 'spawn').

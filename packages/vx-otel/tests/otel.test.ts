@@ -1039,6 +1039,7 @@ const FULL_TASK: Required<TaskTelemetry> = {
   attempts: 2,
   blockedBy: 'lib#build',
   timedOut: true,
+  outputsMissing: ['dist/**', 'types/*.d.ts'],
   carried: true,
   otherPlatform: { needs: ['darwin-arm64'], host: 'linux-x64' },
   sandboxViolations: 2,
@@ -1149,6 +1150,7 @@ describe('OTLP losslessness', () => {
       'notReady',
       'otherPlatform',
       'outputs',
+      'outputsMissing',
       'peakRssBytes',
       'project',
       'queuedMs',
@@ -1325,6 +1327,9 @@ describe('OTLP losslessness', () => {
     expect(a['vx.task.platforms_needed']).toEqual({ values: [{ stringValue: 'darwin-arm64' }] })
     expect(a['vx.task.platform_host']).toBe('linux-x64')
     expect(a['vx.task.timed_out']).toBe(true)
+    expect(a['vx.task.outputs_missing']).toEqual({
+      values: [{ stringValue: 'dist/**' }, { stringValue: 'types/*.d.ts' }],
+    })
     expect(a['vx.task.sandbox_violations']).toBe('2')
     expect(a['vx.task.not_ready']).toBe('timeout')
     expect(a['vx.cache.restored']).toBe(true)
