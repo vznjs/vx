@@ -502,20 +502,22 @@ describe("the sandboxing guide's failures", () => {
         [
           `access(${web}/vite.config.ts) = -1 ENOENT  [${web}/vite.config.ts]`,
           `access(${web}/package.json) = -1 ENOENT  [${web}/package.json]`,
+          `openat(${web}/package.json) = -1 ENOENT  [${web}/package.json]`,
         ],
         {
           read: ['package.json', 'vite.config.ts'],
-          inputs: ['package.json', 'vite.config.ts'],
+          inputs: ['vite.config.ts'],
         },
         [
-          'vite v7.3.0 building client environment for production...',
+          'vite v8.3.8 building client environment for production...',
           'transforming...',
-          '✓ 3 modules transformed.',
+          '✓ 4 modules transformed.',
           'rendering chunks...',
           'computing gzip size...',
-          'dist/index.html                0.14 kB │ gzip: 0.13 kB',
-          'dist/assets/index-CFD2rREh.js  0.78 kB │ gzip: 0.44 kB',
-          '✓ built in 61ms',
+          'dist/index.html                0.12 kB │ gzip: 0.12 kB',
+          'dist/assets/index-Cdr0KPAF.js  0.71 kB │ gzip: 0.41 kB',
+          '',
+          '✓ built in 66ms',
         ].join('\n'),
       ),
     )

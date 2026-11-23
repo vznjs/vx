@@ -27,14 +27,15 @@ vx run build
 [2m$[0m vx run @demo/ui#build
 
 [2m┌─[0m [1m[38;2;192;132;252m@demo/ui[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m>[0m $ vite build
-[36mvite v7.3.8 [32mbuilding client environment for production...[36m[39m
+[36mvite v8.3.8 [32mbuilding client environment for production...[36m[39m
 transforming...
-[32m✓[39m 1 modules transformed.
+[32m✓[0m 2 modules transformed.
 rendering chunks...
 computing gzip size...
-[2mdist/[22m[36mindex.js  [39m[1m[2m0.07 kB[22m[1m[22m[2m │ gzip: 0.08 kB[22m
-[32m✓ built in 44ms[39m
-[0m[2m└─[0m [1m[38;2;192;132;252m@demo/ui[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(260ms)[0m [2msuccess[0m
+[2mdist/[0m[36mindex.js  [0m[1;2m0.07 kB[0m[2m │ gzip: 0.09 kB[0m
+
+[32m✓ built in 21ms[39m
+[0m[2m└─[0m [1m[38;2;192;132;252m@demo/ui[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(185ms)[0m [2msuccess[0m
 ```
 
 Read the last word: **success**. vite ran, then vx stored `dist/`.
@@ -46,13 +47,14 @@ Read the last word: **success**. vite ran, then vx stored `dist/`.
 [2m$[0m vx run @demo/ui#build
 
 [2m┌─[0m [1m[38;2;192;132;252m@demo/ui[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m>[0m $ vite build
-[36mvite v7.3.8 [32mbuilding client environment for production...[36m[39m
+[36mvite v8.3.8 [32mbuilding client environment for production...[36m[39m
 transforming...
-[32m✓[39m 1 modules transformed.
+[32m✓[0m 2 modules transformed.
 rendering chunks...
 computing gzip size...
-[2mdist/[22m[36mindex.js  [39m[1m[2m0.07 kB[22m[1m[22m[2m │ gzip: 0.08 kB[22m
-[32m✓ built in 44ms[39m
+[2mdist/[0m[36mindex.js  [0m[1;2m0.07 kB[0m[2m │ gzip: 0.09 kB[0m
+
+[32m✓ built in 21ms[39m
 [0m[2m└─[0m [1m[38;2;192;132;252m@demo/ui[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(5ms)[0m [2mup-to-date[0m
 ```
 
@@ -66,14 +68,15 @@ computing gzip size...
 [2m$[0m vx run @demo/ui#build
 
 [2m┌─[0m [1m[38;2;192;132;252m@demo/ui[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m>[0m $ vite build
-[36mvite v7.3.8 [32mbuilding client environment for production...[36m[39m
+[36mvite v8.3.8 [32mbuilding client environment for production...[36m[39m
 transforming...
-[32m✓[39m 1 modules transformed.
+[32m✓[0m 2 modules transformed.
 rendering chunks...
 computing gzip size...
-[2mdist/[22m[36mindex.js  [39m[1m[2m0.07 kB[22m[1m[22m[2m │ gzip: 0.08 kB[22m
-[32m✓ built in 44ms[39m
-[0m[2m└─[0m [1m[38;2;192;132;252m@demo/ui[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(11ms)[0m [2mrestored-local[0m
+[2mdist/[0m[36mindex.js  [0m[1;2m0.07 kB[0m[2m │ gzip: 0.09 kB[0m
+
+[32m✓ built in 21ms[39m
+[0m[2m└─[0m [1m[38;2;192;132;252m@demo/ui[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(10ms)[0m [2mrestored-local[0m
 ```
 
 **restored-local**: the key is stored, so vx copies `dist/` back from the cache. vite never starts.
@@ -85,14 +88,15 @@ computing gzip size...
 [2m$[0m vx run @demo/ui#build
 
 [2m┌─[0m [1m[38;2;192;132;252m@demo/ui[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m>[0m $ vite build
-[36mvite v7.3.8 [32mbuilding client environment for production...[36m[39m
+[36mvite v8.3.8 [32mbuilding client environment for production...[36m[39m
 transforming...
-[32m✓[39m 1 modules transformed.
+[32m✓[0m 2 modules transformed.
 rendering chunks...
 computing gzip size...
-[2mdist/[22m[36mindex.js  [39m[1m[2m0.08 kB[22m[1m[22m[2m │ gzip: 0.09 kB[22m
-[32m✓ built in 47ms[39m
-[0m[2m└─[0m [1m[38;2;192;132;252m@demo/ui[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(248ms)[0m [2msuccess[0m
+[2mdist/[0m[36mindex.js  [0m[1;2m0.07 kB[0m[2m │ gzip: 0.09 kB[0m
+
+[32m✓ built in 28ms[39m
+[0m[2m└─[0m [1m[38;2;192;132;252m@demo/ui[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(231ms)[0m [2msuccess[0m
 ```
 
 **success** again. The edit made a new key, so vite ran and vx stored the new `dist/`.
@@ -167,10 +171,10 @@ Pick what you did since the last build. Each line is what vx printed in a real r
 <thead><tr><th>You did</th><th>vx prints</th><th>Why</th></tr></thead>
 <tbody>
 <tr><td>nothing</td><td><code><span class="is-muted">└─</span> <b>@demo/ui#build</b> <span class="is-muted">── (5ms) up-to-date</span></code></td><td>Same key, and <code>dist/</code> is as stored: <span class="is-ok">nothing runs</span>.</td></tr>
-<tr><td>deleted dist/</td><td><code><span class="is-muted">└─</span> <b>@demo/ui#build</b> <span class="is-muted">── (11ms) restored-local</span></code></td><td>Same key, <code>dist/</code> gone: vx <span class="is-ok">copies it back</span>.</td></tr>
-<tr><td>edited src/index.ts</td><td><code><span class="is-muted">└─</span> <b>@demo/ui#build</b> <span class="is-muted">── (248ms) success</span></code></td><td>An input changed: new key, <span class="is-warn">vite runs</span>.</td></tr>
-<tr><td>edited vite.config.ts</td><td><code><span class="is-muted">└─</span> <b>@demo/ui#build</b> <span class="is-muted">── (270ms) success</span></code></td><td>It is in <code>inputs.files</code>: new key, <span class="is-warn">vite runs</span>.</td></tr>
-<tr><td>added README.md</td><td><code><span class="is-muted">└─</span> <b>@demo/ui#build</b> <span class="is-muted">── (3ms) up-to-date</span></code></td><td>Not in <code>inputs.files</code>: same key, <span class="is-ok">nothing runs</span>.</td></tr>
+<tr><td>deleted dist/</td><td><code><span class="is-muted">└─</span> <b>@demo/ui#build</b> <span class="is-muted">── (10ms) restored-local</span></code></td><td>Same key, <code>dist/</code> gone: vx <span class="is-ok">copies it back</span>.</td></tr>
+<tr><td>edited src/index.ts</td><td><code><span class="is-muted">└─</span> <b>@demo/ui#build</b> <span class="is-muted">── (231ms) success</span></code></td><td>An input changed: new key, <span class="is-warn">vite runs</span>.</td></tr>
+<tr><td>edited vite.config.ts</td><td><code><span class="is-muted">└─</span> <b>@demo/ui#build</b> <span class="is-muted">── (184ms) success</span></code></td><td>It is in <code>inputs.files</code>: new key, <span class="is-warn">vite runs</span>.</td></tr>
+<tr><td>added README.md</td><td><code><span class="is-muted">└─</span> <b>@demo/ui#build</b> <span class="is-muted">── (7ms) up-to-date</span></code></td><td>Not in <code>inputs.files</code>: same key, <span class="is-ok">nothing runs</span>.</td></tr>
 <tr><td>undid an edit</td><td><code><span class="is-muted">└─</span> <b>@demo/ui#build</b> <span class="is-muted">── (12ms) restored-local</span></code></td><td>The key is one vx stored before: <span class="is-ok">copied back</span>, no build.</td></tr>
 </tbody>
 </table>
@@ -200,15 +204,16 @@ vx run @demo/ui#build
 
 ```ansi wrap
 [2m┌─[0m [1m[38;2;192;132;252m@demo/ui[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m>[0m $ vite build
-[36mvite v7.3.8 [32mbuilding client environment for production...[36m[39m
+[36mvite v8.3.8 [32mbuilding client environment for production...[36m[39m
 transforming...
-[32m✓[39m 1 modules transformed.
+[32m✓[0m 2 modules transformed.
 rendering chunks...
 computing gzip size...
-[2mdist/[22m[36mindex.js  [39m[1m[2m0.08 kB[22m[1m[22m[2m │ gzip: 0.10 kB[22m
-[32m✓ built in 50ms[39m
+[2mdist/[0m[36mindex.js  [0m[1;2m0.07 kB[0m[2m │ gzip: 0.09 kB[0m
+
+[32m✓ built in 23ms[39m
 [0m[1m[38;2;234;179;8m[vx][0m[2m @demo/ui#build: outputs matched no files (dist/main.js) — the command exited 0 but never wrote it, so the task fails and nothing is cached: write it, or fix the pattern[0m
-[2m└─[0m [1m[38;2;192;132;252m@demo/ui[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(249ms)[0m [1m[38;2;239;68;68mfailed (exited 0, no file matched dist/main.js)[0m
+[2m└─[0m [1m[38;2;192;132;252m@demo/ui[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(179ms)[0m [1m[38;2;239;68;68mfailed (exited 0, no file matched dist/main.js)[0m
 ```
 
 The task **fails** and vx stores nothing. Fix the path, or make the command write that file.

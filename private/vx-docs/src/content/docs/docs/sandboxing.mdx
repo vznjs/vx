@@ -50,23 +50,25 @@ build: {
 [2m$[0m vx run @demo/web#build
 
 [2m┌─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m>[0m $ vite build
-[36mvite v7.3.0 [32mbuilding client environment for production...[36m[39m
+[36mvite v8.3.8 [32mbuilding client environment for production...[36m[39m
 transforming...
-[32m✓[39m 3 modules transformed.
+[32m✓[0m 4 modules transformed.
 rendering chunks...
 computing gzip size...
-[2mdist/[22m[32mindex.html                [39m[1m[2m0.14 kB[22m[1m[22m[2m │ gzip: 0.13 kB[22m
-[2mdist/[22m[2massets/[22m[36mindex-CFD2rREh.js  [39m[1m[2m0.78 kB[22m[1m[22m[2m │ gzip: 0.44 kB[22m
-[32m✓ built in 61ms[39m
-[0m[2m├─[0m [1m[38;2;239;68;68mSANDBOX VIOLATIONS (2)[0m [2m────────────────────────────────────[0m
+[2mdist/[0m[32mindex.html                [0m[1;2m0.12 kB[0m[2m │ gzip: 0.12 kB[0m
+[2mdist/[0m[2massets/[0m[36mindex-Cdr0KPAF.js  [0m[1;2m0.71 kB[0m[2m │ gzip: 0.41 kB[0m
+
+[32m✓ built in 66ms[39m
+[0m[2m├─[0m [1m[38;2;239;68;68mSANDBOX VIOLATIONS (3)[0m [2m────────────────────────────────────[0m
 
 access(/repo/packages/web/vite.config.ts) = -1 ENOENT  [/repo/packages/web/vite.config.ts]
 access(/repo/packages/web/package.json) = -1 ENOENT  [/repo/packages/web/package.json]
+openat(/repo/packages/web/package.json) = -1 ENOENT  [/repo/packages/web/package.json]
 
 [2mfix: exec.sandbox.allow: { read: ['package.json', 'vite.config.ts'] }[0m
-[2mand, if the output depends on them, inputs.files: ['package.json', 'vite.config.ts'][0m
+[2mand, if the output depends on them, inputs.files: ['vite.config.ts'][0m
 
-[2m└─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(305ms)[0m [1m[38;2;239;68;68mfailed (exit 1, 2 sandbox violations)[0m
+[2m└─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(343ms)[0m [1m[38;2;239;68;68mfailed (exit 1, 3 sandbox violations)[0m
 ```
 
 Vite says **built**. vx says **failed**: vite looked for `vite.config.ts` and `package.json`, found nothing, and built without your config.
@@ -74,9 +76,9 @@ Vite says **built**. vx says **failed**: vite looked for `vite.config.ts` and `p
 </Frame>
 <Frame title="2. Grant the config, key it, run again">
 
-Copy the `fix:` line into `read`, and the second line into `inputs.files`:
+Copy the `fix:` line into `read`, and the second line into `inputs.files`. It leaves out `package.json`: your [lockfile plugin](../lockfiles/) keys that already.
 
-```ts title="packages/web/vx.config.ts" ins={9-10,20-21}
+```ts title="packages/web/vx.config.ts" ins={9-10,20}
 build: {
   exec: {
     command: 'vite build',
@@ -96,7 +98,6 @@ build: {
     files: [
       'src/**',
       'index.html',
-      'package.json',
       'vite.config.ts',
     ],
   },
@@ -118,7 +119,7 @@ mkdir(/repo/packages/web/node_modules/.vite-temp) = a write no grant covers  [/r
 
 [2mfix: exec.sandbox.allow: { write: ['node_modules/.vite-temp/'] }[0m
 
-[2m└─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(211ms)[0m [1m[38;2;239;68;68mfailed (exit 1, 1 sandbox violation)[0m
+[2m└─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(288ms)[0m [1m[38;2;239;68;68mfailed (exit 1, 1 sandbox violation)[0m
 ```
 
 Vite reads its config this time, and needs one more folder: it bundles the config into `node_modules/.vite-temp/` first.
@@ -149,7 +150,6 @@ build: {
     files: [
       'src/**',
       'index.html',
-      'package.json',
       'vite.config.ts',
     ],
   },
@@ -162,15 +162,16 @@ build: {
 [2m$[0m vx run @demo/web#build
 
 [2m┌─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m>[0m $ vite build
-[36mvite v7.3.0 [32mbuilding client environment for production...[36m[39m
+[36mvite v8.3.8 [32mbuilding client environment for production...[36m[39m
 transforming...
-[32m✓[39m 3 modules transformed.
+[32m✓[0m 4 modules transformed.
 rendering chunks...
 computing gzip size...
-[2mdist/[22m[32mindex.html                [39m[1m[2m0.14 kB[22m[1m[22m[2m │ gzip: 0.13 kB[22m
-[2mdist/[22m[2massets/[22m[36mindex-CFD2rREh.js  [39m[1m[2m0.78 kB[22m[1m[22m[2m │ gzip: 0.44 kB[22m
-[32m✓ built in 62ms[39m
-[0m[2m└─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(308ms)[0m [2msuccess[0m
+[2mdist/[0m[32mindex.html                [0m[1;2m0.12 kB[0m[2m │ gzip: 0.12 kB[0m
+[2mdist/[0m[2massets/[0m[36mindex-Cdr0KPAF.js  [0m[1;2m0.71 kB[0m[2m │ gzip: 0.41 kB[0m
+
+[32m✓ built in 44ms[39m
+[0m[2m└─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(316ms)[0m [2msuccess[0m
 ```
 
 **success**. Every file the build reads is in its key. An edit to `vite.config.ts` builds again, instead of putting back an old `dist/`.
