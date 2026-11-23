@@ -893,7 +893,8 @@ function flatInputs(inputs: readonly unknown[]): string[] {
 function globsMeet(a: string, b: string): boolean {
   const literal = (g: string): string[] => {
     if (g === '$TURBO_DEFAULT$') return []
-    const segs = g.split('/')
+    const segs = g.split('/').filter((s) => s !== '' && s !== '.')
+    if (segs.includes('..')) return []
     const at = segs.findIndex((s) => /[*?[\]{}!(]/.test(s))
     return at === -1 ? segs : segs.slice(0, at)
   }

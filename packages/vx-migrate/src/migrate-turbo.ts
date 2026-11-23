@@ -139,9 +139,9 @@ export async function turboWorkspaceFields(root: string): Promise<WorkspaceField
 
 /**
  * turbo.json's top-level settings vx has a home for: `concurrency` (`"4"`,
- * `"50%"`, as `run.concurrency` takes both), `cacheDir` (`cache.dir`) and
- * `boundaries` (`run.rules.dependencies`). Unwritten, a migrated repo that
- * ran four tasks at a time ran on every core and checked no boundary.
+ * `"50%"`, as `run.concurrency` takes both) and `boundaries`
+ * (`run.rules.dependencies`). Unwritten, a migrated repo that ran four
+ * tasks at a time ran on every core and checked no boundary.
  */
 function turboFieldsOf(raw: Record<string, unknown> | undefined): WorkspaceField[] {
   if (raw === undefined) return []
@@ -151,7 +151,7 @@ function turboFieldsOf(raw: Record<string, unknown> | undefined): WorkspaceField
   > | null
   const out: WorkspaceField[] = []
   const c = global?.['concurrency'] ?? raw['concurrency']
-  if (typeof c === 'string' || typeof c === 'number') {
+  if (typeof c === 'string') {
     const v = String(c).trim()
     const source = /^[1-9]\d*$/.test(v) ? v : /^[1-9]\d*%$/.test(v) ? quote(v) : undefined
     out.push({
@@ -163,13 +163,6 @@ function turboFieldsOf(raw: Record<string, unknown> | undefined): WorkspaceField
           : `turbo.json \`concurrency: ${JSON.stringify(c)}\`: add \`run: { concurrency: ${source} }\` to .vx/workspace.ts`,
     })
   }
-  const dir = raw['cacheDir']
-  if (typeof dir === 'string' && dir.trim() !== '')
-    out.push({
-      field: 'cache.dir',
-      source: quote(dir.trim()),
-      note: `turbo.json \`cacheDir: ${JSON.stringify(dir)}\`: add \`cache: { dir: ${quote(dir.trim())} }\` to .vx/workspace.ts`,
-    })
   const { rules } = turboBoundaryRules(raw)
   if (rules.length > 0) {
     const source = rulesSource(rules)
@@ -186,12 +179,27 @@ function turboFieldsOf(raw: Record<string, unknown> | undefined): WorkspaceField
 function turboKeyNotes(raw: Record<string, unknown> | undefined): string[] {
   if (raw === undefined) return []
   const out: string[] = []
+  const dir = raw['cacheDir']
+  if (typeof dir === 'string' && dir.trim() !== '')
+    out.push(
+      `turbo.json \`cacheDir: ${JSON.stringify(dir)}\`: vx keeps its cache in a store every checkout of the repository shares; set \`cache: { dir }\` in .vx/workspace.ts only to pin it to one directory`,
+    )
   const age = raw['cacheMaxAge']
   const size = raw['cacheMaxSize']
-  if (typeof age === 'string' || typeof size === 'string')
+  const said = [
+    typeof age === 'string' ? `\`cacheMaxAge: ${JSON.stringify(age)}\`` : '',
+    typeof size === 'string' ? `\`cacheMaxSize: ${JSON.stringify(size)}\`` : '',
+  ].filter(Boolean)
+  if (said.length > 0) {
+    // Only values `vx cache clean` takes are put in its command.
+    const flags = [
+      typeof age === 'string' && /^[1-9]\d*(ms|s|m|h|d)$/.test(age) ? ` --older-than ${age}` : '',
+      typeof size === 'string' && /^[1-9]\d*[kmgt]i?b$/i.test(size) ? ` --max-size ${size}` : '',
+    ].join('')
     out.push(
-      `turbo.json ${[typeof age === 'string' ? `\`cacheMaxAge: ${JSON.stringify(age)}\`` : '', typeof size === 'string' ? `\`cacheMaxSize: ${JSON.stringify(size)}\`` : ''].filter(Boolean).join(' and ')}: vx evicts on demand — run \`vx cache clean${typeof age === 'string' ? ` --older-than ${age}` : ''}${typeof size === 'string' ? ` --max-size ${size}` : ''}\``,
+      `turbo.json ${said.join(' and ')}: vx evicts on demand — run \`vx cache clean${flags === '' ? ' --older-than <duration> --max-size <size>' : flags}\``,
     )
+  }
   if (raw['experimentalObservability'] !== undefined)
     out.push(
       'turbo.json `experimentalObservability`: declare `otel()` from @vzn/vx-otel in .vx/workspace.ts to export run and task telemetry',

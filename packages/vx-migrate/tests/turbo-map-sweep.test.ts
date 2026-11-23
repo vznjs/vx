@@ -1450,11 +1450,13 @@ describe('turbo-map: structured inputs', () => {
         { mode: 'jit', globs: ['src/generated/**'] },
       ]),
       await files(['src/**', { mode: 'jit', withDefaults: true, globs: ['!src/**', '!x/**'] }]),
+      await files(['**/*', '!./src//generated/**', { mode: 'jit', globs: ['src/generated/**'] }]),
       // CONTROL: a `!` inside its own list stays.
       await files(['src/**', '!src/gen/**']),
     ]).toEqual([
       ['**/*', '!docs/**', 'src/generated/**'],
       ['src/**', '**/*', '!x/**'],
+      ['**/*', 'src/generated/**'],
       ['src/**', '!src/gen/**', 'package.json'],
     ])
   })

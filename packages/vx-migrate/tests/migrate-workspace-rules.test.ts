@@ -1,8 +1,8 @@
 // The adopted tool's run-wide settings in the `.vx/workspace.ts` a migration
-// writes. Native Turbo migration wrote none of turbo.json's `concurrency`,
-// `cacheDir` or `boundaries`, and native Nx migration none of the ESLint
+// writes. Native Turbo migration wrote neither turbo.json's `concurrency`
+// nor its `boundaries`, nor named `cacheDir`, and native Nx migration none of the ESLint
 // module boundaries `nx()` checks live: once migrated, a repo ran on every
-// core, cached elsewhere and checked no boundary, with no word said.
+// core and checked no boundary, with no word said.
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -36,10 +36,10 @@ const migrate = async (): Promise<string> => {
 /** The written workspace file's `run` and `cache` fields, evaluated (its plugin imports are not installed here). */
 const fields = async (): Promise<Pick<WorkspaceConfig, 'run' | 'cache'>> => {
   const ws = await readFile(path.join(root, '.vx/workspace.ts'), 'utf8')
-  const out: Record<string, unknown> = {}
-  for (const m of ws.matchAll(/^ {2}(run|cache): (.*),$/gm))
-    out[m[1]!] = new Function(`return (${m[2]})`)()
-  return out
+  const lines = [...ws.matchAll(/^ {2}(run|cache): .*,$/gm)].map((m) => m[0])
+  const file = path.join(root, `fields-${Bun.hash(ws)}.mjs`)
+  await writeFile(file, `export default {\n${lines.join('\n')}\n}\n`)
+  return ((await import(file)) as { default: Pick<WorkspaceConfig, 'run' | 'cache'> }).default
 }
 
 const BOUNDARIES = {
@@ -62,8 +62,13 @@ describe('turbo.json boundaries', () => {
         `turbo.json boundaries.tags.internal.dependents.allow ["ops"]: vx rules say what a project may depend on, not who may depend on it — add deny: ['tag:internal'] to the rule of each other tag`,
       ],
     })
-    // CONTROL: none, or no tags.
-    expect([turboBoundaryRules({}), turboBoundaryRules({ boundaries: {} })]).toEqual([
+    // CONTROL: none, no tags, or a list Turbo refuses (its indexes are no tags).
+    expect([
+      turboBoundaryRules({}),
+      turboBoundaryRules({ boundaries: {} }),
+      turboBoundaryRules({ boundaries: { tags: [{ dependencies: { deny: ['x'] } }] } }),
+    ]).toEqual([
+      { rules: [], gaps: [] },
       { rules: [], gaps: [] },
       { rules: [], gaps: [] },
     ])
@@ -71,7 +76,7 @@ describe('turbo.json boundaries', () => {
 })
 
 describe('turbo(): live', () => {
-  it('applies boundaries and cacheDir, unless the workspace sets them', async () => {
+  it('applies boundaries, unless the workspace sets them; leaves the cache dir to vx', async () => {
     await writeFile(
       path.join(root, 'turbo.json'),
       JSON.stringify({ boundaries: BOUNDARIES, cacheDir: '.cache/turbo', tasks: {} }),
@@ -90,12 +95,8 @@ describe('turbo(): live', () => {
           ],
         },
       },
-      cache: { dir: '.cache/turbo' },
     })
-    const own: WorkspaceConfig = {
-      run: { rules: { dependencies: [{ from: 'a', deny: ['b'] }] } },
-      cache: { dir: 'mine' },
-    }
+    const own: WorkspaceConfig = { run: { rules: { dependencies: [{ from: 'a', deny: ['b'] }] } } }
     expect(await staged(structuredClone(own))).toEqual(own)
   })
 })
@@ -117,7 +118,7 @@ describe('vx-migrate from turbo.json', () => {
     )
   }
 
-  it('writes concurrency, cacheDir and boundaries into the workspace file', async () => {
+  it('writes concurrency and boundaries into the workspace file; names the rest', async () => {
     await turboRepo({
       concurrency: '50%',
       cacheDir: '.cache/turbo',
@@ -139,9 +140,9 @@ describe('vx-migrate from turbo.json', () => {
           ],
         },
       },
-      cache: { dir: '.cache/turbo' },
     })
     expect(ws).not.toContain('undefined')
+    expect(out).toContain('turbo.json `cacheDir: ".cache/turbo"`: vx keeps its cache in a store')
     expect(out).toContain('dependents.allow ["ops"]')
     expect(out).toContain(
       'turbo.json `cacheMaxAge: "7d"` and `cacheMaxSize: "5GB"`: vx evicts on demand — run `vx cache clean --older-than 7d --max-size 5GB`',
@@ -151,8 +152,11 @@ describe('vx-migrate from turbo.json', () => {
   })
 
   it('a plain count; CONTROL: none set writes no field', async () => {
-    await turboRepo({ concurrency: '4' })
-    await migrate()
+    await turboRepo({ concurrency: '4', cacheMaxAge: '1w' })
+    // `vx cache clean` takes no week: the note puts no value of Turbo's in its command.
+    expect(await migrate()).toContain(
+      'turbo.json `cacheMaxAge: "1w"`: vx evicts on demand — run `vx cache clean --older-than <duration> --max-size <size>`',
+    )
     expect(await fields()).toEqual({ run: { concurrency: 4 } })
     await rm(path.join(root, '.vx'), { recursive: true })
     await rm(path.join(root, 'packages/a/vx.config.ts'))

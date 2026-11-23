@@ -31,7 +31,7 @@ export function turboBoundaryRules(raw: unknown): { rules: DependencyRule[]; gap
   const rules: DependencyRule[] = []
   const gaps: string[] = []
   const tags = (raw as { boundaries?: { tags?: unknown } } | null)?.boundaries?.tags
-  if (tags === null || typeof tags !== 'object') return { rules, gaps }
+  if (tags === null || typeof tags !== 'object' || Array.isArray(tags)) return { rules, gaps }
   const names = (v: unknown): string[] | undefined =>
     Array.isArray(v) ? v.filter((t): t is string => typeof t === 'string' && t !== '') : undefined
   const sel = (t: string) => `tag:${t}`

@@ -142,7 +142,7 @@ function nameUnlisted(
 /** A `.vx/workspace.ts` field nx.json's run settings call for. */
 export interface NxWorkspaceField {
   /** The setting's path: its group, then its field, or a top-level key. */
-  readonly field: 'run.concurrency' | 'run.rules' | 'cache.dir' | 'baseBranch'
+  readonly field: 'run.concurrency' | 'run.rules' | 'baseBranch'
   /** The value as TypeScript source; undefined when vx cannot read it. */
   readonly source: string | undefined
   /** What to tell a user whose workspace file this run does not write. */

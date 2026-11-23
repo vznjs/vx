@@ -86,8 +86,6 @@ export function turbo(options: TurboPluginOptions = {}): VxPlugin {
             ...workspace.run,
             rules: { ...workspace.run?.rules, dependencies: keys.rules },
           }
-        if (workspace.cache?.dir === undefined && keys.cacheDir !== undefined)
-          workspace.cache = { ...workspace.cache, dir: keys.cacheDir }
         // `TURBO_FORCE` (`true` or `1`, as Turbo reads it) is `turbo run --force`.
         const force = Bun.env['TURBO_FORCE']?.trim()
         if (force === 'true' || force === '1')
@@ -184,13 +182,12 @@ function githubActionsBase(root: string, remoteFallback: boolean): string | unde
 
 /**
  * turbo.json's workspace keys vx has a home for, top level or under
- * `global`: `concurrency` (`"10"`, `"50%"` of the cores), `cacheDir`, and
+ * `global`: `concurrency` (`"10"`, `"50%"` of the cores) and
  * `boundaries` as `run.rules.dependencies`.
  */
 async function workspaceKeys(root: string): Promise<{
   concurrency?: number
   remoteBaseFallback?: boolean
-  cacheDir?: string
   rules?: DependencyRule[]
 }> {
   const file = await turboConfigFile(root)
@@ -215,11 +212,8 @@ async function workspaceKeys(root: string): Promise<{
   const out: {
     concurrency?: number
     remoteBaseFallback?: boolean
-    cacheDir?: string
     rules?: DependencyRule[]
   } = {}
-  const dir = raw['cacheDir']
-  if (typeof dir === 'string' && dir.trim() !== '') out.cacheDir = dir.trim()
   const { rules } = turboBoundaryRules(raw)
   if (rules.length > 0) out.rules = rules
   const flags = raw['futureFlags'] as { githubActionsRemoteBaseRefFallback?: unknown } | undefined
