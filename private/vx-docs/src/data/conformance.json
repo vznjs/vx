@@ -984,59 +984,11 @@
       "docs": "holds docs, the site, releases or the repo to the code"
     }
   },
-  "notes": [
-    "moon fetched no toolchain plugins (exit 1, found system-ad7abb72e596dcc556ad0fc2e87dcb23949f91d8280fc61c94cfec6224695c59.wasm), so it runs without them:\nError: plugin::loader::registry::load_failure\n\n  × Failed to load plugin from ghcr.io/moonrepo/bun_toolchain:1.0.5 registry.\n  ├─▶ error sending request for url (https://ghcr.io/v2/moonrepo/\n  │   bun_toolchain/blobs/\n  │   sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a)\n  ├─▶ client error (Connect)\n  ╰─▶ tunnel error: unsuccessful\n\n",
-    "moon fetched no toolchain plugins (exit 1, found system-ad7abb72e596dcc556ad0fc2e87dcb23949f91d8280fc61c94cfec6224695c59.wasm), so it runs without them:\nError: plugin::loader::registry::load_failure\n\n  × Failed to load plugin from ghcr.io/moonrepo/bun_toolchain:1.0.5 registry.\n  ├─▶ error sending request for url (https://ghcr.io/v2/moonrepo/\n  │   bun_toolchain/blobs/\n  │   sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a)\n  ├─▶ client error (Connect)\n  ╰─▶ tunnel error: unsuccessful\n\n",
-    "moon failed 1 of 1 cases; one: did not run a#build\n$ /home/user/vx/private/vx-conformance/node_modules/.latest/node_modules/@moonrepo/core-linux-x64-gnu/moon run :build\n▮▮▮▮ a:build (cached, 2ms, 478f8c0f)\n\nTasks: 1 completed (1 cached)\n Time: 13ms ❯❯❯❯ to the moon\n\n",
-    "moon fetched no toolchain plugins (exit 1, found none), so it runs without them:\nError: plugin::loader::registry::load_failure\n\n  × Failed to load plugin from ghcr.io/moonrepo/bun_toolchain:1.0.5 registry.\n  ├─▶ error sending request for url (https://ghcr.io/v2/moonrepo/\n  │   bun_toolchain/blobs/\n  │   sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a)\n  ├─▶ client error (Connect)\n  ╰─▶ tunnel error: unsuccessful\n\n",
-    "moon failed 1 of 1 cases; one: exited 1, expected success\n$ /home/user/vx/private/vx-conformance/node_modules/.latest/node_modules/@moonrepo/core-linux-x64-gnu/moon run :build\n▮▮▮▮ a:build\nError: glob::create\n\n  × Failed to create glob from pattern packages/a/g/[x/-].\n  ╰─▶ failed to parse glob expression\n\n",
-    "moon fetched no toolchain plugins (exit 1, found system-ad7abb72e596dcc556ad0fc2e87dcb23949f91d8280fc61c94cfec6224695c59.wasm), so it runs without them:\nError: plugin::loader::registry::load_failure\n\n  × Failed to load plugin from ghcr.io/moonrepo/bun_toolchain:1.0.5 registry.\n  ├─▶ error sending request for url (https://ghcr.io/v2/moonrepo/\n  │   bun_toolchain/blobs/\n  │   sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a)\n  ├─▶ client error (Connect)\n  ╰─▶ tunnel error: unsuccessful\n\n",
-    "moon fetched no toolchain plugins (exit 1, found system-ad7abb72e596dcc556ad0fc2e87dcb23949f91d8280fc61c94cfec6224695c59.wasm), so it runs without them:\nError: plugin::loader::registry::load_failure\n\n  × Failed to load plugin from ghcr.io/moonrepo/bun_toolchain:1.0.5 registry.\n  ├─▶ error sending request for url (https://ghcr.io/v2/moonrepo/\n  │   bun_toolchain/blobs/\n  │   sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a)\n  ├─▶ client error (Connect)\n  ╰─▶ tunnel error: unsuccessful\n\n",
-    "nx failed 53 of 90 cases; one: reports no peakMemoryBytes\n$ /tmp/conf-nx-1Bbzap/node_modules/.bin/nx run-many -t build --outputStyle=stream\n\n NX   Running target build for project a:\n\n- a\n\n\n\n> nx run a:build\n\n\n\n\n NX   Successfully ran target build for project a\n\n\n  Run duration:      45ms\n  Cache:             0/1 hit (0%)\n  Critical path:     43ms (1 task)\n  Recoverable time:  <1ms\n",
-    "moon fetched no toolchain plugins (exit 1, found system-ad7abb72e596dcc556ad0fc2e87dcb23949f91d8280fc61c94cfec6224695c59.wasm), so it runs without them:\nError: plugin::loader::registry::load_failure\n\n  × Failed to load plugin from ghcr.io/moonrepo/bun_toolchain:1.0.5 registry.\n  ├─▶ error sending request for url (https://ghcr.io/v2/moonrepo/\n  │   bun_toolchain/blobs/\n  │   sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a)\n  ├─▶ client error (Connect)\n  ╰─▶ tunnel error: unsuccessful\n\n",
-    "moon fetched no toolchain plugins (exit 1, found none), so it runs without them:\nError: plugin::loader::registry::load_failure\n\n  × Failed to load plugin from ghcr.io/moonrepo/bun_toolchain:1.0.5 registry.\n  ├─▶ error sending request for url (https://ghcr.io/v2/moonrepo/\n  │   bun_toolchain/blobs/\n  │   sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a)\n  ├─▶ client error (Connect)\n  ╰─▶ tunnel error: unsuccessful\n\n",
-    "turbo failed 4 of 7 cases; one: succeeded, expected a failure\n$ /tmp/conf-turbo-UVXbW0/node_modules/.bin/turbo run a b --ui=stream --summarize --filter=app -- --port 3000\n\n   • turbo 2.11.13\n   • Packages in scope: app\n   • Running a, b in 1 package\n   • Remote caching disabled\n\napp:b: cache bypass, force executing 4b0c97f6629d3a0f\napp:a: cache bypass, force executing 81e9b60b7c7e2bc1\napp:b: $ sh -c 'printf '\\''+%s\\n'\\'' '\\''app#b'\\'' >> ../../.ran && (printf '\\''<%s>'\\'' \"$@\" > b.txt) && printf -- '\\''-%s\\n'\\'' '\\''app#b'\\'' >> ../../.ran' sh --port \"3000\"\napp:a: $ sh -c 'printf '\\''+%s\\n'\\'' '\\''app#a'\\'' >> ../../.ran && (printf '\\''<%s>'\\'' \"$@\" > a.txt) && printf -- '\\''-%s\\n'\\'' '\\''app#a'\\'' >> ../../.ran' sh --port \"3000\"\n\n  Tasks:    2 successful, 2 total\n Cached:    0 cached, 2 total\n   Time:    21ms \nSummary:    /tmp/conf-turbo-UVXbW0/.turbo/runs/3MToxg7IcLwOAvH62a8KeVOtg97.json\n\n",
-    "nx failed 5 of 7 cases; one: succeeded, expected a failure\n$ /tmp/conf-nx-WFrAEB/node_modules/.bin/nx run-many -t a,b -p app --outputStyle=stream -- --port 3000\n\n NX   Running targets a, b for project app:\n\n- app\n\nWith additional flags:\n  --port=3000\n\n\n\n> nx run app:a --port 3000\n\n\n> nx run app:b --port 3000\n\n\n\n\n NX   Successfully ran targets a, b for project app\n\n\n  Run duration:      77ms\n  Cache:             0/2 hit (0%)\n  Critical path:     75ms (1 task)\n  Recoverable time:  <1ms\n",
-    "nix failed 4 of 7 cases; one: succeeded, expected a failure\n$ /root/.bun/bin/bun --no-env-file /home/user/vx/private/vx-conformance/src/adapters/nix-run.ts {\"tasks\":[\"a\",\"b\"],\"projects\":[\"app\"],\"args\":[\"--port\",\"3000\"]}\n/tmp/conf-nix-6lo4o0/.home/nix/store/c1lvbjsigynbbcsz817pd7p25ydxljcw-app-a\n/tmp/conf-nix-6lo4o0/.home/nix/store/ks8hi88z40sh5s7vv8h8qi3x2s0dgjqf-app-b\nthese 2 derivations will be built:\n  /tmp/conf-nix-6lo4o0/.home/nix/store/45iwn38pf4w1am1yv45mhrcvj8g74ylh-app-a.drv\n  /tmp/conf-nix-6lo4o0/.home/nix/store/l15b0aps6y3g89cjfzgndngk0pmbm92m-app-b.drv\nbuilding '/tmp/conf-nix-6lo4o0/.home/nix/store/45iwn38pf4w1am1yv45mhrcvj8g74ylh-app-a.drv'...\nbuilding '/tmp/conf-nix-6lo4o0/.home/nix/store/l15b0aps6y3g89cjfzgndngk0pmbm92m-app-b.drv'...\n\n@vx-conformance-mark +app#a\n\n@vx-conformance-mark +app#b\n\n@vx-conformance-mark -app#a\n\n@vx-conformance-mark -app#b\n",
-    "moon failed 5 of 7 cases; one: succeeded, expected a failure\n$ /home/user/vx/private/vx-conformance/node_modules/.latest-8196/node_modules/@moonrepo/core-linux-x64-gnu/moon run app:a app:b -- --port 3000\n▮▮▮▮ app:a (deb89e7f)\n▮▮▮▮ app:b (4f1527f6)\n▮▮▮▮ app:a (12ms, deb89e7f)\n▮▮▮▮ app:b (10ms, 4f1527f6)\n\nTasks: 2 completed\n Time: 45ms\n\n",
-    "moon fetched no toolchain plugins (exit 1, found system-ad7abb72e596dcc556ad0fc2e87dcb23949f91d8280fc61c94cfec6224695c59.wasm), so it runs without them:\nError: plugin::loader::registry::load_failure\n\n  × Failed to load plugin from ghcr.io/moonrepo/bun_toolchain:1.0.5 registry.\n  ├─▶ error sending request for url (https://ghcr.io/v2/moonrepo/\n  │   bun_toolchain/blobs/\n  │   sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a)\n  ├─▶ client error (Connect)\n  ╰─▶ tunnel error: unsuccessful\n\n",
-    "moon fetched no toolchain plugins (exit 1, found system-ad7abb72e596dcc556ad0fc2e87dcb23949f91d8280fc61c94cfec6224695c59.wasm), so it runs without them:\nError: plugin::loader::registry::load_failure\n\n  × Failed to load plugin from ghcr.io/moonrepo/bun_toolchain:1.0.5 registry.\n  ├─▶ error sending request for url (https://ghcr.io/v2/moonrepo/\n  │   bun_toolchain/blobs/\n  │   sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a)\n  ├─▶ client error (Connect)\n  ╰─▶ tunnel error: unsuccessful\n\n",
-    "moon fetched no toolchain plugins (exit 1, found system-ad7abb72e596dcc556ad0fc2e87dcb23949f91d8280fc61c94cfec6224695c59.wasm), so it runs without them:\nError: plugin::loader::registry::load_failure\n\n  × Failed to load plugin from ghcr.io/moonrepo/bun_toolchain:1.0.5 registry.\n  ├─▶ error sending request for url (https://ghcr.io/v2/moonrepo/\n  │   bun_toolchain/blobs/\n  │   sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a)\n  ├─▶ client error (Connect)\n  ╰─▶ tunnel error: unsuccessful\n\n",
-    "moon fetched no toolchain plugins (exit 1, found system-ad7abb72e596dcc556ad0fc2e87dcb23949f91d8280fc61c94cfec6224695c59.wasm), so it runs without them:\nError: plugin::loader::registry::load_failure\n\n  × Failed to load plugin from ghcr.io/moonrepo/bun_toolchain:1.0.5 registry.\n  ├─▶ error sending request for url (https://ghcr.io/v2/moonrepo/\n  │   bun_toolchain/blobs/\n  │   sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a)\n  ├─▶ client error (Connect)\n  ╰─▶ tunnel error: unsuccessful\n\n",
-    "moon failed 23 of 45 cases; one: succeeded, expected a failure\n$ /home/user/vx/private/vx-conformance/node_modules/.latest-16732/node_modules/@moonrepo/core-linux-x64-gnu/moon run :build\n▮▮▮▮ b:build (545ce2ac)\n▮▮▮▮ a:build (51d8f186)\n▮▮▮▮ b:build (566ms, 545ce2ac)\n▮▮▮▮ a:build (5s 14ms, 51d8f186)\n▮▮▮▮ c:build (ef0196dd)\n▮▮▮▮ c:build (4ms, ef0196dd)\n\nTasks: 3 completed\n Time: 5s 76ms\n\n",
-    "moon fetched no toolchain plugins (exit 1, found system-ad7abb72e596dcc556ad0fc2e87dcb23949f91d8280fc61c94cfec6224695c59.wasm), so it runs without them:\nError: plugin::loader::registry::load_failure\n\n  × Failed to load plugin from ghcr.io/moonrepo/bun_toolchain:1.0.5 registry.\n  ├─▶ error sending request for url (https://ghcr.io/v2/moonrepo/\n  │   bun_toolchain/blobs/\n  │   sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a)\n  ├─▶ client error (Connect)\n  ╰─▶ tunnel error: unsuccessful\n\n",
-    "moon fetched no toolchain plugins (exit 1, found system-ad7abb72e596dcc556ad0fc2e87dcb23949f91d8280fc61c94cfec6224695c59.wasm), so it runs without them:\nError: plugin::loader::registry::load_failure\n\n  × Failed to load plugin from ghcr.io/moonrepo/bun_toolchain:1.0.5 registry.\n  ├─▶ error sending request for url (https://ghcr.io/v2/moonrepo/\n  │   bun_toolchain/blobs/\n  │   sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a)\n  ├─▶ client error (Connect)\n  ╰─▶ tunnel error: unsuccessful\n\n",
-    "moon fetched no toolchain plugins (exit 1, found system-ad7abb72e596dcc556ad0fc2e87dcb23949f91d8280fc61c94cfec6224695c59.wasm), so it runs without them:\nError: plugin::loader::registry::load_failure\n\n  × Failed to load plugin from ghcr.io/moonrepo/bun_toolchain:1.0.5 registry.\n  ├─▶ error sending request for url (https://ghcr.io/v2/moonrepo/\n  │   bun_toolchain/blobs/\n  │   sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a)\n  ├─▶ client error (Connect)\n  ╰─▶ tunnel error: unsuccessful\n\n",
-    "moon fetched no toolchain plugins (exit 1, found none), so it runs without them:\nError: plugin::loader::registry::load_failure\n\n  × Failed to load plugin from ghcr.io/moonrepo/bun_toolchain:1.0.5 registry.\n  ├─▶ error sending request for url (https://ghcr.io/v2/moonrepo/\n  │   bun_toolchain/blobs/\n  │   sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a)\n  ├─▶ client error (Connect)\n  ╰─▶ tunnel error: unsuccessful\n\n",
-    "moon failed 44 of 51 cases; one: exited 1, expected success\n$ /home/user/vx/private/vx-conformance/node_modules/.latest-16941/node_modules/@moonrepo/core-linux-x64-gnu/moon run :build\nError: plugin::wasm::failed_container\n\n  × Failed to load and create system plugin: failed to create cache\n  │ directory: /home/user/vx/private/vx-conformance/node_modules/.latest-\n  │ 16941/node_modules/.moon-plugins/wasm-cache\n  ├─▶ failed to create cache directory: /home/user/vx/private/vx-conformance/\n  │   node_modules/.latest-16941/node_modules/.moon-plugins/wasm-cache\n  ╰─▶ Read-only file system (os error 30)\n\n",
-    "moon fetched no toolchain plugins (exit 1, found none), so it runs without them:\nError: plugin::loader::registry::load_failure\n\n  × Failed to load plugin from ghcr.io/moonrepo/bun_toolchain:1.0.5 registry.\n  ├─▶ error sending request for url (https://ghcr.io/v2/moonrepo/\n  │   bun_toolchain/blobs/\n  │   sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a)\n  ├─▶ client error (Connect)\n  ╰─▶ tunnel error: unsuccessful\n\n",
-    "moon fetched no toolchain plugins (exit 1, found none), so it runs without them:\nError: plugin::loader::registry::load_failure\n\n  × Failed to load plugin from ghcr.io/moonrepo/bun_toolchain:1.0.5 registry.\n  ├─▶ error sending request for url (https://ghcr.io/v2/moonrepo/\n  │   bun_toolchain/blobs/\n  │   sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a)\n  ├─▶ client error (Connect)\n  ╰─▶ tunnel error: unsuccessful\n\n",
-    "moon failed 44 of 51 cases; one: exited 1, expected success\n$ /home/user/vx/private/vx-conformance/node_modules/.latest-16941/node_modules/@moonrepo/core-linux-x64-gnu/moon run :build\nError: plugin::wasm::failed_container\n\n  × Failed to load and create system plugin: failed to create cache\n  │ directory: /home/user/vx/private/vx-conformance/node_modules/.latest-\n  │ 16941/node_modules/.moon-plugins/wasm-cache\n  ├─▶ failed to create cache directory: /home/user/vx/private/vx-conformance/\n  │   node_modules/.latest-16941/node_modules/.moon-plugins/wasm-cache\n  ╰─▶ Read-only file system (os error 30)\n\n",
-    "moon fetched no toolchain plugins (exit 1, found none), so it runs without them:\nError: plugin::loader::registry::load_failure\n\n  × Failed to load plugin from ghcr.io/moonrepo/bun_toolchain:1.0.5 registry.\n  ├─▶ error sending request for url (https://ghcr.io/v2/moonrepo/\n  │   bun_toolchain/blobs/\n  │   sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a)\n  ├─▶ client error (Connect)\n  ╰─▶ tunnel error: unsuccessful\n\n",
-    "moon fetched no toolchain plugins (exit 1, found none), so it runs without them:\nError: plugin::loader::registry::load_failure\n\n  × Failed to load plugin from ghcr.io/moonrepo/bun_toolchain:1.0.5 registry.\n  ├─▶ error sending request for url (https://ghcr.io/v2/moonrepo/\n  │   bun_toolchain/blobs/\n  │   sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a)\n  ├─▶ client error (Connect)\n  ╰─▶ tunnel error: unsuccessful\n\n",
-    "nx failed 1 of 1 cases; one: succeeded, expected a failure\n$ /tmp/conf-nx-jz01oX/node_modules/.bin/nx run-many -t check -p ui,nope --outputStyle=stream\n\n NX   Running target check for project ui:\n\n- ui\n\n\n\n> nx run ui:check\n\n\n\n\n NX   Successfully ran target check for project ui\n\n\n  Run duration:      29ms\n  Cache:             0/1 hit (0%)\n  Critical path:     27ms (1 task)\n  Recoverable time:  <1ms\n",
-    "vite-task failed 1 of 1 cases; one: succeeded, expected a failure\n$ /tmp/conf-vite-task-v9x4WX/node_modules/.bin/vp run --filter ui --filter nope check\n~/packages/ui$ printf '+%s\\n' 'ui#check' >> ../../.ran && (true) && printf -- '-%s\\n' 'ui#check' >> ../../.ran\n\nNo packages matched the filter: nope\n",
-    "moon failed 1 of 1 cases; one: succeeded, expected a failure\n$ /home/user/vx/private/vx-conformance/node_modules/.latest-20804/node_modules/@moonrepo/core-linux-x64-gnu/moon run :check --query project=ui || project=nope\n▮▮▮▮ ui:check (0eabc72a)\n▮▮▮▮ ui:check (4ms, 0eabc72a)\n\nTasks: 1 completed\n Time: 24ms\n\n",
-    "moon fetched no toolchain plugins (exit 1, found none), so it runs without them:\nError: plugin::loader::registry::load_failure\n\n  × Failed to load plugin from ghcr.io/moonrepo/bun_toolchain:1.0.5 registry.\n  ├─▶ error sending request for url (https://ghcr.io/v2/moonrepo/\n  │   bun_toolchain/blobs/\n  │   sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a)\n  ├─▶ client error (Connect)\n  ╰─▶ tunnel error: unsuccessful\n\n",
-    "nx failed 1 of 1 cases; one: exited 1, expected success\n$ /tmp/conf-nx-eGC80s/node_modules/.bin/nx run-many -t build --outputStyle=stream\n\n NX   Running target build for 2 projects:\n\n- app\n- lib\n\n\n\n> nx run app:build\n\n\n> nx run lib:build\n\napp: cat: ../lib/dist/out.txt: No such file or directory\n\n\n  Run duration:      32ms\n  Cache:             0/1 hit (0%)\n  Critical path:     29ms (1 task)\n  Recoverable time:  <1ms\n\n NX   Running target build for 2 projects failed\n\nFailed tasks:\n\n- app:build\n\n",
-    "vite-task failed 1 of 1 cases; one: app#build started before lib#build finished\n$ /tmp/conf-vite-task-jYUe9A/node_modules/.bin/vp run -r build\n~/packages/lib$ printf '+%s\\n' 'lib#build' >> ../../.ran && (mkdir -p dist && cat  src/*.txt > dist/out.txt) && printf -- '-%s\\n' 'lib#build' >> ../../.ran\n~/packages/app$ printf '+%s\\n' 'app#build' >> ../../.ran && (mkdir -p dist && cat ../lib/dist/out.txt src/*.txt > dist/out.txt) && printf -- '-%s\\n' 'app#build' >> ../../.ran\n\n\n---\nvp run: 0/2 cache hit (0%), 2/2 successful. (Run `vp run --last-details` for full details)\n",
-    "moon fetched no toolchain plugins (exit 1, found none), so it runs without them:\nError: plugin::loader::registry::load_failure\n\n  × Failed to load plugin from ghcr.io/moonrepo/bun_toolchain:1.0.5 registry.\n  ├─▶ error sending request for url (https://ghcr.io/v2/moonrepo/\n  │   bun_toolchain/blobs/\n  │   sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a)\n  ├─▶ client error (Connect)\n  ╰─▶ tunnel error: unsuccessful\n\n",
-    "moon fetched no toolchain plugins (exit 1, found none), so it runs without them:\nError: plugin::loader::registry::load_failure\n\n  × Failed to load plugin from ghcr.io/moonrepo/bun_toolchain:1.0.5 registry.\n  ├─▶ error sending request for url (https://ghcr.io/v2/moonrepo/\n  │   bun_toolchain/blobs/\n  │   sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a)\n  ├─▶ client error (Connect)\n  ╰─▶ tunnel error: unsuccessful\n\n",
-    "moon fetched no toolchain plugins (exit 1, found none), so it runs without them:\nError: plugin::loader::registry::load_failure\n\n  × Failed to load plugin from ghcr.io/moonrepo/bun_toolchain:1.0.5 registry.\n  ├─▶ error sending request for url (https://ghcr.io/v2/moonrepo/\n  │   bun_toolchain/blobs/\n  │   sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a)\n  ├─▶ client error (Connect)\n  ╰─▶ tunnel error: unsuccessful\n\n",
-    "moon failed 1 of 1 cases; one: ran app#test, expected it replayed or left out\n$ /home/user/vx/private/vx-conformance/node_modules/.latest-514/node_modules/@moonrepo/core-linux-x64-gnu/moon run :test --affected --base HEAD~1 --downstream deep --include-relations\n▮▮▮▮ lib:test (e2312194)\n▮▮▮▮ lib:build (d5df1879)\nlib:test | lib2\n▮▮▮▮ lib:test (6ms, e2312194)\n▮▮▮▮ lib:build (8ms, d5df1879)\n▮▮▮▮ app:test (fefbffd6)\napp:test | app\n▮▮▮▮ app:test (5ms, fefbffd6)\n\nTasks: 3 completed\n Time: 57ms\n\n",
-    "moon fetched no toolchain plugins (exit 1, found system-ad7abb72e596dcc556ad0fc2e87dcb23949f91d8280fc61c94cfec6224695c59.wasm), so it runs without them:\nError: plugin::loader::registry::load_failure\n\n  × Failed to load plugin from ghcr.io/moonrepo/bun_toolchain:1.0.5 registry.\n  ├─▶ error sending request for url (https://ghcr.io/v2/moonrepo/\n  │   bun_toolchain/blobs/\n  │   sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a)\n  ├─▶ client error (Connect)\n  ╰─▶ tunnel error: unsuccessful\n\n",
-    "nx failed 1 of 1 cases; one: packages/a/dist/out.txt is \"1\\n\", expected \"2\\n\"\n$ /tmp/conf-nx-wl97zi/node_modules/.bin/nx run-many -t build --outputStyle=stream\n\n NX   Running target build for project a:\n\n- a\n\n\n\n> nx run a:build  [local cache]\n\n> printf '+%s\\n' 'a#build' >> ../../.ran && (mkdir -p dist ../../.home/meet && n=$(cat ../../.home/meet/n 2>/dev/null || echo 0) && n=$((n+1)) && echo $n > ../../.home/meet/n && echo $n > dist/out.txt) && printf -- '-%s\\n' 'a#build' >> ../../.ran\r\n\r\n\n\n\n NX   Successfully ran target build for project a\n\nNx read the output from the cache instead of running the command for 1 out of 1 tasks.\n\n  Run duration:      3ms\n  Cache:             1/1 hit (100%)\n  Critical path:     1ms (1 task)\n  Recoverable time:  <1ms\n",
-    "moon fetched no toolchain plugins (exit 1, found system-ad7abb72e596dcc556ad0fc2e87dcb23949f91d8280fc61c94cfec6224695c59.wasm), so it runs without them:\nError: plugin::loader::registry::load_failure\n\n  × Failed to load plugin from ghcr.io/moonrepo/bun_toolchain:1.0.5 registry.\n  ├─▶ error sending request for url (https://ghcr.io/v2/moonrepo/\n  │   bun_toolchain/blobs/\n  │   sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a)\n  ├─▶ client error (Connect)\n  ╰─▶ tunnel error: unsuccessful\n\n",
-    "nx failed 28 of 47 cases; one: ran a#build, expected it replayed or left out\n$ /tmp/conf-nx-HYeEOV/node_modules/.bin/nx affected -t build --base=HEAD~1 --outputStyle=stream\n\n NX   Running target build for 3 projects:\n\n- a\n- b\n- c\n\n\n\n> nx run b:build\n\n\n> nx run a:build\n\n\n> nx run c:build\n\n\n\n\n NX   Successfully ran target build for 3 projects\n\n\n  Run duration:      25ms\n  Cache:             0/3 hit (0%)\n  Critical path:     22ms (1 task)\n  Recoverable time:  <1ms\n",
-    "vite-task failed 26 of 47 cases; one: did not run a#build\n$ /tmp/conf-vite-task-D8m1rY/node_modules/.bin/vp run -r build\n~/packages/a$ printf '+%s\\n' 'a#build' >> ../../.ran && (mkdir -p dist && cat node_modules/x/v.txt > dist/out.txt) && printf -- '-%s\\n' 'a#build' >> ../../.ran ◉ cache hit, replaying\n\n~/packages/b$ printf '+%s\\n' 'b#build' >> ../../.ran && (mkdir -p dist && cat node_modules/y/v.txt > dist/out.txt) && printf -- '-%s\\n' 'b#build' >> ../../.ran ◉ cache hit, replaying\n\n~/packages/c$ printf '+%s\\n' 'c#build' >> ../../.ran && (mkdir -p dist && cat node_modules/x/v.txt node_modules/b/node_modules/y/v.txt > dist/out.txt) && printf -- '-%s\\n' 'c#build' >> ../../.ran ◉ cache hit, replaying\n\n---\nvp run: 3/3 cache hit (100%), 3/3 successful, 26ms saved. (Run `vp run --last-details` for full details)\n",
-    "moon failed 30 of 47 cases; one: did not run b#build, c#build\n$ /home/user/vx/private/vx-conformance/node_modules/.latest-10340/node_modules/@moonrepo/core-linux-x64-gnu/moon run :build --affected --base HEAD~1 --downstream deep --include-relations\n\n│ CAUTION\n│ No tasks affected by changed files. Unable to execute\n│ action pipeline.\n│ For targets :build.\n\n",
-    "moon fetched no toolchain plugins (exit 1, found system-ad7abb72e596dcc556ad0fc2e87dcb23949f91d8280fc61c94cfec6224695c59.wasm), so it runs without them:\nError: plugin::loader::registry::load_failure\n\n  × Failed to load plugin from ghcr.io/moonrepo/bun_toolchain:1.0.5 registry.\n  ├─▶ error sending request for url (https://ghcr.io/v2/moonrepo/\n  │   bun_toolchain/blobs/\n  │   sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a)\n  ├─▶ client error (Connect)\n  ╰─▶ tunnel error: unsuccessful\n\n"
-  ],
   "tools": {
     "vx": "this commit",
-    "turbo": "2.11.13",
-    "nx": "24.0.6",
-    "vite-task": "1.7.0",
+    "turbo": "2.11.10",
+    "nx": "24.0.2",
+    "vite-task": "1.4.0",
     "nix": "2.34.6",
     "moon": "2.6.5"
   },
@@ -1120,12 +1072,12 @@
     },
     "turbo": {
       "all": {
-        "pass": 1372,
+        "pass": 1374,
         "can": 1833,
         "of": 2169
       },
       "correctness": {
-        "pass": 1106,
+        "pass": 1108,
         "can": 1442,
         "of": 1756
       },
@@ -1145,7 +1097,7 @@
         "of": 319
       },
       "config": {
-        "pass": 53,
+        "pass": 55,
         "can": 72,
         "of": 87
       },
@@ -1428,12 +1380,12 @@
     },
     "moon": {
       "all": {
-        "pass": 1268,
+        "pass": 1267,
         "can": 1772,
         "of": 2169
       },
       "correctness": {
-        "pass": 1003,
+        "pass": 1002,
         "can": 1406,
         "of": 1756
       },
@@ -1453,7 +1405,7 @@
         "of": 319
       },
       "config": {
-        "pass": 60,
+        "pass": 59,
         "can": 84,
         "of": 87
       },
@@ -35641,8 +35593,7 @@
           "status": "pass"
         },
         "turbo": {
-          "status": "fail",
-          "detail": "harness: SyntaxError: JSON Parse error: Unexpected token '}'"
+          "status": "pass"
         },
         "nx": {
           "status": "pass"
@@ -50408,8 +50359,7 @@
           "status": "pass"
         },
         "turbo": {
-          "status": "fail",
-          "detail": "harness: SyntaxError: JSON Parse error: Unexpected EOF"
+          "status": "pass"
         },
         "nx": {
           "status": "pass"
@@ -50758,7 +50708,9 @@
           "status": "pass"
         },
         "moon": {
-          "status": "pass"
+          "status": "fail",
+          "step": 1,
+          "detail": "exited 1, expected success"
         }
       }
     },

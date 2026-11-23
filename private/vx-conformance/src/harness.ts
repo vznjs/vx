@@ -4,7 +4,15 @@
 // its own setup, every run) runs sandboxed in the case's directory: in
 // bubblewrap, or for a tool that isolates itself, in that tool's own sandbox.
 
-import { chmodSync, existsSync, lstatSync, mkdtempSync, readdirSync, realpathSync, rmSync } from 'node:fs'
+import {
+  chmodSync,
+  existsSync,
+  lstatSync,
+  mkdtempSync,
+  readdirSync,
+  realpathSync,
+  rmSync,
+} from 'node:fs'
 import {
   chmod,
   lstat,
@@ -378,14 +386,25 @@ async function play(c: Case, adapter: Adapter, root: string, box: string): Promi
   for (const [i, step] of c.steps.entries()) {
     if ('write' in step) {
       await writeFiles(root, step.write)
-      if (Object.keys(step.write).some((f) => path.basename(f) === 'package.json')) {
+      const manifests = Object.entries(step.write).filter(
+        ([f]) => path.basename(f) === 'package.json',
+      )
+      if (manifests.length > 0) {
         // A user edits a manifest's dependencies, not the tool's config it
         // holds (Turborepo's scripts): the config is written over the new bytes,
         // for the projects still on disk (a later configure step drops a deleted one).
         const live = Object.entries(ws.projects).filter(([n, p]) =>
           existsSync(path.join(root, projectDir(n, p), 'package.json')),
         )
-        await configure({ ...ws, projects: Object.fromEntries(live) })
+        // A manifest broken on purpose stays as written: the tool is to judge those bytes.
+        const parses = manifests.every(([, c]) => {
+          try {
+            return c === null || (JSON.parse(c), true)
+          } catch {
+            return false
+          }
+        })
+        if (parses) await configure({ ...ws, projects: Object.fromEntries(live) })
         if (refused !== null) continue
         for (const argv of adapter.edited ?? []) {
           const r = await sh(argv)
