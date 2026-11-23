@@ -2786,7 +2786,7 @@ export default defineWorkspace({
 })
 ```
 
-Every key but `format` (which needs `dry: true`), each at a value its flag takes:
+Every key, each at a value its flag takes (`format` needs `dry: true`):
 
 ```ts
 import { defineWorkspace } from '@vzn/vx/config'
@@ -2816,7 +2816,8 @@ export default defineWorkspace({
       outputLogs: 'errors-only',
       verbosity: 1,
       profile: 'nightly.json',
-      dry: false,
+      dry: true,
+      format: 'json',
     },
   },
 })

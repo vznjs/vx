@@ -2319,7 +2319,6 @@ export class Orchestrator extends RunReport<Worker> {
   lost: string | undefined
 }
 
-/** An `end`'s `log` as chunks, or undefined when it is not one: a worker's word, checked. */
 /**
  * A worker's frame as messages the loop reads without throwing, or undefined:
  * the relay carries it, and a null body or a `part` list that was no array
@@ -2347,6 +2346,7 @@ function wiredFrame(body: unknown): ToOrchestrator[] | undefined {
   return frame as ToOrchestrator[]
 }
 
+/** An `end`'s `log` as chunks, or undefined when it is not one: a worker's word, checked. */
 function wiredLog(log: unknown): CapturedChunk[] | undefined {
   if (!Array.isArray(log)) return undefined
   const out: CapturedChunk[] = []

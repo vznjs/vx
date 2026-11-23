@@ -10,7 +10,7 @@ through package scripts, so results are cached and ordered by their
 dependencies.
 
 Call `vx` (on PATH after `vx init`), or `bun vx` in a script or CI job.
-Never `bunx vx` or `npx vx`: `vx` on npm is another package.
+Never run it through bunx or npx: the npm package named `vx` is another tool.
 
 A project's name is its `package.json` `name`: `vx run @acme/app#build`,
 not `app#build`. `vx show --format json` lists the names.
