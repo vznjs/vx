@@ -1,55 +1,17 @@
 ---
 title: Write a plugin
-description: Write a plugin that fills one or more stages of every run.
+description: Teach vx something new from one file. Add tasks, change cache keys, run tasks elsewhere, store results elsewhere, report every run.
 ---
 
 import Diagram from '../../../components/guide/diagram/Diagram.astro'
 import { pluginStages } from '../../../components/docs/pictures.js'
-import { Steps, Aside, CardGrid, LinkCard } from '@astrojs/starlight/components'
+import { cacheOrder, executorChoice } from '../../../components/docs/pictures/writing-plugins.js'
+import { Aside, Steps } from '@astrojs/starlight/components'
+import { Levels, Deeper, Concept, Quiz, Walkthrough, Frame, Compare, Takeaway, NextStep } from '../../../components/learn'
 
-Change every run from one place: add tasks, key material, a cache, an
-exporter or a CLI verb. A plugin fills one or more stages of the run;
-everything else stays core's.
+Teach vx something new from one file. This plugin gives every project with a `vitest.config.ts` a `test` task, so no config has to list it:
 
-<Diagram {...pluginStages} />
-
----
-
-## Write one
-
-<Steps>
-
-1. **Start from a template**
-
-   `vx init --plugin <hook>` writes one, with its test, into your
-   workspace.
-
-   [`private/vx-plugin-examples`](https://github.com/vznjs/vx/tree/main/private/vx-plugin-examples)
-   holds a runnable plugin for each of nine hooks, each with a test.
-
-2. **Fill the hooks you need**
-
-   A plugin is a function that returns `definePlugin(import.meta, hooks)`.
-   Its name is its package's name. An unfilled hook costs nothing.
-
-3. **Declare it**
-
-   In `.vx/workspace.ts`: `plugins: [vitest()]`. `vx info` lists it
-   with its hooks.
-
-   Then run `vx lock`: a run reads the tasks a `project` or `discover`
-   hook adds from the lock.
-
-4. **Test it**
-
-   Run `vx lock`, then call `run()` from `@vzn/vx`, on a throwaway
-   workspace.
-
-</Steps>
-
-This one gives every project with a `vitest.config.ts` a `test` task:
-
-```ts
+```ts title="plugins/vitest.ts"
 import path from 'node:path'
 import { definePlugin, type VxPlugin } from '@vzn/vx'
 
@@ -57,41 +19,144 @@ export function vitest(): VxPlugin {
   return definePlugin(import.meta, {
     async project(config, ctx) {
       if (!(await Bun.file(path.join(ctx.dir, 'vitest.config.ts')).exists())) return
-      config.tasks ??= {}
       config.tasks['test'] ??= {
         exec: { command: 'vitest run' },
-        inputs: { files: ['src/**', 'vitest.config.ts'] }, outputs: { files: [] }, cache: true,
+        inputs: { files: ['src/**', 'vitest.config.ts'] },
+        outputs: { files: [] },
+        cache: true,
       }
     },
   })
 }
 ```
 
----
+<Levels />
+
+<Concept term="Plugin">
+  A function that returns `definePlugin(import.meta, hooks)`. You list it in `.vx/workspace.ts`,
+  and vx calls its hooks in every run. Its name is the name of the package it lives in.
+</Concept>
+
+## Write one
+
+Follow the plugin above from a file to a task that runs. The workspace is `@demo/web` and `@demo/ui`, each with a `vitest.config.ts` and no `test` task.
+
+<Walkthrough title="From one file to a new task">
+<Frame title="1. List it in the workspace">
+
+```ts title=".vx/workspace.ts" ins={2,4}
+import { defineWorkspace } from '@vzn/vx/config'
+import { vitest } from '../plugins/vitest.ts'
+
+export default defineWorkspace({ plugins: [vitest()] })
+```
+
+</Frame>
+<Frame title="2. Record what it adds">
+
+```sh
+vx lock
+```
+
+```ansi
+[38;2;34;197;94m✓[0m [1mvx lock[0m  [38;2;203;213;225m2 project configs → .vx/projects.lock, .vx/dependencies.lock[0m
+```
+
+A `project` hook runs under `vx lock`. Every run reads the tasks it added from the lock, so it never pays for the hook.
+
+</Frame>
+<Frame title="3. See the task it made">
+
+```sh
+vx show @demo/web#test
+```
+
+```ansi
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250m@demo/web#test[0m[4m[58;2;110;118;129m[0m
+  [2mdir          [0m  [38;2;203;213;225mpackages/web[0m
+  [2mcommand      [0m  [38;2;203;213;225mvitest run[0m
+  [2minputs.files [0m  [38;2;203;213;225msrc/**, vitest.config.ts[0m
+  [2moutputs.files[0m  [38;2;203;213;225mnone[0m
+  [2mcache        [0m  [38;2;203;213;225myes[0m
+```
+
+No `vx.config.ts` names `test`. Your plugin wrote it.
+
+</Frame>
+<Frame title="4. Run it">
+
+```sh
+vx run test --all
+```
+
+```ansi
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mTasks[0m[4m[58;2;110;118;129m     [2mstatus  cache     ±usual    time   cpu    mem outputs  blocks worker         task[0m[4m[58;2;110;118;129m[0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m       [2m−62ms[0m   [38;2;203;213;225m724ms[0m  [2m149%[0m  [2m263MB[0m      [2m0B[0m       [2m0[0m [2mlocal[0m          [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;96;165;250mtest[0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m       [2m−21ms[0m   [38;2;203;213;225m752ms[0m  [2m138%[0m  [2m252MB[0m      [2m0B[0m       [2m0[0m [2mlocal[0m          [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;96;165;250mtest[0m
+2 tasks · [32m0 failed[39m · 0 cached · 780ms
+```
+
+Both projects ran `vitest run`. The task is cached like any task you write by hand.
+
+</Frame>
+</Walkthrough>
+
+<Steps>
+
+1. **Start from a template.** `vx init --plugin project` writes a working plugin and its test. Swap `project` for `admit`, `cache`, `commands`, `executor`, `graph`, `key`, `schedule` or `telemetry`.
+
+2. **Fill the hooks you need.** A hook you leave out costs nothing.
+
+3. **List it** in `.vx/workspace.ts`, then run `vx lock`.
+
+4. **Test it** with `bun test plugins/project.test.ts`. The test drives a real run on a throwaway workspace.
+
+</Steps>
+
+<Takeaway>add a task to every project that has a file, from one plugin.</Takeaway>
 
 ## The hooks
 
-Plugins are asked in the order you list them. What every plugin declines
-runs and is stored on this machine.
+<Concept term="Hook">
+  One function on your plugin that vx calls at a fixed point of a run. Each hook changes one thing:
+  the tasks, a key, the order, where a task runs, where results go.
+</Concept>
 
-| Stage       | Hook                   | Decides                                                   |
-| ----------- | ---------------------- | --------------------------------------------------------- |
-| config      | `config(ws, ctx)`      | the workspace config, before it is used                   |
-| discover | `discover(ctx)` | which directories are projects, and their edges |
-| project     | `project(config, ctx)` | a project's tasks: add, remove, rewrite                   |
-| graph       | `graph(nodes, ctx)`    | the run's edges                                           |
-| key         | `key(task, ctx)`       | extra cache-key material, named in `vx why`               |
-| fingerprint | `fingerprint`          | a root file it keys itself, such as a lockfile            |
-| measures    | `measures(nodes)`      | what the plugin times that is no task, kept as a timing   |
-| schedule    | `schedule(nodes, ctx)` | which ready task runs first                               |
-| admit       | `admit(task, ctx)`     | whether a ready task starts now, beside what runs here    |
-| execute     | `executor(ctx)`        | where one task's command runs                             |
-| store       | `cache(ctx)`           | where artifacts live                                      |
-| observe     | `telemetry(ctx)`       | where run records go; it can never change the run         |
-| render | `output(ctx)` | who draws the terminal: a `Logger` in place of vx's own |
-| setup       | `setup(ctx)`           | once per run, before the first task                       |
-| cli         | `commands`             | which verbs `vx` has                                      |
-| teardown    | `teardown()`           | flush and close at the end of the run                     |
+A run passes the hooks in this order. Fill the one that owns what you want to change:
+
+<Diagram {...pluginStages} />
+
+| Stage       | Hook                   | Use it to                                                      |
+| ----------- | ---------------------- | -------------------------------------------------------------- |
+| config      | `config(ws, ctx)`      | change the workspace config before vx reads it                 |
+| discover    | `discover(ctx)`        | make a directory a project, and say what it depends on         |
+| project     | `project(config, ctx)` | add, remove or rewrite a project's tasks                       |
+| graph       | `graph(nodes, ctx)`    | add or drop the edges between tasks                            |
+| key         | `key(task, ctx)`       | add what your inputs cannot see to the cache key               |
+| fingerprint | `fingerprint`          | key a root file yourself, such as a lockfile                   |
+| measures    | `measures(nodes)`      | time work that is no task, such as a worker's start            |
+| schedule    | `schedule(nodes, ctx)` | pick which ready task starts first                             |
+| admit       | `admit(task, ctx)`     | hold a ready task back until something finishes               |
+| execute     | `executor(ctx)`        | run a task's command somewhere else                            |
+| store       | `cache(ctx)`           | keep results in your own remote cache                          |
+| observe     | `telemetry(ctx)`       | send each run's records somewhere; it never changes the run    |
+| render      | `output(ctx)`          | draw the terminal yourself                                     |
+| setup       | `setup(ctx)`           | connect, read a token, subscribe to events, before the first task |
+| cli         | `commands`             | add a verb to `vx`                                             |
+| teardown    | `teardown()`           | flush and close when the run ends                              |
+
+Plugins are asked in the order you list them. Whatever every plugin declines, vx does itself on this machine.
+
+<Quiz q="You want each e2e suite to run on a bigger machine. Which hook do you fill?">
+  `executor`. It decides where a task's command runs. Its `accepts` can take only the tasks named
+  `e2e` and decline the rest, which then run on this machine.
+</Quiz>
+
+<Takeaway>pick the one hook that makes the change you want.</Takeaway>
+
+<Deeper level="details" title="The whole plugin type">
+
+Every hook is optional. `name` is set for you from the nearest `package.json` with a name.
 
 ```ts
 import type { VxPlugin } from '@vzn/vx'
@@ -103,7 +168,7 @@ interface VxPlugin {
   project?(config, ctx): void
   graph?(nodes, ctx): void
   key?(task, ctx): Record<string, string>
-  fingerprint?: { files; affected(change, ctx) }
+  fingerprint?: { files; affected(change, ctx); extraFiles?; digests? }
   measures?(nodes): Map<string, string>
   schedule?(nodes, ctx): Map<string, number>
   admit?(task, ctx): boolean
@@ -117,12 +182,21 @@ interface VxPlugin {
 }
 ```
 
----
+Any hook but `admit`, `measures`, `fingerprint` and `commands` may return a promise. Most `ctx` objects share three fields:
+
+| Field | What it is |
+| --- | --- |
+| `ctx.workspaceRoot` | the workspace's root directory, absolute |
+| `ctx.cacheDir` | where vx keeps its cache (not on `config`'s, which may change it) |
+| `ctx.warn(message)` | print one warning in the run's output |
+
+Every type is on the [`@vzn/vx` API](../../api/) page.
+
+</Deeper>
 
 ## Workspace and projects
 
-`config` edits the workspace config before vx reads it. Here, two
-workers on CI:
+`config` edits the workspace config before vx reads it. Here, CI gets two workers:
 
 ```ts
 import { definePlugin, type VxPlugin } from '@vzn/vx'
@@ -136,12 +210,15 @@ export function ciConcurrency(): VxPlugin {
 }
 ```
 
-`discover` makes a directory with no `vx.config.ts` a project; its
-tasks come from a `project` hook.
+vx checks your edit as it checks a config you wrote. An edit a user could not write is refused.
 
-Both run under `vx lock` only: the
-lock records what they return, and a run reads that record and calls
-neither hook, so a changed answer runs after the next `vx lock`:
+<Takeaway>change workspace settings by where the run is, without touching `.vx/workspace.ts`.</Takeaway>
+
+<Deeper level="patterns" title="Add projects, edges and tasks">
+
+### Make a directory a project
+
+`discover` makes a directory with no `vx.config.ts` a project. Its tasks come from a `project` hook:
 
 ```ts
 import { definePlugin, type VxPlugin } from '@vzn/vx'
@@ -153,23 +230,108 @@ export function scriptsProject(): VxPlugin {
 }
 ```
 
-An entry also says which projects it depends on:
+### Say what a project depends on
 
-- `deps` orders `^build`, and is followed by `--filter app...` and `--affected`.
-- `reach` is followed by those two, and orders nothing.
+vx reads no dependencies from a `package.json`. A `discover` entry names them:
 
-vx reads no dependencies from a `package.json`. With no plugin
-returning `deps`, a `^build` is refused:
+- `deps` orders `^build` and is followed by `--filter app...` and `--affected`.
+- `reach` is followed by `--filter` and `--affected` and orders nothing.
 
 ```ts
-discover: () => [{ dir: 'apps/web', deps: ['packages/ui'], reach: ['packages/config'] }]
+import { definePlugin, type VxPlugin } from '@vzn/vx'
+
+export function webEdges(): VxPlugin {
+  return definePlugin(import.meta, {
+    discover: () => [{ dir: 'apps/web', deps: ['packages/ui'], reach: ['packages/config'] }],
+  })
+}
 ```
 
-`fingerprint` names a root file the plugin keys itself. An edit to it
-asks `affected` which projects it touches (`undefined`: all). Add its
-bytes to the key with `key`:
+With no plugin returning `deps`, a `^build` is refused.
+
+### Run e2e after every build
+
+`graph` sees every task the run holds. Add to `node.deps` to make one wait for another:
 
 ```ts
+import { definePlugin, type VxPlugin } from '@vzn/vx'
+
+export function e2eLast(): VxPlugin {
+  return definePlugin(import.meta, {
+    graph(nodes) {
+      const builds = [...nodes.keys()].filter((id) => id.endsWith('#build'))
+      for (const node of nodes.values()) {
+        if (node.taskName !== 'e2e') continue
+        for (const id of builds) if (!node.deps.includes(id)) node.deps.push(id)
+      }
+    },
+  })
+}
+```
+
+<Aside type="caution" title="Changed a discover or project hook?">
+  Both run under `vx lock` only. A run reads what the lock recorded and calls neither, so run `vx
+  lock` after you change one.
+</Aside>
+
+<Takeaway>add projects, the edges between them and tasks no config lists.</Takeaway>
+
+</Deeper>
+
+<Deeper level="details" title="Every field of these hooks">
+
+**`config(workspace, ctx)`** gets the workspace config to edit in place. `plugins` is fixed by then: an edit to it is refused.
+
+| `ctx` field | What it does |
+| --- | --- |
+| `workspaceRoot`, `warn` | as above |
+| `setBranch(facts)` | tell vx what CI knows of the branch. A later plugin's field wins |
+
+| `facts` field | What it sets |
+| --- | --- |
+| `scope` | the cache scope plugin entries are keyed by (`VX_CACHE_SCOPE` beats it; it beats git) |
+| `base` | the commit a bare `--affected` compares with, such as a pull request's base |
+| `trusted` | `true`: no scope, whatever git says (a merge queue) |
+| `refs` | the refs a remote cache reads, in order. Unset: git's |
+
+**`discover(ctx)`** returns one entry per directory:
+
+| Entry field | What it does |
+| --- | --- |
+| `dir` | absolute, or relative to the workspace root. Outside the root is refused |
+| `name` | the project's name when its config names none. A config's name wins. Unset: its path |
+| `deps` | directories it builds after: `^task` order, `--filter` and `--affected` |
+| `reach` | directories a change reaches it through: `--filter` and `--affected`, no order |
+
+`deps` and `reach` from every plugin are joined. A target that is no project is refused, as are two projects with one name.
+
+| `ctx` field | What it is |
+| --- | --- |
+| `projects` | the projects found so far, read-only: the lock's, then earlier plugins' |
+| `cacheDir` | where a plugin may keep what it read |
+| `worktreeChanges()` | what `git status` lists, relative to the root; `null` outside git |
+
+**`project(config, ctx)`** gets each project's checked config to edit. A project only `discover` added arrives as `{ tasks: {} }`. Its `name` is fixed.
+
+| `ctx` field | What it is |
+| --- | --- |
+| `name`, `dir` | the project's name and absolute directory |
+| `projects` | every project, frozen. One array per run: memoise on it, since `vx watch` keeps your plugin across runs |
+| `lock` | always `true`: the hook runs only under `vx lock`, the place to report what your mapping could not say |
+
+**`graph(nodes, ctx)`** gets the task graph after `dependsOn` is expanded. Edit `node.deps` or `node.requested`. A dep on a task not in the graph, or a cycle, is refused with your plugin's name.
+
+| `ctx` field | What it is |
+| --- | --- |
+| `requested` | the task ids the user asked for. Under `--affected`, every candidate |
+
+</Deeper>
+
+## Keys and order
+
+`key` adds what your inputs cannot see to a task's cache key. This one keys every task on `.tool-versions`:
+
+```ts title="plugins/tool-versions.ts"
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { definePlugin, type VxPlugin } from '@vzn/vx'
@@ -183,24 +345,34 @@ export function toolVersions(): VxPlugin {
 }
 ```
 
-[`@vzn/vx-lockfile`](../../docs/lockfiles/) keys a lockfile this way.
+Bump Node in `.tool-versions`, build again, and ask why it ran:
 
----
+```ansi title="vx why @demo/web#build"
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhy[0m[4m[58;2;110;118;129m [2m@demo/web#build[0m[4m[58;2;110;118;129m[0m
+  [2mrun     [0m  [38;2;203;213;225m01a209c2-e56f-7184-aa62-85a756484448[0m
+  [2mthis run[0m  [38;2;203;213;225m2026-11-23T18:54:57.412Z · success · executed · key fdb0c356815e28c7[0m
+  [2mprevious[0m  [38;2;203;213;225m2026-11-23T18:54:56.807Z · success · executed · key c0eeb8b9cd0f6683[0m
+  [2mverdict [0m  [38;2;234;179;8mcache key changed: plugin demo/.tool-versions[0m
 
-## Keys and order
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhat changed[0m[4m[58;2;110;118;129m [2m1 of 7[0m[4m[58;2;110;118;129m[0m
+  [2mchange   kind    name                 before → after[0m
+  [38;2;234;179;8mchanged[0m  [38;2;203;213;225mplugin[0m  [1mdemo/.tool-versions[0m  [38;2;203;213;225mf9ef645a651460f2 → d2f66ea3a8f3a14d[0m
 
-`key` adds what your inputs cannot see, like a tool version:
-
-```ts
-import { definePlugin, type VxPlugin } from '@vzn/vx'
-
-export function nodeMajor(): VxPlugin {
-  const major = process.versions.node.split('.')[0]!
-  return definePlugin(import.meta, { key: () => ({ 'node-major': major }) })
-}
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhat to do[0m[4m[58;2;110;118;129m[0m
+  [2mplugin  [0m  [38;2;203;213;225ma key plugin's material changed; that plugin decides what goes into the key[0m
 ```
 
-`admit` holds a ready task back. Here, one e2e suite at a time:
+Read **What changed**: `vx why` names your plugin and the key part it added.
+
+`fingerprint` tells vx your plugin reads that root file. An edit to it asks `affected` which projects it touches; `undefined` means all.
+
+<Takeaway>key tasks on anything, and see it named when a task runs again.</Takeaway>
+
+<Deeper level="patterns" title="Hold back, rank and time tasks">
+
+### One e2e suite at a time
+
+`admit` holds a ready task back until something finishes. Here, two e2e suites never share the database:
 
 ```ts
 import { definePlugin, type VxPlugin } from '@vzn/vx'
@@ -215,8 +387,25 @@ export function oneDatabase(): VxPlugin {
 }
 ```
 
-`schedule` ranks ready tasks; weights that need a fetch go to
-`ctx.refine(weights)` when they arrive. This one learns from run history:
+### Start the slow tasks first
+
+`schedule` returns a weight per task id. Among ready tasks, the higher weight starts first:
+
+```ts
+import { definePlugin, type VxPlugin } from '@vzn/vx'
+
+export function e2eFirst(): VxPlugin {
+  return definePlugin(import.meta, {
+    schedule(nodes) {
+      return new Map([...nodes.keys()].map((id) => [id, id.endsWith('#e2e') ? 1 : 0]))
+    },
+  })
+}
+```
+
+### Learn the order from history
+
+`@vzn/vx-history` ranks tasks by how long they took before:
 
 ```ts
 import { defineWorkspace } from '@vzn/vx/config'
@@ -225,16 +414,72 @@ import { vxHistory } from '@vzn/vx-history'
 export default defineWorkspace({ plugins: [vxHistory()] })
 ```
 
-On CI it shares timings through a [history server](../servers/history/);
-without one, `vxHistory({ file: '.vx-timings.json' })` keeps them in a
-file ([post](../../blog/ci-timings-file/)).
+On CI it shares timings through a [history server](../servers/history/). Without one, `vxHistory({ file: '.vx-timings.json' })` keeps them in a file.
 
----
+### Key on a tool's major version
+
+```ts
+import { definePlugin, type VxPlugin } from '@vzn/vx'
+
+export function nodeMajor(): VxPlugin {
+  const major = process.versions.node.split('.')[0]!
+  return definePlugin(import.meta, { key: () => ({ 'node-major': major }) })
+}
+```
+
+[`@vzn/vx-lockfile`](../../docs/lockfiles/) keys each project on its own dependencies with `key` and `fingerprint`.
+
+<Takeaway>keep two tasks apart, start the long ones first and key on a tool's version.</Takeaway>
+
+</Deeper>
+
+<Deeper level="details" title="Every field of these hooks">
+
+**`key(task, ctx)`** returns `{ name: value }`, or `undefined` to add nothing. vx asks once per task per run, before any key. A value must be the same each time, or the task never hits. The task is read-only.
+
+| `ctx` field | What it does |
+| --- | --- |
+| `locked(file)` | what `vx lock` recorded of a file in your `fingerprint`: `{ extras, digest(projectDir) }`. A run keys from it and never parses the file |
+
+**`fingerprint`** is an object, not a function:
+
+| Field | What it does |
+| --- | --- |
+| `files` | bare file names at the workspace root your plugin reads. One plugin per file |
+| `affected(change, ctx)` | the project names a change touches. `change` has `file`, `before` and `after` bytes (`null` where absent) and `extras`. `undefined`: every project |
+| `extraFiles(file, bytes, ctx)` | optional: files that file names and your key also reads, such as a patch. A change to one asks `affected` |
+| `digests(file, ctx)` | optional: `{ hash, projects, extras? }`, each project's digest of the file. `vx lock` records them in `.vx/dependencies.lock` |
+
+Its `ctx` has `projects`: every project's `name` and `dir`.
+
+**`schedule(nodes, ctx)`** returns a map of task id to weight, or `undefined` to keep vx's order. vx asks once, after local hits are known, only when a task will start. A later plugin's weight wins.
+
+| `ctx` field | What it does |
+| --- | --- |
+| `localCache` | the run's local cache: `localHistory(ctx.localCache)` reads its run history |
+| `branch` | the run's branch, or `null` |
+| `refs` | the refs the run reads, in order |
+| `measures` | every plugin's `measures`, id to definition hash |
+| `cache` | your plugin's own entries (see [Setup and teardown](#setup-and-teardown)) |
+| `refine(weights)` | replace your weights mid-run, for data that arrives late. Takes a map or a promise of one |
+| `refining()` | settles once every promised `refine` has landed or failed |
+| `onRefine(listener)` | called each time another plugin refines |
+| `flaky(taskIds)` | name tasks known as flaky: a failing one gets one retry |
+
+**`admit(task, ctx)`** returns `true` to start the task now, `false` to hold it until something finishes. vx asks often, so keep it cheap and synchronous. Hits, pooled tasks and groups are never asked. Several plugins: all must admit.
+
+| `ctx` field | What it is |
+| --- | --- |
+| `running` | the tasks holding a worker here now, read-only |
+| `concurrency` | the run's worker count |
+
+**`measures(nodes)`** names work your plugin times that is no task: a map of `<plugin>#<name>` to a definition hash. vx asks before `schedule`. Report each one from `setup` with `ctx.measure({ id, def, durationMs, cores? })`, `def` being its definition hash; history keeps the last of each id.
+
+</Deeper>
 
 ## Setup and teardown
 
-`setup` runs before the first task; a throw stops the run. `ctx.on`
-subscribes to run events. `teardown` runs at the end, even on Ctrl-C:
+`setup` runs once, before the first task. `ctx.on` subscribes to the run's events. `teardown` runs at the end, even after Ctrl-C:
 
 ```ts
 import { definePlugin, type VxPlugin } from '@vzn/vx'
@@ -254,22 +499,20 @@ export function taskLog(): VxPlugin {
 }
 ```
 
-`ctx.cache` keeps your plugin's own small entries (`get`, `put`, `has`,
-`hasMany`) in the local cache and every remote. An entry is written
-once, at most 1 MiB. A failure reads as an empty answer.
+A throw in `setup` stops the run before any task starts. A throw in `teardown` leaves the run's result as it was.
 
-`ctx.ci` and `ctx.branch` say where the run is.
+<Takeaway>do something before the first task, on every task and after the last one.</Takeaway>
 
-### Secrets
+<Deeper level="patterns" title="Tokens, your own entries and the run's report">
 
-`ctx.secret({ key, prompt })` reads a token from the OS keychain.
+### Read a token from the keychain
 
-- Missing, with a terminal (not on CI): it asks, hides the input, and
-  saves the answer.
+`ctx.secret({ key, prompt })` reads a token from the OS keychain:
+
+- Missing, with a terminal (not on CI): it asks, hides the input and saves the answer.
 - Missing otherwise: it rejects, and `isSecretUnavailable(err)` is true.
 
-Check your env var first. `ctx.forgetSecret({ key })` drops a token your
-server refused.
+Check your env var first. `ctx.forgetSecret({ key })` drops a token your server refused.
 
 ```ts
 import { definePlugin, isSecretUnavailable, type VxPlugin } from '@vzn/vx'
@@ -293,18 +536,151 @@ export function acme(): VxPlugin {
 }
 ```
 
-`teardown(run)` gets the run's report: every task with its status, key,
-and the log and outputs vx kept in the remote. `ctx.cache.getRun(name)`
-reads them back. See the [API](../../api/).
+`err.reason` is `not-found` (no prompt given), `no-terminal` (CI, no TTY), `declined` (an empty answer) or `store-unavailable` (no keychain).
+
+### Keep your own small entries
+
+`ctx.cache` stores your plugin's entries in the local cache and every remote. An entry is written once and holds at most 1 MiB. A failure reads as an empty answer.
+
+### Read the run's report
+
+`teardown(run)` gets the run's report: every task with its status, key, and the log and outputs vx kept in the remote. `ctx.cache.getRun(name)` reads them back.
 
 After Ctrl-C, `teardown` gets no report: the run did not end.
 
----
+<Takeaway>ask for a token once, remember small facts across runs and read what a run left behind.</Takeaway>
 
-## A verb and a sink
+</Deeper>
 
-`commands` adds a verb. A telemetry sink gets each run's summary; do
-network I/O in `flush()`, which vx awaits for up to 3 s.
+<Deeper level="details" title="Every field of setup and teardown">
+
+**`setup(ctx)`**, after the key stage and before `schedule`, the executors, the sinks and the first task:
+
+| `ctx` field | What it does |
+| --- | --- |
+| `workspaceRoot`, `cacheDir`, `warn` | as above |
+| `ci` | `true` on CI (`CI` set, or a provider vx detects) |
+| `branch` | the run's branch: `run.branch`, else git's, else the CI provider's |
+| `on(event, handler)` | subscribe to a run event (below). A throw switches your handlers off with one warning |
+| `measure(measure)` | report a measure your `measures` hook declared |
+| `cache` | your plugin's entries (below) |
+| `secret({ key, prompt? })` | a token from the keychain, else the terminal's answer, saved. Once per run per key |
+| `forgetSecret({ key })` | delete the entry, so the next run asks again. Never throws |
+
+| Event | Handler gets |
+| --- | --- |
+| `onRunStart` | the run's start info |
+| `onTaskStart` | the task |
+| `onTaskStdout`, `onTaskStderr` | the task and a chunk of its output |
+| `onTaskComplete` | the task and its outcome |
+| `onMeasure` | a measure any plugin reported |
+| `onRunStatus` | a status line |
+| `onRunEnd` | nothing |
+
+What a handler gets is read-only, so it can never turn a failed task into a pass.
+
+| `ctx.cache` method | What it does |
+| --- | --- |
+| `get(key, scoped?)` | the bytes from the first layer holding them, or `null`. `scoped: false` reads the base branch's |
+| `put(key, bytes)` | store in every layer the policy writes. Empty bytes store nothing |
+| `has(key, scoped?)` | whether some layer holds it; `null` when none could answer |
+| `hasMany(keys, scoped?)` | the keys some layer holds, one probe per layer; `null` when a remote cannot batch |
+| `getRun(name)` | a log or outputs tar the run's report names, from the first readable remote |
+
+**`teardown(run?)`** runs in the order plugins are listed, `cache` plugins last. A finished run passes its report:
+
+| Report field | What it is |
+| --- | --- |
+| `runId` | the id the run's history rows and telemetry carry |
+| `commit` | `HEAD`'s commit, `null` outside git |
+| `ciRun` | the CI provider, run URL, pipeline, job and attempt |
+| `ok` | whether the run passed |
+| `tasks` | each task: `id`, `status`, `durationMs`, `key?`, `log?`, `outputs?` |
+
+vx keeps `log` and `outputs` only when a remote takes the run's writes (CI by default).
+
+</Deeper>
+
+## Report every run
+
+A telemetry sink gets each run's records and summary. It reads; it never changes the run. This one prints one line per run:
+
+```ts title="plugins/run-line.ts"
+import { styleText } from 'node:util'
+import { definePlugin, type VxPlugin } from '@vzn/vx'
+
+export function runLine(): VxPlugin {
+  return definePlugin(import.meta, {
+    telemetry() {
+      return {
+        onRunSummary(s) {
+          const failed = styleText(s.failedCount > 0 ? 'red' : 'green', `${s.failedCount} failed`)
+          console.log(`${s.taskCount} tasks · ${failed} · ${s.hitCount} cached · ${s.totalDurationMs}ms`)
+        },
+      }
+    },
+  })
+}
+```
+
+```ansi title="vx run test --all --force, its first line"
+2 tasks · [32m0 failed[39m · 0 cached · 780ms
+```
+
+Do network I/O in `flush(signal)`, which vx awaits for up to 3 s. Pass `signal` to `fetch`.
+
+<Takeaway>send every run's results to your own dashboard or log.</Takeaway>
+
+<Deeper level="details" title="Every field of a sink">
+
+`telemetry(ctx)` returns a sink, a list of sinks, or `undefined`. Its `ctx` has `workspaceRoot`, `cacheDir` and `warn`.
+
+| Sink field | What it does |
+| --- | --- |
+| `name` | optional: named in warnings |
+| `wants` | the record kinds to receive. Default: all but `task.log` |
+| `onRecord(record)` | one streaming record. Return at once: buffer, never await I/O |
+| `onRunSummary(summary)` | the run's summary, once at its end |
+| `flush(signal)` | send what you buffered. Abandoned at the deadline, when `signal` aborts |
+
+A sink that throws is switched off for the run with one warning. The record shapes are on the [`@vzn/vx` API](../../api/) page.
+
+</Deeper>
+
+## Add a verb
+
+`commands` adds verbs to `vx` in the workspaces that list your plugin:
+
+```ts title="plugins/hello-verb.ts"
+import { styleText } from 'node:util'
+import { definePlugin, type VxPlugin } from '@vzn/vx'
+
+export function hello(): VxPlugin {
+  return definePlugin(import.meta, {
+    commands: {
+      hello: {
+        description: 'say hello from a plugin',
+        run(argv) {
+          console.log(`hello, ${styleText('bold', argv[0] ?? 'world')}`)
+          return 0 // the exit code
+        },
+      },
+    },
+  })
+}
+```
+
+```ansi title="vx hello M"
+hello, [1mM[22m
+```
+
+The verb's exit code is the process's. `vx help` lists the verb under **Plugin commands**, beside your plugin's name.
+
+<Takeaway>give your team a `vx` verb of its own.</Takeaway>
+
+<Deeper level="patterns" title="A verb that reads run history">
+
+A verb reads `cache.db` only through vx, which hands back rows, never a handle:
 
 ```ts
 import { Cache, definePlugin, localHistory, type VxPlugin } from '@vzn/vx'
@@ -315,16 +691,14 @@ export function mcp(): VxPlugin {
       mcp: {
         description: 'serve run history to an AI agent over stdio',
         async run(argv, ctx) {
-          // read-only: never resets the index. A plugin reads cache.db only
-          // through core (`localHistory`), which returns rows, not a handle.
-          const cache = Cache.inspect(ctx.cacheDir)
+          const cache = Cache.inspect(ctx.cacheDir) // read-only
           try {
             const table = await localHistory(cache).loadFor(argv)
             void table
           } finally {
             cache.close()
           }
-          return 0 // the exit code
+          return 0
         },
       },
     },
@@ -332,34 +706,33 @@ export function mcp(): VxPlugin {
 }
 ```
 
-```ts
-import { definePlugin, defineWorkspace, type VxPlugin } from '@vzn/vx'
+<Takeaway>build tools on what your runs already recorded.</Takeaway>
 
-function hello(): VxPlugin {
-  return definePlugin(import.meta, {
-    telemetry() {
-      return {
-        onRunSummary(summary) {
-          const { taskCount, failedCount, hitCount, totalDurationMs } = summary
-          console.log(`${taskCount} tasks · ${failedCount} failed · ${hitCount} cached · ${totalDurationMs}ms`)
-        },
-      }
-    },
-  })
-}
+</Deeper>
 
-export default defineWorkspace({ plugins: [hello()] })
-```
+<Deeper level="details" title="Every field of a verb">
 
----
+| Verb field | What it does |
+| --- | --- |
+| `description` | the line `vx help` prints |
+| `run(argv, ctx)` | runs the verb; returns the exit code. A thrown error prints in one line |
+
+A verb that names a core verb, or that two packages declare, is refused.
+
+| `ctx` field | What it is |
+| --- | --- |
+| `workspaceRoot`, `cacheDir`, `warn` | as above |
+| `concurrency` | the worker count `vx run` uses here without `--concurrency` |
+| `vx` | the argv that runs this vx again: spawn `[...ctx.vx, 'run', …]` |
+| `cache` | your plugin's entries, read-only |
+| `artifacts` | task results by key, as a run here saves and restores them |
+| `artifactsFor(facts)` | `artifacts` as another machine's run reads them, under its refs and lent access |
+
+</Deeper>
 
 ## Draw the terminal
 
-`output` returns a `Logger` that gets every line vx would print. Decline
-off a terminal so pipes, CI and agents read what they always did.
-
-A `Logger` that throws or rejects hands the run back to vx's renderer,
-which draws what it was handed.
+`output` returns a `Logger` that gets every line vx would print. Decline off a terminal, so pipes, CI and agents read what they always did:
 
 ```ts
 import { definePlugin, type VxPlugin } from '@vzn/vx'
@@ -379,24 +752,34 @@ export function dots(): VxPlugin {
 }
 ```
 
----
+A `Logger` that throws hands the run back to vx's own output, which draws what it was handed.
+
+<Takeaway>replace vx's output with your own.</Takeaway>
+
+<Deeper level="details" title="Every field of a Logger">
+
+The first plugin returning a `Logger` draws; the rest are not asked. Its `ctx` has `isTTY` (stdout is a terminal) and `ci`.
+
+| Method | Called with |
+| --- | --- |
+| `status(line)` | a status line |
+| `taskStdout(task, chunk)`, `taskStderr(task, chunk)` | a chunk of a task's output |
+| `taskComplete(task, outcome)` | a finished task |
+| `warn(line)` | optional: a warning. Without it, `status` gets it |
+| `runStart(info)` | optional: `total`, `concurrency`, `requestedCount`, `context`, `startedAtMs` |
+| `taskStart(task)` | optional: a task starts |
+| `stepStart(id)`, `stepEnd(id, { durationMs, ok })` | optional: one of vx's own steps, such as `vx:keys` or a plugin's setup |
+| `runEnd()`, `runStop()`, `runDone()` | optional: the task graph finished; the run was stopped; the work is done and the footer follows |
+
+</Deeper>
 
 ## Where a task runs
 
-`executor` returns a `TaskExecutor`: a `name`, an optional `accepts`,
-and `execute`, which runs one command. A task every executor declines
-runs on this machine.
+`executor` returns a `TaskExecutor`: a `name`, an optional `accepts`, and `execute`, which runs one command.
 
-A task with `exec.sandbox` is offered only to an
-executor whose `capabilities` say `sandbox: true` and that enforces
-`req.sandbox`; otherwise vx runs it here, in its own sandbox.
+<Diagram {...executorChoice} />
 
-Stop on `req.signal` (Ctrl-C or `exec.timeout`), and stop the shell's
-children too: vx cannot reach them.
-
-For Distributed task execution, the executor also fills `distribution`:
-where each task runs, its footer rows, its machines. Each worker runs its
-tasks through `workerRuntime()`.
+This one runs every `e2e` task under `nice`. Look at three lines: `accepts` picks the tasks, `detached` gives the shell its own process group, and `req.signal` stops it:
 
 ```ts
 import { definePlugin, type ExecuteResult, type VxPlugin } from '@vzn/vx'
@@ -439,11 +822,95 @@ export function nice(): VxPlugin {
 }
 ```
 
----
+Stop on `req.signal` (Ctrl-C or `exec.timeout`), and stop the shell's children too: vx cannot reach them.
+
+<Takeaway>run chosen tasks anywhere you can start a command.</Takeaway>
+
+<Deeper level="patterns" title="Sandboxed tasks, giving a task back, many machines">
+
+### Sandboxed tasks
+
+A task with `exec.sandbox` is offered only to an executor whose `capabilities` say `sandbox: true` and that enforces `req.sandbox`. Otherwise vx runs it here, in its own sandbox.
+
+### Give a task back
+
+Reject with `executorFallback(reason)`, from `@vzn/vx`, to hand a task back. vx runs it on this machine and prints `reason` once.
+
+### Many machines
+
+For [Distributed task execution](../distributed-task-execution/), the executor also fills `distribution`: where each task runs, its footer rows, its machines. Each worker runs its tasks through `workerRuntime()`.
+
+<Takeaway>keep sandboxed tasks safe and fall back to this machine when yours cannot run a task.</Takeaway>
+
+</Deeper>
+
+<Deeper level="details" title="Every field of an executor">
+
+vx asks `executor(ctx)` once per run. Per task, the first executor whose `accepts` passes runs it. Persistent tasks never reach an executor.
+
+| `ctx` field | What it is |
+| --- | --- |
+| `workspaceRoot`, `cacheDir`, `warn` | as above |
+| `concurrency` | the run's worker count |
+| `artifacts` | task results by key, for a task another machine ran |
+| `cacheFacts()` | what a machine running this run's tasks reads the cache under: refs and lent access. Ask again before it expires |
+
+| Executor field | What it does |
+| --- | --- |
+| `name` | shown in errors |
+| `accepts(task)` | optional: `false` or `undefined` declines. `task` has `taskId`, `projectName`, `projectDir`, `command`, `pinnedLocal`, `cacheable` |
+| `execute(req)` | runs one command; returns its result |
+| `capabilities` | optional: what it can be offered (below). Absent: a local executor |
+| `distribution` | optional: only for an executor that spreads one run over machines it starts |
+
+| Capability | Means |
+| --- | --- |
+| `remote` | runs the command elsewhere; never offered a task that must run here (`pinnedLocal`) |
+| `sandbox` | enforces `req.sandbox` and returns violations; offered sandboxed tasks |
+| `servers` | starts a task's persistent dependencies where it runs it (`req.servers`) |
+| `runtime` | answers `inputs.runtime` probes where it runs, failing on a different answer |
+| `dependencyOutputs` | lists the dependency outputs a sandboxed task may read where it runs |
+| `exclusive` | runs every task of the run; only hits restore here |
+| `timeouts` | enforces `timeoutMs` itself and reports `timedOut` |
+| `platforms` | the platforms it runs on, matched to a task's `exec.platforms` |
+| `capacity` | how many tasks it runs at once, a pool apart from the local workers |
+
+| `req` field | What it is |
+| --- | --- |
+| `taskId`, `command`, `cwd`, `workspaceRoot` | the task and where its command runs |
+| `forwardArgs` | arguments after `--`, which you append shell-quoted |
+| `env`, `envDefine` | the resolved environment, and `exec.env.define` as written (safe to ship) |
+| `outputs` | the declared output globs: `files`, `workspaceFiles` |
+| `onStdout`, `onStderr` | pass the command's output here as it arrives |
+| `signal` | aborts on a stop, a timeout or `--fail-fast`. Already aborted: do not start |
+| `timeoutMs`, `attempt` | the task's timeout, and the attempt number from 2 on a retry |
+| `inputs`, `cacheKey` | a cached task's resolved inputs and key, to ship it |
+| `unsaved`, `refresh` | vx saves no entry this time; cache reads are off (`--force`) |
+| `remoteOnly`, `download` | `exec.remote: 'only'`; whether outputs must land now (`eager`, `deferred`, `trailing`) |
+| `platform`, `worker` | the platform and worker type to run on |
+| `sandbox` | the sandbox to enforce, for a `sandbox` executor |
+| `servers` | persistent dependencies to start first, for a `servers` executor |
+| `capture`, `onSpawn`, `liveChildren`, `terminal` | output capture, the pid hook for sampling, Ctrl-C's registry, an interactive task (local only) |
+
+| Result field | What it is |
+| --- | --- |
+| `exitCode`, `durationMs`, `stdout`, `stderr` | what the command did |
+| `violations` | sandbox denials; `[]` when unsandboxed |
+| `outputs` | where they are: `disk` (default), `deferred` with `materialize()`, or `trailing` with `landed` |
+| `changed` | files the command changed where it ran, which this disk cannot see |
+| `where`, `machine` | which machine ran it, and its `cores`, `memoryBytes` and `cpuShare` |
+
+`distribution` hooks, each optional: `workers`, `demand(remaining, missed)`, `running(taskId)`, `unneeded(taskId)`, `footer()`, `machines()`, `idealMs()`, `advice()`, `profile()`. `@vzn/vx-dte` fills them all.
+
+</Deeper>
 
 ## Your own cache
 
-Return a `RemoteCacheLayer` from the `cache` hook:
+Return a `RemoteCacheLayer` from the `cache` hook. vx asks the local cache first, then each remote in plugin order:
+
+<Diagram {...cacheOrder} />
+
+A layer needs the three `RemoteCacheLayer` methods, `has`, `get` and `put`:
 
 | Method | Does |
 | --- | --- |
@@ -453,12 +920,7 @@ Return a `RemoteCacheLayer` from the `cache` hook:
 | `hasMany(hashes)` | optional: only when your server answers many keys in one call |
 | `missing(hash)` | optional: called before a `put` with a key no remote had, so check nothing first |
 
-An entry never changes: a `put` of a key the remote holds keeps the
-stored bytes.
-
-vx asks the local cache first, then each remote in `plugins` order, under
-`--cache-policy`. A remote error is a miss and one warning. Core bounds
-no call, so give every request a deadline:
+An entry never changes: a `put` of a key the remote holds keeps the stored bytes. A remote error is a miss and one warning. vx bounds no call, so give every request a deadline:
 
 ```ts
 import { definePlugin, defineWorkspace, type RemoteCacheLayer, type VxPlugin } from '@vzn/vx'
@@ -506,21 +968,21 @@ function acmeCache(): VxPlugin {
 export default defineWorkspace({ plugins: [acmeCache()] })
 ```
 
-A remote that needs a credential adds `open`. vx calls it once per run,
-before the first task; if it throws, the run goes on without that
-remote. `ctx.secret` works there.
+<Takeaway>keep your team's results in any store you can reach over the network.</Takeaway>
 
-An optional `lend` hands this run's own access, never a stored secret,
-to a machine that runs its tasks, such as a `@vzn/vx-dte` worker.
+<Deeper level="patterns" title="Tokens and signed artifacts">
+
+### A remote that needs a token
+
+Add `open`. vx calls it once per run, before the first task; if it throws, the run goes on without that remote. `ctx.secret` works there.
+
+An optional `lend` hands this run's own access, never a stored secret, to a machine that runs its tasks, such as a `@vzn/vx-dte` worker.
 
 ### Signed artifacts
 
-A wrapper can make a shared cache trust its writers, not its store: it
-hashes each download and fails it unless a trusted key signed it.
+A wrapper can make a shared cache trust its writers, not its store: it hashes each download and fails it unless a trusted key signed it.
 
-A body failed with `CorruptArtifactError` is a miss whose rebuild is sent
-over the bad copy (`put` gets `replace`). Only main's CI holds the
-private key:
+A body failed with `CorruptArtifactError` is a miss whose rebuild is sent over the bad copy (`put` gets `replace`). Only main's CI holds the private key:
 
 ```ts
 // signed-cache.ts
@@ -574,60 +1036,98 @@ export function signedCache(remote: RemoteCacheLayer, trustedPem: string): VxPlu
 }
 ```
 
-Declare `signedCache(new AcmeRemote(url), PUBLIC_KEY_PEM)` and set
-`CACHE_SIGNING_KEY` only in main's CI. Make the key pair with:
+Declare `signedCache(new AcmeRemote(url), PUBLIC_KEY_PEM)` and set `CACHE_SIGNING_KEY` only in main's CI. Make the key pair with:
 
 ```sh
 openssl genpkey -algorithm ed25519 -out key.pem
 openssl pkey -in key.pem -pubout
 ```
 
-`has()` checks no signature, so `--dry` can predict a hit the run then
-misses.
+`has()` checks no signature, so `--dry` can predict a hit the run then misses.
 
----
+<Takeaway>let only your trusted CI write results every machine will restore.</Takeaway>
+
+</Deeper>
+
+<Deeper level="details" title="Every field of a remote cache">
+
+| Layer field | What it does |
+| --- | --- |
+| `endpoint` | optional: where the artifacts live, named in warnings. Credentials, query and fragment are dropped before printing |
+| `off` | optional: `true` once a failure turned the layer off for the run, said once |
+| `open(ctx)` | optional: get ready, once per run. `ctx` has `ci`, `warn`, `secret` and `forgetSecret`. `--dry` and `vx show` never call it |
+| `lend()` | optional: `{ token, expiresAt? }`, this run's access for a machine running its tasks |
+
+The `cache(ctx)` hook gets:
+
+| `ctx` field | What it is |
+| --- | --- |
+| `workspaceRoot`, `cacheDir`, `warn` | as above |
+| `scope` | the run's cache scope (`'acme/web:feat-x'`), or `undefined` |
+| `refs` | the refs the run reads, in order: its branch, the branch it merges into, the default branch |
+| `lent()` | the token a run lent your remote, on a machine running its tasks; `undefined` elsewhere. Read it per request |
+
+`get`'s `body` is read once into the local cache: a `fetch` Response, `new Response(stream)` or `new Blob([bytes])`. A body that errors before its end stores nothing.
+
+</Deeper>
 
 ## What core refuses
 
+<Compare left="Your plugin can" right="Your plugin cannot">
+<div slot="left">
+
+- add, change and remove tasks before the key is taken
+- run a task elsewhere, store results elsewhere
+- watch every event of the run
+
+</div>
+<div slot="right">
+
+- turn a failed task into a pass
+- change a command after its key is taken
+- pick its own name
+
+</div>
+</Compare>
+
+vx refuses, naming your plugin:
+
 - A `cache` or `executor` hook that breaks its contract: the three `RemoteCacheLayer` methods, or `execute` and a `name`.
 - A `name` on the hooks object: the name is the package's.
-- A `config` or `project` edit the loader would refuse from a user.
+- A `config` or `project` edit vx would refuse from a user.
 - A verb that names a core verb, or that two packages both declare.
 
-What a plugin observes is read-only: what a `ctx.on` handler, a bus
-subscriber or a `Logger` gets, telemetry records and the run report.
+What a plugin observes is read-only. A write to it throws.
 
-So are `ctx.projects` in `discover` and `project`, the task a `key` or
-`admit` hook gets, the nodes a `schedule` hook gets, and a plugin
-executor's `outputs`, `envDefine` and `forwardArgs`.
+That covers what a `ctx.on` handler, a bus subscriber or a `Logger` gets, telemetry records and the run report.
 
-So is a task's config once the `graph` stage ends.
+It covers `ctx.projects` in `discover` and `project`, the task `key` and `admit` get, the nodes `schedule` gets, and an executor's `outputs`, `envDefine` and `forwardArgs`.
 
-A project config a `project` hook kept is no longer the run's once that
-project's hooks have run, so a write to it changes nothing.
+It covers a task's config once the `graph` stage ends. A project config a `project` hook kept is no longer the run's once that project's hooks have run.
 
-A write to them throws, so a handler can never turn a failed task into
-a pass, nor a hook change a command after its key is taken.
+<Deeper level="details" title="What a throw costs">
 
-A `telemetry` hook or sink, `ctx.on` handler, `admit`, `output` hook or
-`Logger` that throws is switched off for the run with one warning.
+| Throws | What vx does |
+| --- | --- |
+| `telemetry` hook or sink, `ctx.on` handler, `admit`, `output` hook or `Logger` | switches it off for the run, with one warning |
+| `measures` | leaves its measures out, with one warning |
+| `teardown` | leaves the run's result as it was |
+| a verb | fails in one line |
+| a remote cache call | a miss |
+| `execute` | fails its task |
 
-A `measures` hook that throws has its measures left out, with one warning.
+</Deeper>
 
-A `teardown` that throws leaves the run's result as it was. A verb that
-throws fails in one line.
+A throw in any other hook stops the run, or `vx lock`, with one line naming your plugin and the hook.
 
-A remote cache call that throws is a miss. An `execute` that throws
-fails its task.
+<Quiz q="Your telemetry sink throws on every record. Does the build fail?">
+  No. vx switches that sink off for the run and prints one warning. Observing never breaks a run.
+</Quiz>
 
-A throw in any other hook stops the run, or `vx lock`, with one line
-naming your plugin and the hook.
-
----
+<Takeaway>know what vx protects, so a bug in your plugin never hides a failed task.</Takeaway>
 
 ## Next
 
-<CardGrid>
-  <LinkCard title="@vzn/vx API" description="Every type a plugin sees." href="../../api/" />
-  <LinkCard title="Plugin examples" description="One runnable plugin per hook, each with its test." href="https://github.com/vznjs/vx/tree/main/private/vx-plugin-examples" />
-</CardGrid>
+[`private/vx-plugin-examples`](https://github.com/vznjs/vx/tree/main/private/vx-plugin-examples) holds a runnable plugin for each of nine hooks, each with its test.
+
+<NextStep href="../../api/" title="@vzn/vx API">Every type a plugin sees, field by field.</NextStep>
