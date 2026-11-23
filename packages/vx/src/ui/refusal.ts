@@ -18,6 +18,29 @@ const MEANT = /\s*(?:\(did you mean ([^?]+)\?\)|(?:^|[.;—]\s*)[Dd]id you mean 
 // A trailing `...` is the text's own (a `--filter a...`), not a full stop.
 const bare = (s: string): string => s.trim().replace(/(?<!\.)[.:]$/, '')
 
+/**
+ * Split at `BREAK`, but never inside parentheses: a reason vx quotes there
+ * (Bun's `Unable to connect. Is the computer…`) is one fact.
+ */
+function sentencesOf(text: string): string[] {
+  const out: string[] = []
+  for (const piece of text.split(BREAK)) {
+    const last = out.length - 1
+    if (last >= 0 && depth(out[last]!) > 0) out[last] += ` ${piece}`
+    else out.push(piece)
+  }
+  return out
+}
+
+function depth(text: string): number {
+  let d = 0
+  for (const ch of text) {
+    if (ch === '(') d++
+    else if (ch === ')' && d > 0) d--
+  }
+  return d
+}
+
 /** A plain message in parts: its first sentence heads, each later one is a line. */
 export function messageParts(message: string): RefusalParts {
   const [head = '', ...rest] = message.split('\n')
@@ -26,13 +49,12 @@ export function messageParts(message: string): RefusalParts {
   if (see !== null) first = first.replace(SEE, '')
   const meant = MEANT.exec(first)
   if (meant !== null) first = first.replace(MEANT, '')
-  const sentences = first
-    .split(BREAK)
+  const sentences = sentencesOf(first)
     .map(bare)
     .filter((s) => s !== '')
   const [headline = bare(first), ...what] = sentences
   for (const l of rest) {
-    if (l.trim() !== '') what.push(...l.replace(/^ {2}/, '').split(BREAK).map(bare))
+    if (l.trim() !== '') what.push(...sentencesOf(l.replace(/^ {2}/, '')).map(bare))
   }
   const fix = meant !== null ? (meant[1] ?? meant[2])!.trim() : undefined
   return {

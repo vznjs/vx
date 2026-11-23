@@ -33,6 +33,21 @@ describe('messageParts', () => {
     })
   })
 
+  // `vx upgrade` quotes Bun's reason, `(ECONNREFUSED: Unable to connect. Is
+  // the computer able to access the url?)`: the break inside it printed the
+  // refusal as a headline with an open paren and a stray second line.
+  it('never breaks a sentence inside parentheses', () => {
+    expect(
+      messageParts(
+        'could not reach h to read the release (ECONNREFUSED: Unable to connect. Is the computer able to access the url?) — re-run. Then retry.',
+      ),
+    ).toEqual({
+      headline:
+        'could not reach h to read the release (ECONNREFUSED: Unable to connect. Is the computer able to access the url?) — re-run',
+      what: ['Then retry'],
+    })
+  })
+
   it('takes "(see `cmd`)" as the why line', () => {
     expect(messageParts('missing task name (see `vx run --help`)')).toEqual({
       headline: 'missing task name',
