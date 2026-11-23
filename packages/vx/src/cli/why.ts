@@ -19,9 +19,9 @@ import {
   recordedTasks,
   rootCauses,
   upstreamTask,
+  resolveRunId,
   whyDidThisRerun,
 } from '../history/index.js'
-import { resolveRunId } from '../orchestrator/index.js'
 import { MASKED, nearMatches, printable, refusal, splitTaskId, UserError } from '../util/index.js'
 import * as ui from '../ui/index.js'
 import type { InputWriter, RootCause } from '../history/index.js'

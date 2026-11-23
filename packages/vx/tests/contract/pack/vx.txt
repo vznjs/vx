@@ -107,6 +107,7 @@ src/history/index.ts
 src/history/metrics.ts
 src/history/miss-reason.ts
 src/history/run-history.ts
+src/history/run-id.ts
 src/history/run-notes.ts
 src/index-db/index.ts
 src/index-db/schema.ts
@@ -168,7 +169,6 @@ src/orchestrator/remote-prefetch.ts
 src/orchestrator/run-artifacts.ts
 src/orchestrator/run-context.ts
 src/orchestrator/run-failures.ts
-src/orchestrator/run-id.ts
 src/orchestrator/run-keys.ts
 src/orchestrator/run-live.ts
 src/orchestrator/run-lock.ts

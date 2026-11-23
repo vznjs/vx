@@ -3,7 +3,7 @@
 
 import { Database } from 'bun:sqlite'
 import { describe, expect, it } from 'bun:test'
-import { resolveRunId, shortRunId } from '../src/orchestrator/run-id.js'
+import { resolveRunId, shortRunId } from '../src/history/run-id.js'
 
 /** Runs with a header and task rows (their `run_ids` row); `stopped` ones have rows alone. */
 function db(ids: readonly string[], stopped: readonly string[] = []): Database {

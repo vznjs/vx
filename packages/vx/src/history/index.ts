@@ -55,6 +55,8 @@ export type {
   WhyDidThisRerun,
 } from './metrics.js'
 export { createMissExplainer, type MissExplainer } from './miss-reason.js'
+// A run id as a user types it: whole, or a unique prefix (`vx last`, `vx why`).
+export { resolveRunId, shortRunId } from './run-id.js'
 // The write side: a run's rows, written at its end (`runHistory`), its hits
 // as one packed row a reader writes out (`expandHits`), and the notes it keeps.
 export {
