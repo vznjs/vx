@@ -148,6 +148,20 @@ export interface ArtifactTask {
 }
 ```
 
+## `BaseContext`
+
+type · `src/orchestrator/plugin.ts`
+
+Shared, read-only context every capability factory receives.
+
+```ts
+export interface BaseContext {
+  readonly workspaceRoot: string
+  readonly cacheDir: string
+  warn(message: string): void
+}
+```
+
 ## `branchCacheScope`
 
 function · `src/workspace/config-schema.ts`
@@ -412,6 +426,22 @@ failed task, in no cache column).
 
 ```ts
 export type CacheSource = 'miss' | 'local' | 'remote' | 'none'
+```
+
+## `CaptureConfig`
+
+type · `src/exec/runner.ts`
+
+Which streams `runCommand` retains into `RunResult.stdout` / `.stderr`. Both
+default true: those fields hold what the child wrote. A caller that will not
+read one opts out here; live callbacks still fire, only the retained copy
+(its full size in heap) is dropped.
+
+```ts
+export interface CaptureConfig {
+  stdout?: boolean
+  stderr?: boolean
+}
 ```
 
 ## `CapturedChunk`
@@ -816,6 +846,20 @@ itself.
 export function exitSignal(code: number): string | undefined
 ```
 
+## `FailedAttempt`
+
+type · `src/orchestrator/telemetry.ts`
+
+One attempt of a retried task that failed and was run again.
+
+```ts
+export interface FailedAttempt {
+  endedAt: number
+  exitCode: number
+  timedOut?: true
+}
+```
+
 ## `FailedOutcome`
 
 type · `src/graph/outcome.ts`
@@ -1028,6 +1072,19 @@ What moved in a missed task's key since the last entry saved for it.
 export interface InputChanges {
   count: number
   first: readonly { kind: string; name: string; change: 'changed' | 'added' | 'removed' }[]
+}
+```
+
+## `InputFile`
+
+type · `src/exec/executor.ts`
+
+One declared input file, as the cache key saw it.
+
+```ts
+export interface InputFile {
+  readonly path: string
+  readonly digest: string
 }
 ```
 
@@ -1754,6 +1811,16 @@ export const PERSISTENT_TODO =
   'dependents unblock on readiness, and consider exec.timeout to bound the wait'
 ```
 
+## `PersistentConfig`
+
+type · `src/config.ts`
+
+```ts
+export interface PersistentConfig {
+  readyWhen?: string
+}
+```
+
 ## `Pipeline`
 
 type · `src/config.ts`
@@ -2357,6 +2424,47 @@ function · `src/orchestrator/run.ts`
 export async function run(options: RunOptions): Promise<RunSummary>
 ```
 
+## `RunContext`
+
+type · `src/report/summary.ts`
+
+Run context the footer carries (final summary only — the live region
+passes none). This is the data the top-of-run header used to show:
+what the run covered + version + cache mode. Folded into the footer
+so the run has one banner, at the end, where the eye lands.
+
+```ts
+export interface RunContext {
+  version: string
+  workspaceRoot?: string
+  meters?: boolean
+  packageCount: number
+  runId?: string | undefined
+  executorRows?: () => readonly (readonly [string, ui.Inline])[]
+  whereRunning?: (taskId: string) => string | null | undefined
+  usage?: (taskId: string) => { cores: number; rssBytes: number } | undefined
+  blocks?: () => ReadonlyMap<string, number>
+  usual?: (taskId: string) => number | undefined
+  concurrency?: number
+  remoteCacheEnabled: boolean
+  cacheScope?: string | undefined
+  cache?: {
+    local: boolean
+    localWrite: boolean
+    remote: boolean
+    traffic: {
+      readonly inFlight: number
+      readonly keys: ReadonlyMap<string, { uploading: number; failures: readonly string[] }>
+    }
+    downloads?: { readonly bytes: number }
+    uploads?: { readonly bytes: number }
+    notDownloaded: () => number
+  }
+  workspaceProjectCount?: number
+  warnings?: () => readonly string[]
+}
+```
+
 ## `RunContextRecord`
 
 type · `src/orchestrator/telemetry.ts`
@@ -2391,6 +2499,21 @@ export interface RunContextRecord {
   host: string | null
   os: string
   arch: string
+}
+```
+
+## `RunLogs`
+
+type · `src/config.ts`
+
+`WorkspaceConfig.run.logs`: output vx keeps, counted in characters.
+
+```ts
+export interface RunLogs {
+  captureHead?: string
+  captureTail?: string
+  failedHead?: string
+  failedTail?: string
 }
 ```
 
@@ -2532,6 +2655,26 @@ export interface RunReportTask {
 }
 ```
 
+## `RunResult`
+
+type · `src/exec/runner.ts`
+
+```ts
+export interface RunResult {
+  exitCode: number
+  durationMs: number
+  stdout: string
+  stderr: string
+  signal?: string | number
+  timedOut?: boolean
+  killedAfterGrace?: true
+  cpuMs?: number
+  peakRssBytes?: number
+  spawnFailed?: true
+  leftRunning?: true
+}
+```
+
 ## `RunSettings`
 
 type · `src/config.ts`
@@ -2552,6 +2695,20 @@ export interface RunSettings {
   }
   failFast?: boolean
   rules?: WorkspaceRules
+}
+```
+
+## `RunStage`
+
+type · `src/orchestrator/telemetry.ts`
+
+One stage of a run, a wall window in epoch ms.
+
+```ts
+export interface RunStage {
+  name: string
+  startedAt: number
+  endedAt: number
 }
 ```
 
@@ -2697,6 +2854,38 @@ export interface SandboxGrants {
   machLookup?: readonly string[]
   pty?: boolean
   gitConfig?: boolean
+}
+```
+
+## `SandboxIgnore`
+
+type · `src/config.ts`
+
+The denials `sandbox.ignore` can leave out of the report: patterns per class.
+
+```ts
+export interface SandboxIgnore {
+  read?: readonly string[]
+  write?: readonly string[]
+  systemInfo?: readonly string[]
+  network?: readonly string[]
+}
+```
+
+## `SandboxViolation`
+
+type · `src/exec/executor.ts`
+
+```ts
+export interface SandboxViolation {
+  line: string
+  timestamp: Date
+  target?: string
+  hint?: true
+  path?: string
+  via?: string
+  opened?: 'read' | 'write'
+  ignorable?: readonly ('read' | 'write' | 'network' | 'systemInfo')[]
 }
 ```
 
@@ -2897,6 +3086,30 @@ export interface TaskHistory {
   saturatedCores?: number
   saturatedMemoryBytes?: number
   slowDurationMs?: number
+}
+```
+
+## `TaskInputs`
+
+type · `src/exec/executor.ts`
+
+Everything the key folds for one task, with values: what a remote executor
+needs to reproduce it. Built on the miss path from the resolution that made
+the key, so it cannot drift. In memory only: `env` values and `runtime`
+output may be secrets (cache.db stores digests).
+
+```ts
+export interface TaskInputs {
+  readonly files: readonly InputFile[]
+  readonly env: ReadonlyArray<{ readonly name: string; readonly value: string | undefined }>
+  readonly runtime: ReadonlyArray<{ readonly command: string; readonly output: string }>
+  readonly workspaceRuntime: ReadonlyArray<{ readonly command: string; readonly output: string }>
+  readonly upstream: ReadonlyArray<{
+    readonly taskId: string
+    readonly hash: string
+    readonly outputs: readonly string[]
+  }>
+  readonly configDigest: string
 }
 ```
 
@@ -3551,5 +3764,18 @@ type · `src/config.ts`
 ```ts
 export interface WorkspaceOutputs {
   clean?: boolean
+}
+```
+
+## `WorkspaceRules`
+
+type · `src/config.ts`
+
+`WorkspaceConfig.run.rules`.
+
+```ts
+export interface WorkspaceRules {
+  exclusiveOutputs?: boolean
+  dependencies?: readonly DependencyRule[]
 }
 ```

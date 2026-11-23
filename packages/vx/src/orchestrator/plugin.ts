@@ -272,7 +272,7 @@ export interface RunReportTask {
 }
 
 /** Shared, read-only context every capability factory receives. */
-interface BaseContext {
+export interface BaseContext {
   readonly workspaceRoot: string
   readonly cacheDir: string
   /** Funnel warnings into the run:status channel (framed output). */

@@ -47,6 +47,10 @@ export type {
   TaskOutputs,
   WorkspaceInputs,
   WorkspaceOutputs,
+  WorkspaceRules,
+  RunLogs,
+  PersistentConfig,
+  SandboxIgnore,
   InputStability,
   SandboxConfig,
   SandboxGrants,
@@ -89,7 +93,7 @@ export type { AffectedChanges } from './workspace/index.js'
 export type { RunPlan, PlannedTask } from './orchestrator/index.js'
 export type { CiContext, GitContext, HostContext, WorkspaceIdentity } from './orchestrator/index.js'
 export type { CacheFlags, CachePolicy, RunOptions, RunSummary } from './orchestrator/index.js'
-export type { Logger, OutputView } from './report/index.js'
+export type { Logger, OutputView, RunContext } from './report/index.js'
 // `splitTaskId` is on the façade because the alternative is what happened:
 // with only `taskId()` to JOIN an id and nothing exported to SPLIT one,
 // consumers roll their own `split('#', 2)` and drift from the graph, which
@@ -194,6 +198,7 @@ export {
 export type {
   VxPlugin,
   PluginHooks,
+  BaseContext,
   PluginOrigin,
   PluginOptionKinds,
   CacheContext,
@@ -247,9 +252,14 @@ export {
   type WorkerTask,
 } from './orchestrator/index.js'
 export type {
+  CaptureConfig,
   Distribution,
   ExecuteRequest,
   ExecuteResult,
+  InputFile,
+  RunResult,
+  SandboxViolation,
+  TaskInputs,
   ExecuteSandbox,
   ExecutorCapabilities,
   MachineReport,
@@ -283,7 +293,9 @@ export { LOG_WIRE_VERSION, TaskLogBuffer } from './orchestrator/index.js'
 // say `128 + SIGKILL`; the decode is the runner's convention, one copy.
 export { exitSignal } from './orchestrator/index.js'
 export type {
+  FailedAttempt,
   RunContextRecord,
+  RunStage,
   RunSummaryRecord,
   TaskLogBundle,
   TaskLogEntry,

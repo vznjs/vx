@@ -96,6 +96,7 @@ export {
   type PluginContext,
   type PluginHookHandlers,
   type PluginHookName,
+  type BaseContext,
   type PluginSetupContext,
   type RunReport,
   type RunReportTask,
@@ -142,7 +143,9 @@ export { LOG_WIRE_VERSION, TaskLogBuffer } from './task-log-buffer.js'
 export type { TaskLogBundle, TaskLogEntry } from './task-log-buffer.js'
 export { assembleRunSummary, createTelemetrySource, TELEMETRY_SCHEMA_VERSION } from './telemetry.js'
 export type {
+  FailedAttempt,
   RunContextRecord,
+  RunStage,
   RunSummaryRecord,
   TaskTelemetry,
   TelemetryContext,

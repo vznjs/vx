@@ -504,7 +504,7 @@ export interface ArtifactTask {
 == type At (src/config.ts)
 type At<T, P extends PropertyKey> = T extends { readonly [Q in P]?: infer V } ? V : unknown
 == type BaseContext (src/orchestrator/plugin.ts)
-interface BaseContext {
+export interface BaseContext {
   readonly workspaceRoot: string
   readonly cacheDir: string
   warn(message: string): void

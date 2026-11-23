@@ -562,6 +562,11 @@ Cache-key derivation (`ComputeHashArgs`, `computeTaskHash`,
 `computeGroupKey`) moved to `src/orchestrator/task-hash.ts` —
 [`orchestrator.md`](#srcorchestratortask-hashts--cache-key-derivation).
 
+`FailedAttempt` (`attempt.ts`) is an attempt a retry replaced: when it
+ended, its exit code, and whether vx's `timeout` ended it. The façade
+exports it from `telemetry.ts`, where `TaskTelemetry.failedAttempts`
+carries the same shape.
+
 ### Three execution paths
 
 #### A. Group task (no `exec`)
@@ -3714,6 +3719,8 @@ is pre-folded, bigint wallclock spans are decimal strings.
   receiver can refuse what it cannot read.
 - `taskLogMasks` — each running task's secret mask, which
   `execute-task.ts` sets; `task.log` masks the live chunks again through it.
+- `FailedAttempt`, `RunStage` — the shapes of `TaskTelemetry.failedAttempts`
+  and `RunSummaryRecord.stages`, exported so a sink can name them.
 
 ### Records
 

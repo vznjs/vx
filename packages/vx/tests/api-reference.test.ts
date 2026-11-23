@@ -38,3 +38,39 @@ it('docs/api.md is what src/index.ts exports, with each doc comment', () => {
   if (process.env['VX_UPDATE_CONTRACT'] === '1') writeFileSync(PAGE, want)
   expect(readFileSync(PAGE, 'utf8')).toBe(want)
 })
+
+// A plugin author implements and reads these, so every type their
+// declarations name must be one `@vzn/vx` exports: `ExecuteResult` named
+// `SandboxViolation`, `ExecuteRequest` `CaptureConfig` and `TaskInputs`,
+// every hook context `BaseContext`, `Logger` `RunContext` and the telemetry
+// records `FailedAttempt` and `RunStage`, and none could be imported.
+const PLUGIN_FACING =
+  /^(VxPlugin|PluginHooks|\w+Context|TaskExecutor|Execute\w+|RemoteCacheLayer|PluginCache|TelemetrySink|TelemetryRecord|RunSummaryRecord|TaskTelemetry|Logger|RunReport\w*|WorkspaceConfig|ProjectConfig|TaskConfig|ExecConfig|RunSettings|SandboxConfig)$/
+// `Plugin` is the shape `WorkspaceConfig.plugins` holds, so the schema
+// needn't import the orchestrator: a plugin names `VxPlugin`.
+const GLOBALS = new Set(
+  'Plugin Map ReadonlyMap Set ReadonlySet Promise Record Readonly ReadonlyArray Partial Omit Pick Exclude Error Blob Response AbortSignal NodeJS ProcessEnv Uint8Array ReadableStream Bun ReturnType Iterable K'.split(
+    ' ',
+  ),
+)
+
+it('a plugin-facing declaration names only types the package exports', () => {
+  const entries = exportsOf(path.join(ROOT, 'src', 'index.ts'), ROOT)
+  const exported = new Set(entries.map((e) => e.name))
+  const missing: string[] = []
+  let checked = 0
+  for (const e of entries) {
+    if (!PLUGIN_FACING.test(e.name)) continue
+    checked += 1
+    // `ui.Inline` is reached through the exported `ui` namespace.
+    const code = e.text
+      .join('\n')
+      .replace(/'[^']*'|"[^"]*"|`[^`]*`/g, '')
+      .replace(/\bui\.\w+/g, '')
+    for (const [, t] of code.matchAll(/\b([A-Z][A-Za-z0-9]*)\b/g)) {
+      if (!exported.has(t!) && !GLOBALS.has(t!)) missing.push(`${e.name}: ${t}`)
+    }
+  }
+  expect(checked).toBeGreaterThan(20)
+  expect([...new Set(missing)].sort()).toEqual([])
+})
