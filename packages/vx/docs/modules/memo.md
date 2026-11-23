@@ -304,10 +304,9 @@ configs from the lock, so `configsEditedSinceLock` names the in-scope
 config files whose bytes moved since: the run refuses them with "run
 `vx lock`". Asked only while the lock's bytes are the stamped ones and the
 stamps are this workspace's (a pull, a clone or a cache dir another
-checkout shares asks nothing). Once HEAD moved since the stamp, a config
-whose bytes are HEAD's blob came with the commit (a comment-only edit a
-pull brings keeps the lock's bytes) and is not refused: CI's
-`vx lock --check` judges a commit. Read once per version of the file. The stat match only ever skips the read; a
+checkout shares asks nothing). A commit since changes nothing: a config
+edit committed with no `vx lock` is refused, and so is a pulled one whose
+commit kept the lock. Read once per version of the file. The stat match only ever skips the read; a
 refusal is decided by the file's bytes now, never by a memo (rule 9).
 
 ### Public surface
@@ -316,14 +315,9 @@ refusal is decided by the file's bytes now, never by a memo (rule 9).
 export interface ConfigStamps {
   at: number // epoch ms before the first stat: the racy window runs from here
   configs: Record<string, [number, number, string]>
-  head: string | null // the commit HEAD named when taken; null outside git
 }
 export const CONFIG_STAMPS_FILE = 'config-stamps.json' // a cache clear deletes it
-export function takeConfigStamps(
-  root: string,
-  files: readonly string[],
-  head: string | null,
-): Promise<ConfigStamps>
+export function takeConfigStamps(root: string, files: readonly string[]): Promise<ConfigStamps>
 export function writeConfigStamps(
   root: string,
   cacheDir: string,
@@ -334,7 +328,6 @@ export function configsEditedSinceLock(
   cacheDir: string,
   lock: string | undefined,
   files: readonly { file: string; size: number; mtimeMs: number }[],
-  head: () => string | null,
 ): Promise<string[]>
 ```
 

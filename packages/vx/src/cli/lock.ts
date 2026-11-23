@@ -18,7 +18,6 @@ import {
   acquireRunLock,
   addedByPlugin,
   applyGraphStage,
-  captureGitContext,
   claimedDigests,
   lockDiscovery,
   fingerprintClaims,
@@ -250,7 +249,6 @@ async function audit(root: string, warn: (message: string) => void): Promise<Gra
       taken: await takeConfigStamps(
         root,
         found.map((f) => f.configPath),
-        captureGitContext(root).commitSha,
       ),
     }
     // The one load that evaluates: every reader reads the lock this writes.

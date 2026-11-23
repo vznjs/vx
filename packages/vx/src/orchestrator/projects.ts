@@ -52,7 +52,6 @@ import { workspaceFile } from '../handoff.js'
 import { applyConfigHooks, applyDiscoverHooks, applyProjectHooks, hasHook } from './plugin-host.js'
 import type { BranchFacts, VxPlugin } from './plugin.js'
 import { freezeDeep, readOnly } from './read-only.js'
-import { captureGitContext } from './run-context.js'
 import { type ExtraHashes, withExtraHashes } from './lockfile-claim.js'
 
 /**
@@ -559,7 +558,6 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
                 ? [{ file: m.configPath, size: stats[i]!.size, mtimeMs: stats[i]!.mtimeMs }]
                 : [],
             ),
-            () => captureGitContext(workspaceRoot).commitSha,
           )
     if (edited.length > 0)
       throw new UserError(

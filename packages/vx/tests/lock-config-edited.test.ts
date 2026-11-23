@@ -120,8 +120,9 @@ describe('a config edited since vx lock', () => {
     expect(code).toBe(0)
   })
 
-  // A pull bringing a comment-only edit keeps the lock's bytes and passes
-  // CI's `--check`: the run refused it, though nothing was edited here.
+  // A config edit committed with no `vx lock` after it ran the locked
+  // config, green: its bytes were HEAD's, so it read as a pull's. Only a
+  // new lock beside it (a teammate's relocked commit) stops the asking.
   describe('after HEAD moved', () => {
     const commit = (message: string) => {
       git(root, 'add', '-A')
@@ -132,9 +133,25 @@ describe('a config edited since vx lock', () => {
       expect((await vx(root, ['lock'])).code).toBe(0)
     })
 
-    it("runs a config whose bytes are the new commit's", async () => {
-      await writeFile(file, `// a comment\n${config('before')}`)
-      commit('a comment, as a pull brings it')
+    it('refuses a config edit committed with no `vx lock`', async () => {
+      await writeFile(file, config('after'))
+      commit('an edit, not relocked')
+      const { code, out } = await vx(root, ['run', 'say', '--all'])
+      expect(code).toBe(1)
+      expect(out).toContain(
+        'packages/core/vx.config.mjs changed since the last `vx lock` — run `vx lock`',
+      )
+    })
+
+    it('runs a commit that brings the config and its lock together', async () => {
+      await writeFile(file, config('after'))
+      expect((await vx(root, ['lock'])).code).toBe(0)
+      commit('an edit, relocked')
+      const pulled = git(root, 'rev-parse', 'HEAD').trim()
+      git(root, 'reset', '-q', '--hard', 'HEAD~1')
+      // This machine stamps the old lock; the pull brings both files.
+      expect((await vx(root, ['lock'])).code).toBe(0)
+      git(root, 'merge', '-q', '--ff-only', pulled)
       const { code, out } = await vx(root, ['run', 'say', '--all'])
       expect(out).not.toContain('changed since the last `vx lock`')
       expect(code).toBe(0)
