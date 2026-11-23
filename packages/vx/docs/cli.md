@@ -3760,7 +3760,8 @@ A skipped task never ran and derived no key: its line is `skipped · no key`.
 A task whose key was not derived (a failed `inputs.runtime` probe) ran
 nothing either: `failed · no key`. With no key the verdict names the one
 cause the row records: what blocked a skip, a key not derived (`vx last <run>
---log <task>` prints the line vx said), or a persistent task.
+--log <task>` prints the line vx said), a hit whose restore failed, or a
+persistent task.
 
 **What to do and root cause.** Under the rows, `what to do` gives one line per changed kind: what
 moves it and how to stop a move the task does not need. An upstream

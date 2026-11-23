@@ -770,7 +770,12 @@ const OTHER_PLATFORM = 'needs another platform'
 
 /** A failure with no key that spawned nothing and is no server that never got ready: no command ran. */
 const keyNotDerived = (t: RunSummaryRow): boolean =>
-  t.status === 'failed' && t.hash === '' && t.wallclockStartNs === null && t.notReady === null
+  t.status === 'failed' &&
+  t.hash === '' &&
+  // A hit whose restore failed has no cache_hit either way; a key never derived, false.
+  t.cacheHit !== null &&
+  t.wallclockStartNs === null &&
+  t.notReady === null
 
 /** Hit rows shown before the rest fold — the slowest restores. */
 const HITS_SHOWN = 16

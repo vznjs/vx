@@ -520,9 +520,16 @@ export function latestRunId(db: Database, taskId: string): string | null {
 const keyNotDerived = (r: {
   hash: string
   status: string
+  cacheHit: number | null
   spawned: number | null
   notReady: string | null
-}): boolean => r.hash === '' && r.status === 'failed' && r.spawned === null && r.notReady === null
+}): boolean =>
+  r.hash === '' &&
+  r.status === 'failed' &&
+  // A hit whose restore failed leaves cache_hit NULL; a key never derived, 0.
+  r.cacheHit !== null &&
+  r.spawned === null &&
+  r.notReady === null
 
 /** Why a row holds no key (`hash = ''`), from what the row says: one cause, not a list to guess from. */
 function noKeyCause(
@@ -531,6 +538,7 @@ function noKeyCause(
   r: {
     hash: string
     status: string
+    cacheHit: number | null
     blockedBy: string | null
     spawned: number | null
     notReady: string | null
@@ -542,6 +550,8 @@ function noKeyCause(
       : `this task never ran: ${r.blockedBy} did not pass, so it recorded no cache key`
   if (keyNotDerived(r))
     return `this task's cache key could not be derived, so its command never ran (\`vx last ${runId} --log ${taskId}\` says why)`
+  if (r.status === 'failed' && r.cacheHit === null)
+    return 'this task hit the cache and its restore failed, so it recorded no cache key'
   return 'this task is persistent: it records no cache key'
 }
 
@@ -752,13 +762,14 @@ export function cacheKeyDiff(db: Database, runId: string, taskId: string): Cache
   const [project, task] = splitTaskId(taskId)
   const this_ = db
     .query(
-      'SELECT id, hash, cached, status, started_at AS startedAt, keyless_by AS keylessBy, blocked_by AS blockedBy, wallclock_start_ns AS spawned, not_ready AS notReady FROM runs WHERE run_id = ? AND project = ? AND task = ?',
+      'SELECT id, hash, cached, cache_hit AS cacheHit, status, started_at AS startedAt, keyless_by AS keylessBy, blocked_by AS blockedBy, wallclock_start_ns AS spawned, not_ready AS notReady FROM runs WHERE run_id = ? AND project = ? AND task = ?',
     )
     .get(runId, project, task) as
     | {
         id: number
         hash: string
         cached: number | null
+        cacheHit: number | null
         status: string
         startedAt: number
         keylessBy: string | null

@@ -92,6 +92,7 @@ of these exact sentences:
 | this task was skipped: it needs another platform, so it recorded no cache key | it waits for a worker of that platform |
 | this task never ran: … did not pass, so it recorded no cache key | a task it depends on failed or was skipped |
 | this task's cache key could not be derived, so its command never ran (…) | the line names the `vx last` command that shows why |
+| this task hit the cache and its restore failed, so it recorded no cache key | the restore was refused or failed; the line in its log says why |
 | this task is persistent: it records no cache key | a server or watcher has no key to compare |
 
 </details>

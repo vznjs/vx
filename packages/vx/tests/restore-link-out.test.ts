@@ -84,6 +84,9 @@ describe('restoring into an output directory that links out of the project', () 
       const last = await vx(root, ['last'])
       expect(last.text).toMatch(/^ +failed  — .* app#build  cache restore failed$/m)
       expect(last.text).not.toMatch(/miss|executed/)
+      // …and vx why names the restore, not a key never derived.
+      const why = await vx(root, ['why', 'app#build'])
+      expect(why.text).toContain('this task hit the cache and its restore failed')
 
       // CONTROL: a link that stays inside the project is written through.
       const inside = path.join(appDir, 'real-out')
