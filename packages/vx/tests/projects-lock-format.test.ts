@@ -314,3 +314,75 @@ it('refuses a pool pointer cut short or written twice, so a reader sees the body
   writeFileSync(p, `${twice.join('\n')}\n`)
   expect(readLockfile(root)).rejects.toThrow('run `vx lock`')
 })
+
+it('a `__proto__` project or task reads back as an entry, never the prototype', async () => {
+  // JSON.parse makes `__proto__` an own key, as a config's evaluation can.
+  const projects = JSON.parse(
+    JSON.stringify({
+      a: project('a', { PROTO: build, build }),
+      PROTO: project('p', { lint }),
+    }).replace(/"PROTO"/g, '"__proto__"'),
+  ) as Record<string, LockedProject>
+  writeFileSync(path.join(root, '.vx/projects.lock'), lockfileWrite(root, lock(projects)).text)
+  const read = (await readLockfile(root))!
+  expect(Object.getPrototypeOf(read.projects)).toBe(Object.prototype)
+  expect(Object.keys(read.projects).sort()).toEqual(['__proto__', 'a'])
+  expect(Object.hasOwn(read.projects['a']!.config!.tasks!, '__proto__')).toBe(true)
+  expect(Object.getPrototypeOf(read.projects['a']!.config!.tasks!)).toBe(Object.prototype)
+  expect(({} as Record<string, unknown>)['exec']).toBeUndefined()
+})
+
+it('a lock a merge or a hand edit broke reads as VX_E_LOCK, never another error', async () => {
+  const text = lockfileWrite(
+    root,
+    lock({
+      a: project('a', { build, lint, '"q': test }),
+      'b/c': project('#b', { build }, { file: 'vx.config.mjs' }),
+      d: { name: 'd', by: 'plug', config: { tasks: { t: lint } } as ProjectConfig },
+    }),
+  ).text
+  const lines = text.split('\n')
+  // Seeded: a failure names the same edit on every run.
+  let seed = 7
+  const rnd = (k: number): number => {
+    seed = (seed * 1103515245 + 12345) % 2 ** 31
+    return seed % k
+  }
+  const wrong: string[] = []
+  for (let i = 0; i < 1500; i++) {
+    const ls = [...lines]
+    const at = rnd(ls.length)
+    const s = ls[at]!
+    const p = rnd(s.length + 1)
+    switch (rnd(5)) {
+      case 0:
+        ls.splice(at, 1)
+        break
+      case 1:
+        ls.splice(at, 0, ls[rnd(ls.length)]!)
+        break
+      case 2: {
+        const b = rnd(ls.length)
+        ;[ls[at], ls[b]] = [ls[b]!, s]
+        break
+      }
+      case 3:
+        ls[at] = s.slice(0, p) + '\t#"{\n'[rnd(5)]! + s.slice(p)
+        break
+      default:
+        ls[at] = s.slice(0, p) + s.slice(p + 1)
+    }
+    writeFileSync(path.join(root, '.vx/projects.lock'), ls.join('\n'))
+    try {
+      const read = await readLockfile(root)
+      for (const [dir, p] of Object.entries(read?.projects ?? {}))
+        for (const t of Object.values(p.config?.tasks ?? {}))
+          if (typeof t !== 'object' || t === null || dir.startsWith('/') || dir.includes('..'))
+            wrong.push(ls.join('\n'))
+    } catch (err) {
+      if ((err as { code?: string }).code !== 'VX_E_LOCK')
+        wrong.push(`${String(err)}\n${ls.join('\n')}`)
+    }
+  }
+  expect(wrong.slice(0, 1)).toEqual([])
+})

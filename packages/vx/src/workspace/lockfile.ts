@@ -346,6 +346,7 @@ function decoded(text: string): Decoded {
     if (typeof dir !== 'string' || !isLockKey(dir))
       throw new UserError(
         `${LOCKFILE_NAME}: "${String(dir)}" is not a directory under the workspace root — re-run \`vx lock\``,
+        'VX_E_LOCK',
       )
     if (Object.hasOwn(projects, dir)) throw malformed(dir)
     const { by } = entry
