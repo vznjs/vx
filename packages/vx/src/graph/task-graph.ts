@@ -942,11 +942,11 @@ function refuseNestedGlobs(
             side === 'inputs'
               ? `${n.id} reads ${JSON.stringify(g)} in inputs.files, which lies inside the project ` +
                   `${hit.name}: a project's globs never reach another project's files, so it keys ` +
-                  `nothing. Depend on a ${hit.name} task, or name the files in inputs.workspaceFiles ` +
+                  `nothing. Depend on a task of ${hit.name}, or name the files in inputs.workspaceFiles ` +
                   `(${JSON.stringify(rel)}).`
               : `${n.id} writes ${JSON.stringify(g)} in outputs.files, which lies inside the project ` +
                   `${hit.name}: a project's globs never reach another project's files, so it saves ` +
-                  `nothing. Let a ${hit.name} task write them, or name them in outputs.workspaceFiles ` +
+                  `nothing. Let a task of ${hit.name} write them, or name them in outputs.workspaceFiles ` +
                   `(${JSON.stringify(rel)}).`,
             side === 'inputs' ? 'VX_E_NESTED_INPUT' : 'VX_E_NESTED_OUTPUT',
           )

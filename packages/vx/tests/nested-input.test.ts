@@ -61,6 +61,7 @@ describe('an input under a nested project', () => {
       'packages/a#build reads "dist/**" in inputs.files, which lies inside the project packages/a/dist',
     )
     expect(msg).toContain('inputs.workspaceFiles ("packages/a/dist/**")')
+    expect(msg).toContain('Depend on a task of packages/a/dist, or name')
   })
 
   it('is refused as a literal file and as the directory itself', async () => {
@@ -90,6 +91,7 @@ describe('an output under a nested project', () => {
       'packages/a#build writes "dist/o/**" in outputs.files, which lies inside the project packages/a/dist',
     )
     expect(msg).toContain('outputs.workspaceFiles ("packages/a/dist/o/**")')
+    expect(msg).toContain('Let a task of packages/a/dist write them')
   })
 
   it('is refused in one alternative of a brace', async () => {
