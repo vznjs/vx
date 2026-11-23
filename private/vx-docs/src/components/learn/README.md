@@ -105,6 +105,7 @@ execution, plugins) and ends with `<NextStep>` to the next chapter.
 | `<TaskGraph task? mode?>` (`../play/`) | the story's tasks as a picture: click one to see what runs first, in waves; edit a file to see what reruns | `mode="order"` (default) or `"rerun"`; `import { TaskGraph } from '../../../components/play'` |
 | `<GlobTester mode? project? patterns?>` (`../play/`) | type `inputs.files` / `outputs.files` globs over the story tree: what matches, what is git-ignored, what is out of reach; outputs: literal required, wildcard optional | `mode="inputs"` (default) or `"outputs"`; `import { GlobTester } from '../../../components/play'` |
 | `<RunTimeline concurrency? fail?>` (`../play/`) | one `vx run build test lint` as lanes: slots, what waits, a failure skipping only its dependents vs `--fail-fast` | `fail="@demo/ui#build"`; `import { RunTimeline } from '../../../components/play'` |
+| `<ConfigExplorer area? field?>` (`../play/`) | every config field as a clickable file: what it does, type, default, example, link to the reference; words come from schema.md | `area="task"` (default), `"project"`, `"workspace"`; `field="exec.timeout"`; `import { ConfigExplorer } from '../../../components/play'` |
 
 Real output stays ` ```ansi ` pasted from a real run (docs guide M4, M10).
 A Walkthrough frame is the place to put two outputs the reader compares.

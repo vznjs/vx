@@ -52,6 +52,14 @@ const IMPORTED = [
 // so no key read them before either.
 const NOT_GENERATED = [...IMPORTED, 'public/_img/**', 'dist/**'].map((g) => `!${g}`)
 
+// The config explorer (src/components/play/ConfigExplorer.astro) reads every
+// field the validator accepts and the reference's words about each, at build time.
+const CONFIG_EXPLORER = [
+  'packages/vx/docs/schema.md',
+  'packages/vx/tests/contract/config-schema.json',
+]
+const CONFIG_EXPLORER_READ = CONFIG_EXPLORER.map((p) => `../../${p}`)
+
 // Under Bun, prerender included: the `build.astro` task says why.
 const ASTRO_BUILD =
   'mkdir -p .astro/bin && ln -sf "$(command -v bun)" .astro/bin/node && PATH="$PWD/.astro/bin:$PATH" bun --bun astro build'
@@ -246,6 +254,8 @@ export default defineProject({
               // reference-pages.test.ts maps the one-page references' ids to their pages.
               '../../packages/vx/docs/cli.md',
               '../../packages/vx/docs/schema.md',
+              // play-config-explorer.test.ts reads the validator's fields.
+              '../../packages/vx/tests/contract/config-schema.json',
               REAL_ROWS_READ,
             ],
             systemInfo: ['vfs.disk-space'],
@@ -259,6 +269,8 @@ export default defineProject({
           // The compare pins import the widgets' model to hold the built
           // pages to it.
           'src/components/demos/model/**',
+          // play-*.test.ts hold the playgrounds' models (and their markup helpers).
+          'src/components/play/model/**',
           // The figures' formatter and the data the pages are held to.
           'src/bench/**',
           'src/data/bench.json',
@@ -289,6 +301,7 @@ export default defineProject({
           ...PROOFS,
           'packages/vx/docs/cli.md',
           'packages/vx/docs/schema.md',
+          'packages/vx/tests/contract/config-schema.json',
           REAL_ROWS,
         ],
       },
@@ -356,7 +369,7 @@ export default defineProject({
         env: { define: { ASTRO_TELEMETRY_DISABLED: '1' } },
         sandbox: {
           allow: {
-            read: ['**/*', REAL_ROWS_READ],
+            read: ['**/*', REAL_ROWS_READ, ...CONFIG_EXPLORER_READ],
             // astro's and vite's caches live under `.astro/` (astro.config.mjs),
             // never under node_modules: a write grant there makes the sandbox
             // punch the read grant into node_modules' children, and bwrap
@@ -378,7 +391,7 @@ export default defineProject({
       // `packages/`, so a docs edit never re-keyed the build.
       inputs: {
         files: ['**/*', ...NOT_GENERATED],
-        workspaceFiles: [REAL_ROWS],
+        workspaceFiles: [REAL_ROWS, ...CONFIG_EXPLORER],
       },
       outputs: { files: ['dist/**'] },
       cache: true,
@@ -412,7 +425,7 @@ export default defineProject({
         },
         sandbox: {
           allow: {
-            read: ['**/*', REAL_ROWS_READ],
+            read: ['**/*', REAL_ROWS_READ, ...CONFIG_EXPLORER_READ],
             write: [
               'measured/live.json',
               'measured/live-conformance.json',
@@ -481,7 +494,7 @@ export default defineProject({
         timeout: '2m',
         sandbox: {
           allow: {
-            read: ['**/*', REAL_ROWS_READ],
+            read: ['**/*', REAL_ROWS_READ, ...CONFIG_EXPLORER_READ],
             write: ['.astro/**'],
             systemInfo: ['vfs.disk-space', 'net.link.addr'],
             machLookup: ['com.apple.SystemConfiguration.DNSConfiguration'],
