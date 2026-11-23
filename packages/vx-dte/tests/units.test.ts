@@ -40,7 +40,7 @@ import { nestedIn, Orchestrator, runKey } from '../src/orchestrator.js'
 import type { Need, PlanTask, Size } from '../src/plan/model.js'
 import { advise } from '../src/plan/advise.js'
 import { playAside } from '../src/replays.js'
-import { Planner } from '../src/plan/planner.js'
+import { Planner, type PlannerSize } from '../src/plan/planner.js'
 import { names, outputFiles } from '../src/outputs.js'
 import { Usage } from '../src/usage.js'
 import { join, RelayError } from '../src/wire.js'
@@ -1074,6 +1074,9 @@ async function harness(
     learnedOther?: (size: string) => number | undefined
     warmUp?: (size: string) => number | undefined
     starts?: Map<string, number>
+    /** Sizes the plan may ask, each ask started through `spawn`. */
+    sizes?: PlannerSize[]
+    spawn?: (size: string) => string
   } = {},
 ) {
   const store = fakeArtifacts()
@@ -1095,7 +1098,7 @@ async function harness(
       (planner ??= new Planner({
         nodes,
         platform: (n) => n.platform ?? more.home ?? '',
-        sizes: [],
+        sizes: more.sizes ?? [],
         known: (id) => {
           const c = need(id).cores
           return { ms: tail?.(id), cores: Number.isFinite(c) ? c : undefined }
@@ -1918,6 +1921,44 @@ it('an idle worker that faulted is let go', async () => {
     await h.stop()
   }
 })
+
+// A worker that faulted a task, or dropped one it began, failed the run at
+// once when it was the only one, its sizes allowing more: a lost worker was
+// replaced, as the plan asked again before the run counted who is left.
+for (const how of ['fault', 'report'] as const)
+  it(`the only worker ${how === 'fault' ? 'faulting a task' : 'dropping a task it began'} is replaced when its size allows another`, async () => {
+    const asked: string[] = []
+    let o: Orchestrator | undefined
+    const h = await harness(new Map([node('t1')]), undefined, 400, undefined, () => 1000, {
+      sizes: [{ name: 'small', max: 2, cores: 1, memory: 100, platform: '', warmUpMs: 10 }],
+      spawn: (size) => {
+        const id = `${size}#${asked.length + 1}`
+        o!.spawned(id, { size, cpu: 1, memory: 100 })
+        asked.push(id)
+        return id
+      },
+    })
+    o = h.o
+    try {
+      const t1 = h.o.execute(h.req('t1'))
+      for (let i = 0; i < 40 && asked.length === 0; i++) await Bun.sleep(25)
+      const a = await h.worker(1, 'small#1')
+      expect(await a.batches()).toEqual([['t1']])
+      await a.say(
+        how === 'fault'
+          ? { type: 'fault', task: 't1', reason: 'ENOSPC' }
+          : { type: 'report', running: [], batch: 1, load: { cpu: 0, memory: 0 } },
+      )
+      for (let i = 0; i < 40 && asked.length === 1; i++) await Bun.sleep(25)
+      expect(asked).toEqual(['small#1', 'small#2'])
+      const b = await h.worker(1, 'small#2')
+      expect(await b.batches()).toEqual([['t1']])
+      await b.finish('t1')
+      expect((await t1).exitCode).toBe(0)
+    } finally {
+      await h.stop()
+    }
+  })
 
 // Growth, 2026-10-21: four local() workers of 1 core on a 4-core host each
 // reported the host and took 4 tasks plus a prefetch, 16 wide on 4 cores.

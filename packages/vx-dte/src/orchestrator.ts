@@ -2043,6 +2043,8 @@ export class Orchestrator extends RunReport<Worker> {
             if (back.length > 0) {
               this.enqueue(back)
               this.o.faulted?.()
+              // Now, as a loss does: a worker the plan asks in its place keeps the run from stranding.
+              this.pump()
               if (this.spawnedAt.size > 0)
                 this.stranded(`${a.label} no longer runs a task it began and no worker is left`)
             }
@@ -2065,6 +2067,8 @@ export class Orchestrator extends RunReport<Worker> {
             this.begun(a, m.task)
             if (this.retry(a, j, m.reason) !== undefined) this.enqueue([j])
             if (a.faulty) this.o.faulted?.()
+            // Now, as a loss does: a worker the plan asks in its place keeps the run from stranding.
+            this.pump()
             if (a.faulty && this.spawnedAt.size > 0)
               this.stranded(
                 `${a.label} could not run ${m.task} (${m.reason}) and no worker is left`,
