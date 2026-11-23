@@ -3319,8 +3319,7 @@ export class UserError extends Error {
 const · `src/version.ts`
 
 ```ts
-export const VERSION: string =
-  typeof VX_RELEASE === 'string' && VX_RELEASE !== '' ? VX_RELEASE : pkg.version
+export const VERSION: string = pkg.version
 ```
 
 ## `VxPlugin`
