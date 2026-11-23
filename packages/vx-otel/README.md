@@ -227,7 +227,9 @@ is refused too, naming where it points: like the OTel SDK exporters,
 vx-otel follows none, since a header such as `x-honeycomb-team` would
 reach the new origin with it. The URL in that line is printed with any
 userinfo and query string replaced by `***`, so an endpoint that carries
-its credential in the URL does not leak it into a CI log. The run stays
+its credential in the URL does not leak it into a CI log, and a header
+value (or the credential after `Bearer `) the collector's message echoes is
+`***` too. The run stays
 green either way; a collector that
 takes too long is cut off by core's end-of-run deadline
 (3 s) with a line saying the buffered

@@ -210,7 +210,7 @@ async function postOnce(
     // nothing and said nothing, for every run (walked the adopter's path). The
     // body is the collector's own explanation, so a line of it rides the
     // message. quiet: the status alone still names the refusal
-    const text = await upTo(res, REPLY_BYTES).catch(() => '')
+    const text = hideHeaders(await upTo(res, REPLY_BYTES).catch(() => ''), headers)
     if (res.status >= 300 && res.status < 400) {
       const location = res.headers.get('location')
       const to = location === null ? null : URL.parse(location, url)
@@ -232,6 +232,29 @@ async function postOnce(
     clearTimeout(timer)
     deadline?.removeEventListener('abort', onDeadline)
   }
+}
+
+/** Shorter values are not hidden, as core masks none under 6 characters: each would blank common words. */
+const MIN_HIDDEN_CHARS = 6
+
+/**
+ * `text` with each header value the user gave written `***`, and the
+ * credential of a `<scheme> <credential>` one: a header is often the
+ * vendor's key, and a collector that echoed what it refused printed it in
+ * the warning. vx-otel's own `content-type` and `content-encoding` are no secret.
+ */
+function hideHeaders(text: string, headers: Record<string, string>): string {
+  const values = new Set<string>()
+  for (const [k, v] of Object.entries(headers)) {
+    if (k === 'content-type' || k === 'content-encoding') continue
+    values.add(v)
+    const credential = /^\S+\s+(\S+)$/.exec(v)?.[1]
+    if (credential !== undefined) values.add(credential)
+  }
+  let out = text
+  for (const v of [...values].sort((a, b) => b.length - a.length))
+    if (v.length >= MIN_HIDDEN_CHARS) out = out.replaceAll(v, '***')
+  return out
 }
 
 /**
