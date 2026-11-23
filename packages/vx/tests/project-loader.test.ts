@@ -1791,7 +1791,7 @@ for (const [name, said] of [
       )
       expect(err?.name).toBe('UserError')
       expect(err?.message).toBe(
-        `Project config ${file} sits under a path that holds ${said}, which Bun loads only as an ES module in UTF-8`,
+        `Project config ${file} sits under a path that holds ${said}, which Bun loads only as an ES module in UTF-8 — move the workspace to a path without one, or write the config as an ES module`,
       )
     })
   })

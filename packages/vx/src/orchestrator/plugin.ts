@@ -800,7 +800,10 @@ export function refuseUnknownOptions<T>(
 ): void {
   if (options === undefined) return
   if (options === null || typeof options !== 'object' || Array.isArray(options)) {
-    throw new UserError(`${factory}: options must be an object`)
+    const got = Array.isArray(options) ? 'an array' : (JSON.stringify(options) ?? String(options))
+    throw new UserError(
+      `${factory}: options must be an object of named options, as in { name: value }; got ${got}`,
+    )
   }
   const known = kinds as Readonly<Record<string, string>>
   const names = Object.keys(known)

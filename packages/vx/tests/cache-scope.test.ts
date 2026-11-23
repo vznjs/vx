@@ -488,7 +488,7 @@ describe('cache.policy', () => {
         // Framed at the field, as a schema refusal is.
         const bad = await refusal(`{ cache: { policy: 'local:x' } }`)
         expect(bad).toContain(
-          ".vx/workspace.mjs:1:27\n  `cache.policy` invalid flag 'x' for 'local': expected 'r' and/or 'w'",
+          ".vx/workspace.mjs:1:27\n  `cache.policy` invalid flag 'x' for 'local': expected 'r' and/or 'w', as in 'local:rw'",
         )
         expect(await refusal(`{ cacheScope: 'pr-1' }`)).toContain('unknown field "cacheScope"')
       } finally {

@@ -104,7 +104,7 @@ export async function showCmd(args: readonly string[]): Promise<number> {
   if (parsed.target === '//' || parsed.target?.startsWith('//#')) {
     if (rootMeta === undefined) {
       throw new UserError(
-        `vx show: "${parsed.target}" names the workspace root's project, and the root is no project here`,
+        `vx show: "${parsed.target}" names the workspace root's project, and the root is no project here — add a vx.config.ts at the root and run \`vx lock\` to make it one`,
         'VX_E_USAGE',
       )
     }

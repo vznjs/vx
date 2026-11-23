@@ -354,7 +354,7 @@ async function install(
       const missing = notServed(said)
       throw new UserError(
         missing === undefined
-          ? `vx init: ${s.argv.join(' ')} failed (exit ${code})`
+          ? `vx init: ${s.argv.join(' ')} failed (exit ${code}); its output is above — fix what it names, then run vx init again`
           : `vx init: the npm registry does not serve ${missing} yet (404), as a release can take minutes to reach it; run bunx @vzn/vx init again`,
       )
     }
