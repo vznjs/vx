@@ -405,6 +405,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'lock-checkout-path',
     'lock-config-cwd',
     'lock-config-edited',
+    'lock-config-sigint',
     'lock-discover-stage',
     'lock-graph-rules',
     'lock-help',

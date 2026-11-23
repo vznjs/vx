@@ -3,6 +3,7 @@ import path from 'node:path'
 import type { ProjectConfig, WorkspaceConfig } from '../config.js'
 import {
   ConfigsRefused,
+  exitClaimedBySignal,
   isUserError,
   REAL_STDOUT_WRITE,
   UserError,
@@ -342,7 +343,10 @@ function guardExit(): () => void {
     if (--evaluating === 0) process.exit = ownExit
   }
 }
+// A stop signal's handler (Ctrl-C mid-load) exits through here too: its
+// exit is vx's, not the config's.
 const configExit = ((code?: number | string | null) => {
+  if (exitClaimedBySignal()) return ownExit(code)
   throw new Error(`process.exit(${code ?? ''}) in a config: ${CONFIG_EXIT}`)
 }) as typeof process.exit
 
