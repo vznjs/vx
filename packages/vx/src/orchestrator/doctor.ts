@@ -40,6 +40,7 @@ import {
 } from '../sandbox/index.js'
 import {
   findWorkspaceRoot,
+  lockedDependencies,
   lockfilePath,
   resolveCacheDir,
   resolveStoreRoot,
@@ -237,14 +238,17 @@ async function collectWorkspaceInfo(
   // A lock a run refuses is said, not swallowed: "projects lock yes" with no
   // task hid why every run failed.
   let refused: string | null = null
-  const held = await lock().then(
-    () => true,
-    (err: unknown) => {
-      if (!isUserError(err)) throw err
-      refused = err.message
-      return false
-    },
-  )
+  const held = await lock()
+    // The graph beside it too: a conflicted dependencies lock refused the whole report.
+    .then(lockedDependencies)
+    .then(
+      () => true,
+      (err: unknown) => {
+        if (!isUserError(err)) throw err
+        refused = err.message
+        return false
+      },
+    )
   const metas = held ? await discoverProjects(root, lock) : []
   const storeRoot =
     opts.cacheDir === undefined ? await resolveStoreRoot(root, workspaceConfig) : null

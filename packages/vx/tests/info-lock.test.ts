@@ -126,4 +126,20 @@ describe('vx info reads the lock', () => {
     expect(vx(root, 'lock').code).toBe(0)
     expect(JSON.parse(vx(root, 'info', '--format', 'json').out)['lockError']).toBe(null)
   })
+
+  // A merge that clashed in the dependencies lock alone refused `vx info`
+  // whole, exit 1, where a clashed projects lock is reported (2026-11-23).
+  it('a conflicted dependencies lock is said, not a refusal of the report', async () => {
+    const root = await workspace()
+    expect(vx(root, 'lock').code).toBe(0)
+    const deps = path.join(root, '.vx', 'dependencies.lock')
+    const text = await Bun.file(deps).text()
+    await writeFile(deps, `<<<<<<< HEAD\n${text}=======\n${text}>>>>>>> theirs\n`)
+    const r = vx(root, 'info', '--format', 'json')
+    const facts = JSON.parse(r.out) as Record<string, unknown>
+    expect([r.code, facts['lockError']]).toEqual([
+      0,
+      '.vx/dependencies.lock holds a git merge conflict: run `vx lock`, which writes it anew from the configs',
+    ])
+  })
 })
