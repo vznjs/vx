@@ -688,7 +688,11 @@ export function defaultLogger(
   }
   // Live-frame close lines end a frame the same way emitBlock does:
   // with a trailing blank line, resetting the separator state.
+  // Live frames open now: a warning said inside one is a line of it, not a
+  // panel (a "Warnings" header printed between a task's output and its close).
+  let liveFrames = 0
   const emitFrameClose = (line: string): void => {
+    liveFrames = Math.max(0, liveFrames - 1)
     taskWrite(`${line}\n\n`)
     lineEmitted = false
     streamedSinceBlock = false
@@ -783,7 +787,7 @@ export function defaultLogger(
     warn(line) {
       flushKept()
       endStreamLine()
-      if (!colors.enabled) {
+      if (!colors.enabled || liveFrames > 0) {
         writer.writeTo(errOut, `${ui.tagged('warn', line, colors)}\n`)
         return
       }
@@ -853,6 +857,7 @@ export function defaultLogger(
         // Open the live frame: full task info even when the command
         // streams nothing (or the hit replays nothing).
         emitLine(formatFrameOpen(node, colors, forwardArgs))
+        liveFrames++
       } else if (node.config.exec?.persistent !== undefined && !persistentTails.has(node.id)) {
         // Bound a persistent task's output from its FIRST chunk. Waiting for
         // its outcome would leave a never-ready one uncapped forever.

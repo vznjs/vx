@@ -25,10 +25,17 @@ function literals(dir: string): Map<string, string> {
   return out
 }
 
+// Set on every task and never read back by vx's own process: a stop finds it
+// in other processes' environments (exec/kill-tree.ts), and cli.md says so
+// beside the table of what vx reads.
+const SET_ONLY = new Set(['VX_RUN_TREE'])
+
 it("every quoted 'VX_*' name in core's source is a read the reader finds", () => {
   const reads = readInSource()
   const quoted = literals(SRC)
   expect(quoted.size).toBeGreaterThan(5)
-  const unread = [...quoted].filter(([name]) => !reads.has(name)).map(([n, f]) => `${f}: ${n}`)
+  const unread = [...quoted]
+    .filter(([name]) => !reads.has(name) && !SET_ONLY.has(name))
+    .map(([n, f]) => `${f}: ${n}`)
   expect(unread).toEqual([])
 })

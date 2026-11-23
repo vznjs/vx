@@ -3926,7 +3926,8 @@ footer gave a reason, the row ends with it instead: `timed out`,
 `inputs.stability.severity: 'error'` failure, read from its kept output),
 `2 sandbox violations`, and for a skipped task
 `after lib#build failed` (the v27 columns; rows older than them read
-as before), or, for a platform skip, `needs another platform` and
+as before), `after lib#test did not pass` behind a task with no row (one
+`--fail-fast` stopped: history keeps none), or, for a platform skip, `needs another platform` and
 `after ios#build skipped: needs another platform`. A task that retried
 ends with its attempts, `2 attempts`, passed or failed (`attempts` in
 `--format json`, null for a task run once). A task whose key met a remote failure ends with it, read or
@@ -4345,11 +4346,15 @@ what a TASK sees is `exec.env` in `docs/schema.md`.
 
 <!-- /variables table -->
 
-vx sets two variables on every task's environment: `VX_RUN_WORKSPACE`
-(the workspace root) and `VX_RUN_TASK` (`project#task`). A `vx run` a
-task starts reads them back: one in the same workspace is refused, since
-a nested run is invisible to the outer graph and a loop back to its own
-task forks without bound (`docs/schema.md` § `env`).
+vx sets three variables on every task's environment: `VX_RUN_WORKSPACE`
+(the workspace root), `VX_RUN_TASK` (`project#task`) and `VX_RUN_TREE`
+(a token per spawn). A `vx run` a task starts reads the first two back:
+one in the same workspace is refused, since a nested run is invisible to
+the outer graph and a loop back to its own task forks without bound
+(`docs/schema.md` § `env`). A stop (Ctrl-C, `--fail-fast`, a server's end)
+signals every process holding the task's `VX_RUN_TREE`, so a daemon that
+left the task's process group with `setsid` goes with it
+(`docs/execution.md`).
 
 Colors are the two conventions in § Output format › Colors (`NO_COLOR`,
 `FORCE_COLOR`), and a CI turns them on. A truthy `CI` picks the CI output flow and

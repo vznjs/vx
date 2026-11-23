@@ -25,13 +25,16 @@ import {
   groupOutlives,
   holdGroups,
   killTree,
+  markTree,
   releaseGroup,
   releaseServerGroup,
   signalThrough,
   guardLine,
   spawnGuarded,
   runTime,
+  treeToken,
   untilGroupsGone,
+  VX_RUN_TREE_ENV,
 } from './kill-tree.js'
 import { type TreeUsage, watchTree } from './proc-sample.js'
 import { TaskPipes } from './pipes.js'
@@ -594,12 +597,14 @@ export function armTimeout(
   const timer = afterRunTime(timeoutMs, fire)
   function fire(): void {
     firedAt = performance.now()
-    killTree(proc, 'SIGTERM')
+    // Its group only: the run goes on, and a daemon it left its group with may
+    // serve another task (kill-tree.ts).
+    killTree(proc, 'SIGTERM', false)
     // Escalate to SIGKILL after a grace: a child that ignores SIGTERM would
     // otherwise hang the run forever (there is no run-level timeout). Unref'd.
     killTimer = setTimeout(() => {
       sigkilled = true
-      killTree(proc, 'SIGKILL')
+      killTree(proc, 'SIGKILL', false)
     }, graceMs)
     killTimer.unref?.()
   }
@@ -611,7 +616,7 @@ export function armTimeout(
       if (killTimer !== undefined) clearTimeout(killTimer)
       if (firedAt === undefined) return
       const left = await untilGroupsGone([proc], Math.max(0, firedAt + graceMs - performance.now()))
-      for (const child of left) killTree(child, 'SIGKILL')
+      for (const child of left) killTree(child, 'SIGKILL', false)
       if (left.length > 0) sigkilled = true
     },
   }
@@ -906,6 +911,9 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
   let child: ReturnType<typeof Bun.spawn>
   const pipes = new TaskPipes(opts.terminal, true)
   const restoreModes = opts.terminal === true ? keepTerminalModes() : undefined
+  // What the server starts carries it: a stop finds what left its group. Not
+  // a Linux sandboxed one's (kill-tree.ts, `markTree`).
+  const tree = opts.signalChannel === true ? undefined : treeToken()
   try {
     const signalFd = opts.signalChannel === true
     child = spawnGuarded((guard) =>
@@ -916,7 +924,10 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
         {
           ...SH_ARGV0,
           cwd: opts.cwd,
-          env: opts.env as Record<string, string>,
+          env: (tree === undefined ? opts.env : { ...opts.env, [VX_RUN_TREE_ENV]: tree }) as Record<
+            string,
+            string
+          >,
           // A pipe vx holds and never writes, so stdin ends only with vx: a dev
           // server exiting on stdin EOF (esbuild --watch, turborepo#8915)
           // exited 0 under 'ignore'. Not the terminal unless asked: several
@@ -934,6 +945,7 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
         },
       ),
     )
+    if (tree !== undefined) markTree(child, tree)
     if (restoreModes !== undefined) void child.exited.then(restoreModes)
     if (signalFd) {
       signalThrough(child, child.stdio[3] as number)
@@ -1264,9 +1276,12 @@ export async function runCommand(opts: RunOptions): Promise<RunResult> {
   // (docs/design/peak-memory-exact-2026-11.md). Resolved before the spares
   // start, which take it without waiting.
   const measure = process.platform === 'linux' ? await measureHelper() : undefined
+  // What the command starts carries it: a stop finds what left its group.
+  const tree = treeToken()
+  const env = { ...opts.env, [VX_RUN_TREE_ENV]: tree }
   // A spare shell takes the task when there is one (warm-shell.ts).
   const script =
-    opts.terminal === true ? undefined : spareScript(opts.cwd, opts.env, execWrap(fullCommand))
+    opts.terminal === true ? undefined : spareScript(opts.cwd, env, execWrap(fullCommand))
   const spare = script === undefined ? undefined : takeSpare()
   const onSpare = spare === undefined ? undefined : await runOnSpare(spare, script!)
   const pipes = onSpare === undefined ? new TaskPipes(opts.terminal) : spare!.pipes
@@ -1282,7 +1297,7 @@ export async function runCommand(opts: RunOptions): Promise<RunResult> {
       const spawnOpts = {
         ...SH_ARGV0,
         cwd: opts.cwd,
-        env: opts.env as Record<string, string>,
+        env: env as Record<string, string>,
         detached: true,
       }
       // Descriptors cross to the spawn thread; Bun's own pipes (macOS) and a
@@ -1323,6 +1338,7 @@ export async function runCommand(opts: RunOptions): Promise<RunResult> {
       pipes.spawned()
     }
 
+  markTree(proc, tree)
   opts.liveChildren?.add(proc)
   // The spawn is awaited while the command runs: a stop landing then swept a
   // live set without it, and the run waited out the command. Awaited before

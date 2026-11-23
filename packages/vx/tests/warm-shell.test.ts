@@ -36,7 +36,8 @@ describe.skipIf(!linux)('a task runs in a shell started before it', () => {
   })
 
   it('hands the task the env, directory and descriptors a fresh shell would', async () => {
-    const probe = 'env | sort; pwd; ls /proc/self/fd; echo $0'
+    // The tree token is fresh per spawn (kill-tree.ts).
+    const probe = 'env | grep -v ^VX_RUN_TREE= | sort; pwd; ls /proc/self/fd; echo $0'
     const warm = await runCommand({ command: probe, cwd, env })
     // An env name sh cannot export keeps a task off the spare: it spawns.
     const spy = spyOn(spawnOffModule, 'spawnOff')

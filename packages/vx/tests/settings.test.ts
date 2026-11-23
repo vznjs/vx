@@ -36,6 +36,7 @@ const SRC = path.join(ROOT, 'src')
 const TASK_MARKERS = [
   'VX_RUN_WORKSPACE',
   'VX_RUN_TASK',
+  'VX_RUN_TREE',
   'VX_HANDED_OFF',
   'VX_SIGNAL_RELAY',
   'VX_JIT_TIERED',
