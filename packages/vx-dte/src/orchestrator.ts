@@ -1666,6 +1666,10 @@ export class Orchestrator extends RunReport<Worker> {
         projectDir: node?.projectDir ?? job.req.cwd,
         command: job.req.command,
         outputs: job.req.outputs,
+        env: job.req.env,
+        ...(node?.config.exec?.env?.secret === undefined
+          ? {}
+          : { secret: node.config.exec.env.secret }),
       })
     // A remote-only task's files stay off this disk: an install's
     // node_modules laid over this machine's own (schema: `'only'`). A

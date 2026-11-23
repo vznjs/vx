@@ -144,6 +144,8 @@ export interface ArtifactTask {
     readonly workspaceFiles: readonly string[]
   }
   readonly nestedProjectDirs?: readonly string[]
+  readonly env?: Readonly<Record<string, string | undefined>>
+  readonly secret?: readonly string[]
   readonly others?: ReadonlySet<string>
 }
 ```
