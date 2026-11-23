@@ -9,7 +9,7 @@ import { cacheOrder, executorChoice } from '../../../components/docs/pictures/wr
 import { Aside, Steps } from '@astrojs/starlight/components'
 import { Levels, Deeper, Concept, Quiz, Walkthrough, Frame, Compare, Takeaway, NextStep } from '../../../components/learn'
 
-Teach vx something new from one file. This plugin gives every project with a `vitest.config.ts` a `test` task, so no config has to list it:
+Teach vx something new from one file. This plugin gives every project with a `vite.config.ts` a `test` task, so no config has to list it:
 
 ```ts
 // plugins/vitest.ts
@@ -19,11 +19,11 @@ import { definePlugin, type VxPlugin } from '@vzn/vx'
 export function vitest(): VxPlugin {
   return definePlugin(import.meta, {
     async project(config, ctx) {
-      if (!(await Bun.file(path.join(ctx.dir, 'vitest.config.ts')).exists())) return
+      if (!(await Bun.file(path.join(ctx.dir, 'vite.config.ts')).exists())) return
       config.tasks ??= {}
       config.tasks['test'] ??= {
         exec: { command: 'vitest run' },
-        inputs: { files: ['src/**', 'vitest.config.ts'] },
+        inputs: { files: ['src/**', 'vite.config.ts'] },
         outputs: { files: [] },
         cache: true,
       }
@@ -41,7 +41,7 @@ export function vitest(): VxPlugin {
 
 ## Write one
 
-Follow the plugin above from a file to a task that runs. The workspace is `@demo/web` and `@demo/ui`, each with a `vitest.config.ts` and no `test` task.
+Follow the plugin above from a file to a task that runs. Take `test` out of `packages/ui` and `packages/web`; both keep their `vite.config.ts`.
 
 <Walkthrough title="From one file to a new task">
 <Frame title="1. List it in the workspace">
@@ -77,7 +77,7 @@ vx show @demo/web#test
 [4m[58;2;110;118;129m  [1m[38;2;167;139;250m@demo/web#test[0m[4m[58;2;110;118;129m[0m
   [2mdir          [0m  [38;2;203;213;225mpackages/web[0m
   [2mcommand      [0m  [38;2;203;213;225mvitest run[0m
-  [2minputs.files [0m  [38;2;203;213;225msrc/**, vitest.config.ts[0m
+  [2minputs.files [0m  [38;2;203;213;225msrc/**, vite.config.ts[0m
   [2moutputs.files[0m  [38;2;203;213;225mnone[0m
   [2mcache        [0m  [38;2;203;213;225myes[0m
 ```
@@ -93,9 +93,9 @@ vx run test --all
 
 ```ansi
 [4m[58;2;110;118;129m  [1m[38;2;167;139;250mTasks[0m[4m[58;2;110;118;129m     [2mstatus  cache     ±usual    time   cpu    mem outputs  blocks worker         task[0m[4m[58;2;110;118;129m[0m
-            [38;2;34;197;94msuccess[0m [2mmiss[0m       [2m−62ms[0m   [38;2;203;213;225m724ms[0m  [2m149%[0m  [2m263MB[0m      [2m0B[0m       [2m0[0m [2mlocal[0m          [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;96;165;250mtest[0m
-            [38;2;34;197;94msuccess[0m [2mmiss[0m       [2m−21ms[0m   [38;2;203;213;225m752ms[0m  [2m138%[0m  [2m252MB[0m      [2m0B[0m       [2m0[0m [2mlocal[0m          [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;96;165;250mtest[0m
-2 tasks · [32m0 failed[39m · 0 cached · 780ms
+            [38;2;34;197;94msuccess[0m [2mmiss[0m        [2m−1ms[0m   [38;2;203;213;225m751ms[0m  [2m143%[0m  [2m273MB[0m      [2m0B[0m       [2m0[0m [2mlocal[0m          [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;96;165;250mtest[0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m       [2m+30ms[0m   [38;2;203;213;225m754ms[0m  [2m133%[0m  [2m258MB[0m      [2m0B[0m       [2m0[0m [2mlocal[0m          [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;96;165;250mtest[0m
+2 tasks · [32m0 failed[39m · 0 cached · 805ms
 ```
 
 Both projects ran `vitest run`. The task is cached like any task you write by hand.
@@ -351,12 +351,12 @@ Bump Node in `.tool-versions`, build again, and ask why it ran:
 
 ```ansi title="vx why @demo/web#build"
 [4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhy[0m[4m[58;2;110;118;129m [2m@demo/web#build[0m[4m[58;2;110;118;129m[0m
-  [2mrun     [0m  [38;2;203;213;225m01a209c2-e56f-7184-aa62-85a756484448[0m
-  [2mthis run[0m  [38;2;203;213;225m2026-11-23T18:54:57.412Z · success · executed · key fdb0c356815e28c7[0m
-  [2mprevious[0m  [38;2;203;213;225m2026-11-23T18:54:56.807Z · success · executed · key c0eeb8b9cd0f6683[0m
+  [2mrun     [0m  [38;2;203;213;225m01a20a06-2475-7075-a986-2a057eccef34[0m
+  [2mthis run[0m  [38;2;203;213;225m2026-11-23T20:08:24.461Z · success · executed · key 17c6bdc3ca86253d[0m
+  [2mprevious[0m  [38;2;203;213;225m2026-11-23T20:08:24.258Z · cache-hit · up-to-date · key d0a028d591da6448[0m
   [2mverdict [0m  [38;2;234;179;8mcache key changed: plugin demo/.tool-versions[0m
 
-[4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhat changed[0m[4m[58;2;110;118;129m [2m1 of 7[0m[4m[58;2;110;118;129m[0m
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhat changed[0m[4m[58;2;110;118;129m [2m1 of 10[0m[4m[58;2;110;118;129m[0m
   [2mchange   kind    name                 before → after[0m
   [38;2;234;179;8mchanged[0m  [38;2;203;213;225mplugin[0m  [1mdemo/.tool-versions[0m  [38;2;203;213;225mf9ef645a651460f2 → d2f66ea3a8f3a14d[0m
 
@@ -626,7 +626,7 @@ export function runLine(): VxPlugin {
 ```
 
 ```ansi title="vx run test --all --force, its first line"
-2 tasks · [32m0 failed[39m · 0 cached · 780ms
+2 tasks · [32m0 failed[39m · 0 cached · 805ms
 ```
 
 Do network I/O in `flush(signal)`, which vx awaits for up to 3 s. Pass `signal` to `fetch`.
