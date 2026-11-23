@@ -315,6 +315,11 @@ export interface InputFact {
    * untouched, so the re-check compares this rather than the link's ctime.
    */
   behind?: string
+  /**
+   * The key folded what git holds for it, not this digest's bytes
+   * (`committedOutputOids`): a save is withheld unless the command wrote it.
+   */
+  held?: true
 }
 
 /**
@@ -384,6 +389,7 @@ export async function describeTaskInputs(args: ComputeHashArgs): Promise<{
     if (ctimeMs !== undefined) fact.ctimeMs = ctimeMs
     const linked = behind.get(f)
     if (linked !== undefined) fact.behind = linked
+    if (held?.has(f) === true) fact.held = true
     return fact
   })
   // Groups expanded: this describes the input root, not the key, and a group

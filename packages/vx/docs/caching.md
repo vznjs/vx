@@ -1258,7 +1258,10 @@ holds (its index OID), not the bytes on disk (2026-11-23): a build that
 writes a timestamped `dist/index.js.map` over the committed one moved its
 own next key by its bytes and never hit. A staged or committed edit still
 moves the key; an uncommitted hand edit does not, and a hit writes the
-entry's bytes over it, as over any output. One an input glob names
+entry's bytes over it, as over any output. A run that leaves such an edit
+in place (the task never writes the file) saves nothing and says so: its
+entry would replay the edit over the committed file once the tree is
+clean (fuzzcout, 2026-11-23). One an input glob names
 (`src/**` over its `routeTree.gen.ts`) keys by its bytes on disk.
 A run that removes one (`rm dist/tracked.txt`) saves nothing: no hit
 could replay the removal, since its restore leaves the file too, so the

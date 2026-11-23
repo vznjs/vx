@@ -310,6 +310,28 @@ async function onlyCtimeMoved(fact: InputFact, from: number, cache: CacheLayer):
 }
 
 /**
+ * Whether the command wrote each committed output the key folded by what git
+ * holds (`InputFact.held`). One it left alone holds bytes git does not (a
+ * hand edit), and an entry under that key would replay them over the
+ * committed file once the tree is clean again: that run saves nothing.
+ */
+export function heldOutputsWritten(m: MissRun): boolean {
+  const { args } = m
+  if (args.executor.capabilities?.remote === true) return true
+  for (const f of m.inputs.described?.facts ?? []) {
+    if (f.held !== true) continue
+    const st = lstatSync(f.path, { throwIfNoEntry: false })
+    if (st === undefined || (f.ctimeMs !== undefined && st.ctimeMs !== f.ctimeMs)) continue
+    warnOf(args.log)(
+      `[vx] ${args.node.id}: not saved — \`${printable(relPosix(args.run.workspaceRoot, f.path))}\`, a committed output, ` +
+        `holds an uncommitted edit the task did not write; commit it, or let the task write it`,
+    )
+    return false
+  }
+  return true
+}
+
+/**
  * Did each dependency's outputs stay as its task left them while this one
  * ran? The key folds a dependency's input key, never its bytes: a checkout
  * or stash that put a dependency's committed output back mid-run, or a

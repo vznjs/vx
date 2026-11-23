@@ -193,6 +193,44 @@ describe('stale cache hits', () => {
   )
 
   it(
+    'a hand edit to a committed output the build never writes is not saved under the committed key',
+    async () => {
+      // `dist/LICENSE` is keyed by what git holds. A run while it holds an
+      // uncommitted edit the build does not write saved the edit under the
+      // committed key, and once the tree was clean again a hit wrote the edit
+      // over the committed file (fuzzcout seed 1).
+      await Bun.write(path.join(root, 'package.json'), '{"name":"r","private":true}')
+      await writeLocalWorkspace(root)
+      await Bun.write(
+        path.join(root, 'vx.config.mjs'),
+        `export default {
+           tasks: {
+             build: {
+               exec: { command: 'mkdir -p dist && cat src/a.txt > dist/out' },
+               inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
+             },
+           },
+         }`,
+      )
+      await Bun.write(path.join(root, 'src/a.txt'), 'a')
+      await Bun.write(path.join(root, 'dist/LICENSE'), 'license v1')
+      await Bun.write(path.join(root, '.gitignore'), '.vx/cache/\ndist/out\n')
+      gitInit(root)
+      git(root, 'add', '-A')
+      git(root, 'commit', '-q', '-m', 'initial')
+
+      await writeLocalWorkspace(root)
+      await Bun.write(path.join(root, 'dist/LICENSE'), 'hand edit')
+      expect(vx(root, 'run', 'build')).toMatch(/not saved[^\n]*dist\/LICENSE/)
+      git(root, 'checkout', '--', 'dist/LICENSE')
+      vx(root, 'run', 'build')
+      expect(await readFile(path.join(root, 'dist/LICENSE'), 'utf8')).toBe('license v1')
+      expect(vx(root, 'run', 'build')).toMatch(/build[^\n]*up-to-date/)
+    },
+    TIMEOUT,
+  )
+
+  it(
     'a task that stages a committed output mid-run re-keys the build after it',
     async () => {
       // The build keys `dist/x` by what git holds. A task before it in the
