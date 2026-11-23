@@ -1,0 +1,81 @@
+/* The hero, chips and edit line of a wide page outside the docs sidebar
+   (WidePage.astro: the conformance pages). They wear landing.css's tokens. */
+
+.page-hero {
+  padding: 72px var(--gutter) 40px;
+  background:
+    radial-gradient(
+      ellipse 60% 60% at 15% 10%,
+      color-mix(in srgb, var(--phosphor) 9%, transparent),
+      transparent 70%
+    ),
+    var(--bg-page);
+}
+.page-hero h1 {
+  max-width: 14em;
+}
+.page-hero .lede {
+  font: var(--fw-regular) 20px / 1.5 var(--font-body);
+  color: var(--text-mut);
+  margin: 18px 0 0;
+  max-width: 40em;
+}
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 32px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.chips a {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 34px;
+  padding: 0 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  font: var(--fw-medium) 13px / 1 var(--font-mono);
+  color: var(--text);
+  text-decoration: none;
+  background: var(--surface-card);
+}
+.chips a:hover {
+  border-color: var(--phosphor);
+  color: var(--text-hi);
+}
+.chips .count {
+  color: var(--text-faint);
+}
+
+.fedit {
+  padding: 0 var(--gutter) 40px;
+}
+.fedit p {
+  margin: 0 auto;
+  font: var(--fw-medium) 13px / 1 var(--font-mono);
+}
+.fedit a {
+  color: var(--text-faint);
+  text-decoration: none;
+}
+.fedit a:hover {
+  color: var(--text-hi);
+}
+
+@media (max-width: 900px) {
+  .page-hero {
+    padding: 48px var(--gutter) 32px;
+  }
+}
+@media (max-width: 620px) {
+  .page-hero .lede {
+    font-size: 17px;
+  }
+  .chips a {
+    height: 32px;
+    padding: 0 12px;
+    font-size: 12px;
+  }
+}

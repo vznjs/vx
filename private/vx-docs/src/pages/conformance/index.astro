@@ -8,7 +8,7 @@
 // tools differ" switch is a checkbox the stylesheet reads. Every case is a
 // link: `#<case ref>`, and `?tool=<tool>#<case ref>` for one tool's failure.
 // The script at the end only opens what such a link points into.
-import FeaturesPage from '../../components/features/FeaturesPage.astro'
+import WidePage from '../../components/WidePage.astro'
 import {
   about,
   agree,
@@ -35,13 +35,13 @@ const sections = CATEGORIES.map((id) => ({
 const REFS = Object.fromEntries(cases.map((c) => [c.ref, c.category]))
 ---
 
-<FeaturesPage
+<WidePage
   title="One test suite, run on every task runner"
   description={`${cases.length} task-runner behaviours, each run against ${RANKED.map(toolName).join(', ')}: what each tool did, case by case.`}
   edit="src/pages/conformance/index.astro"
 >
   <div class="cfm">
-    <section class="fhub-hero cfm-hero">
+    <section class="page-hero cfm-hero">
       <div class="container">
         <p class="vx-kicker">// {cases.length} cases, {RANKED.length} tools</p>
         <h1>One test suite, run on every task runner</h1>
@@ -166,7 +166,7 @@ const REFS = Object.fromEntries(cases.map((c) => [c.ref, c.category]))
       </div>
     </section>
   </div>
-</FeaturesPage>
+</WidePage>
 
 <script type="application/json" id="cfm-refs" set:html={JSON.stringify(REFS)} />
 <script type="application/json" id="cfm-tools" set:html={JSON.stringify(RANKED.map(toolShort))} />

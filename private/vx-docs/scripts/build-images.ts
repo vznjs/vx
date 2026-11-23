@@ -1,6 +1,6 @@
 // The site's raster images, resized ahead of `astro build` (`build.bun.images`
 // in vx.config.ts): a key over the images alone, so a docs edit rebuilds
-// pages and never re-encodes 876 variants (13 s of a cold build). Writes
+// pages and never re-encodes the variants. Writes
 // public/_img/<name>-<width>.<hash>.<ext>, which astro copies as it is, and
 // public/_img/images.json, which src/images.ts reads.
 import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
@@ -11,7 +11,6 @@ import sharp from 'sharp'
 // What the components ask for: every width a layout's srcset names, and the
 // link card each page's og:image points at.
 const SETS = {
-  features: { webp: [400, 640, 800, 960, 1280, 1600], jpeg: [1200] },
   blog: { webp: [480, 800, 1200], png: [1200] },
 } as const
 

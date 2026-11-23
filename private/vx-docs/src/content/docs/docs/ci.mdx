@@ -60,6 +60,30 @@ git add -A
 git commit -m "ci: run vx on GitHub Actions"
 ```
 
+Try a pipeline on your machine first. On a branch that changed only
+`@demo/web`, `pr` builds and tests `@demo/web`, and `@demo/ui#build`, which
+it needs, comes from the cache (`local 1✓`):
+
+```ansi
+[2m$[0m vx pipeline pr
+
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mTasks[0m[4m[58;2;110;118;129m     [2mstatus  cache     ±usual    time   cpu    mem outputs  blocks worker         task[0m[4m[58;2;110;118;129m                           [0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m       [2m−69ms[0m   [38;2;203;213;225m292ms[0m  [2m119%[0m  [2m104MB[0m    [2m926B[0m       [2m0[0m [2mlocal[0m          [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m       [2m−10ms[0m   [38;2;203;213;225m618ms[0m  [2m168%[0m  [2m270MB[0m      [2m0B[0m       [2m0[0m [2mlocal[0m          [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;96;165;250mtest[0m
+
+
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mSummary[0m[4m[58;2;110;118;129m                                                                                                       [2mvx 0.0.0[0m
+  [2mprojects[0m  [38;2;234;179;8m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
+            [38;2;234;179;8m2 in run[0m [2m·[0m [2m2 total[0m
+  [2mtasks   [0m  [38;2;34;197;94m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
+            [38;2;34;197;94m3 success[0m [2m·[0m [2m3 total[0m
+  [2mcache   [0m  [38;2;34;197;94m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m[38;2;56;189;248m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
+            [2mlocal[0m [38;2;34;197;94m1✓[0m [38;2;56;189;248m2↑[0m
+
+  [2minfo    [0m  4 workers [2m·[0m local cache [2m·[0m run 01a2089b-f3b0-72e2-8c1d-1f60ba7d2716
+  [2mtime    [0m  661ms [2m·[0m [2mmax 618ms[0m [2m·[0m [2mavg 455ms[0m [2m·[0m [2mmin 292ms[0m
+```
+
 ### 3. Add the workflow
 
 ```yaml

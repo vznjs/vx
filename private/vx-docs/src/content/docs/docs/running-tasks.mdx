@@ -14,10 +14,33 @@ vx run test --affected                 # changed since the base branch, and depe
 vx run test --affected=origin/main     # changed since that ref
 vx run app#build api#test              # exact tasks, from anywhere
 vx run lint test build --all           # several tasks, one graph
-vx run test --all -- --bail            # the child runs: bun test --bail; the key sees it
+vx run @app/ui#test -- --bail          # one task only: it runs bun test --bail; the key sees it
 vx run build --all --dry               # the plan, nothing runs
 vx watch test --all                    # re-run whenever its files change
 vx pipeline pr                         # a named run from .vx/workspace.ts (see CI)
+```
+
+A run of several tasks prints a row per task, then the summary:
+
+```ansi
+[2m$[0m vx run build test --all
+
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mTasks[0m[4m[58;2;110;118;129m     [2mstatus  cache     ±usual    time   cpu    mem outputs  blocks worker         task[0m[4m[58;2;110;118;129m                           [0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m           [2m—[0m   [38;2;203;213;225m280ms[0m  [2m109%[0m  [2m104MB[0m     [2m57B[0m       [38;2;203;213;225m2[0m [2mlocal[0m          [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m           [2m—[0m   [38;2;203;213;225m263ms[0m  [2m113%[0m  [2m110MB[0m    [2m926B[0m       [2m0[0m [2mlocal[0m          [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m           [2m—[0m   [38;2;203;213;225m650ms[0m  [2m176%[0m  [2m278MB[0m      [2m0B[0m       [2m0[0m [2mlocal[0m          [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;96;165;250mtest[0m
+
+
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mSummary[0m[4m[58;2;110;118;129m                                                                                                       [2mvx 0.0.0[0m
+  [2mprojects[0m  [38;2;234;179;8m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
+            [38;2;234;179;8m2 in run[0m [2m·[0m [2m2 total[0m
+  [2mtasks   [0m  [38;2;34;197;94m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
+            [38;2;34;197;94m3 success[0m [2m·[0m [2m3 total[0m
+  [2mcache   [0m  [38;2;56;189;248m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
+            [2mlocal[0m [38;2;56;189;248m3↑[0m
+
+  [2minfo    [0m  4 workers [2m·[0m local cache [2m·[0m run 01a2089a-e324-7130-bb17-5c9b3a234d9d
+  [2mtime    [0m  992ms [2m·[0m [2mmax 650ms[0m [2m·[0m [2mavg 398ms[0m [2m·[0m [2mmin 263ms[0m
 ```
 
 `--dry` prints what would run and where each result would come from.

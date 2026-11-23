@@ -85,9 +85,9 @@ const races = (
 })
 const scope0 = SCOPE[0]!
 const scopeOut = [
-  ['vx last', 'any past run, task by task', 'features/vx-last/'],
-  ['vx why', 'the file, env var or setting that changed', 'features/vx-why/'],
-  ['SQLite', 'every task of every run, one query away', 'features/run-analytics/'],
+  ['vx last', 'any past run, task by task', 'cli/last/'],
+  ['vx why', 'the file, env var or setting that changed', 'cli/why/'],
+  ['SQLite', 'every task of every run, one query away', 'caching/#history'],
   ['OpenTelemetry', 'the same numbers in your own backend', 'plugins/vx-otel/'],
 ] as const
 const benchFormula = 'Time each tool adds over the ideal run; lower is better.'
@@ -310,7 +310,7 @@ const startCommands = [
           <li><strong>One retry, on its own.</strong> A task known flaky gets one retry with none set.</li>
           <li><strong>One record.</strong> Every CI machine shares the flaky record through your history server.</li>
         </ul>
-        <a class="band-link" href={href('features/flaky-detection/')}>Flaky detection <span class="arr">→</span></a>
+        <a class="band-link" href={href('docs/ci/')}>Flaky detection <span class="arr">→</span></a>
       </div>
     </section>
 
@@ -337,7 +337,7 @@ const startCommands = [
             <span class="part-glow" aria-hidden="true" />
             <code class="part-pkg">definePlugin()</code>
             <strong class="part-title">Yours</strong>
-            <span class="part-line">Take over any of the 15 stages: where tasks run, where the cache lives, who watches.</span>
+            <span class="part-line">Take over any of the 16 stages: where tasks run, where the cache lives, who watches.</span>
           </a>
         </div>
       </div>
@@ -386,7 +386,7 @@ const startCommands = [
         <div class="start-links">
           <a class="btn btn-primary" href={href('quickstart/')}>Quickstart <span class="arr">→</span></a>
           <a class="btn btn-ghost" href={href('docs/migrate/')}>Migrate from Turbo or Nx</a>
-          <a class="btn btn-ghost" href={href('features/')}>Every feature</a>
+          <a class="btn btn-ghost" href={href('docs/')}>Docs</a>
         </div>
       </div>
     </section>

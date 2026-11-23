@@ -1,5 +1,5 @@
 /* The conformance page (src/pages/conformance/). It wears landing.css's
-   tokens and features.css's hero, chips and light theme; this adds the
+   tokens and page-hero.css's hero and chips; this adds the
    score table and the case tables. */
 
 .vx-landing .cfm {

@@ -4,7 +4,7 @@
 // every CLI verb, flag and environment variable in contract/cli-surface.json
 // and every config key in contract/config-schema.json must be named in a
 // code span there. And its links into the site must land: a blog post that
-// exists, a feature page the hub builds. Unsafe: it reads vx-docs.
+// exists, a docs page the site builds. Unsafe: it reads vx-docs.
 
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
@@ -71,20 +71,32 @@ describe('docs/features.md links land', () => {
     expect(posts.filter((p) => !existsSync(path.join(dir, `${p}.md`)))).toEqual([])
   })
 
-  it('every feature link names a page the hub builds', () => {
-    const slugs = new Set(
-      ['features.ts', 'more.ts'].flatMap((f) =>
-        [
-          ...readFileSync(path.join(DOCS_SITE, 'src/features', f), 'utf8').matchAll(
-            /slug: '([^']+)'/g,
-          ),
-        ].map((m) => m[1]!),
-      ),
+  it('every docs link names a page the site builds', () => {
+    // The site serves packages/vx/docs/<name>.md at <name>/, its hand-written
+    // pages from src/content/docs/, and cli.md's split pages at cli/<page>/.
+    const content = path.join(DOCS_SITE, 'src/content/docs')
+    const importer = readFileSync(path.join(DOCS_SITE, 'scripts/import-docs.ts'), 'utf8')
+    const cliList = importer.slice(
+      importer.indexOf('const CLI_PAGES'),
+      importer.indexOf('const SCHEMA_PAGES'),
     )
-    const pages = links
-      .filter((l) => /^features\/.+\/$/.test(l))
-      .map((l) => l.slice('features/'.length, -1))
-    expect(pages.length).toBeGreaterThan(30)
-    expect(pages.filter((p) => !slugs.has(p))).toEqual([])
+    const cliPages = new Set([...cliList.matchAll(/page: '([^']+)'/g)].map((m) => m[1]!))
+    const builds = (url: string): boolean => {
+      const p = url.replace(/\/$/, '')
+      if (p === 'cli' || p === 'schema') return true
+      if (p.startsWith('cli/')) return cliPages.has(p.slice(4))
+      return (
+        existsSync(path.join(CORE, 'docs', `${p}.md`)) ||
+        ['.md', '.mdx', '/index.md', '/index.mdx'].some((x) =>
+          existsSync(path.join(content, p + x)),
+        )
+      )
+    }
+    const docs = [...md.matchAll(/\[docs\]\(https:\/\/vznjs\.github\.io\/vx\/([^)#]*)/g)].map(
+      (m) => m[1]!,
+    )
+    expect(docs.length).toBeGreaterThan(30)
+    expect(docs.filter((d) => !builds(d))).toEqual([])
+    expect(links.filter((l) => l.startsWith('features/'))).toEqual([])
   })
 })

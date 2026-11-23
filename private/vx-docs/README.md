@@ -18,35 +18,22 @@ Hand-authored pages live only in the site and ARE tracked:
 
 - `src/pages/index.astro` — the landing page (its measurements come from
   `src/data/bench.json`, below)
-- `src/pages/features/` — the feature hub and one page per feature (below)
 - `src/content/docs/quickstart.md`, `compare.mdx`, `glossary.md`,
   `concepts/`, and `guides/` (the Docs: configure,
   sandboxing, ci, migrate, plugins)
 
 ## The landing page
 
-`src/pages/index.astro` with `src/styles/landing.css` is a standalone
-page (its own nav, footer and theme; the docs stay Starlight). It is the
-whole story (design/site-short-2026-09.md): static, one script for the
-install command's copy button, no paragraph longer than one sentence.
-Sections, in order: the hero (one line, three of the chart's multiples, the install pill, Quickstart and
-GitHub); `#conformance`, every tool's score on the conformance suite
-(`src/data/conformance.json`); `#servers`, DTE, the remote cache and run
-history, each a plugin and the server you host; `#one-run`, the one picture (`src/components/landing/one-run.ts`,
-drawn by the diagram kit with its phone layout) and its six numbered
-lines, each at the anchor an old Guide chapter redirects to (`#tasks`,
-`#parallel`, `#cache`, `#changed`, `#sandbox`, `#plugins`); `#bench`, the
-one benchmark; `#pillars`, four cards (correctness, sandbox,
-extensibility, freedom), each an icon, a title, one sentence and its
-Docs page; `#features`, eight feature cards; the footer. `tests/landing.test.ts` holds the order, the
-hero's actions, the picture's data and lines against the design, the
-pillars, the one-sentence rule and every internal link the page had.
-
-The nav and footer are `src/components/landing/Nav.astro` and
-`Footer.astro`, shared with the feature pages; the nav's places are
-`SECTIONS` in `src/nav/sections.ts`, which the docs' header renders too.
-The last section, `#features`, is a strip of eight feature cards and the
-link to all of them.
+`src/pages/index.astro` with `src/styles/landing.css` is the landing,
+inside the site's Starlight shell with no sidebar. Sections, in order: the
+stage (`HeroStage.astro`, the system graph playing one CI run); `#proof`,
+every tool's conformance score (`src/data/conformance.json`); `#speed`,
+the benchmark race; `#data`, the numbers vx keeps per task; `#dte`,
+Distributed task execution; `#flaky`; `#plugins`, every package beside
+core; `#agents`; the quotes; `#start`; the footer
+(`src/components/landing/Footer.astro`). The places in the header are
+`SECTIONS` in `src/nav/sections.ts`. `tests/landing.test.ts` holds the
+order and every internal link.
 
 - **The numbers** are measured, never typed: `bench.bun.data` gathers the
   rows of `@vzn/vx-bench#bench.site` into `src/data/bench.json`, and the
@@ -79,32 +66,6 @@ docs and blog page raw beside its HTML (`quickstart.md`),
 `src/pages/llms-full.txt.ts` is every Docs and Reference page in one
 file (internals and the blog left out). `src/llms/pages.ts` decides
 what is internal. The Docs page for agents is `docs/agents.mdx`.
-
-## Features
-
-`/features/` is a hub of every feature, grouped by category, and
-`/features/<slug>/` is one page per feature: category, title, hook, the
-image, two to four paragraphs, one example, and links to its Docs page
-and a deep dive. Standalone pages in the landing's look
-(`src/components/features/FeaturesPage.astro`, `src/styles/features.css`)
-with a dark and a light theme, the one the docs store.
-
-- The data is `src/features/features.ts`: `CATEGORIES` and `FEATURES`,
-  in the order the hub lists them. Images are in
-  `src/assets/features/` (1600×900 PNG, palette-quantized); the
-  `build.bun.images` task resizes them to WebP (`scripts/build-images.ts`),
-  and `FeatureImage.astro` writes the srcset. A new layout width goes in
-  that script's `SETS`.
-- To add one: an entry in `FEATURES` under its category, its image in
-  `src/assets/features/`, and its links under the base (`guides/ci/`)
-  or `https://`. Verify every command, flag and config key against
-  core's source first.
-- `tests/features.test.ts` holds it: the copy rules (one-sentence hook,
-  no `!`, no percentages, no "unchanged"), every `vx …` line against
-  core's own verbs and flags, every config example
-  type-checked against the packages it imports, and the built hub and
-  pages against the data, images WebP only.
-- Benchmark figures in it are `%bench.…%` tokens, filled from the data.
 
 ## Charts from tables
 
@@ -210,7 +171,6 @@ Measured here they take about 20 minutes, one runner at a time:
   turns the guide red before an author copies a stale block.
 - `tests/sidebar-coverage.test.ts` — every page is reachable from the
   sidebar; an orphan page fails.
-- `tests/features.test.ts` — the feature data and pages (above).
 - `tests/landing.test.ts`, `tests/diagram-kit.test.ts` — the landing
   and its one picture (above); the kit's laws hold every picture kept as
   data to fit its boxes and to carry a phone layout that says the same.

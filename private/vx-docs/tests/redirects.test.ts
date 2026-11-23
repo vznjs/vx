@@ -153,7 +153,6 @@ const MERGED: Record<string, string> = {
   // The playground was removed (2026-10-23).
   'playground/': 'quickstart/',
   'blog/the-playground/': 'quickstart/',
-  'features/playground/': 'quickstart/',
   'learn/choosing/': 'conformance/',
   // The page that weighed the tools gave way to the suite that tests them (2026-11-04).
   'compare/': 'conformance/',

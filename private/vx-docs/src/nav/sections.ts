@@ -11,7 +11,7 @@
 
 import type { StarlightUserConfig } from '@astrojs/starlight/types'
 
-export type SectionId = 'home' | 'features' | 'docs' | 'conformance' | 'blog' | 'releases'
+export type SectionId = 'home' | 'docs' | 'conformance' | 'blog' | 'releases'
 
 declare global {
   namespace App {
@@ -24,7 +24,6 @@ declare global {
 
 /** The top navigation, in order. `href` is under the site's base. */
 export const SECTIONS: readonly { id: SectionId; label: string; href: string }[] = [
-  { id: 'features', label: 'Features', href: 'features/' },
   { id: 'docs', label: 'Docs', href: 'docs/' },
   { id: 'conformance', label: 'Conformance', href: 'conformance/' },
   { id: 'blog', label: 'Blog', href: 'blog/' },
@@ -48,7 +47,7 @@ const SIDEBAR_GROUPS: Record<'Docs', SidebarItem[]> = {
       items: [
         { label: 'What is vx?', link: '/docs/' },
         { label: 'Quickstart', link: '/quickstart/' },
-        { label: 'Migrate from Turborepo, Nx or Vite Task', link: '/docs/migrate/' },
+        { label: 'Migrate from Turbo, Nx or Vite Task', link: '/docs/migrate/' },
         { label: 'AI agents', link: '/docs/agents/' },
         { label: 'Upgrading vx', link: '/docs/upgrading/' },
       ],

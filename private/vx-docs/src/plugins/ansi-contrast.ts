@@ -36,9 +36,16 @@ export function ansiContrast() {
             if (!(a instanceof InlineStyleAnnotation) || a.color === undefined) continue
             const bg = styleVariants[a.styleVariantIndex ?? 0]?.theme.bg
             if (bg === undefined) continue
-            a.color = /^#[0-9a-f]{8}$/i.test(a.color)
-              ? changeAlphaToReachColorContrast(a.color, bg, 4.6)
-              : ensureColorContrastOnBackground(a.color, bg, 5.5)
+            if (!/^#[0-9a-f]{8}$/i.test(a.color)) {
+              a.color = ensureColorContrastOnBackground(a.color, bg, 5.5)
+              continue
+            }
+            // A dimmed bright colour (vite's dim green arrow) can miss 4.6:1
+            // even at full alpha on the light theme: then its hue is lifted.
+            const faded = changeAlphaToReachColorContrast(a.color, bg, 4.6)
+            a.color = /ff$/i.test(faded)
+              ? ensureColorContrastOnBackground(faded.slice(0, 7), bg, 4.6)
+              : faded
           }
         }
       },

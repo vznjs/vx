@@ -10,7 +10,7 @@ const MANIFEST: Record<string, Entry> = JSON.parse(
 )
 const BASE = `${import.meta.env.BASE_URL.replace(/\/?$/, '/')}_img/`
 
-// `key` is `<dir>/<name>`: `features/affected` for src/assets/features/affected.png.
+// `key` is `<dir>/<name>`: `blog/vx-0-0-21` for src/assets/blog/vx-0-0-21.png.
 function entry(key: string): Entry {
   const e = MANIFEST[key]
   if (e === undefined) throw new Error(`no image src/assets/${key}.png`)

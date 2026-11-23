@@ -105,51 +105,54 @@ build: {
 
 <Tabs>
   <TabItem label="1. The write">
-    ```sh frame="terminal"
-    $ vx run build --all
-    ┌─ @demo/app#build > failed (exit 1, 1 sandbox violation)
+    ```ansi
+    [2m$[0m vx run @demo/app#build
 
-    $ mkdir -p dist && cat tsconfig.json src/a.ts > dist/out.js
-
-    ├─ OUTPUT ────────────────────────────────────────────────────
-
+    [2m┌─[0m [1m[38;2;232;121;249m@demo/app[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m>[0m $ mkdir -p dist && cat tsconfig.json src/a.ts > dist/out.js
     mkdir: cannot create directory 'dist': Read-only file system
-
-    ├─ SANDBOX VIOLATIONS (1) ────────────────────────────────────
+    [2m├─[0m [1m[38;2;239;68;68mSANDBOX VIOLATIONS (1)[0m [2m────────────────────────────────────[0m
 
     mkdir(/repo/packages/app/dist) = a write no grant covers  [/repo/packages/app/dist]
 
-    fix: exec.sandbox.allow: { write: ['dist/'] }
+    [2mfix: exec.sandbox.allow: { write: ['dist/'] }[0m
 
-    └─ @demo/app#build ── (12ms) failed (exit 1, 1 sandbox violation)
+    [2m└─[0m [1m[38;2;232;121;249m@demo/app[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(61ms)[0m [1m[38;2;239;68;68mfailed (exit 1, 1 sandbox violation)[0m
     ```
   </TabItem>
   <TabItem label="2. The read">
     With `write: ['dist/']` added, the next run fails on the read it never
     declared, and says the file belongs in the key too:
 
-    ```sh frame="terminal"
-    $ vx run build --all
-    ┌─ @demo/app#build > failed (exit 1, 1 sandbox violation)
+    ```ansi
+    [2m$[0m vx run @demo/app#build
 
-    $ mkdir -p dist && cat tsconfig.json src/a.ts > dist/out.js
-
-    ├─ OUTPUT ────────────────────────────────────────────────────
-
+    [2m┌─[0m [1m[38;2;232;121;249m@demo/app[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m>[0m $ mkdir -p dist && cat tsconfig.json src/a.ts > dist/out.js
     cat: tsconfig.json: No such file or directory
-
-    ├─ SANDBOX VIOLATIONS (1) ────────────────────────────────────
+    [2m├─[0m [1m[38;2;239;68;68mSANDBOX VIOLATIONS (1)[0m [2m────────────────────────────────────[0m
 
     openat(tsconfig.json) = -1 ENOENT  [/repo/packages/app/tsconfig.json]
 
-    fix: exec.sandbox.allow: { read: ['tsconfig.json'] }
-    and, if the output depends on them, inputs.files: ['tsconfig.json']
+    [2mfix: exec.sandbox.allow: { read: ['tsconfig.json'] }[0m
+    [2mand, if the output depends on them, inputs.files: ['tsconfig.json'][0m
 
-    └─ @demo/app#build ── (12ms) failed (exit 1, 1 sandbox violation)
+    [2m└─[0m [1m[38;2;232;121;249m@demo/app[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(81ms)[0m [1m[38;2;239;68;68mfailed (exit 1, 1 sandbox violation)[0m
     ```
   </TabItem>
   <TabItem label="3. Fixed">
-    Grant it and add it to `inputs.files`, and the task passes.
+    Grant it and add it to `inputs.files`, and the task passes:
+
+    ```ts
+    sandbox: { allow: { read: ['src/', 'tsconfig.json'], write: ['dist/'] } },
+    // …
+    inputs: { files: ['src/**', 'tsconfig.json'] },
+    ```
+
+    ```ansi
+    [2m$[0m vx run @demo/app#build
+
+    [2m┌─[0m [1m[38;2;232;121;249m@demo/app[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m>[0m $ mkdir -p dist && cat tsconfig.json src/a.ts > dist/out.js
+    [2m└─[0m [1m[38;2;232;121;249m@demo/app[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(66ms)[0m [2msuccess[0m
+    ```
 
     Without the sandbox, this build would have cached with
     `tsconfig.json` outside its key. An edit to that file would then have

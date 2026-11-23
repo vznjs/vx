@@ -3,7 +3,7 @@
 // what it checks, and every case. The conformance page loads this page's
 // table when the category is opened, so its own HTML stays small.
 import type { GetStaticPaths } from 'astro'
-import FeaturesPage from '../../components/features/FeaturesPage.astro'
+import WidePage from '../../components/WidePage.astro'
 import Cases from '../../components/conformance/Cases.astro'
 import Cell from '../../components/conformance/Cell.astro'
 import {
@@ -28,13 +28,13 @@ const differ = cases.filter((c) => !agree(c)).length
 const name = groupName(category)
 ---
 
-<FeaturesPage
+<WidePage
   title={`Conformance: ${name}`}
   description={`${cases.length} ${name.toLowerCase()} cases, each run against ${RANKED.map(toolName).join(', ')}: what each tool did, case by case.`}
   edit="src/pages/conformance/[category].astro"
 >
   <div class="cfm">
-    <section class="fhub-hero cfm-hero">
+    <section class="page-hero cfm-hero">
       <div class="container">
         <p class="vx-kicker"><a href="../">// conformance</a> · {cases.length} cases</p>
         <h1>{name}</h1>
@@ -73,4 +73,4 @@ const name = groupName(category)
       </div>
     </section>
   </div>
-</FeaturesPage>
+</WidePage>
