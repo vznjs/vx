@@ -472,8 +472,8 @@ Each one sets one [workspace setting](../../schema/workspace/). An empty one is 
 
 | Variable                        | What it sets                                                  | Default                      |
 | ------------------------------- | ------------------------------------------------------------- | ---------------------------- |
-| `VX_CACHE_DIR`                  | where the cache lives                                         | `.vx/cache`                  |
-| `VX_CACHE_POLICY`               | which caches a run reads and writes (`local:rw,remote:r`)     | every cache reads and writes |
+| `VX_CACHE_DIR`                  | where the cache lives                                         | `~/.vx/<id>/cache`           |
+| `VX_CACHE_POLICY`               | which caches a run reads and writes (`local:rw,remote:r`)     | all on; off CI, no remote write |
 | `VX_CACHE_SCOPE`                | the branch a remote cache keeps entries under                 | the branch's                 |
 | `VX_CACHE_DOWNLOAD`             | which remote hits land on disk: `all`, `toplevel`, `none`     | `all`                        |
 | `VX_CACHE_CONCURRENCY_DOWNLOAD` | remote downloads at once                                      | 64 to 96, by cores           |
