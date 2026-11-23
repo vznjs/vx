@@ -601,12 +601,12 @@ live in [Workspace](../workspace/).
 ```ansi title="vx lock"
 [38;2;239;68;68m✗[0m [1mvx lock[0m  [38;2;203;213;225mlock not written[0m
 
-  [1mpackages/web/vx.config.ts:8:7[0m
+  [1mpackages/web/vx.config.ts:7:7[0m
   [38;2;203;213;225mtasks.build.outputs must be an object (fields: clean, files, workspaceFiles), not an array[0m
 
-    6 |       exec: { command: 'mkdir -p dist && cp src/main.js dist/main.js' },
-    7 |       inputs: { files: ['src/**'] },
-  > 8 |       outputs: ['dist/**'],
+    5 |       exec: { command: 'vite build' },
+    6 |       inputs: { files: ['src/**', 'vite.config.ts'] },
+  > 7 |       outputs: ['dist/**'],
       |       ^
 
   [2mfix[0m  [1muse `{ files: [...] }`[0m
