@@ -3,7 +3,7 @@
 import { afterAll, beforeAll, expect, it } from 'bun:test'
 import path from 'node:path'
 import { Miniflare, convertV4MiniflareOptions } from 'miniflare'
-import { conformance, scopeOf } from './conformance.js'
+import { conformance, hashOf, scopeOf } from './conformance.js'
 import { ALLOW_VAR, GITHUB, type Issuer, issuer, JOBS, NAMED, REPO } from './issuer.js'
 
 const MAX = 7 * 1024 * 1024
@@ -164,6 +164,37 @@ it('reads AUDIENCE as its origin, without the blanks around it', async () => {
     expect(res.status).toBe(200)
   } finally {
     await other.dispose()
+  }
+})
+
+// bun.test.ts holds READ_ACCESS=public at the handler; this holds the
+// Worker's var to the same answers.
+it('reads with no token where READ_ACCESS is public, only a repository ALLOW names, and writes nothing', async () => {
+  const open = await start({ ALLOW: ALLOW_VAR, READ_ACCESS: 'public' })
+  try {
+    const at = new URL('/v1/artifacts/', await open.ready)
+    const main = { ...NAMED, 'vx-scope': scopeOf('refs/heads/main') }
+    const token = `Bearer ${await iss.sign(JOBS.main, AUD)}`
+    const put = await fetch(new URL('ab12', at), {
+      method: 'PUT',
+      body: 'hello',
+      headers: { ...NAMED, authorization: token },
+    })
+    const read = await fetch(new URL('ab12', at), { headers: main })
+    const other = await fetch(new URL('ab12', at), {
+      headers: { ...main, 'vx-repository': hashOf('acme/other') },
+    })
+    const write = await fetch(new URL('cd34', at), { method: 'PUT', body: 'x', headers: NAMED })
+    expect([put.status, read.status, await read.text(), other.status, write.status]).toEqual([
+      204,
+      200,
+      'hello',
+      403,
+      403,
+    ])
+    expect(((await write.json()) as { message: string }).message).toBe('this request reads only')
+  } finally {
+    await open.dispose()
   }
 })
 
