@@ -1146,7 +1146,9 @@ describe('the CI guide quotes only run figures benchmarks.md measured', () => {
     const bench = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'benchmarks.md'), 'utf8')
     const ci = section(readFileSync(path.join(DOCS, 'docs', 'ci.mdx'), 'utf8'), 'GitHub Actions')
     expect(ci).toContain('`vx lock --check`')
-    for (const m of ci.matchAll(/(\d+(?:[–-]\d+)?)\s?(%|ms)\b/g)) {
+    // A recorded run's transcript (```ansi) shows that run's own timings.
+    const prose = ci.replace(/```ansi[\s\S]*?```/g, '')
+    for (const m of prose.matchAll(/(\d+(?:[–-]\d+)?)\s?(%|ms)\b/g)) {
       expect(m[0]).toBe(bench.includes(m[1]!) ? m[0] : `${m[0]} — not on benchmarks.md`)
     }
     expect(ci).not.toMatch(/10–21%/)
@@ -1300,7 +1302,7 @@ describe.each(['pnpm', 'bun'])(
       const set = /const PER_\w+ = new Set\(\[([\s\S]*?)\]\)/.exec(src)
       expect(set).not.toBeNull()
       const keys = [...set![1]!.matchAll(/'(\w+)'/g)].map((m) => m[1]!)
-      expect(keys.length).toBe(6)
+      expect(keys.length).toBe({ pnpm: 8, bun: 6 }[manager])
       const page = readFileSync(path.join(DOCS, 'docs', 'lockfiles.mdx'), 'utf8')
       // That manager's OWN row, not the page: a whole-page search lets one
       // row cover for the other's omission — which is how the bun list lost
@@ -1395,7 +1397,8 @@ describe('the tasks guide states which wildcards dependsOn takes', () => {
       expect(src).toContain(refusal)
     }
     // The legal case: a self pattern expands over the project's task names.
-    expect(src).toContain('if (isTaskPattern(spec.task))')
+    expect(src).toContain('function resolveSelf(frame: Frame, task: string)')
+    expect(src).toContain('if (!isTaskPattern(task))')
     const page = readFileSync(path.join(DOCS, 'docs', 'tasks.mdx'), 'utf8').replace(/\s+/g, ' ')
     expect(page).toContain('A task-name pattern is allowed')
     expect(page).toContain("`dependsOn: ['build.*']`")

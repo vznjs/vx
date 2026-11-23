@@ -74,9 +74,9 @@ describe('restoring into an output directory that links out of the project', () 
         // (neither a miss nor its layer's hit), and ran no command. (Its grid
         // row is pinned by `vx last` below: CI's static output draws no grid.)
         expect(r.text).toContain('└─ app#build ── (0ms) failed (cache restore failed)')
-        expect(r.text).toMatch(/^ {12}1 failed · 1 total$/m)
-        // The cache bar fills with it, as the tasks bar does; no legend counts it.
-        expect(r.text).toMatch(/^ {2}cache +▰+\n\n/m)
+        expect(r.text).toMatch(/^ {2}tasks {5}1 failed · 1 total$/m)
+        // A piped summary draws no meters, and no legend counts it: no cache row.
+        expect(r.text).not.toMatch(/^ {2}cache /m)
         expect(r.text).not.toMatch(/miss|local 1|↓/)
         expect(r.text).not.toContain('$ mkdir')
       }

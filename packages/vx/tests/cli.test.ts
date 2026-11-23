@@ -627,7 +627,7 @@ describe('cli run() end-to-end against a real fixture workspace', () => {
       expect(stdout).toMatch(/ run +no-cache .* one#hello\n/)
       stdout = ''
       expect(await run(['run', '--all', 'hello', flag])).toBe(0)
-      expect(stdout).toMatch(/\n {12}local 1∅\n/)
+      expect(stdout).toMatch(/\n {2}cache {5}local 1∅\n/)
       expect(stdout).not.toContain('miss')
     })
   }
