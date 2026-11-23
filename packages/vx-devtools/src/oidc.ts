@@ -593,6 +593,8 @@ async function answered(url: string, fetchImpl?: typeof fetch): Promise<Response
       signal: AbortSignal.timeout(Math.max(1, Math.min(KEYS_TRY_MS, until - performance.now()))),
     }).catch((err: unknown) => (err instanceof Error ? err : new Error(String(err))))
     if (!(res instanceof Error) && res.ok) return res
+    // quiet: an unread body held its connection open until collected
+    if (!(res instanceof Error)) await res.body?.cancel().catch(() => {})
     const again = res instanceof Error || res.status >= 500 || res.status === 429
     const pause = 250 * 2 ** (attempt - 1)
     if (!again || attempt >= 3 || performance.now() + pause >= until)
