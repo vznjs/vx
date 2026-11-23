@@ -32,7 +32,7 @@ export interface WorkerType {
 
 /** One kind of machine the adapter can start. */
 export interface WorkerSize {
-  /** How many of it one run may start; absent, as many as the work needs. */
+  /** How many of it may be in the run at once (a lost one is replaced); absent, as many as the work needs. */
   readonly max?: number
   /** Its cores: what starting one adds, until it reports what its machine has. */
   readonly cpu: number

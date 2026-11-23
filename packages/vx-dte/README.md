@@ -977,7 +977,7 @@ process.env.CF_ACCESS_CLIENT_ID, … }`); an unset value is left out, and
     label `vx dte init` writes for it): its cores
     and memory (bytes, or `'8GB'`, `'512MiB'`), which the run counts on
     when it starts one, until the worker reports what its machine has,
-    how many of it one run may start (absent, no cap), and its machines'
+    how many of it may be in the run at once, a lost one replaced (absent, no cap), and its machines'
     platform (`linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64`;
     absent, planned as this machine's and not checked on join). With no adapter, the sizes' platforms are
     the ones joining workers may have. Only work counts:

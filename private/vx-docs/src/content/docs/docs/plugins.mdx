@@ -502,7 +502,7 @@ Each machine in `workers.<type>.machines.<name>`:
 | --- | --- | --- |
 | `cpu` | Its cores. | required |
 | `memory` | Its memory: bytes, or `'8GB'`, `'512MiB'`. | required |
-| `max` | How many one run may start. | as many as the work needs |
+| `max` | How many may be in the run at once. One lost or failed to start is replaced. | as many as the work needs |
 | `platform` | Its platform, such as `'linux-x64'`. A task with `exec.platforms` runs only there. | this machine's |
 | `runsOn` | The CI runner label `vx dte init` writes. | the platform's GitHub-hosted runner |
 

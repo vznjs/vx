@@ -231,7 +231,7 @@ An unknown key is refused. With an `adapter`, at least one machine needs `max` a
 | --- | --- | --- |
 | `cpu` | its cores, which vx plans by until the worker reports its own | required |
 | `memory` | bytes, or `'16GB'`, `'512MiB'` | required |
-| `max` | how many one run may start | no cap |
+| `max` | how many may be in the run at once; one lost or failed to start is replaced | no cap |
 | `platform` | `linux-x64`, `linux-arm64`, `darwin-x64` or `darwin-arm64`; a worker of another is refused | this machine's, not checked |
 | `runsOn` | the CI runner label `vx dte init` writes for it | a GitHub runner of its platform, such as `ubuntu-latest` |
 
@@ -310,6 +310,9 @@ Names use letters, digits, `_` and `-`.
 | Line | Says |
 | --- | --- |
 | `stopped` / `left` | the worker ended with the run, or left early: nothing more for it |
+| `lost` | it crashed, was stopped (Ctrl-C) or went silent; the task it ran ran again on another worker |
+| `failed` | it never joined: the line says why and names its log |
+| `not joined` / `cancelled` | the run ended, or no longer needed it, before it joined |
 | `declared · actual` | the size you declared, and what the machine really has (red: they differ) |
 | `online · busy · idle` | how long it was in the run, and how much of that it worked |
 | `probe` | what the run knew at its start: tasks to run, misses already known |
