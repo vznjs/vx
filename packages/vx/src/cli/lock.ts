@@ -339,7 +339,7 @@ async function audit(root: string, warn: (message: string) => void): Promise<Gra
     // graph every run trusts, refuses it too.
     refuseFiltersThroughGroups(nodes)
     // A typo in a pipeline's task waited for the CI job that runs it.
-    refuseUnknownPipelineTasks(workspaceConfig?.pipelines, nodes.keys())
+    refuseUnknownPipelineTasks(workspaceConfig?.pipelines, nodes.keys(), projects.keys())
   } catch (err) {
     if (isUserError(err))
       return {
@@ -357,13 +357,14 @@ async function audit(root: string, warn: (message: string) => void): Promise<Gra
 function refuseUnknownPipelineTasks(
   pipelines: Readonly<Record<string, { readonly tasks: readonly string[] }>> | undefined,
   ids: Iterable<string>,
+  names: Iterable<string>,
 ): void {
   if (pipelines === undefined) return
   const all = new Set(ids)
   const bare = new Set([...all].map((id) => id.slice(id.lastIndexOf('#') + 1)))
   // Every project has a `build`: core's default one, which the graph leaves
   // out where it has nothing to run.
-  const projects = new Set([...all].map((id) => id.slice(0, id.lastIndexOf('#'))))
+  const projects = new Set(names)
   const known = (t: string): boolean => {
     const at = t.lastIndexOf('#')
     if (at < 0) return t === 'build' || bare.has(t)
