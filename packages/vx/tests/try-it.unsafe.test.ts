@@ -273,23 +273,65 @@ function versionless(out: string): string {
   return out.replace(/^  (vx-migrate|vx init) \S+$/m, '  $1')
 }
 
-// The migrate guide shows what `vx init` and `bunx @vzn/vx-migrate` write
-// and print in a Turbo and an Nx repo; each sample is held to a run.
+// The migrate guide shows what `vx init` writes and prints in a Turbo and an
+// Nx repo, both ways (`--native`, and `--keep` then vx-migrate); each sample
+// is held to a run.
+const INIT_NATIVE = 'bunx @vzn/vx init --native'
+const INIT_KEEP = 'bunx @vzn/vx init --keep'
+
+/** The section's ts fence that declares `type`: the workspace file or a project's. */
+function tsFence(name: string, type: 'WorkspaceConfig' | 'ProjectConfig', nth = 0): string {
+  return guideFences(name, 'ts').filter((f) => f.includes(`satisfies ${type}`))[nth]!
+}
+
 describe('the migrate guide shows what vx init and vx-migrate write, and the native end state builds', () => {
-  it('Turborepo: the workspace file, init’s output and vx-migrate’s report', () => {
+  it('Turborepo: init --native writes the configs the guide shows', () => {
     const root = turboRepo()
     commit(root)
-    const [file, libConfig] = guideFences('Turborepo', 'ts')
-    const [initCmd, migrateCmd] = guideFences('Turborepo', 'sh').map((f) => f.trim())
-    const [initOut, migrateOut] = guideFences('Turborepo', 'ansi').map(printedPlain)
-    const cacheLine = /^`(turboCache\(\): [^`]*)`$/m.exec(guideSection('Turborepo'))?.[1]
-    expect(cacheLine).toBeDefined()
+    expect(guideFences('Turborepo', 'sh').map((f) => f.trim())).toEqual([INIT_NATIVE])
+    const [out] = guideFences('Turborepo', 'ansi').map(printedPlain)
     // `vx init` runs the installed vx-migrate (else the registry's, through bun x).
     expect(step(root, 'npm install -D @vzn/vx @vzn/vx-migrate').code).toBe(0)
-    expect(initCmd).toBe('bunx @vzn/vx init --keep')
-    const init = step(root, initCmd!)
-    expect([init.code, versionless(init.out)]).toEqual([0, initOut!])
-    expect(readFileSync(path.join(root, '.vx/workspace.ts'), 'utf8')).toBe(file!)
+    const init = step(root, INIT_NATIVE)
+    expect([init.code, versionless(init.out)]).toEqual([0, out!])
+    expect(readFileSync(path.join(root, '.vx/workspace.ts'), 'utf8')).toBe(
+      tsFence('Turborepo', 'WorkspaceConfig'),
+    )
+    expect(readFileSync(path.join(root, 'packages', 'lib', 'vx.config.ts'), 'utf8')).toBe(
+      tsFence('Turborepo', 'ProjectConfig'),
+    )
+    expect(endState(root, 'turbo', 'turbo.json')).toEqual(BUILT)
+  }, 60_000)
+
+  it('Nx: init --native writes the config the guide shows', () => {
+    const root = nxRepo()
+    standInNx(root)
+    commit(root)
+    expect(guideFences('Nx', 'sh').map((f) => f.trim())).toEqual([INIT_NATIVE])
+    const [out] = guideFences('Nx', 'ansi').map(printedPlain)
+    expect(step(root, 'npm install -D @vzn/vx @vzn/vx-migrate').code).toBe(0)
+    const init = step(root, INIT_NATIVE)
+    expect([init.code, versionless(init.out)]).toEqual([0, out!])
+    expect(readFileSync(path.join(root, 'packages', 'lib', 'vx.config.ts'), 'utf8')).toBe(
+      tsFence('Nx', 'ProjectConfig'),
+    )
+    expect(endState(root, 'nx', 'nx.json')).toEqual(BUILT)
+  }, 60_000)
+
+  it('Turborepo: init --keep writes the workspace file and prints the report shown, then vx-migrate ends native', () => {
+    const root = turboRepo()
+    commit(root)
+    const section = 'Check the mapping first'
+    expect(guideFences(section, 'sh').map((f) => f.trim())).toEqual([INIT_KEEP])
+    const [out] = guideFences(section, 'ansi').map(printedPlain)
+    const cacheLine = /^`(turboCache\(\): [^`]*)`$/m.exec(guideSection(section))?.[1]
+    expect(cacheLine).toBeDefined()
+    expect(step(root, 'npm install -D @vzn/vx @vzn/vx-migrate').code).toBe(0)
+    const init = step(root, INIT_KEEP)
+    expect([init.code, versionless(init.out)]).toEqual([0, out!])
+    expect(readFileSync(path.join(root, '.vx/workspace.ts'), 'utf8')).toBe(
+      tsFence(section, 'WorkspaceConfig', 0),
+    )
 
     mkdirSync(path.join(root, '.github', 'workflows'), { recursive: true })
     writeFileSync(path.join(root, '.github', 'workflows', 'ci.yml'), 'env:\n  TURBO_TOKEN: x\n')
@@ -297,32 +339,23 @@ describe('the migrate guide shows what vx init and vx-migrate write, and the nat
     expect(cached.out.split('\n').map((l) => l.trim())).toContain(cacheLine!.trim())
     rmSync(path.join(root, '.github'), { recursive: true })
 
-    expect(migrateCmd).toBe('bunx @vzn/vx-migrate')
-    expect(migrate(root)).toEqual([0, migrateOut!])
-    expect(readFileSync(path.join(root, 'packages', 'lib', 'vx.config.ts'), 'utf8')).toBe(
-      libConfig!,
-    )
+    expect(migrate(root)[0]).toBe(0)
     expect(endState(root, 'turbo', 'turbo.json')).toEqual(BUILT)
   }, 60_000)
 
-  it('Nx: the workspace file, init’s output and vx-migrate’s report', () => {
+  it('Nx: init --keep writes the workspace file and prints the report shown, then vx-migrate ends native', () => {
     const root = nxRepo()
     standInNx(root)
     commit(root)
-    const [file, libConfig] = guideFences('Nx', 'ts')
-    const [initCmd, migrateCmd] = guideFences('Nx', 'sh')[0]!.trim().split('\n')
-    const [initOut, migrateOut] = guideFences('Nx', 'ansi').map(printedPlain)
-    // `vx init` runs the installed vx-migrate (else the registry's, through bun x).
+    const section = 'Check the mapping first'
+    const [, out] = guideFences(section, 'ansi').map(printedPlain)
     expect(step(root, 'npm install -D @vzn/vx @vzn/vx-migrate').code).toBe(0)
-    expect(initCmd).toBe('bunx @vzn/vx init --keep')
-    const init = step(root, initCmd!)
-    expect([init.code, versionless(init.out)]).toEqual([0, initOut!])
-    expect(readFileSync(path.join(root, '.vx/workspace.ts'), 'utf8')).toBe(file!)
-    expect(migrateCmd).toBe('bunx @vzn/vx-migrate')
-    expect(migrate(root)).toEqual([0, migrateOut!])
-    expect(readFileSync(path.join(root, 'packages', 'lib', 'vx.config.ts'), 'utf8')).toBe(
-      libConfig!,
+    const init = step(root, INIT_KEEP)
+    expect([init.code, versionless(init.out)]).toEqual([0, out!])
+    expect(readFileSync(path.join(root, '.vx/workspace.ts'), 'utf8')).toBe(
+      tsFence(section, 'WorkspaceConfig', 1),
     )
+    expect(migrate(root)[0]).toBe(0)
     expect(endState(root, 'nx', 'nx.json')).toEqual(BUILT)
   }, 60_000)
 })
@@ -366,17 +399,17 @@ function endState(root: string, plugin: 'turbo' | 'nx', config: string): string[
   })
 }
 
-// The from-Turborepo and from-Nx posts show the file `vx init` writes: the
-// guide's, which the rows above hold to a run.
+// The from-Turborepo and from-Nx posts show the file `vx init --keep` writes:
+// the guide's, which the rows above hold to a run.
 describe('the migration posts show the file vx init writes', () => {
   const blog = path.join(PACKAGES, '..', 'private', 'vx-docs', 'src', 'content', 'docs', 'blog')
   const firstTs = (name: string): string =>
     /```ts\n([\s\S]*?)```/.exec(readFileSync(path.join(blog, name), 'utf8'))?.[1] ?? ''
   it('from-turborepo', () => {
-    expect(firstTs('from-turborepo.md')).toBe(guideFences('Turborepo', 'ts')[0]!)
+    expect(firstTs('from-turborepo.md')).toBe(tsFence('Check the mapping first', 'WorkspaceConfig', 0))
   })
 
   it('from-nx', () => {
-    expect(firstTs('from-nx.md')).toBe(guideFences('Nx', 'ts')[0]!)
+    expect(firstTs('from-nx.md')).toBe(tsFence('Check the mapping first', 'WorkspaceConfig', 1))
   })
 })
