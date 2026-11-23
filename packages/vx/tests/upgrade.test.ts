@@ -1010,6 +1010,15 @@ describe('managedInstall', () => {
     expect(() => managedInstall(`/tmp/bunx-1000-@vzn/vx@latest/${BIN}`, '/home/me')).toThrow(
       /runs from a package-manager cache/,
     )
+    // Bun 1.4's bunx and pnpm dlx read as projects: upgrade ran `bun add` /
+    // `pnpm add` inside the cache.
+    for (const cache of [
+      '/home/me/.bun/install/cache/.bunx-0/@vzn/vx@0.0.661',
+      '/home/me/.cache/pnpm/dlx/1323/1a2-245f',
+    ])
+      expect(() => managedInstall(`${cache}/${BIN}`, '/home/me')).toThrow(
+        /runs from a package-manager cache/,
+      )
   })
 
   it('the cache refusal suggests bunx, never npx', () => {

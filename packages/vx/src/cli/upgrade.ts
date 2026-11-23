@@ -680,7 +680,10 @@ export function managedInstall(execPath: string, cwd: string): ManagedInstall | 
   if (owner === null) return null
   const p = execPath.split(path.sep).join('/')
   const root = p.slice(0, `${p}/`.indexOf('/node_modules/'))
-  if (p.includes('/_npx/') || /\/bunx-[^/]*\//.test(p)) {
+  // bunx: `<tmp>/bunx-<uid>-…` (older Bun), `<cache>/.bunx-<uid>/…` (1.4);
+  // pnpm dlx: `<cache>/pnpm/dlx/…`; yarn dlx: `<tmp>/dlx-<pid>/…`. Read as a
+  // project, the cache's own package.json had the manager add there.
+  if (p.includes('/_npx/') || /\/\.?bunx-[^/]*\/|\/pnpm\/dlx\/|\/dlx-[^/]*\//.test(p)) {
     throw new UserError(
       `vx upgrade: this vx runs from a package-manager cache (${execPath}) — nothing is installed to upgrade; ask for the version you want instead: bunx @vzn/vx@latest`,
     )

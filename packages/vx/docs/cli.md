@@ -2878,7 +2878,7 @@ upgrade done and prints
 `vx upgrade  vx lock failed: run vx lock`. `vx upgrade -g` never locks.
 
 vx never installs Node or a package manager: one not on `PATH` is refused with the command to run. A vx run from a
-`bunx` cache has nothing installed to upgrade, and says to ask for
+`bunx` or `pnpm dlx` cache has nothing installed to upgrade, and says to ask for
 `@vzn/vx@latest` instead.
 
 ### Exit codes
