@@ -7,11 +7,13 @@
 // filter, a second copy of the rule that tests/run-records.test.ts holds
 // to this one.
 
-import { type Cache } from '../cache/index.js'
+import { type Cache, flushMemos, historyFiles } from '../cache/index.js'
 import {
+  encodeHits,
   HIT,
-  type HitBatch,
+  HitBatch,
   type InvocationRecord,
+  type RunHits,
   type RunRecord,
   runHistory,
 } from '../history/index.js'
@@ -310,6 +312,93 @@ export function packHit(
   const remoteError = remoteErrorOf(input.remoteTraffic, o.hash)
   if (remoteError !== undefined) rows.set('remoteError', remoteError)
   if (o.cache?.keylessBy !== undefined) rows.set('keylessBy', o.cache.keylessBy)
+}
+
+/** Hits one packed batch holds: a small run allocates one small batch. */
+const HITS_PER_BATCH = 512
+/** Green misses' rows a run writes at once while it goes: ~2 ms of a free main thread. */
+const ROWS_PER_WRITE = 256
+
+/**
+ * The rows a run keeps while it goes, so its end writes only the rest. A
+ * hit's row is whole when it finishes: packed then (hit-rows.ts), and kept as
+ * one row with the run's bundle. A green miss's row is whole then too:
+ * written ROWS_PER_WRITE at a time with the memos made meanwhile. A failure
+ * (it writes out kept hits first), a server (its outcome changes after) and
+ * any row with forward args (only the bundle digests them) stay the
+ * bundle's. A refused write leaves its rows to the bundle.
+ */
+export class LiveRows {
+  /** The cache keeps history files: anything is kept while the run goes. */
+  readonly keeps: boolean
+  private readonly hitRows: HitBatch[] = []
+  private readonly packed = new Set<TaskOutcome>()
+  private readonly written = new Set<TaskOutcome>()
+  private readonly writtenRows: RunRecord[] = []
+  private readonly pending: [TaskOutcome, RunRecord][] = []
+  private writing: boolean
+
+  constructor(
+    private readonly cache: Cache,
+    private readonly context: () => RunRecordContext,
+    private readonly git: GitContext,
+    private readonly forwards: boolean,
+  ) {
+    this.keeps = historyFiles(cache) !== undefined
+    this.writing = this.keeps
+  }
+
+  /** A task finished. */
+  done(o: TaskOutcome): void {
+    if (!this.keeps || isGroupTask(o.node)) return
+    if (o.timing?.startNs === undefined || o.timing?.endNs === undefined) return
+    if (this.forwards && o.node.requested) return
+    if (isCacheHit(o.status)) {
+      let rows = this.hitRows.at(-1)
+      if (rows === undefined || rows.n === HITS_PER_BATCH)
+        this.hitRows.push((rows = new HitBatch(HITS_PER_BATCH)))
+      packHit(o as RecordedOutcome, this.context(), rows)
+      this.packed.add(o)
+      return
+    }
+    if (!this.writing || o.status !== 'success') return
+    if (o.node.config.exec?.persistent !== undefined) return
+    this.pending.push([o, runRecordOf(o as RecordedOutcome, this.context())])
+    if (this.pending.length < ROWS_PER_WRITE) return
+    const rows = this.pending.splice(0)
+    try {
+      runHistory(this.cache).recordRuns(
+        rows.map(([, r]) => r),
+        this.git,
+      )
+    } catch {
+      this.writing = false
+      return
+    }
+    for (const [done, r] of rows) {
+      this.written.add(done)
+      this.writtenRows.push(r)
+    }
+    flushMemos(this.cache)
+  }
+
+  /** The outcomes whose row is kept already: none is a row of the bundle. */
+  landed(): ReadonlySet<TaskOutcome> {
+    return this.written.size === 0 ? this.packed : new Set([...this.packed, ...this.written])
+  }
+
+  /** The run's packed hits, for the write that keeps its rows. */
+  hits(runId: string, startedAtMs: number): RunHits {
+    return { runId, startedAtMs, ...encodeHits(this.hitRows) }
+  }
+
+  /** Every row kept while the run went, built again for a late remote error. */
+  rows(): RunRecord[] {
+    return [
+      ...[...this.packed].map((o) => runRecordOf(o as RecordedOutcome, this.context())),
+      ...this.writtenRows,
+    ]
+  }
 }
 
 /**

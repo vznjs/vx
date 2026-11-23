@@ -17,8 +17,6 @@ import { realpathSync } from 'node:fs'
 import path from 'node:path'
 import { fsClockNow } from '../memo/index.js'
 import {
-  flushMemos,
-  historyFiles,
   indexDb,
   Cache,
   type CachePolicy,
@@ -31,10 +29,6 @@ import {
   sweepStaging,
 } from '../cache/index.js'
 import {
-  encodeHits,
-  HitBatch,
-  type RunHits,
-  type RunRecord,
   runHistory,
   keepRunNotes,
   createMissExplainer,
@@ -62,7 +56,6 @@ import { trailable, TrailingOutputs } from './trailing-outputs.js'
 import {
   deadServerBehind,
   declaredTask,
-  isCacheHit,
   isGroupTask,
   markSurfacedDeps,
   runGraph,
@@ -204,11 +197,9 @@ import { writeRunFailures } from './run-failures.js'
 import {
   assembleRunRecords,
   foldOutcomes,
+  LiveRows,
   recordLateRemoteErrors,
-  packHit,
-  type RecordedOutcome,
   type RunRecordContext,
-  runRecordOf,
 } from './run-records.js'
 import {
   hasEnded,
@@ -218,11 +209,10 @@ import {
   keyedServers,
   onServerExit,
   sessionEnd,
-  serverUsers,
+  serverRelease,
   stopServer,
   takeExitNotes,
   takeHeldServers,
-  unneededServers,
 } from './persistent.js'
 import { serverKey } from './persistent-task.js'
 import { writeRunProfile } from './run-artifacts.js'
@@ -495,34 +485,7 @@ async function runOnBus(
   const log = busLogger(bus)
   const steps = createSteps(log, showsSteps)
   const { step, stepSync } = steps
-  // A server's output goes through a cell of its own: a later watch cycle
-  // that keeps the server points it at that cycle's bus (`RunHandoff.keep`).
-  const serverOuts = new Map<string, { bus: EventBus }>()
-  // What a server writes between ready and its logged outcome: renderers keep
-  // pre-outcome output for a frame a ready server never prints, so its first
-  // lines were lost.
-  const sinceReady = new Map<string, RunEvent[]>()
-  const serverLog = (id: string): Logger => {
-    const out = { bus }
-    serverOuts.set(id, out)
-    const emit = (event: RunEvent): void => {
-      const held = sinceReady.get(id)
-      if (held === undefined) out.bus.emit(event)
-      else held.push(event)
-    }
-    return {
-      ...log,
-      taskStdout: (node, chunk) => emit({ kind: 'task:stdout', node, chunk }),
-      taskStderr: (node, chunk) => emit({ kind: 'task:stderr', node, chunk }),
-    }
-  }
-  const releaseSinceReady = (id: string): void => {
-    const held = sinceReady.get(id)
-    if (held === undefined) return
-    sinceReady.delete(id)
-    const out = serverOuts.get(id) ?? { bus }
-    for (const event of held) out.bus.emit(event)
-  }
+  const serverOut = serverOutputs(bus, log)
 
   // Taken before the cache opens: a run holding the store while waiting here,
   // and a `vx cache clean` holding this lock while waiting for open stores,
@@ -572,11 +535,6 @@ async function runOnBus(
   }
   const releaseRunLock: RunLockRelease =
     heldLock ?? Object.assign(async () => {}, { path: runLockPath(prepared.workspaceRoot) })
-  // The cache and the lock go together on every exit before the run's own.
-  const closeUnrun = async (): Promise<void> => {
-    prepared.cache.close()
-    await releaseRunLock()
-  }
   mark('plugin stages')
   // Every exit from here tears the plugins down: their capability factories ran
   // in prepareRun, and teardown releases what they opened. A plugin whose own
@@ -593,25 +551,38 @@ async function runOnBus(
     await teardownPlugins(plugins, warnOf(log), report, step)
   }
   unowe = owedIfStranded(() => teardown())
+  // Plugins subscribe before the run emits (`installPlugins`, below).
+  let disposePlugins: (() => void) | undefined
+  // Every exit before the run's own try: the plugins off the bus and torn
+  // down, then the cache and the lock, which go together.
+  const leaveUnrun = async (except?: unknown): Promise<void> => {
+    disposePlugins?.()
+    await teardown(except)
+    prepared.cache.close()
+    await releaseRunLock()
+  }
+  // Until the run's own try below, a throw leaves through here.
+  const abandoning = async <T>(step: () => T | Promise<T>): Promise<T> => {
+    try {
+      return await step()
+    } catch (err) {
+      await leaveUnrun()
+      throw err
+    }
+  }
   // Setting variables are read before any task, so a bad value is refused here,
   // not mid-run, and never throws past the teardown and cache close.
-  let inputStability: { run: InputStability; workspace?: InputStability }
-  let cleanOutputs: boolean | undefined
-  try {
-    options = withRunSettings(options, prepared.workspaceConfig)
-    inputStability = {
+  options = await abandoning(() => withRunSettings(options, prepared.workspaceConfig))
+  const inputStability: { run: InputStability; workspace?: InputStability } = await abandoning(
+    () => ({
       run: inputStabilityEnv(),
       ...(prepared.workspaceConfig?.inputs?.stability !== undefined
         ? { workspace: prepared.workspaceConfig.inputs.stability }
         : {}),
-    }
-    // Resolved once, beside the keys that fold it (prepare.ts).
-    cleanOutputs = workspaceCleanOf(prepared.hashCache)
-  } catch (err) {
-    await teardown()
-    await closeUnrun()
-    throw err
-  }
+    }),
+  )
+  // Resolved once, beside the keys that fold it (prepare.ts).
+  const cleanOutputs = await abandoning(() => workspaceCleanOf(prepared.hashCache))
   // A task whose command re-enters `vx run` in this workspace is refused:
   // reaching the same task again forks runs until the machine gives out, and
   // otherwise (`ci` shelling out to `vx run lint`) the nested run escapes the
@@ -620,42 +591,17 @@ async function runOnBus(
   // macOS /var/folders); empty is unset.
   const outerRoot = process.env[VX_RUN_WORKSPACE_ENV] || undefined
   if (outerRoot !== undefined && canonical(outerRoot) === canonical(prepared.workspaceRoot)) {
-    await teardown()
-    await closeUnrun()
+    await leaveUnrun()
     throw new UserError(
       `task ${process.env[VX_RUN_TASK_ENV] ?? '<unknown>'} runs \`vx run\` inside its own workspace: a nested run is invisible to the outer graph (its tasks escape the schedule, the concurrency budget and the cache key) and a loop back to this task forks without bound. Declare what it needs with dependsOn instead.`,
     )
   }
-  // A requested name that matched no project fails the whole run, even when
-  // others resolved: a CI job that renames a task must go red, not silently
-  // stop running it. The caller prints the refusal on stderr; as a status line
-  // it reached stdout and whatever a script piped there.
-  if (prepared.unresolvedTasks.length > 0) {
-    const refused = `no projects declare task(s): ${prepared.unresolvedTasks.join(', ')}.${await unresolvedHint(prepared, options.projects)}`
-    await teardown()
-    await closeUnrun()
-    return { ok: false, outcomes: [], refused }
+  const nothing = await abandoning(() => nothingToRun(prepared, options, log))
+  if (nothing !== undefined) {
+    await leaveUnrun()
+    return nothing
   }
-  if (prepared.empty === 'none-affected') {
-    log.status(noneAffected(prepared, options))
-    await teardown()
-    await closeUnrun()
-    return { ok: true, outcomes: [] }
-  }
-  if (prepared.empty !== null) {
-    // `no-tasks-declared` is almost always a CI typo: a clear message and exit
-    // 1. `empty-graph` is defensive, unreachable today.
-    const refused =
-      prepared.empty === 'no-tasks-declared'
-        ? `no projects declare task(s): ${options.tasks.join(', ')}.${elsewhereHint(prepared.declaredElsewhere, true, options.projects, prepared.projects)}${await initHint(prepared)}`
-        : 'no tasks to run.'
-    await teardown()
-    await closeUnrun()
-    return { ok: false, outcomes: [], refused }
-  }
-  // Plugins subscribe before the run emits. A throwing `setup` fails fast with
-  // a UserError naming the plugin.
-  let disposePlugins: (() => void) | undefined
+  // A throwing `setup` fails fast with a UserError naming the plugin.
   let telemetry: TelemetryHandle | undefined
   // One run id per invocation, on every task, so analytics can group by run.
   const runId = ulid()
@@ -712,21 +658,8 @@ async function runOnBus(
       measured,
     })
   } catch (err) {
-    disposePlugins?.()
-    await teardown(err instanceof PluginSetupError ? err.plugin : undefined)
-    await closeUnrun()
+    await leaveUnrun(err instanceof PluginSetupError ? err.plugin : undefined)
     throw err
-  }
-  // Until the run's own try below, a throw leaves through here.
-  const abandoning = async <T>(step: () => T | Promise<T>): Promise<T> => {
-    try {
-      return await step()
-    } catch (err) {
-      disposePlugins?.()
-      await teardown()
-      await closeUnrun()
-      throw err
-    }
   }
   const {
     workspaceRoot,
@@ -751,9 +684,7 @@ async function runOnBus(
   if (heldBefore.stale.length > 0) {
     await terminateChildren(() => heldBefore.stale)
     if (options.signal?.aborted === true) {
-      disposePlugins?.()
-      await teardown()
-      await closeUnrun()
+      await leaveUnrun()
       return { ok: true, outcomes: [] }
     }
   }
@@ -1307,7 +1238,7 @@ async function runOnBus(
         options.failFast === true ? AbortSignal.any([stop.signal, failFast.signal]) : stop.signal,
       failFast: failFast.signal,
       inputStability,
-      serverReady: (id) => void sinceReady.set(id, []),
+      serverReady: serverOut.ready,
     }
     if (hasServers)
       scope.serverDiedUnder = async (node) => {
@@ -1368,7 +1299,7 @@ async function runOnBus(
     if (sandboxArmer !== null) scope.armSandbox = () => sandboxArmer.arm()
     if (demand.any) scope.executing = demand.executing
     const argsOf = executeArgsOf(scope, {
-      log: (node) => (node.config.exec?.persistent !== undefined ? serverLog(node.id) : log),
+      log: (node) => (node.config.exec?.persistent !== undefined ? serverOut.log(node.id) : log),
       placements,
       nestedDirsByProject,
       downloadModeOf: download?.modeOf,
@@ -1475,7 +1406,7 @@ async function runOnBus(
       if (hasEnded(server.child)) return undefined
       server.handOver()
       server.out.bus = bus
-      serverOuts.set(node.id, server.out)
+      serverOut.adopt(node.id, server.out)
       persistentRegistry.set(node.id, server.child)
       const at = process.hrtime.bigint() - runStartHrTimeNs
       return {
@@ -1489,127 +1420,42 @@ async function runOnBus(
     let lockBroken: boolean | undefined
     prepared.localCache.memo.storeHeldBlobSizes()
     prepared.localCache.checkpointOffThread()
-    // A hit's row is whole when it finishes: packed then (hit-rows.ts), and
-    // kept as one row with the run's bundle. Other rows, and any with forward
-    // args (only the bundle digests them), are the bundle's own.
-    const keepsHits = historyFiles(prepared.localCache) !== undefined
-    const hitContext = (): RunRecordContext => ({
-      runId,
-      startedAtMs: endedAtMsAtStart,
-      endedAtMs: endedAtMsAtStart,
-      blocks: blocksNow(),
-      remoteTraffic: prepared.localCache.traffic.keys,
-    })
-    const hitRows: HitBatch[] = []
-    const packed = new Set<TaskOutcome>()
-    const forwards = (options.forwardArgs?.length ?? 0) > 0
-    const keepHit = (o: TaskOutcome): void => {
-      if (!keepsHits || isGroupTask(o.node)) return
-      if (!isCacheHit(o.status)) return
-      if (o.timing?.startNs === undefined || o.timing?.endNs === undefined) return
-      if (forwards && o.node.requested) return
-      let rows = hitRows.at(-1)
-      if (rows === undefined || rows.n === HITS_PER_BATCH)
-        hitRows.push((rows = new HitBatch(HITS_PER_BATCH)))
-      packHit(o as RecordedOutcome, hitContext(), rows)
-      packed.add(o)
-    }
-    // A green miss's row is whole when it finishes too: written while the
-    // run goes, ROWS_PER_WRITE at a time with the memos made meanwhile, so
-    // the run's end writes only the rest. A failure (it writes out kept hits first), a server (its outcome
-    // changes after) and forwarded args stay the bundle's. A refused write
-    // leaves its rows to the bundle.
-    const written = new Set<TaskOutcome>()
-    const writtenRows: RunRecord[] = []
-    const pendingRows: [TaskOutcome, RunRecord][] = []
-    let writing = keepsHits
-    const writeRow = (o: TaskOutcome): void => {
-      if (!writing || o.status !== 'success' || isGroupTask(o.node)) return
-      if (o.node.config.exec?.persistent !== undefined) return
-      if (o.timing?.startNs === undefined || o.timing?.endNs === undefined) return
-      if (forwards && o.node.requested) return
-      pendingRows.push([o, runRecordOf(o as RecordedOutcome, hitContext())])
-      if (pendingRows.length < ROWS_PER_WRITE) return
-      const rows = pendingRows.splice(0)
-      try {
-        runHistory(prepared.localCache).recordRuns(
-          rows.map(([, r]) => r),
-          gitContext,
-        )
-      } catch {
-        writing = false
-        return
-      }
-      for (const [done, r] of rows) {
-        written.add(done)
-        writtenRows.push(r)
-      }
-      flushMemos(prepared.localCache)
-    }
-    /** The run's packed hits, for the write that keeps its rows. */
-    const keptHits = (): RunHits => ({
-      runId,
-      startedAtMs: endedAtMsAtStart,
-      ...encodeHits(hitRows),
-    })
+    const rows = new LiveRows(
+      prepared.localCache,
+      (): RunRecordContext => ({
+        runId,
+        startedAtMs: endedAtMsAtStart,
+        endedAtMs: endedAtMsAtStart,
+        blocks: blocksNow(),
+        remoteTraffic: prepared.localCache.traffic.keys,
+      }),
+      gitContext,
+      (options.forwardArgs?.length ?? 0) > 0,
+    )
     // History, the kept bytes and the report read the graph's outcomes
     // from the stream, as every other surface does.
     const fold = foldOutcomes(
       nodes,
-      keeper === undefined && !keepsHits
+      keeper === undefined && !rows.keeps
         ? undefined
         : (o) => {
             keeper?.taskDone(o)
-            keepHit(o)
-            writeRow(o)
+            rows.done(o)
           },
     )
     unfold = bus.subscribe(fold.subscriber)
     // A dependency-only server stops once no task left uses it, freeing its
     // cores; not under a hold, whose next cycle may reuse it.
-    const unneeded =
-      options.handoff?.holdPersistent === true
-        ? undefined
-        : unneededServers(nodes, options.log === undefined && (options.handleSignals ?? true))
-    const serving = executors.filter(
-      (e) => e.capabilities?.servers === true && e.distribution?.unneeded !== undefined,
-    )
-    const released = new Set<string>()
-    const stopping: Promise<void>[] = []
-    // A server stops after the servers using it (`serverUsers`), which this
-    // same release reached first.
-    const usersOf = unneeded === undefined ? undefined : serverUsers(nodes)
-    const stops = new Map<string, Promise<void>>()
-    const release = (id: string): void => {
+    const servers = serverRelease({
+      nodes,
+      hold: options.handoff?.holdPersistent === true,
+      foreground: options.log === undefined && (options.handleSignals ?? true),
+      executors,
+      registry: persistentRegistry,
       // A stop signals every server once and waits out its grace: a second
       // signal here cut a server's cleanup short.
-      if (stop.signal.aborted) return
-      for (const s of unneeded?.(id) ?? []) {
-        // Copies an executor started beside the dependants it ran.
-        for (const e of serving)
-          try {
-            e.distribution!.unneeded!(s)
-          } catch {
-            // Its copies stop at its teardown, as before.
-          }
-        const child = persistentRegistry.get(s)
-        // One that died on its own stays: the end of the graph reports it.
-        if (child === undefined || hasEnded(child)) continue
-        released.add(s)
-        persistentRegistry.delete(s)
-        const users: Promise<void>[] = []
-        for (const u of usersOf?.get(s) ?? []) {
-          const p = stops.get(u)
-          if (p !== undefined) users.push(p)
-        }
-        const p =
-          users.length === 0
-            ? stopServer(child)
-            : Promise.allSettled(users).then(() => stopServer(child))
-        stops.set(s, p)
-        stopping.push(p)
-      }
-    }
+      stopped: () => stop.signal.aborted,
+    })
     // Tasks a plugin's executor threw on, and its name: the throw left no `where`.
     const thrownOn = new Map<string, string>()
     // A spare shell for each slot the first tasks fill (`primeSpares`).
@@ -1673,15 +1519,20 @@ async function runOnBus(
         taint.settled(o)
         judgeFlaky(o)
         log.taskComplete(o.node, o)
-        if (sinceReady.size > 0) releaseSinceReady(o.node.id)
+        serverOut.release(o.node.id)
         demand.finished(o.node.id)
-        release(o.node.id)
+        servers.release(o.node.id)
         // A server that dies while the graph runs is no longer running:
         // its pin stayed `running` under the line naming its exit.
         const server = o.status === 'success' ? persistentRegistry.get(o.node.id) : undefined
         if (server !== undefined && o.serverExit === undefined)
           onServerExit(server, 'outcome', (code) => {
-            if (code !== 0 && !graphOver && !stop.signal.aborted && !released.has(o.node.id))
+            if (
+              code !== 0 &&
+              !graphOver &&
+              !stop.signal.aborted &&
+              !servers.released.has(o.node.id)
+            )
               o.serverExit = code
           })
       },
@@ -1803,7 +1654,7 @@ async function runOnBus(
     // A stop already signalled every server once and waits out its grace:
     // a SIGTERM here, while a server ran its cleanup, cut it short.
     if (stop.signal.aborted) await stop.aborting?.catch(() => {})
-    await Promise.all(stopping)
+    await Promise.all(servers.stopping)
     const { keepAlive, crashed: crashedPersistent } = await disposeServers({
       registry: persistentRegistry,
       nodes,
@@ -1819,7 +1670,7 @@ async function runOnBus(
     // A packed hit is kept with the bundle, and a written row is in: neither
     // is a row of the bundle.
     unfold()
-    const landed = written.size === 0 ? packed : new Set([...packed, ...written])
+    const landed = rows.landed()
     prepared.localCache.memo.dropWarm()
     mark('run graph')
 
@@ -1947,7 +1798,10 @@ async function runOnBus(
     if (stop.stoppedBy === undefined && !historyAfterWait) {
       stepSync('vx:history', () => {
         recordHistory(() =>
-          runHistory(prepared.localCache).recordRunBundle({ ...records, hits: keptHits() }),
+          runHistory(prepared.localCache).recordRunBundle({
+            ...records,
+            hits: rows.hits(runId, endedAtMsAtStart),
+          }),
         )
         recordHistory(() =>
           runHistory(prepared.localCache).recordMeasures([...measured.values()], head),
@@ -1963,7 +1817,7 @@ async function runOnBus(
           runHistory(prepared.localCache).recordRuns(
             recordsOf(ended, false).runs,
             head,
-            keptHits(),
+            rows.hits(runId, endedAtMsAtStart),
           ),
         )
         recordHistory(() =>
@@ -2003,15 +1857,7 @@ async function runOnBus(
     // An upload that failed after the rows went in: its row says so too.
     if (prepared.localCache.uploads.failed > 0 && stop.stoppedBy === undefined && !historyAfterWait)
       recordHistory(() =>
-        recordLateRemoteErrors(
-          prepared.localCache,
-          [
-            ...records.runs,
-            ...[...packed].map((o) => runRecordOf(o as RecordedOutcome, hitContext())),
-            ...writtenRows,
-          ],
-          runId,
-        ),
+        recordLateRemoteErrors(prepared.localCache, [...records.runs, ...rows.rows()], runId),
       )
     // A stop passes none (`VxPlugin.teardown`): the run did not reach its end.
     // Only for a teardown, its tasks built only when one reads them.
@@ -2111,7 +1957,7 @@ async function runOnBus(
         outcomes: list,
         persistent: holdServers(keepAlive, {
           forwardArgs: options.forwardArgs,
-          outOf: (id) => serverOuts.get(id) ?? { bus },
+          outOf: serverOut.outOf,
           keyOf: (id) => (keyedHeld.has(id) ? outcomes.get(id)?.hash : undefined),
         }),
       }
@@ -2149,7 +1995,7 @@ async function runOnBus(
           try {
             runHistory(local).recordRunBundle({
               ...recordsOf(list, ok && !crashed),
-              hits: keptHits(),
+              hits: rows.hits(runId, endedAtMsAtStart),
             })
             runHistory(local).recordMeasures([...measured.values()], head)
             recordFailures(list, local)
@@ -2210,6 +2056,82 @@ async function runOnBus(
     // Last: a process signal waits for this before it exits.
     stop.left()
   }
+}
+
+/**
+ * Where each server's output goes. A cell of its own per server: a later
+ * watch cycle that keeps the server points it at that cycle's bus
+ * (`RunHandoff.keep`). What a server writes between ready and its logged
+ * outcome is held: renderers keep pre-outcome output for a frame a ready
+ * server never prints, so its first lines were lost.
+ */
+function serverOutputs(bus: EventBus, log: Logger) {
+  const outs = new Map<string, { bus: EventBus }>()
+  const sinceReady = new Map<string, RunEvent[]>()
+  return {
+    log(id: string): Logger {
+      const out = { bus }
+      outs.set(id, out)
+      const emit = (event: RunEvent): void => {
+        const held = sinceReady.get(id)
+        if (held === undefined) out.bus.emit(event)
+        else held.push(event)
+      }
+      return {
+        ...log,
+        taskStdout: (node, chunk) => emit({ kind: 'task:stdout', node, chunk }),
+        taskStderr: (node, chunk) => emit({ kind: 'task:stderr', node, chunk }),
+      }
+    },
+    /** The server matched `readyWhen`: what it writes now waits for its outcome. */
+    ready(id: string): void {
+      sinceReady.set(id, [])
+    },
+    /** Its outcome is logged: what it held goes out. */
+    release(id: string): void {
+      if (sinceReady.size === 0) return
+      const held = sinceReady.get(id)
+      if (held === undefined) return
+      sinceReady.delete(id)
+      const out = outs.get(id) ?? { bus }
+      for (const event of held) out.bus.emit(event)
+    },
+    /** A server an earlier run held writes through its own cell. */
+    adopt(id: string, out: { bus: EventBus }): void {
+      outs.set(id, out)
+    },
+    outOf: (id: string): { bus: EventBus } => outs.get(id) ?? { bus },
+  }
+}
+
+/**
+ * The summary of a run with nothing to run, or undefined. A requested name
+ * that matched no project fails the whole run, even when others resolved: a
+ * CI job that renames a task must go red, not silently stop running it. The
+ * caller prints the refusal on stderr; as a status line it reached stdout and
+ * whatever a script piped there.
+ */
+async function nothingToRun(
+  prepared: PreparedRun,
+  options: CoreRunOptions,
+  log: Logger,
+): Promise<RunSummary | undefined> {
+  if (prepared.unresolvedTasks.length > 0) {
+    const refused = `no projects declare task(s): ${prepared.unresolvedTasks.join(', ')}.${await unresolvedHint(prepared, options.projects)}`
+    return { ok: false, outcomes: [], refused }
+  }
+  if (prepared.empty === 'none-affected') {
+    log.status(noneAffected(prepared, options))
+    return { ok: true, outcomes: [] }
+  }
+  if (prepared.empty === null) return undefined
+  // `no-tasks-declared` is almost always a CI typo: a clear message and exit
+  // 1. `empty-graph` is defensive, unreachable today.
+  const refused =
+    prepared.empty === 'no-tasks-declared'
+      ? `no projects declare task(s): ${options.tasks.join(', ')}.${elsewhereHint(prepared.declaredElsewhere, true, options.projects, prepared.projects)}${await initHint(prepared)}`
+      : 'no tasks to run.'
+  return { ok: false, outcomes: [], refused }
 }
 
 /** Why an `--affected` run has nothing to run, said alike by the run and its `--dry` plan. */
@@ -2378,10 +2300,6 @@ async function planRestorable(
   }
 }
 
-/** Hits one packed batch holds: a small run allocates one small batch. */
-const HITS_PER_BATCH = 512
-/** Green misses' rows a run writes at once while it goes: ~2 ms of a free main thread. */
-const ROWS_PER_WRITE = 256
 const LOCK_HINT = ' A run reads the lock: after editing a vx.config, run `vx lock`.'
 
 /**
