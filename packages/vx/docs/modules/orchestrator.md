@@ -557,6 +557,8 @@ export function executeTask(args: ExecuteArgs): Promise<TaskOutcome>
 export function settleProbedHit(args: ExecuteArgs): (() => TaskOutcome) | undefined
 // watch-kept.ts: an outcome a later `vx watch` cycle may keep while its key holds
 export function keepsOutcome(o: TaskOutcome): boolean
+// attempt-outputs.ts: the declared globs a run matched no file for, where the files are (a remote executor's worker)
+export function missingOutputs(sets: readonly OutputSet[]): string[]
 ```
 
 Cache-key derivation (`ComputeHashArgs`, `computeTaskHash`,

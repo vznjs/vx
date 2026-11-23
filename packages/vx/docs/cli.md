@@ -1598,8 +1598,8 @@ The first run, then one save to `src/index.js`, then `Ctrl+C`:
 
 ### Options
 
-| Option   | Meaning                                                                                                                                                   |
-| -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Option   | Meaning                                                                                                                                                               |
+| -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `--poll` | Re-walk the watched files every 250 ms (`watch.pollInterval`) from the start instead of the OS watcher, as `VX_WATCH_POLL=1` does. For network mounts and containers. |
 
 Every other flag is `vx run`'s ([Flags](#flags)).
@@ -4277,7 +4277,7 @@ vx docs VX_E_CYCLE
 ```ansi
 [1m[38;2;6;182;212m── cli.md § VX_E_CYCLE · https://vznjs.github.io/vx/cli/#vx_e_cycle ──[0m
 [38;2;6;182;212m│[0m #### `VX_E_CYCLE`
-[38;2;6;182;212m│[0m 
+[38;2;6;182;212m│[0m
 [38;2;6;182;212m│[0m The task graph has a cycle. The message names the loop; drop one of its
 [38;2;6;182;212m│[0m `dependsOn` edges.
 [38;2;6;182;212m│[0m `vx lock` refuses it, not a run: a run trusts the graph the lock holds.
@@ -4285,9 +4285,9 @@ vx docs VX_E_CYCLE
 
 ### Options
 
-| Option                  | Meaning                                                                    |
-| ----------------------- | -------------------------------------------------------------------------- |
-| `--limit N`             | how many sections print, best first (default 3)                            |
+| Option                  | Meaning                                                                            |
+| ----------------------- | ---------------------------------------------------------------------------------- |
+| `--limit N`             | how many sections print, best first (default 3)                                    |
 | `--format pretty\|json` | `json` prints `{query, hits: [{page, heading, url, text}]}` for scripts and agents |
 
 Exit codes: `0` the search ran, a search with no match included (it
