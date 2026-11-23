@@ -422,6 +422,75 @@ export default {
     }
   })
 
+  /** A fresh one-project workspace holding `@demo/web` with `config`, locked. */
+  const lone = async (config: string) => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'vx-site-lone-'))
+    await mkdir(path.join(dir, '.vx'))
+    await mkdir(path.join(dir, 'packages/web'), { recursive: true })
+    await writeFile(path.join(dir, '.vx/workspace.mjs'), 'export default {}\n')
+    await writeFile(path.join(dir, 'packages/web/vx.config.mjs'), config)
+    expect(
+      Bun.spawnSync({ cmd: ['git', 'init', '-q', '-b', 'main'], cwd: dir, env: ENV }).exitCode,
+    ).toBe(0)
+    expect(at(dir, ENV, ['lock']).code).toBe(0)
+    return dir
+  }
+
+  it('start-a-dev-server: test.e2e waits for the persistent dev task', async () => {
+    const page = guide('running/start-a-dev-server.md')
+    const dir = await lone(`export default {
+  name: '@demo/web',
+  tasks: {
+    dev: {
+      exec: { command: 'vite', persistent: { readyWhen: 'Local:' }, timeout: '30s' },
+    },
+    'test.e2e': {
+      dependsOn: ['dev'],
+      exec: { command: 'playwright test' },
+    },
+  },
+}
+`)
+    try {
+      const r = at(path.join(dir, 'packages/web'), ENV, ['run', 'test.e2e', '--dry'])
+      expect(r.code).toBe(0)
+      expect(plan(printed(page, 'vx run test.e2e --dry'))).toBe(plan(r.out))
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('pass-an-environment-variable: the command sees DEPLOY_ENV only once it is listed', async () => {
+    const page = guide('running/pass-an-environment-variable.md')
+    const [before, after] = [...page.matchAll(/```ansi\n([\s\S]*?)\n```/g)].map((m) => m[1]!)
+    const task = (env: string) => `export default {
+  name: '@demo/web',
+  tasks: {
+    deploy: { exec: { command: 'echo "deploying to $DEPLOY_ENV"'${env} } },
+  },
+}
+`
+    const dir = await lone(task(''))
+    const deploy = () => at(dir, { ...COLOUR, DEPLOY_ENV: 'staging' }, ['run', '@demo/web#deploy'])
+    try {
+      const unlisted = deploy()
+      expect(unlisted.code).toBe(0)
+      holds(before!, unlisted.out)
+      expect(plain(unlisted.out)).not.toContain('staging')
+      await writeFile(
+        path.join(dir, 'packages/web/vx.config.mjs'),
+        task(", env: { passThrough: ['DEPLOY_ENV'] }"),
+      )
+      expect(at(dir, ENV, ['lock']).code).toBe(0)
+      const listed = deploy()
+      expect(listed.code).toBe(0)
+      holds(after!, listed.out)
+      expect(plain(listed.out)).toContain('deploying to staging')
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
   it('cache-a-task: an output that matched nothing fails the task', async () => {
     const page = guide('caching/cache-a-task.md')
     await writeFile(
