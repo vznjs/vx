@@ -163,6 +163,7 @@ const SIDEBAR_GROUPS: Record<'Docs', SidebarItem[]> = {
         { label: 'vx init', link: '/cli/init/' },
         { label: 'vx upgrade', link: '/cli/upgrade/' },
         { label: 'vx docs', link: '/cli/docs/' },
+        { label: 'vx help, vx version', link: '/cli/help/' },
         { label: 'vx completions', link: '/cli/completions/' },
         { label: 'Plugin commands', link: '/cli/plugin-commands/' },
         { label: 'Environment variables', link: '/cli/environment-variables/' },

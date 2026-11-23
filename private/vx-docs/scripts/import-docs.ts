@@ -294,6 +294,7 @@ const CLI_PAGES: readonly SplitPage[] = [
   { page: 'init', headings: ['`vx init`', '`bunx @vzn/vx-migrate`'] },
   { page: 'upgrade', headings: ['`vx upgrade`'] },
   { page: 'docs', headings: ['`vx docs`'] },
+  { page: 'help', headings: ['`vx help`', '`vx version`'] },
   { page: 'completions', headings: ['`vx completions`'] },
   { page: 'plugin-commands', headings: ['Plugin commands'] },
   { page: 'environment-variables', headings: ['Environment variables vx reads'] },

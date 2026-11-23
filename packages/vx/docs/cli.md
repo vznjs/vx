@@ -1580,6 +1580,30 @@ vx watch lint --filter '@scope/*'   # filtered scope
 vx watch build -- --sourcemap       # forwarded args carry through every cycle
 ```
 
+The first run, then one save to `src/index.js`, then `Ctrl+C`:
+
+```ansi
+[2m┌─[0m [1m[38;2;244;114;182mlib[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m>[0m $ mkdir -p dist && cp src/index.js dist/index.js
+[2m└─[0m [1m[38;2;244;114;182mlib[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(2ms)[0m [2mup-to-date[0m
+
+[38;2;6;182;212mwatching 1 project · 1 task[0m
+
+[38;2;6;182;212mchanged lib src/index.js[0m
+[2m┌─[0m [1m[38;2;244;114;182mlib[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m>[0m $ mkdir -p dist && cp src/index.js dist/index.js
+[2m└─[0m [1m[38;2;244;114;182mlib[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(6ms)[0m [2msuccess[0m
+
+
+[1m[38;2;6;182;212mvx watch:[0m[2m stopped[0m
+```
+
+### Options
+
+| Option   | Meaning                                                                                                                                                   |
+| -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--poll` | Re-walk the watched files every 250 ms (`watch.pollInterval`) from the start instead of the OS watcher, as `VX_WATCH_POLL=1` does. For network mounts and containers. |
+
+Every other flag is `vx run`'s ([Flags](#flags)).
+
 ### Lifecycle
 
 1. **Initial run.** Same code path as `vx run` — same scope resolution,
@@ -1961,6 +1985,21 @@ vx pipeline pr                     # lint and test what the change reaches
 vx pipeline main                   # every project
 vx pipeline main --dry             # the plan, nothing run
 vx pipeline main --filter web      # main's tasks in web alone
+```
+
+A second `vx pipeline main` with nothing changed restores all four tasks from the cache:
+
+```ansi
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mSummary[0m[4m[58;2;110;118;129m                                                                                                       [2mvx 0.0.0[0m
+  [2mprojects[0m  [38;2;234;179;8m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
+            [38;2;234;179;8m2 in run[0m [2m·[0m [2m2 total[0m
+  [2mtasks   [0m  [38;2;34;197;94m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
+            [38;2;34;197;94m4 success[0m [2m·[0m [2m4 total[0m
+  [2mcache   [0m  [38;2;34;197;94m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
+            [2mlocal[0m [38;2;34;197;94m4✓[0m
+
+  [2minfo    [0m  4 workers [2m·[0m local cache [2m·[0m run 01a209c3-ddd7-748c-84c3-54187b3d0184
+  [2mtime    [0m  16ms
 ```
 
 ### Options
@@ -4231,10 +4270,80 @@ heading and URL on the site. `--format json` prints
 The guides live on the site: `https://vznjs.github.io/vx/llms.txt`
 indexes them.
 
+```sh
+vx docs VX_E_CYCLE
+```
+
+```ansi
+[1m[38;2;6;182;212m── cli.md § VX_E_CYCLE · https://vznjs.github.io/vx/cli/#vx_e_cycle ──[0m
+[38;2;6;182;212m│[0m #### `VX_E_CYCLE`
+[38;2;6;182;212m│[0m 
+[38;2;6;182;212m│[0m The task graph has a cycle. The message names the loop; drop one of its
+[38;2;6;182;212m│[0m `dependsOn` edges.
+[38;2;6;182;212m│[0m `vx lock` refuses it, not a run: a run trusts the graph the lock holds.
+```
+
+### Options
+
+| Option                  | Meaning                                                                    |
+| ----------------------- | -------------------------------------------------------------------------- |
+| `--limit N`             | how many sections print, best first (default 3)                            |
+| `--format pretty\|json` | `json` prints `{query, hits: [{page, heading, url, text}]}` for scripts and agents |
+
 Exit codes: `0` the search ran, a search with no match included (it
 names the tag searched); `1` a missing query or a bad flag
 (`VX_E_USAGE`), or the pages could not be read (`VX_E_NETWORK`, which
 names the site).
+
+## `vx help`
+
+`vx help` prints every verb's usage line and the run flags. `vx help <verb>` (also `vx <verb> --help` or `-h`) prints that verb's usage and sections:
+
+```sh
+vx help lock
+```
+
+```ansi
+[1m[38;2;6;182;212mvx[0m — task orchestration you own
+
+[1mUsage[0m[1m:[0m
+  [1m[38;2;6;182;212mvx lock[0m[38;2;34;211;238m [--check] [--format pretty|json][0m
+
+[1mConfig lock[0m[1m:[0m
+  [1m[38;2;6;182;212mvx lock[0m              Evaluate every vx.config in the current environment, check
+                       the graph rules (run.rules) and freeze the resolved objects
+                       into .vx/projects.lock, the only place a run reads configs
+                       from. A run never evaluates one, never checks the rules
+                       and never writes the lock: with none it fails.
+  [1m[38;2;6;182;212mvx lock[0m[38;2;34;211;238m --check[0m      Audit the lock: re-evaluate every config here and compare
+                       it with the frozen object, find a config added or gone, and
+                       check the graph rules. Exits 1 on drift (e.g. configs that
+                       read env vars). Run it before the run in CI. With --format json
+                       it prints {upToDate, audited, notAudited, problems}.
+
+
+Full reference: vx help
+```
+
+It paints only on a terminal, so a script that greps it reads plain text. A plugin verb answers its own `--help`.
+
+Exit codes: `0` the help printed; `1` a name that is no verb, with the nearest one when close.
+
+## `vx version`
+
+Prints the vx that runs (`vx --version` too):
+
+```sh
+vx version
+```
+
+```ansi
+[1mvx[0m [38;2;6;182;212m0.0.0[0m
+```
+
+A source checkout prints `0.0.0`. [Which vx runs](#which-vx-runs) says which binary that is.
+
+Exit codes: `0`.
 
 ## `vx completions`
 
