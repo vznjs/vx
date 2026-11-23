@@ -60,6 +60,7 @@ import {
   UserError,
   writableUnder,
   readUmask,
+  renameNew,
   restoredMode,
 } from '../util/index.js'
 import { type OutputFileRow, WORKSPACE_OUTPUT_PREFIX, LINK_MODE } from '../memo/index.js'
@@ -1956,7 +1957,7 @@ class Extractor {
   private async placeTree(top: string, t: Tree, checked: Set<string>): Promise<void> {
     await this.assertStillContained(t.base, path.dirname(top), checked)
     try {
-      await rename(t.at, top)
+      await renameNew(t.at, top)
       return
     } catch (err) {
       const code = (err as NodeJS.ErrnoException).code

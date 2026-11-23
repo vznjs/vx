@@ -203,3 +203,52 @@ export function ignoreDir(dir: string): void {
     if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err
   }
 }
+
+type NoReplace = (from: Buffer, to: Buffer) => number
+let noReplace: NoReplace | null | undefined
+
+function boundNoReplace(): NoReplace | null {
+  if (noReplace !== undefined) return noReplace
+  noReplace = null
+  try {
+    const { dlopen, FFIType } = require('bun:ffi') as typeof import('bun:ffi')
+    if (process.platform === 'linux') {
+      // glibc's soname; musl's loader answers any `libc.` name with itself.
+      const { renameat2 } = dlopen('libc.so.6', {
+        renameat2: {
+          args: [FFIType.i32, FFIType.ptr, FFIType.i32, FFIType.ptr, FFIType.u32],
+          returns: FFIType.i32,
+        },
+      }).symbols
+      // AT_FDCWD, RENAME_NOREPLACE
+      noReplace = (from, to) => renameat2(-100, from, -100, to, 1)
+    } else if (process.platform === 'darwin') {
+      const { renamex_np } = dlopen('/usr/lib/libSystem.B.dylib', {
+        renamex_np: { args: [FFIType.ptr, FFIType.ptr, FFIType.u32], returns: FFIType.i32 },
+      }).symbols
+      // RENAME_EXCL
+      noReplace = (from, to) => renamex_np(from, to, 4)
+    }
+  } catch {}
+  return noReplace
+}
+
+/**
+ * Rename `from` to `to` only where nothing stands at `to`; EEXIST otherwise.
+ * rename(2) replaces an EMPTY directory: a sibling task's fresh `mkdir -p
+ * dist` was swapped for a restored tree, and its write into the directory it
+ * had just resolved failed ENOENT.
+ */
+export async function renameNew(from: string, to: string): Promise<void> {
+  const call = boundNoReplace()
+  if (call !== null) {
+    if (call(Buffer.from(`${from}\0`), Buffer.from(`${to}\0`)) === 0) return
+    if (lstatSync(to, { throwIfNoEntry: false }) !== undefined) {
+      throw Object.assign(new Error(`EEXIST: file already exists, rename '${from}' -> '${to}'`), {
+        code: 'EEXIST',
+      })
+    }
+  }
+  // No call, or one the filesystem refused (EINVAL): rename names the error.
+  await rename(from, to)
+}
