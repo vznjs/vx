@@ -789,8 +789,10 @@ export async function pickTask(
   entries.forEach((e, i) => {
     const n = String(i + 1).padStart(numW, ' ')
     const name = `${e.project}#${e.task}`
-    const id = name + ' '.repeat(idW - Bun.stringWidth(name))
+    // Padded only to line up a description: trailing spaces past the
+    // terminal's width wrapped every bare row into a blank line.
     const desc = e.description ? `  ${e.description}` : ''
+    const id = desc === '' ? name : name + ' '.repeat(idW - Bun.stringWidth(name))
     out.write(`  ${n}. ${id}${desc}\n`)
   })
   // Imported here, the picker's one use: a run that never asks paid ~0.7 ms

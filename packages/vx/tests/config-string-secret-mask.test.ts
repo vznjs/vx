@@ -214,7 +214,7 @@ it("the picker's menu masks the description", async () => {
   input.write('9\n')
   await picking
   expect(printed.split('\n').filter((l) => l.includes('app#'))).toEqual([
-    '  1. app#srv ',
+    '  1. app#srv',
     '  2. app#t     deploys *** ***',
     '  3. app#wait',
   ])
