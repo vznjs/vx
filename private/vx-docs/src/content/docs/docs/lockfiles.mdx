@@ -314,8 +314,18 @@ Each plugin also adds a project's manifest (`package.json`, or under `pnpm()` a 
 - **pnpm `excludeLinksFromLockfile`** leaves every `link:` dependency out of the lockfile.
   `pnpm()` reads those from `package.json`, and every key holds every project's dependencies.
 - **A patch a `postinstall` script applies** (`patch-package`) is in no lockfile. Name the patch
-  files in the task's `inputs.workspaceFiles` (`patches/**`), and run the install after a pull
-  that changes one: vx cannot see which patch `node_modules` holds.
+  files in the task's `inputs.workspaceFiles`, which reads from the workspace root, and run the
+  install after a pull that changes one: vx cannot see which patch `node_modules` holds.
+
+  ```js title="packages/web/vx.config.mjs"
+  inputs: { files: ['src/**'], workspaceFiles: ['patches/**'] },
+  ```
+
+  An edit to a patch then re-runs the task; `vx why` names it:
+
+  ```ansi
+  verdict   cache key changed: file patches/x+1.0.0.patch
+  ```
 - **An unreadable lockfile** stops the run and names the install to re-run.
 - **A lockfile changed since `vx lock`** stops the run: `run vx lock`.
 - **A lockfile older than a `package.json`** (a dependency added, no install yet) stops `vx lock`
