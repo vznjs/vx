@@ -404,57 +404,62 @@ turn it off.
 
 #### `remote` (optional)
 
-```ts
-remote?: boolean | 'only' // default true
-```
-
-**Placement.** `false` pins the task to the machine that started the run:
-it is never offered to an executor that declared itself `remote`. Use it
-for a task that talks to something only this machine has — a local
-daemon, a Docker socket, a device, a VPN-only host.
+Whether a remote executor may run this task on another machine. `false`
+keeps it on the machine that started the run.
 
 ```ts
-'docker:build': {
-  exec: { command: 'docker build -t app .', remote: false },
-}
+exec: { command: 'docker build -t web .', remote: false }
 ```
 
-- **Only meaningful with a remote executor declared.** A workspace with
-  no executor plugin already runs everything here, so the field changes
-  nothing.
-- **Lifted by an `exclusive` executor.** One that runs every task
-  elsewhere (`@vzn/vx-dte`) takes this task too, and every pin below.
-- **Pinned by inference too.** A `persistent` task, and anything that
-  depends on one (transitively), is pinned regardless of what it
-  declares — a worker cannot reach a port served on the submitter —
-  unless the executor starts the server where it runs the dependant
-  (`@vzn/vx-dte`: each worker starts it once, beside its dependants, and
-  the orchestrator never does; a server with a `sandbox` or
-  `exec.remote: false` stays here). So is
-  a task with a `sandbox` block, and its dependants: the sandbox is this
-  machine's machinery, and a boundary a worker does not enforce would
-  pass vacuously; an executor that enforces it where it runs
-  (`@vzn/vx-dte`) is offered them. So is a task whose key folds `inputs.runtime` or
-  `workspaceRuntime`: the key holds this machine's answer, which a worker
-  cannot prove it shares. Its dependants are not pinned.
-- **Placement is decided once per task**, before scheduling, so the
-  scheduler knows which pool a task will occupy (see
+| Write    | Means                                                                    |
+| -------- | ------------------------------------------------------------------------ |
+| `true`   | any executor may take it                                                 |
+| `false`  | only this machine: a local daemon, a Docker socket, a device, a VPN host |
+| `'only'` | only a remote worker; here it is a no-op                                 |
+
+Default: `true`.
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
+
+- `remote: false` is never offered to an executor that declared itself
+  `remote`.
+- `remote: false` with no executor plugin changes nothing: the workspace
+  already runs every task here.
+- `exclusive` executors (`@vzn/vx-dte`) run every task elsewhere: they
+  take a `remote: false` task too, and every pin below.
+- `persistent: {}` pins a task here, and everything that depends on it,
+  transitively, whatever they declare: a worker cannot reach a port served
+  on this machine.
+- `@vzn/vx-dte` lifts that pin: each worker starts the server once, beside
+  its dependants, and this machine never does.
+- A server with a `sandbox` or `exec.remote: false` still stays here.
+- `sandbox: { … }` pins a task here, and its dependants: the sandbox runs
+  on this machine, and a boundary a worker does not enforce would pass
+  without checking anything.
+- An executor that enforces the sandbox where it runs (`@vzn/vx-dte`) is
+  offered sandboxed tasks.
+- `inputs: { runtime: [ … ] }` or `workspaceRuntime` pins a task here: its
+  key holds this machine's answer, which a worker cannot prove it shares.
+  Its dependants are not pinned.
+- Placement is decided once per task, before scheduling, so the scheduler
+  knows which pool the task takes (see
   [execution.md](execution.md#executor-pools)).
-- **`'only'` is the inverse pin — the install-as-action recipe.** The task
-  exists to produce a REMOTE input tree (canonically `pnpm install` feeding
-  remote workers) and is a NO-OP on this machine: never executed locally,
-  its declared outputs never cleaned or restored on this disk. With a remote
-  executor declared it runs on a worker, its outputs stay in the remote
-  store, and dependents' input trees reference them there — the bytes flow
-  worker→store→worker without ever transiting the submitter. With no remote
-  executor it succeeds without running and dependents use the machine's
-  ambient state (the dev's own `node_modules`), exactly as before the field
-  existed. Its key is the one a real run of it has, so a task that depends
-  on it, directly or through others, still reads the cache but saves
-  nothing: an entry built from the ambient state would sit where a run
-  over the task's real outputs looks. An `'only'` task must declare `cache` — its inputs are what a
-  worker reproduces and its key is the address of its remote record. One
-  without is refused at load.
+- `remote: 'only'` is for a task that builds a remote input tree, like an
+  install feeding remote workers. On this machine it never runs, and its
+  outputs are never cleaned or restored here.
+- With a remote executor, an `'only'` task runs on a worker. Its outputs
+  stay in the remote store, and dependants' input trees point at them
+  there: worker to store to worker, never via this machine.
+- With no remote executor, an `'only'` task succeeds without running.
+  Dependants use this machine's own state (your own `node_modules`).
+- An `'only'` task keys as a real run of it does. A task that depends on
+  it, directly or not, still reads the cache but saves nothing.
+- Why: an entry built from your local state would sit where a run over
+  the task's real outputs looks.
+- `remote: 'only'` with no `cache` is refused at load: its inputs are what
+  a worker reproduces, and its key addresses its remote record.
 
   ```ts
   install: {
@@ -466,95 +471,124 @@ daemon, a Docker socket, a device, a VPN-only host.
   build: { dependsOn: ['install'], /* … */ },
   ```
 
-- **Never busts a cache:** `remote` is stripped from the cache key —
-  `'only'` included, as is [`worker`](#worker-optional), the other
-  placement field. The contract of a remote executor is that the same command over the same inputs produces the same outputs,
-  so a key that moved with placement would split a laptop from a worker pool
-  over nothing.
+- Not in the cache key: `remote` is stripped, `'only'` included, and so is
+  [`worker`](#worker-optional), the other placement field.
+- Why: a remote executor promises the same command over the same inputs
+  gives the same outputs. A key that moved with placement would split a
+  laptop from a worker pool over nothing.
+
+</div>
+</details>
 
 #### `platforms` (optional)
 
-```ts
-platforms?: readonly Platform[] // 'linux-x64' | 'linux-arm64' | 'darwin-x64' | 'darwin-arm64'
-```
-
-The machines this task can run on, any of them. Omitted, it runs anywhere.
+The machines this task can run on, any of them.
 
 ```ts
-import { defineProject } from '@vzn/vx/config'
-
-export default defineProject({
-  tasks: {
-    'ios:build': {
-      exec: { command: 'xcodebuild -scheme App', platforms: ['darwin-arm64', 'darwin-x64'] },
-    },
-  },
-})
+exec: { command: 'xcodebuild -scheme App', platforms: ['darwin-arm64', 'darwin-x64'] }
 ```
 
-- **Locally**, a task whose platforms leave this machine out is skipped,
-  never failed, and so is everything that depends on it. The run stays
-  green and says why, once and on the task's row:
+| Write          | Means                  |
+| -------------- | ---------------------- |
+| `linux-x64`    | Linux on Intel or AMD  |
+| `linux-arm64`  | Linux on ARM           |
+| `darwin-x64`   | macOS on Intel         |
+| `darwin-arm64` | macOS on Apple silicon |
+
+Default: none, the task runs on any machine.
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
+
+- `platforms: ['linux']` is refused at lock: the names are fixed,
+  `os-arch`, as Bun's compile targets.
+- Locally, a task whose platforms leave this machine out is skipped, never
+  failed, and so is everything that depends on it. The run stays green and
+  says why, once, and on the task's row:
 
   ```ansi
-  [1m[38;2;234;179;8m[vx][0m[2m skipped on linux-x64, with what depends on them: app#ios:build needs darwin-arm64 or darwin-x64[0m
+  [1m[38;2;234;179;8m[vx][0m[2m skipped on linux-x64, with what depends on them: app#ios:build needs darwin-arm64 or darwin-x64[0m
 
-  [4m[58;2;110;118;129m  [1m[38;2;167;139;250mTasks[0m[4m[58;2;110;118;129m     [2mstatus  cache     ±usual    time   cpu    mem outputs  blocks worker         task[0m[4m[58;2;110;118;129m                           [0m
-              [38;2;234;179;8mskipped[0m [2m—[0m              [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2m—[0m              [38;2;147;197;253mapp[0m[2m#[0m[38;2;129;140;248mios:build[0m [2m• needs darwin-arm64 or darwin-x64, this is linux-x64[0m
+  [4m[58;2;110;118;129m  [1m[38;2;167;139;250mTasks[0m[4m[58;2;110;118;129m     [2mstatus  cache     ±usual    time   cpu    mem outputs  blocks worker         task[0m[4m[58;2;110;118;129m                           [0m
+              [38;2;234;179;8mskipped[0m [2m—[0m              [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2m—[0m              [38;2;147;197;253mapp[0m[2m#[0m[38;2;129;140;248mios:build[0m [2m• needs darwin-arm64 or darwin-x64, this is linux-x64[0m
   ```
 
-  A `run()` outcome and telemetry carry it as `otherPlatform: { needs, host }`; a
-  dependant's `blockedBy` names the task (in `vx last --format json` too).
-
-- **On CI** (`CI` or a provider's variable set) every task runs or the run
-  fails: one whose platforms leave the machine out refuses the run before
-  any task starts. Run a target that holds only this platform's tasks, or
-  one DTE run with a worker of each platform.
-- **With an executor that routes by platform** (`@vzn/vx-dte`, whose
-  machines each name a `platform`), the task
-  runs on a worker of one of its platforms: this machine's if the
-  executor has one, else the first it lists that the executor has. A task
-  none of whose platforms the executor runs refuses the run before
+- `otherPlatform: { needs, host }` is how a `run()` outcome and telemetry
+  carry the skip. A dependant's `blockedBy` names the task (in
+  `vx last --format json` too).
+- On CI (`CI` or a provider's variable set), every task runs or the run
+  fails: a task whose platforms leave the machine out refuses the run
+  before any task starts.
+- On CI, run a target that holds only this platform's tasks, or one DTE
+  run with a worker of each platform.
+- With an executor that routes by platform (`@vzn/vx-dte`, whose machines
+  each name a `platform`), the task runs on a worker of one of its
+  platforms.
+- That worker is on this machine's platform if the executor has one, else
+  on the first listed platform the executor has.
+- A task none of whose platforms the executor runs refuses the run before
   anything starts. Other remote executors are never offered it.
-  `@vzn/vx-dte` runs a task naming none on this machine's platform when
-  its worker type has machines of it, so a worker of another platform runs only the
-  tasks that name it and leaves once they are done.
-- **In the key:** the list is config, and the platform the task runs on is
-  folded too, so each platform keeps its own entry. A task that names no
-  platforms keys as before.
-- Names are fixed (`os-arch`, as Bun's compile targets); any other
-  refuses the config at lock.
+- A task naming no platforms: `@vzn/vx-dte` runs it on this machine's
+  platform when its worker type has machines of it.
+- So a worker of another platform runs only the tasks that name it, and
+  leaves once they are done.
+- In the cache key: the list is config, and the platform the task runs on
+  is folded too, so each platform keeps its own entry.
+- A task naming no platforms folds no platform.
+
+</div>
+</details>
 
 #### `worker` (optional)
 
-```ts
-worker?: string // a worker type's name, as `@vzn/vx-dte`'s `workers` names it
-```
-
-Where a distributed run runs this task. `platforms` says where it _can_
-run; `worker` says where it _should_.
+Which worker type of a distributed run takes this task. `platforms` says
+where it _can_ run; `worker` says where it _should_.
 
 ```ts
-import { defineProject } from '@vzn/vx/config'
-
-export default defineProject({
-  tasks: {
-    e2e: { exec: { command: 'bunx playwright test', worker: 'ubuntu' } },
-  },
-})
+exec: { command: 'playwright test', worker: 'ubuntu' }
 ```
 
-- **With `@vzn/vx-dte`**, only machines of that worker type take it.
-  The run is refused before anything starts when no type has the name,
-  or none of its machines runs one of the task's `platforms`.
-- **Omitted**, the task goes to the first worker type, in declared
-  order, with a machine on one of its platforms. List a slow or costly
-  type last and it gets only the tasks no other type can take.
-- **Locally**, and with an executor that names no worker types, it is
+Default: none, the first worker type that can run it.
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
+
+- `worker: 'ubuntu'` names a worker type, as `@vzn/vx-dte`'s `workers`
+  names it. Only machines of that type take the task.
+- The run is refused before anything starts when no worker type has that
+  name, or none of its machines runs one of the task's `platforms`.
+- Omitted, the task goes to the first worker type, in declared order, with
+  a machine on one of its platforms.
+- So list a slow or costly worker type last: it gets only the tasks no
+  other type can take.
+- Locally, and with an executor that names no worker types, `worker` is
   ignored.
-- **Not in the key:** it is placement, like `remote`.
+- Not in the cache key: it is placement, like `remote`.
+
+</div>
+</details>
 
 #### `persistent` (optional)
+
+Marks a long-running task: a dev server, a file watcher, a daemon. vx
+does not wait for it to exit; tasks that depend on it start once it is
+ready.
+
+```ts
+exec: { command: 'vite', persistent: { readyWhen: 'Local:' } }
+```
+
+| Field       | What it does                                                                                                               |
+| ----------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `readyWhen` | A regex, as a string. The first output line it matches marks the server ready (`'Local:'`). Omitted: ready once it starts. |
+
+Default: none, the task runs until it exits.
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
 
 ```ts
 interface PersistentConfig {
@@ -562,24 +596,18 @@ interface PersistentConfig {
 }
 ```
 
-| Field       | What it does                                                                                                               |
-| ----------- | -------------------------------------------------------------------------------------------------------------------------- |
-| `readyWhen` | A regex, as a string. The first output line it matches marks the server ready (`'Local:'`). Omitted: ready once it starts. |
-
-Marks the task as a long-running process — a dev server, a file
-watcher, a daemon. The runner spawns the command but does NOT wait
-for it to exit. Instead it considers the task "ready":
-
-- Immediately on successful spawn when no `readyWhen` is given.
-- On the first stdout/stderr line that matches the `readyWhen`
-  regex string. Each line is tested on its own, without its line
-  break (`\n`, `\r\n` or a bare `\r`) and without terminal escapes
-  (colour, OSC titles), so `^` and `$` anchor to a line as you read
-  it and `Local:` matches Vite's bold `Local` under `FORCE_COLOR`.
-  The trailing partial line is tested too, so prompt-style banners
-  without a newline (`printf 'Listening on :3000'`) count. A server
-  not ready after 10 s is said once, naming
-  the pattern it waits for, and whether `exec.timeout` bounds the wait.
+- `persistent: {}` is ready as soon as the spawn succeeds: for a daemon
+  with no ready signal that its dependants need not wait on.
+- `readyWhen` tests each stdout and stderr line on its own, without its
+  line break (`\n`, `\r\n` or a bare `\r`).
+- Terminal escapes (colour, OSC titles) are removed first, so `^` and `$`
+  anchor to a line as you read it, and `Local:` matches Vite's bold
+  `Local` under `FORCE_COLOR`.
+- The trailing partial line is tested too, so a banner with no newline
+  (`printf 'Listening on :3000'`) counts.
+- A server not ready after 10 s is said once, naming the pattern it waits
+  for, and whether `exec.timeout` bounds the wait.
+- `timeout: '30s'` on a persistent task bounds its readiness wait.
 
 ```ts
 dev: {
@@ -588,30 +616,24 @@ dev: {
     timeout: '30s', // bound the readiness wait
     persistent: { readyWhen: 'Local:' },
   },
-}
-
+},
 watch: {
   exec: {
     command: 'vite build --watch',
     persistent: { readyWhen: 'built in' },
   },
-}
-
-// No readyWhen — ready as soon as spawn succeeds. Useful for daemons
-// that have no observable "ready" signal but downstream doesn't need
-// to gate on one.
+},
+// No readyWhen: ready as soon as the spawn succeeds.
 agent: {
   exec: {
     command: 'my-agent --daemon',
     persistent: {},
   },
-}
+},
 ```
 
-Semantics:
-
-- **Downstream unblocks on ready, not on exit.** Useful for e2e tests
-  that need a dev server up first:
+- Dependants start on ready, not on exit: an e2e suite that needs a dev
+  server up first.
   ```ts
   'dev:run': {
     exec: {
@@ -639,108 +661,155 @@ Semantics:
     cache: true,
   },
   ```
-- **Not started when nothing needs it.** A persistent task you did not
+- Not started when nothing needs it: a persistent task you did not
   request, whose every dependant is a confirmed cache hit, local or
-  remote, is never spawned: with the example above, a fully cached `vx run e2e` does not boot the server
-  `e2e` depends on, and the server is in no outcome or count. A group
-  between them that nobody requested (`env: { dependsOn: ['dev'] }`) is
-  passed through for local hits, and so is a server nobody requested:
-  `api` that only an idle `web` needs is not started either. Behind a
-  remote cache, through the same groups and servers, the server waits
-  for the remote's answer on the dependants the local store missed, and
-  starts at the first miss. It starts
-  if one of those hits turns out to need running (its artifact went),
-  and that task runs once it is ready. A dependant whose key the
-  server's writes could change (one in its own project whose inputs the
+  remote, is never spawned.
+- So a fully cached `vx run e2e` above does not boot `dev:run`, and the
+  server is in no outcome or count.
+- `env: { dependsOn: ['dev'] }`, a group nobody requested between them, is
+  passed through for local hits.
+- So is a server nobody requested: `api` that only an idle `web` needs is
+  not started either.
+- Behind a remote cache, through the same groups and servers, the server
+  waits for the remote's answer on the dependants the local store missed,
+  and starts at the first miss.
+- It also starts if one of those hits turns out to need running (its
+  artifact went), and that task runs once it is ready.
+- A dependant whose key the server's writes could change is not probed
+  ahead of it, so there the server still starts.
+- That is a dependant in the server's own project whose inputs the
   server's write grants reach, or any there when the server is not
-  sandboxed) is not probed ahead of it, so there the
-  server still starts. `vx run --dry` says so: such a server is
-  `not started` (`not-started` in `--dry --format json`), not `would exec`.
-- **Exit before ready.** A persistent task that exits 0 before
-  `readyWhen` matches is ready: a setup step (migrate, seed) that did its
-  work, and its dependants run. One that crashes or exits non-zero first
-  is reported as `failed`, even when a process it left running prints
-  the marker after the exit.
-- **Crash after ready ⇒ failed run.** A persistent task that exits
-  non-zero (or is killed) on its own after it became ready fails the
-  run, and vx names it: `vx: <id> exited with code <n>` (a signal death
-  as its `128 + n` code), at once while the graph still runs (`… while
-the run went on`), so a dependant failing against it reads why, with the line a crash
+  sandboxed.
+- `vx run --dry` says so: such a server is `not started` (`not-started` in
+  `--dry --format json`), not `would exec`.
+- Exit 0 before `readyWhen` matches: the task is ready. A setup step
+  (migrate, seed) did its work, and its dependants run.
+- A crash or non-zero exit before ready is `failed`, even when a process
+  it left running prints the marker after the exit.
+- Crash after ready fails the run: a persistent task that exits non-zero,
+  or is killed, on its own after it became ready.
+- vx names it at once, while the graph still runs:
+  `vx: <id> exited with code <n>` (`… while the run went on`). A signal
+  death shows as its `128 + n` code.
+- So a dependant failing against it reads why, with the line a crash
   before ready gets (an exit 127's PATH verdict, a sandboxed server's
-  note), said once. Its own outcome is `failed` with that exit
-  code, and the footer counts it so (item 1071). A task that reaches it
-  through a group or another server (`e2e` on `web` on `api`) depends on
-  it too. A cached dependant that
-  was running when it died still passes, but is not saved, nor is what
-  is built on it: its key is a healthy run's, its bytes are not. An exit 0 on its own is
-  fine (a daemon that forks and returns), and one kept only as a
-  dependency does not end the foreground hold (WD-3).
-- **Stopped once nothing needs it.** A persistent task vx does not keep
-  gets `SIGTERM` (`SIGKILL` past the kill grace) as soon as every task
-  that uses it, directly or through groups, has finished, while the rest
-  of the graph still runs: it no longer holds the machine's cores. A
-  server that uses another counts as finished once it is stopped, and
-  the one it uses gets its `SIGTERM` only then, here and at the end of
-  the graph: its shutdown may still talk to it. The
-  stop is no crash. `vx watch` holds its servers for the next cycle,
-  which keeps each one it starts again unchanged: a requested one while
-  its config is, a dependency-only one while its key is (one with no
-  `inputs.files` restarts each cycle) (`cli.md` § watch). A Ctrl-C stops
-  them all as before. In the foreground vx KEEPS the
-  persistent tasks you requested, those a requested group stands for,
-  and the persistent tasks they depend on: vx stays up after the summary
-  until one of them exits or you press Ctrl-C, streaming what they write.
-  A failure elsewhere skips only its dependants: the rest stay up, and
-  the run exits 1 when the session ends (`--fail-fast` stops them at
-  the first failure; `cli.md` § Output, "Pinned persistent tasks").
-- **`cache` is rejected.** The config loader throws on
-  `cache + persistent` — persistent tasks don't terminate, so there's
-  no exit code to cache and no outputs to capture at a well-defined
-  moment.
+  note), said once.
+- Its own outcome is `failed` with that exit code, and the footer counts
+  it so.
+- A task that reaches it through a group or another server (`e2e` on
+  `web` on `api`) depends on it too.
+- A cached dependant that was running when it died still passes, but is
+  not saved, nor is what is built on it: its key is a healthy run's, its
+  bytes are not.
+- An exit 0 on its own is fine (a daemon that forks and returns). One kept
+  only as a dependency does not end the foreground hold.
+- Stopped once nothing needs it: a persistent task vx does not keep gets
+  `SIGTERM` (`SIGKILL` past the kill grace) once every task that uses it,
+  directly or through groups, has finished.
+- That happens while the rest of the graph still runs, so it no longer
+  holds the machine's cores. The stop is no crash.
+- A server that uses another counts as finished once it is stopped. The
+  one it uses gets its `SIGTERM` only then, here and at the end of the
+  graph: its shutdown may still talk to it.
+- `vx watch` holds its servers for the next cycle and keeps each one it
+  starts again unchanged: a requested one while its config is, a
+  dependency-only one while its key is (`cli.md` § watch).
+- Under `vx watch`, a dependency-only server with no `inputs.files`
+  restarts each cycle. A Ctrl-C stops them all.
+- In the foreground vx keeps the persistent tasks you requested, those a
+  requested group stands for, and the persistent tasks they depend on.
+- vx then stays up after the summary, streaming what they write, until
+  one of them exits or you press Ctrl-C.
+- A failure elsewhere skips only its dependants: the rest stay up, and
+  the run exits 1 when the session ends.
+- `--fail-fast` stops them at the first failure (`cli.md` § Output,
+  "Pinned persistent tasks").
+- `persistent` with `cache` is refused at load: a persistent task does not
+  end, so there is no exit code to cache and no moment to capture outputs.
+
+</div>
+</details>
 
 #### `interactive` (optional)
 
-`true` hands the task the terminal: a prompt (`drizzle-kit push`), a
-REPL, a watch mode that reads keys. Turbo's `interactive`.
-
-- **On a TTY** (vx's stdin is one) the task gets vx's own stdin,
-  stdout and stderr. Its output is not framed, masked, kept or
-  replayed: it goes to the terminal as the task writes it. A frame
-  line opens before it and closes after (`--output-logs full`, and
-  the default views), and the live status region goes for the rest
-  of the run, as it would repaint over a prompt.
-- **Alone.** It starts once nothing else runs, and nothing starts
-  until it exits. A persistent one holds the terminal from its spawn
-  to the run's end, so other tasks may run once it is spawned (their
-  output goes to the same terminal), a run may hold one, and every
-  other interactive task must be its dependency. A run that breaks
-  either is refused before any task runs, and so is its `--dry`.
-- **Off a TTY** (CI, a pipe) it runs as any task: stdin is empty, or
-  a pipe vx holds for a persistent one, and it runs beside others.
-  A prompt there reads end of input; it never hangs.
-- **Here, never cached.** No executor plugin is offered it, and
-  `cache` is refused. `sandbox` is refused (a sandboxed task's
-  output passes through vx), and so is `persistent.readyWhen` (vx
-  reads none of its output; it is ready once spawned).
-- It runs in its own session, as every task does, so a tool that
-  opens `/dev/tty` itself rather than its stdin still cannot, and
-  the terminal's resize signal does not reach it. Ctrl-C reaches vx,
-  which stops the run; a task that puts the terminal in raw mode
-  reads the key itself.
-- **Its terminal modes end with it.** vx reads them (`stty -g`)
-  before the task starts and puts them back when it exits, so a task
-  killed in raw mode, or one that never undid its `stty raw -echo`,
-  leaves no terminal without echo or Ctrl-C behind it
-  (`tests/terminal.unsafe.test.ts` › "a task that leaves the terminal
-  raw"). Without `stty` on PATH the modes stay the task's.
+`true` hands the task your terminal: a prompt (`drizzle-kit push`), a
+REPL, a watch mode that reads keys.
 
 ```ts
-'db:push': {
-  exec: { command: 'drizzle-kit push', interactive: true },
+exec: { command: 'drizzle-kit push', interactive: true }
+```
+
+Default: `false`.
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
+
+- On a TTY (vx's stdin is one), the task gets vx's own stdin, stdout and
+  stderr.
+- Its output is not framed, masked, kept or replayed: it goes to the
+  terminal as the task writes it.
+- A frame line opens before it and closes after (`--output-logs full`, and
+  the default views).
+- The live status region goes for the rest of the run, as it would
+  repaint over a prompt.
+- It runs alone: it starts once nothing else runs, and nothing starts
+  until it exits.
+- `interactive: true` with `persistent: {}` holds the terminal from its
+  spawn to the run's end. Other tasks may run once it is spawned; their
+  output goes to the same terminal.
+- A run may hold one persistent interactive task, and every other
+  interactive task must be its dependency.
+- A run that breaks either rule is refused before any task runs, and so
+  is its `--dry`.
+- Off a TTY (CI, a pipe), it runs as any task, beside others. Its stdin is
+  empty, or a pipe vx holds for a persistent one.
+- A prompt off a TTY reads end of input; it never hangs.
+- Always here, never cached: no executor plugin is offered it, and `cache`
+  is refused.
+- `sandbox` is refused: a sandboxed task's output passes through vx.
+- `persistent.readyWhen` is refused: vx reads none of its output, so it is
+  ready once spawned.
+- It runs in its own session, as every task does. So a tool that opens
+  `/dev/tty` itself, not its stdin, still cannot, and the terminal's resize
+  signal does not reach it.
+- Ctrl-C reaches vx, which stops the run. A task that puts the terminal in
+  raw mode reads the key itself.
+- Its terminal modes end with it: vx reads them (`stty -g`) before the
+  task starts and puts them back when it exits.
+- So a task killed in raw mode, or one that never undid its
+  `stty raw -echo`, leaves no terminal without echo or Ctrl-C behind it.
+- Without `stty` on PATH, the modes stay the task's.
+
+</div>
+</details>
+
+#### `env` (optional)
+
+The variables the command sees. Nothing from your shell reaches it
+unless you name it here.
+
+```ts
+exec: {
+  command: 'vitest run',
+  env: {
+    passThrough: ['CI', 'GH_TOKEN'], // copied from your shell; not in the cache key
+    define: { NODE_ENV: 'test' }, // a fixed value; in the cache key
+  },
 }
 ```
 
-#### `env` (optional)
+| Field         | What it does                                                                                                                    |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `passThrough` | Names copied from your shell, exact: `['API_URL']`. Not in the cache key; add them to `inputs.env` when they change the output. |
+| `define`      | Fixed values set for the task: `{ NODE_ENV: 'production' }`. In the cache key.                                                  |
+| `secret`      | Names whose values vx prints as `***`, whatever the name: `['DEPLOY_TOKEN']`.                                                   |
+
+Default: none, the task sees only the essential list below.
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
 
 ```ts
 interface ExecEnv {
@@ -750,182 +819,176 @@ interface ExecEnv {
 }
 ```
 
-The variables the command sees. Nothing from your shell reaches it
-unless named here.
+- Three layers, lowest priority first: the essential allowlist, then
+  `passThrough`, then `define`.
+- **Essential allowlist**, the whole list of what reaches a task from
+  your environment unasked (`src/exec/env.ts`, pinned to this list by a
+  test). Without these, typical CLI tools break:
+  - shell and user: `PATH`, `HOME`, `SHELL`, `USER`, `LOGNAME`
+  - temp: `TMPDIR`, `TEMP`, `TMP`
+  - locale: `LANG`, `LC_ALL`, `LC_CTYPE`
+  - terminal: `TERM`, `COLORTERM`, `FORCE_COLOR`, `NO_COLOR`, `CI`
+  - tools: `NODE_OPTIONS`, `COREPACK_HOME`, `PNPM_HOME`, `RUSTUP_HOME`,
+    `CARGO_HOME`, `GOPATH`, `GOMODCACHE`, `GOCACHE`
+  - XDG: `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `XDG_CACHE_HOME`,
+    `XDG_STATE_HOME`, `XDG_RUNTIME_DIR`
+- `FORCE_COLOR=1` is set by vx when neither `FORCE_COLOR` nor a non-empty
+  `NO_COLOR` reaches the task by any layer. vx strips the colour where it
+  prints plain (`docs/cli.md` § Colors).
+- `VX_RUN_TREE` is a token per spawn that vx adds, by which a stop finds a
+  daemon that left the task's process group (`docs/execution.md`).
+- `VX_RUN_WORKSPACE` (the root of the workspace running the task) and
+  `VX_RUN_TASK` (`project#task`) are added too.
+- `vx run` in a task's command, in that same workspace, is refused: a
+  loop back to itself forks a run per run without bound. Declare it with
+  `dependsOn`.
+- Why: even a nested run that ends is invisible to the outer graph. Its
+  tasks escape the schedule, the concurrency budget and the cache key.
+- Driving a _different_ workspace from a task (a fixture suite, a
+  benchmark) is fine.
+- The allowlist is _not_ in the cache key, for the same reason as
+  `passThrough`. Three of its names can change what a task produces:
+- `NODE_OPTIONS`: `--require`, `--import`, `--loader` and `--conditions`
+  inject code or switch package-export resolution.
+- `LC_ALL` and `LANG`: collation, so anything calling `sort` orders
+  differently.
+- `CI`, `FORCE_COLOR`, `NO_COLOR`, `COLORTERM` and `TERM`: output bytes,
+  which vx caches and replays. A host `NO_COLOR` also stops vx setting
+  `FORCE_COLOR=1`.
+- Why not hashed: a laptop and a CI runner could never share a remote
+  cache entry. `PATH`, `HOME` and `TERM` differ on every machine.
+- `inputs: { env: ['NODE_OPTIONS'] }` folds its value into the key when it
+  matters to your build. vx does not guess which ones do:
 
-| Field         | What it does                                                                                                                    |
-| ------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| `passThrough` | Names copied from your shell, exact: `['API_URL']`. Not in the cache key; add them to `inputs.env` when they change the output. |
-| `define`      | Fixed values set for the task: `{ NODE_ENV: 'production' }`. In the cache key.                                                  |
-| `secret`      | Names whose values vx prints as `***`, whatever the name: `['DEPLOY_TOKEN']`.                                                   |
+  ```ts
+  inputs: { files: ['src/**'], env: ['NODE_OPTIONS'] }, outputs: { files: [] }, cache: true
+  ```
 
-The child process sees a deliberately limited env. From lowest to
-highest priority:
+- `inputs.env` decides what the key _sees_; `exec.env.passThrough` decides
+  what the command _gets_. The two are separate on purpose.
+- `passThrough: ['API_URL']` takes the value from your shell at spawn
+  time. Not in the cache key: for secrets, regional values and CI flags
+  that vary between machines.
+- A project config cannot set a `passThrough` value itself: a first load
+  that writes `process.env` is refused.
+- `passThrough: ['VITE_API_URL']` on a cached task gets a `vx lock` note
+  unless `inputs.env` names it: a bundler writes the value into its
+  output, so another value replays the old bundle.
+- That note covers `NODE_ENV` and the public bundler prefixes, once per
+  task, never for a secret (by name or `secret`):
+  - `VITE_`, `NEXT_PUBLIC_`, `REACT_APP_`, `PUBLIC_`, `EXPO_PUBLIC_`,
+    `GATSBY_`, `STORYBOOK_`
+  - `VUE_APP_`, `BUN_PUBLIC_`, `NX_PUBLIC_`, `NUXT_ENV_`, `NUXT_PUBLIC_`,
+    `REDWOOD_ENV_`, `SANITY_STUDIO_`
+- `inputs: { env: ['VITE_API_URL'] }` with neither `passThrough` nor
+  `define` giving it gets a note too: the key moves with the value, but
+  the bundle is built without it.
+- Each is a note; the lock is still written.
+- `define: { NODE_ENV: 'production' }` sets a fixed value. It is in the
+  cache key, through the task config's hash: the value is in your config.
+- `passThrough: ['A=B']` is refused at load. Every name here and in
+  `inputs.env` must be one an environment can hold: non-empty, with no `=`
+  and no NUL.
+- A `define` value holding a NUL is refused at load.
+- `'\ud800'`, a lone surrogate, is refused in a `define` value,
+  `exec.command`, and an `inputs.runtime` or `workspaceRuntime` command.
+- Why: UTF-8 has no form for one, so the task would run U+FFFD in its
+  place, other bytes than its config and key say.
+- `passThrough: ['my.var']` is refused: a `passThrough` or `define` name
+  is a shell variable name, `[A-Za-z_][A-Za-z0-9_]*`.
+- Why: the task runs under `sh -c`, and dash (Linux's `sh`) drops any
+  other name, so `my.var` would reach a task on macOS and never on Linux.
+- `inputs.env` takes any name an environment can hold: the key reads it
+  from vx's own environment.
+- `npm_execpath` is set to the workspace's package manager unless a layer
+  gives one, so a tool that calls the manager back finds it.
+- That manager is the root `package.json`'s `packageManager`, else its
+  lockfile's, found on the root's `node_modules/.bin` or `PATH`. It names a
+  binary on this machine, so it is not in the key.
+- Nothing else reaches the task. A host credential (`SSH_AUTH_SOCK`,
+  `GITHUB_TOKEN`) arrives only when `passThrough` names it.
+- A sandboxed task with a restricted network also gets the sandbox's own
+  proxy, CA and temp-directory values over these names (`TMPDIR`, `TMP`,
+  `TEMP`).
+- See `modules/sandbox.md` § The environment SRT sets.
+- Why, cache stability: if every host variable entered the key, every
+  shell with a different `PS1` would miss.
+- Why, determinism: if host variables leaked in, two machines with
+  different `FOO=bar` would produce different outputs, and you would
+  never know why.
+- A failed task whose last output names, or whose command expands
+  (`$API_TOKEN`), a variable your shell holds and the task was not given
+  gets one line naming it and `passThrough`.
+- That line names only upper-case names of four characters or more, and
+  never a value.
+- This is hygiene, not a boundary: an unsandboxed task runs as you, so it
+  can read your files. vx hides its own environment from a task
+  (`modules/util.md`), not your files.
+- Only `exec.sandbox` keeps your files out (`security.md` § What the
+  sandbox stops).
+- **Masking.** vx prints a value as `***` when its variable's name holds
+  `TOKEN`, `SECRET`, `KEY`, `PASSWORD`, `PASSWD`, `PASSPHRASE` or
+  `CREDENTIAL`, or ends `_PASS`.
+- Masking reads vx's own environment and a task's `define`, for values
+  of six characters or more.
+- `NPM_TOKEN_FILE` is not masked: a name ending `_FILE`, `_PATH` or
+  `_DIR` is not, nor git's `GIT_CONFIG_KEY_<n>`.
+- `secret: ['GH_PAT']` masks a name that holds none of those words
+  (`GH_PAT`, `NPM_AUTH`), in all the same places.
+- Masked in output: the task's output, the line vx adds under a shell's
+  127 or 126 (the command's first word), and the stdout the cache keeps
+  and a hit replays.
+- Masked in commands: the command a cache entry stores (what `vx why`
+  prints and a remote cache receives) and the `$ command` line.
+- Masked in commands too: the run's own invocation line that `vx last`
+  prints (a secret passed after `--`).
+- Masked in reports: telemetry records, `vx show`, and the hashes
+  `vx why` gives for such a variable in `inputs.env`.
+- Those hashes are of the value, unsalted: the row names the variable and
+  its change.
+- Masked in errors: an executor's error, a plugin's warning or failure (a
+  remote's reply, also as the run's history row keeps it for `vx last`;
+  the failure in the error `run()` rejects with).
+- Masked in errors too: a failed `inputs` runtime probe's error (its
+  command and output).
+- Every string of a task `vx show` prints is masked (a runtime probe,
+  `readyWhen`, the description), and the description `--dry` and the task
+  picker print.
+- A runtime probe's command is masked as run history stores it and
+  `vx why` names its row. Two probes that mask alike are numbered:
+  `echo *** (2)`.
+- Masked too: the readiness notice's pattern, a sandbox violation line,
+  the error a verb ends on (a plugin's failure, a config's own throw) and
+  `vx watch`'s `cycle failed` line.
+- A multi-line value (a PEM key) is also masked line by line, each line
+  of six characters or more.
+- A value holding a `'` is also masked as a shell-quoted line spells it
+  (`'\''`).
+- `${A}xyz789`, where `B` is `A`'s tail plus `xyz789`, prints as one
+  `***`: values that overlap or touch are masked as one.
+- A value split across two output chunks is still caught: the output
+  holds back that many characters until the next chunk.
+- Streamed live, the hold lasts 25 ms, so a value written in two pieces
+  with a longer pause between them shows.
+- A buffered frame (the CI default) and every stored copy are masked
+  again whole and never show it.
+- The stored copies: the entry a hit replays and a remote cache
+  receives, and the failure record `vx last` reads.
+- A telemetry `task.log` record holds the piece until more output or the
+  task's end, never on a timer, so a sink never gets a paused value in
+  pieces.
+- A plugin that reads a task's config directly sees it as written.
+- A token a plugin's OS keychain answered (`ctx.secret`) is masked in
+  vx's own lines too (a plugin's warning, an error).
+- The project's `node_modules/.bin`, then the workspace root's, are
+  prepended to `PATH`, so `oxlint` and `vite` run by name. One whose path
+  holds `:` (the delimiter) is left out.
+- The workspace root's holds a monorepo's shared tools. A sibling
+  project's bins are never on `PATH` (project isolation).
+- When a bin directory is left out for its `:`, a task's 127 says so.
 
-1. **Essential allowlist** (hard-coded in `src/exec/env.ts`, and pinned
-   against this list by a test): `PATH`, `HOME`, `SHELL`, `USER`,
-   `LOGNAME`, `TMPDIR`, `TEMP`, `TMP`, `LANG`, `LC_ALL`, `LC_CTYPE`,
-   `TERM`, `COLORTERM`, `FORCE_COLOR`, `NO_COLOR`, `CI`, `NODE_OPTIONS`,
-   `COREPACK_HOME`, `PNPM_HOME`, `RUSTUP_HOME`, `CARGO_HOME`, `GOPATH`,
-   `GOMODCACHE`, `GOCACHE`, `XDG_CONFIG_HOME`, `XDG_DATA_HOME`,
-   `XDG_CACHE_HOME`, `XDG_STATE_HOME`, `XDG_RUNTIME_DIR`.
-   Nothing else from the parent environment reaches a task —
-   that is the whole list. When neither `FORCE_COLOR` nor a non-empty
-   `NO_COLOR` reaches the task by any layer, vx sets `FORCE_COLOR=1`
-   (its own output strips the colour where it prints plain; `docs/cli.md`
-   § Colors). Without these, typical CLI tools break. vx
-   adds three markers of its own on top: `VX_RUN_TREE` (a token per
-   spawn, by which a stop finds a daemon that left the task's process
-   group; `docs/execution.md`), `VX_RUN_WORKSPACE` (the root of
-   the workspace running the task) and `VX_RUN_TASK` (`project#task`).
-   With the last two,
-   a task whose command shells out to `vx run` in that same workspace
-   is refused — a loop back to itself forks a run per run without
-   bound, and a nested run that terminates is still invisible to the
-   outer graph (its tasks escape the schedule, the concurrency budget
-   and the cache key); declare it with `dependsOn`. Driving a
-   _different_ workspace from a task (a fixture suite, a benchmark) is
-   fine. **_NOT_ folded into the cache key** — the
-   same rule `passThrough` states below, and for the same reason.
-
-   Read that carefully if your build's _output_ depends on one of
-   them, because three can change what a task produces:
-   **`NODE_OPTIONS`** (`--require` / `--import` / `--loader` /
-   `--conditions` inject code or switch package-export resolution),
-   **`LC_ALL` / `LANG`** (collation — anything shelling out to `sort`
-   orders differently), and **`CI` / `FORCE_COLOR` / `NO_COLOR` /
-   `COLORTERM` / `TERM`** (output bytes, and vx caches and replays
-   output; a host `NO_COLOR` also stops vx setting `FORCE_COLOR=1`).
-
-   They are not hashed because hashing them would mean a laptop and a
-   CI runner could **never share a remote cache entry** — `PATH`,
-   `HOME` and `TERM` differ on every machine, which is the whole point
-   of a remote cache. vx does not guess which ones matter to your
-   build; if one does, say so explicitly:
-
-   ```ts
-   inputs: { files: ['src/**'], env: ['NODE_OPTIONS'] }, outputs: { files: [] }, cache: true
-   ```
-
-   That folds its value into the key. The two axes are orthogonal on
-   purpose: `inputs.env` decides what the key _sees_,
-   `exec.env.passThrough` decides what the child _gets_.
-
-2. **`passThrough`** names → value taken from host `process.env` at
-   spawn time. A project config cannot set one for it: a first load
-   that writes `process.env` is refused (D-76). _NOT_ folded into the cache key — for secrets,
-   regional values, CI flags that legitimately vary between machines.
-   A value a bundler writes into its output is none of these: `vx lock`
-   names a cached task's `passThrough` name with a public bundler prefix
-   (`VITE_`, `NEXT_PUBLIC_`, `REACT_APP_`, `PUBLIC_`, `EXPO_PUBLIC_`,
-   `GATSBY_`, `STORYBOOK_`, `VUE_APP_`, `BUN_PUBLIC_`, `NX_PUBLIC_`,
-   `NUXT_ENV_`, `NUXT_PUBLIC_`, `REDWOOD_ENV_`, `SANITY_STUDIO_`) or
-   `NODE_ENV` that `inputs.env`
-   leaves out and that is no secret (by name or `secret`), once per task: add it to
-   `inputs.env`, or a build with another `VITE_API_URL` replays the old
-   bundle. It also names such a name `inputs.env` keys that neither
-   `passThrough` nor `define` gives the command: the key moves with the
-   value, but the bundle is built without it. Each is a note; the lock
-   is written.
-3. **`define`** → explicit literal values. _ARE_ folded into the
-   cache key via the task config hash (the values are in your config
-   file, so they participate naturally).
-
-```ts
-exec: {
-  command: 'bun test',
-  env: {
-    passThrough: ['CI', 'GH_TOKEN'],  // values forwarded; cache-invariant
-    define: { NODE_ENV: 'test' },      // literal; in the cache key
-  },
-}
-```
-
-Every name in these lists (and in `inputs.env`) must be one an
-environment can hold: non-empty, with no `=` and no NUL, and a `define`
-value holds no NUL. Such a name is refused at load; it used to reach the
-child split at its `=` or not at all. A `define` value, `exec.command` and
-an `inputs.runtime` or `workspaceRuntime` command hold no lone surrogate
-(`'\ud800'`): UTF-8 has no form for one, so the task ran U+FFFD in its
-place, other bytes than its config and key said. A `passThrough` or `define` name is
-also a shell variable name, `[A-Za-z_][A-Za-z0-9_]*`: the task runs under
-`sh -c`, and dash (Linux's `sh`) drops any other name from the environment
-it hands the command, so `my.var` reached a task on macOS and never on
-Linux. `inputs.env` takes any such name: the key reads it from vx's
-own environment.
-
-vx also sets `npm_execpath` to the workspace's package manager (the root
-`package.json`'s `packageManager`, else its lockfile, found on the root's
-`node_modules/.bin` or `PATH`) unless a layer gives one, so a tool that calls the manager back finds
-it. It names a binary on this machine, so it is not in the key.
-
-Anything outside these three layers, the variables vx sets for
-the run (`VX_RUN_WORKSPACE`, `VX_RUN_TASK`, `VX_RUN_TREE`) and `npm_execpath`, is absent from the child's environment:
-a host credential (`SSH_AUTH_SOCK`, `GITHUB_TOKEN`) reaches a task only
-when `passThrough` names it, held end to end by `env.test.ts` (a
-sandboxed task with a restricted network also gets the sandbox's own
-proxy, CA and temp-directory (`TMPDIR`, `TMP`, `TEMP`) values over these names:
-`modules/sandbox.md` § The environment SRT sets). This
-matches Turbo's `passThroughEnv` semantics and exists for two reasons:
-
-- **Cache stability.** If every host env var entered the key, every
-  shell with a different `PS1` would cache-miss.
-- **Determinism.** If host env leaked into the child, two machines
-  with different `FOO=bar` set would produce different outputs and
-  the user would never know why.
-
-A failed task whose last output names, or whose command expands
-(`$API_TOKEN`), a variable your shell holds and the task was not given gets one line naming it and `passThrough`
-(`tests/unpassed-env.test.ts`): names only, upper-case, four characters
-or more; never a value.
-
-This is hygiene, not a boundary: an unsandboxed task runs as you, so it
-can read your files. vx hides its own environment from a task
-(`modules/util.md`), not your files. Only `exec.sandbox` keeps them out (`security.md` § What the sandbox stops).
-
-**Masking.** The value of a variable whose name holds `TOKEN`, `SECRET`,
-`KEY`, `PASSWORD`, `PASSWD`, `PASSPHRASE` or `CREDENTIAL`, or ending
-`_PASS` (vx's own environment or a
-task's `define`, six characters or more; not a name ending `_FILE`,
-`_PATH` or `_DIR`, nor git's `GIT_CONFIG_KEY_<n>`) is printed as `***` wherever vx
-shows it: the task's output and the line vx adds under a shell's 127 or
-126 (the command's first word), the stdout the cache keeps and a hit
-replays, the command a cache entry stores (what `vx why` prints and a
-remote cache receives), the `$ command` line, telemetry records,
-`vx show`, the hashes `vx why` gives for such a variable in
-`inputs.env` (its value, unsalted: the row names it and its change), an executor's error, a plugin's warning or failure (a remote's reply, also as the run's history row keeps it for `vx last`; the failure masked in the error `run()` rejects with), a failed `inputs` runtime probe's error (its command and output), and the run's own invocation line that `vx last` prints (a
-secret passed after `--`). So are every string of a
-task `vx show` prints (a runtime probe, `readyWhen`, the description),
-the description `--dry` and the task picker print, a runtime probe's
-command as the run history stores it and `vx why` names its row (two
-probes that mask alike are numbered, `echo *** (2)`), the readiness
-notice's pattern, a sandbox violation line,
-the error a verb ends on (a plugin's failure, a config's own throw) and
-`vx watch`'s `cycle failed` line. A multi-line value (a PEM
-key) is also masked line by line, each line of six characters or more,
-and a value holding a `'` also as a shell-quoted line spells it (`'\''`).
-Values that overlap or touch are masked as one `***` (`${A}xyz789`
-where `B` is `A`'s tail plus `xyz789`). A value
-split across two output chunks is still caught; the output holds back
-that many characters until the next chunk. Streamed live, the hold
-lasts 25 ms, so a value written in two pieces with a longer pause
-between them shows; a buffered frame (the CI default) and every stored
-copy (the entry a hit replays and a remote cache receives, the failure
-record `vx last` reads) are masked again whole and never hold it. A
-telemetry `task.log` record holds the piece until more output or the
-task's end, never on a timer, so a sink never gets a paused value in pieces. A plugin that reads a task's
-config directly sees it as written. A secret whose name holds none of
-those words (`GH_PAT`, `NPM_AUTH`) is listed in `exec.env.secret`, and is
-then masked in the same places. A token a plugin's OS keychain answered
-(`ctx.secret`) is masked in vx's own lines too (a plugin's warning, an
-error).
-
-Two `node_modules/.bin` directories are prepended to `PATH` so
-installed tools (`oxlint`, `vite`, etc.) run by name: the
-project's own, then the WORKSPACE ROOT's, where a monorepo's shared
-tooling lives. Never a sibling project's, so sibling bins stay invisible
-(project isolation). A directory whose path holds `:` (PATH's delimiter)
-cannot be named in PATH and is left out; a task's 127 then says so.
+</div>
+</details>
 
 ### `dependsOn` (optional)
 
