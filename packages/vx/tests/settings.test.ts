@@ -24,6 +24,9 @@ import {
 import { validateWorkspace } from '../src/workspace/index.js'
 import { killGraceMs, limitSetting, secretMask, teardownTimeoutMs } from '../src/util/index.js'
 import { BoundedCapture } from '../src/exec/index.js'
+import { DEFAULT_STORE } from '../src/cache/index.js'
+import { MAX_DECOMPRESSED_ARTIFACT_BYTES } from '../src/cache/zstd.js'
+import { evalBudgetMs } from '../src/workspace/config-eval.js'
 import { acceptedFlags } from '../src/cli/help.js'
 import { parseRunArgs } from '../src/cli/run.js'
 
@@ -220,7 +223,7 @@ describe('a workspace', () => {
       'w: `cache.artifactCeiling` must be more than 0 (got "0GB")',
     )
     expect(() => validateWorkspace({ cache: { artifactCeiling: false } } as never, 'w')).toThrow(
-      "w: `cache.artifactCeiling` must be a size like '500MB' or '10GB' (got false)",
+      "w: `cache.artifactCeiling` must be a size like '32KiB', '8MiB' or '1GiB' (got false)",
     )
     expect(() => settingEnv('cache.artifactCeiling', { VX_CACHE_ARTIFACT_CEILING: '0' })).toThrow(
       'VX_CACHE_ARTIFACT_CEILING must be more than 0 (got 0)',
@@ -342,14 +345,29 @@ describe('parseSettingValue', () => {
   })
 })
 
+/** A default written as a value (`'2s'`, `true`, `6`), parsed; undefined for words. */
+function literal(s: Setting): string | number | boolean | undefined {
+  const d = s.default
+  if (/^'[^']*'$/.test(d)) return d.slice(1, -1)
+  if (d === 'true' || d === 'false') return d === 'true'
+  if (/^\d+$/.test(d)) return Number(d)
+  return undefined
+}
+
 /** The table docs/schema.md § Settings holds. */
 function settingsTable(): string {
   const cell = (s: string): string => s.replace(/\|/g, '\\|')
   const rows = SETTINGS.map((s) => {
-    const flag =
-      s.flag === undefined ? '—' : `\`${s.flag.verb === 'watch' ? 'vx watch ' : ''}${s.flag.name}\``
+    const flag = s.flag === undefined ? '—' : `\`vx ${s.flag.verb} ${s.flag.name}\``
+    const only =
+      s.config !== false
+        ? ''
+        : s.flag === undefined
+          ? ' (variable only)'
+          : ' (variable or flag only)'
     const what = s.doc + (s.task !== undefined ? ` A task's own \`${s.task}\` beats it.` : '')
-    return `| \`${s.path}\`${s.config === false ? ' (variable or flag only)' : ''} | ${s.env === false ? '—' : `\`${envName(s.path)}\``} | ${flag} | ${cell(kindHint(s.kind))} | ${cell(s.default)} | ${cell(what)} |`
+    const def = literal(s) === undefined ? s.default : `\`${s.default}\``
+    return `| \`${s.path}\`${only} | ${s.env === false ? '—' : `\`${envName(s.path)}\``} | ${flag} | ${cell(kindHint(s.kind))} | ${cell(def)} | ${cell(what)} |`
   })
   return [
     '| Setting | Variable | Flag | Value | Default | What it does |',
@@ -489,5 +507,75 @@ describe('output budgets (M 11-21: every magic number configurable)', () => {
     expect(() => validateWorkspace({ run: { logs: { captureHead: '512' } } }, 'ws')).toThrow(
       /run.logs.captureHead/,
     )
+  })
+})
+
+// M 2026-11-23, "settings. Why things are not matched?": the table printed
+// defaults in four styles, and nothing held one to the value vx runs with.
+describe('each default', () => {
+  it('is a value written as .vx/workspace takes it, or plain words', () => {
+    const bad = SETTINGS.filter((s) => {
+      const v = literal(s)
+      if (v !== undefined) return parseSettingValue(s.kind, v) === null
+      // Words, never a bare or code-only value (`2s`, most-work).
+      const bare = s.kind.type !== 'string' && parseSettingValue(s.kind, s.default) !== null
+      return bare || /^`[^`]*`$/.test(s.default)
+    }).map((s) => `${s.path}: ${s.default}`)
+    expect(bad).toEqual([])
+  })
+
+  it('is the one vx runs with', () => {
+    const consts = new Map<string, number>()
+    const files = sources(SRC).map((f) => readFileSync(f, 'utf8'))
+    for (const text of files)
+      for (const m of text.matchAll(/^(?:export )?const ([A-Z_]+) = ([\d_ *]+)$/gm))
+        consts.set(
+          m[1]!,
+          m[2]!
+            .replace(/_/g, '')
+            .split('*')
+            .reduce((a, b) => a * Number(b), 1),
+        )
+    // Where src reads a setting with its default: `limitSetting('VX_…', N)`,
+    // the timers, `killGraceMs(N)`.
+    const read = new Map<string, Set<unknown>>()
+    const add = (variable: string, name: string): void => {
+      const n = /^[\d_]+$/.test(name) ? Number(name.replace(/_/g, '')) : consts.get(name)
+      expect([variable, name, n]).toEqual([variable, name, expect.any(Number)])
+      read.set(variable, (read.get(variable) ?? new Set<unknown>()).add(n))
+    }
+    for (const text of files) {
+      for (const m of text.matchAll(/(?:limitSetting|timerSettingMs)\('(VX_\w+)', (\w+)/g))
+        if (m[2] !== 'defaultMs') add(m[1]!, m[2]!)
+      for (const m of text.matchAll(/killGraceMs\((\w+)\)/g))
+        if (m[1] !== 'defaultMs') add('VX_RUN_KILL_GRACE', m[1]!)
+    }
+    read.set('VX_CACHE_ARTIFACT_CEILING', new Set([MAX_DECOMPRESSED_ARTIFACT_BYTES]))
+    read.set('VX_CACHE_STORE_EMBEDDINGS', new Set([DEFAULT_STORE.embeddings]))
+    read.set('VX_CACHE_STORE_DECOMPRESS', new Set<unknown>([DEFAULT_STORE.decompress]))
+    const saved = process.env['VX_CONFIG_WORKER_TIMEOUT']
+    delete process.env['VX_CONFIG_WORKER_TIMEOUT']
+    read.set('VX_CONFIG_WORKER_TIMEOUT', new Set([evalBudgetMs()]))
+    if (saved !== undefined) process.env['VX_CONFIG_WORKER_TIMEOUT'] = saved
+    const checked = SETTINGS.filter((s) => read.has(envName(s.path)))
+    expect(checked.map((s) => [s.path, ...read.get(envName(s.path))!])).toEqual(
+      checked.map((s) => [s.path, parseSettingValue(s.kind, literal(s))]),
+    )
+    expect(checked.map((s) => s.path)).toEqual([
+      'run.killGrace',
+      'run.pluginTimeout',
+      'run.logs.captureHead',
+      'run.logs.captureTail',
+      'run.logs.failedHead',
+      'run.logs.failedTail',
+      'run.secrets.minLength',
+      'cache.store.embeddings',
+      'cache.store.decompress',
+      'cache.artifactCeiling',
+      'history.retention',
+      'watch.debounce',
+      'watch.pollInterval',
+      'config.workerTimeout',
+    ])
   })
 })

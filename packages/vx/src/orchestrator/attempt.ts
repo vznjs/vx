@@ -88,9 +88,15 @@ export async function runAttempts(
   for (;;) {
     m.attempt++
     const a = await runAttempt(m, prior, spentMs)
-    // Never started: skipped, as fail-fast skips a task not yet dispatched.
+    // Never started: skipped, as fail-fast skips a task not yet dispatched;
+    // on the run's stop, not run, as the scheduler ends one it never dispatched.
     if (a.unbegun)
-      return { outcome: { node, status: 'skipped', durationMs: 0, hash, timing: timing() } }
+      return {
+        outcome:
+          a.unbegun === 'stop'
+            ? { node, status: 'aborted', exitCode: 1, durationMs: 0, hash }
+            : { node, status: 'skipped', durationMs: 0, hash, timing: timing() },
+      }
     const result = a.result
     prior = { result, exitCode: a.exitCode }
     if (a.withdrawn) {
@@ -212,8 +218,8 @@ export interface AttemptResult {
   readonly exitCode: number
   /** A retry fail-fast withdrew: `result` is the attempt before it, which stands. */
   readonly withdrawn?: true
-  /** Fail-fast withdrew the first attempt before its executor began it. */
-  readonly unbegun?: true
+  /** Fail-fast or the run's stop withdrew the first attempt before its executor began it. */
+  readonly unbegun?: 'stop' | 'failFast'
 }
 
 async function runAttempt(
@@ -355,9 +361,12 @@ async function runAttempt(
       'VX_E_LOCK',
     )
   }
-  if (signal.unbegun) {
+  // A retry the run's stop withdrew is a stopped task, as any attempt the
+  // stop ends: aborted, not the failure before it.
+  if (signal.unbegun && (m.attempt === 1 || signal.unbegunBy === 'failFast')) {
     await sweepPlaceholders(sandbox.placeholders)
-    if (m.attempt === 1) return { result: res, exitCode: res.exitCode, unbegun: true }
+    if (m.attempt === 1)
+      return { result: res, exitCode: res.exitCode, unbegun: signal.unbegunBy ?? 'failFast' }
     // A retry withdrawn: the attempt before it stands, as above.
     return withdrawn()
   }

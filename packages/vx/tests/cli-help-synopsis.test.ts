@@ -9,7 +9,7 @@
 import { describe, expect, it } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
-import { flagHint, helpText, verbHelpText } from '../src/cli/help.js'
+import { acceptedFlags, flagHint, helpText, verbHelpText } from '../src/cli/help.js'
 import { CORE_VERBS } from '../src/util/index.js'
 
 const DOC = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'cli.md'), 'utf8')
@@ -122,4 +122,36 @@ it("pnpm's and Turbo's -F hints --filter where the verb takes it", () => {
     ' (did you mean --filter?)',
     '',
   ])
+})
+
+// An example forwards a task's own flags after `--`: `--coverage` is
+// vitest's, and reading example lines as the verb's synopsis made
+// `vx run --coverage` a flag vx accepted and completed.
+describe('the Examples section', () => {
+  const lines = helpText()
+    .split('\n\n')
+    .find((b) => b.startsWith('Examples:'))!
+    .split('\n')
+    .filter((l) => l.startsWith('  vx '))
+
+  it('lends a verb no flag of the tool it forwards to', () => {
+    expect(lines.some((l) => l.includes(' -- --coverage'))).toBe(true)
+    expect(acceptedFlags('run')).not.toContain('--coverage')
+  })
+
+  it('uses only flags the verb takes, before any `--`', () => {
+    const bad = lines.flatMap((l) => {
+      const [, verb, rest] = /^  vx (\S+)(.*?)(?:\s{2,}|$)/.exec(l)!
+      const own = rest!.split(' -- ')[0]!
+      return (own.match(/--[a-zA-Z][a-zA-Z-]*/g) ?? [])
+        .filter((f) => !acceptedFlags(verb!).includes(f))
+        .map((f) => `vx ${verb} ${f}`)
+    })
+    expect(bad).toEqual([])
+  })
+
+  it("cuts into each verb's help", () => {
+    expect(verbHelpText('why')).toContain('  vx why build ')
+    expect(verbHelpText('why')).not.toContain('  vx run build ')
+  })
 })

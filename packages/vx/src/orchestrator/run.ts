@@ -1733,7 +1733,9 @@ async function runOnBus(
         log.status(`vx: profile written to ${wrote}`)
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
-        warnOf(log)(`vx: failed to write profile: ${msg}`)
+        warnOf(log)(
+          `vx: failed to write profile: ${msg} — the run's verdict stands; fix the path and re-run`,
+        )
       }
     }
     // Record the run in one SQLite transaction (one fsync), with the invocation
@@ -1925,7 +1927,7 @@ async function runOnBus(
           await resetSandbox()
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err)
-          warnOf(log)(`vx: sandbox cleanup failed: ${msg}`)
+          warnOf(log)(`vx: sandbox cleanup failed: ${msg} — the run's verdict stands`)
         }
       }
     })

@@ -1860,7 +1860,24 @@ describe('task-graph.ts rows the C-30 sweep found unheld', () => {
       }),
     )
     expect(message).toBe(
-      'app#build: dependsOn patterns are not supported in the "pkg#task" form (got "lib*#build")',
+      'app#build: dependsOn patterns are not supported in the "pkg#task" form (got "lib*#build"): name the project and task exactly, as in web#build',
+    )
+  })
+
+  it('a bare wildcard or a negation in dependsOn is refused with what to write instead', () => {
+    const refused = (entry: string): string | undefined =>
+      thrown(() =>
+        buildTaskGraph({
+          projects: projects(project('app', { build: { ...cmd('b'), dependsOn: [entry] } })),
+          packageGraph: packageGraph({}),
+          requested: [{ project: 'app', task: 'build' }],
+        }),
+      )
+    expect(refused('*')).toBe(
+      'app#build: dependsOn does not accept bare wildcards (got "*"): name the tasks, or a namespace like build.*',
+    )
+    expect(refused('!lint')).toBe(
+      'app#build: dependsOn does not accept negation (got "!lint"): dependsOn only adds tasks, so drop the entry',
     )
   })
 

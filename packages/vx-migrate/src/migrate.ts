@@ -55,9 +55,8 @@ import {
 } from './packages.js'
 import { relPosix } from './paths.js'
 import { REMOTE_CACHE, remoteCacheNote } from './remote-cache.js'
-import { migrateNx, NX_GRAPH_REL, nxWorkspaceFields } from './migrate-nx.js'
+import { migrateNx, NX_GRAPH_REL, nxWorkspaceFieldsOf } from './migrate-nx.js'
 import { exportGraph, hasNx } from './nx/export-graph.js'
-import { readNxJson } from './nx/nx-map.js'
 import {
   type AdoptionMode,
   importedPackages,
@@ -74,7 +73,7 @@ import {
   readText,
   uninstall,
 } from './adopt.js'
-import { migrateTurbo } from './migrate-turbo.js'
+import { migrateTurbo, turboWorkspaceFields } from './migrate-turbo.js'
 import { migrateViteTask } from './migrate-vite-task.js'
 import { turboConfigFile } from './turbo/turbo-reads.js'
 import { lockfilePlugin } from './workspace-notes.js'
@@ -107,6 +106,20 @@ export interface MigrateArgs {
 
 const USAGE =
   'usage: vx-migrate [--from turbo|nx|vite-task|scripts] [--native|--keep] [--no-install] [--dry [--format json]] [--force] [--mjs]'
+
+const HELP = [
+  USAGE,
+  '',
+  'Write vx config from turbo.json, an Nx graph, Vite Task or package.json scripts.',
+  '  --from <source>  turbo | nx | vite-task | scripts, when several are checked in.',
+  '  --native         Write a vx.config.ts per package (no question).',
+  '  --keep           Turbo or Nx: only .vx/workspace.ts, declaring turbo() or nx().',
+  '  --no-install     Install nothing and skip vx lock.',
+  '  --dry            Print the files instead of writing them.',
+  '  --format json    With --dry: the plan as one JSON document.',
+  '  --force          Overwrite existing vx.config.* files.',
+  '  --mjs            Write .mjs files (no type import) instead of .ts.',
+].join('\n')
 
 export function parseMigrateArgs(args: readonly string[]): MigrateArgs {
   const out: MigrateArgs = { dry: false, force: false, mjs: false }
@@ -164,7 +177,7 @@ async function noRootReason(cwd: string, err: Error): Promise<Error> {
 export async function migrateCmd(args: readonly string[]): Promise<number> {
   const parsed = parseMigrateArgs(args)
   if (parsed.help) {
-    ui.say('info', USAGE, 'out')
+    ui.say('info', HELP, 'out')
     return 0
   }
   // Thrown, so the bin answers it as JSON too when that was asked.
@@ -324,7 +337,7 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
     }
   } else {
     source = path.basename(turboFile ?? 'turbo.json')
-    plan = await migrateTurbo(root, metas, format)
+    plan = await migrateTurbo(root, metas, format, writesWorkspace)
   }
   // Before the write, so the report's `next:` line runs the installed vx;
   // not when the write will be refused for a config already there.
@@ -352,12 +365,13 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
       : []
   let workspaceText: string | undefined
   if (writesWorkspace) {
-    const fields =
+    const fields = (
       runner === 'nx'
-        ? nxWorkspaceFields((await readNxJson(root).catch(() => null))?.json).flatMap((f) =>
-            f.source === undefined ? [] : [{ field: f.field, source: f.source }],
-          )
-        : []
+        ? await nxWorkspaceFieldsOf(root)
+        : runner === 'turbo'
+          ? await turboWorkspaceFields(root)
+          : []
+    ).flatMap((f) => (f.source === undefined ? [] : [{ field: f.field, source: f.source }]))
     workspaceText = renderWorkspaceFile(plugins, existingFormat ?? format, fields)
     // Drop the notes that told the user to declare the lockfile plugin and
     // to remove turbo() or nx().

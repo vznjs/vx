@@ -248,7 +248,25 @@ export function formatSummarySection(
 
   const dim = (txt: string) => paint('muted', txt, colors)
   const row = (label: string, value: string): string => `  ${dim(label.padEnd(8))}  ${value}`
-  const join = (parts: string[]): string => parts.join(` ${dim('\u00b7')} `)
+  const sep = ` ${dim('\u00b7')} `
+  // A value's parts on as many lines as the terminal needs, broken between
+  // parts: a 60-column one cut `6 tot|al` and a run id in two.
+  const fit = (parts: string[]): string[] => {
+    const room = colors.columns === undefined ? Infinity : colors.columns - 12
+    const out: string[] = []
+    let line = ''
+    for (const part of parts) {
+      const next = line === '' ? part : `${line}${sep}${part}`
+      if (line !== '' && Bun.stringWidth(next) > room) {
+        out.push(line)
+        line = part
+      } else line = next
+    }
+    if (line !== '') out.push(line)
+    return out
+  }
+  const rows = (label: string, parts: string[]): string[] =>
+    fit(parts).map((l, i) => (i === 0 ? row(label, l) : `${' '.repeat(12)}${l}`))
 
   // Tasks meter + numbers, fixed order: failed · success · skipped · aborted ·
   // not run, then a dim total, last on its line. Every task in the run counts,
@@ -282,7 +300,7 @@ export function formatSummarySection(
   )
   // Bars on the label row, color-coded legend on its own line below,
   // indented to the bar column (2 indent + 8 label + 2 gap = 12).
-  const legend = (parts: string[]): string => `${' '.repeat(12)}${join(parts)}`
+  const legend = (parts: string[]): string[] => fit(parts).map((l) => `${' '.repeat(12)}${l}`)
   // The panel's body; its box goes round it at the end.
   const lines: string[] = []
 
@@ -297,14 +315,14 @@ export function formatSummarySection(
         : Math.min(width, Math.max(1, Math.round((context.packageCount / wsTotal) * width)))
     lines.push(
       row('projects', gauge(cells, 'warn', colors)),
-      legend([paint('warn', `${context.packageCount} in run`, colors), dim(`${wsTotal} total`)]),
+      ...legend([paint('warn', `${context.packageCount} in run`, colors), dim(`${wsTotal} total`)]),
     )
   }
 
   if (taskBar.length > 0) {
     lines.push(row('tasks', taskBar))
     // No legend line until the first bucket lands (live: all-gray bar).
-    if (taskParts.length > 0) lines.push(legend(taskParts))
+    if (taskParts.length > 0) lines.push(...legend(taskParts))
   } else {
     const groups = stats.emptyGroups ?? []
     // `vx run build` where no project gives build a command runs the default
@@ -315,7 +333,7 @@ export function formatSummarySection(
         : ''
     lines.push(row('tasks', dim('0 tasks') + why))
     // A stop before any task finished still names what it took down.
-    if (taskParts.length > 0) lines.push(legend(taskParts))
+    if (taskParts.length > 0) lines.push(...legend(taskParts))
   }
 
   // Cache meter + numbers: per layer when the run context names its
@@ -391,7 +409,7 @@ export function formatSummarySection(
     // restores red, so the two bars fill alike; their counts are the tasks
     // legend's alone (the footer never says a fact twice).
     lines.push(row('cache', cacheBar))
-    if (cacheParts.length > 0) lines.push(legend(cacheParts))
+    if (cacheParts.length > 0) lines.push(...legend(cacheParts))
   }
 
   // Cache-miss duration spread (owner: hits' restore times polluted it — only
@@ -425,7 +443,7 @@ export function formatSummarySection(
   else if (stats.overMs !== undefined)
     timeParts.push(paint('info', `${formatOver(stats.overMs)} over`, colors))
   for (const p of spreadParts) timeParts.push(dim(p))
-  const timeRow = row('time', join(timeParts))
+  const timeRows = rows('time', timeParts)
   // Run-shape footer (final summary only): worker pool + cache mode,
   // grouped with time under a blank line below the meters.
   if (context !== undefined) {
@@ -460,9 +478,9 @@ export function formatSummarySection(
     }
     if (context.runId !== undefined) info.push(`run ${context.runId}`)
     lines.push('', ...warnRows(context.warnings?.() ?? [], row, colors))
-    lines.push(row('info', join(info)), timeRow)
+    lines.push(...rows('info', info), ...timeRows)
   } else {
-    lines.push('', timeRow)
+    lines.push('', ...timeRows)
   }
   // The Summary panel; the final one names the vx that ran it (the live
   // one has no context yet).

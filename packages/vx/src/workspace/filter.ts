@@ -154,7 +154,7 @@ export function parseFilter(
   // name glob matched nothing and was hinted "Did you mean a?", and an empty
   // exclude (`!$UNSET`) excluded nothing, so every project ran with one warning
   // line.
-  if (s === '') throw new UserError(`filter "${raw}" names no project`)
+  if (s === '') throw noProject(raw)
 
   // `//` is Turbo's name for the root package (`--filter=//`, `//...`,
   // `!//`, probed on 2.8.17), and vx's for the root project unless
@@ -179,7 +179,10 @@ export function parseFilter(
 
   if (s.startsWith('tag:')) {
     const tag = s.slice(4)
-    if (tag === '') throw new UserError(`filter "${raw}" names no tag`)
+    if (tag === '')
+      throw new UserError(
+        `filter "${raw}" names no tag. Write tag:<name>, as in --filter tag:frontend`,
+      )
     return {
       raw,
       negate,
@@ -200,7 +203,7 @@ export function parseFilter(
   // one name glob, it matched nothing.
   const named = /^([^{}]+)\{([^{}]*)\}$/.exec(s)
   if (named !== null && !named[1]!.startsWith('./') && named[1] !== '.') {
-    if (named[2]!.trim() === '') throw new UserError(`filter "${raw}" names no project`)
+    if (named[2]!.trim() === '') throw noProject(raw)
     return {
       raw,
       negate,
@@ -230,7 +233,7 @@ export function parseFilter(
   if (pathForm !== undefined) {
     // `{}` resolved to the root, every project under it: an unset
     // variable in `--filter "{$PKG}"` ran the whole workspace.
-    if (pathForm.trim() === '') throw new UserError(`filter "${raw}" names no project`)
+    if (pathForm.trim() === '') throw noProject(raw)
     isPath = true
     matcher = path.resolve(workspaceRoot, pathForm)
     // `../` (pnpm's cwd-relative sibling) climbed out of the root, and
@@ -468,4 +471,11 @@ export function applyFilters(opts: ApplyFiltersOptions): Set<string> {
   for (const expanded of excludes) for (const name of expanded) selected.delete(name)
 
   return selected
+}
+
+/** A filter with nothing between its operators: `...`, `!`, `{}`. */
+function noProject(raw: string): UserError {
+  return new UserError(
+    `filter "${raw}" names no project. Name a project, a ./path or a tag:<name>, as in --filter web...`,
+  )
 }

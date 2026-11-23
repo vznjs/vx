@@ -90,7 +90,8 @@ describe('vx info under a setting variable vx refuses', () => {
       const info = vx({ VX_CACHE_POLICY: 'bogus' }, 'info', '--format', 'json')
       expect(info.code).toBe(0)
       const f = JSON.parse(info.out) as { settings: Record<string, unknown> }
-      const refused = "VX_CACHE_POLICY: invalid segment 'bogus': expected '<layer>:<flags>'"
+      const refused =
+        "VX_CACHE_POLICY: invalid segment 'bogus': expected '<layer>:<flags>', as in 'local:rw,remote:r'"
       expect(f.settings['cache.policy']).toEqual({ value: 'bogus', source: 'env', refused })
       const lock = vx({ VX_CACHE_POLICY: 'bogus' }, 'lock')
       expect(lock.code).toBe(1)

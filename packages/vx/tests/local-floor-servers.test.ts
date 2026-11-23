@@ -177,7 +177,7 @@ it('a stop ends a task that waits on a server not yet ready', async () => {
 // A server that crashed after it became ready was handed to every later
 // task as up: the dependant ran against nothing and failed on its own
 // "connection refused", with no word that the server had died.
-it('a task after its server crashed is told the server exited', async () => {
+it('a task its server crashed under fails, as does one after it, each told why', async () => {
   dir = await mkdtemp(path.join(os.tmpdir(), 'vx-floor-srv-'))
   const floor = localFloor()
   const heard: string[] = []
@@ -204,11 +204,12 @@ it('a task after its server crashed is told the server exited', async () => {
     ],
   })
   try {
-    expect((await floor.execute(task(1, 'touch down; sleep 0.3'))).exitCode).toBe(0)
+    expect((await floor.execute(task(1, 'touch down; sleep 0.3'))).exitCode).toBe(1)
     const r = await floor.execute(task(2, 'true'))
     expect([r.exitCode, heard.join('')]).toEqual([
       1,
-      's#srv, which s#t2 depends on, exited with code 3 after it was ready\n',
+      's#srv, which s#t1 depends on, exited with code 3 while it ran\n' +
+        's#srv, which s#t2 depends on, exited with code 3 after it was ready\n',
     ])
   } finally {
     await floor.close()
@@ -312,4 +313,39 @@ it('says why a server could not spawn, and closes after it', async () => {
     `s#srv, which s#live depends on, did not start: failed to spawn persistent task: its working directory ${path.join(dir, 'gone')} does not exist`,
   )
   await floor.close()
+}, 30_000)
+
+it('CONTROL: a server the floor stopped under a running dependant fails it not', async () => {
+  dir = await mkdtemp(path.join(os.tmpdir(), 'vx-floor-srv-'))
+  const floor = localFloor()
+  const req: ExecuteRequest = {
+    taskId: 's#t1',
+    workspaceRoot: dir,
+    outputs: { files: [], workspaceFiles: [] },
+    command: 'sleep 0.5',
+    forwardArgs: [],
+    cwd: dir,
+    env: { PATH: process.env['PATH'] },
+    envDefine: {},
+    capture: { stdout: false, stderr: false },
+    onStdout: () => {},
+    onStderr: () => {},
+    servers: [
+      {
+        taskId: 's#srv',
+        command: 'echo up; exec sleep 60',
+        cwd: dir,
+        env: { PATH: process.env['PATH'] },
+        readyWhen: 'up',
+      },
+    ],
+  }
+  try {
+    const running = floor.execute(req)
+    await Bun.sleep(200)
+    await floor.stop('s#srv')
+    expect((await running).exitCode).toBe(0)
+  } finally {
+    await floor.close()
+  }
 }, 30_000)

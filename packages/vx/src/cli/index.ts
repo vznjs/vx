@@ -342,7 +342,7 @@ async function dispatch(command: string | undefined, rest: string[]): Promise<nu
         // prints a line per fact, so each line is a whole sentence.
         return unknown(
           `vx: \`${command}\` is not a vx core command.\n` +
-            `  vx core runs tasks in-process.\n` +
+            `  vx core runs and caches tasks on this machine.\n` +
             `  A dashboard, remote cache and distributed execution come from plugins, not core.\n` +
             `  See the plugin guide: https://vznjs.github.io/vx/docs/plugins/\n`,
         )

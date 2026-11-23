@@ -201,6 +201,16 @@ const MACHINE_NAMED = 'named by letters, digits, _, - and . (not first)'
 
 const USAGE = 'Usage: vx dte worker | vx dte init [--dry] [--force]'
 
+const HELP = [
+  USAGE,
+  '',
+  "  vx dte init      Write the CI that spreads one vx run over this workspace's workers.",
+  '      --dry        Print the files instead of writing them.',
+  '      --force      Overwrite files that exist.',
+  '  vx dte worker    Join the run VX_DTE_RUN names, over VX_DTE_RELAY or dte({ relay }),',
+  '                   and run the tasks it is handed. A CI job runs it after install.',
+].join('\n')
+
 /**
  * The names a dial sets itself (wire.ts): one of them in `headers`, in
  * another case, was joined to the dial's own value.
@@ -487,7 +497,7 @@ export function dte(options: DteOptions = {}) {
         async run(argv, ctx) {
           // Asked for, the usage is an answer: `vx dte --help` exited 1 (2026-10-26).
           if (argv.some((a) => a === '--help' || a === '-h') || argv[0] === 'help') {
-            ui.say('info', USAGE, 'out')
+            ui.say('info', HELP, 'out')
             return 0
           }
           if (argv[0] === 'init') return init(argv.slice(1), ctx)

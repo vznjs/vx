@@ -32,7 +32,7 @@ vx pipeline NAME [OPTIONS]
 vx cache clean [--older-than <duration>] [--max-size <size>] [--global] [--dry] [--format pretty|json] [--cache-dir <path>]
 vx lock [--check] [--format pretty|json]
 vx init [--dry [--format pretty|json]] [--force] [--mjs] [--native|--keep] [--plugin <hook>]
-vx show [PROJECT[#TASK] | TASK] [--filter <pattern>] [--affected[=<ref>]] [--format pretty|json]
+vx show [PROJECT[#TASK] | TASK] [--filter <pattern>] [--affected[=<base>]] [--format pretty|json]
 vx info [--format pretty|json] [--cache-dir <path>]
 vx why (TASK | PKG#TASK) [--run RUNID] [--format pretty|json] [--cache-dir <path>]
 vx last [RUNID] [--list[=N]] [--failed] [--log <task>] [--stats [<task>] [--branch <name>]] [--sql <query>] [--live [--follow]] [--format pretty|json] [--cache-dir <path>]
@@ -676,7 +676,7 @@ span lines.
 | `--cache-concurrency-restore <n>`          | int (1+)       | `cache.concurrency.restore`, else twice `--concurrency`        | Local hits restoring their outputs at once.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | `--verbosity <n>`                          | int (0+)       | `0`                                                            | `1` or more prints a per-task table (groups left out, painted as the task list on a colour terminal) after the framed blocks, above the footer. `--verbosity=<n>` form too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | `--dry[=pretty\|json]`                     | optional value | off                                                            | Print the task graph + predicted cache hit/miss; skip execution. `VX_DEBUG_TIMING=1` prints the stage table here as it does for a run.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| `--profile[=<path>]`                       | optional value | off (`profile.json` when set)                                  | Write Chrome-trace JSON of the run's wallclock spans. A write that fails is a warning (`vx: failed to write profile: <cause>`) and leaves the exit code as the run set it; a directory is refused before the run. See § Run artifacts.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `--profile[=<path>]`                       | optional value | off (`profile.json` when set)                                  | Write Chrome-trace JSON of the run's wallclock spans. A write that fails is a warning (`vx: failed to write profile: <cause> — the run's verdict stands; …`) and leaves the exit code as the run set it; a directory is refused before the run. See § Run artifacts.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 
 A value flag given twice keeps the last value (`--concurrency=1 --concurrency=2` runs 2), so a flag appended after a script's own overrides it.
 
@@ -848,9 +848,12 @@ Reported task lines share one column grid: `<status> <cache> <±usual>
 <time> <cpu> <mem> <outputs> <blocks> <worker> <mark> <task>`. No glyph
 leads a row. The status word starts at column 12, where the Summary's
 values start, and its colour carries the outcome. The cache word is the
-cache axis. An empty cell shows `—`. A terminal titles the rows with a
-`Tasks` line holding the column names; a pipe (an agent's shell) gets
-that line once, above its first row.
+cache axis. An empty cell shows `—`. A terminal too narrow for the
+whole row drops `blocks`, `outputs`, `worker`, `cpu`, `mem` and
+`±usual`, in that order, until a task's name has 24 columns; status,
+cache and time always stay. Logs off a terminal keep every column. A
+terminal titles the rows with a `Tasks` line holding the column names;
+a pipe (an agent's shell) gets that line once, above its first row.
 
 | Status     | Colour | Meaning                                                |
 | ---------- | ------ | ------------------------------------------------------ |
@@ -3345,7 +3348,7 @@ vx show app#build
 | Option                  | Meaning                                           |
 | ----------------------- | ------------------------------------------------- |
 | `--filter <p>`          | only the projects `vx run --filter <p>` selects   |
-| `--affected[=<ref>]`    | only what `vx run --affected` would select, below |
+| `--affected[=<base>]`   | only what `vx run --affected` would select, below |
 | `--format pretty\|json` | `json` for scripts                                |
 
 ### Understanding the output
@@ -3386,7 +3389,7 @@ list and `vx show <project>`, but `vx show build`, like
 
 ### `--filter` and `--affected`
 
-`--filter` and `--affected[=<ref>]` narrow the list, or a task's
+`--filter` and `--affected[=<base>]` narrow the list, or a task's
 projects, as `vx run` selects: `turbo ls --affected` is
 `vx show --affected`, and `nx show projects --affected --with-target t`
 is `vx show t --affected`. Beside a task, `--affected` lists the

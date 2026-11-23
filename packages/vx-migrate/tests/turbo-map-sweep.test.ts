@@ -1432,6 +1432,34 @@ describe('turbo-map: structured inputs', () => {
       ['src/**', 'package.json'],
     ])
   })
+
+  // Turbo's documented jit example: the startup list takes the generated
+  // files back, the jit list hashes them. One vx list subtracted the `!`
+  // from both, so no generated file was keyed and a changed codegen
+  // replayed the old build.
+  it('keeps a jit glob that a startup `!` takes back, and the other way round', async () => {
+    const files = async (inputs: unknown[]) => {
+      const t = await taskOf({ tasks: { build: { inputs } } }, { a: { scripts: { build: 'b' } } })
+      return (t.task as { inputs?: { files?: string[] } }).inputs?.files
+    }
+    expect([
+      await files([
+        '$TURBO_DEFAULT$',
+        '!src/generated/**',
+        '!docs/**',
+        { mode: 'jit', globs: ['src/generated/**'] },
+      ]),
+      await files(['src/**', { mode: 'jit', withDefaults: true, globs: ['!src/**', '!x/**'] }]),
+      await files(['**/*', '!./src//generated/**', { mode: 'jit', globs: ['src/generated/**'] }]),
+      // CONTROL: a `!` inside its own list stays.
+      await files(['src/**', '!src/gen/**']),
+    ]).toEqual([
+      ['**/*', '!docs/**', 'src/generated/**'],
+      ['src/**', '**/*', '!x/**'],
+      ['**/*', 'src/generated/**'],
+      ['src/**', '!src/gen/**', 'package.json'],
+    ])
+  })
 })
 
 // The G-13 sweep's survivors: a package that extends two packages which

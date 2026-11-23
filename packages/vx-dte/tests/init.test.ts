@@ -526,7 +526,12 @@ export default { plugins: [dte({ workers: { linux: { machines: { small: { cpu: 2
     expect([args, r.exitCode, r.stdout.toString()]).toEqual([
       args,
       0,
-      'Usage: vx dte worker | vx dte init [--dry] [--force]\n',
+      'Usage: vx dte worker | vx dte init [--dry] [--force]\n\n' +
+        "  vx dte init      Write the CI that spreads one vx run over this workspace's workers.\n" +
+        '      --dry        Print the files instead of writing them.\n' +
+        '      --force      Overwrite files that exist.\n' +
+        '  vx dte worker    Join the run VX_DTE_RUN names, over VX_DTE_RELAY or dte({ relay }),\n' +
+        '                   and run the tasks it is handed. A CI job runs it after install.\n',
     ])
   }
 })

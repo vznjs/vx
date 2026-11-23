@@ -13,6 +13,7 @@
 import { readFileSync } from 'node:fs'
 import { availableParallelism } from 'node:os'
 import path from 'node:path'
+import { type DependencyRule, turboBoundaryRules } from '../dependency-rules.js'
 import type { ProjectMeta, VxPlugin } from '@vzn/vx'
 import type { PackageMeta } from '../packages.js'
 import { memberProjects, withManifests } from '../manifests.js'
@@ -80,6 +81,11 @@ export function turbo(options: TurboPluginOptions = {}): VxPlugin {
         const keys = await workspaceKeys(rootOf(ctx.workspaceRoot))
         if (workspace.run?.concurrency === undefined && keys.concurrency !== undefined)
           workspace.run = { ...workspace.run, concurrency: keys.concurrency }
+        if (workspace.run?.rules?.dependencies === undefined && keys.rules !== undefined)
+          workspace.run = {
+            ...workspace.run,
+            rules: { ...workspace.run?.rules, dependencies: keys.rules },
+          }
         // `TURBO_FORCE` (`true` or `1`, as Turbo reads it) is `turbo run --force`.
         const force = Bun.env['TURBO_FORCE']?.trim()
         if (force === 'true' || force === '1')
@@ -176,11 +182,13 @@ function githubActionsBase(root: string, remoteFallback: boolean): string | unde
 
 /**
  * turbo.json's workspace keys vx has a home for, top level or under
- * `global`: `concurrency` (`"10"`, `"50%"` of the cores).
+ * `global`: `concurrency` (`"10"`, `"50%"` of the cores) and
+ * `boundaries` as `run.rules.dependencies`.
  */
 async function workspaceKeys(root: string): Promise<{
   concurrency?: number
   remoteBaseFallback?: boolean
+  rules?: DependencyRule[]
 }> {
   const file = await turboConfigFile(root)
   if (file === null) return {}
@@ -204,7 +212,10 @@ async function workspaceKeys(root: string): Promise<{
   const out: {
     concurrency?: number
     remoteBaseFallback?: boolean
+    rules?: DependencyRule[]
   } = {}
+  const { rules } = turboBoundaryRules(raw)
+  if (rules.length > 0) out.rules = rules
   const flags = raw['futureFlags'] as { githubActionsRemoteBaseRefFallback?: unknown } | undefined
   if (flags?.githubActionsRemoteBaseRefFallback === true) out.remoteBaseFallback = true
   const c = read('concurrency', 'TURBO_CONCURRENCY')

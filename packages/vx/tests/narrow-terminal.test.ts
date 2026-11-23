@@ -84,4 +84,36 @@ describe('on a terminal narrower than the footer', () => {
       expect(rule.length).toBe(furniture(footer(columns))[1]!.length)
     },
   )
+
+  // The footer's words broke where the terminal did: `6 tot|al`, a run id in
+  // two. A value now breaks between its `·` parts, each line under the first.
+  const wordy = (columns?: number): string[] =>
+    formatRunSummary(
+      [outcome('a#build', 'success'), outcome('b#build', 'failed'), outcome('c#build', 'skipped')],
+      1234,
+      columns === undefined ? { enabled: false } : { enabled: false, columns },
+      { ...CONTEXT, runId: '01a20842-c687-7468-9a61-298f70fa4b7f' },
+    )
+
+  it('a footer value breaks between its parts at 40 columns', () => {
+    const lines = wordy(40)
+    const at = (start: string): number => lines.findIndex((l) => l.startsWith(start))
+    const tasks = at('            1 failed')
+    expect(lines.slice(tasks, tasks + 2)).toEqual([
+      '            1 failed · 1 success',
+      '            1 skipped · 3 total',
+    ])
+    expect(lines.slice(at('  info'), at('  info') + 2)).toEqual([
+      '  info      4 workers · local cache',
+      '            run 01a20842-c687-7468-9a61-298f70fa4b7f',
+    ])
+  })
+
+  it('CONTROL: off a terminal a footer value stays on one line', () => {
+    const lines = wordy()
+    expect(lines).toContain('            1 failed · 1 success · 1 skipped · 3 total')
+    expect(lines).toContain(
+      '  info      4 workers · local cache · run 01a20842-c687-7468-9a61-298f70fa4b7f',
+    )
+  })
 })

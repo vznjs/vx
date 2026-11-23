@@ -916,13 +916,17 @@ export async function installPlugins(args: InstallPluginsArgs): Promise<() => vo
 
   for (const plugin of plugins) {
     if (typeof plugin.name !== 'string' || plugin.name.length === 0) {
-      throw new UserError('plugin missing `name` field')
+      throw new UserError(
+        'a plugin has no name: build it with definePlugin(import.meta, hooks), which names it after its package',
+      )
     }
     // No setup: a capability-only plugin, skipped. A setup that is not
     // callable is an authoring error.
     if (plugin.setup === undefined) continue
     if (typeof plugin.setup !== 'function') {
-      throw new UserError(`plugin '${plugin.name}' setup is not a function`)
+      throw new UserError(
+        `plugin '${plugin.name}' setup is not a function (got ${typeof plugin.setup}): make it a function, or drop it`,
+      )
     }
 
     const fail = (where: string, err: unknown): void => {

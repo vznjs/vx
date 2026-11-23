@@ -905,6 +905,33 @@ const cases: Case[] = [
   }),
 
   defineCase({
+    id: 'outputs/committed-output-rewritten-each-run-still-replays',
+    category: 'outputs',
+    kind: 'efficiency',
+    title:
+      'A build that writes a fresh committed source map every run is replayed when nothing changed',
+    why: 'Many repos commit their build output, and some builds stamp it, like a source map with a build id. Keyed by the bytes on disk, each run’s own rewrite changes the next run’s key, so the build never replays though no source changed. Keyed by the version git holds, the second run is a replay, and an edit the user commits still moves the key.',
+    from: ['stale-hit-committed-output'],
+    workspace: one(
+      {
+        command: 'mkdir -p dist && cat src/a.txt > dist/index.js && date +%s%N > dist/index.js.map',
+        inputs: ['src/**'],
+        outputs: ['dist/**'],
+      },
+      { 'src/a.txt': 'a\n', 'dist/index.js': 'a\n', 'dist/index.js.map': 'committed\n' },
+    ),
+    steps: [
+      { run: 'build', expect: { exit: 0, ran: ['a#build'] } },
+      { run: 'build', expect: { exit: 0, notRan: ['a#build'] } },
+      { write: { 'packages/a/src/a.txt': 'b\n' } },
+      {
+        run: 'build',
+        expect: { exit: 0, ran: ['a#build'], files: { 'packages/a/dist/index.js': 'b\n' } },
+      },
+    ],
+  }),
+
+  defineCase({
     id: 'outputs/committed-root-output-survives',
     category: 'outputs',
     kind: 'correctness',

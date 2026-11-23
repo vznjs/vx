@@ -173,7 +173,7 @@ describe('`vx lock` finding the configs', () => {
         (e: Error) => e.message,
       )
       // git's own words vary by version.
-      expect(err).toStartWith('git ls-files failed (exit 128): ')
+      expect(err).toStartWith('git ls-files failed (exit 128) in ')
       expect(err).toContain('index file smaller than expected')
     } finally {
       await rm(repo, { recursive: true, force: true })

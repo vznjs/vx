@@ -387,7 +387,7 @@ describe('a first load that never settles (D-66)', () => {
       code: 3,
       err:
         JSON.stringify({
-          got: `Project config ${file} did not finish evaluating within 300ms (VX_CONFIG_WORKER_TIMEOUT)`,
+          got: `Project config ${file} did not finish evaluating within 300ms. Settle what its top level awaits, or raise VX_CONFIG_WORKER_TIMEOUT`,
           restored: true,
         }) + '\n',
     })

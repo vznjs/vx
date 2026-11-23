@@ -29,7 +29,11 @@ export interface Setting {
   /** The `.vx/workspace` path (`run.timeout`); env and flag derive from it. */
   readonly path: string
   readonly kind: SettingKind
-  /** The built-in, as the docs print it. */
+  /**
+   * The built-in: a value written as `.vx/workspace` takes it (`"'2s'"`,
+   * `'true'`, `'6'`), or plain words when vx works it out. A value is the
+   * one vx runs with (`tests/settings.test.ts`).
+   */
   readonly default: string
   /** One line for the docs table. */
   readonly doc: string
@@ -49,7 +53,7 @@ export const SETTINGS: readonly Setting[] = [
   {
     path: 'baseBranch',
     kind: { type: 'string' },
-    default: "origin/HEAD's branch, then main, then master",
+    default: "`origin/HEAD`'s branch, else `'main'`, else `'master'`",
     doc: 'The default branch: a run on it has no cache scope and a bare `--affected` no base; elsewhere both use the merge base with `origin/<baseBranch>`. Named alone: `main`, not `origin/main`.',
   },
   {
@@ -69,7 +73,7 @@ export const SETTINGS: readonly Setting[] = [
   {
     path: 'run.schedule',
     kind: { type: 'enum', values: SCHEDULES },
-    default: 'most-work',
+    default: "'most-work'",
     doc: 'Which ready task starts first when there are more than workers.',
     flag: { verb: 'run', name: '--schedule' },
   },
@@ -107,7 +111,7 @@ export const SETTINGS: readonly Setting[] = [
   {
     path: 'run.outputLogs',
     kind: { type: 'enum', values: ['full', 'errors-only', 'hash-only', 'none'] },
-    default: '`errors-only` on CI, else by what the run selects',
+    default: "`'errors-only'` on CI, else what the run selects",
     doc: 'Which task output the run prints. Chosen before the workspace loads, so flag and env only.',
     flag: { verb: 'run', name: '--output-logs' },
     config: false,
@@ -115,37 +119,37 @@ export const SETTINGS: readonly Setting[] = [
   {
     path: 'run.killGrace',
     kind: { type: 'duration', timer: true },
-    default: '`2s`',
+    default: "'2s'",
     doc: "How long a task, server or plugin's process may take to exit after SIGTERM (a timeout, a stop, the run's end) before vx sends SIGKILL.",
   },
   {
     path: 'run.pluginTimeout',
     kind: { type: 'duration', timer: true, zero: true },
-    default: '`3s`',
+    default: "'3s'",
     doc: "How long one plugin's end-of-run flush or teardown may take before the run ends without it; `'0ms'` waits for nothing not already done.",
   },
   {
     path: 'run.logs.captureHead',
     kind: { type: 'size' },
-    default: '`8MiB`',
+    default: "'8MiB'",
     doc: "The start of a task's output vx keeps for its cache entry and replay; the live stream is never cut. Counted in characters.",
   },
   {
     path: 'run.logs.captureTail',
     kind: { type: 'size' },
-    default: '`8MiB`',
+    default: "'8MiB'",
     doc: "The end of a task's output vx keeps for its cache entry and replay. Counted in characters.",
   },
   {
     path: 'run.logs.failedHead',
     kind: { type: 'size' },
-    default: '`8KiB`',
+    default: "'8KiB'",
     doc: "The start of a failed attempt's output vx keeps when it stores that failure. Counted in characters.",
   },
   {
     path: 'run.logs.failedTail',
     kind: { type: 'size' },
-    default: '`56KiB`',
+    default: "'56KiB'",
     doc: "The end of a failed attempt's output vx keeps when it stores that failure. Counted in characters.",
   },
   {
@@ -163,7 +167,7 @@ export const SETTINGS: readonly Setting[] = [
   {
     path: 'cache.dir',
     kind: { type: 'string' },
-    default: '.vx/cache, entries in ~/.vx/<id>/cache',
+    default: '`.vx/cache`, with entries in `~/.vx/<id>/cache`',
     doc: 'Where the cache lives, relative to the workspace root; named, it holds the whole cache.',
     flag: { verb: 'run', name: '--cache-dir' },
   },
@@ -205,21 +209,21 @@ export const SETTINGS: readonly Setting[] = [
   {
     path: 'cache.download',
     kind: { type: 'enum', values: ['all', 'toplevel', 'none'] },
-    default: 'all',
+    default: "'all'",
     doc: 'Which remote hits land on disk: every one, only the requested tasks, or none.',
     flag: { verb: 'run', name: '--cache-download' },
   },
   {
     path: 'inputs.stability.strategy',
     kind: { type: 'enum', values: ['immutable', 'mutable', 'unchecked'] },
-    default: 'immutable',
+    default: "'immutable'",
     doc: 'What a write to an input during the command means for the save, for tasks without their own.',
     task: 'inputs.stability.strategy',
   },
   {
     path: 'inputs.stability.severity',
     kind: { type: 'enum', values: ['warn', 'error'] },
-    default: 'warn',
+    default: "'warn'",
     doc: 'Whether a skipped save warns or fails the task, for tasks without their own.',
     task: 'inputs.stability.severity',
   },
@@ -252,14 +256,14 @@ export const SETTINGS: readonly Setting[] = [
   {
     path: 'cache.upload.failures',
     kind: { type: 'enum', values: ['ci', 'local', 'always'] },
-    default: 'ci',
+    default: "'ci'",
     doc: "Where a failed task's log and outputs are kept in the remote: CI runs, local runs, or both.",
     env: false,
   },
   {
     path: 'history.retention',
     kind: { type: 'duration' },
-    default: '`30d`',
+    default: "'30d'",
     doc: '`vx cache clean` drops run history and hash memos older than this.',
   },
   {
@@ -278,19 +282,19 @@ export const SETTINGS: readonly Setting[] = [
   {
     path: 'watch.debounce',
     kind: { type: 'duration', timer: true },
-    default: '`150ms`',
+    default: "'150ms'",
     doc: '`vx watch` waits this long after the last change before it re-runs (at most 1 s after the first).',
   },
   {
     path: 'watch.pollInterval',
     kind: { type: 'duration', timer: true },
-    default: '`250ms`',
+    default: "'250ms'",
     doc: 'How often a polling `vx watch` re-walks a watched tree.',
   },
   {
     path: 'config.workerTimeout',
     kind: { type: 'duration', timer: true },
-    default: '30s',
+    default: "'30s'",
     doc: 'How long one config evaluation may await; at 5 s vx names the config still evaluating. A synchronous loop on the first load holds the thread the deadline needs, so it hangs until killed.',
     config: false,
   },
@@ -362,7 +366,9 @@ export function kindHint(kind: SettingKind): string {
         ? "a duration like '500ms', '30s' or '5m', at most 24 days"
         : "a duration like '45s', '12h' or '30d'"
     case 'size':
-      return kind.off === true ? "false, or a size like '32KiB'" : "a size like '500MB' or '10GB'"
+      return kind.off === true
+        ? "false, or a size like '32KiB'"
+        : "a size like '32KiB', '8MiB' or '1GiB'"
     case 'bool':
       return 'true or false'
     case 'enum':
