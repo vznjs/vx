@@ -379,7 +379,7 @@ An `interactive` task refuses `readyWhen`, since vx reads none of its output. `v
 
 ### How the run ends
 
-- `vx run dev` keeps vx in the foreground until the server exits or you press <kbd>Ctrl</kbd>+<kbd>C</kbd> (exit code 130).
+- `vx run dev` keeps vx in the foreground until the server exits or you press <kbd>Ctrl</kbd>+<kbd>C</kbd> (exit code 130; 143 for a SIGTERM, 129 for a SIGHUP).
 - When the server you asked for exits, vx stops the other servers and names its exit code.
 - A failure elsewhere skips only its dependents. Healthy servers stay up; `--fail-fast` stops everything at once.
 - At the end vx sends each server `SIGTERM`, then `SIGKILL` after `run.killGrace`.

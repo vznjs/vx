@@ -234,7 +234,7 @@ Next: [CI](../ci/).
 </TabItem>
 <TabItem label="Keep Turbo or Nx">
 
-Run a Turbo or Nx workspace with vx while you move to `vx.config.ts`.
+Start from your `turbo.json` or Nx graph, a temporary step while you move to `vx.config.ts`.
 
 ```ts title=".vx/workspace.ts"
 import { defineWorkspace } from '@vzn/vx/config'
@@ -555,7 +555,7 @@ itself, and a warning callback:
 
 ### `turbo()` and `nx()`
 
-From `@vzn/vx-migrate`. Run a Turbo or Nx workspace as it is.
+From `@vzn/vx-migrate`. Map `turbo.json` or the Nx graph to vx tasks, a temporary start toward native config.
 
 | Option | What it does | Default |
 | --- | --- | --- |
