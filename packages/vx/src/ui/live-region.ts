@@ -246,6 +246,20 @@ export function createOutputWriter(
   // bytes writes nothing.
   let shownText = ''
 
+  /** Write what is pending over the erased region, which stays down. */
+  const takeDown = (): void => {
+    let text = pending.join('')
+    pending.length = 0
+    if (shown) {
+      text = eraseSeq() + text
+      shown = false
+      shownRows = 0
+    }
+    if (text !== '') stream.write(rawBytes(text))
+  }
+  /** Whether a frame may show the region now. */
+  const showable = (): boolean => !dead && current !== null && atLineStart && holds === 0
+
   /** Write what is pending and, where it may show, the region: one write. */
   const draw = (): void => {
     cancelTrailing()
@@ -257,7 +271,7 @@ export function createOutputWriter(
       shown = false
       shownRows = 0
     }
-    if (!dead && current !== null && atLineStart && holds === 0) {
+    if (showable()) {
       // Built here, not at the set: a warm run's task events set the
       // region hundreds of times inside one floor, and each build was a
       // forecast pass and a summary render no frame showed (200 hits on a
@@ -362,16 +376,9 @@ export function createOutputWriter(
       }
       // What this stream holds is older than the chunk: it lands first,
       // with the region erased, and the region returns after the chunk.
-      let text = pending.join('')
-      pending.length = 0
-      if (shown) {
-        text = eraseSeq() + text
-        shown = false
-        shownRows = 0
-      }
-      if (text !== '') stream.write(rawBytes(text))
+      takeDown()
       target.write(rawBytes(chunk))
-      if (!dead && current !== null && atLineStart && holds === 0) draw()
+      if (showable()) draw()
     },
     setStatus(line, o = {}) {
       set([line], o)
@@ -389,33 +396,19 @@ export function createOutputWriter(
       current = null
       cancelTrailing()
       // Content still waiting for a frame lands now, over the erased region.
-      let text = pending.join('')
-      pending.length = 0
-      if (shown) {
-        text = eraseSeq() + text
-        shown = false
-        shownRows = 0
-      }
-      if (text !== '') stream.write(rawBytes(text))
+      takeDown()
     },
     hold() {
       if (!enabled || dead) return () => undefined
       holds++
       cancelTrailing()
-      let text = pending.join('')
-      pending.length = 0
-      if (shown) {
-        text = eraseSeq() + text
-        shown = false
-        shownRows = 0
-      }
-      if (text !== '') stream.write(rawBytes(text))
+      takeDown()
       let released = false
       return () => {
         if (released) return
         released = true
         holds--
-        if (holds === 0 && !dead && current !== null && atLineStart) draw()
+        if (showable()) draw()
       }
     },
   }

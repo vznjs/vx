@@ -32,10 +32,6 @@ import { globsMeet } from './glob-meet.js'
 import type { TaskOutcome } from './outcome.js'
 import { addStandIn } from './stand-ins.js'
 
-// Re-exported so existing importers keep working while the type's home
-// moves to workspace (it's the joint product of discovery + loading).
-export type { ProjectEntry } from '../workspace/index.js'
-
 export interface TaskNode {
   /** Stable id: `${projectName}#${taskName}`. */
   id: string
@@ -101,9 +97,6 @@ export interface TaskNode {
 export function taskId(project: string, task: string): string {
   return `${project}#${task}`
 }
-
-// Re-exported from util, where the cache reads the same rule.
-export { splitTaskId } from '../util/index.js'
 
 /**
  * A keyed group that is only its dependencies' own `name` (`^name`), like the

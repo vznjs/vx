@@ -789,7 +789,6 @@ function formatStepRows(steps: readonly RunStep[]): ui.Block | undefined {
  * slowest restores, the one thing a hit's row tells. `--format json` lists
  * every row.
  */
-
 export function formatTaskRows(
   tasks: readonly RunSummaryRow[],
   /** Task id → the input that moved under it, from the run's kept failures. */
@@ -996,8 +995,8 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
       }
       if (log.source === null) {
         // A cached task with no entry of its own was not saved (a read-only
-        // policy, a `--force` run that kept the entry it found), or its entry
-        // was pruned or saved over; calling it uncached sends the user to the config.
+        // policy), or its entry was pruned or saved over; calling it uncached
+        // sends the user to the config.
         const [project, task] = splitTaskId(log.taskId)
         const cached =
           log.status !== 'failed' &&

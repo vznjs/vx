@@ -1,14 +1,8 @@
 // The live region's panels: Warnings, Running and the live Summary,
 // redrawn in place under the log by the ui module's writer.
 
-import { divider, paint, type ColorSupport } from '../ui/index.js'
-import {
-  formatExpected,
-  formatTaskRow,
-  paintIdParts,
-  type RowCells,
-  unknownUsual,
-} from './framed-output.js'
+import { divider, idParts, paint, type ColorSupport } from '../ui/index.js'
+import { formatExpected, formatTaskRow, type RowCells, unknownUsual } from './framed-output.js'
 import type { BlockedTask } from './forecast.js'
 
 const NO_COLOR: ColorSupport = { enabled: false }
@@ -80,12 +74,12 @@ export interface StatusRegionState {
 /** Identity-colored id, full (never truncated) — name is the last column. */
 function paintPinnedId(id: string, colors: ColorSupport): string {
   const sep = id.indexOf('#')
-  if (sep >= 0) return paintIdParts(id.slice(0, sep), id.slice(0, sep), id.slice(sep + 1), colors)
+  if (sep >= 0) return idParts(id.slice(0, sep), id.slice(0, sep), id.slice(sep + 1), colors)
   // One of vx's own steps: `<owner>:<step>`, painted as a task id is.
   const step = id.lastIndexOf(':')
   if (step < 0) return id
   const owner = id.slice(0, step)
-  return paintIdParts(owner, owner, id.slice(step + 1), colors, { sep: ':' })
+  return idParts(owner, owner, id.slice(step + 1), colors, { sep: ':' })
 }
 
 /**

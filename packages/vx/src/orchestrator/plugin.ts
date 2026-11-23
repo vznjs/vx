@@ -30,7 +30,7 @@ import {
 import * as ui from '../ui/index.js'
 import type { ProjectMeta } from '../workspace/index.js'
 import type { EventBus, Logger, Measure, RunEvent, RunStartInfo } from '../report/index.js'
-import { readOnlyEvents } from './read-only.js'
+import { readOnlyViews } from './read-only.js'
 import { unlessStopped } from './signals.js'
 import type { CiContext } from './run-context.js'
 import type { CacheFacts, TaskArtifacts } from './task-artifacts.js'
@@ -912,7 +912,7 @@ export async function installPlugins(args: InstallPluginsArgs): Promise<() => vo
   const disabled = new Set<Plugin>()
   // Made at the first event a plugin hears: a run no handler hears pays nothing.
   let readOnly: (<T>(value: T) => T) | undefined
-  const viewOf = <T>(value: T): T => (readOnly ??= readOnlyEvents())(value)
+  const viewOf = <T>(value: T): T => (readOnly ??= readOnlyViews())(value)
 
   for (const plugin of plugins) {
     if (typeof plugin.name !== 'string' || plugin.name.length === 0) {

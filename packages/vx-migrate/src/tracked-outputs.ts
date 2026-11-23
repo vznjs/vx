@@ -430,3 +430,25 @@ export function spareTrackedOutputs(
   }
   return todos
 }
+
+/** `spareTrackedOutputs` over a migration plan's projects, each TODO on its task. */
+export function spareTrackedTodos(
+  root: string,
+  projects: readonly {
+    readonly name: string
+    readonly dir: string
+    readonly tasks: readonly {
+      readonly name: string
+      readonly task: Record<string, unknown> | null
+      readonly todos: string[]
+    }[]
+  }[],
+  tracked: readonly string[] | null,
+): void {
+  if (tracked === null) return
+  for (const [id, todo] of spareTrackedOutputs(root, projects, tracked)) {
+    const at = id.lastIndexOf('#')
+    const p = projects.find((x) => x.name === id.slice(0, at))
+    p?.tasks.find((t) => t.name === id.slice(at + 1))?.todos.push(todo)
+  }
+}

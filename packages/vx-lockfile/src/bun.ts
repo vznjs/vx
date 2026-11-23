@@ -11,7 +11,7 @@
 // Bun.JSONC is the parser: no dependency, and the file is Bun's own.
 
 import { reachDigests } from '@vzn/vx'
-import { type LockfileImporter, reachedImporters, withTransitive } from './graph.js'
+import { type LockfileImporter, newGraph, reachedImporters, withTransitive } from './graph.js'
 import { depsOf, peerOnly, record, sectionsOf, stable, type Json } from './json.js'
 import { joinPosix, resolvePosix } from './posix.js'
 
@@ -461,19 +461,7 @@ function buildGraph(
   importers: Map<string, number>
   loose: [string, string, string][]
 } {
-  const index = new Map<string, number>()
-  const material: string[] = []
-  const edges: number[][] = []
-  const node = (id: string, own: string): number => {
-    let i = index.get(id)
-    if (i === undefined) {
-      i = material.length
-      index.set(id, i)
-      material.push(own)
-      edges.push([])
-    }
-    return i
-  }
+  const { index, material, edges, node } = newGraph()
   // The name a package is installed under and what it is, not where: a re-hoist
   // (`is-odd/is-number` → `is-number`, one version) re-keyed every project
   // reaching it with the same bytes installed. Where it sits still decides what

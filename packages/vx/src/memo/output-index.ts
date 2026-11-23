@@ -553,18 +553,12 @@ export class OutputIndex {
    * left each file with. A file whose size, mode or mtime differs, or whose
    * whole-second ctime is still racy, stays unstamped, so a later write is
    * never vouched for. Written with the snapshots in one transaction.
-   *
-   * `written`: a `--force` run wrote the tree and kept the stored entry, whose
-   * rows name the last save's mtimes. Each file is stamped as written, for
-   * this process's checks only: persisted, the stamp would vouch for a tree
-   * the entry never held.
    */
   recordOutputStamps(
     hash: string,
     projectDir: string,
     workspaceRoot: string,
     dated?: ReadonlyMap<string, number>,
-    written?: boolean,
   ): void {
     if (!this.memo) return
     const rows = this.rowsOf(hash)
@@ -584,7 +578,7 @@ export class OutputIndex {
         if (
           s.size === e.size &&
           modeMatches(s.mode, e.mode) &&
-          (written === true || Math.abs(s.mtimeMs - at) < 1 || secondOf(s.mtimeMs, at)) &&
+          (Math.abs(s.mtimeMs - at) < 1 || secondOf(s.mtimeMs, at)) &&
           // Git's racy-clean rule: on whole-second file systems a same-size
           // rewrite in the same second keeps every stamped field. Left
           // unstamped; a sub-second ctime is trusted.
@@ -596,7 +590,7 @@ export class OutputIndex {
         // gone: left unstamped
       }
     }
-    if (stamps.size > 0 && written !== true) this.pendingStamps.set(hash, stamps)
+    if (stamps.size > 0) this.pendingStamps.set(hash, stamps)
     this.stamped.set(
       hash,
       rows.map((r): StampedRow => {

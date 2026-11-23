@@ -32,7 +32,7 @@ self.onmessage = (e) => {
   const m = e.data
   if (m.open !== undefined) {
     db = new Database(m.open.index)
-    // As Cache opens it: a close here must not delete the WAL (O-10).
+    // As Cache opens it: a close here must not delete the WAL.
     db.fileControl(${SQLITE_FCNTL_PERSIST_WAL}, 1)
     schemas.push('main')
     if (m.open.store !== undefined) {

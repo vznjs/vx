@@ -63,13 +63,8 @@ function paintId(text: string, c: ColorSupport, bold: boolean): string {
   const opts = bold ? { bold: true } : {}
   const hash = text.lastIndexOf('#')
   if (hash < 0) return paintHex(identityHue(text), text, c, opts)
-  const task = text.slice(hash + 1)
   const project = text.slice(0, hash)
-  return (
-    paintHex(identityHue(project), project, c, opts) +
-    paintHex('', '#', c, { dim: true }) +
-    paintHex(identityHue(task), task, c, opts)
-  )
+  return idParts(project, project, text.slice(hash + 1), c, opts)
 }
 
 /**
@@ -111,6 +106,9 @@ export function width(x: Inline): number {
 }
 
 const block = (lines: (c: ColorSupport) => string[]): Block => ({ lines })
+/** The blocks' lines, a blank line apart. */
+const spaced = (blocks: readonly Block[], c: ColorSupport): string[] =>
+  blocks.flatMap((b, i) => (i === 0 ? b.lines(c) : ['', ...b.lines(c)]))
 const lines = (x: Inline, c: ColorSupport): string[] => inline(x, c).split('\n')
 
 /** Plain words at the value level, each `command` in them bold. */
@@ -241,8 +239,7 @@ export function section(title: string, ...rest: (Block | Inline)[]): Block {
   const count = counted ? (rest[0] as Inline) : undefined
   const body = (counted ? rest.slice(1) : rest) as Block[]
   return block((c) => {
-    const inner = body.flatMap((b, i) => (i === 0 ? b.lines(c) : ['', ...b.lines(c)]))
-    return [panelTop(title, c, count, undefined, body[0]?.head?.(c)), ...inner]
+    return [panelTop(title, c, count, undefined, body[0]?.head?.(c)), ...spaced(body, c)]
   })
 }
 
@@ -437,7 +434,7 @@ export function notice(p: NoticeParts): Block {
     if (body.length > 0) parts.push(block((cc) => body.flatMap((b) => b.lines(cc))))
     if (p.code !== undefined) parts.push(code(p.code))
     if (p.fix !== undefined) parts.push(fix(p.fix))
-    return parts.flatMap((b, i) => (i === 0 ? b.lines(c) : ['', ...b.lines(c)]))
+    return spaced(parts, c)
   })
 }
 

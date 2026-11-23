@@ -141,17 +141,6 @@ export function computeReverseDepCount(
   /** Count only these dependents (the exec tier); every one when absent. */
   counted?: ReadonlyMap<string, unknown>,
 ): Map<string, number> {
-  return reverseDepCountsOver(nodes, [counted])[0]!
-}
-
-/**
- * `computeReverseDepCount` per entry of `counted`, from one closure: the
- * closure is the cost (~100 ms at 11k nodes), each count one popcount pass.
- */
-function reverseDepCountsOver(
-  nodes: ReadonlyMap<string, TaskNode>,
-  counted: ReadonlyArray<ReadonlyMap<string, unknown> | undefined>,
-): Map<string, number>[] {
   // Exact transitive counts need closure sets (diamonds double-count when
   // summed). String sets are O(N²) and took 8.5s on 1,090 packages; bitsets
   // are O(E·N/32) over N²/8 bits (3,270 tasks ≈ 1.3 MB), single-digit ms.
@@ -210,19 +199,16 @@ function reverseDepCountsOver(
     for (let j = offset[i]!; j < offset[i + 1]!; j++) rev[k++] = pos[dependents[j]!]!
   }
   const words = (tail + 31) >>> 5
-  const masks = counted.map((only) => {
-    const mask = new Uint32Array(words)
-    if (only === undefined) mask.fill(0xffffffff)
-    else
-      for (let t = 0; t < tail; t++) if (only.has(ids[topo[t]!]!)) mask[t >>> 5]! |= 1 << (t & 31)
-    return mask
-  })
+  const mask = new Uint32Array(words)
+  if (counted === undefined) mask.fill(0xffffffff)
+  else
+    for (let t = 0; t < tail; t++) if (counted.has(ids[topo[t]!]!)) mask[t >>> 5]! |= 1 << (t & 31)
 
   // Reverse-topo sweeps, one per block of `span` words, counts summed over
   // blocks. All rows of all words (11.5 MB at 9,603 tasks) missed cache on
   // nearly every OR: 77 ms against 37 ms in ~256 KB blocks.
   const span = Math.max(1, Math.min(words, Math.floor(65536 / Math.max(1, tail))))
-  const totals = masks.map(() => new Int32Array(tail))
+  const total = new Int32Array(tail)
   const closure = new Uint32Array(tail * span)
   for (let w0 = 0; w0 < words; w0 += span) {
     const width = Math.min(words, w0 + span) - w0
@@ -239,29 +225,23 @@ function reverseDepCountsOver(
         for (let w = rw > w0 ? rw - w0 : 0; w < width; w++)
           closure[base + w]! |= closure[rbase + w]!
       }
-      for (let m = 0; m < masks.length; m++) {
-        const mask = masks[m]!
-        let count = 0
-        for (let w = t >>> 5 > w0 ? (t >>> 5) - w0 : 0; w < width; w++) {
-          let v = closure[base + w]! & mask[w0 + w]!
-          if (v === 0) continue
-          v = v - ((v >>> 1) & 0x55555555)
-          v = (v & 0x33333333) + ((v >>> 2) & 0x33333333)
-          count += (((v + (v >>> 4)) & 0x0f0f0f0f) * 0x01010101) >>> 24
-        }
-        totals[m]![t]! += count
+      let count = 0
+      for (let w = t >>> 5 > w0 ? (t >>> 5) - w0 : 0; w < width; w++) {
+        let v = closure[base + w]! & mask[w0 + w]!
+        if (v === 0) continue
+        v = v - ((v >>> 1) & 0x55555555)
+        v = (v & 0x33333333) + ((v >>> 2) & 0x33333333)
+        count += (((v + (v >>> 4)) & 0x0f0f0f0f) * 0x01010101) >>> 24
       }
+      total[t]! += count
     }
   }
-  const all = totals.map((total) => {
-    const counts = new Map<string, number>()
-    for (let t = 0; t < tail; t++) counts.set(ids[topo[t]!]!, total[t]!)
-    // The builder rejects cycles, but a missing entry would sort as undefined,
-    // so default to 0.
-    for (const id of ids) if (!counts.has(id)) counts.set(id, 0)
-    return counts
-  })
-  return all
+  const counts = new Map<string, number>()
+  for (let t = 0; t < tail; t++) counts.set(ids[topo[t]!]!, total[t]!)
+  // The builder rejects cycles, but a missing entry would sort as undefined,
+  // so default to 0.
+  for (const id of ids) if (!counts.has(id)) counts.set(id, 0)
+  return counts
 }
 
 /**

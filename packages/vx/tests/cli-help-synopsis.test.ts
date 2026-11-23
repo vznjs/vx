@@ -9,7 +9,8 @@
 import { describe, expect, it } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
-import { CORE_VERBS, flagHint, helpText, verbHelpText } from '../src/cli/help.js'
+import { flagHint, helpText, verbHelpText } from '../src/cli/help.js'
+import { CORE_VERBS } from '../src/util/index.js'
 
 const DOC = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'cli.md'), 'utf8')
 

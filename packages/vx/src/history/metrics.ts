@@ -14,8 +14,8 @@ import { KEYED_RUNS_SQL } from '../index-db/index.js'
 import { expandHits } from './run-history.js'
 import { keptWarnings } from './run-notes.js'
 import { type TaskInputComponent } from '../cache/index.js'
-import { isPassStatus, splitTaskId } from '../graph/index.js'
-import { clampInt, MASKED, secretNamed } from '../util/index.js'
+import { isPassStatus } from '../graph/index.js'
+import { clampInt, MASKED, secretNamed, splitTaskId } from '../util/index.js'
 
 // A recorded `cache_policy` is the `--cache-policy` spec (`local:rw,remote:r`).
 const readsCache = (spec: string): boolean => /(?:^|,)(?:local|remote):w?r/.test(spec)

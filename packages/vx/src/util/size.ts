@@ -15,38 +15,35 @@ export function parseSize(input: string): number | null {
   // Digits past 2^53 parse to a different number than the user typed.
   const n = parseDecimalInt(m[1]!)
   if (n === null) return null
-  const u = (m[2] ?? '').toUpperCase()
-  const mult =
-    u === '' ? 1 : u === 'K' ? 1024 : u === 'M' ? 1024 * 1024 : u === 'G' ? 1024 ** 3 : 1024 ** 4
-  return n * mult
+  return n * SIZE_UNITS[(m[2] ?? '').toUpperCase()]!
+}
+
+const SIZE_UNITS: Record<string, number> = {
+  '': 1,
+  K: 1024,
+  M: 1024 ** 2,
+  G: 1024 ** 3,
+  T: 1024 ** 4,
+}
+const DURATION_UNITS: Record<string, number> = {
+  ms: 1,
+  s: 1000,
+  m: 60_000,
+  h: 3_600_000,
+  d: 86_400_000,
 }
 
 /**
- * Parse `<n><unit>` where unit is ms/s/m/h/d, case-insensitively (`parseSize`
- * has always been case-insensitive; this matched only lowercase, so `30D`
- * was rejected while `1GB` and `1gb` both worked). Minutes are `m` only:
- * `M` is a month to systemd, and `--older-than 1M` read as a minute
- * empties the cache.
+ * Parse `<n><unit>` where unit is ms/s/m/h/d, case-insensitively, as
+ * `parseSize` is. Minutes are `m` only: `M` is a month to systemd, and
+ * `--older-than 1M` read as a minute empties the cache.
  */
 export function parseDuration(input: string): number | null {
   const m = input.match(/^(\d+)(ms|[smhd])$/i)
   if (!m || m[2] === 'M') return null
   const n = parseDecimalInt(m[1]!)
   if (n === null) return null
-  // Lowercase before the switch: with the /i flag an uppercase `M` would
-  // otherwise fall through to the days branch.
-  const unit = m[2]!.toLowerCase()
-  const mult =
-    unit === 'ms'
-      ? 1
-      : unit === 's'
-        ? 1000
-        : unit === 'm'
-          ? 60_000
-          : unit === 'h'
-            ? 3_600_000
-            : 86_400_000
-  return n * mult
+  return n * DURATION_UNITS[m[2]!.toLowerCase()]!
 }
 
 /**

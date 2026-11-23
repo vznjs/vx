@@ -162,43 +162,48 @@ export function createCacheServer(opts: ServerOptions): (req: Request) => Promis
    * that held it.
    */
   async function artifact(req: Request, hash: string): Promise<Response> {
-    if (!isHash(hash)) throw new Refusal(400, 'a hash is 1 to 128 hex digits')
-    const access = await authorize(req)
-    const scopes = scopesOf(req)
-    for (const [at, scope] of scopes.entries()) {
-      const blob = await read(blobs.get(await nameOf(access, scope, hash)))
-      if (blob === null) continue
-      return new Response(blob.body, {
-        headers: {
-          // Bun.serve drops Content-Length from a streamed body and sends it
-          // chunked, whose clean end says nothing of a body cut short.
-          'vx-size': String(blob.size),
-          'content-length': String(blob.size),
-          'content-type': 'application/octet-stream',
-          'cache-control': cacheOf(at),
-        },
-      })
-    }
-    return errorJson(404, 'no artifact under this key')
+    const found = await firstHeld(req, hash, (name) => blobs.get(name))
+    if (found === undefined) return errorJson(404, 'no artifact under this key')
+    const { held: blob, at } = found
+    return new Response(blob.body, {
+      headers: {
+        // Bun.serve drops Content-Length from a streamed body and sends it
+        // chunked, whose clean end says nothing of a body cut short.
+        'vx-size': String(blob.size),
+        'content-length': String(blob.size),
+        'content-type': 'application/octet-stream',
+        'cache-control': cacheOf(at),
+      },
+    })
   }
 
   /** Turbo's `HEAD /v8/artifacts/<hash>`: whether a scope named holds it, and its size, with no bytes. */
   async function exists(req: Request, hash: string): Promise<Response> {
+    const found = await firstHeld(req, hash, (name) => blobs.size(name))
+    if (found === undefined) return new Response(null, { status: 404 })
+    const { held: size, at } = found
+    return new Response(null, {
+      headers: {
+        'vx-size': String(size),
+        'content-length': String(size),
+        'cache-control': cacheOf(at),
+      },
+    })
+  }
+
+  /** What `get` finds under the first scope `req` names that holds `hash`, and that scope's place. */
+  async function firstHeld<T>(
+    req: Request,
+    hash: string,
+    get: (name: string) => Promise<T | null>,
+  ): Promise<{ held: T; at: number } | undefined> {
     if (!isHash(hash)) throw new Refusal(400, 'a hash is 1 to 128 hex digits')
     const access = await authorize(req)
-    const scopes = scopesOf(req)
-    for (const [at, scope] of scopes.entries()) {
-      const size = await read(blobs.size(await nameOf(access, scope, hash)))
-      if (size === null) continue
-      return new Response(null, {
-        headers: {
-          'vx-size': String(size),
-          'content-length': String(size),
-          'cache-control': cacheOf(at),
-        },
-      })
+    for (const [at, scope] of scopesOf(req).entries()) {
+      const held = await read(get(await nameOf(access, scope, hash)))
+      if (held !== null) return { held, at }
     }
-    return new Response(null, { status: 404 })
+    return undefined
   }
 
   // Every lookup at once, each exact: a hash answers the first scope

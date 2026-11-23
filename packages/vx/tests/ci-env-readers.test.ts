@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { onCI } from '../src/cli/run.js'
+import { envFlagOn as onCI } from '../src/util/index.js'
 import { detectCi } from '../src/orchestrator/run-context.js'
 import { resolveOutputView } from '../src/report/logger.js'
 

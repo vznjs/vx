@@ -21,16 +21,16 @@ const EMBEDDED: EmbeddedBinary = { x64, arm64 }
 /** vx's own observer (`observe/vx-observe.c`), built by `scripts/build-observe.ts`. */
 const OBSERVE: EmbeddedBinary = { x64: observeX64, arm64: observeArm64 }
 
-let resolved: { path: string | undefined } | undefined
+let seccomp: Promise<string | undefined> | undefined
 let observe: Promise<string | undefined> | undefined
 
 /**
  * The helper's path for this machine, or undefined where SRT's own lookup
  * must do (another platform or architecture, no home to copy into).
  */
-export async function applySeccompPath(): Promise<string | undefined> {
-  resolved ??= { path: await embeddedBinaryPath(EMBEDDED) }
-  return resolved.path
+export function applySeccompPath(): Promise<string | undefined> {
+  seccomp ??= embeddedBinaryPath(EMBEDDED)
+  return seccomp
 }
 
 /** The observer's path for this machine, or undefined where there is none to run. */

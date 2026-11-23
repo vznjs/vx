@@ -14,6 +14,7 @@ import { Cache, holdCacheDir, holdStore, vxCacheEntries } from '../cache/index.j
 import { flagHint, formatValue, refuse, refusedWord, seeHelp } from './help.js'
 import {
   errorCode,
+  formatBytes,
   isUserError,
   nearest,
   parseDuration,
@@ -31,11 +32,6 @@ import {
   parseCacheDirFlag,
   warnToStderr,
 } from './workspace-config.js'
-import { formatBytes } from './format.js'
-
-// parseSize moved to `util` (the orchestrator's resource resolver needs it
-// and can't import cli); re-exported here so existing callers are unchanged.
-export { parseDuration, parseSize } from '../util/index.js'
 
 /**
  * `vx cache stats` is a habit from the other runners, and vx's answer is a
@@ -44,27 +40,30 @@ export { parseDuration, parseSize } from '../util/index.js'
  * first-run path). A typo of `clean` itself gets the same nearest-neighbour
  * hint a task, flag or project name gets.
  */
+const INFO_REPORTS = '`vx info` reports the cache directory, its entry count and its size'
+const INFO_LISTS =
+  '`vx info` reports the cache entry count and size, and `vx last --list` the recent runs'
+const INFO_DIR = '`vx info` prints the cache directory this workspace uses'
+const CLEAN_CLEARS =
+  '`vx cache clean` with no bound clears the whole cache; `--older-than` / `--max-size` trim it'
+const CLEAN_EVICTS = '`vx cache clean` is the eviction verb (`--older-than`, `--max-size`)'
 const CACHE_ELSEWHERE: Record<string, string> = {
-  stats: '`vx info` reports the cache directory, its entry count and its size',
-  status: '`vx info` reports the cache directory, its entry count and its size',
-  size: '`vx info` reports the cache directory, its entry count and its size',
-  entries: '`vx info` reports the cache directory, its entry count and its size',
-  list: '`vx info` reports the cache entry count and size, and `vx last --list` the recent runs',
-  ls: '`vx info` reports the cache entry count and size, and `vx last --list` the recent runs',
-  dir: '`vx info` prints the cache directory this workspace uses',
-  path: '`vx info` prints the cache directory this workspace uses',
-  clear:
-    '`vx cache clean` with no bound clears the whole cache; `--older-than` / `--max-size` trim it',
-  rm: '`vx cache clean` with no bound clears the whole cache; `--older-than` / `--max-size` trim it',
-  delete:
-    '`vx cache clean` with no bound clears the whole cache; `--older-than` / `--max-size` trim it',
-  reset:
-    '`vx cache clean` with no bound clears the whole cache; `--older-than` / `--max-size` trim it',
-  wipe: '`vx cache clean` with no bound clears the whole cache; `--older-than` / `--max-size` trim it',
-  evict: '`vx cache clean` is the eviction verb (`--older-than`, `--max-size`)',
-  gc: '`vx cache clean` is the eviction verb (`--older-than`, `--max-size`)',
-  purge:
-    '`vx cache clean` with no bound clears the whole cache; `--older-than` / `--max-size` trim it',
+  stats: INFO_REPORTS,
+  status: INFO_REPORTS,
+  size: INFO_REPORTS,
+  entries: INFO_REPORTS,
+  list: INFO_LISTS,
+  ls: INFO_LISTS,
+  dir: INFO_DIR,
+  path: INFO_DIR,
+  clear: CLEAN_CLEARS,
+  rm: CLEAN_CLEARS,
+  delete: CLEAN_CLEARS,
+  reset: CLEAN_CLEARS,
+  wipe: CLEAN_CLEARS,
+  purge: CLEAN_CLEARS,
+  evict: CLEAN_EVICTS,
+  gc: CLEAN_EVICTS,
 }
 
 function cacheSubHint(sub: string): string {
@@ -123,8 +122,8 @@ interface PruneArgs {
 export function parsePruneArgs(args: readonly string[]): PruneArgs {
   const out: PruneArgs = {}
   for (let i = 0; i < args.length; i++) {
-    const a = args[i]
-    if (a === '--older-than' || a?.startsWith('--older-than=')) {
+    const a = args[i]!
+    if (a === '--older-than' || a.startsWith('--older-than=')) {
       const v = a === '--older-than' ? args[++i] : a.slice('--older-than='.length)
       if (v === undefined || v === '') {
         return {
@@ -146,7 +145,7 @@ export function parsePruneArgs(args: readonly string[]): PruneArgs {
         }
       }
       out.olderThanMs = Date.now() - ms
-    } else if (a === '--max-size' || a?.startsWith('--max-size=')) {
+    } else if (a === '--max-size' || a.startsWith('--max-size=')) {
       const v = a === '--max-size' ? args[++i] : a.slice('--max-size='.length)
       if (v === undefined || v === '') {
         return { error: `--max-size requires a value: a size like 500M or 1G${seeHelp('cache')}` }
@@ -174,7 +173,7 @@ export function parsePruneArgs(args: readonly string[]): PruneArgs {
       out.dry = true
     } else if (a === '--global') {
       out.global = true
-    } else if (a === '--format' || a?.startsWith('--format=')) {
+    } else if (a === '--format' || a.startsWith('--format=')) {
       const v = formatValue(a === '--format' ? args[++i] : a.slice('--format='.length), 'cache')
       if (typeof v === 'object') return v
       out.format = v
@@ -182,7 +181,7 @@ export function parsePruneArgs(args: readonly string[]): PruneArgs {
       const cd = parseCacheDirFlag(args, i)
       if (cd === null)
         return {
-          error: `${refusedWord(a ?? '')}: ${a}${flagHint('cache clean', a ?? '')}${seeHelp('cache')}`,
+          error: `${refusedWord(a)}: ${a}${flagHint('cache clean', a)}${seeHelp('cache')}`,
         }
       if ('error' in cd) return { error: `${cd.error}${seeHelp('cache')}` }
       out.cacheDir = cd.cacheDir

@@ -190,8 +190,6 @@ export class LayeredCache implements CacheLayer {
   private readonly sent = new Map<string, Promise<boolean>>()
   /** Each key `save` stored whose upload waits for the run's drain: send (true) or drop it. */
   private readonly held = new Map<string, (go: boolean) => void>()
-  /** Each key whose stored entry `save` kept, until `kept` answers for it. */
-  private readonly keptHere = new Set<string>()
 
   /**
    * In-flight remote pulls by hash, shared by `prefetch` and `get` so
@@ -515,10 +513,6 @@ export class LayeredCache implements CacheLayer {
     return this.local.discard(hash)
   }
 
-  kept(hash: string): boolean {
-    return this.keptHere.delete(hash) || this.local.kept(hash)
-  }
-
   async restoreOutputs(
     hash: string,
     projectDir: string,
@@ -531,8 +525,6 @@ export class LayeredCache implements CacheLayer {
   async save(args: SaveArgs): Promise<void> {
     // Cache.save honours the local write gate.
     await this.local.save(args)
-    const kept = this.local.kept(args.hash)
-    if (kept) this.keptHere.add(args.hash)
     const writable = this.lanes.filter((l) => l.write)
     if (writable.length === 0) return
     // Upload off the task's critical path, in each remote's bounded pool;
@@ -546,11 +538,9 @@ export class LayeredCache implements CacheLayer {
     const hash = args.hash
     const durationMs = args.entry.durationMs
     // Local writes off: no artifact on disk to read later, so pack the bytes
-    // NOW, while the outputs are on disk. The same with an entry the save kept
-    // (`--force`): its artifact is an older run's, maybe the corrupt one
-    // `--force` replaces.
+    // NOW, while the outputs are on disk.
     let packed: Uint8Array | undefined
-    if (!this.local.localWritesEnabled || kept) {
+    if (!this.local.localWritesEnabled) {
       try {
         packed = await this.local.packArtifactBytes(args)
       } catch (err) {

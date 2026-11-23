@@ -1,12 +1,9 @@
-// The flakiness verdict, in ONE place. Two readers classify `runs` rows —
-// the all-time per-task query here and `LocalHistoryProvider`'s bounded
-// window — and they used to encode the rule independently, which let them
-// drift into opposite verdicts on identical data. Both build on
-// `mixedOutcomeKeysSql` + `failureModeOf`, so the rule cannot fork again.
-// The per-run detector (`detectFlaky`) and the doctor's list (`flakyTasks`)
-// read the same per-key projection (`keyOutcomesSql`) over the shared
-// store's flaky record (`task_outcomes`, v38), so every worktree of a repo
-// judges a key on what all of them saw.
+// The flakiness verdict, in one place: the all-time per-task query here and
+// `LocalHistoryProvider`'s bounded window both build on `mixedOutcomeKeysSql`
+// + `failureModeOf`. The per-run detector (`detectFlaky`) and the doctor's
+// list (`flakyTasks`) read the same per-key projection (`keyOutcomesSql`)
+// over the shared store's flaky record (`task_outcomes`), so every worktree
+// of a repo judges a key on what all of them saw.
 
 import type { Database } from 'bun:sqlite'
 import { KEYED_RUNS_SQL } from '../index-db/index.js'

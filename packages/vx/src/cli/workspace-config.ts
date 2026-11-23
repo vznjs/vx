@@ -12,10 +12,9 @@ import { UserError } from '../util/index.js'
 import { sayLine } from '../ui/index.js'
 import {
   discoverProjects,
-  keepDiscoveryWorkspace,
+  discoveryOf,
   loadProjects,
   loadWorkspacePlugins,
-  lockOfDiscovery,
   lockReader,
 } from '../orchestrator/index.js'
 import type { BranchFacts, VxPlugin } from '../orchestrator/index.js'
@@ -80,7 +79,7 @@ export async function discoverCliProjects(
   const ws = loaded ?? (await loadCliWorkspace(root, load.warn ?? warnToStderr))
   const projects = await discoverProjects(root, lockReader(root), git)
   discoveredWorkspaces.set(projects, ws)
-  keepDiscoveryWorkspace(projects, ws)
+  discoveryOf(projects).workspace = ws
   return projects
 }
 
@@ -235,7 +234,7 @@ export async function loadCliProjects(
     ...(opts.closure === true
       ? { closure: true as const, packageGraph: buildPackageGraph([...metas]) }
       : { closure: false as const }),
-    configs: lockOfDiscovery(metas) ?? lockReader(workspaceRoot),
+    configs: discoveryOf(metas).lock ?? lockReader(workspaceRoot),
     warn,
   })
   return loaded.projects

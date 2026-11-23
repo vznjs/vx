@@ -1195,10 +1195,7 @@ export async function mapTurboWorkspace(
     for (const name of defined) {
       for (const d of defFor(name)?.dependsOn ?? []) {
         if (d.startsWith('^')) caretNames.add(d.slice(1))
-        else if (d.includes('#'))
-          crossIds.add(
-            d.startsWith(`${ROOT}#`) ? `${rootMeta?.name ?? ROOT}${d.slice(ROOT.length)}` : d,
-          )
+        else if (d.includes('#')) crossIds.add(sidecarId(d, meta.name, rootMeta?.name))
       }
     }
   }
@@ -1224,6 +1221,10 @@ export async function mapTurboWorkspace(
   // (ai's root dev-depends on `konsistent-provider`).
   const depended = (pkg: string): boolean =>
     (graph ??= manifestGraph(metas)).transitiveDependents(pkg).some((d) => d !== rootMeta?.name)
+  const runs = (id: string, of: ReadonlyMap<string, ReadonlySet<string>>): boolean => {
+    const at = id.indexOf('#')
+    return of.get(id.slice(0, at))?.has(id.slice(at + 1)) === true
+  }
   const sidecarGroups = new Set<string>()
   for (const meta of metas) {
     const scripts = packageScripts(meta)
@@ -1232,22 +1233,14 @@ export async function mapTurboWorkspace(
     for (const name of defined) {
       const def = defFor(name)
       if (scripts[name] !== undefined || commandOverride(def) !== undefined) continue
-      const runs = (id: string, of: ReadonlyMap<string, ReadonlySet<string>>): boolean => {
-        const at = id.indexOf('#')
-        return of.get(id.slice(0, at))?.has(id.slice(at + 1)) === true
-      }
       const sidecar = (def?.with ?? []).some((e) =>
         runs(sidecarId(e, meta.name, rootMeta?.name), persistentAt),
       )
       const local = (def?.dependsOn ?? []).some((d) => {
         if (envDependency(d) !== null || d.includes('$TURBO_ROOT$')) return false
-        if (d.startsWith('^'))
-          return d !== `^${name}` && [...runnable.values()].some((r) => r.has(d.slice(1)))
+        if (d.startsWith('^')) return d !== `^${name}` && scripted.has(d.slice(1))
         if (!d.includes('#')) return d !== name && (own.has(d) || defined.has(d))
-        return runs(
-          d.startsWith(`${ROOT}#`) ? `${rootMeta?.name ?? ROOT}${d.slice(ROOT.length)}` : d,
-          emitted,
-        )
+        return runs(sidecarId(d, meta.name, rootMeta?.name), emitted)
       })
       const reached = caretNames.has(name) || crossIds.has(`${meta.name}#${name}`)
       if (sidecar) sidecarGroups.add(`${meta.name}#${name}`)
@@ -1299,8 +1292,6 @@ export async function mapTurboWorkspace(
   // vx keyed `test` on its own files alone: a dependency's edit was a hit.
   // Each package has it as a key-only task, a keyed group, as nx()'s
   // `inputs:*` twins are.
-  const withScript = new Set<string>()
-  for (const set of runnable.values()) for (const name of set) withScript.add(name)
   const sameRefs = new Set<string>()
   const caretSelf = new Set<string>()
   for (const meta of metas) {
@@ -1314,7 +1305,7 @@ export async function mapTurboWorkspace(
       }
     }
   }
-  const transit = new Set([...caretSelf].filter((n) => sameRefs.has(n) && !withScript.has(n)))
+  const transit = new Set([...caretSelf].filter((n) => sameRefs.has(n) && !scripted.has(n)))
   if (transit.size > 0) {
     for (const meta of metas) {
       const { defined, defFor } = definitions(meta)
@@ -1347,7 +1338,7 @@ export async function mapTurboWorkspace(
     for (const name of defined) {
       const def = defFor(name)
       const stops = depended && caretNames.has(name) && !(def?.dependsOn ?? []).includes(`^${name}`)
-      if (!(caretSelf.has(name) || stops) || !withScript.has(name) || transit.has(name)) continue
+      if (!(caretSelf.has(name) || stops) || !scripted.has(name) || transit.has(name)) continue
       if (scripts[name] !== undefined || commandOverride(def) !== undefined) continue
       if (sidecarGroups.has(`${meta.name}#${name}`)) continue
       if (def?.persistent === true) continue

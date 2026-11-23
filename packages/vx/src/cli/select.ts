@@ -45,11 +45,10 @@ import {
   claimedAffected,
   claimedExtraFiles,
   claimedDigests,
-  extraHashesOfDiscovery,
+  discoveryOf,
   fingerprintClaims,
   hashExtra,
   hasHook,
-  keepDiscoveryGraph,
   unlockedDir,
   withExtraHashes,
 } from '../orchestrator/index.js'
@@ -161,7 +160,7 @@ async function workspaceFingerprintClaims(
   const ws = workspaceOfDiscovery(projects) ?? (await loadCliWorkspace(root))
   const claims = fingerprintClaims(ws.plugins)
   // The run's own hashes: what selection hashes, its key reads.
-  const hashes = extraHashesOfDiscovery(projects)
+  const hashes = discoveryOf(projects).hashes
   const ctx = withExtraHashes(
     {
       workspaceRoot: root,
@@ -488,7 +487,7 @@ export async function resolveFilters(
       (edges.get(p.name) ?? []).every((t) => !known.has(t) || p.deps?.includes(t) === true),
     )
   )
-    keepDiscoveryGraph(projects, graph)
+    discoveryOf(projects).graph = graph
 
   // Every `[<since>]` filter's diff, started above, is in before the pure
   // applyFilters pass runs.

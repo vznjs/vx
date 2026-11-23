@@ -1,15 +1,14 @@
 // `vx info` — workspace doctor printout. One screen of environment +
 // workspace + cache facts for bug reports and quick sanity checks.
-// The facts come
-// from the orchestrator's `collectInfo` (doctor.ts); this file parses the flags and renders the rows.
+// The facts come from the orchestrator's `collectInfo` (doctor.ts); this
+// file parses the flags and renders the rows.
 
 import os from 'node:os'
 import { collectInfo, type InfoFacts } from '../orchestrator/index.js'
 import { type FlakyTask } from '../history/index.js'
 import { flagHint, formatValue, refuse, refusedWord, seeHelp } from './help.js'
 import { namedCacheDir, parseCacheDirFlag, warnToStderr } from './workspace-config.js'
-import { formatBytes } from './format.js'
-import { MIN_BUN } from '../util/index.js'
+import { formatBytes, MIN_BUN } from '../util/index.js'
 import * as ui from '../ui/index.js'
 import { type ColorSupport } from '../ui/index.js'
 import { envName } from '../settings.js'
@@ -24,8 +23,8 @@ interface InfoArgs {
 export function parseInfoArgs(args: readonly string[]): InfoArgs {
   const out: InfoArgs = { format: 'pretty' }
   for (let i = 0; i < args.length; i++) {
-    const a = args[i]
-    if (a === '--format' || a?.startsWith('--format=')) {
+    const a = args[i]!
+    if (a === '--format' || a.startsWith('--format=')) {
       const v = formatValue(a === '--format' ? args[++i] : a.slice('--format='.length), 'info')
       if (typeof v === 'object') return { ...out, ...v }
       out.format = v
@@ -40,7 +39,7 @@ export function parseInfoArgs(args: readonly string[]): InfoArgs {
     }
     return {
       ...out,
-      error: `${refusedWord(a ?? '')}: ${a}${flagHint('info', a ?? '')}${seeHelp('info')}`,
+      error: `${refusedWord(a)}: ${a}${flagHint('info', a)}${seeHelp('info')}`,
     }
   }
   return out

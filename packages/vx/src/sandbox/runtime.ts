@@ -169,12 +169,9 @@ const availabilityCache = new Map<'secure' | 'weaker', SandboxAvailability>()
  * binary presence on PATH), this runs ONE sandboxed `true` on Linux
  * through SRT's own wrapper: bwrap with the runtime's namespace flags
  * plus its vendored seccomp helper, which creates a NESTED user
- * namespace. A bare `bwrap … /bin/true` (the probe until 2026-09-04)
- * passed on hosts where every task then failed — as root inside a
- * container, the helper's `write /proc/self/uid_map` is EPERM under
- * `--cap-drop ALL`. Without this real-execution probe the
- * unavailability surfaces only at the first task spawn, deep inside the
- * orchestrator, as exit 1 with the helper's line in the task's stderr.
+ * namespace. A bare `bwrap … /bin/true` passed on hosts where every
+ * task then failed: as root inside a container, the helper's
+ * `write /proc/self/uid_map` is EPERM under `--cap-drop ALL`.
  *
  * `weakerNested` probes with `enableWeakerNestedSandbox`; the caller
  * passes it only when EVERY sandboxed task opts in, since the secure
@@ -182,9 +179,7 @@ const availabilityCache = new Map<'secure' | 'weaker', SandboxAvailability>()
  *
  * On Linux the probe INITIALIZES SRT (idempotent — `run()` initializes
  * right after anyway), and SRT's proxy sockets then keep the event loop
- * alive: a standalone caller must `resetSandbox()` or exit. CI's
- * diagnostic `bun -e` step sat on this for its whole 10-minute timeout
- * (2026-09-04).
+ * alive: a standalone caller must `resetSandbox()` or exit.
  */
 export async function probeSandbox(opts?: {
   weakerNested?: boolean
@@ -226,10 +221,7 @@ async function probeUncached(weakerNested: boolean): Promise<SandboxAvailability
  * dies `sandbox_apply: Operation not permitted` (exit 71, measured
  * 2026-09-05). No grant fixes it, so the honest verdict is "unavailable",
  * which is what stops a sandboxed task from spawning tasks that report
- * a sandbox they never got. Answering `available: true` here is how a
- * suite that exercises the sandbox came to fail sixteen ways at once.
- *
- * The probe costs one `/usr/bin/true` and is memoized with the rest.
+ * a sandbox they never got. One `/usr/bin/true`, memoized with the rest.
  */
 function applyPolicyHere(): SandboxAvailability {
   const proc = Bun.spawnSync({
@@ -424,9 +416,7 @@ const DEFAULT_IGNORE_VIOLATIONS: Record<string, string[]> = {
  * and it deliberately does NOT create the directory — its own comment says
  * "/tmp/claude may not exist". Nobody else does either, so on any machine
  * that is not Claude Code's own, every sandboxed task that writes a temp
- * file died with ENOENT: this repo's `bun build --compile` under
- * a sandboxed `bun build --compile` reported only `error: An unknown error occurred
- * (Unexpected)` (2026-09-04). Resolution mirrors SRT's exactly.
+ * file died with ENOENT. Resolution mirrors SRT's exactly.
  */
 function sandboxTmpdir(): string {
   // `process.env`, not `Bun.env`: a caller that REPLACES the env object
@@ -444,11 +434,11 @@ function sandboxTmpdir(): string {
  * removes what is still listed.
  */
 const liveTempFiles = new Set<string>()
-let tempExitHooked = false
-function unlinkOnExit(file: string): void {
-  liveTempFiles.add(file)
-  if (tempExitHooked) return
-  tempExitHooked = true
+const liveTaskTmpdirs = new Set<string>()
+let exitHooked = false
+function hookExit(): void {
+  if (exitHooked) return
+  exitHooked = true
   process.on('exit', () => {
     for (const f of liveTempFiles) {
       try {
@@ -457,7 +447,12 @@ function unlinkOnExit(file: string): void {
         // never written, or gone
       }
     }
+    for (const d of liveTaskTmpdirs) removeTaskTmpdir(d)
   })
+}
+function unlinkOnExit(file: string): void {
+  liveTempFiles.add(file)
+  hookExit()
 }
 
 /**
@@ -521,15 +516,9 @@ function ownTaskTmpRoot(): string {
   return root
 }
 
-const liveTaskTmpdirs = new Set<string>()
-let tmpdirExitHooked = false
 function trackTaskTmpdir(dir: string): void {
   liveTaskTmpdirs.add(dir)
-  if (tmpdirExitHooked) return
-  tmpdirExitHooked = true
-  process.on('exit', () => {
-    for (const d of liveTaskTmpdirs) removeTaskTmpdir(d)
-  })
+  hookExit()
 }
 
 /**
@@ -617,13 +606,9 @@ let scopedDenyScan = false
  */
 function scopedScanConfig(): { mandatoryDenySearchDepth: number; ripgrep?: { command: string } } {
   try {
-    return { mandatoryDenySearchDepth: 1, ripgrep: { command: noScanCommand() } }
+    return { mandatoryDenySearchDepth: 1, ripgrep: { command: scanCommandAgain() } }
   } catch {
-    try {
-      return { mandatoryDenySearchDepth: 1, ripgrep: { command: executablePath('true') } }
-    } catch {
-      return { mandatoryDenySearchDepth: 1 }
-    }
+    return { mandatoryDenySearchDepth: 1 }
   }
 }
 
@@ -637,6 +622,22 @@ function scanCommandAgain(): string {
     return executablePath('true')
   }
 }
+/** `<os tmpdir>/<prefix>-<uid>`: made 0700, refused unless it is this user's own private directory. */
+function ownTmpDir(prefix: string): string {
+  const uid = process.getuid!()
+  const dir = path.join(os.tmpdir(), `${prefix}-${uid}`)
+  try {
+    mkdirSync(dir, { mode: 0o700 })
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err
+  }
+  const d = lstatSync(dir)
+  if (!d.isDirectory() || d.uid !== uid || (d.mode & 0o077) !== 0) {
+    throw new Error(`${dir} is not this user's own directory`)
+  }
+  return dir
+}
+
 /**
  * An empty executable only this user can write: SRT runs it outside the
  * sandbox on every wrap, so it lives in this user's own 0700 directory under
@@ -649,20 +650,7 @@ function scanCommandAgain(): string {
  */
 function noScanCommand(): string {
   if (noScan !== undefined && existsSync(noScan)) return noScan
-  const uid = process.getuid!()
-  const dir = path.join(os.tmpdir(), `vx-noscan-${uid}`)
-  try {
-    mkdirSync(dir, { mode: 0o700 })
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err
-  }
-  const d = lstatSync(dir)
-  // A link reads mode 0777 here, and a file at the name fails the write
-  // below (ENOTDIR).
-  if (d.uid !== uid || (d.mode & 0o077) !== 0) {
-    throw new Error(`${dir} is not this user's own directory`)
-  }
-  const file = path.join(dir, 'rg')
+  const file = path.join(ownTmpDir('vx-noscan'), 'rg')
   try {
     writeFileSync(file, '', { mode: 0o700, flag: 'wx' })
   } catch (err) {
@@ -890,17 +878,7 @@ function envCutSocat(socat: string): string {
  */
 function ownWrapper(body: string): string {
   const uid = process.getuid!()
-  const dir = path.join(os.tmpdir(), `vx-socat-${uid}`)
-  try {
-    mkdirSync(dir, { mode: 0o700 })
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err
-  }
-  const d = lstatSync(dir)
-  if (!d.isDirectory() || d.uid !== uid || (d.mode & 0o077) !== 0) {
-    throw new Error(`${dir} is not this user's own directory`)
-  }
-  const file = path.join(dir, `socat-${xxh3hex(body).slice(0, 16)}`)
+  const file = path.join(ownTmpDir('vx-socat'), `socat-${xxh3hex(body).slice(0, 16)}`)
   const ok = (): boolean => {
     const f = lstatSync(file, { throwIfNoEntry: false })
     return (
@@ -1069,8 +1047,7 @@ export async function initSandbox(opts?: {
   // `initialize()` returns early once SRT is up, and on Linux the
   // availability probe brought it up with an EMPTY config before the run's
   // own call — so the run's allowlist and unix-socket allowance never
-  // reached it (found 2026-09-10 by the port bridge: the task's side died
-  // on `socket(AF_UNIX)` with the flag set). `updateConfig` is SRT's hot
+  // reached it. `updateConfig` is SRT's hot
   // reload of exactly these fields; the proxy and the wrapper read them
   // through getters, so the run's config is what every task sees.
   SandboxManager.updateConfig(config)
@@ -1646,60 +1623,53 @@ async function wrapIn(
 
   const baselines = canonicalBaselines(args)
   const customConfig = buildCustomConfig(args, baselines)
+  const filesystem = customConfig.filesystem!
+  const allowRead = filesystem.allowRead!
   const links = [
-    ...punchedLinks(
-      [...baselines.allowRead, ...args.config.allowRead],
-      customConfig.filesystem!.allowRead!,
-    ),
-    ...baselineLinks(args.baseAllowRead, customConfig.filesystem!.allowRead!),
+    ...punchedLinks([...baselines.allowRead, ...args.config.allowRead], allowRead),
+    ...baselineLinks(args.baseAllowRead, allowRead),
   ]
   // The directories `punchedWriteGlobs` bound, and the write globs: a write
   // one matches is granted in any bound directory, a match's widened one
   // too (`dist/a.js` there binds `dist`, where a new `dist/b.js` lands).
   const own = new Set(bindableWrites(args.config.allowWrite))
   const globsHeld = {
-    dirs: customConfig.filesystem!.allowWrite.filter((w) => !own.has(w)),
+    dirs: filesystem.allowWrite.filter((w) => !own.has(w)),
     globs: [...(args.config.writeGlobs ?? [])],
   }
-  const scratch = pendingWriteGrants(
-    args.config,
-    customConfig!.filesystem!,
-    baselines.denyRead,
-    baselines.cwd,
-  )
-  customConfig!.filesystem!.denyRead!.push(toRealPath(taskTmpRoot()))
+  const scratch = pendingWriteGrants(args.config, filesystem, baselines.denyRead, baselines.cwd)
+  filesystem.denyRead.push(toRealPath(taskTmpRoot()))
   if (args.config.hermetic === true) {
     const reads = await hermeticReads()
-    customConfig!.filesystem!.denyRead!.push(...reads.deny)
-    customConfig!.filesystem!.allowRead!.push(...reads.allow, ...runtimeOwn)
+    filesystem.denyRead.push(...reads.deny)
+    allowRead.push(...reads.allow, ...runtimeOwn)
   }
   const helpers = hostHelpers()
-  customConfig!.filesystem!.denyRead!.push(...helpers.dirs)
-  customConfig!.filesystem!.allowRead!.push(...helpers.files)
+  filesystem.denyRead.push(...helpers.dirs)
+  allowRead.push(...helpers.files)
   // The observer runs inside the sandbox, from the cache home or vx's own files.
   const observer = args.trace === 'observe' ? await observePath() : undefined
-  if (observer !== undefined) customConfig!.filesystem!.allowRead!.push(...bothSpellings(observer))
-  const cwdDenied =
-    process.platform === 'linux' && !cwdMounted(baselines.cwd, customConfig!.filesystem!)
-  if (cwdDenied) customConfig!.filesystem!.denyRead!.push(baselines.cwd)
-  customConfig!.filesystem!.allowWrite!.push(toRealPath(tmp))
+  if (observer !== undefined) allowRead.push(...bothSpellings(observer))
+  const cwdDenied = process.platform === 'linux' && !cwdMounted(baselines.cwd, filesystem)
+  if (cwdDenied) filesystem.denyRead.push(baselines.cwd)
+  filesystem.allowWrite.push(toRealPath(tmp))
   // Seatbelt judges `/dev/stdout` by the path the kernel resolves it to,
   // `/dev/fd/1`, which SRT's default `/dev/stdout` grant does not name, so
   // `echo x > /dev/stdout` failed EPERM (X-113). `/dev/fd/N` reopens only a
   // descriptor the task already holds.
-  if (process.platform === 'darwin') customConfig!.filesystem!.allowWrite!.push('/dev/fd')
+  if (process.platform === 'darwin') filesystem.allowWrite.push('/dev/fd')
   if (scopedDenyScan) {
-    customConfig!.filesystem!.denyWrite!.push(
+    filesystem.denyWrite.push(
       ...scopedMandatoryDenies(
         process.cwd(),
-        [...srtDefaultWritePaths(), ...customConfig!.filesystem!.allowWrite!],
+        [...srtDefaultWritePaths(), ...filesystem.allowWrite],
         args.config.gitConfig === true,
       ),
     )
   }
   // Seatbelt re-allows a read inside a denied region only by name; on Linux
   // a read grant over a write path would remount it read-only.
-  if (process.platform === 'darwin') customConfig!.filesystem!.allowRead!.push(toRealPath(tmp))
+  if (process.platform === 'darwin') allowRead.push(toRealPath(tmp))
   // Linux: the ports a list grants are bridged out of the task's network
   // namespace. The task's side of each bridge is a socat in front of the
   // user command, so it goes INTO the sandboxed command; the host side is
@@ -1722,7 +1692,8 @@ async function wrapIn(
         `holds ${held.length === 1 ? 'it' : 'them'} or list another port`,
     )
   }
-  if (ports.length > 0 || reach.length > 0) {
+  const bridged = ports.length > 0 || reach.length > 0
+  if (bridged) {
     hostBridges.set(tag, { ports, reach, procs: [] })
     writeFileSync(portDialScript(tag), PORT_DIAL_SCRIPT)
   }
@@ -1752,29 +1723,27 @@ async function wrapIn(
   ]
     .filter((part) => part !== '')
     .join(' ')
-  let wrapped = await wrapForTask(
-    SandboxManager,
-    inner,
+  const wrap = (config: SrtTaskConfig | undefined): Promise<string> =>
+    wrapForTask(
+      SandboxManager,
+      inner,
+      config,
+      bridged || asksUnixSockets(args.config),
+      args.config.gitConfig === true,
+    )
+  let wrapped = await wrap(
     process.platform === 'linux'
       ? literalReadPaths(customConfig)
       : process.platform === 'darwin'
         ? seatbeltBrackets(customConfig, baselines.allowRead)
         : customConfig,
-    ports.length > 0 || reach.length > 0 || asksUnixSockets(args.config),
-    args.config.gitConfig === true,
   )
   if (process.platform === 'linux' && args.config.hermetic === true) {
     const own = runtimeBinds(wrapped).filter((p) => !runtimeOwn.has(p))
     if (own.length > 0) {
       for (const p of own) runtimeOwn.add(p)
-      customConfig!.filesystem!.allowRead!.push(...own)
-      wrapped = await wrapForTask(
-        SandboxManager,
-        inner,
-        literalReadPaths(customConfig),
-        ports.length > 0 || reach.length > 0 || asksUnixSockets(args.config),
-        args.config.gitConfig === true,
-      )
+      allowRead.push(...own)
+      wrapped = await wrap(literalReadPaths(customConfig))
     }
   }
   if (runAllowsHosts) {
@@ -1827,7 +1796,7 @@ async function wrapIn(
   if (process.platform === 'linux' && !hostHasIpv6())
     wrapped = `SOCAT_DEFAULT_LISTEN_IP=4 ${wrapped}`
   if (args.server === true) liveServers.add(tag)
-  if (ports.length > 0 || reach.length > 0) {
+  if (bridged) {
     spawnHostBridges(tag)
     if (ports.length > 0) await hostBridgesListen(ports, tag)
   }
@@ -2345,6 +2314,11 @@ function reachBridgeSocket(tag: string, port: number): string {
   return path.join(taskTmpdir(tag), `vx-reach-${tag}-${port}.sock`)
 }
 
+/** A port as `/proc/net/tcp` spells it: four uppercase hex digits. */
+function procNetPort(port: number): string {
+  return port.toString(16).toUpperCase().padStart(4, '0')
+}
+
 /**
  * The task's side of a reached loopback port (`network: ['localhost:4173']`),
  * in front of the user command: a listener on the port in the task's own
@@ -2366,7 +2340,7 @@ function reachBridgeInner(ports: readonly number[], tag: string, ipv6: boolean):
   })
   const waits = ports.map(
     (p) =>
-      `( i=0; until grep -qsE ':${p.toString(16).toUpperCase().padStart(4, '0')} [0-9A-F]+:0000 0A' /proc/net/tcp; do [ $i -ge 500 ] && break; i=$((i+1)); sleep 0.01; done );`,
+      `( i=0; until grep -qsE ':${procNetPort(p)} [0-9A-F]+:0000 0A' /proc/net/tcp; do [ $i -ge 500 ] && break; i=$((i+1)); sleep 0.01; done );`,
   )
   return `${listens.join(' ')} trap 'kill $(jobs -p) 2>/dev/null' EXIT; ${waits.join(' ')}`
 }
@@ -2452,7 +2426,7 @@ function portsHeld(ports: readonly number[]): number[] {
       if (addr === any || (file === '/proc/net/tcp' && addr === loop)) held.add(port!)
     }
   }
-  return ports.filter((p) => held.has(p.toString(16).toUpperCase().padStart(4, '0')))
+  return ports.filter((p) => held.has(procNetPort(p)))
 }
 
 /**
@@ -2467,7 +2441,7 @@ function portsHeld(ports: readonly number[]): number[] {
  */
 async function hostBridgesListen(ports: readonly number[], tag: string): Promise<void> {
   if (!procfsIsOwn()) return
-  const want = ports.map((p) => `0100007F:${p.toString(16).toUpperCase().padStart(4, '0')}`)
+  const want = ports.map((p) => `0100007F:${procNetPort(p)}`)
   const procs = hostBridges.get(tag)?.procs ?? []
   const until = performance.now() + 5_000
   while (performance.now() < until && procs.every((p) => p.exitCode === null)) {
@@ -2507,16 +2481,16 @@ function spawnHostBridges(tag: string): void {
       // could not bind it (item 873).
       procs.push(
         spawnGuarded((guard) =>
-          guard === undefined
-            ? Bun.spawn(argv, {
-                stdio: ['ignore', 'ignore', 'ignore'],
-                detached: true,
-                env: helperEnv(),
-              })
-            : Bun.spawn(
-                [taskShell(), '-c', `${guardLine(3)}exec ${argv.map(shellQuote).join(' ')}`],
-                { stdio: ['ignore', 'ignore', 'ignore', guard], detached: true, env: helperEnv() },
-              ),
+          Bun.spawn(
+            guard === undefined
+              ? argv
+              : [taskShell(), '-c', `${guardLine(3)}exec ${argv.map(shellQuote).join(' ')}`],
+            {
+              stdio: ['ignore', 'ignore', 'ignore', ...(guard === undefined ? [] : [guard])],
+              detached: true,
+              env: helperEnv(),
+            },
+          ),
         ),
       )
     } catch {

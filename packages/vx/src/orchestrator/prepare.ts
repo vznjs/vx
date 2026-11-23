@@ -82,17 +82,12 @@ import { lockedFiles } from './locked-digests.js'
 import { withExtraHashes } from './lockfile-claim.js'
 import {
   discoverProjects,
-  extraHashesOfDiscovery,
-  gitOfDiscovery,
-  graphOfDiscovery,
+  discoveryOf,
   ignoredConfigRefusal,
   loadProjects,
   loadWorkspacePlugins,
-  lockOfDiscovery,
-  pluginsOfDiscovery,
   lockReader,
   type LoadedProjects,
-  nestedWorkspacesOf,
 } from './projects.js'
 import { keptByAffected } from './affected-tasks.js'
 import { applyGraphStage } from './graph-stage.js'
@@ -368,7 +363,7 @@ async function startWorkspace(options: CoreRunOptions, log: Logger, planning: bo
   const reused =
     options.handoff?.discovered?.root === workspaceRoot ? options.handoff?.discovered : undefined
   const readLock =
-    (reused !== undefined ? lockOfDiscovery(reused.projects) : undefined) ??
+    (reused !== undefined ? discoveryOf(reused.projects).lock : undefined) ??
     lockReader(workspaceRoot)
   if (reused === undefined) void readLock().catch(() => {})
   // An unscoped run (bare task names, no scope) enumerates the whole tree
@@ -382,14 +377,14 @@ async function startWorkspace(options: CoreRunOptions, log: Logger, planning: bo
   // A `discover` hook that reads the worktree (nx()'s graph key) starts the
   // whole-tree enumeration here; the run reuses it instead of walking twice.
   const git =
-    (reused !== undefined ? gitOfDiscovery(reused.projects) : undefined) ??
+    (reused !== undefined ? discoveryOf(reused.projects).git : undefined) ??
     lazyGitEnumeration(workspaceRoot)
   if (wholeTree) void git.start()
   const {
     workspaceConfig,
     plugins,
     branch: branchFacts,
-  } = (reused !== undefined ? pluginsOfDiscovery(reused.projects) : undefined) ??
+  } = (reused !== undefined ? discoveryOf(reused.projects).workspace : undefined) ??
   (await loadWorkspacePlugins(workspaceRoot, warnOf(log)))
   mark('workspace config')
   const baseBranch = configuredBaseBranch(workspaceConfig)
@@ -453,7 +448,7 @@ function scopeOf(options: CoreRunOptions, ws: Workspace) {
   // only those are evaluated. Like Turbo, a broken config elsewhere fails a
   // scoped run only once it enters scope.
   const packageGraph =
-    (reused !== undefined ? graphOfDiscovery(reused.projects) : undefined) ??
+    (reused !== undefined ? discoveryOf(reused.projects).graph : undefined) ??
     buildPackageGraph(projectMetas)
   // Seeds: the explicit scope plus anchored `pkg#task` targets. With no scope,
   // bare names fan out across the workspace; when every spec is anchored, the
@@ -645,7 +640,7 @@ async function judgeRequests(options: CoreRunOptions, ws: Workspace, scope: Scop
   // its files under its default `build`, so a parent's glob that folded or
   // cleaned them crossed a boundary.
   const nestedDirsByProject = computeNestedProjectDirs(projectMetas)
-  const nestedWorkspaces = nestedWorkspacesOf(projectMetas)
+  const nestedWorkspaces = discoveryOf(projectMetas).walls ?? []
   if (nestedWorkspaces.length > 0)
     outputWalls.set(nestedDirsByProject, computeNestedProjectDirs(projectMetas, nestedWorkspaces))
 
@@ -1057,7 +1052,7 @@ async function applyKeyStages(
         warn: warnOf(log),
         projects: projectMetas.map((p) => ({ name: p.name, dir: p.dir })),
       },
-      extraHashesOfDiscovery(projectMetas),
+      discoveryOf(projectMetas).hashes,
     )
     const locked = await lockedFiles(
       workspaceRoot,
@@ -1072,7 +1067,7 @@ async function applyKeyStages(
       nodes,
       withExtraHashes(
         { workspaceRoot, cacheDir, warn: warnOf(log), locked },
-        extraHashesOfDiscovery(projectMetas),
+        discoveryOf(projectMetas).hashes,
       ),
     )
   }

@@ -36,8 +36,8 @@ const spares: Spare[] = []
 /** A spare that could not start (no libc pipes, a refused spawn): no more are tried. */
 let off = false
 
-// `exec 3<&-` first: dash reads the script through its own descriptor,
-// opened on /dev/fd/3 and closed on exec, so the task inherits no 3.
+// dash reads the script through its own descriptor, opened on /dev/fd/3 and
+// closed on exec; the script's `exec 3<&-` closes 3, so the task inherits none.
 const WAIT = '. /dev/fd/3'
 
 function start(): Spare | undefined {

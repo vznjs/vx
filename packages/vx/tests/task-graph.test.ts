@@ -7,14 +7,13 @@ import {
   excludeDependencies,
   expandRequested,
   markSurfacedDeps,
-  splitTaskId,
   unresolvedRequests,
-  type ProjectEntry,
   type TaskNode,
 } from '../src/graph/task-graph.js'
+import type { ProjectEntry } from '../src/workspace/index.js'
 import { DEFAULT_BUILD } from '../src/graph/default-build.js'
 import { foldedDeps } from '../src/graph/folds.js'
-import { UserError } from '../src/util/index.js'
+import { splitTaskId, UserError } from '../src/util/index.js'
 
 function project(name: string, tasks: Record<string, TaskConfig>): ProjectEntry {
   return { name, dir: `/ws/${name}`, config: { tasks } }

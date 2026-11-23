@@ -357,7 +357,7 @@ Slot rules (the point of the design — the display derives from the
   so far (`usage`, a `LiveUsage` of `{ cores, rssBytes }` from
   orchestrator/live-usage.ts, which looks only once the region asks),
   `blocks`, the worker (`where`, else `local`), the mark slot (a yellow
-  `◆` on the critical path) and the id. Ids are identity-colored (`paintIdParts`):
+  `◆` on the critical path) and the id. Ids are identity-colored (`idParts`):
   each half in a hue hashed stably from its own name (`identityHue`),
   the `#` dim — never status colors. The id is the last column and is never
   truncated.
@@ -466,8 +466,6 @@ export function formatRunningHeader(colors?): string
 export function usualCell(ms, usualMs, colors?): { text; painted }
 // the `usual` cell of a task history never timed
 export function unknownUsual(colors?): { text; painted }
-// `project#task` halves in identity hues, hashed from `hueSource`
-export function paintIdParts(hueSource, projectText, taskText, colors, opts?): string
 
 // Focused mode's live frame around a streamed task
 export function formatFrameOpen(node, colors?, forwardArgs?): string // `┌─ <id> > $ <cmd>`

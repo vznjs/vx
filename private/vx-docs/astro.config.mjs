@@ -6,6 +6,7 @@ import { SIDEBAR } from './src/nav/sections.ts'
 import { bench } from './src/plugins/bench.ts'
 import { dataCharts } from './src/plugins/data-charts.ts'
 import { mermaid } from './src/plugins/mermaid.ts'
+import { RELEASES_BUNDLE, releaseSearch } from './src/plugins/release-search.ts'
 
 // GitHub Pages project site: https://vznjs.github.io/vx/
 // `base` is overridable via env so a custom domain (base '/') still builds.
@@ -207,6 +208,12 @@ export default defineConfig({
       // page only its own section's group.
       sidebar: SIDEBAR,
       routeMiddleware: './src/nav/route-data.ts',
+      // Release notes rank below the docs they announce:
+      // src/plugins/release-search.ts.
+      pagefind: {
+        mergeIndex: [{ bundlePath: `${root}${RELEASES_BUNDLE}/`, indexWeight: 0.1 }],
+      },
     }),
+    releaseSearch(),
   ],
 })

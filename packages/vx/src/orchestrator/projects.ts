@@ -149,81 +149,35 @@ export async function loadWorkspacePlugins(
 const isRef = (r: unknown): boolean =>
   typeof r === 'string' && r.startsWith('refs/') && !/[\s\0]/.test(r)
 
-/**
- * The enumeration a discovery's `discover` hooks shared, by the array it
- * returned: a run handed that array (`RunHandoff.discovered`, the CLI's
- * `--filter` pass) reuses the walk a hook started instead of a second one.
- */
-const discoveredGit = new WeakMap<readonly ProjectMeta[], LazyGitEnumeration>()
-
-export function gitOfDiscovery(projects: readonly ProjectMeta[]): LazyGitEnumeration | undefined {
-  return discoveredGit.get(projects)
-}
-
 type WorkspacePlugins = Awaited<ReturnType<typeof loadWorkspacePlugins>>
 
 /**
- * The workspace a discovery's caller loaded (`loadWorkspacePlugins`), by the
- * discovery's array: a run handed that array (`RunHandoff.discovered`) runs
- * the `config` stage no second time, and a plugin's warning prints once.
+ * What a discovery learned, by the array it returned: a run handed that array
+ * (`RunHandoff.discovered`, the CLI's `--filter` pass) reuses each part
+ * instead of learning it again.
  */
-const discoveredWorkspace = new WeakMap<readonly ProjectMeta[], WorkspacePlugins>()
-
-export function keepDiscoveryWorkspace(
-  projects: readonly ProjectMeta[],
-  workspace: WorkspacePlugins,
-): void {
-  discoveredWorkspace.set(projects, workspace)
+export interface DiscoveryFacts {
+  /** The enumeration its `discover` hooks shared: the run walks no second time. */
+  git?: LazyGitEnumeration
+  /** The lock it read: a later config load reads no second copy. */
+  lock?: () => Promise<Lockfile>
+  /** The extra-file hashes `discover` took: `--affected`, the `project` stage and the key share them. */
+  hashes?: ExtraHashes
+  /** The nested workspace roots (absolute) the lock records: where outputs stop besides nested projects. */
+  walls?: readonly string[]
+  /** The workspace its caller loaded: the `config` stage runs once, a plugin's warning prints once. */
+  workspace?: WorkspacePlugins
+  /** The package graph a selection pass built over it, when that folded no task edge in. */
+  graph?: PackageGraph
 }
 
-export function pluginsOfDiscovery(projects: readonly ProjectMeta[]): WorkspacePlugins | undefined {
-  return discoveredWorkspace.get(projects)
-}
+const discoveries = new WeakMap<readonly ProjectMeta[], DiscoveryFacts>()
 
-/**
- * The run's extra-file hashes by discovery array: a discovery is one run's, and
- * the `--affected` pass, the `project` stage and the key share what `discover`
- * hashed.
- */
-const discoveredHashes = new WeakMap<readonly ProjectMeta[], ExtraHashes>()
-
-export function extraHashesOfDiscovery(projects: readonly ProjectMeta[]): ExtraHashes | undefined {
-  return discoveredHashes.get(projects)
-}
-
-/** The lock a discovery read, by the array it returned: a later config load reads no second copy. */
-const discoveredLock = new WeakMap<readonly ProjectMeta[], () => Promise<Lockfile>>()
-
-export function lockOfDiscovery(
-  projects: readonly ProjectMeta[],
-): (() => Promise<Lockfile>) | undefined {
-  return discoveredLock.get(projects)
-}
-
-/** The nested workspace roots (absolute) the lock a discovery read records, by the array it returned. */
-const discoveredWalls = new WeakMap<readonly ProjectMeta[], readonly string[]>()
-
-/**
- * Where every project's outputs stop besides its nested projects: the
- * nested workspaces `vx lock` found. None for an array no discovery made.
- */
-export function nestedWorkspacesOf(projects: readonly ProjectMeta[]): readonly string[] {
-  return discoveredWalls.get(projects) ?? []
-}
-
-/**
- * The package graph a selection pass built over a discovery, by that
- * discovery's array, when it folded no task edge in: the graph a run that
- * reuses the discovery (`RunHandoff.discovered`) would build again.
- */
-const discoveredGraph = new WeakMap<readonly ProjectMeta[], PackageGraph>()
-
-export function graphOfDiscovery(projects: readonly ProjectMeta[]): PackageGraph | undefined {
-  return discoveredGraph.get(projects)
-}
-
-export function keepDiscoveryGraph(projects: readonly ProjectMeta[], graph: PackageGraph): void {
-  discoveredGraph.set(projects, graph)
+/** The facts kept for a discovery's array: empty for an array no discovery made. */
+export function discoveryOf(projects: readonly ProjectMeta[]): DiscoveryFacts {
+  let facts = discoveries.get(projects)
+  if (facts === undefined) discoveries.set(projects, (facts = {}))
+  return facts
 }
 
 /** A locked project as a refusal names it: its directory, and its name where that differs. */
@@ -340,7 +294,7 @@ export async function lockDiscovery(
     projects,
     withExtraHashes(
       { workspaceRoot, cacheDir, warn, worktreeChanges },
-      discoveredHashes.get(projects),
+      discoveryOf(projects).hashes,
     ),
     async (entry, plugin) => {
       const found = await discoveredProject(workspaceRoot, byDir, entry, plugin.name)
@@ -369,16 +323,12 @@ function lockedDiscovery(
   git: LazyGitEnumeration,
 ): ProjectMeta[] {
   const projects = lockedProjects(workspaceRoot, read.projects)
-  if (read.nestedWorkspaces !== undefined)
-    discoveredWalls.set(
-      projects,
-      read.nestedWorkspaces.map((rel) => path.join(workspaceRoot, rel)),
-    )
-  // An `--affected` selection reads its untracked files from this walk, and the
+  // An `--affected` selection reads its untracked files from `git`, and the
   // run reuses it.
-  discoveredGit.set(projects, git)
-  discoveredLock.set(projects, lock)
-  discoveredHashes.set(projects, new Map())
+  const facts: DiscoveryFacts = { git, lock, hashes: new Map() }
+  if (read.nestedWorkspaces !== undefined)
+    facts.walls = read.nestedWorkspaces.map((rel) => path.join(workspaceRoot, rel))
+  discoveries.set(projects, facts)
   return projects
 }
 
@@ -622,7 +572,7 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
               projects: readOnly(args.projectMetas),
               lock: true,
             },
-            discoveredHashes.get(args.projectMetas),
+            discoveryOf(args.projectMetas).hashes,
           ),
           (plugin) => {
             const at = `${where} (after plugin '${plugin.name}')`

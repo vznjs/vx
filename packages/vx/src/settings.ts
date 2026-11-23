@@ -442,13 +442,14 @@ export function settingRefusal(
   got = String(raw),
 ): string {
   const { kind } = setting(path)
+  // A number with no unit, typed or as digits alone.
+  const n =
+    typeof raw === 'number'
+      ? raw
+      : typeof raw === 'string' && /^\d+$/.test(raw)
+        ? Number(raw)
+        : null
   if (kind.type === 'duration') {
-    const n =
-      typeof raw === 'number'
-        ? raw
-        : typeof raw === 'string' && /^\d+$/.test(raw)
-          ? Number(raw)
-          : null
     const bare = n !== null && Number.isSafeInteger(n) && n > 0
     // A bare number past the ceiling is past it in either unit it could mean.
     const ms = bare ? n : typeof raw === 'string' ? parseDuration(raw) : null
@@ -473,17 +474,11 @@ export function settingRefusal(
       )
     }
   }
-  const bytes =
-    typeof raw === 'number'
-      ? raw
-      : typeof raw === 'string' && /^\d+$/.test(raw)
-        ? Number(raw)
-        : null
-  if (kind.type === 'size' && bytes !== null && Number.isSafeInteger(bytes) && bytes >= 0) {
-    if (bytes === 0 && kind.off === true) return `${where} is false to keep none (got ${got})`
-    if (bytes === 0) return `${where} must be more than 0 (got ${got})`
+  if (kind.type === 'size' && n !== null && Number.isSafeInteger(n) && n >= 0) {
+    if (n === 0 && kind.off === true) return `${where} is false to keep none (got ${got})`
+    if (n === 0) return `${where} must be more than 0 (got ${got})`
     // A small number most likely meant KiB (`32`): that reading leads.
-    const like = bytes < 1024 ? `'${bytes}KiB' or '${bytes}B'` : `'${bytes}B'`
+    const like = n < 1024 ? `'${n}KiB' or '${n}B'` : `'${n}B'`
     return `${where} takes a size with its unit, like ${like} (got ${got})`
   }
   if (kind.type === 'size' && kind.off !== true && typeof raw === 'string' && parseSize(raw) === 0)

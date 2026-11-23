@@ -2,7 +2,7 @@
 // outside src/ui names a hue or writes an escape byte
 // (tests/ui-only-output.unsafe.test.ts); a component asks for a style.
 
-import type { Style, Tone } from '../util/index.js'
+import { envFlagOn, type Style, type Tone } from '../util/index.js'
 
 export type { Style, Tone } from '../util/index.js'
 
@@ -119,10 +119,7 @@ const CI_VARS = [
 ] as const
 
 function onCi(): boolean {
-  return CI_VARS.some((name) => {
-    const v = process.env[name]
-    return v !== undefined && v !== '' && v !== '0' && v.toLowerCase() !== 'false'
-  })
+  return CI_VARS.some((name) => envFlagOn(process.env[name]))
 }
 
 /** `TERM=dumb` can neither paint nor move the cursor: vx prints to it as off a terminal. */

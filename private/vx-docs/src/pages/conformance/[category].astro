@@ -1,0 +1,76 @@
+---
+// One category of the conformance table on a page of its own: its scores,
+// what it checks, and every case. The conformance page loads this page's
+// table when the category is opened, so its own HTML stays small.
+import type { GetStaticPaths } from 'astro'
+import FeaturesPage from '../../components/features/FeaturesPage.astro'
+import Cases from '../../components/conformance/Cases.astro'
+import Cell from '../../components/conformance/Cell.astro'
+import {
+  about,
+  agree,
+  CATEGORIES,
+  groupName,
+  inline,
+  RANKED,
+  RESULTS,
+  toolName,
+  toolShort,
+} from '../../conformance/data.ts'
+import '../../styles/conformance.css'
+
+export const getStaticPaths = (() =>
+  CATEGORIES.map((category) => ({ params: { category } }))) satisfies GetStaticPaths
+
+const { category } = Astro.params
+const cases = RESULTS.cases.filter((c) => c.category === category)
+const differ = cases.filter((c) => !agree(c)).length
+const name = groupName(category)
+---
+
+<FeaturesPage
+  title={`Conformance: ${name}`}
+  description={`${cases.length} ${name.toLowerCase()} cases, each run against ${RANKED.map(toolName).join(', ')}: what each tool did, case by case.`}
+  edit="src/pages/conformance/[category].astro"
+>
+  <div class="cfm">
+    <section class="fhub-hero cfm-hero">
+      <div class="container">
+        <p class="vx-kicker"><a href="../">// conformance</a> · {cases.length} cases</p>
+        <h1>{name}</h1>
+        <p class="lede" set:html={inline(about(category))} />
+      </div>
+    </section>
+    <section class="cfm-section">
+      <div class="container">
+        <input type="checkbox" id="cfm-differ" class="cfm-toggle" />
+        <label for="cfm-differ" class="cfm-switch">
+          Only the {differ} cases where tools differ
+        </label>
+        <div class="cfm-board">
+          <div class="cfm-row cfm-head" aria-hidden="true">
+            <span class="cfm-name" />
+            {
+              RANKED.map((t) => (
+                <span class="cfm-tool">
+                  <span class="cfm-long">{toolName(t)}</span>
+                  <span class="cfm-short">{toolShort(t)}</span>
+                </span>
+              ))
+            }
+          </div>
+          <details class="cfm-cat" id={category} open>
+            <summary class="cfm-row" data-group={category}>
+              <span class="cfm-name">
+                <h2>{name}</h2>
+                <span class="cfm-cat-count">{cases.length} cases</span>
+              </span>
+              {RANKED.map((t) => <Cell t={t} g={category} />)}
+            </summary>
+            <Cases cases={cases} />
+          </details>
+        </div>
+      </div>
+    </section>
+  </div>
+</FeaturesPage>

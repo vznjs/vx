@@ -71,6 +71,7 @@ import {
   packageManagerOf,
   type PackageManager,
   parseModeAnswer,
+  readText,
   uninstall,
 } from './adopt.js'
 import { migrateTurbo } from './migrate-turbo.js'
@@ -1061,14 +1062,6 @@ async function readRootManifest(root: string): Promise<Record<string, unknown>> 
   return typeof pj === 'object' && pj !== null && !Array.isArray(pj)
     ? (pj as Record<string, unknown>)
     : {}
-}
-
-function readText(file: string): string {
-  try {
-    return readFileSync(file, 'utf8').replace(/^﻿/, '')
-  } catch {
-    return ''
-  }
 }
 
 /**
