@@ -58,10 +58,13 @@ const staged = (): boolean => {
   try {
     return readdirSync(tmp).some((d) => {
       try {
-        return readdirSync(path.join(tmp, d)).some(
-          (n) =>
-            existsSync(path.join(tmp, d, n, 'f1')) || readdirSync(path.join(tmp, d, n)).length > 0,
-        )
+        return readdirSync(path.join(tmp, d)).some((n) => {
+          try {
+            return readdirSync(path.join(tmp, d, n)).some((f) => /^f\d+$/.test(f))
+          } catch {
+            return false
+          }
+        })
       } catch {
         return false
       }

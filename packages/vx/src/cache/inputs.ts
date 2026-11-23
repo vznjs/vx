@@ -2506,6 +2506,7 @@ function inPlan(plan: FilesPlan, rel: string): boolean {
 export function committedOutputOids(
   task: TaskConfig,
   projectDir: string,
+  workspaceRoot: string,
   files: readonly string[],
   staged: ReadonlyMap<string, string>,
 ): Map<string, string> | undefined {
@@ -2515,12 +2516,16 @@ export function committedOutputOids(
   if (plan === null) return undefined
   const base = projectDir.endsWith(path.sep) ? projectDir : projectDir + path.sep
   let out: Map<string, string> | undefined
+  const ws = task.inputs?.workspaceFiles
+  const named = ws === undefined || ws.length === 0 ? undefined : workspaceMatcher(ws)
   // The changed set is a handful of files beside a task's thousands: each is
-  // found in the sorted list. One not found keys by its bytes, as before.
+  // asked whether it is an own output first, then found among the inputs.
   for (const [abs, oid] of staged) {
-    if (!abs.startsWith(base) || files[lowerBoundOf(files, abs)] !== abs) continue
+    if (!abs.startsWith(base)) continue
     const rel = abs.slice(base.length)
     if (!ownOnly(plan, rel) || (plan.isPositive(rel) && !plan.isExcluded(rel))) continue
+    if (named?.(relPosix(workspaceRoot, abs), false) === true) continue
+    if (files[lowerBoundOf(files, abs)] !== abs && !files.includes(abs)) continue
     ;(out ??= new Map()).set(abs, oid)
   }
   return out

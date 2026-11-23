@@ -336,16 +336,18 @@ export async function describeTaskInputs(args: ComputeHashArgs): Promise<{
   head: () => bigint
 }> {
   const hashedAt = Date.now()
-  const { input, listings } = await resolveKeyInput(args)
+  // The key folds `held`; the facts and the executor's input files carry the
+  // bytes on disk, which a remote checks what it uploads against.
+  const { input, listings, held } = await resolveKeyInput(args)
+  const known = (f: string): string | undefined =>
+    held?.has(f) === true ? undefined : input.fileHashes?.get(f)
   // Resolved files arrive in order: sorting them again was 170 ms of a
   // 9,603-task cold run's thread.
   const sorted = sortedNames(input.inputFiles) ? input.inputFiles : [...input.inputFiles].sort()
   const ctimes = new Map<string, number>()
   const digests = await Promise.all(
     sorted.map(
-      (f) =>
-        input.fileHashes?.get(f) ??
-        hashFileSeen(args.cache.memo, f, (c) => ctimes.set(f, c)).catch(absentOr),
+      (f) => known(f) ?? hashFileSeen(args.cache.memo, f, (c) => ctimes.set(f, c)).catch(absentOr),
     ),
   )
   // Learned BEFORE the key folds it: an edit in between then reads as a
@@ -363,7 +365,7 @@ export async function describeTaskInputs(args: ComputeHashArgs): Promise<{
   // the key could fold bytes the facts the re-check compares never saw.
   const hash = await args.cache.key({
     ...input,
-    fileHashes: new Map(sorted.map((f, i) => [f, digests[i]!])),
+    fileHashes: new Map(sorted.map((f, i) => [f, held?.get(f) ?? digests[i]!])),
   })
   // A file gone since the enumeration is no input: the task will not read it.
   const files: InputFile[] = sorted.flatMap((f, i) =>
@@ -376,7 +378,7 @@ export async function describeTaskInputs(args: ComputeHashArgs): Promise<{
     const fact: InputFact = {
       path: f,
       digest: digests[i]!,
-      since: input.fileHashes?.has(f) === true ? indexedAt : hashedAt,
+      since: known(f) !== undefined ? indexedAt : hashedAt,
     }
     const ctimeMs = ctimes.get(f)
     if (ctimeMs !== undefined) fact.ctimeMs = ctimeMs
@@ -583,7 +585,12 @@ function inputsArgs(args: ComputeHashArgs): ResolveInputsArgs {
 async function resolveKeyInput(
   args: ComputeHashArgs,
   skipFiles = false,
-): Promise<{ input: CacheKeyInput; listings: InputListing[] }> {
+): Promise<{
+  input: CacheKeyInput
+  listings: InputListing[]
+  /** The `fileHashes` that are what git holds, not the bytes (`committedOutputOids`). */
+  held?: ReadonlyMap<string, string>
+}> {
   const cfg = args.node.config
   const resolved = await resolveInputs({
     ...inputsArgs(args),
@@ -645,11 +652,18 @@ async function resolveKeyInput(
   // A committed output no input glob names folds what git holds for it, not
   // the bytes the task's last run left there (`committedOutputOids`).
   const run = args.gitFilesCache
-  if (!skipFiles && run !== undefined && run.stagedOids.size > 0) {
-    const held = committedOutputOids(cfg, args.node.projectDir, resolved.files, run.stagedOids)
-    if (held !== undefined)
-      fileHashes = fileHashes === undefined ? held : new Map([...fileHashes, ...held])
-  }
+  const held =
+    skipFiles || run === undefined || run.stagedOids.size === 0
+      ? undefined
+      : committedOutputOids(
+          cfg,
+          args.node.projectDir,
+          args.workspaceRoot,
+          resolved.files,
+          run.stagedOids,
+        )
+  if (held !== undefined)
+    fileHashes = fileHashes === undefined ? held : new Map([...fileHashes, ...held])
   const taskConfigHash = hashTaskConfig(cfg, args.hashCache)
 
   // Args after `--` reach a requested command; the default build (a keyed
@@ -675,7 +689,7 @@ async function resolveKeyInput(
     ...(args.node.platform !== undefined ? { platform: args.node.platform } : {}),
     ...(args.captureInto !== undefined ? { captureInto: args.captureInto } : {}),
   }
-  return { input, listings: resolved.listings }
+  return { input, listings: resolved.listings, ...(held !== undefined ? { held } : {}) }
 }
 
 /**

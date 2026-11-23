@@ -1436,6 +1436,7 @@ export async function cleanWorkspaceOutputs(args: {
 export function committedOutputOids(
   task: TaskConfig,
   projectDir: string,
+  workspaceRoot: string, // an inputs.workspaceFiles glob naming the file keeps its bytes too
   files: readonly string[],
   staged: ReadonlyMap<string, string>, // GitFilesCache.stagedOids
 ): Map<string, string> | undefined
@@ -1886,8 +1887,8 @@ export class GitFilesCache extends Map<string, readonly string[]> {
   clear(): void // every partition AND its OIDs and pending marks (a write that reached the workspace)
   oidsFor(projectDir: string): ReadonlyMap<string, string> | undefined // trusted index OIDs by path
   stagedOid(abs: string): string | undefined // what git holds for a tracked file status named changed (`committedOutputOids`)
-  get stagedOids(): ReadonlyMap<string, string> // every stagedOid answer
-  setStaged(staged: Map<string, string>): void // the enumeration's `staged`, by absolute path
+  get stagedOids(): ReadonlyMap<string, string> // every stagedOid answer; after a clear or delete, none once the index's stamp moved (a task's git add)
+  setStaged(staged: Map<string, string>, index: GitEnumeration['stagedIndex']): void // the enumeration's `staged`, by absolute path
   setOids(projectDir: string, oids: Map<string, string>): void
   filesDigest(projectDir: string, snapshot: readonly string[]): string | undefined // the partition's paths + OIDs (a file with none by its stat), none a link
   declarationDigest(
@@ -1925,6 +1926,7 @@ export interface GitEnumeration {
   scopes: readonly string[] // the pathspecs listed, root-relative
   trusted: Map<string, string> // path → index OID, for the tracked-clean ones
   staged: Map<string, string> // path → index OID, for the tracked ones status named changed (no link); folded into filesDigest
+  stagedIndex?: { file: string; stamp: string } // the index staged was read from, and its stamp
   flagged: readonly string[] // tracked paths git does not look at on disk (assume-unchanged, skip-worktree)
   dirty: boolean | null
   vars: string | null // `git var -l` output, read once for config lookups

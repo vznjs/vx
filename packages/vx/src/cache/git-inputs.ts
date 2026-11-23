@@ -1082,19 +1082,32 @@ export class GitFilesCache extends Map<string, readonly string[]> {
    * other file.
    */
   stagedOid(abs: string): string | undefined {
-    return this.staged.get(abs)
+    return this.stagedOids.get(abs)
   }
 
-  /** Every `stagedOid` answer, by absolute path. */
+  /**
+   * Every `stagedOid` answer, by absolute path. A task's write the run did
+   * not mark (`clear`, `delete`) may have been a `git add`: the index's stamp
+   * is then asked once, and an index that moved answers for none.
+   */
   get stagedOids(): ReadonlyMap<string, string> {
+    if (!this.stagedChecked) {
+      this.stagedChecked = true
+      if (this.staged.size > 0 && indexStampOf(this.stagedIndex?.file) !== this.stagedIndex?.stamp)
+        this.staged = new Map()
+    }
     return this.staged
   }
 
-  setStaged(staged: Map<string, string>): void {
+  setStaged(staged: Map<string, string>, index: GitEnumeration['stagedIndex']): void {
     this.staged = staged
+    this.stagedIndex = index
+    this.stagedChecked = true
   }
 
   private staged = new Map<string, string>()
+  private stagedIndex: GitEnumeration['stagedIndex']
+  private stagedChecked = true
 
   /** Trusted index OIDs for a project (abs path → oid), if any survive. */
   oidsFor(projectDir: string): ReadonlyMap<string, string> | undefined {
@@ -1167,6 +1180,7 @@ export class GitFilesCache extends Map<string, readonly string[]> {
 
   override delete(key: string): boolean {
     this.forgetFacts()
+    this.stagedChecked = false
     this.changed.delete(key)
     this.oids.delete(key)
     this.digests.delete(key)
@@ -1175,7 +1189,7 @@ export class GitFilesCache extends Map<string, readonly string[]> {
 
   override clear(): void {
     this.forgetFacts()
-    this.staged = new Map()
+    this.stagedChecked = false
     this.changed.clear()
     this.oids.clear()
     this.digests.clear()
@@ -2292,9 +2306,11 @@ export interface GitEnumeration {
   /**
    * Workspace-relative path → index OID of each tracked file `git status`
    * named changed (no link): what git holds, not the bytes on disk. Keys a
-   * committed output no input glob names (`GitFilesCache.indexOidOf`).
+   * committed output no input glob names (`GitFilesCache.stagedOid`).
    */
   staged: Map<string, string>
+  /** The index `staged` was read from and its stamp then; absent when none was. */
+  stagedIndex?: { file: string; stamp: string }
   /** Tracked paths git does not look at on disk (assume-unchanged, skip-worktree), workspace-relative. */
   flagged: readonly string[]
   /** Whether the worktree had uncommitted changes; null when `git status` failed. */
@@ -2643,11 +2659,7 @@ export async function startGitEnumeration(
   // `status` while `ls-files` had listed the staged blob, and that blob
   // keyed the committed bytes on disk. The index is stamped before the
   // listing and after the status; an index that moved trusts no OID.
-  const indexStamp = (): string | undefined => {
-    if (indexFile === undefined) return undefined
-    const st = lstatSync(indexFile, { throwIfNoEntry: false })
-    return st === undefined ? undefined : `${st.ino}:${st.ctimeMs}:${st.size}`
-  }
+  const indexStamp = (): string | undefined => indexStampOf(indexFile)
   const stampBefore = indexStamp()
   // Four spawns at most (the rev-parse is memoized per process), one
   // worktree walk. `ls-files -s -v` reads the INDEX only
@@ -2859,6 +2871,8 @@ export async function startGitEnumeration(
   })
   if (vars !== null && vars.exitCode === 0 && fileModeIgnored(vars.stdout)) {
     restampModes(trusted, workspaceRoot)
+    // As a clean file is keyed, or a rewrite's mode moved the key.
+    restampModes(staged, workspaceRoot)
   }
   if (parsedStatus !== null && parsedStatus.undecodable.size > 0) {
     undecodable.push(...stripPrefixFromSet(parsedStatus.undecodable, gitPrefix))
@@ -2869,6 +2883,9 @@ export async function startGitEnumeration(
     scopes: pathspecs,
     trusted,
     staged,
+    ...(staged.size > 0 && indexFile !== undefined && stampBefore !== undefined
+      ? { stagedIndex: { file: indexFile, stamp: stampBefore } }
+      : {}),
     flagged: [...flagged],
     dirty: worktreeDirty,
     vars: vars !== null && vars.exitCode === 0 ? vars.stdout : null,
@@ -3047,6 +3064,13 @@ function statRecord(
   return `${rel.slice(prefixLength)}\0stat:${mode}:${st.size}:${Math.floor(st.mtimeMs)}:${Math.floor(st.ctimeMs)}:${Number(st.ino)}`
 }
 
+/** `ino:ctime:size` of a git index, which git replaces by rename on each write; undefined when absent. */
+function indexStampOf(file: string | undefined): string | undefined {
+  if (file === undefined) return undefined
+  const st = lstatSync(file, { throwIfNoEntry: false })
+  return st === undefined ? undefined : `${st.ino}:${st.ctimeMs}:${st.size}`
+}
+
 /** The partition half of `populateGitFilesCache`: store per-project slices of one enumeration. */
 export async function applyGitEnumeration(
   enumeration: GitEnumeration,
@@ -3108,7 +3132,7 @@ export async function applyGitEnumeration(
   const lowerBound = (key: string): number => lowerBoundOf(sorted, key)
   const staged = new Map<string, string>()
   for (const [rel, oid] of enumeration.staged) staged.set(abs(rel), oid)
-  cache.setStaged(staged)
+  cache.setStaged(staged, enumeration.stagedIndex)
   const rootOids = (): Map<string, string> => {
     const oids = new Map<string, string>()
     for (const [rel, oid] of trusted) oids.set(abs(rel), oid)

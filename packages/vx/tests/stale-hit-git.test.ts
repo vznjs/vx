@@ -193,6 +193,46 @@ describe('stale cache hits', () => {
   )
 
   it(
+    'a task that stages a committed output mid-run re-keys the build after it',
+    async () => {
+      // The build keys `dist/x` by what git holds. A task before it in the
+      // same run `git add`s the edited bytes: keyed by the index the run
+      // listed, the build hit the entry built over v1 and wrote v1 back over
+      // the staged v2.
+      await Bun.write(path.join(root, 'package.json'), '{"name":"r","private":true}')
+      await writeLocalWorkspace(root)
+      await Bun.write(
+        path.join(root, 'vx.config.mjs'),
+        `export default {
+           tasks: {
+             stage: { exec: { command: 'if [ -f stage-me ]; then git add dist/x; fi' }, cache: false },
+             build: {
+               exec: { command: 'mkdir -p dist && cat src/a.txt > dist/out' },
+               dependsOn: ['stage'],
+               inputs: { files: ['src/**'], tasks: [] }, outputs: { files: ['dist/**'] }, cache: true,
+             },
+           },
+         }`,
+      )
+      await Bun.write(path.join(root, 'src/a.txt'), 'a')
+      await Bun.write(path.join(root, 'dist/x'), 'v1')
+      await Bun.write(path.join(root, '.gitignore'), '.vx/cache/\ndist/out\nstage-me\n')
+      gitInit(root)
+      git(root, 'add', '-A')
+      git(root, 'commit', '-q', '-m', 'initial')
+
+      await writeLocalWorkspace(root)
+      vx(root, 'run', 'build')
+      expect(vx(root, 'run', 'build')).toMatch(/build[^\n]*up-to-date/)
+      await Bun.write(path.join(root, 'dist/x'), 'v2')
+      await Bun.write(path.join(root, 'stage-me'), '')
+      expect(vx(root, 'run', 'build')).not.toMatch(/build[^\n]*(up-to-date|restored)/)
+      expect(await readFile(path.join(root, 'dist/x'), 'utf8')).toBe('v2')
+    },
+    TIMEOUT,
+  )
+
+  it(
     'a hand edit to a committed output an input glob names still moves the key',
     async () => {
       // CONTROL for the test above: `src/gen.txt` is an output and `src/**`
