@@ -181,6 +181,8 @@ describe('vx init with no package.json', () => {
       0,
       WORKSPACE,
     ])
+    // Listed under `files` alone, an overwrite read as a first write.
+    expect(r.out).toContain('  replaced  .vx/workspace.ts\n')
     const line = verbHelpText('init')
       .split('\n')
       .find((l) => l.trimStart().startsWith('--force'))
@@ -199,7 +201,9 @@ describe('vx init with no package.json', () => {
       ['vx.config.mjs', 'vx.config.js'].filter((n) => existsSync(path.join(root, n))),
       await readFile(path.join(root, 'vx.config.ts'), 'utf8'),
     ]).toEqual([0, [], PROJECT])
-    expect(r.out).toContain('  replaced  vx.config.js\n            vx.config.mjs\n')
+    expect(r.out).toContain(
+      '  replaced  vx.config.ts\n            vx.config.js\n            vx.config.mjs\n',
+    )
   })
 
   it('a lock that is not written fails init, as vx-migrate fails', async () => {

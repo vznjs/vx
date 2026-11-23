@@ -589,6 +589,9 @@ async function starter(
   const files: { path: string; contents: string }[] = []
   const kept: string[] = []
   const replaced: string[] = []
+  // Shown under `replaced` beside the deleted ones: under `files` alone an
+  // overwrite read as a first write. The JSON's `replaced` stays the deleted.
+  const overwritten: string[] = []
   for (const [names, name, contents] of [
     [
       WORKSPACE_CONFIG_FILENAMES,
@@ -611,6 +614,7 @@ async function starter(
       files.push({ path: name, contents })
       // Every other name goes too: a second config beside the one written.
       replaced.push(...existing.filter((n) => n !== name))
+      if (existing.includes(name)) overwritten.push(name)
     }
   }
   // vx's own housekeeping, as a run's first cache open and `vx lock` write them.
@@ -646,7 +650,7 @@ async function starter(
   if (installs.length > 0) rows.push(['install', ...installs])
   if (files.length > 0) rows.push(['files', ...files.map((f) => f.path)])
   if (kept.length > 0) rows.push(['kept', ...kept])
-  if (replaced.length > 0) rows.push(['replaced', ...replaced])
+  if (overwritten.length + replaced.length > 0) rows.push(['replaced', ...overwritten, ...replaced])
   if (notes.length > 0) rows.push(['note', ...notes])
   if (args.dry) {
     rows.push([

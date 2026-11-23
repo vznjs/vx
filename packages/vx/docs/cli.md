@@ -3096,7 +3096,8 @@ which makes each package's scripts its tasks; it maps over the root
 import needs no install: the running vx serves its own core to that
 specifier (bin.ts registers the alias). A file already there is kept
 and named under `kept`; `--force` replaces it, and every file of
-another extension beside it (`replaced`). `--mjs` writes `.vx/workspace.mjs` and
+another extension beside it, all named under `replaced` (the JSON's
+`replaced` lists only the files deleted). `--mjs` writes `.vx/workspace.mjs` and
 `vx.config.mjs`. `--dry` prints the files and writes nothing;
 `--dry --format json` prints the plan as one JSON document
 (`schemas/init.json`): `files` (each path and its whole text), `kept`,
