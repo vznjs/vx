@@ -2768,7 +2768,7 @@ The loader validates the shape (each setting by its kind, plugin objects
 with a name and at least one capability) and throws a `UserError` on
 malformed input.
 
-### Pipelines
+### `pipelines`
 
 A pipeline is a `vx run` saved under a name, for `vx pipeline <name>`:
 its `tasks` in every project that declares them, under the flags it
@@ -2872,6 +2872,38 @@ interface Pipeline {
   format?: 'pretty' | 'json'
 }
 ```
+
+#### Every key of `pipelines.*`
+
+Only `tasks` is required. A key left out leaves its flag off, so the
+workspace's own setting (or vx's default) applies.
+
+| Key | Flag | Takes | Left out | What it does |
+| --- | --- | --- | --- | --- |
+| `tasks` | (the task names) | names, or `'pkg#task'` | required | The tasks to run, in every project that declares each. `dependsOn` orders them. |
+| `filter` | `--filter` | pnpm-style patterns | every project | Run only in the projects these select; what they depend on still runs. |
+| `affected` | `--affected` | `true`, or a git ref | off | Run only where a change since the base reaches: changed projects and the tasks that depend on them. `true` takes the base from a CI plugin, else `origin/<baseBranch>`. |
+| `excludeDependencies` | `--exclude-dependencies` | `true`, or task names | off | Skip `dependsOn` edges: `true` all of them, a list only those names. |
+| `env` | (none) | `{ NAME: 'value' }` | none | Variables set for vx and its plugins before they start (a plugin's switch). Tasks never see them. A variable already set wins. |
+| `concurrency` | `--concurrency` | a number, or `'50%'` | `run.concurrency`, else the cores | Most tasks running at once. |
+| `schedule` | `--schedule` | `'most-work'`, `'critical-path'`, `'direct-dependents'`, `'ready-order'` | `run.schedule`, else `'most-work'` | Which ready task starts first when workers are short. |
+| `failFast` | `--fail-fast` | `true` | `run.failFast`, else off | Stop the run at the first failure. Off, a failure skips only its dependents. |
+| `retries` | `--retries` | a number | `run.retries`, else `0` | Re-runs of a failed task. A task's own `exec.retries` wins. |
+| `timeout` | `--timeout` | a duration (`'10m'`) | `run.timeout`, else none | Time limit per task. A task's own `exec.timeout` wins. |
+| `branch` | `--branch` | a branch name | git's branch, then the CI's | The branch the run records in its history. |
+| `cachePolicy` | `--cache-policy` | a policy (`'local:rw,remote:r'`) | `cache.policy`, else read and write all | What each cache layer may read and write. |
+| `noCache` | `--no-cache` | `true` | off | No cache reads, no writes. |
+| `force` | `--force` | `true` | off | Run every task again; writes stay on. |
+| `cacheDir` | `--cache-dir` | a path, from the workspace root | `cache.dir`, else `~/.vx/<id>/cache` | Where the local cache lives. |
+| `cacheDownload` | `--cache-download` | `'all'`, `'toplevel'`, `'none'` | `cache.download`, else `'all'` | Which outputs of a remotely run task land on this machine. |
+| `cacheConcurrencyDownload` | `--cache-concurrency-download` | a number | `cache.concurrency.download` | Remote downloads at once. |
+| `cacheConcurrencyUpload` | `--cache-concurrency-upload` | a number | `cache.concurrency.upload` | Uploads at once, per remote. |
+| `cacheConcurrencyRestore` | `--cache-concurrency-restore` | a number | `cache.concurrency.restore`, else twice `concurrency` | Local hits restoring outputs at once. |
+| `outputLogs` | `--output-logs` | `'full'`, `'errors-only'`, `'hash-only'`, `'none'` | `run.outputLogs`, else vx picks | How much task output the log shows. |
+| `verbosity` | `--verbosity` | `0` or more | `0` | `1` adds a table of every task to the log. |
+| `profile` | `--profile` | `true`, or a file name | off | Write a Chrome trace of the run (`profile.json`). Not with `dry`. |
+| `dry` | `--dry` | `true` | off | Print the plan; run nothing. |
+| `format` | `--format` | `'pretty'`, `'json'` | `'pretty'` | With `dry: true`, print the plan as JSON. |
 
 - **Keys are flags.** Each key but `tasks` and `env` is its `vx run` flag
   in camelCase (`cachePolicy` is `--cache-policy`) and takes what the
