@@ -63,7 +63,7 @@ import { defineProject } from '@vzn/vx/config'
 
 export default defineProject({
   tags: ['type:ui'],
-  tasks: { build: { exec: { command: 'tsc -b' } } },
+  tasks: { build: { exec: { command: 'vite build' } } },
 })
 ```
 

@@ -35,7 +35,7 @@ flowchart LR
 
 3. **Declare it**
 
-   In `.vx/workspace.ts`: `plugins: [typecheck()]`. `vx info` lists it
+   In `.vx/workspace.ts`: `plugins: [vitest()]`. `vx info` lists it
    with its hooks.
 
 4. **Test it**
@@ -44,20 +44,20 @@ flowchart LR
 
 </Steps>
 
-This one gives every project with a `tsconfig.json` a `typecheck` task:
+This one gives every project with a `vitest.config.ts` a `test` task:
 
 ```ts
 import path from 'node:path'
 import { definePlugin, type VxPlugin } from '@vzn/vx'
 
-export function typecheck(): VxPlugin {
+export function vitest(): VxPlugin {
   return definePlugin(import.meta, {
     async project(config, ctx) {
-      if (!(await Bun.file(path.join(ctx.dir, 'tsconfig.json')).exists())) return
+      if (!(await Bun.file(path.join(ctx.dir, 'vitest.config.ts')).exists())) return
       config.tasks ??= {}
-      config.tasks['typecheck'] ??= {
-        exec: { command: 'tsc --noEmit' },
-        inputs: { files: ['src/**', 'tsconfig.json'] }, outputs: { files: [] }, cache: true,
+      config.tasks['test'] ??= {
+        exec: { command: 'vitest run' },
+        inputs: { files: ['src/**', 'vitest.config.ts'] }, outputs: { files: [] }, cache: true,
       }
     },
   })

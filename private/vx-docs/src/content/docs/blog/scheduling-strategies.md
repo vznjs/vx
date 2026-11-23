@@ -61,7 +61,7 @@ Measured with vx, two workers:
 | Recorded time, runs 2 and 3 | 60.2 s, 60.2 s |
 
 vx's default takes 30 s longer here. In a real repo this is a slow
-typecheck, lint or unit test that needs no build. Ready order won only
+lint or unit test that needs no build. Ready order won only
 because the long task was first in line.
 
 ## Case 2: the mirror image
@@ -120,7 +120,7 @@ Guessing by task kind would help only the very first run. If you know
 a task is slow, `assume` gives it a duration until history exists:
 
 ```ts
-vxHistory({ assume: { 'app#typecheck': 60_000 } })
+vxHistory({ assume: { 'app#e2e': 60_000 } })
 ```
 
 ## On CI
@@ -156,7 +156,7 @@ export default {
 | `ready-order` | The task that became ready first |
 
 A `schedule` plugin still ranks first. The rule breaks its ties. A slow
-typecheck starting late? Try `ready-order`. Long paths finishing last?
+e2e starting late? Try `ready-order`. Long paths finishing last?
 Try `critical-path`.
 
 ## Turn it on

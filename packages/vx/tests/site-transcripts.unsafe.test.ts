@@ -292,7 +292,7 @@ describe('the newcomer guides show what vx prints', () => {
       cache: true,
     },
     test: { exec: { command: "${test}" } },
-    'test.playwright': { exec: { command: 'sleep 5' } },
+    e2e: { exec: { command: 'sleep 5' } },
   },
 }
 `
@@ -385,41 +385,9 @@ export default {
 
   it('set-a-time-limit: --timeout fails the task', () => {
     const page = guide('running/set-a-time-limit.md')
-    const r = runColour('run', '@demo/web#test.playwright', '--timeout', '1s')
+    const r = runColour('run', '@demo/web#e2e', '--timeout', '1s')
     expect(r.code).toBe(1)
-    holds(printed(page, 'vx run @demo/web#test.playwright --timeout 1s'), r.out)
-  })
-
-  it('group-tasks: the group runs every test.* task', async () => {
-    const page = guide('running/group-tasks.md')
-    const dir = await mkdtemp(path.join(os.tmpdir(), 'vx-site-groups-'))
-    try {
-      await mkdir(path.join(dir, '.vx'))
-      await mkdir(path.join(dir, 'packages/web'), { recursive: true })
-      await writeFile(path.join(dir, '.vx/workspace.mjs'), 'export default {}\n')
-      await writeFile(
-        path.join(dir, 'packages/web/vx.config.mjs'),
-        `export default {
-  name: '@demo/web',
-  tasks: {
-    test: { dependsOn: ['test.*'] },
-    'test.bun': { exec: { command: 'bun test' } },
-    'test.playwright': { exec: { command: 'playwright test' } },
-    'test.playwright.smoke': { exec: { command: 'playwright test --grep @smoke' } },
-  },
-}
-`,
-      )
-      expect(
-        Bun.spawnSync({ cmd: ['git', 'init', '-q', '-b', 'main'], cwd: dir, env: ENV }).exitCode,
-      ).toBe(0)
-      expect(at(dir, ENV, ['lock']).code).toBe(0)
-      const r = at(dir, ENV, ['run', 'test', '--all', '--dry'])
-      expect(r.code).toBe(0)
-      expect(plan(printed(page, 'vx run test --all --dry'))).toBe(plan(r.out))
-    } finally {
-      await rm(dir, { recursive: true, force: true })
-    }
+    holds(printed(page, 'vx run @demo/web#e2e --timeout 1s'), r.out)
   })
 
   /** A fresh one-project workspace holding `@demo/web` with `config`, locked. */
@@ -436,7 +404,7 @@ export default {
     return dir
   }
 
-  it('start-a-dev-server: test.e2e waits for the persistent dev task', async () => {
+  it('start-a-dev-server: e2e waits for the persistent dev task', async () => {
     const page = guide('running/start-a-dev-server.md')
     const dir = await lone(`export default {
   name: '@demo/web',
@@ -444,7 +412,7 @@ export default {
     dev: {
       exec: { command: 'vite', persistent: { readyWhen: 'Local:' }, timeout: '30s' },
     },
-    'test.e2e': {
+    e2e: {
       dependsOn: ['dev'],
       exec: { command: 'playwright test' },
     },
@@ -452,9 +420,9 @@ export default {
 }
 `)
     try {
-      const r = at(path.join(dir, 'packages/web'), ENV, ['run', 'test.e2e', '--dry'])
+      const r = at(path.join(dir, 'packages/web'), ENV, ['run', 'e2e', '--dry'])
       expect(r.code).toBe(0)
-      expect(plan(printed(page, 'vx run test.e2e --dry'))).toBe(plan(r.out))
+      expect(plan(printed(page, 'vx run e2e --dry'))).toBe(plan(r.out))
     } finally {
       await rm(dir, { recursive: true, force: true })
     }

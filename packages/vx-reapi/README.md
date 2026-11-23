@@ -505,7 +505,7 @@ install: {
 },
 build: {
   dependsOn: ['install'],
-  exec: { command: 'tsc -p .' },
+  exec: { command: 'vite build' },
   inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
 },
 ```

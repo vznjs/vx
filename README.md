@@ -44,10 +44,10 @@ import { defineProject } from '@vzn/vx/config'
 export default defineProject({
   tasks: {
     build: {
-      exec: { command: 'tsc -b' },
+      exec: { command: 'vite build' },
       dependsOn: ['^build'], // dependencies build first
-      inputs: { files: ['src/**', 'tsconfig.json'] },
-      outputs: { files: ['dist/**', '*.tsbuildinfo'] }, // tsc's incremental state too
+      inputs: { files: ['src/**', 'index.html', 'vite.config.ts'] },
+      outputs: { files: ['dist/**'] },
       cache: true,
     },
   },

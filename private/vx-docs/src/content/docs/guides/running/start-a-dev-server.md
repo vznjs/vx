@@ -14,7 +14,7 @@ export default {
     dev: {
       exec: { command: 'vite', persistent: { readyWhen: 'Local:' }, timeout: '30s' },
     },
-    'test.e2e': {
+    e2e: {
       dependsOn: ['dev'],
       exec: { command: 'playwright test' },
     },
@@ -31,12 +31,12 @@ export default {
 Run `vx lock`, then add `--dry` to see the order:
 
 ```sh
-vx run test.e2e --dry
+vx run e2e --dry
 ```
 
 ```ansi
 [4m[58;2;110;118;129m  [1m[38;2;167;139;250mPlan[0m[4m[58;2;110;118;129m [2m2[0m[4m[58;2;110;118;129m    [2mstatus  cache      usual    time   cpu    mem outputs  blocks worker         task[0m[4m[58;2;110;118;129m                           [0m
-            [38;2;6;182;212mrun[0m     [2mno-cache[0m       [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2mlocal[0m          [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;96;165;250mtest.e2e[0m
+            [38;2;6;182;212mrun[0m     [2mno-cache[0m       [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2mlocal[0m          [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;147;197;253me2e[0m
             [38;2;6;182;212mrun[0m     [2mno-cache[0m       [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [38;2;203;213;225m1[0m [2mlocal[0m          [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;147;197;253mdev[0m
 
   [2mtasks   [0m  [38;2;203;213;225m2 planned · 2 no-cache[0m
