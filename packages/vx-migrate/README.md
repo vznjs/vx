@@ -69,7 +69,7 @@ With this file, `vx run build --all` runs every package's `build` script after i
 <details><summary>Details</summary>
 
 - Turbo's global fields (`globalDependencies`, `globalEnv`, `globalPassThroughEnv`, Turbo 1's `globalDotEnv`) are inlined into every task.
-- A `*` env name (`NEXT_PUBLIC_*`) expands over the run's environment, as Turbo matches it.
+- A `*` env name (`NEXT_PUBLIC_*`) expands over the environment `vx lock` ran in, where Turbo matches each run's (below).
 - `*` is Turbo's only wildcard: `\*`, a leading `\!`, `?` and `[` are literal.
 - A literal vx cannot key (unkey's `NEXT_PUBLIC_\*`) is left out. It is reported once, and only when the run's environment sets it.
 - A `turbo.jsonc` (Turbo 2.5+) is read wherever a `turbo.json` would be, at the root and in a package.
@@ -78,7 +78,7 @@ With this file, `vx run build --all` runs every package's `build` script after i
 - Turbo 2's framework inference applies too. A package on `next` has `NEXT_PUBLIC_*` and `NEXT_DEPLOYMENT_ID` hashed and passed.
 - Turbo's whole framework table applies (`expo`, `nuxt`, `remix`, `@sveltejs/kit` and the rest).
 - Each package takes the first framework it matches, as Turbo does. Names under the platform's `TURBO_CI_VENDOR_ENV_KEY` are left out.
-- The prefix expands over the run's environment into that package's tasks. A task's `!` entry takes names back.
+- The prefix expands over the environment `vx lock` ran in into that package's tasks. A task's `!` entry takes names back.
 - `bunx @vzn/vx-migrate` writes files for another environment, so it names each framework and its packages in a note instead.
 - Turbo's builtin env applies as Turbo's source has it. `VERCEL_ANALYTICS_ID` and `VERCEL_TARGET_ENV` are keyed in every task.
 - A `globalEnv` `!` entry such as `!VERCEL*` takes them back.

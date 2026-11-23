@@ -72,12 +72,12 @@
   {
     "key": "turbo.json globalEnv",
     "status": "mapped",
-    "reason": "Added to every task's `inputs.env` and passthrough; under `turbo()` a `*` name expands over the run's environment, as Turbo does; otherwise a wildcard is dropped with a note. Turbo's default keyed names (`VERCEL_ANALYTICS_ID`, `VERCEL_TARGET_ENV`, and `VERCEL_DEPLOYMENT_ID` on a Next package when `VERCEL_SKEW_PROTECTION_ENABLED=1`; written configs key it always) join it, and a `!` entry takes them back. A `$NAME` entry is refused, as Turbo refuses it."
+    "reason": "Added to every task's `inputs.env` and passthrough; under `turbo()` a `*` name expands over the environment `vx lock` ran in, where Turbo matches each run's; otherwise a wildcard is dropped with a note. Turbo's default keyed names (`VERCEL_ANALYTICS_ID`, `VERCEL_TARGET_ENV`, and `VERCEL_DEPLOYMENT_ID` on a Next package when `VERCEL_SKEW_PROTECTION_ENABLED=1`; written configs key it always) join it, and a `!` entry takes them back. A `$NAME` entry is refused, as Turbo refuses it."
   },
   {
     "key": "turbo.json globalPassThroughEnv",
     "status": "mapped",
-    "reason": "Added to every task's `exec.env.passThrough`, not hashed; under `turbo()` a `*` name expands over the run's environment; otherwise a wildcard is dropped with a note. The literal names of Turbo's builtin pass-through list (`TZ`, `CI`, the Vercel, Docker and IDE names) join it, under `turbo()` as in written configs, so both key alike; its wildcard families (`GITHUB_*`, `DOCKER_*`, ...) are a note. A `$NAME` entry is refused, as Turbo refuses it."
+    "reason": "Added to every task's `exec.env.passThrough`, not hashed; under `turbo()` a `*` name expands over the environment `vx lock` ran in; otherwise a wildcard is dropped with a note. The literal names of Turbo's builtin pass-through list (`TZ`, `CI`, the Vercel, Docker and IDE names) join it, under `turbo()` as in written configs, so both key alike; its wildcard families (`GITHUB_*`, `DOCKER_*`, ...) are a note. A `$NAME` entry is refused, as Turbo refuses it."
   },
   {
     "key": "turbo.json noUpdateNotifier",
@@ -122,7 +122,7 @@
   {
     "key": "turbo.json tasks.*.env",
     "status": "mapped",
-    "reason": "Goes to `inputs.env` and `exec.env.passThrough`; under `turbo()` a `*` name expands over the run's environment, as Turbo does; the CLI lists the names the package's files spell, and a wildcard nothing spells gets a TODO. A `$NAME` entry is refused, as Turbo refuses it."
+    "reason": "Goes to `inputs.env` and `exec.env.passThrough`; under `turbo()` a `*` name expands over the environment `vx lock` ran in, where Turbo matches each run's; the CLI lists the names the package's files spell, and a wildcard nothing spells gets a TODO. A `$NAME` entry is refused, as Turbo refuses it."
   },
   {
     "key": "turbo.json tasks.*.inputs",
@@ -152,7 +152,7 @@
   {
     "key": "turbo.json tasks.*.passThroughEnv",
     "status": "mapped",
-    "reason": "Goes to `exec.env.passThrough`, not hashed; under `turbo()` a `*` name expands over the run's environment; the CLI lists the names the package's files spell, and a wildcard nothing spells gets a TODO. A `$NAME` entry is refused, as Turbo refuses it."
+    "reason": "Goes to `exec.env.passThrough`, not hashed; under `turbo()` a `*` name expands over the environment `vx lock` ran in; the CLI lists the names the package's files spell, and a wildcard nothing spells gets a TODO. A `$NAME` entry is refused, as Turbo refuses it."
   },
   {
     "key": "turbo.json tasks.*.persistent",
