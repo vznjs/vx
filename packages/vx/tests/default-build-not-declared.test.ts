@@ -133,7 +133,8 @@ describe('a workspace that declares no task yet', () => {
       expect([p.exitCode, p.stderr.toString()]).toEqual([
         1,
         noticed(
-          'vx run: no projects declare task(s): build. The lock holds no project for packages/z/vx.config.mjs: run `vx lock` (did it fail?).\n',
+          // An --all run checks every config against the lock first (05c43fc).
+          'vx run: packages/z/vx.config.mjs is not in the lock yet — run `vx lock`\n',
         ),
       ])
     } finally {
