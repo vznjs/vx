@@ -167,6 +167,9 @@ function parse(
   let cacheFlag = false
   let noCacheFlag = false
   let forceFlag = false
+  // `--dry --format json`, as every verb with a plan spells it.
+  let dryFlag = false
+  let format: 'pretty' | 'json' | undefined
 
   // Its value optional, the flag cannot take the next word: `--affected
   // main build` reads `main` as a task, so only a refusal of it says why.
@@ -273,22 +276,19 @@ function parse(
       // declares it.
       const next = before[i + 1]
       if (next === 'pretty' || next === 'json') {
-        return { ...out, error: `--dry takes its format with '=': --dry=${next}` }
-      }
-      out.dry = 'pretty'
-    } else if (a.startsWith('--dry=')) {
-      const fmt = a.slice('--dry='.length)
-      if (fmt === '') {
         return {
           ...out,
-          error: `--dry= requires a format: pretty or json; bare --dry prints pretty`,
+          error: `--dry takes no value; the format is --format: --dry --format ${next}`,
         }
       }
-      // The values every --format takes.
-      if (fmt !== 'pretty' && fmt !== 'json') {
-        return { ...out, error: `--dry must be pretty or json (got ${fmt})` }
-      }
-      out.dry = fmt
+      dryFlag = true
+    } else if (verb === 'run' && (a === '--format' || a.startsWith('--format='))) {
+      const v = a === '--format' ? before[++i] : a.slice('--format='.length)
+      if (v === undefined || v === '')
+        return { ...out, error: '--format requires a value: pretty or json' }
+      if (v !== 'pretty' && v !== 'json')
+        return { ...out, error: `--format must be pretty or json (got ${v})` }
+      format = v
     } else if (a === '--profile') {
       out.profile = 'profile.json'
       spacedValue('--profile', before[i + 1])
@@ -396,6 +396,14 @@ function parse(
         error: `forwarded args (after --) go to one task in one project; run that task alone, e.g. vx run app#test -- --watch (got ${many})`,
       }
   }
+  // A run prints no JSON of its own; `vx last --format json` reads it after.
+  if (format !== undefined && !dryFlag)
+    return {
+      ...out,
+      error:
+        '--format prints the plan, so it needs --dry (the run as JSON is `vx last --format json` after it)',
+    }
+  if (dryFlag) out.dry = format ?? 'pretty'
   // A profile is about a run: the planning branch returns before it is written.
   if (out.dry !== undefined && out.profile !== undefined) {
     return { ...out, error: '--dry skips execution; --profile needs a real run' }
@@ -459,7 +467,7 @@ export async function resolveRunOptions(
   cwd: string,
   tasks: readonly string[],
   verb: 'run' | 'watch' = 'run',
-  /** Given, it learns the ref `--affected` diffed from (`--dry=json` states it). */
+  /** Given, it learns the ref `--affected` diffed from (`--dry --format json` states it). */
   scopeOut?: { affectedBase?: string },
 ): Promise<CoreRunOptions | { error: string; code?: string } | { nothingSelected: string }> {
   for (const t of tasks) {
@@ -718,7 +726,7 @@ export async function runCmd(
     return resolved.code === 'VX_E_UNKNOWN_TASK'
       ? unknownTask(resolved.error)
       : refused(resolved.error, resolved.code ?? 'VX_E_USAGE')
-  // `--dry=json` prints a plan even when there is nothing to run: a script
+  // `--dry --format json` prints a plan even when there is nothing to run: a script
   // reading stdout broke exactly then (Growth).
   const nothingToRun = (): 0 => {
     if (parsed.dry === 'json') ui.data('out', formatPlanJson({ tasks: [] }, scopeOut.affectedBase))
@@ -739,7 +747,7 @@ export async function runCmd(
   // Planning short-circuits execution: the full task graph + a cache probe.
   if (parsed.dry !== undefined) {
     const plan = await planCore(opts)
-    // Refused as a run refuses: `--dry=json` gets the error document.
+    // Refused as a run refuses: `--dry --format json` gets the error document.
     if (plan.unresolvedTasks !== undefined && plan.unresolvedTasks.length > 0) {
       return unknownTask(
         `no projects declare task(s): ${plan.unresolvedTasks.join(', ')}.${plan.unresolvedHint ?? ''}`,

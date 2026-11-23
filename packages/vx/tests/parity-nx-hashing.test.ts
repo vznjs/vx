@@ -308,7 +308,7 @@ describe('Nx parity — project roots, ignored files and refused spellings', () 
           lib: { tasks: { t: task(`{ files: ['${glob}'] }`) }, files: { 'src/a.txt': 'a\n' } },
         })
         try {
-          const r = await vx(root, ['run', 'lib#t', '--dry=json'])
+          const r = await vx(root, ['run', 'lib#t', '--dry', '--format', 'json'])
           expect(r.code).not.toBe(0)
           expect(r.out + r.err).toContain(glob)
         } finally {

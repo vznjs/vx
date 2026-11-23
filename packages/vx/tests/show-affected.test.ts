@@ -20,9 +20,9 @@ function shown(root: string, ...args: string[]): string[] {
   return (JSON.parse(r.out) as { name: string }[]).map((p) => p.name)
 }
 
-/** The project of each task `vx run <task> --affected --dry=json` plans. */
+/** The project of each task `vx run <task> --affected --dry --format json` plans. */
 function planned(root: string, task: string): string[] {
-  const r = vx(root, 'run', task, '--affected=HEAD', '--dry=json')
+  const r = vx(root, 'run', task, '--affected=HEAD', '--dry', '--format', 'json')
   if (r.code !== 0) throw new Error(`vx run --dry: ${r.err}`)
   const plan = JSON.parse(r.out) as { tasks: { id: string }[] }
   return plan.tasks
@@ -95,7 +95,7 @@ describe('vx show <task> --affected', () => {
     const below = path.join(edge, 'pkgs', 'y', 'sub')
     await mkdir(below, { recursive: true })
     const all = (cwd: string) => {
-      const r = vx(cwd, 'run', 'test', '--all', '--affected=HEAD', '--dry=json')
+      const r = vx(cwd, 'run', 'test', '--all', '--affected=HEAD', '--dry', '--format', 'json')
       if (r.code !== 0) throw new Error(`vx run --dry: ${r.err}`)
       return (JSON.parse(r.out) as { tasks: { id: string }[] }).tasks.map((t) => t.id).sort()
     }

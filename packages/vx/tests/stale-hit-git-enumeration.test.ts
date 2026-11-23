@@ -453,7 +453,7 @@ describe('stale cache hits', () => {
           cwd: ws,
           stderr: 'pipe',
         })
-        const dry = JSON.parse(vx(ws, 'run', 'build', '--dry=json')) as {
+        const dry = JSON.parse(vx(ws, 'run', 'build', '--dry', '--format', 'json')) as {
           tasks: Array<{ hash: string }>
         }
         return { hash: dry.tasks[0]!.hash, warned: attr.stderr.toString().length > 0 }

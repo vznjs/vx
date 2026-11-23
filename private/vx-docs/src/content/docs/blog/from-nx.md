@@ -146,7 +146,7 @@ any target Nx marks `continuous`:
   Bazel pool.
 - **Remote cache:** `nxCache()` speaks the self-hosted `/v1/cache` wire.
 - **Flaky tests:** [from local run history](../flaky-tasks/).
-- **Graph view:** `vx run build --all --dry=json` or `vx show`.
+- **Graph view:** `vx run build --all --dry --format json` or `vx show`.
 
 Generators have no vx replacement. Guide: [Migrate from
 Nx](../../docs/migrate/#nx). More at

@@ -69,6 +69,8 @@ function companions(verb: string, flag: string): string[] {
     return ['--max-size', '1G']
   if (verb === 'last' && flag === '--branch') return ['--stats']
   if (verb === 'last' && flag === '--follow') return ['--live']
+  // Only the plan has a format.
+  if ((verb === 'run' || verb === 'pipeline') && flag === '--format') return ['--dry']
   return []
 }
 

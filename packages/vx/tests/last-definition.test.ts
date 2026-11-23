@@ -38,7 +38,7 @@ it("--stats reads the task's timings of its command now, as --dry does", () => {
   const stats = JSON.parse(vx('last', '--stats', 'a#work', '--format', 'json').out) as {
     stats: { taskId: string; runs: number; p50DurationMs: number }[]
   }
-  const dry = JSON.parse(vx('run', 'a#work', '--dry=json').out) as {
+  const dry = JSON.parse(vx('run', 'a#work', '--dry', '--format', 'json').out) as {
     tasks: { p50Ms?: number }[]
   }
   const [row] = stats.stats

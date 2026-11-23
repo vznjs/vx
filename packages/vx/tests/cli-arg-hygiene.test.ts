@@ -462,15 +462,17 @@ describe('--output-logs hash-only', () => {
 })
 
 describe('a refused value says what the flag takes (E-36)', () => {
-  it('--concurrency, --verbosity and --dry= name their accepted forms', () => {
+  it('--concurrency, --verbosity and --format name their accepted forms', () => {
     expect(
-      [['--concurrency', '0'], ['--verbosity', 'high'], ['--dry=yaml']].map(
-        (flag) => parseRunArgs(['build', ...flag]).error,
-      ),
+      [
+        ['--concurrency', '0'],
+        ['--verbosity', 'high'],
+        ['--dry', '--format', 'yaml'],
+      ].map((flag) => parseRunArgs(['build', ...flag]).error),
     ).toEqual([
       "--concurrency must be a positive integer, or a share of the cores like '50%' (got 0)",
       '--verbosity must be a non-negative integer (got high)',
-      '--dry must be pretty or json (got yaml)',
+      '--format must be pretty or json (got yaml)',
     ])
   })
 })

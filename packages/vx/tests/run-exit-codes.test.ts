@@ -119,9 +119,9 @@ describe('vx run', () => {
     const codes: number[] = []
     const docs: unknown[] = []
     try {
-      for (const flag of ['--format=json', '--dry=json']) {
+      for (const flags of [['--format=json'], ['--dry', '--format', 'json']]) {
         out = ''
-        codes.push(await Promise.race([cli(['run', flag]), Bun.sleep(5_000).then(() => -1)]))
+        codes.push(await Promise.race([cli(['run', ...flags]), Bun.sleep(5_000).then(() => -1)]))
         docs.push((JSON.parse(out) as { error: { code: string } }).error.code)
       }
     } finally {

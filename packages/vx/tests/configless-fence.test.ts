@@ -57,7 +57,7 @@ async function workspace(rootOutputs: string, command = 'true'): Promise<string>
 
 function plan(cwd: string, ...args: string[]): Map<string, string> {
   const p = Bun.spawnSync({
-    cmd: ['bun', CLI, 'run', 'build', ...args, '--dry=json'],
+    cmd: ['bun', CLI, 'run', 'build', ...args, '--dry', '--format', 'json'],
     cwd,
     stdout: 'pipe',
     stderr: 'pipe',

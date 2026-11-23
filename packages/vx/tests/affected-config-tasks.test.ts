@@ -27,7 +27,9 @@ const vx = (...args: string[]) => {
   return p.stdout.toString()
 }
 const kept = (): Record<string, unknown> => {
-  const plan = JSON.parse(vx('run', 'build', 'test', '--affected=HEAD', '--dry=json')) as {
+  const plan = JSON.parse(
+    vx('run', 'build', 'test', '--affected=HEAD', '--dry', '--format', 'json'),
+  ) as {
     tasks: Array<{ id: string; affected?: unknown }>
   }
   return Object.fromEntries(plan.tasks.map((t) => [t.id, t.affected]))
@@ -69,7 +71,9 @@ it('CONTROL: committed, the same diff against the parent', async () => {
   const git = gitIn(root)
   git('add', '-A')
   git('commit', '-qm', 'edit')
-  const plan = JSON.parse(vx('run', 'build', 'test', '--affected=HEAD~1', '--dry=json')) as {
+  const plan = JSON.parse(
+    vx('run', 'build', 'test', '--affected=HEAD~1', '--dry', '--format', 'json'),
+  ) as {
     tasks: Array<{ id: string }>
   }
   expect(plan.tasks.map((t) => t.id)).toEqual(['app#build'])
@@ -81,7 +85,7 @@ it('a group whose edges moved selects nothing itself: it runs nothing', async ()
   git('add', '-A')
   git('commit', '-qm', 'ci')
   await edit(config('true', "\n    ci: { dependsOn: ['build', 'test'] },"))
-  const plan = JSON.parse(vx('run', 'ci', '--affected=HEAD', '--dry=json')) as {
+  const plan = JSON.parse(vx('run', 'ci', '--affected=HEAD', '--dry', '--format', 'json')) as {
     tasks: Array<{ id: string }>
   }
   expect(plan.tasks.map((t) => t.id)).toEqual([])

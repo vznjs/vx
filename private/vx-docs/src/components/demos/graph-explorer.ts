@@ -1,5 +1,5 @@
 // `<vx-graph-explorer>`: enhances `GraphExplorer.astro`. The reader pastes
-// or opens a `vx run … --dry=json` plan; the element names one task's
+// or opens a `vx run … --dry --format json` plan; the element names one task's
 // predicted status, what it waits on and what waits on it, and, given a
 // second task, the chain of edges between them. Nothing is sent anywhere.
 import {

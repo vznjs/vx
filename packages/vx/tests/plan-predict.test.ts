@@ -247,7 +247,7 @@ describe('plan() — cache-status prediction', () => {
     // The group is never probed — it has no exec and no cache block, so a
     // probe would be a wasted round-trip on the remote layer.
     expect(cache.probes).not.toContain('h:a#ci')
-    // `deps` is what `--dry=json` lists as each task's edges.
+    // `deps` is what `--dry --format json` lists as each task's edges.
     expect(p.tasks.find((t) => t.node.id === 'a#ci')!.deps).toEqual([
       'a#warm',
       'a#remote',

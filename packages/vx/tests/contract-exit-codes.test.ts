@@ -23,7 +23,7 @@ const CASES: ReadonlyArray<readonly [string, readonly string[]]> = [
   ['run: a task no project declares', ['run', 'nope', '--all']],
   ['run: an unknown flag', ['run', 'build', '--no-such-flag']],
   ['run: nothing affected since the ref', ['run', 'build', '--affected=HEAD']],
-  ['run: --dry=json', ['run', 'build', '--all', '--dry=json']],
+  ['run: --dry --format json', ['run', 'build', '--all', '--dry', '--format', 'json']],
   ['an unknown verb', ['no-such-verb']],
   ['watch: a rejected flag', ['watch', 'build', '--all', '--dry']],
   ['watch: nothing affected since the ref', ['watch', 'build', '--affected=HEAD']],

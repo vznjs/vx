@@ -29,7 +29,7 @@ vx last --format json               # the last run's result as JSON
 The exit code is the verdict: `0` every task passed or hit the cache, `1` a
 task failed or was skipped, or the command was refused. `vx last --format
 json` prints the run as JSON afterwards, a row per task. A refusal under
-`--format json` (or `--dry=json`) is one line on stdout,
+`--format json` is one line on stdout,
 `{"ok":false,"error":{"code","message","docs"}}`: branch on `code`;
 `docs` (or `vx docs <code>`) says what to do.
 Without a TTY a missing task name never prompts: vx exits 1 and lists the
@@ -57,10 +57,10 @@ One forwarded argument list reaches one task:
 ```sh
 vx show --format json                          # projects and their tasks
 vx show app --format json                      # one project's tasks as a run reads them
-vx run test --affected=origin/main --dry=json  # what would run, cache hit or miss, and why
+vx run test --affected=origin/main --dry --format json  # what would run, cache hit or miss, and why
 ```
 
-Under `--affected`, `--dry=json` states `affectedBase` (the ref it diffed
+Under `--affected`, `--dry --format json` states `affectedBase` (the ref it diffed
 against; name one, `--affected=origin/main`, rather than trust the guess)
 and each task you asked for carries `affected` (a dependency it pulls in
 does not):

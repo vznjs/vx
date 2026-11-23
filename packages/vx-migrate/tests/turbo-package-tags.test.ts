@@ -26,7 +26,7 @@ it("`--filter tag:` selects by a package's own turbo.json tags", async () => {
   expect(await planned(ws.root, args('ci'))).toEqual(['app#build'])
   // A task's tags and the root's label no package of these.
   for (const tag of ['slow', 'root-only']) {
-    const r = await vx(ws.root, ['run', ...args(tag), '--dry=json'])
+    const r = await vx(ws.root, ['run', ...args(tag), '--dry', '--format', 'json'])
     expect([tag, r.code, r.err]).toEqual([tag, 1, expect.stringContaining(`tag:${tag}`)])
   }
 }, 30_000)

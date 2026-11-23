@@ -724,7 +724,7 @@ describe('orchestrator e2e — restores, groups, streams, plan and records', () 
 
       // The lock still holds `gone`: a run takes its projects from the lock.
       const stale = Bun.spawnSync(
-        [process.execPath, REAL_BIN, 'run', 'build', '--all', '--dry=json'],
+        [process.execPath, REAL_BIN, 'run', 'build', '--all', '--dry', '--format', 'json'],
         { cwd: fixture.root, stderr: 'pipe' },
       )
       expect([stale.exitCode, stale.stderr.toString()]).toEqual([

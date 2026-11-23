@@ -62,7 +62,7 @@ function dry(...args: string[]): string {
 
 describe('vx run --affected --dry says why each requested task was kept', () => {
   it('json: the changed input, the project read whole, the edge chain', () => {
-    const plan = JSON.parse(dry('build', 'lint', '--dry=json')) as {
+    const plan = JSON.parse(dry('build', 'lint', '--dry', '--format', 'json')) as {
       affectedBase?: string
       tasks: Array<{ id: string; affected?: unknown }>
     }
@@ -76,7 +76,7 @@ describe('vx run --affected --dry says why each requested task was kept', () => 
   })
 
   it('json: beside a bare task, one named as pkg#task is kept because it was named', () => {
-    const plan = JSON.parse(dry('lint', 'other#build', '--dry=json')) as {
+    const plan = JSON.parse(dry('lint', 'other#build', '--dry', '--format', 'json')) as {
       tasks: Array<{ id: string; affected?: unknown }>
     }
     expect(Object.fromEntries(plan.tasks.map((t) => [t.id, t.affected]))).toEqual({
@@ -88,7 +88,7 @@ describe('vx run --affected --dry says why each requested task was kept', () => 
   it('json: a group whose dependency is affected is kept, through that edge', () => {
     // A task with no command of its own aggregates its dependencies: with
     // one of them affected, it must be selected too.
-    const plan = JSON.parse(dry('agg', '--dry=json')) as {
+    const plan = JSON.parse(dry('agg', '--dry', '--format', 'json')) as {
       tasks: Array<{ id: string; affected?: { via?: string[] } }>
     }
     expect(plan.tasks.find((t) => t.id === 'app#agg')?.affected?.via).toEqual(['lib#build'])
@@ -96,7 +96,7 @@ describe('vx run --affected --dry says why each requested task was kept', () => 
 
   it('CONTROL: a plan without --affected states no base', () => {
     const p = Bun.spawnSync({
-      cmd: [process.execPath, BIN, 'run', 'build', '--all', '--dry=json'],
+      cmd: [process.execPath, BIN, 'run', 'build', '--all', '--dry', '--format', 'json'],
       cwd: root,
     })
     expect(p.exitCode).toBe(0)
@@ -121,7 +121,7 @@ describe('vx run --affected --dry says why each requested task was kept', () => 
     const stray = path.join(root, 'packages/other/out.txt')
     await writeFile(stray, 'built\n')
     try {
-      const plan = JSON.parse(dry('build', '--dry=json')) as {
+      const plan = JSON.parse(dry('build', '--dry', '--format', 'json')) as {
         tasks: Array<{ id: string; affected?: unknown }>
       }
       expect(plan.tasks.find((t) => t.id === 'other#build')?.affected).toEqual({
@@ -140,7 +140,7 @@ describe('vx run --affected --dry says why each requested task was kept', () => 
     const built = path.join(root, 'packages/gen/dist/o.js')
     await writeFile(built, 'built\n')
     try {
-      const plan = JSON.parse(dry('build', 'test', '--dry=json')) as {
+      const plan = JSON.parse(dry('build', 'test', '--dry', '--format', 'json')) as {
         tasks: Array<{ id: string; affected?: unknown }>
       }
       const reason = { kind: 'project', file: 'packages/gen/dist/o.js' }
@@ -161,7 +161,7 @@ describe('vx run --affected --dry says why each requested task was kept', () => 
     const before = await readFile(committed, 'utf8')
     await writeFile(committed, 'export const changed = 1\n')
     try {
-      const plan = JSON.parse(dry('build', 'test', '--dry=json')) as {
+      const plan = JSON.parse(dry('build', 'test', '--dry', '--format', 'json')) as {
         tasks: Array<{ id: string; affected?: unknown }>
       }
       const kept = Object.fromEntries(plan.tasks.map((t) => [t.id, t.affected]))
@@ -192,7 +192,7 @@ describe('vx run --affected --dry says why each requested task was kept', () => 
     const before = await readFile(ws, 'utf8')
     await writeFile(ws, `${before}// edited\n`)
     try {
-      const plan = JSON.parse(dry('build', '--dry=json')) as {
+      const plan = JSON.parse(dry('build', '--dry', '--format', 'json')) as {
         tasks: Array<{ id: string; affected?: unknown }>
       }
       const reason = { kind: 'workspace', file: '.vx/workspace.mjs' }
@@ -276,7 +276,7 @@ describe("vx run --affected: a path under a task's own outputs, by its workspace
 
   const plan = () =>
     Bun.spawnSync({
-      cmd: [process.execPath, BIN, 'run', 'gen', '--affected=HEAD', '--dry=json'],
+      cmd: [process.execPath, BIN, 'run', 'gen', '--affected=HEAD', '--dry', '--format', 'json'],
       cwd: ws,
       env: { ...process.env, NO_COLOR: '1' },
     })

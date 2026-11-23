@@ -42,7 +42,7 @@ export function lockAt(root: string): void {
 export function affectedRefusal(root: string, task: string): { exitCode: number; stderr: string } {
   lockAt(root)
   const r = Bun.spawnSync({
-    cmd: [process.execPath, CORE_BIN, 'run', task, '--affected=HEAD', '--dry=json'],
+    cmd: [process.execPath, CORE_BIN, 'run', task, '--affected=HEAD', '--dry', '--format', 'json'],
     cwd: root,
     env: { ...process.env, CI: '', GITHUB_ACTIONS: '', NO_COLOR: '1' },
   })
@@ -50,7 +50,7 @@ export function affectedRefusal(root: string, task: string): { exitCode: number;
 }
 
 /**
- * `vx lock`, then `vx run <task> --affected=HEAD --dry=json` through the
+ * `vx lock`, then `vx run <task> --affected=HEAD --dry --format json` through the
  * real CLI: the ids of the tasks the run selected, sorted. An empty
  * selection prints no plan, only its "nothing affected" line. `lock: false`
  * runs on the lock as it is.
@@ -58,7 +58,7 @@ export function affectedRefusal(root: string, task: string): { exitCode: number;
 export function affectedIds(root: string, task: string, opts: { lock?: boolean } = {}): string[] {
   if (opts.lock !== false) lockAt(root)
   const r = Bun.spawnSync({
-    cmd: [process.execPath, CORE_BIN, 'run', task, '--affected=HEAD', '--dry=json'],
+    cmd: [process.execPath, CORE_BIN, 'run', task, '--affected=HEAD', '--dry', '--format', 'json'],
     cwd: root,
     env: { ...process.env, CI: '', GITHUB_ACTIONS: '', NO_COLOR: '1' },
   })

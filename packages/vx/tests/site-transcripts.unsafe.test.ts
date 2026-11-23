@@ -127,10 +127,10 @@ describe('the guides show what vx prints', () => {
     expect(JSON.parse(line)).toEqual(why.diff.entries[0])
   })
 
-  it("the agents page's refusal line is what --dry=json prints", () => {
+  it("the agents page's refusal line is what --dry --format json prints", () => {
     const page = readFileSync(path.join(GUIDES, '..', 'docs', 'agents.mdx'), 'utf8')
     const line = /^\{"ok":false.*\}$/m.exec(page)![0]
-    const run = vx('run', 'biuld', '--all', '--dry=json')
+    const run = vx('run', 'biuld', '--all', '--dry', '--format', 'json')
     expect(run.code).toBe(1)
     expect(run.stdout.trim()).toBe(line)
   })

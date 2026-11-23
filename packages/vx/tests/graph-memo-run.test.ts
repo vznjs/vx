@@ -54,7 +54,7 @@ const vx = (args: string[], env: Record<string, string> = {}, cwd = root): strin
 
 /** `b#build`'s deps as the plan of `args` has them. */
 const depsOfB = (args: string[], env?: Record<string, string>, cwd?: string): string[] => {
-  const plan = JSON.parse(vx(['run', ...args, '--dry=json'], env, cwd)) as {
+  const plan = JSON.parse(vx(['run', ...args, '--dry', '--format', 'json'], env, cwd)) as {
     tasks: { id: string; deps: string[] }[]
   }
   return plan.tasks.find((t) => t.id === 'b#build')!.deps

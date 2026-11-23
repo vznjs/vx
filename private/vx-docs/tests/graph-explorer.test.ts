@@ -1,5 +1,5 @@
 // The graph explorer's model (src/components/demos/model/graph-explorer.ts)
-// over a plan in `vx run … --dry=json`'s shape: the toy monorepo the Learn
+// over a plan in `vx run … --dry --format json`'s shape: the toy monorepo the Learn
 // pages draw (app uses ui and api, both use utils; docs waits on nothing).
 
 import { describe, expect, it } from 'bun:test'

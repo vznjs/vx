@@ -170,7 +170,7 @@ describe('`^task` needs an edge source', () => {
         await addProject(root, 'lib', { config: BUILD })
         gitIn(root)('add', '-A')
         // `vx lock` builds the graph, so it refuses before any run can.
-        const r = await vx(root, ['run', 'build', '--all', '--dry=json'])
+        const r = await vx(root, ['run', 'build', '--all', '--dry', '--format', 'json'])
         expect([r.code, r.err.split('\n')[2]]).toEqual([
           1,
           '  app#build: ^build needs project edges; add pnpm()/bun()/npm()/yarn() and install so its lockfile exists, or a plugin that returns `deps`',
@@ -193,7 +193,7 @@ describe('`^task` needs an edge source', () => {
           config: `export default { tasks: { test: { exec: { command: 'true' } } } }\n`,
         })
         gitIn(root)('add', '-A')
-        const r = await vx(root, ['run', 'app#build', '--dry=json'])
+        const r = await vx(root, ['run', 'app#build', '--dry', '--format', 'json'])
         expect([r.code, r.err.split('\n')[0]]).toEqual([
           1,
           '✗ vx run  app#build: app declares no build, so it is the default build, whose ^build needs project edges; add pnpm()/bun()/npm()/yarn() and install so its lockfile exists, or a plugin that returns `deps`',

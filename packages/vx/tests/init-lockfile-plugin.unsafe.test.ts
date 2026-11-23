@@ -70,7 +70,7 @@ describe('vx init in a JS workspace', () => {
       )
     const lock = await vx(root, ['lock'])
     expect([lock.code, lock.err]).toEqual([0, ''])
-    const dry = await vx(root, ['run', 'build', '--filter', 'app', '--dry=json'])
+    const dry = await vx(root, ['run', 'build', '--filter', 'app', '--dry', '--format', 'json'])
     expect(dry.out).toContain('lib#build')
   })
 

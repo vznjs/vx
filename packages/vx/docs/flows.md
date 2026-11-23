@@ -310,7 +310,7 @@ flowchart LR
     B --> C[local probe: cache.has<br/>remote probe: has existence check<br/>no download, no ingest, no accessed_at bump]
     C --> D{format}
     D -->|--dry| E[human table:<br/>task, hash, predicted hit/miss]
-    D -->|--dry=json| F[machine JSON]
+    D -->|--dry --format json| F[machine JSON]
 ```
 
 Because the plan path and `execute-task` share the same key

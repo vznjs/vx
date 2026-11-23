@@ -691,7 +691,7 @@ deliberate side effect: `inputs.runtime` / `workspaceRuntime`
 probe commands DO run, because predicting a key requires resolving
 them — keep runtime inputs side-effect-free.
 
-- `--dry[=pretty|json]` → pretty (default) or JSON list of predicted
+- `--dry` (`--format pretty|json`) → pretty (default) or JSON list of predicted
   outcomes per task: `hit-local`, `hit-remote`, `miss`, `no-cache`,
   `group`. Formatter: `cli/plan-format.ts:formatPlanText` /
   `formatPlanJson`. When the workspace declares more than one executor,

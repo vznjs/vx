@@ -218,8 +218,9 @@ export function helpText(pluginCommands: readonly string[] = []): string {
     '                                  summary table after the run.',
     '',
     'Planning (for run — skips execution):',
-    "      --dry[=pretty|json]  Print the task graph and each task's predicted hit",
+    "      --dry                Print the task graph and each task's predicted hit",
     '                           or miss.',
+    '      --format <fmt>       With --dry: pretty (default) | json.',
     '',
     'Artifacts (for run):',
     '      --profile[=<path>]    Write Chrome-trace JSON (default profile.json).',
@@ -246,8 +247,8 @@ export function helpText(pluginCommands: readonly string[] = []): string {
     'Watch mode:',
     '  vx watch <task>            Initial run, then re-run on filesystem changes.',
     '                             Uses the same flags as `vx run` except --dry /',
-    '                             --profile / --verbosity (they plan or report one',
-    '                             run), plus --poll (watch.poll: poll instead of',
+    '                             --format / --profile / --verbosity (they plan or',
+    '                             report one run), plus --poll (watch.poll: poll instead of',
     '                             the OS watcher). Press Ctrl+C to stop.',
     '                             Cache means most re-runs are near-zero cost',
     '                             (cache hits restore outputs + replay logs).',
@@ -429,11 +430,8 @@ export function flagHint(verb: string, arg: string): string {
         ? '--filter'
         : undefined
   if (other !== undefined && flags.includes(other)) return ` (did you mean ${other}?)`
-  // `vx run` prints no JSON of its own, and edit distance reached `--force`
-  // from `--format`: a run with its cache reads turned off.
-  if ((name === '--format' || name === '--json') && flags.includes('--dry'))
-    return ' (the run as JSON is `vx last --format json` after it; the plan is --dry=json)'
-  // Watch takes run's flags but --dry, so the branch above missed it.
+  // Watch takes neither --dry nor --format, and edit distance reached
+  // `--force` from `--format`: a run with its cache reads turned off.
   if ((name === '--format' || name === '--json') && verb === 'watch')
     return " (vx watch prints no JSON; each cycle's run is `vx last --format json` after it)"
   // A bare flag handed a value (`--check=yes`) is no edit from itself.
@@ -485,7 +483,12 @@ export function documentedFlags(verb: string, text = helpText()): string[] {
  * The `vx run` flags `vx watch` refuses: each plans or reports ONE run
  * (`watchRefusal` in watch.ts, held to this list by a test).
  */
-export const WATCH_REFUSED_FLAGS: readonly string[] = ['--dry', '--profile', '--verbosity']
+export const WATCH_REFUSED_FLAGS: readonly string[] = [
+  '--dry',
+  '--format',
+  '--profile',
+  '--verbosity',
+]
 
 /** `vx run` flags `vx pipeline` refuses: a pipeline runs every project already. */
 const PIPELINE_REFUSED_FLAGS: readonly string[] = ['--all']
@@ -522,7 +525,7 @@ export function acceptedFlags(verb: string): string[] {
 
 /**
  * A refusal a verb prints itself rather than throws: one line on stderr,
- * exit 1, and under `--format json` / `--dry=json` the same as the error
+ * exit 1, and under `--format json` / `--dry --format json` the same as the error
  * document on stdout that `bin.ts` prints for a thrown one (cli.md § Error
  * codes), so an agent reads a code.
  */

@@ -640,7 +640,7 @@ describe('cli run() end-to-end against a real fixture workspace', () => {
     })
     vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
 
-    const code = await run(['run', '--all', 'hello', '--dry=json'])
+    const code = await run(['run', '--all', 'hello', '--dry', '--format', 'json'])
     expect(code).toBe(0)
     const parsed = JSON.parse(stdout) as { tasks: Array<Record<string, unknown>> }
     expect(parsed.tasks).toHaveLength(1)
@@ -1699,6 +1699,7 @@ describe('parseRunArgs', () => {
       '--fail-fast',
       '--filter',
       '--force',
+      '--format',
       '--no-cache',
       '--output-logs',
       '--profile',
@@ -1926,24 +1927,30 @@ describe('parseRunArgs', () => {
     expect(parseRunArgs(['build', '--verbosity', '-1']).error).toMatch(/--verbosity must be/)
   })
 
-  it('parses --dry and --dry=json / --dry=pretty, the values every --format takes', () => {
+  // M 2026-11-23: a plan as JSON is `--dry --format json`, as on every verb.
+  it('parses --dry and --format pretty | json beside it', () => {
     expect(parseRunArgs(['build', '--dry']).dry).toBe('pretty')
-    expect(parseRunArgs(['build', '--dry=pretty']).dry).toBe('pretty')
-    expect(parseRunArgs(['build', '--dry=json']).dry).toBe('json')
-    expect(parseRunArgs(['build', '--dry=text']).error).toBe(
-      '--dry must be pretty or json (got text)',
+    expect(parseRunArgs(['build', '--dry', '--format', 'pretty']).dry).toBe('pretty')
+    expect(parseRunArgs(['build', '--dry', '--format', 'json']).dry).toBe('json')
+    expect(parseRunArgs(['build', '--format=json', '--dry']).dry).toBe('json')
+    expect(parseRunArgs(['build', '--dry', '--format', 'text']).error).toBe(
+      '--format must be pretty or json (got text)',
     )
   })
 
-  it('rejects invalid --dry=<format>', () => {
-    expect(parseRunArgs(['build', '--dry=yaml']).error).toMatch(
-      /--dry must be pretty or json \(got yaml\)/,
+  it('--format without --dry is refused: a run prints no JSON of its own', () => {
+    expect(parseRunArgs(['build', '--format', 'json']).error).toBe(
+      '--format prints the plan, so it needs --dry (the run as JSON is `vx last --format json` after it)',
     )
+  })
+
+  it('--dry takes no value', () => {
+    expect(parseRunArgs(['build', '--dry=json']).error).toMatch(/^unknown flag: --dry=json/)
   })
 
   it('an empty `=` value is a missing value, not a bad one', () => {
-    expect(parseRunArgs(['build', '--dry=']).error).toBe(
-      '--dry= requires a format: pretty or json; bare --dry prints pretty',
+    expect(parseRunArgs(['build', '--dry', '--format=']).error).toBe(
+      '--format requires a value: pretty or json',
     )
     expect(parseRunArgs(['build', '--verbosity=']).error).toBe(
       '--verbosity requires a value: a non-negative integer',
@@ -2081,11 +2088,10 @@ describe('parseRunArgs', () => {
   // unknown flag like any other, never rewritten or answered with vx's.
   // `vx run build --format json` was told "did you mean --force?": a run
   // with cache reads off, never the JSON the agent asked for.
-  it('--format and --json on a run name where its JSON is, never --force', () => {
-    for (const flag of ['--format', '--json'])
-      expect(parseRunArgs(['build', flag, 'json']).error).toBe(
-        `unknown flag: ${flag} (the run as JSON is \`vx last --format json\` after it; the plan is --dry=json)`,
-      )
+  it('--json on a run names --format json, never --force', () => {
+    expect(parseRunArgs(['build', '--json']).error).toBe(
+      'unknown flag: --json (did you mean --format json?)',
+    )
   })
 
   // `vx watch build --format json` was still told "did you mean --force?":
@@ -2383,12 +2389,12 @@ describe('--fail-fast parsing', () => {
 })
 
 describe('--dry parsing', () => {
-  it('a format written with a space is refused with the = form, not read as a task', () => {
+  it('a format after --dry is refused with --format, not read as a task', () => {
     // `vx run build --dry json` ran with `json` as a second task name and
     // failed with "no projects declare task(s): json" and a hint to re-lock.
     for (const fmt of ['pretty', 'json'] as const) {
       expect(parseRunArgs(['build', '--dry', fmt]).error).toBe(
-        `--dry takes its format with '=': --dry=${fmt}`,
+        `--dry takes no value; the format is --format: --dry --format ${fmt}`,
       )
     }
     // A task name after a bare --dry is still a task name.

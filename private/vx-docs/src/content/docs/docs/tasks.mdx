@@ -124,7 +124,7 @@ A killed task ends `aborted` and saves nothing.
 See what each task waits on and what waits on it, in your own workspace:
 
 ```sh
-vx run build --all --dry=json > plan.json
+vx run build --all --dry --format json > plan.json
 ```
 
 Drop `plan.json` below, or paste it, then type a task. Nothing is uploaded.

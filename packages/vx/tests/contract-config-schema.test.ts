@@ -98,6 +98,7 @@ const LEVEL_TYPES: Record<'workspace' | 'project', Record<string, string[]>> = {
       verbosity: true,
       profile: true,
       dry: true,
+      format: true,
     }),
     run: keys<RunSettings>({
       concurrency: true,

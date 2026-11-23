@@ -78,6 +78,9 @@ const ARGV: Readonly<Record<string, readonly string[]>> = {
 const VERB_ARGV: Readonly<Record<string, readonly string[]>> = {
   'last --branch': ['main', '--stats'],
   'last --follow': ['--live'],
+  // Only the plan has a format.
+  'run --format': ['json', '--dry'],
+  'pipeline --format': ['json', '--dry'],
 }
 
 describe('verbFlags is what each verb accepts', () => {
@@ -157,7 +160,12 @@ describe('verbFlags is what each verb accepts', () => {
       for (const flag of verbFlags(verb)) {
         const values = FLAG_VALUES[flag]
         if (values === undefined) continue
-        const extra = verb === 'cache' ? ['--max-size', '1G'] : []
+        const extra =
+          verb === 'cache'
+            ? ['--max-size', '1G']
+            : flag === '--format' && (verb === 'run' || verb === 'pipeline')
+              ? ['--dry']
+              : []
         for (const v of values) {
           rows++
           for (const argv of [[flag, v], [`${flag}=${v}`]]) {
@@ -175,7 +183,7 @@ describe('verbFlags is what each verb accepts', () => {
   it("watch refuses exactly WATCH_REFUSED_FLAGS among run's flags", () => {
     const refusedByWatch = documentedFlags('run')
       .filter((f) => {
-        const parsed = parseRunArgs(['build', f, ...(ARGV[f] ?? [])])
+        const parsed = parseRunArgs(['build', f, ...(VERB_ARGV[`run ${f}`] ?? ARGV[f] ?? [])])
         expect(parsed.error).toBeUndefined()
         return watchRefusal(parsed) !== null
       })

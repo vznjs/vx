@@ -49,7 +49,7 @@ $ cp node_modules/@vzn/vx/skills/vx/SKILL.md .claude/skills/vx/
 | ----------------------------------------------------- | ----------------------------------------------- |
 | What can I run here?                                  | `vx show --format json`                         |
 | What does this task declare?                          | `vx show app#build --format json`               |
-| What would run, and why?                              | `vx run test --affected=origin/main --dry=json` |
+| What would run, and why?                              | `vx run test --affected=origin/main --dry --format json` |
 | What did the last run do?                             | `vx last --format json`                         |
 | Why did the last run fail?                            | `vx last --failed --format json`                |
 | What did this task print?                             | `vx last --log app#build`                       |

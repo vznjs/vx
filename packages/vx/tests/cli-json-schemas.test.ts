@@ -240,9 +240,9 @@ beforeAll(async () => {
     kept.close()
   }
   json('last', ['--failed'])
-  const dry = vx(['run', 'build', '--filter', 'app...', '--dry=json'])
+  const dry = vx(['run', 'build', '--filter', 'app...', '--dry', '--format', 'json'])
   expect(dry.code).toBe(0)
-  printed.push({ what: 'vx run --dry=json', out: dry.out })
+  printed.push({ what: 'vx run --dry --format json', out: dry.out })
   outputs['plan']!.push(JSON.parse(dry.out))
   // What a workspace with two executors and a remote shows, built by hand:
   // the fields only those plugins provoke.

@@ -214,7 +214,7 @@ If no task name is given:
   (twelve, then `and N more`). Under `--all` it names
   `every project's tasks: …`; under `--filter` or `--affected`,
   `the selected projects' tasks: …`, or why nothing was selected. Outside a workspace it reads `vx run <task>, e.g. vx run build`. A workspace with no task says how to declare one, as the picker does.
-- **Under `--dry=json`**, on a terminal too — the
+- **Under `--dry --format json`**, on a terminal too — the
   same refusal (`a JSON answer opens no picker; …`), with the
   `VX_E_USAGE` error document on stdout: a program cannot pick.
 
@@ -675,7 +675,8 @@ span lines.
 | `--cache-concurrency-upload <n>`           | int (1+)       | `cache.concurrency.upload`, else min(96, max(cores × 3, 64))   | Uploads at once, per remote.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | `--cache-concurrency-restore <n>`          | int (1+)       | `cache.concurrency.restore`, else twice `--concurrency`        | Local hits restoring their outputs at once.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | `--verbosity <n>`                          | int (0+)       | `0`                                                            | `1` or more prints a per-task table (groups left out, painted as the task list on a colour terminal) after the framed blocks, above the footer. `--verbosity=<n>` form too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| `--dry[=pretty\|json]`                     | optional value | off                                                            | Print the task graph + predicted cache hit/miss; skip execution. `VX_DEBUG_TIMING=1` prints the stage table here as it does for a run.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `--dry`                                    | boolean        | off                                                            | Print the task graph + predicted cache hit/miss; skip execution. `VX_DEBUG_TIMING=1` prints the stage table here as it does for a run.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `--format <fmt>`                           | value          | `pretty`                                                       | With `--dry`: `pretty` or `json`, one JSON document on stdout. Without `--dry` it is refused: a run prints no JSON of its own (`vx last --format json` reads it after).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | `--profile[=<path>]`                       | optional value | off (`profile.json` when set)                                  | Write Chrome-trace JSON of the run's wallclock spans. A write that fails is a warning (`vx: failed to write profile: <cause> — the run's verdict stands; …`) and leaves the exit code as the run set it; a directory is refused before the run. See § Run artifacts.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 
 A value flag given twice keeps the last value (`--concurrency=1 --concurrency=2` runs 2), so a flag appended after a script's own overrides it.
@@ -684,6 +685,7 @@ Mutual exclusion:
 
 - `--dry` with `--profile` — the profile needs a real run to write
   about.
+- `--format` without `--dry` — only the plan has a format.
 
 Unknown flags are a parse error (`unknown flag: --foo`), naming the
 nearest flag the verb accepts when one is within two edits on a `fix`
@@ -1283,7 +1285,7 @@ vx run build test --all --dry
 
 The plan is a `Plan` panel on the run's own grid: each task's status and
 cache words as the run would print them (`cached` `local`, `run` `miss`), and
-where it would run under `worker`; the cache key is in `--dry=json`.
+where it would run under `worker`; the cache key is in `--dry --format json`.
 
 **Time prediction.** A would-run task with recorded history shows its
 typical executed duration under `usual` (`~p50` over its recent non-hit
@@ -1334,7 +1336,7 @@ Row legend (the run's own words; the status word's colour carries the outcome):
 
 Group tasks are left out of the panel (they are in the JSON).
 
-`--dry=json` emits the same data as one JSON object on one line, alone on stdout
+`--dry --format json` emits the same data as one JSON object on one line, alone on stdout
 (a stage's warnings go to stderr), and with nothing to run (nothing
 affected) an empty `tasks` list, the note on stderr; `schemas/plan.json`
 is its JSON Schema, held like the read verbs' (see Machine-readable output).
@@ -1398,7 +1400,7 @@ project)`),
 selected its project). `via` is the `dependsOn` chain, nearest first, to
 the task the change reached. A dependency the kept tasks pull in carries
 none. The reasons are gathered only for a plan; a run pays nothing.
-`--dry=json` also states `affectedBase`, the ref the diff was taken
+`--dry --format json` also states `affectedBase`, the ref the diff was taken
 against: a bare `--affected` picks it (a plugin's base, else the base
 branch), so a reason that names no file may come from a commit
 the base reaches, a root `package.json` edit among them.
@@ -1854,6 +1856,8 @@ The following flags are rejected (parser exits 1 before the initial
 run):
 
 - `--dry` — it skips execution; nothing to watch.
+- `--format` — only a plan has one; each cycle's run is
+  `vx last --format json` after it.
 - `--profile` — would overwrite its target per cycle.
 - `--verbosity <n>` (n > 0) — formats
   ONE run's result; a watch loop has no single run to report. (`--verbosity 0`
@@ -1963,7 +1967,7 @@ typed here beats it: `--filter`, `--affected`, `--exclude-dependencies`,
 `--fail-fast`, `--no-cache`, `--force`, `--cache-policy`, `--cache-dir`,
 `--cache-download`, `--cache-concurrency-download`,
 `--cache-concurrency-upload`, `--cache-concurrency-restore`,
-`--output-logs`, `--verbosity`, `--dry`, `--profile`. A flag's `VX_*`
+`--output-logs`, `--verbosity`, `--dry`, `--format`, `--profile`. A flag's `VX_*`
 variable beats the key too. A typed `--cache-policy` (or
 `VX_CACHE_POLICY`) also drops a saved `noCache` and `force`, and a typed
 `--force` a saved `noCache`. A saved `cacheDir` or `profile` stands
@@ -3081,11 +3085,11 @@ closes with those keys, each object the verb prints whole is shown, and
 
 A run's result as JSON is `vx last --format json`, read after the run
 from the run history: one row per task with its status, key and cache
-result. `vx run --dry=json` prints the plan.
+result. `vx run --dry --format json` prints the plan.
 
 ### Error codes
 
-A verb asked for JSON (`--format json`, `--format=json`, `--dry=json`,
+A verb asked for JSON (`--format json`, `--format=json`, `--dry --format json`,
 before any `--`) answers a refusal on stdout too, as one line that
 `schemas/error.json` describes: `{"ok":false,"error":{"code","message","docs"}}`.
 `docs` links the code's section below, which says what to do;
@@ -3305,7 +3309,7 @@ A plugin can give its refusal a code: `new UserError(message, 'MY_CODE')`.
 The code holds whether a hook, `setup` or a verb of the plugin throws it.
 
 **Streams.** A verb whose stdout is a product (a `--format json`
-document, `--dry` / `--dry=json`, a completion
+document, `--dry` / `--dry --format json`, a completion
 script) writes that product alone there; a notice or warning it meets
 on the way (a cache index from another vx version, a plugin's warning) goes
 to stderr, as every refusal does. `vx run`'s stdout is the run's frame,

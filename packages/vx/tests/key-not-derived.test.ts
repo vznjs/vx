@@ -42,7 +42,7 @@ it("--dry exits 1 with the run's error line when a task's key cannot be derived"
   const line = `[vx] app#build: cache key not derived: inputs.runtime probe exited 7: exit 7 (cwd: ${cwd})\n`
   const dry = await vx('run', 'test', '--all', '--dry')
   expect({ code: dry.code, err: dry.err }).toEqual({ code: 1, err: line })
-  const json = await vx('run', 'test', '--all', '--dry=json')
+  const json = await vx('run', 'test', '--all', '--dry', '--format', 'json')
   expect({ code: json.code, err: json.err }).toEqual({ code: 1, err: line })
   // The plan document is still printed whole on stdout.
   expect(

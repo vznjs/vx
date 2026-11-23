@@ -191,7 +191,7 @@ places:
   printed to the right of each `pkg#task` id.
 - The `--dry` text preview — printed on a second indented line under
   the cache-status row.
-- The `--dry=json` output — `description` lives on each task entry.
+- The `--dry --format json` output — `description` lives on each task entry.
 
 ```ts
 test: {
@@ -625,7 +625,7 @@ Semantics:
   server's write grants reach, or any there when the server is not
   sandboxed) is not probed ahead of it, so there the
   server still starts. `vx run --dry` says so: such a server is
-  `not started` (`not-started` in `--dry=json`), not `would exec`.
+  `not started` (`not-started` in `--dry --format json`), not `would exec`.
 - **Exit before ready.** A persistent task that exits 0 before
   `readyWhen` matches is ready: a setup step (migrate, seed) that did its
   work, and its dependants run. One that crashes or exits non-zero first
@@ -2845,7 +2845,10 @@ interface Pipeline {
   verbosity?: number
   /** `--profile`: `true` writes profile.json, a string names the file. */
   profile?: boolean | string
-  dry?: boolean | 'pretty' | 'json'
+  /** `--dry`: plan, run nothing. */
+  dry?: boolean
+  /** `--format`, with `dry`: the plan as `'pretty'` (default) or `'json'`. */
+  format?: 'pretty' | 'json'
 }
 ```
 
@@ -2858,8 +2861,8 @@ interface Pipeline {
 - **Precedence.** A flag typed with `vx pipeline` beats its key, and so
   does the flag's `VX_*` variable; the key beats `.vx/workspace`'s
   setting. A typed `--dry` also drops a saved `profile` (a dry run writes
-  none), and a typed `--profile` a saved `dry`; one pipeline sets only one
-  of the two. A typed `--cache-policy` or its variable drops a saved
+  none), and a typed `--profile` a saved `dry` and `format`; one pipeline
+  sets only one of `dry` and `profile`, and `format` only with `dry: true`. A typed `--cache-policy` or its variable drops a saved
   `noCache` and `force`, and a typed `--force` a saved `noCache`: a run
   applies those over the policy, so the saved key would beat the typed
   flag.

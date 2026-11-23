@@ -1,5 +1,5 @@
 // The graph explorer's model (Product gap 5, 2026-10-13): what the page
-// reads from a pasted `vx run … --dry=json` plan, and the questions it
+// reads from a pasted `vx run … --dry --format json` plan, and the questions it
 // answers. The plan never leaves the browser; this file is pure so
 // tests/graph-explorer.test.ts holds it to a real plan.
 
@@ -19,25 +19,27 @@ export interface Graph {
   criticalPath: string[]
 }
 
-/** Parses a `--dry=json` plan, or says in one line what the text is instead. */
+/** Parses a `--dry --format json` plan, or says in one line what the text is instead. */
 export function parsePlan(text: string): Graph | { error: string } {
   let raw: unknown
   try {
     raw = JSON.parse(text)
   } catch {
-    return { error: 'Not JSON. Paste the output of `vx run <task> --all --dry=json`.' }
+    return { error: 'Not JSON. Paste the output of `vx run <task> --all --dry --format json`.' }
   }
   const plan = raw as { tasks?: unknown; predicted?: { criticalPath?: unknown }; ok?: unknown }
   if (plan.ok === false) {
     return { error: 'That is a vx error, not a plan. Run the command again and fix what it says.' }
   }
   if (!Array.isArray(plan.tasks)) {
-    return { error: 'No "tasks" list. Paste the output of `vx run <task> --all --dry=json`.' }
+    return {
+      error: 'No "tasks" list. Paste the output of `vx run <task> --all --dry --format json`.',
+    }
   }
   const tasks = new Map<string, PlanTask>()
   for (const t of plan.tasks as Partial<PlanTask>[]) {
     if (typeof t.id !== 'string' || !Array.isArray(t.deps)) {
-      return { error: 'A task without "id" or "deps". Is this a `--dry=json` plan?' }
+      return { error: 'A task without "id" or "deps". Is this a `--dry --format json` plan?' }
     }
     tasks.set(t.id, {
       id: t.id,

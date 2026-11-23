@@ -160,7 +160,7 @@ Turbo-aware cache server can transit our blobs unchanged.
 | `--filter` DSL (pnpm shape)                                                        | Turbo + pnpm   | `src/workspace/filter.ts`           |
 | `--concurrency <n>`                                                                | Turbo          | `src/cli/run.ts`                    |
 | `--no-cache` (all off) / `--force` (reads off, writes on) — distinct, not synonyms | Turbo-adjacent | `src/cli/run.ts`                    |
-| `--dry` / `--dry=json` (plan output)                                               | Turbo          | `src/orchestrator/plan.ts`          |
+| `--dry` / `--dry --format json` (plan output)                                      | Turbo          | `src/orchestrator/plan.ts`          |
 | `--profile[=<path>]` (Chrome-trace)                                                | Turbo          | `src/orchestrator/run-artifacts.ts` |
 | `--affected[=<base>]`                                                              | Turbo + Nx     | `src/workspace/affected.ts`         |
 | `watch <task>` subcommand                                                          | Turbo + Nx     | `src/cli/watch.ts`                  |

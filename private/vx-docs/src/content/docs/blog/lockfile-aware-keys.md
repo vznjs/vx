@@ -15,7 +15,7 @@ that can reach the bumped package. Bump `astro` in this repo's
 
 ```sh frame="terminal"
 $ sed -i 's/"astro@7.3.3"/"astro@7.3.4"/' bun.lock
-$ vx run ci --all --dry=json | jq … | diff before -
+$ vx run ci --all --dry --format json | jq … | diff before -
 8 of 151 tasks re-key:
   @vzn/vx-docs#build  #build.images  #ci  #import
   @vzn/vx-docs#lint   #lint.oxfmt    #lint.oxlint  #test

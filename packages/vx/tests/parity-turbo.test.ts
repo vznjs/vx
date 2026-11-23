@@ -86,7 +86,7 @@ describe('Turbo parity — task graph (turbo.json `dependsOn`)', () => {
   )
 
   it(
-    '`--dry=json` lists every task with its hash and predicted cache status, and executes nothing',
+    '`--dry --format json` lists every task with its hash and predicted cache status, and executes nothing',
     async () => {
       const tasks = await dry(root, ['build', '--all'])
       for (const t of tasks) {
@@ -566,7 +566,9 @@ describe('Turbo parity — a directory filter run from a subdirectory', () => {
           'lint',
           '--filter',
           './packages/apps/*',
-          '--dry=json',
+          '--dry',
+          '--format',
+          'json',
         ])
         expect(r.code).toBe(0)
         return (JSON.parse(r.out) as { tasks: { id: string }[] }).tasks.map((t) => t.id).sort()
@@ -580,7 +582,9 @@ describe('Turbo parity — a directory filter run from a subdirectory', () => {
         'lint',
         '--filter',
         './packages/apps',
-        '--dry=json',
+        '--dry',
+        '--format',
+        'json',
       ])
       expect((JSON.parse(own.out) as { tasks: { id: string }[] }).tasks.map((t) => t.id)).toEqual([
         'apps#lint',

@@ -245,8 +245,8 @@ If `--dry` is set:
 1. `planRun(opts)` — same setup as `run` but stops before the
    scheduler.
 2. Pick a formatter from `cli/plan-format.ts`:
-   - `--dry=json` → `formatPlanJson(plan, affectedBase)` → stdout.
-   - `--dry=pretty` (default) → `formatPlanText(plan)` → stdout.
+   - `--dry --format json` → `formatPlanJson(plan, affectedBase)` → stdout.
+   - `--dry` (`--format pretty`, the default) → `formatPlanText(plan)` → stdout.
 3. A requested name that matched no project (`plan.unresolvedTasks`),
    or an empty plan → exits 1 with `no projects declare task(s): …`
    (plus `Did you mean <task>?` when a declared task, or for `pkg#task`
@@ -1245,7 +1245,7 @@ hit's download size under `outputs`, how many tasks are downstream of
 it under `blocks` (as the run counts them), and where it would run
 under `worker`. A `description` or an `--affected` reason rides the row, dim,
 after the id. Painted when `c` is enabled (the run passes stdout's);
-left out, the words are plain. The cache key is in `--dry=json`.
+left out, the words are plain. The cache key is in `--dry --format json`.
 
 ```
   Plan 4    status  cache      usual    time   cpu    mem outputs  blocks worker         task
@@ -1320,7 +1320,7 @@ states it and `tests/cli-json-schemas.test.ts` holds it:
 has them. The object enumerates its fields on purpose — the plan's
 internal shape is not the wire — so a new `PlannedTask` field is not on
 the wire until it is added here. For tooling —
-`vx run <task> --dry=json | jq …`.
+`vx run <task> --dry --format json | jq …`.
 
 ### Tests
 

@@ -2190,7 +2190,7 @@ export async function planRun(options: RunOptions): Promise<RunPlan> {
 /** `planRun` as vx's CLI calls it, with its hand-off. */
 export async function planCore(options: CoreRunOptions): Promise<RunPlan> {
   refuseRunOptions(options)
-  // The plan is the product and goes to stdout (`--dry=json` is parsed): what a
+  // The plan is the product and goes to stdout (`--dry --format json` is parsed): what a
   // stage says on the way goes to stderr.
   const log = options.log ?? defaultLogger(undefined, undefined, process.stderr)
   const reasons = new Map<string, AffectedReason>()

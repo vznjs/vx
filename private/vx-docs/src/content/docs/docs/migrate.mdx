@@ -240,7 +240,7 @@ To drop Nx, rewrite each one as the command it wraps: `jest`,
 | `nx build app`                       | `vx run app#build`                                        |
 | `nx run app:build:production`        | `vx run app#build:production`                             |
 | `nx affected -t test`                | `vx run test --affected` (`nx()` takes `NX_BASE` or `defaultBase` as its base) |
-| `nx graph`                           | `vx run build --all --dry=json` (tasks and their deps), and the [graph explorer](../graph-explorer/) |
+| `nx graph`                           | `vx run build --all --dry --format json` (tasks and their deps), and the [graph explorer](../graph-explorer/) |
 | `nx reset`                           | `vx cache clean` clears it all; `--older-than <age>` trims it; there is no daemon |
 | Nx Cloud cache                       | [`nxCache()`](../../docs/remote-cache/) for a self-hosted Nx cache |
 

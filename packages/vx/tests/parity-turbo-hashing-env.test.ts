@@ -63,7 +63,7 @@ describe('Turbo parity — no git (turborepo-scm manual)', () => {
         { git: false },
       )
       try {
-        const r = await vx(root, ['run', 'lib#t', '--dry=json'])
+        const r = await vx(root, ['run', 'lib#t', '--dry', '--format', 'json'])
         expect(r.code).not.toBe(0)
         expect(r.err).toContain('not inside a git work tree')
       } finally {
@@ -149,7 +149,7 @@ describe('Turbo parity — env (turborepo-env)', () => {
         lib: { config: config("{ files: [], env: ['FOO*'] }") },
       })
       try {
-        const r = await vx(own, ['run', 'lib#t', '--dry=json'])
+        const r = await vx(own, ['run', 'lib#t', '--dry', '--format', 'json'])
         expect(r.code).not.toBe(0)
         expect(r.out + r.err).toContain('FOO*')
       } finally {
@@ -162,7 +162,9 @@ describe('Turbo parity — env (turborepo-env)', () => {
   it(
     '`test_task_hash_debug_env_vars_exclude_values` — the plan shows no env value',
     async () => {
-      const r = await vx(root, ['run', 'lib#t', '--dry=json'], { MODE: 'sekrit-value-123' })
+      const r = await vx(root, ['run', 'lib#t', '--dry', '--format', 'json'], {
+        MODE: 'sekrit-value-123',
+      })
       expect(r.code).toBe(0)
       expect(r.out + r.err).not.toContain('sekrit-value-123')
     },

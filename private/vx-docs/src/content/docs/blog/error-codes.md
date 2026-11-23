@@ -14,7 +14,7 @@ script or agent checks the code, so it never breaks when the wording
 changes.
 
 ```sh frame="terminal"
-$ vx run biuld --all --dry=json
+$ vx run biuld --all --dry --format json
 {"ok":false,"error":{"code":"VX_E_UNKNOWN_TASK","message":"vx run: no projects declare task(s): biuld. Did you mean build?","docs":"https://vznjs.github.io/vx/cli/#vx_e_unknown_task"}}
 ```
 

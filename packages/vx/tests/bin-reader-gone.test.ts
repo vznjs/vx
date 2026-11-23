@@ -87,7 +87,7 @@ describe('bin.ts: a reader that leaves does not fail the run', () => {
     'info',
     '--version',
     'help',
-    'run first --all --dry=json',
+    'run first --all --dry --format json',
   ])(
     '`vx %s` into a reader already gone exits 0 and says nothing',
     (args) => {

@@ -77,7 +77,16 @@ it('the run selects what its key re-hashes', async () => {
   git('update-index', '--assume-unchanged', 'packages/a/src/index.js')
   await writeFile(file('a'), 'export const x = 1\n')
   const p = Bun.spawnSync({
-    cmd: [process.execPath, CORE_BIN, 'run', 'build', '--affected=HEAD', '--dry=json'],
+    cmd: [
+      process.execPath,
+      CORE_BIN,
+      'run',
+      'build',
+      '--affected=HEAD',
+      '--dry',
+      '--format',
+      'json',
+    ],
     cwd: root,
     env: { ...process.env, NO_COLOR: '1' },
   })

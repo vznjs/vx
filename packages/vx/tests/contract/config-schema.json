@@ -54,6 +54,7 @@
         "failFast",
         "filter",
         "force",
+        "format",
         "noCache",
         "outputLogs",
         "profile",
@@ -2800,7 +2801,7 @@
         "$CONFIG: `pipelines.pr.tasks` must be a non-empty array of task names, like ['lint', 'test']": [
           "{}"
         ],
-        "$CONFIG: `pipelines.pr` has unknown field \"x\" (allowed: affected, branch, cacheConcurrencyDownload, cacheConcurrencyRestore, cacheConcurrencyUpload, cacheDir, cacheDownload, cachePolicy, concurrency, dry, env, excludeDependencies, failFast, filter, force, noCache, outputLogs, profile, retries, schedule, tasks, timeout, verbosity)": [
+        "$CONFIG: `pipelines.pr` has unknown field \"x\" (allowed: affected, branch, cacheConcurrencyDownload, cacheConcurrencyRestore, cacheConcurrencyUpload, cacheDir, cacheDownload, cachePolicy, concurrency, dry, env, excludeDependencies, failFast, filter, force, format, noCache, outputLogs, profile, retries, schedule, tasks, timeout, verbosity)": [
           "{\"x\":\"y\"}"
         ]
       },
@@ -2829,18 +2830,21 @@
           "{}",
           "{\"x\":\"y\"}"
         ],
-        "ok": [
-          "[\"x\"]",
-          "[\"/x\"]",
-          "[\"!/x\"]",
-          "[\"../x\"]",
-          "[\"!x\"]",
-          "[\"!!x\",\"y\"]",
-          "[\".\"]",
-          "[\"**\"]",
-          "[\"A=B\"]",
-          "[\"A*\"]",
-          "[\"lint\"]"
+        "ok": ["[\"x\"]", "[\"/x\"]", "[\"../x\"]", "[\".\"]", "[\"A=B\"]", "[\"lint\"]"],
+        "$CONFIG: `pipelines.pr.tasks` names \"!/x\": it starts with '!', which names dependencies' tasks or negates; name a task, or 'pkg#task'": [
+          "[\"!/x\"]"
+        ],
+        "$CONFIG: `pipelines.pr.tasks` names \"!x\": it starts with '!', which names dependencies' tasks or negates; name a task, or 'pkg#task'": [
+          "[\"!x\"]"
+        ],
+        "$CONFIG: `pipelines.pr.tasks` names \"!!x\": it starts with '!', which names dependencies' tasks or negates; name a task, or 'pkg#task'": [
+          "[\"!!x\",\"y\"]"
+        ],
+        "$CONFIG: `pipelines.pr.tasks` names \"**\": it holds '*', which makes it a pattern; name a task, or 'pkg#task'": [
+          "[\"**\"]"
+        ],
+        "$CONFIG: `pipelines.pr.tasks` names \"A*\": it holds '*', which makes it a pattern; name a task, or 'pkg#task'": [
+          "[\"A*\"]"
         ]
       },
       "pipelines.*.filter": {
@@ -4316,75 +4320,37 @@
       },
       "pipelines.*.dry": {
         "ok": ["<absent>", "true", "false"],
-        "$CONFIG: `pipelines.pr.dry` must be true, false, 'pretty' or 'json' (got null)": ["null"],
-        "$CONFIG: `pipelines.pr.dry` must be true, false, 'pretty' or 'json' (got 0)": ["0"],
-        "$CONFIG: `pipelines.pr.dry` must be true, false, 'pretty' or 'json' (got 1)": ["1"],
-        "$CONFIG: `pipelines.pr.dry` must be true, false, 'pretty' or 'json' (got 1.5)": ["1.5"],
-        "$CONFIG: `pipelines.pr.dry` must be true, false, 'pretty' or 'json' (got -1)": ["-1"],
-        "$CONFIG: `pipelines.pr.dry` must be true, false, 'pretty' or 'json' (got 65536)": [
-          "65536"
-        ],
-        "$CONFIG: `pipelines.pr.dry` must be true, false, 'pretty' or 'json' (got 2147483648)": [
-          "2147483648"
-        ],
-        "$CONFIG: `pipelines.pr.dry` must be true, false, 'pretty' or 'json' (got \"\")": ["\"\""],
-        "$CONFIG: `pipelines.pr.dry` must be true, false, 'pretty' or 'json' (got \"x\")": [
-          "\"x\""
-        ],
-        "$CONFIG: `pipelines.pr.dry` must be true, false, 'pretty' or 'json' (got \"(\")": [
-          "\"(\""
-        ],
-        "$CONFIG: `pipelines.pr.dry` must be true, false, 'pretty' or 'json' (got \"30d\")": [
-          "\"30d\""
-        ],
-        "$CONFIG: `pipelines.pr.dry` must be true, false, 'pretty' or 'json' (got \"10G\")": [
-          "\"10G\""
-        ],
-        "$CONFIG: `pipelines.pr.dry` must be true, false, 'pretty' or 'json' (got \"10\")": [
-          "\"10\""
-        ],
-        "$CONFIG: `pipelines.pr.dry` must be true, false, 'pretty' or 'json' (got [])": ["[]"],
-        "$CONFIG: `pipelines.pr.dry` must be true, false, 'pretty' or 'json' (got [\"x\"])": [
-          "[\"x\"]"
-        ],
-        "$CONFIG: `pipelines.pr.dry` must be true, false, 'pretty' or 'json' (got [\"\"])": [
-          "[\"\"]"
-        ],
-        "$CONFIG: `pipelines.pr.dry` must be true, false, 'pretty' or 'json' (got [1])": ["[1]"],
-        "$CONFIG: `pipelines.pr.dry` must be true, false, 'pretty' or 'json' (got [3000])": [
-          "[3000]"
-        ],
-        "$CONFIG: `pipelines.pr.dry` must be true, false, 'pretty' or 'json' (got [\"/x\"])": [
-          "[\"/x\"]"
-        ],
-        "$CONFIG: `pipelines.pr.dry` must be true, false, 'pretty' or 'json' (got [\"!/x\"])": [
-          "[\"!/x\"]"
-        ],
-        "$CONFIG: `pipelines.pr.dry` must be true, false, 'pretty' or 'json' (got [\"../x\"])": [
-          "[\"../x\"]"
-        ],
-        "$CONFIG: `pipelines.pr.dry` must be true, false, 'pretty' or 'json' (got [\"!x\"])": [
-          "[\"!x\"]"
-        ],
-        "$CONFIG: `pipelines.pr.dry` must be true, false, 'pretty' or 'json' (got [\"!!x\",\"y\"])": [
+        "$CONFIG: `pipelines.pr.dry` must be true or false (got null)": ["null"],
+        "$CONFIG: `pipelines.pr.dry` must be true or false (got 0)": ["0"],
+        "$CONFIG: `pipelines.pr.dry` must be true or false (got 1)": ["1"],
+        "$CONFIG: `pipelines.pr.dry` must be true or false (got 1.5)": ["1.5"],
+        "$CONFIG: `pipelines.pr.dry` must be true or false (got -1)": ["-1"],
+        "$CONFIG: `pipelines.pr.dry` must be true or false (got 65536)": ["65536"],
+        "$CONFIG: `pipelines.pr.dry` must be true or false (got 2147483648)": ["2147483648"],
+        "$CONFIG: `pipelines.pr.dry` must be true or false (got \"\")": ["\"\""],
+        "$CONFIG: `pipelines.pr.dry` must be true or false (got \"x\")": ["\"x\""],
+        "$CONFIG: `pipelines.pr.dry` must be true or false (got \"(\")": ["\"(\""],
+        "$CONFIG: `pipelines.pr.dry` must be true or false (got \"30d\")": ["\"30d\""],
+        "$CONFIG: `pipelines.pr.dry` must be true or false (got \"10G\")": ["\"10G\""],
+        "$CONFIG: `pipelines.pr.dry` must be true or false (got \"10\")": ["\"10\""],
+        "$CONFIG: `pipelines.pr.dry` must be true or false (got [])": ["[]"],
+        "$CONFIG: `pipelines.pr.dry` must be true or false (got [\"x\"])": ["[\"x\"]"],
+        "$CONFIG: `pipelines.pr.dry` must be true or false (got [\"\"])": ["[\"\"]"],
+        "$CONFIG: `pipelines.pr.dry` must be true or false (got [1])": ["[1]"],
+        "$CONFIG: `pipelines.pr.dry` must be true or false (got [3000])": ["[3000]"],
+        "$CONFIG: `pipelines.pr.dry` must be true or false (got [\"/x\"])": ["[\"/x\"]"],
+        "$CONFIG: `pipelines.pr.dry` must be true or false (got [\"!/x\"])": ["[\"!/x\"]"],
+        "$CONFIG: `pipelines.pr.dry` must be true or false (got [\"../x\"])": ["[\"../x\"]"],
+        "$CONFIG: `pipelines.pr.dry` must be true or false (got [\"!x\"])": ["[\"!x\"]"],
+        "$CONFIG: `pipelines.pr.dry` must be true or false (got [\"!!x\",\"y\"])": [
           "[\"!!x\",\"y\"]"
         ],
-        "$CONFIG: `pipelines.pr.dry` must be true, false, 'pretty' or 'json' (got [\".\"])": [
-          "[\".\"]"
-        ],
-        "$CONFIG: `pipelines.pr.dry` must be true, false, 'pretty' or 'json' (got [\"**\"])": [
-          "[\"**\"]"
-        ],
-        "$CONFIG: `pipelines.pr.dry` must be true, false, 'pretty' or 'json' (got [\"A=B\"])": [
-          "[\"A=B\"]"
-        ],
-        "$CONFIG: `pipelines.pr.dry` must be true, false, 'pretty' or 'json' (got [\"A*\"])": [
-          "[\"A*\"]"
-        ],
-        "$CONFIG: `pipelines.pr.dry` must be true, false, 'pretty' or 'json' (got {})": ["{}"],
-        "$CONFIG: `pipelines.pr.dry` must be true, false, 'pretty' or 'json' (got {\"x\":\"y\"})": [
-          "{\"x\":\"y\"}"
-        ]
+        "$CONFIG: `pipelines.pr.dry` must be true or false (got [\".\"])": ["[\".\"]"],
+        "$CONFIG: `pipelines.pr.dry` must be true or false (got [\"**\"])": ["[\"**\"]"],
+        "$CONFIG: `pipelines.pr.dry` must be true or false (got [\"A=B\"])": ["[\"A=B\"]"],
+        "$CONFIG: `pipelines.pr.dry` must be true or false (got [\"A*\"])": ["[\"A*\"]"],
+        "$CONFIG: `pipelines.pr.dry` must be true or false (got {})": ["{}"],
+        "$CONFIG: `pipelines.pr.dry` must be true or false (got {\"x\":\"y\"})": ["{\"x\":\"y\"}"]
       },
       "plugins": {
         "ok": ["<absent>", "[]"],
@@ -4421,6 +4387,46 @@
           "[\"A*\"]"
         ],
         "$CONFIG: `plugins[0]` must be an object": ["[1]", "[3000]"]
+      },
+      "pipelines.*.format": {
+        "ok": ["<absent>"],
+        "$CONFIG: `pipelines.pr.format` must be 'pretty' or 'json' (got null)": ["null"],
+        "$CONFIG: `pipelines.pr.format` must be 'pretty' or 'json' (got true)": ["true"],
+        "$CONFIG: `pipelines.pr.format` must be 'pretty' or 'json' (got false)": ["false"],
+        "$CONFIG: `pipelines.pr.format` must be 'pretty' or 'json' (got 0)": ["0"],
+        "$CONFIG: `pipelines.pr.format` must be 'pretty' or 'json' (got 1)": ["1"],
+        "$CONFIG: `pipelines.pr.format` must be 'pretty' or 'json' (got 1.5)": ["1.5"],
+        "$CONFIG: `pipelines.pr.format` must be 'pretty' or 'json' (got -1)": ["-1"],
+        "$CONFIG: `pipelines.pr.format` must be 'pretty' or 'json' (got 65536)": ["65536"],
+        "$CONFIG: `pipelines.pr.format` must be 'pretty' or 'json' (got 2147483648)": [
+          "2147483648"
+        ],
+        "$CONFIG: `pipelines.pr.format` must be 'pretty' or 'json' (got \"\")": ["\"\""],
+        "$CONFIG: `pipelines.pr.format` must be 'pretty' or 'json' (got \"x\")": ["\"x\""],
+        "$CONFIG: `pipelines.pr.format` must be 'pretty' or 'json' (got \"(\")": ["\"(\""],
+        "$CONFIG: `pipelines.pr.format` must be 'pretty' or 'json' (got \"30d\")": ["\"30d\""],
+        "$CONFIG: `pipelines.pr.format` must be 'pretty' or 'json' (got \"10G\")": ["\"10G\""],
+        "$CONFIG: `pipelines.pr.format` must be 'pretty' or 'json' (got \"10\")": ["\"10\""],
+        "$CONFIG: `pipelines.pr.format` must be 'pretty' or 'json' (got [])": ["[]"],
+        "$CONFIG: `pipelines.pr.format` must be 'pretty' or 'json' (got [\"x\"])": ["[\"x\"]"],
+        "$CONFIG: `pipelines.pr.format` must be 'pretty' or 'json' (got [\"\"])": ["[\"\"]"],
+        "$CONFIG: `pipelines.pr.format` must be 'pretty' or 'json' (got [1])": ["[1]"],
+        "$CONFIG: `pipelines.pr.format` must be 'pretty' or 'json' (got [3000])": ["[3000]"],
+        "$CONFIG: `pipelines.pr.format` must be 'pretty' or 'json' (got [\"/x\"])": ["[\"/x\"]"],
+        "$CONFIG: `pipelines.pr.format` must be 'pretty' or 'json' (got [\"!/x\"])": ["[\"!/x\"]"],
+        "$CONFIG: `pipelines.pr.format` must be 'pretty' or 'json' (got [\"../x\"])": [
+          "[\"../x\"]"
+        ],
+        "$CONFIG: `pipelines.pr.format` must be 'pretty' or 'json' (got [\"!x\"])": ["[\"!x\"]"],
+        "$CONFIG: `pipelines.pr.format` must be 'pretty' or 'json' (got [\"!!x\",\"y\"])": [
+          "[\"!!x\",\"y\"]"
+        ],
+        "$CONFIG: `pipelines.pr.format` must be 'pretty' or 'json' (got [\".\"])": ["[\".\"]"],
+        "$CONFIG: `pipelines.pr.format` must be 'pretty' or 'json' (got [\"**\"])": ["[\"**\"]"],
+        "$CONFIG: `pipelines.pr.format` must be 'pretty' or 'json' (got [\"A=B\"])": ["[\"A=B\"]"],
+        "$CONFIG: `pipelines.pr.format` must be 'pretty' or 'json' (got [\"A*\"])": ["[\"A*\"]"],
+        "$CONFIG: `pipelines.pr.format` must be 'pretty' or 'json' (got {})": ["{}"],
+        "$CONFIG: `pipelines.pr.format` must be 'pretty' or 'json' (got {\"x\":\"y\"})": ["<seed>"]
       }
     },
     "keys": {

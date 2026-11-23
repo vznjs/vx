@@ -375,8 +375,12 @@ function validatePipelines(value: unknown, configPath: string): void {
             throw bad('true, false or a file path')
           break
         case 'dry':
-          if (typeof v !== 'boolean' && v !== 'pretty' && v !== 'json')
-            throw bad("true, false, 'pretty' or 'json'")
+          if (typeof v !== 'boolean') throw bad('true or false')
+          break
+        case 'format':
+          if (v !== 'pretty' && v !== 'json') throw bad("'pretty' or 'json'")
+          if (p['dry'] !== true)
+            throw new UserError(`${where} formats the plan, so it needs dry: true`)
           break
       }
     }

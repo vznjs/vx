@@ -82,7 +82,7 @@ it('--affected spawns merge-base and the whole-tree walk once, and calls no disc
     { mode: 0o755 },
   )
   const p = Bun.spawnSync({
-    cmd: [process.execPath, BIN, 'run', 'build', '--affected=main', '--dry=json'],
+    cmd: [process.execPath, BIN, 'run', 'build', '--affected=main', '--dry', '--format', 'json'],
     cwd: root,
     stdout: 'pipe',
     stderr: 'pipe',

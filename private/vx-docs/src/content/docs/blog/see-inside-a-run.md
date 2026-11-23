@@ -16,7 +16,7 @@ script or agent can use.
 | ------------------------- | --------------------------------- |
 | Why does this task run?   | `vx run --affected=HEAD --dry`    |
 | What did the run do?      | `vx last --format json`           |
-| What depends on what?     | `vx run --dry=json`               |
+| What depends on what?     | `vx run --dry --format json`               |
 | Where did vx spend time?  | `VX_DEBUG_TIMING=1 vx run`        |
 
 ## Why a task runs
@@ -51,7 +51,7 @@ $ vx last --format json | jq -c '.tasks[0] | {project, task, status, durationMs,
 ## What depends on what
 
 ```sh frame="terminal"
-$ vx run build --all --dry=json \
+$ vx run build --all --dry --format json \
     | jq -r '"digraph G {", (.tasks[] | .id as $t | .deps[] | "  \"\(.)\" -> \"\($t)\""), "}"'
 digraph G {
   "packages/a#build" -> "packages/c#build"

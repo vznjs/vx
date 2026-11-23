@@ -51,10 +51,10 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true })
 })
 
-/** The `--dry=json` plan of `vx run lint <args>`: each task id and its key. */
+/** The `--dry --format json` plan of `vx run lint <args>`: each task id and its key. */
 function plan(...args: string[]): Map<string, string> {
   const p = Bun.spawnSync({
-    cmd: ['bun', CLI, 'run', 'lint', ...args, '--dry=json'],
+    cmd: ['bun', CLI, 'run', 'lint', ...args, '--dry', '--format', 'json'],
     cwd: root,
     stdout: 'pipe',
     stderr: 'pipe',

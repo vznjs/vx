@@ -1038,7 +1038,7 @@ export function refusal(parts: RefusalParts, opts?: { code?; message? }): UserEr
 export function isUserError(err: unknown): err is UserError // by name, across a copy boundary (below)
 export function errorCode(err: unknown): string // the stable code of anything bin.ts catches
 export function thrownMessage(err: unknown): string // what any thrown value says; never throws
-export function wantsJson(argv: readonly string[]): boolean // --format json, --format=json, --dry=json, before `--`
+export function wantsJson(argv: readonly string[]): boolean // --format json, --format=json, --dry --format json, before `--`
 export function errorDocument(code: string, message: string): string // `{"ok":false,"error":{code,message}}` + newline
 
 // The environment's refusals, reported like a UserError — one line naming the path, never a stack:

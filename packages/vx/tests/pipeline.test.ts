@@ -45,6 +45,12 @@ describe('pipelines in .vx/workspace', () => {
     )
     expect(refusal({ pr: { tasks: ['a'], env: { A: 1 } } })).toContain('`pipelines.pr.env`')
     expect(refusal({ pr: { tasks: ['a'], dry: 'yaml' } })).toContain('`pipelines.pr.dry`')
+    // M 2026-11-23: the plan's format is its own key, as `--format` is.
+    expect(refusal({ pr: { tasks: ['a'], dry: 'json' } })).toContain('`pipelines.pr.dry`')
+    expect(refusal({ pr: { tasks: ['a'], dry: true, format: 'json' } })).toBeUndefined()
+    expect(refusal({ pr: { tasks: ['a'], format: 'json' } })).toBe(
+      'ws.ts: `pipelines.pr.format` formats the plan, so it needs dry: true',
+    )
     expect(refusal({ pr: { tasks: ['a'], dry: true, profile: true } })).toBe(
       'ws.ts: `pipelines.pr` sets dry and profile: a dry run writes no profile; drop one',
     )
@@ -119,6 +125,9 @@ describe('pipelines in .vx/workspace', () => {
     // A typed --dry previews it: the saved profile needs a real run.
     expect(pipelineRunArgs({ tasks: ['a'], profile: true }, ['--dry'], {})).toEqual(['a', '--all'])
     expect(pipelineRunArgs({ tasks: ['a'], dry: true }, ['--profile'], {})).toEqual(['a', '--all'])
+    const plan: Pipeline = { tasks: ['a'], dry: true, format: 'json' }
+    expect(pipelineRunArgs(plan, [], {})).toEqual(['a', '--all', '--dry', '--format=json'])
+    expect(pipelineRunArgs(plan, ['--profile'], {})).toEqual(['a', '--all'])
     // A run applies --no-cache over every cache policy and --force over the
     // policy's reads, so a typed policy or --force (or the policy's variable)
     // stands in for a saved noCache, and a typed policy for a saved force.
@@ -179,7 +188,7 @@ describe('vx pipeline <name>', () => {
     return { code, out, err }
   }
   const planned = async (...args: string[]): Promise<string[]> => {
-    const r = await vx('pipeline', ...args, '--dry=json')
+    const r = await vx('pipeline', ...args, '--dry', '--format', 'json')
     expect(r.err).toBe('')
     return (JSON.parse(r.out) as { tasks: { id: string }[] }).tasks.map((t) => t.id).sort()
   }
@@ -287,7 +296,7 @@ describe('vx pipeline <name>', () => {
     process.env['VX_CACHE_DIR'] = path.join(root, 'own-cache')
     try {
       expect((await vx('pipeline', 'own')).code).toBe(0)
-      const r = await vx('pipeline', 'own', '--dry=json')
+      const r = await vx('pipeline', 'own', '--dry', '--format', 'json')
       expect(r.err).toBe('')
       const plan = JSON.parse(r.out) as { tasks: { cacheStatus: string }[] }
       expect(plan.tasks.map((t) => t.cacheStatus)).toEqual(['no-cache'])

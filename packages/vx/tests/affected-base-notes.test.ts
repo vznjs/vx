@@ -139,7 +139,7 @@ describe('--affected with no value, in the clone shapes CI produces', () => {
     git(root, 'commit', '-q', '-m', 'two')
     git(root, 'update-ref', 'refs/remotes/origin/feat', 'HEAD')
     const plan = (...args: string[]) => {
-      const r = vx(root, 'run', 'build', ...args, '--dry=json')
+      const r = vx(root, 'run', 'build', ...args, '--dry', '--format', 'json')
       if (r.code !== 0) return `exit ${r.code}: ${r.text}`
       const json = r.text.slice(r.text.indexOf('{'))
       return (JSON.parse(json) as { tasks: { id: string }[] }).tasks.map((t) => t.id)
@@ -175,7 +175,7 @@ describe('--affected with no value, in the clone shapes CI produces', () => {
       `${PLUGIN_IMPORT}export default { plugins: [${edgesSource()}, ${pluginSource('org/ci', "{ config(_w, ctx) { ctx.setBranch({ base: 'HEAD' }) } }")}] }\n`,
     )
     const run = (env: Record<string, string>, ...args: string[]) => {
-      const p = vxSync(root, ['run', 'build', ...args, '--dry=json'], { env })
+      const p = vxSync(root, ['run', 'build', ...args, '--dry', '--format', 'json'], { env })
       const out = p.out
       if (p.code !== 0) return `exit ${p.code}: ${out}${p.err}`
       return JSON.parse(out) as { affectedBase: string; tasks: { id: string }[] }
@@ -216,11 +216,11 @@ describe('--affected with no value, in the clone shapes CI produces', () => {
     expect(r.text).not.toContain('HEAD itself')
   })
 
-  // A script piping `--dry=json` to jq broke exactly when there was
+  // A script piping `--dry --format json` to jq broke exactly when there was
   // nothing to do: stdout was empty (Growth, affected-dry-json-empty.sh).
-  it('--dry=json with nothing to run still prints a plan, the note on stderr', async () => {
+  it('--dry --format json with nothing to run still prints a plan, the note on stderr', async () => {
     const dry = (...args: string[]) => {
-      const p = vxSync(root, ['run', 'build', ...args, '--dry=json'])
+      const p = vxSync(root, ['run', 'build', ...args, '--dry', '--format', 'json'])
       return { code: p.code, stdout: p.out, stderr: p.err }
     }
     await writeFile(path.join(root, 'README.md'), 'docs only\n')
@@ -262,7 +262,7 @@ describe('--affected with no value, in the clone shapes CI produces', () => {
         `#!/bin/sh\nprintf '%s\\n' "$*" >> '${log}'\nexec '${Bun.which('git')}' "$@"\n`,
         { mode: 0o755 },
       )
-      const p = vxSync(root, ['run', 'build', `--affected=${first}`, '--dry=json'], {
+      const p = vxSync(root, ['run', 'build', `--affected=${first}`, '--dry', '--format', 'json'], {
         env: { PATH: `${shimDir}:${process.env['PATH']}` },
       })
       expect({ code: p.code, stderr: p.err }).toEqual({ code: 0, stderr: '' })
@@ -304,7 +304,7 @@ describe('--affected with no value, in the clone shapes CI produces', () => {
       })
       expect(shallow.stdout.toString().trim()).toBe('true')
       const plan = (args: string[], cwd = clone) => {
-        const p = vxSync(cwd, ['run', 'build', ...args, '--dry=json'])
+        const p = vxSync(cwd, ['run', 'build', ...args, '--dry', '--format', 'json'])
         if (p.code !== 0) return `exit ${p.code}: ${p.err}`
         return (JSON.parse(p.out) as { tasks: { id: string }[] }).tasks.map((t) => t.id).sort()
       }
@@ -335,7 +335,7 @@ describe('--affected with no value, in the clone shapes CI produces', () => {
     git(root, 'commit', '-q', '-m', 'two')
     await writeFile(path.join(root, 'pkgs/lib/src/l.txt'), 'l2\n')
     const plan = (...args: string[]) => {
-      const p = vxSync(root, ['run', 'build', ...args, '--dry=json'])
+      const p = vxSync(root, ['run', 'build', ...args, '--dry', '--format', 'json'])
       if (p.code !== 0) return `exit ${p.code}: ${p.err}`
       return (JSON.parse(p.out) as { tasks: { id: string }[] }).tasks.map((t) => t.id).sort()
     }
@@ -361,7 +361,7 @@ describe('--affected with no value, in the clone shapes CI produces', () => {
     git(root, 'commit', '-q', '-m', 'two')
     await writeFile(path.join(root, 'pkgs/lib/src/l.txt'), 'l2\n')
     const plan = (...args: string[]) => {
-      const p = vxSync(root, ['run', 'build', ...args, '--dry=json'])
+      const p = vxSync(root, ['run', 'build', ...args, '--dry', '--format', 'json'])
       if (p.code !== 0) return `exit ${p.code}: ${p.err}`
       return (JSON.parse(p.out) as { tasks: { id: string }[] }).tasks.map((t) => t.id).sort()
     }

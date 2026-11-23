@@ -128,7 +128,7 @@ it('a hook-exported GIT_DIR finds the top-level a plain git does', async () => {
     await writeFile(path.join(code, 'packages', 'a', 'src', 'in.txt'), 'a2')
     const plan = (select: string, env: Record<string, string>): string[] =>
       (
-        JSON.parse(vx(code, ['run', 'build', select, '--dry=json'], env)) as {
+        JSON.parse(vx(code, ['run', 'build', select, '--dry', '--format', 'json'], env)) as {
           tasks: { id: string; hash: string; cacheStatus: string }[]
         }
       ).tasks.map((t) => `${t.id} ${t.hash} ${t.cacheStatus}`)

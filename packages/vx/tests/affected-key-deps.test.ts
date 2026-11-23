@@ -30,7 +30,7 @@ const vx = (...args: string[]) => {
 }
 const appTestAffected = (): boolean =>
   (
-    JSON.parse(vx('run', 'test', '--all', '--affected=HEAD~1', '--dry=json')) as {
+    JSON.parse(vx('run', 'test', '--all', '--affected=HEAD~1', '--dry', '--format', 'json')) as {
       tasks: Array<{ id: string }>
     }
   ).tasks.some((t) => t.id === 'app#test')

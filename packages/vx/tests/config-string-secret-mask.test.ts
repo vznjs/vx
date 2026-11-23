@@ -196,7 +196,7 @@ it('--dry masks the description, as text and as JSON', () => {
   expect(text.split('\n').filter((l) => l.includes('deploys'))).toEqual([
     expect.stringMatching(/ app#t {2}deploys \*\*\* \*\*\*$/),
   ])
-  const json = JSON.parse(vx(['run', 't', '--all', '--dry=json'])) as {
+  const json = JSON.parse(vx(['run', 't', '--all', '--dry', '--format', 'json'])) as {
     tasks: Array<{ description?: string }>
   }
   expect(json.tasks.map((t) => t.description)).toEqual(['deploys *** ***'])

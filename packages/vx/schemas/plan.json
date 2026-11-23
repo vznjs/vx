@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "vx run --dry=json",
+  "title": "vx run --dry --format json",
   "description": "The task graph a run would execute and what the cache predicts for each task; nothing runs.",
   "type": "object",
   "additionalProperties": false,
