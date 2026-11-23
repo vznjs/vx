@@ -22,8 +22,18 @@ test('every test file is in exactly one list', () => {
   const twice = listed.filter((f, i) => listed.indexOf(f) !== i)
   expect(twice).toEqual([])
   const files = testFiles()
-  expect(files.filter((f) => !listed.includes(f))).toEqual([])
-  expect(listed.filter((f) => !files.includes(f))).toEqual([])
+  // Each line says the fix, so a new test file's author needs no lookup.
+  const lists = Object.keys(INVENTORY).join(' | ')
+  expect(
+    files
+      .filter((f) => !listed.includes(f))
+      .map((f) => `add '${f}', to one list (${lists}) of private/vx-conformance/src/inventory.ts`),
+  ).toEqual([])
+  expect(
+    listed
+      .filter((f) => !files.includes(f))
+      .map((f) => `remove '${f}', from private/vx-conformance/src/inventory.ts: no such test file`),
+  ).toEqual([])
 })
 
 test('every case cites test files that exist', () => {
