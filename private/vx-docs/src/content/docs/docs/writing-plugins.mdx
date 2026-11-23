@@ -488,7 +488,7 @@ vx asks often, so keep it cheap and synchronous. Hits, pooled tasks and groups a
 | `running` | the tasks holding a worker here now, read-only |
 | `concurrency` | the run's worker count |
 
-**`measures(nodes)`** names work your plugin times that is no task: a map of `<plugin>#<name>` to a definition hash. vx asks before `schedule`.
+**`measures(nodes)`** names work your plugin times that is no task: a map of `<plugin>#<name>` to a definition hash. vx asks before `schedule`, and only when some plugin has a `schedule` hook: with none, nothing reads them.
 
 Report each one from `setup` with `ctx.measure({ id, def, durationMs, cores? })`. `def` is its definition hash. History keeps the last of each id.
 
@@ -1142,7 +1142,7 @@ It covers a task's config once the `graph` stage ends. A project config a `proje
 | Throws | What vx does |
 | --- | --- |
 | `telemetry` hook or sink, `ctx.on` handler, `admit`, `output` hook or `Logger` | switches it off for the run, with one warning |
-| `measures` | leaves its measures out, with one warning |
+| `measures` | leaves its measures out, with one warning. Asked only when a plugin has `schedule` |
 | `teardown` | leaves the run's result as it was |
 | a verb | fails in one line |
 | a remote cache call | a miss |
