@@ -23,30 +23,30 @@ same inputs and skips the work: it replays the log and ends `up-to-date`.
 [2m$[0m vx run build
 
 [2m┌─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m>[0m $ vite build
-[38;2;6;182;212mvite v7.1.5 [38;2;34;197;94mbuilding for production...[38;2;6;182;212m[39m
+[36mvite v7.3.8 [32mbuilding client environment for production...[36m[39m
 transforming...
-[38;2;34;197;94m✓[39m 4 modules transformed.
+[32m✓[39m 3 modules transformed.
 rendering chunks...
 computing gzip size...
-[2mdist/[22m[38;2;34;197;94mindex.html                [39m[1m[2m0.14 kB[22m[1m[22m[2m │ gzip: 0.13 kB[22m
-[2mdist/[22m[2massets/[22m[38;2;6;182;212mindex-9Ri1bE4c.js  [39m[1m[2m0.79 kB[22m[1m[22m[2m │ gzip: 0.44 kB[22m
-[38;2;34;197;94m✓ built in 69ms[39m
-[0m[2m└─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(275ms)[0m [2msuccess[0m
+[2mdist/[22m[32mindex.html                [39m[1m[2m0.08 kB[22m[1m[22m[2m │ gzip: 0.09 kB[22m
+[2mdist/[22m[2massets/[22m[36mindex-7C0y1bbr.js  [39m[1m[2m0.74 kB[22m[1m[22m[2m │ gzip: 0.42 kB[22m
+[32m✓ built in 67ms[39m
+[0m[2m└─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(211ms)[0m [2msuccess[0m
 ```
 
 ```ansi title="second run"
 [2m$[0m vx run build
 
 [2m┌─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m>[0m $ vite build
-[38;2;6;182;212mvite v7.1.5 [38;2;34;197;94mbuilding for production...[38;2;6;182;212m[39m
+[36mvite v7.3.8 [32mbuilding client environment for production...[36m[39m
 transforming...
-[38;2;34;197;94m✓[39m 4 modules transformed.
+[32m✓[39m 3 modules transformed.
 rendering chunks...
 computing gzip size...
-[2mdist/[22m[38;2;34;197;94mindex.html                [39m[1m[2m0.14 kB[22m[1m[22m[2m │ gzip: 0.13 kB[22m
-[2mdist/[22m[2massets/[22m[38;2;6;182;212mindex-9Ri1bE4c.js  [39m[1m[2m0.79 kB[22m[1m[22m[2m │ gzip: 0.44 kB[22m
-[38;2;34;197;94m✓ built in 69ms[39m
-[0m[2m└─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(7ms)[0m [2mup-to-date[0m
+[2mdist/[22m[32mindex.html                [39m[1m[2m0.08 kB[22m[1m[22m[2m │ gzip: 0.09 kB[22m
+[2mdist/[22m[2massets/[22m[36mindex-7C0y1bbr.js  [39m[1m[2m0.74 kB[22m[1m[22m[2m │ gzip: 0.42 kB[22m
+[32m✓ built in 67ms[39m
+[0m[2m└─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(6ms)[0m [2mup-to-date[0m
 ```
 
 ```ts title="packages/app/vx.config.ts" {8-14}
