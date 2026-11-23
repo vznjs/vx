@@ -75,7 +75,9 @@ function httpUrl(value: string, where: string): string {
     u = new URL(value)
   } catch {}
   if (u?.protocol !== 'https:' && u?.protocol !== 'http:') {
-    throw new UserError(`registry "${value}" in ${where} is not an http(s) URL`)
+    throw new UserError(
+      `registry "${value}" in ${where} is not an http(s) URL — set it to one, as in https://registry.npmjs.org/`,
+    )
   }
   return value
 }

@@ -168,10 +168,10 @@ describe('macProfileRules, capability by capability', () => {
       refused({ unixSockets: ['/tmp/a"b.sock'] }),
       refused({ unixSockets: ['/tmp/../etc/x.sock'] }),
     ]).toEqual([
-      `allow.systemInfo: 'hw")(allow default)("' is not a valid name`,
-      `allow.machLookup: 'com.x")' is not a valid name`,
-      `allow.unixSockets: '/tmp/a"b.sock' is not a valid path`,
-      `allow.unixSockets: '/tmp/../etc/x.sock' is not a valid path`,
+      `allow.systemInfo: 'hw")(allow default)("' is not a valid name — use only letters, digits, '.', '_' and '-'`,
+      `allow.machLookup: 'com.x")' is not a valid name — use only letters, digits, '.', '_' and '-'`,
+      `allow.unixSockets: '/tmp/a"b.sock' is not a valid path — use only letters, digits and . _ - / @ +, with no '..'`,
+      `allow.unixSockets: '/tmp/../etc/x.sock' is not a valid path — use only letters, digits and . _ - / @ +, with no '..'`,
     ])
   })
 })

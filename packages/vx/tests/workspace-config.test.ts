@@ -32,7 +32,7 @@ describe('cliCacheDir', () => {
     // A mistyped flag value is an argument mistake: VX_E_USAGE, as every
     // other flag error is, not the catch-all VX_E_REFUSED.
     expect(threw).toEqual({
-      message: `--cache-dir rel/cache: no such directory (${path.resolve(process.cwd(), 'rel/cache')})`,
+      message: `--cache-dir rel/cache: no such directory (${path.resolve(process.cwd(), 'rel/cache')}) — check the path, or drop --cache-dir to read the workspace's own cache`,
       code: 'VX_E_USAGE',
     })
   })

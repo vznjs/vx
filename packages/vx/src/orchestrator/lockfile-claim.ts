@@ -183,7 +183,7 @@ async function hashOf(abs: string, rel: string): Promise<string> {
 
 function unreadable(rel: string, err: unknown): UserError {
   return new UserError(
-    `${rel}: cannot be read (${err instanceof Error ? err.message : String(err)})`,
+    `${rel}: cannot be read (${err instanceof Error ? err.message : String(err)}) — vx keys tasks on it; give this user read access to it, then re-run`,
   )
 }
 

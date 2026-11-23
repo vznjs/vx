@@ -171,7 +171,10 @@ export function parseCacheDirFlag(
 export function namedCacheDir(override: string): string {
   const dir = path.resolve(process.cwd(), override)
   if (!existsSync(dir)) {
-    throw new UserError(`--cache-dir ${override}: no such directory (${dir})`, 'VX_E_USAGE')
+    throw new UserError(
+      `--cache-dir ${override}: no such directory (${dir}) — check the path, or drop --cache-dir to read the workspace's own cache`,
+      'VX_E_USAGE',
+    )
   }
   return dir
 }
