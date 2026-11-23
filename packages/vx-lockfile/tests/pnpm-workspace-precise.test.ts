@@ -75,6 +75,15 @@ it('a packageExtensions entry in pnpm-workspace.yaml keys no task by itself', as
   expect(await affected(BASE, EXTENDED)).toEqual([])
 })
 
+it('an ignoredOptionalDependencies list in pnpm-workspace.yaml keys no task by itself', async () => {
+  await write(BASE)
+  const base = await key()
+  const IGNORED = `${BASE}ignoredOptionalDependencies:\n  - fsevents\n`
+  await write(IGNORED)
+  expect(await key()).toBe(base)
+  expect(await affected(BASE, IGNORED)).toEqual([])
+})
+
 it('a catalog entry no importer names keys no task either', async () => {
   // pnpm-lock.yaml records what each catalog entry resolved to and the
   // importers naming it (probed, pnpm 10.28: a bump re-keys b and c, its

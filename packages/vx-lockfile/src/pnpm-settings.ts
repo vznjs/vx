@@ -10,11 +10,13 @@ const RECORDED = new Set([
   'catalog',
   'catalogs',
   'packageExtensions',
+  'ignoredOptionalDependencies',
 ])
 
 /**
  * pnpm-workspace.yaml as every task folds it: without `patchedDependencies`,
- * `overrides`, `packageExtensions` and the catalogs, whose effect the lockfile records per
+ * `overrides`, `packageExtensions`, `ignoredOptionalDependencies` and the
+ * catalogs, whose effect the lockfile records per
  * project (pnpm 10+ keeps them here). Undefined for a file that does not
  * parse to a mapping, folded whole.
  */

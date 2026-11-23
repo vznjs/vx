@@ -65,8 +65,10 @@ const PER_IMPORTER = new Set([
   'patchedDependencies',
   'catalogs',
   'overrides',
-  // What an extension added is in the extended package's snapshot.
+  // What an extension added, or an ignored optional dependency dropped, is
+  // in the snapshots and importers it touched.
   'packageExtensionsChecksum',
+  'ignoredOptionalDependencies',
 ])
 
 export function parseLockfile(text: string): Lockfile {

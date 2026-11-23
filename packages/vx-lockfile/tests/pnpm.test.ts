@@ -1046,11 +1046,6 @@ packages:
 
   it.each([
     ['settings', 'settings:\n  autoInstallPeers: true\n', 'settings:\n  autoInstallPeers: false\n'],
-    [
-      'ignoredOptionalDependencies',
-      'ignoredOptionalDependencies:\n  - fsevents\n',
-      'ignoredOptionalDependencies:\n  - esbuild\n',
-    ],
   ])('the install-wide `%s` alone moves every importer', (_field, before, after) => {
     const lock = (block: string) =>
       v9().replace(
@@ -1098,6 +1093,18 @@ packages:
     )
     expect(after).not.toBe(before)
     expect(movedDirs(before, after)).toEqual([])
+  })
+
+  // What `ignoredOptionalDependencies` dropped is gone from the snapshots
+  // and importers that named it (probed, pnpm 10.28: chokidar's fsevents),
+  // so the list alone moves no importer.
+  it('the `ignoredOptionalDependencies` list alone moves no importer', () => {
+    const lock = (list: string) =>
+      v9().replace(
+        'settings:\n  autoInstallPeers: true\n',
+        `settings:\n  autoInstallPeers: true\n\nignoredOptionalDependencies:\n  - ${list}\n`,
+      )
+    expect(movedDirs(lock('fsevents'), lock('esbuild'))).toEqual([])
   })
 
   it('the lockfile version alone moves every importer', () => {

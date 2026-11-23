@@ -63,7 +63,7 @@ export interface LockfileOptions {
 const FACTS = '\0'
 
 /** Bumps when a digest folds differently or the memo holds more (its identity). */
-const DIGEST_VERSION = 29
+const DIGEST_VERSION = 30
 
 let memoVersion: number | undefined
 /**
