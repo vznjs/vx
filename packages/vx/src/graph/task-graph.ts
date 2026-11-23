@@ -559,19 +559,19 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
     // add (Nx 19.5 parity).
     if (spec.kind === 'wildcardSelf' || spec.kind === 'wildcardDeps') {
       throw new UserError(
-        `${id}: dependsOn does not accept bare wildcards (got "${raw}")`,
+        `${id}: dependsOn does not accept bare wildcards (got "${raw}"): name the tasks, or a namespace like build.*`,
         'VX_E_DEPENDS_ON',
       )
     }
     if (spec.negated) {
       throw new UserError(
-        `${id}: dependsOn does not accept negation (got "${raw}")`,
+        `${id}: dependsOn does not accept negation (got "${raw}"): dependsOn only adds tasks, so drop the entry`,
         'VX_E_DEPENDS_ON',
       )
     }
     if (spec.kind === 'cross' && (isTaskPattern(spec.task) || isTaskPattern(spec.project))) {
       throw new UserError(
-        `${id}: dependsOn patterns are not supported in the "pkg#task" form (got "${raw}")`,
+        `${id}: dependsOn patterns are not supported in the "pkg#task" form (got "${raw}"): name the project and task exactly, as in web#build`,
         'VX_E_DEPENDS_ON',
       )
     }

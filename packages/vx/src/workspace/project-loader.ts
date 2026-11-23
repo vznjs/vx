@@ -286,7 +286,7 @@ async function withinBudget<T>(work: T | Promise<T>, kind: string, configPath: s
           () =>
             reject(
               new UserError(
-                `${kind} config ${configPath} did not finish evaluating within ${budget}ms (VX_CONFIG_WORKER_TIMEOUT)`,
+                `${kind} config ${configPath} did not finish evaluating within ${budget}ms. Settle what its top level awaits, or raise VX_CONFIG_WORKER_TIMEOUT`,
               ),
             ),
           true,

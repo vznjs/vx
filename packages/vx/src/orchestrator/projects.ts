@@ -523,7 +523,7 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
       )
       throw denied !== null
         ? new UserError(
-            `${LOCKFILE_NAME} locks ${locked}, but its ${file} is not readable by this user (${denied})`,
+            `${LOCKFILE_NAME} locks ${locked}, but its ${file} is not readable by this user (${denied}) — give this user read access to it, then re-run`,
             'VX_E_FS',
           )
         : new UserError(

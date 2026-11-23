@@ -101,7 +101,7 @@ describe('the schema', () => {
     expect(refusal([{ from: 'tag:app', allow: ['tag:lib'], deny: ['x'] }])).toBeNull()
     expect(refusal({ from: 'a' })).toContain('must be an array of { from, allow?, deny? }')
     expect(refusal([{ from: 'a' }])).toBe(
-      '.vx/workspace.ts: `run.rules.dependencies[0]` names neither `allow` nor `deny`',
+      '.vx/workspace.ts: `run.rules.dependencies[0]` names neither `allow` nor `deny`: add one, or drop the rule',
     )
     expect(refusal([{ from: '', deny: ['b'] }])).toBe(
       ".vx/workspace.ts: `run.rules.dependencies[0].from` must be a selector like 'tag:app'",

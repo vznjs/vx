@@ -914,8 +914,18 @@ describe('cli run() end-to-end against a real fixture workspace', () => {
           'vx run: no projects selected: filter "one^..." matched one, which depends on no project',
         ).trimEnd(),
       ],
-      [1, noticed('vx run: filter "..." names no project').trimEnd()],
-      [1, noticed('vx run: filter "!" names no project').trimEnd()],
+      [
+        1,
+        noticed(
+          'vx run: filter "..." names no project. Name a project, a ./path or a tag:<name>, as in --filter web...',
+        ).trimEnd(),
+      ],
+      [
+        1,
+        noticed(
+          'vx run: filter "!" names no project. Name a project, a ./path or a tag:<name>, as in --filter web...',
+        ).trimEnd(),
+      ],
     ])
   })
 

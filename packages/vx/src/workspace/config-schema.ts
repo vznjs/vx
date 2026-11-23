@@ -221,7 +221,9 @@ function validateDependencyRules(value: unknown, where: string, configPath: stri
     }
     // A rule that says nothing reads as a constraint and checks nothing.
     if (allow === undefined && deny === undefined)
-      throw new UserError(`${at(i)} names neither \`allow\` nor \`deny\``)
+      throw new UserError(
+        `${at(i)} names neither \`allow\` nor \`deny\`: add one, or drop the rule`,
+      )
   }
 }
 

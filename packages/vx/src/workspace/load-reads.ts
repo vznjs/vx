@@ -45,7 +45,9 @@ async function readIfFile(file: string): Promise<Uint8Array | null> {
  */
 export function unreadable(err: unknown, file: string): never {
   if (isPermissionError(err)) {
-    throw new UserError(`${file}: not readable by this user (${err.code})`)
+    throw new UserError(
+      `${file}: not readable by this user (${err.code}) — give this user read access to it, then re-run`,
+    )
   }
   // Found by discovery, gone by its read: a checkout or a delete mid-command.
   if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
