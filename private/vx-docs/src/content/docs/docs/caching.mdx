@@ -84,7 +84,7 @@ Every part, in order: [Caching in depth](../../caching/).
 - A restore writes only files the task's `outputs` declare.
 - Every declared output must be written. A pattern that matches no file
   once the command exits 0 fails the task, and nothing is saved
-  ([fix](../../guides/troubleshooting/)).
+  ([fix](../../docs/troubleshooting/)).
 - A failed task is never saved.
 - `--force` runs everything and replaces what the local cache holds (a remote keeps the keys it has); `--no-cache` ignores it.
 
@@ -93,7 +93,7 @@ Every part, in order: [Caching in depth](../../caching/).
 ## Why did it re-run?
 
 `vx why` names the part of the key that changed since the task's last run
-([guide](../../guides/caching/why-a-task-missed/)):
+([guide](../../docs/caching/why-a-task-missed/)):
 
 ```sh
 vx why app#build

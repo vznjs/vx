@@ -373,11 +373,7 @@ describe('the landing page', () => {
       'vx run build',
     ])
     expect(text(steps[1]![2]!)).toContain('declare a task')
-    expect(hrefs(start)).toEqual([
-      `${BASE}quickstart/`,
-      `${BASE}guides/migrate/`,
-      `${BASE}features/`,
-    ])
+    expect(hrefs(start)).toEqual([`${BASE}quickstart/`, `${BASE}docs/migrate/`, `${BASE}features/`])
     expect(text(start)).not.toMatch(/turbo\.json|nx\.json|unchanged|faster/i)
   })
 

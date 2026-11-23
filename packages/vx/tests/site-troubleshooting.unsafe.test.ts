@@ -7,7 +7,7 @@ import { describe, expect, it } from 'bun:test'
 
 const PAGE = path.resolve(
   import.meta.dir,
-  '../../../private/vx-docs/src/content/docs/guides/troubleshooting.mdx',
+  '../../../private/vx-docs/src/content/docs/docs/troubleshooting.mdx',
 )
 const SRC = path.resolve(import.meta.dir, '..', 'src')
 

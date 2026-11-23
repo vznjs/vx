@@ -34,7 +34,7 @@ const GUIDES = path.resolve(
   'src',
   'content',
   'docs',
-  'guides',
+  'docs',
 )
 
 const DOCS = path.dirname(GUIDES)

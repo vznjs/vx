@@ -100,7 +100,7 @@ vx run build --all
 
 `vx init` finds `turbo.json` and writes one `vx.config.ts` per package,
 plus the workspace file, through
-[`@vzn/vx-migrate`](../../guides/migrate/).
+[`@vzn/vx-migrate`](../../docs/migrate/).
 
 Anything Turbo can say that vx cannot becomes a `TODO(vx-migrate)`
 comment, never a silent wrong value. Your `package.json` scripts are

@@ -48,9 +48,9 @@ const SIDEBAR_GROUPS: Record<'Docs', SidebarItem[]> = {
       items: [
         { label: 'What is vx?', link: '/docs/' },
         { label: 'Quickstart', link: '/quickstart/' },
-        { label: 'Migrate from Turborepo, Nx or Vite Task', link: '/guides/migrate/' },
+        { label: 'Migrate from Turborepo, Nx or Vite Task', link: '/docs/migrate/' },
         { label: 'AI agents', link: '/docs/agents/' },
-        { label: 'Upgrading vx', link: '/guides/upgrading/' },
+        { label: 'Upgrading vx', link: '/docs/upgrading/' },
       ],
     },
     {
@@ -60,18 +60,18 @@ const SIDEBAR_GROUPS: Record<'Docs', SidebarItem[]> = {
         { label: 'Tasks', link: '/docs/tasks/' },
         {
           label: "Build a project's dependencies first",
-          link: '/guides/running/build-dependencies-first/',
+          link: '/docs/running/build-dependencies-first/',
         },
         { label: 'Environment variables', link: '/docs/environment-variables/' },
         {
           label: 'Pass an environment variable to a task',
-          link: '/guides/running/pass-an-environment-variable/',
+          link: '/docs/running/pass-an-environment-variable/',
         },
         { label: 'Lockfiles', link: '/docs/lockfiles/' },
         { label: 'Dev servers', link: '/docs/dev-servers/' },
         {
           label: 'Start a dev server before your tests',
-          link: '/guides/running/start-a-dev-server/',
+          link: '/docs/running/start-a-dev-server/',
         },
       ],
     },
@@ -79,10 +79,10 @@ const SIDEBAR_GROUPS: Record<'Docs', SidebarItem[]> = {
       label: 'Run tasks',
       items: [
         { label: 'Running tasks', link: '/docs/running-tasks/' },
-        { label: 'Run only what changed', link: '/guides/running/run-what-changed/' },
-        { label: "Run one project's tasks", link: '/guides/running/run-one-project/' },
-        { label: 'Stop at the first failure', link: '/guides/running/stop-at-the-first-failure/' },
-        { label: 'Set a time limit on a task', link: '/guides/running/set-a-time-limit/' },
+        { label: 'Run only what changed', link: '/docs/running/run-what-changed/' },
+        { label: "Run one project's tasks", link: '/docs/running/run-one-project/' },
+        { label: 'Stop at the first failure', link: '/docs/running/stop-at-the-first-failure/' },
+        { label: 'Set a time limit on a task', link: '/docs/running/set-a-time-limit/' },
         { label: 'Sandboxing', link: '/docs/sandboxing/' },
       ],
     },
@@ -90,9 +90,9 @@ const SIDEBAR_GROUPS: Record<'Docs', SidebarItem[]> = {
       label: 'Cache',
       items: [
         { label: 'Caching', link: '/docs/caching/' },
-        { label: 'Cache a task', link: '/guides/caching/cache-a-task/' },
-        { label: 'Find why a task missed the cache', link: '/guides/caching/why-a-task-missed/' },
-        { label: 'Clear the local cache', link: '/guides/caching/clean-the-cache/' },
+        { label: 'Cache a task', link: '/docs/caching/cache-a-task/' },
+        { label: 'Find why a task missed the cache', link: '/docs/caching/why-a-task-missed/' },
+        { label: 'Clear the local cache', link: '/docs/caching/clean-the-cache/' },
         { label: 'Remote cache', link: '/docs/remote-cache/' },
         { label: 'Cache server', link: '/docs/servers/cache/' },
       ],
@@ -101,9 +101,9 @@ const SIDEBAR_GROUPS: Record<'Docs', SidebarItem[]> = {
       label: 'CI',
       items: [
         { label: 'CI', link: '/docs/ci/' },
-        { label: 'Run the same checks locally and on CI', link: '/guides/ci/run-a-pipeline/' },
-        { label: 'Fail CI when the lock is stale', link: '/guides/ci/check-the-lock/' },
-        { label: 'Fix a merge conflict in the lock', link: '/guides/ci/fix-a-lock-conflict/' },
+        { label: 'Run the same checks locally and on CI', link: '/docs/ci/run-a-pipeline/' },
+        { label: 'Fail CI when the lock is stale', link: '/docs/ci/check-the-lock/' },
+        { label: 'Fix a merge conflict in the lock', link: '/docs/ci/fix-a-lock-conflict/' },
       ],
     },
     {
@@ -144,8 +144,8 @@ const SIDEBAR_GROUPS: Record<'Docs', SidebarItem[]> = {
     {
       label: 'Debugging',
       items: [
-        { label: 'Troubleshooting', link: '/guides/troubleshooting/' },
-        { label: 'Explore the task graph', link: '/guides/graph-explorer/' },
+        { label: 'Troubleshooting', link: '/docs/troubleshooting/' },
+        { label: 'Explore the task graph', link: '/docs/graph-explorer/' },
       ],
     },
     {

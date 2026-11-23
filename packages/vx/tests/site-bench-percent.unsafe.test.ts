@@ -11,7 +11,7 @@ const QUOTE = /\(vx (?:[\d.]+×|\d+%) (?:faster|slower)\)/g
 
 function pages(): string[] {
   const out: string[] = []
-  for (const dir of ['blog', 'concepts', 'guides'])
+  for (const dir of ['blog', 'concepts', 'docs'])
     for (const f of readdirSync(path.join(DOCS, dir)))
       if (/\.mdx?$/.test(f)) out.push(path.join(DOCS, dir, f))
   return out

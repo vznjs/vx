@@ -18,7 +18,7 @@ export interface TaggedCommit extends Commit {
 
 export const PAGE = path.resolve(
   import.meta.dir,
-  '../../../private/vx-docs/src/content/docs/guides/upgrading.md',
+  '../../../private/vx-docs/src/content/docs/docs/upgrading.md',
 )
 
 const HEADER = /^(\w+)(?:\(([^)]*)\))?!?: (.+?)(?: \(#\d+\))?$/
@@ -134,7 +134,7 @@ if (import.meta.main) {
   const want = page(taggedCommits(path.resolve(import.meta.dir, '../../..')))
   if (process.argv.includes('--check')) {
     if (readFileSync(PAGE, 'utf8') !== want) {
-      process.stderr.write('guides/upgrading.md does not match git log; run the script\n')
+      process.stderr.write('docs/upgrading.md does not match git log; run the script\n')
       process.exit(1)
     }
   } else writeFileSync(PAGE, want)

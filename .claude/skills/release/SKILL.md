@@ -79,7 +79,7 @@ like Home Assistant releases"). Fewest words; no speed claims; never
 - `## Breaking changes`, short, at the end: one bullet per `old → new`
   rename or removal in the range (2026-10-14; until 1.0 the code
   keeps no aliases or rename notices, so this list is the only notice),
-  and a link to [Upgrading](../../guides/upgrading/).
+  and a link to [Upgrading](../../docs/upgrading/).
 - `## How to update`: only a `frame="terminal"` block with `vx upgrade`
   (2026-10-18: upgrading is always `vx upgrade`).
 - Rules the site tests hold: speed as "N× faster" or "from X to Y",

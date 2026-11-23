@@ -27,7 +27,7 @@ describe('search', () => {
     )
     expect(inMain).toEqual([])
     // A docs page still is.
-    expect(read('guides/running/stop-at-the-first-failure/index.html')).toContain(
+    expect(read('docs/running/stop-at-the-first-failure/index.html')).toContain(
       'data-pagefind-body',
     )
   })

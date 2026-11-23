@@ -478,7 +478,7 @@ export const MORE: readonly Feature[] = [
     imageAlt: 'A failed task naming the signal that killed it.',
     docs: {
       label: 'Troubleshooting',
-      href: 'guides/troubleshooting/',
+      href: 'docs/troubleshooting/',
     },
     deepDive: {
       label: 'When a task misbehaves',
@@ -1273,7 +1273,7 @@ export const MORE: readonly Feature[] = [
     imageAlt: 'A release binary verified by its attestation.',
     docs: {
       label: 'Upgrading',
-      href: 'guides/upgrading/',
+      href: 'docs/upgrading/',
     },
     deepDive: {
       label: 'An upgrade you can trust',
@@ -1465,7 +1465,7 @@ export const MORE: readonly Feature[] = [
     imageAlt: 'A nested vx run refused.',
     docs: {
       label: 'Troubleshooting',
-      href: 'guides/troubleshooting/',
+      href: 'docs/troubleshooting/',
     },
     deepDive: {
       label: 'When a task misbehaves',
@@ -1537,7 +1537,7 @@ export const MORE: readonly Feature[] = [
     imageAlt: 'A config error pointing at the line and key.',
     docs: {
       label: 'Troubleshooting',
-      href: 'guides/troubleshooting/',
+      href: 'docs/troubleshooting/',
     },
     deepDive: {
       label: 'When a task misbehaves',
@@ -1585,7 +1585,7 @@ export const MORE: readonly Feature[] = [
     imageAlt: 'vx using an existing Turbo remote cache.',
     docs: {
       label: 'Migrate',
-      href: 'guides/migrate/',
+      href: 'docs/migrate/',
     },
     deepDive: {
       label: 'Moving to vx from Nx: keep the graph, drop the platform',
@@ -1609,7 +1609,7 @@ export const MORE: readonly Feature[] = [
     imageAlt: 'npm pre and post scripts folded into one task.',
     docs: {
       label: 'Migrate',
-      href: 'guides/migrate/',
+      href: 'docs/migrate/',
     },
     deepDive: {
       label: 'From npm scripts or Vite Task',
@@ -1633,7 +1633,7 @@ export const MORE: readonly Feature[] = [
     imageAlt: 'vx configs written from Vite Task’s run.tasks.',
     docs: {
       label: 'Migrate',
-      href: 'guides/migrate/',
+      href: 'docs/migrate/',
     },
     deepDive: {
       label: 'From npm scripts or Vite Task',
@@ -1657,7 +1657,7 @@ export const MORE: readonly Feature[] = [
     imageAlt: 'An Nx executor target run as one vx task.',
     docs: {
       label: 'Migrate',
-      href: 'guides/migrate/',
+      href: 'docs/migrate/',
     },
     deepDive: {
       label: 'Moving to vx from Nx: keep the graph, drop the platform',
