@@ -1124,14 +1124,15 @@ async function runSandboxedOnce(args: SandboxedRunArgs): Promise<AttemptResult> 
   if ('result' in ready) return ready.result
   const { prepared } = ready
   const { wrapped, tag, srtCommand, baselines } = prepared.wrap
-  const takeRecords = collectRecords(
-    SandboxManager.getSandboxViolationStore(),
-    srtCommand,
-    observerSocket(wrapped),
-  )
+  let takeRecords: ReturnType<typeof collectRecords>
   let ended: Ended
   let started: ReturnType<typeof spawnAttempt>
   try {
+    takeRecords = collectRecords(
+      SandboxManager.getSandboxViolationStore(),
+      srtCommand,
+      observerSocket(wrapped),
+    )
     started = spawnAttempt(args, prepared.wrap, takeRecords, SandboxManager, start)
     if ('result' in started) return started.result
     ended = await awaitAttempt(args, started.spawned, tag)

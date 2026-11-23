@@ -4,6 +4,7 @@
 // lists SRT insists on receiving in full.
 
 import {
+  linkSync,
   lstatSync,
   mkdirSync,
   readdirSync,
@@ -12,6 +13,7 @@ import {
   renameSync,
   rmSync,
   statSync,
+  symlinkSync,
 } from 'node:fs'
 import path from 'node:path'
 import {
@@ -642,19 +644,22 @@ const unquoted = (word: string): string =>
 
 /**
  * Linux: the task's output directories, staged so the task may remove
- * them. Only a granted directory the task's outputs claim whole
- * (`dist/**`) is moved: a concurrent task may read any other grant. A write grant is a bind, and a mount point cannot be removed:
+ * them. A write grant is a bind, and a mount point cannot be removed:
  * `rm -rf dist && tsc` under `dist/` met "Read-only file system"
  * (conformance sandbox/clean-and-rebuild-output-dir-passes). Where the
  * task's directory is held by a read-only mask (no grant binds it, or
- * anything above it), each granted directory there is moved into a stage
- * of vx's own (`.vx/tmp/<pid>-<tag>`, on the workspace's filesystem) and
+ * anything above it), each granted directory there that the task's
+ * outputs claim whole (`dist/**`) is linked, file by file, into a stage
+ * of vx's own (`.vx/tmp/<pid>-<tag>`, on the workspace's filesystem), and
  * the stage is bound AS the task's directory, under the binds of its
  * other grants; the output directory is then a plain directory inside it.
- * After the task what the stage holds by those names moves back, and the
- * rest (mount points bwrap made, a stray write vx reports) goes with the
- * stage. A move that fails stages nothing. Returns the line and the
- * restore, or undefined where nothing is staged.
+ * The host's directory stays as it was meanwhile: a concurrent task still
+ * reads it, and a killed run loses nothing (its stage is swept). After the
+ * task each staged directory replaces the host's (the host's goes when
+ * the task removed it and made none); the rest (mount points bwrap made,
+ * a stray write vx reports) goes with the stage. Returns the line and the
+ * restore, which throws when a replace fails, or undefined where nothing
+ * is staged.
  */
 export function stagedOutputs(
   wrapped: string,
@@ -666,7 +671,7 @@ export function stagedOutputs(
     granted: readonly string[]
     /** Grants spelled through a link: bound at the link too, so left in place. */
     linked?: readonly { link: string; target: string }[] | undefined
-    /** Directories the task's outputs claim whole: nothing else is moved. */
+    /** Directories the task's outputs claim whole: nothing else is staged. */
     owned: readonly string[]
     tag: string
   },
@@ -695,44 +700,63 @@ export function stagedOutputs(
   const words = [...wrapped.matchAll(/(?:'[^']*'|"[^"]*"|[^\s'"])+/g)]
   const end = words.findIndex((w) => w[0] === '--')
   if (end === -1) return undefined
-  // The deepest mask holding the task's directory is where the stage is
-  // bound; the workspace's `.vx`, under the mask that holds one, keeps it.
+  // The deepest mask holding the task's directory is where the stage is bound.
   const masks: { at: number; path: string }[] = []
   for (let i = 0; i < end - 1; i++) {
     if (words[i]![0] !== '--tmpfs') continue
     const m = unquoted(words[i + 1]![0])
     if (atOrUnder(cwd, m)) masks.push({ at: i + 1, path: m })
   }
-  if (masks.length === 0) return undefined
+  // A mask AT the task's directory is remounted read-only after the stage
+  // would be bound there, and the stage with it.
+  if (masks.length === 0 || masks.some((m) => m.path === cwd)) return undefined
   masks.sort((a, b) => b.path.length - a.path.length || b.at - a.at)
   const mask = masks[0]!
-  const stageRoot = masks
-    .map((m) => path.join(m.path, '.vx'))
-    .reverse()
-    .find((d) => statSync(d, { throwIfNoEntry: false })?.isDirectory() === true)
+  const stageRoot = nearestVx(cwd)
   if (stageRoot === undefined) return undefined
   // Named as a restore's staging is, so a killed run's is swept (`sweepStaging`).
   const stage = path.join(stageRoot, 'tmp', `${process.pid.toString(36)}-${opts.tag}`)
-  const moved: string[] = []
   const restore = (): void => {
-    for (const d of moved) {
+    const failed: string[] = []
+    for (const d of dirs) {
+      const fresh = path.join(stage, path.basename(d))
+      const old = path.join(stage, `.host-${path.basename(d)}`)
+      const made = lstatSync(fresh, { throwIfNoEntry: false })
+      // A link or file in its place would land on the host where the grant
+      // let the task write only inside a directory.
+      if (made !== undefined && !made.isDirectory()) {
+        failed.push(d)
+        continue
+      }
       try {
-        renameSync(path.join(stage, path.basename(d)), d)
+        renameSync(d, old)
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+          failed.push(d)
+          continue
+        }
+      }
+      if (made === undefined) continue
+      try {
+        renameSync(fresh, d)
       } catch {
-        // The task removed it and made none: its output is gone, as it asked.
+        failed.push(d)
+        try {
+          renameSync(old, d)
+        } catch {
+          // Something made it meanwhile: what the task left is lost, and said so below.
+        }
       }
     }
-    moved.length = 0
     rmSync(stage, { recursive: true, force: true })
+    if (failed.length > 0)
+      throw new Error(`vx: could not put the task's output back in place: ${failed.join(', ')}`)
   }
   try {
     mkdirSync(stage, { recursive: true })
-    for (const d of dirs) {
-      renameSync(d, path.join(stage, path.basename(d)))
-      moved.push(d)
-    }
+    for (const d of dirs) linkTree(d, path.join(stage, path.basename(d)))
   } catch {
-    restore()
+    rmSync(stage, { recursive: true, force: true })
     return undefined
   }
   // Drop each staged directory's binds; bind the stage as the task's directory after the mask.
@@ -763,4 +787,25 @@ export function stagedOutputs(
   }
   out += wrapped.slice(last)
   return { wrapped: out, restore }
+}
+
+/** The `.vx` nearest above `dir`: the workspace's, which `sweepStaging` sweeps. */
+function nearestVx(dir: string): string | undefined {
+  for (let d = dir; ; d = path.dirname(d)) {
+    const vx = path.join(d, '.vx')
+    if (statSync(vx, { throwIfNoEntry: false })?.isDirectory() === true) return vx
+    if (path.dirname(d) === d) return undefined
+  }
+}
+
+/** A copy of `from` at `to` whose files are hard links: no byte is copied. */
+function linkTree(from: string, to: string): void {
+  mkdirSync(to)
+  for (const e of readdirSync(from, { withFileTypes: true })) {
+    const src = path.join(from, e.name)
+    const dst = path.join(to, e.name)
+    if (e.isDirectory()) linkTree(src, dst)
+    else if (e.isSymbolicLink()) symlinkSync(readlinkSync(src), dst)
+    else linkSync(src, dst)
+  }
 }

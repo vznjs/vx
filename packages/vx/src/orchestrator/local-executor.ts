@@ -75,7 +75,11 @@ function ownedOutputDirs(cwd: string, files: readonly string[]): string[] {
   const owned: string[] = []
   for (const f of files) {
     const m = /^(?:\.\/)?([^*?[\]{}!]+?)\/\*\*(?:\/\*)?$/.exec(f)
-    if (m !== null) owned.push(path.resolve(cwd, m[1]!))
+    if (m !== null) owned.push(m[1]!)
   }
+  // A directory part of which the outputs exclude (`!.next/cache/**`) is
+  // the task's state too: it stays in place rather than staged every run.
   return owned
+    .filter((d) => !files.some((f) => f.startsWith(`!${d}/`) || f.startsWith(`!./${d}/`)))
+    .map((d) => path.resolve(cwd, d))
 }

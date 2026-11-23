@@ -2156,16 +2156,17 @@ remedy is to declare it: `allow: { write: [...] }`.
 
 **A task may remove its own output directory.** `rm -rf dist && tsc`
 under `write: ['dist/']` and `outputs.files: ['dist/**']` works on Linux
-too: a directory grant in the task's directory that its outputs claim
-whole (`dist/**`) is moved into vx's staging (`.vx/tmp/`) for the run,
-the staging is mounted as the task's directory, and the directory comes
-back after the task, so it is no mount point the task cannot remove.
-Until 2026-11-23 it was mounted in place and the removal failed with
-`Read-only file system`. Where the task's directory is itself granted
-(`write: ['.']`, or a file grant there), or no output claims the whole
-directory (another task may read it meanwhile), the grant is still
-mounted in place: remove its contents instead (`rm -rf dist/*`), and a failed task
-names the grant.
+too. A directory grant in the task's directory that its outputs claim
+whole (`dist/**`, no `!dist/...` exclusion) is copied into vx's staging
+(`.vx/tmp/`) as hard links, so no bytes are copied. The staging is
+mounted as the task's directory, and after the task its copy replaces
+the host's. The host's directory is untouched while the task runs, so a
+concurrent task still reads it and a killed run loses nothing. Until
+2026-11-23 the grant was mounted in place and the removal failed with
+`Read-only file system`. It is still mounted in place where the task's
+directory is itself granted (`write: ['.']`, or a file grant there) or
+no output claims the whole directory. There, remove its contents instead
+(`rm -rf dist/*`); a failed task names the grant.
 
 **The boundary is the workspace root.** A task may not leave its own
 project, so every sibling project and every root file is denied. Being

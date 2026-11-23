@@ -4,7 +4,7 @@
 // now carries a hint naming the grant and the removal that works.
 
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
-import { existsSync, readdirSync, realpathSync } from 'node:fs'
+import { existsSync, lstatSync, readdirSync, realpathSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
@@ -126,6 +126,33 @@ describe.skipIf(!available || process.platform !== 'linux')(
       expect(r.outcomes[0]?.status).toBe('failed')
       expect(r.outcomes[0]?.sandbox?.lines?.some((l) => l.includes('stray.txt'))).toBe(true)
       expect(existsSync(path.join(dir, 'stray.txt'))).toBe(false)
+    }, 30_000)
+
+    // The host's directory stays while the task runs: a concurrent task
+    // still reads it, and a killed run loses nothing.
+    it('keeps the host directory in place until the task ends', async () => {
+      const dir = await app(
+        'rm -rf dist && mkdir dist && echo new > dist/new.js && sleep 2',
+        "'dist/'",
+        owned,
+      )
+      const run = runVx({ cwd: root, tasks: ['t'], log: quiet })
+      const tmp = path.join(root, '.vx', 'tmp')
+      const staged = () => existsSync(tmp) && readdirSync(tmp).some((n) => /-[0-9a-f]{16}$/.test(n))
+      for (let i = 0; i < 200 && !staged(); i++) await Bun.sleep(25)
+      // vx cleared the stale output before the run; the task's own is not there yet.
+      expect([staged(), readdirSync(path.join(dir, 'dist'))]).toEqual([true, []])
+      expect((await run).outcomes[0]?.status).toBe('success')
+      expect(readdirSync(path.join(dir, 'dist'))).toEqual(['new.js'])
+    }, 30_000)
+
+    it('never puts a link the task made in its place on the host', async () => {
+      const dir = await app('rm -rf dist && ln -s /etc dist', "'dist/'", owned)
+      const r = await runVx({ cwd: root, tasks: ['t'], log: quiet })
+      expect([r.outcomes[0]?.status, lstatSync(path.join(dir, 'dist')).isDirectory()]).toEqual([
+        'failed',
+        true,
+      ])
     }, 30_000)
 
     // A file grant in the task's directory binds the directory itself:

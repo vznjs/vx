@@ -1106,17 +1106,22 @@ renamed: under `write: ['dist/']`, `rm -rf dist && tsc` emptied `dist`,
 then failed with `Read-only file system` (EBUSY under a writable parent).
 macOS allows it. Binding the host's parent would let the task write
 beside the grant, so `stagedOutputs` binds vx's own directory there
-instead: each directory grant in the task's directory that the task's
-outputs claim whole (`dist/**`, handed down as `ownedOutputs`; another
-grant may be a concurrent task's to read) moves into
-`.vx/tmp/<pid>-<tag>` (one rename, on the workspace's filesystem), that
-staging is mounted as the task's directory under the mask, and the other
-grants bind into it as before. The output directory is a plain directory
-there; what the task writes beside it lands in the staging, is reported
-(no grant covers it) and goes with the staging. After the task the
-directories move back; a killed run's staging is swept as a restore's is
-(`sweepStaging`). Not staged: a server, a grant no output claims whole,
-or a task whose directory a grant
+instead. Each directory grant in the task's directory that the task's
+outputs claim whole (`dist/**` with no `!` exclusion under it, handed
+down as `ownedOutputs`) is copied as hard links (`linkTree`) into
+`.vx/tmp/<pid>-<tag>` in the nearest `.vx`. That staging is mounted as
+the task's directory under the mask, and the other grants bind into it
+as before. The output directory is a plain directory there. What the
+task writes beside it lands in the staging, is reported (no grant covers
+it) and goes with the staging. After the task, each staged directory is
+renamed over the host's; if the task removed it and made none, the
+host's goes too. A failed rename throws, so the task fails rather than
+saving stale bytes. The host's directory is never moved: a concurrent
+task reading it still sees it, and a killed run's staging, which holds
+only links, is swept as a restore's is (`sweepStaging`). Directories are
+not staged for a server, for a grant no output claims whole, where a mask
+sits at the task's directory (its later `--remount-ro` would cover the
+staging), or for a task whose directory a grant
 binds itself (`write: ['.']`, a file grant there). There a failed task
 whose stderr names a grant root (absolute, or relative to the cwd, `./`
 allowed) on a line holding `Read-only file system`, `EROFS`, `EBUSY` or
