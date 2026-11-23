@@ -14,15 +14,16 @@
     "private/*"
   ],
   "devDependencies": {
+    "@actions/attest": "3.2.0",
     "@types/bun": "1.4.4",
     "@vzn/vx": "workspace:*",
     "@vzn/vx-cache": "workspace:*",
     "@vzn/vx-ci": "workspace:*",
     "@vzn/vx-dte": "workspace:*",
+    "@vzn/vx-history": "workspace:*",
     "@vzn/vx-lockfile": "workspace:*",
     "@vzn/vx-migrate": "workspace:*",
     "@vzn/vx-reapi": "workspace:*",
-    "@vzn/vx-history": "workspace:*",
     "npm": "11.21.0",
     "oxfmt": "0.68.0",
     "oxlint": "1.83.0",

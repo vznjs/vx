@@ -41,14 +41,14 @@ This is what the plugin wrote for a run where one task failed:
 
 ### Failures
 
-- **packages/api#typecheck** — exit 1
+- **packages/api#lint** — exit 1
 
 | Task | Status | Duration |
 | --- | --- | --- |
-| packages/api#typecheck | ❌ failed | 3ms |
+| packages/api#lint | ❌ failed | 3ms |
 | packages/api#bundle | ✔️ up-to-date | 3ms |
 
-<sub>vx 0.0.0 · `vx run bundle typecheck --all` · 1/2 passed · 1 up-to-date · 0 restored</sub>
+<sub>vx 0.0.0 · `vx run bundle lint --all` · 1/2 passed · 1 up-to-date · 0 restored</sub>
 ````
 
 <small>One-project workspace · vx c1ad075 · 2026-10-23</small>

@@ -526,7 +526,7 @@ readers that reach it here.
   `toString()`, BEFORE its `JSON.stringify` would drop the evidence. It
   replies with the paths instead of the JSON, and `evaluateConfigFresh`
   throws the `UserError`. The compiled binary's Worker is held to it by
-  `scripts/check-binary.ts` (`check.binary`).
+  `scripts/check-binary.ts` (`check.bun.binary`).
 
 ### Evaluated from the bytes it read
 

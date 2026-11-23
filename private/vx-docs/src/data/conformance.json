@@ -1073,7 +1073,7 @@
     "turbo": {
       "all": {
         "pass": 1374,
-        "can": 1833,
+        "can": 1779,
         "of": 2169
       },
       "correctness": {
@@ -1088,7 +1088,7 @@
       },
       "data": {
         "pass": 30,
-        "can": 84,
+        "can": 30,
         "of": 90
       },
       "graph": {
@@ -1133,7 +1133,7 @@
       },
       "report": {
         "pass": 30,
-        "can": 84,
+        "can": 30,
         "of": 90
       },
       "sandbox": {
@@ -1150,7 +1150,7 @@
     "nx": {
       "all": {
         "pass": 1375,
-        "can": 1867,
+        "can": 1814,
         "of": 2169
       },
       "correctness": {
@@ -1165,7 +1165,7 @@
       },
       "data": {
         "pass": 30,
-        "can": 83,
+        "can": 30,
         "of": 90
       },
       "graph": {
@@ -1210,7 +1210,7 @@
       },
       "report": {
         "pass": 30,
-        "can": 83,
+        "can": 30,
         "of": 90
       },
       "sandbox": {
@@ -1227,7 +1227,7 @@
     "vite-task": {
       "all": {
         "pass": 1014,
-        "can": 1442,
+        "can": 1373,
         "of": 2169
       },
       "correctness": {
@@ -1242,7 +1242,7 @@
       },
       "data": {
         "pass": 9,
-        "can": 78,
+        "can": 9,
         "of": 90
       },
       "graph": {
@@ -1287,7 +1287,7 @@
       },
       "report": {
         "pass": 9,
-        "can": 78,
+        "can": 9,
         "of": 90
       },
       "sandbox": {
@@ -1303,13 +1303,13 @@
     },
     "nix": {
       "all": {
-        "pass": 1083,
-        "can": 1436,
+        "pass": 1082,
+        "can": 1363,
         "of": 2169
       },
       "correctness": {
-        "pass": 929,
-        "can": 1176,
+        "pass": 928,
+        "can": 1173,
         "of": 1756
       },
       "efficiency": {
@@ -1319,12 +1319,12 @@
       },
       "data": {
         "pass": 10,
-        "can": 80,
+        "can": 10,
         "of": 90
       },
       "graph": {
         "pass": 103,
-        "can": 110,
+        "can": 109,
         "of": 319
       },
       "config": {
@@ -1358,18 +1358,18 @@
         "of": 148
       },
       "outputs": {
-        "pass": 231,
-        "can": 306,
+        "pass": 230,
+        "can": 305,
         "of": 311
       },
       "report": {
         "pass": 10,
-        "can": 80,
+        "can": 10,
         "of": 90
       },
       "sandbox": {
         "pass": 91,
-        "can": 126,
+        "can": 125,
         "of": 132
       },
       "watch": {
@@ -1381,7 +1381,7 @@
     "moon": {
       "all": {
         "pass": 1267,
-        "can": 1772,
+        "can": 1717,
         "of": 2169
       },
       "correctness": {
@@ -1396,7 +1396,7 @@
       },
       "data": {
         "pass": 35,
-        "can": 90,
+        "can": 35,
         "of": 90
       },
       "graph": {
@@ -1441,7 +1441,7 @@
       },
       "report": {
         "pass": 35,
-        "can": 90,
+        "can": 35,
         "of": 90
       },
       "sandbox": {
@@ -9199,7 +9199,8 @@
           "detail": "packages/outer/inner/dist/nested.js is \"v1\\n\", expected \"v2\\n\""
         },
         "nix": {
-          "status": "pass"
+          "status": "n/a",
+          "detail": "nix-build builds the attributes it is named: no filter picks them."
         },
         "moon": {
           "status": "pass"
@@ -33431,14 +33432,12 @@
           "status": "pass"
         },
         "vite-task": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no durationMs"
+          "status": "n/a",
+          "detail": "`vp run --last-details` names the time a hit saved, never how long a task took in this run."
         },
         "nix": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no durationMs"
+          "status": "n/a",
+          "detail": "nix-build lists the derivations it builds, never how long one took."
         },
         "moon": {
           "status": "pass"
@@ -33467,14 +33466,12 @@
           "status": "pass"
         },
         "vite-task": {
-          "status": "fail",
-          "step": 3,
-          "detail": "reports no durationMs"
+          "status": "n/a",
+          "detail": "`vp run --last-details` names the time a hit saved, never how long a task took in this run."
         },
         "nix": {
-          "status": "fail",
-          "step": 3,
-          "detail": "reports no durationMs"
+          "status": "n/a",
+          "detail": "nix-build lists the derivations it builds, never how long one took."
         },
         "moon": {
           "status": "pass"
@@ -33497,29 +33494,24 @@
           "status": "pass"
         },
         "turbo": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no cpuMs"
+          "status": "n/a",
+          "detail": "The run summary (`--summarize`) gives a task’s start and end, never its CPU time."
         },
         "nx": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no cpuMs"
+          "status": "n/a",
+          "detail": "Nx’s run record (`run.json`) gives a task’s start and end, never its CPU time."
         },
         "vite-task": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no cpuMs"
+          "status": "n/a",
+          "detail": "The run summary gives no task’s CPU time."
         },
         "nix": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no cpuMs"
+          "status": "n/a",
+          "detail": "nix-build reports no build’s CPU time."
         },
         "moon": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no cpuMs"
+          "status": "n/a",
+          "detail": "moon’s run report (`runReport.json`) gives a task’s duration, never its CPU time."
         }
       }
     },
@@ -33539,29 +33531,24 @@
           "status": "pass"
         },
         "turbo": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no peakMemoryBytes"
+          "status": "n/a",
+          "detail": "The run summary gives no task’s peak memory."
         },
         "nx": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no peakMemoryBytes"
+          "status": "n/a",
+          "detail": "Nx’s run record gives no task’s peak memory."
         },
         "vite-task": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no peakMemoryBytes"
+          "status": "n/a",
+          "detail": "The run summary gives no task’s peak memory."
         },
         "nix": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no peakMemoryBytes"
+          "status": "n/a",
+          "detail": "nix-build reports no build’s peak memory."
         },
         "moon": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no peakMemoryBytes"
+          "status": "n/a",
+          "detail": "moon’s run report gives no task’s peak memory."
         }
       }
     },
@@ -33581,29 +33568,24 @@
           "status": "pass"
         },
         "turbo": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "The run summary lists a task’s output files, never their size."
         },
         "nx": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "Nx’s run record gives no size of a task’s outputs."
         },
         "vite-task": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "The run summary gives no size of a task’s outputs."
         },
         "nix": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "nix-build reports no size of what a build wrote."
         },
         "moon": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "moon’s run report gives no size of a task’s outputs."
         }
       }
     },
@@ -33623,29 +33605,24 @@
           "status": "pass"
         },
         "turbo": {
-          "status": "fail",
-          "step": 3,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "The run summary lists a task’s output files, never their size."
         },
         "nx": {
-          "status": "fail",
-          "step": 3,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "Nx’s run record gives no size of a task’s outputs."
         },
         "vite-task": {
-          "status": "fail",
-          "step": 3,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "The run summary gives no size of a task’s outputs."
         },
         "nix": {
-          "status": "fail",
-          "step": 3,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "nix-build reports no size of what a build wrote."
         },
         "moon": {
-          "status": "fail",
-          "step": 3,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "moon’s run report gives no size of a task’s outputs."
         }
       }
     },
@@ -40624,14 +40601,12 @@
           "status": "pass"
         },
         "vite-task": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no durationMs"
+          "status": "n/a",
+          "detail": "`vp run --last-details` names the time a hit saved, never how long a task took in this run."
         },
         "nix": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no durationMs"
+          "status": "n/a",
+          "detail": "nix-build lists the derivations it builds, never how long one took."
         },
         "moon": {
           "status": "pass"
@@ -40654,29 +40629,24 @@
           "status": "pass"
         },
         "turbo": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "The run summary lists a task’s output files, never their size."
         },
         "nx": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "Nx’s run record gives no size of a task’s outputs."
         },
         "vite-task": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "The run summary gives no size of a task’s outputs."
         },
         "nix": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "nix-build reports no size of what a build wrote."
         },
         "moon": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "moon’s run report gives no size of a task’s outputs."
         }
       }
     },
@@ -40696,29 +40666,24 @@
           "status": "pass"
         },
         "turbo": {
-          "status": "fail",
-          "step": 3,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "The run summary lists a task’s output files, never their size."
         },
         "nx": {
-          "status": "fail",
-          "step": 3,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "Nx’s run record gives no size of a task’s outputs."
         },
         "vite-task": {
-          "status": "fail",
-          "step": 3,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "The run summary gives no size of a task’s outputs."
         },
         "nix": {
-          "status": "fail",
-          "step": 3,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "nix-build reports no size of what a build wrote."
         },
         "moon": {
-          "status": "fail",
-          "step": 3,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "moon’s run report gives no size of a task’s outputs."
         }
       }
     },
@@ -40738,29 +40703,24 @@
           "status": "pass"
         },
         "turbo": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "The run summary lists a task’s output files, never their size."
         },
         "nx": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "Nx’s run record gives no size of a task’s outputs."
         },
         "vite-task": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "The run summary gives no size of a task’s outputs."
         },
         "nix": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "nix-build reports no size of what a build wrote."
         },
         "moon": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "moon’s run report gives no size of a task’s outputs."
         }
       }
     },
@@ -43872,29 +43832,24 @@
           "status": "pass"
         },
         "turbo": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no cpuMs"
+          "status": "n/a",
+          "detail": "The run summary (`--summarize`) gives a task’s start and end, never its CPU time."
         },
         "nx": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no cpuMs"
+          "status": "n/a",
+          "detail": "Nx’s run record (`run.json`) gives a task’s start and end, never its CPU time."
         },
         "vite-task": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no cpuMs"
+          "status": "n/a",
+          "detail": "The run summary gives no task’s CPU time."
         },
         "nix": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no cpuMs"
+          "status": "n/a",
+          "detail": "nix-build reports no build’s CPU time."
         },
         "moon": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no cpuMs"
+          "status": "n/a",
+          "detail": "moon’s run report (`runReport.json`) gives a task’s duration, never its CPU time."
         }
       }
     },
@@ -43914,29 +43869,24 @@
           "status": "pass"
         },
         "turbo": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no cpuMs"
+          "status": "n/a",
+          "detail": "The run summary (`--summarize`) gives a task’s start and end, never its CPU time."
         },
         "nx": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no cpuMs"
+          "status": "n/a",
+          "detail": "Nx’s run record (`run.json`) gives a task’s start and end, never its CPU time."
         },
         "vite-task": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no cpuMs"
+          "status": "n/a",
+          "detail": "The run summary gives no task’s CPU time."
         },
         "nix": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no cpuMs"
+          "status": "n/a",
+          "detail": "nix-build reports no build’s CPU time."
         },
         "moon": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no cpuMs"
+          "status": "n/a",
+          "detail": "moon’s run report (`runReport.json`) gives a task’s duration, never its CPU time."
         }
       }
     },
@@ -43988,29 +43938,24 @@
           "status": "pass"
         },
         "turbo": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "The run summary lists a task’s output files, never their size."
         },
         "nx": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "Nx’s run record gives no size of a task’s outputs."
         },
         "vite-task": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "The run summary gives no size of a task’s outputs."
         },
         "nix": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "nix-build reports no size of what a build wrote."
         },
         "moon": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "moon’s run report gives no size of a task’s outputs."
         }
       }
     },
@@ -44030,29 +43975,24 @@
           "status": "pass"
         },
         "turbo": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "The run summary lists a task’s output files, never their size."
         },
         "nx": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "Nx’s run record gives no size of a task’s outputs."
         },
         "vite-task": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "The run summary gives no size of a task’s outputs."
         },
         "nix": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "nix-build reports no size of what a build wrote."
         },
         "moon": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "moon’s run report gives no size of a task’s outputs."
         }
       }
     },
@@ -44072,29 +44012,24 @@
           "status": "pass"
         },
         "turbo": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "The run summary lists a task’s output files, never their size."
         },
         "nx": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "Nx’s run record gives no size of a task’s outputs."
         },
         "vite-task": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "The run summary gives no size of a task’s outputs."
         },
         "nix": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "nix-build reports no size of what a build wrote."
         },
         "moon": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "moon’s run report gives no size of a task’s outputs."
         }
       }
     },
@@ -44114,29 +44049,24 @@
           "status": "pass"
         },
         "turbo": {
-          "status": "fail",
-          "step": 3,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "The run summary lists a task’s output files, never their size."
         },
         "nx": {
-          "status": "fail",
-          "step": 3,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "Nx’s run record gives no size of a task’s outputs."
         },
         "vite-task": {
-          "status": "fail",
-          "step": 3,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "The run summary gives no size of a task’s outputs."
         },
         "nix": {
-          "status": "fail",
-          "step": 3,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "nix-build reports no size of what a build wrote."
         },
         "moon": {
-          "status": "fail",
-          "step": 3,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "moon’s run report gives no size of a task’s outputs."
         }
       }
     },
@@ -44156,29 +44086,24 @@
           "status": "pass"
         },
         "turbo": {
-          "status": "fail",
-          "step": 5,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "The run summary lists a task’s output files, never their size."
         },
         "nx": {
-          "status": "fail",
-          "step": 5,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "Nx’s run record gives no size of a task’s outputs."
         },
         "vite-task": {
-          "status": "fail",
-          "step": 5,
-          "detail": "ran a#build, expected it replayed or left out"
+          "status": "n/a",
+          "detail": "The run summary gives no size of a task’s outputs."
         },
         "nix": {
-          "status": "fail",
-          "step": 5,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "nix-build reports no size of what a build wrote."
         },
         "moon": {
-          "status": "fail",
-          "step": 5,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "moon’s run report gives no size of a task’s outputs."
         }
       }
     },
@@ -44204,14 +44129,12 @@
           "status": "pass"
         },
         "vite-task": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no durationMs"
+          "status": "n/a",
+          "detail": "`vp run --last-details` names the time a hit saved, never how long a task took in this run."
         },
         "nix": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no durationMs"
+          "status": "n/a",
+          "detail": "nix-build lists the derivations it builds, never how long one took."
         },
         "moon": {
           "status": "pass"
@@ -46311,9 +46234,8 @@
           "detail": "Vite Task keeps no task from files, network or home it never declared."
         },
         "nix": {
-          "status": "fail",
-          "step": 1,
-          "detail": "succeeded, expected a failure"
+          "status": "n/a",
+          "detail": "nix-build builds the attributes it is named: no filter picks them."
         },
         "moon": {
           "status": "n/a",
@@ -48052,14 +47974,12 @@
           "status": "pass"
         },
         "vite-task": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no durationMs"
+          "status": "n/a",
+          "detail": "`vp run --last-details` names the time a hit saved, never how long a task took in this run."
         },
         "nix": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no durationMs"
+          "status": "n/a",
+          "detail": "nix-build lists the derivations it builds, never how long one took."
         },
         "moon": {
           "status": "pass"
@@ -48089,14 +48009,12 @@
           "status": "pass"
         },
         "vite-task": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no durationMs"
+          "status": "n/a",
+          "detail": "`vp run --last-details` names the time a hit saved, never how long a task took in this run."
         },
         "nix": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no durationMs"
+          "status": "n/a",
+          "detail": "nix-build lists the derivations it builds, never how long one took."
         },
         "moon": {
           "status": "pass"
@@ -48126,14 +48044,12 @@
           "status": "pass"
         },
         "vite-task": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no durationMs"
+          "status": "n/a",
+          "detail": "`vp run --last-details` names the time a hit saved, never how long a task took in this run."
         },
         "nix": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no durationMs"
+          "status": "n/a",
+          "detail": "nix-build lists the derivations it builds, never how long one took."
         },
         "moon": {
           "status": "pass"
@@ -48163,14 +48079,12 @@
           "status": "pass"
         },
         "vite-task": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no durationMs"
+          "status": "n/a",
+          "detail": "`vp run --last-details` names the time a hit saved, never how long a task took in this run."
         },
         "nix": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no durationMs"
+          "status": "n/a",
+          "detail": "nix-build lists the derivations it builds, never how long one took."
         },
         "moon": {
           "status": "pass"
@@ -48200,14 +48114,12 @@
           "status": "pass"
         },
         "vite-task": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no durationMs"
+          "status": "n/a",
+          "detail": "`vp run --last-details` names the time a hit saved, never how long a task took in this run."
         },
         "nix": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no durationMs"
+          "status": "n/a",
+          "detail": "nix-build lists the derivations it builds, never how long one took."
         },
         "moon": {
           "status": "pass"
@@ -48237,14 +48149,12 @@
           "status": "pass"
         },
         "vite-task": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no durationMs"
+          "status": "n/a",
+          "detail": "`vp run --last-details` names the time a hit saved, never how long a task took in this run."
         },
         "nix": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no durationMs"
+          "status": "n/a",
+          "detail": "nix-build lists the derivations it builds, never how long one took."
         },
         "moon": {
           "status": "pass"
@@ -48311,14 +48221,12 @@
           "status": "pass"
         },
         "vite-task": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no durationMs"
+          "status": "n/a",
+          "detail": "`vp run --last-details` names the time a hit saved, never how long a task took in this run."
         },
         "nix": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no durationMs"
+          "status": "n/a",
+          "detail": "nix-build lists the derivations it builds, never how long one took."
         },
         "moon": {
           "status": "pass"
@@ -48348,14 +48256,12 @@
           "status": "pass"
         },
         "vite-task": {
-          "status": "fail",
-          "step": 3,
-          "detail": "reports no durationMs"
+          "status": "n/a",
+          "detail": "`vp run --last-details` names the time a hit saved, never how long a task took in this run."
         },
         "nix": {
-          "status": "fail",
-          "step": 3,
-          "detail": "reports no durationMs"
+          "status": "n/a",
+          "detail": "nix-build lists the derivations it builds, never how long one took."
         },
         "moon": {
           "status": "pass"
@@ -48385,14 +48291,12 @@
           "status": "pass"
         },
         "vite-task": {
-          "status": "fail",
-          "step": 3,
-          "detail": "reports no durationMs"
+          "status": "n/a",
+          "detail": "`vp run --last-details` names the time a hit saved, never how long a task took in this run."
         },
         "nix": {
-          "status": "fail",
-          "step": 3,
-          "detail": "reports no durationMs"
+          "status": "n/a",
+          "detail": "nix-build lists the derivations it builds, never how long one took."
         },
         "moon": {
           "status": "pass"
@@ -48422,14 +48326,12 @@
           "status": "pass"
         },
         "vite-task": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no durationMs"
+          "status": "n/a",
+          "detail": "`vp run --last-details` names the time a hit saved, never how long a task took in this run."
         },
         "nix": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no durationMs"
+          "status": "n/a",
+          "detail": "nix-build lists the derivations it builds, never how long one took."
         },
         "moon": {
           "status": "pass"
@@ -48459,14 +48361,12 @@
           "status": "pass"
         },
         "vite-task": {
-          "status": "fail",
-          "step": 3,
-          "detail": "reports no durationMs"
+          "status": "n/a",
+          "detail": "`vp run --last-details` names the time a hit saved, never how long a task took in this run."
         },
         "nix": {
-          "status": "fail",
-          "step": 3,
-          "detail": "reports no durationMs"
+          "status": "n/a",
+          "detail": "nix-build lists the derivations it builds, never how long one took."
         },
         "moon": {
           "status": "pass"
@@ -48496,14 +48396,12 @@
           "status": "pass"
         },
         "vite-task": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no durationMs"
+          "status": "n/a",
+          "detail": "`vp run --last-details` names the time a hit saved, never how long a task took in this run."
         },
         "nix": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no durationMs"
+          "status": "n/a",
+          "detail": "nix-build lists the derivations it builds, never how long one took."
         },
         "moon": {
           "status": "pass"
@@ -48533,14 +48431,12 @@
           "status": "pass"
         },
         "vite-task": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no durationMs"
+          "status": "n/a",
+          "detail": "`vp run --last-details` names the time a hit saved, never how long a task took in this run."
         },
         "nix": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no durationMs"
+          "status": "n/a",
+          "detail": "nix-build lists the derivations it builds, never how long one took."
         },
         "moon": {
           "status": "pass"
@@ -48565,29 +48461,24 @@
           "status": "pass"
         },
         "turbo": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no cpuMs"
+          "status": "n/a",
+          "detail": "The run summary (`--summarize`) gives a task’s start and end, never its CPU time."
         },
         "nx": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no cpuMs"
+          "status": "n/a",
+          "detail": "Nx’s run record (`run.json`) gives a task’s start and end, never its CPU time."
         },
         "vite-task": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no cpuMs"
+          "status": "n/a",
+          "detail": "The run summary gives no task’s CPU time."
         },
         "nix": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no cpuMs"
+          "status": "n/a",
+          "detail": "nix-build reports no build’s CPU time."
         },
         "moon": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no cpuMs"
+          "status": "n/a",
+          "detail": "moon’s run report (`runReport.json`) gives a task’s duration, never its CPU time."
         }
       }
     },
@@ -48609,29 +48500,24 @@
           "status": "pass"
         },
         "turbo": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no cpuMs"
+          "status": "n/a",
+          "detail": "The run summary (`--summarize`) gives a task’s start and end, never its CPU time."
         },
         "nx": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no cpuMs"
+          "status": "n/a",
+          "detail": "Nx’s run record (`run.json`) gives a task’s start and end, never its CPU time."
         },
         "vite-task": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no cpuMs"
+          "status": "n/a",
+          "detail": "The run summary gives no task’s CPU time."
         },
         "nix": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no cpuMs"
+          "status": "n/a",
+          "detail": "nix-build reports no build’s CPU time."
         },
         "moon": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no cpuMs"
+          "status": "n/a",
+          "detail": "moon’s run report (`runReport.json`) gives a task’s duration, never its CPU time."
         }
       }
     },
@@ -48653,29 +48539,24 @@
           "status": "pass"
         },
         "turbo": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no cpuMs"
+          "status": "n/a",
+          "detail": "The run summary (`--summarize`) gives a task’s start and end, never its CPU time."
         },
         "nx": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no cpuMs"
+          "status": "n/a",
+          "detail": "Nx’s run record (`run.json`) gives a task’s start and end, never its CPU time."
         },
         "vite-task": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no cpuMs"
+          "status": "n/a",
+          "detail": "The run summary gives no task’s CPU time."
         },
         "nix": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no cpuMs"
+          "status": "n/a",
+          "detail": "nix-build reports no build’s CPU time."
         },
         "moon": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no cpuMs"
+          "status": "n/a",
+          "detail": "moon’s run report (`runReport.json`) gives a task’s duration, never its CPU time."
         }
       }
     },
@@ -48697,29 +48578,24 @@
           "status": "pass"
         },
         "turbo": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no cpuMs"
+          "status": "n/a",
+          "detail": "The run summary (`--summarize`) gives a task’s start and end, never its CPU time."
         },
         "nx": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no cpuMs"
+          "status": "n/a",
+          "detail": "Nx’s run record (`run.json`) gives a task’s start and end, never its CPU time."
         },
         "vite-task": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no cpuMs"
+          "status": "n/a",
+          "detail": "The run summary gives no task’s CPU time."
         },
         "nix": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no cpuMs"
+          "status": "n/a",
+          "detail": "nix-build reports no build’s CPU time."
         },
         "moon": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no cpuMs"
+          "status": "n/a",
+          "detail": "moon’s run report (`runReport.json`) gives a task’s duration, never its CPU time."
         }
       }
     },
@@ -48741,29 +48617,24 @@
           "status": "pass"
         },
         "turbo": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no cpuMs"
+          "status": "n/a",
+          "detail": "The run summary (`--summarize`) gives a task’s start and end, never its CPU time."
         },
         "nx": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no cpuMs"
+          "status": "n/a",
+          "detail": "Nx’s run record (`run.json`) gives a task’s start and end, never its CPU time."
         },
         "vite-task": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no cpuMs"
+          "status": "n/a",
+          "detail": "The run summary gives no task’s CPU time."
         },
         "nix": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no cpuMs"
+          "status": "n/a",
+          "detail": "nix-build reports no build’s CPU time."
         },
         "moon": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no cpuMs"
+          "status": "n/a",
+          "detail": "moon’s run report (`runReport.json`) gives a task’s duration, never its CPU time."
         }
       }
     },
@@ -48785,29 +48656,24 @@
           "status": "pass"
         },
         "turbo": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no cpuMs"
+          "status": "n/a",
+          "detail": "The run summary (`--summarize`) gives a task’s start and end, never its CPU time."
         },
         "nx": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no cpuMs"
+          "status": "n/a",
+          "detail": "Nx’s run record (`run.json`) gives a task’s start and end, never its CPU time."
         },
         "vite-task": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no cpuMs"
+          "status": "n/a",
+          "detail": "The run summary gives no task’s CPU time."
         },
         "nix": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no cpuMs"
+          "status": "n/a",
+          "detail": "nix-build reports no build’s CPU time."
         },
         "moon": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no cpuMs"
+          "status": "n/a",
+          "detail": "moon’s run report (`runReport.json`) gives a task’s duration, never its CPU time."
         }
       }
     },
@@ -48829,29 +48695,24 @@
           "status": "pass"
         },
         "turbo": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no cpuMs"
+          "status": "n/a",
+          "detail": "The run summary (`--summarize`) gives a task’s start and end, never its CPU time."
         },
         "nx": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no cpuMs"
+          "status": "n/a",
+          "detail": "Nx’s run record (`run.json`) gives a task’s start and end, never its CPU time."
         },
         "vite-task": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no cpuMs"
+          "status": "n/a",
+          "detail": "The run summary gives no task’s CPU time."
         },
         "nix": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no cpuMs"
+          "status": "n/a",
+          "detail": "nix-build reports no build’s CPU time."
         },
         "moon": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no cpuMs"
+          "status": "n/a",
+          "detail": "moon’s run report (`runReport.json`) gives a task’s duration, never its CPU time."
         }
       }
     },
@@ -48889,9 +48750,8 @@
           "detail": "Nix does not retry a failed build."
         },
         "moon": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no cpuMs"
+          "status": "n/a",
+          "detail": "moon’s run report (`runReport.json`) gives a task’s duration, never its CPU time."
         }
       }
     },
@@ -48913,29 +48773,24 @@
           "status": "pass"
         },
         "turbo": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no cpuMs"
+          "status": "n/a",
+          "detail": "The run summary (`--summarize`) gives a task’s start and end, never its CPU time."
         },
         "nx": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no cpuMs"
+          "status": "n/a",
+          "detail": "Nx’s run record (`run.json`) gives a task’s start and end, never its CPU time."
         },
         "vite-task": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no cpuMs"
+          "status": "n/a",
+          "detail": "The run summary gives no task’s CPU time."
         },
         "nix": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no cpuMs"
+          "status": "n/a",
+          "detail": "nix-build reports no build’s CPU time."
         },
         "moon": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no cpuMs"
+          "status": "n/a",
+          "detail": "moon’s run report (`runReport.json`) gives a task’s duration, never its CPU time."
         }
       }
     },
@@ -48957,29 +48812,24 @@
           "status": "pass"
         },
         "turbo": {
-          "status": "fail",
-          "step": 3,
-          "detail": "reports no cpuMs"
+          "status": "n/a",
+          "detail": "The run summary (`--summarize`) gives a task’s start and end, never its CPU time."
         },
         "nx": {
-          "status": "fail",
-          "step": 3,
-          "detail": "reports no cpuMs"
+          "status": "n/a",
+          "detail": "Nx’s run record (`run.json`) gives a task’s start and end, never its CPU time."
         },
         "vite-task": {
-          "status": "fail",
-          "step": 3,
-          "detail": "reports no cpuMs"
+          "status": "n/a",
+          "detail": "The run summary gives no task’s CPU time."
         },
         "nix": {
-          "status": "fail",
-          "step": 3,
-          "detail": "reports no cpuMs"
+          "status": "n/a",
+          "detail": "nix-build reports no build’s CPU time."
         },
         "moon": {
-          "status": "fail",
-          "step": 3,
-          "detail": "reports no cpuMs"
+          "status": "n/a",
+          "detail": "moon’s run report (`runReport.json`) gives a task’s duration, never its CPU time."
         }
       }
     },
@@ -49001,29 +48851,24 @@
           "status": "pass"
         },
         "turbo": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no cpuMs"
+          "status": "n/a",
+          "detail": "The run summary (`--summarize`) gives a task’s start and end, never its CPU time."
         },
         "nx": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no cpuMs"
+          "status": "n/a",
+          "detail": "Nx’s run record (`run.json`) gives a task’s start and end, never its CPU time."
         },
         "vite-task": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no cpuMs"
+          "status": "n/a",
+          "detail": "The run summary gives no task’s CPU time."
         },
         "nix": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no cpuMs"
+          "status": "n/a",
+          "detail": "nix-build reports no build’s CPU time."
         },
         "moon": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no cpuMs"
+          "status": "n/a",
+          "detail": "moon’s run report (`runReport.json`) gives a task’s duration, never its CPU time."
         }
       }
     },
@@ -49045,29 +48890,24 @@
           "status": "pass"
         },
         "turbo": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no cpuMs"
+          "status": "n/a",
+          "detail": "The run summary (`--summarize`) gives a task’s start and end, never its CPU time."
         },
         "nx": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no cpuMs"
+          "status": "n/a",
+          "detail": "Nx’s run record (`run.json`) gives a task’s start and end, never its CPU time."
         },
         "vite-task": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no cpuMs"
+          "status": "n/a",
+          "detail": "The run summary gives no task’s CPU time."
         },
         "nix": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no cpuMs"
+          "status": "n/a",
+          "detail": "nix-build reports no build’s CPU time."
         },
         "moon": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no cpuMs"
+          "status": "n/a",
+          "detail": "moon’s run report (`runReport.json`) gives a task’s duration, never its CPU time."
         }
       }
     },
@@ -49089,29 +48929,24 @@
           "status": "pass"
         },
         "turbo": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no peakMemoryBytes"
+          "status": "n/a",
+          "detail": "The run summary gives no task’s peak memory."
         },
         "nx": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no peakMemoryBytes"
+          "status": "n/a",
+          "detail": "Nx’s run record gives no task’s peak memory."
         },
         "vite-task": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no peakMemoryBytes"
+          "status": "n/a",
+          "detail": "The run summary gives no task’s peak memory."
         },
         "nix": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no peakMemoryBytes"
+          "status": "n/a",
+          "detail": "nix-build reports no build’s peak memory."
         },
         "moon": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no peakMemoryBytes"
+          "status": "n/a",
+          "detail": "moon’s run report gives no task’s peak memory."
         }
       }
     },
@@ -49133,29 +48968,24 @@
           "status": "pass"
         },
         "turbo": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no peakMemoryBytes"
+          "status": "n/a",
+          "detail": "The run summary gives no task’s peak memory."
         },
         "nx": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no peakMemoryBytes"
+          "status": "n/a",
+          "detail": "Nx’s run record gives no task’s peak memory."
         },
         "vite-task": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no peakMemoryBytes"
+          "status": "n/a",
+          "detail": "The run summary gives no task’s peak memory."
         },
         "nix": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no peakMemoryBytes"
+          "status": "n/a",
+          "detail": "nix-build reports no build’s peak memory."
         },
         "moon": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no peakMemoryBytes"
+          "status": "n/a",
+          "detail": "moon’s run report gives no task’s peak memory."
         }
       }
     },
@@ -49177,29 +49007,24 @@
           "status": "pass"
         },
         "turbo": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no peakMemoryBytes"
+          "status": "n/a",
+          "detail": "The run summary gives no task’s peak memory."
         },
         "nx": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no peakMemoryBytes"
+          "status": "n/a",
+          "detail": "Nx’s run record gives no task’s peak memory."
         },
         "vite-task": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no peakMemoryBytes"
+          "status": "n/a",
+          "detail": "The run summary gives no task’s peak memory."
         },
         "nix": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no peakMemoryBytes"
+          "status": "n/a",
+          "detail": "nix-build reports no build’s peak memory."
         },
         "moon": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no peakMemoryBytes"
+          "status": "n/a",
+          "detail": "moon’s run report gives no task’s peak memory."
         }
       }
     },
@@ -49221,29 +49046,24 @@
           "status": "pass"
         },
         "turbo": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no peakMemoryBytes"
+          "status": "n/a",
+          "detail": "The run summary gives no task’s peak memory."
         },
         "nx": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no peakMemoryBytes"
+          "status": "n/a",
+          "detail": "Nx’s run record gives no task’s peak memory."
         },
         "vite-task": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no peakMemoryBytes"
+          "status": "n/a",
+          "detail": "The run summary gives no task’s peak memory."
         },
         "nix": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no peakMemoryBytes"
+          "status": "n/a",
+          "detail": "nix-build reports no build’s peak memory."
         },
         "moon": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no peakMemoryBytes"
+          "status": "n/a",
+          "detail": "moon’s run report gives no task’s peak memory."
         }
       }
     },
@@ -49265,29 +49085,24 @@
           "status": "pass"
         },
         "turbo": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no peakMemoryBytes"
+          "status": "n/a",
+          "detail": "The run summary gives no task’s peak memory."
         },
         "nx": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no peakMemoryBytes"
+          "status": "n/a",
+          "detail": "Nx’s run record gives no task’s peak memory."
         },
         "vite-task": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no peakMemoryBytes"
+          "status": "n/a",
+          "detail": "The run summary gives no task’s peak memory."
         },
         "nix": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no peakMemoryBytes"
+          "status": "n/a",
+          "detail": "nix-build reports no build’s peak memory."
         },
         "moon": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no peakMemoryBytes"
+          "status": "n/a",
+          "detail": "moon’s run report gives no task’s peak memory."
         }
       }
     },
@@ -49309,29 +49124,24 @@
           "status": "pass"
         },
         "turbo": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no peakMemoryBytes"
+          "status": "n/a",
+          "detail": "The run summary gives no task’s peak memory."
         },
         "nx": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no peakMemoryBytes"
+          "status": "n/a",
+          "detail": "Nx’s run record gives no task’s peak memory."
         },
         "vite-task": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no peakMemoryBytes"
+          "status": "n/a",
+          "detail": "The run summary gives no task’s peak memory."
         },
         "nix": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no peakMemoryBytes"
+          "status": "n/a",
+          "detail": "nix-build reports no build’s peak memory."
         },
         "moon": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no peakMemoryBytes"
+          "status": "n/a",
+          "detail": "moon’s run report gives no task’s peak memory."
         }
       }
     },
@@ -49353,29 +49163,24 @@
           "status": "pass"
         },
         "turbo": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no peakMemoryBytes"
+          "status": "n/a",
+          "detail": "The run summary gives no task’s peak memory."
         },
         "nx": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no peakMemoryBytes"
+          "status": "n/a",
+          "detail": "Nx’s run record gives no task’s peak memory."
         },
         "vite-task": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no peakMemoryBytes"
+          "status": "n/a",
+          "detail": "The run summary gives no task’s peak memory."
         },
         "nix": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no peakMemoryBytes"
+          "status": "n/a",
+          "detail": "nix-build reports no build’s peak memory."
         },
         "moon": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no peakMemoryBytes"
+          "status": "n/a",
+          "detail": "moon’s run report gives no task’s peak memory."
         }
       }
     },
@@ -49397,29 +49202,24 @@
           "status": "pass"
         },
         "turbo": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no peakMemoryBytes"
+          "status": "n/a",
+          "detail": "The run summary gives no task’s peak memory."
         },
         "nx": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no peakMemoryBytes"
+          "status": "n/a",
+          "detail": "Nx’s run record gives no task’s peak memory."
         },
         "vite-task": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no peakMemoryBytes"
+          "status": "n/a",
+          "detail": "The run summary gives no task’s peak memory."
         },
         "nix": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no peakMemoryBytes"
+          "status": "n/a",
+          "detail": "nix-build reports no build’s peak memory."
         },
         "moon": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no peakMemoryBytes"
+          "status": "n/a",
+          "detail": "moon’s run report gives no task’s peak memory."
         }
       }
     },
@@ -49441,29 +49241,24 @@
           "status": "pass"
         },
         "turbo": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no peakMemoryBytes"
+          "status": "n/a",
+          "detail": "The run summary gives no task’s peak memory."
         },
         "nx": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no peakMemoryBytes"
+          "status": "n/a",
+          "detail": "Nx’s run record gives no task’s peak memory."
         },
         "vite-task": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no peakMemoryBytes"
+          "status": "n/a",
+          "detail": "The run summary gives no task’s peak memory."
         },
         "nix": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no peakMemoryBytes"
+          "status": "n/a",
+          "detail": "nix-build reports no build’s peak memory."
         },
         "moon": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no peakMemoryBytes"
+          "status": "n/a",
+          "detail": "moon’s run report gives no task’s peak memory."
         }
       }
     },
@@ -49485,29 +49280,24 @@
           "status": "pass"
         },
         "turbo": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "The run summary lists a task’s output files, never their size."
         },
         "nx": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "Nx’s run record gives no size of a task’s outputs."
         },
         "vite-task": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "The run summary gives no size of a task’s outputs."
         },
         "nix": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "nix-build reports no size of what a build wrote."
         },
         "moon": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "moon’s run report gives no size of a task’s outputs."
         }
       }
     },
@@ -49529,29 +49319,24 @@
           "status": "pass"
         },
         "turbo": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "The run summary lists a task’s output files, never their size."
         },
         "nx": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "Nx’s run record gives no size of a task’s outputs."
         },
         "vite-task": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "The run summary gives no size of a task’s outputs."
         },
         "nix": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "nix-build reports no size of what a build wrote."
         },
         "moon": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "moon’s run report gives no size of a task’s outputs."
         }
       }
     },
@@ -49573,29 +49358,24 @@
           "status": "pass"
         },
         "turbo": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "The run summary lists a task’s output files, never their size."
         },
         "nx": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "Nx’s run record gives no size of a task’s outputs."
         },
         "vite-task": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "The run summary gives no size of a task’s outputs."
         },
         "nix": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "nix-build reports no size of what a build wrote."
         },
         "moon": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "moon’s run report gives no size of a task’s outputs."
         }
       }
     },
@@ -49617,29 +49397,24 @@
           "status": "pass"
         },
         "turbo": {
-          "status": "fail",
-          "step": 3,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "The run summary lists a task’s output files, never their size."
         },
         "nx": {
-          "status": "fail",
-          "step": 3,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "Nx’s run record gives no size of a task’s outputs."
         },
         "vite-task": {
-          "status": "fail",
-          "step": 3,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "The run summary gives no size of a task’s outputs."
         },
         "nix": {
-          "status": "fail",
-          "step": 3,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "nix-build reports no size of what a build wrote."
         },
         "moon": {
-          "status": "fail",
-          "step": 3,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "moon’s run report gives no size of a task’s outputs."
         }
       }
     },
@@ -49661,29 +49436,24 @@
           "status": "pass"
         },
         "turbo": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "The run summary lists a task’s output files, never their size."
         },
         "nx": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "Nx’s run record gives no size of a task’s outputs."
         },
         "vite-task": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "The run summary gives no size of a task’s outputs."
         },
         "nix": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "nix-build reports no size of what a build wrote."
         },
         "moon": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "moon’s run report gives no size of a task’s outputs."
         }
       }
     },
@@ -49705,29 +49475,24 @@
           "status": "pass"
         },
         "turbo": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "The run summary lists a task’s output files, never their size."
         },
         "nx": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "Nx’s run record gives no size of a task’s outputs."
         },
         "vite-task": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "The run summary gives no size of a task’s outputs."
         },
         "nix": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "nix-build reports no size of what a build wrote."
         },
         "moon": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "moon’s run report gives no size of a task’s outputs."
         }
       }
     },
@@ -49749,29 +49514,24 @@
           "status": "pass"
         },
         "turbo": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "The run summary lists a task’s output files, never their size."
         },
         "nx": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "Nx’s run record gives no size of a task’s outputs."
         },
         "vite-task": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "The run summary gives no size of a task’s outputs."
         },
         "nix": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "nix-build reports no size of what a build wrote."
         },
         "moon": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "moon’s run report gives no size of a task’s outputs."
         }
       }
     },
@@ -49793,29 +49553,24 @@
           "status": "pass"
         },
         "turbo": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "The run summary lists a task’s output files, never their size."
         },
         "nx": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "Nx’s run record gives no size of a task’s outputs."
         },
         "vite-task": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "The run summary gives no size of a task’s outputs."
         },
         "nix": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "nix-build reports no size of what a build wrote."
         },
         "moon": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "moon’s run report gives no size of a task’s outputs."
         }
       }
     },
@@ -49837,29 +49592,24 @@
           "status": "pass"
         },
         "turbo": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "The run summary lists a task’s output files, never their size."
         },
         "nx": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "Nx’s run record gives no size of a task’s outputs."
         },
         "vite-task": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "The run summary gives no size of a task’s outputs."
         },
         "nix": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "nix-build reports no size of what a build wrote."
         },
         "moon": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "moon’s run report gives no size of a task’s outputs."
         }
       }
     },
@@ -49881,28 +49631,24 @@
           "status": "pass"
         },
         "turbo": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "The run summary lists a task’s output files, never their size."
         },
         "nx": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "Nx’s run record gives no size of a task’s outputs."
         },
         "vite-task": {
           "status": "n/a",
           "detail": "`vp run` runs one task name per run."
         },
         "nix": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "nix-build reports no size of what a build wrote."
         },
         "moon": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "moon’s run report gives no size of a task’s outputs."
         }
       }
     },
@@ -49924,29 +49670,24 @@
           "status": "pass"
         },
         "turbo": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "The run summary lists a task’s output files, never their size."
         },
         "nx": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "Nx’s run record gives no size of a task’s outputs."
         },
         "vite-task": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "The run summary gives no size of a task’s outputs."
         },
         "nix": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "nix-build reports no size of what a build wrote."
         },
         "moon": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "moon’s run report gives no size of a task’s outputs."
         }
       }
     },
@@ -49968,29 +49709,24 @@
           "status": "pass"
         },
         "turbo": {
-          "status": "fail",
-          "step": 4,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "The run summary lists a task’s output files, never their size."
         },
         "nx": {
-          "status": "fail",
-          "step": 4,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "Nx’s run record gives no size of a task’s outputs."
         },
         "vite-task": {
-          "status": "fail",
-          "step": 4,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "The run summary gives no size of a task’s outputs."
         },
         "nix": {
-          "status": "fail",
-          "step": 4,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "nix-build reports no size of what a build wrote."
         },
         "moon": {
-          "status": "fail",
-          "step": 4,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "moon’s run report gives no size of a task’s outputs."
         }
       }
     },
@@ -50012,29 +49748,24 @@
           "status": "pass"
         },
         "turbo": {
-          "status": "fail",
-          "step": 3,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "The run summary lists a task’s output files, never their size."
         },
         "nx": {
-          "status": "fail",
-          "step": 3,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "Nx’s run record gives no size of a task’s outputs."
         },
         "vite-task": {
-          "status": "fail",
-          "step": 3,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "The run summary gives no size of a task’s outputs."
         },
         "nix": {
-          "status": "fail",
-          "step": 3,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "nix-build reports no size of what a build wrote."
         },
         "moon": {
-          "status": "fail",
-          "step": 3,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "moon’s run report gives no size of a task’s outputs."
         }
       }
     },
@@ -50056,29 +49787,24 @@
           "status": "pass"
         },
         "turbo": {
-          "status": "fail",
-          "step": 3,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "The run summary lists a task’s output files, never their size."
         },
         "nx": {
-          "status": "fail",
-          "step": 3,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "Nx’s run record gives no size of a task’s outputs."
         },
         "vite-task": {
-          "status": "fail",
-          "step": 3,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "The run summary gives no size of a task’s outputs."
         },
         "nix": {
-          "status": "fail",
-          "step": 3,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "nix-build reports no size of what a build wrote."
         },
         "moon": {
-          "status": "fail",
-          "step": 3,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "moon’s run report gives no size of a task’s outputs."
         }
       }
     },
@@ -50100,9 +49826,8 @@
           "status": "pass"
         },
         "turbo": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "The run summary lists a task’s output files, never their size."
         },
         "nx": {
           "status": "n/a",
@@ -50117,9 +49842,8 @@
           "detail": "Building writes the store: no build reads it without writing."
         },
         "moon": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "moon’s run report gives no size of a task’s outputs."
         }
       }
     },
@@ -50141,29 +49865,24 @@
           "status": "pass"
         },
         "turbo": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "The run summary lists a task’s output files, never their size."
         },
         "nx": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "Nx’s run record gives no size of a task’s outputs."
         },
         "vite-task": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "The run summary gives no size of a task’s outputs."
         },
         "nix": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "nix-build reports no size of what a build wrote."
         },
         "moon": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "moon’s run report gives no size of a task’s outputs."
         }
       }
     },
@@ -50185,29 +49904,24 @@
           "status": "pass"
         },
         "turbo": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "The run summary lists a task’s output files, never their size."
         },
         "nx": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "Nx’s run record gives no size of a task’s outputs."
         },
         "vite-task": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "The run summary gives no size of a task’s outputs."
         },
         "nix": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "nix-build reports no size of what a build wrote."
         },
         "moon": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "moon’s run report gives no size of a task’s outputs."
         }
       }
     },
@@ -50229,29 +49943,24 @@
           "status": "pass"
         },
         "turbo": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "The run summary lists a task’s output files, never their size."
         },
         "nx": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "Nx’s run record gives no size of a task’s outputs."
         },
         "vite-task": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "The run summary gives no size of a task’s outputs."
         },
         "nix": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "nix-build reports no size of what a build wrote."
         },
         "moon": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "moon’s run report gives no size of a task’s outputs."
         }
       }
     },
@@ -50273,29 +49982,24 @@
           "status": "pass"
         },
         "turbo": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "The run summary lists a task’s output files, never their size."
         },
         "nx": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "Nx’s run record gives no size of a task’s outputs."
         },
         "vite-task": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "The run summary gives no size of a task’s outputs."
         },
         "nix": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "nix-build reports no size of what a build wrote."
         },
         "moon": {
-          "status": "fail",
-          "step": 1,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "moon’s run report gives no size of a task’s outputs."
         }
       }
     },
@@ -50317,29 +50021,24 @@
           "status": "pass"
         },
         "turbo": {
-          "status": "fail",
-          "step": 3,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "The run summary lists a task’s output files, never their size."
         },
         "nx": {
-          "status": "fail",
-          "step": 3,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "Nx’s run record gives no size of a task’s outputs."
         },
         "vite-task": {
-          "status": "fail",
-          "step": 3,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "The run summary gives no size of a task’s outputs."
         },
         "nix": {
-          "status": "fail",
-          "step": 3,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "nix-build reports no size of what a build wrote."
         },
         "moon": {
-          "status": "fail",
-          "step": 3,
-          "detail": "reports no outputBytes"
+          "status": "n/a",
+          "detail": "moon’s run report gives no size of a task’s outputs."
         }
       }
     },
@@ -68992,9 +68691,8 @@
           "status": "pass"
         },
         "nix": {
-          "status": "fail",
-          "step": 1,
-          "detail": "exited 100, expected success"
+          "status": "n/a",
+          "detail": "nix-build builds the attributes it is named: no filter picks them."
         },
         "moon": {
           "status": "pass"

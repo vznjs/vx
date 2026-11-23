@@ -6,6 +6,11 @@
       ]
     },
     "conformance": {
+      "dependsOn": [
+        "conformance.cases"
+      ]
+    },
+    "conformance.cases": {
       "description": "bun src/cli.ts: every case against vx, Turborepo, Nx, Vite Task, Nix and moon → vx-docs/src/data/conformance.json",
       "dependsOn": [
         "install"
@@ -27,7 +32,7 @@
         ]
       }
     },
-    "conformance.merge": {
+    "conformance.cases.merge": {
       "description": "bun src/merge.ts: the shards in shards/ → conformance.json",
       "dependsOn": [
         "install"

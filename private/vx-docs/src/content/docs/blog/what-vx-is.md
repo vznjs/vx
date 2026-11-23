@@ -48,9 +48,9 @@ caches on your machine.
 
 ```ts
 build: {
-  exec: { command: 'tsc -b' },
-  inputs: { files: ['src/**', 'tsconfig.json'] },
-  outputs: { files: ['dist/**', '*.tsbuildinfo'] },
+  exec: { command: 'vite build' },
+  inputs: { files: ['src/**', 'vite.config.ts'] },
+  outputs: { files: ['dist/**'] },
   cache: true,
 }
 ```

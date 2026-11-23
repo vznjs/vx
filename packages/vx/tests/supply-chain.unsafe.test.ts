@@ -70,7 +70,7 @@ function injectable(text: string): string[] {
 const TAINTED = /\$\{\{[^}]*\b(?:github\.event\.|inputs\.|github\.head_ref)/
 
 // Sorted: readdir order differs by filesystem, and the CI runner's put
-// release.yml before auto-release.yml.
+// npm.yml before auto-release.yml.
 const files = yamlFiles(path.join(ROOT, '.github')).sort()
 const rel = (p: string) => path.relative(ROOT, p)
 
@@ -247,13 +247,13 @@ describe('the supply chain', () => {
   })
 
   // A second dispatch of a release workflow while the first runs races
-  // it: release.yml had no group, so two runs of one tag would upload to
+  // it: npm.yml had no group, so two runs of one tag would upload to
   // the same draft and either could publish it first. Each queues behind the one running,
   // never cancelling it halfway through a publish.
   it('runs each release workflow one at a time, never cancelled', () => {
     expect(
       workflows
-        .filter(({ file }) => /(?:^|\/)(?:release|npm|auto-release)\.yml$/.test(file))
+        .filter(({ file }) => /(?:^|\/)(?:npm|auto-release)\.yml$/.test(file))
         .map(({ file, doc }) => [
           path.basename(file),
           doc.concurrency?.group,
@@ -261,8 +261,7 @@ describe('the supply chain', () => {
         ]),
     ).toEqual([
       ['auto-release.yml', 'auto-release', false],
-      ['npm.yml', 'npm-publish', false],
-      ['release.yml', 'release-assets-${{ inputs.tag }}', false],
+      ['npm.yml', 'npm-${{ github.ref }}', false],
     ])
   })
 
@@ -282,7 +281,7 @@ describe('the supply chain', () => {
     expect(pkg.packageManager).toMatch(/^bun@\d+\.\d+\.\d+$/)
   })
 
-  // The publish is scripts/release.ts's (`release.publish.<os>`); a workflow
+  // The publish is scripts/release.ts's (`release.npm.<os>.publish`); a workflow
   // publishes nothing itself (workflow-runner.unsafe.test.ts).
   it('publishes every npm package with provenance', () => {
     const script = readFileSync(path.join(ROOT, 'packages', 'vx', 'scripts', 'release.ts'), 'utf8')

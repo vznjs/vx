@@ -1,10 +1,9 @@
-// The release steps npm.yml and release.yml run, each a `release.*` task in
-// vx.config.ts: CI runs vx tasks, never its own commands (owner,
-// 2026-10-03). The version is VX_RELEASE_VERSION, the release tag or the
-// dispatch input exactly as the workflow received it: it arrives through
-// the environment, never pasted into a script, and must be a version (L-28).
+// The npm steps of npm.yml's `vx pipeline npm`, each a `release.npm.*`
+// task in vx.config.ts: CI runs vx tasks, never its own commands (owner,
+// 2026-10-03). The version is VX_RELEASE_VERSION, the release tag exactly as
+// the workflow received it: it arrives through the environment, never pasted
+// into a script, and must be a version (L-28).
 //
-//   bun scripts/release.ts stamp
 //   bun scripts/release.ts npm
 //   bun scripts/release.ts prove <linux|darwin>
 //   bun scripts/release.ts assemble <linux|darwin>
@@ -16,7 +15,6 @@ import { createRequire } from 'node:module'
 import path from 'node:path'
 import { launchVersion } from './binary-launch.ts'
 import { TARGETS, emitMainPackage, emitPlatformPackages, emitPluginPackages } from './build-npm.ts'
-import { runMain } from './github.ts'
 
 const CORE = path.resolve(import.meta.dir, '..')
 const DIST = path.join(CORE, 'dist')
@@ -50,7 +48,7 @@ export function supportsTrustedPublishing(npmVersion: string): boolean {
  * The package directories `publish <os>` publishes, under the assembled
  * tree, in order. The platform binaries first, so `@vzn/vx`'s
  * optionalDependencies resolve on the registry; the darwin ones come from
- * npm.yml's darwin job, which can sign them, and run before the linux job.
+ * a Mac worker, which can sign them, and publish before the linux ones.
  * `@vzn/vx` after every platform package, and the plugins after it: each
  * peer-depends on it.
  */
@@ -234,18 +232,6 @@ function empty(dir: string): void {
 /** The npm `npm` runs `publish` with: the repaired one when there is one. */
 const npmBin = (): string => (existsSync(NPM_PREFIX_BIN) ? NPM_PREFIX_BIN : 'npm')
 
-async function stamp(version: string): Promise<void> {
-  // packages/vx/package.json is the manifest `src/version.ts` inlines under
-  // `bun build --compile`, so it is stamped BEFORE compiling; stamping the
-  // root one (as the workflows did until 2026-09-03) left every binary at
-  // `vx 0.0.0`. Ephemeral: CI only, never committed. `prove` asserts it took.
-  const file = path.join(CORE, 'package.json')
-  const manifest = (await Bun.file(file).json()) as { version: string }
-  manifest.version = version
-  await Bun.write(file, JSON.stringify(manifest, null, 2) + '\n')
-  console.log(`stamped ${path.relative(CORE, file)} with ${version}`)
-}
-
 // Trusted publishing needs npm >= 11.5.1, and provenance (auto-enabled under
 // OIDC) needs `libnpmpublish` to `require('sigstore')` — a missing one
 // aborted a release mid-publish with a cryptic MODULE_NOT_FOUND. So check
@@ -300,8 +286,8 @@ function prove(os: Os, version: string): void {
   const host = `${os}-${process.arch === 'arm64' ? 'arm64' : 'x64'}`
   for (const t of TARGETS.filter((t) => t.os === os)) {
     const bin = path.join(DIST, `vx-${t.target}`)
-    // release.yml hands the darwin binaries over as an artifact, and a
-    // download drops the executable bit.
+    // A Linux worker cross-compiles them: one that reached this Mac without
+    // its executable bit (a copy, an artifact) still launches.
     if (os === 'darwin') chmodSync(bin, 0o755)
     // Every darwin binary launches here: an arm64 runner runs the x64 one
     // under Rosetta. `codesign --verify` under seatbelt is refused
@@ -310,7 +296,7 @@ function prove(os: Os, version: string): void {
     const got = launchVersion(bin)
     if (got.exitCode !== 0 || got.version !== want) {
       throw new Error(
-        `${path.relative(CORE, bin)} reports '${got.version}' (exit ${got.exitCode}), expected '${want}' — the version stamp missed the manifest the binary inlines\n${got.stderr}`,
+        `${path.relative(CORE, bin)} reports '${got.version}' (exit ${got.exitCode}), expected '${want}' — compile.bun.* did not define VX_RELEASE as VX_RELEASE_VERSION\n${got.stderr}`,
       )
     }
     console.log(`${path.relative(CORE, bin)} reports ${got.version}`)
@@ -404,7 +390,7 @@ const awaitNpm = (urls: readonly string[]): Promise<void> =>
     (line) => console.log(line),
   )
 
-// Every package both publish jobs sent: the linux job runs last, so
+// Every package both publish tasks sent: the linux one runs last, so
 // the darwin packages are already published.
 async function served(version: string): Promise<void> {
   const names = [...publishOrder('darwin', []), ...assembled('linux').map((p) => p.name)]
@@ -416,7 +402,6 @@ async function main(argv: readonly string[]): Promise<void> {
   const [step, os] = argv
   if (step === 'npm') return ensureNpm()
   const version = releaseVersion(process.env['VX_RELEASE_VERSION'])
-  if (step === 'stamp') return stamp(version)
   if (step === 'served') return served(version)
   if (os !== 'linux' && os !== 'darwin') throw new Error(`usage: release.ts ${step} <linux|darwin>`)
   if (step === 'prove') return prove(os, version)
@@ -425,4 +410,11 @@ async function main(argv: readonly string[]): Promise<void> {
   throw new Error(`unknown step: ${step}`)
 }
 
-if (import.meta.main) await runMain(() => main(process.argv.slice(2)))
+if (import.meta.main) {
+  try {
+    await main(process.argv.slice(2))
+  } catch (e) {
+    process.stderr.write(`${(e as Error).message}\n`)
+    process.exitCode = 1
+  }
+}

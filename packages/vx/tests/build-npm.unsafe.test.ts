@@ -30,6 +30,7 @@ import {
   emitPluginPackages,
 } from '../scripts/build-npm.ts'
 import { publishOrder } from '../scripts/release.ts'
+import config from '../vx.config.ts'
 
 const CORE = path.resolve(import.meta.dir, '..')
 const out = mkdtempSync(path.join(tmpdir(), 'vx-build-npm-'))
@@ -340,11 +341,10 @@ describe('the published plugin packages', async () => {
     expect(named.has('@vzn/vx-lockfile')).toBe(true)
   })
 
-  it('are published by the release workflow, after @vzn/vx', async () => {
-    const wf = await Bun.file(path.join(REPO, '.github', 'workflows', 'npm.yml')).text()
-    const assemble = wf.indexOf('run release.assemble.linux --filter @vzn/vx')
-    expect(assemble).toBeGreaterThan(-1)
-    expect(wf.indexOf('run release.publish.linux --filter @vzn/vx')).toBeGreaterThan(assemble)
+  it('are published by the release, after @vzn/vx', () => {
+    expect(config.tasks?.['release.npm.linux.publish']?.dependsOn).toContain(
+      'release.npm.linux.assemble',
+    )
     const names = emitted.map((e) => path.basename(e.dir)).sort()
     expect(publishOrder('linux', names)).toEqual([
       '@vzn/vx-linux-x64',

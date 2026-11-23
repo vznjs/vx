@@ -13,6 +13,7 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
+import type { WorkspaceConfig } from '../src/config.ts'
 
 const repo = path.resolve(import.meta.dir, '..', '..', '..')
 const workflowDir = path.join(repo, '.github', 'workflows')
@@ -46,7 +47,18 @@ const runsVxTask = (s: Step) =>
 
 // A distributed run's job only plans and dispatches: every task, sandboxed
 // or not, runs on a worker, which installs the runtime (ci-workflow law).
-const distributed = (j: Job | Step) => j.env?.['VX_DTE_RELAY'] !== undefined
+// It names a relay itself, or runs a pipeline whose env names one.
+const workspace = (await import(path.join(repo, '.vx', 'workspace.ts'))) as {
+  default: WorkspaceConfig
+}
+const relayed = new Set(
+  Object.entries(workspace.default.pipelines ?? {})
+    .filter(([, p]) => p.env?.['VX_DTE_RELAY'] !== undefined)
+    .map(([name]) => name),
+)
+const distributed = (j: Job | Step) =>
+  j.env?.['VX_DTE_RELAY'] !== undefined ||
+  ('run' in j && relayed.has(/\bbin\.ts pipeline ([\w-]+)$/.exec(j.run ?? '')?.[1] ?? ''))
 
 const covered: string[] = []
 const missing: string[] = []
@@ -74,15 +86,12 @@ describe('a Linux CI job that runs a vx task', () => {
       'ci.yml#perf',
       'conformance.yml#conformance',
       'conformance.yml#merge',
-      'npm.yml#publish',
-      'npm.yml#images',
       'real-repos.yml#real-repos',
-      'release.yml#assets',
     ])
   })
 
   it('leaves out only the distributed runs', () => {
-    expect(runs).toEqual(['ci.yml#linux'])
+    expect(runs).toEqual(['ci.yml#linux', 'npm.yml#release'])
   })
 
   it('sets up the sandbox runtime before its first vx task', () => {
@@ -99,12 +108,8 @@ describe('a Linux CI job that runs a vx task', () => {
 // CI runs vx tasks, never commands of its own (2026-10-03): the
 // release logic lives in `release.*` tasks (scripts/release.ts,
 // scripts/auto-release.ts), where it is typed, tested and sandboxed. The
-// three release workflows run nothing but the install and vx tasks, and no
+// release workflows run nothing but the install and vx tasks, and no
 // workflow inlines a script or does a task's job itself.
-// release.yml and npm.yml's `scripts` input: an older tag whose release
-// scripts had a bug (v0.0.647) builds with this commit's packages/vx/scripts.
-const SCRIPTS =
-  'git fetch --depth=1 origin "$GITHUB_SHA" && git checkout FETCH_HEAD -- packages/vx/scripts'
 
 describe('a workflow `run:` step', () => {
   const steps = files.flatMap((file) =>
@@ -123,17 +128,15 @@ describe('a workflow `run:` step', () => {
   })
 
   it('in a release workflow, is the install or one vx task', () => {
-    const release = steps.filter(({ at }) =>
-      /^(?:npm|release|release-notes|auto-release)\.yml#/.test(at),
-    )
-    expect(release.length).toBeGreaterThan(10)
+    const release = steps.filter(({ at }) => /^(?:npm|auto-release)\.yml#/.test(at))
+    expect(release.length).toBeGreaterThan(5)
     const custom = release
       .filter(
         ({ run }) =>
           run !== 'bun install --frozen-lockfile' &&
           run !== SETUP &&
-          // Picks which release scripts run against an older tag; runs none.
-          run !== SCRIPTS &&
+          run !== 'bun packages/vx/src/bin.ts lock --check' &&
+          run !== 'bun packages/vx/src/bin.ts pipeline npm' &&
           !/^bun packages\/vx\/src\/bin\.ts run [\w. -]+ --filter @vzn\/vx(?: --concurrency \d+)?$/.test(
             run,
           ),
@@ -236,8 +239,10 @@ describe('a VX_ var a workflow sets reaches the task that reads it', () => {
 
   const forwarded = new Set<string>()
   const configs = [path.join(repo, 'vx.config.ts')]
-  for (const pkg of readdirSync(path.join(repo, 'packages'))) {
-    configs.push(path.join(repo, 'packages', pkg, 'vx.config.ts'))
+  for (const dir of ['packages', 'private']) {
+    for (const pkg of readdirSync(path.join(repo, dir))) {
+      configs.push(path.join(repo, dir, pkg, 'vx.config.ts'))
+    }
   }
   for (const file of configs.filter((f) => existsSync(f))) {
     for (const m of readFileSync(file, 'utf8').matchAll(/'(VX_\w+)'/g)) {

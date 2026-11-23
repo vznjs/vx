@@ -1,6 +1,6 @@
 // What else ran beside a timed rep. A ratio taken in one job is not enough
 // on a shared machine: on #4323's CI the check shared its worker with
-// perf.bench and two test shards, and vx's noop read 468 ms where its
+// perf.vx and two test shards, and vx's noop read 468 ms where its
 // rerun read 292 (vx/turbo 1.25 against 0.97, one commit). Neighbours
 // hurt vx more than Turbo, one JS thread against Go's many under a fair
 // share (four busy loops moved the noop ratio from 0.90 to 1.28), so a

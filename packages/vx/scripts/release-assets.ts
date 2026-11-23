@@ -1,8 +1,8 @@
-// release.yml's uploads, the `release.upload.<os>` tasks: attach the
+// The release's uploads, the `release.github.<os>.upload` tasks: attach the
 // `vx-<os>-*` binaries to the release VX_RELEASE_VERSION names (linux's also
 // THIRD_PARTY_NOTICES.txt, the licenses the binaries embed), and with
 // `--publish` take it out of draft. This repo's releases are immutable, and
-// GitHub takes assets only before a release is published, so release.auto
+// GitHub takes assets only before a release is published, so release.github.tag
 // creates each one as a draft and the last upload (darwin's, after its
 // binaries are proven) publishes it. An asset already attached is skipped,
 // so a re-run completes the set. An upload that stalls is cut and retried:
@@ -13,7 +13,7 @@
 
 import { readdirSync } from 'node:fs'
 import path from 'node:path'
-import { env, github, runMain } from './github.ts'
+import { env, github } from './github.ts'
 import { releaseVersion } from './release.ts'
 
 const DIST = path.join(import.meta.dir, '..', 'dist')
@@ -117,4 +117,11 @@ async function main(): Promise<void> {
   }
 }
 
-if (import.meta.main) await runMain(main)
+if (import.meta.main) {
+  try {
+    await main()
+  } catch (e) {
+    process.stderr.write(`${(e as Error).message}\n`)
+    process.exitCode = 1
+  }
+}

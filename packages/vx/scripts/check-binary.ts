@@ -1,5 +1,5 @@
 // The compiled binary, as a user meets it: compile THIS host's target the
-// way release.yml does, launch it (re-signed only if macOS refuses it,
+// way npm.yml does, launch it (re-signed only if macOS refuses it,
 // binary-launch.ts), and assert `--version` reports the version
 // package.json carries, which src/version.ts inlines and the release
 // workflows stamp. A layout move broke that stamp unseen for a week once

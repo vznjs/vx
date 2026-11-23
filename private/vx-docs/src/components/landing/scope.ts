@@ -30,7 +30,7 @@ export const SCOPE = [
     rate: 'passes 91% · flaky',
   },
   {
-    task: 'ui#typecheck',
+    task: 'ui#lint',
     time: '0 ms',
     usual: 'usual 12.4 s',
     drift: 'saved 12.4 s',

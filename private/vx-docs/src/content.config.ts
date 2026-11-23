@@ -16,7 +16,7 @@ export const collections = {
           authors: z.array(z.string()).optional(),
           tags: z.array(z.string()).optional(),
           excerpt: z.string().optional(),
-          // A PNG under src/assets/blog/, resized by `build.images`.
+          // A PNG under src/assets/blog/, resized by `build.bun.images`.
           cover: z.object({ image: z.string(), alt: z.string() }).optional(),
         }),
     }),

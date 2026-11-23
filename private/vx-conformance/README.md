@@ -27,7 +27,7 @@ Conformance workflow (`.github/workflows/conformance.yml`) runs the whole
 suite weekly, after the Monday rival sweep dispatches it, with Nix from
 its installer's latest. Each of its jobs runs one tool on a share of the
 cases sized to about 90 s (`--shard 2/14`; Nx's 14, moon's 10),
-all at once, under the task's 5-minute limit, and `conformance.merge` joins their
+all at once, under the task's 5-minute limit, and `conformance.cases.merge` joins their
 results (`src/merge.ts`). Main's deploy shows the rivals' outcomes and
 versions from its newest run and vx's from the commit
 (`private/vx-docs/scripts/live-conformance.ts`). A case vx fails fails
@@ -94,7 +94,10 @@ outcome is right and what the alternative costs a user, shown collapsed
 under the case on the site. `from`
 names the vx tests the case is drawn from. `needs` names a feature a
 tool may lack (affected, timeout, retries, persistent tasks, watch, a
-package manager…); a step that installs needs a package manager. A tool
+package manager…). What a step uses is added on its own: an install
+needs a package manager, a selector or `only` a filter, `force` forcing,
+a `report` of CPU time, memory, output size or duration the tool's
+report of it, and so on (`needsOf` in `src/spec.ts`). A tool
 without the feature scores the case N/A, and its adapter's `lacks` says
 why in one sentence the site shows. N/A is only for a feature the tool
 does not have at all: a tool that has the feature but does it its own way

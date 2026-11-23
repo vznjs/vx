@@ -1,78 +1,55 @@
-// Every binary release.yml attaches to a release carries a build-provenance
-// attestation of the same files (L-12). `vx upgrade` checks the SHA-256 the
-// release API publishes, which comes from the same place as the asset, so
-// it proves the transfer and not who built the bytes; a Sigstore-signed
-// attestation (`gh attestation verify vx-<target> --repo vznjs/vx`) does.
+// Every binary a release attaches carries a build-provenance attestation of
+// the same files (L-12). `vx upgrade` checks the SHA-256 the release API
+// publishes, which comes from the same place as the asset, so it proves the
+// transfer and not who built the bytes; a Sigstore-signed attestation
+// (`gh attestation verify vx-<target> --repo vznjs/vx`) does. The release
+// runs on DTE workers, so the attestation is a task (scripts/release-attest.ts)
+// each upload depends on.
 //
 // `.unsafe`: the workflows live at the repo root, which a sandboxed project
 // task may not read (the cross-project law).
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
+import config from '../vx.config.ts'
+import { binariesOf } from '../scripts/release-attest.ts'
 
-const file = path.resolve(import.meta.dir, '..', '..', '..', '.github', 'workflows', 'release.yml')
+const workflow = path.resolve(import.meta.dir, '..', '..', '..', '.github', 'workflows', 'npm.yml')
+const tasks = config.tasks ?? {}
 
-interface Step {
-  uses?: string
-  run?: string
-  with?: Record<string, string>
-}
-interface Workflow {
-  permissions?: Record<string, string>
-  jobs: Record<string, { permissions?: Record<string, string>; steps?: Step[] }>
-}
-
-const wf = Bun.YAML.parse(readFileSync(file, 'utf8')) as Workflow
-const action = (s: Step): string => (s.uses ?? '').split('@')[0]!
-
-describe('release.yml attests what it ships (L-12)', () => {
-  it('each upload of files to a release follows an attestation of the same files', () => {
-    const uploads: string[] = []
-    const unattested: string[] = []
-    for (const [name, job] of Object.entries(wf.jobs)) {
-      const steps = job.steps ?? []
-      steps.forEach((s, i) => {
-        // `release.upload.<os>` attaches `dist/vx-<os>-*` (scripts/release-assets.ts).
-        const os = /\brelease\.upload\.(\w+)\b/.exec(s.run ?? '')?.[1]
-        if (os === undefined) return
-        const files = `packages/vx/dist/vx-${os}-*`
-        uploads.push(`${name}: ${files}`)
-        const attested = steps
-          .slice(0, i)
-          .some(
-            (p) =>
-              action(p) === 'actions/attest-build-provenance' && p.with?.['subject-path'] === files,
-          )
-        if (!attested) unattested.push(`${name}: ${files}`)
-      })
+describe('a release attests what it ships (L-12)', () => {
+  it('each upload follows an attestation of the same binaries, darwin after its re-sign', () => {
+    for (const os of ['linux', 'darwin']) {
+      expect(tasks[`release.github.${os}.upload`]?.dependsOn).toContain(
+        `release.github.${os}.attest`,
+      )
+      expect(tasks[`release.github.${os}.attest`]?.dependsOn).toContain(`release.npm.${os}.prove`)
+      expect(tasks[`release.github.${os}.attest`]?.exec?.command).toBe(
+        `bun scripts/release-attest.ts ${os}`,
+      )
     }
-    // The positive: the two uploads the release makes.
-    expect(uploads).toEqual([
-      'assets: packages/vx/dist/vx-linux-*',
-      'sign-darwin: packages/vx/dist/vx-darwin-*',
-    ])
-    expect(unattested).toEqual([])
   })
 
-  it('holds the permissions an attestation needs, the action pinned by commit', () => {
-    // Each attesting job holds them itself: the workflow grants nothing.
-    const attesting = Object.entries(wf.jobs).filter(([, j]) =>
-      (j.steps ?? []).some((s) => action(s) === 'actions/attest-build-provenance'),
-    )
-    expect(
-      attesting.map(([id, j]) => [
-        id,
-        j.permissions?.['id-token'],
-        j.permissions?.['attestations'],
-      ]),
-    ).toEqual([
-      ['assets', 'write', 'write'],
-      ['sign-darwin', 'write', 'write'],
-    ])
-    const pins = Object.values(wf.jobs)
-      .flatMap((j) => j.steps ?? [])
-      .filter((s) => action(s) === 'actions/attest-build-provenance')
-      .map((s) => /@[0-9a-f]{40}$/.test(s.uses ?? ''))
-    expect(pins).toEqual([true, true])
+  it('attests the binaries of one platform, and refuses none', () => {
+    const dist = [
+      'vx-linux-x64',
+      'vx-darwin-arm64',
+      'vx-linux-arm64',
+      'vx-darwin-x64.cstemp',
+      'npm',
+    ]
+    expect(binariesOf('linux', dist)).toEqual(['vx-linux-arm64', 'vx-linux-x64'])
+    expect(binariesOf('darwin', dist)).toEqual(['vx-darwin-arm64'])
+    expect(() => binariesOf('linux', ['npm'])).toThrow('no vx-linux-* binary')
+  })
+
+  it('runs in a job that holds the permissions an attestation needs, the workflow none', () => {
+    const wf = Bun.YAML.parse(readFileSync(workflow, 'utf8')) as {
+      permissions?: object
+      jobs: Record<string, { permissions?: Record<string, string> }>
+    }
+    expect(wf.permissions).toEqual({})
+    const p = wf.jobs['release']?.permissions
+    expect([p?.['id-token'], p?.['attestations']]).toEqual(['write', 'write'])
   })
 })

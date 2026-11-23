@@ -75,11 +75,11 @@ export function executeArgsOf(
 }
 
 /**
- * The key derivation's arguments for a dispatch. `late` adds the run's
- * `probesAfterWrites`: a cached task's key and its miss description pass
- * it, and must agree, or the described inputs drift from the key.
+ * The key derivation's arguments for a dispatch. A cached task's key and
+ * its miss description add the run's `probesAfterWrites` themselves, and
+ * must agree, or the described inputs drift from the key.
  */
-export function hashArgsOf(args: ExecuteArgs, late = false): ComputeHashArgs {
+export function hashArgsOf(args: ExecuteArgs): ComputeHashArgs {
   const { run } = args
   return {
     node: args.node,
@@ -90,6 +90,5 @@ export function hashArgsOf(args: ExecuteArgs, late = false): ComputeHashArgs {
     nestedProjectDirs: args.nestedProjectDirs,
     gitFilesCache: run.gitFilesCache,
     hashCache: run.hashCache,
-    probesAfterWrites: late ? run.probesAfterWrites : undefined,
   }
 }

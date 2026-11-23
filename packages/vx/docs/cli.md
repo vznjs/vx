@@ -90,8 +90,8 @@ vx.config, run `vx lock`.``, since a task added since the last lock is not in it
   instead: `vx show` counts that build, but no bare name runs it.
 
 A name declared by only some projects is fine; the check fires only when
-a name matches nowhere. So `vx run lint test typecheck` fails on CI the
-day `typecheck` is renamed, instead of running two of three.
+a name matches nowhere. So `vx run lint test e2e` fails on CI the
+day `e2e` is renamed, instead of running two of three.
 
 A name no config can declare is refused before the lookup: an empty one
 (`vx run ''`) and one with surrounding whitespace (`vx run 'build '`),
@@ -1457,7 +1457,7 @@ export default {
   tasks: {
     build: {
       exec: {
-        command: 'tsc',
+        command: 'vite build',
         sandbox: {
           allow: {
             read: ['.'],
@@ -2507,69 +2507,68 @@ it at least once a day when `main` has changes, after merging that
 release's blog post (`.claude/skills/release/SKILL.md`), and shares the
 post on Bluesky. The workflow tags the commit with the next version and
 creates the GitHub release, both from the Conventional Commits since the
-last tag (`scripts/release-notes.ts`, run by the `release.auto` task,
+last tag (`scripts/release-notes.ts`, run by the `release.github.tag` task,
 `scripts/auto-release.ts`). The release is created as a draft: this
 repo's releases are immutable and take assets only before they are
-published, so `release.yml` publishes it after its last upload. The version: below 0.1.0 always a
+published, so `npm.yml` publishes it after its last upload. The version: below 0.1.0 always a
 patch (cutting 0.1.0 is the owner's, by hand); then before 1.0 a `feat`
 or a breaking change (`type!:`, a `BREAKING CHANGE:` footer) is a minor
 (`v0.4.2` → `v0.5.0`) and anything else a patch (`v0.4.3`); from 1.0 a
 breaking change is a major. The notes: breaking changes first, then
 `feat`, `fix` and `perf`, the rest counted. It then
-dispatches `release.yml` (with `tag`) and
-`npm.yml` (with `version` and `ref`). A release made with the workflow
-token fires no `release` event in other workflows, which is why the two
-are dispatched rather than triggered. A commit is released only when the
+dispatches `npm.yml` on the tag. A release made with the workflow
+token fires no `release` event in other workflows, which is why it is
+dispatched rather than triggered. A commit is released only when the
 last release is its ancestor, so an older tree never gets a higher
 version, and one that already carries a `v*` tag is a no-op.
 
 A version can still be cut by hand: push its tag (say `v1.0.0`),
-create a draft release for it, and dispatch `release.yml` (`tag`) and
-`npm.yml` (`version`, `ref`); the next auto-release continues from it.
+create a draft release for it, and dispatch `npm.yml` on the tag;
+the next auto-release continues from it.
 
-A GitHub release publishes everything: `release.yml` builds the four
-binaries, proves the darwin ones on macOS (re-signed ad hoc only where
-macOS refuses one) and attaches them; `npm.yml`
-builds the fifteen npm packages (`@vzn/vx`, one per platform, and every
-other public package: the plugins, the servers, `@vzn/vx-devtools`) and publishes them with **npm trusted
-publishing** — the job's OIDC token
-is exchanged for a short-lived credential and provenance is attached,
-so no long-lived npm token exists anywhere. Both publish loops skip a
-package already on the registry, so a re-run (`npm publish` →
-_Run workflow_ with the version) resumes where it stopped. That dispatch
-also takes a `ref`: it runs the workflow from the default branch against
-the code that ref names, so a release whose publish died on a workflow
-bug is completed by the FIXED workflow building the tag's own source
-(`version: 0.0.20`, `ref: v0.0.20`) — re-running the failed run itself
-would replay the broken file, which is pinned to the tag.
+`npm.yml` is one job running `vx pipeline npm` over DTE
+workers (`.vx/workspace.ts`): it compiles the four binaries once (the
+version defined into each, `src/version.ts`), proves them (the darwin
+ones on a Mac worker, re-signed ad hoc only where macOS refuses one),
+attests their build provenance, attaches them to the draft release (the
+darwin upload publishes it), builds the fifteen npm packages (`@vzn/vx`,
+one per platform, and every other public package: the plugins, the
+servers, `@vzn/vx-devtools`) and publishes them with **npm trusted
+publishing**, then pushes the server images. A worker runs a task with
+its run's environment, so the OIDC token npm exchanges for a
+short-lived credential, and the one the attestations are signed with,
+are `npm.yml`'s: no long-lived npm token exists anywhere. Each step
+skips what is done (an attached asset, a package on the registry), so a
+re-run on the tag completes a release still in draft.
 
-Every step of the three workflows past the setup (checkout, Bun, Node,
-`bun install`, the runner action) is one vx task: CI runs no command of
-its own (2026-10-03), and `tests/workflow-runner.unsafe.test.ts`
-holds it. The tasks are `@vzn/vx`'s `release.*`, all uncached and in no
-`ci` graph:
+Every step of the two workflows past the setup (checkout, Bun,
+`bun install`) is vx: CI runs no command of its own (2026-10-03), and
+`tests/workflow-runner.unsafe.test.ts` holds it. The tasks are
+`@vzn/vx`'s `release.*`, all uncached; the `release` group is what the
+`release` pipeline runs. A darwin task runs on a Mac, a linux one on
+linux-x64:
 
-| Task                    | Does                                                                                                                                     |
-| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| `release.stamp`         | writes `VX_RELEASE_VERSION` into `packages/vx/package.json`, the manifest the binary inlines                                             |
-| `release.npm`           | checks npm can publish with provenance (>= 11.5.1, `sigstore` loads); else installs npm into `dist/npm-cli/`                             |
-| `release.prove.<os>`    | launches the host's binary (re-signed only if macOS refuses it) and asserts `vx <version>`; on darwin, launches both (x64 under Rosetta) |
-| `release.assemble.<os>` | emits the platform packages under `dist/npm` (linux: also `@vzn/vx` and the plugins)                                                     |
-| `release.publish.<os>`  | `npm publish --provenance` each in order, skipping one the registry holds; `@vzn/vx` only once npm shows every platform package          |
-| `release.served`        | waits (up to 15 min) until npm's CDN answers 200 for every published tarball: it 404ed v0.0.646's for minutes, failing installs          |
-| `release.images`        | pushes the three server images to `ghcr.io/vznjs/<server>` at the version (amd64 + arm64); `latest` follows npm's                        |
-| `release.upload.<os>`   | attaches `dist/vx-<os>-*` the draft release lacks; darwin's then publishes it                                                            |
-| `release.auto`          | decides the version, creates the draft release with its notes, dispatches the two workflows                                              |
+| Task                         | Does                                                                                                                                     |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `release.npm.<os>.check`     | checks npm can publish with provenance (>= 11.5.1, `sigstore` loads); else installs npm into `dist/npm-cli/`                             |
+| `release.npm.<os>.prove`     | launches the host's binary (re-signed only if macOS refuses it) and asserts `vx <version>`; on darwin, launches both (x64 under Rosetta) |
+| `release.npm.<os>.assemble`  | emits the platform packages under `dist/npm` (linux: also `@vzn/vx` and the plugins)                                                     |
+| `release.npm.<os>.publish`   | `npm publish --provenance` each in order, skipping one the registry holds; `@vzn/vx` only once the darwin packages are out               |
+| `release.github.<os>.attest` | a Sigstore-signed build-provenance attestation of `dist/vx-<os>-*` (`scripts/release-attest.ts`), darwin's after its re-sign             |
+| `release.github.<os>.upload` | attaches `dist/vx-<os>-*` the draft release lacks; darwin's then publishes it                                                            |
+| `release.npm.served`         | waits (up to 15 min) until npm's CDN answers 200 for every published tarball: it 404ed v0.0.646's for minutes, failing installs          |
+| `release.docker`             | pushes the three server images to `ghcr.io/vznjs/<server>` at the version (amd64 + arm64); `latest` follows npm's                        |
+| `release.github.tag`         | `auto-release.yml`'s: decides the version, creates the draft release with its notes, dispatches `npm.yml`                                |
 
-The version reaches them as `VX_RELEASE_VERSION` (the tag or the
-dispatch input) and each refuses one that is not a version. Every one
-is sandboxed: the publish is granted the registry, the OIDC token host
-and Sigstore, the GitHub-Actions variables npm reads, and `~/.npm`;
-`release.auto` reads `.git` and reaches `api.github.com` with `GH_TOKEN`;
-`release.upload.<os>` reaches it and `uploads.github.com`.
-A dispatch with `ref` builds that ref's code, so it must hold these tasks.
+The version reaches them as `VX_RELEASE_VERSION` (the tag) and each
+refuses one that is not a version. Every one but `release.docker` (it
+drives Docker) is sandboxed: the publish is granted the registry, the
+OIDC token host and Sigstore, the GitHub-Actions variables npm reads,
+and `~/.npm`; `release.github.tag` reads `.git` and reaches
+`api.github.com` with `GH_TOKEN`; `release.github.<os>.upload` reaches it
+and `uploads.github.com`.
 
-Every Linux job that runs a task runs `vx setup github` (`@vzn/vx-ci`)
+Every Linux job that runs a task itself (a distributed run's leaves that to its workers) runs `vx setup github` (`@vzn/vx-ci`)
 before its first `vx run`: every task in this repo declares `exec.sandbox`, and a
 declared sandbox whose runtime is missing is a hard error, not a
 downgrade — the compile tasks fail in 0 ms saying which of bubblewrap,

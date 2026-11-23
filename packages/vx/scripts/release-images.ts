@@ -1,4 +1,4 @@
-// npm.yml's `images` job, the `release.images` task: push each server's
+// The `release.docker` task, the release's last: push each server's
 // image to ghcr.io/vznjs/<server> at VX_RELEASE_VERSION, for linux/amd64
 // and linux/arm64, and move `latest` to it unless an older tag is being
 // rebuilt. The docs tell users to `docker run` these names.
@@ -7,7 +7,7 @@
 
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
-import { env, runMain } from './github.ts'
+import { env } from './github.ts'
 import { releaseVersion } from './release.ts'
 
 const ROOT = path.resolve(import.meta.dir, '..', '..', '..')
@@ -86,6 +86,11 @@ async function npmLatest(): Promise<string | undefined> {
 async function main(): Promise<void> {
   const version = releaseVersion(process.env['VX_RELEASE_VERSION'])
   const latest = await npmLatest()
+  // A plain Linux worker builds one platform: the arm64 emulator and a
+  // builder that can push a multi-platform index, as setup-qemu-action and
+  // setup-buildx-action set up (tonistiigi/binfmt is the former's default).
+  run(['docker', 'run', '--privileged', '--rm', 'tonistiigi/binfmt', '--install', 'arm64'])
+  run(['docker', 'buildx', 'create', '--use', '--driver', 'docker-container'])
   run(
     ['docker', 'login', 'ghcr.io', '--username', env('GITHUB_ACTOR'), '--password-stdin'],
     env('GITHUB_TOKEN'),
@@ -100,4 +105,11 @@ async function main(): Promise<void> {
   }
 }
 
-if (import.meta.main) await runMain(main, 'release-images: ')
+if (import.meta.main) {
+  try {
+    await main()
+  } catch (e) {
+    process.stderr.write(`release-images: ${(e as Error).message}\n`)
+    process.exitCode = 1
+  }
+}

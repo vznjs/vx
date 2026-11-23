@@ -83,7 +83,7 @@ export const MORE: readonly Feature[] = [
     category: 'run',
     hook: 'Name a set of tasks once and run them with one word.',
     body: [
-      'A `check` that means lint, typecheck and test is a task with `dependsOn` and no command. Running it runs its members, in parallel where the graph allows.',
+      'A `check` that means lint and test is a task with `dependsOn` and no command. Running it runs its members, in parallel where the graph allows.',
       'Groups compose like any task: depend on one, filter it, run it with `--all`. An empty `dependsOn: []` is a named no-op, handy as a placeholder a project can fill in later.',
     ],
     example: {
@@ -736,7 +736,7 @@ export const MORE: readonly Feature[] = [
     ],
     example: {
       lang: 'ts',
-      code: "// packages/api/vx.config.ts\nimport { defineProject } from '@vzn/vx/config'\n\nexport default defineProject({\n  tasks: {\n    build: {\n      exec: { command: 'tsc -b' },\n      inputs: { files: ['src/**', 'tsconfig.json'] }, outputs: { files: ['dist/**', '*.tsbuildinfo'] }, cache: true,\n    },\n  },\n})",
+      code: "// packages/api/vx.config.ts\nimport { defineProject } from '@vzn/vx/config'\n\nexport default defineProject({\n  tasks: {\n    build: {\n      exec: { command: 'vite build' },\n      inputs: { files: ['src/**', 'vite.config.ts'] }, outputs: { files: ['dist/**'] }, cache: true,\n    },\n  },\n})",
     },
     image: 'explicit-inputs.png',
     imageAlt: 'A task naming its inputs and outputs, with cache: true.',
@@ -1387,7 +1387,7 @@ export const MORE: readonly Feature[] = [
     ],
     example: {
       lang: 'ts',
-      code: "// packages/api/vx.config.ts\nimport { defineProject } from '@vzn/vx/config'\n\nexport default defineProject({\n  tasks: {\n    build: {\n      exec: { command: 'tsc -b' },\n      dependsOn: ['^build'],\n      description: 'Type-check and emit',\n      inputs: { files: ['src/**'] }, outputs: { files: ['dist/**', '*.tsbuildinfo'] }, cache: true,\n    },\n  },\n})",
+      code: "// packages/api/vx.config.ts\nimport { defineProject } from '@vzn/vx/config'\n\nexport default defineProject({\n  tasks: {\n    build: {\n      exec: { command: 'vite build' },\n      dependsOn: ['^build'],\n      description: 'Bundle the API',\n      inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,\n    },\n  },\n})",
     },
     image: 'one-command-tasks.png',
     imageAlt: 'A task: a command, its edges, its outputs and cache: true.',
@@ -1483,7 +1483,7 @@ export const MORE: readonly Feature[] = [
     ],
     example: {
       lang: 'ts',
-      code: "// packages/app/vx.config.ts\nimport { defineProject } from '@vzn/vx/config'\n\nexport default defineProject({\n  tasks: {\n    build: { exec: { command: 'tsc -b' } },\n    test: { exec: { command: 'vitest run' }, dependsOn: ['build'] },\n  },\n})",
+      code: "// packages/app/vx.config.ts\nimport { defineProject } from '@vzn/vx/config'\n\nexport default defineProject({\n  tasks: {\n    build: { exec: { command: 'vite build' } },\n    test: { exec: { command: 'vitest run' }, dependsOn: ['build'] },\n  },\n})",
     },
     image: 'typed-helpers.png',
     imageAlt: 'A typed vx.config.ts with completion.',
@@ -1603,7 +1603,7 @@ export const MORE: readonly Feature[] = [
     ],
     example: {
       lang: 'text',
-      code: 'package.json   prebuild: rimraf dist · build: tsc · postbuild: node scripts/copy.js\nvx.config.ts   build: one command that runs prebuild, build, then postbuild',
+      code: 'package.json   prebuild: rimraf dist · build: vite build · postbuild: node scripts/copy.js\nvx.config.ts   build: one command that runs prebuild, build, then postbuild',
     },
     image: 'npm-hooks.png',
     imageAlt: 'npm pre and post scripts folded into one task.',
@@ -1651,7 +1651,7 @@ export const MORE: readonly Feature[] = [
     ],
     example: {
       lang: 'text',
-      code: 'project.json   build: { executor: "@nx/js:tsc", options: { … } }\nvx.config.ts   build: { exec: { command: "nx-exec @nx/js:tsc --project ui --target build …" } }',
+      code: 'project.json   build: { executor: "@nx/vite:build", options: { … } }\nvx.config.ts   build: { exec: { command: "nx-exec @nx/vite:build --project ui --target build …" } }',
     },
     image: 'nx-exec.png',
     imageAlt: 'An Nx executor target run as one vx task.',

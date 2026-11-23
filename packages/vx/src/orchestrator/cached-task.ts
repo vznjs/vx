@@ -317,7 +317,7 @@ async function derivedKey(
   args: ExecuteArgs,
   policy: TaskPolicy,
 ): Promise<{ hash: string; pre?: PreDescribed }> {
-  const hashArgs = hashArgsOf(args, true)
+  const hashArgs = { ...hashArgsOf(args), probesAfterWrites: args.run.probesAfterWrites }
   if (!policy.cacheable) return { hash: await keyOf(computeTaskHash(hashArgs)) }
   const captured: TaskInputComponent[] = []
   const { hash, described } = await keyOf(keyOrDescribe({ ...hashArgs, captureInto: captured }))

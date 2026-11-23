@@ -35,7 +35,7 @@ export function isUnsupportedBun(version: string): boolean {
   return patch < reqPatch
 }
 
-/** The refusal the gate's `check.bun` prints (`scripts/bun-floor.ts`); `vx info` reports the floor in a row of its own. */
+/** The refusal the gate's `check.bun.version` prints (`scripts/bun-floor.ts`); `vx info` reports the floor in a row of its own. */
 export function unsupportedBunMessage(version: string): string {
   return (
     `vx needs Bun >= ${MIN_BUN.join('.')} (running ${version}). ` +

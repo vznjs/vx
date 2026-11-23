@@ -1,5 +1,5 @@
-// What the release scripts share: a required env var, GitHub's REST API as
-// the job's token, and a main that fails with its message alone.
+// What the release scripts share: a required env var, and GitHub's REST API
+// as the job's token.
 
 export function env(name: string): string {
   const value = process.env[name]
@@ -36,15 +36,5 @@ export function github(): (route: string, init?: Init) => Promise<unknown> {
       throw new Error(`${init.method ?? 'GET'} ${url}: ${res.status} ${res.statusText}\n${text}`)
     }
     return text === '' ? null : JSON.parse(text)
-  }
-}
-
-/** Run a script's main: a failure prints its message, not a stack, and exits 1. */
-export async function runMain(main: () => Promise<void>, prefix = ''): Promise<void> {
-  try {
-    await main()
-  } catch (e) {
-    process.stderr.write(`${prefix}${(e as Error).message}\n`)
-    process.exitCode = 1
   }
 }

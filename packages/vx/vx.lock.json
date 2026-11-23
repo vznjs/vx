@@ -6184,31 +6184,19 @@
       },
       "cache": true
     },
-    "release.stamp": {
-      "description": "stamp VX_RELEASE_VERSION into package.json, the manifest the binary inlines",
-      "exec": {
-        "command": "bun scripts/release.ts stamp",
-        "env": {
-          "passThrough": [
-            "VX_RELEASE_VERSION"
-          ]
-        },
-        "sandbox": {
-          "allow": {
-            "read": [
-              "."
-            ],
-            "write": [
-              "package.json"
-            ]
-          }
-        }
-      }
+    "release": {
+      "description": "the whole release: GitHub assets, npm packages and server images",
+      "dependsOn": [
+        "release.docker"
+      ]
     },
-    "release.npm": {
+    "release.npm.linux.check": {
       "description": "make sure npm can publish with provenance (>= 11.5.1, sigstore intact)",
       "exec": {
         "command": "bun scripts/release.ts npm",
+        "platforms": [
+          "linux-x64"
+        ],
         "sandbox": {
           "allow": {
             "read": [
@@ -6220,15 +6208,25 @@
             ],
             "network": [
               "registry.npmjs.org"
+            ],
+            "machLookup": [
+              "com.apple.SystemConfiguration.DNSConfiguration"
             ]
           }
         }
       }
     },
-    "release.prove.linux": {
+    "release.npm.linux.prove": {
       "description": "the linux binaries launch (re-signed only if macOS refuses) and report VX_RELEASE_VERSION",
+      "dependsOn": [
+        "compile.bun.linux-x64",
+        "compile.bun.linux-arm64"
+      ],
       "exec": {
         "command": "bun scripts/release.ts prove linux",
+        "platforms": [
+          "linux-x64"
+        ],
         "env": {
           "passThrough": [
             "VX_RELEASE_VERSION"
@@ -6243,10 +6241,18 @@
         }
       }
     },
-    "release.assemble.linux": {
+    "release.npm.linux.assemble": {
       "description": "assemble the linux npm packages under dist/npm (scripts/build-npm.ts)",
+      "dependsOn": [
+        "release.npm.linux.prove",
+        "compile.bun.linux-x64",
+        "compile.bun.linux-arm64"
+      ],
       "exec": {
         "command": "bun scripts/release.ts assemble linux",
+        "platforms": [
+          "linux-x64"
+        ],
         "env": {
           "passThrough": [
             "VX_RELEASE_VERSION"
@@ -6268,10 +6274,18 @@
         }
       }
     },
-    "release.publish.linux": {
+    "release.npm.linux.publish": {
       "description": "npm publish the linux packages under dist/npm, skipping any already on the registry",
+      "dependsOn": [
+        "release.npm.linux.assemble",
+        "release.npm.linux.check",
+        "release.github.darwin.upload"
+      ],
       "exec": {
         "command": "bun scripts/release.ts publish linux",
+        "platforms": [
+          "linux-x64"
+        ],
         "env": {
           "passThrough": [
             "VX_RELEASE_VERSION",
@@ -6316,10 +6330,130 @@
         }
       }
     },
-    "release.prove.darwin": {
+    "release.github.linux.attest": {
+      "description": "attest the build provenance of the linux binaries, after any re-sign (scripts/release-attest.ts)",
+      "dependsOn": [
+        "release.npm.linux.prove",
+        "compile.bun.linux-x64",
+        "compile.bun.linux-arm64"
+      ],
+      "exec": {
+        "command": "bun scripts/release-attest.ts linux",
+        "platforms": [
+          "linux-x64"
+        ],
+        "env": {
+          "passThrough": [
+            "GH_TOKEN",
+            "ACTIONS_ID_TOKEN_REQUEST_URL",
+            "ACTIONS_ID_TOKEN_REQUEST_TOKEN",
+            "GITHUB_REPOSITORY",
+            "GITHUB_SERVER_URL",
+            "GITHUB_API_URL"
+          ],
+          "secret": [
+            "GH_TOKEN",
+            "ACTIONS_ID_TOKEN_REQUEST_TOKEN"
+          ]
+        },
+        "sandbox": {
+          "allow": {
+            "read": [
+              ".",
+              "../../node_modules/"
+            ],
+            "network": [
+              "api.github.com",
+              "*.actions.githubusercontent.com",
+              "fulcio.sigstore.dev",
+              "rekor.sigstore.dev",
+              "tuf-repo-cdn.sigstore.dev"
+            ],
+            "machLookup": [
+              "com.apple.SystemConfiguration.DNSConfiguration"
+            ]
+          }
+        }
+      }
+    },
+    "release.github.linux.upload": {
+      "description": "attach the linux binaries to the draft release (scripts/release-assets.ts)",
+      "dependsOn": [
+        "release.github.linux.attest",
+        "compile.bun.linux-x64",
+        "compile.bun.linux-arm64"
+      ],
+      "exec": {
+        "command": "bun scripts/release-assets.ts linux",
+        "platforms": [
+          "linux-x64"
+        ],
+        "env": {
+          "passThrough": [
+            "VX_RELEASE_VERSION",
+            "GITHUB_REPOSITORY",
+            "GH_TOKEN"
+          ],
+          "secret": [
+            "GH_TOKEN"
+          ]
+        },
+        "sandbox": {
+          "allow": {
+            "read": [
+              "."
+            ],
+            "network": [
+              "api.github.com",
+              "uploads.github.com"
+            ],
+            "machLookup": [
+              "com.apple.SystemConfiguration.DNSConfiguration"
+            ],
+            "systemInfo": [
+              "hw.optional.neon"
+            ]
+          }
+        }
+      }
+    },
+    "release.npm.darwin.check": {
+      "description": "make sure npm can publish with provenance (>= 11.5.1, sigstore intact)",
+      "exec": {
+        "command": "bun scripts/release.ts npm",
+        "platforms": [
+          "darwin-arm64"
+        ],
+        "sandbox": {
+          "allow": {
+            "read": [
+              "."
+            ],
+            "write": [
+              "dist/npm-cli/",
+              "~/.npm/"
+            ],
+            "network": [
+              "registry.npmjs.org"
+            ],
+            "machLookup": [
+              "com.apple.SystemConfiguration.DNSConfiguration"
+            ]
+          }
+        }
+      }
+    },
+    "release.npm.darwin.prove": {
       "description": "the darwin binaries launch (re-signed only if macOS refuses) and report VX_RELEASE_VERSION",
+      "dependsOn": [
+        "compile.bun.darwin-x64",
+        "compile.bun.darwin-arm64"
+      ],
       "exec": {
         "command": "bun scripts/release.ts prove darwin",
+        "platforms": [
+          "darwin-arm64"
+        ],
         "env": {
           "passThrough": [
             "VX_RELEASE_VERSION"
@@ -6350,10 +6484,16 @@
         }
       }
     },
-    "release.assemble.darwin": {
+    "release.npm.darwin.assemble": {
       "description": "assemble the darwin npm packages under dist/npm (scripts/build-npm.ts)",
+      "dependsOn": [
+        "release.npm.darwin.prove"
+      ],
       "exec": {
         "command": "bun scripts/release.ts assemble darwin",
+        "platforms": [
+          "darwin-arm64"
+        ],
         "env": {
           "passThrough": [
             "VX_RELEASE_VERSION"
@@ -6375,10 +6515,17 @@
         }
       }
     },
-    "release.publish.darwin": {
+    "release.npm.darwin.publish": {
       "description": "npm publish the darwin packages under dist/npm, skipping any already on the registry",
+      "dependsOn": [
+        "release.npm.darwin.assemble",
+        "release.npm.darwin.check"
+      ],
       "exec": {
         "command": "bun scripts/release.ts publish darwin",
+        "platforms": [
+          "darwin-arm64"
+        ],
         "env": {
           "passThrough": [
             "VX_RELEASE_VERSION",
@@ -6423,26 +6570,102 @@
         }
       }
     },
-    "release.images": {
-      "description": "push the server images to ghcr.io/vznjs at VX_RELEASE_VERSION (scripts/release-images.ts)",
+    "release.github.darwin.attest": {
+      "description": "attest the build provenance of the darwin binaries, after any re-sign (scripts/release-attest.ts)",
+      "dependsOn": [
+        "release.npm.darwin.prove"
+      ],
       "exec": {
-        "command": "bun scripts/release-images.ts",
+        "command": "bun scripts/release-attest.ts darwin",
+        "platforms": [
+          "darwin-arm64"
+        ],
         "env": {
           "passThrough": [
-            "VX_RELEASE_VERSION",
-            "GITHUB_ACTOR",
-            "GITHUB_TOKEN"
+            "GH_TOKEN",
+            "ACTIONS_ID_TOKEN_REQUEST_URL",
+            "ACTIONS_ID_TOKEN_REQUEST_TOKEN",
+            "GITHUB_REPOSITORY",
+            "GITHUB_SERVER_URL",
+            "GITHUB_API_URL"
           ],
           "secret": [
-            "GITHUB_TOKEN"
+            "GH_TOKEN",
+            "ACTIONS_ID_TOKEN_REQUEST_TOKEN"
           ]
+        },
+        "sandbox": {
+          "allow": {
+            "read": [
+              ".",
+              "../../node_modules/"
+            ],
+            "network": [
+              "api.github.com",
+              "*.actions.githubusercontent.com",
+              "fulcio.sigstore.dev",
+              "rekor.sigstore.dev",
+              "tuf-repo-cdn.sigstore.dev"
+            ],
+            "machLookup": [
+              "com.apple.SystemConfiguration.DNSConfiguration"
+            ]
+          }
         }
       }
     },
-    "release.served": {
+    "release.github.darwin.upload": {
+      "description": "attach the darwin binaries to the draft release, then publish it (scripts/release-assets.ts)",
+      "dependsOn": [
+        "release.github.darwin.attest",
+        "release.npm.darwin.prove",
+        "release.npm.darwin.publish",
+        "release.github.linux.upload"
+      ],
+      "exec": {
+        "command": "bun scripts/release-assets.ts darwin --publish",
+        "platforms": [
+          "darwin-arm64"
+        ],
+        "env": {
+          "passThrough": [
+            "VX_RELEASE_VERSION",
+            "GITHUB_REPOSITORY",
+            "GH_TOKEN"
+          ],
+          "secret": [
+            "GH_TOKEN"
+          ]
+        },
+        "sandbox": {
+          "allow": {
+            "read": [
+              "."
+            ],
+            "network": [
+              "api.github.com",
+              "uploads.github.com"
+            ],
+            "machLookup": [
+              "com.apple.SystemConfiguration.DNSConfiguration"
+            ],
+            "systemInfo": [
+              "hw.optional.neon"
+            ]
+          }
+        }
+      }
+    },
+    "release.npm.served": {
       "description": "wait until npm serves every published tarball (HTTP 200), up to 15 min",
+      "dependsOn": [
+        "release.npm.linux.publish"
+      ],
       "exec": {
         "command": "bun scripts/release.ts served",
+        "platforms": [
+          "linux-x64"
+        ],
         "env": {
           "passThrough": [
             "VX_RELEASE_VERSION"
@@ -6460,73 +6683,29 @@
         }
       }
     },
-    "release.upload.linux": {
-      "description": "attach the linux binaries to the draft release (scripts/release-assets.ts)",
+    "release.docker": {
+      "description": "push the server images to ghcr.io/vznjs at VX_RELEASE_VERSION (scripts/release-images.ts)",
+      "dependsOn": [
+        "release.npm.served"
+      ],
       "exec": {
-        "command": "bun scripts/release-assets.ts linux",
+        "command": "bun scripts/release-images.ts",
+        "platforms": [
+          "linux-x64"
+        ],
         "env": {
           "passThrough": [
             "VX_RELEASE_VERSION",
-            "GITHUB_REPOSITORY",
-            "GH_TOKEN"
+            "GITHUB_ACTOR",
+            "GITHUB_TOKEN"
           ],
           "secret": [
-            "GH_TOKEN"
+            "GITHUB_TOKEN"
           ]
-        },
-        "sandbox": {
-          "allow": {
-            "read": [
-              "."
-            ],
-            "network": [
-              "api.github.com",
-              "uploads.github.com"
-            ],
-            "machLookup": [
-              "com.apple.SystemConfiguration.DNSConfiguration"
-            ],
-            "systemInfo": [
-              "hw.optional.neon"
-            ]
-          }
         }
       }
     },
-    "release.upload.darwin": {
-      "description": "attach the darwin binaries to the draft release, then publish it (scripts/release-assets.ts)",
-      "exec": {
-        "command": "bun scripts/release-assets.ts darwin --publish",
-        "env": {
-          "passThrough": [
-            "VX_RELEASE_VERSION",
-            "GITHUB_REPOSITORY",
-            "GH_TOKEN"
-          ],
-          "secret": [
-            "GH_TOKEN"
-          ]
-        },
-        "sandbox": {
-          "allow": {
-            "read": [
-              "."
-            ],
-            "network": [
-              "api.github.com",
-              "uploads.github.com"
-            ],
-            "machLookup": [
-              "com.apple.SystemConfiguration.DNSConfiguration"
-            ],
-            "systemInfo": [
-              "hw.optional.neon"
-            ]
-          }
-        }
-      }
-    },
-    "release.auto": {
+    "release.github.tag": {
       "description": "tag a green main commit with its next version, release it, dispatch the publish",
       "exec": {
         "command": "bun scripts/auto-release.ts",
@@ -6556,10 +6735,10 @@
     "install": {
       "dependsOn": [
         "^build",
-        "check.bun"
+        "check.bun.version"
       ]
     },
-    "check.bun": {
+    "check.bun.version": {
       "description": "refuse a Bun below the floor (engines.bun) before any shard starts",
       "exec": {
         "command": "bun scripts/bun-floor.ts",
@@ -6592,12 +6771,18 @@
         ]
       }
     },
+    "main": {
+      "dependsOn": [
+        "canary",
+        "deploy"
+      ]
+    },
     "deploy": {
       "dependsOn": [
         "deploy.*"
       ]
     },
-    "deploy.releases": {
+    "deploy.github": {
       "description": "give each GitHub release the body of its release post on the site",
       "exec": {
         "command": "bun scripts/release-sync.ts",
@@ -6628,7 +6813,7 @@
         "canary.*"
       ]
     },
-    "canary.sandbox": {
+    "canary.sandbox.leaks": {
       "description": "drive 20 leaky sandboxed runs through run() under this machine’s sandbox; one it did not enforce fails",
       "dependsOn": [
         "install"
@@ -6640,7 +6825,7 @@
         ]
       }
     },
-    "canary.build-cold": {
+    "canary.sandbox.cold-build": {
       "description": "every package’s build under this machine’s sandbox, no cache, as a developer runs it",
       "dependsOn": [
         "install"
@@ -6657,8 +6842,8 @@
         "check.*"
       ]
     },
-    "check.binary": {
-      "description": "compile the host binary the way release.yml does; it must launch and report the manifest version",
+    "check.bun.binary": {
+      "description": "compile the host binary the way npm.yml does; it must launch and report the manifest version",
       "dependsOn": [
         "install"
       ],
@@ -6714,8 +6899,8 @@
       },
       "cache": true
     },
-    "canary.binary.linux-arm64": {
-      "description": "compile the host binary the way release.yml does; it must launch and report the manifest version",
+    "canary.bun.linux-arm64": {
+      "description": "compile the host binary the way npm.yml does; it must launch and report the manifest version",
       "dependsOn": [
         "install"
       ],
@@ -6774,8 +6959,8 @@
       },
       "cache": true
     },
-    "canary.binary.darwin-arm64": {
-      "description": "compile the host binary the way release.yml does; it must launch and report the manifest version",
+    "canary.bun.darwin-arm64": {
+      "description": "compile the host binary the way npm.yml does; it must launch and report the manifest version",
       "dependsOn": [
         "install"
       ],
@@ -6944,7 +7129,12 @@
         "install"
       ],
       "exec": {
-        "command": "bun build --compile --no-compile-autoload-dotenv --compile-autoload-package-json --minify --bytecode --format=esm --splitting --target=bun-linux-x64 src/bin.ts --outfile dist/vx-linux-x64",
+        "command": "bun build --compile --no-compile-autoload-dotenv --compile-autoload-package-json --minify --bytecode --format=esm --splitting --target=bun-linux-x64 --define \"VX_RELEASE=\\\"${VX_RELEASE_VERSION#v}\\\"\" src/bin.ts --outfile dist/vx-linux-x64",
+        "env": {
+          "passThrough": [
+            "VX_RELEASE_VERSION"
+          ]
+        },
         "sandbox": {
           "allow": {
             "systemInfo": [
@@ -6979,6 +7169,9 @@
         ],
         "runtime": [
           "bun --version"
+        ],
+        "env": [
+          "VX_RELEASE_VERSION"
         ]
       },
       "outputs": {
@@ -6994,7 +7187,12 @@
         "install"
       ],
       "exec": {
-        "command": "bun build --compile --no-compile-autoload-dotenv --compile-autoload-package-json --minify --bytecode --format=esm --splitting --target=bun-linux-arm64 src/bin.ts --outfile dist/vx-linux-arm64",
+        "command": "bun build --compile --no-compile-autoload-dotenv --compile-autoload-package-json --minify --bytecode --format=esm --splitting --target=bun-linux-arm64 --define \"VX_RELEASE=\\\"${VX_RELEASE_VERSION#v}\\\"\" src/bin.ts --outfile dist/vx-linux-arm64",
+        "env": {
+          "passThrough": [
+            "VX_RELEASE_VERSION"
+          ]
+        },
         "sandbox": {
           "allow": {
             "systemInfo": [
@@ -7029,6 +7227,9 @@
         ],
         "runtime": [
           "bun --version"
+        ],
+        "env": [
+          "VX_RELEASE_VERSION"
         ]
       },
       "outputs": {
@@ -7044,7 +7245,12 @@
         "install"
       ],
       "exec": {
-        "command": "bun build --compile --no-compile-autoload-dotenv --compile-autoload-package-json --minify --bytecode --format=esm --splitting --target=bun-darwin-x64 src/bin.ts --outfile dist/vx-darwin-x64",
+        "command": "bun build --compile --no-compile-autoload-dotenv --compile-autoload-package-json --minify --bytecode --format=esm --splitting --target=bun-darwin-x64 --define \"VX_RELEASE=\\\"${VX_RELEASE_VERSION#v}\\\"\" src/bin.ts --outfile dist/vx-darwin-x64",
+        "env": {
+          "passThrough": [
+            "VX_RELEASE_VERSION"
+          ]
+        },
         "sandbox": {
           "allow": {
             "systemInfo": [
@@ -7079,6 +7285,9 @@
         ],
         "runtime": [
           "bun --version"
+        ],
+        "env": [
+          "VX_RELEASE_VERSION"
         ]
       },
       "outputs": {
@@ -7094,7 +7303,12 @@
         "install"
       ],
       "exec": {
-        "command": "bun build --compile --no-compile-autoload-dotenv --compile-autoload-package-json --minify --bytecode --format=esm --splitting --target=bun-darwin-arm64 src/bin.ts --outfile dist/vx-darwin-arm64",
+        "command": "bun build --compile --no-compile-autoload-dotenv --compile-autoload-package-json --minify --bytecode --format=esm --splitting --target=bun-darwin-arm64 --define \"VX_RELEASE=\\\"${VX_RELEASE_VERSION#v}\\\"\" src/bin.ts --outfile dist/vx-darwin-arm64",
+        "env": {
+          "passThrough": [
+            "VX_RELEASE_VERSION"
+          ]
+        },
         "sandbox": {
           "allow": {
             "systemInfo": [
@@ -7129,6 +7343,9 @@
         ],
         "runtime": [
           "bun --version"
+        ],
+        "env": [
+          "VX_RELEASE_VERSION"
         ]
       },
       "outputs": {

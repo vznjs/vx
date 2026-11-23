@@ -1,6 +1,6 @@
 // wrangler.jsonc's ALLOW, as GitHub's tokens meet it: ci.yml's runs of
-// main write main's scope, a branch its own, and no other workflow's job
-// gets in.
+// main write main's scope, a branch its own, npm.yml its tag's, and no
+// other workflow's job gets in.
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { beforeAll, expect, it } from 'bun:test'
@@ -76,4 +76,15 @@ it("writes main from ci.yml's push to main, and a PR's merge ref, never its head
   }
   expect(await access({ ...worker, event_name: 'workflow_dispatch' })).toBe(403)
   expect(await access({ ...main, event_name: 'pull_request_target' })).toBeUndefined()
+})
+
+it("writes a tag's scope from npm.yml's run on it; its workers write with its token", async () => {
+  const tag = 'refs/tags/v1.2.3'
+  const release = { job_workflow_ref: `vznjs/vx/.github/workflows/npm.yml@${tag}`, ref: tag }
+  expect(await access({ ...release, event_name: 'workflow_dispatch' })).toBe(tag)
+  const worker = {
+    ...release,
+    job_workflow_ref: `vznjs/vx/.github/workflows/vx-release-worker.yml@${tag}`,
+  }
+  expect(await access({ ...worker, event_name: 'workflow_dispatch' })).toBe(403)
 })

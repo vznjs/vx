@@ -30,8 +30,9 @@ fields, expectations, adapters, sandbox). This skill is the procedure.
 - `from`: existing test files the case is drawn from
   (`tests/inventory.test.ts` checks they exist). A new test file also goes
   in a list in `src/inventory.ts`.
-- `needs`: every `Feature` a tool may lack (`src/spec.ts`). A step that
-  installs adds `package-manager` on its own.
+- `needs`: every `Feature` a tool may lack (`src/spec.ts`). What a step
+  uses (an install, a selector, `only`, `force`, a report metric…) is added
+  on its own by `needsOf`; a new step field a tool may lack belongs there.
 - Workspace and steps speak no tool's language. Expectations: `exit`,
   `ran`, `notRan`, `order`, `files`, `filesNot`, `ifReplayed`, `output`,
   `report`, `orRefused`, `within`, `alone` (table in the README).
@@ -40,7 +41,12 @@ fields, expectations, adapters, sandbox). This skill is the procedure.
 
 - **N/A only when a tool lacks the feature entirely.** It goes in that
   adapter's `lacks` with one sentence the site shows. A tool that has the
-  feature but does it differently passes or fails like any other. Never
+  feature but does it differently passes or fails like any other. This
+  holds in every section, run reports too: a tool whose report has no CPU
+  time is N/A on a CPU case, one that reports it wrong fails (M, 2026-11-23).
+  To reclassify without a rerun, patch the committed rows and scores in
+  `conformance.json`: a committed rival N/A stands over the weekly run's
+  outcome until the next run writes it. Never
   mark N/A to hide a failure.
 - **A harness bug is fixed, not marked N/A** or skipped. If a rival fails
   because the adapter writes its config wrong, fix the adapter (use the
@@ -80,7 +86,7 @@ is stable. Then:
 CI (`.github/workflows/conformance.yml`) runs one job per tool and share
 (`--shard i/n`, sized to about 90 s each: vx 6, turbo 4, nx 14, vite-task
 2, nix 5, moon 42), weekly on every rival's latest, then
-`conformance.merge` joins them. A case that slows a tool's suite past its
+`conformance.cases.merge` joins them. A case that slows a tool's suite past its
 share's 5-minute limit means raising that tool's count in the plan step's
 `jq` line in the same PR. Locally: `--shard 1/3 --out a.json`, then
 `bun src/merge.ts out.json a.json b.json c.json`.

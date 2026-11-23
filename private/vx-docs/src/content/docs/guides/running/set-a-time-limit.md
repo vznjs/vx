@@ -9,7 +9,7 @@ from hanging the run, give it `exec.timeout`:
 ```ts title="packages/web/vx.config.ts" mark={4}
 export default {
   tasks: {
-    'test.playwright': {
+    'e2e': {
       exec: { command: 'playwright test', timeout: '10m' },
     },
   },
@@ -24,13 +24,13 @@ To limit every task in one run, pass `--timeout`. Here the suite takes
 longer than one second:
 
 ```sh
-vx run @demo/web#test.playwright --timeout 1s
+vx run @demo/web#e2e --timeout 1s
 ```
 
 ```ansi
-[2m┌─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;96;165;250mtest.playwright[0m [2m>[0m $ sleep 5
+[2m┌─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;147;197;253me2e[0m [2m>[0m $ sleep 5
 [vx] timed out after 1000ms — killed (SIGTERM)
-[2m└─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;96;165;250mtest.playwright[0m [2m──[0m [2m(1.01s)[0m [1m[38;2;239;68;68mfailed (timed out, exit 143)[0m
+[2m└─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;147;197;253me2e[0m [2m──[0m [2m(1.01s)[0m [1m[38;2;239;68;68mfailed (timed out, exit 143)[0m
 ```
 
 vx stops the task, marks it `failed (timed out)`, and exits `1`. A task's

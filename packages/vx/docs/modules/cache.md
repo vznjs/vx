@@ -53,7 +53,8 @@ the `history` module's (history.md), and the tables `index-db`'s
 - `save.ts` — `save` / `ingest`: pack, write and index an entry, batched
   index writes, the off-thread checkpoints.
 - `prune.ts` — `prune` / `stats` / `orphanStats`: eviction, orphans,
-  and the 30-day history retention.
+  and the history retention (`historyRetentionMs`, 30 days by default;
+  `vx cache clean` names it).
 - `cache-dir.ts` — the directory itself: made private, its `*` ignore,
   the manifests and the locks a clean takes (`holdCacheDir`, `holdStore`).
 - `cache.ts` — the `Cache` class: it opens a `StoreIndex` and delegates
@@ -183,6 +184,10 @@ export function hashFileSeen(
 // asked per file. A file that cannot be hashed is absent: the key's fold
 // asks `hashFile` for it, and the error is that call's.
 export function hashFilesOf(memo: TaskMemo, files: readonly string[]): Promise<Map<string, string>>
+
+// How long `vx cache clean` keeps history rows (prune.ts): `history.retention`
+// (`VX_HISTORY_RETENTION`), 30 days by default. The clean line names it.
+export function historyRetentionMs(): number
 
 // What a symlinked directory input keys (linked-inputs.ts): every regular
 // file and link under `dir`, relative and sorted, `.git`, `node_modules`,
