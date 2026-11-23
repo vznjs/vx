@@ -281,7 +281,7 @@ Pick a change, guess whether vite runs, then see what vx printed for it.
     <button type="button" data-guess="yes">vite runs</button>
     <button type="button" data-guess="no">vx skips it</button>
   </div>
-  <pre class="line" hidden></pre>
+  <p class="line" hidden></p>
   <table>
     <thead>
       <tr><th>Change</th><th>Last line vx printed</th><th>Why</th></tr>
@@ -360,6 +360,8 @@ Each example is a small workspace with its tasks, cache and tests set up. Copy o
 
 <Takeaway>keep a build that works only when its code changes.</Takeaway>
 
-<NextStep href="../docs/tasks/" title="Tasks">
-  Give every package its tasks, and build each one after the packages it uses.
+Starting a workspace from scratch? Read [Workspace](../docs/workspace/) next. Bringing one you already have, with its scripts or a Turborepo or Nx config? Go on:
+
+<NextStep href="../docs/migrate/" title="Move an existing workspace to vx">
+  Turn your scripts or your Turborepo or Nx config into tasks, one command.
 </NextStep>
