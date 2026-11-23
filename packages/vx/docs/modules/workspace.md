@@ -1980,24 +1980,36 @@ export function lockKey(root: string, dir: string): string
 ```
 
 On disk the lock is text, laid out for the parse first, then the size,
-and for merges (2026-11-21): a header line, `{"version":8}` (with
+then merges (2026-11-23): a header line, `{"version":9}` (with
 `nestedWorkspaces` when there is one), then each distinct task config
-once as `#<id>⇥<task JSON>` (`id` the xxh3 of that JSON in base 36, its
-keys sorted), then one line per project, `<name>⇥{"path", "file" | "by",
-"config"}`, each task in `config.tasks` naming its line (`"#id"`), all
-sorted. A name a tab could break, or that starts with `#`, `"` or `{`,
-is written as a JSON string. A run that asks for a few projects decodes
-only their lines and tasks: 2,016 projects parse in 0.7 ms for one, 1.8 ms
-for a tenth and 5.4 ms for all (version 7, one JSON object: about 6 ms
-whatever was asked), from 1.33 MB against 1.01 MB. Keyed by name and
-sorted, two branches that changed different projects touch different
-lines; git merges them as text, and a line both changed conflicts until
-`vx lock` rewrites the lock.
+once on two lines, its pointer (`#` and 7 base-36 characters) and its
+JSON (keys sorted), pointers sorted; then each project in xxh3-of-name
+order, `<name>⇥{"path", "file" | "by", "config"}` (`file` left out for
+`vx.config.ts`, `null` for a project with neither file nor plugin;
+`config` without its tasks, left out when it held only tasks), and per
+task, in name order, a `⇥<task>` line and its pointer line. A pointer is
+born as the xxh3 of its task's first JSON and kept by every later
+`vx lock` (it reads the lock there first): the tasks that kept the
+pointer's JSON keep it, or when none did, the most that agree on a new
+one, so an edit to a task rewrites its JSON line alone; any other task
+takes the pointer holding its JSON, or one born of it, and a pointer no
+task holds is dropped (M, 2026-11-23). A name a tab could break, or that
+starts with `#`, `"` or `{`, is written as a JSON string (a task name:
+one with a tab or a leading `"`). 2,016 projects read in 3.2 ms from
+419 KB, version 8's time from 566 KB. A name or pointer line seldom
+changes, so it sits between two branches' edits to neighbouring records
+and git merges both; hashed order keeps two new projects apart. Of 1,080
+two-branch merges (4, 21 and 500 projects) 80% conflicted in version 8,
+13% here; what still conflicts is one task both sides changed, or edits
+on lines right beside each other (two tasks added at one name's place,
+neighbouring removals), until `vx lock` rewrites the lock.
 
 `readLockfile` checks the shape only: the header an object of this
-`LOCKFILE_VERSION`, each line a key, a tab and a JSON object of
+`LOCKFILE_VERSION`, each pool pointer a line of 8 characters before a
+JSON line, each project line a key, a tab and a JSON object of
 `{ path, file?, by?, config? }` (no other key; `by` only without `file`,
-`file` only with `config`), each name once, each `path` a directory
+`file` only with `config`), its task names in name order each before a
+pointer line, each name once, each `path` a directory
 under the root as `lockKey` spells it (`.`, or a relative POSIX path
 with no empty, `.` or `..` segment: a run joins it onto the root, and
 `../x` ran a project outside the workspace), each task a `#id` with its
@@ -2081,27 +2093,32 @@ GitHub, which runs no merge driver. A run takes its edges from here and
 keys from those digests, after checking them against the claimant's own
 (`orchestrator/locked-digests.ts`, below).
 
-Text (2026-11-21), one line per project keyed by its name, sorted:
+Text (2026-11-23), two lines per project keyed by its name, in
+xxh3-of-name order:
 
 ```
-{"version":5,"files":["bun.lock"],"edges":true,"extras":{…}}
-core			_ty6mHZUMhA
-web	core,ui		_ty6mHZUMhA
+{"version":6,"files":["bun.lock"],"edges":true,"extras":{…}}
+web
+	core,ui		_ty6mHZUMhA
+core
+			_ty6mHZUMhA
 ```
 
-`name⇥deps⇥reach⇥digests`, each list comma-separated, the digests in
-`files` order, empty trailing fields dropped. A list with an element a
-comma, tab or newline could break, or that starts with `[`, is a JSON
-array; a name a tab could break, or that starts with `"` or `{`, a JSON
-string. A sixteen-hex-digit digest is its 8 bytes in base64url, any other
-is `=` and the string. A parse finds each line's name at once and decodes
-a line only when asked: at 2,016 projects 22–59 µs for one, 179–204 µs
-for a tenth, 533–583 µs for all, from 137 KB (version 4's JSON: 124 KB,
-500–700 µs whatever was asked). Every list is sorted, so the same
+The name, then `⇥deps⇥reach⇥digests`, each list comma-separated, the
+digests in `files` order, empty trailing fields dropped. A list with an
+element a comma, tab or newline could break, or that starts with `[`, is
+a JSON array; a name a tab could break, or that starts with `"` or `{`,
+a JSON string. A sixteen-hex-digit digest is its 8 bytes in base64url,
+any other is `=` and the string. A parse finds each name at once and
+decodes a project's fields only when asked: 2,016 projects in about
+1.6 ms for all, from 104 KB (version 5, a line per project: the same
+time, 102 KB). The name line sits between two branches' edits to
+neighbouring projects, so git merges both: of 1,320 two-branch merges
+51% conflicted in version 5, 14% here. Every list is sorted, so the same
 workspace writes the same bytes. A broken line (an edge to no project, a
 bad digest) refuses when read, "invalid, run `vx lock`", never a raw
-TypeError at a lookup; names out of order, twice, or a merge's conflict
-markers read as no lock.
+TypeError at a lookup; a name twice, a name with no fields' line, or a
+merge's conflict markers read as no lock.
 
 `--affected` reads the base commit's copy (`git show`): a project whose
 edges differ between the base and the working tree's copy moved its keys

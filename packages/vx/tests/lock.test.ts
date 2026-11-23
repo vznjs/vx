@@ -15,7 +15,7 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { addProject, makeWorkspace as makeWorkspaceRoot } from './helpers/workspace.js'
 import { noticed } from './helpers/notice.js'
-import { readLockfile } from '../src/workspace/lockfile.js'
+import { LOCKFILE_VERSION, readLockfile } from '../src/workspace/lockfile.js'
 import { BIN, vx as spawnVx } from './helpers/vx.js'
 
 const TIMEOUT = 30_000
@@ -133,7 +133,7 @@ describe('vx lock (e2e)', () => {
       const lock = await vx(root, ['lock'], { X: 'a' })
       expect(lock.code).toBe(0)
       const lockJson = (await readLockfile(root))!
-      expect(lockJson.version).toBe(8)
+      expect(lockJson.version).toBe(LOCKFILE_VERSION)
       const app = lockJson.projects['packages/app']!
       expect([app.file, app.config!.tasks!['build']!.exec!.command]).toEqual([
         'vx.config.mjs',
@@ -315,9 +315,8 @@ describe('vx lock (e2e)', () => {
           await writeFile(
             file,
             bom +
-              `{"version":8}\n` +
-              `#t\t${JSON.stringify(app.tasks.build)}\n` +
-              `app\t${JSON.stringify({ path: 'packages/app', file: 'vx.config.mjs', config: { tasks: { build: '#t' } } })}\n`,
+              `{"version":${LOCKFILE_VERSION}}\n#ttttttt\n${JSON.stringify(app.tasks.build)}\n` +
+              `app\t{"path":"packages/app","file":"vx.config.mjs"}\n\tbuild\n#ttttttt\n`,
           )
           const run = await vx(root, ['run', 'build', '--all', '--no-cache'], { X: 'a' })
           expect(run.code).toBe(1)

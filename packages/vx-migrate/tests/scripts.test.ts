@@ -1711,7 +1711,8 @@ describe('vx init — the generated build is not a cached no-op', () => {
         .trimEnd()
         .split('\n')
         .slice(1)
-        .filter((l) => !l.startsWith('#'))
+        // Project lines: not a pointer (`#`), a task's JSON (`{`) or a task name (tab).
+        .filter((l) => !/^[#{\t]/.test(l))
         .map((l) => (JSON.parse(l.slice(l.indexOf('\t') + 1)) as { path: string }).path)
       expect(dirs.sort()).toEqual(['packages/app', 'packages/lib', 'packages/silent'])
     } finally {

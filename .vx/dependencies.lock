@@ -1,22 +1,43 @@
-{"version":5,"files":["bun.lock"],"edges":true}
-@vzn/vx			CS_cu31l9io
-@vzn/vx-bench	@vzn/vx,@vzn/vx-conformance,@vzn/vx-history,@vzn/vx-lockfile		u8blwW0ICoU
-@vzn/vx-cache	@vzn/vx,@vzn/vx-cache-server,@vzn/vx-devtools		bTbfOiTaMnw
-@vzn/vx-cache-server	@vzn/vx,@vzn/vx-devtools		XtTAvbwByZk
-@vzn/vx-cache-service	@vzn/vx,@vzn/vx-cache-server,@vzn/vx-devtools		11ejsmr0eOc
-@vzn/vx-ci	@vzn/vx		8XeyAr-pibI
-@vzn/vx-conformance	@vzn/vx,@vzn/vx-lockfile		joBRuOQy_zY
-@vzn/vx-devtools	@vzn/vx		1TjOGcgDty4
-@vzn/vx-docs	@vzn/vx,@vzn/vx-cache,@vzn/vx-ci,@vzn/vx-dte,@vzn/vx-history,@vzn/vx-lockfile,@vzn/vx-migrate,@vzn/vx-otel,@vzn/vx-reapi		ZGAa5k-ADKw
-@vzn/vx-dte	@vzn/vx,@vzn/vx-devtools,@vzn/vx-dte-server		-Y4TIpOnOhQ
-@vzn/vx-dte-server	@vzn/vx,@vzn/vx-devtools		kibSzAVG92M
-@vzn/vx-dte-service	@vzn/vx,@vzn/vx-dte-server		txlU-Ujucvk
-@vzn/vx-history	@vzn/vx,@vzn/vx-devtools,@vzn/vx-history-server		D-TWbAR8SUk
-@vzn/vx-history-server	@vzn/vx,@vzn/vx-devtools		66Kqcl1kQio
-@vzn/vx-history-service	@vzn/vx,@vzn/vx-devtools,@vzn/vx-history-server		7wtRSyLN6iA
-@vzn/vx-lockfile	@vzn/vx		knxJkz_EN2E
-@vzn/vx-migrate	@vzn/vx		3k6RZk1ng48
-@vzn/vx-otel	@vzn/vx		OF9TDBzs0Uk
-@vzn/vx-plugin-examples	@vzn/vx		VmytfuLc4lg
-@vzn/vx-reapi	@vzn/vx		jQLUcMX-Iq4
-@vzn/vx-servers	@vzn/vx		Z6gnQ9SgNd4
+{"version":6,"files":["bun.lock"],"edges":true}
+@vzn/vx-cache-server
+	@vzn/vx,@vzn/vx-devtools		XtTAvbwByZk
+@vzn/vx-cache-service
+	@vzn/vx,@vzn/vx-cache-server,@vzn/vx-devtools		11ejsmr0eOc
+@vzn/vx-migrate
+	@vzn/vx		3k6RZk1ng48
+@vzn/vx-servers
+	@vzn/vx		Z6gnQ9SgNd4
+@vzn/vx-otel
+	@vzn/vx		OF9TDBzs0Uk
+@vzn/vx-docs
+	@vzn/vx,@vzn/vx-cache,@vzn/vx-ci,@vzn/vx-dte,@vzn/vx-history,@vzn/vx-lockfile,@vzn/vx-migrate,@vzn/vx-otel,@vzn/vx-reapi		ZGAa5k-ADKw
+@vzn/vx-reapi
+	@vzn/vx		jQLUcMX-Iq4
+@vzn/vx
+			CS_cu31l9io
+@vzn/vx-cache
+	@vzn/vx,@vzn/vx-cache-server,@vzn/vx-devtools		bTbfOiTaMnw
+@vzn/vx-bench
+	@vzn/vx,@vzn/vx-conformance,@vzn/vx-history,@vzn/vx-lockfile		u8blwW0ICoU
+@vzn/vx-plugin-examples
+	@vzn/vx		VmytfuLc4lg
+@vzn/vx-dte-service
+	@vzn/vx,@vzn/vx-dte-server		txlU-Ujucvk
+@vzn/vx-lockfile
+	@vzn/vx		knxJkz_EN2E
+@vzn/vx-dte-server
+	@vzn/vx,@vzn/vx-devtools		kibSzAVG92M
+@vzn/vx-ci
+	@vzn/vx		8XeyAr-pibI
+@vzn/vx-history
+	@vzn/vx,@vzn/vx-devtools,@vzn/vx-history-server		D-TWbAR8SUk
+@vzn/vx-conformance
+	@vzn/vx,@vzn/vx-lockfile		joBRuOQy_zY
+@vzn/vx-history-server
+	@vzn/vx,@vzn/vx-devtools		66Kqcl1kQio
+@vzn/vx-dte
+	@vzn/vx,@vzn/vx-devtools,@vzn/vx-dte-server		-Y4TIpOnOhQ
+@vzn/vx-history-service
+	@vzn/vx,@vzn/vx-devtools,@vzn/vx-history-server		7wtRSyLN6iA
+@vzn/vx-devtools
+	@vzn/vx		1TjOGcgDty4

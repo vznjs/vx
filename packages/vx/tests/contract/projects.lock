@@ -1,6 +1,15 @@
-{"version":8}
-#2cwqogy1v2r7f	{"cache":true,"description":"compile","exec":{"command":"mkdir -p dist && echo lib > dist/lib.txt","env":{"passThrough":["HOME"]},"retries":1,"timeout":"1m"},"inputs":{"env":["LOCK_FIXTURE_MODE"],"files":["src/**"]},"outputs":{"files":["dist/**"]}}
-#2esbp1tweuer2	{"exec":{"command":"echo dev","persistent":{}}}
-#90xcnrzs1591	{"cache":true,"dependsOn":["^build"],"exec":{"command":"echo app ci"},"inputs":{"files":["src/**"]},"outputs":{"files":[]}}
-app	{"path":"packages/app","file":"vx.config.mjs","config":{"tasks":{"build":"#90xcnrzs1591","dev":"#2esbp1tweuer2"}}}
-lib	{"path":"packages/lib","file":"vx.config.mjs","config":{"tasks":{"build":"#2cwqogy1v2r7f"}}}
+{"version":9}
+#2cwqogy
+{"cache":true,"description":"compile","exec":{"command":"mkdir -p dist && echo lib > dist/lib.txt","env":{"passThrough":["HOME"]},"retries":1,"timeout":"1m"},"inputs":{"env":["LOCK_FIXTURE_MODE"],"files":["src/**"]},"outputs":{"files":["dist/**"]}}
+#2esbp1t
+{"exec":{"command":"echo dev","persistent":{}}}
+#90xcnrz
+{"cache":true,"dependsOn":["^build"],"exec":{"command":"echo app ci"},"inputs":{"files":["src/**"]},"outputs":{"files":[]}}
+app	{"path":"packages/app","file":"vx.config.mjs"}
+	build
+#90xcnrz
+	dev
+#2esbp1t
+lib	{"path":"packages/lib","file":"vx.config.mjs"}
+	build
+#2cwqogy
