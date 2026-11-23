@@ -5,6 +5,10 @@
 // carry; this one says that none of them, on any page, is dead.
 //
 // What it does not check, and why:
+// - A site URL vx itself prints (help, a refusal, a plugin's message) is
+//   checked against the build too: the sources this task may read
+//   (packages/vx/src and the plugins' src) are scanned for literal URLs
+//   under SITE; one built from a template (`${code}`) is error-codes.test.ts's.
 // - An external link is not fetched: the row would test the network, and the
 //   gate runs in a sandbox with none.
 // - Search's index (`pagefind/`) is not parsed: its fragments are compressed
@@ -22,6 +26,9 @@ const DIST = path.resolve(import.meta.dir, '../dist')
 // astro.config.mjs reads the same two variables with the same defaults.
 const BASE = (process.env['BASE_PATH'] ?? '/vx').replace(/\/?$/, '/')
 const SITE = new URL(BASE, process.env['SITE_URL'] ?? 'https://vznjs.github.io').href
+
+// The plugins whose src vx.config.ts's `test.bun` grants this task.
+const SRC_PLUGINS = ['cache', 'ci', 'dte', 'history', 'lockfile', 'migrate', 'otel']
 
 const EXCUSED: Record<string, Record<string, string>> = {
   '404.html': { [`${SITE}404/`]: "Starlight's canonical for the 404 route, built as 404.html" },
@@ -154,6 +161,35 @@ describe('every internal link in the built site', () => {
         .flatMap((u) => {
           const why = miss(f, u)
           return why === undefined ? [] : [`${f}: ${u} (${why})`]
+        }),
+    )
+    expect(dead).toEqual([])
+  })
+
+  // `vx run --help` sent readers to schema/#settings after the settings
+  // table moved to schema/workspace/; nothing checked the CLI's URLs.
+  it('lands every site URL the CLI and plugins print', () => {
+    const roots = ['vx', ...SRC_PLUGINS.map((p) => `vx-${p}`)].map((p) =>
+      path.resolve(import.meta.dir, `../../../packages/${p}/src`),
+    )
+    const dead = roots.flatMap((root) =>
+      readdirSync(root, { recursive: true, encoding: 'utf8' })
+        .filter((f) => /\.[cm]?[jt]s$/.test(f))
+        .flatMap((f) => {
+          // A base constant (`const SITE = '…/docs'`) is checked where it
+          // is joined: `${SITE}/relay/` becomes the URL it prints.
+          let src = readFileSync(path.join(root, f), 'utf8')
+          for (const [decl, name, base] of src.matchAll(
+            /const (\w+) = '(https:\/\/vznjs\.github\.io\/vx\/[^'/]*(?:\/[^'/]+)*)'/g,
+          ))
+            src = src.replace(decl, '').replaceAll(`\${${name}}`, base!)
+          return [...src.matchAll(/https:\/\/vznjs\.github\.io\/vx\/[\w./#-]*/g)]
+            .filter((m) => !src.startsWith('${', m.index + m[0].length))
+            .flatMap((m) => {
+              const u = m[0].replace(/[.]+$/, '')
+              const why = miss('index.html', u)
+              return why === undefined ? [] : [`${f}: ${u} (${why})`]
+            })
         }),
     )
     expect(dead).toEqual([])

@@ -235,7 +235,7 @@ export function helpText(pluginCommands: readonly string[] = []): string {
     '',
     'Execution (for run):',
     '  Each setting flag beats its VX_* variable, which beats .vx/workspace',
-    '  (https://vznjs.github.io/vx/schema/#settings).',
+    '  (https://vznjs.github.io/vx/schema/workspace/#settings).',
     '      --concurrency <n>           Max parallel tasks (default: usable cores);',
     '                                  50% means half of them.',
     '      --schedule <rule>           most-work (default) | critical-path |',
