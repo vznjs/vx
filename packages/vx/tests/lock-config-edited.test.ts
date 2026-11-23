@@ -79,6 +79,16 @@ describe('a config edited since vx lock', () => {
     expect(code).toBe(0)
   })
 
+  // A cache dir two checkouts share (`VX_CACHE_DIR`) holds the last one's stamps.
+  it("asks nothing of another workspace's stamps", async () => {
+    const at = path.join(root, '.vx', 'cache', 'config-stamps.json')
+    const stamps = JSON.parse(await readFile(at, 'utf8')) as { root: string }
+    await writeFile(at, JSON.stringify({ ...stamps, root: '/another/checkout' }))
+    await writeFile(file, config('after'))
+    const { code } = await vx(root, ['run', 'say', '--all'])
+    expect(code).toBe(0)
+  })
+
   it('a passing `vx lock --check` takes the stamp too', async () => {
     await writeFile(file, `// a comment\n${config('before')}`)
     expect((await vx(root, ['lock', '--check'])).code).toBe(0)

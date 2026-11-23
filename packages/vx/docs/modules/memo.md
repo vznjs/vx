@@ -302,21 +302,23 @@ mtime, xxh3 of its bytes) before evaluating it, and keep the stamps with
 the lock's digest in the cache dir's `config-stamps.json`. A run reads its
 configs from the lock, so `configsEditedSinceLock` names the in-scope
 config files whose bytes moved since: the run refuses them with "run
-`vx lock`". Asked only while the lock's bytes are the stamped ones (a pull
-or a clone asks nothing). The stat match only ever skips the read; a
+`vx lock`". Asked only while the lock's bytes are the stamped ones and the
+stamps are this workspace's (a pull, a clone or a cache dir another
+checkout shares asks nothing); read once per version of the file. The stat match only ever skips the read; a
 refusal is decided by the file's bytes now, never by a memo (rule 9).
 
 ### Public surface
 
 ```ts
-export function takeConfigStamps(
-  root: string,
-  files: readonly string[],
-): Promise<Record<string, [number, number, string]>>
+export interface ConfigStamps {
+  at: number // epoch ms before the first stat: the racy window runs from here
+  configs: Record<string, [number, number, string]>
+}
+export function takeConfigStamps(root: string, files: readonly string[]): Promise<ConfigStamps>
 export function writeConfigStamps(
   root: string,
   cacheDir: string,
-  configs: Record<string, [number, number, string]>,
+  stamps: ConfigStamps,
 ): Promise<void>
 export function configsEditedSinceLock(
   root: string,

@@ -6,59 +6,101 @@
 // a new lock, or a clone with no memo, asks nothing. A failure of any kind
 // reads as no memo: it is a warning light, never a requirement.
 
-import { mkdir, readFile, stat, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { xxh3hex } from '../util/index.js'
 import { FILE_HASH_RACY_MS, racyWindowMs } from './fs-clock.js'
 
 const FILE = 'config-stamps.json'
 
-interface Stamps {
-  /** xxh3 of `.vx/projects.lock`'s bytes when taken. */
-  lock: string
-  /** When taken, epoch ms. */
+/** Each config as `takeConfigStamps` read it. */
+export interface ConfigStamps {
+  /** Epoch ms before the first stat: the racy window runs from here. */
   at: number
   /** Each config, workspace-relative → [size, mtimeMs, xxh3 of its bytes]. */
   configs: Record<string, [number, number, string]>
 }
 
-/** Each config's stamp, read before its evaluation: an edit during it reads as one after. */
+interface Stamps extends ConfigStamps {
+  /** The workspace they are of: a cache dir two checkouts share holds one. */
+  root: string
+  /** xxh3 of `.vx/projects.lock`'s bytes when taken. */
+  lock: string
+}
+
+/**
+ * Each config's stamp, taken before its evaluation: an edit during it reads
+ * as one after. The stat before the bytes, so bytes newer than the stat
+ * only ever make a run read them again.
+ */
 export async function takeConfigStamps(
   root: string,
   files: readonly string[],
-): Promise<Stamps['configs']> {
-  const out: Stamps['configs'] = {}
+): Promise<ConfigStamps> {
+  const at = Date.now()
+  const configs: ConfigStamps['configs'] = {}
   await Promise.all(
     files.map(async (file) => {
-      const [s, bytes] = await Promise.all([stat(file), readFile(file)]).catch(() => [null, null])
+      const s = await stat(file).catch(() => null)
+      const bytes = s === null ? null : await readFile(file).catch(() => null)
       if (s === null || bytes === null) return
-      out[path.relative(root, file)] = [s.size, s.mtimeMs, xxh3hex(bytes)]
+      configs[path.relative(root, file)] = [s.size, s.mtimeMs, xxh3hex(bytes)]
     }),
   )
-  return out
+  return { at, configs }
 }
 
-/** Keep `configs` beside the lock now on disk. */
+/** Keep `stamps` beside the lock now on disk. */
 export async function writeConfigStamps(
   root: string,
   cacheDir: string,
-  configs: Stamps['configs'],
+  stamps: ConfigStamps,
 ): Promise<void> {
   try {
     const lock = xxh3hex(await readFile(path.join(root, '.vx', 'projects.lock')))
     await mkdir(cacheDir, { recursive: true })
-    const stamps: Stamps = { lock, at: Date.now(), configs }
-    await writeFile(path.join(cacheDir, FILE), JSON.stringify(stamps))
+    const file = path.join(cacheDir, FILE)
+    const temp = `${file}.${process.pid}.tmp`
+    const kept: Stamps = { root, lock, ...stamps }
+    // Renamed in: a run reading beside this write sees the old file or the new.
+    await writeFile(temp, JSON.stringify(kept))
+    await rename(temp, file)
   } catch {
     // No memo: a run asks nothing.
   }
 }
 
 /**
+ * One parse per version of the file: a run's rounds and loads ask again,
+ * and a `vx watch` outlives a `vx lock` another shell runs.
+ */
+const read = new Map<string, { version: string; stamps: Promise<Stamps | null> }>()
+
+async function readStamps(cacheDir: string): Promise<Stamps | null> {
+  const file = path.join(cacheDir, FILE)
+  const s = await stat(file).catch(() => null)
+  if (s === null) return null
+  const version = `${s.size}:${s.mtimeMs}:${s.ino}`
+  let got = read.get(file)
+  if (got?.version !== version) {
+    got = {
+      version,
+      stamps: readFile(file, 'utf8').then(
+        (text) => JSON.parse(text) as Stamps,
+        () => null,
+      ),
+    }
+    read.set(file, got)
+  }
+  return got.stamps.catch(() => null)
+}
+
+/**
  * The configs of `files` whose bytes differ from the stamp taken beside
  * the lock whose digest is `lock`: size and mtime (the caller's stat)
  * first, the bytes only when those moved or the stamp was taken inside
- * the file's racy window (a same-size edit then keeps both). Empty when no stamp was taken beside this lock.
+ * the file's racy window (a same-size edit then keeps both). Empty when
+ * no stamp was taken beside this lock in this workspace.
  */
 export async function configsEditedSinceLock(
   root: string,
@@ -67,13 +109,14 @@ export async function configsEditedSinceLock(
   files: readonly { file: string; size: number; mtimeMs: number }[],
 ): Promise<string[]> {
   if (lock === undefined || files.length === 0) return []
-  let stamps: Stamps
-  try {
-    stamps = JSON.parse(await readFile(path.join(cacheDir, FILE), 'utf8')) as Stamps
-  } catch {
+  const stamps = await readStamps(cacheDir)
+  if (
+    stamps === null ||
+    stamps.root !== root ||
+    stamps.lock !== lock ||
+    typeof stamps.configs !== 'object'
+  )
     return []
-  }
-  if (stamps.lock !== lock || typeof stamps.configs !== 'object') return []
   const edited = await Promise.all(
     files.map(async ({ file, size, mtimeMs }) => {
       const rel = path.relative(root, file)

@@ -310,7 +310,8 @@ async function collectWorkspaceInfo(
     }
   } catch (err) {
     if (!isUserError(err)) throw err
-    // A config edited since `vx lock`: every run refuses it, so it is the lock's error.
+    // A lock refusal the load meets (a config edited since `vx lock`, or
+    // gone): every run refuses with it, so it is the lock's error.
     if (refused === null && err.code === 'VX_E_LOCK') refused = err.message
     taskCount = 0
     sandboxed = 0
