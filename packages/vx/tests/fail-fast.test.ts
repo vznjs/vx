@@ -86,7 +86,8 @@ it('CONTROL: without --fail-fast the sibling finishes and its dependant runs', a
 // is still draining it when `first` fails. `first` waits until `late`'s shell
 // is gone (reaped by vx), so the order holds without a timer. The stop reached
 // a command that had already exited: its exit is its own, never the stop's
-// abort.
+// abort. The pid lands by a rename: written in place, `first` could read
+// the file created and still empty, and fail before \`late\` exited.
 for (const [code, said] of [
   [3, 'failed 3'],
   [0, 'success 0'],
@@ -101,7 +102,7 @@ for (const [code, said] of [
     await addProject(
       root,
       'late',
-      `export default { tasks: { go: { exec: { command: 'echo $$ > ../../late.pid; (sleep 2) & exit ${code}' } } } }`,
+      `export default { tasks: { go: { exec: { command: 'echo $$ > ../../late.tmp && mv ../../late.tmp ../../late.pid; (sleep 2) & exit ${code}' } } } }`,
     )
     gitInitCommit(root, 'init')
     let summary: RunSummaryRecord | undefined
