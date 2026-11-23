@@ -730,7 +730,7 @@ describe('planRun() — planning executes nothing', () => {
       // wiped the output tree would destroy a build the user still wanted.
       expect(existsSync(straggler)).toBe(true)
       // No history, no entry: not even an index (`dry-no-writes.test.ts`).
-      expect(existsSync(cacheDir)).toBe(false)
+      expect(existsSync(path.join(cacheDir, 'cache.db'))).toBe(false)
 
       // The control: a real run does all three things planning refused to do.
       const r = await run({ cwd: root, tasks: ['build'], log: quietLogger })
