@@ -11,7 +11,8 @@ import { Levels, Deeper, Concept, Quiz, Walkthrough, Frame, Compare, Takeaway, N
 
 Teach vx something new from one file. This plugin gives every project with a `vitest.config.ts` a `test` task, so no config has to list it:
 
-```ts title="plugins/vitest.ts"
+```ts
+// plugins/vitest.ts
 import path from 'node:path'
 import { definePlugin, type VxPlugin } from '@vzn/vx'
 
@@ -19,6 +20,7 @@ export function vitest(): VxPlugin {
   return definePlugin(import.meta, {
     async project(config, ctx) {
       if (!(await Bun.file(path.join(ctx.dir, 'vitest.config.ts')).exists())) return
+      config.tasks ??= {}
       config.tasks['test'] ??= {
         exec: { command: 'vitest run' },
         inputs: { files: ['src/**', 'vitest.config.ts'] },
