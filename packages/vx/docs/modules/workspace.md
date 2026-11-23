@@ -1248,6 +1248,8 @@ export interface AffectedChanges {
   configTasks?: ReadonlyMap<string, ReadonlySet<string>> // project → the tasks its config edit moved in .vx/projects.lock (not whole)
 }
 export function affectedChanges(args: AffectedArgs, perTask?: boolean): Promise<AffectedChanges> // perTask false: affectedProjects' set only
+/** The base side of a lockfile refusal under `--affected`: no install changes it, so name another base. */
+export const BASE_SIDE: string
 
 /** Default base when `--affected` has no value: the base branch's ref; refused on that branch. */
 export function defaultAffectedBase(

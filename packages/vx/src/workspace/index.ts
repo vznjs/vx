@@ -3,6 +3,7 @@
 
 export {
   affectedChanges,
+  BASE_SIDE,
   type AffectedChanges,
   affectedProjects,
   defaultAffectedBase,

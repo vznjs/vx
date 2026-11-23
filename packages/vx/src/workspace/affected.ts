@@ -166,6 +166,13 @@ function drifted(
 }
 
 /**
+ * The base side of a lockfile refusal under `--affected`: no install changes
+ * a committed base, so the advice is another base.
+ */
+export const BASE_SIDE =
+  'as of the base ref, which no install changes: name another base, `--affected=<ref>`'
+
+/**
  * `extraFiles` on one side of a claimed file. Which side failed to parse is the
  * fix: a broken lockfile at the base is not the working tree's to regenerate.
  */
@@ -578,7 +585,7 @@ async function claimedExtras(args: AffectedArgs, diff: Diff): Promise<ExtrasBy |
     const named = new Set([
       ...(before === null || same
         ? []
-        : ((await extraFilesOn(extraClaims!, file, before, 'as of the base ref')) ?? [])),
+        : ((await extraFilesOn(extraClaims!, file, before, BASE_SIDE)) ?? [])),
       ...(namedAfter ?? []),
     ])
     const extras = new Map<string, { before: Uint8Array | null; after: Uint8Array | null }>()

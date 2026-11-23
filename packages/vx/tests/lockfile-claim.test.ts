@@ -619,7 +619,7 @@ describe('affected', () => {
     // The hook is synchronous for a claim whose digest is, so the refusal
     // arrives as a throw rather than a rejection.
     expect(() => ask(strict, 'broken', '.=r1\n')).toThrow(
-      'bun.lock: not a lockfile (as of the base ref)',
+      'bun.lock: not a lockfile (as of the base ref, which no install changes: name another base, `--affected=<ref>`)',
     )
     expect(() => ask(strict, '.=r1\n', 'broken')).toThrow(
       'bun.lock: not a lockfile (in the working tree)',
