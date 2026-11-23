@@ -431,6 +431,26 @@ export function defaultLogger(
       held.rest = ''
     }
   }
+  // Under errors-only a kept server's output after the summary waits in its
+  // tail: once the server has failed (its death in the keep-alive wait), the
+  // tail prints, before the line naming its exit.
+  const flushFailedKept = (): void => {
+    if (!flushedPersistent || view.mode !== 'errors-only') return
+    for (const t of persistentTails.values()) {
+      if (t.outcome?.status !== 'failed') continue
+      const block = formatPersistentTailBlock(
+        t.node,
+        t.outcome,
+        { stdout: tailText(t.out), stderr: tailText(t.err) },
+        { stdout: t.out.dropped, stderr: t.err.dropped },
+        colors,
+        forwardArgs,
+      )
+      resetTail(t.out)
+      resetTail(t.err)
+      if (block !== '') emitBlock(fenced(block))
+    }
+  }
   const printsKept = (tail: { outcome?: TaskOutcome }): boolean =>
     flushedPersistent && tail.outcome !== undefined && view.mode !== 'errors-only'
   // A server writing before this run started its task was left running by an
@@ -781,6 +801,7 @@ export function defaultLogger(
       // A kept server's held partial line is older than this line: held
       // past it, a server's last words printed below its own exit notice.
       flushKept()
+      flushFailedKept()
       // A live-streamed server keeps writing after its frame closes, so a
       // summary row or "exited with code" can follow its partial line.
       endStreamLine()
@@ -796,6 +817,7 @@ export function defaultLogger(
     },
     warn(line) {
       flushKept()
+      flushFailedKept()
       endStreamLine()
       if (!errColors.enabled || liveFrames > 0) {
         writer.writeTo(errOut, `${ui.tagged('warn', line, errColors)}\n`)

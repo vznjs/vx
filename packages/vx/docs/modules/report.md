@@ -159,7 +159,9 @@ print in any mode. A ready persistent task the run keeps (`vx run dev`)
 is held to a bounded tail until `runEnd`, which flushes it before the
 summary; from there its output streams below the summary a line at a
 time under its id (`app#dev │ …`), fenced on Actions, and not at all
-under `errors-only`, `hash-only` or `none` (#2054). A line that redraws
+under `errors-only`, `hash-only` or `none` (#2054). Under `errors-only`
+it stays in the tail, which prints as a since-ready frame once the
+server fails, above the line naming its exit. A line that redraws
 itself (`\r`, `CSI 2K`, `CSI 1G`) prints as its last redraw, so the id
 prefix stays on screen.
 

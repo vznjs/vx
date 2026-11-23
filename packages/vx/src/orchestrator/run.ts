@@ -2016,6 +2016,11 @@ async function runOnBus(
       // Only the ones still up are stopped: a kept server already dead was
       // counted as one.
       const others = keepAlive.children.filter((c, j) => j !== first.i && !hasEnded(c)).length
+      // The server that ended the session on its own, not cleanly, failed.
+      // A stop's own kill is no crash: the user ended the session. Failed
+      // before the line naming it: under errors-only that prints its tail.
+      const crashed = !stop.signal.aborted && first.code !== 0
+      if (crashed) failServer(outcomes, node.id, first.code)
       // Not when the run was stopped: the user ended the server, and "exited
       // with code 130" read as a crash.
       if (!stop.signal.aborted) {
@@ -2031,10 +2036,6 @@ async function runOnBus(
       // in the grace cut short a graceful shutdown.
       if (stop.signal.aborted) await stop.aborting?.catch(() => {})
       else await terminateChildren(() => keepAlive.children)
-      // The server that ended the session on its own, not cleanly, failed.
-      // A stop's own kill is no crash: the user ended the session.
-      const crashed = !stop.signal.aborted && first.code !== 0
-      if (crashed) failServer(outcomes, node.id, first.code)
       if (historyAfterWait) {
         recordHistory(() => {
           // A writer's open: another vx version may have reset the index

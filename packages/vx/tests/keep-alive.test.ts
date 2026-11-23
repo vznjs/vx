@@ -966,6 +966,44 @@ describe('a persistent server that dies before the run stops it', () => {
     }
   }, 30_000)
 
+  // CI's default view: what a kept server wrote after the summary went to a
+  // tail nothing printed when it died, and the log said only its exit code
+  // (cli.md: errors-only shows it "with what it wrote since").
+  it('errors-only shows what a kept server wrote before it died', async () => {
+    await addProject(
+      root,
+      'app',
+      `export default { tasks: { dev: { exec: { command: 'echo READY; sleep 0.2; echo boom-last-words >&2; exit 1', persistent: { readyWhen: 'READY' } } } } }`,
+    )
+    const proc = track(
+      Bun.spawn([process.execPath, BIN, 'run', 'dev', '--all', '--output-logs=errors-only'], {
+        cwd: root,
+        stdout: 'pipe',
+        stderr: 'pipe',
+        env: { ...process.env, VX_RUN_KILL_GRACE: '200ms', NO_COLOR: '1' },
+      }),
+    )
+    const [out, err, code] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ])
+    const lines = (out + err).split('\n')
+    expect({
+      code,
+      said: lines.filter((l) => l.startsWith('vx: ')),
+      last: lines.filter((l) => l.endsWith('boom-last-words')).length,
+      close: lines
+        .filter((l) => l.startsWith('└─') && l.includes('app#dev'))
+        .map((l) => l.replace(/\(\d+(\.\d+)?m?s\)/, '(T)')),
+    }).toEqual({
+      code: 1,
+      said: ['vx: app#dev exited with code 1'],
+      last: 1,
+      close: ['└─ ▸ app#dev ── (T) failed (exit 1)'],
+    })
+  }, 30_000)
+
   it('a dependency-only server that crashes after ready is told the verdict once', async () => {
     await addProject(
       root,
