@@ -40,7 +40,7 @@ import {
   lazyGitEnumeration,
   DEFAULT_STORE,
 } from '../cache/index.js'
-import { measureFsClockLag } from '../memo/index.js'
+import { clockDir, measureFsClockLag } from '../memo/index.js'
 import {
   buildPackageGraph,
   computeNestedProjectDirs,
@@ -408,9 +408,9 @@ async function startWorkspace(options: CoreRunOptions, log: Logger, planning: bo
     ? path.resolve(options.cwd, options.cacheDir)
     : resolveCacheDir(workspaceRoot, workspaceConfig)
   // Before any racy window is judged: a file system behind this process's clock
-  // dated a mid-command edit before the command (fs-clock.ts). A plan may make
-  // no cache dir, so it measures in `.vx`.
-  measureFsClockLag(planning ? path.join(workspaceRoot, '.vx') : cacheDir)
+  // dated a mid-command edit before the command (fs-clock.ts). A plan makes
+  // no cache dir.
+  measureFsClockLag(planning ? clockDir(cacheDir, workspaceRoot) : cacheDir)
   // Asked now, read when the cache opens: a repository with no remote is
   // named by its root commit, a git spawn the discovery below overlaps.
   const storeRoot = options.cacheDir ? null : resolveStoreRoot(workspaceRoot, workspaceConfig)

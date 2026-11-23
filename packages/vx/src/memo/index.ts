@@ -6,6 +6,7 @@ export { FileHashStore, fileIdentity } from './file-hashes.js'
 export { type FoldMemo, IndexFoldMemo } from './fold-memo.js'
 export {
   FILE_HASH_RACY_MS,
+  clockDir,
   fsClockNow,
   measureFsClockLag,
   racyWindowMs,

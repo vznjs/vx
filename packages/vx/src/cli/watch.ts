@@ -15,7 +15,7 @@
 import path from 'node:path'
 import { parseRunArgs, resolveRunOptions, type RunArgs, spacedHint } from './run.js'
 import { refuse, seeHelp } from './help.js'
-import { fsClockNow } from '../memo/index.js'
+import { clockDir, fsClockNow } from '../memo/index.js'
 import {
   commandWindows,
   fingerprintClaims,
@@ -170,11 +170,14 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
     warn: quiet,
     ...(opts.cacheDir !== undefined ? { cacheDir: opts.cacheDir } : {}),
   }
-  const allProjects = await discoverCliProjects(workspaceRoot, stageLoad).catch((err: unknown) => {
-    if (!(err instanceof Error) || err.message !== NO_LOCK) throw err
-    unlocked = true
-    return []
-  })
+  const opening = await loadCliWorkspace(workspaceRoot, quiet)
+  const allProjects = await discoverCliProjects(workspaceRoot, stageLoad, undefined, opening).catch(
+    (err: unknown) => {
+      if (!(err instanceof Error) || err.message !== NO_LOCK) throw err
+      unlocked = true
+      return []
+    },
+  )
   const anchored = opts.tasks.filter((t) => t.includes('#')).map((t) => t.slice(0, t.indexOf('#')))
   const named =
     anchored.length === opts.tasks.length
@@ -210,7 +213,7 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
   // ready held the initial run for good, and the fix to it was never heard.
   let loop: Promise<void> | undefined
   const initialRun: InitialRun = {
-    from: fsClockNow(opts.cacheDir ?? path.join(workspaceRoot, '.vx')),
+    from: fsClockNow(clockDir(opts.cacheDir ?? opening.cacheDir, workspaceRoot)),
     windows: commandWindows(),
     lock: lockStamp(workspaceRoot),
     index: indexStamp(workspaceRoot),

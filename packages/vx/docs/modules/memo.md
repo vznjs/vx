@@ -182,6 +182,10 @@ export function setFsClockLag(lagMs: number): void
 // The file's times are read before its first stamp, so Linux 6.13+ stamps
 // it from the fine clock: a write made before the call reads as before it.
 export function fsClockNow(dir: string): number
+// The dir a reader that makes no cache dir (a plan, `vx watch`'s opening
+// stamp) stamps in: the cache dir once made, else `.vx`. The stamp file
+// lives an instant, and a `git add -A` in the committed `.vx` failed on it.
+export function clockDir(cacheDir: string, workspaceRoot: string): string
 // What a stamp's own precision may hide: 1000 ms for a whole-second stamp,
 // 2000 for an even one (FAT), else 0.
 export function stampGrainMs(stampMs: number): number

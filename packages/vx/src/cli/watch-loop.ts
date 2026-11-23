@@ -433,6 +433,12 @@ class WatchLoop {
     // "watching" is a promise that an edit from now on is seen; every
     // watcher has proved (or been given 2 s to prove) delivery first.
     await this.pool.proved()
+    // An edit committed during the run is no longer dirty, and a checkout or
+    // a stash leaves clean files the run never read: git names none of them,
+    // so the keys judge whenever its index moved. Read before "watching": a
+    // commit made on that line read as one made during the run, and a
+    // committed output (an input once tracked) re-ran the task.
+    const gitMoved = indexStamp(this.workspaceRoot) !== args.initialRun.index
     if (args.initial !== undefined) {
       this.current = args.initial.cycle
       args.initial.onWaiting = this.interruptIfWaiting
@@ -447,10 +453,6 @@ class WatchLoop {
     // it, and watch idled over stale output. One to a task the run was running
     // its re-check found; any other is heard here.
     const { heard, inWindow } = this.heardSinceRun()
-    // An edit committed during the run is no longer dirty, and a checkout or
-    // a stash leaves clean files the run never read: git names none of them,
-    // so the keys judge whenever its index moved.
-    const gitMoved = indexStamp(this.workspaceRoot) !== args.initialRun.index
     // Armed while the run waits on a server: its keys come when it returns.
     if (args.initial !== undefined) {
       if (!heard) {
