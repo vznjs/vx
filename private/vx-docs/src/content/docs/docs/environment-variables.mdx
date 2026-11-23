@@ -26,6 +26,8 @@ API_URL=https://api.demo.dev vx run test
 [2m┌─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;96;165;250mtest[0m [2m>[0m $ vitest run
  [31m❯[39m src/index.test.ts [2m([22m[2m1 test[22m[2m | [22m[31m1 failed[39m[2m)[22m[32m 6[2mms[22m[39m
 [31m[1mTypeError[22m: .toMatch() expects to receive a string, but got undefined[39m
+[36m ❯ src/index.test.ts:4:31[39m
+[90m      4|[39m   expect(process.env.API_URL).toMatch(/^https:/)
 [1m[38;2;234;179;8m[vx][0m[2m API_URL is set in your environment, but this task does not get it: a task sees only the variables exec.env.passThrough and define name — add it to passThrough, and to inputs.env if the output depends on it[0m
 [2m└─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;96;165;250mtest[0m [2m──[0m [2m(563ms)[0m [1m[38;2;239;68;68mfailed (exit 1)[0m
 ```
