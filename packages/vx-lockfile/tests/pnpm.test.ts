@@ -1046,16 +1046,6 @@ packages:
 
   it.each([
     ['settings', 'settings:\n  autoInstallPeers: true\n', 'settings:\n  autoInstallPeers: false\n'],
-    [
-      'packageExtensionsChecksum',
-      'packageExtensionsChecksum: aa\n',
-      'packageExtensionsChecksum: bb\n',
-    ],
-    [
-      'ignoredOptionalDependencies',
-      'ignoredOptionalDependencies:\n  - fsevents\n',
-      'ignoredOptionalDependencies:\n  - esbuild\n',
-    ],
   ])('the install-wide `%s` alone moves every importer', (_field, before, after) => {
     const lock = (block: string) =>
       v9().replace(
@@ -1089,6 +1079,32 @@ packages:
     expect(after).not.toBe(before)
     expect(movedDirs(before, after).sort()).toEqual([...digests(before).keys()].sort())
     expect(digests(before).size).toBeGreaterThan(1)
+  })
+
+  // pnpm records what a `packageExtensions` entry added in the extended
+  // package's snapshot, and only a checksum of the setting at the top
+  // (probed, pnpm 10.28): folded globally, one extension of a package only
+  // `c` reaches re-keyed every project.
+  it('the `packageExtensionsChecksum` alone moves no importer', () => {
+    const before = v9()
+    const after = before.replace(
+      "lockfileVersion: '9.0'\n",
+      "lockfileVersion: '9.0'\n\npackageExtensionsChecksum: sha256-x\n",
+    )
+    expect(after).not.toBe(before)
+    expect(movedDirs(before, after)).toEqual([])
+  })
+
+  // What `ignoredOptionalDependencies` dropped is gone from the snapshots
+  // and importers that named it (probed, pnpm 10.28: chokidar's fsevents),
+  // so the list alone moves no importer.
+  it('the `ignoredOptionalDependencies` list alone moves no importer', () => {
+    const lock = (list: string) =>
+      v9().replace(
+        'settings:\n  autoInstallPeers: true\n',
+        `settings:\n  autoInstallPeers: true\n\nignoredOptionalDependencies:\n  - ${list}\n`,
+      )
+    expect(movedDirs(lock('fsevents'), lock('esbuild'))).toEqual([])
   })
 
   it('the lockfile version alone moves every importer', () => {
