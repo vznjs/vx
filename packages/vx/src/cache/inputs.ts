@@ -42,6 +42,7 @@ import {
   slashBraceExpansions,
   braceAlternatives,
   ESSENTIAL_ENV,
+  taskEnvSource,
   ownEnv,
   POST_EXIT_DRAIN_MS,
   splitNegations,
@@ -657,11 +658,15 @@ function inputOnDisk(abs: string, run: GitFilesCache | undefined): boolean {
   return st !== undefined && (st.isFile() || st.isSymbolicLink())
 }
 
-/** vx's values of `ESSENTIAL_ENV`: the one environment every probe gets. */
-function probeEnv(): Record<string, string> {
+/**
+ * vx's values of `ESSENTIAL_ENV`, as a task reads them: the one environment
+ * every probe gets. A pipeline's `env` is vx's alone; a probe saw its `CI`
+ * that the task it keys never did.
+ */
+function probeEnv(source: NodeJS.ProcessEnv): Record<string, string> {
   const env: Record<string, string> = {}
   for (const name of ESSENTIAL_ENV) {
-    const value = process.env[name]
+    const value = source[name]
     if (value !== undefined) env[name] = value
   }
   return env
@@ -744,8 +749,9 @@ async function runRuntimeCommand(
   field: RuntimeField,
 ): Promise<string> {
   const probe = `inputs.${field} probe`
+  const source = taskEnvSource()
   // As a task's (exec/env.ts): no member's bin inherited from `npm run`.
-  const ambient = withoutWorkspaceBins(process.env['PATH'] ?? '', workspaceRoot)
+  const ambient = withoutWorkspaceBins(source['PATH'] ?? '', workspaceRoot)
   // As the task's PATH: a dir holding the delimiter splits into a relative
   // entry.
   const PATH = [...binDirs.filter((dir) => !dir.includes(path.delimiter)), ambient]
@@ -757,7 +763,7 @@ async function runRuntimeCommand(
     // project's `.bin`: a dependency's `sh` bin would run every probe.
     proc = Bun.spawn(shellArgv(command), {
       cwd,
-      env: { ...probeEnv(), PATH },
+      env: { ...probeEnv(source), PATH },
       stdin: 'ignore',
       stdout: 'pipe',
       stderr: 'pipe',
