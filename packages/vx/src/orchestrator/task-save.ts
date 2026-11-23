@@ -1,7 +1,6 @@
 // Whether a miss is saved, decided in one place (`saveVerdict`), and what
 // each verdict does to the cache and the run's facts (`applySave`).
 
-import { lstatSync } from 'node:fs'
 import { span } from '../util/index.js'
 import { warnOf } from '../report/index.js'
 import type { Attempts } from './attempt.js'
@@ -83,28 +82,6 @@ export async function saveVerdict(
   return args.noDependants === true ? { kind: 'count' } : { kind: 'mark' }
 }
 
-/**
- * The key by what git holds for the run's committed outputs (`HeldKey`), when
- * each of them held bytes a save or restore here left (no hand edit) and the
- * command rewrote it: the entry then holds no byte of theirs a person wrote,
- * and is saved under that key too. Undefined otherwise, and where another
- * machine ran it.
- */
-function rewroteHeld(m: MissRun): string | undefined {
-  const { args, hash } = m
-  const heldKey = m.inputs.described?.heldKey
-  if (heldKey === undefined || heldKey.key === hash) return undefined
-  if (args.executor.capabilities?.remote === true) return undefined
-  const memo = args.run.cache.memo
-  if (memo.stampedBy === undefined) return undefined
-  for (const file of heldKey.files) {
-    const st = lstatSync(file.abs, { throwIfNoEntry: false })
-    if (st === undefined || st.ctimeMs === file.ctimeMs) return undefined
-    if (!memo.stampedBy(file.rel, file.ino, file.ctimeMs)) return undefined
-  }
-  return heldKey.key
-}
-
 /** Carry out `verdict`: whether an entry is in, and an unsaved miss's output bytes. */
 export async function applySave(
   m: MissRun,
@@ -135,12 +112,11 @@ export async function applySave(
         })
       return { saved: false }
     case 'save': {
-      const saveUnder = (key: string, quiet = false) =>
+      const { landed } = await outputsStep('save', ran.exitCode, ran.spentMs, () =>
         saveMiss({
-          quiet,
           ...verdict.own,
           node,
-          hash: key,
+          hash,
           cache: args.run.cache,
           log: args.log,
           workspaceRoot: args.run.workspaceRoot,
@@ -159,22 +135,9 @@ export async function applySave(
           // A sink listens: say what the save cost.
           measure: args.run.explainMiss !== undefined,
           state: stamp.state,
-        })
-      const first = await outputsStep('save', ran.exitCode, ran.spentMs, () => saveUnder(hash))
+        }),
+      )
       args.run.keyedTasks?.saved(args, hash)
-      let landed = first.landed
-      const held = rewroteHeld(m)
-      if (held !== undefined) {
-        // The task settles once both are in: a dependant must not write the
-        // outputs while the second save still reads them. Its failure is a
-        // miss next run, never the task's.
-        const also = await saveUnder(held, true).catch(() => undefined)
-        if (also !== undefined) {
-          args.run.keyedTasks?.saved(args, held)
-          const second = also.landed.catch(() => undefined)
-          landed = Promise.all([first.landed, second]).then(([f]) => f)
-        }
-      }
       // A run that settles the outcome on `landed` learns there whether the
       // entry is in; without one, the save is done (a `--force` save may
       // have kept the entry it found).

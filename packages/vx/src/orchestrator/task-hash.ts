@@ -5,7 +5,6 @@ import {
   type FoldMemo,
   FILE_HASH_RACY_MS,
   racyWindowMs,
-  stampedCurrent,
   stampGrainMs,
   WORKSPACE_OUTPUT_PREFIX,
 } from '../memo/index.js'
@@ -335,14 +334,16 @@ export async function describeTaskInputs(args: ComputeHashArgs): Promise<{
   added: () => string | undefined
   /** The fold up to the files (`foldHead`), for a fold memo's probe. */
   head: () => bigint
-  heldKey?: HeldKey
+  /**
+   * The committed outputs keyed by what git holds while their bytes differ
+   * (`heldOutputs`): a miss writes it back before the command
+   * (`OutputGuard.prepare`), so the facts and the executor's inputs carry it.
+   */
+  held?: ReadonlyMap<string, string>
 }> {
   const hashedAt = Date.now()
-  // The key folds `held`; the facts and the executor's input files carry the
-  // bytes on disk, which a remote checks what it uploads against.
-  const { input, listings, held, heldKey } = await resolveKeyInput(args)
-  const known = (f: string): string | undefined =>
-    held?.has(f) === true ? undefined : input.fileHashes?.get(f)
+  const { input, listings, held } = await resolveKeyInput(args)
+  const known = (f: string): string | undefined => input.fileHashes?.get(f)
   // Resolved files arrive in order: sorting them again was 170 ms of a
   // 9,603-task cold run's thread.
   const sorted = sortedNames(input.inputFiles) ? input.inputFiles : [...input.inputFiles].sort()
@@ -367,7 +368,7 @@ export async function describeTaskInputs(args: ComputeHashArgs): Promise<{
   // the key could fold bytes the facts the re-check compares never saw.
   const hash = await args.cache.key({
     ...input,
-    fileHashes: new Map(sorted.map((f, i) => [f, held?.get(f) ?? digests[i]!])),
+    fileHashes: new Map(sorted.map((f, i) => [f, digests[i]!])),
   })
   // A file gone since the enumeration is no input: the task will not read it.
   const files: InputFile[] = sorted.flatMap((f, i) =>
@@ -436,7 +437,7 @@ export async function describeTaskInputs(args: ComputeHashArgs): Promise<{
     hash,
     facts,
     describedAt: hashedAt,
-    ...(heldKey !== undefined ? { heldKey } : {}),
+    ...(held !== undefined ? { held } : {}),
     readUpstream,
     head: () => {
       const { captureInto: _rows, ...bare } = input
@@ -591,9 +592,8 @@ async function resolveKeyInput(
 ): Promise<{
   input: CacheKeyInput
   listings: InputListing[]
-  /** The `fileHashes` that are what git holds, not the bytes (`committedOutputOids`). */
+  /** The `fileHashes` that are what git holds, not the bytes (`heldOutputs`). */
   held?: ReadonlyMap<string, string>
-  heldKey?: HeldKey
 }> {
   const cfg = args.node.config
   const resolved = await resolveInputs({
@@ -678,86 +678,63 @@ async function resolveKeyInput(
     ...(args.node.platform !== undefined ? { platform: args.node.platform } : {}),
     ...(args.captureInto !== undefined ? { captureInto: args.captureInto } : {}),
   }
-  const found = skipFiles ? undefined : await heldOutputs(args, input, resolved.files)
-  const held = found?.held
-  if (held === undefined)
-    return {
-      input,
-      listings: resolved.listings,
-      ...(found?.heldKey !== undefined ? { heldKey: found.heldKey } : {}),
-    }
+  const held = skipFiles ? undefined : await heldOutputs(args, resolved.files)
+  if (held === undefined) return { input, listings: resolved.listings }
   const merged = fileHashes === undefined ? held : new Map([...fileHashes, ...held])
   return { input: { ...input, fileHashes: merged }, listings: resolved.listings, held }
 }
 
 /**
  * The committed outputs no input glob names whose key part is what git holds
- * (`committedOutputOids`), or undefined for none. Only while each still holds
- * the very bytes this machine saved or restored under the key that folds them
- * (its output stamp): a build that rewrites a committed `dist/index.js.map`
- * with new bytes each run then hits, while a hand edit, or bytes a run under
- * another key left, keys by its bytes as any input does, so no entry under
- * the committed key ever holds bytes its task did not leave.
+ * (`committedOutputOids`), or undefined for none: each whose bytes on disk a
+ * save or restore here left (`vxWritten`). A build that rewrites a committed
+ * `dist/index.js.map` with new bytes each run then hits, and a miss first puts
+ * back what git holds (`OutputGuard.prepare`), so the entry under that key is
+ * what a clean checkout builds. A hand edit keys by its bytes, as any input
+ * does, and is never written over.
  */
 async function heldOutputs(
   args: ComputeHashArgs,
-  input: CacheKeyInput,
   files: readonly string[],
-): Promise<{ held?: ReadonlyMap<string, string>; heldKey?: HeldKey } | undefined> {
+): Promise<ReadonlyMap<string, string> | undefined> {
   const run = args.gitFilesCache
   if (run === undefined || run.stagedOids.size === 0) return undefined
-  const { projectDir } = args.node
-  const held = committedOutputOids(
+  const found = committedOutputOids(
     args.node.config,
-    projectDir,
+    args.node.projectDir,
     args.workspaceRoot,
     files,
     run.stagedOids,
   )
-  if (held === undefined) return undefined
-  const { captureInto: _rows, ...bare } = input
-  const fileHashes = input.fileHashes === undefined ? held : new Map([...input.fileHashes, ...held])
-  const key = await args.cache.key(await knownIdentities(args, { ...bare, fileHashes }))
-  const rows = args.cache.memo.loadOutputFilesBatch([key]).get(key)
-  if (rows !== undefined) {
-    const byPath = new Map(rows.map((r) => [r.path, r]))
-    let current = true
-    for (const abs of held.keys()) {
-      const row = byPath.get(relPosix(projectDir, abs))
-      if (row === undefined || !stampedCurrent(abs, row)) current = false
-    }
-    if (current) return { held }
-  }
-  // Not this key's bytes: keyed by them, and a miss that rewrites them all
-  // from bytes vx wrote saves under this key too (`HeldKey`).
-  const before: HeldFile[] = []
-  for (const abs of held.keys()) {
-    const st = lstatSync(abs, { throwIfNoEntry: false })
-    if (st === undefined || !st.isFile()) return undefined
-    before.push({ abs, rel: relPosix(projectDir, abs), ino: st.ino, ctimeMs: st.ctimeMs })
-  }
-  return { heldKey: { key, files: before } }
+  if (found === undefined) return undefined
+  const written = vxWritten(run, args.cache.memo)
+  const held = new Map<string, string>()
+  for (const [abs, oid] of found) if (written.has(abs)) held.set(abs, oid)
+  return held.size > 0 ? held : undefined
 }
+
+const vxWrittenOf = new WeakMap<GitFilesCache, ReadonlySet<string>>()
 
 /**
- * The key a run keyed by its committed outputs' bytes would have had by what
- * git holds for them (`heldOutputs`). A miss whose command rewrote every one
- * holds only its own bytes there, so it is saved under this key too, and the
- * save's stamps let the next run fold it: else each run's rewrite keyed the
- * next by new bytes, and after a source edit the build never hit again.
+ * The run's changed tracked files whose inode and ctime an output stamp holds
+ * (a save or restore here left those bytes), by absolute path. One read of
+ * the stamps per run, as the run starts asking: every derivation of a key
+ * this run then agrees; a stamp taken later this run is not one.
  */
-export interface HeldKey {
-  key: string
-  /** Each held file as it stood when the key was taken. */
-  files: readonly HeldFile[]
-}
-
-/** A held committed output's inode and ctime before the command. */
-export interface HeldFile {
-  abs: string
-  rel: string
-  ino: number
-  ctimeMs: number
+function vxWritten(run: GitFilesCache, memo: CacheLayer['memo']): ReadonlySet<string> {
+  let written = vxWrittenOf.get(run)
+  if (written !== undefined) return written
+  const stats = new Map<string, { ino: number; ctimeMs: number }>()
+  for (const abs of run.stagedOids.keys()) {
+    const st = lstatSync(abs, { throwIfNoEntry: false })
+    if (st?.isFile() === true) stats.set(abs, { ino: st.ino, ctimeMs: Math.floor(st.ctimeMs) })
+  }
+  const stamped = memo.stampsOf?.([...stats.values()].map((s) => s.ino)) ?? new Set<string>()
+  written = new Set(
+    [...stats].filter(([, s]) => stamped.has(`${s.ino}:${s.ctimeMs}`)).map(([a]) => a),
+  )
+  vxWrittenOf.set(run, written)
+  return written
 }
 
 /**

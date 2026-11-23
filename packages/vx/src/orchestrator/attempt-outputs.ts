@@ -22,6 +22,7 @@ import {
   stampOutputs,
   stampWorkspaceOutputs,
   taskEntryHashes,
+  writeIndexBlobs,
 } from '../cache/index.js'
 import { type OutputFileRow, WORKSPACE_OUTPUT_PREFIX } from '../memo/index.js'
 import { OutputsFailed, type TaskOutcome } from '../graph/index.js'
@@ -115,7 +116,7 @@ export class OutputGuard {
    * run, and a failed attempt's partial outputs can't leak into the next;
    * gated on WRITES so a `--no-cache` run leaves the user's tree alone).
    */
-  async prepare(attempt: number): Promise<void> {
+  async prepare(attempt: number, held?: ReadonlyMap<string, string>): Promise<void> {
     const { args, policy, cleanArgs, wsCleanArgs } = this
     const { node } = args
     const { outputs, wsOutputs, additive, write, deferred, keepOutputs, retryCanFollow } = policy
@@ -127,6 +128,16 @@ export class OutputGuard {
     // `.tsbuildinfo`).
     const clean = write && !deferred && !(keepOutputs && attempt === 1)
     this.committedKept = []
+    if (clean && held !== undefined) {
+      // The key folded what git holds for these, not the bytes an earlier
+      // build left: the command starts from it, as on a clean checkout, so
+      // one that reads or appends to them saves what that checkout builds.
+      writeIndexBlobs(held)
+      args.run.gitFilesCache?.markOutputsChanged(
+        node.projectDir,
+        [...held.keys()].map((f) => relPosix(node.projectDir, f)),
+      )
+    }
     if (additive && write && !deferred && outputs.length > 0) {
       const endStamp = span('miss: stamp outputs')
       if (this.stampedBefore === undefined) this.stampedBefore = await stampOutputs(cleanArgs)

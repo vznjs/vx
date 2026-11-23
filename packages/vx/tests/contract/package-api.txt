@@ -132,6 +132,9 @@ export class GitFilesCache extends Map<string, readonly string[]> {
     snapshot: readonly string[],
     digest: () => string | undefined,
   ): void
+  stagedOid(abs: string): string | undefined
+  get stagedOids(): ReadonlyMap<string, string>
+  setStaged(staged: Map<string, string>, index: GitEnumeration['stagedIndex']): void
   oidsFor(projectDir: string): ReadonlyMap<string, string> | undefined
   setOids(projectDir: string, oids: Map<string, string>): void
   setLazyOids(projectDir: string, build: () => Map<string, string>): void
@@ -968,6 +971,25 @@ export interface GitContext {
   branch: string | null
   dirty: boolean | null
 }
+== type GitEnumeration (src/cache/git-inputs.ts)
+export interface GitEnumeration {
+  all: string[]
+  tracked: readonly string[]
+  scopes: readonly string[]
+  trusted: Map<string, string>
+  staged: Map<string, string>
+  stagedIndex?: { file: string; stamp: string }
+  flagged: readonly string[]
+  dirty: boolean | null
+  vars: string | null
+  changed: readonly string[] | null
+  untracked: readonly string[] | null
+  undecodable: readonly string[]
+  ignored: readonly string[]
+  startedAtMs: number
+  blobCheck: IndexBlobCheck
+  catFile(stdin: string): Promise<{ exitCode: number; stdout: string } | null>
+}
 == type GraphHookContext (src/orchestrator/plugin.ts)
 export interface GraphHookContext extends BaseContext {
   readonly requested: readonly string[]
@@ -1012,6 +1034,19 @@ export interface HostContext {
   host: string | null
   os: string
   arch: string
+}
+== type IndexBlobCheck (src/cache/git-inputs.ts)
+export interface IndexBlobCheck {
+  key: string | undefined
+  blobs(): Promise<IndexBlobs | null>
+  rekey(): Promise<string | undefined>
+}
+== type IndexBlobs (src/cache/git-inputs.ts)
+export interface IndexBlobs {
+  paths: string[]
+  oids: string[]
+  sizes: number[]
+  sameSecond: string[]
 }
 == type IngestMeta (src/cache/layer.ts)
 export interface IngestMeta {
@@ -2089,6 +2124,7 @@ export interface StoreMemo {
   readonly folds: FoldMemo
   loadOutputFilesBatch(hashes: readonly string[]): Map<string, OutputFileRow[]>
   stampedRowsOf(hash: string): readonly OutputFileRow[] | undefined
+  stampsOf(inos: readonly number[]): Set<string>
   isOutputsCurrent(projectDir: string, expected: readonly OutputFileRow[]): boolean
   recordOutputDirs(
     hash: string,
@@ -2218,6 +2254,7 @@ export interface TaskMemo {
   hashFile(filePath: string): Promise<string>
   loadOutputFilesBatch(hashes: readonly string[]): Map<string, OutputFileRow[]>
   stampedRowsOf?(hash: string): readonly OutputFileRow[] | undefined
+  stampsOf?(inos: readonly number[]): Set<string>
   isOutputsCurrent(projectDir: string, expected: readonly OutputFileRow[]): boolean
   recordOutputDirs?(
     hash: string,

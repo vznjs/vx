@@ -284,27 +284,27 @@ export class OutputIndex {
     return this.stamped.get(hash)
   }
 
-  /** The probe's rows of `hash` when held: no read. */
   /**
-   * Whether a save or restore here stamped the project-relative `rel` at this
-   * inode and floored ctime under any entry, pending or flushed. A scan: asked
-   * only on a miss (`rewroteHeld`).
+   * `ino:ctime` (floored) of each stamp this workspace holds on any of
+   * `inos`, flushed or pending. A scan of the stamps: once a run, and only
+   * where a committed output is changed (`heldOutputs`).
    */
-  stampedBy(rel: string, ino: number, ctimeMs: number): boolean {
-    const ctime = Math.floor(ctimeMs)
-    for (const stamps of this.pendingStamps.values()) {
-      const t = stamps.get(rel)
-      if (t !== undefined && t[0] === ino && t[1] === ctime) return true
-    }
-    return (
-      this.db
-        .query(
-          'SELECT 1 FROM output_stamps WHERE root = ? AND path = ? AND ino = ? AND ctime_ms = ? LIMIT 1',
-        )
-        .get(this.root, rel, ino, ctime) !== null
-    )
+  stampsOf(inos: readonly number[]): Set<string> {
+    const out = new Set<string>()
+    if (inos.length === 0) return out
+    const want = new Set(inos)
+    for (const stamps of this.pendingStamps.values())
+      for (const [ino, ctime] of stamps.values()) if (want.has(ino)) out.add(`${ino}:${ctime}`)
+    const rows = this.db
+      .query(
+        'SELECT ino, ctime_ms FROM output_stamps WHERE root = ? AND ino IN (SELECT value FROM json_each(?))',
+      )
+      .all(this.root, JSON.stringify(inos)) as Array<{ ino: number; ctime_ms: number }>
+    for (const r of rows) out.add(`${r.ino}:${r.ctime_ms}`)
+    return out
   }
 
+  /** The probe's rows of `hash` when held: no read. */
   heldRowsOf(hash: string): readonly OutputFileRow[] | undefined {
     return this.held.get(hash)
   }

@@ -285,11 +285,11 @@ export interface TaskMemo {
    */
   stampedRowsOf?(hash: string): readonly OutputFileRow[] | undefined
   /**
-   * Whether a save or restore on this machine stamped the project-relative
-   * `rel` at this inode and ctime under any entry (optional): its bytes are
-   * then ones vx wrote, not a hand edit's. Absent: never.
+   * `ino:ctime` (floored) of each output stamp this workspace holds on any of
+   * `inos` (optional): a file still at one holds bytes a save or restore here
+   * left. One scan of the stamps.
    */
-  stampedBy?(rel: string, ino: number, ctimeMs: number): boolean
+  stampsOf?(inos: readonly number[]): Set<string>
   /**
    * True iff every `expected` row's file under `projectDir` matches its size,
    * mode and mtime: the hit then skips clean and restore. Any mismatch or

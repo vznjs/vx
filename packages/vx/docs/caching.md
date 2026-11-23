@@ -1254,18 +1254,17 @@ turborepo#14831 fixed in Turbo) or a `!` entry takes it back (`**`,
 `!dist/**`; until 2026-11-10 the negation dropped it too), so an edit
 moves the key and the saved bytes follow from it; the task's rewrite is no input that moved mid-run.
 Where no input glob names it, the key folds the version git holds (its
-index OID) while the file still has the very bytes this machine saved or
-restored under that key (its output stamp), and its bytes otherwise
+index OID) while the file has bytes a save or restore on this machine
+left (an output stamp holds its inode and ctime), and its bytes otherwise
 (2026-11-23): a build that writes a timestamped `dist/index.js.map` over
 the committed one moved its own next key by its bytes and never hit. A
-staged or committed edit still moves the key, and so does a hand edit:
-keyed by the index alone, an entry saved over a hand edit was replayed
-over the committed file once the tree was clean (fuzzcout). One an input
-glob names (`src/**` over its `routeTree.gen.ts`) keys by its bytes.
-A miss keyed by such bytes whose command rewrote every such file, each
-from bytes a save or restore here left, is also saved under the key by
-what git holds, so after a source edit the next run folds it again. One
-that left any of them as it found them, or rewrote a hand edit, is not.
+miss so keyed first writes back what git holds, so the command starts
+from what a clean checkout has and the entry under that key is what that
+checkout builds, even for a command that appends to the file. A staged
+or committed edit still moves the key, and a hand edit keys by its bytes
+and is never written back; once a build has rewritten it, the bytes are
+that build's. One an input glob names (`src/**` over its
+`routeTree.gen.ts`) keys by its bytes.
 A run that removes one (`rm dist/tracked.txt`) saves nothing: no hit
 could replay the removal, since its restore leaves the file too, so the
 tree a hit left (a fresh CI checkout's) held a file the run took away,

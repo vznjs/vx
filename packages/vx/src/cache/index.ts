@@ -91,6 +91,7 @@ export {
   type LazyGitEnumeration,
   type GitEnumeration,
   type BlobSizeMemo,
+  writeIndexBlobs,
 } from './git-inputs.js'
 export {
   type ArtifactInfo,

@@ -243,11 +243,11 @@ describe('stale cache hits', () => {
   )
 
   it(
-    'a build that rewrites a hand-edited committed output never saves it under the committed key',
+    'a miss keyed by a committed output it appends to starts from the committed bytes',
     async () => {
-      // The second save under the committed key (`HeldKey`) takes a rewrite
-      // only from bytes vx wrote: an append keeps the hand edit, and a clean
-      // checkout then hit and wrote it over the committed file (review).
+      // Keyed by what git holds, the command must also start from it: an
+      // append over the last build's bytes saved 'v1 built built' under the
+      // key a clean checkout computes, which a checkout then hit (review).
       await Bun.write(path.join(root, 'package.json'), '{"name":"r","private":true}')
       await writeLocalWorkspace(root)
       await Bun.write(
@@ -269,12 +269,21 @@ describe('stale cache hits', () => {
       git(root, 'commit', '-q', '-m', 'initial')
 
       await writeLocalWorkspace(root)
+      const license = () => readFile(path.join(root, 'dist/LICENSE'), 'utf8')
+      vx(root, 'run', 'build')
+      expect(await license()).toBe('license v1\nbuilt\n')
+      expect(vx(root, 'run', 'build')).toMatch(/build[^\n]*up-to-date/)
+      await Bun.write(path.join(root, 'src/a.txt'), 'b')
+      vx(root, 'run', 'build')
+      expect(await license()).toBe('license v1\nbuilt\n')
+      expect(vx(root, 'run', 'build')).toMatch(/build[^\n]*up-to-date/)
+      // A hand edit is never written back: keyed by its bytes, built over.
       await Bun.write(path.join(root, 'dist/LICENSE'), 'hand edit\n')
       vx(root, 'run', 'build')
-      expect(await readFile(path.join(root, 'dist/LICENSE'), 'utf8')).toBe('hand edit\nbuilt\n')
+      expect(await license()).toBe('hand edit\nbuilt\n')
       git(root, 'checkout', '--', 'dist/LICENSE')
       vx(root, 'run', 'build')
-      expect(await readFile(path.join(root, 'dist/LICENSE'), 'utf8')).toBe('license v1\nbuilt\n')
+      expect(await license()).toBe('license v1\nbuilt\n')
     },
     TIMEOUT,
   )

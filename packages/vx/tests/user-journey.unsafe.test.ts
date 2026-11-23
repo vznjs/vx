@@ -302,10 +302,15 @@ describe('a new user, end to end', () => {
         path.join(root, 'packages', 'utils', 'src', 'index.ts'),
         'export const utils = 3\n',
       )
-      await until('@acme/web#build')
+      // Each row as its task ends: web and app both follow lib, in either order.
+      for (const t of [
+        '@acme/utils#build',
+        '@acme/lib#build',
+        '@acme/app#build',
+        '@acme/web#build',
+      ])
+        await until(t)
       expect(out).toContain('changed @acme/utils src/index.ts')
-      for (const t of ['@acme/utils#build', '@acme/lib#build', '@acme/app#build'])
-        expect(out).toContain(t)
       expect(await readFile(path.join(root, 'packages', 'utils', 'dist', 'index.js'), 'utf8')).toBe(
         'export const utils = 3\n',
       )

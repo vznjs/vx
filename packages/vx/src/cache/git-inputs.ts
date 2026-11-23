@@ -9,6 +9,7 @@ import os from 'node:os'
 import path from 'node:path'
 import {
   accessSync,
+  chmodSync,
   closeSync,
   constants as fsConstants,
   existsSync,
@@ -3069,6 +3070,55 @@ function indexStampOf(file: string | undefined): string | undefined {
   if (file === undefined) return undefined
   const st = lstatSync(file, { throwIfNoEntry: false })
   return st === undefined ? undefined : `${st.ino}:${st.ctimeMs}:${st.size}`
+}
+
+/**
+ * Write back what git holds for each file (absolute path → its index OID, as
+ * `stagedOid` answers), through the checkout's filters, in place: the bytes a
+ * key that folded that OID promises. Throws when git cannot give them.
+ */
+export function writeIndexBlobs(files: ReadonlyMap<string, string>): void {
+  let top: string | undefined
+  for (const [abs, held] of files) {
+    const colon = held.indexOf(':')
+    const oid = colon === -1 ? held : held.slice(colon + 1)
+    // `--path` is the top's, whatever the cwd: an attribute file below it
+    // names the filters.
+    top ??= gitOut(path.dirname(abs), ['rev-parse', '--show-toplevel']).trim()
+    const proc = Bun.spawnSync({
+      cmd: [
+        executablePath('git'),
+        'cat-file',
+        '--filters',
+        `--path=${relPosix(top, realpathSync(abs))}`,
+        oid,
+      ],
+      env: gitEnv(),
+      cwd: top,
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+    if (proc.exitCode !== 0)
+      throw new Error(`git could not give ${abs} as committed: ${proc.stderr.toString().trim()}`)
+    writeFileSync(abs, proc.stdout)
+    const mode = lstatSync(abs).mode & 0o7777
+    const exec = held.startsWith('100755:')
+    const want = exec ? mode | 0o111 : mode & ~0o111
+    if (want !== mode) chmodSync(abs, want)
+  }
+}
+
+/** A git command's stdout; throws with its stderr when it fails. */
+function gitOut(cwd: string, args: string[]): string {
+  const proc = Bun.spawnSync({
+    cmd: [executablePath('git'), ...args],
+    env: gitEnv(),
+    cwd,
+    stdout: 'pipe',
+    stderr: 'pipe',
+  })
+  if (proc.exitCode !== 0) throw new Error(`git ${args[0]}: ${proc.stderr.toString().trim()}`)
+  return proc.stdout.toString()
 }
 
 /** The partition half of `populateGitFilesCache`: store per-project slices of one enumeration. */

@@ -30,7 +30,7 @@ export interface StoreMemo {
   readonly folds: FoldMemo
   loadOutputFilesBatch(hashes: readonly string[]): Map<string, OutputFileRow[]>
   stampedRowsOf(hash: string): readonly OutputFileRow[] | undefined
-  stampedBy(rel: string, ino: number, ctimeMs: number): boolean
+  stampsOf(inos: readonly number[]): Set<string>
   isOutputsCurrent(projectDir: string, expected: readonly OutputFileRow[]): boolean
   recordOutputDirs(
     hash: string,
@@ -258,9 +258,9 @@ export class LocalMemo implements StoreMemo {
     return this.outputs.stampedRowsOf(hash)
   }
 
-  /** Whether any entry's stamp names `rel` at this inode and ctime. */
-  stampedBy(rel: string, ino: number, ctimeMs: number): boolean {
-    return this.guard(() => this.outputs.stampedBy(rel, ino, ctimeMs))
+  /** `ino:ctime` of each stamp on any of `inos`. */
+  stampsOf(inos: readonly number[]): Set<string> {
+    return this.guard(() => this.outputs.stampsOf(inos))
   }
 
   /**

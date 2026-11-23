@@ -125,7 +125,7 @@ export interface TaskMemo {
   hashFile(filePath: string): Promise<string>
   loadOutputFilesBatch(hashes: readonly string[]): Map<string, OutputFileRow[]>
   stampedRowsOf?(hash: string): readonly OutputFileRow[] | undefined // as this process last stamped them: no query
-  stampedBy?(rel: string, ino: number, ctimeMs: number): boolean // a save or restore here stamped `rel` at this inode and ctime, under any entry: vx's bytes, not a hand edit
+  stampsOf?(inos: readonly number[]): Set<string> // `ino:ctime` of each output stamp on any of inos: a file at one holds bytes vx left (one scan, once a run)
   isOutputsCurrent(projectDir: string, expected: readonly OutputFileRow[]): boolean
   recordOutputDirs?(
     hash: string,
@@ -1962,6 +1962,7 @@ export interface LazyGitEnumeration {
   readonly started: Promise<GitEnumeration> | undefined
 }
 export function lazyGitEnumeration(workspaceRoot: string): LazyGitEnumeration
+export function writeIndexBlobs(files: ReadonlyMap<string, string>): void // what git holds for each (absolute path → stagedOid), through the checkout's filters, in place: a miss keyed by it starts there; throws when git cannot
 export function newFilesIgnoredIn(root: string, dirs: readonly string[]): Set<string> // which root-relative dirs git ignores a new file directly in, one check-ignore (`newFilesIgnored`'s probe)
 export function freshProbe(dir: string): string // the path that probe asks for dir: a new file directly in it
 export const MAX_SCOPED_PATHSPECS: number // 64: above it the walk is the whole tree
