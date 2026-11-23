@@ -36,8 +36,8 @@ Cache your first task in two minutes, in a workspace you already have.
    export default {
      tasks: {
        build: {
-         exec: { command: 'tsc' },
-         inputs: { files: ['src/**', 'tsconfig.json'] },
+         exec: { command: 'vite build' },
+         inputs: { files: ['src/**', 'index.html', 'vite.config.ts'] },
          outputs: { files: ['dist/**'] },
          cache: true,
        },
@@ -67,7 +67,7 @@ Cache your first task in two minutes, in a workspace you already have.
    `package.json`.
 
    ```ansi title="second run"
-   [2m┌─[0m [1m[38;2;232;121;249mmy-app[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m>[0m $ tsc
+   [2m┌─[0m [1m[38;2;232;121;249mmy-app[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m>[0m $ vite build
    [2m└─[0m [1m[38;2;232;121;249mmy-app[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(3ms)[0m [2mup-to-date[0m
    ```
 

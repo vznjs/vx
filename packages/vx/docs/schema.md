@@ -211,7 +211,7 @@ group ([below](#group-tasks-no-exec)).
 
 ```ts
 build: {
-  exec: { command: 'tsc -b', timeout: '5m', env: { define: { NODE_ENV: 'production' } } },
+  exec: { command: 'vite build', timeout: '5m', env: { define: { NODE_ENV: 'production' } } },
 }
 ```
 
@@ -236,10 +236,10 @@ shell semantics work directly — pipes, redirects, `&&` chaining:
 
 ```ts
 exec: {
-  command: 'tsc -b'
+  command: 'vite build'
 }
 exec: {
-  command: 'gen && tsc && cp -r assets dist/'
+  command: 'gen && vite build && cp -r assets dist/'
 }
 exec: {
   command: 'find src -name "*.snap" | xargs rm -f'
@@ -264,7 +264,7 @@ number and a unit, `ms`, `s`, `m`, `h` or `d` (`'500ms'`, `'2m'`). A bare
 number is refused by `vx lock`. Omitted → no limit.
 
 ```ts
-build: { exec: { command: 'tsc -b', timeout: '2m' } }
+build: { exec: { command: 'vite build', timeout: '2m' } }
 ```
 
 - For a **normal task**, `timeout` bounds each attempt's run time,
@@ -312,7 +312,7 @@ the right tool.
 `prebuild` or `postbuild` in package.json runs only when the command is
 `npm run build` (npm runs the hooks), and then that package.json is an
 input — list it in `inputs.files`, or an edited hook replays a stale hit.
-Better: put the steps in the command (`rimraf dist && tsc && node
+Better: put the steps in the command (`rimraf dist && vite build && node
 scripts/copy.js`), as `bunx @vzn/vx-migrate` does when it maps
 scripts.
 
@@ -562,8 +562,8 @@ dev: {
 
 watch: {
   exec: {
-    command: 'tsc --watch --preserveWatchOutput',
-    persistent: { readyWhen: 'Watching for file changes' },
+    command: 'vite build --watch',
+    persistent: { readyWhen: 'built in' },
   },
 }
 
@@ -984,8 +984,8 @@ command outputs. The cache key is built from them.
 
 ```ts
 build: {
-  exec: { command: 'tsc -b' },
-  inputs: { files: ['src/**', 'tsconfig.json'], env: ['NODE_ENV'] },
+  exec: { command: 'vite build' },
+  inputs: { files: ['src/**', 'vite.config.ts'], env: ['NODE_ENV'] },
 }
 ```
 
@@ -1332,7 +1332,7 @@ inputs.runtime probe exited 7: <command> (cwd: …)`, then the probe's
   name instead.
 - Its `PATH` does lead with the **same `node_modules/.bin` directories
   the task's does** (the project's, then the workspace root's), so
-  `tsc --version` keys the `tsc` the task runs. Before item 996 it keyed
+  `vite --version` keys the `vite` the task runs. Before item 996 it keyed
   the global one, or failed with 127 where only the workspace had it, and
   a changed local tool replayed the old output.
 - The command **runs whenever a task's key is derived** — that's every
@@ -1617,7 +1617,7 @@ naming the files and the task that wrote them; declare them in that
 task's outputs, or have it write elsewhere.
 
 Empty `[]` is valid for tasks that produce no files (e.g. `lint`,
-`typecheck`, `test`); you still cache the no-op success so the next
+`test`); you still cache the no-op success so the next
 run is a no-op too.
 
 **`clean: false`** keeps the outputs on a miss instead of wiping them
@@ -1730,9 +1730,9 @@ hit restores. A task without `cache: true` always runs.
 
 ```ts
 build: {
-  exec: { command: 'tsc -b' },
-  inputs: { files: ['src/**', 'tsconfig.json'] },
-  outputs: { files: ['dist/**', '*.tsbuildinfo'] },
+  exec: { command: 'vite build' },
+  inputs: { files: ['src/**', 'vite.config.ts'] },
+  outputs: { files: ['dist/**'] },
   cache: true,
 }
 ```
@@ -2891,16 +2891,16 @@ export default defineProject({
   tasks: {
     // Real cached task with file inputs, env tracking, and outputs.
     build: {
-      description: 'compile TypeScript to dist/',
+      description: 'bundle the app into dist/',
       // NODE_ENV is a cache input below, so it must reach the child
       // too — the exec env is isolated, not inherited.
-      exec: { command: 'tsc -b', env: { passThrough: ['NODE_ENV'] } },
+      exec: { command: 'vite build', env: { passThrough: ['NODE_ENV'] } },
       dependsOn: ['^build'],
       inputs: {
-        files: ['src/**', '!**/*.test.ts', 'tsconfig.json'],
+        files: ['src/**', '!**/*.test.ts', 'vite.config.ts'],
         env: ['NODE_ENV'],
       },
-      outputs: { files: ['dist/**', '*.tsbuildinfo'] },
+      outputs: { files: ['dist/**'] },
       cache: true,
     },
 
@@ -3037,12 +3037,12 @@ arrays:
 ```ts
 import { defineProject } from '@vzn/vx/config'
 
-const srcInputs = ['src/**', 'tsconfig.json']
+const srcInputs = ['src/**', 'vite.config.ts']
 
 export default defineProject({
   tasks: {
     build: {
-      exec: { command: 'tsc' },
+      exec: { command: 'vite build' },
       inputs: { files: srcInputs },
       outputs: { files: ['dist/**'] },
       cache: true,
@@ -3064,15 +3064,15 @@ A preset is a TypeScript function that returns a `TaskConfig`.
 `dependsOn` is `string[]`, so its names are not checked:
 
 ```ts
-// presets/ts-build.ts
+// presets/vite-build.ts
 import type { TaskConfig } from '@vzn/vx/config'
 
-export function tsBuild(opts?: { tsconfig?: string }): TaskConfig {
+export function viteBuild(opts?: { config?: string }): TaskConfig {
   return {
-    description: 'compile TypeScript',
-    exec: { command: `tsc -b ${opts?.tsconfig ?? ''}`.trim() },
-    inputs: { files: ['src/**', opts?.tsconfig ?? 'tsconfig.json'] },
-    outputs: { files: ['dist/**', '*.tsbuildinfo'] },
+    description: 'bundle with Vite',
+    exec: { command: opts?.config ? `vite build --config ${opts.config}` : 'vite build' },
+    inputs: { files: ['src/**', opts?.config ?? 'vite.config.ts'] },
+    outputs: { files: ['dist/**'] },
     cache: true,
   }
 }
@@ -3081,11 +3081,11 @@ export function tsBuild(opts?: { tsconfig?: string }): TaskConfig {
 ```ts
 // packages/app/vx.config.ts
 import { defineProject } from '@vzn/vx/config'
-import { tsBuild } from '../../presets/ts-build.ts'
+import { viteBuild } from '../../presets/vite-build.ts'
 
 export default defineProject({
   tasks: {
-    build: tsBuild(),
+    build: viteBuild(),
     test: {
       exec: { command: 'bun test' },
       dependsOn: ['build'],

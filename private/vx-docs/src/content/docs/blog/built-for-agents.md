@@ -30,11 +30,11 @@ run as one JSON document, a row per task. Notices go to stderr, so a
 pipe sees only the result.
 
 ```sh frame="terminal"
-$ vx run bundle typecheck --all
+$ vx run bundle lint --all
 $ vx last --format json | jq '.invocation | {runId, command, taskCount, failedCount, hitCount, exitOk}'
 {
   "runId": "01a16b0f-dbf0-75fc-aaaa-7ce32e7c3a57",
-  "command": "vx run bundle typecheck --all",
+  "command": "vx run bundle lint --all",
   "taskCount": 2,
   "failedCount": 1,
   "hitCount": 0,
@@ -97,7 +97,7 @@ $ sqlite3 .vx/cache/cache.db "
   SELECT project, task, status, duration_ms FROM runs
   WHERE run_id = (SELECT run_id FROM runs ORDER BY id DESC LIMIT 1)
   ORDER BY duration_ms DESC;"
-packages/api|typecheck|failed|6
+packages/api|lint|failed|6
 packages/api|bundle|success|5
 ```
 

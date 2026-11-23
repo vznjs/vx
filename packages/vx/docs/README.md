@@ -125,7 +125,7 @@ export default defineProject({
       // Cache-input env vars must ALSO be passed through — the child
       // env is isolated, and a key that varies on a var the task
       // can't see is incoherent.
-      exec: { command: 'tsc -p .', env: { passThrough: ['NODE_ENV'] } },
+      exec: { command: 'vite build', env: { passThrough: ['NODE_ENV'] } },
       inputs: { files: ['src/**'], env: ['NODE_ENV'] },
       outputs: { files: ['dist/**'] },
       cache: true,

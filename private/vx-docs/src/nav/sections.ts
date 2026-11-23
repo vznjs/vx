@@ -62,7 +62,6 @@ const SIDEBAR_GROUPS: Record<'Docs', SidebarItem[]> = {
           label: "Build a project's dependencies first",
           link: '/guides/running/build-dependencies-first/',
         },
-        { label: 'Group tasks under one name', link: '/guides/running/group-tasks/' },
         { label: 'Environment variables', link: '/docs/environment-variables/' },
         {
           label: 'Pass an environment variable to a task',

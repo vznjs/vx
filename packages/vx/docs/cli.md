@@ -90,8 +90,8 @@ vx.config, run `vx lock`.``, since a task added since the last lock is not in it
   instead: `vx show` counts that build, but no bare name runs it.
 
 A name declared by only some projects is fine; the check fires only when
-a name matches nowhere. So `vx run lint test typecheck` fails on CI the
-day `typecheck` is renamed, instead of running two of three.
+a name matches nowhere. So `vx run lint test e2e` fails on CI the
+day `e2e` is renamed, instead of running two of three.
 
 A name no config can declare is refused before the lookup: an empty one
 (`vx run ''`) and one with surrounding whitespace (`vx run 'build '`),
@@ -1457,7 +1457,7 @@ export default {
   tasks: {
     build: {
       exec: {
-        command: 'tsc',
+        command: 'vite build',
         sandbox: {
           allow: {
             read: ['.'],

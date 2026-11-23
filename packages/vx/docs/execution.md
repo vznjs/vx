@@ -354,13 +354,13 @@ sequence. Three ways to chain:
 - **Shell composition** — `&&`, `;`, pipes. The shell is the API.
   ```ts
   exec: {
-    command: 'gen && tsc && cp -r assets dist/'
+    command: 'gen && vite build && cp -r assets dist/'
   }
   ```
 - **Separate tasks** linked by `dependsOn`:
   ```ts
   codegen: { exec: { command: 'gen' }, ... },
-  build:   { exec: { command: 'tsc' }, dependsOn: ['codegen'], ... },
+  build:   { exec: { command: 'vite build' }, dependsOn: ['codegen'], ... },
   ```
 - **Group task** that fans out:
   ```ts

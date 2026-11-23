@@ -12,8 +12,8 @@ import type { ProjectConfig } from '@vzn/vx/config'
 export default {
   tasks: {
     build: {
-      exec: { command: 'tsc' },
-      inputs: { files: ['src/**', 'tsconfig.json'] },
+      exec: { command: 'vite build' },
+      inputs: { files: ['src/**', 'index.html', 'vite.config.ts'] },
       outputs: { files: ['dist/**'] },
       cache: true,
     },

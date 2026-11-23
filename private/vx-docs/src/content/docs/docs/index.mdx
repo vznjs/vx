@@ -23,9 +23,9 @@ export default defineProject({
   tasks: {
     build: {
       dependsOn: ['^build'],
-      exec: { command: 'tsc -b' },
-      inputs: { files: ['src/**', 'tsconfig.json'] },
-      outputs: { files: ['dist/**', '*.tsbuildinfo'] }, // tsc's incremental state too
+      exec: { command: 'vite build' },
+      inputs: { files: ['src/**', 'index.html', 'vite.config.ts'] },
+      outputs: { files: ['dist/**'] },
       cache: true,
     },
   },
