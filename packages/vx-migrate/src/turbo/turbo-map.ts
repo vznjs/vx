@@ -846,22 +846,61 @@ function dependencyOutputsOf(inputs: readonly unknown[]): DependencyOutputs | nu
  * just-in-time pass). `dependencyOutputs` is nothing: vx folds each
  * dependency's key instead (its outputs follow from it). Read as strings,
  * an object crashed the plugin and failed the whole run.
+ *
+ * Turbo hashes the startup and jit lists apart, each `!` taking back only
+ * its own list's files; vx's one list subtracts every `!` from every
+ * glob. Turbo's own example (`"!src/generated/**"` beside a jit
+ * `src/generated/**`) then keyed no generated file, and a changed codegen
+ * replayed the old build. A `!` that can reach the other list's globs is
+ * dropped: the key reads more, never less.
  */
 function flatInputs(inputs: readonly unknown[]): string[] {
-  return inputs.flatMap((i): string[] => {
-    if (typeof i === 'string') return [i]
-    if (i === null || typeof i !== 'object') return []
+  const lists = new Map<'startup' | 'jit', string[]>([
+    ['startup', []],
+    ['jit', []],
+  ])
+  for (const i of inputs) {
+    if (typeof i === 'string') {
+      lists.get('startup')!.push(i)
+      continue
+    }
+    if (i === null || typeof i !== 'object') continue
     const { mode, globs, withDefaults } = i as {
       mode?: unknown
       globs?: unknown
       withDefaults?: unknown
     }
-    if (mode !== 'startup' && mode !== 'jit') return []
-    return [
-      ...(withDefaults === true ? ['$TURBO_DEFAULT$'] : []),
-      ...(Array.isArray(globs) ? globs.filter((g): g is string => typeof g === 'string') : []),
-    ]
-  })
+    if (mode !== 'startup' && mode !== 'jit') continue
+    lists
+      .get(mode)!
+      .push(
+        ...(withDefaults === true ? ['$TURBO_DEFAULT$'] : []),
+        ...(Array.isArray(globs) ? globs.filter((g): g is string => typeof g === 'string') : []),
+      )
+  }
+  const startup = lists.get('startup')!
+  const jit = lists.get('jit')!
+  if (jit.length === 0) return startup
+  const reaches = (neg: string, other: readonly string[]): boolean =>
+    other.some((g) => !g.startsWith('!') && globsMeet(neg.slice(1), g))
+  return [
+    ...startup.filter((g) => !g.startsWith('!') || !reaches(g, jit)),
+    ...jit.filter((g) => !g.startsWith('!') || !reaches(g, startup)),
+  ]
+}
+
+/** Can two globs match one path? Their literal leading segments say no only when they part. */
+function globsMeet(a: string, b: string): boolean {
+  const literal = (g: string): string[] => {
+    if (g === '$TURBO_DEFAULT$') return []
+    const segs = g.split('/')
+    const at = segs.findIndex((s) => /[*?[\]{}!(]/.test(s))
+    return at === -1 ? segs : segs.slice(0, at)
+  }
+  const x = literal(a)
+  const y = literal(b)
+  for (let i = 0; i < Math.min(x.length, y.length); i++) if (x[i] !== y[i]) return false
+  return true
 }
 
 /**
