@@ -214,6 +214,7 @@ describe('vx pipeline <name>', () => {
           solo: { tasks: ['solo'], filter: ['a'] },
           plan: { tasks: ['build'], filter: ['a'], dry: true },
           gone: { tasks: ['build'], filter: ['zzz'] },
+          badplan: { tasks: ['build'], dry: true, format: 'json', cachePolicy: 'bogus' },
           envfail: { tasks: ['need'], filter: ['a'], env: { SHOWN: 'vx-only' } },
         }`,
       ),
@@ -304,6 +305,19 @@ describe('vx pipeline <name>', () => {
     expect(typed.err).toContain("`pipelines.badenv.env.VX_CACHE_POLICY` invalid flag 'q'")
     const both = await vx('pipeline', 'badenv', '--retries=0', '--cache-policy=local:rw')
     expect([both.code, both.err]).toEqual([0, ''])
+  }, 30_000)
+
+  // A pipeline that saves `format: 'json'` is read by a script: a saved
+  // value it refused printed no error document, only the human line.
+  it('prints the error document for a refused saved value of a JSON plan', async () => {
+    const r = await vx('pipeline', 'badplan')
+    expect(r.code).toBe(1)
+    expect(JSON.parse(r.out)).toEqual({
+      ok: false,
+      error: expect.objectContaining({ code: 'VX_E_CONFIG' }),
+    })
+    // CONTROL: a typed --format pretty beats the saved json.
+    expect((await vx('pipeline', 'badplan', '--format', 'pretty')).out).toBe('')
   }, 30_000)
 
   // Its own `env` is saved as its keys are: its policy variable dropped its

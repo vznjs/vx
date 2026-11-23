@@ -107,10 +107,6 @@ export async function pipelineCmd(args: readonly string[]): Promise<number> {
       'VX_E_USAGE',
     )
   }
-  // The run's parser would refuse a bad saved value as a typed flag or a
-  // variable the user never set: name the key that holds it.
-  const refused = savedRefusal(name, pipeline, rest)
-  if (refused !== undefined) return refuse('pipeline', args, refused, 'VX_E_CONFIG')
   // Its paths are the workspace file's, so they stand from the root, as
   // `cache.dir` there does: from a project's directory a relative
   // `cacheDir` put a second cache inside that project.
@@ -125,6 +121,11 @@ export async function pipelineCmd(args: readonly string[]): Promise<number> {
   // Read before its own `env` is set: that is saved as its keys are, so a
   // policy variable there dropped its `noCache` as a typed one does.
   const own = pipelineRunArgs(saved, rest)
+  // The run's parser would refuse a bad saved value as a typed flag or a
+  // variable the user never set: name the key that holds it, in the
+  // pipeline's own format (a saved `format: 'json'` gets the error document).
+  const refused = savedRefusal(name, pipeline, rest)
+  if (refused !== undefined) return refuse('pipeline', [...own, ...rest], refused, 'VX_E_CONFIG')
   // A variable already set wins, as it beats every setting the file holds.
   for (const [k, v] of Object.entries(pipeline.env ?? {}))
     if ((process.env[k] ?? '') === '') setVxOnlyEnv(k, v)
