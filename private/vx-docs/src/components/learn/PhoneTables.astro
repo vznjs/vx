@@ -14,6 +14,12 @@
       row.querySelectorAll('td').forEach((td, i) => td.setAttribute('data-label', names[i] ?? ''))
     table.dataset.stack = ''
   }
+  // A Tasks or Plan table is read by column: it keeps one row per line and
+  // scrolls sideways; other output wraps (below).
+  for (const pre of document.querySelectorAll<HTMLElement>('.expressive-code pre[data-language="ansi"]')) {
+    const first = pre.querySelector('.ec-line')?.textContent ?? ''
+    if (/^\s*(?:Tasks|Plan)\b/.test(first)) pre.dataset.columns = ''
+  }
 </script>
 
 <style is:global>
@@ -27,9 +33,12 @@
   @media (max-width: 40rem) {
     /* Terminal output wraps on a phone, so the word the text says to read
        (a status, a fix) is on screen, not past the edge. */
-    .expressive-code pre[data-language='ansi'] .ec-line .code {
+    .expressive-code pre[data-language='ansi']:not([data-columns]) .ec-line .code {
       white-space: pre-wrap;
       overflow-wrap: anywhere;
+      /* A wrapped line hangs under its first, so a list keeps its shape. */
+      padding-inline-start: 2ch;
+      text-indent: -2ch;
     }
     .sl-markdown-content table[data-stack],
     .sl-markdown-content table[data-stack] tbody,

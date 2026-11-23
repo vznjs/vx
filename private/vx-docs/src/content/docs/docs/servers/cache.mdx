@@ -100,7 +100,7 @@ Or run it beside the other two with [Docker Compose](../#run-all-three-with-dock
 Check it answers:
 
 ```sh
-curl https://cache.example.com/v1/capabilities
+curl http://localhost:8080/v1/capabilities   # Workers: your workers.dev URL
 ```
 
 ```json
@@ -123,13 +123,15 @@ That refusal is good news: the server is up and has an `ALLOW`. Put HTTPS in fro
 
 2. Name the server in `.vx/workspace.ts`:
 
-   ```ts title=".vx/workspace.ts" ins={3,8-12}
+   ```ts title=".vx/workspace.ts" ins={4,10-14}
    import { defineWorkspace } from '@vzn/vx/config'
    import { github } from '@vzn/vx-ci'
+   import { bun } from '@vzn/vx-lockfile'
    import { vxCache } from '@vzn/vx-cache'
 
    export default defineWorkspace({
      plugins: [
+       bun(),
        github(),
        vxCache({
          url: 'https://cache.example.com',
@@ -137,6 +139,10 @@ That refusal is good news: the server is up and has an `ALLOW`. Put HTTPS in fro
          repository: 'acme/app',
        }),
      ],
+     pipelines: {
+       pr: { tasks: ['lint', 'test', 'build'], affected: true },
+       main: { tasks: ['lint', 'test', 'build'] },
+     },
    })
    ```
 
@@ -234,10 +240,11 @@ Leave `url` out and set `VX_CACHE_URL`. With Distributed task execution, the run
 
 ### Prune one branch
 
-Delete its folder in the bucket. Its name is the first 32 hex digits of the branch ref's SHA-256:
+Delete its folder in the bucket: `<issuer>/<repository>/<ref>/`. Each name is the first 32 hex digits of that value's SHA-256:
 
 ```sh
-printf %s refs/heads/main | sha256sum | cut -c1-32
+h() { printf %s "$1" | sha256sum | cut -c1-32; }
+echo "$(h https://token.actions.githubusercontent.com)/$(h acme/app)/$(h refs/heads/main)/"
 ```
 
 <Takeaway>drop one branch's results by hand.</Takeaway>

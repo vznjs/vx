@@ -38,7 +38,7 @@ vx knows `@demo/ui#build` → `@demo/web#build` is the longest path, and starts 
 
 <Aside>
   History changes when tasks start and whether a flaky task is retried. A wrong or missing number
-  never changes what runs or what is cached.
+  never changes a task's result or what is cached.
 </Aside>
 
 ## Deploy it
@@ -102,7 +102,7 @@ The database is `/data/vx-history.sqlite`, on the volume. Or run it beside the o
 Check it answers:
 
 ```sh
-curl https://history.example.com/v1/capabilities
+curl http://localhost:8080/v1/capabilities   # Workers: your workers.dev URL
 ```
 
 ```json

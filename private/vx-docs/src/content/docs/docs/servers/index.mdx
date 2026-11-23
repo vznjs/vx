@@ -32,7 +32,7 @@ Each server pairs with one plugin. Skip the ones you do not use.
 | --- | --- | --- |
 | [Cache server](cache/) | every CI machine reuses what another one built | `vxCache()` from `@vzn/vx-cache` |
 | [History server](history/) | a fresh runner starts the long tasks first | `vxHistory()` from `@vzn/vx-history` |
-| [DTE server](dte/) | [Distributed task execution](../distributed-task-execution/): one run over many machines | `dte()` from `@vzn/vx-dte` |
+| [Distributed task execution server](dte/) | [Distributed task execution](../distributed-task-execution/): one run over many machines | `dte()` from `@vzn/vx-dte` |
 
 Each runs on **Cloudflare Workers**, **Bun** or **Docker**, from one package.
 
@@ -85,6 +85,17 @@ volumes:
   history:
 ```
 
+```ini title=".env"
+DTE_ALLOW=https://token.actions.githubusercontent.com:acme/app:ci.yml
+DTE_AUDIENCE=https://dte.example.com
+CACHE_ALLOW=https://token.actions.githubusercontent.com:acme/app:ci.yml
+CACHE_AUDIENCE=https://cache.example.com
+S3_BUCKET=vx-cache
+S3_ENDPOINT=https://s3.us-east-1.amazonaws.com
+HISTORY_ALLOW=https://token.actions.githubusercontent.com:acme/app:ci.yml
+HISTORY_AUDIENCE=https://history.example.com
+```
+
 ```sh
 docker compose up -d                 # all three
 docker compose up -d cache history   # only the ones you need
@@ -133,7 +144,9 @@ ALLOW='https://token.actions.githubusercontent.com:acme/app:ci.yml https://token
 
 ### Let laptops read
 
-`READ_ACCESS=public` lets a request with no token, such as a laptop's, read a repository `ALLOW` names. It never writes. The cache and history servers read it; the DTE server does not.
+`READ_ACCESS=public` lets a request with no token, such as a laptop's, read a repository `ALLOW` names. It never writes.
+
+The cache and history servers read it; the distributed task execution server does not.
 
 <Takeaway>give every laptop CI's results without handing out a token.</Takeaway>
 
