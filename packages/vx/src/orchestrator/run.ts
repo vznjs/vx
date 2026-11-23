@@ -593,8 +593,10 @@ async function runOnBus(
   const outerRoot = process.env[VX_RUN_WORKSPACE_ENV] || undefined
   if (outerRoot !== undefined && canonical(outerRoot) === canonical(prepared.workspaceRoot)) {
     await leaveUnrun()
+    // `vx pipeline pr` is no `vx run` to the user who typed it.
+    const verb = /^vx [\w-]+/.exec(options.command ?? '')?.[0] ?? 'vx run'
     throw new UserError(
-      `task ${process.env[VX_RUN_TASK_ENV] ?? '<unknown>'} runs \`vx run\` inside its own workspace: a nested run is invisible to the outer graph (its tasks escape the schedule, the concurrency budget and the cache key) and a loop back to this task forks without bound. Declare what it needs with dependsOn instead.`,
+      `task ${process.env[VX_RUN_TASK_ENV] ?? '<unknown>'} runs \`${verb}\` inside its own workspace: a nested run is invisible to the outer graph (its tasks escape the schedule, the concurrency budget and the cache key) and a loop back to this task forks without bound. Declare what it needs with dependsOn instead.`,
     )
   }
   const nothing = await abandoning(() => nothingToRun(prepared, options, log))
