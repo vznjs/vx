@@ -973,9 +973,10 @@ function serving(node: TaskNode, o: TaskOutcome): boolean {
   )
 }
 
-/** The frame's close after its id: ` (<dur>) <status>`, or `running` for a ready server. */
+/** The frame's close after its id: ` (<dur>) <status>`, `running` for a ready server, `still running` for a kept one. */
 function closeTail(node: TaskNode, o: TaskOutcome, colors: ColorSupport): string {
   if (!serving(node, o)) return formatBlockFooter(o, colors)
+  if (o.serverKept === true) return ` ${paint('info', 'still running', colors)}`
   return ` ${paint('muted', `(${formatElapsed(o.durationMs)})`, colors)} ${paint('info', 'running', colors)}`
 }
 

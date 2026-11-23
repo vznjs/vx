@@ -1413,6 +1413,7 @@ async function runOnBus(
         exitCode: 0,
         durationMs: 0,
         timing: { startNs: at, endNs: at },
+        serverKept: true,
       }
     }
     let lockBroken: boolean | undefined
