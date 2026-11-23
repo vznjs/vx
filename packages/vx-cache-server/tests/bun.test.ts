@@ -754,3 +754,44 @@ it('refuses a write whose ref is over 512 characters percent-encoded: no read co
   ])
   expect(s3.objects.size).toBe(objects)
 })
+
+const PLACEHOLDER: Record<string, string> = {
+  ALLOW: 'https://token.actions.githubusercontent.com:acme/app:ci.yml',
+  S3_ENDPOINT: 'https://s3.example.com',
+}
+
+// A user starts the image as its Dockerfile's header or the README shows:
+// the header's run set no AUDIENCE, which the server refuses to start
+// without, so it exited at once with a usage.
+it('starts with the variables each docker run the Dockerfile and README show sets', async () => {
+  const runs = await Promise.all(
+    ['Dockerfile', 'README.md'].map(async (f) => {
+      const text = await Bun.file(`${import.meta.dir}/../${f}`).text()
+      // A run continued over lines (`\` at a line's end) is one run.
+      const run = /docker run [^\n]*/.exec(text.replace(/^# {0,3}/gm, '').replace(/\\\n/g, ' '))
+      expect(run, f).not.toBeNull()
+      return Object.fromEntries(
+        [...run![0].matchAll(/-e ([A-Z_0-9]+)=('[^']*'|\S*)/g)].map((m) => [
+          m[1]!,
+          // A placeholder (…) stands for the user's own value.
+          m[2]!.replace(/^'|'$/g, '').replace('…', PLACEHOLDER[m[1]!] ?? 'x'),
+        ]),
+      )
+    }),
+  )
+  const said = async (env: Record<string, string>) => {
+    const proc = Bun.spawn(
+      [process.execPath, `${import.meta.dir}/../src/bun.ts`, '--port', '0', '--host', '127.0.0.1'],
+      { env: { PATH: process.env['PATH'] ?? '', ...env }, stdout: 'pipe', stderr: 'pipe' },
+    )
+    const reader = proc.stdout.getReader()
+    const { value } = await reader.read()
+    proc.kill()
+    await proc.exited
+    return (
+      Bun.stripANSI(new TextDecoder().decode(value)).split(' listening')[0]! ||
+      (await new Response(proc.stderr).text())
+    )
+  }
+  expect(await Promise.all(runs.map(said))).toEqual(runs.map(() => '✓ vx-cache-server '))
+}, 30_000)
