@@ -4599,7 +4599,8 @@ openat(/work/demo/packages/web/notes.txt) = a write no grant covers
 
 Every section is conditional: the `$ <command>` line only for an
 executed task (success or failed — a hit replays its stored output and
-shows none), led by the directory it ran in from the workspace root
+shows none, unless it is a task you asked for in the focused flow,
+which shows the line whether it ran or not), led by the directory it ran in from the workspace root
 (none for a project at the root), as a shell prompt would be: a task
 names paths from its own directory, so `src/index.ts` in its output is
 `packages/web/src/index.ts`, `OUTPUT` only when the task wrote something,
