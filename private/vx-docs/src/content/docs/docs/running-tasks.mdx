@@ -429,12 +429,8 @@ vx run test --all -- --bail
 [38;2;239;68;68m✗[0m [1mvx run[0m  [38;2;203;213;225mforwarded args (after --) go to one task in one project, and this run asks for 4: @demo/admin#test, @demo/api#test, @demo/ui#test, …; run that task alone, e.g. vx run @demo/admin#test -- …[0m
 ```
 
-vx has no short flags, so a `-t` before `--` is caught, and `fix` shows
-where it goes:
-
-```sh
-vx run test -t adds --filter @demo/api
-```
+vx has no short flags. Type `vx run test -t adds --filter @demo/api`
+and vx catches the `-t`; `fix` shows where it goes:
 
 ```ansi
 [38;2;239;68;68m✗[0m [1mvx run[0m  [38;2;203;213;225munknown flag: -t[0m
