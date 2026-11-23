@@ -9,15 +9,15 @@ import ProjectMap from '../../../components/running/ProjectMap.astro'
 import Diagram from '../../../components/guide/diagram/Diagram.astro'
 import { cacheKey, taskGraph } from '../../../components/docs/pictures.js'
 import GraphExplorer from '../../../components/demos/GraphExplorer.astro'
+import demoPlan from '../../../components/demos/model/graph-explorer-demo.json'
 import DependsOn from '../../../components/demos/DependsOn.astro'
 import OutputRule from '../../../components/demos/OutputRule.astro'
 import { Levels, Deeper, Concept, Quiz, Takeaway, NextStep } from '../../../components/learn'
 import { TaskGraph, GlobTester, ConfigExplorer } from '../../../components/play'
 import ErrorFinder from '../../../components/docs/troubleshooting/ErrorFinder.astro'
 
-A task is **one command** vx runs for you. This page grows one small
-workspace, `ui` and `web`, from a single lint task to a cached, ordered
-build.
+Your two projects, `@demo/ui` and `@demo/web`, have no tasks yet. By the
+end of this page they lint, build in order, and skip work already done.
 
 ```ts title="packages/ui/vx.config.ts"
 import { defineProject } from '@vzn/vx/config'
@@ -98,8 +98,8 @@ imports whom from your lockfile, through a [lockfile plugin](../lockfiles/).
             [38;2;34;197;94msuccess[0m [2mno-cache[0m   [2m+20ms[0m   [38;2;203;213;225m196ms[0m  [2m113%[0m  [2m111MB[0m       [2m—[0m       [2m0[0m [2mlocal[0m          [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m
 ```
 
-Look at `blocks`: `ui#build` held back one task, `web#build`, until it
-was done. Tasks with nothing between them run at the same time.
+`@demo/ui#build` ran first and held back `@demo/web#build` until it was
+done. Tasks with nothing between them run at the same time.
 
 Try each kind of entry on `web#build` here:
 
@@ -129,7 +129,7 @@ Click a task to see what runs first, or edit a file to see what runs again:
 
 <TaskGraph task="@demo/web#build" />
 
-<Deeper level="patterns" title="Build a project's dependencies first">
+<Deeper level="patterns" title="Watch the order on a real run">
 
 ### Build a project's dependencies first
 
@@ -373,7 +373,7 @@ build: {
     command: 'vite build',
     env: {
       define: { NODE_ENV: 'production' },
-      passThrough: ['CI'],
+      passThrough: ['CI', 'VITE_API_URL', 'SENTRY_AUTH_TOKEN'],
       secret: ['SENTRY_AUTH_TOKEN'],
     },
   },
@@ -385,8 +385,8 @@ build: {
 | --- | --- | --- |
 | `exec.env.define` | this exact value | yes |
 | `exec.env.passThrough` | your shell's value | no |
-| `exec.env.secret` | your shell's value, shown as `***` in output | no |
-| `inputs.env` | nothing (add it to `passThrough` too) | yes |
+| `exec.env.secret` | nothing new; a name it also gets is shown as `***` | no |
+| `inputs.env` | nothing (so `VITE_API_URL` is in `passThrough` too) | yes |
 
 <Aside type="note">
   Names with `TOKEN`, `SECRET`, `KEY` or `PASSWORD` are masked anyway.
@@ -405,12 +405,11 @@ By default a failed task skips its transitive dependents and runs the
 rest, so one run shows every failure:
 
 ```ansi
-[2m$[0m vx run build test --all
+[2m$[0m vx run build --all
 
 [4m[58;2;110;118;129m  [1m[38;2;167;139;250mTasks[0m[4m[58;2;110;118;129m     [2mstatus  cache     ±usual    time   cpu    mem outputs  blocks worker         task[0m[4m[58;2;110;118;129m                           [0m
-            [38;2;239;68;68mfailed[0m  [2mmiss[0m       [38;2;34;197;94m−68ms[0m   [38;2;203;213;225m212ms[0m  [2m117%[0m   [2m91MB[0m      [2m0B[0m       [38;2;203;213;225m2[0m [2mlocal[0m          [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;239;68;68mfailed[0m  [2mmiss[0m      [38;2;239;68;68m+1.23s[0m   [38;2;203;213;225m1.45s[0m   [2m20%[0m  [2m108MB[0m      [2m0B[0m       [38;2;203;213;225m1[0m [2mlocal[0m          [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m
             [38;2;234;179;8mskipped[0m [2m—[0m              [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2m—[0m              [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m [2m• blocked by @demo/ui#build[0m
-            [38;2;234;179;8mskipped[0m [2m—[0m              [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2m—[0m              [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;96;165;250mtest[0m [2m• blocked by @demo/ui#build[0m
 
 [2m┌─[0m [1m[38;2;192;132;252m@demo/ui[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m>[0m [1m[38;2;239;68;68mfailed (exit 1)[0m
 
@@ -418,21 +417,26 @@ rest, so one run shows every failure:
 
 [2m├─[0m [1mOUTPUT[0m [2m────────────────────────────────────────────────────[0m
 
-[38;2;6;182;212mvite v7.1.5 [38;2;34;197;94mbuilding for production...[38;2;6;182;212m[39m
+[36mvite v8.3.8 [32mbuilding client environment for production...[36m[39m
 transforming...
-[38;2;34;197;94m✓[39m 1 modules transformed.
-[38;2;239;68;68m✗[39m Build failed in 14ms
-[38;2;239;68;68merror during build:
-[38;2;239;68;68msrc/index.js (2:0): Expected ',', got '<eof>'[38;2;239;68;68m
-file: [38;2;6;182;212m/repo/packages/ui/src/index.js:2:0[38;2;239;68;68m
-[38;2;234;179;8m
-[38;2;239;68;68m1: export const greet = (name => name[0m
-[38;2;239;68;68m
+[32m✓[0m 2 modules transformed.
+[31m✗[39m Build failed in 22ms
+[31merror during build:
+[31mBuild failed with 1 error:
 
-[2m└─[0m [1m[38;2;192;132;252m@demo/ui[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(212ms)[0m [1m[38;2;239;68;68mfailed (exit 1)[0m
+[31m[PARSE_ERROR] [0mExpected `)` but found `EOF`
+   [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m src/index.js:1:36 [38;5;246m][0m
+   [38;5;246m│[0m
+ [38;5;246m1 │[0m [38;5;249me[0m[38;5;249mx[0m[38;5;249mp[0m[38;5;249mo[0m[38;5;249mr[0m[38;5;249mt[0m[38;5;249m [0m[38;5;249mc[0m[38;5;249mo[0m[38;5;249mn[0m[38;5;249ms[0m[38;5;249mt[0m[38;5;249m [0m[38;5;249mg[0m[38;5;249mr[0m[38;5;249me[0m[38;5;249me[0m[38;5;249mt[0m[38;5;249m [0m[38;5;249m=[0m[38;5;249m [0m[38;5;249m([0m[38;5;249mn[0m[38;5;249ma[0m[38;5;249mm[0m[38;5;249me[0m[38;5;249m [0m[38;5;249m=[0m[38;5;249m>[0m[38;5;249m [0m[38;5;249mn[0m[38;5;249ma[0m[38;5;249mm[0m[38;5;249me[0m
+ [38;5;240m  │[0m                                    │
+ [38;5;240m  │[0m                                    ╰─ `)` expected
+[38;5;246m───╯[0m
+[31m
+
+[2m└─[0m [1m[38;2;192;132;252m@demo/ui[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(1.45s)[0m [1m[38;2;239;68;68mfailed (exit 1)[0m
 ```
 
-Each skipped row names its blocker: `blocked by @demo/ui#build`. To
+The skipped row names its blocker: `blocked by @demo/ui#build`. To
 stop everything at the first failure, add `--fail-fast`.
 
 Give a slow, flaky task a limit and a second chance:
@@ -546,10 +550,10 @@ Print what a run would do, without running it:
 vx run build --all --dry --format json > plan.json
 ```
 
-Drop `plan.json` below, then type a task. It shows what the task waits
-for and what waits for it. Nothing is uploaded.
+A sample plan is open below. Drop your own `plan.json` on it, then type
+a task to see what it waits for. Nothing is uploaded.
 
-<GraphExplorer />
+<GraphExplorer sample={JSON.stringify(demoPlan)} pick="@demo/web#build" />
 
 <Takeaway>see what any task in your own workspace waits for, and why.</Takeaway>
 
@@ -561,39 +565,47 @@ Click any field to read what it does:
 
 <ConfigExplorer area="task" />
 
-| Field | Type | Default | Does |
-| --- | --- | --- | --- |
-| `description` | string | none | label in the picker and `--dry` |
-| `dependsOn` | string[] | `[]` | tasks that finish first ([section 2](#2-put-tasks-in-order)) |
-| `exec` | object | none | what runs; no `exec` makes a group |
-| `exec.env` | object | none | the variables the command sees ([section 4](#4-give-the-command-its-variables)) |
-| `exec.command` | string | required | the shell command, run in the project folder |
-| `exec.env.define` | record | none | set values, in the key |
-| `exec.env.passThrough` | string[] | none | variables passed from your shell |
-| `exec.env.secret` | string[] | none | passed and masked in output |
-| `exec.timeout` | `'30s'`, `'10m'`… | no limit | stop after this long |
-| `exec.retries` | number | `0` | extra attempts after a failure |
-| `exec.persistent.readyWhen` | regex string | ready at start | the line that means ready |
-| `exec.interactive` | boolean | `false` | reads the terminal; runs alone |
-| `exec.platforms` | string[] | anywhere | machines it runs on |
-| `exec.sandbox` | object | none | confine reads, writes, network ([Sandboxing](../sandboxing/)) |
-| `exec.remote` | `true`, `false`, `'only'` | `true` | may run on a remote machine |
-| `exec.worker` | string | first that fits | worker type for distributed task execution |
-| `inputs.files` | string[] | required | project files in the key |
-| `inputs.workspaceFiles` | string[] | none | root-relative files in the key |
-| `inputs.env` | string[] | none | variable values in the key |
-| `inputs.tasks` | string[] | `['*', '^*']` | upstream keys in the key |
-| `inputs.runtime` | string[] | none | command output in the key |
-| `inputs.workspaceRuntime` | string[] | none | root command output in the key, once per run |
-| `inputs.stability.strategy` | `'immutable'`, `'mutable'`, `'unchecked'` | `'immutable'` | input written mid-run |
-| `inputs.stability.severity` | `'warn'`, `'error'` | `'warn'` | what that write does to the run |
-| `outputs.files` | string[] | required | files saved and restored |
-| `outputs.workspaceFiles` | string[] | none | root-relative outputs |
-| `outputs.clean` | boolean | `true` | remove old outputs before a miss runs |
-| `cache` | boolean | `false` | save and reuse; needs `exec`, `inputs`, `outputs` |
+| Field | Does |
+| --- | --- |
+| `description`<br/><small>string</small> | label in the picker and `--dry`. Default: none |
+| `dependsOn`<br/><small>string[]</small> | tasks that finish first ([section 2](#2-put-tasks-in-order)). Default: `[]` |
+| `exec`<br/><small>object</small> | what runs; no `exec` makes a group. Default: none |
+| `exec.env`<br/><small>object</small> | the variables the command sees ([section 4](#4-give-the-command-its-variables)). Default: none |
+| `exec.command`<br/><small>string</small> | the shell command, run in the project folder. Default: required |
+| `exec.env.define`<br/><small>record</small> | set values, in the key. Default: none |
+| `exec.env.passThrough`<br/><small>string[]</small> | variables passed from your shell. Default: none |
+| `exec.env.secret`<br/><small>string[]</small> | masks these values in output; pass them too. Default: none |
+| `exec.timeout`<br/><small>`'30s'`, `'10m'`…</small> | stop after this long. Default: no limit |
+| `exec.retries`<br/><small>number</small> | extra attempts after a failure. Default: `0` |
+| `exec.persistent`<br/><small>object</small> | a server or watcher: `{}`, or `{ readyWhen }`. Default: not persistent |
+| `exec.persistent.readyWhen`<br/><small>regex string</small> | the line that means ready. Default: ready at start |
+| `exec.interactive`<br/><small>boolean</small> | reads the terminal; runs alone. Default: `false` |
+| `exec.platforms`<br/><small>string[]</small> | machines it runs on. Default: anywhere |
+| `exec.sandbox`<br/><small>object</small> | confine reads, writes, network ([Sandboxing](../sandboxing/)). Default: none |
+| `exec.remote`<br/><small>`true`, `false`, `'only'`</small> | may run on a remote machine. Default: `true` |
+| `exec.worker`<br/><small>string</small> | worker type for distributed task execution. Default: first that fits |
+| `inputs.files`<br/><small>string[]</small> | project files in the key. Default: required |
+| `inputs.workspaceFiles`<br/><small>string[]</small> | root-relative files in the key. Default: none |
+| `inputs.env`<br/><small>string[]</small> | variable values in the key. Default: none |
+| `inputs.tasks`<br/><small>string[]</small> | upstream keys in the key. Default: `['*', '^*']` |
+| `inputs.runtime`<br/><small>string[]</small> | command output in the key. Default: none |
+| `inputs.workspaceRuntime`<br/><small>string[]</small> | root command output in the key, once per run. Default: none |
+| `inputs.stability.strategy`<br/><small>`'immutable'`, `'mutable'`, `'unchecked'`</small> | input written mid-run. Default: `'immutable'` |
+| `inputs.stability.severity`<br/><small>`'warn'`, `'error'`</small> | what that write does to the run. Default: `'warn'` |
+| `outputs.files`<br/><small>string[]</small> | files saved and restored. Default: required |
+| `outputs.workspaceFiles`<br/><small>string[]</small> | root-relative outputs. Default: none |
+| `outputs.clean`<br/><small>boolean</small> | remove old outputs before a miss runs. Default: `true` |
+| `cache`<br/><small>boolean</small> | save and reuse; needs `exec`, `inputs`, `outputs`. Default: `false` |
 
 `exec.sandbox` has its own fields (`allow`, `deny`, `ignore`, `hermetic`,
 `weakerWhenNested`, `weakerNetworkIsolation`): see [Sandboxing](../sandboxing/).
+
+Beside `tasks`, a project's `vx.config.ts` takes two fields:
+
+| Field | Does |
+| --- | --- |
+| `name`<br/><small>string</small> | the name filters and `dependsOn` use. Default: the `package.json` name, else the folder path |
+| `tags`<br/><small>string[]</small> | labels for `--filter tag:<name>`; in no key. Default: none |
 
 Workspace-wide defaults for `timeout`, `retries` and `outputs.clean`
 live in [Workspace](../workspace/).
