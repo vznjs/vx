@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "vx last --format json",
-  "description": "`vx last [RUNID] [--failed]` prints a run; `--list` prints an array of invocations, newest first; `--log <task>` prints that task's output; `--stats` prints per-task history numbers; `--sql` prints the rows a read-only query over the history selects; `--live` prints the run in progress (with `--follow`, its events after, one per line).",
+  "description": "`vx last [RUNID] [--failed]` prints a run; `--list` prints an array of invocations, newest first; `--log <task>` prints that task's output; `--stats` prints per-task history numbers; `--sql` prints the rows a read-only query over the history selects; `--live` prints the run in progress (with `--follow`, each of its events after it, one per line).",
   "oneOf": [
     {
       "type": "object",
@@ -35,7 +35,8 @@
     { "$ref": "#/$defs/log" },
     { "$ref": "#/$defs/stats" },
     { "$ref": "#/$defs/rows" },
-    { "$ref": "#/$defs/live" }
+    { "$ref": "#/$defs/live" },
+    { "$ref": "#/$defs/event" }
   ],
   "$defs": {
     "live": {
@@ -75,6 +76,372 @@
         },
         "warnings": { "type": "array", "items": { "type": "string" } }
       }
+    },
+    "event": {
+      "description": "`--live --follow`: each line after the snapshot, one run event, in order; the last is run:done",
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "info"],
+          "properties": {
+            "kind": {
+              "const": "run:start"
+            },
+            "info": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["total"],
+              "properties": {
+                "total": {
+                  "type": "integer"
+                },
+                "concurrency": {
+                  "type": "integer"
+                },
+                "requestedCount": {
+                  "type": "integer"
+                },
+                "startedAtMs": {
+                  "type": "integer",
+                  "description": "epoch ms"
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "task"],
+          "properties": {
+            "kind": {
+              "const": "task:start"
+            },
+            "task": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "id",
+                "project",
+                "task",
+                "isGroup",
+                "requested",
+                "surfaced",
+                "persistent"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "project": {
+                  "type": "string"
+                },
+                "task": {
+                  "type": "string"
+                },
+                "isGroup": {
+                  "const": false,
+                  "description": "groups are left out"
+                },
+                "requested": {
+                  "type": "boolean",
+                  "description": "asked for on the command line, not pulled in"
+                },
+                "surfaced": {
+                  "type": "boolean"
+                },
+                "persistent": {
+                  "type": "boolean"
+                },
+                "command": {
+                  "type": "string",
+                  "description": "secrets masked"
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "taskId", "chunk"],
+          "properties": {
+            "kind": {
+              "enum": ["task:stdout", "task:stderr"]
+            },
+            "taskId": {
+              "type": "string"
+            },
+            "chunk": {
+              "type": "string",
+              "description": "output as the task wrote it, secrets masked"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "outcome"],
+          "properties": {
+            "kind": {
+              "const": "task:complete"
+            },
+            "outcome": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["taskId", "status", "exitCode", "durationMs"],
+              "properties": {
+                "taskId": {
+                  "type": "string"
+                },
+                "status": {
+                  "enum": [
+                    "success",
+                    "cache-hit",
+                    "cache-hit-remote",
+                    "failed",
+                    "skipped",
+                    "aborted"
+                  ]
+                },
+                "exitCode": {
+                  "type": "integer"
+                },
+                "durationMs": {
+                  "type": "number"
+                },
+                "noCache": {
+                  "const": true,
+                  "description": "ran without cache: true: never consulted the cache, not a miss"
+                },
+                "restoreFailed": {
+                  "const": true,
+                  "description": "a hit whose restore threw: neither a hit nor a miss"
+                },
+                "storedDurationMs": {
+                  "type": "number",
+                  "description": "on a hit: the run time the entry was stored with, the work the hit skipped"
+                },
+                "storedCpuMs": {
+                  "type": "number"
+                },
+                "storedPeakRssBytes": {
+                  "type": "number"
+                },
+                "hash": {
+                  "type": "string"
+                },
+                "cpuMs": {
+                  "type": "number"
+                },
+                "peakRssBytes": {
+                  "type": "number"
+                },
+                "admissionHeldMs": {
+                  "type": "number",
+                  "description": "how long an admit plugin held it with a worker free"
+                },
+                "queuedMs": {
+                  "type": "number",
+                  "description": "how long it waited, ready, for a worker"
+                },
+                "inputFiles": {
+                  "type": "integer",
+                  "description": "how many files the key read"
+                },
+                "inputChanges": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["count", "first"],
+                  "properties": {
+                    "count": {
+                      "type": "integer",
+                      "description": "how many key parts changed, appeared or went since its last saved entry; 0: the same key, its entry gone"
+                    },
+                    "first": {
+                      "type": "array",
+                      "description": "the first of them, by kind then name",
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["kind", "name", "change"],
+                        "properties": {
+                          "kind": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "change": {
+                            "enum": ["changed", "added", "removed"]
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "description": "a miss: what its key changed since its last saved entry"
+                },
+                "artifactBytes": {
+                  "type": "number",
+                  "description": "the artifact's compressed size, a hit's or a measured save's"
+                },
+                "fetchMs": {
+                  "type": "number",
+                  "description": "a remote hit's download and ingest"
+                },
+                "saveMs": {
+                  "type": "number",
+                  "description": "a measured save's own time"
+                },
+                "timedOut": {
+                  "const": true,
+                  "description": "its exec.timeout killed it"
+                },
+                "notReady": {
+                  "enum": ["timeout", "exited", "spawn"],
+                  "description": "a persistent task that never became ready, and why"
+                },
+                "inputMoved": {
+                  "type": "string",
+                  "description": "the input that changed while the command ran"
+                },
+                "blockedBy": {
+                  "type": "string",
+                  "description": "a skipped task: the failed task at the root of the block; absent for a fail-fast skip"
+                },
+                "otherPlatform": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["needs", "host"],
+                  "properties": {
+                    "needs": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "host": {
+                      "type": "string"
+                    }
+                  },
+                  "description": "a skipped task whose exec.platforms leave out this machine"
+                },
+                "restored": {
+                  "type": "boolean",
+                  "description": "on a hit: true when outputs were restored, false when up to date"
+                },
+                "sandboxViolations": {
+                  "type": "integer"
+                },
+                "sandboxViolationLines": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "wallclockStartNs": {
+                  "type": "string",
+                  "description": "decimal nanoseconds from the run's start"
+                },
+                "wallclockEndNs": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "measure"],
+          "properties": {
+            "kind": {
+              "const": "task:measure"
+            },
+            "measure": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["id", "def", "durationMs"],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "description": "<plugin>#<name>"
+                },
+                "def": {
+                  "type": "string"
+                },
+                "durationMs": {
+                  "type": "number"
+                },
+                "cores": {
+                  "type": "number"
+                }
+              },
+              "description": "what a plugin timed that is no task of the graph"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "line"],
+          "properties": {
+            "kind": {
+              "const": "run:status"
+            },
+            "line": {
+              "type": "string"
+            },
+            "warn": {
+              "const": true,
+              "description": "a warning"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "id"],
+          "properties": {
+            "kind": {
+              "const": "step:start"
+            },
+            "id": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "id", "durationMs", "ok"],
+          "properties": {
+            "kind": {
+              "const": "step:end"
+            },
+            "id": {
+              "type": "string"
+            },
+            "durationMs": {
+              "type": "number"
+            },
+            "ok": {
+              "type": "boolean"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind"],
+          "properties": {
+            "kind": {
+              "enum": ["run:end", "run:stop", "run:done"]
+            }
+          }
+        }
+      ]
     },
     "rows": {
       "type": "object",

@@ -4092,9 +4092,11 @@ not listed.
 it ends: a task's output as `app#test │ <line>`, each end as
 `success  app#test  1.20s`, each warning as `warn  …`. With
 `--format json` the snapshot line is followed by one event per line,
-each with a `kind`: `task:start`, `task:stdout`, `task:stderr`,
-`task:complete`, `run:status`, `step:start`, `step:end`, `run:end`,
-and last `run:done` (the run's wire events).
+each with a `kind`: `run:start`, `task:start`, `task:stdout`,
+`task:stderr`, `task:complete`, `task:measure`, `run:status`,
+`step:start`, `step:end`, `run:end`, `run:stop`, and last `run:done`
+(`schemas/last.json`'s `event`). A task that started before the
+follower attached has no `task:start`: the snapshot holds it.
 
 No run in progress is `no run in progress` (exit 1, `VX_E_NO_HISTORY`),
 a run killed with its socket left included. A run that does not answer

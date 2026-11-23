@@ -45,6 +45,7 @@ import type {
 import type { PruneResult } from '../src/cache/layer.js'
 import type { ClearResult } from '../src/cli/cache.js'
 import type { TaskNode } from '../src/graph/index.js'
+import type { Measure, OutcomeView, TaskView, WireEvent } from '../src/report/index.js'
 import { formatPlanJson, type PlanTaskJson } from '../src/cli/plan-format.js'
 import type { TaskStats } from '../src/cli/last.js'
 import { docsIn } from './helpers/docs-pages.js'
@@ -82,7 +83,8 @@ const CONFIG = (dep: boolean) => `export default {
       inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true,
     },
     // Waits for a file: a run in progress, for vx last --live.
-    hold: { exec: { command: 'while [ ! -f ../../go ]; do sleep 0.05; done' } },
+    // Writes once let go, so a follower reads its output as events.
+    hold: { exec: { command: 'while [ ! -f ../../go ]; do sleep 0.05; done; echo held; echo held >&2' } },
     // Inputs that match nothing: a warning, which vx last keeps.
     lost: { exec: { command: 'true' }, inputs: { files: ['nowhere/**'] }, outputs: { files: [] }, cache: true },
   },
@@ -125,6 +127,60 @@ const KITCHEN = `export default {
     ask: { exec: { command: 'true', interactive: true } },
   },
 }`
+
+const TASK_VIEW: Required<TaskView> = {
+  id: 'lib#build',
+  project: 'lib',
+  task: 'build',
+  isGroup: false,
+  requested: true,
+  surfaced: true,
+  persistent: false,
+  command: 'tsc',
+}
+// Groups never reach a follower, so `isGroup` never prints on an outcome.
+const OUTCOME_VIEW: Required<Omit<OutcomeView, 'isGroup'>> = {
+  taskId: 'lib#build',
+  status: 'cache-hit-remote',
+  exitCode: 0,
+  durationMs: 1.5,
+  noCache: true,
+  restoreFailed: true,
+  storedDurationMs: 2,
+  storedCpuMs: 3,
+  storedPeakRssBytes: 4,
+  hash: 'abc',
+  cpuMs: 1.25,
+  peakRssBytes: 5,
+  timedOut: true,
+  notReady: 'timeout',
+  inputMoved: 'src/a.txt',
+  blockedBy: 'lib#fail',
+  otherPlatform: { needs: ['darwin-arm64'], host: 'linux-x64' },
+  admissionHeldMs: 6,
+  queuedMs: 7,
+  inputFiles: 8,
+  inputChanges: { count: 1, first: [{ kind: 'file', name: 'src/a.txt', change: 'changed' }] },
+  artifactBytes: 9,
+  fetchMs: 10,
+  saveMs: 11,
+  restored: true,
+  sandboxViolations: 1,
+  sandboxViolationLines: ['denied /x'],
+  wallclockStartNs: '1',
+  wallclockEndNs: '2',
+}
+const MEASURE: Required<Measure> = { id: 'p#warm', def: 'd', durationMs: 3, cores: 1.5 }
+const FOLLOW_UNSEEN: WireEvent[] = [
+  { kind: 'run:start', info: { total: 2, concurrency: 4, requestedCount: 1, startedAtMs: 1 } },
+  { kind: 'task:start', task: TASK_VIEW },
+  { kind: 'task:complete', outcome: OUTCOME_VIEW },
+  { kind: 'task:measure', measure: MEASURE },
+  { kind: 'run:status', line: 'w', warn: true },
+  { kind: 'step:start', id: 'vx:prefetch' },
+  { kind: 'step:end', id: 'vx:prefetch', durationMs: 3, ok: true },
+  { kind: 'run:stop' },
+]
 
 let root: string
 const outputs: Record<string, unknown[]> = {
@@ -206,8 +262,37 @@ beforeAll(async () => {
   })
   for (let i = 0; i < 400 && vx(['last', '--live']).code !== 0; i++) await Bun.sleep(50)
   json('last', ['--live'])
+  const follow = Bun.spawn({
+    cmd: [process.execPath, BIN, 'last', '--live', '--follow', '--format', 'json'],
+    cwd: root,
+    env: { ...process.env, NO_COLOR: '1' },
+    stdout: 'pipe',
+  })
+  // Let go once the follower holds the snapshot, so it sees the output.
+  const reader = follow.stdout.getReader()
+  let followed = ''
+  while (!followed.includes('\n')) {
+    const { value, done } = await reader.read()
+    if (done) break
+    followed += new TextDecoder().decode(value)
+  }
   await writeFile(path.join(root, 'go'), '')
+  for (let r = await reader.read(); !r.done; r = await reader.read())
+    followed += new TextDecoder().decode(r.value)
+  expect(await follow.exited).toBe(0)
   expect(await held.exited).toBe(0)
+  const lines = followed.trimEnd().split('\n')
+  expect(lines.map((l) => (JSON.parse(l) as { kind?: string }).kind)).toEqual([
+    undefined,
+    'task:stdout',
+    'task:stderr',
+    'task:complete',
+    'run:end',
+    'run:done',
+  ])
+  for (const l of lines) outputs['last']!.push(JSON.parse(l))
+  // The events a short follow does not reach, each field once.
+  outputs['last']!.push(...FOLLOW_UNSEEN)
   json('last', ['--sql', 'SELECT project, task, cpu_ms, remote_error FROM runs'])
   // The flaky task passes again: the replayed failure names that run (`fixedIn`).
   await writeFile(path.join(root, 'flag'), '')
@@ -443,6 +528,41 @@ describe('each schema object is its source type', () => {
     for (const step of route) node = node[step] as Schema
     return Object.keys(node['properties'] as Schema).sort()
   }
+
+  it('last --live --follow: each event', () => {
+    const branches = (schema('last')['$defs'] as Schema)['event'] as { oneOf: Schema[] }
+    const branch = (kind: string): Schema => {
+      const b = branches.oneOf.find((o) => {
+        const k = (o['properties'] as Record<string, Schema>)['kind']!
+        return k['const'] === kind || (k['enum'] as string[] | undefined)?.includes(kind)
+      })
+      if (b === undefined) throw new Error(`no event ${kind}`)
+      return b
+    }
+    const of = (kind: string, field: string): string[] =>
+      Object.keys(
+        ((branch(kind)['properties'] as Record<string, Schema>)[field]!['properties'] ??
+          {}) as Schema,
+      ).sort()
+    const kinds: Record<WireEvent['kind'], true> = {
+      'run:start': true,
+      'task:start': true,
+      'task:stdout': true,
+      'task:stderr': true,
+      'task:complete': true,
+      'task:measure': true,
+      'run:status': true,
+      'step:start': true,
+      'step:end': true,
+      'run:end': true,
+      'run:stop': true,
+      'run:done': true,
+    }
+    for (const k of Object.keys(kinds)) branch(k)
+    expect(of('task:start', 'task')).toEqual(Object.keys(TASK_VIEW).sort())
+    expect(of('task:complete', 'outcome')).toEqual(Object.keys(OUTCOME_VIEW).sort())
+    expect(of('task:measure', 'measure')).toEqual(Object.keys(MEASURE).sort())
+  })
   const def = (verb: string, name: string, ...route: string[]) =>
     props(verb, '$defs', name, ...route)
 
