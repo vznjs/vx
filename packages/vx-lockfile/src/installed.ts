@@ -233,14 +233,25 @@ function yarnBerryCompare(
   root: string,
 ): Verdict {
   const listed = new Set<string>()
+  /** Each location the state lists → the locator installed there. */
+  const at = new Map<string, string>()
+  let current: string | undefined
   for (const line of markerText.split('\n')) {
+    const loc = /^ {4}- "?(.*?)"?$/.exec(line)
+    if (loc !== null) {
+      if (current !== undefined) at.set(loc[1]!, current)
+      continue
+    }
     const m = /^"?([^\s"].*?)"?:$/.exec(line)
-    if (m === null || m[1] === '__metadata') continue
+    if (m === null) continue
+    current = undefined
+    if (m[1] === '__metadata') continue
     // A virtual locator is its package's, per peer set.
     const locator = m[1]!.replace(/@virtual:[^#]+#/, '@')
     if (!lock.entries.has(locator))
       return { mismatch: `${locator} is installed, and the lockfile does not list it` }
     listed.add(locator)
+    current = locator
   }
   let rc: string | undefined
   try {
@@ -253,7 +264,24 @@ function yarnBerryCompare(
   // what Node finds above them is another package's copy (probed on babel,
   // Yarn 4.19). Only a full install, listing every workspace, is checked.
   for (const id of lock.workspaces.values()) if (!listed.has(id)) return { dirs: [] }
-  const direct = yarnLock().directVersions(lock, yarnLock().catalogsOf(rc))
+  const catalogs = yarnLock().catalogsOf(rc)
+  const direct = yarnLock().directVersions(lock, catalogs)
+  // A pull that adds a patch: the unpatched copy, at the version the patch
+  // names, sits where Yarn installs the patched one, and the lockfile lists
+  // both, so neither the version nor an extra locator tells them apart.
+  for (const [dir, patched] of yarnLock().directPatches(lock, catalogs)) {
+    for (const [name, locator] of patched) {
+      for (let d = dir; ; d = path.posix.dirname(d)) {
+        const installed = at.get(d === '.' ? `node_modules/${name}` : `${d}/node_modules/${name}`)
+        if (installed !== undefined) {
+          if (installed !== locator)
+            return { mismatch: `${dir}'s ${name} is ${installed}, the lockfile names ${locator}` }
+          break
+        }
+        if (d === '.') break
+      }
+    }
+  }
   for (const [dir] of lock.workspaces) {
     for (const [name, version] of direct.get(dir)!) {
       for (let d = dir; ; d = path.posix.dirname(d)) {

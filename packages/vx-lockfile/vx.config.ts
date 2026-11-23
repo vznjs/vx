@@ -23,6 +23,7 @@ const SHARDS: readonly (readonly string[])[] = [
     'yarn-catalog-precise',
     'yarn-classic-root-deps',
     'yarn-package-settings',
+    'yarn-patch-installed',
   ],
   [
     'bun-patch-precise',
