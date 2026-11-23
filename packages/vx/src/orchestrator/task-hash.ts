@@ -719,16 +719,24 @@ async function heldOutputs(
   const fileHashes = input.fileHashes === undefined ? held : new Map([...input.fileHashes, ...held])
   const key = await args.cache.key(await knownIdentities(args, { ...bare, fileHashes }))
   const rows = args.cache.memo.loadOutputFilesBatch([key]).get(key)
-  // Not this key's bytes: keyed by them, and a miss that rewrites them all
-  // saves under this key too (`HeldKey`).
-  const heldKey = { key, files: [...held.keys()] }
-  if (rows === undefined) return { heldKey }
-  const byPath = new Map(rows.map((r) => [r.path, r]))
-  for (const abs of held.keys()) {
-    const row = byPath.get(relPosix(projectDir, abs))
-    if (row === undefined || !stampedCurrent(abs, row)) return { heldKey }
+  if (rows !== undefined) {
+    const byPath = new Map(rows.map((r) => [r.path, r]))
+    let current = true
+    for (const abs of held.keys()) {
+      const row = byPath.get(relPosix(projectDir, abs))
+      if (row === undefined || !stampedCurrent(abs, row)) current = false
+    }
+    if (current) return { held }
   }
-  return { held }
+  // Not this key's bytes: keyed by them, and a miss that rewrites them all
+  // from bytes vx wrote saves under this key too (`HeldKey`).
+  const before: HeldFile[] = []
+  for (const abs of held.keys()) {
+    const st = lstatSync(abs, { throwIfNoEntry: false })
+    if (st === undefined || !st.isFile()) return undefined
+    before.push({ abs, rel: relPosix(projectDir, abs), ino: st.ino, ctimeMs: st.ctimeMs })
+  }
+  return { heldKey: { key, files: before } }
 }
 
 /**
@@ -740,7 +748,16 @@ async function heldOutputs(
  */
 export interface HeldKey {
   key: string
-  files: readonly string[]
+  /** Each held file as it stood when the key was taken. */
+  files: readonly HeldFile[]
+}
+
+/** A held committed output's inode and ctime before the command. */
+export interface HeldFile {
+  abs: string
+  rel: string
+  ino: number
+  ctimeMs: number
 }
 
 /**

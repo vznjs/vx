@@ -125,6 +125,7 @@ export interface TaskMemo {
   hashFile(filePath: string): Promise<string>
   loadOutputFilesBatch(hashes: readonly string[]): Map<string, OutputFileRow[]>
   stampedRowsOf?(hash: string): readonly OutputFileRow[] | undefined // as this process last stamped them: no query
+  stampedBy?(rel: string, ino: number, ctimeMs: number): boolean // a save or restore here stamped `rel` at this inode and ctime, under any entry: vx's bytes, not a hand edit
   isOutputsCurrent(projectDir: string, expected: readonly OutputFileRow[]): boolean
   recordOutputDirs?(
     hash: string,

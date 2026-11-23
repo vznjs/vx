@@ -30,6 +30,7 @@ export interface StoreMemo {
   readonly folds: FoldMemo
   loadOutputFilesBatch(hashes: readonly string[]): Map<string, OutputFileRow[]>
   stampedRowsOf(hash: string): readonly OutputFileRow[] | undefined
+  stampedBy(rel: string, ino: number, ctimeMs: number): boolean
   isOutputsCurrent(projectDir: string, expected: readonly OutputFileRow[]): boolean
   recordOutputDirs(
     hash: string,
@@ -255,6 +256,11 @@ export class LocalMemo implements StoreMemo {
   /** `hash`'s rows as this process last stamped them: no read. */
   stampedRowsOf(hash: string): readonly OutputFileRow[] | undefined {
     return this.outputs.stampedRowsOf(hash)
+  }
+
+  /** Whether any entry's stamp names `rel` at this inode and ctime. */
+  stampedBy(rel: string, ino: number, ctimeMs: number): boolean {
+    return this.guard(() => this.outputs.stampedBy(rel, ino, ctimeMs))
   }
 
   /**

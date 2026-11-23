@@ -1108,6 +1108,7 @@ export interface SaveMissArgs {
   hash: string
   cache: CacheLayer
   log: Logger
+  quiet?: boolean // a second save of the same outputs under the committed key (`HeldKey`): no warnings again
   workspaceRoot: string
   nestedProjectDirs: string[]
   gitFilesCache?: GitFilesCache | undefined

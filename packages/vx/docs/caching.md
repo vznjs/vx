@@ -1262,9 +1262,10 @@ staged or committed edit still moves the key, and so does a hand edit:
 keyed by the index alone, an entry saved over a hand edit was replayed
 over the committed file once the tree was clean (fuzzcout). One an input
 glob names (`src/**` over its `routeTree.gen.ts`) keys by its bytes.
-A miss keyed by such bytes whose command rewrote every such file is also
-saved under the key by what git holds, so after a source edit the next
-run folds it again; one that left any of them as it found them is not.
+A miss keyed by such bytes whose command rewrote every such file, each
+from bytes a save or restore here left, is also saved under the key by
+what git holds, so after a source edit the next run folds it again. One
+that left any of them as it found them, or rewrote a hand edit, is not.
 A run that removes one (`rm dist/tracked.txt`) saves nothing: no hit
 could replay the removal, since its restore leaves the file too, so the
 tree a hit left (a fresh CI checkout's) held a file the run took away,

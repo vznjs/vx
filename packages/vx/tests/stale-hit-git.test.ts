@@ -161,7 +161,7 @@ describe('stale cache hits', () => {
         `export default {
            tasks: {
              build: {
-               exec: { command: 'mkdir -p dist && cat src/a.txt > dist/index.js && date +%s%N > dist/index.js.map' },
+               exec: { command: 'mkdir -p dist && cat src/a.txt > dist/index.js && od -An -N8 -tx8 /dev/urandom > dist/index.js.map' },
                inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
              },
            },
@@ -238,6 +238,43 @@ describe('stale cache hits', () => {
       vx(root, 'run', 'build')
       expect(await readFile(path.join(root, 'dist/LICENSE'), 'utf8')).toBe('license v1')
       expect(vx(root, 'run', 'build')).toMatch(/build[^\n]*up-to-date/)
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a build that rewrites a hand-edited committed output never saves it under the committed key',
+    async () => {
+      // The second save under the committed key (`HeldKey`) takes a rewrite
+      // only from bytes vx wrote: an append keeps the hand edit, and a clean
+      // checkout then hit and wrote it over the committed file (review).
+      await Bun.write(path.join(root, 'package.json'), '{"name":"r","private":true}')
+      await writeLocalWorkspace(root)
+      await Bun.write(
+        path.join(root, 'vx.config.mjs'),
+        `export default {
+           tasks: {
+             build: {
+               exec: { command: 'mkdir -p dist && cat src/a.txt > dist/out && echo built >> dist/LICENSE' },
+               inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
+             },
+           },
+         }`,
+      )
+      await Bun.write(path.join(root, 'src/a.txt'), 'a')
+      await Bun.write(path.join(root, 'dist/LICENSE'), 'license v1\n')
+      await Bun.write(path.join(root, '.gitignore'), '.vx/cache/\ndist/out\n')
+      gitInit(root)
+      git(root, 'add', '-A')
+      git(root, 'commit', '-q', '-m', 'initial')
+
+      await writeLocalWorkspace(root)
+      await Bun.write(path.join(root, 'dist/LICENSE'), 'hand edit\n')
+      vx(root, 'run', 'build')
+      expect(await readFile(path.join(root, 'dist/LICENSE'), 'utf8')).toBe('hand edit\nbuilt\n')
+      git(root, 'checkout', '--', 'dist/LICENSE')
+      vx(root, 'run', 'build')
+      expect(await readFile(path.join(root, 'dist/LICENSE'), 'utf8')).toBe('license v1\nbuilt\n')
     },
     TIMEOUT,
   )

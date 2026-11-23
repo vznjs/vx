@@ -176,6 +176,8 @@ export interface SaveMissArgs {
   hash: string
   cache: CacheLayer
   log: Logger
+  /** A second save of the same outputs (`HeldKey`): its warnings were said. */
+  quiet?: boolean
   workspaceRoot: string
   nestedProjectDirs: string[]
   gitFilesCache?: GitFilesCache | undefined
@@ -268,6 +270,7 @@ export function withSaveFacts(o: TaskOutcome, f: SaveFacts): TaskOutcome {
  */
 export async function saveMiss(a: SaveMissArgs): Promise<{ landed: Promise<SaveFacts> }> {
   const { node, cache, log } = a
+  const warn = a.quiet === true ? () => {} : warnOf(log)
   const endResolve = span('miss: resolve outputs')
   // An additive task owns only the files it wrote (item 588), no directory.
   const tree =
@@ -308,7 +311,7 @@ export async function saveMiss(a: SaveMissArgs): Promise<{ landed: Promise<SaveF
     ...wsTree.special.map((p) => relPosix(a.workspaceRoot, p)),
   ]
   if (special.length > 0) {
-    warnOf(log)(
+    warn(
       `[vx] ${node.id}: ${special.join(', ')} ${special.length === 1 ? 'is' : 'are'} not a regular file or symlink ` +
         `(a FIFO, socket or device): vx does not cache ${special.length === 1 ? 'it' : 'them'}, so a hit restores the outputs without ${special.length === 1 ? 'it' : 'them'} ` +
         `— emit a file there, or take ${special.length === 1 ? 'it' : 'them'} back with a '!' entry`,
@@ -337,7 +340,7 @@ export async function saveMiss(a: SaveMissArgs): Promise<{ landed: Promise<SaveF
   const left =
     (noFiles || dead.length > 0) && a.state !== undefined ? stateLeft(a.state, node.projectDir) : []
   if (left.length > 0) {
-    warnOf(log)(
+    warn(
       `[vx] ${node.id}: outputs matched no files (${(noFiles ? [...a.outputs, ...a.wsOutputs] : dead).join(', ')}) ` +
         `while ${left.map(printable).join(', ')}, which the task declares neither input nor output, ` +
         `survived the clean — the result stands, but is not saved: a tool that reads such a file back ` +
@@ -358,7 +361,7 @@ export async function saveMiss(a: SaveMissArgs): Promise<{ landed: Promise<SaveF
     // `outputs` is not a write grant; `exec.sandbox.allow.write` is.
     const sandboxed = node.config.exec?.sandbox !== undefined
     const grantsWrite = (node.config.exec?.sandbox?.allow?.write?.length ?? 0) > 0
-    warnOf(log)(
+    warn(
       `[vx] ${node.id}: outputs matched no files (${[...a.outputs, ...a.wsOutputs].join(', ')}) — ` +
         `an empty artifact is saved; a later hit restores nothing` +
         (sandboxed && !grantsWrite
@@ -374,7 +377,7 @@ export async function saveMiss(a: SaveMissArgs): Promise<{ landed: Promise<SaveF
       const literal = [...a.outputs, ...a.wsOutputs].filter(
         (g) => !g.startsWith('!') && isLiteralPattern(g),
       )
-      warnOf(log)(
+      warn(
         `[vx] ${node.id}: outputs matched no files (${dead.join(', ')}) — ` +
           `a later hit restores only the literal files (${literal.join(', ')})` +
           bracketLiteralHint([
