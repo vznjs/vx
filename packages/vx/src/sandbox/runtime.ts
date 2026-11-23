@@ -107,6 +107,7 @@ import {
   type CanonicalBaselines,
   canonicalBaselines,
   baselineLinks,
+  readGrantLinks,
   pendingWriteGrants,
   cwdMounted,
 } from './grants.js'
@@ -341,6 +342,7 @@ async function wrapIn(
   const links = [
     ...punchedLinks([...baselines.allowRead, ...args.config.allowRead], allowRead),
     ...baselineLinks(args.baseAllowRead, allowRead),
+    ...readGrantLinks(args.config.linkedReads, [...allowRead, ...filesystem.allowWrite]),
   ]
   // The directories `punchedWriteGlobs` bound, and the write globs: a write
   // one matches is granted in any bound directory, a match's widened one

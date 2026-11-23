@@ -4,7 +4,7 @@
 
 import path from 'node:path'
 import os from 'node:os'
-import { existsSync, readlinkSync, realpathSync } from 'node:fs'
+import { existsSync, lstatSync, readlinkSync, realpathSync } from 'node:fs'
 import type { SandboxConfig } from '../config.js'
 import type { ResolvedSandboxConfig } from '../exec/index.js'
 import { BUN_GLOB_WILDCARDS, grantPrefix, notify, scannable, UserError } from '../util/index.js'
@@ -61,6 +61,59 @@ export function baselineLinks(
     }
     const shown = allowRead.some((r) => r !== toRealPath(at) && atOrUnder(at, r))
     if (!shown) out.push([text, at])
+  }
+  return out
+}
+
+/**
+ * Linux: each link a read grant is spelled through, as `[text, at]` for
+ * `withPunchedLinks`, unless a bound grant above it already shows it.
+ * SRT binds a read grant at the path it resolves to, so with
+ * `read: ['src/']` over `src -> lib` the task read `lib` and met ENOENT
+ * at `src/a.txt`, the spelling it was granted (2026-11-23).
+ */
+export function readGrantLinks(
+  linked: ResolvedSandboxConfig['linkedReads'],
+  bound: readonly string[],
+): Array<readonly [string, string]> {
+  if (process.platform !== 'linux' || linked === undefined) return []
+  return linked
+    .filter(({ at }) => !bound.some((b) => b !== at && atOrUnder(at, b)))
+    .map(({ at, text }) => [text, at] as const)
+}
+
+/**
+ * Linux: the links inside the project a read grant passes through,
+ * hop by hop (`src -> lib2 -> lib` is both), each at its real spelling.
+ */
+function readLinkSpellings(grant: string, projectDir: string): Array<{ at: string; text: string }> {
+  if (process.platform !== 'linux' || grant.startsWith('~') || path.isAbsolute(grant)) return []
+  const full = path.resolve(projectDir, grant)
+  // A pattern's links are those of its literal head (`src/*.ts`: `src`).
+  const at = wildcardAt(full)
+  const lexical = at === -1 ? full : path.dirname(`${full.slice(0, at)}x`)
+  if (!atOrUnder(lexical, projectDir)) return []
+  const home = toRealPath(projectDir)
+  const out: Array<{ at: string; text: string }> = []
+  let cur = home
+  let parts = path.relative(projectDir, lexical).split(path.sep).filter(Boolean)
+  for (let hops = 0; parts.length > 0;) {
+    const next = path.join(cur, parts.shift()!)
+    let link = false
+    try {
+      link = lstatSync(next).isSymbolicLink()
+    } catch {
+      return out
+    }
+    if (!link) {
+      cur = next
+      continue
+    }
+    if (++hops > 40) return out
+    const text = readlinkSync(next)
+    if (atOrUnder(next, home) && !out.some((o) => o.at === next)) out.push({ at: next, text })
+    parts = [...path.resolve(cur, text).split(path.sep).filter(Boolean), ...parts]
+    cur = path.sep
   }
   return out
 }
@@ -183,8 +236,16 @@ export function resolveSandboxConfig(
   const pending: string[] = []
   const globs: string[] = []
   const linked: Array<{ link: string; target: string }> = []
+  const linkedReads: Array<{ at: string; text: string }> = []
   const r: ResolvedSandboxConfig = {
-    allowRead: expandGrants((a.read ?? []).flatMap(grantAlternatives).map(resolve), walls),
+    allowRead: expandGrants(
+      (a.read ?? []).flatMap(grantAlternatives).map((p) => {
+        for (const l of readLinkSpellings(p, projectDir))
+          if (!linkedReads.some((o) => o.at === l.at)) linkedReads.push(l)
+        return resolve(p)
+      }),
+      walls,
+    ),
     allowWrite: expandGrants(
       (a.write ?? []).flatMap(grantAlternatives).map((p) => {
         const real = resolve(p)
@@ -210,6 +271,7 @@ export function resolveSandboxConfig(
   if (pending.length > 0) r.pendingWrites = pending
   if (globs.length > 0) r.writeGlobs = globs
   if (linked.length > 0) r.linkedWrites = linked
+  if (linkedReads.length > 0) r.linkedReads = linkedReads
   if (process.platform === 'darwin') {
     const read = wallsGlobsReach(r.allowRead, walls)
     const write = wallsGlobsReach(r.allowWrite, walls)

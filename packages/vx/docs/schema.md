@@ -1933,7 +1933,9 @@ A grant that leaves the project through a symlink is refused: the grant
 binds the path it names, and vx follows no link out of the project. One
 spelled through a link that stays inside (`write: ['gen/']` over
 `gen -> real`) binds at both spellings, so a write through `gen` lands in
-`real`. A link into a write grant that is not itself granted is a
+`real`. A read grant spelled through links in the project (`read: ['src/']`
+over `src -> lib`) has each link laid as it is on Linux, so the task reads
+`src/` as granted; until 2026-11-23 only `lib` was there. A link into a write grant that is not itself granted is a
 read-only view of it on Linux (a write through it is refused, and vx
 says so before the task runs); grant the link too to write through it. So
 is one whose bind would make `.git`, `.vx/cache`, the cache directory or a

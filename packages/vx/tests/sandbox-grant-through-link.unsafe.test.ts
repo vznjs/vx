@@ -4,7 +4,7 @@
 // task opens was not there inside the sandbox. The trace judged the
 // task's ENOENT by its real path, which the grant covers, so it was
 // dropped: a tool that falls back on a missing file went green on the
-// fallback and cached it.
+// fallback and cached it. Since 2026-11-23 the link is laid in the sandbox.
 import { realpathSync, symlinkSync } from 'node:fs'
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
@@ -66,8 +66,36 @@ describe.skipIf(!available || process.platform !== 'linux')(
       ]
     }
 
-    it('a read the link hid is a violation, not a fallback cached green', async () => {
+    // Until 2026-11-23 the grant bound only the target, so `config.json`
+    // was gone inside the sandbox: the read was refused, its fix named
+    // `'.'`, and `read: ['src/']` over `src -> lib` could not read `src/`.
+    // The link a grant is spelled through is laid as the link it is.
+    it('the link a read grant names is there, and reads through', async () => {
       expect(await outcome(['config.json'], 'config.json'), said).toEqual([
+        'success',
+        false,
+        'real\n',
+      ])
+    })
+
+    it('a directory grant through a chain of links reads through', async () => {
+      const dir = path.join(root, 'packages', 'app')
+      await mkdir(dir, { recursive: true })
+      symlinkSync('lib', path.join(dir, 'lib2'))
+      symlinkSync('lib2', path.join(dir, 'src'))
+      expect(await outcome(['src/'], 'src/real.json'), said).toEqual(['success', false, 'real\n'])
+    })
+
+    it('a pattern through a link reads through', async () => {
+      expect(await outcome(['lib/*.json'], 'lib/real.json'), said).toEqual([
+        'success',
+        false,
+        'real\n',
+      ])
+    })
+
+    it('a read the link hid is still a violation, not a fallback cached green', async () => {
+      expect(await outcome(['conf/real.json'], 'config.json'), said).toEqual([
         'failed',
         true,
         'default\n',

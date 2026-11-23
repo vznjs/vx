@@ -2379,6 +2379,7 @@ export interface ResolvedSandboxConfig {
   pendingWrites?: readonly string[]
   writeGlobs?: readonly string[]
   linkedWrites?: readonly { readonly link: string; readonly target: string }[]
+  linkedReads?: readonly { readonly at: string; readonly text: string }[]
   network?: true | readonly string[]
   denyNetwork?: readonly string[]
   systemInfo?: readonly string[]

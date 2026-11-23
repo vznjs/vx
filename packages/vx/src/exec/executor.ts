@@ -34,6 +34,8 @@ export interface ResolvedSandboxConfig {
   writeGlobs?: readonly string[]
   /** Linux: write grants spelled through a link in the project, bound there too (`linkedWriteBinds`). */
   linkedWrites?: readonly { readonly link: string; readonly target: string }[]
+  /** Linux: each link a read grant is spelled through in the project, laid as the link it is (`readGrantLinks`). */
+  linkedReads?: readonly { readonly at: string; readonly text: string }[]
   network?: true | readonly string[]
   denyNetwork?: readonly string[]
   systemInfo?: readonly string[]
