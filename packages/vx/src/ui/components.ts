@@ -248,8 +248,11 @@ const isBlock = (x: unknown): x is Block =>
 
 /** `✗ vx lock lock not written`: the tone's symbol, the bold verb, the headline. */
 export function status(t: Tone, verb: string, headline: Inline): Block {
+  // A status line's words are its fact (`1 project config → …`): painted at
+  // the value level, never plain white beside its mark.
+  const words = typeof headline === 'string' ? prose(headline) : headline
   return block((c) => [
-    `${paint(t, SYMBOL[t], c)} ${paint('strong', verb, c)}  ${inline(headline, c)}`,
+    `${paint(t, SYMBOL[t], c)} ${paint('strong', verb, c)}  ${inline(words, c)}`,
   ])
 }
 

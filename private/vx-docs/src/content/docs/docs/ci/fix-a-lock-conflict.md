@@ -12,7 +12,7 @@ vx run build --all
 ```
 
 ```ansi
-[38;2;239;68;68m✗[0m [1mvx run[0m  .vx/projects.lock holds a git merge conflict: run `vx lock`, which writes it anew from the configs
+[38;2;239;68;68m✗[0m [1mvx run[0m  [38;2;203;213;225m.vx/projects.lock holds a git merge conflict: run [0m[1m`vx lock`[0m[38;2;203;213;225m, which writes it anew from the configs[0m
 ```
 
 Never edit the lock by hand. Fix it in three steps:
@@ -25,7 +25,7 @@ Never edit the lock by hand. Fix it in three steps:
    ```
 
    ```ansi
-   [38;2;34;197;94m✓[0m [1mvx lock[0m  2 project configs → .vx/projects.lock, .vx/dependencies.lock
+   [38;2;34;197;94m✓[0m [1mvx lock[0m  [38;2;203;213;225m2 project configs → .vx/projects.lock, .vx/dependencies.lock[0m
    ```
 
 3. Commit the result:
