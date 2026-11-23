@@ -398,12 +398,7 @@ function parse(
       }
   }
   // A run prints no JSON of its own; `vx last --format json` reads it after.
-  if (format !== undefined && !dryFlag)
-    return {
-      ...out,
-      error:
-        '--format prints the plan, so it needs --dry (the run as JSON is `vx last --format json` after it)',
-    }
+  if (format !== undefined && !dryFlag) return { ...out, error: FORMAT_NEEDS_DRY }
   if (dryFlag) out.dry = format ?? 'pretty'
   // A profile is about a run: the planning branch returns before it is written.
   if (out.dry !== undefined && out.profile !== undefined) {
@@ -411,6 +406,10 @@ function parse(
   }
   return out
 }
+
+/** `--format` without `--dry`: a pipeline's saved `dry` may still supply it. */
+export const FORMAT_NEEDS_DRY =
+  '--format prints the plan, so it needs --dry (the run as JSON is `vx last --format json` after it)'
 
 /**
  * The run's intent from its selection flags: broad iff `--all` / `--filter` /

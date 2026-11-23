@@ -13,7 +13,7 @@ import {
   pipelineRunArgs,
 } from '../workspace/index.js'
 import { refuse, seeHelp } from './help.js'
-import { parseRunArgs, runCmd } from './run.js'
+import { FORMAT_NEEDS_DRY, parseRunArgs, runCmd } from './run.js'
 
 /**
  * `vx pipeline <name> [flags]`, read by the run's own parser: the name is
@@ -28,7 +28,10 @@ export function parsePipelineArgs(args: readonly string[]): {
   const at = args.findIndex((a) => a === parsed.tasks[0])
   const rest = at === -1 ? [...args] : [...args.slice(0, at), ...args.slice(at + 1)]
   const see = seeHelp('pipeline')
-  if (parsed.error !== undefined) return { rest, error: `${parsed.error}${see}` }
+  // The saved keys join the typed flags later: a saved `dry` takes a typed
+  // `--format`, and the run checks the joined line.
+  if (parsed.error !== undefined && parsed.error !== FORMAT_NEEDS_DRY)
+    return { rest, error: `${parsed.error}${see}` }
   const [name, ...extra] = parsed.tasks
   if (name === undefined)
     return {

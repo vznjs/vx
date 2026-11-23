@@ -212,6 +212,7 @@ describe('vx pipeline <name>', () => {
           own: { tasks: ['keep'], filter: ['a'], noCache: true, env: { VX_CACHE_POLICY: 'local:rw' } },
           base: { tasks: ['build'], affected: true },
           solo: { tasks: ['solo'], filter: ['a'] },
+          plan: { tasks: ['build'], filter: ['a'], dry: true },
         }`,
       ),
     )
@@ -338,6 +339,22 @@ describe('vx pipeline <name>', () => {
     } finally {
       cwd = ''
     }
+  }, 30_000)
+
+  // The typed flags were checked alone before the saved ones joined them:
+  // `--format json` on a pipeline that saves `dry` was refused as needing --dry.
+  it('takes a typed --format for a pipeline that saves dry', async () => {
+    const r = await vx('pipeline', 'plan', '--format', 'json')
+    expect([r.code, r.err]).toEqual([0, ''])
+    expect((JSON.parse(r.out) as { tasks: { id: string }[] }).tasks.map((t) => t.id)).toEqual([
+      'a#build',
+    ])
+    // CONTROL: a pipeline with no saved dry still refuses it.
+    const real = await vx('pipeline', 'check', '--format', 'json')
+    expect([real.code, real.err]).toEqual([
+      1,
+      expect.stringContaining('--format prints the plan, so it needs --dry'),
+    ])
   }, 30_000)
 
   it('refuses no name, an unknown one, a task and --all, naming the fix', async () => {
