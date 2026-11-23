@@ -86,7 +86,7 @@ volumes:
 ```
 
 ```ini title=".env"
-DTE_ALLOW=https://token.actions.githubusercontent.com:acme/app:ci.yml
+DTE_ALLOW='https://token.actions.githubusercontent.com:acme/app:ci.yml https://token.actions.githubusercontent.com:acme/app:vx-worker.yml'
 DTE_AUDIENCE=https://dte.example.com
 CACHE_ALLOW=https://token.actions.githubusercontent.com:acme/app:ci.yml
 CACHE_AUDIENCE=https://cache.example.com
@@ -152,7 +152,9 @@ The cache and history servers read it; the distributed task execution server doe
 
 ### A merge queue
 
-A GitHub merge queue run (`merge_group`), on `refs/heads/gh-readonly-queue/main/pr-<n>-<sha>`, writes `main` before its code lands. A push to a branch of that name writes only that branch.
+A GitHub merge queue run (`merge_group`) writes `main` before its code lands. Its ref is `refs/heads/gh-readonly-queue/main/pr-<n>-<sha>`.
+
+A plain push to a branch of that name writes only that branch.
 
 Code you queue is code you trust. Run security checks on the pull request, before it is queued.
 
@@ -203,7 +205,7 @@ The cache server sees each of them, and each branch, only as the first 128 bits 
 
 A renamed repository starts with an empty cache.
 
-### When a server will not start
+### When a server refuses to start
 
 The Bun server and its image refuse to start without `ALLOW` or `AUDIENCE`, and name what is missing:
 

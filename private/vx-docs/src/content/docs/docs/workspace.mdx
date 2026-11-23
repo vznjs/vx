@@ -54,7 +54,7 @@ Coming from the [Quickstart](../../quickstart/)? Turn its one app into the two p
 1. Move the app into `packages/web`:
 
    ```sh
-   mkdir -p packages/web && mv index.html src public package.json vx.config.ts packages/web/
+   mkdir -p packages/web && mv index.html src public package.json vx.config.ts vx.lock.json packages/web/
    ```
 
 2. Add a library beside it:
@@ -67,11 +67,12 @@ Coming from the [Quickstart](../../quickstart/)? Turn its one app into the two p
 
    ```sh
    echo '{ "private": true, "workspaces": ["packages/*"] }' > package.json
+   bun add -d @vzn/vx @vzn/vx-lockfile
    (cd packages/ui && bun pm pkg set name=@demo/ui)
    (cd packages/web && bun pm pkg set name=@demo/web && bun add @demo/ui@workspace:*)
    ```
 
-4. Record the new layout:
+4. Record the new layout. `ui` has no tasks yet; [Tasks](../tasks/) gives it some:
 
    ```sh
    vx lock

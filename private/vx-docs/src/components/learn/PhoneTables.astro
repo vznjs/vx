@@ -18,7 +18,16 @@
   // scrolls sideways; other output wraps (below).
   for (const pre of document.querySelectorAll<HTMLElement>('.expressive-code pre[data-language="ansi"]')) {
     const first = pre.querySelector('.ec-line')?.textContent ?? ''
-    if (/^\s*(?:Tasks|Plan)\b/.test(first)) pre.dataset.columns = ''
+    if (/^\s*(?:Tasks|Plan)\b/.test(first)) {
+      pre.dataset.columns = ''
+      continue
+    }
+    // A wrapped line hangs under its own text, two columns in, so a list or
+    // a detail line keeps its shape (Expressive Code's --ecIndent).
+    for (const code of pre.querySelectorAll<HTMLElement>('.ec-line .code')) {
+      const lead = /^ */.exec(code.textContent ?? '')![0].length
+      code.style.setProperty('--ecIndent', `${lead + 2}ch`)
+    }
   }
 </script>
 
@@ -36,9 +45,6 @@
     .expressive-code pre[data-language='ansi']:not([data-columns]) .ec-line .code {
       white-space: pre-wrap;
       overflow-wrap: anywhere;
-      /* A wrapped line hangs under its first, so a list keeps its shape. */
-      padding-inline-start: 2ch;
-      text-indent: -2ch;
     }
     .sl-markdown-content table[data-stack],
     .sl-markdown-content table[data-stack] tbody,

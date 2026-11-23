@@ -269,7 +269,12 @@ A query answers `{ timings: { <hash>: { durationMs, cores, rssBytes, slowMs, run
 {"code":"forbidden","message":"acme/other is not in this server's ALLOW"}
 ```
 
-To mount it in your own server, `createHistoryServer({ store, authorize, timingDays? })` returns a `fetch` handler, and `sqliteStore(db)` keeps the rows in any SQLite that `bun:sqlite` or D1 serves.
+To mount it in your own server:
+
+| Function | Returns |
+| --- | --- |
+| `createHistoryServer({ store, authorize, timingDays? })` | a `fetch` handler |
+| `sqliteStore(db)` | a store over any SQLite that `bun:sqlite` or D1 serves |
 
 The [README](https://github.com/vznjs/vx/tree/main/packages/vx-history-server#api) lists the whole API.
 

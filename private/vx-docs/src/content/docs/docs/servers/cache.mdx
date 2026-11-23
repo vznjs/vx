@@ -139,10 +139,7 @@ That refusal is good news: the server is up and has an `ALLOW`. Put HTTPS in fro
          repository: 'acme/app',
        }),
      ],
-     pipelines: {
-       pr: { tasks: ['lint', 'test', 'build'], affected: true },
-       main: { tasks: ['lint', 'test', 'build'] },
-     },
+     // keep your pipelines as they are
    })
    ```
 
@@ -290,7 +287,9 @@ Every option of the plugin (`url`, `issuer`, `repository`, `timeoutMs`, `uploadT
 
 <Diagram {...cacheBucketPath} />
 
-A result's name is `<issuer>/<repository>/<branch>/<key>`. The first three are hashed (SHA-256, the first 32 hex digits), so the bucket's listing shows no host, repository or branch name. One repository never reads another's results.
+A result's name is `<issuer>/<repository>/<branch>/<key>`. The first three are hashed: the first 32 hex digits of their SHA-256.
+
+So the bucket's listing shows no host, repository or branch name. One repository never reads another's results.
 
 A result is never rewritten: a second upload of the same key keeps the first bytes.
 
