@@ -470,16 +470,21 @@ async function copyTree(
     return false
   // What stands at each path, asked once: a real directory, nothing, or
   // anything else, which the extractor decides. Synchronous: the walk before
-  // cached these dentries. A head the walk found absent is not asked again: a
-  // lstat per restored hit.
+  // cached these dentries. A directory the walk found absent is not asked
+  // again (a lstat per restored hit): it is built in staging and renamed in,
+  // which refuses one made since. A file is written in place, so a link made
+  // there since must be seen: a leaf is always asked.
   const standing = new Map<string, 'dir' | 'absent' | 'other'>()
-  const at = (rel: string): 'dir' | 'absent' | 'other' => {
+  const at = (rel: string, dir: boolean): 'dir' | 'absent' | 'other' => {
     let known = standing.get(rel)
     if (known === undefined) {
       const abs = path.join(projectDir, rel)
+      if (dir && walkedAbsent?.has(abs) === true) {
+        absentDirs.add(abs)
+        return 'absent'
+      }
       try {
-        const st =
-          walkedAbsent?.has(abs) === true ? undefined : lstatSync(abs, { throwIfNoEntry: false })
+        const st = lstatSync(abs, { throwIfNoEntry: false })
         known = st === undefined ? 'absent' : st.isDirectory() ? 'dir' : 'other'
         if (known === 'absent') absentDirs.add(abs)
       } catch {
@@ -503,7 +508,7 @@ async function copyTree(
     for (let i = 1; i <= segs.length; i++) {
       const rel = segs.slice(0, i).join('/')
       const isLeaf = i === segs.length
-      const state = at(rel)
+      const state = at(rel, !isLeaf || r.path.endsWith('/'))
       if (state === 'absent') {
         if (!isLeaf || r.path.endsWith('/')) made.add(rel)
         else placed.push(rel)

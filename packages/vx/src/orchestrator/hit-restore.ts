@@ -79,7 +79,9 @@ export async function restoreHit(given: RestoreHitArgs): Promise<TaskOutcome> {
   // Asked already when the scheduler tried to settle it in place: a second
   // lstat per output directory of every restored hit.
   const stale = args.run.staleTrees
-  const asked = stale?.get(node.id) === hash && stale.delete(node.id)
+  const settled = stale?.get(node.id)
+  if (settled !== undefined) stale!.delete(node.id)
+  const asked = settled === hash
   const now = asked ? undefined : currentHit(restore)
   if (now !== undefined) return now()
   // The directories the positive globs cover whole. A `!` entry inside one
