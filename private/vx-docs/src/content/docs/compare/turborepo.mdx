@@ -1,0 +1,242 @@
+---
+title: vx vs Turborepo
+description: What changes when a Turborepo workspace moves to vx, the time each tool adds, and when Turborepo is the better pick.
+---
+
+import { Aside } from '@astrojs/starlight/components'
+import { Levels, Deeper, Concept, Quiz, Walkthrough, Frame, Compare, Takeaway, NextStep } from '../../../components/learn'
+
+Coming from Turborepo? One command turns your `turbo.json` into vx config.
+
+```sh
+bunx @vzn/vx init --native
+```
+
+<Levels />
+
+Here is the same `build` task, before and after:
+
+<Compare left="turbo.json" right="packages/web/vx.config.ts">
+<div slot="left">
+
+```json
+"build": {
+  "dependsOn": ["^build"],
+  "inputs": [
+    "src/**",
+    "index.html"
+  ],
+  "outputs": ["dist/**"]
+}
+```
+
+</div>
+<div slot="right">
+
+```ts
+build: {
+  exec: { command: 'vite build' },
+  dependsOn: ['^build'],
+  inputs: {
+    files: [
+      'src/**',
+      'index.html',
+      'package.json',
+    ],
+  },
+  outputs: { files: ['dist/**'] },
+  cache: true,
+},
+```
+
+</div>
+</Compare>
+
+Look at `exec.command`: vx runs `vite build` itself. No `package.json` script sits in between.
+
+## How much time each tool adds
+
+<Concept term="Overhead">
+  The time a task runner adds on top of your tasks: reading files, hashing, scheduling, restoring
+  outputs. Your tasks take the same time in both tools. The overhead is what differs.
+</Concept>
+
+Both tools ran the same graph, the same commands, at the same concurrency. Shorter bars mean less waiting on the tool.
+
+| Time added over the ideal run, %bench.projects% projects, %bench.tasks% tasks | vx | Turborepo |
+| --- | --- | --- |
+| Nothing changed | %bench.vx.warm% | %bench.turbo.warm% |
+| Nothing changed, outputs restored | %bench.vx.restore% | %bench.turbo.restore% |
+| Cold build | %bench.vx.cold% | %bench.turbo.cold% |
+| Cold build: CPU the runner burns | %bench.vx.cpu% | %bench.turbo.cpu% |
+
+%bench.provenance%
+
+<Takeaway>read a benchmark bar as the time the tool costs you, not your build's time.</Takeaway>
+
+<Deeper level="details" title="How it is measured">
+
+**Workload.** A synthetic monorepo of %bench.projects% projects and %bench.tasks% tasks in %bench.levels% dependency levels. Five core libraries are used by a quarter of the projects.
+
+**Task times.** Build %bench.task.build%, test and typecheck %bench.task.test%, lint %bench.task.lint%, publish %bench.task.publish%. Real repos with uneven task times differ: see [On real workspaces](../real-repos/).
+
+**Config.** Each tool runs its own native config. Turborepo runs with the `futureFlags` its [Conformance](../../conformance/) score is measured on.
+
+Those flags make Turborepo slower here, by about 0.1 to 0.2 s of a nothing-changed run. The full method is on [Benchmarks](../../benchmarks/).
+
+</Deeper>
+
+## Four things that work differently
+
+| You want | Turborepo | vx |
+| --- | --- | --- |
+| A task to re-run on change | Hashes every tracked file in the package | Hashes the files you list in `inputs.files` |
+| Clean outputs after a hit | Adds the cached files; old files stay | Puts back exactly the cached files |
+| Config changes to count | Static JSON | Your TypeScript is evaluated, then hashed |
+| Proof a task reads only its inputs | No file sandbox | Opt-in [sandbox](../../docs/sandboxing/), free and local |
+
+The second row is the one that bites. A stale file in `dist/` ships quietly.
+
+<Quiz q="Last week's build wrote dist/old.js. Today's build no longer does. After a cache hit, is dist/old.js still there?">
+  With Turborepo, yes: a restore adds files and never removes them. With vx, no: it wipes the
+  declared outputs first, then puts back exactly what the cache holds.
+</Quiz>
+
+<Takeaway>spot the four places where moving to vx changes what you write or what you get.</Takeaway>
+
+<Deeper level="patterns" title="Share a cache your pull requests cannot poison">
+
+A pull request that can write the cache main reads can plant bytes that main later replays.
+
+With `turboCache()`, a read names the branches it may see (`x-artifact-read-scopes`). The server's CI OIDC trust policy decides where a write lands.
+
+So a pull request reads main's entries and never writes them. The [security model](../../security/#cache-poisoning) has the full rules.
+
+</Deeper>
+
+<Deeper level="details" title="Feature by feature">
+
+| Feature | vx | Turborepo |
+| --- | --- | --- |
+| Config | TypeScript, evaluated into the cache key | JSON (`turbo.json`), static |
+| Default inputs | None: you declare `inputs.files` | Every tracked file in the package |
+| Outputs on run and restore | Exactly the cached files: no stale file survives a hit | Additive: stale files survive |
+| Task sandbox | Free and local, opt-in per task (Linux, macOS) | Its docs describe no file sandbox |
+| Clean-tree hashing | No source reads: git index OIDs | git OIDs |
+| Daemon | None | None for `turbo run` (2.8.11 and later) |
+| Remote cache | Your own server (`vxCache()`), Turbo's wire (`turboCache()`), Nx's, or Bazel REAPI | Vercel's `/v8/artifacts`, hosted or your own |
+| Tasks on other machines | [Distributed task execution](../../docs/distributed-task-execution/) over workers your CI starts | None built in |
+| Plugins | Every stage of a run, 16 hooks; core applies none | Its docs describe no plugin surface |
+| Why a task missed | `vx why` names the file, env var or upstream that moved | `--summarize` shows hashes, not the diff |
+| Watch mode | `vx watch <task>` | `turbo watch` |
+| Prune for Docker | No equivalent | `turbo prune` |
+| Import boundaries | Tag rules on package dependencies (`run.rules.dependencies`); imports are a lint's job | `boundaries` |
+| Terminal output | Streamed blocks you can scroll, copy and pipe | Terminal UI |
+| Install | One binary with Bun inside; Node optional | npm and Node |
+
+Every row is held in [vx vs Turborepo vs Nx](../../comparison/), which links each row to its source. How both tools do on one suite of cases is on [Conformance](../../conformance/).
+
+</Deeper>
+
+## When Turborepo is the better pick
+
+Pick Turborepo if one of these decides it for you:
+
+- **Caching before anyone writes an input list.** Turborepo hashes every tracked file by default ([`inputs`](https://turborepo.com/docs/reference/configuration#inputs)). With vx, keeping inputs right is your job.
+- **A stable release with a [support policy](https://turborepo.com/docs/support-policy).** vx is pre-alpha: 0.0.x on npm.
+- **A terminal UI and import checks.** Both ship in Turborepo. vx streams plain blocks and leaves source imports to your linter.
+- **`turbo prune` for Docker images.** vx has no equivalent.
+- **Go, Cargo or uv in the graph.** Turborepo has experimental support. vx runs JavaScript workspaces.
+
+<Takeaway>tell whether your workspace is better served by Turborepo, before you switch.</Takeaway>
+
+## Switch in one command
+
+<Walkthrough title="A Turborepo workspace moves to vx">
+<Frame title="1. Run init: it reads turbo.json">
+
+```ansi title="bunx @vzn/vx init --native"
+[2m$[0m bunx @vzn/vx init --native
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mvx-migrate 0.0.659[0m[4m[58;2;110;118;129m                                                                                                    [0m
+  [2mfrom    [0m  [38;2;203;213;225mturbo.json[0m
+  [2mran     [0m  [38;2;203;213;225mbun add -d @vzn/vx@0.0.659 @vzn/vx-lockfile@0.0.659 @vzn/vx-history@0.0.659[0m
+  [2mtasks   [0m  [38;2;34;197;94m4 clean[0m
+  [2mfiles   [0m  [38;2;203;213;225mpackages/ui/vx.config.ts[0m
+            [38;2;203;213;225mpackages/web/vx.config.ts[0m
+            [38;2;203;213;225m.vx/workspace.ts[0m
+            [38;2;203;213;225m.vx/.gitignore[0m
+  [2mlock    [0m  [38;2;203;213;225m2 project configs → .vx/projects.lock.jsonl, .vx/dependencies.lock[0m
+  [2mnote    [0m  [38;2;203;213;225mTurbo passes its builtin env (HOME, CI, PATH, VERCEL_* and the rest) to each task; vx passes the names a task lists — add the ones a task reads to exec.env.passThrough[0m
+
+  [2mnext    [0m  [1mvx run build --all[0m
+```
+
+Read the `tasks` line: **4 clean**. Every task mapped with nothing left to fix by hand.
+
+</Frame>
+<Frame title="2. Each package gets its own config">
+
+```ts title="packages/web/vx.config.ts"
+import type { ProjectConfig } from '@vzn/vx/config'
+
+export default {
+  tasks: {
+    build: {
+      exec: { command: 'vite build' },
+      dependsOn: ['^build'],
+      inputs: { files: ['src/**', 'index.html', 'package.json'] },
+      outputs: { files: ['dist/**'] },
+      cache: true,
+    },
+    test: {
+      exec: { command: 'vitest run' },
+      dependsOn: ['build'],
+      inputs: { files: ['src/**', 'package.json'] },
+      outputs: { files: [] },
+      cache: true,
+    },
+  },
+} satisfies ProjectConfig
+```
+
+The script `vite build` became the task's command. Your `package.json` scripts are never edited.
+
+</Frame>
+<Frame title="3. Run the build with vx">
+
+```sh
+vx run build --all
+```
+
+Run it twice. The second run is all cache hits, as on [Caching](../../docs/caching/).
+
+</Frame>
+</Walkthrough>
+
+<Takeaway>move a Turborepo workspace to vx and run its build.</Takeaway>
+
+<Deeper level="patterns" title="Keep your remote cache and your flags">
+
+### Keep Vercel Remote Cache
+
+Declare `turboCache()` in `.vx/workspace.ts` and set `TURBO_TOKEN` and `TURBO_TEAM`. On a laptop, type the token once when asked: it stays in the OS keychain.
+
+vx stores its own entries there. Turborepo cannot read them, and vx does not read Turborepo's.
+
+### Your Turbo flags
+
+`vx run` takes each Turbo flag as it is (`--filter`, `--affected`, `--concurrency`), rewrites it to vx's spelling, or refuses it and names the vx way. None is dropped in silence.
+
+</Deeper>
+
+<Deeper level="details" title="What init cannot map">
+
+Anything `turbo.json` says that vx cannot becomes a `TODO(vx-migrate)` comment in the config, never a silent wrong value.
+
+The `note` lines in init's report name each gap. Above, it says Turborepo passes its builtin env (`HOME`, `CI`, `VERCEL_*`) to every task. vx passes only the names a task lists in `exec.env.passThrough`.
+
+The whole mapping is on [Migrate](../../docs/migrate/). vx is MIT, with no cloud and no account.
+
+</Deeper>
+
+<NextStep href="../../docs/migrate/" title="Migrate">Every rule init follows when it reads your turbo.json.</NextStep>

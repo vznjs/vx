@@ -1,0 +1,248 @@
+---
+title: vx vs Nx
+description: What changes when an Nx workspace moves to vx, the time each tool adds, what Nx keeps for Nx Cloud, and when Nx is the better pick.
+---
+
+import { Levels, Deeper, Concept, Quiz, Walkthrough, Frame, Compare, Takeaway, NextStep } from '../../../components/learn'
+
+Coming from Nx? One command turns your Nx graph into vx config.
+
+```sh
+bunx @vzn/vx init --native
+```
+
+<Levels />
+
+Here is the same `build` target, before and after:
+
+<Compare left="nx.json + project.json" right="packages/web/vx.config.ts">
+<div slot="left">
+
+```json
+"build": {
+  "executor": "nx:run-commands",
+  "options": {
+    "command": "vite build"
+  },
+  "dependsOn": ["^build"],
+  "inputs": [
+    "{projectRoot}/src/**/*"
+  ],
+  "outputs": [
+    "{projectRoot}/dist"
+  ],
+  "cache": true
+}
+```
+
+</div>
+<div slot="right">
+
+```ts
+build: {
+  exec: { command: 'vite build' },
+  dependsOn: ['^build'],
+  inputs: { files: ['src/**/*'] },
+  outputs: { files: ['dist'] },
+  cache: true,
+},
+```
+
+</div>
+</Compare>
+
+Look at `exec.command`: vx spawns `vite build` itself. No Node process boots per task, and no daemon runs.
+
+## How much time each tool adds
+
+<Concept term="Overhead">
+  The time a task runner adds on top of your tasks: reading files, hashing, scheduling, restoring
+  outputs. Your tasks take the same time in both tools. The overhead is what differs.
+</Concept>
+
+Both tools ran the same graph, the same commands, at the same concurrency. Shorter bars mean less waiting on the tool.
+
+| Time added over the ideal run, %bench.projects% projects, %bench.tasks% tasks | vx | Nx |
+| --- | --- | --- |
+| Nothing changed | %bench.vx.warm% | %bench.nx.warm% |
+| Nothing changed, outputs restored | %bench.vx.restore% | %bench.nx.restore% |
+| Cold build | %bench.vx.cold% | %bench.nx.cold% |
+| Cold build: CPU the runner burns | %bench.vx.cpu% | %bench.nx.cpu% |
+
+%bench.provenance%
+
+<Takeaway>read a benchmark bar as the time the tool costs you, not your build's time.</Takeaway>
+
+<Deeper level="details" title="How it is measured">
+
+**Workload.** A synthetic monorepo of %bench.projects% projects and %bench.tasks% tasks in %bench.levels% dependency levels. Five core libraries are used by a quarter of the projects.
+
+**Task times.** Build %bench.task.build%, test and typecheck %bench.task.test%, lint %bench.task.lint%, publish %bench.task.publish%. Real repos with uneven task times differ.
+
+**Config.** Each tool runs its own native config. Every Nx task is an `nx:run-commands` target running the same command vx runs.
+
+**Nx settings.** The daemon is off, as in CI. `.env` loading is off (`NX_LOAD_DOT_ENV_FILES=false`), which makes Nx faster here than its default.
+
+The daemon does not help here. With it on, a nothing-changed run took 70 s against 23 s off (Nx 24.0.6, 4-core Linux, best of three, 2026-11-23).
+
+The full method is on [Benchmarks](../../benchmarks/).
+
+</Deeper>
+
+## Free on vx, Nx Cloud on Nx
+
+Nx offers these three through Nx Cloud. With vx they run on your machine, at no cost.
+
+| You want | Nx | vx |
+| --- | --- | --- |
+| A task kept to the files it declared | [Sandboxing](https://nx.dev/docs/features/ci-features/sandboxing) on Nx Cloud | [`exec.sandbox`](../../docs/sandboxing/), local |
+| Flaky tasks flagged | Nx Cloud | Local: the same key failed after it passed |
+| Past runs to look back on | Nx Cloud | `vx last` replays any run; `vx why` names what moved |
+
+A sandboxed task that reads a file it did not declare fails. A failed task is never cached.
+
+<Quiz q="A sandboxed task reads ../../.env, which it never declared. What happens?">
+  The read is out of its reach, so the task fails and nothing is cached. You either add the file
+  to the task's inputs, or stop reading it.
+</Quiz>
+
+<Takeaway>get sandboxing, flaky detection and run history with no account.</Takeaway>
+
+## A shared cache a pull request cannot poison
+
+A pull request that can write the cache main reads can plant bytes that main later replays.
+
+That attack is CREEP ([CVE-2025-36852](https://nx.dev/blog/cve-2025-36852-critical-cache-poisoning-vulnerability-creep)). Nx's advisory names its bucket-based self-hosted cache packages as affected.
+
+With vx, the cache server decides. Your CI's OIDC token, checked against the server's trust policy, says where a write lands.
+
+So a pull request writes only its own branch's cache. It reads its own results first, then main's ([security model](../../security/#cache-poisoning)).
+
+<Takeaway>share one cache between main and pull requests without trusting every pull request.</Takeaway>
+
+<Deeper level="details" title="Feature by feature">
+
+| Feature | vx | Nx |
+| --- | --- | --- |
+| Config | TypeScript, evaluated into the cache key | JSON (`project.json`, `nx.json`), plus inferred targets |
+| Daemon | None; nothing boots per task | On by default locally |
+| Outputs on run and restore | Exactly the cached files: no stale file survives a hit | Additive |
+| Task sandbox | Free and local, opt-in per task (Linux, macOS) | An Nx Cloud feature |
+| Remote cache | Your own server (`vxCache()`), Nx's self-hosted spec (`nxCache()`), Turbo's, or Bazel REAPI | Nx Cloud or a plugin |
+| Flaky task detection | Local: the same key failed after it passed | Nx Cloud |
+| Why a task missed | `vx why` names the file, env var or upstream that moved | Shows hashes, not the diff |
+| Tasks on other machines | [Distributed task execution](../../docs/distributed-task-execution/) over workers your CI starts | Nx Agents on Nx Cloud |
+| Plugins | Every stage of a run, 16 hooks; core applies none | Inferred tasks, graph data, generators, executors |
+| Other languages | JavaScript workspaces | Gradle, Maven and .NET |
+| One task, many modes (`build:prod`) | A TypeScript function per mode, two tasks | `configurations` and `-c` |
+| Terminal output | Streamed blocks you can scroll, copy and pipe | Terminal UI |
+| Install | One binary with Bun inside; Node optional | npm and Node |
+
+Every row is held in [vx vs Turborepo vs Nx](../../comparison/), which links each row to its source. How both tools do on one suite of cases is on [Conformance](../../conformance/).
+
+</Deeper>
+
+## When Nx is the better pick
+
+Pick Nx if one of these decides it for you:
+
+- **Plugins that already know your tools.** Nx infers targets from your tool configs ([Nx plugins](https://nx.dev/docs/concepts/nx-plugins)). vx asks you to write each task.
+- **JVM or .NET in the same graph** ([multi-language support](https://nx.dev/docs/features/multi-language-support)). vx runs JavaScript workspaces.
+- **CI distribution run for you as a service** ([Nx Agents](https://nx.dev/docs/features/ci-features/distribute-task-execution)). vx's Distributed task execution runs on workers and servers you own.
+- **One task, many modes.** Nx's `configurations` keep `build:prod` as one target.
+- **A stable release.** vx is pre-alpha: 0.0.x on npm, no support policy.
+
+<Takeaway>tell whether your workspace is better served by Nx, before you switch.</Takeaway>
+
+## Switch in one command
+
+<Walkthrough title="An Nx workspace moves to vx">
+<Frame title="1. Run init: it reads the resolved Nx graph">
+
+```ansi title="bunx @vzn/vx init --native"
+[2m$[0m bunx @vzn/vx init --native
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mvx-migrate 0.0.659[0m[4m[58;2;110;118;129m                                                                                                    [0m
+  [2mfrom    [0m  [38;2;203;213;225mnx graph[0m
+  [2mran     [0m  [38;2;203;213;225mbun add -d @vzn/vx@0.0.659 @vzn/vx-lockfile@0.0.659 @vzn/vx-history@0.0.659[0m
+  [2mtasks   [0m  [38;2;34;197;94m4 clean[0m
+  [2mfiles   [0m  [38;2;203;213;225mpackages/ui/vx.config.ts[0m
+            [38;2;203;213;225mpackages/web/vx.config.ts[0m
+            [38;2;203;213;225m.vx/workspace.ts[0m
+            [38;2;203;213;225m.vx/.gitignore[0m
+  [2mlock    [0m  [38;2;203;213;225m2 project configs → .vx/projects.lock.jsonl, .vx/dependencies.lock[0m
+  [2mnote    [0m  [38;2;203;213;225mmigrating from the resolved project-graph snapshot — plugin-inferred targets are frozen as static config; [0m[1m`nx:run-commands`[0m[38;2;203;213;225m targets are their shell lines[0m
+
+  [2mnext    [0m  [1mvx run build --all[0m
+```
+
+Read the `tasks` line: **4 clean**. Every target mapped with nothing left to fix by hand.
+
+</Frame>
+<Frame title="2. Each package gets its own config">
+
+```ts title="packages/web/vx.config.ts"
+import type { ProjectConfig } from '@vzn/vx/config'
+
+export default {
+  tasks: {
+    build: {
+      exec: { command: 'vite build' },
+      dependsOn: ['^build'],
+      inputs: { files: ['src/**/*', 'index.html'] },
+      outputs: { files: ['dist'] },
+      cache: true,
+    },
+    test: {
+      exec: { command: 'vitest run' },
+      dependsOn: ['build'],
+      inputs: { files: ['src/**/*'] },
+      outputs: { files: [] },
+      cache: true,
+    },
+  },
+} satisfies ProjectConfig
+```
+
+`targetDefaults` from `nx.json` landed on each task. `{projectRoot}/` is gone: a vx path starts at the package.
+
+</Frame>
+<Frame title="3. Run the build with vx">
+
+```sh
+vx run build --all
+```
+
+Run it twice. The second run is all cache hits, as on [Caching](../../docs/caching/).
+
+</Frame>
+</Walkthrough>
+
+<Takeaway>move an Nx workspace to vx and run its build.</Takeaway>
+
+<Deeper level="patterns" title="Keep your remote cache and your habits">
+
+### Keep your Nx remote cache
+
+Declare `nxCache()` in `.vx/workspace.ts`. It speaks Nx's self-hosted `/v1/cache` spec, so your cache server stays.
+
+### Your Nx flags and target names
+
+`vx run` takes each Nx flag as it is, rewrites it to vx's spelling, or refuses it and names the vx way. None is dropped in silence.
+
+`vx run web:build`, typed the Nx way, is answered with the vx spelling: `vx run web#build`.
+
+</Deeper>
+
+<Deeper level="details" title="What init cannot map">
+
+Anything Nx can say that vx cannot becomes a `TODO(vx-migrate)` comment in the config, never a silent wrong value.
+
+Targets inferred by Nx plugins are written out as static config. `nx:run-commands` targets become their shell lines.
+
+Executor targets (`@nx/js:tsc`, `@nx/vite:build`) run as themselves, so Nx stays installed until you rewrite each one as the command it runs.
+
+The whole mapping is on [Migrate](../../docs/migrate/). vx is MIT, with no cloud and no account.
+
+</Deeper>
+
+<NextStep href="../../docs/migrate/" title="Migrate">Every rule init follows when it reads your Nx graph.</NextStep>
