@@ -161,6 +161,25 @@ describe('a found program whose runtime the sandbox hides', () => {
     )
   })
 
+  // A compound command has no one word to read, and the loader's line is
+  // not the shell's "not found": the verdict said "a command in this task
+  // is not on this task's PATH" for a program that ran and lacked a library.
+  it('names the library from the loader line of a compound command', () => {
+    expect(
+      shellVerdict({
+        code: 127,
+        command: 'cd . && tool-a41 -c "print(1)"',
+        cwd: dir,
+        bins: [bin],
+        hidden: (f) => !f.startsWith(`${bin}/`),
+        stderr:
+          'tool-a41: error while loading shared libraries: libnope-a41.so.2: cannot open shared object file: No such file or directory\n',
+      }),
+    ).toBe(
+      `[vx] exit 127 is the shell's "not found": tool-a41 is there, but the loader could not open libnope-a41.so.2, a library its runtime links, which no sandbox grant reads, so inside the sandbox it is not there — add it (or its directory) to exec.sandbox.allow.read`,
+    )
+  })
+
   it("names the runtime env's own line says it could not find", () => {
     const saved = process.env['PATH']
     process.env['PATH'] = `${rt}${path.delimiter}${saved ?? ''}`

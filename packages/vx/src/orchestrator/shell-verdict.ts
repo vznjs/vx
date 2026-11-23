@@ -75,7 +75,8 @@ export function shellVerdict(args: {
 
 /**
  * The word the shell's last "not found" line names: dash's `sh: 1: cat:
- * not found`, bash's `bash: line 1: cat: command not found`. A command with
+ * not found`, bash's `bash: line 1: cat: command not found`, or the
+ * loader's `python3: error while loading shared libraries: …`. A command with
  * a redirect or a `&&` has no one word to read from the command itself, and
  * a hermetic task's hidden `cat` was told to be installed (almost every
  * real command has one).
@@ -84,8 +85,12 @@ function notFoundWord(stderr: string | undefined): string | undefined {
   if (stderr === undefined) return undefined
   const lines = stderr.trimEnd().split('\n')
   for (let i = lines.length - 1; i >= 0; i--) {
-    const m = /: ([^:]+): (?:command )?not found$/.exec(lines[i]!.trimEnd())
+    const line = lines[i]!.trimEnd()
+    const m = /: ([^:]+): (?:command )?not found$/.exec(line)
     if (m !== null) return m[1]
+    // The loader's own line names the program that ran and lacked a library.
+    const lib = /^([^:\s]+): error while loading shared libraries: /.exec(line)
+    if (lib !== null) return lib[1]
   }
   return undefined
 }
