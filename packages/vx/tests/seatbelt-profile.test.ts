@@ -16,11 +16,11 @@ import {
   darwinGrantRules,
   darwinWallRules,
   macProfileRules,
-  resolveSandboxConfig,
   sbplResolvedPath,
   seatbeltBrackets,
   wallsGlobsReach,
-} from '../src/sandbox/runtime.js'
+} from '../src/sandbox/seatbelt.js'
+import { resolveSandboxConfig } from '../src/sandbox/grants.js'
 import { UserError } from '../src/util/index.js'
 // ui draws the notices the modules under test say (util/notice.ts), as in vx.
 import '../src/ui/index.js'

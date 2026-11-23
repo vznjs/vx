@@ -210,7 +210,7 @@ whatever it forked lived on.
 - Callers: the runner's timeout and readiness deadline, the signal
   teardown (`orchestrator/signals.ts`), the end-of-run persistent
   shutdown (`orchestrator/persistent.ts`), the sandbox's port-bridge
-  teardown (`sandbox/runtime.ts`). The sandboxed spawn is
+  teardown (`sandbox/bridges.ts`). The sandboxed spawn is
   detached too; bwrap's pid namespace would reap on its own, and one
   rule for every spawn is simpler than two.
 - A task runs in its own session, so the terminal closing no longer

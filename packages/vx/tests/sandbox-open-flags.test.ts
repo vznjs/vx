@@ -6,7 +6,7 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'nod
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
-import { resolveSandboxConfig } from '../src/sandbox/runtime.js'
+import { resolveSandboxConfig } from '../src/sandbox/grants.js'
 import { parseStraceViolations, refusedWrites } from '../src/sandbox/violations.js'
 import { sandboxFix } from '../src/sandbox/fix.js'
 

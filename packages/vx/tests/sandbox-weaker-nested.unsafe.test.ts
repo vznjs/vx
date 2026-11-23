@@ -11,12 +11,9 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, spyOn } from 'bun
 import { SandboxManager } from '@anthropic-ai/sandbox-runtime'
 import type { TaskNode } from '../src/graph/index.js'
 import { prepareSandbox } from '../src/sandbox/request.js'
-import {
-  probeSandbox,
-  resetSandbox,
-  resolveSandboxConfig,
-  wrapSandboxedCommand,
-} from '../src/sandbox/runtime.js'
+import { probeSandbox, resetSandbox } from '../src/sandbox/session.js'
+import { resolveSandboxConfig } from '../src/sandbox/grants.js'
+import { wrapSandboxedCommand } from '../src/sandbox/runtime.js'
 import { sandboxAvailable } from './helpers/sandbox-gate.js'
 
 const available = await sandboxAvailable('sandbox weaker-nested test')

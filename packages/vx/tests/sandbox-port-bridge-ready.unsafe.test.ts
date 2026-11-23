@@ -11,12 +11,9 @@ import { createConnection } from 'node:net'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import {
-  initSandbox,
-  resetSandbox,
-  resolveSandboxConfig,
-  runSandboxed,
-} from '../src/sandbox/runtime.js'
+import { initSandbox, resetSandbox } from '../src/sandbox/session.js'
+import { resolveSandboxConfig } from '../src/sandbox/grants.js'
+import { runSandboxed } from '../src/sandbox/runtime.js'
 import { sandboxAvailable } from './helpers/sandbox-gate.js'
 import { freePort } from './helpers/free-port.js'
 

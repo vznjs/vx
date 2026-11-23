@@ -1683,7 +1683,7 @@ Cost: 0.65 ms per command on macOS CI (`bun:ffi` load included).
 A helper vx keeps running beside its tasks would show the same values:
 a spawn with no `env` hands the child vx's startup env, and the child is
 readable after its `exec`. `helperEnv()` is `PATH` alone; the group
-guard (`exec/kill-tree.ts`) and the port bridges (`sandbox/runtime.ts`)
+guard (`exec/kill-tree.ts`) and the port bridges (`sandbox/bridges.ts`)
 start with it. `gitEnv()` is what git reads (`GIT_*`, the locale,
 `XDG_CONFIG_HOME`) plus the essentials; every `git` vx runs gets it
 (`tests/git-env.test.ts`). Not covered: the sandbox runtime's own network

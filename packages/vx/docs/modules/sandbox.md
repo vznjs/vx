@@ -21,10 +21,35 @@ reported.
 
 ### Files
 
-`sandbox/runtime.ts` keeps the lifecycle (`probeSandbox`, `initSandbox`,
-`resetSandbox`), the config resolution (`resolveSandboxConfig`) and the
-spawn (`runSandboxed`, `wrapSandboxedCommand`, the macOS profile rules).
-Three companions hold the rest, split 2026-09-09 as pure code motion:
+`sandbox/runtime.ts` wraps and runs one task (`wrapSandboxedCommand`,
+`runSandboxed`: the wrap, the attempt and its retry, the denials read
+back). It was one 4,500-line file until 2026-11-23, split by code motion
+along its seams; each file below imports only those under it, so no
+import cycle holds them together:
+
+- `sandbox/session.ts` — the run's SRT session: `initSandbox`,
+  `resetSandbox` (deferred while a server runs), `probeSandbox`'s memo,
+  `releaseBridges` (a task's end), `wrapForTask` (the per-task config a
+  wrap holds), and the host helpers SRT runs (the no-op deny scan, the
+  env-cut socat) and a hermetic task's reads.
+- `sandbox/probe.ts` — the checks behind `probeSandbox` and their
+  reasons in the user's terms (`unavailableReason`, `socketPathRefusal`,
+  `thrownReason`).
+- `sandbox/trace.ts` — the Linux tracer: the command's own process group
+  under vx's observer or strace (`ownGroupCommand`), which one this host
+  can run (`traceFor`, `untracedReason`), and SRT's store records
+  collected per command (`collectRecords`).
+- `sandbox/bridges.ts` — a task's own proxy front (`ownProxy`) and the
+  Linux port bridges (`localBinding` out, loopback `network` ports in),
+  closed with the task (`closeTaskNet`).
+- `sandbox/tmp.ts` — a task's own TMPDIR and the temp files the
+  process's `exit` removes.
+- `sandbox/grants.ts` — `resolveSandboxConfig`, grant expansion, the
+  canonical baselines.
+- `sandbox/seatbelt.ts` — the macOS profile rules vx adds to SRT's.
+- `sandbox/hints.ts` — the notes beside a failure's denials (`addHints`).
+
+Three more companions, split 2026-09-09 as pure code motion:
 
 - `sandbox/violations.ts` — the Linux trace pass, over the observer's
   lines or strace's, which share a shape (`deniedCalls`,

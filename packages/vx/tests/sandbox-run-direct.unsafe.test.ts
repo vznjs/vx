@@ -22,16 +22,11 @@ import { mkdtemp, mkdir, rm, symlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
-import {
-  initSandbox,
-  releaseBridges,
-  resetSandbox,
-  resolveSandboxConfig,
-  runSandboxed,
-  wrapSandboxedCommand,
-} from '../src/sandbox/runtime.js'
+import { initSandbox, releaseBridges, resetSandbox } from '../src/sandbox/session.js'
+import { resolveSandboxConfig } from '../src/sandbox/grants.js'
+import { runSandboxed, wrapSandboxedCommand } from '../src/sandbox/runtime.js'
 import type { SandboxViolation } from '../src/exec/index.js'
-import { portBridgeSocket } from '../src/sandbox/runtime.js'
+import { portBridgeSocket } from '../src/sandbox/bridges.js'
 import { killTree } from '../src/exec/kill-tree.js'
 import { peakRssBytes } from '../src/exec/runner.js'
 import { SandboxManager } from '@anthropic-ai/sandbox-runtime'
@@ -187,7 +182,7 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
     const ws = path.join(dir, 'ws')
     await mkdir(ws)
     const script = [
-      `import { initSandbox, resetSandbox, runSandboxed, resolveSandboxConfig, wrapSandboxedCommand, releaseBridges } from ${JSON.stringify(path.resolve(import.meta.dir, '..', 'src', 'sandbox', 'runtime.ts'))}`,
+      `import { initSandbox, resetSandbox, releaseBridges } from ${JSON.stringify(path.resolve(import.meta.dir, '..', 'src', 'sandbox', 'session.ts'))}\nimport { runSandboxed, wrapSandboxedCommand } from ${JSON.stringify(path.resolve(import.meta.dir, '..', 'src', 'sandbox', 'runtime.ts'))}\nimport { resolveSandboxConfig } from ${JSON.stringify(path.resolve(import.meta.dir, '..', 'src', 'sandbox', 'grants.ts'))}`,
       `import { readdirSync } from 'node:fs'`,
       `const dir = process.cwd()`,
       `const args = (command) => ({ command, cwd: dir, env: process.env, baseAllowRead: [dir], baseDenyRead: [], reportWithin: dir, reportLinked: [], config: resolveSandboxConfig({ allow: { read: ['.'], write: ['.'] } }, dir) })`,
@@ -587,7 +582,7 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
       const ws = path.join(dir, 'ws')
       await mkdir(ws)
       const script = [
-        `import { initSandbox, resetSandbox, runSandboxed, resolveSandboxConfig } from ${JSON.stringify(path.resolve(import.meta.dir, '..', 'src', 'sandbox', 'runtime.ts'))}`,
+        `import { initSandbox, resetSandbox } from ${JSON.stringify(path.resolve(import.meta.dir, '..', 'src', 'sandbox', 'session.ts'))}\nimport { runSandboxed } from ${JSON.stringify(path.resolve(import.meta.dir, '..', 'src', 'sandbox', 'runtime.ts'))}\nimport { resolveSandboxConfig } from ${JSON.stringify(path.resolve(import.meta.dir, '..', 'src', 'sandbox', 'grants.ts'))}`,
         `import { readdirSync } from 'node:fs'`,
         `const dir = process.cwd()`,
         `const args = (command, extra = {}) => ({ command, cwd: dir, env: process.env, baseAllowRead: [dir], baseDenyRead: [], reportWithin: dir, reportLinked: [], config: resolveSandboxConfig({ allow: { read: ['.'], write: ['.'] } }, dir), ...extra })`,
@@ -923,10 +918,10 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
   // the probe.
   describe('strace detection', () => {
     const detecting = (pathDirs: string, together = false): unknown => {
-      const src = path.resolve(import.meta.dir, '..', 'src', 'sandbox', 'runtime.ts')
+      const sandbox = path.resolve(import.meta.dir, '..', 'src', 'sandbox')
       const script = [
-        `import { initSandbox, resetSandbox, runSandboxed, resolveSandboxConfig } from ${JSON.stringify(src)}`,
-        // ui draws the notices runtime.ts says, as in vx.
+        `import { initSandbox, resetSandbox } from ${JSON.stringify(path.join(sandbox, 'session.ts'))}\nimport { runSandboxed } from ${JSON.stringify(path.join(sandbox, 'runtime.ts'))}\nimport { resolveSandboxConfig } from ${JSON.stringify(path.join(sandbox, 'grants.ts'))}`,
+        // ui draws the notices the sandbox says, as in vx.
         `import ${JSON.stringify(path.resolve(import.meta.dir, '..', 'src', 'ui', 'index.ts'))}`,
         `const calls = []`,
         `const spawn = Bun.spawn`,
@@ -965,7 +960,7 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
     it('an strace before 5.3 traces without --seccomp-bpf, one after with it', async () => {
       // `--seccomp-bpf` came in strace 5.3; an older one refuses the flag.
       const real = Bun.which('strace')!
-      const src = path.resolve(import.meta.dir, '..', 'src', 'sandbox', 'runtime.ts')
+      const sandbox = path.resolve(import.meta.dir, '..', 'src', 'sandbox')
       const seccomp = async (version: string): Promise<unknown> => {
         const bin = path.join(dir, `bin-${version}`)
         await mkdir(bin)
@@ -975,8 +970,8 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
           { mode: 0o755 },
         )
         const script = [
-          `import { initSandbox, resetSandbox, runSandboxed, resolveSandboxConfig } from ${JSON.stringify(src)}`,
-          // ui draws the notices runtime.ts says, as in vx.
+          `import { initSandbox, resetSandbox } from ${JSON.stringify(path.join(sandbox, 'session.ts'))}\nimport { runSandboxed } from ${JSON.stringify(path.join(sandbox, 'runtime.ts'))}\nimport { resolveSandboxConfig } from ${JSON.stringify(path.join(sandbox, 'grants.ts'))}`,
+          // ui draws the notices the sandbox says, as in vx.
           `import ${JSON.stringify(path.resolve(import.meta.dir, '..', 'src', 'ui', 'index.ts'))}`,
           `const forms = []`,
           `const spawn = Bun.spawn`,
@@ -1028,7 +1023,7 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
       await writeFile(path.join(bin, 'strace'), '#!/bin/sh\nexit 1\n', { mode: 0o755 })
       const src = path.resolve(import.meta.dir, '..', 'src', 'exec')
       const script = [
-        `import { initSandbox, resetSandbox, runSandboxed, resolveSandboxConfig } from ${JSON.stringify(path.join(src, '..', 'sandbox', 'runtime.ts'))}`,
+        `import { initSandbox, resetSandbox } from ${JSON.stringify(path.join(src, '..', 'sandbox', 'session.ts'))}\nimport { runSandboxed } from ${JSON.stringify(path.join(src, '..', 'sandbox', 'runtime.ts'))}\nimport { resolveSandboxConfig } from ${JSON.stringify(path.join(src, '..', 'sandbox', 'grants.ts'))}`,
         `import { killTree } from ${JSON.stringify(path.join(src, 'kill-tree.ts'))}`,
         `import ${JSON.stringify(path.join(src, '..', 'ui', 'index.ts'))}`,
         `import { existsSync, readFileSync } from 'node:fs'`,
@@ -1120,7 +1115,7 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
       const bin = path.join(dir, 'bin')
       await mkdir(bin)
       await writeFile(path.join(bin, 'strace'), '#!/bin/sh\nexit 1\n', { mode: 0o755 })
-      const src = path.resolve(import.meta.dir, '..', 'src', 'sandbox', 'runtime.ts')
+      const sandbox = path.resolve(import.meta.dir, '..', 'src', 'sandbox')
       const ask = (
         pathDirs: string,
         strace: { VX_DEBUG_STRACE?: string } = {},
@@ -1129,7 +1124,7 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
           cmd: [
             process.execPath,
             '-e',
-            `import { untracedReason } from ${JSON.stringify(src)}\nconsole.log(JSON.stringify(await untracedReason()))`,
+            `import { untracedReason } from ${JSON.stringify(path.join(sandbox, 'trace.ts'))}\nconsole.log(JSON.stringify(await untracedReason()))`,
           ],
           env: { ...process.env, PATH: pathDirs, ...strace },
           stdout: 'pipe',

@@ -20,13 +20,9 @@ import {
   toRealPath,
   nameDir,
 } from './paths.js'
-import {
-  initSandbox,
-  probeSandbox,
-  resetSandbox,
-  resolveSandboxConfig,
-  thrownReason,
-} from './runtime.js'
+import { initSandbox, probeSandbox, resetSandbox } from './session.js'
+import { resolveSandboxConfig } from './grants.js'
+import { thrownReason } from './probe.js'
 import type { TaskNode } from '../graph/index.js'
 import {
   BUN_GLOB_WILDCARDS,

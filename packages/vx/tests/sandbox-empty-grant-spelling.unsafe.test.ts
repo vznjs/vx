@@ -9,7 +9,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import { buildCustomConfig } from '../src/sandbox/binds.js'
-import { pendingWriteGrants, resolveSandboxConfig } from '../src/sandbox/runtime.js'
+import { pendingWriteGrants, resolveSandboxConfig } from '../src/sandbox/grants.js'
 // ui draws the notices the modules under test say (util/notice.ts), as in vx.
 import '../src/ui/index.js'
 

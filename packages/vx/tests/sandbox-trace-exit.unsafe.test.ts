@@ -24,8 +24,9 @@ await mock.module('node:fs/promises', () => ({
     return real.unlink(p)
   },
 }))
-const { initSandbox, resetSandbox, resolveSandboxConfig, runSandboxed } =
-  await import('../src/sandbox/runtime.js')
+const { initSandbox, resetSandbox } = await import('../src/sandbox/session.js')
+const { resolveSandboxConfig } = await import('../src/sandbox/grants.js')
+const { runSandboxed } = await import('../src/sandbox/runtime.js')
 const { sandboxAvailable } = await import('./helpers/sandbox-gate.js')
 
 const available = await sandboxAvailable('sandbox trace-log exit test')
