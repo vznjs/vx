@@ -2000,6 +2000,9 @@ async function runOnBus(
           forwardArgs: options.forwardArgs,
           outOf: serverOut.outOf,
           keyOf: (id) => (keyedHeld.has(id) ? outcomes.get(id)?.hash : undefined),
+          // `vx watch dev | head`: the reader's EPIPE stops the watch as this
+          // run prints its "running" list, and the kill it sends is no crash.
+          stopped: () => stop.signal.aborted && stop.signal.reason !== CYCLE_INTERRUPT,
         }),
       }
     }

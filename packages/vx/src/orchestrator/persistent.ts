@@ -457,6 +457,8 @@ export interface HoldArgs {
   keyOf: (id: string) => string | undefined
   /** Where a held server's output, and the notice of its death, go. */
   outOf: (id: string) => HeldServer['out']
+  /** The run's own stop signalled its servers: a stop landing after it chose to hold them. */
+  stopped: () => boolean
 }
 
 /** The kept servers handed to the caller (`RunOptions.hold`) instead of waited on. */
@@ -504,7 +506,7 @@ function heldServerMap(
       handOver: () => void handed.add(child),
     })
     // One that died during the graph was said then.
-    if (!hasEnded(child)) sayHeldExit(child, n.id, out, state, handed)
+    if (!hasEnded(child)) sayHeldExit(child, n.id, out, state, handed, args.stopped)
   }
   return servers
 }
@@ -520,9 +522,10 @@ function sayHeldExit(
   out: HeldServer['out'],
   state: { stopping: boolean },
   handed: ReadonlySet<Child>,
+  stopped: () => boolean,
 ): void {
   onServerExit(child, 'held', (code) => {
-    if (!state.stopping && !handed.has(child) && code !== 0)
+    if (!state.stopping && !stopped() && !handed.has(child) && code !== 0)
       for (const line of [`vx: ${id} exited with code ${code}`, ...takeExitNotes(child, code)])
         out.bus.emit({ kind: 'run:status', line, warn: true })
   })
