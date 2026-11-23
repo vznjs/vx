@@ -45,8 +45,32 @@ const PUT_FAULTS = ['ok', 'ok', '500', '429', 'torn', 'short'] as const
 let iss: Issuer
 let root: string
 let srv: ReturnType<typeof Bun.serve>
+let url: string
 const blobs = new Map<string, Uint8Array>()
 const faults = { on: false, next: rng(SEED), seen: [] as string[] }
+/**
+ * Jobs that miss "at once": while `jobs` is set, a PUT waits until each of
+ * that many jobs has asked for its hash, by GET and by check. Unheld, a job
+ * slow to start on a loaded machine asked after another had uploaded, and hit.
+ */
+const race = {
+  jobs: 0,
+  asked: new Map<string, number>(),
+  waiting: [] as { hash: string; go: () => void }[],
+}
+
+function asked(hash: string): void {
+  race.asked.set(hash, (race.asked.get(hash) ?? 0) + 1)
+  // Each job asks for a hash twice: its prefetch's GET and its check.
+  const ready = (h: string) => (race.asked.get(h) ?? 0) >= race.jobs * 2
+  for (const w of race.waiting.filter((w) => ready(w.hash))) w.go()
+  race.waiting = race.waiting.filter((w) => !ready(w.hash))
+}
+
+function heard(hash: string): Promise<void> {
+  if ((race.asked.get(hash) ?? 0) >= race.jobs * 2) return Promise.resolve()
+  return new Promise((go) => race.waiting.push({ hash, go }))
+}
 const saved = { ...Bun.env }
 
 const pick = <T>(all: readonly T[]): T => all[Math.floor(faults.next() * all.length)]!
@@ -91,6 +115,13 @@ beforeAll(async () => {
               ? pick(GET_FAULTS)
               : 'ok'
       faults.seen.push(`${kind}:${fault}`)
+      if (race.jobs > 0) {
+        const hash = p.slice('/v1/artifacts/'.length)
+        if (kind === 'get' && p.startsWith('/v1/artifacts/')) asked(hash)
+        if (kind === 'check')
+          for (const h of ((await req.clone().json()) as { hashes: string[] }).hashes) asked(h)
+        if (kind === 'put') await heard(hash)
+      }
       if (fault === '500' || fault === '503' || fault === '429') {
         await req.arrayBuffer().catch(() => undefined)
         return new Response('{"message":"injected"}', { status: Number(fault) })
@@ -146,7 +177,7 @@ beforeAll(async () => {
       return new Response(bytes, { headers })
     },
   })
-  const url = srv.url.href.replace(/\/$/, '')
+  url = srv.url.href.replace(/\/$/, '')
   delete Bun.env.ACTIONS_ID_TOKEN_REQUEST_URL
   delete Bun.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN
   Bun.env.VX_CACHE_TOKEN = await iss.sign(MAIN_JOB, new URL(url).origin)
@@ -173,11 +204,7 @@ beforeAll(async () => {
     path.join(root, 'package.json'),
     JSON.stringify({ name: 'root', workspaces: ['a', 'b', 'c'] }),
   )
-  await Bun.write(
-    path.join(root, '.vx/workspace.mjs'),
-    `import { vxCache } from ${JSON.stringify(path.resolve(import.meta.dir, '..', 'src', 'index.ts'))}\n` +
-      `export default { plugins: [vxCache({ url: ${JSON.stringify(url)}, issuer: ${JSON.stringify(GITHUB)}, repository: ${JSON.stringify(REPO)}, timeoutMs: 500, uploadTimeoutMs: 500, retries: 1 })] }\n`,
-  )
+  await writeWorkspace(root, 500)
   Bun.spawnSync({ cmd: ['git', 'init', '-q', '-b', 'main'], cwd: root })
   Bun.spawnSync({
     cmd: [
@@ -204,6 +231,15 @@ afterAll(async () => {
   await srv.stop(true)
   await rm(root, { recursive: true, force: true })
 })
+
+/** The workspace's plugin: short deadlines, so a stalled fault costs the fuzz little. */
+function writeWorkspace(dir: string, uploadTimeoutMs: number): Promise<number> {
+  return Bun.write(
+    path.join(dir, '.vx/workspace.mjs'),
+    `import { vxCache } from ${JSON.stringify(path.resolve(import.meta.dir, '..', 'src', 'index.ts'))}\n` +
+      `export default { plugins: [vxCache({ url: ${JSON.stringify(url)}, issuer: ${JSON.stringify(GITHUB)}, repository: ${JSON.stringify(REPO)}, timeoutMs: 500, uploadTimeoutMs: ${uploadTimeoutMs}, retries: 1 })] }\n`,
+  )
+}
 
 const cacheDir = () => path.join(root, '.vx', 'cache')
 
@@ -302,9 +338,15 @@ it('jobs that miss the same keys at once all upload; a later job restores one wh
   for (const p of ['a', 'b', 'c'])
     await writeFile(path.join(root, p, 'src', 'in.txt'), `${p} racing\n`)
   const racers = await jobs(6)
+  // A held upload waits on the slowest job's lookups, not on its own deadline.
+  for (const d of racers) await writeWorkspace(d, 60_000)
   const before = blobs.size
   try {
-    const runs = await Promise.all(racers.map((d) => runIn(d)))
+    race.jobs = racers.length
+    const runs = await Promise.all(racers.map((d) => runIn(d))).finally(() => {
+      race.jobs = 0
+      race.asked.clear()
+    })
     for (const r of runs)
       expect(r.outcomes.map((o) => o.status)).toEqual(['success', 'success', 'success'])
     // Uploads go on after the run's tasks; give them their time.
