@@ -403,11 +403,10 @@ export function outputMatcher(globs: readonly string[]): (rel: string) => boolea
 // ---------------------------------------------------------------- outputs
 
 /**
- * Whether an output entry must match something once the command exits 0.
- * The rule decided 2026-11-23: a literal path (`dist/index.js`, `dist`) is
- * required, a wildcard (`dist/**`, `.next/**`) may match nothing. Core's
- * `missingOutputs` (orchestrator/attempt-outputs.ts) still requires every
- * entry; this page shows the decided rule.
+ * Whether an output entry must match something on its own once the command
+ * exits 0: a literal path (`dist/index.js`, `dist`) is; a wildcard (`dist/**`)
+ * may match nothing, but only beside an entry that matched
+ * (orchestrator/attempt-outputs.ts, outputMatches / missingOutputs).
  */
 export function outputRequired(pattern: string): boolean {
   return literalPath(normalizeGlob(pattern)) !== null
@@ -467,7 +466,15 @@ export function resolveOutputs(
     const kind = found ? 'found' : outputRequired(entry) ? 'missing' : 'optional'
     return { pattern: entry, kind, files }
   })
-  const missing = patterns.filter((p) => p.kind === 'missing').map((p) => p.pattern)
+  // A task that declares outputs must write one: when no positive entry
+  // matched, every one is missing, literals first (missingOutputs).
+  const positive = patterns.filter((p) => p.kind !== 'leave-out' && p.kind !== 'refused')
+  if (positive.length > 0 && positive.every((p) => p.kind !== 'found'))
+    for (const p of positive) p.kind = 'missing'
+  const missing = [
+    ...positive.filter((p) => p.kind === 'missing' && outputRequired(p.pattern)),
+    ...positive.filter((p) => p.kind === 'missing' && !outputRequired(p.pattern)),
+  ].map((p) => p.pattern)
   const failed = missing.length > 0 || patterns.some((p) => p.kind === 'refused')
   const saved = failed ? [] : onDisk.filter((f) => isOutput(f) && !excluded(f))
   return { patterns, saved, failed, missing }
@@ -605,7 +612,8 @@ function renderOutputs({ project, entries, written, still = false }: ViewState):
   const r = resolveOutputs(project, entries, written)
   const rows = r.patterns.map((p) => {
     const code = `<code>${esc(p.pattern)}</code>`
-    const kindWord = outputRequired(p.pattern) ? 'literal, required' : 'wildcard, optional'
+    const literal = outputRequired(p.pattern)
+    const kindWord = literal ? 'literal, required' : 'wildcard'
     switch (p.kind) {
       case 'refused':
         return patternRow(
@@ -626,12 +634,16 @@ function renderOutputs({ project, entries, written, still = false }: ViewState):
       case 'optional':
         return patternRow(
           `<span class="is-muted">○</span> ${code} matched nothing <span class="is-muted">· ${kindWord}, fine</span>`,
-          [],
+          ['Another output matched, so this one may stay empty.'],
         )
       case 'missing':
         return patternRow(
           `<span class="is-danger">✗</span> ${code} <span class="is-danger">missing</span> <span class="is-muted">· ${kindWord}</span>`,
-          ['The build never wrote it, so the task fails.'],
+          [
+            literal
+              ? 'A literal path must exist. The build never wrote it, so the task fails.'
+              : 'No output matched at all. A task with outputs must write at least one.',
+          ],
           'is-refused',
         )
     }
@@ -660,7 +672,9 @@ function renderOutputs({ project, entries, written, still = false }: ViewState):
     lines.push(
       `<span class="is-muted">└─</span> ${taskHtml(task)} <span class="is-muted">──</span> <span class="is-danger">${esc(missingOutputsLabel(r.missing))}</span>`,
     )
-    say = `The task fails. ${r.missing.join(', ')} ${r.missing.length === 1 ? 'is a literal path' : 'are literal paths'}, so vx requires ${r.missing.length === 1 ? 'it' : 'them'}. Nothing is cached.`
+    say = r.missing.every(outputRequired)
+      ? `The task fails. ${r.missing.join(', ')} ${r.missing.length === 1 ? 'is a literal path' : 'are literal paths'}, so vx requires ${r.missing.length === 1 ? 'it' : 'them'}. Nothing is cached.`
+      : 'The task fails: it wrote none of its outputs. Nothing is cached.'
   } else {
     lines.push(
       `<span class="is-muted">└─</span> ${taskHtml(task)} <span class="is-muted">── success</span>`,

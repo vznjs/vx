@@ -199,10 +199,28 @@ describe('outputs', () => {
     expect(r.saved).toEqual(['dist/assets/index-7C0y1bbr.js', 'dist/index.html'])
   })
 
-  it('passes when a wildcard matched nothing', () => {
+  it('fails a lone wildcard that matched nothing: outputs need one file', () => {
     const r = resolveOutputs('@demo/web', ['dist/**'], none)
+    expect(r.failed).toBe(true)
+    expect(r.missing).toEqual(['dist/**'])
+    expect(r.patterns[0]!.kind).toBe('missing')
+  })
+
+  it('passes an empty wildcard beside a literal that was found', () => {
+    const r = resolveOutputs('@demo/web', ['dist/**', 'package.json'], none)
     expect(r.failed).toBe(false)
-    expect(r.patterns[0]!.kind).toBe('optional')
+    expect(r.patterns.map((p) => p.kind)).toEqual(['optional', 'found'])
+  })
+
+  it('passes two wildcards when one is empty', () => {
+    const r = resolveOutputs('@demo/web', ['dist/**', '.vite/**'], all)
+    expect(r.failed).toBe(false)
+    expect(r.patterns.map((p) => p.kind)).toEqual(['found', 'optional'])
+  })
+
+  it('names every entry, literals first, when nothing matched', () => {
+    const r = resolveOutputs('@demo/web', ['dist/**', 'dist/index.js'], none)
+    expect(r.missing).toEqual(['dist/index.js', 'dist/**'])
   })
 
   it('fails when a literal is missing, and saves nothing', () => {
