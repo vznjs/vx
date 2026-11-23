@@ -29,11 +29,10 @@ That empty file is a whole workspace. vx runs every task on this machine and cac
   - projects.lock written by `vx lock`, read by every run
   - dependencies.lock written by `vx lock`
   - cache/ this machine only, ignored by git
-- apps/
+- packages/
   - web/ **@demo/web**, a Vite app
     - vx.config.ts its tasks
     - vx.lock.json what `vx lock` read, for review
-- packages/
   - ui/ **@demo/ui**, the components `@demo/web` uses
     - vx.config.ts
     - vx.lock.json
@@ -58,12 +57,12 @@ Pick a folder to run `vx` in:
       <button type="button" data-dir="demo" data-git data-ws class="is-ok">demo/</button> <span class="is-muted">git root · .vx/workspace.ts</span>
       <ul style={{ listStyle: "none", paddingLeft: "1.25rem" }}>
         <li>
-          <button type="button" data-dir="demo/apps">apps/</button>
+          <button type="button" data-dir="demo/packages">packages/</button>
           <ul style={{ listStyle: "none", paddingLeft: "1.25rem" }}>
             <li>
-              <button type="button" data-dir="demo/apps/web">web/</button>
+              <button type="button" data-dir="demo/packages/web">web/</button>
               <ul style={{ listStyle: "none", paddingLeft: "1.25rem" }}>
-                <li><button type="button" data-dir="demo/apps/web/src" aria-pressed="true">src/</button></li>
+                <li><button type="button" data-dir="demo/packages/web/src" aria-pressed="true">src/</button></li>
               </ul>
             </li>
           </ul>
@@ -95,7 +94,7 @@ Pick a folder to run `vx` in:
 Run vx where no `.vx/workspace.ts` is found, and it tells you what to do:
 
 ```ansi
-[38;2;239;68;68m✗[0m [1mvx run[0m  [38;2;203;213;225mno .vx/workspace.ts in /tmp/nows/apps/web or a parent up to the git root[0m
+[38;2;239;68;68m✗[0m [1mvx run[0m  [38;2;203;213;225mno .vx/workspace.ts in /tmp/nows/packages/web or a parent up to the git root[0m
 
   [2mfix[0m  [1mvx init[0m
 ```
@@ -134,7 +133,7 @@ vx lock
 
 Beside each config, `vx.lock.json` shows what vx really read. Plugins can add to a task, and this is where you see it:
 
-<Compare leftTitle="apps/web/vx.config.ts" rightTitle="apps/web/vx.lock.json">
+<Compare leftTitle="packages/web/vx.config.ts" rightTitle="packages/web/vx.lock.json">
 <div slot="left">
 
 ```ts
@@ -170,7 +169,7 @@ Resolve the `vx.config.ts` files, then run `vx lock`. It writes both locks from 
   On CI, `vx lock --check` fails a change that skipped `vx lock` ([Keep the lock fresh](../ci/#keep-the-lock-fresh)).
 </Aside>
 
-<Quiz q="You edit apps/web/vx.config.ts and run vx run build. Which config does the run use?">
+<Quiz q="You edit packages/web/vx.config.ts and run vx run build. Which config does the run use?">
   The old one, from `.vx/projects.lock`. Run `vx lock` first: runs read only the lock.
 </Quiz>
 
@@ -316,7 +315,7 @@ See [Run a pipeline](../ci/run-a-pipeline/).
 
 `run.rules.dependencies` says which projects may depend on which. A rule picks projects by name or by `tag:<tag>`, and `*` matches anything. Tag each project in its config:
 
-```ts title="apps/web/vx.config.ts" mark={4}
+```ts title="packages/web/vx.config.ts" mark={4}
 import { defineProject } from '@vzn/vx/config'
 
 export default defineProject({
@@ -464,7 +463,7 @@ export default defineWorkspace({
   pipelines: {
     nightly: {
       tasks: ['test', '@demo/web#e2e'], // required; 'project#task' names one
-      filter: ['./apps/*'], // --filter
+      filter: ['./packages/*'], // --filter
       affected: false, // --affected: true, or a base ref
       excludeDependencies: ['gen'], // --exclude-dependencies: true, or names
       env: { VX_DTE_RELAY: 'https://relay.example.com' }, // for vx and plugins, never a task
@@ -485,7 +484,8 @@ export default defineWorkspace({
       outputLogs: 'errors-only',
       verbosity: 1,
       profile: 'nightly.json', // true writes profile.json
-      dry: false, // true, 'pretty' or 'json'
+      dry: false, // true prints the plan, runs nothing
+      format: 'pretty', // 'json': the dry plan as JSON
     },
   },
 })
