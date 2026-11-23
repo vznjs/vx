@@ -704,4 +704,21 @@ describe('vx cache clean with no bound clears the cache', () => {
     },
     TIMEOUT,
   )
+
+  it(
+    'the history line names the retention it pruned past, not a fixed 30 days',
+    async () => {
+      expect((await vx(['run', 'build', '--all'])).code).toBe(0)
+      const db = new Database(path.join(root, '.vx', 'cache', 'cache.db'))
+      const old = Date.now() - 10 * 86_400_000
+      db.query(
+        "INSERT INTO runs (hash, project, task, status, exit_code, duration_ms, started_at, ended_at) VALUES (?, 'app', 'build', 'success', 0, 1, ?, ?)",
+      ).run('h'.padEnd(64, 'x'), old, old)
+      db.close()
+      const r = await vx(['cache', 'clean', '--older-than', '30d'], { VX_HISTORY_RETENTION: '7d' })
+      expect({ code: r.code, err: r.err }).toEqual({ code: 0, err: '' })
+      expect(r.out).toContain('1 history row past 7 days')
+    },
+    TIMEOUT,
+  )
 })
