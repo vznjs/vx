@@ -32,7 +32,7 @@ vx pipeline NAME [OPTIONS]
 vx cache clean [--older-than <duration>] [--max-size <size>] [--global] [--dry] [--format pretty|json] [--cache-dir <path>]
 vx lock [--check] [--format pretty|json]
 vx init [--dry [--format pretty|json]] [--force] [--mjs] [--native|--keep] [--plugin <hook>]
-vx show [PROJECT[#TASK] | TASK] [--filter <pattern>] [--affected[=<ref>]] [--format pretty|json]
+vx show [PROJECT[#TASK] | TASK] [--filter <pattern>] [--affected[=<base>]] [--format pretty|json]
 vx info [--format pretty|json] [--cache-dir <path>]
 vx why (TASK | PKG#TASK) [--run RUNID] [--format pretty|json] [--cache-dir <path>]
 vx last [RUNID] [--list[=N]] [--failed] [--log <task>] [--stats [<task>] [--branch <name>]] [--sql <query>] [--live [--follow]] [--format pretty|json] [--cache-dir <path>]
@@ -3343,7 +3343,7 @@ vx show app#build
 | Option                  | Meaning                                           |
 | ----------------------- | ------------------------------------------------- |
 | `--filter <p>`          | only the projects `vx run --filter <p>` selects   |
-| `--affected[=<ref>]`    | only what `vx run --affected` would select, below |
+| `--affected[=<base>]`   | only what `vx run --affected` would select, below |
 | `--format pretty\|json` | `json` for scripts                                |
 
 ### Understanding the output
@@ -3384,7 +3384,7 @@ list and `vx show <project>`, but `vx show build`, like
 
 ### `--filter` and `--affected`
 
-`--filter` and `--affected[=<ref>]` narrow the list, or a task's
+`--filter` and `--affected[=<base>]` narrow the list, or a task's
 projects, as `vx run` selects: `turbo ls --affected` is
 `vx show --affected`, and `nx show projects --affected --with-target t`
 is `vx show t --affected`. Beside a task, `--affected` lists the

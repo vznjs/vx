@@ -1092,7 +1092,10 @@ gap before its description.
 
 ### Sections (current)
 
-- `Usage` — one line per verb.
+- `Usage` — one line per verb; `acceptedFlags` reads a verb's flags
+  from this block only.
+- `Examples` — common lines with real tools (vite build, vitest,
+  oxlint); each verb's help cut keeps its own.
 - `Selection (for run)` — default / `--all` / `--filter` / `--affected`
   / `pkg#task`.
 - `Execution (for run)` — concurrency, `--schedule`,

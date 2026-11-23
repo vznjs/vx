@@ -471,7 +471,7 @@ describe('cli run()', () => {
     // once cut "See the plugin" from "guide: https://…".
     expect(stderr).toBe(
       `✗ vx  \`${cmd}\` is not a vx core command\n\n` +
-        '  vx core runs tasks in-process\n' +
+        '  vx core runs and caches tasks on this machine\n' +
         '  A dashboard, remote cache and distributed execution come from plugins, not core\n' +
         '  See the plugin guide: https://vznjs.github.io/vx/docs/plugins/\n',
     )
