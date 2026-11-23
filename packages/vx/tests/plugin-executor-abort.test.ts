@@ -292,6 +292,98 @@ it('fail-fast withdraws a task its executor holds unstarted and stops one begun'
   ])
 }, 30_000)
 
+// The run's stop ends a task its executor still held for a machine
+// (`running` answered `null`) as not run, as a task the scheduler never
+// dispatched: vx-dte's report gave it a worker and a time (2026-11-23).
+it("the run's stop ends a task its executor holds unstarted not run, one begun aborted", async () => {
+  await Bun.write(
+    path.join(root, '.vx/workspace.mjs'),
+    localWorkspaceSource([
+      pluginSource(
+        'org/holder',
+        `{ executor() {
+          const held = new Set(), begun = new Set()
+          return { name: 'holder', capabilities: { capacity: 4 },
+            distribution: { running: (id) => (held.has(id) ? null : begun.has(id) ? 'm1' : undefined) },
+            async execute(req) {
+              const own = req.taskId === 'app#held' ? held : begun
+              own.add(req.taskId)
+              await new Promise((resolve) => req.signal?.addEventListener('abort', resolve, { once: true }))
+              own.delete(req.taskId)
+              return { exitCode: 130, signal: 'SIGINT', durationMs: 0, stdout: '', stderr: '', violations: [] }
+            } } } }`,
+      ),
+    ]),
+  )
+  await addProject(
+    root,
+    'app',
+    `export default { tasks: {
+      held: { exec: { command: 'echo held' } },
+      begun: { exec: { command: 'echo begun' } },
+    } }`,
+  )
+  const ac = new AbortController()
+  setTimeout(() => ac.abort(), 300)
+  const r = await run({
+    cwd: root,
+    tasks: ['held', 'begun'],
+    projects: ['app'],
+    log: silent,
+    handleSignals: false,
+    signal: ac.signal,
+  })
+  expect(
+    r.outcomes
+      .map((o) => [o.node.id, o.status, o.timing === undefined])
+      .toSorted((a, b) => String(a[0]).localeCompare(String(b[0]))),
+  ).toEqual([
+    ['app#begun', 'aborted', false],
+    ['app#held', 'aborted', true],
+  ])
+}, 30_000)
+
+// A retry the stop reaches while its executor holds it is a stopped task,
+// not the failed attempt before it.
+it("the run's stop ends a retry its executor holds unstarted aborted, not failed", async () => {
+  await Bun.write(
+    path.join(root, '.vx/workspace.mjs'),
+    localWorkspaceSource([
+      pluginSource(
+        'org/holder',
+        `{ executor() {
+          const held = new Set()
+          return { name: 'holder', capabilities: { capacity: 4 },
+            distribution: { running: (id) => (held.has(id) ? null : undefined) },
+            async execute(req) {
+              if ((req.attempt ?? 1) === 1)
+                return { exitCode: 1, durationMs: 0, stdout: '', stderr: '', violations: [] }
+              held.add(req.taskId)
+              await new Promise((resolve) => req.signal?.addEventListener('abort', resolve, { once: true }))
+              held.delete(req.taskId)
+              return { exitCode: 130, signal: 'SIGINT', durationMs: 0, stdout: '', stderr: '', violations: [] }
+            } } } }`,
+      ),
+    ]),
+  )
+  await addProject(
+    root,
+    'app',
+    `export default { tasks: { flaky: { exec: { command: 'true', retries: 1 } } } }`,
+  )
+  const ac = new AbortController()
+  setTimeout(() => ac.abort(), 300)
+  const r = await run({
+    cwd: root,
+    tasks: ['flaky'],
+    projects: ['app'],
+    log: silent,
+    handleSignals: false,
+    signal: ac.signal,
+  })
+  expect(r.outcomes.map((o) => [o.node.id, o.status])).toEqual([['app#flaky', 'aborted']])
+}, 30_000)
+
 // An executor that never looks at `signal` held the task, and the run, past
 // both the timeout and the stop (H-14). Core now waits the kill grace after
 // the abort and settles the attempt without it.
