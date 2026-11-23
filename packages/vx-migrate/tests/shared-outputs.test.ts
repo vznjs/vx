@@ -76,11 +76,17 @@ describe('resolveSharedOutputs — two targets on one output path', () => {
       (t.task!['outputs'] as { files: string[] } | undefined)?.files
     expect(tasks.map((t) => [t.name, outputs(t), t.todos.length])).toEqual([
       ['build', ['.cache/tsbuildinfo.json', 'dist/**'], 0],
-      ['typecheck', [], 0],
+      ['typecheck', [], 1],
       // A task that emits more stays uncached: tsc skips what the keeper's
       // tsbuildinfo calls built, so its save could be a partial dist.
       ['emit', undefined, 1],
     ])
+    // Dropped, so named: a hit restores no tsc state for typecheck.
+    expect(tasks[1]!.todos[0]).toBe(
+      'declares the output ".cache/tsbuildinfo.json" that "build" also declares — one path ' +
+        "belongs to one cached task in vx, so it is dropped from this task's outputs and a hit " +
+        'restores no tsc state here; point its tsBuildInfoFile elsewhere to keep it',
+    )
   })
 
   it('keeps the cache on build, over a sibling with a ^ edge', () => {
