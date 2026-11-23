@@ -314,3 +314,38 @@ it('says why a server could not spawn, and closes after it', async () => {
   )
   await floor.close()
 }, 30_000)
+
+it('CONTROL: a server the floor stopped under a running dependant fails it not', async () => {
+  dir = await mkdtemp(path.join(os.tmpdir(), 'vx-floor-srv-'))
+  const floor = localFloor()
+  const req: ExecuteRequest = {
+    taskId: 's#t1',
+    workspaceRoot: dir,
+    outputs: { files: [], workspaceFiles: [] },
+    command: 'sleep 0.5',
+    forwardArgs: [],
+    cwd: dir,
+    env: { PATH: process.env['PATH'] },
+    envDefine: {},
+    capture: { stdout: false, stderr: false },
+    onStdout: () => {},
+    onStderr: () => {},
+    servers: [
+      {
+        taskId: 's#srv',
+        command: 'echo up; exec sleep 60',
+        cwd: dir,
+        env: { PATH: process.env['PATH'] },
+        readyWhen: 'up',
+      },
+    ],
+  }
+  try {
+    const running = floor.execute(req)
+    await Bun.sleep(200)
+    await floor.stop('s#srv')
+    expect((await running).exitCode).toBe(0)
+  } finally {
+    await floor.close()
+  }
+}, 30_000)

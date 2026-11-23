@@ -205,6 +205,8 @@ export class AttemptSignal {
    * never started.
    */
   unbegun = false
+  /** Which withdrew it first: the run's stop ends it not run, fail-fast skips it. */
+  unbegunBy: 'stop' | 'failFast' | undefined
   private timer: ReturnType<typeof setTimeout> | undefined
   private withdrawUnbegun: (() => void) | undefined
   // Taken off once the attempt settles. Left on, every task of the run
@@ -233,13 +235,21 @@ export class AttemptSignal {
     // task the scheduler never dispatched, not aborted on a machine it never
     // reached (DTE's report named a worker and a time for it).
     const abort = (): void => {
-      if (!local && args.executor.distribution?.running?.(args.node.id) === null)
+      if (
+        !local &&
+        !stop.signal.aborted &&
+        args.executor.distribution?.running?.(args.node.id) === null
+      ) {
         this.unbegun = true
+        // Under `--fail-fast` the stop folds fail-fast in: its trip is not a stop.
+        this.unbegunBy ??= args.run.failFast?.aborted === true ? 'failFast' : 'stop'
+      }
       stop.abort(args.run.stopSignal?.reason)
     }
     this.unlisten?.()
     this.unlisten = undefined
     this.unbegun = false
+    this.unbegunBy = undefined
     this.withdrawUnbegun = undefined
     if (args.run.stopSignal?.aborted === true) abort()
     else if (args.run.stopSignal !== undefined) {
@@ -255,6 +265,7 @@ export class AttemptSignal {
         if (stop.signal.aborted || args.executor.distribution?.running?.(args.node.id) !== null)
           return
         this.unbegun = true
+        this.unbegunBy ??= 'failFast'
         stop.abort(new Error('fail-fast'))
       }
       this.withdrawUnbegun = withdraw

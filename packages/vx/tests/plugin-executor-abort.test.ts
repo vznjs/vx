@@ -343,6 +343,47 @@ it("the run's stop ends a task its executor holds unstarted not run, one begun a
   ])
 }, 30_000)
 
+// A retry the stop reaches while its executor holds it is a stopped task,
+// not the failed attempt before it.
+it("the run's stop ends a retry its executor holds unstarted aborted, not failed", async () => {
+  await Bun.write(
+    path.join(root, '.vx/workspace.mjs'),
+    localWorkspaceSource([
+      pluginSource(
+        'org/holder',
+        `{ executor() {
+          const held = new Set()
+          return { name: 'holder', capabilities: { capacity: 4 },
+            distribution: { running: (id) => (held.has(id) ? null : undefined) },
+            async execute(req) {
+              if ((req.attempt ?? 1) === 1)
+                return { exitCode: 1, durationMs: 0, stdout: '', stderr: '', violations: [] }
+              held.add(req.taskId)
+              await new Promise((resolve) => req.signal?.addEventListener('abort', resolve, { once: true }))
+              held.delete(req.taskId)
+              return { exitCode: 130, signal: 'SIGINT', durationMs: 0, stdout: '', stderr: '', violations: [] }
+            } } } }`,
+      ),
+    ]),
+  )
+  await addProject(
+    root,
+    'app',
+    `export default { tasks: { flaky: { exec: { command: 'true', retries: 1 } } } }`,
+  )
+  const ac = new AbortController()
+  setTimeout(() => ac.abort(), 300)
+  const r = await run({
+    cwd: root,
+    tasks: ['flaky'],
+    projects: ['app'],
+    log: silent,
+    handleSignals: false,
+    signal: ac.signal,
+  })
+  expect(r.outcomes.map((o) => [o.node.id, o.status])).toEqual([['app#flaky', 'aborted']])
+}, 30_000)
+
 // An executor that never looks at `signal` held the task, and the run, past
 // both the timeout and the stop (H-14). Core now waits the kill grace after
 // the abort and settles the attempt without it.

@@ -54,6 +54,8 @@ export function localFloor(
   // Each server, by task id: shared by every task here that depends on it.
   const servers = new Map<string, Promise<ReturnType<typeof Bun.spawn>>>()
   const children: ReturnType<typeof Bun.spawn>[] = []
+  // Servers this ended (`stop`, `close`): their SIGTERM is no crash.
+  const ended = new WeakSet<ReturnType<typeof Bun.spawn>>()
   // A sandboxed one starts inside its sandbox, built here as a one-shot
   // task's; its port bridges and untouched placeholders go when it exits.
   const start = async (spec: ServerSpec, root: string): Promise<ReturnType<typeof Bun.spawn>> => {
@@ -194,7 +196,7 @@ export function localFloor(
         }
       }
       if (req.sandbox !== undefined) await armer?.arm()
-      return servedBy(req, serving, await run(req))
+      return servedBy(req, serving, ended, await run(req))
     },
     async rearm(list) {
       if (armer?.armed === true) await resetSandbox()
@@ -209,9 +211,11 @@ export function localFloor(
       const i = children.indexOf(child)
       if (i >= 0) children.splice(i, 1)
       onServer?.(taskId, undefined)
+      ended.add(child)
       await stopServer(child)
     },
     async close() {
+      for (const child of children) ended.add(child)
       if (children.length > 0) await terminateChildren(() => children)
       if (armer?.armed === true) await resetSandbox()
     },
@@ -224,11 +228,12 @@ export function localFloor(
  * and heard nothing more, so the run went green over a dead server and the
  * dependant was saved, where a run on one machine fails (2026-11-23). A
  * crash that lands in the task's own last event-loop turn is heard a turn
- * later. A stopped task's servers are stopped with it: no crash.
+ * later. A stopped task's servers, and one this stopped, did not crash.
  */
 async function servedBy(
   req: ExecuteRequest,
   serving: readonly [string, ReturnType<typeof Bun.spawn>][],
+  ended: WeakSet<ReturnType<typeof Bun.spawn>>,
   res: ExecuteResult,
 ): Promise<ExecuteResult> {
   if (serving.length === 0 || req.signal?.aborted === true) return res
@@ -236,7 +241,7 @@ async function servedBy(
   let said = ''
   for (const [id, child] of serving) {
     const died = child.exitCode ?? child.signalCode
-    if (died === null || died === 0) continue
+    if (died === null || died === 0 || ended.has(child)) continue
     const code = typeof died === 'number' ? died : signalExitCode(died)
     said += `${id}, which ${req.taskId} depends on, exited with code ${code} while it ran\n`
   }

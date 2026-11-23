@@ -93,7 +93,7 @@ export async function runAttempts(
     if (a.unbegun)
       return {
         outcome:
-          args.run.stopSignal?.aborted === true && args.run.failFast?.aborted !== true
+          a.unbegun === 'stop'
             ? { node, status: 'aborted', exitCode: 1, durationMs: 0, hash }
             : { node, status: 'skipped', durationMs: 0, hash, timing: timing() },
       }
@@ -218,8 +218,8 @@ export interface AttemptResult {
   readonly exitCode: number
   /** A retry fail-fast withdrew: `result` is the attempt before it, which stands. */
   readonly withdrawn?: true
-  /** Fail-fast withdrew the first attempt before its executor began it. */
-  readonly unbegun?: true
+  /** Fail-fast or the run's stop withdrew the first attempt before its executor began it. */
+  readonly unbegun?: 'stop' | 'failFast'
 }
 
 async function runAttempt(
@@ -361,9 +361,12 @@ async function runAttempt(
       'VX_E_LOCK',
     )
   }
-  if (signal.unbegun) {
+  // A retry the run's stop withdrew is a stopped task, as any attempt the
+  // stop ends: aborted, not the failure before it.
+  if (signal.unbegun && (m.attempt === 1 || signal.unbegunBy === 'failFast')) {
     await sweepPlaceholders(sandbox.placeholders)
-    if (m.attempt === 1) return { result: res, exitCode: res.exitCode, unbegun: true }
+    if (m.attempt === 1)
+      return { result: res, exitCode: res.exitCode, unbegun: signal.unbegunBy ?? 'failFast' }
     // A retry withdrawn: the attempt before it stands, as above.
     return withdrawn()
   }
