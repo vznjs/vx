@@ -1,0 +1,136 @@
+---
+title: Stop at the first failure
+description: Use --fail-fast to stop the whole run as soon as one task fails.
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components'
+import Timeline from '../../../../components/running/Timeline.astro'
+
+Add `--fail-fast` to end the run the moment one task fails.
+
+```sh
+vx run test --all --fail-fast
+```
+
+## Two ways to fail
+
+`ui`'s test fails fast. `web`'s test takes a second. Pick a tab and watch.
+
+<Tabs>
+<TabItem label="Default">
+
+<Timeline
+  label="ui's test fails at 12 ms; web's test keeps running and passes at 1.01 s"
+  end={1100}
+  unit="ms"
+  lanes={[
+    { task: '@demo/ui#test', bars: [{ from: 0, to: 12, tone: 'danger' }] },
+    { task: '@demo/web#test', bars: [{ from: 0, to: 1010, tone: 'ok', label: 'success' }] },
+  ]}
+  marks={[{ at: 12, label: 'ui fails', tone: 'danger' }]}
+/>
+
+`web` runs to the end. One run shows you **every** failure:
+
+```sh
+vx run test --all
+```
+
+```ansi
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mTasks[0m[4m[58;2;110;118;129m     [2mstatus  cache     ±usual    time   cpu    mem outputs  blocks worker         task[0m[4m[58;2;110;118;129m                           [0m
+            [38;2;239;68;68mfailed[0m  [2mno-cache[0m       [2m—[0m    [38;2;203;213;225m12ms[0m    [2m9%[0m  [2m1.7MB[0m       [2m—[0m       [2m0[0m [2mlocal[0m          [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;96;165;250mtest[0m
+            [38;2;34;197;94msuccess[0m [2mno-cache[0m       [2m—[0m   [38;2;203;213;225m1.01s[0m    [2m0%[0m  [2m3.6MB[0m       [2m—[0m       [2m0[0m [2mlocal[0m          [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;96;165;250mtest[0m
+
+[2m┌─[0m [1m[38;2;192;132;252m@demo/ui[0m[2m#[0m[1m[38;2;96;165;250mtest[0m [2m>[0m [1m[38;2;239;68;68mfailed (exit 1)[0m
+
+[2mpackages/ui $ echo 'expected 2, got 1' && exit 1[0m
+
+[2m├─[0m [1mOUTPUT[0m [2m────────────────────────────────────────────────────[0m
+
+expected 2, got 1
+
+[2m└─[0m [1m[38;2;192;132;252m@demo/ui[0m[2m#[0m[1m[38;2;96;165;250mtest[0m [2m──[0m [2m(12ms)[0m [1m[38;2;239;68;68mfailed (exit 1)[0m
+```
+
+</TabItem>
+<TabItem label="--fail-fast">
+
+<Timeline
+  label="ui's test fails at 12 ms; vx stops web's test at 19 ms"
+  end={1100}
+  unit="ms"
+  lanes={[
+    { task: '@demo/ui#test', bars: [{ from: 0, to: 12, tone: 'danger' }] },
+    { task: '@demo/web#test', bars: [{ from: 0, to: 19, tone: 'warn' }] },
+  ]}
+  marks={[{ at: 12, label: 'ui fails', tone: 'danger' }]}
+/>
+
+vx kills `web` and ends the run. Its row says `aborted`:
+
+```sh
+vx run test --all --fail-fast
+```
+
+```ansi
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mTasks[0m[4m[58;2;110;118;129m     [2mstatus  cache     ±usual    time   cpu    mem outputs  blocks worker         task[0m[4m[58;2;110;118;129m                           [0m
+            [38;2;239;68;68mfailed[0m  [2mno-cache[0m       [2m—[0m    [38;2;203;213;225m12ms[0m    [2m9%[0m  [2m1.7MB[0m       [2m—[0m       [2m0[0m [2mlocal[0m          [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;96;165;250mtest[0m
+            [38;2;249;115;22maborted[0m [2m—[0m              [2m—[0m    [38;2;203;213;225m19ms[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2mlocal[0m          [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;96;165;250mtest[0m
+```
+
+</TabItem>
+</Tabs>
+
+Both ways exit `1`, and neither caches a failed or aborted task.
+
+:::tip[You choose how to fail]
+Default: see every failure in one run. `--fail-fast`: get the first one back sooner.
+:::
+
+## What a failure always skips
+
+Without `--fail-fast`, a failed task still skips the tasks that **need** it.
+If `ui#build` fails, `web#build` never starts; its row says
+`blocked by @demo/ui#build`. Every unrelated task still runs.
+
+## Make it the default
+
+| Where | Setting | Scope |
+| --- | --- | --- |
+| command line | `--fail-fast` | this run |
+| `.vx/workspace.ts` | `run: { failFast: true }` | every run |
+| a pipeline in `.vx/workspace.ts` | `failFast: true` | that pipeline |
+
+```ts title=".vx/workspace.ts" mark={5}
+import type { WorkspaceConfig } from '@vzn/vx/config'
+
+export default {
+  pipelines: {
+    pr: { tasks: ['build', 'test'], affected: true, failFast: true },
+  },
+} satisfies WorkspaceConfig
+```
+
+:::tip[You can set it per pipeline]
+Your pull request pipeline can stop at the first red task, while local runs show them all.
+:::
+
+<details>
+<summary>Dig deeper: how vx stops a task</summary>
+
+vx sends `SIGTERM` to the task's whole process tree. A process still
+alive after `run.killGrace` (default `'2s'`) gets `SIGKILL`. An aborted
+task saves nothing to the cache.
+
+</details>
+
+<details>
+<summary>Dig deeper: try again before failing</summary>
+
+A flaky task can get extra attempts: `exec.retries: 2` means up to three
+runs. `run.retries` sets it for every task. Only the last attempt counts,
+so `--fail-fast` waits until a task is out of attempts.
+
+</details>
+
+Next: [Set a time limit on a task](../set-a-time-limit/).
