@@ -543,10 +543,11 @@ function unseenResult(
 }
 
 /**
- * A pass whose declared outputs did not all land here fails, said by the
- * globs that matched nothing. Outputs that land elsewhere (a remote
- * executor, a deferred download) are that executor's to check, and it says
- * which matched nothing (`ExecuteResult.outputsMissing`). Said as a
+ * A pass whose literal outputs did not all land here fails, said by the
+ * paths that matched nothing; so does one that wrote no output at all.
+ * Outputs that land elsewhere (a remote executor, a deferred download) are
+ * that executor's to check, and it says which matched nothing
+ * (`ExecuteResult.outputsMissing`). Said as a
  * warning, as the save's own output warnings are, not into the task's
  * stream: there it printed uncoloured, or red in a frame.
  */
@@ -559,17 +560,20 @@ function outputsMissing(m: MissRun, res: ExecuteResult): string[] | undefined {
     res.outputs?.kind === 'deferred' ||
     args.executor.capabilities?.remote === true
   const nested = args.outputNestedDirs ?? args.nestedProjectDirs
-  const missing = elsewhere
-    ? [...(res.outputsMissing ?? [])]
-    : [
-        ...missingOutputs(node.projectDir, policy.outputs, nested),
-        ...missingOutputs(args.run.workspaceRoot, policy.wsOutputs, []),
-      ]
-  if (missing.length === 0) return undefined
   const cfg = node.config
-  const left = elsewhere || m.state === undefined ? [] : stateLeft(m.state, node.projectDir)
   const noWrite =
     cfg.exec?.sandbox !== undefined && (cfg.exec.sandbox.allow?.write?.length ?? 0) === 0
+  let missing: string[]
+  let left: string[] = []
+  if (elsewhere) missing = [...(res.outputsMissing ?? [])]
+  else {
+    missing = missingOutputs([
+      { base: node.projectDir, globs: policy.outputs, nestedDirs: nested },
+      { base: args.run.workspaceRoot, globs: policy.wsOutputs, nestedDirs: [] },
+    ])
+    left = missing.length > 0 && m.state !== undefined ? stateLeft(m.state, node.projectDir) : []
+  }
+  if (missing.length === 0) return undefined
   const line =
     `[vx] ${node.id}: outputs matched no files (${missing.join(', ')}) — the command exited 0 ` +
     `but never wrote ${missing.length === 1 ? 'it' : 'them'}, so the task fails and nothing is cached: ` +

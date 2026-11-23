@@ -32,11 +32,16 @@ ends `up-to-date`. Globs are relative to the project's folder.
 
 ---
 
-## Every output must exist
+## Output paths must exist
 
-Each pattern in `outputs.files` must match at least one file after the
-command ends. If one matches nothing, the task **fails** and vx saves
-nothing:
+An output named by path is **required**, and a task that declares outputs
+must write at least one. Otherwise it **fails** and vx saves nothing:
+
+| Output | Kind | After the command |
+| --- | --- | --- |
+| `dist/index.js`, `dist` | path | must exist |
+| `dist/**`, `.next/**` | wildcard | may match nothing if another output matched |
+
 
 ```sh
 vx run @demo/ui#build

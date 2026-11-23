@@ -129,7 +129,7 @@ bunx @vzn/vx init --native
             [38;2;203;213;225m.vx/.gitignore[0m
   [2mlock    [0m  [38;2;203;213;225m2 project configs → .vx/projects.lock, .vx/dependencies.lock[0m
   [2mnote    [0m  [38;2;203;213;225mTurbo passes its builtin env (HOME, CI, PATH, VERCEL_* and the rest) to each task; vx passes the names a task lists — add the ones a task reads to exec.env.passThrough[0m
-            [38;2;203;213;225mno package has a file the outputs of build ("dist/**") match yet, so they were not checked: vx requires every output (Turbo cached what was present), and a run that writes no file one names fails and caches nothing — keep only the outputs each command always writes[0m
+            [38;2;203;213;225mno package has a file the outputs of build ("dist/**") match yet, so they were not checked: vx requires every output path and at least one output file (Turbo cached what was present), so a run that writes none of them fails and caches nothing — keep only the outputs each command always writes[0m
 
   [2mnext    [0m  [1mvx run build --all[0m
 ```
@@ -138,8 +138,10 @@ Under `files`, each package got a `vx.config.ts`. Read the `note` lines:
 a task sees only the environment variables it lists.
 
 <Aside type="caution">
-  vx checks a task's outputs after it runs. Keep only the outputs each command writes on every
-  run. The second `note` names the ones it could not check yet.
+  vx checks a task's outputs after it runs: each output path must exist, and at least one output
+  must match. Keep only the outputs each command writes on every run.
+
+  The second `note` names the ones it could not check yet.
 </Aside>
 
 This is `packages/lib/vx.config.ts`, as written:
@@ -212,7 +214,7 @@ task. Each task gets a `TODO` instead, so you list what it reads.
 | `tasks` / `pipeline`                                        | `tasks`                                                                  |
 | `dependsOn`                                                 | `dependsOn`, the same `'build'`, `'^build'`, `'pkg#build'` syntax        |
 | `inputs`                                                    | `inputs.files`; a glob that reaches a nested workspace package also in `inputs.workspaceFiles` |
-| `outputs`                                                   | `outputs.files`, plus the `.tsbuildinfo` a `tsc -b` writes outside them; each one is required, so one that matches no file yet is named |
+| `outputs`                                                   | `outputs.files`, plus the `.tsbuildinfo` a `tsc -b` writes outside them; a path, or every output of a task, that matches no file yet is named |
 | `env`                                                       | `inputs.env` **and** `exec.env.passThrough`                        |
 | `passThroughEnv`                                            | `exec.env.passThrough`                                                   |
 | `cache: false`                                              | no `cache: true`: the task always runs, keyed on its `inputs`            |
@@ -257,7 +259,7 @@ bunx @vzn/vx init --native
             [38;2;203;213;225m.vx/.gitignore[0m
   [2mlock    [0m  [38;2;203;213;225m2 project configs → .vx/projects.lock, .vx/dependencies.lock[0m
   [2mnote    [0m  [38;2;203;213;225mmigrating from the resolved project-graph snapshot — plugin-inferred targets are frozen as static config; [0m[1m`nx:run-commands`[0m[38;2;203;213;225m targets are their shell lines[0m
-            [38;2;203;213;225mNx caches whichever of a target's outputs exist; vx fails a task when one of its output patterns matches nothing ("outputs matched no files"): 2 tasks declare outputs — remove each pattern its command never writes[0m
+            [38;2;203;213;225mNx caches whichever of a target's outputs exist; vx fails a task when one of its literal output paths matches nothing ("outputs matched no files"; a wildcard may match nothing beside one that matched): 2 tasks declare literal outputs — remove each path its command never writes, or make it a wildcard[0m
 
   [2mnext    [0m  [1mvx run build --all[0m
 ```

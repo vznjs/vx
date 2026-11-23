@@ -340,11 +340,7 @@ export async function mergeBaseWith(
   ref: string,
 ): Promise<string | undefined>
 == function missingOutputs (src/orchestrator/attempt-outputs.ts)
-export function missingOutputs(
-  base: string,
-  globs: readonly string[],
-  nestedDirs: readonly string[],
-): string[]
+export function missingOutputs(sets: readonly OutputSet[]): string[]
 == function next (src/ui/components.ts)
 export function next(command: Inline): Block
 == function normalizeGlob (src/util/paths.ts)
@@ -1389,6 +1385,12 @@ export interface OutputFileRow {
   mtimeMs: number
   ino?: number
   ctimeMs?: number
+}
+== type OutputSet (src/orchestrator/attempt-outputs.ts)
+export interface OutputSet {
+  readonly base: string
+  readonly globs: readonly string[]
+  readonly nestedDirs: readonly string[]
 }
 == type OutputView (src/report/logger.ts)
 export interface OutputView {

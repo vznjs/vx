@@ -624,14 +624,14 @@ async function serve(
       // hit for every run after.
       const outputsMissing =
         res.exitCode === 0
-          ? [
-              ...missingOutputs(
-                path.join(opts.root, m.project),
-                m.outputs.files,
-                m.nested.map((n) => path.join(opts.root, n)),
-              ),
-              ...missingOutputs(opts.root, m.outputs.workspaceFiles, []),
-            ]
+          ? missingOutputs([
+              {
+                base: path.join(opts.root, m.project),
+                globs: m.outputs.files,
+                nestedDirs: m.nested.map((n) => path.join(opts.root, n)),
+              },
+              { base: opts.root, globs: m.outputs.workspaceFiles, nestedDirs: [] },
+            ])
           : []
       if (outputsMissing.length > 0)
         ui.print('err', ui.status('error', m.task, `no file matched ${outputsMissing.join(', ')}`))

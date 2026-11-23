@@ -3,7 +3,7 @@
 // an install too, since a run keys from the lockfile digests it records.
 import { mkdir, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
-import { pnpmFilter, type Adapter } from '../adapter.ts'
+import { optionalAsOutputs, pnpmFilter, type Adapter } from '../adapter.ts'
 import { ISOLATED_RAN } from '../harness.ts'
 import { projectDir } from '../spec.ts'
 
@@ -27,8 +27,8 @@ export const vx: Adapter = {
   pkg: '@vzn/vx',
   bins: ['vx'],
   lacks: {
-    'optional-outputs':
-      'Every output vx declares is required: a pattern that matches no file fails the task.',
+    'empty-outputs':
+      'A task that declares outputs must write at least one: one that writes none fails.',
     mutex:
       'No vx setting keeps two tasks from running at the same time; only the run-wide concurrency limit.',
     'idle-timeout':
@@ -49,7 +49,9 @@ export const vx: Adapter = {
   // A run follows the lock and never re-reads a manifest: `vx lock` is the
   // step after editing one, and where a broken one is refused.
   edited: [[VX, 'lock']],
-  async configure(dir, ws, command) {
+  async configure(dir, given, command) {
+    // A wildcard output may match nothing beside one that matched; a literal one is required.
+    const ws = optionalAsOutputs(given)
     await mkdir(path.join(dir, '.vx'), { recursive: true })
     await writeFile(
       path.join(dir, '.vx', 'workspace.mjs'),

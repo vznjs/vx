@@ -16,6 +16,7 @@
         "key-not-derived",
         "lock-edges",
         "may-hold-match",
+        "output-unreadable",
         "peak-memory-exact",
         "prepared-key",
         "project-stage-lock",
@@ -398,10 +399,12 @@
         "vx-migrate/migrate-nx-npm-env",
         "vx-migrate/migrate-nx-workspace",
         "vx-migrate/migrate-scripts-cli",
+        "vx-migrate/migrate-turbo-absent-outputs",
         "vx-migrate/migrate-turbo-dotenv-named",
         "vx-migrate/migrate-turbo-drop-turbo",
         "vx-migrate/migrate-turbo-env-named",
         "vx-migrate/migrate-turbo-env-wildcard",
+        "vx-migrate/migrate-turbo-folded-tracked-output",
         "vx-migrate/migrate-turbo-framework-env",
         "vx-migrate/migrate-turbo-framework-prefix",
         "vx-migrate/migrate-turbo-lockfile-note",
@@ -457,6 +460,7 @@
         "vx-migrate/nx-negated-implicit",
         "vx-migrate/nx-no-package-json",
         "vx-migrate/nx-npm-tag-deps",
+        "vx-migrate/nx-optional-outputs",
         "vx-migrate/nx-outputs-outside",
         "vx-migrate/nx-own-output-input",
         "vx-migrate/nx-parity-live",
@@ -736,6 +740,7 @@
         "index-schema-race",
         "index-write-wait",
         "inflight",
+        "internal-error-report",
         "invocation-secret-mask",
         "kept-hits",
         "key-vx-version",
@@ -756,6 +761,7 @@
         "memory-ceiling-scale.unsafe",
         "memory-ceiling-watch.unsafe",
         "miss-save-marks",
+        "missing-outputs-label",
         "narrow-terminal",
         "no-auto-install.unsafe",
         "no-cache-word",
@@ -1006,13 +1012,13 @@
   "scores": {
     "vx": {
       "all": {
-        "pass": 2128,
-        "can": 2128,
+        "pass": 2132,
+        "can": 2132,
         "of": 2203
       },
       "correctness": {
-        "pass": 1713,
-        "can": 1713,
+        "pass": 1717,
+        "can": 1717,
         "of": 1780
       },
       "efficiency": {
@@ -1036,8 +1042,8 @@
         "of": 88
       },
       "failure": {
-        "pass": 154,
-        "can": 154,
+        "pass": 155,
+        "can": 155,
         "of": 167
       },
       "affected": {
@@ -1061,8 +1067,8 @@
         "of": 149
       },
       "outputs": {
-        "pass": 298,
-        "can": 298,
+        "pass": 301,
+        "can": 301,
         "of": 314
       },
       "report": {
@@ -11200,7 +11206,7 @@
       "outcomes": {
         "vx": {
           "status": "n/a",
-          "detail": "Every output vx declares is required: a pattern that matches no file fails the task."
+          "detail": "A task that declares outputs must write at least one: one that writes none fails."
         },
         "turbo": {
           "status": "fail",
@@ -11240,7 +11246,7 @@
       "outcomes": {
         "vx": {
           "status": "n/a",
-          "detail": "Every output vx declares is required: a pattern that matches no file fails the task."
+          "detail": "A task that declares outputs must write at least one: one that writes none fails."
         },
         "turbo": {
           "status": "fail",
@@ -17223,7 +17229,7 @@
       "category": "outputs",
       "kind": "correctness",
       "title": "An output tree and another task’s files beside it, one in a directory whose name extends it build, cache and restore side by side",
-      "why": "`dist/a/**` claims only the `dist/a` folder, while the other task writes `dist/ab/c.js` and `dist/b.js`. `dist/ab` starts with the same letters but is a different folder. A string-prefix check reads it as inside `dist/a`, then refuses the pair or deletes the file on a restore. Paths are compared by whole segments.",
+      "why": "`dist/a/**` claims only the `dist/a` folder, while the other task writes `dist/ab/c.js`. `dist/ab` starts with the same letters but is a different folder. A string-prefix check reads it as inside `dist/a`, then refuses the pair or deletes the file on a restore. Paths are compared by whole segments.",
       "from": [
         "output-collision"
       ],
@@ -33117,8 +33123,7 @@
       ],
       "outcomes": {
         "vx": {
-          "status": "n/a",
-          "detail": "Every output vx declares is required: a pattern that matches no file fails the task."
+          "status": "pass"
         },
         "turbo": {
           "status": "pass"
@@ -71033,8 +71038,7 @@
       ],
       "outcomes": {
         "vx": {
-          "status": "n/a",
-          "detail": "Every output vx declares is required: a pattern that matches no file fails the task."
+          "status": "pass"
         },
         "turbo": {
           "status": "pass"
@@ -71065,8 +71069,7 @@
       ],
       "outcomes": {
         "vx": {
-          "status": "n/a",
-          "detail": "Every output vx declares is required: a pattern that matches no file fails the task."
+          "status": "pass"
         },
         "turbo": {
           "status": "fail",
@@ -71683,8 +71686,7 @@
       ],
       "outcomes": {
         "vx": {
-          "status": "n/a",
-          "detail": "Every output vx declares is required: a pattern that matches no file fails the task."
+          "status": "pass"
         },
         "turbo": {
           "status": "pass"

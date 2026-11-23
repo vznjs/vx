@@ -1573,16 +1573,12 @@ export interface MigrationPlan {
 
 function · `src/orchestrator/attempt-outputs.ts`
 
-The positive globs of `globs` (relative to `base`) that match no path a `!`
-leaves. Each stops at its first match: `dist/**` costs one directory read,
-not the walk the save does.
+The positive literal paths of `sets` that match no path a `!` leaves, or,
+when no positive glob of any set matched, every one: each fails the task.
+A wildcard may match nothing beside one that matched.
 
 ```ts
-export function missingOutputs(
-  base: string,
-  globs: readonly string[],
-  nestedDirs: readonly string[],
-): string[]
+export function missingOutputs(sets: readonly OutputSet[]): string[]
 ```
 
 ## `normalizeGlob`

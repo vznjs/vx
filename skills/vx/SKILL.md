@@ -127,9 +127,10 @@ vx lock --check --format json  # a vx.config that changed since the lock, or no 
   change does not re-run a task, the file is not one of its inputs. Fix
   the config, do not force. A task with no `inputs` has no key, so every
   cached task behind it misses: give it `inputs`.
-- Every declared `outputs.files` pattern must match a file the task
-  wrote, or the task fails (`outputs matched no files`). Fix the pattern
-  or the command; a file written only sometimes is not an output.
+- Every `outputs.files` path (`dist/index.js`, `dist`) must exist after
+  the task, and at least one output must match, or it fails (`outputs
+matched no files`); a wildcard (`dist/**`) may match nothing beside one
+  that matched. Fix the pattern or the command.
 - A task that imports a workspace dependency's built files (a test of
   `@acme/app` importing `@acme/lib`'s `dist/`) needs
   `dependsOn: ['^build']`, or it reads a stale or missing build.

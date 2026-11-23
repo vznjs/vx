@@ -210,11 +210,12 @@ Every part, in order: [Caching in depth](../../caching/).
   the ones it does not hold, so `dist/` ends as the cache stored it. A
   hit that finds them already as stored writes nothing.
 - A restore writes only files the task's `outputs` declare.
-- Every declared output must be written. A pattern that matches no file
-  once the command exits 0 fails the task, and nothing is saved
+- Every output named by path must be written, and at least one output
+  must match; a wildcard may match nothing beside one that did. Otherwise
+  the task fails once the command exits 0, and nothing is saved
   ([fix](../../docs/troubleshooting/)).
 
-  ```ansi title="outputs: { files: ['build/**'] }, but vite writes dist/"
+  ```ansi title="outputs: { files: ['build/index.js'] }, but vite writes dist/"
   [2m┌─[0m [1m[38;2;192;132;252m@demo/ui[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m>[0m $ vite build
   [36mvite v7.1.5 [32mbuilding for production...[36m[39m
   transforming...
@@ -223,8 +224,8 @@ Every part, in order: [Caching in depth](../../caching/).
   computing gzip size...
   [2mdist/[22m[36mindex.js  [39m[1m[2m0.06 kB[22m[1m[22m[2m │ gzip: 0.08 kB[22m
   [32m✓ built in 44ms[39m
-  [0m[1m[38;2;234;179;8m[vx][0m[2m @demo/ui#build: outputs matched no files (build/**) — the command exited 0 but never wrote it, so the task fails and nothing is cached: write it, or fix the pattern[0m
-  [2m└─[0m [1m[38;2;192;132;252m@demo/ui[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(1.64s)[0m [1m[38;2;239;68;68mfailed (exited 0, no file matched build/**)[0m
+  [0m[1m[38;2;234;179;8m[vx][0m[2m @demo/ui#build: outputs matched no files (build/index.js) — the command exited 0 but never wrote it, so the task fails and nothing is cached: write it, or fix the pattern[0m
+  [2m└─[0m [1m[38;2;192;132;252m@demo/ui[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(1.64s)[0m [1m[38;2;239;68;68mfailed (exited 0, no file matched build/index.js)[0m
   ```
 
 - A failed task is never saved.

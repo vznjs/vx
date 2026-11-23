@@ -228,11 +228,11 @@ A `--force` run now replaces the local entry under its key. A custom cache layer
 
 A `--filter` that matches no project, an exclusion too, now refuses the run even when another filter matched. Fix or remove it in your CI scripts and pipelines.
 
-#### Fail a task whose declared output matched nothing
+#### Fail a task whose declared output path matched nothing
 
 A declared output that matches no files fails the task instead of warning.
 
-Run your tasks once after upgrading. A task that fails with `outputs matched no files (<glob>)` needs that glob fixed to match what the command writes, or removed from `cache.outputs.files`.
+An output named by path (`dist/index.js`, `dist`) is required, and a task must write at least one output; a wildcard (`dist/**`) may match nothing beside one that matched. Run your tasks once after upgrading. A task that fails with `outputs matched no files (<glob>)` needs that glob fixed to match what the command writes, or removed from `outputs.files`.
 
 #### Replace --continue with --fail-fast
 

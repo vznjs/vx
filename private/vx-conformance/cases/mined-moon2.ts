@@ -441,7 +441,7 @@ export default [
             test: {
               command: 'mkdir -p coverage && cat src/a.txt > coverage/lcov.info',
               inputs: ['src/**'],
-              outputs: ['dist/**'],
+              outputs: ['dist/index.js'],
               optionalOutputs: ['coverage/**'],
             },
           },

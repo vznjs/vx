@@ -126,10 +126,9 @@ export async function migrateTurbo(
 
 /**
  * Turbo caches the outputs a run wrote and skips the rest; vx requires each
- * one, and a run that writes no file a positive output names fails. A
- * shared `build.outputs ["dist/**", ".next/**"]` failed every Vite package,
- * and create-t3-turbo's `.cache/.eslintcache` failed every `eslint` without
- * `--cache`. The migration cannot run a command, so it reads what earlier
+ * literal output path and at least one output (a wildcard may match nothing
+ * beside one that matched): create-t3-turbo's `.cache/.eslintcache` failed
+ * every `eslint` without `--cache`. The migration cannot run a command, so it reads what earlier
  * runs left: where a task name's outputs match a file in some package, each
  * of its tasks names the outputs that match none; where they match nothing
  * anywhere (an unbuilt checkout), one note names them.
@@ -139,8 +138,8 @@ export function absentOutputTodo(globs: readonly string[]): string {
   return (
     `${one ? 'output' : 'outputs'} ${globs.map((g) => JSON.stringify(g)).join(', ')} ` +
     `match${one ? 'es' : ''} no file here, though this task's outputs match files in other packages: ` +
-    'vx requires every output (Turbo cached what was present), and a run that writes no file ' +
-    `${one ? 'it names' : 'one of them names'} fails and caches nothing — keep only the outputs this command always writes`
+    'vx requires every output path and at least one output file (Turbo cached what was present), so a run ' +
+    'that writes none of them fails and caches nothing — keep only the outputs this command always writes'
   )
 }
 
@@ -151,9 +150,19 @@ export function unbuiltOutputsNote(tasks: ReadonlyMap<string, readonly string[]>
   )
   return (
     `no package has a file the outputs of ${said.join(', ')} match yet, so they were not checked: ` +
-    'vx requires every output (Turbo cached what was present), and a run that writes no file one ' +
-    'names fails and caches nothing — keep only the outputs each command always writes'
+    'vx requires every output path and at least one output file (Turbo cached what was present), so a run ' +
+    'that writes none of them fails and caches nothing — keep only the outputs each command always writes'
   )
+}
+
+/**
+ * Of the outputs that matched nothing, the ones a run would fail on (M
+ * 2026-11-23): each literal path, or every one when none of `declared`
+ * matched. A wildcard may match nothing beside one that matched.
+ */
+function required(absent: readonly string[], declared: readonly string[]): string[] {
+  const positive = declared.filter((g) => !g.startsWith('!')).length
+  return absent.length === positive ? [...absent] : absent.filter((g) => isLiteralPattern(g))
 }
 
 function absentOutputTodos(
@@ -176,7 +185,10 @@ function absentOutputTodos(
       const top = matched(root, root, ws, committed)
       if (own.written || top.written) seen.add(t.name)
       const list = byName.get(t.name) ?? []
-      list.push({ todos: t.todos, absent: [...own.absent, ...top.absent] })
+      list.push({
+        todos: t.todos,
+        absent: required([...own.absent, ...top.absent], [...files, ...ws]),
+      })
       byName.set(t.name, list)
     }
   const unbuilt = new Map<string, string[]>()

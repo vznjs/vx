@@ -332,6 +332,8 @@ export type Feature =
   | 'dependency-bin'
   /** Outputs a task may leave unwritten (`optionalOutputs`). */
   | 'optional-outputs'
+  /** A task that declares outputs passing though it wrote none of them. */
+  | 'empty-outputs'
   /** Tasks that share a name never overlapping (`mutex`). */
   | 'mutex'
   /** A limit on how long a task may print nothing (`idleTimeout`). */

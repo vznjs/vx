@@ -72,8 +72,9 @@ export const STEPS: Readonly<Record<string, { title?: string; steps: string }>> 
     ].join('\n'),
   },
   'feat(orchestrator)!: fail a task whose declared output matched nothing': {
+    title: 'Fail a task whose declared output path matched nothing',
     steps:
-      'Run your tasks once after upgrading. A task that fails with `outputs matched no files (<glob>)` needs that glob fixed to match what the command writes, or removed from `cache.outputs.files`.',
+      'An output named by path (`dist/index.js`, `dist`) is required, and a task must write at least one output; a wildcard (`dist/**`) may match nothing beside one that matched. Run your tasks once after upgrading. A task that fails with `outputs matched no files (<glob>)` needs that glob fixed to match what the command writes, or removed from `outputs.files`.',
   },
   'fix(cli): a --filter that matches nothing refuses beside a match': {
     title: 'A --filter that matches nothing refuses the run',
