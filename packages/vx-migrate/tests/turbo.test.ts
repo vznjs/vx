@@ -1459,7 +1459,7 @@ describe('turbo(): the mapping cache', () => {
 // Every run reads configs from the lock, on real Turbo repos too: the
 // plugin's tasks are no vx.config, so the lock records none of them and a
 // run maps turbo.json live. A config written after the lock waits for
-// `vx lock`: the run maps the package as before, and `--check` names it.
+// `vx lock`: an --all run refuses it, and `--check` names it.
 describe('turbo() under vx lock', () => {
   const vx = (...args: string[]) => {
     const p = Bun.spawnSync({
@@ -1494,10 +1494,12 @@ describe('turbo() under vx lock', () => {
         path.join(root, 'packages', 'lib', 'vx.config.mjs'),
         'export default { tasks: { build: { exec: { command: "true" } } } }\n',
       )
+      // A config the lock lacks refuses an --all run until `vx lock`.
       const third = vx('run', 'build', '--all')
-      // The new file is an input of the mapped build, which re-runs; the config is not read.
-      expect({ code: third.code, err: third.err }).toEqual({ code: 0, err: '' })
-      expect(third.out).toContain('lib#build')
+      expect({ code: third.code, err: third.err }).toEqual({
+        code: 1,
+        err: '✗ vx run  packages/lib/vx.config.mjs is not in the lock yet — run `vx lock`\n',
+      })
       expect(vx('lock', '--check')).toEqual({
         code: 1,
         out: '',
