@@ -34,9 +34,11 @@
           "perf-baseline.json",
           "pr-bench.ts",
           "pr-bench-base.ts",
+          "compile-entries.ts",
           "site-workspace.ts",
           "shape.ts",
           "prng.ts",
+          "ideal.ts",
           "outputs.ts",
           "quiet.ts",
           "bench-env.ts",
@@ -113,6 +115,7 @@
       "inputs": {
         "files": [
           "compare.ts",
+          "compile-entries.ts",
           "shape.ts",
           "prng.ts",
           "ideal.ts",
@@ -151,6 +154,7 @@
       "inputs": {
         "files": [
           "compare.ts",
+          "compile-entries.ts",
           "shape.ts",
           "prng.ts",
           "ideal.ts",
@@ -188,6 +192,7 @@
       "inputs": {
         "files": [
           "compare.ts",
+          "compile-entries.ts",
           "shape.ts",
           "prng.ts",
           "ideal.ts",
@@ -225,6 +230,7 @@
       "inputs": {
         "files": [
           "compare.ts",
+          "compile-entries.ts",
           "shape.ts",
           "prng.ts",
           "ideal.ts",

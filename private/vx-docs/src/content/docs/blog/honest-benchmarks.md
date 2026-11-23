@@ -27,9 +27,9 @@ Lower is better. A cold build's tasks alone take %bench.ideal.cold% with an
 ideal schedule. With nothing changed the ideal is 0, so all of that time
 is the runner.
 
-The table is filled from the latest run when the site is built: each
-change to vx re-measures vx, and a new Turborepo, Nx or Vite Task pin
-re-measures that tool.
+The table is filled from the latest run when the site is built. Every
+push to main re-measures all four, with Turborepo, Nx and Vite Task
+installed at npm latest right before the run.
 
 ## Re-run it
 
@@ -41,12 +41,12 @@ Every task is a `sleep` of a fixed length, so the numbers measure the
 runner, not a compiler. Each runner runs the graph cold, with nothing
 changed, and with outputs restored.
 
-The site takes its rows from `vx run @vzn/vx-bench#site.numbers`: one
-task per runner, each on a machine of its own.
+The site takes its rows from `vx run @vzn/vx-docs#bench --concurrency 1
+--force`: one task per runner, one at a time, all on one machine.
 
 ```mermaid
 flowchart LR
-  G[generate.ts: one graph] --> V[vx config]
+  G[site-workspace.ts: one graph] --> V[vx config]
   G --> T[turbo.json]
   G --> N[Nx targets]
   G --> VT[vite.config.ts]

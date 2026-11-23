@@ -23,7 +23,7 @@
 import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { vxCompileEntries } from './compile-entries.js'
+import { vxCompileEntries, vxCompileFlags } from './compile-entries.js'
 import {
   baseSlower,
   type BasePair,
@@ -201,18 +201,7 @@ const baseVx = BASE === undefined ? undefined : `${vx}-base`
 try {
   const bin = path.join(import.meta.dir, 'node_modules', '@vzn', 'vx', 'src', 'bin.ts')
   must(
-    [
-      'bun',
-      'build',
-      '--compile',
-      '--minify',
-      '--bytecode',
-      '--format=esm',
-      '--splitting',
-      ...vxCompileEntries(bin),
-      '--outfile',
-      vx,
-    ],
+    ['bun', 'build', '--compile', ...vxCompileFlags(), ...vxCompileEntries(bin), '--outfile', vx],
     // The compiler writes its scratch file into its cwd.
     os.tmpdir(),
   )
