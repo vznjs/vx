@@ -482,6 +482,52 @@ snapshots:
   is-number@${v}: {}
 `
 
+// A root project's own dependency: the message named it `.`, so it read
+// "(.'s is-number is 7.0.0 …)" (probed: bun 1.4.4, pnpm 10.28).
+describe('a root dependency is named the root’s', () => {
+  const rootManifests = {
+    ...MANIFESTS,
+    'package.json':
+      '{ "name": "root", "private": true, "workspaces": ["packages/*"], "dependencies": { "is-number": "5.0.0" } }',
+    'packages/a/package.json': '{ "name": "a", "version": "1.0.0" }',
+  }
+  it('under bun()', async () => {
+    await write({
+      ...rootManifests,
+      'bun.lock': bunLock('5.0.0')
+        .replace(
+          '"": { "name": "root" }',
+          '"": { "name": "root", "dependencies": { "is-number": "5.0.0" } }',
+        )
+        .replace(
+          '"packages/a": { "name": "a", "dependencies": { "is-number": "5.0.0" } }',
+          '"packages/a": { "name": "a" }',
+        ),
+      'node_modules/is-number/package.json': pkg('7.0.0'),
+    })
+    expect(await run(bun())).toContain("(the root's is-number is 7.0.0, the lockfile names 5.0.0)")
+  })
+  it('under pnpm()', async () => {
+    const lock = (v: string): string =>
+      pnpmLock(v)
+        .replace(
+          '  .: {}\n',
+          `  .:\n    dependencies:\n      is-number:\n        specifier: ${v}\n        version: ${v}\n`,
+        )
+        .replace(
+          /  packages\/a:\n    dependencies:\n      is-number:\n        specifier: .*\n        version: .*\n/,
+          '  packages/a: {}\n',
+        )
+    await write({
+      ...rootManifests,
+      'pnpm-workspace.yaml': 'packages:\n  - packages/*\n',
+      'pnpm-lock.yaml': lock('5.0.0'),
+      'node_modules/.pnpm/lock.yaml': lock('7.0.0'),
+    })
+    expect(await run(pnpm())).toContain("(the root's is-number is 7.0.0, the lockfile names 5.0.0)")
+  })
+})
+
 describe('pnpm(): node_modules/.pnpm/lock.yaml', () => {
   it('refuses an importer linking another version than the lockfile names', async () => {
     await write({

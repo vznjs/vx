@@ -141,6 +141,9 @@ function npmStore(root: string): (p: string, version: string) => boolean {
   }
 }
 
+/** A workspace's dependency in a message; the root's dir is `.`. */
+const whose = (dir: string): string => (dir === '.' || dir === '' ? "the root's" : `${dir}'s`)
+
 /**
  * pnpm's current lockfile (`node_modules/.pnpm/lock.yaml`): what each
  * importer it installed links, and every package it installed. A filtered
@@ -155,8 +158,8 @@ function pnpmCompare(want: import('./pnpm.js').Lockfile, markerText: string): st
     for (const [name, version] of deps) {
       const w = wanted.get(name)
       if (w === undefined)
-        return `${importer}'s ${name} is installed, and the lockfile does not list it`
-      if (w !== version) return `${importer}'s ${name} is ${version}, the lockfile names ${w}`
+        return `${whose(importer)} ${name} is installed, and the lockfile does not list it`
+      if (w !== version) return `${whose(importer)} ${name} is ${version}, the lockfile names ${w}`
     }
     const prod = new Set(
       (want.sections.get(importer) ?? '')
@@ -165,7 +168,7 @@ function pnpmCompare(want: import('./pnpm.js').Lockfile, markerText: string): st
         .map((l) => l.slice('dependencies\0'.length)),
     )
     for (const name of prod) {
-      if (!deps.has(name)) return `${importer}'s ${name} ${wanted.get(name)} is not installed`
+      if (!deps.has(name)) return `${whose(importer)} ${name} ${wanted.get(name)} is not installed`
     }
   }
   // Only what an importer reaches: `pnpm add`, `update` and `remove` keep
@@ -275,7 +278,9 @@ function yarnBerryCompare(
         const installed = at.get(d === '.' ? `node_modules/${name}` : `${d}/node_modules/${name}`)
         if (installed !== undefined) {
           if (installed !== locator)
-            return { mismatch: `${dir}'s ${name} is ${installed}, the lockfile names ${locator}` }
+            return {
+              mismatch: `${whose(dir)} ${name} is ${installed}, the lockfile names ${locator}`,
+            }
           break
         }
         if (d === '.') break
@@ -291,7 +296,9 @@ function yarnBerryCompare(
         )
         if (installed !== undefined) {
           if (installed !== version)
-            return { mismatch: `${dir}'s ${name} is ${installed}, the lockfile names ${version}` }
+            return {
+              mismatch: `${whose(dir)} ${name} is ${installed}, the lockfile names ${version}`,
+            }
           break
         }
         if (d === '.') break
@@ -384,7 +391,7 @@ function bunCompare(lock: import('./bun.js').Lockfile, root: string): Verdict {
         if (installed === undefined) continue
         if (installed !== version) {
           return {
-            mismatch: `${importer}'s ${name} is ${String(installed)}, the lockfile names ${version}`,
+            mismatch: `${whose(importer)} ${name} is ${String(installed)}, the lockfile names ${version}`,
           }
         }
         break
