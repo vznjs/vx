@@ -1,6 +1,6 @@
-// A declared output that matches no files after the command exits 0 fails
-// the task: an empty artifact replayed by every later hit reads as a build
-// that ran (M 2026-11-22: every declared output is required).
+// A literal output that matches no files after the command exits 0 fails
+// the task, and so do outputs that matched nothing at all: an empty artifact
+// replayed by every later hit reads as a build that ran (M 2026-11-23).
 
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'

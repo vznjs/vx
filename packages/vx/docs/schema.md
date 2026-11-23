@@ -1610,12 +1610,14 @@ a file or a whole directory tree: `dist` and `dist/` are `dist/**`
 (the turbo.json shape `"outputs": ["dist"]` migrates as it is); a
 leading `./` is accepted and dropped; `.` alone is refused.
 
-Every positive glob is required. Once the command exits 0, each must
-match a path that no `!` entry takes back (an empty `dist/` does not
-satisfy `dist/**`; name an empty directory as itself, `public/uploads`);
-one that matches nothing fails the task, cached or not, and nothing is
-saved. The error names each such glob. There are no optional outputs: a
-file a task writes only sometimes is not an output.
+A literal path is required, and a task writes at least one output.
+Once the command exits 0, each positive literal path (`dist/index.js`,
+`public/uploads`) must name a path that no `!` entry takes back; a
+directory satisfies itself. A wildcard (`dist/**`, `coverage/**`) may
+match nothing beside one that matched, but outputs that matched nothing
+at all fail (an empty `dist/` does not satisfy `dist/**`). Either fails
+the task, cached or not, and nothing is saved; the error names each glob
+([caching.md](caching.md#cache-write)).
 
 ```ts
 outputs: {
