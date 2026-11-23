@@ -46,7 +46,9 @@ Every server reads one setting, `ALLOW`: the CI workflows it serves. One entry i
 ALLOW='https://token.actions.githubusercontent.com:acme/app:ci.yml'
 ```
 
-That entry lets in `ci.yml` of `acme/app` on GitHub Actions. Try what it allows:
+That entry lets in `ci.yml` of `acme/app` on GitHub Actions. The servers read GitHub Actions and GitLab tokens only (gitlab.com or your own instance). A Buildkite, CircleCI or Jenkins job has no token they take: it reads like a laptop and writes nothing.
+
+Try what it allows:
 
 <AllowExplorer />
 

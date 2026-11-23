@@ -34,7 +34,12 @@ example:
 ALLOW='https://token.actions.githubusercontent.com:acme/app:ci.yml https://gitlab.com:acme/web:.gitlab-ci.yml'
 ```
 
-Only jobs of a workflow it names get in; any other job is refused. With
+Only jobs of a workflow it names get in; any other job is refused.
+Two CIs' tokens are read: GitHub Actions' issuer, and GitLab's
+(gitlab.com or your own instance). Any other issuer is read as a GitLab
+instance, so a Buildkite, CircleCI or Jenkins token, which carries no
+`project_path`, is refused: those jobs read with `READ_ACCESS=public`
+and write nothing. With
 `ALLOW` empty, the server does not start (a Worker refuses every request). A job writes its branch's own
 scope, which only runs of that branch read:
 

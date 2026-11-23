@@ -86,6 +86,9 @@ decides whether the job gets in; it writes its own branch.
 - On GitLab, name an `id_tokens` entry `VX_CACHE_TOKEN` with the
   server's origin as `aud`; without it (`GITLAB_CI` is set but no
   token comes), the plugin warns and the job reads only.
+- Other CIs (Buildkite, CircleCI, Jenkins) have no token the server
+  takes: their jobs read only, as a laptop does (from a server whose
+  `READ_ACCESS` is `public`).
 
 With no token (off CI) a run reads only and uploads nothing, from a
 server whose `READ_ACCESS` is `public`; any other server refuses the
