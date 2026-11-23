@@ -70,7 +70,7 @@ jobs:
       GITHUB_TOKEN: ${{ github.token }}
       GH_TOKEN: ${{ github.token }}
       # An unavailable OS sandbox, reftable, tag history, native watcher,
-      # non-root user or clang 18 (the helper binaries' rebuild) fails its
+      # non-root user or clang 20 (the helper binaries' rebuild) fails its
       # rows instead of skipping them.
       VX_REQUIRE_SANDBOX: '1'
       VX_REQUIRE_REFTABLE: '1'

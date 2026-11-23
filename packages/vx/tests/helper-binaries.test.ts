@@ -3,7 +3,7 @@
 // beside every Linux task. A review reads the C, never the bytes: this
 // builds each again and refuses committed bytes the source does not give.
 // The build is reproducible (no libc, no build id, stripped). CI has clang
-// 18 with lld (GitHub's Ubuntu images) and sets VX_REQUIRE_CLANG, so a
+// 20 with lld (GitHub's Ubuntu images) and sets VX_REQUIRE_CLANG, so a
 // missing one fails there; elsewhere a machine without it skips.
 
 import { readFileSync } from 'node:fs'
@@ -14,7 +14,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { ARCHES, buildHelper, clang, HELPERS } from '../scripts/build-observe.js'
 
 const cc = clang()
-it('VX_REQUIRE_CLANG makes a missing clang 18 a failure', () => {
+it('VX_REQUIRE_CLANG makes a missing clang 20 a failure', () => {
   if (process.env['VX_REQUIRE_CLANG'] === '1') expect(cc).toBeDefined()
 })
 

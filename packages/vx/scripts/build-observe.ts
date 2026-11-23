@@ -5,7 +5,7 @@
 //
 //   bun scripts/build-observe.ts
 //
-// Each helper uses no libc, so one clang 18 with lld builds both
+// Each helper uses no libc, so one clang 20 with lld builds both
 // architectures from any Linux or macOS machine. The binaries are
 // committed: a run from source and `bun build --compile` both take them
 // as files, and no machine that runs vx needs a compiler. `source.sha256`
@@ -17,7 +17,7 @@
 // and every vx ships these and runs one beside every Linux task.
 
 import { createHash } from 'node:crypto'
-import { readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 
 const src = path.join(import.meta.dir, '..', 'src')
@@ -44,7 +44,7 @@ const FLAGS = [
   '-fno-asynchronous-unwind-tables',
   '-fno-unwind-tables',
   '-fno-pic',
-  // No .comment naming the compiler's vendor and patch: any clang 18 gives these bytes.
+  // No .comment naming the compiler's vendor and patch: any clang 20 gives these bytes.
   '-fno-ident',
   '-fuse-ld=lld',
   '-Wl,--build-id=none',
@@ -52,17 +52,22 @@ const FLAGS = [
   '-s',
 ]
 
-/** The clang the committed bytes came from: another major emits other code. */
-const CLANG_MAJOR = 18
+/**
+ * The clang the committed bytes came from: another major emits other code.
+ * 20: GitHub's Ubuntu images carry it (20, 21 and 22 on 26.04).
+ */
+const CLANG_MAJOR = 20
 
-/** A clang of `CLANG_MAJOR` on PATH with lld beside it, or undefined. */
+/** A clang of `CLANG_MAJOR` on PATH whose own lld it finds, or undefined. */
 export function clang(): string | undefined {
-  if (Bun.which('ld.lld') === null && Bun.which(`ld.lld-${CLANG_MAJOR}`) === null) return undefined
   for (const name of [`clang-${CLANG_MAJOR}`, 'clang']) {
     const bin = Bun.which(name)
     if (bin === null) continue
     const v = Bun.spawnSync([bin, '--version'], { stdout: 'pipe', stderr: 'ignore' })
-    if (new RegExp(`clang version ${CLANG_MAJOR}\\.`).test(v.stdout.toString())) return bin
+    if (!new RegExp(`clang version ${CLANG_MAJOR}\\.`).test(v.stdout.toString())) continue
+    // lld beside it, as `-fuse-ld=lld` looks: an answer that is no path is none found.
+    const lld = Bun.spawnSync([bin, '-print-prog-name=ld.lld'], { stdout: 'pipe' })
+    if (existsSync(lld.stdout.toString().trim())) return bin
   }
   return undefined
 }
@@ -79,7 +84,7 @@ export function buildHelper(cc: string, source: string, target: string, out: str
 if (import.meta.main) {
   const cc = clang()
   if (cc === undefined) {
-    console.error(`build-observe: needs clang ${CLANG_MAJOR} with lld on PATH`)
+    console.error(`build-observe: needs clang ${CLANG_MAJOR} with its lld on PATH`)
     process.exit(1)
   }
   for (const { dir, name } of HELPERS) {
