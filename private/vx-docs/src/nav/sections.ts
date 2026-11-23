@@ -42,32 +42,44 @@ type SidebarItem = NonNullable<StarlightUserConfig['sidebar']>[number]
  */
 const SIDEBAR_GROUPS: Record<'Docs', SidebarItem[]> = {
   Docs: [
+    // The story (M 2026-11-23 18:47: "like a story to explore"; 18:58: the
+    // structure may change completely): each group is a chapter the reader
+    // walks in order, and each page ends on the next one. Small how-to pages
+    // fold into their chapter page as Patterns; an entry marked FOLD goes
+    // with its page.
     {
-      label: 'Get started',
+      label: 'Start here',
       items: [
         { label: 'What is vx?', link: '/docs/' },
         { label: 'Quickstart', link: '/quickstart/' },
-        { label: 'Migrate from Turbo, Nx or Vite Task', link: '/docs/migrate/' },
-        { label: 'AI agents', link: '/docs/agents/' },
-        { label: 'Upgrading vx', link: '/docs/upgrading/' },
+        { label: 'Move an existing workspace to vx', link: '/docs/migrate/' },
+        { label: 'Work with AI agents', link: '/docs/agents/' },
+      ],
+    },
+    {
+      label: 'Set up the workspace',
+      items: [
+        { label: 'Workspace', link: '/docs/workspace/' },
+        { label: 'Lockfiles', link: '/docs/lockfiles/' },
       ],
     },
     {
       label: 'Define tasks',
       items: [
-        { label: 'Workspace', link: '/docs/workspace/' },
         { label: 'Tasks', link: '/docs/tasks/' },
+        // FOLD into Tasks
         {
           label: "Build a project's dependencies first",
           link: '/docs/running/build-dependencies-first/',
         },
         { label: 'Environment variables', link: '/docs/environment-variables/' },
+        // FOLD into Environment variables
         {
           label: 'Pass an environment variable to a task',
           link: '/docs/running/pass-an-environment-variable/',
         },
-        { label: 'Lockfiles', link: '/docs/lockfiles/' },
         { label: 'Dev servers', link: '/docs/dev-servers/' },
+        // FOLD into Dev servers
         {
           label: 'Start a dev server before your tests',
           link: '/docs/running/start-a-dev-server/',
@@ -78,31 +90,35 @@ const SIDEBAR_GROUPS: Record<'Docs', SidebarItem[]> = {
       label: 'Run tasks',
       items: [
         { label: 'Running tasks', link: '/docs/running-tasks/' },
+        // FOLD these four into Running tasks
         { label: 'Run only what changed', link: '/docs/running/run-what-changed/' },
         { label: "Run one project's tasks", link: '/docs/running/run-one-project/' },
         { label: 'Stop at the first failure', link: '/docs/running/stop-at-the-first-failure/' },
         { label: 'Set a time limit on a task', link: '/docs/running/set-a-time-limit/' },
+        { label: 'Explore the task graph', link: '/docs/graph-explorer/' },
+      ],
+    },
+    {
+      label: 'Cache results',
+      items: [
+        { label: 'Caching', link: '/docs/caching/' },
+        // FOLD these two into Caching
+        { label: 'Cache a task', link: '/docs/caching/cache-a-task/' },
+        { label: 'Clear the local cache', link: '/docs/caching/clean-the-cache/' },
+        { label: 'Find why a task missed the cache', link: '/docs/caching/why-a-task-missed/' },
         { label: 'Sandboxing', link: '/docs/sandboxing/' },
       ],
     },
     {
-      label: 'Cache',
-      items: [
-        { label: 'Caching', link: '/docs/caching/' },
-        { label: 'Cache a task', link: '/docs/caching/cache-a-task/' },
-        { label: 'Find why a task missed the cache', link: '/docs/caching/why-a-task-missed/' },
-        { label: 'Clear the local cache', link: '/docs/caching/clean-the-cache/' },
-        { label: 'Remote cache', link: '/docs/remote-cache/' },
-        { label: 'Cache server', link: '/docs/servers/cache/' },
-      ],
-    },
-    {
-      label: 'CI',
+      label: 'Run on CI',
       items: [
         { label: 'CI', link: '/docs/ci/' },
         { label: 'Run the same checks locally and on CI', link: '/docs/ci/run-a-pipeline/' },
+        // FOLD these two into CI
         { label: 'Fail CI when the lock is stale', link: '/docs/ci/check-the-lock/' },
         { label: 'Fix a merge conflict in the lock', link: '/docs/ci/fix-a-lock-conflict/' },
+        { label: 'Remote cache', link: '/docs/remote-cache/' },
+        { label: 'Cache server', link: '/docs/servers/cache/' },
       ],
     },
     {
@@ -131,7 +147,7 @@ const SIDEBAR_GROUPS: Record<'Docs', SidebarItem[]> = {
     // Everything that is not core (2026-10-26): each plugin, the
     // servers they talk to, and how to write one.
     {
-      label: 'Plugins',
+      label: 'Extend vx',
       items: [
         { label: 'Plugins', link: '/docs/plugins/' },
         { label: 'Remote execution', link: '/docs/remote-execution/' },
@@ -141,10 +157,10 @@ const SIDEBAR_GROUPS: Record<'Docs', SidebarItem[]> = {
       ],
     },
     {
-      label: 'Debugging',
+      label: 'Get help',
       items: [
         { label: 'Troubleshooting', link: '/docs/troubleshooting/' },
-        { label: 'Explore the task graph', link: '/docs/graph-explorer/' },
+        { label: 'Upgrading vx', link: '/docs/upgrading/' },
       ],
     },
     {
