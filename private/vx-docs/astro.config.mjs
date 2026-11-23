@@ -163,7 +163,9 @@ export default defineConfig({
         'Correct, sandboxed, extensible task orchestration. Plugins decide where tasks run and where the cache lives. MIT, no cloud, no account.',
       logo: {
         src: './src/assets/logo.svg',
-        alt: 'vx',
+        // The title text beside it already says vx: a screen reader would
+        // read it twice.
+        alt: '',
         replacesTitle: false,
       },
       favicon: '/favicon.svg',

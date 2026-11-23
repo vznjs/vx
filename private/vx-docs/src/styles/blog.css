@@ -382,25 +382,25 @@
   margin: 0 !important;
 }
 
-.vx-card h3 {
+.vx-card-title {
   margin: 0.75rem 0 0;
   font: 600 1.3rem / 1.25 var(--vx-font-display);
   letter-spacing: -0.02em;
   text-wrap: balance;
 }
 
-.vx-card h3 a {
+.vx-card-title a {
   color: var(--vx-fg);
   text-decoration: none;
 }
 
-.vx-card h3 a::after {
+.vx-card-title a::after {
   content: '';
   position: absolute;
   inset: 0;
 }
 
-.vx-card:hover h3 a {
+.vx-card:hover .vx-card-title a {
   color: var(--vx-accent);
 }
 

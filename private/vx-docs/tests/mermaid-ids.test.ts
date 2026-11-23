@@ -48,7 +48,7 @@ function unescape(html: string): string {
     .replace(/&amp;/g, '&')
 }
 
-function flowcharts(): Array<{ page: string; source: string }> {
+function diagrams(kind: RegExp): Array<{ page: string; source: string }> {
   const out: Array<{ page: string; source: string }> = []
   for (const e of readdirSync(DIST, { recursive: true, withFileTypes: true })) {
     if (!e.isFile() || e.name !== 'index.html') continue
@@ -56,13 +56,16 @@ function flowcharts(): Array<{ page: string; source: string }> {
     const html = readFileSync(file, 'utf8')
     for (const m of html.matchAll(/<pre class="mermaid"[^>]*>([\s\S]*?)<\/pre>/g)) {
       const source = unescape(m[1]!)
-      if (/^\s*(?:flowchart|graph)\b/.test(source)) {
+      if (kind.test(source)) {
         out.push({ page: path.relative(DIST, path.dirname(file)), source })
       }
     }
   }
   return out
 }
+
+const flowcharts = (): Array<{ page: string; source: string }> =>
+  diagrams(/^\s*(?:flowchart|graph)\b/)
 
 function ids(source: string): string[] {
   // The header line (`flowchart LR`) and quoted labels are not ids.
@@ -90,6 +93,23 @@ describe('every flowchart the site ships', () => {
       ids(source)
         .filter((id) => KEYWORDS.has(id))
         .map((id) => `${page}: ${id}`),
+    )
+    expect(bad).toEqual([])
+  })
+})
+
+// A `;` ends a sequence diagram's statement, so one inside a message cuts
+// it and the rest does not parse: flows/ drew mermaid's error graphic for
+// "ctime stamp; from 2,048 files".
+describe('every sequence diagram the site ships', () => {
+  it('puts no statement-ending semicolon inside a message', () => {
+    const seqs = diagrams(/^\s*sequenceDiagram\b/)
+    expect(seqs.length).toBeGreaterThanOrEqual(5)
+    const bad = seqs.flatMap(({ page, source }) =>
+      source
+        .split('\n')
+        .filter((line) => /:.*;/.test(line))
+        .map((line) => `${page}: ${line.trim()}`),
     )
     expect(bad).toEqual([])
   })

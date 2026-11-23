@@ -37,7 +37,7 @@ resolve the _command output_ live at hash time. This is the only
 mechanism that survives `--frozen` — there is nothing to "freeze"
 about the output, so it cannot go stale.
 
-|                  | frozen in lock             | resolved live at hash time    |
+| Field            | frozen in lock             | resolved live at hash time    |
 | ---------------- | -------------------------- | ----------------------------- |
 | `inputs.env`     | the names `['NODE_ENV']`   | the values from `process.env` |
 | `inputs.runtime` | the commands `['node -v']` | the command output            |

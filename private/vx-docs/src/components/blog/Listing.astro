@@ -63,6 +63,6 @@ const chips = kind === 'releases' ? [] : [
   }
 
   <div class="vx-grid">
-    {rest.map((p) => <Card post={p} />)}
+    {rest.map((p) => <Card post={p} level={lead ? 3 : 2} />)}
   </div>
 </div>

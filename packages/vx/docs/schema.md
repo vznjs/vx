@@ -1673,7 +1673,7 @@ or a read-only `--cache-policy=local:r`) — the user is debugging and
 managing the tree themselves. `--force` keeps writes on, so it does
 clean.
 
-##### `outputs.workspaceFiles` (optional, default `[]`)
+#### `outputs.workspaceFiles` (optional, default `[]`)
 
 Workspace-root-relative globs for outputs the task writes OUTSIDE its
 project dir (e.g. a root-level generated file). Same capture / restore

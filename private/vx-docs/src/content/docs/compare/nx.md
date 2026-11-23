@@ -42,7 +42,7 @@ benchmark took 87 s against 25 s off (Nx 23.3.0, 2026-10-12).
 
 ## Feature by feature
 
-|                                     | vx                                                                                         | Nx                                                      |
+| Feature                             | vx                                                                                         | Nx                                                      |
 | ----------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------------------- |
 | Config                              | TypeScript, evaluated into the cache key                                                   | JSON (`project.json`, `nx.json`), plus inferred targets |
 | Daemon                              | None; nothing boots per task                                                               | On by default locally                                   |

@@ -51,10 +51,7 @@
     }
   }
 
-  async function renderMermaid() {
-    const blocks = Array.from(
-      document.querySelectorAll<HTMLElement>('pre.mermaid'),
-    )
+  async function renderMermaid(blocks: HTMLElement[]) {
     if (blocks.length === 0) return
 
     const { default: mermaid } = await import('mermaid')
@@ -64,6 +61,9 @@
       startOnLoad: false,
       securityLevel: 'loose',
       theme: dark ? 'dark' : 'neutral',
+      // Mermaid 12 defaults to ELK, a 1.4 MB layout engine every flowchart
+      // then downloads and parses; dagre draws these diagrams at a fraction.
+      layout: 'dagre',
       fontFamily: 'inherit',
       // Charts in the site's accent on the page's own background, not
       // Mermaid's blue on a grey card.
@@ -91,20 +91,45 @@
   // (reading 'firstChild')" as an uncaught non-Error (item 697). A failed
   // render is reported with mermaid's own message, not thrown into the page.
   let rendering: Promise<void> = Promise.resolve()
-  function scheduleRender(): void {
-    rendering = rendering.then(renderMermaid).catch((err: unknown) => {
-      const message = (err as { message?: unknown } | null)?.message
-      console.error(`[vx] a diagram did not render: ${String(message ?? err)}`)
-    })
+  function scheduleRender(blocks: HTMLElement[]): void {
+    rendering = rendering
+      .then(() => renderMermaid(blocks))
+      .catch((err: unknown) => {
+        const message = (err as { message?: unknown } | null)?.message
+        console.error(`[vx] a diagram did not render: ${String(message ?? err)}`)
+      })
   }
 
-  scheduleRender()
+  // A diagram draws once it nears the viewport: Mermaid and its diagram
+  // chunks load only then, and a page of many diagrams (flows/ has ten)
+  // lays out one screenful at a time instead of all of them on load.
+  let drawn = new Set<HTMLElement>()
+  let io: IntersectionObserver | undefined
+  function watch(): void {
+    io?.disconnect()
+    drawn = new Set()
+    const view = new IntersectionObserver(
+      (entries) => {
+        const near = entries.filter((e) => e.isIntersecting).map((e) => e.target as HTMLElement)
+        for (const el of near) {
+          view.unobserve(el)
+          drawn.add(el)
+        }
+        scheduleRender(near)
+      },
+      { rootMargin: '600px 0px' },
+    )
+    io = view
+    for (const el of document.querySelectorAll<HTMLElement>('pre.mermaid')) view.observe(el)
+  }
+
+  watch()
   // Re-render after Starlight's view-transition navigations.
-  document.addEventListener('astro:after-swap', scheduleRender)
+  document.addEventListener('astro:after-swap', watch)
 
   // Re-render on light/dark toggle so diagram colors track the theme.
   const observer = new MutationObserver((records) => {
-    if (records.some((r) => r.attributeName === 'data-theme')) scheduleRender()
+    if (records.some((r) => r.attributeName === 'data-theme')) scheduleRender([...drawn])
   })
   observer.observe(document.documentElement, { attributes: true })
 </script>
