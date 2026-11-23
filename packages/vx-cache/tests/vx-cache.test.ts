@@ -1191,6 +1191,11 @@ describe('config', () => {
       expect(() => vxCache(options as never)).toThrow(said)
       expect(() => vxCache(options as never)).toThrow(UserError)
     }
+    // No options at all crashed as a TypeError, `vx: this is a bug in vx`.
+    expect(() => (vxCache as () => unknown)()).toThrow(UserError)
+    expect(() => (vxCache as () => unknown)()).toThrow(
+      "vxCache(): issuer must be the CI issuer's URL (https://token.actions.githubusercontent.com), got undefined",
+    )
   })
 
   // A deadline a timer cannot wait on ended every request at once: Bun

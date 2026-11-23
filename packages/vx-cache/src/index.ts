@@ -1169,6 +1169,8 @@ export function hasCiToken(env: Record<string, string | undefined>, lent: boolea
  */
 export function vxCache(options: VxCacheOptions): VxPlugin {
   refuseUnknownOptions('vxCache()', options, KEYS)
+  // None at all is the missing issuer, not a TypeError at the first read.
+  if (options === undefined) namedOf({} as VxCacheOptions)
   // A NaN, zero or negative deadline aborted every request as it began,
   // and so did one over 2³¹−1: Bun runs a timer it cannot hold after 1 ms.
   for (const name of ['timeoutMs', 'uploadTimeoutMs'] as const) {
