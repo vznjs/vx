@@ -36,4 +36,16 @@ describe('cliCacheDir', () => {
       code: 'VX_E_USAGE',
     })
   })
+
+  // `--cache-dir .vx/cache/cache.db` read as an empty cache: `no runs yet`.
+  it('refuses a --cache-dir that is a file, by name', async () => {
+    let threw = {}
+    await cliCacheDir(verbWorkspace('/nowhere'), 'package.json').catch((err: UserError) => {
+      threw = { message: err.message, code: err.code }
+    })
+    expect(threw).toEqual({
+      message: `--cache-dir package.json: ${path.resolve(process.cwd(), 'package.json')} is a file, not a directory — check the path, or drop --cache-dir to read the workspace's own cache`,
+      code: 'VX_E_USAGE',
+    })
+  })
 })
