@@ -396,7 +396,7 @@ const startCommands = [
 
   <script>
     import { burnAt, burnClip, lapAt, lapsLabel, racing, step } from '../components/landing/race.ts'
-    import { DRIFT_REST_MS, drift } from '../components/landing/drift.ts'
+    import { DRIFT_REST_MS, drift, fold } from '../components/landing/drift.ts'
     import { COUNT_MS, countAt } from '../components/landing/count.ts'
 
     // Bands play once as they come near: the count runs up, the columns
@@ -533,16 +533,17 @@ const startCommands = [
         },
         { threshold: 0.4 },
       ).observe(hop)
-      // The sky: each row slides on its own and loops; the second runs the
-      // other way, offset by half a card. A hovered row stops. On a touch
-      // screen a finger scrolls a row, and it drifts on from there.
+      // The sky: each row drifts on its own and loops; the second runs the
+      // other way, offset by half a card. Any row scrolls by hand too: a
+      // finger, a trackpad or a dragged mouse takes it over, a hovered row
+      // stops, and it drifts on from wherever it was left.
       const sky = document.querySelector<HTMLElement>('.sky')!
       const touch = matchMedia('(hover: none)').matches
-      const sayRows = [...sky.querySelectorAll<HTMLElement>('.say-row')].map((lane, r) => {
+      const rows = [...sky.querySelectorAll<HTMLElement>('.say-row')].map((lane, r) => {
         const track = lane.querySelector<HTMLElement>('.say-track')!
         const first = track.firstElementChild as HTMLElement
         const count = track.children.length
-        for (let n = touch ? 2 : 1; n > 0; n--) {
+        for (let n = 2; n > 0; n--) {
           for (const li of [...track.querySelectorAll(':scope > li:not([aria-hidden])')]) {
             const copy = li.cloneNode(true) as HTMLElement
             copy.setAttribute('aria-hidden', 'true')
@@ -553,78 +554,88 @@ const startCommands = [
         }
         // One loop is where the first copy starts; padding stays out of it.
         const one = (track.children[count] as HTMLElement).offsetLeft - first.offsetLeft
-        return { lane, track, one, r, dir: Number(lane.dataset['dir']) }
-      })
-      if (touch) {
-        const rows = sayRows.map(({ lane, one, r, dir }) => {
-          const row = { lane, one, dir, pos: one + r * 200, set: -1, held: false, restUntil: 0 }
-          const hold = (): void => {
-            row.restUntil = performance.now() + DRIFT_REST_MS
-          }
+        const row = { lane, one, dir: Number(lane.dataset['dir']), pos: one + r * 200, set: -1, held: false, restUntil: 0 }
+        const hold = (): void => {
+          row.restUntil = performance.now() + DRIFT_REST_MS
+        }
+        const place = (pos: number): void => {
+          row.pos = pos
+          lane.scrollLeft = pos
+          row.set = lane.scrollLeft
+        }
+        if (touch) {
           lane.addEventListener('touchstart', () => ((row.held = true), hold()), { passive: true })
           lane.addEventListener('touchend', () => ((row.held = false), hold()), { passive: true })
           lane.addEventListener('touchcancel', () => ((row.held = false), hold()), { passive: true })
-          lane.addEventListener(
-            'scroll',
-            () => {
-              if (Math.abs(lane.scrollLeft - row.set) < 2) return
-              row.pos = lane.scrollLeft
-              hold()
-            },
-            { passive: true },
-          )
-          return row
-        })
-        let last = 0
-        let frame = 0
-        const tick = (now: number): void => {
-          const ms = Math.min(now - last, 100)
-          last = now
-          for (const row of rows) {
-            if (row.held || now < row.restUntil) continue
-            row.pos = drift(row.pos, ms, row.dir, row.one)
-            row.lane.scrollLeft = row.pos
-            row.set = row.lane.scrollLeft
-          }
-          frame = requestAnimationFrame(tick)
+        } else {
+          lane.addEventListener('pointerenter', () => (row.held = true))
+          // A mouse drags the row; a drag is not a click on a source link.
+          let grab: { x: number; pos: number; moved: boolean } | undefined
+          lane.addEventListener('pointerleave', () => {
+            if (grab) return
+            row.held = false
+            hold()
+          })
+          lane.addEventListener('pointerdown', (ev) => {
+            if (ev.pointerType !== 'mouse' || ev.button !== 0) return
+            grab = { x: ev.clientX, pos: row.pos, moved: false }
+          })
+          addEventListener('pointermove', (ev) => {
+            if (!grab) return
+            const dx = ev.clientX - grab.x
+            if (!grab.moved && Math.abs(dx) < 4) return
+            if (!grab.moved) lane.classList.add('grabbing')
+            grab.moved = true
+            place(fold(grab.pos - dx, row.one))
+            grab.pos = row.pos + dx
+          })
+          addEventListener('pointerup', () => {
+            if (!grab) return
+            const moved = grab.moved
+            grab = undefined
+            row.held = lane.matches(':hover')
+            lane.classList.remove('grabbing')
+            hold()
+            if (!moved) return
+            const eat = (ev: Event): void => (ev.preventDefault(), ev.stopPropagation())
+            lane.addEventListener('click', eat, { capture: true, once: true })
+            setTimeout(() => lane.removeEventListener('click', eat, { capture: true }))
+          })
+          lane.addEventListener('dragstart', (ev) => ev.preventDefault())
         }
-        sky.classList.add('swipe')
-        for (const row of rows) {
-          row.lane.scrollLeft = row.pos
-          row.set = row.lane.scrollLeft
+        lane.addEventListener(
+          'scroll',
+          () => {
+            if (Math.abs(lane.scrollLeft - row.set) < 2) return
+            row.pos = lane.scrollLeft
+            hold()
+            // A trackpad has no finger to wait for: out of the middle copy it
+            // jumps back to the same view there, before a wide lane's end.
+            if (!touch && (row.pos < row.one / 2 || row.pos >= row.one * 2)) place(fold(row.pos, row.one))
+          },
+          { passive: true },
+        )
+        return { row, place }
+      })
+      let skyLast = 0
+      let skyFrame = 0
+      const tick = (now: number): void => {
+        const ms = Math.min(now - skyLast, 100)
+        skyLast = now
+        for (const { row, place } of rows) {
+          if (row.held || now < row.restUntil) continue
+          place(drift(row.pos, ms, row.dir, row.one))
         }
-        new IntersectionObserver(([e]) => {
-          cancelAnimationFrame(frame)
-          if (!e!.isIntersecting) return
-          last = performance.now()
-          frame = requestAnimationFrame(tick)
-        }).observe(sky)
-      } else {
-        const runs = sayRows.map(({ lane, track, one, r, dir }) => {
-          const start = -(r * 200)
-          const run = track.animate(
-            [
-              { transform: `translateX(${dir < 0 ? start : start - one}px)` },
-              { transform: `translateX(${dir < 0 ? start - one : start}px)` },
-            ],
-            { duration: one * 28, iterations: Infinity },
-          )
-          run.pause()
-          return { lane, run }
-        })
-        // A row stops while the pointer is on it, and every row while the sky is off screen.
-        let skyInView = false
-        const syncRows = (): void => runs.forEach(({ lane, run }) => (skyInView && !lane.matches(':hover') ? run.play() : run.pause()))
-        runs.forEach(({ lane }) => {
-          lane.addEventListener('pointerenter', syncRows)
-          lane.addEventListener('pointerleave', () => requestAnimationFrame(syncRows))
-        })
-        sky.classList.add('live')
-        new IntersectionObserver(([e]) => {
-          skyInView = e!.isIntersecting
-          syncRows()
-        }).observe(sky)
+        skyFrame = requestAnimationFrame(tick)
       }
+      sky.classList.add('swipe')
+      for (const { row, place } of rows) place(row.pos)
+      new IntersectionObserver(([e]) => {
+        cancelAnimationFrame(skyFrame)
+        if (!e!.isIntersecting) return
+        skyLast = performance.now()
+        skyFrame = requestAnimationFrame(tick)
+      }).observe(sky)
       // The parts lean toward the pointer.
       document.querySelectorAll<HTMLElement>('.part').forEach((card) => {
         card.addEventListener('pointermove', (ev) => {
