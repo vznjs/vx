@@ -231,10 +231,14 @@ export function outsideWritesHint(
     return `${homeCache}/${tool}`
   }
   // Never home or above it: a tool's own `~/.cache` (or `~/.npmrc`) is the grant.
+  // Nor a directory holding the project: a task writing `../shared.txt`
+  // was told to grant `../`, every sibling project writable.
+  const project = toRealPath(within)
   const grantOf = (p: string): string => {
     const cache = toolCache(p)
     if (cache !== undefined && (cache !== p || isDir(p))) return `${cache}/`
-    return isDir(p) ? `${p}/` : atOrUnder(home, path.dirname(p)) ? p : `${path.dirname(p)}/`
+    const dir = path.dirname(p)
+    return isDir(p) ? `${p}/` : atOrUnder(home, dir) || atOrUnder(project, dir) ? p : `${dir}/`
   }
   const grants = [...new Set(paths.filter((p) => !scratchTemp(p)).map(grantOf))].filter(
     (g, _, all) =>
@@ -250,10 +254,13 @@ export function outsideWritesHint(
     const s = grantSpelling(g.endsWith('/') ? g.slice(0, -1) : g, walled, within)
     return jsString(g.endsWith('/') && !s.endsWith('/') ? `${s}/` : s)
   })
+  const one = grants.length === 1
+  const dirs = grants.every((g) => g.endsWith('/'))
+  const what = dirs ? (one ? 'its directory' : 'their directories') : one ? 'it' : 'them'
   const line =
     grants.length === 0
       ? `${refused}${temp}`
-      : `${refused} If the task needs ${grants.length === 1 ? 'one, grant its directory' : 'them, grant their directories'}, e.g. ` +
+      : `${refused} If the task needs ${one ? 'one' : 'them'}, grant ${what}, e.g. ` +
         `\`allow: { write: [${spelled.join(', ')}] }\`.${temp}`
   return { timestamp: new Date(), hint: true, line }
 }

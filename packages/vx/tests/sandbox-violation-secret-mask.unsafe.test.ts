@@ -14,7 +14,8 @@ const available = await sandboxAvailable('sandbox violation secret mask test')
 const quiet = { status() {}, taskStdout() {}, taskStderr() {}, taskComplete() {} }
 const REFUSED =
   'vx: the sandbox refused writes outside the project, which are not reported as violations:'
-const GRANT = "If the task needs one, grant its directory, e.g. `allow: { write: ['../../'] }`."
+const grant = (file: string) =>
+  `If the task needs one, grant it, e.g. \`allow: { write: ['../../${file}'] }\`.`
 
 // Linux: macOS logs the record late or not at all.
 describe.skipIf(!available || process.platform !== 'linux')('a violation line', () => {
@@ -37,11 +38,13 @@ describe.skipIf(!available || process.platform !== 'linux')('a violation line', 
   }
 
   it('masks a secret in the path it names', async () => {
-    expect(await lines('DEPLOY_KEY')).toEqual([`${REFUSED} ${root}/out-***. ${GRANT}`])
+    expect(await lines('DEPLOY_KEY')).toEqual([`${REFUSED} ${root}/out-***. ${grant('out-***')}`])
   })
 
   it('CONTROL: a value under a plain name is printed as the task spelled it', async () => {
-    expect(await lines('OUT_NAME')).toEqual([`${REFUSED} ${root}/out-definedvalue77. ${GRANT}`])
+    expect(await lines('OUT_NAME')).toEqual([
+      `${REFUSED} ${root}/out-definedvalue77. ${grant('out-definedvalue77')}`,
+    ])
   })
 })
 
