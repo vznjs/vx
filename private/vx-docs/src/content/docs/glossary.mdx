@@ -10,6 +10,8 @@ import { Levels, Deeper, Quiz, Takeaway, NextStep } from '../../components/learn
 One config holds most of the words on this page. Find each one in it:
 
 ```ts title="packages/web/vx.config.ts"
+import { defineProject } from '@vzn/vx/config'
+
 export default defineProject({ //           a project
   tasks: {
     build: { //                             a task
