@@ -292,9 +292,10 @@ to a script through `env`, never pasted in (a release tag is checked as a
 version first); every workflow names its token's permissions, and CI's
 is read-only. A test holds each rule.
 
-The publishing workflows build a release tag only: `release.yml` checks
-out `refs/tags/<tag>`, and `npm.yml` a dispatch's `ref` as a tag, so a
-dispatch naming a branch or a commit builds nothing. npm's trusted
-publisher takes a token only from a job of the `npm` environment, whose
-branch rule admits `main` and the release tags
-(`tests/auto-release.unsafe.test.ts`).
+The publishing workflow builds a release tag only: `release.yml`'s job
+runs only when dispatched on a `v*` tag, so a dispatch naming a branch
+builds nothing. npm's trusted publisher takes a token only from a job of
+the `npm` environment, whose rule admits the release tags
+(`tests/auto-release.unsafe.test.ts`). Its workers run each task with
+that job's environment, tokens included, as a change's workers run with
+its run's.

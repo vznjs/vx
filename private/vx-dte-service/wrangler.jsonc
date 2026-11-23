@@ -5,10 +5,10 @@
   "main": "src/worker.ts",
   "compatibility_date": "2026-10-01",
   "workers_dev": true,
-  // Who may take part: this repo's CI and its workers. A plain var, never a
+  // Who may take part: this repo's CI, its release and their workers. A plain var, never a
   // secret, hardcoded here so each deploy sets it (2026-10-23).
   "vars": {
-    "ALLOW": "https://token.actions.githubusercontent.com:vznjs/vx:ci.yml https://token.actions.githubusercontent.com:vznjs/vx:vx-worker.yml",
+    "ALLOW": "https://token.actions.githubusercontent.com:vznjs/vx:ci.yml https://token.actions.githubusercontent.com:vznjs/vx:vx-worker.yml https://token.actions.githubusercontent.com:vznjs/vx:release.yml",
   },
   "durable_objects": {
     "bindings": [{ "name": "RELAY", "class_name": "RelayRun" }],
@@ -31,7 +31,7 @@
   // code reads. Each gets its own Durable Object namespace.
   "previews": {
     "vars": {
-      "ALLOW": "https://token.actions.githubusercontent.com:vznjs/vx:ci.yml https://token.actions.githubusercontent.com:vznjs/vx:vx-worker.yml",
+      "ALLOW": "https://token.actions.githubusercontent.com:vznjs/vx:ci.yml https://token.actions.githubusercontent.com:vznjs/vx:vx-worker.yml https://token.actions.githubusercontent.com:vznjs/vx:release.yml",
     },
     "durable_objects": {
       "bindings": [{ "name": "RELAY", "class_name": "RelayRun" }],
