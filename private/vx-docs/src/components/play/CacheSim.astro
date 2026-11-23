@@ -82,14 +82,14 @@ const list = (xs: readonly string[]) => (xs.length === 0 ? '—' : xs.join(', ')
             TASKS.map((t) => (
               <tr>
                 <th scope="row">{t.id}</th>
-                <td>{list(t.files)}</td>
-                <td>{list(t.env)}</td>
-                <td>
+                <td data-label="inputs.files">{list(t.files)}</td>
+                <td data-label="inputs.env">{list(t.env)}</td>
+                <td data-label="dependsOn">
                   {t.task === 'lint'
                     ? '—'
                     : `^build (${t.dependsOn.length === 0 ? 'none' : t.dependsOn.join(', ')})`}
                 </td>
-                <td>{list(t.outputs)}</td>
+                <td data-label="outputs.files">{list(t.outputs)}</td>
               </tr>
             ))
           }
@@ -200,5 +200,27 @@ const list = (xs: readonly string[]) => (xs.length === 0 ? '—' : xs.join(', ')
   }
   vx-cache-sim .configs table {
     margin-block: 0.5rem;
+  }
+  /* On a phone each task is a card: its name, then one labelled line per field. */
+  @media (max-width: 40rem) {
+    vx-cache-sim .configs thead {
+      display: none;
+    }
+    vx-cache-sim .configs :is(table, tbody, tr, th, td) {
+      display: block;
+      width: auto;
+    }
+    vx-cache-sim .configs tr {
+      padding-block: 0.5rem;
+      border-bottom: 1px solid var(--vx-border);
+    }
+    vx-cache-sim .configs :is(th, td) {
+      padding: 0.1rem 0;
+      border-bottom: 0;
+    }
+    vx-cache-sim .configs td::before {
+      content: attr(data-label) ': ';
+      color: var(--vx-muted);
+    }
   }
 </style>

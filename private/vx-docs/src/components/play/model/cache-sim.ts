@@ -43,7 +43,7 @@ export const CHANGES: readonly Change[] = [
   { id: 'readme', label: 'Edit ui/README.md', target: 'packages/ui/README.md' },
   { id: 'ignored', label: 'Edit ui/src/debug.log', target: 'packages/ui/src/debug.log' },
   { id: 'command', label: "ui build: 'vite build --minify false'", target: 'exec.command' },
-  { id: 'envDeclared', label: 'VITE_API_URL=/v2', target: 'VITE_API_URL' },
+  { id: 'envDeclared', label: 'MODE=production', target: 'MODE' },
   { id: 'envUndeclared', label: 'DEBUG=1', target: 'DEBUG' },
 ]
 
@@ -80,7 +80,7 @@ export interface TaskSpec {
 }
 
 // Every project declares the same three tasks, as running-tasks.mdx shows
-// web's config; web's build alone also keys on VITE_API_URL (inputs.env).
+// web's config; web's build alone also keys on MODE (inputs.env).
 const PROJECTS = [
   { name: 'ui', deps: [] as string[], ms: 640, tests: 12 },
   { name: 'web', deps: ['ui'], ms: 820, tests: 7 },
@@ -109,7 +109,7 @@ const spec = (p: (typeof PROJECTS)[number], task: TaskName): TaskSpec => {
         command: 'vite build',
         dependsOn,
         files: ['src/**', 'vite.config.ts'],
-        env: p.name === 'web' ? ['VITE_API_URL'] : [],
+        env: p.name === 'web' ? ['MODE'] : [],
         outputs: ['dist/**'],
         log: `✓ built in ${Math.round(p.ms * 0.65)}ms`,
         ms: p.ms,
@@ -202,7 +202,7 @@ const commandOf = (s: State, t: TaskSpec): string =>
   t.id === '@demo/ui#build' && s.changed.has('command') ? 'vite build --minify false' : t.command
 
 const ENV: Record<string, { from: string; to: string; change: ChangeId }> = {
-  VITE_API_URL: { from: '/api', to: '/v2', change: 'envDeclared' },
+  MODE: { from: 'staging', to: 'production', change: 'envDeclared' },
   DEBUG: { from: 'unset', to: '1', change: 'envUndeclared' },
 }
 

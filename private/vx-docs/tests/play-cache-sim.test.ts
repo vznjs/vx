@@ -96,7 +96,7 @@ describe('what moves a key', () => {
     const s = warm()
     toggle(s, 'envDeclared')
     const r = by(run(s, 'build'))
-    expect(r['@demo/web#build']!.verdict).toBe('cache key changed: env VITE_API_URL')
+    expect(r['@demo/web#build']!.verdict).toBe('cache key changed: env MODE')
     expect(r['@demo/ui#build']!.outcome).toBe('up-to-date')
     expect(r['@demo/admin#build']!.outcome).toBe('up-to-date')
   })
@@ -108,7 +108,7 @@ describe('what moves a key', () => {
     toggle(s, 'uiSrc')
     toggle(s, 'command')
     expect(by(run(s, 'build'))['@demo/web#build']!.verdict).toBe(
-      'cache key changed: file packages/web/src/index.ts, env VITE_API_URL, upstream @demo/ui#build',
+      'cache key changed: file packages/web/src/index.ts, env MODE, upstream @demo/ui#build',
     )
   })
 
