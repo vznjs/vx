@@ -454,17 +454,7 @@ From `@vzn/vx-lockfile`. Each reads its own lockfile.
 
 ### `vxCache()`
 
-From `@vzn/vx-cache`. Reads and writes a [cache server](../servers/cache/) on CI jobs only.
-
-| Option | What it does | Default |
-| --- | --- | --- |
-| `url` | The cache server's URL. `http://` only to this machine. | `VX_CACHE_URL` |
-| `issuer` | The CI whose tokens the server takes, such as `https://token.actions.githubusercontent.com`. | required |
-| `repository` | Your repository at that CI, `org/name`. | required |
-| `timeoutMs` | Deadline for one read. | `30000` |
-| `uploadTimeoutMs` | Deadline for one upload. | `60000` |
-| `retries` | Tries after a 5xx, a 429 or a dropped connection, 1 s, 2 s, … apart. | `2` |
-| `headers` | Headers for a proxy in front of the server. | `{}` |
+From `@vzn/vx-cache`: see [every `vxCache()` option](../remote-cache/#vxcache-options) on Remote cache.
 
 ### `vxHistory()`
 
