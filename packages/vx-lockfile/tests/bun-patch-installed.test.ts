@@ -113,6 +113,44 @@ it('refuses while the hoisted copy carries another patch, and compares again onc
   expect(await run()).toEqual({ said: [], result: REFUSED })
 })
 
+// A `file:` tarball bun.lock patches: its store copy was not compared, so a
+// build between a patch edit and the install replayed the old patch's
+// output (conformance inputs/patch-edit-built-before-install-not-replayed).
+it('refuses a patched tarball copy in the store that carries another patch', async () => {
+  const id = 'x@../../vendor/x.tgz'
+  const file = 'patches/x@..%2F..%2Fvendor%2Fx.tgz.patch'
+  const store = 'node_modules/.bun/x@..+..+vendor+x.tgz+a8e74b87a52ca5a7/node_modules/x'
+  await write({
+    'package.json': '{ "name": "root", "private": true, "workspaces": ["packages/*"] }',
+    'packages/a/package.json': `{ "name": "a", "dependencies": { "x": "file:../../vendor/x.tgz" } }`,
+    'bun.lock': `{
+  "lockfileVersion": 1,
+  "configVersion": 1,
+  "workspaces": {
+    "": { "name": "root" },
+    "packages/a": { "name": "a", "dependencies": { "x": "file:../../vendor/x.tgz" } },
+  },
+  "patchedDependencies": { "${id}": "${file}" },
+  "packages": {
+    "a": ["a@workspace:packages/a"],
+    "x": ["${id}", {}, "sha512-x"],
+  }
+}
+`,
+    [file]: PATCH2,
+    [`${store}/package.json`]: '{ "name": "x", "version": "1.0.0" }',
+    [`${store}/${tag(PATCH1)}`]: '',
+  })
+  expect(await run()).toEqual({
+    said: [],
+    result: `node_modules was installed from a different bun.lock (${id} carries another patch than ${file}) — run \`bun install\``,
+  })
+  // CONTROL: the install applied the patch the file holds.
+  await rm(path.join(root, store, tag(PATCH1)))
+  await write({ [`${store}/${tag(PATCH2)}`]: '' })
+  expect(await run()).toEqual({ said: [], result: 'ok' })
+})
+
 // A pull that adds a first patch: the copy installed before it has no tag
 // (Bun tags only what it patched), and its output was saved under the
 // patched key, replayed once the install patched it (probed, bun 1.4.4).

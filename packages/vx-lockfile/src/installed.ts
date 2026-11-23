@@ -439,7 +439,17 @@ function bunPatchCompare(
   store: string | undefined,
 ): Verdict {
   const listed = new Set<string>()
-  for (const e of lock.packages.values()) if (REGISTRY_ID.test(e.id)) listed.add(e.id)
+  // A `file:` tarball or other non-registry copy counts once bun.lock
+  // patches it: its edited patch built against the old copy too. Its store
+  // entry spells the id's slashes `+` (`x@..+..+vendor+x.tgz`).
+  const byEntry = new Map<string, string>()
+  for (const e of lock.packages.values()) {
+    if (REGISTRY_ID.test(e.id)) listed.add(e.id)
+    else if (lock.patches.has(e.id)) {
+      listed.add(e.id)
+      byEntry.set(e.id.replaceAll('/', '+'), e.id)
+    }
+  }
   // Each copy's root-relative dir by its package id (`name@version`).
   const copies: [id: string, dir: string][] = []
   if (store !== undefined) {
@@ -450,7 +460,7 @@ function bunPatchCompare(
       // No store to read: nothing installed to compare.
     }
     for (const entry of entries) {
-      const id = storeId(entry)
+      const id = byEntry.get(entry.replace(/\+[0-9a-f]{16}$/, '')) ?? storeId(entry)
       copies.push([
         id,
         `node_modules/.bun/${entry}/node_modules/${id.slice(0, id.indexOf('@', 1))}`,
