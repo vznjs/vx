@@ -84,7 +84,7 @@ A server never exits, so there is nothing to store. `vx lock` refuses `cache: tr
 
 A server takes a moment to listen. `readyWhen` is a pattern vx looks for in each line the server prints. The first match means ready.
 
-<Compare left="persistent: {}" right="persistent: { readyWhen: 'Local:' }">
+<Compare leftTitle="persistent: {}" rightTitle="persistent: { readyWhen: 'Local:' }">
 <div slot="left">
 
 Ready the moment `vite` starts. `smoke` runs before the port is open.
