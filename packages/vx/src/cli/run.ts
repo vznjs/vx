@@ -795,7 +795,11 @@ export async function runCmd(
 function savedNote(message: string, saved: ReadonlyMap<string, string>): string {
   let out = ''
   for (const [flag, key] of saved)
-    if (new RegExp(`(?<![\\w-])${flag}(?![\\w-])`).test(message))
+    if (
+      new RegExp(`(?<![\\w-])${flag}(?![\\w-])`).test(message) ||
+      // A filter matching no project is refused as `filter(s)`.
+      (flag === '--filter' && message.startsWith('no projects matched filter(s)'))
+    )
       out += `\n  ${flag} is ${key} in .vx/workspace`
   return out
 }

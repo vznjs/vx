@@ -213,6 +213,7 @@ describe('vx pipeline <name>', () => {
           base: { tasks: ['build'], affected: true },
           solo: { tasks: ['solo'], filter: ['a'] },
           plan: { tasks: ['build'], filter: ['a'], dry: true },
+          gone: { tasks: ['build'], filter: ['zzz'] },
         }`,
       ),
     )
@@ -316,6 +317,20 @@ describe('vx pipeline <name>', () => {
     expect(r.err).toContain('--affected is `pipelines.base.affected` in .vx/workspace\n')
     const typed = await vx('pipeline', 'check', '--affected')
     expect(typed.err).toContain('--affected has no base here')
+    expect(typed.err).not.toContain('`pipelines.')
+  }, 30_000)
+
+  // The refusal says `filter(s)`, not `--filter`, so the key went unnamed.
+  it('names the key behind a saved filter that matches nothing', async () => {
+    const r = await vx('pipeline', 'gone')
+    expect([r.code, r.err]).toEqual([
+      1,
+      expect.stringContaining('no projects matched filter(s): "zzz"'),
+    ])
+    expect(r.err).toContain('--filter is `pipelines.gone.filter` in .vx/workspace\n')
+    // CONTROL: a typed filter is the user's own, no key behind it.
+    const typed = await vx('pipeline', 'check', '--filter', 'zzz')
+    expect(typed.err).toContain('no projects matched filter(s): "zzz"')
     expect(typed.err).not.toContain('`pipelines.')
   }, 30_000)
 
