@@ -426,7 +426,11 @@ add` under a clean filter (`core.autocrlf=true`, a `text` rule)
     string, kept the key that `git status` and `--affected` saw move.
     Under `core.fileMode=false` (WSL's DrvFs) git reports no chmod, so
     there a clean file's mode comes from an lstat too, and its OID
-    from the index (item 1076), and `--affected` diffs with
+    from the index (item 1076). The same holds under
+    `core.symlinks=false`, where git checks a link out as a plain file
+    holding its target: it folds as that file. By the index mode it
+    folded as a link once its entry was trusted, so a commit moved the key.
+    `--affected` diffs with
     `core.fileMode=true` (likewise `core.trustctime=true` and
     `core.checkStat=default` under a weakened stat), so it selects what
     the key sees. Each of these settings is read as git

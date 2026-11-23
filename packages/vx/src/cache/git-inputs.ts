@@ -2181,8 +2181,18 @@ function fileModeIgnored(gitVars: string): boolean {
 }
 
 /**
- * Under `core.fileMode=false`, each trusted identity's mode from an lstat of
- * the worktree file, as `hashFile` takes it; the OID stays the index's. The
+ * `true` under `core.symlinks=false`: git checks a link out as a plain file
+ * holding its target and keeps the index mode 120000. Keyed by that mode, the
+ * file folded as a link (its target too) once its entry was trusted and as a
+ * plain file while racy, so a commit or a second's wait moved the key.
+ */
+function symlinksIgnored(gitVars: string): boolean {
+  return gitBool(gitVarList(gitVars).get('core.symlinks')) === false
+}
+
+/**
+ * Under `core.fileMode=false` or `core.symlinks=false`, each trusted
+ * identity's mode from an lstat of the worktree file, as `hashFile` takes it; the OID stays the index's. The
  * index mode alone kept the key through a `chmod +x`, and the task replayed
  * the output a 644 input built. A path that does not stat goes
  * back to the probe.
@@ -2943,7 +2953,11 @@ export async function startGitEnumeration(
     },
     staged,
   )
-  if (vars !== null && vars.exitCode === 0 && fileModeIgnored(vars.stdout)) {
+  if (
+    vars !== null &&
+    vars.exitCode === 0 &&
+    (fileModeIgnored(vars.stdout) || symlinksIgnored(vars.stdout))
+  ) {
     restampModes(trusted, workspaceRoot)
     // As a clean file is keyed, or a rewrite's mode moved the key.
     restampModes(staged, workspaceRoot)
