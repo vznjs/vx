@@ -111,6 +111,8 @@ Commit all of it. Every run reads the lock, so a teammate's checkout runs the sa
 
 ## Turborepo
 
+The samples below convert a small sample Turborepo workspace: `packages/app` depends on `packages/lib`.
+
 In a workspace with `turbo.json` (or `turbo.jsonc`), `vx init --native`
 prints what it wrote:
 
@@ -240,6 +242,8 @@ The command itself comes from your `package.json` script, with its
 </Deeper>
 
 ## Nx
+
+The samples below convert a small sample Nx workspace: `packages/app` depends on `packages/lib`.
 
 In a workspace with `nx.json`, `vx init --native` reads `nx graph`, so
 keep Nx installed while it runs. A Lerna 6+ workspace works the same way.
@@ -554,6 +558,4 @@ The `--keep` plugins take these options:
 
 </Deeper>
 
-Done migrating? [Workspace](../workspace/) explains the files you now own.
-
-<NextStep href="../workspace/" title="Workspace">Open the one file that marks your workspace and lists its plugins.</NextStep>
+<NextStep href="../tasks/" title="Tasks">Learn every field of the tasks vx wrote for you.</NextStep>
