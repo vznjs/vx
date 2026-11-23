@@ -739,6 +739,27 @@ describe('HistoryServer', () => {
     }
   })
 
+  // A blank around the URL was taken: a trailing one kept the slash before
+  // it, and each route went to `https://h.example/ /v1/…` (hardening,
+  // 2026-11-23). Refused, as vxCache() refuses one.
+  it('refuses a url or VX_HISTORY_URL with blanks around it', async () => {
+    const saved = Bun.env.VX_HISTORY_URL
+    const setup = (o: Parameters<typeof vxHistory>[0]) =>
+      vxHistory(o).setup!({ ci: false, warn: () => undefined } as never)
+    try {
+      Bun.env.VX_HISTORY_URL = 'https://h.example/ '
+      await expect(setup({ ...NAMED }) as Promise<unknown>).rejects.toThrow(
+        'vxHistory(): VX_HISTORY_URL has blanks around it: "https://h.example/ "',
+      )
+      expect(() => vxHistory({ ...NAMED, url: ' https://h.example' })).toThrow(
+        'vxHistory(): url has blanks around it: " https://h.example"',
+      )
+    } finally {
+      if (saved === undefined) delete Bun.env.VX_HISTORY_URL
+      else Bun.env.VX_HISTORY_URL = saved
+    }
+  })
+
   // It was checked only in a run's `setup`: `vx show`, `vx info` and a
   // `--dry` plan took the config, and every run then failed on it.
   it('refuses a url no request can carry when the config is evaluated', () => {

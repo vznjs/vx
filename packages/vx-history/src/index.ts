@@ -299,10 +299,16 @@ function serverUrlOf(
   option: string | undefined,
   env: Record<string, string | undefined> = Bun.env,
 ): string | undefined {
-  const url = (option ?? env.VX_HISTORY_URL)?.replace(/\/+$/, '')
-  if (url === undefined || url === '') return undefined
+  const given = option ?? env.VX_HISTORY_URL
+  if (given === undefined || given === '') return undefined
   // Named as the workspace set it: a bad VX_HISTORY_URL was refused as `url`.
   const from = option === undefined ? 'VX_HISTORY_URL' : 'url'
+  // A trailing blank kept the slash before it: each route went to `…/ /v1/…`.
+  if (given.trim() !== given)
+    throw new UserError(
+      `vxHistory(): ${from} has blanks around it: ${JSON.stringify(shown(given))}`,
+    )
+  const url = given.replace(/\/+$/, '')
   if (!secure(url))
     throw new UserError(
       `vxHistory(): ${from} must be https (http only to 127.0.0.1, ::1 or localhost), got ${shown(url)}`,
