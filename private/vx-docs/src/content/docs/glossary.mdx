@@ -52,7 +52,7 @@ Coming from another tool? Each section ends with a table of the names Turborepo,
 
 ### Task dependency
 
-**A task that must finish first.** `dependsOn: ['^build']` means: build the projects I depend on before me ([dependencies first](../docs/tasks/#build-a-projects-dependencies-first)).
+**A task that must finish first.** `dependsOn: ['^build']` means: build the projects I depend on before me ([dependencies first](../docs/tasks/#2-put-tasks-in-order)).
 
 ### Task graph
 
@@ -100,7 +100,7 @@ Names checked against each tool's docs on 2026-09-24.
 
 ### Affected
 
-**The projects a change can reach**: the ones you edited, plus everything that depends on them. `vx run test --affected` runs only those ([run what changed](../docs/running-tasks/#run-only-what-changed)).
+**The projects a change can reach**: the ones you edited, plus everything that depends on them. `vx run test --affected` runs only those ([run what changed](../docs/running-tasks/#4-run-only-what-changed)).
 
 ### Persistent task
 
