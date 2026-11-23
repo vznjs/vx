@@ -733,6 +733,7 @@ export interface ConfigContext extends WorkspaceHookContext {
 export interface DeclaredOutputs {
   files: readonly string[]
   workspaceFiles: readonly string[]
+  absent?: ReadonlySet<string>
 }
 == type DependencyRule (src/config.ts)
 export interface DependencyRule {
