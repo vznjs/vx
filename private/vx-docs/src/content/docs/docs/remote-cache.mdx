@@ -1,158 +1,174 @@
 ---
 title: Remote cache
-description: Let every machine reuse a task another machine already ran.
+description: Build a task once on CI; every other run downloads the result instead of running it again.
 ---
 
 import Diagram from '../../../components/guide/diagram/Diagram.astro'
 import { remoteCache } from '../../../components/docs/pictures.js'
-import { Tabs, TabItem, Aside } from '@astrojs/starlight/components'
+import { branchReads } from '../../../components/docs/pictures/remote-cache.js'
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components'
+import { Levels, Deeper, Concept, Quiz, Walkthrough, Frame, Takeaway, NextStep } from '../../../components/learn'
 
-On its own, vx caches on the machine that ran the task. A remote cache
-shares those results between machines.
+Your CI builds `@demo/ui` on `main`. A pull request opened a minute later downloads that build instead of running it.
 
-When `main` builds `@acme/ui`, a pull request's run downloads that build
-instead of running it again.
-
-<Diagram {...remoteCache} />
-
-vx asks its local cache first and the remote second. It uploads each new
-result in the background. A remote that is down or says no never fails
-a run: vx runs the task, as it would with no remote.
-
-This page sets up the vx cache server, which you host. It keeps results
-in one bucket and stores no secret.
-
-Each CI job proves who it is with the token its CI gives it. Already have
-a Turborepo, Nx or Bazel cache? See [Other remote caches](#other-remote-caches).
-
-<Aside title="Before you start">
-  You need vx running on CI ([CI](../ci/)) and a Cloudflare account. The
-  [Cache server](../servers/cache/) page shows how to host it on Bun or
-  Docker with an S3 bucket instead.
-</Aside>
-
-## 1. Deploy the server
-
-Make a folder for the server and install it:
-
-```sh
-mkdir vx-cache-server && cd vx-cache-server
-bun add @vzn/vx-cache-server
-```
-
-Write its `wrangler.jsonc`. `ALLOW` says who may use the server. With
-this, every run of `acme/app`'s `ci.yml` workflow on GitHub Actions may
-use the cache, each run writing its own branch's results:
-
-```jsonc title="wrangler.jsonc"
-{
-  "name": "vx-cache-server",
-  "main": "node_modules/@vzn/vx-cache-server/src/worker.ts",
-  "compatibility_date": "2026-10-01",
-  "vars": {
-    "ALLOW": "https://token.actions.githubusercontent.com:acme/app:ci.yml"
-  },
-  "r2_buckets": [{ "binding": "BLOBS", "bucket_name": "vx-cache" }]
-}
-```
-
-Then deploy it:
-
-```sh
-bunx wrangler login
-bunx wrangler deploy
-```
-
-wrangler creates the R2 bucket `vx-cache` and prints the server's URL,
-such as `https://vx-cache-server.acme.workers.dev`.
-
-## 2. Check it answers
-
-```sh
-curl https://vx-cache-server.acme.workers.dev/v1/capabilities
-```
-
-A request from outside vx is refused, and the reason shows the server
-works:
-
-```json
-{"code":"bad_request","message":"vx-issuer and vx-repository: the issuer's and the repository's hashes (PROTOCOL.md § Keys)"}
-```
-
-If it says `ALLOW is empty: set it to the CI workflows this server serves`,
-fill `ALLOW` in and deploy again.
-
-## 3. Point vx at it
-
-```sh
-bun add -d @vzn/vx-cache @vzn/vx-ci
-```
-
-```ts title=".vx/workspace.ts" ins={2,3,9-14}
-import { defineWorkspace } from '@vzn/vx/config'
-import { vxCache } from '@vzn/vx-cache'
-import { github } from '@vzn/vx-ci'
-import { bun } from '@vzn/vx-lockfile'
-
-export default defineWorkspace({
-  plugins: [
-    bun(),
-    github(),
-    vxCache({
-      url: 'https://vx-cache-server.acme.workers.dev',
-      issuer: 'https://token.actions.githubusercontent.com',
-      repository: 'acme/app',
-    }),
-  ],
+```ts title=".vx/workspace.ts"
+vxCache({
+  url: 'https://vx-cache-server.acme.workers.dev',
+  issuer: 'https://token.actions.githubusercontent.com',
+  repository: 'acme/app',
 })
 ```
 
-`issuer` and `repository` must match your `ALLOW` entry. `github()` tells
-the cache which branch a run is on, so a pull request reads its own
-results first, then `main`'s.
+<Levels />
 
-Run `vx lock` and commit.
+<Walkthrough title="One build, two CI runs">
+<Frame title="1. A push to main: tasks run, results go up">
 
-## 4. Let CI jobs prove who they are
+The run's summary shows a `remote` line. `↑` counts the results uploaded.
 
-Give the workflow's job permission to ask GitHub for a token:
-
-```yaml title=".github/workflows/ci.yml" ins={3}
-    permissions:
-      contents: read
-      id-token: write
-```
-
-vx asks GitHub for the token itself. Nothing goes in your repository
-secrets.
-
-## 5. Push
-
-The first run on `main` runs its tasks and uploads them. The summary's
-`remote` line says how many went up (`↑`):
-
-```ansi
+```ansi title="push to main"
   [2mcache   [0m  [38;2;37;99;235m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
             [2mremote[0m [38;2;37;99;235m2↑[0m [2m556 B[0m
 ```
 
-A pull request opened after it downloads (`↓`) what it did not change:
+</Frame>
+<Frame title="2. A pull request: the same tasks come down">
 
-```ansi
+The pull request did not touch `@demo/ui`, so its key matches. `↓` counts the results downloaded; nothing ran.
+
+```ansi title="pull request from feat-x"
   [2mcache   [0m  [38;2;37;99;235m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
             [2mremote[0m [38;2;37;99;235m2↓[0m [2m556 B[0m
 ```
 
-To delete old results, give the bucket an expiry rule. This one deletes
-each result a day after it was written:
+</Frame>
+</Walkthrough>
 
-```sh
-bunx wrangler r2 bucket lifecycle add vx-cache all '' --expire-days 1
-```
+<Concept term="Remote cache">
+  A [cache](../caching/) on a server, shared by every machine. vx asks it when the cache on this
+  machine misses, and uploads each new result to it.
+</Concept>
 
----
+## How a run uses it
+
+<Diagram {...remoteCache} />
+
+vx asks the cache on this machine first, the remote second. A task runs only when both miss. Uploads happen in the background.
+
+<Aside type="tip">
+  A remote that is down never fails a run. vx says so once, then runs the task as if there were no
+  remote.
+</Aside>
+
+<Quiz q="The cache server is down during a pull request's run. What happens?">
+  The run goes on. vx prints one warning, turns the remote off for that run, and runs the tasks the
+  local cache does not have.
+</Quiz>
+
+<Takeaway>predict where each task's result comes from: this machine, the server, or a fresh run.</Takeaway>
+
+## Set it up
+
+<Concept term="Cache server">
+  `@vzn/vx-cache-server`: a small server you host. It keeps results in one bucket and stores no
+  secret.
+</Concept>
+
+You need vx running on [CI](../ci/) and a Cloudflare account. To host it on Bun or Docker with S3 instead, see [Cache server](../servers/cache/).
+
+<Steps>
+
+1. **Deploy the server.** Install it in a folder of its own:
+
+   ```sh
+   mkdir vx-cache-server && cd vx-cache-server
+   bun add @vzn/vx-cache-server
+   ```
+
+   `ALLOW` says who may use it. Here: every run of `acme/app`'s `ci.yml` on GitHub Actions.
+
+   ```jsonc title="wrangler.jsonc" mark={5}
+   {
+     "name": "vx-cache-server",
+     "main": "node_modules/@vzn/vx-cache-server/src/worker.ts",
+     "compatibility_date": "2026-10-01",
+     "vars": { "ALLOW": "https://token.actions.githubusercontent.com:acme/app:ci.yml" },
+     "r2_buckets": [{ "binding": "BLOBS", "bucket_name": "vx-cache" }]
+   }
+   ```
+
+   ```sh
+   bunx wrangler login
+   bunx wrangler deploy
+   ```
+
+   wrangler creates the bucket and prints the URL, such as `https://vx-cache-server.acme.workers.dev`.
+
+2. **Check it answers.**
+
+   ```sh
+   curl https://vx-cache-server.acme.workers.dev/v1/capabilities
+   ```
+
+   It refuses a request from outside vx. The refusal proves it is up:
+
+   ```json
+   {"code":"bad_request","message":"vx-issuer and vx-repository: the issuer's and the repository's hashes (PROTOCOL.md § Keys)"}
+   ```
+
+   Seeing `ALLOW is empty` instead? Fill in `ALLOW` and deploy again.
+
+3. **Point vx at it.**
+
+   ```sh
+   bun add -d @vzn/vx-cache @vzn/vx-ci
+   ```
+
+   ```ts title=".vx/workspace.ts" ins={2,3,9-14}
+   import { defineWorkspace } from '@vzn/vx/config'
+   import { vxCache } from '@vzn/vx-cache'
+   import { github } from '@vzn/vx-ci'
+   import { bun } from '@vzn/vx-lockfile'
+
+   export default defineWorkspace({
+     plugins: [
+       bun(),
+       github(),
+       vxCache({
+         url: 'https://vx-cache-server.acme.workers.dev',
+         issuer: 'https://token.actions.githubusercontent.com',
+         repository: 'acme/app',
+       }),
+     ],
+   })
+   ```
+
+   `issuer` and `repository` match your `ALLOW`. `github()` tells the cache which branch a run is on. Run `vx lock` and commit.
+
+4. **Let CI jobs prove who they are.** Allow the job to ask for a token:
+
+   ```yaml title=".github/workflows/ci.yml" ins={3}
+   permissions:
+     contents: read
+     id-token: write
+   ```
+
+   vx asks GitHub for the token itself. Nothing goes in your secrets.
+
+5. **Push.** The first run on `main` uploads (`↑`). The next pull request downloads (`↓`).
+
+</Steps>
+
+<Takeaway>share every CI result across your whole team, with no token stored anywhere.</Takeaway>
 
 ## Who reads and who writes
+
+<Concept term="CI token">
+  A short-lived ID card your CI hands each job (OIDC). It names the repository, the workflow and the
+  branch. The server reads it and decides what the job may do.
+</Concept>
+
+<Diagram {...branchReads} />
 
 | Run | Reads | Writes |
 | --- | --- | --- |
@@ -162,41 +178,88 @@ bunx wrangler r2 bucket lifecycle add vx-cache all '' --expire-days 1
 | a laptop | nothing, unless the server sets `READ_ACCESS=public` | nothing |
 | another repository | refused | refused |
 
-A pull request writes only its own branch, so code that is not merged
-never reaches `main`'s runs. The server decides this from the job's
-token; no option in your config can change it.
+The server decides this from the token. No option in your config can change it.
 
-## Your laptop
+<Quiz q="A pull request builds broken code. Can main's next run download that broken build?">
+  No. A pull request writes only its own branch. `main` never reads it, so code that is not merged
+  never reaches `main`'s runs.
+</Quiz>
 
-A laptop has no CI token, so by default it reads nothing from the
-server and runs with its local cache.
+<Takeaway>tell, for any run, which results it can see and which it can change.</Takeaway>
 
-To let anyone who can reach the server read from it, set `READ_ACCESS`
-to `public` beside `ALLOW`. Writes still need a CI token.
+<Deeper level="patterns" title="Common setups">
 
-To keep the server private, put Cloudflare Access or another proxy in
-front of it, and pass its headers with `vxCache({ headers })`
-([Cache server](../servers/cache/#point-vx-at-it-vxcache)).
+### Your laptop
 
-## When it does not work
+A laptop has no CI token. By default it reads nothing from the server and uses its own cache.
 
-vx says what went wrong once, then runs on without the remote:
+To let anyone who can reach the server read from it, set `READ_ACCESS` to `public` beside `ALLOW`. Writes still need a CI token.
 
-```ansi
-[1m[38;2;234;179;8m[vx][0m plugin '@vzn/vx-cache': download e04649970f18ba23 from https://vx-cache-server.acme.workers.dev failed: HTTP 401: no bearer token: a read with no token was refused; remote cache off for this run
+To keep the server private, put Cloudflare Access (or another proxy) in front of it and pass its service token:
+
+```ts title=".vx/workspace.ts" mark={5-8}
+vxCache({
+  url: 'https://vx-cache-server.acme.workers.dev',
+  issuer: 'https://token.actions.githubusercontent.com',
+  repository: 'acme/app',
+  headers: {
+    'CF-Access-Client-Id': process.env.CF_ACCESS_CLIENT_ID,
+    'CF-Access-Client-Secret': process.env.CF_ACCESS_CLIENT_SECRET,
+  },
+})
 ```
 
-- **`no bearer token`** on CI: the job lacks `id-token: write`. On a
-  laptop it is expected; see [Your laptop](#your-laptop).
-- **`403`**: the token's repository or workflow is not in `ALLOW`, or
-  the repository does not match `vxCache({ repository })`.
+<Takeaway>give laptops read access, publicly or behind your own login.</Takeaway>
 
-## Entries over 1 GiB
+### GitLab CI
 
-A remote takes an entry up to 1 GiB, unpacked. A bigger one stays cached
-on the machine that built it, and vx says once that it was not sent.
+`ALLOW` names the CI file as the workflow: `https://gitlab.com:acme/app:.gitlab-ci.yml`. Name a token `VX_CACHE_TOKEN`, with the server's URL as its audience:
 
-To share bigger entries, raise `cache.artifactCeiling` for every machine:
+```yaml title=".gitlab-ci.yml"
+vx:
+  id_tokens:
+    VX_CACHE_TOKEN:
+      aud: https://vx-cache-server.acme.workers.dev
+```
+
+```ts title=".vx/workspace.ts" ins={1,4,6}
+import { gitlab } from '@vzn/vx-ci'
+
+plugins: [
+  gitlab(),
+  vxCache({
+    issuer: 'https://gitlab.com', // or your GitLab's URL
+    repository: 'acme/app',
+    url: 'https://vx-cache-server.acme.workers.dev',
+  }),
+]
+```
+
+<Takeaway>run the same cache from GitLab pipelines.</Takeaway>
+
+### A CI job that only reads
+
+A job that should never upload, such as a nightly check, sets the remote to read-only:
+
+```sh
+vx run test --cache-policy=remote:r
+```
+
+<Takeaway>keep any job from writing to the shared cache.</Takeaway>
+
+### Delete old results
+
+The server never deletes anything. Give the bucket an expiry rule. This one deletes each result a day after it was written:
+
+```sh
+bunx wrangler r2 bucket lifecycle add vx-cache all '' --expire-days 1
+```
+
+<Takeaway>keep the bucket small without touching the server.</Takeaway>
+
+### Entries over 1 GiB
+
+A remote takes an entry up to 1 GiB, unpacked. A bigger one stays on the machine that built it, and vx says once that it was not sent. To share bigger entries, raise the ceiling for every machine:
 
 ```ts title=".vx/workspace.ts" ins={4-6}
 import { defineWorkspace } from '@vzn/vx/config'
@@ -208,17 +271,18 @@ export default defineWorkspace({
 })
 ```
 
-A machine with a lower ceiling treats a bigger remote entry as a miss and
-runs the task. The ceiling stops a broken remote entry from filling the
-disk when it is restored.
+<Aside type="caution">
+  A machine with a lower ceiling treats a bigger entry as a miss and runs the task. Set the same
+  value everywhere.
+</Aside>
 
-The vx cache server has a limit of its own: it takes an upload of up to
-100 MB, compressed. Raise its `MAX_UPLOAD_BYTES` for bigger entries
-([Settings](../servers/cache/#settings)).
+The cache server takes uploads up to 100 MB, compressed. Raise its `MAX_UPLOAD_BYTES` for bigger ones ([Settings](../servers/cache/#settings)).
 
----
+<Takeaway>share large build outputs, such as app bundles or images.</Takeaway>
 
-## Other remote caches
+### Other remote caches
+
+Already run a Turborepo, Nx or Bazel cache? Keep it:
 
 <Tabs>
   <TabItem label="Turborepo / Vercel">
@@ -228,22 +292,19 @@ The vx cache server has a limit of its own: it takes an upload of up to
     export TURBO_TOKEN=… TURBO_TEAM=…
     ```
 
-    Then declare `plugins: [turboCache()]` from `@vzn/vx-migrate`. It reads
-    Turbo's own variables.
+    Declare `plugins: [turboCache()]` from `@vzn/vx-migrate`. It reads Turbo's own variables.
 
-    On GitHub Actions, `turboCache({ oidc: true })` with `id-token: write`
-    trades the job's OIDC token for a short-lived one, so no token is stored.
+    On GitHub Actions, `turboCache({ oidc: true })` with `id-token: write` trades the job's token for
+    a short-lived one, so no token is stored.
 
-    On a laptop it asks for a read-only token once and keeps it in the OS
-    keychain.
+    On a laptop it asks for a read-only token once and keeps it in the OS keychain.
   </TabItem>
   <TabItem label="Nx">
-    `nxCache()` from `@vzn/vx-migrate` does the same for a self-hosted Nx
-    cache.
+    `nxCache()` from `@vzn/vx-migrate` does the same for a self-hosted Nx cache.
   </TabItem>
   <TabItem label="Bazel REAPI">
-    If you already run a Bazel remote cache (NativeLink, BuildBuddy,
-    Buildbarn, bazel-remote), `reapi()` from `@vzn/vx-reapi` uses it:
+    A Bazel remote cache (NativeLink, BuildBuddy, Buildbarn, bazel-remote) works through `reapi()`
+    from `@vzn/vx-reapi`:
 
     ```ts title=".vx/workspace.ts"
     import { defineWorkspace } from '@vzn/vx/config'
@@ -255,39 +316,89 @@ The vx cache server has a limit of its own: it takes an upload of up to
     ```
   </TabItem>
   <TabItem label="Your own">
-    Any backend is [a plugin](../../docs/writing-plugins/#your-own-cache).
+    Any backend is [a plugin](../writing-plugins/#your-own-cache).
   </TabItem>
 </Tabs>
 
-## Cache scopes and tokens
+Each plugin's options are on its page: [`@vzn/vx-migrate`](../../plugins/vx-migrate/), [`@vzn/vx-reapi`](../../plugins/vx-reapi/).
 
-`--cache-policy` decides whether a run reads and writes the remote at
-all. By default a CI run (`CI` set) reads and writes, and a laptop only
-reads (`local:rw,remote:r`).
+<Takeaway>move to vx without giving up the cache you already run.</Takeaway>
 
-The server decides the rest, from the token. Each read names the
-branches the run reads, its own first. The server answers from the
-first one that holds the result.
+</Deeper>
 
-On CI, `github()` or `gitlab()` ([`@vzn/vx-ci`](../../plugins/vx-ci/))
-names the branches. Without one, a run reads the checked-out branch
-(none on a detached checkout), then the default branch:
+<Deeper level="details" title="Every option">
+
+### `vxCache()` options
+
+| Option | Default | What it does |
+| --- | --- | --- |
+| `url` | `VX_CACHE_URL` | The server's URL. `https` only; `http` only to `127.0.0.1`, `::1` or `localhost`. No `?query` or `#fragment`. |
+| `issuer` | required | Your CI's token issuer: `https://token.actions.githubusercontent.com`, `https://gitlab.com` or your GitLab's URL. |
+| `repository` | required | The repository, `org/name`, as `ALLOW` names it. |
+| `timeoutMs` | `30000` | How long a read or check waits for an answer, in ms. A download then must bring at least 1 MiB a second. |
+| `uploadTimeoutMs` | `60000` | The same for an upload: at least 1 MiB a second, then an answer within this time. |
+| `retries` | `2` | How many times a request answered `5xx` or `429`, or cut off, is sent again (0 to 10), 1 s, 2 s, … apart. |
+| `headers` | none | Headers sent on every request, for a proxy in front of the server. An unset value is left out. `authorization`, `content-type`, `content-length` and `vx-*` are refused. |
+
+| Variable | What it does |
+| --- | --- |
+| `VX_CACHE_URL` | The server's URL when `url` is not set. |
+| `VX_CACHE_TOKEN` | The job's token on GitLab CI (an `id_tokens` entry). |
+
+A redirect is not followed: it fails the request and names where it pointed. The workers of a [Distributed task execution](../distributed-task-execution/) run send the same headers, so give their job the same secrets.
+
+### Workspace settings for remotes
+
+In `.vx/workspace.ts`, under `cache`:
+
+| Setting | Default | What it does |
+| --- | --- | --- |
+| `policy` | every layer reads and writes | Which layers a run reads and writes, such as `'local:rw,remote:r'`. Same as `--cache-policy` or `VX_CACHE_POLICY`. |
+| `artifactCeiling` | `'1GiB'` | The largest entry, unpacked, a remote stores or a hit unpacks. Same on every machine. `VX_CACHE_ARTIFACT_CEILING`. |
+| `upload.failures` | `'ci'` | Which runs keep a failed task's log and outputs in the remote: `'ci'`, `'local'` or `'always'`. |
+| `concurrency.download` | min(96, max(cores × 3, 64)) | Downloads at once. `--cache-concurrency-download`. |
+| `concurrency.upload` | min(96, max(cores × 3, 64)) | Uploads at once, per remote. `--cache-concurrency-upload`. |
+| `download` | `'all'` | Which results of tasks run on other machines land here. See [Remote execution](../remote-execution/). |
+
+Off CI (`CI` unset), vx never writes the remote unless `--cache-policy`, `VX_CACHE_POLICY` or `cache.policy` names it. Each setting is also in the [workspace reference](../../schema/workspace/#settings).
+
+### Cache scopes and tokens
+
+Each read names the branches the run reads, its own first. The server answers from the first branch that holds the result.
+
+On CI, `github()` or `gitlab()` ([`@vzn/vx-ci`](../../plugins/vx-ci/)) names the branches. Without one, a run reads the checked-out branch, then the default branch:
 
 | Run | Branches read, in order |
 | --- | --- |
 | push to `main` | `refs/heads/main` |
 | pull request from `feat-x` | `refs/heads/feat-x, refs/heads/main` |
-| merge queue or train into `main` | `refs/heads/main` |
+| merge queue into `main` | `refs/heads/main` |
 | laptop on `feat-x` | `refs/heads/feat-x, refs/heads/main` |
 
-`vxCache()` sends each branch as a hash, so no branch name leaves the
-machine. `turboCache()` sends them in `x-artifact-read-scopes`.
+`vxCache()` sends each branch as a hash, so no branch name leaves the machine. `turboCache()` sends them in `x-artifact-read-scopes`.
 
-For a server that ignores that header (Vercel), `turboCache({ scope: 'key' })`
-adds the branch to each key. Branches stay apart, but nothing enforces it.
+For a server that ignores that header (Vercel), `turboCache({ scope: 'key' })` adds the branch to each key. Branches stay apart, but nothing enforces it.
 
-[Branch caches a server enforces](../../blog/branch-caches-a-server-enforces/)
-shows the server side.
+[Branch caches a server enforces](../../blog/branch-caches-a-server-enforces/) shows the server side.
 
-Next: [Distributed task execution](../distributed-task-execution/) splits
-one run across several machines.
+### When it does not work
+
+vx says what went wrong once, then runs on without the remote:
+
+```ansi
+[1m[38;2;234;179;8m[vx][0m plugin '@vzn/vx-cache': download e04649970f18ba23 from https://vx-cache-server.acme.workers.dev failed: HTTP 401: no bearer token: a read with no token was refused; remote cache off for this run
+```
+
+| Message | Cause | Fix |
+| --- | --- | --- |
+| `no bearer token` on CI | the job cannot ask for a token | add `id-token: write` (GitHub) or `VX_CACHE_TOKEN` (GitLab) |
+| `no bearer token` on a laptop | expected | see [Your laptop](#your-laptop) |
+| `403` | the repository or workflow is not in `ALLOW`, or does not match `repository` | fix `ALLOW` or `vxCache({ repository })` |
+
+A refused write turns off uploads only. A server that does not answer in time, or is not found, turns the remote off for the run.
+
+</Deeper>
+
+<NextStep href="../distributed-task-execution/" title="Distributed task execution">
+  The cache shares results between runs. Next, split one run across several machines.
+</NextStep>
