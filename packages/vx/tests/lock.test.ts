@@ -277,7 +277,9 @@ describe('vx lock (e2e)', () => {
       const ours = await Bun.file(file).text()
       await writeFile(file, `<<<<<<< HEAD\n${ours}=======\n${ours}>>>>>>> other\n`)
       const invalid = (verb: string): string =>
-        noticed(`vx ${verb}: .vx/projects.lock is not valid JSON — re-run \`vx lock\` or delete it`)
+        noticed(
+          `vx ${verb}: .vx/projects.lock holds a git merge conflict: run \`vx lock\`, which writes it anew from the configs`,
+        )
       const run = await vx(root, ['run', 'build', '--all', '--no-cache'], { X: 'a' })
       expect([run.code, run.err]).toEqual([1, invalid('run')])
       const check = await vx(root, ['lock', '--check'], { X: 'a' })
