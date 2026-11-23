@@ -548,30 +548,38 @@ export class HistoryServer {
   /**
    * The run's timings, by task definition hash, and its outcomes, in
    * uploads the server takes; `stop` abandons them. `answered` hears each
-   * try's status, undefined as it is sent.
+   * try's status, undefined as it is sent; `landed`, each part the server
+   * took, so a failure after it sends that part no more.
    */
   async upload(
     timings: ReadonlyMap<string, ServerTiming>,
     stop?: AbortSignal,
     outcomes: readonly ServerOutcome[] = [],
     answered?: (status: number | undefined) => void,
+    landed?: (hashes: readonly string[], outcomes: readonly ServerOutcome[]) => void,
   ): Promise<void> {
     if ((timings.size === 0 && outcomes.length === 0) || this.refused) return
     const all = [...timings].map(([hash, t]) => ({ hash, ...t }))
     const at = Array.from({ length: Math.max(all.length, outcomes.length) }, (_, i) => i)
     // A refused upload folded nothing: sent again in parts, none counts twice.
     await this.guard(
-      this.parts(at, 'vx-max-upload-timings', false, (part, sized) => {
+      this.parts(at, 'vx-max-upload-timings', false, async (part, sized) => {
         const from = part[0] ?? 0
         const to = from + part.length
         const some = outcomes.slice(from, to)
-        return this.call(
+        const these = all.slice(from, to)
+        const res = await this.call(
           '/v1/timings/upload',
-          { timings: all.slice(from, to), ...(some.length > 0 ? { outcomes: some } : {}) },
+          { timings: these, ...(some.length > 0 ? { outcomes: some } : {}) },
           stop,
           sized,
           answered,
         )
+        landed?.(
+          these.map((t) => t.hash),
+          some,
+        )
+        return res
       }),
     )
   }

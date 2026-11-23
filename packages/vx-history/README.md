@@ -57,7 +57,7 @@ report): an upload once 50 tasks have finished or 10 s after the first of
 them, one at a time. Under DTE that is the orchestrator, with each
 worker's measurements, which go with the last upload, as the last task
 ends, beside core's own end of run. An upload that fails mid-run holds
-its tasks, and the run's later ones, for that last upload, so a server
+its tasks the server did not take, and the run's later ones, for that last upload, so a server
 down is said once. A token the server refuses (401) is said at once. The plugin's teardown waits at most 2 s for the rest
 (core bounds a teardown at 3 s); what is not sent by then is dropped and
 said, with how many timings it held and the status the server last

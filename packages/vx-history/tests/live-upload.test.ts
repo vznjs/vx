@@ -17,6 +17,9 @@ describe('timings sent while the run goes', () => {
   let srv: Bun.Server<undefined>
   let status = 204
   let refused = 0
+  // Set, a run's upload over `max` is refused for its size, and its part
+  // number `failAt` (from 1) is refused once.
+  let split: { max: number; failAt: number; parts: number } | undefined
   const uploads: { timings: { hash: string }[] }[] = []
   const token = Bun.env.VX_HISTORY_TOKEN
   beforeAll(async () => {
@@ -28,6 +31,14 @@ describe('timings sent while the run goes', () => {
         const at = new URL(req.url).pathname
         const body = (await req.json()) as { timings: { hash: string }[] }
         if (at !== '/v1/timings/upload') return Response.json({ timings: {}, flaky: [] })
+        if (split !== undefined) {
+          if (body.timings.length > split.max)
+            return new Response('too many', {
+              status: 413,
+              headers: { 'vx-max-upload-timings': String(split.max) },
+            })
+          if (++split.parts === split.failAt) return new Response('bad part', { status: 400 })
+        }
         if (status !== 204) {
           refused++
           return new Response('down', { status })
@@ -120,6 +131,22 @@ ${quick.join('\n')}
     const hashes = uploads.flatMap((u) => u.timings.map((t) => t.hash))
     expect(new Set(hashes).size).toBe(hashes.length)
     expect(hashes.length).toBe(QUICK + 2)
+  }, 30_000)
+
+  // A split upload whose later part failed held the whole batch, and the
+  // run's last upload sent the parts the server had folded again: their
+  // rows moved twice.
+  it('sends again only the parts a failed split upload did not land', async () => {
+    status = 204
+    split = { max: 10, failAt: 2, parts: 0 }
+    try {
+      const r = await runAll()
+      expect(r.outcomes.every((o) => o.status === 'success')).toBe(true)
+    } finally {
+      split = undefined
+    }
+    const hashes = uploads.flatMap((u) => u.timings.map((t) => t.hash))
+    expect([hashes.length, new Set(hashes).size]).toEqual([QUICK + 2, QUICK + 2])
   }, 30_000)
 
   // A token refused mid-run (a GitLab id_token past its exp) turned the

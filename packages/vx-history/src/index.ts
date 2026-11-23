@@ -828,12 +828,22 @@ class Live {
       if (timings.size === 0 && outcomes.size === 0) return
       this.timings = new Map()
       this.outcomes = new Map()
-      const n = timings.size
-      this.sending += n
+      this.sending += timings.size
       try {
-        await this.server.upload(timings, this.stop.signal, [...outcomes.values()], (s) => {
-          this.answered = s
-        })
+        await this.server.upload(
+          timings,
+          this.stop.signal,
+          [...outcomes.values()],
+          (s) => {
+            this.answered = s
+          },
+          // A part the server folded is not held: sent again, its rows
+          // would move twice.
+          (hashes, sent) => {
+            for (const h of hashes) if (timings.delete(h)) this.sending--
+            for (const o of sent) outcomes.delete(`${o.hash}\0${o.key}`)
+          },
+        )
       } catch (err) {
         // Abandoned by teardown, which says so itself.
         if (this.stop.signal.aborted) return
@@ -848,7 +858,7 @@ class Live {
           `[vx] vx-history: the timings were not sent to the history server at ${shown(this.server.url)}: ${err instanceof Error ? err.message : String(err)}`,
         )
       } finally {
-        this.sending -= n
+        this.sending -= timings.size
       }
     })
     return this.chain
