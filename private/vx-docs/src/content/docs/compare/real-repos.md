@@ -93,7 +93,7 @@ bunx @vzn/vx init --native
 ```
 
 `--native` writes a `vx.config.ts` per package from your `turbo.json`
-or Nx graph; [Migrate](../../guides/migrate/) walks through it. Run `vx
+or Nx graph; [Migrate](../../docs/migrate/) walks through it. Run `vx
 run build --all` next to the tool you use today.
 
 More workspaces join this page as they are measured, each with its commit,

@@ -123,7 +123,7 @@ vx run build --all
 
 `vx init` reads the resolved Nx graph and writes one `vx.config.ts` per
 package, plus the workspace file, through
-[`@vzn/vx-migrate`](../../guides/migrate/).
+[`@vzn/vx-migrate`](../../docs/migrate/).
 
 Anything Nx can say that vx cannot becomes a `TODO(vx-migrate)` comment,
 never a silent wrong value.

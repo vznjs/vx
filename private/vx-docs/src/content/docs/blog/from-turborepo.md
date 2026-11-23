@@ -167,5 +167,5 @@ Three things you get that the JSON could not give you:
   default lets running tasks finish; vx `--fail-fast` kills them. vx has no
   `--continue`: nothing runs on a failed dependency.
 
-Guide: [Migrate from Turborepo](../../guides/migrate/#turborepo). More
+Guide: [Migrate from Turborepo](../../docs/migrate/#turborepo). More
 at [vznjs.github.io/vx](https://vznjs.github.io/vx/).

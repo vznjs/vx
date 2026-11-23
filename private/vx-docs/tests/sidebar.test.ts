@@ -42,9 +42,9 @@ const DOCS_GROUPS = [
 const DOCS_FIRST: [string, string][] = [
   ['What is vx?', 'docs/'],
   ['Quickstart', 'quickstart/'],
-  ['Migrate from Turborepo, Nx or Vite Task', 'guides/migrate/'],
+  ['Migrate from Turborepo, Nx or Vite Task', 'docs/migrate/'],
   ['AI agents', 'docs/agents/'],
-  ['Upgrading vx', 'guides/upgrading/'],
+  ['Upgrading vx', 'docs/upgrading/'],
   ['Workspace', 'docs/workspace/'],
   ['Tasks', 'docs/tasks/'],
 ]
@@ -131,7 +131,7 @@ describe('the sidebar', () => {
     expect(links.slice(0, DOCS_FIRST.length)).toEqual(DOCS_FIRST)
     expect(links.at(-1)).toEqual(['Glossary', 'glossary/'])
     const hrefs = links.map(([, h]) => h)
-    for (const h of ['docs/caching/', 'guides/caching/why-a-task-missed/', 'cli/', 'schema/'])
+    for (const h of ['docs/caching/', 'docs/caching/why-a-task-missed/', 'cli/', 'schema/'])
       expect(hrefs).toContain(h)
     expect(new Set(hrefs).size).toBe(hrefs.length)
   })
@@ -154,8 +154,8 @@ describe('the sidebar', () => {
 
   it('puts a doc, a how-to, a reference page and a post each in its section', () => {
     expect(places(html('docs/tasks/')).current).toEqual(['Docs'])
-    expect(places(html('guides/migrate/')).current).toEqual(['Docs'])
-    expect(places(html('guides/caching/why-a-task-missed/')).current).toEqual(['Docs'])
+    expect(places(html('docs/migrate/')).current).toEqual(['Docs'])
+    expect(places(html('docs/caching/why-a-task-missed/')).current).toEqual(['Docs'])
     expect(places(html('caching/')).current).toEqual(['Docs'])
     expect(places(html('modules/')).current).toEqual(['Docs'])
     expect(places(html('blog/')).current).toEqual(['Blog'])

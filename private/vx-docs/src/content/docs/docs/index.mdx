@@ -47,7 +47,7 @@ vx runs on [Bun](https://bun.com), on macOS and Linux (glibc). On Windows, use W
 | prove a task's inputs are complete  | `exec.sandbox` fails a read outside them ([Sandboxing](./sandboxing/))         |
 | share the cache with CI             | a remote cache plugin ([Remote cache](./remote-cache/))                        |
 | spread a run over CI machines       | `dte()` hands tasks to workers your CI starts ([Distributed task execution](./distributed-task-execution/)) |
-| keep a Turborepo or Nx config       | `@vzn/vx-migrate` runs it unchanged ([Migrate](../guides/migrate/))            |
+| keep a Turborepo or Nx config       | `@vzn/vx-migrate` runs it unchanged ([Migrate](./migrate/))                      |
 
 Nothing is inferred. A task is cached only when it says what it reads
 (`inputs`) and what it writes (`outputs`).
@@ -58,7 +58,7 @@ Nothing is inferred. A task is cached only when it says what it reads
 
 <CardGrid>
   <LinkCard title="Quickstart" description="Cache your first task in two minutes." href="../quickstart/" />
-  <LinkCard title="Guides" description="One task per page: run what changed, find a miss." href="../guides/" />
+  <LinkCard title="Distributed task execution" description="Spread one CI run over many machines." href="./distributed-task-execution/" />
   <LinkCard title="CLI" description="Every command and flag." href="../cli/" />
   <LinkCard title="vx.config.ts" description="Every config field." href="../schema/" />
 </CardGrid>

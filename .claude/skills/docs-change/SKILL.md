@@ -17,7 +17,7 @@ summary. Rules change there first, then pages follow.
   schema, modules, design). `private/vx-docs/scripts/import-docs.ts`
   imports it into the site.
 - Site pages: `private/vx-docs/src/content/docs/` (`docs/` one feature per
-  page, `guides/` one task per page, `quickstart.mdx`).
+  page, how-to pages beside them as `docs/<area>/<task>.md`, `quickstart.mdx`).
 - A user-facing feature (verb, flag, config key, env var, plugin) also
   updates `packages/vx/docs/features.md`. Any behaviour change updates
   every text it makes stale (docs, blog, site) in the same PR.

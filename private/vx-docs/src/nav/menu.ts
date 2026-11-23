@@ -22,13 +22,13 @@ export const MENU: Partial<Record<SectionId, MenuLink[]>> = {
     { label: 'Caching', href: 'docs/caching/', line: 'Inputs, outputs, and what the key holds.' },
     {
       label: 'Find why a task missed the cache',
-      href: 'guides/caching/why-a-task-missed/',
+      href: 'docs/caching/why-a-task-missed/',
       line: 'vx why names the input that moved.',
     },
     { label: 'CI', href: 'docs/ci/', line: 'GitHub Actions, GitLab, affected runs.' },
     {
       label: 'Migrate from Turborepo, Nx or Vite Task',
-      href: 'guides/migrate/',
+      href: 'docs/migrate/',
       line: 'Convert your config in one command.',
     },
     { label: 'Commands', href: 'cli/', line: 'Every verb and flag.' },

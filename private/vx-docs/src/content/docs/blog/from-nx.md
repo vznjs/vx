@@ -149,5 +149,5 @@ any target Nx marks `continuous`:
 - **Graph view:** `vx run build --all --dry=json` or `vx show`.
 
 Generators have no vx replacement. Guide: [Migrate from
-Nx](../../guides/migrate/#nx). More at
+Nx](../../docs/migrate/#nx). More at
 [vznjs.github.io/vx](https://vznjs.github.io/vx/).

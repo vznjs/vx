@@ -28,7 +28,7 @@ function walk(dir: string, ext: RegExp, out: string[] = []): string[] {
 describe('every core file path the guides and CLAUDE.md name exists', () => {
   it('src/, tests/ and docs/ paths resolve under packages/vx', () => {
     const files = [
-      ...walk(path.join(repo, 'private', 'vx-docs', 'src', 'content', 'docs', 'guides'), PAGE),
+      ...walk(path.join(repo, 'private', 'vx-docs', 'src', 'content', 'docs', 'docs'), PAGE),
       path.join(repo, 'CLAUDE.md'),
     ]
     const missing: string[] = []

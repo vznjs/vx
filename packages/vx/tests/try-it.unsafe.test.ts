@@ -40,7 +40,7 @@ const GUIDE = path.join(
   'src',
   'content',
   'docs',
-  'guides',
+  'docs',
   'migrate.mdx',
 )
 

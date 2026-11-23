@@ -697,7 +697,7 @@ export default defineProject({
     example: { lang: 'sh', code: 'bunx @vzn/vx-migrate' },
     image: 'migrate.png',
     imageAlt: 'vx-migrate writing a vx.config.ts per package.',
-    docs: { label: 'Migrate', href: 'guides/migrate/' },
+    docs: { label: 'Migrate', href: 'docs/migrate/' },
     deepDive: { label: 'Moving to vx from Turborepo', href: 'blog/from-turborepo/' },
   },
 
