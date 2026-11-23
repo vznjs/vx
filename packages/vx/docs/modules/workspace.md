@@ -1988,23 +1988,20 @@ order, `<name>⇥{"path", "file" | "by", "config"}` (`file` left out for
 `vx.config.ts`, `null` for a project with neither file nor plugin;
 `config` without its tasks, left out when it held only tasks), and per
 task, in name order, a `⇥<task>` line and its pointer line. A pointer is
-born as the xxh3 of its task's first JSON and kept by every later
-`vx lock` (it reads the lock there first): the tasks that kept the
-pointer's JSON keep it, or when none did, the most that agree on a new
-one, so an edit to a task rewrites its JSON line alone; any other task
-takes a pointer born in this write (shared by the others there with its
-JSON), never one the lock held: a branch rewriting a held pointer's JSON
-would merge cleanly with one that joined it and hand the joiner its task.
-A pointer no task holds is dropped (M, 2026-11-23). A name a tab could break, or that
-starts with `#`, `"` or `{`, is written as a JSON string (a task name:
-one with a tab or a leading `"`). 2,016 projects read in 3.2 ms from
-419 KB, version 8's time from 566 KB. A name or pointer line seldom
-changes, so it sits between two branches' edits to neighbouring records
-and git merges both; hashed order keeps two new projects apart. Of 1,080
-two-branch merges (4, 21 and 500 projects) 80% conflicted in version 8,
-13% here; what still conflicts is one task both sides changed, or edits
-on lines right beside each other (two tasks added at one name's place,
-neighbouring removals), until `vx lock` rewrites the lock.
+7 base-36 characters of the xxh3 of its JSON (salted in JSON order on a
+clash), so tasks with the same JSON share one entry and the same projects
+lock to the same text whatever lock was there (M, 2026-11-23: a pointer
+kept across `vx lock` let a clean merge hand a task another branch's
+edit). A name a tab could break, or that starts with `#`, `"` or `{`, is
+written as a JSON string (a task name: one with a tab or a leading `"`).
+This workspace's lock is 176 KB against version 8's 181 KB, read in the
+same time. A name line seldom changes, so it sits between two branches'
+edits to neighbouring projects and git merges both; hashed order keeps two
+new projects apart. Of 1,080 two-branch merges (4, 25 and 500 projects)
+80% conflicted in version 8 and 18% here; another 10% merge cleanly to a
+pointer the pool lost (one branch dropped the last task with a JSON the
+other added), which a run refuses until `vx lock` rewrites the lock. No
+merge reads a task a branch did not write.
 
 `readLockfile` checks the shape only: the header an object of this
 `LOCKFILE_VERSION`, each pool pointer a line of 8 characters before a

@@ -103,6 +103,24 @@ function lockObject(text: string): unknown {
   const [head = '{}', ...rest] = text.split('\n').filter((l) => l !== '')
   const tasks = new Map<string, unknown>()
   const projects: Record<string, unknown> = {}
+  if ((JSON.parse(head) as { version?: number }).version! >= 9) {
+    // Version 9: pointer then JSON lines, then `name⇥{meta}` and per task `⇥task`, `#pointer`.
+    let i = 0
+    for (; rest[i]?.startsWith('#'); i += 2) tasks.set(rest[i]!, JSON.parse(rest[i + 1]!))
+    let own: Record<string, unknown> = {}
+    for (; i < rest.length; i++) {
+      const l = rest[i]!
+      if (l.startsWith('\t')) own[l.slice(1)] = tasks.get(rest[++i]!)
+      else {
+        const tab = l.indexOf('\t')
+        const entry = JSON.parse(l.slice(tab + 1)) as { config?: Record<string, unknown> }
+        own = {}
+        entry.config = { ...entry.config, tasks: own }
+        projects[l.slice(0, tab)] = entry
+      }
+    }
+    return { header: JSON.parse(head) as unknown, projects }
+  }
   for (const l of rest) {
     const tab = l.indexOf('\t')
     const value = JSON.parse(l.slice(tab + 1)) as { config?: { tasks?: Record<string, unknown> } }
@@ -133,8 +151,8 @@ export function contractBreaks(
   }
   // `lock.jsonl` is the record's name before 0.0.660.
   if (name === 'projects.lock' || name === 'lock.jsonl') {
-    // Each project's entry with its tasks in place: a task line's id is its
-    // content's hash, so any edit to a task renames its line.
+    // Each project's entry with its tasks in place: a task's pointer says
+    // nothing of its content, and before version 9 was its hash.
     return gone(leaves(lockObject(before)), leaves(lockObject(after)))
   }
   const parse = (t: string): unknown => (t === '' ? {} : JSON.parse(t))

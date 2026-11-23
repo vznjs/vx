@@ -13,15 +13,16 @@
 //
 // Text, laid out for the parse, then size, then merges (M, 2026-11-23):
 //   line 1   JSON: {"version":9,"nestedWorkspaces":[…]?}
-//   then     every task once, on two lines: `#<pointer>`, then its JSON. A
-//            pointer is born as 7 base-36 chars of the xxh3 of its first
-//            JSON and kept by every later `vx lock` while a task holds it,
-//            so an edit to a task rewrites its JSON line alone
+//   then     every distinct task once, on two lines: `#<pointer>`, then
+//            its JSON (keys sorted). The pointer is 7 base-36 chars of the
+//            xxh3 of that JSON, so the same projects lock to the same text
+//            whatever lock was there, and a merge cannot point a task at
+//            JSON another branch changed (M, 2026-11-23)
 //   then     each project, in xxh3-of-name order: `<name>⇥{"path":…}`
 //            ("file" left out for vx.config.ts, `null` for none and no
 //            plugin; its config without the tasks), then each task in name
 //            order on two lines: `⇥<task>`, then its `#<pointer>`
-// A name or pointer line seldom changes, so it sits between two branches'
+// A name line seldom changes, so it sits between two branches'
 // edits to neighbouring records and git merges both; hashed order keeps two
 // new projects apart. A name a tab could break, or one starting with `#`,
 // `"` or `{`, is written as a JSON string.
@@ -456,7 +457,7 @@ export function writeLockfile(root: string, lock: Lockfile): Promise<void> {
   return writeAllOrNone([lockfileWrite(root, lock)], root)
 }
 
-/** The lock's file and text, for `writeAllOrNone`, keeping the pointers of the lock there now. */
+/** The lock's file and text, for `writeAllOrNone`. */
 export function lockfileWrite(root: string, lock: Lockfile): PendingWrite {
   // `vx.lock.json` beside each config is the copy for people.
   const nested = lock.nestedWorkspaces ?? []
@@ -464,12 +465,8 @@ export function lockfileWrite(root: string, lock: Lockfile): PendingWrite {
     version: lock.version,
     ...(nested.length > 0 ? { nestedWorkspaces: nested } : {}),
   })
-  const held = heldPointers(root)
-  // Each task's JSON, grouped by the pointer the lock there gave it.
-  type Use = { key: string; json: string }
-  const groups = new Map<string, Use[]>()
-  const loose: Use[] = []
-  const rows: { name: string; line: string; tasks: [name: string, key: string][] }[] = []
+  const jsons = new Set<string>()
+  const rows: { name: string; line: string; tasks: [name: string, json: string][] }[] = []
   for (const [dir, p] of Object.entries(lock.projects)) {
     const config =
       p.config === undefined ? undefined : (JSON.parse(JSON.stringify(p.config)) as Obj)
@@ -479,16 +476,9 @@ export function lockfileWrite(root: string, lock: Lockfile): PendingWrite {
     const bare = names.length > 0 && Object.keys(config!).length === 0
     const tasks: [string, string][] = []
     for (const t of names) {
-      const key = `${p.name}\0${t}`
-      const use = { key, json: JSON.stringify(keysSorted(own![t])) }
-      const ref = held.refs.get(key)
-      if (ref === undefined) loose.push(use)
-      else {
-        let g = groups.get(ref)
-        if (g === undefined) groups.set(ref, (g = []))
-        g.push(use)
-      }
-      tasks.push([t, key])
+      const json = JSON.stringify(keysSorted(own![t]))
+      jsons.add(json)
+      tasks.push([t, json])
     }
     const entry = {
       path: dir,
@@ -504,40 +494,19 @@ export function lockfileWrite(root: string, lock: Lockfile): PendingWrite {
     }
     rows.push({ name: p.name, line: `${lineKey(p.name)}\t${JSON.stringify(entry)}`, tasks })
   }
-  // A pointer stays with the tasks that kept its JSON or, when none did,
-  // with the most that agree on a new one: an edit rewrites one line. The
-  // rest share a pointer born in this write, never a held one: a branch that
-  // rewrites a held pointer's JSON in place would merge cleanly with one
-  // that joined it, and hand the joiner the other branch's task.
+  // In JSON order, so two JSONs whose pointers collide salt the same way
+  // every time.
   const pool = new Map<string, string>()
-  const born = new Map<string, string>()
   const refOf = new Map<string, string>()
-  for (const [ref, uses] of groups) {
-    const was = held.pool.get(ref)!
-    let keep = was
-    if (!uses.some((u) => u.json === was)) {
-      const count = new Map<string, number>()
-      for (const u of uses) count.set(u.json, (count.get(u.json) ?? 0) + 1)
-      keep = [...count].sort((x, y) => y[1] - x[1] || cmp(x[0], y[0]))[0]![0]
+  for (const json of [...jsons].sort(cmp)) {
+    let ref: string
+    for (let salt = 0; ; salt++) {
+      const h = xxh3(salt === 0 ? json : `${salt}\0${json}`)
+      ref = `#${h.toString(36).padStart(7, '0').slice(0, 7)}`
+      if (!pool.has(ref)) break
     }
-    pool.set(ref, keep)
-    for (const u of uses) {
-      if (u.json === keep) refOf.set(u.key, ref)
-      else loose.push(u)
-    }
-  }
-  for (const u of loose) {
-    let ref = born.get(u.json)
-    if (ref === undefined) {
-      for (let salt = 0; ; salt++) {
-        const h = xxh3(salt === 0 ? u.json : `${salt}\0${u.json}`)
-        ref = `#${h.toString(36).padStart(7, '0').slice(0, 7)}`
-        if (!pool.has(ref) && !held.pool.has(ref)) break
-      }
-      pool.set(ref, u.json)
-      born.set(u.json, ref)
-    }
-    refOf.set(u.key, ref)
+    pool.set(ref, json)
+    refOf.set(json, ref)
   }
   const lines = [header]
   for (const ref of [...pool.keys()].sort(cmp)) lines.push(ref, pool.get(ref)!)
@@ -546,51 +515,9 @@ export function lockfileWrite(root: string, lock: Lockfile): PendingWrite {
     .sort((x, y) => (x[0] < y[0] ? -1 : x[0] > y[0] ? 1 : cmp(x[1].name, y[1].name)))
   for (const [, r] of order) {
     lines.push(r.line)
-    for (const [t, key] of r.tasks) lines.push(`\t${taskKey(t)}`, refOf.get(key)!)
+    for (const [t, json] of r.tasks) lines.push(`\t${taskKey(t)}`, refOf.get(json)!)
   }
   return { file: lockfilePath(root), text: `${lines.join('\n')}\n`, shown: LOCKFILE_NAME }
-}
-
-/**
- * The pointers of the lock at `root` now: each task's, by
- * `<project>\0<task>`, and each pointer's JSON. None for no lock, another
- * version or one a merge broke: each task is then born anew.
- */
-function heldPointers(root: string): { refs: Map<string, string>; pool: Map<string, string> } {
-  const refs = new Map<string, string>()
-  const pool = new Map<string, string>()
-  let text: string
-  try {
-    text = readFileSync(lockfilePath(root), 'utf8')
-  } catch {
-    return { refs, pool }
-  }
-  try {
-    const lines = text.split('\n')
-    if ((JSON.parse(lines[0]!) as { version?: unknown }).version !== LOCKFILE_VERSION)
-      return { refs, pool }
-    let i = 1
-    for (; lines[i]?.charCodeAt(0) === 35; i += 2) pool.set(lines[i]!, lines[i + 1]!)
-    let project = ''
-    for (; i < lines.length; i++) {
-      const l = lines[i]!
-      if (l === '') continue
-      if (l.charCodeAt(0) === 9) {
-        const raw = l.slice(1)
-        const t = raw.charCodeAt(0) === 34 ? (JSON.parse(raw) as string) : raw
-        refs.set(`${project}\0${t}`, lines[++i]!)
-        continue
-      }
-      const raw = l.slice(0, l.indexOf('\t'))
-      project = raw.charCodeAt(0) === 34 ? (JSON.parse(raw) as string) : raw
-    }
-  } catch {
-    refs.clear()
-    pool.clear()
-  }
-  // A pointer the pool lacks (a merge dropped it) holds nothing.
-  for (const [k, r] of refs) if (!pool.has(r)) refs.delete(k)
-  return { refs, pool }
 }
 
 function cmp(a: string, b: string): number {

@@ -2349,17 +2349,14 @@ tasks: …`).
 
 `.vx/projects.lock` is laid out for the parse first, then for
 size, then for merges: a header line, `{"version":9}`, then each
-task config, shared by the tasks that hold it, as a pointer line (`#k2x0a1b`) and its JSON
+distinct task config once, as a pointer line (`#k2x0a1b`) and its JSON
 line, then each project, in name-hash order, as
 `<name>⇥{"path","file"|"by","config"}` (`file` left out for
 `vx.config.ts`, the tasks left out of `config`) and, per task in name
-order, a `⇥<task>` line and its pointer line. A pointer is born from its
-task's first JSON and kept by every later `vx lock`, so an edit to a task
-rewrites its JSON line alone; a task added later gets a pointer of its own
-even when its JSON is already there, so a merge never points it at a
-config another branch edited (delete the lock and run `vx lock` to share
-them again). `vx show` lists a project's tasks in name order. 2,016 projects read in 3.2 ms from 419 KB
-(version 8: the same time, from 566 KB). For review, `vx lock` also writes each project's resolved config (plugins
+order, a `⇥<task>` line and its pointer line. A pointer is a hash of its
+task's JSON, so the same configs always lock to the same text. A merge that
+lost a pointer's entry is refused until `vx lock` rewrites the lock. `vx
+show` lists a project's tasks in name order. For review, `vx lock` also writes each project's resolved config (plugins
 applied), pretty, to `vx.lock.json` beside its `vx.config`; vx never reads
 it, it is no task's input, and `lock.reviewFiles: false`
 (`VX_LOCK_REVIEW_FILES`) turns it off. A copy left with no config beside
@@ -2373,11 +2370,11 @@ does too, and an existing one is never edited.
 
 ### Merging
 
-The locks have no merge driver: git merges them as text. A name or
-pointer line seldom changes, so it sits between two branches' edits to
-neighbouring tasks or projects, and git merges both; hashed project order
-keeps two new projects apart (merged clean: 4 in 5 two-branch merges that
-conflicted in version 8, 2026-11-23). A run checks the merged digests
+The locks have no merge driver: git merges them as text. A name line
+seldom changes, so it sits between two branches' edits to neighbouring
+projects, and git merges both; hashed project order keeps two new projects
+apart (of two-branch merges, 18% conflict against version 8's 80%,
+2026-11-23). A run checks the merged digests
 against the merged lockfile and refuses with "run `vx lock`" when they
 differ. When both sides changed one task, or lines right beside each
 other, git leaves its conflict markers, every run refuses the lock

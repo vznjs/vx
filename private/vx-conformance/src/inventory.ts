@@ -410,6 +410,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'lockfile-boundary',
     'lock-merge-conflict',
     'lockfile-claim',
+    'projects-lock-format',
     'metrics',
     'migration',
     'near-miss',
