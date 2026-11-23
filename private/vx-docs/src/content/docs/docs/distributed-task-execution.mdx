@@ -22,8 +22,8 @@ vx run build test lint --all
 Press the buttons to replay real runs. Each bar is a task on the worker that ran it. A task the cache already has never needs a worker.
 
 <Concept term="Worker">
-  A CI machine that joins your run, takes tasks, runs them and hands back what they made. vx starts
-  workers for you, and stops them when the work runs out.
+  A machine that joins your run, takes tasks, runs them and hands back what they made. With an
+  adapter, vx starts workers for you and stops them when the work runs out.
 </Concept>
 
 <Quiz q="Every task changed. Why does the run end later with 3 workers allowed than with 2?">
@@ -89,7 +89,7 @@ Read the `worker` column: worker `#1` of the `linux.cpu2` machines ran three tas
 
 <Concept term="Relay">
   A small server that passes messages between your run and its workers. It reads nothing it passes:
-  every message is encrypted end to end. You host it: [DTE server](../servers/dte/).
+  every message is encrypted end to end. You host it: [Distributed task execution server](../servers/dte/).
 </Concept>
 
 <Takeaway>follow a task from your CI job to a worker and back, and read who ran it.</Takeaway>
@@ -137,7 +137,11 @@ An edit in `apps/web` misses only `@demo/web`'s tasks. `@demo/ui`'s come from th
 A machine with a `platform` takes the tasks whose `exec.platforms` name it:
 
 ```ts title=".vx/workspace.ts"
-mac: { machines: { m1: { max: 2, cpu: 3, memory: '7GB', platform: 'darwin-arm64' } } },
+mac: {
+  machines: {
+    m1: { max: 2, cpu: 3, memory: '7GB', platform: 'darwin-arm64' },
+  },
+},
 ```
 
 `vx dte init` runs it on `macos-latest`.
@@ -164,11 +168,17 @@ dte({
 With no `adapter`, vx starts nothing. Name the relay, then share one random run id and key:
 
 ```ts title=".vx/workspace.ts"
-dte({ relay: 'https://relay.example.com', workers: { linux: { machines: { cpu4: { cpu: 4, memory: '16GB' } } } } }),
+dte({
+  relay: 'https://relay.example.com',
+  workers: {
+    linux: { machines: { cpu4: { cpu: 4, memory: '16GB' } } },
+  },
+}),
 ```
 
 ```sh
-export VX_DTE_RUN=$(uuidgen) VX_DTE_SECRET=$(openssl rand -base64 32)
+export VX_DTE_RUN=$(uuidgen)
+export VX_DTE_SECRET=$(openssl rand -base64 32)
 vx run build --all   # on the machine that starts the run
 vx dte worker        # on each worker, with the same two variables
 ```
@@ -190,8 +200,8 @@ dte({ workers, adapter, relay, token, unmeasured, headers })
 | `workers` | the worker types, in order of preference. Each is `{ machines }` | none: only workers that join on their own |
 | `adapter` | how workers start: `github()`, `gitlab()`, `local()`, `docker()` | none: vx starts no worker |
 | `relay` | the relay's base URL, `http(s)`, without `/v1`. `VX_DTE_RELAY` beats it | the adapter's own (`local()`, `docker()`) |
-| `token` | the relay's bearer token. Asked again a minute before it expires | `VX_DTE_TOKEN` |
-| `unmeasured` | `{ cpu, memory }`: what a task with no history uses. On a worker it takes any free core | 2 cores, 4 GB when vx sizes the workers to ask for; the measured tasks' mean in the plan |
+| `token` | the relay's bearer token. Asked again a minute before it expires | `VX_DTE_TOKEN`, else on GitHub Actions an OIDC token |
+| `unmeasured` | `{ cpu, memory }`: what a task with no history uses. On a worker it takes any free core | 2 cores, 4 GB when vx picks workers to ask for |
 | `headers` | headers on every call to the relay, for a proxy in front of it | none |
 
 An unknown key is refused. With an `adapter`, at least one machine needs `max` above 0. The same options, with every plugin's, are on [Plugins](../plugins/).
@@ -305,5 +315,5 @@ Names use letters, digits, `_` and `-`.
 vx can also send tasks to a Bazel REAPI worker pool you already run: [Remote execution](../remote-execution/).
 
 <NextStep href="try-on-your-machine/" title="Try distributed task execution on your machine">
-  Start workers on your laptop and watch your own tasks spread, with no CI and no relay.
+  Start workers on your laptop and watch your own tasks spread. No CI, nothing to host.
 </NextStep>
