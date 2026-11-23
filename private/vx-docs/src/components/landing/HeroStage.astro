@@ -94,13 +94,6 @@ const specs = [
     travel: number
     ends: Record<string, [string, string]>
   }
-  const TONES: Record<string, string> = {
-    core: '#c6f84e',
-    read: '#5ee0ff',
-    remote: '#ff9d42',
-    dte: '#b794ff',
-    report: '#f472b6',
-  }
   const stage = document.querySelector<HTMLElement>('.stage')
   if (stage) boot(stage)
 
@@ -216,7 +209,7 @@ const specs = [
           }
           const pt = p.el.getPointAtLength((f.back ? 1 - k : k) * p.len)
           dot.g.setAttribute('transform', `translate(${pt.x} ${pt.y})`)
-          dot.c.setAttribute('fill', TONES[f.tone]!)
+          dot.c.style.fill = `var(--tone-${f.tone})`
           dot.g.style.display = ''
           n++
         }
@@ -333,7 +326,13 @@ const specs = [
     // The horizon runs behind the graph's lower part, the sun centred on it.
     const horizon = (): number => world.offsetTop + world.offsetHeight * 0.74
     const sunR = (): number => Math.min(W * 0.2, world.offsetHeight * 0.42)
+    // The sky's colours are stage.css's, so the light theme paints a day sky.
+    const css = (name: string): string => getComputedStyle(stage).getPropertyValue(name).trim()
+    let grid = ''
+    let horizonLine = ''
     const size = (): void => {
+      grid = css('--st-grid').split(/\s+/).join(',')
+      horizonLine = css('--st-horizon')
       // One pixel per CSS pixel: the sky is soft, and a 2x canvas quadruples each frame's fill.
       const dpr = 1
       W = canvas.clientWidth
@@ -351,24 +350,24 @@ const specs = [
       const hy = horizon()
       const cx = W / 2
       const sky = b.createLinearGradient(0, 0, 0, hy)
-      sky.addColorStop(0, '#040b08')
-      sky.addColorStop(0.5, '#07170f')
-      sky.addColorStop(0.85, '#0d2e1c')
-      sky.addColorStop(1, '#1d5a32')
+      sky.addColorStop(0, css('--st-sky-1'))
+      sky.addColorStop(0.5, css('--st-sky-2'))
+      sky.addColorStop(0.85, css('--st-sky-3'))
+      sky.addColorStop(1, css('--st-sky-horizon'))
       b.fillStyle = sky
       b.fillRect(0, 0, W, hy)
-      b.fillStyle = 'rgba(236,255,240,0.5)'
+      b.fillStyle = css('--st-star')
       for (let i = 0, n = W < 720 ? 40 : 90; i < n; i++) b.fillRect(Math.random() * W, Math.random() ** 1.6 * hy * 0.8, 1.4, 1.4)
       const glow = b.createRadialGradient(cx, hy, r * 0.6, cx, hy, r * 2.6)
-      glow.addColorStop(0, 'rgba(120,245,150,0.35)')
-      glow.addColorStop(1, 'rgba(120,245,150,0)')
+      glow.addColorStop(0, `rgba(${grid},0.35)`)
+      glow.addColorStop(1, `rgba(${grid},0)`)
       b.fillStyle = glow
       b.fillRect(0, hy - r * 2.6, W, r * 2.6)
-      b.fillStyle = '#030805'
+      b.fillStyle = css('--st-floor')
       b.fillRect(0, hy, W, H - hy)
       const haze = b.createLinearGradient(0, hy, 0, hy + H * 0.12)
-      haze.addColorStop(0, 'rgba(120,245,150,0.35)')
-      haze.addColorStop(1, 'rgba(120,245,150,0)')
+      haze.addColorStop(0, `rgba(${grid},0.35)`)
+      haze.addColorStop(1, `rgba(${grid},0)`)
       b.fillStyle = haze
       b.fillRect(0, hy, W, H * 0.12)
       const f = H * 0.9
@@ -377,8 +376,8 @@ const specs = [
         const x1 = cx + (i * 1.1 * f) / 0.6
         const x2 = cx + (i * 1.1 * f) / 36
         const lg = b.createLinearGradient(x1, hy + f / 0.6, x2, hy + f / 36)
-        lg.addColorStop(0, 'rgba(120,245,150,0.5)')
-        lg.addColorStop(1, 'rgba(120,245,150,0.05)')
+        lg.addColorStop(0, `rgba(${grid},0.5)`)
+        lg.addColorStop(1, `rgba(${grid},0.05)`)
         b.strokeStyle = lg
         b.beginPath()
         b.moveTo(x1, hy + f / 0.6)
@@ -423,7 +422,7 @@ const specs = [
       ctx.clip()
       ctx.drawImage(sunCanvas, W / 2 - r, top, 2 * r, 2 * r)
       ctx.restore()
-      ctx.fillStyle = 'rgba(210,255,170,0.9)'
+      ctx.fillStyle = horizonLine
       ctx.fillRect(0, hy - 0.5, W, 1.2)
       const speed = 0.9
       travel = (travel + speed * dt) % 1
@@ -434,7 +433,7 @@ const specs = [
         if (z < 0.6) continue
         const y = hy + f / z
         if (y > H) continue
-        ctx.strokeStyle = `rgba(120,245,150,${0.55 * (1 - z / 32.4) ** 1.5})`
+        ctx.strokeStyle = `rgba(${grid},${0.55 * (1 - z / 32.4) ** 1.5})`
         ctx.beginPath()
         ctx.moveTo(0, y)
         ctx.lineTo(W, y)
@@ -468,6 +467,8 @@ const specs = [
     document.addEventListener('visibilitychange', () => (document.hidden ? stop() : start()))
     // The sky follows the graph, so repaint its still layer whenever the stage resizes.
     new ResizeObserver(size).observe(stage)
+    // A theme switch repaints the still layer in the new theme's colours.
+    new MutationObserver(size).observe(document.documentElement, { attributeFilter: ['data-theme'] })
     size()
   }
 </script>
