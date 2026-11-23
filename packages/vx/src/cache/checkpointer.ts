@@ -9,8 +9,14 @@
 
 import { SQLITE_FCNTL_PERSIST_WAL } from '../index-db/index.js'
 
-/** How often the thread checkpoints: about 1,000 pages of a cold run's writes. */
-const EVERY_MS = 100
+/**
+ * How often the thread checkpoints. Each checkpoint with new frames costs two
+ * fsyncs per database, however few the frames: at 100 ms a 118 s cold run
+ * (300 ms tasks, saves trickling in) spent ~0.6 s of the thread and ~1 s of
+ * vx's own CPU in all on them; at 1 s, a dense run's close still found the
+ * WAL nearly copied (walls equal on both shapes).
+ */
+const EVERY_MS = 1000
 
 // The thread as source, not a file: a compiled vx carries only its entry
 // points' graphs (spawn-off.ts does the same).
