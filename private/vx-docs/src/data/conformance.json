@@ -1,6 +1,6 @@
 {
   "coverage": {
-    "ported": 401,
+    "ported": 402,
     "rest": {
       "pending": [
         "affected-config-tasks",
@@ -11,6 +11,7 @@
         "deferred-output-empty",
         "everyday-ops-differential",
         "force-replaces",
+        "git-layouts",
         "ignored-glob-warning",
         "key-not-derived",
         "lock-edges",
@@ -37,7 +38,6 @@
         "cache-clean-verb",
         "cache-dir-home",
         "cache-dir-selection",
-        "cache-gitignore",
         "cache-prune-policy",
         "cache-scope",
         "cache-subcommand-pointers",
@@ -163,6 +163,7 @@
         "locked-digests",
         "lock-merge-conflict",
         "lockfile-claim",
+        "projects-lock-format",
         "metrics",
         "migration",
         "near-miss",
@@ -371,6 +372,7 @@
         "vx-lockfile/unknown-options",
         "vx-lockfile/yarn",
         "vx-lockfile/yarn-bound-descriptor",
+        "vx-lockfile/yarn-catalog-precise",
         "vx-lockfile/yarn-classic-link-workspace",
         "vx-lockfile/yarn-classic-root-deps",
         "vx-lockfile/yarn-classic-workspace-deps",
@@ -932,6 +934,7 @@
         "docs-examples.unsafe",
         "env-doc-drift",
         "error-codes-repo.unsafe",
+        "examples.live",
         "examples.unsafe",
         "execution-doc-drift",
         "exports-referenced.unsafe",
@@ -960,6 +963,7 @@
         "release-notes",
         "release-provenance.unsafe",
         "schema-doc-drift",
+        "schema-doc-samples",
         "shard-partition",
         "signed-cache-guide.unsafe",
         "site-bench-percent.unsafe",
@@ -1002,19 +1006,19 @@
   "scores": {
     "vx": {
       "all": {
-        "pass": 2121,
-        "can": 2121,
-        "of": 2196
+        "pass": 2124,
+        "can": 2124,
+        "of": 2199
       },
       "correctness": {
-        "pass": 1707,
-        "can": 1707,
-        "of": 1774
+        "pass": 1709,
+        "can": 1709,
+        "of": 1776
       },
       "efficiency": {
-        "pass": 325,
-        "can": 325,
-        "of": 332
+        "pass": 326,
+        "can": 326,
+        "of": 333
       },
       "data": {
         "pass": 89,
@@ -1042,19 +1046,19 @@
         "of": 186
       },
       "cache": {
-        "pass": 104,
-        "can": 104,
-        "of": 127
+        "pass": 105,
+        "can": 105,
+        "of": 128
       },
       "inputs": {
-        "pass": 478,
-        "can": 478,
-        "of": 490
+        "pass": 479,
+        "can": 479,
+        "of": 491
       },
       "env": {
-        "pass": 145,
-        "can": 145,
-        "of": 148
+        "pass": 146,
+        "can": 146,
+        "of": 149
       },
       "outputs": {
         "pass": 298,
@@ -1079,19 +1083,19 @@
     },
     "turbo": {
       "all": {
-        "pass": 1386,
-        "can": 1797,
-        "of": 2196
+        "pass": 1389,
+        "can": 1800,
+        "of": 2199
       },
       "correctness": {
-        "pass": 1113,
-        "can": 1451,
-        "of": 1774
+        "pass": 1115,
+        "can": 1453,
+        "of": 1776
       },
       "efficiency": {
-        "pass": 243,
-        "can": 316,
-        "of": 332
+        "pass": 244,
+        "can": 317,
+        "of": 333
       },
       "data": {
         "pass": 30,
@@ -1119,19 +1123,19 @@
         "of": 186
       },
       "cache": {
-        "pass": 86,
-        "can": 103,
-        "of": 127
+        "pass": 87,
+        "can": 104,
+        "of": 128
       },
       "inputs": {
-        "pass": 339,
-        "can": 474,
-        "of": 490
+        "pass": 340,
+        "can": 475,
+        "of": 491
       },
       "env": {
-        "pass": 132,
-        "can": 136,
-        "of": 148
+        "pass": 133,
+        "can": 137,
+        "of": 149
       },
       "outputs": {
         "pass": 234,
@@ -1156,19 +1160,19 @@
     },
     "nx": {
       "all": {
-        "pass": 1386,
-        "can": 1832,
-        "of": 2196
+        "pass": 1389,
+        "can": 1835,
+        "of": 2199
       },
       "correctness": {
-        "pass": 1074,
-        "can": 1476,
-        "of": 1774
+        "pass": 1076,
+        "can": 1478,
+        "of": 1776
       },
       "efficiency": {
-        "pass": 282,
-        "can": 326,
-        "of": 332
+        "pass": 283,
+        "can": 327,
+        "of": 333
       },
       "data": {
         "pass": 30,
@@ -1196,19 +1200,19 @@
         "of": 186
       },
       "cache": {
-        "pass": 80,
-        "can": 95,
-        "of": 127
+        "pass": 81,
+        "can": 96,
+        "of": 128
       },
       "inputs": {
-        "pass": 345,
-        "can": 490,
-        "of": 490
+        "pass": 346,
+        "can": 491,
+        "of": 491
       },
       "env": {
-        "pass": 134,
-        "can": 145,
-        "of": 148
+        "pass": 135,
+        "can": 146,
+        "of": 149
       },
       "outputs": {
         "pass": 224,
@@ -1233,19 +1237,19 @@
     },
     "vite-task": {
       "all": {
-        "pass": 1023,
-        "can": 1385,
-        "of": 2196
+        "pass": 1026,
+        "can": 1388,
+        "of": 2199
       },
       "correctness": {
-        "pass": 859,
-        "can": 1165,
-        "of": 1774
+        "pass": 861,
+        "can": 1167,
+        "of": 1776
       },
       "efficiency": {
-        "pass": 155,
-        "can": 211,
-        "of": 332
+        "pass": 156,
+        "can": 212,
+        "of": 333
       },
       "data": {
         "pass": 9,
@@ -1273,19 +1277,19 @@
         "of": 186
       },
       "cache": {
-        "pass": 71,
-        "can": 82,
-        "of": 127
+        "pass": 72,
+        "can": 83,
+        "of": 128
       },
       "inputs": {
-        "pass": 313,
-        "can": 475,
-        "of": 490
+        "pass": 314,
+        "can": 476,
+        "of": 491
       },
       "env": {
-        "pass": 132,
-        "can": 135,
-        "of": 148
+        "pass": 133,
+        "can": 136,
+        "of": 149
       },
       "outputs": {
         "pass": 206,
@@ -1310,19 +1314,19 @@
     },
     "nix": {
       "all": {
-        "pass": 1096,
-        "can": 1382,
-        "of": 2196
+        "pass": 1097,
+        "can": 1385,
+        "of": 2199
       },
       "correctness": {
-        "pass": 939,
-        "can": 1187,
-        "of": 1774
+        "pass": 940,
+        "can": 1189,
+        "of": 1776
       },
       "efficiency": {
         "pass": 147,
-        "can": 185,
-        "of": 332
+        "can": 186,
+        "of": 333
       },
       "data": {
         "pass": 10,
@@ -1351,18 +1355,18 @@
       },
       "cache": {
         "pass": 85,
-        "can": 100,
-        "of": 127
+        "can": 101,
+        "of": 128
       },
       "inputs": {
-        "pass": 345,
-        "can": 433,
-        "of": 490
+        "pass": 346,
+        "can": 434,
+        "of": 491
       },
       "env": {
         "pass": 122,
-        "can": 129,
-        "of": 148
+        "can": 130,
+        "of": 149
       },
       "outputs": {
         "pass": 233,
@@ -1387,19 +1391,19 @@
     },
     "moon": {
       "all": {
-        "pass": 1275,
-        "can": 1732,
-        "of": 2196
+        "pass": 1278,
+        "can": 1735,
+        "of": 2199
       },
       "correctness": {
-        "pass": 1005,
-        "can": 1414,
-        "of": 1774
+        "pass": 1007,
+        "can": 1416,
+        "of": 1776
       },
       "efficiency": {
-        "pass": 235,
-        "can": 283,
-        "of": 332
+        "pass": 236,
+        "can": 284,
+        "of": 333
       },
       "data": {
         "pass": 35,
@@ -1427,19 +1431,19 @@
         "of": 186
       },
       "cache": {
-        "pass": 83,
-        "can": 101,
-        "of": 127
+        "pass": 84,
+        "can": 102,
+        "of": 128
       },
       "inputs": {
-        "pass": 348,
-        "can": 490,
-        "of": 490
+        "pass": 349,
+        "can": 491,
+        "of": 491
       },
       "env": {
-        "pass": 137,
-        "can": 145,
-        "of": 148
+        "pass": 138,
+        "can": 146,
+        "of": 149
       },
       "outputs": {
         "pass": 191,
@@ -77660,6 +77664,105 @@
           "status": "fail",
           "step": 4,
           "detail": "did not run b#build"
+        }
+      }
+    },
+    {
+      "id": "inputs/worktree-under-an-ignored-folder-edit-reruns",
+      "ref": "65jl8j",
+      "category": "inputs",
+      "kind": "correctness",
+      "title": "In a git worktree under a folder the main checkout ignores, an input edit runs the task again",
+      "why": "Agents and scripts keep extra worktrees in a folder like `.worktrees/` that the main checkout ignores. Inside the worktree, that folder is outside the workspace, so it says nothing about which files are inputs. A tool that matches its ignores against the full path drops every input there and replays the old output after an edit. The edited input is built.",
+      "from": [
+        "parity-turbo-hashing",
+        "cache-gitignore"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "cache/task-copying-beside-the-workspace-replays",
+      "ref": "oob9ym",
+      "category": "cache",
+      "kind": "efficiency",
+      "title": "A task that also copies its build beside the repository is cached and replays",
+      "why": "A build that publishes a copy to a folder beside the repository, `cp -r dist ../site`, still declares its outputs inside its project. What it writes outside is not among them, and is no reason to refuse the result. A tool that fails to save such a task builds it on every run. The run passes and the next one replays.",
+      "from": [
+        "parity-turbo-hashing"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "fail",
+          "step": 1,
+          "detail": "../outside/site/out.txt is missing, expected \"a\\n\""
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "env/command-exit-trap-sees-the-status",
+      "ref": "pkr3pc",
+      "category": "env",
+      "kind": "correctness",
+      "title": "An `EXIT` trap reads the status the command is leaving with in `$?`",
+      "why": "A cleanup trap often records or reports how the script ended, and `$?` on entry to an `EXIT` trap is that status. A shell that hands the trap 0 makes a failed build log success. The trap writes 4, and the task fails.",
+      "from": [
+        "exit-trap-cleanup.unsafe",
+        "task-shell"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "fail",
+          "step": 1,
+          "detail": "packages/a/status.txt is missing, expected \"4\\n\""
+        },
+        "moon": {
+          "status": "pass"
         }
       }
     }

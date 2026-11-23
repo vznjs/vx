@@ -77,6 +77,7 @@ import minedNxFixes from './mined-nx-fixes.ts'
 import minedViteCrates from './mined-vite-crates.ts'
 import minedNixFunc2 from './mined-nix-func2.ts'
 import minedIssues2 from './mined-issues2.ts'
+import minedMoonVt from './mined-moon-vt.ts'
 import watch from './watch.ts'
 
 /** Every case, in the results' order. */
@@ -160,4 +161,5 @@ export const CASES: Case[] = [
   ...minedViteCrates,
   ...minedNixFunc2,
   ...minedIssues2,
+  ...minedMoonVt,
 ]
