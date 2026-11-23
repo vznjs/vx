@@ -4434,7 +4434,9 @@ remote hit is never fresh, outputs or none: it is `↓` from the remote), `∅` 
 layer and `↑` saved to it, `✗` a task a remote read or write failed
 for (not one that turned the remote off for the run, a refused token or
 no answer: that is the run's, on the `warn` row, and its task counts as
-the others), and `⇡` an upload still running (live only, always last). The
+the others), and `⇡` an upload still running (live only, always last).
+A pipe with no colour (an agent's shell) gets no meters: each row holds
+its legend alone (`tasks     1 failed · 3 success · 4 total`). The
 region stays through vx's closing steps, worker rows gone, and the
 final footer replaces it in place. Each task counts once, under its strongest state: a
 failed remote read or write, then an upload running, then saved to a
