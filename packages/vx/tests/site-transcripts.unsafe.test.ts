@@ -276,7 +276,6 @@ describe('the newcomer guides show what vx prints', () => {
   const run = (...args: string[]) => at(ws, ENV, args)
   const runColour = (...args: string[]) => at(ws, COLOUR, args)
   const sh = (...args: string[]) => Bun.spawnSync({ cmd: args, cwd: ws, env: ENV }).exitCode
-  const guide = (rel: string) => readFileSync(path.join(GUIDES, rel), 'utf8')
   /** A line with its timings, CPU and memory blanked and its spacing folded. */
   const loose = (line: string) =>
     plain(line)
