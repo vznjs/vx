@@ -287,13 +287,26 @@ vx run build
 [2m$[0m rm -rf dist
 [2m$[0m vx run build
 
+[2m┌─[0m [1m[38;2;232;121;249mmy-app[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m>[0m $ vite build
+[36mvite v8.3.8 [32mbuilding client environment for production...[36m[39m
+transforming...
+[32m✓[0m 9 modules transformed.
+rendering chunks...
+computing gzip size...
+[2mdist/[0m[32mindex.html                 [0m[1;2m 0.45 kB[0m[2m │ gzip: 0.29 kB[0m
+[2mdist/[0m[2massets/[0m[32mvite-BF8QNONU.svg   [0m[1;2m 8.70 kB[0m[2m │ gzip: 1.60 kB[0m
+[2mdist/[0m[2massets/[0m[32mhero-CLDdwZDr.png   [0m[1;2m13.05 kB[0m
+[2mdist/[0m[2massets/[0m[35mindex-CsUDhMuy.css  [0m[1;2m 4.10 kB[0m[2m │ gzip: 1.46 kB[0m
+[2mdist/[0m[2massets/[0m[36mindex-CAoPt-vL.js   [0m[1;2m 4.05 kB[0m[2m │ gzip: 1.77 kB[0m
+
+[32m✓ built in 140ms[39m
 [2m└─[0m [1m[38;2;232;121;249mmy-app[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(10ms)[0m [2mrestored-local[0m
 
   [2mcache   [0m  [38;2;56;189;248m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
             [2mlocal[0m [38;2;56;189;248m1↓[0m
 ```
 
-Read **restored-local** and `local 1↓`: vx copied `dist/` back from its cache. vite did not run.
+Read **restored-local** and `local 1↓`: vx copied `dist/` back from its cache. vite did not run; the log is the first run's, replayed.
 
 <Deeper level="details" title="Where the cache lives">
 

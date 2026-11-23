@@ -607,6 +607,15 @@ describe("the quickstart's output", () => {
       run('run', 'build')
       const ms = (t: string) => t.replace(/\(\d+ms\)/g, '(<ms>)')
       expect(ms(runColour('run', 'build')).split('\n')).toContain(ms(hit))
+      // A restore replays the saved log too: the third run's sample showed
+      // the closing line alone.
+      const third = /```ansi title="third run"\n([\s\S]*?)```/.exec(page)![1]!
+      await rm(path.join(dir, 'dist'), { recursive: true })
+      const restored = run('run', 'build')
+      expect([restored.includes('restored-local'), restored.includes('┌─')]).toEqual([
+        true,
+        plain(third).includes('┌─'),
+      ])
       await writeFile(path.join(dir, 'src/main.js'), '2\n')
       run('run', 'build')
       const why = runColour('why', 'build')
