@@ -65,6 +65,7 @@ export {
   resolveWorkspaceOutputTree,
   sweepRestoreTemps,
   sweepStaging,
+  STAGE_PUT_BACK,
   type ProjectFilesCache,
   type WorkspaceFilesCache,
   cleanOutputPaths,

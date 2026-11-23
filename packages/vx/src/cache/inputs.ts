@@ -12,6 +12,7 @@ import {
   lstatSync,
   mkdirSync,
   readdirSync,
+  readFileSync,
   realpathSync,
   renameSync,
   rmdirSync,
@@ -1451,8 +1452,17 @@ export function sweepRestoreTemps(
 }
 
 /**
+ * In a sandbox's stage (`stagedOutputs`), the host directories its restore
+ * is moving, one absolute path a line, each set aside in the stage as
+ * `.host-<name>` until the task's own takes its place.
+ */
+export const STAGE_PUT_BACK = '.vx-put-back'
+
+/**
  * Empty `.vx/tmp/` of the staging directories a killed run left, once per run;
- * a live writer's is left.
+ * a live writer's is left. A host directory a restore had set aside when the
+ * run was killed goes back first, where nothing took its place: swept, the
+ * task's previous output was gone from the host (2026-11-23).
  */
 export function sweepStaging(workspaceRoot: string): void {
   const top = path.join(workspaceRoot, '.vx', 'tmp')
@@ -1467,7 +1477,28 @@ export function sweepStaging(workspaceRoot: string): void {
     if (m === null) continue
     const pid = Number.parseInt(m[1]!, 36)
     if (pid === process.pid || writerAlive(pid)) continue
+    putBack(path.join(top, name))
     rmSync(path.join(top, name), { recursive: true, force: true })
+  }
+}
+
+function putBack(stage: string): void {
+  let list: string
+  try {
+    list = readFileSync(path.join(stage, STAGE_PUT_BACK), 'utf8')
+  } catch {
+    return
+  }
+  for (const to of list.split('\n')) {
+    if (!path.isAbsolute(to)) continue
+    const from = path.join(stage, `.host-${path.basename(to)}`)
+    if (lstatSync(from, { throwIfNoEntry: false })?.isDirectory() !== true) continue
+    if (lstatSync(to, { throwIfNoEntry: false }) !== undefined) continue
+    try {
+      renameSync(from, to)
+    } catch {
+      // Its directory is gone too: nothing to put it back in.
+    }
   }
 }
 

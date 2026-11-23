@@ -15,6 +15,7 @@ import {
   rmSync,
   statSync,
   symlinkSync,
+  writeFileSync,
 } from 'node:fs'
 import path from 'node:path'
 import {
@@ -27,6 +28,7 @@ import {
   unique,
 } from './paths.js'
 import { notify } from '../util/index.js'
+import { STAGE_PUT_BACK } from '../cache/index.js'
 import { shellQuote } from '../exec/index.js'
 import type { ResolvedSandboxConfig } from '../exec/index.js'
 import type { SandboxedRunArgs } from './runtime.js'
@@ -741,6 +743,14 @@ export function stagedOutputs(
   const stage = path.join(stageRoot, 'tmp', `${process.pid.toString(36)}-${opts.tag}`)
   const restore = (): void => {
     const failed: string[] = []
+    // Each host directory set aside below is named first, after the task
+    // and over anything it left at these names: a kill between the two
+    // renames otherwise left it only in the stage, which the next run
+    // sweeps (`sweepStaging` puts it back).
+    for (const d of dirs)
+      rmSync(path.join(stage, `.host-${path.basename(d)}`), { recursive: true, force: true })
+    rmSync(path.join(stage, STAGE_PUT_BACK), { recursive: true, force: true })
+    writeFileSync(path.join(stage, STAGE_PUT_BACK), dirs.join('\n'))
     for (const d of dirs) {
       const fresh = path.join(stage, path.basename(d))
       const old = path.join(stage, `.host-${path.basename(d)}`)

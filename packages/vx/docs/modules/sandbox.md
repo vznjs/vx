@@ -1120,9 +1120,14 @@ task writes beside it lands in the staging, is reported (no grant covers
 it) and goes with the staging. After the task, each staged directory is
 renamed over the host's; if the task removed it and made none, the
 host's goes too. A failed rename throws, so the task fails rather than
-saving stale bytes. The host's directory is never moved: a concurrent
+saving stale bytes, once the attempt's trace log and records are let go.
+The host's directory is not moved while the task runs: a concurrent
 task reading it still sees it, and a killed run's staging, which holds
-only links, is swept as a restore's is (`sweepStaging`). Directories are
+only links, is swept as a restore's is (`sweepStaging`). The restore sets
+each host directory aside in the staging (`.host-<name>`) before the
+task's takes its place, naming it first in the staging's `.vx-put-back`
+(`STAGE_PUT_BACK`): a run killed between the two renames has the sweep put
+it back where nothing took its place. Directories are
 not staged for a server, for a grant no output claims whole, for a
 directory the line names anywhere but its own write bind (a deny or mask
 in it is a mount that would move with it), where a mask

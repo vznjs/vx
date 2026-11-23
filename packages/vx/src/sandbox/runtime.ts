@@ -1137,7 +1137,7 @@ async function runSandboxedOnce(args: SandboxedRunArgs): Promise<AttemptResult> 
   const { prepared } = ready
   const { wrapped, tag, srtCommand, baselines } = prepared.wrap
   let takeRecords: ReturnType<typeof collectRecords>
-  let ended: Ended
+  let ended!: Ended
   let started: ReturnType<typeof spawnAttempt>
   try {
     takeRecords = collectRecords(
@@ -1146,12 +1146,39 @@ async function runSandboxedOnce(args: SandboxedRunArgs): Promise<AttemptResult> 
       observerSocket(wrapped),
     )
     started = spawnAttempt(args, prepared.wrap, takeRecords, SandboxManager, start)
-    if ('result' in started) return started.result
-    ended = await awaitAttempt(args, started.spawned, tag)
-  } finally {
+    if (!('result' in started)) ended = await awaitAttempt(args, started.spawned, tag)
+  } catch (err) {
+    try {
+      prepared.wrap.unstage?.()
+    } catch {
+      // The attempt's own failure is the one to say.
+    }
+    throw err
+  }
+  let unstaged: unknown
+  try {
     prepared.wrap.unstage?.()
+  } catch (err) {
+    unstaged = err
+  }
+  if ('result' in started) {
+    if (unstaged !== undefined) throw unstaged
+    return started.result
   }
   const { proc, straceLog } = started.spawned
+  // A restore that failed fails the task, after what the attempt holds is
+  // let go: thrown from the cleanup above, the trace log stayed on disk
+  // until vx exited and the command's records and mount points stayed
+  // held (a watch session gathered one of each per failure, 2026-11-23).
+  if (unstaged !== undefined) {
+    await takeRecords(false)
+    if (straceLog) {
+      await unlink(straceLog).catch(() => undefined)
+      liveTempFiles.delete(straceLog)
+    }
+    afterCommand(SandboxManager)
+    throw unstaged
+  }
   // Linux: the write observer's records arrive over a socket, not with the
   // exit; `takeRecords(true)` waits until all it sent are read.
   const denials = await attemptDenials(args, prepared, await takeRecords(true), straceLog)

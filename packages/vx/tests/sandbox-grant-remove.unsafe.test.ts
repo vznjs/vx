@@ -20,6 +20,8 @@ import { initSandbox, resetSandbox } from '../src/sandbox/session.js'
 import { resolveSandboxConfig } from '../src/sandbox/grants.js'
 import { stagedOutputs } from '../src/sandbox/binds.js'
 import { runSandboxed } from '../src/sandbox/runtime.js'
+import { taskTmpRoot } from '../src/sandbox/tmp.js'
+import { STAGE_PUT_BACK, sweepStaging } from '../src/cache/index.js'
 import { run as runVx } from './helpers/orchestrator.js'
 import { sandboxAvailable } from './helpers/sandbox-gate.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
@@ -133,6 +135,22 @@ describe.skipIf(process.platform !== 'linux')('staging an output directory', () 
     expect(statSync(dist()).mode & 0o777).toBe(0o750)
   })
 
+  // Killed between the restore's renames, the host's directory was only
+  // in the stage, and the next run's sweep removed it (2026-11-23).
+  it('a restore killed midway loses no host directory once swept', async () => {
+    const child = Bun.spawn(
+      [process.execPath, path.join(import.meta.dir, 'helpers', 'kill-restore.ts'), dir],
+      { stdout: 'ignore', stderr: 'ignore' },
+    )
+    await child.exited
+    expect([child.signalCode, existsSync(dist())]).toEqual(['SIGKILL', false])
+    sweepStaging(dir)
+    expect([readdirSync(dist()), readdirSync(path.join(dir, '.vx', 'tmp'))]).toEqual([
+      ['.mcp.json'],
+      [],
+    ])
+  })
+
   it.each([
     [' --ro-bind DIST/.mcp.json DIST/.mcp.json'],
     [' --ro-bind DIST DIST'],
@@ -210,12 +228,34 @@ describe.skipIf(!available || process.platform !== 'linux')(
 
     it('never puts a link the task made in its place on the host', async () => {
       const dir = await app('rm -rf dist && ln -s /etc dist', "'dist/'", owned)
+      const logs = () =>
+        existsSync(taskTmpRoot())
+          ? readdirSync(taskTmpRoot()).filter((n) => n.startsWith('vx-strace-'))
+          : []
+      const before = logs()
       const r = await runVx({ cwd: root, tasks: ['t'], log: quiet })
       expect([r.outcomes[0]?.status, lstatSync(path.join(dir, 'dist')).isDirectory()]).toEqual([
         'failed',
         true,
       ])
+      // The failed restore let the attempt's trace log go too (2026-11-23).
+      expect(logs().filter((n) => !before.includes(n))).toEqual([])
     }, 30_000)
+
+    // A run killed between the restore's two renames left the host's
+    // directory only in the stage, and the next run's sweep removed it.
+    it("a killed restore's host directory is put back by the next sweep", async () => {
+      const dir = await app('true', "'dist/'", owned)
+      const dead = Bun.spawn(['true'])
+      await dead.exited
+      const stage = path.join(root, '.vx', 'tmp', `${dead.pid.toString(36)}-0123456789abcdef`)
+      mkdirSync(path.join(stage, '.host-dist'), { recursive: true })
+      await writeFile(path.join(stage, '.host-dist', 'old.js'), 'old')
+      await writeFile(path.join(stage, STAGE_PUT_BACK), path.join(dir, 'dist'))
+      await rm(path.join(dir, 'dist'), { recursive: true })
+      sweepStaging(root)
+      expect([readdirSync(path.join(dir, 'dist')), existsSync(stage)]).toEqual([['old.js'], false])
+    })
 
     // A file grant in the task's directory binds the directory itself:
     // nothing is staged, and the removal is refused with the hint.

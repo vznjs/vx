@@ -1524,7 +1524,9 @@ export function sweepRestoreTemps(
   committed?: (abs: string) => boolean,
 ): void
 // Remove the `.vx/tmp/<pid>-0` staging a killed run left; a live run's
-// stays. Once per run.
+// stays. Once per run. A host directory a sandbox's restore set aside
+// (listed in the staging's STAGE_PUT_BACK) goes back first where nothing took its place.
+export const STAGE_PUT_BACK = '.vx-put-back'
 export function sweepStaging(workspaceRoot: string): void
 
 // Kill every runtime probe still running that these memos (one run's
