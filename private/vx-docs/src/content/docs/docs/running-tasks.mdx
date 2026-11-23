@@ -23,8 +23,8 @@ vx run build
 
 <Levels />
 
-Your workspace has tasks and a dev server. Now run them on purpose: one
-project, what changed, or everything. Each section ends with something new
+Your workspace has tasks and a dev server. This page runs them on
+purpose: one project, what changed, or everything. Each section ends with something new
 you can do.
 
 ## Meet the workspace
@@ -50,7 +50,7 @@ flowchart LR
 
 An arrow reads "is used by". Every project declares the same three
 tasks: `build` runs `vite build`, `test` runs `vitest run`, `lint` runs
-`oxlint src`.
+`oxlint src`. `web` also has `e2e`, its end-to-end tests.
 
 ```ts title="packages/web/vx.config.ts" mark={6,13}
 import { defineProject } from '@vzn/vx/config'
@@ -221,7 +221,7 @@ the graph. Pick a task and a filter below and watch what lights up.
 
 <RunPicker />
 
-The filters you will use most:
+The most common filters:
 
 | Filter | Picks |
 | ------ | ----- |
@@ -605,7 +605,7 @@ browses it.
 
 ## 8. Tune the run
 
-The flags you will reach for most:
+The most common flags:
 
 | Flag | Does |
 | ---- | ---- |
