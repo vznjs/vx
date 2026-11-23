@@ -89,7 +89,7 @@ function fencedBlock(page: string, lang: string, firstLine: string): string {
 describe('the CI guide shows what --dry prints', () => {
   it('its plan is formatPlanText on two local hits', () => {
     const page = readFileSync(path.join(DOCS, 'docs', 'running-tasks.mdx'), 'utf8')
-    const task = (id: string, hash: string) => ({
+    const task = (id: string, hash: string, deps: string[] = []) => ({
       node: {
         id,
         projectName: id.split('#')[0]!,
@@ -98,12 +98,13 @@ describe('the CI guide shows what --dry prints', () => {
       } as unknown as TaskNode,
       hash,
       cacheStatus: 'hit-local' as const,
-      deps: [],
+      deps,
     })
     const plan: RunPlan = {
       tasks: [
         task('@demo/ui#build', 'e04649970f18ba23'),
-        task('@demo/web#build', 'b421f74f0107bb20'),
+        // web builds on ui: a cached ui still blocks it.
+        task('@demo/web#build', 'b421f74f0107bb20', ['@demo/ui#build']),
       ],
     }
     // The page shows vx's colours (an `ansi` block); its text is the plain plan.
@@ -292,10 +293,11 @@ describe('the caching page quotes what vx why says', () => {
     const verdicts = src.slice(from, src.indexOf('\n// ----', from))
     // A template literal's interpolated group reads `(…)` on the pages; a
     // quote-only match missed one (J2-13).
+    // A bare interpolation (a task id) reads `…`.
     const notes = [...verdicts.matchAll(/(['`])((?:cache key|this task )(?:(?!\1)[^\\])*)\1/g)].map(
-      (m) => m[2]!.replace(/\([^()]*\$\{[^}]*\}[^()]*\)/g, '(…)'),
+      (m) => m[2]!.replace(/\([^()]*\$\{[^}]*\}[^()]*\)/g, '(…)').replace(/\$\{[^}]*\}/g, '…'),
     )
-    expect(notes.length).toBe(16)
+    expect(notes.length).toBe(18)
     for (const note of notes) {
       expect(guide).toContain(note)
       expect(post).toContain(note)
@@ -509,6 +511,10 @@ describe('the watch-mode post states what watch.ts does', () => {
     for (const m of src.matchAll(/vx watch: ([^\n]*?) (?:is|are) not supported in watch mode/g)) {
       for (const f of m[1]!.matchAll(/--[\w-]+/g)) refused.add(f[0])
     }
+    // --format is no watch flag at all: help.ts refuses it as unknown, naming why.
+    const help = readFileSync(path.resolve(import.meta.dir, '..', 'src', 'cli', 'help.ts'), 'utf8')
+    for (const m of help.matchAll(/name === '(--[\w-]+)'[^\n]*verb === 'watch'/g))
+      refused.add(m[1]!)
     expect(refused.size).toBeGreaterThan(2)
     const sentence = /Flags that describe one run \(([^)]*)\)/.exec(page)
     expect(sentence).not.toBeNull()
