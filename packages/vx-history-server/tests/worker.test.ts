@@ -145,3 +145,34 @@ it('reads AUDIENCE without the blanks around it', async () => {
     await other.dispose()
   }
 })
+
+// bun.test.ts holds READ_ACCESS=public at the handler; this holds the
+// Worker's var to the same answers.
+it('reads with no token where READ_ACCESS is public, only a repository ALLOW names, and writes nothing', async () => {
+  const open = await start({ ALLOW: allowVarOf(), READ_ACCESS: 'public' })
+  try {
+    const ready = await open.ready
+    const post = (route: string, body: unknown, token?: string) =>
+      fetch(new URL(route, ready), {
+        method: 'POST',
+        body: JSON.stringify(body),
+        headers: {
+          'content-type': 'application/json',
+          ...(token === undefined ? {} : { authorization: `Bearer ${token}` }),
+        },
+      })
+    const timings = [{ hash: 'h1', durationMs: 100 }]
+    const up = await post('/v1/timings/upload', { timings }, await iss.sign('main', AUD))
+    const ask = (issuer: string, repository: string) =>
+      post('/v1/timings/query', { issuer, repository, refs: ['refs/heads/main'], hashes: ['h1'] })
+    const read = await ask(`${GITHUB}/`, REPO.toUpperCase())
+    const other = await ask(GITHUB, 'acme/other')
+    const write = await post('/v1/timings/upload', { timings })
+    expect([up.status, read.status, other.status, write.status]).toEqual([204, 200, 403, 403])
+    expect(((await read.json()) as { timings: object }).timings).toEqual({
+      h1: { durationMs: 100, cores: null, rssBytes: null, slowMs: 100, runs: 1 },
+    })
+  } finally {
+    await open.dispose()
+  }
+})
