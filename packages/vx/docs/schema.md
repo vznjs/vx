@@ -1870,12 +1870,49 @@ to revisit the config. The cost of a single forgotten cache miss
 
 ### `exec.sandbox` (optional)
 
-Opt this command into an OS-level sandbox. A persistent task runs
-inside it too — enforced, but with no violation report, since the report
-reads the trace after the child exits and a server exits only at
-teardown. **Opt-in per task — omit it and the command runs
-unsandboxed.** Full walkthrough in the
-[sandboxing guide](https://vznjs.github.io/vx/docs/sandboxing/).
+Runs the command in an OS sandbox: it may touch only what you grant, and
+a touch you did not grant fails the task. Omit it and the command runs
+unsandboxed.
+
+```ts
+exec: {
+  command: 'vite build',
+  sandbox: { allow: { read: ['.'], write: ['dist/'] } },
+}
+```
+
+| Field                    | What it does                                                                                                                                       |
+| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `allow`                  | What the command may do beyond reading its project: the grants below.                                                                              |
+| `allow.read`             | Paths or globs it may read: project-relative, `~/`-relative or absolute (`['~/.npmrc']`). Not a cache input.                                       |
+| `allow.write`            | Paths or globs it may write (`['dist/']`). A write grant can be read too.                                                                          |
+| `allow.network`          | Domains it may reach (`['registry.npmjs.org']`); `'localhost:4173'` reaches a server on this machine. `true` opens the network but adds no domain. |
+| `allow.systemInfo`       | macOS: sysctl names it may read (`['vfs.disk-space']`).                                                                                            |
+| `allow.unixSockets`      | Unix sockets it may open (Docker, ssh-agent, a database): `true` for all, or a list of paths. Linux allows any path once granted.                  |
+| `allow.localBinding`     | Ports on localhost it may listen on: `true`, or a list, which also exposes those ports to your machine.                                            |
+| `allow.machLookup`       | macOS: mach service names it may look up.                                                                                                          |
+| `allow.pty`              | `true` lets it open a terminal (a TTY).                                                                                                            |
+| `allow.gitConfig`        | `true` lets it write the repository's `.git/config`.                                                                                               |
+| `deny`                   | What it may not do even when a grant allows it.                                                                                                    |
+| `deny.network`           | Domains it may not reach, checked before `allow.network` (`['*:22']` blocks every host's port 22).                                                 |
+| `ignore`                 | Refused touches to leave out of the report; the task still cannot make them.                                                                       |
+| `ignore.read`            | Paths of refused reads to leave out (`['~/.cache/probe']`).                                                                                        |
+| `ignore.write`           | Paths of refused writes to leave out (`['*.bun-build']`).                                                                                          |
+| `ignore.systemInfo`      | macOS: sysctl names of refused reads to leave out.                                                                                                 |
+| `ignore.network`         | Refused connections to leave out, as `'<host>:<port>'`.                                                                                            |
+| `hermetic`               | `true`: outside the workspace it reads only what `allow.read` names, so a tool on the machine cannot be used unseen. Default `false`.              |
+| `weakerWhenNested`       | Linux: `true` lets the sandbox run where vx itself runs in a container or another sandbox; the task then sees the host's `/proc`. Default `false`. |
+| `weakerNetworkIsolation` | macOS: `true` sends the network through a proxy on your machine, with weaker isolation. Default `false`.                                           |
+
+Default: none, the command runs unsandboxed. `sandbox: {}` grants
+nothing at all. The [sandboxing guide](https://vznjs.github.io/vx/docs/sandboxing/)
+walks through it.
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
+
+The full shape:
 
 ```ts
 interface SandboxConfig {
@@ -1907,319 +1944,126 @@ interface SandboxIgnore {
 }
 ```
 
-| Field                    | What it does                                                                                                                                       |
-| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `allow`                  | What the command may do beyond reading its project: the grants below.                                                                              |
-| `allow.read`             | Paths or globs it may read: project-relative, `~/`-relative or absolute (`['~/.npmrc']`). Not a cache input.                                       |
-| `allow.write`            | Paths or globs it may write (`['dist/']`). A write grant can be read too.                                                                          |
-| `allow.network`          | Domains it may reach (`['registry.npmjs.org']`); `'localhost:4173'` reaches a server on this machine. `true` opens the network but adds no domain. |
-| `allow.systemInfo`       | macOS: sysctl names it may read (`['vfs.disk-space']`).                                                                                            |
-| `allow.unixSockets`      | Unix sockets it may open (Docker, ssh-agent, a database): `true` for all, or a list of paths. Linux allows any path once granted.                  |
-| `allow.localBinding`     | Ports on localhost it may listen on: `true`, or a list, which also exposes those ports to your machine.                                            |
-| `allow.machLookup`       | macOS: mach service names it may look up.                                                                                                          |
-| `allow.pty`              | `true` lets it open a terminal (a TTY).                                                                                                            |
-| `allow.gitConfig`        | `true` lets it write the repository's `.git/config`.                                                                                               |
-| `deny`                   | What it may not do even when a grant allows it.                                                                                                    |
-| `deny.network`           | Domains it may not reach, checked before `allow.network` (`['*:22']` blocks every host's port 22).                                                 |
-| `ignore`                 | Refused touches to leave out of the report; the task still cannot make them.                                                                       |
-| `ignore.read`            | Paths of refused reads to leave out (`['~/.cache/probe']`).                                                                                        |
-| `ignore.write`           | Paths of refused writes to leave out (`['*.bun-build']`).                                                                                          |
-| `ignore.systemInfo`      | macOS: sysctl names of refused reads to leave out.                                                                                                 |
-| `ignore.network`         | Refused connections to leave out, as `'<host>:<port>'`.                                                                                            |
-| `hermetic`               | `true`: outside the workspace it reads only what `allow.read` names, so a tool on the machine cannot be used unseen. Default `false`.              |
-| `weakerWhenNested`       | Linux: `true` lets the sandbox run where vx itself runs in a container or another sandbox; the task then sees the host's `/proc`. Default `false`. |
-| `weakerNetworkIsolation` | macOS: `true` sends the network through a proxy on your machine, with weaker isolation. Default `false`.                                           |
+**How it runs**
 
-One shape describes what a task may do; vx translates it into a seatbelt
-profile on macOS and bwrap mounts plus seccomp on Linux. `ignore` takes
-patterns per class a denial is reported in — `read`, `write`,
-`systemInfo`, `network` — so a noisy probe is silenced with the grant
-that would have permitted it; any other name is refused. Every grant is
-the task's own: `unixSockets` (or a `localBinding` port list, whose
-bridge is a unix socket) lifts the `socket(AF_UNIX)` block for the task
-that declares it, never for the run's other sandboxed tasks. On Linux
-the block is the kernel's answer to the call itself, so it is reported
-nowhere: the task reads only its tool's own `socket(1, 1, 0): Operation
-not permitted` (a Docker, ssh-agent or database socket), and the grant
-is `unixSockets`:
+- `sandbox: { … }` is one shape on both platforms: vx turns it into a
+  seatbelt profile on macOS, and bwrap mounts plus seccomp on Linux.
+- `persistent: true` with `sandbox`: a server runs sandboxed too, but
+  gets no violation report. The report reads the trace after the
+  process exits, and a server exits only at teardown.
+- `sandbox` in one task only: the sandbox starts only when some task
+  declares `exec.sandbox`.
+- An unsupported platform: a sandboxed task fails fast, never runs
+  unsandboxed.
+- `bwrap: not found`: Linux needs `bubblewrap`, `socat` and `ripgrep`
+  (`rg` expands the sandbox's built-in deny globs). vx names a missing
+  one and how to install it.
 
-```ts
-exec: {
-  command: 'bun build --compile --target=bun-linux-arm64 src/bin.ts --outfile dist/vx',
-  sandbox: {
-    allow: {
-      read: ['.'],
-      // A cross-compile target the Bun cache lacks is fetched from npm,
-      // extracted into `<cwd>/.<hash>-00000000.tmp/` and moved into the cache.
-      write: ['dist/vx', '~/.bun/install/cache/', '.*.tmp/**'],
-      network: ['registry.npmjs.org'],
-      systemInfo: ['vfs.disk-space'],
-    },
-    ignore: { write: ['*.bun-build'] },
-  },
-}
-```
+**Baseline: `sandbox: {}`**
 
-A write to a temp name Bun makes anew each run (`.<hex>-<n>.bun-build`,
-`bun pm pack`'s `.bun-pack.<hex>-<n>.tmp`) gets no `fix:` grant, which
-the next run's new name would miss; the failure names its `ignore` glob
-(`*.bun-build`, `.bun-pack.*.tmp`) instead.
+- `sandbox: {}` reads nothing in the workspace, writes only its own
+  `TMPDIR`, and reaches no host.
+- `allow: { read: ['.'] }` is the first line of almost every block: the
+  baseline hides even the task's own project.
+- `cat ./README.md` under `sandbox: {}`: the task still starts in its
+  own (then empty) directory, so a relative read is refused and
+  reported, never resolved elsewhere.
+- `~/.cache`, `/etc`, the toolchain: the read wall is the workspace root,
+  so paths outside it stay readable.
+- `inputs: { runtime: ['node -v'] }`: a path outside the workspace is in
+  no key. If the output depends on one, declare it in `inputs.runtime`
+  or `inputs.env`; the sandbox does not catch it.
 
-`bun pm pack` reads its project whole and writes the tarball into it,
-so the grant is the project itself, `'.'`:
+**Credential stores**
 
-```ts
-pack: {
-  exec: { command: 'bun pm pack', sandbox: { allow: { read: ['.', '~/.bun'], write: ['.'] } } },
-  cache: true,
-  inputs: { files: ['src/**', 'package.json', 'CHANGELOG.md'] },
-  outputs: { files: ['*.tgz'] },
-}
-```
+- `read: ['.', '~/.npmrc']` for a publish: a credential store stays
+  denied unless a grant names it. A dependency the task ran could copy a
+  key into an output the cache shares.
+- `write: ['~/.config/gh/']`: a write grant at or inside a store frees
+  that path alone.
+- `$XDG_CONFIG_HOME/gh`: a store under home's `.config`, `.local/share`
+  or `.cache` is denied again under `$XDG_CONFIG_HOME`, `$XDG_DATA_HOME`
+  or `$XDG_CACHE_HOME`, which the task sees.
+- `npm config set` saving a token in one task: stores are looked for as
+  each task starts, so one an earlier task wrote is denied too.
+- What frees a store is the union of the read grants and, on Linux, the
+  directory holding each file-shaped write grant (see "A write grant
+  reads wider").
 
-Not `write: ['*.tgz']`: on Linux a write glob covers only what exists
-when the task starts, and the tarball does not. Not the tarball's name
-either: vx makes an empty file for a literal grant before the run (see
-a write grant's shape below), and the pack packed it,
-`package/x-1.0.0.tgz` at 0 bytes, under a green run, as would any tool
-that archives or copies its directory. So when a task that may list its
-project (a read grant of `.`, `./**` or above) is refused a file at the
-project's top that vx would make empty, the `fix:` line names `'.'`,
-never the file. `'.'` makes the sources writable too;
-`bun pm pack --destination dist` with `write: ['dist/']` and
-`outputs: { files: ['dist/*.tgz'] }` keeps them read-only.
+The credential stores:
 
-**Home.** In `allow` and `ignore`, `~` and `~/…` are the home
-directory; `~user/…` is refused when the config loads, naming the entry:
-vx does not look up another user's home (until 2026-11-06 `~root/x/` was
-read as `$HOME/root/x` and created there).
+- Keys and cloud: `~/.ssh`, `~/.gnupg`, `~/.aws`, `~/.azure`, `~/.kube`,
+  `~/.config/gcloud`, `~/.config/gh`, `~/.docker/config.json`, `~/.netrc`.
+- git: `~/.git-credentials`, `~/.config/git/credentials`.
+- Package registries: `~/.npmrc`, `~/.yarnrc.yml`, `~/.yarnrc`,
+  `~/.config/pnpm/rc`, `~/Library/Preferences/pnpm/rc`, `~/.pypirc`,
+  `~/.config/composer/auth.json`, `~/.composer/auth.json`.
+- Service tokens: `~/.config/glab-cli`, `~/.config/github-copilot`,
+  `~/.s3cfg`, `~/.oci`, `~/.cache/huggingface/token`,
+  `~/.huggingface/token`, `~/.kaggle/kaggle.json`.
+- Registry tokens: `~/.bunfig.toml`, `~/.config/.bunfig.toml`,
+  `~/.cargo/credentials`, `~/.cargo/credentials.toml`,
+  `~/.gem/credentials`, `~/.config/hub`, `~/.config/containers/auth.json`.
+- Infra: `~/.terraform.d/credentials.tfrc.json`, `~/.vault-token`,
+  `~/.pgpass`.
+- Deploy CLIs: `~/.config/configstore/firebase-tools.json`,
+  `~/.local/share/com.vercel.cli/auth.json`,
+  `~/Library/Application Support/com.vercel.cli/auth.json`.
+- Netlify, Wrangler: `~/.netlify/config.json`,
+  `~/.config/netlify/config.json`, `~/Library/Preferences/netlify/config.json`,
+  `~/.wrangler/config`, `~/.config/.wrangler/config`.
+- More deploy CLIs: `~/Library/Preferences/.wrangler/config`,
+  `~/.fly/config.yml`, `~/.supabase/access-token`, `~/.config/doctl`,
+  `~/Library/Application Support/doctl`.
+- Service and agent CLIs: `~/.config/stripe/config.toml`, `~/.config/op`,
+  `~/.expo/state.json`, `~/.claude/.credentials.json`, `~/.codex/auth.json`.
+- Firefox and Chrome profiles: `~/.mozilla/firefox`,
+  `~/Library/Application Support/Firefox`, `~/.config/google-chrome`,
+  `~/.config/chromium`.
+- More browser profiles: `~/.config/BraveSoftware`,
+  `~/.config/microsoft-edge`, `~/Library/Application Support/Google/Chrome`,
+  `~/Library/Application Support/Chromium`.
+- macOS browser data: `~/Library/Application Support/BraveSoftware`,
+  `~/Library/Application Support/Microsoft Edge`, `~/Library/Cookies`.
+- SOPS age keys: `~/.config/sops/age`,
+  `~/Library/Application Support/sops/age`.
+- Other: `~/.config/rclone`, `~/.my.cnf`, `~/.password-store`,
+  `~/.sentryclirc`.
 
-**Globs.** `read` and `write` accept patterns. On macOS the pattern
-reaches the policy and matches files created during the run; on Linux a
-grant is a mount, so a READ pattern is expanded when the task starts and a
-file created later is not covered. A WRITE pattern binds its directory
-(`dist/*.js` binds `dist`) where a read grant shows it, so a match the
-task creates lands; a write there the pattern does not match is reported,
-as beside a file grant (below). On both
-platforms `<dir>/**` and `<dir>/**/*` collapse to `<dir>`, so
-`read: ['**/*']` lets a task list its own cwd; a `<dir>` that is itself a
-glob keeps its subtree (`.*.tmp/**` covers what is inside each match).
-As in a task glob, `[id]` is a class, so a Next.js route is granted escaped, `read: ['pages/\\[id\\].tsx']`,
-and a brace is alternation on both platforms: `read: ['c{a,b}']` grants
-`ca` and `cb` (a range, `{1..3}`, too), and `write: ['g/{a,b}.txt']` is
-two file grants. A name holding a brace is granted escaped,
-`read: ['c\\{a,b\\}']`.
-On Linux a WRITE path holding a bracket, `*` or `?` cannot be mounted
-(the runtime drops it): vx says so once, names the directory above it to
-grant instead, and a write under it is refused and reported. A READ path
-whose name holds `*` or `?` (granted escaped, `a\\*b.txt`) cannot be
-granted alone either — the runtime would grant its siblings too — so vx
-leaves it out, says so once, and a read of it is refused and reported.
-A Linux grant of either kind holding a backslash is left out the same
-way: Bun's `realpath` refuses such a path, and the runtime mounts none
-it cannot resolve. A WRITE grant holding a control character (a tab, a
-newline) is refused at load on every platform: the Linux report of a
-write spells a tab as a space, so a write the grant covers read as a
-violation of `a b`, and a refused write to `a b` would read the same.
+**vx's own stores and the repository**
 
-A Linux WRITE glob's directory in the task's own directory is bound
-writable, made first when missing (`*.js` at the project root,
-`dist/*.js` before `dist` exists, `dist/**/*.js`), and judged as a
-widened file grant's directory is (below): a read or write there that no
-grant covers is a violation. Until 2026-11-23 it was bound only where a
-read grant showed it, and a new match failed the task.
-Elsewhere, a glob's directory that no read grant shows is not bound.
-Where the host's read-only root holds it (outside the workspace), or
-binding it would make a nested project or `.git` writable (`*.log` in a
-root project), a glob matching nothing at the start mounts nothing: the
-task's first write under it fails with `Read-only file system` — a
-message naming neither vx nor the grant — so vx reports that grant
-itself before the task runs, once, and names the directory to grant
-instead, spelled as the config spells it (`allow: { write: ['gen/'] }`).
-Where no mount holds the directory inside the workspace, it is the
-sandbox's own scratch, the one mask left writable: the task may create,
-write and remove what the glob matches (anything else it writes there
-too), and nothing it leaves there outlives the task. That is right for a
-tool's temp directory and wrong for an output: a file the task leaves
-there is reported, and fails the task. A read grant matching nothing is ordinary
-(an optional file, a cache not yet populated) and is not reported. A
-pattern under a directory that does not exist yet matches nothing the
-same way, where the scan once failed the task with a bare `ENOENT` (B-6).
+- `~/.vx`, `VX_CACHE_DIR=~/.cache/vx`: vx's shared store, and a cache
+  directory outside the workspace, are denied. Read, they would hand a
+  task every project's cached outputs.
+- A workspace below the git top-level, or a linked worktree
+  (`@vzn/vx-dte`'s `local()` workers): its git dir lies outside the
+  workspace, and `git --git-dir` there would read any project's bytes.
+- `write: ['../../.git/x']` reaching that git dir or common dir is
+  refused: both are denied and sealed like the workspace's own `.git`.
+- `../sibling/` in the same git top-level: the top-level's other
+  contents, and a worktree's main checkout, are denied around the
+  workspace and the task's write grants.
+- A dotfiles repository at `~`: the tree holding home stays readable;
+  only its git dir is denied.
 
-**A write grant's shape.** A write path that does not exist yet is
-created before the task starts (a mount needs something to bind), and a
-literal names a FILE: `write: ['dist/vx']` is an empty `dist/vx` the
-build overwrites. A directory the task will create is spelled with a
-trailing slash — `write: ['coverage/']` — or as a glob (`'dist/**'`);
-outside the project (`'~/.bun/install/cache/'`) only these two shapes are
-created, never a file.
-Spell a directory as a bare literal and the task's own `mkdir` meets
-"File exists" ("Not a directory" for a path inside it, `mkdir -p
-coverage/lcov`); the failure then says so, names the `dir/` spelling, and
-vx removes the empty file it made (it takes back any placeholder the
-task never wrote, so an unwritten one is never archived as an output).
-A grant that leaves the project through a symlink is refused: the grant
-binds the path it names, and vx follows no link out of the project. One
-spelled through a link that stays inside (`write: ['gen/']` over
-`gen -> real`) binds at both spellings, so a write through `gen` lands in
-`real`. A read grant spelled through links in the project (`read: ['src/']`
-over `src -> lib`) has each link laid as it is on Linux, so the task reads
-`src/` as granted; until 2026-11-23 only `lib` was there. A link into a write grant that is not itself granted is a
-read-only view of it on Linux (a write through it is refused, and vx
-says so before the task runs); grant the link too to write through it. So
-is one whose bind would make `.git`, `.vx/cache`, the cache directory or a
-nested project writable, and one inside `.git`, `.vx/cache` or the cache
-directory (`../.git/hooks/` would plant a hook that runs unsandboxed):
-a file grant at a single-package workspace's root binds the root. A
-directory grant is judged as the directory, made before the judgement
-when it does not exist yet, so `dist/` or `dist/**` at that root stands.
+**`hermetic: true`**
 
-**A write grant is readable, and on Linux it reads WIDER than it looks.**
-A write path is readable too (`tsc --incremental` re-reads its own
-`.tsbuildinfo`). On Linux a grant is a mount and bwrap cannot rename onto
-an active file mount — every atomic writer stages beside its target and
-renames — so a FILE-shaped grant is bound as its DIRECTORY. That
-directory is then readable AND writable in full: with
-`write: ['out.txt']` in the project root, every file in the project root
-can be read, and written. Such a read or write succeeds, so there is no
-denial; vx reports it instead, as a violation: an open, hard link or move
-of anything that was in that directory when the task started and that no
-grant covers, a `readlink` of a link there (git hashes a link by its
-target string), the directory's listing included, and a write, removal or
-move of it, or a new file or directory the task leaves there. The
-declared file and what the task made and then moved or removed stay its
-own. A `stat` of a sibling (its size, times or presence) is not seen.
-Put declared outputs in a subdirectory and the rest stays denied
-outright. macOS matches paths rather than
-mounting, so a file grant stays exact there. Pinned in
-`tests/sandbox-grants.unsafe.test.ts` (2026-09-20) and
-`tests/sandbox-widened-reads.unsafe.test.ts`.
-
-**A `network` entry is a host pattern**: `example.com`, `*.example.com`,
-either with a port (`example.com:443`), or `localhost`. A scheme or path
-(`https://example.com`), a dotless host, a bad port, and `*` or `*.com`
-(too broad) are refused by `vx lock`, naming the task and the entry; `deny.network` also
-takes a bare `*` (deny all, `*:22` for one port). Until 2026-10-02 such an
-entry matched nothing with no word, and an allowed `*` opened every host
-to every sandboxed task of the run; until 2026-11-23 the lock took it and
-the run refused it, failing every sandboxed task of the run, naming none.
-
-**A server on this machine is `localhost:<port>`.** A sandboxed client
-of a server another task runs (an e2e against `vite preview`) grants
-its port: `network: ['localhost:4173']` (`127.0.0.1:4173` too). On Linux
-the task has a network of its own, so vx relays that port alone into
-it; on macOS the profile allows that port alone. Nothing else on the
-host's loopback is reachable, and a bare `localhost` reaches no port: a
-client dials loopback directly, never through the proxy that serves the
-rest of the list (`NO_PROXY`; browsers skip a proxy for loopback). A
-sandboxed server lists its port in `localBinding` so it is reachable
-from outside its own sandbox. Until 2026-11-12 Linux relayed nothing,
-and a sandboxed client met `ECONNREFUSED` whatever it granted. On
-Linux a failed sandboxed task refused on a loopback port that a process
-on this machine listens on, and that it does not grant, gets the grant
-to add (`allow: { network: ['localhost:4173'] }`) beside its failure.
-
-**`network` is per-task.** Each sandboxed task reaches only the hosts
-its own list names, and a task that lists none reaches no host, even
-when another task of the run lists some. SRT runs one proxy per run that
-filters by the union of every task's list; vx puts a proxy of the task's
-own in front of it, so the task's list is checked first (until
-2026-11-06 a task reached any host another task of the run listed).
-`network: true` reaches the union (nothing in a run with no list).
-`deny.network` is the task's own, checked before its allowlist (B-21);
-until 2026-11-06 the run's proxy refused every task's denies to every
-task. A refused request is a violation on both
-platforms, `deny network-outbound <host>:<port> (<reason>)` from the
-proxy, and fails the task even when it survived the refusal (its `fix:`
-line names no `allow.network` entry for a host `deny.network` holds,
-which no allow lifts);
-`ignore: { network: ['<host>:<port>'] }` silences one, matched as the
-proxy matches: case-blind, a trailing dot dropped (until 2026-10-08 the
-client's spelling, `EXAMPLE.Com` or `example.com.`, escaped it). Until
-2026-10-02 Linux reported none, and the line could not be ignored on macOS.
-
-**Baseline** (`sandbox: {}`): the task reads nothing in the workspace,
-writes nothing but its own `TMPDIR` and reaches no host — not even its own project
-directory, which is why `allow: { read: ['.'] }` is the first line of
-almost every real block. The task still starts in its own directory, an empty one
-then: a relative read is refused and reported, never resolved elsewhere. The read wall is the WORKSPACE ROOT: a path
-outside it (`~/.cache`, `/etc`, the toolchain) is readable and folds into
-no key, so a task whose output depends on one declares it as a key input
-(`inputs.runtime`, `inputs.env`) — the sandbox does not catch it (item
-966).
-The one exception is where tools keep credentials, denied unless a
-grant names one (`read: ['.', '~/.npmrc']` for a publish; a write grant at
-or inside a store frees that path alone), since a
-dependency the task ran could copy a key into an output the cache
-shares (L-41): `~/.ssh`, `~/.gnupg`, `~/.aws`, `~/.azure`, `~/.kube`,
-`~/.config/gcloud`, `~/.config/gh`, `~/.docker/config.json`, `~/.netrc`,
-`~/.git-credentials`, `~/.config/git/credentials`, `~/.npmrc`,
-`~/.yarnrc.yml`, `~/.yarnrc`, `~/.config/pnpm/rc`,
-`~/Library/Preferences/pnpm/rc`, `~/.pypirc`,
-`~/.config/composer/auth.json`, `~/.composer/auth.json`,
-`~/.config/glab-cli`, `~/.config/github-copilot`, `~/.s3cfg`, `~/.oci`,
-`~/.cache/huggingface/token`, `~/.huggingface/token`,
-`~/.kaggle/kaggle.json`, `~/.bunfig.toml`, `~/.config/.bunfig.toml`, `~/.cargo/credentials`,
-`~/.cargo/credentials.toml`, `~/.gem/credentials`, `~/.config/hub`,
-`~/.config/containers/auth.json`, `~/.terraform.d/credentials.tfrc.json`,
-`~/.vault-token`, `~/.pgpass`, `~/.config/configstore/firebase-tools.json`,
-`~/.local/share/com.vercel.cli/auth.json`,
-`~/Library/Application Support/com.vercel.cli/auth.json`,
-`~/.netlify/config.json`, `~/.config/netlify/config.json`,
-`~/Library/Preferences/netlify/config.json`, `~/.wrangler/config`,
-`~/.config/.wrangler/config`, `~/Library/Preferences/.wrangler/config`,
-`~/.fly/config.yml`, `~/.supabase/access-token`, `~/.config/doctl`,
-`~/Library/Application Support/doctl`, `~/.config/stripe/config.toml`,
-`~/.config/op`, `~/.expo/state.json`, `~/.claude/.credentials.json`,
-`~/.codex/auth.json`, the browsers' profiles (`~/.mozilla/firefox`,
-`~/Library/Application Support/Firefox`, `~/.config/google-chrome`,
-`~/.config/chromium`, `~/.config/BraveSoftware`, `~/.config/microsoft-edge`,
-`~/Library/Application Support/Google/Chrome`,
-`~/Library/Application Support/Chromium`,
-`~/Library/Application Support/BraveSoftware`,
-`~/Library/Application Support/Microsoft Edge`, `~/Library/Cookies`),
-SOPS' age keys (`~/.config/sops/age`,
-`~/Library/Application Support/sops/age`), `~/.config/rclone`, `~/.my.cnf`,
-`~/.password-store`, `~/.sentryclirc`. A store in home's `.config`, `.local/share` or
-`.cache` is denied again under `$XDG_CONFIG_HOME`, `$XDG_DATA_HOME` or
-`$XDG_CACHE_HOME`, which a task sees.
-Each is looked for as each task starts, so a store an earlier task of
-the run wrote (`npm config set` saving a token) is denied as well.
-What it grants from there is the union of the read grants and, on Linux,
-the DIRECTORY holding each file-shaped write grant (above).
-vx's own stores are denied the same way: `~/.vx`, where every
-repository's shared store lives, and a cache directory outside the
-workspace (`VX_CACHE_DIR=~/.cache/vx`). Read, they handed a task every
-project's cached outputs, around the cross-project wall and its key.
-So is the repository outside the workspace: a workspace below the git
-top-level, or in a linked worktree (`@vzn/vx-dte`'s `local()` workers),
-keeps its git dir there, and `git --git-dir` read any project's
-committed bytes. The git dir and the common dir are denied and sealed
-like the workspace's own `.git` (a write grant reaching one is refused),
-and the top-level's other contents and a worktree's main checkout are
-denied around the workspace and the task's write grants. A tree that
-holds home (a dotfiles repository at `~`) stays readable; only its git
-dir is denied.
-
-**`hermetic: true`** moves the read wall from the workspace root to `/`.
-Outside the workspace, the task reads only what `allow.read` names.
-
-vx still grants the programs it runs around the command (the task shell,
-`bash`, `setsid`, vx's observer, `strace`, `env`, `socat`, `grep`, `sleep`) and the
-libraries they link.
-
-Any other tool is yours to grant, with its libraries: `ldd $(command -v
-node)` lists them. The task then cannot lean on the machine unseen.
-A grant spelled through links (`/usr/bin/python3 -> python3.12`) is
-there as spelled, each link with its target; until 2026-11-24 Linux
-bound the target alone and the task met "not found" at the link.
-A command the host has but no grant reads exits 127, and vx names its
-host path and the grant. So does a command found whose runtime is hidden:
-the `node` its `#!/usr/bin/env node` line asks for, or a library that
-runtime links (`tests/shell-verdict-sandbox.test.ts`).
-
-A grant says what a task may read; `inputs.runtime` says what moves its
-key. Declare both for a tool.
+- `hermetic: true` moves the read wall from the workspace root to `/`:
+  outside the workspace the task reads only what `allow.read` names.
+- `bash`, `setsid`, `strace`, `env`, `socat`, `grep`, `sleep`: vx still
+  grants the programs it runs around the command (the task shell and
+  vx's observer too), and the libraries they link.
+- `ldd $(command -v node)`: any other tool is yours to grant, with its
+  libraries, so the task cannot lean on the machine unseen.
+- `/usr/bin/python3 -> python3.12`: a grant spelled through links is
+  there as spelled, each link with its target.
+- `exit 127`: a command the host has but no grant reads exits 127, and
+  vx names its host path and the grant.
+- `#!/usr/bin/env node`: so does a command whose runtime is hidden, or a
+  library that runtime links.
+- `ldd: not found`: on Linux `ldd` must be on vx's PATH.
+- `runtime: ['/opt/node-22/bin/node -v']`: a grant says what a task may
+  read, `inputs.runtime` what moves its key. Declare both for a tool:
 
 ```ts
 import { defineProject } from '@vzn/vx/config'
@@ -2239,193 +2083,401 @@ export default defineProject({
 })
 ```
 
-On Linux, `ldd` must be on vx's PATH. Pinned in
-`tests/sandbox-hermetic.unsafe.test.ts`.
+**Grant paths**
 
-Nothing is inherited from `cache` — `inputs` says what INVALIDATES a task, `sandbox.allow`
-says what it may TOUCH, and deriving one from the other made a
-declaration added for caching silently widen the sandbox. The one grant
-vx makes for you is dependencies: `node_modules` and, through it, the
-real path of every workspace package linked there, and in turn in each
-such package's own `node_modules`. A `node_modules` linked out of the
-workspace (a store on another disk, a container volume) is granted at
-its target and laid as that link on Linux, so its `.bin` stays on the
-task's PATH. A project never names
-a sibling to import what its `package.json` already depends on. A link
-back to the task's own project, or to a directory holding it, is not
-followed: npm and Yarn link every workspace package at the root, the
-task's own included, and following it would grant the whole project
-past its `allow.read`.
+- `read: ['~/.npmrc']`: in `allow` and `ignore`, `~` and `~/…` are the
+  home directory.
+- `read: ['~root/x/']` is refused when the config loads, naming the
+  entry: vx does not look up another user's home.
+- `write: ['g\tx']`: a write grant holding a control character (a tab, a
+  newline) is refused at load. A reported write spells a tab as a space,
+  so it could not be told apart.
+- `write: ['../outside/']` through a symlink that leaves the project is
+  refused: vx follows no link out of the project.
+- `write: ['gen/']` over `gen -> real`: a link that stays inside binds at
+  both spellings, so a write through `gen` lands in `real`.
+- `read: ['src/']` over `src -> lib`: on Linux each link is laid as it
+  is, so the task reads `src/` as granted.
+- A link into a write grant, itself not granted: on Linux a read-only
+  view (vx says so before the task runs). Grant the link too to write
+  through it.
 
-A task that declares `cache` gets a linked workspace package only when
-its key already answers for it: some task of that package is folded into
-the key through `dependsOn` (as `inputs.tasks` selects it, groups
-passing everything through). Every other link inside the workspace root
-is withheld, and a read through one fails the task with the denial plus
-one line naming the package and the edge that would key it. Declaring
-`cache` can only narrow this grant, never widen one: a task with no
-`cache` keeps it whole, having no key to be stale, and your own `allow`
-grants never depend on it. The key answers for the package, not the
-file: an edge to `ui#build` (inputs `src/**`) covers a read of
-`ui/README.md` too.
+**Globs in grants**
 
-**A task reads the outputs it depends on.** A sandboxed task may read
-the declared `outputs` of every task its key folds through
-`dependsOn` (as `inputs.tasks` selects them), in any project. Its key
-moves with every file that made them, so the read replays nothing stale.
+- `read: ['src/**/*.ts']`: `read` and `write` take patterns.
+- `write: ['dist/*.js']` on macOS: the pattern reaches the policy, so it
+  matches files created during the run.
+- `read: ['gen/*.json']` on Linux: a grant is a mount, so a read pattern
+  is expanded when the task starts; a file created later is not covered.
+- `read: ['**/*']`: on both platforms `<dir>/**` and `<dir>/**/*` collapse
+  to `<dir>`, so this lets a task list its own directory.
+- `write: ['.*.tmp/**']`: a `<dir>` that is itself a glob keeps its
+  subtree (what is inside each match).
+- `read: ['pages/\\[id\\].tsx']`: `[id]` is a class, as in a task glob,
+  so a Next.js route is granted escaped.
+- `read: ['c{a,b}']` grants `ca` and `cb`, on both platforms; a range,
+  `{1..3}`, too.
+- `write: ['g/{a,b}.txt']` is two file grants.
+- `read: ['c\\{a,b\\}']` grants a name that holds a brace.
+- `read: ['opt/*.json']` matching nothing is ordinary (an optional file, a
+  cache not yet filled) and is not reported.
+- `read: ['gen/x/*.json']` before `gen/x` exists matches nothing the same
+  way.
 
-That is how one project serves a tool to the rest: `tools#node` builds
-Node into `out/`, and `app#build` with `dependsOn: ['tools#node']` runs
-`../tools/out/bin/node`, `hermetic` or not. The dependency's sources stay
-hidden, and so does every file beside its outputs that no glob takes:
-an untracked `gen/notes.txt` under `gen/**/*.js`, or one a `!` entry
-takes back, is no output and no key answers for it. A directory every
-file of which is an output is granted whole (`out/**` grants `out/`);
-elsewhere each output file is granted alone, and a read of a file beside
-them under the glob's fixed head is refused and reported. A link is
-granted only inside a directory granted whole, since alone it would grant
-its target. Granted alone, each file is a bind on the sandbox's command
-line, which holds about 64 KiB of them (some 300 files under a
-100-character path): past that the task fails before it runs, naming the
-dependency, until the files beside the outputs are declared outputs too
-or moved out. Pinned in `tests/sandbox-dependency-outputs.unsafe.test.ts`
-and `tests/sandbox-request.test.ts`.
+**Linux glob limits**
 
-**A missing write grant fails the task.** On macOS seatbelt refuses the
-write and reports it. On Linux the write meets a read-only bind or a
-read-only mask: the empty directory the sandbox lays over what it hides
-(the workspace root around a project, a single-package workspace's root,
-the project root around a write grant punched out of a read grant —
-`read: ['.']` with `write: ['dist/']` binds the children one by one). It
-is `Read-only file system` on both; until 2026-10-02 the Linux mask was
-writable, and a write there succeeded and left nothing on disk. The
-runtime's write observer saw the attempt, and a write no grant binds is
-reported and fails the task, even when the command swallowed the error
-and exited 0 (B-5; before it, both Linux shapes passed with nothing
-reported, items 444 and 1011). One exception, only where vx falls back
-to strace (its own observer cannot run here): SRT's observer cannot see an
-`openat2`'s flags, so one the task may read is taken as a read, and a
-swallowed `openat2` write there passes, having written nothing; one it
-may not read is reported as an open, its fix a read grant. A write
-outside the project is refused the same way and named on a failed
-task, never counted, with a grant for each refused write (a refused
-`mkdir ~/.cache` is granted as `'~/.cache/'`, never home itself). The
-remedy is to declare it: `allow: { write: [...] }`.
+- `write: ['a[1]/']`: a write path holding a bracket, `*` or `?` cannot
+  be mounted. vx says so once and names the directory above to grant; a
+  write under it is refused and reported.
+- `read: ['a\\*b.txt']`: a read path whose name holds `*` or `?` cannot
+  be granted alone (its siblings would be too). vx leaves it out, says so
+  once, and a read of it is refused and reported.
+- `read: ['a\\\\b']`: a grant of either kind holding a backslash is left
+  out the same way: the runtime cannot resolve such a path.
+- `write: ['dist/*.js']`, `['*.js']`, `['dist/**/*.js']`: a write glob's
+  directory in the task's own directory is bound writable, made first
+  when missing.
+- `write: ['*.js']` at the project root: a read or write there that no
+  grant covers is a violation, as beside a widened file grant (below).
+- A write glob's directory elsewhere that no read grant shows is not
+  bound.
+- `write: ['*.log']` in a root project, or a glob outside the workspace:
+  binding would expose `.git`, a nested project or the read-only host.
+  Matching nothing at the start, it mounts nothing.
+- There the task's first write fails with `Read-only file system`. vx
+  reports that grant before the task runs, once, and names the directory
+  to grant instead (`allow: { write: ['gen/'] }`).
+- A write glob under no mount inside the workspace lands in the
+  sandbox's own scratch: the task may create, write and remove matches
+  there, and nothing outlives the task.
+- So scratch suits a tool's temp directory, not an output: a file the
+  task leaves there is reported and fails the task.
 
-**A task may remove its own output directory.** `rm -rf dist && tsc`
-under `write: ['dist/']` and `outputs.files: ['dist/**']` works on Linux
-too. A directory grant in the task's directory that its outputs claim
-whole (`dist/**`, no `!dist/...` exclusion) is copied into vx's staging
-(`.vx/tmp/`) as hard links, so no bytes are copied. The staging is
-mounted as the task's directory, and after the task its copy replaces
-the host's. The host's directory is untouched while the task runs, so a
-concurrent task still reads it and a killed run loses nothing. Until
-2026-11-23 the grant was mounted in place and the removal failed with
-`Read-only file system`. It is still mounted in place where the task's
-directory is itself granted (`write: ['.']`, or a file grant there) or
-no output claims the whole directory. There, remove its contents instead
-(`rm -rf dist/*`); a failed task names the grant.
+**A write grant's shape**
 
-**The boundary is the workspace root.** A task may not leave its own
-project, so every sibling project and every root file is denied. Being
-stopped at that wall is the sandbox working, not a finding: only
-denials INSIDE the project are reported, because those are the reads
-that make a cache key wrong. A write refused past the wall is named
-beside a FAILED task, never counted, with the directory to grant (none
-for a dependency's declared outputs: that project's task writes them, so
-the note says to run it, without `--exclude-dependencies`, or to keep
-the task from rebuilding it, `tsc -p` rather than `tsc -b`), spelled
-from the project when it is in the workspace (under the host's temp
-directory, `$TMPDIR`, the task's own, instead): a
-tool that cannot fill its cache (`~/.bun/install/cache`) rarely says
-where it tried. So is a read the wall hid of a path that exists on the
-host, with the grant spelled from the project (`'../../tsconfig.base.json'`)
-and, for a cached task, the `inputs.workspaceFiles` entry that keys it
-(`'tsconfig.base.json'`, a file `!cfg` escaped `'\\!cfg'`, a directory `'golib/**'`; a grant alone leaves an edit there a stale hit):
-the tool said only "not found". On Linux so is a path a failed task's
-output calls missing ("does not exist", cargo's "could not find", make's
-"No rule to make target") that the wall hides and the host has: a stat
-is not traced, so no violation names it. A cached task is told the key
-entry beside that grant too: `inputs.files` for a path in the project,
-`inputs.workspaceFiles` for one elsewhere in the workspace. A refused
-write under `~/.cache` names the tool's own directory there
-(`'~/.cache/go-build/'`), as a home kept under the host's temp
-directory does. A cached task whose key holds a file
-outside the project that no grant reaches (`inputs.workspaceFiles:
-['.oxlintrc.json']` beside `read: ['.']`) fails before it runs, on Linux and macOS alike, with the
-read to grant: oxlint without its `.oxlintrc.json` passes on its
-defaults, a build that falls back on a hidden root `tsconfig.base.json`
-emits other code, and either was saved under a key that says it saw the
-file. A hidden file the key does not hold stays silent on a pass (tools
-probe many paths). To reach a path outside the project but
-inside the workspace — a workspace-level fixture — declare it; a path
-outside the workspace is not walled (above).
+- `write: ['dist/vx']`: a missing write path is made before the task
+  starts (a mount needs something to bind). A literal names a file: an
+  empty `dist/vx` the build overwrites.
+- `write: ['coverage/']` or `write: ['dist/**']`: a directory the task
+  will create.
+- `write: ['~/.bun/install/cache/']`: outside the project only those two
+  shapes are made, never a file.
+- `write: ['coverage']` then `mkdir coverage`: the task meets "File
+  exists" ("Not a directory" for `mkdir -p coverage/lcov`). The failure
+  names the `coverage/` spelling.
+- vx then removes the empty file it made, as it removes any placeholder
+  the task never wrote, so an unwritten one is never archived as an
+  output.
+- `write: ['out.txt']` at a single-package workspace's root: refused if
+  its bind would make `.git`, `.vx/cache`, the cache directory or a
+  nested project writable.
+- `write: ['../.git/hooks/']`: a grant inside `.git`, `.vx/cache` or the
+  cache directory is refused too; a hook planted there runs unsandboxed.
+- `write: ['dist/']` at that root stands: a directory grant is judged as
+  the directory, made first when missing.
+- `ignore: { write: ['*.bun-build'] }`: a temp name Bun makes anew each
+  run (`.<hex>-<n>.bun-build`, `.bun-pack.<hex>-<n>.tmp`) gets no `fix:`
+  grant; the failure names its `ignore` glob instead.
 
-**git in a sandboxed task** reads the repository only if it is granted:
-`read: ['.', '../../.git']` from a project two levels down (`.git` is a
-wall, so `read: ['.']` in a root project leaves it out too). On Linux
-a task whose grants name a `.git` gets `GIT_DISCOVERY_ACROSS_FILESYSTEM=1`
-(a value the task sets wins), since every sandbox mount is a filesystem
-boundary git's discovery stops at. `git rev-parse` and `git log` then answer as outside;
-`git status` reports a file the task may not read as deleted, so `git describe --dirty`
-(and anything built on status) says dirty on a clean tree. A version stamp needs the whole
-workspace readable: `read: ['../..', '../../.git']` from a project two levels down. git's
-`HEAD` is in no key, so such a task is uncached or keys it: `inputs: { workspaceRuntime: ['git describe --always --dirty'] }`.
-A task git finds no repository for (git probes `.git` by `stat`, which the trace does not
-report) fails with a hint naming the `.git` grant, or saying it lies outside the workspace and
-is walled on purpose.
+**A write grant reads wider**
 
-**A root found by a hidden file.** A tool that finds the workspace root by
-looking up the tree for a lockfile (`next build`'s tracing root) takes the
-project for the root when the sandbox hides the lockfile, and writes under
-the project what belongs above it: Next's standalone copy wrote
-`node_modules/.bun/next@…/…` under the app. A refused write into an
-installed package's files, or the store holding them (`node_modules/.bun`,
-`.pnpm`), that a directory above the project holds too gets no write
-grant: the fix names the lockfiles above the project as reads
-(`'../../bun.lock'`) and, for a cached task, as `inputs.workspaceFiles`
-entries, and a note says why. Granted the write, the build passed, was
-cached, and its server could not start.
+- `write: ['tsconfig.tsbuildinfo']`: a write path is readable too.
+- `write: ['out.txt']` at the project root on Linux: the grant binds the
+  whole root, readable and writable. Atomic writers rename onto the
+  target, and bwrap cannot rename onto a file mount.
+- Such a read or write succeeds, so vx reports it as a violation: an
+  open, hard link or move of a file there at the start that no grant
+  covers.
+- The same for a `readlink` of a link there (git hashes a link by its
+  target), the directory's listing, and a write, removal or move of
+  what was there.
+- A new file or directory the task leaves there is reported too. The
+  declared file, and what the task made and then moved or removed, stay
+  its own.
+- `stat` of a sibling (its size, times or presence) is not seen.
+- `write: ['out/result.txt']`: put declared outputs in a subdirectory,
+  and the rest stays denied outright.
+- On macOS paths are matched, not mounted, so a file grant stays exact.
 
-**Policy: fail on violation.** An undeclared read, or a write the
-sandbox refuses, fails the task, and a failed task is never cached.
-On Linux a denied read is reported by vx's own observer (Linux 5.5), or
-by `strace` where it is on PATH and may attach; elsewhere the sandbox still denies it, the task fails
-only if the command does, and the run says once that reads go unreported. Activation is lazy (only when
-some task declares `exec.sandbox`); on an unsupported platform a
-sandboxed task fails fast rather than running unsandboxed. Linux needs
-`bubblewrap`, `socat` and `ripgrep` installed (the runtime expands its
-mandatory deny globs with `rg`); a missing one is named with the install.
-Inside a write grant, a file named like a shell or tool config
-(`.bashrc`, `.zshrc`, `.gitconfig`, `.mcp.json`, …), anything under
-`.vscode/` or `.idea/`, and `.git/hooks` or `.git/config` stay read-only
-to the task, down to three levels below the workspace root, ignored by
-git or not.
+**Network**
 
-**No `[`, `]`, `*` or `?` in the project's path.** The runtime reads a
-path holding one as a pattern: on Linux it mounts no write path that
-does and a read grant matches its siblings, and macOS's rules compile it
-as a pattern too. So a sandboxed task in a project under such a directory
-(`~/[old]/repo`, `~/w*s/repo`) is refused, naming it: rename the
-directory or drop `exec.sandbox`. On Linux so is a project under a
-directory holding a backslash, which the runtime cannot mount at all (its
-task saw no project and ran in `$HOME`). On every platform so is one
-under a directory holding a line break: the runtime reports a refused
-touch one line per record, so it arrived split and was misreported.
-On Linux so is a project under `/dev` (a workspace in `/dev/shm`): the
-sandbox mounts a fresh `/dev`, so the project is gone from the task's
-view, and `vx info` calls the sandbox unavailable there.
+- `network: ['example.com', '*.example.com', 'example.com:443', 'localhost']`:
+  a network entry is a host pattern, with or without a port.
+- `network: ['https://example.com']` is refused by `vx lock`, naming the
+  task and entry. So are a dotless host, a bad port, and `*` or `*.com`
+  (too broad).
+- `deny: { network: ['*'] }` denies every host; `['*:22']` denies port
+  22 on every host. Only `deny.network` takes a bare `*`.
+- `network: ['registry.npmjs.org']` in one task: each task reaches only
+  the hosts its own list names. A task that lists none reaches none,
+  even when another task lists some.
+- `network: true` reaches the union of the run's lists: nothing in a run
+  with no list.
+- One proxy per run filters by the union of every task's list; vx puts
+  a proxy of the task's own in front, so the task's list is checked
+  first.
+- `deny: { network: ['evil.test'] }` is the task's own, checked before
+  its allowlist.
+- A refused request is a violation on both platforms,
+  `deny network-outbound <host>:<port> (<reason>)`, and fails the task
+  even when the task survived it.
+- A host `deny.network` holds gets no `allow.network` entry in the
+  `fix:` line: no allow lifts it.
+- `ignore: { network: ['example.com:443'] }` silences one refusal,
+  matched as the proxy matches: case-blind, a trailing dot dropped
+  (`EXAMPLE.Com.` matches).
 
-**macOS cannot nest.** `sandbox_apply` is refused inside a sandboxed
-process, so a task that itself sandboxes something (vx's own test suite)
-cannot be sandboxed on macOS.
+**A server on this machine**
 
-**Linux inside a container or another sandbox.** Where a fresh `/proc`
-cannot be mounted (an unprivileged container, an agent's sandbox around
-vx), set `weakerWhenNested: true` on every sandboxed task: the task then
-sees the host's `/proc`, which is the weaker part. A task under vx's own
-sandbox cannot start a sandbox: the outer one refuses nested user
-namespaces.
+- `network: ['localhost:4173']` (or `127.0.0.1:4173`): a sandboxed
+  client of a server another task runs (an e2e against `vite preview`)
+  grants its port.
+- On Linux the task has a network of its own, and vx relays that port
+  alone into it. On macOS the profile allows that port alone.
+- `network: ['localhost']` reaches no port: a client dials loopback
+  directly, never through the proxy that serves the rest of the list.
+  Nothing else on loopback is reachable.
+- `localBinding: [4173]`: a sandboxed server lists its port, so it is
+  reachable from outside its own sandbox.
+- On Linux, a failed task refused on a loopback port that a process on
+  this machine listens on gets the grant to add,
+  `allow: { network: ['localhost:4173'] }`.
+
+**Unix sockets**
+
+- `unixSockets: true` (or a `localBinding` port list, bridged through a
+  unix socket) lifts the `socket(AF_UNIX)` block for that task only,
+  never for the run's other sandboxed tasks.
+- `socket(1, 1, 0): Operation not permitted` from a Docker, ssh-agent
+  or database client: on Linux the block is reported nowhere else. The
+  grant is `unixSockets`.
+
+**Ignoring a report**
+
+- `ignore: { read: ['~/.cache/probe'] }`: patterns per class a refusal
+  is reported in, `read`, `write`, `systemInfo` or `network`, the class
+  of the grant that would have allowed it.
+- `ignore: { env: [] }` is refused: any other class name is.
+- An ignored touch is still refused; only the report leaves it out.
+
+**Dependencies**
+
+- Nothing comes from `cache`: `inputs` says what invalidates a task,
+  `sandbox.allow` what it may touch. A declaration for caching never
+  widens the sandbox.
+- `node_modules`: the one grant vx makes for you. It covers each
+  workspace package linked there (at its real path), and in turn each
+  such package's own `node_modules`.
+- `node_modules -> /mnt/store/node_modules`: one linked out of the
+  workspace is granted at its target and, on Linux, laid as that link,
+  so its `.bin` stays on PATH.
+- A project never names a sibling to import what its `package.json`
+  already depends on.
+- A link back to the task's own project, or a directory holding it, is
+  not followed: it would grant the whole project past its `allow.read`.
+- `cache: true` plus `dependsOn: ['ui#build']`: a cached task gets a
+  linked workspace package only when some task of it is folded into its
+  key (as `inputs.tasks` selects it; groups pass everything through).
+- Every other link inside the workspace root is withheld. A read through
+  one fails the task, with one line naming the package and the edge that
+  would key it.
+- `cache` only narrows this grant: a task without it keeps it whole, and
+  your own `allow` grants never depend on it.
+- An edge to `ui#build` (inputs `src/**`) covers a read of
+  `ui/README.md` too: the key answers for the package, not the file.
+
+**Reading a dependency's outputs**
+
+- `dependsOn: ['tools#node']`: a sandboxed task may read the declared
+  `outputs` of every task its key folds (as `inputs.tasks` selects
+  them), in any project, `hermetic` or not.
+- `../tools/out/bin/node`: so one project serves a tool to the rest. The
+  key moves with every file that made it, so the read replays nothing
+  stale.
+- `gen/notes.txt` beside `gen/**/*.js`: the dependency's sources, and
+  any file under its outputs that no glob takes (or a `!` entry takes
+  back), stay hidden.
+- `out/**`: a directory every file of which is an output is granted
+  whole. Elsewhere each output file is granted alone, and a read of a
+  file beside them is refused and reported.
+- A link is granted only inside a directory granted whole: alone it
+  would grant its target.
+- About 300 files under a 100-character path: each file granted alone is
+  a bind on a command line of about 64 KiB. Past it the task fails before
+  it runs, naming the dependency.
+- The fix: declare the files beside the outputs as outputs too, or move
+  them out.
+
+**A missing write grant fails the task**
+
+- `echo x > notes.txt` with no write grant: macOS refuses and reports
+  it. On Linux the write meets a read-only bind or mask; both read
+  `Read-only file system`.
+- The mask is the empty directory laid over what is hidden: the
+  workspace root around a project, or a single-package workspace's root.
+- `read: ['.']` with `write: ['dist/']`: the project root is masked too,
+  and its children are bound one by one around the write grant.
+- `cmd 2>/dev/null; exit 0`: a write no grant binds is reported and
+  fails the task, even when the command swallowed the error.
+- Where vx falls back to strace, an `openat2`'s flags are unseen. On a
+  path the task may read it is taken as a read: a swallowed write passes,
+  having written nothing.
+- On a path it may not read, that `openat2` is reported as an open, and
+  its fix is a read grant.
+- `mkdir ~/.cache` refused: a write outside the project is named on a
+  failed task, never counted, with a grant per write (`'~/.cache/'`,
+  never home itself).
+- The remedy is to declare it: `allow: { write: ['dist/'] }`.
+
+**Removing your own output directory**
+
+- `rm -rf dist && vite build` with `write: ['dist/']` and
+  `outputs: { files: ['dist/**'] }` works on Linux too.
+- How: a directory grant the outputs claim whole (`dist/**`, no
+  `!dist/…`) is copied into `.vx/tmp/` as hard links (no bytes copied)
+  and mounted as the task's directory.
+- After the task, that copy replaces the host's. The host's directory is
+  untouched meanwhile, so a concurrent task still reads it and a killed
+  run loses nothing.
+- `write: ['.']`, a file grant in the task's directory, or no output
+  claiming the whole directory: mounted in place. Remove the contents
+  instead, `rm -rf dist/*`; a failed task names the grant.
+
+**`bun pm pack` and archives**
+
+- `write: ['.']` for `bun pm pack`: it reads the project whole and writes
+  the tarball into it, so the grant is the project itself.
+
+```ts
+pack: {
+  exec: { command: 'bun pm pack', sandbox: { allow: { read: ['.', '~/.bun'], write: ['.'] } } },
+  cache: true,
+  inputs: { files: ['src/**', 'package.json', 'CHANGELOG.md'] },
+  outputs: { files: ['*.tgz'] },
+}
+```
+
+- `write: ['x-1.0.0.tgz']`: not the tarball's name. vx makes an empty
+  file for a literal grant, and the pack packs it (`package/x-1.0.0.tgz`,
+  0 bytes) under a green run.
+- The same for any tool that archives or copies its directory. So for a
+  task that may list its project (`read: ['.']`, `./**` or above), the
+  `fix:` names `'.'` for a top-level file, never the file.
+- `bun pm pack --destination dist` with `write: ['dist/']` and
+  `outputs: { files: ['dist/*.tgz'] }`: keeps the sources read-only,
+  which `'.'` does not.
+- `write: ['dist/vx', '~/.bun/install/cache/', '.*.tmp/**']` for
+  `bun build --compile --target=bun-linux-arm64`: a target Bun lacks is
+  fetched from npm into `<cwd>/.<hash>-00000000.tmp/`, then cached.
+
+**The boundary is the workspace root**
+
+- `../ui/src/index.ts`: a task may not leave its own project, so every
+  sibling project and root file is denied.
+- Being stopped at that wall is the sandbox working: only denials inside
+  the project are reported, as those are the reads that make a key wrong.
+- `~/.bun/install/cache` refused: a write past the wall is named beside a
+  failed task, never counted, with the directory to grant (a tool rarely
+  says where it tried).
+- The grant is spelled from the project inside the workspace; under the
+  host's temp directory, `$TMPDIR`, the task's own is named instead.
+- `'~/.cache/go-build/'`: a refused write under `~/.cache` names the
+  tool's own directory there, as does a home kept under the host's temp
+  directory.
+- A refused write to a dependency's declared outputs gets no grant: that
+  task writes them. Run it, without `--exclude-dependencies`, or keep the
+  task from rebuilding it (`tsc -p`, not `tsc -b`).
+- `read: ['../../tsconfig.base.json']`: a read the wall hid of a path the
+  host has is named with the grant, as the tool said only "not found".
+- `inputs: { workspaceFiles: ['tsconfig.base.json'] }`: a cached task is
+  also told the key entry, since a grant alone leaves an edit there a
+  stale hit.
+- `'\\!cfg'` for a file named `!cfg`, `'golib/**'` for a directory: how
+  that key entry is spelled.
+- "does not exist", "could not find", "No rule to make target": on Linux
+  a path a failed task's output calls missing, hidden by the wall but on
+  the host, is named the same way (a stat is not traced).
+- A cached task is then told the key entry too: `inputs.files` in the
+  project, `inputs.workspaceFiles` elsewhere in the workspace.
+- `inputs: { workspaceFiles: ['.oxlintrc.json'] }` beside `read: ['.']`:
+  a cached task whose key holds a file no grant reaches fails before it
+  runs, naming the read to grant.
+- Why: oxlint without its config passes on defaults, and a build missing
+  a root `tsconfig.base.json` emits other code; either saved under a key
+  that says it saw the file.
+- A hidden file the key does not hold stays silent on a pass: tools
+  probe many paths.
+- To reach a workspace path outside the project (a shared fixture),
+  declare it. A path outside the workspace is not walled (see Baseline).
+
+**git in a sandboxed task**
+
+- `read: ['.', '../../.git']` from a project two levels down: git reads
+  the repository only when granted. `.git` is a wall, so `read: ['.']` in
+  a root project leaves it out too.
+- On Linux a task whose grants name a `.git` gets
+  `GIT_DISCOVERY_ACROSS_FILESYSTEM=1` (a value the task sets wins), as
+  each sandbox mount stops git's discovery.
+- `git rev-parse`, `git log` then answer as outside. `git status` calls a
+  file the task may not read deleted, so `git describe --dirty` says
+  dirty on a clean tree.
+- `read: ['../..', '../../.git']`: a version stamp needs the whole
+  workspace readable.
+- `inputs: { workspaceRuntime: ['git describe --always --dirty'] }`: git's
+  `HEAD` is in no key, so such a task is uncached or keys it like this.
+- `fatal: not a git repository`: the task fails with a hint naming the
+  `.git` grant, or saying it lies outside the workspace, walled on
+  purpose.
+
+**A root found by a hidden file**
+
+- `next build`: a tool that finds the workspace root by a lockfile above
+  takes the project for the root when the lockfile is hidden, and writes
+  above-root files under the project.
+- `node_modules/.bun/next@…` written under the app: a refused write into
+  installed package files, or their store (`node_modules/.bun`, `.pnpm`),
+  that a directory above also holds gets no write grant.
+- `read: ['../../bun.lock']`: the fix names the lockfiles above as reads,
+  and as `inputs.workspaceFiles` for a cached task, with a note on why.
+- Granting the write instead let the build pass and cache while its
+  server could not start.
+
+**Violations fail the task**
+
+- An undeclared read, or a refused write, fails the task, and a failed
+  task is never cached.
+- On Linux a denied read is reported by vx's own observer (Linux 5.5),
+  or by `strace` where it is on PATH and may attach.
+- Elsewhere the read is still denied, the task fails only if the command
+  does, and the run says once that reads go unreported.
+- `.bashrc`, `.zshrc`, `.gitconfig`, `.mcp.json`, `.vscode/`, `.idea/`,
+  `.git/hooks`, `.git/config`: inside a write grant these stay read-only,
+  three levels below the workspace root, ignored by git or not.
+
+**Paths vx cannot sandbox**
+
+- `~/[old]/repo`, `~/w*s/repo`: a project under a path holding `[`, `]`,
+  `*` or `?` is refused for a sandboxed task: the runtime reads it as a
+  pattern. Rename the directory or drop `exec.sandbox`.
+- On Linux, a project under a directory holding a backslash: refused,
+  as the runtime cannot mount it.
+- A project under a directory holding a line break: refused on every
+  platform, since a refused touch is reported one line per record.
+- `/dev/shm/ws`: on Linux a project under `/dev` is refused (the sandbox
+  mounts a fresh `/dev`), and `vx info` calls the sandbox unavailable.
+
+**Nesting**
+
+- macOS cannot nest: `sandbox_apply` is refused in a sandboxed process,
+  so a task that itself sandboxes something cannot be sandboxed there.
+- `weakerWhenNested: true`: on Linux where a fresh `/proc` cannot be
+  mounted (an unprivileged container, an agent's sandbox around vx), set
+  it on every sandboxed task. The task sees the host's `/proc`.
+- A task under vx's own sandbox cannot start a sandbox: it refuses
+  nested user namespaces.
+
+</div>
+</details>
 
 ## Group tasks (no `exec`)
 

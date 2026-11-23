@@ -185,7 +185,7 @@ describe('a module page quotes a constant or a regex the module has', () => {
     const arr = /export const CREDENTIAL_STORES = \[([\s\S]*?)\n\]/.exec(src)
     expect(arr).not.toBeNull()
     const constant = [...arr![1]!.replace(/\/\/.*$/gm, '').matchAll(/'([^']+)'/g)].map((m) => m[1]!)
-    const list = /shares \(L-41\): ([\s\S]*?)\.\nWhat it grants/.exec(read('docs/schema.md'))
+    const list = /The credential stores:\n\n([\s\S]*?)\n\n/.exec(read('docs/schema.md'))
     expect(list).not.toBeNull()
     expect([...list![1]!.matchAll(/`~\/([^`]+)`/g)].map((m) => m[1]!)).toEqual(constant)
   })
