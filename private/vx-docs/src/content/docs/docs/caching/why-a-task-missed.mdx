@@ -21,7 +21,7 @@ vx why @demo/ui#build
 
 You edited `packages/ui/src/index.ts` and built. `vx why` compares this run with the one before:
 
-```ansi wrap
+```ansi
 [4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhy[0m[4m[58;2;110;118;129m [2m@demo/ui#build[0m[4m[58;2;110;118;129m                                                                                                    [0m
   [2mrun     [0m  [38;2;203;213;225m01a209cb-579f-71e1-b5ba-9a1a6018b8c4[0m
   [2mthis run[0m  [38;2;203;213;225m2026-11-23T19:04:10.943Z · success · executed · key da8bbb5e7693ba71[0m
@@ -59,7 +59,7 @@ The keys differ and the verdict names the file. That run was **expected**: you e
 vx why @demo/web#build
 ```
 
-```ansi wrap
+```ansi
 [4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhy[0m[4m[58;2;110;118;129m [2m@demo/web#build[0m[4m[58;2;110;118;129m                                                                                                   [0m
   [2mrun     [0m  [38;2;203;213;225m01a209cb-579f-71e1-b5ba-9a1a6018b8c4[0m
   [2mthis run[0m  [38;2;203;213;225m2026-11-23T19:04:10.990Z · success · executed · key 4b39fc8fe6cb1046[0m
@@ -88,7 +88,7 @@ The `kind` column says what moved. Step through the three you meet most:
 <Walkthrough title="Three reasons a task runs">
 <Frame title="file: an input changed">
 
-```ansi wrap
+```ansi
   [2mverdict [0m  [38;2;234;179;8mcache key changed: file packages/ui/src/index.ts[0m
 ```
 
@@ -99,7 +99,7 @@ The edit above. `What to do` says an edit runs by design. If the task does not r
 
 `@demo/web#build` lists `MODE` in `inputs.env`. The last two runs had `MODE=staging`, then `MODE=production`:
 
-```ansi wrap
+```ansi
 [2m$[0m vx why @demo/web#build
 
 [4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhy[0m[4m[58;2;110;118;129m [2m@demo/web#build[0m[4m[58;2;110;118;129m                                                                                                   [0m
@@ -123,7 +123,7 @@ vx shows a hash of each value, never the value itself.
 
 The command in `vx.config.ts` became `vite build --minify false`:
 
-```ansi wrap
+```ansi
 [2m$[0m vx why @demo/ui#build
 
 [4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhy[0m[4m[58;2;110;118;129m [2m@demo/ui#build[0m[4m[58;2;110;118;129m                                                                                                    [0m

@@ -369,7 +369,7 @@ async function publish(os: Os, version: string): Promise<void> {
         if (r.exitCode !== 0) throw new Error(`npm publish ${dir} failed (exit ${r.exitCode})`)
       },
     },
-    // The darwin ones too: their job published them before this one ran.
+    // The darwin ones too, which their Mac worker publishes meanwhile.
     (platforms) =>
       awaitNpm(
         [...publishOrder('darwin', []), ...platforms].flatMap((n) => [
@@ -381,17 +381,21 @@ async function publish(os: Os, version: string): Promise<void> {
   )
 }
 
-/** `awaitServed` against the registry: a HEAD every 10 s, for 15 minutes. */
+/**
+ * `awaitServed` against the registry: a HEAD every 10 s, for 25 minutes.
+ * The linux publish starts with the darwin chain, not after it, so its wait
+ * holds the Mac worker's start, compile, prove and publish too.
+ */
 const awaitNpm = (urls: readonly string[]): Promise<void> =>
   awaitServed(
     urls,
     async (url) => (await fetch(url, { method: 'HEAD' }).catch(() => undefined))?.status ?? 0,
-    { tries: 90, sleep: () => Bun.sleep(10_000) },
+    { tries: 150, sleep: () => Bun.sleep(10_000) },
     (line) => console.log(line),
   )
 
-// Every package both publish tasks sent: the linux one runs last, so
-// the darwin packages are already published.
+// Every package both publish tasks sent: the linux one waited for the
+// darwin ones, so all are published.
 async function served(version: string): Promise<void> {
   const names = [...publishOrder('darwin', []), ...assembled('linux').map((p) => p.name)]
   await awaitNpm(names.map((n) => tarballUrl(n, version)))

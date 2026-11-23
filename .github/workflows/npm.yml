@@ -35,7 +35,8 @@ jobs:
     # A tag only: a dispatch on a branch builds, attests and publishes nothing.
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    # The linux publish may wait 25 min for the Mac's packages.
+    timeout-minutes: 75
     # npm's trusted publisher names this environment, whose rule admits the
     # release tags only.
     environment: npm
