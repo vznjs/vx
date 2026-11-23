@@ -1105,12 +1105,12 @@
     },
     "turbo": {
       "all": {
-        "pass": 1355,
+        "pass": 1357,
         "can": 1824,
         "of": 2159
       },
       "correctness": {
-        "pass": 1092,
+        "pass": 1094,
         "can": 1436,
         "of": 1750
       },
@@ -1125,7 +1125,7 @@
         "of": 90
       },
       "graph": {
-        "pass": 193,
+        "pass": 195,
         "can": 267,
         "of": 318
       },
@@ -4468,9 +4468,7 @@
           "status": "pass"
         },
         "turbo": {
-          "status": "fail",
-          "step": 1,
-          "detail": "exited 1, expected success"
+          "status": "pass"
         },
         "nx": {
           "status": "pass"
@@ -38669,9 +38667,7 @@
           "status": "pass"
         },
         "turbo": {
-          "status": "fail",
-          "step": 1,
-          "detail": "exited 1, expected success"
+          "status": "pass"
         },
         "nx": {
           "status": "pass"
