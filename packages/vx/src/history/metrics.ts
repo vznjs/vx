@@ -1141,8 +1141,6 @@ export function inputWriters(
 // Run comparison — diff a run against the immediately-previous invocation
 // ---------------------------------------------------------------------------
 
-/** One task's outcome on one side of a comparison. */
-
 // ---------------------------------------------------------------------------
 // Why a task missed, at run time
 // ---------------------------------------------------------------------------

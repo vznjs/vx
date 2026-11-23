@@ -2020,9 +2020,6 @@ function realOrNull(p: string): string | null {
   }
 }
 
-// Re-exported from `util/paths.ts`, where the graph's overlap refusal can read
-// the same rule.
-
 /**
  * The literals no path in `files` answers (by itself or anything under it). Git
  * lists in order, so a binary search answers; a listing out of code-unit order

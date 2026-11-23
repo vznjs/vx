@@ -100,4 +100,4 @@ async function main(): Promise<void> {
   }
 }
 
-if (import.meta.main) await runMain(main)
+if (import.meta.main) await runMain(main, 'release-images: ')

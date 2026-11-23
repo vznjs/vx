@@ -269,7 +269,7 @@ export interface CacheKeyInput {
 }
 
 // One key component as `key()` folded it (a `captureInto` row); task-hash,
-// miss-save, metrics and miss-reason pass these, never redeclaring the shape.
+// miss-save and metrics pass these, never redeclaring the shape.
 export interface TaskInputComponent {
   kind: string
   name: string

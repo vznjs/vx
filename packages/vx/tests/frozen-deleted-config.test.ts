@@ -10,7 +10,11 @@ import { pluginSource } from './helpers/plugin.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 import { BIN, vx as spawnVx } from './helpers/vx.js'
 
-const vx = (root: string, args: string[]) => spawnVx(root, args, { bin: BIN })
+const vx = (root: string, args: string[]) =>
+  spawnVx(root, args, {
+    bin: BIN,
+    env: { CI: process.env['CI'], GITHUB_ACTIONS: process.env['GITHUB_ACTIONS'] },
+  })
 
 let root: string
 let config: string

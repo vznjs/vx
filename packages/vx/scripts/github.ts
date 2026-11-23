@@ -40,11 +40,11 @@ export function github(): (route: string, init?: Init) => Promise<unknown> {
 }
 
 /** Run a script's main: a failure prints its message, not a stack, and exits 1. */
-export async function runMain(main: () => Promise<void>): Promise<void> {
+export async function runMain(main: () => Promise<void>, prefix = ''): Promise<void> {
   try {
     await main()
   } catch (e) {
-    process.stderr.write(`${(e as Error).message}\n`)
+    process.stderr.write(`${prefix}${(e as Error).message}\n`)
     process.exitCode = 1
   }
 }
