@@ -3,7 +3,6 @@
 // The fixture runs a real task twice with a changed input file so the
 // persisted entry_inputs rows carry a genuine component-level diff.
 
-import { ambiguousTask } from '../src/cli/help.js'
 import { readFileSync } from 'node:fs'
 import { mkdir, rm, unlink, writeFile } from 'node:fs/promises'
 import { Database } from 'bun:sqlite'
@@ -11,6 +10,7 @@ import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { gitIn, makeWorkspace as makeWorkspaceRoot } from './helpers/workspace.js'
 import { writeEdges } from './helpers/plugin.js'
+import { ambiguousTask } from '../src/cli/help.js'
 import { parseShowArgs } from '../src/cli/show.js'
 import { parseWhyArgs } from '../src/cli/why.js'
 import { WHAT_TO_DO } from '../src/cli/why.js'

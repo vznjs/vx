@@ -13,7 +13,7 @@ export interface PackageGraph {
   /** All projects a change here can reach (the reverse). */
   transitiveDependents: (name: string) => string[]
   /**
-   * The union of `transitiveDeps` over `names`, in one walk. A loop over the
+   * The union of `transitiveDeps` over `names`, in one walk, in name order. A loop over the
    * names built every one's closure: at 10,000 projects a 3,334-project seed
    * set materialised 5.5 M names through 12 MB of bitsets.
    */
@@ -235,14 +235,16 @@ export function buildPackageGraph(
   ): Set<string> => {
     const seen = new Set<string>()
     const stack: string[] = []
-    for (const name of names) stack.push(...next(name))
+    for (const name of names) for (const d of next(name)) stack.push(d)
     while (stack.length > 0) {
       const cur = stack.pop()!
       if (seen.has(cur)) continue
       seen.add(cur)
       for (const d of next(cur)) if (!seen.has(d)) stack.push(d)
     }
-    return seen
+    // In name order, as each closure is: what a caller loads or lists first
+    // never hangs on which seed the stack popped first.
+    return new Set([...seen].sort())
   }
 
   return {
