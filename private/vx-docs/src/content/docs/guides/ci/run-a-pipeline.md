@@ -63,4 +63,8 @@ On `main` itself, `pr` has nothing to compare with, so vx refuses it.
 Run `main` there: the cache still skips what did not change.
 :::
 
+:::tip[Next]
+One CI job too slow? [Spread the run over several machines](../../dte/spread-ci-over-machines/).
+:::
+
 See [`vx pipeline`](../../../cli/pipeline/) and [CI](../../../docs/ci/).

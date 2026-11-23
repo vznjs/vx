@@ -234,6 +234,13 @@ e2e: { exec: { command: 'bunx playwright test', worker: 'ubuntu' } },
 
 On your machine `worker` is ignored, and it never changes a cache key.
 
+## Guides
+
+- [Try distributed task execution on your machine](../../guides/dte/try-on-your-machine/)
+- [Spread a CI run over several machines](../../guides/dte/spread-ci-over-machines/)
+- [Run one task on a different machine](../../guides/dte/run-a-task-on-its-own-machine/)
+- [Give heavy tasks a bigger machine](../../guides/dte/add-bigger-machines/)
+
 vx can also send tasks to a Bazel REAPI worker pool you already run:
 [Remote execution](../remote-execution/).
 
