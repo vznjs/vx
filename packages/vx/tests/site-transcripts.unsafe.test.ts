@@ -851,7 +851,7 @@ ${deps ? "      dependsOn: ['^build'],\n" : ''}      exec: { command: '${command
     config(
       name,
       `${build(deps, 'mkdir -p dist && cp ../ui/dist/index.js dist/')}
-    test: { exec: { command: 'sleep 1' } },${name === 'web' ? "\n    e2e: { exec: { command: 'sleep 30' } }," : ''}`,
+    test: { dependsOn: ['^build'], exec: { command: 'sleep 1' } },${name === 'web' ? "\n    e2e: { exec: { command: 'sleep 30' } }," : ''}`,
     )
   const write = (rel: string, text: string) => writeFile(path.join(ws, rel), text)
 
@@ -900,14 +900,14 @@ ${deps ? "      dependsOn: ['^build'],\n" : ''}      exec: { command: '${command
           ...(name === 'ui' ? {} : { dependencies: uses }),
         }),
       )
-      await write(`packages/${name}/src/${name === 'ui' ? 'index' : 'main'}.ts`, '1\n')
+      await write(`packages/${name}/src/index.ts`, '1\n')
       await write(
         `packages/${name}/vx.config.mjs`,
         name === 'ui'
           ? config(
               'ui',
               `${build(false, 'sleep 0.3 && mkdir -p dist && cp src/index.ts dist/index.js')}
-    test: { exec: { command: "echo 'expected 1 to be 2' && exit 1" } },`,
+    test: { dependsOn: ['^build'], exec: { command: "echo 'expected 1 to be 2' && exit 1" } },`,
             )
           : app(name, true),
       )
@@ -944,7 +944,7 @@ ${deps ? "      dependsOn: ['^build'],\n" : ''}      exec: { command: '${command
     // History has timed both builds; an edit to each makes them misses.
     expect(vxSync('run', 'build', '--all')).toBe(0)
     await write('packages/ui/src/index.ts', '3\n')
-    await write('packages/web/src/main.ts', '3\n')
+    await write('packages/web/src/index.ts', '3\n')
     const r = await phone('run', 'build', '--filter', '@demo/web', '--dry')
     expect(sh('git', 'checkout', '-q', '--', '.')).toBe(0)
     expect(r.code).toBe(0)
@@ -956,7 +956,7 @@ ${deps ? "      dependsOn: ['^build'],\n" : ''}      exec: { command: '${command
     expect(vxSync('run', 'build', '--all')).toBe(0)
     for (const [tab, file] of [
       ['Edit ui/src', 'packages/ui/src/index.ts'],
-      ['Edit web/src', 'packages/web/src/main.ts'],
+      ['Edit web/src', 'packages/web/src/index.ts'],
       ['Edit ui/README.md', 'packages/ui/README.md'],
     ] as const) {
       expect(sh('git', 'checkout', '-qb', 'edit')).toBe(0)
