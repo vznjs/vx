@@ -1,12 +1,12 @@
-// The quote rows on a touch screen (2026-11-19): a finger scrolls them,
-// and they drift on, looping, from where it let go.
+// The quote rows (2026-11-19, desktop 2026-11-23): a finger, trackpad or
+// mouse scrolls them, and they drift on, looping, from where it let go.
 
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import { DRIFT_SPEED, drift, fold } from '../src/components/landing/drift.ts'
 
-describe('a quote row on a touch screen', () => {
+describe('a quote row', () => {
   it('keeps its offset in the middle copy, whichever way it went', () => {
     expect(fold(1000, 1000)).toBe(1000)
     expect(fold(1999, 1000)).toBe(1999)

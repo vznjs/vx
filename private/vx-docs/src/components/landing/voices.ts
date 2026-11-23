@@ -26,6 +26,9 @@ const wrona = (quote: string): Voice => ({
   role: 'Team Lead at Selleo',
 })
 
+// The order is the page's: the first half is the top row, the rest the
+// bottom, each looping. Voices alternate so one person's quotes sit apart
+// wherever the count allows (11 of 17 are Anthony's, so some pairs remain).
 export const ALL_VOICES: Voice[] = [
   {
     quote:
@@ -34,22 +37,16 @@ export const ALL_VOICES: Voice[] = [
     role: 'Creator of moon',
     href: 'https://github.com/moonrepo/moon/issues/2818#issuecomment-7070128267',
   },
-  {
-    quote: 'holy cow… this is awesome! People need to be using VX',
-    who: 'Tony Ward',
-    role: 'Software Engineer at CrowdStrike',
-  },
-  {
-    quote:
-      'VX is an amazing breath of fresh air. Finally there is a holistic monorepo cache tool that includes all the features of NX and turborepo',
-    who: 'Nathan Bernhardt',
-    role: 'Software Engineer at CrowdStrike',
-  },
   shew('The benchmarks presented by this project are misleading.'),
   shew(
     'There’s a specific reason that none of the build systems that you’re comparing against don’t do what you’re doing: It doesn’t work.',
     C,
   ),
+  {
+    quote: 'holy cow… this is awesome! People need to be using VX',
+    who: 'Tony Ward',
+    role: 'Software Engineer at CrowdStrike',
+  },
   shew(
     'Again, this is all completely fine for a young project made by someone without build systems knowledge.',
     C,
@@ -61,16 +58,22 @@ export const ALL_VOICES: Voice[] = [
   wrona('These comparisons are nice.'),
   shew('To say that vx is faster than other build tools because of this is dishonest.'),
   shew('Just because a benchmark is reproducible doesn’t make it useful.', C),
+  {
+    quote:
+      'VX is an amazing breath of fresh air. Finally there is a holistic monorepo cache tool that includes all the features of NX and turborepo',
+    who: 'Nathan Bernhardt',
+    role: 'Software Engineer at CrowdStrike',
+  },
   shew(
     'When I saw your post, I was excited because I thought you’d found some edge case in Turborepo so that I could make things faster. Then, I got disappointed when that turned out to not be the case since the benchmarking methodology was so flawed - which is fine!',
     C,
   ),
-  wrona(
-    'I think if you hadn’t explained to me earlier what it’s about, I wouldn’t have understood it.',
-  ),
   shew(
     'We all use the same models and have seen this scheduling recommendation, but those of us with experience in build systems know that this algorithm is incorrect.',
     C,
+  ),
+  wrona(
+    'I think if you hadn’t explained to me earlier what it’s about, I wouldn’t have understood it.',
   ),
   shew(
     'Obviously, you can’t count on a graph having uniform timing in a real world repository, so unblocking more tasks sooner is generally meaningless at scale.',

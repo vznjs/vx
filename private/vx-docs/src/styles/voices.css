@@ -1,4 +1,4 @@
-/* What others say: two rows of quotes that slide and loop, offset. */
+/* What others say: two rows of quotes that drift and loop, offset, and scroll by hand. */
 
 .sky {
   display: grid;
@@ -13,8 +13,14 @@
 .say-row::-webkit-scrollbar {
   display: none;
 }
-.sky.live .say-row {
-  overflow: hidden;
+@media (hover: hover) {
+  .sky.swipe .say-row {
+    cursor: grab;
+  }
+  .sky.swipe .say-row.grabbing {
+    cursor: grabbing;
+    user-select: none;
+  }
 }
 .say-track {
   display: flex;
@@ -30,7 +36,7 @@
 .say-row + .say-row .say-track {
   padding-left: 190px;
 }
-.sky:is(.live, .swipe) .say-row + .say-row .say-track {
+.sky.swipe .say-row + .say-row .say-track {
   padding-left: 0;
 }
 .bubble {
