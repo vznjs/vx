@@ -2202,15 +2202,16 @@ describe('the sandbox pitch claims what the sandbox does', () => {
 describe('the README says what Ctrl-C reaches', () => {
   // "Ctrl-C reaps every child": a task's `setsid sleep … &` outlived a
   // SIGINT'd `vx run` (exit 130, the sleep still running), since vx signals
-  // the task's process group (J-106).
-  it('the README names the process group, and troubleshooting the setsid limit', () => {
+  // the task's process group (J-106). Since #5596 a stop also signals every
+  // process holding VX_RUN_TREE, so only a daemon that cleared it escapes.
+  it('the README names the process group, and troubleshooting the env -i setsid limit', () => {
     const repo = path.resolve(import.meta.dir, '..', '..', '..')
     const flat = (p: string) => readFileSync(p, 'utf8').replace(/\s+/g, ' ')
     expect(flat(path.join(repo, 'README.md'))).toContain(
       "**Clean exits:** Ctrl-C reaps each task's process group.",
     )
     expect(flat(path.join(GUIDES, 'troubleshooting.mdx'))).toContain(
-      "A process a task detaches into its own session (`setsid … &`) outlives Ctrl-C: vx signals the task's process group.",
+      "A daemon a task starts with `setsid` and an empty environment (`env -i`) outlives Ctrl-C: vx finds a task's processes by a variable in their environment.",
     )
   })
 })

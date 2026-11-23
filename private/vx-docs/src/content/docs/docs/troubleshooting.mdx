@@ -4,20 +4,124 @@ description: What vx printed, what it means, and the fix.
 ---
 
 import { Aside, CardGrid, LinkCard, Tabs, TabItem } from '@astrojs/starlight/components'
+import { Levels, Deeper, Concept, Quiz, Walkthrough, Frame, Takeaway, NextStep } from '../../../components/learn'
+import ErrorFinder from '../../../components/docs/troubleshooting/ErrorFinder.astro'
 
-Find what vx printed and apply the fix. Problems with the sandbox, CI or
-a migration have their own lists:
+When vx stops, it says what broke and what to type next.
 
-<CardGrid>
-  <LinkCard title="Sandboxing problems" href="../../docs/sandboxing/#common-problems" />
-  <LinkCard title="CI problems" href="../../docs/ci/#common-problems" />
-  <LinkCard title="Migration problems" href="../migrate/#common-problems" />
-</CardGrid>
+```sh
+vx run biuld --all
+```
+
+<Levels />
+
+## Read what vx printed
+
+Every message has the same three parts. Step through three mistakes in the `@demo` workspace.
+
+<Walkthrough title="Three mistakes, one shape">
+<Frame title="1. A typo in a command">
+
+```ansi title="vx run biuld --all"
+[38;2;239;68;68m✗[0m [1mvx run[0m  [38;2;203;213;225mno projects declare task(s): biuld[0m
+
+  [2mfix[0m  [1mbuild[0m
+```
+
+The red **✗** line says what is wrong. The **fix** line is what to type.
+
+</Frame>
+<Frame title="2. A mistake in a config">
+
+```ansi title="vx lock"
+[38;2;239;68;68m✗[0m [1mvx lock[0m  [38;2;203;213;225mlock not written[0m
+
+  [1mpackages/web/vx.config.ts:8:7[0m
+  [38;2;203;213;225mtasks.build.outputs must be an object (fields: clean, files, workspaceFiles), not an array[0m
+
+    6 |       exec: { command: 'mkdir -p dist && cp src/main.js dist/main.js' },
+    7 |       inputs: { files: ['src/**'] },
+  > 8 |       outputs: ['dist/**'],
+      |       ^
+
+  [2mfix[0m  [1muse `{ files: [...] }`[0m
+```
+
+vx points at the file, the line and the column. The **fix** line says how to write it.
+
+</Frame>
+<Frame title="3. A task that failed">
+
+```ansi title="vx run build --all"
+[2m┌─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m>[0m [1m[38;2;239;68;68mfailed (exited 0, no file matched dist/web.js)[0m
+
+[2mpackages/web $ mkdir -p dist && cp src/main.js dist/main.js[0m
+
+[2m└─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(10ms)[0m [1m[38;2;239;68;68mfailed (exited 0, no file matched dist/web.js)[0m
+```
+
+The last line of the task's frame says why it failed: the command never wrote `dist/web.js`.
+
+</Frame>
+</Walkthrough>
+
+<Concept term="Refusal">
+  vx stops before it runs anything, because something would go wrong. Nothing on disk changed. Fix
+  the line it names and run the same command again.
+</Concept>
+
+<Takeaway>read any vx error: what broke, where, and the command that fixes it.</Takeaway>
 
 ## vx printed an error
 
-Find the start of the message in the left column. Every message also
-ends with its own fix.
+Every refusal has a code. Paste what vx printed, or pick the step where it stopped.
+
+<ErrorFinder />
+
+A typo in `--filter` names the closest project:
+
+```sh
+vx run build --filter @demo/ap
+```
+
+```ansi
+[38;2;239;68;68m✗[0m [1mvx run[0m  [38;2;203;213;225mno projects matched filter(s): "@demo/ap"[0m
+
+  [2mfix[0m  [1m@demo/app[0m
+```
+
+<Quiz q="vx says no projects declare task(s): lint, but you added lint to @demo/web's config a minute ago. Why?">
+  A run reads its configs from the lock, `.vx/projects.lock`. The new task is not there yet. Run
+  `vx lock`, then run `lint` again.
+</Quiz>
+
+<Takeaway>find any vx error by its words or its code, and apply the fix.</Takeaway>
+
+<Deeper level="patterns" title="Branch on the code in a script">
+
+Add `--format json`. A refusal then prints one line on stdout:
+
+```sh
+vx run biuld --all --dry --format json
+```
+
+```json
+{"ok":false,"error":{"code":"VX_E_UNKNOWN_TASK","message":"vx run: no projects declare task(s): biuld. Did you mean build?","docs":"https://vznjs.github.io/vx/cli/#vx_e_unknown_task"}}
+```
+
+- `code` never changes between versions. Check it, not the message.
+- `docs` links the fix. `vx docs VX_E_UNKNOWN_TASK` prints it in the terminal.
+- The exit code is `1`. stderr still carries the message in words.
+
+`vx lock --check --format json` gives each config problem its own `code`. See [For agents](../agents/).
+
+<Takeaway>let a script or an agent react to an error without parsing English.</Takeaway>
+
+</Deeper>
+
+<Deeper level="details" title="Every message, word for word">
+
+Find the start of the message in the left column. `…` stands for the names vx fills in.
 
 | vx prints | Fix |
 | --- | --- |
@@ -42,35 +146,61 @@ ends with its own fix.
 | `waiting for another vx run (pid …)` | One run per workspace at a time. It starts when that one ends. |
 | `vx: command not found` | vx is not installed: `bunx @vzn/vx init` installs it, or `bun add -g @vzn/vx`. |
 
-A typo in `--filter` names the closest project:
+Each code's full list of cases is in the [CLI reference](../../cli/#error-codes).
 
-```sh
-vx run build --filter @demo/ap
+</Deeper>
+
+## It ran, but not how you expected
+
+No error, yet the result is wrong. The three cases below are the usual ones. Sandbox, CI and migration surprises have their own lists:
+
+<CardGrid>
+  <LinkCard title="Sandboxing problems" href="../../docs/sandboxing/#common-problems" />
+  <LinkCard title="CI problems" href="../../docs/ci/#common-problems" />
+  <LinkCard title="Migration problems" href="../migrate/#common-problems" />
+</CardGrid>
+
+### You changed `vx.config.ts` and the run ignores it
+
+A run reads the lock, not your configs. `vx lock --check` shows what drifted:
+
+```ansi title="vx lock --check"
+[38;2;239;68;68m✗[0m [1mvx lock --check[0m  [38;2;203;213;225mpackages/web/vx.config.ts evaluates differently from the lock here — its config, a file it imports, or the environment it reads changed; run 'vx lock'[0m
+
+  [38;2;203;213;225mtasks.build.exec.command: "mkdir -p dist && cp src/main.js dist/main.js" → "mkdir -p dist && cp src/main.js dist/app.js"[0m
 ```
 
-```ansi
-[38;2;239;68;68m✗[0m [1mvx run[0m  [38;2;203;213;225mno projects matched filter(s): "@demo/ap"[0m
+Look at the second line: the old command, then the new one. Run `vx lock` to take it.
 
-  [2mfix[0m  [1m@demo/app[0m
+### A task came from the cache after you changed a file
+
+That file is not in `inputs.files`: add it. To catch the next one,
+[`exec.sandbox`](../../docs/sandboxing/), with reads granted no wider
+than the inputs, refuses that read and names the file.
+
+### A task ran again and you do not know why
+
+`vx why <project#task>` names the file that changed
+([Find why a task missed the cache](../caching/why-a-task-missed/)).
+Name one project when the task is in several:
+
+```ansi title="vx why build"
+[38;2;239;68;68m✗[0m [1mvx why[0m  [38;2;203;213;225m"build" ran in 2 projects — pick one[0m
+
+  [38;2;203;213;225m@demo/ui#build[0m
+  [38;2;203;213;225m@demo/web#build[0m
 ```
 
-## vx did something unexpected
+<Takeaway>fix a run that went wrong without an error: sync the lock, widen the inputs, ask `vx why`.</Takeaway>
+
+<Deeper level="patterns" title="More surprises, and the fix">
 
 - **Only one package ran.** With no flag, `vx run build` runs the
   package you are in, plus what it depends on. Add `--all` for every
   package.
-- **`no projects declare task(s): build`.** None of the selected packages
-  has a `build` task. Add one to its `vx.config.ts`, then run `vx lock`.
 - **A task runs every time.** It needs `cache: true`. If it has that, a
   task it depends on may have no `inputs`: give that task `inputs` too.
   `vx-migrate` leaves a `TODO(vx-migrate)` where it could not decide.
-- **A task came from the cache after you changed a file.** That file is
-  not in `inputs.files`: add it. To catch the next one,
-  [`exec.sandbox`](../../docs/sandboxing/), with reads granted no wider
-  than the inputs, refuses that read and names the file.
-- **A task ran again and you do not know why.** `vx why <project#task>`
-  names what changed
-  ([Find why a task missed the cache](../caching/why-a-task-missed/)).
 - **`inputs matched no files`.** The globs find nothing. Paths are
   relative to the project's folder: fix them.
 - **`outputs matched no files`.** The command never wrote a file its
@@ -87,15 +217,18 @@ vx run build --filter @demo/ap
   allowlist (`PATH`, `HOME`, `CI` and a few more), vx passes only what
   you list. Add the name to `exec.env.passThrough`
   ([Environment variables](../../docs/environment-variables/)).
-- **`dist/` is empty after `tsc -b`.** tsc keeps `tsconfig.tsbuildinfo`
-  outside `dist/`, finds it, and skips the build. Add
-  `tsconfig.tsbuildinfo` to `outputs.files`, or set `tsBuildInfoFile`
-  inside `dist/`.
+- **`dist/` is empty after a build tool's incremental run.** Its state
+  file sits outside `dist/`, so it thinks the build is done. Add that
+  file to `outputs.files`, or move it inside `dist/`.
 - **The editor cannot find `@vzn/vx`.** Add it as a devDependency. vx
   runs a config without it.
 - **A package has no `vx.config.ts`.** It gets a default `build` that
   only waits for its dependencies' builds. Its files still count, so
   editing it re-runs the packages that use it.
+
+<Takeaway>match a strange run to its cause in one read.</Takeaway>
+
+</Deeper>
 
 ## Platforms
 
@@ -115,13 +248,12 @@ release binary needs neither Node nor Bun.
   <TabItem label="macOS">
     The sandbox is the system's own; nothing to install.
   </TabItem>
-  <TabItem label="Windows">
-    Run vx inside WSL2.
-  </TabItem>
   <TabItem label="From source">
     Bun 1.4.4 or later.
   </TabItem>
 </Tabs>
+
+<Takeaway>check that your machine runs vx and its sandbox.</Takeaway>
 
 ## Known limits
 
@@ -131,5 +263,10 @@ release binary needs neither Node nor Bun.
   a task's output.
 - A `kill -9` of vx leaves its persistent tasks running, except a server
   that exits when its stdin closes (esbuild `--watch`).
-- A process a task detaches into its own session (`setsid … &`) outlives
-  Ctrl-C: vx signals the task's process group.
+- A daemon a task starts with `setsid` and an empty environment
+  (`env -i`) outlives Ctrl-C: vx finds a task's processes by a variable
+  in their environment.
+
+<Takeaway>know the few edges vx has, so none of them surprise you.</Takeaway>
+
+<NextStep href="../upgrading/" title="Upgrading vx">Move to a new vx version and see what changed.</NextStep>
