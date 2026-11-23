@@ -779,7 +779,8 @@ them in this precedence order:
 3. If `--no-cache` was passed, force **all four off**.
 4. If `--force` was passed, force **both reads off** (writes stay
    whatever the base / `--cache-policy` left them).
-5. Off CI (`CI` unset, `0` or `false`), unless `--cache-policy`,
+5. Off CI (none of the CI variables in § Output format › Colors is on:
+   a Jenkins, Azure Pipelines or TeamCity job counts by its own), unless `--cache-policy`,
    `VX_CACHE_POLICY` or `cache.policy` names the remote, force
    **remoteWrite off**: a key holds only declared inputs, so a laptop's
    write could replay on CI. `cache.scope` never changes an axis.
@@ -5255,7 +5256,10 @@ Colors are the two conventions in § Output format › Colors (`NO_COLOR`,
 `FORCE_COLOR`), and a CI turns them on. A truthy `CI` picks the CI output flow and
 `GITHUB_ACTIONS` its `::group::` framing (§ Output); the run's
 `invocations` row records the provider, the first truthy of
-`GITHUB_ACTIONS`, `GITLAB_CI`, `BUILDKITE`, `CIRCLECI`, then `CI`. Core never reads `GITHUB_STEP_SUMMARY`; the job summary is
+`GITHUB_ACTIONS`, `GITLAB_CI`, `BUILDKITE`, `CIRCLECI`, `TF_BUILD` (`azure`),
+`JENKINS_URL` (`jenkins`), `TEAMCITY_VERSION` (`teamcity`), then `CI`
+(`generic`). The same variables decide whether a run is on CI for the remote
+cache's writes. Core never reads `GITHUB_STEP_SUMMARY`; the job summary is
 `@vzn/vx-ci`'s. A sandboxed
 task's temp dir sits under `CLAUDE_CODE_TMPDIR` (else `CLAUDE_TMPDIR`,
 else `/tmp/claude`), the sandbox runtime's own convention

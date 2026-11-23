@@ -2,7 +2,7 @@
 // outside src/ui names a hue or writes an escape byte
 // (tests/ui-only-output.unsafe.test.ts); a component asks for a style.
 
-import { envFlagOn, type Style, type Tone } from '../util/index.js'
+import { ciProvider, type Style, type Tone } from '../util/index.js'
 
 export type { Style, Tone } from '../util/index.js'
 
@@ -100,26 +100,9 @@ export function detectColors(stream: NodeJS.WriteStream = process.stdout): Color
   }
 }
 
-/**
- * The variables a CI sets, each on when non-empty and not `0`/`false`:
- * the generic `CI` most set, and the ones of CIs that set no `CI` (Azure
- * Pipelines' `TF_BUILD`, Jenkins' `JENKINS_URL`, TeamCity's
- * `TEAMCITY_VERSION`). A CI log gets the same colours as a terminal; one
- * whose viewer shows raw escapes is turned off with `NO_COLOR`.
- */
-const CI_VARS = [
-  'CI',
-  'GITHUB_ACTIONS',
-  'GITLAB_CI',
-  'BUILDKITE',
-  'CIRCLECI',
-  'TF_BUILD',
-  'JENKINS_URL',
-  'TEAMCITY_VERSION',
-] as const
-
+/** A CI log gets the same colours as a terminal; one whose viewer shows raw escapes is turned off with `NO_COLOR`. */
 function onCi(): boolean {
-  return CI_VARS.some((name) => envFlagOn(process.env[name]))
+  return ciProvider() !== null
 }
 
 /** `TERM=dumb` can neither paint nor move the cursor: vx prints to it as off a terminal. */

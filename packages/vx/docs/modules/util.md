@@ -1712,10 +1712,15 @@ real run.
 ```ts
 // A flag-like variable (`CI`, `GITHUB_ACTIONS`) is on: set, and not '', '0' or 'false' in any case.
 export function envFlagOn(v: string | undefined): boolean
+// The provider the first CI variable on names (`CI_PROVIDERS`, most specific first), or null off CI.
+export function ciProvider(env?: Record<string, string | undefined>): string | null
 ```
 
-Every reader of `CI` asks this one, so a run cannot be CI to one part of
-vx and a laptop to another.
+Every reader of `CI` asks `envFlagOn`, and every reader of "is this CI"
+(the remote-write default, colours, `detectCi`) asks `ciProvider`, so a run
+cannot be CI to one part of vx and a laptop to another. Azure Pipelines
+(`TF_BUILD`), Jenkins (`JENKINS_URL`) and TeamCity (`TEAMCITY_VERSION`) set no
+`CI`; read alone, their jobs never wrote the remote cache.
 
 ### util/out-pace
 

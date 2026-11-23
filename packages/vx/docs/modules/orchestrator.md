@@ -3956,7 +3956,7 @@ export interface GitContext {
 }
 export interface CiContext {
   ci: boolean
-  provider: string | null // 'github' | 'gitlab' | 'buildkite' | 'circleci' | 'generic' (bare `CI`), or null
+  provider: string | null // 'github' | 'gitlab' | 'buildkite' | 'circleci' | 'azure' | 'jenkins' | 'teamcity' | 'generic' (bare `CI`), or null
   runUrl?: string // the provider's page for this run
   change?: string // the pull or merge request number
   pipeline?: string // the workflow or pipeline name
@@ -4051,7 +4051,9 @@ export function captureWorkspaceIdentity(
   then counts every run. Never throws.
 - `detectCi(env)` — the provider matrix, first truthy variable wins
   (present and not `0` / `false`): `github`, `gitlab`, `buildkite`,
-  `circleci`, and a bare `CI` as `generic`.
+  `circleci`, `azure`, `jenkins`, `teamcity`, and a bare `CI` as `generic`.
+  Azure's is `TF_BUILD`, Jenkins' `JENKINS_URL` and TeamCity's
+  `TEAMCITY_VERSION`; the list is util's `CI_PROVIDERS`.
 - `captureHostContext()` — hostname/os/arch.
 - `captureWorkspaceIdentity(root, originUrl?)` — the same id from any machine's
   checkout of the same repo: the `origin` remote URL normalized

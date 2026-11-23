@@ -368,7 +368,7 @@ In `.vx/workspace.ts`, under `cache`:
 | `concurrency.upload` | Uploads at once, per remote. `--cache-concurrency-upload`. | min(96, max(cores × 3, 64)) |
 | `download` | Which results of tasks run on other machines land here. See [Remote execution](../remote-execution/). | `'all'` |
 
-Off CI (`CI` unset), vx never writes the remote unless `--cache-policy`, `VX_CACHE_POLICY` or `cache.policy` names it. Each setting is also in the [workspace reference](../../schema/workspace/#settings).
+Off CI (no `CI` variable on, nor a CI's own such as `GITHUB_ACTIONS` or `JENKINS_URL`), vx never writes the remote unless `--cache-policy`, `VX_CACHE_POLICY` or `cache.policy` names it. Each setting is also in the [workspace reference](../../schema/workspace/#settings).
 
 ### Cache scopes and tokens
 

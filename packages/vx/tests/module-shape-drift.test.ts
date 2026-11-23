@@ -199,9 +199,7 @@ describe('a module page quotes a constant or a regex the module has', () => {
   })
 
   it("run-context.md's CI matrix is CI_PROVIDERS, in order", () => {
-    const arr = /const CI_PROVIDERS[^=]*= \[([\s\S]*?)\n\]/.exec(
-      read('src/orchestrator/run-context.ts'),
-    )
+    const arr = /const CI_PROVIDERS[^=]*= \[([\s\S]*?)\n\]/.exec(read('src/util/env-flag.ts'))
     expect(arr).not.toBeNull()
     const providers = [...arr![1]!.matchAll(/\['\w+', '(\w+)'\]/g)].map((m) => m[1]!)
     const doc = moduleSection('orchestrator/run-context.ts')

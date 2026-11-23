@@ -28,7 +28,7 @@ export {
   REAL_STDOUT_WRITE,
 } from './errors.js'
 export { configErrorFrame, configRefusal } from './config-frame.js'
-export { envFlagOn } from './env-flag.js'
+export { ciProvider, envFlagOn } from './env-flag.js'
 export { type EmbeddedBinary, embeddedBinaryPath } from './embedded-binary.js'
 export { noteWrite, outputPaced } from './out-pace.js'
 export { jsonErrorAt } from './json-position.js'

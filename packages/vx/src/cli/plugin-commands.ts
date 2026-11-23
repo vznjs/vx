@@ -20,7 +20,7 @@ import type {
 } from '../orchestrator/index.js'
 import { configuredBaseBranch, findWorkspaceRoot } from '../workspace/index.js'
 import {
-  envFlagOn,
+  ciProvider,
   machineParallelism,
   maskedLine,
   printable,
@@ -233,7 +233,7 @@ async function verbArtifacts(
     }
   }
   const policy: CachePolicy =
-    envFlagOn(process.env['CI']) || namesRemote(envSpec ?? ws.workspaceConfig?.cache?.policy)
+    ciProvider() !== null || namesRemote(envSpec ?? ws.workspaceConfig?.cache?.policy)
       ? asked
       : { ...asked, remoteWrite: false }
   const scope = resolveCacheScope(
@@ -277,7 +277,7 @@ async function openVerbRemotes(
   remotes: readonly ResolvedRemote[],
   open: (typeof import('../orchestrator/index.js'))['openRemotes'],
 ): Promise<void> {
-  const ci = envFlagOn(process.env['CI'])
+  const ci = ciProvider() !== null
   await open(remotes, ci, new SecretBroker(ci, warn))
 }
 

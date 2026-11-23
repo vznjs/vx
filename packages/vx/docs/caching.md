@@ -2469,7 +2469,7 @@ CREATE TABLE invocations (
   branch            TEXT,
   dirty             INTEGER,                  -- 1 if worktree had uncommitted changes
   ci                INTEGER NOT NULL,         -- 1 if a CI env was detected
-  ci_provider       TEXT,                     -- 'github' | 'gitlab' | 'buildkite' | 'circleci' | 'generic'
+  ci_provider       TEXT,                     -- 'github' | 'gitlab' | 'buildkite' | 'circleci' | 'azure' | 'jenkins' | 'teamcity' | 'generic'
   host              TEXT,                     -- os.hostname()
   os                TEXT,                     -- process.platform
   arch              TEXT,                     -- process.arch

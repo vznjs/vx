@@ -2940,7 +2940,7 @@ interface CacheSettings {
 
 - `cache: { policy: 'local:rw,remote:r' }`: which layers a run reads and writes. A layer the spec leaves out stays on (`cli.md` § Cache control).
 - `cache.policy` unset on CI: every layer reads and writes.
-- `cache.policy` unset off CI (`CI` unset, `0` or `false`): `vx run` reads the remote and does not write it. A key holds only declared inputs, so a laptop's write could replay on CI.
+- `cache.policy` unset off CI (no CI variable on: `CI`, or a provider's own such as `GITHUB_ACTIONS` or `JENKINS_URL`; `cli.md` § Output format › Colors lists them): `vx run` reads the remote and does not write it. A key holds only declared inputs, so a laptop's write could replay on CI.
 - `'remote:rw'` names the remote, so it writes it, off CI too.
 - `--cache-policy` beats `VX_CACHE_POLICY`, which beats `cache.policy`. `--no-cache` and `--force` still apply on top.
 - `'remote:x'` is refused before any task, naming `cache.policy`.

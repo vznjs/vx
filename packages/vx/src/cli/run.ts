@@ -30,7 +30,7 @@ import {
   resolveFilters,
 } from './select.js'
 import { nxTargetHint, taskNamesHere, undeclaredTasks } from './task-verb.js'
-import { envFlagOn, hasControl, parseDecimalInt } from '../util/index.js'
+import { ciProvider, hasControl, parseDecimalInt } from '../util/index.js'
 import * as ui from '../ui/index.js'
 import { sayNotice, sayLine } from '../ui/index.js'
 import { kindHint, parseSettingValue, type Setting, SETTINGS, settingRefusal } from '../settings.js'
@@ -575,9 +575,7 @@ export async function resolveRunOptions(
     ...(parsed.remoteRequested ? { remoteRequested: parsed.remoteRequested } : {}),
     // A laptop reads the shared cache and never writes it (owner); naming the
     // remote in `--cache-policy` is asking to.
-    ...(!parsed.remoteRequested && !envFlagOn(process.env['CI'])
-      ? { remoteReadOnlyByDefault: true }
-      : {}),
+    ...(!parsed.remoteRequested && ciProvider() === null ? { remoteReadOnlyByDefault: true } : {}),
     ...(parsed.verbosity > 0 ? { summaryTable: true } : {}),
   }
   const opts: CoreRunOptions = {

@@ -269,6 +269,63 @@ describe('cache.scope', () => {
     }
   })
 
+  // 2026-11-23: only `CI` was read, so a CI that sets its own variable and no
+  // `CI` (Jenkins, Azure Pipelines, TeamCity) read the remote and silently never
+  // wrote it, though the run's colours and `detectCi` called it CI.
+  it('a CI known by its own variable, with no CI set, writes the remote', async () => {
+    const fixture = await makeWorkspace('vx-cache-scope-ci-vars-')
+    const NAMES = [
+      'CI',
+      'GITHUB_ACTIONS',
+      'GITLAB_CI',
+      'BUILDKITE',
+      'CIRCLECI',
+      'TF_BUILD',
+      'JENKINS_URL',
+      'TEAMCITY_VERSION',
+    ]
+    const saved = Object.fromEntries(NAMES.map((n) => [n, process.env[n]]))
+    const readOnly = async (env: Record<string, string>): Promise<unknown> => {
+      for (const n of NAMES) delete process.env[n]
+      Object.assign(process.env, env)
+      const opts = await resolveRunOptions(parseRunArgs(['build', '--all']), fixture.root, [
+        'build',
+      ])
+      return 'handoff' in opts ? (opts.handoff?.remoteReadOnlyByDefault ?? false) : false
+    }
+    try {
+      await addProject(fixture.root, 'app', { files: { 'src/in.txt': 'v1' }, config: BUILD_CONFIG })
+      await lock(fixture.root)
+      expect({
+        laptop: await readOnly({}),
+        github: await readOnly({ GITHUB_ACTIONS: 'true' }),
+        gitlab: await readOnly({ GITLAB_CI: 'true' }),
+        buildkite: await readOnly({ BUILDKITE: 'true' }),
+        circleci: await readOnly({ CIRCLECI: 'true' }),
+        azure: await readOnly({ TF_BUILD: 'True' }),
+        jenkins: await readOnly({ JENKINS_URL: 'https://ci.example/' }),
+        teamcity: await readOnly({ TEAMCITY_VERSION: '2024.1' }),
+        ciFalse: await readOnly({ CI: 'false', JENKINS_URL: 'https://ci.example/' }),
+      }).toEqual({
+        laptop: true,
+        github: false,
+        gitlab: false,
+        buildkite: false,
+        circleci: false,
+        azure: false,
+        jenkins: false,
+        teamcity: false,
+        ciFalse: false,
+      })
+    } finally {
+      for (const n of NAMES) {
+        if (saved[n] === undefined) delete process.env[n]
+        else process.env[n] = saved[n]
+      }
+      await rm(fixture.root, { recursive: true, force: true })
+    }
+  })
+
   it(
     'a task key reaches the remote plain whatever the scope, and a bad VX_CACHE_SCOPE is refused',
     async () => {
