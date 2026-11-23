@@ -2449,31 +2449,48 @@ That holds for `vx run`, every `vx watch` cycle, `--affected` selection and the 
 
 ## `vx lock`
 
-`vx lock` evaluates every `vx.config.*` and writes the resolved configs
-to `.vx/projects.lock`. Runs read the lock, never the configs:
-after you edit one, run `vx lock` and commit the lock.
+`vx lock` runs every `vx.config.*` once and saves the result in
+`.vx/projects.lock`. Runs read that lock, never your configs.
 
-Beside it, `.vx/dependencies.lock` records the resolved graph (each
-project's edges, which live nowhere else) and each claimed file's
-per-project digests (`FingerprintClaim.digests`) with the hash of each
-other file they read (a `bun.lock` patch), two lines per project keyed
-by its name. Only `vx lock` writes it; never edit it. Commit it too: a
-run keys each task from those digests, after checking them against the
-plugin's own digests of the lockfile as it is, which `cache.db` keeps
-by the lockfile's hash (one parse per lockfile change on a machine,
-none after). So after an install, run `vx lock`: a run whose recorded
-digests are not what the lockfile resolves to refuses (`VX_E_LOCK`),
-`--affected` too, and so does one with no dependencies lock while a
-plugin claims a lockfile that is there. An install that moves no
-project's digest (a package no project is yet) keys nothing, so it
-refuses nothing. An
-edit in a `link:` or `file:` directory the lockfile names needs no
-`vx lock`: the plugin digests anew, and `vx lock --check` accepts it.
-A digest that moved while the lockfile and those files did not (a
-plugin upgrade) fails `vx lock --check` and refuses a run. `--affected`
-reads the base commit's copy to find a deleted project's dependants and
-the edges that moved, and `vx lock --check` fails when it is missing or
-stale.
+After you edit a config, run `vx lock` and commit the lock.
+
+It also writes `.vx/dependencies.lock`: which project depends on which,
+and a digest of each project's installed dependencies. Commit it too, and
+never edit it.
+
+After an install, run `vx lock` again. A run refuses a dependencies lock
+that no longer matches the lockfile.
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
+
+- `.vx/dependencies.lock` holds each project's edges, which live nowhere
+  else. Only `vx lock` writes it.
+- It also holds each claimed lockfile's per-project digests
+  (`FingerprintClaim.digests`), with the hash of each other file they read
+  (a `bun.lock` patch).
+- Layout: two lines per project, keyed by its name.
+- A run keys each task from those digests, after checking them against
+  the plugin's digests of the lockfile as it is now.
+- `cache.db` keeps the plugin's digests by the lockfile's hash: one parse
+  per lockfile change on a machine, none after.
+- Recorded digests that are not what the lockfile resolves to: the run
+  refuses with `VX_E_LOCK`. `--affected` refuses too.
+- No dependencies lock while a plugin claims a lockfile that is there:
+  the run refuses.
+- An install that moves no project's digest (a package that is no project
+  yet) keys nothing, so it refuses nothing.
+- An edit in a `link:` or `file:` directory the lockfile names needs no
+  `vx lock`: the plugin digests it anew, and `vx lock --check` accepts it.
+- A digest that moved while the lockfile and those files did not (a
+  plugin upgrade) fails `vx lock --check` and refuses a run.
+- `--affected` reads the base commit's copy to find a deleted project's
+  dependants and the edges that moved.
+- `vx lock --check` fails when the dependencies lock is missing or stale.
+
+</div>
+</details>
 
 ### Usage
 
@@ -2513,19 +2530,23 @@ vx lock --check
   [38;2;203;213;225mtasks.lint.exec.command: "oxlint src" → "oxlint --deny-warnings src"[0m
 ```
 
-Under the line, up to three places where the evaluated config
-differs from the locked one: a config that reads the environment
-shows no file diff to find them by.
+Under the line, `--check` shows up to three places where the evaluated
+config differs. That helps when a config reads the environment and no
+file diff shows the change.
 
 ### When to run it
 
-Run `vx lock` and commit `.vx/projects.lock` after
-editing any `vx.config.*` or `.vx/workspace.*`, after updating
-dependencies or plugins, and after changing a file a config imports.
-Runs read their configs from the lock: until then they keep the old
-ones, and a run refuses a config file edited since this machine's
-`vx lock`. `vx lock --check` as CI's first step fails a stale lock.
-The full workflow: the site's CI guide and `examples/ci`.
+Run `vx lock` and commit `.vx/projects.lock` after you:
+
+- edit any `vx.config.*` or `.vx/workspace.*`
+- update dependencies or plugins
+- change a file a config imports
+
+Until then, runs keep the old configs. A run refuses a config file edited
+since this machine's last `vx lock`.
+
+On CI, run `vx lock --check` first: it fails a stale lock. The full
+workflow is in the site's CI guide and `examples/ci`.
 
 ### Options
 
@@ -2536,208 +2557,290 @@ The full workflow: the site's CI guide and `examples/ci`.
 
 ### What it writes
 
-`vx lock` finds every project and freezes each one's **resolved** config into
-`.vx/projects.lock` at the workspace root. A project is a directory
-holding a `vx.config.*`, in any language: `vx lock` lists them with git
-(`git ls-files`, tracked and untracked, git's ignore rules applied; a
-nested repository's own configs too), or walks the tree outside git
-(every directory but `.git` and `.vx`), and leaves out any under a
-nested `.vx/workspace.*`, even one the ignore rules hide, or under a
-`node_modules` (an installed package is no project, ignored or not) or
-a `.vx` (vx's own state, in git as outside it). Each nested workspace
-root is recorded too (`nestedWorkspaces`): every outer project's outputs
-stop there as at a nested project, so a run's clean, save and restore
-never reach it (its inputs still key its files), and `--check` fails a
-lock that misses one.
-Configs are
-programs; `vx lock` evaluates them in the current environment and
-stores the post-evaluation objects, each project keyed by its
-name (version 9; a lock an
-earlier vx wrote is refused, "re-run `vx lock`"). A project is named by
-its config's `name`, else by a plugin's `discover` stage (vx-lockfile
-gives `package.json`'s `name`), else by its root-relative path (`//` for
-the root); two projects of one name are refused naming both
-directories, every such clash at once. The plugin `discover` stage runs here and nowhere else, and may
-add directories; one holding a config git ignores is refused, as
-is `--check`, naming the plugin and the file: "plugin 'vx-gen' adds project
-gen, but git ignores gen/vx.config.ts, so `vx lock` cannot read it —
-unignore it or delete it" (a run naming its task says the same, never
-"run `vx lock`"). Before writing, it
-builds the graph of every task the workspace declares, `graph` stage
-included, and checks the graph rules (`run.rules`), which no run
-checks, `dependencies` (which projects a project may depend on,
-`VX_E_DEPENDENCY_RULE`) among them, and refuses a task glob whose
-bracket class spells a path that exists (`app/[id]/**` beside the
-directory `app/[id]`; write `app/\[id\]/**`): a broken one prints `✗ vx lock  lock not written`
-with the rule's refusal under it and writes nothing. Each refusal is
-named in one lock: every config that does not load, and every task
-whose `dependsOn` is broken or loops (a cycle once).
-A lock or review copy that is a symlink, or whose directory resolves
-outside the workspace (a `.vx` linked out of it), is refused the same
-way, before anything is written.
-After writing, it notes what a task reads that its key never sees, and
-still exits 0: a gitignored file a glob's last segment matches (`.env*`
-over an ignored `.env.production.local`, which Vite loads for a
-production build; a run says it only on a miss, which a stale hit never
-brings), asked of git in one `check-ignore`, and a cached task's
-`exec.env.passThrough` name a bundler inlines (`VITE_API_URL`) that
-`inputs.env` leaves out (schema.md § `ExecEnv`). A bundler finding is
-one line naming every task it holds for (`a#build, b#build and 76 more
-tasks: …`).
+`vx lock` finds every project and saves each one's **resolved** config,
+after plugins ran, in `.vx/projects.lock` at the workspace root.
 
-`.vx/projects.lock` is laid out for the parse first, then for
-size, then for merges: a header line, `{"version":9}`, then each
-distinct task config once, as a pointer line (`#k2x0a1b`) and its JSON
-line, then each project, in name-hash order, as
-`<name>⇥{"path","file"|"by","config"}` (`file` left out for
-`vx.config.ts`, the tasks left out of `config`) and, per task in name
-order, a `⇥<task>` line and its pointer line. A pointer is a hash of its
-task's JSON, so the same configs always lock to the same text. A merge that
-lost a pointer's entry is refused until `vx lock` rewrites the lock. `vx
-show` lists a project's tasks in name order. For review, `vx lock` also writes each project's resolved config (plugins
-applied), pretty, to `vx.lock.json` beside its `vx.config`; vx never reads
-it, it is no task's input, and `lock.reviewFiles: false`
-(`VX_LOCK_REVIEW_FILES`) turns it off. A copy left with no config beside
-it is named by `vx lock` and fails `--check`; when the config was renamed
-to a name vx does not read (`vx.config.json`, `.tsx`), the notice names
-that file. `vx lock` also writes
-`.vx/.gitattributes` (both locks `linguist-generated eol=lf`)
-when it is missing, so GitHub collapses the locks in a diff and a
-repository's `eol=crlf` or `core.autocrlf` leaves them LF; `vx init`
-does too, and an existing one is never edited.
+A project is a directory holding a `vx.config.*`, such as
+`packages/ui/vx.config.ts`.
+
+For review, it also writes each project's resolved config, pretty, to
+`vx.lock.json` beside its `vx.config`. vx never reads that copy.
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
+
+**Finding projects**
+
+- A config in any language counts: `vx.config.ts`, `.mjs`, and the rest.
+- Inside git, `vx lock` lists configs with `git ls-files`: tracked and
+  untracked, git's ignore rules applied. A nested repository's configs too.
+- Outside git, it walks the tree: every directory but `.git` and `.vx`.
+- A config under a nested `.vx/workspace.*` is left out, even one the
+  ignore rules hide.
+- A config under `node_modules` is left out, ignored or not: an installed
+  package is no project.
+- A config under a `.vx` is left out: that is vx's own state, in git or not.
+- Each nested workspace root is recorded too (`nestedWorkspaces`). An
+  outer project's outputs stop there, as at a nested project.
+- So a run's clean, save and restore never reach a nested workspace. Its
+  inputs still key its files.
+- `--check` fails a lock that misses a nested workspace.
+
+**Evaluating and naming**
+
+- Configs are programs. `vx lock` runs them in the current environment
+  and stores the post-evaluation objects, each project keyed by its
+  name (version 9; an older vx's lock is refused: re-run `vx lock`).
+- A project's name: its config's `name`, else a plugin's `discover`
+  stage, else its root-relative path (`//` for the root).
+- `@vzn/vx-lockfile`'s `discover` stage gives `package.json`'s `name`.
+- Two projects of one name are refused, naming both directories. Every
+  such clash is named at once.
+- The plugin `discover` stage runs here and nowhere else, and may add
+  directories.
+- A plugin-added directory whose config git ignores is refused, by
+  `vx lock` and `--check`, naming the plugin and the file.
+- The message:
+  ``plugin 'vx-gen' adds project gen, but git ignores gen/vx.config.ts, so `vx lock` cannot read it — unignore it or delete it``
+- A run naming that task says the same, never "run `vx lock`".
+
+**Checks before writing**
+
+- `vx lock` builds the graph of every task the workspace declares,
+  `graph` stage included.
+- It checks the graph rules (`run.rules`), which no run checks.
+  `dependencies` (which projects a project may depend on) is one:
+  `VX_E_DEPENDENCY_RULE`.
+- `app/[id]/**` beside a real directory `app/[id]` is refused: brackets
+  are a character class. Write `app/\[id\]/**`.
+- A broken rule prints `✗ vx lock  lock not written` with the rule's
+  refusal under it, and writes nothing.
+- One run names every refusal: every config that does not load, and
+  every task whose `dependsOn` is broken or loops (a cycle once).
+- A lock or review copy that is a symlink is refused before anything is
+  written.
+- So is one whose directory resolves outside the workspace (a `.vx`
+  linked out of it).
+
+**Notes after writing**
+
+- After writing, it notes what a task reads that its key never sees, and
+  still exits 0.
+- `.env*` over a gitignored `.env.production.local`: Vite loads that file
+  for a production build, and the key never sees it.
+- vx asks git about ignored files in one `check-ignore`. A run says it
+  only on a miss, which a stale hit never brings.
+- `VITE_API_URL` in a cached task's `exec.env.passThrough` but not in
+  `inputs.env`: a bundler inlines it (schema.md § `ExecEnv`).
+- A bundler finding is one line naming every task it holds for:
+  `ui#build, web#build and 76 more tasks: …`.
+
+**The file's layout**
+
+- It is laid out for the parse first, then for size, then for merges.
+- First, a header line: `{"version":9}`.
+- Then each distinct task config once: a pointer line (`#k2x0a1b`) and
+  its JSON line.
+- Then each project, in name-hash order:
+  `<name>⇥{"path","file"|"by","config"}`.
+- `file` is left out for `vx.config.ts`, and the tasks are left out of
+  `config`.
+- Then, per task in name order, a `⇥<task>` line and its pointer line.
+- A pointer is a hash of its task's JSON, so the same configs always lock
+  to the same text.
+- A merge that lost a pointer's entry is refused until `vx lock` rewrites
+  the lock.
+- `vx show` lists a project's tasks in name order.
+
+**Review copies**
+
+- `vx.lock.json` holds the project's resolved config, plugins applied. It
+  is no task's input.
+- `lock.reviewFiles: false` (or `VX_LOCK_REVIEW_FILES`) turns the copies
+  off.
+- A copy left with no config beside it is named by `vx lock` and fails
+  `--check`.
+- When the config was renamed to a name vx does not read
+  (`vx.config.json`, `.tsx`), the notice names that file.
+- The review copies are written before the lock. One that cannot be
+  written (a directory in its place, a read-only file) is named, and the
+  lock is left as it was.
+
+**`.vx/.gitattributes`**
+
+- `vx lock` writes `.vx/.gitattributes` when it is missing: both locks
+  `linguist-generated eol=lf`.
+- So GitHub collapses the locks in a diff, and a repository's `eol=crlf`
+  or `core.autocrlf` leaves them LF.
+- `vx init` writes it too. An existing one is never edited.
+
+**Plugin stages**
+
+- A plugin's `project` stage (`turbo()` and `nx()` from
+  `@vzn/vx-migrate`, `@vzn/vx-lockfile`) runs here and nowhere else.
+- The lock records each project's final config as the stage left it,
+  never the steps. A project with no `vx.config.*` is included.
+- A run reads that record and calls no hook, so a run never maps.
+- So an edited `turbo.json` or `package.json` script runs only after the
+  next `vx lock`.
+- `--check` names a project the plugins now map otherwise, a plugin added
+  or dropped since included:
+  `packages/ui: the plugins map it differently from the lock here`.
+- A run follows the record blindly, whatever plugins the workspace
+  declares now.
+- Both verbs name the projects with no config that the stage gives tasks,
+  five names then `and N more`. Such a lock never reads like an audit of
+  nothing:
+
+```text
+0 project configs → .vx/projects.lock, .vx/dependencies.lock (and the tasks a plugin maps for @demo/ui, @demo/web)
+```
+
+- A project with no task (core's default `build` aside) is not named.
+- The `discover` stage is recorded too: each project's name and the
+  plugin that added it in `.vx/projects.lock`.
+- Every `deps` / `reach` edge goes in `.vx/dependencies.lock`, the only
+  place edges live.
+- A run, `vx show`, `vx why`, `--affected` and each `vx watch` cycle
+  apply that record to the locked projects and call no `discover` hook.
+- So an edge a plugin derives (a `package.json` dependency, an
+  `implicitDependencies` or import under `nx()`) does nothing until the
+  next `vx lock`.
+- `--check` names a name or an added project that moved:
+  `tools/gen: the lock names it "gen", the plugins here "generator"`.
+- `--check` names edges that moved:
+  `.vx/dependencies.lock is not what the dependencies resolve to here`.
+- A record `vx lock` never writes (a dependencies lock of other projects,
+  a recorded name another project has) is refused:
+  ``.vx/projects.lock is invalid: … — run `vx lock` ``.
+
+**Secrets**
+
+- The lock is committed, so `vx lock` refuses to write a secret: a config
+  that evaluated to the value of a secret-named variable.
+- Say `` `--token ${process.env.API_TOKEN}` ``. A variable a task lists in
+  `exec.env.secret` counts too.
+- So does a secret-named `define` read from a variable of any name:
+  `API_TOKEN: process.env.MY_CREDS` is named as `$MY_CREDS`.
+- It names each place (`web: tasks.deploy.exec.command holds $API_TOKEN`)
+  and writes nothing.
+- Masking it instead would freeze a `***` that every run runs. Let the
+  shell expand it: `$API_TOKEN` in the command, the name in
+  `exec.env.passThrough`.
+- A value the config's own text spells (the config or a local module it
+  imports) is committed already, so it locks.
+- Say `docker compose up -d postgres` beside
+  `DATABASE_URL=postgres://postgres:postgres@…`.
+- `vx lock --check` fails a lock that holds such a secret here, as
+  `vx lock` refuses to write it.
+
+**This checkout's path**
+
+- `vx lock` warns of a config that evaluated to this checkout's absolute
+  path: `` `bun ${import.meta.dir}/gen.ts` ``.
+- Another checkout's `vx lock --check` fails on it, and its cache keys
+  differ: `packages/ui: its config holds this checkout's path (…)`.
+- Use a path relative to the project (the command's cwd), or
+  `$VX_RUN_WORKSPACE` in the command.
+
+**One at a time**
+
+- One `vx lock` writes at a time on a workspace. A second waits:
+  `[vx] waiting for another vx lock (pid N) on this workspace to finish…`.
+- Then it evaluates and writes, so the review copies and the lock always
+  come from one run.
+
+</div>
+</details>
 
 ### Merging
 
-The locks have no merge driver: git merges them as text. A name line
-seldom changes, so it sits between two branches' edits to neighbouring
-projects, and git merges both; hashed project order keeps two new projects
-apart (of two-branch merges, 18% conflict against version 8's 80%,
-2026-11-23). A run checks the merged digests
-against the merged lockfile and refuses with "run `vx lock`" when they
-differ. When both sides changed one task, or lines right beside each
-other, git leaves its conflict markers, every run refuses the lock
-with "run `vx lock`", and `vx lock`, once the configs are resolved,
-writes both locks anew. A driver could not do this: git runs one before
-theirs' configs reach the disk, so `vx lock` there would lock our side.
+The locks have no merge driver: git merges them as text, and most merges
+of two branches go through.
 
-A plugin's `project` stage (`turbo()` and `nx()` from
-`@vzn/vx-migrate`, `@vzn/vx-lockfile`) runs here and nowhere else: the
-lock records each project's final config as the stage left it (only
-the result, never the steps), a project with no `vx.config.*`
-included, and a run reads that record and calls no hook. So a run never
-maps: an edited `turbo.json` or `package.json` script runs only after
-the next `vx lock`, and `--check` names the project the plugins now map
-otherwise (`packages/ui: the plugins map it differently from the lock
-here`), a plugin added or dropped since included. A run follows the
-record blindly, whatever plugins the workspace declares now
-(2026-11-11). Both verbs name the projects
-with no config that the stage gives tasks (`0 project configs →
-.vx/projects.lock, .vx/dependencies.lock (and the tasks a plugin
-maps for @demo/ui, @demo/web)`, five
-names then `and N more`), so a lock on a plugin-only workspace never
-reads like an audit of nothing. One with no task (core's default
-`build` aside) is not named.
+When git leaves conflict markers, resolve the configs, then run
+`vx lock`. It writes both locks anew.
 
-The `discover` stage is recorded the same way: each project's name and
-the plugin that added it in `.vx/projects.lock`, every `deps` /
-`reach` edge in `.vx/dependencies.lock`, the only place edges live. A run, `vx show`, `vx why`, `--affected` and each `vx watch`
-cycle apply that record to the locked projects and call no `discover`
-hook, so an edge a plugin derives (a `package.json` dependency, an Nx
-`implicitDependencies` or import under `nx()`) orders and selects
-nothing until the next `vx lock`, and `--check` names a name or an
-added project that moved (`tools/gen: the lock names it "gen", the
-plugins here "generator"`) or the edges (`.vx/dependencies.lock is not
-what the dependencies resolve to here`). A record `vx lock` never writes
-(a dependencies lock of other projects, a recorded name another project
-has) is refused: ``.vx/projects.lock is invalid: … — run `vx lock` ``.
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
 
-The lock is committed, so `vx lock` refuses to write one that holds a
-secret: a config that evaluated to the value of a secret-named variable
-(or one a task lists in `exec.env.secret`), say
-`` `--token ${process.env.API_TOKEN}` ``, or a secret-named `define`
-read from a variable of any name (`API_TOKEN: process.env.MY_CREDS`,
-named as `$MY_CREDS`). It names each place
-(`a: tasks.deploy.exec.command holds $API_TOKEN`) and writes nothing.
-Masking it instead would freeze a `***` that every run runs. Let the
-shell expand it: `$API_TOKEN` in the command, the name in
-`exec.env.passThrough`. A value the config's own text spells
-(the config or a local module it imports) is committed already and
-locks: `docker compose up -d postgres` beside
-`DATABASE_URL=postgres://postgres:postgres@…`. `vx lock --check` fails
-a lock that holds such a secret here, as `vx lock` refuses to write it.
+- A name line seldom changes, so it sits between two branches' edits to
+  neighbouring projects, and git merges both.
+- Hashed project order keeps two new projects apart: 18% of two-branch
+  merges conflict, against version 8's 80%.
+- After a merge, a run checks the merged digests against the merged
+  lockfile. When they differ, it refuses with "run `vx lock`".
+- When both sides changed one task, or lines right beside each other, git
+  leaves conflict markers. Every run then refuses the lock with "run
+  `vx lock`".
+- A merge driver could not do this: git runs one before theirs' configs
+  reach the disk, so `vx lock` there would lock our side.
 
-For the same reason it warns of a config that evaluated to this
-checkout's absolute path (`` `bun ${import.meta.dir}/gen.ts` ``):
-another checkout's `vx lock --check` fails and its cache keys differ
-(`packages/a: its config holds this checkout's path (…)`). Use a path
-relative to the project (the command's cwd) or `$VX_RUN_WORKSPACE` in
-the command.
-
-The review copies are written before the lock: one that cannot be
-written (a directory in its place, a read-only file) is named and the
-lock is left as it was. One `vx lock` writes at a time on a workspace: a
-second waits (`[vx] waiting for another vx lock (pid N) on this workspace
-to finish…`), then evaluates and writes, so the review copies and the lock
-always come from one run.
+</div>
+</details>
 
 ### How runs read it
 
-Every run consumes it: configs come from the
-lock with no evaluation, no audit and no schema validation
-of its entries, which `vx lock` validated when it wrote them (frozen-env
-semantics: env reads in a config keep their lock-time values; a
-locked directory whose config file is gone or that this user
-may not search (EACCES, named as such), or a missing lock, is a hard error;
-a config-less one (a `project` plugin's, such as `turbo()`'s) whose
-directory is gone fails its task with the same `vx lock` hint, asked only
-once its spawn failed, so a run stats no project directory;
-one a sparse checkout left out is refused only when the run selects it or
-depends on it, naming every such project and the one `git sparse-checkout
-add a b c` that brings them all back (the message lists the first five and
-counts the rest; the command lists all; `vx lock` and `vx lock --check`
-there refuse too, naming the same command: the lock they wrote would have
-dropped them); a config added since the lock is no project until
-`vx lock`, and naming its task, `c#build`, says so: "c#build: c/vx.config.ts
-is not in the lock yet — run `vx lock`", as a run from its directory says
-`c/vx.config.ts is not in the lock yet`, where it ran the locked project
-around it, and so do `--filter ./c`, `--filter c`, `vx show c` and `vx show c#build`, `c` its directory or its `package.json` name; so does
-`--all`, for any config git lists (tracked or not, ignored ones left out,
-none under a nested workspace) in a directory the lock holds no config
-for, at the cost of one `git ls-files` that a filtered run does not pay; so does a bare `build` that the
-cwd's project or a `--filter` leaves unresolved while one of the
-selected projects holds such a config). An entry edited by
-hand into a shape `vx lock` could not write fails the run with
-`.vx/projects.lock is invalid, run \`vx lock\``, checked only once
-something has crashed, so a normal run pays nothing for it. The shapes a
-run walks are checked as it reads the lock: a `name`that is no string,`tags`no list,`tasks`no object, a task no object or its`dependsOn` no
-list is refused there (`entry for "b" is malformed — re-run \`vx lock\``),
-where a string `dependsOn` was walked per character.
+Every run reads its configs from the lock. It does not evaluate, audit
+or validate them: `vx lock` validated them when it wrote them.
+
+So a config that reads the environment keeps its lock-time values.
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
+
+- A missing lock is a hard error.
+- So is a locked directory whose config file is gone, or that this user
+  may not search (named as `EACCES`).
+- A config-less project (a `project` plugin's, such as `turbo()`'s)
+  whose directory is gone fails its task with the same `vx lock` hint.
+- vx asks that only once the task's spawn failed, so a run stats no
+  project directory.
+- A project a sparse checkout left out is refused only when the run
+  selects it or depends on it.
+- The refusal names every such project, and the one
+  `git sparse-checkout add a b c` that brings them all back.
+- The message lists the first five and counts the rest. The command
+  lists all.
+- `vx lock` and `vx lock --check` refuse there too, naming the same
+  command: the lock they wrote would drop those projects.
+- A config added since the lock is no project until `vx lock`. Naming
+  its task says so:
+  ``web#build: packages/web/vx.config.ts is not in the lock yet — run `vx lock` ``
+- A run from its directory says `packages/web/vx.config.ts is not in the
+lock yet`, where it ran the locked project around it.
+- So do `--filter ./packages/web`, `--filter web`, `vx show web` and
+  `vx show web#build`, `web` its directory or its `package.json` name.
+- So does `--all`, for any config git lists (tracked or not) in a
+  directory the lock holds no config for.
+- `--all` leaves out ignored configs and ones under a nested workspace.
+  It costs one `git ls-files`, which a filtered run does not pay.
+- So does a bare `build` that the cwd's project or a `--filter` leaves
+  unresolved, while a selected project holds such a config.
+- An entry edited by hand into a shape `vx lock` could not write fails the
+  run: ``.vx/projects.lock is invalid, run `vx lock` ``.
+- That is checked only once something has crashed, so a normal run pays
+  nothing for it.
+- The shapes a run walks are checked as it reads the lock: a `name` that
+  is no string, `tags` no list, `tasks` no object.
+- So are a task that is no object, and its `dependsOn` no list:
+  ``entry for "b" is malformed — re-run `vx lock` ``.
+- Before that check, a string `dependsOn` was walked per character.
+
+</div>
+</details>
 
 ### `--check`
 
-`--check` is the audit: it re-evaluates every config in the current
-environment and `Bun.deepEquals`-compares it with the frozen object. A
-project that differs gets one message, whether its config, a file it
-imports or the environment it reads changed. A lock an earlier vx wrote,
-or one that is not valid JSON, is a problem the audit names (a
-`problems` entry under `--format json`, not a refusal) and asks for `vx lock`. Every config that does
-not load is named, as `vx lock` names them: each with its line and frame,
-and root-relative under `--format json`. It also checks the graph rules over the configs as they
-evaluate now (each broken `dependsOn` named, root-relative), and that each `vx.lock.json` is what its project resolves to
-here, and that none is left where a `vx.config` was deleted, the
-directory still a project or not (delete that one yourself: vx never
-deletes a committed file; `vx lock` names it too, as a warning; one
-already gone from disk, that git still lists, is not named), unless `lock.reviewFiles` is off. The CI recipe is `vx lock --check && vx run …`.
-`vx lock` and `--check` also warn of a config file another one beside
-it hides (`vx.config.ts` and `vx.config.mjs` in one directory, or two
-`.vx/workspace.*`): precedence reads the first, and an edit to the
-other changes nothing. The warning does not fail `--check`.
-`--format json` prints the audit as one document
-(`schemas/lock.json`, exit code unchanged); it answers `--check` only.
-Each of its `problems` is `{code, message}`: `VX_E_LOCK` for drift
-`vx lock` fixes (a missing lock is one), `VX_E_CONFIG` for a config that
-does not load or evaluates to a secret, and a graph rule's own code
-(`VX_E_CYCLE`, …). Branch on the code; the message may change.
+`vx lock --check` re-evaluates every config here and compares it with
+the lock. It writes nothing, and exits 1 on any difference.
+
+On CI: `vx lock --check && vx run …`.
+
+With `--format json`, it prints the audit as one document:
 
 ```json
 {
@@ -2753,65 +2856,147 @@ does not load or evaluates to a secret, and a graph rule's own code
 }
 ```
 
-Full design: `docs/design/config-lock-2026-06.md`. A lock written by a
-1.x vx stays valid for every later 1.x (`tests/contract-lockfile.test.ts`).
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
+
+- It runs each config in the current environment and compares it with
+  the frozen object (`Bun.deepEquals`).
+- A project that differs gets one message, whether its config, a file it
+  imports or the environment it reads changed.
+- A lock an earlier vx wrote, or one that is not valid JSON, is a problem
+  the audit names, asking for `vx lock`. It is not a refusal.
+- Every config that does not load is named, as `vx lock` names them: each
+  with its line and frame.
+- It checks the graph rules over the configs as they evaluate now, naming
+  each broken `dependsOn`.
+- It checks that each `vx.lock.json` is what its project resolves to
+  here, unless `lock.reviewFiles` is off.
+- It fails a `vx.lock.json` left where a `vx.config` was deleted, whether
+  the directory is still a project or not.
+- Delete that copy yourself: vx never deletes a committed file. `vx lock`
+  names it too, as a warning.
+- A copy already gone from disk, that git still lists, is not named.
+- `vx lock` and `--check` warn of a config file another one beside it
+  hides: `vx.config.ts` and `vx.config.mjs` in one directory.
+- Two `.vx/workspace.*` files count too. Precedence reads the first, so
+  an edit to the other changes nothing.
+- That warning does not fail `--check`.
+- `--format json` answers `--check` only. Its schema is
+  `schemas/lock.json`, and the exit code is unchanged.
+- Under `--format json`, paths are root-relative.
+- Each of its `problems` is `{code, message}`. Branch on the code; the
+  message may change.
+- `VX_E_LOCK`: drift `vx lock` fixes. A missing lock is one.
+- `VX_E_CONFIG`: a config that does not load, or evaluates to a secret.
+- A graph rule's own code (`VX_E_CYCLE`, …) for a broken graph rule.
+- Full design: `docs/design/config-lock-2026-06.md`.
+- A lock written by a 1.x vx stays valid for every later 1.x
+  (`tests/contract-lockfile.test.ts`).
+
+</div>
+</details>
 
 ### Exit codes
 
-| Code | When                                                                                                                                                                                                                                                                                      |
-| ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `0`  | lock written / lock is up to date                                                                                                                                                                                                                                                         |
-| `1`  | parse error, workspace-discovery error, missing lock (`--check` without one), any drift (every mismatched project is listed on stderr), or a secret value the lock would hold; or a promise a config rejected that nothing awaited (`vx: unhandled rejection: …`, the lock still written) |
+| Code | When                                                                                               |
+| ---- | -------------------------------------------------------------------------------------------------- |
+| `0`  | lock written / lock is up to date                                                                  |
+| `1`  | a config does not load, discovery fails, the lock is missing or drifted, or it would hold a secret |
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
+
+- `--check` with no lock exits 1.
+- On drift, every mismatched project is listed on stderr.
+- A promise a config rejected that nothing awaited exits 1:
+  `vx: unhandled rejection: …`. The lock is still written.
+
+</div>
+</details>
 
 ## Releasing (maintainers)
 
-Releases are on demand. Dispatching `auto-release.yml` releases a
-commit on `main` whose CI went green: the `sha` input, or by default the
-newest such commit; one CI did not pass on is refused. Claude dispatches
-it at least once a day when `main` has changes, after merging that
-release's blog post (`.claude/skills/release/SKILL.md`), and shares the
-post on Bluesky. The workflow tags the commit with the next version and
-creates the GitHub release, both from the Conventional Commits since the
-last tag (`scripts/release-notes.ts`, run by the `release.github.tag` task,
-`scripts/auto-release.ts`). The release is created as a draft: this
-repo's releases are immutable and take assets only before they are
-published, so `npm.yml` publishes it after its last upload. The version: below 0.1.0 always a
-patch (cutting 0.1.0 is the owner's, by hand); then before 1.0 a `feat`
-or a breaking change (`type!:`, a `BREAKING CHANGE:` footer) is a minor
-(`v0.4.2` → `v0.5.0`) and anything else a patch (`v0.4.3`); from 1.0 a
-breaking change is a major. The notes: breaking changes first, then
-`feat`, `fix` and `perf`, the rest counted. It then
-dispatches `npm.yml` on the tag. A release made with the workflow
-token fires no `release` event in other workflows, which is why it is
-dispatched rather than triggered. A commit is released only when the
-last release is its ancestor, so an older tree never gets a higher
-version, and one that already carries a `v*` tag is a no-op.
+Releases are on demand. Dispatching `auto-release.yml` releases a commit
+on `main` whose CI went green.
 
-A version can still be cut by hand: push its tag (say `v1.0.0`),
-create a draft release for it, and dispatch `npm.yml` on the tag;
-the next auto-release continues from it.
+The workflow tags the commit with the next version, writes the release
+notes from the Conventional Commits since the last tag, and dispatches
+`npm.yml`, which publishes.
 
-`npm.yml` is one job running `vx pipeline npm` over DTE
-workers (`.vx/workspace.ts`): it compiles the four binaries once (the
-version defined into each, `src/version.ts`), proves them (the darwin
-ones on a Mac worker, re-signed ad hoc only where macOS refuses one),
-attests their build provenance, attaches them to the draft release (the
-darwin upload publishes it), builds the fifteen npm packages (`@vzn/vx`,
-one per platform, and every other public package: the plugins, the
-servers, `@vzn/vx-devtools`) and publishes them with **npm trusted
-publishing**, then pushes the server images. A worker runs a task with
-its run's environment, so the OIDC token npm exchanges for a
-short-lived credential, and the one the attestations are signed with,
-are `npm.yml`'s: no long-lived npm token exists anywhere. Each step
-skips what is done (an attached asset, a package on the registry), so a
-re-run on the tag completes a release still in draft.
+| Since the last tag (before 1.0) | Next version               |
+| ------------------------------- | -------------------------- |
+| a `feat` or a breaking change   | minor: `v0.4.2` → `v0.5.0` |
+| anything else                   | patch: `v0.4.2` → `v0.4.3` |
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
+
+- The `sha` input picks the commit; by default, the newest green one. A
+  commit CI did not pass on is refused.
+- Claude dispatches it at least once a day when `main` has changes, after
+  merging that release's blog post (`.claude/skills/release/SKILL.md`).
+- Claude then shares the post on Bluesky.
+- The tag and the GitHub release come from `scripts/release-notes.ts`,
+  run by the `release.github.tag` task (`scripts/auto-release.ts`).
+- The release is created as a draft: this repo's releases are immutable,
+  and take assets only before they are published.
+- `npm.yml` publishes the draft after its last upload.
+- Below 0.1.0, every release is a patch. Cutting 0.1.0 is the owner's, by
+  hand.
+- A breaking change is `type!:` or a `BREAKING CHANGE:` footer. From 1.0
+  a breaking change is a major.
+- The notes: breaking changes first, then `feat`, `fix` and `perf`, the
+  rest counted.
+- A release made with the workflow token fires no `release` event in
+  other workflows, so `npm.yml` is dispatched rather than triggered.
+- A commit is released only when the last release is its ancestor, so an
+  older tree never gets a higher version.
+- A commit that already carries a `v*` tag is a no-op.
+- To cut a version by hand: push its tag (say `v1.0.0`), create a draft
+  release for it, and dispatch `npm.yml` on the tag.
+- The next auto-release continues from a hand-cut version.
+
+</div>
+</details>
+
+`npm.yml` is one job running `vx pipeline npm` over DTE workers
+(`.vx/workspace.ts`). It publishes with **npm trusted publishing**: no
+long-lived npm token exists anywhere.
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
+
+- It compiles the four binaries once, the version defined into each
+  (`src/version.ts`).
+- It proves them: the darwin ones on a Mac worker, re-signed ad hoc only
+  where macOS refuses one.
+- It attests their build provenance and attaches them to the draft
+  release. The darwin upload publishes it.
+- It builds the fifteen npm packages: `@vzn/vx`, one per platform, and
+  every other public package (the plugins, the servers,
+  `@vzn/vx-devtools`).
+- It publishes them with npm trusted publishing, then pushes the server
+  images.
+- A worker runs a task with its run's environment. So the OIDC token npm
+  exchanges for a short-lived credential is `npm.yml`'s.
+- The token the attestations are signed with is `npm.yml`'s too.
+- Each step skips what is done (an attached asset, a package on the
+  registry), so a re-run on the tag completes a release still in draft.
+
+</div>
+</details>
 
 Every step of the two workflows past the setup (checkout, Bun,
-`bun install`) is vx: CI runs no command of its own (2026-10-03), and
-`tests/workflow-runner.unsafe.test.ts` holds it. The tasks are
-`@vzn/vx`'s `release.*`, all uncached; the `release` group is what the
-`release` pipeline runs. A darwin task runs on a Mac, a linux one on
-linux-x64:
+`bun install`) is vx: CI runs no command of its own
+(`tests/workflow-runner.unsafe.test.ts`).
+
+The tasks are `@vzn/vx`'s `release.*`, all uncached; the `release`
+pipeline runs the `release` group. A darwin task runs on a Mac, a linux
+one on linux-x64:
 
 | Task                         | Does                                                                                                                                     |
 | ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
@@ -2825,114 +3010,201 @@ linux-x64:
 | `release.docker`             | pushes the three server images to `ghcr.io/vznjs/<server>` at the version (amd64 + arm64); `latest` follows npm's                        |
 | `release.github.tag`         | `auto-release.yml`'s: decides the version, creates the draft release with its notes, dispatches `npm.yml`                                |
 
-The version reaches them as `VX_RELEASE_VERSION` (the tag) and each
-refuses one that is not a version. Every one but `release.docker` (it
-drives Docker) is sandboxed: the publish is granted the registry, the
-OIDC token host and Sigstore, the GitHub-Actions variables npm reads,
-and `~/.npm`; `release.github.tag` reads `.git` and reaches
-`api.github.com` with `GH_TOKEN`; `release.github.<os>.upload` reaches it
-and `uploads.github.com`.
+The version reaches them as `VX_RELEASE_VERSION` (the tag). Each task
+refuses one that is not a version.
 
-Every Linux job that runs a task itself (a distributed run's leaves that to its workers) runs `vx setup github` (`@vzn/vx-ci`)
-before its first `vx run`: every task in this repo declares `exec.sandbox`, and a
-declared sandbox whose runtime is missing is a hard error, not a
-downgrade — the compile tasks fail in 0 ms saying which of bubblewrap,
-socat and ripgrep is absent. v0.0.20 shipped its darwin packages and
-then stopped exactly there.
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
+
+- Every task but `release.docker` (it drives Docker) is sandboxed.
+- The publish is granted the registry, the OIDC token host and Sigstore,
+  the GitHub Actions variables npm reads, and `~/.npm`.
+- `release.github.tag` reads `.git` and reaches `api.github.com` with
+  `GH_TOKEN`.
+- `release.github.<os>.upload` reaches `api.github.com` and
+  `uploads.github.com`.
+- Every Linux job that runs a task itself runs `vx setup github`
+  (`@vzn/vx-ci`) before its first `vx run`. A distributed run leaves that
+  to its workers.
+- A declared sandbox whose runtime is missing is a hard error, not a
+  downgrade.
+- So the compile tasks fail in 0 ms, saying which of bubblewrap, socat
+  and ripgrep is absent.
+- v0.0.20 shipped its darwin packages and then stopped exactly there.
+
+</div>
+</details>
 
 One-time setup, per package, on npmjs.com → package → Settings →
 Trusted Publisher → GitHub Actions: owner `vznjs`, repository `vx`,
-workflow `npm.yml`, environment left blank. Do this for `@vzn/vx`,
-`@vzn/vx-darwin-x64`, `@vzn/vx-darwin-arm64`, `@vzn/vx-linux-x64`,
-`@vzn/vx-linux-arm64` and the six plugins: `@vzn/vx-ci`,
-`@vzn/vx-lockfile`, `@vzn/vx-migrate`, `@vzn/vx-otel`,
-`@vzn/vx-reapi` and `@vzn/vx-history`.
+workflow `npm.yml`, environment left blank. Do this for:
+
+- `@vzn/vx`
+- `@vzn/vx-darwin-x64`, `@vzn/vx-darwin-arm64`, `@vzn/vx-linux-x64`,
+  `@vzn/vx-linux-arm64`
+- the six plugins: `@vzn/vx-ci`, `@vzn/vx-lockfile`, `@vzn/vx-migrate`,
+  `@vzn/vx-otel`, `@vzn/vx-reapi` and `@vzn/vx-history`
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
+
+- If npm will not add a trusted publisher to a name never published,
+  publish that plugin once by hand from an owner's account, then add the
+  publisher.
+- Build it with `build-npm.ts <version> --only=plugins --out=dist/npm-plugins`,
+  then run `npm publish dist/npm-plugins/plugins/<dir> --access public`.
+- Then delete the `NPM_TOKEN` repository secret: the workflow no longer
+  reads it.
+- npm restricts classic tokens for direct publishing: the
+  `E401 token is invalid` that stopped v0.0.17.
+- Every `uses:` in both workflows is pinned to a commit SHA, with the
+  version in a comment. Bump the SHA and the comment together.
+
+</div>
+</details>
 
 Each platform package carries `LICENSE` and `THIRD_PARTY_NOTICES.txt`:
 the binary embeds Bun and npm code whose licenses must travel with it.
-The GitHub release carries the same file as an asset beside the binaries.
-`tests/dependency-licenses.unsafe.test.ts` holds every published package's
-production dependency closure to permissive licenses (MIT, ISC, BSD,
-Apache-2.0, 0BSD, or a dual license offering one).
-After a dependency or Bun bump, `bun packages/vx/scripts/third-party-notices.ts`
-regenerates the notices; `tests/third-party-notices.unsafe.test.ts`
-fails until it does.
 
 The plugins ship as the TypeScript source Bun runs, at the release's
 version, with `@vzn/vx` as a peer on the same minor (`^<version>`).
-`scripts/build-npm.ts --only=plugins` emits every public workspace
-package other than `@vzn/vx`, so a new plugin package is published
-without a workflow edit, and `tests/build-npm.unsafe.test.ts` holds the
-set. If npm will not add a trusted publisher to a name that has never
-been published, publish that plugin once by hand from an owner's
-account (`npm publish dist/npm-plugins/plugins/<dir> --access public`
-after a `build-npm.ts <version> --only=plugins --out=dist/npm-plugins`
-build), then add the publisher. Then
-delete the `NPM_TOKEN` repository secret:
-the workflow no longer reads it, and npm restricts classic tokens for
-direct publishing (the `E401 token is invalid` that stopped v0.0.17).
-Every `uses:` in both workflows is pinned to a commit SHA with the
-version in a comment; bump the SHA and the comment together.
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
+
+- The GitHub release carries `THIRD_PARTY_NOTICES.txt` as an asset
+  beside the binaries.
+- `tests/dependency-licenses.unsafe.test.ts` holds every published
+  package's production dependency closure to permissive licenses.
+- Permissive means MIT, ISC, BSD, Apache-2.0, 0BSD, or a dual license
+  offering one.
+- After a dependency or Bun bump, run
+  `bun packages/vx/scripts/third-party-notices.ts` to regenerate the
+  notices.
+- `tests/third-party-notices.unsafe.test.ts` fails until you do.
+- `scripts/build-npm.ts --only=plugins` emits every public workspace
+  package other than `@vzn/vx`.
+- So a new plugin package is published without a workflow edit.
+  `tests/build-npm.unsafe.test.ts` holds the set.
+
+</div>
+</details>
 
 ## The workspace root
 
-Every verb works on one workspace: the directory whose `.vx` holds the
-nearest `.vx/workspace.ts` (or `.mts`, `.js`, `.mjs`, `.cts`, `.cjs`) from
-the working directory up. vx never looks above the git top-level (a
-worktree is its own, a submodule's too; a submodule, its `.git` a file
-or a directory, looks on into its superproject), and
-outside git it looks up to `/`. Nothing else marks the root: not a
-`package.json`, `pnpm-workspace.yaml` or a lockfile (2026-10-13).
-Any entry by one of those names marks the root: one that is a broken
-link or a directory, with no file beside it, is refused by name
-(`<path>: is a broken link — fix or remove it`), not walked past, as
-`vx lock` counts it a nested workspace. A workspace file a sparse checkout
-left out (a cone checkout keeps the root's files, not its `.vx`) is
-refused as such, `VX_E_NO_WORKSPACE` with the fix `git sparse-checkout add
-.vx`, by every verb, `vx init` too: a new one would replace the tracked
-one. Git is asked only once no file was found. Without one, every verb but `vx init` stops with `VX_E_NO_WORKSPACE`;
-`vx init` writes one (`@vzn/vx-migrate` beside a `turbo.json`,
-`nx.json`, exported Nx graph or Lerna on Nx). A project inside the
-root is a directory holding a `vx.config.*`, which `vx lock` finds
-(see [`vx lock`](#vx-lock)); a `discover` plugin adds others.
+Every verb works on one workspace. Its root is the directory holding the
+nearest `.vx/workspace.ts`, from your working directory up.
+
+```text
+repo/.vx/workspace.ts    the root
+repo/packages/ui/        you run vx here: the root is still repo/
+```
+
+With no `.vx/workspace.ts`, every verb but `vx init` stops with
+`VX_E_NO_WORKSPACE`. `vx init` writes one.
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
+
+- `.mts`, `.js`, `.mjs`, `.cts` and `.cjs` count as well as `.ts`.
+- vx never looks above the git top-level. Outside git, it looks up to
+  `/`.
+- A worktree is its own top-level, and so is a submodule's worktree.
+- A submodule, its `.git` a file or a directory, looks on into its
+  superproject.
+- Nothing else marks the root: not a `package.json`, a
+  `pnpm-workspace.yaml` or a lockfile.
+- Any entry by one of the names marks the root. A broken link or a
+  directory there, with no file beside it, is refused by name.
+- The message: `<path>: is a broken link — fix or remove it`. It is not
+  walked past, as `vx lock` counts it a nested workspace.
+- A workspace file a sparse checkout left out (a cone checkout keeps the
+  root's files, not its `.vx`) is refused as such.
+- That refusal is `VX_E_NO_WORKSPACE` with the fix
+  `git sparse-checkout add .vx`, from every verb.
+- `vx init` refuses it too: a new file would replace the tracked one.
+- Git is asked only once no file was found.
+- Beside a `turbo.json`, an `nx.json`, an exported Nx graph or Lerna on
+  Nx, `vx init` writes the workspace through `@vzn/vx-migrate`.
+- A project inside the root is a directory holding a `vx.config.*`,
+  which `vx lock` finds (see [`vx lock`](#vx-lock)).
+- A `discover` plugin adds other projects.
+
+</div>
+</details>
 
 ## Which vx runs
 
-A global vx (installed with a package manager, or a compiled binary
-installed by hand) hands every call to the project's own `@vzn/vx` when
-there is one, so a project runs the version its lockfile pins
-(2026-10-13). There is no opt-out. The workspace root's
-`node_modules/@vzn/vx` runs, through its
-`node_modules/.bin/vx`. One hop: the receiving vx sees `VX_HANDED_OFF`
-and does not look again. A vx never hands off to itself (the same
-package, a pnpm symlink included), nor to a `.bin/vx` another user owns
-(one planted above your checkout would run as you). An npm install's launcher does the
-walk in the shell, a test per level and no fork, and `exec`s the local
-vx; the compiled binary checks one path per level before it loads
-anything, then runs the local vx with its stdio, passes on a signal sent
-to it alone, and exits with its code. From source (`bun src/bin.ts`) vx
-never hands off.
+A global vx hands every call to the project's own `@vzn/vx` when there
+is one. So a project runs the version its lockfile pins. There is no
+opt-out.
 
-`vx --version` says when it was handed the call (`vx 0.0.640
-(/repo/node_modules/@vzn/vx-linux-x64/vx, handed off from
-/usr/local/bin/vx)`), and `vx info` shows the file that ran and who handed off
-(`vxPath`, `handedOffFrom`).
+`vx --version` says when it was handed the call:
+
+```text
+vx 0.0.640 (/repo/node_modules/@vzn/vx-linux-x64/vx, handed off from /usr/local/bin/vx)
+```
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
+
+- A global vx is one a package manager installed, or a compiled binary
+  installed by hand.
+- The project's vx is the workspace root's `node_modules/@vzn/vx`, run
+  through its `node_modules/.bin/vx`.
+- One hop: the receiving vx sees `VX_HANDED_OFF` and does not look again.
+- A vx never hands off to itself (the same package, a pnpm symlink
+  included).
+- It never hands off to a `.bin/vx` another user owns: one planted above
+  your checkout would run as you.
+- An npm install's launcher does the walk in the shell, a test per level
+  and no fork, and `exec`s the local vx.
+- The compiled binary checks one path per level before it loads
+  anything, then runs the local vx with its stdio.
+- It passes on a signal sent to it alone, and exits with the local vx's
+  code.
+- From source (`bun src/bin.ts`), vx never hands off.
+- `vx info` shows the file that ran and who handed off: `vxPath` and
+  `handedOffFrom`.
+
+</div>
+</details>
 
 ## `vx upgrade`
 
-`vx upgrade` brings vx to a newer release (`vx upgrade TAG` pins one, `v0.4.0` or
-`0.4.0`; default latest; a second tag, or one that is no version, is
-refused first, not dropped), the way
-it was installed. Named `upgrade` per CLI convention (`bun upgrade`,
-`deno upgrade`). Refuses when running from source: use `git pull`.
+`vx upgrade` moves vx to a newer release, the same way it was installed.
 
-However vx was installed (by hand, a package manager's global or a
-project's dependency, the global a run moves too), `latest` below the
-running vx is refused before anything runs (`the registry's latest
-@vzn/vx is 0.3.0, below this vx's 0.4.0 — nothing replaced; to go back,
-ask for it: vx upgrade v0.3.0`); a `TAG` that names an older release
-goes back. A `TAG` that names the running version says `already at`
-without asking the registry.
+| Write               | Means                                   |
+| ------------------- | --------------------------------------- |
+| `vx upgrade`        | install the latest release              |
+| `vx upgrade v0.4.0` | install that release; `0.4.0` works too |
+| `vx upgrade -g`     | move only the global vx                 |
+
+Default: the latest release.
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
+
+- A second tag, or one that is no version, is refused first, not dropped.
+- From source it refuses: use `git pull`.
+- It is named `upgrade` per CLI convention, as `bun upgrade` and
+  `deno upgrade` are.
+- `latest` below the running vx is refused before anything runs, however
+  vx was installed. The global a run moves counts too.
+- That refusal says how to go back:
+  `the registry's latest @vzn/vx is 0.3.0, below this vx's 0.4.0 — nothing replaced; to go back, ask for it: vx upgrade v0.3.0`
+- A `TAG` that names an older release goes back.
+- A `TAG` that names the running version says `already at` without
+  asking the registry.
+
+</div>
+</details>
 
 ### Usage
 
@@ -2965,35 +3237,70 @@ From a global vx in that project, both move: the project's vx first, then the gl
 
 ### A binary installed by hand
 
-A compiled binary installed by hand replaces itself. It reads its
-platform package (`@vzn/vx-<os>-<arch>`) from the npm registry and
-checks npm's registry signature over `<name>@<version>:<integrity>`
-against npm's signing key, pinned in vx (key id
-`SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U`), then the
-tarball's SHA-512 against that signed integrity, and only then extracts
-`package/vx`, stages it in a fresh directory beside the binary and
-renames it over. The host that serves the tarball cannot make that
-signature, so a swapped tarball, or a document with a swapped integrity,
-is refused: `the npm registry signature for … is not valid — refusing
-to install; nothing replaced`, or `the download did not match the
-integrity npm signed … nothing replaced`. A release signed with a key
-id vx does not pin says so: `… is signed with an npm key this vx does
-not know (…) — if npm rotated its signing key, this vx's installer
-needs updating`. A release with no signature or no integrity is refused
-before the download, and so is a tarball URL that is not https (`the npm
-registry's tarball for … is not https (…)`), and a signed release of another version than
-the `TAG` asked for (`the npm registry answered …@<TAG> with version …`):
-npm signs its old releases too. `latest` below the running vx is refused
-here too (above).
-Every refusal comes before anything is written.
-There is no fallback to GitHub's release digest: when the registry is
-unreachable, the upgrade is refused.
+A compiled binary you installed by hand replaces itself. It checks npm's
+signature on the download before it writes anything.
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
+
+- It reads its platform package (`@vzn/vx-<os>-<arch>`) from the npm
+  registry.
+- It checks npm's registry signature over
+  `<name>@<version>:<integrity>` against npm's signing key, pinned in vx.
+- The pinned key id: `SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U`.
+- Then it checks the tarball's SHA-512 against that signed integrity.
+- Only then does it extract `package/vx`, stage it in a fresh directory
+  beside the binary, and rename it over.
+- The host that serves the tarball cannot make that signature. So a
+  swapped tarball, or a document with a swapped integrity, is refused.
+- A bad signature:
+  `the npm registry signature for … is not valid — refusing to install; nothing replaced`.
+- A swapped tarball:
+  `the download did not match the integrity npm signed … nothing replaced`.
+- A key id vx does not pin:
+  `… is signed with an npm key this vx does not know (…) — if npm rotated its signing key, this vx's installer needs updating`.
+- A release with no signature or no integrity is refused before the
+  download.
+- So is a tarball URL that is not https:
+  `the npm registry's tarball for … is not https (…)`.
+- So is a signed release of another version than the `TAG` asked for:
+  `the npm registry answered …@<TAG> with version …`.
+- That check matters because npm signs its old releases too.
+- `latest` below the running vx is refused here too (above).
+- Every refusal comes before anything is written.
+- There is no fallback to GitHub's release digest: when the registry is
+  unreachable, the upgrade is refused.
+- A binary whose directory this user cannot write (a root-owned
+  `/usr/local/bin`) is refused before the download:
+
+```text
+cannot write to <dir> (EACCES), where this vx lives — nothing downloaded; re-run as a user who can (sudo vx upgrade), …
+```
+
+- The new binary keeps the old one's mode, and, as root, its owner.
+- It must answer `--version` before the upgrade reports it installed.
+- One that does not start on this machine, or does not answer within
+  10 s, is swapped back for the previous vx. The command exits 1:
+
+```text
+the new binary did not start on this machine (… --version failed) — the previous vx is back in place
+```
+
+- Once it answers: `✓ vx upgrade  installed 0.0.2`.
+- On the version it already is, it says
+  `› vx upgrade  already at <version>` and downloads nothing.
+
+</div>
+</details>
 
 ### Which registry
 
 `vx upgrade` and `vx init` read releases from the registry your package
-manager uses, so a company that blocks registry.npmjs.org and serves a
-mirror needs no extra setting. The first that names one wins:
+manager uses. So a company that blocks registry.npmjs.org and serves a
+mirror needs no extra setting.
+
+The first that names one wins:
 
 1. `@vzn:registry` in a `.npmrc`
 2. `npm_config_registry` in the environment
@@ -3003,38 +3310,33 @@ mirror needs no extra setting. The first that names one wins:
    nearest from the working directory up, then `~/.bunfig.toml`
 5. registry.npmjs.org
 
-The credential configured for that registry (`//<host>/<path>/:_authToken`
-or `:_auth` in a `.npmrc`, `token` or user and password in bunfig, with
-`${VAR}` read from the environment) is sent to URLs under it only. A
-mirror must pass on npm's signature: the check above does not change.
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
 
-A host it cannot reach (no route, a proxy that is down) is one line,
-`could not reach registry.npmjs.org to read the release (…) — check the
-network or the proxy and re-run`, never a stack; so is a registry that
-takes the connection and sends nothing for 30 s (`no answer in 30 s`),
-before its headers or between two chunks of a body (a slow download that
-keeps moving is never cut), a document cut after the headers or not JSON
-(a captive portal's page served with a 200), and a tarball cut the same
-way. A binary whose directory this user
-cannot write (a root-owned `/usr/local/bin`) is refused before the
-download: `cannot write to <dir> (EACCES), where this vx lives — nothing
-downloaded; re-run as a user who can (sudo vx upgrade), …`. The new
-binary keeps the old one's mode (and, as root, its owner), and must
-answer `--version` before the upgrade reports it installed: one that
-does not start on this machine, or does not answer within 10 s, is
-swapped back for the previous vx, and the command exits 1 saying so:
-`the new binary did not start on this machine (… --version
-failed) — the previous vx is back in place`. Once it answers:
-`✓ vx upgrade  installed 0.0.2`. On the version it
-already is it says `› vx upgrade  already at <version>` and downloads
-nothing.
+- The credential configured for that registry is sent to URLs under it
+  only.
+- In a `.npmrc`: `//<host>/<path>/:_authToken` or `:_auth`. In bunfig:
+  `token`, or user and password. `${VAR}` is read from the environment.
+- A mirror must pass on npm's signature: the check above does not change.
+- A host it cannot reach (no route, a proxy that is down) is one line,
+  never a stack:
+  `could not reach registry.npmjs.org to read the release (…) — check the network or the proxy and re-run`
+- So is a registry that takes the connection and sends nothing for 30 s
+  (`no answer in 30 s`), before its headers or between two chunks.
+- A slow download that keeps moving is never cut.
+- So is a document cut after the headers, or not JSON (a captive
+  portal's page served with a 200), and a tarball cut the same way.
+
+</div>
+</details>
 
 ### A package manager's install
 
-A vx a package manager installed (the npm package's launcher runs
-`…/node_modules/@vzn/vx-<os>-<arch>/vx`) is upgraded by that package
-manager, never by a rename over its file, which the next install would
-undo. The path names the install:
+A vx a package manager installed is upgraded by that package manager.
+vx never renames over its file: the next install would undo it.
+
+The path names the install:
 
 | Install                | Detected by                                            | Runs                                           |
 | ---------------------- | ------------------------------------------------------ | ---------------------------------------------- |
@@ -3044,59 +3346,100 @@ undo. The path names the install:
 | yarn global            | `…/yarn/global/…`                                      | `yarn global add @vzn/vx@<v>`                  |
 | a project's dependency | the package.json that lists `@vzn/vx`                  | its manager's add, same field                  |
 
-A project's package.json is the tree's root, or for a hoisted workspace
-the nearest one above the current directory that lists `@vzn/vx`. Its
-manager is its lockfile (`pnpm-lock.yaml`, `bun.lock`, `yarn.lock`,
-`package-lock.json`), else `packageManager`, else pnpm beside a
-`pnpm-workspace.yaml` (a workspace not installed yet), else npm; the
-field it is
-listed in is kept (`--save-dev`, `--dev`, …), pnpm at a workspace
-root adds `--workspace-root`, and Yarn 1 there adds `-W`. The lockfile
-is updated by that manager.
-Every `@vzn/vx-*` plugin the same package.json lists from the registry
-moves in the same install, to the same release, since every @vzn
-package releases together: `pnpm add @vzn/vx@0.0.2 @vzn/vx-otel@0.0.2
---save-dev`. A plugin left behind is installed even when core is
-already at the release (`› vx upgrade  plugins → 0.0.2`); a plugin in
-another field than core is refused, so no install moves a dependency's
-field. The versions are pinned, so pnpm's `minimumReleaseAge` refuses a
-release too young rather than mixing releases, and the error names
-`minimumReleaseAgeExclude`. Under pnpm a plain `pnpm install` follows:
-pnpm's `add` can leave a peer set linked that the lockfile it wrote no
-longer names, and the lockfile plugin refuses that tree. vx prints what
-it runs, runs it there, and exits with an error if it fails:
+vx prints what it runs, runs it there, and exits with an error if it
+fails. Plugins move with core:
+
+```sh
+pnpm add @vzn/vx@0.0.2 @vzn/vx-otel@0.0.2 --save-dev
+```
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
+
+- The npm package's launcher runs
+  `…/node_modules/@vzn/vx-<os>-<arch>/vx`. That path names the install.
+- A project's package.json is the tree's root. For a hoisted workspace,
+  it is the nearest one above the current directory that lists `@vzn/vx`.
+- Its manager is its lockfile (`pnpm-lock.yaml`, `bun.lock`,
+  `yarn.lock`, `package-lock.json`), else `packageManager`.
+- Else pnpm beside a `pnpm-workspace.yaml` (a workspace not installed
+  yet), else npm.
+- The field it is listed in is kept (`--save-dev`, `--dev`, …).
+- pnpm at a workspace root adds `--workspace-root`. Yarn 1 there adds
+  `-W`.
+- The lockfile is updated by that manager.
+- Every `@vzn/vx-*` plugin the same package.json lists from the registry
+  moves in the same install, to the same release.
+- That is because every @vzn package releases together.
+- A plugin left behind is installed even when core is already at the
+  release: `› vx upgrade  plugins → 0.0.2`.
+- A plugin in another field than core is refused, so no install moves a
+  dependency's field.
+- The versions are pinned, so pnpm's `minimumReleaseAge` refuses a
+  release too young rather than mixing releases.
+- That error names `minimumReleaseAgeExclude`.
+- Under pnpm, a plain `pnpm install` follows. pnpm's `add` can leave a
+  peer set linked that the lockfile it wrote no longer names.
+- The lockfile plugin refuses such a tree.
+
+</div>
+</details>
 
 ### A project's vx and the global one
 
-Inside a project with its own vx, a global vx hands `vx upgrade` to
-the project's (§ Which vx runs), and one run moves both to the same
-version (`TAG`, or latest): first the project's dependency, then the
-global vx that started the run, each the way it was installed. Each
-line names its install, and a refusal names the one that failed
-(`vx upgrade: global vx /usr/local/bin/vx: cannot write to …`); a
-project that fails leaves the global as it was. The project's vx run
-directly (a package script, `node_modules/.bin/vx`) has no global behind it, so only
-the project moves.
+Inside a project with its own vx, a global `vx upgrade` moves both to
+the same version: the project's dependency first, then the global vx.
 
-`vx upgrade -g` (`--global`) moves only the global vx, wherever it
-runs: it never hands the call to a project's vx, and it never touches a
-`package.json` or a plugin. Run as the project's own vx, it refuses:
-`vx upgrade -g: no global vx ran — <path> is the project's own. Install
-one (bun add -g @vzn/vx), or run \`vx upgrade\` to move the project's`.
+`vx upgrade -g` (`--global`) moves only the global vx.
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
+
+- The global vx hands `vx upgrade` to the project's (§ Which vx runs).
+  One run moves both to `TAG`, or latest.
+- Each moves the way it was installed, and each line names its install.
+- A refusal names the one that failed:
+  `vx upgrade: global vx /usr/local/bin/vx: cannot write to …`.
+- A project that fails leaves the global as it was.
+- The project's vx run directly (a package script,
+  `node_modules/.bin/vx`) has no global behind it, so only the project
+  moves.
+- `-g` works wherever it runs. It never hands the call to a project's vx,
+  and never touches a `package.json` or a plugin.
+- Run as the project's own vx, `-g` refuses:
+
+```text
+vx upgrade -g: no global vx ran — <path> is the project's own. Install one (bun add -g @vzn/vx), or run `vx upgrade` to move the project's
+```
+
+</div>
+</details>
 
 ### After the upgrade
 
-After an upgrade that installed something, inside a workspace, the new
-vx runs `vx lock` at the workspace root, since a release may record the
-lock differently (an npm global install's own binary, which keeps its
-path), also when the project's moved and the global's then failed. A
-lock that fails, or a new vx that does not start, leaves the
-upgrade done and prints
-`vx upgrade  vx lock failed: run vx lock`. `vx upgrade -g` never locks.
+After an upgrade that installed something inside a workspace, the new vx
+runs `vx lock` at the workspace root. A release may record the lock
+differently.
 
-vx never installs Node or a package manager: one not on `PATH` is refused with the command to run. A vx run from a
-`bunx` or `pnpm dlx` cache has nothing installed to upgrade, and says to ask for
-`@vzn/vx@latest` instead.
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
+
+- For an npm global install, the new vx is its own binary, which keeps
+  its path.
+- It locks also when the project's vx moved and the global's then failed.
+- A lock that fails, or a new vx that does not start, leaves the upgrade
+  done and prints `vx upgrade  vx lock failed: run vx lock`.
+- `vx upgrade -g` never locks.
+- vx never installs Node or a package manager. One not on `PATH` is
+  refused with the command to run.
+- A vx run from a `bunx` or `pnpm dlx` cache has nothing installed to
+  upgrade. It says to ask for `@vzn/vx@latest` instead.
+
+</div>
+</details>
 
 ### Exit codes
 
@@ -3107,24 +3450,32 @@ vx never installs Node or a package manager: one not on `PATH` is refused with t
 
 ## `vx init`
 
-`vx init` sets up vx in a repository: it installs `@vzn/vx`, writes
-`.vx/workspace.ts` and a root `vx.config.ts`, and writes the lock. In a
-Turborepo or Nx repo it maps their config instead.
+`vx init` sets up vx in a repository. It installs `@vzn/vx`, writes
+`.vx/workspace.ts` and a root `vx.config.ts`, and writes the lock.
 
-It never writes through a link: a file that is a symlink, or one whose
-directory resolves outside the workspace (a cloned `.vx -> ../x`), is
-refused before the first write (`refusing to write <file>: <dir>
-resolves to <real>, outside the workspace; remove the link and run
-again`), with nothing written.
+In a Turborepo or Nx repo, it maps their config instead.
 
-A root `package.json` that does not parse is refused, by file, line and
-column, before anything is written.
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
 
-A `note` row names each `tsconfig*.json` beside a written `vx.config.ts`
-that would compile it (no `include`, an `outDir`): the build's output would
-move. That covers an Nx library's `tsconfig.lib.json` beside a solution
-`tsconfig.json`, with options read through `extends`. Add the file to that
-tsconfig's `exclude`, or pass `--mjs`.
+- It never writes through a link: a file that is a symlink is refused
+  before the first write, with nothing written.
+- So is a file whose directory resolves outside the workspace (a cloned
+  `.vx -> ../x`).
+- The message:
+  `refusing to write <file>: <dir> resolves to <real>, outside the workspace; remove the link and run again`.
+- A root `package.json` that does not parse is refused, by file, line
+  and column, before anything is written.
+- A `note` row names each `tsconfig*.json` beside a written
+  `vx.config.ts` that would compile it (no `include`, an `outDir`).
+- The build's output would move. That covers an Nx library's
+  `tsconfig.lib.json` beside a solution `tsconfig.json`.
+- Options are read through `extends`.
+- The fix: add the file to that tsconfig's `exclude`, or pass `--mjs`.
+
+</div>
+</details>
 
 ### Usage
 
@@ -3165,45 +3516,68 @@ vx init --dry
 
 ### Install
 
-`vx init` first installs `@vzn/vx` globally (the package manager that
-ran it, else Bun, also under Yarn 2+, which has no `yarn global`;
-skipped when the `vx` on `PATH` is already that
-version) and, under the topmost `package.json`, as a root
-devDependency with that repo's own manager (2026-10-20), then a plain
-`pnpm install` under pnpm (as `vx upgrade` does). The latest
-version is read from the registry that manager is configured for
-([Which registry](#which-registry)). A failed install stops init.
-Before the first install there is no lockfile, so init declares the
-`@vzn/vx-lockfile` plugin of the manager it installs with.
+`vx init` first installs `@vzn/vx`: globally, and as a root
+devDependency with your repo's own package manager.
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
+
+- The global install uses the package manager that ran init, else Bun.
+  Under Yarn 2+, which has no `yarn global`, it uses Bun too.
+- The global install is skipped when the `vx` on `PATH` is already that
+  version.
+- The devDependency goes under the topmost `package.json`.
+- Under pnpm, a plain `pnpm install` follows, as `vx upgrade` does.
+- The latest version is read from the registry that manager is
+  configured for ([Which registry](#which-registry)).
+- A failed install stops init.
+- Before the first install there is no lockfile, so init declares the
+  `@vzn/vx-lockfile` plugin of the manager it installs with.
+
+</div>
+</details>
 
 ### In a Turborepo or Nx repo
 
-When the directory it runs in, or one above it up
-to the git top-level (outside git, up to the `package.json` root below),
-holds a `turbo.json`, `turbo.jsonc` or `nx.json`, an exported Nx graph
-(`.nx/workspace-data/project-graph.json`), or a `lerna.json` whose root
-script runs `lerna run` through Nx (`useNx`, else Lerna 6+), as
-vx-migrate detects them, it runs `@vzn/vx-migrate` there, so `vx init` is the one command
-(2026-10-08): the latest release through `bun x`,
-never an installed one, so init always installs the latest `@vzn/vx`
-(or the running vx, when the registry's latest is older) and moves every `@vzn/vx-*` plugin the root lists to it
-(2026-10-16; a source checkout runs the nearest installed
-`node_modules/@vzn/vx-migrate` instead) (`BUN_BE_BUN=1` makes the compiled
-binary that runtime). `--dry`, `--format`, `--force`, `--mjs`,
-`--native` and `--keep` pass through, and the exit is vx-migrate's.
-vx-migrate maps the Turbo or Nx repo, one `vx.config.ts` per package; writes the workspace file with
-the plugins the repo calls for (the lockfile's, a remote cache the repo
-shows); installs them; and ends with `vx lock`. Its README holds the
-rules; [`bunx @vzn/vx-migrate`](#bunx-vznvx-migrate) below sums them up.
+Beside a `turbo.json` or `nx.json`, `vx init` runs `@vzn/vx-migrate`, so
+one command is enough.
+
+vx-migrate writes one `vx.config.ts` per package and the workspace file
+with the plugins the repo needs. It installs them and ends with
+`vx lock`.
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
+
+- It looks in the directory it runs in and each one above, up to the git
+  top-level. Outside git, up to the `package.json` root below.
+- It looks for a `turbo.json`, `turbo.jsonc` or `nx.json`, or an
+  exported Nx graph (`.nx/workspace-data/project-graph.json`).
+- It also takes a `lerna.json` whose root script runs `lerna run`
+  through Nx (`useNx`, else Lerna 6+), as vx-migrate detects them.
+- It runs vx-migrate's latest release through `bun x`, never an
+  installed one. `BUN_BE_BUN=1` makes the compiled binary that runtime.
+- So init always installs the latest `@vzn/vx`, or the running vx when
+  the registry's latest is older.
+- It moves every `@vzn/vx-*` plugin the root lists to that release.
+- A source checkout runs the nearest installed
+  `node_modules/@vzn/vx-migrate` instead.
+- `--dry`, `--format`, `--force`, `--mjs`, `--native` and `--keep` pass
+  through, and the exit is vx-migrate's.
+- The plugins it declares: the lockfile's, and a remote cache the repo
+  shows.
+- Its README holds the rules; [`bunx @vzn/vx-migrate`](#bunx-vznvx-migrate)
+  below sums them up.
+
+</div>
+</details>
 
 ### In any other repo
 
-With none of those files, it writes a workspace whose one project is
-the root, at the nearest workspace root up from the working directory,
-else at the topmost `package.json` in the git work tree, else there.
-Outside git it is the nearest `package.json`, or an outer one that
-declares a workspace, never a stray one above (the report names it
-under `root` when it is not the working directory):
+With none of those files, it writes a workspace whose one project is the
+root:
 
 ```ts
 // .vx/workspace.ts
@@ -3219,58 +3593,116 @@ import type { ProjectConfig } from '@vzn/vx/config'
 export default { tasks: {} } satisfies ProjectConfig
 ```
 
-Beside a lockfile at that `package.json` (`pnpm-lock.yaml`, `bun.lock`,
-`yarn.lock`, `package-lock.json`), the workspace declares its
-`@vzn/vx-lockfile` plugin (`plugins: [bun()]`), installed beside
-`@vzn/vx`, so a package's `^build` has project edges.
+It also writes `.vx/.gitignore` and `.vx/.gitattributes` and runs
+`vx lock`'s step. Then `next:` says to declare a task and run
+`vx lock && vx run <task>`.
 
-plus `.vx/.gitignore` and `.vx/.gitattributes`. Where the root package.json
-declares prettier or oxfmt (not merely hoisted), or a `.prettierignore` exists, it adds the
-locks and `.vx/cache` to `.prettierignore`: both read only the root's
-ignore files, and `prettier --check .` failed on them. Beside a
-`biome.json(c)` it names the `files.includes` lines biome needs. Where
-a package's tsconfig would compile the config it wrote and already lists
-an `exclude`, the config joins that list; with none, a note says to add
-one. Beside a `.moon/workspace.yml`, a note says moon's tasks are not
-migrated: vx reads no moon config. It then runs `vx lock`'s
-step, and `next:` says to declare a task and run `vx lock && vx run
-<task>`, preceded by `git init` outside a git work tree. Where that
-`package.json` has scripts, or declares a workspace (`workspaces`,
-`pnpm-workspace.yaml`), `next:` first names `bunx @vzn/vx-migrate`,
-which makes each package's scripts its tasks; it maps over the root
-`vx.config.ts` init wrote while that file is unchanged. The `@vzn/vx`
-import needs no install: the running vx serves its own core to that
-specifier (bin.ts registers the alias). A file already there is kept
-and named under `kept`; `--force` replaces it, and every file of
-another extension beside it, all named under `replaced` (the JSON's
-`replaced` lists only the files deleted). `--mjs` writes `.vx/workspace.mjs` and
-`vx.config.mjs`. `--dry` prints the files and writes nothing;
-`--dry --format json` prints the plan as one JSON document
-(`schemas/init.json`): `files` (each path and its whole text), `kept`,
-`replaced`, `todos`, `notes`, `next` and `installs` (the install
-commands the real run runs). `--native` and `--keep` answer
-a Turbo or Nx repo's question, so they are refused here. `--format json`
-without `--dry`, or with `--plugin`, is refused (`VX_E_USAGE`).
+Beside a lockfile (`pnpm-lock.yaml`, `bun.lock`, `yarn.lock`,
+`package-lock.json`), the workspace declares its `@vzn/vx-lockfile`
+plugin, say `plugins: [bun()]`. So a package's `^build` has project
+edges.
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
+
+**Where it writes**
+
+- At the nearest workspace root up from the working directory, else at
+  the topmost `package.json` in the git work tree, else right there.
+- Outside git: the nearest `package.json`, or an outer one that declares
+  a workspace, never a stray one above.
+- The report names the root under `root` when it is not the working
+  directory.
+- The lockfile plugin needs the lockfile at that `package.json`. It is
+  installed beside `@vzn/vx`.
+
+**Other tools' files**
+
+- Where the root package.json declares prettier or oxfmt (not merely
+  hoisted), or a `.prettierignore` exists, it adds the locks and
+  `.vx/cache` to `.prettierignore`.
+- Both tools read only the root's ignore files, and
+  `prettier --check .` failed on the locks.
+- Beside a `biome.json(c)`, it names the `files.includes` lines biome
+  needs.
+- Where a package's tsconfig would compile the config it wrote and lists
+  an `exclude`, the config joins that list. With none, a note says to add
+  one.
+- Beside a `.moon/workspace.yml`, a note says moon's tasks are not
+  migrated: vx reads no moon config.
+
+**What it prints next**
+
+- Outside a git work tree, `next:` starts with `git init`.
+- Where that `package.json` has scripts, or declares a workspace
+  (`workspaces`, `pnpm-workspace.yaml`), `next:` first names
+  `bunx @vzn/vx-migrate`.
+- That makes each package's scripts its tasks. It maps over the root
+  `vx.config.ts` init wrote, while that file is unchanged.
+- The `@vzn/vx` import needs no install: the running vx serves its own
+  core to that specifier (bin.ts registers the alias).
+
+**Files already there, and flags**
+
+- A file already there is kept and named under `kept`.
+- `--force` replaces it, and every file of another extension beside it,
+  all named under `replaced`.
+- The JSON's `replaced` lists only the files deleted.
+- `--mjs` writes `.vx/workspace.mjs` and `vx.config.mjs`.
+- `--dry` prints the files and writes nothing.
+- `--dry --format json` prints the plan as one JSON document
+  (`schemas/init.json`).
+- Its keys: `files` (each path and its whole text), `kept`, `replaced`,
+  `todos`, `notes`, `next` and `installs`.
+- `installs` holds the install commands the real run runs.
+- `--native` and `--keep` answer a Turbo or Nx repo's question, so they
+  are refused here.
+- `--format json` without `--dry`, or with `--plugin`, is refused
+  (`VX_E_USAGE`).
+
+</div>
+</details>
 
 ### `--plugin`
 
-`vx init --plugin <hook>` writes a plugin instead: `plugins/<hook>.ts`,
-a small runnable plugin for that hook (`executor`, `cache`,
-`telemetry`, `schedule`, `admit`, `commands`, `project`, `graph`,
-`key`), and `plugins/<seam>.test.ts`, which drives it through `run()`
-(`bun test`, with `@vzn/vx` installed). A plugin is named by the
-nearest `package.json`; when that one has no name (a monorepo root
-often has none), it also writes `plugins/package.json` naming the
-plugins `workspace-plugins`, or `definePlugin` would refuse them. It prints the line that
-declares it in the workspace file a run reads (`.vx/workspace.ts` when
-there is none). The templates are TypeScript, so `--mjs` with
-`--plugin` is refused, and so is a second seam. An existing file is refused without
-`--force`, a dangling symlink included; a symlink is refused with it too, since vx never
-writes through one, and so is a `plugins` directory that resolves outside the
-workspace. `--dry` names the files and writes nothing. The two files are
-`private/vx-plugin-examples/plugins`, which the gate runs, copied into
-core (`src/cli/plugin-templates.ts`) and held equal by
-`tests/plugin-templates.unsafe.test.ts`.
+`vx init --plugin <hook>` writes a small runnable plugin for that hook,
+and a test that drives it.
+
+```sh
+vx init --plugin executor   # writes plugins/executor.ts and plugins/executor.test.ts
+```
+
+The hooks: `executor`, `cache`, `telemetry`, `schedule`, `admit`,
+`commands`, `project`, `graph`, `key`. It prints the line that declares
+the plugin in your workspace file.
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
+
+- The test drives the plugin through `run()`: `bun test`, with `@vzn/vx`
+  installed.
+- A plugin is named by the nearest `package.json`.
+- When that one has no name (a monorepo root often has none), it also
+  writes `plugins/package.json`, naming the plugins `workspace-plugins`.
+- Without that name, `definePlugin` would refuse them.
+- The printed line goes in the workspace file a run reads:
+  `.vx/workspace.ts` when there is none.
+- The templates are TypeScript, so `--mjs` with `--plugin` is refused.
+  So is a second hook.
+- An existing file is refused without `--force`, a dangling symlink
+  included.
+- A symlink is refused with `--force` too, since vx never writes through
+  one.
+- So is a `plugins` directory that resolves outside the workspace.
+- `--dry` names the files and writes nothing.
+- The two files are `private/vx-plugin-examples/plugins`, which the gate
+  runs, copied into core (`src/cli/plugin-templates.ts`).
+- `tests/plugin-templates.unsafe.test.ts` holds the copies equal.
+
+</div>
+</details>
 
 ### Exit codes
 
@@ -3281,10 +3713,12 @@ core (`src/cli/plugin-templates.ts`) and held equal by
 
 ## `bunx @vzn/vx-migrate`
 
-Mapping a repo's own config to vx is `@vzn/vx-migrate`, its own
-package, run before a workspace file exists (it writes one); `vx init`
-runs it in a repo with a `turbo.json`, `turbo.jsonc`, `nx.json`, an
-exported Nx graph or Lerna on Nx —
+`@vzn/vx-migrate` turns a repo's own config into vx configs. It is its
+own package, and it writes the workspace file, so you run it before one
+exists.
+
+`vx init` runs it for you in a repo with a `turbo.json`, `turbo.jsonc`,
+`nx.json`, an exported Nx graph or Lerna on Nx.
 
 ```sh
 bunx @vzn/vx-migrate           # turbo.json, an Nx graph, vite-plus run.tasks, else package.json scripts → vx.config.ts (vx init hands it only Turbo and Nx)
@@ -3293,143 +3727,221 @@ bunx @vzn/vx-migrate --force   # overwrite existing vx.config.*
 bunx @vzn/vx-migrate --from nx # disambiguate when several sources are checked in (turbo, nx, vite-task, scripts)
 ```
 
-— In a Turbo or Nx repo it asks a terminal native (a `vx.config.ts`
-per package, the default) or keep (a workspace file declaring `turbo()`
-or `nx()`, which read the repo's config live); `--native` or `--keep`
-answer it, and without a terminal it is native. Both declare
-`turboCache()` / `nxCache()` when the repo shows a remote cache
-(turbo.json's `remoteCache`, a `turbo link`ed `.turbo/config.json`, or
-a CI file setting `TURBO_TOKEN` / `NX_SELF_HOSTED_REMOTE_CACHE_SERVER`),
-and name Nx Cloud, whose wire vx does not speak. Elsewhere each
-package's `package.json` scripts become its tasks, and the workspace
-file declares the `@vzn/vx-lockfile` plugin for the root's lockfile
-(with none yet, the one its install writes).
-What the package writes goes through core's migration seam
-(`applyMigration`, exported from `@vzn/vx`), which renders, guards
-against overwriting, writes and reports. The mapping rules live in the
-package's README.
+In a Turborepo or Nx repo, it asks you to pick:
+
+| Answer           | Writes                                                                            |
+| ---------------- | --------------------------------------------------------------------------------- |
+| native (default) | a `vx.config.ts` per package                                                      |
+| keep             | a workspace file declaring `turbo()` or `nx()`, which read the repo's config live |
+
+`--native` or `--keep` answers it. Without a terminal, it is native.
+
+In any other repo, each package's `package.json` scripts become its
+tasks.
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
+
+- Both answers declare `turboCache()` / `nxCache()` when the repo shows
+  a remote cache.
+- The signs: turbo.json's `remoteCache`, a `turbo link`ed
+  `.turbo/config.json`, or a CI file setting `TURBO_TOKEN` /
+  `NX_SELF_HOSTED_REMOTE_CACHE_SERVER`.
+- It names Nx Cloud, whose wire vx does not speak.
+- From scripts, the workspace file declares the `@vzn/vx-lockfile`
+  plugin for the root's lockfile; with none yet, the one its install
+  writes.
+- What it writes goes through core's migration seam (`applyMigration`,
+  exported from `@vzn/vx`). The seam renders, guards against
+  overwriting, writes and reports.
+- The mapping rules live in the package's README.
+
+</div>
+</details>
 
 ## Machine-readable output
 
 `vx show`, `vx info`, `vx why`, `vx last` and `vx cache clean` take
-`--format json`. Each prints one JSON document on one line, whose shape
-is a checked-in JSON Schema (draft 2020-12) shipped with the package:
-`schemas/show.json`, `schemas/info.json`, `schemas/why.json`,
-`schemas/last.json`, `schemas/cache.json`
-(`node_modules/@vzn/vx/schemas/` in an install). Every object closes its
-key set, so a field vx adds is a schema change, never a surprise.
-`tests/cli-json-schemas.test.ts` holds each verb's output to its schema,
-each declared field to some output, and each object's keys to the
-source type. `tests/cli-json-doc.test.ts` holds this page to the
-schemas: each `{ … }` a verb's section shows is an object its schema
-closes with those keys, each object the verb prints whole is shown, and
-`vx info`'s field list is its schema's top level.
+`--format json`. Each prints one JSON document on one line.
 
-A run's result as JSON is `vx last --format json`, read after the run
-from the run history: one row per task with its status, key and cache
+Each document's shape is a JSON Schema shipped with the package:
+
+| Verb             | Schema               |
+| ---------------- | -------------------- |
+| `vx show`        | `schemas/show.json`  |
+| `vx info`        | `schemas/info.json`  |
+| `vx why`         | `schemas/why.json`   |
+| `vx last`        | `schemas/last.json`  |
+| `vx cache clean` | `schemas/cache.json` |
+
+A run's result as JSON is `vx last --format json`, read from the run
+history after the run: one row per task, with its status, key and cache
 result. `vx run --dry --format json` prints the plan.
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
+
+- The schemas are JSON Schema draft 2020-12, in
+  `node_modules/@vzn/vx/schemas/` in an install.
+- Every object closes its key set, so a field vx adds is a schema
+  change, never a surprise.
+- `tests/cli-json-schemas.test.ts` holds each verb's output to its
+  schema, each declared field to some output, and each object's keys to
+  the source type.
+- `tests/cli-json-doc.test.ts` holds this page to the schemas: each
+  `{ … }` a verb's section shows is an object its schema closes with
+  those keys.
+- Each object the verb prints whole is shown, and `vx info`'s field list
+  is its schema's top level.
+
+</div>
+</details>
 
 ### Error codes
 
-A verb asked for JSON (`--format json`, `--format=json`, `--dry --format json`,
-before any `--`) answers a refusal on stdout too, as one line that
-`schemas/error.json` describes: `{"ok":false,"error":{"code","message","docs"}}`.
-`docs` links the code's section below, which says what to do;
-`vx docs <code>` prints that section. The exit code (1) and the
-prose on stderr do not change. Branch on the code; the message may change.
-A graph rule's code (`VX_E_CYCLE`, `VX_E_DEPENDS_ON`, `VX_E_OUTPUT_OVERLAP`,
-`VX_E_INPUT_IS_OUTPUT`, `VX_E_NESTED_INPUT`, `VX_E_NESTED_OUTPUT`,
-`VX_E_DEPENDENCY_RULE`) is `vx lock`'s refusal: an agent reads it as the
-`code` of a `vx lock --check --format json` problem. Every code is recorded
-in `tests/contract/error-codes.txt`; dropping or renaming one is a breaking
-change.
+A verb asked for JSON answers a refusal on stdout too, as one line:
+`{"ok":false,"error":{"code","message","docs"}}` (`schemas/error.json`).
+
+Branch on the code; the message may change. `docs` links the code's
+section below, which says what to do. `vx docs <code>` prints that
+section.
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
+
+- Asked for JSON means `--format json`, `--format=json` or
+  `--dry --format json`, before any `--`.
+- The exit code (1) and the prose on stderr do not change.
+- A graph rule's code is `vx lock`'s refusal: `VX_E_CYCLE`,
+  `VX_E_DEPENDS_ON`, `VX_E_OUTPUT_OVERLAP`, `VX_E_INPUT_IS_OUTPUT`.
+- So are `VX_E_NESTED_INPUT`, `VX_E_NESTED_OUTPUT` and
+  `VX_E_DEPENDENCY_RULE`.
+- An agent reads a graph rule's code as the `code` of a
+  `vx lock --check --format json` problem.
+- Every code is recorded in `tests/contract/error-codes.txt`. Dropping
+  or renaming one is a breaking change.
+
+</div>
+</details>
 
 #### `VX_E_USAGE`
 
 A flag, argument, selection or `VX_*` environment value the verb does
-not take. The message names it, and a close spelling the verb does take when there is one;
+not take. The message names it, and a close spelling the verb does take
+when there is one.
+
 `vx <verb> --help` lists every flag.
 
 #### `VX_E_UNKNOWN_COMMAND`
 
 No verb of that name here, core's or a declared plugin's. `vx --help`
-lists core's verbs. A plugin's verb exists once its plugin is in
-`.vx/workspace.ts` `plugins`; a task runs as `vx run <task>`.
+lists core's verbs.
+
+A plugin's verb exists once its plugin is in `.vx/workspace.ts`
+`plugins`. A task runs as `vx run <task>`.
 
 #### `VX_E_UNKNOWN_TASK`
 
 No project in scope declares a requested task. The message lists the
-tasks it found; `vx show --format json` lists each project's. Check the
-spelling, and the scope: `--filter`, `--all`, or the project the working
-directory is in. A run reads its configs from the lock, so a task
-added to a `vx.config` since the last `vx lock` is not there yet: run
-`vx lock`.
+tasks it found; `vx show --format json` lists each project's.
+
+Check the spelling, and the scope: `--filter`, `--all`, or the project
+the working directory is in.
+
+A run reads its configs from the lock, so a task added to a `vx.config`
+since the last `vx lock` is not there yet: run `vx lock`.
+
 `vx show <name>` answers it too when the name is neither a project nor a
 task any project declares.
 
 #### `VX_E_UNKNOWN_PROJECT`
 
-`vx show <project>#<task>` names a project the workspace does not have. A project is named
-by its config's `name`, else by a plugin (a lockfile plugin names it from
-its `package.json`), else by its directory; `vx show --format json` lists them.
+`vx show <project>#<task>` names a project the workspace does not have.
+
+A project is named by its config's `name`, else by a plugin (a lockfile
+plugin names it from its `package.json`), else by its directory.
+`vx show --format json` lists them.
 
 #### `VX_E_NO_HISTORY`
 
 `vx why` / `vx last` find no recorded run for what they were asked, or
-`vx last --live` no run in progress. Run the task once (`vx run <task>`);
-history is this checkout's own. Where nothing has run yet and no project
-declares the task, `vx why` says so and points at `vx show` instead.
+`vx last --live` no run in progress. Run the task once
+(`vx run <task>`); history is this checkout's own.
+
+Where nothing has run yet and no project declares the task, `vx why`
+says so and points at `vx show` instead.
 
 #### `VX_E_AMBIGUOUS`
 
 `vx why <task>` matches the task in several projects. Name one:
-`vx why <project>#<task>`. A run id that is the start of several
-recorded runs (`vx last <id>`, `--run <id>`) is refused the same way:
-type more of it.
+`vx why <project>#<task>`.
+
+A run id that is the start of several recorded runs (`vx last <id>`,
+`--run <id>`) is refused the same way: type more of it.
 
 #### `VX_E_CONFIG`
 
 A `vx.config.*` or `.vx/workspace.*` that does not load, throws or is
-refused. The message names the file and the field, or what the config
-(or a plugin it called, such as a factory refusing an option) threw and
-the line it threw at, then each `cause` it wraps (`; caused by: …`);
-fix that field (`vx docs <field>` prints its reference). `vx lock`
-names every project config that does not load at once. A project
-config's refusal is `vx lock`'s, not a run's: a run never evaluates one.
+refused. Fix that field; `vx docs <field>` prints its reference.
+
+The message names the file and the field, or what the config threw and
+the line it threw at. That includes a plugin it called, such as a
+factory refusing an option.
+
+Then the message names each `cause` it wraps (`; caused by: …`).
+
+`vx lock` names every project config that does not load at once. A
+project config's refusal is `vx lock`'s, not a run's: a run never
+evaluates one.
 
 #### `VX_E_CYCLE`
 
 The task graph has a cycle. The message names the loop; drop one of its
 `dependsOn` edges.
+
 `vx lock` refuses it, not a run: a run trusts the graph the lock holds.
 
 #### `VX_E_LOCK`
 
-A run reads its configs only from `.vx/projects.lock`, and that
-lock is missing, not one this vx reads (not JSON, another version, a
-hand-edited entry), holds no entry for a project the workspace has, has
-not seen a `vx.config` written since, or locks one that is gone. Or a
-plugin claims a lockfile (`bun()`, `pnpm()`, …) and
-`.vx/dependencies.lock` is missing, not one this vx reads, does not
-record that lockfile, or records digests it no longer resolves to: it
-changed since `vx lock` (an install).
-Run `vx lock`, then the verb again. Commit the lock; `vx lock --check`
-on CI fails one that no longer matches the configs.
+A run reads its configs only from `.vx/projects.lock`, and that lock is
+not one it can use. Run `vx lock`, then the verb again.
+
+The lock may be missing, or not one this vx reads: not JSON, another
+version, or a hand-edited entry.
+
+It may hold no entry for a project the workspace has, not have seen a
+`vx.config` written since, or lock one that is gone.
+
+Or a plugin claims a lockfile (`bun()`, `pnpm()`, …) and
+`.vx/dependencies.lock` is missing or not one this vx reads.
+
+Or that lock does not record the lockfile, or records digests it no
+longer resolves to: the lockfile changed since `vx lock` (an install).
+
+Commit the lock. `vx lock --check` on CI fails one that no longer
+matches the configs.
 
 #### `VX_E_NO_WORKSPACE`
 
 No `.vx/workspace.*` in the working directory or a parent, up to the git
-top-level (a file above the checkout never counts). The file marks the
-workspace root, so run `vx init` to create one. Outside git, one another
-user owns does not count (`security.md`); the message names it. One a
-sparse checkout left out names `git sparse-checkout add .vx` instead, and
-`vx init` refuses rather than write a second one.
+top-level. A file above the checkout never counts.
+
+The file marks the workspace root, so run `vx init` to create one.
+
+Outside git, one another user owns does not count (`security.md`); the
+message names it.
+
+One a sparse checkout left out names `git sparse-checkout add .vx`
+instead, and `vx init` refuses rather than write a second one.
 
 #### `VX_E_CACHE_VERSION`
 
 A reading verb met a cache index from another vx version. It reads
-nothing from it and leaves it be; the next `vx run` resets it. Or run the
-vx version that wrote it.
+nothing from it and leaves it be; the next `vx run` resets it. Or run
+the vx version that wrote it.
 
 #### `VX_E_REFUSED`
 
@@ -3440,11 +3952,14 @@ message is that plugin's or check's: do what it says.
 #### `VX_E_FS`
 
 The file system refused a read or a write, or the cache index could not
-be opened: permissions, a full disk, a path longer than it allows
-(`ENAMETOOLONG`, an output past PATH_MAX), a file where the cache directory
-goes, a directory where `cache.db` goes. The message names the path. Free
-space (`vx cache clean --max-size <size>` trims the cache), grant the
-access, shorten the path, or move it away, then re-run.
+be opened. The message names the path.
+
+Causes: permissions, a full disk, a path longer than it allows
+(`ENAMETOOLONG`, an output past PATH_MAX). Or a file where the cache
+directory goes, or a directory where `cache.db` goes.
+
+Free space (`vx cache clean --max-size <size>` trims the cache), grant
+the access, shorten the path, or move it away. Then re-run.
 
 #### `VX_E_FDS`
 
@@ -3453,14 +3968,19 @@ tasks at once (`--concurrency`), then re-run.
 
 #### `VX_E_AFFECTED_BASE`
 
-`--affected` (or `--affected=<ref>`) has no base to diff against: the
-ref does not resolve, is a range (`A..B`) or an exclusion (`^A`), names
-a path inside a commit, or the repository has no history to compare
-with. Pass a branch or commit you have locally, alone:
-`--affected=origin/main`. A shallow clone fetches its base from origin
-itself; when origin cannot give it, fetch it (`git fetch --depth=1 origin <base>`),
-and with no origin remote, from its URL (`git fetch --depth=1 <url> <base>`) or
-add one (`git remote add origin <url>`).
+`--affected` (or `--affected=<ref>`) has no base to diff against. Pass a
+branch or commit you have locally, alone: `--affected=origin/main`.
+
+The ref does not resolve, is a range (`A..B`) or an exclusion (`^A`),
+names a path inside a commit, or the repository has no history to
+compare with.
+
+A shallow clone fetches its base from origin itself. When origin cannot
+give it, fetch it: `git fetch --depth=1 origin <base>`.
+
+With no origin remote, fetch from its URL
+(`git fetch --depth=1 <url> <base>`) or add one
+(`git remote add origin <url>`).
 
 #### `VX_E_NO_GIT`
 
@@ -3470,101 +3990,134 @@ not inside a git work tree. The message says which. Install git, or run
 
 #### `VX_E_GIT`
 
-A git command vx runs to read the diff or list a run's inputs failed;
-the message carries git's exit and its own words. Run that command in the workspace to see
-why (a broken index, a missing object in a partial clone).
+A git command vx runs to read the diff or list a run's inputs failed.
+The message carries git's exit and its own words.
+
+Run that command in the workspace to see why (a broken index, a missing
+object in a partial clone).
 
 #### `VX_E_NETWORK`
 
 `vx docs` could not read its pages from GitHub: no network, a proxy that
 refuses, or GitHub's limit on anonymous listings. The message carries
-what failed. Retry with a network, set `GITHUB_TOKEN` or `GH_TOKEN` to
-lift the limit, or read the same pages on the site,
+what failed.
+
+Retry with a network, set `GITHUB_TOKEN` or `GH_TOKEN` to lift the
+limit, or read the same pages on the site,
 `https://vznjs.github.io/vx/`.
 
 #### `VX_E_DEPENDS_ON`
 
-A task's `dependsOn` names a task or project that is not declared, or uses
-a form vx does not take (a bare wildcard, a negation, a pattern in
-`pkg#task`). The message names the task and the entry: declare the
-target, fix its spelling, or drop the entry.
+A task's `dependsOn` names a task or project that is not declared, or
+uses a form vx does not take: a bare wildcard, a negation, a pattern in
+`pkg#task`.
+
+The message names the task and the entry: declare the target, fix its
+spelling, or drop the entry.
+
 `vx lock` refuses it, not a run: a run trusts the graph the lock holds.
 
-A `^task` with no edge source is refused too: ``<id>: ^build needs
-project edges; add pnpm()/bun()/npm()/yarn() from @vzn/vx-lockfile to
-plugins in .vx/workspace.ts and install so its lockfile exists, or a plugin that returns `deps` ``. A lockfile plugin
-whose lockfile is absent gives no edges. Core reads no edge from a manifest, so with no plugin
-returning `deps` every `^` would resolve to nothing and fold no
-upstream into the key. Declare the lockfile plugin in
-`.vx/workspace.ts` (or a plugin of your own that returns `deps`); a run
-refuses it as well when the plugin left the workspace after the lock.
+A `^task` with no edge source is refused too:
+
+```text
+<id>: ^build needs project edges; add pnpm()/bun()/npm()/yarn() from @vzn/vx-lockfile to plugins in .vx/workspace.ts and install so its lockfile exists, or a plugin that returns `deps`
+```
+
+- A lockfile plugin whose lockfile is absent gives no edges.
+- Core reads no edge from a manifest. With no plugin returning `deps`,
+  every `^` would resolve to nothing and fold no upstream into the key.
+- Declare the lockfile plugin in `.vx/workspace.ts`, or a plugin of your
+  own that returns `deps`.
+- A run refuses it as well when the plugin left the workspace after the
+  lock.
 
 #### `VX_E_OUTPUT_OVERLAP`
 
 Two tasks declare overlapping outputs with no `dependsOn` edge between
 them, so whichever runs second deletes the other's files. Give each task
 its own output path, or make one depend on the other.
+
 `vx lock` refuses it, not a run: a run trusts the graph the lock holds.
 
 #### `VX_E_INPUT_IS_OUTPUT`
 
-A task's `inputs` match outputs: its own (vx cleans outputs before
-a run, so it would delete its sources; `files` and `workspaceFiles` are
-compared across, read from the root) or another task's (its key must
-not read them; `dependsOn` already cascades). Exclude the outputs from
-the inputs with a `!` glob, as the message shows, or declare no outputs
-for a task that rewrites files in place.
-`vx lock` refuses it, not a run: a run trusts the graph the lock holds.
-A run refuses the one shape the lock cannot see: an output directory
-that is a symbolic link into a directory the task's own inputs can match
-below (`dist -> src` under `src/**` or `**/*.ts`). Remove the link.
+A task's `inputs` match outputs, its own or another task's. Exclude the
+outputs from the inputs with a `!` glob, as the message shows.
+
+Or declare no outputs for a task that rewrites files in place.
+
+- Its own outputs: vx cleans outputs before a run, so it would delete
+  its sources.
+- `files` and `workspaceFiles` are compared across, read from the root.
+- Another task's outputs: its key must not read them, and `dependsOn`
+  already cascades.
+- `vx lock` refuses it, not a run: a run trusts the graph the lock
+  holds.
+- A run refuses the one shape the lock cannot see: an output directory
+  that is a symbolic link into a directory its inputs can match below.
+- Say `dist -> src` under `src/**` or `**/*.ts`. Remove the link.
 
 #### `VX_E_NESTED_INPUT`
 
 A task's `inputs.files` entry is rooted inside a project nested in its
-own (`dist/**` where `dist/` holds a config): a project's globs never
-reach another project's files, so it would key nothing. Depend on a
-task of the nested project, or name the files in
-`inputs.workspaceFiles`, as the message shows. A glob rooted in a nested
-workspace (`dist/` holding its own `.vx/workspace.*`) is not refused: it
-keys that workspace's files.
+own, say `dist/**` where `dist/` holds a config. A project's globs never
+reach another project's files, so it would key nothing.
+
+Depend on a task of the nested project, or name the files in
+`inputs.workspaceFiles`, as the message shows.
+
+A glob rooted in a nested workspace (`dist/` holding its own
+`.vx/workspace.*`) is not refused: it keys that workspace's files.
+
 `vx lock` refuses it, not a run: a run trusts the graph the lock holds.
 
 #### `VX_E_NESTED_OUTPUT`
 
 A task's `outputs.files` entry is rooted inside a project nested in its
-own (`sub/dist/**` where `sub/` holds a config): a project's globs never
-reach another project's files, so it would save nothing. Let a task of
-the nested project write the files, or name them in
-`outputs.workspaceFiles`, as the message shows. A nested workspace
-(`sub/` holding its own `.vx/workspace.*`) is refused the same way, though
-an input glob may reach into one.
+own, say `sub/dist/**` where `sub/` holds a config. A project's globs
+never reach another project's files, so it would save nothing.
+
+Let a task of the nested project write the files, or name them in
+`outputs.workspaceFiles`, as the message shows.
+
+A nested workspace (`sub/` holding its own `.vx/workspace.*`) is refused
+the same way, though an input glob may reach into one.
+
 `vx lock` refuses it, not a run: a run trusts the graph the lock holds.
 
 #### `VX_E_DEPENDENCY_RULE`
 
 `vx lock` found a project depending on one a `run.rules.dependencies`
-rule denies or does not allow. A header counts the broken edges and
-each indented line under it names both projects and the rule. Drop the dependency, or change the project's tags or the rule.
+rule denies or does not allow.
+
+A header counts the broken edges, and each indented line under it names
+both projects and the rule. Drop the dependency, or change the project's
+tags or the rule.
 
 #### `VX_E_INTERNAL`
 
-A defect in vx: stderr carries the stack, then each `cause` under it as
-a `Caused by:` line with its stack, then a line asking for a report.
-(A config's own throw is `VX_E_CONFIG`; a plugin hook's is
-`VX_E_REFUSED` or the plugin's code.) Report it with that stack at
+A defect in vx. Report it with its stack at
 https://github.com/vznjs/vx/issues.
+
+stderr carries the stack, then each `cause` under it as a `Caused by:`
+line with its stack, then a line asking for a report.
+
+A config's own throw is `VX_E_CONFIG`. A plugin hook's is `VX_E_REFUSED`
+or the plugin's code.
 
 A plugin can give its refusal a code: `new UserError(message, 'MY_CODE')`.
 The code holds whether a hook, `setup` or a verb of the plugin throws it.
 
-**Streams.** A verb whose stdout is a product (a `--format json`
-document, `--dry` / `--dry --format json`, a completion
-script) writes that product alone there; a notice or warning it meets
-on the way (a cache index from another vx version, a plugin's warning) goes
-to stderr, as every refusal does. `vx run`'s stdout is the run's frame,
-the tasks' output it carries. `tests/cli-streams.test.ts` holds each
-product verb to it under a notice.
+**Streams.** A verb whose stdout is a product writes that product alone
+there: a `--format json` document, `--dry` / `--dry --format json`, a
+completion script.
+
+A notice or warning it meets on the way goes to stderr, as every refusal
+does: a cache index from another vx version, a plugin's warning.
+
+`vx run`'s stdout is the run's frame, the tasks' output it carries.
+`tests/cli-streams.test.ts` holds each product verb to it under a
+notice.
 
 ## `vx show`
 
