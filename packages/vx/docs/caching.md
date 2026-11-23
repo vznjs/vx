@@ -337,8 +337,13 @@ add` under a clean filter (`core.autocrlf=true`, a `text` rule)
     (`.env*` over an ignored `.env.local`, `config/*.json`) still leaves
     it out, but `vx lock` and the miss name it: `inputs leave out git-ignored
 .env.local (matched by .env*)`, with the literal that folds it. A
-    `**` glob is asked only for the `.env*` files beside the config, so
-    an ignored `.env.local` is named and an ignored `node_modules` is not.
+    `**` glob is asked only for the `.env*` files where its `**` starts
+    (beside the config for `**`, in `env/` for `env/**`), so an ignored
+    `.env.local` is named and an ignored `node_modules` is not.
+    A cached task with outputs that no input points at a `.env`,
+    `.env.local`, `.env.<mode>` or `.env.<mode>.local` beside its config
+    gets a `vx lock` note too: Vite, Next and Bun load those on their own.
+    `'!.env*'` says the task reads none.
     A **glob** matching nothing stays silent while another glob of the
     task matches a file, and so does a literal naming a path that does
     not exist, until it does. When no glob matches (a literal does not
