@@ -202,7 +202,8 @@ export async function emitMainPackage(args: { version: string; outDir: string })
     typesVersions: corePkg.typesVersions,
     // The CLI: a sh launcher that execs the matching platform binary (no
     // Node start on the common path), Node's when run by `node` (Yarn 2+).
-    bin: { vx: './launcher.cjs' },
+    // No `./`: npm rewrites one on publish, warning each time.
+    bin: { vx: 'launcher.cjs' },
     engines: { node: '>=18' },
     optionalDependencies: allOptional(version),
     // Runtime deps the library source needs when imported (the binary embeds
@@ -228,6 +229,16 @@ interface WorkspaceManifest {
   devDependencies?: Record<string, string>
   scripts?: Record<string, string>
   [field: string]: unknown
+}
+
+/** Each bin path without a leading `./`; any other value as it is. */
+function binPaths(bin: unknown): unknown {
+  const clean = (p: string): string => p.replace(/^\.\//, '')
+  if (typeof bin === 'string') return clean(bin)
+  if (bin === null || typeof bin !== 'object') return bin
+  return Object.fromEntries(
+    Object.entries(bin as Record<string, string>).map(([name, p]) => [name, clean(p)]),
+  )
 }
 
 /** `deps` with every `@vzn/*` range set to `range`; absent stays absent. */
@@ -282,6 +293,8 @@ export async function emitPluginPackages(args: {
     await writeJson(join(dir, 'package.json'), {
       ...published,
       version,
+      // No `./`: npm rewrites one on publish, warning each time.
+      bin: binPaths(pkg.bin),
       dependencies: atRelease(pkg.dependencies, version),
       peerDependencies: atRelease(pkg.peerDependencies, `^${version}`),
       files: [...files, 'LICENSE'],

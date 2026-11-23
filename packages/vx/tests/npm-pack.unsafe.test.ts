@@ -147,6 +147,15 @@ describe('the npm tarballs', () => {
       },
       PACK_TIMEOUT_MS,
     )
+
+    // npm rewrites a `./` bin on publish and warns "script name was cleaned"
+    // for each (seen publishing 0.0.660 to a local registry).
+    it(`${name}: no bin path npm would rewrite`, () => {
+      const manifest = JSON.parse(readFileSync(path.join(dir, 'package.json'), 'utf8')) as {
+        bin?: Record<string, string>
+      }
+      expect(Object.values(manifest.bin ?? {}).filter((b) => b.startsWith('./'))).toEqual([])
+    })
   }
 
   it('a record exists for each package, and none for another', () => {
