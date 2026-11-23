@@ -21,7 +21,6 @@ const post = kind && route.entry.data.date ? await postAt(route.id) : undefined
 
 {
   section === 'home' ||
-  section === 'features' ||
   (kind === undefined && route.entry.data.template === 'splash') ? (
     <span id={PAGE_TITLE_ID} />
   ) : post ? (

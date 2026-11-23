@@ -44,7 +44,7 @@ export function cleanUrlFor(srcRel: string): string {
   if (srcRel === 'modules/README.md') return 'modules/'
   if (srcRel === 'modules/index.md') return 'modules/public-surface/'
   if (srcRel === 'turbo-nx-support.md') return 'compare/turbo-nx-support/'
-  // `features/` is the Features hub (src/pages/features/).
+  // The one-line list of every feature.
   if (srcRel === 'features.md') return 'all-features/'
   // Astro slugs each path segment (github-slugger), which lowercases and
   // drops punctuation: `design/roadmap-1.0.md` is served at
