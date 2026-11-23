@@ -1,0 +1,30 @@
+---
+// The outputs rule. Without JavaScript it shows a fixed table of paths.
+// `output-rule.ts` reads `.path` and `.say`.
+import Demo from '../Demo.astro'
+import { outputRule } from './model/task-fields.js'
+
+const ROWS = ['dist/index.js', 'dist', 'dist/**', 'coverage/*.json']
+const WORDS = { required: 'must exist, or the task fails', optional: 'may match nothing', empty: '' }
+---
+
+<Demo name="output-rule">
+  <table>
+    <thead><tr><th>outputs.files</th><th>after the command</th></tr></thead>
+    <tbody>
+      {
+        ROWS.map((r) => (
+          <tr>
+            <td><code>{r}</code></td>
+            <td class={outputRule(r) === 'required' ? 'is-warn' : 'is-ok'}>{WORDS[outputRule(r)]}</td>
+          </tr>
+        ))
+      }
+    </tbody>
+  </table>
+  <div class="vx-row try" hidden>
+    <label class="vx-label" for="vx-out-path">Try a path:</label>
+    <input id="vx-out-path" class="path" type="text" placeholder=".next/**" spellcheck="false" />
+  </div>
+  <p class="say vx-say" aria-live="polite" hidden></p>
+</Demo>

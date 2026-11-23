@@ -1,87 +1,277 @@
 ---
 title: Tasks
-description: Declare what each task runs and what must finish first.
+description: Teach vx what to run, in what order, and when to skip it.
 ---
 
+import { Aside, Badge } from '@astrojs/starlight/components'
 import Diagram from '../../../components/guide/diagram/Diagram.astro'
-import { taskGraph } from '../../../components/docs/pictures.js'
-import { Aside } from '@astrojs/starlight/components'
+import { cacheKey, taskGraph } from '../../../components/docs/pictures.js'
 import GraphExplorer from '../../../components/demos/GraphExplorer.astro'
+import DependsOn from '../../../components/demos/DependsOn.astro'
+import OutputRule from '../../../components/demos/OutputRule.astro'
+import { Levels, Deeper, Concept, Quiz, Takeaway, NextStep } from '../../../components/learn'
 
-A task is one shell command in a project's `vx.config.ts`. `dependsOn`
-says what must finish first; vx runs the rest in parallel.
+A task is **one command** vx runs for you. This page grows one small
+workspace, `ui` and `web`, from a single lint task to a cached, ordered
+build.
 
-```ts title="packages/app/vx.config.ts"
+```ts title="packages/ui/vx.config.ts"
 import { defineProject } from '@vzn/vx/config'
 
 export default defineProject({
   tasks: {
-    codegen: {
-      exec: { command: 'graphql-codegen' },
-      inputs: { files: ['schema.graphql'] }, outputs: { files: ['src/gen/**'] }, cache: true,
+    lint: {
+      exec: { command: 'oxlint src' },
     },
-    build: {
-      description: 'bundle the app into dist/',
-      dependsOn: ['codegen', '^build'],
-      exec: { command: 'vite build' },
-      // codegen's output reaches this key through codegen's own key; a key
-      // that read it could not be known until codegen ran, so vx refuses it.
-      inputs: { files: ['src/**', '!src/gen/**'] }, outputs: { files: ['dist/**'] }, cache: true,
-    },
-    e2e: {
-      dependsOn: ['build', 'api#build'],
-      exec: { command: 'playwright test', timeout: '10m', retries: 1 },
-    },
-    // A group: no command, it only runs its dependencies.
-    ci: { dependsOn: ['build', 'e2e'] },
   },
 })
 ```
 
-<Diagram {...taskGraph} />
+<Levels />
 
----
+<Concept term="Task">
+  One command in one project, with a name. vx decides when it runs, and
+  whether it needs to run at all.
+</Concept>
 
-## `dependsOn`
+## 1. Run a command
 
-| `dependsOn`   | Runs first                                                        |
-| ------------- | ----------------------------------------------------------------- |
-| `'build'`     | `build` in this package                                           |
-| `'^build'`    | `build` in each package this one depends on ([a lockfile plugin's edges](../lockfiles/)) |
-| `'api#build'` | `build` in the `api` package                                      |
-| `'build.*'`   | every task in this package whose name matches                     |
+The task's name is `lint`; `exec.command` is what runs, from the project's
+folder. Run it in every project that has it:
 
-A task-name pattern is allowed: `dependsOn: ['build.*']`, or `'^build.*'`.
-Bare wildcards and negation (`*`, `!task`) are not.
-A cycle or a missing `'pkg#task'` is an error.
+```ansi
+[2m$[0m vx run lint --all
 
----
-
-## Groups
-
-A task with no `exec` is a group: it only runs its dependencies.
-
-```ts
-ci: { dependsOn: ['build', 'e2e'] },
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mTasks[0m[4m[58;2;110;118;129m     [2mstatus  cache     ±usual    time   cpu    mem outputs  blocks worker         task[0m[4m[58;2;110;118;129m                           [0m
+            [38;2;34;197;94msuccess[0m [2mno-cache[0m       [2m—[0m    [38;2;203;213;225m66ms[0m   [2m91%[0m   [2m78MB[0m       [2m—[0m       [2m0[0m [2mlocal[0m          [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;232;121;249mlint[0m
 ```
 
-<Aside title="A package with no build">
-  A package that declares no `build` gets a default one: a group behind
-  `^build`, keyed on all its files, so editing a package consumed as source
-  re-runs its dependents. `vx show` lists it as a group.
-</Aside>
+The row says `success`. `no-cache` means vx ran it fresh, because you
+did not ask it to cache.
+
+<Takeaway>run any command through vx: a linter, a test runner, a script.</Takeaway>
+
+<Deeper level="patterns" title="Many steps, and a label">
+
+`exec.command` is one shell line. Join steps with `&&`:
+`'vite build && cp README.md dist/'`. One command per task keeps each
+step cacheable on its own, so two steps that cache apart are two tasks.
+
+`description` is a one-line label for `vx run`'s picker and `--dry`:
+`description: 'bundle the app into dist/'`.
+
+</Deeper>
 
 ---
 
-## When a task fails
+<a id="dependson"></a>
 
-| Flag          | vx                                                          |
-| ------------- | ----------------------------------------------------------- |
-| (none)        | skips its transitive dependents and runs the rest           |
-| `--fail-fast` | kills the running tasks and stops the run at once           |
+## 2. Put tasks in order
 
-Without the flag, a broken `@demo/ui#build` skips the two tasks that need
-it, and each row names the task that blocked it:
+`web` imports `ui`, so `ui` must build first. `dependsOn` says so:
+
+```ts title="packages/web/vx.config.ts" mark={6}
+import { defineProject } from '@vzn/vx/config'
+
+export default defineProject({
+  tasks: {
+    build: {
+      dependsOn: ['^build'],
+      exec: { command: 'vite build' },
+    },
+  },
+})
+```
+
+The `^` means "`build` in **every project I import**". vx reads who
+imports whom from your lockfile, through a [lockfile plugin](../lockfiles/).
+
+```ansi
+[2m$[0m vx run build --all
+
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mTasks[0m[4m[58;2;110;118;129m     [2mstatus  cache     ±usual    time   cpu    mem outputs  blocks worker         task[0m[4m[58;2;110;118;129m                           [0m
+            [38;2;34;197;94msuccess[0m [2mno-cache[0m   [2m−24ms[0m   [38;2;203;213;225m214ms[0m  [2m106%[0m  [2m112MB[0m       [2m—[0m       [38;2;203;213;225m1[0m [2mlocal[0m          [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;34;197;94msuccess[0m [2mno-cache[0m   [2m+20ms[0m   [38;2;203;213;225m196ms[0m  [2m113%[0m  [2m111MB[0m       [2m—[0m       [2m0[0m [2mlocal[0m          [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m
+```
+
+Look at `blocks`: `ui#build` held back one task, `web#build`, until it
+was done. Tasks with nothing between them run at the same time.
+
+Try each kind of entry on `web#build` here:
+
+<DependsOn />
+
+| Entry | Waits for |
+| --- | --- |
+| `'lint'` | `lint` in this project |
+| `'^build'` | `build` in every project this one imports |
+| `'api#build'` | `build` in the `api` project |
+| `'gen-*'` | every task in this project whose name matches |
+| `'^gen-*'` | matching tasks in every project this one imports |
+
+<Quiz q="web imports ui. Which entry on web#test runs ui#build first?">
+  `'^build'`. Plain `'build'` would wait for `web#build` instead.
+</Quiz>
+
+<Aside type="caution" title="Refused before anything runs">
+  A cycle, a missing `'api#build'`, a bare `'*'` and `'!name'` stop the
+  run with an error.
+</Aside>
+
+<Takeaway>build a library before the app that imports it, every time.</Takeaway>
+
+---
+
+## 3. Skip work already done
+
+Add three fields and vx skips a build whose files did not change:
+
+```ts title="packages/ui/vx.config.ts" ins={3-5}
+build: {
+  exec: { command: 'vite build' },
+  inputs: { files: ['src/**', 'vite.config.js'] },
+  outputs: { files: ['dist/index.js'] },
+  cache: true,
+},
+```
+
+| Field | Says |
+| --- | --- |
+| `inputs.files` | the files that change the result |
+| `outputs.files` | the files the command makes |
+| `cache` | `true` to save and reuse them |
+
+vx hashes the inputs into a **key**. A key it has seen restores the
+outputs instead of running:
+
+<Diagram {...cacheKey} />
+
+Give `web`'s build the same three fields, then run it twice. The second
+run finds both keys:
+
+```ansi
+[2m$[0m vx run build --all
+
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mSummary[0m[4m[58;2;110;118;129m                                                                                                       [2mvx 0.0.0[0m
+  [2mtasks   [0m  [38;2;34;197;94m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
+            [38;2;34;197;94m2 success[0m [2m·[0m [2m2 total[0m
+  [2mcache   [0m  [38;2;34;197;94m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
+            [2mlocal[0m [38;2;34;197;94m2✓[0m
+
+  [2mtime    [0m  27ms
+```
+
+`2✓` is two hits. The run took 27 ms, because no `vite build` ran.
+
+### Outputs that must exist
+
+A plain path in `outputs.files` **must exist** when the command ends. A
+path with a wildcard may match nothing.
+
+<OutputRule />
+
+If `vite build` writes `dist/index.js` but you declared `dist/ui.js`, the
+task fails and nothing is saved:
+
+```ansi
+[2m$[0m vx run build --filter @demo/ui
+
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mTasks[0m[4m[58;2;110;118;129m     [2mstatus  cache     ±usual    time   cpu    mem outputs  blocks worker         task[0m[4m[58;2;110;118;129m                           [0m
+            [38;2;239;68;68mfailed[0m  [2mmiss[0m       [38;2;34;197;94m−61ms[0m   [38;2;203;213;225m177ms[0m  [2m111%[0m  [2m110MB[0m       [2m—[0m       [2m0[0m [2mlocal[0m          [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m
+
+[2m┌─[0m [1m[38;2;192;132;252m@demo/ui[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m>[0m [1m[38;2;239;68;68mfailed (exited 0, no file matched dist/ui.js)[0m
+
+[2mpackages/ui $ vite build[0m
+
+[2m├─[0m [1mOUTPUT[0m [2m────────────────────────────────────────────────────[0m
+
+[36mvite v8.3.8 [32mbuilding client environment for production...[36m[39m
+transforming...
+[32m✓[0m 2 modules transformed.
+rendering chunks...
+computing gzip size...
+[2mdist/[0m[36mindex.js  [0m[1;2m0.06 kB[0m[2m │ gzip: 0.08 kB[0m
+
+[32m✓ built in 22ms[39m[0m
+
+[2m└─[0m [1m[38;2;192;132;252m@demo/ui[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(177ms)[0m [1m[38;2;239;68;68mfailed (exited 0, no file matched dist/ui.js)[0m
+```
+
+The row names the missing file. Fix the path, or the command.
+
+<Takeaway>make a second build take milliseconds, restoring exactly the files the command made.</Takeaway>
+
+<Deeper level="details" title="Everything a key can read">
+
+| Field | What it adds to the key |
+| --- | --- |
+| `inputs.files` <Badge text="required" /> | project files, as globs; `!` excludes; `[]` for none |
+| `inputs.workspaceFiles` | files outside the project, from the workspace root (a root `tsconfig.json`) |
+| `inputs.env` | the values of these variables (does not pass them to the command) |
+| `inputs.tasks` | which upstream tasks' keys count; default all (`['*', '^*']`), `[]` for none, `'!name'` drops one |
+| `inputs.runtime` | the output of commands run in the project at hash time (`'node -v'`) |
+| `inputs.workspaceRuntime` | the same, run once at the root for the whole run |
+| `inputs.stability.strategy` | what a write to an input mid-run means: `'immutable'` (default) never saves, `'mutable'` allows a rewrite to the same bytes, `'unchecked'` skips the check |
+| `inputs.stability.severity` | `'warn'` (default) keeps the run green, `'error'` fails the task |
+
+An upstream task's key counts, never its files. That is why `inputs.files`
+leaves out a file another task generates: list that task in `dependsOn`
+instead.
+
+| Field | Does |
+| --- | --- |
+| `outputs.files` <Badge text="required" /> | project files the task makes; `[]` when it makes none |
+| `outputs.workspaceFiles` | files it makes outside the project, from the workspace root |
+| `outputs.clean` | `false` keeps old outputs for the command (an incremental build); default `true` removes them first |
+
+Every field of a task is in its key, `description` included, except
+`exec.remote` and `exec.worker`: where a task runs says nothing about what
+it makes. More in [Caching](../caching/).
+
+</Deeper>
+
+---
+
+## 4. Give the command its variables
+
+A task sees **no** variable from your shell unless you pass it:
+
+```ts title="packages/web/vx.config.ts" mark={4-8}
+build: {
+  exec: {
+    command: 'vite build',
+    env: {
+      define: { NODE_ENV: 'production' },
+      passThrough: ['CI'],
+      secret: ['SENTRY_AUTH_TOKEN'],
+    },
+  },
+  inputs: { files: ['src/**', 'index.html'], env: ['VITE_API_URL'] },
+},
+```
+
+| Field | The command sees | In the key |
+| --- | --- | --- |
+| `exec.env.define` | this exact value | yes |
+| `exec.env.passThrough` | your shell's value | no |
+| `exec.env.secret` | your shell's value, shown as `***` in output | no |
+| `inputs.env` | nothing (add it to `passThrough` too) | yes |
+
+<Aside type="note">
+  Names with `TOKEN`, `SECRET`, `KEY` or `PASSWORD` are masked anyway.
+  Full rules in [Environment variables](../environment-variables/).
+</Aside>
+
+<Takeaway>hand a build its API URL and a secret, and know which change re-runs it.</Takeaway>
+
+---
+
+<a id="when-a-task-fails"></a>
+
+## 5. Handle failures and hangs
+
+By default a failed task skips only what waits on it. Everything else
+runs to the end, so one run shows every failure:
 
 ```ansi
 [2m$[0m vx run build test --all
@@ -111,50 +301,137 @@ file: [38;2;6;182;212m/repo/packages/ui/src/index.js:2:0[38;2;239;68;68m
 [2m└─[0m [1m[38;2;192;132;252m@demo/ui[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(212ms)[0m [1m[38;2;239;68;68mfailed (exit 1)[0m
 ```
 
-```sh
-vx run test --all --fail-fast
+Each skipped row names its blocker: `blocked by @demo/ui#build`. To
+stop everything at the first failure, add `--fail-fast`.
+
+Give a slow, flaky task a limit and a second chance:
+
+```ts title="packages/web/vx.config.ts"
+e2e: {
+  dependsOn: ['build'],
+  exec: { command: 'playwright test', timeout: '10m', retries: 1 },
+},
 ```
 
-A killed task ends `aborted` and saves nothing.
+| Field | Does | Default |
+| --- | --- | --- |
+| `exec.timeout` | stops the task after this long; it fails and is not cached | no limit |
+| `exec.retries` | runs a failed task again, up to this many more times | `0` |
+
+<Takeaway>see every broken task in one run, and stop a hung one before it eats your CI minutes.</Takeaway>
 
 ---
 
-## Explore your graph
+## 6. Servers, prompts and other machines
 
-See what each task waits on and what waits on it, in your own workspace:
+Some commands never exit, read the keyboard, or need a certain machine.
+Each has one field:
+
+```ts title="packages/web/vx.config.ts"
+dev: {
+  dependsOn: ['^build'],
+  exec: { command: 'vite', persistent: { readyWhen: 'Local:' } },
+},
+```
+
+vx starts `vite`, waits for the line holding `Local:`, then starts what
+waits on `dev`. It stops the server when the rest of the run ends.
+
+| Field | For | More |
+| --- | --- | --- |
+| `exec.persistent` | a server or watcher; `readyWhen` is a regex for the ready line | [Dev servers](../dev-servers/) |
+| `exec.interactive` | a prompt, a REPL, a TUI; runs alone, never cached | |
+| `exec.platforms` | only these machines: `linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64`; skipped elsewhere | |
+| `exec.sandbox` | only the files and network you allow | [Sandboxing](../sandboxing/) |
+| `exec.remote` | `false` keeps it on this machine; `'only'` never runs it here | [Remote execution](../remote-execution/) |
+| `exec.worker` | the worker type to run on, such as `'ubuntu'` | [Distributed task execution](../distributed-task-execution/) |
+
+<Takeaway>start a dev server after its libraries build, and keep a macOS-only task off Linux.</Takeaway>
+
+---
+
+## 7. Name a set of tasks
+
+<Concept term="Group">
+  A task with no `exec`. It runs nothing itself, only what it depends on.
+</Concept>
+
+```ts title="packages/web/vx.config.ts"
+ci: { dependsOn: ['build', 'e2e'] },
+```
+
+`vx run ci` runs both, in order. In a `web` that also generates code and
+tests against `api`, the graph reads:
+
+<Diagram {...taskGraph} />
+
+A group with `inputs` gets a key too, so tasks that depend on it re-run
+when those files change.
+
+<Aside type="note" title="A project with no build">
+  A project with no `build` task gets one: a group keyed on all its files.
+  So `^build` still re-runs `web` when `ui`'s source changes.
+</Aside>
+
+<Takeaway>run your whole check with one name.</Takeaway>
+
+---
+
+## 8. Explore your own graph
+
+Print what a run would do, without running it:
 
 ```sh
 vx run build --all --dry --format json > plan.json
 ```
 
-Drop `plan.json` below, or paste it, then type a task. Nothing is uploaded.
+Drop `plan.json` below, then type a task. It shows what the task waits
+for and what waits for it. Nothing is uploaded.
 
 <GraphExplorer />
 
+<Takeaway>see what any task in your own workspace waits for, and why.</Takeaway>
+
 ---
 
-<details>
-<summary>Every <code>exec</code> field</summary>
+<Deeper level="details" title="Every task field">
 
-| Field             | Does                                                          |
-| ----------------- | ------------------------------------------------------------- |
-| `exec.command`    | the one shell command, run in the package's directory (join steps with `&&`) |
-| `exec.env`        | what the command sees ([Environment variables](../environment-variables/))       |
-| `exec.timeout`    | kill the task after this long                                 |
-| `exec.retries`    | re-run a failed task this many times                          |
-| `exec.persistent` | a server or watcher that does not exit ([Dev servers](../dev-servers/))  |
-| `exec.sandbox`    | only the declared files and network ([Sandboxing](../../docs/sandboxing/)) |
-| `exec.interactive` | reads the terminal: a prompt, a REPL, a TUI; runs alone, never cached |
-| `exec.platforms`  | the machines it runs on, such as `['darwin-arm64']`; elsewhere skipped, on CI refused |
-| `exec.remote`     | `false` keeps it here; `'only'` for a remote pool ([Remote execution](../../docs/remote-execution/)) |
-| `exec.worker`     | the [distributed](../distributed-task-execution/) worker type it runs on, such as `'ubuntu'`; ignored on your machine |
+| Field | Type | Default | Does |
+| --- | --- | --- | --- |
+| `description` | string | none | label in the picker and `--dry` |
+| `dependsOn` | string[] | `[]` | tasks that finish first ([section 2](#2-put-tasks-in-order)) |
+| `exec` | object | none | what runs; no `exec` makes a group |
+| `exec.command` | string | required | the shell command, run in the project folder |
+| `exec.env.define` | record | none | set values, in the key |
+| `exec.env.passThrough` | string[] | none | variables passed from your shell |
+| `exec.env.secret` | string[] | none | passed and masked in output |
+| `exec.timeout` | `'30s'`, `'10m'`… | no limit | stop after this long |
+| `exec.retries` | number | `0` | extra attempts after a failure |
+| `exec.persistent.readyWhen` | regex string | ready at start | the line that means ready |
+| `exec.interactive` | boolean | `false` | reads the terminal; runs alone |
+| `exec.platforms` | string[] | anywhere | machines it runs on |
+| `exec.sandbox` | object | none | confine reads, writes, network ([Sandboxing](../sandboxing/)) |
+| `exec.remote` | `true`, `false`, `'only'` | `true` | may run on a remote machine |
+| `exec.worker` | string | first that fits | worker type for distributed task execution |
+| `inputs.files` | string[] | required | project files in the key |
+| `inputs.workspaceFiles` | string[] | none | root-relative files in the key |
+| `inputs.env` | string[] | none | variable values in the key |
+| `inputs.tasks` | string[] | `['*', '^*']` | upstream keys in the key |
+| `inputs.runtime` | string[] | none | command output in the key |
+| `inputs.workspaceRuntime` | string[] | none | root command output in the key, once per run |
+| `inputs.stability.strategy` | `'immutable'`, `'mutable'`, `'unchecked'` | `'immutable'` | input written mid-run |
+| `inputs.stability.severity` | `'warn'`, `'error'` | `'warn'` | what that write does to the run |
+| `outputs.files` | string[] | required | files saved and restored |
+| `outputs.workspaceFiles` | string[] | none | root-relative outputs |
+| `outputs.clean` | boolean | `true` | remove old outputs before a miss runs |
+| `cache` | boolean | `false` | save and reuse; needs `exec`, `inputs`, `outputs` |
 
-`exec.remote` and `exec.worker` are the two `exec` fields left out of the
-key: where a task ran says nothing about what it made.
+`exec.sandbox` has its own fields (`allow`, `deny`, `ignore`, `hermetic`,
+`weakerWhenNested`, `weakerNetworkIsolation`): see [Sandboxing](../sandboxing/).
 
-Every other field is in the key, so editing even `description` re-runs
-the task once.
+Workspace-wide defaults for `timeout`, `retries` and `outputs.clean`
+live in [Workspace](../workspace/).
 
-</details>
+</Deeper>
 
-See [Caching](../caching/) to skip a task whose inputs did not change, and [vx.config.ts](../../schema/) for every field.
+<NextStep href="../caching/" title="Caching">See what a key holds, and why a task missed.</NextStep>
