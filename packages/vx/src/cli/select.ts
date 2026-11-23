@@ -370,6 +370,60 @@ export async function affectedFilterFor(
   return env === undefined ? { filter: `...[${base}]` } : { filter: `...[${base}]`, env }
 }
 
+/**
+ * What a selection of no project means. "Nothing changed" is legitimate: a
+ * docs-only commit must not fail `--affected`. It is an error only when
+ * something named concretely failed to resolve.
+ */
+function emptySelection(
+  root: string,
+  parsed: readonly ReturnType<typeof parseFilter>[],
+  projects: ProjectMeta[],
+  /** The `[<since>]` includes whose diff matched nothing. */
+  emptyDiffs: ReadonlySet<ReturnType<typeof parseFilter>>,
+  /** The diffs that named a change, though maybe in no project. */
+  changedAny: ReadonlySet<ReturnType<typeof parseFilter>>,
+  /** What each include that matched found on the walk it asked for: nothing. */
+  emptyWalks: readonly string[],
+): FilterResolution {
+  const includes = parsed.filter((f) => !f.negate)
+  // Every pattern matched and an exclusion took them all back: "no
+  // projects matched filter(s): one, !one" read as a typo of `one`.
+  const negations = parsed.filter((f) => f.negate).map((f) => f.raw)
+  // With no include the base is every project: there is no "other filter".
+  const excluded = `${negations.join(', ')} excluded every project${includes.length > 0 ? ' the other filters matched' : ''}`
+  if (includes.length > 0 && includes.every((f) => f.gitSince !== undefined)) {
+    if (includes.every((f) => emptyDiffs.has(f))) {
+      const refs = [...new Set(includes.map((f) => f.gitSince))].join(', ')
+      // A base that is HEAD (a single-branch clone whose `origin/HEAD` is the
+      // branch under test) can mark nothing; say so.
+      const self = includes.map((f) => headBase(root, f.gitSince!)).find((b) => b !== undefined)
+      // `HEAD` asked by name checks uncommitted work: "HEAD is HEAD itself"
+      // read as nonsense for a valid question.
+      const hint =
+        self === undefined || (self === 'HEAD' && includes.some((f) => changedAny.has(f)))
+          ? ''
+          : self === 'HEAD'
+            ? ' — the working tree has no change against HEAD; to compare commits, use the branch you merge into (--affected=origin/main) or the previous commit (--affected=HEAD~1)'
+            : ` — ${self} is HEAD itself: compare with ${self === 'origin/main' ? '' : 'the branch you merge into (--affected=origin/main) or '}the previous commit (--affected=HEAD~1)`
+      return { empty: `nothing affected since ${refs}${hint}`, discovered: { root, projects } }
+    }
+    // The diff matched and a walk or exclusion left nothing: still exit 0,
+    // said as what happened.
+    return {
+      empty: `no projects selected: ${emptyWalks.length > 0 ? emptyWalks.join('; ') : excluded}`,
+      discovered: { root, projects },
+    }
+  }
+  if (emptyWalks.length > 0) {
+    return { error: `no projects selected: ${emptyWalks.join('; ')}` }
+  }
+  if (negations.length > 0) {
+    return { error: `no projects selected: ${excluded}` }
+  }
+  return { error: 'no projects selected' }
+}
+
 export async function resolveFilters(
   cwd: string,
   raw: string[],
@@ -582,47 +636,8 @@ export async function resolveFilters(
       error: `no projects matched filter(s): ${unmatched.map((f) => `"${f}"`).join(', ')}${hint}`,
     }
   }
-  if (selected.size === 0) {
-    // "Nothing changed" is legitimate: a docs-only commit must not fail
-    // `--affected`. Error only when something named concretely failed to
-    // resolve.
-    const includes = parsed.filter((f) => !f.negate)
-    // Every pattern matched and an exclusion took them all back: "no
-    // projects matched filter(s): one, !one" read as a typo of `one`.
-    const negations = parsed.filter((f) => f.negate).map((f) => f.raw)
-    // With no include the base is every project: there is no "other filter".
-    const excluded = `${negations.join(', ')} excluded every project${includes.length > 0 ? ' the other filters matched' : ''}`
-    if (includes.length > 0 && includes.every((f) => f.gitSince !== undefined)) {
-      if (includes.every((f) => emptyDiffs.has(f))) {
-        const refs = [...new Set(includes.map((f) => f.gitSince))].join(', ')
-        // A base that is HEAD (a single-branch clone whose `origin/HEAD` is the
-        // branch under test) can mark nothing; say so.
-        const self = includes.map((f) => headBase(root, f.gitSince!)).find((b) => b !== undefined)
-        // `HEAD` asked by name checks uncommitted work: "HEAD is HEAD itself"
-        // read as nonsense for a valid question.
-        const hint =
-          self === undefined || (self === 'HEAD' && includes.some((f) => changedAny.has(f)))
-            ? ''
-            : self === 'HEAD'
-              ? ' — the working tree has no change against HEAD; to compare commits, use the branch you merge into (--affected=origin/main) or the previous commit (--affected=HEAD~1)'
-              : ` — ${self} is HEAD itself: compare with ${self === 'origin/main' ? '' : 'the branch you merge into (--affected=origin/main) or '}the previous commit (--affected=HEAD~1)`
-        return { empty: `nothing affected since ${refs}${hint}`, discovered: { root, projects } }
-      }
-      // The diff matched and a walk or exclusion left nothing: still exit 0,
-      // said as what happened.
-      return {
-        empty: `no projects selected: ${emptyWalks.length > 0 ? emptyWalks.join('; ') : excluded}`,
-        discovered: { root, projects },
-      }
-    }
-    if (emptyWalks.length > 0) {
-      return { error: `no projects selected: ${emptyWalks.join('; ')}` }
-    }
-    if (negations.length > 0) {
-      return { error: `no projects selected: ${excluded}` }
-    }
-    return { error: 'no projects selected' }
-  }
+  if (selected.size === 0)
+    return emptySelection(root, parsed, projects, emptyDiffs, changedAny, emptyWalks)
   // Each include is a union: `--filter other` runs its tasks whether or not the
   // `--affected` diff reaches them; an exclude still removes.
   const others = parsed.filter((f) => f.negate || f.raw !== affected?.filter)
