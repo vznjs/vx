@@ -27,6 +27,11 @@ it('a footer ends at a git trailer with no blank line before it', () => {
   expect(footers(page([{ subject: 'feat!: x', body }]))).toEqual(['A is b now.'])
 })
 
+it('each footer of a squash that holds several is its own paragraph', () => {
+  const body = 'Why.\n\nBREAKING CHANGE: a.\nBREAKING CHANGE: b\nnow.\nCo-Authored-By: C <c@c>'
+  expect(page([{ subject: 'feat!: x', body }])).toContain('### X\n\nA.\n\nB now.\n')
+})
+
 it('docs/upgrading.md carries every breaking footer in git log', () => {
   // A shallow checkout (actions/checkout's default depth 1, the macOS job)
   // holds none of the history: where CI sets VX_REQUIRE_TAGS, the job that
