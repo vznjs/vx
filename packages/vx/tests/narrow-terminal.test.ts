@@ -8,8 +8,10 @@ import type { TaskOutcome } from '../src/graph/outcome.js'
 import type { TaskNode } from '../src/graph/task-graph.js'
 import {
   formatFrameClose,
+  formatListHeader,
   formatRecordedRow,
   formatTaskBlock,
+  formatTaskExecutedLine,
   planList,
   taskList,
 } from '../src/report/framed-output.js'
@@ -342,5 +344,32 @@ describe("a frame's edges with a long task id, on a narrow terminal", () => {
       for (const e of edges(lines)) expect(e).toContain(id)
       expect(lines).not.toContain(id)
     }
+  })
+})
+
+// At 50 columns the grid had dropped every optional column and a row was
+// still 57 wide: status, cache and time leave a name 11 columns. On a
+// terminal the name now gives way in its middle, colours kept.
+describe('a task row at 50 columns', () => {
+  const id = 'packages/app#build'
+  const row = (colors: { enabled: boolean; columns?: number }): string =>
+    formatTaskExecutedLine(node(id), outcome(id, 'failed'), colors)
+
+  it.each([40, 50])('fits %i columns, the name cut in its middle', (columns) => {
+    for (const enabled of [false, true]) {
+      const r = row({ enabled, columns })
+      expect(Bun.stringWidth(r)).toBeLessThanOrEqual(columns)
+      // At 40 the name has one column: only the mark.
+      expect(Bun.stripANSI(r)).toMatch(columns === 50 ? /pa.*….*ld$/ : /…$/)
+    }
+    expect(Bun.stripANSI(row({ enabled: true, columns: 50 }))).toBe(
+      row({ enabled: false, columns: 50 }),
+    )
+    expect(formatListHeader({ enabled: false, columns }).length + 2).toBeLessThanOrEqual(columns)
+  })
+
+  it('CONTROL: at 60 and off a terminal the name stays whole', () => {
+    for (const colors of [{ enabled: false }, { enabled: false, columns: 60 }])
+      expect(row(colors).endsWith(` ${id}`)).toBe(true)
   })
 })

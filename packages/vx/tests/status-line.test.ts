@@ -1519,9 +1519,10 @@ describe('list headers', () => {
     for (const columns of [40, 60, 80, 100, 120]) {
       const head = over(formatListHeader(at(columns)))
       const r = row(at(columns))
-      expect(head.indexOf('task')).toBe(r.indexOf('web#build'))
+      // At 40 the name gives way to `…`.
+      expect(head.indexOf('task')).toBe(r.lastIndexOf(' ') + 1)
       expect(head.indexOf('time') + 4).toBe(r.indexOf('1.50s') + 5)
-      expect(Bun.stringWidth(r)).toBeLessThanOrEqual(Math.max(columns, 49))
+      expect(Bun.stringWidth(r)).toBeLessThanOrEqual(columns)
     }
   })
 

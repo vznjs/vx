@@ -423,7 +423,49 @@ export function formatTaskRow(
     const worker = workerName(cells.worker || UNKNOWN)
     row += `${placeCell(worker, colors)}${pad(WORKER_COL - worker.length)} `
   }
-  return `${row}${cells.critical === true ? paint('warn', CRITICAL_MARK, colors) : ' '} ${paintedId}`
+  const lead = `${row}${cells.critical === true ? paint('warn', CRITICAL_MARK, colors) : ' '} `
+  // With every optional column gone a 50-column terminal still left a name
+  // 11 columns, and the row wrapped: there the name gives way in its middle.
+  if (colors.columns !== undefined && colors.columns < FULL_ROW + NAME_ROOM) {
+    const room = colors.columns - Bun.stringWidth(lead)
+    if (Bun.stringWidth(paintedId) > room) return `${lead}${cutPaintedMiddle(paintedId, room)}`
+  }
+  return `${lead}${paintedId}`
+}
+
+// oxlint-disable-next-line no-control-regex
+const ESCAPE = /\x1b\[[0-9;]*m|\x1b\]8;[^\x07\x1b]*(?:\x07|\x1b\\)/y
+
+/**
+ * Painted `text` at most `room` columns, its middle given to `…`; every
+ * escape is kept, so each half keeps its colour and every style ends.
+ */
+function cutPaintedMiddle(text: string, room: number): string {
+  const head = Math.ceil((room - 1) / 2)
+  const tail = room - 1 - head
+  const total = Bun.stringWidth(text)
+  let at = 0
+  let out = ''
+  let marked = false
+  for (let i = 0; i < text.length;) {
+    ESCAPE.lastIndex = i
+    const esc = ESCAPE.exec(text)
+    if (esc !== null) {
+      out += esc[0]
+      i += esc[0].length
+      continue
+    }
+    const ch = String.fromCodePoint(text.codePointAt(i)!)
+    const w = Bun.stringWidth(ch)
+    if (at + w <= head || at >= total - tail) out += ch
+    else if (!marked) {
+      out += '…'
+      marked = true
+    }
+    at += w
+    i += ch.length
+  }
+  return out
 }
 
 /** The grid's optional columns, each shown or left out. */

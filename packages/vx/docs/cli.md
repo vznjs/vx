@@ -855,8 +855,9 @@ values start, and its colour carries the outcome. The cache word is the
 cache axis. An empty cell shows `—`. A terminal too narrow for the
 whole row drops `blocks`, `outputs`, `worker`, `cpu`, `mem` and
 `±usual`, in that order, until a task's name has 24 columns; status,
-cache and time always stay. Logs off a terminal keep every column. A
-terminal titles the rows with a `Tasks` line holding the column names;
+cache and time always stay. Narrower still (below about 60 columns),
+the task's name gives way in its middle (`pac…ld`). Logs off a terminal
+keep every column. A terminal titles the rows with a `Tasks` line holding the column names;
 a pipe (an agent's shell) gets that line once, above its first row.
 
 | Status     | Colour | Meaning                                                |
