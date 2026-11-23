@@ -1958,7 +1958,7 @@ export default defineWorkspace({
 vx pipeline pr                     # lint and test what the change reaches
 vx pipeline main                   # every project
 vx pipeline main --dry             # the plan, nothing run
-vx pipeline pr --filter web        # a typed flag beats the saved one
+vx pipeline main --filter web      # main's tasks in web alone
 ```
 
 ### Options
