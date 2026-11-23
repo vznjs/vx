@@ -1,18 +1,43 @@
 ---
 // The graph explorer. Without JavaScript it says the command to run and
 // what the page would show. `graph-explorer.ts` unhides the controls and
-// reads the `.controls`, `.plan`, `.status`, `.find`, `.picked`, `.why-to`
-// and `.out` hooks below, so they are its contract with this markup. The
-// pasted plan stays in the browser.
+// reads the `.controls`, `.plan`, `.status`, `.find`, `.picked`, `.why-to`,
+// `.draw`, `.sample` and `.out` hooks below, so they are its contract with
+// this markup. `sample` is a real plan the widget opens first, picked at
+// `pick`, so a reader explores before running anything. The pasted plan
+// stays in the browser.
 import Demo from '../Demo.astro'
+
+interface Props {
+  /** A `vx run … --dry --format json` plan, opened on load. */
+  sample?: string
+  /** The task the sample opens on. */
+  pick?: string
+}
+
+const { sample, pick } = Astro.props
 ---
 
 <Demo name="graph-explorer">
   <p class="js-hint">
-    Run <code>vx run build --all --dry --format json &gt; plan.json</code> in your repo. With JavaScript on,
+    Run <code>vx run build --all --dry --format json &gt; plan.json</code> in your workspace. With JavaScript on,
     paste it here to browse what each task waits on and why.
   </p>
-  <div class="controls" hidden>
+  {sample !== undefined && <script type="application/json" class="sample" set:html={sample} />}
+  <div class="controls" hidden data-pick={pick}>
+    <div class="vx-row">
+      <label class="vx-label" for="vx-graph-find">Task</label>
+      <input id="vx-graph-find" class="find" type="text" list="vx-graph-ids" placeholder="@demo/web#build" />
+      <datalist id="vx-graph-ids"></datalist>
+      <label class="vx-label" for="vx-graph-why">waits on?</label>
+      <input id="vx-graph-why" class="why-to" type="text" list="vx-graph-ids" placeholder="@demo/ui#build" />
+    </div>
+  </div>
+  <p class="status vx-say" aria-live="polite" hidden></p>
+  <div class="draw" hidden></div>
+  <div class="out" hidden></div>
+  <details class="own" hidden open={sample === undefined}>
+    <summary class="vx-label">Open your own plan</summary>
     <label class="vx-label" for="vx-graph-plan">Plan (<code>--dry --format json</code> output)</label>
     <textarea id="vx-graph-plan" class="plan" rows="6" spellcheck="false"
       placeholder="Drop plan.json here, or paste it"></textarea>
@@ -20,23 +45,67 @@ import Demo from '../Demo.astro'
       <button type="button" class="read primary">Read plan</button>
       <input type="file" class="file" accept=".json,application/json" aria-label="Open a plan file" />
     </div>
-    <div class="vx-row">
-      <label class="vx-label" for="vx-graph-find">Task</label>
-      <input id="vx-graph-find" class="find" type="text" list="vx-graph-ids" placeholder="app#build" />
-      <datalist id="vx-graph-ids"></datalist>
-      <label class="vx-label" for="vx-graph-why">waits on?</label>
-      <input id="vx-graph-why" class="why-to" type="text" list="vx-graph-ids" placeholder="utils#build" />
-    </div>
-  </div>
-  <p class="status vx-say" aria-live="polite" hidden></p>
-  <div class="out" hidden></div>
+  </details>
 </Demo>
 
 <style>
-  .controls .plan {
+  .own {
+    margin-top: 1rem;
+  }
+  .own summary {
+    cursor: pointer;
+    text-align: center;
+    margin-bottom: 0.5rem;
+  }
+  .own .plan {
     display: block;
     width: 100%;
     box-sizing: border-box;
     margin-block: 0.25rem 0.5rem;
+  }
+  /* The browser's own file button ignores the theme; give it the chips' look. */
+  .own .file {
+    font-family: var(--vx-mono);
+    font-size: 13px;
+    color: var(--vx-muted);
+  }
+  .own .file::file-selector-button {
+    margin-inline-end: 0.5rem;
+    padding: 0.3rem 0.7rem;
+    font: inherit;
+    color: var(--vx-fg);
+    background: var(--vx-surface-2);
+    border: 1.5px solid var(--vx-border);
+    border-radius: 8px;
+    cursor: pointer;
+  }
+  .draw {
+    overflow-x: auto;
+    margin-block: 0.5rem 1rem;
+  }
+  .draw :global(svg) {
+    display: block;
+    max-width: 100%;
+    height: auto;
+    margin-inline: auto;
+  }
+  .draw :global(.legend) {
+    margin-top: 0.5rem;
+    font-family: var(--vx-mono);
+    font-size: 12px;
+    text-align: center;
+    color: var(--vx-muted);
+  }
+  .out :global(ul) {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin: 0 0 0.75rem;
+    padding: 0;
+    list-style: none;
+  }
+  /* The site's prose bullet would sit before every chip. */
+  .out :global(li) {
+    display: block;
   }
 </style>

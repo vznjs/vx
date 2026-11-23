@@ -1,0 +1,11 @@
+// The teaching kit every Docs page uses (handbook: README.md beside it).
+export { default as Levels } from './Levels.astro'
+export { default as Deeper } from './Deeper.astro'
+export { default as Concept } from './Concept.astro'
+export { default as Quiz } from './Quiz.astro'
+export { default as Walkthrough } from './Walkthrough.astro'
+export { default as Frame } from './Frame.astro'
+export { default as Compare } from './Compare.astro'
+export { default as Chart } from './Chart.astro'
+export { default as NextStep } from './NextStep.astro'
+export { default as Takeaway } from './Takeaway.astro'

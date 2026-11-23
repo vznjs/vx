@@ -39,7 +39,7 @@ describe('a pass that wrote none of its outputs', () => {
       root,
       'core',
       `export default { tasks: { build: { exec: { command: 'echo hi' }, cache: true,
-        inputs: { files: ['vx.config.mjs'] }, outputs: { files: ['dist/**'] } } } }\n`,
+        inputs: { files: ['vx.config.mjs'] }, outputs: { files: ['dist/index.js'] } } } }\n`,
     )
     expect((await vx(root, ['lock'])).code).toBe(0)
     run = await vx(root, ['run', 'build', '--all'])
@@ -50,14 +50,14 @@ describe('a pass that wrote none of its outputs', () => {
 
   it('fails, its frame naming the glob, not exit 1', () => {
     expect(run.code).toBe(1)
-    expect(run.out).toContain('failed (exited 0, no file matched dist/**)')
+    expect(run.out).toContain('failed (exited 0, no file matched dist/index.js)')
     expect(run.out).not.toContain('failed (exit 1)')
   })
 
   it('reads the same in vx last', async () => {
     const { out } = await vx(root, ['last'])
     const row = out.split('\n').find((l) => l.includes('core#build') && l.includes('failed'))
-    expect(row).toContain('exited 0, no file matched dist/**')
+    expect(row).toContain('exited 0, no file matched dist/index.js')
     expect(row).not.toContain('exit 1')
   })
 })

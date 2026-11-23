@@ -1,40 +1,334 @@
 ---
 title: Remote execution
-description: Send tasks to a Bazel REAPI worker pool you already run, while the graph stays on your machine.
+description: Send tasks to a Bazel REAPI worker pool you already run, while the plan stays on your machine.
 ---
 
-To run tasks on your own CI's machines, use
-[Distributed task execution](../distributed-task-execution/).
+import Diagram from '../../../components/guide/diagram/Diagram.astro'
+import { remoteExecution } from '../../../components/docs/pictures/remote-execution.js'
+import { Aside } from '@astrojs/starlight/components'
+import { Levels, Deeper, Concept, Quiz, Walkthrough, Frame, Compare, Takeaway, NextStep } from '../../../components/learn'
 
-If you already run a Bazel REAPI worker pool, `reapi()` from
-`@vzn/vx-reapi` sends tasks there instead. Planning and ordering stay on
-this machine:
+Already run a Bazel worker pool? Point vx at it, and your builds run there instead of on your laptop.
 
-```ts title=".vx/workspace.ts"
+```sh
+vx run deploy --all --dry   # where would each task run?
+```
+
+<Levels />
+
+<Walkthrough title="One workspace, two places to run">
+<Frame title="1. Add the pool to .vx/workspace.ts">
+
+```ts title=".vx/workspace.ts" ins={6-11}
 import { defineWorkspace } from '@vzn/vx/config'
 import { reapi } from '@vzn/vx-reapi'
 
 export default defineWorkspace({
   plugins: [
     reapi({
-      endpoint: 'grpcs://cache.example.com:443',
+      endpoint: process.env.REAPI_ENDPOINT, // grpcs://host:443
       execute: true,
-      platform: { OSFamily: 'Linux', 'container-image': 'docker://node:22' },
-      capacity: 64, // remote tasks at once, apart from your cores
+      platform: { OSFamily: 'Linux', 'container-image': 'docker://oven/bun:1.4' },
+      capacity: 64,
     }),
   ],
 })
 ```
 
-`--dry` says where each task runs (`@vx/reapi` or `@local`).
+</Frame>
+<Frame title="2. Ask vx where each task goes">
 
-- `exec.remote: false`, sandboxed and persistent tasks, and what depends
-  on them, stay here, as do tasks with no `cache: true`.
-- Workers have no `node_modules`: make the install a `remote: 'only'` task
-  the others depend on. The image needs `/bin/sh` and your toolchain.
-- A worker gets only what `inputs` declares.
-- Uploads chunk at 65535 bytes (`SAFE_CHUNK_BYTES`), the size no Bun http2
-  stall has been seen at. A larger `chunkBytes` that stalls retries once at
-  that size before the task fails.
+```ansi title="vx run deploy --all --dry"
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mPlan[0m[4m[58;2;110;118;129m [2m4[0m[4m[58;2;110;118;129m    [2mstatus  cache      usual    time   cpu    mem outputs  blocks worker         task[0m[4m[58;2;110;118;129m                           [0m
+            [38;2;6;182;212mrun[0m     [2mno-cache[0m       [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2mlocal[0m          [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mdeploy[0m
+            [38;2;6;182;212mrun[0m     [2mmiss[0m           [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [38;2;203;213;225m1[0m [38;2;129;140;248mvx/reapi[0m       [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;6;182;212mrun[0m     [2mmiss[0m           [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [38;2;203;213;225m2[0m [38;2;129;140;248mvx/reapi[0m       [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;6;182;212mrun[0m     [2mmiss[0m           [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [38;2;203;213;225m3[0m [38;2;129;140;248mvx/reapi[0m       [38;2;96;165;250mdemo[0m[2m#[0m[38;2;192;132;252minstall[0m
+  [2mtasks   [0m  [38;2;203;213;225m4 planned · 3 would run · 1 no-cache[0m
+```
 
-See [`@vzn/vx-reapi`](../../plugins/vx-reapi/) for every option.
+Read the **worker** column: both builds and the install go to **vx/reapi**. `deploy` stays **local**.
+
+`demo#install` puts `node_modules` on the pool ([how](#give-workers-node_modules)).
+
+</Frame>
+<Frame title="3. Point it at a cache-only server">
+
+```ansi title="the same plan, against a server that only caches"
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mWarnings[0m[4m[58;2;110;118;129m                                                                                                              [0m
+[1m[38;2;234;179;8m[vx][0m[2m vx-reapi: grpcs://reapi.example.com:443 does not advertise remote execution (cache only) — tasks will run locally[0m
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mPlan[0m[4m[58;2;110;118;129m [2m4[0m[4m[58;2;110;118;129m    [2mstatus  cache      usual    time   cpu    mem outputs  blocks worker         task[0m[4m[58;2;110;118;129m                           [0m
+            [38;2;6;182;212mrun[0m     [2mno-cache[0m       [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2mlocal[0m          [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mdeploy[0m
+            [38;2;6;182;212mrun[0m     [2mmiss[0m           [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [38;2;203;213;225m1[0m [2mlocal[0m          [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;6;182;212mrun[0m     [2mmiss[0m           [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [38;2;203;213;225m2[0m [2mlocal[0m          [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [2mnoop[0m    [2m—[0m              [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [38;2;203;213;225m3[0m [2m—[0m              [38;2;96;165;250mdemo[0m[2m#[0m[38;2;192;132;252minstall[0m
+  [2mtasks   [0m  [38;2;203;213;225m4 planned · 2 would run · 1 no-cache · 1 noop[0m
+```
+
+vx warns once and runs everything here. Nothing breaks.
+
+</Frame>
+</Walkthrough>
+
+<Concept term="REAPI">
+  Bazel's Remote Execution API: one wire for a remote cache and a pool of workers. NativeLink,
+  BuildBuddy and Buildbarn speak it.
+</Concept>
+
+## Send tasks to your pool
+
+Install the plugin and add it to `.vx/workspace.ts`, as in step 1 above.
+
+```sh
+bun add -d @vzn/vx-reapi
+```
+
+<Diagram {...remoteExecution} />
+
+- `execute: true` turns on running. Without it, `reapi()` is only a [remote cache](../remote-cache/).
+- `platform` picks the worker: its OS and image. The image needs `/bin/sh` and your tools.
+- `capacity` is how many tasks run on the pool at once, on top of your own cores.
+
+<Takeaway>run your builds on the pool you already pay for, with one block of config.</Takeaway>
+
+## See where each task runs
+
+`--dry` plans the run and runs nothing. The **worker** column is the answer:
+
+| Worker says | The task runs |
+| --- | --- |
+| **vx/reapi** | on a worker in your pool |
+| **local** | on this machine |
+| **—** | nowhere: it has nothing to do here |
+
+<Quiz q="A task has no cache: true. Where does it run?">
+  Here. A worker gets only the files a task lists in `inputs`, and only a cached task describes
+  them. vx never sends a task a worker could not reproduce.
+</Quiz>
+
+<Takeaway>check any task's destination before a single command runs.</Takeaway>
+
+## Keep a task here
+
+Some tasks need this machine: a Docker socket, a VPN, a device. Pin them with `exec.remote: false`:
+
+```ts title="packages/web/vx.config.ts" mark={3}
+deploy: {
+  dependsOn: ['build'],
+  exec: { command: 'wrangler pages deploy dist', remote: false },
+},
+```
+
+<Aside type="note">
+  Under [Distributed task execution](../distributed-task-execution/), workers take every task, `exec.remote: false` included.
+</Aside>
+
+vx keeps these here on its own, and every task that depends on them:
+
+<Compare leftTitle="Goes to the pool" rightTitle="Stays here">
+<div slot="left">
+
+- a task with `cache: true`
+- whose `inputs` list what it reads
+- and nothing below pins it
+
+</div>
+<div slot="right">
+
+- `exec.remote: false`
+- no `cache: true`
+- a dev server (`persistent`)
+- a sandboxed task (`exec.sandbox`)
+
+</div>
+</Compare>
+
+<Takeaway>keep deploys and local-only tasks home, and send the rest away.</Takeaway>
+
+## Give workers node_modules
+
+A worker starts empty: no `node_modules`. Make the install a task that runs **only** on the pool:
+
+```ts title="vx.config.ts" mark={3}
+install: {
+  exec: { command: 'bun install --frozen-lockfile', remote: 'only' },
+  inputs: { files: ['package.json', 'bun.lock', 'packages/*/package.json'] },
+  outputs: { files: ['node_modules/**'] },
+  cache: true,
+},
+```
+
+```ts title="packages/ui/vx.config.ts" mark={2}
+build: {
+  dependsOn: ['^build', '//#install'],
+  exec: { command: 'vite build' },
+  inputs: { files: ['src/**', 'vite.config.ts'] },
+  outputs: { files: ['dist/**'] },
+  cache: true,
+},
+```
+
+- The install runs on a worker, once per lockfile change.
+- Its files stay in the pool. Builds get them there; your disk never sees them.
+- With no pool, `remote: 'only'` does nothing, and builds use your own `node_modules` (step 3 above: **noop**).
+
+<Takeaway>run every build on a clean worker, with packages built for its OS.</Takeaway>
+
+## Pick the right one
+
+vx can also spread a run over machines your CI starts. Which one fits?
+
+<Compare leftTitle="Remote execution" rightTitle="Distributed task execution">
+<div slot="left">
+
+You **already run** a REAPI pool (NativeLink, BuildBuddy, Buildbarn).
+
+`@vzn/vx-reapi`
+
+</div>
+<div slot="right">
+
+You want your **own CI jobs** as workers. Nothing to host but a small relay.
+
+`@vzn/vx-dte`
+
+</div>
+</Compare>
+
+<Takeaway>tell which way of running elsewhere fits your team.</Takeaway>
+
+<Deeper level="patterns" title="Common setups">
+
+### A hosted pool with an API key
+
+A hosted server reads its key from a header. Keep the key in CI's secrets:
+
+```ts title=".vx/workspace.ts"
+reapi({
+  endpoint: 'grpcs://remote.buildbuddy.io:443',
+  headers: { 'x-buildbuddy-api-key': process.env.BB_KEY! },
+  execute: true,
+  platform: { OSFamily: 'Linux', 'container-image': 'docker://oven/bun:1.4' },
+  capacity: 80,
+})
+```
+
+### A server behind your own CA, or mutual TLS
+
+Give the PEM files. Bazel users know these as `--tls_certificate`, `--tls_client_certificate` and `--tls_client_key`:
+
+```ts
+reapi({
+  endpoint: 'grpcs://reapi.internal:8980',
+  tlsCertificate: 'certs/ca.pem',
+  tlsClientCertificate: 'certs/client.pem',
+  tlsClientKey: 'certs/client.key',
+  execute: true,
+})
+```
+
+### A value a worker needs
+
+A worker gets no environment from your machine. Give it a value one of two ways:
+
+```ts mark={2,4-5}
+build: {
+  exec: { command: 'vite build', env: { define: { NODE_ENV: 'production' }, passThrough: ['API_URL'] } },
+  inputs: {
+    files: ['src/**'],
+    env: ['API_URL'],
+  },
+},
+```
+
+`define` sends a fixed value. A name in both `passThrough` and `inputs.env` sends this machine's value.
+
+<Aside type="caution" title="Secrets stay home">
+  A value sent to a worker is stored in the pool, readable by anyone who can name it. A task that
+  reads a secret takes `exec.remote: false`.
+</Aside>
+
+### When the pool is busy
+
+`queueTimeoutMs` gives a task back to this machine if no worker starts it in time:
+
+```ts mark={4}
+reapi({
+  endpoint: process.env.REAPI_ENDPOINT,
+  execute: true,
+  queueTimeoutMs: 1000,
+})
+```
+
+```ansi title="no worker picked it up within a second"
+[2m┌─[0m [1m[38;2;192;132;252m@demo/ui[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m>[0m $ vite build
+[1m[38;2;234;179;8m[vx][0m[2m @demo/ui#build: plugin '@vzn/vx-reapi' (executor 'vx/reapi') gave it back: no worker started the action within queueTimeoutMs (1000ms); its operation was cancelled — running it here[0m
+[36mvite v8.3.8 [32mbuilding client environment for production...[36m[39m
+transforming...
+[32m✓[0m 2 modules transformed.
+rendering chunks...
+computing gzip size...
+[2mdist/[0m[36mindex.js  [0m[1;2m0.08 kB[0m[2m │ gzip: 0.09 kB[0m
+[32m✓ built in 21ms[39m
+[0m[2m└─[0m [1m[38;2;192;132;252m@demo/ui[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(196ms)[0m [2msuccess[0m
+```
+
+Read the **[vx]** line: the pool was full, so the build ran here and still passed.
+
+<Takeaway>connect any pool, pass values safely, and skip a full queue.</Takeaway>
+
+</Deeper>
+
+<Deeper level="details" title="Every option">
+
+### `reapi()` options for running
+
+| Option | What it does | Default |
+| --- | --- | --- |
+| `execute` | Run tasks on the pool, not only cache there. A boolean only | `false` |
+| `platform` | REAPI platform properties that pick a worker (`OSFamily`, `container-image`, …). String values | none |
+| `capacity` | Tasks on the pool at once; a positive integer | unset: pool tasks share your local slots |
+| `queueTimeoutMs` | Longest wait for a worker to start a task; past it, the task runs here | unset: the task's `exec.timeout` bounds it |
+| `executeTimeoutMs` | Longest a started task may run on a worker; `exec.timeout` wins | `600000` (10 minutes) |
+
+The connection options (`endpoint`, `headers`, TLS, timeouts, `chunkBytes`) are the same as for the remote cache: [every `reapi()` option](../plugins/#reapi).
+
+### `exec.remote`
+
+| Value | The task |
+| --- | --- |
+| `true` (default) | may go to the pool when it can |
+| `false` | always runs here, and so do the tasks that depend on it |
+| `'only'` | runs only on the pool; here it does nothing. Needs `cache: true` |
+
+`exec.remote` is never in the cache key: the same task hits the same entry wherever it ran.
+
+### What always stays here
+
+- A task with no `cache: true`: it has no described inputs to send.
+- A dev server (`exec.persistent`) and everything that depends on it: a worker cannot reach its port.
+- A sandboxed task (`exec.sandbox`) and its dependants: workers do not enforce the sandbox.
+- A task whose key reads a tool's version (`inputs.runtime`, `inputs.workspaceRuntime`): the answer is this machine's.
+
+### What a worker gets
+
+- The files `inputs` lists, plus the outputs of the tasks it depends on.
+- `exec.env.define` values, and `inputs.env` names that are also in `exec.env.passThrough`.
+- `FORCE_COLOR` and `NO_COLOR`, so its output matches a local run.
+- Nothing else: not `PATH`, not `HOME`, no other variable.
+
+### What happens when
+
+- A server that only caches: one warning, every task runs here.
+- No worker starts a task within `queueTimeoutMs`: it runs here. An `'only'` task fails instead.
+- A dropped connection: vx re-attaches to the running task instead of starting it again.
+- A task already run on the pool with the same key: vx skips the worker and replays the result.
+- Uploads go in chunks of 65535 bytes (about 64 KB); `chunkBytes` changes it. A larger size that stalls retries once at 64 KB.
+
+Every wire detail: [`@vzn/vx-reapi`](../../plugins/vx-reapi/).
+
+</Deeper>
+
+<NextStep href="../servers/" title="Servers">
+  Host the cache, history and relay servers vx's plugins talk to, on your own machines.
+</NextStep>

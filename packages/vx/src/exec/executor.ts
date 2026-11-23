@@ -349,6 +349,13 @@ export interface ExecuteResult extends RunResult {
    */
   readonly changed?: readonly string[]
   /**
+   * A `remote` executor's: the declared output globs that matched nothing
+   * where the command ran and exited 0 (`missingOutputs`). Core fails the
+   * task naming them, as it does for one run here, where it checks them
+   * itself. The executor saves no entry under the task's key for it.
+   */
+  readonly outputsMissing?: readonly string[]
+  /**
    * Which machine ran the command (a REAPI worker id, a pool member). Absent:
    * this host. Reaches telemetry, the row and frame (`<id>@<where>`) and
    * history.

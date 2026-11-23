@@ -2,6 +2,12 @@ import { defineProject } from '@vzn/vx/config'
 
 export default defineProject({
   tasks: {
+    lint: {
+      exec: { command: 'grep -q . src/*.js' },
+      inputs: { files: ['src/**'] },
+      outputs: { files: [] },
+      cache: true,
+    },
     build: {
       // `^build`: every dependency's build runs first, so lib/dist exists.
       dependsOn: ['^build'],

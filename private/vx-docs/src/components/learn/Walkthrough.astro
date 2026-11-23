@@ -1,0 +1,93 @@
+---
+// A step-by-step player: <Walkthrough title> around <Frame title> blocks.
+// With script it shows one frame and Back / Next; without, every frame
+// stacks in order, so nothing is lost.
+interface Props {
+  title: string
+}
+---
+
+<figure class="vx-walk" data-walk>
+  <figcaption class="vx-walk-head">
+    <span class="vx-walk-title">{Astro.props.title}</span>
+    <span class="vx-walk-count" aria-live="polite"></span>
+  </figcaption>
+  <div class="vx-walk-frames"><slot /></div>
+  <div class="vx-walk-nav not-content" hidden>
+    <button type="button" data-walk-prev>← Back</button>
+    <button type="button" data-walk-next>Next →</button>
+  </div>
+</figure>
+
+<script>
+  for (const walk of document.querySelectorAll<HTMLElement>('[data-walk]')) {
+    const frames = [...walk.querySelectorAll<HTMLElement>('.vx-walk-frame')]
+    if (frames.length < 2) continue
+    const count = walk.querySelector<HTMLElement>('.vx-walk-count')!
+    const nav = walk.querySelector<HTMLElement>('.vx-walk-nav')!
+    const prev = walk.querySelector<HTMLButtonElement>('[data-walk-prev]')!
+    const next = walk.querySelector<HTMLButtonElement>('[data-walk-next]')!
+    let at = 0
+    const show = () => {
+      frames.forEach((f, i) => (f.hidden = i !== at))
+      count.textContent = `${at + 1} / ${frames.length}`
+      prev.disabled = at === 0
+      next.disabled = at === frames.length - 1
+    }
+    prev.addEventListener('click', () => (at--, show()))
+    next.addEventListener('click', () => (at++, show()))
+    nav.hidden = false
+    show()
+  }
+</script>
+
+<style>
+  .vx-walk {
+    border: 1px solid var(--vx-border);
+    border-radius: 12px;
+    margin: 1.5rem 0;
+    padding: 0.9rem 1.1rem 1rem;
+    background: color-mix(in srgb, var(--vx-surface) 70%, var(--vx-bg));
+  }
+  .vx-walk-head {
+    display: flex;
+    justify-content: space-between;
+    font-family: var(--vx-mono);
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--vx-muted);
+    margin: -0.9rem -1.1rem 0.9rem;
+    padding: 0.7rem 1.1rem;
+    border-bottom: 1px solid var(--vx-border);
+  }
+  .vx-walk-title {
+    color: var(--vx-fg);
+  }
+  .vx-walk-nav {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 0.8rem;
+  }
+  .vx-walk-nav button {
+    font-family: var(--vx-mono);
+    font-size: 0.8rem;
+    color: var(--vx-text);
+    background: var(--vx-bg);
+    border: 1px solid var(--vx-border);
+    border-radius: 999px;
+    padding: 0.35rem 0.95rem;
+    cursor: pointer;
+    transition:
+      color 0.15s,
+      border-color 0.15s;
+  }
+  .vx-walk-nav button:not(:disabled):hover {
+    color: var(--vx-accent);
+    border-color: var(--vx-accent);
+  }
+  .vx-walk-nav button:disabled {
+    opacity: 0.4;
+    cursor: default;
+  }
+</style>

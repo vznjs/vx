@@ -758,6 +758,7 @@ export interface ExecuteResult extends RunResult {
     | { kind: 'deferred'; materialize: () => Promise<void> }
     | { kind: 'trailing'; landed: Promise<void> }
   readonly changed?: readonly string[]
+  readonly outputsMissing?: readonly string[]
   readonly where?: string
   readonly machine?: {
     readonly cores: number
@@ -1566,6 +1567,18 @@ export interface MigrationPlan {
   extraFiles: { relPath: string; contents: string }[]
   notes: string[]
 }
+```
+
+## `missingOutputs`
+
+function · `src/orchestrator/attempt-outputs.ts`
+
+The positive literal paths of `sets` that match no path a `!` leaves, or,
+when no positive glob of any set matched, every one: each fails the task.
+A wildcard may match nothing beside one that matched.
+
+```ts
+export function missingOutputs(sets: readonly OutputSet[]): string[]
 ```
 
 ## `normalizeGlob`

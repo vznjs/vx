@@ -52,7 +52,7 @@ const CLASS_PAGES = {
     'index.md',
     'orchestrator.md',
     'patterns.md',
-    'upgrading.md',
+    'releases.mdx',
     'writing-plugins.mdx',
   ],
   retryLine: ['orchestrator.md', 'schema.md'],
@@ -450,15 +450,16 @@ describe('every page stating the timeout ladder states all four rungs', () => {
       'utf8',
     )
     expect(run).toContain("timeout: 'run.timeout',")
-    // upgrading.md is git log's breaking footers, not a statement of the ladder.
+    // releases.mdx is git log's breaking footers, not a statement of the ladder.
     const pages = handAuthoredDocs().filter(
       (p) =>
-        path.basename(p) !== 'upgrading.md' && readFileSync(p, 'utf8').includes('VX_RUN_TIMEOUT'),
+        path.basename(p) !== 'releases.mdx' && readFileSync(p, 'utf8').includes('VX_RUN_TIMEOUT'),
     )
-    // cli.md, schema.md, the workspace page and the feature inventory. A
-    // fifth copy lands here unpinned no more.
+    // cli.md, schema.md, the workspace and environment-variables pages and
+    // the feature inventory. A sixth copy lands here unpinned no more.
     expect(pages.map((p) => path.basename(p)).sort()).toEqual([
       'cli.md',
+      'environment-variables.mdx',
       'features.md',
       'schema.md',
       'workspace.mdx',

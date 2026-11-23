@@ -41,7 +41,7 @@ const NOT_CONFIG = new Set([
 ])
 
 /** Pages about other tools' configs, or vx's history and internals. */
-const SKIP_DIRS = ['node_modules', 'history', 'design', 'blog', 'releases', 'modules']
+const SKIP_DIRS = ['node_modules', 'history', 'design', 'blog', 'releases', 'modules', 'upgrading']
 const SKIP_PAGES =
   /(architecture|optimizations|patterns|flows|upstream-ledger|STATUS|upgrading|comparison|parity|migrate|api)\.mdx?$/
 

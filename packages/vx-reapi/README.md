@@ -202,6 +202,11 @@ no record at all and its outputs nowhere on this machine (its outputs
 listed in the local index but gone, or a deferred result no record could
 hold) is refused the same way.
 
+Once they land, the outputs meet core's rule here, as a run here does
+(`missingOutputs`): a literal the execution never wrote, or no declared
+output at all, fails the task (`outputsMissing`), on a record's replay
+too.
+
 Bringing a task's OWN outputs back gets the same treatment. Core's
 contract is that once an executor returns, the declared outputs are on
 disk, because the ordinary save path then tars whatever it finds — so

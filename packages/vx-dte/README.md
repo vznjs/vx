@@ -610,7 +610,8 @@ use your own instead.
   the send (a retry gets its own), so no later lookup ever hits it; so is one core would not save (a
   `--no-cache` or read-only run, one built on a dependency
   `--exclude-dependencies` left out, one that left a process running that may still
-  write its outputs, one a stopped run cancelled), and one that left a tracked file under its project
+  write its outputs, one a stopped run cancelled, one whose declared outputs did not all land
+  there by core's rule, which fails it as a run here does), and one that left a tracked file under its project
   changed on its worker (a formatter's input), or that found an untracked,
   unignored file under its project there (its outputs and its dependencies'
   aside), which this machine never sees: core withholds its own save when

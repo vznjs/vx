@@ -1,0 +1,62 @@
+---
+// One deeper level of a page: `patterns` (common real setups) or `details`
+// (every option, edge rule and how it works inside). Closed by default;
+// <Levels> opens every block up to the level the reader picks.
+interface Props {
+  level: 'patterns' | 'details'
+  title: string
+}
+const { level, title } = Astro.props
+const n = level === 'patterns' ? 2 : 3
+---
+
+<details class="vx-deeper" data-level={n}>
+  <summary>
+    <span class={`vx-deeper-badge vx-deeper-${level}`}>{level === 'patterns' ? 'Patterns' : 'Details'}</span>
+    <span class="vx-deeper-title">{title}</span>
+  </summary>
+  <div class="vx-deeper-body"><slot /></div>
+</details>
+
+<style>
+  .vx-deeper {
+    border: 1px solid var(--vx-border);
+    border-radius: 12px;
+    margin: 1.25rem 0;
+    background: color-mix(in srgb, var(--vx-surface) 45%, var(--vx-bg));
+  }
+  .vx-deeper > summary {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.75rem 1.1rem;
+    cursor: pointer;
+    font-family: var(--vx-font-display);
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    color: var(--vx-fg);
+  }
+  .vx-deeper[open] > summary {
+    border-bottom: 1px solid var(--vx-border);
+  }
+  .vx-deeper-badge {
+    font-family: var(--vx-mono);
+    font-size: 0.7rem;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    border-radius: 999px;
+    padding: 0.15rem 0.55rem;
+    border: 1px solid color-mix(in srgb, currentColor 50%, transparent);
+    background: color-mix(in srgb, currentColor 10%, transparent);
+  }
+  .vx-deeper-patterns {
+    color: var(--vx-link);
+  }
+  .vx-deeper-details {
+    color: var(--vx-warn);
+  }
+  .vx-deeper-body {
+    padding: 0.4rem 1.1rem 1rem;
+  }
+</style>

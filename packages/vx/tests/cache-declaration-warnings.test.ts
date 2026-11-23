@@ -48,8 +48,9 @@ async function runTask(task: string, relock = true): Promise<string[]> {
     },
     handleSignals: false,
   })
-  // A declared output that matched nothing fails the task (missing-outputs.test.ts).
-  const failed = lines.some((l) => l.includes('outputs matched no files'))
+  // A literal output that matched nothing fails the task; a wildcard does not
+  // (missing-outputs.test.ts).
+  const failed = lines.some((l) => l.includes('so the task fails'))
   expect(summary.ok).toBe(!failed)
   return lines.filter((l) => l.includes('matched no files'))
 }
@@ -177,11 +178,11 @@ describe('cache declarations that match nothing', () => {
 
   it('a wildcard output glob that matches nothing is named though a literal output matched', async () => {
     expect(await runTask('partial')).toEqual([
-      '[vx] app#partial: outputs matched no files (emit/**) — the command exited 0 but never wrote it, so the task fails and nothing is cached: write it, or fix the pattern',
+      '[vx] app#partial: outputs matched no files (emit/**) — a later hit restores only the literal files (partial.info)',
     ])
-    expect(await runTask('partial')).toHaveLength(1)
+    expect(await runTask('partial')).toEqual([])
     expect((await runTask('wspartial')).filter((l) => l.includes('outputs'))).toEqual([
-      '[vx] app#wspartial: outputs matched no files (wsgone/**) — the command exited 0 but never wrote it, so the task fails and nothing is cached: write it, or fix the pattern',
+      '[vx] app#wspartial: outputs matched no files (wsgone/**) — a later hit restores only the literal files (stamp.info)',
     ])
     expect(await runTask('partialok')).toEqual([])
   })
@@ -280,10 +281,8 @@ describe('cache declarations that match nothing', () => {
     expect((await runTask('wslost')).filter((l) => l.includes('outputs'))).toEqual([
       '[vx] app#wslost: outputs matched no files (nowhere/**) — the command exited 0 but never wrote it, so the task fails and nothing is cached: write it, or fix the pattern',
     ])
-    // Each glob answers for itself: the root-anchored glob matched, `files` did not.
-    expect((await runTask('wsfound')).filter((l) => l.includes('outputs'))).toEqual([
-      '[vx] app#wsfound: outputs matched no files (out/**) — the command exited 0 but never wrote it, so the task fails and nothing is cached: write it, or fix the pattern',
-    ])
+    // A wildcard is optional: one that matched beside one that did not says nothing.
+    expect((await runTask('wsfound')).filter((l) => l.includes('outputs'))).toEqual([])
   })
 
   it('a bracket glob naming a file that exists says to escape it', async () => {

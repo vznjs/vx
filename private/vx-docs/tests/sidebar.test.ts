@@ -23,14 +23,14 @@ const PLACES: [string, string][] = [
 // cache them, CI, then distributed task execution; the reference groups
 // close the list.
 const DOCS_GROUPS = [
-  'Get started',
+  'Start here',
+  'Set up the workspace',
   'Define tasks',
   'Run tasks',
-  'Cache',
-  'CI',
+  'Cache results',
+  'Run on CI',
   'Distributed task execution',
-  'Plugins',
-  'Debugging',
+  'Extend vx',
   'CLI reference',
   'Config reference',
   'Benchmarks',
@@ -41,10 +41,9 @@ const DOCS_GROUPS = [
 const DOCS_FIRST: [string, string][] = [
   ['What is vx?', 'docs/'],
   ['Quickstart', 'quickstart/'],
-  ['Migrate from Turbo, Nx or Vite Task', 'docs/migrate/'],
-  ['AI agents', 'docs/agents/'],
-  ['Upgrading vx', 'docs/upgrading/'],
   ['Workspace', 'docs/workspace/'],
+  ['Lockfiles', 'docs/lockfiles/'],
+  ['Move an existing workspace to vx', 'docs/migrate/'],
   ['Tasks', 'docs/tasks/'],
 ]
 const INTERNALS_TOP = ['overview/', 'architecture/', 'optimizations/', 'patterns/', 'flows/']

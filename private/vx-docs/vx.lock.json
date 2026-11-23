@@ -261,6 +261,7 @@
               "../../packages/vx-migrate/tests/turbo.test.ts",
               "../../packages/vx/docs/cli.md",
               "../../packages/vx/docs/schema.md",
+              "../../packages/vx/tests/contract/config-schema.json",
               "../vx-bench/real-repos.json"
             ],
             "systemInfo": [
@@ -274,6 +275,7 @@
           "tests/**",
           "src/content/docs/**",
           "src/components/demos/model/**",
+          "src/components/play/model/**",
           "src/bench/**",
           "src/data/bench.json",
           "src/conformance/**",
@@ -326,6 +328,7 @@
           "packages/vx-migrate/tests/turbo.test.ts",
           "packages/vx/docs/cli.md",
           "packages/vx/docs/schema.md",
+          "packages/vx/tests/contract/config-schema.json",
           "private/vx-bench/real-repos.json"
         ]
       },
@@ -397,7 +400,9 @@
           "allow": {
             "read": [
               "**/*",
-              "../vx-bench/real-repos.json"
+              "../vx-bench/real-repos.json",
+              "../../packages/vx/docs/schema.md",
+              "../../packages/vx/tests/contract/config-schema.json"
             ],
             "write": [
               "dist/**",
@@ -444,7 +449,9 @@
           "package.json"
         ],
         "workspaceFiles": [
-          "private/vx-bench/real-repos.json"
+          "private/vx-bench/real-repos.json",
+          "packages/vx/docs/schema.md",
+          "packages/vx/tests/contract/config-schema.json"
         ]
       },
       "outputs": {
@@ -482,7 +489,9 @@
           "allow": {
             "read": [
               "**/*",
-              "../vx-bench/real-repos.json"
+              "../vx-bench/real-repos.json",
+              "../../packages/vx/docs/schema.md",
+              "../../packages/vx/tests/contract/config-schema.json"
             ],
             "write": [
               "measured/live.json",
@@ -586,7 +595,9 @@
           "allow": {
             "read": [
               "**/*",
-              "../vx-bench/real-repos.json"
+              "../vx-bench/real-repos.json",
+              "../../packages/vx/docs/schema.md",
+              "../../packages/vx/tests/contract/config-schema.json"
             ],
             "write": [
               ".astro/**"

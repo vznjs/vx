@@ -14,6 +14,7 @@ import {
   machineMemoryBytes,
   ui,
   machineParallelism,
+  missingOutputs,
   workerRuntime,
   isUserError,
   UserError,
@@ -618,6 +619,22 @@ async function serve(
       // A bind the task never wrote is not its output. By size alone, an empty
       // stamp the task wrote was taken too and saved as no file.
       await prepared.sweep()
+      // Core's rule for a run here, checked where the files are: a declared
+      // output the command never wrote fails the task, and its entry was a
+      // hit for every run after.
+      const outputsMissing =
+        res.exitCode === 0
+          ? missingOutputs([
+              {
+                base: path.join(opts.root, m.project),
+                globs: m.outputs.files,
+                nestedDirs: m.nested.map((n) => path.join(opts.root, n)),
+              },
+              { base: opts.root, globs: m.outputs.workspaceFiles, nestedDirs: [] },
+            ])
+          : []
+      if (outputsMissing.length > 0)
+        ui.print('err', ui.status('error', m.task, `no file matched ${outputsMissing.join(', ')}`))
       // Its violations name the orchestrator's paths. As JSON first: the swap
       // round-trips them through JSON, which leaves a Date a string.
       const back = swapRoots(
@@ -658,6 +675,7 @@ async function serve(
         res.violations.length === 0 &&
         changed.length === 0 &&
         removed.length === 0 &&
+        outputsMissing.length === 0 &&
         m.key !== undefined
           ? m.key
           : m.runKey
@@ -669,6 +687,7 @@ async function serve(
         ...(cpuShare === undefined ? {} : { cpuShare }),
         ...(changed.length === 0 ? {} : { changed }),
         ...(removed.length === 0 ? {} : { removed }),
+        ...(outputsMissing.length === 0 ? {} : { outputsMissing }),
       })
     } finally {
       running.delete(m.task)

@@ -1,46 +1,164 @@
 ---
 title: Workspace
-description: "The .vx/workspace.ts file: the workspace root, its plugins and its settings."
+description: "The folder vx works in: how vx finds it, names its projects, locks their configs, and reads every setting in .vx/workspace.ts."
 ---
 
-import { Aside, FileTree } from '@astrojs/starlight/components'
+import Diagram from '../../../components/guide/diagram/Diagram.astro'
+import Demo from '../../../components/Demo.astro'
+import { workspaceLock } from '../../../components/docs/pictures/workspace.js'
+import { Aside, FileTree, Tabs, TabItem, Badge, Steps } from '@astrojs/starlight/components'
+import { Levels, Deeper, Concept, Quiz, Compare, Takeaway, NextStep } from '../../../components/learn'
+import { ConfigExplorer } from '../../../components/play'
+import ErrorFinder from '../../../components/docs/troubleshooting/ErrorFinder.astro'
 
-A workspace is a directory in a git checkout with a `.vx/workspace.ts` at its
-root and a `vx.config.ts` in each project.
+You have vx installed. Now meet the folder it works in, your workspace. One small file marks it:
+
+```ts title=".vx/workspace.ts"
+import { defineWorkspace } from '@vzn/vx/config'
+
+export default defineWorkspace({})
+```
+
+That empty file is a whole workspace. vx runs every task on this machine and caches it here. `vx init` writes it for you.
+
+<Levels />
 
 <FileTree>
 - .vx/
-  - workspace.ts the workspace: plugins and settings
+  - **workspace.ts** marks the root: settings and plugins
   - projects.lock written by `vx lock`, read by every run
+  - dependencies.lock written by `vx lock`
+  - cache/ this machine only, ignored by git
 - packages/
-  - app/
-    - vx.config.ts one per project: its tasks
-    - src/
-  - ui/
+  - web/ **@demo/web**, a Vite app
+    - vx.config.ts its tasks
+    - vx.lock.json what `vx lock` read, for review
+  - ui/ **@demo/ui**, the components `@demo/web` uses
     - vx.config.ts
+    - vx.lock.json
 </FileTree>
 
----
-
-## Projects
-
-A project is any directory with a `vx.config.ts`, in any language. Its
-name is the first of these that exists:
-
-1. the config's `name`
-2. a plugin's name for it (`@vzn/vx-lockfile` gives the `package.json` name)
-3. its path, such as `apps/web` (`//` for the root)
+<Concept term="Workspace">
+  The folder holding `.vx/workspace.ts`, and every project below it. One `vx` command sees the
+  whole workspace.
+</Concept>
 
 ---
 
-## The lock
+## Grow my-app into two projects
 
-Runs read configs from `.vx/projects.lock`, never from the files.
-After you add or edit a `vx.config.ts`, run `vx lock` and commit what it
-writes: the lock, and the `vx.lock.json` beside each config.
+Coming from the [Quickstart](../../quickstart/)? Turn its one app into the two projects this page uses. From `my-app`:
 
-If you forget, the next run stops and names the config you edited
-since your last `vx lock`.
+<Steps>
+
+1. Move the app into `packages/web`:
+
+   ```sh
+   mkdir -p packages/web && mv index.html src public package.json vx.config.ts vx.lock.json packages/web/
+   ```
+
+2. Add a library beside it:
+
+   ```sh
+   bun create vite packages/ui --template vanilla
+   ```
+
+3. Make the root a Bun workspace, and name the two projects:
+
+   ```sh
+   echo '{ "private": true, "workspaces": ["packages/*"] }' > package.json
+   bun add -d @vzn/vx @vzn/vx-lockfile
+   (cd packages/ui && bun pm pkg set name=@demo/ui)
+   (cd packages/web && bun pm pkg set name=@demo/web && bun add @demo/ui@workspace:*)
+   ```
+
+4. Record the new layout. `ui` has no tasks yet; [Tasks](../tasks/) gives it some:
+
+   ```sh
+   vx lock
+   ```
+
+</Steps>
+
+<Takeaway>turn one app into a workspace of projects.</Takeaway>
+
+## Find the root
+
+vx walks up from where you run it. The first `.vx/workspace.ts` it meets is the root. It never walks past the git root.
+
+Pick a folder to run `vx` in:
+
+<Demo name="workspace-root">
+  <ul style={{ listStyle: "none", paddingLeft: "1.25rem" }}>
+    <li>
+      <button type="button" data-dir="demo" data-git data-ws class="is-ok">demo/</button> <span class="is-muted">git root · .vx/workspace.ts</span>
+      <ul style={{ listStyle: "none", paddingLeft: "1.25rem" }}>
+        <li>
+          <button type="button" data-dir="demo/packages">packages/</button>
+          <ul style={{ listStyle: "none", paddingLeft: "1.25rem" }}>
+            <li>
+              <button type="button" data-dir="demo/packages/web">web/</button>
+              <ul style={{ listStyle: "none", paddingLeft: "1.25rem" }}>
+                <li><button type="button" data-dir="demo/packages/web/src" aria-pressed="true">src/</button></li>
+              </ul>
+            </li>
+          </ul>
+        </li>
+        <li>
+          <button type="button" data-dir="demo/examples" class="is-muted">examples/</button>
+          <ul style={{ listStyle: "none", paddingLeft: "1.25rem" }}>
+            <li>
+              <button type="button" data-dir="demo/examples/starter" data-ws class="is-muted">starter/</button> <span class="is-muted">.vx/workspace.ts</span>
+              <ul style={{ listStyle: "none", paddingLeft: "1.25rem" }}>
+                <li><button type="button" data-dir="demo/examples/starter/src" class="is-muted">src/</button></li>
+              </ul>
+            </li>
+          </ul>
+        </li>
+      </ul>
+    </li>
+    <li>
+      <button type="button" data-dir="scripts" data-git class="is-muted">scripts/</button> <span class="is-muted">git root · no workspace</span>
+      <ul style={{ listStyle: "none", paddingLeft: "1.25rem" }}>
+        <li><button type="button" data-dir="scripts/bin" class="is-muted">bin/</button></li>
+      </ul>
+    </li>
+  </ul>
+  <p class="vx-say"><span class="is-ok">✓</span> vx uses <code>demo/.vx/workspace.ts</code> 3 folders up</p>
+  <span slot="caption">Click a folder. vx stops at the first `.vx/workspace.ts` above it.</span>
+</Demo>
+
+Run vx where no `.vx/workspace.ts` is found, and it tells you what to do:
+
+```ansi
+[38;2;239;68;68m✗[0m [1mvx run[0m  [38;2;203;213;225mno .vx/workspace.ts in /tmp/nows/packages/web or a parent up to the git root[0m
+
+  [2mfix[0m  [1mvx init[0m
+```
+
+<Takeaway>run `vx` from any folder of your workspace and know which root it uses.</Takeaway>
+
+---
+
+## Name your projects
+
+A **project** is any folder with a `vx.config.ts`, in any language. Its name is the first of these that exists:
+
+1. the config's own `name`
+2. a plugin's name for it: `@vzn/vx-lockfile` gives the `package.json` name, `@demo/ui`
+3. its path, such as `packages/ui` (`//` for the root)
+
+You use that name everywhere: `vx run build --filter @demo/ui`, `dependsOn: ['@demo/ui#build']`.
+
+<Takeaway>tell what name vx gives each project, and set one with `name`.</Takeaway>
+
+---
+
+## Lock the configs
+
+<Diagram {...workspaceLock} />
+
+Runs never read your `vx.config.ts` files. `vx lock` reads them once and writes the lock. After you add or edit a config, run it and commit what it writes:
 
 ```sh
 vx lock
@@ -50,85 +168,456 @@ vx lock
 [38;2;34;197;94m✓[0m [1mvx lock[0m  [38;2;203;213;225m2 project configs → .vx/projects.lock, .vx/dependencies.lock[0m
 ```
 
-When a merge leaves a conflict in the lock, every run refuses it:
+Beside each config, `vx.lock.json` shows what vx really read. Plugins can add to a task, and this is where you see it:
+
+<Compare leftTitle="packages/web/vx.config.ts" rightTitle="packages/web/vx.lock.json">
+<div slot="left">
+
+```ts
+inputs: { files: ['src/**'] },
+```
+
+</div>
+<div slot="right">
+
+```json ins={4}
+"inputs": {
+  "files": [
+    "src/**",
+    "package.json"
+  ]
+},
+```
+
+</div>
+</Compare>
+
+`bun()` from `@vzn/vx-lockfile` added `package.json`: a dependency bump now rebuilds `@demo/web`.
+
+When a git merge leaves a conflict in the lock, every run refuses it:
 
 ```ansi
 [38;2;239;68;68m✗[0m [1mvx run[0m  [38;2;203;213;225m.vx/projects.lock holds a git merge conflict: run [0m[1m`vx lock`[0m[38;2;203;213;225m, which writes it anew from the configs[0m
 ```
 
-Resolve the `vx.config.ts` files, then run `vx lock`. It writes both
-locks from the merged configs.
+Resolve the `vx.config.ts` files, then run `vx lock`. It writes both locks from the merged configs.
 
 <Aside type="tip">
-  On CI, `vx lock --check` fails a change that skipped it ([guide](../../docs/ci/check-the-lock/)).
+  On CI, `vx lock --check` fails a change that skipped `vx lock` ([Keep the lock fresh](../ci/#keep-the-lock-fresh)).
 </Aside>
+
+<Quiz q="You edit packages/web/vx.config.ts and run vx run build. Which config does the run use?">
+  The old one, from `.vx/projects.lock`. Run `vx lock` first: runs read only the lock.
+</Quiz>
+
+<Takeaway>keep the lock in step with your configs, and fix a conflicted one in one command.</Takeaway>
 
 ---
 
-## `.vx/workspace.ts`
+## Change a setting
 
-`.vx/workspace.ts` marks the workspace root, and every workspace needs
-one. vx uses the nearest one above where you run, inside your git
-checkout. `vx init` writes it.
+Every setting lives in `.vx/workspace.ts`, in a group: `run`, `cache`, `watch` and so on. Leave one out and vx uses its default.
 
-With no plugins in it, vx runs and caches on this machine.
+```ts title=".vx/workspace.ts" mark={5-8}
+import { defineWorkspace } from '@vzn/vx/config'
+import { bun } from '@vzn/vx-lockfile'
 
-```ts title=".vx/workspace.ts"
+export default defineWorkspace({
+  run: {
+    concurrency: 8, // default: usable cores
+    timeout: '10m', // default: none
+  },
+  plugins: [bun()],
+})
+```
+
+The same setting has a variable and a flag, named from its path. `run.timeout` is `VX_RUN_TIMEOUT` and `vx run --timeout`:
+
+<Tabs>
+<TabItem label="File">
+
+```ts
+run: { timeout: '10m' },
+```
+
+</TabItem>
+<TabItem label="Variable">
+
+```sh
+VX_RUN_TIMEOUT=10m vx run build
+```
+
+</TabItem>
+<TabItem label="Flag">
+
+```sh
+vx run build --timeout 10m
+```
+
+</TabItem>
+</Tabs>
+
+When more than one is set, the most specific wins. Switch each one on or off:
+
+<Demo name="setting-source">
+  <div class="vx-row"><button type="button" data-value="1m" data-from="exec.timeout" aria-pressed="false" class="is-muted">task · exec.timeout: '1m'<span class="state"> · not set</span></button></div>
+  <div class="vx-row"><button type="button" data-value="5m" data-from="--timeout" aria-pressed="true" class="is-ok">flag · --timeout 5m<span class="state"> ✓ wins</span></button></div>
+  <div class="vx-row"><button type="button" data-value="2m" data-from="VX_RUN_TIMEOUT" aria-pressed="true">variable · VX_RUN_TIMEOUT=2m<span class="state"> · overridden</span></button></div>
+  <div class="vx-row"><button type="button" data-value="10m" data-from="run.timeout" aria-pressed="true">file · run.timeout: '10m'<span class="state"> · overridden</span></button></div>
+  <p class="vx-say"><code>@demo/web#build</code> gets <strong>5m</strong>, from <code>--timeout</code></p>
+  <span slot="caption">Top wins: the task, then the flag, then the variable, then the file.</span>
+</Demo>
+
+Not sure where a value came from? `vx info` lists every setting that is not at its default, and its source:
+
+```ansi
+  [2mworkers         [0m  [38;2;203;213;225m4 — VX_RUN_CONCURRENCY (4 cores)[0m
+  [2msettings        [0m  [38;2;203;213;225mrun.concurrency 4 (VX_RUN_CONCURRENCY), run.timeout 10m (.vx/workspace)[0m
+```
+
+Durations and sizes carry a unit: `'30s'`, `'10m'`, `'32KiB'`. A bare number is refused, with the line:
+
+```ansi
+[38;2;239;68;68m✗[0m [1mvx run[0m  [38;2;203;213;225mconfig refused[0m
+
+  [1m.vx/workspace.ts:6:10[0m
+  [1m`run.timeout`[0m[38;2;203;213;225m takes a duration with its unit, like '600s' or '600ms' (got 600)[0m
+
+    4 | export default defineWorkspace({
+    5 |   plugins: [bun()],
+  > 6 |   run: { timeout: 600 },
+      |          ^
+```
+
+<Quiz q="The file says run.timeout: '10m' and CI sets VX_RUN_TIMEOUT=20m. A task sets no exec.timeout. What limit does it get?">
+  `20m`. The variable beats the file. A typed `--timeout` would beat both, and a task's own
+  `exec.timeout` beats everything.
+</Quiz>
+
+<Takeaway>set any setting in the file, a variable or a flag, and see which one won with `vx info`.</Takeaway>
+
+---
+
+## Add plugins
+
+With no plugin, vx runs and caches on this machine. A **plugin** adds one capability: a lockfile reader, a remote cache, workers on other machines. List them in `plugins`:
+
+```ts title=".vx/workspace.ts" ins={2,5}
 import { defineWorkspace } from '@vzn/vx/config'
 import { bun } from '@vzn/vx-lockfile'
 
 export default defineWorkspace({
   plugins: [bun()],
-  run: {
-    concurrency: 8, // default: usable cores
-    timeout: '10m', // default: none
-  },
-  cache: {
-    dir: 'build/.vx', // unset: entries shared by this workspace's checkouts in ~/.vx/<id>/cache
+})
+```
+
+vx asks them in the order listed. A task no plugin takes runs here. An `undefined`, `null` or `false` entry is skipped, so `process.env.CI && plugin()` needs no filter.
+
+<Takeaway>add a plugin in one line, and turn it on only where you want it.</Takeaway>
+
+<Deeper level="patterns" title="Common setups">
+
+### Run every CI job from one name
+
+`pipelines` saves a `vx run` with its flags under a name. Each CI job then runs one short command:
+
+```ts title=".vx/workspace.ts"
+import { defineWorkspace } from '@vzn/vx/config'
+
+export default defineWorkspace({
+  pipelines: {
+    pr: { tasks: ['lint', 'test', 'build'], affected: true, failFast: true },
+    main: { tasks: ['lint', 'test', 'build'] },
   },
 })
 ```
 
-Each setting's variable and flag come from its path: `run.timeout` is
-`VX_RUN_TIMEOUT` and `vx run --timeout`. A flag beats the variable, and
-the variable beats this file.
+```sh
+vx pipeline pr
+```
 
-Durations and sizes carry a unit: `'30s'`, `'10m'`, `'32KiB'`. Every
-setting is in [the settings table](../../schema/workspace/#settings).
+`vx lock` checks every task a pipeline names, so a typo fails before CI does:
 
----
+```ansi
+[38;2;239;68;68m✗[0m [1mvx lock[0m  [38;2;203;213;225mlock not written[0m
 
-<details>
-<summary>The fields you will reach for</summary>
+  [38;2;203;213;225mpipelines.pr.tasks names biuld, which no project declares; tasks: build, lint, test[0m
+```
 
-| Field            | Sets                                                                  |
-| ---------------- | --------------------------------------------------------------------- |
-| `plugins`        | asked in order; this machine runs what they decline, and its cache is asked first ([Plugins](../../docs/plugins/)) |
-| `run.concurrency` | tasks at once, a number or a share of the cores (`'50%'`) |
-| `run.timeout`, `run.retries` | a task's time limit and re-runs, for tasks without their own `exec.timeout` / `exec.retries` |
-| `run.failFast` | `true` stops the run at the first failure and kills the tasks still running; off, a failure skips only its dependents |
-| `baseBranch` | the default branch, by name; default `origin/HEAD`'s branch, then `main`, then `master`. A bare `--affected` compares with its merge base off it, and on it has no default unless `VX_AFFECTED_BASE` names one |
-| `run.schedule` | which ready task starts first: `'most-work'` (default, most tasks waiting behind it), `'critical-path'` (longest path of dependent tasks), `'direct-dependents'`, `'ready-order'`; a `schedule` plugin's weights come first ([Blog](../../blog/scheduling-strategies/#pick-the-guess)) |
-| `run.rules` | graph checks: `exclusiveOutputs` (on unless `false`) refuses two tasks on one output path even when one depends on the other; `vx lock` and `vx lock --check` check it, never a run. A task whose inputs can match another task's outputs is always refused, unless it is a dependency the key leaves out of `inputs.tasks`, so every key is known before anything runs ([Schema](../../schema/workspace/)) |
-| `cache.dir`      | keep the whole cache here, shared with no other workspace; unset, entries live in `~/.vx/<id>/cache` and every checkout of the workspace hits them |
-| `cache.policy` | which layers read and write (`'local:rw,remote:r'`) |
-| `cache.artifactCeiling` | the largest entry a remote stores or a hit unpacks (`'1GiB'`); a bigger one stays on this machine |
-| `inputs.stability` | every task's `inputs.stability` default, `{ strategy, severity }`: `'immutable'` / `'warn'` unless set; a task's own field wins, the `VX_INPUTS_STABILITY_*` variables win over both ([Schema](../../schema/inputs/)) |
-| `outputs.clean` | `false` keeps every task's declared outputs on a miss instead of removing them first; a task's own `outputs.clean` wins ([Schema](../../schema/outputs/)) |
-| `lock.reviewFiles` | `false` stops `vx lock` writing a pretty `vx.lock.json` (the project's resolved config, for review) beside each `vx.config` |
-| `watch.poll` | `vx watch` polls instead of using the OS watcher |
-| `run.killGrace`, `run.pluginTimeout` | SIGTERM to SIGKILL for a task (`'2s'`), and how long a plugin's end-of-run flush may take (`'3s'`) |
-| `run.logs`, `run.secrets.minLength` | how much output vx keeps with an entry and a failure, and the shortest value it masks as a secret (6) |
-| `watch.debounce`, `watch.pollInterval` | how long `vx watch` waits after a change, and how often a poll re-walks |
-| `history.retention` | how long `vx cache clean` keeps run history (`'30d'`) |
-| `pipelines` | named runs for `vx pipeline <name>`: `tasks` plus any `vx run` flag as a key, and an `env` for vx alone ([CI](../ci/)) |
+See [Run a pipeline](../ci/run-a-pipeline/).
 
-For a timeout, the first one set wins: a task's `exec.timeout`, then
-`--timeout`, then `VX_RUN_TIMEOUT`, then `run.timeout`. Only
-`exec.timeout` is in the cache key.
+<Takeaway>give every CI job one command, with its flags kept in the workspace.</Takeaway>
 
-To share inputs between projects, import one array into each config.
+### Let apps use only libraries
 
-</details>
+`run.rules.dependencies` says which projects may depend on which. A rule picks projects by name or by `tag:<tag>`, and `*` matches anything. Tag each project in its config:
 
-See [the settings table](../../schema/workspace/#settings) for every field.
+```ts title="packages/web/vx.config.ts" mark={4}
+import { defineProject } from '@vzn/vx/config'
+
+export default defineProject({
+  tags: ['app'],
+  tasks: {},
+})
+```
+
+```ts title=".vx/workspace.ts"
+import { defineWorkspace } from '@vzn/vx/config'
+
+export default defineWorkspace({
+  run: {
+    rules: {
+      dependencies: [{ from: 'tag:app', allow: ['tag:lib'] }],
+    },
+  },
+})
+```
+
+Forget to tag `@demo/ui` as `lib`, and `vx lock` refuses, naming the rule:
+
+```ansi
+[38;2;239;68;68m✗[0m [1mvx lock[0m  [38;2;203;213;225mlock not written[0m
+
+  [38;2;203;213;225m1 dependency breaks run.rules.dependencies[0m
+  [38;2;203;213;225m@demo/web depends on @demo/ui, which run.rules.dependencies[0] (from 'tag:app') does not allow[0m
+
+  [2mfix[0m  [1mdrop the dependency, or change the project's tags or the rule[0m
+```
+
+Add `tags: ['lib']` to `@demo/ui`, run `vx lock` again, and it passes. A `deny` list works the other way, and beats `allow`.
+
+<Takeaway>stop a wrong dependency at `vx lock`, before it reaches review.</Takeaway>
+
+### Stop at the first failure
+
+By default a failed task skips only the tasks that wait on it. Everything else finishes. To stop the whole run and kill what is still running:
+
+```ts
+run: { failFast: true },
+```
+
+Or for one run: `vx run build --fail-fast`.
+
+<Takeaway>pick between "see every failure" and "stop at the first".</Takeaway>
+
+### Keep the cache in one folder
+
+By default every checkout of a repository shares its entries in `~/.vx/<id>/cache`. A second checkout hits the first one's work.
+
+Name a folder to keep the whole cache there, shared with nothing:
+
+```ts
+cache: { dir: 'build/.vx' },
+```
+
+<Takeaway>choose between a cache shared by every checkout and one kept in a folder of your own.</Takeaway>
+
+### Read the remote cache, never write it
+
+With a remote cache, a run off CI reads it and does not write it. CI reads and writes. To pin it for every run, set `cache.policy`:
+
+```ts
+cache: { policy: 'local:rw,remote:r' },
+```
+
+See [Remote cache](../remote-cache/).
+
+<Takeaway>decide which machines may fill the remote cache.</Takeaway>
+
+</Deeper>
+
+<Deeper level="details" title="Every field">
+
+Click any field to read what it does:
+
+<ConfigExplorer area="workspace" />
+
+Each field, its default, and what it does. "Also" lists its variable and flag.
+
+### Top level
+
+| Field | Default | What it does |
+| --- | --- | --- |
+| `baseBranch` | `origin/HEAD`'s branch, then `main`, then `master` | Your default branch, by name (`'develop'`). Elsewhere, a bare `--affected` compares with the merge base off it. On it, a bare `--affected` has no default unless `VX_AFFECTED_BASE` names one. Also: `VX_BASE_BRANCH`. |
+| `plugins` | none | Plugins, asked in order. This machine runs what they all decline, and its cache is asked first. See [Plugins](../plugins/). |
+| `pipelines` | none | Named runs for `vx pipeline <name>`. Every key is below. |
+
+### `run`: how a run runs
+
+| Field | Default | What it does |
+| --- | --- | --- |
+| `run.concurrency` | usable cores | Tasks at once: a number, or a share of the cores (`'50%'`). Also: `VX_RUN_CONCURRENCY`, `--concurrency`. |
+| `run.schedule` | `'most-work'` | Which ready task starts first. `'most-work'`: the one most tasks wait on. `'critical-path'`: the head of the longest line of waiting tasks. `'direct-dependents'`: the one most tasks wait on directly. `'ready-order'`: the first to become ready. A `schedule` plugin's weights come first. Also: `VX_RUN_SCHEDULE`, `--schedule`. |
+| `run.timeout` | none | A task's time limit, for tasks without their own `exec.timeout`. A timed-out task fails and is never cached. Also: `VX_RUN_TIMEOUT`, `--timeout`. |
+| `run.retries` | `0` | Re-runs of a failed task, for tasks without their own `exec.retries`. Also: `VX_RUN_RETRIES`, `--retries`. |
+| `run.failFast` | `false` | `true` stops the run at the first failure and kills running tasks. Off, a failure skips only its dependents. Also: `VX_RUN_FAIL_FAST`, `--fail-fast`. |
+| `run.killGrace` | `'2s'` | Time between SIGTERM and SIGKILL when vx stops a process. Also: `VX_RUN_KILL_GRACE`. |
+| `run.pluginTimeout` | `'3s'` | How long one plugin's end-of-run work may take. `'0ms'` waits for nothing. Also: `VX_RUN_PLUGIN_TIMEOUT`. |
+| `run.logs.captureHead` | `'8MiB'` | The start of a task's output kept with its cache entry. The live stream is never cut. Also: `VX_RUN_LOGS_CAPTURE_HEAD`. |
+| `run.logs.captureTail` | `'8MiB'` | The end of a task's output kept with its cache entry. Also: `VX_RUN_LOGS_CAPTURE_TAIL`. |
+| `run.logs.failedHead` | `'8KiB'` | The start of a failed attempt's output kept. Also: `VX_RUN_LOGS_FAILED_HEAD`. |
+| `run.logs.failedTail` | `'56KiB'` | The end of a failed attempt's output kept. Also: `VX_RUN_LOGS_FAILED_TAIL`. |
+| `run.secrets.minLength` | `6` | The shortest secret value vx masks in output. Also: `VX_RUN_SECRETS_MIN_LENGTH`. |
+| `run.rules.exclusiveOutputs` | `true` | Refuse two tasks writing the same output path, even when one waits on the other. `vx lock` checks it, never a run. Also: `VX_RUN_RULES_EXCLUSIVE_OUTPUTS`. |
+| `run.rules.dependencies` | none | Which projects may depend on which: `{ from, allow?, deny? }`. A `deny` beats an `allow`. `vx lock` checks it. |
+
+### `cache`: where entries live and who reads them
+
+| Field | Default | What it does |
+| --- | --- | --- |
+| `cache.dir` | index in `.vx/cache`, entries in `~/.vx/<id>/cache` | Keep the whole cache in this folder, shared with no other workspace. Also: `VX_CACHE_DIR`, `--cache-dir`. |
+| `cache.policy` | CI: every layer reads and writes. Off CI: the remote is read only | Which layers read and write (`'local:rw,remote:r'`). `--no-cache` and `--force` still apply on top. Also: `VX_CACHE_POLICY`, `--cache-policy`. |
+| `cache.download` | `'all'` | Which remote hits land on disk: `'all'`, only the tasks you asked for (`'toplevel'`), or `'none'`. Also: `VX_CACHE_DOWNLOAD`, `--cache-download`. |
+| `cache.upload.failures` | `'ci'` | Which runs keep a failed task's log and outputs in the remote: `'ci'`, `'local'` or `'always'`. |
+| `cache.artifactCeiling` | `'1GiB'` | The largest entry a remote stores or a hit unpacks. A bigger one stays on this machine. Machines sharing a remote set the same value. Also: `VX_CACHE_ARTIFACT_CEILING`. |
+| `cache.store.embeddings` | `'32KiB'` | An entry up to this size lives inside the cache index. `false`: none does. Also: `VX_CACHE_STORE_EMBEDDINGS`. |
+| `cache.store.decompress` | `true` | Keep a larger entry as plain files, which a hit copies out. Off: one `.tar.zst`. Also: `VX_CACHE_STORE_DECOMPRESS`. |
+| `cache.concurrency.download` | min(96, max(cores × 3, 64)) | Remote downloads at once. Also: `VX_CACHE_CONCURRENCY_DOWNLOAD`, `--cache-concurrency-download`. |
+| `cache.concurrency.upload` | min(96, max(cores × 3, 64)) | Uploads at once, per remote. Also: `VX_CACHE_CONCURRENCY_UPLOAD`, `--cache-concurrency-upload`. |
+| `cache.concurrency.restore` | twice `run.concurrency` | Local hits writing their outputs at once. Also: `VX_CACHE_CONCURRENCY_RESTORE`, `--cache-concurrency-restore`. |
+
+### Task defaults, lock, watch and history
+
+| Field | Default | What it does |
+| --- | --- | --- |
+| `inputs.stability.strategy` | `'immutable'` | What a write to an input during the command means, for tasks without their own. See [Inputs](../../schema/inputs/). Also: `VX_INPUTS_STABILITY_STRATEGY`. |
+| `inputs.stability.severity` | `'warn'` | `'warn'` keeps the run green and says why the entry was not saved. `'error'` fails the task. Also: `VX_INPUTS_STABILITY_SEVERITY`. |
+| `outputs.clean` | `true` | Remove a task's outputs before it runs on a miss, for tasks without their own `outputs.clean`. |
+| `lock.reviewFiles` | `true` | `vx lock` writes `vx.lock.json` beside each config, for review. vx never reads it. Also: `VX_LOCK_REVIEW_FILES`. |
+| `watch.poll` | `false` | Poll for changes instead of using the OS watcher. Also: `VX_WATCH_POLL`, `vx watch --poll`. |
+| `watch.debounce` | `'150ms'` | How long `vx watch` waits after the last change. Also: `VX_WATCH_DEBOUNCE`. |
+| `watch.pollInterval` | `'250ms'` | How often a polling `vx watch` re-reads the tree. Also: `VX_WATCH_POLL_INTERVAL`. |
+| `history.retention` | `'30d'` | `vx cache clean` drops run history older than this. Also: `VX_HISTORY_RETENTION`. |
+
+### Every pipeline key
+
+Each key but `tasks` and `env` is a `vx run` flag in camelCase: `cachePolicy` is `--cache-policy`. A flag typed with `vx pipeline` beats its key.
+
+```ts title=".vx/workspace.ts"
+import { defineWorkspace } from '@vzn/vx/config'
+
+export default defineWorkspace({
+  pipelines: {
+    nightly: {
+      tasks: ['test', '@demo/web#e2e'], // required; 'project#task' names one
+      filter: ['./packages/*'], // --filter
+      affected: false, // --affected: true, or a base ref
+      excludeDependencies: ['gen'], // --exclude-dependencies: true, or names
+      env: { VX_DTE_RELAY: 'https://relay.example.com' }, // for vx and plugins, never a task
+      concurrency: '50%',
+      schedule: 'critical-path',
+      failFast: true,
+      retries: 1,
+      timeout: '30m',
+      branch: 'nightly', // the branch its history records
+      cachePolicy: 'local:rw,remote:r',
+      noCache: false,
+      force: true,
+      cacheDir: '.vx/cache',
+      cacheDownload: 'toplevel',
+      cacheConcurrencyDownload: 32,
+      cacheConcurrencyUpload: 32,
+      cacheConcurrencyRestore: 16,
+      outputLogs: 'errors-only',
+      verbosity: 1,
+      profile: 'nightly.json', // true writes profile.json
+      dry: false, // true prints the plan, runs nothing
+    },
+    plan: {
+      tasks: ['build'],
+      dry: true, // a dry run writes no profile, so it sets none
+      format: 'json', // the plan as JSON; default 'pretty'
+    },
+  },
+})
+```
+
+A variable already set in the shell beats a pipeline's `env`. `-- <args>` never reach a pipeline: forwarded args go to one task in one project.
+
+### Which value wins
+
+For a timeout, the first one set wins: a task's `exec.timeout`, then `--timeout`, then `VX_RUN_TIMEOUT`, then `run.timeout`. Only `exec.timeout` is in the cache key. Every setting follows the same order.
+
+A few settings have a variable only, because a committed value would be wrong on the next branch: `VX_AFFECTED_BASE`, `VX_RUN_BRANCH`, `VX_RUN_OUTPUT_LOGS`, `VX_CACHE_SCOPE`. All of them: [the settings table](../../schema/workspace/#settings).
+
+### Two tasks, one output
+
+Two tasks writing the same path would delete each other's files. `vx lock` refuses it:
+
+```ansi
+[38;2;239;68;68m✗[0m [1mvx lock[0m  [38;2;203;213;225mlock not written[0m
+
+  [38;2;203;213;225m@demo/ui#build and @demo/ui#types both write dist/**[0m
+  [2mvx clears a task's outputs before it runs, so one deletes the other's[0m
+
+  [2mfix[0m  [1mgive each task its own output path, or set run.rules.exclusiveOutputs: false in .vx/workspace.ts[0m
+```
+
+With `exclusiveOutputs: false`, a task that waits on another may add files to its folder. It owns only the files it added.
+
+### What `.vx/` holds
+
+| Path | In git | Holds |
+| --- | --- | --- |
+| `.vx/workspace.ts` <Badge text="required" variant="caution" /> | yes | settings and plugins |
+| `.vx/projects.lock` | yes | every project's config, as `vx lock` read it |
+| `.vx/dependencies.lock` | yes | the projects' dependencies, as `vx lock` read them |
+| `.vx/cache/` | no | this machine's cache index and run history |
+| `.vx/tmp/` | no | files a cache hit is putting back |
+
+`vx lock` writes `.vx/.gitignore` (`/cache`, `/tmp`) and `.vx/.gitattributes` for you.
+
+To share inputs between projects, import one array into each config: a config is TypeScript.
+
+</Deeper>
+
+<Deeper level="details" title="When it goes wrong">
+
+Paste what vx printed, or open a code:
+
+<ErrorFinder codes={['VX_E_NO_WORKSPACE', 'VX_E_NO_GIT', 'VX_E_GIT', 'VX_E_LOCK']} />
+
+### You changed `vx.config.ts` and the run ignores it
+
+A run reads the lock, not your configs. `vx lock --check` shows what drifted:
+
+```ansi title="vx lock --check"
+[38;2;239;68;68m✗[0m [1mvx lock --check[0m  [38;2;203;213;225mpackages/web/vx.config.ts evaluates differently from the lock here — its config, a file it imports, or the environment it reads changed; run 'vx lock'[0m
+
+  [38;2;203;213;225mtasks.build.exec.command: "vite build" → "vite build --mode staging"[0m
+```
+
+Look at the second line: the old command, then the new one. Run `vx lock` to take it.
+
+### Every message, word for word
+
+- **`no .vx/workspace.ts in …`.** Run `vx init` at the workspace root. It writes `.vx/workspace.ts`, which marks the root. A file above your git checkout does not count.
+- **`… belongs to another user, so vx does not take its directory as your workspace`.** Outside git, vx ignores a `.vx/workspace.ts` another user owns. Run vx in a checkout you own.
+- **`two projects are named "…": …`.** Two folders have the same name: set another `name` in one's `vx.config.ts`, then run `vx lock`.
+- **`… locks …, but its … is gone`.** A `vx.config.ts` was deleted or renamed: run `vx lock`.
+- **`… holds a line … never writes`.** A merge left a conflict in the lock: see [Fix a merge conflict in the lock](../ci/#fix-a-merge-conflict-in-the-lock).
+- **`… evaluates differently from the lock here`.** A config changed without `vx lock`: run `vx lock` and commit the lock.
+- **`vx requires git: … is not inside a git work tree`.** vx needs git: run `git init` at the workspace root.
+- **`vx requires git: failed to spawn 'git'`.** Install git.
+
+- **The editor cannot find `@vzn/vx`.** Add it as a devDependency. vx
+  runs a config without it.
+- **A package has no `vx.config.ts`.** It gets a default `build` that
+  only waits for its dependencies' builds. Its files still count, so
+  editing it re-runs the packages that use it.
+
+### Platforms
+
+vx runs on Linux with glibc (not Alpine's musl) or macOS, in a git
+repository (sha1 or sha256, files or reftable refs). The
+release binary needs neither Node nor Bun.
+
+From source, vx needs Bun 1.4.4 or later.
+
+What the sandbox needs on each system is on [Sandboxing](../sandboxing/#requirements--platform-support).
+
+<Takeaway>fix a workspace vx cannot find, a stale lock, or a missing git.</Takeaway>
+
+</Deeper>
+
+<NextStep href="../lockfiles/" title="Lockfiles">Your workspace is ready. Teach vx how your projects depend on each other.</NextStep>

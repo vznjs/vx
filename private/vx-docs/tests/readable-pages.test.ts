@@ -29,9 +29,9 @@ const SHELL_BANNED =
 const ESC = String.fromCharCode(27)
 
 // Pages these rules reach.
-const ROOTS = ['docs', 'quickstart.mdx', 'glossary.md']
-// The generated upgrading guide quotes commit footers, which git keeps as written.
-const LATER = new Set(['docs/upgrading.md'])
+const ROOTS = ['docs', 'quickstart.mdx', 'glossary.mdx']
+// The control page: a long paragraph and an internal word, outside the site.
+const CONTROL = '../../../tests/fixtures/unreadable.md'
 
 const pages = (rel: string): string[] => {
   const abs = path.join(CONTENT, rel)
@@ -108,16 +108,15 @@ describe('every page reads on a phone', () => {
 
   it('walks the pages', () => {
     expect(all.length).toBeGreaterThan(20)
-    for (const rel of LATER) expect(all).toContain(rel)
   })
 
   it('keeps paragraphs short, output coloured, and internal words out', () => {
-    expect(all.filter((rel) => !LATER.has(rel)).flatMap(problems)).toEqual([])
+    expect(all.flatMap(problems)).toEqual([])
   })
 
   // CONTROL: the check sees a long paragraph and an internal word.
   it('catches what it is for', () => {
-    const found = problems('docs/upgrading.md')
+    const found = problems(CONTROL)
     expect(found.some((p) => p.includes('paragraph of'))).toBe(true)
     expect(found.some((p) => p.includes('internal'))).toBe(true)
   })

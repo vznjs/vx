@@ -1,0 +1,95 @@
+---
+// The release list's "which vx do you run?" picker: it hides every release
+// at or below the one picked, so the reader sees only the changes to make.
+// It reads the `<div data-release>` blocks packages/vx/scripts/upgrading.ts
+// writes, and starts on the release before the newest. Without JavaScript
+// it stays hidden and every release shows.
+---
+
+<div class="vx-release-picker" hidden>
+  <label>
+    <span>Your vx now</span>
+    <select aria-label="Your vx version, from vx --version"></select>
+  </label>
+  <p class="vx-release-count" aria-live="polite"></p>
+</div>
+
+<script>
+  const root = document.querySelector<HTMLElement>('.vx-release-picker')
+  const select = root?.querySelector('select')
+  const count = root?.querySelector<HTMLElement>('.vx-release-count')
+  const blocks = [...document.querySelectorAll<HTMLElement>('[data-release]')]
+  // 'v0.0.659' → [0, 0, 659]; 'Unreleased' sorts above every release.
+  const parts = (name: string): number[] =>
+    name === 'Unreleased' ? [Infinity] : name.replace(/^v/, '').split('.').map(Number)
+  const newer = (a: number[], b: number[]): boolean => {
+    for (let i = 0; i < Math.max(a.length, b.length); i++) {
+      const d = (a[i] ?? 0) - (b[i] ?? 0)
+      if (d !== 0) return d > 0
+    }
+    return false
+  }
+  if (root && select && count && blocks.length > 0) {
+    const tags = blocks.map((b) => b.dataset['release']!).filter((t) => t.startsWith('v'))
+    select.append(new Option('Show every release', ''))
+    for (const t of tags) select.append(new Option(t.replace(/^v/, ''), t))
+    const show = (): void => {
+      const from = select.value === '' ? undefined : parts(select.value)
+      let changes = 0
+      let releases = 0
+      for (const b of blocks) {
+        const on = from === undefined || newer(parts(b.dataset['release']!), from)
+        b.hidden = !on
+        if (on) {
+          if (b.dataset['release'] !== 'Unreleased') releases++
+          // Changes in a closed block (plugin authors, the next release) are not counted.
+          changes += [...b.querySelectorAll('h3')].filter((h) => !h.closest('details')).length
+        }
+      }
+      count.textContent =
+        changes === 0
+          ? 'Nothing to change: no breaking change since this release.'
+          : `${changes} change${changes === 1 ? '' : 's'} to check, in ${releases} release${releases === 1 ? '' : 's'}.`
+      // The next release's block shows too, closed: say what it is.
+      if (blocks.some((b) => b.dataset['release'] === 'Unreleased' && !b.hidden))
+        count.textContent += ' Unreleased: what the next release changes.'
+    }
+    if (tags[1] !== undefined) select.value = tags[1]
+    select.addEventListener('change', show)
+    root.hidden = false
+    show()
+  }
+</script>
+
+<style>
+  .vx-release-picker {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.6rem 1rem;
+    margin: 1.25rem 0;
+    padding: 0.7rem 0.9rem;
+    border: 1px solid var(--vx-border);
+    border-radius: 8px;
+    background: var(--vx-surface);
+  }
+  .vx-release-picker label {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    color: var(--vx-fg);
+    font-weight: 600;
+  }
+  .vx-release-picker select {
+    font-family: var(--vx-mono);
+    padding: 0.25rem 0.5rem;
+    border-radius: 6px;
+    border: 1px solid var(--vx-border);
+    background: var(--vx-bg);
+    color: var(--vx-fg);
+  }
+  .vx-release-count {
+    margin: 0;
+    color: var(--vx-muted);
+  }
+</style>

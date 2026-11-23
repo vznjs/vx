@@ -27,9 +27,7 @@ describe('search', () => {
     )
     expect(inMain).toEqual([])
     // A docs page still is.
-    expect(read('docs/running/stop-at-the-first-failure/index.html')).toContain(
-      'data-pagefind-body',
-    )
+    expect(read('docs/running-tasks/index.html')).toContain('data-pagefind-body')
   })
 
   it('merges the notes into every search at a tenth of the weight', () => {

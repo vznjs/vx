@@ -6,6 +6,7 @@ import { SIDEBAR } from './src/nav/sections.ts'
 import { bench } from './src/plugins/bench.ts'
 import { dataCharts } from './src/plugins/data-charts.ts'
 import { mermaid } from './src/plugins/mermaid.ts'
+import { tableLabels } from './src/plugins/table-labels.ts'
 import { RELEASES_BUNDLE, releaseSearch } from './src/plugins/release-search.ts'
 
 // GitHub Pages project site: https://vznjs.github.io/vx/
@@ -76,22 +77,21 @@ export default defineConfig({
     '/guides/otel-bridge/': `${root}docs/plugins/#opentelemetry`,
     '/guides/mcp/': `${root}docs/agents/`,
     // The how-to pages joined the Docs' URLs too (2026-11-23).
-    '/guides/caching/cache-a-task/': `${root}docs/caching/cache-a-task/`,
-    '/guides/caching/clean-the-cache/': `${root}docs/caching/clean-the-cache/`,
+    '/guides/caching/cache-a-task/': `${root}docs/caching/#turn-it-on`,
+    '/guides/caching/clean-the-cache/': `${root}docs/caching/#see-what-the-cache-holds`,
     '/guides/caching/why-a-task-missed/': `${root}docs/caching/why-a-task-missed/`,
-    '/guides/ci/check-the-lock/': `${root}docs/ci/check-the-lock/`,
-    '/guides/ci/fix-a-lock-conflict/': `${root}docs/ci/fix-a-lock-conflict/`,
+    '/guides/ci/check-the-lock/': `${root}docs/ci/#keep-the-lock-fresh`,
+    '/guides/ci/fix-a-lock-conflict/': `${root}docs/ci/#fix-a-merge-conflict-in-the-lock`,
     '/guides/ci/run-a-pipeline/': `${root}docs/ci/run-a-pipeline/`,
     '/guides/graph-explorer/': `${root}docs/graph-explorer/`,
     '/guides/migrate/': `${root}docs/migrate/`,
-    '/guides/running/build-dependencies-first/': `${root}docs/running/build-dependencies-first/`,
-    '/guides/running/pass-an-environment-variable/': `${root}docs/running/pass-an-environment-variable/`,
-    '/guides/running/run-one-project/': `${root}docs/running/run-one-project/`,
-    '/guides/running/run-what-changed/': `${root}docs/running/run-what-changed/`,
-    '/guides/running/set-a-time-limit/': `${root}docs/running/set-a-time-limit/`,
-    '/guides/running/start-a-dev-server/': `${root}docs/running/start-a-dev-server/`,
-    '/guides/running/stop-at-the-first-failure/': `${root}docs/running/stop-at-the-first-failure/`,
-    '/guides/troubleshooting/': `${root}docs/troubleshooting/`,
+    '/guides/running/build-dependencies-first/': `${root}docs/tasks/#build-a-projects-dependencies-first`,
+    '/guides/running/pass-an-environment-variable/': `${root}docs/environment-variables/#give-a-task-a-variable`,
+    '/guides/running/run-one-project/': `${root}docs/running-tasks/#run-one-projects-tasks`,
+    '/guides/running/run-what-changed/': `${root}docs/running-tasks/#run-only-what-changed`,
+    '/guides/running/set-a-time-limit/': `${root}docs/running-tasks/#set-a-time-limit-on-a-task`,
+    '/guides/running/start-a-dev-server/': `${root}docs/dev-servers/#start-a-dev-server-before-your-tests`,
+    '/guides/running/stop-at-the-first-failure/': `${root}docs/running-tasks/#stop-at-the-first-failure`,
     '/guides/upgrading/': `${root}docs/upgrading/`,
     '/concepts/ai-first/': `${root}docs/agents/`,
     '/plugins/vx-mcp/': `${root}docs/agents/`,
@@ -149,6 +149,7 @@ export default defineConfig({
     processor: satteri({
       // bench first: the charts read the figures it fills in.
       mdastPlugins: [bench, mermaid, dataCharts],
+      hastPlugins: [tableLabels],
       // `--filter` stays two hyphens, never an en dash.
       features: { smartPunctuation: { dashes: false } },
     }),
@@ -209,7 +210,12 @@ export default defineConfig({
         Sidebar: './src/components/starlight/Sidebar.astro',
         ThemeProvider: './src/components/starlight/ThemeProvider.astro',
       },
-      customCss: ['./src/styles/theme.css', './src/styles/charts.css', './src/styles/blog.css'],
+      customCss: [
+        './src/styles/theme.css',
+        './src/styles/docs.css',
+        './src/styles/charts.css',
+        './src/styles/blog.css',
+      ],
       social: [
         { icon: 'github', label: 'GitHub', href: 'https://github.com/vznjs/vx' },
         { icon: 'blueSky', label: 'Bluesky', href: 'https://bsky.app/profile/vzn-vx.bsky.social' },

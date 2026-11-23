@@ -1,0 +1,226 @@
+---
+// CacheSim: change a file, a command or an env var in the story workspace,
+// run `vx run build --all` and see which keys move. Without JavaScript it
+// shows the first run (empty cache) and the second (all up to date), built
+// here from the same model the element runs. `cache-sim.ts` unhides the
+// controls and reads the `.controls`, `.say` and `.out` hooks below.
+import '../demos/widget.css'
+import {
+  CHANGES,
+  TASKS,
+  emptyState,
+  resultsHtml,
+  run,
+  summary,
+  terminalHtml,
+  type TaskName,
+} from './model/cache-sim.js'
+
+interface Props {
+  /** The task the run button starts with. */
+  task?: TaskName
+}
+
+const { task = 'build' } = Astro.props
+const s = emptyState()
+const first = run(s, task)
+const second = run(s, task)
+const runs = [
+  { title: 'First run: the cache is empty', r: first },
+  { title: 'Second run: nothing changed', r: second },
+]
+const list = (xs: readonly string[]) => (xs.length === 0 ? '—' : xs.join(', '))
+---
+
+<figure class="vx-demo not-content">
+  <vx-cache-sim data-task={task}>
+    <div class="controls" hidden>
+      <p class="vx-label lead">Change something. Press a chip again to undo it.</p>
+      <div class="vx-row changes" role="group" aria-label="Changes to the workspace">
+        {
+          CHANGES.map((c) => (
+            <button type="button" data-change={c.id} aria-pressed="false">
+              {c.label}
+            </button>
+          ))
+        }
+        <button type="button" data-delete-dist>Delete web/dist/</button>
+      </div>
+      <div class="vx-row">
+        <span class="vx-label" id="vx-cache-sim-task">Task</span>
+        <span class="vx-row tasks" role="group" aria-labelledby="vx-cache-sim-task">
+          <button type="button" data-task="build" aria-pressed={String(task === 'build')}>build</button>
+          <button type="button" data-task="test" aria-pressed={String(task === 'test')}>test</button>
+          <button type="button" data-task="lint" aria-pressed={String(task === 'lint')}>lint</button>
+        </span>
+      </div>
+      <div class="vx-row">
+        <button type="button" class="primary go">Run <code>vx run {task} --all</code></button>
+        <button type="button" class="reset">Reset: empty cache</button>
+      </div>
+    </div>
+    <p class="say vx-say" aria-live="polite">{summary(second)}</p>
+    <div class="out">
+      {
+        runs.map(({ title, r }) => (
+          <section class="run">
+            <p class="run-title">{title}</p>
+            <ol class="results" set:html={resultsHtml(r)} />
+            <pre tabindex="0" aria-label={`Terminal: ${title}`} set:html={terminalHtml(r)} />
+          </section>
+        ))
+      }
+    </div>
+    <details class="configs">
+      <summary>What each task reads</summary>
+      <table>
+        <thead>
+          <tr><th>task</th><th>inputs.files</th><th>inputs.env</th><th>dependsOn</th><th>outputs.files</th></tr>
+        </thead>
+        <tbody>
+          {
+            TASKS.map((t) => (
+              <tr>
+                <th scope="row">{t.id}</th>
+                <td data-label="inputs.files">{list(t.files)}</td>
+                <td data-label="inputs.env">{list(t.env)}</td>
+                <td data-label="dependsOn">
+                  {t.task === 'lint'
+                    ? '—'
+                    : `^build (${t.dependsOn.length === 0 ? 'none' : t.dependsOn.join(', ')})`}
+                </td>
+                <td data-label="outputs.files">{list(t.outputs)}</td>
+              </tr>
+            ))
+          }
+        </tbody>
+      </table>
+      <p class="is-muted">Every task has <code>cache: true</code>. Git ignores <code>*.log</code>.</p>
+    </details>
+  </vx-cache-sim>
+</figure>
+
+<script>
+  import './cache-sim.ts'
+</script>
+
+<style is:global>
+  vx-cache-sim {
+    display: block;
+  }
+  vx-cache-sim .lead {
+    margin: 0 0 0.5rem;
+    text-align: center;
+  }
+  vx-cache-sim .changes button,
+  vx-cache-sim .tasks button,
+  vx-cache-sim .go,
+  vx-cache-sim .reset {
+    min-height: 2.25rem;
+  }
+  vx-cache-sim .tasks {
+    margin: 0;
+  }
+  vx-cache-sim .go code {
+    font-size: inherit;
+    background: none;
+    padding: 0;
+  }
+  vx-cache-sim .run {
+    margin-top: 1rem;
+  }
+  vx-cache-sim .run .run-title {
+    margin: 0 0 0.5rem;
+    font-family: var(--vx-font-body);
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--vx-fg);
+  }
+  vx-cache-sim .results {
+    list-style: none;
+    margin: 0 0 0.75rem;
+    padding: 0;
+    display: grid;
+    gap: 0.5rem;
+  }
+  vx-cache-sim .results li {
+    margin: 0;
+    padding: 0.5rem 0.75rem;
+    border: 1.5px solid var(--vx-border);
+    border-radius: 8px;
+    background: var(--vx-surface);
+  }
+  vx-cache-sim .results .head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.35rem 0.75rem;
+    font-family: var(--vx-mono);
+    font-size: 13px;
+  }
+  vx-cache-sim .results .t-name {
+    color: var(--vx-fg);
+  }
+  vx-cache-sim .results .keys {
+    display: inline-flex;
+    gap: 0.4rem;
+    align-items: baseline;
+  }
+  vx-cache-sim .results .key {
+    border: 1.5px solid currentColor;
+  }
+  vx-cache-sim .results .badge {
+    margin-inline-start: auto;
+    font-weight: 600;
+  }
+  vx-cache-sim .results .verdict {
+    margin: 0.35rem 0 0.15rem;
+    font-family: var(--vx-mono);
+    font-size: 12.5px;
+    color: var(--vx-fg);
+    overflow-wrap: anywhere;
+  }
+  vx-cache-sim .results .note {
+    margin: 0;
+    color: var(--vx-muted);
+    font-size: 0.9rem;
+  }
+  vx-cache-sim pre .t-id {
+    color: var(--vx-accent);
+    font-weight: 700;
+  }
+  vx-cache-sim .configs {
+    margin-top: 1rem;
+    font-size: 0.9rem;
+  }
+  vx-cache-sim .configs summary {
+    cursor: pointer;
+    min-height: 2rem;
+    color: var(--vx-link);
+  }
+  vx-cache-sim .configs table {
+    margin-block: 0.5rem;
+  }
+  /* On a phone each task is a card: its name, then one labelled line per field. */
+  @media (max-width: 40rem) {
+    vx-cache-sim .configs thead {
+      display: none;
+    }
+    vx-cache-sim .configs :is(table, tbody, tr, th, td) {
+      display: block;
+      width: auto;
+    }
+    vx-cache-sim .configs tr {
+      padding-block: 0.5rem;
+      border-bottom: 1px solid var(--vx-border);
+    }
+    vx-cache-sim .configs :is(th, td) {
+      padding: 0.1rem 0;
+      border-bottom: 0;
+    }
+    vx-cache-sim .configs td::before {
+      content: attr(data-label) ': ';
+      color: var(--vx-muted);
+    }
+  }
+</style>

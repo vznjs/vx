@@ -652,12 +652,16 @@ cacheable }` — what `accepts()` sees. Placement happens ONCE per task,
   hit would have matched; held in memory for the attempt and never
   persisted (`env`/`runtime` values may be secrets — `entry_inputs` stores
   digests only).
-- `ExecuteResult extends RunResult { violations; outputs?; changed?; where? }` —
+- `ExecuteResult extends RunResult { violations; outputs?; changed?; outputsMissing?; where? }` —
   `outputs` is `{ kind: 'disk' }` or `{ kind: 'deferred'; materialize }`
   (outputs left remote, fetched only if a local consumer needs them), or,
   to a `trailing` request alone, `{ kind: 'trailing'; landed }`: on their
   way here; the run waits for `landed` before it ends, and a rejection
   fails the run.
+  A `remote` executor checks the declared outputs where they were written
+  (`missingOutputs`, core's rule) and returns the globs that matched
+  nothing as `outputsMissing`: core fails the task naming them, as it
+  does for one run here.
   `spawnFailed: true` says the command never started (its 127 is the
   executor's, so no "command not found" line follows; A-41).
   `leftRunning: true` says a process the command left still ran when

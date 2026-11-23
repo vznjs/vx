@@ -1240,6 +1240,7 @@ async function runOnBus(
       stopSignal:
         options.failFast === true ? AbortSignal.any([stop.signal, failFast.signal]) : stop.signal,
       failFast: failFast.signal,
+      colors,
       inputStability,
       serverReady: serverOut.ready,
     }

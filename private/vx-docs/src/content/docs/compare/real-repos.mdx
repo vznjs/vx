@@ -1,0 +1,124 @@
+---
+title: vx on real workspaces
+description: Public workspaces on native vx config, timed against the tool they ship with, with the commit, versions and machine for every number.
+---
+
+import { Levels, Deeper, Concept, Quiz, Walkthrough, Frame, Takeaway, NextStep } from '../../../components/learn'
+
+Real open-source workspaces, built by vx and by the tool they ship with. Try the same on yours:
+
+```sh
+bunx @vzn/vx init --native
+```
+
+<Levels />
+
+<Concept term="Cache hit">
+  A task whose inputs have not changed since a stored run. The tool skips it and uses the stored
+  outputs instead.
+</Concept>
+
+Each workspace is timed three ways. Step through them first:
+
+<Walkthrough title="Three runs, three questions">
+<Frame title="1. Cold build: how long does a full build take?">
+
+Outputs and both caches are deleted. Every task runs. The number is the **total time**, since a real workspace has no ideal run to subtract.
+
+</Frame>
+<Frame title="2. Restore: how fast does a cache hit come back?">
+
+Build outputs are deleted; the cache is kept. Every task is a hit, so the tool puts `dist/` back from its cache.
+
+</Frame>
+<Frame title="3. Nothing changed: what does the tool cost on its own?">
+
+Nothing is deleted. Every task is a hit with its outputs already in place, so the whole run is the tool's own work.
+
+</Frame>
+</Walkthrough>
+
+<Quiz q="Which row tells you the most about the tool itself, not your build?">
+  **Nothing changed.** No task does any work there, so every millisecond is the tool's own.
+</Quiz>
+
+{/* Figures: private/vx-bench/real-repos.json, filled at build (src/bench/real.ts) */}
+
+## solidjs/solid
+
+[solidjs/solid](https://github.com/solidjs/solid) at commit %bench.real.solid.commit%: `build` on the whole workspace, 4 tasks.
+
+| Run | vx | %bench.real.solid.rival% |
+| --- | --- | --- |
+| Cold build (total time) | %bench.real.solid.cold.vx% | %bench.real.solid.cold.rival% |
+| Restore from cache | %bench.real.solid.restore.vx% | %bench.real.solid.restore.rival% |
+| Nothing changed | %bench.real.solid.noop.vx% | %bench.real.solid.noop.rival% |
+
+Run %bench.real.solid.date% on %bench.real.solid.machine%, against %bench.real.solid.tool%.
+
+<Takeaway>read solid's result: a cold build of %bench.real.solid.cold.vx% on vx against %bench.real.solid.cold.rival% on %bench.real.solid.rival%.</Takeaway>
+
+## vueuse/vueuse
+
+[vueuse/vueuse](https://github.com/vueuse/vueuse) at commit %bench.real.vueuse.commit%: `build` on the whole workspace, 12 tasks.
+
+| Run | vx | %bench.real.vueuse.rival% |
+| --- | --- | --- |
+| Cold build (total time) | %bench.real.vueuse.cold.vx% | %bench.real.vueuse.cold.rival% |
+| Restore from cache | %bench.real.vueuse.restore.vx% | %bench.real.vueuse.restore.rival% |
+| Nothing changed | %bench.real.vueuse.noop.vx% | %bench.real.vueuse.noop.rival% |
+
+Run %bench.real.vueuse.date% on %bench.real.vueuse.machine%, against %bench.real.vueuse.tool%.
+
+<Takeaway>read vueuse's result: nothing changed costs %bench.real.vueuse.noop.vx% on vx against %bench.real.vueuse.noop.rival% on %bench.real.vueuse.rival%.</Takeaway>
+
+<Deeper level="details" title="Why line endings matter in this workspace">
+
+vueuse sets `* text=auto eol=lf`, so git may store a file with other line endings than the one on disk.
+
+vx trusts git's index only for a file whose stored blob is the same size as the file. Every other file is checked on disk, so a line-ending edit always re-runs.
+
+How each tool handles this is [a conformance case](../../conformance/inputs/#olfjum).
+
+</Deeper>
+
+## t3-oss/create-t3-turbo
+
+[t3-oss/create-t3-turbo](https://github.com/t3-oss/create-t3-turbo) at commit %bench.real.create-t3-turbo.commit%: `build` over `./packages/*`, 3 tasks.
+
+| Run | vx | %bench.real.create-t3-turbo.rival% |
+| --- | --- | --- |
+| Cold build (total time) | %bench.real.create-t3-turbo.cold.vx% | %bench.real.create-t3-turbo.cold.rival% |
+| Restore from cache | %bench.real.create-t3-turbo.restore.vx% | %bench.real.create-t3-turbo.restore.rival% |
+| Nothing changed | %bench.real.create-t3-turbo.noop.vx% | %bench.real.create-t3-turbo.noop.rival% |
+
+Run %bench.real.create-t3-turbo.date% on %bench.real.create-t3-turbo.machine%, against %bench.real.create-t3-turbo.tool%.
+
+<Takeaway>read the template's result: a restore takes %bench.real.create-t3-turbo.restore.vx% on vx against %bench.real.create-t3-turbo.restore.rival% on %bench.real.create-t3-turbo.rival%.</Takeaway>
+
+<Deeper level="details" title="How these are measured">
+
+**Same work.** Both tools run the same tasks, interleaved, each at its own default worker count. Turborepo's daemon is turned off; vx has none.
+
+**Best of N.** A cold build is the best of three runs. Restore and nothing changed are the best of up to thirty, because one run of them swings by 15 ms.
+
+**Native config.** Each workspace's vx config follows its `turbo.json`. The config, commit and bench changes live in vx's source under `private/vx-bench/real/`.
+
+**Every week.** A workflow measures them again. How the harness works is in [the benchmarks](../../benchmarks/#real-repos).
+
+The synthetic benchmark, built to be fair to every tool, is on [vx vs Turborepo](../turborepo/) and [vx vs Nx](../nx/).
+
+</Deeper>
+
+## Try it on yours
+
+```sh
+bunx @vzn/vx init --native
+vx run build --all
+```
+
+`--native` writes a `vx.config.ts` per package from your `turbo.json` or Nx graph. Time `vx run build --all` next to the tool you use today.
+
+<Takeaway>measure vx on your own workspace, with your own tasks.</Takeaway>
+
+<NextStep href="../../quickstart/" title="Quickstart">Set up a workspace from scratch and run its first cached build.</NextStep>

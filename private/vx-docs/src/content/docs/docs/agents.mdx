@@ -1,133 +1,397 @@
 ---
-title: AI agents
+title: Work with AI agents
 description: Let a coding agent run vx, read its answers as JSON, and branch on stable error codes. People get the same answers as text.
 ---
 
-import { Steps, Aside, CardGrid, LinkCard } from '@astrojs/starlight/components'
+import { Aside, Steps } from '@astrojs/starlight/components'
+import Diagram from '../../../components/guide/diagram/Diagram.astro'
+import { agentLoop } from '../../../components/docs/pictures/agents.js'
+import { Levels, Deeper, Concept, Quiz, Walkthrough, Frame, Takeaway, NextStep } from '../../../components/learn'
 
-An agent asks vx what to run, runs it, and learns why it failed, all as
-typed JSON. People get the same answers as text.
+Your coding agent runs the same commands you do. Add `--format json` and every answer comes back as data it can read.
 
 ```sh
 bunx skills add vznjs/vx
 vx last --failed --format json
 ```
 
----
+<Levels />
 
-## Set up your agent
+<Diagram {...agentLoop} />
+
+No MCP server, no plugin: any agent that can run a shell command can drive vx.
+
+## Teach your agent vx
+
+<Concept term="Skill">
+  A `SKILL.md` file a coding agent reads before it starts. vx's skill tells it which command answers
+  which question.
+</Concept>
 
 <Steps>
 
-1. **Install the vx skill**
-
-   One `SKILL.md` teaches any coding agent to run tasks, read failures
-   and query the workspace as JSON:
+1. **Install the skill** in your workspace:
 
    ```sh
    bunx skills add vznjs/vx
    ```
 
-2. **Give it the docs**
+2. **Point it at the docs.** [llms.txt](https://vznjs.github.io/vx/llms.txt) lists every page as markdown. [llms-full.txt](https://vznjs.github.io/vx/llms-full.txt) holds them all in one file.
 
-   - [llms.txt](https://vznjs.github.io/vx/llms.txt) lists every page as
-     markdown, and [llms-full.txt](https://vznjs.github.io/vx/llms-full.txt)
-     holds them all in one file.
-   - Add `.md` to any page's path for its markdown.
-   - `vx docs <query>` prints the matching reference sections for your
-     vx's version.
-
-3. **Let it run tasks**
-
-   The same commands as yours:
+3. **Let it run tasks:**
 
    ```sh
-   vx run build --all
    vx run test --affected=origin/main
    ```
 
-   Outside a terminal vx prints plain lines. A run with no task name fails
-   and lists the tasks, instead of opening the picker.
-
 </Steps>
 
----
+Outside a terminal vx prints plain lines and never opens the task picker. A run with no task name fails and lists the tasks instead.
+
+<Takeaway>give any coding agent vx in one command.</Takeaway>
+
+## Watch an agent fix a test
+
+`@demo/web` adds up a cart's prices, and a vitest test checks it. Someone typed `cost` where it says `price`:
+
+```ts title="packages/web/src/index.ts" del={4} ins={5}
+type Item = { price: number }
+
+export const total = (items: Item[]): number =>
+  items.reduce((sum, i) => sum + i.price, 0)
+  items.reduce((sum, i) => sum + i.cost, 0)
+```
+
+Step through what the agent does next.
+
+<Walkthrough title="From red to green, without reading a log">
+<Frame title="1. Run: the exit code says it failed">
+
+```ansi title="the run's last line"
+[2m$[0m vx run test --all
+[2m└─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;96;165;250mtest[0m [2m──[0m [2m(481ms)[0m [1m[38;2;239;68;68mfailed (exit 1)[0m
+```
+
+The exit code is `1`. The agent does not scroll the log. It asks vx.
+
+</Frame>
+<Frame title="2. Read: vx names the file and line">
+
+```sh
+vx last --failed --format json | jq '.tasks[] | select(.status == "failed") | {task, dir, locations}'
+```
+
+```json
+{
+  "task": "test",
+  "dir": "packages/web",
+  "locations": [
+    {
+      "file": "/home/user/demo/packages/web/src/index.test.ts",
+      "line": 3,
+      "col": 71
+    }
+  ]
+}
+```
+
+`locations` points at **line 3** of the test. `output` (left out above) holds vitest's own words: `expected NaN to be 5`.
+
+</Frame>
+<Frame title="3. Fix and run again: only the broken task runs">
+
+The agent fixes `index.ts`, runs the same command, and checks the result with `vx last`:
+
+```ansi title="vx last"
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mTasks[0m[4m[58;2;110;118;129m [2m3[0m[4m[58;2;110;118;129m   [2mstatus  cache       time   task[0m[4m[58;2;110;118;129m [0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m       [38;2;203;213;225m482ms[0m   [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;96;165;250mtest[0m
+            [38;2;34;197;94msuccess[0m [38;2;34;197;94mfresh[0m        [38;2;203;213;225m2ms[0m   [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;34;197;94msuccess[0m [38;2;34;197;94mfresh[0m        [38;2;203;213;225m0ms[0m   [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;96;165;250mtest[0m
+```
+
+`@demo/ui` did not change. **fresh** in the cache column means up to date: their outputs were already in place, so vx skipped both tasks. Only `@demo/web#test` ran. Exit code `0`.
+
+</Frame>
+</Walkthrough>
+
+<Quiz q="Why does the agent read vx last instead of the run's output?">
+  The run's output is text for people, mixed from every task. `vx last --failed --format json` gives
+  only the failed task, with its file, line and output as fields.
+</Quiz>
+
+<Takeaway>let an agent go from a red run to the failing line without reading a log.</Takeaway>
 
 ## Every question has a command
 
-| Question                                      | Command                                              |
-| --------------------------------------------- | ---------------------------------------------------- |
-| What can I run here?                          | `vx show --format json`                              |
-| What would run, and why?                      | `vx run test --dry --format json`                             |
-| Run these tasks and tell me how it went.      | `vx run test`, then `vx last --format json`          |
-| Why did the run fail, at which file and line? | `vx last --failed --format json`                     |
-| What did a task print?                        | `vx last --log app#test`                             |
-| Why did this task run again?                  | `vx why app#test --format json`                      |
-| What does a task declare?                     | `vx show app#test --format json`                     |
-| What is this workspace?                       | `vx info --format json`                              |
-| What ran, how fast, what flaked?              | `vx last --stats --format json`                      |
-| Is the lock current? What would `vx init` do? | `vx lock --check --format json`, `vx init --dry --format json` |
-| Free cache space.                             | `vx cache clean --max-size 1G --dry`                 |
+| Question | Command |
+| --- | --- |
+| What can I run here? | `vx show --format json` |
+| What would run, and why? | `vx run test --dry --format json` |
+| How did the run go? | `vx last --format json` |
+| Why did it fail, at which line? | `vx last --failed --format json` |
+| What did a task print? | `vx last --log @demo/web#test` |
+| Why did this task run again? | `vx why @demo/web#build --format json` |
+| What does a task declare? | `vx show @demo/web --format json` |
+| What is this workspace? | `vx info --format json` |
+| What is slow, what flakes? | `vx last --stats --format json` |
+| Is the lock current? | `vx lock --check --format json` |
 
----
+Ask before running. Here an agent edited `packages/ui/src/index.ts` and asks which tests that reaches:
 
-## Read answers as JSON
-
-Each `--format json` prints one JSON document to stdout; notices go to
-stderr, so stdout always parses. Every shape is a JSON Schema in the
-package's `schemas/`, with a closed key set.
-
-Three outputs tell an agent what to fix instead of re-running:
-
-- `--dry --format json` with `--affected` gives each task the reason it was kept.
-- A failed row of `vx last --format json` carries the task's `output`,
-  the files it names (`locations`) and its project's directory (`dir`),
-  where the output's relative paths start.
-- `vx why --format json` gives each changed part of the key:
-
-```json
-{"kind":"file","name":"packages/app/src/a.ts","change":"changed","before":"d00491fd7e5bb6fa28c517a0bb32b8b506539d4d","after":"0cfbf08886fca9a91cb753ec8734c84fcbe52c9f"}
+```sh
+vx run test --affected=HEAD --dry --format json | jq '.tasks[] | {id, affected}'
 ```
 
----
+```json
+{
+  "id": "@demo/ui#test",
+  "affected": {
+    "kind": "input",
+    "file": "packages/ui/src/index.ts"
+  }
+}
+{
+  "id": "@demo/web#test",
+  "affected": {
+    "kind": "input",
+    "file": "packages/ui/src/index.ts",
+    "via": [
+      "@demo/ui#build"
+    ]
+  }
+}
+{
+  "id": "@demo/ui#build",
+  "affected": null
+}
+```
 
-## Branch on exit codes and error codes
+Each test says **why** it is in (`affected`). `@demo/ui#build` has no `affected` field (jq prints `null`): it is in only because a test needs it. Nothing ran yet.
 
-| Exit                  | Means                                                                  |
-| --------------------- | ---------------------------------------------------------------------- |
-| `0`                   | Every task passed or was a cache hit, or nothing was affected.         |
-| `1`                   | A task failed or was skipped, or vx refused the command (see below).   |
-| `130` / `143` / `129` | Interrupted by SIGINT / SIGTERM / SIGHUP; vx stopped every task first. |
+<Quiz q="The edit was in @demo/ui. Why is @demo/web#test in the list?">
+  Its `affected.via` says so: `@demo/web#test` depends on `@demo/ui#build`, and that build reads the
+  changed file.
+</Quiz>
 
-A refused command asked for JSON prints one line with a stable code, and
-exits `1`. Branch on the code, not the message:
+<Takeaway>let an agent see what a change reaches, and what it costs, before it runs anything.</Takeaway>
 
-```sh frame="terminal"
-$ vx run biuld --all --dry --format json
+## Branch on codes, not messages
+
+The exit code is the verdict:
+
+| Exit | Means |
+| --- | --- |
+| `0` | every task passed or hit the cache, or nothing was affected |
+| `1` | a task failed or was skipped, or vx refused the command |
+| `130` / `143` / `129` | stopped by SIGINT / SIGTERM / SIGHUP; vx stopped every task first |
+
+A refused command, asked for JSON, prints one line with a stable `code`. People still get the message on stderr:
+
+```ansi title="a typo in the task name"
+[2m$[0m vx run biuld --all --dry --format json
+[38;2;239;68;68m✗[0m [1mvx run[0m  [38;2;203;213;225mno projects declare task(s): biuld[0m
+
+  [2mfix[0m  [1mbuild[0m
 {"ok":false,"error":{"code":"VX_E_UNKNOWN_TASK","message":"vx run: no projects declare task(s): biuld. Did you mean build?","docs":"https://vznjs.github.io/vx/cli/#vx_e_unknown_task"}}
 ```
 
-| Code                | What to do                                             |
-| ------------------- | ------------------------------------------------------ |
-| `VX_E_UNKNOWN_TASK` | Read the task names from `vx show --format json`.      |
-| `VX_E_USAGE`        | Fix the flag or argument; `vx help <verb>` lists them. |
-| `VX_E_CONFIG`       | Fix the config file named in the message.              |
-| `VX_E_NO_HISTORY`   | Run the task first; `vx why` and `vx last` need a run. |
-| `VX_E_INTERNAL`     | A defect in vx: report it with the stack from stderr.  |
+The agent reads `code`, not `message`: the words can change, the code stays. `docs` links what to do.
 
-`docs` links the code's section of the [CLI reference](../../cli/#error-codes);
-`vx docs VX_E_UNKNOWN_TASK` prints it.
+| Code | What the agent does |
+| --- | --- |
+| `VX_E_UNKNOWN_TASK` | reads the task names from `vx show --format json` |
+| `VX_E_USAGE` | fixes the flag; `vx <verb> --help` lists them |
+| `VX_E_CONFIG` | fixes the config file the message names |
+| `VX_E_LOCK` | runs `vx lock`, then the command again |
+| `VX_E_NO_HISTORY` | runs the task first: `vx why` and `vx last` need a run |
 
 <Aside type="tip">
-  A mistyped flag gets the right one back: `--concurency` hints
-  `--concurrency`, and `--json` hints `--format json`.
+  A mistyped flag gets the right one back: `--concurency` hints `--concurrency`, and `--json` hints
+  `--format json`.
 </Aside>
 
----
+<Takeaway>write an agent that recovers from a refusal by its code.</Takeaway>
 
-## Next
+<Deeper level="patterns" title="Common setups">
 
-<CardGrid>
-  <LinkCard title="Machine-readable output" description="Every JSON shape vx prints." href="../../cli/#machine-readable-output" />
-  <LinkCard title="Error codes" description="Every code, and what to do." href="../../cli/#error-codes" />
-</CardGrid>
+### Find why a task ran again
+
+After an edit in `@demo/ui`, `@demo/web#build` missed the cache. `vx why` follows the path back to the file:
+
+```sh
+vx why @demo/web#build --format json | jq '.roots'
+```
+
+```json
+[
+  {
+    "chain": [
+      "@demo/web#build",
+      "@demo/ui#build"
+    ],
+    "entries": [
+      {
+        "kind": "file",
+        "name": "packages/ui/src/index.ts",
+        "change": "changed",
+        "before": "4acf9ee05fbdb78b9a22076876fd1d8f8f4defc5",
+        "after": "e415045f5ec24ed65988f8eae9513ca316773d23"
+      }
+    ]
+  }
+]
+```
+
+`chain` is the path through the graph; `entries` is what changed at its end.
+
+### Answer any history question with SQL
+
+`vx last --sql` runs one read-only query over the run history:
+
+```sh
+vx last --sql "SELECT project || '#' || task AS task, COUNT(*) AS runs, SUM(status = 'failed') AS failures FROM runs GROUP BY 1" --format json | jq -c '.rows[]'
+```
+
+```json
+{"task":"@demo/ui#build","runs":6,"failures":0}
+{"task":"@demo/ui#lint","runs":1,"failures":0}
+{"task":"@demo/ui#test","runs":5,"failures":0}
+{"task":"@demo/web#build","runs":3,"failures":0}
+{"task":"@demo/web#lint","runs":1,"failures":0}
+{"task":"@demo/web#test","runs":5,"failures":1}
+```
+
+`vx last --sql "SELECT name, sql FROM sqlite_schema" --format json` lists the tables. `runs` has one row per task per run, `invocations` one per run; join on `run_id`.
+
+### Watch a run in progress
+
+```sh
+vx last --live --format json            # what runs, what ended, what waits
+vx last --live --follow --format json   # then each event, one per line, until the run ends
+```
+
+### Check configs before a run
+
+```sh
+vx lock --check --format json
+```
+
+```json
+{"upToDate":true,"audited":2,"notAudited":0,"problems":[]}
+```
+
+Each of `problems` is `{code, message}`. `VX_E_LOCK` means `vx lock` fixes it.
+
+### Keep the skill in step with your vx
+
+`bunx skills add` installs the latest skill. To match the vx your workspace has installed, copy it from there:
+
+```sh
+mkdir -p .claude/skills/vx
+cp node_modules/@vzn/vx/skills/vx/SKILL.md .claude/skills/vx/
+```
+
+<Takeaway>trace a re-run, query history, follow a live run, and audit configs, all as JSON.</Takeaway>
+
+</Deeper>
+
+<Deeper level="details" title="Every JSON output">
+
+Every `--format json` prints **one document on one line** to stdout. Notices go to stderr, so stdout always parses.
+
+Every shape is a JSON Schema (draft 2020-12) in `node_modules/@vzn/vx/schemas/`, with a closed key set: a new field is a schema change, never a surprise.
+
+| Command | Prints | Schema |
+| --- | --- | --- |
+| `vx show --format json` | every project: `name`, `dir`, `tags`, `tasks` | `show.json` |
+| `vx show <project> --format json` | one project's `config`, as a run reads it | `show.json` |
+| `vx run … --dry --format json` | the plan: `tasks`, `predicted`, `affectedBase` | `plan.json` |
+| `vx last --format json` | the run: `invocation` and one row per task in `tasks` | `last.json` |
+| `vx why <task> --format json` | `why`, `diff`, `roots`, `writers` | `why.json` |
+| `vx info --format json` | versions, projects, plugins, workers, cache, settings | `info.json` |
+| `vx lock --check --format json` | `upToDate`, `audited`, `notAudited`, `problems` | `lock.json` |
+| `vx init --dry --format json` | what `vx init` would write | `init.json` |
+| `vx cache clean --format json` | what a clean freed | `cache.json` |
+| `vx docs <words> --format json` | the reference sections holding every word | `docs.json` |
+| any refusal | `{"ok":false,"error":{"code","message","docs"}}` | `error.json` |
+
+`vx run` prints no JSON of its own: `--format json` without `--dry` is refused. Read the result after with `vx last --format json`.
+
+**A failed row** of `vx last` adds three fields:
+
+| Field | Holds |
+| --- | --- |
+| `output` | the task's output as plain text, secrets masked |
+| `locations` | the files the output names, as `{ file, line?, col? }` |
+| `dir` | the project's directory; relative paths in `output` start here |
+
+**A plan task** (`--dry --format json`) holds:
+
+| Field | Holds |
+| --- | --- |
+| `id`, `project`, `task` | which task |
+| `hash` | its cache key |
+| `cacheStatus` | `hit-local`, `miss`, … |
+| `deps` | the tasks it waits for |
+| `p50Ms` | its usual time |
+
+Under `--affected`, each task you asked for adds `affected`:
+
+| `affected` field | Holds |
+| --- | --- |
+| `kind` | `input` (a changed file is one of its inputs), `project`, `workspace`, `package`, `named` or `selected` |
+| `file` | the changed file, when there is one |
+| `project` | the changed project, when there is one |
+| `via` | the `dependsOn` path that carried the change |
+
+A task pulled in only as a dependency has no `affected`. `predicted` gives `wallMs`, `workMs`, `criticalPath` and `unknownCount` (tasks with no timing yet).
+
+</Deeper>
+
+<Deeper level="details" title="Every error code">
+
+Branch on the code; the message may change. Dropping or renaming a code is a breaking change. `vx docs <code>` prints its section of the [CLI reference](../../cli/#error-codes).
+
+| Code | Means | Fix |
+| --- | --- | --- |
+| `VX_E_USAGE` | a flag, argument or `VX_*` value the verb does not take | the message names a close spelling; `vx <verb> --help` |
+| `VX_E_UNKNOWN_COMMAND` | no verb of that name | `vx --help`; a plugin's verb needs its plugin in `.vx/workspace.ts` |
+| `VX_E_UNKNOWN_TASK` | no project in scope declares the task | `vx show --format json`; a new task needs `vx lock` |
+| `VX_E_UNKNOWN_PROJECT` | no project of that name | `vx show --format json` lists them |
+| `VX_E_AMBIGUOUS` | the name matches several tasks or runs | name one: `vx why @demo/web#build` |
+| `VX_E_NO_HISTORY` | no recorded run to read | run the task once |
+| `VX_E_CONFIG` | a config does not load, throws or is refused | fix the file and field the message names |
+| `VX_E_LOCK` | `.vx/projects.lock` or `.vx/dependencies.lock` is missing or stale | `vx lock`, then run again |
+| `VX_E_NO_WORKSPACE` | no `.vx/workspace.ts` here or above | `vx init` |
+| `VX_E_CYCLE` | the task graph has a loop | drop one `dependsOn` edge in the loop |
+| `VX_E_DEPENDS_ON` | a `dependsOn` entry names nothing, or a `^task` has no project edges | fix the entry; add a lockfile plugin for `^` |
+| `VX_E_OUTPUT_OVERLAP` | two unrelated tasks write the same outputs | give each its own path, or add a `dependsOn` |
+| `VX_E_INPUT_IS_OUTPUT` | a task's inputs match outputs | exclude them with a `!` glob |
+| `VX_E_NESTED_INPUT` | an input glob reaches into a nested project | depend on its task, or use `inputs.workspaceFiles` |
+| `VX_E_NESTED_OUTPUT` | an output glob reaches into a nested project | let its task write them, or use `outputs.workspaceFiles` |
+| `VX_E_DEPENDENCY_RULE` | a task breaks a dependency rule the workspace declares | the message names the rule and the edge |
+| `VX_E_AFFECTED_BASE` | `--affected` has no base to diff against | pass a ref you have: `--affected=origin/main` |
+| `VX_E_NO_GIT` | no `git`, or not inside a git work tree | install git, or `git init` |
+| `VX_E_GIT` | a git command vx ran failed | run it yourself to see why |
+| `VX_E_CACHE_VERSION` | the cache index is from another vx version | the next `vx run` resets it |
+| `VX_E_FS` | the file system refused a read or write | free space, grant access, or shorten the path |
+| `VX_E_FDS` | out of file descriptors | `ulimit -n 4096`, or a lower `--concurrency` |
+| `VX_E_NETWORK` | `vx docs` could not reach GitHub | retry, or set `GITHUB_TOKEN` |
+| `VX_E_REFUSED` | a plugin or check refused, with no code of its own | do what the message says |
+| `VX_E_INTERNAL` | a defect in vx | report it with the stack from stderr |
+
+`vx lock` refuses the graph codes (`VX_E_CYCLE` to `VX_E_DEPENDENCY_RULE`); an agent reads them as the `code` of a `vx lock --check --format json` problem.
+
+</Deeper>
+
+<Deeper level="details" title="Docs for agents">
+
+- [llms.txt](https://vznjs.github.io/vx/llms.txt) indexes every page as markdown; [llms-full.txt](https://vznjs.github.io/vx/llms-full.txt) is all of them in one file.
+- Add `.md` to any page's path for its markdown.
+- `vx docs <words>` prints the reference sections holding every word, for your vx's version. Add `--format json` for data.
+
+</Deeper>
+
+<NextStep href="../upgrading/" title="Upgrading vx">
+  Your agent is ready. Next, keep the workspace's vx and your global vx on one version with one command.
+</NextStep>

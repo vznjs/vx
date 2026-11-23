@@ -1,0 +1,29 @@
+---
+// The payoff that closes a section (M 2026-11-23: "after each section a
+// feeling I got sth from it"): what the reader can now do or see, in one
+// line. No points, no badges, no progress: a plain statement of the gain.
+---
+
+<p class="vx-takeaway"><span class="vx-takeaway-tag">You can now</span> <span><slot /></span></p>
+
+<style>
+  .vx-takeaway {
+    display: flex;
+    gap: 0.6rem;
+    align-items: baseline;
+    margin: 1.25rem 0 2rem;
+    padding: 0.75rem 1.1rem;
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--vx-ok) 7%, var(--vx-bg));
+    border: 1px solid color-mix(in srgb, var(--vx-ok) 35%, var(--vx-border));
+    color: var(--vx-fg);
+  }
+  .vx-takeaway-tag {
+    flex: none;
+    font-family: var(--vx-mono);
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--vx-ok);
+  }
+</style>

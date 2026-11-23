@@ -1,203 +1,337 @@
 ---
 title: Distributed task execution
-description: Run your tasks on several CI machines at once, and get one result.
+description: Run one vx run on several CI machines at once, and get one result.
 ---
 
 import Diagram from '../../../components/guide/diagram/Diagram.astro'
 import { dteRun } from '../../../components/docs/pictures.js'
+import { Aside, CardGrid, LinkCard } from '@astrojs/starlight/components'
+import { Levels, Deeper, Concept, Quiz, Walkthrough, Frame, Takeaway, NextStep } from '../../../components/learn'
+import DteSpread from '../../../components/learn/dte/DteSpread.astro'
 
-When one CI machine is too slow for your build, vx can run your tasks
-on several machines at once. You still start one CI job, and you still
-get one result.
+One CI job is too slow for your build? Hand its tasks to more machines. You still start one job and get one result.
 
-That job works out which tasks need to run. It starts more CI jobs,
-called **workers**, and gives each one tasks.
+```sh
+vx run build test lint --all
+```
 
-When a worker finishes a task, its output and logs come back to your
-job, as if the task had run there.
+<Levels />
 
-A task the cache already has never runs, so a push that changes nothing
-starts no workers.
+<DteSpread />
 
-## How it works
+Press the buttons to replay real runs. Each bar is a task on the worker that ran it. A task the cache already has never needs a worker.
+
+<Concept term="Worker">
+  A machine that joins your run, takes tasks, runs them and hands back what they made. With an
+  adapter, vx starts workers for you and stops them when the work runs out.
+</Concept>
+
+<Quiz q="Every task changed and you allow 3 workers. Why does the third one run nothing?">
+  By the time it was ready, what was left was the outlined path: `@demo/web#test` waits for
+  `@demo/ui#build`, and no extra machine shortens that.
+
+  The run's own `best` line says so: 2 machines end as soon.
+</Quiz>
+
+<Takeaway>predict which tasks need a worker, and why more workers is not always faster.</Takeaway>
+
+## What happens in one run
+
+<Walkthrough title="One run of build test lint, step by step">
+<Frame title="1. Your CI job plans">
+
+`vx run` works out which tasks must run. A task the cache has is restored right there. The rest is work, and work needs workers.
+
+</Frame>
+<Frame title="2. Workers join through the relay">
 
 <Diagram {...dteRun} />
 
-- **A relay** connects the run to its workers, because a CI runner
-  accepts no incoming connection. You host it: the
-  [DTE server](../servers/dte/).
-- **A remote cache** carries files. A worker saves each task's outputs
-  to it, and the run and the other workers read them from there. The
-  relay carries only orders and status ([Remote cache](../remote-cache/)).
-- **The relay reads nothing it carries.** The run and each worker talk
-  over an encrypted session, and each proves who it is with its CI job's
-  token. No secret is stored anywhere.
+Workers dial out to the [relay](../servers/dte/), since a CI machine takes no incoming call. The relay passes orders and status. Files go through the [remote cache](../remote-cache/).
 
----
+</Frame>
+<Frame title="3. Each worker runs tasks">
 
-## Set it up on GitHub Actions
+A worker checks out your commit, runs each task it gets, and saves the outputs to the cache. Your CI job restores them, as if the task ran there.
 
-You need vx running on CI ([CI](../ci/)) and a
-[remote cache](../remote-cache/) that every job can reach.
+</Frame>
+<Frame title="4. One result">
 
-### 1. Deploy the relay
-
-Follow [DTE server](../servers/dte/) to deploy it. Its URL looks like
-`https://vx-dte-server.acme.workers.dev`. Leave `ALLOW` for step 4.
-
-### 2. Declare `dte()`
-
-```sh
-bun add -d @vzn/vx-dte
+```ansi title="the Tasks table: the worker column says who ran what"
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mTasks[0m[4m[58;2;110;118;129m     [2mstatus  cache     ±usual    time   cpu    mem outputs  blocks worker         task[0m[4m[58;2;110;118;129m                           [0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m       [38;2;239;68;68m+18ms[0m    [38;2;203;213;225m69ms[0m   [2m51%[0m   [2m51MB[0m      [2m0B[0m       [2m0[0m [38;2;244;114;182mlinux.cpu2[0m[2m#[0m[38;2;96;165;250m2[0m   [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;232;121;249mlint[0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m       [38;2;239;68;68m+20ms[0m    [38;2;203;213;225m81ms[0m   [2m37%[0m   [2m50MB[0m      [2m0B[0m       [2m0[0m [38;2;244;114;182mlinux.cpu2[0m[2m#[0m[38;2;96;165;250m2[0m   [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;232;121;249mlint[0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m       [2m+21ms[0m   [38;2;203;213;225m261ms[0m   [2m90%[0m   [2m93MB[0m     [2m68B[0m       [38;2;203;213;225m2[0m [38;2;244;114;182mlinux.cpu2[0m[2m#[0m[38;2;167;139;250m1[0m   [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m       [2m−25ms[0m   [38;2;203;213;225m427ms[0m   [2m89%[0m  [2m114MB[0m      [2m0B[0m       [2m0[0m [38;2;244;114;182mlinux.cpu2[0m[2m#[0m[38;2;167;139;250m1[0m   [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;96;165;250mtest[0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m       [2m−14ms[0m   [38;2;203;213;225m236ms[0m  [2m111%[0m  [2m100MB[0m    [2m909B[0m       [2m0[0m [38;2;244;114;182mlinux.cpu2[0m[2m#[0m[38;2;167;139;250m1[0m   [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m       [2m+24ms[0m   [38;2;203;213;225m430ms[0m   [2m94%[0m   [2m88MB[0m      [2m0B[0m       [2m0[0m [38;2;244;114;182mlinux.cpu2[0m[2m#[0m[38;2;167;139;250m1[0m   [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;96;165;250mtest[0m
+  [2mworkers [0m  [38;2;244;114;182mlinux.cpu2[0m[2m#[0m[38;2;167;139;250m1[0m  stopped  4 done · warm-up 0.2s
+  [2m        [0m  [38;2;244;114;182mlinux.cpu2[0m[2m#[0m[38;2;96;165;250m2[0m  left     2 done · warm-up 0.2s · @demo/web#lint, @demo/ui#lint
+  [2m        [0m  [38;2;244;114;182mlinux.cpu2[0m[2m#[0m[38;2;232;121;249m3[0m  left     0 done · warm-up 0.2s
 ```
 
-```ts title=".vx/workspace.ts" ins={4,12-16}
-import { defineWorkspace } from '@vzn/vx/config'
-import { vxCache } from '@vzn/vx-cache'
-import { github as ci } from '@vzn/vx-ci'
-import { dte, github } from '@vzn/vx-dte'
-import { bun } from '@vzn/vx-lockfile'
+Read the `worker` column: worker `#1` of the `linux.cpu2` machines ran four tasks, `#2` two. `#3` joined and left with nothing to do. It is the run the replay above shows.
 
-export default defineWorkspace({
-  plugins: [
-    bun(),
-    ci(),
-    vxCache({ url: 'https://vx-cache-server.acme.workers.dev', issuer: 'https://token.actions.githubusercontent.com', repository: 'acme/app' }),
-    dte({
-      relay: 'https://vx-dte-server.acme.workers.dev',
-      workers: {
-        linux: { machines: { cpu4: { max: 8, cpu: 4, memory: '16GB' } } },
-      },
-      adapter: github(),
-    }),
-  ],
-})
+</Frame>
+<Frame title="5. Push again, nothing changed">
+
+```ansi title="every task from the cache"
+  [2mcache   [0m  [38;2;34;197;94m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
+            [2mlocal[0m [38;2;34;197;94m6✓[0m
+
+  [2mworkers [0m  [2mnone started: no task needed one[0m
 ```
 
-`workers` names the **worker types** the run may start, and each type's
-**machines**. Here: one type, `linux`, of up to 8 `cpu4` machines with
-4 cores and 16 GB each, as GitHub's `ubuntu-latest` has for a public repository.
+**none started**: every task came from the cache, so the run cost no machine.
 
-Declare what your runners really have: vx plans by it. For bigger
-runners, add a machine that names its label in `runsOn`
-([Give heavy tasks a bigger machine](add-bigger-machines/)).
+</Frame>
+</Walkthrough>
 
-### 3. Write the workflows
+<Concept term="Relay">
+  A small server that passes messages between your run and its workers. It reads nothing it passes:
+  every message is encrypted end to end. You host it: [Distributed task execution server](../servers/dte/).
+</Concept>
 
-Lock the config, then let vx write both workflows:
+<Takeaway>follow a task from your CI job to a worker and back, and read who ran it.</Takeaway>
 
-```sh
-vx lock
-vx dte init
+## Pick your path
+
+Each path is one short page, with a real run to compare against.
+
+<CardGrid>
+  <LinkCard title="Try it on your machine" href="try-on-your-machine/" description="local() starts workers as processes. No CI, nothing to host." />
+  <LinkCard title="Spread CI over machines" href="spread-ci-over-machines/" description="GitHub Actions workers, written for you by vx dte init." />
+  <LinkCard title="Run one task on another machine" href="run-a-task-on-its-own-machine/" description="Playwright on Ubuntu, the rest on Alpine: exec.worker." />
+  <LinkCard title="Give heavy tasks a bigger machine" href="add-bigger-machines/" description="Two sizes; vx learns which task needs the big one." />
+</CardGrid>
+
+On CI, workers meet your run at a relay you host: [Distributed task execution server](../servers/dte/).
+
+<Takeaway>pick the next step that fits you, and know what each one needs.</Takeaway>
+
+<Deeper level="patterns" title="Common setups">
+
+### Only the changed tasks run
+
+An edit in `packages/web` misses only `@demo/web`'s tasks. `@demo/ui`'s come from the cache (`3✓`), and workers run the other three (`3↑`: run and saved):
+
+```ansi title="after a web edit"
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mTasks[0m[4m[58;2;110;118;129m     [2mstatus  cache     ±usual    time   cpu    mem outputs  blocks worker         task[0m[4m[58;2;110;118;129m                           [0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m       [38;2;239;68;68m+20ms[0m    [38;2;203;213;225m89ms[0m   [2m46%[0m   [2m51MB[0m      [2m0B[0m       [2m0[0m [38;2;244;114;182mlinux.cpu2[0m[2m#[0m[38;2;96;165;250m2[0m   [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;232;121;249mlint[0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m      [38;2;239;68;68m+112ms[0m   [38;2;203;213;225m350ms[0m   [2m98%[0m   [2m99MB[0m    [2m909B[0m       [2m0[0m [38;2;244;114;182mlinux.cpu2[0m[2m#[0m[38;2;167;139;250m1[0m   [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m        [2m−3ms[0m   [38;2;203;213;225m403ms[0m  [2m102%[0m  [2m112MB[0m      [2m0B[0m       [2m0[0m [38;2;244;114;182mlinux.cpu2[0m[2m#[0m[38;2;96;165;250m2[0m   [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;96;165;250mtest[0m
+
+  [2mcache   [0m  [38;2;34;197;94m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m[38;2;56;189;248m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
+            [2mlocal[0m [38;2;34;197;94m3✓[0m [38;2;56;189;248m3↑[0m
+
+  [2mworkers [0m  [38;2;244;114;182mlinux.cpu2[0m[2m#[0m[38;2;167;139;250m1[0m  left     1 done · warm-up 0.2s · @demo/web#build
+  [2m        [0m  [38;2;244;114;182mlinux.cpu2[0m[2m#[0m[38;2;96;165;250m2[0m  stopped  2 done · warm-up 0.2s · @demo/web#lint, @demo/web#test
 ```
 
-```ansi
-[1m[38;2;6;182;212mvx dte init:[0m[2m wrote .github/workflows/ci.yml[0m
-[1m[38;2;6;182;212mvx dte init:[0m[2m wrote .github/workflows/vx-worker.yml[0m
+### One task on another machine, or a bigger one
 
-[38;2;6;182;212mNext:[0m
-[38;2;6;182;212m  1. Let these workflows use the relay at https://vx-dte-server.acme.workers.dev: set its ALLOW.[0m
-[38;2;6;182;212m     Its ALLOW (a plain var, no secret): https://token.actions.githubusercontent.com:acme/app:ci.yml https://token.actions.githubusercontent.com:acme/app:vx-worker.yml[0m
-[38;2;6;182;212m  2. A remote cache the run and the workers share: workers hand back outputs only through it. https://vznjs.github.io/vx/docs/remote-cache/[0m
-[38;2;6;182;212m  3. Commit .github/workflows/ci.yml, .github/workflows/vx-worker.yml, .vx/workspace.ts and the lock (vx lock), and push.[0m
-[38;2;6;182;212m  How a run spreads over workers: https://vznjs.github.io/vx/docs/distributed-task-execution/[0m
-```
+`exec.worker: 'ubuntu'` sends a task to the `ubuntu` worker type ([how](run-a-task-on-its-own-machine/)). A second machine size gets the tasks that filled the first ([how](add-bigger-machines/)).
 
-`ci.yml` is the job that runs `vx run`. `vx-worker.yml` is the job each
-worker runs: check out, install, then one command, `vx dte worker`. It
-joins the run, works, and leaves when the run ends.
+### macOS workers
 
-In a terminal, `vx dte init` asks which tasks to run. Otherwise, name
-them yourself in the last line of `ci.yml`:
-
-```yaml title=".github/workflows/ci.yml"
-      - run: bun vx run build test ${{ github.event_name == 'pull_request' && '--affected' || '--all' }}
-```
-
-Run `vx dte init` again after you change `workers`.
-
-### 4. Let the workflows in
-
-Put the `ALLOW` line `vx dte init` printed into the relay's settings,
-and deploy the relay again ([DTE server](../servers/dte/#2-say-who-may-use-it-allow)).
-
-### 5. Push
-
-Commit the two workflows, `.vx/workspace.ts` and the lock, and push.
-The run's log and job summary show each worker beside the tasks it ran.
-
----
-
-## Try it on your machine
-
-`local()` starts each worker as a process in its own git worktree, so you
-can watch a run spread with no CI and no relay:
-[Try distributed task execution on your machine](try-on-your-machine/).
-
----
-
-## Adapters
-
-The adapter decides how workers start:
-
-| Adapter    | Starts each worker as                                                  |
-| ---------- | ---------------------------------------------------------------------- |
-| `github()` | a job of `.github/workflows/vx-worker.yml`, dispatched by the run      |
-| `gitlab()` | a pipeline of `.gitlab-ci.yml`, triggered by the run                   |
-| `local()`  | a process in its own git worktree on this machine                      |
-| `docker()` | a container held to the size's `cpu` and `memory`                      |
-| none       | nothing: the run uses whichever workers join its relay                 |
-
-With no adapter, start the run first, then each worker with
-`vx dte worker` and the same `VX_DTE_RUN`. A worker started before its
-run says the relay has no live run.
-
-## What runs where
-
-- Every task runs on a worker, including one with `exec.remote: false`
-  and an interactive one. Only cache hits restore on the run's machine.
-- A task with `exec.worker` runs only on that worker type. The rest go
-  to the first type that fits, so a type listed last only gets the tasks
-  no other can take.
-- A task no worker can take, such as one whose `exec.platforms` no
-  machine offers, stops the run before any task starts.
-- A task that reads what an uncached task leaves on its worker, where
-  that task's `exec.worker` or `exec.platforms` rule out the reader's
-  machine, stops the run before any task starts. Cache the upstream, or
-  run both alike.
-- A sandboxed task runs inside the same `exec.sandbox` on its worker.
-- A task's `exec.timeout` counts from its start on its worker, not from
-  the wait for one.
-- A worker that is idle and that the rest of the run cannot keep busy
-  leaves.
-
-### One task on another machine
-
-Run CI on Alpine, but Playwright on Ubuntu: give Ubuntu its own type,
-and name it on the task.
+A machine with a `platform` takes the tasks whose `exec.platforms` name it:
 
 ```ts title=".vx/workspace.ts"
-workers: {
-  alpine: { machines: { cpu4: { max: 8, cpu: 4, memory: '16GB' } } },
-  ubuntu: { machines: { cpu4: { max: 2, cpu: 4, memory: '16GB' } } },
+mac: {
+  machines: {
+    m1: {
+      max: 2,
+      cpu: 3,
+      memory: '7GB',
+      platform: 'darwin-arm64',
+    },
+  },
 },
 ```
 
-```ts title="apps/web/vx.config.ts"
-e2e: { exec: { command: 'bunx playwright test', worker: 'ubuntu' } },
+`vx dte init` runs it on `macos-latest`.
+
+### GitLab
+
+`gitlab()` triggers a pipeline of your `.gitlab-ci.yml` for each wave of workers, with the job's own `CI_JOB_TOKEN`. `vx dte init` writes the file.
+
+```ts title=".vx/workspace.ts"
+dte({
+  relay: 'https://relay.example.com',
+  workers: {
+    linux: {
+      machines: {
+        small: { max: 4, cpu: 2, memory: '8GB' },
+      },
+    },
+  },
+  adapter: gitlab({
+    tags: {
+      'linux.small': ['saas-linux-small-amd64'],
+    },
+  }),
+}),
 ```
 
-On your machine `worker` is ignored, and it never changes a cache key.
+<Aside type="caution" title="GitLab refuses triggers by default">
+  Set Settings > CI/CD > Variables > "Minimum role to use pipeline variables" to **Developer**, or
+  every trigger fails.
+</Aside>
 
-## Guides
+### Workers you start yourself
 
-- [Try distributed task execution on your machine](try-on-your-machine/)
-- [Spread a CI run over several machines](spread-ci-over-machines/)
-- [Run one task on a different machine](run-a-task-on-its-own-machine/)
-- [Give heavy tasks a bigger machine](add-bigger-machines/)
+With no `adapter`, vx starts nothing. Name the relay, then share one random run id and key:
 
-vx can also send tasks to a Bazel REAPI worker pool you already run:
-[Remote execution](../remote-execution/).
+```ts title=".vx/workspace.ts"
+dte({
+  relay: 'https://relay.example.com',
+  workers: {
+    linux: {
+      machines: {
+        cpu4: { cpu: 4, memory: '16GB' },
+      },
+    },
+  },
+}),
+```
 
-See [`@vzn/vx-dte`](https://github.com/vznjs/vx/tree/main/packages/vx-dte)
-for GitLab, Docker, every option and every line the run prints.
+```sh
+export VX_DTE_RUN=$(uuidgen)
+export VX_DTE_SECRET=$(openssl rand -base64 32)
+vx run build --all   # on the machine that starts the run
+vx dte worker        # on each worker, with the same two variables
+```
+
+`VX_DTE_RUN` must be a random UUID, so no one can guess the run. A worker started before its run says the relay has no live run.
+
+<Takeaway>run only what changed, on the OS and size each task needs, on any CI.</Takeaway>
+
+</Deeper>
+
+<Deeper level="details" title="Every option of dte()">
+
+```ts
+dte({ workers, adapter, relay, token, unmeasured, headers })
+```
+
+| Option | What it does | Default |
+| --- | --- | --- |
+| `workers` | the worker types, in order of preference. Each is `{ machines }` | none: only workers that join on their own |
+| `adapter` | how workers start: `github()`, `gitlab()`, `local()`, `docker()` | none: vx starts no worker |
+| `relay` | the relay's base URL, `http(s)`, without `/v1`. `VX_DTE_RELAY` beats it | the adapter's own (`local()`, `docker()`) |
+| `token` | the relay's bearer token. Asked again a minute before it expires | `VX_DTE_TOKEN`, else on GitHub Actions an OIDC token |
+| `unmeasured` | `{ cpu, memory }`: what a task with no history uses. On a worker it takes any free core | 2 cores, 4 GB when vx picks workers to ask for |
+| `headers` | headers on every call to the relay, for a proxy in front of it | none |
+
+An unknown key is refused. With an `adapter`, at least one machine needs `max` above 0. The same options, with every plugin's, are on [Plugins](../plugins/).
+
+**Each machine** in `workers.<type>.machines.<name>`, named `<type>.<name>` in the output (`linux.cpu4`):
+
+| Field | What it does | Default |
+| --- | --- | --- |
+| `cpu` | its cores, which vx plans by until the worker reports its own | required |
+| `memory` | bytes, or `'16GB'`, `'512MiB'` | required |
+| `max` | how many one run may start | no cap |
+| `platform` | `linux-x64`, `linux-arm64`, `darwin-x64` or `darwin-arm64`; a worker of another is refused | this machine's, not checked |
+| `runsOn` | the CI runner label `vx dte init` writes for it | a GitHub runner of its platform, such as `ubuntu-latest` |
+
+Names use letters, digits, `_` and `-`.
+
+**Adapters:**
+
+| Adapter | Starts each worker as | Options |
+| --- | --- | --- |
+| `github()` | a job of `vx-worker.yml`, dispatched by the run (up to 256) | `workflow`: the worker file in `.github/workflows` (default `vx-worker.yml`); `env`: variables every worker gets, no secrets |
+| `gitlab()` | a job of a pipeline of `.gitlab-ci.yml` (up to 200) | `tags`: runner tags by machine, `{ 'linux.small': ['…'] }` |
+| `local()` | a process in its own git worktree | `prepare`: a shell line each worktree runs first, such as `bun install` |
+| `docker()` | a container held to the machine's `cpu` and `memory` | `image` (required): one with Bun and git; `prepare` |
+
+`github()` needs `GITHUB_TOKEN` with `actions: write`, and `id-token: write` for its workers.
+
+**Environment variables:**
+
+| Variable | Read by | Means |
+| --- | --- | --- |
+| `VX_DTE_RUN` | run, worker | the run's id, a random UUID (`uuidgen`). Set, it turns distribution on. GitHub and GitLab name the run themselves |
+| `VX_DTE_RELAY` | run, worker | the relay URL; beats `relay` |
+| `VX_DTE_SECRET` | run, worker | the run's shared key. Needed with no adapter and no GitHub |
+| `VX_DTE_TOKEN` | run, worker | the relay's bearer token, when `token` is unset |
+| `VX_DTE_WORKER` | worker | its name, set by the adapter that started it |
+
+**Task fields** that decide where a task runs (see [Tasks](../tasks/)):
+
+| Field | On workers |
+| --- | --- |
+| `exec.worker` | runs only on that worker type. An unknown type stops the run before any task starts |
+| `exec.platforms` | runs only on a machine of one of these platforms |
+| `exec.remote: false` | still runs on a worker: no task runs on your CI job |
+| `exec.sandbox` | the same sandbox, built on the worker |
+| `exec.timeout` | counts from the task's start on its worker, not from the wait |
+
+</Deeper>
+
+<Deeper level="details" title="Rules for where a task runs">
+
+### What runs where
+
+- Every task runs on a worker, even one that waits for keyboard input. Only cache hits restore on your CI job.
+- A task goes to a worker only when one of its cores is free and its memory fits.
+- Of equal choices, a task goes to the busiest worker, so workers fill and the rest leave.
+- A task no worker can take, such as one whose `exec.platforms` no machine offers, stops the run before any task starts.
+- A task that reads what an uncached task left on another kind of machine stops the run before any task starts. Cache the upstream, or run both alike.
+- A server a task depends on (a persistent task) starts on that task's worker, and stops when no task there needs it.
+- A worker that is idle, and that the rest of the run cannot keep busy, leaves.
+- A worker stopped with Ctrl-C leaves the run; its tasks run again on another worker.
+- A task that reads a file git does not track fails, naming the file: no worker has it.
+
+</Deeper>
+
+<Deeper level="details" title="Reading the workers lines">
+
+```ansi title="the same run’s end"
+  [2mworkers [0m  [38;2;244;114;182mlinux.cpu2[0m[2m#[0m[38;2;167;139;250m1[0m  stopped  4 done · warm-up 0.2s
+  [2m        [0m  [2m              declared 2c/8G · actual [0m[38;2;239;68;68m4c/14G[0m
+  [2m        [0m  [2m              online 0.8s · busy 0.8s · idle 0.0s[0m
+  [2m        [0m  [2m              cpu peak 1.9 · used avg 1.6 cores · machine avg 3.0 · booked avg 1.9[0m
+  [2m        [0m  [2m              cpu utilization machine 100% · tasks 84% · worker 6%[0m
+  [2m        [0m  [38;2;244;114;182mlinux.cpu2[0m[2m#[0m[38;2;96;165;250m2[0m  left     2 done · warm-up 0.2s · @demo/web#lint, @demo/ui#lint
+  [2m        [0m  [2m              declared 2c/8G · actual [0m[38;2;239;68;68m4c/14G[0m
+  [2m        [0m  [38;2;244;114;182mlinux.cpu2[0m[2m#[0m[38;2;232;121;249m3[0m  left     0 done · warm-up 0.2s
+  [2m        [0m  [2m              declared 2c/8G · actual [0m[38;2;239;68;68m4c/14G[0m
+  [2m        [0m  [2m              online 0.0s · busy 0.0s · idle 0.0s[0m
+  [2m        [0m  [2mprobe         at 0.0s: 6 tasks left to run, 0 known misses[0m
+  [2m        [0m  [2masked         2 at 0.0s for 6 tasks (6 measured), estimate 0.7s · 1 at 0.6s for 6 tasks (6 measured), estimate 0.5s[0m
+  [2m        [0m  [2mideal         1.0s: the best the workers it may start allow, its longest chain or each platform's work on all their cores[0m
+  [2m        [0m  [2mperfect       1.0s: its longest chain as long as it took, no task waiting for a worker, holding 2.5 core-s at least[0m
+  [2m        [0m  [2mbest          2 × linux.cpu2 (2c/8G linux-x64): 1.0s, the fewest of its sizes[0m
+  [2m        [0m  [2many           2 × (2c/8G linux-x64): 1.0s, of any cores, the least core time[0m
+```
+
+| Line | Says |
+| --- | --- |
+| `stopped` / `left` | the worker ended with the run, or left early: nothing more for it |
+| `declared · actual` | the size you declared, and what the machine really has (red: they differ) |
+| `online · busy · idle` | how long it was in the run, and how much of that it worked |
+| `probe` | what the run knew at its start: tasks to run, misses already known |
+| `asked` | when vx asked for each worker, and the run's estimate then |
+| `ideal` | the best end the allowed workers could give |
+| `perfect` | the end if no task waited: the longest path of tasks that wait on each other |
+| `best` / `any` | the fewest machines of your sizes, or of any size, that end as soon |
+
+</Deeper>
+
+<Deeper level="details" title="How it stays private">
+
+- The relay reads nothing. The run and each worker agree on keys made for that session only ([Noise](https://noiseprotocol.org/noise.html)), through the relay.
+- On GitHub Actions, each side proves it is a job of your repository with its CI token (OIDC). No secret is stored anywhere.
+- Elsewhere, the run and each worker share `VX_DTE_SECRET`. A side without it cannot finish the handshake.
+- A message the relay changes drops its worker; one it replays is dropped.
+- Files never cross the relay: they go through your remote cache.
+
+</Deeper>
+
+vx can also send tasks to a Bazel REAPI worker pool you already run: [Remote execution](../remote-execution/).
+
+<NextStep href="try-on-your-machine/" title="Try distributed task execution on your machine">
+  Start workers on your laptop and watch your own tasks spread. No CI, nothing to host.
+</NextStep>

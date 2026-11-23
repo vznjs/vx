@@ -1,0 +1,186 @@
+---
+// "Which list does my variable go in?": the reader names a variable and
+// answers three questions; the config it needs updates as they click.
+// The masking words are the ones core masks by name (docs/schema.md
+// § Masking); the page's Details level lists them too.
+---
+
+<div class="vx-envpick not-content" data-envpick>
+  <label class="vx-envpick-name">
+    <span>Variable</span>
+    <input type="text" value="API_URL" spellcheck="false" autocomplete="off" data-name aria-label="Variable name" />
+  </label>
+  <fieldset>
+    <legend>The command reads it</legend>
+    <button type="button" data-q="reads" data-v="1" aria-pressed="true">yes</button>
+    <button type="button" data-q="reads" data-v="0" aria-pressed="false">no</button>
+  </fieldset>
+  <fieldset>
+    <legend>Its value changes the result</legend>
+    <button type="button" data-q="result" data-v="1" aria-pressed="true">yes</button>
+    <button type="button" data-q="result" data-v="0" aria-pressed="false">no</button>
+  </fieldset>
+  <fieldset>
+    <legend>The value comes from</legend>
+    <button type="button" data-q="from" data-v="shell" aria-pressed="true">the shell / CI</button>
+    <button type="button" data-q="from" data-v="config" aria-pressed="false">the config</button>
+  </fieldset>
+  <fieldset>
+    <legend>It is a secret</legend>
+    <button type="button" data-q="secret" data-v="1" aria-pressed="false">yes</button>
+    <button type="button" data-q="secret" data-v="0" aria-pressed="true">no</button>
+  </fieldset>
+  <pre class="vx-envpick-code" aria-live="polite"><code data-out></code></pre>
+  <p class="vx-envpick-why" data-why></p>
+</div>
+
+<script>
+  const MASK_WORDS = ['TOKEN', 'SECRET', 'KEY', 'PASSWORD', 'PASSWD', 'PASSPHRASE', 'CREDENTIAL']
+  const masked = (n: string) =>
+    !/(_FILE|_PATH|_DIR)$/.test(n) && (MASK_WORDS.some((w) => n.includes(w)) || n.endsWith('_PASS'))
+  const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;')
+  const k = (s: string) => `<span class="k">${esc(s)}</span>`
+  const s = (v: string) => `<span class="s">'${esc(v)}'</span>`
+
+  for (const root of document.querySelectorAll<HTMLElement>('[data-envpick]')) {
+    const state: Record<string, string> = { reads: '1', result: '1', from: 'shell', secret: '0' }
+    const nameIn = root.querySelector<HTMLInputElement>('[data-name]')!
+    const out = root.querySelector<HTMLElement>('[data-out]')!
+    const why = root.querySelector<HTMLElement>('[data-why]')!
+
+    const render = () => {
+      const name = (nameIn.value.trim() || 'API_URL').replace(/[^A-Za-z0-9_]/g, '_')
+      const reads = state.reads === '1'
+      const result = state.result === '1'
+      const secret = state.secret === '1'
+      const lines: string[] = []
+      let note = ''
+      if (state.from === 'config') {
+        if (secret) {
+          out.innerHTML = `<span class="c">// a secret never goes in a config file</span>`
+          why.textContent = 'Keep it in the shell or CI, and choose "the shell / CI".'
+          return
+        }
+        lines.push(`${k('exec')}: { ${k('env')}: { ${k('define')}: { ${name}: ${s('production')} } } },`)
+        note = reads
+          ? `The command gets ${name}, and the key sees it: it is part of the config.`
+          : `Nothing reads it, so it only re-keys the task. Leave it out unless that is the goal.`
+      } else {
+        const env: string[] = []
+        if (reads) env.push(`${k('passThrough')}: [${s(name)}]`)
+        if (reads && secret && !masked(name)) env.push(`${k('secret')}: [${s(name)}]`)
+        if (env.length) lines.push(`${k('exec')}: { ${k('env')}: { ${env.join(', ')} } },`)
+        if (result) lines.push(`${k('inputs')}: { ${k('env')}: [${s(name)}] },`)
+        if (!lines.length) {
+          out.innerHTML = `<span class="c">// nothing: the task never sees it, and that is fine</span>`
+          why.textContent = 'Your shell keeps it. The task and its key do not see it.'
+          return
+        }
+        const parts = [
+          reads ? `the command gets ${name}` : `the command never sees ${name}`,
+          result ? 'a new value re-runs the task' : 'a new value replays the cached result',
+        ]
+        if (secret) parts.push(masked(name) ? 'its name masks it as ***' : 'exec.env.secret masks it as ***')
+        note = parts.join('; ') + '.'
+        if (!reads && result) note += ' Rare: only for a value that changes the files some other way.'
+      }
+      out.innerHTML = lines.join('\n')
+      why.textContent = note.charAt(0).toUpperCase() + note.slice(1)
+    }
+
+    for (const btn of root.querySelectorAll<HTMLButtonElement>('[data-q]'))
+      btn.addEventListener('click', () => {
+        state[btn.dataset.q!] = btn.dataset.v!
+        for (const b of root.querySelectorAll<HTMLButtonElement>(`[data-q="${btn.dataset.q}"]`))
+          b.setAttribute('aria-pressed', String(b === btn))
+        render()
+      })
+    nameIn.addEventListener('input', render)
+    render()
+  }
+</script>
+
+<style>
+  .vx-envpick {
+    border: 1px solid var(--vx-border);
+    border-radius: 8px;
+    padding: 0.9rem 1rem;
+    margin: 1.25rem 0;
+    display: grid;
+    gap: 0.6rem;
+    font-size: 0.9rem;
+  }
+  .vx-envpick-name {
+    display: flex;
+    gap: 0.6rem;
+    align-items: center;
+    font-family: var(--vx-mono);
+    color: var(--vx-muted);
+  }
+  .vx-envpick-name input {
+    font: inherit;
+    color: var(--vx-fg);
+    background: var(--vx-surface);
+    border: 1px solid var(--vx-border);
+    border-radius: 6px;
+    padding: 0.25rem 0.5rem;
+    min-width: 0;
+    flex: 1;
+    max-width: 16rem;
+  }
+  .vx-envpick fieldset {
+    border: 0;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    align-items: center;
+  }
+  .vx-envpick legend {
+    float: left;
+    min-width: 13rem;
+    color: var(--vx-text);
+  }
+  .vx-envpick button {
+    font: inherit;
+    font-family: var(--vx-mono);
+    font-size: 0.8rem;
+    color: var(--vx-text);
+    background: var(--vx-surface);
+    border: 1px solid var(--vx-border);
+    border-radius: 999px;
+    padding: 0.2rem 0.7rem;
+    cursor: pointer;
+  }
+  .vx-envpick button[aria-pressed='true'] {
+    color: var(--vx-on-accent);
+    background: var(--vx-accent);
+    border-color: var(--vx-accent);
+  }
+  .vx-envpick-code {
+    margin: 0.3rem 0 0;
+    padding: 0.6rem 0.8rem;
+    border-radius: 6px;
+    background: var(--vx-surface);
+    border: 1px solid var(--vx-border);
+    font-family: var(--vx-mono);
+    font-size: 0.85rem;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    color: var(--vx-fg);
+  }
+  .vx-envpick-code :global(.k) {
+    color: var(--vx-link);
+  }
+  .vx-envpick-code :global(.s) {
+    color: var(--vx-ok);
+  }
+  .vx-envpick-code :global(.c) {
+    color: var(--vx-muted);
+  }
+  .vx-envpick-why {
+    margin: 0;
+    color: var(--vx-muted);
+  }
+</style>

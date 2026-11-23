@@ -3,6 +3,7 @@
 // Mermaid renderer (MermaidLoader.astro).
 import Default from '@astrojs/starlight/components/Head.astro'
 import MermaidLoader from './MermaidLoader.astro'
+import PhoneTables from './learn/PhoneTables.astro'
 
 const FONTS =
   'https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&family=Hanken+Grotesk:wght@400;500;600;700;800&display=swap'
@@ -18,3 +19,4 @@ const FONTS =
 <link rel="stylesheet" href={FONTS} media="print" onload="this.media='all'" />
 <noscript><link rel="stylesheet" href={FONTS} /></noscript>
 <MermaidLoader />
+<PhoneTables />

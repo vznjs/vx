@@ -1,104 +1,360 @@
 ---
 title: Plugins
-description: Add a plugin to every run from .vx/workspace.ts.
+description: Give every run a new power, such as a shared cache, a dashboard or more machines, from one line in .vx/workspace.ts.
 ---
 
-import { Aside, CardGrid, LinkCard } from '@astrojs/starlight/components'
+import Diagram from '../../../components/guide/diagram/Diagram.astro'
+import { pluginsAroundRun } from '../../../components/docs/pictures/plugins.js'
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components'
+import { Levels, Deeper, Concept, Quiz, Compare, Takeaway, NextStep } from '../../../components/learn'
 
-A plugin changes every run from one place: where tasks run, where the
-cache lives, what keys hold, who sees the results. Install it and list it
-in `.vx/workspace.ts`.
+You already use two plugins: `vxCache()` for the remote cache and `dte()` for Distributed task
+execution. Every plugin works the same way. See the ones your workspace loads:
 
 ```sh
-bun add -d @vzn/vx-lockfile @vzn/vx-otel
+vx info
 ```
 
-```ts title=".vx/workspace.ts"
-import { defineWorkspace } from '@vzn/vx/config'
-import { bun } from '@vzn/vx-lockfile'
-import { otel } from '@vzn/vx-otel'
+<Levels />
 
-export default defineWorkspace({
-  plugins: [bun(), otel({ serviceName: 'my-monorepo' })],
-})
-```
+<Diagram {...pluginsAroundRun} />
 
-vx applies no plugin by default. With none, it runs and caches on this
-machine. A plugin that declines a task hands it back to this machine.
+<Concept term="Plugin">
+  A package you list in `plugins` in `.vx/workspace.ts`. It changes how every run works: where
+  tasks run, where the cache lives, or who sees the results.
+</Concept>
 
-`vx info` lists the plugins a run loads and the hooks each fills:
+## Add a plugin
 
-```ansi
+<Steps>
+
+1. Install it next to vx:
+
+   ```sh
+   bun add -d @vzn/vx-lockfile @vzn/vx-otel
+   ```
+
+2. Call it in `plugins`:
+
+   ```ts title=".vx/workspace.ts" ins={2-3,6}
+   import { defineWorkspace } from '@vzn/vx/config'
+   import { bun } from '@vzn/vx-lockfile'
+   import { otel } from '@vzn/vx-otel'
+
+   export default defineWorkspace({
+     plugins: [bun(), otel({ serviceName: 'demo' })],
+   })
+   ```
+
+3. Check that it loads:
+
+   ```sh
+   vx info
+   ```
+
+</Steps>
+
+```ansi title="vx info"
 [2m$[0m vx info
 
 [4m[58;2;110;118;129m  [1m[38;2;167;139;250mvx info[0m[4m[58;2;110;118;129m                                                                                                               [0m
   [2mvx              [0m  [38;2;203;213;225m0.0.659 (/home/me/.bun/bin/vx)[0m
-  [2mbun             [0m  [38;2;203;213;225m1.4.4[0m
-  [2mgit             [0m  [38;2;203;213;225m2.43.0[0m
-  [2mgit status cache[0m  [38;2;203;213;225mcore.fsmonitor, core.untrackedCache off[0m
-  [2mworkspace root  [0m  [38;2;203;213;225m/repo[0m
-  [2mprojects        [0m  [38;2;203;213;225m2 (5 tasks)[0m
-  [2mplugins         [0m  [38;2;203;213;225m1 — @vzn/vx-lockfile (discover, project, key, fingerprint)[0m
+  [2mworkspace root  [0m  [38;2;203;213;225m/home/me/demo[0m
+  [2mprojects        [0m  [38;2;203;213;225m2 (6 tasks)[0m
+  [2mplugins         [0m  [38;2;203;213;225m2 — @vzn/vx-lockfile (discover, project, key, fingerprint); @vzn/vx-otel (telemetry)[0m
 ```
 
----
+Read the **plugins** line: both plugins load, and each names the parts of a run it changes.
+
+A typo in an option stops the run before any task starts, and vx names the fix:
+
+```ansi title="otel({ servicename: 'demo' })"
+[2m$[0m vx run build
+
+[38;2;239;68;68m✗[0m [1mvx run[0m  [38;2;203;213;225motel() has unknown option "servicename" (allowed: compression, endpoint, headers, live, logs, logsEndpoint, metrics, metricsEndpoint, serviceName, timeoutMs, tracesEndpoint)[0m
+
+  [2mfix[0m  [1mserviceName[0m
+```
+
+<Takeaway>add any plugin and see it load with `vx info`.</Takeaway>
+
+## What runs with no plugin
+
+vx needs no plugin. With an empty list, every task **runs on this machine** and **caches on this
+machine**. Plugins only add to that.
+
+<Compare leftTitle="No plugins" rightTitle="A plugin that steps aside">
+<div slot="left">
+
+```ts
+plugins: []
+```
+
+Runs here, caches in `.vx/cache`.
+
+</div>
+<div slot="right">
+
+```ts
+plugins: [vxCache({ … })]
+```
+
+On a laptop it steps aside. The run still runs and caches here.
+
+</div>
+</Compare>
+
+A plugin that has nothing to do, such as `vxCache()` off CI or `otel()` with no endpoint, costs
+nothing and hands the work back to this machine.
+
+<Quiz q="You list github() from @vzn/vx-ci and run vx on your laptop. What happens?">
+  The run works as if it were not listed. `github()` acts only on GitHub Actions, so on your laptop
+  it steps aside.
+</Quiz>
+
+<Takeaway>leave a plugin listed everywhere: it acts only where it has work.</Takeaway>
+
+## Pick one by what you need
+
+Pick a tab. Each one shows the smallest setup that works.
+
+<Tabs>
+<TabItem label="Cache">
+
+CI jobs share one cache through a [cache server](../servers/cache/) you host.
+
+```ts title=".vx/workspace.ts"
+import { defineWorkspace } from '@vzn/vx/config'
+import { vxCache } from '@vzn/vx-cache'
+
+export default defineWorkspace({
+  plugins: [
+    vxCache({
+      url: 'https://cache.acme.dev',
+      issuer: 'https://token.actions.githubusercontent.com',
+      repository: 'acme/app',
+    }),
+  ],
+})
+```
+
+Next: [Remote cache](../remote-cache/).
+
+</TabItem>
+<TabItem label="Dashboard">
+
+Every run becomes a trace in your OpenTelemetry tool: one span per task.
+
+```ts title=".vx/workspace.ts"
+import { defineWorkspace } from '@vzn/vx/config'
+import { otel } from '@vzn/vx-otel'
+
+export default defineWorkspace({
+  plugins: [otel({ endpoint: 'http://localhost:4318' })],
+})
+```
+
+Next: [OpenTelemetry](#opentelemetry), below.
+
+</TabItem>
+<TabItem label="More machines">
+
+One `vx run` spreads its tasks over workers your CI starts.
+
+```ts title=".vx/workspace.ts"
+import { defineWorkspace } from '@vzn/vx/config'
+import { dte, github } from '@vzn/vx-dte'
+
+export default defineWorkspace({
+  plugins: [
+    dte({
+      relay: 'https://relay.acme.dev',
+      workers: { linux: { machines: { cpu4: { max: 8, cpu: 4, memory: '16GB' } } } },
+      adapter: github(),
+    }),
+  ],
+})
+```
+
+Next: [Distributed task execution](../distributed-task-execution/).
+
+</TabItem>
+<TabItem label="Lockfile">
+
+A `bun.lock` edit reruns only the projects whose dependencies changed.
+
+```ts title=".vx/workspace.ts"
+import { defineWorkspace } from '@vzn/vx/config'
+import { bun } from '@vzn/vx-lockfile'
+
+export default defineWorkspace({
+  plugins: [bun()],
+})
+```
+
+`pnpm()`, `npm()` and `yarn()` do the same for their lockfiles. Next: [Lockfiles](../lockfiles/).
+
+</TabItem>
+<TabItem label="Slow tasks first">
+
+vx learns how long each task takes and starts the tasks that hold the others up first.
+
+```ts title=".vx/workspace.ts"
+import { defineWorkspace } from '@vzn/vx/config'
+import { vxHistory } from '@vzn/vx-history'
+
+export default defineWorkspace({
+  plugins: [vxHistory()],
+})
+```
+
+Next: [History server](../servers/history/).
+
+</TabItem>
+<TabItem label="CI summary">
+
+Each GitHub Actions job gets a table of its tasks on its summary page.
+
+```ts title=".vx/workspace.ts"
+import { defineWorkspace } from '@vzn/vx/config'
+import { github } from '@vzn/vx-ci'
+
+export default defineWorkspace({
+  plugins: [github()],
+})
+```
+
+Next: [CI](../ci/).
+
+</TabItem>
+<TabItem label="Turbo or Nx">
+
+Start from your `turbo.json` or Nx graph, a temporary step while you move to `vx.config.ts`.
+
+```ts title=".vx/workspace.ts"
+import { defineWorkspace } from '@vzn/vx/config'
+import { turbo } from '@vzn/vx-migrate'
+
+export default defineWorkspace({
+  plugins: [turbo()],
+})
+```
+
+Next: [Migrate](../migrate/).
+
+</TabItem>
+</Tabs>
+
+<Takeaway>pick the plugin for the job and paste its setup.</Takeaway>
 
 ## Plugins that ship
 
-| Package                     | Hooks it fills                             |
-| --------------------------- | ------------------------------------------ |
-| [`@vzn/vx-reapi`](../../plugins/vx-reapi/)             | `cache`, `executor` ([Remote cache](../remote-cache/), [Remote execution](../remote-execution/)) |
-| [`@vzn/vx-migrate`](../../plugins/vx-migrate/)           | `config`, `discover`, `project`, `fingerprint` (`turbo()`, `nx()`), `cache` (`turboCache()`, `nxCache()`) ([Migrate](../../docs/migrate/)) |
-| [`@vzn/vx-lockfile`](../../plugins/vx-lockfile/)          | `discover`, `project`, `fingerprint`, `key` ([Lockfiles](../lockfiles/)) |
-| [`@vzn/vx-dte`](../distributed-task-execution/) | `executor`, `commands` |
-| [`@vzn/vx-history`](../../plugins/vx-history/)  | `schedule`, `admit`, `commands` ([History server](../servers/history/)) |
-| [`@vzn/vx-otel`](../../plugins/vx-otel/)              | `telemetry` ([below](#opentelemetry))      |
-| [`@vzn/vx-ci`](../../plugins/vx-ci/)            | `config`, `telemetry`, `commands` ([GitHub Actions](../ci/#github-actions), [GitLab CI](../ci/#gitlab-ci)) |
-| [`@vzn/vx-cache`](../../plugins/vx-cache/) | `cache`, on a [`@vzn/vx-cache-server`](../../plugins/vx-cache-server/) |
-| [`@vzn/vx-cache-server`](../../plugins/vx-cache-server/) | none: the cache server you host |
-| [`@vzn/vx-history-server`](../../plugins/vx-history-server/) | none: the timings server `vxHistory()` reads |
-| [`@vzn/vx-dte-server`](../servers/dte/) | none: the relay `dte()` meets its workers at |
-| [`@vzn/vx-devtools`](../../plugins/vx-devtools/) | none: the CI token check the servers share |
+Every package below is on npm. The **Plugin API names** column is for plugin authors: the parts of a run each
+one changes ([Write a plugin](../writing-plugins/)).
+
+| Package | Plugin API names | What you get |
+| --- | --- | --- |
+| [`@vzn/vx-lockfile`](../../plugins/vx-lockfile/) | `discover`, `project`, `fingerprint`, `key` | `pnpm()`, `bun()`, `npm()`, `yarn()`: [Lockfiles](../lockfiles/) |
+| [`@vzn/vx-cache`](../../plugins/vx-cache/) | `cache` | `vxCache()`: a [remote cache](../remote-cache/) on your cache server |
+| [`@vzn/vx-otel`](../../plugins/vx-otel/) | `telemetry` | `otel()`: [traces, metrics and logs](#opentelemetry) |
+| [`@vzn/vx-ci`](../../plugins/vx-ci/) | `config`, `telemetry`, `commands` | `github()`, `gitlab()`: [CI](../ci/) summaries and branch caches |
+| [`@vzn/vx-dte`](../distributed-task-execution/) | `executor`, `commands` | `dte()`: [Distributed task execution](../distributed-task-execution/) |
+| [`@vzn/vx-history`](../../plugins/vx-history/) | `schedule`, `admit`, `commands` | `vxHistory()`: slow tasks first, memory-aware packing |
+| [`@vzn/vx-reapi`](../../plugins/vx-reapi/) | `cache`, `executor` | `reapi()`: [Remote cache](../remote-cache/) and [Remote execution](../remote-execution/) on a Bazel server |
+| [`@vzn/vx-migrate`](../../plugins/vx-migrate/) | `config`, `discover`, `project`, `fingerprint` (`turbo()`, `nx()`), `cache` (`turboCache()`, `nxCache()`) | [Migrate](../migrate/) from Turbo or Nx |
+| [`@vzn/vx-cache-server`](../../plugins/vx-cache-server/) | none | the [cache server](../servers/cache/) you host |
+| [`@vzn/vx-history-server`](../../plugins/vx-history-server/) | none | the [history server](../servers/history/) `vxHistory()` reads |
+| [`@vzn/vx-dte-server`](../servers/dte/) | none | the relay `dte()` meets its workers at |
+| [`@vzn/vx-devtools`](../../plugins/vx-devtools/) | none | the CI token check the servers share |
 
 One plugin can fill several: `@vzn/vx-history` fills three at once.
 
-<Aside title="Published plugins">
-  Each one's README is in the reference: [Plugins](../../plugins/vx-ci/).
+<Aside type="tip" title="Each package's full guide">
+  Every package has its own page under [Plugins](../../plugins/vx-ci/) in the sidebar.
 </Aside>
 
----
+<Takeaway>find the package for any part of a run.</Takeaway>
 
 ## OpenTelemetry
 
-`@vzn/vx-otel` sends every run to your OpenTelemetry collector as traces,
-metrics and logs: one trace per run, one span per task.
+`@vzn/vx-otel` sends every run to your OpenTelemetry collector: **one trace per run, one span per
+task**, plus metrics and each task's output as a log.
 
-```sh
-bun add -d @vzn/vx-otel
-export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
-```
+<Steps>
 
-With no endpoint set, it sends nothing. A signal's own endpoint, such as
-`OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`, sends only that signal.
+1. Start a viewer on your machine, such as
+   [otel-desktop-viewer](https://github.com/CtrlSpice/otel-desktop-viewer):
 
-```ts
-// .vx/workspace.ts
+   ```sh
+   brew tap ctrlspice/otel-desktop-viewer
+   brew install --cask otel-desktop-viewer
+   otel-desktop-viewer
+   ```
+
+2. Add `otel()`:
+
+   ```ts title=".vx/workspace.ts" ins={2,5}
+   import { defineWorkspace } from '@vzn/vx/config'
+   import { otel } from '@vzn/vx-otel'
+
+   export default defineWorkspace({
+     plugins: [otel({ serviceName: 'demo' })],
+   })
+   ```
+
+3. Run, sending to the viewer at `localhost:4318`:
+
+   ```sh
+   OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318 vx run build --all
+   ```
+
+</Steps>
+
+The viewer shows a `vx.run` trace. Each task is a span under it, sent **as the task ends**, so a
+dashboard follows a CI run live. A failed task's span is `ERROR`.
+
+<Aside type="note">
+  With no endpoint set, `otel()` sends nothing. A failed or slow export prints a warning, and the
+  run still passes.
+</Aside>
+
+<Deeper level="patterns" title="Send to a hosted vendor">
+
+### An API key in a header
+
+Most vendors want a key in a header. Read it from the environment, never write it in the file:
+
+```ts title=".vx/workspace.ts" mark={7}
 import { defineWorkspace } from '@vzn/vx/config'
 import { otel } from '@vzn/vx-otel'
 
 export default defineWorkspace({
   plugins: [
     otel({
-      serviceName: 'my-monorepo',
       headers: { authorization: `Bearer ${process.env.OTLP_TOKEN}` },
     }),
   ],
 })
 ```
 
+An unset variable leaves that header out. The endpoint comes from
+`OTEL_EXPORTER_OTLP_ENDPOINT`, set on CI.
+
+### Traces only
+
+`otel({ metrics: false, logs: false })` sends spans and nothing else.
+
+<Takeaway>send runs to any OpenTelemetry vendor with its key kept out of the workspace.</Takeaway>
+
+</Deeper>
+
+<Deeper level="details" title="Every option and signal">
+
+Each option also reads the standard `OTEL_*` variable. The option wins over the variable.
+
 | Option            | Env var                                | Default                 |
 | ----------------- | -------------------------------------- | ----------------------- |
-| `endpoint`        | `OTEL_EXPORTER_OTLP_ENDPOINT`          | none                    |
+| `endpoint`        | `OTEL_EXPORTER_OTLP_ENDPOINT`          | none: send nothing      |
 | `tracesEndpoint`  | `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`   | `<endpoint>/v1/traces`  |
 | `metricsEndpoint` | `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT`  | `<endpoint>/v1/metrics` |
 | `logsEndpoint`    | `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT`     | `<endpoint>/v1/logs`    |
@@ -108,42 +364,305 @@ export default defineWorkspace({
 | `logs`            | `OTEL_LOGS_EXPORTER=none` turns it off | `true`                  |
 | `timeoutMs`       | `OTEL_EXPORTER_OTLP_TIMEOUT`           | `15000`                 |
 | `compression`     | `OTEL_EXPORTER_OTLP_COMPRESSION` (and `_<SIGNAL>_`) | `'none'`   |
-| `live`            | none: send each task as it ends        | `true`                  |
+| `live`            | none: `false` sends everything at the run's end | `true`         |
 
-An endpoint is `https://`, or `http://` to `127.0.0.1`, `::1` or
-`localhost`: a header is often the vendor's API key, and `http://` to
-another host would send it in clear.
+- `endpoint` is the base URL; each signal adds its own path. A signal's own endpoint sends only
+  that signal.
+- `headers` merge over the variable's. A header is often the vendor's key.
+- `timeoutMs` bounds one request. `compression: 'gzip'` gzips every signal.
 
-Any other endpoint is warned about and its signals are not exported.
+An endpoint is `https://`, or `http://` to `127.0.0.1`, `::1` or `localhost`. Any other `http://`
+endpoint would send your key in clear, so vx warns and sends nothing there.
 
 | Signal            | Carries                                                                                                   |
 | ----------------- | --------------------------------------------------------------------------------------------------------- |
 | `vx.run` span     | `vx.run.task_count`, `vx.run.failed_count`, `vx.run.aborted_count`, `vx.run.not_run_count`, `vx.run.hit_local_count`, `vx.run.hit_remote_count`, `vx.run.up_to_date_count`, `vx.run.restored_local_count`, `vx.run.restored_remote_count`, `vx.run.exit_ok`, `vx.cache.upload.*` (remote uploads, once settled), `vx.workspace.id`, `vx.default_branch`, `vx.telemetry.schema` |
 | `vx.task` span    | `vx.cache.source`, `vx.cache.restored` (on a hit), `vx.task.hash`, `vx.task.attempts`, `vx.task.blocked_by`, `vx.task.timed_out`, `vx.task.sandbox_violations`, `vx.task.not_ready`, `vx.task.command`, `vx.task.flaky.*`, `vx.cache.stored_*` (on a hit), `vx.task.admission_held_ms`, `vx.task.queued_ms`, `vx.task.input_files`, `vx.cache.miss.change_count` and `vx.cache.miss.changes` (what a miss's key changed since the last saved entry), `vx.cache.artifact_bytes`, `vx.cache.save_ms`, `vx.cache.fetch_ms`; links to the tasks it waited on; `vx.task.retry`, `vx.task.timeout` and `vx.sandbox.violation` events |
-| a span per stage  | `startup`, `load configs`, `classify + probe`, `run graph`, … (the `VX_DEBUG_TIMING` stages), with `vx.stage.name` |
+| a span per step   | `startup`, `load configs`, `classify + probe`, `run graph`, … (the `VX_DEBUG_TIMING` steps), with `vx.stage.name` |
 | metrics           | `vx.tasks.total`, `vx.tasks.failed`, `vx.tasks.cache_hits`, `vx.tasks.cache_restored`, `vx.tasks.cache_up_to_date`, `vx.run.duration_ms`, `vx.run.time_saved_ms` |
 | metrics per task  | `vx.task.duration`, `vx.task.cpu_time`, `vx.task.peak_memory`, `vx.task.time_saved`, `vx.task.admission_held`, `vx.task.queued`, `vx.task.artifact_size`, `vx.task.cache_save`, `vx.task.cache_fetch` at its end; `vx.task.cpu_usage` and `vx.task.memory` each second while it runs; each point names its span as an exemplar |
 | a log per task    | the task's output at its end, linked to its span; `vx.log.chars_full` says when it was cut               |
 | every resource    | `service.instance.id` (the run id), `host.name`, `host.arch`, `os.type`, `vcs.ref.head.*`, `vcs.repository.*`, `vx.workspace.path` (the workspace root in its repository), and on CI `cicd.pipeline.run.url.full`, `cicd.pipeline.name`, `vcs.change.id` (the pull request), `vx.ci.job`, `vx.ci.attempt`: one key joins a run's traces, metrics and logs |
 
-Each task is sent as it ends, so a dashboard follows a CI run live.
-`live: false` sends it all at the end. A failed task's span is `ERROR`.
+</Deeper>
 
-A failed or slow export prints a warning, and the run still passes.
+<Takeaway>watch every run and every task in your own OpenTelemetry tool.</Takeaway>
 
-To see it locally, run
-[otel-desktop-viewer](https://github.com/CtrlSpice/otel-desktop-viewer):
+## Every plugin option
 
-```sh
-brew tap ctrlspice/otel-desktop-viewer
-brew install --cask otel-desktop-viewer
-otel-desktop-viewer
-OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318 vx run build --all
+A plugin takes its options as one object. Leave an option out and it keeps its **default**. Here
+`vxHistory()` learns from the last 50 runs instead of 20:
+
+```ts title=".vx/workspace.ts" mark={5}
+import { defineWorkspace } from '@vzn/vx/config'
+import { vxHistory } from '@vzn/vx-history'
+
+export default defineWorkspace({
+  plugins: [vxHistory({ window: 50 })],
+})
 ```
 
-## Next
+Only options marked **required** must be set. vx checks every option when the run starts and names
+a wrong one, as in [Add a plugin](#add-a-plugin). Open the tables for **what each option does and
+its default**.
 
-<CardGrid>
-  <LinkCard title="Write a plugin" description="Fill a stage of every run with your own code." href="../writing-plugins/" />
-  <LinkCard title="@vzn/vx API" description="Every type a plugin sees." href="../../api/" />
-</CardGrid>
+<Deeper level="patterns" title="Common setups">
+
+### Secrets come from the environment
+
+Pass `process.env.X` for a key. CI sets it; the workspace file holds no secret.
+
+```ts title=".vx/workspace.ts" mark={9}
+import { defineWorkspace } from '@vzn/vx/config'
+import { vxCache } from '@vzn/vx-cache'
+
+export default defineWorkspace({
+  plugins: [
+    vxCache({
+      issuer: 'https://token.actions.githubusercontent.com',
+      repository: 'acme/app',
+      headers: { 'CF-Access-Client-Id': process.env.CF_ACCESS_CLIENT_ID },
+    }),
+  ],
+})
+```
+
+With no `url`, `vxCache()` reads `VX_CACHE_URL`. An unset header is left out.
+
+### Two remote caches
+
+vx asks the local cache first, then each remote cache **in the order you list them**:
+
+```ts title=".vx/workspace.ts"
+import { defineWorkspace } from '@vzn/vx/config'
+import { vxCache } from '@vzn/vx-cache'
+import { turboCache } from '@vzn/vx-migrate'
+
+export default defineWorkspace({
+  plugins: [
+    vxCache({ issuer: 'https://token.actions.githubusercontent.com', repository: 'acme/app' }),
+    turboCache(),
+  ],
+})
+```
+
+<Takeaway>keep keys out of the workspace and combine remote caches.</Takeaway>
+
+</Deeper>
+
+<Deeper level="details" title="Every option, plugin by plugin">
+
+### `pnpm()`, `bun()`, `npm()`, `yarn()`
+
+From `@vzn/vx-lockfile`. Each reads its own lockfile.
+
+| Option | What it does | Default |
+| --- | --- | --- |
+| `scope` | `'project'`: a lockfile change reruns only the projects whose dependencies it touches. `'workspace'`: any change reruns every task. | `'project'` |
+
+### `vxCache()`
+
+From `@vzn/vx-cache`: see [every `vxCache()` option](../remote-cache/#vxcache-options) on Remote cache.
+
+### `vxHistory()`
+
+From `@vzn/vx-history`. Learns from past runs which tasks are slow and how much memory each needs.
+
+| Option | What it does | Default |
+| --- | --- | --- |
+| `window` | How many recent runs to learn from. | `20` |
+| `resources` | Packs tasks by the memory they used, times `headroom`. `false` turns packing off. | `{ headroom: 1.25 }` |
+| `memory` | The memory budget, in MB, tasks are packed into. | this machine's, or its container limit |
+| `reservations` | Cores and memory by task id, for a task history has not seen: `{ '@demo/web#build': { cpus: 2, memory: 2048 } }`. | `{}` |
+| `assume` | Durations in ms by task id, for a first run with no history. | `{}` |
+| `file` | A timings file, from the workspace root, that CI keeps between runs. | none |
+| `url` | A [history server](../servers/history/) to read and send timings. | `VX_HISTORY_URL` |
+| `headers` | Headers for a proxy in front of the server. | `{}` |
+| `issuer` | The CI whose tokens the server takes. | required with `url` |
+| `repository` | Your repository at that CI, `org/name`. | required with `url` |
+| `timeoutMs` | Deadline for one request to the server. | `10000` |
+| `retries` | Tries after a 5xx or a 429. | `2` |
+
+### `dte()`
+
+From `@vzn/vx-dte`. Spreads one run over workers: [Distributed task execution](../distributed-task-execution/).
+
+| Option | What it does | Default |
+| --- | --- | --- |
+| `workers` | Worker types by name, each with its `machines`. A task with `exec.worker` runs only on its type. | none: only workers that join |
+| `adapter` | What starts workers: `github()`, `gitlab()`, `docker()` or `local()`. | none |
+| `relay` | The relay's URL. `VX_DTE_RELAY` beats it. | the adapter's own |
+| `token` | A function returning the relay token. | `VX_DTE_TOKEN`, else GitHub's OIDC token |
+| `unmeasured` | What a task with no history counts for when planning workers. | `{ cpu: 2, memory: '4GB' }` |
+| `headers` | Headers for a proxy in front of the relay. | `{}` |
+
+Each machine in `workers.<type>.machines.<name>`:
+
+| Field | What it does | Default |
+| --- | --- | --- |
+| `cpu` | Its cores. | required |
+| `memory` | Its memory: bytes, or `'8GB'`, `'512MiB'`. | required |
+| `max` | How many one run may start. | as many as the work needs |
+| `platform` | Its platform, such as `'linux-x64'`. A task with `exec.platforms` runs only there. | this machine's |
+| `runsOn` | The CI runner label `vx dte init` writes. | the platform's GitHub-hosted runner |
+
+The adapters, each with its own options:
+
+| Option | What it does | Default |
+| --- | --- | --- |
+| `workflow` | `github()`: the workers' workflow file in `.github/workflows`. | `vx-worker.yml` |
+| `env` | `github()`: variables the run hands its workers. | `{}` |
+| `tags` | `gitlab()`: runner tags for each machine size. | none |
+| `image` | `docker()`: an image with Bun and git. | required |
+| `prepare` | `docker()` and `local()`: a shell line before the worker starts, such as `bun install`. | none |
+
+### `github()` and `gitlab()` from `@vzn/vx-ci`
+
+From `@vzn/vx-ci`. Each acts only on its own CI.
+
+| Option | What it does | Default |
+| --- | --- | --- |
+| `summaryFile` | `github()` only: where the job summary goes. | `GITHUB_STEP_SUMMARY` |
+| `title` | `github()` only: the summary's heading. | `'vx run'` |
+| `cacheScope` | Keeps each branch's remote cache entries apart and compares a pull request with its base. `false` turns it off. `VX_CACHE_SCOPE` beats it. | `true` |
+
+### `reapi()`
+
+From `@vzn/vx-reapi`. A Bazel remote cache, and remote execution with `execute: true`.
+
+| Option | What it does | Default |
+| --- | --- | --- |
+| `endpoint` | The server, `host:port` or a URL. Unset, the plugin steps aside. | none |
+| `instanceName` | The instance on a shared server. | `''` |
+| `headers` | Sent on every call, such as a key. | `{}` |
+| `tls` | TLS on or off. | on, unless `grpc://`, `http://` or a socket |
+| `tlsCertificate` | PEM file of a private CA. | system roots |
+| `tlsClientCertificate` | PEM file of a client certificate, for mutual TLS. | none |
+| `tlsClientKey` | PEM file of its key. | none |
+| `execute` | Run tasks on the server, not only cache there. | `false` |
+| `platform` | Platform properties, such as `container-image`. | `{}` |
+| `capacity` | Remote tasks at once. | the run's own worker count |
+| `executeTimeoutMs` | Deadline for one remote task. `exec.timeout` wins. | `600000` |
+| `queueTimeoutMs` | How long a task waits for a remote worker before it runs here. | no limit |
+| `callTimeoutMs` | Deadline for one cache call. | `30000` |
+| `metaTimeoutMs` | Deadline for one small control call. | `callTimeoutMs`, at most `15000` |
+| `chunkBytes` | Bytes per upload or download message. | `65535` |
+| `toolName` | The tool name the server shows. | `'vx'` |
+| `toolVersion` | The tool version the server shows. | `'0.0.0'` |
+| `correlatedInvocationsId` | Groups several runs as one build on the server. | `''` |
+
+`ReapiRemoteCache`, for a cache you build in your own code, takes the same options with the PEM text
+itself, and a warning callback:
+
+| Option | What it does | Default |
+| --- | --- | --- |
+| `tlsCaPem` | PEM text of a private CA. | system roots |
+| `tlsClientCertPem` | PEM text of a client certificate. | none |
+| `tlsClientKeyPem` | PEM text of its key. | none |
+| `onWarn` | Called with a message when a call recovers from a fault. | none |
+
+### `turbo()` and `nx()`
+
+From `@vzn/vx-migrate`. Map `turbo.json` or the Nx graph to vx tasks, a temporary start toward native config.
+
+| Option | What it does | Default |
+| --- | --- | --- |
+| `root` | Where `turbo.json` or `nx.json` lives, from the workspace root. | the workspace root |
+| `graph` | `nx()` only: a file from `nx graph --file=…` to read instead of running `nx`. | none |
+| `executors` | `nx()` only: your own Nx executors as commands, by executor name. | none |
+
+### `turboCache()` and `nxCache()`
+
+From `@vzn/vx-migrate`. Keep the remote cache a Turbo or Nx workspace already has.
+
+| Option | What it does | Default |
+| --- | --- | --- |
+| `url` | The cache server. | `TURBO_API` / `NX_SELF_HOSTED_REMOTE_CACHE_SERVER` |
+| `token` | The bearer token. | `TURBO_TOKEN` / `NX_SELF_HOSTED_REMOTE_CACHE_ACCESS_TOKEN` |
+| `timeoutMs` | Deadline for one request. | `30000` |
+| `retries` | Resends after a 429, a 5xx or no connection. | `1` |
+| `oidc` | `turboCache()` only: trade the GitHub job's token for a short-lived one. `true` for Vercel, or `{ tokenUrl, revokeUrl, audience, params }`. | off |
+| `teamId` | `turboCache()` only: the team id. | `TURBO_TEAMID` |
+| `teamSlug` | `turboCache()` only: the team slug. | `TURBO_TEAM` |
+| `signatureKey` | `turboCache()` only: signs uploads and checks downloads. | `TURBO_REMOTE_CACHE_SIGNATURE_KEY` |
+| `uploadTimeoutMs` | `turboCache()` only: deadline for one upload. | `60000` |
+| `preflight` | `turboCache()` only: send Turbo's preflight request first. | `false` |
+| `scope` | `turboCache()` only: `'header'` names the branch in a header; `'key'` puts it in each key. | `'header'` |
+
+`oidc: { … }` takes, for a server other than Vercel's:
+
+| Option | What it does | Default |
+| --- | --- | --- |
+| `tokenUrl` | Where the job's token is traded. | Vercel's; required for any other server |
+| `revokeUrl` | Where the short-lived token is revoked when the run ends. `false`: none. | Vercel's |
+| `audience` | The audience GitHub mints the job's token for. | none |
+| `params` | Extra fields sent with the trade, such as Vercel's `policy_id`. | `{}` |
+
+### `otel()`
+
+From `@vzn/vx-otel`: see [every option and signal](#opentelemetry) above.
+
+### `createCacheServer()`
+
+From `@vzn/vx-cache-server`, to run the [cache server](../servers/cache/) in your own code.
+
+| Option | What it does | Default |
+| --- | --- | --- |
+| `blobs` | Where entries are stored: a bucket or a folder. | required |
+| `authorize` | Checks each request's CI token, such as `oidcAuth()`. | required |
+| `limits` | `{ maxCheckHashes, maxUploadBytes }`: the most keys one check asks and the largest upload. | `500`, `100000000` |
+
+### `createHistoryServer()`
+
+From `@vzn/vx-history-server`, to run the [history server](../servers/history/) in your own code.
+
+| Option | What it does | Default |
+| --- | --- | --- |
+| `store` | Where timings are kept, such as `sqliteStore()`. | required |
+| `authorize` | Checks each request's CI token against the repository it names. | required |
+| `timingDays` | Days a task's timings are kept after its last report. | `30` |
+| `now` | The clock, in ms; tests move it. | `Date.now` |
+
+### `createRelay()` and `serveRelay()`
+
+From `@vzn/vx-dte-server`, to run the [relay](../servers/dte/) in your own code.
+
+| Option | What it does | Default |
+| --- | --- | --- |
+| `verify` | Checks each request's token, such as `createVerifier()`. Unset, every request is let in: this machine only. | none |
+| `heartbeatMs` | How often the run and its workers hear from each other. | `2000` |
+| `graceMs` | How long a dropped worker may reconnect before it is gone. | `10000` |
+| `sockets` | Connections a host kept across a restart, to rebuild runs from. | none |
+| `upgrade` | `createRelay()`: accepts a worker's websocket. | required |
+| `hostname` | `serveRelay()`: the address to listen on. | required |
+| `port` | `serveRelay()`: the port; `0` picks a free one. | required |
+
+`createVerifier()` takes:
+
+| Option | What it does | Default |
+| --- | --- | --- |
+| `allow` | Who may join: the parsed `ALLOW` list. | required |
+| `audience` | The audience a token must name. | required |
+| `runClaims` | Which token fields tie a worker to its run, by issuer. | the repository's id |
+| `fetchJson` | Reads the issuer's keys; tests serve them offline. | a cached fetch |
+| `now` | The clock, in seconds; tests move it. | the real clock |
+
+### `oidcAuth()`
+
+From `@vzn/vx-devtools`: the CI token check every server shares.
+
+| Option | What it does | Default |
+| --- | --- | --- |
+| `allow` | Who may take part: the parsed `ALLOW` list. | required |
+| `audience` | The audience a token must name. | the URL the server is reached at |
+| `readAccess` | `READ_ACCESS`: `public` lets a request with no token read. | private |
+| `fetchJson` | Reads the issuer's keys; tests serve them offline. | a cached fetch |
+| `now` | The clock, in seconds; tests move it. | the real clock |
+
+<Takeaway>set any plugin option and know its default.</Takeaway>
+
+</Deeper>
+
+<NextStep href="../remote-execution/" title="Remote execution">
+  Run tasks on a build server instead of this machine, with one plugin.
+</NextStep>

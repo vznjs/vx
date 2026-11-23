@@ -1,0 +1,89 @@
+---
+// The page's depth switch (M 2026-11-23: "Docs need to have levels").
+// Basics is always shown; Patterns and Details are <Deeper> blocks the
+// switch opens or closes together. Without script every block still opens
+// by hand, so the page reads the same.
+---
+
+<div class="vx-levels not-content" role="group" aria-label="How deep to read">
+  <span class="vx-levels-label">Read</span>
+  <button type="button" data-set-level="1" aria-pressed="true">Basics</button>
+  <button type="button" data-set-level="2" aria-pressed="false">+ Patterns</button>
+  <button type="button" data-set-level="3" aria-pressed="false">+ Details</button>
+</div>
+
+<script>
+  const KEY = 'vx-docs-level'
+  const blocks = () => document.querySelectorAll<HTMLDetailsElement>('details.vx-deeper')
+  function apply(level: number, save: boolean) {
+    for (const b of blocks()) b.open = Number(b.dataset.level) <= level
+    for (const btn of document.querySelectorAll<HTMLButtonElement>('[data-set-level]'))
+      btn.setAttribute('aria-pressed', String(Number(btn.dataset.setLevel) === level))
+    if (save)
+      try {
+        localStorage.setItem(KEY, String(level))
+      } catch {}
+  }
+  for (const btn of document.querySelectorAll<HTMLButtonElement>('[data-set-level]'))
+    btn.addEventListener('click', () => apply(Number(btn.dataset.setLevel), true))
+  let saved = 1
+  try {
+    saved = Number(localStorage.getItem(KEY)) || 1
+  } catch {}
+  if (saved > 1) apply(saved, false)
+  // A link to a heading inside a closed block opens it.
+  const openTarget = () => {
+    const id = decodeURIComponent(location.hash.slice(1))
+    const el = id ? document.getElementById(id) : null
+    el?.closest<HTMLDetailsElement>('details.vx-deeper')?.setAttribute('open', '')
+    el?.scrollIntoView()
+  }
+  addEventListener('hashchange', openTarget)
+  if (location.hash) openTarget()
+</script>
+
+<style>
+  .vx-levels {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.25rem;
+    width: fit-content;
+    max-width: 100%;
+    margin: 1rem 0 1.5rem;
+    padding: 0.25rem;
+    border: 1px solid var(--vx-border);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--vx-surface) 60%, var(--vx-bg));
+    font-family: var(--vx-mono);
+    font-size: 0.8rem;
+  }
+  .vx-levels-label {
+    color: var(--vx-muted);
+    margin: 0 0.3rem 0 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    font-size: 0.7rem;
+  }
+  .vx-levels button {
+    font: inherit;
+    color: var(--vx-text);
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 999px;
+    padding: 0.3rem 0.85rem;
+    cursor: pointer;
+    transition:
+      color 0.15s,
+      background-color 0.15s;
+  }
+  .vx-levels button:hover {
+    color: var(--vx-fg);
+  }
+  .vx-levels button[aria-pressed='true'] {
+    color: var(--vx-on-accent);
+    background: var(--vx-accent);
+    border-color: var(--vx-accent);
+    box-shadow: 0 0 16px color-mix(in srgb, var(--vx-accent) 25%, transparent);
+  }
+</style>

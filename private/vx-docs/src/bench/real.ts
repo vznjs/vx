@@ -23,28 +23,11 @@ const TOOL_NAMES: Record<string, string> = { Turbo: 'Turbo', Nx: 'Nx' }
 
 const bare = (cell: string): string => cell.replaceAll('**', '')
 
-/** `121 ms` / `36.0 s` in ms. */
-function ms(cell: string): number {
-  const m = /^([\d.]+) (ms|s)$/.exec(bare(cell))
-  if (m === null) throw new Error(`real-repos.json: not a duration: ${cell}`)
-  return Number(m[1]) * (m[2] === 's' ? 1000 : 1)
-}
-
-/** Within this fraction of each other, two best-of-five figures are one: a rep's noise. */
-const TIE = 0.02
-
-/** "vx 11% faster", "vx 2.6× slower", "tie": N× from 2×, a percentage below it. */
-export function verdict(vx: string, rival: string): string {
-  const [a, b] = [ms(vx), ms(rival)]
-  const [fast, slow] = a <= b ? [a, b] : [b, a]
-  if (slow / fast <= 1 + TIE) return 'tie'
-  // Rounded down, never claiming more than measured; divide last, as
-  // (slow / fast - 1) * 100 lands on 56.99… for a 57% gap.
-  const size =
-    slow >= 2 * fast
-      ? `${(Math.floor((slow * 10) / fast) / 10).toFixed(1)}×`
-      : `${Math.floor(((slow - fast) * 100) / fast)}%`
-  return `vx ${size} ${a <= b ? 'faster' : 'slower'}`
+/** The cell, unstarred; a cell that is no duration is refused. */
+function duration(cell: string): string {
+  const d = bare(cell)
+  if (!/^[\d.]+ (ms|s)$/.test(d)) throw new Error(`real-repos.json: not a duration: ${cell}`)
+  return d
 }
 
 /** `solidjs/solid` → `solid`, the name a token uses. */
@@ -63,8 +46,8 @@ export function realFigures(rows: readonly RealRow[]): Map<string, string> {
     out.set(`${s}.machine`, row.machine ?? 'machine not recorded')
     for (const arm of ARMS) {
       const [vx = '', rival = ''] = row[arm]
-      out.set(`${s}.${arm}.vx`, bare(vx))
-      out.set(`${s}.${arm}.rival`, `${bare(rival)} (${verdict(vx, rival)})`)
+      out.set(`${s}.${arm}.vx`, duration(vx))
+      out.set(`${s}.${arm}.rival`, duration(rival))
     }
   }
   return out

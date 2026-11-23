@@ -146,7 +146,7 @@ vx run [OPTIONS] [TASK | PKG#TASK ...] [-- forwarded-args...]
 vx run build                  # the cwd project's build, and what it depends on
 vx run build --all            # every project that declares build
 vx run test --affected        # only what this branch changed, and its dependents
-vx run app#build lint         # one project's build, and lint in scope
+vx run @demo/web#build lint   # one project's build, and lint in scope
 vx run test -- --watch=false  # forward arguments to the task
 ```
 
@@ -159,8 +159,8 @@ vx run build --all
 ```ansi
 
 [4m[58;2;110;118;129m  [1m[38;2;167;139;250mTasks[0m[4m[58;2;110;118;129m     [2mstatus  cache     ±usual    time   cpu    mem outputs  blocks worker         task[0m[4m[58;2;110;118;129m                           [0m
-            [38;2;34;197;94msuccess[0m [2mmiss[0m           [2m—[0m    [38;2;203;213;225m19ms[0m   [2m30%[0m  [2m2.2MB[0m     [2m19B[0m       [38;2;203;213;225m1[0m [2mlocal[0m          [38;2;244;114;182mlib[0m[2m#[0m[38;2;244;114;182mbuild[0m
-            [38;2;34;197;94msuccess[0m [2mmiss[0m           [2m—[0m     [38;2;203;213;225m4ms[0m  [2m113%[0m  [2m2.0MB[0m     [2m19B[0m       [2m0[0m [2mlocal[0m          [38;2;147;197;253mapp[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m           [2m—[0m   [38;2;203;213;225m153ms[0m  [2m112%[0m  [2m110MB[0m     [2m89B[0m       [38;2;203;213;225m1[0m [2mlocal[0m          [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m           [2m—[0m   [38;2;203;213;225m141ms[0m  [2m115%[0m  [2m108MB[0m    [2m115B[0m       [2m0[0m [2mlocal[0m          [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m
 
 
 [4m[58;2;110;118;129m  [1m[38;2;167;139;250mSummary[0m[4m[58;2;110;118;129m                                                                                                       [2mvx 0.0.0[0m
@@ -171,8 +171,8 @@ vx run build --all
   [2mcache   [0m  [38;2;56;189;248m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
             [2mlocal[0m [38;2;56;189;248m2↑[0m
 
-  [2minfo    [0m  4 workers [2m·[0m local cache [2m·[0m run 01a20586-c80c-74ca-b24b-a37caf560ec9
-  [2mtime    [0m  72ms [2m·[0m [2mmax 19ms[0m [2m·[0m [2mavg 12ms[0m [2m·[0m [2mmin 4ms[0m
+  [2minfo    [0m  4 workers [2m·[0m local cache [2m·[0m run 01a20a09-a545-7387-b09d-f1fd478d50f0
+  [2mtime    [0m  333ms [2m·[0m [2mmax 153ms[0m [2m·[0m [2mavg 147ms[0m [2m·[0m [2mmin 141ms[0m
 ```
 
 ```sh
@@ -190,8 +190,8 @@ vx run build --all
   [2mcache   [0m  [38;2;34;197;94m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
             [2mlocal[0m [38;2;34;197;94m2✓[0m
 
-  [2minfo    [0m  4 workers [2m·[0m local cache [2m·[0m run 01a20586-c912-76b8-9d44-c47c0ec7c16a
-  [2mtime    [0m  20ms
+  [2minfo    [0m  4 workers [2m·[0m local cache [2m·[0m run 01a20a09-a737-7148-8c91-0e392691edef
+  [2mtime    [0m  18ms
 ```
 
 The [Flags](#flags) table lists every option.
@@ -250,8 +250,8 @@ exclusion (`!nope`): running the rest would hide the typo.
 - `Did you mean <name>?` when a project name is within two edits, or
   when one scoped name matches after its `/` (`--filter vx-otel` hints
   `@vzn/vx-otel`). The hint is the pattern as typed with the name put
-  right, operators kept (`--filter apq...` hints `app...`). A task id
-  (`--filter app#build`) hints its project: a filter names projects.
+  right, operators kept (`--filter @demo/wbe...` hints `@demo/web...`). A task id
+  (`--filter @demo/web#build`) hints its project: a filter names projects.
   A name only one project's name opens with hints that project
   (`--filter '!@m/slow'` hints `!@m/slow-tests`).
 - `A filter is one pattern: --filter a --filter b` for a comma list
@@ -263,7 +263,7 @@ exclusion (`!nope`): running the rest would hide the typo.
   else the list of tags.
 - When an exclusion took back everything the filters matched, it names
   it: `no projects
-selected: !app excluded every project the other filters matched`.
+selected: !@demo/web excluded every project the other filters matched`.
 
 | Form               | Meaning                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -292,16 +292,16 @@ A dependency between projects comes from one of two places:
   `npm()`, `yarn()` from `@vzn/vx-lockfile`) supply what the package
   manager installed. vx reads none from a `package.json` itself.
 - **A cross-project `dependsOn`.** `e2e`'s `test: {
-dependsOn: ['app#build'] }` makes `e2e` a dependent of `app`.
+dependsOn: ['@demo/web#build'] }` makes `e2e` a dependent of `@demo/web`.
 
-Filters follow both: `vx run test --filter '...app'` runs `e2e#test`
-even though no plugin links `e2e` to `app`. There is no
+Filters follow both: `vx run test --filter '...@demo/web'` runs `e2e#test`
+even though no plugin links `e2e` to `@demo/web`. There is no
 `implicitDependencies` field: declare the dependency on the task.
 
 A filter that names no project (`...`, a bare `!`, an empty `{}`) is
 refused, and so is a path that climbs out of the root (`../`, `{..}`)
 or one holding a control character, and `^...` before a git ref
-(`app^...[main]`, which neither Turbo nor pnpm reads: `app[main]^...` is
+(`@demo/web^...[main]`, which neither Turbo nor pnpm reads: `@demo/web[main]^...` is
 the dependencies of a changed app).
 One whose pattern matched but selected nothing says what it matched:
 `no projects selected: filter "...^core" matched core, and no
@@ -311,9 +311,9 @@ Examples:
 
 ```sh
 vx run build --filter @scope/*                # all packages under @scope
-vx run build --filter app...                  # app and its transitive deps
+vx run build --filter @demo/web...                  # @demo/web and its transitive deps
 vx run build --filter ...util                 # util and everything depending on it
-vx run build --filter app^...                 # only app's deps (not app)
+vx run build --filter @demo/web^...                 # only @demo/web's deps (not itself)
 vx run build --filter '*' --filter '!docs'    # everything except docs
 vx run build --filter '[origin/main]'         # projects with files changed since main
 ```
@@ -411,16 +411,16 @@ the projects it touches:
 
 A requested task runs when its `dependsOn` closure holds a marked task,
 so a change reaches another project only along a task's dependency.
-With `app#test` behind `^build`:
+With `@demo/web#test` behind `^build`:
 
 - an edit to `ui/src/button.ts`, which `ui#build` reads, runs `ui`'s
-  tasks and `app#test`;
+  tasks and `@demo/web#test`;
 - an edit to `ui/src/button.test.ts`, which only `ui#test` reads, runs
   `ui#test` alone;
-- `app#lint`, which depends on nothing, never runs for a change in `ui`.
+- `@demo/web#lint`, which depends on nothing, never runs for a change in `ui`.
 
 A `pkg#task` you name runs whatever the diff. This matches the cache
-key: a cached `app#test` with no dependency on `ui` never sees `ui`'s
+key: a cached `@demo/web#test` with no dependency on `ui` never sees `ui`'s
 files either.
 
 A project with no `build` gets one keyed on all its files
@@ -551,7 +551,7 @@ imports it, directly or through another shared file.
   package, which the lockfile covers. `vx watch` follows the same
   imports.
 - It crosses projects as the config does: a config importing
-  `../../packages/lib/preset.ts` is selected when that file, or one it
+  `../../packages/ui/preset.ts` is selected when that file, or one it
   imports, changes.
 
 To opt a project config's helper out, import it by a bare package
@@ -564,7 +564,7 @@ and exits 0, so a docs-only commit passes `vx run lint test build
 --affected=origin/main`.
 
 - When the diff matched but an exclusion or an empty walk took it all
-  back, the note says so (`no projects selected: !app excluded every
+  back, the note says so (`no projects selected: !@demo/web excluded every
 project the other filters matched`).
 - A name or path pattern that matches nothing is still an error, as a
   likely typo, with a ref too: `--filter 'nope[main]'` is refused when no
@@ -572,9 +572,9 @@ project the other filters matched`).
   filter that matched.
 
 **An empty selection never cancels an anchored task.** Project scope
-applies to bare names only, so `vx run app#deploy build
---affected=origin/main` with nothing changed still runs `app#deploy`
-(vx notes `nothing affected since <ref> — running app#deploy only` on
+applies to bare names only, so `vx run @demo/web#deploy build
+--affected=origin/main` with nothing changed still runs `@demo/web#deploy`
+(vx notes `nothing affected since <ref> — running @demo/web#deploy only` on
 stderr). Only a bare-name-only invocation short-circuits to exit 0.
 With only `pkg#task` names the scope goes unused, but `--filter` and
 `--affected` are still resolved: a pattern that matches nothing or a ref
@@ -704,11 +704,11 @@ instead (`vx run build --poll`: `` `vx watch` takes it ``). `vx version`
 takes no word, so `vx version --hlp` is refused (exit 1) where it once
 printed the version.
 
-A task typed where the verb goes (`turbo build`, `nx build app`) is
+A task typed where the verb goes (`turbo build`, `nx build web`) is
 refused with the `vx run` that runs it: `vx build` names
 `vx run build --all` from the root and `vx run build` inside a project,
-`vx build app` names `vx run build --filter app`, and `vx app#build`
-names `vx run app#build`. A typo of a task (`vx biuld`) names the task
+`vx build @demo/web` names `vx run build --filter @demo/web`, and `vx @demo/web#build`
+names `vx run @demo/web#build`. A typo of a task (`vx biuld`) names the task
 and the same `vx run`, unless a verb is as close (`vx rnu` hints `run`).
 The default `build` is no declared task, so it is no hint: where it is
 the only `build`, `vx build` is an unknown command.
@@ -909,8 +909,8 @@ What the shapes mean in each column:
   `$ cmd` line so a requested task looks the same whether it ran or not.
 - **skipped** is the exception: it never started, so no frame was opened,
   and it produced nothing a frame could hold. The one-liner says
-  everything, the blocker included (`skipped … app#deploy • blocked by
-lib#build`; a fail-fast skip, which nothing blocked, carries no
+  everything, the blocker included (`skipped … @demo/web#deploy • blocked by
+@demo/ui#build`; a fail-fast skip, which nothing blocked, carries no
   suffix). Every view that lists tasks prints it, a dependency's
   included: nothing prints below the footer.
 - **`frame, or one-liner if quiet`** — a cache hit with stored stdout is
@@ -972,7 +972,7 @@ tracks the run live. Top to bottom:
    first of them — exits (one kept only as a dependency that exits 0,
    a daemon that forked and returned, does not end it); the rest still up are then torn
    down (SIGTERM, a 2 s grace, SIGKILL), one status line names
-   the task and its code (`vx: app#dev exited with code 1; stopping 1
+   the task and its code (`vx: @demo/web#dev exited with code 1; stopping 1
 other persistent task`), and a non-zero exit makes the run exit 1
    and is what `vx last` records.
    A Ctrl-C prints no such line: the server ended because it was
@@ -983,7 +983,7 @@ other persistent task`), and a non-zero exit makes the run exit 1
    exits 1 at once. `vx watch`
    keeps its server through a failed cycle. While vx holds them, what
    the servers write streams below the summary a line at a time under
-   each one's id (`app#dev │ Local: http://localhost:5173`), except
+   each one's id (`@demo/web#dev │ Local: http://localhost:5173`), except
    under `--output-logs errors-only`, `hash-only` or `none`; a single
    requested server in the focused flow streams raw from its frame.
 3. **The running list** — one row per running task, under the Tasks
@@ -1028,7 +1028,7 @@ other persistent task`), and a non-zero exit makes the run exit 1
      over the restore's error. A task whose key could not be derived (a
      runtime probe that exited non-zero, a refused `inputs.env` value)
      is the same, `failed (cache key not derived)`, under the line
-     `[vx] app#build: cache key not derived: inputs.runtime probe exited 7: …`.
+     `[vx] @demo/web#build: cache key not derived: inputs.runtime probe exited 7: …`.
      A miss whose output clean vx refused before its command (a name
      that is not UTF-8) is `failed (output clean failed)`; one whose
      command exited 0 and whose save vx refused is `failed (cache save
@@ -1278,10 +1278,10 @@ vx run build test --all --dry
 
 ```ansi
 [4m[58;2;110;118;129m  [1m[38;2;167;139;250mPlan[0m[4m[58;2;110;118;129m [2m4[0m[4m[58;2;110;118;129m    [2mstatus  cache      usual    time   cpu    mem outputs  blocks worker         task[0m[4m[58;2;110;118;129m                           [0m
-            [38;2;34;197;94mcached[0m  [38;2;56;189;248mlocal[0m          [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [38;2;203;213;225m1[0m [2mlocal[0m          [38;2;147;197;253mapp[0m[2m#[0m[38;2;244;114;182mbuild[0m  [2mcompile the app[0m
-            [38;2;34;197;94mcached[0m  [38;2;56;189;248mlocal[0m          [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [38;2;203;213;225m3[0m [2mlocal[0m          [38;2;244;114;182mlib[0m[2m#[0m[38;2;244;114;182mbuild[0m
-            [38;2;6;182;212mrun[0m     [2mmiss[0m           [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2mlocal[0m          [38;2;147;197;253mapp[0m[2m#[0m[38;2;96;165;250mtest[0m
-            [38;2;6;182;212mrun[0m     [2mmiss[0m           [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2mlocal[0m          [38;2;244;114;182mlib[0m[2m#[0m[38;2;96;165;250mtest[0m
+            [38;2;34;197;94mcached[0m  [38;2;56;189;248mlocal[0m          [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [38;2;203;213;225m2[0m [2mlocal[0m          [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;34;197;94mcached[0m  [38;2;56;189;248mlocal[0m          [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2mlocal[0m          [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;6;182;212mrun[0m     [2mmiss[0m           [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2mlocal[0m          [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;96;165;250mtest[0m
+            [38;2;6;182;212mrun[0m     [2mmiss[0m           [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2mlocal[0m          [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;96;165;250mtest[0m
 
   [2mtasks   [0m  [38;2;203;213;225m4 planned · 2 cache hits (2 local) · 2 would run[0m
 ```
@@ -1320,7 +1320,7 @@ refuses as the run does.
 **A key that cannot be derived.** A task whose `inputs.runtime` /
 `workspaceRuntime` probe exits non-zero, or whose `inputs.env` value is
 refused, has no key, and the run fails it. `--dry` prints the run's own
-line to stderr (`[vx] app#build: cache key not derived: inputs.runtime
+line to stderr (`[vx] @demo/web#build: cache key not derived: inputs.runtime
 probe exited 7: …`), still prints the plan, and exits 1. The task's row,
 and its dependants', read `run` `no-cache` with an empty `hash`: the
 closed status set has no word for a failure.
@@ -1381,13 +1381,16 @@ vx run build lint --affected=main --dry
 
 ```ansi
 [4m[58;2;110;118;129m  [1m[38;2;167;139;250mPlan[0m[4m[58;2;110;118;129m [2m3[0m[4m[58;2;110;118;129m    [2mstatus  cache      usual    time   cpu    mem outputs  blocks worker         task[0m[4m[58;2;110;118;129m                           [0m
-            [38;2;6;182;212mrun[0m     [2mmiss[0m        [2m~4ms[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2mlocal[0m          [38;2;147;197;253mapp[0m[2m#[0m[38;2;244;114;182mbuild[0m  [2mcompile the app · affected: packages/lib/src/index.ts changed (an input), via lib#build[0m
-            [38;2;6;182;212mrun[0m     [2mmiss[0m       [2m~19ms[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [38;2;203;213;225m1[0m [2mlocal[0m          [38;2;244;114;182mlib[0m[2m#[0m[38;2;244;114;182mbuild[0m  [2maffected: packages/lib/src/index.ts changed (an input)[0m
-            [38;2;6;182;212mrun[0m     [2mno-cache[0m       [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2mlocal[0m          [38;2;244;114;182mlib[0m[2m#[0m[38;2;232;121;249mlint[0m  [2maffected: packages/lib/src/index.ts changed (in its project)[0m
+            [38;2;6;182;212mrun[0m     [2mmiss[0m      [2m~153ms[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [38;2;203;213;225m1[0m [2mlocal[0m          [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m  [2maffected: packages/ui/src/index.ts changed (an input)[0m
+            [38;2;6;182;212mrun[0m     [2mmiss[0m      [2m~141ms[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2mlocal[0m          [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m  [2maffected: packages/ui/src/index.ts changed (an input), via @demo/ui#build[0m
+            [38;2;6;182;212mrun[0m     [2mmiss[0m           [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2mlocal[0m          [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;232;121;249mlint[0m  [2maffected: packages/ui/src/index.ts changed (an input)[0m
 
-  [2mtasks    [0m  [38;2;203;213;225m3 planned · 2 would run · 1 no-cache[0m
-  [2mpredicted[0m  [38;2;203;213;225m~23ms wall · ~23ms total execution · 1 task never timed (+?)[0m
+  [2mtasks    [0m  [38;2;203;213;225m3 planned · 3 would run[0m
+  [2mpredicted[0m  [38;2;203;213;225m~294ms wall · ~294ms total execution · 1 task never timed (+?)[0m
 ```
+
+On a terminal too narrow for a reason beside its row, the reason goes on
+its own line under the row.
 
 `kind` is `input` (a changed `file` is a declared input), `project` (its
 project changed and the task reads it whole: a task with no `inputs`, or a
@@ -1535,7 +1538,7 @@ read they grant, so an edit there re-runs the task. A read through a link
 grants the directory holding the link too: the sandbox mounts a grant at
 its real path and never the link, so the target alone stayed out of
 reach. That holds for a link into another project too (`shared ->
-../lib/shared`): the project's grant lays the link, and behind it stands
+../ui/shared`): the project's grant lays the link, and behind it stands
 only what the grants bind. A credential path
 (`~/.ssh`, `~/.aws`, `~/.gnupg`, `~/.kube`, `~/.config/gh`,
 `~/.config/gcloud`, `~/.netrc`, `~/.npmrc`, `~/.pypirc`,
@@ -1580,6 +1583,46 @@ vx watch lint --filter '@scope/*'   # filtered scope
 vx watch build -- --sourcemap       # forwarded args carry through every cycle
 ```
 
+The first run, then one save to `src/index.ts`, then `Ctrl+C`:
+
+```ansi
+[2m┌─[0m [1m[38;2;192;132;252m@demo/ui[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m>[0m $ vite build
+[36mvite v8.3.1 [32mbuilding client environment for production...[36m[39m
+transforming...
+[32m✓[0m 2 modules transformed.
+rendering chunks...
+computing gzip size...
+[2mdist/[0m[36mindex.js  [0m[1;2m0.08 kB[0m[2m │ gzip: 0.10 kB[0m
+
+[32m✓ built in 24ms[39m
+[0m[2m└─[0m [1m[38;2;192;132;252m@demo/ui[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(9ms)[0m [2mrestored-local[0m
+
+[38;2;6;182;212mwatching 1 project · 1 task[0m
+
+[38;2;6;182;212mchanged @demo/ui src/index.ts[0m
+[2m┌─[0m [1m[38;2;192;132;252m@demo/ui[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m>[0m $ vite build
+[36mvite v8.3.1 [32mbuilding client environment for production...[36m[39m
+transforming...
+[32m✓[0m 2 modules transformed.
+rendering chunks...
+computing gzip size...
+[2mdist/[0m[36mindex.js  [0m[1;2m0.08 kB[0m[2m │ gzip: 0.10 kB[0m
+
+[32m✓ built in 21ms[39m
+[0m[2m└─[0m [1m[38;2;192;132;252m@demo/ui[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(164ms)[0m [2msuccess[0m
+
+
+[1m[38;2;6;182;212mvx watch:[0m[2m stopped[0m
+```
+
+### Options
+
+| Option   | Meaning                                                                                                                                                               |
+| -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--poll` | Re-walk the watched files every 250 ms (`watch.pollInterval`) from the start instead of the OS watcher, as `VX_WATCH_POLL=1` does. For network mounts and containers. |
+
+Every other flag is `vx run`'s ([Flags](#flags)).
+
 ### Lifecycle
 
 1. **Initial run.** Same code path as `vx run` — same scope resolution,
@@ -1608,7 +1651,7 @@ vx watch build -- --sourcemap       # forwarded args carry through every cycle
    on a server's readiness, X-139), the directory of
    every project a cycle can run — the scope (the bare tasks' scope
    plus each `pkg#task`'s own project; only those when every task is
-   anchored) plus its transitive dependencies, the closure `--filter 'app...'` walks, cross-project
+   anchored) plus its transitive dependencies, the closure `--filter '@demo/web...'` walks, cross-project
    `dependsOn` edges included — is watched recursively, less any project
    nested inside it, with a config or not (a root project's key leaves a nested
    project's files out, so an edit there is no cycle; X-42, X-57). The workspace root is
@@ -1849,7 +1892,7 @@ lockfile edit re-keys only through its claimant
 ([cache key derivation](./caching.md#cache-key-derivation)). Every
 cycle's configs come from `.vx/projects.lock`, so a config edit
 alone changes no command: the cycle it starts says so on stderr,
-`vx watch: packages/app/vx.config.ts changed; runs read the lock, so run
+`vx watch: packages/web/vx.config.ts changed; runs read the lock, so run
 \`vx lock\` to apply it` (a config import's edit too). A re-lock
 (`vx lock`) is a cycle that re-reads the watched set (item 971).
 
@@ -1883,7 +1926,7 @@ an edit the api's key sees, and `e2e` never tests the old one; with no
 `inputs.files` it restarts every cycle, as no key sees its edits. The
 old one is always stopped first (the kill grace, then
 SIGKILL), so the two never hold one port. One that dies while watch
-idles is said (`vx: app#dev exited with code 3`); the next change
+idles is said (`vx: @demo/web#dev exited with code 3`); the next change
 starts it again. A cycle in which a task the server depends on fails
 stops it, and so does one that no longer starts it (its dependants all
 hit, or the selection changed). An edit while a cycle waits only on a server that has not
@@ -1961,6 +2004,21 @@ vx pipeline pr                     # lint and test what the change reaches
 vx pipeline main                   # every project
 vx pipeline main --dry             # the plan, nothing run
 vx pipeline main --filter web      # main's tasks in web alone
+```
+
+A second `vx pipeline main` with nothing changed restores all six tasks from the cache:
+
+```ansi
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mSummary[0m[4m[58;2;110;118;129m                                                                                                       [2mvx 0.0.0[0m
+  [2mprojects[0m  [38;2;234;179;8m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
+            [38;2;234;179;8m2 in run[0m [2m·[0m [2m2 total[0m
+  [2mtasks   [0m  [38;2;34;197;94m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
+            [38;2;34;197;94m6 success[0m [2m·[0m [2m6 total[0m
+  [2mcache   [0m  [38;2;34;197;94m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
+            [2mlocal[0m [38;2;34;197;94m6✓[0m
+
+  [2minfo    [0m  4 workers [2m·[0m local cache [2m·[0m run 01a20a07-641f-7300-92ab-e3cb8be0761e
+  [2mtime    [0m  21ms
 ```
 
 ### Options
@@ -2298,9 +2356,9 @@ vx lock --check
 ```
 
 ```ansi
-[38;2;239;68;68m✗[0m [1mvx lock --check[0m  [38;2;203;213;225mpackages/lib/vx.config.mjs evaluates differently from the lock here — its config, a file it imports, or the environment it reads changed; run 'vx lock'[0m
+[38;2;239;68;68m✗[0m [1mvx lock --check[0m  [38;2;203;213;225mpackages/ui/vx.config.ts evaluates differently from the lock here — its config, a file it imports, or the environment it reads changed; run 'vx lock'[0m
 
-  [38;2;203;213;225mtasks.build.exec.command: "mkdir -p dist && cp src/index.ts dist/index.js" → "mkdir -p dist && cp -f src/index.ts dist/index.js"[0m
+  [38;2;203;213;225mtasks.lint.exec.command: "oxlint src" → "oxlint --deny-warnings src"[0m
 ```
 
 Under the line, up to three places where the evaluated config
@@ -2417,13 +2475,13 @@ the result, never the steps), a project with no `vx.config.*`
 included, and a run reads that record and calls no hook. So a run never
 maps: an edited `turbo.json` or `package.json` script runs only after
 the next `vx lock`, and `--check` names the project the plugins now map
-otherwise (`packages/lib: the plugins map it differently from the lock
+otherwise (`packages/ui: the plugins map it differently from the lock
 here`), a plugin added or dropped since included. A run follows the
 record blindly, whatever plugins the workspace declares now
 (2026-11-11). Both verbs name the projects
 with no config that the stage gives tasks (`0 project configs →
 .vx/projects.lock, .vx/dependencies.lock (and the tasks a plugin
-maps for app, lib)`, five
+maps for @demo/ui, @demo/web)`, five
 names then `and N more`), so a lock on a plugin-only workspace never
 reads like an audit of nothing. One with no task (core's default
 `build` aside) is not named.
@@ -3376,22 +3434,21 @@ vx show
 
 ```ansi
 [4m[58;2;110;118;129m  [1m[38;2;167;139;250mProjects[0m[4m[58;2;110;118;129m [2m2[0m[4m[58;2;110;118;129m                                                                                                            [0m
-  [2mproject  dir           tasks    tags[0m
-  [38;2;147;197;253mapp[0m      [38;2;203;213;225mpackages/app[0m  [38;2;203;213;225m2 tasks[0m  [38;2;203;213;225mscope:web[0m
-  [38;2;244;114;182mlib[0m      [38;2;203;213;225mpackages/lib[0m  [38;2;203;213;225m3 tasks[0m
+  [2mproject    dir           tasks[0m
+  [38;2;192;132;252m@demo/ui[0m   [38;2;203;213;225mpackages/ui[0m   [38;2;203;213;225m3 tasks[0m
+  [38;2;244;114;182m@demo/web[0m  [38;2;203;213;225mpackages/web[0m  [38;2;203;213;225m3 tasks[0m
 ```
 
 ```sh
-vx show app#build
+vx show @demo/web#build
 ```
 
 ```ansi
-[4m[58;2;110;118;129m  [1m[38;2;167;139;250mapp#build[0m[4m[58;2;110;118;129m                                                                                                             [0m
-  [2mdir          [0m  [38;2;203;213;225mpackages/app[0m
-  [2mdescription  [0m  [38;2;203;213;225mcompile the app[0m
-  [2mcommand      [0m  [38;2;203;213;225mmkdir -p dist && cp src/index.ts dist/index.js[0m
-  [2mdependsOn    [0m  [38;2;203;213;225mlib#build[0m
-  [2minputs.files [0m  [38;2;203;213;225msrc/**[0m
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250m@demo/web#build[0m[4m[58;2;110;118;129m                                                                                                       [0m
+  [2mdir          [0m  [38;2;203;213;225mpackages/web[0m
+  [2mcommand      [0m  [38;2;203;213;225mvite build[0m
+  [2mdependsOn    [0m  [38;2;203;213;225m^build[0m
+  [2minputs.files [0m  [38;2;203;213;225msrc/**, vite.config.ts, package.json[0m
   [2moutputs.files[0m  [38;2;203;213;225mdist/**[0m
   [2mcache        [0m  [38;2;203;213;225myes[0m
 ```
@@ -3464,10 +3521,10 @@ has that name) and `vx show project <name>` say `vx show` and
 Unknown project / task names exit `1` with the same near-miss hint
 every verb gives (two edits, or a partial name); a bare name that is
 neither reads `unknown project or task: "buidl"` with a `fix  build`
-line, and a `pkg#task` hints whole specs (`unknown task: "app#bui"`,
-`fix  app#build`). A project's directory, relative to the root, hints
+line, and a `pkg#task` hints whole specs (`unknown task: "@demo/web#bui"`,
+`fix  @demo/web#build`). A project's directory, relative to the root, hints
 that project (`p/a` hints `alpha`, `p/a#build` `alpha#build`). With nothing near, it lists what exists instead: `unknown
-project: "zzz"; projects: app, lib`, `; its tasks: app#build, app#test`,
+project: "zzz"; projects: @demo/ui, @demo/web`, `; its tasks: @demo/web#build, @demo/web#test`,
 or `; projects and tasks: …` (M-57).
 
 An empty target (`vx show ''`) is refused: omit it to list every project.
@@ -3508,22 +3565,22 @@ vx info
 ```ansi
 
 [4m[58;2;110;118;129m  [1m[38;2;167;139;250mvx info[0m[4m[58;2;110;118;129m                                                                                                               [0m
-  [2mvx              [0m  [38;2;203;213;225m0.0.660 (/usr/local/bin/vx)[0m
+  [2mvx              [0m  [38;2;203;213;225m0.0.0 (/usr/local/bin/vx)[0m
   [2mbun             [0m  [38;2;203;213;225m1.4.4[0m
   [2mgit             [0m  [38;2;203;213;225m2.43.0[0m
   [2mgit status cache[0m  [38;2;203;213;225mcore.fsmonitor, core.untrackedCache off[0m
-  [2mworkspace root  [0m  [38;2;203;213;225m/work/repo[0m
-  [2mprojects        [0m  [38;2;203;213;225m3 (2 tasks)[0m
+  [2mworkspace root  [0m  [38;2;203;213;225m/work/demo[0m
+  [2mprojects        [0m  [38;2;203;213;225m2 (6 tasks)[0m
   [2mplugins         [0m  [38;2;203;213;225m1 — @vzn/vx-lockfile (discover, project, key, fingerprint)[0m
   [2mworkers         [0m  [38;2;203;213;225m4 — the CPU count[0m
   [2mmemory          [0m  [38;2;203;213;225m13 GB usable — cgroup limit; the machine has 16 GB[0m
-  [2mcache dir       [0m  [38;2;203;213;225m/work/repo/.vx/cache (332 KB, this workspace's run history)[0m
-  [2mcache store     [0m  [38;2;203;213;225m~/.vx/c46f226815d1a23e/cache (284 MB, shared by this workspace's checkouts)[0m
+  [2mcache dir       [0m  [38;2;203;213;225m/work/demo/.vx/cache (440 KB, this workspace's run history)[0m
+  [2mcache store     [0m  [38;2;203;213;225m~/.vx/97cf846b43fdfb12/cache (156 KB, shared by this workspace's checkouts)[0m
   [2mcache versions  [0m  [38;2;203;213;225mkeys vx-cache-v56 · index schema v58[0m
-  [2mcache entries   [0m  [38;2;203;213;225m37 (284 MB)[0m
-  [2mtask runs (24h) [0m  [38;2;203;213;225m34 (11 cache hits: 2 up-to-date, 9 restored)[0m
-  [2mflaky tasks     [0m  [38;2;203;213;225m1 — app#test (2 of 5 runs failed on unchanged inputs)[0m
-  [2msandbox         [0m  [38;2;203;213;225mavailable (0 tasks declare exec.sandbox)[0m
+  [2mcache entries   [0m  [38;2;203;213;225m4 (1.9 KB)[0m
+  [2mtask runs (24h) [0m  [38;2;203;213;225m58 (19 cache hits: 18 up-to-date, 1 restored)[0m
+  [2mflaky tasks     [0m  [38;2;203;213;225m1 — @demo/web#test (5 of 13 runs failed on unchanged inputs)[0m
+  [2msandbox         [0m  [38;2;203;213;225mavailable (1 task declares exec.sandbox)[0m
   [2mprojects lock   [0m  [38;2;203;213;225myes[0m
 ```
 
@@ -3679,26 +3736,30 @@ vx why (TASK | PKG#TASK) [--run RUNID] [--format pretty|json] [--cache-dir <path
 ### Example
 
 ```sh
-vx why app#build
+vx why @demo/web#build
 ```
 
 ```ansi
-[4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhy[0m[4m[58;2;110;118;129m [2mapp#build[0m[4m[58;2;110;118;129m                                                                                                         [0m
-  [2mrun     [0m  [38;2;203;213;225m01a20586-cbaf-7160-b020-55d05de49e8a[0m
-  [2mthis run[0m  [38;2;203;213;225m2026-11-22T23:10:49.829Z · success · executed · key 3c76140a1f7a50f8[0m
-  [2mprevious[0m  [38;2;203;213;225m2026-11-22T23:10:49.123Z · cache-hit · up-to-date · key d68851b93ee0a52d[0m
-  [2mverdict [0m  [38;2;234;179;8mcache key changed: upstream lib#build[0m
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhy[0m[4m[58;2;110;118;129m [2m@demo/web#build[0m[4m[58;2;110;118;129m                                                                                                   [0m
+  [2mrun     [0m  [38;2;203;213;225m01a20a09-aa59-7506-89ab-db6e5860b83f[0m
+  [2mthis run[0m  [38;2;203;213;225m2026-11-23T20:12:15.536Z · success · executed · key 74ea908d8b92000d[0m
+  [2mprevious[0m  [38;2;203;213;225m2026-11-23T20:12:14.536Z · cache-hit · up-to-date · key 1b6ebb2fcb825864[0m
+  [2mverdict [0m  [38;2;234;179;8mcache key changed: upstream @demo/ui#build[0m
 
-[4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhat changed[0m[4m[58;2;110;118;129m [2m1 of 5[0m[4m[58;2;110;118;129m                                                                                                   [0m
-  [2mchange   kind      name       before → after[0m
-  [38;2;234;179;8mchanged[0m  [38;2;203;213;225mupstream[0m  [1mlib#build[0m  [38;2;203;213;225m7d9a66971f00e735 → 600df849c8e55574[0m
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhat changed[0m[4m[58;2;110;118;129m [2m1 of 9[0m[4m[58;2;110;118;129m                                                                                                   [0m
+  [2mchange   kind      name            before → after[0m
+  [38;2;234;179;8mchanged[0m  [38;2;203;213;225mupstream[0m  [1m@demo/ui#build[0m  [38;2;203;213;225m656b167cdd4cb280 → ed5b74f0328f56f9[0m
 
 [4m[58;2;110;118;129m  [1m[38;2;167;139;250mRoot cause[0m[4m[58;2;110;118;129m                                                                                                            [0m
-  [38;2;147;197;253mapp[0m[2m#[0m[38;2;244;114;182mbuild[0m[2m ← [0m[38;2;244;114;182mlib[0m[2m#[0m[38;2;244;114;182mbuild[0m[2m ← [0m[1mfile packages/lib/src/index.ts[0m
+  [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m[2m ← [0m[38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m[2m ← [0m[1mfile packages/ui/src/index.ts[0m
 
 [4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhat to do[0m[4m[58;2;110;118;129m                                                                                                            [0m
   [2mfile    [0m  [38;2;203;213;225man edit re-runs by design; a file the task does not read belongs out of inputs.files[0m
 ```
+
+On a terminal too narrow for the `before → after` column, each hash is
+cut to its first 12 characters, as git cuts one. Piped output and
+`--format json` keep them whole.
 
 ### Arguments
 
@@ -3782,9 +3843,9 @@ upstream alone in between changes nothing it names:
 ```
 
 A group records no run, so the key also names each task under a group
-it folds, through the group (`upstream app#prep ← lib#build`), and the
+it folds, through the group (`upstream @demo/web#prep ← @demo/ui#build`), and the
 walk goes on from that task, through the tasks a group gathers
-(`app#pack ← app#all ← lib#build ← file packages/lib/src.txt`). A
+(`@demo/web#pack ← @demo/web#all ← @demo/ui#build ← file packages/ui/src.txt`). A
 dependency the walk cannot find in the run keeps the `upstream` line,
 which names the `vx why` to run next (never a group's, which refuses),
 or, for a group, the `vx show` that names what it gathers. A dependency
@@ -3885,15 +3946,15 @@ vx last
 ```
 
 ```ansi
-[4m[58;2;110;118;129m  [1m[38;2;167;139;250mRun[0m[4m[58;2;110;118;129m [2m01a20586-cbaf-7160-b020-55d05de49e8a[0m[4m[58;2;110;118;129m                                                                              [0m
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mRun[0m[4m[58;2;110;118;129m [2m01a20a09-aa59-7506-89ab-db6e5860b83f[0m[4m[58;2;110;118;129m                                                                              [0m
   [2mstatus  [0m  [38;2;34;197;94mok[0m
   [2mcommand [0m  [1mvx run build --all[0m
-  [2mwhen    [0m  [38;2;203;213;225m2026-11-22T23:10:49.779Z · 59ms · feat @ 52bd1786+dirty[0m
+  [2mwhen    [0m  [38;2;203;213;225m2026-11-23T20:12:15.325Z · 367ms · feature @ b2c16ff2+dirty[0m
   [2mtasks   [0m  [2m2 tasks · 0 hits[0m
 
 [4m[58;2;110;118;129m  [1m[38;2;167;139;250mTasks[0m[4m[58;2;110;118;129m [2m2[0m[4m[58;2;110;118;129m   [2mstatus  cache     ±usual    time   cpu    mem outputs  blocks worker         task[0m[4m[58;2;110;118;129m                           [0m
-            [38;2;34;197;94msuccess[0m [2mmiss[0m        [2m+0ms[0m     [38;2;203;213;225m8ms[0m   [2m50%[0m  [2m2.2MB[0m     [2m19B[0m       [38;2;203;213;225m1[0m [2mlocal[0m          [38;2;244;114;182mlib[0m[2m#[0m[38;2;244;114;182mbuild[0m
-            [38;2;34;197;94msuccess[0m [2mmiss[0m        [2m+0ms[0m     [38;2;203;213;225m4ms[0m  [2m100%[0m  [2m2.1MB[0m     [2m19B[0m       [2m0[0m [2mlocal[0m          [38;2;147;197;253mapp[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m        [2m+0ms[0m   [38;2;203;213;225m161ms[0m  [2m111%[0m  [2m106MB[0m     [2m86B[0m       [38;2;203;213;225m1[0m [2mlocal[0m          [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m        [2m+0ms[0m   [38;2;203;213;225m150ms[0m  [2m115%[0m  [2m108MB[0m    [2m112B[0m       [2m0[0m [2mlocal[0m          [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m
 ```
 
 ```sh
@@ -3902,16 +3963,16 @@ vx last --list
 
 ```ansi
 [4m[58;2;110;118;129m  [1m[38;2;167;139;250mRuns[0m[4m[58;2;110;118;129m [2m3[0m[4m[58;2;110;118;129m                                                                                                                [0m
-  [2m    when                      run            tasks                                        time  command[0m
-  [38;2;34;197;94mok[0m  [38;2;203;213;225m2026-11-22T23:10:49.779Z[0m  [1m01a20586-cbaf[0m  [2m2 tasks · 0 hits[0m                             [38;2;203;213;225m59ms[0m  [1mvx run build --all[0m
-  [38;2;34;197;94mok[0m  [38;2;203;213;225m2026-11-22T23:10:49.110Z[0m  [1m01a20586-c912[0m  [2m2 tasks · 2 hits (2 up-to-date, 0 restored)[0m  [38;2;203;213;225m20ms[0m  [1mvx run build --all[0m
-  [38;2;34;197;94mok[0m  [38;2;203;213;225m2026-11-22T23:10:48.848Z[0m  [1m01a20586-c80c[0m  [2m2 tasks · 0 hits[0m                             [38;2;203;213;225m72ms[0m  [1mvx run build --all[0m
+  [2m    when                      run            tasks                                         time  command[0m
+  [38;2;34;197;94mok[0m  [38;2;203;213;225m2026-11-23T20:12:15.325Z[0m  [1m01a20a09-aa59[0m  [2m2 tasks · 0 hits[0m                             [38;2;203;213;225m367ms[0m  [1mvx run build --all[0m
+  [38;2;34;197;94mok[0m  [38;2;203;213;225m2026-11-23T20:12:14.522Z[0m  [1m01a20a09-a737[0m  [2m2 tasks · 2 hits (2 up-to-date, 0 restored)[0m   [38;2;203;213;225m18ms[0m  [1mvx run build --all[0m
+  [38;2;34;197;94mok[0m  [38;2;203;213;225m2026-11-23T20:12:14.024Z[0m  [1m01a20a09-a545[0m  [2m2 tasks · 0 hits[0m                             [38;2;203;213;225m333ms[0m  [1mvx run build --all[0m
 ```
 
 ```sh
 vx last --failed          # the latest run that failed
-vx last --log app#test    # one task's output
-vx last --stats app#test  # p50, p99, pass and hit rate over the last 50 runs
+vx last --log @demo/web#test    # one task's output
+vx last --stats @demo/web#test  # p50, p99, pass and hit rate over the last 50 runs
 vx last --sql "SELECT task, AVG(peak_rss_bytes) FROM runs GROUP BY task"
 ```
 
@@ -3959,15 +4020,15 @@ footer gave a reason, the row ends with it instead: `timed out`,
 `never ready: exited`, `src/a.ts changed during the run` (an
 `inputs.stability.severity: 'error'` failure, read from its kept output),
 `2 sandbox violations`, and for a skipped task
-`after lib#build failed` (the v27 columns; rows older than them read
-as before), `after lib#test did not pass` behind a task with no row (one
+`after @demo/ui#build failed` (the v27 columns; rows older than them read
+as before), `after @demo/ui#test did not pass` behind a task with no row (one
 `--fail-fast` stopped: history keeps none), or, for a platform skip, `needs another platform` and
 `after ios#build skipped: needs another platform`. A task that retried
 ends with its attempts, `2 attempts`, passed or failed (`attempts` in
 `--format json`, null for a task run once). A task whose key met a remote failure ends with it, read or
 write alike: `remote ✗ download: connection refused; upload: 503` (the
 v40 column, `remoteError` in `--format json`). A task an executor
-plugin ran elsewhere carries where after its id: `app#build@small#1` (v44, `placement`).
+plugin ran elsewhere carries where after its id: `@demo/web#build@small#1` (v44, `placement`).
 
 **Order and folding.** Rows run failures first, then what executed or was
 skipped, then hits; past sixteen hits the rest fold into one line with
@@ -3990,12 +4051,12 @@ newest 50, as `warnings` rows, written only by a run that warned.
 
 **Re-run what failed.** A replayed run with
 failures ends with the command that re-runs them (`re-run what failed:
-vx run app#test -- …`, with the arguments the run forwarded to the
+vx run @demo/web#test -- …`, with the arguments the run forwarded to the
 tasks that got them; a failed dependency, which never got them, gets a
 line of its own without them, X-140). The
 replayed `$ vx run …` or `$ vx watch …` line and that one keep each
 argument shell-quoted (`-- 'a b'`), so either pastes back as it ran (X-49);
-the re-run line quotes a task id the same way (`'app#it'\''s boom'`).
+the re-run line quotes a task id the same way (`'@demo/web#it'\''s boom'`).
 
 **No runs yet.** Before any run, every form says so
 (`› vx last  no runs yet` with `fix  vx run`, exit 1; `--list` prints
@@ -4043,7 +4104,7 @@ edits away, or the id inside a longer one (`@w/envy#test` for
 `envy#test`). A bare name (`--log build`) is the one project that ran
 it; with several, the one the cwd is in, else it is refused listing them.
 `//#<task>` is the root project's, here and in `--stats`.
-`vx last app#build --log` reads the same as `--log app#build`: a `--log`
+`vx last @demo/web#build --log` reads the same as `--log @demo/web#build`: a `--log`
 with no value takes the positional as its task.
 
 ### `--stats`
@@ -4095,8 +4156,8 @@ yet known), running first, then what ended, then what waits. Groups are
 not listed.
 
 `--follow` prints the same snapshot, then each of the run's events until
-it ends: a task's output as `app#test │ <line>`, each end as
-`success  app#test  1.20s`, each warning as `warn  …`. With
+it ends: a task's output as `@demo/web#test │ <line>`, each end as
+`success  @demo/web#test  1.20s`, each warning as `warn  …`. With
 `--format json` the snapshot line is followed by one event per line,
 each with a `kind`: `run:start`, `task:start`, `task:stdout`,
 `task:stderr`, `task:complete`, `task:measure`, `run:status`,
@@ -4132,7 +4193,7 @@ missing query.
 ```sh
 # a task's memory and cpu, run by run
 vx last --sql "SELECT started_at, duration_ms, cpu_ms, peak_rss_bytes FROM runs
-  WHERE project = 'app' AND task = 'build' ORDER BY started_at"
+  WHERE project = '@demo/web' AND task = 'build' ORDER BY started_at"
 # failures per day
 vx last --sql "SELECT date(started_at / 1000, 'unixepoch') AS day, SUM(exit_ok = 0) AS failed
   FROM invocations GROUP BY day"
@@ -4231,10 +4292,80 @@ heading and URL on the site. `--format json` prints
 The guides live on the site: `https://vznjs.github.io/vx/llms.txt`
 indexes them.
 
+```sh
+vx docs VX_E_CYCLE
+```
+
+```ansi
+[1m[38;2;6;182;212m── cli.md § VX_E_CYCLE · https://vznjs.github.io/vx/cli/#vx_e_cycle ──[0m
+[38;2;6;182;212m│[0m #### `VX_E_CYCLE`
+[38;2;6;182;212m│[0m
+[38;2;6;182;212m│[0m The task graph has a cycle. The message names the loop; drop one of its
+[38;2;6;182;212m│[0m `dependsOn` edges.
+[38;2;6;182;212m│[0m `vx lock` refuses it, not a run: a run trusts the graph the lock holds.
+```
+
+### Options
+
+| Option                  | Meaning                                                                            |
+| ----------------------- | ---------------------------------------------------------------------------------- |
+| `--limit N`             | how many sections print, best first (default 3)                                    |
+| `--format pretty\|json` | `json` prints `{query, hits: [{page, heading, url, text}]}` for scripts and agents |
+
 Exit codes: `0` the search ran, a search with no match included (it
 names the tag searched); `1` a missing query or a bad flag
 (`VX_E_USAGE`), or the pages could not be read (`VX_E_NETWORK`, which
 names the site).
+
+## `vx help`
+
+`vx help` prints every verb's usage line and the run flags. `vx help <verb>` (also `vx <verb> --help` or `-h`) prints that verb's usage and sections:
+
+```sh
+vx help lock
+```
+
+```ansi
+[1m[38;2;6;182;212mvx[0m — task orchestration you own
+
+[1mUsage[0m[1m:[0m
+  [1m[38;2;6;182;212mvx lock[0m[38;2;34;211;238m [--check] [--format pretty|json][0m
+
+[1mConfig lock[0m[1m:[0m
+  [1m[38;2;6;182;212mvx lock[0m              Evaluate every vx.config in the current environment, check
+                       the graph rules (run.rules) and freeze the resolved objects
+                       into .vx/projects.lock, the only place a run reads configs
+                       from. A run never evaluates one, never checks the rules
+                       and never writes the lock: with none it fails.
+  [1m[38;2;6;182;212mvx lock[0m[38;2;34;211;238m --check[0m      Audit the lock: re-evaluate every config here and compare
+                       it with the frozen object, find a config added or gone, and
+                       check the graph rules. Exits 1 on drift (e.g. configs that
+                       read env vars). Run it before the run in CI. With --format json
+                       it prints {upToDate, audited, notAudited, problems}.
+
+
+Full reference: vx help
+```
+
+It paints only on a terminal, so a script that greps it reads plain text. A plugin verb answers its own `--help`.
+
+Exit codes: `0` the help printed; `1` a name that is no verb, with the nearest one when close.
+
+## `vx version`
+
+Prints the vx that runs (`vx --version` too):
+
+```sh
+vx version
+```
+
+```ansi
+[1mvx[0m [38;2;6;182;212m0.0.0[0m
+```
+
+A source checkout prints `0.0.0`. [Which vx runs](#which-vx-runs) says which binary that is.
+
+Exit codes: `0`.
 
 ## `vx completions`
 
@@ -4416,29 +4547,29 @@ streams live instead (§ Output).
 Frame anatomy:
 
 ```ansi
-[2m┌─[0m [1m[38;2;147;197;253mapp[0m[2m#[0m[1m[38;2;96;165;250mtest[0m [2m>[0m [1m[38;2;239;68;68mfailed (exit 1, 1 sandbox violation)[0m
+[2m┌─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;96;165;250mtest[0m [2m>[0m [1m[38;2;239;68;68mfailed (exit 1, 1 sandbox violation)[0m
 
-[2mpackages/app $ bun test[0m
+[2mpackages/web $ vitest run[0m
 
 [2m├─[0m [1mOUTPUT[0m [2m────────────────────────────────────────────────────[0m
 
-2 pass
-[38;2;239;68;68merror: expected 3, got 2[0m
-1 fail
+ × renders 3ms
+[38;2;239;68;68mError: EROFS: read-only file system, open 'notes.txt'[0m
+ Tests  1 failed (1)
 
 [2m├─[0m [1m[38;2;239;68;68mSANDBOX VIOLATIONS (1)[0m [2m────────────────────────────────────[0m
 
-write ../shared/notes.txt
+openat(/work/demo/packages/web/notes.txt) = a write no grant covers
 
-[2m└─[0m [1m[38;2;147;197;253mapp[0m[2m#[0m[1m[38;2;96;165;250mtest[0m [2m──[0m [2m(2.10s)[0m [1m[38;2;239;68;68mfailed (exit 1, 1 sandbox violation)[0m
+[2m└─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;96;165;250mtest[0m [2m──[0m [2m(2.10s)[0m [1m[38;2;239;68;68mfailed (exit 1, 1 sandbox violation)[0m
 ```
 
 Every section is conditional: the `$ <command>` line only for an
 executed task (success or failed — a hit replays its stored output and
 shows none), led by the directory it ran in from the workspace root
 (none for a project at the root), as a shell prompt would be: a task
-names paths from its own directory, so `src/index.js` in its output is
-`packages/app/src/index.js`, `OUTPUT` only when the task wrote something,
+names paths from its own directory, so `src/index.ts` in its output is
+`packages/web/src/index.ts`, `OUTPUT` only when the task wrote something,
 `SANDBOX VIOLATIONS (N)` only when the sandbox recorded some (`N`
 counts them) or `SANDBOX` when vx has only a note on a failure. The
 header carries the outcome (`restored-local • abc12345`, `failed (exit
@@ -4518,7 +4649,7 @@ or ran elsewhere) is red, `N not saved` (ran, succeeded, saved
 nothing) yellow, each its own segment; `N not downloaded` (outputs left in the remote store) and
 every count show only when non-zero. `vx last` names each remote
 failure on its task's row. A task an executor plugin ran elsewhere
-says where last on its row and after the id on its frame (`app#build · small#2`), and the plugin may
+says where last on its row and after the id on its frame (`@demo/web#build · small#2`), and the plugin may
 add rows of its own above `info` (`workers`), in which case `info`
 names no worker pool. A run that warned (a remote cache's 403, a
 plugin's failed flush) gets a yellow `warn` row above `info`,
@@ -4553,7 +4684,7 @@ follows it.
 and 50-cell bars. On a terminal narrower than that the bars shrink, as
 do a frame's section rules, so none wraps onto a second row. Off a terminal they keep their width.
 
-**Warnings on stderr.** A run's warnings, such as `[vx] app#build:
+**Warnings on stderr.** A run's warnings, such as `[vx] @demo/web#build:
 inputs matched no files …` or a plugin's, go to stderr. Stdout
 carries only the rows, the frames and the footer, so `vx run build >
 log.txt` keeps them out of the log.
@@ -4563,8 +4694,8 @@ row naming the failure that blocked it, so the footer's `1 skipped`
 always has a name above it:
 
 ```ansi
-            [38;2;234;179;8mskipped[0m [2m—[0m              [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [38;2;203;213;225m1[0m [2m—[0m              [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m [2m• blocked by @demo/ui#build[0m
-            [38;2;234;179;8mskipped[0m [2m—[0m              [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2m—[0m              [38;2;147;197;253mapp[0m[2m#[0m[38;2;244;114;182mbuild[0m [2m• blocked by @demo/ui#build[0m
+            [38;2;239;68;68mfailed[0m  [2mmiss[0m       [2m−33ms[0m   [38;2;203;213;225m157ms[0m  [2m109%[0m  [2m106MB[0m      [2m0B[0m       [38;2;203;213;225m1[0m [2mlocal[0m          [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;234;179;8mskipped[0m [2m—[0m              [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2m—[0m              [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m [2m• blocked by @demo/ui#build[0m
 ```
 
 A skip's cause is followed through a chain of skips to the failure at
@@ -4579,9 +4710,10 @@ until its task exits, and the task list names what the stop cut short
 run`). Neither reached the cache:
 
 ```ansi
-            [38;2;249;115;22maborted[0m [2m—[0m              [2m—[0m   [38;2;203;213;225m2.03s[0m     [2m—[0m      [2m—[0m       [2m—[0m       [38;2;203;213;225m2[0m [2mlocal[0m          [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m
-            [2mnot run[0m [2m—[0m              [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [38;2;203;213;225m1[0m [2m—[0m              [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m
-            [2mnot run[0m [2m—[0m              [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2m—[0m              [38;2;147;197;253mapp[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;249;115;22maborted[0m [2m—[0m              [2m—[0m     [38;2;203;213;225m9ms[0m     [2m—[0m      [2m—[0m       [2m—[0m       [38;2;203;213;225m2[0m [2mlocal[0m          [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [2mnot run[0m [2m—[0m              [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2m—[0m              [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [2mnot run[0m [2m—[0m              [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2m—[0m              [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;96;165;250mtest[0m
+            [38;2;249;115;22maborted[0m [2m—[0m              [2m—[0m    [38;2;203;213;225m14ms[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2mlocal[0m          [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;96;165;250mtest[0m
 ```
 
 In the task list view (`--all`, a filter) what an aborted task printed
@@ -4602,8 +4734,8 @@ in a dim note on its own row (and its frame's footer) — from the local
 run history alone, no service:
 
 ```ansi
-            [38;2;239;68;68mfailed[0m  [2mmiss[0m        [2m+1ms[0m    [38;2;203;213;225m10ms[0m   [2m14%[0m  [2m1.6MB[0m       [2m—[0m       [2m0[0m [2mlocal[0m          [38;2;147;197;253mapp[0m[2m#[0m[38;2;96;165;250mtest[0m [2mflaky - passed 2× before · 2 attempts[0m
-            [38;2;34;197;94msuccess[0m [2mmiss[0m           [2m—[0m    [38;2;203;213;225m14ms[0m    [2m8%[0m  [2m1.7MB[0m      [2m0B[0m       [2m0[0m [2mlocal[0m          [38;2;147;197;253mapp[0m[2m#[0m[38;2;96;165;250mtest[0m [2mflaky - 2 attempts[0m
+            [38;2;239;68;68mfailed[0m  [2mmiss[0m      [38;2;239;68;68m+181ms[0m   [38;2;203;213;225m971ms[0m   [2m55%[0m  [2m132MB[0m       [2m—[0m       [2m0[0m [2mlocal[0m          [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;96;165;250mtest[0m [2mflaky - passed 2× before · 2 attempts[0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m      [2m+124ms[0m   [38;2;203;213;225m914ms[0m   [2m60%[0m  [2m132MB[0m      [2m0B[0m       [2m0[0m [2mlocal[0m          [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;96;165;250mtest[0m [2mflaky - failed 1× before · 2 attempts[0m
 ```
 
 A task is flaky when its exact cache key FAILED AFTER IT HAD PASSED
