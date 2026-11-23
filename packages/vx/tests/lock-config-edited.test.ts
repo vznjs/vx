@@ -108,6 +108,18 @@ describe('a config edited since vx lock', () => {
     expect(code).toBe(0)
   })
 
+  // The JSON audit returned before the stamp: `upToDate: true`, and the
+  // next run still refused the file it had just passed.
+  it('a passing `vx lock --check --format json` takes the stamp too', async () => {
+    await writeFile(file, `// a comment\n${config('before')}`)
+    const check = await vx(root, ['lock', '--check', '--format', 'json'])
+    expect(check.code).toBe(0)
+    expect(check.out).toContain('"upToDate":true')
+    const { code, out } = await vx(root, ['run', 'say', '--all'])
+    expect(out).not.toContain('changed since the last `vx lock`')
+    expect(code).toBe(0)
+  })
+
   // A pull bringing a comment-only edit keeps the lock's bytes and passes
   // CI's `--check`: the run refused it, though nothing was edited here.
   describe('after HEAD moved', () => {

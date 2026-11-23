@@ -1264,6 +1264,9 @@ async function checkLock(root: string, json: boolean): Promise<number> {
         ),
       )
   }
+  // The configs read as locked: a run that finds one edited since says so.
+  if (failures.length + refused.length === 0 && check.stamps)
+    await keepConfigStamps(root, check.stamps)
   if (json)
     // Root-relative, as every other problem: the loader names the absolute path.
     return answer([
@@ -1281,8 +1284,6 @@ async function checkLock(root: string, json: boolean): Promise<number> {
   const n = metas.length
   const audited = `${n} project${n === 1 ? '' : 's'}`
   const mapped = bare.length === 0 ? '' : `; mapped by a plugin: ${bareNames(bare)}`
-  // The configs read as locked: a run that finds one edited since says so.
-  if (check.stamps) await keepConfigStamps(root, check.stamps)
   ui.print('out', ui.status('ok', 'vx lock --check', `up to date (${audited}${mapped})`))
   return 0
 }
