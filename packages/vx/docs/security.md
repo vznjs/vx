@@ -224,8 +224,8 @@ nothing. `tests/sandbox-parent-env.unsafe.test.ts` prints the cost of one
   the environment only, not files.
 - **Reads outside the workspace root.** `~/.cache`, `/etc` and the like
   stay readable (tools need them) and fold into no key. The credential
-  stores under home (`~/.ssh`, `~/.aws`, `~/.npmrc` and the like) are
-  not: a task reads one only when its `allow.read` names it (L-41).
+  stores under home (`~/.ssh`, `~/.aws`, `~/.npmrc`, browser profiles
+  and the like) are not: a task reads one only when its `allow.read` names it (L-41).
 - **Resource use.** CPU, memory and disk are bounded by timeouts and the
   artifact ceiling, not by the sandbox.
 - **A weaker sandbox where the host cannot nest one**:
@@ -235,7 +235,8 @@ nothing. `tests/sandbox-parent-env.unsafe.test.ts` prints the cost of one
 ## Secrets
 
 The value, of 6 characters or more, of a variable whose name holds
-`TOKEN`, `SECRET`, `KEY`, `PASSWORD`, `PASSWD` or `CREDENTIAL` (not one
+`TOKEN`, `SECRET`, `KEY`, `PASSWORD`, `PASSWD`, `PASSPHRASE` or
+`CREDENTIAL`, or that ends `_PASS` (not one
 ending `_FILE`, `_PATH` or `_DIR`, nor `GIT_CONFIG_KEY_<n>`), or that a
 task lists in `exec.env.secret`, the password, also of 6 characters or more, of a URL
 (`scheme://user:<password>@`, split at the last `@` before the path as a

@@ -50,7 +50,7 @@ export async function watchedProjects(
   }
   const graph = buildPackageGraph([...allProjects], edges)
   const names = new Set(scope.map((p) => p.name))
-  for (const p of scope) for (const d of graph.transitiveDeps(p.name)) names.add(d)
+  for (const d of graph.depsOf(scope.map((p) => p.name))) names.add(d)
   return allProjects.filter((p) => names.has(p.name))
 }
 

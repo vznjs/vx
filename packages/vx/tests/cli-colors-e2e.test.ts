@@ -35,35 +35,46 @@ afterAll(async () => {
   await rm(root, { recursive: true, force: true })
 })
 
-/** What `vx <args>` wrote on both streams under `env`. */
-function output(args: string[], env: Record<string, string>): string {
+/**
+ * What `vx <args>` wrote on both streams under `env`. Spawned, not
+ * spawnSync: ~7 s of blocked main thread fired the stall watch's line into
+ * whatever the next file captured from stderr.
+ */
+async function output(args: string[], env: Record<string, string>): Promise<string> {
   const base = { ...process.env }
   delete base['NO_COLOR']
   delete base['FORCE_COLOR']
   dropCi(base)
-  const p = Bun.spawnSync({
+  const p = Bun.spawn({
     cmd: [process.execPath, BIN, ...args],
     cwd: root,
     env: { ...base, ...env },
+    stdout: 'pipe',
+    stderr: 'pipe',
   })
-  return p.stdout.toString() + p.stderr.toString()
+  const [out, err] = await Promise.all([
+    new Response(p.stdout).text(),
+    new Response(p.stderr).text(),
+  ])
+  await p.exited
+  return out + err
 }
 
 /** Whether `vx <args>` wrote an escape sequence on either stream under `env`. */
-function painted(args: string[], env: Record<string, string>): boolean {
-  return output(args, env).includes(ESC)
+async function painted(args: string[], env: Record<string, string>): Promise<boolean> {
+  return (await output(args, env)).includes(ESC)
 }
 
 describe('vx paints only a run, and only as the env asks', () => {
   it(
     'vx run: plain off a TTY, painted under FORCE_COLOR=1, plain again under NO_COLOR',
-    () => {
+    async () => {
       const run = ['run', 'build', '--all', '--force']
       expect([
-        painted(run, {}),
-        painted(run, { FORCE_COLOR: '1' }),
-        painted(run, { FORCE_COLOR: '0' }),
-        painted(run, { FORCE_COLOR: '1', NO_COLOR: '1' }),
+        await painted(run, {}),
+        await painted(run, { FORCE_COLOR: '1' }),
+        await painted(run, { FORCE_COLOR: '0' }),
+        await painted(run, { FORCE_COLOR: '1', NO_COLOR: '1' }),
       ]).toEqual([false, true, false, false])
     },
     TIMEOUT,
@@ -71,14 +82,14 @@ describe('vx paints only a run, and only as the env asks', () => {
 
   it(
     "a task's colour: forced on, kept where vx paints, stripped where it does not",
-    () => {
+    async () => {
       const paint = ['run', 'paint', '--all', '--output-logs', 'full']
       const red = `${ESC}31mred${ESC}0m`
       // The miss under FORCE_COLOR stores the painted bytes; the hit that
       // follows replays them into a pipe, plain.
-      const forced = output([...paint, '--force'], { FORCE_COLOR: '1' })
-      const replayed = output(paint, {})
-      const noColor = output([...paint, '--force'], { NO_COLOR: '1' })
+      const forced = await output([...paint, '--force'], { FORCE_COLOR: '1' })
+      const replayed = await output(paint, {})
+      const noColor = await output([...paint, '--force'], { NO_COLOR: '1' })
       expect([
         forced.includes(`fc=1 ${red}`),
         replayed.includes('fc=1 red'),
@@ -92,7 +103,7 @@ describe('vx paints only a run, and only as the env asks', () => {
 
   it(
     'every verb paints as a run does: on when forced, plain into a pipe',
-    () => {
+    async () => {
       const verbs = [
         ['why', 'app#build'],
         ['last'],
@@ -100,18 +111,25 @@ describe('vx paints only a run, and only as the env asks', () => {
         ['run', 'build', '--all', '--dry'],
         ['version'],
       ]
-      expect(painted(['run', 'build', '--all'], {})).toBe(false)
-      expect(
-        verbs.map((v) => [v.join(' '), painted(v, {}), painted(v, { FORCE_COLOR: '1' })]),
-      ).toEqual(verbs.map((v) => [v.join(' '), false, true]))
-      expect(painted(['help'], { FORCE_COLOR: '1' })).toBe(false)
+      expect(await painted(['run', 'build', '--all'], {})).toBe(false)
+      const seen = []
+      for (const v of verbs)
+        seen.push([v.join(' '), await painted(v, {}), await painted(v, { FORCE_COLOR: '1' })])
+      expect(seen).toEqual(verbs.map((v) => [v.join(' '), false, true]))
+      expect(await painted(['help'], { FORCE_COLOR: '1' })).toBe(false)
       // A verb drawn with the ui components paints as a run does: on when
       // forced, plain into a pipe (log-design).
       const clean = ['cache', 'clean', '--max-size', '1G', '--dry']
-      expect([painted(clean, {}), painted(clean, { FORCE_COLOR: '1' })]).toEqual([false, true])
+      expect([await painted(clean, {}), await painted(clean, { FORCE_COLOR: '1' })]).toEqual([
+        false,
+        true,
+      ])
       for (const verb of [['show'], ['show', 'app#build']])
-        expect([painted(verb, {}), painted(verb, { FORCE_COLOR: '1' })]).toEqual([false, true])
-      expect([painted(['info'], {}), painted(['info'], { FORCE_COLOR: '1' })]).toEqual([
+        expect([await painted(verb, {}), await painted(verb, { FORCE_COLOR: '1' })]).toEqual([
+          false,
+          true,
+        ])
+      expect([await painted(['info'], {}), await painted(['info'], { FORCE_COLOR: '1' })]).toEqual([
         false,
         true,
       ])

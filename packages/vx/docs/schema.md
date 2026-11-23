@@ -735,8 +735,11 @@ highest priority:
    `NO_COLOR` reaches the task by any layer, vx sets `FORCE_COLOR=1`
    (its own output strips the colour where it prints plain; `docs/cli.md`
    § Colors). Without these, typical CLI tools break. vx
-   adds two markers of its own on top, `VX_RUN_WORKSPACE` (the root of
-   the workspace running the task) and `VX_RUN_TASK` (`project#task`):
+   adds three markers of its own on top: `VX_RUN_TREE` (a token per
+   spawn, by which a stop finds a daemon that left the task's process
+   group; `docs/execution.md`), `VX_RUN_WORKSPACE` (the root of
+   the workspace running the task) and `VX_RUN_TASK` (`project#task`).
+   With the last two,
    a task whose command shells out to `vx run` in that same workspace
    is refused — a loop back to itself forks a run per run without
    bound, and a nested run that terminates is still invisible to the
@@ -815,8 +818,8 @@ vx also sets `npm_execpath` to the workspace's package manager (the root
 `node_modules/.bin` or `PATH`) unless a layer gives one, so a tool that calls the manager back finds
 it. It names a binary on this machine, so it is not in the key.
 
-Anything outside these three layers, the two variables vx sets for
-the run (`VX_RUN_WORKSPACE`, `VX_RUN_TASK`) and `npm_execpath`, is absent from the child's environment:
+Anything outside these three layers, the variables vx sets for
+the run (`VX_RUN_WORKSPACE`, `VX_RUN_TASK`, `VX_RUN_TREE`) and `npm_execpath`, is absent from the child's environment:
 a host credential (`SSH_AUTH_SOCK`, `GITHUB_TOKEN`) reaches a task only
 when `passThrough` names it, held end to end by `env.test.ts` (a
 sandboxed task with a restricted network also gets the sandbox's own
@@ -840,7 +843,8 @@ can read your files. vx hides its own environment from a task
 (`modules/util.md`), not your files. Only `exec.sandbox` keeps them out (`security.md` § What the sandbox stops).
 
 **Masking.** The value of a variable whose name holds `TOKEN`, `SECRET`,
-`KEY`, `PASSWORD`, `PASSWD` or `CREDENTIAL` (vx's own environment or a
+`KEY`, `PASSWORD`, `PASSWD`, `PASSPHRASE` or `CREDENTIAL`, or ending
+`_PASS` (vx's own environment or a
 task's `define`, six characters or more; not a name ending `_FILE`,
 `_PATH` or `_DIR`, nor git's `GIT_CONFIG_KEY_<n>`) is printed as `***` wherever vx
 shows it: the task's output and the line vx adds under a shell's 127 or
@@ -2021,7 +2025,16 @@ shares (L-41): `~/.ssh`, `~/.gnupg`, `~/.aws`, `~/.azure`, `~/.kube`,
 `~/.fly/config.yml`, `~/.supabase/access-token`, `~/.config/doctl`,
 `~/Library/Application Support/doctl`, `~/.config/stripe/config.toml`,
 `~/.config/op`, `~/.expo/state.json`, `~/.claude/.credentials.json`,
-`~/.codex/auth.json`. A store in home's `.config`, `.local/share` or
+`~/.codex/auth.json`, the browsers' profiles (`~/.mozilla/firefox`,
+`~/Library/Application Support/Firefox`, `~/.config/google-chrome`,
+`~/.config/chromium`, `~/.config/BraveSoftware`, `~/.config/microsoft-edge`,
+`~/Library/Application Support/Google/Chrome`,
+`~/Library/Application Support/Chromium`,
+`~/Library/Application Support/BraveSoftware`,
+`~/Library/Application Support/Microsoft Edge`, `~/Library/Cookies`),
+SOPS' age keys (`~/.config/sops/age`,
+`~/Library/Application Support/sops/age`), `~/.config/rclone`, `~/.my.cnf`,
+`~/.password-store`, `~/.sentryclirc`. A store in home's `.config`, `.local/share` or
 `.cache` is denied again under `$XDG_CONFIG_HOME`, `$XDG_DATA_HOME` or
 `$XDG_CACHE_HOME`, which a task sees.
 Each is looked for as each task starts, so a store an earlier task of
@@ -2738,6 +2751,8 @@ malformed input.
 A pipeline is a `vx run` saved under a name, for `vx pipeline <name>`:
 its `tasks` in every project that declares them, under the flags it
 saves. Each CI job names one, and its workflow file holds no flags.
+`vx lock` refuses a task no project declares (a project's default
+`build` counts), so a typo fails there, not in the CI job.
 
 ```ts
 import { defineWorkspace } from '@vzn/vx/config'

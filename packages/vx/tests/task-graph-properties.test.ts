@@ -61,6 +61,8 @@ function check(seed: number): string[] {
       directDeps: (p) => direct.get(p) ?? [],
       transitiveDeps: () => [],
       transitiveDependents: () => [],
+      depsOf: () => new Set(),
+      dependentsOf: () => new Set(),
     }
     const requested = names
       .flatMap((p) => declared.get(p)!.map((task) => ({ project: p, task })))

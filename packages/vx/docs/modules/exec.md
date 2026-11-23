@@ -14,11 +14,33 @@ orphaned `x`, and a Ctrl-C did the same for every compound command
 already died — the group outlives its leader — so the order of death
 does not matter.
 
+A daemon that calls `setsid` (or double-forks into a group of its own)
+leaves the group, so every spawn also carries
+`VX_RUN_TREE=<vx pid>.<random>.<n>` in its environment, which each
+descendant inherits (the random part: a nested vx in a sandbox can hold
+the outer one's pid). `killTree` signals the processes carrying the
+child's token outside its group too, found by one scan per turn of
+/proc on Linux or `ps -E` on macOS (each shows a process's environment
+to its owner), and `untilGroupsGone` waits for them as for the group, so
+one trapping SIGTERM is SIGKILLed past the grace. Only a stop of the run
+or a server looks: a task that ends on its own, or times out
+(`escapees` false) while the run goes on, leaves its daemons running, as
+a shared one (sccache, Gradle's) may serve another task. A Linux
+sandboxed child carries no token: its pid namespace takes what it
+starts, and its runtime's shells sit outside the command's group.
+
 ### Public surface
 
 ```ts
 export type Child = ReturnType<typeof Bun.spawn>
-export function killTree(child: Child, signal: 'SIGINT' | 'SIGTERM' | 'SIGKILL'): void
+export const VX_RUN_TREE_ENV = 'VX_RUN_TREE' // the token every spawn's environment carries
+export function treeToken(): string // `<vx pid>.<random>.<n>`, fresh per spawn
+export function markTree(child: Child, token: string): void // `child` was spawned with `token`
+export function killTree(
+  child: Child,
+  signal: 'SIGINT' | 'SIGTERM' | 'SIGKILL',
+  escapees?: boolean,
+): void
 export function pauseTree(child: Child, signal: 'SIGSTOP' | 'SIGCONT'): void // Ctrl-Z, fg: the group, never the channel
 export function markStopped(stopped: boolean): void // Ctrl-Z, fg: a task's timeout skips the time stopped
 export function runTime(): number // performance.now() less the time stopped: the clock a task's duration reads
@@ -220,10 +242,10 @@ whatever it forked lived on.
 
 ### What it does NOT do
 
-- Reach a daemon that called `setsid` itself — the residual every
-  non-cgroup runner shares; a sandbox's pid namespace takes even that.
+- Reach a `setsid` daemon that cleared its environment (`env -i`): it
+  carries no token. A sandbox's pid namespace takes even that.
 - Outlive a `kill -9` of vx in a process that left the task's group:
-  a `setsid` daemon, as above. The guard itself can be killed too (a
+  a `setsid` daemon; the guard lists groups, not tokens. The guard itself can be killed too (a
   `pkill` of its name); then a `kill -9` of vx leaves the groups under
   init, as before item 860.
 - Reap: the caller awaits `exited` as before.

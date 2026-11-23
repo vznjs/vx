@@ -118,16 +118,15 @@ Every part, in order: [Caching in depth](../../caching/).
 
   ```ansi title="outputs: { files: ['build/**'] }, but vite writes dist/"
   [2m┌─[0m [1m[38;2;192;132;252m@demo/ui[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m>[0m $ vite build
-  [38;2;6;182;212mvite v7.1.5 [38;2;34;197;94mbuilding for production...[38;2;6;182;212m[39m
+  [36mvite v7.1.5 [32mbuilding for production...[36m[39m
   transforming...
-  [38;2;34;197;94m✓[39m 1 modules transformed.
+  [32m✓[39m 1 modules transformed.
   rendering chunks...
   computing gzip size...
-  [2mdist/[22m[38;2;6;182;212mindex.js  [39m[1m[2m0.05 kB[22m[1m[22m[2m │ gzip: 0.07 kB[22m
-  [38;2;34;197;94m✓ built in 46ms[39m
-  [0m[4m[58;2;110;118;129m  [1m[38;2;167;139;250mWarnings[0m[4m[58;2;110;118;129m                                                                                                              [0m
-  [1m[38;2;234;179;8m[vx][0m[2m @demo/ui#build: outputs matched no files (build/**) — the command exited 0 but never wrote it, so the task fails and nothing is cached: write it, or fix the pattern[0m
-  [2m└─[0m [1m[38;2;192;132;252m@demo/ui[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(235ms)[0m [1m[38;2;239;68;68mfailed (exit 1)[0m
+  [2mdist/[22m[36mindex.js  [39m[1m[2m0.06 kB[22m[1m[22m[2m │ gzip: 0.08 kB[22m
+  [32m✓ built in 44ms[39m
+  [0m[1m[38;2;234;179;8m[vx][0m[2m @demo/ui#build: outputs matched no files (build/**) — the command exited 0 but never wrote it, so the task fails and nothing is cached: write it, or fix the pattern[0m
+  [2m└─[0m [1m[38;2;192;132;252m@demo/ui[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(1.64s)[0m [1m[38;2;239;68;68mfailed (exit 1)[0m
   ```
 
 - A failed task is never saved.

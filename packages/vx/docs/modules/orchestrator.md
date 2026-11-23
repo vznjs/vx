@@ -3243,7 +3243,7 @@ export function lockReader(workspaceRoot: string): () => Promise<Lockfile>
    Boundary geometry fences every workspace project, configured or not
    (`prepare.ts`, X-57).
 2. **Seeds.** `'all'` is `configured`; named seeds load as named. With
-   `closure`, each seed's `packageGraph.transitiveDeps` join, a
+   `closure`, the seeds' `packageGraph.depsOf` (one walk) join, a
    config-less one too: it loads as `{ tasks: {} }` and gets the
    default `build`, so a dependant bundling its source is keyed on it
    behind `^build` (X-9). The closure is skipped when every project is

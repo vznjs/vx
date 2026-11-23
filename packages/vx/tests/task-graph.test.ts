@@ -43,6 +43,8 @@ function packageGraph(direct: Record<string, string[]>): PackageGraph {
     directDeps: (n) => directDeps.get(n) ?? [],
     transitiveDeps: (n) => transitive(n),
     transitiveDependents: () => [],
+    depsOf: (names) => new Set([...names].flatMap((n) => transitive(n))),
+    dependentsOf: () => new Set(),
   }
 }
 

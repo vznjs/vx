@@ -851,7 +851,9 @@ values start, and its colour carries the outcome. The cache word is the
 cache axis. An empty cell shows `—`. A terminal too narrow for the
 whole row drops `blocks`, `outputs`, `worker`, `cpu`, `mem` and
 `±usual`, in that order, until a task's name has 24 columns; status,
-cache and time always stay. Logs off a terminal keep every column.
+cache and time always stay. Logs off a terminal keep every column. A
+terminal titles the rows with a `Tasks` line holding the column names;
+a pipe (an agent's shell) gets that line once, above its first row.
 
 | Status     | Colour | Meaning                                                |
 | ---------- | ------ | ------------------------------------------------------ |
@@ -3465,7 +3467,7 @@ vx info
   [2mmemory          [0m  [38;2;203;213;225m13 GB usable — cgroup limit; the machine has 16 GB[0m
   [2mcache dir       [0m  [38;2;203;213;225m/work/repo/.vx/cache (332 KB, this workspace's run history)[0m
   [2mcache store     [0m  [38;2;203;213;225m~/.vx/c46f226815d1a23e/cache (284 MB, shared by this workspace's checkouts)[0m
-  [2mcache versions  [0m  [38;2;203;213;225mkeys vx-cache-v56 · index schema v57[0m
+  [2mcache versions  [0m  [38;2;203;213;225mkeys vx-cache-v56 · index schema v58[0m
   [2mcache entries   [0m  [38;2;203;213;225m37 (284 MB)[0m
   [2mtask runs (24h) [0m  [38;2;203;213;225m34 (11 cache hits: 2 up-to-date, 9 restored)[0m
   [2mflaky tasks     [0m  [38;2;203;213;225m1 — app#test (2 of 5 runs failed on unchanged inputs)[0m
@@ -3900,7 +3902,8 @@ footer gave a reason, the row ends with it instead: `timed out`,
 `inputs.stability.severity: 'error'` failure, read from its kept output),
 `2 sandbox violations`, and for a skipped task
 `after lib#build failed` (the v27 columns; rows older than them read
-as before), or, for a platform skip, `needs another platform` and
+as before), `after lib#test did not pass` behind a task with no row (one
+`--fail-fast` stopped: history keeps none), or, for a platform skip, `needs another platform` and
 `after ios#build skipped: needs another platform`. A task that retried
 ends with its attempts, `2 attempts`, passed or failed (`attempts` in
 `--format json`, null for a task run once). A task whose key met a remote failure ends with it, read or
@@ -4083,7 +4086,7 @@ per run, joined on `run_id`: status, duration, cache hit, cpu, peak and
 mean memory, attempts, timeout, skip and remote reasons, where it ran),
 `steps` (`run_id`, `seq`, `step`, `duration_ms`, `ok`: the steps a run
 did not wait on), `warnings` (`run_id`, `seq`, `text`), `failures`
-(`run_id`, `task_id`, `input_moved`, `output`, `locations`,
+(`run_id`, `task_id`, `dir`, `input_moved`, `output`, `locations`,
 `sandbox_fix`: a failed task's output; the last two JSON), `entries`
 (the cached keys), `entry_inputs` (each key's input components),
 `task_durations` and `task_outcomes` (what forecasts and flakiness
@@ -4110,7 +4113,8 @@ change with `SCHEMA_VERSION`; read `sqlite_schema` rather than assume.
 emits `{ invocation, tasks, steps, warnings }` for scripting (`steps`
 and `warnings` only when the run kept some, above); `--list --format json`
 an array of the same `invocation` objects, newest first. A failed task's row adds
-`output` (its output as plain text, the first 8 KiB and last 56 KiB,
+`dir` (its project's directory from the workspace root, `.` for the root,
+where the relative paths in its output start), `output` (its output as plain text, the first 8 KiB and last 56 KiB,
 secrets masked) and `locations` (the existing files it names,
 `{ file, line?, col? }`, file absolute; a file also named with a line
 drops its bare mention, such as bun test's `app.test.js:` header), so an
@@ -4318,11 +4322,15 @@ what a TASK sees is `exec.env` in `docs/schema.md`.
 
 <!-- /variables table -->
 
-vx sets two variables on every task's environment: `VX_RUN_WORKSPACE`
-(the workspace root) and `VX_RUN_TASK` (`project#task`). A `vx run` a
-task starts reads them back: one in the same workspace is refused, since
-a nested run is invisible to the outer graph and a loop back to its own
-task forks without bound (`docs/schema.md` § `env`).
+vx sets three variables on every task's environment: `VX_RUN_WORKSPACE`
+(the workspace root), `VX_RUN_TASK` (`project#task`) and `VX_RUN_TREE`
+(a token per spawn). A `vx run` a task starts reads the first two back:
+one in the same workspace is refused, since a nested run is invisible to
+the outer graph and a loop back to its own task forks without bound
+(`docs/schema.md` § `env`). A stop (Ctrl-C, `--fail-fast`, a server's end)
+signals every process holding the task's `VX_RUN_TREE`, so a daemon that
+left the task's process group with `setsid` goes with it
+(`docs/execution.md`).
 
 Colors are the two conventions in § Output format › Colors (`NO_COLOR`,
 `FORCE_COLOR`), and a CI turns them on. A truthy `CI` picks the CI output flow and
@@ -4348,7 +4356,7 @@ Frame anatomy:
 ```ansi
 [2m┌─[0m [1m[38;2;147;197;253mapp[0m[2m#[0m[1m[38;2;96;165;250mtest[0m [2m>[0m [1m[38;2;239;68;68mfailed (exit 1, 1 sandbox violation)[0m
 
-[2m$ bun test[0m
+[2mpackages/app $ bun test[0m
 
 [2m├─[0m [1mOUTPUT[0m [2m────────────────────────────────────────────────────[0m
 
@@ -4365,7 +4373,10 @@ write ../shared/notes.txt
 
 Every section is conditional: the `$ <command>` line only for an
 executed task (success or failed — a hit replays its stored output and
-shows none), `OUTPUT` only when the task wrote something,
+shows none), led by the directory it ran in from the workspace root
+(none for a project at the root), as a shell prompt would be: a task
+names paths from its own directory, so `src/index.js` in its output is
+`packages/app/src/index.js`, `OUTPUT` only when the task wrote something,
 `SANDBOX VIOLATIONS (N)` only when the sandbox recorded some (`N`
 counts them) or `SANDBOX` when vx has only a note on a failure. The
 header carries the outcome (`restored-local • abc12345`, `failed (exit

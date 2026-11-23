@@ -444,6 +444,10 @@ async function scaffoldPlugin(seam: string, root: string, args: InitArgs): Promi
       ui.cmd(`import { ${factory} } from '../plugins/${seam}.ts'`),
       ', then ',
       ui.cmd(`plugins: [${factory}(…)]`),
+      // `project` runs under `vx lock` only: until it does, a run sees none of its tasks.
+      ...(seam === 'project'
+        ? [', then run ', ui.cmd('vx lock'), ': a run reads the tasks it adds from the lock']
+        : []),
     ),
   )
   ui.print(

@@ -56,6 +56,12 @@ export interface TaskBlockBody {
    */
   droppedStdout?: number
   droppedStderr?: number
+  /**
+   * Where the command ran, relative to the workspace root, before its `$`:
+   * a task names paths from its own directory, so a reader elsewhere (an
+   * agent at the root) opened the wrong file. '' or absent: the root.
+   */
+  dir?: string
 }
 
 export function formatTaskBlock(
@@ -89,7 +95,8 @@ export function formatTaskBlock(
   if (forceCommand || ranCommand(outcome)) {
     // No section label for the command (owner cut it) — the dim `$ `
     // line under the header reads as the command on its own.
-    lines.push('', corner(`$ ${shownCommand(node, forwardArgs)}`), '')
+    const at = body.dir === undefined || body.dir === '' ? '' : `${body.dir} `
+    lines.push('', corner(`${at}$ ${shownCommand(node, forwardArgs)}`), '')
   }
 
   const isFile = links && outcome.status === 'failed' ? fileMemo() : undefined

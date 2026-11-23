@@ -1411,6 +1411,33 @@ describe('config', () => {
     }
   })
 
+  // Bun.serve streams a download with no Content-Length: core, which
+  // refuses a body past its artifact ceiling by its length, read 100 MB of
+  // a 286 MB one before refusing it (2026-11-23).
+  it('names a download its length, as vx-size says it', async () => {
+    const srv = server()
+    try {
+      const token = await srv.token(MAIN_JOB)
+      await layer(srv.url, token).put('ab22', new Blob(['12345']), { durationMs: 1 })
+      // Streamed as a bucket's body is: chunked, no length.
+      const chunked: typeof fetch = Object.assign(
+        async (input: string | URL | Request, init?: RequestInit) => {
+          const res = await fetch(input, init)
+          if (init?.method !== 'GET') return res
+          const headers = new Headers(res.headers)
+          headers.delete('content-length')
+          return new Response(res.body, { status: res.status, headers })
+        },
+        { preconnect: fetch.preconnect },
+      )
+      const got = await layer(srv.url, token, [MAIN], chunked).get('ab22')
+      const res = got!.body as Response
+      expect([res.headers.get('content-length'), await res.text()]).toEqual(['5', '12345'])
+    } finally {
+      await srv.stop()
+    }
+  })
+
   it('asks no more than `retries` says', async () => {
     const srv = server()
     try {
@@ -1438,6 +1465,69 @@ describe('config', () => {
     } finally {
       await srv.stop()
     }
+  })
+
+  // A server down (connection refused) cost every request its 3 tries:
+  // a 300-task run took 30 s, not 1 s (2026-11-23).
+  it('turns the remote off for the run once a request finds no server, said once', async () => {
+    let asked = 0
+    const down: typeof fetch = Object.assign(
+      () => {
+        asked++
+        return Promise.reject(
+          Object.assign(new Error('Unable to connect'), { code: 'ECONNREFUSED' }),
+        )
+      },
+      { preconnect: fetch.preconnect },
+    )
+    const c = layer('http://127.0.0.1:1', 'token', [MAIN], down, 1)
+    ;(c as unknown as { wait: (ms: number) => Promise<void> }).wait = async () => {}
+    await expect(c.put('ab18', new Blob(['x']), { durationMs: 1 })).rejects.toThrow(
+      'Unable to connect; remote cache off for this run',
+    )
+    expect(asked).toBe(2)
+    expect(await c.put('ab19', new Blob(['x']), { durationMs: 1 })).toBe(false)
+    expect(await c.get('ab18')).toBeFalsy()
+    expect(asked).toBe(2)
+  })
+
+  it('CONTROL: a lost connection while the server answers others is that request alone', async () => {
+    const srv = server()
+    try {
+      const token = await srv.token(MAIN_JOB)
+      let c: VxCacheLayer
+      const flaky: typeof fetch = Object.assign(
+        async (input: string | URL | Request, init?: RequestInit) => {
+          const url = input instanceof Request ? input.url : input.toString()
+          if (init?.method === 'PUT' && url.includes('ab20')) {
+            // Another request is answered before this one's last try fails.
+            await c.put('ab21', new Blob(['y']), { durationMs: 1 })
+            throw Object.assign(new Error('socket closed'), { code: 'ECONNRESET' })
+          }
+          return fetch(input, init)
+        },
+        { preconnect: fetch.preconnect },
+      )
+      c = layer(srv.url, token, [MAIN], flaky, 0)
+      await expect(c.put('ab20', new Blob(['x']), { durationMs: 1 })).rejects.toThrow(
+        'socket closed',
+      )
+      expect(c.off).toBe(false)
+    } finally {
+      await srv.stop()
+    }
+  })
+
+  // A proxy's body limit, or a pooled connection the server closed, resets
+  // one request while the server lives: only a refused connection says none listens.
+  it('CONTROL: a reset with nothing else asked is that request alone', async () => {
+    const reset: typeof fetch = Object.assign(
+      () => Promise.reject(Object.assign(new Error('socket closed'), { code: 'ECONNRESET' })),
+      { preconnect: fetch.preconnect },
+    )
+    const c = layer('http://127.0.0.1:1', 'token', [MAIN], reset, 0)
+    await expect(c.put('ab22', new Blob(['x']), { durationMs: 1 })).rejects.toThrow('socket closed')
+    expect(c.off).toBe(false)
   })
 
   it('refuses a retries it cannot use', () => {

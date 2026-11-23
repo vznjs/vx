@@ -11,7 +11,8 @@
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
             "VX_REQUIRE_WATCH_EVENTS",
-            "VX_REQUIRE_NONROOT"
+            "VX_REQUIRE_NONROOT",
+            "VX_REQUIRE_CLANG"
           ],
           "define": {
             "GIT_CONFIG_GLOBAL": "/dev/null",
@@ -68,7 +69,8 @@
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
             "VX_REQUIRE_WATCH_EVENTS",
-            "VX_REQUIRE_NONROOT"
+            "VX_REQUIRE_NONROOT",
+            "VX_REQUIRE_CLANG"
           ],
           "define": {
             "GIT_CONFIG_GLOBAL": "/dev/null",
@@ -125,7 +127,8 @@
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
             "VX_REQUIRE_WATCH_EVENTS",
-            "VX_REQUIRE_NONROOT"
+            "VX_REQUIRE_NONROOT",
+            "VX_REQUIRE_CLANG"
           ],
           "define": {
             "GIT_CONFIG_GLOBAL": "/dev/null",
@@ -182,7 +185,8 @@
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
             "VX_REQUIRE_WATCH_EVENTS",
-            "VX_REQUIRE_NONROOT"
+            "VX_REQUIRE_NONROOT",
+            "VX_REQUIRE_CLANG"
           ],
           "define": {
             "GIT_CONFIG_GLOBAL": "/dev/null",
@@ -239,7 +243,8 @@
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
             "VX_REQUIRE_WATCH_EVENTS",
-            "VX_REQUIRE_NONROOT"
+            "VX_REQUIRE_NONROOT",
+            "VX_REQUIRE_CLANG"
           ],
           "define": {
             "GIT_CONFIG_GLOBAL": "/dev/null",
@@ -296,7 +301,8 @@
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
             "VX_REQUIRE_WATCH_EVENTS",
-            "VX_REQUIRE_NONROOT"
+            "VX_REQUIRE_NONROOT",
+            "VX_REQUIRE_CLANG"
           ],
           "define": {
             "GIT_CONFIG_GLOBAL": "/dev/null",
@@ -353,7 +359,8 @@
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
             "VX_REQUIRE_WATCH_EVENTS",
-            "VX_REQUIRE_NONROOT"
+            "VX_REQUIRE_NONROOT",
+            "VX_REQUIRE_CLANG"
           ],
           "define": {
             "GIT_CONFIG_GLOBAL": "/dev/null",
@@ -410,7 +417,8 @@
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
             "VX_REQUIRE_WATCH_EVENTS",
-            "VX_REQUIRE_NONROOT"
+            "VX_REQUIRE_NONROOT",
+            "VX_REQUIRE_CLANG"
           ],
           "define": {
             "GIT_CONFIG_GLOBAL": "/dev/null",
@@ -467,7 +475,8 @@
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
             "VX_REQUIRE_WATCH_EVENTS",
-            "VX_REQUIRE_NONROOT"
+            "VX_REQUIRE_NONROOT",
+            "VX_REQUIRE_CLANG"
           ],
           "define": {
             "GIT_CONFIG_GLOBAL": "/dev/null",
@@ -524,7 +533,8 @@
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
             "VX_REQUIRE_WATCH_EVENTS",
-            "VX_REQUIRE_NONROOT"
+            "VX_REQUIRE_NONROOT",
+            "VX_REQUIRE_CLANG"
           ],
           "define": {
             "GIT_CONFIG_GLOBAL": "/dev/null",
@@ -581,7 +591,8 @@
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
             "VX_REQUIRE_WATCH_EVENTS",
-            "VX_REQUIRE_NONROOT"
+            "VX_REQUIRE_NONROOT",
+            "VX_REQUIRE_CLANG"
           ],
           "define": {
             "GIT_CONFIG_GLOBAL": "/dev/null",
@@ -638,7 +649,8 @@
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
             "VX_REQUIRE_WATCH_EVENTS",
-            "VX_REQUIRE_NONROOT"
+            "VX_REQUIRE_NONROOT",
+            "VX_REQUIRE_CLANG"
           ],
           "define": {
             "GIT_CONFIG_GLOBAL": "/dev/null",
@@ -695,7 +707,8 @@
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
             "VX_REQUIRE_WATCH_EVENTS",
-            "VX_REQUIRE_NONROOT"
+            "VX_REQUIRE_NONROOT",
+            "VX_REQUIRE_CLANG"
           ],
           "define": {
             "GIT_CONFIG_GLOBAL": "/dev/null",
@@ -752,7 +765,8 @@
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
             "VX_REQUIRE_WATCH_EVENTS",
-            "VX_REQUIRE_NONROOT"
+            "VX_REQUIRE_NONROOT",
+            "VX_REQUIRE_CLANG"
           ],
           "define": {
             "GIT_CONFIG_GLOBAL": "/dev/null",
@@ -809,7 +823,8 @@
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
             "VX_REQUIRE_WATCH_EVENTS",
-            "VX_REQUIRE_NONROOT"
+            "VX_REQUIRE_NONROOT",
+            "VX_REQUIRE_CLANG"
           ],
           "define": {
             "GIT_CONFIG_GLOBAL": "/dev/null",
@@ -866,7 +881,8 @@
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
             "VX_REQUIRE_WATCH_EVENTS",
-            "VX_REQUIRE_NONROOT"
+            "VX_REQUIRE_NONROOT",
+            "VX_REQUIRE_CLANG"
           ],
           "define": {
             "GIT_CONFIG_GLOBAL": "/dev/null",
@@ -923,7 +939,8 @@
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
             "VX_REQUIRE_WATCH_EVENTS",
-            "VX_REQUIRE_NONROOT"
+            "VX_REQUIRE_NONROOT",
+            "VX_REQUIRE_CLANG"
           ],
           "define": {
             "GIT_CONFIG_GLOBAL": "/dev/null",
@@ -980,7 +997,8 @@
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
             "VX_REQUIRE_WATCH_EVENTS",
-            "VX_REQUIRE_NONROOT"
+            "VX_REQUIRE_NONROOT",
+            "VX_REQUIRE_CLANG"
           ],
           "define": {
             "GIT_CONFIG_GLOBAL": "/dev/null",
@@ -1037,7 +1055,8 @@
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
             "VX_REQUIRE_WATCH_EVENTS",
-            "VX_REQUIRE_NONROOT"
+            "VX_REQUIRE_NONROOT",
+            "VX_REQUIRE_CLANG"
           ],
           "define": {
             "GIT_CONFIG_GLOBAL": "/dev/null",
@@ -1094,7 +1113,8 @@
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
             "VX_REQUIRE_WATCH_EVENTS",
-            "VX_REQUIRE_NONROOT"
+            "VX_REQUIRE_NONROOT",
+            "VX_REQUIRE_CLANG"
           ],
           "define": {
             "GIT_CONFIG_GLOBAL": "/dev/null",
@@ -1151,7 +1171,8 @@
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
             "VX_REQUIRE_WATCH_EVENTS",
-            "VX_REQUIRE_NONROOT"
+            "VX_REQUIRE_NONROOT",
+            "VX_REQUIRE_CLANG"
           ],
           "define": {
             "GIT_CONFIG_GLOBAL": "/dev/null",
@@ -1208,7 +1229,8 @@
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
             "VX_REQUIRE_WATCH_EVENTS",
-            "VX_REQUIRE_NONROOT"
+            "VX_REQUIRE_NONROOT",
+            "VX_REQUIRE_CLANG"
           ],
           "define": {
             "GIT_CONFIG_GLOBAL": "/dev/null",
@@ -1265,7 +1287,8 @@
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
             "VX_REQUIRE_WATCH_EVENTS",
-            "VX_REQUIRE_NONROOT"
+            "VX_REQUIRE_NONROOT",
+            "VX_REQUIRE_CLANG"
           ],
           "define": {
             "GIT_CONFIG_GLOBAL": "/dev/null",
@@ -1322,7 +1345,8 @@
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
             "VX_REQUIRE_WATCH_EVENTS",
-            "VX_REQUIRE_NONROOT"
+            "VX_REQUIRE_NONROOT",
+            "VX_REQUIRE_CLANG"
           ],
           "define": {
             "GIT_CONFIG_GLOBAL": "/dev/null",
@@ -1379,7 +1403,8 @@
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
             "VX_REQUIRE_WATCH_EVENTS",
-            "VX_REQUIRE_NONROOT"
+            "VX_REQUIRE_NONROOT",
+            "VX_REQUIRE_CLANG"
           ],
           "define": {
             "GIT_CONFIG_GLOBAL": "/dev/null",
@@ -1436,7 +1461,8 @@
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
             "VX_REQUIRE_WATCH_EVENTS",
-            "VX_REQUIRE_NONROOT"
+            "VX_REQUIRE_NONROOT",
+            "VX_REQUIRE_CLANG"
           ],
           "define": {
             "GIT_CONFIG_GLOBAL": "/dev/null",
@@ -1493,7 +1519,8 @@
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
             "VX_REQUIRE_WATCH_EVENTS",
-            "VX_REQUIRE_NONROOT"
+            "VX_REQUIRE_NONROOT",
+            "VX_REQUIRE_CLANG"
           ],
           "define": {
             "GIT_CONFIG_GLOBAL": "/dev/null",
@@ -1550,7 +1577,8 @@
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
             "VX_REQUIRE_WATCH_EVENTS",
-            "VX_REQUIRE_NONROOT"
+            "VX_REQUIRE_NONROOT",
+            "VX_REQUIRE_CLANG"
           ],
           "define": {
             "GIT_CONFIG_GLOBAL": "/dev/null",
@@ -1607,7 +1635,8 @@
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
             "VX_REQUIRE_WATCH_EVENTS",
-            "VX_REQUIRE_NONROOT"
+            "VX_REQUIRE_NONROOT",
+            "VX_REQUIRE_CLANG"
           ],
           "define": {
             "GIT_CONFIG_GLOBAL": "/dev/null",
@@ -1664,7 +1693,8 @@
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
             "VX_REQUIRE_WATCH_EVENTS",
-            "VX_REQUIRE_NONROOT"
+            "VX_REQUIRE_NONROOT",
+            "VX_REQUIRE_CLANG"
           ],
           "define": {
             "GIT_CONFIG_GLOBAL": "/dev/null",
@@ -1721,7 +1751,8 @@
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
             "VX_REQUIRE_WATCH_EVENTS",
-            "VX_REQUIRE_NONROOT"
+            "VX_REQUIRE_NONROOT",
+            "VX_REQUIRE_CLANG"
           ],
           "define": {
             "GIT_CONFIG_GLOBAL": "/dev/null",
@@ -1778,7 +1809,8 @@
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
             "VX_REQUIRE_WATCH_EVENTS",
-            "VX_REQUIRE_NONROOT"
+            "VX_REQUIRE_NONROOT",
+            "VX_REQUIRE_CLANG"
           ],
           "define": {
             "GIT_CONFIG_GLOBAL": "/dev/null",
@@ -1835,7 +1867,8 @@
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
             "VX_REQUIRE_WATCH_EVENTS",
-            "VX_REQUIRE_NONROOT"
+            "VX_REQUIRE_NONROOT",
+            "VX_REQUIRE_CLANG"
           ],
           "define": {
             "GIT_CONFIG_GLOBAL": "/dev/null",
@@ -1892,7 +1925,8 @@
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
             "VX_REQUIRE_WATCH_EVENTS",
-            "VX_REQUIRE_NONROOT"
+            "VX_REQUIRE_NONROOT",
+            "VX_REQUIRE_CLANG"
           ],
           "define": {
             "GIT_CONFIG_GLOBAL": "/dev/null",
@@ -1949,7 +1983,8 @@
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
             "VX_REQUIRE_WATCH_EVENTS",
-            "VX_REQUIRE_NONROOT"
+            "VX_REQUIRE_NONROOT",
+            "VX_REQUIRE_CLANG"
           ],
           "define": {
             "GIT_CONFIG_GLOBAL": "/dev/null",
@@ -2006,7 +2041,8 @@
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
             "VX_REQUIRE_WATCH_EVENTS",
-            "VX_REQUIRE_NONROOT"
+            "VX_REQUIRE_NONROOT",
+            "VX_REQUIRE_CLANG"
           ],
           "define": {
             "GIT_CONFIG_GLOBAL": "/dev/null",
@@ -2063,7 +2099,8 @@
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
             "VX_REQUIRE_WATCH_EVENTS",
-            "VX_REQUIRE_NONROOT"
+            "VX_REQUIRE_NONROOT",
+            "VX_REQUIRE_CLANG"
           ],
           "define": {
             "GIT_CONFIG_GLOBAL": "/dev/null",
@@ -2120,7 +2157,8 @@
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
             "VX_REQUIRE_WATCH_EVENTS",
-            "VX_REQUIRE_NONROOT"
+            "VX_REQUIRE_NONROOT",
+            "VX_REQUIRE_CLANG"
           ],
           "define": {
             "GIT_CONFIG_GLOBAL": "/dev/null",
@@ -2177,7 +2215,8 @@
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
             "VX_REQUIRE_WATCH_EVENTS",
-            "VX_REQUIRE_NONROOT"
+            "VX_REQUIRE_NONROOT",
+            "VX_REQUIRE_CLANG"
           ],
           "define": {
             "GIT_CONFIG_GLOBAL": "/dev/null",
@@ -2234,7 +2273,8 @@
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
             "VX_REQUIRE_WATCH_EVENTS",
-            "VX_REQUIRE_NONROOT"
+            "VX_REQUIRE_NONROOT",
+            "VX_REQUIRE_CLANG"
           ],
           "define": {
             "GIT_CONFIG_GLOBAL": "/dev/null",
@@ -2291,7 +2331,8 @@
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
             "VX_REQUIRE_WATCH_EVENTS",
-            "VX_REQUIRE_NONROOT"
+            "VX_REQUIRE_NONROOT",
+            "VX_REQUIRE_CLANG"
           ],
           "define": {
             "GIT_CONFIG_GLOBAL": "/dev/null",
@@ -2348,7 +2389,8 @@
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
             "VX_REQUIRE_WATCH_EVENTS",
-            "VX_REQUIRE_NONROOT"
+            "VX_REQUIRE_NONROOT",
+            "VX_REQUIRE_CLANG"
           ],
           "define": {
             "GIT_CONFIG_GLOBAL": "/dev/null",
@@ -2405,7 +2447,8 @@
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
             "VX_REQUIRE_WATCH_EVENTS",
-            "VX_REQUIRE_NONROOT"
+            "VX_REQUIRE_NONROOT",
+            "VX_REQUIRE_CLANG"
           ],
           "define": {
             "GIT_CONFIG_GLOBAL": "/dev/null",
@@ -2462,7 +2505,8 @@
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
             "VX_REQUIRE_WATCH_EVENTS",
-            "VX_REQUIRE_NONROOT"
+            "VX_REQUIRE_NONROOT",
+            "VX_REQUIRE_CLANG"
           ],
           "define": {
             "GIT_CONFIG_GLOBAL": "/dev/null",
@@ -2519,7 +2563,8 @@
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
             "VX_REQUIRE_WATCH_EVENTS",
-            "VX_REQUIRE_NONROOT"
+            "VX_REQUIRE_NONROOT",
+            "VX_REQUIRE_CLANG"
           ],
           "define": {
             "GIT_CONFIG_GLOBAL": "/dev/null",
@@ -2576,7 +2621,8 @@
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
             "VX_REQUIRE_WATCH_EVENTS",
-            "VX_REQUIRE_NONROOT"
+            "VX_REQUIRE_NONROOT",
+            "VX_REQUIRE_CLANG"
           ],
           "define": {
             "GIT_CONFIG_GLOBAL": "/dev/null",
@@ -2633,7 +2679,8 @@
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
             "VX_REQUIRE_WATCH_EVENTS",
-            "VX_REQUIRE_NONROOT"
+            "VX_REQUIRE_NONROOT",
+            "VX_REQUIRE_CLANG"
           ],
           "define": {
             "GIT_CONFIG_GLOBAL": "/dev/null",
@@ -2690,7 +2737,8 @@
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
             "VX_REQUIRE_WATCH_EVENTS",
-            "VX_REQUIRE_NONROOT"
+            "VX_REQUIRE_NONROOT",
+            "VX_REQUIRE_CLANG"
           ],
           "define": {
             "GIT_CONFIG_GLOBAL": "/dev/null",
@@ -2747,7 +2795,8 @@
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
             "VX_REQUIRE_WATCH_EVENTS",
-            "VX_REQUIRE_NONROOT"
+            "VX_REQUIRE_NONROOT",
+            "VX_REQUIRE_CLANG"
           ],
           "define": {
             "GIT_CONFIG_GLOBAL": "/dev/null",
@@ -2804,7 +2853,8 @@
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
             "VX_REQUIRE_WATCH_EVENTS",
-            "VX_REQUIRE_NONROOT"
+            "VX_REQUIRE_NONROOT",
+            "VX_REQUIRE_CLANG"
           ],
           "define": {
             "GIT_CONFIG_GLOBAL": "/dev/null",
@@ -2861,7 +2911,8 @@
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
             "VX_REQUIRE_WATCH_EVENTS",
-            "VX_REQUIRE_NONROOT"
+            "VX_REQUIRE_NONROOT",
+            "VX_REQUIRE_CLANG"
           ],
           "define": {
             "GIT_CONFIG_GLOBAL": "/dev/null",
@@ -2918,7 +2969,8 @@
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
             "VX_REQUIRE_WATCH_EVENTS",
-            "VX_REQUIRE_NONROOT"
+            "VX_REQUIRE_NONROOT",
+            "VX_REQUIRE_CLANG"
           ],
           "define": {
             "GIT_CONFIG_GLOBAL": "/dev/null",
@@ -2975,7 +3027,8 @@
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
             "VX_REQUIRE_WATCH_EVENTS",
-            "VX_REQUIRE_NONROOT"
+            "VX_REQUIRE_NONROOT",
+            "VX_REQUIRE_CLANG"
           ],
           "define": {
             "GIT_CONFIG_GLOBAL": "/dev/null",
@@ -3032,7 +3085,8 @@
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
             "VX_REQUIRE_WATCH_EVENTS",
-            "VX_REQUIRE_NONROOT"
+            "VX_REQUIRE_NONROOT",
+            "VX_REQUIRE_CLANG"
           ],
           "define": {
             "GIT_CONFIG_GLOBAL": "/dev/null",
@@ -3089,7 +3143,8 @@
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
             "VX_REQUIRE_WATCH_EVENTS",
-            "VX_REQUIRE_NONROOT"
+            "VX_REQUIRE_NONROOT",
+            "VX_REQUIRE_CLANG"
           ],
           "define": {
             "GIT_CONFIG_GLOBAL": "/dev/null",
@@ -3146,7 +3201,8 @@
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
             "VX_REQUIRE_WATCH_EVENTS",
-            "VX_REQUIRE_NONROOT"
+            "VX_REQUIRE_NONROOT",
+            "VX_REQUIRE_CLANG"
           ],
           "define": {
             "GIT_CONFIG_GLOBAL": "/dev/null",
@@ -3203,7 +3259,8 @@
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
             "VX_REQUIRE_WATCH_EVENTS",
-            "VX_REQUIRE_NONROOT"
+            "VX_REQUIRE_NONROOT",
+            "VX_REQUIRE_CLANG"
           ],
           "define": {
             "GIT_CONFIG_GLOBAL": "/dev/null",
@@ -3260,7 +3317,8 @@
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
             "VX_REQUIRE_WATCH_EVENTS",
-            "VX_REQUIRE_NONROOT"
+            "VX_REQUIRE_NONROOT",
+            "VX_REQUIRE_CLANG"
           ],
           "define": {
             "GIT_CONFIG_GLOBAL": "/dev/null",
@@ -3317,7 +3375,8 @@
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
             "VX_REQUIRE_WATCH_EVENTS",
-            "VX_REQUIRE_NONROOT"
+            "VX_REQUIRE_NONROOT",
+            "VX_REQUIRE_CLANG"
           ],
           "define": {
             "GIT_CONFIG_GLOBAL": "/dev/null",
@@ -3374,7 +3433,8 @@
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
             "VX_REQUIRE_WATCH_EVENTS",
-            "VX_REQUIRE_NONROOT"
+            "VX_REQUIRE_NONROOT",
+            "VX_REQUIRE_CLANG"
           ],
           "define": {
             "GIT_CONFIG_GLOBAL": "/dev/null",
@@ -3431,7 +3491,8 @@
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
             "VX_REQUIRE_WATCH_EVENTS",
-            "VX_REQUIRE_NONROOT"
+            "VX_REQUIRE_NONROOT",
+            "VX_REQUIRE_CLANG"
           ],
           "define": {
             "GIT_CONFIG_GLOBAL": "/dev/null",
@@ -3488,7 +3549,8 @@
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
             "VX_REQUIRE_WATCH_EVENTS",
-            "VX_REQUIRE_NONROOT"
+            "VX_REQUIRE_NONROOT",
+            "VX_REQUIRE_CLANG"
           ],
           "define": {
             "GIT_CONFIG_GLOBAL": "/dev/null",
@@ -3545,7 +3607,8 @@
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
             "VX_REQUIRE_WATCH_EVENTS",
-            "VX_REQUIRE_NONROOT"
+            "VX_REQUIRE_NONROOT",
+            "VX_REQUIRE_CLANG"
           ],
           "define": {
             "GIT_CONFIG_GLOBAL": "/dev/null",
@@ -3602,7 +3665,8 @@
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
             "VX_REQUIRE_WATCH_EVENTS",
-            "VX_REQUIRE_NONROOT"
+            "VX_REQUIRE_NONROOT",
+            "VX_REQUIRE_CLANG"
           ],
           "define": {
             "GIT_CONFIG_GLOBAL": "/dev/null",
@@ -3659,7 +3723,8 @@
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
             "VX_REQUIRE_WATCH_EVENTS",
-            "VX_REQUIRE_NONROOT"
+            "VX_REQUIRE_NONROOT",
+            "VX_REQUIRE_CLANG"
           ],
           "define": {
             "GIT_CONFIG_GLOBAL": "/dev/null",
@@ -3716,7 +3781,8 @@
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
             "VX_REQUIRE_WATCH_EVENTS",
-            "VX_REQUIRE_NONROOT"
+            "VX_REQUIRE_NONROOT",
+            "VX_REQUIRE_CLANG"
           ],
           "define": {
             "GIT_CONFIG_GLOBAL": "/dev/null",
@@ -3773,7 +3839,8 @@
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
             "VX_REQUIRE_WATCH_EVENTS",
-            "VX_REQUIRE_NONROOT"
+            "VX_REQUIRE_NONROOT",
+            "VX_REQUIRE_CLANG"
           ],
           "define": {
             "GIT_CONFIG_GLOBAL": "/dev/null",
@@ -3830,7 +3897,8 @@
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
             "VX_REQUIRE_WATCH_EVENTS",
-            "VX_REQUIRE_NONROOT"
+            "VX_REQUIRE_NONROOT",
+            "VX_REQUIRE_CLANG"
           ],
           "define": {
             "GIT_CONFIG_GLOBAL": "/dev/null",
@@ -3887,7 +3955,8 @@
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
             "VX_REQUIRE_WATCH_EVENTS",
-            "VX_REQUIRE_NONROOT"
+            "VX_REQUIRE_NONROOT",
+            "VX_REQUIRE_CLANG"
           ],
           "define": {
             "GIT_CONFIG_GLOBAL": "/dev/null",
@@ -3944,7 +4013,8 @@
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
             "VX_REQUIRE_WATCH_EVENTS",
-            "VX_REQUIRE_NONROOT"
+            "VX_REQUIRE_NONROOT",
+            "VX_REQUIRE_CLANG"
           ],
           "define": {
             "GIT_CONFIG_GLOBAL": "/dev/null",
@@ -4001,7 +4071,8 @@
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
             "VX_REQUIRE_WATCH_EVENTS",
-            "VX_REQUIRE_NONROOT"
+            "VX_REQUIRE_NONROOT",
+            "VX_REQUIRE_CLANG"
           ],
           "define": {
             "GIT_CONFIG_GLOBAL": "/dev/null",
@@ -4058,7 +4129,8 @@
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
             "VX_REQUIRE_WATCH_EVENTS",
-            "VX_REQUIRE_NONROOT"
+            "VX_REQUIRE_NONROOT",
+            "VX_REQUIRE_CLANG"
           ],
           "define": {
             "GIT_CONFIG_GLOBAL": "/dev/null",
@@ -4115,7 +4187,8 @@
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
             "VX_REQUIRE_WATCH_EVENTS",
-            "VX_REQUIRE_NONROOT"
+            "VX_REQUIRE_NONROOT",
+            "VX_REQUIRE_CLANG"
           ],
           "define": {
             "GIT_CONFIG_GLOBAL": "/dev/null",
@@ -4172,7 +4245,8 @@
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
             "VX_REQUIRE_WATCH_EVENTS",
-            "VX_REQUIRE_NONROOT"
+            "VX_REQUIRE_NONROOT",
+            "VX_REQUIRE_CLANG"
           ],
           "define": {
             "GIT_CONFIG_GLOBAL": "/dev/null",
@@ -4229,7 +4303,8 @@
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
             "VX_REQUIRE_WATCH_EVENTS",
-            "VX_REQUIRE_NONROOT"
+            "VX_REQUIRE_NONROOT",
+            "VX_REQUIRE_CLANG"
           ],
           "define": {
             "GIT_CONFIG_GLOBAL": "/dev/null",
@@ -4286,7 +4361,8 @@
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
             "VX_REQUIRE_WATCH_EVENTS",
-            "VX_REQUIRE_NONROOT"
+            "VX_REQUIRE_NONROOT",
+            "VX_REQUIRE_CLANG"
           ],
           "define": {
             "GIT_CONFIG_GLOBAL": "/dev/null",
@@ -4343,7 +4419,8 @@
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
             "VX_REQUIRE_WATCH_EVENTS",
-            "VX_REQUIRE_NONROOT"
+            "VX_REQUIRE_NONROOT",
+            "VX_REQUIRE_CLANG"
           ],
           "define": {
             "GIT_CONFIG_GLOBAL": "/dev/null",
@@ -4400,7 +4477,8 @@
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
             "VX_REQUIRE_WATCH_EVENTS",
-            "VX_REQUIRE_NONROOT"
+            "VX_REQUIRE_NONROOT",
+            "VX_REQUIRE_CLANG"
           ],
           "define": {
             "GIT_CONFIG_GLOBAL": "/dev/null",
@@ -4457,7 +4535,8 @@
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
             "VX_REQUIRE_WATCH_EVENTS",
-            "VX_REQUIRE_NONROOT"
+            "VX_REQUIRE_NONROOT",
+            "VX_REQUIRE_CLANG"
           ],
           "define": {
             "GIT_CONFIG_GLOBAL": "/dev/null",
@@ -4514,7 +4593,8 @@
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
             "VX_REQUIRE_WATCH_EVENTS",
-            "VX_REQUIRE_NONROOT"
+            "VX_REQUIRE_NONROOT",
+            "VX_REQUIRE_CLANG"
           ],
           "define": {
             "GIT_CONFIG_GLOBAL": "/dev/null",
@@ -4571,7 +4651,8 @@
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
             "VX_REQUIRE_WATCH_EVENTS",
-            "VX_REQUIRE_NONROOT"
+            "VX_REQUIRE_NONROOT",
+            "VX_REQUIRE_CLANG"
           ],
           "define": {
             "GIT_CONFIG_GLOBAL": "/dev/null",
@@ -4628,7 +4709,8 @@
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
             "VX_REQUIRE_WATCH_EVENTS",
-            "VX_REQUIRE_NONROOT"
+            "VX_REQUIRE_NONROOT",
+            "VX_REQUIRE_CLANG"
           ],
           "define": {
             "GIT_CONFIG_GLOBAL": "/dev/null",
@@ -4685,7 +4767,8 @@
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
             "VX_REQUIRE_WATCH_EVENTS",
-            "VX_REQUIRE_NONROOT"
+            "VX_REQUIRE_NONROOT",
+            "VX_REQUIRE_CLANG"
           ],
           "define": {
             "GIT_CONFIG_GLOBAL": "/dev/null",
@@ -4742,7 +4825,8 @@
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
             "VX_REQUIRE_WATCH_EVENTS",
-            "VX_REQUIRE_NONROOT"
+            "VX_REQUIRE_NONROOT",
+            "VX_REQUIRE_CLANG"
           ],
           "define": {
             "GIT_CONFIG_GLOBAL": "/dev/null",
@@ -4802,7 +4886,8 @@
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
             "VX_REQUIRE_WATCH_EVENTS",
-            "VX_REQUIRE_NONROOT"
+            "VX_REQUIRE_NONROOT",
+            "VX_REQUIRE_CLANG"
           ],
           "define": {
             "GIT_CONFIG_GLOBAL": "/dev/null",
@@ -4862,7 +4947,8 @@
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
             "VX_REQUIRE_WATCH_EVENTS",
-            "VX_REQUIRE_NONROOT"
+            "VX_REQUIRE_NONROOT",
+            "VX_REQUIRE_CLANG"
           ],
           "define": {
             "GIT_CONFIG_GLOBAL": "/dev/null",
@@ -4922,7 +5008,8 @@
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
             "VX_REQUIRE_WATCH_EVENTS",
-            "VX_REQUIRE_NONROOT"
+            "VX_REQUIRE_NONROOT",
+            "VX_REQUIRE_CLANG"
           ],
           "define": {
             "GIT_CONFIG_GLOBAL": "/dev/null",
@@ -4982,7 +5069,8 @@
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
             "VX_REQUIRE_WATCH_EVENTS",
-            "VX_REQUIRE_NONROOT"
+            "VX_REQUIRE_NONROOT",
+            "VX_REQUIRE_CLANG"
           ],
           "define": {
             "GIT_CONFIG_GLOBAL": "/dev/null",
@@ -5042,7 +5130,8 @@
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
             "VX_REQUIRE_WATCH_EVENTS",
-            "VX_REQUIRE_NONROOT"
+            "VX_REQUIRE_NONROOT",
+            "VX_REQUIRE_CLANG"
           ],
           "define": {
             "GIT_CONFIG_GLOBAL": "/dev/null",
@@ -5102,7 +5191,8 @@
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
             "VX_REQUIRE_WATCH_EVENTS",
-            "VX_REQUIRE_NONROOT"
+            "VX_REQUIRE_NONROOT",
+            "VX_REQUIRE_CLANG"
           ],
           "define": {
             "GIT_CONFIG_GLOBAL": "/dev/null",

@@ -1017,6 +1017,7 @@ async function runOnBus(
           }
         : {}),
       version: VERSION,
+      workspaceRoot,
       packageCount: packagesInScope.size,
       remoteCacheEnabled,
       cacheScope: prepared.cacheScope,
@@ -1795,7 +1796,7 @@ async function runOnBus(
       final: readonly TaskOutcome[],
       into: Cache = prepared.localCache,
     ): void => {
-      if (keeps) writeRunFailures(into, runId, final, warnOf(log))
+      if (keeps) writeRunFailures(into, runId, final, warnOf(log), workspaceRoot)
     }
     if (stop.stoppedBy === undefined && !historyAfterWait) {
       stepSync('vx:history', () => {

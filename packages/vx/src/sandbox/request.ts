@@ -995,6 +995,26 @@ export const CREDENTIAL_STORES = [
   '.expo/state.json',
   '.claude/.credentials.json',
   '.codex/auth.json',
+  // Browser profiles: their cookies are signed-in sessions, Firefox's in
+  // plain SQLite and Chrome's on Linux under a fixed key when no keyring holds one.
+  '.mozilla/firefox',
+  'Library/Application Support/Firefox',
+  '.config/google-chrome',
+  '.config/chromium',
+  '.config/BraveSoftware',
+  '.config/microsoft-edge',
+  'Library/Application Support/Google/Chrome',
+  'Library/Application Support/Chromium',
+  'Library/Application Support/BraveSoftware',
+  'Library/Application Support/Microsoft Edge',
+  'Library/Cookies',
+  // SOPS' age keys, which decrypt a workspace's committed secrets.
+  '.config/sops/age',
+  'Library/Application Support/sops/age',
+  '.config/rclone',
+  '.my.cnf',
+  '.password-store',
+  '.sentryclirc',
 ]
 
 /**

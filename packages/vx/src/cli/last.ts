@@ -22,7 +22,7 @@ import {
   shortRunId,
 } from '../history/index.js'
 import { buildTaskGraph, expandRequested, isDefaultBuild, taskDefinitions } from '../graph/index.js'
-import { flagHint, formatValue, seeHelp } from './help.js'
+import { ambiguousTask, flagHint, formatValue, seeHelp } from './help.js'
 import {
   applyGraphStage,
   currentBranch,
@@ -718,7 +718,7 @@ const fmtMs = (ms: number): string => formatElapsed(ms, true)
  */
 function reasonParts(
   t: RunSummaryRow,
-  skippedHere: ReadonlySet<string>,
+  statusHere: ReadonlyMap<string, RunSummaryRow['status']>,
   inputMoved: string | undefined,
 ): string {
   const parts: string[] = []
@@ -742,11 +742,17 @@ function reasonParts(
     }
   } else if (t.status === 'skipped' && t.blockedBy !== null) {
     // A blocker that is itself a skip is a platform skip: a failure's
-    // dependants name the failure, never a skip between.
+    // dependants name the failure, never a skip between. One with no row
+    // has no status to name: --fail-fast stopped it (history keeps no
+    // aborted row), or vx watch kept it from a cycle before. "failed" was
+    // wrong for the first.
+    const blocker = statusHere.get(t.blockedBy)
     parts.push(
-      skippedHere.has(t.blockedBy)
+      blocker === 'skipped'
         ? `after ${t.blockedBy} skipped: ${OTHER_PLATFORM}`
-        : `after ${t.blockedBy} failed`,
+        : blocker === undefined
+          ? `after ${t.blockedBy} did not pass`
+          : `after ${t.blockedBy} failed`,
     )
   } else if (t.status === 'skipped' && t.exitCode === 0) {
     // Exit 0 with no blocker is a platform skip; a fail-fast skip records 1.
@@ -805,9 +811,7 @@ export function formatTaskRows(
     ? [...hits].sort((a, b) => b.durationMs - a.durationMs).slice(0, HITS_SHOWN)
     : hits
   const ordered = [...failed, ...rest, ...shownHits]
-  const skippedHere = new Set(
-    tasks.filter((t) => t.status === 'skipped').map((t) => `${t.project}#${t.task}`),
-  )
+  const statusHere = new Map(tasks.map((t) => [`${t.project}#${t.task}`, t.status]))
   // The run's own grid (`taskList`): a replay reads as the run did. What
   // the run said below the row (an exit, why it skipped) rides it dim.
   const rows = ordered.map((t) => {
@@ -823,7 +827,7 @@ export function formatTaskRows(
             ? 'cache save failed'
             : `exit ${t.exitCode}`
     const note = (
-      failure + reasonParts(t, skippedHere, inputMoved.get(`${t.project}#${t.task}`))
+      failure + reasonParts(t, statusHere, inputMoved.get(`${t.project}#${t.task}`))
     ).trim()
     const id = `${t.project}#${t.task}`
     const usualMs = usual === undefined ? undefined : (usual.get(id) ?? null)
@@ -914,10 +918,7 @@ async function bareTaskId(db: Database, task: string, at: VerbWorkspace): Promis
   if (ids.length <= 1) return ids[0] ?? task
   const here = await findCwdProject(process.cwd(), at)
   if (here !== null && ids.includes(`${here}#${task}`)) return `${here}#${task}`
-  throw new UserError(
-    `vx last: "${task}" ran in ${ids.length} projects — pick one:\n${ids.map((id) => `  ${id}`).join('\n')}`,
-    'VX_E_AMBIGUOUS',
-  )
+  throw ambiguousTask('last', task, ids)
 }
 
 export async function lastCmd(args: readonly string[]): Promise<number> {
@@ -1105,6 +1106,7 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
           ? t
           : {
               ...t,
+              ...(f.dir !== undefined ? { dir: f.dir } : {}),
               ...(f.inputMoved !== undefined ? { inputMoved: f.inputMoved } : {}),
               output: f.output,
               locations: f.locations,

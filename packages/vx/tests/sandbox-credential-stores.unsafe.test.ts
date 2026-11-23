@@ -45,6 +45,8 @@ describe.skipIf(!available)('a sandboxed task and the home credential stores', (
       ['.cargo/credentials.toml', 'CARGO'],
       ['.config/configstore/firebase-tools.json', 'FIREBASE'],
       ['.claude/.credentials.json', 'AGENT'],
+      ['.mozilla/firefox/p.default/cookies.sqlite', 'COOKIES'],
+      ['.config/sops/age/keys.txt', 'AGEKEY'],
       ['.cache/tool/state', 'CACHE'],
     ] as const) {
       await mkdir(path.dirname(path.join(home, rel)), { recursive: true })
@@ -69,6 +71,8 @@ describe.skipIf(!available)('a sandboxed task and the home credential stores', (
       '.cargo/credentials.toml',
       '.config/configstore/firebase-tools.json',
       '.claude/.credentials.json',
+      '.mozilla/firefox/p.default/cookies.sqlite',
+      '.config/sops/age/keys.txt',
       '.cache/tool/state',
     ]
       .map(read)
@@ -110,7 +114,7 @@ describe.skipIf(!available)('a sandboxed task and the home credential stores', (
         .split('\n')
         .map((l) => l.replace(/^.*?│\s?/, '').trim())
         .filter((l) =>
-          /^(no \.|SSHKEY|NPMRC|AWSKEY|BUNFIG|CARGO|FIREBASE|AGENT|CACHE|GHXDG|GITXDG|YARNRC|WROTE|CLI)/.test(
+          /^(no \.|SSHKEY|NPMRC|AWSKEY|BUNFIG|CARGO|FIREBASE|AGENT|COOKIES|AGEKEY|CACHE|GHXDG|GITXDG|YARNRC|WROTE|CLI)/.test(
             l,
           ),
         )
@@ -124,6 +128,8 @@ describe.skipIf(!available)('a sandboxed task and the home credential stores', (
       'no .cargo/credentials.toml',
       'no .config/configstore/firebase-tools.json',
       'no .claude/.credentials.json',
+      'no .mozilla/firefox/p.default/cookies.sqlite',
+      'no .config/sops/age/keys.txt',
       'CACHE',
       'no .xdg/gh',
       'no .xdg/git',

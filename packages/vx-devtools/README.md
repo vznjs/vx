@@ -107,6 +107,8 @@ export function cachedFetchJson(
   (found through its `/.well-known/openid-configuration`, kept 10 minutes,
   and read again for a key they lack at most every 30 s), `aud`, `exp`
   and `nbf` within 60 s.
+  A read that times out, drops, or answers 5xx or 429 is tried again:
+  three tries in 15 s at most, 4 s each.
   When a refetch fails, the keys last read still check tokens. A key they
   lack is then `502`, not a refused token.
 - With `oidcAuth`, every request names its repository: `vx-issuer` and `vx-repository`,

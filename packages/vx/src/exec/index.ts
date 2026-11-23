@@ -76,5 +76,8 @@ export {
   signalThrough,
   guardLine,
   guardSession,
+  markTree,
   spawnGuarded,
+  treeToken,
+  VX_RUN_TREE_ENV,
 } from './kill-tree.js'

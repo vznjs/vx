@@ -49,3 +49,10 @@ it('a main thread held in a call says so, apart from a frozen process', async ()
 it('CONTROL: a process that keeps running says nothing', async () => {
   expect(await stderrOf(0)).toBe('')
 })
+
+it("reaches stderr past a test's own swap of process.stderr.write", async () => {
+  // schema-reset-notice reads a verb's output by swapping the write: a stall
+  // inside that window was read as the verb's own stderr.
+  const said = await stderrOf(0, 'process.stderr.write = () => true; Bun.sleepSync(1_600)')
+  expect(said).toMatch(LINE)
+}, 30_000)

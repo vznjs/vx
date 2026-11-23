@@ -171,6 +171,8 @@ function cacheBuckets(stats: SummaryStats, layers: RunContext['cache']): Buckets
  */
 export interface RunContext {
   version: string
+  /** The workspace root: a frame names its task's directory from it. */
+  workspaceRoot?: string
   /** Projects with a real task in the graph — the bar's "in run" half. */
   packageCount: number
   /** The run's whole id, as `vx last` takes it; shown on the `info` row. */

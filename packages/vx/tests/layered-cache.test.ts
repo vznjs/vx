@@ -385,6 +385,26 @@ describe('LayeredCache', () => {
     ]).toEqual([[{ durationMs: 5, replace: true }], []])
   })
 
+  // A body past this machine's artifact ceiling is no corruption: a machine
+  // with a higher ceiling reads the remote's copy whole. Said "corrupt", it
+  // was distrusted and the re-run's save sent over it (2026-11-23).
+  it("a body past this machine's ceiling is a miss said so, the remote's copy kept", async () => {
+    const metas: object[] = []
+    const put = remote.layer.put.bind(remote.layer)
+    remote.layer.put = (hash, body, meta) => (metas.push(meta), put(hash, body, meta))
+    remote.layer.get = async () => ({
+      body: new Response('x', { headers: { 'content-length': String(2 ** 31) } }),
+      durationMs: undefined,
+    })
+    const errors: Error[] = []
+    const layered = makeLayered({ onRemoteError: (e) => errors.push(e) })
+    expect(await layered.get('h-past')).toBeNull()
+    await saveSample(layered, 'h-past')
+    await layered.drainUploads()
+    expect(metas).toEqual([])
+    expect(errors.map((e) => e.message.includes('cache.artifactCeiling: a miss'))).toEqual([true])
+  })
+
   // A plugin's shape is a boundary (item 252): the line names the call
   // and the shape, never "corrupt artifact" for a body that is a string.
   it('get() that resolves the wrong shape is named as the plugin bug and degraded to a miss', async () => {

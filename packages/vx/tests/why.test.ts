@@ -10,6 +10,7 @@ import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { gitIn, makeWorkspace as makeWorkspaceRoot } from './helpers/workspace.js'
 import { writeEdges } from './helpers/plugin.js'
+import { ambiguousTask } from '../src/cli/help.js'
 import { parseShowArgs } from '../src/cli/show.js'
 import { parseWhyArgs } from '../src/cli/why.js'
 import { WHAT_TO_DO } from '../src/cli/why.js'
@@ -1423,4 +1424,19 @@ describe('vx why — an upstream whose config moved', () => {
     },
     TIMEOUT,
   )
+})
+
+describe('a bare name that ran in many projects', () => {
+  it('lists the first ten and counts the rest', () => {
+    // 10,000 projects listed 10,002 lines.
+    const ids = Array.from({ length: 12 }, (_, i) => `p${String(i).padStart(2, '0')}#build`)
+    expect(ambiguousTask('why', 'build', ids).message).toBe(
+      'vx why: "build" ran in 12 projects — pick one:\n' +
+        ids
+          .slice(0, 10)
+          .map((id) => `  ${id}`)
+          .join('\n') +
+        '\n  … and 2 more (name one as <project>#build)',
+    )
+  })
 })

@@ -6,7 +6,7 @@
 // upstream is a group: it records no run, so the graph names what it gathers.
 
 import { indexDb, indexError, Cache } from '../cache/index.js'
-import { anchoredSpecError, flagHint, formatValue, seeHelp } from './help.js'
+import { ambiguousTask, anchoredSpecError, flagHint, formatValue, seeHelp } from './help.js'
 import { buildTaskGraph, isDefaultBuild, isGroupTask } from '../graph/index.js'
 import {
   cacheKeyDiff,
@@ -204,11 +204,7 @@ async function resolveTarget(
     }
     if (matches.length === 1) return matches[0]!
     if (matches.length > 1) {
-      throw new UserError(
-        `vx why: "${target}" ran in ${matches.length} projects — pick one:\n` +
-          matches.map((m) => `  ${m}`).join('\n'),
-        'VX_E_AMBIGUOUS',
-      )
+      throw ambiguousTask('why', target, matches)
     }
   }
   const ids = new LocalHistoryProvider(db).recentTaskIds()
