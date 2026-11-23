@@ -107,7 +107,7 @@ Until `bunx @vzn/vx-migrate` writes native config, `vx run build --all` maps eve
 
 ### Module boundaries
 
-`@nx/enforce-module-boundaries`' `depConstraints` in the root ESLint config become `run.rules.dependencies`, which `vx lock` checks over each project's workspace dependencies, unless `.vx/workspace.ts` sets its own. `sourceTag` is `from`, `onlyDependOnLibsWithTags` is `allow`, `notDependOnLibsWithTags` is `deny`. The config is read, never run, so a flat config's constraints must be a literal array. vx leaves out what it cannot express: `allSourceTags`, a `/regex/` tag, and banned external imports. vx checks package dependencies, not source imports, and lets an untagged project depend on anything.
+`@nx/enforce-module-boundaries`' `depConstraints` in the root ESLint config become `run.rules.dependencies`, which `vx lock` checks over each project's workspace dependencies, unless `.vx/workspace.ts` sets its own. `sourceTag` is `from`, `onlyDependOnLibsWithTags` is `allow`, `notDependOnLibsWithTags` is `deny` (an empty one says nothing and is left out). The config is read, never run, so a flat config's constraints must be a literal array. vx leaves out what it cannot express: `allSourceTags`, a `/regex/` tag, and banned external imports. vx checks package dependencies, not source imports, and lets an untagged project depend on anything.
 
 ### `nx:run-commands`
 
