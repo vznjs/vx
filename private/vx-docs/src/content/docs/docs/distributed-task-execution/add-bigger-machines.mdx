@@ -62,7 +62,7 @@ Look at the two keys: `linux.cpu4` and `linux.cpu16`, one per size.
 
 ## How vx picks the size
 
-1. A task with no history runs on any free core. vx counts it as 2 cores and 4GB when it decides how many machines to start.
+1. A task with no history runs on any free core. To decide how many machines to start, vx counts it as 2 cores and 4GB.
 2. vx records the cores and memory it used.
 3. A task that used about all of its machine runs on a **bigger** size next time.
 
@@ -95,7 +95,7 @@ cpu4: { cpu: 4, memory: '16GB' },
 
 ### Count new tasks bigger
 
-Tasks with no history count as 2 cores and 4GB. Raise it if most of yours are heavy:
+To decide how many machines to start, vx counts a task with no history as 2 cores and 4GB. Raise it if most of yours are heavy:
 
 ```ts
 dte({ unmeasured: { cpu: 4, memory: '8GB' }, /* … */ }),

@@ -1,6 +1,6 @@
 ---
 title: Try distributed task execution on your machine
-description: Start workers as local processes with local(), and watch tasks spread with no CI and no relay.
+description: Start workers as local processes with local(), and watch tasks spread with no CI and nothing to host.
 ---
 
 import Diagram from '../../../../components/guide/diagram/Diagram.astro'
@@ -25,7 +25,7 @@ VX_DTE_RUN=$(uuidgen) vx run build --all
 
 ## Add `local()`
 
-Install the plugin and give it one worker type. `local()` starts each worker as a process in its own **git worktree**.
+Give `dte()` one group of workers, here named `linux`. `local()` starts each worker as a process in its own **git worktree**: a second checkout of your workspace, made by git.
 
 ```ts title=".vx/workspace.ts" ins={2,8-11}
 import { defineWorkspace } from '@vzn/vx/config'
@@ -50,7 +50,7 @@ bun add -d @vzn/vx-dte
 vx lock
 ```
 
-<Takeaway>declare workers in five lines, with no CI and no server.</Takeaway>
+<Takeaway>declare workers in five lines, with no CI and nothing to host.</Takeaway>
 
 ## Watch a run spread
 
@@ -112,7 +112,7 @@ Fix: `git add packages/ui/src/notes.ts`, then run again.
 `prepare` runs once per worktree, before its worker starts. Point it at what your workspace needs:
 
 ```ts
-adapter: local({ prepare: 'pnpm install --frozen-lockfile' }),
+adapter: local({ prepare: 'bun install --frozen-lockfile' }),
 ```
 
 ### More workers at once
@@ -145,7 +145,7 @@ workers: { linux: { machines: { cpu4: { max: 4, cpu: 4, memory: '8GB' } } } },
 
 - A worktree of your tracked files as the run saw them at its start, uncommitted edits included.
 - The bytes git stores, with git's filters undone: line endings, `ident`, LFS. A task whose input differs on disk, such as a CRLF checkout, fails and names the file.
-- Its own relay on loopback, which `local()` starts for the run. No relay to host.
+- A relay on this machine that `local()` starts and stops with the run. Nothing to deploy.
 - The same cache as the run, so outputs come home at once.
 
 `dte()`'s own options (`workers`, `relay`, `unmeasured` and the rest): [Spread a CI run over several machines](../spread-ci-over-machines/#dteoptions).

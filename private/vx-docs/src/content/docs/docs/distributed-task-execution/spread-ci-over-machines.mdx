@@ -152,7 +152,7 @@ dte({
 | `adapter` | What starts workers: `github()`, `gitlab()`, `local()` or `docker()`. | none: the run uses workers that join it |
 | `relay` | The relay's URL. `VX_DTE_RELAY` overrides it. | the adapter's own (`local()` has one) |
 | `token` | A function returning the bearer token for the relay. | `VX_DTE_TOKEN`, else GitHub's OIDC token |
-| `unmeasured` | What a task with no history counts for when vx sizes the run: `{ cpu, memory }`. | `{ cpu: 2, memory: '4GB' }` |
+| `unmeasured` | `{ cpu, memory }`: what a task with no history counts for when vx decides how many workers to start. On a worker it takes any free core. | 2 cores, 4GB; once planning, the measured tasks' mean |
 | `headers` | Headers on every call to the relay. An unset value is left out. | none |
 
 Each machine's fields (`max`, `cpu`, `memory`, `platform`, `runsOn`): [Give heavy tasks a bigger machine](../add-bigger-machines/#a-machine-size).
