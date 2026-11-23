@@ -100,7 +100,11 @@ describe.skipIf(!available || process.platform !== 'linux')('a port bridge’s s
     const script = `
       import { readdirSync } from 'node:fs'
       import path from 'node:path'
-      const exec = await import(${JSON.stringify(path.resolve(import.meta.dir, '../src/sandbox/session.ts'))})
+      const exec = {
+        ...(await import(${JSON.stringify(path.resolve(import.meta.dir, '../src/sandbox/session.ts'))})),
+        ...(await import(${JSON.stringify(path.resolve(import.meta.dir, '../src/sandbox/grants.ts'))})),
+        ...(await import(${JSON.stringify(path.resolve(import.meta.dir, '../src/sandbox/runtime.ts'))})),
+      }
       const { portBridgeSocket } = await import(${JSON.stringify(path.resolve(import.meta.dir, '../src/sandbox/bridges.ts'))})
       await exec.initSandbox({ allowAllUnixSockets: true })
       const dir = ${JSON.stringify(dir)}

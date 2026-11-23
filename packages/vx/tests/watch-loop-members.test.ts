@@ -8,7 +8,17 @@ import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import { PLUGIN_IMPORT, packagesSource, pluginSource, writeEdges } from './helpers/plugin.js'
 import { addProject } from './helpers/workspace.js'
-import { SETTLE_MS, executions, initialOnly, ARMS, armLines, arms, startWatch, until, useWatchFixture } from './helpers/watch-loop.js'
+import {
+  SETTLE_MS,
+  executions,
+  initialOnly,
+  ARMS,
+  armLines,
+  arms,
+  startWatch,
+  until,
+  useWatchFixture,
+} from './helpers/watch-loop.js'
 import { BIN } from './helpers/vx.js'
 
 /**

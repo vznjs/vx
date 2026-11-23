@@ -214,6 +214,10 @@ export class RunReport<W extends RecordedWorker> {
     return new Map([...sum].map(([size, [s, n]]) => [size, s / n]))
   }
 
+  /**
+   * `left` when the run let it go as not needed, `lost` when it crashed or
+   * went silent, `stopped` when the run's end stopped it, else `online`.
+   */
   private state(a: W, gone: ReadonlySet<W>): string {
     if (this.retired.has(a)) return 'left'
     if (gone.has(a)) return 'lost'

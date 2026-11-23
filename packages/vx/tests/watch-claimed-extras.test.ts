@@ -10,7 +10,14 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'bun:test'
 import { PLUGIN_IMPORT, packagesSource, pluginSource } from './helpers/plugin.js'
-import { ARMS, arms, initialOnly, startWatch, until, useWatchFixture } from './helpers/watch-loop.js'
+import {
+  ARMS,
+  arms,
+  initialOnly,
+  startWatch,
+  until,
+  useWatchFixture,
+} from './helpers/watch-loop.js'
 import { BIN } from './helpers/vx.js'
 
 const claimant = (extras: readonly string[]): string =>

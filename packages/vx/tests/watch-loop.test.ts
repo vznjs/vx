@@ -13,7 +13,15 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { isAlive, killIfAlive, waitForDead } from './helpers/alive.js'
 import { addProject, gitInit, makeWorkspace } from './helpers/workspace.js'
-import { SETTLE_MS, executions, initialOnly, startWatch, until, useWatchFixture, type Watch } from './helpers/watch-loop.js'
+import {
+  SETTLE_MS,
+  executions,
+  initialOnly,
+  startWatch,
+  until,
+  useWatchFixture,
+  type Watch,
+} from './helpers/watch-loop.js'
 import { BIN } from './helpers/vx.js'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
 import { noticed } from './helpers/notice.js'

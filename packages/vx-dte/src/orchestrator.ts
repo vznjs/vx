@@ -2308,10 +2308,6 @@ export class Orchestrator extends RunReport<Worker> {
     this.lost = reason
   }
 
-  /**
-   * `left` when the run let it go as not needed, `lost` when it crashed or
-   * went silent, `stopped` when the run's end stopped it, else `online`.
-   */
   /** Why the relay was given up on; then every task runs here. */
   lost: string | undefined
 }
