@@ -377,10 +377,6 @@ export class Cache implements CacheLayer {
     return lookup.outputBytes(this.ix, hash)
   }
 
-  kept(hash: string): boolean {
-    return lookup.kept(this.ix, hash)
-  }
-
   async discard(hash: string): Promise<void> {
     if (this.ix.write) await restoring.discardEntry(this.ix, hash)
   }

@@ -130,11 +130,9 @@ it("an outcome's waited, outputs, blocks and flaky record reach its RunRecord", 
   })
 })
 
-// `--force` re-runs a key the cache already holds and keeps that entry
-// as it is, so the save wrote nothing to count: the row's `outputs` was
-// blank on every forced miss (2026-10-29, solid-js#build). The kept
-// entry holds the same bytes.
-it('a forced miss over a kept entry still reports its outputs', async () => {
+// `--force` re-runs a key the cache already holds: the row's `outputs`
+// was blank on every forced miss (2026-10-29, solid-js#build).
+it('a forced miss over a held entry still reports its outputs', async () => {
   await addProject(
     root,
     'p',

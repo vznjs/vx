@@ -216,8 +216,8 @@ export function taskLog(db: Database, taskId: string, runId?: string): TaskLog |
       before === undefined || tries === null || tries === undefined
         ? ''
         : `${before}${attemptHeading(tries, tries, 'passed')}`
-    // The entry is the key's, not the run's: a `--force` run kept the one it
-    // found, and a key evicted and saved again, or saved by two checkouts
+    // The entry is the key's, not the run's: a `--force` run saved over the
+    // one it found, and a key evicted and saved again, or saved by two checkouts
     // of one store at once, holds another run's output. The entry names
     // the run that wrote it and when, so the log is this run's only when
     // this run wrote it, or this run hit it and nothing wrote it since;

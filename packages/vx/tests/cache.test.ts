@@ -2488,7 +2488,7 @@ describe('Cache storage (v10)', () => {
     expect(await readFile(outFile, 'utf8')).toBe('short')
   })
 
-  it('save() in a cache that does not read (--force) keeps a prior entry at the same hash', async () => {
+  it('save() in a cache that does not read (--force) replaces a prior entry at the same hash', async () => {
     const { mkdir, writeFile } = await import('node:fs/promises')
     await mkdir(projectDir, { recursive: true })
     const outFile = path.join(projectDir, 'dist', 'out.txt')
@@ -2507,8 +2507,8 @@ describe('Cache storage (v10)', () => {
       },
     })
 
-    // Second save at the same hash with different content: it succeeds and
-    // writes nothing, so a read still sees the first.
+    // Second save at the same hash with different content: the forced run's
+    // bytes replace the first (a doubted entry is what --force repairs).
     await writeFile(outFile, 'second-version-longer')
     const forced = new Cache(
       cacheDir,
@@ -2533,15 +2533,15 @@ describe('Cache storage (v10)', () => {
 
     forced.close()
     const got = await cache.get('h-overwrite')
-    expect(got?.command).toBe('first')
-    expect(got?.durationMs).toBe(1)
-    expect(got?.stdout).toBe('')
-    // The stored payload is the first write's. Restore into a sibling dir
+    expect(got?.command).toBe('second')
+    expect(got?.durationMs).toBe(2)
+    expect(got?.stdout).toBe('replaced')
+    // The stored payload is the second write's. Restore into a sibling dir
     // and read the materialized file.
     const restoreDir = path.join(workspaceRoot, 'restore-target')
     await cache.restoreOutputs('h-overwrite', restoreDir)
     const stored = await readFile(path.join(restoreDir, 'dist', 'out.txt'), 'utf8')
-    expect(stored).toBe('first')
+    expect(stored).toBe('second-version-longer')
   })
 
   it('recordRun() persists cache-hit-remote with cache_hit=1', async () => {

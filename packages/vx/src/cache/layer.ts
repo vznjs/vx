@@ -310,11 +310,6 @@ export interface TaskMemo {
    * every hit restores). Skips a file that no longer matches.
    */
   recordOutputStamps?(hash: string, projectDir: string, workspaceRoot: string): void
-  /**
-   * Stamp `hash`'s files as a `--force` run wrote them, beside a kept entry
-   * whose rows name the last save's mtimes: for this process's checks only.
-   */
-  stampWritten?(hash: string, projectDir: string, workspaceRoot: string): void
   loadOutputDirsBatch?(hashes: readonly string[]): Map<string, OutputDirRow[]>
   outputDirsCurrent?(projectDir: string, rows: readonly OutputDirRow[]): boolean
   /**
@@ -478,11 +473,6 @@ export interface CacheLayer {
   artifactSize?(hash: string): number | undefined
   /** The output files' bytes, uncompressed, of the entry this process just saved; asked once. */
   outputBytes?(hash: string): number | undefined
-  /**
-   * True when the last `save` of `hash` found the key stored and kept that
-   * entry (a `--force` run): nothing of this run's was saved; asked once.
-   */
-  kept?(hash: string): boolean
   /**
    * Remove the entry this machine holds for `hash`: one this run saved
    * whose key turned out not to name the bytes it was built from.
