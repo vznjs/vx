@@ -6,11 +6,11 @@ import Demo from '../Demo.astro'
 import { PROJECTS, TASKS, USES, command, plan } from './model/run-picker.ts'
 
 const examples = [
-  ['build', { kind: 'here', project: '@shop/web' }],
-  ['test', { kind: 'filter', filters: ['...@shop/ui'] }],
+  ['build', { kind: 'here', project: '@demo/web' }],
+  ['test', { kind: 'filter', filters: ['...@demo/ui'] }],
   ['lint', { kind: 'all' }],
 ] as const
-const presets = ['@shop/web', '@shop/web...', '...@shop/ui', '@shop/*', '!@shop/api', './packages/api', '@shop/wbe']
+const presets = ['@demo/web', '@demo/web...', '...@demo/ui', '@demo/*', '!@demo/api', './packages/api', '@demo/wbe']
 ---
 
 <Demo name="run-picker">
@@ -39,7 +39,7 @@ const presets = ['@shop/web', '@shop/web...', '...@shop/ui', '@shop/*', '!@shop/
     <button type="button" data-mode="affected">--affected</button>
   </div>
   <div class="vx-row filter-row" data-js hidden>
-    <input class="filter" type="text" value="...@shop/ui" aria-label="Filter patterns, space separated" spellcheck="false" />
+    <input class="filter" type="text" value="...@demo/ui" aria-label="Filter patterns, space separated" spellcheck="false" />
     {presets.map((p) => <button type="button" class="preset" data-preset={p}>{p}</button>)}
   </div>
   <div class="vx-row changed-row" data-js hidden>

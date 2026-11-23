@@ -85,33 +85,47 @@ function fencedBlock(page: string, lang: string, firstLine: string): string {
   return page.slice(body, end)
 }
 
-// The running-tasks guide merged into the CI page (the short site).
-describe('the CI guide shows what --dry prints', () => {
-  it('its plan is formatPlanText on two local hits', () => {
+// The Running tasks page's "See the plan first" sample: the rows vx plans
+// for the demo workspace after an edit to ui (three builds run, api's is a
+// local hit, ui blocks two). The sample came from a run with history, so
+// its `usual` times and `predicted` line are read past.
+describe('the Running tasks page shows what --dry prints', () => {
+  it('its plan is formatPlanText on one local hit and three misses', () => {
     const page = readFileSync(path.join(DOCS, 'docs', 'running-tasks.mdx'), 'utf8')
-    const task = (id: string, hash: string, deps: string[] = []) => ({
+    const task = (id: string, cacheStatus: 'miss' | 'hit-local', deps: string[] = []) => ({
       node: {
         id,
         projectName: id.split('#')[0]!,
         taskName: id.split('#')[1]!,
         config: {},
       } as unknown as TaskNode,
-      hash,
-      cacheStatus: 'hit-local' as const,
+      hash: 'e04649970f18ba23',
+      cacheStatus,
       deps,
     })
-    const plan: RunPlan = {
+    const plan = {
       tasks: [
-        task('@demo/ui#build', 'e04649970f18ba23'),
-        // web builds on ui: a cached ui still blocks it.
-        task('@demo/web#build', 'b421f74f0107bb20', ['@demo/ui#build']),
+        task('@demo/admin#build', 'miss', ['@demo/ui#build']),
+        task('@demo/ui#build', 'miss'),
+        task('@demo/api#build', 'hit-local'),
+        task('@demo/web#build', 'miss', ['@demo/ui#build']),
       ],
-    }
-    // The page shows vx's colours (an `ansi` block); its text is the plain plan.
-    const start = page.indexOf('```ansi\n', page.indexOf('`--dry` prints'))
+    } as unknown as RunPlan
+    const start = page.indexOf('```ansi\n', page.indexOf('\n## 7. See the plan first\n'))
     const block = page.slice(start + '```ansi\n'.length, page.indexOf('\n```', start))
-    const plain = block.replace(new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, 'g'), '')
-    expect(plain).toBe(formatPlanText(plan).replace(/ +$/gm, '').replace(/\n+$/, ''))
+    const norm = (text: string) =>
+      text
+        .replace(new RegExp(`${String.fromCharCode(27)}\\[[0-9;:]*m`, 'g'), '')
+        .split('\n')
+        .filter((l) => !/^\s*predicted\s/.test(l))
+        .map((l) =>
+          l
+            .replace(/~\d+ms/, '—')
+            .replace(/\s+/g, ' ')
+            .trim(),
+        )
+        .filter((l) => l !== '')
+    expect(norm(block)).toEqual(norm(formatPlanText(plan)))
   })
 })
 

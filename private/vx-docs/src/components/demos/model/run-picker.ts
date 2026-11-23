@@ -1,27 +1,27 @@
 // The run picker's model: which tasks one `vx run` starts in the Running
-// tasks page's shop workspace. Four projects, three tasks; `build` and
+// tasks page's demo workspace. Four projects, three tasks; `build` and
 // `test` wait on `^build`, `lint` on nothing. Pure, so
 // tests/run-picker.test.ts holds it to the plans real vx printed for the
 // same workspace.
 
-export const PROJECTS = ['@shop/ui', '@shop/web', '@shop/admin', '@shop/api'] as const
+export const PROJECTS = ['@demo/ui', '@demo/web', '@demo/admin', '@demo/api'] as const
 export type Project = (typeof PROJECTS)[number]
 export const TASKS = ['build', 'test', 'lint'] as const
 export type Task = (typeof TASKS)[number]
 
 /** What each project uses (a lockfile plugin's edges). */
 export const USES: Record<Project, Project[]> = {
-  '@shop/ui': [],
-  '@shop/web': ['@shop/ui'],
-  '@shop/admin': ['@shop/ui'],
-  '@shop/api': [],
+  '@demo/ui': [],
+  '@demo/web': ['@demo/ui'],
+  '@demo/admin': ['@demo/ui'],
+  '@demo/api': [],
 }
 
 const DIR: Record<Project, string> = {
-  '@shop/ui': 'packages/ui',
-  '@shop/web': 'packages/web',
-  '@shop/admin': 'packages/admin',
-  '@shop/api': 'packages/api',
+  '@demo/ui': 'packages/ui',
+  '@demo/web': 'packages/web',
+  '@demo/admin': 'packages/admin',
+  '@demo/api': 'packages/api',
 }
 
 /** `build` and `test` declare `dependsOn: ['^build']`. */

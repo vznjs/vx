@@ -1,5 +1,5 @@
 // The Running tasks page's picker against the plans real vx printed for
-// the same four-project shop (`vx run … --dry`, 2026-11-23): a widget that
+// the same four-project demo workspace (`vx run … --dry`, 2026-11-23): a widget that
 // drew a different plan from vx's would teach the wrong selection.
 
 import { describe, expect, it } from 'bun:test'
@@ -9,32 +9,32 @@ const ids = (p: ReturnType<typeof plan>) => p.tasks.map((t) => t.id)
 
 describe('run picker', () => {
   it('runs the cwd project and the builds it waits on', () => {
-    const p = plan('build', { kind: 'here', project: '@shop/web' })
+    const p = plan('build', { kind: 'here', project: '@demo/web' })
     expect(p.tasks).toEqual([
-      { id: '@shop/ui#build', role: 'first' },
-      { id: '@shop/web#build', role: 'requested' },
+      { id: '@demo/ui#build', role: 'first' },
+      { id: '@demo/web#build', role: 'requested' },
     ])
   })
 
-  it("'...@shop/ui' plans what vx planned", () => {
-    expect(ids(plan('test', { kind: 'filter', filters: ['...@shop/ui'] }))).toEqual([
-      '@shop/admin#test',
-      '@shop/ui#build',
-      '@shop/ui#test',
-      '@shop/web#test',
+  it("'...@demo/ui' plans what vx planned", () => {
+    expect(ids(plan('test', { kind: 'filter', filters: ['...@demo/ui'] }))).toEqual([
+      '@demo/admin#test',
+      '@demo/ui#build',
+      '@demo/ui#test',
+      '@demo/web#test',
     ])
   })
 
   it('--affected reaches users through ^build, and lint stays put', () => {
-    const changed = { kind: 'affected', changed: ['@shop/ui', '@shop/api'] } as const
+    const changed = { kind: 'affected', changed: ['@demo/ui', '@demo/api'] } as const
     expect(ids(plan('test', changed))).toEqual([
-      '@shop/admin#test',
-      '@shop/api#test',
-      '@shop/ui#build',
-      '@shop/ui#test',
-      '@shop/web#test',
+      '@demo/admin#test',
+      '@demo/api#test',
+      '@demo/ui#build',
+      '@demo/ui#test',
+      '@demo/web#test',
     ])
-    expect(ids(plan('lint', changed))).toEqual(['@shop/api#lint', '@shop/ui#lint'])
+    expect(ids(plan('lint', changed))).toEqual(['@demo/api#lint', '@demo/ui#lint'])
   })
 
   it('reads every operator the page shows', () => {
@@ -42,23 +42,23 @@ describe('run picker', () => {
       const r = filterProjects(f)
       return 'error' in r ? r.error : r.projects
     }
-    expect(of('@shop/web...')).toEqual(['@shop/ui', '@shop/web'])
-    expect(of('@shop/web^...')).toEqual(['@shop/ui'])
-    expect(of('...^@shop/ui')).toEqual(['@shop/web', '@shop/admin'])
-    expect(of('./packages/api')).toEqual(['@shop/api'])
-    expect(of('web')).toEqual(['@shop/web'])
-    expect(of('@shop/*')).toHaveLength(4)
-    expect(of('@shop/wbe')).toBe('no projects matched filter(s): "@shop/wbe" · fix @shop/web')
+    expect(of('@demo/web...')).toEqual(['@demo/ui', '@demo/web'])
+    expect(of('@demo/web^...')).toEqual(['@demo/ui'])
+    expect(of('...^@demo/ui')).toEqual(['@demo/web', '@demo/admin'])
+    expect(of('./packages/api')).toEqual(['@demo/api'])
+    expect(of('web')).toEqual(['@demo/web'])
+    expect(of('@demo/*')).toHaveLength(4)
+    expect(of('@demo/wbe')).toBe('no projects matched filter(s): "@demo/wbe" · fix @demo/web')
   })
 
   it('an exclusion alone takes from every project', () => {
-    expect(ids(plan('lint', { kind: 'filter', filters: ['!@shop/api'] }))).toEqual([
-      '@shop/admin#lint',
-      '@shop/ui#lint',
-      '@shop/web#lint',
+    expect(ids(plan('lint', { kind: 'filter', filters: ['!@demo/api'] }))).toEqual([
+      '@demo/admin#lint',
+      '@demo/ui#lint',
+      '@demo/web#lint',
     ])
-    expect(command('lint', { kind: 'filter', filters: ['!@shop/api'] })).toBe(
-      "vx run lint --filter '!@shop/api'",
+    expect(command('lint', { kind: 'filter', filters: ['!@demo/api'] })).toBe(
+      "vx run lint --filter '!@demo/api'",
     )
   })
 })

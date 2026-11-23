@@ -1,6 +1,6 @@
 // `<vx-run-picker>`: enhances `RunPicker.astro`. The reader picks a task
 // and how to select projects; the element draws which tasks that
-// `vx run` starts in the shop workspace, and which run first because
+// `vx run` starts in the demo workspace, and which run first because
 // another waits on them.
 import {
   PROJECTS,
@@ -17,7 +17,7 @@ type Mode = 'here' | 'all' | 'filter' | 'affected'
 class RunPicker extends HTMLElement {
   #task: Task = 'build'
   #mode: Mode = 'here'
-  #changed = new Set<Project>(['@shop/ui'])
+  #changed = new Set<Project>(['@demo/ui'])
 
   connectedCallback() {
     for (const el of this.querySelectorAll<HTMLElement>('[data-js]')) el.hidden = false
@@ -47,7 +47,7 @@ class RunPicker extends HTMLElement {
   #input = () => this.querySelector<HTMLInputElement>('.filter')!
 
   #scope(): Scope {
-    if (this.#mode === 'here') return { kind: 'here', project: '@shop/web' }
+    if (this.#mode === 'here') return { kind: 'here', project: '@demo/web' }
     if (this.#mode === 'all') return { kind: 'all' }
     if (this.#mode === 'affected') return { kind: 'affected', changed: [...this.#changed] }
     const filters = this.#input()

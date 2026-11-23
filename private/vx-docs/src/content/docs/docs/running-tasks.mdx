@@ -3,24 +3,25 @@ title: Running tasks
 description: Run a task with vx run, choose the projects it runs in, and see the plan before anything starts.
 ---
 
-import { Aside, FileTree } from '@astrojs/starlight/components'
+import { FileTree } from '@astrojs/starlight/components'
+import { Levels, Deeper, Concept, Quiz, Walkthrough, Frame, Takeaway, NextStep } from '../../../components/learn'
 import RunPicker from '../../../components/demos/RunPicker.astro'
-import Takeaway from '../../../components/learn/Takeaway.astro'
 
 `vx run <task>` runs a task, and every task it needs first.
 
 ```sh
+cd packages/web
 vx run build
 ```
 
-This page follows one small shop through a day of runs. Each section
-ends with something you can do that you could not before.
+<Levels />
 
----
+This page follows one workspace through a day of runs. Each section ends
+with something you can do that you could not before.
 
-## Meet the shop
+## Meet the workspace
 
-Four projects. The **web** store and the **admin** panel use a shared
+Four projects. The **web** app and the **admin** panel use a shared
 **ui** kit. The **api** stands alone.
 
 <FileTree>
@@ -34,9 +35,9 @@ Four projects. The **web** store and the **admin** panel use a shared
 
 ```mermaid
 flowchart LR
-  ui["@shop/ui"] --> web["@shop/web"]
-  ui --> admin["@shop/admin"]
-  api["@shop/api"]
+  ui["@demo/ui"] --> web["@demo/web"]
+  ui --> admin["@demo/admin"]
+  api["@demo/api"]
 ```
 
 An arrow reads "is used by". Every project declares the same three
@@ -72,11 +73,12 @@ export default defineProject({
 })
 ```
 
-`^build` means "first build the projects I use". That one line is why
-`web` never builds against a stale `ui`. [Tasks](../tasks/) explains
-every key.
+<Concept term="^build">
+  "First build every project I use." It is why `web` never builds or
+  tests against a stale `ui`. [Tasks](../tasks/) explains every key.
+</Concept>
 
----
+<Takeaway>read a workspace's graph: who uses whom, and which tasks wait on which.</Takeaway>
 
 ## 1. Run one task
 
@@ -88,7 +90,7 @@ vx run build
 ```
 
 ```ansi
-[2m┌─[0m [1m[38;2;244;114;182m@shop/web[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m>[0m $ vite build
+[2m┌─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m>[0m $ vite build
 [36mvite v8.3.8 [32mbuilding client environment for production...[36m[39m
 transforming...
 [32m✓[0m 2 modules transformed.
@@ -96,8 +98,8 @@ rendering chunks...
 computing gzip size...
 [2mdist/[0m[36mindex.js  [0m[1;2m0.04 kB[0m[2m │ gzip: 0.06 kB[0m
 
-[32m✓ built in 27ms[39m
-[0m[2m└─[0m [1m[38;2;244;114;182m@shop/web[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(172ms)[0m [2msuccess[0m
+[32m✓ built in 29ms[39m
+[0m[2m└─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(180ms)[0m [2msuccess[0m
 
 [4m[58;2;110;118;129m  [1m[38;2;167;139;250mSummary[0m[4m[58;2;110;118;129m                                                                                                       [2mvx 0.0.0[0m
   [2mprojects[0m  [38;2;234;179;8m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m[2m▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱[0m
@@ -107,31 +109,28 @@ computing gzip size...
   [2mcache   [0m  [38;2;56;189;248m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
             [2mlocal[0m [38;2;56;189;248m2↑[0m
 
-  [2minfo    [0m  4 workers [2m·[0m local cache [2m·[0m run 01a209c1-2438-7500-bb1a-b5fb76f7f44b
-  [2mtime    [0m  415ms [2m·[0m [2mmax 191ms[0m [2m·[0m [2mavg 182ms[0m [2m·[0m [2mmin 172ms[0m
+  [2minfo    [0m  4 workers [2m·[0m local cache [2m·[0m run 01a209c8-d95e-77d0-8786-1a9ab2ce5dde
+  [2mtime    [0m  436ms [2m·[0m [2mmax 200ms[0m [2m·[0m [2mavg 190ms[0m [2m·[0m [2mmin 180ms[0m
 ```
 
-Look at `2 in run`. You asked for one build and got two: `@shop/ui`
-built first, because `web` waits on it. Only `web`'s log is shown; its
-helpers run quietly unless they fail.
+Look at `2 in run`. You asked for one build and got two: `@demo/ui`
+built first, because `web` waits on it. Only `web`'s log is shown; the
+tasks it needs run quietly unless they fail.
 
-<Takeaway>Build any project, with everything it needs, from inside its folder.</Takeaway>
-
----
+<Takeaway>build any project, with everything it needs, from inside its folder.</Takeaway>
 
 ## 2. Run it everywhere
 
 From the workspace root, `--all` runs the task in every project that
-declares it.
+declares it. Step through three runs of the same command:
 
-```sh
-vx run build --all
-```
+<Walkthrough title="vx run build --all, three times">
+<Frame title="1. Two builds run, two are up to date">
 
 ```ansi
 [4m[58;2;110;118;129m  [1m[38;2;167;139;250mTasks[0m[4m[58;2;110;118;129m     [2mstatus  cache     ±usual    time   cpu    mem outputs  blocks worker         task[0m[4m[58;2;110;118;129m                           [0m
-            [38;2;34;197;94msuccess[0m [2mmiss[0m           [2m—[0m   [38;2;203;213;225m221ms[0m  [2m107%[0m  [2m117MB[0m     [2m48B[0m       [2m0[0m [2mlocal[0m          [38;2;232;121;249m@shop/api[0m[2m#[0m[38;2;244;114;182mbuild[0m
-            [38;2;34;197;94msuccess[0m [2mmiss[0m           [2m—[0m   [38;2;203;213;225m224ms[0m  [2m103%[0m  [2m113MB[0m     [2m50B[0m       [2m0[0m [2mlocal[0m          [38;2;167;139;250m@shop/admin[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m           [2m—[0m   [38;2;203;213;225m193ms[0m  [2m103%[0m  [2m115MB[0m     [2m50B[0m       [2m0[0m [2mlocal[0m          [38;2;129;140;248m@demo/admin[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m           [2m—[0m   [38;2;203;213;225m218ms[0m   [2m97%[0m  [2m115MB[0m     [2m48B[0m       [2m0[0m [2mlocal[0m          [38;2;232;121;249m@demo/api[0m[2m#[0m[38;2;244;114;182mbuild[0m
 
 [4m[58;2;110;118;129m  [1m[38;2;167;139;250mSummary[0m[4m[58;2;110;118;129m                                                                                                       [2mvx 0.0.0[0m
   [2mprojects[0m  [38;2;234;179;8m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
@@ -141,12 +140,15 @@ vx run build --all
   [2mcache   [0m  [38;2;34;197;94m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m[38;2;56;189;248m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
             [2mlocal[0m [38;2;34;197;94m2✓[0m [38;2;56;189;248m2↑[0m
 
-  [2minfo    [0m  4 workers [2m·[0m local cache [2m·[0m run 01a209c1-26ae-7182-827a-7fe570c01226
-  [2mtime    [0m  305ms [2m·[0m [2mmax 224ms[0m [2m·[0m [2mavg 223ms[0m [2m·[0m [2mmin 221ms[0m
+  [2minfo    [0m  4 workers [2m·[0m local cache [2m·[0m run 01a209c8-dbe5-758e-85b1-662262cb7a49
+  [2mtime    [0m  287ms [2m·[0m [2mmax 218ms[0m [2m·[0m [2mavg 206ms[0m [2m·[0m [2mmin 193ms[0m
 ```
 
-Only `api` and `admin` ran. `ui` and `web` were built a minute ago, so
-the `cache` line counts them as `2✓`. Run the same command again:
+Only `api` and `admin` ran. `ui` and `web` were built in section 1, so
+the `cache` line counts them as `2✓`.
+
+</Frame>
+<Frame title="2. Again: nothing changed, nothing runs">
 
 ```ansi
 [4m[58;2;110;118;129m  [1m[38;2;167;139;250mSummary[0m[4m[58;2;110;118;129m                                                                                                       [2mvx 0.0.0[0m
@@ -157,12 +159,14 @@ the `cache` line counts them as `2✓`. Run the same command again:
   [2mcache   [0m  [38;2;34;197;94m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
             [2mlocal[0m [38;2;34;197;94m4✓[0m
 
-  [2minfo    [0m  4 workers [2m·[0m local cache [2m·[0m run 01a209c1-2898-70a6-bc78-28e577775b0d
-  [2mtime    [0m  20ms
+  [2minfo    [0m  4 workers [2m·[0m local cache [2m·[0m run 01a209c8-ddba-7415-bd3d-08a87a7ad3bb
+  [2mtime    [0m  23ms
 ```
 
-Nothing changed, so nothing ran: `4✓` in 20 ms. Now delete every `dist`
-folder and run it once more:
+`4✓` in 23 ms. Every output is already on disk.
+
+</Frame>
+<Frame title="3. Delete every dist/, then run again">
 
 ```sh
 rm -rf packages/*/dist
@@ -178,24 +182,25 @@ vx run build --all
   [2mcache   [0m  [38;2;56;189;248m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
             [2mlocal[0m [38;2;56;189;248m4↓[0m
 
-  [2minfo    [0m  4 workers [2m·[0m local cache [2m·[0m run 01a209c3-7ea7-750c-82f9-7c1afe5b4fc4
-  [2mtime    [0m  26ms
+  [2minfo    [0m  4 workers [2m·[0m local cache [2m·[0m run 01a209c8-dec7-71ea-a308-46d6ee7bd98f
+  [2mtime    [0m  41ms
 ```
 
-`4↓`: vx put each `dist` back from its cache instead of building.
+`4↓`: vx put each `dist/` back from its cache instead of building.
+
+</Frame>
+</Walkthrough>
+
 The `cache` line always tells you which of these happened:
 
 | Mark | Means | The task |
 | ---- | ----- | -------- |
-| <span style="color:var(--vx-ok)">`✓`</span> | up to date: its outputs are already on disk | did not run |
-| <span style="color:var(--vx-link)">`↓`</span> | restored from the cache | did not run |
-| <span style="color:var(--vx-link)">`↑`</span> | ran, then saved to the cache | ran |
+| `✓` | up to date: its outputs are already on disk | did not run |
+| `↓` | restored from the cache | did not run |
+| `↑` | ran, then saved to the cache | ran |
 | `∅` | ran with no cache | ran |
 
-<Takeaway>Run a task across the whole workspace, and read from one line what
-  ran and what was skipped. Why it skips: [Caching](../caching/).</Takeaway>
-
----
+<Takeaway>run a task across the whole workspace, and read from one line what ran and what was skipped.</Takeaway>
 
 ## 3. Choose the projects
 
@@ -208,27 +213,27 @@ The filters you will use most:
 
 | Filter | Picks |
 | ------ | ----- |
-| `@shop/web` | that project |
+| `@demo/web` | that project |
 | `web` | the same: the scope may be left out |
-| `@shop/*` | every project whose name matches |
+| `@demo/*` | every project whose name matches |
 | `./packages/api` | the project in that folder |
-| `@shop/web...` | `web` and everything it uses |
-| `...@shop/ui` | `ui` and everything that uses it |
-| `!@shop/api` | everything except `api` |
+| `@demo/web...` | `web` and everything it uses |
+| `...@demo/ui` | `ui` and everything that uses it |
+| `!@demo/api` | everything except `api` |
 
-Here is the second-to-last one for real. Every project that uses `ui`
+The same `...@demo/ui` in a real plan. Every project that uses `ui`
 tests against its fresh build:
 
 ```sh
-vx run test --filter '...@shop/ui' --dry
+vx run test --filter '...@demo/ui' --dry
 ```
 
 ```ansi
 [4m[58;2;110;118;129m  [1m[38;2;167;139;250mPlan[0m[4m[58;2;110;118;129m [2m4[0m[4m[58;2;110;118;129m    [2mstatus  cache      usual    time   cpu    mem outputs  blocks worker         task[0m[4m[58;2;110;118;129m                           [0m
-            [38;2;6;182;212mrun[0m     [2mmiss[0m           [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2mlocal[0m          [38;2;167;139;250m@shop/admin[0m[2m#[0m[38;2;96;165;250mtest[0m
-            [38;2;34;197;94mcached[0m  [38;2;56;189;248mlocal[0m          [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [38;2;203;213;225m2[0m [2mlocal[0m          [38;2;96;165;250m@shop/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m
-            [38;2;6;182;212mrun[0m     [2mmiss[0m           [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2mlocal[0m          [38;2;96;165;250m@shop/ui[0m[2m#[0m[38;2;96;165;250mtest[0m
-            [38;2;6;182;212mrun[0m     [2mmiss[0m           [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2mlocal[0m          [38;2;244;114;182m@shop/web[0m[2m#[0m[38;2;96;165;250mtest[0m
+            [38;2;6;182;212mrun[0m     [2mmiss[0m           [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2mlocal[0m          [38;2;129;140;248m@demo/admin[0m[2m#[0m[38;2;96;165;250mtest[0m
+            [38;2;34;197;94mcached[0m  [38;2;56;189;248mlocal[0m          [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [38;2;203;213;225m2[0m [2mlocal[0m          [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;6;182;212mrun[0m     [2mmiss[0m           [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2mlocal[0m          [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;96;165;250mtest[0m
+            [38;2;6;182;212mrun[0m     [2mmiss[0m           [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2mlocal[0m          [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;96;165;250mtest[0m
 
   [2mtasks   [0m  [38;2;203;213;225m4 planned · 1 cache hit (1 local) · 3 would run[0m
 ```
@@ -237,17 +242,16 @@ Every filter must match a project. A typo stops the run before anything
 starts, and `fix` names what you meant:
 
 ```sh
-vx run test --filter @shop/wbe
+vx run test --filter @demo/wbe
 ```
 
 ```ansi
-[38;2;239;68;68m✗[0m [1mvx run[0m  no projects matched filter(s): "@shop/wbe"
+[38;2;239;68;68m✗[0m [1mvx run[0m  [38;2;203;213;225mno projects matched filter(s): "@demo/wbe"[0m
 
-  [2mfix[0m  [1m@shop/web[0m
+  [2mfix[0m  [1m@demo/web[0m
 ```
 
-<details>
-<summary><strong>Dig deeper:</strong> every filter form, and how filters combine</summary>
+<Deeper level="details" title="Every filter form, and how filters combine">
 
 | Form | Picks |
 | ---- | ----- |
@@ -280,12 +284,9 @@ which reads what the package manager installed, and any cross-project
 
 Full grammar and error messages: [`--filter`](../../cli/run/#filter-dsl---filter).
 
-</details>
+</Deeper>
 
-<Takeaway>Run a task in exactly the projects you mean, by name, folder or
-  neighbours.</Takeaway>
-
----
+<Takeaway>run a task in exactly the projects you mean, by name, folder or neighbours.</Takeaway>
 
 ## 4. Run only what changed
 
@@ -298,25 +299,26 @@ vx run test --affected=main --dry
 
 ```ansi
 [4m[58;2;110;118;129m  [1m[38;2;167;139;250mPlan[0m[4m[58;2;110;118;129m [2m5[0m[4m[58;2;110;118;129m    [2mstatus  cache      usual    time   cpu    mem outputs  blocks worker         task[0m[4m[58;2;110;118;129m                           [0m
-            [38;2;6;182;212mrun[0m     [2mmiss[0m           [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2mlocal[0m          [38;2;167;139;250m@shop/admin[0m[2m#[0m[38;2;96;165;250mtest[0m  [2maffected: packages/ui/src/index.ts changed (an input), via @shop/ui#build[0m
-            [38;2;6;182;212mrun[0m     [2mmiss[0m      [2m~191ms[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [38;2;203;213;225m2[0m [2mlocal[0m          [38;2;96;165;250m@shop/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m
-            [38;2;6;182;212mrun[0m     [2mmiss[0m      [2m~421ms[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2mlocal[0m          [38;2;232;121;249m@shop/api[0m[2m#[0m[38;2;96;165;250mtest[0m  [2maffected: packages/api/src/index.ts changed (an input)[0m
-            [38;2;6;182;212mrun[0m     [2mmiss[0m           [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2mlocal[0m          [38;2;96;165;250m@shop/ui[0m[2m#[0m[38;2;96;165;250mtest[0m  [2maffected: packages/ui/src/index.ts changed (an input)[0m
-            [38;2;6;182;212mrun[0m     [2mmiss[0m           [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2mlocal[0m          [38;2;244;114;182m@shop/web[0m[2m#[0m[38;2;96;165;250mtest[0m  [2maffected: packages/ui/src/index.ts changed (an input), via @shop/ui#build[0m
+            [38;2;6;182;212mrun[0m     [2mmiss[0m           [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2mlocal[0m          [38;2;129;140;248m@demo/admin[0m[2m#[0m[38;2;96;165;250mtest[0m  [2maffected: packages/ui/src/index.ts changed (an input), via @demo/ui#build[0m
+            [38;2;6;182;212mrun[0m     [2mmiss[0m      [2m~200ms[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [38;2;203;213;225m2[0m [2mlocal[0m          [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;6;182;212mrun[0m     [2mmiss[0m           [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2mlocal[0m          [38;2;232;121;249m@demo/api[0m[2m#[0m[38;2;96;165;250mtest[0m  [2maffected: packages/api/src/index.ts changed (an input)[0m
+            [38;2;6;182;212mrun[0m     [2mmiss[0m           [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2mlocal[0m          [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;96;165;250mtest[0m  [2maffected: packages/ui/src/index.ts changed (an input)[0m
+            [38;2;6;182;212mrun[0m     [2mmiss[0m           [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2mlocal[0m          [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;96;165;250mtest[0m  [2maffected: packages/ui/src/index.ts changed (an input), via @demo/ui#build[0m
 
   [2mtasks    [0m  [38;2;203;213;225m5 planned · 5 would run[0m
-  [2mpredicted[0m  [38;2;203;213;225m~421ms wall · ~612ms total execution · 3 tasks never timed (+?)[0m
+  [2mpredicted[0m  [38;2;203;213;225m~200ms wall · ~200ms total execution · 4 tasks never timed (+?)[0m
 ```
 
-Every row says why it is there. `admin#test` runs because `ui` changed
-and it waits on `ui#build`. Try **`--affected`** in the picker above,
-then switch the task to `lint`.
+Every row says why it is there. `web#test` runs because `ui` changed and
+it waits on `ui#build`. Try **`--affected`** in the picker above, then
+switch the task to `lint`.
 
-`lint` waits on nothing, so a change in `ui` reaches only `ui#lint`.
-A change travels only along `dependsOn`.
+<Quiz q="On a new branch you change only packages/api/src/index.ts. Which tasks does vx run test --affected start?">
+  Only `@demo/api#test`. Nothing uses `api`, so the change reaches no
+  other project.
+</Quiz>
 
-<details>
-<summary><strong>Dig deeper:</strong> which commit <code>--affected</code> compares with</summary>
+<Deeper level="details" title="Which commit --affected compares with">
 
 Bare `--affected` picks its base, the first that applies:
 
@@ -337,14 +339,13 @@ Set it in [`.vx/workspace.ts`](../workspace/) or with `VX_BASE_BRANCH`.
   `--affected main`, `main` is read as a task name.
 
 What marks a task: a changed file in its `inputs`, a changed
-`vx.config.ts` (all of the project's tasks), or a changed file no task
-of its project declares. Full rules: [`--affected`](../../cli/run/#--affectedbase).
+`vx.config.ts`, or a changed file no task of its project declares.
 
-</details>
+A change then travels only along `dependsOn`. Full rules: [`--affected`](../../cli/run/#--affectedbase).
 
-<Takeaway>Test only what a branch touched, and see why each task made the cut.</Takeaway>
+</Deeper>
 
----
+<Takeaway>test only what a branch touched, and see why each task made the cut.</Takeaway>
 
 ## 5. Several tasks in one run
 
@@ -352,13 +353,13 @@ Name as many tasks as you like. They share one graph, so nothing runs
 twice and independent tasks run side by side.
 
 ```sh
-vx run lint test --filter @shop/api
+vx run lint test --filter @demo/api
 ```
 
 ```ansi
 [4m[58;2;110;118;129m  [1m[38;2;167;139;250mTasks[0m[4m[58;2;110;118;129m     [2mstatus  cache     ±usual    time   cpu    mem outputs  blocks worker         task[0m[4m[58;2;110;118;129m                           [0m
-            [38;2;34;197;94msuccess[0m [2mmiss[0m           [2m—[0m    [38;2;203;213;225m59ms[0m   [2m93%[0m   [2m78MB[0m      [2m0B[0m       [2m0[0m [2mlocal[0m          [38;2;232;121;249m@shop/api[0m[2m#[0m[38;2;232;121;249mlint[0m
-            [38;2;34;197;94msuccess[0m [2mmiss[0m           [2m—[0m   [38;2;203;213;225m421ms[0m  [2m107%[0m  [2m110MB[0m      [2m0B[0m       [2m0[0m [2mlocal[0m          [38;2;232;121;249m@shop/api[0m[2m#[0m[38;2;96;165;250mtest[0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m           [2m—[0m    [38;2;203;213;225m78ms[0m   [2m98%[0m   [2m78MB[0m      [2m0B[0m       [2m0[0m [2mlocal[0m          [38;2;232;121;249m@demo/api[0m[2m#[0m[38;2;232;121;249mlint[0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m           [2m—[0m   [38;2;203;213;225m460ms[0m  [2m109%[0m  [2m113MB[0m      [2m0B[0m       [2m0[0m [2mlocal[0m          [38;2;232;121;249m@demo/api[0m[2m#[0m[38;2;96;165;250mtest[0m
 
 [4m[58;2;110;118;129m  [1m[38;2;167;139;250mSummary[0m[4m[58;2;110;118;129m                                                                                                       [2mvx 0.0.0[0m
   [2mprojects[0m  [38;2;234;179;8m▰▰▰▰▰▰▰▰▰▰▰▰▰[0m[2m▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱[0m
@@ -368,59 +369,54 @@ vx run lint test --filter @shop/api
   [2mcache   [0m  [38;2;56;189;248m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
             [2mlocal[0m [38;2;56;189;248m2↑[0m
 
-  [2minfo    [0m  4 workers [2m·[0m local cache [2m·[0m run 01a209c1-2bec-7432-84e9-38a821dd7d50
-  [2mtime    [0m  455ms [2m·[0m [2mmax 421ms[0m [2m·[0m [2mavg 240ms[0m [2m·[0m [2mmin 59ms[0m
+  [2minfo    [0m  4 workers [2m·[0m local cache [2m·[0m run 01a209c8-e220-707a-9214-0044372c965e
+  [2mtime    [0m  533ms [2m·[0m [2mmax 460ms[0m [2m·[0m [2mavg 269ms[0m [2m·[0m [2mmin 78ms[0m
 ```
 
 Two more ways to name tasks, from anywhere in the workspace:
 
 ```sh
-vx run @shop/api#test       # one project's task, exactly
+vx run @demo/api#test       # one project's task, exactly
 vx run //#build             # the root project's task
 ```
 
-<Takeaway>Run a whole check (lint, test, build) as one command.</Takeaway>
-
----
+<Takeaway>run a whole check (lint, test, build) as one command.</Takeaway>
 
 ## 6. Pass flags to the tool
 
-Everything after `--` goes to the task's command, unchanged.
+Everything after `--` goes to the task's command.
 
 ```sh
-vx run @shop/web#test -- --reporter=dot
+vx run @demo/web#test -- --reporter=dot
 ```
 
 ```ansi
-[2m┌─[0m [1m[38;2;244;114;182m@shop/web[0m[2m#[0m[1m[38;2;96;165;250mtest[0m [2m>[0m $ vitest run --reporter=dot
+[2m┌─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;96;165;250mtest[0m [2m>[0m $ vitest run --reporter=dot
 
 [33m[39m[32m·[39m
 
 [2m Test Files [22m [1m[32m1 passed[39m[22m[90m (1)[39m
 [2m      Tests [22m [1m[32m1 passed[39m[22m[90m (1)[39m
-[2m   Start at [22m 18:53:05
-[2m   Duration [22m 149ms[2m (import 49%, transform 24%, worker 15%, tests 12%, environment 1%)[22m
+[2m   Start at [22m 19:01:31
+[2m   Duration [22m 166ms[2m (transform 60%, import 22%, tests 9%, worker 8%)[22m
 
-[0m[2m└─[0m [1m[38;2;244;114;182m@shop/web[0m[2m#[0m[1m[38;2;96;165;250mtest[0m [2m──[0m [2m(454ms)[0m [2msuccess[0m
+[0m[2m└─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;96;165;250mtest[0m [2m──[0m [2m(460ms)[0m [2msuccess[0m
 
 [4m[58;2;110;118;129m  [1m[38;2;167;139;250mSummary[0m[4m[58;2;110;118;129m                                                                                                       [2mvx 0.0.0[0m
   [2mprojects[0m  [38;2;234;179;8m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m[2m▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱[0m
             [38;2;234;179;8m2 in run[0m [2m·[0m [2m4 total[0m
   [2mtasks   [0m  [38;2;34;197;94m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
             [38;2;34;197;94m2 success[0m [2m·[0m [2m2 total[0m
-  [2mcache   [0m  [38;2;34;197;94m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m[38;2;56;189;248m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
-            [2mlocal[0m [38;2;34;197;94m1✓[0m [38;2;56;189;248m1↑[0m
+  [2mcache   [0m  [38;2;56;189;248m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
+            [2mlocal[0m [38;2;56;189;248m2↑[0m
 
-  [2minfo    [0m  4 workers [2m·[0m local cache [2m·[0m run 01a209c1-2e64-70ca-9a2a-42a4f9159a6a
-  [2mtime    [0m  514ms
+  [2minfo    [0m  4 workers [2m·[0m local cache [2m·[0m run 01a209c8-e52f-7119-822e-9e88a0c54e4c
+  [2mtime    [0m  755ms [2m·[0m [2mmax 460ms[0m [2m·[0m [2mavg 343ms[0m [2m·[0m [2mmin 226ms[0m
 ```
 
-The first line shows what ran: `vitest run --reporter=dot`.
-
-<Aside type="note">
-  The forwarded words are part of the task's cache key. Different flags,
-  different result, so vx never replays a run made with other flags.
-</Aside>
+The first line shows what ran: `vitest run --reporter=dot`. The
+forwarded words are part of the task's cache key, so a run with other
+flags is never replayed for this one.
 
 Forwarding needs one task in one project. vx will not guess which
 command a flag was meant for:
@@ -430,26 +426,25 @@ vx run test --all -- --bail
 ```
 
 ```ansi
-[38;2;239;68;68m✗[0m [1mvx run[0m  forwarded args (after --) go to one task in one project, and this run asks for 4: @shop/admin#test, @shop/api#test, @shop/ui#test, …; run that task alone, e.g. vx run @shop/admin#test -- …
+[38;2;239;68;68m✗[0m [1mvx run[0m  [38;2;203;213;225mforwarded args (after --) go to one task in one project, and this run asks for 4: @demo/admin#test, @demo/api#test, @demo/ui#test, …; run that task alone, e.g. vx run @demo/admin#test -- …[0m
 ```
 
 vx has no short flags, so a `-t` before `--` is caught, and `fix` shows
 where it goes:
 
 ```sh
-vx run test -t adds --filter @shop/api
+vx run test -t adds --filter @demo/api
 ```
 
 ```ansi
-[38;2;239;68;68m✗[0m [1mvx run[0m  unknown flag: -t
+[38;2;239;68;68m✗[0m [1mvx run[0m  [38;2;203;213;225munknown flag: -t[0m
 
   [2msee vx run --help[0m
 
-  [2mfix[0m  [1mvx run test --filter @shop/api -- -t adds[0m
+  [2mfix[0m  [1mvx run test --filter @demo/api -- -t adds[0m
 ```
 
-<details>
-<summary><strong>Dig deeper:</strong> where forwarded words land</summary>
+<Deeper level="details" title="Where forwarded words land">
 
 - They are shell-quoted, then added to the end of the command's last
   line.
@@ -461,11 +456,9 @@ vx run test -t adds --filter @shop/api
 
 Full rules: [argument forwarding](../../cli/run/#argument-forwarding---).
 
-</details>
+</Deeper>
 
-<Takeaway>Hand any flag to vite, vitest or oxlint through vx.</Takeaway>
-
----
+<Takeaway>hand any flag to vite, vitest or oxlint through vx.</Takeaway>
 
 ## 7. See the plan first
 
@@ -477,13 +470,13 @@ vx run build --all --dry
 
 ```ansi
 [4m[58;2;110;118;129m  [1m[38;2;167;139;250mPlan[0m[4m[58;2;110;118;129m [2m4[0m[4m[58;2;110;118;129m    [2mstatus  cache      usual    time   cpu    mem outputs  blocks worker         task[0m[4m[58;2;110;118;129m                           [0m
-            [38;2;6;182;212mrun[0m     [2mmiss[0m      [2m~224ms[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2mlocal[0m          [38;2;167;139;250m@shop/admin[0m[2m#[0m[38;2;244;114;182mbuild[0m
-            [38;2;6;182;212mrun[0m     [2mmiss[0m      [2m~191ms[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [38;2;203;213;225m2[0m [2mlocal[0m          [38;2;96;165;250m@shop/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m
-            [38;2;34;197;94mcached[0m  [38;2;56;189;248mlocal[0m          [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2mlocal[0m          [38;2;232;121;249m@shop/api[0m[2m#[0m[38;2;244;114;182mbuild[0m
-            [38;2;6;182;212mrun[0m     [2mmiss[0m      [2m~172ms[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2mlocal[0m          [38;2;244;114;182m@shop/web[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;6;182;212mrun[0m     [2mmiss[0m      [2m~193ms[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2mlocal[0m          [38;2;129;140;248m@demo/admin[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;6;182;212mrun[0m     [2mmiss[0m      [2m~200ms[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [38;2;203;213;225m2[0m [2mlocal[0m          [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;34;197;94mcached[0m  [38;2;56;189;248mlocal[0m          [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2mlocal[0m          [38;2;232;121;249m@demo/api[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;6;182;212mrun[0m     [2mmiss[0m      [2m~180ms[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2mlocal[0m          [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m
 
   [2mtasks    [0m  [38;2;203;213;225m4 planned · 1 cache hit (1 local) · 3 would run[0m
-  [2mpredicted[0m  [38;2;203;213;225m~415ms wall · ~587ms total execution[0m
+  [2mpredicted[0m  [38;2;203;213;225m~393ms wall · ~573ms total execution[0m
 ```
 
 Nothing ran. Read it row by row:
@@ -493,20 +486,29 @@ Nothing ran. Read it row by row:
 - The other three `run`: `ui` changed, and `web` and `admin` build on it.
 - `usual` is how long the task took last time; `blocks 2` means two
   tasks wait on `ui#build`.
-- `predicted` adds it up: about 415 ms if you run it now.
+- `predicted` adds it up: about 393 ms if you run it now.
 
-`--dry=json` prints the same plan for scripts. Paste it into the
-[graph explorer](../graph-explorer/) to browse it.
+`--dry=json` prints the same plan for scripts. The next page browses it.
 
-<Takeaway>Know what a run will cost before you start it.</Takeaway>
-
----
+<Takeaway>know what a run will do, and roughly how long it takes, before you start it.</Takeaway>
 
 ## 8. Tune the run
 
-Every `vx run` flag, by what it changes. Most also have a setting in
-[`.vx/workspace.ts`](../workspace/) and a `VX_*` variable; the flag
-wins, then the variable, then the setting.
+The flags you will reach for most:
+
+| Flag | Does |
+| ---- | ---- |
+| `--concurrency <n>` | at most `n` tasks at once |
+| `--fail-fast` | stop everything at the first failure |
+| `--timeout <time>` | a time limit per task: `30s`, `10m` |
+| `--force` | run every task, even when the cache has it |
+| `--no-cache` | no cache at all for this run |
+
+<Deeper level="details" title="Every vx run flag">
+
+Most flags also have a setting in [`.vx/workspace.ts`](../workspace/)
+and a `VX_*` variable. The flag wins, then the variable, then the
+setting.
 
 **What runs**
 
@@ -543,7 +545,7 @@ wins, then the variable, then the setting.
 | ---- | ---- | ------- |
 | `--fail-fast` | stop everything at the first failure | off: a failure skips only what waits on it |
 | `--retries <n>` | re-run a failed task up to `n` more times | `0` |
-| `--timeout <time>` | a time limit for tasks without their own: `30s`, `10m` | none |
+| `--timeout <time>` | a time limit for tasks without their own | none |
 
 **Output and records**
 
@@ -555,17 +557,13 @@ wins, then the variable, then the setting.
 | `--profile[=<file>]` | write a Chrome trace of the run | off (`profile.json`) |
 | `--branch <name>` | the branch the run's history is filed under | git's branch |
 
-<details>
-<summary><strong>Dig deeper:</strong> flag rules, exit codes</summary>
+Rules every flag follows:
 
-- Flags with an optional value take it with `=` only:
-  `--affected=main`, `--dry=json`, `--profile=run.json`.
-- A flag given twice keeps the last value, so a flag added after a
-  script's own wins.
-- `--no-cache` beats `--force`. Neither changes a cache key, and nor do
-  `--retries`, `--timeout` and `--cache-download`.
-- Numbers are plain: `--concurrency 0x10` is refused. A time needs its
-  unit: `--timeout 500` is refused, `500ms` is not.
+- An optional value takes `=`: `--affected=main`, `--dry=json`.
+- A flag given twice keeps the last value.
+- `--no-cache` beats `--force`. `--retries`, `--timeout` and
+  `--cache-download` never change a cache key.
+- Numbers are plain (`0x10` is refused); a time needs its unit (`500ms`).
 - An unknown flag is refused with the nearest real one:
   `--concurency` shows `fix --concurrency`.
 
@@ -575,14 +573,11 @@ wins, then the variable, then the setting.
 | `1` | a task failed or was skipped, or the command was wrong |
 | `130` | you pressed Ctrl-C (`143` for SIGTERM, `129` for SIGHUP) |
 
-On a failure: [Stop at the first failure](../running/stop-at-the-first-failure/).
 Every detail: [`vx run`](../../cli/run/).
 
-</details>
+</Deeper>
 
-<Takeaway>Shape any run: what it touches, how fast it goes, and when it stops.</Takeaway>
-
----
+<Takeaway>shape any run: what it touches, how fast it goes, and when it stops.</Takeaway>
 
 ## 9. Forgot a task's name?
 
@@ -596,13 +591,13 @@ vx run < /dev/null
 ```
 
 ```ansi
-[38;2;239;68;68m✗[0m [1mvx run[0m  missing task name (stdin is not a TTY, so no picker; tasks here: build, lint, test)
+[38;2;239;68;68m✗[0m [1mvx run[0m  [38;2;203;213;225mmissing task name (stdin is not a TTY, so no picker; tasks here: build, lint, test)[0m
 
   [2msee vx run --help[0m
 ```
 
----
+<Takeaway>find and run any task without knowing its name.</Takeaway>
 
-You can now run any task, anywhere in the workspace, and predict what
-it will do. Next, see why the third run took 20 ms:
-[Caching](../caching/).
+<NextStep href="../graph-explorer/" title="Explore the task graph">
+  Open a run's plan and see what each task waits on, and why.
+</NextStep>
