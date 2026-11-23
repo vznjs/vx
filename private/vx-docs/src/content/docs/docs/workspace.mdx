@@ -19,7 +19,7 @@ import { defineWorkspace } from '@vzn/vx/config'
 export default defineWorkspace({})
 ```
 
-That empty file is a whole workspace. vx runs every task on this machine and caches it here. `vx init` writes it for you.
+That empty file is a whole workspace. vx runs every task on this machine and caches it here. `vx init` writes it for you, with your lockfile's plugin in `plugins`.
 
 <Levels />
 
@@ -244,14 +244,14 @@ run: { timeout: '10m' },
 <TabItem label="Variable">
 
 ```sh
-VX_RUN_TIMEOUT=10m vx run build
+VX_RUN_TIMEOUT=10m vx run build --all
 ```
 
 </TabItem>
 <TabItem label="Flag">
 
 ```sh
-vx run build --timeout 10m
+vx run build --all --timeout 10m
 ```
 
 </TabItem>
@@ -396,7 +396,7 @@ By default a failed task skips only the tasks that wait on it. Everything else f
 run: { failFast: true },
 ```
 
-Or for one run: `vx run build --fail-fast`.
+Or for one run: `vx run build --all --fail-fast`.
 
 <Takeaway>pick between "see every failure" and "stop at the first".</Takeaway>
 
