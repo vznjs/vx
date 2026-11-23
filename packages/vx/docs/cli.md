@@ -2670,10 +2670,11 @@ VX_WATCH_POLL=1 vx watch build   # poll from the start
 
 A root file a plugin claims starts a cycle: a lockfile under `@vzn/vx-lockfile` (`pnpm-lock.yaml`, `bun.lock`, `.npmrc`, …), or `turbo.json` under `@vzn/vx-migrate`'s `turbo()`. So does `.vx/projects.lock`.
 
-A config edit alone changes no command, since every cycle reads its configs from `.vx/projects.lock`. The cycle says so:
+A config edit alone changes no command, since every cycle reads its configs from `.vx/projects.lock`. The watch says so, and each cycle refuses the edited config, as a run does, until `vx lock`:
 
 ```
 vx watch: packages/web/vx.config.ts changed; runs read the lock, so run `vx lock` to apply it
+vx watch: cycle failed: packages/web/vx.config.ts changed since the last `vx lock` — run `vx lock`
 ```
 
 <details class="vx-deeper" data-level="3">
