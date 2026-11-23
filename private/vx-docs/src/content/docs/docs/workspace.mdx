@@ -57,10 +57,19 @@ Coming from the [Quickstart](../../quickstart/)? Turn its one app into the two p
    mkdir -p packages/web && mv index.html src public package.json vx.config.ts vx.lock.json packages/web/
    ```
 
-2. Add a library beside it:
+2. Add a library beside it, built by `vite build` to `dist/index.js`:
 
    ```sh
    bun create vite packages/ui --template vanilla
+   echo 'export const greet = (name) => `Hello, ${name}`' > packages/ui/src/index.js
+   ```
+
+   ```ts title="packages/ui/vite.config.ts"
+   import { defineConfig } from 'vite'
+
+   export default defineConfig({
+     build: { lib: { entry: 'src/index.js', formats: ['es'], fileName: 'index' } },
+   })
    ```
 
 3. Make the root a Bun workspace, and name the two projects:

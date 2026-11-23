@@ -96,6 +96,23 @@ export default defineProject({
 The `^` means "`build` in **every project I import**". vx reads who
 imports whom from your lockfile, through a [lockfile plugin](../lockfiles/).
 
+`@demo/ui` needs a `build` to wait for. Add one beside its `lint`, then run `vx lock`:
+
+```ts title="packages/ui/vx.config.ts" ins={8-10}
+import { defineProject } from '@vzn/vx/config'
+
+export default defineProject({
+  tasks: {
+    lint: {
+      exec: { command: 'oxlint src' },
+    },
+    build: {
+      exec: { command: 'vite build' },
+    },
+  },
+})
+```
+
 ```ansi
 [2m$[0m vx run build --all
 
