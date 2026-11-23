@@ -5,7 +5,7 @@ import { mkdir, readFile, realpath, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
 import { Cache, localHistory } from '@vzn/vx'
-import { CORE_BIN, root, setup, teardown, vx } from './local-e2e-fixture.ts'
+import { CORE_BIN, children, procfsOwn, root, setup, teardown, vx } from './local-e2e-fixture.ts'
 
 beforeEach(setup)
 afterEach(teardown)
@@ -226,10 +226,9 @@ it('runs a task again on a new worker when its worker is killed', async () => {
   })
   const marker = (): Promise<boolean> => Bun.file(path.join(root, 'once')).exists()
   for (let i = 0; i < 200 && !(await marker()); i++) await Bun.sleep(100)
-  const workers = Bun.spawnSync(['pgrep', '-P', String(run.pid), '-f', 'dte worker'])
-  const pids = workers.stdout.toString().trim().split('\n').filter(Boolean)
+  const pids = children(run.pid, 'dte worker')
   expect(pids).toHaveLength(1)
-  process.kill(Number(pids[0]), 'SIGKILL')
+  process.kill(pids[0]!, 'SIGKILL')
   const out = (await new Response(run.stdout).text()) + (await new Response(run.stderr).text())
   expect([await run.exited, out]).toEqual([0, expect.stringContaining('again')])
 }, 90_000)
@@ -303,8 +302,11 @@ it('charges a server’s CPU to the dependant it served', () => {
   ])
   const cpu = Number(/\d+/.exec(r.stdout.toString())?.[0])
   // 4 s of a server burning a core for it, sampled each second while its
-  // fit learns: about 3 s (its own CPU is ~0).
-  expect(cpu).toBeGreaterThan(1500)
+  // fit learns: about 3 s (its own CPU is ~0). Where /proc is an outer
+  // namespace's (a sandbox in an unprivileged container), the tree cannot be
+  // read, and vx charges nothing rather than strangers' CPU.
+  if (procfsOwn()) expect(cpu).toBeGreaterThan(1500)
+  else expect(cpu).toBeLessThan(1500)
 }, 60_000)
 
 // No task ever runs on the orchestrator under dte(), only cache hits
