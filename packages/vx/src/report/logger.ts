@@ -649,8 +649,9 @@ export function defaultLogger(
   let pipeHeaded = false
   const emitRow = (line: string): void => {
     if (!panels) {
-      // A run's rows: a bare logger (an embedder's, a test's) prints only rows.
-      if (!pipeHeaded && runContext !== undefined) {
+      // A run's rows: a bare logger (an embedder's, a test's) and a watch
+      // cycle (no footer, its rows its whole report) print only rows.
+      if (!pipeHeaded && runContext !== undefined && opts.footer !== false) {
         pipeHeaded = true
         emitLine(ui.panelTop('Tasks', colors, undefined, undefined, formatListHeader(colors)))
       }

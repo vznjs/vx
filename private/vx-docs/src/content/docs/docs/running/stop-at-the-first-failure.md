@@ -17,7 +17,7 @@ vx run test --all
 
 [2m┌─[0m [1m[38;2;192;132;252m@demo/ui[0m[2m#[0m[1m[38;2;96;165;250mtest[0m [2m>[0m [1m[38;2;239;68;68mfailed (exit 1)[0m
 
-[2m$ echo 'expected 2, got 1' && exit 1[0m
+[2mpackages/ui $ echo 'expected 2, got 1' && exit 1[0m
 
 [2m├─[0m [1mOUTPUT[0m [2m────────────────────────────────────────────────────[0m
 

@@ -1126,6 +1126,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'painted-output',
     'persistent-lifecycle-properties.unsafe',
     'persistent-sandbox-hint.unsafe',
+    'piped-run-reader',
     'plain-output',
     'png-intact.unsafe',
     'port-bridge-dial',

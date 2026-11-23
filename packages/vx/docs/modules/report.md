@@ -400,6 +400,7 @@ export interface TaskBlockBody {
   output?: readonly OutputChunk[] // in the order written, under `├─ OUTPUT ──…`
   droppedStdout?: number // chars a bounded (persistent) capture dropped from the head
   droppedStderr?: number
+  dir?: string // the task's directory from the workspace root, before its `$` (none: the root)
 }
 
 export function formatTaskBlock(
@@ -605,6 +606,7 @@ export function cacheBucketOf(o: TaskOutcome): CacheBucket | undefined
 
 export interface RunContext {
   version: string
+  workspaceRoot?: string // a frame names its task's directory from it
   packageCount: number // projects with a task to run → the bar's "in run" half
   runId?: string | undefined // the whole id `vx last` takes (info row)
   executorRows?: () => readonly (readonly [string, ui.Inline])[] // executors' footer rows
