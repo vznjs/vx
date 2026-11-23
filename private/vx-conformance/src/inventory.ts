@@ -1115,6 +1115,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'memory-ceiling-scale.unsafe',
     'memory-ceiling-watch.unsafe',
     'miss-save-marks',
+    'missing-outputs-label',
     'narrow-terminal',
     'no-auto-install.unsafe',
     'no-cache-word',
