@@ -60,7 +60,7 @@ vx info
 [4m[58;2;110;118;129m  [1m[38;2;167;139;250mvx info[0m[4m[58;2;110;118;129m                                                                                                               [0m
   [2mvx              [0m  [38;2;203;213;225m0.0.659 (/home/me/.bun/bin/vx)[0m
   [2mworkspace root  [0m  [38;2;203;213;225m/home/me/demo[0m
-  [2mprojects        [0m  [38;2;203;213;225m2 (2 tasks)[0m
+  [2mprojects        [0m  [38;2;203;213;225m2 (5 tasks)[0m
   [2mplugins         [0m  [38;2;203;213;225m2 — @vzn/vx-lockfile (discover, project, key, fingerprint); @vzn/vx-otel (telemetry)[0m
 ```
 
@@ -390,8 +390,21 @@ endpoint would send your key in clear, so vx warns and sends nothing there.
 
 ## Every plugin option
 
-Each plugin checks its options when the run starts: an unknown or wrong one stops the run and is
-named. Open the tables for **what each option does and its default**.
+A plugin takes its options as one object. Leave an option out and it keeps its **default**. Here
+`vxHistory()` learns from the last 50 runs instead of 20:
+
+```ts title=".vx/workspace.ts" mark={5}
+import { defineWorkspace } from '@vzn/vx/config'
+import { vxHistory } from '@vzn/vx-history'
+
+export default defineWorkspace({
+  plugins: [vxHistory({ window: 50 })],
+})
+```
+
+Only options marked **required** must be set. vx checks every option when the run starts and names
+a wrong one, as in [Add a plugin](#add-a-plugin). Open the tables for **what each option does and
+its default**.
 
 <Deeper level="patterns" title="Common setups">
 
