@@ -106,6 +106,10 @@ const presets: Array<[string, string[]]> =
   .gt-try button {
     min-height: 32px;
   }
+  /* docs.css gives every Markdown ul item a ▸ marker, even with list-style none. */
+  .gt :global(:is(.gt-pats, .gt-tree) li)::marker {
+    content: none;
+  }
   .gt :global(.gt-pats),
   .gt :global(.gt-tree) {
     list-style: none;

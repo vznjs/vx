@@ -61,7 +61,7 @@ class CacheSim extends HTMLElement {
   #show(r: RunResult) {
     // Every string the model puts in HTML is escaped there.
     this.querySelector('.out')!.innerHTML =
-      `<section class="run"><h4>Run ${r.n}</h4><ol class="results">${resultsHtml(r)}</ol>` +
+      `<section class="run"><p class="run-title">Run ${r.n}</p><ol class="results">${resultsHtml(r)}</ol>` +
       `<pre tabindex="0" aria-label="Terminal: run ${r.n}">${terminalHtml(r)}</pre></section>`
     this.#say(summary(r))
   }

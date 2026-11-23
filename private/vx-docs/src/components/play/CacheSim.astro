@@ -64,7 +64,7 @@ const list = (xs: readonly string[]) => (xs.length === 0 ? '—' : xs.join(', ')
       {
         runs.map(({ title, r }) => (
           <section class="run">
-            <h4>{title}</h4>
+            <p class="run-title">{title}</p>
             <ol class="results" set:html={resultsHtml(r)} />
             <pre tabindex="0" aria-label={`Terminal: ${title}`} set:html={terminalHtml(r)} />
           </section>
@@ -129,7 +129,7 @@ const list = (xs: readonly string[]) => (xs.length === 0 ? '—' : xs.join(', ')
   vx-cache-sim .run {
     margin-top: 1rem;
   }
-  vx-cache-sim .run h4 {
+  vx-cache-sim .run .run-title {
     margin: 0 0 0.5rem;
     font-family: var(--vx-font-body);
     font-size: 0.95rem;

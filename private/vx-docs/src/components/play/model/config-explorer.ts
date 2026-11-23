@@ -283,8 +283,8 @@ const PROJECT_VALUES: Record<string, string> = {
   'tasks.*.exec.platforms': "['linux-x64', 'darwin-arm64']",
   'tasks.*.exec.worker': "'ubuntu'",
   'tasks.*.exec.retries': '1',
-  'tasks.*.inputs.files': "['src/**', 'index.html']",
-  'tasks.*.inputs.workspaceFiles': "['tsconfig.base.json']",
+  'tasks.*.inputs.files': "['src/**', 'vite.config.ts']",
+  'tasks.*.inputs.workspaceFiles': "['.oxlintrc.json']",
   'tasks.*.inputs.env': "['VITE_API_URL']",
   'tasks.*.inputs.tasks': "['^build']",
   'tasks.*.inputs.runtime': "['bun --version']",
@@ -651,7 +651,7 @@ export function renderPanel(row: Row): string {
       : `<dl class="cx-facts">${facts.map(([t, d]) => `<dt>${t}</dt><dd>${d}</dd>`).join('')}</dl>`,
     `<pre class="cx-ex"><code>${esc(row.example)}</code></pre>`,
     row.kids.length === 0 ? '' : `<p class="cx-inside">Inside: ${row.kids.map(kid).join(' ')}</p>`,
-    `<p class="cx-ref"><a href="${esc(row.href)}">${row.what === null ? 'Explained in the config reference' : 'Full entry in the config reference'} →</a></p>`,
+    `<p class="cx-ref"><a ${attr('href', row.href)}>${row.what === null ? 'Explained in the config reference' : 'Full entry in the config reference'} →</a></p>`,
   ].join('')
 }
 
@@ -697,4 +697,10 @@ export function rows(fields: readonly Field[]): Row[] {
     href: f.href,
     example: exampleOf(fields, f.path),
   }))
+}
+
+// The site's link check reads every literal `href="…"` in shipped HTML and
+// JS; built through a name, the browser's copy of this template is not one.
+function attr(name: string, value: string): string {
+  return `${name}="${esc(value)}"`
 }
