@@ -77,7 +77,7 @@ describe('putRunEntry', () => {
       'log',
       new Blob([new Uint8Array([1])]),
     )
-    expect([kept, said]).toEqual([true, ['503 from cache.example']])
+    expect([kept, said]).toEqual([true, ['upload of log failed: 503 from cache.example']])
   })
 })
 

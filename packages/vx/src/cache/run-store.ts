@@ -53,7 +53,10 @@ export async function putRunEntry(
       // `false`: the remote sent nothing, so nothing is kept there.
       if (put !== false) kept = true
     } catch (err) {
-      sayRemoteFault(r, err instanceof Error ? err : new Error(String(err)))
+      // Named as the lane names its own: a bare "HTTP 500" beside the lane's
+      // "upload <hash> … failed" said nothing of what failed.
+      const message = err instanceof Error ? err.message : String(err)
+      sayRemoteFault(r, new Error(`upload of ${name} failed: ${message}`, { cause: err }))
     }
   }
   return kept
