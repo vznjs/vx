@@ -219,7 +219,7 @@ describe('the supply chain', () => {
   })
 
   // A write the workflow grants reaches every job, one added later
-  // included; each job names the writes it needs, as npm.yml and
+  // included; each job names the writes it needs, as release.yml and
   // auto-release.yml do. An OIDC token writes nothing of the repo's.
   it('grants a write to a job, never to the whole workflow', () => {
     expect(
@@ -253,7 +253,7 @@ describe('the supply chain', () => {
   it('runs each release workflow one at a time, never cancelled', () => {
     expect(
       workflows
-        .filter(({ file }) => /(?:^|\/)(?:release|npm|auto-release)\.yml$/.test(file))
+        .filter(({ file }) => /(?:^|\/)(?:release|auto-release)\.yml$/.test(file))
         .map(({ file, doc }) => [
           path.basename(file),
           doc.concurrency?.group,
@@ -261,8 +261,7 @@ describe('the supply chain', () => {
         ]),
     ).toEqual([
       ['auto-release.yml', 'auto-release', false],
-      ['npm.yml', 'npm-publish', false],
-      ['release.yml', 'release-assets-${{ inputs.tag }}', false],
+      ['release.yml', 'release-${{ github.ref }}', false],
     ])
   })
 

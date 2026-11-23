@@ -2,10 +2,10 @@
 // whose CI went green on main (every job but Bench), VX_RELEASE_SHA or, when that is empty, the
 // newest such commit (greenCommit). It tags it with the next version and creates
 // the GitHub release as a draft, its body the release post at that commit or,
-// with none, the Conventional Commits since the last tag (release-notes.ts), then dispatches release.yml and npm.yml: a release
+// with none, the Conventional Commits since the last tag (release-notes.ts), then dispatches release.yml on the tag: a release
 // created with the workflow token fires no `release` event in other
-// workflows, so the two that build and publish it are started explicitly.
-// npm.yml runs as itself, which is what its npm Trusted Publishers are
+// workflows, so the one that builds and publishes it is started explicitly.
+// release.yml runs as itself, which is what its npm Trusted Publishers are
 // registered to, so the publish needs no token.
 //
 // A commit is released only when the last release is its ancestor, so a
@@ -90,14 +90,9 @@ export function greenCommit(
     : { refuse: `CI did not pass on ${asked} on main; not releasing it` }
 }
 
-/** The workflows a release dispatches, with the inputs each declares. */
-export function dispatches(
-  version: string,
-): Array<{ workflow: string; inputs: Record<string, string> }> {
-  return [
-    { workflow: 'release.yml', inputs: { tag: `v${version}` } },
-    { workflow: 'npm.yml', inputs: { version, ref: `v${version}` } },
-  ]
+/** The workflow a release dispatches, on its tag: the run checks it out and names its version. */
+export function dispatches(version: string): Array<{ workflow: string; ref: string }> {
+  return [{ workflow: 'release.yml', ref: `v${version}` }]
 }
 
 const git: Git = (args) => {
@@ -134,9 +129,9 @@ async function main(): Promise<void> {
     gh(route, { method: 'POST', body: JSON.stringify(body) })
   const post = git(['show', `${sha}:${postPath(version)}`])
   console.log(`releasing ${sha} as v${version} (after ${last || 'no tag'})`)
-  // The tag first, then the release as a draft on it: npm.yml checks the
-  // tag out, and an immutable release takes assets only while it is a
-  // draft, so release.yml's last upload publishes it (release-assets.ts).
+  // The tag first, then the release as a draft on it: release.yml runs on
+  // the tag, and an immutable release takes assets only while it is a
+  // draft, so its last upload publishes it (release-assets.ts).
   await api('git/refs', { ref: `refs/tags/v${version}`, sha })
   await api('releases', {
     tag_name: `v${version}`,
@@ -144,10 +139,10 @@ async function main(): Promise<void> {
     body: post.ok ? postNotes(post.out, version) : releaseNotes(commits),
     draft: true,
   })
-  for (const { workflow, inputs } of dispatches(version)) {
-    await api(`actions/workflows/${workflow}/dispatches`, { ref: 'main', inputs })
+  for (const { workflow, ref } of dispatches(version)) {
+    await api(`actions/workflows/${workflow}/dispatches`, { ref })
   }
-  console.log(`released v${version} — assets: release.yml, npm: npm.yml`)
+  console.log(`released v${version} — built and published by release.yml`)
 }
 
 if (import.meta.main) {

@@ -7,7 +7,7 @@ name: Auto release
 # creates the GitHub release, both from the Conventional Commits since the
 # last tag (packages/vx/scripts/release-notes.ts: from 0.1.0, which the
 # owner cuts by hand, a feat or a breaking change is a minor before 1.0,
-# the rest a patch), then dispatches the two release workflows.
+# the rest a patch), then dispatches release.yml on the tag.
 #
 # A commit is released only when the last release is its ancestor, so an
 # older tree can never get a higher version, and an already tagged one is
@@ -34,7 +34,7 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: write # the tag and the GitHub release
-      actions: write # dispatching npm.yml and release.yml
+      actions: write # dispatching release.yml
       id-token: write # the remote cache's OIDC exchange (.vx/workspace.ts)
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -49,7 +49,7 @@ jobs:
       - run: bun packages/vx/src/bin.ts setup github
 
       # Pick the commit, decide the version, write the notes, tag, release
-      # and dispatch the two workflows that build and publish it
+      # and dispatch release.yml, which builds and publishes it
       # (scripts/auto-release.ts).
       # The checkout's full history carries every tag, and `concurrency`
       # keeps another release from landing while this one decides.
