@@ -183,8 +183,8 @@ describe('no page says a task sees only what it declares, past the allowlist', (
       'an isolated environment: a small essential allowlist (`PATH`, `HOME`, `CI`, `NODE_OPTIONS` and a few more), then what `exec.env` says',
     )
     // The Troubleshooting page (#2470) came after, with "vx passes only
-    // what you list" (J2-8).
-    const trouble = readFileSync(path.join(GUIDES, 'troubleshooting.mdx'), 'utf8')
+    // what you list" (J2-8); its row lives on the env page now.
+    const trouble = readFileSync(path.join(GUIDES, 'environment-variables.mdx'), 'utf8')
     expect(trouble.split(/\s+/).join(' ')).toContain(
       'Past a small essential allowlist (`PATH`, `HOME`, `CI` and a few more), vx passes only what you list',
     )
@@ -345,7 +345,7 @@ describe('the why-vx-is-fast concept quotes the benchmarks page', () => {
   })
 })
 
-describe("troubleshooting's known limits are still limits", () => {
+describe('the "When it goes wrong" limits are still limits', () => {
   // It listed "A workspaceFiles glob stops at a git submodule's edge"; since
   // 2026-09-27 the nested repository's files are listed and keyed
   // (caching.md), and an edit inside a submodule under `workspaceFiles:
@@ -353,10 +353,13 @@ describe("troubleshooting's known limits are still limits", () => {
   it('caching.md keys a submodule under workspaceFiles, and the known limits name no edge', () => {
     const caching = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'caching.md'), 'utf8')
     expect(caching.replace(/\s+/g, ' ')).toContain('and for a `workspaceFiles` glob')
-    const limits = /## Known limits\n([\s\S]*)$/.exec(
-      readFileSync(path.join(GUIDES, 'troubleshooting.mdx'), 'utf8'),
-    )![1]!
-    expect(limits).not.toContain('submodule')
+    const limits = ['caching.mdx', 'dev-servers.mdx', 'workspace.mdx'].map(
+      (page) =>
+        /title="When it goes wrong">([\s\S]*?)<\/Deeper>/.exec(
+          readFileSync(path.join(GUIDES, page), 'utf8'),
+        )![1]!,
+    )
+    for (const block of limits) expect(block).not.toContain('submodule')
   })
 })
 
@@ -924,11 +927,7 @@ describe('every page naming the Linux sandbox binaries names all three', () => {
       const text = readFileSync(p, 'utf8')
       return bins.filter((bin) => names(text, bin)).length >= 2
     })
-    expect(pages.map((p) => path.basename(p)).sort()).toEqual([
-      'sandboxing.mdx',
-      'the-sandbox.md',
-      'troubleshooting.mdx',
-    ])
+    expect(pages.map((p) => path.basename(p)).sort()).toEqual(['sandboxing.mdx', 'the-sandbox.md'])
     for (const page of pages) {
       const flat = readFileSync(page, 'utf8').replace(/\s+/g, ' ')
       expect({
@@ -1944,11 +1943,8 @@ describe('the sandbox post judges a violation against the grants', () => {
     expect(post).toContain('the violation is judged against the grants alone')
     expect(post).not.toContain('reads a file its inputs never named fails')
     // The Troubleshooting page (#2470) said the sandbox refuses a read you
-    // did not declare, of a file missing from the inputs (J2-37).
-    const trouble = readFileSync(path.join(GUIDES, 'troubleshooting.mdx'), 'utf8').replace(
-      /\s+/g,
-      ' ',
-    )
+    // did not declare, of a file missing from the inputs (J2-37); the row is Caching's now.
+    const trouble = readFileSync(path.join(GUIDES, 'caching.mdx'), 'utf8').replace(/\s+/g, ' ')
     expect(trouble).toContain('with reads granted no wider than the inputs, refuses that read')
   })
 })
@@ -2171,7 +2167,7 @@ describe('the install pages name the libc the Linux binary needs', () => {
   // directory`), and with the loader and its libs it prints its version
   // (J-100). With no musl target, each page that names the platforms says
   // glibc.
-  it('build-npm ships no musl target, and the README, troubleshooting and one-binary post say glibc', () => {
+  it('build-npm ships no musl target, and the README, workspace page and one-binary post say glibc', () => {
     const build = readFileSync(
       path.resolve(import.meta.dir, '..', 'scripts', 'build-npm.ts'),
       'utf8',
@@ -2182,7 +2178,7 @@ describe('the install pages name the libc the Linux binary needs', () => {
     expect(flat(path.resolve(import.meta.dir, '..', '..', '..', 'README.md'))).toContain(
       "prebuilt binary for Linux (glibc, not Alpine's musl) and macOS",
     )
-    expect(flat(path.join(GUIDES, 'troubleshooting.mdx'))).toContain(
+    expect(flat(path.join(GUIDES, 'workspace.mdx'))).toContain(
       "on Linux with glibc (not Alpine's musl) or macOS",
     )
     expect(flat(path.join(DOCS, 'blog', 'one-binary.md'))).toContain(
@@ -2218,13 +2214,13 @@ describe('the README says what Ctrl-C reaches', () => {
   // SIGINT'd `vx run` (exit 130, the sleep still running), since vx signals
   // the task's process group (J-106). Since #5596 a stop also signals every
   // process holding VX_RUN_TREE, so only a daemon that cleared it escapes.
-  it('the README names the process group, and troubleshooting the env -i setsid limit', () => {
+  it('the README names the process group, and Dev servers the env -i setsid limit', () => {
     const repo = path.resolve(import.meta.dir, '..', '..', '..')
     const flat = (p: string) => readFileSync(p, 'utf8').replace(/\s+/g, ' ')
     expect(flat(path.join(repo, 'README.md'))).toContain(
       "**Clean exits:** Ctrl-C reaps each task's process group.",
     )
-    expect(flat(path.join(GUIDES, 'troubleshooting.mdx'))).toContain(
+    expect(flat(path.join(GUIDES, 'dev-servers.mdx'))).toContain(
       "A daemon a task starts with `setsid` and an empty environment (`env -i`) outlives Ctrl-C: vx finds a task's processes by a variable in their environment.",
     )
   })

@@ -9,6 +9,7 @@ import { cacheKey } from '../../../components/docs/pictures.js'
 import { runEnds, cacheHome } from '../../../components/docs/pictures/caching.js'
 import { Aside } from '@astrojs/starlight/components'
 import { Levels, Deeper, Concept, Quiz, Walkthrough, Frame, Compare, Takeaway, NextStep } from '../../../components/learn'
+import ErrorFinder from '../../../components/docs/troubleshooting/ErrorFinder.astro'
 
 Run a build twice. The second time, vx does no work: it puts back what the first run made.
 
@@ -493,7 +494,7 @@ Every part, in order: [Caching in depth](../../caching/).
 - Then it removes the files the entry does not hold, so `dist/` ends as the cache stored it.
 - A hit that finds the outputs already as stored writes nothing: **up-to-date**.
 - A restore writes only files the task's `outputs` declare.
-- A plain path must exist when the command ends, and at least one declared output must. A wildcard may match nothing ([fix](../troubleshooting/)).
+- A plain path must exist when the command ends, and at least one declared output must. A wildcard may match nothing ([fix](#outputs-must-exist)).
 - A failed task is never saved.
 - A file git tracks is never deleted, even when an output glob matches it.
 - Outputs ignore `.gitignore`: `dist/` is stored even when git ignores it.
@@ -555,6 +556,36 @@ The rules:
 - `.vx/workspace.ts` and the lock files are never touched.
 
 The command in full: [`vx cache clean`](../../cli/cache/).
+
+</Deeper>
+
+<Deeper level="details" title="When it goes wrong">
+
+- **A task came from the cache after you changed a file.** That file is
+  not in `inputs.files`: add it. To catch the next one,
+  [`exec.sandbox`](../../docs/sandboxing/), with reads granted no wider
+  than the inputs, refuses that read and names the file.
+- **A task runs every time.** It needs `cache: true`. If it has that, a
+  task it depends on may have no `inputs`: give that task `inputs` too.
+  `vx-migrate` leaves a `TODO(vx-migrate)` where it could not decide.
+- **`dist/` is empty after a build tool's incremental run.** Its state
+  file sits outside `dist/`, so it thinks the build is done. Add that
+  file to `outputs.files`, or move it inside `dist/`.
+- **A cache hit shows only part of a long log.** It replays the first
+  and last 8 Mi characters (8 MiB of ASCII) of a task's output.
+
+`vx why` needs one task that has run. Name the project when the task is in several:
+
+```ansi title="vx why build"
+[38;2;239;68;68m✗[0m [1mvx why[0m  [38;2;203;213;225m"build" ran in 2 projects — pick one[0m
+
+  [38;2;203;213;225m@demo/ui#build[0m
+  [38;2;203;213;225m@demo/web#build[0m
+```
+
+<ErrorFinder codes={['VX_E_NO_HISTORY', 'VX_E_AMBIGUOUS', 'VX_E_CACHE_VERSION']} />
+
+<Takeaway>fix a stale hit, a task that never hits, and a `vx why` that refuses.</Takeaway>
 
 </Deeper>
 

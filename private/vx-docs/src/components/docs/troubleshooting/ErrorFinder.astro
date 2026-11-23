@@ -1,8 +1,16 @@
 ---
 // The Troubleshooting page's error finder: every VX_E_ code on the path a
-// command takes (start → lock → run → tasks → ask). Every card renders
-// without JavaScript; the script only filters by stage and by typed text.
-import { ERRORS, STAGES } from './errors'
+// command takes (start → lock → run → tasks → ask), or the `codes` a
+// chapter page names. Every card renders without JavaScript; the script
+// only filters by stage and by typed text.
+import { ERRORS as ALL, STAGES as ALL_STAGES } from './errors'
+
+interface Props {
+  codes?: string[]
+}
+const pick = Astro.props.codes
+const ERRORS = pick === undefined ? ALL : ALL.filter((e) => pick.includes(e.code))
+const STAGES = ALL_STAGES.filter((s) => ERRORS.some((e) => e.stage === s.id))
 
 const code = (text: string): string =>
   text
@@ -31,7 +39,7 @@ const count = (id: string): number => ERRORS.filter((e) => e.stage === id).lengt
     />
   </label>
 
-  <ol class="vx-ef-path" aria-label="Where a command can stop">
+  <ol class="vx-ef-path" aria-label="Where a command can stop" hidden={STAGES.length < 2}>
     <li>
       <button type="button" class="vx-ef-stage" aria-pressed="true" data-ef-stage="all">
         <span class="vx-ef-stage-title">All</span>

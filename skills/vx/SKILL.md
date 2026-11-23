@@ -149,7 +149,7 @@ matched no files`); a wildcard (`dist/**`) may match nothing beside one
   `https://raw.githubusercontent.com/vznjs/vx/main/private/vx-docs/src/content/docs/<page>.mdx`:
   `quickstart`, `docs/tasks`, `docs/caching`, `docs/workspace`,
   `docs/sandboxing`, `docs/ci`, `docs/remote-cache`, `docs/migrate`,
-  `docs/troubleshooting`, `docs/plugins`, `docs/agents`.
+  `docs/running-tasks`, `docs/plugins`, `docs/agents`.
 
 ## Install
 

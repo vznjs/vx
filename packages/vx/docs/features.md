@@ -58,7 +58,7 @@ config key or an environment variable is missing here.
 - **GitHub Actions log groups** — on Actions, each task's block collapses in a `::group::` with its outcome and time. [docs](https://vznjs.github.io/vx/docs/ci/) · post: [The basics, done carefully](https://vznjs.github.io/vx/blog/the-basics/)
 - **One UI kit** (`ui` from `@vzn/vx`) — every line vx and its plugins print is built from one fixed set of components: panels (an underlined title line and its lines, no box) stacked like a TUI but written into the scrollback, coloured the same on CI. [docs](https://vznjs.github.io/vx/cli/output/) · no post
 - **Colors** (`NO_COLOR`, `FORCE_COLOR`) — truecolor output, forced on or off by env; on any CI the piped log is coloured too; `TERM=dumb` prints plain, with no live region. [docs](https://vznjs.github.io/vx/cli/run/) · post: [The basics, done carefully](https://vznjs.github.io/vx/blog/the-basics/)
-- **Signal-named exits** — a failure reads `exit 137, 128 + SIGKILL`. [docs](https://vznjs.github.io/vx/docs/troubleshooting/) · post: [When a task misbehaves](https://vznjs.github.io/vx/blog/tasks-that-misbehave/)
+- **Signal-named exits** — a failure reads `exit 137, 128 + SIGKILL`. [docs](https://vznjs.github.io/vx/docs/tasks/#5-handle-failures-and-hangs) · post: [When a task misbehaves](https://vznjs.github.io/vx/blog/tasks-that-misbehave/)
 - **vx's own steps as rows** — on a terminal, what vx does around the tasks (`vx:uploads`, `<plugin>:teardown`) shows as a running row once it passes 150 ms, then a list row marked `internal`, only when the run waits on it (`vx:prefetch` runs beside the tasks and is listed by `vx last` alone); never counted as a task. no post
 - **Plain output off a TTY** — no live region, and a missing task lists tasks instead of opening the picker. [docs](https://vznjs.github.io/vx/cli/run/) · post: [The basics, done carefully](https://vznjs.github.io/vx/blog/the-basics/)
 
@@ -147,10 +147,10 @@ config key or an environment variable is missing here.
 - **Tasks** (`tasks`, `exec.command`, `dependsOn`, `description`, `tags`) — one command per task; the shell is the API. [docs](https://vznjs.github.io/vx/docs/workspace/) · post: [One command per task](https://vznjs.github.io/vx/blog/one-command-per-task/)
 - **Workspace rules** (`rules`) — speed-only checks, on by default, configurable. [docs](https://vznjs.github.io/vx/schema/) · post: [Guard rails that tell you the fix](https://vznjs.github.io/vx/blog/guard-rails/)
 - **Config worker timeout** (`VX_CONFIG_WORKER_TIMEOUT`) — bound a config's evaluation. [docs](https://vznjs.github.io/vx/cli/) · post: [Guard rails that tell you the fix](https://vznjs.github.io/vx/blog/guard-rails/)
-- **No nested runs** (`VX_RUN_TASK`, `VX_RUN_WORKSPACE`) — set on every task; a `vx run` inside a task of the same workspace is refused. [docs](https://vznjs.github.io/vx/docs/troubleshooting/) · post: [When a task misbehaves](https://vznjs.github.io/vx/blog/tasks-that-misbehave/)
+- **No nested runs** (`VX_RUN_TASK`, `VX_RUN_WORKSPACE`) — set on every task; a `vx run` inside a task of the same workspace is refused. [docs](https://vznjs.github.io/vx/docs/running-tasks/) · post: [When a task misbehaves](https://vznjs.github.io/vx/blog/tasks-that-misbehave/)
 - **Typed config helpers** (`defineProject`) — autocomplete for task names in `dependsOn`, errors while you edit. [docs](https://vznjs.github.io/vx/docs/workspace/) · post: [Config in TypeScript, and why there are no named inputs](https://vznjs.github.io/vx/blog/config-in-typescript/)
 - **Presets** — a TypeScript function returning a task config, shared across projects. [docs](https://vznjs.github.io/vx/docs/workspace/) · post: [Config in TypeScript, and why there are no named inputs](https://vznjs.github.io/vx/blog/config-in-typescript/)
-- **Clean config errors** — a bad config fails at load naming the key, with no stack trace. [docs](https://vznjs.github.io/vx/docs/troubleshooting/) · post: [When a task misbehaves](https://vznjs.github.io/vx/blog/tasks-that-misbehave/)
+- **Clean config errors** — a bad config fails at load naming the key, with no stack trace. [docs](https://vznjs.github.io/vx/docs/tasks/) · post: [When a task misbehaves](https://vznjs.github.io/vx/blog/tasks-that-misbehave/)
 
 ## CI
 

@@ -8,6 +8,7 @@ import Demo from '../../../components/Demo.astro'
 import { workspaceLock } from '../../../components/docs/pictures/workspace.js'
 import { Aside, FileTree, Tabs, TabItem, Badge } from '@astrojs/starlight/components'
 import { Levels, Deeper, Concept, Quiz, Compare, Takeaway, NextStep } from '../../../components/learn'
+import ErrorFinder from '../../../components/docs/troubleshooting/ErrorFinder.astro'
 
 You have vx installed. Now meet the folder it works in, your workspace. One small file marks it:
 
@@ -521,6 +522,57 @@ With `exclusiveOutputs: false`, a task that waits on another may add files to it
 `vx lock` writes `.vx/.gitignore` (`/cache`, `/tmp`) and `.vx/.gitattributes` for you.
 
 To share inputs between projects, import one array into each config: a config is TypeScript.
+
+</Deeper>
+
+<Deeper level="details" title="When it goes wrong">
+
+Paste what vx printed, or open a code:
+
+<ErrorFinder codes={['VX_E_NO_WORKSPACE', 'VX_E_NO_GIT', 'VX_E_GIT', 'VX_E_LOCK']} />
+
+### You changed `vx.config.ts` and the run ignores it
+
+A run reads the lock, not your configs. `vx lock --check` shows what drifted:
+
+```ansi title="vx lock --check"
+[38;2;239;68;68m✗[0m [1mvx lock --check[0m  [38;2;203;213;225mpackages/web/vx.config.ts evaluates differently from the lock here — its config, a file it imports, or the environment it reads changed; run 'vx lock'[0m
+
+  [38;2;203;213;225mtasks.build.exec.command: "mkdir -p dist && cp src/main.js dist/main.js" → "mkdir -p dist && cp src/main.js dist/app.js"[0m
+```
+
+Look at the second line: the old command, then the new one. Run `vx lock` to take it.
+
+### Every message, word for word
+
+| vx prints | Fix |
+| --- | --- |
+| `no .vx/workspace.ts in …` | Run `vx init` at the workspace root. It writes `.vx/workspace.ts`, which marks the root. A file above your git checkout does not count. |
+| `… belongs to another user, so vx does not take its directory as your workspace` | Outside git, vx ignores a `.vx/workspace.ts` another user owns. Run vx in a checkout you own. |
+| `two projects are named "…": …` | Two folders have the same name: set another `name` in one's `vx.config.ts`, then run `vx lock`. |
+| `… locks …, but its … is gone` | A `vx.config.ts` was deleted or renamed: run `vx lock`. |
+| `… holds a line … never writes` | A merge left a conflict in the lock: see [Fix a merge conflict in the lock](../ci/#fix-a-merge-conflict-in-the-lock). |
+| `… evaluates differently from the lock here` | A config changed without `vx lock`: run `vx lock` and commit the lock. |
+| `vx requires git: … is not inside a git work tree` | vx needs git: run `git init` at the workspace root. |
+| `vx requires git: failed to spawn 'git'` | Install git. |
+
+- **The editor cannot find `@vzn/vx`.** Add it as a devDependency. vx
+  runs a config without it.
+- **A package has no `vx.config.ts`.** It gets a default `build` that
+  only waits for its dependencies' builds. Its files still count, so
+  editing it re-runs the packages that use it.
+
+### Platforms
+
+vx runs on Linux with glibc (not Alpine's musl) or macOS, in a git
+repository (sha1 or sha256, files or reftable refs). The
+release binary needs neither Node nor Bun.
+
+From source, vx needs Bun 1.4.4 or later.
+
+What the sandbox needs on each system is on [Sandboxing](../sandboxing/#requirements--platform-support).
+
+<Takeaway>fix a workspace vx cannot find, a stale lock, or a missing git.</Takeaway>
 
 </Deeper>
 

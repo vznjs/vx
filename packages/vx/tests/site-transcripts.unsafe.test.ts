@@ -1,5 +1,5 @@
 // The site's terminal samples are pasted from real runs, and a sample
-// drifts the day the output changes: the troubleshooting `vx why` block
+// drifts the day the output changes: the old troubleshooting `vx why` block
 // and the agents page's diff entry showed `a853d874…` where vx prints the
 // whole blob id, and a previous run that never happened (2026-10-23). Each
 // sample here is the output of the run the page describes, on one fixture.
@@ -141,8 +141,8 @@ describe('the guides show what vx prints', () => {
     expect(run.stdout.trim()).toBe(line)
   })
 
-  it("troubleshooting's filter typo is what vx prints", () => {
-    const page = readFileSync(path.join(GUIDES, 'troubleshooting.mdx'), 'utf8')
+  it("running tasks' filter typo is what vx prints", () => {
+    const page = readFileSync(path.join(GUIDES, 'running-tasks.mdx'), 'utf8')
     const run = vxColour('run', 'build', '--filter', '@demo/ap')
     expect(run.code).toBe(1)
     expect(printed(page, 'vx run build --filter @demo/ap')).toBe(run.stderr.trim())

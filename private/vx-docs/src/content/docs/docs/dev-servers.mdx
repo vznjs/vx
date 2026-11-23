@@ -396,6 +396,19 @@ All of watch mode: [`vx watch`](../../cli/watch/).
 
 </Deeper>
 
+<Deeper level="details" title="When it goes wrong">
+
+- **`not ready after …: waiting for a line matching`.** The server has
+  not printed its `readyWhen` line. Fix the pattern, or set
+  `exec.timeout` to stop waiting.
+- **A server outlives a `kill -9` of vx.** Nothing runs after `kill -9`,
+  except a server that exits when its stdin closes (esbuild `--watch`).
+- **A daemon outlives Ctrl-C.** A daemon a task starts with `setsid` and an empty environment
+  (`env -i`) outlives Ctrl-C: vx finds a task's processes by a variable
+  in their environment.
+
+</Deeper>
+
 <NextStep href="../../docs/running-tasks/" title="Running tasks">
   Pick which tasks run: one project, what changed, or everything.
 </NextStep>

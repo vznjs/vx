@@ -542,6 +542,14 @@ vx sets these for itself and removes them at start; do not set them: `VX_HANDED_
 
 </Deeper>
 
+<Deeper level="details" title="When it goes wrong">
+
+- **A variable is empty inside the command.** Past a small essential
+  allowlist (`PATH`, `HOME`, `CI` and a few more), vx passes only what
+  you list. Add the name to `exec.env.passThrough`.
+
+</Deeper>
+
 <NextStep href="../dev-servers/" title="Dev servers">
   Start a dev server inside the task graph, so your tests wait until it is ready.
 </NextStep>

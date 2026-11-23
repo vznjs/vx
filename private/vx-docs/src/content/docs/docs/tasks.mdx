@@ -12,6 +12,7 @@ import GraphExplorer from '../../../components/demos/GraphExplorer.astro'
 import DependsOn from '../../../components/demos/DependsOn.astro'
 import OutputRule from '../../../components/demos/OutputRule.astro'
 import { Levels, Deeper, Concept, Quiz, Takeaway, NextStep } from '../../../components/learn'
+import ErrorFinder from '../../../components/docs/troubleshooting/ErrorFinder.astro'
 
 A task is **one command** vx runs for you. This page grows one small
 workspace, `ui` and `web`, from a single lint task to a cached, ordered
@@ -528,6 +529,44 @@ for and what waits for it. Nothing is uploaded.
 
 Workspace-wide defaults for `timeout`, `retries` and `outputs.clean`
 live in [Workspace](../workspace/).
+
+</Deeper>
+
+<Deeper level="details" title="When it goes wrong">
+
+`vx lock` checks every config before it writes the lock. A mistake stops it and points at the line:
+
+```ansi title="vx lock"
+[38;2;239;68;68m✗[0m [1mvx lock[0m  [38;2;203;213;225mlock not written[0m
+
+  [1mpackages/web/vx.config.ts:8:7[0m
+  [38;2;203;213;225mtasks.build.outputs must be an object (fields: clean, files, workspaceFiles), not an array[0m
+
+    6 |       exec: { command: 'mkdir -p dist && cp src/main.js dist/main.js' },
+    7 |       inputs: { files: ['src/**'] },
+  > 8 |       outputs: ['dist/**'],
+      |       ^
+
+  [2mfix[0m  [1muse `{ files: [...] }`[0m
+```
+
+Paste what vx printed, or open a code:
+
+<ErrorFinder codes={['VX_E_CONFIG', 'VX_E_CYCLE', 'VX_E_DEPENDS_ON', 'VX_E_OUTPUT_OVERLAP', 'VX_E_INPUT_IS_OUTPUT', 'VX_E_NESTED_INPUT', 'VX_E_NESTED_OUTPUT', 'VX_E_DEPENDENCY_RULE']} />
+
+| vx prints | Fix |
+| --- | --- |
+| `… has unknown field "<key>"` | A typo, or a Turbo or Nx key. The message lists the fields vx allows. |
+| `dependsOn cycle` | Two tasks wait for each other: remove one `dependsOn` from the loop it prints. |
+| `dependsOn …, but` `no project is named …` / `… declares no task …` | Use the name it suggests, or add that task to that package. |
+| `timed out after …` | The task ran past its time limit: raise `exec.timeout` or `--timeout` ([Handle failures and hangs](#5-handle-failures-and-hangs)). |
+
+- **`inputs matched no files`.** The globs find nothing. Paths are
+  relative to the project's folder: fix them.
+- **`outputs matched no files`.** The command never wrote what
+  `outputs.files` names: see [Skip work already done](#3-skip-work-already-done).
+
+<Takeaway>fix any config `vx lock` refuses, from the line it points at.</Takeaway>
 
 </Deeper>
 
