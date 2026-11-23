@@ -200,7 +200,9 @@ function cacheTodo(command: string, buildInfo: BuildInfo = NO_BUILD_INFO): strin
 // `lint` is not here: a linter reads sources, and an edge to `build` serialises
 // the two for nothing (the init walkthrough).
 const AFTER_BUILD = new Set(['test', 'typecheck', 'check', 'e2e'])
-const LIFECYCLE = /^(pre|post)(install|publish|pack|version)$|^(prepare|prepublishOnly|install)$/
+// What an install or a publish runs unasked (npm 10.9, pnpm 10.28).
+const LIFECYCLE =
+  /^(pre|post)(install|publish|pack|version|prepare)$|^(prepare|prepublishOnly|install|dependencies|pnpm:devPreinstall)$/
 
 /**
  * The script a command delegates to when it is NOTHING but a package-manager

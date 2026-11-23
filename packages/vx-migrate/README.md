@@ -433,7 +433,7 @@ as npm hands them to the script and not its hooks, appended
 as text, so no part sees them as `$1`. The
 command is a small shell function, `vx_script`, around the three parts;
 it carries a TODO saying so; a `pre<x>` with no `x` stays a task of its own, and
-npm's lifecycle hooks (`prepack`, `prepublishOnly`, …) are never tasks. A script
+the lifecycle scripts an install or a publish runs unasked (`prepare` and its `pre` / `post` hooks, `dependencies`, `prepack`, `prepublishOnly`, pnpm's `pnpm:devPreinstall`, …) are never tasks. A script
 named for a verb joins its hooks too: `npm run version` runs `preversion`, as
 pnpm, Yarn 1 and Bun do, so the `version` task's command holds it.
 Every project gets a `vx.config.ts` (2026-10-14): a member with
