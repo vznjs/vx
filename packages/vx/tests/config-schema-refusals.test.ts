@@ -1623,3 +1623,30 @@ describe('a brace product past the limit', () => {
     )
   })
 })
+
+// A name twice in a list where each name counts once loaded clean and keyed
+// the task apart from the same list without it: a needless miss, and a sign
+// of a slip (a paste, a merge) the author never sees.
+describe('a name listed twice', () => {
+  it('is refused, naming the list and the name', () => {
+    const exec = { command: 'x' }
+    expect([
+      taskRefusal({ exec, inputs: { files: [], env: ['A', 'B', 'A'] } }),
+      taskRefusal({ exec: { ...exec, env: { passThrough: ['A', 'A'] } } }),
+      taskRefusal({ exec: { ...exec, env: { secret: ['S', 'S'] } } }),
+    ]).toEqual([
+      `${CFG}: tasks.t.inputs.env lists "A" twice`,
+      `${CFG}: tasks.t.exec.env.passThrough lists "A" twice`,
+      `${CFG}: tasks.t.exec.env.secret lists "S" twice`,
+    ])
+    let tags: string | null = null
+    try {
+      validateProjectConfig({ tags: ['ui', 'ui'], tasks: {} } as never, CFG)
+    } catch (err) {
+      tags = (err as Error).message
+    }
+    expect(tags).toBe(`${CFG}: \`tags\` lists "ui" twice`)
+    // CONTROL: each once.
+    expect(taskRefusal({ exec: { ...exec, env: { passThrough: ['A', 'B'] } } })).toBeNull()
+  })
+})

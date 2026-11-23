@@ -81,7 +81,7 @@ export default defineProject({
 ```ts
 interface ProjectConfig {
   name?: string // what `<name>#<task>`, filters and `dependsOn` address; no "#"
-  tags?: readonly string[] // labels for `--filter tag:<name>`
+  tags?: readonly string[] // labels for `--filter tag:<name>`, each once
   tasks?: Record<string, TaskConfig> // keyed by task name
 }
 ```
@@ -966,9 +966,9 @@ Default: none, the task sees only the essential list below.
 
 ```ts
 interface ExecEnv {
-  passThrough?: readonly string[] // names taken from host process.env; exact names, a wildcard is refused
+  passThrough?: readonly string[] // names taken from host process.env; exact names, each once, a wildcard is refused
   define?: Record<string, string> // explicit name=value pairs
-  secret?: readonly string[] // names whose values are masked (`***`) whatever the name; see Masking
+  secret?: readonly string[] // names whose values are masked (`***`) whatever the name, each once; see Masking
 }
 ```
 
@@ -1264,7 +1264,7 @@ The shape of `inputs`. Each field has its own entry below.
 interface InputsConfig {
   files: readonly string[] // required
   workspaceFiles?: readonly string[] // optional; workspace-root-relative
-  env?: readonly string[] // optional
+  env?: readonly string[] // optional; each name once
   runtime?: readonly string[] // optional; project-dir shell commands
   workspaceRuntime?: readonly string[] // optional; workspace-root shell commands
   tasks?: readonly string[] // optional; same micro-syntax as dependsOn
@@ -3644,6 +3644,7 @@ a user meets most:
 | `cache needs inputs — the key is the task's inputs`                                                                                   | Forgot `inputs` on a cached task.                                                                                                                                                                                                                                                                        |
 | `inputs must be an object`                                                                                                            | Present but not an object: a string (`outputs: 'dist'`). An array is the row above.                                                                                                                                                                                                                      |
 | `inputs.files must be an array`                                                                                                       | Wrong shape.                                                                                                                                                                                                                                                                                             |
+| `<list> lists "<name>" twice`                                                                                                         | A name twice in `inputs.env`, `exec.env.passThrough`, `exec.env.secret` or `tags`; each counts once.                                                                                                                                                                                                     |
 | `inputs.runtime must be an array of non-empty shell command strings with no NUL`                                                      | Non-string / blank entry (whitespace alone runs as a no-op), or one holding a NUL.                                                                                                                                                                                                                       |
 | `inputs.workspaceRuntime must be an array of non-empty shell command strings with no NUL`                                             | Non-string / blank entry (whitespace alone runs as a no-op), or one holding a NUL.                                                                                                                                                                                                                       |
 | `inputs.tasks must be an array of non-empty strings`                                                                                  | Non-string / empty entry, or a bare string.                                                                                                                                                                                                                                                              |

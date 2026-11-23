@@ -221,6 +221,10 @@ const CASES: Array<[string, () => string | null | Promise<string | null>]> = [
   ],
   ['a task with no exec must declare dependsOn or inputs', () => validated({ tasks: { b: {} } })],
   [
+    '<list> lists "<name>" twice',
+    () => validated({ tasks: { b: { ...ok, inputs: { files: [], env: ['A', 'A'] } } } }),
+  ],
+  [
     'cache needs exec — a task with no command produces nothing to cache',
     () =>
       validated({

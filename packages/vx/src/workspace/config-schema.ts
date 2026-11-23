@@ -681,6 +681,7 @@ export function validateProjectConfig(
   ) {
     throw new UserError(`${configPath}: \`tags\` must be an array of non-empty strings`)
   }
+  if (tags !== undefined) assertOnce(tags as string[], `${configPath}: \`tags\``)
   for (const tag of (tags ?? []) as string[]) {
     const why = tagProblem(tag)
     if (why !== null) {
@@ -905,6 +906,7 @@ function validateExecEnv(env: unknown, where: string): void {
     // passThroughEnv expands it), where `inputs.env` refused the
     // same text below: one refusal for the class.
     assertNoEnvNegation(passThrough as string[], `${where}.exec.env.passThrough`)
+    assertOnce(passThrough as string[], `${where}.exec.env.passThrough`)
     const wild = (passThrough as string[]).find((n) => BUN_GLOB_WILDCARDS.test(n))
     if (wild !== undefined) {
       throw new UserError(
@@ -923,7 +925,10 @@ function validateExecEnv(env: unknown, where: string): void {
       `${where}.exec.env.secret must be an array of env var names (non-empty, no '=', NUL or wildcard)`,
     )
   }
-  if (secret !== undefined) assertNoEnvNegation(secret as string[], `${where}.exec.env.secret`)
+  if (secret !== undefined) {
+    assertNoEnvNegation(secret as string[], `${where}.exec.env.secret`)
+    assertOnce(secret as string[], `${where}.exec.env.secret`)
+  }
   const define = (env as { define?: unknown }).define
   if (define !== undefined) {
     if (typeof define !== 'object' || define === null || Array.isArray(define)) {
@@ -1045,6 +1050,7 @@ function validateInputs(inputs: unknown, task: TaskConfig, where: string): void 
       )
     }
     assertNoEnvNegation(envList as string[], `${where}.inputs.env`)
+    assertOnce(envList as string[], `${where}.inputs.env`)
     for (const name of envList as string[]) {
       // Wildcards refused so a user never silently misses env vars they
       // thought tracked: `VERCEL_*` is not expanded, and would otherwise
@@ -1709,6 +1715,18 @@ function assertNoBraceRange(glob: string, where: string): void {
  * `passThroughEnv`). vx has no wildcards, so the entry was a variable
  * named `!NAME`: nothing excluded, nothing said.
  */
+/**
+ * A list whose names each count once (a set): a repeat loaded clean and keyed
+ * the task apart from the list without it.
+ */
+function assertOnce(names: readonly string[], where: string): void {
+  const seen = new Set<string>()
+  for (const n of names) {
+    if (seen.has(n)) throw new UserError(`${where} lists ${JSON.stringify(n)} twice`)
+    seen.add(n)
+  }
+}
+
 function assertNoEnvNegation(names: readonly string[], where: string): void {
   const neg = names.find((n) => n.startsWith('!'))
   if (neg !== undefined) {
