@@ -5,7 +5,7 @@
 // one the user pointed at, and printed the schema notice against the
 // wrong index.
 
-import { existsSync } from 'node:fs'
+import { existsSync, readdirSync } from 'node:fs'
 import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -268,6 +268,13 @@ describe.skipIf(skipAsRoot('a cache directory this user cannot write into'))(
 describe('the run’s --cache-dir reaches selection', () => {
   let root: string
   let elsewhere: string
+  // What the workspace's own cache dir holds besides `vx lock`'s config
+  // stamps and the config bundle, which live there whatever `cache.dir` says.
+  const defaultCache = (dir: string): string[] => {
+    const cache = path.join(dir, '.vx', 'cache')
+    const own = new Set(['config-stamps.json', 'compiled'])
+    return existsSync(cache) ? readdirSync(cache).filter((n) => !own.has(n)) : []
+  }
   beforeEach(async () => {
     root = await makeWorkspace({ prefix: 'vx-cache-dir-sel-' })
     elsewhere = await mkdtemp(path.join(os.tmpdir(), 'vx-cache-dir-elsewhere-'))
@@ -288,7 +295,7 @@ describe('the run’s --cache-dir reaches selection', () => {
     const staged = await loadCliProjects(root, metas, 'all', { cacheDir: elsewhere })
     expect([...staged.keys()]).toEqual(['app'])
     expect(existsSync(path.join(elsewhere, 'cache.db'))).toBe(false)
-    expect(existsSync(path.join(root, '.vx', 'cache'))).toBe(false)
+    expect(defaultCache(root)).toEqual([])
   })
 
   it(
@@ -309,7 +316,7 @@ describe('the run’s --cache-dir reaches selection', () => {
       expect(`${code}\n${err}${out}`).toStartWith('0\n')
       expect(out + err).toContain('app')
       expect(existsSync(path.join(elsewhere, 'cache.db'))).toBe(true)
-      expect(existsSync(path.join(root, '.vx', 'cache'))).toBe(false)
+      expect(defaultCache(root)).toEqual([])
     },
     TIMEOUT,
   )

@@ -139,7 +139,7 @@ describe('a task killed by a shutdown signal', () => {
       // Requested, it printed, so its frame is its entry in the list; the
       // footer counts it in the total.
       expect(r.text).toMatch(/\n└─ r#doomed ── \([\d.]+m?s\) aborted\n/)
-      expect(r.text).toContain('\n            1 success · 1 aborted · 2 total\n')
+      expect(r.text).toContain('\n  tasks     1 success · 1 aborted · 2 total\n')
     },
     TIMEOUT,
   )
