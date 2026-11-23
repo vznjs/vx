@@ -708,313 +708,365 @@
       },
       "run.logs.captureHead": {
         "ok": ["<absent>", "\"10G\"", "\"8MiB\""],
-        "$CONFIG: `run.logs.captureHead` must be a size like '500MB' or '10GB' (got null)": [
+        "$CONFIG: `run.logs.captureHead` must be a size like '32KiB', '8MiB' or '1GiB' (got null)": [
           "null"
         ],
-        "$CONFIG: `run.logs.captureHead` must be a size like '500MB' or '10GB' (got true)": [
+        "$CONFIG: `run.logs.captureHead` must be a size like '32KiB', '8MiB' or '1GiB' (got true)": [
           "true"
         ],
-        "$CONFIG: `run.logs.captureHead` must be a size like '500MB' or '10GB' (got false)": [
+        "$CONFIG: `run.logs.captureHead` must be a size like '32KiB', '8MiB' or '1GiB' (got false)": [
           "false"
         ],
         "$CONFIG: `run.logs.captureHead` must be more than 0 (got 0)": ["0"],
         "$CONFIG: `run.logs.captureHead` takes a size with its unit, like '1KiB' or '1B' (got 1)": [
           "1"
         ],
-        "$CONFIG: `run.logs.captureHead` must be a size like '500MB' or '10GB' (got 1.5)": ["1.5"],
-        "$CONFIG: `run.logs.captureHead` must be a size like '500MB' or '10GB' (got -1)": ["-1"],
+        "$CONFIG: `run.logs.captureHead` must be a size like '32KiB', '8MiB' or '1GiB' (got 1.5)": [
+          "1.5"
+        ],
+        "$CONFIG: `run.logs.captureHead` must be a size like '32KiB', '8MiB' or '1GiB' (got -1)": [
+          "-1"
+        ],
         "$CONFIG: `run.logs.captureHead` takes a size with its unit, like '65536B' (got 65536)": [
           "65536"
         ],
         "$CONFIG: `run.logs.captureHead` takes a size with its unit, like '2147483648B' (got 2147483648)": [
           "2147483648"
         ],
-        "$CONFIG: `run.logs.captureHead` must be a size like '500MB' or '10GB' (got \"\")": [
+        "$CONFIG: `run.logs.captureHead` must be a size like '32KiB', '8MiB' or '1GiB' (got \"\")": [
           "\"\""
         ],
-        "$CONFIG: `run.logs.captureHead` must be a size like '500MB' or '10GB' (got \"x\")": [
+        "$CONFIG: `run.logs.captureHead` must be a size like '32KiB', '8MiB' or '1GiB' (got \"x\")": [
           "\"x\""
         ],
-        "$CONFIG: `run.logs.captureHead` must be a size like '500MB' or '10GB' (got \"(\")": [
+        "$CONFIG: `run.logs.captureHead` must be a size like '32KiB', '8MiB' or '1GiB' (got \"(\")": [
           "\"(\""
         ],
-        "$CONFIG: `run.logs.captureHead` must be a size like '500MB' or '10GB' (got \"30d\")": [
+        "$CONFIG: `run.logs.captureHead` must be a size like '32KiB', '8MiB' or '1GiB' (got \"30d\")": [
           "\"30d\""
         ],
         "$CONFIG: `run.logs.captureHead` takes a size with its unit, like '10KiB' or '10B' (got \"10\")": [
           "\"10\""
         ],
-        "$CONFIG: `run.logs.captureHead` must be a size like '500MB' or '10GB' (got [])": ["[]"],
-        "$CONFIG: `run.logs.captureHead` must be a size like '500MB' or '10GB' (got [\"x\"])": [
+        "$CONFIG: `run.logs.captureHead` must be a size like '32KiB', '8MiB' or '1GiB' (got [])": [
+          "[]"
+        ],
+        "$CONFIG: `run.logs.captureHead` must be a size like '32KiB', '8MiB' or '1GiB' (got [\"x\"])": [
           "[\"x\"]"
         ],
-        "$CONFIG: `run.logs.captureHead` must be a size like '500MB' or '10GB' (got [\"\"])": [
+        "$CONFIG: `run.logs.captureHead` must be a size like '32KiB', '8MiB' or '1GiB' (got [\"\"])": [
           "[\"\"]"
         ],
-        "$CONFIG: `run.logs.captureHead` must be a size like '500MB' or '10GB' (got [1])": ["[1]"],
-        "$CONFIG: `run.logs.captureHead` must be a size like '500MB' or '10GB' (got [3000])": [
+        "$CONFIG: `run.logs.captureHead` must be a size like '32KiB', '8MiB' or '1GiB' (got [1])": [
+          "[1]"
+        ],
+        "$CONFIG: `run.logs.captureHead` must be a size like '32KiB', '8MiB' or '1GiB' (got [3000])": [
           "[3000]"
         ],
-        "$CONFIG: `run.logs.captureHead` must be a size like '500MB' or '10GB' (got [\"/x\"])": [
+        "$CONFIG: `run.logs.captureHead` must be a size like '32KiB', '8MiB' or '1GiB' (got [\"/x\"])": [
           "[\"/x\"]"
         ],
-        "$CONFIG: `run.logs.captureHead` must be a size like '500MB' or '10GB' (got [\"!/x\"])": [
+        "$CONFIG: `run.logs.captureHead` must be a size like '32KiB', '8MiB' or '1GiB' (got [\"!/x\"])": [
           "[\"!/x\"]"
         ],
-        "$CONFIG: `run.logs.captureHead` must be a size like '500MB' or '10GB' (got [\"../x\"])": [
+        "$CONFIG: `run.logs.captureHead` must be a size like '32KiB', '8MiB' or '1GiB' (got [\"../x\"])": [
           "[\"../x\"]"
         ],
-        "$CONFIG: `run.logs.captureHead` must be a size like '500MB' or '10GB' (got [\"!x\"])": [
+        "$CONFIG: `run.logs.captureHead` must be a size like '32KiB', '8MiB' or '1GiB' (got [\"!x\"])": [
           "[\"!x\"]"
         ],
-        "$CONFIG: `run.logs.captureHead` must be a size like '500MB' or '10GB' (got [\"!!x\",\"y\"])": [
+        "$CONFIG: `run.logs.captureHead` must be a size like '32KiB', '8MiB' or '1GiB' (got [\"!!x\",\"y\"])": [
           "[\"!!x\",\"y\"]"
         ],
-        "$CONFIG: `run.logs.captureHead` must be a size like '500MB' or '10GB' (got [\".\"])": [
+        "$CONFIG: `run.logs.captureHead` must be a size like '32KiB', '8MiB' or '1GiB' (got [\".\"])": [
           "[\".\"]"
         ],
-        "$CONFIG: `run.logs.captureHead` must be a size like '500MB' or '10GB' (got [\"**\"])": [
+        "$CONFIG: `run.logs.captureHead` must be a size like '32KiB', '8MiB' or '1GiB' (got [\"**\"])": [
           "[\"**\"]"
         ],
-        "$CONFIG: `run.logs.captureHead` must be a size like '500MB' or '10GB' (got [\"A=B\"])": [
+        "$CONFIG: `run.logs.captureHead` must be a size like '32KiB', '8MiB' or '1GiB' (got [\"A=B\"])": [
           "[\"A=B\"]"
         ],
-        "$CONFIG: `run.logs.captureHead` must be a size like '500MB' or '10GB' (got [\"A*\"])": [
+        "$CONFIG: `run.logs.captureHead` must be a size like '32KiB', '8MiB' or '1GiB' (got [\"A*\"])": [
           "[\"A*\"]"
         ],
-        "$CONFIG: `run.logs.captureHead` must be a size like '500MB' or '10GB' (got {})": ["{}"],
-        "$CONFIG: `run.logs.captureHead` must be a size like '500MB' or '10GB' (got {\"x\":\"y\"})": [
+        "$CONFIG: `run.logs.captureHead` must be a size like '32KiB', '8MiB' or '1GiB' (got {})": [
+          "{}"
+        ],
+        "$CONFIG: `run.logs.captureHead` must be a size like '32KiB', '8MiB' or '1GiB' (got {\"x\":\"y\"})": [
           "{\"x\":\"y\"}"
         ]
       },
       "run.logs.captureTail": {
         "ok": ["<absent>", "\"10G\"", "\"8MiB\""],
-        "$CONFIG: `run.logs.captureTail` must be a size like '500MB' or '10GB' (got null)": [
+        "$CONFIG: `run.logs.captureTail` must be a size like '32KiB', '8MiB' or '1GiB' (got null)": [
           "null"
         ],
-        "$CONFIG: `run.logs.captureTail` must be a size like '500MB' or '10GB' (got true)": [
+        "$CONFIG: `run.logs.captureTail` must be a size like '32KiB', '8MiB' or '1GiB' (got true)": [
           "true"
         ],
-        "$CONFIG: `run.logs.captureTail` must be a size like '500MB' or '10GB' (got false)": [
+        "$CONFIG: `run.logs.captureTail` must be a size like '32KiB', '8MiB' or '1GiB' (got false)": [
           "false"
         ],
         "$CONFIG: `run.logs.captureTail` must be more than 0 (got 0)": ["0"],
         "$CONFIG: `run.logs.captureTail` takes a size with its unit, like '1KiB' or '1B' (got 1)": [
           "1"
         ],
-        "$CONFIG: `run.logs.captureTail` must be a size like '500MB' or '10GB' (got 1.5)": ["1.5"],
-        "$CONFIG: `run.logs.captureTail` must be a size like '500MB' or '10GB' (got -1)": ["-1"],
+        "$CONFIG: `run.logs.captureTail` must be a size like '32KiB', '8MiB' or '1GiB' (got 1.5)": [
+          "1.5"
+        ],
+        "$CONFIG: `run.logs.captureTail` must be a size like '32KiB', '8MiB' or '1GiB' (got -1)": [
+          "-1"
+        ],
         "$CONFIG: `run.logs.captureTail` takes a size with its unit, like '65536B' (got 65536)": [
           "65536"
         ],
         "$CONFIG: `run.logs.captureTail` takes a size with its unit, like '2147483648B' (got 2147483648)": [
           "2147483648"
         ],
-        "$CONFIG: `run.logs.captureTail` must be a size like '500MB' or '10GB' (got \"\")": [
+        "$CONFIG: `run.logs.captureTail` must be a size like '32KiB', '8MiB' or '1GiB' (got \"\")": [
           "\"\""
         ],
-        "$CONFIG: `run.logs.captureTail` must be a size like '500MB' or '10GB' (got \"x\")": [
+        "$CONFIG: `run.logs.captureTail` must be a size like '32KiB', '8MiB' or '1GiB' (got \"x\")": [
           "\"x\""
         ],
-        "$CONFIG: `run.logs.captureTail` must be a size like '500MB' or '10GB' (got \"(\")": [
+        "$CONFIG: `run.logs.captureTail` must be a size like '32KiB', '8MiB' or '1GiB' (got \"(\")": [
           "\"(\""
         ],
-        "$CONFIG: `run.logs.captureTail` must be a size like '500MB' or '10GB' (got \"30d\")": [
+        "$CONFIG: `run.logs.captureTail` must be a size like '32KiB', '8MiB' or '1GiB' (got \"30d\")": [
           "\"30d\""
         ],
         "$CONFIG: `run.logs.captureTail` takes a size with its unit, like '10KiB' or '10B' (got \"10\")": [
           "\"10\""
         ],
-        "$CONFIG: `run.logs.captureTail` must be a size like '500MB' or '10GB' (got [])": ["[]"],
-        "$CONFIG: `run.logs.captureTail` must be a size like '500MB' or '10GB' (got [\"x\"])": [
+        "$CONFIG: `run.logs.captureTail` must be a size like '32KiB', '8MiB' or '1GiB' (got [])": [
+          "[]"
+        ],
+        "$CONFIG: `run.logs.captureTail` must be a size like '32KiB', '8MiB' or '1GiB' (got [\"x\"])": [
           "[\"x\"]"
         ],
-        "$CONFIG: `run.logs.captureTail` must be a size like '500MB' or '10GB' (got [\"\"])": [
+        "$CONFIG: `run.logs.captureTail` must be a size like '32KiB', '8MiB' or '1GiB' (got [\"\"])": [
           "[\"\"]"
         ],
-        "$CONFIG: `run.logs.captureTail` must be a size like '500MB' or '10GB' (got [1])": ["[1]"],
-        "$CONFIG: `run.logs.captureTail` must be a size like '500MB' or '10GB' (got [3000])": [
+        "$CONFIG: `run.logs.captureTail` must be a size like '32KiB', '8MiB' or '1GiB' (got [1])": [
+          "[1]"
+        ],
+        "$CONFIG: `run.logs.captureTail` must be a size like '32KiB', '8MiB' or '1GiB' (got [3000])": [
           "[3000]"
         ],
-        "$CONFIG: `run.logs.captureTail` must be a size like '500MB' or '10GB' (got [\"/x\"])": [
+        "$CONFIG: `run.logs.captureTail` must be a size like '32KiB', '8MiB' or '1GiB' (got [\"/x\"])": [
           "[\"/x\"]"
         ],
-        "$CONFIG: `run.logs.captureTail` must be a size like '500MB' or '10GB' (got [\"!/x\"])": [
+        "$CONFIG: `run.logs.captureTail` must be a size like '32KiB', '8MiB' or '1GiB' (got [\"!/x\"])": [
           "[\"!/x\"]"
         ],
-        "$CONFIG: `run.logs.captureTail` must be a size like '500MB' or '10GB' (got [\"../x\"])": [
+        "$CONFIG: `run.logs.captureTail` must be a size like '32KiB', '8MiB' or '1GiB' (got [\"../x\"])": [
           "[\"../x\"]"
         ],
-        "$CONFIG: `run.logs.captureTail` must be a size like '500MB' or '10GB' (got [\"!x\"])": [
+        "$CONFIG: `run.logs.captureTail` must be a size like '32KiB', '8MiB' or '1GiB' (got [\"!x\"])": [
           "[\"!x\"]"
         ],
-        "$CONFIG: `run.logs.captureTail` must be a size like '500MB' or '10GB' (got [\"!!x\",\"y\"])": [
+        "$CONFIG: `run.logs.captureTail` must be a size like '32KiB', '8MiB' or '1GiB' (got [\"!!x\",\"y\"])": [
           "[\"!!x\",\"y\"]"
         ],
-        "$CONFIG: `run.logs.captureTail` must be a size like '500MB' or '10GB' (got [\".\"])": [
+        "$CONFIG: `run.logs.captureTail` must be a size like '32KiB', '8MiB' or '1GiB' (got [\".\"])": [
           "[\".\"]"
         ],
-        "$CONFIG: `run.logs.captureTail` must be a size like '500MB' or '10GB' (got [\"**\"])": [
+        "$CONFIG: `run.logs.captureTail` must be a size like '32KiB', '8MiB' or '1GiB' (got [\"**\"])": [
           "[\"**\"]"
         ],
-        "$CONFIG: `run.logs.captureTail` must be a size like '500MB' or '10GB' (got [\"A=B\"])": [
+        "$CONFIG: `run.logs.captureTail` must be a size like '32KiB', '8MiB' or '1GiB' (got [\"A=B\"])": [
           "[\"A=B\"]"
         ],
-        "$CONFIG: `run.logs.captureTail` must be a size like '500MB' or '10GB' (got [\"A*\"])": [
+        "$CONFIG: `run.logs.captureTail` must be a size like '32KiB', '8MiB' or '1GiB' (got [\"A*\"])": [
           "[\"A*\"]"
         ],
-        "$CONFIG: `run.logs.captureTail` must be a size like '500MB' or '10GB' (got {})": ["{}"],
-        "$CONFIG: `run.logs.captureTail` must be a size like '500MB' or '10GB' (got {\"x\":\"y\"})": [
+        "$CONFIG: `run.logs.captureTail` must be a size like '32KiB', '8MiB' or '1GiB' (got {})": [
+          "{}"
+        ],
+        "$CONFIG: `run.logs.captureTail` must be a size like '32KiB', '8MiB' or '1GiB' (got {\"x\":\"y\"})": [
           "{\"x\":\"y\"}"
         ]
       },
       "run.logs.failedHead": {
         "ok": ["<absent>", "\"10G\"", "\"8KiB\""],
-        "$CONFIG: `run.logs.failedHead` must be a size like '500MB' or '10GB' (got null)": ["null"],
-        "$CONFIG: `run.logs.failedHead` must be a size like '500MB' or '10GB' (got true)": ["true"],
-        "$CONFIG: `run.logs.failedHead` must be a size like '500MB' or '10GB' (got false)": [
+        "$CONFIG: `run.logs.failedHead` must be a size like '32KiB', '8MiB' or '1GiB' (got null)": [
+          "null"
+        ],
+        "$CONFIG: `run.logs.failedHead` must be a size like '32KiB', '8MiB' or '1GiB' (got true)": [
+          "true"
+        ],
+        "$CONFIG: `run.logs.failedHead` must be a size like '32KiB', '8MiB' or '1GiB' (got false)": [
           "false"
         ],
         "$CONFIG: `run.logs.failedHead` must be more than 0 (got 0)": ["0"],
         "$CONFIG: `run.logs.failedHead` takes a size with its unit, like '1KiB' or '1B' (got 1)": [
           "1"
         ],
-        "$CONFIG: `run.logs.failedHead` must be a size like '500MB' or '10GB' (got 1.5)": ["1.5"],
-        "$CONFIG: `run.logs.failedHead` must be a size like '500MB' or '10GB' (got -1)": ["-1"],
+        "$CONFIG: `run.logs.failedHead` must be a size like '32KiB', '8MiB' or '1GiB' (got 1.5)": [
+          "1.5"
+        ],
+        "$CONFIG: `run.logs.failedHead` must be a size like '32KiB', '8MiB' or '1GiB' (got -1)": [
+          "-1"
+        ],
         "$CONFIG: `run.logs.failedHead` takes a size with its unit, like '65536B' (got 65536)": [
           "65536"
         ],
         "$CONFIG: `run.logs.failedHead` takes a size with its unit, like '2147483648B' (got 2147483648)": [
           "2147483648"
         ],
-        "$CONFIG: `run.logs.failedHead` must be a size like '500MB' or '10GB' (got \"\")": ["\"\""],
-        "$CONFIG: `run.logs.failedHead` must be a size like '500MB' or '10GB' (got \"x\")": [
+        "$CONFIG: `run.logs.failedHead` must be a size like '32KiB', '8MiB' or '1GiB' (got \"\")": [
+          "\"\""
+        ],
+        "$CONFIG: `run.logs.failedHead` must be a size like '32KiB', '8MiB' or '1GiB' (got \"x\")": [
           "\"x\""
         ],
-        "$CONFIG: `run.logs.failedHead` must be a size like '500MB' or '10GB' (got \"(\")": [
+        "$CONFIG: `run.logs.failedHead` must be a size like '32KiB', '8MiB' or '1GiB' (got \"(\")": [
           "\"(\""
         ],
-        "$CONFIG: `run.logs.failedHead` must be a size like '500MB' or '10GB' (got \"30d\")": [
+        "$CONFIG: `run.logs.failedHead` must be a size like '32KiB', '8MiB' or '1GiB' (got \"30d\")": [
           "\"30d\""
         ],
         "$CONFIG: `run.logs.failedHead` takes a size with its unit, like '10KiB' or '10B' (got \"10\")": [
           "\"10\""
         ],
-        "$CONFIG: `run.logs.failedHead` must be a size like '500MB' or '10GB' (got [])": ["[]"],
-        "$CONFIG: `run.logs.failedHead` must be a size like '500MB' or '10GB' (got [\"x\"])": [
+        "$CONFIG: `run.logs.failedHead` must be a size like '32KiB', '8MiB' or '1GiB' (got [])": [
+          "[]"
+        ],
+        "$CONFIG: `run.logs.failedHead` must be a size like '32KiB', '8MiB' or '1GiB' (got [\"x\"])": [
           "[\"x\"]"
         ],
-        "$CONFIG: `run.logs.failedHead` must be a size like '500MB' or '10GB' (got [\"\"])": [
+        "$CONFIG: `run.logs.failedHead` must be a size like '32KiB', '8MiB' or '1GiB' (got [\"\"])": [
           "[\"\"]"
         ],
-        "$CONFIG: `run.logs.failedHead` must be a size like '500MB' or '10GB' (got [1])": ["[1]"],
-        "$CONFIG: `run.logs.failedHead` must be a size like '500MB' or '10GB' (got [3000])": [
+        "$CONFIG: `run.logs.failedHead` must be a size like '32KiB', '8MiB' or '1GiB' (got [1])": [
+          "[1]"
+        ],
+        "$CONFIG: `run.logs.failedHead` must be a size like '32KiB', '8MiB' or '1GiB' (got [3000])": [
           "[3000]"
         ],
-        "$CONFIG: `run.logs.failedHead` must be a size like '500MB' or '10GB' (got [\"/x\"])": [
+        "$CONFIG: `run.logs.failedHead` must be a size like '32KiB', '8MiB' or '1GiB' (got [\"/x\"])": [
           "[\"/x\"]"
         ],
-        "$CONFIG: `run.logs.failedHead` must be a size like '500MB' or '10GB' (got [\"!/x\"])": [
+        "$CONFIG: `run.logs.failedHead` must be a size like '32KiB', '8MiB' or '1GiB' (got [\"!/x\"])": [
           "[\"!/x\"]"
         ],
-        "$CONFIG: `run.logs.failedHead` must be a size like '500MB' or '10GB' (got [\"../x\"])": [
+        "$CONFIG: `run.logs.failedHead` must be a size like '32KiB', '8MiB' or '1GiB' (got [\"../x\"])": [
           "[\"../x\"]"
         ],
-        "$CONFIG: `run.logs.failedHead` must be a size like '500MB' or '10GB' (got [\"!x\"])": [
+        "$CONFIG: `run.logs.failedHead` must be a size like '32KiB', '8MiB' or '1GiB' (got [\"!x\"])": [
           "[\"!x\"]"
         ],
-        "$CONFIG: `run.logs.failedHead` must be a size like '500MB' or '10GB' (got [\"!!x\",\"y\"])": [
+        "$CONFIG: `run.logs.failedHead` must be a size like '32KiB', '8MiB' or '1GiB' (got [\"!!x\",\"y\"])": [
           "[\"!!x\",\"y\"]"
         ],
-        "$CONFIG: `run.logs.failedHead` must be a size like '500MB' or '10GB' (got [\".\"])": [
+        "$CONFIG: `run.logs.failedHead` must be a size like '32KiB', '8MiB' or '1GiB' (got [\".\"])": [
           "[\".\"]"
         ],
-        "$CONFIG: `run.logs.failedHead` must be a size like '500MB' or '10GB' (got [\"**\"])": [
+        "$CONFIG: `run.logs.failedHead` must be a size like '32KiB', '8MiB' or '1GiB' (got [\"**\"])": [
           "[\"**\"]"
         ],
-        "$CONFIG: `run.logs.failedHead` must be a size like '500MB' or '10GB' (got [\"A=B\"])": [
+        "$CONFIG: `run.logs.failedHead` must be a size like '32KiB', '8MiB' or '1GiB' (got [\"A=B\"])": [
           "[\"A=B\"]"
         ],
-        "$CONFIG: `run.logs.failedHead` must be a size like '500MB' or '10GB' (got [\"A*\"])": [
+        "$CONFIG: `run.logs.failedHead` must be a size like '32KiB', '8MiB' or '1GiB' (got [\"A*\"])": [
           "[\"A*\"]"
         ],
-        "$CONFIG: `run.logs.failedHead` must be a size like '500MB' or '10GB' (got {})": ["{}"],
-        "$CONFIG: `run.logs.failedHead` must be a size like '500MB' or '10GB' (got {\"x\":\"y\"})": [
+        "$CONFIG: `run.logs.failedHead` must be a size like '32KiB', '8MiB' or '1GiB' (got {})": [
+          "{}"
+        ],
+        "$CONFIG: `run.logs.failedHead` must be a size like '32KiB', '8MiB' or '1GiB' (got {\"x\":\"y\"})": [
           "{\"x\":\"y\"}"
         ]
       },
       "run.logs.failedTail": {
         "ok": ["<absent>", "\"10G\"", "\"56KiB\""],
-        "$CONFIG: `run.logs.failedTail` must be a size like '500MB' or '10GB' (got null)": ["null"],
-        "$CONFIG: `run.logs.failedTail` must be a size like '500MB' or '10GB' (got true)": ["true"],
-        "$CONFIG: `run.logs.failedTail` must be a size like '500MB' or '10GB' (got false)": [
+        "$CONFIG: `run.logs.failedTail` must be a size like '32KiB', '8MiB' or '1GiB' (got null)": [
+          "null"
+        ],
+        "$CONFIG: `run.logs.failedTail` must be a size like '32KiB', '8MiB' or '1GiB' (got true)": [
+          "true"
+        ],
+        "$CONFIG: `run.logs.failedTail` must be a size like '32KiB', '8MiB' or '1GiB' (got false)": [
           "false"
         ],
         "$CONFIG: `run.logs.failedTail` must be more than 0 (got 0)": ["0"],
         "$CONFIG: `run.logs.failedTail` takes a size with its unit, like '1KiB' or '1B' (got 1)": [
           "1"
         ],
-        "$CONFIG: `run.logs.failedTail` must be a size like '500MB' or '10GB' (got 1.5)": ["1.5"],
-        "$CONFIG: `run.logs.failedTail` must be a size like '500MB' or '10GB' (got -1)": ["-1"],
+        "$CONFIG: `run.logs.failedTail` must be a size like '32KiB', '8MiB' or '1GiB' (got 1.5)": [
+          "1.5"
+        ],
+        "$CONFIG: `run.logs.failedTail` must be a size like '32KiB', '8MiB' or '1GiB' (got -1)": [
+          "-1"
+        ],
         "$CONFIG: `run.logs.failedTail` takes a size with its unit, like '65536B' (got 65536)": [
           "65536"
         ],
         "$CONFIG: `run.logs.failedTail` takes a size with its unit, like '2147483648B' (got 2147483648)": [
           "2147483648"
         ],
-        "$CONFIG: `run.logs.failedTail` must be a size like '500MB' or '10GB' (got \"\")": ["\"\""],
-        "$CONFIG: `run.logs.failedTail` must be a size like '500MB' or '10GB' (got \"x\")": [
+        "$CONFIG: `run.logs.failedTail` must be a size like '32KiB', '8MiB' or '1GiB' (got \"\")": [
+          "\"\""
+        ],
+        "$CONFIG: `run.logs.failedTail` must be a size like '32KiB', '8MiB' or '1GiB' (got \"x\")": [
           "\"x\""
         ],
-        "$CONFIG: `run.logs.failedTail` must be a size like '500MB' or '10GB' (got \"(\")": [
+        "$CONFIG: `run.logs.failedTail` must be a size like '32KiB', '8MiB' or '1GiB' (got \"(\")": [
           "\"(\""
         ],
-        "$CONFIG: `run.logs.failedTail` must be a size like '500MB' or '10GB' (got \"30d\")": [
+        "$CONFIG: `run.logs.failedTail` must be a size like '32KiB', '8MiB' or '1GiB' (got \"30d\")": [
           "\"30d\""
         ],
         "$CONFIG: `run.logs.failedTail` takes a size with its unit, like '10KiB' or '10B' (got \"10\")": [
           "\"10\""
         ],
-        "$CONFIG: `run.logs.failedTail` must be a size like '500MB' or '10GB' (got [])": ["[]"],
-        "$CONFIG: `run.logs.failedTail` must be a size like '500MB' or '10GB' (got [\"x\"])": [
+        "$CONFIG: `run.logs.failedTail` must be a size like '32KiB', '8MiB' or '1GiB' (got [])": [
+          "[]"
+        ],
+        "$CONFIG: `run.logs.failedTail` must be a size like '32KiB', '8MiB' or '1GiB' (got [\"x\"])": [
           "[\"x\"]"
         ],
-        "$CONFIG: `run.logs.failedTail` must be a size like '500MB' or '10GB' (got [\"\"])": [
+        "$CONFIG: `run.logs.failedTail` must be a size like '32KiB', '8MiB' or '1GiB' (got [\"\"])": [
           "[\"\"]"
         ],
-        "$CONFIG: `run.logs.failedTail` must be a size like '500MB' or '10GB' (got [1])": ["[1]"],
-        "$CONFIG: `run.logs.failedTail` must be a size like '500MB' or '10GB' (got [3000])": [
+        "$CONFIG: `run.logs.failedTail` must be a size like '32KiB', '8MiB' or '1GiB' (got [1])": [
+          "[1]"
+        ],
+        "$CONFIG: `run.logs.failedTail` must be a size like '32KiB', '8MiB' or '1GiB' (got [3000])": [
           "[3000]"
         ],
-        "$CONFIG: `run.logs.failedTail` must be a size like '500MB' or '10GB' (got [\"/x\"])": [
+        "$CONFIG: `run.logs.failedTail` must be a size like '32KiB', '8MiB' or '1GiB' (got [\"/x\"])": [
           "[\"/x\"]"
         ],
-        "$CONFIG: `run.logs.failedTail` must be a size like '500MB' or '10GB' (got [\"!/x\"])": [
+        "$CONFIG: `run.logs.failedTail` must be a size like '32KiB', '8MiB' or '1GiB' (got [\"!/x\"])": [
           "[\"!/x\"]"
         ],
-        "$CONFIG: `run.logs.failedTail` must be a size like '500MB' or '10GB' (got [\"../x\"])": [
+        "$CONFIG: `run.logs.failedTail` must be a size like '32KiB', '8MiB' or '1GiB' (got [\"../x\"])": [
           "[\"../x\"]"
         ],
-        "$CONFIG: `run.logs.failedTail` must be a size like '500MB' or '10GB' (got [\"!x\"])": [
+        "$CONFIG: `run.logs.failedTail` must be a size like '32KiB', '8MiB' or '1GiB' (got [\"!x\"])": [
           "[\"!x\"]"
         ],
-        "$CONFIG: `run.logs.failedTail` must be a size like '500MB' or '10GB' (got [\"!!x\",\"y\"])": [
+        "$CONFIG: `run.logs.failedTail` must be a size like '32KiB', '8MiB' or '1GiB' (got [\"!!x\",\"y\"])": [
           "[\"!!x\",\"y\"]"
         ],
-        "$CONFIG: `run.logs.failedTail` must be a size like '500MB' or '10GB' (got [\".\"])": [
+        "$CONFIG: `run.logs.failedTail` must be a size like '32KiB', '8MiB' or '1GiB' (got [\".\"])": [
           "[\".\"]"
         ],
-        "$CONFIG: `run.logs.failedTail` must be a size like '500MB' or '10GB' (got [\"**\"])": [
+        "$CONFIG: `run.logs.failedTail` must be a size like '32KiB', '8MiB' or '1GiB' (got [\"**\"])": [
           "[\"**\"]"
         ],
-        "$CONFIG: `run.logs.failedTail` must be a size like '500MB' or '10GB' (got [\"A=B\"])": [
+        "$CONFIG: `run.logs.failedTail` must be a size like '32KiB', '8MiB' or '1GiB' (got [\"A=B\"])": [
           "[\"A=B\"]"
         ],
-        "$CONFIG: `run.logs.failedTail` must be a size like '500MB' or '10GB' (got [\"A*\"])": [
+        "$CONFIG: `run.logs.failedTail` must be a size like '32KiB', '8MiB' or '1GiB' (got [\"A*\"])": [
           "[\"A*\"]"
         ],
-        "$CONFIG: `run.logs.failedTail` must be a size like '500MB' or '10GB' (got {})": ["{}"],
-        "$CONFIG: `run.logs.failedTail` must be a size like '500MB' or '10GB' (got {\"x\":\"y\"})": [
+        "$CONFIG: `run.logs.failedTail` must be a size like '32KiB', '8MiB' or '1GiB' (got {})": [
+          "{}"
+        ],
+        "$CONFIG: `run.logs.failedTail` must be a size like '32KiB', '8MiB' or '1GiB' (got {\"x\":\"y\"})": [
           "{\"x\":\"y\"}"
         ]
       },
@@ -1663,82 +1715,92 @@
       },
       "cache.artifactCeiling": {
         "ok": ["<absent>", "\"10G\"", "\"1GiB\""],
-        "$CONFIG: `cache.artifactCeiling` must be a size like '500MB' or '10GB' (got null)": [
+        "$CONFIG: `cache.artifactCeiling` must be a size like '32KiB', '8MiB' or '1GiB' (got null)": [
           "null"
         ],
-        "$CONFIG: `cache.artifactCeiling` must be a size like '500MB' or '10GB' (got true)": [
+        "$CONFIG: `cache.artifactCeiling` must be a size like '32KiB', '8MiB' or '1GiB' (got true)": [
           "true"
         ],
-        "$CONFIG: `cache.artifactCeiling` must be a size like '500MB' or '10GB' (got false)": [
+        "$CONFIG: `cache.artifactCeiling` must be a size like '32KiB', '8MiB' or '1GiB' (got false)": [
           "false"
         ],
         "$CONFIG: `cache.artifactCeiling` must be more than 0 (got 0)": ["0"],
         "$CONFIG: `cache.artifactCeiling` takes a size with its unit, like '1KiB' or '1B' (got 1)": [
           "1"
         ],
-        "$CONFIG: `cache.artifactCeiling` must be a size like '500MB' or '10GB' (got 1.5)": ["1.5"],
-        "$CONFIG: `cache.artifactCeiling` must be a size like '500MB' or '10GB' (got -1)": ["-1"],
+        "$CONFIG: `cache.artifactCeiling` must be a size like '32KiB', '8MiB' or '1GiB' (got 1.5)": [
+          "1.5"
+        ],
+        "$CONFIG: `cache.artifactCeiling` must be a size like '32KiB', '8MiB' or '1GiB' (got -1)": [
+          "-1"
+        ],
         "$CONFIG: `cache.artifactCeiling` takes a size with its unit, like '65536B' (got 65536)": [
           "65536"
         ],
         "$CONFIG: `cache.artifactCeiling` takes a size with its unit, like '2147483648B' (got 2147483648)": [
           "2147483648"
         ],
-        "$CONFIG: `cache.artifactCeiling` must be a size like '500MB' or '10GB' (got \"\")": [
+        "$CONFIG: `cache.artifactCeiling` must be a size like '32KiB', '8MiB' or '1GiB' (got \"\")": [
           "\"\""
         ],
-        "$CONFIG: `cache.artifactCeiling` must be a size like '500MB' or '10GB' (got \"x\")": [
+        "$CONFIG: `cache.artifactCeiling` must be a size like '32KiB', '8MiB' or '1GiB' (got \"x\")": [
           "\"x\""
         ],
-        "$CONFIG: `cache.artifactCeiling` must be a size like '500MB' or '10GB' (got \"(\")": [
+        "$CONFIG: `cache.artifactCeiling` must be a size like '32KiB', '8MiB' or '1GiB' (got \"(\")": [
           "\"(\""
         ],
-        "$CONFIG: `cache.artifactCeiling` must be a size like '500MB' or '10GB' (got \"30d\")": [
+        "$CONFIG: `cache.artifactCeiling` must be a size like '32KiB', '8MiB' or '1GiB' (got \"30d\")": [
           "\"30d\""
         ],
         "$CONFIG: `cache.artifactCeiling` takes a size with its unit, like '10KiB' or '10B' (got \"10\")": [
           "\"10\""
         ],
-        "$CONFIG: `cache.artifactCeiling` must be a size like '500MB' or '10GB' (got [])": ["[]"],
-        "$CONFIG: `cache.artifactCeiling` must be a size like '500MB' or '10GB' (got [\"x\"])": [
+        "$CONFIG: `cache.artifactCeiling` must be a size like '32KiB', '8MiB' or '1GiB' (got [])": [
+          "[]"
+        ],
+        "$CONFIG: `cache.artifactCeiling` must be a size like '32KiB', '8MiB' or '1GiB' (got [\"x\"])": [
           "[\"x\"]"
         ],
-        "$CONFIG: `cache.artifactCeiling` must be a size like '500MB' or '10GB' (got [\"\"])": [
+        "$CONFIG: `cache.artifactCeiling` must be a size like '32KiB', '8MiB' or '1GiB' (got [\"\"])": [
           "[\"\"]"
         ],
-        "$CONFIG: `cache.artifactCeiling` must be a size like '500MB' or '10GB' (got [1])": ["[1]"],
-        "$CONFIG: `cache.artifactCeiling` must be a size like '500MB' or '10GB' (got [3000])": [
+        "$CONFIG: `cache.artifactCeiling` must be a size like '32KiB', '8MiB' or '1GiB' (got [1])": [
+          "[1]"
+        ],
+        "$CONFIG: `cache.artifactCeiling` must be a size like '32KiB', '8MiB' or '1GiB' (got [3000])": [
           "[3000]"
         ],
-        "$CONFIG: `cache.artifactCeiling` must be a size like '500MB' or '10GB' (got [\"/x\"])": [
+        "$CONFIG: `cache.artifactCeiling` must be a size like '32KiB', '8MiB' or '1GiB' (got [\"/x\"])": [
           "[\"/x\"]"
         ],
-        "$CONFIG: `cache.artifactCeiling` must be a size like '500MB' or '10GB' (got [\"!/x\"])": [
+        "$CONFIG: `cache.artifactCeiling` must be a size like '32KiB', '8MiB' or '1GiB' (got [\"!/x\"])": [
           "[\"!/x\"]"
         ],
-        "$CONFIG: `cache.artifactCeiling` must be a size like '500MB' or '10GB' (got [\"../x\"])": [
+        "$CONFIG: `cache.artifactCeiling` must be a size like '32KiB', '8MiB' or '1GiB' (got [\"../x\"])": [
           "[\"../x\"]"
         ],
-        "$CONFIG: `cache.artifactCeiling` must be a size like '500MB' or '10GB' (got [\"!x\"])": [
+        "$CONFIG: `cache.artifactCeiling` must be a size like '32KiB', '8MiB' or '1GiB' (got [\"!x\"])": [
           "[\"!x\"]"
         ],
-        "$CONFIG: `cache.artifactCeiling` must be a size like '500MB' or '10GB' (got [\"!!x\",\"y\"])": [
+        "$CONFIG: `cache.artifactCeiling` must be a size like '32KiB', '8MiB' or '1GiB' (got [\"!!x\",\"y\"])": [
           "[\"!!x\",\"y\"]"
         ],
-        "$CONFIG: `cache.artifactCeiling` must be a size like '500MB' or '10GB' (got [\".\"])": [
+        "$CONFIG: `cache.artifactCeiling` must be a size like '32KiB', '8MiB' or '1GiB' (got [\".\"])": [
           "[\".\"]"
         ],
-        "$CONFIG: `cache.artifactCeiling` must be a size like '500MB' or '10GB' (got [\"**\"])": [
+        "$CONFIG: `cache.artifactCeiling` must be a size like '32KiB', '8MiB' or '1GiB' (got [\"**\"])": [
           "[\"**\"]"
         ],
-        "$CONFIG: `cache.artifactCeiling` must be a size like '500MB' or '10GB' (got [\"A=B\"])": [
+        "$CONFIG: `cache.artifactCeiling` must be a size like '32KiB', '8MiB' or '1GiB' (got [\"A=B\"])": [
           "[\"A=B\"]"
         ],
-        "$CONFIG: `cache.artifactCeiling` must be a size like '500MB' or '10GB' (got [\"A*\"])": [
+        "$CONFIG: `cache.artifactCeiling` must be a size like '32KiB', '8MiB' or '1GiB' (got [\"A*\"])": [
           "[\"A*\"]"
         ],
-        "$CONFIG: `cache.artifactCeiling` must be a size like '500MB' or '10GB' (got {})": ["{}"],
-        "$CONFIG: `cache.artifactCeiling` must be a size like '500MB' or '10GB' (got {\"x\":\"y\"})": [
+        "$CONFIG: `cache.artifactCeiling` must be a size like '32KiB', '8MiB' or '1GiB' (got {})": [
+          "{}"
+        ],
+        "$CONFIG: `cache.artifactCeiling` must be a size like '32KiB', '8MiB' or '1GiB' (got {\"x\":\"y\"})": [
           "{\"x\":\"y\"}"
         ]
       },
