@@ -1,6 +1,9 @@
 ---
 title: Quickstart
 description: Five minutes, one task, and a build that never does the same work twice.
+next:
+  link: /docs/workspace/
+  label: Workspace
 ---
 
 import { Aside } from '@astrojs/starlight/components'
@@ -31,6 +34,11 @@ Have a workspace already? Skip to step 1. Otherwise install [Bun](https://bun.co
 
 ```sh
 curl -fsSL https://bun.sh/install | bash
+```
+
+Open a new terminal so it finds `bun`, then make the app:
+
+```sh
 bun create vite my-app --template vanilla
 cd my-app && bun install && git init
 ```
@@ -53,7 +61,7 @@ Run `vx init` inside your git checkout. It installs the `vx` command and writes 
             [38;2;203;213;225m.vx/.gitattributes[0m
   [2mlock    [0m  [38;2;203;213;225m1 project config → .vx/projects.lock, .vx/dependencies.lock[0m
 
-  [2mnext    [0m  [1mdeclare a task in vx.config.ts, then vx lock && vx run <task>[0m
+  [2mnext    [0m  [1mbunx @vzn/vx-migrate to make package.json scripts tasks, or declare a task in vx.config.ts, then vx lock && vx run <task>[0m
 ```
 
 Look at **files**. Two of them matter today:
@@ -111,7 +119,7 @@ export default {
   tasks: {
     build: {
       exec: { command: 'vite build' },
-      inputs: { files: ['src/**', 'index.html', 'vite.config.ts'] },
+      inputs: { files: ['src/**', 'public/**', 'index.html'] },
       outputs: { files: ['dist/**'] },
       cache: true,
     },
@@ -124,7 +132,7 @@ Each line answers one question vx asks:
 | Field | Question | Here |
 | --- | --- | --- |
 | `exec.command` | What do I run? | `vite build` |
-| `inputs.files` | Which files does it read? | the source, the page, vite's config |
+| `inputs.files` | Which files does it read? | the source, `public/`, the page |
 | `outputs.files` | Which files does it write? | everything in `dist/` |
 | `cache` | May I skip it when nothing changed? | yes |
 
@@ -137,8 +145,8 @@ Now save the config to the lock. Every run reads the lock, not your config, so r
 ```
 
 <Aside type="tip">
-  Commit `.vx/`, `vx.config.ts` and the `vx.lock.json` beside it. A teammate who pulls gets the same
-  tasks.
+  `vx lock` also writes `vx.lock.json` beside your config. Commit it with `.vx/` and `vx.config.ts`:
+  a teammate who pulls gets the same tasks.
 </Aside>
 
 <Deeper level="patterns" title="Add tests and lint the same way">
@@ -152,12 +160,12 @@ export default {
   tasks: {
     build: {
       exec: { command: 'vite build' },
-      inputs: { files: ['src/**', 'index.html', 'vite.config.ts'] },
+      inputs: { files: ['src/**', 'public/**', 'index.html'] },
       outputs: { files: ['dist/**'] },
       cache: true,
     },
     test: {
-      exec: { command: 'vitest run' },
+      exec: { command: 'vitest run --passWithNoTests' },
       inputs: { files: ['src/**'] },
       outputs: { files: [] },
       cache: true,
@@ -213,14 +221,17 @@ vx run build
 [2m┌─[0m [1m[38;2;232;121;249mmy-app[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m>[0m $ vite build
 [36mvite v8.3.8 [32mbuilding client environment for production...[36m[39m
 transforming...
-[32m✓[0m 4 modules transformed.
+[32m✓[0m 9 modules transformed.
 rendering chunks...
 computing gzip size...
-[2mdist/[0m[32mindex.html                [0m[1;2m0.09 kB[0m[2m │ gzip: 0.10 kB[0m
-[2mdist/[0m[2massets/[0m[36mindex-D2nZb73p.js  [0m[1;2m0.70 kB[0m[2m │ gzip: 0.40 kB[0m
+[2mdist/[0m[32mindex.html                 [0m[1;2m 0.45 kB[0m[2m │ gzip: 0.29 kB[0m
+[2mdist/[0m[2massets/[0m[32mvite-BF8QNONU.svg   [0m[1;2m 8.70 kB[0m[2m │ gzip: 1.60 kB[0m
+[2mdist/[0m[2massets/[0m[32mhero-CLDdwZDr.png   [0m[1;2m13.05 kB[0m
+[2mdist/[0m[2massets/[0m[35mindex-CsUDhMuy.css  [0m[1;2m 4.10 kB[0m[2m │ gzip: 1.46 kB[0m
+[2mdist/[0m[2massets/[0m[36mindex-CAoPt-vL.js   [0m[1;2m 4.05 kB[0m[2m │ gzip: 1.77 kB[0m
 
-[32m✓ built in 51ms[39m
-[2m└─[0m [1m[38;2;232;121;249mmy-app[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(333ms)[0m [2msuccess[0m
+[32m✓ built in 140ms[39m
+[2m└─[0m [1m[38;2;232;121;249mmy-app[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(626ms)[0m [2msuccess[0m
 
   [2mcache   [0m  [38;2;56;189;248m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
             [2mlocal[0m [38;2;56;189;248m1↑[0m
@@ -237,13 +248,16 @@ Read the summary's **cache** row: `local 1↑` means vx saved `dist/` to its cac
 [2m┌─[0m [1m[38;2;232;121;249mmy-app[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m>[0m $ vite build
 [36mvite v8.3.8 [32mbuilding client environment for production...[36m[39m
 transforming...
-[32m✓[0m 4 modules transformed.
+[32m✓[0m 9 modules transformed.
 rendering chunks...
 computing gzip size...
-[2mdist/[0m[32mindex.html                [0m[1;2m0.09 kB[0m[2m │ gzip: 0.10 kB[0m
-[2mdist/[0m[2massets/[0m[36mindex-D2nZb73p.js  [0m[1;2m0.70 kB[0m[2m │ gzip: 0.40 kB[0m
+[2mdist/[0m[32mindex.html                 [0m[1;2m 0.45 kB[0m[2m │ gzip: 0.29 kB[0m
+[2mdist/[0m[2massets/[0m[32mvite-BF8QNONU.svg   [0m[1;2m 8.70 kB[0m[2m │ gzip: 1.60 kB[0m
+[2mdist/[0m[2massets/[0m[32mhero-CLDdwZDr.png   [0m[1;2m13.05 kB[0m
+[2mdist/[0m[2massets/[0m[35mindex-CsUDhMuy.css  [0m[1;2m 4.10 kB[0m[2m │ gzip: 1.46 kB[0m
+[2mdist/[0m[2massets/[0m[36mindex-CAoPt-vL.js   [0m[1;2m 4.05 kB[0m[2m │ gzip: 1.77 kB[0m
 
-[32m✓ built in 51ms[39m
+[32m✓ built in 140ms[39m
 [2m└─[0m [1m[38;2;232;121;249mmy-app[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(5ms)[0m [2mup-to-date[0m
 ```
 
@@ -272,7 +286,7 @@ vx run build
 [2m$[0m rm -rf dist
 [2m$[0m vx run build
 
-[2m└─[0m [1m[38;2;232;121;249mmy-app[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(20ms)[0m [2mrestored-local[0m
+[2m└─[0m [1m[38;2;232;121;249mmy-app[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(10ms)[0m [2mrestored-local[0m
 
   [2mcache   [0m  [38;2;56;189;248m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
             [2mlocal[0m [38;2;56;189;248m1↓[0m
@@ -308,9 +322,9 @@ Pick a change, guess whether vite runs, then see what vx printed for it.
     </thead>
     <tbody>
       <tr data-runs="no"><td>Change nothing</td><td><code>└─ my-app#build ── (5ms) up-to-date</code></td><td>Same inputs, and dist/ is in place. Nothing to do.</td></tr>
-      <tr data-runs="no"><td>Edit README.md</td><td><code>└─ my-app#build ── (6ms) up-to-date</code></td><td>README.md is not in inputs.files, so vx ignores it.</td></tr>
-      <tr data-runs="no"><td>Delete dist/</td><td><code>└─ my-app#build ── (20ms) restored-local</code></td><td>The inputs match a saved run, so vx copies dist/ back.</td></tr>
-      <tr data-runs="yes"><td>Edit src/main.js</td><td><code>└─ my-app#build ── (221ms) success</code></td><td>src/main.js matches src/**, so the inputs changed. vite builds.</td></tr>
+      <tr data-runs="no"><td>Add a README.md</td><td><code>└─ my-app#build ── (5ms) up-to-date</code></td><td>README.md is not in inputs.files, so vx ignores it.</td></tr>
+      <tr data-runs="no"><td>Delete dist/</td><td><code>└─ my-app#build ── (10ms) restored-local</code></td><td>The inputs match a saved run, so vx copies dist/ back.</td></tr>
+      <tr data-runs="yes"><td>Edit src/main.js</td><td><code>└─ my-app#build ── (254ms) success</code></td><td>src/main.js matches src/**, so the inputs changed. vite builds.</td></tr>
     </tbody>
   </table>
   <Fragment slot="caption">Every line is from a real run of the task above.</Fragment>
@@ -321,22 +335,18 @@ When a task runs and you did not expect it, ask vx. After the `src/main.js` edit
 ```ansi
 [2m$[0m vx why build
 
-[4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhy[0m[4m[58;2;110;118;129m [2mmy-app#build[0m[4m[58;2;110;118;129m                                [0m
-  [2mrun     [0m  [38;2;203;213;225m01a209e5-cfd8-73a0-8af5-7a46cc46a826[0m
-  [2mthis run[0m  [38;2;203;213;225m2026-11-23T19:33:05.653Z · success ·[0m
-            [38;2;203;213;225mexecuted · key 8e86d22efc939041[0m
-  [2mprevious[0m  [38;2;203;213;225m2026-11-23T19:33:05.407Z · cache-hit ·[0m
-            [38;2;203;213;225mup-to-date · key aa9a552af4e064bc[0m
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhy[0m[4m[58;2;110;118;129m [2mmy-app#build[0m[4m[58;2;110;118;129m                                                                                                      [0m
+  [2mrun     [0m  [38;2;203;213;225m01a20a05-3be0-73bb-a276-7da57c10a66f[0m
+  [2mthis run[0m  [38;2;203;213;225m2026-11-23T20:07:24.928Z · success · executed · key 6e362b6b162ed53f[0m
+  [2mprevious[0m  [38;2;203;213;225m2026-11-23T20:07:24.664Z · cache-hit · up-to-date · key 5ccf3a2ec5898854[0m
   [2mverdict [0m  [38;2;234;179;8mcache key changed: file src/main.js[0m
 
-[4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhat changed[0m[4m[58;2;110;118;129m [2m1 of 8[0m[4m[58;2;110;118;129m                             [0m
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhat changed[0m[4m[58;2;110;118;129m [2m1 of 14[0m[4m[58;2;110;118;129m                                                                                                  [0m
   [2mchange   kind  name         before → after[0m
-  [38;2;234;179;8mchanged[0m  [38;2;203;213;225mfile[0m  [1msrc/main.js[0m  [38;2;203;213;225m838be8a72b128244a92a8f8f833c799b1cc85c31 → da9209f797233c223bff7aad89891d291e34a793[0m
+  [38;2;234;179;8mchanged[0m  [38;2;203;213;225mfile[0m  [1msrc/main.js[0m  [38;2;203;213;225m6d895a9c64dc8a5333f3ebf038aefecc80b8e4a1 → 223a4e5108308b053780f6df408ac726f40ef7cb[0m
 
-[4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhat to do[0m[4m[58;2;110;118;129m                                      [0m
-  [2mfile    [0m  [38;2;203;213;225man edit re-runs by design; a file the[0m
-            [38;2;203;213;225mtask does not read belongs out of[0m
-            [38;2;203;213;225minputs.files[0m
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhat to do[0m[4m[58;2;110;118;129m                                                                                                            [0m
+  [2mfile    [0m  [38;2;203;213;225man edit re-runs by design; a file the task does not read belongs out of inputs.files[0m
 ```
 
 Read **verdict**: the one file that made the task run.
@@ -360,11 +370,11 @@ One task, five runs. The bars are the task's own time, as vx printed it:
     {
       title: 'my-app#build',
       bars: [
-        { name: 'first run', ms: 333, value: '333ms', note: 'success' },
+        { name: 'first run', ms: 626, value: '626ms', note: 'success' },
         { name: 'nothing changed', ms: 5, value: '5ms', note: 'up-to-date', hero: true },
-        { name: 'dist/ deleted', ms: 20, value: '20ms', note: 'restored-local', hero: true },
-        { name: 'README.md edited', ms: 6, value: '6ms', note: 'up-to-date', hero: true },
-        { name: 'src/main.js edited', ms: 221, value: '221ms', note: 'success' },
+        { name: 'dist/ deleted', ms: 10, value: '10ms', note: 'restored-local', hero: true },
+        { name: 'README.md added', ms: 5, value: '5ms', note: 'up-to-date', hero: true },
+        { name: 'src/main.js edited', ms: 254, value: '254ms', note: 'success' },
       ],
     },
   ]}
