@@ -26,6 +26,7 @@ export {
 } from './failure-mode.js'
 export {
   cacheKeyDiff,
+  createMissExplainer,
   diffsOlderRun,
   explainCacheKey,
   getInvocation,
@@ -48,25 +49,26 @@ export type {
   InputWriter,
   InvocationDetail,
   ListInvocationsArgs,
+  MissExplainer,
   ListRunsArgs,
   RootCause,
   RunDetail,
   RunSummaryRow,
   WhyDidThisRerun,
 } from './metrics.js'
-export { createMissExplainer, type MissExplainer } from './miss-reason.js'
 // A run id as a user types it: whole, or a unique prefix (`vx last`, `vx why`).
 export { resolveRunId, shortRunId } from './run-id.js'
 // The write side: a run's rows, written at its end (`runHistory`), its hits
 // as one packed row a reader writes out (`expandHits`), and the notes it keeps.
 export {
   expandHits,
+  type HistoryWrites,
   type InvocationRecord,
   type MeasureRecord,
   type RunHits,
   type RunRecord,
+  runHistory,
 } from './run-history.js'
-export { type HistoryWrites, runHistory } from './history-writes.js'
 export { encodeHits, HIT, HitBatch, hitRecords, type HitRows } from './hit-rows.js'
 export {
   type KeptFailure,

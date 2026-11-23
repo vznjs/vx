@@ -100,12 +100,10 @@ src/graph/task-graph.ts
 src/graph/task-status.ts
 src/handoff.ts
 src/history/failure-mode.ts
-src/history/history-writes.ts
 src/history/history.ts
 src/history/hit-rows.ts
 src/history/index.ts
 src/history/metrics.ts
-src/history/miss-reason.ts
 src/history/run-history.ts
 src/history/run-id.ts
 src/history/run-notes.ts

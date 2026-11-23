@@ -137,10 +137,8 @@ here, itself or in a brace group.
 | ------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------- |
 | [`history.md`](./history.md#srchistoryhistoryts--per-task-duration-history)                | `src/history/history.ts` — per-task duration history behind `--dry` predictions.                           |
 |                                                                                            | `src/history/failure-mode.ts` — the flakiness verdict, in one place (see history.md).                      |
-| [`history.md`](./history.md#srchistorymetricsts--run-history-queries)                      | `src/history/metrics.ts` — run-history queries behind `vx last` / `vx why`.                                |
-| [`history.md`](./history.md#srchistorymiss-reasonts--what-a-misss-key-changed)             | `src/history/miss-reason.ts` — what a miss's key changed since the last saved entry, for a telemetry sink. |
-| [`history.md`](./history.md#srchistoryhistory-writests--a-runs-rows-into-the-stores-index) | `src/history/history-writes.ts` — `runHistory(cache)`: a run's rows into the store's index.                |
-| [`history.md`](./history.md#srchistoryrun-historyts--the-runs-invocations-and-timing-rows) | `src/history/run-history.ts` — the `runs`, `invocations` and `task_durations` writes, and their shapes.    |
+| [`history.md`](./history.md#srchistorymetricsts--run-history-queries)                      | `src/history/metrics.ts` — run-history queries behind `vx last` / `vx why`, and what a miss's key changed. |
+| [`history.md`](./history.md#srchistoryrun-historyts--the-runs-invocations-and-timing-rows) | `src/history/run-history.ts` — the `runs`, `invocations` and `task_durations` writes; `runHistory(cache)`. |
 | [`history.md`](./history.md#srchistoryhit-rowsts--a-runs-hits-kept-packed)                 | `src/history/hit-rows.ts` — a run's hits kept as one packed row until a reader asks.                       |
 
 ## Workspace + discovery

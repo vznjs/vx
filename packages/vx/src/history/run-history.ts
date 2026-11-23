@@ -8,6 +8,7 @@ import { lazyStatement } from '../index-db/index.js'
 import { decodeHits, hitRecords, type PackedHits } from './hit-rows.js'
 
 import { isMeasure, splitTaskId } from '../util/index.js'
+import { type Cache, indexDb, indexError, indexWritable, valueDigest } from '../cache/index.js'
 
 /** The `main.runs` columns `bindRun` fills, in its order. */
 const RUN_COLUMNS = [
@@ -689,4 +690,60 @@ export interface MeasureRecord {
   readonly def: string
   readonly durationMs: number
   readonly cores?: number
+}
+
+// ---------------------------------------------------------------------------
+// The writer a run uses: `RunHistory` over an open cache's index, gated as
+// the cache's own writes are.
+// ---------------------------------------------------------------------------
+
+/** A run's history writes into a cache's index. */
+export interface HistoryWrites {
+  recordRun(run: RunRecord): void
+  /** `hits`: the run's packed hits, kept in the same transaction. */
+  recordRuns(runs: readonly RunRecord[], head?: RunHead, hits?: RunHits): void
+  /** A run's plugin measures, each its last (`PluginSetupContext.measure`), as timings. */
+  recordMeasures(measures: readonly MeasureRecord[], head: RunHead): void
+  recordRunBundle(bundle: {
+    runs: readonly RunRecord[]
+    invocation: InvocationRecord
+    hits?: RunHits
+  }): void
+  recordRemoteErrors(runId: string, errors: readonly (readonly [string, string])[]): void
+}
+
+const writers = new WeakMap<Cache, HistoryWrites>()
+
+/**
+ * The history writes into `cache`'s index, one per cache. A cache this
+ * user cannot write records none: `readOnlyNotice` said so once.
+ */
+export function runHistory(cache: Cache): HistoryWrites {
+  let writes = writers.get(cache)
+  if (writes === undefined) {
+    writes = historyWrites(cache)
+    writers.set(cache, writes)
+  }
+  return writes
+}
+
+function historyWrites(cache: Cache): HistoryWrites {
+  const history = new RunHistory(indexDb(cache), valueDigest(cache))
+  const write = (op: () => void): void => {
+    if (!indexWritable(cache)) return
+    try {
+      op()
+    } catch (err) {
+      throw indexError(cache, err)
+    }
+  }
+  return {
+    recordRun: (run) => write(() => history.recordRun(run)),
+    recordRuns: (runs, head, hits) => write(() => history.recordRuns(runs, head, hits)),
+    recordMeasures: (measures, head) => {
+      if (measures.length > 0) write(() => history.recordMeasures(measures, head))
+    },
+    recordRunBundle: (bundle) => write(() => history.recordRunBundle(bundle)),
+    recordRemoteErrors: (runId, errors) => write(() => history.recordRemoteErrors(runId, errors)),
+  }
 }
