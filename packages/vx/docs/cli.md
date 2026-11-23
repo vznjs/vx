@@ -4344,16 +4344,18 @@ vx help lock
   [1m[38;2;6;182;212mvx lock[0m[38;2;34;211;238m [--check] [--format pretty|json][0m
 
 [1mConfig lock[0m[1m:[0m
-  [1m[38;2;6;182;212mvx lock[0m              Evaluate every vx.config in the current environment, check
-                       the graph rules (run.rules) and freeze the resolved objects
-                       into .vx/projects.lock, the only place a run reads configs
-                       from. A run never evaluates one, never checks the rules
-                       and never writes the lock: with none it fails.
+  [1m[38;2;6;182;212mvx lock[0m              Evaluate every vx.config in the current environment,
+                       check the graph rules (run.rules) and freeze the resolved
+                       objects into .vx/projects.lock, the only place a run
+                       reads configs from. A run never evaluates one, never
+                       checks the rules and never writes the lock: with none it
+                       fails.
   [1m[38;2;6;182;212mvx lock[0m[38;2;34;211;238m --check[0m      Audit the lock: re-evaluate every config here and compare
-                       it with the frozen object, find a config added or gone, and
-                       check the graph rules. Exits 1 on drift (e.g. configs that
-                       read env vars). Run it before the run in CI. With --format json
-                       it prints {upToDate, audited, notAudited, problems}.
+                       it with the frozen object, find a config added or gone,
+                       and check the graph rules. Exits 1 on drift (e.g. configs
+                       that read env vars). Run it before the run in CI. With
+                       --format json it prints {upToDate, audited, notAudited,
+                       problems}.
 
 
 Full reference: vx help
