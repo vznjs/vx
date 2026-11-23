@@ -13,6 +13,7 @@ import {
 } from '../src/report/status-line.js'
 import { createOutputWriter, type StatusStream } from '../src/ui/live-region.js'
 import { GUTTER, panelTop } from '../src/ui/index.js'
+import { markStopped } from '../src/exec/index.js'
 import {
   formatListHeader,
   formatRunningHeader,
@@ -427,6 +428,26 @@ describe('defaultLogger status line integration', () => {
     expect(s.text()).toContain('one#b')
     log.status('summary')
     expect(s.chunks[s.chunks.length - 1]).toBe('summary\n')
+  })
+
+  it("a running row's clock stops while vx is stopped (Ctrl-Z), as the task's duration does", async () => {
+    const s = tty()
+    const log = defaultLogger(NO_COLORS, { mode: 'broad' }, s, { forceFloorMs: 0 })
+    log.runStart?.({ total: 2, concurrency: 2 })
+    const a = mkNode('one#a')
+    log.taskStart?.(a)
+    markStopped(true)
+    try {
+      await Bun.sleep(1_100)
+      // A redraw while still stopped: the row read the wall clock and said 1.1s.
+      log.taskStart?.(mkNode('one#b'))
+    } finally {
+      markStopped(false)
+    }
+    const row = regionRows(s.chunks[s.chunks.length - 1]!).find((r) => r.includes('one#a'))
+    expect(row).toBeDefined()
+    expect(row).not.toMatch(/\b1\.\d+s\b/)
+    log.runEnd?.()
   })
 
   it('CI view: status line suppressed even on a TTY', () => {
