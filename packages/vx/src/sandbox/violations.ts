@@ -570,8 +570,12 @@ export async function parseStraceViolations(
   // What a write glob covers, or a directory it may match beneath, is the
   // task's own output: `dist/esm/a.js` under `dist/**/*.js` read back.
   const rawGlobs = args.config.writeGlobs ?? []
+  // `holdsMatchUnder` asks of a directory only: `**` holds any FILE path too,
+  // and `config.json` read under `**/*.d.ts` would pass unreported.
   const ownOutput = (p: string): boolean =>
-    underGlob(p, writeGlobs) || rawGlobs.some((g) => holdsMatchUnder(p, g))
+    underGlob(p, writeGlobs) ||
+    (rawGlobs.some((g) => holdsMatchUnder(p, g)) &&
+      lstatSync(p, { throwIfNoEntry: false })?.isDirectory() === true)
   // The deepest directory first: `dist` held for `dist/*.js` inside the
   // project held for `*.js` judges what is under `dist`.
   const judgedDirs = [...widened].sort(([a], [b]) => b.length - a.length)
@@ -1203,7 +1207,7 @@ function exists(p: string): boolean {
   }
 }
 
-/** Whether absolute write glob `glob` can match a path strictly under directory `dir`. */
+/** Whether absolute write glob `glob` can match a path strictly under `dir`, a DIRECTORY. */
 function holdsMatchUnder(dir: string, glob: string): boolean {
   const at = wildcardAt(glob)
   if (at === -1) return false
