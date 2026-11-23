@@ -1980,7 +1980,8 @@ for one task in one project.
   nearest one as a fix), a task name or `--all` typed, or a refused
   flag (`VX_E_USAGE`); or a saved `cachePolicy`, or an `env` entry
   setting a `VX_*` variable, the run would refuse, naming that key
-  (`VX_E_CONFIG`).
+  (`VX_E_CONFIG`). A refusal that names a saved flag adds the key that
+  holds it (`--affected is \`pipelines.pr.affected\``).
 
 ## `vx cache clean`
 

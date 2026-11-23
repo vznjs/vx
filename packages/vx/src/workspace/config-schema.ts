@@ -36,6 +36,7 @@ import {
   DependencySpecError,
 } from '../util/index.js'
 import {
+  envName,
   parseSettingValue,
   setting,
   SETTING_GROUPS,
@@ -304,6 +305,31 @@ function validatePipelines(value: unknown, configPath: string): void {
       throw new UserError(
         `${field('tasks')} must be a non-empty array of task names, like ['lint', 'test']`,
       )
+    // Each is a typed task: `--force` was read as the flag, `^build` refused
+    // only at the run.
+    for (const t of p['tasks']) {
+      const why = pipelineTaskProblem(t)
+      if (why !== null)
+        throw new UserError(
+          `${field('tasks')} names ${JSON.stringify(t)}: it ${why}; name a task, or 'pkg#task'`,
+        )
+    }
+    // A variable its `env` sets for a key's setting silently beat the key
+    // (a `false` key or an empty value sets nothing).
+    for (const n of Object.keys(plainObject(p['env']) ? p['env'] : {})) {
+      const key = Object.entries(PIPELINE_FLAGS).find(
+        ([k, f]) =>
+          f.setting !== undefined &&
+          p[k] !== undefined &&
+          p[k] !== false &&
+          envName(f.setting) === n &&
+          (p['env'] as Record<string, unknown>)[n] !== '',
+      )?.[0]
+      if (key !== undefined)
+        throw new UserError(
+          `${field(`env.${n}`)} sets what \`pipelines.${name}.${key}\` sets: drop one`,
+        )
+    }
     for (const [k, v] of Object.entries(p)) {
       if (v === undefined || k === 'tasks') continue
       const where = field(k)
@@ -1955,6 +1981,24 @@ function assertTaskName(name: string, configPath: string): void {
     `${configPath}: task name ${JSON.stringify(name)} ${why} — dependsOn, inputs.tasks and ` +
       `the CLI could not name it. Rename the task.`,
   )
+}
+
+/** Why a pipeline's task, a name or `pkg#task`, is none a run takes, or null. */
+function pipelineTaskProblem(spec: string): string | null {
+  const at = spec.indexOf('#')
+  if (at === 0) return "has no project before '#'"
+  if (at > 0) {
+    const project = spec.slice(0, at)
+    const why =
+      project.trim() !== project
+        ? 'has surrounding whitespace'
+        : project.startsWith('-')
+          ? "starts with '-', which the CLI reads as a flag"
+          : projectNameProblem(project)
+    if (why !== null) return `has a project that ${why}`
+  }
+  const why = taskNameProblem(spec.slice(at + 1))
+  return why === null ? null : at === -1 ? why : `has a task that ${why}`
 }
 
 /** Why `name` cannot be a task name, or null; `vx init` skips such a script. */

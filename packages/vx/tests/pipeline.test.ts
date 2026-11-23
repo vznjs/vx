@@ -49,6 +49,36 @@ describe('pipelines in .vx/workspace', () => {
       'ws.ts: `pipelines.pr` sets dry and profile: a dry run writes no profile; drop one',
     )
     expect(refusal({ 'p r': { tasks: ['a'] } })).toContain('pipeline name "p r"')
+    // A name no task can carry: `--force` was read as the flag and refused
+    // as "vx run missing task name", `^build` at the run.
+    expect(refusal({ pr: { tasks: ['--force'] } })).toBe(
+      "ws.ts: `pipelines.pr.tasks` names \"--force\": it starts with '-', which the CLI reads as a flag; name a task, or 'pkg#task'",
+    )
+    for (const bad of [
+      '^build',
+      'a#',
+      '#build',
+      'a#^b',
+      'build ',
+      'b*',
+      '--force#build',
+      'a #b',
+      '^a#b',
+    ])
+      expect(refusal({ pr: { tasks: [bad] } })).toContain('`pipelines.pr.tasks` names')
+    expect(refusal({ pr: { tasks: ['build', 'a#build', '@s/a#test'] } })).toBeUndefined()
+    // Its `env` and a key both setting one setting: the variable silently won.
+    expect(refusal({ pr: { tasks: ['a'], retries: 1, env: { VX_RUN_RETRIES: '2' } } })).toBe(
+      'ws.ts: `pipelines.pr.env.VX_RUN_RETRIES` sets what `pipelines.pr.retries` sets: drop one',
+    )
+    expect(refusal({ pr: { tasks: ['a'], env: { VX_RUN_RETRIES: '2' } } })).toBeUndefined()
+    // A key that saves no flag, or a value that sets nothing, is no second say.
+    expect(
+      refusal({ pr: { tasks: ['a'], failFast: false, env: { VX_RUN_FAIL_FAST: 'true' } } }),
+    ).toBeUndefined()
+    expect(
+      refusal({ pr: { tasks: ['a'], retries: 1, env: { VX_RUN_RETRIES: '' } } }),
+    ).toBeUndefined()
     expect(refusal(['pr'])).toContain('`pipelines` must be an object')
   })
 
@@ -170,6 +200,8 @@ describe('vx pipeline <name>', () => {
           paths: { tasks: ['keep'], filter: ['a'], cacheDir: 'saved-cache', profile: 'saved.json' },
           policy: { tasks: ['build'], cachePolicy: 'bogus' },
           badenv: { tasks: ['build'], env: { VX_RUN_RETRIES: 'x', VX_CACHE_POLICY: 'local:q' } },
+          own: { tasks: ['keep'], filter: ['a'], noCache: true, env: { VX_CACHE_POLICY: 'local:rw' } },
+          base: { tasks: ['build'], affected: true },
         }`,
       ),
     )
@@ -218,7 +250,8 @@ describe('vx pipeline <name>', () => {
       expect([r.code, r.err]).toEqual([0, ''])
     } finally {
       cwd = ''
-      process.env['VX_CACHE_DIR'] = dir
+      if (dir === undefined) delete process.env['VX_CACHE_DIR']
+      else process.env['VX_CACHE_DIR'] = dir
     }
     expect(existsSync(path.join(root, 'saved-cache'))).toBe(true)
     expect(existsSync(path.join(root, 'saved.json'))).toBe(true)
@@ -245,6 +278,33 @@ describe('vx pipeline <name>', () => {
     expect(typed.err).toContain("`pipelines.badenv.env.VX_CACHE_POLICY` invalid flag 'q'")
     const both = await vx('pipeline', 'badenv', '--retries=0', '--cache-policy=local:rw')
     expect([both.code, both.err]).toEqual([0, ''])
+  }, 30_000)
+
+  // Its own `env` is saved as its keys are: its policy variable dropped its
+  // `noCache`, as only a typed one (or one already set) should.
+  it('keeps a saved key over its own env', async () => {
+    const dir = process.env['VX_CACHE_DIR']
+    process.env['VX_CACHE_DIR'] = path.join(root, 'own-cache')
+    try {
+      expect((await vx('pipeline', 'own')).code).toBe(0)
+      const r = await vx('pipeline', 'own', '--dry=json')
+      expect(r.err).toBe('')
+      const plan = JSON.parse(r.out) as { tasks: { cacheStatus: string }[] }
+      expect(plan.tasks.map((t) => t.cacheStatus)).toEqual(['no-cache'])
+    } finally {
+      if (dir === undefined) delete process.env['VX_CACHE_DIR']
+      else process.env['VX_CACHE_DIR'] = dir
+    }
+  }, 30_000)
+
+  // `--affected` was never typed: the refusal said to drop it.
+  it('names the key behind a refused saved flag', async () => {
+    const r = await vx('pipeline', 'base')
+    expect([r.code, r.err]).toEqual([1, expect.stringContaining('--affected has no base here')])
+    expect(r.err).toContain('--affected is `pipelines.base.affected` in .vx/workspace\n')
+    const typed = await vx('pipeline', 'check', '--affected')
+    expect(typed.err).toContain('--affected has no base here')
+    expect(typed.err).not.toContain('`pipelines.')
   }, 30_000)
 
   it('refuses no name, an unknown one, a task and --all, naming the fix', async () => {

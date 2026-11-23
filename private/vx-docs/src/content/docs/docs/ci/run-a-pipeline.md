@@ -20,7 +20,8 @@ export default {
 ```
 
 `pr` runs `build` and `test` only where your branch changed something.
-`main` runs them in every project. Run `vx lock` after the edit.
+`main` runs them in every project. A pipeline needs no `vx lock`:
+`vx pipeline` reads it from the file.
 
 ---
 
