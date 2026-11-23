@@ -9,7 +9,7 @@ import { workspaceLock } from '../../../components/docs/pictures/workspace.js'
 import { Aside, FileTree, Tabs, TabItem, Badge } from '@astrojs/starlight/components'
 import { Levels, Deeper, Concept, Quiz, Compare, Takeaway, NextStep } from '../../../components/learn'
 
-Your workspace is the folder vx works in. One small file marks it:
+You have vx installed. Now meet the folder it works in, your workspace. One small file marks it:
 
 ```ts title=".vx/workspace.ts"
 import { defineWorkspace } from '@vzn/vx/config'
@@ -132,7 +132,7 @@ vx lock
 
 Beside each config, `vx.lock.json` shows what vx really read. Plugins can add to a task, and this is where you see it:
 
-<Compare left="apps/web/vx.config.ts" right="apps/web/vx.lock.json">
+<Compare leftTitle="apps/web/vx.config.ts" rightTitle="apps/web/vx.lock.json">
 <div slot="left">
 
 ```ts
@@ -524,4 +524,4 @@ To share inputs between projects, import one array into each config: a config is
 
 </Deeper>
 
-<NextStep href="../tasks/" title="Tasks">Your workspace is ready. Give a project its first task.</NextStep>
+<NextStep href="../lockfiles/" title="Lockfiles">Your workspace is ready. Teach vx how your projects depend on each other.</NextStep>
