@@ -367,8 +367,8 @@ Branch on the code; the message may change. Dropping or renaming a code is a bre
 | `VX_E_DEPENDS_ON` | a `dependsOn` entry names nothing, or a `^task` has no project edges | fix the entry; add a lockfile plugin for `^` |
 | `VX_E_OUTPUT_OVERLAP` | two unrelated tasks write the same outputs | give each its own path, or add a `dependsOn` |
 | `VX_E_INPUT_IS_OUTPUT` | a task's inputs match outputs | exclude them with a `!` glob |
-| `VX_E_NESTED_INPUT` | an input glob reaches into a nested project | depend on its task, or use `inputs.workspaceFiles` |
-| `VX_E_NESTED_OUTPUT` | an output glob reaches into a nested project | let its task write them, or use `outputs.workspaceFiles` |
+| `VX_E_NESTED_INPUT` | an input glob is rooted in or names its way into a nested project | depend on its task, or use `inputs.workspaceFiles` |
+| `VX_E_NESTED_OUTPUT` | an output glob is rooted in or names its way into a nested project | let its task write them, or use `outputs.workspaceFiles` |
 | `VX_E_DEPENDENCY_RULE` | a task breaks a dependency rule the workspace declares | the message names the rule and the edge |
 | `VX_E_AFFECTED_BASE` | `--affected` has no base to diff against | pass a ref you have: `--affected=origin/main` |
 | `VX_E_NO_GIT` | no `git`, or not inside a git work tree | install git, or `git init` |

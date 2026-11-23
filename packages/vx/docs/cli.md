@@ -4826,6 +4826,12 @@ reach another project's files, so it would key nothing.
 Depend on a task of the nested project, or name the files in
 `inputs.workspaceFiles`, as the message shows.
 
+A glob whose pattern reaches into a nested project past its fixed
+prefix is refused too, say `*/d.txt`, or a root project's
+`packages/**/*.ts` over a member. The nested project's task owns those
+files: depend on it, or take them back with `!dist/**`. A leading `**`
+is the project's own files and is not refused.
+
 A glob rooted in a nested workspace (`dist/` holding its own
 `.vx/workspace.*`) is not refused: it keys that workspace's files.
 
@@ -4839,6 +4845,12 @@ never reach another project's files, so it would save nothing.
 
 Let a task of the nested project write the files, or name them in
 `outputs.workspaceFiles`, as the message shows.
+
+A glob whose pattern reaches into a nested project past its fixed
+prefix is refused too, say a root project's `packages/**/*.log` over a
+member: those files would never be saved. Let the member's task write
+them, or take them back with `!packages/a/**`. A leading `**` is not
+refused.
 
 A nested workspace (`sub/` holding its own `.vx/workspace.*`) is refused
 the same way, though an input glob may reach into one.

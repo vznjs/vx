@@ -106,6 +106,49 @@ describe('an output under a nested project', () => {
   })
 })
 
+describe('a glob that reaches into a nested project past its fixed prefix', () => {
+  it('is refused at lock as an input, naming the glob and the project that owns the files', async () => {
+    const msg = await lockError(await workspace(['*/d.txt']))
+    expect(msg).toContain(
+      'packages/a#build reads "*/d.txt" in inputs.files, which reaches into the project packages/a/dist',
+    )
+    expect(msg).toContain(
+      'A task of packages/a/dist owns them: depend on it, or take them back with "!dist/**"',
+    )
+  })
+
+  it('is refused at lock as an output', async () => {
+    expect(await lockError(await workspace(['src/**'], ['d*/**']))).toContain(
+      'packages/a#build writes "d*/**" in outputs.files, which reaches into the project packages/a/dist',
+    )
+  })
+
+  it('is no refusal when a leading ** reaches it or a negation takes it back', async () => {
+    expect(await lockError(await workspace(['**/*.txt']))).toBeNull()
+    expect(await lockError(await workspace(['*/d.txt', '!dist/**']))).toBeNull()
+    expect(await lockError(await workspace(['src/**'], ['d*/**', '!dist/**']))).toBeNull()
+  })
+
+  it('is refused for a root output reaching a member through its parent folder', async () => {
+    const root = await makeWorkspace({ prefix: 'vx-nested-root-', workspaceFile: false })
+    roots.push(root)
+    await writeFile(
+      path.join(root, 'vx.config.mjs'),
+      `export default { tasks: { build: {
+  exec: { command: 'true' },
+  inputs: { files: ['*.json'] },
+  outputs: { files: ['packages/**/*.log'] },
+  cache: true,
+} } }
+`,
+    )
+    await addProject(root, 'a', { config: 'export default { tasks: {} }\n' })
+    expect(await lockError(root)).toContain(
+      '//#build writes "packages/**/*.log" in outputs.files, which reaches into the project packages/a',
+    )
+  })
+})
+
 const silent = silentLogger({ root: '', log: [], err: [] })
 
 /** `packages/a` declaring `files`, holding `inner`, a workspace of its own with an uncommitted project. */

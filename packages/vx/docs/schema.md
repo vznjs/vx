@@ -1399,7 +1399,8 @@ Paths start at the project folder. vx always leaves out what git ignores, its ow
 - Files of a project inside this one's folder are never inputs. Projects share only through `dependsOn` and its dependencies' keys.
 - `dist/**`, when `dist/` holds its own config, is refused by `vx lock` (`VX_E_NESTED_INPUT`): it would key nothing.
 - Depend on that project's task instead, or name its files in `inputs.workspaceFiles`.
-- `**`, a sibling folder and a `!` entry over a nested project are fine.
+- A pattern that reaches into it past its fixed folder is refused too: `*/d.txt`, or a root project's `packages/**/*.ts` over its members.
+- A leading `**`, a sibling folder and a `!` entry over a nested project are fine.
 
 </div>
 </details>
@@ -1809,7 +1810,11 @@ each path.
   (`VX_E_NESTED_OUTPUT`), since it would save nothing.
 - Fix it: let `sub`'s own task write those files, or name them in
   `outputs.workspaceFiles`.
-- `**`, a sibling folder and a `!` entry are fine beside a nested project.
+- A pattern that reaches into `sub/` past its fixed folder is refused
+  too: `*/dist/**`, or a root project's `packages/**/*.log` over its
+  members.
+- A leading `**`, a sibling folder and a `!` entry are fine beside a
+  nested project.
 - `sub/` holding its own `.vx/workspace.*`: no outer output glob matches
   under it, so the clean never deletes its files.
 - An outer input glob still matches inside a nested workspace, so an edit

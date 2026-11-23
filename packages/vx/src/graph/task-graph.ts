@@ -914,17 +914,23 @@ function refuseNestedGlobs(
     const inner = nested.get(n.projectName)
     if (inner === undefined || inner.length === 0 || isGroupTask(n)) continue
     for (const side of ['inputs', 'outputs'] as const) {
-      for (const g of positives(n.config[side]?.files)) {
+      const globs = n.config[side]?.files
+      const back = (globs ?? [])
+        .filter((g) => g.startsWith('!'))
+        .flatMap((g) => braceAlternatives(g.slice(1).replace(/^\.\//, '')))
+      for (const g of positives(globs)) {
         for (const alt of braceAlternatives(g)) {
           const prefix = staticPrefix(alt)
-          if (prefix === '.' || prefix === '') continue
-          const abs = path.join(n.projectDir, prefix)
+          const abs = path.join(n.projectDir, prefix === '.' ? '' : prefix)
           const hit = inner.find(
             (p) =>
               (side === 'outputs' || p.workspace !== true) &&
               (abs === p.dir || abs.startsWith(p.dir + path.sep)),
           )
-          if (hit === undefined) continue
+          if (hit === undefined) {
+            refuseReach(n, side, g, alt, inner, back)
+            continue
+          }
           const rel =
             workspaceRoot === undefined
               ? hit.name
@@ -954,6 +960,53 @@ function refuseNestedGlobs(
       }
     }
   }
+}
+
+/**
+ * Refuse a glob whose fixed prefix lies above a nested project but whose
+ * pattern reaches into it (`*\/d.txt`, root `packages/**\/*.log`): the
+ * boundary would drop those files without a word. A leading `**` is the
+ * project's own "every file" and stays allowed, as does a `!` entry that
+ * takes the nested project back.
+ */
+function refuseReach(
+  n: TaskNode,
+  side: 'inputs' | 'outputs',
+  g: string,
+  alt: string,
+  inner: ReadonlyArray<{ name: string; dir: string; workspace?: boolean }>,
+  back: readonly string[],
+): void {
+  const segs = alt.replace(/^\.\//, '').split('/')
+  if (segs[0] === '**') return
+  for (const p of inner) {
+    if (p.workspace === true) continue
+    const rel = relPosix(n.projectDir, p.dir)
+    if (!reachesDir(segs, rel.split('/'))) continue
+    const probe = `${rel}/vx-probe`
+    if (back.some((b) => new Bun.Glob(b).match(probe))) continue
+    throw new UserError(
+      side === 'inputs'
+        ? `${n.id} reads ${JSON.stringify(g)} in inputs.files, which reaches into the project ` +
+            `${p.name}: a project's globs never reach another project's files, so those would key ` +
+            `nothing. A task of ${p.name} owns them: depend on it, or take them back ` +
+            `with "!${rel}/**".`
+        : `${n.id} writes ${JSON.stringify(g)} in outputs.files, which reaches into the project ` +
+            `${p.name}: a project's globs never reach another project's files, so those would ` +
+            `never be saved. A task of ${p.name} owns them: let it write them, or take ` +
+            `them back with "!${rel}/**".`,
+      side === 'inputs' ? 'VX_E_NESTED_INPUT' : 'VX_E_NESTED_OUTPUT',
+    )
+  }
+}
+
+/** Whether a glob's segments can match a path under the directory `dir`. */
+function reachesDir(glob: readonly string[], dir: readonly string[]): boolean {
+  if (dir.length === 0) return glob.length > 0
+  if (glob.length === 0) return false
+  const [g, ...rest] = glob
+  if (g === '**') return true
+  return new Bun.Glob(g!).match(dir[0]!) && reachesDir(rest, dir.slice(1))
 }
 
 /** The ids of the tasks that reach `target` along `deps`, itself included. */

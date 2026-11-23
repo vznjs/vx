@@ -1018,14 +1018,14 @@
   "scores": {
     "vx": {
       "all": {
-        "pass": 2137,
-        "can": 2137,
-        "of": 2206
+        "pass": 2138,
+        "can": 2138,
+        "of": 2207
       },
       "correctness": {
-        "pass": 1722,
-        "can": 1722,
-        "of": 1783
+        "pass": 1723,
+        "can": 1723,
+        "of": 1784
       },
       "efficiency": {
         "pass": 326,
@@ -1067,15 +1067,15 @@
         "can": 481,
         "of": 493
       },
+      "outputs": {
+        "pass": 305,
+        "can": 305,
+        "of": 316
+      },
       "env": {
         "pass": 146,
         "can": 146,
         "of": 149
-      },
-      "outputs": {
-        "pass": 304,
-        "can": 304,
-        "of": 315
       },
       "report": {
         "pass": 89,
@@ -1096,13 +1096,13 @@
     "turbo": {
       "all": {
         "pass": 1393,
-        "can": 1807,
-        "of": 2206
+        "can": 1808,
+        "of": 2207
       },
       "correctness": {
         "pass": 1119,
-        "can": 1460,
-        "of": 1783
+        "can": 1461,
+        "of": 1784
       },
       "efficiency": {
         "pass": 244,
@@ -1144,15 +1144,15 @@
         "can": 477,
         "of": 493
       },
+      "outputs": {
+        "pass": 234,
+        "can": 303,
+        "of": 316
+      },
       "env": {
         "pass": 133,
         "can": 137,
         "of": 149
-      },
-      "outputs": {
-        "pass": 234,
-        "can": 302,
-        "of": 315
       },
       "report": {
         "pass": 30,
@@ -1173,13 +1173,13 @@
     "nx": {
       "all": {
         "pass": 1392,
-        "can": 1842,
-        "of": 2206
+        "can": 1843,
+        "of": 2207
       },
       "correctness": {
         "pass": 1079,
-        "can": 1485,
-        "of": 1783
+        "can": 1486,
+        "of": 1784
       },
       "efficiency": {
         "pass": 283,
@@ -1221,15 +1221,15 @@
         "can": 493,
         "of": 493
       },
+      "outputs": {
+        "pass": 224,
+        "can": 303,
+        "of": 316
+      },
       "env": {
         "pass": 135,
         "can": 146,
         "of": 149
-      },
-      "outputs": {
-        "pass": 224,
-        "can": 302,
-        "of": 315
       },
       "report": {
         "pass": 30,
@@ -1250,13 +1250,13 @@
     "vite-task": {
       "all": {
         "pass": 1027,
-        "can": 1391,
-        "of": 2206
+        "can": 1392,
+        "of": 2207
       },
       "correctness": {
         "pass": 862,
-        "can": 1170,
-        "of": 1783
+        "can": 1171,
+        "of": 1784
       },
       "efficiency": {
         "pass": 156,
@@ -1298,15 +1298,15 @@
         "can": 478,
         "of": 493
       },
+      "outputs": {
+        "pass": 207,
+        "can": 303,
+        "of": 316
+      },
       "env": {
         "pass": 133,
         "can": 136,
         "of": 149
-      },
-      "outputs": {
-        "pass": 207,
-        "can": 302,
-        "of": 315
       },
       "report": {
         "pass": 9,
@@ -1327,13 +1327,13 @@
     "nix": {
       "all": {
         "pass": 1098,
-        "can": 1386,
-        "of": 2206
+        "can": 1387,
+        "of": 2207
       },
       "correctness": {
         "pass": 941,
-        "can": 1190,
-        "of": 1783
+        "can": 1191,
+        "of": 1784
       },
       "efficiency": {
         "pass": 147,
@@ -1375,15 +1375,15 @@
         "can": 434,
         "of": 493
       },
+      "outputs": {
+        "pass": 234,
+        "can": 310,
+        "of": 316
+      },
       "env": {
         "pass": 122,
         "can": 130,
         "of": 149
-      },
-      "outputs": {
-        "pass": 234,
-        "can": 309,
-        "of": 315
       },
       "report": {
         "pass": 10,
@@ -1404,13 +1404,13 @@
     "moon": {
       "all": {
         "pass": 1279,
-        "can": 1738,
-        "of": 2206
+        "can": 1739,
+        "of": 2207
       },
       "correctness": {
         "pass": 1008,
-        "can": 1419,
-        "of": 1783
+        "can": 1420,
+        "of": 1784
       },
       "efficiency": {
         "pass": 236,
@@ -1452,15 +1452,15 @@
         "can": 493,
         "of": 493
       },
+      "outputs": {
+        "pass": 192,
+        "can": 306,
+        "of": 316
+      },
       "env": {
         "pass": 138,
         "can": 146,
         "of": 149
-      },
-      "outputs": {
-        "pass": 192,
-        "can": 305,
-        "of": 315
       },
       "report": {
         "pass": 35,
@@ -5220,6 +5220,22 @@
           "status": "pass"
         },
         "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "outputs/root-output-into-member-not-dropped",
+      "ref": "llgmwl",
+      "category": "outputs",
+      "kind": "correctness",
+      "title": "A workspace-root output glob over a member’s folder is restored or refused, never dropped",
+      "why": "A root task may name an output glob that passes through a member’s folder, such as `packages/**/*.log`. If the member boundary quietly drops those files from the saved output, a cache hit restores the rest and reports success while the member’s file is missing. Restoring it or refusing the glob is right; a silent gap is not.",
+      "from": [
+        "root-project"
+      ],
+      "outcomes": {
+        "vx": {
           "status": "pass"
         }
       }

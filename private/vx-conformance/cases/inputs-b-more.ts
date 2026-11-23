@@ -306,7 +306,7 @@ const cases: Case[] = [
     kind: 'efficiency',
     title:
       'A gitignored directory named in the inputs keys its own files, not a project nested in it',
-    why: 'Naming a gitignored directory in the inputs opts its files back in, but only the outer project’s own files. A project nested inside that directory still owns its files, and the outer task never reads them. Keying on them reruns the outer task on every edit in the nested project.',
+    why: 'Naming a gitignored directory in the inputs opts its files back in, but only the outer project’s own files. A project nested inside that directory still owns its files, and the outer task never reads them. Keying on them reruns the outer task on every edit in the nested project. Refusing the glob, so the config takes the nested project back, is as good.',
     from: ['inputs-resolution'],
     workspace: {
       projects: {
@@ -318,9 +318,9 @@ const cases: Case[] = [
       },
     },
     steps: [
-      { run: 'build', expect: { exit: 0, ran: ['a#build'] } },
+      { run: 'build', expect: { exit: 0, orRefused: true, ran: ['a#build'] } },
       { write: { 'packages/a/gen/sub/theirs.txt': 't2\n' } },
-      { run: 'build', expect: { exit: 0, notRan: ['a#build'] } },
+      { run: 'build', expect: { exit: 0, orRefused: true, notRan: ['a#build'] } },
     ],
   }),
 
