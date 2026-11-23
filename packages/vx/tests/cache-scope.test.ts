@@ -15,7 +15,7 @@ import {
 } from './helpers/orchestrator-fixture.js'
 import { FULL_CACHE_POLICY, type RemoteCacheLayer } from '../src/cache/index.js'
 import { parseRunArgs, resolveRunOptions } from '../src/cli/run.js'
-import { run } from './helpers/orchestrator.js'
+import { lock, run } from './helpers/orchestrator.js'
 import { outcomeWord } from '../src/report/index.js'
 import { PLUGIN_IMPORT, pluginSource } from './helpers/plugin.js'
 
@@ -254,6 +254,8 @@ describe('cache.scope', () => {
     }
     try {
       await addProject(fixture.root, 'app', { files: { 'src/in.txt': 'v1' }, config: BUILD_CONFIG })
+      // An --all run refuses a config the lock lacks.
+      await lock(fixture.root)
       expect(await scopeOf(['build', '--all'], undefined)).toBe(true)
       expect(await scopeOf(['build', '--all'], 'false')).toBe(true)
       expect(await scopeOf(['build', '--all'], 'true')).toBeUndefined()
