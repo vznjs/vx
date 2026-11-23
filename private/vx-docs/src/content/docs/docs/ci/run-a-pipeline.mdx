@@ -28,13 +28,13 @@ import { bun } from '@vzn/vx-lockfile'
 export default defineWorkspace({
   plugins: [bun(), github()],
   pipelines: {
-    pr: { tasks: ['build', 'test'], affected: true },
-    main: { tasks: ['build', 'test'] },
+    pr: { tasks: ['lint', 'test', 'build'], affected: true },
+    main: { tasks: ['lint', 'test', 'build'] },
   },
 })
 ```
 
-This page keeps two tasks so the plans stay short. `pr` runs `build` and `test` only where your branch changed something. `main` runs them in every project. Run `vx lock` after the edit.
+`pr` runs `lint`, `test` and `build` only where your branch changed something. `main` runs them in every project. Run `vx lock` after the edit.
 
 <Takeaway>name a run once and stop retyping its flags.</Takeaway>
 
@@ -47,18 +47,22 @@ vx pipeline pr --dry
 ```
 
 ```ansi
-[4m[58;2;110;118;129m  [1m[38;2;167;139;250mPlan[0m[4m[58;2;110;118;129m [2m3[0m[4m[58;2;110;118;129m    [2mstatus  cache      usual    time   cpu    mem outputs  blocks worker         task[0m[4m[58;2;110;118;129m                           [0m
-            [38;2;6;182;212mrun[0m     [2mmiss[0m        [2m~3ms[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2mlocal[0m          [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m  [2maffected: packages/web/src/index.ts changed (an input)[0m
-            [38;2;34;197;94mcached[0m  [38;2;56;189;248mlocal[0m          [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [38;2;203;213;225m1[0m [2mlocal[0m          [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m
-            [38;2;6;182;212mrun[0m     [2mno-cache[0m   [2m~1.0s[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2mlocal[0m          [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;96;165;250mtest[0m  [2maffected: packages/web/src/index.ts changed (in its project)[0m
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mPlan[0m[4m[58;2;110;118;129m [2m4[0m[4m[58;2;110;118;129m    [2mstatus  cache       time   task[0m[4m[58;2;110;118;129m                 [0m
+            [38;2;6;182;212mrun[0m     [2mmiss[0m           [2m—[0m   [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;232;121;249mlint[0m
+            [2maffected: packages/web/src/index.ts changed (an input)[0m
+            [38;2;6;182;212mrun[0m     [2mmiss[0m           [2m—[0m   [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;96;165;250mtest[0m
+            [2maffected: packages/web/src/index.ts changed (an input)[0m
+            [38;2;34;197;94mcached[0m  [38;2;56;189;248mlocal[0m          [2m—[0m   [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;6;182;212mrun[0m     [2mmiss[0m           [2m—[0m   [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [2maffected: packages/web/src/index.ts changed (an input)[0m
 
-  [2mtasks    [0m  [38;2;203;213;225m3 planned · 1 cache hit (1 local) · 1 would run · 1 no-cache[0m
-  [2mpredicted[0m  [38;2;203;213;225m~1.01s wall · ~1.01s total execution[0m
+  [2mtasks    [0m  [38;2;203;213;225m4 planned · 1 cache hit (1 local) · 3 would run[0m
+  [2mpredicted[0m  [38;2;203;213;225m~680ms wall · ~1.28s total execution[0m
 ```
 
-Read the last column: each task says why it is in the plan. `no-cache` marks a task without `cache: true`: it always runs.
+Read the line under each task: it says why the task is in the plan.
 
-Only `packages/web` changed. `@demo/ui#build` is listed because `@demo/web#build` needs it, and it comes from the cache.
+Only `packages/web` changed. `@demo/ui#build` is listed because web's build and test need it, and it comes from the cache.
 
 <Quiz q="Why is @demo/ui#build in the plan, when packages/ui did not change?">
   `@demo/web#build` depends on it (`^build`), so the run needs its output. It did not change, so

@@ -290,11 +290,6 @@ describe('the newcomer guides show what vx prints', () => {
     for (const line of sample.split('\n').filter((l) => plain(l).trim() !== ''))
       expect(printedLines).toContain(loose(line))
   }
-  const plan = (text: string) =>
-    stable(plain(text))
-      .split('\n')
-      .map((l) => l.replace(/ +~[\d.]+m?s/g, ' ~<t>').trimEnd())
-      .join('\n')
   const config = (test: string) => `export default {
   tasks: {
     build: {
@@ -396,20 +391,6 @@ export default {
       .filter((l) => /^(?:\[vx\]|└─)/.test(plain(l)))
     expect(own.length).toBe(2)
     holds(own.join('\n'), r.out)
-  })
-
-  it('run-a-pipeline: pr on a branch runs what the change reaches', async () => {
-    const page = guide('ci/run-a-pipeline.mdx')
-    // The page's history has timed web's test once: ui's fails.
-    expect(run('run', 'test', '--all').code).toBe(1)
-    expect(run('run', 'build', '--all').code).toBe(0)
-    expect(sh('git', 'checkout', '-qb', 'feature')).toBe(0)
-    await writeFile(path.join(ws, 'packages/web/src/index.ts'), '2\n')
-    expect(sh('git', 'commit', '-qam', 'web')).toBe(0)
-    const r = run('pipeline', 'pr', '--dry')
-    expect(sh('git', 'checkout', '-q', 'main')).toBe(0)
-    expect(r.code).toBe(0)
-    expect(plan(printed(page, 'vx pipeline pr --dry'))).toBe(plan(r.out))
   })
 
   it('fix-a-lock-conflict: a run refuses the merged lock, vx lock writes it again', async () => {
@@ -1033,5 +1014,48 @@ ${deps ? "      dependsOn: ['^build'],\n" : ''}      exec: { command: '${command
     const r = await phone('run', '@demo/web#e2e', '--timeout', '3s')
     expect(r.code).toBe(1)
     holds(printed(page, 'vx run @demo/web#e2e --timeout 3s'), r.out)
+  })
+
+  it('run-a-pipeline: pr on a branch plans what the change reaches', async () => {
+    const page = guide('ci/run-a-pipeline.mdx')
+    // The CI chapter's demo: build, test and lint, each cached, test after ^build.
+    const cached = (deps: boolean, command: string) =>
+      `{ ${deps ? "dependsOn: ['^build'], " : ''}exec: { command: '${command}' }, inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true }`
+    for (const name of ['ui', 'web'])
+      await write(
+        `packages/${name}/vx.config.mjs`,
+        config(
+          name,
+          `${build(name === 'web', 'mkdir -p dist && cp src/index.ts dist/index.js')}
+    test: ${cached(true, 'true')},
+    lint: ${cached(false, 'true')},`,
+        ),
+      )
+    await write(
+      '.vx/workspace.mjs',
+      `import { bun } from '@vzn/vx-lockfile'
+
+export default {
+  plugins: [bun()],
+  pipelines: {
+    pr: { tasks: ['lint', 'test', 'build'], affected: true },
+    main: { tasks: ['lint', 'test', 'build'] },
+  },
+}
+`,
+    )
+    expect(vxSync('lock')).toBe(0)
+    expect(sh('git', 'commit', '-qam', 'ci')).toBe(0)
+    expect(vxSync('pipeline', 'main', '--filter', '@demo/web')).toBe(0)
+    expect(sh('git', 'checkout', '-qb', 'feature')).toBe(0)
+    await write('packages/web/src/index.ts', '2\n')
+    expect(sh('git', 'commit', '-qam', 'web')).toBe(0)
+    const r = await phone('pipeline', 'pr', '--dry')
+    expect(sh('git', 'checkout', '-q', 'main')).toBe(0)
+    expect(sh('git', 'branch', '-qD', 'feature')).toBe(0)
+    expect(sh('git', 'reset', '-q', '--hard', 'HEAD~1')).toBe(0)
+    expect(vxSync('lock')).toBe(0)
+    expect(r.code).toBe(0)
+    holds(printed(page, 'vx pipeline pr --dry'), r.out)
   })
 })

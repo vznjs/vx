@@ -26,33 +26,51 @@ vx pipeline pr
 <Frame title="1. A push to main: every task runs">
 
 ```ansi title="vx pipeline main"
-[4m[58;2;110;118;129m  [1m[38;2;167;139;250mTasks[0m[4m[58;2;110;118;129m     [2mstatus  cache       time  task[0m[4m[58;2;110;118;129m                     [0m
-            [38;2;34;197;94msuccess[0m [2mmiss[0m      [38;2;203;213;225m1.34s[0m  [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;232;121;249mlint[0m
-            [38;2;34;197;94msuccess[0m [2mmiss[0m      [38;2;203;213;225m1.34s[0m  [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;232;121;249mlint[0m
-            [38;2;34;197;94msuccess[0m [2mmiss[0m      [38;2;203;213;225m1.67s[0m  [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m
-            [38;2;34;197;94msuccess[0m [2mmiss[0m      [38;2;203;213;225m324ms[0m  [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m
-            [38;2;34;197;94msuccess[0m [2mmiss[0m      [38;2;203;213;225m2.19s[0m  [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;96;165;250mtest[0m
-            [38;2;34;197;94msuccess[0m [2mmiss[0m      [38;2;203;213;225m704ms[0m  [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;96;165;250mtest[0m
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mTasks[0m[4m[58;2;110;118;129m     [2mstatus  cache       time   task[0m[4m[58;2;110;118;129m                 [0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m       [38;2;203;213;225m266ms[0m   [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;232;121;249mlint[0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m       [38;2;203;213;225m289ms[0m   [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;232;121;249mlint[0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m       [38;2;203;213;225m494ms[0m   [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m       [38;2;203;213;225m308ms[0m   [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m       [38;2;203;213;225m1.01s[0m   [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;96;165;250mtest[0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m       [38;2;203;213;225m680ms[0m   [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;96;165;250mtest[0m
 
-[4m[58;2;110;118;129m  [1m[38;2;167;139;250mSummary[0m[4m[58;2;110;118;129m  [2mvx 0.0.0[0m
-  [2mcache   [0m  [38;2;56;189;248m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
+
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mSummary[0m[4m[58;2;110;118;129m                                           [2mvx 0.0.0[0m
+  [2mprojects[0m  [38;2;234;179;8m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
+            [38;2;234;179;8m2 in run[0m [2m·[0m [2m2 total[0m
+  [2mtasks   [0m  [38;2;34;197;94m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
+            [38;2;34;197;94m6 success[0m [2m·[0m [2m6 total[0m
+  [2mcache   [0m  [38;2;56;189;248m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
             [2mlocal[0m [38;2;56;189;248m6↑[0m
+
+  [2minfo    [0m  4 workers [2m·[0m local cache
+            run 01a20a26-d531-7757-8393-c012639c963c
+  [2mtime    [0m  1.23s [2m·[0m [2mmax 1.01s[0m [2m·[0m [2mavg 508ms[0m [2m·[0m [2mmin 266ms[0m
 ```
 
-Six tasks in two projects: `@demo/web` builds on `@demo/ui`. Each one stores its result in the cache: **local 6↑**.
+This chapter trims the demo to two projects: `@demo/web` builds on `@demo/ui`. Six tasks run. Each one stores its result in the cache: **local 6↑**.
 
 </Frame>
 <Frame title="2. A pull request edits packages/web: only web runs">
 
 ```ansi title="vx pipeline pr"
-[4m[58;2;110;118;129m  [1m[38;2;167;139;250mTasks[0m[4m[58;2;110;118;129m     [2mstatus  cache       time  task[0m[4m[58;2;110;118;129m                     [0m
-            [38;2;34;197;94msuccess[0m [2mmiss[0m       [38;2;203;213;225m70ms[0m  [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;232;121;249mlint[0m
-            [38;2;34;197;94msuccess[0m [2mmiss[0m      [38;2;203;213;225m330ms[0m  [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m
-            [38;2;34;197;94msuccess[0m [2mmiss[0m      [38;2;203;213;225m672ms[0m  [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;96;165;250mtest[0m
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mTasks[0m[4m[58;2;110;118;129m     [2mstatus  cache       time   task[0m[4m[58;2;110;118;129m                 [0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m        [38;2;203;213;225m63ms[0m   [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;232;121;249mlint[0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m       [38;2;203;213;225m306ms[0m   [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m       [38;2;203;213;225m676ms[0m   [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;96;165;250mtest[0m
 
-[4m[58;2;110;118;129m  [1m[38;2;167;139;250mSummary[0m[4m[58;2;110;118;129m  [2mvx 0.0.0[0m
-  [2mcache   [0m  [38;2;34;197;94m▰▰▰▰▰▰▰▰▰▰▰▰▰[0m[38;2;56;189;248m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
+
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mSummary[0m[4m[58;2;110;118;129m                                           [2mvx 0.0.0[0m
+  [2mprojects[0m  [38;2;234;179;8m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
+            [38;2;234;179;8m2 in run[0m [2m·[0m [2m2 total[0m
+  [2mtasks   [0m  [38;2;34;197;94m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
+            [38;2;34;197;94m4 success[0m [2m·[0m [2m4 total[0m
+  [2mcache   [0m  [38;2;34;197;94m▰▰▰▰▰▰▰▰▰▰▰▰[0m[38;2;56;189;248m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
             [2mlocal[0m [38;2;34;197;94m1✓[0m [38;2;56;189;248m3↑[0m
+
+  [2minfo    [0m  4 workers [2m·[0m local cache
+            run 01a20a26-dbe0-73c2-b510-ac566e90e4d6
+  [2mtime    [0m  720ms [2m·[0m [2mmax 676ms[0m [2m·[0m [2mavg 348ms[0m [2m·[0m [2mmin 63ms[0m
 ```
 
 Three tasks ran, all in `@demo/web`. Read the cache line: **1✓** is `@demo/ui#build`, which web needs, from frame 1's cache. A fresh CI machine runs it again unless a [remote cache](../remote-cache/) holds it.
