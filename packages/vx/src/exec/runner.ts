@@ -55,6 +55,9 @@ export interface RunResult {
    *  SIGINT/SIGTERM here means a Ctrl-C / shutdown teardown — the
    *  orchestrator reverts such a task to aborted, not failed. */
   signal?: string | number
+  /** The command exited before the run's stop landed: its exit is its own,
+   *  not the stop's. Set only when the stop landed after the exit. */
+  exitedBeforeStop?: true
   /** True when vx's own `timeout` timer fired and SIGTERMed the child.
    *  Distinguishes a timeout (a real `failed`) from a Ctrl-C shutdown
    *  SIGTERM (which the orchestrator reverts to `aborted`). */
@@ -1404,6 +1407,7 @@ export async function runCommand(opts: RunOptions): Promise<RunResult> {
   // readers at once; otherwise `drainOrAbort` cuts a stuck reader after a
   // grace.
   await proc.exited
+  const stoppedAtExit = opts.signal?.aborted === true
   // Stopped at the exit, before any return below: a watch left on kept
   // its timer reading /proc for the rest of the run.
   const looked = watch?.stop()
@@ -1455,6 +1459,7 @@ export async function runCommand(opts: RunOptions): Promise<RunResult> {
     ...(timeout.timedOut() ? { timedOut: true } : {}),
     ...(timeout.sigkilled() ? { killedAfterGrace: true } : {}),
     ...(left ? { leftRunning: true } : {}),
+    ...(!stoppedAtExit && opts.signal?.aborted === true ? { exitedBeforeStop: true } : {}),
     ...usageOf(proc, looked),
   }
 }

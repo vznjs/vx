@@ -1183,7 +1183,8 @@ What a failed task takes down with it:
   skips is no failure, but its dependents are skipped too.
 - **`--fail-fast`** (`run.failFast`): the first failure stops the run
   at once. The tasks still running are killed (they end `aborted`, are
-  never saved and start no retry); everything not yet started (cache
+  never saved and start no retry); one whose command had already exited
+  when the stop landed ends on its own exit, failed or passed; everything not yet started (cache
   restores included) completes as skipped. A server that dies after it
   became ready stops the run the same way.
 

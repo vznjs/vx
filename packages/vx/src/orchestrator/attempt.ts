@@ -157,14 +157,19 @@ export async function runAttempts(
     // seen before vx's own handler has run, so a signal death waits one
     // event-loop turn for a pending handler before it is judged; a
     // timeout's SIGTERM is our own deadline and judged now.
-    let shutdown = args.run.stopSignal?.aborted === true
+    // A command that exited before `--fail-fast`'s stop landed ended on its
+    // own: its exit is judged as any other, never the stop's abort.
+    const stopped = (): boolean =>
+      args.run.stopSignal?.aborted === true &&
+      !(args.run.failFast?.aborted === true && result.exitedBeforeStop === true)
+    let shutdown = stopped()
     if (
       !shutdown &&
       (result.signal === 'SIGINT' || result.signal === 'SIGTERM') &&
       !result.timedOut
     ) {
       await new Promise((resolve) => setTimeout(resolve, 0))
-      shutdown = args.run.stopSignal?.aborted === true
+      shutdown = stopped()
     }
     if (shutdown) {
       const outcome: TaskOutcome = {

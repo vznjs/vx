@@ -2698,6 +2698,7 @@ export interface RunResult {
   stdout: string
   stderr: string
   signal?: string | number
+  exitedBeforeStop?: true
   timedOut?: boolean
   killedAfterGrace?: true
   cpuMs?: number

@@ -924,6 +924,8 @@ export interface Ended {
   looked: TreeUsage | undefined
   /** Something of the group outlived the command. */
   left: boolean
+  /** The run's stop landed after the command exited (`RunResult.exitedBeforeStop`). */
+  exitedBeforeStop: boolean
   timeout: ReturnType<typeof armTimeout>
   signs: StderrSigns
   /**
@@ -992,6 +994,7 @@ async function awaitAttempt(args: SandboxedRunArgs, spawned: Spawned, tag: strin
   // OR a clean exit that backgrounds a process) can't hang the run — timeout
   // aborts at once, otherwise drainOrAbort bounds the post-exit drain.
   await proc.exited
+  const stoppedAtExit = args.signal?.aborted === true
   const ranMs = Math.round(runTime() - armedAt)
   const looked = watch?.stop()
   await timeout.settle()
@@ -1018,7 +1021,20 @@ async function awaitAttempt(args: SandboxedRunArgs, spawned: Spawned, tag: strin
   // A timeout is a failure, whatever the child said: one that traps the
   // TERM and exits 0 reported success to every executor built on this.
   const exitCode = exited === 0 && timeout.timedOut() ? signalExitCode('SIGTERM') : exited
-  return { exitCode, stdout, stderr, ranMs, looked, left, timeout, signs, outTail, errTail }
+  const exitedBeforeStop = !stoppedAtExit && (args.signal?.aborted ?? false)
+  return {
+    exitCode,
+    stdout,
+    stderr,
+    ranMs,
+    looked,
+    left,
+    exitedBeforeStop,
+    timeout,
+    signs,
+    outTail,
+    errTail,
+  }
 }
 
 /** Every denial the attempt recorded, and those of them its config reports. */
@@ -1205,6 +1221,7 @@ async function runSandboxedOnce(args: SandboxedRunArgs): Promise<AttemptResult> 
     ...(timeout.timedOut() ? { timedOut: true } : {}),
     ...(timeout.sigkilled() ? { killedAfterGrace: true } : {}),
     ...(ended.left ? { leftRunning: true } : {}),
+    ...(ended.exitedBeforeStop ? { exitedBeforeStop: true as const } : {}),
     // Linux: the task's CPU and peak never reach this wait. bwrap runs it
     // in a pid namespace (`--unshare-pid`), and what the namespace's
     // processes used is not folded into bwrap's usage: a 500 ms busy loop
