@@ -96,6 +96,10 @@ export function stampUndeclaredState(args: {
     const rel = relPosix(projectDir, abs)
     // vx's own files at the workspace root.
     if (rel.startsWith('.vx/') || rel.startsWith('.git/')) continue
+    // A dotenv file is the user's settings, not a tool's state: named, the
+    // way out said to declare a Next app's `.env.local` an output, which
+    // the clean deletes before a miss and the cache stores, secrets and all.
+    if (isDotenv(path.basename(abs))) continue
     const wsRel = relPosix(workspaceRoot, abs)
     if (outs.some((o) => o.own(rel) || o.ws(wsRel))) continue
     if (declaresInput(config, rel, wsRel, false, true, dir)) continue
@@ -108,6 +112,10 @@ export function stampUndeclaredState(args: {
   }
   return out
 }
+
+/** `.env`, `.env.local`, `.env.production.local` and the like; not code (`.env.d.ts`). */
+const isDotenv = (name: string): boolean =>
+  name === '.env' || (name.startsWith('.env.') && !/\.[cm]?[jt]sx?$|\.json$/.test(name))
 
 /** A `.tsbuildinfo` larger than this is taken as per-file state unread. */
 const BUILD_INFO_READ_MAX = 4 << 20

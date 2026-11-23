@@ -1,4 +1,4 @@
-import { realpathSync } from 'node:fs'
+import { realpathSync, watch } from 'node:fs'
 import { mkdtemp, readFile, rm, stat, writeFile, mkdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -424,6 +424,97 @@ describe('vx watch over a workspace in a git subdirectory', () => {
     } finally {
       await rm(repo, { recursive: true, force: true })
       await rm(outside, { recursive: true, force: true })
+    }
+  }, 40_000)
+
+  // The watch read git's index for "committed during the first run" after
+  // printing "watching", behind a `git ls-files` of the untracked files: a
+  // commit made on that line re-ran the task, its committed output now an
+  // input (CI shard flake, 2026-11-22). Untracked files make the listing
+  // slow enough that the commit always lands inside it.
+  it('a commit made once watching is said is not one made during the first run', async () => {
+    const repo = await mkdtemp(path.join(tmpdir(), 'vx-subwatch-'))
+    const outside = await mkdtemp(path.join(tmpdir(), 'vx-subwatch-count-'))
+    const log = path.join(outside, 'runs.log')
+    try {
+      const ws = await makeWorkspace({ dir: repo, prefix: 'code-', git: false })
+      await addProject(ws, 'app', {
+        config: `
+          export default {
+            tasks: {
+              build: {
+                exec: { command: 'cat src/in.txt > out.txt && echo run >> ${log}' },
+                inputs: { files: ['src/**'] },
+                outputs: { files: ['out.txt'] },
+                cache: true,
+              },
+            },
+          }
+        `,
+        files: { 'src/in.txt': 'v1' },
+      })
+      gitInitCommit(repo)
+      const junk = path.join(ws, 'junk')
+      await mkdir(junk)
+      await Promise.all(
+        Array.from({ length: 20_000 }, (_, i) => writeFile(path.join(junk, `${i}`), '')),
+      )
+      const w = startWatch(ws)
+      try {
+        await until(() => w.out().includes('watching '), 'the watching marker')
+        const g = gitIn(repo)
+        g('add', 'code-*/packages/app/out.txt')
+        g('commit', '-q', '-m', 'commit the output')
+        await initialOnly(w, log)
+        await Bun.sleep(SETTLE_MS)
+        expect(w.out()).not.toContain('changed ')
+        expect(await executions(log)).toBe(1)
+      } finally {
+        w.proc.kill('SIGTERM')
+        await w.proc.exited
+      }
+    } finally {
+      await rm(repo, { recursive: true, force: true })
+      await rm(outside, { recursive: true, force: true })
+    }
+  }, 40_000)
+
+  // Its opening stamp file, made and unlinked at once, went in the committed
+  // `.vx`: a `git add -A` that listed it in between failed to stat it.
+  it('the watch stamps its clock in the cache dir, not the committed .vx', async () => {
+    const repo = await mkdtemp(path.join(tmpdir(), 'vx-subwatch-'))
+    try {
+      const ws = await makeWorkspace({ dir: repo, prefix: 'code-', git: false })
+      await addProject(ws, 'app', {
+        config: `export default { tasks: { build: { exec: { command: 'cp src/in.txt out.txt' }, inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] }, cache: true } } }`,
+        files: { 'src/in.txt': 'v1' },
+      })
+      gitInitCommit(repo)
+      expect(
+        Bun.spawnSync([process.execPath, BIN, 'lock'], { cwd: ws, env: process.env }).exitCode,
+      ).toBe(0)
+      expect(
+        Bun.spawnSync([process.execPath, BIN, 'run', 'build', '--all'], {
+          cwd: ws,
+          env: process.env,
+        }).exitCode,
+      ).toBe(0)
+      const seen: string[] = []
+      const dotVx = watch(path.join(ws, '.vx'), (_, name) => {
+        if (name !== null) seen.push(name)
+      })
+      const w = startWatch(ws)
+      try {
+        await until(() => w.out().includes('watching '), 'the watching marker')
+        await Bun.sleep(100)
+        expect(seen.filter((n) => n.startsWith('.vx-clock-'))).toEqual([])
+      } finally {
+        dotVx.close()
+        w.proc.kill('SIGTERM')
+        await w.proc.exited
+      }
+    } finally {
+      await rm(repo, { recursive: true, force: true })
     }
   }, 40_000)
 })

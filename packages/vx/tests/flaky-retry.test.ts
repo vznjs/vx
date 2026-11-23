@@ -1,7 +1,7 @@
 // A task known to be flaky gets one more attempt with no `retries` set:
 // the run history proved its key nondeterministic (it failed and passed on
 // the same inputs). A task with no such record, an explicit `retries: 0`
-// and a timeout never get one.
+// and a timeout never get one (declared `retries` retry a timeout too, schema.md).
 
 import { rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
@@ -94,7 +94,7 @@ describe('a known-flaky task is retried once', () => {
   )
 
   it(
-    'a timeout is never retried',
+    'a timeout earns no flaky retry (a declared retries still retries one)',
     async () => {
       expect((await vx(root, ['run', 'test', '--filter', 'slow'])).code).toBe(0)
       await once('slow')

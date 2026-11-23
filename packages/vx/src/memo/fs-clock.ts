@@ -8,7 +8,15 @@
 // clock ahead only makes a stamp look newer, which every window reads the
 // safe way.
 
-import { closeSync, fstatSync, mkdirSync, openSync, unlinkSync, writeSync } from 'node:fs'
+import {
+  closeSync,
+  existsSync,
+  fstatSync,
+  mkdirSync,
+  openSync,
+  unlinkSync,
+  writeSync,
+} from 'node:fs'
 import path from 'node:path'
 
 /**
@@ -112,6 +120,16 @@ export function measureFsClockLag(dir: string): void {
   const at = stampIn(dir)
   if (at !== undefined) ms = Date.now() - at - stampGrainMs(at)
   setFsClockLag(ms)
+}
+
+/**
+ * Where a reader that makes no cache dir takes its stamps: the cache dir
+ * once a run made it, else the workspace's `.vx`. The stamp file is made and
+ * unlinked at once, and in the committed `.vx` a `git add -A` that listed
+ * it in between failed to stat it; the cache dir is git-ignored.
+ */
+export function clockDir(cacheDir: string, workspaceRoot: string): string {
+  return existsSync(cacheDir) ? cacheDir : path.join(workspaceRoot, '.vx')
 }
 
 /** The stat memo's twin of `OUTPUT_DIRS_RACY_MS`: a file changed within this window of the stat is not memoised. */
