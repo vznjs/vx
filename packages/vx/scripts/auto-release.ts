@@ -14,7 +14,7 @@
 //
 //   [VX_RELEASE_SHA=<sha>] GH_TOKEN=… GITHUB_REPOSITORY=owner/repo bun scripts/auto-release.ts
 
-import { github, runMain } from './github.ts'
+import { github } from './github.ts'
 import { commitsBetween, nextVersion, postNotes, postPath, releaseNotes } from './release-notes.ts'
 
 /** `git <args>`: whether it exited 0, and its stdout. */
@@ -150,4 +150,11 @@ async function main(): Promise<void> {
   console.log(`released v${version} — assets: release.yml, npm: npm.yml`)
 }
 
-if (import.meta.main) await runMain(main)
+if (import.meta.main) {
+  try {
+    await main()
+  } catch (e) {
+    process.stderr.write(`${(e as Error).message}\n`)
+    process.exitCode = 1
+  }
+}

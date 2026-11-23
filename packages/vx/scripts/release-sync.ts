@@ -8,7 +8,7 @@
 
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
-import { github, runMain } from './github.ts'
+import { github } from './github.ts'
 import { postNotes, postPath } from './release-notes.ts'
 
 /** A release as the releases API lists it. */
@@ -47,4 +47,11 @@ async function main(): Promise<void> {
   if (changes.length === 0) console.log('every release already matches its post')
 }
 
-if (import.meta.main) await runMain(main)
+if (import.meta.main) {
+  try {
+    await main()
+  } catch (e) {
+    process.stderr.write(`${(e as Error).message}\n`)
+    process.exitCode = 1
+  }
+}

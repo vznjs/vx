@@ -13,7 +13,7 @@
 
 import { readdirSync } from 'node:fs'
 import path from 'node:path'
-import { env, github, runMain } from './github.ts'
+import { env, github } from './github.ts'
 import { releaseVersion } from './release.ts'
 
 const DIST = path.join(import.meta.dir, '..', 'dist')
@@ -117,4 +117,11 @@ async function main(): Promise<void> {
   }
 }
 
-if (import.meta.main) await runMain(main)
+if (import.meta.main) {
+  try {
+    await main()
+  } catch (e) {
+    process.stderr.write(`${(e as Error).message}\n`)
+    process.exitCode = 1
+  }
+}
