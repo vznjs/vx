@@ -2117,7 +2117,10 @@ project and `outputs.workspaceFiles` those are inside, and `dist -> .git`
 under `dist/**` had the clean delete the repository. A recorded row
 reached through such a link is never removed either. The clean prunes the directories it emptied (before a miss it keeps
 the directory a wildcard glob is rooted at, `dist` for `dist/**`, as the
-task writes there), so a task whose
+task writes there; a glob with no fixed directory, Turbo's `**/dist/**`,
+prunes the directories it matches, so `dist/old` goes and `dist` stays:
+until 2026-11-23 it pruned none, a miss saved the emptied `dist/old` as
+an output and a stray tree there made every later hit restore), so a task whose
 output changed shape — `dist/out` a directory one run and a file the
 next — restores either entry over the other's tree; a stray the globs
 do not cover, or an empty directory where the entry holds a file, that
