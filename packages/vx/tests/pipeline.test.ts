@@ -9,7 +9,7 @@ import type { Pipeline, WorkspaceConfig } from '../src/config.js'
 import { acceptedFlags } from '../src/cli/help.js'
 import { PIPELINE_FLAGS, pipelineRunArgs, validateWorkspace } from '../src/workspace/index.js'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
-import { addProject, makeWorkspace } from './helpers/workspace.js'
+import { addProject, git, makeWorkspace } from './helpers/workspace.js'
 
 const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
 const LOCK_BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
@@ -406,4 +406,67 @@ describe('vx pipeline <name>', () => {
       expect([r.code, r.err]).toEqual([1, expect.stringContaining(`no pipeline named ${name}`)])
     }
   }, 30_000)
+})
+
+// On the base branch a bare --affected has no base. The hint said "drop
+// --affected, --all runs every project": `vx pipeline` refuses --all, and a
+// saved `affected` is no flag to drop.
+describe('vx pipeline with affected, on the base branch', () => {
+  let root = ''
+  const pipelines = (fields: string): Promise<void> =>
+    writeFile(path.join(root, '.vx/workspace.mjs'), localWorkspaceSource([], '', undefined, fields))
+  const vx = async (...args: string[]): Promise<{ code: number; err: string }> => {
+    const proc = Bun.spawn([process.execPath, BIN, ...args], {
+      cwd: root,
+      stdout: 'pipe',
+      stderr: 'pipe',
+      env: { ...process.env, CI: '', GITHUB_ACTIONS: '', NO_COLOR: '1', VX_AFFECTED_BASE: '' },
+    })
+    const [err, code] = await Promise.all([new Response(proc.stderr).text(), proc.exited])
+    return { code, err }
+  }
+  const head = '--affected has no default on the base branch (main): '
+  const tail = ', or name the last good commit, --affected=<sha>'
+
+  beforeAll(async () => {
+    root = await realpath(await makeWorkspace({ prefix: 'vx-pipeline-base-', git: 'commit' }))
+    await addProject(
+      root,
+      'a',
+      `export default { tasks: { build: { exec: { command: 'true' } } } }`,
+    )
+    git(root, 'add', '-A')
+    git(root, 'commit', '-q', '-m', 'a')
+    git(root, 'branch', '-M', 'main')
+    git(root, 'update-ref', 'refs/remotes/origin/main', 'HEAD')
+    git(root, 'symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/main')
+  })
+  afterAll(async () => {
+    await rm(root, { recursive: true, force: true })
+  })
+
+  it('names a pipeline without affected, or the key to drop, never --all', async () => {
+    await pipelines(
+      `pipelines: { pr: { tasks: ['build'], affected: true }, main: { tasks: ['build'] } }`,
+    )
+    const saved = await vx('pipeline', 'pr')
+    expect(saved.code).toBe(1)
+    expect(saved.err).toContain(
+      `${head}run vx pipeline main, which has no \`affected\` (the cache skips what did not change)${tail}`,
+    )
+    expect(saved.err).toContain('--affected is `pipelines.pr.affected` in .vx/workspace\n')
+    // Typed, the flag is the user's to drop.
+    const typed = await vx('pipeline', 'main', '--affected')
+    expect(typed.err).toContain(
+      `${head}drop --affected (the cache skips what did not change)${tail}`,
+    )
+    expect(typed.err).not.toContain('`pipelines.')
+    // No pipeline without it: the key is the thing to drop.
+    await pipelines(`pipelines: { pr: { tasks: ['build'], affected: true } }`)
+    const only = await vx('pipeline', 'pr')
+    expect(only.err).toContain(
+      `${head}drop \`affected\` from pipelines.pr (the cache skips what did not change)${tail}`,
+    )
+    for (const r of [saved, typed, only]) expect(r.err).not.toContain('--all')
+  }, 60_000)
 })

@@ -430,6 +430,7 @@ export function detectFlow(
 async function scopeFilters(
   parsed: RunArgs,
   cwd: string,
+  affectedInstead?: string,
 ): Promise<
   { filterStrings: string[]; affected?: AffectedFilter } | { error: string; code?: string }
 > {
@@ -445,9 +446,10 @@ async function scopeFilters(
     const f = await affectedFilterFor(
       cwd,
       parsed.affected,
-      parsed.all
-        ? 'drop --affected, --all runs every project (the cache skips what did not change)'
-        : undefined,
+      affectedInstead ??
+        (parsed.all
+          ? 'drop --affected, --all runs every project (the cache skips what did not change)'
+          : undefined),
     )
     if ('error' in f) return f
     affected = f
@@ -471,6 +473,8 @@ export async function resolveRunOptions(
   verb: 'run' | 'watch' = 'run',
   /** Given, it learns the ref `--affected` diffed from (`--dry --format json` states it). */
   scopeOut?: { affectedBase?: string },
+  /** What to do instead of a bare `--affected` on the base branch (`vx pipeline`'s own advice). */
+  affectedInstead?: string,
 ): Promise<CoreRunOptions | { error: string; code?: string } | { nothingSelected: string }> {
   for (const t of tasks) {
     // A blank name (`vx run --all ''`) otherwise reached the orchestrator,
@@ -493,7 +497,7 @@ export async function resolveRunOptions(
     }
   }
 
-  const scope = await scopeFilters(parsed, cwd)
+  const scope = await scopeFilters(parsed, cwd, affectedInstead)
   if ('error' in scope) return scope
   const { filterStrings, affected: affectedFilter } = scope
   // `...[<base>]`: the base alone.
@@ -618,12 +622,13 @@ const TASKS_SHOWN = 12
 /**
  * `invocation`: the line `vx last` replays, when it is not `vx run <args>`
  * (`vx pipeline pr`). `saved`: each flag a pipeline saved, to the key that
- * holds it.
+ * holds it. `affectedInstead`: the advice for a bare `--affected` on the base branch.
  */
 export async function runCmd(
   args: readonly string[],
   invocation?: readonly string[],
   saved: ReadonlyMap<string, string> = new Map(),
+  affectedInstead?: string,
 ): Promise<number> {
   // `vx pipeline pr` refuses as itself, not as the `vx run` it stands for.
   const verb = invocation?.[1] ?? 'run'
@@ -728,7 +733,7 @@ export async function runCmd(
   }
 
   const scopeOut: { affectedBase?: string } = {}
-  const resolved = await resolveRunOptions(parsed, cwd, tasks, 'run', scopeOut)
+  const resolved = await resolveRunOptions(parsed, cwd, tasks, 'run', scopeOut, affectedInstead)
   if ('error' in resolved)
     return resolved.code === 'VX_E_UNKNOWN_TASK'
       ? unknownTask(resolved.error)

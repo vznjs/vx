@@ -106,7 +106,7 @@ vx pipeline main --filter @demo/web
 On `main` itself, `pr` has no base to compare with:
 
 ```ansi title="vx pipeline pr, on main"
-[38;2;239;68;68m✗[0m [1mvx pipeline[0m  [38;2;203;213;225m--affected has no default on the base branch (main): drop --affected, --all runs every project (the cache skips what did not change), or name the last good commit, --affected=<sha>[0m
+[38;2;239;68;68m✗[0m [1mvx pipeline[0m  [38;2;203;213;225m--affected has no default on the base branch (main): run vx pipeline main, which has no [0m[1m`affected`[0m[38;2;203;213;225m (the cache skips what did not change), or name the last good commit, --affected=<sha>[0m
 
   [38;2;203;213;225m--affected is [0m[1m`pipelines.pr.affected`[0m[38;2;203;213;225m in .vx/workspace[0m
 ```

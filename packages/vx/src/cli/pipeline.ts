@@ -132,5 +132,30 @@ export async function pipelineCmd(args: readonly string[]): Promise<number> {
   for (const [key, { flag }] of Object.entries(PIPELINE_FLAGS))
     if (own.some((a) => a === flag || a.startsWith(`${flag}=`)))
       keys.set(flag, `\`pipelines.${name}.${key}\``)
-  return runCmd([...own, ...rest], ['vx', 'pipeline', ...args], keys)
+  return runCmd(
+    [...own, ...rest],
+    ['vx', 'pipeline', ...args],
+    keys,
+    affectedInstead(name, pipelines, keys.has('--affected')),
+  )
+}
+
+/**
+ * A bare `--affected` on the base branch has no base. `vx run`'s advice,
+ * `--all`, is refused here, and a saved `affected` is no flag to drop: name
+ * a pipeline without it, the same tasks first.
+ */
+function affectedInstead(
+  name: string,
+  pipelines: Readonly<Record<string, Pipeline>>,
+  saved: boolean,
+): string {
+  const why = '(the cache skips what did not change)'
+  if (!saved) return `drop --affected ${why}`
+  const tasks = pipelines[name]!.tasks.join('\0')
+  const others = Object.keys(pipelines).filter((n) => n !== name && !pipelines[n]!.affected)
+  const alt = others.find((n) => pipelines[n]!.tasks.join('\0') === tasks) ?? others[0]
+  return alt === undefined
+    ? `drop \`affected\` from pipelines.${name} ${why}`
+    : `run vx pipeline ${alt}, which has no \`affected\` ${why}`
 }
