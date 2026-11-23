@@ -42,7 +42,7 @@ export const threeOutcomes: Picture = {
 export const readyFirst: Picture = {
   name: 'ready-first',
   label:
-    'Two tasks are ready and one worker is free. ui build starts first, because web build, web test and docs build wait on it. lint waits, because nothing waits on lint.',
+    'Two tasks are ready and one worker is free. ui build starts first, because web build, web test and admin build wait on it. lint waits, because nothing waits on lint.',
   caption: 'One free worker: the task three others wait on goes first.',
   height: 230,
   boxes: [
@@ -50,7 +50,7 @@ export const readyFirst: Picture = {
     { id: 'lint', x: 10, y: 150, w: 170, label: 'lint', sub: 'starts next', tone: 'muted' },
     { id: 'a', x: 400, y: 10, w: 170, label: 'web build' },
     { id: 'b', x: 400, y: 85, w: 170, label: 'web test' },
-    { id: 'c', x: 400, y: 160, w: 170, label: 'docs build' },
+    { id: 'c', x: 400, y: 160, w: 170, label: 'admin build' },
   ],
   arrows: [
     { from: 'ui', to: 'a', label: 'unblocks' },
@@ -65,7 +65,7 @@ export const readyFirst: Picture = {
       { id: 'lint', x: 180, y: 10, w: 160, label: 'lint', sub: 'starts next', tone: 'muted' },
       { id: 'a', x: 0, y: 170, w: 108, label: 'web build' },
       { id: 'b', x: 116, y: 170, w: 108, label: 'web test' },
-      { id: 'c', x: 232, y: 170, w: 108, label: 'docs build' },
+      { id: 'c', x: 232, y: 170, w: 108, label: 'admin build' },
     ],
     arrows: [
       { from: 'ui', to: 'a', label: 'unblocks' },
