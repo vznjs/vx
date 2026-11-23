@@ -333,7 +333,7 @@ it('a `__proto__` project or task reads back as an entry, never the prototype', 
 })
 
 it('a lock a merge or a hand edit broke reads as VX_E_LOCK, never another error', async () => {
-  const text = lockfileWrite(
+  const written = lockfileWrite(
     root,
     lock({
       a: project('a', { build, lint, '"q': test }),
@@ -341,6 +341,7 @@ it('a lock a merge or a hand edit broke reads as VX_E_LOCK, never another error'
       d: { name: 'd', by: 'plug', config: { tasks: { t: lint } } as ProjectConfig },
     }),
   ).text
+  const text = typeof written === 'string' ? written : new TextDecoder().decode(written)
   const lines = text.split('\n')
   // Seeded: a failure names the same edit on every run.
   let seed = 7

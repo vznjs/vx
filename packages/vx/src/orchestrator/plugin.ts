@@ -800,7 +800,13 @@ export function refuseUnknownOptions<T>(
 ): void {
   if (options === undefined) return
   if (options === null || typeof options !== 'object' || Array.isArray(options)) {
-    const got = Array.isArray(options) ? 'an array' : (JSON.stringify(options) ?? String(options))
+    const got = Array.isArray(options)
+      ? 'an array'
+      : typeof options === 'function'
+        ? 'a function'
+        : typeof options === 'bigint' || typeof options === 'symbol'
+          ? options.toString()
+          : JSON.stringify(options)
     throw new UserError(
       `${factory}: options must be an object of named options, as in { name: value }; got ${got}`,
     )
