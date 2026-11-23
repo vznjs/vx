@@ -112,7 +112,7 @@ bun add -d @vzn/vx-reapi
 
 Some tasks need this machine: a Docker socket, a VPN, a device. Pin them with `exec.remote: false`:
 
-```ts title="apps/web/vx.config.ts" mark={3}
+```ts title="packages/web/vx.config.ts" mark={3}
 deploy: {
   dependsOn: ['build'],
   exec: { command: 'wrangler pages deploy dist', remote: false },
@@ -162,7 +162,7 @@ install: {
 build: {
   dependsOn: ['^build', '//#install'],
   exec: { command: 'vite build' },
-  inputs: { files: ['src/**', 'index.html'] },
+  inputs: { files: ['src/**', 'vite.config.ts'] },
   outputs: { files: ['dist/**'] },
   cache: true,
 },
@@ -265,13 +265,12 @@ reapi({
 [1m[38;2;234;179;8m[vx][0m[2m @demo/ui#build: plugin '@vzn/vx-reapi' (executor 'vx/reapi') gave it back: no worker started the action within queueTimeoutMs (1000ms); its operation was cancelled — running it here[0m
 [36mvite v8.3.8 [32mbuilding client environment for production...[36m[39m
 transforming...
-[32m✓[0m 4 modules transformed.
+[32m✓[0m 2 modules transformed.
 rendering chunks...
 computing gzip size...
-[2mdist/[0m[32mindex.html                [0m[1;2m0.07 kB[0m[2m │ gzip: 0.09 kB[0m
-[2mdist/[0m[2massets/[0m[36mindex-P2Xu9kJm.js  [0m[1;2m0.67 kB[0m[2m │ gzip: 0.38 kB[0m
-[32m✓ built in 42ms[39m
-[0m[2m└─[0m [1m[38;2;192;132;252m@demo/ui[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(226ms)[0m [2msuccess[0m
+[2mdist/[0m[36mindex.js  [0m[1;2m0.08 kB[0m[2m │ gzip: 0.09 kB[0m
+[32m✓ built in 21ms[39m
+[0m[2m└─[0m [1m[38;2;192;132;252m@demo/ui[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(196ms)[0m [2msuccess[0m
 ```
 
 Read the **[vx]** line: the pool was full, so the build ran here and still passed.
