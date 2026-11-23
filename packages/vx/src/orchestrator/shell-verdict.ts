@@ -46,11 +46,9 @@ export function shellVerdict(args: {
   }
   // A program the host's PATH has may be one the sandbox hides (a
   // hermetic task sees no /usr/bin): the reason is a grant, not an install.
-  const found =
-    word === undefined || args.hidden === undefined
-      ? null
-      : Bun.which(word, { PATH: [...args.bins, process.env['PATH'] ?? ''].join(path.delimiter) })
-  if (found !== null && args.hidden!(found)) {
+  const taskPath = [...args.bins, process.env['PATH'] ?? ''].join(path.delimiter)
+  const found = word === undefined ? null : Bun.which(word, { PATH: taskPath })
+  if (found !== null && args.hidden?.(found) === true) {
     return `[vx] exit 127 is the shell's "command not found": ${word} is ${found} on the host, but no sandbox grant reads it, so inside the sandbox it is not there — add it (or its directory) to exec.sandbox.allow.read`
   }
   // The program is there, and what it needs is not: its `#!` runtime
@@ -60,6 +58,13 @@ export function shellVerdict(args: {
     const runtime = hiddenRuntime(found, args.hidden, args.stderr)
     if (runtime !== undefined)
       return `[vx] exit 127 is the shell's "not found": ${word} is there, but ${runtime}, so inside the sandbox it is not there — add it (or its directory) to exec.sandbox.allow.read`
+  }
+  // Found, and its `#!` interpreter is not: `vite` with no node installed.
+  // "vite is not on this task's PATH" sent the reader to install vite.
+  if (found !== null) {
+    const missing = missingInterpreter(found, taskPath, args.stderr)
+    if (missing !== undefined)
+      return `[vx] exit 127 is the shell's "not found": ${word} is ${found}, but ${missing} — install it, or put it on PATH`
   }
   const unnamed = args.bins.find((dir) => dir.includes(path.delimiter))
   if (unnamed !== undefined) {
@@ -127,8 +132,25 @@ function hiddenRuntime(
   return `its runtime ${name} is ${runtime} on the host, read by no sandbox grant`
 }
 
-/** The runtime a `#!/usr/bin/env <name>` line names; none for any other line. */
-function envRuntime(file: string): string | undefined {
+/** The `#!` interpreter `file` names that is not there, said as a clause; none when it is. */
+function missingInterpreter(
+  file: string,
+  taskPath: string,
+  stderr: string | undefined,
+): string | undefined {
+  const named = /env: '?([^':\s]+)'?: No such file or directory/.exec(stderr ?? '')?.[1]
+  const name = named ?? envRuntime(file)
+  if (name !== undefined) {
+    if (named === undefined && Bun.which(name, { PATH: taskPath }) !== null) return undefined
+    return `its #! line runs ${name}, which is not on this task's PATH`
+  }
+  const interp = shebang(file)?.[0]
+  if (interp === undefined || !interp.startsWith('/') || existsSync(interp)) return undefined
+  return `its #! interpreter ${interp} does not exist`
+}
+
+/** A file's `#!` line as words; none without one. */
+function shebang(file: string): string[] | undefined {
   let head: string
   try {
     head = readFileSync(file).subarray(0, 256).toString('utf8')
@@ -137,10 +159,15 @@ function envRuntime(file: string): string | undefined {
   }
   if (!head.startsWith('#!')) return undefined
   const nl = head.indexOf('\n')
-  const [interp = '', arg] = head
+  return head
     .slice(2, nl === -1 ? head.length : nl)
     .trim()
     .split(/\s+/)
+}
+
+/** The runtime a `#!/usr/bin/env <name>` line names; none for any other line. */
+function envRuntime(file: string): string | undefined {
+  const [interp = '', arg] = shebang(file) ?? []
   if (path.basename(interp) !== 'env' || arg === undefined || arg.startsWith('-')) return undefined
   return arg
 }

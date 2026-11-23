@@ -408,7 +408,10 @@ The child process gets, in priority order (lowest first):
    `word args…`), the two bin directories vx puts first, and that a
    sibling project's bin is never visible (or, when a bin directory was
    left out for its `:`, that directory and the fix: move the
-   workspace), and on 126 `chmod +x`; for
+   workspace); a bare word that IS found but whose `#!` interpreter is
+   not (`vite` with no `node`) gets that interpreter named instead, and
+   under a sandbox the hidden runtime or library with its host path; and
+   on 126 `chmod +x`; for
    a word with a slash, what the file says — missing (the resolved
    path), a directory, not executable by this user, a `#!` interpreter that does
    not exist (a CRLF line ending is named as such), or no `#!` line.
