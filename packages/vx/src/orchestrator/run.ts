@@ -1213,6 +1213,7 @@ async function runOnBus(
       trailing,
       cacheDir,
       runStartHrTimeNs,
+      staleTrees: new Map(),
       persistentRegistry,
       liveChildren,
       gitFilesCache,

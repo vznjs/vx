@@ -7,7 +7,7 @@
 import { indexDb } from '../src/cache/index.js'
 import { Database } from 'bun:sqlite'
 import { existsSync, readdirSync } from 'node:fs'
-import { mkdir, mkdtemp, readFile, rm, utimes, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, symlink, utimes, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
@@ -623,5 +623,28 @@ describe('12: the inline table’s own layout sentinel', () => {
     } finally {
       cache.close()
     }
+  })
+})
+
+describe('a file the walk found absent', () => {
+  it('is asked again before the copy writes it: a link made since is not written through', async () => {
+    const cache = new Cache(cacheDir, undefined, undefined, undefined, undefined, undefined, {
+      embeddings: 32 * 1024,
+      decompress: false,
+    })
+    await save(cache, 'k-absent', 'cached')
+    const into = await mkdtemp(path.join(root, 'r-'))
+    await mkdir(path.join(into, 'dist'))
+    const outside = path.join(root, 'outside.txt')
+    await writeFile(outside, 'mine')
+    const out = path.join(into, 'dist', 'out.txt')
+    await symlink(outside, out)
+    await cache.restoreOutputs('k-absent', into, undefined, {
+      files: ['dist/**'],
+      workspaceFiles: [],
+      absent: new Set([out]),
+    })
+    expect(await readFile(outside, 'utf8')).toBe('mine')
+    cache.close()
   })
 })

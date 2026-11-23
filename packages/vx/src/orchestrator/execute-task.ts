@@ -37,6 +37,13 @@ export interface RunContext {
   forwardArgs?: readonly string[] | undefined
   /** Told the task executes, so the executor's demand counts it again (`ExecutorDemand.executing`). */
   executing?: ((id: string) => void) | undefined
+  /**
+   * Tasks whose tree a settle in place found stale (`settleProbedHit`), by
+   * id, with the key it was asked for: the dispatch that follows restores
+   * without asking again. A restore lays the entry's bytes whatever stands,
+   * so a tree gone current since costs a copy, never a wrong one.
+   */
+  staleTrees?: Map<string, string>
   /** Run-scoped deferral registry — where deferred closures land, and
    *  where a locally-placed consumer fetches its producers from. */
   deferred?: DeferredOutputs
@@ -330,7 +337,9 @@ export function settleProbedHit(args: ExecuteArgs): (() => TaskOutcome) | undefi
     cacheOpStart: performance.now(),
     taskStartNs: process.hrtime.bigint() - args.run.runStartHrTimeNs,
   }
-  return currentHit(restore)
+  const now = currentHit(restore)
+  if (now === undefined) args.run.staleTrees?.set(args.node.id, probed.hash)
+  return now
 }
 /**
  * Group task: no `exec`. The scheduler has already ensured every
