@@ -105,8 +105,8 @@ export function cachedFetchJson(
   key could make, is `401` before any read of its issuer's keys.
 - jose checks the JWT: `RS256`, the signature against the issuer's keys
   (found through its `/.well-known/openid-configuration`, kept 10 minutes,
-  and read again for a key they lack at most every 30 s), `aud`, `exp`
-  and `nbf` within 60 s.
+  and read again for a key they lack at most every 30 s), `aud` (the
+  audience with or without a trailing slash), `exp` and `nbf` within 60 s.
   A read that times out, drops, or answers 5xx or 429 is tried again:
   three tries in 15 s at most, 4 s each.
   When a refetch fails, the keys last read still check tokens. A key they

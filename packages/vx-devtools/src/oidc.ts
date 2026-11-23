@@ -442,7 +442,9 @@ export function oidcClaims(opts: {
       claims = (
         await jwtVerify(token, keyOf(iss, token), {
           algorithms: ['RS256'],
-          audience,
+          // A trailing slash names the same URL: a GitLab id_token's aud is
+          // written by hand, and vx-dte asks for its relay's URL without one.
+          audience: [audience.replace(/\/+$/, ''), `${audience.replace(/\/+$/, '')}/`],
           clockTolerance: LEEWAY_S,
           currentDate: new Date(now() * 1000),
           requiredClaims: ['exp'],

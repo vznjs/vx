@@ -85,8 +85,7 @@ All vx servers at once, this relay with its state on a volume included:
   environment as every vx server reads it. GitLab names a project by
   its full path, `group/subgroup/project`.
 - `AUDIENCE` is the `aud` every token must name: the URL the CI job
-  asks its ID token for, with no trailing slash (one is dropped, as
-  `@vzn/vx-dte` drops it from `relay`).
+  asks its ID token for, with or without a trailing slash.
 - `--port` (default 8080) and `--host` (default `0.0.0.0`) set where it
   listens.
 - `--no-auth` admits every request. Use it only to try `@vzn/vx-dte`

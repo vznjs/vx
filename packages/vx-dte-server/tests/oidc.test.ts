@@ -74,6 +74,11 @@ describe('a CI OIDC token', () => {
         url.endsWith('/jwks') ? { keys: [{ ...jwk, kid: 'k1' }] } : { jwks_uri: `${ISS}/jwks` },
     })
     expect(await verify(await sign(good))).toEqual({ iss: ISS, run: ['7'] })
+    // A GitLab id_token's aud is written by hand, the slash too.
+    expect(await verify(await sign({ ...good, aud: `${AUD}/` }))).toEqual({ iss: ISS, run: ['7'] })
+    expect((await refusal(verify(await sign({ ...good, aud: 'https://other.example' }))))[0]).toBe(
+      401,
+    )
   })
 
   it('is accepted with its run claims, reading the keys once', async () => {
