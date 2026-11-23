@@ -479,7 +479,8 @@ What counts as a change:
   lock is the reason shown), and `vx lock` rewriting the same entries
   selects nothing. When only some tasks' locked configs moved, a config
   edit (or an edit to a file the config imports) selects those tasks
-  alone, with the config as the `input` shown: changing `build`'s command
+  alone, with the config as the `input` shown (`.vx/projects.lock` when only
+  an imported file changed): changing `build`'s command
   no longer re-runs `test` (`affected-config-tasks.test.ts`). An edit
   that moves no locked task (a comment) selects none of its tasks with
   `inputs` (one without reads its whole project, the config too).
