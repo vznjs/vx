@@ -475,6 +475,23 @@ const SHELL_BUILTINS = new Set([
   // is bash, and `exec [[ … ]]` there is "exec: [[: not found".
   '[[',
   'time',
+  // POSIX reserved words: a one-line `if` with no `;` is a syntax error,
+  // which `exec if` turned into "if: not found".
+  'if',
+  'then',
+  'else',
+  'elif',
+  'fi',
+  'do',
+  'done',
+  'case',
+  'esac',
+  'while',
+  'until',
+  'for',
+  'in',
+  'function',
+  'select',
 ])
 
 /**

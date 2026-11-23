@@ -262,7 +262,9 @@ held to its start; at the exit, `end` lets everything go; and an
   one bash's `compgen -b` lists, bash-only `pushd` among them), and so
   does a bash reserved word that may open one line (`[[`, `time`):
   macOS's `sh` is bash, and `exec [[ -f x ]]` there was
-  `exec: [[: not found`, exit 127 (B-56).
+  `exec: [[: not found`, exit 127 (B-56). So does a POSIX one (`if`,
+  `while`, `for`, …): one on a line with no `;` is a syntax error, and
+  `exec if` made it "if: not found" with a hint to install `if`.
 - **stdio:** `stdin: 'ignore'` (no interactive prompts; a task reading
   stdin sees EOF, never a hang); stdout and stderr are pipes
   (`TaskPipes`). Bun's `'pipe'` is a socketpair, and Linux opens

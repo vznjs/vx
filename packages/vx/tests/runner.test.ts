@@ -1599,6 +1599,26 @@ describe('execWrap — grandchild-orphan mitigation', () => {
     }
   })
 
+  // A one-line `if`/`while`/`for` with its `;` forgotten is a syntax error.
+  // Exec-wrapped, the shell looked `if` up as a program: "exec: if: not
+  // found", exit 127, and the verdict said to install `if`.
+  it('leaves POSIX reserved words alone, so a syntax error is the shell’s', () => {
+    for (const command of [
+      'if [ -f x ] then echo y fi',
+      'while true do echo y done',
+      'for f in a b do echo y done',
+      'until true do echo y done',
+      'case x in',
+    ]) {
+      const r = Bun.spawnSync(['sh', '-c', execWrap(command)], { stderr: 'pipe' })
+      expect([command, r.exitCode, r.stderr.toString().includes('not found')]).toEqual([
+        command,
+        2,
+        false,
+      ])
+    }
+  })
+
   // Every builtin bash itself lists, read from bash: `exec pushd x` is
   // "exec: pushd: not found" there, where the bare command ran.
   it('leaves every bash builtin alone', () => {
