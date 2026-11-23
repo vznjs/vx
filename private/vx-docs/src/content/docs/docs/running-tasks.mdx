@@ -298,9 +298,9 @@ Full grammar and error messages: [`--filter`](../../cli/run/#filter-dsl---filter
 
 </Deeper>
 
-<Deeper level="patterns" title="Run one project's tasks">
+<a id="run-one-projects-tasks"></a>
 
-### Run one project's tasks
+<Deeper level="patterns" title="Run one project's tasks">
 
 A filter picks where to **start**. What those tasks depend on still comes
 along. Filter on `web`, and its `^build` builds `ui` first:
@@ -310,17 +310,17 @@ vx run build --filter @demo/web --dry
 ```
 
 ```ansi
-[4m[58;2;110;118;129m  [1m[38;2;167;139;250mPlan[0m[4m[58;2;110;118;129m [2m2[0m[4m[58;2;110;118;129m    [2mstatus  cache      usual    time   cpu    mem outputs  blocks worker         task[0m[4m[58;2;110;118;129m[0m
-            [38;2;6;182;212mrun[0m     [2mmiss[0m        [2m~6ms[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2mlocal[0m          [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m
-            [38;2;6;182;212mrun[0m     [2mmiss[0m       [2m~12ms[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [38;2;203;213;225m1[0m [2mlocal[0m          [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mPlan[0m[4m[58;2;110;118;129m [2m2[0m[4m[58;2;110;118;129m    [2mstatus  cache       time   task[0m[4m[58;2;110;118;129m                 [0m
+            [38;2;6;182;212mrun[0m     [2mmiss[0m           [2m—[0m   [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;6;182;212mrun[0m     [2mmiss[0m           [2m—[0m   [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m
 
   [2mtasks    [0m  [38;2;203;213;225m2 planned · 2 would run[0m
-  [2mpredicted[0m  [38;2;203;213;225m~18ms wall · ~18ms total execution[0m
+  [2mpredicted[0m  [38;2;203;213;225m~391ms wall · ~391ms total execution[0m
 ```
 
-Two rows, not one: `@demo/ui#build` blocks `web`, so it runs too. When you
-know the dependencies are built, add `--exclude-dependencies` to run only
-the picked tasks.
+Two rows, not one: `web` waits for `@demo/ui#build`, so it runs too. When
+you know the dependencies are built, add `--exclude-dependencies` to run
+only the picked tasks.
 
 <Takeaway>work on one app and trust that what it needs is built first.</Takeaway>
 
@@ -386,13 +386,12 @@ A change then travels only along `dependsOn`. Full rules: [`--affected`](../../c
 
 </Deeper>
 
-<Deeper level="patterns" title="Run only what changed">
+<a id="run-only-what-changed"></a>
 
-### Run only what changed
+<Deeper level="patterns" title="Three edits, three plans">
 
 `--affected` picks **projects** from git. The cache then decides what
-really runs. Three edits on a branch, three plans. The orange dot is the
-edit; bright boxes are affected.
+really runs. The orange dot is the edit; bright boxes are affected.
 
 <Tabs>
 <TabItem label="Edit ui/src">
@@ -402,13 +401,13 @@ edit; bright boxes are affected.
 `ui` changed, and both apps use it. All three rebuild:
 
 ```ansi
-[4m[58;2;110;118;129m  [1m[38;2;167;139;250mPlan[0m[4m[58;2;110;118;129m [2m3[0m[4m[58;2;110;118;129m    [2mstatus  cache      usual    time   cpu    mem outputs  blocks worker         task[0m[4m[58;2;110;118;129m                           [0m
-            [38;2;6;182;212mrun[0m     [2mmiss[0m      [2m~210ms[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2mlocal[0m          [38;2;129;140;248m@demo/admin[0m[2m#[0m[38;2;244;114;182mbuild[0m  [2maffected: packages/ui/src/index.ts changed (an input), via @demo/ui#build[0m
-            [38;2;6;182;212mrun[0m     [2mmiss[0m      [2m~306ms[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [38;2;203;213;225m2[0m [2mlocal[0m          [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m  [2maffected: packages/ui/src/index.ts changed (an input)[0m
-            [38;2;6;182;212mrun[0m     [2mmiss[0m        [2m~3ms[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2mlocal[0m          [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m  [2maffected: packages/ui/src/index.ts changed (an input), via @demo/ui#build[0m
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mPlan[0m[4m[58;2;110;118;129m [2m3[0m[4m[58;2;110;118;129m    [2mstatus  cache       time   task[0m[4m[58;2;110;118;129m                 [0m
+            [38;2;6;182;212mrun[0m     [2mmiss[0m           [2m—[0m   [38;2;129;140;248m@demo/admin[0m[2m#[0m[38;2;244;114;182mbuild[0m  [2maffected: packages/ui/src/index.ts changed (an input), via @demo/ui#build[0m
+            [38;2;6;182;212mrun[0m     [2mmiss[0m           [2m—[0m   [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m  [2maffected: packages/ui/src/index.ts changed (an input)[0m
+            [38;2;6;182;212mrun[0m     [2mmiss[0m           [2m—[0m   [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m  [2maffected: packages/ui/src/index.ts changed (an input), via @demo/ui#build[0m
 
   [2mtasks    [0m  [38;2;203;213;225m3 planned · 3 would run[0m
-  [2mpredicted[0m  [38;2;203;213;225m~516ms wall · ~519ms total execution[0m
+  [2mpredicted[0m  [38;2;203;213;225m~391ms wall · ~579ms total execution[0m
 ```
 
 </TabItem>
@@ -420,12 +419,12 @@ Nothing uses `web`, so only `web` rebuilds. `ui` comes along as a
 dependency and is a cache hit:
 
 ```ansi
-[4m[58;2;110;118;129m  [1m[38;2;167;139;250mPlan[0m[4m[58;2;110;118;129m [2m2[0m[4m[58;2;110;118;129m    [2mstatus  cache      usual    time   cpu    mem outputs  blocks worker         task[0m[4m[58;2;110;118;129m                           [0m
-            [38;2;6;182;212mrun[0m     [2mmiss[0m        [2m~3ms[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2mlocal[0m          [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m  [2maffected: packages/web/src/index.ts changed (an input)[0m
-            [38;2;34;197;94mcached[0m  [38;2;56;189;248mlocal[0m          [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [38;2;203;213;225m1[0m [2mlocal[0m          [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mPlan[0m[4m[58;2;110;118;129m [2m2[0m[4m[58;2;110;118;129m    [2mstatus  cache       time   task[0m[4m[58;2;110;118;129m                 [0m
+            [38;2;6;182;212mrun[0m     [2mmiss[0m           [2m—[0m   [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m  [2maffected: packages/web/src/main.ts changed (an input)[0m
+            [38;2;34;197;94mcached[0m  [38;2;56;189;248mlocal[0m          [2m—[0m   [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m
 
   [2mtasks    [0m  [38;2;203;213;225m2 planned · 1 cache hit (1 local) · 1 would run[0m
-  [2mpredicted[0m  [38;2;203;213;225m~3ms wall · ~3ms total execution[0m
+  [2mpredicted[0m  [38;2;203;213;225m~199ms wall · ~199ms total execution[0m
 ```
 
 </TabItem>
@@ -437,10 +436,10 @@ The README is in `ui`, so all three are affected. No task reads it, so
 all three are cache hits and nothing runs:
 
 ```ansi
-[4m[58;2;110;118;129m  [1m[38;2;167;139;250mPlan[0m[4m[58;2;110;118;129m [2m3[0m[4m[58;2;110;118;129m    [2mstatus  cache      usual    time   cpu    mem outputs  blocks worker         task[0m[4m[58;2;110;118;129m                           [0m
-            [38;2;34;197;94mcached[0m  [38;2;56;189;248mlocal[0m          [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2mlocal[0m          [38;2;129;140;248m@demo/admin[0m[2m#[0m[38;2;244;114;182mbuild[0m  [2maffected: packages/ui/README.md changed (in its project), via @demo/ui#build[0m
-            [38;2;34;197;94mcached[0m  [38;2;56;189;248mlocal[0m          [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [38;2;203;213;225m2[0m [2mlocal[0m          [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m  [2maffected: packages/ui/README.md changed (in its project)[0m
-            [38;2;34;197;94mcached[0m  [38;2;56;189;248mlocal[0m          [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2mlocal[0m          [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m  [2maffected: packages/ui/README.md changed (in its project), via @demo/ui#build[0m
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mPlan[0m[4m[58;2;110;118;129m [2m3[0m[4m[58;2;110;118;129m    [2mstatus  cache       time   task[0m[4m[58;2;110;118;129m                 [0m
+            [38;2;34;197;94mcached[0m  [38;2;56;189;248mlocal[0m          [2m—[0m   [38;2;129;140;248m@demo/admin[0m[2m#[0m[38;2;244;114;182mbuild[0m  [2maffected: packages/ui/README.md changed (in its project), via @demo/ui#build[0m
+            [38;2;34;197;94mcached[0m  [38;2;56;189;248mlocal[0m          [2m—[0m   [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m  [2maffected: packages/ui/README.md changed (in its project)[0m
+            [38;2;34;197;94mcached[0m  [38;2;56;189;248mlocal[0m          [2m—[0m   [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m  [2maffected: packages/ui/README.md changed (in its project), via @demo/ui#build[0m
 
   [2mtasks   [0m  [38;2;203;213;225m3 planned · 3 cache hits (3 local)[0m
 ```
@@ -690,27 +689,28 @@ Every detail: [`vx run`](../../cli/run/).
 
 </Deeper>
 
+<a id="stop-at-the-first-failure"></a>
+
 <Deeper level="patterns" title="Stop at the first failure">
 
-### Stop at the first failure
-
-`ui`'s test fails fast. `web`'s test takes a second. Pick a tab and watch.
+`ui`'s test fails fast. The apps' tests take over a second. Pick a tab and watch.
 
 <Tabs>
 <TabItem label="Default">
 
 <Timeline
-  label="ui's test fails at 12 ms; web's test keeps running and passes at 1.01 s"
-  end={1100}
+  label="ui's test fails at 631 ms; web's and admin's tests keep running and pass at about 1.7 s"
+  end={1800}
   unit="ms"
   lanes={[
-    { task: '@demo/ui#test', bars: [{ from: 0, to: 12, tone: 'danger' }] },
-    { task: '@demo/web#test', bars: [{ from: 0, to: 1010, tone: 'ok', label: 'success' }] },
+    { task: '@demo/ui#test', bars: [{ from: 0, to: 631, tone: 'danger', label: 'failed' }] },
+    { task: '@demo/web#test', bars: [{ from: 0, to: 1670, tone: 'ok', label: 'success' }] },
+    { task: '@demo/admin#test', bars: [{ from: 0, to: 1700, tone: 'ok', label: 'success' }] },
   ]}
-  marks={[{ at: 12, label: 'ui fails', tone: 'danger' }]}
+  marks={[{ at: 631, label: 'ui fails', tone: 'danger' }]}
 />
 
-`web` runs to the end. One run shows you **every** failure. Only the
+The apps run to the end. One run shows you **every** failure. Only the
 tasks that need a failed one are skipped:
 
 ```sh
@@ -718,45 +718,50 @@ vx run test --all
 ```
 
 ```ansi
-[4m[58;2;110;118;129m  [1m[38;2;167;139;250mTasks[0m[4m[58;2;110;118;129m     [2mstatus  cache     ±usual    time   cpu    mem outputs  blocks worker         task[0m[4m[58;2;110;118;129m                           [0m
-            [38;2;239;68;68mfailed[0m  [2mno-cache[0m       [2m—[0m    [38;2;203;213;225m12ms[0m    [2m9%[0m  [2m1.7MB[0m       [2m—[0m       [2m0[0m [2mlocal[0m          [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;96;165;250mtest[0m
-            [38;2;34;197;94msuccess[0m [2mno-cache[0m       [2m—[0m   [38;2;203;213;225m1.01s[0m    [2m0%[0m  [2m3.6MB[0m       [2m—[0m       [2m0[0m [2mlocal[0m          [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;96;165;250mtest[0m
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mTasks[0m[4m[58;2;110;118;129m     [2mstatus  cache       time   task[0m[4m[58;2;110;118;129m                 [0m
+            [38;2;239;68;68mfailed[0m  [2mno-cache[0m   [38;2;203;213;225m631ms[0m   [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;96;165;250mtest[0m
+            [38;2;34;197;94msuccess[0m [2mno-cache[0m   [38;2;203;213;225m1.67s[0m   [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;96;165;250mtest[0m
+            [38;2;34;197;94msuccess[0m [2mno-cache[0m   [38;2;203;213;225m1.70s[0m [38;2;234;179;8m◆[0m [38;2;129;140;248m@demo/admin[0m[2m#[0m[38;2;96;165;250mtest[0m
 
 [2m┌─[0m [1m[38;2;192;132;252m@demo/ui[0m[2m#[0m[1m[38;2;96;165;250mtest[0m [2m>[0m [1m[38;2;239;68;68mfailed (exit 1)[0m
 
-[2mpackages/ui $ echo 'expected 2, got 1' && exit 1[0m
+[2mpackages/ui $ vitest run[0m
 
-[2m├─[0m [1mOUTPUT[0m [2m────────────────────────────────────────────────────[0m
+[2m├─[0m [1mOUTPUT[0m [2m──────────────────────────────────────────────────[0m
+ [31m❯[39m src/sum.test.ts [2m([22m[2m1 test[22m[2m | [22m[31m1 failed[39m[2m)[22m[32m 7[2mms[22m[39m
+[31m   [31m×[31m sum[39m[32m 6[2mms[22m[39m
+[31m     → expected 1 to be 2 // Object.is equality[39m
+[36m [2m❯[22m src/sum.test.ts:[2m3:37[22m[39m
 
-expected 2, got 1
-
-[2m└─[0m [1m[38;2;192;132;252m@demo/ui[0m[2m#[0m[1m[38;2;96;165;250mtest[0m [2m──[0m [2m(12ms)[0m [1m[38;2;239;68;68mfailed (exit 1)[0m
+[2m└─[0m [1m[38;2;192;132;252m@demo/ui[0m[2m#[0m[1m[38;2;96;165;250mtest[0m [2m──[0m [2m(631ms)[0m [1m[38;2;239;68;68mfailed (exit 1)[0m
 ```
 
 </TabItem>
 <TabItem label="--fail-fast">
 
 <Timeline
-  label="ui's test fails at 12 ms; vx stops web's test at 19 ms"
-  end={1100}
+  label="ui's test fails at 671 ms; vx stops both apps' tests at about 690 ms"
+  end={1800}
   unit="ms"
   lanes={[
-    { task: '@demo/ui#test', bars: [{ from: 0, to: 12, tone: 'danger' }] },
-    { task: '@demo/web#test', bars: [{ from: 0, to: 19, tone: 'warn' }] },
+    { task: '@demo/ui#test', bars: [{ from: 0, to: 671, tone: 'danger', label: 'failed' }] },
+    { task: '@demo/web#test', bars: [{ from: 0, to: 688, tone: 'warn', label: 'aborted' }] },
+    { task: '@demo/admin#test', bars: [{ from: 0, to: 691, tone: 'warn', label: 'aborted' }] },
   ]}
-  marks={[{ at: 12, label: 'ui fails', tone: 'danger' }]}
+  marks={[{ at: 671, label: 'ui fails', tone: 'danger' }]}
 />
 
-vx kills `web` and ends the run. Its row says `aborted`:
+vx kills the apps' tests and ends the run. Their rows say `aborted`:
 
 ```sh
 vx run test --all --fail-fast
 ```
 
 ```ansi
-[4m[58;2;110;118;129m  [1m[38;2;167;139;250mTasks[0m[4m[58;2;110;118;129m     [2mstatus  cache     ±usual    time   cpu    mem outputs  blocks worker         task[0m[4m[58;2;110;118;129m                           [0m
-            [38;2;239;68;68mfailed[0m  [2mno-cache[0m       [2m—[0m    [38;2;203;213;225m12ms[0m    [2m9%[0m  [2m1.7MB[0m       [2m—[0m       [2m0[0m [2mlocal[0m          [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;96;165;250mtest[0m
-            [38;2;249;115;22maborted[0m [2m—[0m              [2m—[0m    [38;2;203;213;225m19ms[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2mlocal[0m          [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;96;165;250mtest[0m
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mTasks[0m[4m[58;2;110;118;129m     [2mstatus  cache       time   task[0m[4m[58;2;110;118;129m                 [0m
+            [38;2;239;68;68mfailed[0m  [2mno-cache[0m   [38;2;203;213;225m671ms[0m   [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;96;165;250mtest[0m
+            [38;2;249;115;22maborted[0m [2m—[0m          [38;2;203;213;225m688ms[0m   [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;96;165;250mtest[0m
+            [38;2;249;115;22maborted[0m [2m—[0m          [38;2;203;213;225m691ms[0m   [38;2;129;140;248m@demo/admin[0m[2m#[0m[38;2;96;165;250mtest[0m
 ```
 
 </TabItem>
@@ -773,12 +778,12 @@ three runs. `--fail-fast` waits until a task is out of attempts.
 
 </Deeper>
 
+<a id="set-a-time-limit-on-a-task"></a>
+
 <Deeper level="patterns" title="Set a time limit on a task">
 
-### Set a time limit on a task
-
-A task has **no** time limit unless you set one. One test waits for a page
-that never loads. Pick a tab.
+A task has **no** time limit unless you set one. Here an end-to-end test
+waits for a checkout page that never loads. Pick a tab.
 
 <Tabs>
 <TabItem label="No limit">
@@ -797,7 +802,7 @@ At ten minutes vx stops it. The task fails, and the run ends.
 ```ts title="packages/web/vx.config.ts" ins={3}
 tasks: {
   e2e: {
-    exec: { command: 'playwright test', timeout: '10m' },
+    exec: { command: 'vitest run e2e', timeout: '10m' },
   },
 },
 ```
@@ -805,26 +810,29 @@ tasks: {
 </TabItem>
 </Tabs>
 
-To try it, pass `--timeout` to one run. Here the task sleeps five seconds:
+To try it, pass `--timeout` to one run:
 
 ```sh
-vx run @demo/web#e2e --timeout 1s
+vx run @demo/web#e2e --timeout 3s
 ```
 
 ```ansi
-[2m┌─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;147;197;253me2e[0m [2m>[0m $ sleep 5
-[vx] timed out after 1000ms — killed (SIGTERM)
-[2m└─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;147;197;253me2e[0m [2m──[0m [2m(1.01s)[0m [1m[38;2;239;68;68mfailed (timed out, exit 143)[0m
+[2m┌─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;147;197;253me2e[0m [2m>[0m $ vitest run e2e
+
+[1m[46m RUN [49m[22m [36mv3.2.4 [39m[90m/repo/packages/web[39m
+
+[1m[38;2;234;179;8m[vx][0m[2m timed out after 3000ms — killed (SIGTERM)[0m
+[2m└─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;147;197;253me2e[0m [2m──[0m [2m(3.02s)[0m [1m[38;2;239;68;68mfailed (timed out, exit 143)[0m
 ```
 
-Read the last word: `failed (timed out)`. vx exits `1`, and a timed-out
+Read the last words: `failed (timed out)`. vx exits `1`, and a timed-out
 task is never cached.
 
 | Where | Setting | Applies to |
 | --- | --- | --- |
-| a task in `vx.config.ts` | `exec: { timeout: '10m' }` | that task |
-| command line | `--timeout 10m` | every task in this run |
-| `.vx/workspace.ts` | `run: { timeout: '30m' }` | every task in every run |
+| a task | `exec: { timeout: '10m' }` | that task |
+| command line | `--timeout 10m` | this run |
+| `.vx/workspace.ts` | `run: { timeout: '30m' }` | every run |
 
 The most specific wins: `exec.timeout` beats `--timeout`, which beats
 `run.timeout`. A duration has its unit: `'500ms'`, `'30s'`, `'10m'`, `'1h'`, `'1d'`.

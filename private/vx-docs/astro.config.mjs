@@ -86,7 +86,7 @@ export default defineConfig({
     '/guides/graph-explorer/': `${root}docs/graph-explorer/`,
     '/guides/migrate/': `${root}docs/migrate/`,
     '/guides/running/build-dependencies-first/': `${root}docs/tasks/#build-a-projects-dependencies-first`,
-    '/guides/running/pass-an-environment-variable/': `${root}docs/environment-variables/#a-bundle-that-bakes-in-node_env`,
+    '/guides/running/pass-an-environment-variable/': `${root}docs/environment-variables/#give-a-task-a-variable`,
     '/guides/running/run-one-project/': `${root}docs/running-tasks/#run-one-projects-tasks`,
     '/guides/running/run-what-changed/': `${root}docs/running-tasks/#run-only-what-changed`,
     '/guides/running/set-a-time-limit/': `${root}docs/running-tasks/#set-a-time-limit-on-a-task`,

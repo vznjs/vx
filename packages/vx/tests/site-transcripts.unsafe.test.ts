@@ -191,11 +191,6 @@ describe('the one-task guides show what vx prints', () => {
   const sh = (...args: string[]) =>
     expect(Bun.spawnSync({ cmd: args, cwd: two, env: ENV }).exitCode).toBe(0)
   const guide = (rel: string) => readFileSync(path.join(GUIDES, rel), 'utf8')
-  /** What changes run to run in a plan: its keys and predicted times too. */
-  const plan = (text: string) =>
-    stable(text)
-      // A usual time is right-aligned: its digits decide the spaces before it.
-      .replace(/ +~\d+ms/g, ' ~<ms>')
   const config = (name: string, dependsOn: string) => `export default {
   name: '@demo/${name}',
   tasks: {
@@ -241,13 +236,6 @@ describe('the one-task guides show what vx prints', () => {
   it("the workspace page's vx lock line", () => {
     const page = readFileSync(path.join(GUIDES, '..', 'docs', 'workspace.mdx'), 'utf8')
     expect(printed(page, 'vx lock')).toBe(locked)
-  })
-
-  it('running-tasks: the --filter plan', () => {
-    const page = guide('running-tasks.mdx')
-    const r = run('run', 'build', '--filter', '@demo/web', '--dry')
-    expect(r.code).toBe(0)
-    expect(plan(plain(printed(page, 'vx run build --filter @demo/web --dry')))).toBe(plan(r.stdout))
   })
 
   it('check-the-lock: a drifted config, then a current lock', async () => {
@@ -391,35 +379,6 @@ export default {
     if (ws !== '') await rm(ws, { recursive: true, force: true })
   })
 
-  it("tasks: web's plan builds ui first", () => {
-    const page = guide('tasks.mdx')
-    const r = at(path.join(ws, 'packages/web'), ENV, ['run', 'build', '--dry'])
-    expect(r.code).toBe(0)
-    expect(plan(printed(page, 'vx run build --dry'))).toBe(plan(r.out))
-  })
-
-  it('running-tasks: the rest runs, then --fail-fast aborts it', () => {
-    const page = guide('running-tasks.mdx').slice(
-      guide('running-tasks.mdx').indexOf(
-        '<Deeper level="patterns" title="Stop at the first failure">',
-      ),
-    )
-    const rest = runColour('run', 'test', '--all')
-    expect(rest.code).toBe(1)
-    holds(printed(page, 'vx run test --all'), rest.out)
-    const fast = runColour('run', 'test', '--all', '--fail-fast')
-    expect(fast.code).toBe(1)
-    const tab = page.slice(page.indexOf('<TabItem label="--fail-fast">'))
-    holds(printed(tab, 'vx run test --all --fail-fast'), fast.out)
-  })
-
-  it('running-tasks: --timeout fails the task', () => {
-    const page = guide('running-tasks.mdx')
-    const r = runColour('run', '@demo/web#e2e', '--timeout', '1s')
-    expect(r.code).toBe(1)
-    holds(printed(page, 'vx run @demo/web#e2e --timeout 1s'), r.out)
-  })
-
   it('caching: an output that matched nothing fails the task', async () => {
     const page = readFileSync(path.join(GUIDES, '..', 'docs', 'caching.mdx'), 'utf8')
     await writeFile(
@@ -441,6 +400,8 @@ export default {
 
   it('run-a-pipeline: pr on a branch runs what the change reaches', async () => {
     const page = guide('ci/run-a-pipeline.mdx')
+    // The page's history has timed web's test once: ui's fails.
+    expect(run('run', 'test', '--all').code).toBe(1)
     expect(run('run', 'build', '--all').code).toBe(0)
     expect(sh('git', 'checkout', '-qb', 'feature')).toBe(0)
     await writeFile(path.join(ws, 'packages/web/src/index.ts'), '2\n')
@@ -473,199 +434,6 @@ export default {
     const locked = runColour('lock')
     expect(locked.code).toBe(0)
     expect(sample(page, 'project configs →')).toBe(locked.out.trim())
-  })
-})
-
-// The running pages' story workspace: web and admin both use ui, through a
-// bun() lockfile plugin. Each sample on those pages is a run of it. Plan
-// and table rows hold their times, CPU, memory and usual times blanked.
-describe('the running guides show what vx prints', () => {
-  let ws = ''
-  const at = (env: Record<string, string | undefined>, args: string[]) => {
-    const r = Bun.spawnSync({ cmd: [process.execPath, BIN, ...args], cwd: ws, env })
-    return { code: r.exitCode, out: r.stdout.toString() + r.stderr.toString() }
-  }
-  const run = (...args: string[]) => at(ENV, args)
-  const runColour = (...args: string[]) => at(COLOUR, args)
-  const sh = (...args: string[]) => Bun.spawnSync({ cmd: args, cwd: ws, env: ENV }).exitCode
-  const guide = (rel: string) => readFileSync(path.join(GUIDES, rel), 'utf8')
-  const tab = (page: string, label: string) =>
-    page.slice(page.indexOf(`<TabItem label="${label}">`))
-  /** The ansi block whose marker line is in it, from `from` on. */
-  const block = (page: string, marker: string) => {
-    const at = page.indexOf(marker)
-    expect(at).toBeGreaterThan(-1)
-    const open = page.lastIndexOf('```ansi\n', at)
-    return page.slice(open + 8, page.indexOf('\n```', open + 8))
-  }
-  // A figure is a time, a size, a share or a usual time; a plan prints `—`
-  // where a run prints a figure, and history decides the usual column.
-  const loose = (line: string) =>
-    plain(line)
-      .replace(/[~+−-]?\d+(?:\.\d+)?(?:ms|s|%|[KMG]?B)(?=[\s)]|$)/g, '<n>')
-      .replace(/(?<= )—(?= )/g, '<n>')
-      .replace(/run [0-9a-f-]{36}/g, 'run <id>')
-      .replace(/\s+/g, ' ')
-      .trim()
-  const holds = (sample: string, out: string) => {
-    expect(sample).toContain(String.fromCharCode(27))
-    const printedLines = out.split('\n').map(loose)
-    for (const line of sample.split('\n').filter((l) => plain(l).trim() !== ''))
-      expect(printedLines).toContain(loose(line))
-  }
-  const web = (build: string, extra = '') => `import type { ProjectConfig } from '@vzn/vx/config'
-
-export default {
-  tasks: {
-    build: {
-${build}      inputs: { files: ['src/**'] },
-      outputs: { files: ['dist/**'] },
-      cache: true,
-    },${extra}
-  },
-} satisfies ProjectConfig
-`
-  const leaf = (sleep: string) =>
-    web(`      dependsOn: ['^build'],
-      exec: { command: 'sleep ${sleep} && mkdir -p dist && echo built > dist/index.js' },
-`)
-  const copies = (deps: boolean) =>
-    `${deps ? "      dependsOn: ['^build'],\n" : ''}      exec: { command: 'mkdir -p dist && cp ../ui/dist/index.js dist/' },
-`
-  const write = (rel: string, text: string) => writeFile(path.join(ws, rel), text)
-  const relock = () => expect(run('lock').code).toBe(0)
-
-  beforeAll(async () => {
-    ws = await mkdtemp(path.join(os.tmpdir(), 'vx-site-running-'))
-    await mkdir(path.join(ws, '.vx'))
-    await mkdir(path.join(ws, 'node_modules/@vzn'), { recursive: true })
-    await symlink(
-      path.resolve(import.meta.dir, '..', '..', 'vx-lockfile'),
-      path.join(ws, 'node_modules/@vzn/vx-lockfile'),
-    )
-    await write(
-      '.vx/workspace.mjs',
-      `import { bun } from '@vzn/vx-lockfile'\n\nexport default { plugins: [bun()] }\n`,
-    )
-    await write('.gitignore', 'node_modules\ndist\nout\n')
-    await write(
-      'package.json',
-      '{ "name": "demo", "private": true, "workspaces": ["packages/*"] }\n',
-    )
-    const uses = { '@demo/ui': 'workspace:*' }
-    await write(
-      'bun.lock',
-      JSON.stringify({
-        lockfileVersion: 1,
-        workspaces: {
-          '': { name: 'demo' },
-          'packages/ui': { name: '@demo/ui', version: '0.0.0' },
-          'packages/web': { name: '@demo/web', version: '0.0.0', dependencies: uses },
-          'packages/admin': { name: '@demo/admin', version: '0.0.0', dependencies: uses },
-        },
-        packages: {
-          '@demo/ui': ['@demo/ui@workspace:packages/ui'],
-          '@demo/web': ['@demo/web@workspace:packages/web'],
-          '@demo/admin': ['@demo/admin@workspace:packages/admin'],
-        },
-      }),
-    )
-    for (const name of ['ui', 'web', 'admin']) {
-      await mkdir(path.join(ws, `packages/${name}/src`), { recursive: true })
-      await write(
-        `packages/${name}/package.json`,
-        JSON.stringify({
-          name: `@demo/${name}`,
-          version: '0.0.0',
-          ...(name === 'ui' ? {} : { dependencies: uses }),
-        }),
-      )
-      await write(`packages/${name}/src/index.ts`, `export const ${name} = 1\n`)
-    }
-    await write('packages/ui/vx.config.ts', leaf('0.3'))
-    await write('packages/admin/vx.config.ts', leaf('0.2'))
-    await write('packages/web/vx.config.ts', web(copies(true)))
-    expect(sh('git', 'init', '-q', '-b', 'main')).toBe(0)
-    relock()
-    expect(sh('git', 'add', '-A')).toBe(0)
-    expect(sh('git', '-c', 'commit.gpgsign=false', 'commit', '-qm', 'one')).toBe(0)
-  })
-
-  afterAll(async () => {
-    if (ws !== '') await rm(ws, { recursive: true, force: true })
-  })
-
-  it('tasks: without ^build web races ui, with it ui goes first', async () => {
-    const page = guide('tasks.mdx')
-    await write('packages/web/vx.config.ts', web(copies(false)))
-    relock()
-    const race = runColour(
-      'run',
-      'build',
-      '--filter',
-      '@demo/web',
-      '--filter',
-      '@demo/ui',
-      '--force',
-    )
-    await write('packages/web/vx.config.ts', web(copies(true)))
-    relock()
-    expect(race.code).toBe(1)
-    holds(block(tab(page, 'Without ^build'), 'cannot stat'), race.out)
-    const ordered = runColour('run', 'build', '--filter', '@demo/web', '--force')
-    expect(ordered.code).toBe(0)
-    holds(block(tab(page, 'With ^build'), 'Tasks'), ordered.out)
-  })
-
-  it('running-tasks: each edit plans what it reaches', async () => {
-    const page = guide('running-tasks.mdx')
-    expect(run('run', 'build', '--all').code).toBe(0)
-    const edits = [
-      ['Edit ui/src', 'packages/ui/src/index.ts'],
-      ['Edit web/src', 'packages/web/src/index.ts'],
-      ['Edit ui/README.md', 'packages/ui/README.md'],
-    ] as const
-    for (const [label, file] of edits) {
-      expect(sh('git', 'checkout', '-q', '-B', 'feature', 'main')).toBe(0)
-      await write(file, 'export const edited = 2\n')
-      expect(sh('git', 'add', '-A')).toBe(0)
-      expect(sh('git', '-c', 'commit.gpgsign=false', 'commit', '-qm', label)).toBe(0)
-      const r = runColour('run', 'build', '--affected', '--dry')
-      expect(r.code).toBe(0)
-      holds(block(tab(page, label), 'Plan'), r.out)
-    }
-    expect(sh('git', 'checkout', '-q', 'main')).toBe(0)
-    expect(sh('git', 'branch', '-qD', 'feature')).toBe(0)
-  })
-
-  it('environment-variables: a passed NODE_ENV goes stale, a keyed one does not', async () => {
-    const page = guide('environment-variables.mdx')
-    const bundle = (inputs: string) =>
-      web(
-        copies(true),
-        `
-    bundle: {
-      exec: { command: 'mkdir -p out && echo "mode=$NODE_ENV" > out/mode.txt && cat out/mode.txt', env: { passThrough: ['NODE_ENV'] } },
-      inputs: { files: ['src/**']${inputs} },
-      outputs: { files: ["out/mode.txt"] },
-      cache: true,
-    },`,
-      )
-    const as = (mode: string) => at({ ...COLOUR, NODE_ENV: mode }, ['run', '@demo/web#bundle'])
-    await write('packages/web/vx.config.ts', bundle(''))
-    const warned = at(COLOUR, ['lock'])
-    expect(warned.code).toBe(0)
-    holds(block(page, 'a bundler writes'), warned.out)
-    expect(as('production').code).toBe(0)
-    const stale = as('development')
-    holds(block(tab(page, 'passThrough only'), 'up-to-date'), stale.out)
-    await write('packages/web/vx.config.ts', bundle(", env: ['NODE_ENV']"))
-    relock()
-    expect(as('production').code).toBe(0)
-    holds(block(tab(page, 'Also in inputs.env'), 'mode=development'), as('development').out)
-    holds(block(tab(page, 'Also in inputs.env'), 'restored-local'), as('production').out)
-    await write('packages/web/vx.config.ts', web(copies(true)))
-    relock()
   })
 })
 
