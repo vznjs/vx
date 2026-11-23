@@ -3,6 +3,8 @@ title: Remote cache
 description: Let every machine reuse a task another machine already ran.
 ---
 
+import Diagram from '../../../components/guide/diagram/Diagram.astro'
+import { remoteCache } from '../../../components/docs/pictures.js'
 import { Tabs, TabItem, Aside } from '@astrojs/starlight/components'
 
 On its own, vx caches on the machine that ran the task. A remote cache
@@ -11,13 +13,7 @@ shares those results between machines.
 When `main` builds `@acme/ui`, a pull request's run downloads that build
 instead of running it again.
 
-```mermaid
-flowchart LR
-  R["vx run"] -->|1. ask| L[(local cache)]
-  R -->|2. ask| RC[(remote cache)]
-  R -->|3. both miss| X["run the task"]
-  X -->|upload| RC
-```
+<Diagram {...remoteCache} />
 
 vx asks its local cache first and the remote second. It uploads each new
 result in the background. A remote that is down or says no never fails

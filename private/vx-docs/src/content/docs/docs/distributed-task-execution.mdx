@@ -3,6 +3,9 @@ title: Distributed task execution
 description: Run your tasks on several CI machines at once, and get one result.
 ---
 
+import Diagram from '../../../components/guide/diagram/Diagram.astro'
+import { dteRun } from '../../../components/docs/pictures.js'
+
 When one CI machine is too slow for your build, vx can run your tasks
 on several machines at once. You still start one CI job, and you still
 get one result.
@@ -18,15 +21,7 @@ starts no workers.
 
 ## How it works
 
-```mermaid
-flowchart LR
-  R["vx run (your job)"] <-->|orders, status| Relay((relay))
-  Relay <--> W1["worker linux.small#1"]
-  Relay <--> W2["worker linux.small#2"]
-  R <-->|outputs| C[(remote cache)]
-  W1 <--> C
-  W2 <--> C
-```
+<Diagram {...dteRun} />
 
 - **A relay** connects the run to its workers, because a CI runner
   accepts no incoming connection. You host it: the
