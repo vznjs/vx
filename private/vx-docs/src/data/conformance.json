@@ -1002,19 +1002,19 @@
   "scores": {
     "vx": {
       "all": {
-        "pass": 2115,
-        "can": 2115,
-        "of": 2190
+        "pass": 2121,
+        "can": 2121,
+        "of": 2196
       },
       "correctness": {
-        "pass": 1702,
-        "can": 1702,
-        "of": 1769
+        "pass": 1707,
+        "can": 1707,
+        "of": 1774
       },
       "efficiency": {
-        "pass": 324,
-        "can": 324,
-        "of": 331
+        "pass": 325,
+        "can": 325,
+        "of": 332
       },
       "data": {
         "pass": 89,
@@ -1022,9 +1022,9 @@
         "of": 90
       },
       "graph": {
-        "pass": 312,
-        "can": 312,
-        "of": 319
+        "pass": 313,
+        "can": 313,
+        "of": 320
       },
       "config": {
         "pass": 88,
@@ -1047,9 +1047,9 @@
         "of": 127
       },
       "inputs": {
-        "pass": 475,
-        "can": 475,
-        "of": 487
+        "pass": 478,
+        "can": 478,
+        "of": 490
       },
       "env": {
         "pass": 145,
@@ -1057,9 +1057,9 @@
         "of": 148
       },
       "outputs": {
-        "pass": 296,
-        "can": 296,
-        "of": 312
+        "pass": 298,
+        "can": 298,
+        "of": 314
       },
       "report": {
         "pass": 89,
@@ -1079,19 +1079,19 @@
     },
     "turbo": {
       "all": {
-        "pass": 1382,
-        "can": 1791,
-        "of": 2190
+        "pass": 1386,
+        "can": 1797,
+        "of": 2196
       },
       "correctness": {
-        "pass": 1110,
-        "can": 1446,
-        "of": 1769
+        "pass": 1113,
+        "can": 1451,
+        "of": 1774
       },
       "efficiency": {
-        "pass": 242,
-        "can": 315,
-        "of": 331
+        "pass": 243,
+        "can": 316,
+        "of": 332
       },
       "data": {
         "pass": 30,
@@ -1099,9 +1099,9 @@
         "of": 90
       },
       "graph": {
-        "pass": 196,
-        "can": 268,
-        "of": 319
+        "pass": 197,
+        "can": 269,
+        "of": 320
       },
       "config": {
         "pass": 56,
@@ -1124,9 +1124,9 @@
         "of": 127
       },
       "inputs": {
-        "pass": 337,
-        "can": 471,
-        "of": 487
+        "pass": 339,
+        "can": 474,
+        "of": 490
       },
       "env": {
         "pass": 132,
@@ -1134,9 +1134,9 @@
         "of": 148
       },
       "outputs": {
-        "pass": 233,
-        "can": 299,
-        "of": 312
+        "pass": 234,
+        "can": 301,
+        "of": 314
       },
       "report": {
         "pass": 30,
@@ -1156,19 +1156,19 @@
     },
     "nx": {
       "all": {
-        "pass": 1381,
-        "can": 1826,
-        "of": 2190
+        "pass": 1386,
+        "can": 1832,
+        "of": 2196
       },
       "correctness": {
-        "pass": 1070,
-        "can": 1471,
-        "of": 1769
+        "pass": 1074,
+        "can": 1476,
+        "of": 1774
       },
       "efficiency": {
-        "pass": 281,
-        "can": 325,
-        "of": 331
+        "pass": 282,
+        "can": 326,
+        "of": 332
       },
       "data": {
         "pass": 30,
@@ -1176,9 +1176,9 @@
         "of": 90
       },
       "graph": {
-        "pass": 230,
-        "can": 269,
-        "of": 319
+        "pass": 231,
+        "can": 270,
+        "of": 320
       },
       "config": {
         "pass": 39,
@@ -1201,9 +1201,9 @@
         "of": 127
       },
       "inputs": {
-        "pass": 342,
-        "can": 487,
-        "of": 487
+        "pass": 345,
+        "can": 490,
+        "of": 490
       },
       "env": {
         "pass": 134,
@@ -1211,9 +1211,9 @@
         "of": 148
       },
       "outputs": {
-        "pass": 223,
-        "can": 299,
-        "of": 312
+        "pass": 224,
+        "can": 301,
+        "of": 314
       },
       "report": {
         "pass": 30,
@@ -1233,19 +1233,19 @@
     },
     "vite-task": {
       "all": {
-        "pass": 1019,
-        "can": 1379,
-        "of": 2190
+        "pass": 1023,
+        "can": 1385,
+        "of": 2196
       },
       "correctness": {
-        "pass": 856,
-        "can": 1160,
-        "of": 1769
+        "pass": 859,
+        "can": 1165,
+        "of": 1774
       },
       "efficiency": {
-        "pass": 154,
-        "can": 210,
-        "of": 331
+        "pass": 155,
+        "can": 211,
+        "of": 332
       },
       "data": {
         "pass": 9,
@@ -1253,9 +1253,9 @@
         "of": 90
       },
       "graph": {
-        "pass": 178,
-        "can": 225,
-        "of": 319
+        "pass": 179,
+        "can": 226,
+        "of": 320
       },
       "config": {
         "pass": 50,
@@ -1278,9 +1278,9 @@
         "of": 127
       },
       "inputs": {
-        "pass": 311,
-        "can": 472,
-        "of": 487
+        "pass": 313,
+        "can": 475,
+        "of": 490
       },
       "env": {
         "pass": 132,
@@ -1288,9 +1288,9 @@
         "of": 148
       },
       "outputs": {
-        "pass": 205,
-        "can": 299,
-        "of": 312
+        "pass": 206,
+        "can": 301,
+        "of": 314
       },
       "report": {
         "pass": 9,
@@ -1310,19 +1310,19 @@
     },
     "nix": {
       "all": {
-        "pass": 1090,
-        "can": 1376,
-        "of": 2190
+        "pass": 1096,
+        "can": 1382,
+        "of": 2196
       },
       "correctness": {
-        "pass": 934,
-        "can": 1182,
-        "of": 1769
+        "pass": 939,
+        "can": 1187,
+        "of": 1774
       },
       "efficiency": {
-        "pass": 146,
-        "can": 184,
-        "of": 331
+        "pass": 147,
+        "can": 185,
+        "of": 332
       },
       "data": {
         "pass": 10,
@@ -1330,9 +1330,9 @@
         "of": 90
       },
       "graph": {
-        "pass": 103,
-        "can": 109,
-        "of": 319
+        "pass": 104,
+        "can": 110,
+        "of": 320
       },
       "config": {
         "pass": 39,
@@ -1355,9 +1355,9 @@
         "of": 127
       },
       "inputs": {
-        "pass": 342,
-        "can": 430,
-        "of": 487
+        "pass": 345,
+        "can": 433,
+        "of": 490
       },
       "env": {
         "pass": 122,
@@ -1365,9 +1365,9 @@
         "of": 148
       },
       "outputs": {
-        "pass": 231,
-        "can": 306,
-        "of": 312
+        "pass": 233,
+        "can": 308,
+        "of": 314
       },
       "report": {
         "pass": 10,
@@ -1387,19 +1387,19 @@
     },
     "moon": {
       "all": {
-        "pass": 1271,
-        "can": 1726,
-        "of": 2190
+        "pass": 1275,
+        "can": 1732,
+        "of": 2196
       },
       "correctness": {
-        "pass": 1002,
-        "can": 1409,
-        "of": 1769
+        "pass": 1005,
+        "can": 1414,
+        "of": 1774
       },
       "efficiency": {
-        "pass": 234,
-        "can": 282,
-        "of": 331
+        "pass": 235,
+        "can": 283,
+        "of": 332
       },
       "data": {
         "pass": 35,
@@ -1407,9 +1407,9 @@
         "of": 90
       },
       "graph": {
-        "pass": 185,
-        "can": 241,
-        "of": 319
+        "pass": 186,
+        "can": 242,
+        "of": 320
       },
       "config": {
         "pass": 59,
@@ -1432,9 +1432,9 @@
         "of": 127
       },
       "inputs": {
-        "pass": 346,
-        "can": 487,
-        "of": 487
+        "pass": 348,
+        "can": 490,
+        "of": 490
       },
       "env": {
         "pass": 137,
@@ -1442,9 +1442,9 @@
         "of": 148
       },
       "outputs": {
-        "pass": 190,
-        "can": 302,
-        "of": 312
+        "pass": 191,
+        "can": 304,
+        "of": 314
       },
       "report": {
         "pass": 35,
@@ -74154,6 +74154,208 @@
           "status": "fail",
           "step": 3,
           "detail": "ran app#test, expected it replayed or left out"
+        }
+      }
+    },
+    {
+      "id": "inputs/brace-with-empty-alternative",
+      "ref": "viretk",
+      "category": "inputs",
+      "kind": "correctness",
+      "title": "An input `src/data{,.snap}` keys both `src/data` and `src/data.snap`",
+      "why": "An empty brace alternative means the name with nothing added, so `src/data{,.snap}` names a file and its snapshot. A tool that drops the empty alternative keys only the snapshot, and an edit to the data file replays stale output. A file the pattern does not name must still be left out.",
+      "from": [
+        "brace-inputs"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 1,
+          "detail": "exited 1, expected success"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 1,
+          "detail": "exited 1, expected success"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "fail",
+          "step": 1,
+          "detail": "exited 1, expected success"
+        }
+      }
+    },
+    {
+      "id": "inputs/negation-through-scope-and-plus-directories",
+      "ref": "gfge0k",
+      "category": "inputs",
+      "kind": "efficiency",
+      "title": "Negations through `@scope` and `a+b` directories leave their files out of the key",
+      "why": "A leading `!` only says the pattern excludes; the `@` of a package scope and the `+` in a name after it are still plain characters. A tool that reads them as pattern syntax once a `!` is in front excludes nothing, so writes to a cache folder the user left out rerun the task every time. Files outside the excluded folders must still key it.",
+      "from": [
+        "negated-outputs",
+        "inputs-glob-fuzz"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "outputs/route-group-in-parentheses-restored",
+      "ref": "yac1a8",
+      "category": "outputs",
+      "kind": "correctness",
+      "title": "An output `dist/(marketing)/**` stores and restores the `(marketing)` directory",
+      "why": "A build of a Next.js app writes its route groups under their own names, parentheses kept. An output pattern that reads them as a group matches nothing, so the hit restores an empty tree. The restore must bring back the files under `dist/(marketing)`.",
+      "from": [
+        "task-glob-brackets"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 1,
+          "detail": "exited 1, expected success"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 3,
+          "detail": "packages/a/dist/(marketing)/page.txt is missing, expected \"p\\n\""
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 1,
+          "detail": "exited 1, expected success"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "fail",
+          "step": 1,
+          "detail": "exited 1, expected success"
+        }
+      }
+    },
+    {
+      "id": "outputs/same-pattern-listed-twice-restored",
+      "ref": "9mp1sr",
+      "category": "outputs",
+      "kind": "correctness",
+      "title": "An output pattern listed twice is stored and restored once, whole",
+      "why": "Configs are merged from defaults and overrides, so the same output can end up listed twice. It still names one set of files. A tool that saves or restores it twice at once can race with itself, fail the run, or leave half a tree. The run and the hit after it should behave as if it were listed once.",
+      "from": [
+        "output-dirs"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "inputs/tenth-of-ten-globs-keys",
+      "ref": "6j8csr",
+      "category": "inputs",
+      "kind": "correctness",
+      "title": "A task with ten input globs reruns when only the tenth matches the edit",
+      "why": "Every input a task declares counts, however long the list is. A tool that shortens or merges a long list of patterns can drop one, and an edit only that one matches then replays a stale build. A file none of the ten names must still leave the task replayed.",
+      "from": [
+        "inputs-glob-fuzz"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "graph/two-cycles-through-one-task-refused",
+      "ref": "8mgkkh",
+      "category": "graph",
+      "kind": "correctness",
+      "title": "Two task cycles through the same task fail the run at once, before any task runs",
+      "why": "A task can sit on more than one cycle: `build` waits on `check` and on `lint`, and each of them waits on `build`. No order exists, so the run must be refused as a single cycle is. A tool whose cycle check handles only one can loop, crash or start a task without its prerequisite.",
+      "from": [
+        "task-graph",
+        "default-build-cycle-key"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
         }
       }
     },

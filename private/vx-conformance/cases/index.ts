@@ -73,6 +73,7 @@ import minedMoon2 from './mined-moon2.ts'
 import minedIssues from './mined-issues.ts'
 import minedTurboRs from './mined-turbo-rs.ts'
 import minedNxE2e from './mined-nx-e2e.ts'
+import minedNxFixes from './mined-nx-fixes.ts'
 import minedViteCrates from './mined-vite-crates.ts'
 import minedNixFunc2 from './mined-nix-func2.ts'
 import minedIssues2 from './mined-issues2.ts'
@@ -155,6 +156,7 @@ export const CASES: Case[] = [
   ...minedIssues,
   ...minedTurboRs,
   ...minedNxE2e,
+  ...minedNxFixes,
   ...minedViteCrates,
   ...minedNixFunc2,
   ...minedIssues2,
