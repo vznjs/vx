@@ -58,6 +58,7 @@ import {
   listingEnv,
   relistedFilesDigest,
   lstatOrAbsent,
+  lowerBoundOf,
   newFilesIgnoredIn,
   runGitLsFiles,
 } from './git-inputs.js'
@@ -2031,20 +2032,18 @@ function unanswered(
   literals: readonly string[],
   files: readonly string[],
   newIgnored?: (lit: string) => boolean,
-): Set<string> {
-  return new Set(
-    reachingIgnored(
-      literals,
-      (lit) => {
-        const under = `${lit}/`
-        return (
-          files[lowerBound(files, lit)] === lit ||
-          files[lowerBound(files, under)]?.startsWith(under) === true ||
-          files.some((rel) => rel === lit || rel.startsWith(under))
-        )
-      },
-      newIgnored,
-    ),
+): string[] {
+  return reachingIgnored(
+    literals,
+    (lit) => {
+      const under = `${lit}/`
+      return (
+        files[lowerBoundOf(files, lit)] === lit ||
+        files[lowerBoundOf(files, under)]?.startsWith(under) === true ||
+        files.some((rel) => rel === lit || rel.startsWith(under))
+      )
+    },
+    newIgnored,
   )
 }
 
@@ -2084,18 +2083,6 @@ export function namedIgnoredReach(
   )
 }
 
-/** The first index whose path is not below `key`. */
-function lowerBound(files: readonly string[], key: string): number {
-  let lo = 0
-  let hi = files.length
-  while (lo < hi) {
-    const mid = (lo + hi) >>> 1
-    if (files[mid]! < key) lo = mid + 1
-    else hi = mid
-  }
-  return lo
-}
-
 /**
  * The entries a declaration names outright that git answers nothing for: a
  * literal or a glob's fixed prefix with no listed path under it. Naming it is
@@ -2123,7 +2110,7 @@ function ignoredReach(
       cache === undefined
         ? undefined
         : (lit: string) => cache.newFilesIgnored(path.resolve(ignoredIn!.dir, lit))
-    memo.set(key, (left = [...unanswered(named, listed, newIgnored)]))
+    memo.set(key, (left = unanswered(named, listed, newIgnored)))
   }
   return left
 }
@@ -2175,7 +2162,7 @@ function ignoredInputs(
       continue
     }
     try {
-      for (const rel of WALK.scanSync({
+      for (const rel of WHOLE_TREE.scanSync({
         cwd: abs,
         onlyFiles: false,
         followSymlinks: false,
@@ -2202,8 +2189,6 @@ function ignoredInputs(
   }
   return [...found].sort()
 }
-
-const WALK = new Bun.Glob('**')
 
 interface ResolveFilesArgs {
   projectDir: string

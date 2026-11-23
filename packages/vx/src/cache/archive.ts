@@ -72,6 +72,7 @@ import {
   tarPackInto,
   tarSize,
 } from './tar-stream.js'
+import { lstatOrAbsent } from './git-inputs.js'
 import { ON_THREAD_MAX } from './zstd.js'
 
 /** Archive entry name carrying the per-output mode/mtime sidecar. */
@@ -1105,7 +1106,7 @@ async function linkLandsRefused(
     else {
       at = path.join(at, seg)
       if (onDisk) {
-        const st = statOrAbsent(at)
+        const st = lstatOrAbsent(at)
         if (st === undefined) onDisk = false
         else if (st.isSymbolicLink()) at = await resolveThrough(at)
       }
@@ -1113,16 +1114,6 @@ async function linkLandsRefused(
     if (!inside(at, realBound)) return 'out'
   }
   return writableUnder(path.join(at, ...segs.slice(lastUp + 1)), realBound) ? undefined : '.git'
-}
-
-/** `lstat`, or undefined for a name that is not there (under a file too). */
-function statOrAbsent(p: string): Stats | undefined {
-  try {
-    return lstatSync(p, { throwIfNoEntry: false })
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOTDIR') return undefined
-    throw err
-  }
 }
 
 /** Each directory `p` (an entry name; a directory's ends in `/`) lies under, into `into`. */
