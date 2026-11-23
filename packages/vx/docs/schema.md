@@ -874,8 +874,8 @@ matches Turbo's `passThroughEnv` semantics and exists for two reasons:
   with different `FOO=bar` set would produce different outputs and
   the user would never know why.
 
-A failed task whose last output names a variable your shell holds and
-the task was not given gets one line naming it and `passThrough`
+A failed task whose last output names, or whose command expands
+(`$API_TOKEN`), a variable your shell holds and the task was not given gets one line naming it and `passThrough`
 (`tests/unpassed-env.test.ts`): names only, upper-case, four characters
 or more; never a value.
 

@@ -889,10 +889,10 @@ end to end in `tests/tool-not-on-path.test.ts` and
 `tests/signal-death.test.ts`.
 
 A failed attempt also gets `unpassedEnv`'s line when the last 4 KiB of
-its output names a variable vx's environment holds and the task's does
-not (`DATABASE_URL` exported in the shell, absent from `passThrough`):
-the tool's own "variable not found" said nothing of vx's env isolation
-(`tests/unpassed-env.test.ts`).
+its output names, or its command expands (`$API_TOKEN`), a variable
+vx's environment holds and the task's does not (`DATABASE_URL` exported
+in the shell, absent from `passThrough`): the tool's own "variable not
+found" said nothing of vx's env isolation (`tests/unpassed-env.test.ts`).
 
 ### Hash derivation (`computeTaskHash`)
 

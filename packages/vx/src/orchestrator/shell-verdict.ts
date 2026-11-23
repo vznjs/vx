@@ -265,19 +265,23 @@ function executable(file: string): boolean {
 }
 
 /**
- * The frame line for a failure whose last output names a variable vx's own
- * environment holds and the task's does not. A task sees only what
- * `passThrough` and `define` name, so `prisma migrate` in a shell that
- * exports `DATABASE_URL` failed "variable not found" with no word on why.
- * Names only, upper-case and four characters or more, whole words of the
- * output; never a value.
+ * The frame line for a failure whose last output names, or whose command
+ * expands, a variable vx's own environment holds and the task's does not. A
+ * task sees only what `passThrough` and `define` name, so `prisma migrate`
+ * in a shell that exports `DATABASE_URL` failed "variable not found" with no
+ * word on why, and `curl -H "Authorization: $API_TOKEN"` failed saying
+ * nothing of the token. Names only, upper-case and four characters or more,
+ * whole words; never a value.
  */
 export function unpassedEnv(
   tail: string,
   given: NodeJS.ProcessEnv,
   host: NodeJS.ProcessEnv,
+  command = '',
 ): string | undefined {
   const named = new Set(tail.match(/(?<![A-Za-z0-9_])[A-Z][A-Z0-9_]{3,}(?![A-Za-z0-9_])/g) ?? [])
+  for (const m of command.matchAll(/\$\{?([A-Z][A-Z0-9_]{3,})(?![A-Za-z0-9_])/g))
+    if (!SHELL_SET.has(m[1]!)) named.add(m[1]!)
   const missing = [...named]
     .filter((n) => Object.hasOwn(host, n) && !Object.hasOwn(given, n))
     .sort()
@@ -290,3 +294,6 @@ export function unpassedEnv(
     `${one ? 'it' : 'them'} to passThrough, and to inputs.env if the output depends on ${one ? 'it' : 'them'}`
   )
 }
+
+/** Names the shell sets for itself: a task's empty one is not vx's doing. */
+const SHELL_SET = new Set(['OLDPWD', 'HOSTNAME', 'LINENO', 'RANDOM', 'SECONDS', 'OPTIND', 'SHLVL'])

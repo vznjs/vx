@@ -482,7 +482,8 @@ async function classifyExit(
     // built from a secret: masked as the task's own output is.
     if (verdict !== undefined)
       log.taskStderr(node, `${stream.nl()}${vxLine(m, secrets.text(verdict))}\n`)
-    const unpassed = code === 0 ? undefined : unpassedEnv(stream.tail, m.env, process.env)
+    const unpassed =
+      code === 0 ? undefined : unpassedEnv(stream.tail, m.env, process.env, policy.exec.command)
     if (unpassed !== undefined)
       log.taskStderr(node, `${stream.nl()}${vxLine(m, secrets.text(unpassed))}\n`)
   }
