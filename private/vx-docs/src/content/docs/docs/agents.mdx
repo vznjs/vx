@@ -54,8 +54,10 @@ Outside a terminal vx prints plain lines and never opens the task picker. A run 
 
 `@demo/web` adds up a cart's prices, and a vitest test checks it. Someone typed `cost` where it says `price`:
 
-```js title="packages/web/src/price.js" del={2} ins={3}
-export const total = (items) =>
+```ts title="packages/web/src/index.ts" del={4} ins={5}
+type Item = { price: number }
+
+export const total = (items: Item[]): number =>
   items.reduce((sum, i) => sum + i.price, 0)
   items.reduce((sum, i) => sum + i.cost, 0)
 ```
@@ -67,7 +69,7 @@ Step through what the agent does next.
 
 ```ansi title="the run's last line"
 [2m$[0m vx run test --all
-[2m└─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;96;165;250mtest[0m [2m──[0m [2m(473ms)[0m [1m[38;2;239;68;68mfailed (exit 1)[0m
+[2m└─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;96;165;250mtest[0m [2m──[0m [2m(481ms)[0m [1m[38;2;239;68;68mfailed (exit 1)[0m
 ```
 
 The exit code is `1`. The agent does not scroll the log. It asks vx.
@@ -85,7 +87,7 @@ vx last --failed --format json | jq '.tasks[] | select(.status == "failed") | {t
   "dir": "packages/web",
   "locations": [
     {
-      "file": "/home/user/demo/packages/web/src/price.test.js",
+      "file": "/home/user/demo/packages/web/src/index.test.ts",
       "line": 3,
       "col": 71
     }
@@ -98,11 +100,11 @@ vx last --failed --format json | jq '.tasks[] | select(.status == "failed") | {t
 </Frame>
 <Frame title="3. Fix and run again: only the broken task runs">
 
-The agent fixes `price.js`, runs the same command, and checks the result with `vx last`:
+The agent fixes `index.ts`, runs the same command, and checks the result with `vx last`:
 
 ```ansi title="vx last"
 [4m[58;2;110;118;129m  [1m[38;2;167;139;250mTasks[0m[4m[58;2;110;118;129m [2m3[0m[4m[58;2;110;118;129m   [2mstatus  cache       time   task[0m[4m[58;2;110;118;129m [0m
-            [38;2;34;197;94msuccess[0m [2mmiss[0m       [38;2;203;213;225m495ms[0m   [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;96;165;250mtest[0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m       [38;2;203;213;225m482ms[0m   [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;96;165;250mtest[0m
             [38;2;34;197;94msuccess[0m [38;2;34;197;94mfresh[0m        [38;2;203;213;225m2ms[0m   [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m
             [38;2;34;197;94msuccess[0m [38;2;34;197;94mfresh[0m        [38;2;203;213;225m0ms[0m   [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;96;165;250mtest[0m
 ```
@@ -134,7 +136,7 @@ The agent fixes `price.js`, runs the same command, and checks the result with `v
 | What is slow, what flakes? | `vx last --stats --format json` |
 | Is the lock current? | `vx lock --check --format json` |
 
-Ask before running. Here an agent edited `packages/ui/src/index.js` and asks which tests that reaches:
+Ask before running. Here an agent edited `packages/ui/src/index.ts` and asks which tests that reaches:
 
 ```sh
 vx run test --affected=HEAD --dry --format json | jq '.tasks[] | {id, affected}'
@@ -145,14 +147,14 @@ vx run test --affected=HEAD --dry --format json | jq '.tasks[] | {id, affected}'
   "id": "@demo/ui#test",
   "affected": {
     "kind": "input",
-    "file": "packages/ui/src/index.js"
+    "file": "packages/ui/src/index.ts"
   }
 }
 {
   "id": "@demo/web#test",
   "affected": {
     "kind": "input",
-    "file": "packages/ui/src/index.js",
+    "file": "packages/ui/src/index.ts",
     "via": [
       "@demo/ui#build"
     ]
@@ -230,10 +232,10 @@ vx why @demo/web#build --format json | jq '.roots'
     "entries": [
       {
         "kind": "file",
-        "name": "packages/ui/src/index.js",
+        "name": "packages/ui/src/index.ts",
         "change": "changed",
-        "before": "cf57131a5fea6396ae8105166e9b9d8914d2513d",
-        "after": "f180e64f2f10a3bd2e61b14c723393f2091b2004"
+        "before": "4acf9ee05fbdb78b9a22076876fd1d8f8f4defc5",
+        "after": "e415045f5ec24ed65988f8eae9513ca316773d23"
       }
     ]
   }
@@ -251,10 +253,12 @@ vx last --sql "SELECT project || '#' || task AS task, COUNT(*) AS runs, SUM(stat
 ```
 
 ```json
-{"task":"@demo/ui#build","runs":9,"failures":0}
-{"task":"@demo/ui#test","runs":8,"failures":0}
-{"task":"@demo/web#build","runs":5,"failures":0}
-{"task":"@demo/web#test","runs":8,"failures":3}
+{"task":"@demo/ui#build","runs":6,"failures":0}
+{"task":"@demo/ui#lint","runs":1,"failures":0}
+{"task":"@demo/ui#test","runs":5,"failures":0}
+{"task":"@demo/web#build","runs":3,"failures":0}
+{"task":"@demo/web#lint","runs":1,"failures":0}
+{"task":"@demo/web#test","runs":5,"failures":1}
 ```
 
 `vx last --sql "SELECT name, sql FROM sqlite_schema" --format json` lists the tables. `runs` has one row per task per run, `invocations` one per run; join on `run_id`.
