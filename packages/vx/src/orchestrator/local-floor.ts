@@ -139,6 +139,19 @@ export function localFloor(
     }
     return up
   }
+  const run = async (req: ExecuteRequest): Promise<ExecuteResult> => {
+    const stop = req.signal
+    if (stop === undefined || req.liveChildren !== undefined) return local.execute(req)
+    // No run holds this task's children (a worker's): its stop is ours to carry out.
+    const live = new Set<ReturnType<typeof Bun.spawn>>()
+    const end = (): void => void terminateChildren(() => [...live], forwardedSignal(stop.reason))
+    stop.addEventListener('abort', end, { once: true })
+    try {
+      return await local.execute({ ...req, liveChildren: live })
+    } finally {
+      stop.removeEventListener('abort', end)
+    }
+  }
   return {
     async execute(req) {
       // A stop while a server is not yet ready ends the wait: one that never
@@ -153,11 +166,13 @@ export function localFloor(
               if (signal.aborted) resolve()
               else signal.addEventListener('abort', () => resolve(), { once: true })
             })
+      const serving: [string, ReturnType<typeof Bun.spawn>][] = []
       for (const spec of req.servers ?? []) {
         if (signal?.aborted === true) break
         try {
           const up = serve(spec, req.workspaceRoot)
           const child = await (stopped === undefined ? up : Promise.race([up, stopped]))
+          if (child !== undefined) serving.push([spec.taskId, child])
           // One that crashed after it was ready serves nobody: the task ran
           // against nothing and failed on its own "connection refused". A
           // clean exit is a setup step that did its work (runPersistent).
@@ -179,17 +194,7 @@ export function localFloor(
         }
       }
       if (req.sandbox !== undefined) await armer?.arm()
-      const stop = req.signal
-      if (stop === undefined || req.liveChildren !== undefined) return local.execute(req)
-      // No run holds this task's children (a worker's): its stop is ours to carry out.
-      const live = new Set<ReturnType<typeof Bun.spawn>>()
-      const end = (): void => void terminateChildren(() => [...live], forwardedSignal(stop.reason))
-      stop.addEventListener('abort', end, { once: true })
-      try {
-        return await local.execute({ ...req, liveChildren: live })
-      } finally {
-        stop.removeEventListener('abort', end)
-      }
+      return servedBy(req, serving, await run(req))
     },
     async rearm(list) {
       if (armer?.armed === true) await resetSandbox()
@@ -211,4 +216,31 @@ export function localFloor(
       if (armer?.armed === true) await resetSandbox()
     },
   }
+}
+
+/**
+ * `res`, failed when a server it ran against crashed while it ran. Its
+ * server is no task of this machine's run: the orchestrator reported it up
+ * and heard nothing more, so the run went green over a dead server and the
+ * dependant was saved, where a run on one machine fails (2026-11-23). A
+ * crash that lands in the task's own last event-loop turn is heard a turn
+ * later. A stopped task's servers are stopped with it: no crash.
+ */
+async function servedBy(
+  req: ExecuteRequest,
+  serving: readonly [string, ReturnType<typeof Bun.spawn>][],
+  res: ExecuteResult,
+): Promise<ExecuteResult> {
+  if (serving.length === 0 || req.signal?.aborted === true) return res
+  await new Promise<void>((resolve) => setImmediate(resolve))
+  let said = ''
+  for (const [id, child] of serving) {
+    const died = child.exitCode ?? child.signalCode
+    if (died === null || died === 0) continue
+    const code = typeof died === 'number' ? died : signalExitCode(died)
+    said += `${id}, which ${req.taskId} depends on, exited with code ${code} while it ran\n`
+  }
+  if (said === '') return res
+  req.onStderr(said)
+  return { ...res, exitCode: res.exitCode === 0 ? 1 : res.exitCode, stderr: res.stderr + said }
 }

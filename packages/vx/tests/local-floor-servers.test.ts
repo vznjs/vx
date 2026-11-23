@@ -177,7 +177,7 @@ it('a stop ends a task that waits on a server not yet ready', async () => {
 // A server that crashed after it became ready was handed to every later
 // task as up: the dependant ran against nothing and failed on its own
 // "connection refused", with no word that the server had died.
-it('a task after its server crashed is told the server exited', async () => {
+it('a task its server crashed under fails, as does one after it, each told why', async () => {
   dir = await mkdtemp(path.join(os.tmpdir(), 'vx-floor-srv-'))
   const floor = localFloor()
   const heard: string[] = []
@@ -204,11 +204,12 @@ it('a task after its server crashed is told the server exited', async () => {
     ],
   })
   try {
-    expect((await floor.execute(task(1, 'touch down; sleep 0.3'))).exitCode).toBe(0)
+    expect((await floor.execute(task(1, 'touch down; sleep 0.3'))).exitCode).toBe(1)
     const r = await floor.execute(task(2, 'true'))
     expect([r.exitCode, heard.join('')]).toEqual([
       1,
-      's#srv, which s#t2 depends on, exited with code 3 after it was ready\n',
+      's#srv, which s#t1 depends on, exited with code 3 while it ran\n' +
+        's#srv, which s#t2 depends on, exited with code 3 after it was ready\n',
     ])
   } finally {
     await floor.close()
