@@ -12,6 +12,7 @@ import {
   getInvocation,
   getRun,
   type InvocationDetail,
+  type RunDetail,
   keptSteps,
   keptWarnings,
   listInvocations,
@@ -959,249 +960,287 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
       )
     }
 
-    if (parsed.log !== undefined) {
-      const runId =
-        parsed.runId === undefined
-          ? undefined
-          : (resolveRunId(db, parsed.runId, 'vx last') ?? parsed.runId)
-      const log = taskLog(db, await bareTaskId(db, await rootSpelled(at, parsed.log), at), runId)
-      if (log === null) {
-        // The id's form is hinted only when it lacks one: a task that
-        // never ran was told how to spell a task id. A typo of one that
-        // ran is named, as `vx why` names it: by its matcher, which offers
-        // `@w/envy#test` for `envy#test` too.
-        const recorded = parsed.log.includes('#')
-          ? new LocalHistoryProvider(db).recentTaskIds()
-          : []
-        const near = nearMatches(parsed.log, recorded)
-        const ran = near.length === 0 ? undefined : near.join(', ')
-        // No near name: what of that project has run, so the next try is a pick.
-        const project = parsed.log.slice(0, parsed.log.lastIndexOf('#') + 1)
-        const theirs = recorded
-          .filter((id) => project !== '' && id.startsWith(project))
-          .map((id) => id.slice(project.length))
-          .sort()
-        const listed =
-          ran === undefined && theirs.length > 0
-            ? `; ${project.slice(0, -1)}'s recorded tasks: ${theirs.join(', ')}`
-            : ''
-        throw new UserError(
-          `vx last: no recorded run of ${parsed.log}${parsed.runId === undefined ? '' : ` in run ${parsed.runId}`}${parsed.log.includes('#') ? '' : ' (a task id is project#task)'}${ran === undefined ? '' : ` — did you mean ${ran}?`}${listed}`,
-          'VX_E_NO_HISTORY',
-        )
-      }
-      if (parsed.format === 'json') {
-        ui.data('out', `${JSON.stringify(log)}\n`)
-        return 0
-      }
-      if (log.source === null) {
-        // A cached task with no entry of its own was not saved (a read-only
-        // policy), or its entry was pruned or saved over; calling it uncached
-        // sends the user to the config.
-        const [project, task] = splitTaskId(log.taskId)
-        const cached =
-          log.status !== 'failed' &&
-          (
-            db
-              .query('SELECT cached FROM runs WHERE run_id = ? AND project = ? AND task = ?')
-              .get(log.runId, project, task) as { cached: number | null } | null
-          )?.cached === 1
-        // A skip ran nothing: the output to read is its blocker's.
-        const blocker =
-          log.status === 'skipped'
-            ? (
-                db
-                  .query(
-                    'SELECT blocked_by AS b FROM runs WHERE run_id = ? AND project = ? AND task = ?',
-                  )
-                  .get(log.runId, project, task) as { b: string | null } | null
-              )?.b
-            : null
-        sayNotice(
-          'info',
-          'vx last',
-          typeof blocker === 'string'
-            ? `${log.taskId} did not run: ${blocker} blocked it (vx last --log ${blocker})`
-            : log.status === 'failed'
-              ? `${log.taskId} ended failed, and vx kept no output for it: it keeps the newest 50 failed runs`
-              : cached
-                ? `${log.taskId} ended ${log.status}, and the cache does not hold its output: the run did not save it, or it was pruned or saved over since`
-                : `${log.taskId} ended ${log.status}. vx keeps output only for failed and cached tasks`,
-        )
-      } else if (log.output === '') {
-        sayNotice('info', 'vx last', `${log.taskId} ended ${log.status} and printed nothing`)
-      }
-      // The task's own bytes, as it wrote them.
-      ui.data('out', log.output)
-      return 0
-    }
+    if (parsed.log !== undefined) return await printLog(db, at, { ...parsed, log: parsed.log })
 
-    if (parsed.list !== undefined) {
-      const invocations =
-        parsed.failed === true
-          ? failedInvocations(db, parsed.list)
-          : listInvocations(db, { limit: parsed.list })
-      if (parsed.format === 'json') {
-        ui.data('out', `${JSON.stringify(invocations)}\n`)
-        return 0
-      }
-      if (invocations.length === 0) {
-        const none = parsed.failed === true && !noRuns() ? 'no failed runs' : 'no runs yet'
-        ui.print('out', ui.status('info', 'vx last', none))
-        return 0
-      }
-      ui.print(
-        'out',
-        ui.section(
-          'Runs',
-          String(invocations.length),
-          formatRunList(invocations.map((inv) => ({ inv, id: shortRunId(db, inv.runId) }))),
-        ),
-      )
-      return 0
-    }
+    if (parsed.list !== undefined) return printRunList(db, { ...parsed, list: parsed.list }, noRuns)
 
-    const named = parsed.runId === undefined ? null : resolveRunId(db, parsed.runId, 'vx last')
-    const inv =
-      parsed.runId !== undefined
-        ? getInvocation(db, named ?? parsed.runId)
-        : parsed.failed === true
-          ? (failedInvocations(db, 1)[0] ?? null)
-          : (listInvocations(db, { limit: 1 })[0] ?? null)
-    // A run with rows and no header is one a stop ended: `vx why` printed its
-    // id, so it is named, not called unrecorded.
-    if (named !== null && (inv === null || inv === undefined)) {
-      throw new UserError(
-        `vx last: run ${named} was stopped before it finished, so vx kept its tasks but no summary: \`vx last ${named} --log <task>\` prints one's output`,
-        'VX_E_NO_HISTORY',
-      )
-    }
-    if ((inv === null || inv === undefined) && noRuns()) throw noRunsYet()
-    // Nothing failed is no fault: said as `--list --failed` says it.
-    if ((inv === null || inv === undefined) && parsed.failed === true) {
-      throw refusal(
-        { tone: 'info', headline: 'no failed runs', fix: 'vx last' },
-        { code: 'VX_E_NO_HISTORY', message: 'vx last: no failed runs' },
-      )
-    }
-    if (inv === null || inv === undefined) {
-      throw new UserError(
-        noRuns()
-          ? 'vx last: no recorded runs yet — run something first'
-          : parsed.runId?.includes('#') === true
-            ? `vx last: ${parsed.runId} is a task, not a run id — \`vx last --log ${parsed.runId}\` prints its output, \`vx last --stats ${parsed.runId}\` its durations`
-            : parsed.runId !== undefined
-              ? `vx last: no recorded run ${parsed.runId} (vx last --list shows recent runs)`
-              : 'vx last: no recorded runs yet — run something first',
-        'VX_E_NO_HISTORY',
-      )
-    }
+    const inv = pickInvocation(db, parsed, noRuns, noRunsYet)
     const detail = getRun(db, inv.runId)
 
-    if (parsed.format === 'json') {
-      const failures = new Map((runFailures(db, inv.runId)?.tasks ?? []).map((f) => [f.taskId, f]))
-      const tasks = (detail?.tasks ?? []).map((t) => {
-        const f = failures.get(`${t.project}#${t.task}`)
-        return f === undefined
-          ? t
-          : {
-              ...t,
-              ...(f.dir !== undefined ? { dir: f.dir } : {}),
-              ...(f.inputMoved !== undefined ? { inputMoved: f.inputMoved } : {}),
-              output: f.output,
-              locations: f.locations,
-              ...(f.sandboxFix !== undefined ? { sandboxFix: f.sandboxFix } : {}),
-              ...(f.fixedIn !== undefined ? { fixedIn: f.fixedIn } : {}),
-            }
-      })
-      const steps = keptSteps(db, inv.runId)
-      const warnings = keptWarnings(db, inv.runId)
-      ui.data(
-        'out',
-        `${JSON.stringify({
-          invocation: inv,
-          tasks,
-          ...(steps.length > 0 ? { steps } : {}),
-          ...(warnings.length > 0 ? { warnings } : {}),
-        })}\n`,
-      )
-      return 0
-    }
-
-    const moved = new Map<string, string>()
-    if (inv.failedCount > 0) {
-      for (const f of runFailures(db, inv.runId)?.tasks ?? [])
-        if (f.inputMoved !== undefined) moved.set(f.taskId, f.inputMoved)
-    }
-    const blocks: ui.Block[] = [
-      ui.section(
-        'Run',
-        inv.runId,
-        ui.fields([
-          ['status', inv.exitOk ? ui.tone('ok', 'ok') : ui.tone('error', 'FAILED', true)],
-          ['command', ui.cmd(inv.command)],
-          [
-            'when',
-            `${fmtWhen(inv.startedAt)} · ${fmtMs(inv.totalDurationMs)}` +
-              `${inv.branch !== null ? ` · ${inv.branch}` : ''}` +
-              `${inv.commitSha !== null ? ` @ ${inv.commitSha.slice(0, 8)}${inv.dirty === true ? '+dirty' : ''}` : ''}` +
-              `${inv.ci ? ` · CI${inv.ciProvider !== null ? ` (${inv.ciProvider})` : ''}` : ''}`,
-          ],
-          [
-            'tasks',
-            [
-              ui.dim(`${inv.taskCount} task${inv.taskCount === 1 ? '' : 's'} · ${hitsLine(inv)}`),
-              ...(inv.failedCount > 0 ? [ui.tone('error', ` · ${inv.failedCount} failed`)] : []),
-            ],
-          ],
-        ]),
-      ),
-    ]
-    // ±usual against the task's usual time now, as a run on this branch reads it.
-    const ranIds = (detail?.tasks ?? [])
-      .filter((t) => t.status === 'success' || t.status === 'failed')
-      .map((t) => `${t.project}#${t.task}`)
-    // Each task's timings of the definition it ran under, as its live row
-    // read them: an older definition's timings are another task's.
-    const history = new LocalHistoryProvider(
-      db,
-      undefined,
-      currentBranch(root),
-      runDefinitions(db, inv.runId),
-    )
-    const usual = new Map(history.p50sNow(ranIds))
-    // A task whose one timing is this run's own has no usual to compare
-    // with: `+0ms` claimed a baseline the live row rightly showed as `—`.
-    for (const id of history.timedOnlySince(ranIds, inv.startedAt)) usual.delete(id)
-    const taskRows = formatTaskRows(detail?.tasks ?? [], moved, usual)
-    if (taskRows.length > 0)
-      blocks.push(ui.section('Tasks', String(detail?.tasks.length ?? 0), ...taskRows))
-    const stepRows = formatStepRows(keptSteps(db, inv.runId))
-    if (stepRows !== undefined) blocks.push(ui.section('Steps', stepRows))
-    const warnings = keptWarnings(db, inv.runId)
-    if (warnings.length > 0)
-      blocks.push(ui.section('Warnings', String(warnings.length), ui.text(...warnings)))
-    // The next command after reading a failed run, with the arguments the
-    // run forwarded to the tasks that got them (a failure under `-- --shard
-    // 2` is that shard's); a dependency never got them, so its line has none.
-    const failed = (detail?.tasks ?? []).filter((t) => t.status === 'failed')
-    if (failed.length > 0) {
-      const at = inv.command.indexOf(' -- ')
-      const args = at === -1 ? '' : inv.command.slice(at)
-      const rerun: string[] = []
-      for (const withArgs of [false, true]) {
-        const ids = failed
-          .filter((t) => t.forwarded === withArgs)
-          .map((t) => shellQuote(`${t.project}#${t.task}`))
-        if (ids.length > 0) rerun.push(`vx run ${ids.join(' ')}${withArgs ? args : ''}`)
-      }
-      blocks.push(ui.fields([['next', ...rerun.map((r) => ui.cmd(r))]]))
-    }
-    ui.print('out', ...blocks)
-    return 0
+    if (parsed.format === 'json') return printRunJson(db, inv, detail)
+    return printRun(db, root, inv, detail)
   } catch (err) {
     throw indexError(cache, err)
   } finally {
     cache.close()
   }
+}
+
+/** `--log <task>`: the task's own output from a run, or why vx kept none. */
+async function printLog(
+  db: Database,
+  at: VerbWorkspace,
+  parsed: LastArgs & { log: string },
+): Promise<number> {
+  const runId =
+    parsed.runId === undefined
+      ? undefined
+      : (resolveRunId(db, parsed.runId, 'vx last') ?? parsed.runId)
+  const log = taskLog(db, await bareTaskId(db, await rootSpelled(at, parsed.log), at), runId)
+  if (log === null) {
+    // The id's form is hinted only when it lacks one: a task that
+    // never ran was told how to spell a task id. A typo of one that
+    // ran is named, as `vx why` names it: by its matcher, which offers
+    // `@w/envy#test` for `envy#test` too.
+    const recorded = parsed.log.includes('#') ? new LocalHistoryProvider(db).recentTaskIds() : []
+    const near = nearMatches(parsed.log, recorded)
+    const ran = near.length === 0 ? undefined : near.join(', ')
+    // No near name: what of that project has run, so the next try is a pick.
+    const project = parsed.log.slice(0, parsed.log.lastIndexOf('#') + 1)
+    const theirs = recorded
+      .filter((id) => project !== '' && id.startsWith(project))
+      .map((id) => id.slice(project.length))
+      .sort()
+    const listed =
+      ran === undefined && theirs.length > 0
+        ? `; ${project.slice(0, -1)}'s recorded tasks: ${theirs.join(', ')}`
+        : ''
+    throw new UserError(
+      `vx last: no recorded run of ${parsed.log}${parsed.runId === undefined ? '' : ` in run ${parsed.runId}`}${parsed.log.includes('#') ? '' : ' (a task id is project#task)'}${ran === undefined ? '' : ` — did you mean ${ran}?`}${listed}`,
+      'VX_E_NO_HISTORY',
+    )
+  }
+  if (parsed.format === 'json') {
+    ui.data('out', `${JSON.stringify(log)}\n`)
+    return 0
+  }
+  if (log.source === null) {
+    // A cached task with no entry of its own was not saved (a read-only
+    // policy), or its entry was pruned or saved over; calling it uncached
+    // sends the user to the config.
+    const [project, task] = splitTaskId(log.taskId)
+    const cached =
+      log.status !== 'failed' &&
+      (
+        db
+          .query('SELECT cached FROM runs WHERE run_id = ? AND project = ? AND task = ?')
+          .get(log.runId, project, task) as { cached: number | null } | null
+      )?.cached === 1
+    // A skip ran nothing: the output to read is its blocker's.
+    const blocker =
+      log.status === 'skipped'
+        ? (
+            db
+              .query(
+                'SELECT blocked_by AS b FROM runs WHERE run_id = ? AND project = ? AND task = ?',
+              )
+              .get(log.runId, project, task) as { b: string | null } | null
+          )?.b
+        : null
+    sayNotice(
+      'info',
+      'vx last',
+      typeof blocker === 'string'
+        ? `${log.taskId} did not run: ${blocker} blocked it (vx last --log ${blocker})`
+        : log.status === 'failed'
+          ? `${log.taskId} ended failed, and vx kept no output for it: it keeps the newest 50 failed runs`
+          : cached
+            ? `${log.taskId} ended ${log.status}, and the cache does not hold its output: the run did not save it, or it was pruned or saved over since`
+            : `${log.taskId} ended ${log.status}. vx keeps output only for failed and cached tasks`,
+    )
+  } else if (log.output === '') {
+    sayNotice('info', 'vx last', `${log.taskId} ended ${log.status} and printed nothing`)
+  }
+  // The task's own bytes, as it wrote them.
+  ui.data('out', log.output)
+  return 0
+}
+
+/** `--list [n]`: the recent runs, or only the failed ones. */
+function printRunList(
+  db: Database,
+  parsed: LastArgs & { list: number },
+  noRuns: () => boolean,
+): number {
+  const invocations =
+    parsed.failed === true
+      ? failedInvocations(db, parsed.list)
+      : listInvocations(db, { limit: parsed.list })
+  if (parsed.format === 'json') {
+    ui.data('out', `${JSON.stringify(invocations)}\n`)
+    return 0
+  }
+  if (invocations.length === 0) {
+    const none = parsed.failed === true && !noRuns() ? 'no failed runs' : 'no runs yet'
+    ui.print('out', ui.status('info', 'vx last', none))
+    return 0
+  }
+  ui.print(
+    'out',
+    ui.section(
+      'Runs',
+      String(invocations.length),
+      formatRunList(invocations.map((inv) => ({ inv, id: shortRunId(db, inv.runId) }))),
+    ),
+  )
+  return 0
+}
+
+/**
+ * The run to show: the one named, else the latest failed with `--failed`,
+ * else the latest. Refuses with what is missing when there is none.
+ */
+function pickInvocation(
+  db: Database,
+  parsed: LastArgs,
+  noRuns: () => boolean,
+  noRunsYet: () => UserError,
+): InvocationDetail {
+  const named = parsed.runId === undefined ? null : resolveRunId(db, parsed.runId, 'vx last')
+  const inv =
+    parsed.runId !== undefined
+      ? getInvocation(db, named ?? parsed.runId)
+      : parsed.failed === true
+        ? (failedInvocations(db, 1)[0] ?? null)
+        : (listInvocations(db, { limit: 1 })[0] ?? null)
+  // A run with rows and no header is one a stop ended: `vx why` printed its
+  // id, so it is named, not called unrecorded.
+  if (named !== null && (inv === null || inv === undefined)) {
+    throw new UserError(
+      `vx last: run ${named} was stopped before it finished, so vx kept its tasks but no summary: \`vx last ${named} --log <task>\` prints one's output`,
+      'VX_E_NO_HISTORY',
+    )
+  }
+  if ((inv === null || inv === undefined) && noRuns()) throw noRunsYet()
+  // Nothing failed is no fault: said as `--list --failed` says it.
+  if ((inv === null || inv === undefined) && parsed.failed === true) {
+    throw refusal(
+      { tone: 'info', headline: 'no failed runs', fix: 'vx last' },
+      { code: 'VX_E_NO_HISTORY', message: 'vx last: no failed runs' },
+    )
+  }
+  if (inv === null || inv === undefined) {
+    throw new UserError(
+      noRuns()
+        ? 'vx last: no recorded runs yet — run something first'
+        : parsed.runId?.includes('#') === true
+          ? `vx last: ${parsed.runId} is a task, not a run id — \`vx last --log ${parsed.runId}\` prints its output, \`vx last --stats ${parsed.runId}\` its durations`
+          : parsed.runId !== undefined
+            ? `vx last: no recorded run ${parsed.runId} (vx last --list shows recent runs)`
+            : 'vx last: no recorded runs yet — run something first',
+      'VX_E_NO_HISTORY',
+    )
+  }
+  return inv
+}
+
+/** The run as JSON: its summary, its tasks with each failure's detail, steps and warnings. */
+function printRunJson(db: Database, inv: InvocationDetail, detail: RunDetail | null): number {
+  const failures = new Map((runFailures(db, inv.runId)?.tasks ?? []).map((f) => [f.taskId, f]))
+  const tasks = (detail?.tasks ?? []).map((t) => {
+    const f = failures.get(`${t.project}#${t.task}`)
+    return f === undefined
+      ? t
+      : {
+          ...t,
+          ...(f.dir !== undefined ? { dir: f.dir } : {}),
+          ...(f.inputMoved !== undefined ? { inputMoved: f.inputMoved } : {}),
+          output: f.output,
+          locations: f.locations,
+          ...(f.sandboxFix !== undefined ? { sandboxFix: f.sandboxFix } : {}),
+          ...(f.fixedIn !== undefined ? { fixedIn: f.fixedIn } : {}),
+        }
+  })
+  const steps = keptSteps(db, inv.runId)
+  const warnings = keptWarnings(db, inv.runId)
+  ui.data(
+    'out',
+    `${JSON.stringify({
+      invocation: inv,
+      tasks,
+      ...(steps.length > 0 ? { steps } : {}),
+      ...(warnings.length > 0 ? { warnings } : {}),
+    })}\n`,
+  )
+  return 0
+}
+
+/** The run as a reader sees it: its summary, tasks, steps, warnings and the next command. */
+function printRun(
+  db: Database,
+  root: string,
+  inv: InvocationDetail,
+  detail: RunDetail | null,
+): number {
+  const moved = new Map<string, string>()
+  if (inv.failedCount > 0) {
+    for (const f of runFailures(db, inv.runId)?.tasks ?? [])
+      if (f.inputMoved !== undefined) moved.set(f.taskId, f.inputMoved)
+  }
+  const blocks: ui.Block[] = [
+    ui.section(
+      'Run',
+      inv.runId,
+      ui.fields([
+        ['status', inv.exitOk ? ui.tone('ok', 'ok') : ui.tone('error', 'FAILED', true)],
+        ['command', ui.cmd(inv.command)],
+        [
+          'when',
+          `${fmtWhen(inv.startedAt)} · ${fmtMs(inv.totalDurationMs)}` +
+            `${inv.branch !== null ? ` · ${inv.branch}` : ''}` +
+            `${inv.commitSha !== null ? ` @ ${inv.commitSha.slice(0, 8)}${inv.dirty === true ? '+dirty' : ''}` : ''}` +
+            `${inv.ci ? ` · CI${inv.ciProvider !== null ? ` (${inv.ciProvider})` : ''}` : ''}`,
+        ],
+        [
+          'tasks',
+          [
+            ui.dim(`${inv.taskCount} task${inv.taskCount === 1 ? '' : 's'} · ${hitsLine(inv)}`),
+            ...(inv.failedCount > 0 ? [ui.tone('error', ` · ${inv.failedCount} failed`)] : []),
+          ],
+        ],
+      ]),
+    ),
+  ]
+  // ±usual against the task's usual time now, as a run on this branch reads it.
+  const ranIds = (detail?.tasks ?? [])
+    .filter((t) => t.status === 'success' || t.status === 'failed')
+    .map((t) => `${t.project}#${t.task}`)
+  // Each task's timings of the definition it ran under, as its live row
+  // read them: an older definition's timings are another task's.
+  const history = new LocalHistoryProvider(
+    db,
+    undefined,
+    currentBranch(root),
+    runDefinitions(db, inv.runId),
+  )
+  const usual = new Map(history.p50sNow(ranIds))
+  // A task whose one timing is this run's own has no usual to compare
+  // with: `+0ms` claimed a baseline the live row rightly showed as `—`.
+  for (const id of history.timedOnlySince(ranIds, inv.startedAt)) usual.delete(id)
+  const taskRows = formatTaskRows(detail?.tasks ?? [], moved, usual)
+  if (taskRows.length > 0)
+    blocks.push(ui.section('Tasks', String(detail?.tasks.length ?? 0), ...taskRows))
+  const stepRows = formatStepRows(keptSteps(db, inv.runId))
+  if (stepRows !== undefined) blocks.push(ui.section('Steps', stepRows))
+  const warnings = keptWarnings(db, inv.runId)
+  if (warnings.length > 0)
+    blocks.push(ui.section('Warnings', String(warnings.length), ui.text(...warnings)))
+  // The next command after reading a failed run, with the arguments the
+  // run forwarded to the tasks that got them (a failure under `-- --shard
+  // 2` is that shard's); a dependency never got them, so its line has none.
+  const failed = (detail?.tasks ?? []).filter((t) => t.status === 'failed')
+  if (failed.length > 0) {
+    const dashes = inv.command.indexOf(' -- ')
+    const args = dashes === -1 ? '' : inv.command.slice(dashes)
+    const rerun: string[] = []
+    for (const withArgs of [false, true]) {
+      const ids = failed
+        .filter((t) => t.forwarded === withArgs)
+        .map((t) => shellQuote(`${t.project}#${t.task}`))
+      if (ids.length > 0) rerun.push(`vx run ${ids.join(' ')}${withArgs ? args : ''}`)
+    }
+    blocks.push(ui.fields([['next', ...rerun.map((r) => ui.cmd(r))]]))
+  }
+  ui.print('out', ...blocks)
+  return 0
 }
