@@ -55,7 +55,7 @@ class GlobTester extends HTMLElement {
     term.innerHTML = view.terminal
     term.hidden = view.terminal === ''
     this.querySelector('.vx-say')!.textContent = view.say
-    // A checkbox the reader just toggled is re-rendered: keep their place.
+    // A checkbox the reader toggled is re-rendered: keep their place.
     if (focused !== undefined)
       this.querySelector<HTMLInputElement>(`input[data-file="${CSS.escape(focused)}"]`)?.focus()
   }
