@@ -1283,7 +1283,9 @@ export interface LockedFile {
 function · `src/orchestrator/lockfile-claim.ts`
 
 ```ts
-export function lockfileClaim<L = unknown>(options: LockfileClaimOptions<L>): LockfileClaimHooks<L>
+export function lockfileClaim<L = unknown>(
+  options: LockfileClaimOptions<L>,
+): LockfileClaimHooks<L>
 ```
 
 ## `LockfileClaimHooks`
@@ -1342,7 +1344,7 @@ export interface LockSettings {
 const · `src/orchestrator/task-log-buffer.ts`
 
 Version of the drained-bundle shape below. It is the canonical drained
-logs format, not one transport's: every sink ships the same object.
+ logs format, not one transport's: every sink ships the same object.
 
 ```ts
 export const LOG_WIRE_VERSION = 1
@@ -1465,7 +1467,10 @@ it needs (`reachMergeBase`), so plugins reading base history ask this, not
 `git merge-base`.
 
 ```ts
-export async function mergeBaseWith(workspaceRoot: string, ref: string): Promise<string | undefined>
+export async function mergeBaseWith(
+  workspaceRoot: string,
+  ref: string,
+): Promise<string | undefined>
 ```
 
 ## `MigrationFormat`
@@ -2354,7 +2359,7 @@ export async function run(options: RunOptions): Promise<RunSummary>
 type · `src/orchestrator/telemetry.ts`
 
 Identifies which run a record belongs to + its captured context. Maps
-cleanly onto OTel CI/CD + VCS resource attributes.
+ cleanly onto OTel CI/CD + VCS resource attributes.
 
 ```ts
 export interface RunContextRecord {
@@ -3035,7 +3040,12 @@ type · `src/graph/task-status.ts`
 
 ```ts
 export type TaskStatus =
-  'success' | 'cache-hit' | 'cache-hit-remote' | 'failed' | 'skipped' | 'aborted'
+  | 'success'
+  | 'cache-hit'
+  | 'cache-hit-remote'
+  | 'failed'
+  | 'skipped'
+  | 'aborted'
 ```
 
 ## `TaskTelemetry`
@@ -3043,7 +3053,7 @@ export type TaskStatus =
 type · `src/orchestrator/telemetry.ts`
 
 Denormalized per-task analytics — shared by the streaming `task.end`
-record and the per-run summary's `tasks[]`.
+ record and the per-run summary's `tasks[]`.
 
 ```ts
 export interface TaskTelemetry {
@@ -3119,7 +3129,7 @@ export const TELEMETRY_SCHEMA_VERSION = 4
 type · `src/orchestrator/telemetry.ts`
 
 Read-only context a sink is created with. No mutable run handle — the
-isolation guarantee is structural.
+ isolation guarantee is structural.
 
 ```ts
 export interface TelemetryContext {
