@@ -205,7 +205,8 @@ export function parseDependenciesLock(bytes: Uint8Array | null): DependenciesLoc
 }
 
 // A committed file a merge or a bad checkout can break inside. The parse
-// checks the header and that each line's name is new and in order; a line's
+// checks the header, that each name is new and that a tab-led fields line
+// follows it; a line's
 // fields are checked when decoded, which refuses as "invalid, run `vx lock`"
 // rather than a raw TypeError at a lookup.
 function parsed(text: string): DependenciesLock | null {

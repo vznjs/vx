@@ -2349,13 +2349,16 @@ tasks: …`).
 
 `.vx/projects.lock` is laid out for the parse first, then for
 size, then for merges: a header line, `{"version":9}`, then each
-distinct task config once, as a pointer line (`#k2x0a1b`) and its JSON
+task config, shared by the tasks that hold it, as a pointer line (`#k2x0a1b`) and its JSON
 line, then each project, in name-hash order, as
 `<name>⇥{"path","file"|"by","config"}` (`file` left out for
 `vx.config.ts`, the tasks left out of `config`) and, per task in name
 order, a `⇥<task>` line and its pointer line. A pointer is born from its
 task's first JSON and kept by every later `vx lock`, so an edit to a task
-rewrites its JSON line alone. 2,016 projects read in 3.2 ms from 419 KB
+rewrites its JSON line alone; a task added later gets a pointer of its own
+even when its JSON is already there, so a merge never points it at a
+config another branch edited (delete the lock and run `vx lock` to share
+them again). `vx show` lists a project's tasks in name order. 2,016 projects read in 3.2 ms from 419 KB
 (version 8: the same time, from 566 KB). For review, `vx lock` also writes each project's resolved config (plugins
 applied), pretty, to `vx.lock.json` beside its `vx.config`; vx never reads
 it, it is no task's input, and `lock.reviewFiles: false`

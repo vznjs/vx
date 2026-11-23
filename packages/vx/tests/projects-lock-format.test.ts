@@ -155,7 +155,7 @@ it('moves only the edited project to a new pointer when the others keep the old 
   ])
 })
 
-it('drops a pointer no task holds any more, and reuses one whose task another project adds', () => {
+it('drops a pointer no task holds any more, and gives a task another project adds a pointer of its own', () => {
   write(base())
   const text = write(
     lock({
@@ -165,7 +165,7 @@ it('drops a pointer no task holds any more, and reuses one whose task another pr
     }),
   )
   expect(text).not.toContain(JSON.stringify(test))
-  expect(text.split('\n').filter((l) => l === JSON.stringify(build)).length).toBe(1)
+  expect(text.split('\n').filter((l) => l === JSON.stringify(build)).length).toBe(2)
 })
 
 it('writes the same text for the same projects from no lock, and again over itself', () => {
@@ -236,4 +236,47 @@ it('refuses a task line with no pointer, and a pointer the pool lacks', async ()
   writeFileSync(p, `${[...lines.slice(0, last), '#zzzzzzz'].join('\n')}\n`)
   expect(readLockfile(root)).rejects.toThrow('#zzzzzzz')
   expect(readFileSync(p, 'utf8')).toContain('#zzzzzzz')
+})
+
+// A held pointer's JSON is rewritten in place, so a task that joined it on
+// another branch would merge cleanly and read that branch's task.
+it('never merges a task added on one branch onto a pointer the other branch edited', async () => {
+  // Other projects and tasks keep the two branches' lines apart: @acme/api
+  // hashes between d and b, far from the pool.
+  const others = Object.fromEntries(
+    ['a', 'b', 'c', 'd', 'e'].map((n) => [`packages/${n}`, project(n, { lint, test })]),
+  )
+  const b0 = lock({ ...others, 'packages/ui': project('@acme/ui', { build }) })
+  const start = write(b0)
+  const ours = write(
+    lock({
+      ...others,
+      'packages/ui': project('@acme/ui', { build: { ...build, description: 'x' } }),
+    }),
+  )
+  writeFileSync(path.join(root, '.vx/projects.lock'), start)
+  const theirs = write(lock({ ...b0.projects, 'apps/api': project('@acme/api', { build }) }))
+  const m = merge(ours, start, theirs)
+  expect(m.clean).toBe(true)
+  writeFileSync(path.join(root, '.vx/projects.lock'), m.text)
+  const read = (await readLockfile(root))!.projects
+  expect(read['apps/api']!.config!.tasks!['build']).toEqual(build)
+  expect(read['packages/ui']!.config!.tasks!['build']).toEqual({ ...build, description: 'x' })
+})
+
+it('never merges a task added on one branch onto a pointer the other branch dropped', async () => {
+  const b0 = lock({
+    'packages/ui': project('@acme/ui', { build }),
+    'apps/web': project('@acme/web', { lint }),
+  })
+  const start = write(b0)
+  const ours = write(
+    lock({ 'packages/ui': project('@acme/ui', {}), 'apps/web': b0.projects['apps/web']! }),
+  )
+  writeFileSync(path.join(root, '.vx/projects.lock'), start)
+  const theirs = write(lock({ ...b0.projects, 'apps/web': project('@acme/web', { lint, build }) }))
+  const m = merge(ours, start, theirs)
+  expect(m.clean).toBe(true)
+  writeFileSync(path.join(root, '.vx/projects.lock'), m.text)
+  expect((await readLockfile(root))!.projects['apps/web']!.config!.tasks!['build']).toEqual(build)
 })

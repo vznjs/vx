@@ -498,9 +498,11 @@ export function lockfileWrite(root: string, lock: Lockfile): PendingWrite {
   }
   // A pointer stays with the tasks that kept its JSON or, when none did,
   // with the most that agree on a new one: an edit rewrites one line. The
-  // rest join the pointer holding their JSON, or one born of it.
+  // rest share a pointer born in this write, never a held one: a branch that
+  // rewrites a held pointer's JSON in place would merge cleanly with one
+  // that joined it, and hand the joiner the other branch's task.
   const pool = new Map<string, string>()
-  const byJson = new Map<string, string>()
+  const born = new Map<string, string>()
   const refOf = new Map<string, string>()
   for (const [ref, uses] of groups) {
     const was = held.pool.get(ref)!
@@ -511,14 +513,13 @@ export function lockfileWrite(root: string, lock: Lockfile): PendingWrite {
       keep = [...count].sort((x, y) => y[1] - x[1] || cmp(x[0], y[0]))[0]![0]
     }
     pool.set(ref, keep)
-    if (!byJson.has(keep)) byJson.set(keep, ref)
     for (const u of uses) {
       if (u.json === keep) refOf.set(u.key, ref)
       else loose.push(u)
     }
   }
   for (const u of loose) {
-    let ref = byJson.get(u.json)
+    let ref = born.get(u.json)
     if (ref === undefined) {
       for (let salt = 0; ; salt++) {
         const h = xxh3(salt === 0 ? u.json : `${salt}\0${u.json}`)
@@ -526,7 +527,7 @@ export function lockfileWrite(root: string, lock: Lockfile): PendingWrite {
         if (!pool.has(ref) && !held.pool.has(ref)) break
       }
       pool.set(ref, u.json)
-      byJson.set(u.json, ref)
+      born.set(u.json, ref)
     }
     refOf.set(u.key, ref)
   }

@@ -1992,8 +1992,10 @@ born as the xxh3 of its task's first JSON and kept by every later
 `vx lock` (it reads the lock there first): the tasks that kept the
 pointer's JSON keep it, or when none did, the most that agree on a new
 one, so an edit to a task rewrites its JSON line alone; any other task
-takes the pointer holding its JSON, or one born of it, and a pointer no
-task holds is dropped (M, 2026-11-23). A name a tab could break, or that
+takes a pointer born in this write (shared by the others there with its
+JSON), never one the lock held: a branch rewriting a held pointer's JSON
+would merge cleanly with one that joined it and hand the joiner its task.
+A pointer no task holds is dropped (M, 2026-11-23). A name a tab could break, or that
 starts with `#`, `"` or `{`, is written as a JSON string (a task name:
 one with a tab or a leading `"`). 2,016 projects read in 3.2 ms from
 419 KB, version 8's time from 566 KB. A name or pointer line seldom
