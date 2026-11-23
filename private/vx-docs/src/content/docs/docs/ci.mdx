@@ -22,7 +22,7 @@ vx pipeline pr
 
 <Diagram {...ciPipelines} />
 
-<Walkthrough title="One workspace on CI">
+<Walkthrough title="The two pipelines, run in turn on one machine">
 <Frame title="1. A push to main: every task runs">
 
 ```ansi title="vx pipeline main"
@@ -55,10 +55,10 @@ Six tasks, two projects. Each one stores its result in the cache: **local 6↑**
             [2mlocal[0m [38;2;34;197;94m1✓[0m [38;2;56;189;248m3↑[0m
 ```
 
-Three tasks ran, all in `@demo/web`. Read the cache line: **1✓** is `@demo/ui#build`, which web needs. It came from the cache.
+Three tasks ran, all in `@demo/web`. Read the cache line: **1✓** is `@demo/ui#build`, which web needs, from frame 1's cache. A fresh CI machine runs it again unless a [remote cache](../remote-cache/) holds it.
 
 </Frame>
-<Frame title="3. A test fails: the job page says which">
+<Frame title="3. On GitHub, a push to main breaks a test">
 
 `github()` writes this summary on the workflow run's page:
 
@@ -173,7 +173,7 @@ Two steps decide. **Affected** picks the tasks; then the **cache** skips each on
   `@demo/web#build` does, through `^build`.
 </Quiz>
 
-<Takeaway>tell, before you push, which tasks your pull request will run.</Takeaway>
+<Takeaway>tell, before you push, which tasks your pull request runs.</Takeaway>
 
 ## Keep the lock fresh
 
@@ -301,38 +301,56 @@ A task that fails on inputs it passed on before is marked flaky in the log:
 
 A pipeline is a saved `vx run` over every project. Each key is its `vx run` flag in camelCase: `failFast` is `--fail-fast`. Only `tasks` is required.
 
-| Key | Flag | Takes | What it does |
-| --- | --- | --- | --- |
-| `tasks` | (names) | `['lint', 'test']`, `'web#e2e'` | The tasks to run, in every project that declares each. **Required.** |
-| `filter` | `--filter` | `['./apps/*']` | Only these projects, plus what they depend on. |
-| `affected` | `--affected` | `true`, or a git ref | Only what a change since the base reaches. |
-| `excludeDependencies` | `--exclude-dependencies` | `true`, or names | Skip all `dependsOn` edges, or only those names. |
-| `env` | (none) | `{ NAME: 'value' }` | Set for vx and its plugins, never for a task. A variable already set wins. |
-| `concurrency` | `--concurrency` | `4`, `'50%'` | Most tasks at once. Default: the cores. |
-| `schedule` | `--schedule` | `'most-work'`, `'critical-path'`, `'direct-dependents'`, `'ready-order'` | Which ready task starts first. Default `'most-work'`. |
-| `failFast` | `--fail-fast` | `true` | Stop the run at the first failure. |
-| `retries` | `--retries` | `1` | Re-runs of a failed task. Default `0`. |
-| `timeout` | `--timeout` | `'10m'` | Time limit per task. Default none. |
-| `branch` | `--branch` | `'nightly'` | The branch the run records in history. Default: git's. |
-| `cachePolicy` | `--cache-policy` | `'local:rw,remote:r'` | What each cache may read and write. |
-| `noCache` | `--no-cache` | `true` | No cache reads or writes. |
-| `force` | `--force` | `true` | Run every task again; still write the cache. |
-| `cacheDir` | `--cache-dir` | `'.vx/cache'` | Where the local cache lives, from the workspace root. |
-| `cacheDownload` | `--cache-download` | `'all'`, `'toplevel'`, `'none'` | Which outputs of a remotely run task land here. Default `'all'`. |
-| `cacheConcurrencyDownload` | `--cache-concurrency-download` | `32` | Remote downloads at once. |
-| `cacheConcurrencyUpload` | `--cache-concurrency-upload` | `32` | Uploads at once, per remote. |
-| `cacheConcurrencyRestore` | `--cache-concurrency-restore` | `16` | Local hits restoring at once. |
-| `outputLogs` | `--output-logs` | `'full'`, `'errors-only'`, `'hash-only'`, `'none'` | How much task output the log shows. |
-| `verbosity` | `--verbosity` | `1` | `1` adds a table of every task. Default `0`. |
-| `profile` | `--profile` | `true`, or a file | Write a Chrome trace of the run. |
-| `dry` | `--dry` | `true` | Print the plan; run nothing. |
-| `format` | `--format` | `'json'` | With `dry`, print the plan as JSON. Default `'pretty'`. |
+| Key | Takes | What it does |
+| --- | --- | --- |
+| `tasks` | `['lint', 'test']`, `'web#e2e'` | The tasks to run, in every project that declares each. **Required.** |
+| `filter` | `['./apps/*']` | Only these projects, plus what they depend on. |
+| `affected` | `true`, or a git ref | Only what a change since the base reaches. |
+| `excludeDependencies` | `true`, or names | Skip all `dependsOn` edges, or only those names. |
+| `env` | `{ NAME: 'value' }` | Set for vx and its plugins, never for a task. A variable already set wins. |
+| `concurrency` | `4`, `'50%'` | Most tasks at once. Default: the cores. |
+| `schedule` | `'most-work'`, `'critical-path'`, `'direct-dependents'`, `'ready-order'` | Which ready task starts first. Default `'most-work'`. |
+| `failFast` | `true` | Stop the run at the first failure. |
+| `retries` | `1` | Re-runs of a failed task. Default `0`. |
+| `timeout` | `'10m'` | Time limit per task. Default none. |
+| `branch` | `'nightly'` | The branch the run records in history. Default: git's. |
+| `cachePolicy` | `'local:rw,remote:r'` | What each cache may read and write. |
+| `noCache` | `true` | No cache reads or writes. |
+| `force` | `true` | Run every task again; still write the cache. |
+| `cacheDir` | `'.vx/cache'` | Where the local cache lives, from the workspace root. |
+| `cacheDownload` | `'all'`, `'toplevel'`, `'none'` | Which outputs of a remotely run task land here. Default `'all'`. |
+| `cacheConcurrencyDownload` | `32` | Remote downloads at once. |
+| `cacheConcurrencyUpload` | `32` | Uploads at once, per remote. |
+| `cacheConcurrencyRestore` | `16` | Local hits restoring at once. |
+| `outputLogs` | `'full'`, `'errors-only'`, `'hash-only'`, `'none'` | How much task output the log shows. |
+| `verbosity` | `1` | `1` adds a table of every task. Default `0`. |
+| `profile` | `true`, or a file | Write a Chrome trace of the run. |
+| `dry` | `true` | Print the plan; run nothing. |
+| `format` | `'json'` | With `dry`, print the plan as JSON. Default `'pretty'`. |
 
 **Who wins.** A flag you type beats its key: `vx pipeline main --filter @demo/web` runs main's tasks in `@demo/web` and what it needs. A flag's `VX_*` variable beats it too. The key beats `.vx/workspace.ts`'s own setting.
 
 **What a pipeline cannot do.** It has no `--all` key: it always starts from every project. Nothing goes after `--`, since forwarded args are for one task. A typo in `tasks` fails at `vx lock`, not in the CI job.
 
 Full reference: [Pipelines](../../schema/workspace/#pipelines).
+
+</Deeper>
+
+<Deeper level="details" title="github() and gitlab() options">
+
+### Plugin options
+
+Both work with no options. Each does nothing outside its own CI.
+
+| Option | Plugin | Default | What it does |
+| --- | --- | --- | --- |
+| `summaryFile` | `github()` | `$GITHUB_STEP_SUMMARY` | The file the job summary goes to. |
+| `title` | `github()` | `'vx run'` | The summary's heading. |
+| `cacheScope` | both | `true` | Name the base commit for `affected`, and keep a branch's remote cache entries apart. `false` turns it off. |
+
+```ts
+github({ title: 'web checks', cacheScope: false })
+```
 
 </Deeper>
 

@@ -20,17 +20,18 @@ vx pipeline pr
 
 ## Save it
 
-```ts title=".vx/workspace.ts" mark={6-7}
-import type { WorkspaceConfig } from '@vzn/vx/config'
+```ts title=".vx/workspace.ts" mark={7-10}
+import { defineWorkspace } from '@vzn/vx/config'
+import { github } from '@vzn/vx-ci'
 import { bun } from '@vzn/vx-lockfile'
 
-export default {
-  plugins: [bun()],
+export default defineWorkspace({
+  plugins: [bun(), github()],
   pipelines: {
     pr: { tasks: ['build', 'test'], affected: true },
     main: { tasks: ['build', 'test'] },
   },
-} satisfies WorkspaceConfig
+})
 ```
 
 `pr` runs `build` and `test` only where your branch changed something. `main` runs them in every project. Run `vx lock` after the edit.
@@ -68,13 +69,11 @@ Read the last column: each task says why it is in the plan. Only `packages/web` 
 
 ```yaml title=".github/workflows/ci.yml"
 - run: bun vx lock --check
-- if: github.event_name == 'pull_request'
-  run: bun vx pipeline pr
-- if: github.event_name == 'push'
-  run: bun vx pipeline main
+- run: >
+    bun vx pipeline ${{ github.event_name == 'pull_request' && 'pr' || 'main' }}
 ```
 
-`vx lock --check` fails the job when a config changed without `vx lock` ([Keep the lock fresh](../#keep-the-lock-fresh)).
+The same two steps as the [CI page](../#github-actions): `pr` on a pull request, `main` on a push or merge queue. `vx lock --check` fails the job when a config changed without `vx lock` ([Keep the lock fresh](../#keep-the-lock-fresh)).
 
 <Takeaway>run one command on your machine and get CI's exact result.</Takeaway>
 
