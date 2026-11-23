@@ -20,10 +20,11 @@ import { dependenciesLockRefusal } from '../src/workspace/dependencies-lock.js'
 import { formatRunSummary } from '../src/report/summary.js'
 import { parseInfoArgs } from '../src/cli/info.js'
 import {
+  formatListHeader,
   formatTaskBlock,
   formatTaskExecutedLine,
-  formatTaskHitLine,
 } from '../src/report/framed-output.js'
+import * as ui from '../src/ui/index.js'
 import type { TaskNode } from '../src/graph/task-graph.js'
 import type { TaskOutcome } from '../src/graph/outcome.js'
 
@@ -149,7 +150,7 @@ describe('docs/cli.md — `vx lock` names the lock version it writes', () => {
 
 describe('docs/cli.md — the `vx info` sample quotes the current versions', () => {
   it('cache versions row', async () => {
-    const doc = await Bun.file(new URL('../docs/cli.md', import.meta.url)).text()
+    const doc = Bun.stripANSI(await Bun.file(new URL('../docs/cli.md', import.meta.url)).text())
     // The renderer pads every label to the widest; the sample is its output.
     expect(doc).toMatch(
       new RegExp(
@@ -293,7 +294,9 @@ describe('docs/cli.md — the broad-run sample is what the renderer prints', () 
       },
     }) as unknown as TaskNode
 
-  it('two rows and the footer, byte for byte', async () => {
+  it('the list header, the miss row and the footer, in colour, byte for byte', async () => {
+    // The default view lists what ran; the hit is counted in the footer only.
+    const on = { enabled: true }
     const hit: TaskOutcome = {
       node: node('@vzn/vx#format-check'),
       status: 'cache-hit',
@@ -309,31 +312,27 @@ describe('docs/cli.md — the broad-run sample is what the renderer prints', () 
       cache: { saved: true },
     }
     const rendered = [
-      formatTaskHitLine(hit.node, hit),
-      formatTaskExecutedLine(ran.node, ran),
-      ...formatRunSummary(
-        [hit, ran],
-        5340,
-        { enabled: false },
-        {
-          version: '0.0.0',
-          packageCount: 1,
-          remoteCacheEnabled: false,
-          runId: '01a14941-c8cf-7a3e-9b51-2f06d4e8c713',
-          concurrency: 8,
-          workspaceProjectCount: 3,
-          cache: {
-            local: true,
-            localWrite: true,
-            remote: false,
-            traffic: { inFlight: 0, keys: new Map() },
-            notDownloaded: () => 0,
-          },
+      '',
+      ui.panelTop('Tasks', on, undefined, undefined, formatListHeader(on)),
+      formatTaskExecutedLine(ran.node, ran, on),
+      ...formatRunSummary([hit, ran], 5340, on, {
+        version: '0.0.0',
+        packageCount: 1,
+        remoteCacheEnabled: false,
+        runId: '01a14941-c8cf-7a3e-9b51-2f06d4e8c713',
+        concurrency: 8,
+        workspaceProjectCount: 3,
+        cache: {
+          local: true,
+          localWrite: true,
+          remote: false,
+          traffic: { inFlight: 0, keys: new Map() },
+          notDownloaded: () => 0,
         },
-      ),
+      }),
     ].join('\n')
     const doc = await Bun.file(new URL('../docs/cli.md', import.meta.url)).text()
-    const marker = 'A broad run looks like:\n\n```\n'
+    const marker = 'only its count in the\nfooter:\n\n```ansi\n'
     const start = doc.indexOf(marker)
     expect(start).toBeGreaterThan(-1)
     const body = doc.slice(start + marker.length)
@@ -344,7 +343,8 @@ describe('docs/cli.md — the broad-run sample is what the renderer prints', () 
 // The frame anatomy was a hand-drawn sketch of a frame the renderer stopped
 // printing: a `├─ command` label (the command is a bare dim `$ cmd` line),
 // lowercase `├─ stdout` (the sections are `├─ STDOUT ──…`), no blank lines.
-// The page now shows one real failed block with every section; render it.
+// The page now shows one real failed block with every section; render it,
+// in colour (2026-10-26: no plain white output on the site).
 describe('docs/cli.md — the frame sample is what the renderer prints', () => {
   it('a failed block with command, interleaved output and a violation, byte for byte', async () => {
     const node = {
@@ -376,14 +376,14 @@ describe('docs/cli.md — the frame sample is what the renderer prints', () => {
           { text: '1 fail\n', err: false },
         ],
       },
-      { enabled: false },
+      { enabled: true },
     ).replace(/\n$/, '')
     const doc = await Bun.file(new URL('../docs/cli.md', import.meta.url)).text()
     const marker = 'copy/paste yields the verbatim output.'
     // The block sits just above that sentence: take the fenced block that precedes it.
     const end = doc.lastIndexOf('\n```\n', doc.indexOf(marker))
-    const start = doc.lastIndexOf('```\n', end - 1) + 4
-    expect(start).toBeGreaterThan(4)
+    const start = doc.lastIndexOf('```ansi\n', end - 1) + 8
+    expect(start).toBeGreaterThan(8)
     expect(doc.slice(start, end)).toBe(rendered)
   })
 })

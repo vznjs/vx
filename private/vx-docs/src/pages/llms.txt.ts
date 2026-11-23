@@ -5,18 +5,17 @@ import { SIDEBAR } from '../nav/sections.ts'
 type Item = { link?: string; items?: Item[] }
 const ids = (items: readonly Item[]): string[] =>
   items.flatMap((i) => (i.items ? ids(i.items) : i.link ? [i.link.replace(/^\/|\/$/g, '')] : []))
-/** The page ids a top-level sidebar group lists (`guides` for `/guides/`). */
+/** The page ids a top-level sidebar group lists (`docs` for `/docs/`). */
 function listed(label: string): (id: string) => boolean {
   const own = new Set(
     ids((SIDEBAR as Item[]).filter((g) => (g as { label?: string }).label === label)),
   )
-  return (id) => own.has(id === 'guides/index' ? 'guides' : id)
+  return (id) => own.has(id === 'docs/index' ? 'docs' : id)
 }
 
 const SECTIONS: readonly [string, (id: string) => boolean][] = [
   ['Docs', listed('Docs')],
-  ['Guides', listed('Guides')],
-  ['Reference', (id) => !/^(blog|releases)\//.test(id) && !isInternal(id)],
+  ['More docs', (id) => !/^(blog|releases)\//.test(id) && !isInternal(id)],
   ['Blog', (id) => id.startsWith('blog/')],
   ['Releases', (id) => id.startsWith('releases/')],
   ['How vx is built', isInternal],
@@ -40,7 +39,7 @@ export const GET: APIRoute = async ({ site }) => {
 
 > vx is a Bun-native task runner and content-addressed cache for JavaScript monorepos. Tasks live in TypeScript configs (\`vx.config.ts\`), a run is \`vx run <task>\`, and plugins decide where tasks run and where the cache lives.
 
-Every page below is plain markdown. Every Docs and Reference page in one file: ${base}llms-full.txt. An agent in a vx workspace can also ask the workspace itself: \`--format json\` on \`vx show\`, \`vx info\`, \`vx why\` and \`vx last\` (${base}docs/agents.md).
+Every page below is plain markdown. Every docs page in one file: ${base}llms-full.txt. An agent in a vx workspace can also ask the workspace itself: \`--format json\` on \`vx show\`, \`vx info\`, \`vx why\` and \`vx last\` (${base}docs/agents.md).
 
 ${sections.join('\n\n')}
 `
