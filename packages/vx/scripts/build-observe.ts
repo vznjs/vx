@@ -44,6 +44,8 @@ const FLAGS = [
   '-fno-asynchronous-unwind-tables',
   '-fno-unwind-tables',
   '-fno-pic',
+  // No .comment naming the compiler's vendor and patch: any clang 18 gives these bytes.
+  '-fno-ident',
   '-fuse-ld=lld',
   '-Wl,--build-id=none',
   '-Wl,-z,noexecstack',
@@ -53,8 +55,9 @@ const FLAGS = [
 /** The clang the committed bytes came from: another major emits other code. */
 const CLANG_MAJOR = 18
 
-/** A clang of `CLANG_MAJOR` on PATH, or undefined. */
+/** A clang of `CLANG_MAJOR` on PATH with lld beside it, or undefined. */
 export function clang(): string | undefined {
+  if (Bun.which('ld.lld') === null && Bun.which(`ld.lld-${CLANG_MAJOR}`) === null) return undefined
   for (const name of [`clang-${CLANG_MAJOR}`, 'clang']) {
     const bin = Bun.which(name)
     if (bin === null) continue
