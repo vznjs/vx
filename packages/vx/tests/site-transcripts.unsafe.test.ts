@@ -698,7 +698,7 @@ describe("the CLI reference's samples", () => {
       ['vite', 'mkdir -p dist && cp src/index.ts dist/index.js'],
       ['vitest', 'true'],
       ['oxlint', 'true'],
-    ])
+    ] as const)
       await writeFile(path.join(dir, 'node_modules/.bin', bin), `#!/bin/sh\n${body}\n`, {
         mode: 0o755,
       })
