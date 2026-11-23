@@ -8,7 +8,7 @@ re-exported from `@vzn/vx`.
 
 ## File layout
 
-```
+```text
 <workspaceRoot>/
 ├── vx.config.ts                 (optional: the root project, named `//`)
 ├── .vx/
@@ -470,9 +470,11 @@ export default defineProject({
   never failed, and so is everything that depends on it. The run stays
   green and says why, once and on the task's row:
 
-  ```
-  [vx] skipped on linux-x64, with what depends on them: app#ios:build needs darwin-arm64 or darwin-x64
-              skipped —              —       —     —      —       —       0 —              app#ios:build • needs darwin-arm64 or darwin-x64, this is linux-x64
+  ```ansi
+  [1m[38;2;234;179;8m[vx][0m[2m skipped on linux-x64, with what depends on them: app#ios:build needs darwin-arm64 or darwin-x64[0m
+
+  [4m[58;2;110;118;129m  [1m[38;2;167;139;250mTasks[0m[4m[58;2;110;118;129m     [2mstatus  cache     ±usual    time   cpu    mem outputs  blocks worker         task[0m[4m[58;2;110;118;129m                           [0m
+              [38;2;234;179;8mskipped[0m [2m—[0m              [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2m—[0m              [38;2;147;197;253mapp[0m[2m#[0m[38;2;129;140;248mios:build[0m [2m• needs darwin-arm64 or darwin-x64, this is linux-x64[0m
   ```
 
   A `run()` outcome and telemetry carry it as `otherPlatform: { needs, host }`; a
@@ -3151,19 +3153,19 @@ at its line and column, relative to the current directory (a terminal
 opens it on click), and the lines up to it with a caret under the field
 (`util/config-frame.ts`):
 
-```
-✗ vx lock  lock not written
+```ansi
+[38;2;239;68;68m✗[0m [1mvx lock[0m  lock not written
 
-  packages/b/vx.config.ts:4:15
-  tasks.build.exec has unknown field "comand"
-  allowed: …
+  [1mpackages/app/vx.config.ts:6:15[0m
+  [38;2;203;213;225mtasks.build.exec has unknown field "comand"[0m
+  [2mallowed: command, env, interactive, persistent, platforms, remote, retries, sandbox, timeout, worker[0m
 
-    2 |   tasks: {
-    3 |     build: {
-  > 4 |       exec: { comand: 'mkdir -p dist' },
+    4 |   tasks: {
+    5 |     build: {
+  > 6 |       exec: { comand: 'mkdir -p dist' },
       |               ^
 
-  fix  use command
+  [2mfix[0m  [1muse command[0m
 ```
 
 A value the config imports (`test: testTask`, `...lib()`) is followed to

@@ -1612,8 +1612,8 @@ lock before it opens the cache and releases it with its cache handle — before
 a persistent task's wait, so a dev server never holds it — and the
 second run waits, saying after a second whom it waits for:
 
-```
-[vx] waiting for another vx run (pid 4821) on this workspace to finish…
+```ansi
+[vx] waiting for another vx run (pid 6074) on this workspace to finish…
 ```
 
 The cache itself was always safe (SQLite waits on its lock, artifacts
@@ -1763,7 +1763,7 @@ an empty store; the old one stays in `~/.vx` until removed by hand.
 Each level of `~/.vx` is
 owner-only; vx closes one of yours that others can read (chmod 700), and one others can write, or owned by another user, is not used. Design: [`design/shared-store-2026-10.md`](./design/shared-store-2026-10.md).
 
-```
+```text
 ~/.vx/<id>/cache/                           the shared store
 ├── store.db                                entries, entry_stdout, output_files,
 │                                           entry_inputs, task_durations,
@@ -1798,7 +1798,7 @@ between them stays up to date instead of restoring every output.
 One under a selected task's declared outputs is refused before any task,
 naming the task: the task's output clean would delete it mid-run. Its layout:
 
-```
+```text
 <cacheDir>/                                 (default .vx/cache when one is named)
 ├── .gitignore                              `*` — written when the dir is created, or into an
 │                                           existing dir that lacks one, so the cache is

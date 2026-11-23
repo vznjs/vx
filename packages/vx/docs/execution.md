@@ -7,7 +7,7 @@ terminal and a task succeeding or failing. Read it alongside
 
 ## End-to-end timeline
 
-```
+```text
  ┌─ CLI dispatch (src/bin.ts → src/cli/index.ts → src/cli/run.ts)
  │    1. bin.ts spawns; forwards process.argv to cli.run().
  │    2. cli/index.ts dispatches by subcommand (run / watch / pipeline / cache /
