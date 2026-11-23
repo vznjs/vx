@@ -29,7 +29,7 @@ tells you:
 
 ```sh frame="terminal"
 $ cat packages/app/package.json
-{"name":"app","scripts":{"prebuild":"rimraf dist","build":"tsc","postbuild":"node scripts/copy.js"}}
+{"name":"app","scripts":{"prebuild":"rimraf dist","build":"vite build","postbuild":"node scripts/copy.js"}}
 
 $ bunx @vzn/vx-migrate --dry
 

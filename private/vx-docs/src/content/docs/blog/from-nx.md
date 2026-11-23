@@ -89,7 +89,7 @@ export default {
 ## Executors become commands, at your pace
 
 ```jsonc
-{ "build": { "executor": "@nx/js:tsc", "options": { "main": "src/index.ts", "tsConfig": "tsconfig.lib.json" } } }
+{ "build": { "executor": "@nx/vite:build", "options": { "outputPath": "dist", "configFile": "vite.config.ts" } } }
 ```
 
 Each becomes an `nx-exec` line that runs the executor through Nx's
@@ -100,8 +100,8 @@ as the real command when you want Nx gone:
 
 ```ts
 build: {
-  exec: { command: 'tsc -b tsconfig.lib.json' },
-  inputs: { files: ['src/**', 'tsconfig.lib.json'] }, outputs: { files: ['dist/**', '*.tsbuildinfo'] }, cache: true,
+  exec: { command: 'vite build' },
+  inputs: { files: ['src/**', 'vite.config.ts'] }, outputs: { files: ['dist/**'] }, cache: true,
 }
 ```
 

@@ -15,7 +15,7 @@ special config key. Here is what `bunx @vzn/vx-migrate` writes from two
 
 ```sh frame="terminal"
 $ cat packages/ui/package.json
-{"name":"ui","scripts":{"build":"tsc -b","test":"vitest run"}}
+{"name":"ui","scripts":{"build":"vite build","test":"vitest run"}}
 
 $ bunx @vzn/vx-migrate
   from      package.json scripts
@@ -27,11 +27,11 @@ import type { ProjectConfig } from '@vzn/vx/config'
 
 export default {
   tasks: {
-    // TODO(vx-migrate): cache: add `inputs: { files: ['**'] }, outputs: { files: ['dist/**', 'tsconfig.tsbuildinfo'] }, cache: true` with this package's real outputs, and narrow the inputs to what it reads — …
+    // TODO(vx-migrate): cache: add `inputs: { files: ['**'] }, outputs: { files: ['dist/**'] }, cache: true` with this package's real outputs, and narrow the inputs to what it reads — …
     build: {
-      // inputs: { files: ['**'] }, outputs: { files: ['dist/**', 'tsconfig.tsbuildinfo'] }, cache: true,
+      // inputs: { files: ['**'] }, outputs: { files: ['dist/**'] }, cache: true,
       exec: {
-        command: 'tsc -b',
+        command: 'vite build',
       },
       dependsOn: ['^build'],
     },

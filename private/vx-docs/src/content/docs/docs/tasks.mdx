@@ -19,12 +19,12 @@ export default defineProject({
       inputs: { files: ['schema.graphql'] }, outputs: { files: ['src/gen/**'] }, cache: true,
     },
     build: {
-      description: 'compile TypeScript to dist/',
+      description: 'bundle the app into dist/',
       dependsOn: ['codegen', '^build'],
-      exec: { command: 'tsc -b' },
+      exec: { command: 'vite build' },
       // codegen's output reaches this key through codegen's own key; a key
       // that read it could not be known until codegen ran, so vx refuses it.
-      inputs: { files: ['src/**', '!src/gen/**'] }, outputs: { files: ['dist/**', '*.tsbuildinfo'] }, cache: true,
+      inputs: { files: ['src/**', '!src/gen/**'] }, outputs: { files: ['dist/**'] }, cache: true,
     },
     e2e: {
       dependsOn: ['build', 'api#build'],
