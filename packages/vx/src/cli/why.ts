@@ -5,6 +5,7 @@
 // moved input file, no re-hash. Configs are evaluated only when a moved
 // upstream is a group: it records no run, so the graph names what it gathers.
 
+import type { Database } from 'bun:sqlite'
 import { indexDb, indexError, Cache } from '../cache/index.js'
 import { ambiguousTask, anchoredSpecError, flagHint, formatValue, seeHelp } from './help.js'
 import { buildTaskGraph, isDefaultBuild, isGroupTask } from '../graph/index.js'
@@ -24,7 +25,13 @@ import {
 } from '../history/index.js'
 import { MASKED, nearMatches, printable, refusal, splitTaskId, UserError } from '../util/index.js'
 import * as ui from '../ui/index.js'
-import type { InputWriter, RootCause } from '../history/index.js'
+import type {
+  CacheKeyDiff,
+  CacheKeyExplanation,
+  InputWriter,
+  RootCause,
+  WhyDidThisRerun,
+} from '../history/index.js'
 import type { Style } from '../ui/index.js'
 import { runRules } from '../settings.js'
 import { buildPackageGraph, findWorkspaceRoot } from '../workspace/index.js'
@@ -298,42 +305,11 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
       // The cwd project's own: a bare `vx run` there skips its default build.
       (id) => declares(at, id, true),
     )
-    let runId: string | null
-    if (parsed.runId !== undefined) {
-      runId = resolveRunId(db, parsed.runId, 'vx why')
-      // An unknown id read as a known run missing the task.
-      if (runId === null) {
-        throw new UserError(
-          `vx why: no recorded run ${parsed.runId} (vx last --list shows recent runs)`,
-          'VX_E_NO_HISTORY',
-        )
-      }
-    } else runId = latestRunId(db, taskId)
-
+    const runId = askedRunId(db, parsed.runId, taskId)
     if (runId === null) {
       // Runs exist (resolveTarget passed) but predate run ids — fall back to
       // the persisted entry metadata so the verb still says something useful.
-      const explanation = explainCacheKey(db, taskId)
-      if (parsed.format === 'json') {
-        ui.data('out', `${JSON.stringify({ taskId, why: null, diff: null, explanation })}\n`)
-      } else {
-        ui.print(
-          'out',
-          ui.section(
-            'Why',
-            taskId,
-            ui.text('recorded runs carry no run id: the latest cache entry instead'),
-            ui.fields(
-              explanation.latestEntry !== null
-                ? [
-                    ['key', explanation.latestEntry.hash],
-                    ['command', ui.cmd(explanation.latestEntry.command)],
-                  ]
-                : [['key', 'no cache entry either']],
-            ),
-          ),
-        )
-      }
+      printLatestEntry(explainCacheKey(db, taskId), taskId, parsed.format)
       return 0
     }
 
@@ -362,149 +338,13 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
       return 0
     }
 
-    const t = why.thisRun!
-    const head: ui.FieldRow[] = [
-      ['run', runId],
-      ['this run', runFacts(t)],
-    ]
-    if (why.previousRun == null && t.hash === '') {
-      // Only keyed runs are compared: a persistent task's tenth run read
-      // as its first, and the note saying why went unprinted.
-      head.push(['previous', 'none with a cache key'], ['verdict', why.note])
-    } else if (why.previousRun == null) {
-      head.push(['previous', 'none: first recorded run of this task'])
-    } else {
-      // The key moved and the diff says by what: the verdict names it, so
-      // an env-only change reads as one line, not "inputs differ" above a
-      // table to scan.
-      // The config component is kind and name `config`: it read "config config".
-      const moved = diff.entries.map((e) =>
-        e.name === e.kind ? e.kind : `${e.kind} ${printable(e.name)}`,
-      )
-      head.push(
-        ['previous', runFacts(why.previousRun)],
-        [
-          'verdict',
-          why.hashChanged === true && moved.length > 0
-            ? ui.tone(
-                'warn',
-                `cache key changed: ${moved.slice(0, 3).join(', ')}${moved.length > 3 ? ` and ${moved.length - 3} more` : ''}`,
-              )
-            : why.note,
-        ],
-      )
-    }
-    // The rows below may be against an older run than `previous`: the
-    // last that saved an entry. The note names it.
-    if ((diff.entries.length === 0 && why.hashChanged === true) || diffsOlderRun(diff))
-      head.push(['detail', diff.note])
-    const blocks: ui.Block[] = [ui.section('Why', taskId, ui.fields(head))]
-
+    const blocks: ui.Block[] = [ui.section('Why', taskId, ui.fields(whyRows(runId, why, diff)))]
     if (diff.entries.length > 0) {
-      blocks.push(
-        ui.section(
-          'What changed',
-          `${diff.entries.length} of ${diff.entries.length + diff.unchangedCount}`,
-          ui.table(
-            ['change', 'kind', 'name', 'before → after'],
-            diff.entries.map((e) => [
-              ui.tone(CHANGE_HUE[e.change] ?? 'warn', e.change),
-              e.kind,
-              ui.strong(printable(e.name)),
-              // A secret-named env input shows its name and its change, no hash.
-              e.before === MASKED || e.after === MASKED
-                ? ''
-                : e.change === 'added'
-                  ? `+ ${e.after}`
-                  : e.change === 'removed'
-                    ? `- ${e.before}`
-                    : `${e.before} → ${e.after}`,
-            ]),
-          ),
-        ),
-      )
-      if (roots.length > 0) {
-        const lines: ui.Inline[] = roots.slice(0, ROOTS_SHOWN).map((r) => {
-          const what = r.entries.map((e) =>
-            e.name === e.kind ? e.kind : `${e.kind} ${printable(e.name)}`,
-          )
-          // A 20,000-task chain printed whole is one 389 KB line.
-          const chain = r.chain
-          const ids =
-            chain.length > CHAIN_SHOWN
-              ? [
-                  ...chain.slice(0, 2).map((id) => ui.id(id)),
-                  ui.dim(`${chain.length - 5} more`),
-                  ...chain.slice(-3).map((id) => ui.id(id)),
-                ]
-              : chain.map((id) => ui.id(id))
-          return [
-            ...ids.flatMap((id, i) => [...(i > 0 ? [ui.dim(' \u2190 ')] : []), id]),
-            ui.dim(' \u2190 '),
-            ui.strong(
-              `${what.slice(0, 3).join(', ')}${what.length > 3 ? ` and ${what.length - 3} more` : ''}`,
-            ),
-          ]
-        })
-        if (roots.length > ROOTS_SHOWN) lines.push(`and ${roots.length - ROOTS_SHOWN} more`)
-        blocks.push(ui.section('Root cause', ui.text(...lines)))
-      }
-      if (writers.length > 0) {
-        blocks.push(
-          ui.section(
-            'Changed during a run',
-            ui.table(
-              ['file', 'written while'],
-              writers.map((w) => [ui.path(printable(w.file)), w.writers.join(', ')]),
-            ),
-          ),
-        )
-      }
-      const rootKinds = roots.flatMap((r) => r.entries.map((e) => e.kind))
-      // An upstream row names the task to ask next: the command, not a
-      // placeholder to fill in from the row above. A group records no run,
-      // so `vx why` on one refuses: its members are asked instead.
-      const upstream = upstreamTodo(
-        diff.entries.filter((e) => e.kind === 'upstream'),
-        unrecorded,
-      )
-      const kinds = [...new Set([...diff.entries.map((e) => e.kind), ...rootKinds])].filter(
-        (k) =>
-          k in WHAT_TO_DO && !(k === 'upstream' && (roots.length > 0 || upstream.length === 0)),
-      )
-      if (kinds.length > 0) {
-        // The task whose config moved: this one, or a root cause's, never
-        // the asked task for an upstream's change.
-        const configOf = [
-          ...new Set([
-            ...(diff.entries.some((e) => e.kind === 'config') ? [taskId] : []),
-            ...roots.filter((r) => r.entries.some((e) => e.kind === 'config')).map((r) => r.task),
-          ]),
-        ]
-        const todo: ui.FieldRow[] = []
-        for (const k of kinds) {
-          if (k === 'upstream') {
-            todo.push([k, ...upstream])
-            continue
-          }
-          todo.push([
-            k,
-            k === 'config'
-              ? WHAT_TO_DO[k]!.replace(
-                  '`vx show <that task>`',
-                  `${configOf
-                    .slice(0, 3)
-                    .map((id) => `\`vx show ${id}\``)
-                    .join(', ')}${configOf.length > 3 ? ` (and ${configOf.length - 3} more)` : ''}`,
-                )
-              : WHAT_TO_DO[k]!,
-          ])
-        }
-        // A task re-writing a file a key reads moves that key every run:
-        // the miss is right, and only moving the write ends it.
-        if (writers.length > 0) todo.push(['written', WRITTEN_TODO])
-        blocks.push(ui.section('What to do', ui.fields(todo)))
-      }
+      blocks.push(whatChangedSection(diff))
+      if (roots.length > 0) blocks.push(rootCauseSection(roots))
+      if (writers.length > 0) blocks.push(writersSection(writers))
+      const todo = whatToDoRows(taskId, diff, roots, writers, unrecorded)
+      if (todo.length > 0) blocks.push(ui.section('What to do', ui.fields(todo)))
     }
     ui.print('out', ...blocks)
     return 0
@@ -513,6 +353,204 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
   } finally {
     cache.close()
   }
+}
+
+/** The run `--run` names, else the latest that ran `taskId`; null when runs predate run ids. */
+function askedRunId(db: Database, asked: string | undefined, taskId: string): string | null {
+  if (asked === undefined) return latestRunId(db, taskId)
+  const runId = resolveRunId(db, asked, 'vx why')
+  // An unknown id read as a known run missing the task.
+  if (runId === null) {
+    throw new UserError(
+      `vx why: no recorded run ${asked} (vx last --list shows recent runs)`,
+      'VX_E_NO_HISTORY',
+    )
+  }
+  return runId
+}
+
+/** The answer when recorded runs carry no run id: the latest cache entry. */
+function printLatestEntry(
+  explanation: CacheKeyExplanation,
+  taskId: string,
+  format: WhyArgs['format'],
+): void {
+  if (format === 'json') {
+    ui.data('out', `${JSON.stringify({ taskId, why: null, diff: null, explanation })}\n`)
+    return
+  }
+  ui.print(
+    'out',
+    ui.section(
+      'Why',
+      taskId,
+      ui.text('recorded runs carry no run id: the latest cache entry instead'),
+      ui.fields(
+        explanation.latestEntry !== null
+          ? [
+              ['key', explanation.latestEntry.hash],
+              ['command', ui.cmd(explanation.latestEntry.command)],
+            ]
+          : [['key', 'no cache entry either']],
+      ),
+    ),
+  )
+}
+
+/** A key component as a reader names it; the config component is kind and name `config`, not "config config". */
+function componentName(e: { kind: string; name: string }): string {
+  return e.name === e.kind ? e.kind : `${e.kind} ${printable(e.name)}`
+}
+
+/** The first three, then how many more. */
+function firstThree(items: readonly string[]): string {
+  return `${items.slice(0, 3).join(', ')}${items.length > 3 ? ` and ${items.length - 3} more` : ''}`
+}
+
+/** The "Why" section's rows: this run, the one it is compared with, the verdict. */
+function whyRows(runId: string, why: WhyDidThisRerun, diff: CacheKeyDiff): ui.FieldRow[] {
+  const t = why.thisRun!
+  const rows: ui.FieldRow[] = [
+    ['run', runId],
+    ['this run', runFacts(t)],
+  ]
+  if (why.previousRun == null && t.hash === '') {
+    // Only keyed runs are compared: a persistent task's tenth run read
+    // as its first, and the note saying why went unprinted.
+    rows.push(['previous', 'none with a cache key'], ['verdict', why.note])
+  } else if (why.previousRun == null) {
+    rows.push(['previous', 'none: first recorded run of this task'])
+  } else {
+    // The key moved and the diff says by what: the verdict names it, so
+    // an env-only change reads as one line, not "inputs differ" above a
+    // table to scan.
+    const moved = diff.entries.map(componentName)
+    rows.push(
+      ['previous', runFacts(why.previousRun)],
+      [
+        'verdict',
+        why.hashChanged === true && moved.length > 0
+          ? ui.tone('warn', `cache key changed: ${firstThree(moved)}`)
+          : why.note,
+      ],
+    )
+  }
+  // The rows below may be against an older run than `previous`: the
+  // last that saved an entry. The note names it.
+  if ((diff.entries.length === 0 && why.hashChanged === true) || diffsOlderRun(diff))
+    rows.push(['detail', diff.note])
+  return rows
+}
+
+/** Each moved key component, before and after. */
+function whatChangedSection(diff: CacheKeyDiff): ui.Block {
+  return ui.section(
+    'What changed',
+    `${diff.entries.length} of ${diff.entries.length + diff.unchangedCount}`,
+    ui.table(
+      ['change', 'kind', 'name', 'before → after'],
+      diff.entries.map((e) => [
+        ui.tone(CHANGE_HUE[e.change] ?? 'warn', e.change),
+        e.kind,
+        ui.strong(printable(e.name)),
+        // A secret-named env input shows its name and its change, no hash.
+        e.before === MASKED || e.after === MASKED
+          ? ''
+          : e.change === 'added'
+            ? `+ ${e.after}`
+            : e.change === 'removed'
+              ? `- ${e.before}`
+              : `${e.before} → ${e.after}`,
+      ]),
+    ),
+  )
+}
+
+/** Each root cause as its chain of tasks back to the inputs that moved. */
+function rootCauseSection(roots: readonly RootCause[]): ui.Block {
+  const lines: ui.Inline[] = roots.slice(0, ROOTS_SHOWN).map((r) => {
+    // A 20,000-task chain printed whole is one 389 KB line.
+    const chain = r.chain
+    const ids =
+      chain.length > CHAIN_SHOWN
+        ? [
+            ...chain.slice(0, 2).map((id) => ui.id(id)),
+            ui.dim(`${chain.length - 5} more`),
+            ...chain.slice(-3).map((id) => ui.id(id)),
+          ]
+        : chain.map((id) => ui.id(id))
+    return [
+      ...ids.flatMap((id, i) => [...(i > 0 ? [ui.dim(' ← ')] : []), id]),
+      ui.dim(' ← '),
+      ui.strong(firstThree(r.entries.map(componentName))),
+    ]
+  })
+  if (roots.length > ROOTS_SHOWN) lines.push(`and ${roots.length - ROOTS_SHOWN} more`)
+  return ui.section('Root cause', ui.text(...lines))
+}
+
+/** Inputs a task of the run wrote while it ran. */
+function writersSection(writers: readonly InputWriter[]): ui.Block {
+  return ui.section(
+    'Changed during a run',
+    ui.table(
+      ['file', 'written while'],
+      writers.map((w) => [ui.path(printable(w.file)), w.writers.join(', ')]),
+    ),
+  )
+}
+
+/** One row of advice per kind of moved component; none when nothing applies. */
+function whatToDoRows(
+  taskId: string,
+  diff: CacheKeyDiff,
+  roots: readonly RootCause[],
+  writers: readonly InputWriter[],
+  unrecorded: readonly DiffEntry[],
+): ui.FieldRow[] {
+  const rootKinds = roots.flatMap((r) => r.entries.map((e) => e.kind))
+  // An upstream row names the task to ask next: the command, not a
+  // placeholder to fill in from the row above. A group records no run,
+  // so `vx why` on one refuses: its members are asked instead.
+  const upstream = upstreamTodo(
+    diff.entries.filter((e) => e.kind === 'upstream'),
+    unrecorded,
+  )
+  const kinds = [...new Set([...diff.entries.map((e) => e.kind), ...rootKinds])].filter(
+    (k) => k in WHAT_TO_DO && !(k === 'upstream' && (roots.length > 0 || upstream.length === 0)),
+  )
+  if (kinds.length === 0) return []
+  // The task whose config moved: this one, or a root cause's, never
+  // the asked task for an upstream's change.
+  const configOf = [
+    ...new Set([
+      ...(diff.entries.some((e) => e.kind === 'config') ? [taskId] : []),
+      ...roots.filter((r) => r.entries.some((e) => e.kind === 'config')).map((r) => r.task),
+    ]),
+  ]
+  const todo: ui.FieldRow[] = []
+  for (const k of kinds) {
+    if (k === 'upstream') {
+      todo.push([k, ...upstream])
+      continue
+    }
+    todo.push([
+      k,
+      k === 'config'
+        ? WHAT_TO_DO[k]!.replace(
+            '`vx show <that task>`',
+            `${configOf
+              .slice(0, 3)
+              .map((id) => `\`vx show ${id}\``)
+              .join(', ')}${configOf.length > 3 ? ` (and ${configOf.length - 3} more)` : ''}`,
+          )
+        : WHAT_TO_DO[k]!,
+    ])
+  }
+  // A task re-writing a file a key reads moves that key every run:
+  // the miss is right, and only moving the write ends it.
+  if (writers.length > 0) todo.push(['written', WRITTEN_TODO])
+  return todo
 }
 
 const ROOTS_SHOWN = 5
