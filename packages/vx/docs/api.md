@@ -3492,7 +3492,16 @@ export interface Block {
   readonly lines: (colors: ColorSupport) => string[]
   readonly head?: (colors: ColorSupport) => string
 }
-export type Column = string | { readonly title: string; readonly align: 'right' }
+export type Column =
+  | string
+  | {
+      readonly title: string
+      readonly align?: 'right'
+      /** On a terminal too narrow for the row, the column goes: 1 first, then 2… */
+      readonly drop?: number
+      /** The last column: on a terminal too narrow for it beside its row, under it. */
+      readonly under?: boolean
+    }
 export type FieldRow = readonly [label: string, ...values: Inline[]] | null
 export type Inline = string | Token | readonly Inline[]
 export interface NoticeParts {

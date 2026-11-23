@@ -718,7 +718,16 @@ export interface ColorSupport {
   readonly columns?: number | undefined
 }
 == type Column (src/ui/components.ts)
-export type Column = string | { readonly title: string; readonly align: 'right' }
+export type Column =
+  | string
+  | {
+      readonly title: string
+      readonly align?: 'right'
+      /** On a terminal too narrow for the row, the column goes: 1 first, then 2… */
+      readonly drop?: number
+      /** The last column: on a terminal too narrow for it beside its row, under it. */
+      readonly under?: boolean
+    }
 == type CommandContext (src/orchestrator/plugin.ts)
 export interface CommandContext extends BaseContext {
   readonly concurrency: number
