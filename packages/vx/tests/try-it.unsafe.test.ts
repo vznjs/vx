@@ -406,7 +406,9 @@ describe('the migration posts show the file vx init writes', () => {
   const firstTs = (name: string): string =>
     /```ts\n([\s\S]*?)```/.exec(readFileSync(path.join(blog, name), 'utf8'))?.[1] ?? ''
   it('from-turborepo', () => {
-    expect(firstTs('from-turborepo.md')).toBe(tsFence('Check the mapping first', 'WorkspaceConfig', 0))
+    expect(firstTs('from-turborepo.md')).toBe(
+      tsFence('Check the mapping first', 'WorkspaceConfig', 0),
+    )
   })
 
   it('from-nx', () => {
