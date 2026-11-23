@@ -1,26 +1,74 @@
 ---
 title: Migrate from Turborepo, Nx or Vite Task
-description: One command writes a vx.config.ts for every package from the tasks turbo.json or Nx already declares.
+description: One command turns turbo.json, an Nx graph or package.json scripts into a vx.config.ts for every package.
 ---
 
-import { Steps, CardGrid, LinkCard } from '@astrojs/starlight/components'
+import { Aside, FileTree, Steps } from '@astrojs/starlight/components'
+import { Levels, Deeper, Concept, Quiz, Compare, Takeaway, NextStep } from '../../../components/learn'
 
-Moving from Turborepo or Nx? `vx init` writes a `vx.config.ts` for
-every package from the tasks you already have.
+Bring your tasks over with one command. vx reads what you already have and writes a `vx.config.ts` for each package.
 
 ```sh
 bunx @vzn/vx init --native
 ```
 
-Starting a new workspace instead? Use the [Quickstart](../../quickstart/).
+<Levels />
 
----
+<Compare leftTitle="Before" rightTitle="After">
+<div slot="left">
+
+```jsonc title="turbo.json" wrap
+"build": {
+  "dependsOn": ["^build"],
+  "inputs": ["src/**"],
+  "outputs": ["dist/**"]
+}
+```
+
+```jsonc title="packages/lib/package.json" wrap
+"build": "mkdir -p dist && cp src/*.js dist/"
+```
+
+</div>
+<div slot="right">
+
+```ts title="packages/lib/vx.config.ts" wrap
+build: {
+  exec: {
+    command: 'mkdir -p dist && cp src/*.js dist/',
+  },
+  dependsOn: ['^build'],
+  inputs: { files: ['src/**', 'package.json'] },
+  outputs: { files: ['dist/**'] },
+  cache: true,
+},
+```
+
+</div>
+</Compare>
+
+Two files became one. The command, the order and the files are the same. vx now owns the task.
+
+<Concept term="Migration">
+  vx-migrate translates your old config into vx config, field by field. What happens when a task
+  runs is vx's own behaviour, not the old tool's.
+</Concept>
+
+Find your starting point:
+
+| You have | Read |
+| --- | --- |
+| `turbo.json` | [Turborepo](#turborepo) |
+| `nx.json` or `lerna.json` | [Nx](#nx) |
+| `vite-plus` in the root `package.json` | [Vite Task](#vite-task) |
+| only `package.json` scripts | [Scripts only](#scripts-only) |
+| nothing yet | the [Quickstart](../../quickstart/) |
 
 ## The four steps
 
 <Steps>
 
-1. **Write the configs.** Run the command above at the workspace root.
+1. **Write the configs.** Run `bunx @vzn/vx init --native` at the workspace root.
    It never overwrites a file unless you add `--force`.
 2. **Fill the TODOs.** Search for `TODO(vx-migrate)`. Each one marks a
    choice vx could not make for you, such as which files a task reads.
@@ -31,12 +79,35 @@ Starting a new workspace instead? Use the [Quickstart](../../quickstart/).
 
 </Steps>
 
+<Takeaway>move a whole workspace in four steps, and know when the old config can go.</Takeaway>
+
 ## What init does
 
 `vx init` installs `@vzn/vx`, then writes the configs, `.vx/workspace.ts`
 and the lock. Without `--native`, it asks you in the terminal first.
 
----
+<FileTree>
+- .vx/
+  - workspace.ts the plugins: your lockfile, run history
+  - projects.lock every task, as vx reads it on each run
+  - dependencies.lock
+  - .gitignore keeps the cache out of git
+- packages/
+  - app/
+    - **vx.config.ts** one per package
+  - lib/
+    - **vx.config.ts**
+- turbo.json delete it in step 4
+</FileTree>
+
+Commit all of it. Every run reads the lock, so a teammate's checkout runs the same tasks.
+
+<Quiz q="You edited packages/lib/vx.config.ts, then ran vx init --native again. Is your edit lost?">
+  No. init never overwrites a file unless you pass `--force`. Run `vx lock` instead to record your
+  edit.
+</Quiz>
+
+<Takeaway>tell every file init writes apart, and know which ones to commit.</Takeaway>
 
 ## Turborepo
 
@@ -63,12 +134,13 @@ bunx @vzn/vx init --native
   [2mnext    [0m  [1mvx run build --all[0m
 ```
 
-Under `files`, each package got a `vx.config.ts`. Check the `note` lines:
+Under `files`, each package got a `vx.config.ts`. Read the `note` lines:
 a task sees only the environment variables it lists.
 
-Every output is **required**: vx fails a run that writes no file an output
-names, where Turbo cached what was there. A `TODO` or note names each
-output that may match nothing.
+<Aside type="caution">
+  vx checks a task's outputs after it runs. Keep only the outputs each command writes on every
+  run. The second `note` names the ones it could not check yet.
+</Aside>
 
 This is `packages/lib/vx.config.ts`, as written:
 
@@ -115,8 +187,25 @@ first. `vxHistory()` uses past run times to start the slowest work first.
 turbo.json's global keys (`globalDependencies`, `globalEnv`) go onto no
 task. Each task gets a `TODO` instead, so you list what it reads.
 
-<details>
-<summary>turbo.json, key by key</summary>
+<Takeaway>turn a Turborepo workspace into vx configs and read what init tells you.</Takeaway>
+
+<Deeper level="patterns" title="Your Turborepo commands in vx">
+
+| Turborepo                         | vx                                                     |
+| --------------------------------- | ------------------------------------------------------ |
+| `turbo run build`                 | `vx run build --all`                                   |
+| `turbo run build --filter=@app/*` | `vx run build --filter "@app/*"`                       |
+| `turbo run build --affected`      | `vx run build --affected` (`turbo()` takes `TURBO_SCM_BASE`, or GitHub Actions' base, as Turbo does; a `TURBO_SCM_HEAD` other than the checked-out commit is a warning) |
+| `turbo run build --force`, `TURBO_FORCE=true` | `vx run build --force`; `turbo()` reads `TURBO_FORCE` too |
+| `turbo run build --continue=dependencies-successful` | `vx run build`: by default a failure skips only its dependents |
+| `turbo run build` (stops at the first failure) | `vx run build --fail-fast`, which also stops the tasks still running |
+| `TURBO_TOKEN` remote cache        | [`turboCache()`](../../docs/remote-cache/) reads the same variables |
+
+<Takeaway>type the vx command for every Turborepo command you know.</Takeaway>
+
+</Deeper>
+
+<Deeper level="details" title="turbo.json, key by key">
 
 | Turborepo (`turbo.json`)                                    | vx (`vx.config.ts`)                                                      |
 | ----------------------------------------------------------- | ------------------------------------------------------------------------ |
@@ -146,21 +235,7 @@ task. Each task gets a `TODO` instead, so you list what it reads.
 The command itself comes from your `package.json` script, with its
 `pre<name>` / `post<name>` hooks added around it.
 
-</details>
-
-Your Turborepo commands in vx:
-
-| Turborepo                         | vx                                                     |
-| --------------------------------- | ------------------------------------------------------ |
-| `turbo run build`                 | `vx run build --all`                                   |
-| `turbo run build --filter=@app/*` | `vx run build --filter "@app/*"`                       |
-| `turbo run build --affected`      | `vx run build --affected` (`turbo()` takes `TURBO_SCM_BASE`, or GitHub Actions' base, as Turbo does; a `TURBO_SCM_HEAD` other than the checked-out commit is a warning) |
-| `turbo run build --force`, `TURBO_FORCE=true` | `vx run build --force`; `turbo()` reads `TURBO_FORCE` too |
-| `turbo run build --continue=dependencies-successful` | `vx run build`: by default a failure skips only its dependents |
-| `turbo run build` (stops at the first failure) | `vx run build --fail-fast`, which also stops the tasks still running |
-| `TURBO_TOKEN` remote cache        | [`turboCache()`](../../docs/remote-cache/) reads the same variables |
-
----
+</Deeper>
 
 ## Nx
 
@@ -217,6 +292,11 @@ The `note` line says how each Nx target became a task:
 - any other executor runs through `nx-exec` (below);
 - a target with `.env` files runs through `nx-env`.
 
+<Concept term="nx-exec">
+  A small command from `@vzn/vx-migrate` that runs one Nx executor, such as `@nx/jest:jest`, as one
+  shell line.
+</Concept>
+
 An executor target is written as an `nx-exec` line: the executor runs
 as itself through Nx's `runExecutor`. Keep Nx and `@vzn/vx-migrate`
 installed until you rewrite it.
@@ -225,11 +305,36 @@ installed until you rewrite it.
 test: { exec: { command: `nx-exec @nx/jest:jest --project a --target test --options '{"jestConfig":"libs/a/jest.config.ts"}'` } }
 ```
 
-To drop Nx, rewrite each one as the command it wraps: `jest`,
-`vite build`, `vitest run`.
+To drop Nx, rewrite each one as the command it wraps:
 
-<details>
-<summary>Nx, key by key</summary>
+```ts del={1} ins={2}
+test: { exec: { command: `nx-exec @nx/vite:test --project a --target test` } }
+test: { exec: { command: 'vitest run' } }
+```
+
+Generators and Nx Console have no vx equivalent; keep Nx for those.
+Module-boundary tags become `run.rules.dependencies`, checked by
+`vx lock`. Source imports stay your linter's job.
+
+<Takeaway>turn an Nx workspace into vx configs, then drop Nx one executor at a time.</Takeaway>
+
+<Deeper level="patterns" title="Your Nx commands in vx">
+
+| Nx                                   | vx                                                        |
+| ------------------------------------ | --------------------------------------------------------- |
+| `nx build app`                       | `vx run app#build`                                        |
+| `nx run app:build:production`        | `vx run app#build:production`                             |
+| `nx run-many -t build`               | `vx run build --all`                                      |
+| `nx affected -t test`                | `vx run test --affected` (`nx()` takes `NX_BASE` or `defaultBase` as its base) |
+| `nx graph`                           | `vx run build --all --dry --format json` (tasks and their deps), and the [graph explorer](../graph-explorer/) |
+| `nx reset`                           | `vx cache clean` clears it all; `--older-than <age>` trims it; there is no daemon |
+| Nx Cloud cache                       | [`nxCache()`](../../docs/remote-cache/) for a self-hosted Nx cache |
+
+<Takeaway>type the vx command for every Nx command you know.</Takeaway>
+
+</Deeper>
+
+<Deeper level="details" title="Nx, key by key">
 
 | Nx                                   | vx                                                        |
 | ------------------------------------ | --------------------------------------------------------- |
@@ -242,21 +347,8 @@ To drop Nx, rewrite each one as the command it wraps: `jest`,
 | `{ "runtime": "<cmd>" }`             | `inputs.workspaceRuntime`: it runs at the workspace root, as Nx's does |
 | `{ "json": "<file>", "fields": … }`  | the whole file in `files` / `workspaceFiles`: a superset of the fields |
 | `outputs`                            | `outputs.files` (or `workspaceFiles` for `dist/<project>`) |
-| `nx build app`                       | `vx run app#build`                                        |
-| `nx run app:build:production`        | `vx run app#build:production`                             |
-| `nx affected -t test`                | `vx run test --affected` (`nx()` takes `NX_BASE` or `defaultBase` as its base) |
-| `nx graph`                           | `vx run build --all --dry --format json` (tasks and their deps), and the [graph explorer](../graph-explorer/) |
-| `nx reset`                           | `vx cache clean` clears it all; `--older-than <age>` trims it; there is no daemon |
-| Nx Cloud cache                       | [`nxCache()`](../../docs/remote-cache/) for a self-hosted Nx cache |
 
-</details>
-
-Generators and Nx Console have no vx equivalent; keep Nx for those.
-
-Module-boundary tags become `run.rules.dependencies`, checked by
-`vx lock`. Source imports stay your linter's job.
-
----
+</Deeper>
 
 ## Vite Task
 
@@ -272,10 +364,73 @@ bunx @vzn/vx-migrate --from vite-task
 Vite Task traces the files a task touches; vx needs them listed.
 
 A task with no `cache.input` and `cache.output` runs uncached until you
-fill its `TODO(vx-migrate)`. The `@vzn/vx-migrate` README has the full
-mapping.
+fill its `TODO(vx-migrate)`. The [`@vzn/vx-migrate` page](../../plugins/vx-migrate/) has the full mapping.
 
----
+<Takeaway>bring every `run.tasks` entry and script over from Vite Task.</Takeaway>
+
+## Scripts only
+
+No Turborepo or Nx? Each package's `package.json` scripts become its tasks. `--dry` shows the plan and writes nothing:
+
+```sh
+bunx @vzn/vx-migrate --dry
+```
+
+```ansi
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mvx-migrate 0.0.659[0m[4m[58;2;110;118;129m[0m
+  [2mfrom    [0m  [38;2;203;213;225mpackage.json scripts[0m
+  [2mdry run [0m  [38;2;203;213;225mnothing written[0m
+  [2minstall [0m  [38;2;203;213;225m@vzn/vx @vzn/vx-lockfile[0m
+  [2mtasks   [0m  [38;2;34;197;94m5 clean[0m[2m · [0m[38;2;234;179;8m2 todo[0m
+  [2mtodo    [0m  [38;2;203;213;225m@demo/ui#build, @demo/web#build:[0m
+            [38;2;203;213;225m  cache: add [0m[1m`inputs: { files: ['**'] }, outputs: { files: ['dist/**'] }, cache: true`[0m[38;2;203;213;225m with this package's real outputs, and narrow the inputs to what it reads — without it the task always runs, and so does every task that depends on it; a block with EMPTY outputs would be a cached no-op, not an uncached task[0m
+  [2mfiles   [0m  [38;2;203;213;225mpackages/ui/vx.config.ts[0m
+            [38;2;203;213;225mpackages/web/vx.config.ts[0m
+            [38;2;203;213;225m.vx/workspace.ts[0m
+            [38;2;203;213;225m.vx/.gitignore[0m
+  [2mnote    [0m  [38;2;203;213;225meach script became a task with its command verbatim; caching needs declared inputs and outputs, so no task got [0m[1m`cache: true`[0m
+
+  [2mnext    [0m  [1mvx run build --all[0m
+```
+
+Each script became a task with its command as is. `dev` runs `vite`, so it became a persistent task (a dev server). Read the `todo` row: both `build` tasks wait for you.
+
+<Takeaway>see every script as a task before one file is written.</Takeaway>
+
+## Fill the TODOs
+
+A `TODO(vx-migrate)` sits above each task vx could not finish. Replace it with what the task reads and writes:
+
+```ts title="packages/web/vx.config.ts" del={1,3} ins={4-6} wrap
+// TODO(vx-migrate): cache: add `inputs: { files: ['**'] }, outputs: { files: ['dist/**'] }, cache: true` …
+build: {
+  // inputs: { files: ['**'] }, outputs: { files: ['dist/**'] }, cache: true,
+  inputs: { files: ['src/**', 'index.html', 'vite.config.ts'] },
+  outputs: { files: ['dist/**'] },
+  cache: true,
+  exec: {
+    command: 'vite build',
+  },
+  dependsOn: ['^build'],
+},
+```
+
+Then record the change and build twice:
+
+```sh
+vx lock
+vx run build --all
+vx run build --all
+```
+
+The second run restores `dist/` and runs nothing.
+
+<Quiz q="Why does vx not guess which files vite build reads?">
+  A guess can miss a file. Then an edit to it would not change the key, and vx would replay an old
+  build. vx keys only what you list, so you decide.
+</Quiz>
+
+<Takeaway>turn any migrated task into a cached one.</Takeaway>
 
 ## Check the mapping first
 
@@ -290,8 +445,9 @@ bunx @vzn/vx init --keep
 It is a check, not a way to keep running the old config. Then
 `bunx @vzn/vx-migrate` writes the configs and drops the plugin.
 
-<details>
-<summary>What it writes in a Turborepo workspace</summary>
+<Takeaway>compare vx's task list with your old one before you switch.</Takeaway>
+
+<Deeper level="patterns" title="What it writes in a Turborepo workspace">
 
 ```ts
 import type { WorkspaceConfig } from '@vzn/vx/config'
@@ -325,10 +481,9 @@ Where the workspace uses a Turbo remote cache, the file declares
 
 `turboCache(): .github/workflows/ci.yml sets TURBO_TOKEN, so vx shares that remote cache (token: the variable, else the OS keychain).`
 
-</details>
+</Deeper>
 
-<details>
-<summary>What it writes in an Nx workspace</summary>
+<Deeper level="patterns" title="What it writes in an Nx workspace">
 
 ```ts
 import type { WorkspaceConfig } from '@vzn/vx/config'
@@ -357,9 +512,7 @@ export default {
   [2mnext    [0m  [1mvx run build --all[0m
 ```
 
-</details>
-
----
+</Deeper>
 
 ## Common problems
 
@@ -368,9 +521,35 @@ export default {
 - **A variable is missing in the command.** List it in `exec.env.passThrough`. See [Environment variables](../../docs/environment-variables/).
 - **`vx run build` ran one package.** Without `--all`, vx runs the package you are in.
 
-## Next
+<Takeaway>fix the four surprises a fresh migration can bring.</Takeaway>
 
-<CardGrid>
-  <LinkCard title="Parity map" description="Every Turborepo and Nx behaviour, spelled in vx and pinned by a test." href="../../parity/" />
-  <LinkCard title="Remote cache" description="Keep your Turborepo or Nx remote cache." href="../../docs/remote-cache/" />
-</CardGrid>
+<Deeper level="details" title="Every option">
+
+`bunx @vzn/vx-migrate` takes these flags. `vx init` passes `--dry`, `--format`, `--force`, `--mjs`, `--native` and `--keep` through to it.
+
+| Flag | What it does | Default |
+| --- | --- | --- |
+| `--native` | writes a `vx.config.ts` per package | asked in a terminal; native without one |
+| `--keep` | writes only `.vx/workspace.ts`, declaring `turbo()` or `nx()` | off |
+| `--from <source>` | picks `turbo`, `nx`, `vite-task` or `scripts` when several are there | found in that order, else scripts |
+| `--dry` | prints the files and the report; writes and installs nothing | off |
+| `--format json` | with `--dry`, prints the plan as one JSON document | `pretty` |
+| `--force` | overwrites a `vx.config.*` already there | off |
+| `--mjs` | writes `vx.config.mjs` with no type import | `.ts` |
+| `--no-install` | installs nothing and skips `vx lock` | off |
+| `--help`, `-h` | prints the usage | |
+
+The `--keep` plugins take these options:
+
+| Option | What it does | Default |
+| --- | --- | --- |
+| `turbo({ root })` | the directory holding `turbo.json` | the workspace root |
+| `nx({ root })` | the directory holding `nx.json` | the workspace root |
+| `nx({ graph })` | a graph file from `nx graph --file`, read instead of running `nx` | none |
+| `nx({ executors })` | your own executors as commands, by executor name | none: they run through `nx-exec` |
+
+`turboCache()` and `nxCache()` are on the [Remote cache](../../docs/remote-cache/) page.
+
+</Deeper>
+
+<NextStep href="../caching/" title="Caching">See why a task you filled in is skipped on the second run.</NextStep>
