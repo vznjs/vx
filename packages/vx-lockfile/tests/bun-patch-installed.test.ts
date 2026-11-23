@@ -353,3 +353,60 @@ it('refuses a real install behind a patch added or removed, until the install th
     await registry.stop(true)
   }
 }, 60_000)
+
+// A `file:` tarball bun.lock patches, from a real offline install under
+// either linker: a patch edit before the install built against the old
+// copy under the new patch's key, replayed once the install applied it.
+it('refuses a real patched file: tarball install behind a patch edit, under either linker', async () => {
+  const TGZ_PATCH = (to: string) =>
+    `diff --git a/v.txt b/v.txt\n--- a/v.txt\n+++ b/v.txt\n@@ -1 +1 @@\n-x\n+${to}\n`
+  const file = 'patches/x@..%2F..%2Fvendor%2Fx.tgz.patch'
+  for (const linker of ['isolated', 'hoisted']) {
+    const ws = path.join(root, `tgz-${linker}`)
+    await mkdir(path.join(ws, 'vendor', 't', 'package'), { recursive: true })
+    await mkdir(path.join(ws, 'packages', 'a'), { recursive: true })
+    await mkdir(path.join(ws, 'patches'), { recursive: true })
+    await writeFile(
+      path.join(ws, 'vendor/t/package/package.json'),
+      '{ "name": "x", "version": "1.0.0" }',
+    )
+    await writeFile(path.join(ws, 'vendor/t/package/v.txt'), 'x\n')
+    const tar = Bun.spawnSync(['tar', 'czf', 'vendor/x.tgz', '-C', 'vendor/t', 'package'], {
+      cwd: ws,
+    })
+    expect(tar.exitCode).toBe(0)
+    await writeFile(
+      path.join(ws, 'package.json'),
+      JSON.stringify({
+        name: 'root',
+        private: true,
+        workspaces: ['packages/*'],
+        patchedDependencies: { 'x@../../vendor/x.tgz': file },
+      }),
+    )
+    await writeFile(
+      path.join(ws, 'packages/a/package.json'),
+      '{ "name": "a", "dependencies": { "x": "file:../../vendor/x.tgz" } }',
+    )
+    await writeFile(path.join(ws, file), TGZ_PATCH('one'))
+    await writeFile(
+      path.join(ws, 'bunfig.toml'),
+      `[install]\nlinker = "${linker}"\ncache = "${path.join(ws, '.cache')}"\n`,
+    )
+    await install(ws)
+    const saved = root
+    root = ws
+    try {
+      expect({ linker, result: (await run()).result }).toEqual({ linker, result: 'ok' })
+      await writeFile(path.join(ws, file), TGZ_PATCH('two'))
+      expect({ linker, result: (await run()).result }).toEqual({
+        linker,
+        result: `node_modules was installed from a different bun.lock (x@../../vendor/x.tgz carries another patch than ${file}) — run \`bun install\``,
+      })
+      await install(ws)
+      expect({ linker, result: (await run()).result }).toEqual({ linker, result: 'ok' })
+    } finally {
+      root = saved
+    }
+  }
+}, 60_000)

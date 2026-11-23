@@ -467,7 +467,7 @@ function bunPatchCompare(
       ])
     }
   } else {
-    for (const [dir, version] of bunLock().hoistedVersions(lock)) {
+    for (const [dir, version] of bunLock().hoistedVersions(lock, (id) => lock.patches.has(id))) {
       const at = dir.lastIndexOf('node_modules/')
       copies.push([`${dir.slice(at + 'node_modules/'.length)}@${version}`, dir])
     }
