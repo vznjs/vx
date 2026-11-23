@@ -156,6 +156,17 @@ it("the workspace's baseBranch is the default branch a run reads last", async ()
   })
 })
 
+// 2026-11-23: the scope read GitLab's default branch and not the workspace's
+// `baseBranch`, as github() and the refs do: a run on `trunk` got a branch
+// scope, and one on GitLab's `main` got none.
+it("the workspace's baseBranch names the default branch, as it does for the refs", async () => {
+  expect(await branchOf(job('trunk'), {}, 'trunk')).toEqual({ refs: ['refs/heads/trunk'] })
+  expect(await branchOf(job('main'), {}, 'trunk')).toEqual({
+    scope: 'acme/web/app:main',
+    refs: ['refs/heads/main', 'refs/heads/trunk'],
+  })
+})
+
 it('off GitLab CI it declines; with cacheScope: false it names nothing; an unknown option is refused', async () => {
   expect(await branchOf({ CI_PROJECT_PATH: 'a/b', CI_COMMIT_REF_NAME: 'feat' })).toBe('declined')
   expect(await branchOf(job('feat-x'), { cacheScope: false })).toEqual({})

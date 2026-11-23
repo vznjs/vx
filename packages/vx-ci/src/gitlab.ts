@@ -8,7 +8,7 @@ import path from 'node:path'
 export interface GitlabPluginOptions {
   /**
    * Name the run's cache scope and base commit from GitLab's predefined
-   * variables: none on the default branch or a merge train, else
+   * variables: none on the default branch (`baseBranch`, else GitLab's) or a merge train, else
    * `<project path>:<branch>`; a merge request is compared with its diff
    * base, a merged results pipeline with the target head, a train car
    * with the car ahead. The scope keys plugin entries only. `VX_CACHE_SCOPE` beats it.
@@ -75,7 +75,7 @@ function gitlabBranch(
       ).filter((r): r is string => r !== undefined),
     ),
   ]
-  const facts = scopeOf(value)
+  const facts = scopeOf(value, baseBranch)
   return refs.length === 0 ? facts : { ...facts, refs }
 }
 
@@ -95,7 +95,10 @@ function baseOf(value: (key: string) => string | undefined): string | undefined 
   return diffBase
 }
 
-function scopeOf(value: (key: string) => string | undefined): BranchFacts {
+function scopeOf(
+  value: (key: string) => string | undefined,
+  baseBranch: string | undefined,
+): BranchFacts {
   const base = baseOf(value)
   const withBase = (facts: BranchFacts): BranchFacts =>
     base === undefined ? facts : { ...facts, base }
@@ -108,6 +111,8 @@ function scopeOf(value: (key: string) => string | undefined): BranchFacts {
   }
   const ref = value('CI_COMMIT_REF_NAME')
   if (project === undefined || ref === undefined) return {}
-  if (value('CI_COMMIT_TAG') === undefined && ref === value('CI_DEFAULT_BRANCH')) return {}
+  // The workspace's `baseBranch` first, as the refs read it and github() does.
+  if (value('CI_COMMIT_TAG') === undefined && ref === (baseBranch ?? value('CI_DEFAULT_BRANCH')))
+    return {}
   return { scope: branchCacheScope(project, ref) }
 }

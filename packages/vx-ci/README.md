@@ -118,8 +118,8 @@ export default defineWorkspace({ plugins: [github(), gitlab()] })
 
 On GitLab CI (`GITLAB_CI=true`) `gitlab()`'s `config` stage names the
 run's branch through `ctx.setBranch`, from GitLab's predefined
-variables, as `github()` does on Actions. The default branch
-(`CI_DEFAULT_BRANCH`) names no scope. Another branch or a tag (`CI_COMMIT_TAG`) names
+variables, as `github()` does on Actions. The default branch (the
+workspace's `baseBranch`, else `CI_DEFAULT_BRANCH`) names no scope. Another branch or a tag (`CI_COMMIT_TAG`) names
 `<project path>:<ref>` (`CI_PROJECT_PATH`, `CI_COMMIT_REF_NAME`), so a
 subgroup's project is `group/sub/app:feat-x`, the scope a laptop on
 `feat-x` derives. A merge request pipeline names its source branch
