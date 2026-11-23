@@ -92,6 +92,11 @@ describe('vx cache clean', () => {
         const r = await vx(bare, ['cache', 'clean', '--max-size', '1G'])
         expect({ code: r.code, out: r.out }).toEqual({ code: 1, out: '' })
         expect(r.err).toStartWith('✗ vx cache clean  no .vx/workspace.ts in ')
+        // Drawn as every verb draws it, the fix on its own line: it read
+        // `… — run \`vx init\` to create one`, the JSON document's wording.
+        const show = await vx(bare, ['show'])
+        expect(r.err).toBe(show.err.replace('vx show', 'vx cache clean'))
+        expect(r.err).toContain('fix  vx init')
       } finally {
         await rm(bare, { recursive: true, force: true })
       }

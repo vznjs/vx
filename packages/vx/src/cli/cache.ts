@@ -219,7 +219,13 @@ async function cleanCmd(args: readonly string[]): Promise<number> {
   try {
     root = await findWorkspaceRoot(cwd)
   } catch (err) {
-    return refuse('cache clean', args, (err as Error).message, errorCode(err))
+    return refuse(
+      'cache clean',
+      args,
+      (err as Error).message,
+      errorCode(err),
+      isUserError(err) ? err.parts : undefined,
+    )
   }
   // Honor `--cache-dir`, `defineWorkspace({ cacheDir: '...' })` and a `config`
   // plugin's edit of it — `vx run` and `vx cache clean` must operate on the

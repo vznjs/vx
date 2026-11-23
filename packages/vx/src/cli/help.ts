@@ -3,6 +3,7 @@ import {
   errorDocument,
   maskedLine,
   nearest,
+  type RefusalParts,
   UserError,
   wantsJson,
 } from '../util/index.js'
@@ -605,9 +606,10 @@ export function refuse(
   args: readonly string[],
   message: string,
   code: string,
+  parts?: RefusalParts,
 ): number {
   const line = `vx ${verb}: ${message}`
-  ui.print('err', refusalNotice(`vx ${verb}`, message))
+  ui.print('err', refusalNotice(`vx ${verb}`, message, parts))
   if (wantsJson(args)) ui.data('out', errorDocument(code, maskedLine(line)))
   return 1
 }
