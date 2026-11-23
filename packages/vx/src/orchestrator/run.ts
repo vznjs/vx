@@ -1407,6 +1407,7 @@ async function runOnBus(
       server.out.bus = bus
       serverOut.adopt(node.id, server.out)
       persistentRegistry.set(node.id, server.child)
+      terminal?.serverKept(node.id)
       const at = process.hrtime.bigint() - runStartHrTimeNs
       return {
         node,

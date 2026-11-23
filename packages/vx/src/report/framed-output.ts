@@ -106,7 +106,7 @@ export function formatTaskBlock(
   lines.push(...violationSection(outcome, colors))
 
   lines.push(
-    `${corner('└─')} ${mark}${idPainted}${whereNote(outcome, colors)} ${corner('──')}${closeTail(node, outcome, colors)}`,
+    `${corner('└─')} ${mark}${idPainted}${whereNote(outcome, colors)} ${corner('──')}${closeTail(node, outcome, colors, false)}`,
     '',
   )
   // Not `+ '\n'`: a rope over a 100 MB frame was flattened into a copy.
@@ -943,10 +943,11 @@ export function formatFrameClose(
   node: TaskNode,
   outcome: TaskOutcome,
   colors: ColorSupport = NO_COLOR,
+  kept = false,
 ): string {
   const corner = (t: string) => paint('muted', t, colors)
   const mark = persistentMark(node, colors)
-  const close = `${corner('└─')} ${mark}${paintTaskId(node, colors, { bold: true })}${whereNote(outcome, colors)} ${corner('──')}${closeTail(node, outcome, colors)}`
+  const close = `${corner('└─')} ${mark}${paintTaskId(node, colors, { bold: true })}${whereNote(outcome, colors)} ${corner('──')}${closeTail(node, outcome, colors, kept)}`
   const violations = violationSection(outcome, colors)
   return violations.length === 0 ? close : `${violations.join('\n')}\n${close}`
 }
@@ -973,9 +974,10 @@ function serving(node: TaskNode, o: TaskOutcome): boolean {
   )
 }
 
-/** The frame's close after its id: ` (<dur>) <status>`, or `running` for a ready server. */
-function closeTail(node: TaskNode, o: TaskOutcome, colors: ColorSupport): string {
+/** The frame's close after its id: ` (<dur>) <status>`, `running` for a ready server, `still running` for a kept one. */
+function closeTail(node: TaskNode, o: TaskOutcome, colors: ColorSupport, kept: boolean): string {
   if (!serving(node, o)) return formatBlockFooter(o, colors)
+  if (kept) return ` ${paint('info', 'still running', colors)}`
   return ` ${paint('muted', `(${formatElapsed(o.durationMs)})`, colors)} ${paint('info', 'running', colors)}`
 }
 

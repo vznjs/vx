@@ -273,6 +273,25 @@ describe('defaultLogger visibility matrix — focused', () => {
     )
   })
 
+  // `vx watch` keeps a requested server across cycles: its frame closed
+  // `(0ms) running` each cycle, as if the server had just restarted.
+  it('a server the watch cycle kept closes as still running', () => {
+    const out = sink()
+    const log = defaultLogger(NO_COLORS, { mode: 'focused' }, out)
+    const n = {
+      ...mkNode('app#dev', { requested: true }),
+      config: { exec: { command: 'vite', persistent: {} } },
+    } as unknown as TaskNode
+    log.taskStart?.(n)
+    log.serverKept(n.id)
+    log.taskComplete(n, mkOutcome(n, 'success', { durationMs: 0 }))
+    expect(out.text()).toContain('└─ ▸ app#dev ── still running\n')
+    // Kept once: the next cycle's restarted server reads its time again.
+    log.taskStart?.(n)
+    log.taskComplete(n, mkOutcome(n, 'success'))
+    expect(out.text()).toContain('└─ ▸ app#dev ── (100ms) running\n')
+  })
+
   it("a streamed task's blank lines are kept, and nothing is added after its stderr", () => {
     const out = sink()
     const log = defaultLogger(NO_COLORS, { mode: 'focused' }, out)

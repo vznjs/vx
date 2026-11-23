@@ -133,6 +133,8 @@ export interface DefaultLogger extends Logger {
   forecast(graph: () => Forecast, load: () => Promise<Forecast>): void
   /** Draw no live region until the returned release: a prompt waits on the terminal. */
   holdStatus(): () => void
+  /** `vx watch` kept this server up from the cycle before: its frame closes `still running`. */
+  serverKept(id: string): void
 }
 
 /**
@@ -254,6 +256,7 @@ export function defaultLogger(
   // apart; interleaved chunks are reordered. Held as string[] joined on flush:
   // `+=` is O(N²).
   const outputBuffers = new Map<string, OutputChunk[]>()
+  const keptServers = new Set<string>()
   // Blocks are blank-line-delimited on both sides, so raw frame content never
   // touches a one-liner. A block leaves its trailing blank; a one-liner or
   // streamed output since needs a leading one.
@@ -852,6 +855,7 @@ export function defaultLogger(
       refresh(true)
     },
     holdStatus: () => writer.hold(),
+    serverKept: (id) => void keptServers.add(id),
     forecast(graph, load) {
       if (statusDead || forecastTimer !== null) return
       graphForecast = graph
@@ -1082,7 +1086,7 @@ export function defaultLogger(
       }
       if (isGroupTask(node)) return
       if (holdsTerminal(node) && streamsLive(node) && outcome.status !== 'skipped') {
-        emitFrameClose(formatFrameClose(node, outcome, colors))
+        emitFrameClose(formatFrameClose(node, outcome, colors, keptServers.delete(node.id)))
         return
       }
       const isHit = isCacheHit(outcome.status)
@@ -1134,7 +1138,7 @@ export function defaultLogger(
             if (streamsLive(node)) {
               // Single requested task: output streamed live between the
               // frame-open and this close, for every outcome, hits included.
-              emitFrameClose(formatFrameClose(node, outcome, colors))
+              emitFrameClose(formatFrameClose(node, outcome, colors, keptServers.delete(node.id)))
               return
             }
             // Several requested tasks: no live frame (it would interleave).

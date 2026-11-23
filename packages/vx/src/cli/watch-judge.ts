@@ -422,8 +422,11 @@ export class ChangeJudge {
     // the cycle was announced by a name already renamed away.
     let gone: [label: string, abs: string] | undefined
     // "+N more" counts the changes of the winner's kind: an edit's count
-    // leaves out the editor's temporary file renamed away.
-    let live = 0
+    // leaves out the editor's temporary file renamed away, and a file's
+    // leaves out the directories made for it (500 files written in a new
+    // directory read `+500 more`).
+    let liveFiles = 0
+    let liveDirs = 0
     let goneCount = 0
     const changed: string[] = []
     for (const [p, l] of this.pending) {
@@ -435,13 +438,14 @@ export class ChangeJudge {
         if (gone === undefined || p < gone[1]) gone = [l, p]
         continue
       }
-      live++
       // A file names the cycle before a directory: `mkdir -p` and a write
       // in it fire the directory first, and the cycle was named by it.
       // Within a kind the least path does, never the first event: macOS
       // FSEvents does not keep a batch's order, and the same edits were
       // named apart on Linux and a Mac.
       const isFile = !isDirectory(p)
+      if (isFile) liveFiles++
+      else liveDirs++
       if (
         first !== undefined &&
         ((firstIsFile && !isFile) || (firstIsFile === isFile && p > firstAbs!))
@@ -457,6 +461,7 @@ export class ChangeJudge {
     if (first !== undefined) first = printable(first)
     this.pending.clear()
     this.changed = changed
+    const live = firstIsFile === true ? liveFiles : liveDirs
     const more = (live > 0 ? live : goneCount) - 1
     const named = more > 0 ? `${first} (+${more} more)` : first
     // A judgement that found nothing starts no cycle, so it breaks no streak. A

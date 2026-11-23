@@ -1858,7 +1858,8 @@ what it depends on, as the cache keys decide. So `vx watch dev`, with `dev` depe
 `^build`, rebuilds only the libraries an edit reaches on the way to the
 app and leaves the server running; the dev tool's own reload picks up
 what was rebuilt. What the server writes keeps printing, under its id
-above the rows while a cycle rebuilds. A requested server, and one it
+above the rows while a cycle rebuilds, and its frame closes `still
+running` in a cycle that kept it. A requested server, and one it
 depends on, restarts
 only when its own task config (or the args forwarded to it) changed, or
 when it died. A server only another task depends on restarts when its
