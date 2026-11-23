@@ -214,6 +214,7 @@ describe('vx pipeline <name>', () => {
           solo: { tasks: ['solo'], filter: ['a'] },
           plan: { tasks: ['build'], filter: ['a'], dry: true },
           gone: { tasks: ['build'], filter: ['zzz'] },
+          envfail: { tasks: ['need'], filter: ['a'], env: { SHOWN: 'vx-only' } },
         }`,
       ),
     )
@@ -224,6 +225,7 @@ describe('vx pipeline <name>', () => {
         `export default { tasks: {
           build: { exec: { command: 'true' } },
           show: { exec: { command: 'echo "shown=[$SHOWN]"', env: { passThrough: ['SHOWN'] } } },
+          need: { exec: { command: 'echo "need SHOWN"; exit 1', env: { passThrough: ['SHOWN'] } } },
           probe: { exec: { command: 'true' }, inputs: { files: ['package.json'], runtime: ['echo "ci=[$CI]" > probe.txt'] }, outputs: { files: [] }, cache: true },
           keep: { exec: { command: 'echo k > k.txt' }, inputs: { files: ['package.json'] }, outputs: { files: ['k.txt'] }, cache: true },
         } }`,
@@ -249,6 +251,17 @@ describe('vx pipeline <name>', () => {
     // vx itself reads it: the run's output is off.
     const quiet = await vx('pipeline', 'quiet')
     expect([quiet.code, quiet.out.includes('shown=')]).toEqual([0, false])
+  }, 30_000)
+
+  // A failure naming a variable only the pipeline set told the user to pass
+  // what passThrough already named: no passThrough gives a task vx's own.
+  it('says nothing of a variable its env set when a task fails naming it', async () => {
+    const r = await vx('pipeline', 'envfail', '--output-logs=full')
+    expect([
+      r.code,
+      r.out.includes('need SHOWN'),
+      r.out.includes('set in your environment'),
+    ]).toEqual([1, true, false])
   }, 30_000)
 
   // A path in the workspace file stands from the root, as `cache.dir` there

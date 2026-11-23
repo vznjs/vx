@@ -16,7 +16,7 @@ import {
 } from '../exec/index.js'
 import { keyedOutsideGrants, sandboxReads } from '../sandbox/index.js'
 import { isLocalExecutor, localExecutor } from './local-executor.js'
-import { printable, relPosix, span, UserError } from '../util/index.js'
+import { printable, relPosix, span, taskEnvSource, UserError } from '../util/index.js'
 import { warnOf } from '../report/index.js'
 import { tagged } from '../ui/index.js'
 import { missingOutputs, outputsStep } from './attempt-outputs.js'
@@ -512,8 +512,9 @@ async function classifyExit(
     // built from a secret: masked as the task's own output is.
     if (verdict !== undefined)
       log.taskStderr(node, `${stream.nl()}${vxLine(m, secrets.text(verdict))}\n`)
+    // A pipeline's `env` is vx's alone: no passThrough gives it to a task.
     const unpassed =
-      code === 0 ? undefined : unpassedEnv(stream.tail, m.env, process.env, policy.exec.command)
+      code === 0 ? undefined : unpassedEnv(stream.tail, m.env, taskEnvSource(), policy.exec.command)
     if (unpassed !== undefined)
       log.taskStderr(node, `${stream.nl()}${vxLine(m, secrets.text(unpassed))}\n`)
   }
