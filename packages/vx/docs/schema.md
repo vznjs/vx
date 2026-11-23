@@ -2788,7 +2788,7 @@ export default defineWorkspace({
 })
 ```
 
-Every key, each at a value its flag takes (`format` needs `dry: true`):
+Every key but `format` (which needs `dry: true`), each at a value its flag takes:
 
 ```ts
 import { defineWorkspace } from '@vzn/vx/config'
@@ -2818,9 +2818,20 @@ export default defineWorkspace({
       outputLogs: 'errors-only',
       verbosity: 1,
       profile: 'nightly.json',
-      dry: true,
-      format: 'json',
+      dry: false,
     },
+  },
+})
+```
+
+A dry pipeline can print its plan as JSON:
+
+```ts
+import { defineWorkspace } from '@vzn/vx/config'
+
+export default defineWorkspace({
+  pipelines: {
+    plan: { tasks: ['build', 'test'], dry: true, format: 'json' },
   },
 })
 ```
