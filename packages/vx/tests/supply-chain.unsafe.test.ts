@@ -282,7 +282,7 @@ describe('the supply chain', () => {
     expect(pkg.packageManager).toMatch(/^bun@\d+\.\d+\.\d+$/)
   })
 
-  // The publish is scripts/release.ts's (`release.publish.<os>`); a workflow
+  // The publish is scripts/release.ts's (`release.npm.<os>.publish`); a workflow
   // publishes nothing itself (workflow-runner.unsafe.test.ts).
   it('publishes every npm package with provenance', () => {
     const script = readFileSync(path.join(ROOT, 'packages', 'vx', 'scripts', 'release.ts'), 'utf8')

@@ -98,7 +98,7 @@ Each runner is one task, `@vzn/vx-bench#bench.<runner>` (`vx`, `turbo`,
 `nx`, `vite-task`), which runs `compare.ts` for that runner alone and
 writes its rows to `private/vx-bench/site/<runner>.json`.
 
-`@vzn/vx-docs#bench.data` gathers the four files into
+`@vzn/vx-docs#bench.bun.data` gathers the four files into
 `measured/bench.json`. The site's build reads its committed copy,
 `src/data/bench.json`. A build with no data fails; so does a page naming
 an unknown token.
@@ -106,7 +106,7 @@ an unknown token.
 The line under the table names each runner's version, date and machine.
 
 Only CI's Bench workflow (`bench.yml`) runs them, on main and on a dispatch: `vx run
-@vzn/vx-docs#bench.data --concurrency 1 --force` on a 4-core Linux
+@vzn/vx-docs#bench.bun.data --concurrency 1 --force` on a 4-core Linux
 runner of its own, one runner at a time. `--force` measures all four on
 that one machine, never a row cached from another runner's CPU. A
 cold figure is the median of three cold runs (`COLD_REPS=3`): one let a
@@ -672,7 +672,7 @@ A change meant to grow a count records it (on a conflict in the file,
 take main's and run it again):
 
 ```bash
-vx run @vzn/vx-bench#perf.update   # then commit perf-baseline.json
+vx run @vzn/vx-bench#update   # then commit perf-baseline.json
 ```
 
 Run it through `vx run`.
@@ -680,7 +680,7 @@ Run it through `vx run`.
 ### The per-PR bench against every rival and the base
 
 `private/vx-bench/pr-bench.ts` runs in every PR's gate after
-perf-guard.ts, in the same task (`@vzn/vx-bench#perf.bench`), so the
+perf-guard.ts, in the same task (`@vzn/vx-bench#perf.vx`), so the
 two benchmarks never share a machine. It times this checkout's vx,
 compiled as released, against the base commit's vx (`VX_BENCH_BASE`: the
 PR's base, or main before a push, built in the same job from `git archive`

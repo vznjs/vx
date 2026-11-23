@@ -1,8 +1,8 @@
-// release.yml's uploads, the `release.upload.<os>` tasks: attach the
+// release.yml's uploads, the `release.github.<os>` tasks: attach the
 // `vx-<os>-*` binaries to the release VX_RELEASE_VERSION names (linux's also
 // THIRD_PARTY_NOTICES.txt, the licenses the binaries embed), and with
 // `--publish` take it out of draft. This repo's releases are immutable, and
-// GitHub takes assets only before a release is published, so release.auto
+// GitHub takes assets only before a release is published, so release.github.tag
 // creates each one as a draft and the last upload (darwin's, after its
 // binaries are proven) publishes it. An asset already attached is skipped,
 // so a re-run completes the set. An upload that stalls is cut and retried:

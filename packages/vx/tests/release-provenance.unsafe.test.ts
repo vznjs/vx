@@ -32,8 +32,8 @@ describe('release.yml attests what it ships (L-12)', () => {
     for (const [name, job] of Object.entries(wf.jobs)) {
       const steps = job.steps ?? []
       steps.forEach((s, i) => {
-        // `release.upload.<os>` attaches `dist/vx-<os>-*` (scripts/release-assets.ts).
-        const os = /\brelease\.upload\.(\w+)\b/.exec(s.run ?? '')?.[1]
+        // `release.github.<os>` attaches `dist/vx-<os>-*` (scripts/release-assets.ts).
+        const os = /\brelease\.github\.(linux|darwin)\b/.exec(s.run ?? '')?.[1]
         if (os === undefined) return
         const files = `packages/vx/dist/vx-${os}-*`
         uploads.push(`${name}: ${files}`)

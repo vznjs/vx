@@ -31,8 +31,8 @@ dist-live/
 /src/content/docs/cli/
 /src/content/docs/schema/
 
-# The resized images, built by `build.images` (scripts/build-images.ts)
+# The resized images, built by `build.bun.images` (scripts/build-images.ts)
 /public/_img/
 
-# What `bench.data` gathers (scripts/bench-data.ts); src/data/bench.json is its committed copy
+# What `bench.bun.data` gathers (scripts/bench-data.ts); src/data/bench.json is its committed copy
 /measured/

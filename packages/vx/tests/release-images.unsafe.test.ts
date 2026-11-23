@@ -1,5 +1,5 @@
 // The servers' docs tell users to `docker run ghcr.io/vznjs/<server>`, and
-// until release.images nothing pushed those images: the pull failed. Each
+// until release.docker nothing pushed those images: the pull failed. Each
 // release now pushes every server image at its version.
 //
 // `.unsafe`: the docs, the Dockerfiles and the workflows live outside this
@@ -11,7 +11,7 @@ import { IMAGES, buildCommand, tagsFor } from '../scripts/release-images.ts'
 
 const ROOT = path.resolve(import.meta.dir, '..', '..', '..')
 
-describe('release.images', () => {
+describe('release.docker', () => {
   it('pushes both platforms, labelled for the workspace, at the version and latest', () => {
     const dte = IMAGES.find((i) => i.name === 'vx-dte-server')!
     expect(
@@ -94,7 +94,7 @@ describe('release.images', () => {
     }
     const job = doc.jobs['images']!
     expect(job.permissions).toEqual({ contents: 'read', packages: 'write' })
-    expect(job.steps.some((s) => s.run?.includes('run release.images --filter @vzn/vx'))).toBe(true)
+    expect(job.steps.some((s) => s.run?.includes('run release.docker --filter @vzn/vx'))).toBe(true)
     expect(existsSync(path.join(ROOT, 'packages/vx/scripts/release-images.ts'))).toBe(true)
   })
 })

@@ -1,4 +1,4 @@
-// The resized images `build.images` writes (scripts/build-images.ts): an
+// The resized images `build.bun.images` writes (scripts/build-images.ts): an
 // <img> srcset over its widths, and one variant's URL for a link card.
 import { readFileSync } from 'node:fs'
 import path from 'node:path'

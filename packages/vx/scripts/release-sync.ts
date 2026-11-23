@@ -1,4 +1,4 @@
-// The `deploy.releases` task, which ci.yml's Linux run runs on each push to
+// The `deploy.github` task, which ci.yml's Linux run runs on each push to
 // main: a release post rewritten after its release shipped changes the
 // GitHub release too, so GitHub and the site tell the same story. Each
 // GitHub release with a post on main whose body differs gets the post's

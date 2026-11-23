@@ -54,7 +54,7 @@ const SUITE_ENV = {
 // environment carries no BUN_INSTALL, so its Bun resolves the cache under
 // HOME. The runtime embedded is `bun-<t>-v<the compiling Bun's version>`,
 // and the bundler is that Bun too, so the compile tasks fold its version.
-// The host target reuses the running binary; `check.binary` holds the same
+// The host target reuses the running binary; `check.bun.binary` holds the same
 // grants for a host Bun that is not that target (a baseline build).
 const BUN_RUNTIME_WRITES = ['~/.bun/install/cache/', '.*.tmp/**']
 const BUN_RUNTIME_NETWORK = ['registry.npmjs.org']
@@ -144,7 +144,7 @@ const shardTask = (i: number, n = SHARD_COUNT, flags = '') => ({
 })
 // The release binary of each platform CI has a worker of must launch there:
 // linux-arm64 is cross-compiled and runs nowhere else (the arm worker),
-// darwin-arm64 on a Mac worker; plain check.binary on the run's own Linux.
+// darwin-arm64 on a Mac worker; plain check.bun.binary on the run's own Linux.
 const checkBinary = (platforms?: readonly ('linux-arm64' | 'darwin-arm64')[]) => ({
   description:
     'compile the host binary the way release.yml does; it must launch and report the manifest version',
@@ -308,7 +308,14 @@ const NPM_PUBLISH_NETWORK = [
 ]
 const NPM_HOME = '~/.npm/'
 const releaseTasks = {
-  'release.stamp': {
+  // Each workflow step names its own release.* task: a Mac runner may run
+  // only Mac tasks on CI, so no one group serves every job.
+  release: {
+    description:
+      'every release step: npm, GitHub and Docker publishing (the release workflows run each)',
+    dependsOn: ['release.*'],
+  },
+  'release.npm.stamp': {
     description: 'stamp VX_RELEASE_VERSION into package.json, the manifest the binary inlines',
     exec: {
       command: 'bun scripts/release.ts stamp',
@@ -316,7 +323,7 @@ const releaseTasks = {
       sandbox: { allow: { read: ['.'], write: ['package.json'] } },
     },
   },
-  'release.npm': {
+  'release.npm.check': {
     description: 'make sure npm can publish with provenance (>= 11.5.1, sigstore intact)',
     exec: {
       command: 'bun scripts/release.ts npm',
@@ -332,7 +339,7 @@ const releaseTasks = {
   ...Object.fromEntries(
     (['linux', 'darwin'] as const).flatMap((os) => [
       [
-        `release.prove.${os}`,
+        `release.npm.${os}.prove`,
         {
           description: `the ${os} binaries launch (re-signed only if macOS refuses) and report VX_RELEASE_VERSION`,
           exec: {
@@ -369,7 +376,7 @@ const releaseTasks = {
         },
       ],
       [
-        `release.assemble.${os}`,
+        `release.npm.${os}.assemble`,
         {
           description: `assemble the ${os} npm packages under dist/npm (scripts/build-npm.ts)`,
           exec: {
@@ -387,7 +394,7 @@ const releaseTasks = {
         },
       ],
       [
-        `release.publish.${os}`,
+        `release.npm.${os}.publish`,
         {
           description: `npm publish the ${os} packages under dist/npm, skipping any already on the registry`,
           exec: {
@@ -409,7 +416,7 @@ const releaseTasks = {
     ]),
   ),
   // No sandbox: it drives the Docker daemon, as the servers' test.docker do.
-  'release.images': {
+  'release.docker': {
     description:
       'push the server images to ghcr.io/vznjs at VX_RELEASE_VERSION (scripts/release-images.ts)',
     exec: {
@@ -420,7 +427,7 @@ const releaseTasks = {
       },
     },
   },
-  'release.served': {
+  'release.npm.served': {
     description: 'wait until npm serves every published tarball (HTTP 200), up to 15 min',
     exec: {
       command: 'bun scripts/release.ts served',
@@ -430,7 +437,7 @@ const releaseTasks = {
   },
   ...Object.fromEntries(
     (['linux', 'darwin'] as const).map((os) => [
-      `release.upload.${os}`,
+      `release.github.${os}`,
       {
         description: `attach the ${os} binaries to the draft release${os === 'darwin' ? ', then publish it' : ''} (scripts/release-assets.ts)`,
         exec: {
@@ -453,7 +460,7 @@ const releaseTasks = {
       },
     ]),
   ),
-  'release.auto': {
+  'release.github.tag': {
     description: 'tag a green main commit with its next version, release it, dispatch the publish',
     exec: {
       command: 'bun scripts/auto-release.ts',
@@ -474,15 +481,15 @@ export default defineProject({
     ...unsafeShardTasks,
     ...releaseTasks,
 
-    // `check.bun` sits under install so that every shard, the unsafe suite,
+    // `check.bun.version` sits under install so that every shard, the unsafe suite,
     // the lint tasks and the binary check wait on it: a gate below the Bun
     // floor stops here, in under a second, instead of an hour later with
     // the runtime's verdicts (scripts/bun-floor.ts says which).
     install: {
-      dependsOn: ['^build', 'check.bun'],
+      dependsOn: ['^build', 'check.bun.version'],
     },
 
-    'check.bun': {
+    'check.bun.version': {
       description: 'refuse a Bun below the floor (engines.bun) before any shard starts',
       exec: {
         command: 'bun scripts/bun-floor.ts',
@@ -517,18 +524,22 @@ export default defineProject({
     // to core re-keys the plugin suites (item 687; as an empty group the
     // key never moved, and a warm local cache replayed a plugin's pass
     // over a core change). The release binaries are `compile`, and
-    // `check.binary` proves the one this host can run.
+    // `check.bun.binary` proves the one this host can run.
     build: {
       description:
         'nothing to build — core is consumed as source; the release binaries are compile',
       inputs: { files: ['src/**', 'tsconfig.json'] },
     },
 
+    // What only a push to main runs (.vx/workspace.ts's `main` pipeline).
+    main: {
+      dependsOn: ['canary', 'deploy'],
+    },
     deploy: {
       dependsOn: ['deploy.*'],
     },
     // main's: release.yml publishes a release before its post lands.
-    'deploy.releases': {
+    'deploy.github': {
       description: 'give each GitHub release the body of its release post on the site',
       exec: {
         command: 'bun scripts/release-sync.ts',
@@ -554,7 +565,7 @@ export default defineProject({
     // macOS CI's checks of this machine's own sandbox, as tasks so they run on
     // a Mac worker: nothing runs on a distributed run's orchestrator. Neither
     // is sandboxed, as each drives the sandbox itself, and neither is cached.
-    'canary.sandbox': {
+    'canary.sandbox.leaks': {
       description:
         'drive 20 leaky sandboxed runs through run() under this machine’s sandbox; one it did not enforce fails',
       dependsOn: ['install'],
@@ -563,7 +574,7 @@ export default defineProject({
     // A grant bwrap honoured by its mounts failed `@vzn/vx-docs#import` on
     // every Mac for a week (2026-10-17). No cache read: a hit would skip the
     // very tasks this runs. In a worktree: core refuses a nested run here.
-    'canary.build-cold': {
+    'canary.sandbox.cold-build': {
       description:
         'every package’s build under this machine’s sandbox, no cache, as a developer runs it',
       dependsOn: ['install'],
@@ -574,9 +585,9 @@ export default defineProject({
       dependsOn: ['check.*'],
     },
 
-    'check.binary': checkBinary(),
-    'canary.binary.linux-arm64': checkBinary(['linux-arm64']),
-    'canary.binary.darwin-arm64': checkBinary(MAC),
+    'check.bun.binary': checkBinary(),
+    'canary.bun.linux-arm64': checkBinary(['linux-arm64']),
+    'canary.bun.darwin-arm64': checkBinary(MAC),
 
     lint: {
       dependsOn: ['lint.*'],

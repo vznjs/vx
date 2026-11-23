@@ -1,4 +1,4 @@
-// `canary.build-cold`: every package's build under this machine's sandbox,
+// `canary.sandbox.cold-build`: every package's build under this machine's sandbox,
 // no cache read, as a developer runs it after a fresh clone. Not run
 // in this checkout: core refuses `vx run` inside the workspace of the task
 // running it (a nested run escapes the outer schedule), so the build runs
