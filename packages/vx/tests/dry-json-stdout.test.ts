@@ -141,7 +141,9 @@ it('each verb runs the config stage once', () => {
   expect(verbs.map((v) => [v.join(' '), count(v)])).toEqual(verbs.map((v) => [v.join(' '), 1]))
   // From the project's directory the selection pass places the cwd first.
   expect(count(['run', 'build', '--dry'], path.join(root, 'pkgs', 'app'))).toBe(1)
-})
+  // 22 vx processes, ~0.3 s each alone and 9 s together at load 21: the
+  // default 5 s timed out under a loaded machine.
+}, 60_000)
 
 // vercel/turborepo#2067: "Remote computation caching enabled" printed on
 // stdout ahead of the JSON. A remote layer that answers and one that fails
