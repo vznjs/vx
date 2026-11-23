@@ -6,13 +6,14 @@
   "compatibility_date": "2026-10-01",
   "workers_dev": true,
   // Plain vars, never secrets (2026-10-23). CI jobs sign in with
-  // their OIDC token. ALLOW: only ci.yml's jobs get in; a run of main
+  // their OIDC token. ALLOW: only ci.yml's and npm.yml's jobs get in
+  // (a release writes its tag's scope); a run of main
   // writes main's scope, which every run reads after its own, and a
   // branch's run its own. vx-worker.yml is left out: it may be dispatched
   // on main to run a fork PR's code, and writes with its run's lent token.
   // EXPIRY_DAYS: the bucket's rule below, so a repeat check skips R2.
   "vars": {
-    "ALLOW": "https://token.actions.githubusercontent.com:vznjs/vx:ci.yml",
+    "ALLOW": "https://token.actions.githubusercontent.com:vznjs/vx:ci.yml https://token.actions.githubusercontent.com:vznjs/vx:npm.yml",
     "EXPIRY_DAYS": 1,
   },
   // No cron: the Worker exports no scheduled(). A cron set 2026-10-25
@@ -31,7 +32,7 @@
   // ALLOW and bucket, so a PR reads main's artifacts as the deployed one.
   "previews": {
     "vars": {
-      "ALLOW": "https://token.actions.githubusercontent.com:vznjs/vx:ci.yml",
+      "ALLOW": "https://token.actions.githubusercontent.com:vznjs/vx:ci.yml https://token.actions.githubusercontent.com:vznjs/vx:npm.yml",
       "EXPIRY_DAYS": 1,
     },
     "r2_buckets": [{ "binding": "BLOBS", "bucket_name": "vx-cache" }],

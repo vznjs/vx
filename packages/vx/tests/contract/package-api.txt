@@ -132,6 +132,9 @@ export class GitFilesCache extends Map<string, readonly string[]> {
     snapshot: readonly string[],
     digest: () => string | undefined,
   ): void
+  stagedOid(abs: string): string | undefined
+  get stagedOids(): ReadonlyMap<string, string>
+  setStaged(staged: Map<string, string>, index: { file: string; stamp: string } | undefined): void
   oidsFor(projectDir: string): ReadonlyMap<string, string> | undefined
   setOids(projectDir: string, oids: Map<string, string>): void
   setLazyOids(projectDir: string, build: () => Map<string, string>): void
@@ -2070,6 +2073,13 @@ export interface SkippedOutcome extends OutcomeBase, None<FailureFacts>, BlockFa
   hash?: string
   serverExit?: never
 }
+== type StampProbe (src/memo/output-index.ts)
+export interface StampProbe {
+  ino: number
+  ctimeMs: number
+  rel: string
+  oid: string
+}
 == type StartedOutcome (src/graph/outcome.ts)
 interface StartedOutcome extends OutcomeBase {
   exitCode: number
@@ -2089,6 +2099,7 @@ export interface StoreMemo {
   readonly folds: FoldMemo
   loadOutputFilesBatch(hashes: readonly string[]): Map<string, OutputFileRow[]>
   stampedRowsOf(hash: string): readonly OutputFileRow[] | undefined
+  foldedStamps(files: readonly StampProbe[]): Set<string>
   isOutputsCurrent(projectDir: string, expected: readonly OutputFileRow[]): boolean
   recordOutputDirs(
     hash: string,
@@ -2218,6 +2229,7 @@ export interface TaskMemo {
   hashFile(filePath: string): Promise<string>
   loadOutputFilesBatch(hashes: readonly string[]): Map<string, OutputFileRow[]>
   stampedRowsOf?(hash: string): readonly OutputFileRow[] | undefined
+  foldedStamps?(files: readonly StampProbe[]): Set<string>
   isOutputsCurrent(projectDir: string, expected: readonly OutputFileRow[]): boolean
   recordOutputDirs?(
     hash: string,

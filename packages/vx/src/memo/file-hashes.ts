@@ -151,7 +151,9 @@ export class FileHashStore {
    * git stores verbatim. They do NOT agree when a clean filter
    * (`text`/`eol`/`ident`/`filter`/`working-tree-encoding`) is active: the index blob is the filtered
    * form while this hashes the worktree bytes, so `inputs.ts` drops
-   * the index OID for those paths and routes them here.
+   * the index OID for those paths and routes them here. The one deliberate
+   * exception: a committed own output no input glob names keys by its index
+   * OID while its bytes differ (`committedOutputOids`).
    */
   async hashFile(filePath: string, seen?: (ctimeMs: number) => void): Promise<string> {
     // lstatSync intentional: a single stat is ~1.6µs (Bun 1.3); the

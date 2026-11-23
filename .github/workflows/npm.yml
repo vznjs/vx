@@ -1,206 +1,71 @@
-name: npm publish
+name: npm
 
-# Publishes `@vzn/vx` as a no-Bun standalone binary: library source PLUS a
-# Node launcher that execs a prebuilt standalone binary shipped per-platform
-# (@vzn/vx-<os>-<cpu>) as an optionalDependency. No Bun, no download.
+# A release, as one distributed run (@vzn/vx-dte): `vx pipeline npm`
+# (.vx/workspace.ts) compiles the binaries once, proves them (the darwin
+# ones on a Mac worker, which re-signs one macOS refuses), attests and
+# attaches them to the draft release (the last upload publishes it),
+# publishes the npm packages and pushes the server images. Every step is a
+# `release.*` task (packages/vx/vx.config.ts); a worker runs it with this
+# job's environment, so its tokens and its OIDC identity are this job's:
+# npm's trusted publisher for every package names npm.yml and the npm
+# environment, and the attestations name npm.yml.
 #
-# Auth is npm **Trusted Publishing (OIDC)** — this file reads no secret and
-# sets no NODE_AUTH_TOKEN (a token in the environment would take precedence
-# over the OIDC exchange, which is why none is set — see the Publish steps).
-# The job requests an OIDC token (`id-token: write`) and npm (>= 11.5.1)
-# exchanges it for a short-lived, package-scoped credential + provenance.
-# Configure a Trusted Publisher on npmjs.com for EACH package name
-# (@vzn/vx, the four @vzn/vx-<target>, and every public packages/* the
-# assemble step emits), linking this repo + this workflow.
-#
-# Every step past the setup is a `release.*` vx task (packages/vx/
-# vx.config.ts, scripts/release.ts): CI runs vx tasks, not commands of its
-# own (2026-10-03). The version reaches them as VX_RELEASE_VERSION,
-# never pasted into a script, and each refuses one that is not a version
-# (L-28).
-#
-# - release published   → publish the release version
-# - workflow_dispatch   → publish, or dry-run, a chosen version manually.
-#   A dispatch runs THIS file from the default branch but builds whatever
-#   `ref` names, so a release whose publish failed on a workflow bug is
-#   completed by dispatching the fixed workflow at that release's tag
-#   (`version: 0.0.20`, `ref: v0.0.20`) — the tag's code, the fixed steps.
-#   The tag's code must hold the `release.*` tasks this file runs.
+# auto-release.yml dispatches it on the tag it created, whose draft release
+# it fills. A maintainer may dispatch it on a tag too: each step skips what
+# is already done (an uploaded asset, a published package), so a re-run
+# completes a release that is still a draft.
 
 on:
-  release:
-    types: [published]
   workflow_dispatch:
-    inputs:
-      scripts:
-        description: "Run this workflow commit's packages/vx/scripts against the tag (rebuilds a tag whose release scripts had a bug)."
-        type: boolean
-        default: false
-      version:
-        description: 'Version to build/publish (e.g. 1.2.3). Defaults to the release tag.'
-        required: false
-      ref:
-        description: 'Release tag to build (e.g. v0.0.20). Defaults to the release tag, or this branch.'
-        required: false
-      dry_run:
-        description: 'Build the tree but do not publish.'
-        type: boolean
-        default: false
 
-# Default-deny; each job grants only what it needs (contents: read for the
-# checkout, id-token: write for npm's OIDC exchange). No long-lived npm
-# token exists anywhere in this workflow: auth is trusted publishing.
+# Default-deny; the job grants what it needs.
 permissions: {}
 
+# Two runs of one tag would upload to the same draft, and the first to
+# finish would publish it with the other's uploads still going: the second
+# waits. Never cancelled: a run stopped mid-upload leaves a draft half
+# attached.
 concurrency:
-  group: npm-publish
+  group: npm-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
-  # The darwin binaries are built here, on macOS, where a binary macOS
-  # refuses can be re-signed: Bun 1.4.0's `--compile` signature was rejected
-  # (SIGKILL on launch) until re-signed ad hoc, and only a macOS runner has
-  # codesign. So the two darwin platform packages come from this job, and
-  # the ubuntu job publishes @vzn/vx after them.
-  darwin:
-    name: build, sign & publish darwin packages
-    runs-on: macos-latest
-    timeout-minutes: 25
-    # npm's trusted publisher names this environment, whose branch rule
-    # admits main and the release tags only.
-    environment: npm
-    permissions:
-      contents: read
-      id-token: write
-    env:
-      VX_RELEASE_VERSION: ${{ github.event.inputs.version || github.event.release.tag_name }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          # A tag only: any token with actions: write can dispatch this.
-          ref: ${{ github.event.inputs.ref && format('refs/tags/{0}', github.event.inputs.ref) || '' }}
-          persist-credentials: false
-      # Rebuilding an older tag whose release scripts had a bug (v0.0.647's
-      # darwin check compared a coloured --version): the tag's code builds and
-      # ships, and this workflow's commit supplies packages/vx/scripts.
-      - if: inputs.scripts
-        run: git fetch --depth=1 origin "$GITHUB_SHA" && git checkout FETCH_HEAD -- packages/vx/scripts
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: 24
-          registry-url: 'https://registry.npmjs.org'
-      - run: bun install --frozen-lockfile
-      - name: Check npm can publish with provenance, and stamp the version
-        run: bun packages/vx/src/bin.ts run release.npm.check release.npm.stamp --filter @vzn/vx
-      - name: Build the darwin binaries
-        run: bun packages/vx/src/bin.ts run compile.bun.darwin-x64 compile.bun.darwin-arm64 --filter @vzn/vx --concurrency 2
-      - name: Prove the darwin binaries launch and report the version
-        run: bun packages/vx/src/bin.ts run release.npm.darwin.prove --filter @vzn/vx
-      - name: Assemble the darwin platform packages
-        run: bun packages/vx/src/bin.ts run release.npm.darwin.assemble --filter @vzn/vx
-      - name: Publish darwin platform packages
-        if: ${{ github.event.inputs.dry_run != 'true' }}
-        # No NODE_AUTH_TOKEN: npm exchanges this job's OIDC token for a
-        # short-lived publish credential (trusted publishing, npm >= 11.5.1)
-        # and attaches provenance. A set token would take precedence and is
-        # what npm now restricts ("tokens that bypass 2FA are being
-        # restricted for direct publishing" — the E401 that stopped v0.0.17).
-        run: bun packages/vx/src/bin.ts run release.npm.darwin.publish --filter @vzn/vx
-
-  publish:
-    name: build & publish @vzn/vx
-    needs: darwin
+  release:
+    name: VX DTE release
+    # A tag only: a dispatch on a branch builds, attests and publishes nothing.
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     timeout-minutes: 40
+    # npm's trusted publisher names this environment, whose rule admits the
+    # release tags only.
     environment: npm
     permissions:
-      contents: read
-      id-token: write # OIDC token for npm Trusted Publishing + provenance
+      # The draft release's assets and its publishing.
+      contents: write
+      # npm's OIDC exchange, the attestations' Sigstore certificate, and the
+      # relay and the cache server.
+      id-token: write
+      attestations: write
+      # The server images on ghcr.io.
+      packages: write
+      # Dispatching and cancelling the workers.
+      actions: write
     env:
-      VX_RELEASE_VERSION: ${{ github.event.inputs.version || github.event.release.tag_name }}
-
+      VX_RELEASE_VERSION: ${{ github.ref_name }}
+      VX_CACHE_URL: https://vx-cache.exelord.workers.dev
+      GITHUB_TOKEN: ${{ github.token }}
+      GH_TOKEN: ${{ github.token }}
+      VX_REQUIRE_SANDBOX: '1'
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          # A tag only: any token with actions: write can dispatch this.
-          ref: ${{ github.event.inputs.ref && format('refs/tags/{0}', github.event.inputs.ref) || '' }}
           persist-credentials: false
-
-      # Rebuilding an older tag whose release scripts had a bug (v0.0.647's
-      # darwin check compared a coloured --version): the tag's code builds and
-      # ships, and this workflow's commit supplies packages/vx/scripts.
-      - if: inputs.scripts
-        run: git fetch --depth=1 origin "$GITHUB_SHA" && git checkout FETCH_HEAD -- packages/vx/scripts
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
-
-      # Node runs `npm publish`. No token: auth comes from the OIDC
-      # exchange. Node 24's BUNDLED npm is already >= 11.5.1 (trusted-
-      # publishing capable), so `release.npm.check` upgrades nothing here.
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: 24
-          registry-url: 'https://registry.npmjs.org'
-
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
       - name: Install dependencies
         run: bun install --frozen-lockfile
-
-      # The sandbox runtime, as @vzn/vx-ci sets it up. Every task this job
-      # runs declares `exec.sandbox`, and a declared sandbox that cannot be
-      # built is a hard error: without it v0.0.20's compile tasks failed in
-      # 0 ms and @vzn/vx never reached `npm publish`.
-      - run: bun packages/vx/src/bin.ts setup github
-
-      - name: Check npm can publish with provenance, and stamp the version
-        run: bun packages/vx/src/bin.ts run release.npm.check release.npm.stamp --filter @vzn/vx
-
-      # Cross-compile the linux binaries (one cached task per target).
-      # --concurrency 2: concurrent `--compile --minify --bytecode` builds
-      # OOM a 7 GB runner. The darwin binaries come from the `darwin` job,
-      # which can sign them.
-      - name: Build the linux binaries
-        run: bun packages/vx/src/bin.ts run compile.bun.linux-x64 compile.bun.linux-arm64 --filter @vzn/vx --concurrency 2
-      - name: Prove the stamp took
-        run: bun packages/vx/src/bin.ts run release.npm.linux.prove --filter @vzn/vx
-      - name: Assemble npm tree (linux platform packages, @vzn/vx, the plugins)
-        run: bun packages/vx/src/bin.ts run release.npm.linux.assemble --filter @vzn/vx
-      # No NODE_AUTH_TOKEN — see the darwin step: trusted publishing only.
-      - name: Publish
-        if: ${{ github.event.inputs.dry_run != 'true' }}
-        run: bun packages/vx/src/bin.ts run release.npm.linux.publish --filter @vzn/vx
-      - name: Wait until npm serves every tarball
-        if: ${{ github.event.inputs.dry_run != 'true' }}
-        run: bun packages/vx/src/bin.ts run release.npm.served --filter @vzn/vx
-
-  # The servers' images, which their docs tell users to `docker run`:
-  # ghcr.io/vznjs/<server> at this version, `latest` following npm's.
-  # After @vzn/vx is published, so `latest` there is this release.
-  images:
-    name: push the server images to ghcr
-    needs: publish
-    if: ${{ github.event.inputs.dry_run != 'true' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 25
-    permissions:
-      contents: read
-      packages: write
-    env:
-      VX_RELEASE_VERSION: ${{ github.event.inputs.version || github.event.release.tag_name }}
-      GITHUB_TOKEN: ${{ github.token }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          # A tag only: any token with actions: write can dispatch this.
-          ref: ${{ github.event.inputs.ref && format('refs/tags/{0}', github.event.inputs.ref) || '' }}
-          persist-credentials: false
-      - if: inputs.scripts
-        run: git fetch --depth=1 origin "$GITHUB_SHA" && git checkout FETCH_HEAD -- packages/vx/scripts
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
-      # arm64 is built under emulation, by a builder that can push both
-      # platforms as one image.
-      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
-      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
-      - run: bun install --frozen-lockfile
-      - run: bun packages/vx/src/bin.ts setup github
-      - name: Push the images
-        run: bun packages/vx/src/bin.ts run release.docker --filter @vzn/vx
+      - name: Check vx.lock.json
+        run: bun packages/vx/src/bin.ts lock --check
+      - name: vx pipeline npm
+        run: bun packages/vx/src/bin.ts pipeline npm

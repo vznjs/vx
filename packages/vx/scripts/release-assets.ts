@@ -1,4 +1,4 @@
-// release.yml's uploads, the `release.github.<os>` tasks: attach the
+// The release's uploads, the `release.github.<os>.upload` tasks: attach the
 // `vx-<os>-*` binaries to the release VX_RELEASE_VERSION names (linux's also
 // THIRD_PARTY_NOTICES.txt, the licenses the binaries embed), and with
 // `--publish` take it out of draft. This repo's releases are immutable, and

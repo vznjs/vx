@@ -263,6 +263,67 @@ export class OutputIndex {
     return this.stamped.get(hash)
   }
 
+  /**
+   * Each of `files` (`rel\0ino:ctime`, ctime floored) a stamp holds under an
+   * entry whose key folded its `oid` at its `rel` (that entry's
+   * `entry_inputs`): bytes a save or restore here left under a key that took
+   * git's version, not a hand edit some miss saved. Flushed and pending
+   * stamps; one scan of them. An entry a remote ingest wrote has no inputs
+   * here, so its bytes prove nothing until a local save.
+   */
+  foldedStamps(files: readonly StampProbe[]): Set<string> {
+    const out = new Set<string>()
+    if (files.length === 0) return out
+    const byId = new Map<string, StampProbe[]>()
+    for (const f of files) {
+      const id = `${f.ino}:${Math.floor(f.ctimeMs)}`
+      const same = byId.get(id)
+      if (same === undefined) byId.set(id, [f])
+      else same.push(f)
+    }
+    const under = new Map<string, Set<string>>()
+    const note = (id: string, hash: string): void => {
+      if (!byId.has(id)) return
+      let hashes = under.get(id)
+      if (hashes === undefined) under.set(id, (hashes = new Set()))
+      hashes.add(hash)
+    }
+    for (const [hash, stamps] of this.pendingStamps)
+      for (const [ino, ctime] of stamps.values()) note(`${ino}:${ctime}`, hash)
+    const rows = this.db
+      .query(
+        'SELECT entry_hash, ino, ctime_ms FROM output_stamps WHERE root = ? AND ino IN (SELECT value FROM json_each(?))',
+      )
+      .all(this.root, JSON.stringify(files.map((f) => f.ino))) as Array<{
+      entry_hash: string
+      ino: number
+      ctime_ms: number
+    }>
+    for (const r of rows) note(`${r.ino}:${r.ctime_ms}`, r.entry_hash)
+    if (under.size === 0) return out
+    const hashes = new Set<string>()
+    for (const hs of under.values()) for (const h of hs) hashes.add(h)
+    const folded = new Map<string, Set<string>>()
+    for (const r of this.db
+      .query(
+        'SELECT entry_hash, components FROM entry_inputs WHERE entry_hash IN (SELECT value FROM json_each(?))',
+      )
+      .all(JSON.stringify([...hashes])) as Array<{ entry_hash: string; components: string }>) {
+      const files = new Set<string>()
+      for (const [kind, name, digest] of JSON.parse(r.components) as [string, string, string][])
+        if (kind === 'file') files.add(`${name}\0${digest}`)
+      folded.set(r.entry_hash, files)
+    }
+    for (const [id, hs] of under)
+      for (const f of byId.get(id)!)
+        for (const h of hs)
+          if (folded.get(h)?.has(`${f.rel}\0${f.oid}`) === true) {
+            out.add(`${f.rel}\0${id}`)
+            break
+          }
+    return out
+  }
+
   /** The probe's rows of `hash` when held: no read. */
   heldRowsOf(hash: string): readonly OutputFileRow[] | undefined {
     return this.held.get(hash)
@@ -727,6 +788,15 @@ export interface OutputFileRow {
    */
   ino?: number
   ctimeMs?: number
+}
+
+/** A file `foldedStamps` asks about: its inode and ctime now, and what git holds for it. */
+export interface StampProbe {
+  ino: number
+  ctimeMs: number
+  /** Workspace-relative, POSIX: as an `entry_inputs` file component names it. */
+  rel: string
+  oid: string
 }
 
 /** One directory under a whole-subtree output glob, as it stood after the last save or restore on THIS machine. */
