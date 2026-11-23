@@ -1018,14 +1018,14 @@
   "scores": {
     "vx": {
       "all": {
-        "pass": 2134,
-        "can": 2134,
-        "of": 2203
+        "pass": 2135,
+        "can": 2135,
+        "of": 2204
       },
       "correctness": {
-        "pass": 1719,
-        "can": 1719,
-        "of": 1780
+        "pass": 1720,
+        "can": 1720,
+        "of": 1781
       },
       "efficiency": {
         "pass": 326,
@@ -1073,9 +1073,9 @@
         "of": 149
       },
       "outputs": {
-        "pass": 303,
-        "can": 303,
-        "of": 314
+        "pass": 304,
+        "can": 304,
+        "of": 315
       },
       "report": {
         "pass": 89,
@@ -1096,13 +1096,13 @@
     "turbo": {
       "all": {
         "pass": 1392,
-        "can": 1804,
-        "of": 2203
+        "can": 1805,
+        "of": 2204
       },
       "correctness": {
         "pass": 1118,
-        "can": 1457,
-        "of": 1780
+        "can": 1458,
+        "of": 1781
       },
       "efficiency": {
         "pass": 244,
@@ -1151,8 +1151,8 @@
       },
       "outputs": {
         "pass": 234,
-        "can": 301,
-        "of": 314
+        "can": 302,
+        "of": 315
       },
       "report": {
         "pass": 30,
@@ -1173,13 +1173,13 @@
     "nx": {
       "all": {
         "pass": 1392,
-        "can": 1839,
-        "of": 2203
+        "can": 1840,
+        "of": 2204
       },
       "correctness": {
         "pass": 1079,
-        "can": 1482,
-        "of": 1780
+        "can": 1483,
+        "of": 1781
       },
       "efficiency": {
         "pass": 283,
@@ -1228,8 +1228,8 @@
       },
       "outputs": {
         "pass": 224,
-        "can": 301,
-        "of": 314
+        "can": 302,
+        "of": 315
       },
       "report": {
         "pass": 30,
@@ -1249,14 +1249,14 @@
     },
     "vite-task": {
       "all": {
-        "pass": 1026,
-        "can": 1388,
-        "of": 2203
+        "pass": 1027,
+        "can": 1389,
+        "of": 2204
       },
       "correctness": {
-        "pass": 861,
-        "can": 1167,
-        "of": 1780
+        "pass": 862,
+        "can": 1168,
+        "of": 1781
       },
       "efficiency": {
         "pass": 156,
@@ -1304,9 +1304,9 @@
         "of": 149
       },
       "outputs": {
-        "pass": 206,
-        "can": 301,
-        "of": 314
+        "pass": 207,
+        "can": 302,
+        "of": 315
       },
       "report": {
         "pass": 9,
@@ -1326,14 +1326,14 @@
     },
     "nix": {
       "all": {
-        "pass": 1097,
-        "can": 1385,
-        "of": 2203
+        "pass": 1098,
+        "can": 1386,
+        "of": 2204
       },
       "correctness": {
-        "pass": 940,
-        "can": 1189,
-        "of": 1780
+        "pass": 941,
+        "can": 1190,
+        "of": 1781
       },
       "efficiency": {
         "pass": 147,
@@ -1381,9 +1381,9 @@
         "of": 149
       },
       "outputs": {
-        "pass": 233,
-        "can": 308,
-        "of": 314
+        "pass": 234,
+        "can": 309,
+        "of": 315
       },
       "report": {
         "pass": 10,
@@ -1403,14 +1403,14 @@
     },
     "moon": {
       "all": {
-        "pass": 1278,
-        "can": 1735,
-        "of": 2203
+        "pass": 1279,
+        "can": 1736,
+        "of": 2204
       },
       "correctness": {
-        "pass": 1007,
-        "can": 1416,
-        "of": 1780
+        "pass": 1008,
+        "can": 1417,
+        "of": 1781
       },
       "efficiency": {
         "pass": 236,
@@ -1458,9 +1458,9 @@
         "of": 149
       },
       "outputs": {
-        "pass": 191,
-        "can": 304,
-        "of": 314
+        "pass": 192,
+        "can": 305,
+        "of": 315
       },
       "report": {
         "pass": 35,
@@ -17758,6 +17758,41 @@
           "status": "fail",
           "step": 4,
           "detail": "packages/a/lib/dist/stray.js exists, expected none"
+        }
+      }
+    },
+    {
+      "id": "outputs/anywhere-pattern-old-empty-dir-not-cached",
+      "ref": "4cmv40",
+      "category": "outputs",
+      "kind": "correctness",
+      "title": "An empty directory an older build left under an anywhere-pattern (`**/dist/**`) does not come back with a hit",
+      "why": "A cache entry holds what the task made, not what older builds left behind. `dist/old` predates the run and the task never writes it, so it must not be stored or restored. A tool that cleans only below a fixed folder treats `**/dist/**` as having none, saves the emptied `dist/old`, and recreates it on every hit, on every machine.",
+      "from": [
+        "output-prune-rooted"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 6,
+          "detail": "packages/a/dist/old exists"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 6,
+          "detail": "packages/a/dist/old exists"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
         }
       }
     },

@@ -741,6 +741,33 @@ export default [
     ],
   }),
 
+  // Hardening find 01295d2: a glob with no fixed directory pruned nothing.
+  defineCase({
+    id: 'outputs/anywhere-pattern-old-empty-dir-not-cached',
+    category: 'outputs',
+    kind: 'correctness',
+    title:
+      'An empty directory an older build left under an anywhere-pattern (`**/dist/**`) does not come back with a hit',
+    why: 'A cache entry holds what the task made, not what older builds left behind. `dist/old` predates the run and the task never writes it, so it must not be stored or restored. A tool that cleans only below a fixed folder treats `**/dist/**` as having none, saves the emptied `dist/old`, and recreates it on every hit, on every machine.',
+    from: ['output-prune-rooted'],
+    workspace: one({
+      command: 'mkdir -p dist/s && cp src/a.txt dist/s/a.js',
+      inputs: ['src/**'],
+      outputs: ['**/dist/**'],
+    }),
+    steps: [
+      { write: { [`${A}/dist/old/x`]: '' } },
+      { write: { [`${A}/dist/old/x`]: null } },
+      { run: 'build', expect: { exit: 0 } },
+      { write: { [`${A}/dist`]: null } },
+      {
+        run: 'build',
+        expect: { exit: 0, notRan: ['a#build'], files: { [`${A}/dist/s/a.js`]: 'a\n' } },
+      },
+      { check: { missing: [`${A}/dist/old`] } },
+    ],
+  }),
+
   defineCase({
     id: 'outputs/root-output-stray-removed',
     category: 'outputs',
