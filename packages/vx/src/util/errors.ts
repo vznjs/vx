@@ -111,6 +111,13 @@ export function wantsJson(argv: readonly string[]): boolean {
 }
 
 /**
+ * Where a redirected `process.stdout.write` keeps the write it replaced:
+ * under `--format json` every other route to stdout goes to stderr, and
+ * the document still goes out through this.
+ */
+export const REAL_STDOUT_WRITE: unique symbol = Symbol.for('vx.stdout.realWrite')
+
+/**
  * The JSON a verb that answers JSON prints for a refusal: one line. A
  * core code (`VX_E_…`) links its section of cli.md, which says the fix;
  * `vx docs <code>` prints the same section. A plugin's code has none.

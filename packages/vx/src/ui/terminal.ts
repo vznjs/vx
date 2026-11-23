@@ -5,6 +5,7 @@
 
 import { inline, render, tagged, wrap, type Block, type Inline } from './components.js'
 import { detectColors, INDENT, type Tone } from './theme.js'
+import { REAL_STDOUT_WRITE } from '../util/index.js'
 
 export type StreamName = 'out' | 'err'
 
@@ -28,7 +29,14 @@ export function say(t: Tone, line: string, stream: StreamName = 'err'): void {
  * completion script, a file `vx show` prints. Never a sentence for a person.
  */
 export function data(stream: StreamName, bytes: string): void {
-  streamOf(stream).write(bytes)
+  dataWrite(stream, bytes)
+}
+
+/** A stream's write, past a redirect of stdout's (`stdoutToStderr`). */
+function dataWrite(stream: StreamName, bytes: string): boolean {
+  const s = streamOf(stream)
+  const write = s.write as typeof s.write & { [REAL_STDOUT_WRITE]?: typeof s.write }
+  return (write[REAL_STDOUT_WRITE] ?? write).call(s, bytes)
 }
 
 /**
@@ -39,7 +47,7 @@ export function data(stream: StreamName, bytes: string): void {
 export async function dataPieces(stream: StreamName, pieces: Iterable<string>): Promise<void> {
   const s = streamOf(stream)
   for (const piece of pieces) {
-    if (!s.write(piece)) await new Promise((resolve) => s.once('drain', resolve))
+    if (!dataWrite(stream, piece)) await new Promise((resolve) => s.once('drain', resolve))
   }
 }
 

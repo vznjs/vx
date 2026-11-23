@@ -25,6 +25,7 @@ export {
   OUT_OF_FDS_HINT,
   thrownMessage,
   wantsJson,
+  REAL_STDOUT_WRITE,
 } from './errors.js'
 export { configErrorFrame, configRefusal } from './config-frame.js'
 export { envFlagOn } from './env-flag.js'

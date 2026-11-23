@@ -65,10 +65,18 @@ export async function run(argv: readonly string[]): Promise<number> {
   }
   applyWorkspaceLimits(undefined)
 
+  // A plugin hook's or a config's print reached stdout ahead of the
+  // document: `ui.data` alone writes there. A plugin verb owns its stdout.
+  const release =
+    command !== undefined && isCoreVerb(command) && wantsJson(argv)
+      ? (await import('../workspace/index.js')).stdoutToStderr()
+      : undefined
   try {
     return await dispatch(command, rest)
   } catch (err) {
     throw await brokenLockNamed(err)
+  } finally {
+    release?.()
   }
 }
 

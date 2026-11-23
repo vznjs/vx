@@ -50,6 +50,7 @@ export {
   loadProjectConfig,
   loadProjectConfigs,
   loadWorkspaceConfig,
+  stdoutToStderr,
   WORKSPACE_CONFIG_FILENAMES,
 } from './project-loader.js'
 export {

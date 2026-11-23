@@ -1350,7 +1350,8 @@ Row legend (the run's own words; the status word's colour carries the outcome):
 Group tasks are left out of the panel (they are in the JSON).
 
 `--dry --format json` emits the same data as one JSON object on one line, alone on stdout
-(a stage's warnings go to stderr), and with nothing to run (nothing
+(a stage's warnings go to stderr, and so does what a plugin hook prints
+under any core verb's `--format json`; a plugin verb owns its stdout), and with nothing to run (nothing
 affected) an empty `tasks` list, the note on stderr; `schemas/plan.json`
 is its JSON Schema, held like the read verbs' (see Machine-readable output).
 Indented here to read:

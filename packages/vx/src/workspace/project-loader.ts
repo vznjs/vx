@@ -1,7 +1,13 @@
 import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs'
 import path from 'node:path'
 import type { ProjectConfig, WorkspaceConfig } from '../config.js'
-import { ConfigsRefused, isUserError, UserError, xxh3hex } from '../util/index.js'
+import {
+  ConfigsRefused,
+  isUserError,
+  REAL_STDOUT_WRITE,
+  UserError,
+  xxh3hex,
+} from '../util/index.js'
 import { isSkippedPlugin, validateProjectConfig, validateWorkspace } from './config-schema.js'
 import { nonJsonMessage, nonJsonPaths } from './json-data.js'
 import {
@@ -884,7 +890,12 @@ function redirectedConsole(): typeof console {
   return facade as typeof console
 }
 
-function stdoutToStderr(): () => void {
+/**
+ * Every JS route to stdout goes to stderr until the release; `ui.data` alone
+ * still writes there, through `REAL_STDOUT_WRITE`. Under `--format json` for the whole
+ * verb: a plugin hook's `console.log` came out ahead of the document.
+ */
+export function stdoutToStderr(): () => void {
   if (redirectHolders++ === 0) undoRedirect = installRedirect()
   return () => {
     if (--redirectHolders === 0) undoRedirect()
@@ -956,8 +967,14 @@ function installRedirect(): () => void {
   const bun = Bun as { write: typeof Bun.write }
   const ownBunWrite = Bun.write
   const ownWriter = Object.getOwnPropertyDescriptor(Bun.stdout, 'writer')
-  out.write = ((...args: Parameters<typeof process.stderr.write>) =>
-    process.stderr.write(...args)) as typeof out.write
+  const real = out.write
+  out.write = Object.assign(
+    (...args: Parameters<typeof process.stderr.write>) => process.stderr.write(...args),
+    {
+      [REAL_STDOUT_WRITE]:
+        (real as { [REAL_STDOUT_WRITE]?: typeof real })[REAL_STDOUT_WRITE] ?? real,
+    },
+  ) as typeof out.write
   bun.write = ((dest: unknown, ...rest: unknown[]) =>
     (ownBunWrite as (...a: unknown[]) => Promise<number>)(
       dest === Bun.stdout ? Bun.stderr : dest,
