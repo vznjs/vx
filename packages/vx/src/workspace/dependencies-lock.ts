@@ -16,24 +16,27 @@
 // moved and a deleted project's dependants are there. `vx lock --check`
 // holds it to a fresh derivation.
 //
-// Text, one line per project, keyed by its name and sorted, so a merge of
-// two branches touches only the projects each changed. Laid out for the
-// parse first, then for size (2026-11-21):
-//   line 1   JSON: {"version":5,"files":[file,…],"edges":true?,"extras":{…}?}
-//   then     name⇥deps⇥reach⇥digests, each list comma-separated, the
-//            digests in `files` order ("" for none), empty trailing fields
-//            dropped. A list with an element a comma or tab could break is
+// Text, two lines per project, keyed by its name, so a merge of two
+// branches touches only the projects each changed. Laid out for the parse
+// first, then for size, then merges (2026-11-23):
+//   line 1   JSON: {"version":6,"files":[file,…],"edges":true?,"extras":{…}?}
+//   then     each project in xxh3-of-name order: its name on a line, then
+//            ⇥deps⇥reach⇥digests, each list comma-separated, the digests in
+//            `files` order ("" for none), empty trailing fields dropped. The
+//            name line seldom changes, so it sits between two branches'
+//            edits to neighbouring projects and git merges both; hashed
+//            order keeps two new projects apart. A list with an element a comma or tab could break is
 //            written as a JSON array; a name a tab could break, as a JSON
 //            string. A hex digest is its 8 bytes in base64url; any other
 //            digest is `=` and the string.
 
 import path from 'node:path'
-import { type PendingWrite, UserError } from '../util/index.js'
+import { type PendingWrite, UserError, xxh3 } from '../util/index.js'
 import type { ProjectMeta } from './workspace.js'
 import { type LoadReads, readOnce } from './load-reads.js'
 
 export const DEPENDENCIES_LOCK_NAME = '.vx/dependencies.lock'
-const DEPENDENCIES_LOCK_VERSION = 5
+const DEPENDENCIES_LOCK_VERSION = 6
 const HEX16 = /^[0-9a-f]{16}$/
 const B64 = /^[A-Za-z0-9_-]{11}$/
 const CONFLICT = /^(?:<{7}|={7}|>{7})(?: |$)/
@@ -46,7 +49,7 @@ export interface LockedEdges {
 
 /** The lock as read: each project's line found at once, decoded on ask. */
 export interface DependenciesLock {
-  /** Project names, sorted. */
+  /** Project names, in the file's order. */
   readonly names: readonly string[]
   /** Whether a `discover` plugin gave edges: with none, a `^task` has no edge source. */
   readonly edgeSource: boolean
@@ -121,12 +124,15 @@ export function dependenciesLock(
   const named = (list: readonly string[] | undefined): string[] =>
     [...new Set((list ?? []).filter((n) => known.has(n)))].sort(cmp)
   const lines = [JSON.stringify(header)]
-  for (const m of [...metas].sort((a, b) => cmp(a.name, b.name))) {
+  const order = metas
+    .map((m) => [xxh3(m.name), m] as const)
+    .sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : cmp(a[1].name, b[1].name)))
+  for (const [, m] of order) {
     const digests = fileNames.map((f) => packed(files.get(f)!.projects[m.name] ?? ''))
     while (digests.length > 0 && digests[digests.length - 1] === '') digests.pop()
-    const fields = [key(m.name), list(named(m.deps)), list(named(m.reach)), list(digests)]
-    while (fields.length > 1 && fields[fields.length - 1] === '') fields.pop()
-    lines.push(fields.join('\t'))
+    const fields = [list(named(m.deps)), list(named(m.reach)), list(digests)]
+    while (fields.length > 0 && fields[fields.length - 1] === '') fields.pop()
+    lines.push(key(m.name), `\t${fields.join('\t')}`)
   }
   return parsed(`${lines.join('\n')}\n`)!
 }
@@ -199,7 +205,8 @@ export function parseDependenciesLock(bytes: Uint8Array | null): DependenciesLoc
 }
 
 // A committed file a merge or a bad checkout can break inside. The parse
-// checks the header and that each line's name is new and in order; a line's
+// checks the header, that each name is new and that a tab-led fields line
+// follows it; a line's
 // fields are checked when decoded, which refuses as "invalid, run `vx lock`"
 // rather than a raw TypeError at a lookup.
 function parsed(text: string): DependenciesLock | null {
@@ -215,18 +222,19 @@ function parsed(text: string): DependenciesLock | null {
     const names: string[] = []
     const at = new Map<string, number>()
     for (let a = nl + 1; a < text.length;) {
+      // A name line, then its fields' line, which starts with a tab.
       const end = text.indexOf('\n', a)
-      let tab = text.indexOf('\t', a)
-      if (tab < 0 || tab > end) tab = end
-      const raw = text.slice(a, tab)
+      if (end < 0 || text.charCodeAt(a) === 9 || text.charCodeAt(end + 1) !== 9) return null
+      const raw = text.slice(a, end)
       const name = raw.charCodeAt(0) === 34 ? (JSON.parse(raw) as unknown) : raw
       if (typeof name !== 'string' || name === '' || at.has(name)) return null
       // A conflict git's merge left: its marker lines would read as names.
       if (CONFLICT.test(name)) return null
-      if (names.length > 0 && cmp(names[names.length - 1]!, name) >= 0) return null
       names.push(name)
-      at.set(name, a)
-      a = end + 1
+      at.set(name, end + 2)
+      const next = text.indexOf('\n', end + 1)
+      if (next < 0) return null
+      a = next + 1
     }
     const decoded = new Map<string, { edges: LockedEdges; digests: string[] }>()
     const line = (name: string) => {
@@ -235,11 +243,11 @@ function parsed(text: string): DependenciesLock | null {
       const start = at.get(name)
       if (start === undefined) return undefined
       const parts = text.slice(start, text.indexOf('\n', start)).split('\t')
-      if (parts.length > 4) throw invalid()
-      const deps = field(parts[1])
-      const reach = field(parts[2])
+      if (parts.length > 3) throw invalid()
+      const deps = field(parts[0])
+      const reach = field(parts[1])
       for (const n of [...deps, ...reach]) if (!at.has(n)) throw invalid()
-      const digests = field(parts[3]).map(unpacked)
+      const digests = field(parts[2]).map(unpacked)
       if (digests.length > files.length) throw invalid()
       d = { edges: { deps, reach }, digests }
       decoded.set(name, d)

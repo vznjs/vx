@@ -36,9 +36,10 @@ lock is the sound dependency story that rejection asked for:
 
 ## Format
 
-The format below is version 2's. Version 8 (2026-11-21) is
-`.vx/projects.lock`, one line per project keyed by its name, each
-distinct task once on a `#id` line, no `validated` (docs/modules/workspace.md).
+The format below is version 2's. Version 9 (2026-11-23) is
+`.vx/projects.lock`: each distinct task once under a pointer hashed from its JSON,
+each project keyed by its name with a name line and a pointer line per
+task, no `validated` (docs/modules/workspace.md).
 
 `.vx/lock.json` at the workspace root:
 

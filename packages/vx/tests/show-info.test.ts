@@ -155,7 +155,7 @@ describe('vx show (e2e)', () => {
         name: 'app',
         dir: 'packages/app',
         tags: [],
-        tasks: ['build', 'dev', 'ci', 'lint'],
+        tasks: ['build', 'ci', 'dev', 'lint'],
       })
       const bare = list.find((p) => p.name === 'bare')
       expect(bare).toEqual({ name: 'bare', dir: 'packages/bare', tags: [], tasks: [] })

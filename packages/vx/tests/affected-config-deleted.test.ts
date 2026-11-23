@@ -137,7 +137,8 @@ it('a deleted project leaves the alike task it shared unselected', async () => {
   const git = gitIn(root)
   git('add', '-A')
   git('commit', '-q', '-m', 'init')
-  expect(git('show', 'HEAD:.vx/projects.lock').match(/^#/gm)).toHaveLength(1)
+  // One pointer, in the pool and under each project's task.
+  expect(new Set(git('show', 'HEAD:.vx/projects.lock').match(/^#.*$/gm)).size).toBe(1)
   await rm(path.join(root, 'packages/a'), { recursive: true })
   await lock(root)
   git('add', '-A')
@@ -156,7 +157,7 @@ it('a base whose dependencies lock a newer vx wrote is read, not refused', async
   await addProject(root, 'q', { config: config(['src/**']), files: { 'src/x': '1\n' } })
   await lock(root)
   const file = path.join(root, '.vx', 'dependencies.lock')
-  await Bun.write(file, (await Bun.file(file).text()).replace('"version":5', '"version":6'))
+  await Bun.write(file, (await Bun.file(file).text()).replace('"version":6', '"version":7'))
   const git = gitIn(root)
   git('add', '-A')
   git('commit', '-q', '-m', 'base')

@@ -13,8 +13,8 @@ re-exported from `@vzn/vx`.
 ├── vx.config.ts                 (optional: the root project, named `//`)
 ├── .vx/
 │   ├── workspace.ts             (required: marks the root; workspace-wide settings)
-│   ├── projects.lock      (`vx lock`: configs, a line per project; committed)
-│   ├── dependencies.lock        (`vx lock`: edges and digests, a line per project; committed)
+│   ├── projects.lock      (`vx lock`: configs, each task once; committed)
+│   ├── dependencies.lock        (`vx lock`: edges and digests per project; committed)
 │   ├── .gitattributes           (both locks `linguist-generated eol=lf`; written when missing)
 │   ├── .gitignore               (`/cache`; written by `vx init` and the cache when missing)
 │   └── cache/                   (machine-local state; the only part git ignores)
@@ -3309,9 +3309,9 @@ Project-discovery errors (`src/workspace/workspace.ts`, `src/orchestrator/projec
 | `<dir>: "//" names the workspace root — set another \`name\``                                                        | A config away from the root says `name: '//'`.                                                                                      |
 | `.vx/projects.lock locks <dir>, but its <file> is gone — run \`vx lock\``                                            | A locked project's config was deleted or renamed (X-144).                                                                           |
 | `.vx/projects.lock locks <dir>, but its <file> is not readable by this user (<code>) — give this user read access…`  | This user may not search the project's directory (D-132).                                                                           |
-| `.vx/projects.lock has unsupported version <n> (this vx expects 8) — re-run \`vx lock\``                             | A lock an earlier vx wrote.                                                                                                         |
-| `.vx/dependencies.lock has unsupported version <n> (this vx expects 5) — re-run \`vx lock\``                         | A dependencies lock an earlier vx wrote.                                                                                            |
-| `.vx/projects.lock was written by a newer vx (version <n>; this vx reads 8) — upgrade vx`                            | A lock a later vx wrote: re-locking would write the older version.                                                                  |
+| `.vx/projects.lock has unsupported version <n> (this vx expects 9) — re-run \`vx lock\``                             | A lock an earlier vx wrote.                                                                                                         |
+| `.vx/dependencies.lock has unsupported version <n> (this vx expects 6) — re-run \`vx lock\``                         | A dependencies lock an earlier vx wrote.                                                                                            |
+| `.vx/projects.lock was written by a newer vx (version <n>; this vx reads 9) — upgrade vx`                            | A lock a later vx wrote: re-locking would write the older version.                                                                  |
 | `<dir> is outside this sparse checkout, so vx lock cannot read its <file> — run \`git sparse-checkout add <dir>\``   | `vx lock` or `--check` where a sparse checkout left a config out.                                                                   |
 | `.vx/projects.lock: no task #<id> — re-run \`vx lock\``                                                              | A hand-edited lock names a task line it does not hold.                                                                              |
 | `.vx/projects.lock holds a line \`vx lock\` never writes — re-run \`vx lock\``                                       | A line with no tab, or a name twice.                                                                                                |

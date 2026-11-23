@@ -398,13 +398,14 @@ describe('sweepConfigs: only the tasks the run reaches are judged', () => {
       const ui = path.join(root, 'packages', 'ui')
       const inputs = async (tasks?: string[]): Promise<unknown> =>
         (await sweepConfigs(metas, root, {}, tasks)).inputs.get(ui)
-      // `fetch` is declared before what reaches it: the closure takes more than one pass.
-      expect(await inputs(['build'])).toEqual([['api/**'], ['schema/**'], ['src/**', '!dist/**']])
+      // The lock holds tasks in name order, so `fetch` comes before `gen`, which
+      // reaches it: the closure takes more than one pass.
+      expect(await inputs(['build'])).toEqual([['src/**', '!dist/**'], ['api/**'], ['schema/**']])
       expect(await inputs(['ui#gen'])).toEqual([['api/**'], ['schema/**']])
       expect(await inputs(['all'])).toEqual([
+        ['src/**', '!dist/**'],
         ['api/**'],
         ['schema/**'],
-        ['src/**', '!dist/**'],
         ['**/*'],
         ['x/**'],
       ])

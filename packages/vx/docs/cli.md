@@ -2237,7 +2237,7 @@ after you edit one, run `vx lock` and commit the lock.
 Beside it, `.vx/dependencies.lock` records the resolved graph (each
 project's edges, which live nowhere else) and each claimed file's
 per-project digests (`FingerprintClaim.digests`) with the hash of each
-other file they read (a `bun.lock` patch), one line per project keyed
+other file they read (a `bun.lock` patch), two lines per project keyed
 by its name. Only `vx lock` writes it; never edit it. Commit it too: a
 run keys each task from those digests, after checking them against the
 plugin's own digests of the lockfile as it is, which `cache.db` keeps
@@ -2332,8 +2332,8 @@ never reach it (its inputs still key its files), and `--check` fails a
 lock that misses one.
 Configs are
 programs; `vx lock` evaluates them in the current environment and
-stores the post-evaluation objects, one line per project keyed by its
-name (version 8; a lock an
+stores the post-evaluation objects, each project keyed by its
+name (version 9; a lock an
 earlier vx wrote is refused, "re-run `vx lock`"). A project is named by
 its config's `name`, else by a plugin's `discover` stage (vx-lockfile
 gives `package.json`'s `name`), else by its root-relative path (`//` for
@@ -2367,12 +2367,15 @@ one line naming every task it holds for (`a#build, b#build and 76 more
 tasks: …`).
 
 `.vx/projects.lock` is laid out for the parse first, then for
-size, and for merges: a header line, `{"version":8}`, then each distinct
-task config once as `#<hash>⇥<task JSON>`, then one line per project,
-`<name>⇥{"path","file"|"by","config"}`, its tasks naming those lines
-(`"build":"#k2x0…"`), all sorted. A run that needs a few projects
-parses only their lines (2,016 projects: 0.7 ms for one, 5.4 ms for
-all). For review, `vx lock` also writes each project's resolved config (plugins
+size, then for merges: a header line, `{"version":9}`, then each
+distinct task config once, as a pointer line (`#k2x0a1b`) and its JSON
+line, then each project, in name-hash order, as
+`<name>⇥{"path","file"|"by","config"}` (`file` left out for
+`vx.config.ts`, the tasks left out of `config`) and, per task in name
+order, a `⇥<task>` line and its pointer line. A pointer is a hash of its
+task's JSON, so the same configs always lock to the same text. A merge that
+lost a pointer's entry is refused until `vx lock` rewrites the lock. `vx
+show` lists a project's tasks in name order. For review, `vx lock` also writes each project's resolved config (plugins
 applied), pretty, to `vx.lock.json` beside its `vx.config`; vx never reads
 it, it is no task's input, and `lock.reviewFiles: false`
 (`VX_LOCK_REVIEW_FILES`) turns it off. A copy left with no config beside
@@ -2386,11 +2389,14 @@ does too, and an existing one is never edited.
 
 ### Merging
 
-The locks have no merge driver: git merges them as text. A line per
-project, so branches that changed different projects merge clean, and a
-run checks the merged digests against the merged lockfile and refuses
-with "run `vx lock`" when they differ. When both sides changed one
-project, git leaves its conflict markers, every run refuses the lock
+The locks have no merge driver: git merges them as text. A name line
+seldom changes, so it sits between two branches' edits to neighbouring
+projects, and git merges both; hashed project order keeps two new projects
+apart (of two-branch merges, 18% conflict against version 8's 80%,
+2026-11-23). A run checks the merged digests
+against the merged lockfile and refuses with "run `vx lock`" when they
+differ. When both sides changed one task, or lines right beside each
+other, git leaves its conflict markers, every run refuses the lock
 with "run `vx lock`", and `vx lock`, once the configs are resolved,
 writes both locks anew. A driver could not do this: git runs one before
 theirs' configs reach the disk, so `vx lock` there would lock our side.
