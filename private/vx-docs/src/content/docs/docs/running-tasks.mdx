@@ -5,6 +5,7 @@ description: Run a task with vx run, choose the projects it runs in, and see the
 
 import { Aside, FileTree } from '@astrojs/starlight/components'
 import RunPicker from '../../../components/demos/RunPicker.astro'
+import Takeaway from '../../../components/learn/Takeaway.astro'
 
 `vx run <task>` runs a task, and every task it needs first.
 
@@ -114,9 +115,7 @@ Look at `2 in run`. You asked for one build and got two: `@shop/ui`
 built first, because `web` waits on it. Only `web`'s log is shown; its
 helpers run quietly unless they fail.
 
-<Aside type="tip" title="You can now">
-  Build any project, with everything it needs, from inside its folder.
-</Aside>
+<Takeaway>Build any project, with everything it needs, from inside its folder.</Takeaway>
 
 ---
 
@@ -193,10 +192,8 @@ The `cache` line always tells you which of these happened:
 | <span style="color:var(--vx-link)">`↑`</span> | ran, then saved to the cache | ran |
 | `∅` | ran with no cache | ran |
 
-<Aside type="tip" title="You can now">
-  Run a task across the whole workspace, and read from one line what
-  ran and what was skipped. Why it skips: [Caching](../caching/).
-</Aside>
+<Takeaway>Run a task across the whole workspace, and read from one line what
+  ran and what was skipped. Why it skips: [Caching](../caching/).</Takeaway>
 
 ---
 
@@ -285,10 +282,8 @@ Full grammar and error messages: [`--filter`](../../cli/run/#filter-dsl---filter
 
 </details>
 
-<Aside type="tip" title="You can now">
-  Run a task in exactly the projects you mean, by name, folder or
-  neighbours.
-</Aside>
+<Takeaway>Run a task in exactly the projects you mean, by name, folder or
+  neighbours.</Takeaway>
 
 ---
 
@@ -347,9 +342,7 @@ of its project declares. Full rules: [`--affected`](../../cli/run/#--affectedbas
 
 </details>
 
-<Aside type="tip" title="You can now">
-  Test only what a branch touched, and see why each task made the cut.
-</Aside>
+<Takeaway>Test only what a branch touched, and see why each task made the cut.</Takeaway>
 
 ---
 
@@ -386,9 +379,7 @@ vx run @shop/api#test       # one project's task, exactly
 vx run //#build             # the root project's task
 ```
 
-<Aside type="tip" title="You can now">
-  Run a whole check (lint, test, build) as one command.
-</Aside>
+<Takeaway>Run a whole check (lint, test, build) as one command.</Takeaway>
 
 ---
 
@@ -472,9 +463,7 @@ Full rules: [argument forwarding](../../cli/run/#argument-forwarding---).
 
 </details>
 
-<Aside type="tip" title="You can now">
-  Hand any flag to vite, vitest or oxlint through vx.
-</Aside>
+<Takeaway>Hand any flag to vite, vitest or oxlint through vx.</Takeaway>
 
 ---
 
@@ -509,9 +498,7 @@ Nothing ran. Read it row by row:
 `--dry=json` prints the same plan for scripts. Paste it into the
 [graph explorer](../graph-explorer/) to browse it.
 
-<Aside type="tip" title="You can now">
-  Know what a run will cost before you start it.
-</Aside>
+<Takeaway>Know what a run will cost before you start it.</Takeaway>
 
 ---
 
@@ -593,9 +580,7 @@ Every detail: [`vx run`](../../cli/run/).
 
 </details>
 
-<Aside type="tip" title="You can now">
-  Shape any run: what it touches, how fast it goes, and when it stops.
-</Aside>
+<Takeaway>Shape any run: what it touches, how fast it goes, and when it stops.</Takeaway>
 
 ---
 

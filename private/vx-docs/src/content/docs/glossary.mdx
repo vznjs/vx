@@ -57,7 +57,7 @@ Coming from another tool? Each section ends with a table of the names Turborepo,
 
 ### Lock
 
-**Your configs, evaluated once.** `vx lock` writes `.vx/projects.lock`. Every run reads that file, never the configs ([check the lock](../docs/ci/check-the-lock/)).
+**Your configs, evaluated once.** `vx lock` writes `.vx/projects.lock`. Every run reads that file, never the configs ([check the lock](../docs/ci/#keep-the-lock-fresh)).
 
 <Quiz q="You add a task to packages/web/vx.config.ts. What do you run before vx run sees it?">
   `vx lock`. Runs read only `.vx/projects.lock`, so the lock must include the new task.
