@@ -118,13 +118,19 @@ afterAll(async () => {
 })
 
 describe('the guides show what vx prints', () => {
-  it("the agents page's diff entry is vx why --format json's", () => {
+  it("the agents page's roots sample has vx why --format json's shape", () => {
     const page = readFileSync(path.join(GUIDES, '..', 'docs', 'agents.mdx'), 'utf8')
-    const line = /^\{"kind":"file".*\}$/m.exec(page)![0]
+    const line = /^\[\{"chain":.*\]$/m.exec(page)![0]
+    const roots = JSON.parse(line) as { chain: string[]; entries: Record<string, string>[] }[]
     const why = JSON.parse(vx('why', '@demo/app#build', '--format', 'json').stdout) as {
-      diff: { entries: unknown[] }
+      diff: { entries: Record<string, string>[] }
     }
-    expect(JSON.parse(line)).toEqual(why.diff.entries[0])
+    expect(Object.keys(roots[0]!).sort()).toEqual(['chain', 'entries'])
+    const entry = roots[0]!.entries[0]!
+    expect(Object.keys(entry).sort()).toEqual(Object.keys(why.diff.entries[0]!).sort())
+    // vx prints the whole blob id, never a short one (the 2026-10-23 drift).
+    expect(entry['before']).toMatch(/^[0-9a-f]{40}$/)
+    expect(entry['after']).toMatch(/^[0-9a-f]{40}$/)
   })
 
   it("the agents page's refusal line is what --dry --format json prints", () => {
