@@ -194,12 +194,20 @@ In a workspace with `turbo.json` (or `turbo.jsonc`), `vx init --native` writes a
 
 <Deeper level="patterns" title="What init prints and writes">
 
+The samples here convert a small Turborepo workspace: `packages/app`
+depends on `packages/lib`, and npm keeps the lockfile.
+
+```sh
+bunx @vzn/vx init --native
+```
+
 ```ansi
 [4m[58;2;110;118;129m  [1m[38;2;167;139;250mvx-migrate 0.0.0[0m[4m[58;2;110;118;129m[0m
   [2mfrom    [0m  [38;2;203;213;225mturbo.json[0m
-  [2mtasks   [0m  [38;2;34;197;94m6 clean[0m
-  [2mfiles   [0m  [38;2;203;213;225mpackages/ui/vx.config.ts[0m
-            [38;2;203;213;225mpackages/web/vx.config.ts[0m
+  [2mran     [0m  [38;2;203;213;225mnpm install -D @vzn/vx-lockfile @vzn/vx-history[0m
+  [2mtasks   [0m  [38;2;34;197;94m3 clean[0m
+  [2mfiles   [0m  [38;2;203;213;225mpackages/app/vx.config.ts[0m
+            [38;2;203;213;225mpackages/lib/vx.config.ts[0m
             [38;2;203;213;225m.vx/workspace.ts[0m
             [38;2;203;213;225m.vx/.gitignore[0m
   [2mlock    [0m  [38;2;203;213;225m2 project configs → .vx/projects.lock, .vx/dependencies.lock[0m
@@ -216,22 +224,28 @@ Read the `note` lines: a task sees only the environment variables it lists.
   must match. Keep only the outputs each command writes on every run.
 </Aside>
 
-This is the `build` task of `packages/web/vx.config.ts`, as written:
+This is `packages/lib/vx.config.ts`, as written:
 
 ```ts
-build: {
-  exec: {
-    command: 'vite build',
+import type { ProjectConfig } from '@vzn/vx/config'
+
+export default {
+  tasks: {
+    build: {
+      exec: {
+        command: 'mkdir -p dist && cp src/*.js dist/',
+      },
+      dependsOn: ['^build'],
+      inputs: {
+        files: ['src/**', 'package.json'],
+      },
+      outputs: {
+        files: ['dist/**'],
+      },
+      cache: true,
+    },
   },
-  dependsOn: ['^build'],
-  inputs: {
-    files: ['src/**', 'package.json'],
-  },
-  outputs: {
-    files: ['dist/**'],
-  },
-  cache: true,
-},
+} satisfies ProjectConfig
 ```
 
 And `.vx/workspace.ts`:
@@ -239,18 +253,19 @@ And `.vx/workspace.ts`:
 ```ts
 import type { WorkspaceConfig } from '@vzn/vx/config'
 import { vxHistory } from '@vzn/vx-history'
-import { bun } from '@vzn/vx-lockfile'
+import { npm } from '@vzn/vx-lockfile'
 
 export default {
   plugins: [
-    bun(),
+    npm(),
     vxHistory(),
   ],
 } satisfies WorkspaceConfig
 ```
 
-`bun()` reads your lockfile, so `^build` builds a package's dependencies
-first. `vxHistory()` uses past run times to start the slowest work first.
+`npm()` reads your lockfile, so `^build` builds a package's dependencies
+first; a `bun.lock` gets `bun()`. `vxHistory()` uses past run times to
+start the slowest work first.
 
 turbo.json's global keys (`globalDependencies`, `globalEnv`) go onto no
 task. Each task gets a `TODO` instead, so you list what it reads.
@@ -274,8 +289,8 @@ task. Each task gets a `TODO` instead, so you list what it reads.
 <Deeper level="patterns" title="Check the mapping first">
 
 `vx init --keep` writes no configs. Its `.vx/workspace.ts` reads
-`turbo.json` or `nx.json` through a plugin, so you can check that vx sees
-the same tasks.
+`turbo.json` through `turbo()`, so you can check that vx sees the same
+tasks. In the same workspace:
 
 ```sh
 bunx @vzn/vx init --keep
@@ -284,13 +299,13 @@ bunx @vzn/vx init --keep
 ```ts
 import type { WorkspaceConfig } from '@vzn/vx/config'
 import { vxHistory } from '@vzn/vx-history'
-import { bun } from '@vzn/vx-lockfile'
+import { npm } from '@vzn/vx-lockfile'
 import { turbo } from '@vzn/vx-migrate'
 
 export default {
   plugins: [
     turbo(),
-    bun(),
+    npm(),
     vxHistory(),
   ],
 } satisfies WorkspaceConfig
@@ -299,9 +314,10 @@ export default {
 ```ansi
 [4m[58;2;110;118;129m  [1m[38;2;167;139;250mvx-migrate 0.0.0[0m[4m[58;2;110;118;129m[0m
   [2mfrom    [0m  [38;2;203;213;225mturbo.json, run by turbo() from @vzn/vx-migrate[0m
+  [2mran     [0m  [38;2;203;213;225mnpm install -D @vzn/vx-lockfile @vzn/vx-history[0m
   [2mfiles   [0m  [38;2;203;213;225m.vx/workspace.ts
             .vx/.gitignore[0m
-  [2mlock    [0m  [38;2;203;213;225m0 project configs → .vx/projects.lock, .vx/dependencies.lock (and the tasks a plugin maps for @demo/ui, @demo/web)[0m
+  [2mlock    [0m  [38;2;203;213;225m0 project configs → .vx/projects.lock, .vx/dependencies.lock (and the tasks a plugin maps for app, lib)[0m
   [2mnote    [0m  [38;2;203;213;225ma temporary start: vx init --native writes native config[0m
 
   [2mnext    [0m  [1mvx run build --all[0m
@@ -357,12 +373,21 @@ In a workspace with `nx.json`, `vx init --native` reads `nx graph`, so keep Nx i
 
 <Deeper level="patterns" title="What init prints and writes">
 
+The samples here convert a small Nx workspace: `packages/app` depends on
+`packages/lib`, each `build` an `nx:run-commands` target, and npm keeps
+the lockfile.
+
+```sh
+bunx @vzn/vx init --native
+```
+
 ```ansi
 [4m[58;2;110;118;129m  [1m[38;2;167;139;250mvx-migrate 0.0.0[0m[4m[58;2;110;118;129m[0m
   [2mfrom    [0m  [38;2;203;213;225mnx graph[0m
-  [2mtasks   [0m  [38;2;34;197;94m8 clean[0m
-  [2mfiles   [0m  [38;2;203;213;225mpackages/ui/vx.config.ts[0m
-            [38;2;203;213;225mpackages/web/vx.config.ts[0m
+  [2mran     [0m  [38;2;203;213;225mnpm install -D @vzn/vx-lockfile @vzn/vx-history[0m
+  [2mtasks   [0m  [38;2;34;197;94m2 clean[0m
+  [2mfiles   [0m  [38;2;203;213;225mpackages/app/vx.config.ts[0m
+            [38;2;203;213;225mpackages/lib/vx.config.ts[0m
             [38;2;203;213;225m.vx/workspace.ts[0m
             [38;2;203;213;225m.vx/.gitignore[0m
   [2mlock    [0m  [38;2;203;213;225m2 project configs → .vx/projects.lock, .vx/dependencies.lock[0m
@@ -372,22 +397,27 @@ In a workspace with `nx.json`, `vx init --native` reads `nx graph`, so keep Nx i
   [2mnext    [0m  [1mvx run build --all[0m
 ```
 
-This is the `build` task of `packages/ui/vx.config.ts`, as written:
+This is `packages/lib/vx.config.ts`, as written:
 
 ```ts
-build: {
-  exec: {
-    command: 'vite build',
+import type { ProjectConfig } from '@vzn/vx/config'
+
+export default {
+  tasks: {
+    build: {
+      exec: {
+        command: 'mkdir -p dist && cp src/index.js dist/lib.js',
+      },
+      inputs: {
+        files: ['src/**/*'],
+      },
+      outputs: {
+        files: ['dist'],
+      },
+      cache: true,
+    },
   },
-  dependsOn: ['^build'],
-  inputs: {
-    files: ['src/**/*'],
-  },
-  outputs: {
-    files: ['dist'],
-  },
-  cache: true,
-},
+} satisfies ProjectConfig
 ```
 
 The `note` line says how each Nx target became a task:
@@ -396,6 +426,43 @@ The `note` line says how each Nx target became a task:
 - an `nx:run-commands` target becomes its shell line;
 - any other executor runs through `nx-exec` (below);
 - a target with `.env` files runs through `nx-env`.
+
+</Deeper>
+
+<Deeper level="patterns" title="Check the mapping first">
+
+`vx init --keep` declares `nx()` instead of `turbo()`. In the same workspace:
+
+```sh
+bunx @vzn/vx init --keep
+```
+
+```ts
+import type { WorkspaceConfig } from '@vzn/vx/config'
+import { vxHistory } from '@vzn/vx-history'
+import { npm } from '@vzn/vx-lockfile'
+import { nx } from '@vzn/vx-migrate'
+
+export default {
+  plugins: [
+    nx(),
+    npm(),
+    vxHistory(),
+  ],
+} satisfies WorkspaceConfig
+```
+
+```ansi
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mvx-migrate 0.0.0[0m[4m[58;2;110;118;129m[0m
+  [2mfrom    [0m  [38;2;203;213;225mnx.json, run by nx() from @vzn/vx-migrate[0m
+  [2mran     [0m  [38;2;203;213;225mnpm install -D @vzn/vx-lockfile @vzn/vx-history[0m
+  [2mfiles   [0m  [38;2;203;213;225m.vx/workspace.ts
+            .vx/.gitignore[0m
+  [2mlock    [0m  [38;2;203;213;225m0 project configs → .vx/projects.lock, .vx/dependencies.lock (and the tasks a plugin maps for app, lib)[0m
+  [2mnote    [0m  [38;2;203;213;225ma temporary start: vx init --native writes native config[0m
+
+  [2mnext    [0m  [1mvx run build --all[0m
+```
 
 </Deeper>
 
@@ -438,19 +505,6 @@ Module-boundary tags become `run.rules.dependencies`, checked by
 | `nx graph`                           | `vx run build --all --dry --format json` (tasks and their deps), and the [graph explorer](../graph-explorer/) |
 | `nx reset`                           | `vx cache clean` clears it all; `--older-than <age>` trims it; there is no daemon |
 | Nx Cloud cache                       | [`nxCache()`](../../docs/remote-cache/) for a self-hosted Nx cache |
-
-`vx init --keep` declares `nx()` instead of `turbo()`:
-
-```ansi
-[4m[58;2;110;118;129m  [1m[38;2;167;139;250mvx-migrate 0.0.0[0m[4m[58;2;110;118;129m[0m
-  [2mfrom    [0m  [38;2;203;213;225mnx.json, run by nx() from @vzn/vx-migrate[0m
-  [2mfiles   [0m  [38;2;203;213;225m.vx/workspace.ts
-            .vx/.gitignore[0m
-  [2mlock    [0m  [38;2;203;213;225m0 project configs → .vx/projects.lock, .vx/dependencies.lock (and the tasks a plugin maps for @demo/ui, @demo/web)[0m
-  [2mnote    [0m  [38;2;203;213;225ma temporary start: vx init --native writes native config[0m
-
-  [2mnext    [0m  [1mvx run build --all[0m
-```
 
 </Deeper>
 
