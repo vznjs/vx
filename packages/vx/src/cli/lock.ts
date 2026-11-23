@@ -27,6 +27,7 @@ import {
 } from '../orchestrator/index.js'
 import { resolveSetting, runRules } from '../settings.js'
 import {
+  anyTaskGlob,
   checkIgnoreSync,
   configErrorFrame,
   configRefusal,
@@ -730,12 +731,33 @@ async function writeLock(
 
 /**
  * Variables a bundler writes into what it builds: Vite's, Next's, CRA's,
- * Astro's and SvelteKit's, Expo's, Gatsby's, Storybook's and Vue CLI's
- * public prefixes, and `NODE_ENV`. Only these: `passThrough` exists for
- * values that do not change the output (`CI`, a region, a token).
+ * Astro's and SvelteKit's, Expo's, Gatsby's, Storybook's, Vue CLI's, Bun's,
+ * Nx's, Nuxt's, Redwood's and Sanity's public prefixes, and `NODE_ENV`.
+ * Only these: `passThrough` exists for values that do not change the output
+ * (`CI`, a region, a token).
  */
 const INLINED_ENV =
-  /^(?:VITE_|NEXT_PUBLIC_|REACT_APP_|PUBLIC_|EXPO_PUBLIC_|GATSBY_|STORYBOOK_|VUE_APP_)|^NODE_ENV$/
+  /^(?:VITE_|NEXT_PUBLIC_|REACT_APP_|PUBLIC_|EXPO_PUBLIC_|GATSBY_|STORYBOOK_|VUE_APP_|BUN_PUBLIC_|NX_PUBLIC_|NUXT_ENV_|NUXT_PUBLIC_|REDWOOD_ENV_|SANITY_STUDIO_)|^NODE_ENV$/
+
+/**
+ * A dotenv file Vite, Next and Bun load from a project's directory on their
+ * own: `.env`, `.env.local`, `.env.<mode>`, `.env.<mode>.local`. A template
+ * (`.env.example`) is read by none.
+ */
+const LOADED_DOTENV =
+  /^\.env(?:\.(?!(?:example|sample|template|dist|defaults)(?:\.|$))[^.]+)?(?:\.local)?$/
+
+/** The loaded dotenv files in `dir`, sorted; one listing per project. */
+function dotenvFiles(dir: string): string[] {
+  try {
+    return readdirSync(dir, { withFileTypes: true })
+      .filter((e) => e.isFile() && LOADED_DOTENV.test(e.name))
+      .map((e) => e.name)
+      .sort()
+  } catch {
+    return []
+  }
+}
 
 /**
  * What a task reads that its key never sees, said where the lock evaluates
@@ -756,6 +778,7 @@ function unkeyedReads(root: string, check: GraphCheck): string[] {
     else tasks.push(task)
   }
   const found: { task: string; ws: string; rel: string; glob: string }[] = []
+  let dotenvOf: Map<string, string[]> | undefined
   for (const m of check.all) {
     for (const [name, t] of Object.entries(check.resolved.get(m.name)?.tasks ?? {})) {
       const task = `${m.name}#${name}`
@@ -773,10 +796,27 @@ function unkeyedReads(root: string, check: GraphCheck): string[] {
       ]) {
         const ws = relPosix(root, abs)
         // A `**` reader with no cache has no key to go stale.
-        if (glob.startsWith('**') && t.cache !== true) continue
+        if (glob.includes('**') && t.cache !== true) continue
         if (!own(relPosix(m.dir, abs)) && !ownWs(ws)) found.push({ task, ws, rel, glob })
       }
       if (t.cache !== true) continue
+      // A build that leaves a `.env` beside its config out of its inputs
+      // replays the old bundle after an edit to it: Vite inlines its values.
+      const outputs = (t.outputs?.files?.length ?? 0) + (t.outputs?.workspaceFiles?.length ?? 0)
+      if (outputs > 0) {
+        const files = t.inputs?.files ?? []
+        const keyed = anyTaskGlob(files.filter((g) => !g.startsWith('!')))
+        const excluded = anyTaskGlob(files.filter((g) => g.startsWith('!')).map((g) => g.slice(1)))
+        dotenvOf ??= new Map()
+        let env = dotenvOf.get(m.dir)
+        if (env === undefined) dotenvOf.set(m.dir, (env = dotenvFiles(m.dir)))
+        const unread = env.filter((f) => !keyed(f) && !excluded(f))
+        if (unread.length > 0)
+          said(
+            task,
+            `${unread.join(', ')} beside its config ${unread.length === 1 ? 'is' : 'are'} in no input, and Vite, Next and Bun load ${unread.length === 1 ? 'it' : 'them'} on their own — add '.env*' to inputs.files, or '!.env*' if the task reads none`,
+          )
+      }
       const quiet = new Set([...(t.inputs?.env ?? []), ...(t.exec?.env?.secret ?? [])])
       const unkeyed = (t.exec?.env?.passThrough ?? []).filter(
         (v) => INLINED_ENV.test(v) && !quiet.has(v) && !secretNamed(v),

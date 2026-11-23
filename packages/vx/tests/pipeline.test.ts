@@ -165,7 +165,7 @@ describe('vx pipeline <name>', () => {
         `pipelines: {
           check: { tasks: ['build'] },
           one: { tasks: ['build'], filter: ['a'] },
-          env: { tasks: ['show'], filter: ['a'], env: { SHOWN: 'vx-only' } },
+          env: { tasks: ['show', 'probe'], filter: ['a'], env: { SHOWN: 'vx-only', CI: 'vx-only' } },
           quiet: { tasks: ['show'], filter: ['a'], env: { VX_RUN_OUTPUT_LOGS: 'none' } },
           paths: { tasks: ['keep'], filter: ['a'], cacheDir: 'saved-cache', profile: 'saved.json' },
           policy: { tasks: ['build'], cachePolicy: 'bogus' },
@@ -180,6 +180,7 @@ describe('vx pipeline <name>', () => {
         `export default { tasks: {
           build: { exec: { command: 'true' } },
           show: { exec: { command: 'echo "shown=[$SHOWN]"', env: { passThrough: ['SHOWN'] } } },
+          probe: { exec: { command: 'true' }, inputs: { files: ['package.json'], runtime: ['echo "ci=[$CI]" > probe.txt'] }, outputs: { files: [] }, cache: true },
           keep: { exec: { command: 'echo k > k.txt' }, inputs: { files: ['package.json'] }, outputs: { files: ['k.txt'] }, cache: true },
         } }`,
       )
@@ -198,6 +199,8 @@ describe('vx pipeline <name>', () => {
   it('sets its env for vx, and a task reads it as unset', async () => {
     const shown = await vx('pipeline', 'env', '--output-logs=full')
     expect([shown.code, shown.out]).toEqual([0, expect.stringContaining('shown=[]')])
+    // A runtime probe reads the env its task does: CI is vx's alone.
+    expect(await Bun.file(path.join(root, 'packages', 'a', 'probe.txt')).text()).toBe('ci=[]\n')
     // vx itself reads it: the run's output is off.
     const quiet = await vx('pipeline', 'quiet')
     expect([quiet.code, quiet.out.includes('shown=')]).toEqual([0, false])

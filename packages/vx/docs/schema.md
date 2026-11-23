@@ -779,7 +779,9 @@ highest priority:
    A value a bundler writes into its output is none of these: `vx lock`
    names a cached task's `passThrough` name with a public bundler prefix
    (`VITE_`, `NEXT_PUBLIC_`, `REACT_APP_`, `PUBLIC_`, `EXPO_PUBLIC_`,
-   `GATSBY_`, `STORYBOOK_`, `VUE_APP_`) or `NODE_ENV` that `inputs.env`
+   `GATSBY_`, `STORYBOOK_`, `VUE_APP_`, `BUN_PUBLIC_`, `NX_PUBLIC_`,
+   `NUXT_ENV_`, `NUXT_PUBLIC_`, `REDWOOD_ENV_`, `SANITY_STUDIO_`) or
+   `NODE_ENV` that `inputs.env`
    leaves out and that is no secret (by name or `secret`), once per task: add it to
    `inputs.env`, or a build with another `VITE_API_URL` replays the old
    bundle. It also names such a name `inputs.env` keys that neither
@@ -2852,7 +2854,7 @@ interface Pipeline {
   flag.
 - **`env`** is set before the run's plugins start, for vx and the plugins
   only (a plugin's on/off switch): every task reads it as unset, in its
-  command and its key. A variable already set in the shell wins. A
+  command, its key and its `inputs.runtime` probes. A variable already set in the shell wins. A
   plugin reads it from its setup on; `.vx/workspace.ts`'s own top level
   ran before it was set, so a value read there misses it.
 - **No forwarded args.** `-- <args>` reach one task in one project, and a
