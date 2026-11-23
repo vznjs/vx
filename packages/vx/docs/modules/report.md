@@ -56,6 +56,7 @@ export interface DefaultLogger extends Logger {
   readonly showsSteps: boolean // only where the live region draws; else run() times no step
   forecast(graph: () => Forecast, load: () => Promise<Forecast | undefined>): void // `graph` (no history) at the first free row; `load` only if the live region is still up 1 s in
   holdStatus(): () => void // no live region until the release: a secret prompt waits on the terminal
+  serverKept(id): void // `vx watch` kept this server up: its frame closes `still running`
 }
 
 export function defaultLogger(
@@ -469,7 +470,7 @@ export function unknownUsual(colors?): { text; painted }
 
 // Focused mode's live frame around a streamed task
 export function formatFrameOpen(node, colors?, forwardArgs?): string // `┌─ <id> > $ <cmd>`
-export function formatFrameClose(node, outcome, colors?): string
+export function formatFrameClose(node, outcome, colors?, kept?): string // kept: `still running`
 // A held persistent task's output since ready; '' for an empty body
 export function formatPersistentTailBlock(
   node,
