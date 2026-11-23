@@ -1281,6 +1281,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'wall-clock-step',
     'warm-outputs',
     'warm-shell',
+    'warn-in-live-frame',
     'watch-affected',
     'watch-claimed-extras',
     'watch-claimed-files',
