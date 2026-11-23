@@ -13,6 +13,7 @@ import path from 'node:path'
 import type { GitFilesCache } from '../cache/index.js'
 import type { TaskNode } from '../graph/index.js'
 import { memoParts, onlyAbsent, ownEnv, taskEnvSource, unread, xxh3hex } from '../util/index.js'
+import { VERSION } from '../version.js'
 import type { StableKey } from './stable-keys.js'
 import {
   hashTaskConfig,
@@ -362,7 +363,9 @@ let identity: string | undefined
 /**
  * The code that derives the keys: a compiled binary is its file; a source
  * checkout is every module under `src/`, so an edit to the derivation from
- * source never reads back a key the old code made.
+ * source never reads back a key the old code made. With the version every
+ * key folds (`foldHead`), which a source install reads from package.json,
+ * outside `src/`: a version moved there alone read back the old keys.
  */
 export function codeIdentity(): string {
   if (identity !== undefined) return identity
@@ -375,10 +378,10 @@ export function codeIdentity(): string {
   // write can set ctime back.
   if (Bun.main.startsWith('/$bunfs/')) {
     const st = statSync(process.execPath)
-    return (identity = `${process.execPath}:${st.size}:${st.mtimeMs}:${st.ctimeMs}:${st.ino}`)
+    return (identity = `${VERSION}:${process.execPath}:${st.size}:${st.mtimeMs}:${st.ctimeMs}:${st.ino}`)
   }
   const src = path.resolve(import.meta.dir, '..')
-  const stamps: string[] = []
+  const stamps: string[] = [VERSION]
   for (const rel of readdirSync(src, { recursive: true, encoding: 'utf8' }).sort()) {
     if (!rel.endsWith('.ts')) continue
     const st = statSync(path.join(src, rel))

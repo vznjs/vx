@@ -4263,9 +4263,9 @@ export function codeIdentity(): string
 
 - `runKeysToken` — the row's name is the hash of the selected task ids;
   the token is everything `deriveStableKeys` reads: the code that
-  derives (a compiled binary's file stamp, told by `Bun.main`, or every source module's size,
+  derives (the vx version every key folds, then a compiled binary's file stamp, told by `Bun.main`, or every source module's size,
   mtime, ctime and inode: an npm tarball's fixed mtime left a same-size
-  upgrade unseen), the workspace root, forward args, claimed root files,
+  upgrade unseen, and a version moved in package.json alone read back the old keys), the workspace root, forward args, claimed root files,
   nested project dirs, the outputs git ignores, the workspace's
   `outputs.clean` and the `inputs.stability.strategy` of the workspace
   and of `VX_INPUTS_STABILITY_STRATEGY` (a config key folds them, and a
