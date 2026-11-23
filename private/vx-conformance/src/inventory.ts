@@ -534,6 +534,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'sandbox-session-guard.unsafe',
     'sandbox-signal-notice.unsafe',
     'sandbox-strace-argv',
+    'sandbox-swallowed-writes.unsafe',
     'sandbox-temp-hint.unsafe',
     'sandbox-temp-vars.unsafe',
     'sandbox-timeout-clock.unsafe',
