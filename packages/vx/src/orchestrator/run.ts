@@ -492,6 +492,11 @@ async function runOnBus(
   // and a `vx cache clean` holding this lock while waiting for open stores,
   // deadlocked; a clear also deleted the store under a run opening it.
   let heldLock: RunLockRelease | undefined
+  /**
+   * When the run began asking for its lock: its time counts a wait behind
+   * another run (`time 33ms` after a 3 s wait), as the user's did.
+   */
+  let lockAskedAt: { ns: bigint; ms: number } | undefined
   const takeRunLock = async (root: string, sharedCacheDir: string | undefined): Promise<void> => {
     // A nested run is refused below with its own reason, holding nothing.
     const outer = process.env[VX_RUN_WORKSPACE_ENV] || undefined
@@ -506,6 +511,7 @@ async function runOnBus(
         : (held ?? options.signal)
     // Waiting is taking turns, a status line; only a lock vx could not take warns.
     const wait = (line: string): void => log.status(line)
+    lockAskedAt = { ns: process.hrtime.bigint(), ms: wallNow() }
     const lock = await step('vx:run-lock', () =>
       acquireRunLock(root, { log: warnOf(log), wait, signal }),
     )
@@ -826,10 +832,12 @@ async function runOnBus(
     warnings: () => warned,
   })
   try {
-    const runStartHrTimeNs = process.hrtime.bigint()
+    // From the lock's ask, so a wait for another run counts. One instant with
+    // the wall start below: a task's times are offsets from both.
+    const runStartHrTimeNs = lockAskedAt?.ns ?? process.hrtime.bigint()
     // Whole ms, floored here and ceiled at the end, so every stage between
     // lies inside the run's window.
-    const endedAtMsAtStart = Math.floor(wallNow())
+    const endedAtMsAtStart = Math.floor(lockAskedAt?.ms ?? wallNow())
     // Every remote turned off by its `open` is no remote: a task must not clean
     // its outputs for a save that goes nowhere.
     const remoteCacheEnabled = prepared.hasRemoteLayer && !remotesClosed

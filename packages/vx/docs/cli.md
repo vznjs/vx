@@ -4694,7 +4694,8 @@ warnings themselves are said once, where they happened. The
 run's whole id, as `vx last <id>` takes it; a run a Ctrl-C (or
 SIGTERM, SIGHUP) stopped before any task ended keeps nothing under it,
 so its footer names no id. The
-`time` row is the wall time, through the uploads the run waits on (`vx last`
+`time` row is the wall time, from when the run asks for the workspace's run
+lock (a wait for another run counts) through the uploads it waits on (`vx last`
 and telemetry keep the same), then the spread over executed tasks
 only — a hit's restore time never enters it. The footer never says a
 fact twice: a spread value already on the row is left out, so one
