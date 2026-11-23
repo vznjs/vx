@@ -3704,10 +3704,12 @@ it('a worker saves under the run key a task whose project holds an untracked fil
       proof: secretProof('s'),
       artifacts: () => artifacts,
     })
+    const WRITE = 'mkdir -p out && echo o > out/o.txt'
+    // Each writes its declared output: one that writes none fails.
     const order = (
       task: string,
       project: string,
-      command = 'true',
+      command = WRITE,
       nested: string[] = [],
     ): RunOrder => ({
       task,
@@ -3728,9 +3730,9 @@ it('a worker saves under the run key a task whose project holds an untracked fil
     const tasks = [
       order('a', 'a'),
       order('b', 'b'),
-      order('c', 'c', 'echo new > new.txt'),
+      order('c', 'c', `echo new > new.txt && ${WRITE}`),
       order('d', 'd'),
-      order('e', 'e', 'true', ['e/inner']),
+      order('e', 'e', WRITE, ['e/inner']),
     ]
     const ends = new Map<string, unknown>()
     for (let i = 0; i < 100 && ends.size < tasks.length; i++)
