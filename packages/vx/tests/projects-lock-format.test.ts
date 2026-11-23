@@ -256,7 +256,7 @@ const settles = async (
   const read = await readLockfile(root).catch((e: Error) => e)
   if (read instanceof Error) return expect(read.message).toContain('vx lock')
   for (const [dir, tasks] of Object.entries(expected))
-    expect(read!.projects[dir]!.config!.tasks).toEqual(tasks)
+    expect(read!.projects[dir]!.config!.tasks as unknown).toEqual(tasks)
 }
 
 it('never merges a task added on one branch onto the body another branch edited', async () => {
