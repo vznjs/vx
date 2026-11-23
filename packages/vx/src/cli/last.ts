@@ -1020,10 +1020,8 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
       )
     }
 
-    if (parsed.log !== undefined) {
-      if (noRuns()) throw noRunsYet()
-      return await printLog(db, at, { ...parsed, log: parsed.log })
-    }
+    if (parsed.log !== undefined)
+      return await printLog(db, at, { ...parsed, log: parsed.log }, noRuns, noRunsYet)
 
     if (parsed.list !== undefined) return printRunList(db, { ...parsed, list: parsed.list }, noRuns)
 
@@ -1044,6 +1042,8 @@ async function printLog(
   db: Database,
   at: VerbWorkspace,
   parsed: LastArgs & { log: string },
+  noRuns: () => boolean,
+  noRunsYet: () => UserError,
 ): Promise<number> {
   const runId =
     parsed.runId === undefined
@@ -1051,6 +1051,9 @@ async function printLog(
       : (resolveRunId(db, parsed.runId, 'vx last') ?? parsed.runId)
   const log = taskLog(db, await bareTaskId(db, await rootSpelled(at, parsed.log), at), runId)
   if (log === null) {
+    // Asked only after the lookup: a stopped run keeps its task rows but
+    // no invocations header (item 854), so its log must still be found.
+    if (noRuns() && new LocalHistoryProvider(db).recentTaskIds().length === 0) throw noRunsYet()
     // The id's form is hinted only when it lacks one: a task that
     // never ran was told how to spell a task id. A typo of one that
     // ran is named, as `vx why` names it: by its matcher, which offers
