@@ -3757,6 +3757,10 @@ vx why @demo/web#build
   [2mfile    [0m  [38;2;203;213;225man edit re-runs by design; a file the task does not read belongs out of inputs.files[0m
 ```
 
+On a terminal too narrow for the `before → after` column, each hash is
+cut to its first 12 characters, as git cuts one. Piped output and
+`--format json` keep them whole.
+
 ### Arguments
 
 | Argument   | Meaning                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
