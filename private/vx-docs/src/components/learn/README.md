@@ -79,8 +79,8 @@ fails on a dead anchor).
 
 The pages follow one workspace, the demo every sample already uses:
 `@demo/web` (a Vite app) depends on `@demo/ui` (a component library).
-Samples run `vite build`, `vitest run`, `oxlint` — never `tsc`, never
-`npm run`/`pnpm run`/`nx`/`turbo`. Each page picks up where the learning
+Samples run `vite build`, `vitest run`, `oxlint` — never `tsc`, and never
+a package-manager script or another task runner. Each page picks up where the learning
 path left the reader (start, define tasks, run, cache, CI, Distributed task
 execution, plugins) and ends with `<NextStep>` to the next chapter.
 
@@ -113,8 +113,8 @@ A Walkthrough frame is the place to put two outputs the reader compares.
 - Name concrete things: `@demo/web`, `dist/`, `src/**`.
 - After a code block, one line on what to look at ("Read the last line:
   **up-to-date**").
-- Never "simply", "just", "easily", "obviously".
-- No "we", "let's". Second person, present tense.
+- No filler words or marketing words (the docs guide lists them).
+- Second person, present tense; never first person plural.
 
 ## Checks before a push (local only; no CI, no PR)
 
