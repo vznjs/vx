@@ -26,6 +26,7 @@ import {
   executorFallback,
   isLiteralPattern,
   isUserError,
+  missingOutputs,
   normalizeGlob,
   restorableOutput,
   ui,
@@ -815,7 +816,9 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
               violations: [],
               ...(deferRecord
                 ? { outputs: { kind: 'deferred' as const, materialize: () => fromRecord() } }
-                : {}),
+                : req.remoteOnly === true
+                  ? {}
+                  : unwritten(req)),
             }
           }
         }
@@ -1422,7 +1425,9 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
                 materialize: () => materialiseOutputs(client, matReq, result, warn),
               },
             }
-          : {}),
+          : req.remoteOnly === true || (result.exit_code ?? 0) !== 0
+            ? {}
+            : unwritten(req)),
       }
     },
   }
@@ -1569,6 +1574,19 @@ function fullCommand(req: ExecuteRequest, cdInto: string, projectRel: string): s
     `export PATH="$PWD/node_modules/.bin:$VX_ROOT/node_modules/.bin:$PATH"; ` +
     command
   )
+}
+
+/**
+ * Core's output rule on this disk, once the outputs landed: a literal the
+ * execution never wrote, or no output at all. Core leaves the check to a
+ * remote executor, and a run that skipped one went green and was cached.
+ */
+function unwritten(req: ExecuteRequest): Pick<ExecuteResult, 'outputsMissing'> {
+  const missing = missingOutputs([
+    { base: req.cwd, globs: req.outputs.files, nestedDirs: [] },
+    { base: req.workspaceRoot, globs: req.outputs.workspaceFiles, nestedDirs: [] },
+  ])
+  return missing.length === 0 ? {} : { outputsMissing: missing }
 }
 
 /**

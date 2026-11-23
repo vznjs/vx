@@ -1149,7 +1149,8 @@ reached disk, or an undeclared state file that survived the clean
 (below). A failed task is retried as any failure is.
 A remote executor checks the outputs where they landed, by the same
 rule, and names what matched nothing (`ExecuteResult.outputsMissing`;
-`@vzn/vx-dte`'s workers do): the task fails the same way. Outputs a
+`@vzn/vx-dte`'s workers and `@vzn/vx-reapi` do): the task fails the same
+way. Outputs a
 remote executor that does not, or a deferred download
 (`--cache-download=none`), lands elsewhere are not checked here; a
 deferred fetch that lands nothing

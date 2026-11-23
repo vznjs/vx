@@ -930,6 +930,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'vx-reapi/executor',
     'vx-reapi/executor-auth',
     'vx-reapi/executor-helpers-sweep',
+    'vx-reapi/executor-missing-outputs',
     'vx-reapi/executor-no-stale-replay',
     'vx-reapi/executor-sweep',
     'vx-reapi/factory-capabilities',
