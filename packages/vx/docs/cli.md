@@ -3203,10 +3203,12 @@ spelling, and the scope: `--filter`, `--all`, or the project the working
 directory is in. A run reads its configs from the lock, so a task
 added to a `vx.config` since the last `vx lock` is not there yet: run
 `vx lock`.
+`vx show <name>` answers it too when the name is neither a project nor a
+task any project declares.
 
 #### `VX_E_UNKNOWN_PROJECT`
 
-`vx show` names a project the workspace does not have. A project is named
+`vx show <project>#<task>` names a project the workspace does not have. A project is named
 by its config's `name`, else by a plugin (a lockfile plugin names it from
 its `package.json`), else by its directory; `vx show --format json` lists them.
 
