@@ -973,7 +973,7 @@ async function runOnBus(
 
     // Run context for the footer. The top-of-run header is gone — the
     // banner now lives in the summary, where the eye lands at the end.
-    const fault = executorFaults(warnOf(log))
+    const reports = executorReports(warnOf(log))
     const footers = executors.filter((e) => e.distribution?.footer !== undefined)
     const placers = executors.filter((e) => e.distribution?.running !== undefined)
     // The scheduler's dependents count, and every row's `blocks` (the live
@@ -1009,13 +1009,11 @@ async function runOnBus(
       blocks: blocksNow,
       usual: (id: string) => p50sNow().get(id),
       usage: liveUsage.usage,
-      ...(footers.length > 0
-        ? { executorRows: () => footers.flatMap((e) => executorFooter(e, fault)) }
-        : {}),
+      ...(footers.length > 0 ? { executorRows: () => footers.flatMap(reports.footer) } : {}),
       ...(placers.length > 0
         ? {
             whereRunning: (id: string) =>
-              placers.map((e) => executorWhere(e, id, fault)).find((w) => w !== undefined),
+              placers.map((e) => reports.where(e, id)).find((w) => w !== undefined),
           }
         : {}),
       version: VERSION,
@@ -1727,7 +1725,7 @@ async function runOnBus(
             cwd: options.cwd,
             outcomes: list,
             runStartNs: runStartHrTimeNs,
-            executors: executors.map((e) => executorProfile(e, fault)),
+            executors: executors.map(reports.profile),
             spans: runSpans,
           }),
         )
@@ -1892,9 +1890,9 @@ async function runOnBus(
         notRunCount: final.filter((o) => neverStarted(o) && !isGroupTask(o.node)).length,
         stages: stageTimes(),
         uploads: prepared.localCache.uploads,
-        machines: executors.flatMap((e) => executorMachines(e, fault)),
-        idealMs: executors.map((e) => executorIdeal(e, fault)).find((ms) => ms !== undefined),
-        advice: executors.flatMap((e) => executorAdvice(e, fault)),
+        machines: executors.flatMap(reports.machines),
+        idealMs: executors.map(reports.idealMs).find((ms) => ms !== undefined),
+        advice: executors.flatMap(reports.advice),
       })
       sinks.emitSummary(summary)
       await sinks.flush(timed)
@@ -2600,98 +2598,80 @@ function canonical(dir: string): string {
   }
 }
 
-/** What an executor's report threw: said once by `executorFaults`, the report left out. */
-type ExecutorFault = (e: TaskExecutor, what: string, err: unknown) => void
-
 /**
- * Each executor report that throws is said once and left out: isolated,
- * it was dropped with nothing said, a summary short its machines.
+ * What each executor reports, read through its `distribution` hooks. A report
+ * that throws or has the wrong shape is left out, and a throw is said once:
+ * isolated, it was dropped with nothing said, a summary short its machines.
  */
-function executorFaults(warn: (line: string) => void): ExecutorFault {
+function executorReports(warn: (line: string) => void) {
   const said = new Set<string>()
-  return (e, what, err) => {
-    const k = `${e.name}\0${what}`
-    if (said.has(k)) return
-    said.add(k)
-    warn(`[vx] ${executorLabel(e)}: ${what}() threw: ${thrownMessage(err)} — left out`)
+  const ask = <T>(
+    e: TaskExecutor,
+    what: string,
+    read: () => unknown,
+    shape: (v: unknown) => T,
+    none: T,
+  ): T => {
+    try {
+      return shape(read())
+    } catch (err) {
+      const k = `${e.name}\0${what}`
+      if (!said.has(k)) {
+        said.add(k)
+        warn(`[vx] ${executorLabel(e)}: ${what}() threw: ${thrownMessage(err)} — left out`)
+      }
+      return none
+    }
   }
-}
-
-/** An executor's footer rows; a plugin's throw or bad shape shows none. */
-function executorFooter(e: TaskExecutor, fault: ExecutorFault): (readonly [string, ui.Inline])[] {
-  try {
-    const rows = e.distribution?.footer?.()
-    if (!Array.isArray(rows)) return []
-    return rows.filter(
-      (r): r is readonly [string, ui.Inline] =>
-        Array.isArray(r) &&
-        typeof r[0] === 'string' &&
-        (typeof r[1] === 'string' || (typeof r[1] === 'object' && r[1] !== null)),
-    )
-  } catch (err) {
-    fault(e, 'footer', err)
-    return []
-  }
-}
-
-/** An executor's `--profile` events; a throw or a bad shape adds none. */
-function executorProfile(
-  e: TaskExecutor,
-  fault: ExecutorFault,
-): readonly Record<string, unknown>[] {
-  try {
-    const events = e.distribution?.profile?.()
-    return Array.isArray(events)
-      ? events.filter((x): x is Record<string, unknown> => typeof x === 'object' && x !== null)
-      : []
-  } catch (err) {
-    fault(e, 'profile', err)
-    return []
-  }
-}
-
-function executorMachines(e: TaskExecutor, fault: ExecutorFault): readonly MachineReport[] {
-  try {
-    const m = e.distribution?.machines?.()
-    return Array.isArray(m) ? m : []
-  } catch (err) {
-    fault(e, 'machines', err)
-    return []
-  }
-}
-
-function executorAdvice(e: TaskExecutor, fault: ExecutorFault): readonly WorkerAdvice[] {
-  try {
-    const a = e.distribution?.advice?.()
-    return Array.isArray(a) ? a : []
-  } catch (err) {
-    fault(e, 'advice', err)
-    return []
-  }
-}
-
-function executorIdeal(e: TaskExecutor, fault: ExecutorFault): number | undefined {
-  try {
-    const ms = e.distribution?.idealMs?.()
-    return typeof ms === 'number' && Number.isFinite(ms) && ms >= 0 ? Math.round(ms) : undefined
-  } catch (err) {
-    fault(e, 'idealMs', err)
-    return undefined
-  }
-}
-
-/** Where `e` says a task runs, or `null` while it waits; a throw or anything else says nothing. */
-function executorWhere(
-  e: TaskExecutor,
-  id: string,
-  fault: ExecutorFault,
-): string | null | undefined {
-  try {
-    const w = e.distribution?.running?.(id)
-    if (w === null) return null
-    return typeof w === 'string' && w !== '' ? w : undefined
-  } catch (err) {
-    fault(e, 'running', err)
-    return undefined
+  const list = <T>(v: unknown): readonly T[] => (Array.isArray(v) ? v : [])
+  return {
+    footer: (e: TaskExecutor): (readonly [string, ui.Inline])[] =>
+      ask(
+        e,
+        'footer',
+        () => e.distribution?.footer?.(),
+        (rows) =>
+          list<unknown>(rows).filter(
+            (r): r is readonly [string, ui.Inline] =>
+              Array.isArray(r) &&
+              typeof r[0] === 'string' &&
+              (typeof r[1] === 'string' || (typeof r[1] === 'object' && r[1] !== null)),
+          ),
+        [],
+      ),
+    /** Its `--profile` events. */
+    profile: (e: TaskExecutor): readonly Record<string, unknown>[] =>
+      ask(
+        e,
+        'profile',
+        () => e.distribution?.profile?.(),
+        (events) =>
+          list<unknown>(events).filter(
+            (x): x is Record<string, unknown> => typeof x === 'object' && x !== null,
+          ),
+        [],
+      ),
+    machines: (e: TaskExecutor): readonly MachineReport[] =>
+      ask(e, 'machines', () => e.distribution?.machines?.(), list<MachineReport>, []),
+    advice: (e: TaskExecutor): readonly WorkerAdvice[] =>
+      ask(e, 'advice', () => e.distribution?.advice?.(), list<WorkerAdvice>, []),
+    idealMs: (e: TaskExecutor): number | undefined =>
+      ask(
+        e,
+        'idealMs',
+        () => e.distribution?.idealMs?.(),
+        (ms) =>
+          typeof ms === 'number' && Number.isFinite(ms) && ms >= 0 ? Math.round(ms) : undefined,
+        undefined,
+      ),
+    /** Where `e` says a task runs, or `null` while it waits. */
+    where: (e: TaskExecutor, id: string): string | null | undefined =>
+      ask(
+        e,
+        'running',
+        () => e.distribution?.running?.(id),
+        (w) => (w === null ? null : typeof w === 'string' && w !== '' ? w : undefined),
+        undefined,
+      ),
   }
 }
