@@ -26,7 +26,10 @@ export function statusLine(
 ): string {
   const [head = '', ...rest] = text.split('\n')
   if (!paints(stream)) return `${[`${SYMBOL[tone]} ${name}  ${head}`, ...rest].join('\n')}\n`
-  const url = head.replace(/(https?:\/\/\S+)/g, '\x1b[38;2;6;182;212m$1\x1b[0m')
+  const url = head.replace(
+    /(https?:\/\/\S+?)(?=[),.;:]*(?:\s|$))/g,
+    '\x1b[38;2;6;182;212m$1\x1b[0m',
+  )
   const first = `\x1b[38;2;${HUE[tone]}m${SYMBOL[tone]}\x1b[0m \x1b[1m${name}\x1b[0m  ${url}`
   return `${[first, ...rest.map((l) => (l === '' ? l : `\x1b[2m${l}\x1b[0m`))].join('\n')}\n`
 }
