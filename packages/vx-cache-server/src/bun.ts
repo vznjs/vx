@@ -42,6 +42,16 @@ export function s3Blobs(client: Bun.S3Client): Blobs {
     }
     return res
   }
+  /** Its size, off a HEAD: null when the bucket has none. */
+  const sizeOf = async (name: string): Promise<number | null> => {
+    const res = await ask(name, 'HEAD')
+    if (res === null) return null
+    // Number(null) is 0: a HEAD naming no length is no size, not an empty artifact.
+    const length = res.headers.get('content-length')
+    const size = length === null || length.trim() === '' ? Number.NaN : Number(length)
+    if (!isCount(size)) throw new Error('the bucket answered HEAD with no Content-Length')
+    return size
+  }
   return {
     async put(name, body, size) {
       let seen = 0
@@ -62,20 +72,18 @@ export function s3Blobs(client: Bun.S3Client): Blobs {
     async get(name) {
       const res = await ask(name, 'GET')
       if (res === null) return null
-      return {
-        body: res.body ?? new Blob([]).stream(),
-        size: Number(res.headers.get('content-length')),
-      }
-    },
-    async size(name) {
-      const res = await ask(name, 'HEAD')
-      if (res === null) return null
-      // Number(null) is 0: a HEAD naming no length is no size, not an empty artifact.
       const length = res.headers.get('content-length')
-      const size = length === null || length.trim() === '' ? Number.NaN : Number(length)
-      if (!isCount(size)) throw new Error('the bucket answered HEAD with no Content-Length')
-      return size
+      const named = length === null || length.trim() === '' ? Number.NaN : Number(length)
+      if (isCount(named)) return { body: res.body ?? new Blob([]).stream(), size: named }
+      // Sent chunked: Number(null) named it 0 bytes in vx-size, and a client
+      // holding the download to that read every one as a miss.
+      await res.body?.cancel()
+      const size = await sizeOf(name)
+      if (size === null) return null
+      const again = await ask(name, 'GET')
+      return again === null ? null : { body: again.body ?? new Blob([]).stream(), size }
     },
+    size: sizeOf,
   }
 }
 

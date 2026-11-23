@@ -397,8 +397,8 @@ it('reads sizes off the bytes as stored, never a compressed answer', async () =>
 })
 
 // Number(null) is 0: a HEAD naming no Content-Length was an artifact of
-// 0 bytes to a check and a HEAD. A download sent chunked still serves:
-// Bun frames a streamed answer itself.
+// 0 bytes to a check and a HEAD. A download sent chunked takes its size
+// from a HEAD, so a bucket that names it nowhere serves none.
 it('takes no size the bucket did not state', async () => {
   const unsized = createServer((sock) =>
     sock.once('data', () =>
@@ -416,9 +416,47 @@ it('takes no size the bucket did not state', async () => {
       }),
     )
     await expect(blobs.size('x')).rejects.toThrow('the bucket answered HEAD with no Content-Length')
-    expect(await new Response((await blobs.get('x'))!.body).text()).toBe('abc')
+    await expect(blobs.get('x')).rejects.toThrow('the bucket answered HEAD with no Content-Length')
   } finally {
     unsized.close()
+  }
+})
+
+// Number(null) is 0 again: a GET answered chunked named its artifact 0
+// bytes in vx-size, which vx holds a download to, so every download of it
+// was a miss ("ran past its 0 bytes") under a key marked immutable.
+it('names the size the bucket holds for a download the bucket sent chunked', async () => {
+  const chunked = createServer((sock) =>
+    sock.once('data', (req) =>
+      sock.end(
+        req.toString().startsWith('HEAD ')
+          ? 'HTTP/1.1 200 OK\r\ncontent-length: 3\r\n\r\n'
+          : 'HTTP/1.1 200 OK\r\ntransfer-encoding: chunked\r\n\r\n3\r\nabc\r\n0\r\n\r\n',
+      ),
+    ),
+  )
+  await new Promise<void>((r) => chunked.listen(0, '127.0.0.1', r))
+  const blobs = s3Blobs(
+    new Bun.S3Client({
+      endpoint: `http://127.0.0.1:${(chunked.address() as AddressInfo).port}`,
+      bucket: 'b',
+      accessKeyId: 'a',
+      secretAccessKey: 's',
+    }),
+  )
+  const served = listen(
+    createCacheServer({ blobs, authorize: async () => ({ issuer: GITHUB, repository: REPO }) }),
+    '127.0.0.1',
+    0,
+  )
+  try {
+    const res = await fetch(new URL('/v1/artifacts/ab', served.url), {
+      headers: { 'vx-scope': scopeOf('refs/heads/main') },
+    })
+    expect([res.status, res.headers.get('vx-size'), await res.text()]).toEqual([200, '3', 'abc'])
+  } finally {
+    await served.stop(true)
+    chunked.close()
   }
 })
 
