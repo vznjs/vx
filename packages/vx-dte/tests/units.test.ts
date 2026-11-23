@@ -2503,6 +2503,29 @@ it('the final summary names the tasks of a worker that ran few', async () => {
   expect(rows.find((r) => r.includes('done'))).toMatch(/1 done · t1$/)
 })
 
+// A worker lost (Ctrl-C, a crash) while it ran a task read `busy 0.0s ·
+// idle 6.1s`: only a task it finished counted, so the time it spent on the
+// one it lost read as idle.
+it('counts a task a worker was lost in as busy', async () => {
+  const h = await harness(new Map([node('t1')]), undefined, 60_000)
+  const a = await h.worker(1)
+  await Bun.sleep(50)
+  const t1 = h.o.execute(h.req('t1'))
+  expect(await a.batches()).toEqual([['t1']])
+  await Bun.sleep(300)
+  await a.leave()
+  // Lost, its task runs again on the next worker.
+  const b = await h.worker(1)
+  expect(await b.batches()).toEqual([['t1']])
+  await b.finish('t1')
+  await t1
+  await h.stop()
+  const rows = h.o.footer().map(([, line]) => ui.inline(line, { enabled: false }))
+  const at = rows.findIndex((r) => /^worker#1 +lost/.test(r))
+  const busy = /busy (\d+\.\d)s/.exec(rows.slice(at).find((r) => r.includes('busy'))!)![1]
+  expect(Number(busy)).toBeGreaterThanOrEqual(0.3)
+})
+
 // Live, the workers that left are one line, so the rows that run fit.
 it('lists the workers that left as one line while the run goes', async () => {
   const h = await harness(new Map([node('t1')]))

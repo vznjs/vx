@@ -1477,6 +1477,8 @@ export class Orchestrator extends RunReport<Worker> {
       args: { failed: why },
     })
     job.queuedAt = now
+    if (job.sentAt !== undefined && a.started.has(job.req.taskId))
+      a.usage.unfinished(job.sentAt, now)
     a.busy.delete(job.req.taskId)
     // Its outputs are not there to place a dependant by.
     a.has.delete(job.req.taskId)

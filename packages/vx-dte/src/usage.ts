@@ -115,6 +115,14 @@ export class Usage {
     })
   }
 
+  /**
+   * A task it held `from` its send and will not end (lost with it, or put
+   * back): busy all the same. Left out, a worker lost mid-task read idle.
+   */
+  unfinished(from: number, end: number = performance.now()): void {
+    if (end > from) this.spans.push({ start: from, end, cores: 0, memory: 0 })
+  }
+
   /** The run sent it a task at `at`: its first send opens the window utilization reads. */
   sent(at: number = performance.now()): void {
     if (this.firstAt !== undefined) return
