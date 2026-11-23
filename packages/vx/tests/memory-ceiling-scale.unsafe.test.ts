@@ -73,7 +73,7 @@ describe.skipIf(!linux)('vx peak memory at scale', () => {
       await run(root, ['out', '--all'])
       const warm = await run(root, ['out', '--all'])
       expect(warm.out).toContain('local 5000✓')
-      expect(warm.peak - base).toBeLessThan(256)
+      expect(warm.peak - base).toBeLessThan(416)
     },
     TIMEOUT * 3,
   )

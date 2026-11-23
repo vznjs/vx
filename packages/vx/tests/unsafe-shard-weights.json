@@ -37,7 +37,7 @@
   "kill-tree-proc.unsafe.test.ts": 225,
   "memory-ceiling-cache.unsafe.test.ts": 7000,
   "memory-ceiling-output.unsafe.test.ts": 20000,
-  "memory-ceiling-scale.unsafe.test.ts": 8500,
+  "memory-ceiling-scale.unsafe.test.ts": 30500,
   "memory-ceiling-watch.unsafe.test.ts": 20000,
   "no-auto-install.unsafe.test.ts": 136,
   "no-nested-run.unsafe.test.ts": 2,

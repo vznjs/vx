@@ -61,7 +61,10 @@ export async function workspace(
       config,
       files: Object.fromEntries([
         ['src/a.txt', name],
-        ...Array.from({ length: (opts.files ?? 1) - 1 }, (_, i) => [`src/f${i}.txt`, `${i}`]),
+        ...Array.from({ length: Math.max(0, (opts.files ?? 1) - 1) }, (_, i) => [
+          `src/f${i}.txt`,
+          `${i}`,
+        ]),
       ]),
     })
   gitInitCommit(root)
