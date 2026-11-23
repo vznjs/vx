@@ -178,7 +178,7 @@ const list = (ids: readonly string[]): string =>
 const wave = (ids: readonly string[]): string =>
   ids.length > 1 ? `${list(ids)} together` : ids[0]!
 
-export function orderSentence(ws: readonly string[][]): string {
+function orderSentence(ws: readonly string[][]): string {
   if (ws.length === 1) {
     return ws[0]!.length === 1
       ? `vx runs ${ws[0]![0]}. It waits on nothing.`
@@ -187,7 +187,7 @@ export function orderSentence(ws: readonly string[][]): string {
   return `vx runs ${wave(ws[0]!)} first, then ${ws.slice(1).map(wave).join(', then ')}.`
 }
 
-export function rerunSentence(graph: Graph, file: string, r: Reruns): string {
+function rerunSentence(graph: Graph, file: string, r: Reruns): string {
   if (r.edited.length === 0)
     return `No task reads ${file}. All ${r.upToDate.length} stay up to date.`
   const verb = (ids: readonly string[], one: string, many: string) =>
@@ -214,7 +214,7 @@ export interface Line {
 }
 
 /** The `dependsOn` lines behind the edges a run of `targets` follows. */
-export function orderExcerpt(graph: Graph, targets: readonly string[]): Line[] {
+function orderExcerpt(graph: Graph, targets: readonly string[]): Line[] {
   const s = story(targets.find((id) => graph.tasks.get(id)!.deps.length > 0) ?? targets[0]!)
   const deps = graph.tasks.get(s.id)!.deps
   return [
@@ -237,7 +237,7 @@ export function orderExcerpt(graph: Graph, targets: readonly string[]): Line[] {
 }
 
 /** The `inputs.files` of each task in the edited file's project. */
-export function rerunExcerpt(file: string): Line[] {
+function rerunExcerpt(file: string): Line[] {
   const tasks = STORY.filter((s) => file.startsWith(`${s.dir}/`))
   const rel = file.slice(tasks[0]!.dir.length + 1)
   return [

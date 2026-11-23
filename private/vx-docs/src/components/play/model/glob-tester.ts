@@ -67,7 +67,7 @@ export const WORKSPACE_FILES: readonly string[] = [
 ]
 
 /** The root `.gitignore`: `dist`, `node_modules`, `.env`. */
-export const GITIGNORE = ['dist', 'node_modules', '.env']
+const GITIGNORE = ['dist', 'node_modules', '.env']
 
 export function isIgnored(rootRel: string): boolean {
   return rootRel.split('/').some((seg) => GITIGNORE.includes(seg))
@@ -87,7 +87,7 @@ export const DEFAULT_PATTERNS: Record<Mode, string[]> = {
 }
 
 /** The build task's outputs in every story project. */
-export const OWN_OUTPUTS = ['dist/**']
+const OWN_OUTPUTS = ['dist/**']
 
 export function projectFiles(project: string): string[] {
   const dir = PROJECTS[project]!
@@ -250,7 +250,7 @@ export function compileGlob(pattern: string): (rel: string) => boolean {
 }
 
 /** Whether any of the patterns, each read as a tree when literal, takes `rel`. */
-export function anyTree(patterns: readonly string[]): (rel: string) => boolean {
+function anyTree(patterns: readonly string[]): (rel: string) => boolean {
   const fns = asTrees(patterns).map(compileGlob)
   return (rel) => fns.some((f) => f(rel))
 }
@@ -481,7 +481,7 @@ export function resolveOutputs(
 }
 
 /** The warning vx prints when outputs are missing (orchestrator/attempt.ts). */
-export function missingOutputsLine(task: string, missing: readonly string[]): string {
+function missingOutputsLine(task: string, missing: readonly string[]): string {
   const it = missing.length === 1 ? 'it' : 'them'
   return (
     `[vx] ${task}: outputs matched no files (${missing.join(', ')}) — the command exited 0 ` +
@@ -495,7 +495,7 @@ export function missingOutputsLabel(missing: readonly string[]): string {
 }
 
 /** The miss warning when no input matched (orchestrator/miss-inputs.ts). */
-export function noInputsLine(task: string, entries: readonly string[]): string {
+function noInputsLine(task: string, entries: readonly string[]): string {
   return `[vx] ${task}: inputs matched no files (${entries.join(', ')}) — the key will not change when this project's source does`
 }
 
@@ -710,7 +710,7 @@ interface Dir {
 }
 
 /** The workspace as an indented list: the project open, the others closed. */
-export function treeHtml(
+function treeHtml(
   project: string,
   mark: (rel: string) => Mark,
   checkable: ReadonlySet<string> = new Set(),

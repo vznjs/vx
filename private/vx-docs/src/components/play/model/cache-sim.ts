@@ -211,7 +211,7 @@ function matches(glob: string, rel: string): boolean {
   return rel === glob
 }
 
-export function partsOf(s: State, t: TaskSpec, keys: ReadonlyMap<string, string>): Part[] {
+function partsOf(s: State, t: TaskSpec, keys: ReadonlyMap<string, string>): Part[] {
   const parts: Part[] = []
   for (const f of FILES) {
     if (f.project !== t.project) continue

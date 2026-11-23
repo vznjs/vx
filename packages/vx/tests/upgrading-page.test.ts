@@ -22,7 +22,7 @@ it('groups entries under the release tag that shipped them, newest first', () =>
   const brk = (n: string) => ({ subject: `feat!: ${n}`, body: `BREAKING CHANGE: do ${n}` })
   const md = page([brk('a'), { subject: 'fix: x', body: '', tag: 'v0.0.1' }, brk('b'), brk('c')])
   expect(md.slice(md.indexOf('## '))).toBe(
-    '## After v0.0.1\n\n### C\n\nDo c\n\n### B\n\nDo b\n\n## v0.0.1\n\n### A\n\nDo a\n',
+    '## After v0.0.1\n\n#### C\n\nDo c\n\n#### B\n\nDo b\n\n</div>\n\n<div data-release="v0.0.1">\n\n### v0.0.1\n\n#### A\n\nDo a\n\n</div>\n\n{/* END of the generated releases. */}',
   )
 })
 
