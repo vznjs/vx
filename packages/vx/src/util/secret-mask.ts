@@ -10,10 +10,11 @@ import { limitSetting } from './settle.js'
 
 /**
  * A variable whose value is masked, by the words its name holds: a
- * passphrase (`GPG_PASSPHRASE`) too, and a password's short spellings as a
- * last word (`SMTP_PASS`, `MYSQL_PWD`), never the shell's own `PWD`.
+ * passphrase (`GPG_PASSPHRASE`) too, and a password's short spelling as a
+ * last word (`SMTP_PASS`). Not `_PWD`: `ORIG_PWD` holds a directory, and
+ * masking it blanked every path in a task's output.
  */
-const SECRET_NAME = /TOKEN|SECRET|KEY|PASSWORD|PASSWD|PASSPHRASE|CREDENTIAL|_PASS$|_PWD$/i
+const SECRET_NAME = /TOKEN|SECRET|KEY|PASSWORD|PASSWD|PASSPHRASE|CREDENTIAL|_PASS$/i
 
 /**
  * Names that hold such a word but a value that is no secret: where a

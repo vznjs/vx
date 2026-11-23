@@ -841,7 +841,7 @@ can read your files. vx hides its own environment from a task
 
 **Masking.** The value of a variable whose name holds `TOKEN`, `SECRET`,
 `KEY`, `PASSWORD`, `PASSWD`, `PASSPHRASE` or `CREDENTIAL`, or ending
-`_PASS` or `_PWD` (vx's own environment or a
+`_PASS` (vx's own environment or a
 task's `define`, six characters or more; not a name ending `_FILE`,
 `_PATH` or `_DIR`, nor git's `GIT_CONFIG_KEY_<n>`) is printed as `***` wherever vx
 shows it: the task's output and the line vx adds under a shell's 127 or

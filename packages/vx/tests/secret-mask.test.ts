@@ -151,15 +151,21 @@ describe('secretMask', () => {
     ).toBeNull()
   })
 
-  it('names a passphrase and the short spellings of a password: _PASS, _PWD', () => {
+  it("names a passphrase and a password's short spelling, _PASS", () => {
     const m = secretMask([
-      { GPG_PASSPHRASE: 'aaaaaaaa', SMTP_PASS: 'bbbbbbbb', MYSQL_PWD: 'cccccccc' },
+      { GPG_PASSPHRASE: 'aaaaaaaa', SMTP_PASS: 'bbbbbbbb', REDIS_PASS: 'cccccccc' },
     ])!
     expect(m.mask('aaaaaaaa bbbbbbbb cccccccc')).toBe(`${MASKED} ${MASKED} ${MASKED}`)
     // CONTROL: the shell's own directories, and a word that only holds PASS.
     expect(
       secretMask([
-        { PWD: '/home/x/app', OLDPWD: '/home/x', COMPASS: 'northwest', BYPASS_X: 'yes-please' },
+        {
+          PWD: '/home/x/app',
+          OLDPWD: '/home/x',
+          ORIG_PWD: '/home/x/ws',
+          COMPASS: 'northwest',
+          BYPASS_X: 'yes-please',
+        },
       ]),
     ).toBeNull()
   })

@@ -37,7 +37,7 @@ stays on this machine.
 | `exec.env.passThrough` | yes                 | no              | secrets and CI flags (`GITHUB_ACTIONS`, `GH_TOKEN`); stays on this machine |
 | `inputs.env`     | no                  | yes             | with `passThrough`: a variable that changes the output |
 | `exec.env.define`      | yes                 | yes             | a literal value; a remote task gets it too          |
-| `exec.env.secret`      | —                   | —               | names whose values (6 characters or more) print as `***`; names holding `TOKEN`, `SECRET`, `KEY`, `PASSWORD`, `PASSWD`, `PASSPHRASE` or `CREDENTIAL`, or ending `_PASS` or `_PWD`, are masked without it |
+| `exec.env.secret`      | —                   | —               | names whose values (6 characters or more) print as `***`; names holding `TOKEN`, `SECRET`, `KEY`, `PASSWORD`, `PASSWD`, `PASSPHRASE` or `CREDENTIAL`, or ending `_PASS`, are masked without it |
 
 ---
 
