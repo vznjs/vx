@@ -28,7 +28,15 @@ export function shellVerdict(args: {
   stderr?: string | undefined
 }): string | undefined {
   if (args.code !== 127 && args.code !== 126) return signalVerdict(args.code, args.signal)
-  const word = execWord(args.command) ?? (args.code === 127 ? notFoundWord(args.stderr) : undefined)
+  const own = execWord(args.command)
+  // `ls | head` under a hermetic task: the shell says each is missing, and
+  // naming only the last left the rest for another round.
+  const said = own === undefined && args.code === 127 ? notFoundWords(args.stderr) : []
+  if (said.length > 1) return said.map((w) => wordVerdict(args, w)).join('\n')
+  return wordVerdict(args, own ?? said[0])
+}
+
+function wordVerdict(args: Parameters<typeof shellVerdict>[0], word: string | undefined): string {
   const what = word ?? 'a command in this task'
   if (word !== undefined && word.includes('/')) {
     const file = path.resolve(args.cwd, word)
@@ -74,25 +82,24 @@ export function shellVerdict(args: {
 }
 
 /**
- * The word the shell's last "not found" line names: dash's `sh: 1: cat:
+ * The words the shell's "not found" lines name, each once, in order: dash's `sh: 1: cat:
  * not found`, bash's `bash: line 1: cat: command not found`, or the
  * loader's `python3: error while loading shared libraries: …`. A command with
  * a redirect or a `&&` has no one word to read from the command itself, and
  * a hermetic task's hidden `cat` was told to be installed (almost every
  * real command has one).
  */
-function notFoundWord(stderr: string | undefined): string | undefined {
-  if (stderr === undefined) return undefined
-  const lines = stderr.trimEnd().split('\n')
-  for (let i = lines.length - 1; i >= 0; i--) {
-    const line = lines[i]!.trimEnd()
-    const m = /: ([^:]+): (?:command )?not found$/.exec(line)
-    if (m !== null) return m[1]
+function notFoundWords(stderr: string | undefined): string[] {
+  const words: string[] = []
+  for (const raw of (stderr ?? '').split('\n')) {
+    const line = raw.trimEnd()
     // The loader's own line names the program that ran and lacked a library.
-    const lib = /^([^:\s]+): error while loading shared libraries: /.exec(line)
-    if (lib !== null) return lib[1]
+    const word =
+      /: ([^:]+): (?:command )?not found$/.exec(line)?.[1] ??
+      /^([^:\s]+): error while loading shared libraries: /.exec(line)?.[1]
+    if (word !== undefined && !words.includes(word)) words.push(word)
   }
-  return undefined
+  return words
 }
 
 /** Where a loader looks for a library, by convention: a hidden one is named by its host path. */

@@ -105,6 +105,23 @@ describe('a program a hermetic sandbox hides', () => {
     ]).toEqual([want, want])
   })
 
+  // `ls | head`: the shell says both are missing, and the verdict named
+  // only `head`, so granting it left `ls` for the next round.
+  it('names each command the shell said is missing, in order', () => {
+    const line = (w: string) =>
+      `[vx] exit 127 is the shell's "command not found": ${w} is ${Bun.which(w)} on the host, but no sandbox grant reads it, so inside the sandbox it is not there — add it (or its directory) to exec.sandbox.allow.read`
+    expect(
+      shellVerdict({
+        code: 127,
+        command: 'ls /usr | head -3',
+        cwd: dir,
+        bins: [],
+        hidden,
+        stderr: 'sh: 1: ls: not found\nsh: 1: head: not found\nsh: 1: ls: not found\n',
+      }),
+    ).toBe(`${line('ls')}\n${line('head')}`)
+  })
+
   it('reads only what a grant holds, outside every denial too', () => {
     expect([
       sandboxReads(hermetic(), path.join(dir, 'build.sh')),
