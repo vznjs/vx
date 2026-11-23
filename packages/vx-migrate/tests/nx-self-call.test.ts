@@ -23,6 +23,11 @@ const graph = {
           exec: rc('nx exec -- tsc -p tsconfig.json'),
           plain: rc('tsc -p tsconfig.json && node scripts/unix.js'),
           words: rc('echo onyx lynx'),
+          // twenty's lint: the Nx call is only the text of a message.
+          message: rc(
+            "oxlint . && (oxfmt --check . || (echo 'ERROR: Fix with: npx nx lint --configuration=fix' && false))",
+          ),
+          printed: rc('printf "%s\\n" "run nx build a" && echo then nx test a; nx run b:build'),
         },
       },
     },
@@ -66,6 +71,8 @@ describe('a migrated command that runs Nx', () => {
       ],
       plain: [],
       words: [],
+      message: [],
+      printed: [runs('run')],
     })
   })
 
