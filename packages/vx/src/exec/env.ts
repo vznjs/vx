@@ -94,17 +94,29 @@ const LOCKFILES: ReadonlyArray<readonly [string, (typeof MANAGERS)[number]]> = [
   ['package-lock.json', 'npm'],
 ]
 
-const managerPaths = new Map<string, string | null>()
+const managerNames = new Map<string, string | null>()
 
 /**
  * The executable of the workspace's package manager: the root
  * package.json's `packageManager`, else its lockfile, found on the root's
- * `node_modules/.bin` and PATH. Learned once per root; null when the root
- * names none or this machine has none.
+ * `node_modules/.bin` and PATH. The name is learned once per root; the
+ * path is looked up each time, as a task may install the manager there
+ * (principle 9: a file a task could write is not a fact across tasks).
+ * Null when the root names none or this machine has none.
  */
 export function packageManagerPath(root: string): string | null {
-  const known = managerPaths.get(root)
-  if (known !== undefined) return known
+  let name = managerNames.get(root)
+  if (name === undefined) {
+    name = managerName(root) ?? null
+    managerNames.set(root, name)
+  }
+  if (name === null) return null
+  return Bun.which(name, {
+    PATH: [path.join(root, 'node_modules', '.bin'), process.env['PATH'] ?? ''].join(path.delimiter),
+  })
+}
+
+function managerName(root: string): string | undefined {
   let name: string | undefined
   try {
     // A byte-order mark is stripped, as npm and discovery strip it.
@@ -112,15 +124,5 @@ export function packageManagerPath(root: string): string | null {
     const field = (JSON.parse(manifest) as { packageManager?: unknown }).packageManager
     if (typeof field === 'string') name = MANAGERS.find((m) => field.startsWith(`${m}@`))
   } catch {}
-  name ??= LOCKFILES.find(([f]) => existsSync(path.join(root, f)))?.[1]
-  const found =
-    name === undefined
-      ? null
-      : Bun.which(name, {
-          PATH: [path.join(root, 'node_modules', '.bin'), process.env['PATH'] ?? ''].join(
-            path.delimiter,
-          ),
-        })
-  managerPaths.set(root, found)
-  return found
+  return name ?? LOCKFILES.find(([f]) => existsSync(path.join(root, f)))?.[1]
 }

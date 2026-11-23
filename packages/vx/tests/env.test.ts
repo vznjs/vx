@@ -670,6 +670,45 @@ describe('npm_execpath', () => {
     expect(value).toBe('mine')
   })
 
+  // 2026-11-23: the manager's path was learned once per process, so a task
+  // after one that installed the workspace's own manager still got the one
+  // the run started with (a global, or none) until the next run.
+  it('is found again for each task: one an earlier task installed is used', async () => {
+    const root = await makeWorkspace({ prefix: 'vx-env-pm-late-' })
+    try {
+      await writeFile(
+        path.join(root, 'package.json'),
+        JSON.stringify({ name: 'r', private: true, packageManager: 'pnpm@9.15.0' }),
+      )
+      const stub = path.join(root, 'node_modules', '.bin', 'pnpm')
+      const record = (file: string) => `printf %s "\${npm_execpath-undefined}" > ${file}`
+      const dir = await addProject(root, 'app', {
+        config: `
+          export default {
+            tasks: {
+              first: { exec: { command: ${JSON.stringify(record('first.txt'))} } },
+              inst: {
+                dependsOn: ['first'],
+                exec: { command: ${JSON.stringify(
+                  `mkdir -p ${path.dirname(stub)} && printf '#!/bin/sh\\n' > ${stub} && chmod +x ${stub}`,
+                )} },
+              },
+              use: { dependsOn: ['inst'], exec: { command: ${JSON.stringify(record('use.txt'))} } },
+            },
+          }
+        `,
+      })
+      const r = await run({ cwd: root, tasks: ['use'], log: quiet })
+      expect(r.ok).toBe(true)
+      expect([
+        await Bun.file(path.join(dir, 'first.txt')).text(),
+        await Bun.file(path.join(dir, 'use.txt')).text(),
+      ]).toEqual([Bun.which('pnpm') ?? 'undefined', stub])
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
   it('a workspace that names no manager sets none', async () => {
     const [value] = await seen(undefined, probe())
     expect(value).toBe('undefined')

@@ -1056,8 +1056,9 @@ interface ExecEnv {
 - `npm_execpath` is set to the workspace's package manager unless a layer
   gives one, so a tool that calls the manager back finds it.
 - That manager is the root `package.json`'s `packageManager`, else its
-  lockfile's, found on the root's `node_modules/.bin` or `PATH`. It names a
-  binary on this machine, so it is not in the key.
+  lockfile's, found on the root's `node_modules/.bin` or `PATH` for each
+  task, so one an earlier task installed is the one a later task gets. It
+  names a binary on this machine, so it is not in the key.
 - Nothing else reaches the task. A host credential (`SSH_AUTH_SOCK`,
   `GITHUB_TOKEN`) arrives only when `passThrough` names it.
 - A sandboxed task with a restricted network also gets the sandbox's own
