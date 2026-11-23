@@ -78,6 +78,7 @@ import {
   lockfileWrite,
   DEPENDENCIES_LOCK_NAME,
   dependenciesLock,
+  dependenciesLockRefusal,
   sameRecord,
   parseDependenciesLock,
   dependenciesLockWrite,
@@ -1252,7 +1253,12 @@ async function checkLock(root: string, json: boolean): Promise<number> {
     if (read === null || !sameRecord(read, check.dependencies))
       failures.push(
         stale(
-          `${DEPENDENCIES_LOCK_NAME} ${text === null ? 'is missing' : 'is not what the dependencies resolve to here'} — run 'vx lock'`,
+          text === null
+            ? `${DEPENDENCIES_LOCK_NAME} is missing — run 'vx lock'`
+            : read === null
+              ? // As a run refuses it: a merge conflict is named, not called drift.
+                dependenciesLockRefusal(new TextDecoder().decode(text))
+              : `${DEPENDENCIES_LOCK_NAME} is not what the dependencies resolve to here — run 'vx lock'`,
         ),
       )
   }

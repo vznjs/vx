@@ -58,3 +58,15 @@ it('registers no merge driver; a clashing merge refuses runs until vx lock rewri
   expect(await Bun.file(path.join(r, LOCK)).text()).toContain('echo merged')
   expect(vx(r, 'run', '--all', 'build').code).toBe(0)
 })
+
+it('vx lock --check names a conflicted dependencies lock as a conflict', async () => {
+  const r = (root = await makeWorkspace({ prefix: 'vx-lock-clash-' }))
+  await addProject(r, 'a', config('echo a'))
+  expect(vx(r, 'lock').code).toBe(0)
+  const deps = path.join(r, '.vx/dependencies.lock')
+  const text = await Bun.file(deps).text()
+  await Bun.write(deps, `<<<<<<< HEAD\n${text}=======\n${text}>>>>>>> theirs\n`)
+  const check = vx(r, 'lock', '--check')
+  expect(check.code).toBe(1)
+  expect(check.err).toContain('.vx/dependencies.lock holds a git merge conflict: run `vx lock`')
+})

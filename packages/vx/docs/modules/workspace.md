@@ -2072,6 +2072,7 @@ export function dependenciesLock(
 ): DependenciesLock
 export function readDependenciesLock(root: string, reads?: LoadReads): Promise<Uint8Array | null>
 export function parseDependenciesLock(bytes: Uint8Array | null): DependenciesLock | null
+export function dependenciesLockRefusal(text: string): string // why a run refuses what `parseDependenciesLock` read as none: a merge conflict, an old version, or invalid
 export function dependantsOf(lock: DependenciesLock, name: string): string[]
 export function sameRecord(read: DependenciesLock, fresh: DependenciesLock): boolean // `vx lock --check`: a file whose only change is its extras' hashes skips its digests
 export function recordedDigests(
