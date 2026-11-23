@@ -7,7 +7,7 @@
 import { mkdtempSync, rmSync, symlinkSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { vxCompileEntries } from './compile-entries.js'
+import { vxCompileEntries, vxCompileFlags } from './compile-entries.js'
 
 /**
  * The chance a vx no slower than its base still reads slower in this many
@@ -196,10 +196,7 @@ export function buildBase(repo: string, sha: string, outfile: string): void {
         'bun',
         'build',
         '--compile',
-        '--minify',
-        '--bytecode',
-        '--format=esm',
-        '--splitting',
+        ...vxCompileFlags(),
         ...vxCompileEntries(path.join(src, 'packages/vx/src/bin.ts')),
         '--outfile',
         outfile,

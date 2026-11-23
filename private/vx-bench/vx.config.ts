@@ -6,6 +6,7 @@ const NO_TRANSPILER_CACHE = { define: { BUN_RUNTIME_TRANSPILER_CACHE_PATH: '0' }
 // What the head-to-head's numbers depend on besides the tool measured.
 const HARNESS = [
   'compare.ts',
+  'compile-entries.ts',
   'shape.ts',
   'prng.ts',
   'ideal.ts',
@@ -61,9 +62,11 @@ export default defineProject({
           'perf-baseline.json',
           'pr-bench.ts',
           'pr-bench-base.ts',
+          'compile-entries.ts',
           'site-workspace.ts',
           'shape.ts',
           'prng.ts',
+          'ideal.ts',
           'outputs.ts',
           'quiet.ts',
           'bench-env.ts',
