@@ -1020,7 +1020,10 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
       )
     }
 
-    if (parsed.log !== undefined) return await printLog(db, at, { ...parsed, log: parsed.log })
+    if (parsed.log !== undefined) {
+      if (noRuns()) throw noRunsYet()
+      return await printLog(db, at, { ...parsed, log: parsed.log })
+    }
 
     if (parsed.list !== undefined) return printRunList(db, { ...parsed, list: parsed.list }, noRuns)
 
