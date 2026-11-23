@@ -8,6 +8,7 @@ import { defineProject } from '@vzn/vx'
 // suite-coverage fails on a file no shard names.
 const SHARDS: readonly (readonly string[])[] = [
   [
+    'bun-patch-installed',
     'dependency-names',
     'extra-in-project',
     'file-dir-dep',

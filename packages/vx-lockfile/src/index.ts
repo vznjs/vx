@@ -530,16 +530,17 @@ function plugin(manager: Manager, options: LockfileOptions): VxPlugin {
         // while node_modules holds another (installed.ts).
         let installed = installedPerRun.get(ctx)
         if (installed === undefined) {
-          installed = Promise.resolve().then(() =>
-            installCheck().checkInstalled(
+          installed = Promise.resolve().then(() => {
+            for (const warning of installCheck().checkInstalled(
               manager.name,
               ctx.workspaceRoot,
               ctx.cacheDir,
               file,
               digestVersion(),
               PARSE[manager.name]!,
-            ),
-          )
+            ))
+              ctx.warn(warning)
+          })
           installedPerRun.set(ctx, installed)
         }
         await installed
