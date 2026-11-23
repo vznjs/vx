@@ -440,6 +440,8 @@ export async function packSavedBytes(ix: StoreIndex, args: PackArgs): Promise<Ui
   try {
     // `stdout` is always present, even empty, so the layout is predictable.
     const plan = await planWithin(ix, args)
+    // No local entry to count them from: the row's `outputs` said `—`.
+    ix.savedBytes.set(args.hash, plan.held?.reduce((n, h) => n + h.size, 0) ?? 0)
     if (plan.size <= STREAM_DECODE_FROM) return await zstdCompress(await packArtifactBytes(plan))
     return await bytesOf(packArtifactStream(plan).pipeThrough(zstdEncoder()))
   } catch (err) {

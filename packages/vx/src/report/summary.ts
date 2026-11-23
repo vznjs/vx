@@ -160,6 +160,12 @@ function cacheBuckets(stats: SummaryStats, layers: RunContext['cache']): Buckets
     if (prior === undefined || REMOTE_RANK[state] > REMOTE_RANK[prior]) moved.set(from.task, state)
   }
   for (const state of moved.values()) b[state]++
+  // Saved with no local write and no upload: the remote already held the key,
+  // so the remote holds the save. As `saved` it showed under no layer.
+  if (!layers.localWrite) {
+    b.uploaded += b.saved
+    b.saved = 0
+  }
   return b
 }
 

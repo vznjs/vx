@@ -425,8 +425,10 @@ describe('formatRunSummary', () => {
       expect(legend({ remote: false }, {})).toBe('local 2✓ 1∅ 1↓ 2↑ · 1 not saved')
     })
 
-    it('local ↑ shows only when the policy writes the local layer', () => {
-      expect(legend({ localWrite: false }, {})).toBe('local 2✓ 1∅ 1↓ · remote 1↓ · 1 not saved')
+    // A save with no local write and no upload: the remote held its key. It
+    // showed under no layer (hardening, 2026-11-23).
+    it('local ↑ shows only when the policy writes the local layer; else the remote holds the save', () => {
+      expect(legend({ localWrite: false }, {})).toBe('local 2✓ 1∅ 1↓ · remote 1↓ 2↑ · 1 not saved')
     })
 
     it('the bar has a segment per state, each legend count painted in its colour', () => {
