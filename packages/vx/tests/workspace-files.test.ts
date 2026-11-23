@@ -12,7 +12,7 @@
 //     byte-identical artifacts (no CACHE_VERSION bump).
 
 import { existsSync } from 'node:fs'
-import { mkdir, mkdtemp, readFile, rm, utimes, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, utimes } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
@@ -34,11 +34,6 @@ import { run } from './helpers/orchestrator.js'
 import { storedArtifact } from './helpers/stored-artifact.js'
 
 const TIMEOUT = 30_000
-
-async function write(p: string, content = 'x'): Promise<void> {
-  await mkdir(path.dirname(p), { recursive: true })
-  await writeFile(p, content)
-}
 
 // ─── Loader validation ───────────────────────────────────────────────
 
@@ -102,13 +97,13 @@ describe('inputs.workspaceFiles resolution', () => {
     root = await mkdtemp(path.join(os.tmpdir(), 'vx-wsf-'))
     aDir = path.join(root, 'packages', 'a')
     bDir = path.join(root, 'packages', 'b')
-    await write(path.join(root, 'shared', 'config.json'), '{}')
-    await write(path.join(root, 'shared', 'ignored.txt'), 'invisible')
-    await write(path.join(root, '.gitignore'), 'shared/ignored.txt\n')
-    await write(path.join(aDir, 'src', 'main.ts'), 'a')
-    await write(path.join(aDir, 'package.json'), '{"name":"a"}')
-    await write(path.join(bDir, 'src', 'lib.ts'), 'b')
-    await write(path.join(bDir, 'package.json'), '{"name":"b"}')
+    await Bun.write(path.join(root, 'shared', 'config.json'), '{}')
+    await Bun.write(path.join(root, 'shared', 'ignored.txt'), 'invisible')
+    await Bun.write(path.join(root, '.gitignore'), 'shared/ignored.txt\n')
+    await Bun.write(path.join(aDir, 'src', 'main.ts'), 'a')
+    await Bun.write(path.join(aDir, 'package.json'), '{"name":"a"}')
+    await Bun.write(path.join(bDir, 'src', 'lib.ts'), 'b')
+    await Bun.write(path.join(bDir, 'package.json'), '{"name":"b"}')
     gitInit(root)
   })
 
@@ -144,7 +139,7 @@ describe('inputs.workspaceFiles resolution', () => {
   })
 
   it('supports ! negation', async () => {
-    await write(path.join(root, 'shared', 'extra.json'), '{}')
+    await Bun.write(path.join(root, 'shared', 'extra.json'), '{}')
     const files = await resolveA({
       files: [],
       workspaceFiles: ['shared/**', '!shared/config.json'],
@@ -165,7 +160,7 @@ describe('inputs.workspaceFiles resolution', () => {
     const cache = new GitFilesCache()
     await populateGitFilesCache(root, [aDir, bDir], cache, true)
     // An upstream task rewrote a workspace output this task reads.
-    await write(path.join(root, 'shared', 'late.json'), '{"late":true}')
+    await Bun.write(path.join(root, 'shared', 'late.json'), '{"late":true}')
     cache.markWorkspaceOutputsChanged(root, ['shared/late.json'])
 
     const r = await resolveInputs({
@@ -216,7 +211,7 @@ describe('inputs.workspaceFiles resolution', () => {
     // different root-level inputs — and the memo answers from cache only
     // when the snapshot ARRAY is identical, which is exactly what one
     // shared `GitFilesCache` gives the second call.
-    await write(path.join(root, 'other', 'thing.json'), '{}')
+    await Bun.write(path.join(root, 'other', 'thing.json'), '{}')
     const cache = new GitFilesCache()
     const memo = new Map()
     const resolve = async (
@@ -248,7 +243,7 @@ describe('inputs.workspaceFiles resolution', () => {
     // own workspace outputs, and none of the three had a witness in this
     // twin — every fixture here spells `shared/**`. A user writing
     // `workspaceFiles: ['shared']` is writing the documented form.
-    await write(path.join(root, 'shared', 'extra.json'), '{}')
+    await Bun.write(path.join(root, 'shared', 'extra.json'), '{}')
     const resolve = async (
       workspaceFiles: string[],
       ownWorkspaceOutputs: string[] = [],
@@ -297,7 +292,7 @@ describe('inputs.workspaceFiles resolution', () => {
     // The workspace-level array arrived later and inherited none of them,
     // which is this repo's standing finding about a rule with two copies.
     const generated = path.join(root, 'shared', 'generated.json')
-    await write(generated, '{"v":1}')
+    await Bun.write(generated, '{"v":1}')
     const cache = new Cache(path.join(root, '.vx', 'cache'))
     try {
       const key = (): Promise<string> =>
@@ -323,14 +318,14 @@ describe('inputs.workspaceFiles resolution', () => {
         })
 
       const before = await key()
-      await write(generated, '{"v":2}')
+      await Bun.write(generated, '{"v":2}')
       expect(await key()).toBe(before)
 
       // CONTROL, on a DIFFERENT file: a workspace input that is not a
       // declared output still moves the key. Without it the assertion
       // above would pass just as well on a task that reads no workspace
       // files at all.
-      await write(path.join(root, 'shared', 'config.json'), '{"changed":true}')
+      await Bun.write(path.join(root, 'shared', 'config.json'), '{"changed":true}')
       expect(await key()).not.toBe(before)
     } finally {
       cache.close()
@@ -373,9 +368,9 @@ describe('GitFilesCache workspace-wide partition', () => {
     root = await mkdtemp(path.join(os.tmpdir(), 'vx-wsg-'))
     aDir = path.join(root, 'packages', 'a')
     bDir = path.join(root, 'packages', 'b')
-    await write(path.join(root, 'shared', 'config.json'), '{}')
-    await write(path.join(aDir, 'src', 'main.ts'), 'a')
-    await write(path.join(bDir, 'src', 'lib.ts'), 'b')
+    await Bun.write(path.join(root, 'shared', 'config.json'), '{}')
+    await Bun.write(path.join(aDir, 'src', 'main.ts'), 'a')
+    await Bun.write(path.join(bDir, 'src', 'lib.ts'), 'b')
     gitInit(root)
     // These rows assert trusted index OIDs, which a host's global
     // core.checkStat=minimal or core.trustctime=false drops (A-6); the gate's
@@ -462,8 +457,8 @@ describe('GitFilesCache workspace-wide partition', () => {
     // Same guard class as `isInside` in 566, in the other file. Third
     // place the shared-prefix reading has to be excluded by NAME.
     const extra = path.join(root, 'packages', 'a-extra')
-    await write(path.join(extra, 'src', 'gen.ts'), 'g')
-    await write(path.join(extra, 'package.json'), '{"name":"a-extra"}')
+    await Bun.write(path.join(extra, 'src', 'gen.ts'), 'g')
+    await Bun.write(path.join(extra, 'package.json'), '{"name":"a-extra"}')
     const cache = new GitFilesCache()
     await populateGitFilesCache(root, [aDir, extra], cache, true)
 
@@ -587,8 +582,8 @@ describe('workspace-outputs artifact namespace', () => {
   }
 
   it('packs both namespaces, indexes rows with the prefix discriminator, restores each anchor', async () => {
-    await write(path.join(projectDir, 'out', 'p.txt'), 'project-out')
-    await write(path.join(wsRoot, 'gen', 'root.txt'), 'root-out')
+    await Bun.write(path.join(projectDir, 'out', 'p.txt'), 'project-out')
+    await Bun.write(path.join(wsRoot, 'gen', 'root.txt'), 'root-out')
     await cache.save({
       hash: 'ws1',
       entry,
@@ -614,7 +609,7 @@ describe('workspace-outputs artifact namespace', () => {
   })
 
   it('without workspaceRoot, restore materializes only the project namespace', async () => {
-    await write(path.join(wsRoot, 'gen', 'root.txt'), 'root-out')
+    await Bun.write(path.join(wsRoot, 'gen', 'root.txt'), 'root-out')
     await cache.save({
       hash: 'ws2',
       entry,
@@ -630,7 +625,7 @@ describe('workspace-outputs artifact namespace', () => {
   })
 
   it('tasks without the field produce the pre-workspaceFiles artifact layout', async () => {
-    await write(path.join(projectDir, 'out.txt'), 'v')
+    await Bun.write(path.join(projectDir, 'out.txt'), 'v')
     await cache.save({
       hash: 'plain',
       entry,
@@ -688,7 +683,7 @@ describe('workspaceFiles e2e', () => {
   it(
     'declared root file busts the key; undeclared sibling file does not',
     async () => {
-      await write(path.join(fixture.root, 'shared', 'cfg.txt'), 'v1')
+      await Bun.write(path.join(fixture.root, 'shared', 'cfg.txt'), 'v1')
       await addProject(fixture.root, 'pkg-a', {
         files: { 'src/in.txt': 'in' },
         config: `
@@ -709,10 +704,10 @@ describe('workspaceFiles e2e', () => {
       expect(await doRun()).toBe('success')
       expect(await doRun()).toBe('cache-hit')
 
-      await write(path.join(fixture.root, 'shared', 'cfg.txt'), 'v2')
+      await Bun.write(path.join(fixture.root, 'shared', 'cfg.txt'), 'v2')
       expect(await doRun()).toBe('success')
 
-      await write(path.join(fixture.root, 'packages', 'pkg-b', 'data', 'd.txt'), 'v2')
+      await Bun.write(path.join(fixture.root, 'packages', 'pkg-b', 'data', 'd.txt'), 'v2')
       expect(await doRun()).toBe('cache-hit')
     },
     TIMEOUT,
@@ -740,7 +735,7 @@ describe('workspaceFiles e2e', () => {
 
       expect(await doRun()).toBe('success')
       expect(await doRun()).toBe('cache-hit')
-      await write(path.join(fixture.root, 'packages', 'pkg-b', 'data', 'd.txt'), 'v2')
+      await Bun.write(path.join(fixture.root, 'packages', 'pkg-b', 'data', 'd.txt'), 'v2')
       expect(await doRun()).toBe('success')
     },
     TIMEOUT,
@@ -825,7 +820,7 @@ describe('workspaceFiles e2e', () => {
       // Delete the root output + plant a stale straggler: the hit must
       // restore the snapshot bit-for-bit (stale file wiped).
       await rm(path.join(fixture.root, 'generated'), { recursive: true, force: true })
-      await write(path.join(fixture.root, 'generated', 'stale.txt'), 'stale')
+      await Bun.write(path.join(fixture.root, 'generated', 'stale.txt'), 'stale')
       expect(await doRun()).toBe('cache-hit')
       expect(await readFile(apiPath, 'utf8')).toBe('root-v1\n')
       expect(existsSync(path.join(fixture.root, 'generated', 'stale.txt'))).toBe(false)

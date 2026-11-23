@@ -4,7 +4,7 @@
 // never listed, so an edit there was a green hit on the old output (A-61).
 // They are listed by a walk and hash by content.
 
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
@@ -14,11 +14,6 @@ import { git } from './helpers/workspace.js'
 
 const TIMEOUT = 60_000
 const CLI = path.join(import.meta.dir, 'helpers', 'vx-locked.ts')
-
-async function write(p: string, content: string): Promise<void> {
-  await mkdir(path.dirname(p), { recursive: true })
-  await writeFile(p, content)
-}
 
 let root: string
 beforeEach(async () => {
@@ -31,14 +26,14 @@ afterEach(async () => {
 it(
   'a gitlink whose directory lost its .git is listed by a walk, and an edit there misses',
   async () => {
-    await write(
+    await Bun.write(
       path.join(root, 'package.json'),
       JSON.stringify({ name: 'r', private: true, workspaces: ['packages/*'] }),
     )
     git(root, 'init', '-q')
     const a = path.join(root, 'packages/a')
-    await write(path.join(a, 'package.json'), JSON.stringify({ name: 'a' }))
-    await write(
+    await Bun.write(path.join(a, 'package.json'), JSON.stringify({ name: 'a' }))
+    await Bun.write(
       path.join(a, 'vx.config.mjs'),
       `export default {
         tasks: {
@@ -49,9 +44,9 @@ it(
         },
       }`,
     )
-    await write(path.join(root, '.gitignore'), '.vx/cache/\ndist/\n')
+    await Bun.write(path.join(root, '.gitignore'), '.vx/cache/\ndist/\n')
     const lib = path.join(a, 'vendor/lib')
-    await write(path.join(lib, 'x.txt'), 'one')
+    await Bun.write(path.join(lib, 'x.txt'), 'one')
     git(lib, 'init', '-q')
     git(lib, 'add', '-A')
     git(lib, 'commit', '-qm', 'init')
@@ -77,7 +72,7 @@ it(
     }
     expect(run()).toMatch(/local 1↑/)
     expect(run()).toMatch(/local 1✓/)
-    await write(path.join(lib, 'x.txt'), 'two')
+    await Bun.write(path.join(lib, 'x.txt'), 'two')
     expect(run()).toMatch(/local 1↑/)
     expect(await readFile(path.join(a, 'dist/out.txt'), 'utf8')).toBe('two')
   },
@@ -92,9 +87,9 @@ it(
     // the whole run was refused as "not inside a git work tree".
     git(root, 'init', '-q')
     const a = path.join(root, 'packages/a')
-    await write(path.join(a, 'package.json'), JSON.stringify({ name: 'a' }))
+    await Bun.write(path.join(a, 'package.json'), JSON.stringify({ name: 'a' }))
     const lib = path.join(a, 'vendor/lib')
-    await write(path.join(lib, 'x.txt'), 'one')
+    await Bun.write(path.join(lib, 'x.txt'), 'one')
     git(lib, 'init', '-q')
     git(lib, 'add', '-A')
     git(lib, 'commit', '-qm', 'init')

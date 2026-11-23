@@ -2,7 +2,7 @@
 // stale-hit-git.test.ts so no file holds a shard alone (2026-10-22).
 // The same shape: the real CLI against a real git-backed fixture.
 
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
@@ -12,11 +12,6 @@ import { git } from './helpers/workspace.js'
 import { vxSync } from './helpers/vx.js'
 
 const TIMEOUT = 60_000
-
-async function write(p: string, content: string): Promise<void> {
-  await mkdir(path.dirname(p), { recursive: true })
-  await writeFile(p, content)
-}
 
 const vx = (cwd: string, ...args: string[]) => vxSync(cwd, args).text
 
@@ -37,21 +32,21 @@ afterEach(async () => {
 // `dist/`, `app#build` (`dependsOn: ['^build']`) copies that.
 describe('--exclude-dependencies keys on the dependency it skips', () => {
   async function libApp(): Promise<{ lib: string; app: string }> {
-    await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
-    await write(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
+    await Bun.write(path.join(root, 'package.json'), '{"name":"r","private":true}')
+    await Bun.write(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
     await writeEdges(root, { app: ['lib'] })
     const lib = path.join(root, 'packages', 'lib')
     const app = path.join(root, 'packages', 'app')
-    await write(path.join(lib, 'package.json'), '{"name":"lib","version":"1.0.0"}')
-    await write(path.join(app, 'package.json'), '{"name":"app","version":"1.0.0"}')
-    await write(
+    await Bun.write(path.join(lib, 'package.json'), '{"name":"lib","version":"1.0.0"}')
+    await Bun.write(path.join(app, 'package.json'), '{"name":"app","version":"1.0.0"}')
+    await Bun.write(
       path.join(lib, 'vx.config.mjs'),
       `export default { tasks: { build: {
          exec: { command: 'mkdir -p dist && cat src/x.txt > dist/lib.txt' },
          inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
        } } }\n`,
     )
-    await write(
+    await Bun.write(
       path.join(app, 'vx.config.mjs'),
       `export default { tasks: { build: {
          dependsOn: ['^build'],
@@ -59,9 +54,9 @@ describe('--exclude-dependencies keys on the dependency it skips', () => {
          inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
        } } }\n`,
     )
-    await write(path.join(lib, 'src', 'x.txt'), 'L1')
-    await write(path.join(app, 'src', 'a.txt'), 'a')
-    await write(path.join(root, '.gitignore'), 'dist/\n.vx/cache/\n')
+    await Bun.write(path.join(lib, 'src', 'x.txt'), 'L1')
+    await Bun.write(path.join(app, 'src', 'a.txt'), 'a')
+    await Bun.write(path.join(root, '.gitignore'), 'dist/\n.vx/cache/\n')
     git(root, 'init', '-q')
     git(root, 'add', '-A')
     git(root, 'commit', '-q', '-m', 'init')
@@ -72,17 +67,17 @@ describe('--exclude-dependencies keys on the dependency it skips', () => {
   async function baseLibApp(): Promise<{ base: string; lib: string; app: string }> {
     const { lib, app } = await libApp()
     const base = path.join(root, 'packages', 'base')
-    await write(path.join(base, 'package.json'), '{"name":"base","version":"1.0.0"}')
-    await write(
+    await Bun.write(path.join(base, 'package.json'), '{"name":"base","version":"1.0.0"}')
+    await Bun.write(
       path.join(base, 'vx.config.mjs'),
       `export default { tasks: { build: {
          exec: { command: 'mkdir -p dist && cat src/b.txt > dist/b.txt' },
          inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
        } } }\n`,
     )
-    await write(path.join(base, 'src', 'b.txt'), 'b')
+    await Bun.write(path.join(base, 'src', 'b.txt'), 'b')
     await writeEdges(root, { app: ['lib'], lib: ['base'] })
-    await write(
+    await Bun.write(
       path.join(lib, 'vx.config.mjs'),
       `export default { tasks: { build: {
          dependsOn: ['^build'],
@@ -123,7 +118,7 @@ describe('--exclude-dependencies keys on the dependency it skips', () => {
       const { lib, app } = await libApp()
       vx(root, 'run', 'build', '--all')
       vx(root, 'run', 'app#build', '--exclude-dependencies')
-      await write(path.join(lib, 'src', 'x.txt'), 'L2')
+      await Bun.write(path.join(lib, 'src', 'x.txt'), 'L2')
       vx(root, 'run', 'lib#build')
       vx(root, 'run', 'app#build', '--exclude-dependencies')
       expect(await readFile(path.join(app, 'dist', 'app.txt'), 'utf8')).toBe('L2')
@@ -139,7 +134,7 @@ describe('--exclude-dependencies keys on the dependency it skips', () => {
     'a dependant keyed after its producer runs folds the skipped key too',
     async () => {
       const { app } = await libApp()
-      await write(
+      await Bun.write(
         path.join(app, 'vx.config.mjs'),
         `export default { tasks: {
            prep: {
@@ -153,7 +148,7 @@ describe('--exclude-dependencies keys on the dependency it skips', () => {
            },
          } }\n`,
       )
-      await write(path.join(root, '.gitignore'), 'dist/\ngen/\n.vx/cache/\n')
+      await Bun.write(path.join(root, '.gitignore'), 'dist/\ngen/\n.vx/cache/\n')
       git(root, 'add', '-A')
       git(root, 'commit', '-q', '-m', 'prep')
       await writeLocalWorkspace(root, [edgesSource({ app: ['lib'] })])
@@ -206,7 +201,7 @@ describe('--exclude-dependencies keys on the dependency it skips', () => {
         ['app', "'^build'"],
         ['lib', "'^build'"],
       ] as const) {
-        await write(
+        await Bun.write(
           path.join(root, 'packages', dir, 'vx.config.mjs'),
           `export default { tasks: {
              gen: { dependsOn: [${dep}], exec: { command: 'true' }, inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true },
@@ -238,7 +233,7 @@ describe('--exclude-dependencies keys on the dependency it skips', () => {
   // the one the live path gives it, whatever its shape.
   const withLibConfig = async (config: string): Promise<void> => {
     await libApp()
-    await write(path.join(root, 'packages', 'lib', 'vx.config.mjs'), config)
+    await Bun.write(path.join(root, 'packages', 'lib', 'vx.config.mjs'), config)
     git(root, 'add', '-A')
     git(root, 'commit', '-q', '-m', 'lib shape')
   }
@@ -286,7 +281,7 @@ describe('--exclude-dependencies keys on the dependency it skips', () => {
            inputs: { files: ['src/**'] },
          } } }\n`,
       )
-      await write(
+      await Bun.write(
         path.join(root, 'packages', 'app', 'vx.config.mjs'),
         `export default { tasks: { build: {
            dependsOn: ['^build'],
@@ -322,7 +317,7 @@ describe('--exclude-dependencies keys on the dependency it skips', () => {
            inputs: { files: ['src/**'] },
          } } }\n`,
       )
-      await write(
+      await Bun.write(
         path.join(root, 'packages', 'app', 'vx.config.mjs'),
         `export default { tasks: { build: {
            dependsOn: ['^build'],
@@ -334,7 +329,7 @@ describe('--exclude-dependencies keys on the dependency it skips', () => {
       git(root, 'commit', '-q', '-m', 'app behind a server')
       expect(vx(root, 'run', 'app#build')).toContain('1↑')
       expect(vx(root, 'run', 'app#build')).toContain('1✓')
-      await write(path.join(root, 'packages', 'lib', 'src', 'x.txt'), 'server v2')
+      await Bun.write(path.join(root, 'packages', 'lib', 'src', 'x.txt'), 'server v2')
       expect(vx(root, 'run', 'app#build')).toContain('1↑')
     },
     TIMEOUT,
@@ -350,12 +345,12 @@ describe('--exclude-dependencies keys on the dependency it skips', () => {
          } } }\n`,
       )
       const inner = path.join(root, 'packages', 'lib', 'inner')
-      await write(path.join(inner, 'package.json'), '{"name":"inner","version":"1.0.0"}')
+      await Bun.write(path.join(inner, 'package.json'), '{"name":"inner","version":"1.0.0"}')
       // Config-bearing: a package with no config and no \`project\` plugin
       // is only a directory of its parent (prepare.ts), fenced by nothing.
-      await write(path.join(inner, 'vx.config.mjs'), 'export default { tasks: {} }\n')
-      await write(path.join(inner, 'src', 'i.txt'), 'i')
-      await write(
+      await Bun.write(path.join(inner, 'vx.config.mjs'), 'export default { tasks: {} }\n')
+      await Bun.write(path.join(inner, 'src', 'i.txt'), 'i')
+      await Bun.write(
         path.join(root, 'pnpm-workspace.yaml'),
         'packages:\n  - "packages/*"\n  - "packages/lib/inner"\n',
       )
@@ -363,7 +358,7 @@ describe('--exclude-dependencies keys on the dependency it skips', () => {
       git(root, 'commit', '-q', '-m', 'nested')
       const full = appHash()
       expect(appHash('--exclude-dependencies')).toBe(full)
-      await write(path.join(inner, 'src', 'i.txt'), 'i2')
+      await Bun.write(path.join(inner, 'src', 'i.txt'), 'i2')
       expect(appHash('--exclude-dependencies')).toBe(full)
     },
     TIMEOUT,
@@ -378,17 +373,17 @@ describe('--exclude-dependencies keys on the dependency it skips', () => {
       await writeEdges(root, { app: ['lib', 'base'], top: ['tool'] })
       const tool = path.join(root, 'packages', 'tool')
       const top = path.join(root, 'packages', 'top')
-      await write(path.join(tool, 'package.json'), '{"name":"tool","version":"1.0.0"}')
-      await write(
+      await Bun.write(path.join(tool, 'package.json'), '{"name":"tool","version":"1.0.0"}')
+      await Bun.write(
         path.join(tool, 'vx.config.mjs'),
         `export default { tasks: { build: {
            exec: { command: 'true' },
            inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true,
          } } }\n`,
       )
-      await write(path.join(tool, 'src', 't.txt'), 't')
-      await write(path.join(top, 'package.json'), '{"name":"top","version":"1.0.0"}')
-      await write(
+      await Bun.write(path.join(tool, 'src', 't.txt'), 't')
+      await Bun.write(path.join(top, 'package.json'), '{"name":"top","version":"1.0.0"}')
+      await Bun.write(
         path.join(top, 'vx.config.mjs'),
         `export default { tasks: { build: {
            dependsOn: ['^build'],
@@ -396,7 +391,7 @@ describe('--exclude-dependencies keys on the dependency it skips', () => {
            inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true,
          } } }\n`,
       )
-      await write(path.join(top, 'src', 't.txt'), 't')
+      await Bun.write(path.join(top, 'src', 't.txt'), 't')
       git(root, 'add', '-A')
       git(root, 'commit', '-q', '-m', 'two dependants')
       const hashes = (...flags: string[]): string[] => {
@@ -416,7 +411,7 @@ describe('--exclude-dependencies keys on the dependency it skips', () => {
     'a task that folds no skipped key still saves',
     async () => {
       const { app } = await libApp()
-      await write(
+      await Bun.write(
         path.join(app, 'vx.config.mjs'),
         `export default { tasks: { build: {
            dependsOn: ['^build'],
@@ -444,7 +439,7 @@ describe('--exclude-dependencies keys on the dependency it skips', () => {
       const { base } = await baseLibApp()
       vx(root, 'run', 'build', '--all')
       const before = appHash('--exclude-dependencies')
-      await write(path.join(base, 'src', 'b.txt'), 'b2')
+      await Bun.write(path.join(base, 'src', 'b.txt'), 'b2')
       const after = [appHash(), appHash('--exclude-dependencies')]
       expect([after[0] === after[1], after[1] === before]).toEqual([true, false])
     },
@@ -459,7 +454,7 @@ describe('--exclude-dependencies keys on the dependency it skips', () => {
     async () => {
       const { lib, app } = await libApp()
       vx(root, 'run', 'build', '--all')
-      await write(path.join(lib, 'src', 'x.txt'), 'L2')
+      await Bun.write(path.join(lib, 'src', 'x.txt'), 'L2')
       const out = vx(root, 'run', 'app#build', '--exclude-dependencies')
       expect(out).toContain('1 cached task(s) build on a skipped dependency')
       expect(await readFile(path.join(app, 'dist', 'app.txt'), 'utf8')).toBe('L1')
@@ -475,7 +470,7 @@ describe('--exclude-dependencies keys on the dependency it skips', () => {
     'a skipped dependency under an uncached task makes no line',
     async () => {
       const { app } = await libApp()
-      await write(
+      await Bun.write(
         path.join(app, 'vx.config.mjs'),
         `export default { tasks: {
          build: {
@@ -506,7 +501,7 @@ describe('--exclude-dependencies keys on the dependency it skips', () => {
     'what folds a group that skipped a dependency is not saved either',
     async () => {
       const { lib, app } = await libApp()
-      await write(
+      await Bun.write(
         path.join(app, 'vx.config.mjs'),
         `export default { tasks: {
          deps: { dependsOn: ['^build'] },
@@ -520,7 +515,7 @@ describe('--exclude-dependencies keys on the dependency it skips', () => {
       git(root, 'add', '-A')
       git(root, 'commit', '-q', '-m', 'group')
       vx(root, 'run', 'build', '--all')
-      await write(path.join(lib, 'src', 'x.txt'), 'L2')
+      await Bun.write(path.join(lib, 'src', 'x.txt'), 'L2')
       // The group is the seed; the line counts the cached task it reaches.
       expect(vx(root, 'run', 'app#build', '--exclude-dependencies=build')).toContain(
         '1 cached task(s) build on a skipped dependency',

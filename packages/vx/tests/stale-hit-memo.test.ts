@@ -2,7 +2,7 @@
 // neither file holds a test shard alone (2026-10-22). The same shape: the
 // real CLI against a real git-backed fixture.
 
-import { mkdir, mkdtemp, readFile, rm, writeFile, utimes, stat } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, utimes, stat } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
@@ -11,11 +11,6 @@ import { git, gitInit } from './helpers/workspace.js'
 import { vxSync } from './helpers/vx.js'
 
 const TIMEOUT = 60_000
-
-async function write(p: string, content: string): Promise<void> {
-  await mkdir(path.dirname(p), { recursive: true })
-  await writeFile(p, content)
-}
 
 const vx = (cwd: string, ...args: string[]) => vxSync(cwd, args).text
 
@@ -36,7 +31,10 @@ describe('stale cache hits', () => {
       // Port of Turbo's globwalk test_weird_filenames, comma_patterns and
       // workspace_globbing_includes_dotfiles: a name git quotes or a glob
       // reads as syntax must still reach the key.
-      await write(path.join(root, 'package.json'), JSON.stringify({ name: 'root', private: true }))
+      await Bun.write(
+        path.join(root, 'package.json'),
+        JSON.stringify({ name: 'root', private: true }),
+      )
       await writeLocalWorkspace(root)
       const pkg = path.join(root, 'packages', 'lib')
       const names = [
@@ -50,8 +48,8 @@ describe('stale cache hits', () => {
         '[id]/p',
         '{a,b}/p',
       ]
-      for (const n of names) await write(path.join(pkg, 'src', n), 'v1')
-      await write(
+      for (const n of names) await Bun.write(path.join(pkg, 'src', n), 'v1')
+      await Bun.write(
         path.join(pkg, 'vx.config.mjs'),
         `export default { name: 'lib', tasks: { build: {
            exec: { command: 'mkdir -p dist && date +%N > dist/o' },
@@ -65,11 +63,11 @@ describe('stale cache hits', () => {
       const seen: string[] = []
       expect(miss()).toBe(true)
       for (const n of names) {
-        await write(path.join(pkg, 'src', n), 'v2')
+        await Bun.write(path.join(pkg, 'src', n), 'v2')
         if (!miss() || miss()) seen.push(`${n} tracked`)
-        await write(path.join(pkg, 'src', `${n}.new`), 'v1')
+        await Bun.write(path.join(pkg, 'src', `${n}.new`), 'v1')
         if (!miss()) seen.push(`${n} untracked added`)
-        await write(path.join(pkg, 'src', `${n}.new`), 'v2')
+        await Bun.write(path.join(pkg, 'src', `${n}.new`), 'v2')
         if (!miss() || miss()) seen.push(`${n} untracked edit`)
       }
       expect(seen).toEqual([])
@@ -84,9 +82,9 @@ describe('stale cache hits', () => {
       // that preserves mtime — `tar -x`, `unzip`, `cp -p`, `rsync --times`,
       // a SOURCE_DATE_EPOCH generator — could hand back the previous run's
       // digest for genuinely different bytes.
-      await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
+      await Bun.write(path.join(root, 'package.json'), '{"name":"r","private":true}')
       await writeLocalWorkspace(root)
-      await write(
+      await Bun.write(
         path.join(root, 'vx.config.mjs'),
         `export default {
            tasks: {
@@ -97,18 +95,18 @@ describe('stale cache hits', () => {
            },
          }`,
       )
-      await write(path.join(root, 'src/in.txt'), 'AAA')
+      await Bun.write(path.join(root, 'src/in.txt'), 'AAA')
       gitInit(root)
       // Left UNTRACKED on purpose: a tracked+clean file takes the git index
       // OID path instead, which never consults this memo.
-      await write(path.join(root, '.gitignore'), 'dist/\n.vx/cache/\n')
+      await Bun.write(path.join(root, '.gitignore'), 'dist/\n.vx/cache/\n')
 
       vx(root, 'run', 'build')
       expect(await readFile(path.join(root, 'dist/out.txt'), 'utf8')).toBe('AAA')
 
       // Same byte length, mtime forced back to what the first run recorded.
       const before = await stat(path.join(root, 'src/in.txt'))
-      await write(path.join(root, 'src/in.txt'), 'BBB')
+      await Bun.write(path.join(root, 'src/in.txt'), 'BBB')
       await utimes(path.join(root, 'src/in.txt'), before.atime, before.mtime)
 
       const out = vx(root, 'run', 'build')
@@ -128,9 +126,9 @@ describe('stale cache hits', () => {
       //
       // `inputs.tasks: []` decouples the consumer from the producer's
       // hash — a documented pattern (docs/schema.md).
-      await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
+      await Bun.write(path.join(root, 'package.json'), '{"name":"r","private":true}')
       await writeLocalWorkspace(root)
-      await write(
+      await Bun.write(
         path.join(root, 'vx.config.mjs'),
         `export default {
            tasks: {
@@ -148,13 +146,13 @@ describe('stale cache hits', () => {
            },
          }`,
       )
-      await write(
+      await Bun.write(
         path.join(root, 'emit.sh'),
         'mkdir -p gen\nprintf a > gen/a.js\nprintf content-of-b > gen/b.ts\n',
       )
-      await write(path.join(root, 'gen/a.js'), 'a')
-      await write(path.join(root, 'gen/b.ts'), 'content-of-b')
-      await write(path.join(root, '.gitignore'), 'out/\n.vx/cache/\n')
+      await Bun.write(path.join(root, 'gen/a.js'), 'a')
+      await Bun.write(path.join(root, 'gen/b.ts'), 'content-of-b')
+      await Bun.write(path.join(root, '.gitignore'), 'out/\n.vx/cache/\n')
       gitInit(root)
       git(root, 'add', '-A')
       git(root, 'commit', '-q', '-m', 'initial')
@@ -164,7 +162,7 @@ describe('stale cache hits', () => {
       expect(await readFile(path.join(root, 'out/all.txt'), 'utf8')).toBe('content-of-b')
 
       // The producer stops emitting b.ts; the committed copy stays.
-      await write(path.join(root, 'emit.sh'), 'mkdir -p gen\nprintf a > gen/a.js\n')
+      await Bun.write(path.join(root, 'emit.sh'), 'mkdir -p gen\nprintf a > gen/a.js\n')
 
       vx(root, 'run', 'consume')
       expect(await readFile(path.join(root, 'out/all.txt'), 'utf8')).toBe('content-of-b')
@@ -177,9 +175,9 @@ describe('stale cache hits', () => {
     async () => {
       // git lists a submodule as one gitlink path, never its files, so a
       // committed-file check by exact path cleaned gen/sub/x.txt.
-      await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
+      await Bun.write(path.join(root, 'package.json'), '{"name":"r","private":true}')
       await writeLocalWorkspace(root)
-      await write(
+      await Bun.write(
         path.join(root, 'vx.config.mjs'),
         `export default {
            tasks: {
@@ -190,8 +188,8 @@ describe('stale cache hits', () => {
            },
          }`,
       )
-      await write(path.join(root, 'gen/sub/x.txt'), 'pinned')
-      await write(path.join(root, '.gitignore'), '.vx/cache/\n')
+      await Bun.write(path.join(root, 'gen/sub/x.txt'), 'pinned')
+      await Bun.write(path.join(root, '.gitignore'), '.vx/cache/\n')
       const sub = path.join(root, 'gen/sub')
       for (const dir of [sub, root]) {
         gitInit(dir)
@@ -224,9 +222,9 @@ describe('stale cache hits', () => {
       // `inputs.tasks: []` decouples the consumer from the producer's
       // hash — a documented pattern (docs/schema.md), and what makes the
       // defect observable rather than masked by the upstream cascade.
-      await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
+      await Bun.write(path.join(root, 'package.json'), '{"name":"r","private":true}')
       await writeLocalWorkspace(root)
-      await write(
+      await Bun.write(
         path.join(root, 'vx.config.mjs'),
         `export default {
            tasks: {
@@ -244,13 +242,13 @@ describe('stale cache hits', () => {
            },
          }`,
       )
-      await write(
+      await Bun.write(
         path.join(root, 'emit.sh'),
         'mkdir -p gen\nprintf a > gen/a.js\nprintf content-of-b > gen/b.ts\n',
       )
-      await write(path.join(root, 'gen/a.js'), 'a')
-      await write(path.join(root, 'gen/b.ts'), 'content-of-b')
-      await write(path.join(root, '.gitignore'), 'out/\n.vx/cache/\n')
+      await Bun.write(path.join(root, 'gen/a.js'), 'a')
+      await Bun.write(path.join(root, 'gen/b.ts'), 'content-of-b')
+      await Bun.write(path.join(root, '.gitignore'), 'out/\n.vx/cache/\n')
       gitInit(root)
       git(root, 'add', '-A')
       git(root, 'commit', '-q', '-m', 'initial')
@@ -261,7 +259,10 @@ describe('stale cache hits', () => {
 
       // The producer stops emitting b.ts. The consumer's real input set is now
       // empty, so its output must become empty too.
-      await write(path.join(root, 'emit.sh'), 'mkdir -p gen\nprintf a > gen/a.js\nrm -f gen/b.ts\n')
+      await Bun.write(
+        path.join(root, 'emit.sh'),
+        'mkdir -p gen\nprintf a > gen/a.js\nrm -f gen/b.ts\n',
+      )
 
       vx(root, 'run', 'consume')
       expect(await readFile(path.join(root, 'out/all.txt'), 'utf8')).toBe('')
@@ -282,9 +283,9 @@ describe('stale cache hits', () => {
       // EMPTY input set, and a later run whose real input set is empty
       // (emit.sh emits no .ts) hits run one's artifact and restores
       // content the inputs no longer hold.
-      await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
+      await Bun.write(path.join(root, 'package.json'), '{"name":"r","private":true}')
       await writeLocalWorkspace(root)
-      await write(
+      await Bun.write(
         path.join(root, 'vx.config.mjs'),
         `export default {
            tasks: {
@@ -309,8 +310,8 @@ describe('stale cache hits', () => {
            },
          }`,
       )
-      await write(path.join(root, 'emit.sh'), 'mkdir -p gen\nprintf content-of-b > gen/b.ts\n')
-      await write(path.join(root, '.gitignore'), 'out/\n.vx/cache/\n')
+      await Bun.write(path.join(root, 'emit.sh'), 'mkdir -p gen\nprintf content-of-b > gen/b.ts\n')
+      await Bun.write(path.join(root, '.gitignore'), 'out/\n.vx/cache/\n')
       gitInit(root)
       git(root, 'add', '-A')
       git(root, 'commit', '-q', '-m', 'initial')
@@ -321,7 +322,7 @@ describe('stale cache hits', () => {
 
       // The producer stops emitting any .ts: consume's real input set is
       // empty, so its output must be empty too — not run one's bytes.
-      await write(path.join(root, 'emit.sh'), 'mkdir -p gen\nprintf a > gen/a.js\n')
+      await Bun.write(path.join(root, 'emit.sh'), 'mkdir -p gen\nprintf a > gen/a.js\n')
       vx(root, 'run', 'consume', '--concurrency', '1')
       expect(await readFile(path.join(root, 'out/all.txt'), 'utf8')).toBe('')
     },
@@ -334,9 +335,9 @@ describe('stale cache hits', () => {
       // gen/old.ts is committed under codegen's `gen/**`: the hit's clean
       // leaves it and the restore writes the bytes the run left, so the
       // consumer reads it on the cold run and on the warm one.
-      await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
+      await Bun.write(path.join(root, 'package.json'), '{"name":"r","private":true}')
       await writeLocalWorkspace(root)
-      await write(
+      await Bun.write(
         path.join(root, 'vx.config.mjs'),
         `export default {
            tasks: {
@@ -359,9 +360,9 @@ describe('stale cache hits', () => {
            },
          }`,
       )
-      await write(path.join(root, 'emit.sh'), 'mkdir -p gen\nprintf b > gen/b.js\n')
-      await write(path.join(root, 'gen/old.ts'), 'content-of-old')
-      await write(path.join(root, '.gitignore'), 'out/\n.vx/cache/\n')
+      await Bun.write(path.join(root, 'emit.sh'), 'mkdir -p gen\nprintf b > gen/b.js\n')
+      await Bun.write(path.join(root, 'gen/old.ts'), 'content-of-old')
+      await Bun.write(path.join(root, '.gitignore'), 'out/\n.vx/cache/\n')
       gitInit(root)
       git(root, 'add', '-A')
       git(root, 'commit', '-q', '-m', 'initial')
@@ -385,9 +386,9 @@ describe('stale cache hits', () => {
   it(
     'a committed file under a root-anchored output survives the restore on a hit',
     async () => {
-      await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
+      await Bun.write(path.join(root, 'package.json'), '{"name":"r","private":true}')
       await writeLocalWorkspace(root)
-      await write(
+      await Bun.write(
         path.join(root, 'vx.config.mjs'),
         `export default {
            tasks: {
@@ -412,9 +413,9 @@ describe('stale cache hits', () => {
            },
          }`,
       )
-      await write(path.join(root, 'emit.sh'), 'mkdir -p gen\nprintf b > gen/b.js\n')
-      await write(path.join(root, 'gen/old.ts'), 'content-of-old')
-      await write(path.join(root, '.gitignore'), 'out/\n.vx/cache/\n')
+      await Bun.write(path.join(root, 'emit.sh'), 'mkdir -p gen\nprintf b > gen/b.js\n')
+      await Bun.write(path.join(root, 'gen/old.ts'), 'content-of-old')
+      await Bun.write(path.join(root, '.gitignore'), 'out/\n.vx/cache/\n')
       gitInit(root)
       git(root, 'add', '-A')
       git(root, 'commit', '-q', '-m', 'initial')
@@ -441,9 +442,9 @@ describe('stale cache hits', () => {
       // run start, so the snapshot lacks it; codegen's hit restores it, and
       // only the mark sends consume back to git to see it (C-24: marking the
       // wiped paths alone passed the suite).
-      await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
+      await Bun.write(path.join(root, 'package.json'), '{"name":"r","private":true}')
       await writeLocalWorkspace(root)
-      await write(
+      await Bun.write(
         path.join(root, 'vx.config.mjs'),
         `export default {
            tasks: {
@@ -468,7 +469,7 @@ describe('stale cache hits', () => {
            },
          }`,
       )
-      await write(path.join(root, '.gitignore'), 'out/\n.vx/cache/\nruns.log\n')
+      await Bun.write(path.join(root, '.gitignore'), 'out/\n.vx/cache/\nruns.log\n')
       gitInit(root)
       git(root, 'add', '-A')
       git(root, 'commit', '-q', '-m', 'initial')
@@ -493,11 +494,11 @@ describe('stale cache hits', () => {
       // (`identityOf`). The up-front pass learns `gen/v.ts` as the last run
       // left it; codegen then rewrites it, and consume's key must fold the
       // new bytes: kept past the write, the old identity replayed v1.
-      await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
-      await write(path.join(root, '.gitattributes'), '* ident\n')
-      await write(path.join(root, 'src', 'v.txt'), 'v1')
+      await Bun.write(path.join(root, 'package.json'), '{"name":"r","private":true}')
+      await Bun.write(path.join(root, '.gitattributes'), '* ident\n')
+      await Bun.write(path.join(root, 'src', 'v.txt'), 'v1')
       await writeLocalWorkspace(root)
-      await write(
+      await Bun.write(
         path.join(root, 'vx.config.mjs'),
         `export default {
            tasks: {
@@ -517,13 +518,13 @@ describe('stale cache hits', () => {
            },
          }`,
       )
-      await write(path.join(root, '.gitignore'), 'out/\ngen/\n.vx/cache/\n')
+      await Bun.write(path.join(root, '.gitignore'), 'out/\ngen/\n.vx/cache/\n')
       git(root, 'init', '-q')
       git(root, 'add', '-A')
       git(root, 'commit', '-q', '-m', 'initial')
       vx(root, 'run', 'consume')
       expect(await readFile(path.join(root, 'out/all.txt'), 'utf8')).toBe('v1')
-      await write(path.join(root, 'src', 'v.txt'), 'v2')
+      await Bun.write(path.join(root, 'src', 'v.txt'), 'v2')
       vx(root, 'run', 'consume')
       expect(await readFile(path.join(root, 'gen/v.ts'), 'utf8')).toBe('v2')
       expect(await readFile(path.join(root, 'out/all.txt'), 'utf8')).toBe('v2')
@@ -538,11 +539,11 @@ describe('stale cache hits', () => {
       // dropped. Here `gen/v.ts` stands as v2 when the run learns it, and
       // codegen's hit puts v1 back: consume must key on v1 (run 1's
       // entry), not on the v2 it learned (run 2's).
-      await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
-      await write(path.join(root, '.gitattributes'), '* ident\n')
-      await write(path.join(root, 'src', 'v.txt'), 'v1')
+      await Bun.write(path.join(root, 'package.json'), '{"name":"r","private":true}')
+      await Bun.write(path.join(root, '.gitattributes'), '* ident\n')
+      await Bun.write(path.join(root, 'src', 'v.txt'), 'v1')
       await writeLocalWorkspace(root)
-      await write(
+      await Bun.write(
         path.join(root, 'vx.config.mjs'),
         `export default {
            tasks: {
@@ -562,15 +563,15 @@ describe('stale cache hits', () => {
            },
          }`,
       )
-      await write(path.join(root, '.gitignore'), 'out/\ngen/\n.vx/cache/\n')
+      await Bun.write(path.join(root, '.gitignore'), 'out/\ngen/\n.vx/cache/\n')
       git(root, 'init', '-q')
       git(root, 'add', '-A')
       git(root, 'commit', '-q', '-m', 'initial')
       vx(root, 'run', 'consume')
-      await write(path.join(root, 'src', 'v.txt'), 'v2')
+      await Bun.write(path.join(root, 'src', 'v.txt'), 'v2')
       vx(root, 'run', 'consume')
       expect(await readFile(path.join(root, 'out/all.txt'), 'utf8')).toBe('v2')
-      await write(path.join(root, 'src', 'v.txt'), 'v1')
+      await Bun.write(path.join(root, 'src', 'v.txt'), 'v1')
       vx(root, 'run', 'consume')
       expect(await readFile(path.join(root, 'gen/v.ts'), 'utf8')).toBe('v1')
       expect(await readFile(path.join(root, 'out/all.txt'), 'utf8')).toBe('v1')

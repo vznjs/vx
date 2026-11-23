@@ -18,7 +18,7 @@
 // The fixtures self-SIGTERM (`kill -TERM $$`) so the signal arrives without
 // vx's handler running: exactly the shape that reaches a summary.
 
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
@@ -30,11 +30,6 @@ import { vxSync } from './helpers/vx.js'
 const TIMEOUT = 60_000
 
 let root: string
-
-async function write(p: string, content: string): Promise<void> {
-  await mkdir(path.dirname(p), { recursive: true })
-  await writeFile(p, content)
-}
 
 const vx = (cwd: string, ...args: string[]) => vxSync(cwd, args)
 
@@ -56,14 +51,14 @@ describe('a task killed by a shutdown signal', () => {
       // cache key — and therefore b's, which folds a's INPUT key — is
       // IDENTICAL across both runs. Whatever b caches in run 1 is keyed
       // exactly as a healthy run would key it.
-      await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
+      await Bun.write(path.join(root, 'package.json'), '{"name":"r","private":true}')
       await writeEdges(root, { b: ['a'] })
-      await write(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
-      await write(path.join(root, '.gitignore'), 'dist/\n.vx/cache/\nkill.flag\n')
+      await Bun.write(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
+      await Bun.write(path.join(root, '.gitignore'), 'dist/\n.vx/cache/\nkill.flag\n')
 
-      await write(path.join(root, 'packages/a/package.json'), '{"name":"a","version":"0.0.0"}')
-      await write(path.join(root, 'packages/a/src/in.txt'), 'a-source')
-      await write(
+      await Bun.write(path.join(root, 'packages/a/package.json'), '{"name":"a","version":"0.0.0"}')
+      await Bun.write(path.join(root, 'packages/a/src/in.txt'), 'a-source')
+      await Bun.write(
         path.join(root, 'packages/a/vx.config.mjs'),
         `export default {
            tasks: {
@@ -78,9 +73,9 @@ describe('a task killed by a shutdown signal', () => {
          }`,
       )
 
-      await write(path.join(root, 'packages/b/package.json'), '{"name":"b","version":"0.0.0"}')
-      await write(path.join(root, 'packages/b/src/in.txt'), 'b-source')
-      await write(
+      await Bun.write(path.join(root, 'packages/b/package.json'), '{"name":"b","version":"0.0.0"}')
+      await Bun.write(path.join(root, 'packages/b/src/in.txt'), 'b-source')
+      await Bun.write(
         path.join(root, 'packages/b/vx.config.mjs'),
         `export default {
            tasks: {
@@ -97,7 +92,7 @@ describe('a task killed by a shutdown signal', () => {
       git(root, 'add', '-A')
       git(root, 'commit', '-qm', 'init')
 
-      await write(path.join(root, 'kill.flag'), '')
+      await Bun.write(path.join(root, 'kill.flag'), '')
       const first = vx(root, 'run', 'build', '--all')
       expect(first.code).not.toBe(0)
       // b never ran, so it cached nothing built from a's partial tree.
@@ -120,10 +115,10 @@ describe('a task killed by a shutdown signal', () => {
   it(
     'is named in the summary and the markdown report when the run reaches them',
     async () => {
-      await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
+      await Bun.write(path.join(root, 'package.json'), '{"name":"r","private":true}')
       await writeLocalWorkspace(root)
-      await write(path.join(root, '.gitignore'), '.vx/cache/\n')
-      await write(
+      await Bun.write(path.join(root, '.gitignore'), '.vx/cache/\n')
+      await Bun.write(
         path.join(root, 'vx.config.mjs'),
         `export default {
            tasks: {
@@ -155,13 +150,13 @@ describe('a task killed by a shutdown signal', () => {
   it(
     'a task killed by a signal vx did not send is a failure: retried, shown, and fail-fast trips',
     async () => {
-      await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
+      await Bun.write(path.join(root, 'package.json'), '{"name":"r","private":true}')
       await writeLocalWorkspace(root)
-      await write(path.join(root, '.gitignore'), '.vx/cache/\n')
+      await Bun.write(path.join(root, '.gitignore'), '.vx/cache/\n')
       // `slow` holds `later` back until selfkill's third attempt, then
       // 0.3 s: a flat `sleep 0.3` raced three spawns and lost under gate
       // load, so `later` ran before fail-fast tripped (C-44).
-      await write(
+      await Bun.write(
         path.join(root, 'vx.config.mjs'),
         `export default {
            tasks: {
@@ -195,10 +190,10 @@ describe('a task killed by a shutdown signal', () => {
   it(
     'a task that dies with the run it stopped gets no outside-vx line',
     async () => {
-      await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
+      await Bun.write(path.join(root, 'package.json'), '{"name":"r","private":true}')
       await writeLocalWorkspace(root)
-      await write(path.join(root, '.gitignore'), '.vx/cache/\n')
-      await write(
+      await Bun.write(path.join(root, '.gitignore'), '.vx/cache/\n')
+      await Bun.write(
         path.join(root, 'vx.config.mjs'),
         `export default { tasks: { doomed: { exec: { command: 'echo working; kill -TERM $PPID $$' } } } }`,
       )
@@ -216,10 +211,10 @@ describe('a task killed by a shutdown signal', () => {
   it(
     'leaves a run with nothing aborted byte-identical — no aborted row or count',
     async () => {
-      await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
+      await Bun.write(path.join(root, 'package.json'), '{"name":"r","private":true}')
       await writeLocalWorkspace(root)
-      await write(path.join(root, '.gitignore'), '.vx/cache/\n')
-      await write(
+      await Bun.write(path.join(root, '.gitignore'), '.vx/cache/\n')
+      await Bun.write(
         path.join(root, 'vx.config.mjs'),
         `export default { tasks: { fine: { exec: { command: 'echo fine' } } } }`,
       )

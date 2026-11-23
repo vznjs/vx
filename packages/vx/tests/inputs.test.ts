@@ -42,11 +42,6 @@ import { skipAsRoot } from './helpers/nonroot-gate.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 import { run } from './helpers/orchestrator.js'
 
-async function write(p: string, content = 'x'): Promise<void> {
-  await mkdir(path.dirname(p), { recursive: true })
-  await writeFile(p, content)
-}
-
 describe('cleanOutputs — strict output-ownership contract', () => {
   let root: string
   let projectDir: string
@@ -62,8 +57,8 @@ describe('cleanOutputs — strict output-ownership contract', () => {
   })
 
   it('removes files matching declared output globs', async () => {
-    await write(path.join(projectDir, 'dist', 'a.js'))
-    await write(path.join(projectDir, 'dist', 'b.js'))
+    await Bun.write(path.join(projectDir, 'dist', 'a.js'), 'x')
+    await Bun.write(path.join(projectDir, 'dist', 'b.js'), 'x')
 
     await cleanOutputs({
       projectDir,
@@ -80,11 +75,11 @@ describe('cleanOutputs — strict output-ownership contract', () => {
     // rename is a name's change. The run empties the trash first, and
     // until then a clear removes in place.
     const trash = path.join(root, '.vx', 'cache', 'trash')
-    await write(path.join(trash, '1-0'), 'a killed run left this')
+    await Bun.write(path.join(trash, '1-0'), 'a killed run left this')
     deferRemovals(trash)
     let moved = false
     for (let i = 0; i < 200 && !moved; i++) {
-      await write(path.join(projectDir, 'dist', 'a.js'), 'old build')
+      await Bun.write(path.join(projectDir, 'dist', 'a.js'), 'old build')
       await cleanOutputs({
         projectDir,
         outputs: ['dist/**'],
@@ -110,7 +105,7 @@ describe('cleanOutputs — strict output-ownership contract', () => {
   it.skipIf(skipAsRoot("an output in this user's read-only directory is removed"))(
     "an output in this user's read-only directory is removed, and the emptied directory pruned",
     async () => {
-      await write(path.join(projectDir, 'dist', 'ro', 'a.js'))
+      await Bun.write(path.join(projectDir, 'dist', 'ro', 'a.js'), 'x')
       chmodSync(path.join(projectDir, 'dist', 'ro'), 0o500)
       await cleanOutputs({ projectDir, outputs: ['dist/**'], nestedProjectDirs: [] })
       expect(await readdir(path.join(projectDir, 'dist'))).toEqual([])
@@ -121,8 +116,9 @@ describe('cleanOutputs — strict output-ownership contract', () => {
   // (`SYNC_CLEAN_MAX`); both sides of the boundary hold the same contract.
   for (const n of [128, 129]) {
     it(`${n} outputs, one directory each: every one removed, emptied directories pruned to the glob's root`, async () => {
-      for (let i = 0; i < n; i++) await write(path.join(projectDir, 'dist', `d${i}`, 'f.js'))
-      await write(path.join(projectDir, 'src', 'x.js'), 'source')
+      for (let i = 0; i < n; i++)
+        await Bun.write(path.join(projectDir, 'dist', `d${i}`, 'f.js'), 'x')
+      await Bun.write(path.join(projectDir, 'src', 'x.js'), 'source')
 
       const cleaned = await cleanOutputs({
         projectDir,
@@ -139,9 +135,10 @@ describe('cleanOutputs — strict output-ownership contract', () => {
     it.skipIf(skipAsRoot(`${n} outputs: one in a read-only directory`))(
       `${n} outputs: one in this user's read-only directory is removed, its mode given back`,
       async () => {
-        for (let i = 0; i < n - 1; i++) await write(path.join(projectDir, 'dist', `a${i}.js`))
-        await write(path.join(projectDir, 'locked', 'z.js'))
-        await write(path.join(projectDir, 'locked', 'kept.txt'))
+        for (let i = 0; i < n - 1; i++)
+          await Bun.write(path.join(projectDir, 'dist', `a${i}.js`), 'x')
+        await Bun.write(path.join(projectDir, 'locked', 'z.js'), 'x')
+        await Bun.write(path.join(projectDir, 'locked', 'kept.txt'), 'x')
         const locked = path.join(projectDir, 'locked')
         chmodSync(locked, 0o500)
         try {
@@ -161,8 +158,8 @@ describe('cleanOutputs — strict output-ownership contract', () => {
 
   it('does NOT touch files outside declared output globs (the contract)', async () => {
     // Sources are not declared as output; cleanOutputs must leave them.
-    await write(path.join(projectDir, 'src', 'index.ts'), 'source')
-    await write(path.join(projectDir, 'dist', 'index.js'), 'built')
+    await Bun.write(path.join(projectDir, 'src', 'index.ts'), 'source')
+    await Bun.write(path.join(projectDir, 'dist', 'index.js'), 'built')
 
     await cleanOutputs({
       projectDir,
@@ -180,8 +177,8 @@ describe('cleanOutputs — strict output-ownership contract', () => {
     // be silently nuked. This guard is data-loss class — pin it.
     const nestedDir = path.join(projectDir, 'inner')
     await mkdir(nestedDir, { recursive: true })
-    await write(path.join(nestedDir, 'dist', 'inner.js'), 'inner-build')
-    await write(path.join(projectDir, 'dist', 'outer.js'), 'outer-build')
+    await Bun.write(path.join(nestedDir, 'dist', 'inner.js'), 'inner-build')
+    await Bun.write(path.join(projectDir, 'dist', 'outer.js'), 'outer-build')
 
     await cleanOutputs({
       projectDir,
@@ -195,7 +192,7 @@ describe('cleanOutputs — strict output-ownership contract', () => {
   })
 
   it('is a no-op when outputs array is empty (lint-style tasks)', async () => {
-    await write(path.join(projectDir, 'a.js'), 'one')
+    await Bun.write(path.join(projectDir, 'a.js'), 'one')
     await cleanOutputs({ projectDir, outputs: [], nestedProjectDirs: [] })
     expect(await readFile(path.join(projectDir, 'a.js'), 'utf8')).toBe('one')
   })
@@ -203,7 +200,7 @@ describe('cleanOutputs — strict output-ownership contract', () => {
   it('tolerates ENOENT mid-iteration (overlapping globs both match a file)', async () => {
     // Two glob patterns each match the same path; the first rm wins;
     // the second sees ENOENT. `rm({ force: true })` swallows it.
-    await write(path.join(projectDir, 'dist', 'x.js'))
+    await Bun.write(path.join(projectDir, 'dist', 'x.js'), 'x')
     await cleanOutputs({
       projectDir,
       outputs: ['dist/**', '**/x.js'],
@@ -216,7 +213,7 @@ describe('cleanOutputs — strict output-ownership contract', () => {
     // If you declare `dist/**` as output but the prior build dropped
     // `dist/old.js` that the current run won't rewrite, cleanOutputs
     // wipes it. That's the documented "output ownership" contract.
-    await write(path.join(projectDir, 'dist', 'old.js'), 'stale')
+    await Bun.write(path.join(projectDir, 'dist', 'old.js'), 'stale')
 
     await cleanOutputs({
       projectDir,
@@ -243,8 +240,8 @@ describe('resolveOutputs', () => {
   })
 
   it('returns the sorted absolute path list for matched files', async () => {
-    await write(path.join(projectDir, 'dist', 'b.js'))
-    await write(path.join(projectDir, 'dist', 'a.js'))
+    await Bun.write(path.join(projectDir, 'dist', 'b.js'), 'x')
+    await Bun.write(path.join(projectDir, 'dist', 'a.js'), 'x')
     const out = await resolveOutputs({
       projectDir,
       outputs: ['dist/**'],
@@ -257,8 +254,8 @@ describe('resolveOutputs', () => {
   })
 
   it('a repeated or overlapping glob lists each file once (vercel/turborepo#14004)', async () => {
-    await write(path.join(projectDir, 'dist', 'a.js'))
-    await write(path.join(projectDir, 'dist', 'sub', 'b.js'))
+    await Bun.write(path.join(projectDir, 'dist', 'a.js'), 'x')
+    await Bun.write(path.join(projectDir, 'dist', 'sub', 'b.js'), 'x')
     const out = await resolveOutputs({
       projectDir,
       outputs: ['dist/**', 'dist/**', 'dist/sub/**'],
@@ -272,8 +269,8 @@ describe('resolveOutputs', () => {
 
   it('does not filter outputs through gitignore (typical dist/ is ignored)', async () => {
     // `dist/` is normally in .gitignore; outputs should still be captured.
-    await write(path.join(root, '.gitignore'), 'dist\n')
-    await write(path.join(projectDir, 'dist', 'index.js'))
+    await Bun.write(path.join(root, '.gitignore'), 'dist\n')
+    await Bun.write(path.join(projectDir, 'dist', 'index.js'), 'x')
 
     const out = await resolveOutputs({
       projectDir,
@@ -285,8 +282,8 @@ describe('resolveOutputs', () => {
 
   it('excludes nested-project files even when the output glob would reach', async () => {
     const nestedDir = path.join(projectDir, 'inner')
-    await write(path.join(nestedDir, 'dist', 'inner.js'))
-    await write(path.join(projectDir, 'dist', 'outer.js'))
+    await Bun.write(path.join(nestedDir, 'dist', 'inner.js'), 'x')
+    await Bun.write(path.join(projectDir, 'dist', 'outer.js'), 'x')
 
     const out = await resolveOutputs({
       projectDir,
@@ -342,8 +339,8 @@ describe('resolveInputs', () => {
   })
 
   it('declared outputs are excluded from input resolution (no self-invalidation)', async () => {
-    await write(path.join(projectDir, 'src', 'index.ts'), 'src')
-    await write(path.join(projectDir, 'dist', 'index.js'), 'built')
+    await Bun.write(path.join(projectDir, 'src', 'index.ts'), 'src')
+    await Bun.write(path.join(projectDir, 'dist', 'index.js'), 'built')
 
     const got = await resolveInputs({
       projectDir,
@@ -357,10 +354,10 @@ describe('resolveInputs', () => {
   })
 
   it('always-ignored paths (node_modules, .git, .vx) never enter the input set', async () => {
-    await write(path.join(projectDir, 'node_modules', 'dep', 'index.js'))
-    await write(path.join(projectDir, '.git', 'HEAD'))
-    await write(path.join(projectDir, '.vx', 'cache', 'log'))
-    await write(path.join(projectDir, 'src', 'index.ts'))
+    await Bun.write(path.join(projectDir, 'node_modules', 'dep', 'index.js'), 'x')
+    await Bun.write(path.join(projectDir, '.git', 'HEAD'), 'x')
+    await Bun.write(path.join(projectDir, '.vx', 'cache', 'log'), 'x')
+    await Bun.write(path.join(projectDir, 'src', 'index.ts'), 'x')
 
     const got = await resolveInputs({
       projectDir,
@@ -374,9 +371,9 @@ describe('resolveInputs', () => {
   })
 
   it("the workspace's .vx/projects.lock never enters the input set; a project's own does", async () => {
-    await write(path.join(projectDir, 'src', 'index.ts'), 'src')
-    await write(path.join(projectDir, '.vx/projects.lock'), '{}')
-    await write(path.join(root, '.vx/projects.lock'), '{}')
+    await Bun.write(path.join(projectDir, 'src', 'index.ts'), 'src')
+    await Bun.write(path.join(projectDir, '.vx/projects.lock'), '{}')
+    await Bun.write(path.join(root, '.vx/projects.lock'), '{}')
 
     const got = await resolveInputs({
       projectDir,
@@ -395,7 +392,7 @@ describe('resolveInputs', () => {
   // positive's hits, not only the glob it happens to overlap.
   it('two positive globs with a negation straddling both fold exactly the survivors', async () => {
     for (const f of ['a.ts', 'b.js', 'c.spec.ts', 'd.md'])
-      await write(path.join(projectDir, 'src', f))
+      await Bun.write(path.join(projectDir, 'src', f), 'x')
     const got = await resolveInputs({
       projectDir,
       workspaceRoot: root,
@@ -413,8 +410,8 @@ describe('resolveInputs', () => {
   // Minimatch-style globbing skips dotfiles unless asked; a `.env` a task
   // reads would then change no key.
   it('`src/*` folds the dotfile `src/.env`', async () => {
-    await write(path.join(projectDir, 'src', '.env'), 'SECRET=1')
-    await write(path.join(projectDir, 'src', 'index.ts'))
+    await Bun.write(path.join(projectDir, 'src', '.env'), 'SECRET=1')
+    await Bun.write(path.join(projectDir, 'src', 'index.ts'), 'x')
     const got = await resolveInputs({
       projectDir,
       workspaceRoot: root,
@@ -430,7 +427,7 @@ describe('resolveInputs', () => {
   })
 
   it('returns [] for files when inputs.files is empty (no file inputs at all)', async () => {
-    await write(path.join(projectDir, 'a.txt'), 'a')
+    await Bun.write(path.join(projectDir, 'a.txt'), 'a')
     const got = await resolveInputs({
       projectDir,
       workspaceRoot: root,
@@ -471,8 +468,8 @@ describe('resolveInputs', () => {
   })
 
   it('negation in inputs.files strips matched files from the result', async () => {
-    await write(path.join(projectDir, 'src', 'keep.ts'))
-    await write(path.join(projectDir, 'src', 'skip.test.ts'))
+    await Bun.write(path.join(projectDir, 'src', 'keep.ts'), 'x')
+    await Bun.write(path.join(projectDir, 'src', 'skip.test.ts'), 'x')
     const got = await resolveInputs({
       projectDir,
       workspaceRoot: root,
@@ -490,8 +487,8 @@ describe('resolveInputs', () => {
 
   it('nested-project file paths never enter the parent project inputs', async () => {
     const nestedDir = path.join(projectDir, 'inner')
-    await write(path.join(nestedDir, 'src', 'inner.ts'))
-    await write(path.join(projectDir, 'src', 'outer.ts'))
+    await Bun.write(path.join(nestedDir, 'src', 'inner.ts'), 'x')
+    await Bun.write(path.join(projectDir, 'src', 'outer.ts'), 'x')
     const got = await resolveInputs({
       projectDir,
       workspaceRoot: root,
@@ -546,11 +543,11 @@ describe('resolveInputs — git ls-files path (v14)', () => {
   it('names with spaces, quotes, backslashes and non-ASCII enter the input set intact', async () => {
     const posixOnly = ['quo"te.txt', 'back\\slash.txt']
     const odd = ['with spaces.txt', 'café.ts', ...posixOnly]
-    await write(path.join(projectDir, 'src', 'with spaces.txt'))
-    await write(path.join(projectDir, 'src', 'café.ts'))
+    await Bun.write(path.join(projectDir, 'src', 'with spaces.txt'), 'x')
+    await Bun.write(path.join(projectDir, 'src', 'café.ts'), 'x')
     await git(root, 'add', '.')
     await git(root, 'commit', '-q', '-m', 'init')
-    for (const n of posixOnly) await write(path.join(projectDir, 'src', n))
+    for (const n of posixOnly) await Bun.write(path.join(projectDir, 'src', n), 'x')
 
     const got = await resolveInputs({
       projectDir,
@@ -567,11 +564,11 @@ describe('resolveInputs — git ls-files path (v14)', () => {
   // (vercel/turborepo#6847): a colon is a plain character in a POSIX name,
   // and a glob naming one must find it, as a wildcard over it does.
   it('a name holding a colon enters the inputs by a wildcard and by its literal path', async () => {
-    await write(path.join(projectDir, 'src', 'a:b.txt'))
-    await write(path.join(projectDir, 'src', 'c.txt'))
+    await Bun.write(path.join(projectDir, 'src', 'a:b.txt'), 'x')
+    await Bun.write(path.join(projectDir, 'src', 'c.txt'), 'x')
     await git(root, 'add', '.')
     await git(root, 'commit', '-q', '-m', 'init')
-    await write(path.join(projectDir, 'src', 'x:y.txt'))
+    await Bun.write(path.join(projectDir, 'src', 'x:y.txt'), 'x')
     const resolve = (files: string[]) =>
       resolveInputs({
         projectDir,
@@ -592,7 +589,7 @@ describe('resolveInputs — git ls-files path (v14)', () => {
   it('a name that opens with U+FEFF enters the input set intact, untracked and tracked', async () => {
     const bom = '\ufeffx'
     const file = path.join(projectDir, bom)
-    await write(file)
+    await Bun.write(file, 'x')
     const resolve = () =>
       resolveInputs({
         projectDir,
@@ -612,9 +609,9 @@ describe('resolveInputs — git ls-files path (v14)', () => {
     // Pre-v14, a project-level pattern like `src/skip.ts` was anchored
     // to the workspace root, not the project — so it never matched.
     // v14 defers to git, which gets this right.
-    await write(path.join(projectDir, '.gitignore'), 'src/skip.ts\n')
-    await write(path.join(projectDir, 'src', 'keep.ts'))
-    await write(path.join(projectDir, 'src', 'skip.ts'))
+    await Bun.write(path.join(projectDir, '.gitignore'), 'src/skip.ts\n')
+    await Bun.write(path.join(projectDir, 'src', 'keep.ts'), 'x')
+    await Bun.write(path.join(projectDir, 'src', 'skip.ts'), 'x')
     // Need at least one commit for ls-files to behave normally.
     await git(root, 'add', '.')
     await git(root, 'commit', '-q', '-m', 'init')
@@ -638,9 +635,9 @@ describe('resolveInputs — git ls-files path (v14)', () => {
   // leftover untracked-cache state was cleared (2026-09-03); this pins the
   // behaviour that walk would have to preserve.
   it('files inside a brand-new untracked directory enter the inputs; an ignored one inside it does not', async () => {
-    await write(path.join(root, '.gitignore'), 'node_modules/\n')
-    await write(path.join(projectDir, 'src', 'gen', 'deep', 'made.ts'))
-    await write(path.join(projectDir, 'src', 'gen', 'node_modules', 'dep', 'index.js'))
+    await Bun.write(path.join(root, '.gitignore'), 'node_modules/\n')
+    await Bun.write(path.join(projectDir, 'src', 'gen', 'deep', 'made.ts'), 'x')
+    await Bun.write(path.join(projectDir, 'src', 'gen', 'node_modules', 'dep', 'index.js'), 'x')
     // Don't `git add`. The whole `src/gen/` tree is untracked.
     const got = await resolveInputs({
       projectDir,
@@ -660,7 +657,7 @@ describe('resolveInputs — git ls-files path (v14)', () => {
     // still enter the hash — that's the `--others --exclude-standard`
     // behavior, and matches user intuition ("I added a file, the
     // cache should reflect it").
-    await write(path.join(projectDir, 'src', 'fresh.ts'))
+    await Bun.write(path.join(projectDir, 'src', 'fresh.ts'), 'x')
     // Don't `git add`. Don't commit.
 
     const got = await resolveInputs({
@@ -675,9 +672,9 @@ describe('resolveInputs — git ls-files path (v14)', () => {
   })
 
   it('gitignored files are excluded (workspace-root .gitignore)', async () => {
-    await write(path.join(root, '.gitignore'), 'pkg/secret.txt\n')
-    await write(path.join(projectDir, 'src', 'index.ts'))
-    await write(path.join(projectDir, 'secret.txt'), 'shh')
+    await Bun.write(path.join(root, '.gitignore'), 'pkg/secret.txt\n')
+    await Bun.write(path.join(projectDir, 'src', 'index.ts'), 'x')
+    await Bun.write(path.join(projectDir, 'secret.txt'), 'shh')
 
     const got = await resolveInputs({
       projectDir,
@@ -695,9 +692,9 @@ describe('resolveInputs — git ls-files path (v14)', () => {
   it('global excludes (.git/info/exclude) are honored', async () => {
     // Repo-local equivalent of a global gitignore. The v13 ignore-lib
     // path didn't know about this file at all.
-    await write(path.join(root, '.git', 'info', 'exclude'), 'pkg/local-only.tmp\n')
-    await write(path.join(projectDir, 'src', 'index.ts'))
-    await write(path.join(projectDir, 'local-only.tmp'), 'noise')
+    await Bun.write(path.join(root, '.git', 'info', 'exclude'), 'pkg/local-only.tmp\n')
+    await Bun.write(path.join(projectDir, 'src', 'index.ts'), 'x')
+    await Bun.write(path.join(projectDir, 'local-only.tmp'), 'noise')
 
     const got = await resolveInputs({
       projectDir,
@@ -712,8 +709,8 @@ describe('resolveInputs — git ls-files path (v14)', () => {
   })
 
   it('deleted-but-tracked files are skipped (existsSync guard)', async () => {
-    await write(path.join(projectDir, 'src', 'index.ts'))
-    await write(path.join(projectDir, 'src', 'deleteme.ts'))
+    await Bun.write(path.join(projectDir, 'src', 'index.ts'), 'x')
+    await Bun.write(path.join(projectDir, 'src', 'deleteme.ts'), 'x')
     await git(root, 'add', '.')
     await git(root, 'commit', '-q', '-m', 'init')
     // Delete the file via the FS only. git ls-files --cached still
@@ -735,8 +732,8 @@ describe('resolveInputs — git ls-files path (v14)', () => {
     // Even though git would list dist/index.js (untracked, gitignored
     // OR not), declared outputs must never enter inputs. Same guard
     // as the FS-walker path.
-    await write(path.join(projectDir, 'src', 'index.ts'))
-    await write(path.join(projectDir, 'dist', 'index.js'))
+    await Bun.write(path.join(projectDir, 'src', 'index.ts'), 'x')
+    await Bun.write(path.join(projectDir, 'dist', 'index.js'), 'x')
 
     const got = await resolveInputs({
       projectDir,
@@ -753,8 +750,8 @@ describe('resolveInputs — git ls-files path (v14)', () => {
 
   it('nested-project boundary still excludes inner-project files under the git path', async () => {
     const inner = path.join(projectDir, 'inner')
-    await write(path.join(inner, 'src', 'inner.ts'))
-    await write(path.join(projectDir, 'src', 'outer.ts'))
+    await Bun.write(path.join(inner, 'src', 'inner.ts'), 'x')
+    await Bun.write(path.join(projectDir, 'src', 'outer.ts'), 'x')
 
     const got = await resolveInputs({
       projectDir,
@@ -770,8 +767,8 @@ describe('resolveInputs — git ls-files path (v14)', () => {
   })
 
   it('negation in inputs.files still strips matched files under the git path', async () => {
-    await write(path.join(projectDir, 'src', 'keep.ts'))
-    await write(path.join(projectDir, 'src', 'skip.test.ts'))
+    await Bun.write(path.join(projectDir, 'src', 'keep.ts'), 'x')
+    await Bun.write(path.join(projectDir, 'src', 'skip.test.ts'), 'x')
     const got = await resolveInputs({
       projectDir,
       workspaceRoot: root,
@@ -786,8 +783,8 @@ describe('resolveInputs — git ls-files path (v14)', () => {
   it('an untracked node_modules under a project is excluded even when not ignored', async () => {
     // git would already exclude node_modules if it's in .gitignore; an
     // untracked file there is an install either way (`isInstalledPath`).
-    await write(path.join(projectDir, 'node_modules', 'dep', 'index.js'))
-    await write(path.join(projectDir, 'src', 'index.ts'))
+    await Bun.write(path.join(projectDir, 'node_modules', 'dep', 'index.js'), 'x')
+    await Bun.write(path.join(projectDir, 'src', 'index.ts'), 'x')
 
     const got = await resolveInputs({
       projectDir,
@@ -805,9 +802,9 @@ describe('resolveInputs — git ls-files path (v14)', () => {
   it("Bun's compile temp files are userland: a broad glob reads them unless the task excludes them", async () => {
     // Core names no tool's temp files (2026-10-16): a compile task's own
     // `inputs` excludes what `bun build --compile` writes beside it.
-    await write(path.join(projectDir, '.18bf7d9ff3ffeffe-00000001.bun-build'))
-    await write(path.join(projectDir, '.cd5e87e3246b0795-00000000.tmp', 'bun'))
-    await write(path.join(projectDir, 'src', 'index.ts'))
+    await Bun.write(path.join(projectDir, '.18bf7d9ff3ffeffe-00000001.bun-build'), 'x')
+    await Bun.write(path.join(projectDir, '.cd5e87e3246b0795-00000000.tmp', 'bun'), 'x')
+    await Bun.write(path.join(projectDir, 'src', 'index.ts'), 'x')
     const temps = ['.18bf7d9ff3ffeffe-00000001.bun-build', '.cd5e87e3246b0795-00000000.tmp/bun']
     const rels = async (files: string[]) =>
       (
@@ -1457,13 +1454,13 @@ describe('inputs.ts edges', () => {
 
   it('a tracked file replaced by a directory is not an input; what the directory holds is', async () => {
     // git still lists `x` from the index; a directory has nothing to hash.
-    await write(path.join(root, 'a.txt'), 'a')
-    await write(path.join(root, 'x'), 'x')
+    await Bun.write(path.join(root, 'a.txt'), 'a')
+    await Bun.write(path.join(root, 'x'), 'x')
     git('init', '-q')
     git('add', '.')
     git('commit', '-qm', 'init')
     await rm(path.join(root, 'x'))
-    await write(path.join(root, 'x', 'in'), 'i')
+    await Bun.write(path.join(root, 'x', 'in'), 'i')
     const r = await resolveInputs({
       projectDir: root,
       workspaceRoot: root,
@@ -1477,9 +1474,9 @@ describe('inputs.ts edges', () => {
 
   it('an additive task owns a file it rewrote at the same size, or at the same mtime', async () => {
     const args = { projectDir: root, outputs: ['dist/**'], nestedProjectDirs: [] }
-    await write(path.join(root, 'dist', 'same-size'), 'aaaa')
-    await write(path.join(root, 'dist', 'same-mtime'), 'aaaa')
-    await write(path.join(root, 'dist', 'kept'), 'aaaa')
+    await Bun.write(path.join(root, 'dist', 'same-size'), 'aaaa')
+    await Bun.write(path.join(root, 'dist', 'same-mtime'), 'aaaa')
+    await Bun.write(path.join(root, 'dist', 'kept'), 'aaaa')
     const old = new Date(Date.now() - 60_000)
     for (const f of ['same-size', 'same-mtime', 'kept'])
       await utimes(path.join(root, 'dist', f), old, old)
@@ -1492,7 +1489,7 @@ describe('inputs.ts edges', () => {
   })
 
   it('a clean never removes the project directory itself, even when it empties it', async () => {
-    await write(path.join(root, 'pkg', 'out.txt'))
+    await Bun.write(path.join(root, 'pkg', 'out.txt'), 'x')
     await cleanOutputs({
       projectDir: path.join(root, 'pkg'),
       outputs: ['out.txt'],
@@ -1517,10 +1514,10 @@ describe('inputs.ts edges', () => {
     // written into it lost it to the prune, and its write failed "Directory
     // nonexistent". Order, not time: the sibling's mkdir lands first, its
     // write after the clean.
-    await write(path.join(root, 'dist', 'a.txt'))
-    await write(path.join(root, 'dist', 'sub', 'b.txt'))
-    await write(path.join(root, 'gen', 'z.txt'))
-    await write(path.join(root, 'lit', 'x', 'y.txt'))
+    await Bun.write(path.join(root, 'dist', 'a.txt'), 'x')
+    await Bun.write(path.join(root, 'dist', 'sub', 'b.txt'), 'x')
+    await Bun.write(path.join(root, 'gen', 'z.txt'), 'x')
+    await Bun.write(path.join(root, 'lit', 'x', 'y.txt'), 'x')
     await cleanOutputPaths({
       projectDir: root,
       rels: ['dist/a.txt', 'dist/sub/b.txt', 'gen/z.txt', 'lit/x/y.txt'],
@@ -1535,8 +1532,8 @@ describe('inputs.ts edges', () => {
   })
 
   it('a workspace-output clean prunes the directories it emptied below the glob’s root', async () => {
-    await write(path.join(root, 'gen', 'deep', 'x.txt'))
-    await write(path.join(root, 'keep', 'y.txt'))
+    await Bun.write(path.join(root, 'gen', 'deep', 'x.txt'), 'x')
+    await Bun.write(path.join(root, 'keep', 'y.txt'), 'x')
     await cleanWorkspaceOutputs({ workspaceRoot: root, outputs: ['gen/**'] })
     expect(await readdir(path.join(root, 'gen'))).toEqual([])
     expect(existsSync(path.join(root, 'keep', 'y.txt'))).toBe(true) // CONTROL

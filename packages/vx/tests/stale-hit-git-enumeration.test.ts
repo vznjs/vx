@@ -2,7 +2,7 @@
 // neither file holds a test shard alone (that file ran 80 s, 2026-11-12).
 // The same shape: the real CLI against a real git-backed fixture.
 
-import { mkdir, mkdtemp, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
@@ -21,11 +21,6 @@ import { git, gitInit } from './helpers/workspace.js'
 import { vxSync } from './helpers/vx.js'
 
 const TIMEOUT = 60_000
-
-async function write(p: string, content: string): Promise<void> {
-  await mkdir(path.dirname(p), { recursive: true })
-  await writeFile(p, content)
-}
 
 const vx = (cwd: string, ...args: string[]) => vxSync(cwd, args).text
 
@@ -47,13 +42,13 @@ describe('stale cache hits', () => {
     'a scoped enumeration lists a project dir that reads as pathspec magic, and only its own files',
     async () => {
       for (const f of ['package.json', 'src/f', 'src/log'])
-        await write(path.join(root, ':top', f), f)
-      for (const f of ['package.json', 'src/f']) await write(path.join(root, '*g', f), f)
+        await Bun.write(path.join(root, ':top', f), f)
+      for (const f of ['package.json', 'src/f']) await Bun.write(path.join(root, '*g', f), f)
       git(root, 'init', '-q')
       git(root, 'add', '-A')
       git(root, 'commit', '-q', '-m', 'initial')
-      await write(path.join(root, ':top/src/new'), 'untracked')
-      await write(path.join(root, ':top/src/f'), 'edited')
+      await Bun.write(path.join(root, ':top/src/new'), 'untracked')
+      await Bun.write(path.join(root, ':top/src/f'), 'edited')
       const top = path.join(root, ':top')
       const g = path.join(root, '*g')
       const memo = new GitFilesCache()
@@ -73,7 +68,7 @@ describe('stale cache hits', () => {
   it(
     'a directory git could not open refuses the enumeration, by name',
     async () => {
-      await write(path.join(root, 'p/package.json'), '{}')
+      await Bun.write(path.join(root, 'p/package.json'), '{}')
       git(root, 'init', '-q')
       const seg = 'd'.repeat(200)
       const made = Bun.spawnSync({
@@ -93,7 +88,7 @@ describe('stale cache hits', () => {
         )
       }
       expect(() => runGitLsFiles(p)).toThrow(/^git could not open the directory p\/d{38}…/)
-      await write(path.join(root, '.gitignore'), `p/${seg}/\n`)
+      await Bun.write(path.join(root, '.gitignore'), `p/${seg}/\n`)
       await enumerate([p])
     },
     TIMEOUT,
@@ -107,8 +102,8 @@ describe('stale cache hits', () => {
   it(
     'a directory gone before git opened it is no refusal; one still there is',
     async () => {
-      await write(path.join(root, 'p/package.json'), '{}')
-      await write(path.join(root, 'p/kept/f'), 'x')
+      await Bun.write(path.join(root, 'p/package.json'), '{}')
+      await Bun.write(path.join(root, 'p/kept/f'), 'x')
       git(root, 'init', '-q')
       const bin = await mkdtemp(path.join(os.tmpdir(), 'vx-git-shim-'))
       const real = Bun.which('git')!
@@ -151,7 +146,7 @@ describe('stale cache hits', () => {
   it(
     'the index OIDs are kept under the default stat and dropped under a weakened one',
     async () => {
-      await write(path.join(root, 'src/a.txt'), 'AAAA')
+      await Bun.write(path.join(root, 'src/a.txt'), 'AAAA')
       gitInit(root)
       // Pinned here: a machine's global config may weaken either (this
       // container's does both).
@@ -177,7 +172,7 @@ describe('stale cache hits', () => {
       // The whole point of the gate: the common case must pay NOTHING. If this
       // ever spawns check-attr, every warm run in every plain repo just got a
       // serial git round-trip it does not need.
-      await write(path.join(root, 'pkg/src/a.ts'), 'export const a = 1')
+      await Bun.write(path.join(root, 'pkg/src/a.ts'), 'export const a = 1')
       gitInit(root)
       git(root, 'add', '-A')
       git(root, 'commit', '-q', '-m', 'initial')
@@ -212,8 +207,8 @@ describe('stale cache hits', () => {
       // converts nothing; any .gitattributes used to cost a check-attr per
       // run (21 ms). Nor does a `text` line, whose conversion the blob-size
       // check answers for. Control: an `ident` line in the same file does.
-      await write(path.join(root, 'pkg/src/a.ts'), 'export const a = 1')
-      await write(path.join(root, 'pkg/.gitattributes'), 'projects.lock linguist-generated\n')
+      await Bun.write(path.join(root, 'pkg/src/a.ts'), 'export const a = 1')
+      await Bun.write(path.join(root, 'pkg/.gitattributes'), 'projects.lock linguist-generated\n')
       gitInit(root)
       git(root, 'add', '-A')
       git(root, 'commit', '-q', '-m', 'initial')
@@ -236,10 +231,10 @@ describe('stale cache hits', () => {
         return seen.some((cmd) => cmd.includes('check-attr'))
       }
       const generatedOnly = await checkAttrRuns()
-      await write(path.join(root, 'pkg/.gitattributes'), '*.ts text eol=lf\n')
+      await Bun.write(path.join(root, 'pkg/.gitattributes'), '*.ts text eol=lf\n')
       git(root, 'commit', '-qam', 'text')
       const lineEndings = await checkAttrRuns()
-      await write(path.join(root, 'pkg/.gitattributes'), '*.ts ident\n')
+      await Bun.write(path.join(root, 'pkg/.gitattributes'), '*.ts ident\n')
       git(root, 'commit', '-qam', 'ident')
       expect([generatedOnly, lineEndings, await checkAttrRuns()]).toEqual([false, false, true])
     },
@@ -254,9 +249,9 @@ describe('stale cache hits', () => {
       // `.gitattributes` sets a merge driver. The index listing alone proves
       // the gate will fire. Status is held here until check-attr starts or a
       // second passes, and only the first is the fix.
-      await write(path.join(root, '.gitattributes'), '*.txt ident\n')
-      await write(path.join(root, 'pkg/src/a.txt'), 'a\n')
-      await write(path.join(root, 'pkg/src/b.ts'), 'export const b = 1\n')
+      await Bun.write(path.join(root, '.gitattributes'), '*.txt ident\n')
+      await Bun.write(path.join(root, 'pkg/src/a.txt'), 'a\n')
+      await Bun.write(path.join(root, 'pkg/src/b.ts'), 'export const b = 1\n')
       gitInit(root)
       git(root, 'add', '-A')
       git(root, 'commit', '-q', '-m', 'initial')
@@ -314,9 +309,9 @@ describe('stale cache hits', () => {
       const pkg = path.join(root, 'pkg')
       const lf = path.join(pkg, 'src/lf.txt')
       const crlf = path.join(pkg, 'src/crlf.txt')
-      await write(path.join(root, '.gitattributes'), '* text=auto eol=lf\n')
-      await write(lf, 'a\nb\n')
-      await write(crlf, 'a\r\nb\r\n')
+      await Bun.write(path.join(root, '.gitattributes'), '* text=auto eol=lf\n')
+      await Bun.write(lf, 'a\nb\n')
+      await Bun.write(crlf, 'a\r\nb\r\n')
       gitInit(root)
       git(root, 'add', '-A')
       git(root, 'commit', '-q', '-m', 'initial')
@@ -327,7 +322,7 @@ describe('stale cache hits', () => {
         return [oids?.has(lf) ?? false, oids?.has(crlf) ?? false]
       }
       const committed = await trusted()
-      await write(lf, 'a\r\nb\r\n')
+      await Bun.write(lf, 'a\r\nb\r\n')
       expect([committed, await trusted()]).toEqual([
         [true, false],
         [false, false],
@@ -352,17 +347,17 @@ describe('stale cache hits', () => {
       // the previous generation's bytes and reused verbatim by execute-task —
       // and the `anyWorkspaceOutputs` mitigation only disables the restore
       // tier, not probe reuse, which is the half that serves the stale bytes.
-      await write(
+      await Bun.write(
         path.join(root, 'package.json'),
         JSON.stringify({ name: 'r', workspaces: ['pkgs/*'] }),
       )
       await writeLocalWorkspace(root)
-      await write(path.join(root, 'pkgs/gen/package.json'), JSON.stringify({ name: 'gen' }))
-      await write(
+      await Bun.write(path.join(root, 'pkgs/gen/package.json'), JSON.stringify({ name: 'gen' }))
+      await Bun.write(
         path.join(root, 'pkgs/app/package.json'),
         JSON.stringify({ name: 'app', dependencies: { gen: '*' } }),
       )
-      await write(
+      await Bun.write(
         path.join(root, 'pkgs/gen/vx.config.mjs'),
         [
           'export default { tasks: { codegen: {',
@@ -374,7 +369,7 @@ describe('stale cache hits', () => {
           '',
         ].join('\n'),
       )
-      await write(
+      await Bun.write(
         path.join(root, 'pkgs/app/vx.config.mjs'),
         [
           'export default { tasks: { build: {',
@@ -390,7 +385,7 @@ describe('stale cache hits', () => {
         ].join('\n'),
       )
       // Seeded with a value no cycle uses, so every cycle's commit is real.
-      await write(path.join(root, 'pkgs/gen/src/version.txt'), 'v0')
+      await Bun.write(path.join(root, 'pkgs/gen/src/version.txt'), 'v0')
       gitInit(root)
       git(root, 'add', '-A')
       git(root, 'commit', '-qm', 'initial')
@@ -402,7 +397,7 @@ describe('stale cache hits', () => {
       // 1 failure in 5. The invariant itself never drifts: whatever the task
       // reports must equal what the producer actually left on disk.
       const cycle = async (version: string): Promise<void> => {
-        await write(path.join(root, 'pkgs/gen/src/version.txt'), version)
+        await Bun.write(path.join(root, 'pkgs/gen/src/version.txt'), version)
         git(root, 'add', '-A')
         git(root, 'commit', '-qm', version)
         const out = vx(root, 'run', 'build', '--all', '--output-logs', 'full')
@@ -431,9 +426,9 @@ describe('stale cache hits', () => {
     async () => {
       const keyWith = async (attributes: string): Promise<{ hash: string; warned: boolean }> => {
         const ws = await mkdtemp(path.join(root, 'ws-'))
-        await write(path.join(ws, 'package.json'), '{"name":"r","private":true}')
+        await Bun.write(path.join(ws, 'package.json'), '{"name":"r","private":true}')
         await writeLocalWorkspace(ws)
-        await write(
+        await Bun.write(
           path.join(ws, 'vx.config.mjs'),
           `export default {
              tasks: {
@@ -444,15 +439,15 @@ describe('stale cache hits', () => {
              },
            }`,
         )
-        await write(path.join(ws, '.gitattributes'), attributes)
-        await write(path.join(ws, 'src/a.txt'), 'a\r\n')
-        await write(path.join(ws, 'src/b.txt'), 'b\n')
+        await Bun.write(path.join(ws, '.gitattributes'), attributes)
+        await Bun.write(path.join(ws, 'src/a.txt'), 'a\r\n')
+        await Bun.write(path.join(ws, 'src/b.txt'), 'b\n')
         git(ws, 'init', '-q')
         git(ws, 'add', '-A')
         git(ws, 'commit', '-q', '-m', 'initial')
         // The index holds a.txt as LF, the tree as CRLF: the key is right
         // only if the attribute check ran to the end and untrusted the OID.
-        await write(path.join(ws, 'src/a.txt'), 'a\r\n')
+        await Bun.write(path.join(ws, 'src/a.txt'), 'a\r\n')
         const attr = Bun.spawnSync({
           cmd: ['git', 'check-attr', 'text', '--', 'src/a.txt'],
           cwd: ws,
@@ -479,9 +474,9 @@ describe('stale cache hits', () => {
   it(
     'renaming an input misses and back again restores only the outputs of that name',
     async () => {
-      await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
+      await Bun.write(path.join(root, 'package.json'), '{"name":"r","private":true}')
       await writeLocalWorkspace(root)
-      await write(
+      await Bun.write(
         path.join(root, 'vx.config.mjs'),
         `export default {
            tasks: {
@@ -492,8 +487,8 @@ describe('stale cache hits', () => {
            },
          }`,
       )
-      await write(path.join(root, '.gitignore'), 'dist/\n.vx/cache/\n')
-      await write(path.join(root, 'src/a.ts'), 'same bytes\n')
+      await Bun.write(path.join(root, '.gitignore'), 'dist/\n.vx/cache/\n')
+      await Bun.write(path.join(root, 'src/a.ts'), 'same bytes\n')
       git(root, 'init', '-q')
       git(root, 'add', '-A')
       git(root, 'commit', '-q', '-m', 'initial')
@@ -538,17 +533,17 @@ describe.skipIf(process.platform === 'darwin')('a name that is not UTF-8', () =>
   }
 
   async function project(command: string): Promise<string> {
-    await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
+    await Bun.write(path.join(root, 'package.json'), '{"name":"r","private":true}')
     await writeLocalWorkspace(root)
-    await write(
+    await Bun.write(
       path.join(root, 'vx.config.mjs'),
       `export default { tasks: { build: {
          exec: { command: ${JSON.stringify(command)} },
          inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
        } } }\n`,
     )
-    await write(path.join(root, 'src', 'a'), 'v1')
-    await write(path.join(root, '.gitignore'), 'dist/\n.vx/cache/\n')
+    await Bun.write(path.join(root, 'src', 'a'), 'v1')
+    await Bun.write(path.join(root, '.gitignore'), 'dist/\n.vx/cache/\n')
     return path.join(root, 'src')
   }
   const badIn = (dir: string): Buffer => Buffer.concat([Buffer.from(`${dir}/`), BAD])
@@ -569,7 +564,7 @@ describe.skipIf(process.platform === 'darwin')('a name that is not UTF-8', () =>
         expect(first.out).toContain('not valid UTF-8')
         // CONTROL: the same file under a UTF-8 name is an input like any other.
         await rm(badIn(src))
-        await write(path.join(src, 'xy'), 'bad1')
+        await Bun.write(path.join(src, 'xy'), 'bad1')
         expect(vxExit(root, 'run', 'build').code).toBe(0)
         expect(await readFile(path.join(root, 'dist', 'all'), 'utf8')).toBe('v1bad1')
       },
@@ -580,19 +575,19 @@ describe.skipIf(process.platform === 'darwin')('a name that is not UTF-8', () =>
   it(
     'such a name fails only the task that reads it; the rest hit and --affected selects its owner (vercel/turborepo#11106, vercel/turborepo#12826)',
     async () => {
-      await write(path.join(root, 'package.json'), '{"name":"r","workspaces":["pkgs/*"]}')
+      await Bun.write(path.join(root, 'package.json'), '{"name":"r","workspaces":["pkgs/*"]}')
       await writeLocalWorkspace(root)
       for (const p of ['a', 'b']) {
-        await write(path.join(root, 'pkgs', p, 'package.json'), `{"name":"${p}"}`)
-        await write(
+        await Bun.write(path.join(root, 'pkgs', p, 'package.json'), `{"name":"${p}"}`)
+        await Bun.write(
           path.join(root, 'pkgs', p, 'vx.config.mjs'),
           `export default { tasks: { build: { exec: { command: 'true' }, inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true } } }\n`,
         )
-        await write(path.join(root, 'pkgs', p, 'src', 'i'), '1')
+        await Bun.write(path.join(root, 'pkgs', p, 'src', 'i'), '1')
       }
       await writeFile(badIn(path.join(root, 'pkgs', 'a', 'src')), 'bad1')
       // One outside every project, which no task reads.
-      await write(path.join(root, 'docs', 'ok'), '1')
+      await Bun.write(path.join(root, 'docs', 'ok'), '1')
       await writeFile(badIn(path.join(root, 'docs')), 'doc1')
       git(root, 'init', '-q')
       git(root, 'add', '-A')
@@ -628,7 +623,7 @@ describe.skipIf(process.platform === 'darwin')('a name that is not UTF-8', () =>
       // the files, and that listing carries the name too (A-33).
       const src = await project('mkdir -p dist && cat src/*/* > dist/all')
       const vendor = path.join(src, 'vendor')
-      await write(path.join(vendor, 'ok'), 'o')
+      await Bun.write(path.join(vendor, 'ok'), 'o')
       await writeFile(badIn(vendor), 'bad1')
       git(vendor, 'init', '-q')
       git(vendor, 'add', '-A')
@@ -646,14 +641,14 @@ describe.skipIf(process.platform === 'darwin')('a name that is not UTF-8', () =>
     async () => {
       // The workspace half keeps its own copy of the refusal (A-31).
       await project('mkdir -p dist && cat shared/* > dist/all')
-      await write(
+      await Bun.write(
         path.join(root, 'vx.config.mjs'),
         `export default { tasks: { build: {
            exec: { command: 'mkdir -p dist && cat shared/* > dist/all' },
            inputs: { files: ['src/**'], workspaceFiles: ['shared/**'] }, outputs: { files: ['dist/**'] }, cache: true,
          } } }\n`,
       )
-      await write(path.join(root, 'shared', 'ok'), 'o')
+      await Bun.write(path.join(root, 'shared', 'ok'), 'o')
       await writeFile(badIn(path.join(root, 'shared')), 'bad1')
       git(root, 'init', '-q')
       git(root, 'add', '-A')
@@ -663,7 +658,7 @@ describe.skipIf(process.platform === 'darwin')('a name that is not UTF-8', () =>
       expect(first.out).toContain('not valid UTF-8')
       // CONTROL: the same file under a UTF-8 name is an input like any other.
       await rm(badIn(path.join(root, 'shared')))
-      await write(path.join(root, 'shared', 'xy'), 'bad1')
+      await Bun.write(path.join(root, 'shared', 'xy'), 'bad1')
       expect(vxExit(root, 'run', 'build').code).toBe(0)
       expect(await readFile(path.join(root, 'dist', 'all'), 'utf8')).toBe('obad1')
     },
@@ -676,11 +671,11 @@ describe.skipIf(process.platform === 'darwin')('a name that is not UTF-8', () =>
     'a name that holds U+FFFD as a character is an input like any other',
     async () => {
       const src = await project('mkdir -p dist && cat src/* > dist/all')
-      await write(path.join(src, 'x\ufffdy'), 'fine1')
+      await Bun.write(path.join(src, 'x\ufffdy'), 'fine1')
       git(root, 'init', '-q')
       expect(vxExit(root, 'run', 'build').code).toBe(0)
       expect(await readFile(path.join(root, 'dist', 'all'), 'utf8')).toBe('v1fine1')
-      await write(path.join(src, 'x\ufffdy'), 'fine2')
+      await Bun.write(path.join(src, 'x\ufffdy'), 'fine2')
       expect(vxExit(root, 'run', 'build').code).toBe(0)
       expect(await readFile(path.join(root, 'dist', 'all'), 'utf8')).toBe('v1fine2')
     },
@@ -813,7 +808,7 @@ describe('parseCheckAttrOutput', () => {
     const ws = await mkdtemp(path.join(os.tmpdir(), 'vx-attr-'))
     try {
       git(ws, 'init', '-q')
-      await write(
+      await Bun.write(
         path.join(ws, '.gitattributes'),
         [
           '*.png binary',

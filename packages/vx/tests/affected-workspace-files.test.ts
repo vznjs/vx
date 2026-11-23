@@ -15,7 +15,7 @@
 // that proves the defect is "the key moved" AND "affected selected nothing",
 // because either half alone is consistent with correct behaviour.
 
-import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
+import { mkdtemp, rm, symlink } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
@@ -24,11 +24,6 @@ import { git, gitInit } from './helpers/workspace.js'
 import { vxSync } from './helpers/vx.js'
 
 const TIMEOUT = 60_000
-
-async function write(p: string, content: string): Promise<void> {
-  await mkdir(path.dirname(p), { recursive: true })
-  await writeFile(p, content)
-}
 
 const vx = (cwd: string, ...args: string[]) => vxSync(cwd, args)
 
@@ -40,15 +35,15 @@ let root: string
  */
 beforeEach(async () => {
   root = await mkdtemp(path.join(os.tmpdir(), 'vx-affected-wsf-'))
-  await write(
+  await Bun.write(
     path.join(root, 'package.json'),
     JSON.stringify({ name: 'r', workspaces: ['pkgs/*'] }),
   )
   await writeLocalWorkspace(root)
-  await write(path.join(root, 'shared/schema.txt'), 'v1')
-  await write(path.join(root, 'pkgs/app/package.json'), JSON.stringify({ name: 'app' }))
-  await write(path.join(root, 'pkgs/app/src/index.ts'), 'export const x = 1')
-  await write(
+  await Bun.write(path.join(root, 'shared/schema.txt'), 'v1')
+  await Bun.write(path.join(root, 'pkgs/app/package.json'), JSON.stringify({ name: 'app' }))
+  await Bun.write(path.join(root, 'pkgs/app/src/index.ts'), 'export const x = 1')
+  await Bun.write(
     path.join(root, 'pkgs/app/vx.config.mjs'),
     [
       'export default {',
@@ -83,7 +78,7 @@ describe('--affected sees a workspaceFiles change', () => {
 
       // Change the SHARED file — inside no project, but folded into app#build's
       // key by its `workspaceFiles` glob.
-      await write(path.join(root, 'shared/schema.txt'), 'v2')
+      await Bun.write(path.join(root, 'shared/schema.txt'), 'v2')
       git(root, 'add', '-A')
       git(root, 'commit', '-qm', 'bump shared schema')
 
@@ -96,7 +91,7 @@ describe('--affected sees a workspaceFiles change', () => {
       // Half two: --affected must select it. Re-warm first so a miss here can
       // only come from selection, not from the key still being cold.
       expect(vx(root, 'run', 'build', '--all').text).toMatch(/ \d+✓/)
-      await write(path.join(root, 'shared/schema.txt'), 'v3')
+      await Bun.write(path.join(root, 'shared/schema.txt'), 'v3')
       git(root, 'add', '-A')
       git(root, 'commit', '-qm', 'bump again')
 
@@ -112,9 +107,9 @@ describe('--affected sees a workspaceFiles change', () => {
     async () => {
       // `schema.md` allows it; the path is app's, so selection never asked
       // who else reads it, and a bare `[ref]` filter ran app alone.
-      await write(path.join(root, 'pkgs/app/data.json'), '{"v":1}')
-      await write(path.join(root, 'pkgs/tool/package.json'), JSON.stringify({ name: 'tool' }))
-      await write(
+      await Bun.write(path.join(root, 'pkgs/app/data.json'), '{"v":1}')
+      await Bun.write(path.join(root, 'pkgs/tool/package.json'), JSON.stringify({ name: 'tool' }))
+      await Bun.write(
         path.join(root, 'pkgs/tool/vx.config.mjs'),
         [
           'export default {',
@@ -130,7 +125,7 @@ describe('--affected sees a workspaceFiles change', () => {
       )
       git(root, 'add', '-A')
       git(root, 'commit', '-qm', 'tool reads app data')
-      await write(path.join(root, 'pkgs/app/data.json'), '{"v":2}')
+      await Bun.write(path.join(root, 'pkgs/app/data.json'), '{"v":2}')
       git(root, 'add', '-A')
       git(root, 'commit', '-qm', 'bump data')
 
@@ -148,7 +143,7 @@ describe('--affected sees a workspaceFiles change', () => {
       // The control. Widening must be driven by a glob that actually matches,
       // not by "the path belongs to no project" — otherwise every README edit
       // rebuilds the workspace.
-      await write(path.join(root, 'docs/notes.md'), 'hello')
+      await Bun.write(path.join(root, 'docs/notes.md'), 'hello')
       git(root, 'add', '-A')
       git(root, 'commit', '-qm', 'add unrelated doc')
 
@@ -164,7 +159,7 @@ describe('--affected sees a workspaceFiles change', () => {
     async () => {
       // The other control: the common path must be untouched by whatever
       // machinery the widening needs.
-      await write(path.join(root, 'pkgs/app/src/index.ts'), 'export const x = 2')
+      await Bun.write(path.join(root, 'pkgs/app/src/index.ts'), 'export const x = 2')
       git(root, 'add', '-A')
       git(root, 'commit', '-qm', 'edit app source')
 
@@ -179,11 +174,11 @@ describe('--affected sees a workspaceFiles change', () => {
     'a root package.json edit re-keys nothing and selects nothing (vercel/turborepo#12469)',
     async () => {
       // As a real repo has it: an untracked output is a change --affected counts.
-      await write(path.join(root, '.gitignore'), 'dist/\n')
+      await Bun.write(path.join(root, '.gitignore'), 'dist/\n')
       git(root, 'add', '-A')
       git(root, 'commit', '-qm', 'ignore dist')
       expect(vx(root, 'run', 'build', '--all').code).toBe(0)
-      await write(
+      await Bun.write(
         path.join(root, 'package.json'),
         JSON.stringify({ name: 'r', workspaces: ['pkgs/*'], description: 'x' }, null, 2),
       )
@@ -208,7 +203,7 @@ describe('--affected sees a workspaceFiles change', () => {
       // `shared/**` re-keys app#build alone, but the owner went into the
       // changed-project set, and every uncached task there was seeded:
       // app#lint, which reads nothing of `shared/`, ran.
-      await write(
+      await Bun.write(
         path.join(root, 'pkgs/app/vx.config.mjs'),
         [
           'export default {',
@@ -231,13 +226,13 @@ describe('--affected sees a workspaceFiles change', () => {
         return (JSON.parse(r.out) as { tasks: { id: string }[] }).tasks.map((t) => t.id).sort()
       }
 
-      await write(path.join(root, 'shared/schema.txt'), 'v2')
+      await Bun.write(path.join(root, 'shared/schema.txt'), 'v2')
       git(root, 'add', '-A')
       git(root, 'commit', '-qm', 'bump shared schema')
       expect(planned()).toEqual(['app#build'])
 
       // CONTROL: a change inside the project still seeds the uncached task.
-      await write(path.join(root, 'pkgs/app/src/index.ts'), 'export const x = 2')
+      await Bun.write(path.join(root, 'pkgs/app/src/index.ts'), 'export const x = 2')
       git(root, 'add', '-A')
       git(root, 'commit', '-qm', 'edit app source')
       expect(planned()).toEqual(['app#build', 'app#lint'])
@@ -250,10 +245,10 @@ describe('--affected sees a workspaceFiles change', () => {
     async () => {
       // Each task names its own root config: an edit to one must not run
       // the other, and a root file neither names selects nothing.
-      await write(path.join(root, 'build-config.txt'), 'b1')
-      await write(path.join(root, 'test-config.txt'), 't1')
-      await write(path.join(root, 'other.txt'), 'o1')
-      await write(
+      await Bun.write(path.join(root, 'build-config.txt'), 'b1')
+      await Bun.write(path.join(root, 'test-config.txt'), 't1')
+      await Bun.write(path.join(root, 'other.txt'), 'o1')
+      await Bun.write(
         path.join(root, 'pkgs/app/vx.config.mjs'),
         [
           'export default {',
@@ -278,14 +273,14 @@ describe('--affected sees a workspaceFiles change', () => {
         if (r.code !== 0) return r.text
         return (JSON.parse(r.out) as { tasks: { id: string }[] }).tasks.map((t) => t.id).sort()
       }
-      await write(path.join(root, 'test-config.txt'), 't2')
+      await Bun.write(path.join(root, 'test-config.txt'), 't2')
       git(root, 'commit', '-qam', 'test config')
       expect(planned()).toEqual(['app#test'])
-      await write(path.join(root, 'other.txt'), 'o2')
+      await Bun.write(path.join(root, 'other.txt'), 'o2')
       git(root, 'commit', '-qam', 'other')
       expect(planned()).toEqual([])
       // CONTROL: the other config selects the other task.
-      await write(path.join(root, 'build-config.txt'), 'b2')
+      await Bun.write(path.join(root, 'build-config.txt'), 'b2')
       git(root, 'commit', '-qam', 'build config')
       expect(planned()).toEqual(['app#build'])
     },
@@ -300,7 +295,7 @@ describe('--affected sees a workspaceFiles change', () => {
       // matched as a file, `vendor/sub/**` missed it and the run said
       // "nothing affected" over a stale key.
       const sub = path.join(root, 'vendor/sub')
-      await write(path.join(sub, 'f.txt'), '1')
+      await Bun.write(path.join(sub, 'f.txt'), '1')
       gitInit(sub)
       git(sub, 'add', '-A')
       git(sub, 'commit', '-qm', 'sub')
@@ -309,8 +304,8 @@ describe('--affected sees a workspaceFiles change', () => {
         ['gen', 'vendor/*/f.txt'],
         ['fresh', 'vendor/new/**'],
       ] as const) {
-        await write(path.join(root, `pkgs/${name}/package.json`), JSON.stringify({ name }))
-        await write(
+        await Bun.write(path.join(root, `pkgs/${name}/package.json`), JSON.stringify({ name }))
+        await Bun.write(
           path.join(root, `pkgs/${name}/vx.config.mjs`),
           `export default { tasks: { build: { exec: { command: "true" }, inputs: { files: [], workspaceFiles: [${JSON.stringify(glob)}] }, outputs: { files: [] }, cache: true } } }\n`,
         )
@@ -326,11 +321,11 @@ describe('--affected sees a workspaceFiles change', () => {
         return ids.length === 0 ? r.text : ids.sort()
       }
       expect(planned()).toContain('nothing affected')
-      await write(path.join(sub, 'f.txt'), '2')
+      await Bun.write(path.join(sub, 'f.txt'), '2')
       expect(planned()).toEqual(['gen#build', 'tool#build'])
-      await write(path.join(sub, 'f.txt'), '1')
+      await Bun.write(path.join(sub, 'f.txt'), '1')
       const fresh = path.join(root, 'vendor/new')
-      await write(path.join(fresh, 'x.txt'), 'x')
+      await Bun.write(path.join(fresh, 'x.txt'), 'x')
       git(fresh, 'init', '-q')
       // `vendor/*/f.txt` may descend into any repository under `vendor`.
       expect(planned()).toEqual(['fresh#build', 'gen#build'])
@@ -355,7 +350,7 @@ describe('--affected and a directory link below a glob', () => {
   const editBehindLink = async (): Promise<void> => {
     git(root, 'add', '-A')
     git(root, 'commit', '-qm', 'link')
-    await write(path.join(root, 'linked/b.txt'), '2')
+    await Bun.write(path.join(root, 'linked/b.txt'), '2')
     git(root, 'add', '-A')
     git(root, 'commit', '-qm', 'edit behind the link')
   }
@@ -365,11 +360,11 @@ describe('--affected and a directory link below a glob', () => {
     async () => {
       // `all` claims the link's path, so the project is not reached whole:
       // `txt` must be seeded by its own glob.
-      await write(
+      await Bun.write(
         path.join(root, 'pkgs/app/vx.config.mjs'),
         `export default { tasks: { txt: ${keyed('["src/**/*.txt"]')}, all: ${keyed('["src/**"]')}, md: ${keyed('["src/*.md"]')} } }\n`,
       )
-      await write(path.join(root, 'linked/b.txt'), '1')
+      await Bun.write(path.join(root, 'linked/b.txt'), '1')
       await symlink('../../../linked', path.join(root, 'pkgs/app/src/v'))
       await editBehindLink()
       expect(planned('txt')).toEqual(['app#txt'])
@@ -382,11 +377,11 @@ describe('--affected and a directory link below a glob', () => {
   it(
     'a workspace link whose content changed selects the task whose workspaceFiles reach through it',
     async () => {
-      await write(
+      await Bun.write(
         path.join(root, 'pkgs/app/vx.config.mjs'),
         `export default { tasks: { txt: ${keyed('[]', '["shared/**/*.txt"]')}, md: ${keyed('[]', '["shared/*.md"]')} } }\n`,
       )
-      await write(path.join(root, 'linked/b.txt'), '1')
+      await Bun.write(path.join(root, 'linked/b.txt'), '1')
       await symlink('../linked', path.join(root, 'shared/v'))
       await editBehindLink()
       expect(planned('txt')).toEqual(['app#txt'])
@@ -402,11 +397,11 @@ describe('--affected and a directory link below a glob', () => {
       // `!**/*.skip` matched the link's name, where under a real `v.skip/`
       // directory it matches no file (2026-11-10). `all` claims the link's
       // path, so the project is not reached whole.
-      await write(
+      await Bun.write(
         path.join(root, 'pkgs/app/vx.config.mjs'),
         `export default { tasks: { files: ${keyed('["src/**", "!src/**/*.skip"]')}, ws: ${keyed('[]', '["shared/**", "!shared/**/*.skip"]')}, gone: ${keyed('["src/**", "!src/v.skip"]')}, all: ${keyed('["src/**"]')} } }\n`,
       )
-      await write(path.join(root, 'linked/b.txt'), '1')
+      await Bun.write(path.join(root, 'linked/b.txt'), '1')
       await symlink('../../../linked', path.join(root, 'pkgs/app/src/v.skip'))
       await symlink('../linked', path.join(root, 'shared/v.skip'))
       await editBehindLink()

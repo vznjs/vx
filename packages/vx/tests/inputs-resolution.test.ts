@@ -55,11 +55,6 @@ import { relPosix } from '../src/util/index.js'
 // hook budget is tight. File-scoped, matching tests/inputs.test.ts.
 setDefaultTimeout(30_000)
 
-async function write(p: string, content = 'x'): Promise<void> {
-  await mkdir(path.dirname(p), { recursive: true })
-  await writeFile(p, content)
-}
-
 /**
  * vx defers to `git ls-files` for the input file set and raises a UserError
  * without a work tree, so every fixture that resolves a non-empty glob needs a
@@ -102,9 +97,9 @@ describe('negation composes by subtraction only — it is not gitignore', () => 
     projectDir = path.join(root, 'pkg')
     await mkdir(projectDir, { recursive: true })
     gitInit(root)
-    await write(path.join(projectDir, 'src', 'a.ts'), 'a')
-    await write(path.join(projectDir, 'src', 'b.ts'), 'b')
-    await write(path.join(projectDir, 'vendor', 'v.js'), 'v')
+    await Bun.write(path.join(projectDir, 'src', 'a.ts'), 'a')
+    await Bun.write(path.join(projectDir, 'src', 'b.ts'), 'b')
+    await Bun.write(path.join(projectDir, 'vendor', 'v.js'), 'v')
   })
 
   afterEach(async () => {
@@ -154,7 +149,7 @@ describe('negation composes by subtraction only — it is not gitignore', () => 
     // so `!node_modules/**` reads as "exclude it" a second time, never as
     // "bring it back". A user trying to opt node_modules into the key has no
     // way to do it, and gets no error saying so.
-    await write(path.join(projectDir, 'node_modules', 'dep', 'index.js'))
+    await Bun.write(path.join(projectDir, 'node_modules', 'dep', 'index.js'), 'x')
     expect(await rels(['**/*', '!node_modules/**'])).not.toContain(
       path.join('node_modules', 'dep', 'index.js'),
     )
@@ -400,7 +395,7 @@ describe('ALWAYS_IGNORE matches where vx writes, and nowhere deeper', () => {
     projectDir = path.join(root, 'pkg')
     await mkdir(projectDir, { recursive: true })
     gitInit(root)
-    await write(path.join(projectDir, 'src', 'keep.ts'), 'keep')
+    await Bun.write(path.join(projectDir, 'src', 'keep.ts'), 'keep')
   })
 
   afterEach(async () => {
@@ -454,13 +449,13 @@ describe('ALWAYS_IGNORE matches where vx writes, and nowhere deeper', () => {
   })
 
   it('excludes every ALWAYS_IGNORE pattern at the top level of a project', async () => {
-    for (const rel of IGNORED_TOP) await write(path.join(projectDir, rel))
+    for (const rel of IGNORED_TOP) await Bun.write(path.join(projectDir, rel), 'x')
     const seen = await resolveAll()
     expect(seen).toEqual([path.join('src', 'keep.ts')])
   })
 
   it("keeps a project's own file under a vx name nested in the project", async () => {
-    for (const rel of KEPT_NESTED) await write(path.join(projectDir, rel))
+    for (const rel of KEPT_NESTED) await Bun.write(path.join(projectDir, rel), 'x')
     const seen = await resolveAll()
     expect(seen).toEqual([path.join('src', 'keep.ts'), ...KEPT_NESTED].sort())
   })
@@ -469,7 +464,7 @@ describe('ALWAYS_IGNORE matches where vx writes, and nowhere deeper', () => {
     // The over-exclusion direction. `.github/**` dropping out of the key means
     // a workflow edit never invalidates anything — same silent failure as any
     // other missing input, and far harder to notice.
-    for (const rel of KEPT_NEAR_MISSES) await write(path.join(projectDir, rel))
+    for (const rel of KEPT_NEAR_MISSES) await Bun.write(path.join(projectDir, rel), 'x')
     const seen = await resolveAll()
     for (const rel of KEPT_NEAR_MISSES) {
       expect(seen).toContain(rel.split('/').join(path.sep))
@@ -480,11 +475,11 @@ describe('ALWAYS_IGNORE matches where vx writes, and nowhere deeper', () => {
     // The two resolvers each build their own exclude list. A fix or a
     // regression applied to one does not reach the other, so the guarantee is
     // asserted on both paths.
-    await write(path.join(root, '.vx/projects.lock'), '{}')
-    await write(path.join(root, 'tsconfig.json'), '{}')
+    await Bun.write(path.join(root, '.vx/projects.lock'), '{}')
+    await Bun.write(path.join(root, 'tsconfig.json'), '{}')
     Bun.spawnSync({ cmd: ['git', 'add', '-Af'], cwd: root, stdout: 'pipe', stderr: 'pipe' })
     // Untracked and not ignored: an install the enumeration drops.
-    await write(path.join(root, 'node_modules', 'dep', 'index.js'))
+    await Bun.write(path.join(root, 'node_modules', 'dep', 'index.js'), 'x')
 
     const got = await resolveInputs({
       projectDir,
@@ -516,7 +511,7 @@ describe('node_modules: untracked is an install, tracked is a source', () => {
     projectDir = path.join(root, 'pkg')
     await mkdir(projectDir, { recursive: true })
     gitInit(root)
-    await write(path.join(projectDir, 'src', 'keep.ts'), 'keep')
+    await Bun.write(path.join(projectDir, 'src', 'keep.ts'), 'keep')
   })
 
   afterEach(async () => {
@@ -536,7 +531,7 @@ describe('node_modules: untracked is an install, tracked is a source', () => {
   }
 
   it('a tracked file under node_modules, top-level or nested, is an input', async () => {
-    for (const rel of AT) await write(path.join(projectDir, rel))
+    for (const rel of AT) await Bun.write(path.join(projectDir, rel), 'x')
     Bun.spawnSync({ cmd: ['git', 'add', '-Af'], cwd: root, stdout: 'pipe', stderr: 'pipe' })
     expect(await resolve({ files: ['**/*'] })).toEqual([
       path.join('a', 'b', 'node_modules', 'dep', 'index.js'),
@@ -550,8 +545,8 @@ describe('node_modules: untracked is an install, tracked is a source', () => {
 
   it('CONTROL: an untracked one, not ignored, is an install and stays out', async () => {
     Bun.spawnSync({ cmd: ['git', 'add', '-Af'], cwd: root, stdout: 'pipe', stderr: 'pipe' })
-    for (const rel of AT) await write(path.join(projectDir, rel))
-    await write(path.join(projectDir, 'src', 'new.ts'), 'new')
+    for (const rel of AT) await Bun.write(path.join(projectDir, rel), 'x')
+    await Bun.write(path.join(projectDir, 'src', 'new.ts'), 'new')
     expect(await resolve({ files: ['**/*'] })).toEqual([
       path.join('src', 'keep.ts'),
       path.join('src', 'new.ts'),
@@ -594,8 +589,8 @@ describe('the hard project boundary holds in both directions', () => {
     // it. `inner/` is nested; `outer/` sits beside it at identical depth and
     // must survive.
     const nested = path.join(projectDir, 'inner')
-    await write(path.join(nested, 'src', 'nested.ts'))
-    await write(path.join(projectDir, 'outer', 'src', 'parent.ts'))
+    await Bun.write(path.join(nested, 'src', 'nested.ts'), 'x')
+    await Bun.write(path.join(projectDir, 'outer', 'src', 'parent.ts'), 'x')
 
     const got = await resolveInputs({
       projectDir,
@@ -617,9 +612,9 @@ describe('the hard project boundary holds in both directions', () => {
     // is `inner/**`, which must not swallow `inner-utils/`. If the boundary
     // ever became a bare `startsWith` on the directory string, it would.
     const nested = path.join(projectDir, 'inner')
-    await write(path.join(nested, 'nested.ts'))
-    await write(path.join(projectDir, 'inner-utils', 'util.ts'))
-    await write(path.join(projectDir, 'inner.config.ts'))
+    await Bun.write(path.join(nested, 'nested.ts'), 'x')
+    await Bun.write(path.join(projectDir, 'inner-utils', 'util.ts'), 'x')
+    await Bun.write(path.join(projectDir, 'inner.config.ts'), 'x')
 
     const got = await resolveInputs({
       projectDir,
@@ -639,8 +634,8 @@ describe('the hard project boundary holds in both directions', () => {
     // The boundary is computed from the relative path, so depth is incidental —
     // but a hand-rolled single-segment pattern would only catch direct children.
     const deep = path.join(projectDir, 'a', 'b', 'inner')
-    await write(path.join(deep, 'nested.ts'))
-    await write(path.join(projectDir, 'a', 'b', 'parent.ts'))
+    await Bun.write(path.join(deep, 'nested.ts'), 'x')
+    await Bun.write(path.join(projectDir, 'a', 'b', 'parent.ts'), 'x')
 
     const got = await resolveInputs({
       projectDir,
@@ -659,10 +654,10 @@ describe('the hard project boundary holds in both directions', () => {
     // A named ignored prefix (`gen/**` over an ignored `gen/`) is walked on
     // disk, beside git's listing; that walk is where a nested project's
     // files could leak into the parent's key.
-    await write(path.join(projectDir, '.gitignore'), 'gen/\n')
-    await write(path.join(projectDir, 'gen', 'own.txt'))
+    await Bun.write(path.join(projectDir, '.gitignore'), 'gen/\n')
+    await Bun.write(path.join(projectDir, 'gen', 'own.txt'), 'x')
     const nested = path.join(projectDir, 'gen', 'sub')
-    await write(path.join(nested, 'theirs.txt'))
+    await Bun.write(path.join(nested, 'theirs.txt'), 'x')
 
     const got = await resolveInputs({
       projectDir,
@@ -680,8 +675,8 @@ describe('the hard project boundary holds in both directions', () => {
     // the over-exclusion direction is a correctness bug and the under-exclusion
     // direction is data loss in someone else's project. Both in one assertion.
     const nested = path.join(projectDir, 'inner')
-    await write(path.join(nested, 'dist', 'nested.js'))
-    await write(path.join(projectDir, 'dist', 'parent.js'))
+    await Bun.write(path.join(nested, 'dist', 'nested.js'), 'x')
+    await Bun.write(path.join(projectDir, 'dist', 'parent.js'), 'x')
 
     const out = await resolveOutputs({
       projectDir,
@@ -711,7 +706,7 @@ describe('output resolution contains itself — the loader guard is now the SECO
     projectDir = path.join(root, 'pkg')
     victim = path.join(root, 'victim')
     await mkdir(projectDir, { recursive: true })
-    await write(path.join(victim, 'precious.txt'), 'precious')
+    await Bun.write(path.join(victim, 'precious.txt'), 'precious')
   })
 
   afterEach(async () => {
@@ -754,7 +749,7 @@ describe('output resolution contains itself — the loader guard is now the SECO
     // The control. Without it, "resolve nothing" would satisfy every assertion
     // above while breaking every real config.
     return (async () => {
-      await write(path.join(projectDir, 'dist/app.js'), 'built')
+      await Bun.write(path.join(projectDir, 'dist/app.js'), 'built')
       const inside = await resolveOutputs({
         projectDir,
         outputs: ['dist/**'],
@@ -800,7 +795,7 @@ describe('output resolution contains itself — the loader guard is now the SECO
     // And for a link out whose target is empty: no file reveals it.
     await rm(path.join(victim, 'precious.txt'))
     expect(await refused(['dist/**'])).toBe(refusal)
-    await write(path.join(victim, 'precious.txt'), 'precious')
+    await Bun.write(path.join(victim, 'precious.txt'), 'precious')
 
     await expect(
       cleanOutputs({ projectDir, outputs: ['dist/**'], nestedProjectDirs: [] }),
@@ -814,7 +809,7 @@ describe('output resolution contains itself — the loader guard is now the SECO
     // turborepo#13042), so the clean must too, or the next entry saves the
     // last run's files beside its own (X-88; X-5 had made it skip them).
     // The link is kept.
-    await write(path.join(projectDir, 'real-out/old.js'), 'old')
+    await Bun.write(path.join(projectDir, 'real-out/old.js'), 'old')
     await symlink('real-out', path.join(projectDir, 'dist'))
     await cleanOutputs({ projectDir, outputs: ['dist/**'], nestedProjectDirs: [] })
     expect(existsSync(path.join(projectDir, 'real-out/old.js'))).toBe(false)
@@ -825,8 +820,8 @@ describe('output resolution contains itself — the loader guard is now the SECO
   // containment read such a directory as unresolvable, and its files were
   // dropped from the artifact under a green run.
   it('an output under a directory whose name holds a backslash is kept', async () => {
-    await write(path.join(projectDir, 'dist/a\\b/app.js'), 'built')
-    await write(path.join(projectDir, 'dist/a\\b/c/d.js'), 'built')
+    await Bun.write(path.join(projectDir, 'dist/a\\b/app.js'), 'built')
+    await Bun.write(path.join(projectDir, 'dist/a\\b/c/d.js'), 'built')
     const out = await resolveOutputs({ projectDir, outputs: ['dist/**'], nestedProjectDirs: [] })
     expect(out).toEqual([
       path.join(projectDir, 'dist/a\\b/app.js'),
@@ -851,7 +846,7 @@ describe('output resolution contains itself — the loader guard is now the SECO
     // its directory resolves inside. The resolver's rule is that it never
     // names a path outside the project by any route, and only the lexical
     // check knows this one came from outside.
-    await write(path.join(projectDir, 'sub/own.txt'), 'own')
+    await Bun.write(path.join(projectDir, 'sub/own.txt'), 'own')
     await symlink(path.join(projectDir, 'sub'), path.join(root, 'back'))
 
     expect(
@@ -870,7 +865,7 @@ describe('output resolution contains itself — the loader guard is now the SECO
     // the save captures the target's bytes and the clean unlinks the LINK —
     // `rm` on a symlink never follows it, so the file it points at is safe by
     // the syscall's own contract, and this asserts exactly that.
-    await write(path.join(projectDir, 'dist/app.js'), 'built')
+    await Bun.write(path.join(projectDir, 'dist/app.js'), 'built')
     await symlink(path.join(victim, 'precious.txt'), path.join(projectDir, 'dist/linked.txt'))
 
     const resolved = await resolveOutputs({
@@ -892,8 +887,8 @@ describe('output resolution contains itself — the loader guard is now the SECO
   it('a negation in outputs.files takes its paths back from the resolved set (A-44)', async () => {
     // Until A-44 the resolver never split on `!`: `'!dist/*.map'` was a
     // literal path that matched nothing, so the loader refused it.
-    await write(path.join(projectDir, 'dist', 'a.js'))
-    await write(path.join(projectDir, 'dist', 'a.map'))
+    await Bun.write(path.join(projectDir, 'dist', 'a.js'), 'x')
+    await Bun.write(path.join(projectDir, 'dist', 'a.map'), 'x')
 
     const out = await resolveOutputs({
       projectDir,
@@ -915,8 +910,8 @@ describe('output resolution contains itself — the loader guard is now the SECO
     // written here can distinguish it from its absence. Asserting posix
     // separators would pass with the normalization deleted — a false guarantee.
     // It is left unpinned and recorded instead.
-    await write(path.join(projectDir, 'dist', 'b.js'))
-    await write(path.join(projectDir, 'dist', 'a.js'))
+    await Bun.write(path.join(projectDir, 'dist', 'b.js'), 'x')
+    await Bun.write(path.join(projectDir, 'dist', 'a.js'), 'x')
 
     const removed = await cleanOutputs({
       projectDir,
@@ -931,7 +926,7 @@ describe('output resolution contains itself — the loader guard is now the SECO
     // return feeds `markWorkspaceOutputsChanged`, which fans the paths to every
     // partition that can see them — so the anchor being the ROOT (not the
     // project) is load-bearing for that forwarding to line up.
-    await write(path.join(root, 'generated', 'schema.ts'), 'gen')
+    await Bun.write(path.join(root, 'generated', 'schema.ts'), 'gen')
     const removed = await cleanWorkspaceOutputs({
       workspaceRoot: root,
       outputs: ['generated/**'],
@@ -950,7 +945,7 @@ describe('output resolution contains itself — the loader guard is now the SECO
     // empty entry; it is refused now, as the project twin is (M-65).
     const outside = await mkdtemp(path.join(os.tmpdir(), 'vx-ws-victim-'))
     try {
-      await write(path.join(outside, 'precious.txt'), 'precious')
+      await Bun.write(path.join(outside, 'precious.txt'), 'precious')
       await symlink(outside, path.join(root, 'linked-gen'))
 
       const said = 'through a link that leaves the workspace'
@@ -974,7 +969,7 @@ describe('output resolution contains itself — the loader guard is now the SECO
     // empty set. It is a short-circuit (one avoided scan, and for the workspace
     // twin one avoided git spawn), not a behaviour. Claiming otherwise here
     // would be a false guarantee.
-    await write(path.join(projectDir, 'dist', 'a.js'))
+    await Bun.write(path.join(projectDir, 'dist', 'a.js'), 'x')
     expect(await resolveWorkspaceOutputs({ workspaceRoot: root, outputs: [] })).toEqual([])
     expect(await cleanOutputs({ projectDir, outputs: [], nestedProjectDirs: [] })).toEqual([])
     expect(existsSync(path.join(projectDir, 'dist', 'a.js'))).toBe(true)
@@ -1002,9 +997,9 @@ describe('workspaceFiles deliberately ignores project boundaries', () => {
     await mkdir(projA, { recursive: true })
     await mkdir(projB, { recursive: true })
     gitInit(root)
-    await write(path.join(projA, 'src', 'a.ts'), 'a')
-    await write(path.join(projB, 'src', 'b.ts'), 'b')
-    await write(path.join(root, 'tsconfig.json'), '{}')
+    await Bun.write(path.join(projA, 'src', 'a.ts'), 'a')
+    await Bun.write(path.join(projB, 'src', 'b.ts'), 'b')
+    await Bun.write(path.join(root, 'tsconfig.json'), '{}')
   })
 
   afterEach(async () => {
@@ -1050,7 +1045,7 @@ describe('workspaceFiles deliberately ignores project boundaries', () => {
   it('excludes the task’s own project outputs from its workspaceFiles', async () => {
     // A task's `outputs.files` reached by its own root-anchored input glob
     // moved its key with every build: no run of it was ever saved.
-    await write(path.join(projA, 'out.json'), '{}')
+    await Bun.write(path.join(projA, 'out.json'), '{}')
     const got = await resolveInputs({
       projectDir: projA,
       workspaceRoot: root,
@@ -1068,7 +1063,7 @@ describe('workspaceFiles deliberately ignores project boundaries', () => {
   it('excludes the task’s own workspace outputs from its project files', async () => {
     // The other direction: an `outputs.workspaceFiles` entry inside the
     // task's own project, under its `files` glob.
-    await write(path.join(projA, 'out.json'), '{}')
+    await Bun.write(path.join(projA, 'out.json'), '{}')
     const got = await resolveInputs({
       projectDir: projA,
       workspaceRoot: root,
@@ -1108,7 +1103,7 @@ describe('workspaceFiles deliberately ignores project boundaries', () => {
     // input. Without the sort the digest would depend on which half a file came
     // from — and a root file sorting BEFORE the project's files (README.md vs
     // packages/…) is what makes the difference observable at all.
-    await write(path.join(root, 'README.md'), 'readme')
+    await Bun.write(path.join(root, 'README.md'), 'readme')
     const got = await resolveInputs({
       projectDir: projA,
       workspaceRoot: root,
@@ -1130,7 +1125,7 @@ describe('workspaceFiles deliberately ignores project boundaries', () => {
     // `workspace-outputs/<rel>`), and this is the reason that namespace split
     // exists — at the resolver level there is nothing to tell them apart.
     // Pinned so the namespaces are never collapsed as "redundant".
-    await write(path.join(root, 'gen', 'schema.ts'), 'gen')
+    await Bun.write(path.join(root, 'gen', 'schema.ts'), 'gen')
     const asProject = await resolveOutputs({
       projectDir: root,
       outputs: ['gen/**'],
@@ -1157,9 +1152,9 @@ describe('resolved file order is stable regardless of enumeration order', () => 
     projectDir = path.join(root, 'pkg')
     await mkdir(projectDir, { recursive: true })
     gitInit(root)
-    await write(path.join(projectDir, 'src', 'a.ts'), 'a')
-    await write(path.join(projectDir, 'src', 'b.ts'), 'b')
-    await write(path.join(projectDir, 'src', 'c.ts'), 'c')
+    await Bun.write(path.join(projectDir, 'src', 'a.ts'), 'a')
+    await Bun.write(path.join(projectDir, 'src', 'b.ts'), 'b')
+    await Bun.write(path.join(projectDir, 'src', 'c.ts'), 'c')
   })
 
   afterEach(async () => {
@@ -1197,7 +1192,7 @@ describe('resolved file order is stable regardless of enumeration order', () => 
   it('sorts by code unit, not by locale: the key is the same on every machine', async () => {
     // A locale sort puts `a.ts` before `B.ts` and `_x.ts` anywhere the
     // collation likes; code units put `B` (66) < `_` (95) < `a` (97).
-    for (const f of ['é.ts', '_x.ts', 'B.ts']) await write(path.join(projectDir, 'src', f), f)
+    for (const f of ['é.ts', '_x.ts', 'B.ts']) await Bun.write(path.join(projectDir, 'src', f), f)
     const memo = new GitFilesCache()
     memo.set(projectDir, ['src/a.ts', 'src/é.ts', 'src/_x.ts', 'src/B.ts'])
     const got = await resolveInputs({
@@ -1219,7 +1214,7 @@ describe('resolved file order is stable regardless of enumeration order', () => 
     // one literal against medusa's 24k-file enumeration per task was 930 ms of
     // a 3.0 s warm no-op (2026-09-11). The memo is keyed on the declaration
     // and valid for one enumeration snapshot.
-    await write(path.join(root, 'tsconfig.base.json'), '{}')
+    await Bun.write(path.join(root, 'tsconfig.base.json'), '{}')
     const gitMemo = new GitFilesCache()
     const snapshot = ['tsconfig.base.json', 'pkg/src/a.ts']
     gitMemo.set(root, snapshot)
@@ -1420,8 +1415,8 @@ describe('a declared literal settles on its own tree, and only its own', () => {
     // ['src']` — is refused outright, because the directory EXISTS on disk
     // and nothing settled it. The suite had no witness: every literal in
     // it names a file.
-    await write(path.join(projectDir, 'src', 'gen', 'a.ts'), 'a')
-    await write(path.join(projectDir, 'other.ts'), 'o')
+    await Bun.write(path.join(projectDir, 'src', 'gen', 'a.ts'), 'a')
+    await Bun.write(path.join(projectDir, 'other.ts'), 'o')
 
     expect(await filesOf(['src/gen'])).toEqual(['src/gen/a.ts'])
   })
@@ -1431,19 +1426,19 @@ describe('a declared literal settles on its own tree, and only its own', () => {
     // check by it skipped every literal naming a directory. Existence is
     // lstat (item 576); naming the directory is asking for it
     // (2026-10-16).
-    await write(path.join(root, '.gitignore'), 'gen/\n')
-    await write(path.join(projectDir, 'gen', 'out.js'), 'built')
-    await write(path.join(projectDir, 'keep.ts'), 'k')
+    await Bun.write(path.join(root, '.gitignore'), 'gen/\n')
+    await Bun.write(path.join(projectDir, 'gen', 'out.js'), 'built')
+    await Bun.write(path.join(projectDir, 'keep.ts'), 'k')
 
     expect(await filesOf(['gen', 'keep.ts'])).toEqual(['gen/out.js', 'keep.ts'])
   })
 
   it('a literal naming an EMPTY directory reads nothing, until a file lands in it', async () => {
     await mkdir(path.join(projectDir, 'gen'), { recursive: true })
-    await write(path.join(projectDir, 'keep.ts'), 'k')
+    await Bun.write(path.join(projectDir, 'keep.ts'), 'k')
 
     expect(await filesOf(['gen', 'keep.ts'])).toEqual(['keep.ts'])
-    await write(path.join(projectDir, 'gen', 'a.ts'), 'a')
+    await Bun.write(path.join(projectDir, 'gen', 'a.ts'), 'a')
     expect(await filesOf(['gen', 'keep.ts'])).toEqual(['gen/a.ts', 'keep.ts'])
   })
 
@@ -1451,17 +1446,17 @@ describe('a declared literal settles on its own tree, and only its own', () => {
     // The listing is searched before it is walked: `gen-a.ts` sorts after
     // `gen` and before `gen/x.ts` (`-` is below `/`), where a search for
     // `gen` alone lands.
-    await write(path.join(projectDir, 'gen-a.ts'), 'a')
-    await write(path.join(projectDir, 'gen', 'x.ts'), 'x')
+    await Bun.write(path.join(projectDir, 'gen-a.ts'), 'a')
+    await Bun.write(path.join(projectDir, 'gen', 'x.ts'), 'x')
 
     expect(await filesOf(['gen'])).toEqual(['gen/x.ts'])
   })
 
   it('a glob that also matches a directory keys the files it matches, not the tree (Turbo #6738)', async () => {
-    await write(path.join(projectDir, 'fix.txt'), 'f')
-    await write(path.join(projectDir, 'fixtures', 'a.txt'), 'a')
-    await write(path.join(root, 'pack.json'), '{}')
-    await write(path.join(root, 'packages', 'z.txt'), 'z')
+    await Bun.write(path.join(projectDir, 'fix.txt'), 'f')
+    await Bun.write(path.join(projectDir, 'fixtures', 'a.txt'), 'a')
+    await Bun.write(path.join(root, 'pack.json'), '{}')
+    await Bun.write(path.join(root, 'packages', 'z.txt'), 'z')
     const got = await resolveInputs({
       projectDir,
       workspaceRoot: root,
@@ -1475,7 +1470,7 @@ describe('a declared literal settles on its own tree, and only its own', () => {
 
   it('two globstars in one entry each span any depth (Turbo #6633)', async () => {
     for (const f of ['src/x/a', 'src/deep/x/y/f.txt', 'src/d1/d2/x/f', 'src/x.txt', 'src/deep/y/f'])
-      await write(path.join(projectDir, f), f)
+      await Bun.write(path.join(projectDir, f), f)
     expect(await filesOf(['src/**/x/**'])).toEqual(
       ['src/d1/d2/x/f', 'src/deep/x/y/f.txt', 'src/x/a'].map((f) => path.join(...f.split('/'))),
     )
@@ -1485,9 +1480,9 @@ describe('a declared literal settles on its own tree, and only its own', () => {
     // The `/` in `${lit}/` is the whole guard. Without it `gen-notes.txt`
     // starts with `gen` and settles the literal `gen`, so the ignored `gen`
     // was never read from disk and its edits moved no key.
-    await write(path.join(root, '.gitignore'), 'gen\n')
-    await write(path.join(projectDir, 'gen'), 'ignored')
-    await write(path.join(projectDir, 'gen-notes.txt'), 'tracked')
+    await Bun.write(path.join(root, '.gitignore'), 'gen\n')
+    await Bun.write(path.join(projectDir, 'gen'), 'ignored')
+    await Bun.write(path.join(projectDir, 'gen-notes.txt'), 'tracked')
 
     expect(await filesOf(['gen', 'gen-notes.txt'])).toEqual(['gen', 'gen-notes.txt'])
   })
@@ -1538,8 +1533,8 @@ describe('the per-run files memo is keyed on everything that decides the answer'
     // enumeration — so without the negations in the memo key the second
     // task is handed the first task's answer and its key stops moving with
     // whatever it excluded.
-    await write(path.join(projectDir, 'a.ts'), 'a')
-    await write(path.join(projectDir, 'a.test.ts'), 't')
+    await Bun.write(path.join(projectDir, 'a.ts'), 'a')
+    await Bun.write(path.join(projectDir, 'a.test.ts'), 't')
 
     expect(await filesOf(['**/*.ts'])).toEqual(['a.test.ts', 'a.ts'])
     expect(await filesOf(['**/*.ts', '!**/*.test.ts'])).toEqual(['a.ts'])
@@ -1552,8 +1547,8 @@ describe('the per-run files memo is keyed on everything that decides the answer'
     // which is exactly why this arm had no witness — and why leaving it
     // out would be invisible until the day something resolves a project
     // twice under different boundaries.
-    await write(path.join(projectDir, 'a.ts'), 'a')
-    await write(path.join(projectDir, 'inner', 'b.ts'), 'b')
+    await Bun.write(path.join(projectDir, 'a.ts'), 'a')
+    await Bun.write(path.join(projectDir, 'inner', 'b.ts'), 'b')
 
     expect(await filesOf(['**/*.ts'])).toEqual(['a.ts', 'inner/b.ts'])
     expect(await filesOf(['**/*.ts'], [path.join(projectDir, 'inner')])).toEqual(['a.ts'])
@@ -1654,7 +1649,7 @@ describe('the clean empties a tree without reaching past it', () => {
     // separate when the sibling shares the project's prefix — the same
     // shape as the mixed-case sort in 559 and the insertion order in 564.
     const sibling = path.join(root, 'pkg-extra')
-    await write(path.join(sibling, 'precious.txt'), 'precious')
+    await Bun.write(path.join(sibling, 'precious.txt'), 'precious')
 
     expect(
       await resolveOutputs({ projectDir, outputs: ['../pkg-extra/**'], nestedProjectDirs: [] }),
@@ -1673,7 +1668,7 @@ describe('the clean empties a tree without reaching past it', () => {
     // the realpath, every output resolves OUTSIDE the project, the clean
     // deletes nothing, and a restore lands on top of stale files.
     const real = path.join(root, 'real')
-    await write(path.join(real, 'dist', 'app.js'), 'built')
+    await Bun.write(path.join(real, 'dist', 'app.js'), 'built')
     const linked = path.join(root, 'linked')
     await symlink(real, linked)
 
@@ -1691,8 +1686,8 @@ describe('the clean empties a tree without reaching past it', () => {
     // task that writes `.vitepress/cache` or a `dist/.manifest` would keep
     // its stale copy across a restore — the clean would skip it and the
     // restore would land beside it.
-    await write(path.join(projectDir, 'dist', '.manifest'), 'm')
-    await write(path.join(projectDir, 'dist', 'app.js'), 'a')
+    await Bun.write(path.join(projectDir, 'dist', '.manifest'), 'm')
+    await Bun.write(path.join(projectDir, 'dist', 'app.js'), 'a')
 
     const removed = await cleanOutputs({
       projectDir,
@@ -1706,7 +1701,7 @@ describe('the clean empties a tree without reaching past it', () => {
     // `asTrees` is what turns `generated` into `generated` + `generated/**`.
     // The project twin has a row for it; this one did not, and the two are
     // separate call sites — the shape that has bitten this file before.
-    await write(path.join(root, 'generated', 'schema.ts'), 'gen')
+    await Bun.write(path.join(root, 'generated', 'schema.ts'), 'gen')
 
     expect(await cleanWorkspaceOutputs({ workspaceRoot: root, outputs: ['generated'] })).toEqual([
       'generated/schema.ts',
@@ -1738,9 +1733,9 @@ describe('inputs.files can only ever narrow the git file set', () => {
     // path git never reported cannot be filtered back in. A literal naming it
     // is read from disk instead (2026-10-16), where it once folded
     // nothing and the task reported up-to-date while the file changed.
-    await write(path.join(root, '.gitignore'), 'generated.ts\n')
-    await write(path.join(projectDir, 'generated.ts'), 'v1')
-    await write(path.join(projectDir, 'src', 'a.ts'), 'a')
+    await Bun.write(path.join(root, '.gitignore'), 'generated.ts\n')
+    await Bun.write(path.join(projectDir, 'generated.ts'), 'v1')
+    await Bun.write(path.join(projectDir, 'src', 'a.ts'), 'a')
 
     const got = await resolveInputs({
       projectDir,
@@ -1759,9 +1754,9 @@ describe('inputs.files can only ever narrow the git file set', () => {
     // must not raise; a literal names one exact file, so "matched nothing" is
     // unambiguous. Without this control the refusal could be widened to globs
     // and every optional-file config would start failing.
-    await write(path.join(root, '.gitignore'), 'generated.ts\n')
-    await write(path.join(projectDir, 'generated.ts'), 'v1')
-    await write(path.join(projectDir, 'src', 'a.ts'), 'a')
+    await Bun.write(path.join(root, '.gitignore'), 'generated.ts\n')
+    await Bun.write(path.join(projectDir, 'generated.ts'), 'v1')
+    await Bun.write(path.join(projectDir, 'src', 'a.ts'), 'a')
 
     const broad = await resolveInputs({
       projectDir,
@@ -1788,9 +1783,9 @@ describe('inputs.files can only ever narrow the git file set', () => {
     //
     // Mutation-verified: making `isLiteralPath` return true for everything is
     // killed by this test and by nothing else in the suite.
-    await write(path.join(root, '.gitignore'), 'a*.ts\n')
-    await write(path.join(projectDir, 'a*.ts'), 'literally named with a star')
-    await write(path.join(projectDir, 'ab.ts'), 'ordinary')
+    await Bun.write(path.join(root, '.gitignore'), 'a*.ts\n')
+    await Bun.write(path.join(projectDir, 'a*.ts'), 'literally named with a star')
+    await Bun.write(path.join(projectDir, 'ab.ts'), 'ordinary')
 
     const got = await resolveInputs({
       projectDir,
@@ -1811,9 +1806,9 @@ describe('inputs.files can only ever narrow the git file set', () => {
   // `['src/']` folded ZERO files, a key that never moved with its source.
   // A literal names the file or the whole tree under it, as in .gitignore.
   it('a literal directory — with or without a trailing slash — means its whole tree', async () => {
-    await write(path.join(projectDir, 'src', 'a.ts'), 'a')
-    await write(path.join(projectDir, 'src', 'deep', 'b.ts'), 'b')
-    await write(path.join(projectDir, 'other.ts'), 'o')
+    await Bun.write(path.join(projectDir, 'src', 'a.ts'), 'a')
+    await Bun.write(path.join(projectDir, 'src', 'deep', 'b.ts'), 'b')
+    await Bun.write(path.join(projectDir, 'other.ts'), 'o')
     for (const spelling of ['src', 'src/']) {
       const got = await resolveInputs({
         projectDir,
@@ -1851,9 +1846,9 @@ describe('inputs.files can only ever narrow the git file set', () => {
   })
 
   it('a literal output directory captures and cleans its whole tree', async () => {
-    await write(path.join(projectDir, 'dist', 'a.js'), 'a')
-    await write(path.join(projectDir, 'dist', 'deep', 'b.js'), 'b')
-    await write(path.join(projectDir, 'src', 'a.ts'), 'a')
+    await Bun.write(path.join(projectDir, 'dist', 'a.js'), 'a')
+    await Bun.write(path.join(projectDir, 'dist', 'deep', 'b.js'), 'b')
+    await Bun.write(path.join(projectDir, 'src', 'a.ts'), 'a')
     const resolved = await resolveOutputs({ projectDir, outputs: ['dist'], nestedProjectDirs: [] })
     expect(resolved.map((f) => relPosix(projectDir, f)).sort()).toEqual([
       path.join('dist', 'a.js'),
@@ -1878,7 +1873,7 @@ describe('inputs.files can only ever narrow the git file set', () => {
     // An ordinary stale declaration, not a stale hit — nothing on disk is being
     // missed. Refusing it would break every config that lists an optional file,
     // so the guard turns on EXISTENCE, not on absence from the git set.
-    await write(path.join(projectDir, 'src', 'a.ts'), 'a')
+    await Bun.write(path.join(projectDir, 'src', 'a.ts'), 'a')
     const got = await resolveInputs({
       projectDir,
       workspaceRoot: root,
@@ -1891,7 +1886,7 @@ describe('inputs.files can only ever narrow the git file set', () => {
   })
 
   it('a glob into a directory that does not exist stays silent (Turbo #5404)', async () => {
-    await write(path.join(projectDir, 'src', 'a.ts'), 'a')
+    await Bun.write(path.join(projectDir, 'src', 'a.ts'), 'a')
     const got = await resolveInputs({
       projectDir,
       workspaceRoot: root,
@@ -1906,8 +1901,8 @@ describe('inputs.files can only ever narrow the git file set', () => {
   it('a literal that git DOES report resolves normally', async () => {
     // The other control: the guard must not fire on the ordinary case of naming
     // a tracked file by hand, which is common (`package.json`, `tsconfig.json`).
-    await write(path.join(projectDir, 'tsconfig.json'), '{}')
-    await write(path.join(projectDir, 'src', 'a.ts'), 'a')
+    await Bun.write(path.join(projectDir, 'tsconfig.json'), '{}')
+    await Bun.write(path.join(projectDir, 'src', 'a.ts'), 'a')
     const got = await resolveInputs({
       projectDir,
       workspaceRoot: root,
@@ -1925,8 +1920,8 @@ describe('inputs.files can only ever narrow the git file set', () => {
     // they never reach the guard; pinned because a future version that checked
     // the RESOLVED set instead of the git set would start refusing this, and it
     // is a legitimate (if redundant) config.
-    await write(path.join(projectDir, 'dist', 'out.js'), 'built')
-    await write(path.join(projectDir, 'src', 'a.ts'), 'a')
+    await Bun.write(path.join(projectDir, 'dist', 'out.js'), 'built')
+    await Bun.write(path.join(projectDir, 'src', 'a.ts'), 'a')
     const got = await resolveInputs({
       projectDir,
       workspaceRoot: root,
@@ -1941,9 +1936,9 @@ describe('inputs.files can only ever narrow the git file set', () => {
   it('the workspace half reads an ignored file named outright too', async () => {
     // Second resolver, same filter-over-git-set design: a fix to one half
     // alone passed the other half's tests.
-    await write(path.join(root, '.gitignore'), 'shared-gen.ts\n')
-    await write(path.join(root, 'shared-gen.ts'), 'v1')
-    await write(path.join(root, 'tsconfig.json'), '{}')
+    await Bun.write(path.join(root, '.gitignore'), 'shared-gen.ts\n')
+    await Bun.write(path.join(root, 'shared-gen.ts'), 'v1')
+    await Bun.write(path.join(root, 'tsconfig.json'), '{}')
 
     const got = await resolveInputs({
       projectDir,
@@ -1959,8 +1954,8 @@ describe('inputs.files can only ever narrow the git file set', () => {
   it('workspaceFiles literals that git DOES report resolve normally', async () => {
     // The control for the workspace half — naming root files by hand is the
     // whole point of the field (a shared tsconfig, a root package.json).
-    await write(path.join(root, 'tsconfig.json'), '{}')
-    await write(path.join(root, 'package.json'), '{}')
+    await Bun.write(path.join(root, 'tsconfig.json'), '{}')
+    await Bun.write(path.join(root, 'package.json'), '{}')
     const got = await resolveInputs({
       projectDir,
       workspaceRoot: root,
@@ -1983,9 +1978,9 @@ describe('inputs.files can only ever narrow the git file set', () => {
     // RESOLVED set rather than the git set — would refuse this repo's own
     // release build. Outputs are never routed through the input resolver, and
     // this pins that they are not.
-    await write(path.join(root, '.gitignore'), 'dist\n')
-    await write(path.join(root, 'dist', 'built.js'), 'artifact')
-    await write(path.join(root, 'tsconfig.json'), '{}')
+    await Bun.write(path.join(root, '.gitignore'), 'dist\n')
+    await Bun.write(path.join(root, 'dist', 'built.js'), 'artifact')
+    await Bun.write(path.join(root, 'tsconfig.json'), '{}')
     const got = await resolveInputs({
       projectDir,
       workspaceRoot: root,
@@ -2004,8 +1999,8 @@ describe('inputs.files can only ever narrow the git file set', () => {
     // gitignored `dist/` — the normal case — is captured and restored correctly.
     // Inputs filter the git set; outputs scan the disk. Two different sources,
     // and the finding above is a consequence of that choice.
-    await write(path.join(root, '.gitignore'), 'dist\n')
-    await write(path.join(projectDir, 'dist', 'bundle.js'), 'built')
+    await Bun.write(path.join(root, '.gitignore'), 'dist\n')
+    await Bun.write(path.join(projectDir, 'dist', 'bundle.js'), 'built')
 
     expect(
       await resolveOutputs({ projectDir, outputs: ['dist/**'], nestedProjectDirs: [] }),

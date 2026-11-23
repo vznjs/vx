@@ -6,7 +6,7 @@
 // file alone, which no task names as an input, so selection must widen to
 // every project under the file's directory.
 
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
@@ -15,11 +15,6 @@ import { git, gitInit } from './helpers/workspace.js'
 
 const TIMEOUT = 60_000
 const CLI = path.join(import.meta.dir, 'helpers', 'vx-locked.ts')
-
-async function write(p: string, content: string): Promise<void> {
-  await mkdir(path.dirname(p), { recursive: true })
-  await writeFile(p, content)
-}
 
 function affected(cwd: string): string {
   const p = Bun.spawnSync({
@@ -54,17 +49,17 @@ const project = (name: string): string =>
 
 beforeEach(async () => {
   root = await mkdtemp(path.join(os.tmpdir(), 'vx-affected-attrs-'))
-  await write(
+  await Bun.write(
     path.join(root, 'package.json'),
     JSON.stringify({ name: 'r', workspaces: ['pkgs/*'] }),
   )
   await writeLocalWorkspace(root)
   for (const name of ['app', 'lib']) {
-    await write(path.join(root, `pkgs/${name}/package.json`), JSON.stringify({ name }))
-    await write(path.join(root, `pkgs/${name}/src/a.txt`), `${name}\n`)
-    await write(path.join(root, `pkgs/${name}/vx.config.mjs`), project(name))
+    await Bun.write(path.join(root, `pkgs/${name}/package.json`), JSON.stringify({ name }))
+    await Bun.write(path.join(root, `pkgs/${name}/src/a.txt`), `${name}\n`)
+    await Bun.write(path.join(root, `pkgs/${name}/vx.config.mjs`), project(name))
   }
-  await write(path.join(root, 'tools/.keep'), '')
+  await Bun.write(path.join(root, 'tools/.keep'), '')
   gitInit(root)
   git(root, 'add', '-A')
   git(root, 'commit', '-qm', 'initial')
@@ -75,7 +70,7 @@ afterEach(async () => {
 })
 
 async function commitRule(at: string): Promise<void> {
-  await write(path.join(root, at, '.gitattributes'), '*.txt text eol=crlf\n')
+  await Bun.write(path.join(root, at, '.gitattributes'), '*.txt text eol=crlf\n')
   git(root, 'add', '-A')
   git(root, 'commit', '-qm', `eol rule in ${at}`)
 }
@@ -133,7 +128,7 @@ it(
 )
 
 async function commitAttributes(text: string, message: string): Promise<void> {
-  await write(path.join(root, '.gitattributes'), text)
+  await Bun.write(path.join(root, '.gitattributes'), text)
   git(root, 'add', '-A')
   git(root, 'commit', '-qm', message)
 }
@@ -170,7 +165,7 @@ it(
 it(
   'a view-only rule above projects selects nothing under it',
   async () => {
-    await write(path.join(root, 'pkgs/.gitattributes'), '*.txt linguist-vendored\n')
+    await Bun.write(path.join(root, 'pkgs/.gitattributes'), '*.txt linguist-vendored\n')
     git(root, 'add', '-A')
     git(root, 'commit', '-qm', 'nested view-only')
     const out = affected(root)

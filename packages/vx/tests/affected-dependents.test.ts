@@ -6,7 +6,7 @@
 // task of the project when no cached task declares the path), and a requested
 // task runs when its `dependsOn` closure holds a seeded one. This drives the
 // real CLI on a git fixture with a manifest edge.
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
@@ -16,11 +16,6 @@ import { git } from './helpers/workspace.js'
 import { vxSync } from './helpers/vx.js'
 
 const TIMEOUT = 60_000
-
-async function write(p: string, content: string): Promise<void> {
-  await mkdir(path.dirname(p), { recursive: true })
-  await writeFile(p, content)
-}
 
 const vx = (cwd: string, ...args: string[]) => vxSync(cwd, args)
 
@@ -47,23 +42,23 @@ const EDGES = edgesSource({ app: ['lib'] })
 /** `app` depends on `lib` through a plugin's edge; `tool` depends on nothing. */
 beforeEach(async () => {
   root = await mkdtemp(path.join(os.tmpdir(), 'vx-affected-deps-'))
-  await write(
+  await Bun.write(
     path.join(root, 'package.json'),
     JSON.stringify({ name: 'r', workspaces: ['pkgs/*'] }),
   )
-  await write(path.join(root, '.vx/workspace.mjs'), localWorkspaceSource([EDGES]))
-  await write(path.join(root, 'pkgs/lib/package.json'), JSON.stringify({ name: 'lib' }))
-  await write(path.join(root, 'pkgs/app/package.json'), JSON.stringify({ name: 'app' }))
-  await write(path.join(root, 'pkgs/tool/package.json'), JSON.stringify({ name: 'tool' }))
+  await Bun.write(path.join(root, '.vx/workspace.mjs'), localWorkspaceSource([EDGES]))
+  await Bun.write(path.join(root, 'pkgs/lib/package.json'), JSON.stringify({ name: 'lib' }))
+  await Bun.write(path.join(root, 'pkgs/app/package.json'), JSON.stringify({ name: 'app' }))
+  await Bun.write(path.join(root, 'pkgs/tool/package.json'), JSON.stringify({ name: 'tool' }))
   for (const p of ['lib', 'app', 'tool']) {
-    await write(path.join(root, `pkgs/${p}/src/index.ts`), 'export const x = 1')
-    await write(path.join(root, `pkgs/${p}/src/index.test.ts`), 'test')
-    await write(path.join(root, `pkgs/${p}/vx.config.mjs`), CONFIG)
+    await Bun.write(path.join(root, `pkgs/${p}/src/index.ts`), 'export const x = 1')
+    await Bun.write(path.join(root, `pkgs/${p}/src/index.test.ts`), 'test')
+    await Bun.write(path.join(root, `pkgs/${p}/vx.config.mjs`), CONFIG)
   }
   git(root, 'init', '-q')
   git(root, 'add', '-A')
   git(root, 'commit', '-qm', 'init')
-  await write(path.join(root, 'pkgs/lib/src/index.ts'), 'export const x = 2')
+  await Bun.write(path.join(root, 'pkgs/lib/src/index.ts'), 'export const x = 2')
   git(root, 'add', '-A')
   git(root, 'commit', '-qm', 'edit lib')
 })
@@ -88,7 +83,7 @@ function appBuildHash(): string {
 }
 
 async function commitEdit(rel: string, content: string): Promise<void> {
-  await write(path.join(root, rel), content)
+  await Bun.write(path.join(root, rel), content)
   git(root, 'add', '-A')
   git(root, 'commit', '-qm', `edit ${rel}`)
 }
@@ -241,7 +236,7 @@ describe('--affected follows task edges (2026-10-04)', () => {
     async () => {
       // Only tool declares toString; lib's edit reaches lib and app, which
       // inherit `toString` from Object and must not read as declaring it.
-      await write(
+      await Bun.write(
         path.join(root, 'pkgs/tool/vx.config.mjs'),
         `export default { tasks: { toString: { exec: { command: 'true' } } } }\n`,
       )
@@ -274,7 +269,7 @@ describe('--affected follows task edges (2026-10-04)', () => {
   it(
     'a dependent with no task edge to the change is not affected',
     async () => {
-      await write(
+      await Bun.write(
         path.join(root, 'pkgs/app/vx.config.mjs'),
         `export default { tasks: { build: { exec: { command: 'true' } } } }\n`,
       )
@@ -291,7 +286,7 @@ describe('--affected follows task edges (2026-10-04)', () => {
     async () => {
       // lib declares no build, so it gets the default: a group behind ^build
       // keyed on every file of lib (2026-10-04).
-      await write(
+      await Bun.write(
         path.join(root, 'pkgs/lib/vx.config.mjs'),
         `export default { tasks: { test: { exec: { command: 'true' }, inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true } } }\n`,
       )
@@ -332,7 +327,7 @@ describe('--affected follows task edges (2026-10-04)', () => {
 describe('--affected follows the graph a `graph` plugin leaves', () => {
   /** Commits a workspace whose plugin runs `body` as its `graph` hook. */
   async function graphPlugin(body: string): Promise<void> {
-    await write(
+    await Bun.write(
       path.join(root, '.vx/workspace.mjs'),
       localWorkspaceSource([EDGES, pluginSource('org/edge', `{ graph(nodes) { ${body} } }`)]),
     )
@@ -395,7 +390,7 @@ describe('--affected follows the graph a `graph` plugin leaves', () => {
     async () => {
       // A run judged `^nope` only for the tasks the diff kept; a run now
       // checks no rule, and the lock checks every task.
-      await write(
+      await Bun.write(
         path.join(root, 'pkgs/tool/vx.config.mjs'),
         CONFIG.replace("dependsOn: ['^build']", "dependsOn: ['^build', '^nope']"),
       )
