@@ -248,6 +248,29 @@ it(
   TIMEOUT,
 )
 
+// A dotenv file is the user's settings: named, the way out said to declare
+// a Next app's `.env.local` an output, which the clean then deletes.
+it(
+  'a miss whose outputs come out empty beside an ignored .env.local does not name it',
+  async () => {
+    const root = await makeWorkspace({ prefix: 'vx-undeclared-state-' })
+    made.push(root)
+    await addProject(root, 'app', {
+      files: { 'src/a.txt': 'a', '.gitignore': 'dist/\n.env.local\n', '.env.local': 'SECRET=1\n' },
+      config: `export default { tasks: { build: {
+        exec: { command: 'true' },
+        inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
+      } } }`,
+    })
+    const fx = { root, log: [] as string[], err: [] as string[] }
+    const opts = { cwd: root, tasks: ['build'], log: silentLogger(fx) }
+    expect((await run(opts)).outcomes.map((o) => o.status)).toEqual(['failed'])
+    expect(fx.log.join('\n')).toContain('outputs matched no files (dist/**)')
+    expect(fx.log.join('\n')).not.toContain('.env.local')
+  },
+  TIMEOUT,
+)
+
 // The way out: declared, the state goes with the clean and comes back
 // with a hit, so every miss builds everything.
 it(

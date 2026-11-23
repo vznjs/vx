@@ -1150,7 +1150,9 @@ the line names the file and the fix:
 declare it in `outputs.files`, so a miss starts without it and a hit
 restores it. Any other untracked file is a generator's own, rewritten
 each build (Astro's `.astro/` with no `.gitignore` entry): stamped, no
-such build was ever saved. Of a directory git ignores whole (`.cache/`,
+such build was ever saved. A dotenv file (`.env`, `.env.local`) is the
+user's settings, never state: named, the fix would have the clean delete
+it and the cache store its secrets. Of a directory git ignores whole (`.cache/`,
 `node_modules/`), only the `.tsbuildinfo` files under it count, found
 once per run, a `node_modules` searched only in its own dot directories
 (`.tmp`): a bundler's cache there (`.next/cache`) is rewritten on every
