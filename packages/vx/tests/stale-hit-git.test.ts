@@ -232,8 +232,11 @@ describe('stale cache hits', () => {
       await Bun.write(path.join(root, 'dist/LICENSE'), 'hand edit')
       expect(vx(root, 'run', 'build')).not.toMatch(/build[^\n]*(up-to-date|restored)/)
       expect(await readFile(path.join(root, 'dist/LICENSE'), 'utf8')).toBe('hand edit')
+      // Saved and stamped by that miss, under a key that folded its bytes:
+      // no proof of git's version, so a later miss does not write it back.
       await Bun.write(path.join(root, 'src/a.txt'), 'b')
       vx(root, 'run', 'build')
+      expect(await readFile(path.join(root, 'dist/LICENSE'), 'utf8')).toBe('hand edit')
       git(root, 'checkout', '--', 'dist/LICENSE')
       vx(root, 'run', 'build')
       expect(await readFile(path.join(root, 'dist/LICENSE'), 'utf8')).toBe('license v1')
@@ -284,6 +287,41 @@ describe('stale cache hits', () => {
       git(root, 'checkout', '--', 'dist/LICENSE')
       vx(root, 'run', 'build')
       expect(await license()).toBe('license v1\nbuilt\n')
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a task that keeps its outputs still starts from the committed bytes it is keyed by',
+    async () => {
+      // `outputs.clean: false` skips the clean before the first attempt, and
+      // with it the write-back: the append saved 'v1 built built' under the
+      // key a clean checkout computes (review).
+      await Bun.write(path.join(root, 'package.json'), '{"name":"r","private":true}')
+      await writeLocalWorkspace(root)
+      await Bun.write(
+        path.join(root, 'vx.config.mjs'),
+        `export default {
+           tasks: {
+             build: {
+               exec: { command: 'mkdir -p dist && cat src/a.txt > dist/out && echo built >> dist/LICENSE' },
+               inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'], clean: false }, cache: true,
+             },
+           },
+         }`,
+      )
+      await Bun.write(path.join(root, 'src/a.txt'), 'a')
+      await Bun.write(path.join(root, 'dist/LICENSE'), 'license v1\n')
+      await Bun.write(path.join(root, '.gitignore'), '.vx/cache/\ndist/out\n')
+      gitInit(root)
+      git(root, 'add', '-A')
+      git(root, 'commit', '-q', '-m', 'initial')
+
+      await writeLocalWorkspace(root)
+      vx(root, 'run', 'build')
+      await Bun.write(path.join(root, 'src/a.txt'), 'b')
+      vx(root, 'run', 'build')
+      expect(await readFile(path.join(root, 'dist/LICENSE'), 'utf8')).toBe('license v1\nbuilt\n')
     },
     TIMEOUT,
   )

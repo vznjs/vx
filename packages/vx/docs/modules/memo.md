@@ -40,7 +40,7 @@ export interface StoreMemo {
   readonly folds: FoldMemo
   loadOutputFilesBatch(hashes: readonly string[]): Map<string, OutputFileRow[]>
   stampedRowsOf(hash: string): readonly OutputFileRow[] | undefined // as this process last stamped them: no query
-  stampsOf(inos: readonly number[]): Set<string> // `ino:ctime` of each stamp on any of inos, pending or flushed
+  foldedStamps(files: readonly StampProbe[]): Set<string> // the `ino:ctime` among files' a stamp (pending or flushed) holds under an entry whose entry_inputs folded the file's oid at rel
   isOutputsCurrent(projectDir: string, expected: readonly OutputFileRow[]): boolean
   recordOutputDirs(
     hash: string,
@@ -222,10 +222,15 @@ export const DIR_MODE = 0o040000
 export function wideDirMode(disk: number): boolean
 // Every directory above the rows' paths, which a restore makes first.
 export function rowAncestors(rows: readonly OutputFileRow[]): string[]
-// The file at abs is the one this machine stamped for row (isOutputsCurrent's test, by lstat); no stamp: never.
-export function stampedCurrent(abs: string, row: OutputFileRow): boolean
 // `dir` and a slash: a row's path appended to it is the file's.
 export const baseOf: (dir: string) => string
+// A file `foldedStamps` asks about: its inode and ctime now, and what git holds for it.
+export interface StampProbe {
+  ino: number
+  ctimeMs: number
+  rel: string // workspace-relative, POSIX: as an `entry_inputs` file component names it
+  oid: string
+}
 export interface OutputFileRow {
   path: string
   mtimeMs: number

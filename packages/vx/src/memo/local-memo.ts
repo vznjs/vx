@@ -6,7 +6,13 @@ import path from 'node:path'
 import { relPosix } from '../util/index.js'
 import type { FileHashStore } from './file-hashes.js'
 import type { FoldMemo } from './fold-memo.js'
-import { baseOf, type OutputDirRow, type OutputFileRow, type OutputIndex } from './output-index.js'
+import {
+  baseOf,
+  type OutputDirRow,
+  type OutputFileRow,
+  type OutputIndex,
+  type StampProbe,
+} from './output-index.js'
 import { STAT_FIELDS, StatThread } from './stat-thread.js'
 
 // About 1.3 ms of inserts per turn: a task's exit waits at most that.
@@ -30,7 +36,7 @@ export interface StoreMemo {
   readonly folds: FoldMemo
   loadOutputFilesBatch(hashes: readonly string[]): Map<string, OutputFileRow[]>
   stampedRowsOf(hash: string): readonly OutputFileRow[] | undefined
-  stampsOf(inos: readonly number[]): Set<string>
+  foldedStamps(files: readonly StampProbe[]): Set<string>
   isOutputsCurrent(projectDir: string, expected: readonly OutputFileRow[]): boolean
   recordOutputDirs(
     hash: string,
@@ -258,9 +264,9 @@ export class LocalMemo implements StoreMemo {
     return this.outputs.stampedRowsOf(hash)
   }
 
-  /** `ino:ctime` of each stamp on any of `inos`. */
-  stampsOf(inos: readonly number[]): Set<string> {
-    return this.guard(() => this.outputs.stampsOf(inos))
+  /** The identities among `files`' a stamp holds under an entry whose key folded the file's OID. */
+  foldedStamps(files: readonly StampProbe[]): Set<string> {
+    return this.guard(() => this.outputs.foldedStamps(files))
   }
 
   /**

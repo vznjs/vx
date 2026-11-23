@@ -1100,14 +1100,14 @@ export class GitFilesCache extends Map<string, readonly string[]> {
     return this.staged
   }
 
-  setStaged(staged: Map<string, string>, index: GitEnumeration['stagedIndex']): void {
+  setStaged(staged: Map<string, string>, index: { file: string; stamp: string } | undefined): void {
     this.staged = staged
     this.stagedIndex = index
     this.stagedChecked = true
   }
 
   private staged = new Map<string, string>()
-  private stagedIndex: GitEnumeration['stagedIndex']
+  private stagedIndex: { file: string; stamp: string } | undefined
   private stagedChecked = true
 
   /** Trusted index OIDs for a project (abs path → oid), if any survive. */
@@ -3078,23 +3078,24 @@ function indexStampOf(file: string | undefined): string | undefined {
  * key that folded that OID promises. Throws when git cannot give them.
  */
 export function writeIndexBlobs(files: ReadonlyMap<string, string>): void {
-  let top: string | undefined
   for (const [abs, held] of files) {
     const colon = held.indexOf(':')
     const oid = colon === -1 ? held : held.slice(colon + 1)
+    const dir = path.dirname(abs)
+    const facts = repoFacts(dir)
+    if (facts === null) throw new Error(`git could not give ${abs} as committed: no repository`)
     // `--path` is the top's, whatever the cwd: an attribute file below it
     // names the filters.
-    top ??= gitOut(path.dirname(abs), ['rev-parse', '--show-toplevel']).trim()
     const proc = Bun.spawnSync({
       cmd: [
         executablePath('git'),
         'cat-file',
         '--filters',
-        `--path=${relPosix(top, realpathSync(abs))}`,
+        `--path=${facts.prefix}${path.basename(abs)}`,
         oid,
       ],
       env: gitEnv(),
-      cwd: top,
+      cwd: dir,
       stdout: 'pipe',
       stderr: 'pipe',
     })
@@ -3106,19 +3107,6 @@ export function writeIndexBlobs(files: ReadonlyMap<string, string>): void {
     const want = exec ? mode | 0o111 : mode & ~0o111
     if (want !== mode) chmodSync(abs, want)
   }
-}
-
-/** A git command's stdout; throws with its stderr when it fails. */
-function gitOut(cwd: string, args: string[]): string {
-  const proc = Bun.spawnSync({
-    cmd: [executablePath('git'), ...args],
-    env: gitEnv(),
-    cwd,
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
-  if (proc.exitCode !== 0) throw new Error(`git ${args[0]}: ${proc.stderr.toString().trim()}`)
-  return proc.stdout.toString()
 }
 
 /** The partition half of `populateGitFilesCache`: store per-project slices of one enumeration. */

@@ -20,9 +20,9 @@ export {
   OUTPUT_DIRS_OVER_CAP,
   type OutputDirRow,
   type OutputFileRow,
+  type StampProbe,
   OutputIndex,
   rowAncestors,
-  stampedCurrent,
   wideDirMode,
   WORKSPACE_OUTPUT_PREFIX,
 } from './output-index.js'

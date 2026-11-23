@@ -128,7 +128,7 @@ export class OutputGuard {
     // `.tsbuildinfo`).
     const clean = write && !deferred && !(keepOutputs && attempt === 1)
     this.committedKept = []
-    if (clean && held !== undefined) {
+    if (write && !deferred && held !== undefined) {
       // The key folded what git holds for these, not the bytes an earlier
       // build left: the command starts from it, as on a clean checkout, so
       // one that reads or appends to them saves what that checkout builds.

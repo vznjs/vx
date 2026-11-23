@@ -103,27 +103,6 @@ interface WarmStats {
 const DIRS_JOINED =
   'SELECT d.entry_hash, d.path, d.mtime_ms FROM json_each(?) q JOIN output_dirs d ON d.entry_hash = q.value AND d.root = ?'
 
-/**
- * Whether the file at `abs` is the one this machine stamped for `row` after the
- * save or restore that left it equal to the entry, judged as
- * `isOutputsCurrent` judges a file but by lstat. A row with no stamp, or a
- * link's, never is.
- */
-export function stampedCurrent(abs: string, row: OutputFileRow): boolean {
-  const e = row as StampedRow
-  if (e.ino === undefined || e.mode === LINK_MODE) return false
-  const s = lstatSync(abs, { throwIfNoEntry: false })
-  return (
-    s !== undefined &&
-    s.isFile() &&
-    s.size === e.size &&
-    modeMatches(s.mode, e.mode) &&
-    Math.abs(s.mtimeMs - (e.stampMtimeMs ?? e.mtimeMs)) < 1 &&
-    s.ino === e.ino &&
-    Math.floor(s.ctimeMs) === e.ctimeMs
-  )
-}
-
 export class OutputIndex {
   /** Rows read ahead of the probe (`warmRows`), by entry hash; the probe's read takes them. */
   private readonly warmed = new Map<string, OutputFileRow[]>()
@@ -285,22 +264,58 @@ export class OutputIndex {
   }
 
   /**
-   * `ino:ctime` (floored) of each stamp this workspace holds on any of
-   * `inos`, flushed or pending. A scan of the stamps: once a run, and only
-   * where a committed output is changed (`heldOutputs`).
+   * The identities (`ino:ctime`, floored) among `files`' that a stamp holds
+   * under an entry whose key folded the file's `oid` at its workspace-relative
+   * `rel` (its `entry_inputs`): bytes a save or restore here left under a key
+   * that took git's version, not a hand edit some miss saved. Flushed and
+   * pending stamps; one scan of them.
    */
-  stampsOf(inos: readonly number[]): Set<string> {
+  foldedStamps(files: readonly StampProbe[]): Set<string> {
     const out = new Set<string>()
-    if (inos.length === 0) return out
-    const want = new Set(inos)
-    for (const stamps of this.pendingStamps.values())
-      for (const [ino, ctime] of stamps.values()) if (want.has(ino)) out.add(`${ino}:${ctime}`)
+    if (files.length === 0) return out
+    const byId = new Map<string, StampProbe>()
+    for (const f of files) byId.set(`${f.ino}:${Math.floor(f.ctimeMs)}`, f)
+    const under = new Map<string, Set<string>>()
+    const note = (id: string, hash: string): void => {
+      if (!byId.has(id)) return
+      let hashes = under.get(id)
+      if (hashes === undefined) under.set(id, (hashes = new Set()))
+      hashes.add(hash)
+    }
+    for (const [hash, stamps] of this.pendingStamps)
+      for (const [ino, ctime] of stamps.values()) note(`${ino}:${ctime}`, hash)
     const rows = this.db
       .query(
-        'SELECT ino, ctime_ms FROM output_stamps WHERE root = ? AND ino IN (SELECT value FROM json_each(?))',
+        'SELECT entry_hash, ino, ctime_ms FROM output_stamps WHERE root = ? AND ino IN (SELECT value FROM json_each(?))',
       )
-      .all(this.root, JSON.stringify(inos)) as Array<{ ino: number; ctime_ms: number }>
-    for (const r of rows) out.add(`${r.ino}:${r.ctime_ms}`)
+      .all(this.root, JSON.stringify(files.map((f) => f.ino))) as Array<{
+      entry_hash: string
+      ino: number
+      ctime_ms: number
+    }>
+    for (const r of rows) note(`${r.ino}:${r.ctime_ms}`, r.entry_hash)
+    if (under.size === 0) return out
+    const hashes = new Set<string>()
+    for (const hs of under.values()) for (const h of hs) hashes.add(h)
+    const folded = new Map<string, Set<string>>()
+    for (const r of this.db
+      .query(
+        'SELECT entry_hash, components FROM entry_inputs WHERE entry_hash IN (SELECT value FROM json_each(?))',
+      )
+      .all(JSON.stringify([...hashes])) as Array<{ entry_hash: string; components: string }>) {
+      const files = new Set<string>()
+      for (const [kind, name, digest] of JSON.parse(r.components) as [string, string, string][])
+        if (kind === 'file') files.add(`${name}\0${digest}`)
+      folded.set(r.entry_hash, files)
+    }
+    for (const [id, hs] of under) {
+      const f = byId.get(id)!
+      for (const h of hs)
+        if (folded.get(h)?.has(`${f.rel}\0${f.oid}`) === true) {
+          out.add(id)
+          break
+        }
+    }
     return out
   }
 
@@ -768,6 +783,15 @@ export interface OutputFileRow {
    */
   ino?: number
   ctimeMs?: number
+}
+
+/** A file `foldedStamps` asks about: its inode and ctime now, and what git holds for it. */
+export interface StampProbe {
+  ino: number
+  ctimeMs: number
+  /** Workspace-relative, POSIX: as an `entry_inputs` file component names it. */
+  rel: string
+  oid: string
 }
 
 /** One directory under a whole-subtree output glob, as it stood after the last save or restore on THIS machine. */

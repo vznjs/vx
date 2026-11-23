@@ -1255,15 +1255,16 @@ turborepo#14831 fixed in Turbo) or a `!` entry takes it back (`**`,
 moves the key and the saved bytes follow from it; the task's rewrite is no input that moved mid-run.
 Where no input glob names it, the key folds the version git holds (its
 index OID) while the file has bytes a save or restore on this machine
-left (an output stamp holds its inode and ctime), and its bytes otherwise
+left under a key that folded that version (an output stamp holds its
+inode and ctime, under an entry whose inputs name that OID), and its
+bytes otherwise
 (2026-11-23): a build that writes a timestamped `dist/index.js.map` over
 the committed one moved its own next key by its bytes and never hit. A
 miss so keyed first writes back what git holds, so the command starts
 from what a clean checkout has and the entry under that key is what that
 checkout builds, even for a command that appends to the file. A staged
 or committed edit still moves the key, and a hand edit keys by its bytes
-and is never written back; once a build has rewritten it, the bytes are
-that build's. One an input glob names (`src/**` over its
+and is never written back, even once a miss saved it. One an input glob names (`src/**` over its
 `routeTree.gen.ts`) keys by its bytes.
 A run that removes one (`rm dist/tracked.txt`) saves nothing: no hit
 could replay the removal, since its restore leaves the file too, so the

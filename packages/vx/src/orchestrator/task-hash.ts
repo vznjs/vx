@@ -5,6 +5,7 @@ import {
   type FoldMemo,
   FILE_HASH_RACY_MS,
   racyWindowMs,
+  type StampProbe,
   stampGrainMs,
   WORKSPACE_OUTPUT_PREFIX,
 } from '../memo/index.js'
@@ -687,11 +688,12 @@ async function resolveKeyInput(
 /**
  * The committed outputs no input glob names whose key part is what git holds
  * (`committedOutputOids`), or undefined for none: each whose bytes on disk a
- * save or restore here left (`vxWritten`). A build that rewrites a committed
- * `dist/index.js.map` with new bytes each run then hits, and a miss first puts
- * back what git holds (`OutputGuard.prepare`), so the entry under that key is
- * what a clean checkout builds. A hand edit keys by its bytes, as any input
- * does, and is never written over.
+ * save or restore here left under a key that folded that version
+ * (`foldedIdentities`). A build that rewrites a committed
+ * `dist/index.js.map` with new bytes each run then hits, and a miss first
+ * writes back what git holds (`OutputGuard.prepare`), so the entry under that
+ * key is what a clean checkout builds. A hand edit keys by its bytes, as any
+ * input does, and is never written over, even once a miss saved it.
  */
 async function heldOutputs(
   args: ComputeHashArgs,
@@ -707,34 +709,40 @@ async function heldOutputs(
     run.stagedOids,
   )
   if (found === undefined) return undefined
-  const written = vxWritten(run, args.cache.memo)
+  const proven = foldedIdentities(run, args.cache.memo, args.workspaceRoot)
   const held = new Map<string, string>()
-  for (const [abs, oid] of found) if (written.has(abs)) held.set(abs, oid)
+  for (const [abs, oid] of found) {
+    // Asked now, not at the run's start: a task's write since is no proof.
+    const st = lstatSync(abs, { throwIfNoEntry: false })
+    if (st?.isFile() === true && proven.has(`${st.ino}:${Math.floor(st.ctimeMs)}`))
+      held.set(abs, oid)
+  }
   return held.size > 0 ? held : undefined
 }
 
-const vxWrittenOf = new WeakMap<GitFilesCache, ReadonlySet<string>>()
+const foldedOf = new WeakMap<GitFilesCache, ReadonlySet<string>>()
 
 /**
- * The run's changed tracked files whose inode and ctime an output stamp holds
- * (a save or restore here left those bytes), by absolute path. One read of
- * the stamps per run, as the run starts asking: every derivation of a key
- * this run then agrees; a stamp taken later this run is not one.
+ * The `ino:ctime` identities of the run's changed tracked files as it first
+ * asks that a stamp holds under an entry whose key folded their index OID
+ * (`foldedStamps`). One read of the stamps per run.
  */
-function vxWritten(run: GitFilesCache, memo: CacheLayer['memo']): ReadonlySet<string> {
-  let written = vxWrittenOf.get(run)
-  if (written !== undefined) return written
-  const stats = new Map<string, { ino: number; ctimeMs: number }>()
-  for (const abs of run.stagedOids.keys()) {
+function foldedIdentities(
+  run: GitFilesCache,
+  memo: CacheLayer['memo'],
+  workspaceRoot: string,
+): ReadonlySet<string> {
+  let proven = foldedOf.get(run)
+  if (proven !== undefined) return proven
+  const probes: StampProbe[] = []
+  for (const [abs, oid] of run.stagedOids) {
     const st = lstatSync(abs, { throwIfNoEntry: false })
-    if (st?.isFile() === true) stats.set(abs, { ino: st.ino, ctimeMs: Math.floor(st.ctimeMs) })
+    if (st?.isFile() === true)
+      probes.push({ ino: st.ino, ctimeMs: st.ctimeMs, rel: relPosix(workspaceRoot, abs), oid })
   }
-  const stamped = memo.stampsOf?.([...stats.values()].map((s) => s.ino)) ?? new Set<string>()
-  written = new Set(
-    [...stats].filter(([, s]) => stamped.has(`${s.ino}:${s.ctimeMs}`)).map(([a]) => a),
-  )
-  vxWrittenOf.set(run, written)
-  return written
+  proven = memo.foldedStamps?.(probes) ?? new Set<string>()
+  foldedOf.set(run, proven)
+  return proven
 }
 
 /**
