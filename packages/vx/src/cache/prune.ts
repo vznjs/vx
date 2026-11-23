@@ -33,6 +33,11 @@ import {
 /** What `vx cache clean` keeps of run history and the hash memos. */
 const HISTORY_RETENTION_MS = 30 * 24 * 60 * 60 * 1000
 
+/** How long run history is kept (`history.retention`), as the prune reads it. */
+export function historyRetentionMs(): number {
+  return limitSetting('VX_HISTORY_RETENTION', HISTORY_RETENTION_MS)
+}
+
 /**
  * What the orphan sweep may judge: a row-less artifact (file or inline) or a
  * dead file (a temp, or a file an inline artifact of its key shadows), which
@@ -267,8 +272,7 @@ async function pruneIndex(
   }
   // After the entries' release, so the shrink measured here is the history's
   // alone: a year of runs left 28k of 36k pages free in a 140 MB index.
-  const historyWindowMs = limitSetting('VX_HISTORY_RETENTION', HISTORY_RETENTION_MS)
-  const cutoff = now - historyWindowMs
+  const cutoff = now - historyRetentionMs()
   const historyRows =
     pruneHistoryRows(ix.db, cutoff) + ix.files.pruneOlderThan(cutoff) + ix.folds.prune(cutoff)
   const result = { evicted: victims.size, bytesFreed, ...orphans }
@@ -280,12 +284,7 @@ async function pruneIndex(
   const before = sizeOf(files)
   releaseFreePages(ix, 'main')
   if (ix.storeDir !== undefined) releaseFreePages(ix, 'store')
-  return {
-    ...result,
-    historyRows,
-    historyBytes: Math.max(0, before - sizeOf(files)),
-    historyWindowMs,
-  }
+  return { ...result, historyRows, historyBytes: Math.max(0, before - sizeOf(files)) }
 }
 
 /**

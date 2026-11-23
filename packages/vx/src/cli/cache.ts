@@ -10,7 +10,13 @@ import {
 } from 'node:fs'
 import { homedir } from 'node:os'
 import path from 'node:path'
-import { Cache, holdCacheDir, holdStore, vxCacheEntries } from '../cache/index.js'
+import {
+  Cache,
+  historyRetentionMs,
+  holdCacheDir,
+  holdStore,
+  vxCacheEntries,
+} from '../cache/index.js'
 import { flagHint, formatValue, refuse, refusedWord, seeHelp } from './help.js'
 import {
   errorCode,
@@ -288,7 +294,7 @@ function printPruned(
   dry: boolean,
   json: boolean,
 ): void {
-  const { historyRows = 0, historyBytes = 0, historyWindowMs = 0 } = result
+  const { historyRows = 0, historyBytes = 0 } = result
   if (json) {
     const { evicted, bytesFreed, orphans, orphanBytes } = result
     const history = dry || historyRows === 0 ? {} : { historyRows, historyBytes }
@@ -305,7 +311,9 @@ function printPruned(
       ? [plural(result.orphans, 'orphaned artifact', 'orphaned artifacts')]
       : []),
     ...(historyRows > 0
-      ? [`${plural(historyRows, 'history row', 'history rows')} past ${retention(historyWindowMs)}`]
+      ? [
+          `${plural(historyRows, 'history row', 'history rows')} past ${retention(historyRetentionMs())}`,
+        ]
       : []),
   ]
   ui.print(

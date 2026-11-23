@@ -53,7 +53,8 @@ the `history` module's (history.md), and the tables `index-db`'s
 - `save.ts` — `save` / `ingest`: pack, write and index an entry, batched
   index writes, the off-thread checkpoints.
 - `prune.ts` — `prune` / `stats` / `orphanStats`: eviction, orphans,
-  and the 30-day history retention.
+  and the history retention (`historyRetentionMs`, 30 days by default;
+  `vx cache clean` names it).
 - `cache-dir.ts` — the directory itself: made private, its `*` ignore,
   the manifests and the locks a clean takes (`holdCacheDir`, `holdStore`).
 - `cache.ts` — the `Cache` class: it opens a `StoreIndex` and delegates
@@ -233,9 +234,8 @@ export interface PruneResult {
   bytesFreed: number
   orphans: number // row-less artifacts the policy takes by file time, and temps an hour old
   orphanBytes: number
-  historyRows?: number // run history and memo rows past historyWindowMs dropped; absent when none went
+  historyRows?: number // run history and memo rows past 30 days dropped; absent when none went
   historyBytes?: number // bytes the index files shrank by once those rows' pages went back
-  historyWindowMs?: number // the retention they were past (history.retention, 30 days by default)
 }
 
 export interface CacheKeyInput {
