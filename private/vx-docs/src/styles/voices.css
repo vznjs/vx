@@ -112,7 +112,7 @@
 
 /* The light theme: ink cards on paper, each still tinted by its voice. */
 :root[data-theme='light'] .bubble-in {
-  background: color-mix(in srgb, var(--tint, var(--tone-core)) 8%, #ffffff);
+  background: color-mix(in srgb, var(--tint, var(--tone-core)) 8%, #f2f5ec);
   box-shadow: 0 10px 30px -18px color-mix(in srgb, var(--tint, var(--tone-core)) 60%, transparent);
 }
 :root[data-theme='light'] .bubble-in blockquote {

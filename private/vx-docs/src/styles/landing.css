@@ -1,4 +1,6 @@
-:root {
+:root,
+:root[data-theme='light']
+  :is(header.header, footer.footer, .vx-stage-page .stage, .expressive-code) {
   /* ---- Ink / neutral ramp (warm near-black → light) ---- */
   --ink-900: #0a0b0d;
   --ink-850: #0e1013;
@@ -80,38 +82,38 @@
 /* The light theme, picked from the header or the system like every other
    page's. */
 :root[data-theme='light']:has(.vx-landing) {
-  --ink-900: #fbfcf9;
-  --ink-850: #f3f5ef;
-  --ink-800: #ffffff;
-  --ink-700: #eef1ea;
-  --ink-600: #e5eadf;
-  --phosphor-bright: #3a5c00;
-  --phosphor: #4d7a00;
-  --phosphor-deep: #4d7a00;
-  --plasma: #066586;
-  --text-hi: #14171b;
-  --text: #333b44;
-  --text-mut: #5b635f;
-  --text-faint: #5f6763;
-  --text-on-accent: #fbfcf9;
-  --line: #dfe5d9;
-  --line-strong: #cfd6c9;
-  --line-faint: #eaeee5;
+  --ink-900: #e6ecdc;
+  --ink-850: #dde4d1;
+  --ink-800: #f2f5ec;
+  --ink-700: #d8e0cb;
+  --ink-600: #ccd5bd;
+  --phosphor-bright: #2f5200;
+  --phosphor: #3a6200;
+  --phosphor-deep: #3a6200;
+  --plasma: #045a78;
+  --text-hi: #0b0d0f;
+  --text: #1f252b;
+  --text-mut: #3f4842;
+  --text-faint: #525b55;
+  --text-on-accent: #14210a;
+  --line: #c6cfba;
+  --line-strong: #b9c3ad;
+  --line-faint: #d3dbc6;
   --glow-phosphor-sm: none;
-  --glow-phosphor: 0 2px 10px color-mix(in srgb, #4d7a00 25%, transparent);
+  --glow-phosphor: none;
   --text-glow: none;
   color-scheme: light;
 }
 :root[data-theme='light'] .vx-landing {
-  --vx-bg: #fbfcf9;
-  --vx-fg: #14171b;
-  --vx-text: #333b44;
-  --vx-muted: #5b635f;
-  --vx-surface: #f1f4ec;
-  --vx-surface-2: #e5eadf;
-  --vx-border: #cfd6c9;
-  --vx-accent: #4d7a00;
-  --vx-link: #066586;
+  --vx-bg: #e6ecdc;
+  --vx-fg: #0b0d0f;
+  --vx-text: #1f252b;
+  --vx-muted: #3f4842;
+  --vx-surface: #f2f5ec;
+  --vx-surface-2: #d8e0cb;
+  --vx-border: #b9c3ad;
+  --vx-accent: #3a6200;
+  --vx-link: #045a78;
 }
 
 /* ============================================================
@@ -213,7 +215,7 @@ body:has(.vx-landing) {
   font-size: 15px;
 }
 .btn-primary {
-  background: var(--phosphor);
+  background: var(--vx-accent-fill);
   color: var(--text-on-accent);
   box-shadow: var(--glow-phosphor-sm);
 }

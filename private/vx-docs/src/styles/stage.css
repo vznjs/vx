@@ -7,6 +7,11 @@
    Motion lives in .js / .play, which only scripts set. */
 
 .vx-stage-page {
+  background: var(--void);
+}
+/* The hero stays the dark sunset in both themes; the terminal too. */
+.vx-stage-page,
+:root[data-theme='light'] .vx-stage-page :is(.stage, .term) {
   --tone-core: #c6f84e;
   --tone-read: #5ee0ff;
   --tone-remote: #ff9d42;
@@ -20,7 +25,6 @@
   --panel: rgba(16, 19, 26, 0.72);
   --hair: rgba(148, 170, 200, 0.14);
   --nav-h: var(--sl-nav-height, 4rem);
-  background: var(--void);
   /* Every other colour the stage paints: the dark theme's here, the light
      theme's below. The terminal keeps its dark screen in both. */
   --st-haze: 148 170 200;
@@ -79,23 +83,23 @@
   --st-dte-label2: #f6f2ff;
 }
 :root[data-theme='light'] .vx-stage-page {
-  --tone-core: #4d7a00;
-  --tone-read: #066586;
-  --tone-remote: #c25e00;
-  --tone-dte: #6f42e0;
-  --tone-report: #c42a78;
-  --sun-1: #8fbf00;
-  --sun-2: #4d9a1a;
-  --sun-3: #12a37a;
-  --sun-4: #0a8fb8;
-  --void: #fbfcf9;
-  --panel: rgba(255, 255, 255, 0.82);
-  --hair: rgba(60, 75, 90, 0.18);
-  --st-haze: 70 85 100;
+  --tone-core: #3a6200;
+  --tone-read: #045a78;
+  --tone-remote: #8a4a00;
+  --tone-dte: #5b32c8;
+  --tone-report: #a3215f;
+  --sun-1: #3a6200;
+  --sun-2: #2f6e12;
+  --sun-3: #0f7a5a;
+  --sun-4: #045a78;
+  --void: #e6ecdc;
+  --panel: rgba(242, 245, 236, 0.9);
+  --hair: rgba(11, 13, 15, 0.22);
+  --st-haze: 40 50 45;
   --st-lime: 98 150 10;
   --st-grid: 40 150 85;
   --st-cyan: 10 126 164;
-  --st-glass: 255 255 255;
+  --st-glass: 242 245 236;
   --st-wire: rgba(60, 80, 100, 0.32);
   --st-sky-1: #f6fbf1;
   --st-sky-2: #eaf6e2;
@@ -106,8 +110,8 @@
   --st-floor-2: #f6faf3;
   --st-star: rgba(60, 120, 80, 0.35);
   --st-horizon: rgba(60, 140, 40, 0.8);
-  --st-hi: #14171b;
-  --st-hi2: #14171b;
+  --st-hi: #0b0d0f;
+  --st-hi2: #0b0d0f;
   --st-hi3: #0a0b0d;
   --st-tx1: #333b44;
   --st-tx2: #333b44;
@@ -117,17 +121,17 @@
   --st-tx6: #3d454d;
   --st-mut1: #4a524e;
   --st-mut2: #525a56;
-  --st-mut3: #5b635f;
-  --st-mut4: #5b635f;
-  --st-faint1: #5f6763;
-  --st-faint2: #5f6763;
-  --st-on-core: #fbfcf9;
-  --st-node: #ffffff;
-  --st-void2: #ffffff;
+  --st-mut3: #3f4842;
+  --st-mut4: #3f4842;
+  --st-faint1: #525b55;
+  --st-faint2: #525b55;
+  --st-on-core: #f2f5ec;
+  --st-node: #f2f5ec;
+  --st-void2: #f2f5ec;
   --st-chip: #f1f6e6;
   --st-chip2: #e5eadf;
-  --st-slot: #ffffff;
-  --st-dial: #ffffff;
+  --st-slot: #f2f5ec;
+  --st-dial: #f2f5ec;
   --st-dot: #5b6672;
   --st-bad: #d32f2f;
   --st-bad-text: #c62828;
@@ -140,20 +144,12 @@
   --st-warm-bg: #ffe8cc;
   --st-warm-fg: #6b3a00;
   --st-warm-edge: #f0c48f;
-  --st-idle-bg: #eef1ea;
-  --st-idle-line: #cfd6c9;
-  --st-idle-edge: #cfd6c9;
+  --st-idle-bg: #d8e0cb;
+  --st-idle-line: #b9c3ad;
+  --st-idle-edge: #b9c3ad;
   --st-dte-label: #3b2d63;
   --st-dte-label2: #2a1f4a;
 }
-/* The terminal is a dark screen in both themes, in vx's own colours. */
-:root[data-theme='light'] .vx-stage-page .term {
-  --tone-core: #c6f84e;
-  --tone-read: #5ee0ff;
-  --tone-remote: #ff9d42;
-  --tone-report: #f472b6;
-}
-
 .vx-stage-page .tone-core {
   --tone: var(--tone-core);
 }
@@ -171,9 +167,6 @@
 }
 :root:has(.vx-stage-page) header.header {
   background: #040b08;
-}
-:root[data-theme='light']:has(.vx-stage-page) header.header {
-  background: #f6fbf1;
 }
 
 /* Display type shared by the hero and every band. */
@@ -952,6 +945,14 @@
     color-mix(in srgb, color-mix(in srgb, var(--brand) 60%, #8a94a0) 55%, transparent)
   );
 }
+/* In daylight each brand stands solid, not washed out. */
+:root[data-theme='light'] .col-pass {
+  background: linear-gradient(
+    to top,
+    color-mix(in srgb, var(--brand) 55%, #8a94a0),
+    color-mix(in srgb, var(--brand) 85%, #0b0d0f)
+  );
+}
 .col-name {
   font: 600 13px var(--font-body);
   color: var(--st-tx1);
@@ -971,6 +972,10 @@
 .columns .vx .col-pass {
   background: linear-gradient(to top, rgb(var(--st-lime) / 0.55), var(--tone-core));
   box-shadow: 0 0 30px rgb(var(--st-lime) / 0.5);
+}
+:root[data-theme='light'] .columns .vx .col-pass {
+  background: linear-gradient(to top, #8fd11f, #c6f84e);
+  box-shadow: inset 0 0 0 1px rgb(11 13 15 / 0.25);
 }
 .columns .vx .col-name {
   color: var(--tone-core);

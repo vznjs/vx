@@ -6,7 +6,9 @@
    one in the header (components/starlight/ThemeProvider.astro); the light
    theme keeps every pair readable. */
 
-:root {
+:root,
+:root[data-theme='light']
+  :is(header.header, footer.footer, .vx-stage-page .stage, .expressive-code) {
   --vx-bg: #0a0b0d;
   --vx-fg: #f2f5ef;
   --vx-text: #cbd1c9;
@@ -17,6 +19,8 @@
   --vx-accent: #c6f84e;
   --vx-accent-soft: #1b2a0c;
   --vx-on-accent: #14210a;
+  /* A lime fill under dark ink: the accent's colour in both themes. */
+  --vx-accent-fill: #c6f84e;
   --vx-link: #5ee0ff;
   --vx-danger: #ff6b6b;
   --vx-ok: #22c55e;
@@ -68,37 +72,44 @@
 }
 
 :root[data-theme='light'] {
-  --vx-bg: #fbfcf9;
-  --vx-fg: #14171b;
-  --vx-text: #333b44;
-  --vx-muted: #5b635f;
-  --vx-surface: #f1f4ec;
-  --vx-surface-2: #e5eadf;
-  --vx-border: #cfd6c9;
-  --vx-accent: #4d7a00;
-  --vx-accent-soft: #eaf6cf;
-  --vx-on-accent: #fbfcf9;
-  --vx-link: #066586;
-  --vx-danger: #c62828;
-  --vx-ok: #1f8a4c;
-  --vx-warn: #b35c00;
+  /* Daylight, not paper (M 2026-11-23): vx's own look made for a bright
+     room. Sage page, near-black ink, the lime accent as fills with dark
+     text; the header, the landing's hero and footer and every code block
+     stay dark (the dark tokens above apply to them). */
+  --vx-bg: #e6ecdc;
+  --vx-fg: #0b0d0f;
+  --vx-text: #1f252b;
+  --vx-muted: #3f4842;
+  --vx-surface: #f2f5ec;
+  --vx-surface-2: #d8e0cb;
+  --vx-border: #b9c3ad;
+  --vx-accent: #3a6200;
+  --vx-accent-soft: #d3eea0;
+  --vx-on-accent: #14210a;
+  --vx-link: #045a78;
+  --vx-danger: #a3361f;
+  --vx-ok: #1b6b3a;
+  --vx-warn: #8a4a00;
 
-  --sl-color-gray-1: #1c2127;
-  --sl-color-gray-4: #8b938f;
-  --sl-color-gray-7: #f6f8f3;
-  --sl-color-accent-high: #3a5c00;
-  --sl-color-hairline: #e1e6db;
+  --sl-color-gray-1: #14171b;
+  --sl-color-gray-4: #6b746d;
+  --sl-color-gray-6: var(--vx-surface-2);
+  --sl-color-gray-7: #eef2e7;
+  --sl-color-accent: #c6f84e;
+  --sl-color-accent-high: #2f5200;
+  --sl-color-text-accent: #2f5200;
+  --sl-color-hairline: #c6cfba;
 
-  --sl-color-blue-low: #dff3f9;
-  --sl-color-blue-high: #075a75;
+  --sl-color-blue-low: #cfe7ef;
+  --sl-color-blue-high: #03465e;
   --sl-color-purple-low: var(--vx-accent-soft);
-  --sl-color-purple-high: #3a5c00;
-  --sl-color-green-low: #dcf3e5;
-  --sl-color-green-high: #14603a;
-  --sl-color-orange-low: #fbead6;
-  --sl-color-orange-high: #7d4000;
-  --sl-color-red-low: #fbe1e1;
-  --sl-color-red-high: #8e1c1c;
+  --sl-color-purple-high: #2f5200;
+  --sl-color-green-low: #cfe8d7;
+  --sl-color-green-high: #11502b;
+  --sl-color-orange-low: #f3dfc4;
+  --sl-color-orange-high: #6b3600;
+  --sl-color-red-low: #f2d3cc;
+  --sl-color-red-high: #7c2415;
 }
 
 /* ───────────────────────────  Type  ─────────────────────────── */
@@ -138,8 +149,11 @@ h4,
 header.header {
   border-bottom-color: #21262d;
 }
-:root[data-theme='light'] header.header {
-  border-bottom-color: var(--sl-color-hairline);
+
+/* The current page in the sidebar: lime with dark ink, as in the dark theme. */
+:root[data-theme='light'] .sidebar-content a[aria-current='page'] {
+  background-color: #c6f84e;
+  color: #14210a;
 }
 
 /* A Docs group label reads like the landing's kickers: mono, small caps. */

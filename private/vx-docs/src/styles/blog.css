@@ -86,7 +86,7 @@
   width: 1.75rem;
   height: 1.75rem;
   border-radius: 50%;
-  background: var(--vx-accent);
+  background: var(--vx-accent-fill);
   color: var(--vx-on-accent);
   font: 700 0.85rem / 1 var(--vx-font-display);
   text-transform: uppercase;

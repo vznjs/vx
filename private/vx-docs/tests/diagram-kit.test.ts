@@ -178,7 +178,8 @@ describe("the kit's colours and faces", () => {
       const at = css.indexOf(`${selector} {`)
       return css.slice(at, css.indexOf('}', at))
     }
-    const dark = block(':root')
+    // The dark block also names the light theme's dark islands (header, hero, code).
+    const dark = css.slice(css.indexOf(':root,'), css.indexOf('}', css.indexOf(':root,')))
     const light = block(":root[data-theme='light']")
     expect([...TOKENS, ...FONTS].filter((t) => !dark.includes(`${t}:`))).toEqual([])
     // A font stack is the same in both themes.

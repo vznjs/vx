@@ -51,10 +51,9 @@ function token(block: RegExp, name: string): string {
   return value
 }
 
-// Starlight's code background: gray-6 in dark, gray-7 in light; the dark
-// gray-6 is a var() onto --vx-surface.
-const DARK_BG = token(/^:root \{([\s\S]*?)^\}/m, '--vx-surface')
-const LIGHT_BG = token(/^:root\[data-theme='light'\] \{([\s\S]*?)^\}/m, '--sl-color-gray-7')
+// A code block is a dark screen in both themes (ec.config.mjs): one theme,
+// on the dark --vx-surface.
+const DARK_BG = token(/^:root,[^{]*\{([\s\S]*?)^\}/m, '--vx-surface')
 
 function pages(): string[] {
   return readdirSync(DIST, { recursive: true, encoding: 'utf8' })
@@ -63,9 +62,8 @@ function pages(): string[] {
 }
 
 describe('code colours', () => {
-  it('reads both themes’ code backgrounds from theme.css', () => {
+  it('reads the code background from theme.css', () => {
     expect(DARK_BG).toMatch(/^#[0-9a-f]{6}$/i)
-    expect(LIGHT_BG).toMatch(/^#[0-9a-f]{6}$/i)
   })
 
   it('every token in a built code block is readable on its theme', () => {
@@ -75,10 +73,7 @@ describe('code colours', () => {
       const html = readFileSync(path.join(DIST, page), 'utf8')
       for (const m of html.matchAll(/style="(--0:#[0-9a-fA-F]+[^"]*)"/g)) {
         const style = m[1]!
-        for (const [variant, bg] of [
-          ['0', DARK_BG],
-          ['1', LIGHT_BG],
-        ] as const) {
+        for (const [variant, bg] of [['0', DARK_BG]] as const) {
           const color = new RegExp(`--${variant}:(#[0-9a-fA-F]+)`).exec(style)?.[1]
           if (color === undefined) continue
           seen++
