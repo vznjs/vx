@@ -219,7 +219,7 @@ const CASES: Array<[string, () => string | null | Promise<string | null>]> = [
         },
       }),
   ],
-  ['a task with no exec must declare dependsOn', () => validated({ tasks: { b: {} } })],
+  ['a task with no exec must declare dependsOn or inputs', () => validated({ tasks: { b: {} } })],
   [
     'cache needs exec — a task with no command produces nothing to cache',
     () =>

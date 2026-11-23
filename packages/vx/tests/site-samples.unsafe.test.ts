@@ -1240,7 +1240,7 @@ describe('the tasks guide names every exec field a task can declare', () => {
       path.resolve(import.meta.dir, '..', 'docs', 'schema.md'),
       'utf8',
     ).replace(/\s+/g, ' ')
-    expect(contract).toContain('Editing a description therefore costs one re-run')
+    expect(contract).toContain('Editing it costs one re-run: it is in the cache key')
     const page = readFileSync(path.join(DOCS, 'docs', 'tasks.mdx'), 'utf8').replace(/\s+/g, ' ')
     expect(page).toContain('editing even `description` re-runs the task once')
   })

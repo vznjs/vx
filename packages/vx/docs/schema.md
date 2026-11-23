@@ -1,10 +1,14 @@
 # Config schema
 
-Complete reference for every field accepted by `vx.config.{ts,mts,js,mjs,cts,cjs}`
-and the workspace-level `.vx/workspace.{ts,mts,js,mjs,cts,cjs}`, which is
-required: it marks the workspace root (cli.md § The workspace root). The
-authoritative TypeScript definitions live in `src/config.ts` and are
-re-exported from `@vzn/vx`.
+Every field you can write in a project's `vx.config.ts` and in the
+workspace's `.vx/workspace.ts`.
+
+Both files may end in `.ts`, `.mts`, `.js`, `.mjs`, `.cts` or `.cjs`.
+The workspace file is required: it marks the workspace root (cli.md § The
+workspace root).
+
+The TypeScript types live in `src/config.ts` and are re-exported from
+`@vzn/vx`.
 
 ## File layout
 
@@ -23,24 +27,43 @@ re-exported from `@vzn/vx`.
     └── vx.lock.json             (`vx lock`: its resolved config, pretty, for review)
 ```
 
-**A project is a directory holding a `vx.config.*`**, in any language;
-core reads no `package.json` and no package-manager member list. `vx lock`
-finds them (git's tracked and unignored files; a config at or under a
-nested `.vx/workspace.*`, ignored or not, is that workspace's) and records each by
-directory, and each nested workspace root too: every outer project's outputs
-stop there as at a nested project (its inputs do not). A run takes its projects from the lock, so a config added since
-runs once `vx lock` records it. A `discover` plugin may add directories
-with no config (`@vzn/vx-lockfile` adds the package manager's members);
-one whose config git ignores is refused, naming the plugin and the file.
-The hook runs under `vx lock` only: the lock records the projects, names
-and edges it returned, and a run uses that record.
+**A project is a directory holding a `vx.config.*`**, in any language.
+`vx lock` finds them and records each one in the lock.
+
+A run takes its projects from the lock. After you add a config, run
+`vx lock` so the next run sees it.
 
 A project's name is its config's `name`, else the name a `discover` plugin
-gives (`@vzn/vx-lockfile` gives `package.json#name`), else its
-root-relative path (`apps/web`); the root is `//`. Two projects of one
-name are refused, naming both directories.
+gives, else its path from the root (`apps/web`). The root is `//`.
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
+
+- `package.json`: core reads none, and no package-manager member list. A
+  `vx.config.*` is what makes a project.
+- `vx lock` looks at git's tracked and unignored files, and records each
+  project by directory.
+- `packages/x/.vx/workspace.ts`: a config at or under a nested
+  workspace, ignored or not, belongs to that workspace.
+- `vx lock` records each nested workspace root too. An outer project's
+  outputs stop there, as at a nested project; its inputs do not.
+- `discover` plugin: it may add directories with no config.
+  `@vzn/vx-lockfile` adds the package manager's members.
+- A plugin-added directory whose config git ignores is refused, naming the
+  plugin and the file.
+- `discover` runs under `vx lock` only. The lock records the projects,
+  names and edges it returned, and a run uses that record.
+- `package.json#name`: the name `@vzn/vx-lockfile` gives a project.
+- Two projects with one name are refused, naming both directories.
+
+</div>
+</details>
 
 ## Project config
+
+A project's `vx.config.ts` names the project, labels it, and declares its
+tasks.
 
 ```ts
 import { defineProject } from '@vzn/vx/config'
@@ -63,71 +86,99 @@ interface ProjectConfig {
 }
 ```
 
-`defineProject` is an identity function — it exists purely so
-TypeScript narrows literal types in your config (clean autocomplete,
-strict validation against the schema). It has zero runtime effect.
-The same key checking without a runtime import is
-`import type { ProjectConfig } from '@vzn/vx/config'` plus
-`export default { … } satisfies ProjectConfig` (it does not check
-`dependsOn` names against the task keys) — the form `vx init`
-and `@vzn/vx-migrate` generate, because Bun erases the type import and the
-file then loads in a workspace that runs the `vx` binary without the
-package installed. Either form is fine; the object is what vx reads.
-`@vzn/vx/config` is the schema alone (`src/config.ts`, which imports
-nothing): your own `tsc` checks that one file, where `@vzn/vx` would
-walk core's Bun-only sources and fail without `@types/bun`.
-It resolves under every `moduleResolution`, `node` (node10) included.
+`tasks` maps each task name to its `TaskConfig`. You run one with
+`vx run build` or `vx run web#build`.
 
-A `tsconfig.json` with no `include` takes every `.ts` beside it, a
-`vx.config.ts` too: an emitting build's output then moves (`dist/main.js`
-becomes `dist/src/main.js`, as in a NestJS app). An `include` that reaches
-the config (`["."]`) compiles it into the output too. `vx init` and
-`@vzn/vx-migrate` say so where they write one; add the config's file name
-to that tsconfig's `exclude`.
+`defineProject` only helps TypeScript: autocomplete, and checks against
+the schema. It does nothing at run time.
 
-The object is JSON data. The cache key folds `JSON.stringify` of each
-task's config, `vx lock` stores the same JSON, and `vx watch` re-reads a
-config through a worker that hands it back as JSON, so a value JSON
-cannot carry would be dropped, rewritten or refused depending on the
-path. vx refuses it on every path, before the schema: a function, a
-symbol, a bigint, `NaN` or `±Infinity`, `undefined` inside an array
-(JSON writes `null`), a cycle, a getter or setter (code that each read
-may answer differently; vx never calls it), a symbol key or a
-non-enumerable property (JSON drops
-each), and any object that is not a
-plain object or an array (a `Date`, `Map`, `Set`, `RegExp` or class
-instance), and nesting deeper than 256 levels. An
-`undefined` property is fine: JSON drops it and the schema reads it as
-absent, which is what a preset's optional field
-(`description: opts.description`) relies on. A config is evaluated once,
-by `vx lock`, so a branch on `process.env` (`CI`) is fixed by whoever
-locked it, and `vx lock --check` under the other value fails. The workspace config is not
-held to this: its plugins are objects of functions.
+The same checks without a runtime import, the form `vx init` and
+`@vzn/vx-migrate` write:
 
-`vx lock` evaluates a project config with the workspace root as
-`process.cwd()` and `PWD`, from whichever directory it runs, so the lock does not
-depend on where you ran it; `import.meta.dir` is the config's own
-directory, an absolute path: in a command it locks this checkout's path,
-so another checkout fails `vx lock --check` and keys apart (`vx lock`
-warns). A command runs in its project's directory: name a script by a
-path relative to it, or `$VX_RUN_WORKSPACE/scripts/gen.ts` from the
-workspace root. What it prints goes to stderr, a child it spawns
-included: a verb's stdout is its output.
+```ts
+import type { ProjectConfig } from '@vzn/vx/config'
 
-`tasks` is a `Record<string, TaskConfig>`. Task names are strings
-referenced by `dependsOn`, by `inputs.tasks`, and by the CLI
-(`vx run <taskName>` or `vx run <pkg>#<taskName>`), so a name those
-could not spell is refused at load: an empty one, one with surrounding
-whitespace, one holding `#` (the project separator) or `*` (a pattern),
-and one starting with `^` (dependencies' tasks), `!` (a negation) or
-`-` (a CLI flag).
-A task or project name holding a control character (`ESC`, `\r`) is
-refused too: vx prints names raw, and one could retitle the terminal.
+export default { name: 'web' } satisfies ProjectConfig
+```
+
+The config is JSON data: a function, a `Date` or a `Map` in it is
+refused. `vx lock` evaluates it once, from the workspace root.
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
+
+- `satisfies ProjectConfig` does not check `dependsOn` names against the
+  task keys. `defineProject` does.
+- `import type`: Bun erases it, so the file loads in a workspace that runs
+  the `vx` binary without the package installed.
+- Either form is fine: vx reads the object.
+- `@vzn/vx/config` is the schema alone (`src/config.ts`, which imports
+  nothing). Your type checker checks that one file.
+- `@vzn/vx` instead would walk core's Bun-only sources and fail without
+  `@types/bun`.
+- `moduleResolution: "node"` (node10): `@vzn/vx/config` resolves under
+  it, as under every other mode.
+- `tsconfig.json` with no `include` takes every `.ts` beside it,
+  `vx.config.ts` too. An emitting build's output then moves: `dist/main.js`
+  becomes `dist/src/main.js`.
+- `"include": ["."]` reaches the config and compiles it into the output
+  too.
+- Fix for both: add the config's file name to that tsconfig's `exclude`.
+  `vx init` and `@vzn/vx-migrate` say so where they write one.
+- Why JSON: the cache key folds `JSON.stringify` of each task's config,
+  `vx lock` stores the same JSON, and `vx watch` re-reads a config as
+  JSON.
+- A value JSON cannot carry is refused on every path, before the schema.
+  Otherwise it would be dropped, rewritten or refused depending on the
+  path.
+- `() => {}`, a symbol, a bigint, `NaN`, `±Infinity`: refused.
+- `[undefined]`: refused, JSON writes `null`.
+- A cycle: refused.
+- `get x() {}` or a setter: refused. Each read may answer differently;
+  vx never calls it.
+- A symbol key or a non-enumerable property: refused, JSON drops each.
+- `new Date()`, a `Map`, `Set`, `RegExp` or class instance: refused. Only
+  a plain object or an array is data.
+- Nesting deeper than 256 levels: refused.
+- `{ description: undefined }` is fine: JSON drops it and the schema reads
+  it as absent. A preset's optional field (`description: opts.description`)
+  relies on this.
+- `.vx/workspace.ts` is not held to the JSON rule: its plugins are objects
+  of functions.
+- `process.env.CI` in a config is fixed by whoever ran `vx lock`.
+  `vx lock --check` under the other value fails.
+- `process.cwd()` and `PWD` are the workspace root while `vx lock`
+  evaluates a config, from any directory. The lock does not depend on
+  where you ran it.
+- `import.meta.dir` is the config's own directory, an absolute path.
+- `import.meta.dir` in a command locks this checkout's path: another
+  checkout fails `vx lock --check` and keys apart. `vx lock` warns.
+- `scripts/gen.ts`: a command runs in its project's directory, so name a
+  script relative to it.
+- `$VX_RUN_WORKSPACE/scripts/gen.ts` names a script from the workspace
+  root.
+- `console.log` in a config goes to stderr, a child it spawns included: a
+  verb's stdout is its output.
+- A task name is what `dependsOn`, `inputs.tasks` and the CLI spell. One
+  they could not spell is refused at load:
+- `''`: an empty name.
+- `' build'`: surrounding whitespace.
+- `a#b`: `#` separates project and task.
+- `b*`: `*` is a pattern.
+- `^build`: a leading `^` means dependencies' tasks.
+- `!build`: a leading `!` is a negation.
+- `-build`: a leading `-` is a CLI flag.
+- `ESC` or `\r` in a task or project name: refused. vx prints names raw,
+  and one could retitle the terminal.
+
+</div>
+</details>
 
 ### `name` (optional)
 
 The project's name: what `web#build`, `--filter web` and `dependsOn` use
-to reach it. Omitted, the project is named by its path.
+to reach it.
 
 ```ts
 import { defineProject } from '@vzn/vx/config'
@@ -135,12 +186,28 @@ import { defineProject } from '@vzn/vx/config'
 export default defineProject({ name: 'web' })
 ```
 
-It is refused at load when `dependsOn` or `--filter` could not
-spell it: surrounding whitespace, a `#`, a `*` (a pattern), a leading
-`^` (dependencies' tasks) or `!` (an exclusion), a leading `tag:`, a
-leading or trailing `...` (a dependency walk), a trailing `[<ref>]` (a
-git range), or a directory form (`./x`, `{x}`, `x{dir}`). A name a plugin gives
-and a project's path name are held to the same rule.
+Default: the name a `discover` plugin gives, else the project's path
+(`apps/web`).
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
+
+A name `dependsOn` or `--filter` could not spell is refused at load:
+
+- `' web'`: surrounding whitespace.
+- `a#b`: `#` separates project and task.
+- `web*`: `*` is a pattern.
+- `^web`: a leading `^` means dependencies' tasks.
+- `!web`: a leading `!` is an exclusion.
+- `tag:web`: a leading `tag:` is a tag filter.
+- `web...` or `...web`: a dependency walk.
+- `web[main]`: a trailing `[<ref>]` is a git range.
+- `./web`, `{web}`, `web{dir}`: a directory form.
+- A name a plugin gives, and a project's path name, follow the same rule.
+
+</div>
+</details>
 
 ### `tags` (optional)
 
@@ -153,48 +220,85 @@ import { defineProject } from '@vzn/vx/config'
 export default defineProject({ tags: ['type:app', 'scope:web'] })
 ```
 
-Tags label the project for selection: `--filter tag:<name>` selects
-the projects carrying one (`cli.md` § Filter DSL), as Nx's `tag:` does.
-Each is a non-empty string a tag filter can name, or it is refused at
-load: no surrounding whitespace, no `*` (a pattern), no control
-character (`vx show` prints tags raw), and no ending in
-`...` (a dependency walk) or `[<ref>]` (a git range). A
-`project` plugin may set or edit them (`nx()` gives each project its Nx
-`tags` unless the vx.config has its own). A tag is in no cache key: it
-changes no task's behaviour, so editing one re-runs nothing.
+| Write                      | Means                              |
+| -------------------------- | ---------------------------------- |
+| `--filter tag:type:app`    | the projects tagged `type:app`     |
+| `--filter 'tag:scope:*'`   | the projects with any `scope:` tag |
+| `--filter '!tag:type:app'` | every project but those            |
+
+Default: no tags. The filter syntax is in `cli.md` § Filter DSL.
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
+
+Each tag is a non-empty string a tag filter can name, or it is refused at
+load:
+
+- `' app'`: surrounding whitespace.
+- `app*`: `*` is a pattern.
+- `ESC` or another control character: `vx show` prints tags raw.
+- `app...`: ending in a dependency walk.
+- `app[main]`: ending in a git range.
+- A `project` plugin may set or edit tags. The adoption plugin `nx()`
+  gives each project its existing tags unless the vx.config has its own.
+- No cache key holds a tag: it changes no task's behaviour, so editing
+  one re-runs nothing.
+
+</div>
+</details>
 
 ## `TaskConfig`
+
+A task is one entry under `tasks`: what it runs, what runs first, what it
+reads and writes, and whether it caches.
 
 ```ts
 interface TaskConfig {
   description?: string // one-line blurb for the picker / --dry view
   exec?: ExecConfig // omit to declare a group task
-  dependsOn?: readonly string[] // Turbo/Nx micro-syntax
+  dependsOn?: readonly string[] // tasks that run first
   inputs?: InputsConfig // what the task reads: its key, cached or not
   outputs?: TaskOutputs // what it writes, cached or not
   cache?: boolean // caching is opt-in; needs `exec`, `inputs` and `outputs`
 }
 ```
 
-A task either has an `exec` (it does work) or omits `exec` and declares
-`dependsOn` or `inputs` (it's a **group task**: an aggregator, or a key).
-The loader rejects a task that has none of them — a no-op standalone
-task is almost always a config mistake. `dependsOn: []` is the deliberate form: an
-explicit empty group, for a package that wants a task by that name to
-exist and do nothing.
+A task with `exec` does work. A task without `exec` is a **group task**:
+it declares `dependsOn` or `inputs`, to gather tasks or to be a key.
 
-A project whose config and plugins declare no `build` gets one
-(2026-10-04): a group with `dependsOn: ['^build']` keyed on every file of
-the project (`inputs.files: ['**']`, no outputs). It runs nothing,
-but a dependant behind `^build` folds its key, so a package consumed as
-source moves its dependants' keys and reaches them under `--affected`.
-A config can declare a keyed group too (Group tasks, below). A
-bare `vx run build` does not select it: run where no selected project
-declares `build`, it is refused as any undeclared name is, while
-`lib#build` names it and a dependant's `^build` reaches it. `vx show`
-and `vx info` count it; `vx show build` and the `vx build` hint, which
-name declared tasks, do not. Its `^build` needs an edge source as any
-`^` does: with no plugin returning `deps`, running it is refused.
+```ts
+check: {
+  dependsOn: ['lint', 'test']
+}
+```
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
+
+- `{}`: a task with none of `exec`, `dependsOn` and `inputs` is refused
+  at load. A no-op task is almost always a config mistake.
+- `dependsOn: []` is the deliberate empty group: a task by that name
+  exists and does nothing.
+- No `build` declared by the config or its plugins: the project gets one.
+  It is a group with `dependsOn: ['^build']` and `inputs.files: ['**']`,
+  no outputs.
+- That `build` runs nothing, but a dependant behind `^build` folds its
+  key. A package used as source moves its dependants' keys and reaches
+  them under `--affected`.
+- A config can declare a keyed group too (Group tasks, below).
+- `vx run build` alone does not select the given `build`. Where no
+  selected project declares `build`, it is refused as any undeclared name
+  is.
+- `lib#build` names it, and a dependant's `^build` reaches it.
+- `vx show` and `vx info` count it. `vx show build` and the `vx build`
+  hint name declared tasks, so they do not.
+- Its `^build` needs an edge source, as any `^` does: with no plugin
+  returning `deps`, running it is refused.
+
+</div>
+</details>
 
 ### `description` (optional)
 
@@ -202,18 +306,8 @@ name declared tasks, do not. Its `^build` needs an edge source as any
 description?: string
 ```
 
-A short one-line blurb describing what the task does. No effect on
-scheduling or execution, but it **does** participate in the cache key —
-the key hashes the whole resolved task config (see `caching.md`, step 5),
-and carving exceptions out of that object is what invites stale hits.
-Editing a description therefore costs one re-run. Surfaced in three
-places:
-
-- The interactive task picker (`vx run` with no positional in a TTY) —
-  printed to the right of each `pkg#task` id.
-- The `--dry` text preview — printed on a second indented line under
-  the cache-status row.
-- The `--dry --format json` output — `description` lives on each task entry.
+A one-line note on what the task does, shown in the task picker and in
+`vx run --dry`.
 
 ```ts
 test: {
@@ -225,11 +319,30 @@ test: {
 }
 ```
 
+Default: none.
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
+
+- No effect on scheduling or execution.
+- Editing it costs one re-run: it is in the cache key. The key hashes the
+  whole resolved task config (`caching.md`, step 5).
+- Carving exceptions out of that object is what invites stale hits, so
+  `description` gets none.
+- `vx run` with no task, in a terminal: the picker prints it right of
+  each `pkg#task` id.
+- `vx run --dry`: printed on a second, indented line under the
+  cache-status row.
+- `vx run --dry --format json`: `description` is on each task entry.
+
+</div>
+</details>
+
 ### `exec` (optional — required for non-group tasks)
 
-`exec` is the one command a task runs, and how: its environment,
-time limit, retries and where it may run. A task without `exec` is a
-group ([below](#group-tasks-no-exec)).
+`exec` is the one command a task runs, and how: its environment, time
+limit, retries and where it may run.
 
 ```ts
 build: {
@@ -252,155 +365,195 @@ interface ExecConfig {
 }
 ```
 
+Default: none. A task without `exec` is a group
+([below](#group-tasks-no-exec)).
+
 #### `command` (required)
 
 The shell command the task runs, from the project's directory.
-
-`command` is a string. Run via `sh -c` (`dash` on macOS, as Linux's
-`sh` is), so POSIX
-shell semantics work directly — pipes, redirects, `&&` chaining:
 
 ```ts
 exec: {
   command: 'vite build'
 }
-exec: {
-  command: 'gen && vite build && cp -r assets dist/'
-}
-exec: {
-  command: 'find src -name "*.snap" | xargs rm -f'
-}
 ```
 
-CLI args after `--` are appended to `command`, each POSIX single-quoted
-unless it holds only safe characters:
+| Write                            | Means                                  |
+| -------------------------------- | -------------------------------------- |
+| `vite build`                     | one command                            |
+| `gen && vite build`              | `vite build` runs only if `gen` passes |
+| `vite build > build.log 2>&1`    | redirects work                         |
+| `vx run build -- --mode staging` | adds `--mode staging` to this run      |
 
-```sh
-vx run test -- --bail 'a b'
-# child sees:   bun test --bail 'a b'
-```
+Default: none, the field is required.
 
-Forwarded args are folded into the cache key — different args produce
-distinct cache entries.
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
+
+- `sh -c` runs it (`dash` on macOS, as Linux's `sh` is), so POSIX shell
+  works: pipes, redirects, `&&` chaining.
+- `find src -name "*.snap" | xargs rm -f`: a pipe is fine.
+- `gen && vite build && cp -r assets dist/`: chain as many steps as you
+  need.
+- `vx run test -- --bail 'a b'`: the child sees `bun test --bail 'a b'`.
+  Args after `--` are appended to `command`.
+- Each forwarded arg is POSIX single-quoted unless it holds only safe
+  characters.
+- Forwarded args are folded into the cache key: different args make
+  distinct cache entries.
+- No `commands: string[]`: caching is per task. To cache steps apart
+  (`codegen`, then `build`), make two tasks linked by `dependsOn`.
+- Otherwise `&&` in the shell is the right tool.
+- `prebuild` and `postbuild` in package.json: vx runs `command` as
+  written, so they run only when the command runs that script through npm.
+- In that case the package.json is an input: list it in `inputs.files`,
+  or an edited hook replays a stale hit.
+- Better: put the steps in the command
+  (`rimraf dist && vite build && node scripts/copy.js`), as
+  `bunx @vzn/vx-migrate` does when it maps scripts.
+
+</div>
+</details>
 
 #### `timeout` (optional)
 
-Maximum time before vx SIGTERMs the child, as a duration string: a
-number and a unit, `ms`, `s`, `m`, `h` or `d` (`'500ms'`, `'2m'`). A bare
-number is refused by `vx lock`. Omitted → no limit.
+How long one attempt may run before vx stops it with SIGTERM.
 
 ```ts
 build: { exec: { command: 'vite build', timeout: '2m' } }
 ```
 
-- For a **normal task**, `timeout` bounds each attempt's run time,
-  counted from its spawn (a sandbox's setup, its wrap included, is vx's,
-  not the task's, and time stopped by Ctrl-Z is not run time); a
-  [retry](#retries-optional) gets the whole limit again. A task
-  that overruns is killed — its whole process group, so what it forked
-  goes with it — and reported `failed` (timed out) — never cached. (A timeout SIGTERM is a real failure, distinct from a Ctrl-C
-  teardown, which is reported `aborted`.)
-- For a **persistent task**, `timeout` bounds the **readiness wait**
-  instead: if `readyWhen` hasn't matched within the window the child is
-  SIGTERMed and the task fails — see `persistent` below. A persistent
-  task that's ready on spawn (no `readyWhen`) becomes ready before the
-  timer can fire, so the timeout is a no-op for it.
-- On a **plugin executor**, the timeout aborts the request's `signal`
-  instead (core cannot kill a process the executor spawned); any exit
-  after it is reported timed out, a 0 from a child that trapped the stop
-  included (X-125), and an executor still running after the kill grace
-  is abandoned (H-12, H-14).
+| Write     | Means         |
+| --------- | ------------- |
+| `'500ms'` | half a second |
+| `'30s'`   | 30 seconds    |
+| `'2m'`    | 2 minutes     |
+| `'1h'`    | 1 hour        |
+| `'1d'`    | 1 day         |
 
-**Upper bound.** `timeout` must be at most **2147483647 ms (~24.8 days)** (`'2147483647ms'`),
-the largest delay a timer can hold. A larger value does _not_ mean "no
-limit" — the platform silently reduces it to **1 ms**, so the task would
-be killed the moment it spawns and reported `failed`. vx refuses it at
-load rather than let that happen. **Omit `timeout` entirely for no
-limit.** The same bound applies to `--timeout` and to the workspace-level
-`run.timeout` and the `VX_RUN_TIMEOUT` env rung: past it, each is refused
-under its own name.
+Default: no limit, unless the run sets one (`--timeout`, `run.timeout`).
 
-A task with **no** `exec.timeout` falls back to a run-level default, if
-one is set. Precedence, highest first: **per-task `exec.timeout` →
-`--timeout <duration>` / `RunOptions.timeout` → `VX_RUN_TIMEOUT` →
-workspace `run.timeout`** (see workspace config below). Per-task always
-wins. The run-level defaults are threaded as run options, so — like
-`--retries` — they never touch a cache key: a `--timeout` run cache-hits a
-plain run's entry.
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
 
-**Why no multi-step `commands: string[]`?** Per-task caching is the
-right granularity for invalidation. If you'd benefit from caching each
-step independently (e.g. `codegen` then `build`), split into two
-tasks linked by `dependsOn`. If you don't need that, `&&` in shell is
-the right tool.
+- `timeout: 120`: refused by `vx lock`. Write a number and a unit: `ms`,
+  `s`, `m`, `h` or `d`.
+- Each attempt's time counts from its spawn. A
+  [retry](#retries-optional) gets the whole limit again.
+- A sandbox's setup, its wrap included, is vx's time, not the task's.
+  Time stopped by Ctrl-Z is not run time either.
+- A task that overruns is killed with its whole process group, so what it
+  forked goes too. It is reported `failed` (timed out), never cached.
+- A timeout is a real failure. A Ctrl-C teardown is reported `aborted`
+  instead.
+- A persistent task: `timeout` bounds the readiness wait instead. If
+  `readyWhen` has not matched in time, the child is SIGTERMed and the task
+  fails (see `persistent` below).
+- A persistent task with no `readyWhen` is ready on spawn, before the timer
+  can fire, so its timeout does nothing.
+- A plugin executor: the timeout aborts the request's `signal`. Core
+  cannot kill a process the executor spawned.
+- After that abort, any exit is reported timed out, a 0 from a child that
+  trapped the stop included.
+- An executor still running after the kill grace is abandoned.
+- `'2147483647ms'` (about 24.8 days) is the most: the largest delay a
+  timer can hold.
+- A larger value does not mean no limit: the platform cuts it to 1 ms and
+  the task would fail at spawn. vx refuses it at load.
+- For no limit, omit `timeout`.
+- The same bound holds for `--timeout`, the workspace's `run.timeout` and
+  `VX_RUN_TIMEOUT`. Past it, each is refused under its own name.
+- No `exec.timeout`: the run-level default applies, if one is set.
+- Order, highest first: `exec.timeout`, `--timeout <duration>` /
+  `RunOptions.timeout`, `VX_RUN_TIMEOUT`, the workspace's `run.timeout`
+  (see workspace config below). Per-task always wins.
+- The run-level defaults are run options, so, like `--retries`, they never
+  touch a cache key: a `--timeout` run hits a plain run's entry.
 
-**npm's `pre`/`post` scripts.** vx runs `command` as written: a
-`prebuild` or `postbuild` in package.json runs only when the command is
-`npm run build` (npm runs the hooks), and then that package.json is an
-input — list it in `inputs.files`, or an edited hook replays a stale hit.
-Better: put the steps in the command (`rimraf dist && vite build && node
-scripts/copy.js`), as `bunx @vzn/vx-migrate` does when it maps
-scripts.
+</div>
+</details>
 
 #### `retries` (optional)
 
-Maximum ADDITIONAL attempts after a failed attempt. `retries: 2` means
-up to 3 executions total. `0` / omitted → no retries (fail on the first
-non-zero exit).
+How many more times vx runs a task after a failed attempt.
 
 ```ts
 test: { exec: { command: 'bun test', retries: 1 } }
 ```
 
-- A retry fires after ANY failure, `timeout` kills included. A Ctrl-C
-  teardown (`aborted`) is never retried — the run is tearing down.
-  Nor is a task `--fail-fast` kills when it stops the run: it ends
-  `aborted`, even when its retry was already announced and preparing.
-- Declared outputs are re-cleaned before each retry, exactly like the
-  first attempt — a failed attempt's partial outputs can't leak into
-  the next. An [additive](caching.md#additive-outputs-two-tasks-one-tree-an-edge-between-them)
-  task removes what the failed attempt added instead; one that changed
-  or removed a file it found saves nothing on its pass. No clean
-  deletes a committed file, so a pass after a failed attempt that
-  changed, added or removed a committed output is not saved either. A process a
-  failed attempt left running may still write into the next attempt's
-  outputs, so its pass is not saved, with the same warning as a
+| Write        | Means                                           |
+| ------------ | ----------------------------------------------- |
+| `retries: 0` | fail on the first non-zero exit, no flaky retry |
+| `retries: 1` | up to 2 runs                                    |
+| `retries: 2` | up to 3 runs                                    |
+
+Default: `run.retries` if set, else none. A task the run history knows
+as flaky still gets one more attempt.
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
+
+- Any failure is retried, a `timeout` kill included.
+- A Ctrl-C teardown (`aborted`) is never retried: the run is tearing
+  down.
+- `--fail-fast`: a task it kills when it stops the run is not retried. It
+  ends `aborted`, even when its retry was already announced and
+  preparing.
+- Declared outputs are cleaned before each retry, as before the first
+  attempt. A failed attempt's partial outputs cannot leak into the next.
+- An [additive](caching.md#additive-outputs-two-tasks-one-tree-an-edge-between-them)
+  task removes what the failed attempt added instead.
+- An additive task whose failed attempt changed or removed a file it found
+  saves nothing on its pass.
+- No clean deletes a committed file. A pass after a failed attempt that
+  changed, added or removed a committed output is not saved.
+- A process a failed attempt left running may still write into the next
+  attempt's outputs. That pass is not saved, with the same warning as a
   passing attempt's leftover.
-- Every attempt streams its output live. Between attempts vx emits one
+- Every attempt streams its output live. Between attempts vx writes one
   stderr line into the task's stream, ending in the reason:
-  `vx: retrying <id> (attempt <k>/<total>) after exit <code>`, or
-  `after a timeout` when the attempt was killed by `timeout`, or
-  `after 1 sandbox violation` when the command exited 0 and a refused
-  access failed it. That attempt's violation lines print above the
-  line, under `SANDBOX VIOLATIONS (<n>)`, and stay in its log.
-- The final outcome is the LAST attempt's: the first success wins (and
-  is what gets cached — its output only, not a concatenation of failed
-  attempts); if every attempt fails, the task is `failed` with the last
-  exit code and nothing is cached, as today.
-- The task's reported duration sums every attempt; a saved entry keeps
-  the producing attempt's time.
-- `retries` is part of the resolved config, so declaring it derives a
-  distinct cache key (like every config field); tasks without it keep
-  byte-identical keys.
-- Not allowed with `persistent` — a persistent task has no exit to
-  retry (config error, like `cache` + `persistent`).
+- `vx: retrying <id> (attempt <k>/<total>) after exit <code>`: the
+  command failed.
+- `… after a timeout`: `timeout` killed the attempt.
+- `… after 1 sandbox violation`: the command exited 0 and a refused
+  access failed it.
+- That attempt's violation lines print above the retry line, under
+  `SANDBOX VIOLATIONS (<n>)`, and stay in its log.
+- The last attempt decides. The first pass wins and is what gets cached:
+  its output only, not the failed attempts' output too.
+- Every attempt fails: the task is `failed` with the last exit code, and
+  nothing is cached.
+- The reported duration sums every attempt. A saved entry keeps the
+  producing attempt's time.
+- `retries` is part of the resolved config, so declaring it makes a
+  distinct cache key. Tasks without it keep their keys byte for byte.
+- `retries` with `persistent` is a config error, like `cache` with
+  `persistent`: a persistent task has no exit to retry.
+- `run.retries` (`vx run --retries <n>`, `VX_RUN_RETRIES`) is the
+  run-level default, for tasks that declare no `retries`.
+- The run-level default never applies to a persistent task: a server that
+  fails before it is ready fails at once.
+- Config always wins, `retries: 0` included. The flag never affects cache
+  keys.
+- With neither set, a task the run history knows as **flaky** gets one
+  more attempt when it fails.
+- Flaky means: its key passed before, or one of its keys failed after it
+  passed, or a pass took a retry.
+- The run history keeps that until a bounded `vx cache clean` drops what
+  is over 30 days old.
+- Only a cached task has that record, and a timeout always fails.
+- `@vzn/vx-dte` (distributed task execution): a retry runs on another
+  worker than the attempt that failed.
+- `@vzn/vx-history` with a history server shares the record across CI
+  machines: a task it names flaky is retried the same way.
+- The flaky retry is decided at run time, so it never touches the key.
+  `retries: 0` turns it off.
 
-The run-level default is `run.retries` (`vx run --retries <n>`, `VX_RUN_RETRIES`) — it applies to tasks
-that don't declare their own `retries`, never to a persistent one (a
-server that fails before it is ready fails at once); explicit config
-always wins, including an explicit `retries: 0`. The CLI flag never
-affects cache keys.
-
-With neither set, a task the run history knows as **flaky** gets one
-more attempt when it fails: its key passed before, or one of its keys
-failed after it passed, or a pass took a retry, in the run history
-(kept until a bounded `vx cache clean` drops what is over 30 days old). Only a cached task has that record, and a timeout always fails.
-Under Distributed task execution (`@vzn/vx-dte`) a retry runs on
-another worker than the attempt that failed. A history server
-(`@vzn/vx-history`) shares that record across CI
-machines: a task it names flaky is retried the same way. The retry is
-decided at run time, so it never touches the key. Set `retries: 0` to
-turn it off.
+</div>
+</details>
 
 #### `remote` (optional)
 
@@ -992,103 +1145,75 @@ interface ExecEnv {
 
 ### `dependsOn` (optional)
 
-Tasks that must complete successfully before this task runs.
-Turbo/Nx-style micro-syntax — a flat array of strings:
+The tasks that must finish successfully before this task starts.
 
 ```ts
-dependsOn?: readonly string[]
+dependsOn: ['^build']
 ```
 
-| Form         | Meaning                                                                         |
-| ------------ | ------------------------------------------------------------------------------- |
-| `'name'`     | Same-project task `name`.                                                       |
-| `'^name'`    | The `name` task in the nearest project deps (a plugin's edges) that declare it. |
-| `'pkg#name'` | The `name` task in a specific other package (cross-project edge).               |
-| `'name.*'`   | Every OTHER same-project task matching the pattern (`*` = any).                 |
-| `'^name.*'`  | All matching tasks of the nearest deps that declare any (pattern).              |
+| Write                 | Means                                                      |
+| --------------------- | ---------------------------------------------------------- |
+| `'build'`             | this project's `build`                                     |
+| `'^build'`            | `build` in the projects this one depends on                |
+| `'packages/ui#build'` | `build` in one named project                               |
+| `'lint.*'`            | every other task here whose name starts with `lint.`       |
+| `'^build.*'`          | every `build.<x>` task in the projects this one depends on |
 
-Examples:
+Default: none, the task waits for nothing.
 
-```ts
-dependsOn: ['build'] // same-project build first
-dependsOn: ['^build'] // build in every workspace dep first
-dependsOn: ['codegen', '^build'] // both
-dependsOn: ['lib#build', 'shared#test'] // cross-project edges
-dependsOn: ['lint.*'] // every lint.<x> task in this project
-dependsOn: ['^build.*'] // all build.<x> tasks of the nearest deps
-```
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
 
-Semantics:
+**A task of this project**
 
-- **Cross-project (`'pkg#name'`)** — the project and its task must
-  exist; a miss is a hard error that offers the nearest declared one
-  the list does not already name, or else to remove the entry.
-  A project is named by its path unless its config sets `name`, so
-  `a#build` offers `packages/a#build`.
+- `'build'` must be a task in this project's `tasks`. A missing one fails when the graph is built, naming the project's nearest task.
+- `dependsOn: ['buidl']` is a type error when the config uses `defineProject`: a bare name is checked against the config's task keys. `'^name'` and `'pkg#name'` stay free strings.
 
-- **Same-project (`'name'`)** — name must exist in this project's
-  `tasks` map; missing is a hard error at graph-build time. When the
-  config is authored through `defineProject`, a bare entry is also
-  **type-checked against this config's task keys** — a typo is a
-  compile error (`'^name'` / `'pkg#name'` reference other projects
-  and stay free strings).
-- **`'^name'`** — nearest-holder frontier. Walk the project graph
-  from this project's direct deps: the edges a plugin's `discover`
-  returns as `deps` (the lockfile plugins `bun()` / `pnpm()` / `npm()` /
-  `yarn()` return what the package manager installed; core reads no
-  edge from a `package.json`). A cross-project `pkg#task` edge is not
-  one: it widens `--filter '...pkg'` and `--affected`, never a `'^name'`
-  walk. With no plugin returning `deps` the workspace has no edge source and
-  a `'^name'` is refused (`VX_E_DEPENDS_ON`: "`^build` needs project
-  edges; add pnpm()/bun()/npm()/yarn() from @vzn/vx-lockfile to plugins
-  in .vx/workspace.ts and install so its lockfile exists, or a plugin that returns `deps`"): it would resolve to nothing and fold no upstream into the
-  key. With one, a project with no deps is a leaf; each path stops at the first dep
-  that declares the task and an edge is added to it (Turbo/Nx
-  direct-deps parity). The holder's own `dependsOn` is responsible
-  for anything deeper — chain `'^name'` in the holder to keep the
-  cascade going (the universal pattern). Deps that don't declare the
-  task are passed through, so a sparse dep doesn't break ordering to
-  deeper packages that do (sparse tasks across a workspace are normal
-  — not every package has a `lint`). Finding no holder at all is legal
-  too, as long as SOME project in the workspace declares `name`: a
-  preset spreads `'^build'` over packages whose deps have no `build`.
-  A `'^name'` that **no project in the whole workspace declares** is a
-  hard error at graph-build time, since it can only be a typo: "app#test:
-  dependsOn ^biuld but no project in the workspace declares
-  biuld. Did you mean ^build?" (a same-project name that is not
-  declared names the project's nearest task the same way). Until 2026-09-24 it resolved to no edges and the run went
-  green (Nx#32779 is the same bug). A scoped run (an anchored
-  `app#test`, `--filter`, a project directory) loads only its projects
-  and their dependency closure; when a `'^name'` there finds no holder
-  and nothing loaded declares it, vx evaluates the remaining configs to
-  decide, and if one of them fails to load the name is let through
-  rather than failing the scoped run. A `'^name.*'` pattern matching
-  nothing anywhere stays legal, as `'name.*'` does.
-- **`'pkg#name'`** — missing pkg or task is a hard error (you named
-  them explicitly). `'//#name'`, Turbo's spelling of the root package,
-  names the root project (D-39) here and in `inputs.tasks`; with no
-  root project it is refused as such.
-- **Patterns (`'name.*'` / `'^name.*'`)** — `*` matches any run of
-  characters in a task NAME; everything else is literal (the dotted
-  namespace convention needs no escaping). A same-project pattern
-  expands to every other matching task (the declaring task never
-  matches itself); **zero matches is legal** — a preset-spread pattern
-  needn't match in every project. A `'^pattern'` walks the same
-  nearest-holder frontier as `'^name'`, where a holder is a dep
-  declaring at least one matching task; the holder receives edges to
-  ALL its matches and stops the walk. Patterns are not supported in
-  the `'pkg#task'` form. (Nx 19.5 `build-*` parity.)
-- **No bare wildcards or negation here.** `'*'` / `'^*'` (or `'**'`, any run of `*`) / `'!form'`
-  belong in `inputs.tasks` (filtering which upstream hashes
-  participate in this task's cache key), not in `dependsOn` (declaring
-  graph edges). The micro-syntax parser rejects them in this position.
-- **Cycle detection** runs across the resolved graph at the end of
-  `buildTaskGraph`. Cycles throw with a path-formatted message.
+**A task of a named project**
+
+- `'packages/ui#build'`: the project and its task must exist. A miss is an error that offers the nearest declared one the list does not name yet, or else to remove the entry.
+- `'ui#build'` offers `packages/ui#build`: a project is named by its path unless its config sets `name`.
+- `'//#build'` names the workspace's root project, here and in `inputs.tasks`. With no root project it is refused.
+
+**`'^build'`: the projects this one depends on**
+
+- `'^build'` follows the `deps` a plugin's `discover` returns. The lockfile plugins `bun()`, `pnpm()`, `npm()` and `yarn()` return what the package manager installed.
+- `package.json` alone gives no edge: vx reads none from it.
+- `'^build'` with no plugin returning `deps` is refused (`VX_E_DEPENDS_ON`).
+- The refusal reads: "`^build` needs project edges; add pnpm()/bun()/npm()/yarn() from @vzn/vx-lockfile to plugins in .vx/workspace.ts and install so its lockfile exists, or a plugin that returns `deps`".
+- It would otherwise resolve to nothing and add no dependency to the key.
+- A project with no dependencies is a leaf: its `'^build'` adds no edge.
+- `web → ui`, where `ui` declares `build`: the walk stops at `ui#build`. The first dependency on each path that declares the task gets the edge.
+- `ui`'s own `dependsOn: ['^build']` carries the chain deeper. Chain `'^build'` in every holder to keep the cascade going.
+- `web → ui → tokens`, where only `tokens` declares `build`: `web` waits for `tokens#build`. A dependency without the task is passed through.
+- Sparse tasks are normal: not every package has a `lint`.
+- No holder at all is fine while some project in the workspace declares the task: a preset spreads `'^build'` over packages whose dependencies have none.
+- `'^biuld'` that no project declares is an error, since it can only be a typo: "app#test: dependsOn ^biuld but no project in the workspace declares biuld. Did you mean ^build?"
+- `vx run app#test`, `--filter` or a project folder loads only those projects and their dependencies.
+- In such a scoped run, a `'^name'` with no holder makes vx load the other configs to decide. If one of them fails to load, the name is let through.
+- `'packages/ui#build'` is not a project edge: it widens `--filter '...packages/ui'` and `--affected`, never a `'^name'` walk.
+
+**Patterns**
+
+- `'lint.*'`: `*` matches any run of characters in a task name. The rest is literal, so the dot needs no escape.
+- `'lint.*'` never matches the task that declares it.
+- `'lint.*'` matching nothing is fine: a preset-spread pattern need not match in every project.
+- `'^build.*'` walks like `'^build'`: a holder is a dependency with at least one match. It gets edges to all its matches and ends the walk.
+- `'^build.*'` matching nothing anywhere is fine too.
+- `'packages/*#build'` is refused: a pattern does not work in the `pkg#task` form here. It does in `inputs.tasks`.
+
+**Refused**
+
+- `'*'`, `'^*'`, `'**'` or `'!build'`: wildcards and negation belong in `inputs.tasks`, which picks the keys that count, not the edges.
+- `a#build → b#build → a#build`: a cycle fails once the graph is built, printing its path.
+
+</div>
+</details>
 
 ### `inputs` (optional)
 
-`inputs` lists what a task reads: files, environment variables and
-command outputs. The cache key is built from them.
+The files, environment variables and command outputs a task reads. vx builds the task's cache key from them.
 
 ```ts
 build: {
@@ -1101,23 +1226,39 @@ build: {
 inputs?: InputsConfig
 ```
 
-What the task reads, and so what its key includes. A task is keyed on its
-inputs whether it caches or not, as Turbo and Nx hash every task: a
-dependant folds that key, so an edit to an uncached generator's inputs
-re-runs the cached task behind it. A group with `inputs` is a keyed
-group (Group tasks, below). The default `build` is
-`{ dependsOn: ['^build'], inputs: { files: ['**'] } }`.
+| Field              | Adds to the key                               |
+| ------------------ | --------------------------------------------- |
+| `files`            | files of this project                         |
+| `workspaceFiles`   | files anywhere in the workspace               |
+| `env`              | values of environment variables               |
+| `runtime`          | a command's output, run in the project folder |
+| `workspaceRuntime` | a command's output, run once at the root      |
+| `tasks`            | which dependencies' keys count                |
+| `stability`        | what an input edited during the run does      |
 
-A task that runs a command and declares no `inputs` has no key: nothing
-says what it read. A key that folds it is this run's alone, so every
-task behind it misses and saves nothing, never a stale hit, a server
-with `inputs` between the two included. Declare
-`inputs` on an uncached task a cached one depends on;
-`inputs: { files: [] }` is a declaration too: it keys the task on its
-config and its dependencies' keys, and a task behind it can hit. An
-absent `inputs` and an empty one differ.
+Default: none. A task without `inputs` has no key, and `cache` needs one.
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
+
+- `cache: true` with no `inputs` is refused: the key is the task's inputs.
+- A task with `inputs` has a key whether it caches or not. A task that depends on it includes that key.
+- `codegen` (uncached) → `build` (cached): an edit to `codegen`'s inputs re-runs `build`.
+- A command task with no `inputs` has no key. A key that includes it is this run's alone.
+- So every task behind it misses and saves nothing, never a stale hit, even with a keyed task, a server included, between them.
+- Declare `inputs` on an uncached task a cached one depends on.
+- `inputs: { files: [] }` is a declaration: it keys the task on its config and its dependencies' keys, so a task behind it can hit.
+- An absent `inputs` and an empty one differ.
+- A group (no `exec`) with `inputs` is a keyed group: see Group tasks, below.
+- A project without a `build` task gets `{ dependsOn: ['^build'], inputs: { files: ['**'] } }`.
+
+</div>
+</details>
 
 #### `InputsConfig`
+
+The shape of `inputs`. Each field has its own entry below.
 
 ```ts
 interface InputsConfig {
@@ -1133,449 +1274,346 @@ interface InputsConfig {
 
 ##### `inputs.files` (required)
 
-Project-relative globs. `!`-prefix negates. A **literal** entry (no
-glob character) names a file or a whole directory tree — `src` and
-`src/` both mean everything under `src`, as in Turbo and `.gitignore`;
-`!src` subtracts the tree. A `!` entry subtracts wherever it sits in the
-list, so a literal file it covers (`['src/**', '!src/gen/**',
-'src/gen/keep.ts']`) would never be an input: that is refused at load.
-Spellings a matcher would otherwise turn into
-nothing are normalized: a leading `./` (`./src/**` is `src/**`, `!./gen`
-is `!gen`), an inner `/./` segment, a doubled `//`, and a trailing `/` on
-a pattern (`src/*/` is the trees under `src`, `src/*/**`), and a
-trailing `/.`, read as a trailing `/`. A bare `.` or
-`./` names the project directory itself and is refused at load — write
-`**`. Turbo's `$TURBO_DEFAULT$` and `$TURBO_ROOT$` and Nx's
-`{projectRoot}`, `{workspaceRoot}`, `{projectName}` and `{options.…}`
-(D-52), pasted from turbo.json or
-project.json, are refused in every glob list with what to write instead
-(D-50): vx expands none of them, so each matched no file and a task
-keyed on `$TURBO_DEFAULT$` alone replayed a stale output. A glob that
-starts with `^` (Nx's `^production`, the dependencies' named input) is
-refused too (D-51): vx keys a task on its dependencies through
-`dependsOn`. A bare named input (`default`) can be a directory, so it
-is taken as one and only warns when it matches nothing.
-
-The wildcards are `*`, `**`, `?`, a character class `[ab]` (`[a-z]`,
-`[!a]`) and a brace set `{a,b}`, which matches what its alternatives
-match on their own: `{src/**,lib/**}` is `src/**` plus `lib/**`, and
-`{src,lib}` is the two directory trees, as `['src', 'lib']` is; the
-spellings fold per alternative (`{./src,lib}/**` is `src/**` plus
-`lib/**`), in inputs and outputs alike. A `,`, `{` or `}` inside a
-class is one of its characters, never a cut: `lib/{a[,]b,x}.ts` is
-`lib/a[,]b.ts` plus `lib/x.ts`; so is an escaped one (`\,`), and an
-alternative may hold an escape (`{src,app/\[id\]}` is the two trees). A
-backslash escapes: a route directory (Next.js, SvelteKit, Astro) is
-`app/\[id\]/**`; bare, `app/[id]/**` is the class that matches `app/i`
-and `app/d`, never the route. When the path the class spells exists
-(`app/[id]`), `vx lock` refuses the glob and names the escaped form:
-beside another glob it matched nothing with no warning, and an edit
-under the route replayed a stale hit. An input brace of one alternative (`{b}.ts`) is refused at `vx
-lock`: it would match `b.ts` and never a file named `{b}.ts`; write the
-one you mean, `\{b\}.ts` for the braces. So is an input under `.git`
-(`.git/config`): git never lists it, so it would key nothing. An extglob (`@(a|b)`, `!(x)`,
-`+(…)`, `*(…)`, `?(…)`) is refused too: vx's own matchers read it as
-literal text or a plain wildcard, so the key would miss the files it
-names; write `{a,b}`. So is a bare group holding a `|` (`src/*.(js|ts)`):
-`Bun.Glob` reads its parens and bar as literal text; write `src/*.{js,ts}`.
-Parens with no `|` (`app/(marketing)/**`) are filename characters and
-stay. So is `**` glued to other text in one segment (`src/**.ts`, `a**`):
-the engine reads it as one `*`, a single level, so deeper inputs would
-leave the key and deeper outputs go unsaved; write `src/**/*.ts` for every
-depth or `src/*.ts` for one; inside a brace too (`src/{a,**}.ts` is
-`src/**.ts`). A brace range is `Bun.Glob`'s (Bun 1.4.4):
-`{1..3}`, `{3..1}`, `{01..03}`, `{a..c}`, `{1..10..3}`; vx expands it as
-a comma brace. A mixed-case range (`{A..c}`) or one of more than 1024
-names is refused wherever it sits in the glob, and so is a glob whose
-braces together expand to more than 1024 (`src/{1..100}{1..100}`, ten
-`{a,b}` in a row is 1024 and loads): each is a glob vx compiles, and a
-million took a run gigabytes. A class range that runs backwards
-(`[z-a]`) matches no character and is refused, naming `[a-z]`. A leading `!` is still the negation, so `!(group)/**`
-takes a route group back; any other `!` is the character, one that
-starts a name (`out/*/!a`) or a brace alternative (`{x,!a}`) too. A
-negated class never matches a `/`: `gen[!.]*` is not `gen/notes.txt`.
-Wildcards match dotfiles: `*` folds `.eslintrc`, `src/*` folds
-`src/.env` and `**` enters `src/.cache/`. `'!**/.*'` takes back the
-dotfiles and `'!**/.*/**'` the files in dot directories. This holds for every task glob — `inputs.files`,
-`inputs.workspaceFiles`, `outputs.files`, `outputs.workspaceFiles` — and
-for everything read from them (`--affected`, `vx watch`, the
-overlapping-output refusal). Package-manager member globs (`workspaces`,
-`pnpm-workspace.yaml`) and `--filter` path globs keep the package
-manager's grammar — all but extglob (`packages/!(x)`),
-which a member glob refuses by name: `Bun.Glob` cannot read it, and
-list the exclusion as its own `!packages/x` entry instead.
+The files whose content decides whether the task runs again.
 
 ```ts
-files: ['**/*'] // all project files
-files: ['src/**', '!**/*.test.ts'] // narrow with exclusion
-files: [] // no file inputs at all
-files: ['src/**', 'tsconfig.json', 'package.json'] // specific paths
-files: ['src', 'package.json'] // a directory literal is its tree
-files: ['app/\\[id\\]/**'] // the route dir `[id]`; bare `[id]` is a class
+inputs: { files: ['src/**', 'vite.config.ts'] },
 ```
 
-Empty array is valid — the cache key still incorporates command, env,
-upstream hashes and any plugin's key material. A task with no _file_
-inputs (e.g. a pure "download-and-verify") still cache-misses on a
-lockfile change when a lockfile plugin (`@vzn/vx-lockfile`) is declared.
+| Write         | Means                                     |
+| ------------- | ----------------------------------------- |
+| `src/**`      | everything in `src`                       |
+| `src`         | the same: a folder name is its whole tree |
+| `!src/gen/**` | except generated files                    |
+| `*.config.ts` | config files at the project root          |
+| `**`          | every file in the project                 |
 
-Always applied to every glob pass (regardless of what you wrote):
+Default: none, the field is required.
 
-- **gitignore filter** — every rule git applies: each `.gitignore` at any
-  depth, `.git/info/exclude` and the user's `core.excludesFile`. The last
-  differs per machine, so a file it ignores on one machine is an input on
-  another; ignore shared paths in a committed `.gitignore`. Unless
-  an entry names the ignored path outright: a literal (`.env.local`,
-  `.env.production.local`; `vx lock` and a miss name an ignored file a
-  glob's last segment matches, `.env*` over it), or
-  a glob whose fixed prefix git ignores (`dist/**`, `dist/*.js`,
-  `.cache/gen/**`), which is then walked on disk under that prefix only.
-  A directory git ignores but for a file it lists (`gen/*` with
-  `!gen/.gitkeep`, or `gen/` with a force-added file) counts as ignored:
-  `gen/**` reads the untracked files beside the kept one. So does a
-  directory where git lists nothing because it ignores every file in it
-  (`src/**` over a `src` holding only `*.log` files): `git status`
-  reports the directory itself as ignored.
-  Each alternative of a brace counts on its own: `{gen/a.txt,gen/b.txt}`
-  names both files and `{gen,out}/**` both trees, as `gen/{a,b}.txt` does.
-  Such a file is hashed from disk and never stored or restored; a
-  missing one is not an input until it exists. A broad glob (`**`,
-  `src/**` over a `src` holding a file git lists) still skips ignored
-  files, so it never walks `node_modules`.
-  Its bytes differ per machine, so machines with different files miss
-  each other's shared entries. An ignored file never selects a task
-  under `--affected` on its own, as in Nx (only what git sees does); `vx
-watch` re-runs it on an edit there.
-- **Always-ignored** — `.git/**`, `.vx/cache/**`,
-  `.vx/projects.lock`, `vx.lock.json`, and `.vx/tmp/**`, where vx's
-  restores stage, only where vx writes them: at the project's root (a
-  project's own `src/.vx/tmp/x` or `src/sub/vx.lock.json` is an input),
-  and for `workspaceFiles` every project's `vx.lock.json`. The run's
-  cache directory (`cache.dir`, `--cache-dir`) wherever it sits in the
-  workspace, even under an ignored prefix a glob names outright
-  (`tmp/**` over `tmp/vx-cache`). Nothing else: a tool's temp files are the
-  task's to exclude. A broad glob on a `bun build --compile` task, or on
-  one that runs beside it, excludes Bun's intermediate and its
-  cross-compile extraction directory itself:
-  `['**/*', '!**/*.bun-build', '!**/.????????????????-????????.tmp/**']`.
-- **Installs** — an untracked file under any `node_modules/` that git
-  does not ignore. An ignored one follows the gitignore filter above
-  like any other ignored path: named outright, it is an input
-  (`node_modules/.prisma/client/**`, a generated client); a broad glob
-  skips it because it is ignored. A file git TRACKS there, such as a committed test fixture, is an input
-  like any other.
-- **Declared `outputs.files`** are excluded — a task never invalidates
-  itself via its own output. A path an output `!` entry takes back is
-  no output, so it stays an input (A-44). Another task's outputs are
-  not excluded for you: an input glob that can match them is refused
-  (X-54), unless git ignores them whole, or the producer is a
-  dependency the key does not fold (see Inputs over outputs in §
-  Settings). Write the exclusion,
-  `['**/*', '!dist/**']`, or ignore `dist/`. An input entry the task's OWN outputs take
-  back whole is always refused (X-55): vx removes outputs before a run,
-  so a formatter declaring `src/**` as both would delete its sources. A
-  task that rewrites files in place declares no outputs. The two fields
-  are compared across too, read from the root: `inputs.files: ['src/**']`
-  beside `outputs.workspaceFiles: ['app/src/**']` is the same refusal,
-  and so is an output directory that is a symbolic link into a directory
-  an input entry can match below (`dist -> src` under `src/**` or
-  `**/*.ts`), refused when a run finds it,
-  committed or not.
-- **Nested-project subtree** — files belonging to a project rooted
-  inside this one's dir are excluded. No cross-project leakage via
-  globs; the only cross-project relationship is `dependsOn` +
-  upstream-hash propagation. An entry rooted inside a nested project
-  (`dist/**` when `dist/` holds its own config) would key nothing, so
-  `vx lock` refuses it (`VX_E_NESTED_INPUT`): depend on that project's
-  task, or name its files in `inputs.workspaceFiles`. `**`, a sibling
-  and a `!` entry are fine.
+Paths start at the project folder. vx always leaves out what git ignores, its own files, the task's outputs and nested projects.
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
+
+**Spelling**
+
+- `./src/**` is `src/**`, `!./gen` is `!gen`. A leading `./`, an inner `/./` and a doubled `//` are dropped.
+- `src/` is `src`, the whole tree. `src/*/` is `src/*/**`, the trees under `src`.
+- `src/.` reads as `src/`: a trailing `/.` is a trailing `/`.
+- `.` or `./` alone is refused: write `**`.
+- `!src` takes the whole `src` tree back out.
+- `['src/**', '!src/gen/**', 'src/gen/keep.ts']` is refused: a `!` entry subtracts wherever it sits, so `keep.ts` would never be an input.
+- `default`, a bare name, may be a folder: it is taken as one and only warns when it matches nothing.
+- `files: []` is valid: the key still holds the command, env, dependencies' keys and any plugin's key material.
+- With `files: []` and a lockfile plugin (`@vzn/vx-lockfile`), a lockfile change still misses.
+- `/etc/**` and `../shared/**` are refused, in every input and output glob: use `inputs.workspaceFiles` for paths outside the project.
+- `{../shared,src}/**` and `{/etc,src}/*` are refused too: a brace alternative counts.
+- `src\**`, `src\*.ts`, `C:\src\**` and `C:/src/**` are refused, naming the forward-slash glob to write.
+- `' src/**'` (spaces around it) and `'src/\n'` (a control character) are refused: either is read as part of a name and matches nothing.
+
+**Wildcards**
+
+- `*`, `**`, `?`, `[ab]`, `[a-z]`, `[!a]` and `{a,b}` are the wildcards.
+- `{src/**,lib/**}` is `src/**` plus `lib/**`. `{src,lib}` is the two trees, as `['src', 'lib']` is.
+- `{./src,lib}/**` is `src/**` plus `lib/**`: each alternative is cleaned up on its own, in inputs and outputs alike.
+- `lib/{a[,]b,x}.ts` is `lib/a[,]b.ts` plus `lib/x.ts`: a `,`, `{` or `}` inside a class is a character, not a cut. So is an escaped `\,`.
+- `{src,app/\[id\]}` is the two trees: an alternative may hold an escape.
+- `app/\[id\]/**` is the route folder `[id]`. Bare `app/[id]/**` is a class: it matches `app/i` and `app/d`.
+- `app/[id]/**` is refused by `vx lock` when `app/[id]` exists, naming the escaped form: an edit under the route replayed a stale hit.
+- `g/[x\-]` matches `g/-` and `g/x`. A backslash escapes a bracket, a brace, a `!`, a backslash, anything inside a class, or a comma inside a brace.
+- `src/\*x` is refused: write `src/[*]x` for the character.
+- `g/a\*b` is refused, naming both readings: `g/a/*b` or `g/a[*]b`.
+- `{b}.ts` is refused by `vx lock`: it matches `b.ts`, never a file named `{b}.ts`. Write `b.ts`, or `\{b\}.ts` for the braces.
+- `@(a|b)`, `!(x)`, `+(…)`, `*(…)` and `?(…)` are refused: an extglob is read as text or a plain wildcard. Write `{a,b}`.
+- `src/*.(js|ts)` is refused: parens holding a `|` are read as text. Write `src/*.{js,ts}`.
+- `app/(marketing)/**` is fine: parens with no `|` are part of the name.
+- `src/**.ts` and `a**` are refused: `**` glued to other text is read as `*`, one level. Write `src/**/*.ts` for any depth or `src/*.ts` for one.
+- `src/{a,**}.ts` is refused the same way: it expands to `src/**.ts`.
+- `{1..3}`, `{3..1}`, `{01..03}`, `{a..c}` and `{1..10..3}` are ranges, expanded like a comma list.
+- `{A..c}` (mixed case) is refused, and so is a range of more than 1024 names, wherever it sits in the glob.
+- `src/{1..100}{1..100}` is refused: a glob's braces may expand to at most 1024 globs. Ten `{a,b}` in a row is 1024 and loads.
+- `[z-a]` is refused, naming `[a-z]`: a backwards range matches no character.
+- `!(group)/**` takes a route group back: a leading `!` is the negation.
+- `out/*/!a` and `{x,!a}` name a file `!a`: any other `!` is the character.
+- `gen[!.]*` does not match `gen/notes.txt`: a negated class never matches a `/`.
+- `*` matches `.eslintrc`, `src/*` matches `src/.env`, and `**` enters `src/.cache/`: wildcards match dotfiles.
+- `'!**/.*'` takes the dotfiles back, `'!**/.*/**'` the files in dot folders.
+- These rules hold for every task glob: `inputs.files`, `inputs.workspaceFiles`, `outputs.files` and `outputs.workspaceFiles`.
+- They hold for `--affected`, `vx watch` and the overlapping-output check too.
+- `packages/*` in `workspaces`, `pnpm-workspace.yaml` or a `--filter` path keeps the package manager's grammar.
+- `packages/!(x)` there is refused by name: write the exclusion as its own `!packages/x` entry.
+
+**Pasted tokens**
+
+- `$TURBO_DEFAULT$` is refused in every glob list: write `**` for every file in the project.
+- `$TURBO_ROOT$/tsconfig.json` and `{workspaceRoot}/tsconfig.json` are refused: write `tsconfig.json` in `workspaceFiles`.
+- `{projectRoot}/src/**` is refused: write `src/**`, globs here start at the project already.
+- `{projectName}` and `{options.…}` are refused: write the name or the path itself.
+- `^production`, a glob starting with `^`, is refused: depend on other projects with `dependsOn: ['^build']` and list this project's files here.
+
+**What git ignores**
+
+- Every git rule counts: each `.gitignore` at any depth, `.git/info/exclude` and your `core.excludesFile`.
+- `core.excludesFile` differs per machine, so a file it ignores on one is an input on another. Ignore shared paths in a committed `.gitignore`.
+- `.env.local` named outright is an input even though git ignores it.
+- `.env*` matching an ignored `.env.local`: `vx lock` and a miss name the file, since a glob's last segment matches it.
+- `dist/**`, `dist/*.js` and `.cache/gen/**` are inputs when git ignores `dist` or `.cache`: a glob whose fixed start git ignores is walked on disk, under that start only.
+- `gen/**` over a `gen/*` ignore with `!gen/.gitkeep`, or a force-added file, counts as ignored: it reads the untracked files beside the kept one.
+- `src/**` over a `src` holding only ignored `*.log` files counts as ignored: git reports the folder itself as ignored.
+- `{gen/a.txt,gen/b.txt}` names both files and `{gen,out}/**` both trees: each brace alternative counts on its own, as in `gen/{a,b}.txt`.
+- An ignored input is hashed from disk and never stored or restored. A missing one is no input until it exists.
+- An ignored input's bytes differ per machine, so machines with different files miss each other's shared entries.
+- `**` or `src/**` (over a `src` holding a file git lists) still skips ignored files, so it never walks `node_modules`.
+- An ignored file never selects a task under `--affected` on its own: only what git sees does. `vx watch` re-runs on an edit there.
+
+**Always left out**
+
+- `.git/**`, `.vx/cache/**`, `.vx/projects.lock`, `vx.lock.json` and `.vx/tmp/**` (where restores stage) at the project root.
+- `src/.vx/tmp/x` and `src/sub/vx.lock.json` are inputs: only the files where vx writes them are left out.
+- The run's cache folder (`cache.dir`, `--cache-dir`), wherever it sits, even when `tmp/**` names an ignored `tmp/vx-cache`.
+- Nothing else: a tool's temp files are the task's to exclude.
+- `['**/*', '!**/*.bun-build', '!**/.????????????????-????????.tmp/**']`: on or beside a `bun build --compile` task, exclude Bun's intermediate and its cross-compile extraction folder.
+- `node_modules/x.js`, untracked and not ignored, is left out.
+- `node_modules/.prisma/client/**` (a generated client git ignores) named outright is an input. A broad glob skips it.
+- `node_modules/fixture.json` that git tracks, such as a committed test fixture, is an input.
+
+**Outputs**
+
+- `outputs: { files: ['dist/**'] }` is never an input of the same task: a task never invalidates itself.
+- `outputs: { files: ['dist/**', '!dist/keep.txt'] }`: `dist/keep.txt` is no output, so it stays an input.
+- `['**/*']` that can match another task's outputs is refused. Write `['**/*', '!dist/**']`, or ignore `dist/` in git.
+- That refusal holds unless git ignores the outputs whole, or the producer is a dependency whose key this task leaves out (see Inputs over outputs under Settings).
+- `src/**` as both the input and the output of one task is refused: vx removes outputs before a run, so a formatter would delete its sources.
+- A task that rewrites files in place declares no outputs.
+- `inputs.files: ['src/**']` beside `outputs.workspaceFiles: ['app/src/**']` is the same refusal: the two are compared from the root.
+- `dist -> src`, an output folder linked into a folder `src/**` or `**/*.ts` reaches, is refused when a run finds it, committed or not.
+
+**Nested projects**
+
+- Files of a project inside this one's folder are never inputs. Projects share only through `dependsOn` and its dependencies' keys.
+- `dist/**`, when `dist/` holds its own config, is refused by `vx lock` (`VX_E_NESTED_INPUT`): it would key nothing.
+- Depend on that project's task instead, or name its files in `inputs.workspaceFiles`.
+- `**`, a sibling folder and a `!` entry over a nested project are fine.
+
+</div>
+</details>
 
 ##### `inputs.workspaceFiles` (optional, default `[]`)
 
-Workspace-root-relative globs — the Turbo `$TURBO_ROOT$` / Nx
-`{workspaceRoot}` equivalent, for inputs that live outside the project
-dir (a root `tsconfig.base.json`, shared codegen output, …). Same
-syntax as `files` (`!` negation subtracts, in any order), same git-aware
-resolution (tracked + untracked-not-ignored; a gitignored file only when
-named outright, as in `files`), and the resolved paths join the same
-cache-key file list.
+Input files outside the project folder, written from the workspace root.
 
 ```ts
-inputs: {
-  files: ['src/**'],
-  workspaceFiles: ['tsconfig.base.json', 'shared/**', '!shared/README.md'],
-}
+inputs: { files: ['src/**'], workspaceFiles: ['tsconfig.base.json'] }
 ```
 
-**No boundary rule — deliberate escape hatch.** Unlike `files`,
-`workspaceFiles` globs may match files anywhere in the workspace,
-including inside other projects' directories. That's bad practice
-(prefer project-relative declarations plus `dependsOn` + upstream-hash
-propagation for cross-project relationships), but it is there for the
-cases that genuinely need root-anchored inputs. The hard
-project-boundary rule continues to apply to project-relative `files`
-globs only.
+| Write                | Means                                          |
+| -------------------- | ---------------------------------------------- |
+| `tsconfig.base.json` | the shared tsconfig at the root                |
+| `shared/**`          | everything in the root `shared` folder         |
+| `!shared/README.md`  | except its README                              |
+| `packages/ui/src/**` | another project's files: allowed, rarely right |
 
-No input or output glob, `files` or `workspaceFiles`, may be absolute
-or hold a `..` segment, and a brace arm counts: `{../shared,src}/**` and
-`{/etc,src}/*` are refused at load, where the glob engine would have
-matched nothing under that arm and said so nowhere. A Windows spelling
-is refused the same way, with the forward-slash glob to write: a
-backslash separator (`src\**`, `src\*.ts`) or a drive (`C:\src\**`,
-`C:/src/**`). A backslash before a bracket, a brace, a `!` or a
-backslash stays an escape, as does any inside a class (`g/[x\-]` names
-`g/-` and `g/x`) or before a comma inside a brace. One that starts a name
-before `*` or `?` (`src/\*x`) is refused with the class to write for the
-character, `src/[*]x`; one inside a name (`g/a\*b`) is refused naming
-both readings, `g/a/*b` or `g/a[*]b`. A glob with surrounding whitespace
-(`' src/**'`) or a control character (`'src/\n'`) is refused: the
-engine reads either as part of a name, so it matched nothing and the
-task keyed nothing for it.
+Default: `[]`, no files outside the project.
 
-Still applied: the always-ignored set (`.git/**`, `.vx/cache/**`,
-`.vx/projects.lock`, `vx.lock.json`, `.vx/tmp/**`, and the
-`.tmp-*` temps a killed write of a lock leaves),
-untracked files under `node_modules/`, and the task's own declared
-outputs, `outputs.workspaceFiles` and the `outputs.files` its globs reach
-in its own project (a task never invalidates itself).
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
 
-`vx watch`: when any config declares `inputs.workspaceFiles`, the loop
-watches the workspace root recursively (any file can be an input once
-boundaries are off), so root-subdir changes re-trigger cycles like any
-other edit. The always-ignored set still filters the noise.
+- `['shared/**', '!shared/README.md']`: the same glob rules as `files`. A `!` entry subtracts in any order.
+- Git decides the same way as in `files`: tracked plus untracked-not-ignored, and an ignored file only when named outright.
+- The files join the same key file list as `files`.
+- `packages/ui/src/**` may reach into another project: there is no project boundary here.
+- Prefer `files` plus `dependsOn` for links between projects. `workspaceFiles` is for inputs that truly live at the root.
+- `/etc/**`, `../x/**` and `C:/x/**` are refused, as in `files`.
+- Still left out: `.git/**`, `.vx/cache/**`, `.vx/projects.lock`, `.vx/tmp/**`, and `vx.lock.json` in every project.
+- Also left out: the `.tmp-*` files a killed lock write leaves, and untracked files under `node_modules/`.
+- The task's own outputs are left out: its `outputs.workspaceFiles`, and the `outputs.files` its globs reach in its own project.
+- `vx watch` watches the whole workspace root once any config declares `workspaceFiles`, so an edit in a root folder re-runs too.
+- The always-left-out set still filters the noise there.
+
+</div>
+</details>
 
 ##### `inputs.env` (optional, default `[]`)
 
-Env var names whose host values are folded into the cache key.
-**Independent of `exec.env`:**
-
-- Listing a name in `exec.env.passThrough` does NOT make its value
-  affect the cache.
-- Listing a name here does NOT forward it to the child process.
-
-To both forward AND track, list it in both places. Yes, the
-double-declaration is mild noise; vx ships no helper for it, but a
-config is TypeScript, so a function of your own can return both lists.
-
-Names are exact: a wildcard (`NEXT_PUBLIC_*`) is refused, and so is
-Turbo's `!NAME` exclusion, here, in `exec.env.passThrough` and in
-`exec.env.secret` (D-53). With no wildcard to take it out of, `!NAME`
-was a variable of that name, and nothing was excluded.
+The environment variables whose values decide whether the task runs again.
 
 ```ts
-inputs: {
-  files: ['src/**'],
-  env: ['NODE_ENV', 'TARGET_BROWSER'],  // changes here bust the cache
-}
+inputs: { files: ['src/**'], env: ['NODE_ENV', 'TARGET_BROWSER'] }
 ```
 
-A cache-input env var the task actually reads must ALSO appear in
-`exec.env.passThrough` (or `define`) — the child environment is
-isolated, so without it the key varies on a value the command never
-sees. Tracking-only declarations (an env var that influences inputs
-some other way) are legal but rare; if in doubt, declare both.
+| Write           | Means                    |
+| --------------- | ------------------------ |
+| `NODE_ENV`      | the value of `NODE_ENV`  |
+| `NEXT_PUBLIC_*` | refused: list each name  |
+| `!CI`           | refused: names are exact |
 
-An unset name, a name set to the empty string, and a name never
-listed are three different keys: the key holds the count of names,
-the names, and each value, with "unset" folded apart from every value
-(the child tells unset from empty too — `process.env.X ?? 'dflt'`,
-`${X-dflt}`). A name holding a NUL is refused.
+Default: `[]`, no variables.
 
-A value that is not UTF-8 fails the run, naming the variable and never
-its value: Bun reads the environment with a lossy decode, so Latin-1 `é`
-and `è` both read as U+FFFD and would key alike. A value that truly
-holds U+FFFD is refused with them, since vx cannot tell the two apart.
-A `passThrough` value reaches the child as that decode too, U+FFFD's
-UTF-8 bytes in place of each invalid byte.
+A name here is not passed to the command. To pass and track it, list it in `exec.env.passThrough` too.
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
+
+- `exec.env.passThrough: ['API_URL']` alone does not change the key.
+- `inputs.env: ['API_URL']` alone does not pass `API_URL` to the command.
+- A variable the command reads goes in both, or in `exec.env.define`: the command's environment is isolated, so otherwise the key changes on a value the command never sees.
+- A name only in `inputs.env`, for a variable that changes inputs some other way, is legal but rare. In doubt, list it in both.
+- vx ships no helper for the two lists. A config is TypeScript, so a function of your own can return both.
+- `NEXT_PUBLIC_*` is refused: names are exact, with no wildcard.
+- `!NAME` is refused here, in `exec.env.passThrough` and in `exec.env.secret`: with no wildcard to take it out of, it named a variable `!NAME` and excluded nothing.
+- A name holding `=` or a NUL is refused.
+- `X` unset, `X=` empty, and `X` never listed are three different keys. The command tells unset from empty too: `process.env.X ?? 'dflt'`, `${X-dflt}`.
+- A value that is not UTF-8 fails the run, naming the variable, never its value: Latin-1 `é` and `è` both decode to U+FFFD and would key alike.
+- A value that truly holds U+FFFD is refused with them: vx cannot tell the two apart.
+- A `passThrough` value reaches the command decoded the same way, with U+FFFD's UTF-8 bytes in place of each invalid byte.
+
+</div>
+</details>
 
 ##### `inputs.runtime` (optional, default `[]`)
 
-Shell commands whose **trimmed stdout and stderr, kept apart,** are folded
-into the cache key — the runtime-output analog of `inputs.env`. It runs
-in the project dir; the Nx
-[`runtime` input](https://nx.dev/recipes/running-tasks/configure-inputs),
-which Nx runs at the workspace root, is `workspaceRuntime` below (Turbo
-has no built-in for this — see
-[vercel/turborepo#4124](https://github.com/vercel/turborepo/issues/4124)).
-Use it for tool/runtime versions, OS info, or a project-local probe
-script whose value should bust the cache when it changes.
+Commands whose output decides whether the task runs again. Each runs in the project folder.
 
 ```ts
-inputs: {
-  files: ['src/**'],
-  runtime: ['./scripts/probe.sh', 'rustc --version'],
-}
+inputs: { files: ['src/**'], runtime: ['vite --version'] }
 ```
 
-Semantics:
+| Write                | Means                               |
+| -------------------- | ----------------------------------- |
+| `vite --version`     | the version of the project's `vite` |
+| `./scripts/probe.sh` | a probe script of your own          |
+| `uname -m`           | the machine's architecture          |
 
-- Each command runs in the **project dir** (cwd = the project's
-  directory), via `sh -c`, so pipelines and redirects work ("shell is
-  the API"). Deduped per `(projectDir, command)` within a run — a
-  command declared by both `build` and `test` in the same project runs
-  once.
-- The **output is resolved live at hash time on every run** (inside
-  `resolveInputs`), exactly like `inputs.env` reads host env values
-  live. `vx lock` freezes the command _strings_ (they're in the
-  resolved config), not their output, so the field stays correct under
-  the lock every run reads — the changed output of a locked command
-  still busts the cache.
-- A **non-zero exit fails the task** before its command runs, and
-  `--dry` exits 1: `[vx] app#build: cache key not derived:
-inputs.runtime probe exited 7: <command> (cwd: …)`, then the probe's
-  output, its last 64 KiB (`… N earlier characters dropped` above a
-  longer one) — fail-loud, like a missing git binary. A
-  flaky probe should not silently degrade to a stale hit.
-- **Output that is not UTF-8 fails the run** too: a lossy decode keyed
-  every invalid byte alike. Pipe binary output through a hash or `od`.
-- **A process the command leaves running does not hold the run.** As a
-  task's output is (`POST_EXIT_DRAIN_MS`), the probe's pipes are read
-  for `250ms` after its shell exits, then the reads stop and the probe's
-  process group is killed. The answer is what was read: the shell has
-  exited, so that is all it printed, and what a leftover child prints
-  later is not part of it. `sleep 30 & echo x` answers `x` at once;
-  it used to hold every run, `--dry` and `--no-cache` included, for 30 s.
-- The command sees **only the essential environment** every task sees
-  (the essential allowlist under `ExecEnv`: `PATH`, `HOME`, the locale), with
-  vx's values. Not the task's `exec.env.define` or `passThrough`, which
-  describe the command's environment, not the probe's; one environment
-  for every probe is what lets two tasks sharing a probe share one spawn
-  (the per-run dedup above). Not vx's other variables either: a task
-  could read them from the probe's `/proc/<pid>/environ` while it runs.
-  A value the probe would read from the environment is an `inputs.env`
-  name instead.
-- Its `PATH` does lead with the **same `node_modules/.bin` directories
-  the task's does** (the project's, then the workspace root's), so
-  `vite --version` keys the `vite` the task runs. Before item 996 it keyed
-  the global one, or failed with 127 where only the workspace had it, and
-  a changed local tool replayed the old output.
-- The command **runs whenever a task's key is derived** — that's every
-  run (warm runs included, since the key decides hit vs miss), plus
-  `vx run --dry` (which predicts the key) and `vx run --no-cache`
-  (which still derives the key). Keep runtime commands pure
-  probes with no side effects.
-- The command runs as part of **hash derivation, before** the task's
-  `exec` — so it is **not** constrained by the task's own `sandbox`
-  policy (the probe runs unsandboxed even on a sandboxed task).
+Default: `[]`, no commands.
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
+
+- `rustc --version` prints to stdout, some tools to stderr: both are trimmed, kept apart, and added to the key.
+- `node -v | cut -d. -f1` works: each command runs through `sh -c` in the project folder.
+- `build` and `test` of one project sharing `vite --version` spawn it once per run.
+- The command runs every time the key is needed: every run, warm ones too, `vx run --dry` and `vx run --no-cache`. Keep it free of side effects.
+- `vx lock` locks the command text, not its output: a changed output still changes the key.
+- A non-zero exit fails the task before its command runs, and `--dry` exits 1. A flaky probe never turns into a stale hit.
+- The failure reads `[vx] app#build: cache key not derived: inputs.runtime probe exited 7: <command> (cwd: …)`, then the probe's last 64 KiB of output.
+- A longer output is cut with `… N earlier characters dropped` above it.
+- Output that is not UTF-8 fails the run too. Pipe binary output through a hash or `od`.
+- `sleep 30 & echo x` answers `x` at once: the pipes are read for `250ms` after the shell exits, then the probe's process group is killed.
+- What a leftover child prints later is not part of the answer.
+- The command sees only the essential environment every task sees (`PATH`, `HOME`, the locale; see `ExecEnv`), with vx's values.
+- It does not see the task's `exec.env.define` or `passThrough`, nor vx's other variables. One environment for every probe lets tasks share one spawn.
+- A value the probe would read from the environment belongs in `inputs.env`.
+- Its `PATH` leads with the project's `node_modules/.bin`, then the root's, so `vite --version` keys the `vite` the task runs.
+- The command runs before the task's `exec`, so the task's `sandbox` does not apply: it runs unsandboxed even on a sandboxed task.
+
+</div>
+</details>
 
 ##### `inputs.workspaceRuntime` (optional, default `[]`)
 
-Like `runtime`, but commands run at the **workspace root** (cwd = the
-workspace root) and are deduped **globally per command** across the
-whole run — a `node -v` declared in 500 projects spawns exactly once.
-The runtime-input analog of `workspaceFiles`: per-task, root-anchored.
-Use it for global tool versions, OS info, or any probe whose value is
-the same for every project. Its `PATH` leads with the workspace root's
-`node_modules/.bin` only (no project's: the value is shared by all).
+Commands whose output decides whether the task runs again. Each runs once per run, at the workspace root.
 
 ```ts
-inputs: {
-  files: ['src/**'],
-  workspaceRuntime: ['node -v'], // runs once per run, root cwd
-}
+inputs: { files: ['src/**'], workspaceRuntime: ['node -v'] }
 ```
 
-Same `sh -c` execution, live-at-hash-time resolution (frozen-safe), and
-non-zero-exit-fails semantics as `runtime`. The two fields are folded
-into the cache key in **distinct namespaces**, so an identical
-`(command, output)` pair never aliases between them.
+| Write      | Means                        |
+| ---------- | ---------------------------- |
+| `node -v`  | the Node version, asked once |
+| `uname -s` | the operating system's name  |
+
+Default: `[]`, no commands.
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
+
+- `node -v` declared in 500 projects spawns once: one run per command across the whole run.
+- It runs at the workspace root, for a value that is the same for every project.
+- Its `PATH` leads with the root's `node_modules/.bin` only, not a project's: every project shares the value.
+- The rest is as in `runtime`: `sh -c`, run every time the key is needed, `vx lock` keeps the text, a non-zero exit fails the task.
+- `runtime: ['node -v']` and `workspaceRuntime: ['node -v']` never collide in the key: each field has its own space.
+
+</div>
+</details>
 
 ##### `inputs.tasks` (optional, default = all upstream)
 
-Same micro-syntax as `dependsOn`, plus two filter-only extras:
-
-| Form         | Meaning                                        |
-| ------------ | ---------------------------------------------- |
-| `'*'`        | Include every same-project upstream hash.      |
-| `'^*'`       | Include every dep-workspace upstream hash.     |
-| `'name'`     | Include same-project task `name`.              |
-| `'^name'`    | Include `name` in every dep workspace.         |
-| `'pkg#name'` | Include the specific package's `name` task.    |
-| `'!<form>'`  | Exclude — any of the above with a leading `!`. |
-
-**Patterns** work here too, in EITHER half of every form:
-`'build.*'`, `'^build.*'`, `'pkg#build.*'`, `'@acme/*#build'`,
-`'!codegen.*'` — the same `*`-glob `dependsOn` patterns use. A filter
-only ever selects from upstreams that already exist, so a package
-pattern is unambiguous here, unlike `dependsOn`, which must
-materialize concrete edges and rejects it. (A filter that matched
-patterns literally would silently select zero hashes and decouple the
-task from its dependencies — a stale-hit trap.)
-
-Patterns are applied in order; **last write wins**. So
-`['*', '^*', '!^noisy']` reads as "all upstream except deps' noisy
-task". A negation drops only what it names: when two upstreams hash
-alike (two groups over the same members), excluding one keeps the other
-folded. Defaults:
-
-- **Omitted** → all upstream contribute (`['*', '^*']`). Most common.
-- **`[]`** → fully decoupled; no upstream contributes.
-
-`--affected` follows the same selection: a change reaches a task through a
-dependency only when its key folds that dependency, so with `[]` a change
-upstream selects the task no more than it would move its key.
-
-A list of **only negations** (`['!gen']`) is refused at load, as a
-negation-only `inputs.files` is: the selection starts empty and a `!`
-entry only subtracts, so it would fold no upstream hash. Write the
-positive entries it subtracts from (`['*', '^*', '!gen']`), or `[]`.
-
-An **exact** entry (`'codegen'`, `'^build'`, `'lib#build'`) must be
-named by some `dependsOn` entry of the same task — exactly, or by that
-entry's own `*` pattern (`dependsOn: ['build.*']` names
-`tasks: ['build.bun']`), and in a form that reaches the same task:
-`build` is this project's, `^build` only the dependencies', so
-`tasks: ['build']` against `dependsOn: ['^build']` names nothing. A
-`pkg#task` entry may be this project or a dependency, so it pairs with
-either form; two `pkg#task` entries must agree on the project. One that
-is not named (`['buidl']`) is refused at load: it would match nothing at hash time and fold no upstream hash,
-decoupling the task from its dependencies with no diagnostic — a stale
-hit waiting for the next upstream change. An exact entry is held again once the
-graph is built, by `vx lock` (and `--check`) and when the run plans: one that names none of the task's
-dependencies is refused (`['nope#build']`, or `['a#build']` for a
-project named `packages/a`, over `dependsOn: ['build']`; `['build']`
-over another project's `['b#build']`; `['^build']` over this project's
-own), unless a `^` entry or a pattern in `dependsOn` names its task,
-which a preset's project may legally lack. That exemption ends where the
-`pkg#task` is a transitive dependency: `a → b → c` with
-`dependsOn: ['^build']` and `tasks: ['c#build']` selects none of a's
-own dependencies (b's `build`), so it is refused too; name `^build`,
-which reaches c's through b's key. Patterns, wildcards and
-negations stay silent (a preset-spread pattern legitimately matches
-nothing in some projects); `[]` is the explicit way to decouple.
-
-A filter selects among the task's own dependencies, never through a
-group: over `dependsOn: ['build']`, where `build` is a group of
-`build.a` and `build.b`, the filter sees `build`, not its members. A
-pattern that matches a group's member (`'build.*'` there) but not the
-group is refused by `vx lock` and when the run plans, even when it also
-matches a direct dependency (`dependsOn: ['build', 'build.a']`): the
-key would not move with the member it leaves out (`build.b`). Name the
-group, or depend on the member directly.
-
-A default `build` on a package cycle folds none of the builds on its
-cycle, so an edge to one also takes edges past it to theirs (`a ↔ b`:
-`dependsOn: ['build']` in a reaches `a#build` and `b#build`). An entry
-that selects `a#build` (`'build'`, `'a#build'`) selects the edges past
-it too: selecting `a#build` alone left the key unmoved by an edit to b.
-
-Examples:
+Which dependencies' keys count toward this task's key.
 
 ```ts
-tasks: ['^build'] // only ^build from deps; nothing from self
-tasks: ['codegen', '^*'] // self.codegen + everything from deps
-tasks: ['*', '^*', '!^noisy'] // all upstream except deps.noisy
-tasks: ['lib#build'] // a single cross-project hash
-tasks: [] // fully decoupled
+e2e: {
+  exec: { command: 'vitest run' },
+  dependsOn: ['build'],
+  inputs: { files: ['tests/**'], tasks: [] },
+}
 ```
 
-**When to use this:** when a task `dependsOn`s another for ordering
-(it has to run after) but the upstream's outputs do NOT affect this
-task's outputs. Typical case: an integration-test task `dependsOn`s
-`build` for ordering, but its inputs are only the test source — so
-`inputs.tasks: []` to keep `build` from invalidating it.
+| Write                 | Means                                       |
+| --------------------- | ------------------------------------------- |
+| `'*'`                 | every dependency in this project            |
+| `'^*'`                | every dependency in other projects          |
+| `'^build'`            | `build` of the projects this one depends on |
+| `'packages/ui#build'` | that one task                               |
+| `'!^lint'`            | except their `lint`                         |
+| `[]`                  | none: the order stays, the key link goes    |
+
+Default: every dependency counts, as `['*', '^*']`.
+
+Use `[]` when a task waits for another only for order: tests that run after `build` but read only test files.
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
+
+**Forms**
+
+- `'build'`, `'^build'` and `'pkg#build'` work as in `dependsOn`. `'*'`, `'^*'` and `'!form'` are extra, for filtering.
+- `'build.*'`, `'^build.*'`, `'pkg#build.*'`, `'@acme/*#build'` and `'!codegen.*'`: a pattern works in either half of every form.
+- A filter picks only among dependencies that exist, so a project pattern is safe here. A pattern read as text would pick nothing and cut the task off from its dependencies.
+- `['*', '^*', '!^noisy']` is every dependency but the dependencies' `noisy`: entries apply in order, last one wins.
+- A `!` drops only what it names: when two dependencies have equal keys (two groups over the same members), excluding one keeps the other.
+- `['!gen']` is refused: a list of only negations starts empty, so it would count nothing. Write `['*', '^*', '!gen']`, or `[]`.
+- `[]` cuts every key link. `--affected` follows: a change upstream does not select the task.
+
+**An exact entry must match `dependsOn`**
+
+- `['buidl']` is refused when the config loads: an exact entry must be named by one of the task's `dependsOn` entries. It would count nothing and hide the next upstream change.
+- `dependsOn: ['build.*']` names `tasks: ['build.bun']`: a `dependsOn` pattern counts.
+- `tasks: ['build']` against `dependsOn: ['^build']` names nothing: `build` is this project's, `^build` only the dependencies'.
+- `'pkg#build'` may be this project or a dependency, so it pairs with either form. Two `pkg#task` entries must agree on the project.
+- Once the graph is built, `vx lock`, `vx lock --check` and the run's plan check exact entries again.
+- Refused then: `['nope#build']`, or `['a#build']` for a project named `packages/a`, over `dependsOn: ['build']`.
+- Refused too: `['build']` over another project's `['b#build']`, and `['^build']` over this project's own.
+- Not refused when a `^` entry or a pattern in `dependsOn` names the task: a preset's project may lack it.
+- `a → b → c` with `dependsOn: ['^build']` and `tasks: ['c#build']` is refused: `c` is not a direct dependency. Write `'^build'`, which reaches `c`'s key through `b`'s.
+- Patterns, wildcards and negations that match nothing stay silent: a preset-spread pattern may match nothing in a project.
+
+**Groups and cycles**
+
+- `dependsOn: ['build']`, where `build` is a group of `build.a` and `build.b`: the filter sees `build`, not its members.
+- `'build.*'` there is refused by `vx lock` and the run's plan: it matches a member but not the group, so the key would not move with `build.b`.
+- The same holds when it also matches a direct dependency (`dependsOn: ['build', 'build.a']`). Name the group, or depend on the member directly.
+- `a ↔ b` with the default `build`: `dependsOn: ['build']` in `a` reaches `a#build` and `b#build`. A default `build` on a cycle includes none of the cycle's builds.
+- `'build'` or `'a#build'` then picks the edges past `a#build` too: picking it alone left the key unmoved by an edit in `b`.
+
+</div>
+</details>
 
 ##### `inputs.stability` (optional)
+
+What happens when an input changes while the task's command runs.
+
+```ts
+build: {
+  exec: { command: 'tsdown' },
+  inputs: { files: ['src/**', 'package.json'], stability: { strategy: 'mutable' } },
+}
+```
 
 ```ts
 interface InputStability {
@@ -1584,50 +1622,53 @@ interface InputStability {
 }
 ```
 
-`inputs.stability` says what a write to an input while the command runs
-means for the save. An uncached task saves nothing, so there it changes
-nothing. `strategy` says which writes count:
+| Write                   | Means                                |
+| ----------------------- | ------------------------------------ |
+| `strategy: 'immutable'` | any write to an input skips the save |
+| `strategy: 'mutable'`   | rewriting the same bytes is fine     |
+| `strategy: 'unchecked'` | writes are not checked               |
+| `severity: 'warn'`      | keep the result and say why          |
+| `severity: 'error'`     | fail the task                        |
 
-- `'immutable'` (the default, on CI too): any write. An edit undone
-  mid-run, or another task changing the file and putting it back, cannot
-  be told from no edit.
-- `'mutable'`: a file rewritten to the bytes the key folded counts as
-  unchanged, for a task that rewrites its own input identically
-  (tsdown's `package.json`); different bytes still count, and so does
-  any write while another task that may write the file was running (one
-  of the same project, or one whose sandbox grants writes elsewhere in
-  the workspace; a server `vx watch` keeps from an earlier run counts),
-  since it may have changed the file and put it back.
-  The line names that task; order the two with `dependsOn` to save.
-- `'unchecked'`: none. The entry is saved under the key taken before the
-  command, whatever the command did to its inputs; `severity` is ignored.
-  A key that no longer held before the command started still withholds
-  it. A later task that reads the rewritten file still reads its new
-  bytes.
+Default: `'immutable'` and `'warn'`, on CI too.
 
-A write that counts withholds the entry, and `severity` says what else
-happens: `'warn'` (the default) keeps the result, says why on the status
-line, and the run goes on; `'error'` fails the task, so the run fails,
-and its label names the file: `failed (src/a.ts changed during the run, exit 1)`
-(`inputMoved` in `vx last --format json`).
-Either way, every task that ran over the task's outputs, down the graph,
-withholds its save too, and a task of any project that declares the
-moved file as an input withholds its own.
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
 
-Each field is resolved on its own, highest first:
+**Strategy**
 
-1. `VX_INPUTS_STABILITY_STRATEGY` (`immutable`, `mutable`,
-   `unchecked`) and `VX_INPUTS_STABILITY_SEVERITY` (`warn`, `error`), for the whole run
-   (a CI job that wants `error` sets it without editing configs); any
-   other value is refused before a task runs;
-2. the task's own `inputs.stability`;
-3. the workspace's `inputs.stability` (`.vx/workspace.ts`);
-4. the default, `'immutable'` and `'warn'`.
+- An uncached task saves nothing, so there the field changes nothing.
+- `inputs.stability` on a task with no `exec` is refused: no command runs that could write its inputs.
+- `'immutable'`: any write counts. An edit undone mid-run, or another task changing the file and putting it back, cannot be told from no edit.
+- `'mutable'`: a file rewritten to the bytes the key read counts as unchanged, for a task that rewrites its own input identically (tsdown's `package.json`).
+- `'mutable'` still counts different bytes.
+- `'mutable'` still counts any write while another task that may write the file was running: it may have changed the file and put it back.
+- Such a task is one of the same project, one whose sandbox grants writes elsewhere in the workspace, or a server `vx watch` keeps from an earlier run.
+- The status line names that task: order the two with `dependsOn` to save.
+- `'unchecked'`: no write counts. The entry is saved under the key taken before the command, whatever the command did; `severity` is ignored.
+- `'unchecked'` still withholds the save when the key no longer held before the command started.
+- After an `'unchecked'` task, a later task that reads the rewritten file reads its new bytes.
 
-The strategy a task runs under is in its key, from whichever source:
-an entry `'unchecked'` kept is no hit once the check is back. Unset or
-`'immutable'` from the variable or the workspace folds nothing. The
-severity is folded only as the task's own field.
+**Severity**
+
+- A write that counts withholds the entry. `'warn'` keeps the result, says why on the status line, and the run goes on.
+- `'error'` fails the task, so the run fails. Its label names the file: `failed (src/a.ts changed during the run, exit 1)`.
+- `inputMoved` in `vx last --format json` marks it.
+- Either way, every task that ran over the task's outputs, down the graph, withholds its save too.
+- A task of any project that declares the moved file as an input withholds its own.
+
+**Where the value comes from**
+
+- Each field is resolved on its own, highest first: the variable, the task's `inputs.stability`, the workspace's `inputs.stability` (`.vx/workspace.ts`), the default.
+- `VX_INPUTS_STABILITY_STRATEGY=mutable` (`immutable`, `mutable`, `unchecked`) sets the whole run.
+- `VX_INPUTS_STABILITY_SEVERITY=error` (`warn`, `error`) sets the whole run: a CI job fails on a moved input without editing configs.
+- Any other value of either variable is refused before a task runs.
+- The strategy is in the key, from whichever source: an entry saved under `'unchecked'` is no hit once the check is back.
+- `'immutable'` or unset, from the variable or the workspace, adds nothing to the key.
+- The severity is in the key only as the task's own field.
+
+A whole config, for a build that rewrites its `package.json`:
 
 ```ts
 import { defineProject } from '@vzn/vx/config'
@@ -1648,6 +1689,9 @@ export default defineProject({
   },
 })
 ```
+
+</div>
+</details>
 
 ### `outputs` (optional)
 
