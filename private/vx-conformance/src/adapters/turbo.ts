@@ -37,6 +37,10 @@ export const turbo: Adapter = {
       'A dependency’s hash always keys its dependants: no task orders a dependency without it.',
     sandbox: 'Turborepo keeps no task from files, network or home it never declared.',
     'select-tag': 'A filter picks by name, directory or change; packages carry no tags.',
+    'report-cpu':
+      'The run summary (`--summarize`) gives a task’s start and end, never its CPU time.',
+    'report-memory': 'The run summary gives no task’s peak memory.',
+    'report-output-bytes': 'The run summary lists a task’s output files, never their size.',
   },
   env: { TURBO_TELEMETRY_DISABLED: '1', DO_NOT_TRACK: '1', NO_COLOR: '1' },
   async configure(dir, given, command) {
