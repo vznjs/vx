@@ -1,0 +1,160 @@
+---
+// The run picker on the Running tasks page. Without JavaScript it shows
+// three commands and the tasks each starts; `run-picker.ts` unhides the
+// controls ([data-js]) and draws the board for whatever the reader picks.
+import Demo from '../Demo.astro'
+import { PROJECTS, TASKS, USES, command, plan } from './model/run-picker.ts'
+
+const examples = [
+  ['build', { kind: 'here', project: '@shop/web' }],
+  ['test', { kind: 'filter', filters: ['...@shop/ui'] }],
+  ['lint', { kind: 'all' }],
+] as const
+const presets = ['@shop/web', '@shop/web...', '...@shop/ui', '@shop/*', '!@shop/api', './packages/api', '@shop/wbe']
+---
+
+<Demo name="run-picker">
+  <table class="js-hint">
+    <thead><tr><th>command</th><th>tasks that run</th></tr></thead>
+    <tbody>
+      {
+        examples.map(([task, scope]) => (
+          <tr>
+            <td>{command(task, scope)}</td>
+            <td>{plan(task, scope).tasks.map((t) => t.id).join(', ')}</td>
+          </tr>
+        ))
+      }
+    </tbody>
+  </table>
+  <div class="vx-row" data-js hidden>
+    <span class="vx-label">task</span>
+    {TASKS.map((t) => <button type="button" data-task={t}>{t}</button>)}
+  </div>
+  <div class="vx-row" data-js hidden>
+    <span class="vx-label">pick</span>
+    <button type="button" data-mode="here">in packages/web</button>
+    <button type="button" data-mode="all">--all</button>
+    <button type="button" data-mode="filter">--filter</button>
+    <button type="button" data-mode="affected">--affected</button>
+  </div>
+  <div class="vx-row filter-row" data-js hidden>
+    <input class="filter" type="text" value="...@shop/ui" aria-label="Filter patterns, space separated" spellcheck="false" />
+    {presets.map((p) => <button type="button" class="preset" data-preset={p}>{p}</button>)}
+  </div>
+  <div class="vx-row changed-row" data-js hidden>
+    <span class="vx-label">this branch changed</span>
+    {PROJECTS.map((p) => <button type="button" data-changed={p}>{p.slice(6)}</button>)}
+  </div>
+  <pre class="cmd" data-js hidden></pre>
+  <div class="board" data-js hidden>
+    {
+      PROJECTS.map((p) => (
+        <div class="card" data-project={p}>
+          <div class="name">{p}</div>
+          <div class="uses">{USES[p].length > 0 ? `uses ${USES[p].join(', ')}` : 'uses nothing'}</div>
+          <div class="chips">
+            {TASKS.map((t) => (
+              <span class="chip" data-id={`${p}#${t}`}>{t}</span>
+            ))}
+          </div>
+        </div>
+      ))
+    }
+  </div>
+  <div class="legend" data-js hidden>
+    <span class="chip" data-role="requested">runs</span>
+    <span class="chip" data-role="first">runs first</span>
+    <span class="chip" data-role="idle">not in this run</span>
+  </div>
+  <p class="vx-say" aria-live="polite" data-js hidden></p>
+</Demo>
+
+<style>
+  .js-hint {
+    margin-inline: auto;
+  }
+  .filter {
+    width: min(100%, 16rem);
+  }
+  .preset {
+    font-size: 12px;
+  }
+  .cmd {
+    margin-block: 0.25rem 1rem !important;
+    color: var(--vx-accent);
+  }
+  .board {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.75rem;
+  }
+  .card {
+    padding: 0.6rem 0.75rem;
+    border: 1.5px solid var(--vx-border);
+    border-radius: 8px;
+    background: var(--vx-surface-2);
+    transition: opacity 0.2s;
+  }
+  .card.is-idle {
+    opacity: 0.45;
+    border-style: dashed;
+  }
+  .card.is-changed {
+    border-color: var(--vx-warn);
+  }
+  .card.is-changed .name::after {
+    content: ' · changed';
+    color: var(--vx-warn);
+    font-weight: 400;
+  }
+  .name {
+    font-family: var(--vx-mono);
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .uses {
+    font-size: 12px;
+    color: var(--vx-muted);
+    margin-bottom: 0.4rem;
+  }
+  .chips,
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+  }
+  .legend {
+    justify-content: center;
+    margin-top: 0.75rem;
+  }
+  .chip {
+    font-family: var(--vx-mono);
+    font-size: 12px;
+    padding: 0.1rem 0.5rem;
+    border-radius: 6px;
+    border: 1.5px solid var(--vx-border);
+    color: var(--vx-muted);
+  }
+  .chip[data-role='requested'] {
+    border-color: var(--vx-accent);
+    color: var(--vx-fg);
+    background: color-mix(in srgb, var(--vx-accent) 14%, transparent);
+  }
+  .chip[data-role='first'] {
+    border-color: var(--vx-link);
+    color: var(--vx-fg);
+    background: color-mix(in srgb, var(--vx-link) 14%, transparent);
+  }
+  .chip[data-role='idle'] {
+    border-style: dashed;
+  }
+  @media (max-width: 30rem) {
+    .card {
+      padding: 0.5rem;
+    }
+    .uses {
+      font-size: 11px;
+    }
+  }
+</style>
