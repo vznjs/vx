@@ -149,7 +149,7 @@ export interface DefaultLogger extends Logger {
  *
  * `gha` (GitHub Actions): task output is fenced from workflow commands; in full
  * mode each block is a collapsible group, except failures, which stay open with
- * an `::error` annotation.
+ * an `::error` annotation, as each failure's frame has in errors-only.
  *
  * `ci`: suppresses the status line even on a TTY.
  */
@@ -380,7 +380,9 @@ export function defaultLogger(
   // The pinned zone above the worker rows: persistent tasks pin at ready and
   // stay until runEnd. A failure is not pinned: it is a permanent failed row at
   // once, its frame deferred to runEnd. 'full'/CI keeps frames inline.
-  const deferredFailures: string[] = []
+  // `note`: a failure's `::error` annotation on GitHub Actions, as `full`
+  // writes one: CI's default view wrote none, and a failed check named no task.
+  const deferredFailures: { block: string; note: string }[] = []
   // Each ready server's outcome: one whose child has exited (`serverExit`) is no longer pinned.
   const pinnedPersistent: TaskOutcome[] = []
   let flushedFailures = false
@@ -946,7 +948,13 @@ export function defaultLogger(
       // where eyes land. Guarded for repeat runEnd calls.
       if (!flushedFailures && deferredFailures.length > 0) {
         flushedFailures = true
-        for (const block of deferredFailures) emitBlock(fenced(block))
+        for (const { block, note } of deferredFailures) {
+          if (note === '' || block.length === 0) emitBlock(fenced(block))
+          else {
+            const [open, close] = ghaFenceEnds(ghaToken)
+            emitBlock(block, `${note}${open}`, close)
+          }
+        }
       }
       panelOpen = undefined
       // The summary and the CLI's own lines follow on the stream directly:
@@ -998,7 +1006,14 @@ export function defaultLogger(
       // The failed row now; its frame replays with the others at runEnd.
       const deferFailure = (): void => {
         emitRow(failureRow(node, outcome))
-        deferredFailures.push(frame(false))
+        deferredFailures.push({
+          block: frame(false),
+          // The message is ours; only the title carries user input.
+          note:
+            view.gha === true
+              ? `::error title=${ghaProperty(node.id)}::${outcomeLabel(outcome)}\n`
+              : '',
+        })
       }
       // An aborted task frees its slot and counts as the footer will: `aborted`
       // or `not run`.
@@ -1030,7 +1045,7 @@ export function defaultLogger(
           // with the deferred failures above the summary.
           if (view.mode === 'broad' || view.mode === 'errors-only') {
             emitRow(formatTaskAbortedLine(node, outcome, colors, blocksOf(node.id)))
-            deferredFailures.push(frame(true))
+            deferredFailures.push({ block: frame(true), note: '' })
             return
           }
           emitBlock(fenced(frame(true)))
