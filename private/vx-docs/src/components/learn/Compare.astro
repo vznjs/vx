@@ -1,15 +1,17 @@
 ---
 // Two things side by side (a miss and a hit, before and after): slots
-// `left` and `right`. Stacks on a phone.
+// `left` and `right`, titled by `leftTitle` and `rightTitle` (a prop named
+// like a slot reaches the component as the slot, not the string). Stacks on
+// a phone.
 interface Props {
-  left: string
-  right: string
+  leftTitle: string
+  rightTitle: string
 }
 ---
 
 <div class="vx-compare">
-  <div class="vx-compare-col"><p class="vx-compare-title">{Astro.props.left}</p><slot name="left" /></div>
-  <div class="vx-compare-col"><p class="vx-compare-title">{Astro.props.right}</p><slot name="right" /></div>
+  <div class="vx-compare-col"><p class="vx-compare-title">{Astro.props.leftTitle}</p><slot name="left" /></div>
+  <div class="vx-compare-col"><p class="vx-compare-title">{Astro.props.rightTitle}</p><slot name="right" /></div>
 </div>
 
 <style>

@@ -92,7 +92,7 @@ execution, plugins) and ends with `<NextStep>` to the next chapter.
 | `<Deeper level title>` | a Patterns or Details block | closed by default; Markdown inside |
 | `<Concept term>` | a new word, defined in 1-2 sentences | first use only; at most 3 per page; terms from the docs guide's list |
 | `<Walkthrough title>` + `<Frame title>` | a sequence the reader steps through (first run → second run → edit) | 2-5 frames; each frame shows real output or a picture |
-| `<Compare left right>` + `<div slot="left">` / `<div slot="right">` | two things side by side (miss vs hit, before vs after) | short content: config, a few lines |
+| `<Compare leftTitle rightTitle>` + `<div slot="left">` / `<div slot="right">` | two things side by side (miss vs hit, before vs after) | short content: config, a few lines |
 | `<Chart groups caption>` | numbers as bars (`BarGroup[]`, `plugins/data-charts.ts`) | measured numbers only, never invented |
 | `<Diagram {...picture} />` | a picture of how something works | pictures in `src/components/docs/pictures/<area>.ts`, with a `narrow` phone layout; kit: `../guide/diagram/README.md` |
 | `<Quiz q>` | "Check yourself": one question, answer behind a click | at most 2 per page; tests understanding, not trivia |
