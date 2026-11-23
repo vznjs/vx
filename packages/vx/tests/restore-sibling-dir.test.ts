@@ -15,6 +15,7 @@ import { run } from './helpers/orchestrator.js'
 
 let root: string
 let app: string
+const FILES = 2000
 
 const quiet = {
   status: () => undefined,
@@ -32,11 +33,13 @@ beforeEach(async () => {
   await mkdir(path.join(app, 'src'), { recursive: true })
   await writeFile(path.join(app, 'package.json'), JSON.stringify({ name: 'app' }))
   await writeFile(path.join(app, 'src', 'x'), 'x\n')
-  // Big enough that the copy into staging outlasts the poll below.
+  // Many files, so the copy into staging awaits often enough for the poll
+  // below to run between them: one big file was a single APFS clone on the
+  // Mac, staged and landed with no turn between (job 137565144235).
   await writeFile(
     path.join(app, 'vx.config.mjs'),
-    `export default { tasks: { b: { exec: { command: 'mkdir -p dist && head -c 64000000 /dev/zero > dist/big.bin' },
-      inputs: { files: ['src/**'] }, outputs: { files: ['dist/big.bin'] }, cache: true } } }\n`,
+    `export default { tasks: { b: { exec: { command: 'mkdir -p dist && for i in $(seq 1 ${FILES}); do echo $i > dist/f$i; done' },
+      inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true } } }\n`,
   )
   await Bun.spawn(['git', 'init', '-q'], { cwd: root }).exited
 })
@@ -48,15 +51,16 @@ afterEach(async () => {
 const build = () =>
   run({ cwd: root, tasks: ['b'], projects: ['app'], log: quiet, handleSignals: false })
 
-// The restore's staged `dist` (`.vx/tmp/<staging>/<n>/big.bin`): staged only
+// The restore's staged `dist` (`.vx/tmp/<staging>/<n>/f<i>`): staged only
 // once the walk found `dist` missing, so a `dist` made now comes after it.
 const staged = (): boolean => {
   const tmp = path.join(root, '.vx', 'tmp')
   try {
     return readdirSync(tmp).some((d) => {
       try {
-        return readdirSync(path.join(tmp, d)).some((n) =>
-          existsSync(path.join(tmp, d, n, 'big.bin')),
+        return readdirSync(path.join(tmp, d)).some(
+          (n) =>
+            existsSync(path.join(tmp, d, n, 'f1')) || readdirSync(path.join(tmp, d, n)).length > 0,
         )
       } catch {
         return false
@@ -85,10 +89,7 @@ it('a directory a sibling made while the tree was staged is filled, not replaced
   expect(second.outcomes[0]?.cache?.restored).toBe(true)
   // The staging was seen: otherwise the test proved nothing.
   expect(made).toBeNumber()
-  expect([statSync(dist).ino, statSync(path.join(dist, 'big.bin')).size]).toEqual([
-    made ?? -1,
-    64_000_000,
-  ])
+  expect([statSync(dist).ino, readdirSync(dist).length]).toEqual([made ?? -1, FILES])
 })
 
 it('renameNew refuses a standing empty directory and leaves both trees', async () => {
