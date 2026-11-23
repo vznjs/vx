@@ -144,12 +144,12 @@ Pick a tab and watch the run.
 <TabItem label="Without ^build">
 
 <Timeline
-  label="Both builds start at once; web fails at 221 ms because ui is not built yet; ui finishes at 232 ms"
+  label="Both builds start at once; web fails at 187 ms because ui is not built yet; ui finishes at 194 ms"
   end={420}
   unit="ms"
   lanes={[
-    { task: '@demo/ui#build', bars: [{ from: 0, to: 232, tone: 'ok', label: 'built' }] },
-    { task: '@demo/web#build', bars: [{ from: 0, to: 221, tone: 'danger', label: 'failed' }] },
+    { task: '@demo/ui#build', bars: [{ from: 0, to: 194, tone: 'ok', label: 'built' }] },
+    { task: '@demo/web#build', bars: [{ from: 0, to: 187, tone: 'danger', label: 'failed' }] },
   ]}
 />
 
@@ -157,8 +157,8 @@ Both start at once. `vite` looks for `@demo/ui` before it is built:
 
 ```ansi
 [4m[58;2;110;118;129m  [1m[38;2;167;139;250mTasks[0m[4m[58;2;110;118;129m     [2mstatus  cache       time   task[0m[4m[58;2;110;118;129m                 [0m
-            [38;2;239;68;68mfailed[0m  [2mmiss[0m       [38;2;203;213;225m221ms[0m   [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m
-            [38;2;34;197;94msuccess[0m [2mmiss[0m       [38;2;203;213;225m232ms[0m   [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;239;68;68mfailed[0m  [2mmiss[0m       [38;2;203;213;225m187ms[0m   [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m       [38;2;203;213;225m194ms[0m   [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m
 
 [2m┌─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m>[0m [1m[38;2;239;68;68mfailed (exit 1)[0m
 
@@ -166,14 +166,21 @@ Both start at once. `vite` looks for `@demo/ui` before it is built:
 
 [2m├─[0m [1mOUTPUT[0m [2m──────────────────────────────────────────────────[0m
 
-[36mvite v7.3.1 [32mbuilding client environment for production...[36m[39m
+[36mvite v8.3.8 [32mbuilding client environment for production...[36m[39m
 transforming...
-[32m✓[39m 2 modules transformed.
-[31m✗[39m Build failed in 39ms
-[31merror during build:
-[31m[commonjs--resolver] Failed to resolve entry for package "@demo/ui". The package may have incorrect main/module/exports specified in its package.json.[31m
+[32m✓[0m 4 modules transformed.
+rendering chunks...
+computing gzip size...
+[2mdist/[0m[32mindex.html                [0m[1;2m0.13 kB[0m[2m │ gzip: 0.13 kB[0m
+[2mdist/[0m[2massets/[0m[36mindex-BSUu6s4j.js  [0m[1;2m0.76 kB[0m[2m │ gzip: 0.44 kB[0m
 
-[2m└─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(221ms)[0m [1m[38;2;239;68;68mfailed (exit 1)[0m
+[31m✗[39m Build failed in 40ms
+[31merror during build:
+[31mBuild failed with 1 error:
+
+[38;2;239;68;68mError: [vite]: Rolldown failed to resolve import "@demo/ui" from "/repo/packages/web/src/index.ts".[0m
+
+[2m└─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(187ms)[0m [1m[38;2;239;68;68mfailed (exit 1)[0m
 ```
 
 </TabItem>
