@@ -41,6 +41,7 @@ export function killTree(
   signal: 'SIGINT' | 'SIGTERM' | 'SIGKILL',
   escapees?: boolean,
 ): void
+export function sweepDeadShell(child: Child, escapees: boolean): void // a shell dead of no vx signal: SIGKILL its group at once
 export function pauseTree(child: Child, signal: 'SIGSTOP' | 'SIGCONT'): void // Ctrl-Z, fg: the group, never the channel
 export function markStopped(stopped: boolean): void // Ctrl-Z, fg: a task's timeout skips the time stopped
 export function runTime(): number // performance.now() less the time stopped: the clock a task's duration reads

@@ -2731,6 +2731,7 @@ Each edit rebuilds only the libraries it reaches on the way to the app. The serv
 **When it stops**
 
 - One that dies while watch idles is said: `vx: @demo/web#dev exited with code 3`. The next change starts it again.
+- What it left running in its process group is SIGKILLed then, so no orphan holds its port until the next change.
 - A cycle in which a task the server depends on fails stops it.
 - So does a cycle that no longer starts it: its dependants all hit, or the selection changed.
 - Stopping watch stops the server too.

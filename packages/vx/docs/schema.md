@@ -844,6 +844,9 @@ agent: {
 - vx names it at once, while the graph still runs:
   `vx: <id> exited with code <n>` (`… while the run went on`). A signal
   death shows as its `128 + n` code.
+- What it left running in its process group, and what left the group
+  carrying its `VX_RUN_TREE`, is SIGKILLed at once: no orphan holds its
+  port.
 - So a dependant failing against it reads why, with the line a crash
   before ready gets (an exit 127's PATH verdict, a sandboxed server's
   note), said once.

@@ -28,6 +28,7 @@ import {
   markTree,
   releaseGroup,
   releaseServerGroup,
+  sweepDeadShell,
   signalThrough,
   guardLine,
   spawnGuarded,
@@ -1159,6 +1160,8 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
   // — reject the ready promise so the caller can surface it.
   void child.exited.then(async (code) => {
     opts.liveChildren?.delete(child)
+    // A clean exit is a setup step's: what it started is torn down with the run.
+    if (code !== 0) sweepDeadShell(child, true)
     releaseServerGroup(child)
     readyTimer?.clear()
     if (code !== 0) failedExit = true
@@ -1438,6 +1441,9 @@ export async function runCommand(opts: RunOptions): Promise<RunResult> {
   // grace.
   await proc.exited
   const stoppedAtExit = opts.signal?.aborted === true
+  // Only a signal's death: a shell that ends on its own may leave a shared
+  // daemon (sccache) for the next task.
+  if (proc.signalCode !== null && !stoppedAtExit) sweepDeadShell(proc, false)
   // Stopped at the exit, before any return below: a watch left on kept
   // its timer reading /proc for the rest of the run.
   const looked = watch?.stop()

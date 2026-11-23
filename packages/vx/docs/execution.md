@@ -595,7 +595,9 @@ waited for: the task is saved with its outputs as they stood at exit,
 and a hit replays that. Such a process would equally be a shared daemon
 the task started for the next build (sccache, Gradle's, Bazel's server),
 so a task that ends on its own leaves it running, and so does one that
-timed out, as the run goes on and another task may be using it. A task
+timed out, as the run goes on and another task may be using it. A shell
+killed by a signal it did not get from vx (`kill -9`, a crash) takes its
+process group with it at once, SIGKILLed (`tests/dead-shell-group.test.ts`). A task
 vx stops (Ctrl-C, `--fail-fast`, a server stopped at the run's end or by
 a `vx watch` restart) takes it down too: every spawn carries
 `VX_RUN_TREE` in its environment, each descendant inherits it, and the

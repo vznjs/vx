@@ -61,6 +61,7 @@ import {
   releaseGroup,
   runTime,
   signalThrough,
+  sweepDeadShell,
   guardLine,
   markTree,
   spawnGuarded,
@@ -995,6 +996,8 @@ async function awaitAttempt(args: SandboxedRunArgs, spawned: Spawned, tag: strin
   // aborts at once, otherwise drainOrAbort bounds the post-exit drain.
   await proc.exited
   const stoppedAtExit = args.signal?.aborted === true
+  // As runCommand: a shell killed by a signal takes its group at once.
+  if (proc.signalCode !== null && !stoppedAtExit) sweepDeadShell(proc, false)
   const ranMs = Math.round(runTime() - armedAt)
   const looked = watch?.stop()
   await timeout.settle()

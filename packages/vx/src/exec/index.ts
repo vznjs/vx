@@ -30,6 +30,7 @@ export {
 export {
   holdGroups,
   killTree,
+  sweepDeadShell,
   markStopped,
   pauseTree,
   runTime,

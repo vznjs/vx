@@ -501,6 +501,7 @@ export function killTree(
   // A pid of 0 would name OUR group (kill(0)): a child that never
   // spawned has nothing to kill.
   if (!(child.pid > 0)) return
+  stoppedByVx.add(child)
   // A server whose shell is gone may have left only these.
   if (escapees) signalEscapees(child, signal)
   if (goneGroups.has(child)) return
@@ -522,6 +523,19 @@ export function killTree(
     if ((err as NodeJS.ErrnoException).code === 'ESRCH') return
     child.kill(signal)
   }
+}
+
+/** Children vx signalled: their shell's death is vx's stop, which keeps its grace. */
+const stoppedByVx = new WeakSet<Child>()
+
+/**
+ * `child`'s shell died on its own (SIGKILL, a crash): SIGKILL what it left in
+ * its group at once. A `kill -9`ed dev server's children held its port under
+ * init while `vx watch` idled. Called before the group is released. A shell
+ * that died on vx's own stop is left to that stop's grace.
+ */
+export function sweepDeadShell(child: Child, escapees: boolean): void {
+  if (!stoppedByVx.has(child)) killTree(child, 'SIGKILL', escapees)
 }
 
 let stoppedTotal = 0
