@@ -279,6 +279,7 @@
           "src/conformance/**",
           "src/data/conformance.json",
           "src/nav/**",
+          "src/llms/**",
           "src/components/guide/**",
           "src/components/landing/**",
           "src/components/Demo.astro",
