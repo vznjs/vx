@@ -536,9 +536,9 @@ use your own instead.
   CPU, so its history books it; the base is booked once on each worker
   that starts the server, in placement and in the plan, and kept in
   history for the next run, as warm-ups are. A server that crashes (a
-  non-zero exit) fails the dependant that ran against it, and each one
-  after it on that worker, naming the server: on one machine the server
-  fails and the run with it, so a run over workers does too.
+  non-zero exit) or never becomes ready fails, as on one machine: a
+  dependant that ran against it fails too, naming it, and one that had
+  not begun is skipped, blocked by it, with why as a warning.
 - A task whose key hashes a runtime probe (`inputs.runtime`, such as
   `bun --version`) runs on a worker, which answers the probe first and
   fails the task when it answers otherwise than this machine did. A path

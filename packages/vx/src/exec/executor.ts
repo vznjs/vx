@@ -362,6 +362,18 @@ export interface ExecuteResult extends RunResult {
    */
   readonly where?: string
   /**
+   * A `servers` executor's: each server of the request that failed where it
+   * ran, with its exit. `began` false: it died or never became ready before
+   * the command began, which then never ran, and core skips the task blocked
+   * by it, as a server here skips its dependants. Core fails each server's
+   * row either way: it was carried, so this machine never saw it end.
+   */
+  readonly deadServers?: readonly {
+    readonly taskId: string
+    readonly exitCode: number
+    readonly began: boolean
+  }[]
+  /**
    * The cores and memory of the machine `where` names, as it reports them:
    * history keeps them, so a task that used all of one reads as wanting a
    * bigger one.
@@ -711,6 +723,18 @@ export function assertExecuteResult(
     } else if (outputs.kind !== 'disk')
       fail(`outputs.kind is ${String(outputs.kind)} (expected disk, deferred or trailing)`)
   }
+  const dead = r['deadServers']
+  if (
+    dead !== undefined &&
+    (!Array.isArray(dead) ||
+      dead.some(
+        (d: { taskId?: unknown; exitCode?: unknown; began?: unknown } | null) =>
+          typeof d?.taskId !== 'string' ||
+          !Number.isInteger(d.exitCode) ||
+          typeof d.began !== 'boolean',
+      ))
+  )
+    fail('deadServers is not an array of { taskId, exitCode, began }')
   const changed = r['changed']
   if (
     changed !== undefined &&

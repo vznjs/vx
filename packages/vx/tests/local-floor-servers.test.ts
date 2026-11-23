@@ -125,6 +125,8 @@ it('says why a server did not start through the stream a worker ships', async ()
       ],
     })
     expect(r.exitCode).toBe(1)
+    // What the run fails the server's row and skips the task by.
+    expect(r.deadServers).toEqual([{ taskId: 's#srv', exitCode: 3, began: false }])
     expect(heard.join('')).toContain('s#srv, which s#live depends on, did not start')
     // The server's own words, not only its exit code.
     expect(heard.join('')).toContain('its output:\nport is already allocated\n')
@@ -204,8 +206,13 @@ it('a task its server crashed under fails, as does one after it, each told why',
     ],
   })
   try {
-    expect((await floor.execute(task(1, 'touch down; sleep 0.3'))).exitCode).toBe(1)
+    const first = await floor.execute(task(1, 'touch down; sleep 0.3'))
+    expect([first.exitCode, first.deadServers]).toEqual([
+      1,
+      [{ taskId: 's#srv', exitCode: 3, began: true }],
+    ])
     const r = await floor.execute(task(2, 'true'))
+    expect(r.deadServers).toEqual([{ taskId: 's#srv', exitCode: 3, began: false }])
     expect([r.exitCode, heard.join('')]).toEqual([
       1,
       's#srv, which s#t1 depends on, exited with code 3 while it ran\n' +

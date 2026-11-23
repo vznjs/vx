@@ -36,6 +36,7 @@ import {
 import { sandboxFix } from '../sandbox/index.js'
 import { shellVerdict, unpassedEnv } from './shell-verdict.js'
 import { forgetUndeclaredWrites, taskBinDirs } from './task-process.js'
+import { failServer } from './persistent.js'
 import type { OutcomeTiming, TaskOutcome } from '../graph/index.js'
 import { failedOutputLog } from './output-log.js'
 import { mayWriteFingerprint, undeclaredWriteReach } from '../sandbox/index.js'
@@ -99,6 +100,26 @@ export async function runAttempts(
             : { node, status: 'skipped', durationMs: 0, hash, timing: timing() },
       }
     const result = a.result
+    // A server carried to the machine that ran it died there: its row fails,
+    // and a dependant it left unbegun is skipped behind it, as here.
+    if (result.deadServers !== undefined) {
+      for (const d of result.deadServers) failCarried(args.upstream, d.taskId, d.exitCode)
+      const first = result.deadServers.find((d) => !d.began)
+      // A skip shows no output: the why, which a server here says in its own frame, is said here.
+      if (first !== undefined) {
+        if (result.stderr.trim() !== '') warnOf(log)(`[vx] ${result.stderr.trimEnd()}`)
+        return {
+          outcome: {
+            node,
+            status: 'skipped',
+            durationMs: 0,
+            hash,
+            blockedBy: first.taskId,
+            timing: timing(),
+          },
+        }
+      }
+    }
     prior = { result, exitCode: a.exitCode }
     if (a.withdrawn) {
       m.attempt--
@@ -594,4 +615,12 @@ function outputsMissing(m: MissRun, res: ExecuteResult): string[] | undefined {
     ])
   warnOf(log)(secrets.text(line))
   return missing
+}
+
+/** Fails server `id`'s outcome among `upstream`, through groups: a dependant's view of it. */
+function failCarried(upstream: readonly TaskOutcome[], id: string, code: number): void {
+  for (const o of upstream) {
+    if (o.node.id === id) failServer(new Map([[id, o]]), id, code)
+    else if (o.groupUpstream !== undefined) failCarried(o.groupUpstream, id, code)
+  }
 }

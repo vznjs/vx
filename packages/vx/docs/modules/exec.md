@@ -652,7 +652,7 @@ cacheable }` — what `accepts()` sees. Placement happens ONCE per task,
   hit would have matched; held in memory for the attempt and never
   persisted (`env`/`runtime` values may be secrets — `entry_inputs` stores
   digests only).
-- `ExecuteResult extends RunResult { violations; outputs?; changed?; outputsMissing?; where? }` —
+- `ExecuteResult extends RunResult { violations; outputs?; changed?; outputsMissing?; deadServers?; where? }` —
   `outputs` is `{ kind: 'disk' }` or `{ kind: 'deferred'; materialize }`
   (outputs left remote, fetched only if a local consumer needs them), or,
   to a `trailing` request alone, `{ kind: 'trailing'; landed }`: on their
@@ -662,6 +662,11 @@ cacheable }` — what `accepts()` sees. Placement happens ONCE per task,
   (`missingOutputs`, core's rule) and returns the globs that matched
   nothing as `outputsMissing`: core fails the task naming them, as it
   does for one run here.
+  A `servers` executor names in `deadServers` each server of the request
+  that failed where it ran (`{ taskId, exitCode, began }`): core fails
+  that server's row, and with `began: false` (it died or never became
+  ready before the command began) skips the task blocked by it and says
+  why as a warning, as a server here skips its dependants.
   `spawnFailed: true` says the command never started (its 127 is the
   executor's, so no "command not found" line follows; A-41).
   `leftRunning: true` says a process the command left still ran when
