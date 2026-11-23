@@ -6,7 +6,7 @@
 import { RUNS, longest, project, rows, seconds, type Bar, type Push, type Run } from './spread'
 
 const MAX = 3
-const SCALE = 1400 // ms across the track, fixed so a change shows as movement
+const SCALE = 1100 // ms across the track, fixed so a change shows as movement
 const first = RUNS[`all-${MAX}`]
 const chain = longest(first)
 const pct = (ms: number) => `${((ms / SCALE) * 100).toFixed(2)}%`
@@ -21,7 +21,7 @@ const label = (b: Bar) =>
 const short = (id: string) => id.replace('@demo/', '')
 const pushes: Array<[Push, string]> = [
   ['all', 'Every task changed'],
-  ['web', 'Edit in apps/web'],
+  ['web', 'Edit in packages/web'],
   ['none', 'Nothing changed'],
 ]
 ---
@@ -270,6 +270,7 @@ const pushes: Array<[Push, string]> = [
   }
   .vx-spread-item {
     white-space: nowrap;
+    margin-right: 0.8rem;
   }
   .vx-spread-key,
   .vx-spread-note {
@@ -277,7 +278,7 @@ const pushes: Array<[Push, string]> = [
     color: var(--vx-muted);
     margin: 0.6rem 0 0;
   }
-  .vx-spread-key .vx-spread-swatch:first-child {
+  .vx-spread-key .vx-spread-swatch {
     margin-left: 0;
   }
   @media (max-width: 40rem) {
