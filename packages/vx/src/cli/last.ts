@@ -383,7 +383,7 @@ async function printStats(
       taskId,
       runs: h.runs,
       p50DurationMs: h.p50DurationMs ?? null,
-      p99DurationMs: h.p99DurationMs ?? null,
+      p99DurationMs: h.forecastP99DurationMs ?? null,
       successRate: h.successRate,
       hitRate: h.hitRate,
       failureMode: h.failureMode,

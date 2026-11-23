@@ -16,6 +16,7 @@ export interface TaskHistory {
   runs: number
   p50DurationMs: number | undefined
   p99DurationMs: number | undefined
+  forecastP99DurationMs?: number // p99 of the timings p50DurationMs reads (vx last --stats)
   successRate: number
   hitRate: number
   failureMode: FailureMode
@@ -150,7 +151,8 @@ source, id)`, exact however old the rows. A run learns its branch once
 `PreparedRun.branch`, the schedule hook's `ctx.branch`;
 `currentBranch` in `run-context.ts` for any other reader).
 `p99DurationMs`, the rates and the resource maxima stay over the
-window. `tests/history-forecast-branch.test.ts`.
+window; `forecastP99DurationMs` reads the forecast's timings, so `vx last
+--stats` prints p50 and p99 of one set. `tests/history-forecast-branch.test.ts`.
 
 A reader given the run's definitions (`taskDefinitions`, the fourth
 argument) reads only the rows of each task as it is now. Every row
