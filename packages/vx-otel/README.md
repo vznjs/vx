@@ -106,7 +106,8 @@ otel({
   status as `vx.task.status`, `vx.cache.source` (miss/local/remote, or none for a skipped task, one a stop aborted, or a failed hit whose restore threw),
   on a hit `vx.cache.restored` (`true` when it restored outputs, `false` when they were already up to date),
   `vx.task.hash`, the exit code (`vx.task.exit_code`; none on a skipped task, which never ran),
-  duration, CPU ms, peak RSS, and on a skipped task its root
+  duration (`vx.task.duration_ms`), CPU ms (`vx.cpu_ms`), peak RSS (`vx.peak_rss_bytes`),
+  on a task a plugin executor placed the machine that ran it (`vx.task.where`), and on a skipped task its root
   blocker (`vx.task.blocked_by`) or, skipped for its `exec.platforms`, what it
   needs and this machine's (`vx.task.platforms_needed`, `vx.task.platform_host`),
   on a server each dependant's worker ran `vx.task.carried`, on a timed-out one `vx.task.timed_out`, on
