@@ -101,6 +101,7 @@ execution, plugins) and ends with `<NextStep>` to the next chapter.
 | Starlight `<Aside>` | `tip` shortcut, `note` fact, `caution` trap, `danger` data loss | one fact per aside |
 | Starlight `<Steps>`, `<Tabs>` | a sequence to follow; alternatives (bun / pnpm) | |
 | `GraphExplorer` (`../demos/`) | the interactive task graph | the graph pages |
+| `<CacheSim task?>` (`../play/`) | change a file, config or env, run, see hit / miss / up to date and why | caching pages; `import { CacheSim } from '../../../components/play'` |
 
 Real output stays ` ```ansi ` pasted from a real run (docs guide M4, M10).
 A Walkthrough frame is the place to put two outputs the reader compares.
