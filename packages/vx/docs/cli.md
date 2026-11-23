@@ -4125,7 +4125,7 @@ run shows: the median of the task's last five timings on the branch,
 else on any branch), p99 of the executed successes, pass and hit rate, failure mode (`stable`,
 `flaky-recoverable`, `flaky-fatal`), the largest peak RSS and the mean CPU
 parallelism (a hit counts what its producing run used), one table row
-per task, in the run grid's units (`3.6MB`, cpu `127%`, `—` where unknown). A task id narrows to that task, a task name to it in every
+per task, in the run grid's units (`3.6MB`, cpu `127%`, `—` where unknown). On a terminal too narrow for every column, cpu, peak RSS, p99, hit rate, failure mode and runs go in that order; the task, p50 and pass rate stay. A task id narrows to that task, a task name to it in every
 project; one the window has no run of is refused, exit 1, and the refusal
 names runs the window holds only under an older command or `env.define`,
 or of a task gone from the lock. The branch is

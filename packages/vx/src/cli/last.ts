@@ -421,42 +421,46 @@ async function printStats(
     ui.print('out', ui.status('info', 'vx last', 'no runs yet'))
     return 0
   }
+  ui.print('out', ui.section('Task stats', formatStats(stats)))
+  return 0
+}
+
+/**
+ * `vx last --stats`'s table. On a terminal too narrow for every column, cpu,
+ * peak rss, p99, hit, failure mode and runs go, in that order: the task, its
+ * p50 and its pass rate stay.
+ */
+export function formatStats(stats: readonly TaskStats[]): ui.Block {
   const pct = (r: number): string => `${Math.round(r * 100)}%`
   // The run grid's units and its unknown mark, so one number reads alike
   // in both: cpu `127%` (was `1.3×`), mem `3.6MB` (was `3.6 MB`), `—`.
   const ms = (v: number | null): string => (v === null ? UNKNOWN : fmtMs(v))
-  const right = (title: string): ui.Column => ({ title, align: 'right' })
-  ui.print(
-    'out',
-    ui.section(
-      'Task stats',
-      ui.table(
-        [
-          'task',
-          right('runs'),
-          right('p50'),
-          right('p99'),
-          right('pass'),
-          right('hit'),
-          'failure mode',
-          right('peak rss'),
-          right('cpu'),
-        ],
-        stats.map((s) => [
-          ui.id(s.taskId),
-          String(s.runs),
-          ms(s.p50DurationMs),
-          ms(s.p99DurationMs),
-          pct(s.successRate),
-          pct(s.hitRate),
-          s.failureMode,
-          s.maxPeakRssBytes === null ? UNKNOWN : formatSize(s.maxPeakRssBytes),
-          s.maxCpuParallelism === null ? UNKNOWN : pct(s.maxCpuParallelism),
-        ]),
-      ),
-    ),
+  const right = (title: string, drop?: number): ui.Column =>
+    drop === undefined ? { title, align: 'right' } : { title, align: 'right', drop }
+  return ui.table(
+    [
+      'task',
+      right('runs', 6),
+      right('p50'),
+      right('p99', 3),
+      right('pass'),
+      right('hit', 4),
+      { title: 'failure mode', drop: 5 },
+      right('peak rss', 2),
+      right('cpu', 1),
+    ],
+    stats.map((s) => [
+      ui.id(s.taskId),
+      String(s.runs),
+      ms(s.p50DurationMs),
+      ms(s.p99DurationMs),
+      pct(s.successRate),
+      pct(s.hitRate),
+      s.failureMode,
+      s.maxPeakRssBytes === null ? UNKNOWN : formatSize(s.maxPeakRssBytes),
+      s.maxCpuParallelism === null ? UNKNOWN : pct(s.maxCpuParallelism),
+    ]),
   )
-  return 0
 }
 
 /**

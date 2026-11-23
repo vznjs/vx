@@ -16,7 +16,7 @@ import {
   taskList,
 } from '../src/report/framed-output.js'
 import { formatRunSummary } from '../src/report/summary.js'
-import { formatRunList } from '../src/cli/last.js'
+import { formatRunList, formatStats } from '../src/cli/last.js'
 import { whatChangedSection } from '../src/cli/why.js'
 import { paint, ui } from '../src/ui/index.js'
 
@@ -425,5 +425,39 @@ describe('vx last --list on a narrow terminal', () => {
       expect(lines[1]).toContain('2026-11-23T22:04:41.788Z')
       expect(lines[1]!.endsWith('vx run build warn --all')).toBe(true)
     }
+  })
+})
+
+// `vx last --stats` drew a 78-column grid of nine columns: a 60-column
+// terminal wrapped each task. There cpu, peak rss, p99, hit, failure mode
+// and runs go in that order; the task, p50 and pass rate stay.
+describe('vx last --stats on a narrow terminal', () => {
+  const row = (taskId: string) => ({
+    taskId,
+    runs: 2,
+    p50DurationMs: 23,
+    p99DurationMs: 23,
+    successRate: 1,
+    hitRate: 0,
+    failureMode: 'stable' as const,
+    maxPeakRssBytes: 1.9 * 1024 * 1024,
+    maxCpuParallelism: 0.11,
+  })
+  const table = (columns?: number): string[] =>
+    formatStats([row('packages/app#build'), row('packages/lib#warn')]).lines(
+      columns === undefined ? { enabled: false } : { enabled: false, columns },
+    )
+
+  it.each([40, 50, 60])('fits %i columns, keeping task, p50 and pass', (columns) => {
+    const lines = table(columns)
+    for (const l of lines) expect(Bun.stringWidth(l)).toBeLessThanOrEqual(columns)
+    expect(lines[0]).toMatch(/task .*p50 +pass/)
+    expect(lines[0]).not.toContain('cpu')
+    expect(lines[0]).not.toContain('p99')
+  })
+
+  it('CONTROL: off a terminal, and on a wide one, every column', () => {
+    for (const lines of [table(), table(200)])
+      expect(lines[0]).toMatch(/task +runs +p50 +p99 +pass +hit +failure mode +peak rss +cpu/)
   })
 })
