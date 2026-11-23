@@ -167,6 +167,10 @@ const CASES: Array<[string, () => string | null | Promise<string | null>]> = [
     () => validated({ tasks: { b: { exec: { command: 'x', persistent: { readyWhen: 42 } } } } }),
   ],
   [
+    'exec.persistent.readyWhen is blank, which matches any line: omit it to be ready on spawn',
+    () => validated({ tasks: { b: { exec: { command: 'x', persistent: { readyWhen: ' ' } } } } }),
+  ],
+  [
     'exec.persistent.readyWhen is not a valid regex (<error>)',
     () => validated({ tasks: { b: { exec: { command: 'x', persistent: { readyWhen: '(' } } } } }),
   ],

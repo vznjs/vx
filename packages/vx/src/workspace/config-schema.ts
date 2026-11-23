@@ -991,6 +991,13 @@ function validateLongRunning(exec: object, where: string, cache: unknown, retrie
     if (readyWhen !== undefined && typeof readyWhen !== 'string') {
       throw new UserError(`${where}.exec.persistent.readyWhen must be a string regex`)
     }
+    // An empty pattern matches the first line: the server read ready on
+    // whatever it printed first.
+    if (typeof readyWhen === 'string' && readyWhen.trim() === '') {
+      throw new UserError(
+        `${where}.exec.persistent.readyWhen is blank, which matches any line: omit it to be ready on spawn`,
+      )
+    }
     // Compiled here as the runner compiles it: an unbalanced `(` loaded
     // and then failed the task as "internal error".
     if (readyWhen !== undefined) {

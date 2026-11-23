@@ -351,6 +351,21 @@ describe('loadProjectConfig', () => {
       await expect(loadProjectConfig(file)).rejects.toThrow(/readyWhen must be a string/)
     })
 
+    // An empty pattern matches the first line, whatever it says: the server
+    // read ready on its first log line, not on the one the user meant.
+    for (const blank of ['', '  ']) {
+      it(`rejects a blank readyWhen (${JSON.stringify(blank)})`, async () => {
+        const file = path.join(dir, 'vx.config.mjs')
+        await writeFile(
+          file,
+          `export default { tasks: { dev: { exec: { command: 'vite', persistent: { readyWhen: ${JSON.stringify(blank)} } } } } }`,
+        )
+        await expect(loadProjectConfig(file)).rejects.toThrow(
+          'tasks.dev.exec.persistent.readyWhen is blank',
+        )
+      })
+    }
+
     it('rejects non-object persistent', async () => {
       const file = path.join(dir, 'vx.config.mjs')
       await writeFile(
