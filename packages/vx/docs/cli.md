@@ -1132,7 +1132,9 @@ On GitHub Actions (`GITHUB_ACTIONS` truthy, full output mode), each
 task's block is wrapped in `::group::<id> (<outcome> <duration>)` /
 `::endgroup::` so it collapses in the log viewer. Failed tasks stay
 pre-expanded and emit an `::error title=<id>::failed (exit N)`
-annotation instead (above 128 the label names the signal:
+annotation instead; the views that hold a failure's frame to the
+run's end (`errors-only`, CI's default, `broad`, `focused`) write the
+same annotation above it (above 128 the label names the signal:
 `failed (exit 137, 128 + SIGKILL)`, a timeout its reason,
 `failed (timed out, exit 143)`, a persistent task that never became
 ready its reason, and a sandboxed task its violation count, as every

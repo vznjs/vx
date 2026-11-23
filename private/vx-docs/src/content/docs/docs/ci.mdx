@@ -120,6 +120,9 @@ Each run writes a summary on the workflow run's page:
 >
 > <sub>vx 0.0.21 · `vx pipeline main` · 3/5 passed · 1 up-to-date · 1 restored</sub>
 
+Each failed task also gets an error annotation on the run, with its
+exit code, and its output follows in the log.
+
 A task that fails on inputs it passed on before is marked flaky in the
 log:
 
