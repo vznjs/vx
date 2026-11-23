@@ -475,7 +475,7 @@ runs: berry's `yarn node -r ./setup.ts` is node's `--require`; bun's
 nor is one that runs such a script by name (vite's `ci-docs`: `pnpm build &&
 pnpm docs-build`; through `run-s` / `run-p` / `npm-run-all` or `concurrently
 "npm:x"` too, lexical's `ci-check`), and neither is one whose name a member's task carries, so `--all` never runs
-a check twice. The rest check the whole repo (`lint: oxlint .`,
+a check twice. The rest check the whole workspace (`lint: oxlint .`,
 `test: vitest`) and become the root's own tasks in a root vx.config, when
 the root has a `"name"` (vx skips a nameless root's config) and no config
 of its own; one already there, hand-written or from an earlier

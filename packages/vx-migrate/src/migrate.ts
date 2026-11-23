@@ -274,7 +274,7 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
   }
   if (bare && parsed.mode === 'keep') {
     throw new UserError(
-      '--keep: nx() is a plugin to install, and this Nx repo has no package.json to install it in; drop --keep to write vx.config files',
+      '--keep: nx() is a plugin to install, and this Nx workspace has no package.json to install it in; drop --keep to write vx.config files',
     )
   }
   const mode =
@@ -1083,7 +1083,7 @@ async function unreadWorkspaces(root: string, globs: readonly string[]): Promise
   const pkg = list.filter((g): g is string => typeof g === 'string')
   if ([...pkg].sort().join('\0') === [...globs].sort().join('\0')) return []
   return [
-    `pnpm-workspace.yaml's \`packages\` lists the members, as pnpm reads them; package.json's \`workspaces\` (${pkg.map((g) => `"${g}"`).join(', ')}) is not read: if bun, npm or yarn installs this repo, copy those globs into pnpm-workspace.yaml's \`packages\`, or delete that key so package.json decides`,
+    `pnpm-workspace.yaml's \`packages\` lists the members, as pnpm reads them; package.json's \`workspaces\` (${pkg.map((g) => `"${g}"`).join(', ')}) is not read: if bun, npm or yarn installs this workspace, copy those globs into pnpm-workspace.yaml's \`packages\`, or delete that key so package.json decides`,
   ]
 }
 

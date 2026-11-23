@@ -316,7 +316,7 @@ describe('vx init source detection', () => {
       const root = await makeRoot('vx-init-root-')
       await withLockfile(root)
       const note =
-        'fixture-root (the workspace root): its scripts that check the whole repo are its tasks; left out as running the members (`pnpm -r`, `--filter`, a runner): build'
+        'fixture-root (the workspace root): its scripts that check the whole workspace are its tasks; left out as running the members (`pnpm -r`, `--filter`, a runner): build'
       try {
         await addPackage(root, 'a', { build: 'tsc' })
         // CONTROL: a root with no scripts says nothing.
@@ -1322,7 +1322,7 @@ describe('migrateScripts', () => {
       ['root', ['lint', 'check', 'typos']],
     ])
     expect(plan.notes).toEqual([
-      "root (the workspace root): its scripts that check the whole repo are its tasks; left out as running the members (`pnpm -r`, `--filter`, a runner): test, dev, play, e2e, ci, build:common, build:b, prisma and 4 more; left out as a member's task name, so `--all` never runs one twice: build — one that does other work maps by hand under a name of its own",
+      "root (the workspace root): its scripts that check the whole workspace are its tasks; left out as running the members (`pnpm -r`, `--filter`, a runner): test, dev, play, e2e, ci, build:common, build:b, prisma and 4 more; left out as a member's task name, so `--all` never runs one twice: build — one that does other work maps by hand under a name of its own",
     ])
     // CONTROL: a hand-written root config stays as written.
     const configured = { ...rootMeta, configPath: '/w/vx.config.ts' }
@@ -1408,7 +1408,7 @@ describe('migrateScripts', () => {
       },
     ])
     expect(plan.notes).toEqual([
-      'root (the workspace root): its scripts that check the whole repo are its tasks',
+      'root (the workspace root): its scripts that check the whole workspace are its tasks',
     ])
   })
 
@@ -2378,7 +2378,7 @@ describe('vx init on a workspace with no scripts', () => {
         )
       await manifest(['apps/*'])
       expect(await note()).toEqual([
-        "pnpm-workspace.yaml's `packages` lists the members, as pnpm reads them; package.json's `workspaces` (\"apps/*\") is not read: if bun, npm or yarn installs this repo, copy those globs into pnpm-workspace.yaml's `packages`, or delete that key so package.json decides",
+        "pnpm-workspace.yaml's `packages` lists the members, as pnpm reads them; package.json's `workspaces` (\"apps/*\") is not read: if bun, npm or yarn installs this workspace, copy those globs into pnpm-workspace.yaml's `packages`, or delete that key so package.json decides",
       ])
       // The object form is read too.
       await manifest({ packages: ['apps/*'] })

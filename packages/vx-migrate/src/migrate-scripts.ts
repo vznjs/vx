@@ -649,7 +649,7 @@ function usesPnp(dir: string): boolean {
 }
 
 const PNP_NOTE =
-  "Yarn Plug'n'Play installs this repo: a package's bins live in `.pnp.cjs`, not `node_modules/.bin`, so a task's `tsc` is not found under vx — set `nodeLinker: node-modules` in `.yarnrc.yml` and run `yarn install`, or write each command as `yarn exec '<command>'`"
+  "Yarn Plug'n'Play installs this workspace: a package's bins live in `.pnp.cjs`, not `node_modules/.bin`, so a task's `tsc` is not found under vx — set `nodeLinker: node-modules` in `.yarnrc.yml` and run `yarn install`, or write each command as `yarn exec '<command>'`"
 
 /** A runner of this package's scripts by name: `run-p build:*`. */
 const RUNS_OWN = /(?:^|\s)(?:run-s|run-p|npm-run-all)(?:\s|$)/
@@ -747,7 +747,7 @@ export function migrateScripts(
   const root = metas.length > 1 ? workspaceRootOf(metas) : undefined
   const notes: string[] = []
   const lifecycleBuilds: [string, string, string][] = []
-  // The rest check the whole repo (`lint: oxlint.`, `test: vitest`): `vx run
+  // The rest check the whole workspace (`lint: oxlint.`, `test: vitest`): `vx run
   // lint` found no project in remix, wagmi or element-plus. Such a script maps
   // onto the root, when the root has a name (vx skips a nameless one's config),
   // no config of its own, and no member declares the task, so `--all` never
@@ -865,7 +865,7 @@ export function migrateScripts(
   if (rootName !== undefined && rootMapped > 0) {
     const { runs, shared } = leftOut(rootMeta!)
     notes.push(
-      `${rootName} (the workspace root): its scripts that check the whole repo are its tasks` +
+      `${rootName} (the workspace root): its scripts that check the whole workspace are its tasks` +
         (runs.length > 0
           ? `; left out as running the members (${membersExample(rootMeta && rootManager(rootMeta.dir, hookMemo))}, a runner): ${listed(runs)}`
           : '') +
