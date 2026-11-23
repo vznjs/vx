@@ -743,14 +743,15 @@ function reasonParts(
   } else if (t.status === 'skipped' && t.blockedBy !== null) {
     // A blocker that is itself a skip is a platform skip: a failure's
     // dependants name the failure, never a skip between. One with no row
-    // was aborted (history keeps none): --fail-fast stopped it, and its
-    // dependants read "failed" for a task that never did.
+    // has no status to name: --fail-fast stopped it (history keeps no
+    // aborted row), or vx watch kept it from a cycle before. "failed" was
+    // wrong for the first.
     const blocker = statusHere.get(t.blockedBy)
     parts.push(
       blocker === 'skipped'
         ? `after ${t.blockedBy} skipped: ${OTHER_PLATFORM}`
         : blocker === undefined
-          ? `after ${t.blockedBy} was stopped`
+          ? `after ${t.blockedBy} did not pass`
           : `after ${t.blockedBy} failed`,
     )
   } else if (t.status === 'skipped' && t.exitCode === 0) {

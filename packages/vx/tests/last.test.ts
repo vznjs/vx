@@ -715,7 +715,7 @@ describe('formatTaskRows', () => {
   // --fail-fast aborts what was running, and history keeps no row for an
   // aborted task: its dependants read `after p#slow failed` for a task that
   // never failed.
-  it('a skip behind a task --fail-fast stopped says it was stopped, not failed', () => {
+  it('a skip behind a task --fail-fast stopped does not say it failed', () => {
     const lines = L(
       formatTaskRows([
         row('boom', { status: 'failed', exitCode: 1 }),
@@ -729,7 +729,7 @@ describe('formatTaskRows', () => {
         `p#${task}`,
       )
     expect([reason('after'), reason('next')]).toEqual([
-      'after p#slow was stopped',
+      'after p#slow did not pass',
       'after p#boom failed',
     ])
   })

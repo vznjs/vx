@@ -3899,8 +3899,8 @@ footer gave a reason, the row ends with it instead: `timed out`,
 `inputs.stability.severity: 'error'` failure, read from its kept output),
 `2 sandbox violations`, and for a skipped task
 `after lib#build failed` (the v27 columns; rows older than them read
-as before), `after lib#test was stopped` behind a task `--fail-fast`
-stopped (history keeps no row for a stopped task), or, for a platform skip, `needs another platform` and
+as before), `after lib#test did not pass` behind a task with no row (one
+`--fail-fast` stopped: history keeps none), or, for a platform skip, `needs another platform` and
 `after ios#build skipped: needs another platform`. A task that retried
 ends with its attempts, `2 attempts`, passed or failed (`attempts` in
 `--format json`, null for a task run once). A task whose key met a remote failure ends with it, read or
