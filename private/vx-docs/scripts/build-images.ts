@@ -1,4 +1,4 @@
-// The site's raster images, resized ahead of `astro build` (`build.images`
+// The site's raster images, resized ahead of `astro build` (`build.bun.images`
 // in vx.config.ts): a key over the images alone, so a docs edit rebuilds
 // pages and never re-encodes 876 variants (13 s of a cold build). Writes
 // public/_img/<name>-<width>.<hash>.<ext>, which astro copies as it is, and

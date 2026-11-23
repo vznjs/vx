@@ -61,7 +61,7 @@ jobs:
       # Dispatching and cancelling the workers; reading Bench's numbers.
       actions: write
       pages: write
-      # deploy.releases gives each GitHub release its post's body.
+      # deploy.github gives each GitHub release its post's body.
       contents: write
       # The relay's Workers Builds check names a PR's Preview.
       checks: read

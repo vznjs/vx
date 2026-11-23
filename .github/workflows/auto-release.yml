@@ -45,7 +45,7 @@ jobs:
 
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
       - run: bun install --frozen-lockfile
-      # `release.auto` declares `exec.sandbox`: the runtime, as @vzn/vx-ci sets it up.
+      # `release.github.tag` declares `exec.sandbox`: the runtime, as @vzn/vx-ci sets it up.
       - run: bun packages/vx/src/bin.ts setup github
 
       # Pick the commit, decide the version, write the notes, tag, release
@@ -57,4 +57,4 @@ jobs:
         env:
           VX_RELEASE_SHA: ${{ inputs.sha }}
           GH_TOKEN: ${{ github.token }}
-        run: bun packages/vx/src/bin.ts run release.auto --filter @vzn/vx
+        run: bun packages/vx/src/bin.ts run release.github.tag --filter @vzn/vx

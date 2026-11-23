@@ -92,13 +92,13 @@ jobs:
           registry-url: 'https://registry.npmjs.org'
       - run: bun install --frozen-lockfile
       - name: Check npm can publish with provenance, and stamp the version
-        run: bun packages/vx/src/bin.ts run release.npm release.stamp --filter @vzn/vx
+        run: bun packages/vx/src/bin.ts run release.npm.check release.npm.stamp --filter @vzn/vx
       - name: Build the darwin binaries
         run: bun packages/vx/src/bin.ts run compile.bun.darwin-x64 compile.bun.darwin-arm64 --filter @vzn/vx --concurrency 2
       - name: Prove the darwin binaries launch and report the version
-        run: bun packages/vx/src/bin.ts run release.prove.darwin --filter @vzn/vx
+        run: bun packages/vx/src/bin.ts run release.npm.darwin.prove --filter @vzn/vx
       - name: Assemble the darwin platform packages
-        run: bun packages/vx/src/bin.ts run release.assemble.darwin --filter @vzn/vx
+        run: bun packages/vx/src/bin.ts run release.npm.darwin.assemble --filter @vzn/vx
       - name: Publish darwin platform packages
         if: ${{ github.event.inputs.dry_run != 'true' }}
         # No NODE_AUTH_TOKEN: npm exchanges this job's OIDC token for a
@@ -106,7 +106,7 @@ jobs:
         # and attaches provenance. A set token would take precedence and is
         # what npm now restricts ("tokens that bypass 2FA are being
         # restricted for direct publishing" — the E401 that stopped v0.0.17).
-        run: bun packages/vx/src/bin.ts run release.publish.darwin --filter @vzn/vx
+        run: bun packages/vx/src/bin.ts run release.npm.darwin.publish --filter @vzn/vx
 
   publish:
     name: build & publish @vzn/vx
@@ -136,7 +136,7 @@ jobs:
 
       # Node runs `npm publish`. No token: auth comes from the OIDC
       # exchange. Node 24's BUNDLED npm is already >= 11.5.1 (trusted-
-      # publishing capable), so `release.npm` upgrades nothing here.
+      # publishing capable), so `release.npm.check` upgrades nothing here.
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24
@@ -152,7 +152,7 @@ jobs:
       - run: bun packages/vx/src/bin.ts setup github
 
       - name: Check npm can publish with provenance, and stamp the version
-        run: bun packages/vx/src/bin.ts run release.npm release.stamp --filter @vzn/vx
+        run: bun packages/vx/src/bin.ts run release.npm.check release.npm.stamp --filter @vzn/vx
 
       # Cross-compile the linux binaries (one cached task per target).
       # --concurrency 2: concurrent `--compile --minify --bytecode` builds
@@ -161,16 +161,16 @@ jobs:
       - name: Build the linux binaries
         run: bun packages/vx/src/bin.ts run compile.bun.linux-x64 compile.bun.linux-arm64 --filter @vzn/vx --concurrency 2
       - name: Prove the stamp took
-        run: bun packages/vx/src/bin.ts run release.prove.linux --filter @vzn/vx
+        run: bun packages/vx/src/bin.ts run release.npm.linux.prove --filter @vzn/vx
       - name: Assemble npm tree (linux platform packages, @vzn/vx, the plugins)
-        run: bun packages/vx/src/bin.ts run release.assemble.linux --filter @vzn/vx
+        run: bun packages/vx/src/bin.ts run release.npm.linux.assemble --filter @vzn/vx
       # No NODE_AUTH_TOKEN — see the darwin step: trusted publishing only.
       - name: Publish
         if: ${{ github.event.inputs.dry_run != 'true' }}
-        run: bun packages/vx/src/bin.ts run release.publish.linux --filter @vzn/vx
+        run: bun packages/vx/src/bin.ts run release.npm.linux.publish --filter @vzn/vx
       - name: Wait until npm serves every tarball
         if: ${{ github.event.inputs.dry_run != 'true' }}
-        run: bun packages/vx/src/bin.ts run release.served --filter @vzn/vx
+        run: bun packages/vx/src/bin.ts run release.npm.served --filter @vzn/vx
 
   # The servers' images, which their docs tell users to `docker run`:
   # ghcr.io/vznjs/<server> at this version, `latest` following npm's.
@@ -203,4 +203,4 @@ jobs:
       - run: bun install --frozen-lockfile
       - run: bun packages/vx/src/bin.ts setup github
       - name: Push the images
-        run: bun packages/vx/src/bin.ts run release.images --filter @vzn/vx
+        run: bun packages/vx/src/bin.ts run release.docker --filter @vzn/vx

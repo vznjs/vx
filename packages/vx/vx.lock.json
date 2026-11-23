@@ -6184,7 +6184,13 @@
       },
       "cache": true
     },
-    "release.stamp": {
+    "release": {
+      "description": "every release step: npm, GitHub and Docker publishing (the release workflows run each)",
+      "dependsOn": [
+        "release.*"
+      ]
+    },
+    "release.npm.stamp": {
       "description": "stamp VX_RELEASE_VERSION into package.json, the manifest the binary inlines",
       "exec": {
         "command": "bun scripts/release.ts stamp",
@@ -6205,7 +6211,7 @@
         }
       }
     },
-    "release.npm": {
+    "release.npm.check": {
       "description": "make sure npm can publish with provenance (>= 11.5.1, sigstore intact)",
       "exec": {
         "command": "bun scripts/release.ts npm",
@@ -6225,7 +6231,7 @@
         }
       }
     },
-    "release.prove.linux": {
+    "release.npm.linux.prove": {
       "description": "the linux binaries launch (re-signed only if macOS refuses) and report VX_RELEASE_VERSION",
       "exec": {
         "command": "bun scripts/release.ts prove linux",
@@ -6243,7 +6249,7 @@
         }
       }
     },
-    "release.assemble.linux": {
+    "release.npm.linux.assemble": {
       "description": "assemble the linux npm packages under dist/npm (scripts/build-npm.ts)",
       "exec": {
         "command": "bun scripts/release.ts assemble linux",
@@ -6268,7 +6274,7 @@
         }
       }
     },
-    "release.publish.linux": {
+    "release.npm.linux.publish": {
       "description": "npm publish the linux packages under dist/npm, skipping any already on the registry",
       "exec": {
         "command": "bun scripts/release.ts publish linux",
@@ -6316,7 +6322,7 @@
         }
       }
     },
-    "release.prove.darwin": {
+    "release.npm.darwin.prove": {
       "description": "the darwin binaries launch (re-signed only if macOS refuses) and report VX_RELEASE_VERSION",
       "exec": {
         "command": "bun scripts/release.ts prove darwin",
@@ -6350,7 +6356,7 @@
         }
       }
     },
-    "release.assemble.darwin": {
+    "release.npm.darwin.assemble": {
       "description": "assemble the darwin npm packages under dist/npm (scripts/build-npm.ts)",
       "exec": {
         "command": "bun scripts/release.ts assemble darwin",
@@ -6375,7 +6381,7 @@
         }
       }
     },
-    "release.publish.darwin": {
+    "release.npm.darwin.publish": {
       "description": "npm publish the darwin packages under dist/npm, skipping any already on the registry",
       "exec": {
         "command": "bun scripts/release.ts publish darwin",
@@ -6423,7 +6429,7 @@
         }
       }
     },
-    "release.images": {
+    "release.docker": {
       "description": "push the server images to ghcr.io/vznjs at VX_RELEASE_VERSION (scripts/release-images.ts)",
       "exec": {
         "command": "bun scripts/release-images.ts",
@@ -6439,7 +6445,7 @@
         }
       }
     },
-    "release.served": {
+    "release.npm.served": {
       "description": "wait until npm serves every published tarball (HTTP 200), up to 15 min",
       "exec": {
         "command": "bun scripts/release.ts served",
@@ -6460,7 +6466,7 @@
         }
       }
     },
-    "release.upload.linux": {
+    "release.github.linux": {
       "description": "attach the linux binaries to the draft release (scripts/release-assets.ts)",
       "exec": {
         "command": "bun scripts/release-assets.ts linux",
@@ -6493,7 +6499,7 @@
         }
       }
     },
-    "release.upload.darwin": {
+    "release.github.darwin": {
       "description": "attach the darwin binaries to the draft release, then publish it (scripts/release-assets.ts)",
       "exec": {
         "command": "bun scripts/release-assets.ts darwin --publish",
@@ -6526,7 +6532,7 @@
         }
       }
     },
-    "release.auto": {
+    "release.github.tag": {
       "description": "tag a green main commit with its next version, release it, dispatch the publish",
       "exec": {
         "command": "bun scripts/auto-release.ts",
@@ -6556,10 +6562,10 @@
     "install": {
       "dependsOn": [
         "^build",
-        "check.bun"
+        "check.bun.version"
       ]
     },
-    "check.bun": {
+    "check.bun.version": {
       "description": "refuse a Bun below the floor (engines.bun) before any shard starts",
       "exec": {
         "command": "bun scripts/bun-floor.ts",
@@ -6597,7 +6603,7 @@
         "deploy.*"
       ]
     },
-    "deploy.releases": {
+    "deploy.github": {
       "description": "give each GitHub release the body of its release post on the site",
       "exec": {
         "command": "bun scripts/release-sync.ts",
@@ -6628,7 +6634,7 @@
         "canary.*"
       ]
     },
-    "canary.sandbox": {
+    "canary.sandbox.leaks": {
       "description": "drive 20 leaky sandboxed runs through run() under this machine’s sandbox; one it did not enforce fails",
       "dependsOn": [
         "install"
@@ -6640,7 +6646,7 @@
         ]
       }
     },
-    "canary.build-cold": {
+    "canary.sandbox.cold-build": {
       "description": "every package’s build under this machine’s sandbox, no cache, as a developer runs it",
       "dependsOn": [
         "install"
@@ -6657,7 +6663,7 @@
         "check.*"
       ]
     },
-    "check.binary": {
+    "check.bun.binary": {
       "description": "compile the host binary the way release.yml does; it must launch and report the manifest version",
       "dependsOn": [
         "install"
@@ -6714,7 +6720,7 @@
       },
       "cache": true
     },
-    "canary.binary.linux-arm64": {
+    "canary.bun.linux-arm64": {
       "description": "compile the host binary the way release.yml does; it must launch and report the manifest version",
       "dependsOn": [
         "install"
@@ -6774,7 +6780,7 @@
       },
       "cache": true
     },
-    "canary.binary.darwin-arm64": {
+    "canary.bun.darwin-arm64": {
       "description": "compile the host binary the way release.yml does; it must launch and report the manifest version",
       "dependsOn": [
         "install"

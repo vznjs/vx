@@ -1,5 +1,5 @@
 // The site's one copy of the benchmark data: src/data/bench.json, the
-// committed copy of what `bench.data` gathers from the bench tasks' rows.
+// committed copy of what `bench.bun.data` gathers from the bench tasks' rows.
 // A static import: a build without it fails to resolve it, so no page
 // ships without its figures. Main's deploy names the newest numbers Bench
 // measured in VX_DOCS_BENCH (deploy.pages, scripts/live-bench.ts): read

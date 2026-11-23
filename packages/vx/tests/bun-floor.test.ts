@@ -1,4 +1,4 @@
-// The gate's floor check (scripts/bun-floor.ts, the `check.bun` task every
+// The gate's floor check (scripts/bun-floor.ts, the `check.bun.version` task every
 // core task waits on through `install`). The verdict is a pure function of
 // the version so both sides are testable on one runtime; the spawn proves
 // the script's exit follows the verdict on the Bun that runs this suite,

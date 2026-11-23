@@ -2507,7 +2507,7 @@ it at least once a day when `main` has changes, after merging that
 release's blog post (`.claude/skills/release/SKILL.md`), and shares the
 post on Bluesky. The workflow tags the commit with the next version and
 creates the GitHub release, both from the Conventional Commits since the
-last tag (`scripts/release-notes.ts`, run by the `release.auto` task,
+last tag (`scripts/release-notes.ts`, run by the `release.github.tag` task,
 `scripts/auto-release.ts`). The release is created as a draft: this
 repo's releases are immutable and take assets only before they are
 published, so `release.yml` publishes it after its last upload. The version: below 0.1.0 always a
@@ -2549,24 +2549,24 @@ its own (2026-10-03), and `tests/workflow-runner.unsafe.test.ts`
 holds it. The tasks are `@vzn/vx`'s `release.*`, all uncached and in no
 `ci` graph:
 
-| Task                    | Does                                                                                                                                     |
-| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| `release.stamp`         | writes `VX_RELEASE_VERSION` into `packages/vx/package.json`, the manifest the binary inlines                                             |
-| `release.npm`           | checks npm can publish with provenance (>= 11.5.1, `sigstore` loads); else installs npm into `dist/npm-cli/`                             |
-| `release.prove.<os>`    | launches the host's binary (re-signed only if macOS refuses it) and asserts `vx <version>`; on darwin, launches both (x64 under Rosetta) |
-| `release.assemble.<os>` | emits the platform packages under `dist/npm` (linux: also `@vzn/vx` and the plugins)                                                     |
-| `release.publish.<os>`  | `npm publish --provenance` each in order, skipping one the registry holds; `@vzn/vx` only once npm shows every platform package          |
-| `release.served`        | waits (up to 15 min) until npm's CDN answers 200 for every published tarball: it 404ed v0.0.646's for minutes, failing installs          |
-| `release.images`        | pushes the three server images to `ghcr.io/vznjs/<server>` at the version (amd64 + arm64); `latest` follows npm's                        |
-| `release.upload.<os>`   | attaches `dist/vx-<os>-*` the draft release lacks; darwin's then publishes it                                                            |
-| `release.auto`          | decides the version, creates the draft release with its notes, dispatches the two workflows                                              |
+| Task                        | Does                                                                                                                                     |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `release.npm.stamp`         | writes `VX_RELEASE_VERSION` into `packages/vx/package.json`, the manifest the binary inlines                                             |
+| `release.npm.check`         | checks npm can publish with provenance (>= 11.5.1, `sigstore` loads); else installs npm into `dist/npm-cli/`                             |
+| `release.npm.<os>.prove`    | launches the host's binary (re-signed only if macOS refuses it) and asserts `vx <version>`; on darwin, launches both (x64 under Rosetta) |
+| `release.npm.<os>.assemble` | emits the platform packages under `dist/npm` (linux: also `@vzn/vx` and the plugins)                                                     |
+| `release.npm.<os>.publish`  | `npm publish --provenance` each in order, skipping one the registry holds; `@vzn/vx` only once npm shows every platform package          |
+| `release.npm.served`        | waits (up to 15 min) until npm's CDN answers 200 for every published tarball: it 404ed v0.0.646's for minutes, failing installs          |
+| `release.docker`            | pushes the three server images to `ghcr.io/vznjs/<server>` at the version (amd64 + arm64); `latest` follows npm's                        |
+| `release.github.<os>`       | attaches `dist/vx-<os>-*` the draft release lacks; darwin's then publishes it                                                            |
+| `release.github.tag`        | decides the version, creates the draft release with its notes, dispatches the two workflows                                              |
 
 The version reaches them as `VX_RELEASE_VERSION` (the tag or the
 dispatch input) and each refuses one that is not a version. Every one
 is sandboxed: the publish is granted the registry, the OIDC token host
 and Sigstore, the GitHub-Actions variables npm reads, and `~/.npm`;
-`release.auto` reads `.git` and reaches `api.github.com` with `GH_TOKEN`;
-`release.upload.<os>` reaches it and `uploads.github.com`.
+`release.github.tag` reads `.git` and reaches `api.github.com` with `GH_TOKEN`;
+`release.github.<os>` reaches it and `uploads.github.com`.
 A dispatch with `ref` builds that ref's code, so it must hold these tasks.
 
 Every Linux job that runs a task runs `vx setup github` (`@vzn/vx-ci`)

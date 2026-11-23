@@ -1,4 +1,4 @@
-// npm.yml's `images` job, the `release.images` task: push each server's
+// npm.yml's `images` job, the `release.docker` task: push each server's
 // image to ghcr.io/vznjs/<server> at VX_RELEASE_VERSION, for linux/amd64
 // and linux/arm64, and move `latest` to it unless an older tag is being
 // rebuilt. The docs tell users to `docker run` these names.

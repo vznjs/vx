@@ -134,7 +134,7 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
   (that test file, oxlint on those files, `oxfmt --check`). Start the next
   unrelated work while CI runs; never wait idle on it. The full gate,
   `bun packages/vx/src/bin.ts pipeline queue`, is for diagnosing a red CI.
-  It refuses a Bun below `engines.bun` first (`check.bun`, item 575).
+  It refuses a Bun below `engines.bun` first (`check.bun.version`, item 575).
 - Before merging, run the built-in `code-review` skill on the PR; add
   `security-review` when it touches the zygote, `src/sandbox/` or the
   lock files (`.vx/*.lock`, `vx lock`); use `dataviz` for any site
@@ -172,16 +172,18 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
   (builds and runs the relay's image), `@vzn/vx-cache-server#test.docker` and
   `@vzn/vx-history-server#test.docker` (each builds and runs its image),
   `@vzn/vx-servers#test.docker` (brings up the compose file of all three), `@vzn/vx-migrate#test.bun.live.nx`
-  (the npm registry), `release.images` (pushes the server images through Docker),
-  `canary.sandbox` and
-  `canary.build-cold` (each drives the sandbox itself, on a Mac worker) and
-  `@vzn/vx-bench#bench.{vx,turbo,nx,vite-task,real}` and `#perf.bench` (the tracer would be timed), and
-  `@vzn/vx-conformance#test.bun` and `#conformance` (each drives bubblewrap itself) are
+  (the npm registry), `release.docker` (pushes the server images through Docker),
+  `canary.sandbox.leaks` and
+  `canary.sandbox.cold-build` (each drives the sandbox itself, on a Mac worker) and
+  `@vzn/vx-bench#bench.{vx,turbo,nx,vite-task,real}` and `#perf.vx` (the tracer would be timed), and
+  `@vzn/vx-conformance#test.bun` and `#conformance.cases` (each drives bubblewrap itself) are
   the ONLY tasks in the whole repo with no `exec.sandbox`.
-- Task names (M, 2026-11-22): a public task is a group (`build`, `lint`,
-  `test`, `check`, `compile`, `canary`, `deploy`, `perf`, `format`), and its
-  work is `{group}.{technology}.{configuration?}.{subtask?}` (`test.bun.shard-3`,
-  `lint.oxfmt`), which only its group runs. Pipelines name groups only
+- Task names (M, 2026-11-22, no exceptions): a public task is a group with
+  no command (`build`, `lint`, `test`, `check`, `compile`, `canary`,
+  `deploy`, `perf`, `format`, `bench`, `update`, `release`, `conformance`,
+  `dev`, `preview`); every command is `{group}.{technology}.{configuration?}.{subtask?}`
+  (`test.bun.shard-3`, `lint.oxfmt`, `release.npm.darwin.publish`). A
+  convention, not enforced by vx (M, 2026-11-23). Pipelines name groups only
   (`tests/ci-workflow.unsafe.test.ts`).
 - Every package's suite is its `test` group, so `vx pipeline queue` gates
   them all; CI runs nothing but vx tasks (a workspace step is a design

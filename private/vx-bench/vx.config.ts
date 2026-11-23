@@ -23,7 +23,7 @@ export default defineProject({
     },
 
     perf: {
-      dependsOn: ['perf.bench'],
+      dependsOn: ['perf.*'],
     },
 
     // The per-PR benchmarks, one task so they never share a machine with
@@ -35,7 +35,7 @@ export default defineProject({
     // commit's vx and Turborepo, restore and nothing-changed on the site's
     // workspace, from the pairs no other process disturbed (quiet.ts). Core's source
     // reaches the key through install's ^build.
-    'perf.bench': {
+    'perf.vx': {
       description:
         'perf-guard.ts then pr-bench.ts: hot-path counts, and vx against the base commit and every rival',
       dependsOn: ['install'],
@@ -78,8 +78,12 @@ export default defineProject({
       cache: true,
     },
 
+    update: {
+      dependsOn: ['update.*'],
+    },
+
     // Records this platform's numbers after a change meant to move them.
-    'perf.update': {
+    'update.bench.baseline': {
       description: 'perf-guard.ts --update: rewrite perf-baseline.json for this platform',
       dependsOn: ['install'],
       exec: {
@@ -93,13 +97,17 @@ export default defineProject({
 
     // The site's head-to-head (2026-10-29: no figure on the site is typed by
     // hand). One task per runner, each writing its rows to site/<runner>.json,
-    // which @vzn/vx-docs#bench.data gathers into the site's bench.json. vx's is
+    // which @vzn/vx-docs#bench.bun.data gathers into the site's bench.json. vx's is
     // keyed on its source through install's ^build. A rival's is never
     // cached: it runs the rival at npm latest, installed right before the
     // run (site-workspace.ts, 2026-11-21), which no key sees. One runner at a time on a
     // machine of its own: only CI's Bench job (bench.yml) runs them, with
     // `--concurrency 1 --force`, so all four time the same CPU, and no build
     // depends on them, so a DTE worker, packed beside other tasks, never does.
+    bench: {
+      dependsOn: ['bench.*'],
+    },
+
     ...Object.fromEntries(
       (['vx', 'turbo', 'nx', 'vite-task'] as const).map((runner) => [
         `bench.${runner}`,

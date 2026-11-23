@@ -3,7 +3,7 @@
 // rows read the page as it shipped, `dist/index.html`, which the `build`
 // task writes, and the graph as data (src/components/landing/system-map.ts).
 // What the design says is written out here by hand; every figure is held to
-// the site's data: src/data/bench.json (bench.data) and the conformance
+// the site's data: src/data/bench.json (bench.bun.data) and the conformance
 // results.
 
 import { existsSync, readFileSync } from 'node:fs'

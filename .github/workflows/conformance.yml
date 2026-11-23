@@ -1,7 +1,7 @@
 name: Conformance
 
 # Every conformance case against vx and the rivals at their latest releases
-# (@vzn/vx-conformance#conformance), weekly (2026-11-21): Turbo, Nx, Vite
+# (@vzn/vx-conformance#conformance.cases), weekly (2026-11-21): Turbo, Nx, Vite
 # Task and moon install from npm's latest inside the run, Nix from its
 # installer's latest, never pinned. The Monday rival sweep dispatches it
 # when it ends, so the sweep's new cases count; the cron is the fallback
@@ -9,7 +9,7 @@ name: Conformance
 # artifact; main's next deploy shows the rivals' outcomes from it
 # (@vzn/vx-docs#deploy.pages.build). A case vx fails turns the run red. Each job
 # runs one tool on its share of the cases; `merge` joins them
-# (@vzn/vx-conformance#conformance.merge).
+# (@vzn/vx-conformance#conformance.cases.merge).
 
 on:
   schedule:
@@ -79,7 +79,7 @@ jobs:
           echo "$HOME/.nix-profile/bin" >> "$GITHUB_PATH"
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
       - name: vx run conformance
-        run: bun packages/vx/src/bin.ts run @vzn/vx-conformance#conformance -- --tool ${{ matrix.tool }} --shard ${{ matrix.shard }} --out shard.json
+        run: bun packages/vx/src/bin.ts run @vzn/vx-conformance#conformance.cases -- --tool ${{ matrix.tool }} --shard ${{ matrix.shard }} --out shard.json
       - name: Upload the shard's results
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -118,8 +118,8 @@ jobs:
         with:
           pattern: conformance-shard-*
           path: private/vx-conformance/shards
-      - name: vx run conformance.merge
-        run: bun packages/vx/src/bin.ts run @vzn/vx-conformance#conformance.merge
+      - name: vx run conformance.cases.merge
+        run: bun packages/vx/src/bin.ts run @vzn/vx-conformance#conformance.cases.merge
       - name: Upload the conformance results
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

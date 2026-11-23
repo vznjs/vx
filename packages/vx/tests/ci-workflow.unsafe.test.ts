@@ -160,7 +160,7 @@ describe('ci.yml', () => {
     expect(pipelines['main']!.tasks).toContain('canary')
     const core = readFileSync(path.join(dir, '../../packages/vx/vx.config.ts'), 'utf8')
     expect(core).toContain("...shards('test.bun.platform', PLATFORM_SHARD_COUNT")
-    for (const task of ['canary.sandbox', 'canary.build-cold', 'canary.binary.darwin-arm64'])
+    for (const task of ['canary.sandbox.leaks', 'canary.sandbox.cold-build', 'canary.bun.darwin-arm64'])
       expect(core).toContain(`'${task}':`)
   })
 
@@ -476,12 +476,12 @@ describe('conformance.yml', () => {
       '${{ fromJSON(needs.plan.outputs.matrix) }}',
     )
     expect(job.steps?.find((s) => s.name === 'vx run conformance')?.run).toBe(
-      'bun packages/vx/src/bin.ts run @vzn/vx-conformance#conformance -- --tool ${{ matrix.tool }} --shard ${{ matrix.shard }} --out shard.json',
+      'bun packages/vx/src/bin.ts run @vzn/vx-conformance#conformance.cases -- --tool ${{ matrix.tool }} --shard ${{ matrix.shard }} --out shard.json',
     )
     expect((merge as { needs?: unknown }).needs).toBe('conformance')
     expect((merge as { if?: unknown }).if).toBe('always()')
-    expect(merge.steps?.find((s) => s.name === 'vx run conformance.merge')?.run).toBe(
-      'bun packages/vx/src/bin.ts run @vzn/vx-conformance#conformance.merge',
+    expect(merge.steps?.find((s) => s.name === 'vx run conformance.cases.merge')?.run).toBe(
+      'bun packages/vx/src/bin.ts run @vzn/vx-conformance#conformance.cases.merge',
     )
   })
 

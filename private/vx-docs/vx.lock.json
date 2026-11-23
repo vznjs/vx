@@ -109,7 +109,7 @@
       },
       "cache": true
     },
-    "build.import": {
+    "build.bun.import": {
       "description": "generate src/content/docs from packages/vx/docs, the plugin READMEs and the relay protocol",
       "dependsOn": [
         "install"
@@ -180,7 +180,7 @@
         "bench.*"
       ]
     },
-    "bench.data": {
+    "bench.bun.data": {
       "description": "gather the head-to-head rows of @vzn/vx-bench#bench.site → measured/bench.json",
       "dependsOn": [
         "install",
@@ -345,7 +345,7 @@
         "build.*"
       ]
     },
-    "build.images": {
+    "build.bun.images": {
       "description": "resize src/assets/{blog,features} → public/_img/",
       "dependsOn": [
         "install"
@@ -385,8 +385,8 @@
       "description": "astro build → dist/",
       "dependsOn": [
         "install",
-        "build.import",
-        "build.images"
+        "build.bun.import",
+        "build.bun.images"
       ],
       "exec": {
         "command": "rm -rf .astro/cache && mkdir -p .astro/bin && ln -sf \"$(command -v bun)\" .astro/bin/node && PATH=\"$PWD/.astro/bin:$PATH\" bun --bun astro build",
@@ -460,8 +460,8 @@
       "description": "build the site with main's newest bench and conformance runs → dist-live/ (GitHub Actions only)",
       "dependsOn": [
         "install",
-        "build.import",
-        "build.images"
+        "build.bun.import",
+        "build.bun.images"
       ],
       "exec": {
         "command": "bun scripts/live-bench.ts && bun scripts/live-conformance.ts && rm -rf .astro/live && mkdir -p .astro/bin && ln -sf \"$(command -v bun)\" .astro/bin/node && PATH=\"$PWD/.astro/bin:$PATH\" bun --bun astro build --outDir dist-live",
@@ -558,10 +558,15 @@
       }
     },
     "dev": {
+      "dependsOn": [
+        "dev.*"
+      ]
+    },
+    "dev.astro": {
       "description": "astro dev server (persistent)",
       "dependsOn": [
         "install",
-        "build.images"
+        "build.bun.images"
       ],
       "exec": {
         "command": "bun --bun astro dev",
@@ -596,6 +601,11 @@
       }
     },
     "preview": {
+      "dependsOn": [
+        "preview.*"
+      ]
+    },
+    "preview.astro": {
       "description": "serve the built dist/ (persistent)",
       "dependsOn": [
         "build"

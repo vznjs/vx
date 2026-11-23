@@ -1,4 +1,4 @@
-// auto-release.yml's one step, the `release.auto` task: release a commit
+// auto-release.yml's one step, the `release.github.tag` task: release a commit
 // whose CI went green on main (every job but Bench), VX_RELEASE_SHA or, when that is empty, the
 // newest such commit (greenCommit). It tags it with the next version and creates
 // the GitHub release as a draft, its body the release post at that commit or,

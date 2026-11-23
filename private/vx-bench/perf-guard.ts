@@ -363,7 +363,7 @@ async function main(): Promise<void> {
   const base = all[platform]
   if (base === undefined) {
     process.stdout.write(
-      `perf-guard: no ${platform} baseline; counted only. Record one with \`vx run perf.update\`.\n${JSON.stringify(counted, null, 2)}\n`,
+      `perf-guard: no ${platform} baseline; counted only. Record one with \`vx run @vzn/vx-bench#update\`.\n${JSON.stringify(counted, null, 2)}\n`,
     )
     return
   }
@@ -397,13 +397,13 @@ async function main(): Promise<void> {
   )
   if (shrank.length > 0) {
     process.stdout.write(
-      `\nperf-guard: ${shrank.length} fewer (passes; \`vx run @vzn/vx-bench#perf.update\` records them):\n${shrank.map((f) => `  ${f}`).join('\n')}\n`,
+      `\nperf-guard: ${shrank.length} fewer (passes; \`vx run @vzn/vx-bench#update\` records them):\n${shrank.map((f) => `  ${f}`).join('\n')}\n`,
     )
   }
   if (grew.length > 0) {
     process.stdout.write(
       `\nperf-guard: ${grew.length} grew:\n${grew.map((f) => `  ${f}`).join('\n')}\n` +
-        `The change does more work. If it is meant, run \`vx run @vzn/vx-bench#perf.update\` and commit perf-baseline.json; on a conflict there, take main's file and run it again.\n`,
+        `The change does more work. If it is meant, run \`vx run @vzn/vx-bench#update\` and commit perf-baseline.json; on a conflict there, take main's file and run it again.\n`,
     )
     process.exitCode = 1
   }
