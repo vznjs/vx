@@ -18,6 +18,20 @@ Pick the vx you run, from `vx --version`. The list keeps only the releases after
 
 <Deeper level="details" title="In the next release">
 
+### A blank readyWhen is refused at vx lock
+
+`vx lock` refuses `exec.persistent.readyWhen: ''`, which matched any line. Omit `readyWhen` to be ready once the task starts.
+
+`ui.Column`'s object form has an optional `align` and new optional `drop` and `under`: a plugin that reads `column.align` handles `undefined`.
+
+</Deeper>
+
+</div>
+
+<div data-release="v0.0.660">
+
+## v0.0.660
+
 ### Locks, lock problems, dry runs and edited configs
 
 `.vx/projects.lock` is version 9 and `.vx/dependencies.lock` version 6. Run `vx lock` once to rewrite both.
@@ -106,8 +120,6 @@ On CI a run prints only failed tasks. To see every task, pass `--output-logs ful
 ### Replace --continue with --fail-fast: the JavaScript API
 
 `RunOptions.continueMode` is `failFast`.
-
-</Deeper>
 
 </Deeper>
 
