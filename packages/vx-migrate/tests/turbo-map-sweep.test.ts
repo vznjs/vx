@@ -196,9 +196,26 @@ describe('turbo-map: what the sweep found unheld', () => {
       pass: ['VITE_X', 'NEXT_PUBLIC_A', 'NEXT_PUBLIC_B', 'API', 'TOKEN_1'],
       todos: [],
       notes: [
+        // Turbo matches each run's environment; vx the one `vx lock` ran in.
+        'globalEnv "VITE_*" matched VITE_X where `vx lock` ran: a matching variable set later is neither passed nor keyed until `vx lock` runs again',
         'env "FOO_?": Turbo reads this as the one variable "FOO_?" (only `*` is a wildcard), a name vx cannot key — dropped (1 task)',
+        'env "NEXT_PUBLIC_*" matched NEXT_PUBLIC_A, NEXT_PUBLIC_B where `vx lock` ran: a matching variable set later is neither passed nor keyed until `vx lock` runs again (1 task)',
+        'passThroughEnv "TOKEN_*" matched TOKEN_1 where `vx lock` ran: a matching variable set later is neither passed nor keyed until `vx lock` runs again (1 task)',
       ],
     })
+  })
+
+  // A wildcard nothing matched where `vx lock` ran keys nothing, as Turbo
+  // there; one set later was neither passed nor keyed, unsaid (probed).
+  it('says a `*` env name that matched nothing where `vx lock` ran', async () => {
+    const m = await map(
+      { tasks: { build: { env: ['API_*'] } } },
+      { a: { scripts: { build: 'b' } }, b: { scripts: { build: 'b' } } },
+      ['OTHER'],
+    )
+    expect(m.notes).toEqual([
+      'env "API_*" matched no variable where `vx lock` ran: a matching variable set later is neither passed nor keyed until `vx lock` runs again (2 tasks)',
+    ])
   })
 
   // Turbo's `wildcard_to_regex_pattern`: `*` is the one wildcard, `\*` a
@@ -225,11 +242,16 @@ describe('turbo-map: what the sweep found unheld', () => {
       `env ${JSON.stringify(entry)}: Turbo reads this as the one variable ${JSON.stringify(name)} (only \`*\` is a wildcard), a name vx cannot key — dropped (1 task)`
     // Live: the escaped names are set nowhere, so Turbo hashes nothing for
     // them; the exclusion's \* is no wildcard, so B_1 stays.
-    expect(await read(['B_1', 'NEXT_PUBLIC_A'])).toEqual({ env: ['API', 'B_1'], todos: [] })
+    const lock = (names: string): string =>
+      `env "B_*" matched ${names} where \`vx lock\` ran: a matching variable set later is neither passed nor keyed until \`vx lock\` runs again (1 task)`
+    expect(await read(['B_1', 'NEXT_PUBLIC_A'])).toEqual({
+      env: ['API', 'B_1'],
+      todos: [lock('B_1')],
+    })
     // One that is set is reported.
     expect(await read(['NEXT_PUBLIC_*'])).toEqual({
       env: ['API'],
-      todos: [literal('NEXT_PUBLIC_\\*', 'NEXT_PUBLIC_*')],
+      todos: [literal('NEXT_PUBLIC_\\*', 'NEXT_PUBLIC_*'), lock('no variable')],
     })
     expect(await read()).toEqual({
       env: ['API'],

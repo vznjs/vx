@@ -109,9 +109,11 @@ function explicitEnv(
   gap: (entry: string, literal: string | null) => void,
   live?: readonly string[],
   spelled?: { readonly names: readonly string[]; readonly used: (entry: string) => void },
+  matched?: (entry: string, names: readonly string[]) => void,
 ): string[] {
   const out: string[] = []
   const excluded: RegExp[] = []
+  const matches: [string, string[]][] = []
   // Literal runs split at each unescaped `*`; one run is a literal name.
   const runs = (p: string): string[] => p.split(/(?<!\\)\*/).map((r) => r.replaceAll('\\*', '*'))
   const regex = (parts: readonly string[]): RegExp =>
@@ -131,7 +133,9 @@ function explicitEnv(
       // Turbo matches a `*` name against the environment it runs in; so
       // does a live mapping, and the names it finds are keyed and passed.
       const re = regex(parts)
-      out.push(...live.filter((n) => re.test(n) && keyable(n)).sort())
+      const hits = live.filter((n) => re.test(n) && keyable(n)).sort()
+      out.push(...hits)
+      matches.push([e, hits])
     } else if (spelled !== undefined) {
       // A written config cannot ask the run's environment: the names the
       // package's files spell stand in for it (clerk's root `E2E_*`), the
@@ -146,8 +150,19 @@ function explicitEnv(
       }
     } else gap(e, null)
   }
-  return out.filter((n) => !excluded.some((re) => re.test(n)))
+  const kept = (n: string): boolean => !excluded.some((re) => re.test(n))
+  for (const [e, hits] of matches) matched?.(e, hits.filter(kept))
+  return out.filter(kept)
 }
+
+/**
+ * A `*` env name a live mapping (`turbo()`) matched where `vx lock` ran:
+ * Turbo matches each run's environment, and a variable set after the lock
+ * was neither passed nor keyed, unsaid. Reported once, with its tasks.
+ */
+const lockMatched = (field: string, entry: string, names: readonly string[]): string =>
+  `${field} ${JSON.stringify(entry)} matched ${names.length === 0 ? 'no variable' : names.join(', ')} ` +
+  'where `vx lock` ran: a matching variable set later is neither passed nor keyed until `vx lock` runs again'
 
 /**
  * The literal names of Turbo's builtin pass-through list, the same under
@@ -1099,6 +1114,8 @@ export async function mapTurboWorkspace(
       (e, literal) =>
         notes.push(envGap(field, e, literal, ' in vx env names — list explicit names')),
       opts.envNames,
+      undefined,
+      (e, hits) => notes.push(lockMatched(field, e, hits)),
     )
   // Turbo 1's `globalDotEnv` files are hashed as `globalDependencies` are. A
   // `.env`-shaped one is gitignored as a rule, and a glob over git's files
@@ -1933,7 +1950,10 @@ function literalEnvGapsOnce(projects: readonly TurboMappedProject[], notes: stri
   for (const p of projects)
     for (const t of p.tasks)
       t.todos = t.todos.filter((todo) => {
-        if (!/^(env|passThroughEnv) ".*": Turbo reads this as the one variable /s.test(todo))
+        if (
+          !/^(env|passThroughEnv) ".*": Turbo reads this as the one variable /s.test(todo) &&
+          !/^(env|passThroughEnv) ".*" matched .* where `vx lock` ran: /s.test(todo)
+        )
           return true
         counts.set(todo, (counts.get(todo) ?? 0) + 1)
         return false
@@ -2308,12 +2328,14 @@ function buildTask(
       ),
     opts.envNames,
     spelled,
+    (e, hits) => todos.push(lockMatched('env', e, hits)),
   )
   const passNames: string[] = explicitEnv(
     def.passThroughEnv ?? [],
     (e, literal) => todos.push(envGap('passThroughEnv', e, literal, ' — list explicit names')),
     opts.envNames,
     spelled,
+    (e, hits) => todos.push(lockMatched('passThroughEnv', e, hits)),
   )
 
   // A name that is no shell identifier never reached a task (`sh` drops it)
