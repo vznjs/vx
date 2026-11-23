@@ -128,7 +128,8 @@ const SAY = { pass: 'passes', fail: 'fails', 'n/a': 'does not have this feature'
                   ))}
                 </summary>
                 <p class="cfm-cat-about" set:html={inline(about(s.id))} />
-                <table class="cfm-cases">
+                {/* Two thousand case rows outranked every docs page in search. */}
+                <table class="cfm-cases" data-pagefind-ignore>
                   <colgroup>
                     <col />
                     <col span={RANKED.length} class="cfm-col" />

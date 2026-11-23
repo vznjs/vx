@@ -39,6 +39,8 @@ export const onRequest = defineRouteMiddleware(async (context) => {
     route.toc = undefined
     route.pagination = { prev: undefined, next: undefined }
     if (section === 'blog' || section === 'releases') await ogCover(route, context.site)
+    // A release note is searched in its own index (src/plugins/release-search.ts).
+    if (section === 'releases' && route.entry.data.date) route.entry.data.pagefind = false
     return
   }
 

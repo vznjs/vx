@@ -7,7 +7,7 @@
 @vzn/vx-ci	@vzn/vx		dCHxnombUkE
 @vzn/vx-conformance	@vzn/vx,@vzn/vx-lockfile		EWQswLGGsMo
 @vzn/vx-devtools	@vzn/vx		VS2ChMGCKd8
-@vzn/vx-docs	@vzn/vx,@vzn/vx-cache,@vzn/vx-ci,@vzn/vx-dte,@vzn/vx-history,@vzn/vx-lockfile,@vzn/vx-migrate,@vzn/vx-otel,@vzn/vx-reapi		V_PP--W3OZ0
+@vzn/vx-docs	@vzn/vx,@vzn/vx-cache,@vzn/vx-ci,@vzn/vx-dte,@vzn/vx-history,@vzn/vx-lockfile,@vzn/vx-migrate,@vzn/vx-otel,@vzn/vx-reapi		Lal3J0hDxs4
 @vzn/vx-dte	@vzn/vx,@vzn/vx-devtools,@vzn/vx-dte-server		m_6ZDUvTgWg
 @vzn/vx-dte-server	@vzn/vx,@vzn/vx-devtools		4Ac8oIbbH5I
 @vzn/vx-dte-service	@vzn/vx,@vzn/vx-dte-server		FcyqtLvp6bg
