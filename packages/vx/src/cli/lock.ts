@@ -53,6 +53,7 @@ import {
   writeAllOrNone,
   writeNoFollow,
 } from '../util/index.js'
+import { takeConfigStamps, writeConfigStamps } from '../memo/index.js'
 import * as ui from '../ui/index.js'
 import { refusalNotice, sayNotice } from '../ui/index.js'
 import {
@@ -238,6 +239,13 @@ async function audit(root: string, warn: (message: string) => void): Promise<Gra
     }
     out.strayReviews = strayReviews
     out.shadowed = shadowed
+    out.stamps = {
+      cacheDir,
+      configs: await takeConfigStamps(
+        root,
+        found.map((f) => f.configPath),
+      ),
+    }
     // The one load that evaluates: every reader reads the lock this writes.
     const configs = await loadProjectConfigs(
       found.map((f) => f.configPath),
@@ -419,6 +427,8 @@ interface GraphCheck {
   shadowed: { file: string; read: string }[]
   /** What the dependencies resolve to here; null when the configs did not load. */
   dependencies: DependenciesLock | null
+  /** Each config as read before its evaluation, and where a run reads it back. */
+  stamps?: { cacheDir: string; configs: Awaited<ReturnType<typeof takeConfigStamps>> }
 }
 
 /** Each project's edges and each claimed file's digests, as `--affected` reads them back. */
@@ -665,6 +675,7 @@ async function writeLock(
     root,
   )
   await writeIfMissing(path.join(root, '.vx', '.gitattributes'), DOT_VX_GITATTRIBUTES)
+  if (check.stamps) await writeConfigStamps(root, check.stamps.cacheDir, check.stamps.configs)
   const n = metas.length
   say(
     `${n} project config${n === 1 ? '' : 's'} → ${LOCKFILE_NAME}, ${DEPENDENCIES_LOCK_NAME}${bareNote(bare)}`,
@@ -1160,6 +1171,8 @@ async function checkLock(root: string, json: boolean): Promise<number> {
   const n = metas.length
   const audited = `${n} project${n === 1 ? '' : 's'}`
   const mapped = bare.length === 0 ? '' : `; mapped by a plugin: ${bareNames(bare)}`
+  // The configs read as locked: a run that finds one edited since says so.
+  if (check.stamps) await writeConfigStamps(root, check.stamps.cacheDir, check.stamps.configs)
   ui.print('out', ui.status('ok', 'vx lock --check', `up to date (${audited}${mapped})`))
   return 0
 }

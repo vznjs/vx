@@ -56,8 +56,9 @@ terminal and a task succeeding or failing. Read it alongside
  │       transitive dependency closure load ('^task' frontier
  │       expansion never escapes the closure); one staged load,
  │       loadProjects, shared with every reading verb. A run's configs
- │       load from .vx/projects.lock — no evaluation, no staleness check
- │       of its own (vx lock --check is the audit), frozen-env
+ │       load from .vx/projects.lock — no evaluation (a config file
+ │       edited since this machine's vx lock refuses; vx lock --check
+ │       is the audit), frozen-env
  │       semantics; a missing lock or entry is a hard UserError. The
  │       verbs that evaluate (vx lock, the readers) use
  │       loadProjectConfigs in one batch: native Bun await import()

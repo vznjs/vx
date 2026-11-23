@@ -1196,7 +1196,7 @@ describe('vx show reads the lock and evaluates nothing (e2e)', () => {
   )
 
   it(
-    'shows the locked config, not the file edited since',
+    'refuses a config edited since the lock, evaluating nothing',
     async () => {
       expect(raw(root, ['lock']).exitCode).toBe(0)
       await writeFile(
@@ -1204,8 +1204,10 @@ describe('vx show reads the lock and evaluates nothing (e2e)', () => {
         "throw new Error('never evaluated')\n",
       )
       const r = raw(root, ['show', 'app'])
-      expect(r.exitCode).toBe(0)
-      expect(r.stdout.toString()).toContain('echo b')
+      expect(r.exitCode).toBe(1)
+      expect(r.stderr.toString()).toContain(
+        'packages/app/vx.config.mjs changed since the last `vx lock` — run `vx lock`',
+      )
       expect(r.stderr.toString()).not.toContain('never evaluated')
     },
     TIMEOUT,

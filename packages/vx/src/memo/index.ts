@@ -2,6 +2,7 @@
 // hashes, each task's last fold, lockfile parses, output stamps and what the
 // remotes said they hold. Each memo owns its statements over the index the
 // store opens; a memo is a speed-up, never the source of a cache answer.
+export { configsEditedSinceLock, takeConfigStamps, writeConfigStamps } from './config-stamps.js'
 export { FileHashStore, fileIdentity } from './file-hashes.js'
 export { type FoldMemo, IndexFoldMemo } from './fold-memo.js'
 export {

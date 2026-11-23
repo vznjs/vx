@@ -103,6 +103,8 @@ describe.skipIf(strace === null)('one run touches each project file once, Bun in
 `,
     )
     expect(Bun.spawnSync({ cmd: [process.execPath, BIN, 'lock'], cwd: root }).exitCode).toBe(0)
+    // `vx lock` makes the cache dir for its config stamps; the cold run is one with none.
+    await rm(path.join(root, '.vx', 'cache'), { recursive: true, force: true })
     gitInitCommit(root)
   })
 
@@ -145,7 +147,7 @@ describe.skipIf(strace === null)('one run touches each project file once, Bun in
         // bundle is built only under one.
         if (name === 'build') await mkdir(path.join(root, '.vx', 'cache'), { recursive: true })
         const run = await tracedRun(name)
-        expect(run('packages/a/vx.config.mjs')).toEqual(['newfstatat'])
+        expect(run('packages/a/vx.config.mjs')).toEqual(['statx'])
         expect(run('packages/a/package.json')).toEqual([])
         expect(run('packages/a')).toEqual([])
         if (name === 'cold')

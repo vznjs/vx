@@ -293,6 +293,39 @@ export interface RemoteHits {
 export class IndexRemoteHits implements RemoteHits {}
 ```
 
+## `src/memo/config-stamps.ts` — each config as `vx lock` read it
+
+### Purpose
+
+`vx lock` and a passing `vx lock --check` stamp each config file (size,
+mtime, xxh3 of its bytes) before evaluating it, and keep the stamps with
+the lock's digest in the cache dir's `config-stamps.json`. A run reads its
+configs from the lock, so `configsEditedSinceLock` names the in-scope
+config files whose bytes moved since: the run refuses them with "run
+`vx lock`". Asked only while the lock's bytes are the stamped ones (a pull
+or a clone asks nothing). The stat match only ever skips the read; a
+refusal is decided by the file's bytes now, never by a memo (rule 9).
+
+### Public surface
+
+```ts
+export function takeConfigStamps(
+  root: string,
+  files: readonly string[],
+): Promise<Record<string, [number, number, string]>>
+export function writeConfigStamps(
+  root: string,
+  cacheDir: string,
+  configs: Record<string, [number, number, string]>,
+): Promise<void>
+export function configsEditedSinceLock(
+  root: string,
+  cacheDir: string,
+  lock: string | undefined,
+  files: readonly { file: string; size: number; mtimeMs: number }[],
+): Promise<string[]>
+```
+
 ## `src/memo/lockfile-memo.ts` — a lockfile claimant's parse
 
 ### Purpose

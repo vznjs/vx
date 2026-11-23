@@ -197,16 +197,17 @@ here, itself or in a brace group.
 
 ## Memo
 
-| File                                                                                  | Topic                                                                                     |
-| ------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| [`memo.md`](./memo.md#srcmemolocal-memots--the-stores-memos-as-one-object)            | `src/memo/local-memo.ts` — `LocalMemo`: the store's memos as one object, `Cache.memo`.    |
-| [`memo.md`](./memo.md#srcmemofile-hashests--the-per-file-blob-oid-memo)               | `src/memo/file-hashes.ts` — the per-file blob-OID memo, `fileIdentity`.                   |
-| [`memo.md`](./memo.md#srcmemofold-memots--each-tasks-last-key-by-its-probe)           | `src/memo/fold-memo.ts` — each task's last key by its probe.                              |
-| [`memo.md`](./memo.md#srcmemofs-clockts--the-file-system-clock)                       | `src/memo/fs-clock.ts` — the file system clock lag every racy window adds.                |
-| [`memo.md`](./memo.md#srcmemooutput-indexts--output-rows-and-the-two-proofs-of-a-hit) | `src/memo/output-index.ts` — output rows and stamps, the two proofs a hit runs.           |
-| [`memo.md`](./memo.md#srcmemostat-threadts--many-stats-on-a-thread)                   | `src/memo/stat-thread.ts` — `StatThread`: many stats on a thread, off the main one.       |
-| [`memo.md`](./memo.md#srcmemoremote-hitsts--the-keys-a-remote-last-said-it-holds)     | `src/memo/remote-hits.ts` — the keys a remote last said it holds.                         |
-| [`memo.md`](./memo.md#srcmemolockfile-memots--a-lockfile-claimants-parse)             | `src/memo/lockfile-memo.ts` — a lockfile claimant's parse, one row per file and claimant. |
+| File                                                                                  | Topic                                                                                           |
+| ------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| [`memo.md`](./memo.md#srcmemolocal-memots--the-stores-memos-as-one-object)            | `src/memo/local-memo.ts` — `LocalMemo`: the store's memos as one object, `Cache.memo`.          |
+| [`memo.md`](./memo.md#srcmemofile-hashests--the-per-file-blob-oid-memo)               | `src/memo/file-hashes.ts` — the per-file blob-OID memo, `fileIdentity`.                         |
+| [`memo.md`](./memo.md#srcmemofold-memots--each-tasks-last-key-by-its-probe)           | `src/memo/fold-memo.ts` — each task's last key by its probe.                                    |
+| [`memo.md`](./memo.md#srcmemofs-clockts--the-file-system-clock)                       | `src/memo/fs-clock.ts` — the file system clock lag every racy window adds.                      |
+| [`memo.md`](./memo.md#srcmemooutput-indexts--output-rows-and-the-two-proofs-of-a-hit) | `src/memo/output-index.ts` — output rows and stamps, the two proofs a hit runs.                 |
+| [`memo.md`](./memo.md#srcmemostat-threadts--many-stats-on-a-thread)                   | `src/memo/stat-thread.ts` — `StatThread`: many stats on a thread, off the main one.             |
+| [`memo.md`](./memo.md#srcmemoremote-hitsts--the-keys-a-remote-last-said-it-holds)     | `src/memo/remote-hits.ts` — the keys a remote last said it holds.                               |
+| [`memo.md`](./memo.md#srcmemolockfile-memots--a-lockfile-claimants-parse)             | `src/memo/lockfile-memo.ts` — a lockfile claimant's parse, one row per file and claimant.       |
+| [`memo.md`](./memo.md#srcmemoconfig-stampsts--each-config-as-vx-lock-read-it)         | `src/memo/config-stamps.ts` — each config as `vx lock` read it: a run refuses one edited since. |
 
 ## Index database
 

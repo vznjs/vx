@@ -81,11 +81,6 @@ describe('vx info reads the lock', () => {
   it('counts the locked configs and the plugin stage as vx run does', async () => {
     const root = await workspace()
     expect(vx(root, 'lock').code).toBe(0)
-    // Edited after the lock: info reads the lock, not the file.
-    await writeFile(
-      path.join(root, 'packages', 'app', 'vx.config.mjs'),
-      "throw new Error('evaluated')\n",
-    )
     const r = vx(root, 'info', '--format', 'json')
     const facts = JSON.parse(r.out) as Record<string, unknown>
     // app's lint, and bare's build and test: app's default build is no
@@ -96,6 +91,23 @@ describe('vx info reads the lock', () => {
       lockfile: facts['lockfile'],
       tasks: facts['tasks'],
     }).toEqual({ code: 0, err: '', lockfile: true, tasks: 3 })
+  })
+
+  // Edited after the lock: info evaluates nothing, and says why a run refuses.
+  it('a config edited since the lock is the lock error a run refuses with', async () => {
+    const root = await workspace()
+    expect(vx(root, 'lock').code).toBe(0)
+    await writeFile(
+      path.join(root, 'packages', 'app', 'vx.config.mjs'),
+      "throw new Error('evaluated')\n",
+    )
+    const r = vx(root, 'info', '--format', 'json')
+    const facts = JSON.parse(r.out) as Record<string, unknown>
+    expect([r.code, r.err, facts['lockError']]).toEqual([
+      0,
+      '',
+      'packages/app/vx.config.mjs changed since the last `vx lock` — run `vx lock`',
+    ])
   })
 
   // A lock a run refuses read "projects lock yes" with no task, and exit 0:
