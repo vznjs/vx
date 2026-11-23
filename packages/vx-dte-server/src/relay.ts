@@ -811,8 +811,11 @@ export function runClaimsOf(iss: string): readonly string[] {
 /** The relay's `verify`: @vzn/vx-devtools' check, then the token's run claims. */
 export function createVerifier(opts: OidcOptions): (token: string) => Promise<VerifiedToken> {
   const check = oidcClaims(opts)
+  // vx-dte asks for a token for the relay's URL with no trailing slash, as it
+  // dials it: an AUDIENCE set with one refused every token.
+  const audience = opts.audience.replace(/\/+$/, '')
   return async (token) => {
-    const { iss, claims } = await check(token, opts.audience)
+    const { iss, claims } = await check(token, audience)
     const run = (opts.runClaims?.[iss] ?? runClaimsOf(iss)).map((c) => {
       const v = claims[c]
       if (typeof v !== 'string' && typeof v !== 'number') throw new Refusal(403, `no ${c} claim`)

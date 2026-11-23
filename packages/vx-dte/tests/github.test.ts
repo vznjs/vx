@@ -1184,3 +1184,27 @@ it('reads every page of a run of more than 100 jobs again, its first unchanged',
     await server.stop(true)
   }
 }, 30_000)
+
+// The relay's URL is dialed with its trailing slash dropped, and a Worker
+// relay's audience is its origin: a token asked for `https://relay.example/`
+// was refused "wrong audience" by the relay it reached.
+it('asks the relay token for the relay URL without a trailing slash', async () => {
+  const asked: (string | null)[] = []
+  const issuer = Bun.serve({
+    port: 0,
+    hostname: '127.0.0.1',
+    fetch: (req) => {
+      asked.push(new URL(req.url).searchParams.get('audience'))
+      return Response.json({ value: 'jwt' })
+    },
+  })
+  try {
+    process.env['ACTIONS_ID_TOKEN_REQUEST_URL'] = `http://127.0.0.1:${issuer.port}/token?v=1`
+    process.env['ACTIONS_ID_TOKEN_REQUEST_TOKEN'] = 'req-token'
+    const { githubRelayToken } = await import('../src/github.js')
+    expect(await githubRelayToken('https://relay.example//')).toBe('jwt')
+    expect(asked).toEqual(['https://relay.example'])
+  } finally {
+    await issuer.stop(true)
+  }
+})
