@@ -1717,7 +1717,8 @@ export function ciProvider(env?: Record<string, string | undefined>): string | n
 ```
 
 Every reader of `CI` asks `envFlagOn`, and every reader of "is this CI"
-(the remote-write default, colours, `detectCi`) asks `ciProvider`, so a run
+(the remote-write default, the output flow, colours, `detectCi`) asks
+`ciProvider`, which also reads `no` and `off` as off, so a run
 cannot be CI to one part of vx and a laptop to another. Azure Pipelines
 (`TF_BUILD`), Jenkins (`JENKINS_URL`) and TeamCity (`TEAMCITY_VERSION`) set no
 `CI`; read alone, their jobs never wrote the remote cache.

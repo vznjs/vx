@@ -480,8 +480,9 @@ wire forwarders attach beside it). What renders:
   output raw and live and silences successful dependencies; BROAD
   (`--all` / `--filter` / `--affected`) prints news only — one grid
   one-liner per executed task, failure frames replayed at run end,
-  silence for cache hits; truthy `CI` env (and the programmatic
-  default) keeps full grouped output. `--output-logs` overrides
+  silence for cache hits; on CI (any CI variable on, `CI`,
+  `GITHUB_ACTIONS`, `JENKINS_URL`…) only failed tasks print, and the
+  programmatic default keeps full grouped output. `--output-logs` overrides
   everything. Full table in [`cli.md`](./cli.md#output).
 - **The task grid.** Reported task lines share one column grid:
   `<status> <cache> <±usual> <time> <cpu> <mem> <outputs> <blocks>

@@ -1809,7 +1809,7 @@ export function outputsOverlap(rawA: string, rawB: string): boolean
 type · `src/report/logger.ts`
 
 The default logger's per-task output policy, from `--output-logs`, else a
-truthy `CI`, else the CLI's flow: full: frames for executed work, one-liners
+CI (`ciProvider`: any CI variable on), else the CLI's flow: full: frames for executed work, one-liners
 for quiet hits; CI's and the programmatic default. errors-only: only failed
 tasks print. none: no per-task output. hash-only: one line per task (outcome,
 id, key), Turbo's parity; the summary still renders. focused: requested nodes

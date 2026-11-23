@@ -750,14 +750,17 @@ describe('GitHub Actions renderer (full mode + gha)', () => {
       mode: 'errors-only',
       ci: true,
     })
+    // GitHub Actions is CI by its own variable too (`ciProvider`).
     expect(resolveOutputView({ outputLogs: 'full' }, { GITHUB_ACTIONS: 'true' })).toEqual({
       mode: 'full',
       gha: true,
+      ci: true,
     })
     // Every mode fences task text there; only `full` groups (its branch).
     expect(resolveOutputView({ outputLogs: 'errors-only' }, { GITHUB_ACTIONS: 'true' })).toEqual({
       mode: 'errors-only',
       gha: true,
+      ci: true,
     })
   })
 

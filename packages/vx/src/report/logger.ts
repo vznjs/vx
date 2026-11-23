@@ -41,7 +41,7 @@ import {
   secretMask,
   tailText,
   type Tail,
-  envFlagOn,
+  ciProvider,
   relPosix,
 } from '../util/index.js'
 import * as ui from '../ui/index.js'
@@ -143,7 +143,7 @@ export interface DefaultLogger extends Logger {
 
 /**
  * The default logger's per-task output policy, from `--output-logs`, else a
- * truthy `CI`, else the CLI's flow: full: frames for executed work, one-liners
+ * CI (`ciProvider`: any CI variable on), else the CLI's flow: full: frames for executed work, one-liners
  * for quiet hits; CI's and the programmatic default. errors-only: only failed
  * tasks print. none: no per-task output. hash-only: one line per task (outcome,
  * id, key), Turbo's parity; the summary still renders. focused: requested nodes
@@ -211,8 +211,11 @@ export function resolveOutputView(
   },
   env: Record<string, string | undefined> = process.env,
 ): OutputView {
-  const ci = envFlagOn(env['CI'])
-  const gha = envFlagOn(env['GITHUB_ACTIONS'])
+  // One rule for "on CI" (`ciProvider`): a Jenkins job, which sets no `CI`,
+  // got the laptop's flow while the rest of vx called it CI.
+  const provider = ciProvider(env)
+  const ci = provider !== null
+  const gha = provider === 'github'
   const mk = (mode: OutputView['mode']): OutputView => ({
     mode,
     ...(gha ? { gha: true } : {}),

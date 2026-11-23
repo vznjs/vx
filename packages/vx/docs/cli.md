@@ -851,8 +851,9 @@ unless explicitly overridden:
 - **BROAD** — the invocation used `--all`, `--filter`, or
   `--affected`. The user asked about a swath of the workspace and
   wants news, not output.
-- **CI** — the `CI` env var is truthy (`CI=0` and `CI=false`, in any case, don't
-  count). Wins over the flow: only failed tasks print (`errors-only`), so
+- **CI** — a CI variable is on (§ Output format › Colors lists them:
+  `CI`, `GITHUB_ACTIONS`, `JENKINS_URL` and the rest; empty, `0`, `false`,
+  `no` and `off`, in any case, don't count). Wins over the flow: only failed tasks print (`errors-only`), so
   the log holds what broke.
 
 Reported task lines share one column grid: `<status> <cache> <±usual>
@@ -5255,7 +5256,7 @@ left the task's process group with `setsid` goes with it
 (`docs/execution.md`).
 
 Colors are the two conventions in § Output format › Colors (`NO_COLOR`,
-`FORCE_COLOR`), and a CI turns them on. A truthy `CI` picks the CI output flow and
+`FORCE_COLOR`), and a CI turns them on. A CI picks the CI output flow and
 `GITHUB_ACTIONS` its `::group::` framing (§ Output); the run's
 `invocations` row records the provider, the first truthy of
 `GITHUB_ACTIONS`, `GITLAB_CI`, `BUILDKITE`, `CIRCLECI`, `TF_BUILD` (`azure`),
@@ -5514,7 +5515,8 @@ file (`tests/warnings-stderr.test.ts`).
 
 A CI is `CI`, `GITHUB_ACTIONS`, `GITLAB_CI`, `BUILDKITE`, `CIRCLECI`,
 `TF_BUILD`, `JENKINS_URL` or `TEAMCITY_VERSION` set to anything but
-empty, `0` or `false`: a CI log gets the terminal's colours. A viewer
+empty, `0`, `false`, `no` or `off` (any case): a CI log gets the terminal's
+colours, the CI output flow and remote cache writes. A viewer
 that shows raw escapes turns them off with `NO_COLOR`.
 
 `0` and `false` are `FORCE_COLOR`'s "off" by the convention

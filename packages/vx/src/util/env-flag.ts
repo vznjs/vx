@@ -25,8 +25,18 @@ const CI_PROVIDERS: ReadonlyArray<readonly [envVar: string, provider: string]> =
   ['CI', 'generic'],
 ]
 
-/** The CI provider `env` names, or null off CI: every reader of "is this CI" asks this. */
+/** A CI variable's "off": a laptop with `CI=no` wrote the shared remote cache. */
+const CI_OFF = new Set(['', '0', 'false', 'no', 'off'])
+
+/**
+ * The CI provider `env` names, or null off CI: every reader of "is this CI"
+ * (remote writes, the output flow, colours, `detectCi`) asks this. A variable
+ * is on unless unset, empty, `0`, `false`, `no` or `off`, in any case.
+ */
 export function ciProvider(env: Record<string, string | undefined> = process.env): string | null {
-  for (const [name, provider] of CI_PROVIDERS) if (envFlagOn(env[name])) return provider
+  for (const [name, provider] of CI_PROVIDERS) {
+    const v = env[name]
+    if (v !== undefined && !CI_OFF.has(v.trim().toLowerCase())) return provider
+  }
   return null
 }
