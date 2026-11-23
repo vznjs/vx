@@ -12,13 +12,18 @@ One config holds most of the words on this page. Find each one in it:
 ```ts title="packages/web/vx.config.ts"
 import { defineProject } from '@vzn/vx/config'
 
-export default defineProject({ //           a project
+// a project
+export default defineProject({
   tasks: {
-    build: { //                             a task
-      dependsOn: ['^build'], //             a task dependency
+    // a task
+    build: {
+      // a task dependency
+      dependsOn: ['^build'],
       exec: { command: 'vite build' },
-      inputs: { files: ['src/**'] }, //     inputs make the cache key
-      outputs: { files: ['dist/**'] }, //   outputs go in the cache
+      // inputs make the cache key
+      inputs: { files: ['src/**'] },
+      // outputs go in the cache
+      outputs: { files: ['dist/**'] },
       cache: true,
     },
   },
@@ -39,7 +44,7 @@ Coming from another tool? Each section ends with a table of the names Turborepo,
 
 ### Project
 
-**A folder with a `vx.config.ts`**, such as `packages/web`. Usually a package, in any language ([workspace](../docs/workspace/)).
+**A folder with a `vx.config.ts`**, such as `packages/web`. Usually a package with its own `package.json` ([workspace](../docs/workspace/)).
 
 ### Task
 
@@ -61,6 +66,10 @@ Coming from another tool? Each section ends with a table of the names Turborepo,
 
 **Your configs, evaluated once.** `vx lock` writes `.vx/projects.lock`. Every run reads that file, never the configs ([check the lock](../docs/ci/#keep-the-lock-fresh)).
 
+### Plugin
+
+**A package that changes part of a run**: where tasks run, where the cache lives, what gets reported. Listed in `.vx/workspace.ts` ([plugins](../docs/plugins/)).
+
 <Quiz q="You add a task to packages/web/vx.config.ts. What do you run before vx run sees it?">
   `vx lock`. Runs read only `.vx/projects.lock`, so the lock must include the new task.
 </Quiz>
@@ -77,6 +86,7 @@ Coming from another tool? Each section ends with a table of the names Turborepo,
 | Task dependency | `dependsOn` | [`dependsOn`](https://turborepo.com/docs/reference/configuration#dependson) | [`dependsOn`](https://nx.dev/docs/reference/glossary#task-pipeline) | [dependency](https://bazel.build/reference/glossary#dependency) |
 | Task graph | task graph | [Task Graph](https://turborepo.com/docs/core-concepts/package-and-task-graph#task-graph) | [task graph](https://nx.dev/docs/reference/glossary#graph) | [action graph](https://bazel.build/reference/glossary#action-graph) |
 | Project graph | package graph | [Package Graph](https://turborepo.com/docs/core-concepts/package-and-task-graph#package-graph) | [project graph](https://nx.dev/docs/reference/glossary#graph) | [target graph](https://bazel.build/reference/glossary#target-graph) |
+| Plugin | plugin | — | [plugin](https://nx.dev/docs/reference/glossary#plugin) | [rules](https://bazel.build/reference/glossary#rule) |
 
 Names checked against each tool's docs on 2026-09-24.
 
@@ -134,6 +144,10 @@ Names checked against each tool's docs on 2026-09-24.
 
 **A hit that serves the wrong files**, because the task read something missing from its inputs. The run looks green. It is the worst thing a cache can do ([sandboxing](../docs/sandboxing/)).
 
+### Sandbox
+
+**A task run where it sees only the files you grant.** A read outside them fails the task and names the file, so a missing input cannot hide. Set `exec.sandbox` ([sandboxing](../docs/sandboxing/)).
+
 ### Remote cache
 
 **A cache shared between machines**, so CI and your laptop reuse each other's results ([remote cache](../docs/remote-cache/)).
@@ -154,15 +168,12 @@ Names checked against each tool's docs on 2026-09-24.
 | Cache key | cache key | [hash](https://turborepo.com/docs/crafting-your-repository/caching#task-inputs) | [hash](https://nx.dev/docs/reference/glossary#cache-inputs) | [action key](https://bazel.build/reference/glossary#action-key) |
 | Hit and miss | hit, miss | [cache hit, miss](https://turborepo.com/docs/crafting-your-repository/caching) | [cache hit, miss](https://nx.dev/docs/reference/glossary#cache-hit) | [action cache](https://bazel.build/reference/glossary#action-cache) hit |
 | Stale hit | stale hit | — | [false cache hit](https://nx.dev/docs/features/ci-features/sandboxing) | broken [correctness](https://bazel.build/reference/glossary#correctness) |
+| Sandbox | `exec.sandbox` | — | [task sandboxing](https://nx.dev/docs/features/ci-features/sandboxing) | [sandboxing](https://bazel.build/reference/glossary#sandboxing) |
 | Remote cache | remote cache | [Remote Caching](https://turborepo.com/docs/core-concepts/remote-caching) | [remote cache](https://nx.dev/docs/reference/glossary#remote-cache) | remote caching |
 
 </Deeper>
 
-## Beyond one machine
-
-### Sandbox
-
-**A task run where it sees only the files you grant.** A read outside them fails the task and names the file, so a missing input cannot hide. Set `exec.sandbox` ([sandboxing](../docs/sandboxing/)).
+## More machines
 
 ### Distributed task execution
 
@@ -180,20 +191,22 @@ Names checked against each tool's docs on 2026-09-24.
 
 **Running a task on a build farm** and bringing its outputs back. `exec.remote`, through the `@vzn/vx-reapi` plugin ([remote execution](../docs/remote-execution/)).
 
-### Plugin
+### Cache server
 
-**A package that changes part of a run**: where tasks run, where the cache lives, what gets reported. Listed in `.vx/workspace.ts` ([plugins](../docs/plugins/)).
+**The server that holds a remote cache.** You host it: one storage bucket, no database ([cache server](../docs/servers/cache/)).
 
-<Takeaway>pick the right tool when one machine is not enough: sandbox, workers or a build farm.</Takeaway>
+### History server
+
+**The server that keeps how long each task took**, so the `@vzn/vx-history` plugin can order the next run ([history server](../docs/servers/history/)).
+
+<Takeaway>name every server and machine a bigger setup adds, and what each one does.</Takeaway>
 
 <Deeper level="details" title="The same words in other tools">
 
 | Idea | vx | Turborepo | Nx | Bazel |
 | --- | --- | --- | --- | --- |
-| Sandbox | `exec.sandbox` | — | [task sandboxing](https://nx.dev/docs/features/ci-features/sandboxing) | [sandboxing](https://bazel.build/reference/glossary#sandboxing) |
 | Distributed task execution | `@vzn/vx-dte` | — | [distributed task execution](https://nx.dev/docs/reference/glossary#distributed-task-execution) | — |
 | Remote execution | `exec.remote` | — | — | remote execution |
-| Plugin | plugin | — | [plugin](https://nx.dev/docs/reference/glossary#plugin) | [rules](https://bazel.build/reference/glossary#rule) |
 
 </Deeper>
 

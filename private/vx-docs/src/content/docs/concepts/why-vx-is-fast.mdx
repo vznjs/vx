@@ -4,7 +4,7 @@ description: How vx skips work, why the work it skips stays correct, and the mea
 ---
 
 import Diagram from '../../../components/guide/diagram/Diagram.astro'
-import { threeOutcomes } from '../../../components/docs/pictures/why-fast.js'
+import { readyFirst, threeOutcomes } from '../../../components/docs/pictures/why-fast.js'
 import { Aside } from '@astrojs/starlight/components'
 import { Levels, Deeper, Concept, Quiz, Walkthrough, Frame, Takeaway, NextStep } from '../../../components/learn'
 
@@ -17,48 +17,48 @@ vx run build
 <Levels />
 
 <Walkthrough title="One build, four runs">
-<Frame title="1. You edit @demo/ui: both builds run">
+<Frame title="1. You edit @demo/ui: it rebuilds">
 
-```ansi title="after an edit to packages/ui/src/index.js"
+```ansi title="after an edit"
 [2m$[0m vx run build
 [0m[2m└─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(254ms)[0m [2msuccess[0m
   [2mtime    [0m  537ms [2m·[0m [2mmax 254ms[0m [2m·[0m [2mavg 237ms[0m [2m·[0m [2mmin 220ms[0m
 ```
 
-Two builds ran and vx stored what they made.
+`@demo/ui` built first, then `@demo/web`: **success**. The time line counts both. vx stored what they made.
 
 </Frame>
 <Frame title="2. Nothing changed: nothing runs">
 
-```ansi title="the same command again"
+```ansi title="again"
 [2m$[0m vx run build
 [0m[2m└─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(3ms)[0m [2mup-to-date[0m
   [2mtime    [0m  27ms
 ```
 
-Read the last word of the task line: **up-to-date**. vx touched no file.
+The task line ends in **up-to-date**. vx touched no file.
 
 </Frame>
 <Frame title="3. You delete dist/: vx copies it back">
 
-```ansi title="after rm -rf dist"
+```ansi title="dist/ deleted"
 [2m$[0m vx run build
 [0m[2m└─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(12ms)[0m [2mrestored-local[0m
   [2mtime    [0m  37ms
 ```
 
-**restored-local**: the files came back from the cache. vite never started.
+The task line ends in **restored-local**: the files came back from the cache. vite never started.
 
 </Frame>
 <Frame title="4. You undo the edit: the old result comes back">
 
-```ansi title="after git checkout packages/ui/src/index.js"
+```ansi title="edit undone"
 [2m$[0m vx run build
 [0m[2m└─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(16ms)[0m [2mrestored-local[0m
   [2mtime    [0m  42ms
 ```
 
-The files match an earlier run, so its result is reused. No rebuild.
+The task line ends in **restored-local**. The files match an earlier run, so its result is reused.
 
 </Frame>
 </Walkthrough>
@@ -88,7 +88,7 @@ Only a **new key** runs the command. The other two outcomes cost milliseconds.
 
 Git already knows an ID for every committed file. vx asks git once per run and builds each key from those IDs.
 
-Clean-tree key derivation costs zero source-file reads. Only files you edited are hashed, and they get the same ID git would give them.
+If you edited nothing, vx reads no source file to build a key. A file you edited is read once and gets the ID git would give it.
 
 <Quiz q="You commit your edit. Does the next run rebuild?">
   No. The edited file already had git's ID for its content, and committing keeps that ID. The key stays
@@ -100,6 +100,8 @@ Clean-tree key derivation costs zero source-file reads. Only files you edited ar
 ## Start the right task first
 
 vx runs every ready task it has a free worker for. When more tasks are ready than workers, it starts the one **most other tasks wait on**.
+
+<Diagram {...readyFirst} />
 
 Add the `@vzn/vx-history` plugin and vx orders tasks by the longest path of waiting work left, learned from past runs ([plugins](../../docs/plugins/)).
 
@@ -131,7 +133,9 @@ With every output deleted first, it restores them all in %bench.vx.restore%. Met
 
 <Deeper level="details" title="The workload">
 
-Build %bench.task.build%, test %bench.task.test%, lint %bench.task.lint%, publish %bench.task.publish% per project. %bench.provenance%
+Each project runs build (%bench.task.build%), test (%bench.task.test%), lint (%bench.task.lint%) and publish (%bench.task.publish%).
+
+Measured %bench.vx.date% with Turborepo %bench.turbo.version%, Nx %bench.nx.version% and Vite Task %bench.vt.version%. Machine: %bench.vx.machine%.
 
 </Deeper>
 
@@ -184,7 +188,7 @@ It names the input that changed ([Caching](../../docs/caching/)).
 
 ### The mechanics
 
-- **Hashes come from git's index.** One `git ls-files -s` lists every tracked file and its ID. A `git status` beside it finds edited and new files.
+- **Hashes come from git's index.** One `git ls-files -s` lists every tracked file and its ID. A `git status` beside it finds edited and new files. Clean-tree key derivation costs zero source-file reads.
 - **Bitset graph maths.** Task priority uses packed bitsets. On a 3,270-task graph, 8.5 s became a few milliseconds.
 - **A scheduler that never re-scans.** Ready tasks come off a heap. A finished task updates only its direct dependents.
 - **Restores check first.** Outputs already in place cost one stat per file: no writes.
