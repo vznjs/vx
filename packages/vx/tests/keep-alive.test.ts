@@ -660,7 +660,10 @@ describe('a persistent server that dies before the run stops it', () => {
       pinned: lines.filter((l) => l.trim().startsWith('▸')),
       // The footer's task tally: it counted a crashed server a success
       // over a red exit (item 1071).
-      tally: lines.find((l) => l.endsWith(' total') && /success|failed/.test(l))?.trim(),
+      tally: lines
+        .find((l) => l.endsWith(' total') && /success|failed/.test(l))
+        ?.replace(/^\s*tasks\s+/, '')
+        .trim(),
     }
   }
 
@@ -735,7 +738,12 @@ describe('a persistent server that dies before the run stops it', () => {
       .split('\n')
       .filter((l) => l.startsWith('└─') && l.includes('app#srv'))
       .map((l) => l.replace(/\(\d+(\.\d+)?m?s\)/, '(T)'))
-    expect([code, closes]).toEqual([1, ['└─ ▸ app#srv ── (T) failed (exit 3)']])
+    // The first block is its ready frame (a broad run shows what a server
+    // wrote before ready); the one its exit closes says failed.
+    expect([code, closes]).toEqual([
+      1,
+      ['└─ ▸ app#srv ── (T) running', '└─ ▸ app#srv ── (T) failed (exit 3)'],
+    ])
   }, 30_000)
 
   // WD-11: the count of servers it stopped took in one already dead.
@@ -821,7 +829,10 @@ describe('a persistent server that dies before the run stops it', () => {
     return {
       code,
       said: lines.filter((l) => l.startsWith('vx: ')),
-      tally: lines.find((l) => / \d+ total( ·|$)/.test(l) && /success|failed/.test(l))?.trim(),
+      tally: lines
+        .find((l) => / \d+ total( ·|$)/.test(l) && /success|failed/.test(l))
+        ?.replace(/^\s*tasks\s+/, '')
+        .trim(),
     }
   }
 
