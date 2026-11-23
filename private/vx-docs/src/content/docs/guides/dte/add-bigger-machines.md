@@ -28,7 +28,7 @@ dte({
 ```
 
 Declare what your runners really have: vx plans by `cpu` and `memory`.
-A task that filled its worker last time runs on the bigger size from then on.
+A task that filled its worker last time runs on the bigger size.
 
 ---
 

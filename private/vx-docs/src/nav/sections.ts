@@ -110,6 +110,19 @@ const SIDEBAR_GROUPS: Record<'Docs', SidebarItem[]> = {
       label: 'Distributed task execution',
       items: [
         { label: 'Distributed task execution', link: '/docs/distributed-task-execution/' },
+        {
+          label: 'Try distributed task execution on your machine',
+          link: '/guides/dte/try-on-your-machine/',
+        },
+        {
+          label: 'Spread a CI run over several machines',
+          link: '/guides/dte/spread-ci-over-machines/',
+        },
+        {
+          label: 'Run one task on a different machine',
+          link: '/guides/dte/run-a-task-on-its-own-machine/',
+        },
+        { label: 'Give heavy tasks a bigger machine', link: '/guides/dte/add-bigger-machines/' },
         { label: 'DTE server', link: '/docs/servers/dte/' },
       ],
     },

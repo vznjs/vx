@@ -42,8 +42,8 @@ Run `vx lock`, then `vx dte init` to add the new machines to
 ---
 
 - A task with no `exec.worker` goes to the first type that fits, so a
-  type listed last gets only the tasks named for it.
-- On your machine, and in a run with no `dte()`, `exec.worker` is ignored.
-  It never changes a cache key.
+  type listed last gets only the tasks no other type can take.
+- A run on your machine ignores `exec.worker`, and it never changes a
+  cache key.
 
 See [What runs where](../../../docs/distributed-task-execution/#what-runs-where).
