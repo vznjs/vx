@@ -2738,6 +2738,8 @@ malformed input.
 A pipeline is a `vx run` saved under a name, for `vx pipeline <name>`:
 its `tasks` in every project that declares them, under the flags it
 saves. Each CI job names one, and its workflow file holds no flags.
+`vx lock` refuses a task no project declares (a project's default
+`build` counts), so a typo fails there, not in the CI job.
 
 ```ts
 import { defineWorkspace } from '@vzn/vx/config'
