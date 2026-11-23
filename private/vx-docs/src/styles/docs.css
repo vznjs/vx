@@ -315,3 +315,83 @@ starlight-toc a[aria-current='true']:hover {
 .pagination-links a svg {
   color: var(--vx-accent);
 }
+
+/* ───────────────────────────  Phones  ─────────────────────────── */
+
+@media (max-width: 40rem) {
+  /* A table never scrolls sideways on a phone: each row is a card, each
+     value under its column's name (plugins/table-labels.ts writes it). The
+     first cell heads the card. */
+  .sl-markdown-content .vx-table-scroll {
+    overflow: visible;
+    border: 0;
+    background: none;
+  }
+  .sl-markdown-content .vx-table-scroll :is(table, tbody, tr, td) {
+    display: block;
+    width: 100%;
+  }
+  .sl-markdown-content .vx-table-scroll thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .sl-markdown-content .vx-table-scroll tr {
+    margin-bottom: 0.75rem;
+    padding: 0.7rem 0.95rem;
+    border: 1px solid var(--vx-border);
+    border-radius: var(--vx-radius);
+    background: color-mix(in srgb, var(--vx-surface) 45%, var(--vx-bg));
+  }
+  .sl-markdown-content .vx-table-scroll tr:last-child {
+    margin-bottom: 0;
+  }
+  .sl-markdown-content .vx-table-scroll :is(tr:nth-child(even), tr:hover) td,
+  .sl-markdown-content .vx-table-scroll td {
+    padding: 0.2rem 0;
+    border: 0;
+    background: none;
+    text-align: left;
+    white-space: normal;
+  }
+  .sl-markdown-content .vx-table-scroll td code {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  .sl-markdown-content .vx-table-scroll td:first-child {
+    padding-bottom: 0.4rem;
+    font-weight: 600;
+  }
+  .sl-markdown-content .vx-table-scroll td:not(:first-child)[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    font: 500 0.68rem / 1.6 var(--vx-mono);
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--vx-muted);
+  }
+  .sl-markdown-content .vx-table-scroll td:empty {
+    display: none;
+  }
+
+  /* A code line wider than the phone scrolls, and the edge that hides more
+     glows in the accent until the reader reaches it. */
+  .sl-markdown-content .expressive-code .frame pre {
+    --vx-code-bg: var(--code-background, var(--ec-codeBg));
+    --vx-edge: color-mix(in srgb, var(--vx-accent) 45%, transparent);
+    background:
+      linear-gradient(to right, var(--vx-code-bg) 40%, transparent) left / 2.5rem 100% no-repeat
+        local,
+      linear-gradient(to left, var(--vx-code-bg) 40%, transparent) right / 2.5rem 100% no-repeat
+        local,
+      linear-gradient(to right, var(--vx-edge), transparent) left / 0.9rem 100% no-repeat scroll,
+      linear-gradient(to left, var(--vx-edge), transparent) right / 0.9rem 100% no-repeat scroll,
+      var(--vx-code-bg);
+  }
+  .sl-markdown-content .expressive-code .frame.is-terminal pre {
+    font-size: 0.8rem;
+  }
+}

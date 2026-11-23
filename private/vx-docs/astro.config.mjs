@@ -6,6 +6,7 @@ import { SIDEBAR } from './src/nav/sections.ts'
 import { bench } from './src/plugins/bench.ts'
 import { dataCharts } from './src/plugins/data-charts.ts'
 import { mermaid } from './src/plugins/mermaid.ts'
+import { tableLabels } from './src/plugins/table-labels.ts'
 import { RELEASES_BUNDLE, releaseSearch } from './src/plugins/release-search.ts'
 
 // GitHub Pages project site: https://vznjs.github.io/vx/
@@ -148,6 +149,7 @@ export default defineConfig({
     processor: satteri({
       // bench first: the charts read the figures it fills in.
       mdastPlugins: [bench, mermaid, dataCharts],
+      hastPlugins: [tableLabels],
       // `--filter` stays two hyphens, never an en dash.
       features: { smartPunctuation: { dashes: false } },
     }),
