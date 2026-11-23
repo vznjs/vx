@@ -862,6 +862,32 @@ function inward(m: RelayMessage): RelayMessage {
     : m
 }
 
+const isRecord = (v: unknown): v is Record<string, unknown> =>
+  typeof v === 'object' && v !== null && !Array.isArray(v)
+
+/**
+ * A frame the socket's handler can read without throwing: a field of the
+ * wrong type threw out of it, and the process exited on a bare TypeError.
+ */
+function protocolFrame(m: unknown): boolean {
+  if (!isRecord(m)) return false
+  const { messages, joined, results, n, status, error, close } = m
+  if (messages !== undefined) {
+    if (!Array.isArray(messages)) return false
+    if (!messages.every((x) => isRecord(x) && typeof x['from'] === 'string')) return false
+  }
+  if (joined !== undefined) {
+    if (!isRecord(joined) || typeof joined['id'] !== 'string') return false
+    const hb = joined['heartbeatMs']
+    if (typeof hb !== 'number' || !(hb > 0) || !Number.isFinite(hb)) return false
+  }
+  if (results !== undefined && !Array.isArray(results)) return false
+  if (n !== undefined && n !== null && typeof n !== 'number') return false
+  if (status !== undefined && typeof status !== 'number') return false
+  if (error !== undefined && typeof error !== 'string') return false
+  return close === undefined || typeof close === 'number'
+}
+
 /** What a socket that joined says first (PROTOCOL.md `socket?join`). */
 interface Joined {
   id: string
@@ -1040,7 +1066,7 @@ async function connect(
     }
     try {
       m = JSON.parse(String(e.data)) as typeof m
-      if (typeof m !== 'object' || m === null) throw new Error()
+      if (!protocolFrame(m)) throw new Error()
     } catch {
       // Thrown here it left the process on a bare SyntaxError: a relay is anyone's to host.
       closed(`a frame that is not its protocol: ${String(e.data).slice(0, 200)}`, NOT_PROTOCOL)

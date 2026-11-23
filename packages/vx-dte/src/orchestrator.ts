@@ -2007,8 +2007,11 @@ export class Orchestrator extends RunReport<Worker> {
         }
         const a = this.workers.get(from)
         if (a === undefined) continue
-        const said = body as ToOrchestrator
-        const frame = said.type === 'together' ? said.messages : [said]
+        const frame = wiredFrame(body)
+        if (frame === undefined) {
+          this.warn(`dte: dropped a message from ${a.label} that is not its protocol`)
+          continue
+        }
         // A worker's times, read against its clock as this frame left it:
         // no two machines' clocks agree.
         const now = performance.now()
@@ -2313,6 +2316,33 @@ export class Orchestrator extends RunReport<Worker> {
 }
 
 /** An `end`'s `log` as chunks, or undefined when it is not one: a worker's word, checked. */
+/**
+ * A worker's frame as messages the loop reads without throwing, or undefined:
+ * the relay carries it, and a null body or a `part` list that was no array
+ * threw out of the loop and ended the run on a TypeError.
+ */
+function wiredFrame(body: unknown): ToOrchestrator[] | undefined {
+  const record = (v: unknown): v is Record<string, unknown> =>
+    typeof v === 'object' && v !== null && !Array.isArray(v)
+  if (!record(body)) return undefined
+  const frame = body['type'] === 'together' ? body['messages'] : [body]
+  if (!Array.isArray(frame)) return undefined
+  for (const m of frame as unknown[]) {
+    if (!record(m) || typeof m['type'] !== 'string') return undefined
+    if (m['load'] !== undefined && !record(m['load'])) return undefined
+    if (m['type'] === 'report') {
+      if (!Array.isArray(m['running'])) return undefined
+    } else if (['ran', 'fault', 'part', 'end'].includes(m['type'])) {
+      if (typeof m['task'] !== 'string') return undefined
+      const lists = m['type'] === 'end' ? m['result'] : m
+      if (!record(lists)) return undefined
+      if (PART_LISTS.some((l) => lists[l] !== undefined && !Array.isArray(lists[l])))
+        return undefined
+    }
+  }
+  return frame as ToOrchestrator[]
+}
+
 function wiredLog(log: unknown): CapturedChunk[] | undefined {
   if (!Array.isArray(log)) return undefined
   const out: CapturedChunk[] = []
