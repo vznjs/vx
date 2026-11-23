@@ -11,7 +11,12 @@ const ROOT = path.resolve(import.meta.dir, '..')
 describe('the --affected default names the base branch', () => {
   it('in vx help and in the cli.md flag table', () => {
     const text = helpText()
-    const help = text.slice(text.indexOf('--affected[=<base>]')).split('\n').slice(0, 3).join(' ')
+    // vx run's option row: `vx show`'s usage line names the same flag first.
+    const help = text
+      .slice(text.indexOf('      --affected[=<base>]'))
+      .split('\n')
+      .slice(0, 3)
+      .join(' ')
     const row = readFileSync(path.join(ROOT, 'docs', 'cli.md'), 'utf8')
       .split('\n')
       .find((l) => l.startsWith('| `--affected[=<base>]`') && l.includes('(default '))!
