@@ -567,10 +567,21 @@ export async function parseStraceViolations(
   // directory's listing while it holds one. The granted files and what the
   // task made itself stay readable.
   const written = new Set(args.config.allowWrite.map((p) => toRealPath(absolutize(p))))
+  // What a write glob covers, or a directory it may match beneath, is the
+  // task's own output: `dist/esm/a.js` under `dist/**/*.js` read back.
+  const rawGlobs = args.config.writeGlobs ?? []
+  const ownOutput = (p: string): boolean =>
+    underGlob(p, writeGlobs) || rawGlobs.some((g) => holdsMatchUnder(p, g))
+  // The deepest directory first: `dist` held for `dist/*.js` inside the
+  // project held for `*.js` judges what is under `dist`.
+  const judgedDirs = [...widened].sort(([a], [b]) => b.length - a.length)
   const undeclared = (abs: string): boolean => {
-    for (const [dir, entries] of widened) {
+    if (ownOutput(abs)) return false
+    for (const [dir, entries] of judgedDirs) {
       if (abs === dir)
-        return [...entries].some((e) => !isUnderAny(e, written) && !isUnderAny(e, allowAbs))
+        return [...entries].some(
+          (e) => !isUnderAny(e, written) && !isUnderAny(e, allowAbs) && !ownOutput(e),
+        )
       if (!atOrUnder(abs, dir)) continue
       const top = path.join(dir, path.relative(dir, abs).split(path.sep)[0]!)
       return entries.has(top) && !isUnderAny(abs, written)
@@ -616,7 +627,15 @@ export async function parseStraceViolations(
     // One the host has was made after the grant was listed, and is hidden.
     if (via === undefined && walledIn(abs) && !lstatSync(abs, { throwIfNoEntry: false })) continue
     if (underGlob(abs, pendingWrites)) continue
-    if (errno === 'ENOENT' && underGlob(abs, writeGlobs)) continue
+    // Where the glob's directory is bound the miss was real when it was
+    // asked; elsewhere only one the host lacks is (a hidden file answers ENOENT).
+    if (
+      errno === 'ENOENT' &&
+      underGlob(abs, writeGlobs) &&
+      (judgedDirs.some(([d]) => atOrUnder(path.dirname(abs), d)) ||
+        !lstatSync(abs, { throwIfNoEntry: false }))
+    )
+      continue
     if (read === true && !undeclared(abs)) continue
     // A hidden path answers ENOENT, as a missing one does: a probe
     // (`./gen.sh || …`, `test -x`, a PATH walk) is a refusal only where
@@ -1184,7 +1203,6 @@ function exists(p: string): boolean {
   }
 }
 
-/** `p`, or a directory holding it, matches one of `globs`. */
 /** Whether absolute write glob `glob` can match a path strictly under directory `dir`. */
 function holdsMatchUnder(dir: string, glob: string): boolean {
   const at = wildcardAt(glob)
@@ -1202,6 +1220,7 @@ function holdsMatchUnder(dir: string, glob: string): boolean {
   return rest.length > segs.length
 }
 
+/** `p`, or a directory holding it, matches one of `globs`. */
 function underGlob(p: string, globs: readonly InstanceType<typeof Bun.Glob>[]): boolean {
   if (globs.length === 0) return false
   for (let at = p; ; at = path.dirname(at)) {

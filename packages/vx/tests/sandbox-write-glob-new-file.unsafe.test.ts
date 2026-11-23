@@ -37,6 +37,8 @@ describe.skipIf(!available || process.platform !== 'linux')(
       await writeFile(path.join(app, 'src', 'a.txt'), 'a')
       await mkdir(path.join(app, 'logs'))
       await writeFile(path.join(app, 'logs', 'old.log'), 'o')
+      await mkdir(path.join(app, 'pre', 'esm'), { recursive: true })
+      await writeFile(path.join(app, 'pre', 'esm', 'x.js'), 'x')
       await writeFile(
         path.join(app, 'vx.config.mjs'),
         `export default { name: 'app', tasks: {
@@ -46,6 +48,7 @@ describe.skipIf(!available || process.platform !== 'linux')(
   rootGlob: ${task('echo x > index.js', '*.js', 'src/')},
   deepGlob: ${task('mkdir -p out/sub && echo x > out/sub/a.js', 'out/**/*.js', 'src/')},
   logGlob: ${task('cp src/a.txt logs/new.log', 'logs/*.log', 'src/')},
+  readBack: ${task('echo y > pre/esm/new.js && cat pre/esm/new.js pre/esm/x.js && ls pre pre/esm', 'pre/**/*.js', 'src/')},
 } }
 `,
       )
@@ -60,9 +63,19 @@ describe.skipIf(!available || process.platform !== 'linux')(
       // No read grant shows the project (`rootGlob`), a directory the glob
       // matches beneath is made (`deepGlob`), and `cp` opens its new file
       // without `O_CREAT` first, a miss that is the task's own (`logGlob`).
-      const tasks = ['filePart', 'dirSlash', 'dirGlob', 'rootGlob', 'deepGlob', 'logGlob']
+      // Reading back and listing what the glob covers, in a folder a past
+      // run left, is the task's own output (`readBack`).
+      const tasks = [
+        'filePart',
+        'dirSlash',
+        'dirGlob',
+        'rootGlob',
+        'deepGlob',
+        'logGlob',
+        'readBack',
+      ]
       expect(tasks.map((t) => [t, code(t)])).toEqual(tasks.map((t) => [t, 0]))
-      // Six sandboxed runs, each near a second on CI and more on a loaded shard.
+      // Seven sandboxed runs, each near a second on CI and more on a loaded shard.
     }, 60_000)
   },
 )

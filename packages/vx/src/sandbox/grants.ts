@@ -266,10 +266,11 @@ export function resolveSandboxConfig(
  * Linux: a grant is a bwrap bind mount, and you cannot mount a pattern.
  * The glob is expanded against the filesystem here, which means it covers
  * what exists when the task STARTS. A write glob's directory is bound too
- * where a read grant shows it (`punchedWriteGlobs`), so a match the task
- * creates lands; elsewhere a pattern matching a file the task creates
- * later grants nothing there. Measured before that bind, one task per
- * spelling, each writing files it declares:
+ * where a read grant shows it, or in the task's own directory where a
+ * tracer runs (`punchedWriteGlobs`), so a match the task creates lands;
+ * elsewhere a pattern matching a file the task creates later grants
+ * nothing there. Measured before that bind, one task per spelling, each
+ * writing files it declares:
  *
  *   write: ['g/**']         ok — collapsed to the directory
  *   write: ['g/a.txt']      ok — a literal is widened to its directory

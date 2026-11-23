@@ -3,7 +3,7 @@
 // a read grant punched around the write grants inside it, the network
 // lists SRT insists on receiving in full.
 
-import { lstatSync, mkdirSync, readdirSync, readlinkSync, statSync } from 'node:fs'
+import { lstatSync, readdirSync, readlinkSync, statSync } from 'node:fs'
 import path from 'node:path'
 import {
   atOrUnder,
@@ -250,7 +250,8 @@ export const globDir = (glob: string): string => path.dirname(glob.slice(0, wild
  * (`wallOff` drops its glob).
  *
  * In the task's own directory the glob's directory is bound whether or not
- * a read grant shows it, and made first when missing: an output `*.js` at
+ * a read grant shows it, where a tracer runs (it is made before, as an
+ * output's static head is, `prepareOutputsForBind`): an output `*.js` at
  * the project root, `dist/*.js` before `dist` exists, or a recursive one,
  * fell into the scratch and failed the task as a write gone with the
  * sandbox (conformance sandbox/root-glob-output-passes). What was there
@@ -274,7 +275,6 @@ function punchedWriteGlobs(
     )
       continue
     try {
-      if (mine) mkdirSync(dir, { recursive: true })
       if (!statSync(dir).isDirectory()) continue
     } catch {
       continue
@@ -527,7 +527,7 @@ export function buildCustomConfig(
     allowRead: readonly string[]
     denyRead: readonly string[]
     /** The task's directory: a write glob's directory in it is bound even unshown. */
-    cwd?: string
+    cwd?: string | undefined
   },
 ): TaskSandboxConfig {
   const c = args.config

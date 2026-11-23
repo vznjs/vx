@@ -79,7 +79,7 @@ import {
   widenedEntries,
   withLinkedWrites,
 } from './binds.js'
-import { loopbackPorts, MOUNT_WILDCARDS, toRealPath } from './paths.js'
+import { atOrUnder, loopbackPorts, MOUNT_WILDCARDS, toRealPath } from './paths.js'
 import { scopedMandatoryDenies, srtDefaultWritePaths } from './deny-scan.js'
 import {
   observedWrites,
@@ -265,8 +265,11 @@ export async function wrapSandboxedCommand(
   baselines: CanonicalBaselines
   /** The pending write globs a write may still land under (`scratchWrites`). */
   scratch: string[]
-  /** The pending write globs `punchedWriteGlobs` bound, and their directories. */
-  held: { dirs: string[]; globs: string[] }
+  /**
+   * The pending write globs `punchedWriteGlobs` bound, and their directories;
+   * `unshown`, those no read grant shows, whose reads are judged too.
+   */
+  held: { dirs: string[]; globs: string[]; unshown: string[] }
   /** The command reads its polite signals off fd 3: spawn it with one and `signalThrough` it. */
   forwardsSignals: boolean
   /** The command writes its trace to fd TRACE_FD: spawn it with the log there. */
@@ -312,7 +315,12 @@ async function wrapIn(
   const taggedCommand = `: 'vx-${tag}'; ${inTmp}`
 
   const baselines = canonicalBaselines(args)
-  const customConfig = buildCustomConfig(args, baselines)
+  // A write glob's directory no read grant shows is bound only where a
+  // tracer judges what the task reads there: with none, it would be read unseen.
+  const customConfig = buildCustomConfig(args, {
+    ...baselines,
+    ...(args.trace === undefined ? { cwd: undefined } : {}),
+  })
   const filesystem = customConfig.filesystem!
   const allowRead = filesystem.allowRead!
   const links = [
@@ -323,9 +331,12 @@ async function wrapIn(
   // one matches is granted in any bound directory, a match's widened one
   // too (`dist/a.js` there binds `dist`, where a new `dist/b.js` lands).
   const own = new Set(bindableWrites(args.config.allowWrite))
+  const heldDirs = filesystem.allowWrite.filter((w) => !own.has(w))
+  const shownBy = [...baselines.allowRead, ...args.config.allowRead]
   const globsHeld = {
-    dirs: filesystem.allowWrite.filter((w) => !own.has(w)),
+    dirs: heldDirs,
     globs: [...(args.config.writeGlobs ?? [])],
+    unshown: heldDirs.filter((d) => !shownBy.some((r) => atOrUnder(d, r))),
   }
   const scratch = pendingWriteGrants(args.config, filesystem, baselines.denyRead, baselines.cwd)
   filesystem.denyRead.push(toRealPath(taskTmpRoot()))
@@ -397,8 +408,8 @@ async function wrapIn(
               ? undefined
               : { observer }
             : args.trace,
-          // A glob's directory bound for it is judged as a widened grant's.
-          args.tracePaths === true || globsHeld.dirs.length > 0,
+          // A glob's directory no read grant shows is judged as a widened grant's.
+          args.tracePaths === true || globsHeld.unshown.length > 0,
         )
       : { command: taggedCommand, forwards: false, traced: false, trace: undefined }
   // The tag leads: SRT keys a record by the wrap's first 100 characters,
@@ -697,6 +708,8 @@ interface Prepared {
   widened: Map<string, Set<string>>
   /** `widened`, plus each directory bound for a glob, judged as a widened one (`refusedWrites`). */
   heldEntries: Map<string, Set<string>>
+  /** `widened`, plus each glob's directory no read grant shows: whose reads are judged. */
+  readJudged: Map<string, Set<string>>
 }
 
 /**
@@ -755,7 +768,12 @@ async function prepareAttempt(
       // Gone: nothing there to judge.
     }
   }
-  return { prepared: { wrap, widened, heldEntries } }
+  const readJudged = new Map(widened)
+  for (const dir of wrap.held.unshown) {
+    const entries = heldEntries.get(dir)
+    if (entries !== undefined) readJudged.set(dir, entries)
+  }
+  return { prepared: { wrap, widened, heldEntries, readJudged } }
 }
 
 /** The sandboxed command, spawned, and the trace log it writes. */
@@ -1023,7 +1041,7 @@ async function attemptDenials(
                 { text: trace },
                 args,
                 baselines,
-                prepared.heldEntries,
+                prepared.readJudged,
               ).catch(() => [])
             : []),
           ...refusedWrites(

@@ -37,11 +37,17 @@ interface Options {
 // so on the host's /proc (a sandbox case) it is still found among this
 // process's descendants.
 if (process.platform === 'linux') {
-  const { dlopen, FFIType } = await import('bun:ffi')
-  const PR_SET_CHILD_SUBREAPER = 36
-  dlopen('libc.so.6', {
-    prctl: { args: [FFIType.i32, FFIType.u64], returns: FFIType.i32 },
-  }).symbols.prctl(PR_SET_CHILD_SUBREAPER, 1)
+  try {
+    const { dlopen, FFIType } = await import('bun:ffi')
+    const PR_SET_CHILD_SUBREAPER = 36
+    const ok = dlopen('libc.so.6', {
+      prctl: { args: [FFIType.i32, FFIType.u64], returns: FFIType.i32 },
+    }).symbols.prctl(PR_SET_CHILD_SUBREAPER, 1)
+    if (ok !== 0) console.error('conformance: supervise could not become a subreaper')
+  } catch (err) {
+    // No glibc (musl): the tag alone finds the run's processes.
+    console.error(`conformance: supervise could not become a subreaper: ${String(err)}`)
+  }
 }
 
 const [json, ...argv] = process.argv.slice(2)
