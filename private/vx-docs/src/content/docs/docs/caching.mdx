@@ -479,10 +479,13 @@ One that declares no `inputs` has no key, and every task behind it misses. `inpu
 - **In, with a lockfile plugin:** the package's `package.json` and its own dependencies from the lockfile ([Lockfiles](../lockfiles/)).
 - **In, when you say so:** a tool's version. `inputs.workspaceRuntime: ['node -v']` runs once per run at the root; `runtime` runs in the package.
 - **Out, when you say so:** a dependency only for order, `inputs.tasks: []`, as the [dev task](../dev-servers/) does.
-- **Excluded unless named:** files git ignores, an ignored `node_modules` included. A broad glob like `src/**` skips them; an exact path or a glob whose fixed part git ignores (`.env.local`, `node_modules/.prisma/client/**`) keys them.
+- **Excluded unless named:** files git ignores, an ignored `node_modules` included. A broad glob like `src/**` skips them.
+- **Named, they are in:** an exact path or a glob whose fixed part git ignores (`.env.local`, `node_modules/.prisma/client/**`) keys them.
 - **The task's own outputs** are out, except a file git tracks. That one stays in the key by what git holds, and a miss writes git's version back first.
 - **A nested project's files** are out.
-- **Always excluded:** `.git`, an install's `node_modules` (untracked, not ignored), and vx's own files at the project's root: `.vx/cache`, `.vx/tmp`, the lock files `vx lock` writes (`.vx/projects.lock`, `.vx/dependencies.lock`, `vx.lock.json`, `.vx/.gitattributes`, `.vx/.gitignore`) and the temp copies a killed `vx lock` leaves behind (`.vx/projects.lock.tmp-*`, `.vx/dependencies.lock.tmp-*`, `vx.lock.json.tmp-*`).
+- **Always excluded:** `.git`, an install's `node_modules` (untracked, not ignored), and vx's own files at the project's root.
+- **vx's own files:** `.vx/cache`, `.vx/tmp`, and the lock files `vx lock` writes (`.vx/projects.lock`, `.vx/dependencies.lock`, `vx.lock.json`, `.vx/.gitattributes`, `.vx/.gitignore`).
+- **And their temp copies** a killed `vx lock` leaves behind: `.vx/projects.lock.tmp-*`, `.vx/dependencies.lock.tmp-*`, `vx.lock.json.tmp-*`.
 
 Every part, in order: [Caching in depth](../../caching/).
 
@@ -584,9 +587,9 @@ The command in full: [`vx cache clean`](../../cli/cache/).
 <Deeper level="details" title="When it goes wrong">
 
 - **A task came from the cache after you changed a file.** That file is
-  not in `inputs.files`: add it. To catch the next one,
-  [`exec.sandbox`](../../docs/sandboxing/), with reads granted no wider
-  than the inputs, refuses that read and names the file.
+  not in `inputs.files`: add it.
+- **To catch the next one,** use [`exec.sandbox`](../../docs/sandboxing/)
+  with reads granted no wider than the inputs: it refuses that read and names the file.
 - **A task runs every time.** It needs `cache: true`. If it has that, a
   task it depends on may have no `inputs`: give that task `inputs` too.
   `vx-migrate` leaves a `TODO(vx-migrate)` where it could not decide.

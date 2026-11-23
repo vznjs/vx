@@ -178,7 +178,8 @@ vx prints nothing about the history when it works. When the server refuses, vx s
 
 ## How a run uses it
 
-- **At the start**, it asks for its tasks' numbers: its own branch's first, then the branch it merges into, then the default branch's. It does not wait: it starts on what it knows and re-orders when they arrive.
+- **At the start**, it asks for its tasks' numbers: its own branch's first, then the branch it merges into, then the default branch's.
+- **It does not wait:** it starts on what it knows and re-orders when they arrive.
 - **At the end**, it sends the numbers of the tasks it ran, once.
 - **Off CI**, there is no token. A run reads from a server with `READ_ACCESS=public` and sends nothing.
 

@@ -524,7 +524,8 @@ The [full list](../../schema/sandbox/) lives in the config reference. A grant na
 - A task with no command (a group task) cannot be sandboxed.
 - On macOS, a task that runs its own sandbox cannot be sandboxed: one cannot nest in another.
 - A task with `interactive` cannot take a `sandbox`.
-- A persistent task (a dev server) runs inside the same walls, but nothing traces it: a refused read is `ENOENT`, named nowhere. Run its command once as a normal sandboxed task to see what it was refused.
+- A persistent task (a dev server) runs inside the same walls, but nothing traces it: a refused read is `ENOENT`, named nowhere.
+- To see what it was refused, run its command once as a normal sandboxed task.
 - On Linux, a tool that only checks a path exists (`existsSync`, `test -e`) is not traced: it sees the file as missing, and no violation names it.
 
 ### Common problems
@@ -533,8 +534,10 @@ The [full list](../../schema/sandbox/) lives in the config reference. A grant na
 - **`File exists` or `Not a directory` from the task's own `mkdir`.** A write grant with no trailing slash is a file. Write `'coverage/'`.
 - **A file the task creates later is refused on Linux** ("Read-only file system") under a glob outside the project (`~/.cache/tool/*.log`). Grant its folder: `'~/.cache/tool/'`.
 - **`bun build --compile --target=…` fails on a fresh machine** ("Network error downloading executable"). Grant `network: ['registry.npmjs.org']` and `write: ['~/.bun/install/cache/', '.*.tmp/**']`.
-- **`next build` with `output: 'standalone'` writes `node_modules/.bun/…` under the app.** Next looks for the lockfile, which the sandbox hides. Grant it: `read: ['.', '../../bun.lock']`, keyed with `inputs.workspaceFiles: ['bun.lock']`.
-- **`read packages/ui (linked at …/node_modules/@x/ui), and its key includes no task of packages/ui`.** The task imports a sibling its key never sees. Depend on a task of it (`dependsOn: ['^build']`), or grant and key the files: the `fix:` line names both.
+- **`next build` with `output: 'standalone'` writes `node_modules/.bun/…` under the app.** Next looks for the lockfile, which the sandbox hides.
+- **Grant it:** `read: ['.', '../../bun.lock']`, keyed with `inputs.workspaceFiles: ['bun.lock']`.
+- **`read packages/ui (linked at …/node_modules/@x/ui), and its key includes no task of packages/ui`.** The task imports a sibling its key never sees.
+- **Fix it:** depend on a task of it (`dependsOn: ['^build']`), or grant and key the files. The `fix:` line names both.
 - **`exit 127` under `hermetic: true`.** The tool's runtime or its libraries are outside the grants. Grant the runtime's folder and what `ldd` lists.
 
 </Deeper>
