@@ -1,0 +1,36 @@
+---
+// "Check yourself": one question, the answer behind a click. A page teaches
+// as it goes; a reader who gets it right moves on.
+interface Props {
+  q: string
+}
+---
+
+<details class="vx-quiz">
+  <summary><span class="vx-quiz-tag">Check yourself</span> {Astro.props.q}</summary>
+  <div class="vx-quiz-body"><slot /></div>
+</details>
+
+<style>
+  .vx-quiz {
+    border: 1px dashed var(--vx-border);
+    border-radius: 8px;
+    padding: 0.6rem 0.9rem;
+    margin: 1.25rem 0;
+  }
+  .vx-quiz > summary {
+    cursor: pointer;
+    color: var(--vx-fg);
+  }
+  .vx-quiz-tag {
+    font-family: var(--vx-mono);
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--vx-link);
+    margin-right: 0.4rem;
+  }
+  .vx-quiz-body {
+    margin-top: 0.5rem;
+  }
+</style>

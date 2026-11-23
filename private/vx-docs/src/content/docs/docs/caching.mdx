@@ -1,23 +1,24 @@
 ---
 title: Caching
-description: Declare what a task reads and writes, so vx runs it once per set of inputs.
+description: vx remembers what a task made and skips the work when nothing it reads has changed.
 ---
 
 import Diagram from '../../../components/guide/diagram/Diagram.astro'
 import { cacheKey } from '../../../components/docs/pictures.js'
 import { Aside } from '@astrojs/starlight/components'
+import { Levels, Deeper, Concept, Quiz, Walkthrough, Frame, Takeaway, NextStep } from '../../../components/learn'
 
-A task with `cache: true` runs once per set of inputs. List what the
-command reads under `inputs`, and what it writes under `outputs`
-(`{ files: [] }` for test or lint).
+Run a build twice. The second time, vx does no work: it puts back what the first run made.
 
 ```sh
 vx run build
 vx run build
 ```
 
-The first run executes the task and stores `dist/`. The second finds the
-same inputs and skips the work: it replays the log and ends `up-to-date`.
+<Levels />
+
+<Walkthrough title="The same build, twice">
+<Frame title="1. First run: vite builds, vx stores dist/">
 
 ```ansi title="first run"
 [2m$[0m vx run build
@@ -34,6 +35,9 @@ computing gzip size...
 [0m[2m└─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(211ms)[0m [2msuccess[0m
 ```
 
+</Frame>
+<Frame title="2. Second run: nothing changed, so nothing runs">
+
 ```ansi title="second run"
 [2m$[0m vx run build
 
@@ -49,43 +53,142 @@ computing gzip size...
 [0m[2m└─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(6ms)[0m [2mup-to-date[0m
 ```
 
-```ts title="packages/app/vx.config.ts" {8-14}
+Look at the last line: **6ms** and **up-to-date**. The build was skipped.
+
+</Frame>
+</Walkthrough>
+
+<Concept term="Cache">
+  A store of task results that vx keeps in `.vx/cache`. When a task has run before with the same
+  inputs, vx copies the result from here instead of running it.
+</Concept>
+
+## Turn it on
+
+Tell vx three things about the task: what it **reads** (`inputs`), what it **writes** (`outputs`), and `cache: true`.
+
+```ts title="packages/app/vx.config.ts" mark={8-14}
 import { defineProject } from '@vzn/vx/config'
 
 export default defineProject({
   tasks: {
     build: {
       dependsOn: ['^build'],
-      exec: { command: 'vite build', env: { passThrough: ['NODE_ENV'] } },
+      exec: { command: 'vite build' },
       inputs: {
-        files: ['src/**', 'index.html', '!**/*.test.ts'],
-        env: ['NODE_ENV'],
-        workspaceFiles: ['tsconfig.base.json'], // from the workspace root
+        files: ['src/**', 'index.html'],
       },
-      outputs: { files: ['dist/**'] },
+      outputs: {
+        files: ['dist/**'],
+      },
       cache: true,
     },
   },
 })
 ```
 
+<Takeaway>cache any task: list what it reads and writes, add `cache: true`.</Takeaway>
+
+## How vx decides
+
+<Concept term="Cache key">
+  A short code vx computes from everything a task reads: its files, its config and the keys of the
+  tasks it depends on. Same inputs, same key.
+</Concept>
+
 <Diagram {...cacheKey} />
 
----
+Before running a task, vx computes its key. A key it has stored is a **hit**: vx restores the outputs. A new key is a **miss**: the task runs, then vx stores its outputs.
 
-## Inputs
+<Quiz q="You edit README.md, which the build does not list in inputs. Does the build run again?">
+  No. The key holds only what the task lists, so the key stays the same and the build is a hit. If
+  the build does read that file, add it to `inputs.files`.
+</Quiz>
+
+<Takeaway>predict when a task runs and when it is skipped.</Takeaway>
+
+## Find why a task ran again
+
+`vx why` compares the task's last two runs and names what changed:
+
+```sh
+vx why @demo/web#build
+```
+
+```ansi title="after an edit to packages/ui/src/index.js"
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhy[0m[4m[58;2;110;118;129m [2m@demo/web#build[0m[4m[58;2;110;118;129m                                                                                                   [0m
+  [2mrun     [0m  [38;2;203;213;225m01a20899-8a34-72d9-ae6f-555621174f8a[0m
+  [2mthis run[0m  [38;2;203;213;225m2026-11-23T13:30:10.166Z · success · executed · key dac9b52ef101f859[0m
+  [2mprevious[0m  [38;2;203;213;225m2026-11-23T13:30:02.239Z · cache-hit · up-to-date · key 433035ef17a9e7c1[0m
+  [2mverdict [0m  [38;2;234;179;8mcache key changed: upstream @demo/ui#build[0m
+
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhat changed[0m[4m[58;2;110;118;129m [2m1 of 8[0m[4m[58;2;110;118;129m                                                                                                   [0m
+  [2mchange   kind      name            before → after[0m
+  [38;2;234;179;8mchanged[0m  [38;2;203;213;225mupstream[0m  [1m@demo/ui#build[0m  [38;2;203;213;225mb81d6aaad67ade9b → 7d69d37611e0da71[0m
+
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mRoot cause[0m[4m[58;2;110;118;129m                                                                                                            [0m
+  [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m[2m ← [0m[38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m[2m ← [0m[1mfile packages/ui/src/index.js[0m
+
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhat to do[0m[4m[58;2;110;118;129m                                                                                                            [0m
+  [2mfile    [0m  [38;2;203;213;225man edit re-runs by design; a file the task does not read belongs out of inputs.files[0m
+```
+
+Read the **Root cause** line: a file in `@demo/ui` changed, so `@demo/ui#build` got a new key, so `@demo/web#build` did too.
+
+<Takeaway>trace any re-run back to the file that caused it ([full guide](../../docs/caching/why-a-task-missed/)).</Takeaway>
+
+<Deeper level="patterns" title="Common setups">
+
+### A file at the workspace root
+
+A task that reads a shared file outside its project lists it under `workspaceFiles`:
+
+```ts mark={3}
+inputs: {
+  files: ['src/**', 'index.html'],
+  workspaceFiles: ['tsconfig.base.json'], // from the workspace root
+},
+```
+
+### An environment variable
+
+A task whose result depends on a variable keys on it with `inputs.env` and passes it with `exec.env`:
+
+```ts mark={1,4}
+exec: { command: 'vite build', env: { passThrough: ['NODE_ENV'] } },
+inputs: {
+  files: ['src/**'],
+  env: ['NODE_ENV'],
+},
+```
+
+### Tests and lint: nothing to store
+
+A task that writes no files still caches its pass. Give it an empty output list:
+
+```ts mark={3}
+test: {
+  exec: { command: 'vitest run' },
+  inputs: { files: ['src/**'] },
+  outputs: { files: [] },
+  cache: true,
+},
+```
 
 <Aside type="tip" title="Not sure the list is complete?">
   Add [`exec.sandbox`](../../docs/sandboxing/) with `allow.read` listing the same
   files. A workspace read outside it fails the task and names the file.
 </Aside>
 
+<Takeaway>cache builds that read shared files and variables, and tests that write nothing.</Takeaway>
+
+</Deeper>
+
+<Deeper level="details" title="What the key holds">
+
 A task with no `cache: true` is keyed on its `inputs` all the same, so a
 cached task behind it re-runs when they change. One that declares no
 `inputs` has no key, and every task behind it misses.
-
-<details>
-<summary>What the key holds</summary>
 
 | The key                | Holds                                                                                   |
 | ---------------------- | --------------------------------------------------------------------------------------- |
@@ -98,11 +201,9 @@ cached task behind it re-runs when they change. One that declares no
 
 Every part, in order: [Caching in depth](../../caching/).
 
-</details>
+</Deeper>
 
----
-
-## Outputs
+<Deeper level="details" title="What happens to outputs">
 
 - Declared outputs are wiped before every run that writes the cache.
 - A hit rewrites only the files that differ from the entry, then removes
@@ -129,39 +230,9 @@ Every part, in order: [Caching in depth](../../caching/).
 - A failed task is never saved.
 - `--force` runs everything and replaces what the local cache holds (a remote keeps the keys it has); `--no-cache` ignores it.
 
----
+</Deeper>
 
-## Why did it re-run?
-
-`vx why` names the part of the key that changed since the task's last run
-([guide](../../docs/caching/why-a-task-missed/)):
-
-```sh
-vx why @demo/web#build
-```
-
-```ansi title="after an edit to packages/ui/src/index.js"
-[4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhy[0m[4m[58;2;110;118;129m [2m@demo/web#build[0m[4m[58;2;110;118;129m                                                                                                   [0m
-  [2mrun     [0m  [38;2;203;213;225m01a20899-8a34-72d9-ae6f-555621174f8a[0m
-  [2mthis run[0m  [38;2;203;213;225m2026-11-23T13:30:10.166Z · success · executed · key dac9b52ef101f859[0m
-  [2mprevious[0m  [38;2;203;213;225m2026-11-23T13:30:02.239Z · cache-hit · up-to-date · key 433035ef17a9e7c1[0m
-  [2mverdict [0m  [38;2;234;179;8mcache key changed: upstream @demo/ui#build[0m
-
-[4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhat changed[0m[4m[58;2;110;118;129m [2m1 of 8[0m[4m[58;2;110;118;129m                                                                                                   [0m
-  [2mchange   kind      name            before → after[0m
-  [38;2;234;179;8mchanged[0m  [38;2;203;213;225mupstream[0m  [1m@demo/ui#build[0m  [38;2;203;213;225mb81d6aaad67ade9b → 7d69d37611e0da71[0m
-
-[4m[58;2;110;118;129m  [1m[38;2;167;139;250mRoot cause[0m[4m[58;2;110;118;129m                                                                                                            [0m
-  [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m[2m ← [0m[38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m[2m ← [0m[1mfile packages/ui/src/index.js[0m
-
-[4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhat to do[0m[4m[58;2;110;118;129m                                                                                                            [0m
-  [2mfile    [0m  [38;2;203;213;225man edit re-runs by design; a file the task does not read belongs out of inputs.files[0m
-```
-
-A hit after you changed something means that something is not declared.
-
-<details>
-<summary>Every verdict <code>vx why</code> prints</summary>
+<Deeper level="details" title="Every verdict vx why prints">
 
 | The verdict line says | It means |
 | --- | --- |
@@ -190,6 +261,8 @@ A hit after you changed something means that something is not declared.
 | `this task is persistent: it records no cache key` | a server or watcher has no key to compare |
 | `no prior run for this (project, task)` | nothing to compare with yet |
 
-</details>
+</Deeper>
 
-See [Caching in depth](../../caching/) for every part of the key.
+<NextStep href="../../docs/remote-cache/" title="Remote cache">
+  Share these results with your team and CI, so a build made on one machine is skipped on every other.
+</NextStep>

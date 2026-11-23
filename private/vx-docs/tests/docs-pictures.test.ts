@@ -2,11 +2,16 @@
 // pictures.ts), not with Mermaid in the browser. Each picture's words fit
 // its boxes, and its phone layout fits a phone and says the same thing.
 
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import * as pictures from '../src/components/docs/pictures.js'
-import { boxSize, textWidth, type Box } from '../src/components/guide/diagram/diagram.js'
+import {
+  boxSize,
+  textWidth,
+  type Box,
+  type Picture,
+} from '../src/components/guide/diagram/diagram.js'
 
 // The phone layout's width (the kit's README).
 const NARROW = 360
@@ -24,8 +29,18 @@ const fits = (b: Box): boolean => {
   return textWidth(b.label, 15) + 12 <= w && (b.sub === undefined || textWidth(b.sub, 13) + 12 <= w)
 }
 
+// Each Docs area keeps its pictures in a module of its own
+// (components/docs/pictures/<area>.ts), so pages edited side by side never
+// share a file; every module there is held to the same laws.
+const AREA_DIR = path.resolve(import.meta.dir, '../src/components/docs/pictures')
+const areas = await Promise.all(
+  readdirSync(AREA_DIR)
+    .filter((f) => f.endsWith('.ts'))
+    .map((f) => import(path.join(AREA_DIR, f)) as Promise<Record<string, Picture>>),
+)
+
 describe('the Docs pictures', () => {
-  const all = Object.values(pictures)
+  const all = [pictures, ...areas].flatMap((m) => Object.values(m))
 
   it('fit every label and sub line in its box, wide and narrow', () => {
     const wrong = all.flatMap((p) =>

@@ -1,0 +1,43 @@
+---
+// The one link every page ends on: where the reader goes next, and why.
+interface Props {
+  href: string
+  title: string
+}
+---
+
+<a class="vx-next not-content" href={Astro.props.href}>
+  <span class="vx-next-tag">Next</span>
+  <span class="vx-next-title">{Astro.props.title} →</span>
+  <span class="vx-next-why"><slot /></span>
+</a>
+
+<style>
+  .vx-next {
+    display: grid;
+    gap: 0.2rem;
+    margin: 2rem 0 0.5rem;
+    padding: 0.8rem 1rem;
+    border: 1px solid var(--vx-accent);
+    border-radius: 8px;
+    text-decoration: none;
+    color: var(--vx-text);
+  }
+  .vx-next:hover {
+    background: var(--vx-accent-soft);
+  }
+  .vx-next-tag {
+    font-family: var(--vx-mono);
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--vx-accent);
+  }
+  .vx-next-why {
+    color: var(--vx-text);
+  }
+  .vx-next-title {
+    font-weight: 600;
+    color: var(--vx-fg);
+  }
+</style>

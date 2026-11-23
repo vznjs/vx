@@ -1,0 +1,36 @@
+---
+// A new word, explained the first time a page uses it: the term, then one
+// or two plain sentences. Juniors meet each idea here before they need it.
+interface Props {
+  term: string
+}
+---
+
+<aside class="vx-concept" aria-label={`New word: ${Astro.props.term}`}>
+  <p class="vx-concept-head"><span class="vx-concept-tag">New word</span> <strong>{Astro.props.term}</strong></p>
+  <div class="vx-concept-body"><slot /></div>
+</aside>
+
+<style>
+  .vx-concept {
+    border-left: 3px solid var(--vx-accent);
+    background: var(--vx-accent-soft);
+    border-radius: 0 8px 8px 0;
+    padding: 0.7rem 1rem;
+    margin: 1.25rem 0;
+  }
+  .vx-concept-head {
+    margin: 0 0 0.3rem;
+    color: var(--vx-fg);
+  }
+  .vx-concept-tag {
+    font-family: var(--vx-mono);
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--vx-accent);
+  }
+  .vx-concept-body :global(p) {
+    margin: 0;
+  }
+</style>

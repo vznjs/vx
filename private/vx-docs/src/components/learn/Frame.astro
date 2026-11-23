@@ -1,0 +1,18 @@
+---
+// One frame of a <Walkthrough>: a short title and what happens at that step.
+interface Props {
+  title: string
+}
+---
+
+<section class="vx-walk-frame">
+  <p class="vx-walk-frame-title"><strong>{Astro.props.title}</strong></p>
+  <slot />
+</section>
+
+<style>
+  .vx-walk-frame-title {
+    margin: 0 0 0.4rem;
+    color: var(--vx-accent);
+  }
+</style>
