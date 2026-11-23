@@ -768,6 +768,10 @@ function reasonParts(
 
 const OTHER_PLATFORM = 'needs another platform'
 
+/** A failure with no key that spawned nothing and is no server that never got ready: no command ran. */
+const keyNotDerived = (t: RunSummaryRow): boolean =>
+  t.status === 'failed' && t.hash === '' && t.wallclockStartNs === null && t.notReady === null
+
 /** Hit rows shown before the rest fold — the slowest restores. */
 const HITS_SHOWN = 16
 
@@ -819,20 +823,24 @@ export function formatTaskRows(
     // A cached failure with no cache outcome is a hit whose restore failed: no
     // exit. One whose command exited 0 failed in its save (a server that
     // exited 0 before ready says so in its reason).
+    const noKey = keyNotDerived(t)
     const failure =
       t.status !== 'failed'
         ? ''
-        : t.cached === true && t.cacheHit === null
-          ? 'cache restore failed'
-          : t.exitCode === 0 && t.notReady === null
-            ? 'cache save failed'
-            : `exit ${t.exitCode}`
+        : noKey
+          ? 'cache key not derived'
+          : t.cached === true && t.cacheHit === null
+            ? 'cache restore failed'
+            : t.exitCode === 0 && t.notReady === null
+              ? 'cache save failed'
+              : `exit ${t.exitCode}`
     const note = (
       failure + reasonParts(t, statusHere, inputMoved.get(`${t.project}#${t.task}`))
     ).trim()
     const id = `${t.project}#${t.task}`
     const usualMs = usual === undefined ? undefined : (usual.get(id) ?? null)
-    return (c: ui.ColorSupport) => formatRecordedRow(t, c, note, usualMs)
+    const row = noKey ? { ...t, keyNotDerived: true } : t
+    return (c: ui.ColorSupport) => formatRecordedRow(row, c, note, usualMs)
   })
   const blocks = [taskList(rows)]
   if (folded)

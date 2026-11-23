@@ -78,3 +78,33 @@ it("a failed probe's output in the error is capped, its tail kept", async () => 
   expect(r.err).toContain('earlier characters dropped')
   expect(r.err.trimEnd().endsWith('END')).toBe(true)
 }, 60_000)
+
+// History read the same task as an exit-1 cache miss, `vx last --log` blamed
+// a 50-run limit for the output it never kept, and `vx why` said "skipped, or
+// a persistent task" of the task and of the dependant it blocked.
+it('vx last and vx why name a key not derived, and keep the line vx said', async () => {
+  await project(`runtime: ['exit 7']`)
+  const cwd = path.join(root, 'packages', 'app')
+  expect((await vx('run', 'test', '--all')).code).toBe(1)
+  const row = (await vx('last')).out
+    .split('\n')
+    .find((l) => l.endsWith('app#build  cache key not derived'))
+  expect(row).toMatch(/^ +failed +— /)
+  const log = await vx('last', '--log', 'app#build')
+  expect({ code: log.code, out: log.out, err: log.err }).toEqual({
+    code: 0,
+    out: `[vx] app#build: cache key not derived: inputs.runtime probe exited 7: exit 7 (cwd: ${cwd})\n`,
+    err: '',
+  })
+  const why = (await vx('why', 'app#build')).out.split('\n')
+  const runId = why[1]!.split(/ +/)[2]
+  expect(why[2]).toMatch(/^ {2}this run {2}\S+ · failed · no key$/)
+  expect(why[4]).toBe(
+    `  verdict   this task's cache key could not be derived, so its command never ran (\`vx last ${runId} --log app#build\` says why) — nothing to compare`,
+  )
+  const json = JSON.parse((await vx('why', 'app#build', '--format', 'json')).out)
+  expect(json.why.thisRun.cacheHit).toBeNull()
+  expect((await vx('why', 'app#test')).out).toContain(
+    '  verdict   this task never ran: app#build did not pass, so it recorded no cache key — nothing to compare\n',
+  )
+}, 60_000)

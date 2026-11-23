@@ -3753,6 +3753,10 @@ only a run with no recorded policy names `--no-cache` / `--force`.
 **The run lines.** A hit's line is `cache-hit · key …` (or `cache-hit-remote`): the status
 names the hit and its tier, so only an executed run carries the word.
 A skipped task never ran and derived no key: its line is `skipped · no key`.
+A task whose key was not derived (a failed `inputs.runtime` probe) ran
+nothing either: `failed · no key`. With no key the verdict names the one
+cause the row records: what blocked a skip, a key not derived (`vx last <run>
+--log <task>` prints the line vx said), or a persistent task.
 
 **What to do and root cause.** Under the rows, `what to do` gives one line per changed kind: what
 moves it and how to stop a move the task does not need. An upstream
@@ -4020,7 +4024,8 @@ run's output) shows none rather than that run's. An uncached task that passed, o
 kept none, nor does a failed task past the newest 50 failed runs:
 stdout is empty and stderr says so, exit 0; a skip names what blocked
 it (`c#after did not run: c#gate blocked it (vx last --log c#gate)`). A kept log that is empty
-says the task printed nothing. A task that retried shows every
+says the task printed nothing. A task that failed before its command ran
+(its key not derived, a restore that threw) keeps the line vx said. A task that retried shows every
 attempt, each under a heading (`── attempt 1 of 2 · exit 1 ──`), the
 last `passed` when a retry passed (`passed, output not kept` when no
 cache entry holds what it printed); a retried attempt's sandbox

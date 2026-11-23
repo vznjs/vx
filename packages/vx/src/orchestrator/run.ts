@@ -50,6 +50,7 @@ import {
 } from '../exec/index.js'
 import { resetSandbox } from '../sandbox/index.js'
 import { DeferredOutputs } from './deferred-outputs.js'
+import { encodeOutputLog } from './output-log.js'
 import { workspaceCleanOf } from './task-hash.js'
 import { resolveDownloadModes } from './download-policy.js'
 import { trailable, TrailingOutputs } from './trailing-outputs.js'
@@ -1459,6 +1460,10 @@ async function runOnBus(
     })
     // Tasks a plugin's executor threw on, and its name: the throw left no `where`.
     const thrownOn = new Map<string, string>()
+    // The line vx said for a task whose execute threw: what `vx last --log`
+    // keeps when the task printed nothing (its key not derived, a restore
+    // that threw), or it read as a log the history dropped.
+    const thrownSaid = new Map<string, string>()
     // A spare shell for each slot the first tasks fill (`primeSpares`).
     let firstWave = 0
     for (const n of nodes.values()) {
@@ -1514,6 +1519,11 @@ async function runOnBus(
           const where = thrownOn.get(o.node.id)
           if (where !== undefined) (o.placement ??= {}).where = where
         }
+        if (o.status === 'failed' && o.failedOutput === undefined) {
+          const said = thrownSaid.get(o.node.id)
+          if (said !== undefined)
+            o.failedOutput = encodeOutputLog([{ text: maskInvocation(said), err: true }])
+        }
         if (cacheOff) (o.cache ??= {}).off = true
         const root = taintedRan.get(o.node.id)
         if (root !== undefined && o.blockedBy === undefined) o.taintedBy = root
@@ -1542,12 +1552,12 @@ async function runOnBus(
       onError: (node, line, err) => {
         const on = executorFailedOn(err)
         if (on !== undefined) thrownOn.set(node.id, on)
-        log.taskStderr(
-          node,
+        const said =
           !isUserError(err) && !isFsRefusal(err) && (lockBroken ??= lockEntryBroken(workspaceRoot))
             ? `[vx] ${node.id}: ${LOCK_INVALID}\n`
-            : line,
-        )
+            : line
+        thrownSaid.set(node.id, said)
+        log.taskStderr(node, said)
       },
       execute: (node, upstream) => {
         const skip = platformSkip(node)
