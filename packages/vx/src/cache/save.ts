@@ -25,6 +25,7 @@ import {
   packArtifactStream,
   planArtifact,
   writeTree,
+  type ArtifactScan,
 } from './archive.js'
 import {
   CorruptArtifactError,
@@ -120,7 +121,7 @@ export async function treeBytes(dir: string): Promise<number> {
 /** A tree the save wrote from its own outputs, with the scan its tar would give. */
 interface SavedTree {
   tree: string
-  scan: Awaited<ReturnType<typeof scanArtifact>>
+  scan: ArtifactScan
   bytes: number
 }
 
@@ -539,6 +540,85 @@ async function packForSave(
 }
 
 /**
+ * Refuse a scan that is not this key's vx artifact: no `stdout` entry (the
+ * bytes decompressed but are not a vx artifact), another key, or a name the
+ * task's declared outputs do not allow.
+ */
+function assertArtifactOf(
+  hash: string,
+  scanned: ArtifactScan,
+  meta: IngestMeta,
+): asserts scanned is ArtifactScan & { stdout: string } {
+  if (scanned.stdout === null) {
+    throw new CorruptArtifactError(hash, 'missing stdout entry')
+  }
+  if (scanned.key !== hash) {
+    throw new CorruptArtifactError(
+      hash,
+      scanned.key === undefined
+        ? 'artifact records no cache key'
+        : `artifact was stored under another key (${scanned.key})`,
+    )
+  }
+  assertArtifactNames(hash, scanned.entries, meta.outputs, [
+    ...scanned.dirs,
+    ...scanned.links.map(([name]) => name),
+  ])
+}
+
+/** An `output_files` row: rel path, size, mode, millisecond mtime. */
+type OutputFileRow = [string, number, number, number]
+
+/**
+ * The rows for the skip-restore check: a project entry's bare rel, a
+ * workspace entry's full `workspace-outputs/<rel>`. Mode and millisecond
+ * mtime come from the artifact's sidecar, so save and ingest index the same
+ * values a restore lays down, and `isOutputsCurrent` compares equal right
+ * after.
+ */
+function outputFileRowsOf(scanned: ArtifactScan): OutputFileRow[] {
+  const rows: OutputFileRow[] = []
+  for (const e of scanned.entries) {
+    let rowPath: string | null = null
+    if (e.name.startsWith('outputs/')) {
+      const rel = e.name.slice('outputs/'.length)
+      if (rel.length > 0) rowPath = rel
+    } else if (e.name.startsWith(WORKSPACE_OUTPUT_PREFIX)) {
+      if (e.name.length > WORKSPACE_OUTPUT_PREFIX.length) rowPath = e.name
+    }
+    if (rowPath === null) continue
+    rows.push([rowPath, e.size, e.mode & 0o777, Math.floor(e.mtimeMs)])
+  }
+  // An empty directory's row is its rel with a trailing slash; one with a mode
+  // to restore carries it beside `DIR_MODE`.
+  const dirModes = new Map(scanned.dirModes)
+  const dirRow = (d: string): void => {
+    const mode = dirModes.get(d)
+    dirModes.delete(d)
+    rows.push([
+      `${d.startsWith('outputs/') ? d.slice('outputs/'.length) : d}/`,
+      0,
+      mode === undefined ? 0 : DIR_MODE | mode,
+      0,
+    ])
+  }
+  for (const d of scanned.dirs) dirRow(d)
+  for (const d of [...dirModes.keys()]) dirRow(d)
+  // A link's row: its rel, the target's length and CRC-32 in place of size and
+  // mtime, and the link type in the mode, so the check never follows it.
+  for (const [name, to] of scanned.links) {
+    const bytes = new TextEncoder().encode(to)
+    rows.push([
+      name.startsWith('outputs/') ? name.slice('outputs/'.length) : name,
+      bytes.byteLength,
+      LINK_MODE,
+      Bun.hash.crc32(bytes),
+    ])
+  }
+  return rows
+}
+
+/**
  * Atomically write `compressed` to `<hash>.tar.zst`, or inline when at most
  * `cache.store.embeddings` bytes, and build the rows from the archive itself.
  * Shared by `save()` and `ingest()`, so both index the same values.
@@ -593,7 +673,7 @@ export async function writeArtifactAndIndex(
     // `save` or `ingest` already streamed the artifact into its temp.
     tmpPath = compressed.tmpPath
   }
-  let scanned: Awaited<ReturnType<typeof scanArtifact>>
+  let scanned: ArtifactScan
   let tree = saved?.tree
   try {
     const endScan = span('save: scan')
@@ -602,7 +682,7 @@ export async function writeArtifactAndIndex(
     } else if (oneTree) {
       const dir = tempTreePath(ix, hash)
       tree = dir
-      let scan: Awaited<ReturnType<typeof scanArtifact>> | undefined
+      let scan: ArtifactScan | undefined
       await extractArtifactStream(
         await decodedTar(
           compressed instanceof Uint8Array ? compressed : Bun.file(tmpPath!),
@@ -634,30 +714,13 @@ export async function writeArtifactAndIndex(
       scanned = await scanArtifact(await decodedTar(source, hash, ix.artifactCeiling))
     }
     endScan()
-    // Invariant: every artifact carries a `stdout` entry. Its
-    // absence means the bytes decompressed but aren't a vx artifact.
-    if (scanned.stdout === null) {
-      throw new CorruptArtifactError(hash, 'missing stdout entry')
-    }
-    if (scanned.key !== hash) {
-      throw new CorruptArtifactError(
-        hash,
-        scanned.key === undefined
-          ? 'artifact records no cache key'
-          : `artifact was stored under another key (${scanned.key})`,
-      )
-    }
-    assertArtifactNames(hash, scanned.entries, meta.outputs, [
-      ...scanned.dirs,
-      ...scanned.links.map(([name]) => name),
-    ])
+    assertArtifactOf(hash, scanned, meta)
   } catch (err) {
     if (tmpPath !== undefined) await unlink(tmpPath).catch(() => undefined)
     if (tree !== undefined) await rm(tree, { recursive: true, force: true })
     if (err instanceof ArchiveSecurityError || err instanceof CorruptArtifactError) throw err
     throw new CorruptArtifactError(hash, 'artifact is not a readable archive', err)
   }
-  const { entries } = scanned
   let totalBytes =
     saved !== undefined
       ? saved.bytes
@@ -695,49 +758,7 @@ export async function writeArtifactAndIndex(
   // A tree keeps its files as they are: counted on disk as a saved tree
   // counts them, not as the archive it was unpacked from (`--max-size`, stats).
   if (tree !== undefined && saved === undefined) totalBytes = await treeBytes(tree)
-  const outputFileRows: Array<[string, number, number, number]> = []
-  // Output-file rows for the skip-restore check: a project entry's bare rel, a
-  // workspace entry's full `workspace-outputs/<rel>`. Mode and millisecond
-  // mtime come from the artifact's sidecar, so save and ingest index the same
-  // values a restore lays down, and `isOutputsCurrent` compares equal right
-  // after.
-  for (const e of entries) {
-    let rowPath: string | null = null
-    if (e.name.startsWith('outputs/')) {
-      const rel = e.name.slice('outputs/'.length)
-      if (rel.length > 0) rowPath = rel
-    } else if (e.name.startsWith(WORKSPACE_OUTPUT_PREFIX)) {
-      if (e.name.length > WORKSPACE_OUTPUT_PREFIX.length) rowPath = e.name
-    }
-    if (rowPath === null) continue
-    outputFileRows.push([rowPath, e.size, e.mode & 0o777, Math.floor(e.mtimeMs)])
-  }
-  // An empty directory's row is its rel with a trailing slash; one with a mode
-  // to restore carries it beside `DIR_MODE`.
-  const dirModes = new Map(scanned.dirModes)
-  const dirRow = (d: string): void => {
-    const mode = dirModes.get(d)
-    dirModes.delete(d)
-    outputFileRows.push([
-      `${d.startsWith('outputs/') ? d.slice('outputs/'.length) : d}/`,
-      0,
-      mode === undefined ? 0 : DIR_MODE | mode,
-      0,
-    ])
-  }
-  for (const d of scanned.dirs) dirRow(d)
-  for (const d of [...dirModes.keys()]) dirRow(d)
-  // A link's row: its rel, the target's length and CRC-32 in place of size and
-  // mtime, and the link type in the mode, so the check never follows it.
-  for (const [name, to] of scanned.links) {
-    const bytes = new TextEncoder().encode(to)
-    outputFileRows.push([
-      name.startsWith('outputs/') ? name.slice('outputs/'.length) : name,
-      bytes.byteLength,
-      LINK_MODE,
-      Bun.hash.crc32(bytes),
-    ])
-  }
+  const outputFileRows = outputFileRowsOf(scanned)
   // Compressed before the write lock is taken: logs are most of what the
   // index held as text.
   const stdoutBlob = scanned.stdout === '' ? null : await zstdCompress(rawEncode(scanned.stdout))
