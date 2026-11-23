@@ -1440,3 +1440,42 @@ describe('a bare name that ran in many projects', () => {
     )
   })
 })
+
+describe('vx why — what to do names who keyed the component', () => {
+  async function setup(): Promise<string> {
+    const root = await makeWorkspaceRoot({ prefix: 'vx-why-todo-', git: false })
+    const dir = path.join(root, 'packages', 'app')
+    await mkdir(path.join(dir, 'src'), { recursive: true })
+    await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name: 'app' }))
+    await writeFile(path.join(dir, 'vx.config.mjs'), APP_CONFIG)
+    await writeFile(path.join(dir, 'src', 'input.txt'), 'v1\n')
+    gitIn(root)('init', '-q')
+    gitIn(root)('add', '-A')
+    return root
+  }
+  const todo = async (root: string, id: string): Promise<string[]> => {
+    const lines = (await vx(root, ['why', id])).out.split('\n')
+    return lines.slice(lines.findIndex((l) => l === '  What to do') + 1, -1)
+  }
+
+  it(
+    'a name that joined inputs.env is said to have joined, not to have moved',
+    async () => {
+      const root = await setup()
+      try {
+        expect((await vx(root, ['run', 'build', '--all'])).code).toBe(0)
+        await writeFile(
+          path.join(root, 'packages', 'app', 'vx.config.mjs'),
+          APP_CONFIG.replace("files: ['src/**'] }", "files: ['src/**'], env: ['APP_MODE'] }"),
+        )
+        expect((await vx(root, ['run', 'build', '--all'])).code).toBe(0)
+        expect((await todo(root, 'app#build')).find((l) => l.startsWith('  env'))).toBe(
+          '  env       a name joined inputs.env, which re-keys the task by design',
+        )
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+})

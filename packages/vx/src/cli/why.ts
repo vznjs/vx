@@ -558,6 +558,10 @@ function whatToDoRows(
       todo.push([k, ...upstream])
       continue
     }
+    if (k === 'env') {
+      todo.push([k, envTodo([...diff.entries, ...roots.flatMap((r) => r.entries)])])
+      continue
+    }
     todo.push([
       k,
       k === 'config'
@@ -575,6 +579,16 @@ function whatToDoRows(
   // the miss is right, and only moving the write ends it.
   if (writers.length > 0) todo.push(['written', WRITTEN_TODO])
   return todo
+}
+
+/** The env row: a value that moved, or a name that joined or left `inputs.env`. */
+function envTodo(entries: readonly { kind: string; change: string }[]): string {
+  const changes = new Set(entries.filter((e) => e.kind === 'env').map((e) => e.change))
+  return [
+    ...(changes.has('changed') ? [WHAT_TO_DO['env']!] : []),
+    ...(changes.has('added') ? ['a name joined inputs.env, which re-keys the task by design'] : []),
+    ...(changes.has('removed') ? ['a name left inputs.env, which re-keys the task by design'] : []),
+  ].join('; ')
 }
 
 const ROOTS_SHOWN = 5
