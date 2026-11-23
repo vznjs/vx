@@ -324,7 +324,7 @@ Each plugin also adds a project's manifest (`package.json`, or under `pnpm()` a 
   An edit to a patch then re-runs the task; `vx why` names it:
 
   ```ansi
-  verdict   cache key changed: file patches/x+1.0.0.patch
+  [2mverdict [0m  [38;2;234;179;8mcache key changed: file patches/x+1.0.0.patch[0m
   ```
 - **An unreadable lockfile** stops the run and names the install to re-run.
 - **A lockfile changed since `vx lock`** stops the run: `run vx lock`.
