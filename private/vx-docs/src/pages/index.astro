@@ -569,9 +569,13 @@ const startCommands = [
           lane.addEventListener('touchcancel', () => ((row.held = false), hold()), { passive: true })
         } else {
           lane.addEventListener('pointerenter', () => (row.held = true))
-          lane.addEventListener('pointerleave', () => ((row.held = false), hold()))
           // A mouse drags the row; a drag is not a click on a source link.
           let grab: { x: number; pos: number; moved: boolean } | undefined
+          lane.addEventListener('pointerleave', () => {
+            if (grab) return
+            row.held = false
+            hold()
+          })
           lane.addEventListener('pointerdown', (ev) => {
             if (ev.pointerType !== 'mouse' || ev.button !== 0) return
             grab = { x: ev.clientX, pos: row.pos, moved: false }
@@ -589,6 +593,7 @@ const startCommands = [
             if (!grab) return
             const moved = grab.moved
             grab = undefined
+            row.held = lane.matches(':hover')
             lane.classList.remove('grabbing')
             hold()
             if (!moved) return
@@ -604,9 +609,9 @@ const startCommands = [
             if (Math.abs(lane.scrollLeft - row.set) < 2) return
             row.pos = lane.scrollLeft
             hold()
-            // A trackpad has no finger to wait for: past a copy's edge it
-            // jumps back to the same view in the middle copy.
-            if (!touch && (row.pos < row.one / 2 || row.pos > row.one * 2.5)) place(fold(row.pos, row.one))
+            // A trackpad has no finger to wait for: out of the middle copy it
+            // jumps back to the same view there, before a wide lane's end.
+            if (!touch && (row.pos < row.one / 2 || row.pos >= row.one * 2)) place(fold(row.pos, row.one))
           },
           { passive: true },
         )
