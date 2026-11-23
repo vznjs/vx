@@ -1006,14 +1006,14 @@
   "scores": {
     "vx": {
       "all": {
-        "pass": 2124,
-        "can": 2124,
-        "of": 2199
+        "pass": 2128,
+        "can": 2128,
+        "of": 2203
       },
       "correctness": {
-        "pass": 1709,
-        "can": 1709,
-        "of": 1776
+        "pass": 1713,
+        "can": 1713,
+        "of": 1780
       },
       "efficiency": {
         "pass": 326,
@@ -1076,21 +1076,21 @@
         "of": 141
       },
       "watch": {
-        "pass": 125,
-        "can": 125,
-        "of": 125
+        "pass": 129,
+        "can": 129,
+        "of": 129
       }
     },
     "turbo": {
       "all": {
-        "pass": 1389,
-        "can": 1800,
-        "of": 2199
+        "pass": 1392,
+        "can": 1804,
+        "of": 2203
       },
       "correctness": {
-        "pass": 1115,
-        "can": 1453,
-        "of": 1776
+        "pass": 1118,
+        "can": 1457,
+        "of": 1780
       },
       "efficiency": {
         "pass": 244,
@@ -1153,21 +1153,21 @@
         "of": 141
       },
       "watch": {
-        "pass": 106,
-        "can": 120,
-        "of": 125
+        "pass": 109,
+        "can": 124,
+        "of": 129
       }
     },
     "nx": {
       "all": {
-        "pass": 1389,
-        "can": 1835,
-        "of": 2199
+        "pass": 1392,
+        "can": 1839,
+        "of": 2203
       },
       "correctness": {
-        "pass": 1076,
-        "can": 1478,
-        "of": 1776
+        "pass": 1079,
+        "can": 1482,
+        "of": 1780
       },
       "efficiency": {
         "pass": 283,
@@ -1230,21 +1230,21 @@
         "of": 141
       },
       "watch": {
-        "pass": 96,
-        "can": 123,
-        "of": 125
+        "pass": 99,
+        "can": 127,
+        "of": 129
       }
     },
     "vite-task": {
       "all": {
         "pass": 1026,
         "can": 1388,
-        "of": 2199
+        "of": 2203
       },
       "correctness": {
         "pass": 861,
         "can": 1167,
-        "of": 1776
+        "of": 1780
       },
       "efficiency": {
         "pass": 156,
@@ -1309,19 +1309,19 @@
       "watch": {
         "pass": 0,
         "can": 0,
-        "of": 125
+        "of": 129
       }
     },
     "nix": {
       "all": {
         "pass": 1097,
         "can": 1385,
-        "of": 2199
+        "of": 2203
       },
       "correctness": {
         "pass": 940,
         "can": 1189,
-        "of": 1776
+        "of": 1780
       },
       "efficiency": {
         "pass": 147,
@@ -1386,19 +1386,19 @@
       "watch": {
         "pass": 0,
         "can": 0,
-        "of": 125
+        "of": 129
       }
     },
     "moon": {
       "all": {
         "pass": 1278,
         "can": 1735,
-        "of": 2199
+        "of": 2203
       },
       "correctness": {
         "pass": 1007,
         "can": 1416,
-        "of": 1776
+        "of": 1780
       },
       "efficiency": {
         "pass": 236,
@@ -1463,7 +1463,7 @@
       "watch": {
         "pass": 0,
         "can": 0,
-        "of": 125
+        "of": 129
       }
     }
   },
@@ -58158,6 +58158,150 @@
         "nix": {
           "status": "n/a",
           "detail": "nix-build has no watch mode."
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "`moon run` runs once: moon has no watch mode."
+        }
+      }
+    },
+    {
+      "id": "watch/app-edit-leaves-library-server-up",
+      "ref": "chuex5",
+      "category": "watch",
+      "kind": "correctness",
+      "title": "Saving a file in an app leaves the dev server of the library it uses running",
+      "why": "The app depends on the library, not the other way round, so an edit in the app changes nothing the library’s server reads. That server must keep running. A watch that restarts it on every app save drops its connections and state for no reason, and walks the graph the wrong way.",
+      "from": [
+        "watch-initial-edit-server",
+        "watch-loop-members"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "`vp run` has no watch mode. Vite Task has no long-running task it stops when the run ends."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build has no watch mode. A derivation is a build that ends: Nix has no long-running task."
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "`moon run` runs once: moon has no watch mode."
+        }
+      }
+    },
+    {
+      "id": "watch/server-starts-after-dependency-first-build",
+      "ref": "zw2gon",
+      "category": "watch",
+      "kind": "correctness",
+      "title": "Under watch, a dev server starts only after the first build of the library it needs",
+      "why": "The server depends on the library’s build, so the build must be on disk before the server starts, as in a plain run. A server started early reads a missing or old library and serves broken pages until someone restarts it. The watch’s first cycle must keep the same order a run keeps.",
+      "from": [
+        "watch-initial-readiness",
+        "watch-initial-edit-server"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "`vp run` has no watch mode. Vite Task has no long-running task it stops when the run ends."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build has no watch mode. A derivation is a build that ends: Nix has no long-running task."
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "`moon run` runs once: moon has no watch mode."
+        }
+      }
+    },
+    {
+      "id": "watch/edit-outside-server-inputs-keeps-it-up",
+      "ref": "mucns5",
+      "category": "watch",
+      "kind": "correctness",
+      "title": "Saving a file outside a dev server’s inputs leaves the server running",
+      "why": "A file the server’s task does not list, a note or a test fixture, changes nothing it serves. The server must keep running, neither restarted nor stopped. A watch that stops it here leaves the user with a dead server after an unrelated save.",
+      "from": [
+        "watch-initial-edit-server",
+        "watch-loop-members"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "`vp run` has no watch mode. Vite Task has no long-running task it stops when the run ends."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build has no watch mode. A derivation is a build that ends: Nix has no long-running task."
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "`moon run` runs once: moon has no watch mode."
+        }
+      }
+    },
+    {
+      "id": "watch/dependency-rebuild-keeps-server-up",
+      "ref": "b6gsu6",
+      "category": "watch",
+      "kind": "correctness",
+      "title": "Under watch, rebuilding the library a dev server needs leaves the server running",
+      "why": "A dev server reloads what its dependencies rebuild on its own; that is what it is for. The watch must rebuild the library and keep the server up, so the page reloads in place and its port stays held. Stopping or restarting the server on every library edit throws away its state and drops every open connection.",
+      "from": [
+        "watch-initial-edit-server",
+        "watch-initial-readiness"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 1,
+          "detail": "phase 2: after 30 s: did not run lib#build"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 1,
+          "detail": "phase 2: after 30 s: did not run lib#build"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "`vp run` has no watch mode. Vite Task has no long-running task it stops when the run ends."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build has no watch mode. A derivation is a build that ends: Nix has no long-running task."
         },
         "moon": {
           "status": "n/a",
