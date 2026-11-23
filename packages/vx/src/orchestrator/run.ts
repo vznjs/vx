@@ -1941,14 +1941,11 @@ async function runOnBus(
     log.runDone?.()
     if (options.handoff?.summaryTable === true)
       for (const line of formatOutcomeTable(list, colors)) log.status(line)
-    // A run a signal stopped records nothing `vx last` opens: no id to copy.
+    // A stopped run keeps the tasks that ended under its id, which `vx last
+    // <id> --log` and `vx why --run` open: the footer names it as any run's.
     // A pipe with no colour gets no meters: their counts say it all.
     const meters = options.log !== undefined || colors.enabled || process.stdout.isTTY === true
-    const footerContext = {
-      ...runContext,
-      ...(stop.stoppedBy === undefined ? {} : { runId: undefined }),
-      ...(meters ? {} : { meters: false }),
-    }
+    const footerContext = meters ? runContext : { ...runContext, meters: false }
     if (options.footer !== false)
       for (const line of formatRunSummary(list, totalMs, colors, footerContext)) log.status(line)
 

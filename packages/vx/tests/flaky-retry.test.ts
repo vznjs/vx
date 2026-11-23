@@ -127,7 +127,7 @@ describe('a retried task that is no flake', () => {
     // No `cache: true`, so no key can prove a flake; its retry still ran.
     await addProject(root, 'app', {
       config: `export default { tasks: { test: {
-        exec: { command: 'if test -f ../../once; then rm ../../once; exit 1; fi', retries: 1 },
+        exec: { command: 'if test -f ../../once; then rm ../../once; exit 1; fi; echo passing-output', retries: 1 },
       } } }`,
     })
   }, TIMEOUT)
@@ -143,9 +143,10 @@ describe('a retried task that is no flake', () => {
       expect(r.code).toBe(0)
       expect(r.text).toContain('app#test 2 attempts')
       expect(r.text).not.toContain('flaky')
-      // Its log ends on the pass, though no entry kept its output.
+      // Its log ends on the pass, and says no entry kept what the pass
+      // printed: a bare `passed` heading read as a pass that printed nothing.
       expect((await vx(root, ['last', '--log', 'app#test'])).text).toEndWith(
-        '── attempt 1 of 2 · exit 1 ──\n── attempt 2 of 2 · passed ──\n',
+        '── attempt 1 of 2 · exit 1 ──\n── attempt 2 of 2 · passed, output not kept ──\n',
       )
       expect((await vx(root, ['run', 'test', '--filter', 'app'])).text).not.toContain('attempts')
     },

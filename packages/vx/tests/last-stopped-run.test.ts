@@ -14,7 +14,7 @@ const vx = (...args: string[]) => {
   const p = Bun.spawnSync({ cmd: [process.execPath, BIN, ...args], cwd: root })
   return { code: p.exitCode, out: p.stdout.toString(), err: p.stderr.toString() }
 }
-const stopAfterSlowStarts = async (...tasks: string[]): Promise<void> => {
+const stopAfterSlowStarts = async (...tasks: string[]): Promise<string> => {
   const pid = path.join(dir, 'pid.txt')
   await rm(pid, { force: true })
   const proc = Bun.spawn([process.execPath, BIN, 'run', ...tasks], {
@@ -26,6 +26,7 @@ const stopAfterSlowStarts = async (...tasks: string[]): Promise<void> => {
   await Bun.sleep(500)
   proc.kill('SIGINT')
   expect(await proc.exited).toBe(130)
+  return (await new Response(proc.stdout).text()) + (await new Response(proc.stderr).text())
 }
 
 beforeAll(async () => {
@@ -53,6 +54,16 @@ it('a failed task of a stopped run keeps its output for `vx last --log`', async 
     source: 'failure',
     output: 'boom\n',
   })
+}, 30_000)
+
+// The footer hid a stopped run's id, though every reader opens it: an
+// agent that stopped a run had no id to ask `vx last <id> --log` with.
+it('the footer of a stopped run names its id, and `vx last <id> --log` opens it', async () => {
+  const out = await stopAfterSlowStarts('a#bad', 'a#slow')
+  const id = / · run (\S+)\n/.exec(out)?.[1]
+  expect(id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-/)
+  const log = JSON.parse(vx('last', id!, '--log', 'a#bad', '--format', 'json').out)
+  expect([log.runId, log.output]).toEqual([id, 'boom\n'])
 }, 30_000)
 
 it('`vx why --run` accepts the stopped run id `vx last --log` printed', async () => {
