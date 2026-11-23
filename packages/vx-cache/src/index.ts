@@ -199,6 +199,12 @@ async function refusal(res: Response, hide: (text: string) => string): Promise<E
       // quiet: not JSON, so the text is what it said
       said = text
     }
+    // A gateway's error page (Cloudflare's 521, a proxy's 502): its first
+    // 200 characters were markup and said nothing, its title says what failed.
+    if (/^\s*</.test(said) && /<html|<!doctype/i.test(said)) {
+      const title = /<title[^>]*>([^<]*)/i.exec(said)?.[1]?.trim().slice(0, 80)
+      said = `an HTML page${title ? ` titled "${title}"` : ''}, not the server's answer: a proxy or gateway in front of it?`
+    }
   } catch {
     // quiet: the status alone still names the refusal
   }

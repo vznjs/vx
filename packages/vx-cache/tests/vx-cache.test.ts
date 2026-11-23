@@ -1619,6 +1619,34 @@ describe('config', () => {
     }
   })
 
+  // A gateway's 5xx page was said as its first 200 characters of markup,
+  // naming nothing that failed.
+  it("names a gateway's HTML error page by its title", async () => {
+    const page =
+      '<!DOCTYPE html>\n<!--[if lt IE 7]> <html class="no-js ie6 oldie" lang="en-US"> <![endif]-->\n<html><head><title>cache.example.com | 521: Web server is down</title><meta charset="UTF-8" /></head><body>' +
+      'x'.repeat(500)
+    const site = Bun.serve({
+      port: 0,
+      hostname: '127.0.0.1',
+      fetch: () => new Response(page, { status: 521, headers: { 'content-type': 'text/html' } }),
+    })
+    try {
+      const c = new VxCacheLayer(
+        resolveVxCacheConfig({ ...NAMED, url: site.url.origin }, {})!,
+        fetch,
+        {},
+      )
+      c.refs = [MAIN]
+      await expect(c.has('ab36')).rejects.toThrow(
+        new Error(
+          'HTTP 521: an HTML page titled "cache.example.com | 521: Web server is down", not the server\'s answer: a proxy or gateway in front of it?',
+        ),
+      )
+    } finally {
+      await site.stop(true)
+    }
+  })
+
   // A server's words reach the terminal: an ESC in them retitled it and
   // overwrote the line vx printed before them.
   it("writes the controls in a server's words as escapes", async () => {
