@@ -30,7 +30,7 @@ export default {
 `vxCache({ url?, issuer, repository, timeoutMs?, uploadTimeoutMs?, retries?, headers? })`:
 
 - `url` is the server's base URL (`https://cache.example.com`, without `/v1`), or `VX_CACHE_URL`.
-  It must be `https://`: every request carries the CI token, so `http://`
+  It must be `https://`, with no blanks around it: every request carries the CI token, so `http://`
   is taken only to this machine (`127.0.0.1`, `::1`, `localhost`). It
   takes no `?query` or `#fragment`: each route is appended to it. The
   option is checked when the config loads, `VX_CACHE_URL` when a run

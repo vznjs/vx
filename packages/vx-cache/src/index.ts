@@ -1108,10 +1108,14 @@ export function resolveVxCacheConfig(
   env: Record<string, string | undefined> = Bun.env,
 ): ResolvedVxCacheConfig | undefined {
   const named = namedOf(options)
-  const url = (options.url ?? env.VX_CACHE_URL)?.replace(/\/+$/, '')
-  if (url === undefined || url === '') return undefined
+  const given = options.url ?? env.VX_CACHE_URL
+  if (given === undefined || given === '') return undefined
   // Named as the workspace set it: a bad VX_CACHE_URL was refused as `url`.
   const from = options.url === undefined ? 'VX_CACHE_URL' : 'url'
+  // A trailing blank kept the slash before it: each route went to `…/ /v1/…`.
+  if (given.trim() !== given)
+    throw new UserError(`vxCache(): ${from} has blanks around it: ${JSON.stringify(shown(given))}`)
+  const url = given.replace(/\/+$/, '')
   if (!secure(url))
     throw new UserError(
       `vxCache(): ${from} must be https (http only to 127.0.0.1, ::1 or localhost), got ${shown(url)}`,
