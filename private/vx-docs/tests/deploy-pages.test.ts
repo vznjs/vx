@@ -29,7 +29,7 @@ it('names what the job did not give it', () => {
   expect(() => readEnv({ GITHUB_TOKEN: 't' })).toThrow('ACTIONS_RUNTIME_TOKEN')
 })
 
-function fake(statuses: string[]) {
+function fake(statuses: string[], oidcFails: string[] = []) {
   const calls: string[] = []
   let uploaded: Uint8Array | undefined
   let finalized: any
@@ -62,6 +62,9 @@ function fake(statuses: string[]) {
       }
       if (url.pathname === '/oidc') {
         expect(auth).toBe('Bearer id-req')
+        const fail = oidcFails.shift()
+        if (fail !== undefined)
+          return new Response('upstream request timeout', { status: Number(fail) })
         return Response.json({ value: 'oidc-jwt' })
       }
       if (url.pathname === '/repos/o/r/pages/deployments' && req.method === 'POST') {
@@ -119,6 +122,24 @@ it('asks again after a status read that never answers', async () => {
   expect(lines.filter((l) => l.includes('asking again'))).toHaveLength(2)
   expect(lines.at(-1)).toBe('deploy-pages: live at https://o.github.io/r/')
   await f.server.stop(true)
+})
+
+it('asks for the OIDC token again after a server error', async () => {
+  const f = fake(['succeed'], ['504', '502'])
+  const lines: string[] = []
+  await deploy(new Uint8Array(1), f.env, { every: 1, log: (l) => lines.push(l) })
+  expect(lines.filter((l) => l.startsWith('deploy-pages: OIDC token: 50'))).toHaveLength(2)
+  expect(f.got().deployed.oidc_token).toBe('oidc-jwt')
+  await f.server.stop()
+})
+
+it('does not ask again for an OIDC token it was refused', async () => {
+  const f = fake(['succeed'], ['403'])
+  await expect(deploy(new Uint8Array(1), f.env, { every: 1, log: () => {} })).rejects.toThrow(
+    'OIDC token: 403',
+  )
+  expect(f.calls.filter((c) => c === 'GET /oidc')).toHaveLength(1)
+  await f.server.stop()
 })
 
 it('fails on a final deployment status, naming it', async () => {
