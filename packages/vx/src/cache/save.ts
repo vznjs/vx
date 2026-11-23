@@ -247,7 +247,7 @@ export async function save(ix: StoreIndex, args: SaveArgs): Promise<void> {
         `save of ${args.hash} could not open a file (${err.message}) — ${OUT_OF_FDS_HINT}`,
       )
     }
-    throw err
+    throw unreadableOutput(err, args)
   })
   endPack()
   const bytes = await guard(ix, () =>
@@ -437,10 +437,33 @@ function outputsOf(args: PackArgs): Map<string, string> {
  * index step's job.
  */
 export async function packSavedBytes(ix: StoreIndex, args: PackArgs): Promise<Uint8Array> {
-  // `stdout` is always present, even empty, so the layout is predictable.
-  const plan = await planWithin(ix, args)
-  if (plan.size <= STREAM_DECODE_FROM) return await zstdCompress(await packArtifactBytes(plan))
-  return bytesOf(packArtifactStream(plan).pipeThrough(zstdEncoder()))
+  try {
+    // `stdout` is always present, even empty, so the layout is predictable.
+    const plan = await planWithin(ix, args)
+    if (plan.size <= STREAM_DECODE_FROM) return await zstdCompress(await packArtifactBytes(plan))
+    return await bytesOf(packArtifactStream(plan).pipeThrough(zstdEncoder()))
+  } catch (err) {
+    throw unreadableOutput(err, args)
+  }
+}
+
+/**
+ * An output this user may not read (`chmod 000`), named as the config spells
+ * it: the read's own error held only the errno and the absolute path.
+ */
+function unreadableOutput(err: unknown, args: PackArgs): unknown {
+  const e = err as { code?: unknown; path?: unknown }
+  if (e?.code !== 'EACCES' || typeof e.path !== 'string') return err
+  for (const [name, abs] of outputsOf(args)) {
+    if (abs !== e.path) continue
+    const shown = name.startsWith(WORKSPACE_OUTPUT_PREFIX)
+      ? `workspaceFiles output ${name.slice(WORKSPACE_OUTPUT_PREFIX.length)}`
+      : `output ${name.slice('outputs/'.length)}`
+    return new UserError(
+      `${shown} is not readable by this user: vx cannot cache it — make it readable (chmod u+r), or take it back with a '!' entry`,
+    )
+  }
+  return err
 }
 
 /**
