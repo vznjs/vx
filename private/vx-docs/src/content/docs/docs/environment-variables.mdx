@@ -251,6 +251,8 @@ publish: {
 A config is TypeScript. A small function returns both lists:
 
 ```ts title="packages/web/vx.config.ts"
+import { defineProject } from '@vzn/vx/config'
+
 const keyed = (...names: string[]) => ({
   exec: { command: 'vite build', env: { passThrough: names } },
   inputs: { files: ['src/**', 'index.html'], env: names },
@@ -283,11 +285,11 @@ import { defineWorkspace } from '@vzn/vx/config'
 import { dte } from '@vzn/vx-dte'
 
 export default defineWorkspace({
-  plugins: [dte()],
+  plugins: [dte({ relay: 'https://relay.example.com' })],
   pipelines: {
     ci: {
       tasks: ['lint', 'test', 'build'],
-      env: { VX_DTE_RELAY: 'https://relay.example.com' },
+      env: { VX_DTE_RELAY: 'https://relay-eu.example.com' },
     },
   },
 })
