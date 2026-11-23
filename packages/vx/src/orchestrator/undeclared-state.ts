@@ -113,8 +113,9 @@ export function stampUndeclaredState(args: {
   return out
 }
 
-/** `.env`, `.env.local`, `.env.production.local` and the like. */
-const isDotenv = (name: string): boolean => name === '.env' || name.startsWith('.env.')
+/** `.env`, `.env.local`, `.env.production.local` and the like; not code (`.env.d.ts`). */
+const isDotenv = (name: string): boolean =>
+  name === '.env' || (name.startsWith('.env.') && !/\.[cm]?[jt]sx?$|\.json$/.test(name))
 
 /** A `.tsbuildinfo` larger than this is taken as per-file state unread. */
 const BUILD_INFO_READ_MAX = 4 << 20
