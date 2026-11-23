@@ -28,8 +28,8 @@ export default defineWorkspace({
 ```
 
 :::note[Before you start]
-Workers hand files back through a [remote cache](../../../docs/remote-cache/),
-and meet your job at a relay you host, the [DTE server](../../../docs/servers/dte/).
+Workers hand files back through a [remote cache](../../remote-cache/),
+and meet your job at a relay you host, the [DTE server](../../servers/dte/).
 :::
 
 Install the plugin, lock the config and let vx write both workflows:
@@ -56,7 +56,7 @@ vx dte init
 install, then `vx dte worker`. `max: 8` caps how many workers one run starts.
 
 Put the `ALLOW` line it printed into the relay's settings and deploy the
-relay again ([how](../../../docs/servers/dte/#2-say-who-may-use-it-allow)).
+relay again ([how](../../servers/dte/#2-say-who-may-use-it-allow)).
 Then commit and push. No secret goes into your repository.
 
 The run's log and job summary name the worker beside each task it ran.
@@ -70,4 +70,4 @@ To choose what CI runs, edit the last line of `ci.yml`:
       - run: bun vx run build test ${{ github.event_name == 'pull_request' && '--affected' || '--all' }}
 ```
 
-See [Distributed task execution](../../../docs/distributed-task-execution/).
+See [Distributed task execution](../../distributed-task-execution/).

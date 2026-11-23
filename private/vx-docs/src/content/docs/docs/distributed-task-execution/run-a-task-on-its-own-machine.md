@@ -46,4 +46,4 @@ Run `vx lock`, then `vx dte init` to add the new machines to
 - A run on your machine ignores `exec.worker`, and it never changes a
   cache key.
 
-See [What runs where](../../../docs/distributed-task-execution/#what-runs-where).
+See [What runs where](../../distributed-task-execution/#what-runs-where).
