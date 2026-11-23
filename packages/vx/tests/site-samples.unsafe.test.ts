@@ -125,7 +125,7 @@ describe('the Running tasks page shows what --dry prints', () => {
             .trim(),
         )
         .filter((l) => l !== '')
-    expect(norm(block)).toEqual(norm(formatPlanText(plan)))
+    expect(norm(block)).toEqual(norm(formatPlanText(plan, { enabled: false, columns: 60 })))
   })
 })
 
