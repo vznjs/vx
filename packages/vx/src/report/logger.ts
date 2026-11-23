@@ -1144,6 +1144,14 @@ export function defaultLogger(
                 usualMsOf(node.id),
               ),
             )
+            // A ready server's address is news: `vx run dev --all` dropped
+            // each server's pre-ready lines, `Local: http://…` among them.
+            if (
+              node.config.exec?.persistent !== undefined &&
+              output.some((c) => c.text.trim().length > 0)
+            ) {
+              emitBlock(fenced(frame(true)))
+            }
           } else if (outcome.status === 'skipped') {
             emitRow(formatTaskSkippedLine(node, colors, outcome, blocksOf(node.id)))
           }

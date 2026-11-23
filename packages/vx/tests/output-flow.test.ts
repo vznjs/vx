@@ -204,6 +204,22 @@ describe('defaultLogger visibility matrix — broad', () => {
     ])
   })
 
+  // `vx run dev --all` hid every server's address: a ready server is a
+  // success row, and its pre-ready output (`Local: http://…`) was dropped.
+  it('a ready server → its row, then its frame with what it printed before ready', () => {
+    const out = sink()
+    const log = defaultLogger(NO_COLORS, { mode: 'broad' }, out)
+    const n = mkNode('web#dev', { requested: true })
+    ;(n.config.exec as { persistent?: unknown }).persistent = { readyWhen: 'Local:' }
+    log.taskStart?.(n)
+    log.taskStdout(n, '  ➜  Local:   http://localhost:5173/\n')
+    log.taskComplete(n, mkOutcome(n, 'success'))
+    const text = out.text()
+    expect(text).toContain('web#dev')
+    expect(text).toContain('┌─ ▸ web#dev')
+    expect(text).toContain('Local:   http://localhost:5173/')
+  })
+
   it('group tasks → silent', () => {
     const out = sink()
     const log = defaultLogger(NO_COLORS, { mode: 'broad' }, out)

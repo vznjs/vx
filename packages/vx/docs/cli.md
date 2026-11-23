@@ -915,6 +915,9 @@ lib#build`; a fail-fast skip, which nothing blocked, carries no
   readable.
 - **`one-liner + frame replays`** — the `failed miss …` row prints
   immediately; the full frame is held and replayed at run end.
+- **A ready server in broad** gets its one-liner and then its frame,
+  holding what it printed before ready: `vx run dev --all` shows each
+  server's address (`Local: http://…`).
 
 When a dependency fails mid-run, the stream gets ONE permanent
 `failed miss … <id>` row and the run continues; **all full failure
