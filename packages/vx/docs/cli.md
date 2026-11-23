@@ -258,6 +258,9 @@ exclusion (`!nope`): running the rest would hide the typo.
   (`--filter a,b`, Nx's `--projects` habit), and `--filter {a} --filter {b}`
   for a braced one (`{a,b}`); a comma inside a glob's braces
   (`./packages/{a,b}`) is no list.
+- From a subfolder, a path filter that names a project read from there
+  hints the root-relative path: in `packages/`, `--filter ./lib` hints
+  `A path filter is relative to the workspace root: did you mean ./packages/lib?`.
 - `Projects: a, b` otherwise: eight names, then a count.
 - For a `tag:` filter, the nearest tag (`Did you mean tag:scope:web?`),
   else the list of tags.

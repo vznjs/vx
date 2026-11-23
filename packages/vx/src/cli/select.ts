@@ -656,7 +656,9 @@ export async function resolveFilters(
       }
     }
     const hint =
-      bracedHint(root, parsed, unmatched, projects, graph) ?? didYouMean(unmatched, projects, tags)
+      bracedHint(root, parsed, unmatched, projects, graph) ??
+      rootRelativeHint(root, cwd, parsed, unmatched, projects, graph) ??
+      didYouMean(unmatched, projects, tags)
     // Quoted: bare, `apq...` and the hint's
     // full stop read `apq....` in the flat message `--format json` carries.
     return {
@@ -865,6 +867,45 @@ function bracedHint(
       continue
     const meant = `${f.raw.slice(0, at)}{${dir}}[${m[2]}]${m[3] ?? ''}`
     return `. A directory takes a git ref braced: did you mean ${meant}?`
+  }
+  return undefined
+}
+
+/**
+ * `. A path filter is relative to the workspace root: did you mean
+ * ./packages/lib?` for an unmatched `./lib` typed in `packages/`, as pnpm
+ * reads a path. Only when the root-relative path selects a project.
+ */
+function rootRelativeHint(
+  root: string,
+  cwd: string,
+  parsed: readonly ReturnType<typeof parseFilter>[],
+  unmatched: readonly string[],
+  projects: ProjectMeta[],
+  graph: PackageGraph,
+): string | undefined {
+  const sub = relPosix(root, path.resolve(cwd))
+  if (sub === '' || sub === '..' || sub.startsWith('../')) return undefined
+  for (const f of parsed) {
+    if (!f.isPath || f.exactDir === true || !unmatched.includes(f.raw)) continue
+    const at = (f.negate ? 1 : 0) + (f.withDependents ? 3 : 0) + (f.onlyDependents ? 1 : 0)
+    const rest = f.raw.slice(at)
+    const braced = /^\{([^{}]*)\}(.*)$/.exec(rest)
+    const bare = braced === null ? /^(\.\/.*?|\.)((?:\^?\.\.\.)?)$/.exec(rest) : null
+    const m = braced ?? bare
+    if (m === null) continue
+    const dir = path.posix.join(sub, m[1]!)
+    const meant = `${f.raw.slice(0, at)}${braced !== null ? `{${dir}}` : `./${dir}`}${m[2]}`
+    // Whether the path names a project, its ref and `!` aside.
+    const { gitSince: _since, sinceViaDeps: _via, ...reread } = parseFilter(meant, root)
+    const hit = applyFilters({
+      filters: [{ ...reread, negate: false }],
+      projects,
+      graph,
+      affectedByFilter: new Map(),
+    })
+    if (hit.size === 0) continue
+    return `. A path filter is relative to the workspace root: did you mean ${meant}?`
   }
   return undefined
 }
