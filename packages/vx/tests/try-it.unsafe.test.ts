@@ -281,13 +281,15 @@ function versionless(out: string): string {
   return out
     .replace(/^  (vx-migrate|vx init) \S+$/m, '  $1')
     .replace(/^  ran +npm uninstall @vzn\/vx-migrate\n/m, '')
-    .replace(/^(  ran +npm install -D )(.*)$/gm, (_, ran: string, pkgs: string) =>
-      ran +
-      pkgs
-        .split(' ')
-        .map((p) => p.replace(/(.)@\d\S*$/, '$1'))
-        .filter((p) => p !== '@vzn/vx' && p !== '@vzn/vx-migrate')
-        .join(' '),
+    .replace(
+      /^(  ran +npm install -D )(.*)$/gm,
+      (_, ran: string, pkgs: string) =>
+        ran +
+        pkgs
+          .split(' ')
+          .map((p) => p.replace(/(.)@\d\S*$/, '$1'))
+          .filter((p) => p !== '@vzn/vx' && p !== '@vzn/vx-migrate')
+          .join(' '),
     )
 }
 
