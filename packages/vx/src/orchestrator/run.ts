@@ -1941,11 +1941,10 @@ async function runOnBus(
     log.runDone?.()
     if (options.handoff?.summaryTable === true)
       for (const line of formatOutcomeTable(list, colors)) log.status(line)
-    // A run a signal stopped records nothing `vx last` opens: no id to copy.
-    const footerContext =
-      stop.stoppedBy === undefined ? runContext : { ...runContext, runId: undefined }
+    // A stopped run keeps the tasks that ended under its id, which `vx last
+    // <id> --log` and `vx why --run` open: the footer names it as any run's.
     if (options.footer !== false)
-      for (const line of formatRunSummary(list, totalMs, colors, footerContext)) log.status(line)
+      for (const line of formatRunSummary(list, totalMs, colors, runContext)) log.status(line)
 
     // A requested persistent task (dev server, watcher): the run is done in
     // every bookkeeping sense but the server is the point, so stay in the

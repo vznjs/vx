@@ -3809,8 +3809,8 @@ re-execution, no cache probe, no config evaluation. A run a Ctrl-C (or
 SIGTERM, SIGHUP) stopped records the tasks that ended before the stop
 (their rows, timings and failed output) but no summary, so `vx last`
 still shows the run before it; nor does a `vx watch` cycle one stopped.
-Its id, which `vx why` and `vx last --log` print, works wherever a run id
-does: `vx last RUNID --log <task>` prints a task's output, `vx why
+Its id, which its footer, `vx why` and `vx last --log` print, works wherever
+a run id does: `vx last RUNID --log <task>` prints a task's output, `vx why
 <task> --run RUNID` explains it, and `vx last RUNID` says the run was
 stopped.
 
