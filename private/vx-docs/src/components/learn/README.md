@@ -78,7 +78,12 @@ fails on a dead anchor).
 ## The story
 
 The pages follow one workspace, the demo every sample already uses:
-`@demo/web` (a Vite app) depends on `@demo/ui` (a component library).
+`@demo/web` (a Vite app) depends on `@demo/ui` (a component library);
+later chapters add `@demo/admin` (a second app on `ui`) and `@demo/api`
+(stands alone). One spelling everywhere: `packages/<name>/`,
+`src/index.ts`, `vite.config.ts`; each project has `build`, `test`
+(`dependsOn: ['^build']`) and `lint`, so a `ui` edit reaches web's and
+admin's `build` and `test`.
 Samples run `vite build`, `vitest run`, `oxlint` — never `tsc`, and never
 a package-manager script or another task runner. Each page picks up where the learning
 path left the reader (start, define tasks, run, cache, CI, Distributed task
