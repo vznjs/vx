@@ -38,9 +38,13 @@ flowchart LR
    In `.vx/workspace.ts`: `plugins: [vitest()]`. `vx info` lists it
    with its hooks.
 
+   Then run `vx lock`: a run reads the tasks a `project` or `discover`
+   hook adds from the lock.
+
 4. **Test it**
 
-   Call `run()` from `@vzn/vx` on a throwaway workspace.
+   Run `vx lock`, then call `run()` from `@vzn/vx`, on a throwaway
+   workspace.
 
 </Steps>
 
@@ -598,14 +602,25 @@ So are `ctx.projects` in `discover` and `project`, the task a `key` or
 `admit` hook gets, the nodes a `schedule` hook gets, and a plugin
 executor's `outputs`, `envDefine` and `forwardArgs`.
 
-So is a task's config once the `graph` stage ends. A project config a `project` hook kept is no longer the run's once that
+So is a task's config once the `graph` stage ends.
+
+A project config a `project` hook kept is no longer the run's once that
 project's hooks have run, so a write to it changes nothing.
 
 A write to them throws, so a handler can never turn a failed task into
 a pass, nor a hook change a command after its key is taken.
 
-A sink, `ctx.on` handler or `admit` that throws is switched off for the
-run with one warning. A verb that throws fails in one line.
+A `telemetry` hook or sink, `ctx.on` handler, `admit` or `Logger` that
+throws is switched off for the run with one warning.
+
+A `teardown` that throws leaves the run's result as it was. A verb that
+throws fails in one line.
+
+A remote cache call that throws is a miss. An `execute` that throws
+fails its task.
+
+A throw in any other hook stops the run, or `vx lock`, with one line
+naming your plugin and the hook.
 
 ---
 
