@@ -32,7 +32,7 @@ page served
 [2m└─[0m [38;2;6;182;212m▸[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;147;197;253mdev[0m [2m──[0m [2m(183ms)[0m [38;2;6;182;212mrunning[0m
 ```
 
-`smoke` passed against a live `vite`. The `dev` frame closes **running**: the server stayed up until the check was done.
+`smoke` passed against a live `vite`. `dev` started first, but its frame prints last, once the run ends. It closes **running**: the server stayed up until the check was done.
 
 <Diagram {...serverLife} />
 
@@ -115,7 +115,7 @@ What if the line never comes? `exec.timeout` caps the wait. Here `readyWhen` loo
 [2m$[0m vx run smoke
 
 [4m[58;2;110;118;129m  [1m[38;2;167;139;250mTasks[0m[4m[58;2;110;118;129m     [2mstatus  cache     ±usual    time   cpu    mem outputs  blocks worker         task[0m[4m[58;2;110;118;129m                           [0m
-            [38;2;239;68;68mfailed[0m  [2mno-cache[0m  [38;2;239;68;68m+2.82s[0m   [38;2;203;213;225m3.00s[0m     [2m—[0m      [2m—[0m       [2m—[0m       [38;2;203;213;225m1[0m [2mlocal[0m          [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;147;197;253mdev[0m
+            [38;2;239;68;68mfailed[0m  [2mno-cache[0m       [2m—[0m   [38;2;203;213;225m3.01s[0m     [2m—[0m      [2m—[0m       [2m—[0m       [38;2;203;213;225m1[0m [2mlocal[0m          [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;147;197;253mdev[0m
             [38;2;234;179;8mskipped[0m [2m—[0m              [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2m—[0m              [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;96;165;250msmoke[0m [2m• blocked by @demo/web#dev[0m
 
 [2m┌─[0m [38;2;6;182;212m▸[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;147;197;253mdev[0m [2m>[0m [1m[38;2;239;68;68mfailed (never ready: timed out, exit 143)[0m
@@ -125,13 +125,13 @@ What if the line never comes? `exec.timeout` caps the wait. Here `readyWhen` loo
 [2m├─[0m [1mOUTPUT[0m [2m────────────────────────────────────────────────────[0m
 
 
-  [32m[1mVITE[22m v7.3.8[39m  [2mready in [0m[1m119[22m[2m[0m ms[22m
+  [32m[1mVITE[22m v8.3.8[39m  [2mready in [0m[1m155[22m[2m[0m ms[22m
 
   [32m➜[39m  [1mLocal[22m:   [36mhttp://localhost:[1m5173[22m/[39m
 [2m  [32m➜[39m  [1mNetwork[22m[2m: use [22m[1m--host[22m[2m to expose[22m
-[38;2;239;68;68m[vx] @demo/web#dev: not ready: no line matched readyWhen /Listening on/ within 3s; killed[0m[0m
+[1m[38;2;234;179;8m[vx][0m[2m @demo/web#dev: not ready: no line matched readyWhen /Listening on/ within 3s; killed[0m
 
-[2m└─[0m [38;2;6;182;212m▸[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;147;197;253mdev[0m [2m──[0m [2m(3.00s)[0m [1m[38;2;239;68;68mfailed (never ready: timed out, exit 143)[0m
+[2m└─[0m [38;2;6;182;212m▸[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;147;197;253mdev[0m [2m──[0m [2m(3.01s)[0m [1m[38;2;239;68;68mfailed (never ready: timed out, exit 143)[0m
 ```
 
 Read the `[vx]` line: vx names the pattern and the wait, and skips `smoke`, which needed the server.
@@ -178,10 +178,10 @@ Edit `packages/ui/src/index.ts` and save:
 [2m┌─[0m [38;2;6;182;212m▸[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;147;197;253mdev[0m [2m>[0m $ vite --port 5173 --strictPort
 [38;2;6;182;212mwatching 2 projects · 2 tasks[0m
 
-  [32m[1mVITE[22m v7.3.8[39m  [2mready in [0m[1m134[22m[2m[0m ms[22m
+  [32m[1mVITE[22m v8.3.8[39m  [2mready in [0m[1m147[22m[2m[0m ms[22m
 
   [32m➜[39m  [1mLocal[22m:   [36mhttp://localhost:[1m5173[22m/[39m
-[0m[2m└─[0m [38;2;6;182;212m▸[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;147;197;253mdev[0m [2m──[0m [2m(165ms)[0m [38;2;6;182;212mrunning[0m
+[0m[2m└─[0m [38;2;6;182;212m▸[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;147;197;253mdev[0m [2m──[0m [2m(180ms)[0m [38;2;6;182;212mrunning[0m
 
 [2m  [32m➜[39m  [1mNetwork[22m[2m: use [22m[1m--host[22m[2m to expose[22m
 [0m  [38;2;6;182;212m▸[0m [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;147;197;253mdev[0m [2mrunning[0m
@@ -193,7 +193,7 @@ Edit `packages/ui/src/index.ts` and save:
   [38;2;6;182;212m▸[0m [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;147;197;253mdev[0m [2mrunning[0m
 ```
 
-Read the last frame: **still running**. vx rebuilt `@demo/ui`, kept the server, and `vite` reloaded the page itself.
+vx rebuilt `@demo/ui` with no frame: a dependency that passes prints nothing. The `dev` frame reads **still running**: vx kept the server, and `vite` reloaded the page itself.
 
 <Takeaway>edit a library and see it in the app without restarting anything.</Takeaway>
 
@@ -398,9 +398,12 @@ All of watch mode: [`vx watch`](../../cli/watch/).
 
 <Deeper level="details" title="When it goes wrong">
 
-- **`not ready after …: waiting for a line matching`.** The server has
-  not printed its `readyWhen` line. Fix the pattern, or set
-  `exec.timeout` to stop waiting.
+- **`not ready after 10 s: waiting for a line matching /…/`.** The
+  server has not printed its `readyWhen` line yet. Fix the pattern, or
+  set `exec.timeout` to stop waiting.
+- **`not ready: no line matched readyWhen /…/ within 3s; killed`.** The
+  wait passed `exec.timeout`. Fix the pattern to match a line the
+  server prints, or raise the timeout.
 - **A server outlives a `kill -9` of vx.** Nothing runs after `kill -9`,
   except a server that exits when its stdin closes (esbuild `--watch`).
 - **A daemon outlives Ctrl-C.** A daemon a task starts with `setsid` and an empty environment

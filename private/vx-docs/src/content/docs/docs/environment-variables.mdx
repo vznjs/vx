@@ -37,6 +37,9 @@ Read the `[vx]` line: vx names the variable it held back, and the fix.
 
 ```ts title="packages/web/vx.config.ts" ins={1}
 exec: { command: 'vitest run', env: { passThrough: ['API_URL'] } },
+inputs: { files: ['src/**'] },
+outputs: { files: [] },
+cache: true,
 ```
 
 ```ansi title="with passThrough"
@@ -66,6 +69,8 @@ exec: { command: 'vitest run', env: { passThrough: ['API_URL'] } },
 ```ts title="packages/web/vx.config.ts" ins={2}
 exec: { command: 'vitest run', env: { passThrough: ['API_URL'] } },
 inputs: { files: ['src/**'], env: ['API_URL'] },
+outputs: { files: [] },
+cache: true,
 ```
 
 ```ansi title="with inputs.env"
@@ -179,14 +184,22 @@ Edit `'production'` and the next run builds again.
 
 ## Hide a secret
 
-vx prints a secret's value as `***`, in the live output and in everything it stores:
+Pass a token like any other variable:
+
+```ts title="packages/web/vx.config.ts" mark={3}
+deploy: {
+  exec: { command: 'echo "uploading with $DEPLOY_TOKEN"', env: { passThrough: ['DEPLOY_TOKEN'] } },
+},
+```
+
+vx prints its value as `***`, in the live output and in everything it stores:
 
 ```ansi title="DEPLOY_TOKEN is masked by its name"
 [2m$[0m DEPLOY_TOKEN=tok_9f8e7d6c5b vx run deploy
 
 [2m┌─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;244;114;182mdeploy[0m [2m>[0m $ echo "uploading with $DEPLOY_TOKEN"
 uploading with ***
-[2m└─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;244;114;182mdeploy[0m [2m──[0m [2m(14ms)[0m [2msuccess[0m
+[2m└─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;244;114;182mdeploy[0m [2m──[0m [2m(13ms)[0m [2msuccess[0m
 ```
 
 The name holds `TOKEN`, so vx masks it with no setup. A secret named otherwise goes in `exec.env.secret`:
@@ -208,8 +221,8 @@ exec: {
 
 | List                   | The command sees it | The key sees it | Use it for                                                    |
 | ---------------------- | ------------------- | --------------- | ------------------------------------------------------------- |
-| `exec.env.passThrough` | yes                 | no              | tokens and machine-specific values (`GH_TOKEN`, `API_URL`)    |
-| `inputs.env`           | no                  | yes             | with `passThrough`: a variable that changes the result        |
+| `exec.env.passThrough` | yes                 | no              | a value that does not change the result (`GH_TOKEN`)          |
+| `inputs.env`           | no                  | yes             | with `passThrough`: a value that changes the result (`API_URL`) |
 | `exec.env.define`      | yes                 | yes             | a fixed value written in the config (`NODE_ENV: 'production'`) |
 | `exec.env.secret`      | —                   | —               | a secret whose name vx does not mask by itself                |
 
@@ -281,20 +294,20 @@ A flag beats its variable. The variable beats `.vx/workspace.ts`.
 
 A [pipeline](../ci/) sets variables for vx and its plugins with `env`. Tasks do not see them:
 
-```ts title=".vx/workspace.ts" mark={9}
+```ts title=".vx/workspace.ts" mark={7}
 import { defineWorkspace } from '@vzn/vx/config'
-import { dte } from '@vzn/vx-dte'
 
 export default defineWorkspace({
-  plugins: [dte({ relay: 'https://relay.example.com' })],
   pipelines: {
     ci: {
       tasks: ['lint', 'test', 'build'],
-      env: { VX_DTE_RELAY: 'https://relay-eu.example.com' },
+      env: { VX_RUN_CONCURRENCY: '50%' },
     },
   },
 })
 ```
+
+The `ci` pipeline runs half as many tasks at once as you have cores.
 
 <Takeaway>set up public bundler values, publish tokens and per-run settings without guessing.</Takeaway>
 
@@ -349,7 +362,7 @@ Name and value pairs, both strings. Default `{}`. In the key, as part of the con
 env: { define: { NODE_ENV: 'production', TZ: 'UTC' } },
 ```
 
-`define` beats `passThrough`, which beats the essential list. A task run on another machine gets the same values.
+`define` beats `passThrough`, which beats the variables every task gets. A task run on another machine gets the same values.
 
 ### `exec.env.secret`
 
