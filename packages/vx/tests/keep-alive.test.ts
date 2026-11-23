@@ -757,6 +757,44 @@ describe('a persistent server that dies before the run stops it', () => {
     ])
   }, 30_000)
 
+  // 2026-11-23: a dependency-only server vx stopped once its dependant
+  // ended printed its shutdown output in a block closing `running`
+  // (focused flow: the block prints at the graph's end).
+  it('a dependency-only server vx stopped closes its output block stopped', async () => {
+    await addProject(
+      root,
+      'app',
+      crashing(
+        "trap 'echo bye' TERM; echo READY; until [ -f go ]; do sleep 0.02; done; touch gone; while :; do sleep 0.02; done",
+        false,
+      ),
+    )
+    const proc = track(
+      Bun.spawn([process.execPath, BIN, 'run', 'app#e2e'], {
+        cwd: root,
+        stdout: 'pipe',
+        stderr: 'pipe',
+        env: {
+          ...process.env,
+          CI: '',
+          GITHUB_ACTIONS: '',
+          // The full grace: its `bye` is read long before the SIGKILL.
+          NO_COLOR: '1',
+        },
+      }),
+    )
+    const [out, err, code] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ])
+    const closes = (out + err)
+      .split('\n')
+      .filter((l) => l.startsWith('└─') && l.includes('app#srv'))
+      .map((l) => l.replace(/\(\d+(\.\d+)?m?s\)/, '(T)'))
+    expect([code, closes, out.includes('bye')]).toEqual([0, ['└─ ▸ app#srv ── (T) stopped'], true])
+  }, 30_000)
+
   // WD-11: the count of servers it stopped took in one already dead. Each
   // server exits only once its dependant has started, and e2e ends only
   // once vx has reaped both, however loaded the host (2026-11-23).

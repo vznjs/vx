@@ -4627,7 +4627,9 @@ copy/paste yields the verbatim output. Every block (and every live
 frame close in focused flow) is followed by a blank line so frames
 never collide with the next one-liner. A persistent task's frame is
 marked with a cyan `▸` after `┌─`/`└─`, and its close reads `running`
-(the child is still alive), `success` for a setup step ready by its
+(the child is still alive), `stopped` for the block of what it wrote
+since ready when vx had stopped it before that block printed,
+`success` for a setup step ready by its
 exit 0, or `failed (exit <n>)` for a server that died on its own before
 the run stopped it.
 

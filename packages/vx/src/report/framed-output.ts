@@ -1066,11 +1066,12 @@ export function formatFrameClose(
   outcome: TaskOutcome,
   colors: ColorSupport = NO_COLOR,
   kept = false,
+  stopped = false,
 ): string {
   const corner = (t: string) => paint('muted', t, colors)
   const mark = persistentMark(node, colors)
   // The opening edge, above the output, named the id whole.
-  const tail = `${whereNote(outcome, colors)} ${corner('──')}${closeTail(node, outcome, colors, kept)}`
+  const tail = `${whereNote(outcome, colors)} ${corner('──')}${closeTail(node, outcome, colors, kept, stopped)}`
   const close = `${corner('└─')} ${mark}${cutTaskId(node, colors, [`${mark}${tail}`])}${tail}`
   const violations = violationSection(outcome, colors)
   return violations.length === 0 ? close : `${violations.join('\n')}\n${close}`
@@ -1098,11 +1099,21 @@ function serving(node: TaskNode, o: TaskOutcome): boolean {
   )
 }
 
-/** The frame's close after its id: ` (<dur>) <status>`, `running` for a ready server, `still running` for a kept one. */
-function closeTail(node: TaskNode, o: TaskOutcome, colors: ColorSupport, kept: boolean): string {
+/**
+ * The frame's close after its id: ` (<dur>) <status>`, `running` for a ready
+ * server, `still running` for a kept one, `stopped` for one vx stopped.
+ */
+function closeTail(
+  node: TaskNode,
+  o: TaskOutcome,
+  colors: ColorSupport,
+  kept: boolean,
+  stopped = false,
+): string {
   if (!serving(node, o)) return formatBlockFooter(o, colors)
   if (kept) return ` ${paint('info', 'still running', colors)}`
-  return ` ${paint('muted', `(${formatElapsed(o.durationMs)})`, colors)} ${paint('info', 'running', colors)}`
+  const dur = paint('muted', `(${formatElapsed(o.durationMs)})`, colors)
+  return ` ${dur} ${stopped ? paint('muted', 'stopped', colors) : paint('info', 'running', colors)}`
 }
 
 /**
@@ -1119,6 +1130,8 @@ export function formatPersistentTailBlock(
   dropped: { stdout?: number; stderr?: number } = {},
   colors: ColorSupport = NO_COLOR,
   forwardArgs: readonly string[] = [],
+  /** vx stopped it before this block printed: it closes `stopped`, not `running`. */
+  stopped = false,
 ): string {
   const stdout = body.stdout ?? ''
   const stderr = body.stderr ?? ''
@@ -1126,7 +1139,7 @@ export function formatPersistentTailBlock(
   const lines: string[] = [formatFrameOpen(node, colors, forwardArgs)]
   pushStreamSection(lines, stdout, 'STDOUT (since ready)', 'ok', dropped.stdout ?? 0, colors)
   pushStreamSection(lines, stderr, 'STDERR (since ready)', 'error', dropped.stderr ?? 0, colors)
-  lines.push(formatFrameClose(node, outcome, colors))
+  lines.push(formatFrameClose(node, outcome, colors, false, stopped))
   return lines.join('\n') + '\n'
 }
 

@@ -137,6 +137,8 @@ export interface DefaultLogger extends Logger {
   holdStatus(): () => void
   /** `vx watch` kept this server up from the cycle before: its frame closes `still running`. */
   serverKept(id: string): void
+  /** vx stopped this ready server at the run's end: its since-ready block closes `stopped`. */
+  serverStopped(id: string): void
 }
 
 /**
@@ -262,6 +264,7 @@ export function defaultLogger(
   // `+=` is O(N²).
   const outputBuffers = new Map<string, OutputChunk[]>()
   const keptServers = new Set<string>()
+  const stoppedServers = new Set<string>()
   // Blocks are blank-line-delimited on both sides, so raw frame content never
   // touches a one-liner. A block leaves its trailing blank; a one-liner or
   // streamed output since needs a leading one.
@@ -910,6 +913,7 @@ export function defaultLogger(
     },
     holdStatus: () => writer.hold(),
     serverKept: (id) => void keptServers.add(id),
+    serverStopped: (id) => void stoppedServers.add(id),
     forecast(graph, load) {
       if (statusDead || forecastTimer !== null) return
       graphForecast = graph
@@ -970,6 +974,7 @@ export function defaultLogger(
                   { stdout: t.out.dropped, stderr: t.err.dropped },
                   colors,
                   forwardArgs,
+                  stoppedServers.has(t.node.id),
                 ),
               ),
             )

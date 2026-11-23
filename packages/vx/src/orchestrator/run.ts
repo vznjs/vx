@@ -1690,6 +1690,11 @@ async function runOnBus(
       keyed: keyedHeld,
       endedBeforeStop: stop.endedBeforeStop,
     })
+    // What a server wrote since ready prints at runEnd, after this: one vx
+    // stopped closes `stopped`, not `running`.
+    for (const id of servers.released) terminal?.serverStopped(id)
+    for (const id of persistentRegistry.keys())
+      if (!keepAlive.nodes.some((n) => n.id === id)) terminal?.serverStopped(id)
     // A `setup` hook may have written: what was stat'ed before it proves no hit.
     if (prepared.plugins.some((p) => p.setup !== undefined)) prepared.localCache.memo.dropWarm()
 
