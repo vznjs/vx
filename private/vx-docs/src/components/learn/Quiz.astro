@@ -13,9 +13,10 @@ interface Props {
 
 <style>
   .vx-quiz {
-    border: 1px dashed var(--vx-border);
-    border-radius: 8px;
-    padding: 0.6rem 0.9rem;
+    border: 1px dashed color-mix(in srgb, var(--vx-link) 45%, var(--vx-border));
+    border-radius: 12px;
+    padding: 0.75rem 1.1rem;
+    background: color-mix(in srgb, var(--vx-link) 5%, var(--vx-bg));
     margin: 1.25rem 0;
   }
   .vx-quiz > summary {
@@ -26,7 +27,7 @@ interface Props {
     font-family: var(--vx-mono);
     font-size: 0.7rem;
     text-transform: uppercase;
-    letter-spacing: 0.04em;
+    letter-spacing: 0.14em;
     color: var(--vx-link);
     margin-right: 0.4rem;
   }

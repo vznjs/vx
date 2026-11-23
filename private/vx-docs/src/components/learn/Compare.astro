@@ -23,8 +23,9 @@ interface Props {
   }
   .vx-compare-col {
     border: 1px solid var(--vx-border);
-    border-radius: 8px;
-    padding: 0.7rem 0.9rem;
+    border-radius: 12px;
+    padding: 0.9rem 1.1rem;
+    background: color-mix(in srgb, var(--vx-surface) 45%, var(--vx-bg));
     min-width: 0;
   }
   .vx-compare-col > :global(*:first-child) {
@@ -34,8 +35,8 @@ interface Props {
     font-family: var(--vx-mono);
     font-size: 0.8rem;
     text-transform: uppercase;
-    letter-spacing: 0.04em;
-    color: var(--vx-muted);
+    letter-spacing: 0.14em;
+    color: var(--vx-accent);
     margin: 0 0 0.5rem;
   }
 </style>

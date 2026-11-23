@@ -13,10 +13,11 @@ interface Props {
 
 <style>
   .vx-concept {
+    border: 1px solid color-mix(in srgb, var(--vx-accent) 30%, var(--vx-border));
     border-left: 3px solid var(--vx-accent);
-    background: var(--vx-accent-soft);
-    border-radius: 0 8px 8px 0;
-    padding: 0.7rem 1rem;
+    background: linear-gradient(100deg, var(--vx-accent-soft), color-mix(in srgb, var(--vx-surface) 60%, var(--vx-bg)) 70%);
+    border-radius: 12px;
+    padding: 0.9rem 1.15rem;
     margin: 1.25rem 0;
   }
   .vx-concept-head {
@@ -27,7 +28,7 @@ interface Props {
     font-family: var(--vx-mono);
     font-size: 0.7rem;
     text-transform: uppercase;
-    letter-spacing: 0.04em;
+    letter-spacing: 0.14em;
     color: var(--vx-accent);
   }
   .vx-concept-body :global(p) {

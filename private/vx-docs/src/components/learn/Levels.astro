@@ -47,27 +47,43 @@
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 0.4rem;
+    gap: 0.25rem;
+    width: fit-content;
+    max-width: 100%;
     margin: 1rem 0 1.5rem;
+    padding: 0.25rem;
+    border: 1px solid var(--vx-border);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--vx-surface) 60%, var(--vx-bg));
     font-family: var(--vx-mono);
     font-size: 0.8rem;
   }
   .vx-levels-label {
     color: var(--vx-muted);
-    margin-right: 0.2rem;
+    margin: 0 0.3rem 0 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    font-size: 0.7rem;
   }
   .vx-levels button {
     font: inherit;
     color: var(--vx-text);
-    background: var(--vx-surface);
-    border: 1px solid var(--vx-border);
+    background: transparent;
+    border: 1px solid transparent;
     border-radius: 999px;
-    padding: 0.25rem 0.75rem;
+    padding: 0.3rem 0.85rem;
     cursor: pointer;
+    transition:
+      color 0.15s,
+      background-color 0.15s;
+  }
+  .vx-levels button:hover {
+    color: var(--vx-fg);
   }
   .vx-levels button[aria-pressed='true'] {
     color: var(--vx-on-accent);
     background: var(--vx-accent);
     border-color: var(--vx-accent);
+    box-shadow: 0 0 16px color-mix(in srgb, var(--vx-accent) 25%, transparent);
   }
 </style>

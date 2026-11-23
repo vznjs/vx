@@ -208,7 +208,12 @@ export default defineConfig({
         Sidebar: './src/components/starlight/Sidebar.astro',
         ThemeProvider: './src/components/starlight/ThemeProvider.astro',
       },
-      customCss: ['./src/styles/theme.css', './src/styles/charts.css', './src/styles/blog.css'],
+      customCss: [
+        './src/styles/theme.css',
+        './src/styles/docs.css',
+        './src/styles/charts.css',
+        './src/styles/blog.css',
+      ],
       social: [
         { icon: 'github', label: 'GitHub', href: 'https://github.com/vznjs/vx' },
         { icon: 'blueSky', label: 'Bluesky', href: 'https://bsky.app/profile/vzn-vx.bsky.social' },

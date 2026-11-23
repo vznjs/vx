@@ -21,17 +21,19 @@ const n = level === 'patterns' ? 2 : 3
 <style>
   .vx-deeper {
     border: 1px solid var(--vx-border);
-    border-radius: 8px;
+    border-radius: 12px;
     margin: 1.25rem 0;
-    background: var(--vx-bg);
+    background: color-mix(in srgb, var(--vx-surface) 45%, var(--vx-bg));
   }
   .vx-deeper > summary {
     display: flex;
     align-items: center;
     gap: 0.6rem;
-    padding: 0.6rem 0.9rem;
+    padding: 0.75rem 1.1rem;
     cursor: pointer;
+    font-family: var(--vx-font-display);
     font-weight: 600;
+    letter-spacing: -0.01em;
     color: var(--vx-fg);
   }
   .vx-deeper[open] > summary {
@@ -42,10 +44,11 @@ const n = level === 'patterns' ? 2 : 3
     font-size: 0.7rem;
     font-weight: 500;
     text-transform: uppercase;
-    letter-spacing: 0.04em;
-    border-radius: 4px;
-    padding: 0.1rem 0.45rem;
-    border: 1px solid currentColor;
+    letter-spacing: 0.1em;
+    border-radius: 999px;
+    padding: 0.15rem 0.55rem;
+    border: 1px solid color-mix(in srgb, currentColor 50%, transparent);
+    background: color-mix(in srgb, currentColor 10%, transparent);
   }
   .vx-deeper-patterns {
     color: var(--vx-link);
@@ -54,6 +57,6 @@ const n = level === 'patterns' ? 2 : 3
     color: var(--vx-warn);
   }
   .vx-deeper-body {
-    padding: 0.25rem 0.9rem 0.9rem;
+    padding: 0.4rem 1.1rem 1rem;
   }
 </style>
