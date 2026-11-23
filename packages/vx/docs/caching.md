@@ -1264,7 +1264,9 @@ miss so keyed first writes back what git holds, so the command starts
 from what a clean checkout has and the entry under that key is what that
 checkout builds, even for a command that appends to the file. A staged
 or committed edit still moves the key, and a hand edit keys by its bytes
-and is never written back, even once a miss saved it. One an input glob names (`src/**` over its
+and is never written back, even once a miss saved it. Bytes a remote hit
+restored prove nothing (an ingest records no inputs here), so such a file
+keys by its bytes until a checkout puts git's version back. One an input glob names (`src/**` over its
 `routeTree.gen.ts`) keys by its bytes.
 A run that removes one (`rm dist/tracked.txt`) saves nothing: no hit
 could replay the removal, since its restore leaves the file too, so the

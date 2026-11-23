@@ -15,6 +15,7 @@ import {
   existsSync,
   fstatSync,
   lstatSync,
+  mkdirSync,
   mkdtempSync,
   openSync,
   readdirSync,
@@ -1899,10 +1900,13 @@ async function dropFilteredOids(
      */
     early?: Promise<GitRun | null> | undefined
   },
+  /** The changed files' index OIDs (`staged`), dropped by the same rule: no clean checkout keys by them either. */
+  staged?: Map<string, string>,
 ): Promise<void> {
-  if (trusted.size === 0) return
+  if (trusted.size === 0 && (staged?.size ?? 0) === 0) return
   if (autocrlfConverts(args.gitVars)) {
     trusted.clear()
+    staged?.clear()
     return
   }
   // Cheap checks first, and nothing is materialized until one of them fires —
@@ -1961,9 +1965,13 @@ async function dropFilteredOids(
   // size the index recorded (a moved size is `M` before git reads a byte).
   // Dropped here, vueuse's `* text=auto eol=lf` had vx stat all 1,124 of
   // its inputs itself: ~8 ms of every run (2026-11-12).
-  const res = await (args.early ?? args.spawnGit(CHECK_ATTR, [...trusted.keys()].join('\0')))
+  const asked = staged === undefined ? [...trusted.keys()] : [...trusted.keys(), ...staged.keys()]
+  const res = await (args.early ?? args.spawnGit(CHECK_ATTR, asked.join('\0')))
   if (res === null || res.exitCode !== 0) return
-  for (const rel of parseCheckAttrOutput(res.stdout, false)) trusted.delete(rel)
+  for (const rel of parseCheckAttrOutput(res.stdout, false)) {
+    trusted.delete(rel)
+    staged?.delete(rel)
+  }
 }
 
 /**
@@ -2859,24 +2867,21 @@ export async function startGitEnumeration(
   // `hashFile`, which hashes the worktree bytes — the source that was correct
   // all along. The only cost is the read, so the gate below is about paying it
   // ONLY where a filter can actually apply.
-  // A filtered file's staged OID is no clean checkout's key part either: one
-  // pass over both (their paths are apart), only when there is a staged one.
-  const filtered = staged.size === 0 ? trusted : new Map([...trusted, ...staged])
-  await dropFilteredOids(filtered, {
-    listed: all,
-    ignoredAttributes: parsedStatus?.ignoredAttributes ?? false,
-    workspaceRoot,
-    gitDir,
-    gitPrefix,
-    pathspecs,
-    gitVars: vars !== null && vars.exitCode === 0 ? vars.stdout : '',
-    spawnGit,
-    early,
-  })
-  if (filtered !== trusted) {
-    for (const rel of trusted.keys()) if (!filtered.has(rel)) trusted.delete(rel)
-    for (const rel of staged.keys()) if (!filtered.has(rel)) staged.delete(rel)
-  }
+  await dropFilteredOids(
+    trusted,
+    {
+      listed: all,
+      ignoredAttributes: parsedStatus?.ignoredAttributes ?? false,
+      workspaceRoot,
+      gitDir,
+      gitPrefix,
+      pathspecs,
+      gitVars: vars !== null && vars.exitCode === 0 ? vars.stdout : '',
+      spawnGit,
+      early,
+    },
+    staged,
+  )
   if (vars !== null && vars.exitCode === 0 && fileModeIgnored(vars.stdout)) {
     restampModes(trusted, workspaceRoot)
     // As a clean file is keyed, or a rewrite's mode moved the key.
@@ -3113,6 +3118,8 @@ export function writeIndexBlobs(files: ReadonlyMap<string, string>): void {
     // The mode a checkout gives it: the index's, under the umask.
     const want = (held.startsWith('100755:') ? 0o777 : 0o666) & ~process.umask()
     const temp = `${abs}.vx-${process.pid}-${Date.now().toString(36)}`
+    // A failed attempt may have removed its directory: a checkout makes it.
+    mkdirSync(path.dirname(abs), { recursive: true })
     try {
       writeFileSync(temp, proc.stdout)
       chmodSync(temp, want)

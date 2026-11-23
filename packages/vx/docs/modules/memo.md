@@ -40,7 +40,7 @@ export interface StoreMemo {
   readonly folds: FoldMemo
   loadOutputFilesBatch(hashes: readonly string[]): Map<string, OutputFileRow[]>
   stampedRowsOf(hash: string): readonly OutputFileRow[] | undefined // as this process last stamped them: no query
-  foldedStamps(files: readonly StampProbe[]): Set<string> // the `ino:ctime` among files' a stamp (pending or flushed) holds under an entry whose entry_inputs folded the file's oid at rel
+  foldedStamps(files: readonly StampProbe[]): Set<string> // each of files (`rel\0ino:ctime`) a stamp (pending or flushed) holds under an entry whose entry_inputs folded the file's oid at rel
   isOutputsCurrent(projectDir: string, expected: readonly OutputFileRow[]): boolean
   recordOutputDirs(
     hash: string,

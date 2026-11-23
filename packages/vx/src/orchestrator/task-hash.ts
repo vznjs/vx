@@ -724,7 +724,7 @@ async function heldOutputs(
 const foldedOf = new WeakMap<GitFilesCache, ReadonlySet<string>>()
 
 /**
- * The `ino:ctime` identities of the run's changed tracked files as it first
+ * The `rel\0ino:ctime` of each of the run's changed tracked files, as it first
  * asks that a stamp holds under an entry whose key folded their index OID
  * (`foldedStamps`). One read of the stamps per run.
  */

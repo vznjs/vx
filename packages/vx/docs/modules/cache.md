@@ -126,7 +126,7 @@ export interface TaskMemo {
   hashFile(filePath: string): Promise<string>
   loadOutputFilesBatch(hashes: readonly string[]): Map<string, OutputFileRow[]>
   stampedRowsOf?(hash: string): readonly OutputFileRow[] | undefined // as this process last stamped them: no query
-  foldedStamps?(files: readonly StampProbe[]): Set<string> // the `ino:ctime` among files' a stamp holds under an entry whose key folded the file's OID: bytes vx left under git's version (one scan, once a run)
+  foldedStamps?(files: readonly StampProbe[]): Set<string> // each of files (`rel\0ino:ctime`) a stamp holds under an entry whose key folded the file's OID: bytes vx left under git's version (one scan, once a run)
   isOutputsCurrent(projectDir: string, expected: readonly OutputFileRow[]): boolean
   recordOutputDirs?(
     hash: string,

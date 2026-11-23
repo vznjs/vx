@@ -285,9 +285,9 @@ export interface TaskMemo {
    */
   stampedRowsOf?(hash: string): readonly OutputFileRow[] | undefined
   /**
-   * The identities (`ino:ctime`, floored) among `files`' that an output stamp
+   * Each of `files` (`rel\0ino:ctime`, ctime floored) that an output stamp
    * holds under an entry whose key folded the file's OID (optional): a file
-   * still at one holds bytes a save or restore here left under a key that
+   * still at it holds bytes a save or restore here left under a key that
    * took git's version. One scan of the stamps.
    */
   foldedStamps?(files: readonly StampProbe[]): Set<string>
