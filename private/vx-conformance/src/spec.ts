@@ -348,6 +348,14 @@ export type Feature =
   | 'package-manager'
   /** A workspace that is not a git repository: files keyed by reading them. */
   | 'without-git'
+  /** A task's own run time in the run's report. */
+  | 'report-duration'
+  /** A task's CPU time in the run's report. */
+  | 'report-cpu'
+  /** A task's peak memory in the run's report. */
+  | 'report-memory'
+  /** The bytes of a task's outputs in the run's report. */
+  | 'report-output-bytes'
 
 export interface Case {
   /** `category/slug`, unique. */
@@ -372,12 +380,43 @@ export function defineCase(c: Case): Case {
   return c
 }
 
-/** What a case needs: what it names, and a package manager when a step installs. */
+/** Each report metric, and the feature a tool needs to report it. */
+const REPORTS: Record<Exclude<keyof TaskReport, 'cache'>, Feature> = {
+  durationMs: 'report-duration',
+  cpuMs: 'report-cpu',
+  peakMemoryBytes: 'report-memory',
+  outputBytes: 'report-output-bytes',
+}
+
+/**
+ * What a case needs: what it names, and every feature its steps use, so a
+ * tool without one scores the case N/A and never fails it for a missing
+ * feature (2026-11-23).
+ */
 export function needsOf(c: Case): Feature[] {
-  const needs = c.needs ?? []
-  return c.steps.some((s) => 'install' in s) && !needs.includes('package-manager')
-    ? [...needs, 'package-manager']
-    : needs
+  const needs = new Set(c.needs)
+  for (const s of c.steps) {
+    if ('install' in s) needs.add('package-manager')
+    if ('affected' in s) needs.add('affected')
+    if ('watch' in s) needs.add('watch')
+    if (!('run' in s)) continue
+    if (s.only || s.select) needs.add('filter')
+    for (const sel of s.select ?? []) {
+      if (sel.with) needs.add('select-walk')
+      if (sel.dir !== undefined) needs.add('select-dir')
+      if (sel.tag !== undefined) needs.add('select-tag')
+    }
+    if (s.also?.length) needs.add('multi-task')
+    if (s.continue) needs.add('continue')
+    if (s.failFast) needs.add('fail-fast')
+    if (s.force) needs.add('force')
+    if (s.readOnlyCache) needs.add('read-only-cache')
+    if (s.dry) needs.add('dry-run')
+    if (s.verify) needs.add('determinism-check')
+    for (const metric of Object.keys(s.expect.report ?? {}))
+      if (metric in REPORTS) needs.add(REPORTS[metric as keyof typeof REPORTS])
+  }
+  return [...needs]
 }
 
 /** A project's directory, workspace-relative. */

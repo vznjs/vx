@@ -7,6 +7,7 @@
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
+import config from '../vx.config.ts'
 import { IMAGES, buildCommand, tagsFor } from '../scripts/release-images.ts'
 
 const ROOT = path.resolve(import.meta.dir, '..', '..', '..')
@@ -86,15 +87,12 @@ describe('release.docker', () => {
     expect([...named].filter((n) => !IMAGES.some((i) => i.name === n))).toEqual([])
   })
 
-  it('runs on every release, with only packages: write', () => {
+  it('runs on every release, last, in a job that may push packages', () => {
     const doc = Bun.YAML.parse(
       readFileSync(path.join(ROOT, '.github/workflows/npm.yml'), 'utf8'),
-    ) as {
-      jobs: Record<string, { permissions?: Record<string, string>; steps: { run?: string }[] }>
-    }
-    const job = doc.jobs['images']!
-    expect(job.permissions).toEqual({ contents: 'read', packages: 'write' })
-    expect(job.steps.some((s) => s.run?.includes('run release.docker --filter @vzn/vx'))).toBe(true)
+    ) as { jobs: Record<string, { permissions?: Record<string, string> }> }
+    expect(doc.jobs['release']?.permissions?.['packages']).toBe('write')
+    expect(config.tasks?.['release']?.dependsOn).toEqual(['release.docker'])
     expect(existsSync(path.join(ROOT, 'packages/vx/scripts/release-images.ts'))).toBe(true)
   })
 })

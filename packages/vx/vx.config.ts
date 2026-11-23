@@ -147,7 +147,7 @@ const shardTask = (i: number, n = SHARD_COUNT, flags = '') => ({
 // darwin-arm64 on a Mac worker; plain check.bun.binary on the run's own Linux.
 const checkBinary = (platforms?: readonly ('linux-arm64' | 'darwin-arm64')[]) => ({
   description:
-    'compile the host binary the way release.yml does; it must launch and report the manifest version',
+    'compile the host binary the way npm.yml does; it must launch and report the manifest version',
   dependsOn: ['install'],
   exec: {
     command: 'bun scripts/check-binary.ts',
@@ -255,7 +255,9 @@ const compileTasks = Object.fromEntries(
       description: `compile the standalone binary (${target})`,
       dependsOn: ['install'],
       exec: {
-        command: `bun build --compile --no-compile-autoload-dotenv --compile-autoload-package-json --minify --bytecode --format=esm --splitting --target=bun-${target} src/bin.ts --outfile dist/vx-${target}`,
+        // A release's version, defined into src/version.ts; empty off a release.
+        command: `bun build --compile --no-compile-autoload-dotenv --compile-autoload-package-json --minify --bytecode --format=esm --splitting --target=bun-${target} --define "VX_RELEASE=\\"\${VX_RELEASE_VERSION#v}\\"" src/bin.ts --outfile dist/vx-${target}`,
+        env: { passThrough: ['VX_RELEASE_VERSION'] },
         sandbox: {
           allow: {
             systemInfo: ['vfs.disk-space'],
@@ -266,16 +268,21 @@ const compileTasks = Object.fromEntries(
           ignore: { write: ['*.bun-build'] },
         },
       },
-      inputs: { files: SOURCES, runtime: BUN_VERSION },
+      inputs: { files: SOURCES, runtime: BUN_VERSION, env: ['VX_RELEASE_VERSION'] },
       outputs: { files: [`dist/vx-${target}`] },
       cache: true,
     },
   ]),
 )
 
-// The release steps npm.yml, release.yml and auto-release.yml run
-// (scripts/release.ts, scripts/auto-release.ts). Uncached, since each has a
-// side effect, and in no pipeline: only a workflow names them.
+// A release (npm.yml: `vx pipeline npm` over the release workers,
+// vx-release-worker.yml; scripts/release*.ts). Uncached, since each has a
+// side effect. A darwin step runs on a Mac (it can re-sign), a linux one on
+// linux-x64; an uncached step that writes files keeps its dependants on its
+// worker, so each platform's chain stays on one machine. Order: the binaries
+// proven, the npm platform packages, attestations, the GitHub uploads (the
+// darwin one publishes the release), then @vzn/vx and the plugins on npm,
+// then the server images.
 const RELEASE_VERSION = { passThrough: ['VX_RELEASE_VERSION'] }
 // What `npm publish --provenance` reads under trusted publishing: the OIDC
 // token request (npm's lib/utils/oidc.js), the CI detection (ci-info) and
@@ -307,43 +314,48 @@ const NPM_PUBLISH_NETWORK = [
   'tuf-repo-cdn.sigstore.dev',
 ]
 const NPM_HOME = '~/.npm/'
+const LINUX = ['linux-x64'] as const
+const releasePlatform = (os: 'linux' | 'darwin') => (os === 'darwin' ? MAC : LINUX)
+// macOS resolves a host through configd: the darwin publish was refused it
+// after its last package (0.0.489).
+const DNS = ['com.apple.SystemConfiguration.DNSConfiguration']
+// A step that reads the linux binaries names their compiles, whose cached
+// outputs its worker restores; the darwin ones read prove's re-signed files.
+const binaries = (os: 'linux' | 'darwin') =>
+  os === 'linux' ? ['compile.bun.linux-x64', 'compile.bun.linux-arm64'] : []
 const releaseTasks = {
-  // Each workflow step names its own release.* task: a Mac runner may run
-  // only Mac tasks on CI, so no one group serves every job.
   release: {
-    description:
-      'every release step: npm, GitHub and Docker publishing (the release workflows run each)',
-    dependsOn: ['release.*'],
-  },
-  'release.npm.stamp': {
-    description: 'stamp VX_RELEASE_VERSION into package.json, the manifest the binary inlines',
-    exec: {
-      command: 'bun scripts/release.ts stamp',
-      env: RELEASE_VERSION,
-      sandbox: { allow: { read: ['.'], write: ['package.json'] } },
-    },
-  },
-  'release.npm.check': {
-    description: 'make sure npm can publish with provenance (>= 11.5.1, sigstore intact)',
-    exec: {
-      command: 'bun scripts/release.ts npm',
-      sandbox: {
-        allow: {
-          read: ['.'],
-          write: ['dist/npm-cli/', NPM_HOME],
-          network: ['registry.npmjs.org'],
-        },
-      },
-    },
+    description: 'the whole release: GitHub assets, npm packages and server images',
+    dependsOn: ['release.docker'],
   },
   ...Object.fromEntries(
     (['linux', 'darwin'] as const).flatMap((os) => [
       [
+        `release.npm.${os}.check`,
+        {
+          description: 'make sure npm can publish with provenance (>= 11.5.1, sigstore intact)',
+          exec: {
+            command: 'bun scripts/release.ts npm',
+            platforms: releasePlatform(os),
+            sandbox: {
+              allow: {
+                read: ['.'],
+                write: ['dist/npm-cli/', NPM_HOME],
+                network: ['registry.npmjs.org'],
+                machLookup: DNS,
+              },
+            },
+          },
+        },
+      ],
+      [
         `release.npm.${os}.prove`,
         {
           description: `the ${os} binaries launch (re-signed only if macOS refuses) and report VX_RELEASE_VERSION`,
+          dependsOn: [`compile.bun.${os}-x64`, `compile.bun.${os}-arm64`],
           exec: {
             command: `bun scripts/release.ts prove ${os}`,
+            platforms: releasePlatform(os),
             env: RELEASE_VERSION,
             sandbox: {
               allow: {
@@ -379,8 +391,10 @@ const releaseTasks = {
         `release.npm.${os}.assemble`,
         {
           description: `assemble the ${os} npm packages under dist/npm (scripts/build-npm.ts)`,
+          dependsOn: [`release.npm.${os}.prove`, ...binaries(os)],
           exec: {
             command: `bun scripts/release.ts assemble ${os}`,
+            platforms: releasePlatform(os),
             env: RELEASE_VERSION,
             sandbox: {
               allow: {
@@ -397,17 +411,96 @@ const releaseTasks = {
         `release.npm.${os}.publish`,
         {
           description: `npm publish the ${os} packages under dist/npm, skipping any already on the registry`,
+          // @vzn/vx after the darwin packages its optionalDependencies name:
+          // the darwin upload follows the darwin publish on its Mac.
+          dependsOn: [
+            `release.npm.${os}.assemble`,
+            `release.npm.${os}.check`,
+            ...(os === 'linux' ? ['release.github.darwin.upload'] : []),
+          ],
           exec: {
             command: `bun scripts/release.ts publish ${os}`,
+            platforms: releasePlatform(os),
             env: { passThrough: NPM_OIDC_ENV, secret: ['ACTIONS_ID_TOKEN_REQUEST_TOKEN'] },
             sandbox: {
               allow: {
                 read: ['.'],
                 write: [NPM_HOME],
                 network: NPM_PUBLISH_NETWORK,
-                // macOS resolves the registry through configd: the darwin
-                // publish was refused it after its last package (0.0.489).
-                machLookup: ['com.apple.SystemConfiguration.DNSConfiguration'],
+                machLookup: DNS,
+              },
+            },
+          },
+        },
+      ],
+      [
+        `release.github.${os}.attest`,
+        {
+          description: `attest the build provenance of the ${os} binaries, after any re-sign (scripts/release-attest.ts)`,
+          dependsOn: [`release.npm.${os}.prove`, ...binaries(os)],
+          exec: {
+            command: `bun scripts/release-attest.ts ${os}`,
+            platforms: releasePlatform(os),
+            env: {
+              // The job's OIDC token signs it; the repo's API stores it.
+              passThrough: [
+                'GH_TOKEN',
+                'ACTIONS_ID_TOKEN_REQUEST_URL',
+                'ACTIONS_ID_TOKEN_REQUEST_TOKEN',
+                'GITHUB_REPOSITORY',
+                'GITHUB_SERVER_URL',
+                'GITHUB_API_URL',
+              ],
+              secret: ['GH_TOKEN', 'ACTIONS_ID_TOKEN_REQUEST_TOKEN'],
+            },
+            sandbox: {
+              allow: {
+                read: ['.', '../../node_modules/'],
+                network: [
+                  'api.github.com',
+                  '*.actions.githubusercontent.com',
+                  'fulcio.sigstore.dev',
+                  'rekor.sigstore.dev',
+                  'tuf-repo-cdn.sigstore.dev',
+                ],
+                machLookup: DNS,
+              },
+            },
+          },
+        },
+      ],
+      [
+        `release.github.${os}.upload`,
+        {
+          description: `attach the ${os} binaries to the draft release${os === 'darwin' ? ', then publish it' : ''} (scripts/release-assets.ts)`,
+          dependsOn: [
+            `release.github.${os}.attest`,
+            ...binaries(os),
+            // The last upload publishes the release: the linux binaries and
+            // the darwin npm packages are out first.
+            ...(os === 'darwin'
+              ? [
+                  'release.npm.darwin.prove',
+                  'release.npm.darwin.publish',
+                  'release.github.linux.upload',
+                ]
+              : []),
+          ],
+          exec: {
+            command: `bun scripts/release-assets.ts ${os}${os === 'darwin' ? ' --publish' : ''}`,
+            platforms: releasePlatform(os),
+            env: {
+              passThrough: ['VX_RELEASE_VERSION', 'GITHUB_REPOSITORY', 'GH_TOKEN'],
+              secret: ['GH_TOKEN'],
+            },
+            sandbox: {
+              allow: {
+                read: ['.'],
+                network: ['api.github.com', 'uploads.github.com'],
+                machLookup: DNS,
+                // Bun on Apple Silicon reads it here; the denial failed the
+                // darwin upload after the release published.
+                systemInfo: ['hw.optional.neon'],
               },
             },
           },
@@ -415,51 +508,30 @@ const releaseTasks = {
       ],
     ]),
   ),
+  'release.npm.served': {
+    description: 'wait until npm serves every published tarball (HTTP 200), up to 15 min',
+    dependsOn: ['release.npm.linux.publish'],
+    exec: {
+      command: 'bun scripts/release.ts served',
+      platforms: LINUX,
+      env: RELEASE_VERSION,
+      sandbox: { allow: { read: ['.'], network: ['registry.npmjs.org'] } },
+    },
+  },
   // No sandbox: it drives the Docker daemon, as the servers' test.docker do.
   'release.docker': {
     description:
       'push the server images to ghcr.io/vznjs at VX_RELEASE_VERSION (scripts/release-images.ts)',
+    dependsOn: ['release.npm.served'],
     exec: {
       command: 'bun scripts/release-images.ts',
+      platforms: LINUX,
       env: {
         passThrough: ['VX_RELEASE_VERSION', 'GITHUB_ACTOR', 'GITHUB_TOKEN'],
         secret: ['GITHUB_TOKEN'],
       },
     },
   },
-  'release.npm.served': {
-    description: 'wait until npm serves every published tarball (HTTP 200), up to 15 min',
-    exec: {
-      command: 'bun scripts/release.ts served',
-      env: RELEASE_VERSION,
-      sandbox: { allow: { read: ['.'], network: ['registry.npmjs.org'] } },
-    },
-  },
-  ...Object.fromEntries(
-    (['linux', 'darwin'] as const).map((os) => [
-      `release.github.${os}`,
-      {
-        description: `attach the ${os} binaries to the draft release${os === 'darwin' ? ', then publish it' : ''} (scripts/release-assets.ts)`,
-        exec: {
-          command: `bun scripts/release-assets.ts ${os}${os === 'darwin' ? ' --publish' : ''}`,
-          env: {
-            passThrough: ['VX_RELEASE_VERSION', 'GITHUB_REPOSITORY', 'GH_TOKEN'],
-            secret: ['GH_TOKEN'],
-          },
-          sandbox: {
-            allow: {
-              read: ['.'],
-              network: ['api.github.com', 'uploads.github.com'],
-              machLookup: ['com.apple.SystemConfiguration.DNSConfiguration'],
-              // Bun on Apple Silicon reads it here; the denial failed
-              // release.yml's sign-darwin job after the release published.
-              systemInfo: ['hw.optional.neon'],
-            },
-          },
-        },
-      },
-    ]),
-  ),
   'release.github.tag': {
     description: 'tag a green main commit with its next version, release it, dispatch the publish',
     exec: {
@@ -538,7 +610,7 @@ export default defineProject({
     deploy: {
       dependsOn: ['deploy.*'],
     },
-    // main's: release.yml publishes a release before its post lands.
+    // main's: npm.yml publishes a release before its post lands.
     'deploy.github': {
       description: 'give each GitHub release the body of its release post on the site',
       exec: {

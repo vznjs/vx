@@ -39,6 +39,7 @@ export {
   taskEntryHashes,
   vxCacheEntries,
 } from './cache.js'
+export { historyRetentionMs } from './prune.js'
 export { ABSENT_INPUT, absentOr, CACHE_VERSION, foldHead } from './key-fold.js'
 export { behindLink, filesBehind } from './linked-inputs.js'
 export {
@@ -47,6 +48,7 @@ export {
   cleanOutputs,
   deferRemovals,
   committedFiles,
+  committedOutputOids,
   cleanWorkspaceOutputs,
   declaresInput,
   namedIgnoredReach,
@@ -90,6 +92,7 @@ export {
   type LazyGitEnumeration,
   type GitEnumeration,
   type BlobSizeMemo,
+  writeIndexBlobs,
 } from './git-inputs.js'
 export {
   type ArtifactInfo,

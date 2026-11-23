@@ -57,12 +57,12 @@ project config may take, in the order the loader prefers them.
 
 ### Versioning
 
-`VERSION` is `package.json`'s `version`, imported as JSON (Bun inlines
-it under `bun build --compile`), so the banner cannot drift from the
-manifest. The tree says `0.0.0`; a release (`npm.yml`, on a published
-GitHub release or by hand) stamps the tag's version into the manifest
-before compiling the binaries and publishing, so only a published build
-carries a real number.
+`VERSION` is `package.json`'s `version`, imported as JSON, so the banner
+cannot drift from the manifest. The tree says `0.0.0`; a release binary
+says the release's: `compile.bun.*` defines `VX_RELEASE` as
+`VX_RELEASE_VERSION` (keyed, so a release compiles apart from a change's
+run), which `VERSION` prefers. A published npm package carries the
+version in its own manifest.
 
 ### Tests
 

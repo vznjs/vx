@@ -5,6 +5,7 @@ import {
   type FoldMemo,
   FILE_HASH_RACY_MS,
   racyWindowMs,
+  type StampProbe,
   stampGrainMs,
   WORKSPACE_OUTPUT_PREFIX,
 } from '../memo/index.js'
@@ -15,6 +16,7 @@ import {
   absentOr,
   addedInput,
   behindLink,
+  committedOutputOids,
   filesToken,
   foldHead,
   hashFileSeen,
@@ -333,18 +335,23 @@ export async function describeTaskInputs(args: ComputeHashArgs): Promise<{
   added: () => string | undefined
   /** The fold up to the files (`foldHead`), for a fold memo's probe. */
   head: () => bigint
+  /**
+   * The committed outputs keyed by what git holds while their bytes differ
+   * (`heldOutputs`): a miss writes it back before the command
+   * (`OutputGuard.prepare`), so the facts and the executor's inputs carry it.
+   */
+  held?: ReadonlyMap<string, string>
 }> {
   const hashedAt = Date.now()
-  const { input, listings } = await resolveKeyInput(args)
+  const { input, listings, held } = await resolveKeyInput(args)
+  const known = (f: string): string | undefined => input.fileHashes?.get(f)
   // Resolved files arrive in order: sorting them again was 170 ms of a
   // 9,603-task cold run's thread.
   const sorted = sortedNames(input.inputFiles) ? input.inputFiles : [...input.inputFiles].sort()
   const ctimes = new Map<string, number>()
   const digests = await Promise.all(
     sorted.map(
-      (f) =>
-        input.fileHashes?.get(f) ??
-        hashFileSeen(args.cache.memo, f, (c) => ctimes.set(f, c)).catch(absentOr),
+      (f) => known(f) ?? hashFileSeen(args.cache.memo, f, (c) => ctimes.set(f, c)).catch(absentOr),
     ),
   )
   // Learned BEFORE the key folds it: an edit in between then reads as a
@@ -375,7 +382,7 @@ export async function describeTaskInputs(args: ComputeHashArgs): Promise<{
     const fact: InputFact = {
       path: f,
       digest: digests[i]!,
-      since: input.fileHashes?.has(f) === true ? indexedAt : hashedAt,
+      since: known(f) !== undefined ? indexedAt : hashedAt,
     }
     const ctimeMs = ctimes.get(f)
     if (ctimeMs !== undefined) fact.ctimeMs = ctimeMs
@@ -431,6 +438,7 @@ export async function describeTaskInputs(args: ComputeHashArgs): Promise<{
     hash,
     facts,
     describedAt: hashedAt,
+    ...(held !== undefined ? { held } : {}),
     readUpstream,
     head: () => {
       const { captureInto: _rows, ...bare } = input
@@ -582,7 +590,12 @@ function inputsArgs(args: ComputeHashArgs): ResolveInputsArgs {
 async function resolveKeyInput(
   args: ComputeHashArgs,
   skipFiles = false,
-): Promise<{ input: CacheKeyInput; listings: InputListing[] }> {
+): Promise<{
+  input: CacheKeyInput
+  listings: InputListing[]
+  /** The `fileHashes` that are what git holds, not the bytes (`heldOutputs`). */
+  held?: ReadonlyMap<string, string>
+}> {
   const cfg = args.node.config
   const resolved = await resolveInputs({
     ...inputsArgs(args),
@@ -666,7 +679,71 @@ async function resolveKeyInput(
     ...(args.node.platform !== undefined ? { platform: args.node.platform } : {}),
     ...(args.captureInto !== undefined ? { captureInto: args.captureInto } : {}),
   }
-  return { input, listings: resolved.listings }
+  const held = skipFiles ? undefined : await heldOutputs(args, resolved.files)
+  if (held === undefined) return { input, listings: resolved.listings }
+  const merged = fileHashes === undefined ? held : new Map([...fileHashes, ...held])
+  return { input: { ...input, fileHashes: merged }, listings: resolved.listings, held }
+}
+
+/**
+ * The committed outputs no input glob names whose key part is what git holds
+ * (`committedOutputOids`), or undefined for none: each whose bytes on disk a
+ * save or restore here left under a key that folded that version
+ * (`foldedIdentities`). A build that rewrites a committed
+ * `dist/index.js.map` with new bytes each run then hits, and a miss first
+ * writes back what git holds (`OutputGuard.prepare`), so the entry under that
+ * key is what a clean checkout builds. A hand edit keys by its bytes, as any
+ * input does, and is never written over, even once a miss saved it.
+ */
+async function heldOutputs(
+  args: ComputeHashArgs,
+  files: readonly string[],
+): Promise<ReadonlyMap<string, string> | undefined> {
+  const run = args.gitFilesCache
+  if (run === undefined || run.stagedOids.size === 0) return undefined
+  const found = committedOutputOids(
+    args.node.config,
+    args.node.projectDir,
+    args.workspaceRoot,
+    files,
+    run.stagedOids,
+  )
+  if (found === undefined) return undefined
+  const proven = foldedIdentities(run, args.cache.memo, args.workspaceRoot)
+  const held = new Map<string, string>()
+  for (const [abs, oid] of found) {
+    // Asked now, not at the run's start: a task's write since is no proof.
+    const st = lstatSync(abs, { throwIfNoEntry: false })
+    const rel = relPosix(args.workspaceRoot, abs)
+    if (st?.isFile() === true && proven.has(`${rel}\0${st.ino}:${Math.floor(st.ctimeMs)}`))
+      held.set(abs, oid)
+  }
+  return held.size > 0 ? held : undefined
+}
+
+const foldedOf = new WeakMap<GitFilesCache, ReadonlySet<string>>()
+
+/**
+ * The `rel\0ino:ctime` of each of the run's changed tracked files, as it first
+ * asks that a stamp holds under an entry whose key folded their index OID
+ * (`foldedStamps`). One read of the stamps per run.
+ */
+function foldedIdentities(
+  run: GitFilesCache,
+  memo: CacheLayer['memo'],
+  workspaceRoot: string,
+): ReadonlySet<string> {
+  let proven = foldedOf.get(run)
+  if (proven !== undefined) return proven
+  const probes: StampProbe[] = []
+  for (const [abs, oid] of run.stagedOids) {
+    const st = lstatSync(abs, { throwIfNoEntry: false })
+    if (st?.isFile() === true)
+      probes.push({ ino: st.ino, ctimeMs: st.ctimeMs, rel: relPosix(workspaceRoot, abs), oid })
+  }
+  proven = memo.foldedStamps?.(probes) ?? new Set<string>()
+  foldedOf.set(run, proven)
+  return proven
 }
 
 /**

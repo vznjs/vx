@@ -53,7 +53,8 @@ the `history` module's (history.md), and the tables `index-db`'s
 - `save.ts` — `save` / `ingest`: pack, write and index an entry, batched
   index writes, the off-thread checkpoints.
 - `prune.ts` — `prune` / `stats` / `orphanStats`: eviction, orphans,
-  and the 30-day history retention.
+  and the history retention (`historyRetentionMs`, 30 days by default;
+  `vx cache clean` names it).
 - `cache-dir.ts` — the directory itself: made private, its `*` ignore,
   the manifests and the locks a clean takes (`holdCacheDir`, `holdStore`).
 - `cache.ts` — the `Cache` class: it opens a `StoreIndex` and delegates
@@ -125,6 +126,7 @@ export interface TaskMemo {
   hashFile(filePath: string): Promise<string>
   loadOutputFilesBatch(hashes: readonly string[]): Map<string, OutputFileRow[]>
   stampedRowsOf?(hash: string): readonly OutputFileRow[] | undefined // as this process last stamped them: no query
+  foldedStamps?(files: readonly StampProbe[]): Set<string> // each of files (`rel\0ino:ctime`) a stamp holds under an entry whose key folded the file's OID: bytes vx left under git's version (one scan, once a run)
   isOutputsCurrent(projectDir: string, expected: readonly OutputFileRow[]): boolean
   recordOutputDirs?(
     hash: string,
@@ -182,6 +184,10 @@ export function hashFileSeen(
 // asked per file. A file that cannot be hashed is absent: the key's fold
 // asks `hashFile` for it, and the error is that call's.
 export function hashFilesOf(memo: TaskMemo, files: readonly string[]): Promise<Map<string, string>>
+
+// How long `vx cache clean` keeps history rows (prune.ts): `history.retention`
+// (`VX_HISTORY_RETENTION`), 30 days by default. The clean line names it.
+export function historyRetentionMs(): number
 
 // What a symlinked directory input keys (linked-inputs.ts): every regular
 // file and link under `dir`, relative and sorted, `.git`, `node_modules`,
@@ -1430,6 +1436,18 @@ export async function cleanWorkspaceOutputs(args: {
   kept?: string[]
 }): Promise<string[]>
 
+// A committed file under the task's own outputs that no input glob names,
+// by the index OID git holds where its bytes on disk differ. The key folds
+// them only while each holds the bytes stamped under that key
+// (orchestrator `heldOutputs`, caching.md, 2026-11-23).
+export function committedOutputOids(
+  task: TaskConfig,
+  projectDir: string,
+  workspaceRoot: string, // an inputs.workspaceFiles glob naming the file keeps its bytes too
+  files: readonly string[],
+  staged: ReadonlyMap<string, string>, // GitFilesCache.stagedOids
+): Map<string, string> | undefined
+
 // No clean removes a file git tracks (2026-10-14); `committedFiles`
 // answers from the run's enumeration, listing a dir it did not cover once.
 export function committedFiles(
@@ -1875,6 +1893,9 @@ export class GitFilesCache extends Map<string, readonly string[]> {
   invalidateWorkspacePartition(): void
   clear(): void // every partition AND its OIDs and pending marks (a write that reached the workspace)
   oidsFor(projectDir: string): ReadonlyMap<string, string> | undefined // trusted index OIDs by path
+  stagedOid(abs: string): string | undefined // what git holds for a tracked file status named changed (`committedOutputOids`)
+  get stagedOids(): ReadonlyMap<string, string> // every stagedOid answer; after a clear or delete, none once the index's stamp moved (a task's git add)
+  setStaged(staged: Map<string, string>, index: { file: string; stamp: string } | undefined): void // the enumeration's `staged`, by absolute path
   setOids(projectDir: string, oids: Map<string, string>): void
   filesDigest(projectDir: string, snapshot: readonly string[]): string | undefined // the partition's paths + OIDs (a file with none by its stat), none a link
   declarationDigest(
@@ -1911,6 +1932,8 @@ export interface GitEnumeration {
   tracked: readonly string[] // every index path (a submodule as its gitlink), root-relative: never cleaned
   scopes: readonly string[] // the pathspecs listed, root-relative
   trusted: Map<string, string> // path → index OID, for the tracked-clean ones
+  staged: Map<string, string> // path → index OID, for the tracked ones status named changed (no link); folded into filesDigest
+  stagedIndex?: { file: string; stamp: string } // the index staged was read from, and its stamp
   flagged: readonly string[] // tracked paths git does not look at on disk (assume-unchanged, skip-worktree)
   dirty: boolean | null
   vars: string | null // `git var -l` output, read once for config lookups
@@ -1944,6 +1967,7 @@ export interface LazyGitEnumeration {
   readonly started: Promise<GitEnumeration> | undefined
 }
 export function lazyGitEnumeration(workspaceRoot: string): LazyGitEnumeration
+export function writeIndexBlobs(files: ReadonlyMap<string, string>): void // what git holds for each (absolute path → stagedOid), through the checkout's filters, in place: a miss keyed by it starts there; throws when git cannot
 export function newFilesIgnoredIn(root: string, dirs: readonly string[]): Set<string> // which root-relative dirs git ignores a new file directly in, one check-ignore (`newFilesIgnored`'s probe)
 export function freshProbe(dir: string): string // the path that probe asks for dir: a new file directly in it
 export const MAX_SCOPED_PATHSPECS: number // 64: above it the walk is the whole tree

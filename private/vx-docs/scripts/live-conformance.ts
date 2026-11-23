@@ -4,7 +4,9 @@
 // (conformance.yml's `conformance-data` artifact), which scores the rivals
 // at npm's latest (2026-11-21). vx's column stays the committed one, the
 // commit's own: the weekly run fails when vx fails a case. A case added
-// since that run keeps its committed row. No run yet: the committed copy.
+// since that run keeps its committed row, and so does a rival's committed
+// N/A: it is the adapter's `lacks` at this commit, which a run older than
+// the commit had not seen (2026-11-23). No run yet: the committed copy.
 
 import type { Case, Results, Score } from '../src/conformance/data.ts'
 import { newestArtifact, type LiveEnv } from './live-bench.ts'
@@ -43,7 +45,8 @@ export function merge(committed: Results, weekly: Results): Results {
     const w = ran.get(c.id)
     if (!w) return c
     const outcomes = { ...c.outcomes }
-    for (const t of rivals) if (w.outcomes[t]) outcomes[t] = w.outcomes[t]
+    for (const t of rivals)
+      if (w.outcomes[t] && outcomes[t]?.status !== 'n/a') outcomes[t] = w.outcomes[t]
     return { ...c, outcomes }
   })
   const tools = { ...committed.tools }

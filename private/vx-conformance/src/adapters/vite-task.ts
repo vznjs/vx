@@ -41,6 +41,11 @@ export const viteTask: Adapter = {
     'dry-run': 'Vite Task has no run that plans and runs nothing.',
     sandbox: 'Vite Task keeps no task from files, network or home it never declared.',
     'select-tag': 'A filter picks by name or directory; packages carry no tags.',
+    'report-duration':
+      '`vp run --last-details` names the time a hit saved, never how long a task took in this run.',
+    'report-cpu': 'The run summary gives no task’s CPU time.',
+    'report-memory': 'The run summary gives no task’s peak memory.',
+    'report-output-bytes': 'The run summary gives no size of a task’s outputs.',
   },
   env: { NO_COLOR: '1', DO_NOT_TRACK: '1', VITE_PLUS_TELEMETRY_DISABLED: '1' },
   // Vite Task installs the workspace's `packageManager` from the registry

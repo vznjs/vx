@@ -4,7 +4,7 @@
 
 import type { Cache } from './cache.js'
 import type { ArtifactInfo } from './layered-cache.js'
-import type { OutputDirRow, OutputFileRow } from '../memo/index.js'
+import type { OutputDirRow, OutputFileRow, StampProbe } from '../memo/index.js'
 
 export interface CacheKeyInput {
   taskId: string
@@ -284,6 +284,13 @@ export interface TaskMemo {
    * after a save or restore here needs no query.
    */
   stampedRowsOf?(hash: string): readonly OutputFileRow[] | undefined
+  /**
+   * Each of `files` (`rel\0ino:ctime`, ctime floored) that an output stamp
+   * holds under an entry whose key folded the file's OID (optional): a file
+   * still at it holds bytes a save or restore here left under a key that
+   * took git's version. One scan of the stamps.
+   */
+  foldedStamps?(files: readonly StampProbe[]): Set<string>
   /**
    * True iff every `expected` row's file under `projectDir` matches its size,
    * mode and mtime: the hit then skips clean and restore. Any mismatch or
