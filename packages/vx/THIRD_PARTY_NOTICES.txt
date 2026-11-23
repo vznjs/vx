@@ -7,7 +7,7 @@ packages below; their licenses follow. vx itself is MIT (LICENSE).
 Bun v1.4.4
 @anthropic-ai/sandbox-runtime@0.0.81 (Apache-2.0)
 @pondwader/socks5-server@1.0.10 (MIT)
-node-forge@1.4.0 ((BSD-3-Clause OR GPL-2.0), used under BSD-3-Clause)
+node-forge@1.4.4 ((BSD-3-Clause OR GPL-2.0), used under BSD-3-Clause)
 zod@3.25.76 (MIT)
 
 ========================================================================
@@ -360,7 +360,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 
 ========================================================================
-node-forge@1.4.0 ((BSD-3-Clause OR GPL-2.0), used under BSD-3-Clause)
+node-forge@1.4.4 ((BSD-3-Clause OR GPL-2.0), used under BSD-3-Clause)
 ========================================================================
 
 You may use the Forge project under the terms of either the BSD License or the
