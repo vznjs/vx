@@ -437,7 +437,7 @@ export class Orchestrator extends RunReport<Worker> {
         // Failed or stopped, it hands over none of its dependants: the plan
         // asked a worker for them, idle on arrival.
         resolve: (r) => {
-          if (r.exitCode !== 0) this.skipped(req.taskId)
+          if (r.exitCode !== 0 || r.outputsMissing !== undefined) this.skipped(req.taskId)
           resolve(r)
         },
         reject: (err) => {

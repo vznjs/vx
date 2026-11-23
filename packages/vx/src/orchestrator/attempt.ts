@@ -534,7 +534,8 @@ function unseenResult(
 /**
  * A pass whose declared outputs did not all land here fails, said by the
  * globs that matched nothing. Outputs that land elsewhere (a remote
- * executor, a deferred download) are that executor's to check. Said as a
+ * executor, a deferred download) are that executor's to check, and it says
+ * which matched nothing (`ExecuteResult.outputsMissing`). Said as a
  * warning, as the save's own output warnings are, not into the task's
  * stream: there it printed uncoloured, or red in a frame.
  */
@@ -542,16 +543,20 @@ function outputsMissing(m: MissRun, res: ExecuteResult): string[] | undefined {
   const { args, policy, secrets } = m
   const { node, log } = args
   if (policy.outputs.length + policy.wsOutputs.length === 0) return undefined
-  if (policy.deferred || res.outputs?.kind === 'deferred') return undefined
-  if (args.executor.capabilities?.remote === true) return undefined
+  const elsewhere =
+    policy.deferred ||
+    res.outputs?.kind === 'deferred' ||
+    args.executor.capabilities?.remote === true
   const nested = args.outputNestedDirs ?? args.nestedProjectDirs
-  const missing = [
-    ...missingOutputs(node.projectDir, policy.outputs, nested),
-    ...missingOutputs(args.run.workspaceRoot, policy.wsOutputs, []),
-  ]
+  const missing = elsewhere
+    ? [...(res.outputsMissing ?? [])]
+    : [
+        ...missingOutputs(node.projectDir, policy.outputs, nested),
+        ...missingOutputs(args.run.workspaceRoot, policy.wsOutputs, []),
+      ]
   if (missing.length === 0) return undefined
   const cfg = node.config
-  const left = m.state === undefined ? [] : stateLeft(m.state, node.projectDir)
+  const left = elsewhere || m.state === undefined ? [] : stateLeft(m.state, node.projectDir)
   const noWrite =
     cfg.exec?.sandbox !== undefined && (cfg.exec.sandbox.allow?.write?.length ?? 0) === 0
   const line =

@@ -1142,9 +1142,12 @@ answers for itself: a literal `tsconfig.tsbuildinfo` that matched does
 not cover a `dist/**` that did not. The line names the likely cause when
 it applies: a sandboxed task with no `exec.sandbox.allow.write`, whose
 writes never reached disk, or an undeclared state file that survived the
-clean (below). A failed task is retried as any failure is. Outputs a
-remote executor or a deferred download (`--cache-download=none`) lands
-elsewhere are not checked here; a deferred fetch that lands nothing
+clean (below). A failed task is retried as any failure is. A remote
+executor checks them where they landed, by the same rule, and names what
+matched nothing (`ExecuteResult.outputsMissing`; `@vzn/vx-dte`'s workers
+do): the task fails the same way. Outputs a remote executor that does
+not, or a deferred download (`--cache-download=none`), lands elsewhere
+are not checked here; a deferred fetch that lands nothing
 warns `outputs matched no files … an empty artifact is saved`.
 `outputs.files: []` declares no output and checks nothing.
 

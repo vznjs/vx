@@ -758,6 +758,7 @@ export interface ExecuteResult extends RunResult {
     | { kind: 'deferred'; materialize: () => Promise<void> }
     | { kind: 'trailing'; landed: Promise<void> }
   readonly changed?: readonly string[]
+  readonly outputsMissing?: readonly string[]
   readonly where?: string
   readonly machine?: {
     readonly cores: number
@@ -1566,6 +1567,22 @@ export interface MigrationPlan {
   extraFiles: { relPath: string; contents: string }[]
   notes: string[]
 }
+```
+
+## `missingOutputs`
+
+function · `src/orchestrator/attempt-outputs.ts`
+
+The positive globs of `globs` (relative to `base`) that match no path a `!`
+leaves. Each stops at its first match: `dist/**` costs one directory read,
+not the walk the save does.
+
+```ts
+export function missingOutputs(
+  base: string,
+  globs: readonly string[],
+  nestedDirs: readonly string[],
+): string[]
 ```
 
 ## `normalizeGlob`

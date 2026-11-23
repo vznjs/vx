@@ -339,6 +339,12 @@ export async function mergeBaseWith(
   workspaceRoot: string,
   ref: string,
 ): Promise<string | undefined>
+== function missingOutputs (src/orchestrator/attempt-outputs.ts)
+export function missingOutputs(
+  base: string,
+  globs: readonly string[],
+  nestedDirs: readonly string[],
+): string[]
 == function next (src/ui/components.ts)
 export function next(command: Inline): Block
 == function normalizeGlob (src/util/paths.ts)
@@ -846,6 +852,7 @@ export interface ExecuteResult extends RunResult {
     | { kind: 'deferred'; materialize: () => Promise<void> }
     | { kind: 'trailing'; landed: Promise<void> }
   readonly changed?: readonly string[]
+  readonly outputsMissing?: readonly string[]
   readonly where?: string
   readonly machine?: {
     readonly cores: number

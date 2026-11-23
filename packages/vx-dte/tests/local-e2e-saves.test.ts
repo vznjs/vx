@@ -285,3 +285,16 @@ it('brings home only the asked task’s files under --cache-download=toplevel', 
   expect(await Bun.file(path.join(root, 'b/out/b.txt')).exists()).toBe(true)
   expect(await Bun.file(path.join(root, 'a/out/a.txt')).exists()).toBe(false)
 }, 60_000)
+
+// A literal output a worker's command never wrote passed there and was saved
+// under its key: a distributed run went green and cached the task a run here
+// fails (2026-11-23).
+it('fails a task whose literal output its worker never wrote, and saves nothing', async () => {
+  for (const name of ['lit-1', 'lit-2']) {
+    const r = vx(['run', 'o#use'], name)
+    const out = r.stdout.toString() + r.stderr.toString()
+    expect([r.exitCode, out.includes('no file matched out/x.js'), out.includes('use-ran')]).toEqual(
+      [1, true, false],
+    )
+  }
+}, 60_000)

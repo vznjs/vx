@@ -67,7 +67,7 @@ export default { name: 'b', tasks: {
   bg: {
     exec: { command: 'echo a > bg.txt && (sleep 1; echo late > late.txt) &' },
     inputs: { files: ['vx.config.mjs'] },
-    outputs: { files: ['bg.txt', 'late.txt'] },
+    outputs: { files: ['bg.txt'] },
     cache: true,
   },
   timed: { exec: { command: 'sleep 0.5 && echo timed-ok', timeout: '2s' } },
@@ -148,6 +148,12 @@ export default { name: 'p', tasks: {
     'g/vx.config.mjs': `export default { name: 'g', tasks: {
   gen: { exec: { command: 'echo made > gen/out.txt' }, inputs: { files: ['vx.config.mjs'] }, outputs: { files: ['gen/**'] }, cache: true },
   use: { dependsOn: ['gen'], exec: { command: 'cat gen/keep.txt gen/out.txt' } },
+} }
+`,
+    // A literal output the command never writes: required where it ran too.
+    'o/vx.config.mjs': `export default { name: 'o', tasks: {
+  lit: { exec: { command: 'mkdir -p out' }, inputs: { files: ['vx.config.mjs'] }, outputs: { files: ['out/x.js'] }, cache: true },
+  use: { dependsOn: ['lit'], exec: { command: 'echo use-ran' } },
 } }
 `,
     // A task that rewrites its own input, as a formatter does.

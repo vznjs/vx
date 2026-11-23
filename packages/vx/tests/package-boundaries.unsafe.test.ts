@@ -191,6 +191,9 @@ describe('package boundaries', () => {
       // Widened 2026-10-24: `@vzn/vx-history` finds its merge-base
       // in a one-commit checkout the way `--affected` does.
       'mergeBaseWith',
+      // Widened 2026-11-23: `@vzn/vx-dte`'s worker checks the outputs where
+      // they were written, by core's rule.
+      'missingOutputs',
       'normalizeGlob',
       // Widened 2026-09-20 (item 445): `@vzn/vx-migrate` asks the same
       // "do these two output globs provably overlap?" question at
