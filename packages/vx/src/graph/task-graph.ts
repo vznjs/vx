@@ -369,9 +369,168 @@ interface Frame {
   next: number
 }
 
+function newFrame(node: TaskNode): Frame {
+  return { node, entry: 0, added: false, pending: null, next: 0 }
+}
+
+/** The package cycles a default `build` must walk around. */
+interface PackageCycles {
+  /** True when `name` sits on a package cycle. */
+  onCycle(name: string): boolean
+  /** True when `a` and `b` sit on the same package cycle. */
+  sameCycle(a: string, b: string): boolean
+}
+
+/**
+ * Each project's strongly connected component in the package graph, found on
+ * first ask (iterative Tarjan in the `^name` walk's order).
+ */
+function packageCycles(packageGraph: PackageGraph): PackageCycles {
+  const component = new Map<string, number>()
+  const cyclic = new Set<number>()
+  let components = 0
+
+  function componentOf(start: string): number {
+    const known = component.get(start)
+    if (known !== undefined) return known
+    const index = new Map<string, number>()
+    const low = new Map<string, number>()
+    const open: string[] = []
+    const work: Array<[name: string, next: number]> = []
+    const enter = (name: string): void => {
+      index.set(name, index.size)
+      low.set(name, index.size - 1)
+      open.push(name)
+      work.push([name, 0])
+    }
+    enter(start)
+    while (work.length > 0) {
+      const top = work[work.length - 1]!
+      const deps = packageGraph.directDeps(top[0])
+      if (top[1] < deps.length) {
+        const dep = deps[top[1]++]!
+        if (component.has(dep)) continue
+        if (!index.has(dep)) enter(dep)
+        else low.set(top[0], Math.min(low.get(top[0])!, index.get(dep)!))
+        continue
+      }
+      work.pop()
+      const name = top[0]
+      const parent = work[work.length - 1]
+      if (parent !== undefined) low.set(parent[0], Math.min(low.get(parent[0])!, low.get(name)!))
+      if (low.get(name) !== index.get(name)) continue
+      const id = components++
+      let size = 0
+      for (let member = ''; member !== name; size++) {
+        member = open.pop()!
+        component.set(member, id)
+      }
+      if (size > 1) cyclic.add(id)
+    }
+    return component.get(start)!
+  }
+
+  const onCycle = (name: string): boolean => cyclic.has(componentOf(name))
+  return {
+    onCycle,
+    sameCycle: (a, b) => onCycle(a) && componentOf(a) === componentOf(b),
+  }
+}
+
+/**
+ * Refuse the `dependsOn` forms that cannot add a task: bare wildcards and
+ * negation belong to `inputs.tasks`, and `pkg#task` takes no pattern. Partial
+ * patterns (`build.*`) name a namespace to add (Nx 19.5 parity).
+ */
+function refuseUnaddable(id: string, raw: string, spec: DependencySpec): void {
+  if (spec.kind === 'wildcardSelf' || spec.kind === 'wildcardDeps') {
+    throw new UserError(
+      `${id}: dependsOn does not accept bare wildcards (got "${raw}"): name the tasks, or a namespace like build.*`,
+      'VX_E_DEPENDS_ON',
+    )
+  }
+  if (spec.negated) {
+    throw new UserError(
+      `${id}: dependsOn does not accept negation (got "${raw}"): dependsOn only adds tasks, so drop the entry`,
+      'VX_E_DEPENDS_ON',
+    )
+  }
+  if (spec.kind === 'cross' && (isTaskPattern(spec.task) || isTaskPattern(spec.project))) {
+    throw new UserError(
+      `${id}: dependsOn patterns are not supported in the "pkg#task" form (got "${raw}"): name the project and task exactly, as in web#build`,
+      'VX_E_DEPENDS_ON',
+    )
+  }
+}
+
+/** A same-project `dependsOn` names a task its project does not declare. */
+function missingSelfTargetError(node: TaskNode, project: ProjectEntry, task: string): UserError {
+  const others = Object.keys(project.config.tasks ?? {}).filter((n) => n !== node.taskName)
+  const meant = nearest(task, others)
+  return new UserError(
+    `${node.id}: dependsOn ${taskId(node.projectName, task)} but no such task is declared${meant === undefined ? '' : `. Did you mean ${meant}?`}`,
+    'VX_E_DEPENDS_ON',
+  )
+}
+
+/** A `pkg#task` `dependsOn` names a project or task nobody declares. */
+function missingCrossTargetError(
+  projects: ReadonlyMap<string, ProjectEntry>,
+  node: TaskNode,
+  project: string,
+  task: string,
+): UserError {
+  const target = taskId(project, task)
+  // The loader spells `//` as the root project's name when there is one.
+  if (project === '//')
+    return new UserError(
+      `${node.id}: dependsOn //#${task}, the workspace root's task, but the root declares no such task: add a vx.config at the root declaring it and run \`vx lock\``,
+      'VX_E_DEPENDS_ON',
+    )
+  const listed = listedTargets(node)
+  // Nor the task itself: a moved project's one near name is its dependant.
+  const meant = nearestTarget(projects, project, task, new Set([...listed, node.id]))
+  // The only near target is one the list already has (a deleted project's
+  // entry beside its sibling's): the entry is the fix.
+  const remove = meant === undefined && listed.has(nearestTarget(projects, project, task) ?? '')
+  // Which half is missing: a project that exists was told "no such project or
+  // task", though only its task was.
+  const owner = projects.get(project)
+  const tasks = Object.keys(owner?.config.tasks ?? {})
+  const what =
+    owner === undefined
+      ? `no project is named ${project}`
+      : `${project} declares no task ${task}${meant === undefined && tasks.length > 0 ? ` (its tasks: ${tasks.join(', ')})` : ''}`
+  const fix = remove
+    ? ` — remove ${target} from dependsOn`
+    : meant === undefined
+      ? ''
+      : `. Did you mean ${meant}?`
+  return new UserError(`${node.id}: dependsOn ${target}, but ${what}${fix}`, 'VX_E_DEPENDS_ON')
+}
+
+/** Drop every node no requested task reaches. */
+function keepReachedFromRequested(nodes: Map<string, TaskNode>): void {
+  const keep = new Set<string>()
+  const roots = [...nodes.values()].filter((n) => n.requested).map((n) => n.id)
+  while (roots.length > 0) {
+    const id = roots.pop()!
+    if (keep.has(id)) continue
+    keep.add(id)
+    roots.push(...nodes.get(id)!.deps)
+  }
+  for (const id of nodes.keys()) if (!keep.has(id)) nodes.delete(id)
+}
+
+/** Sorted for deterministic scheduling and keys, and deduped: a target named twice is one edge. */
+function settleDeps(node: TaskNode): void {
+  node.deps = [...new Set(node.deps)].sort()
+}
+
 export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode> {
   const { projects, packageGraph, requested, undeclaredDeps, refusals } = options
   const nodes = new Map<string, TaskNode>()
+  const { onCycle, sameCycle } = packageCycles(packageGraph)
 
   // An explicit stack, not recursion per edge: a chain ~20,000 deep overflowed
   // V8's stack (nx#28788) before `detectCycle` could name the cycle. Nodes are
@@ -379,13 +538,13 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
   // frame's targets are all found first; the first new one is added at once,
   // the rest wait in `pending`.
   const stack: Frame[] = []
+  // Default builds on a package cycle, expanded once the rest is built.
+  const deferred: TaskNode[] = []
 
   function add(node: TaskNode): void {
     nodes.set(node.id, node)
     if (isChainGroup(node.config, node.taskName) && onCycle(node.projectName)) deferred.push(node)
-    else if ((node.config.dependsOn?.length ?? 0) > 0) {
-      stack.push({ node, entry: 0, added: false, pending: null, next: 0 })
-    }
+    else if ((node.config.dependsOn?.length ?? 0) > 0) stack.push(newFrame(node))
   }
 
   // Adds `projectName#taskName` if new, with the edge from `frame`'s task (null
@@ -447,56 +606,11 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
     return declared.has(name)
   }
 
-  // Package cycles for the default `build`: each project on one maps to its
-  // strongly connected component, found on first ask (iterative Tarjan in the
-  // `^name` walk's order).
-  const component = new Map<string, number>()
-  const cyclic = new Set<number>()
-  let components = 0
-  function componentOf(start: string): number {
-    const known = component.get(start)
-    if (known !== undefined) return known
-    const index = new Map<string, number>()
-    const low = new Map<string, number>()
-    const open: string[] = []
-    const work: Array<[name: string, next: number]> = []
-    const enter = (name: string): void => {
-      index.set(name, index.size)
-      low.set(name, index.size - 1)
-      open.push(name)
-      work.push([name, 0])
-    }
-    enter(start)
-    while (work.length > 0) {
-      const top = work[work.length - 1]!
-      const deps = packageGraph.directDeps(top[0])
-      if (top[1] < deps.length) {
-        const dep = deps[top[1]++]!
-        if (component.has(dep)) continue
-        if (!index.has(dep)) enter(dep)
-        else low.set(top[0], Math.min(low.get(top[0])!, index.get(dep)!))
-        continue
-      }
-      work.pop()
-      const name = top[0]
-      const parent = work[work.length - 1]
-      if (parent !== undefined) low.set(parent[0], Math.min(low.get(parent[0])!, low.get(name)!))
-      if (low.get(name) !== index.get(name)) continue
-      const id = components++
-      let size = 0
-      for (let member = ''; member !== name; size++) {
-        member = open.pop()!
-        component.set(member, id)
-      }
-      if (size > 1) cyclic.add(id)
-    }
-    return component.get(start)!
+  // True when `project`'s `name` is a default build on a package cycle.
+  function isCycleBuild(project: string, name: string): boolean {
+    const task = declaredTask(projects.get(project)!.config, name)!
+    return isChainGroup(task, name) && onCycle(project)
   }
-  // Default builds on a package cycle, expanded once the rest is built.
-  const deferred: TaskNode[] = []
-  const onCycle = (name: string): boolean => cyclic.has(componentOf(name))
-  const sameCycle = (a: string, b: string): boolean =>
-    onCycle(a) && componentOf(a) === componentOf(b)
 
   // `^name` from `start`: edges to the nearest holders of `name` below it,
   // passing through visited packages, ones declaring no `name`, and a default
@@ -521,8 +635,7 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
         held = true
         const id = taskId(target, name)
         if (via.length > 0) addStandIn(frame.node, id, via)
-        const task = declaredTask(projects.get(target)!.config, name)!
-        if (isChainGroup(task, name) && onCycle(target)) {
+        if (isCycleBuild(target, name)) {
           const next = [...via, id]
           for (const d of packageGraph.directDeps(target)) frontier.push([d, next])
         }
@@ -535,159 +648,126 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
   // does: that build folds nothing of its cycle's builds, so a dependant would
   // hit after a cycle member changed.
   function goPast(frame: Frame, project: string, name: string, visited: Set<string>): void {
-    const task = declaredTask(projects.get(project)!.config, name)!
-    if (isChainGroup(task, name) && onCycle(project))
+    if (isCycleBuild(project, name))
       walkHolders(frame, name, visited, project, [taskId(project, name)])
+  }
+
+  // `task` or `build.*` in the declaring project.
+  function resolveSelf(frame: Frame, task: string): void {
+    const { node } = frame
+    const project = projects.get(node.projectName)!
+    if (!isTaskPattern(task)) {
+      // A missing target is a hard error: the user typed a name that does not
+      // resolve in this project.
+      if (!visit(frame, node.projectName, task, false))
+        throw missingSelfTargetError(node, project, task)
+      goPast(frame, node.projectName, task, new Set([node.projectName]))
+      return
+    }
+    // `build.*`: every OTHER same-project task matching; the declaring task
+    // never matches itself. Zero matches is legal.
+    const re = compileTaskPattern(task)
+    for (const name of Object.keys(project.config.tasks ?? {})) {
+      if (name === node.taskName || !re.test(name)) continue
+      visit(frame, node.projectName, name, false)
+      goPast(frame, node.projectName, name, new Set([node.projectName]))
+    }
+  }
+
+  // `^task` or `^build.*`: the nearest holders below the declaring project.
+  //
+  // Nearest-holder frontier (Turbo and Nx parity): walk the package graph from
+  // this project's deps; each path stops at the FIRST package declaring the
+  // task, whose own dependsOn covers the rest. Packages without it are passed
+  // through. `visited` dedupes and ends package cycles, and is seeded with the
+  // declaring project: a task never depends on itself.
+  //
+  // With a pattern, a holder declares at least one match and gets edges to all
+  // of them; holder-ness is declaration, so it stops the walk even when
+  // `--exclude-dependencies` drops every edge to it.
+  //
+  // The default `build` on a package cycle would make a task cycle no config
+  // declares: it walks last (`resolveDeferred`), and a walk meeting it takes
+  // the edge and goes past.
+  function resolveDeps(frame: Frame, task: string): void {
+    const { node } = frame
+    const { id, projectName } = node
+    // With no edge source every `^` would resolve to nothing, so its upstream
+    // would fold into no key.
+    if (!packageGraph.edgeSource) {
+      throw new UserError(
+        `${id}: ${isDefaultBuild(node.config) ? `${projectName} declares no build, so it is the default build, whose ` : ''}^${task} needs project edges; add pnpm()/bun()/npm()/yarn() and install so its lockfile exists, or a plugin that returns \`deps\``,
+        'VX_E_DEPENDS_ON',
+      )
+    }
+    const visited = new Set<string>([projectName])
+    if (!isTaskPattern(task)) {
+      const held = walkHolders(frame, task, visited, projectName, [])
+      if (!held && !declaredAnywhere(projectName, task)) {
+        if (undeclaredDeps === undefined) throw undeclaredDepsError(id, task, declared ?? [])
+        undeclaredDeps(id, task)
+      }
+      return
+    }
+    // A pattern that matches nothing stays legal, as `build.*` does.
+    const re = compileTaskPattern(task)
+    const frontier = [...packageGraph.directDeps(projectName)]
+    while (frontier.length > 0) {
+      const target = frontier.pop()!
+      if (visited.has(target)) continue
+      visited.add(target)
+      const names = Object.keys(projects.get(target)?.config.tasks ?? {}).filter((n) => re.test(n))
+      if (names.length === 0) {
+        frontier.push(...packageGraph.directDeps(target))
+        continue
+      }
+      for (const name of names) {
+        visit(frame, target, name, false)
+        goPast(frame, target, name, new Set([projectName, target]))
+      }
+    }
+  }
+
+  // `pkg#task`. A missing target is a hard error: the user named the package
+  // and task explicitly.
+  function resolveCross(frame: Frame, project: string, task: string): void {
+    if (!visit(frame, project, task, false))
+      throw missingCrossTargetError(projects, frame.node, project, task)
+    goPast(frame, project, task, new Set([frame.node.projectName, project]))
   }
 
   // Resolves one `dependsOn` entry of `frame`'s task into its edges.
   function resolveEntry(frame: Frame, raw: string): void {
-    const { node } = frame
-    const { id, projectName, taskName } = node
     let spec: DependencySpec
     try {
       spec = parseDependencySpec(raw, 'dependsOn')
     } catch (err) {
       if (err instanceof DependencySpecError) {
-        throw new UserError(`${id}: ${err.message}`, 'VX_E_DEPENDS_ON')
+        throw new UserError(`${frame.node.id}: ${err.message}`, 'VX_E_DEPENDS_ON')
       }
       throw err
     }
+    refuseUnaddable(frame.node.id, raw, spec)
+    if (spec.kind === 'self') resolveSelf(frame, spec.task)
+    else if (spec.kind === 'deps') resolveDeps(frame, spec.task)
+    else if (spec.kind === 'cross') resolveCross(frame, spec.project, spec.task)
+  }
 
-    // dependsOn adds tasks, it does not filter: bare wildcards and negation
-    // belong to inputs.tasks. Partial patterns (`build.*`) name a namespace to
-    // add (Nx 19.5 parity).
-    if (spec.kind === 'wildcardSelf' || spec.kind === 'wildcardDeps') {
-      throw new UserError(
-        `${id}: dependsOn does not accept bare wildcards (got "${raw}"): name the tasks, or a namespace like build.*`,
-        'VX_E_DEPENDS_ON',
-      )
+  // Resolves the entry, or with `refusals` records its refusal and goes on.
+  function resolveOrRefuse(frame: Frame, raw: string): void {
+    if (refusals === undefined) {
+      resolveEntry(frame, raw)
+      return
     }
-    if (spec.negated) {
-      throw new UserError(
-        `${id}: dependsOn does not accept negation (got "${raw}"): dependsOn only adds tasks, so drop the entry`,
-        'VX_E_DEPENDS_ON',
-      )
-    }
-    if (spec.kind === 'cross' && (isTaskPattern(spec.task) || isTaskPattern(spec.project))) {
-      throw new UserError(
-        `${id}: dependsOn patterns are not supported in the "pkg#task" form (got "${raw}"): name the project and task exactly, as in web#build`,
-        'VX_E_DEPENDS_ON',
-      )
-    }
-    if (spec.kind === 'self') {
-      if (isTaskPattern(spec.task)) {
-        // `build.*`: every OTHER same-project task matching; the declaring task
-        // never matches itself. Zero matches is legal.
-        const re = compileTaskPattern(spec.task)
-        for (const name of Object.keys(projects.get(projectName)!.config.tasks ?? {})) {
-          if (name === taskName || !re.test(name)) continue
-          visit(frame, projectName, name, false)
-          goPast(frame, projectName, name, new Set([projectName]))
-        }
-      } else {
-        // Missing target is a hard error — the user typed a name that
-        // doesn't resolve in this project.
-        if (!visit(frame, projectName, spec.task, false)) {
-          const meant = nearest(
-            spec.task,
-            Object.keys(projects.get(projectName)!.config.tasks ?? {}).filter(
-              (n) => n !== taskName,
-            ),
-          )
-          throw new UserError(
-            `${id}: dependsOn ${taskId(projectName, spec.task)} but no such task is declared${meant === undefined ? '' : `. Did you mean ${meant}?`}`,
-            'VX_E_DEPENDS_ON',
-          )
-        }
-        goPast(frame, projectName, spec.task, new Set([projectName]))
-      }
-    } else if (spec.kind === 'deps') {
-      // Nearest-holder frontier (Turbo and Nx parity): walk the package graph
-      // from this project's deps; each path stops at the FIRST package
-      // declaring the task, whose own dependsOn covers the rest. Packages
-      // without it are passed through. `visited` dedupes and ends package
-      // cycles, and is seeded with the declaring project: a task never depends
-      // on itself.
-      //
-      // With a pattern, a holder declares at least one match and gets edges to
-      // all of them; holder-ness is declaration, so it stops the walk even when
-      // `--exclude-dependencies` drops every edge to it.
-      //
-      // The default `build` on a package cycle would make a task cycle no
-      // config declares: it walks last (`resolveDeferred`), and a walk meeting
-      // it takes the edge and goes past.
-      //
-      // With no edge source every `^` resolves to nothing, so its upstream
-      // folds into no key.
-      if (!packageGraph.edgeSource) {
-        throw new UserError(
-          `${id}: ${isDefaultBuild(node.config) ? `${projectName} declares no build, so it is the default build, whose ` : ''}^${spec.task} needs project edges; add pnpm()/bun()/npm()/yarn() and install so its lockfile exists, or a plugin that returns \`deps\``,
-          'VX_E_DEPENDS_ON',
-        )
-      }
-      const visited = new Set<string>([projectName])
-      if (!isTaskPattern(spec.task)) {
-        const held = walkHolders(frame, spec.task, visited, projectName, [])
-        if (!held && !declaredAnywhere(projectName, spec.task)) {
-          if (undeclaredDeps === undefined) throw undeclaredDepsError(id, spec.task, declared ?? [])
-          undeclaredDeps(id, spec.task)
-        }
-        return
-      }
-      // A pattern that matches nothing stays legal, as `build.*` does.
-      const re = compileTaskPattern(spec.task)
-      const frontier = [...packageGraph.directDeps(projectName)]
-      while (frontier.length > 0) {
-        const target = frontier.pop()!
-        if (visited.has(target)) continue
-        visited.add(target)
-        const names = Object.keys(projects.get(target)?.config.tasks ?? {}).filter((n) =>
-          re.test(n),
-        )
-        if (names.length > 0) {
-          for (const name of names) {
-            visit(frame, target, name, false)
-            goPast(frame, target, name, new Set([projectName, target]))
-          }
-        } else {
-          frontier.push(...packageGraph.directDeps(target))
-        }
-      }
-    } else {
-      // Cross-project edge: pkg#task. Missing target is a hard error
-      // because the user named the package + task explicitly.
-      if (!visit(frame, spec.project, spec.task, false)) {
-        // The loader spells `//` as the root project's name when there is one.
-        if (spec.project === '//')
-          throw new UserError(
-            `${id}: dependsOn //#${spec.task}, the workspace root's task, but the root declares no such task: add a vx.config at the root declaring it and run \`vx lock\``,
-            'VX_E_DEPENDS_ON',
-          )
-        const listed = listedTargets(node)
-        // Nor the task itself: a moved project's one near name is its dependant.
-        const meant = nearestTarget(projects, spec.project, spec.task, new Set([...listed, id]))
-        // The only near target is one the list already has (a deleted
-        // project's entry beside its sibling's): the entry is the fix.
-        const remove =
-          meant === undefined && listed.has(nearestTarget(projects, spec.project, spec.task) ?? '')
-        // Which half is missing: a project that exists was told "no such
-        // project or task", though only its task was.
-        const owner = projects.get(spec.project)
-        const tasks = Object.keys(owner?.config.tasks ?? {})
-        const what =
-          owner === undefined
-            ? `no project is named ${spec.project}`
-            : `${spec.project} declares no task ${spec.task}${meant === undefined && tasks.length > 0 ? ` (its tasks: ${tasks.join(', ')})` : ''}`
-        throw new UserError(
-          `${id}: dependsOn ${taskId(spec.project, spec.task)}, but ${what}${remove ? ` — remove ${taskId(spec.project, spec.task)} from dependsOn` : meant === undefined ? '' : `. Did you mean ${meant}?`}`,
-          'VX_E_DEPENDS_ON',
-        )
-      }
-      goPast(frame, spec.project, spec.task, new Set([projectName, spec.project]))
+    try {
+      resolveEntry(frame, raw)
+    } catch (err) {
+      if (!isUserError(err)) throw err
+      refusals.push(err)
     }
   }
 
+  // Expands every frame on the stack until each task's entries are resolved.
   const drain = (): void => {
     while (stack.length > 0) {
       const frame = stack[stack.length - 1]!
@@ -703,20 +783,10 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
         frame.added = false
         frame.pending = null
         frame.next = 0
-        const entry = entries[frame.entry++]!
-        if (refusals === undefined) resolveEntry(frame, entry)
-        else
-          try {
-            resolveEntry(frame, entry)
-          } catch (err) {
-            if (!isUserError(err)) throw err
-            refusals.push(err)
-          }
+        resolveOrRefuse(frame, entries[frame.entry++]!)
         continue
       }
-      // Sorted for deterministic scheduling and keys, and deduped: a target
-      // named twice is one edge.
-      node.deps = [...new Set(node.deps)].sort()
+      settleDeps(node)
       stack.pop()
     }
   }
@@ -736,7 +806,7 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
   const resolveDeferred = (x: TaskNode): void => {
     // The default build's one entry is `^` and its own name.
     const name = x.taskName
-    const frame: Frame = { node: x, entry: 0, added: false, pending: null, next: 0 }
+    const frame = newFrame(x)
     let reaching: Set<string> | null = null
     const visited = new Set<string>([x.projectName])
     const frontier: Array<[project: string, past: readonly string[]]> = packageGraph
@@ -775,20 +845,12 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
       if (via.length > 0) addStandIn(x, to, via)
       if (isChainGroup(task, name) && onCycle(target)) push(target, [...via, to])
     }
-    x.deps = [...new Set(x.deps)].sort()
+    settleDeps(x)
   }
   for (let i = 0; i < deferred.length; i++) resolveDeferred(deferred[i]!)
-  if (expanded) {
-    const keep = new Set<string>()
-    const roots = [...nodes.values()].filter((n) => n.requested).map((n) => n.id)
-    while (roots.length > 0) {
-      const id = roots.pop()!
-      if (keep.has(id)) continue
-      keep.add(id)
-      roots.push(...nodes.get(id)!.deps)
-    }
-    for (const id of nodes.keys()) if (!keep.has(id)) nodes.delete(id)
-  }
+  // A build expanded only to ask whether it reaches back stays only if a
+  // requested task still reaches it.
+  if (expanded) keepReachedFromRequested(nodes)
 
   checkGraph(nodes, options.workspaceRoot, options.rules)
   if (options.nestedProjects !== undefined && options.rules?.locked !== true)
