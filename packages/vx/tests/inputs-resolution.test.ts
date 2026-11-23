@@ -2007,3 +2007,64 @@ describe('inputs.files can only ever narrow the git file set', () => {
     ).toEqual([path.join(projectDir, 'dist', 'bundle.js')])
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────
+// Dotfiles and git's ignore sources, as docs/schema.md states them
+// (2026-11-23: the schema named only the root and project `.gitignore`).
+// ─────────────────────────────────────────────────────────────────────────
+describe('dotfiles and every ignore source git applies', () => {
+  let root: string
+  let projectDir: string
+
+  beforeEach(async () => {
+    root = await mkdtemp(path.join(os.tmpdir(), 'vx-dot-'))
+    projectDir = path.join(root, 'pkg')
+    gitInit(root)
+    for (const f of [
+      '.eslintrc',
+      'src/a.ts',
+      'src/.env',
+      'src/.cache/c.ts',
+      'dist/.d/x',
+      'dist/.h',
+    ]) {
+      await Bun.write(path.join(projectDir, f), 'x')
+    }
+  })
+
+  afterEach(async () => {
+    await rm(root, { recursive: true, force: true })
+  })
+
+  const rels = (files: string[]): Promise<string[]> =>
+    resolveInputs({
+      projectDir,
+      workspaceRoot: root,
+      envSource: {},
+      inputs: { files },
+      ownOutputs: [],
+      nestedProjectDirs: [],
+    }).then((r) => r.files.map((f) => relPosix(projectDir, f)))
+
+  it('wildcards match dotfiles, in inputs and outputs', async () => {
+    expect(await rels(['*'])).toEqual(['.eslintrc'])
+    expect(await rels(['src/*'])).toEqual(['src/.env', 'src/a.ts'])
+    expect(await rels(['src/**'])).toEqual(['src/.cache/c.ts', 'src/.env', 'src/a.ts'])
+    expect(await rels(['src/**', '!**/.*'])).toEqual(['src/.cache/c.ts', 'src/a.ts'])
+    expect(await rels(['src/**', '!**/.*', '!**/.*/**'])).toEqual(['src/a.ts'])
+    const out = await resolveOutputs({ projectDir, outputs: ['dist/**'], nestedProjectDirs: [] })
+    expect(out.map((f) => relPosix(projectDir, f)).sort()).toEqual(['dist/.d/x', 'dist/.h'])
+  })
+
+  it('a nested .gitignore, .git/info/exclude and core.excludesFile all keep a file out', async () => {
+    for (const f of ['src/sub/n.ts', 'src/excl.ts', 'src/glob.ts']) {
+      await Bun.write(path.join(projectDir, f), 'x')
+    }
+    await Bun.write(path.join(projectDir, 'src', 'sub', '.gitignore'), 'n.ts\n')
+    await Bun.write(path.join(root, '.git', 'info', 'exclude'), 'excl.ts\n')
+    const global = path.join(root, '.global-excludes')
+    await Bun.write(global, 'glob.ts\n.global-excludes\n')
+    Bun.spawnSync({ cmd: ['git', 'config', 'core.excludesFile', global], cwd: root })
+    expect(await rels(['src/**', '!**/.*', '!**/.*/**'])).toEqual(['src/a.ts'])
+  })
+})

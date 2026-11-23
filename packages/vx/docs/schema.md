@@ -1091,7 +1091,10 @@ million took a run gigabytes. A class range that runs backwards
 (`[z-a]`) matches no character and is refused, naming `[a-z]`. A leading `!` is still the negation, so `!(group)/**`
 takes a route group back; any other `!` is the character, one that
 starts a name (`out/*/!a`) or a brace alternative (`{x,!a}`) too. A
-negated class never matches a `/`: `gen[!.]*` is not `gen/notes.txt`. This holds for every task glob — `inputs.files`,
+negated class never matches a `/`: `gen[!.]*` is not `gen/notes.txt`.
+Wildcards match dotfiles: `*` folds `.eslintrc`, `src/*` folds
+`src/.env` and `**` enters `src/.cache/`. `'!**/.*'` takes back the
+dotfiles and `'!**/.*/**'` the files in dot directories. This holds for every task glob — `inputs.files`,
 `inputs.workspaceFiles`, `outputs.files`, `outputs.workspaceFiles` — and
 for everything read from them (`--affected`, `vx watch`, the
 overlapping-output refusal). Package-manager member globs (`workspaces`,
@@ -1116,7 +1119,10 @@ lockfile change when a lockfile plugin (`@vzn/vx-lockfile`) is declared.
 
 Always applied to every glob pass (regardless of what you wrote):
 
-- **gitignore filter** — workspace-root + project `.gitignore`, unless
+- **gitignore filter** — every rule git applies: each `.gitignore` at any
+  depth, `.git/info/exclude` and the user's `core.excludesFile`. The last
+  differs per machine, so a file it ignores on one machine is an input on
+  another; ignore shared paths in a committed `.gitignore`. Unless
   an entry names the ignored path outright: a literal (`.env.local`,
   `.env.production.local`; `vx lock` and a miss name an ignored file a
   glob's last segment matches, `.env*` over it), or
