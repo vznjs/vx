@@ -4631,6 +4631,10 @@ ANSI truecolor (`ansi-16m`) sequences, gated by env:
 | (none of these)             | On iff `stdout.isTTY` and not `TERM=dumb`.                |
 | `TERM=dumb`                 | No live region; plain unless a row above turns colour on. |
 
+stdout and stderr decide apart: a run's warnings go to stderr and
+follow its terminal, so `vx run 2> warn.log` writes no escapes to the
+file (`tests/warnings-stderr.test.ts`).
+
 A CI is `CI`, `GITHUB_ACTIONS`, `GITLAB_CI`, `BUILDKITE`, `CIRCLECI`,
 `TF_BUILD`, `JENKINS_URL` or `TEAMCITY_VERSION` set to anything but
 empty, `0` or `false`: a CI log gets the terminal's colours. A viewer
