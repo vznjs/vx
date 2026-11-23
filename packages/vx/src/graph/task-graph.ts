@@ -696,7 +696,7 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
     // would fold into no key.
     if (!packageGraph.edgeSource) {
       throw new UserError(
-        `${id}: ${isDefaultBuild(node.config) ? `${projectName} declares no build, so it is the default build, whose ` : ''}^${task} needs project edges; add pnpm()/bun()/npm()/yarn() and install so its lockfile exists, or a plugin that returns \`deps\``,
+        `${id}: ${isDefaultBuild(node.config) ? `${projectName} declares no build, so it is the default build, whose ` : ''}^${task} needs project edges; add pnpm()/bun()/npm()/yarn() from @vzn/vx-lockfile to plugins in .vx/workspace.ts and install so its lockfile exists, or a plugin that returns \`deps\``,
         'VX_E_DEPENDS_ON',
       )
     }

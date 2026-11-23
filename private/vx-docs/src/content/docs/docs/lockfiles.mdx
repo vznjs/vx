@@ -181,10 +181,10 @@ Without a plugin, projects go by their folder (`packages/ui`), and `vx lock` ref
 
 [38;2;239;68;68m✗[0m [1mvx lock[0m  [38;2;203;213;225mlock not written[0m
 
-  [38;2;203;213;225mpackages/ui#build: ^build needs project edges; add pnpm()/bun()/npm()/yarn() and install so its lockfile exists, or a plugin that returns [0m[1m`deps`[0m
+  [38;2;203;213;225mpackages/ui#build: ^build needs project edges; add pnpm()/bun()/npm()/yarn() from @vzn/vx-lockfile to plugins in .vx/workspace.ts and install so its lockfile exists, or a plugin that returns [0m[1m`deps`[0m
 [38;2;239;68;68m✗[0m [1mvx lock[0m  [38;2;203;213;225malso refused[0m
 
-  [38;2;203;213;225mpackages/web#build: ^build needs project edges; add pnpm()/bun()/npm()/yarn() and install so its lockfile exists, or a plugin that returns [0m[1m`deps`[0m
+  [38;2;203;213;225mpackages/web#build: ^build needs project edges; add pnpm()/bun()/npm()/yarn() from @vzn/vx-lockfile to plugins in .vx/workspace.ts and install so its lockfile exists, or a plugin that returns [0m[1m`deps`[0m
 ```
 
 <Takeaway>use `^build`: the lockfile tells vx that `@demo/ui` builds before `@demo/web`.</Takeaway>
