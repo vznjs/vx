@@ -149,7 +149,7 @@ export interface DefaultLogger extends Logger {
  *
  * `gha` (GitHub Actions): task output is fenced from workflow commands; in full
  * mode each block is a collapsible group, except failures, which stay open with
- * an `::error` annotation, as each failure's frame has in errors-only.
+ * an `::error` annotation, as each deferred failure frame has in the list views.
  *
  * `ci`: suppresses the status line even on a TTY.
  */
@@ -949,7 +949,9 @@ export function defaultLogger(
       if (!flushedFailures && deferredFailures.length > 0) {
         flushedFailures = true
         for (const { block, note } of deferredFailures) {
-          if (note === '' || block.length === 0) emitBlock(fenced(block))
+          if (note === '') emitBlock(fenced(block))
+          // A frame with nothing in it still names its failure.
+          else if (block.length === 0) logWrite(note)
           else {
             const [open, close] = ghaFenceEnds(ghaToken)
             emitBlock(block, `${note}${open}`, close)

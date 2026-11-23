@@ -122,6 +122,8 @@ the mode; `ci: true` whenever `CI` is truthy.
   signal is named, `failed (exit 137, 128 + SIGKILL)`; a timeout its
   reason, `failed (timed out, exit 143)`; a persistent task that never
   became ready, `never ready: …`; a sandboxed task its violation count).
+  The views that defer a failure's frame to the run's end (`errors-only`,
+  `broad`, `focused`) write the same annotation above it, with `gha`.
 - **`focused`** — requested non-group nodes stream stdout/stderr raw
   and live (cache-hit replay included); a quiet hit prints a full
   frame; a skipped requested task prints the skipped one-liner
