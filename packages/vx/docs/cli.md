@@ -848,7 +848,10 @@ Reported task lines share one column grid: `<status> <cache> <±usual>
 <time> <cpu> <mem> <outputs> <blocks> <worker> <mark> <task>`. No glyph
 leads a row. The status word starts at column 12, where the Summary's
 values start, and its colour carries the outcome. The cache word is the
-cache axis. An empty cell shows `—`.
+cache axis. An empty cell shows `—`. A terminal too narrow for the
+whole row drops `blocks`, `outputs`, `worker`, `cpu`, `mem` and
+`±usual`, in that order, until a task's name has 24 columns; status,
+cache and time always stay. Logs off a terminal keep every column.
 
 | Status     | Colour | Meaning                                                |
 | ---------- | ------ | ------------------------------------------------------ |

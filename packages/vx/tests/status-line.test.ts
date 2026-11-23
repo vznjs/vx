@@ -1463,6 +1463,47 @@ describe('list headers', () => {
     expect(head.indexOf('status')).toBe(row.indexOf('success'))
   })
 
+  // An 80-column terminal wrapped every row and the header: the grid gives up
+  // blocks, outputs, worker, cpu, mem and usual, in that order, until a name
+  // has room. Off a terminal (no width) it keeps every column.
+  it('a narrow terminal drops columns so a row fits, each still under its header', () => {
+    const n = {
+      id: 'web#build',
+      projectName: 'web',
+      taskName: 'build',
+      config: { exec: { command: 'x' } },
+    } as unknown as TaskNode
+    const at = (columns: number) => ({ enabled: false, columns })
+    const row = (c: { enabled: boolean; columns?: number }): string =>
+      formatTaskExecutedLine(
+        n,
+        {
+          node: n,
+          status: 'success',
+          exitCode: 0,
+          durationMs: 1500,
+          usage: { cpuMs: 750, peakRssBytes: 4 * 1024 * 1024 },
+        },
+        c,
+        false,
+        2,
+        1400,
+      )
+    expect(formatListHeader(at(140))).toBe(formatListHeader(NO))
+    expect(row(at(140))).toBe(row(NO))
+    expect(formatListHeader(at(80))).toBe('status  cache     \u00b1usual    time    mem   task')
+    expect(row(at(80))).toBe('            success no-cache  +100ms   1.50s  4.0MB   web#build')
+    expect(formatListHeader(at(60))).toBe('status  cache       time   task')
+    expect(row(at(60))).toBe('            success no-cache   1.50s   web#build')
+    for (const columns of [40, 60, 80, 100, 120]) {
+      const head = over(formatListHeader(at(columns)))
+      const r = row(at(columns))
+      expect(head.indexOf('task')).toBe(r.indexOf('web#build'))
+      expect(head.indexOf('time') + 4).toBe(r.indexOf('1.50s') + 5)
+      expect(Bun.stringWidth(r)).toBeLessThanOrEqual(Math.max(columns, 49))
+    }
+  })
+
   // Every cell the grid holds, under its own header word: the
   // average cores and peak memory a run spent, what it wrote, the worker.
   it('a results row fills each column under its header', () => {
