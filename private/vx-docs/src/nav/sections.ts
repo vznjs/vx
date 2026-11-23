@@ -88,9 +88,6 @@ const SIDEBAR_GROUPS: Record<'Docs', SidebarItem[]> = {
       label: 'Cache results',
       items: [
         { label: 'Caching', link: '/docs/caching/' },
-        // FOLD these two into Caching
-        { label: 'Cache a task', link: '/docs/caching/cache-a-task/' },
-        { label: 'Clear the local cache', link: '/docs/caching/clean-the-cache/' },
         { label: 'Find why a task missed the cache', link: '/docs/caching/why-a-task-missed/' },
         { label: 'Sandboxing', link: '/docs/sandboxing/' },
       ],

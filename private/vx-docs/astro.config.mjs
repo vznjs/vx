@@ -76,8 +76,8 @@ export default defineConfig({
     '/guides/otel-bridge/': `${root}docs/plugins/#opentelemetry`,
     '/guides/mcp/': `${root}docs/agents/`,
     // The how-to pages joined the Docs' URLs too (2026-11-23).
-    '/guides/caching/cache-a-task/': `${root}docs/caching/cache-a-task/`,
-    '/guides/caching/clean-the-cache/': `${root}docs/caching/clean-the-cache/`,
+    '/guides/caching/cache-a-task/': `${root}docs/caching/#turn-it-on`,
+    '/guides/caching/clean-the-cache/': `${root}docs/caching/#see-what-the-cache-holds`,
     '/guides/caching/why-a-task-missed/': `${root}docs/caching/why-a-task-missed/`,
     '/guides/ci/check-the-lock/': `${root}docs/ci/#keep-the-lock-fresh`,
     '/guides/ci/fix-a-lock-conflict/': `${root}docs/ci/#fix-a-merge-conflict-in-the-lock`,

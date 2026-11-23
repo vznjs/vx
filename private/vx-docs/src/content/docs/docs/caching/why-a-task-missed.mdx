@@ -1,0 +1,239 @@
+---
+title: Find why a task missed the cache
+description: Ask vx why a task ran, and it names the file, variable or task that changed since its last run.
+---
+
+import Diagram from '../../../../components/guide/diagram/Diagram.astro'
+import { rootCause } from '../../../../components/docs/pictures/caching.js'
+import { Aside } from '@astrojs/starlight/components'
+import { Levels, Deeper, Quiz, Walkthrough, Frame, Takeaway, NextStep } from '../../../../components/learn'
+
+A task ran when you expected a skip. Ask vx why:
+
+```sh
+vx why @demo/ui#build
+```
+
+<Levels />
+
+## Read the verdict
+
+You edited `packages/ui/src/index.ts` and built. `vx why` compares this run with the one before:
+
+```ansi
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhy[0m[4m[58;2;110;118;129m [2m@demo/ui#build[0m[4m[58;2;110;118;129m                                                                                                    [0m
+  [2mrun     [0m  [38;2;203;213;225m01a209cb-579f-71e1-b5ba-9a1a6018b8c4[0m
+  [2mthis run[0m  [38;2;203;213;225m2026-11-23T19:04:10.943Z · success · executed · key da8bbb5e7693ba71[0m
+  [2mprevious[0m  [38;2;203;213;225m2026-11-23T19:04:10.632Z · success · executed · key 323a4fbfdde6fd8e[0m
+  [2mverdict [0m  [38;2;234;179;8mcache key changed: file packages/ui/src/index.ts[0m
+
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhat changed[0m[4m[58;2;110;118;129m [2m1 of 4[0m[4m[58;2;110;118;129m                                                                                                   [0m
+  [2mchange   kind  name                      before → after[0m
+  [38;2;234;179;8mchanged[0m  [38;2;203;213;225mfile[0m  [1mpackages/ui/src/index.ts[0m  [38;2;203;213;225md00491fd7e5bb6fa28c517a0bb32b8b506539d4d → 0cfbf08886fca9a91cb753ec8734c84fcbe52c9f[0m
+
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhat to do[0m[4m[58;2;110;118;129m                                                                                                            [0m
+  [2mfile    [0m  [38;2;203;213;225man edit re-runs by design; a file the task does not read belongs out of inputs.files[0m
+```
+
+Four parts, top to bottom:
+
+| Part | Tells you |
+| --- | --- |
+| **Why** | both runs, each with its result and key |
+| `verdict` | the answer in one line: what moved |
+| **What changed** | each moved part, with its value before and after |
+| **What to do** | whether this is expected, and how to fix it if not |
+
+The keys differ and the verdict names the file. That run was **expected**: you edited an input.
+
+<Takeaway>find the one file that made a task run.</Takeaway>
+
+## Follow it to the root
+
+`@demo/web` uses `@demo/ui`, so its build depends on `@demo/ui#build`. The same edit ran both:
+
+<Diagram {...rootCause} />
+
+```sh
+vx why @demo/web#build
+```
+
+```ansi
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhy[0m[4m[58;2;110;118;129m [2m@demo/web#build[0m[4m[58;2;110;118;129m                                                                                                   [0m
+  [2mrun     [0m  [38;2;203;213;225m01a209cb-579f-71e1-b5ba-9a1a6018b8c4[0m
+  [2mthis run[0m  [38;2;203;213;225m2026-11-23T19:04:10.990Z · success · executed · key 4b39fc8fe6cb1046[0m
+  [2mprevious[0m  [38;2;203;213;225m2026-11-23T19:04:10.690Z · success · executed · key 5dffef39d12efd08[0m
+  [2mverdict [0m  [38;2;234;179;8mcache key changed: upstream @demo/ui#build[0m
+
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhat changed[0m[4m[58;2;110;118;129m [2m1 of 5[0m[4m[58;2;110;118;129m                                                                                                   [0m
+  [2mchange   kind      name            before → after[0m
+  [38;2;234;179;8mchanged[0m  [38;2;203;213;225mupstream[0m  [1m@demo/ui#build[0m  [38;2;203;213;225m323a4fbfdde6fd8e → da8bbb5e7693ba71[0m
+
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mRoot cause[0m[4m[58;2;110;118;129m                                                                                                            [0m
+  [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m[2m ← [0m[38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m[2m ← [0m[1mfile packages/ui/src/index.ts[0m
+
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhat to do[0m[4m[58;2;110;118;129m                                                                                                            [0m
+  [2mfile    [0m  [38;2;203;213;225man edit re-runs by design; a file the task does not read belongs out of inputs.files[0m
+```
+
+The verdict says `upstream @demo/ui#build`: a task it depends on got a new key. **Root cause** follows the tasks back to the file you touched.
+
+<Takeaway>trace a re-run through any number of tasks to the edit that started it.</Takeaway>
+
+## Spot each kind of change
+
+The `kind` column says what moved. Step through the three you meet most:
+
+<Walkthrough title="Three reasons a task runs">
+<Frame title="file: an input changed">
+
+The edit above. `What to do` says an edit runs by design. If the task does not read that file, take it out of `inputs.files`.
+
+</Frame>
+<Frame title="env: a variable changed">
+
+`@demo/web#build` lists `MODE` in `inputs.env`. The last two runs had `MODE=staging`, then `MODE=production`:
+
+```ansi
+[2m$[0m vx why @demo/web#build
+
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhy[0m[4m[58;2;110;118;129m [2m@demo/web#build[0m[4m[58;2;110;118;129m                                                                                                   [0m
+  [2mrun     [0m  [38;2;203;213;225m01a209c1-1e0f-76ba-8830-5c5ac8b5bb21[0m
+  [2mthis run[0m  [38;2;203;213;225m2026-11-23T18:53:00.858Z · success · executed · key dacc0c92098b463a[0m
+  [2mprevious[0m  [38;2;203;213;225m2026-11-23T18:53:00.245Z · success · executed · key f019b0fdc69a5ac5[0m
+  [2mverdict [0m  [38;2;234;179;8mcache key changed: env MODE[0m
+
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhat changed[0m[4m[58;2;110;118;129m [2m1 of 9[0m[4m[58;2;110;118;129m                                                                                                   [0m
+  [2mchange   kind  name  before → after[0m
+  [38;2;234;179;8mchanged[0m  [38;2;203;213;225menv[0m   [1mMODE[0m  [38;2;203;213;225mbc7ff980bab9217c → 11bb989f56d9506d[0m
+
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhat to do[0m[4m[58;2;110;118;129m                                                                                                            [0m
+  [2menv     [0m  [38;2;203;213;225mthe variable's value moved; one the task does not read belongs out of inputs.env[0m
+```
+
+vx shows a hash of each value, never the value itself.
+
+</Frame>
+<Frame title="config: the task itself changed">
+
+The command in `vx.config.ts` became `vite build --minify false`:
+
+```ansi
+[2m$[0m vx why @demo/ui#build
+
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhy[0m[4m[58;2;110;118;129m [2m@demo/ui#build[0m[4m[58;2;110;118;129m                                                                                                    [0m
+  [2mrun     [0m  [38;2;203;213;225m01a209c1-2257-776d-aec6-52a982c786aa[0m
+  [2mthis run[0m  [38;2;203;213;225m2026-11-23T18:53:01.941Z · success · executed · key 498a9bc9f7d6cf6d[0m
+  [2mprevious[0m  [38;2;203;213;225m2026-11-23T18:53:00.845Z · cache-hit · up-to-date · key 69575ae4d3029055[0m
+  [2mverdict [0m  [38;2;234;179;8mcache key changed: config[0m
+
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhat changed[0m[4m[58;2;110;118;129m [2m1 of 7[0m[4m[58;2;110;118;129m                                                                                                   [0m
+  [2mchange   kind    name    before → after[0m
+  [38;2;234;179;8mchanged[0m  [38;2;203;213;225mconfig[0m  [1mconfig[0m  [38;2;203;213;225me47ffa458aad2c6b → b5cea63a07bf16fc[0m
+
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhat to do[0m[4m[58;2;110;118;129m                                                                                                            [0m
+  [2mconfig  [0m  [38;2;203;213;225mthe task's evaluated config changed (its vx.config or a file it imports); [0m[1m`vx show @demo/ui#build`[0m[38;2;203;213;225m prints it as it is now[0m
+```
+
+`vx show @demo/ui#build` prints the task as it is now.
+
+</Frame>
+</Walkthrough>
+
+<Quiz q="You add README.md to packages/ui and build. vx prints up-to-date. What does vx why say?">
+  `cache key unchanged — this run was served from cache, nothing re-ran`. README.md is not in
+  `inputs.files`, so the key did not move.
+</Quiz>
+
+<Takeaway>tell a file, a variable and a config change apart at a glance.</Takeaway>
+
+<Deeper level="patterns" title="Common cases">
+
+### A task runs every time
+
+The verdict starts `never cached`. The task, or one it depends on, has no `inputs`, so each run makes a new key. Add `inputs` to the task the verdict names.
+
+### A task skipped when it should have run
+
+`vx why` says the key did not move, so the file you changed is not an input. Add it to `inputs.files` and run `vx lock`.
+
+<Aside type="tip" title="Find the missing input for good">
+  Add [`exec.sandbox`](../../sandboxing/) to the task. A read outside its inputs fails the task and
+  names the file.
+</Aside>
+
+### Ask about an older run
+
+`vx last --list` lists recent runs. Pass one's id to compare that run with the one before it:
+
+```sh
+vx why @demo/ui#build --run 01a209c0-fc0b-7616-8c58-7e50479c4225
+```
+
+### Read it from a script or an agent
+
+`--format json` prints the same answer as one object:
+
+```sh
+vx why @demo/web#build --format json
+```
+
+```json
+{
+  "taskId": "@demo/web#build",
+  "diff": {
+    "entries": [
+      { "kind": "upstream", "name": "@demo/ui#build", "change": "changed", "before": "235118720ed1a79b", "after": "693d3b58e7193bca" }
+    ],
+    "unchangedCount": 7
+  },
+  "roots": [
+    {
+      "entries": [{ "kind": "file", "name": "packages/ui/src/index.ts", "change": "changed" }]
+    }
+  ]
+}
+```
+
+Trimmed: the full object also holds both runs' keys, times and results, and each root's path of tasks.
+
+<Takeaway>fix a task that never caches or one that never runs, and script the answer.</Takeaway>
+
+</Deeper>
+
+<Deeper level="details" title="Every option and kind">
+
+```sh
+vx why (TASK | PKG#TASK) [--run RUNID] [--format pretty|json] [--cache-dir <path>]
+```
+
+| Option | Default | What it does |
+| --- | --- | --- |
+| `TASK` or `PKG#TASK` | required | the task to explain; `build` alone means the project in the folder you are in |
+| `--run <id>` | the latest run | explain that run instead |
+| `--format` | `pretty` | `json` for one object |
+| `--cache-dir <path>` | the workspace's | read the cache a run with the same flag used |
+
+| `kind` | Moved because |
+| --- | --- |
+| `file` | a file in `inputs.files` or `inputs.workspaceFiles` changed, appeared or went |
+| `linked` | a symlink among the inputs points somewhere else |
+| `env` | a variable in `inputs.env` changed |
+| `runtime` | a command in `inputs.runtime` printed something else |
+| `ws-runtime` | a command in `inputs.workspaceRuntime` printed something else |
+| `upstream` | a task it depends on got a new key |
+| `config` | the task's config changed, or a file the config imports |
+| `forward` | the arguments after `--` changed |
+| `plugin` | a plugin's part of the key moved, such as the package's dependencies in the lockfile |
+| `platform` | the task ran on another platform |
+| `format` | vx itself changed: a new vx version keys every task anew once |
+
+`vx why` reads the run history in `.vx/cache`. `vx cache clean` empties it, so `vx why` has nothing to compare until two more runs.
+
+Every verdict line vx prints: [Caching](../../caching/#find-why-a-task-ran-again). The command in full: [`vx why`](../../../cli/why/).
+
+</Deeper>
+
+<NextStep href="../../sandboxing/" title="Sandboxing">
+  Make vx prove a task reads only what its inputs list, so a missed input fails loudly.
+</NextStep>

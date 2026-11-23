@@ -3,10 +3,12 @@ title: Caching
 description: vx remembers what a task made and skips the work when nothing it reads has changed.
 ---
 
+import Demo from '../../../components/Demo.astro'
 import Diagram from '../../../components/guide/diagram/Diagram.astro'
 import { cacheKey } from '../../../components/docs/pictures.js'
+import { runEnds, cacheHome } from '../../../components/docs/pictures/caching.js'
 import { Aside } from '@astrojs/starlight/components'
-import { Levels, Deeper, Concept, Quiz, Walkthrough, Frame, Takeaway, NextStep } from '../../../components/learn'
+import { Levels, Deeper, Concept, Quiz, Walkthrough, Frame, Compare, Takeaway, NextStep } from '../../../components/learn'
 
 Run a build twice. The second time, vx does no work: it puts back what the first run made.
 
@@ -17,77 +19,128 @@ vx run build
 
 <Levels />
 
-<Walkthrough title="The same build, twice">
+<Walkthrough title="One build, four runs">
 <Frame title="1. First run: vite builds, vx stores dist/">
 
-```ansi title="first run"
-[2m$[0m vx run build
+```ansi
+[2m$[0m vx run @demo/ui#build
 
-[2m┌─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m>[0m $ vite build
+[2m┌─[0m [1m[38;2;192;132;252m@demo/ui[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m>[0m $ vite build
 [36mvite v7.3.8 [32mbuilding client environment for production...[36m[39m
 transforming...
-[32m✓[39m 3 modules transformed.
+[32m✓[39m 1 modules transformed.
 rendering chunks...
 computing gzip size...
-[2mdist/[22m[32mindex.html                [39m[1m[2m0.08 kB[22m[1m[22m[2m │ gzip: 0.09 kB[22m
-[2mdist/[22m[2massets/[22m[36mindex-7C0y1bbr.js  [39m[1m[2m0.74 kB[22m[1m[22m[2m │ gzip: 0.42 kB[22m
-[32m✓ built in 67ms[39m
-[0m[2m└─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(211ms)[0m [2msuccess[0m
+[2mdist/[22m[36mindex.js  [39m[1m[2m0.07 kB[22m[1m[22m[2m │ gzip: 0.08 kB[22m
+[32m✓ built in 44ms[39m
+[0m[2m└─[0m [1m[38;2;192;132;252m@demo/ui[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(260ms)[0m [2msuccess[0m
 ```
+
+Read the last word: **success**. vite ran, then vx stored `dist/`.
 
 </Frame>
-<Frame title="2. Second run: nothing changed, so nothing runs">
+<Frame title="2. Run again: nothing changed">
 
-```ansi title="second run"
-[2m$[0m vx run build
+```ansi
+[2m$[0m vx run @demo/ui#build
 
-[2m┌─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m>[0m $ vite build
+[2m┌─[0m [1m[38;2;192;132;252m@demo/ui[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m>[0m $ vite build
 [36mvite v7.3.8 [32mbuilding client environment for production...[36m[39m
 transforming...
-[32m✓[39m 3 modules transformed.
+[32m✓[39m 1 modules transformed.
 rendering chunks...
 computing gzip size...
-[2mdist/[22m[32mindex.html                [39m[1m[2m0.08 kB[22m[1m[22m[2m │ gzip: 0.09 kB[22m
-[2mdist/[22m[2massets/[22m[36mindex-7C0y1bbr.js  [39m[1m[2m0.74 kB[22m[1m[22m[2m │ gzip: 0.42 kB[22m
-[32m✓ built in 67ms[39m
-[0m[2m└─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(6ms)[0m [2mup-to-date[0m
+[2mdist/[22m[36mindex.js  [39m[1m[2m0.07 kB[22m[1m[22m[2m │ gzip: 0.08 kB[22m
+[32m✓ built in 44ms[39m
+[0m[2m└─[0m [1m[38;2;192;132;252m@demo/ui[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(5ms)[0m [2mup-to-date[0m
 ```
 
-Look at the last line: **6ms** and **up-to-date**. The build was skipped.
+**up-to-date** in 5ms. vite did **not** run: vx replays the log it saved, and `dist/` is already what the cache holds.
+
+</Frame>
+<Frame title="3. Delete dist/, run again">
+
+```ansi
+[2m$[0m rm -rf packages/ui/dist
+[2m$[0m vx run @demo/ui#build
+
+[2m┌─[0m [1m[38;2;192;132;252m@demo/ui[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m>[0m $ vite build
+[36mvite v7.3.8 [32mbuilding client environment for production...[36m[39m
+transforming...
+[32m✓[39m 1 modules transformed.
+rendering chunks...
+computing gzip size...
+[2mdist/[22m[36mindex.js  [39m[1m[2m0.07 kB[22m[1m[22m[2m │ gzip: 0.08 kB[22m
+[32m✓ built in 44ms[39m
+[0m[2m└─[0m [1m[38;2;192;132;252m@demo/ui[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(11ms)[0m [2mrestored-local[0m
+```
+
+**restored-local**: the key is stored, so vx copies `dist/` back from the cache. vite never starts.
+
+</Frame>
+<Frame title="4. Edit src/index.ts, run again">
+
+```ansi
+[2m$[0m vx run @demo/ui#build
+
+[2m┌─[0m [1m[38;2;192;132;252m@demo/ui[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m>[0m $ vite build
+[36mvite v7.3.8 [32mbuilding client environment for production...[36m[39m
+transforming...
+[32m✓[39m 1 modules transformed.
+rendering chunks...
+computing gzip size...
+[2mdist/[22m[36mindex.js  [39m[1m[2m0.08 kB[22m[1m[22m[2m │ gzip: 0.09 kB[22m
+[32m✓ built in 47ms[39m
+[0m[2m└─[0m [1m[38;2;192;132;252m@demo/ui[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(248ms)[0m [2msuccess[0m
+```
+
+**success** again. The edit made a new key, so vite ran and vx stored the new `dist/`.
 
 </Frame>
 </Walkthrough>
 
 <Concept term="Cache">
-  A store of task results that vx keeps in `.vx/cache`. When a task has run before with the same
+  A store of task results that vx keeps on your machine. When a task has run before with the same
   inputs, vx copies the result from here instead of running it.
 </Concept>
 
 ## Turn it on
 
-Tell vx three things about the task: what it **reads** (`inputs`), what it **writes** (`outputs`), and `cache: true`.
+Tell vx three things about the task: what it **reads**, what it **writes**, and `cache: true`.
 
-```ts title="packages/app/vx.config.ts" mark={8-14}
-import { defineProject } from '@vzn/vx/config'
+```ts title="packages/ui/vx.config.ts" mark={7-9}
+import type { ProjectConfig } from '@vzn/vx/config'
 
-export default defineProject({
+export default {
   tasks: {
     build: {
-      dependsOn: ['^build'],
       exec: { command: 'vite build' },
-      inputs: {
-        files: ['src/**', 'index.html'],
-      },
-      outputs: {
-        files: ['dist/**'],
-      },
+      inputs: { files: ['src/**', 'vite.config.js'] },
+      outputs: { files: ['dist/**'] },
       cache: true,
     },
   },
-})
+} satisfies ProjectConfig
 ```
 
-<Takeaway>cache any task: list what it reads and writes, add `cache: true`.</Takeaway>
+| Line | Tells vx | vx uses it to |
+| --- | --- | --- |
+| `inputs.files` | the files the command **reads** | build the task's key |
+| `outputs.files` | the files the command **writes** | store them, and put them back |
+| `cache: true` | remember this task | skip it on a key it stored |
+
+Globs start at the project's folder: `src/**` is `packages/ui/src/**`.
+
+<Concept term="Lock">
+  What `vx lock` writes: `.vx/projects.lock` and a `vx.lock.json` beside each config. Every run reads
+  them instead of your configs, so run `vx lock` after each config change and commit them.
+</Concept>
+
+```sh
+vx lock
+```
+
+<Takeaway>cache any task: list what it reads and writes, add `cache: true`, run `vx lock`.</Takeaway>
 
 ## How vx decides
 
@@ -98,14 +151,68 @@ export default defineProject({
 
 <Diagram {...cacheKey} />
 
-Before running a task, vx computes its key. A key it has stored is a **hit**: vx restores the outputs. A new key is a **miss**: the task runs, then vx stores its outputs.
+A stored key is a **hit**. Then vx looks at the outputs on disk, and ends the task with one of three words:
 
-<Quiz q="You edit README.md, which the build does not list in inputs. Does the build run again?">
-  No. The key holds only what the task lists, so the key stays the same and the build is a hit. If
-  the build does read that file, add it to `inputs.files`.
+<Diagram {...runEnds} />
+
+<Takeaway>read the last word of a run and know what vx did.</Takeaway>
+
+## Try it: will it run?
+
+Pick what you did since the last build. Each line is what vx printed in a real run.
+
+<Demo name="will-it-run">
+<table>
+<thead><tr><th>You did</th><th>vx prints</th><th>Why</th></tr></thead>
+<tbody>
+<tr><td>nothing</td><td><code><span class="is-muted">└─</span> <b>@demo/ui#build</b> <span class="is-muted">── (5ms) up-to-date</span></code></td><td>Same key, and <code>dist/</code> is as stored: <span class="is-ok">nothing runs</span>.</td></tr>
+<tr><td>deleted dist/</td><td><code><span class="is-muted">└─</span> <b>@demo/ui#build</b> <span class="is-muted">── (11ms) restored-local</span></code></td><td>Same key, <code>dist/</code> gone: vx <span class="is-ok">copies it back</span>.</td></tr>
+<tr><td>edited src/index.ts</td><td><code><span class="is-muted">└─</span> <b>@demo/ui#build</b> <span class="is-muted">── (248ms) success</span></code></td><td>An input changed: new key, <span class="is-warn">vite runs</span>.</td></tr>
+<tr><td>edited vite.config.js</td><td><code><span class="is-muted">└─</span> <b>@demo/ui#build</b> <span class="is-muted">── (248ms) success</span></code></td><td>It is in <code>inputs.files</code>: new key, <span class="is-warn">vite runs</span>.</td></tr>
+<tr><td>added README.md</td><td><code><span class="is-muted">└─</span> <b>@demo/ui#build</b> <span class="is-muted">── (3ms) up-to-date</span></code></td><td>Not in <code>inputs.files</code>: same key, <span class="is-ok">nothing runs</span>.</td></tr>
+<tr><td>undid an edit</td><td><code><span class="is-muted">└─</span> <b>@demo/ui#build</b> <span class="is-muted">── (12ms) restored-local</span></code></td><td>The key is one vx stored before: <span class="is-ok">copied back</span>, no build.</td></tr>
+</tbody>
+</table>
+<span slot="caption">The same task, six situations. Only a change to an input runs vite.</span>
+</Demo>
+
+<Quiz q="Your build also reads public/logo.svg, but inputs.files does not list it. You change the logo. What happens?">
+  vx prints **up-to-date** and `dist/` keeps the old logo. The key holds only what you list. Add
+  `'public/**'` to `inputs.files`, then run `vx lock`.
 </Quiz>
 
-<Takeaway>predict when a task runs and when it is skipped.</Takeaway>
+<Takeaway>predict what a run will do before you start it.</Takeaway>
+
+## Outputs must exist
+
+Declared outputs are a promise. When the command ends:
+
+- a plain path, like `dist/index.js`, **must exist**;
+- a wildcard, like `coverage/**`, may match nothing;
+- but **at least one** declared output must exist.
+
+Here the config says `dist/main.js`, but vite writes `dist/index.js`:
+
+```sh
+vx run @demo/ui#build
+```
+
+```ansi
+[2m┌─[0m [1m[38;2;192;132;252m@demo/ui[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m>[0m $ vite build
+[36mvite v7.3.8 [32mbuilding client environment for production...[36m[39m
+transforming...
+[32m✓[39m 1 modules transformed.
+rendering chunks...
+computing gzip size...
+[2mdist/[22m[36mindex.js  [39m[1m[2m0.08 kB[22m[1m[22m[2m │ gzip: 0.10 kB[22m
+[32m✓ built in 50ms[39m
+[0m[1m[38;2;234;179;8m[vx][0m[2m @demo/ui#build: outputs matched no files (dist/main.js) — the command exited 0 but never wrote it, so the task fails and nothing is cached: write it, or fix the pattern[0m
+[2m└─[0m [1m[38;2;192;132;252m@demo/ui[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(249ms)[0m [1m[38;2;239;68;68mfailed (exited 0, no file matched dist/main.js)[0m
+```
+
+The task **fails** and vx stores nothing. Fix the path, or make the command write that file.
+
+<Takeaway>fix a task that fails with `outputs matched no files`.</Takeaway>
 
 ## Find why a task ran again
 
@@ -115,89 +222,265 @@ Before running a task, vx computes its key. A key it has stored is a **hit**: vx
 vx why @demo/web#build
 ```
 
-```ansi title="after an edit to packages/ui/src/index.js"
-[4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhy[0m[4m[58;2;110;118;129m [2m@demo/web#build[0m[4m[58;2;110;118;129m                                                                                                   [0m
-  [2mrun     [0m  [38;2;203;213;225m01a20899-8a34-72d9-ae6f-555621174f8a[0m
-  [2mthis run[0m  [38;2;203;213;225m2026-11-23T13:30:10.166Z · success · executed · key dac9b52ef101f859[0m
-  [2mprevious[0m  [38;2;203;213;225m2026-11-23T13:30:02.239Z · cache-hit · up-to-date · key 433035ef17a9e7c1[0m
+```ansi
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhy[0m[4m[58;2;110;118;129m [2m@demo/web#build[0m[0m
   [2mverdict [0m  [38;2;234;179;8mcache key changed: upstream @demo/ui#build[0m
 
-[4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhat changed[0m[4m[58;2;110;118;129m [2m1 of 8[0m[4m[58;2;110;118;129m                                                                                                   [0m
-  [2mchange   kind      name            before → after[0m
-  [38;2;234;179;8mchanged[0m  [38;2;203;213;225mupstream[0m  [1m@demo/ui#build[0m  [38;2;203;213;225mb81d6aaad67ade9b → 7d69d37611e0da71[0m
-
-[4m[58;2;110;118;129m  [1m[38;2;167;139;250mRoot cause[0m[4m[58;2;110;118;129m                                                                                                            [0m
-  [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m[2m ← [0m[38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m[2m ← [0m[1mfile packages/ui/src/index.js[0m
-
-[4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhat to do[0m[4m[58;2;110;118;129m                                                                                                            [0m
-  [2mfile    [0m  [38;2;203;213;225man edit re-runs by design; a file the task does not read belongs out of inputs.files[0m
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mRoot cause[0m[0m
+  [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m[2m ← [0m[38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m[2m ← [0m[1mfile packages/ui/src/index.ts[0m
 ```
 
-Read the **Root cause** line: a file in `@demo/ui` changed, so `@demo/ui#build` got a new key, so `@demo/web#build` did too.
+Read **Root cause**: a file in `@demo/ui` changed, so `@demo/ui#build` got a new key, so `@demo/web#build` did too.
 
-<Takeaway>trace any re-run back to the file that caused it ([full guide](../../docs/caching/why-a-task-missed/)).</Takeaway>
+<Takeaway>trace any re-run back to the file that caused it ([Find why a task missed the cache](../caching/why-a-task-missed/)).</Takeaway>
 
 <Deeper level="patterns" title="Common setups">
 
-### A file at the workspace root
+### Lint and tests: nothing to store
 
-A task that reads a shared file outside its project lists it under `workspaceFiles`:
+A task that writes no files still caches its pass. Give it an empty `outputs.files`:
 
-```ts mark={3}
-inputs: {
-  files: ['src/**', 'index.html'],
-  workspaceFiles: ['tsconfig.base.json'], // from the workspace root
-},
-```
-
-### An environment variable
-
-A task whose result depends on a variable keys on it with `inputs.env` and passes it with `exec.env`:
-
-```ts mark={1,4}
-exec: { command: 'vite build', env: { passThrough: ['NODE_ENV'] } },
-inputs: {
-  files: ['src/**'],
-  env: ['NODE_ENV'],
-},
-```
-
-### Tests and lint: nothing to store
-
-A task that writes no files still caches its pass. Give it an empty output list:
-
-```ts mark={3}
-test: {
-  exec: { command: 'vitest run' },
+```ts title="packages/ui/vx.config.ts" mark={4}
+lint: {
+  exec: { command: 'oxlint src' },
   inputs: { files: ['src/**'] },
   outputs: { files: [] },
   cache: true,
 },
 ```
 
-<Aside type="tip" title="Not sure the list is complete?">
-  Add [`exec.sandbox`](../../docs/sandboxing/) with `allow.read` listing the same
-  files. A workspace read outside it fails the task and names the file.
+```ansi
+[2m$[0m vx run @demo/ui#lint
+
+[2m┌─[0m [1m[38;2;192;132;252m@demo/ui[0m[2m#[0m[1m[38;2;232;121;249mlint[0m [2m>[0m $ oxlint src
+Found 0 warnings and 0 errors.
+Finished in 7ms on 1 file with 96 rules using 4 threads.
+[2m└─[0m [1m[38;2;192;132;252m@demo/ui[0m[2m#[0m[1m[38;2;232;121;249mlint[0m [2m──[0m [2m(2ms)[0m [2mup-to-date[0m
+```
+
+The second run is **up-to-date**: oxlint does not start until a file in `src/` changes.
+
+### Tests next to the code
+
+A `!` glob keeps test files out of the build's key, so editing a test does not rebuild:
+
+```ts mark={2}
+build: {
+  inputs: { files: ['src/**', '!src/**/*.test.ts', 'vite.config.js'] },
+}
+```
+
+### A shared file at the workspace root
+
+`workspaceFiles` takes paths from the workspace root, for a file outside the project:
+
+```ts mark={3}
+inputs: {
+  files: ['src/**', 'vite.config.js'],
+  workspaceFiles: ['tsconfig.base.json'],
+},
+```
+
+### An environment variable
+
+`inputs.env` puts a variable's value in the key. `exec.env.passThrough` hands it to the command. List it in both:
+
+```ts mark={1,4}
+exec: { command: 'vite build', env: { passThrough: ['MODE'] } },
+inputs: {
+  files: ['src/**'],
+  env: ['MODE'],
+},
+```
+
+### A tool's version
+
+`workspaceRuntime` runs a command once per run and puts what it prints in the key. A new Node version then rebuilds:
+
+```ts mark={3}
+inputs: {
+  files: ['src/**'],
+  workspaceRuntime: ['node --version'],
+},
+```
+
+### A tool that reads its last output
+
+vx empties `dist/` before a build runs. `clean: false` keeps it, for a tool that reads its own last result:
+
+```ts mark={1}
+outputs: { files: ['dist/**'], clean: false },
+```
+
+<Aside type="caution">
+  With `clean: false`, a stale file left in `dist/` is stored too, and every machine gets it back.
 </Aside>
 
-<Takeaway>cache builds that read shared files and variables, and tests that write nothing.</Takeaway>
+<Aside type="tip" title="Not sure the inputs are complete?">
+  Add [`exec.sandbox`](../sandboxing/) with `allow.read` listing the same files. A workspace read
+  outside it fails the task and names the file.
+</Aside>
+
+<Takeaway>cache lint and tests, shared files, variables and tool versions.</Takeaway>
+
+</Deeper>
+
+<Deeper level="patterns" title="Clear the local cache">
+
+### See what the cache holds
+
+Every new key adds an entry, and no run deletes one. `vx info` reports the size. Read `cache store` and `cache entries`:
+
+```ansi
+[2m$[0m vx info
+
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mvx info[0m[4m[58;2;110;118;129m                                                                                                               [0m
+  [2mcache store     [0m  [38;2;203;213;225m~/.vx/3e72a2ed9be15889/cache (176 KB, shared by this workspace's checkouts)[0m
+  [2mcache versions  [0m  [38;2;203;213;225mkeys vx-cache-v56 · index schema v58[0m
+  [2mcache entries   [0m  [38;2;203;213;225m13 (9.6 KB)[0m
+```
+
+The entries live in your home folder, shared by every checkout of the workspace. Each checkout keeps its own index and run history:
+
+<Diagram {...cacheHome} />
+
+### Trim it by age or size
+
+Each way keeps what you used last:
+
+<Compare left="By age" right="By size">
+<div slot="left">
+
+```sh
+vx cache clean --older-than 30d
+```
+
+Drops entries no run used in 30 days.
+
+</div>
+<div slot="right">
+
+```sh
+vx cache clean --max-size 5G
+```
+
+Drops the least recently used until the cache fits.
+
+</div>
+</Compare>
+
+Add `--dry` first to see what would go. Nothing is deleted:
+
+```ansi
+[2m$[0m vx cache clean --max-size 1K --dry
+
+[38;2;6;182;212m›[0m [1mvx cache clean[0m  [38;2;203;213;225mwould free 8.8 KB (dry run)[0m
+
+  [38;2;203;213;225m11 entries[0m
+```
+
+Then run it for real:
+
+```ansi
+[2m$[0m vx cache clean --max-size 4K
+
+[38;2;34;197;94m✓[0m [1mvx cache clean[0m  [38;2;203;213;225mfreed 5.7 KB[0m
+
+  [38;2;203;213;225m8 entries[0m
+```
+
+This demo cache is tiny, so the sizes are too. Use your own numbers.
+
+### Empty it
+
+With no flag, `vx cache clean` removes everything this workspace cached, and its run history:
+
+```ansi
+[2m$[0m vx cache clean
+
+[38;2;34;197;94m✓[0m [1mvx cache clean[0m  [38;2;203;213;225mfreed 496 KB[0m
+
+  [38;2;203;213;225m.vx/cache[0m
+  [38;2;203;213;225m/root/.vx/3e72a2ed9be15889/cache[0m
+
+  [38;2;203;213;225mrun history cleared too: vx last and vx why start over[0m
+```
+
+The next run builds from scratch and stores again. `vx last` and `vx why` start over.
+
+### Clean on a schedule
+
+No run evicts, so put the clean where it runs on its own: a weekly CI job, or a cron line on your machine:
+
+```sh
+0 9 * * 1 cd ~/work/demo && vx cache clean --older-than 30d --max-size 10G
+```
+
+With both flags, the age cut runs first, then the size cap.
+
+### Free every workspace's cache
+
+`--global` clears the stores of every workspace on this machine, under `~/.vx`:
+
+```sh
+vx cache clean --global --dry
+```
+
+<Quiz q="You build a branch, leave it for two weeks, then come back. vx cache clean --older-than 30d ran in between. Is the build still cached?">
+  Yes. Its entries were used 14 days ago, under the 30-day cutoff, so they stay. The next run prints
+  **up-to-date** or **restored-local**.
+</Quiz>
+
+<Takeaway>keep the cache under an age or a size, preview it first, or empty it.</Takeaway>
+
+</Deeper>
+
+<Deeper level="details" title="Every caching field">
+
+Each field sits in a task in `vx.config.ts`. A task with `cache: true` also needs `exec`, `inputs` and `outputs`.
+
+| Field | Default | What it does |
+| --- | --- | --- |
+| `cache` | `false` | `true` stores the result and skips the task on a stored key |
+| `inputs.files` | required | globs from the project folder; `!` removes; `src` means all of `src/` |
+| `inputs.workspaceFiles` | `[]` | the same, from the workspace root |
+| `inputs.env` | `[]` | variables whose values go in the key (not passed to the command) |
+| `inputs.runtime` | `[]` | commands run in the project; what they print goes in the key |
+| `inputs.workspaceRuntime` | `[]` | commands run once at the root; what they print goes in the key |
+| `inputs.tasks` | all it depends on | whose keys go in this key; `[]` keeps the order only |
+| `inputs.stability.strategy` | `'immutable'` | which writes to an input during the run count: `'immutable'` any, `'mutable'` new bytes only, `'unchecked'` none |
+| `inputs.stability.severity` | `'warn'` | on such a write: `'warn'` skips the save, `'error'` fails the task |
+| `outputs.files` | required | globs of what the command writes; `[]` for none |
+| `outputs.workspaceFiles` | `[]` | outputs outside the project, from the workspace root |
+| `outputs.clean` | `true` | empty the outputs before a run; `false` keeps them |
+
+`.vx/workspace.ts` can set `outputs.clean` and `inputs.stability` for every task. A task's own value wins.
+
+The workspace settings that move the cache:
+
+| Setting | Default | What it does |
+| --- | --- | --- |
+| `cache.dir` | `.vx/cache`, entries in `~/.vx/<id>/cache` | where the cache lives; named, it holds everything |
+| `history.retention` | `30d` | how much run history a clean with a bound keeps |
+
+Every field of every task: [Tasks](../tasks/).
 
 </Deeper>
 
 <Deeper level="details" title="What the key holds">
 
-A task with no `cache: true` is keyed on its `inputs` all the same, so a
-cached task behind it re-runs when they change. One that declares no
-`inputs` has no key, and every task behind it misses.
+A task with no `cache: true` is keyed on its `inputs` all the same, so a cached task behind it re-runs when they change.
 
-| The key                | Holds                                                                                   |
-| ---------------------- | --------------------------------------------------------------------------------------- |
-| Always in it           | the keys of the tasks it depends on, the task's config, arguments after `--` |
-| In, with a lockfile plugin | the package's `package.json` and its own dependencies from the lockfile ([Lockfiles](../lockfiles/)) |
-| Always excluded        | an untracked `node_modules` git does not ignore (an install), `.git`, `.vx/cache`, `.vx/projects.lock`, `vx.lock.json`, `.vx/.gitattributes`, `.vx/.gitignore`, `.vx/dependencies.lock`, `.vx/tmp` (restore staging), the temps a killed write leaves (`.vx/projects.lock.tmp-*`, `.vx/dependencies.lock.tmp-*`, `vx.lock.json.tmp-*`), each at the project's root only, the task's own outputs, except a file git tracks (a committed output stays in the key: by what git holds while its bytes are ones a build keyed by that version left on this machine, and a miss writes git's version back first, so a build that rewrites it with new bytes each time still hits; a hand edit keys by its bytes), a nested project's files |
-| Excluded unless named  | files git ignores, an ignored `node_modules` included: a broad glob like `src/**` skips them, an exact path or a glob whose fixed part git ignores (`.env.local`, `node_modules/.prisma/client/**`) keys them |
-| In, when you say so    | a tool's version: `inputs.workspaceRuntime: ['node -v']` runs once per run at the root and adds its output to the key; `runtime` runs in the package |
-| Out, when you say so   | a dependency only for order: `inputs.tasks: []`, as the [dev task](../dev-servers/) does |
+One that declares no `inputs` has no key, and every task behind it misses. `inputs: { files: [] }` still gives a key.
+
+- **Always in it:** the keys of the tasks it depends on, the task's config, the arguments after `--`.
+- **In, with a lockfile plugin:** the package's `package.json` and its own dependencies from the lockfile ([Lockfiles](../lockfiles/)).
+- **In, when you say so:** a tool's version. `inputs.workspaceRuntime: ['node -v']` runs once per run at the root; `runtime` runs in the package.
+- **Out, when you say so:** a dependency only for order, `inputs.tasks: []`, as the [dev task](../dev-servers/) does.
+- **Excluded unless named:** files git ignores, an ignored `node_modules` included. A broad glob like `src/**` skips them; an exact path or a glob whose fixed part git ignores (`.env.local`, `node_modules/.prisma/client/**`) keys them.
+- **The task's own outputs** are out, except a file git tracks. That one stays in the key by what git holds, and a miss writes git's version back first.
+- **A nested project's files** are out.
+- **Always excluded:** an untracked `node_modules` git does not ignore (an install), `.git`, `.vx/cache`, `.vx/projects.lock`, `vx.lock.json`, `.vx/.gitattributes`, `.vx/.gitignore`, `.vx/dependencies.lock`, `.vx/tmp` (restore staging), the temps a killed write leaves (`.vx/projects.lock.tmp-*`, `.vx/dependencies.lock.tmp-*`, `vx.lock.json.tmp-*`), each at the project's root only.
 
 Every part, in order: [Caching in depth](../../caching/).
 
@@ -205,65 +488,76 @@ Every part, in order: [Caching in depth](../../caching/).
 
 <Deeper level="details" title="What happens to outputs">
 
-- Declared outputs are wiped before every run that writes the cache.
-- A hit rewrites only the files that differ from the entry, then removes
-  the ones it does not hold, so `dist/` ends as the cache stored it. A
-  hit that finds them already as stored writes nothing.
+- Declared outputs are emptied before every run that writes the cache.
+- A hit rewrites only the files that differ from the entry.
+- Then it removes the files the entry does not hold, so `dist/` ends as the cache stored it.
+- A hit that finds the outputs already as stored writes nothing: **up-to-date**.
 - A restore writes only files the task's `outputs` declare.
-- Every output named by path must be written, and at least one output
-  must match; a wildcard may match nothing beside one that did. Otherwise
-  the task fails once the command exits 0, and nothing is saved
-  ([fix](../../docs/troubleshooting/)).
-
-  ```ansi title="outputs: { files: ['build/index.js'] }, but vite writes dist/"
-  [2m┌─[0m [1m[38;2;192;132;252m@demo/ui[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m>[0m $ vite build
-  [36mvite v7.1.5 [32mbuilding for production...[36m[39m
-  transforming...
-  [32m✓[39m 1 modules transformed.
-  rendering chunks...
-  computing gzip size...
-  [2mdist/[22m[36mindex.js  [39m[1m[2m0.06 kB[22m[1m[22m[2m │ gzip: 0.08 kB[22m
-  [32m✓ built in 44ms[39m
-  [0m[1m[38;2;234;179;8m[vx][0m[2m @demo/ui#build: outputs matched no files (build/index.js) — the command exited 0 but never wrote it, so the task fails and nothing is cached: write it, or fix the pattern[0m
-  [2m└─[0m [1m[38;2;192;132;252m@demo/ui[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(1.64s)[0m [1m[38;2;239;68;68mfailed (exited 0, no file matched build/index.js)[0m
-  ```
-
+- A plain path must exist when the command ends, and at least one declared output must. A wildcard may match nothing ([fix](../troubleshooting/)).
 - A failed task is never saved.
-- `--force` runs everything and replaces what the local cache holds (a remote keeps the keys it has); `--no-cache` ignores it.
+- A file git tracks is never deleted, even when an output glob matches it.
+- Outputs ignore `.gitignore`: `dist/` is stored even when git ignores it.
+- `--force` runs everything and replaces what the local cache holds (a remote keeps the keys it has). `--no-cache` ignores the cache.
 
 </Deeper>
 
 <Deeper level="details" title="Every verdict vx why prints">
 
-| The verdict line says | It means |
-| --- | --- |
-| `cache key changed: env MODE, file packages/app/src/index.ts` | those inputs moved (three named, then a count); the lines below show each |
-| `cache key changed between the previous run and this one (inputs differ)` | the key moved and neither entry kept its components (pruned, or a failed run saved none) |
-| `` never cached: this task declares no `inputs`, so each run derives a new key; declare its `inputs` `` | the task itself declares no `inputs`, so its key is new every run |
-| `` never cached: its key includes //#stamp, which declares no `inputs`, so each run derives a new key; declare inputs on //#stamp `` | a task this key includes declares no `inputs`, so the key is new every run; declare them on that task |
-| `cache key unchanged — this run was served from cache, nothing re-ran` | a hit |
-| `cache key unchanged — the previous run on this key failed and saved nothing, so there was nothing to hit` | a failure saves no entry |
-| `cache key unchanged — re-executed because this run did not read the cache (--force, or a --cache-policy without read)` | the run's policy read no cache |
-| `cache key unchanged — re-executed because this run did not use the cache (--no-cache, or a --cache-policy without read or write)` | the run used no cache |
-| `cache key unchanged — the previous run on this key did not save its result (…), so there was nothing to hit` | the previous run withheld its save and said why (an input edited while it ran) |
-| `cache key unchanged — no entry for this key was in the cache when it ran (pruned or evicted), so it executed and saved one` | the entry was gone |
-| `cache key unchanged — the previous run on this key executed but no entry for it is in the cache (its save failed, or it was pruned since), so there was nothing to hit` | the previous run's save failed, or a prune took the entry |
-| `cache key unchanged — the previous run on this key built on a dependency it left out (…), so it saved nothing and there was nothing to hit` | the previous run left that dependency out, and saves nothing built on one |
-| `cache key unchanged — the previous run on this key did not write the cache (--no-cache, or a --cache-policy without write), so there was nothing to hit` | the previous run's policy wrote no cache |
-| `cache key unchanged — re-executed on the same key though this run read the cache; vx cannot name the cause` | none of the above; vx cannot name the cause |
-| `cache key unchanged — re-executed on the same key (--no-cache / --force, or unrelated)` | no invocation recorded this run's cache policy, so vx cannot rule the flags out |
-| `cache key unchanged — this run recorded no cache outcome, so whether it re-ran is unknown` | vx does not guess |
-| `` this task declares no `cache: true` — it runs on every invocation; a change to its inputs still re-runs the tasks that depend on it `` | not cached at all |
-| `` this task declares no `cache: true` — it runs on every invocation; it declares no `inputs` either, so each run derives a new key and every task that depends on it misses; declare its `inputs` (and `outputs` with `cache: true` to cache it too) `` | not cached, and no task depending on it can hit |
-| `this task was skipped: it needs another platform, so it recorded no cache key` | it waits for a worker of that platform |
-| `this task never ran: … did not pass, so it recorded no cache key` | a task it depends on failed or was skipped |
-| ``this task's cache key could not be derived, so its command never ran (…)`` | the line names the `vx last` command that shows why |
-| `this task hit the cache and its restore failed, so it recorded no cache key` | the restore was refused or failed; the line in its log says why |
-| `this task is persistent: it records no cache key` | a server or watcher has no key to compare |
-| `no prior run for this (project, task)` | nothing to compare with yet |
+- `cache key changed: env MODE, file packages/app/src/index.ts`<br/>those inputs moved (three named, then a count); the lines below show each
+- `cache key changed between the previous run and this one (inputs differ)`<br/>the key moved and neither entry kept its components (pruned, or a failed run saved none)
+- `` never cached: this task declares no `inputs`, so each run derives a new key; declare its `inputs` ``<br/>the task itself declares no `inputs`, so its key is new every run
+- `` never cached: its key includes //#stamp, which declares no `inputs`, so each run derives a new key; declare inputs on //#stamp ``<br/>a task this key includes declares no `inputs`, so the key is new every run; declare them on that task
+- `cache key unchanged — this run was served from cache, nothing re-ran`<br/>a hit
+- `cache key unchanged — the previous run on this key failed and saved nothing, so there was nothing to hit`<br/>a failure saves no entry
+- `cache key unchanged — re-executed because this run did not read the cache (--force, or a --cache-policy without read)`<br/>the run's policy read no cache
+- `cache key unchanged — re-executed because this run did not use the cache (--no-cache, or a --cache-policy without read or write)`<br/>the run used no cache
+- `cache key unchanged — the previous run on this key did not save its result (…), so there was nothing to hit`<br/>the previous run withheld its save and said why (an input edited while it ran)
+- `cache key unchanged — no entry for this key was in the cache when it ran (pruned or evicted), so it executed and saved one`<br/>the entry was gone
+- `cache key unchanged — the previous run on this key executed but no entry for it is in the cache (its save failed, or it was pruned since), so there was nothing to hit`<br/>the previous run's save failed, or a prune took the entry
+- `cache key unchanged — the previous run on this key built on a dependency it left out (…), so it saved nothing and there was nothing to hit`<br/>the previous run left that dependency out, and saves nothing built on one
+- `cache key unchanged — the previous run on this key did not write the cache (--no-cache, or a --cache-policy without write), so there was nothing to hit`<br/>the previous run's policy wrote no cache
+- `cache key unchanged — re-executed on the same key though this run read the cache; vx cannot name the cause`<br/>none of the above; vx cannot name the cause
+- `cache key unchanged — re-executed on the same key (--no-cache / --force, or unrelated)`<br/>no invocation recorded this run's cache policy, so vx cannot rule the flags out
+- `cache key unchanged — this run recorded no cache outcome, so whether it re-ran is unknown`<br/>vx does not guess
+- `` this task declares no `cache: true` — it runs on every invocation; a change to its inputs still re-runs the tasks that depend on it ``<br/>not cached at all
+- `` this task declares no `cache: true` — it runs on every invocation; it declares no `inputs` either, so each run derives a new key and every task that depends on it misses; declare its `inputs` (and `outputs` with `cache: true` to cache it too) ``<br/>not cached, and no task depending on it can hit
+- `this task was skipped: it needs another platform, so it recorded no cache key`<br/>it waits for a worker of that platform
+- `this task never ran: … did not pass, so it recorded no cache key`<br/>a task it depends on failed or was skipped
+- ``this task's cache key could not be derived, so its command never ran (…)``<br/>the line names the `vx last` command that shows why
+- `this task hit the cache and its restore failed, so it recorded no cache key`<br/>the restore was refused or failed; the line in its log says why
+- `this task is persistent: it records no cache key`<br/>a server or watcher has no key to compare
+- `no prior run for this (project, task)`<br/>nothing to compare with yet
 
 </Deeper>
 
-<NextStep href="../../docs/remote-cache/" title="Remote cache">
-  Share these results with your team and CI, so a build made on one machine is skipped on every other.
+<Deeper level="details" title="Every vx cache clean option">
+
+```sh
+vx cache clean [--older-than <duration>] [--max-size <size>] [--global] [--dry] [--format pretty|json] [--cache-dir <path>]
+```
+
+- **no flag:** removes the whole cache, `.vx/cache` and this workspace's store `~/.vx/<id>/cache`.
+- `--older-than <duration>`: drops entries last used before then. `30d`, `24h`, `60m`, `30s`.
+- `--max-size <size>`: then drops the least recently used until under the size. `500M`, `5G`, `1T`.
+- `--dry`: says what would go and deletes nothing.
+- `--global`: with no bound, also clears every other workspace's store under `~/.vx`.
+- `--format json`: one object with `dry`, `evicted`, `bytesFreed`, `orphans`, `orphanBytes`, `historyRows`, `historyBytes`.
+- `--cache-dir <path>`: the cache a run with the same flag uses.
+
+The rules:
+
+- `m` is minutes. `1M` is refused, since some tools read it as a month.
+- A size needs a unit: `--max-size 10` is refused. Units count in 1024s.
+- A zero bound is refused. To remove everything, drop the flag.
+- An entry may stay up to an hour past `--older-than`: vx records a use at most once an hour.
+- A clean with a bound also drops run history older than `history.retention`.
+- A clean waits for a `vx run` on the same workspace to end first.
+- `.vx/workspace.ts` and the lock files are never touched.
+
+The command in full: [`vx cache clean`](../../cli/cache/).
+
+</Deeper>
+
+<NextStep href="../caching/why-a-task-missed/" title="Find why a task missed the cache">
+  A task ran when you expected a skip. Ask vx which input moved.
 </NextStep>

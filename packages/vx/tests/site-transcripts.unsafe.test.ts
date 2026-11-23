@@ -240,7 +240,7 @@ describe('the one-task guides show what vx prints', () => {
 
   it('why-a-task-missed: a changed file, then a changed upstream', () => {
     expect(run('run', 'build', '--all').code).toBe(0)
-    const page = guide('caching/why-a-task-missed.md')
+    const page = guide('caching/why-a-task-missed.mdx')
     // The page shows the coloured screen: its panels, as a terminal draws them.
     for (const task of ['@demo/ui#build', '@demo/web#build']) {
       const r = runColour('why', task)
@@ -391,8 +391,8 @@ export default {
     holds(printed(page, 'vx run @demo/web#e2e --timeout 1s'), r.out)
   })
 
-  it('cache-a-task: an output that matched nothing fails the task', async () => {
-    const page = guide('caching/cache-a-task.md')
+  it('caching: an output that matched nothing fails the task', async () => {
+    const page = readFileSync(path.join(GUIDES, '..', 'docs', 'caching.mdx'), 'utf8')
     await writeFile(
       ui(),
       config("echo 'expected 2, got 1' && exit 1").replace("'dist/**'", "'dist/main.js'"),
@@ -402,7 +402,12 @@ export default {
     expect(sh('git', 'checkout', '-q', '--', '.')).toBe(0)
     expect(run('lock').code).toBe(0)
     expect(r.code).toBe(1)
-    holds(printed(page, 'vx run @demo/ui#build'), r.out)
+    // The page runs vite; the fixture copies a file. vx's own lines are held.
+    const own = printed(page, 'vx run @demo/ui#build')
+      .split('\n')
+      .filter((l) => /^(?:\[vx\]|└─)/.test(plain(l)))
+    expect(own.length).toBe(2)
+    holds(own.join('\n'), r.out)
   })
 
   it('run-a-pipeline: pr on a branch runs what the change reaches', async () => {
@@ -646,8 +651,8 @@ describe("the caching page's verdict table", () => {
   it('every row is a verdict vx why can print', async () => {
     const page = readFileSync(path.join(GUIDES, '..', 'docs', 'caching.mdx'), 'utf8')
     const at = page.indexOf('Every verdict')
-    const table = page.slice(at, page.indexOf('</details>', at))
-    const rows = [...table.matchAll(/^\| `+ ?(.+?) ?`+ \|/gm)].map((m) => m[1]!)
+    const table = page.slice(at, page.indexOf('</Deeper>', at))
+    const rows = [...table.matchAll(/^- (`+) ?(.+?) ?\1<br\/>/gm)].map((m) => m[2]!)
     expect(rows.length).toBeGreaterThan(10)
     // Every string literal under history/ and the why verb, its `${…}`
     // parts as any text.
