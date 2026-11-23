@@ -1254,10 +1254,9 @@ describe('cli.md lists the fields `vx show` prints', () => {
     const added = new Set([...src.matchAll(/add\(\s*'([\w.]+)'/g)].map((m) => m[1]!))
     expect(added.size).toBeGreaterThan(5)
     const cli = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'cli.md'), 'utf8')
-    const para = cli.slice(
-      cli.indexOf('`vx show <project>` prints a block per task'),
-      cli.indexOf('Fields the\ntask does not set are not printed.'),
-    )
+    // The paragraph and its Details list, which names every field.
+    const start = cli.indexOf('`vx show <project>` prints a block per task')
+    const para = cli.slice(start, cli.indexOf('\n</details>', start))
     expect(para.length).toBeGreaterThan(100)
     for (const name of ['remote', 'sandbox', 'persistent', 'retries', 'timeout']) {
       expect(added).toContain(name)

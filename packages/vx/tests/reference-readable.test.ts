@@ -64,7 +64,7 @@ describe('the references read on a phone', () => {
     expect(problems('t.md', '```\n' + 'x'.repeat(300) + ' D-1\n```\n')).toEqual([])
   })
 
-  for (const file of ['schema.md']) {
+  for (const file of ['schema.md', 'cli.md']) {
     it(`${file} has no long paragraph and no internal id`, () => {
       expect(problems(file, readFileSync(path.join(DOCS, file), 'utf8'))).toEqual([])
     })

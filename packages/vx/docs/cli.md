@@ -1,6 +1,6 @@
 # CLI reference
 
-Every `vx` command, flag and output. Each verb has a section below.
+Every `vx` command, flag and output. Each command has its own section below.
 
 ```sh
 # The prebuilt standalone binary; inside a project
@@ -11,16 +11,24 @@ bun add -g @vzn/vx
 bun src/bin.ts --version
 ```
 
-On a Bun older than 1.4.4, vx still runs, and `vx info`'s `bun` row
-warns. What breaks is the output, not the start:
+vx needs Bun 1.4.4 or newer. The released binary carries its own Bun, so
+this only matters when you run vx from source or through your own Bun.
 
-- a large `--format json` write is cut off;
-- no task reports what it used;
-- a config syntax error shows as an internal error.
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
 
-The released binary carries its own Bun, so the row never warns there.
-[`modules/util.md`](./modules/util.md#srcutilbun-versionts--the-runtime-floor-read-at-run-time) has the
-measurements.
+- Older Bun: vx still starts, and the `bun` row of `vx info` warns.
+- What breaks on an older Bun is the output:
+  - a large `--format json` write is cut off;
+  - no task reports what it used;
+  - a config syntax error shows as an internal error.
+- The released binary never warns: its Bun is new enough.
+- [`modules/util.md`](./modules/util.md#srcutilbun-versionts--the-runtime-floor-read-at-run-time)
+  has the measurements.
+
+</div>
+</details>
 
 ## Top-level shape
 
@@ -48,84 +56,143 @@ vx version
 vx --version
 ```
 
-Each verb's lines are the usage lines `vx <verb> --help` prints, word
-for word (`tests/cli-help-synopsis.test.ts`); the flags a verb accepts
-are read from that line.
+Each line above is the usage line `vx <verb> --help` prints, word for
+word. A verb accepts the flags its line names.
 
-Several tasks run as one graph: `vx run build lint test` runs all
-three across the selected projects.
+### Several tasks at once
 
-- `pkg#task` names one project's task.
-- A bare name runs in the cwd project, or wherever `--all`, `--filter`
-  or `--affected` points.
+`vx run` takes several task names and runs them as one graph.
 
-The cwd project is the deepest project holding the directory, one
-reached through a link (`packages/b -> ../ext/b`) included.
+```sh
+vx run build lint test        # three tasks in the cwd project
+vx run @demo/web#build        # one project's task
+```
 
-**Every requested name must resolve.** When a name matches no project
-in scope, the run and `--dry` both refuse, exit 1, and print to stderr:
-`vx run: no projects declare task(s): <name>.`
+| Write         | Means                                                   |
+| ------------- | ------------------------------------------------------- |
+| `build`       | `build` in the cwd project, or where a selection points |
+| `pkg#build`   | `build` in the project `pkg` only                       |
+| `build --all` | `build` in every project that declares it               |
 
-The refusal adds what helps:
+A bare name goes where `--all`, `--filter` or `--affected` points.
+Without them it runs in the cwd project.
 
-- `Did you mean <task>?` when a declared task (or, for `pkg#task`, a
-  runnable one) is within two edits. A `pkg` that is a project's
-  directory, relative to the root, names that project: `p/a#build` hints
-  `alpha#build` for `alpha` at `p/a`.
-- Otherwise what exists: `Tasks: build, test.`, `No
-project is named zzz; projects: a, b.`, or `a's tasks: build, test.`
-- With no task declared anywhere (right after `vx init`): ``No project
-declares a task yet: add one under `tasks` in a vx.config, then run
-`vx lock`.``
-- A `pkg` that matches a project only after Unicode normalization (`café`
-  typed in NFC, the project's directory in NFD) is said to differ in
-  Unicode form, with the fix: set `name` in its vx.config.
-- Otherwise ``A run reads the lock: after editing a
-vx.config, run `vx lock`.``, since a task added since the last lock is not in it.
-- `Only projects outside the selection declare <name> — pass
---all, or a --filter that includes them.` when the run was scoped and a project
-  outside the scope declares it; when `--filter` scoped it (a pipeline's
-  too, which passes `--all`), `— widen --filter to include them, or drop
-it.`, since `--all` beside a filter is the filter's selection. Then the lock line, since a task just added
-  to a selected project's config is not in the lock yet. A selected project
-  whose `build` is the default one (a root with an empty config) is named
-  instead: `vx show` counts that build, but no bare name runs it.
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
 
-A name declared by only some projects is fine; the check fires only when
-a name matches nowhere. So `vx run lint test e2e` fails on CI the
-day `e2e` is renamed, instead of running two of three.
+- The cwd project is the deepest project that holds the directory.
+- `packages/b -> ../ext/b`: a project reached through a link counts too.
 
-A name no config can declare is refused before the lookup: an empty one
-(`vx run ''`) and one with surrounding whitespace (`vx run 'build '`),
-which the refusal quotes so the space shows.
+</div>
+</details>
 
-Under `--affected` or a `[ref]` filter, a bare name is checked against
-the whole workspace, since what changed decides the projects:
+### Every name must resolve
 
-- A change that reached no project declaring `test` exits 0 with `No affected project declares
-task(s): test.` A name no project declares is still refused.
-- A change that reaches no requested task exits 0 with `Nothing
-affected: the change reaches no test task.`
-- A diff that touched no project exits 0 with
-  `nothing affected since <ref>` on stderr, once each bare name is
-  found declared somewhere: a name no project declares is still refused.
-  One that touched only projects a selector leaves out says so:
-  `nothing @demo/web[main] selects changed since main; the change reached @demo/ui`.
+A name that matches no project in scope stops the run before it starts.
+`vx run` and `--dry` both exit 1 and print to stderr:
 
-There is no `-V`; use `vx --version`, as in Turbo.
+```text
+vx run: no projects declare task(s): <name>.
+```
 
-`vx <verb> --help` (also `-h`, `vx help <verb>` and `vx --help <verb>`) prints this
-reference for that verb: its usage lines and sections (of a section several
-verbs share, only its own entries), then
-`Full reference: vx help`. Every argument error points at it.
-`vx help <plugin verb>` is `vx <plugin verb> --help`: the plugin answers.
+A name some projects lack is fine: the check fires only when it matches
+nowhere. So `vx run lint test e2e` fails on CI the day `e2e` is renamed.
 
-`vx help <name>` for a name that is no verb is refused like
-`vx <name>`: one line, a guess when one is close, exit 1. A second
-word after the verb is refused too.
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
 
-After `--`, a flag belongs to the task: `vx run build -- --help` passes
-`--help` to it. A plugin verb handles its own arguments, `--help` included.
+- `Did you mean <task>?`: a declared task within two edits. For
+  `pkg#task`, a runnable one.
+- `p/a#build` hints `alpha#build` when `alpha` lives at `p/a`: a
+  directory from the root names its project.
+- `Tasks: build, test.`: nothing is close, so the refusal lists what
+  exists.
+- `No project is named zzz; projects: a, b.`: an unknown `pkg`.
+- `a's tasks: build, test.`: a known `pkg` without that task.
+- ``No project declares a task yet: add one under `tasks` in a vx.config,
+then run `vx lock`.``: no task anywhere, as right after `vx init`.
+- `café` typed in NFC, the folder in NFD: the refusal says the two differ
+  in Unicode form. Fix: set `name` in that vx.config.
+- ``A run reads the lock: after editing a vx.config, run `vx lock`.``:
+  otherwise, since a task added after the last lock is not in it.
+- `Only projects outside the selection declare <name> — pass --all, or a
+--filter that includes them.`: the run was scoped and only projects
+  outside it declare the name.
+- `— widen --filter to include them, or drop it.`: the same, when
+  `--filter` scoped the run. A pipeline counts: it passes `--all`.
+- `--all` beside `--filter` is the filter's selection, so the refusal
+  does not suggest it there.
+- After a scoped refusal comes the lock line too: a task newly added to a
+  selected project is not in the lock yet.
+- A selected project whose `build` is the default one (a root with an
+  empty config) is named instead. `vx show` counts that build; no bare
+  name runs it.
+- `vx run ''`: an empty name is refused before the lookup.
+- `vx run 'build '`: a name with surrounding whitespace is refused too.
+  The refusal quotes it so the space shows.
+
+</div>
+</details>
+
+### Names under `--affected`
+
+With `--affected` or a `[ref]` filter, a bare name is checked against
+the whole workspace: what changed decides the projects.
+
+```sh
+vx run test --affected
+```
+
+| Result                                | Exit | Says                                                 |
+| ------------------------------------- | ---- | ---------------------------------------------------- |
+| no changed project declares `test`    | 0    | `No affected project declares task(s): test.`        |
+| the change reaches no `test` task     | 0    | `Nothing affected: the change reaches no test task.` |
+| the diff touched no project           | 0    | `nothing affected since <ref>` (stderr)              |
+| no project anywhere declares the name | 1    | the refusal above                                    |
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
+
+- `nothing affected since <ref>` prints only once each bare name is found
+  declared somewhere.
+- `nothing @demo/web[main] selects changed since main; the change reached
+@demo/ui`: the diff touched only projects the selector leaves out.
+
+</div>
+</details>
+
+### Help and `--`
+
+`vx <verb> --help` prints this reference for that verb: its usage lines
+and its sections, then `Full reference: vx help`.
+
+```sh
+vx run --help
+vx run build -- --watch     # --watch goes to the task
+```
+
+After `--`, every flag belongs to the task.
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
+
+- `-h`, `vx help <verb>` and `vx --help <verb>` print the same.
+- A section several verbs share prints only that verb's own entries.
+- Every argument error points at the help.
+- `vx help <plugin verb>` is `vx <plugin verb> --help`: the plugin answers.
+- `vx help <name>`, no verb by that name: refused like `vx <name>`, one
+  line, a guess when one is close, exit 1.
+- `vx help run lock`: a second word after the verb is refused.
+- `vx run build -- --help` passes `--help` to the task.
+- A plugin verb reads its own arguments, `--help` included.
+- `-V`: there is none. Use `vx --version`.
+
+</div>
+</details>
 
 ## `vx run`
 
@@ -4807,13 +4874,23 @@ notice.
 
 ## `vx show`
 
-`vx show` prints the workspace's **resolved configs**: what a run would
-see right now. Configs load through the same path a run uses: from
-`.vx/projects.lock`, plugin `config` and `project` stages applied,
-so a package a plugin gives tasks to (`turbo()` or `nx()` from
-`@vzn/vx-migrate`, a temporary start toward native config) shows them.
-`vx show` evaluates no config: an edit shows after `vx lock`, and with
-no lock it refuses as a run does (`no lock: run \`vx lock\``).
+`vx show` prints each project's config as a run sees it right now.
+
+It reads `.vx/projects.lock` and applies the plugins' `config` and
+`project` stages, as a run does. It evaluates no config: after an edit,
+run `vx lock` first.
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
+
+- `turbo()` or `nx()` from `@vzn/vx-migrate`: a package a plugin gives
+  tasks to shows those tasks.
+- ``no lock: run `vx lock` ``: with no lock, `vx show` refuses as a run
+  does.
+
+</div>
+</details>
 
 ### Usage
 
@@ -4865,74 +4942,138 @@ vx show @demo/web#build
 
 ### Understanding the output
 
-**The project list.** No target: a table, one row per project — name, root-relative dir,
-task count, and `no vx config` for config-less packages; one whose
-tasks all come from plugins reads `N tasks from plugins (no vx
-config)`, and one a configured project depends on reads `1 task,
-default build (no vx config)`: a run loads it for that dependant's
-`^build`. A configured project that declares no `build` reads
-`N tasks, default build`, and `vx show <project>` marks that task
-`<project>#build  default`. One nothing configured reaches has no task in any
-view: `vx show bare` lists none, and `vx run bare#build` refuses it. A
-config written after the lock reads `vx.config.ts not locked — run vx
-lock`, in the list and in `vx show <project>`'s `config` row. A `tags` column appears when any project has tags. With `--format json`
-it's an array of `{ name, dir, tags: string[], tasks: string[] }`.
+**The project list.** With no target, `vx show` prints one row per
+project: its name, its folder from the root and its task count.
 
-**A project or task.** A report naming the project opens it: its `dir`, its `tags`, and
-`config  none` for a package with no config file. Then
-`vx show <project>` prints a block per task, headed by its
-`project#task`, with every field the run reads: description, command (`(group)` for group tasks), `dependsOn`,
-`timeout`, `retries`, `env.passThrough` / `env.define` / `env.secret`,
-`remote`, `platforms`, `sandbox`, `persistent`, `interactive` (`yes` /
-`no`), and `cache: true`
-(`inputs.files` / `.workspaceFiles` / `.env` / `.tasks` / `.runtime` /
-`.workspaceRuntime`, `outputs.files` / `.workspaceFiles` / `.clean`
-(`yes` / `no`), `inputs.stability.strategy` / `.severity`), then `cache  yes`
-for a cached task. Fields the
-task does not set are not printed, an empty list prints `none`; a value that spans lines (a
-multi-line command) continues under its first line. `--format json` emits `{ name, dir,
-config }` with the config exactly as resolved. `vx show <pkg>#<task>`
-narrows to one task (`{ name, dir, task, config }` in JSON). A bare
-name that is no project is a task: `vx show build` prints the block
-from every project declaring `build` (an array of the one-task shape
-in JSON). The default `build` is declared by none: it counts in the
-list and `vx show <project>`, but `vx show build`, like
-`vx run build --all`, does not name it.
+| The tasks cell says                    | Means                                              |
+| -------------------------------------- | -------------------------------------------------- |
+| `3 tasks`                              | the project's config declares three tasks          |
+| `3 tasks, default build`               | it declares no `build`, so it gets the default one |
+| `2 tasks from plugins (no vx config)`  | a plugin gave the tasks; there is no config        |
+| `1 task, default build (no vx config)` | a configured project depends on it                 |
+| `no vx config`                         | a package with no config and no tasks              |
+
+A `tags` column appears when any project has tags.
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
+
+- `1 task, default build (no vx config)`: a run loads that build for the
+  dependant's `^build`.
+- `<project>#build  default`: how `vx show <project>` marks a default
+  build.
+- `vx show bare`: a package nothing configured reaches lists no task, and
+  `vx run bare#build` refuses it.
+- `vx.config.ts not locked — run vx lock`: a config written after the
+  lock. It shows in the list and in `vx show <project>`'s `config` row.
+- `--format json`: an array of `{ name, dir, tags: string[], tasks: string[] }`.
+
+</div>
+</details>
+
+**A project or task.** `vx show <project>` prints a block per task,
+headed by its `project#task`, after the project's `dir` and `tags`.
+Each block lists the fields the run reads.
+
+```sh
+vx show @demo/web          # every task of the project
+vx show @demo/web#build    # one task
+vx show build              # build, in every project that declares it
+```
+
+Fields the task does not set are left out. An empty list prints `none`.
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
+
+- `config  none`: a package with no config file.
+- `command  (group)`: a group task.
+- Fields shown: description, command, `dependsOn`, `timeout`, `retries`,
+  `env.passThrough` / `env.define` / `env.secret`, `remote`, `platforms`,
+  `sandbox`.
+- More fields: `persistent` and `interactive` (`yes` / `no`).
+- With `cache: true`: `inputs.files` / `.workspaceFiles` / `.env` /
+  `.tasks` / `.runtime` / `.workspaceRuntime`.
+- Also with `cache: true`: `outputs.files` / `.workspaceFiles` / `.clean`
+  (`yes` / `no`) and `inputs.stability.strategy` / `.severity`.
+- `cache  yes`: the last row of a cached task.
+- A multi-line value, such as a command, continues under its first line.
+- `vx show <project> --format json`: `{ name, dir, config }`, the config
+  exactly as resolved.
+- `vx show <pkg>#<task> --format json`: `{ name, dir, task, config }`.
+- `vx show build`: a bare name that is no project is a task. JSON: an
+  array of the one-task shape.
+- The default `build` is declared by no project. It counts in the list
+  and in `vx show <project>`.
+- `vx show build` does not name a default build, as `vx run build --all`
+  does not run one.
+
+</div>
+</details>
 
 ### `--filter` and `--affected`
 
 `--filter` and `--affected[=<base>]` narrow the list, or a task's
-projects, as `vx run` selects: `turbo ls --affected` is
-`vx show --affected`, and `nx show projects --affected --with-target t`
-is `vx show t --affected`. Beside a task, `--affected` lists the
-projects whose task the run keeps: a change reaches another project
-only along a task edge, so a dependent whose `test` has no `^test` is
-not listed. A task's list the selection leaves empty says so on
-stderr (`no affected project's test runs`); `--format json` prints `[]`.
-With no task there is no edge to follow, and the
-list is the run's candidates, `--filter "...[<base>]"`'s: the changed
-projects and their package dependents. Beside one project or
-`<pkg>#<task>` they are refused.
+projects, the way `vx run` selects them.
 
-Nx's spellings name these: `vx show projects` (when no project or task
-has that name) and `vx show project <name>` say `vx show` and
-`vx show <name>`.
+```sh
+vx show --affected               # changed projects and their dependents
+vx show test --affected          # projects whose test the run would run
+vx show --filter @demo/web
+```
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
+
+- `vx show test --affected` lists the projects whose `test` the run
+  keeps. A change reaches another project only along a task edge.
+- A dependent whose `test` has no `^test` is not listed.
+- `no affected project's test runs` (stderr): the selection left the list
+  empty. `--format json` prints `[]`.
+- `vx show --affected`, no task: no edge to follow. The list is the run's
+  candidates, as `--filter "...[<base>]"` selects.
+- Those candidates are the changed projects and their package dependents.
+- `vx show @demo/web --affected` and `vx show @demo/web#build --filter …`:
+  refused beside one project or one task.
+- `vx show projects`, when nothing has that name: an unknown name, whose
+  refusal adds that `vx show` lists the projects.
+- `vx show project web`: refused, pointing at `vx show web`.
+
+</div>
+</details>
 
 ### Unknown names
 
-Unknown project / task names exit `1` with the same near-miss hint
-every verb gives (two edits, or a partial name); a bare name that is
-neither reads `unknown project or task: "buidl"` with a `fix  build`
-line, and a `pkg#task` hints whole specs (`unknown task: "@demo/web#bui"`,
-`fix  @demo/web#build`). A project's directory, relative to the root, hints
-that project (`p/a` hints `alpha`, `p/a#build` `alpha#build`). With nothing near, it lists what exists instead: `unknown
-project: "zzz"; projects: @demo/ui, @demo/web`, `; its tasks: @demo/web#build, @demo/web#test`,
-or `; projects and tasks: …`.
+An unknown project or task exits `1` with a near-miss hint, as every
+verb gives.
 
-An empty target (`vx show ''`) is refused: omit it to list every project.
+```text
+vx show: unknown project or task: "buidl"
+fix  build
+```
 
-In a workspace with no project, the list is empty and `vx show` says so
-on stderr (`no projects`) and names `vx init`.
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
+
+- A hint is a name within two edits, or one holding the partial name.
+- `unknown task: "@demo/web#bui"` with `fix  @demo/web#build`: a
+  `pkg#task` hints whole specs.
+- `p/a` hints `alpha` when `alpha` lives at `p/a`; `p/a#build` hints
+  `alpha#build`.
+- `unknown project: "zzz"; projects: @demo/ui, @demo/web`: nothing is
+  near, so it lists what exists.
+- `; its tasks: @demo/web#build, @demo/web#test` or `; projects and
+tasks: …`: the other two lists it may end with.
+- `vx show ''`: an empty target is refused. Omit it to list every project.
+- `no projects` (stderr): a workspace with no project. The list is empty
+  and the line names `vx init`.
+
+</div>
+</details>
 
 ### Exit codes
 
@@ -4944,13 +5085,24 @@ on stderr (`no projects`) and names `vx init`.
 ## `vx info`
 
 `vx info` prints one screen of facts about the workspace and this
-machine, for bug reports and sanity checks. The task count and the
-sandbox row's declared count come from the same load a run uses: the
-lock, plugin stages included. A default build is no declared task and is
-not counted. `vx info` evaluates no config; with no
-lock the `projects` row reads `—` and `projects lock` says `no`; with one a
-run would refuse, `projects` reads `—` and `projects lock` says `refused:` and
-why (`lockError` in JSON, where the counts are zero). A broken config is `vx lock`'s to report.
+machine. Paste it into a bug report, or read it to check your setup.
+
+It counts tasks from the lock, as a run does, and evaluates no config.
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
+
+- The task count and the sandbox row's count come from the load a run
+  uses: the lock, plugin stages included.
+- A default build is no declared task and is not counted.
+- No lock: `projects` reads `—` and `projects lock` reads `no`.
+- A lock a run would refuse: `projects` reads `—` and `projects lock`
+  reads `refused:` and why. JSON: `lockError`, the counts zero.
+- A broken config is `vx lock`'s to report, not `vx info`'s.
+
+</div>
+</details>
 
 ### Usage
 
@@ -4995,126 +5147,218 @@ vx info
 
 ### Understanding the output
 
-- `git` shows `(not found)` when the binary is missing.
-- `git status cache`: vx runs ONE `git status` per run to find dirty
-  and untracked files, and on a large tree that walk is the warm run's
-  critical path. git's `core.fsmonitor` (a daemon that watches the
-  worktree, or a hook it names) and `core.untrackedCache` make it
-  near-free after the first run; both are off by default, so `vx info`
-  says when they are, reading each as git does (the last value set wins).
-  vx trusts the files that walk calls clean, so an fsmonitor that misses
-  an event gives a stale hit; leave it off where events can be lost.
-- `sandbox` is the runtime probe's verdict for THIS host — one sandboxed
-  `true`, memoized — and how many loaded tasks declare `exec.sandbox`. A
-  declared sandbox whose runtime cannot start fails the task at run
-  time rather than downgrading, so `unavailable — <why>; 3 tasks declare
-exec.sandbox and will fail` says it first: root inside a container
-  (the runtime's seccomp helper cannot create its nested user namespace;
-  run as a non-root user or set `sandbox.weakerWhenNested: true`), a
-  missing bubblewrap, socat or ripgrep, a nested seatbelt on macOS.
-  On Linux an available sandbox that cannot report the reads it denies
-  (vx's observer cannot run, and no `strace` on PATH, one whose `--version`
-  fails, or one that may not attach) adds `, untraced — <why>, so the reads it denies go
-unreported`: the sandbox still enforces, but a task that tolerates a
-  denied read passes and caches with no word of it. The `--format json` fact is
-  `sandbox.untraced`, the reason or `null`.
-- `plugins` names every plugin `.vx/workspace.*` declares and the seams
-  each fills, in pipeline order (`config`, `discover`, `project`, `graph`, `key`,
-  `fingerprint`, `measures`, `schedule`, `admit`, `executor`, `cache`, `telemetry`,
-  `output`, `setup`, `commands`), or `none`. It reads the declarations: a plugin
-  that declines a task at run time still lists its seam here (`otel()` with
-  no endpoint). A factory that returned `undefined` (`github()` off
+Each row is one fact. Paths under your home directory print as `~/…`;
+the JSON keeps them absolute.
+
+| Row                | Says                                                     |
+| ------------------ | -------------------------------------------------------- |
+| `git`              | git's version, or `(not found)`                          |
+| `git status cache` | whether git's two speed-ups for `git status` are on      |
+| `plugins`          | each plugin `.vx/workspace.*` declares, and its seams    |
+| `workers`          | how many tasks a run starts at once, and why             |
+| `memory`           | the memory a memory-packing schedule budgets             |
+| `cache dir`        | the index and this workspace's run history, size on disk |
+| `cache store`      | where entries live, shared by this workspace's checkouts |
+| `cache versions`   | the key prefix and index schema a bug report needs       |
+| `cache entries`    | how many entries, and their size                         |
+| `task runs (24h)`  | task runs in the last day, and how many were hits        |
+| `flaky tasks`      | tasks that failed on inputs they had passed on           |
+| `sandbox`          | whether the sandbox can start here                       |
+| `settings`         | settings a variable, the workspace or a plugin changed   |
+| `orphans`          | cache files the index has no row for                     |
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">git status cache</span></summary>
+<div class="vx-deeper-body">
+
+- vx runs one `git status` per run to find dirty and untracked files.
+  On a large tree that walk is the warm run's critical path.
+- Setting `core.fsmonitor`: a daemon that watches the worktree, or a hook it
+  names.
+- Setting `core.untrackedCache`: git keeps a cache of untracked files.
+- Both make `git status` near-free after its first run. Both are off by
+  default.
+- The row reads each setting as git does: the last value set wins.
+- vx trusts the files that walk calls clean. An fsmonitor that misses an
+  event gives a stale hit: leave it off where events can be lost.
+
+</div>
+</details>
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">sandbox</span></summary>
+<div class="vx-deeper-body">
+
+- The row is this host's probe result (one sandboxed `true`, memoized)
+  and how many loaded tasks declare `exec.sandbox`.
+- A declared sandbox that cannot start fails the task at run time; it
+  never downgrades. So the row warns first.
+- The warning reads
+  `unavailable — <why>; 3 tasks declare exec.sandbox and will fail`.
+- Root inside a container: the seccomp helper cannot create its nested
+  user namespace.
+- Fix for root in a container: run as a non-root user, or set
+  `sandbox.weakerWhenNested: true`.
+- Other reasons: bubblewrap, socat or ripgrep missing; a nested seatbelt
+  on macOS.
+- On Linux the row may add `, untraced — <why>, so the reads it denies go
+unreported`: the sandbox works but cannot report the reads it denies.
+- Untraced means vx's observer cannot run, and `strace` is missing, its
+  `--version` fails, or it may not attach.
+- Untraced, the sandbox still enforces. A task that tolerates a denied
+  read passes and caches, with no word of it.
+- JSON: `sandbox.untraced`, the reason or `null`.
+
+</div>
+</details>
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">plugins, workers, memory</span></summary>
+<div class="vx-deeper-body">
+
+- `plugins`: the seams each fills, in pipeline order (`config`, `discover`,
+  `project`, `graph`, `key`, `fingerprint`, `measures`, `schedule`, `admit`,
+  `executor`, `cache`, `telemetry`, `output`, `setup`, `commands`).
+- With no plugin, the row reads `none`.
+- `plugins` reads the declarations. `otel()` with no endpoint declines
+  each task at run time, yet still lists its seam.
+- A factory that returned `undefined` (`github()` off
   Actions) declared no plugin, so it is not listed.
-- `workers` is the count a run defaults to and where it comes from:
-  `VX_RUN_CONCURRENCY` when set, else `.vx/workspace.ts`'s `run.concurrency`, else the cores this
-  process may use — the CPU count, capped by the cgroup CPU quota a
-  container runs under (`8 — the CPU count`, `2 — cgroup CPU quota 2 of
-8 cores`). A `VX_RUN_CONCURRENCY` a run refuses reads `— (VX_RUN_CONCURRENCY
-is refused: a run stops there)`, and the `settings` row says why. `memory` is what a memory-packing policy budgets
-  (`@vzn/vx-history`): the machine's total, capped by the
-  cgroup limit — inside a container the raw numbers are the host's,
-  and the doctor is where to see which one a run reads.
-- `flaky tasks` is the standing list a run's flaky notes add to:
-  every task whose history (all of it: a run never prunes it, a bounded
-  `vx cache clean` drops what is over 30 days old) holds a
-  cache key that failed after it had passed, most failures first, with
-  the outcomes over those keys. A cache hit counts as a pass (it
-  replayed one), and a pass that took a retry counts too, its failed
-  attempts counted as failures. A task with no `cache: true` keys on its
-  config alone, so its key says nothing about its inputs: it is never
-  listed. A pass or a failure behind a failed dependency, in a run that
-  continues past failures, is not its key's and counts on no key. `none` when
-  no key did.
-- `task runs (24h)` counts task runs, executed and replayed alike, so
-  the hits are a share of it: three `vx run` of two tasks are six. An
-  invocation is what `vx last` calls a run; `vx last --list` counts
-  those.
-- `cache dir` holds the index and this workspace's run history; its size
-  is on disk. `cache store` is where the entries and their artifacts
-  live: the store shared by this workspace's checkouts (`docs/caching.md`),
-  with its size on disk, or `none: the cache dir holds the entries` when
-  the workspace names its cache dir. It is the store the next run opens,
-  before a first run too, not one the index recorded under a home since
-  moved. A store a run would not use (another user's, after one `sudo vx
-run`) reads as the cache dir, where runs keep the entries then. A bare
-  `vx cache clean` frees both sizes.
-- `cache entries` counts the entries and their size. An index SQLite
-  cannot read reads `unreadable: <why and the fix>` there, and the
-  history rows read 0: the report still prints, exit 0.
-  Paths under the home directory print as `~/…`; the JSON keeps them
-  absolute.
+- `workers`: the source is the first that is set, `VX_RUN_CONCURRENCY`, then
+  `run.concurrency` in `.vx/workspace.ts`, then the cores this process
+  may use.
+- The cores are the CPU count, capped by the cgroup CPU quota of a
+  container: `8 — the CPU count`, `2 — cgroup CPU quota 2 of 8 cores`.
+- A value a run refuses reads
+  `— (VX_RUN_CONCURRENCY is refused: a run stops there)`. The `settings` row says why.
+- `memory` is what a memory-packing policy (`@vzn/vx-history`) budgets:
+  the machine's total, capped by the cgroup limit.
+- Inside a container the raw numbers are the host's. This row shows
+  which one a run reads.
+
+</div>
+</details>
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">flaky tasks and task runs</span></summary>
+<div class="vx-deeper-body">
+
+- `flaky tasks` is the standing list a run's flaky notes add to, most
+  failures first, with the outcomes over those keys.
+- A task is listed when its history holds a cache key that failed after
+  it had passed.
+- The history is all of it: a run never prunes it, and a bounded
+  `vx cache clean` drops what is over 30 days old.
+- A cache hit counts as a pass: it replayed one.
+- A pass that took a retry counts too; its failed attempts count as
+  failures.
+- A task with no `cache: true` keys on its config alone, so its key says
+  nothing about its inputs. It is never listed.
+- A pass or failure behind a failed dependency, in a run that continues
+  past failures, counts on no key.
+- The row reads `none` when no key failed after passing.
+- `task runs (24h)` counts task runs, executed and replayed alike, so the
+  hits are a share of it.
+- Three `vx run` of two tasks are six task runs. `vx last --list` counts
+  the three invocations.
+
+</div>
+</details>
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">The cache rows</span></summary>
+<div class="vx-deeper-body">
+
+- `cache store` is the store this workspace's checkouts share
+  (`docs/caching.md`), with its size on disk.
+- The store reads `none: the cache dir holds the entries` when the
+  workspace names its own cache dir.
+- `cache store` is the store the next run opens, before a first run too.
+  It is not one the index recorded under a home since moved.
+- After one `sudo vx run`, a store a run would not use (another user's)
+  reads as the cache dir, where runs keep the entries then.
+- A bare `vx cache clean` frees both sizes.
+- `cache entries` reads `unreadable: <why and the fix>` when SQLite cannot
+  read the index. The history rows read 0; the report still prints, exit 0.
+- `cache versions`: the key prefix (`CACHE_VERSION`) and index schema
+  (`SCHEMA_VERSION`) that a bug report and the reset notice name.
+- A `CACHE_VERSION` bump orphans every entry.
+- A `SCHEMA_VERSION` mismatch drops every table on the next open, and
+  that run says so once.
+- `orphans` appears only when the cache dir holds artifacts or save temps
+  the index has no row for, older than an hour.
+- Orphans are what a `SCHEMA_VERSION` reset leaves behind. A younger one
+  is a save in flight.
+- A task that asks for an orphan's key again indexes it and hits. Only
+  `vx cache clean` reclaims the rest.
+
+</div>
+</details>
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">settings</span></summary>
+<div class="vx-deeper-body">
+
 - `settings` appears only when a variable, `.vx/workspace` or a plugin's
-  `config` hook changed a setting: each such one by path, its value and
-  where it came from
-  (`cache.policy local:r (VX_CACHE_POLICY), run.timeout 30m (.vx/workspace)`,
-  `cache.scope pr-2 (plugin @org/ci)`).
-  A setting not named runs at its default (`cache.policy`: every layer
-  on, remote writes off off CI; `cache.scope`: a plugin's, else the
-  branch's from git). The JSON `settings` holds every one. A variable
-  a run refuses (`VX_RUN_TIMEOUT=abc`) does not stop the report, as it
-  stops every other verb: its row adds `, refused:` and why
-  (`run.timeout abc (VX_RUN_TIMEOUT, refused: …)`; `refused` in JSON),
-  and the other rows read as if it were unset.
-- `cache versions` are the two constants a bug report needs and the
-  reset notice names: the key prefix (`CACHE_VERSION`; a bump orphans
-  every entry) and the index schema (`SCHEMA_VERSION`; a mismatch drops
-  every table on the next open, which the run then says once).
-- `orphans` appears only when the cache directory holds artifacts or
-  save temps the index has no row for, older than an hour (what a
-  `SCHEMA_VERSION` reset leaves behind; a fresh one is a save in
-  flight). A task that asks for one's key again indexes it and hits;
-  the rest only `vx cache clean` reclaims, so the doctor says so.
+  `config` hook changed a setting.
+- Each changed one shows by path, value and source:
+  `cache.policy local:r (VX_CACHE_POLICY), run.timeout 30m (.vx/workspace)`.
+- A plugin's: `cache.scope pr-2 (plugin @org/ci)`.
+- A setting not named runs at its default. JSON `settings` holds every
+  one.
+- The `cache.policy` default: every layer on, remote writes off when not on
+  CI.
+- The `cache.scope` default: a plugin's, else the branch's from git.
+- A refused variable, such as `VX_RUN_TIMEOUT=abc`, stops every other
+  verb. `vx info` reports it and goes on.
+- Its row adds `, refused:` and why:
+  `run.timeout abc (VX_RUN_TIMEOUT, refused: …)`. JSON: `refused`.
+- The other rows read as if the refused variable were unset.
+
+</div>
+</details>
 
 ### JSON
 
-`--format json` prints the same facts as one typed object, for a
-script or a bug-report template: `vx`, `vxPath` (the file that ran),
-`handedOffFrom` (the vx that handed the call to the project's own, else
-null), `bun`, `bunSupported` (false
-below Bun 1.4.4), `git` (null when not
-found), `gitStatusCache` (`{ fsmonitor, untrackedCache }`, null when
-git could not answer), `workspaceRoot`, `projects`, `tasks`,
-`plugins` (`[{ name, seams }]`), `workers` (`{ count, source, cores,
-cpuQuota }`, the source one of `env` / `workspace` / `cgroup` / `cores`,
-`cpuQuota` in cores or null), `memory` (`{ usableBytes, totalBytes,
-cgroupLimitBytes }`, the limit null when none binds), `cacheDir`, `cacheDirBytes`
-(on disk: the index and run history), `cacheStore` (null when the cache
-dir holds the entries), `cacheStoreBytes` (on disk, null with no store), `cacheVersion`,
-`schemaVersion`, `cacheEntries`, `cacheBytes`, `cacheIndexError` (why
-the index cannot be read, with the fix, else null; the counts it holds
-read 0 then), `settings` (every
-setting by path, `{ value, source, refused }`, `source` one of `env` /
-`workspace` / `default`, `value` null for the default, `refused` why a
-run refuses the variable's value, absent when it takes it),
-`orphans` (`{ artifacts, bytes }`, always present), `runs24h`, `hits24h` (task
-runs, as the row), `restored24h` (of those hits, the ones that restored
-outputs; the rest found them up to date), `flakyTasks` (`[{ taskId, project, task, keys, passes, failures }]`,
-empty when none), `lockfile`, `lockError` (why a run refuses the
-lock there, null when it reads it or there is none), `sandbox` (`{ available, reason,
-declared, untraced }`, `declared` the count of tasks with `exec.sandbox`,
-`untraced` the reason denied reads go unreported or null). The
-pretty rows render this object;
-there is no second source.
+`--format json` prints the same facts as one typed object, for a script
+or a bug-report template. The pretty rows render this object; there is
+no second source.
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every field</span></summary>
+<div class="vx-deeper-body">
+
+| `--format json` field                                                | Holds                                                                                                                                                                                                          |
+| -------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `vx`                                                                 | the version                                                                                                                                                                                                    |
+| `vxPath`                                                             | the file that ran                                                                                                                                                                                              |
+| `handedOffFrom`                                                      | the vx that handed the call to the project's own, else null                                                                                                                                                    |
+| `bun`                                                                | Bun's version                                                                                                                                                                                                  |
+| `bunSupported`                                                       | false below Bun 1.4.4                                                                                                                                                                                          |
+| `git`                                                                | git's version, null when not found                                                                                                                                                                             |
+| `gitStatusCache` (`{ fsmonitor, untrackedCache }`)                   | null when git could not answer                                                                                                                                                                                 |
+| `workspaceRoot`                                                      | the workspace root                                                                                                                                                                                             |
+| `projects`, `tasks`                                                  | the counts                                                                                                                                                                                                     |
+| `plugins` (`[{ name, seams }]`)                                      | each plugin and the seams it fills                                                                                                                                                                             |
+| `workers` (`{ count, source, cores, cpuQuota }`)                     | (the source one of `env` / `workspace` / `cgroup` / `cores`; `cpuQuota` in cores or null)                                                                                                                      |
+| `memory` (`{ usableBytes, totalBytes, cgroupLimitBytes }`)           | the limit null when none binds                                                                                                                                                                                 |
+| `cacheDir`, `cacheDirBytes`                                          | the cache dir, and its size on disk: the index and run history                                                                                                                                                 |
+| `cacheStore`                                                         | null when the cache dir holds the entries                                                                                                                                                                      |
+| `cacheStoreBytes`                                                    | on disk, null with no store                                                                                                                                                                                    |
+| `cacheVersion`, `schemaVersion`                                      | the two versions a bug report needs                                                                                                                                                                            |
+| `cacheEntries`, `cacheBytes`                                         | the entries and their size                                                                                                                                                                                     |
+| `cacheIndexError`                                                    | why the index cannot be read, with the fix, else null; its counts read 0 then                                                                                                                                  |
+| `settings`                                                           | every setting by path, `{ value, source, refused }` (`source` one of `env` / `workspace` / `default`; `value` null for the default; `refused` why a run refuses the variable's value, absent when it takes it) |
+| `orphans` (`{ artifacts, bytes }`)                                   | always present                                                                                                                                                                                                 |
+| `runs24h`, `hits24h`                                                 | task runs and hits, as the row                                                                                                                                                                                 |
+| `restored24h`                                                        | the hits that restored outputs; the rest found them up to date                                                                                                                                                 |
+| `flakyTasks` (`[{ taskId, project, task, keys, passes, failures }]`) | empty when none                                                                                                                                                                                                |
+| `lockfile`                                                           | whether there is a lock                                                                                                                                                                                        |
+| `lockError`                                                          | why a run refuses the lock there, null when it reads it or there is none                                                                                                                                       |
+| `sandbox` (`{ available, reason, declared, untraced }`)              | (`declared` the count of tasks with `exec.sandbox`; `untraced` why denied reads go unreported, or null)                                                                                                        |
+
+</div>
+</details>
 
 ### Exit codes
 
@@ -5126,9 +5370,19 @@ there is no second source.
 ## `vx why`
 
 `vx why` tells you why a task re-ran: the file, variable or dependency
-that moved its cache key since the run before. It reads the local
-`cache.db`, no re-hash; configs are evaluated only when a moved
-dependency is a group, which records no run of its own.
+that changed its cache key since the run before.
+
+It reads the local `cache.db` and hashes nothing again.
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
+
+- Configs are evaluated only when a dependency that moved is a group,
+  which records no run of its own.
+
+</div>
+</details>
 
 ### Usage
 
@@ -5160,117 +5414,223 @@ vx why @demo/web#build
   [2mfile    [0m  [38;2;203;213;225man edit re-runs by design; a file the task does not read belongs out of inputs.files[0m
 ```
 
-On a terminal too narrow for the `before → after` column, each hash is
-cut to its first 12 characters, as git cuts one. Piped output and
-`--format json` keep them whole.
+On a narrow terminal each hash is cut to its first 12 characters. Piped
+output and `--format json` keep them whole.
 
 ### Arguments
 
-| Argument   | Meaning                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `PKG#TASK` | one project's task; a group that never ran (`{ dependsOn }`, no `exec`) is refused as one, which records no run, with fix `vx show PKG#TASK`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| `TASK`     | a bare task name: inside a project that declares it, that project's (`no runs of <project>#<task> yet` when it never ran, even when no other project ran it; a group says it records no run and points at `vx show`), as `vx run` picks; elsewhere it resolves when exactly one project ran it (several → an error listing the candidates; unknown → include-match suggestions, or, with none near, a pointer to `vx last --stats`, which lists the tasks that ran, or word that nothing has run yet, whose fix is `vx run <task> --all` where the cwd's project does not declare it; after runs of only groups, which record no task row, that no run executed a task and to ask about one the group depends on) |
+| Argument   | Meaning                                                          |
+| ---------- | ---------------------------------------------------------------- |
+| `PKG#TASK` | one project's task                                               |
+| `TASK`     | a bare name: the cwd project's, else the one project that ran it |
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
+
+- A group (`{ dependsOn }`, no `exec`) records no run, so it is refused,
+  with fix `vx show PKG#TASK`.
+- `TASK` inside a project that declares it is that project's, as
+  `vx run` picks.
+- `no runs of <project>#<task> yet`: that task never ran, even when
+  another project's did.
+- `TASK` elsewhere resolves when exactly one project ran it. Several: an
+  error listing the candidates.
+- An unknown `TASK`: names that contain it. With none near, a pointer to
+  `vx last --stats`, which lists the tasks that ran.
+- Nothing ran yet: it says so. The fix is `vx run <task> --all` where the
+  cwd's project does not declare the task.
+- Only groups ran, which record no task row: it says no run executed a
+  task. Ask about a task the group depends on.
+
+</div>
+</details>
 
 ### Options
 
-| Option                  | Meaning                                                                                                                                                                                                                                                                                                    |
-| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `--run RUNID`           | explain that run instead of the latest; a unique prefix of the id is enough. A task that run did not run is refused, pointing at `vx last --list` (a task a Ctrl-C cut off: saying the stop ended it), and so is an id no run carries. The space form refuses a value starting with `-` (a swallowed flag) |
-| `--format pretty\|json` | `json` emits one object, below                                                                                                                                                                                                                                                                             |
-| `--cache-dir <path>`    | read the cache a run with the same flag uses                                                                                                                                                                                                                                                               |
+| Option                  | Meaning                                      |
+| ----------------------- | -------------------------------------------- |
+| `--run RUNID`           | explain that run instead of the latest       |
+| `--format pretty\|json` | `json` emits one object, below               |
+| `--cache-dir <path>`    | read the cache a run with the same flag uses |
 
-By default it compares the task's **latest** recorded run against its
-immediately-previous run. History is
-the cache directory's, not the checkout's: worktrees that share one
-`--cache-dir` share one history, so the previous run may be another
-worktree's (its branch is in `vx last`), and its edits read as changes. Latest and
-previous are the order runs were recorded, not their clock: a clock that
-stepped back once swapped the two and diffed the edit backwards.
+By default `vx why` compares the task's latest recorded run with the
+run before it.
+
+```sh
+vx why @demo/web#build --run 01a20a09    # a unique prefix of the id is enough
+```
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
+
+- `--run` with a task that run did not run: refused, pointing at
+  `vx last --list`.
+- A task a Ctrl-C cut off in that run: the refusal says the stop ended
+  it.
+- `--run` with an id no run carries: refused.
+- `--run -x`: the space form refuses a value that starts with `-`, a
+  swallowed flag.
+- History belongs to the cache dir, not the checkout. Worktrees sharing
+  one `--cache-dir` share one history.
+- So the previous run may be another worktree's (its branch is in
+  `vx last`), and its edits read as changes.
+- Latest and previous follow the order runs were recorded, not the
+  clock. A clock that stepped back would swap them.
+
+</div>
+</details>
 
 ### Understanding the output
 
-**The verdict.** A changed key's verdict names what moved, kind and name, three at most
-and then a count (`cache key changed: env MODE`), so a key that moved
-only by an environment variable says so in one line; when neither
-entry kept its components it reads `(inputs differ)`. A key that folds a
-task with no `inputs` is new every run, so the task never hits; the
-verdict names that task:
+**The verdict.** A changed key's verdict names what moved: kind and
+name, three at most, then a count.
+
+```text
+cache key changed: env MODE
+```
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
+
+- `(inputs differ)`: neither entry kept its components.
+- A key that folds a task with no `inputs` is new every run, so the task
+  never hits. The verdict names that task:
 
 ```ansi
   [2mverdict [0m  [38;2;203;213;225mnever cached: its key includes @demo/ui#gate, which declares no [0m[1m`inputs`[0m[38;2;203;213;225m, so each run derives a new key; declare inputs on @demo/ui#gate[0m
 ```
 
-An **unchanged** key has three endings, and the verdict distinguishes
-them rather than calling all three a re-run: the run was served from
-cache (nothing re-ran), it re-executed on the same key, or it recorded
-no cache outcome at all, in which case vx says so instead of guessing.
-A re-execution names its cause when the index shows one: the previous
-run on the key failed and saved nothing, the run did not read the cache
-(`--force`, or a `--cache-policy` without read) or did not use it at all
-(`--no-cache`, or a `--cache-policy` without read or write), no entry for the key was
-there when it ran (pruned or evicted), or the previous run executed and no entry
-holds the key (its save failed, or a prune took it; a previous run whose
-policy wrote no cache says that instead, ahead of a prune, and one that built on a
-dependency `--exclude-dependencies` left out names that dependency). A previous run that
-withheld its save and said why (an input edited while it ran) is named by that
-reason, `did not save its result (… changed after its key was taken)`, ahead of
-a prune; a changed key's diff says the same where it has no fingerprints to
-compare. Otherwise, with this run's
-policy recorded as reading the cache, it says it cannot name the cause;
-only a run with no recorded policy names `--no-cache` / `--force`.
+</div>
+</details>
 
-**The run lines.** A hit's line is `cache-hit · key …` (or `cache-hit-remote`): the status
-names the hit and its tier, so only an executed run carries the word.
-A skipped task never ran and derived no key: its line is `skipped · no key`.
-A task whose key was not derived (a failed `inputs.runtime` probe) ran
-nothing either: `failed · no key`. With no key the verdict names the one
-cause the row records: what blocked a skip, a key not derived (`vx last <run>
---log <task>` prints the line vx said), a hit whose restore failed, or a
-persistent task.
+**An unchanged key** has three endings, and the verdict tells them
+apart.
 
-**What to do and root cause.** Under the rows, `what to do` gives one line per changed kind: what
-moves it and how to stop a move the task does not need. An `env` line
-says whether a value moved or a name joined or left `inputs.env`. An
-upstream
-row is only the carrier, so `vx why` follows each dependency that moved
-in the same run down to the tasks whose OWN inputs moved and prints
-them under `Root cause`, one chain per root (five at most, then a
-count; a chain of more than six tasks prints its first two and last
-three around `N more`), and `what to do` speaks to those kinds instead
-(a `config` line names the `vx show` of the root's task, not the asked
-one). Each upstream is
-compared between the two keys the dependant folded, so a run of the
-upstream alone in between changes nothing it names:
+| Ending                      | Verdict says                      |
+| --------------------------- | --------------------------------- |
+| served from cache           | nothing re-ran                    |
+| re-executed on the same key | why, when the index shows a cause |
+| no cache outcome recorded   | so, instead of guessing           |
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Causes of a re-execution</span></summary>
+<div class="vx-deeper-body">
+
+- The previous run on the key failed and saved nothing.
+- `--force`, or a `--cache-policy` without read: the run did not read the
+  cache.
+- `--no-cache`, or a `--cache-policy` without read or write: the run did
+  not use the cache at all.
+- No entry for the key was there when it ran: pruned or evicted.
+- The previous run executed and no entry holds the key: its save failed,
+  or a prune took it.
+- A previous run whose policy wrote no cache says that instead, ahead of
+  a prune.
+- A previous run that built on a dependency `--exclude-dependencies` left
+  out names that dependency.
+- `did not save its result (… changed after its key was taken)`: the
+  previous run withheld its save because an input changed while it ran.
+- That reason comes ahead of a prune. A changed key's diff says the same
+  where it has no fingerprints to compare.
+- Otherwise, with this run's policy recorded as reading the cache, it
+  says it cannot name the cause.
+- Only a run with no recorded policy names `--no-cache` / `--force`.
+
+</div>
+</details>
+
+**The run lines.** `this run` and `previous` each read when the run was,
+its status, how it ended and its key.
+
+| Line                         | Means                                      |
+| ---------------------------- | ------------------------------------------ |
+| `success · executed · key …` | it ran                                     |
+| `cache-hit · key …`          | a local hit; `cache-hit-remote` for remote |
+| `skipped · no key`           | it never ran and derived no key            |
+| `failed · no key`            | its key was not derived; nothing ran       |
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
+
+- A hit's status names the hit and its tier, so only an executed run
+  carries the word `executed`.
+- `failed · no key`: for example a failed `inputs.runtime` probe.
+- With no key, the verdict names the one cause the row records: what
+  blocked a skip, or a key not derived.
+- Or: a hit whose restore failed, or a persistent task.
+- `vx last <run> --log <task>` prints the line vx said when a key was
+  not derived.
+
+</div>
+</details>
+
+**What to do and root cause.** `What to do` gives one line per kind that
+changed: what moves it, and how to stop a move the task does not need.
+
+An `env` line says whether a value moved or a name joined or left `inputs.env`.
+
+An `upstream` row only carries a change. `vx why` follows it down to the
+tasks whose own inputs moved, and prints each chain under `Root cause`:
 
 ```ansi
 [4m[58;2;110;118;129m  [1m[38;2;167;139;250mRoot cause[0m[4m[58;2;110;118;129m                                                                                                            [0m
   [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m[2m ← [0m[38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m[2m ← [0m[1mfile packages/ui/src/index.ts[0m
 ```
 
-A group records no run, so the key also names each task under a group
-it folds, through the group (`upstream @demo/web#prep ← @demo/ui#build`), and the
-walk goes on from that task, through the tasks a group gathers
-(`@demo/web#pack ← @demo/web#all ← @demo/ui#build ← file packages/ui/src.txt`). A
-dependency the walk cannot find in the run keeps the `upstream` line,
-which names the `vx why` to run next (never a group's, which refuses),
-or, for a group, the `vx show` that names what it gathers. A dependency
-added or removed moved no key: its line says the graph changed
-(`dependsOn` or a project edge). A `config` line names the `vx show`
-that prints the task's config now.
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
 
-**Changed during a run.** A moved input file whose last change fell inside a recorded task's run
-window names that task: a task that writes a file another key reads (a
-build rewriting a translation file in another package) re-keys that key
-on every run, so the miss is right and only moving the write ends it.
-An edit made outside a run, or after the asked run ended, names none.
-The history holds when tasks ran, not what they wrote: a hand edit made
-while another task ran names that task.
+- The walk follows each dependency that moved in the same run.
+- One chain per root, five at most, then a count.
+- A chain of more than six tasks prints its first two and last three
+  around `N more`.
+- With roots, `What to do` speaks to the roots' kinds. A `config` line
+  names the `vx show` of the root's task, not the asked one.
+- Each upstream is compared between the two keys the dependant folded.
+  A run of the upstream alone in between changes nothing it names.
+- `upstream @demo/web#prep ← @demo/ui#build`: a group records no run, so
+  the key names each task under a group it folds, through the group.
+- `@demo/web#pack ← @demo/web#all ← @demo/ui#build ← file packages/ui/src.txt`:
+  the walk goes on through the tasks a group gathers.
+- A dependency the walk cannot find in the run keeps the `upstream`
+  line, naming the `vx why` to run next.
+- That line never names a group's `vx why`, which refuses. For a group it
+  names the `vx show` that lists what it gathers.
+- A dependency added or removed moved no key. Its line says the graph
+  changed (`dependsOn` or a project edge).
+- A `config` line names the `vx show` that prints the task's config now.
+
+</div>
+</details>
+
+**Changed during a run.** An input file last changed while a recorded
+task ran names that task. A build that rewrites a file another key reads
+re-keys that key every run:
 
 ```ansi
 [4m[58;2;110;118;129m  [1m[38;2;167;139;250mChanged during a run[0m[4m[58;2;110;118;129m                                                                                                  [0m
   [2mfile                     written while[0m
   [1mpackages/ui/src/gen.txt[0m  [38;2;203;213;225m@demo/web#build[0m
 ```
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
+
+- The miss is right. Only moving the write ends it, for example a build
+  that rewrites a translation file in another package.
+- An edit made outside a run, or after the asked run ended, names no
+  task.
+- The history holds when tasks ran, not what they wrote. A hand edit
+  made while another task ran names that task.
+
+</div>
+</details>
 
 **Kinds.** A row's kind is what the key folded:
 
@@ -5287,36 +5647,63 @@ while another task ran names that task.
 | `platform`              | the platform a task naming `exec.platforms` ran on                                                      |
 | `format`                | the key format vx itself folds: it moves only with an upgrade, and re-keys every task once              |
 
-A control character in a component's name (a file named with an
-escape or a carriage return) prints as `\xNN`, so no file name drives
-the terminal; `--format json` carries the name as it is.
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
 
-**When there is no diff.** The component-level rows come from the `entry_inputs` input
-fingerprints persisted with each cache entry; when either side's entry
-is gone (pruned, or the run failed and never saved one) the verb still
-names the hash change and says the component diff is unavailable. An
-entry restored from a remote cache came with no fingerprints (the
-artifact carries none), and the detail line says so rather than a
-prune; a hit that restores a file git tracks records the ones this
-machine derived the same key from, so its diff has rows. When
-only the previous run failed, or wrote no cache (`--no-cache`, or a
-`--cache-policy` without write), the diff is taken against the last run
-that saved an entry instead, and the detail line names that run, even
-when the diff has rows. When
-this run wrote no cache, the detail line says so rather than a prune. A
-task with `inputs` and no `cache: true` derives a key too — it is what
-dependents fold — but saves no entry, so for it the verb can only report
-the key change and says so.
+- `\xNN`: a control character in a name (an escape, a carriage return)
+  prints this way, so no file name drives the terminal.
+- `--format json` carries the name as it is.
+
+</div>
+</details>
+
+**When there is no diff.** The rows come from the input fingerprints
+saved with each cache entry (`entry_inputs`). When an entry is gone,
+`vx why` still names the key change and says the rows are unavailable.
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
+
+- An entry is gone when it was pruned, or the run failed and never saved
+  one.
+- An entry restored from a remote cache came with no fingerprints (the
+  artifact carries none). The detail line says so, not "pruned".
+- A hit that restores a file git tracks records the ones this machine
+  derived the same key from, so its diff has rows.
+- Only the previous run failed, or wrote no cache (`--no-cache`, or a
+  `--cache-policy` without write): the diff is taken against the last
+  run that saved an entry.
+- Then the detail line names that run, even when the diff has rows.
+- This run wrote no cache: the detail line says so, not "pruned".
+- A task with `inputs` and no `cache: true` derives a key, which
+  dependents fold, but saves no entry.
+- For such a task `vx why` can only report the key change, and says so.
+
+</div>
+</details>
 
 ### JSON
 
-`--format json` emits one machine-readable object (`{ taskId, runId,
-why, diff, roots, writers }`); when the task's recorded runs predate run ids, `{ taskId,
-why, diff, explanation }`, `why` and `diff` null and `explanation` the
-latest cache entry's key. `roots` is the root-cause walk (`chain`,
-`entries`), every root with its whole chain, written as it goes: a
-20,000-task chain where every task moved is 2 GB of JSON; `writers` the changed-during-a-run files (`taskId`, `file`,
-`writers`).
+`--format json` emits one object: `{ taskId, runId, why, diff, roots,
+writers }`.
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
+
+- `--format json` prints `{ taskId, why, diff, explanation }` when the
+  task's recorded runs predate run ids. `why` and `diff` are null.
+- `explanation`: the latest cache entry's key.
+- `roots`: the root-cause walk (`chain`, `entries`), every root with its
+  whole chain, written as it goes.
+- A 20,000-task chain where every task moved is 2 GB of JSON.
+- `writers`: the changed-during-a-run files (`taskId`, `file`,
+  `writers`).
+
+</div>
+</details>
 
 ### Exit codes
 
@@ -5327,16 +5714,32 @@ latest cache entry's key. `roots` is the root-cause walk (`chain`,
 
 ## `vx last`
 
-`vx last` replays a recorded run's summary from the local history: no
-re-execution, no cache probe, no config evaluation. A run a Ctrl-C (or
-SIGTERM, SIGHUP) stopped records the tasks that ended before the stop
-(their rows, timings and failed output) but no summary, so `vx last`
-still shows the run before it; nor does a `vx watch` cycle one stopped.
-Its id, which its footer, `vx why` and `vx last --log` print, works wherever
-a run id does: `vx last RUNID --log <task>` prints a task's output, `vx why
-<task> --run RUNID` explains it, and `vx last RUNID` says the run was
-stopped. A run stopped before any task ended keeps nothing, and its footer
-names no id.
+`vx last` shows a past run again from the local history. It runs
+nothing, asks no cache and evaluates no config.
+
+```sh
+vx last                  # the latest run
+vx last --failed         # the latest run that failed
+```
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Stopped runs</span></summary>
+<div class="vx-deeper-body">
+
+- A run a Ctrl-C (or SIGTERM, SIGHUP) stopped records the tasks that
+  ended before the stop: rows, timings, failed output.
+- It records no summary, so bare `vx last` still shows the run before
+  it. A `vx watch` cycle a stop ended records none either.
+- Its id is printed by its footer, `vx why` and `vx last --log`, and works
+  wherever a run id does.
+- `vx last RUNID --log <task>` prints a task's output; `vx why <task>
+--run RUNID` explains it.
+- `vx last RUNID` says the run was stopped.
+- A run stopped before any task ended keeps nothing. Its footer names no
+  id.
+
+</div>
+</details>
 
 ### Usage
 
@@ -5383,9 +5786,21 @@ vx last --sql "SELECT task, AVG(peak_rss_bytes) FROM runs GROUP BY task"
 
 ### Arguments
 
-| Argument | Meaning                                                                                                                                                                                                                     |
-| -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `RUNID`  | replay that run instead of the latest. A run id may be typed as a unique prefix; a prefix several runs share fails and lists them. An unknown run id fails loud and points at `--list`; a stopped run's says it was stopped |
+| Argument | Meaning                             |
+| -------- | ----------------------------------- |
+| `RUNID`  | show that run instead of the latest |
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
+
+- `vx last 01a20a09-aa59`: a unique prefix of the id is enough.
+- A prefix several runs share fails and lists them.
+- An unknown run id fails and points at `--list`. A stopped run's id says
+  the run was stopped.
+
+</div>
+</details>
 
 ### Options
 
@@ -5402,146 +5817,294 @@ vx last --sql "SELECT task, AVG(peak_rss_bytes) FROM runs GROUP BY task"
 | `--format pretty\|json` | `json` for scripts and agents, below                                                  |
 | `--cache-dir <path>`    | read the cache a run with the same flag uses                                          |
 
-`--log` does not combine with `--list` or `--failed`. `--stats` does not
-combine with `--list`, `--failed` or `--log`; `--branch` combines only
-with `--stats`.
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
+
+- `--log` does not combine with `--list` or `--failed`.
+- `--stats` does not combine with `--list`, `--failed` or `--log`.
+- `--branch` combines only with `--stats`.
+
+</div>
+</details>
 
 ### Understanding the output
 
-**The header and rows.** Bare `vx last` replays the most recent run: a header (verdict, command,
-when, duration, branch @ sha, CI, task/hit/failure counts) and its
-tasks on the run's own grid (time, ±usual, status, cache, cpu, mem,
-outputs, blocks, worker, task), drawn by the same component: a replay
-reads as the run did. `±usual` measures an executed task against its
-usual time now, as a run on this branch reads history, over the timings
-of the definition (command and `env.define`) it ran under (`—`: never
-timed, or timed only by this run). A hit's cpu and mem are
-blank (it spent nothing); `—` is a value the run could not read. The
-cache key is in `--format json`. Failures come first, each with its
-exit after the id, `exit 137`, and the signal an exit above 128 stands
-for after it (`128 + SIGKILL`; the shell's convention, so a
-command that exits 137 on its own reads the same). Where the run's
-footer gave a reason, the row ends with it instead: `timed out`,
-`never ready: exited`, `src/a.ts changed during the run` (an
-`inputs.stability.severity: 'error'` failure, read from its kept output),
-`2 sandbox violations`, and for a skipped task
-`after @demo/ui#build failed` (the v27 columns; rows older than them read
-as before), `after @demo/ui#test did not pass` behind a task with no row (one
-`--fail-fast` stopped: history keeps none), or, for a platform skip, `needs another platform` and
-`after ios#build skipped: needs another platform`. A task that retried
-ends with its attempts, `2 attempts`, passed or failed (`attempts` in
-`--format json`, null for a task run once). A task whose key met a remote failure ends with it, read or
-write alike: `remote ✗ download: connection refused; upload: 503` (the
-v40 column, `remoteError` in `--format json`). A task an executor
-plugin ran elsewhere carries where after its id: `@demo/web#build@small#1` (v44, `placement`).
-On a terminal too narrow for a row's note beside it, the note goes on
-its own line under the row, as a `--dry` reason does.
+**The header and rows.** Bare `vx last` shows the latest run: a header,
+then one row per task on the run's own grid. It reads as the run did.
 
-**Order and folding.** Rows run failures first, then what executed or was
-skipped, then hits; past sixteen hits the rest fold into one line with
-their count (`… +980 more cache hits`) — a thousand-task warm run is a
-thousand rows otherwise, with the one failure a screen above the
-prompt — and the sixteen shown are the slowest restores, the one thing
-a hit's row tells. `--format json` lists every row.
+| Column    | Shows                                                    |
+| --------- | -------------------------------------------------------- |
+| `status`  | how the task ended                                       |
+| `cache`   | `miss`, or the kind of hit                               |
+| `±usual`  | this time against the task's usual time; `—` never timed |
+| `time`    | how long it took                                         |
+| `cpu`     | average cores used; a hit's is blank, it spent nothing   |
+| `mem`     | peak memory; a hit's is blank                            |
+| `outputs` | the bytes of its outputs, restored or written            |
+| `blocks`  | how many tasks and groups are downstream of it           |
+| `worker`  | `local`, or the machine an executor named                |
+| `task`    | its id, then a note when there is one                    |
 
-**Steps.** Below the tasks, the steps the run did not wait on (`vx:prefetch`, a
-remote's downloads beside the tasks), which its own output never shows:
-`success  vx:prefetch  1.20s  internal`. They are kept per run, the
-newest 50, as `steps` rows of cache.db, written only by a run that had
-one; `--format json` adds them as `steps`.
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">The header and columns</span></summary>
+<div class="vx-deeper-body">
 
-**Warnings.** Below the steps, what the run warned of (a glob that
-matched no files, a remote's 403, a plugin's notice), each as it said
-it, colour stripped, under `warnings`: on a terminal they scroll past,
-and the footer keeps only their count. Kept per run like the steps, the
-newest 50, as `warnings` rows, written only by a run that warned.
+- The header: verdict, command, when, duration, branch @ sha, CI, and
+  the task, hit and failure counts.
+- The same component draws a run and its replay.
+- `±usual` measures an executed task against its usual time now, as a
+  run on this branch reads history.
+- `±usual` uses the timings of the definition (command and `env.define`)
+  the task ran under.
+- `—` in `±usual`: never timed, or timed only by this run.
+- `—` in any other cell: a value the run could not read.
+- The cache key is in `--format json` only.
 
-**Re-run what failed.** A replayed run with
-failures ends with the command that re-runs them (`re-run what failed:
-vx run @demo/web#test -- …`, with the arguments the run forwarded to the
-tasks that got them; a failed dependency, which never got them, gets a
-line of its own without them). The
-replayed `$ vx run …` or `$ vx watch …` line and that one keep each
-argument shell-quoted (`-- 'a b'`), so either pastes back as it ran;
-the re-run line quotes a task id the same way (`'@demo/web#it'\''s boom'`).
+</div>
+</details>
 
-**No runs yet.** Before any run, every form says so
-(`› vx last  no runs yet` with `fix  vx run`, exit 1; `--list` prints
-`› vx last  no runs yet`, exit 0), and past green runs only,
-`--list --failed` prints `› vx last  no failed runs`.
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Row notes</span></summary>
+<div class="vx-deeper-body">
+
+- `exit 137`: a failure's exit code, after the id.
+- `128 + SIGKILL`: the signal an exit above 128 stands for, by the
+  shell's convention. A command that exits 137 itself reads the same.
+- Where the footer gave a reason, the row ends with it instead.
+- `timed out`, `never ready: exited`.
+- `src/a.ts changed during the run`: an `inputs.stability.severity:
+'error'` failure, read from its kept output.
+- `2 sandbox violations`.
+- `after @demo/ui#build failed`: a skipped task. Rows older than those
+  columns read as before.
+- `after @demo/ui#test did not pass`: skipped behind a task with no row,
+  one `--fail-fast` stopped. History keeps no row for it.
+- `needs another platform`, `after ios#build skipped: needs another
+platform`: a platform skip.
+- `2 attempts`: a task that retried, passed or failed. JSON: `attempts`,
+  null for a task run once.
+- `remote ✗ download: connection refused; upload: 503`: a remote read or
+  write failed for its key. JSON: `remoteError`.
+- `@demo/web#build@small#1`: an executor plugin ran it elsewhere. JSON:
+  `placement`.
+- On a narrow terminal a row's note goes on its own line under the row,
+  as a `--dry` reason does.
+
+</div>
+</details>
+
+**Order and folding.** Failures come first, then what executed or was
+skipped, then hits. Past sixteen hits, the rest fold into one line:
+`… +980 more cache hits`.
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
+
+- Without folding, a thousand-task warm run is a thousand rows, with the
+  one failure a screen above the prompt.
+- The sixteen hits shown are the slowest restores: the one thing a hit's
+  row tells.
+- `--format json` lists every row.
+
+</div>
+</details>
+
+**Steps.** Below the tasks come the steps the run did not wait on, which
+its own output never shows: `success  vx:prefetch  1.20s  internal`.
+
+**Warnings.** Below the steps come the run's warnings, as it said them,
+colour stripped. A terminal scrolls them past; the footer keeps only
+their count.
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
+
+- A step: `vx:prefetch`, or a remote's downloads beside the tasks.
+- Steps are kept per run, the newest 50, as `steps` rows of cache.db,
+  written only by a run that had one. JSON: `steps`.
+- A warning: a glob that matched no files, a remote's 403, a plugin's
+  notice.
+- Warnings are kept per run, the newest 50, as `warnings` rows, written
+  only by a run that warned.
+
+</div>
+</details>
+
+**Re-run what failed.** A run with failures ends with the command that
+re-runs them:
+
+```text
+re-run what failed: vx run @demo/web#test -- …
+```
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
+
+- The line keeps the arguments the run forwarded to the tasks that got
+  them.
+- A failed dependency never got them, so it gets a line of its own
+  without them.
+- `-- 'a b'`: the replayed `$ vx run …` or `$ vx watch …` line and the
+  re-run line shell-quote each argument, so both paste back as they ran.
+- `'@demo/web#it'\''s boom'`: the re-run line quotes a task id the same
+  way.
+
+</div>
+</details>
+
+**No runs yet.** Before any run, every form says so.
+
+| Command                                    | Prints                                  | Exit |
+| ------------------------------------------ | --------------------------------------- | ---- |
+| `vx last`                                  | `› vx last  no runs yet`, `fix  vx run` | 1    |
+| `vx last --list`                           | `› vx last  no runs yet`                | 0    |
+| `vx last --list --failed`, green runs only | `› vx last  no failed runs`             | 0    |
 
 ### `--list`
 
-`vx last --list` prints the N most recent runs (default 10), one per
-line in aligned columns (verdict, start, run id, counts, duration,
-command), each run id cut to the shortest prefix no other run shares, 13 characters at least (`--list 5`
-and `--list=5` alike; the space form takes the next argument as the
-count unless it is a flag or a run id, eight hex digits at least, so
-`--list 1.5` is refused as a count); `vx last RUNID` replays a
-specific one, and the two do not combine (a word beside `--list` no run
-id could be is refused as an unexpected argument). On a terminal too
-narrow for every column the start goes, then the counts, and a command
-that does not fit beside its run goes on its own line under it.
+`vx last --list` prints the most recent runs, 10 unless you give a
+count, one per line: verdict, start, run id, counts, duration, command.
+
+```sh
+vx last --list 5
+vx last --list=5
+```
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
+
+- Each run id is cut to the shortest prefix no other run shares, 13
+  characters at least.
+- `--list 5`: the space form takes the next word as the count unless it
+  is a flag or a run id (eight hex digits at least).
+- `--list 1.5`: refused as a count.
+- `vx last RUNID` shows one run; it does not combine with `--list`.
+- A word beside `--list` that no run id could be is refused as an
+  unexpected argument.
+- On a narrow terminal the start goes first, then the counts.
+- A command that does not fit beside its run goes on its own line under
+  it.
+
+</div>
+</details>
 
 ### `--log`
 
-`--log <task>`
-prints one task's output instead of the summary: in the latest run that
-recorded the task, or in RUNID's. A failed task's is the kept failure
-output; any other task's is its cache entry's log (the one a hit
-replays, masked as it was, and again with this process's secret values,
-as a hit's replay is; a task's `env.define` / `env.secret` values only
-the run knows), so a passing task's log reads too, on a hit
-or in the run that saved it. The entry is the key's, not the run's: it
-records the run that wrote it, so a run whose entry another run wrote
-since (a `--force` run saves over the entry it finds; a key pruned and saved
-again, or saved by two checkouts of one store at once, holds the later
-run's output) shows none rather than that run's. An uncached task that passed, or a skip,
-kept none, nor does a failed task past the newest 50 failed runs:
-stdout is empty and stderr says so, exit 0; a skip names what blocked
-it (`c#after did not run: c#gate blocked it (vx last --log c#gate)`). A kept log that is empty
-says the task printed nothing. A task that failed before its command ran
-(its key not derived, a restore that threw) keeps the line vx said. A task that retried shows every
-attempt, each under a heading (`── attempt 1 of 2 · exit 1 ──`), the
-last `passed` when a retry passed (`passed, output not kept` when no
-cache entry holds what it printed); a retried attempt's sandbox
-violations end its output. With
-`--format json` it is `{ runId, taskId, status, source, output }`,
-`source` `'failure'`, `'cache'` or `null`. A task no run recorded is
-refused, exit 1, naming recorded tasks as `vx why` does: one or two
-edits away, or the id inside a longer one (`@w/envy#test` for
-`envy#test`). A bare name (`--log build`) is the one project that ran
-it; with several, the one the cwd is in, else it is refused listing them.
-`//#<task>` is the root project's, here and in `--stats`.
-`vx last @demo/web#build --log` reads the same as `--log @demo/web#build`: a `--log`
-with no value takes the positional as its task.
+`--log <task>` prints one task's output instead of the summary, from
+the latest run that recorded the task, or from `RUNID`'s.
+
+```sh
+vx last --log @demo/web#test
+vx last 01a20a09 --log build      # a bare name: the one project that ran it
+```
+
+A failed task shows its kept failure output. Any other task shows the
+log in its cache entry, so a passing task's log reads too.
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
+
+- The cache entry's log is the one a hit replays, masked as it was.
+- It is masked again with this process's secret values, as a hit's
+  replay is. A task's `env.define` / `env.secret` values only the run
+  knows.
+- It reads on a hit, or in the run that saved the entry.
+- The entry is the key's, not the run's. It records the run that wrote
+  it.
+- So a run whose entry another run wrote since shows none rather than
+  that run's output.
+- That happens when a `--force` run saves over the entry it finds.
+- Or when a key is pruned and saved again, or saved by two checkouts of
+  one store at once: it holds the later run's output.
+- No log kept: an uncached task that passed, a skip, or a failed task
+  past the newest 50 failed runs.
+- Then stdout is empty and stderr says so, exit 0.
+- `c#after did not run: c#gate blocked it (vx last --log c#gate)`: a
+  skip names what blocked it.
+- A kept log that is empty says the task printed nothing.
+- A task that failed before its command ran (its key not derived, a
+  restore that threw) keeps the line vx said.
+- `── attempt 1 of 2 · exit 1 ──`: a task that retried shows every
+  attempt under a heading.
+- The last heading reads `passed` when a retry passed, or `passed, output
+not kept` when no cache entry holds what it printed.
+- A retried attempt's sandbox violations end its output.
+- `--format json`: `{ runId, taskId, status, source, output }`, `source` `'failure'`,
+  `'cache'` or `null`.
+- A task no run recorded is refused, exit 1, naming recorded tasks as
+  `vx why` does.
+- Those names are one or two edits away, or hold the typed id
+  (`@w/envy#test` for `envy#test`).
+- `--log build`: a bare name is the one project that ran it. With several,
+  the cwd's project; else refused, listing them.
+- `//#<task>` is the root project's, here and in `--stats`.
+- `vx last @demo/web#build --log`: a `--log` with no value takes the
+  positional as its task.
+
+</div>
+</details>
 
 ### `--stats`
 
-`--stats [<task>]` prints per-task numbers over the last 50 runs, the
-window the scheduler and `--dry` learn from: runs, p50 and p99 of one
-set of timings, the ones the forecast a run shows reads (the task's last
-five on the branch, else on any branch; of five, p99 is the slowest), pass and hit rate, failure mode (`stable`,
-`flaky-recoverable`, `flaky-fatal`), the largest peak RSS and the mean CPU
-parallelism (a hit counts what its producing run used), one table row
-per task, in the run grid's units (`3.6MB`, cpu `127%`, `—` where unknown). On a terminal too narrow for every column, cpu, peak RSS, p99, hit rate, failure mode and runs go in that order; the task, p50 and pass rate stay. A task id narrows to that task, a task name to it in every
-project; one the window has no run of is refused, exit 1, and the refusal
-names runs the window holds only under an older command or `env.define`,
-or of a task gone from the lock. The branch is
-`--branch`, else `VX_RUN_BRANCH`, else git's, then the CI provider's, as
-a run's. With `--format json` it is `{ window, branch, stats }`, each row `{ taskId, runs,
-p50DurationMs, p99DurationMs, successRate, hitRate, failureMode,
-maxPeakRssBytes, maxCpuParallelism }`, `null` where nothing was
-measured. A task whose command or `env.define` changed counts only its
-runs since, as the scheduler and `--dry` do: its definition is read
-from the lock.
+`--stats [<task>]` prints one row of numbers per task over the last 50
+runs, the window the scheduler and `--dry` learn from.
+
+```sh
+vx last --stats                    # every task
+vx last --stats @demo/web#test     # one task
+vx last --stats test               # test, in every project
+```
+
+| Column       | Means                                          |
+| ------------ | ---------------------------------------------- |
+| runs         | runs in the window                             |
+| p50          | the forecast a run shows                       |
+| p99          | of the same timings: of five, the slowest      |
+| pass rate    | share of runs that passed                      |
+| hit rate     | share of runs served from cache                |
+| failure mode | `stable`, `flaky-recoverable` or `flaky-fatal` |
+| peak RSS     | the largest peak memory                        |
+| cpu          | the mean CPU parallelism                       |
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
+
+- p50 and p99 read one set of timings, the ones the forecast reads: the
+  task's last five on the branch, else on any branch.
+- A hit counts what its producing run used.
+- Units match the run grid: `3.6MB`, cpu `127%`, `—` where unknown.
+- On a narrow terminal, columns go in this order: cpu, peak RSS, p99, hit
+  rate, failure mode, runs. Task, p50 and pass rate stay.
+- A task the window has no run of is refused, exit 1.
+- The refusal names runs the window holds only under an older command or
+  `env.define`, or of a task gone from the lock.
+- The branch: `--branch`, else `VX_RUN_BRANCH`, else git's, then the CI
+  provider's, as a run's.
+- `--format json`: `{ window, branch, stats }`.
+- Each JSON row: `{ taskId, runs, p50DurationMs, p99DurationMs,
+successRate, hitRate, failureMode, maxPeakRssBytes, maxCpuParallelism }`.
+- `null` where nothing was measured.
+- A task whose command or `env.define` changed counts only its runs
+  since, as the scheduler and `--dry` do.
+- Its definition is read from the lock.
+
+</div>
+</details>
 
 ### `--live`
 
-`vx last --live` asks the run in progress on this workspace, from another
-shell, while it runs: an agent that started `vx run` in the background
-reads what runs, what already ended and what waits, without waiting for
-the end (the history holds a run only once it ended).
+`vx last --live` asks the run in progress on this workspace, from
+another shell, what runs, what ended and what waits.
+
+An agent that started `vx run` in the background reads it without
+waiting for the end. The history holds a run only once it ended.
 
 ```sh
 vx last --live
@@ -5559,47 +6122,67 @@ vx last --live
   [2mwaiting[0m  [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m
 ```
 
-With `--format json` it prints `{ live, tasks, warnings }`: `live` is
-`{ runId, command, pid, startedAt, elapsedMs }`, each task
-`{ taskId, status, startedAt, durationMs }` (`status` is `running`,
-`waiting` or the status it ended with; times epoch ms, `null` where not
-yet known), running first, then what ended, then what waits. Groups are
-not listed.
+`--follow` prints the same snapshot, then each of the run's events
+until it ends.
 
-`--follow` prints the same snapshot, then each of the run's events until
-it ends: a task's output as `@demo/web#test │ <line>`, each end as
-`success  @demo/web#test  1.20s`, each warning as `warn  …`. With
-`--format json` the snapshot line is followed by one event per line,
-each with a `kind`: `run:start`, `task:start`, `task:stdout`,
-`task:stderr`, `task:complete`, `task:measure`, `run:status`,
-`step:start`, `step:end`, `run:end`, `run:stop`, and last `run:done`
-(`schemas/last.json`'s `event`). A task that started before the
-follower attached has no `task:start`: the snapshot holds it.
+```text
+@demo/web#test │ ✓ renders
+success  @demo/web#test  1.20s
+```
 
-No run in progress is `no run in progress` (exit 1, `VX_E_NO_HISTORY`),
-a run killed with its socket left included. A run that does not answer
-within 5 s reads the same.
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
 
-**What it costs a run.** Nothing is written. The run listens on a unix
-socket beside its run lock (in this user's own temp directory, so no
-other user reaches it) while it holds the lock, and keeps only when each
-task started; the snapshot is built when asked. Output is not kept: it
-reaches a follower only while one is attached, and a follower that falls
-1 MiB behind is let go, so a stuck reader never holds the run. A
-follower let go, or whose run is killed, exits 1 with no `run:done`. `--live`
-combines only with `--follow`, `--format` and `--cache-dir`.
+- `--format json`: `{ live, tasks, warnings }`.
+- `live`: `{ runId, command, pid, startedAt, elapsedMs }`.
+- Each task: `{ taskId, status, startedAt, durationMs }`.
+- `status` is `running`, `waiting` or the status it ended with. Times are
+  epoch ms, `null` where not yet known.
+- Order: running first, then what ended, then what waits. Groups are not
+  listed.
+- `--follow` prints a task's output as `@demo/web#test │ <line>`, each end
+  as `success  @demo/web#test  1.20s`, each warning as `warn  …`.
+- `--follow --format json`: the snapshot line, then one event per line,
+  each with a `kind` (`schemas/last.json`'s `event`).
+- The kinds: `run:start`, `task:start`, `task:stdout`, `task:stderr`,
+  `task:complete`, `task:measure`, `run:status`.
+- Then `step:start`, `step:end`, `run:end`, `run:stop`, and last
+  `run:done`.
+- A task that started before the follower attached has no `task:start`:
+  the snapshot holds it.
+- `no run in progress` (exit 1, `VX_E_NO_HISTORY`): nothing runs. A run
+  killed with its socket left counts.
+- A run that does not answer within 5 s reads the same.
+- `--live` combines only with `--follow`, `--format` and `--cache-dir`.
+
+</div>
+</details>
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">What it costs a run</span></summary>
+<div class="vx-deeper-body">
+
+- Nothing is written.
+- The run listens on a unix socket beside its run lock while it holds
+  the lock.
+- The socket sits in this user's own temp directory, so no other user
+  reaches it.
+- The run keeps only when each task started. The snapshot is built when
+  asked.
+- Output is not kept: it reaches a follower only while one is attached.
+- A follower that falls 1 MiB behind is let go, so a stuck reader never
+  holds the run.
+- A follower let go, or whose run is killed, exits 1 with no `run:done`.
+
+</div>
+</details>
 
 ### `--sql`
 
-`--sql <query>` runs one `SELECT` (or `WITH … SELECT`) over the run
-history and prints its rows: a table with a header, or with
-`--format json` `{ rows }`, one object per row keyed by column. It answers what no
-flag does: filter by task or project, group, trend. The table prints
-every column, a name repeated by a join's `SELECT *` (`run_id`) too;
-`--format json` refuses a repeated name, since an object holds one
-value per key: name each with `AS`. A query starting with `-` (an SQL
-comment) takes `--sql=`: the space form reads a following flag as a
-missing query.
+`--sql <query>` runs one `SELECT` over the run history and prints the
+rows as a table. It answers what no flag does: filter by task or
+project, group, trend.
 
 ```sh
 # a task's memory and cpu, run by run
@@ -5615,70 +6198,140 @@ vx last --sql "SELECT run_id, text FROM warnings ORDER BY run_id DESC"
 vx last --sql "SELECT step, AVG(duration_ms) FROM steps GROUP BY step"
 ```
 
-The tables: `invocations` (one row per run), `runs` (one row per task
-per run, joined on `run_id`: status, duration, cache hit, cpu, peak and
-mean memory, attempts, timeout, skip and remote reasons, where it ran),
-`steps` (`run_id`, `seq`, `step`, `duration_ms`, `ok`: the steps a run
-did not wait on), `warnings` (`run_id`, `seq`, `text`), `failures`
-(`run_id`, `task_id`, `dir`, `input_moved`, `output`, `locations`,
-`sandbox_fix`: a failed task's output; the last two JSON), `entries`
-(the cached keys), `entry_inputs` (each key's input components),
-`task_durations` and `task_outcomes` (what forecasts and flakiness
-read), `lockfile_memos` (a lockfile plugin's parse, by file and
-claimant). `SELECT name, sql FROM sqlite_schema` lists them all; `runs`
-is a view (in `sqlite_temp_schema`) over the stored rows, which name
-their run by its `run_ids` row. Times
-are epoch milliseconds. The history keeps every run until a bounded
-`vx cache clean` drops what is over 30 days old; `steps`, `warnings`
-and `failures` keep the newest 50 runs that had any.
+| Table                             | One row per                                     |
+| --------------------------------- | ----------------------------------------------- |
+| `invocations`                     | run                                             |
+| `runs`                            | task per run, joined on `run_id`                |
+| `steps`                           | step a run did not wait on                      |
+| `warnings`                        | warning a run printed                           |
+| `failures`                        | failed task's kept output                       |
+| `entries`                         | cached key                                      |
+| `entry_inputs`                    | key, with its input components                  |
+| `task_durations`, `task_outcomes` | what forecasts and flakiness read               |
+| `lockfile_memos`                  | a lockfile plugin's parse, by file and claimant |
 
-A write is refused (`--sql reads only`, exit 1), and the query runs
-with SQLite's `query_only` on, so a `WITH` that hides one fails too;
-nothing else may lead the statement, since `ATTACH` would make a file.
-A query SQLite cannot run is refused with its reason, and so is a
-second statement after the first (SQLite would run the first alone).
-`--sql` combines
-only with `--format` and `--cache-dir`. The tables are vx's own and
-change with `SCHEMA_VERSION`; read `sqlite_schema` rather than assume.
+`SELECT name, sql FROM sqlite_schema` lists them all. Times are epoch
+milliseconds.
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">The tables</span></summary>
+<div class="vx-deeper-body">
+
+- `runs` holds status, duration, cache hit, cpu, peak and mean memory,
+  attempts, timeout, skip and remote reasons, and where it ran.
+- `runs` is a view (in `sqlite_temp_schema`) over the stored rows, which
+  name their run by its `run_ids` row.
+- `steps`: `run_id`, `seq`, `step`, `duration_ms`, `ok`.
+- `warnings`: `run_id`, `seq`, `text`.
+- `failures`: `run_id`, `task_id`, `dir`, `input_moved`, `output`,
+  `locations`, `sandbox_fix`; the last two are JSON.
+- History keeps every run until a bounded `vx cache clean` drops what is
+  over 30 days old.
+- `steps`, `warnings` and `failures` keep the newest 50 runs that had
+  any.
+- The tables are vx's own and change with `SCHEMA_VERSION`. Read
+  `sqlite_schema` rather than assume.
+
+</div>
+</details>
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
+
+- `WITH … SELECT` works too.
+- `--format json`: `{ rows }`, one object per row keyed by column.
+- The table prints every column, a name repeated by a join's `SELECT *`
+  (`run_id`) too.
+- `--format json` refuses a repeated name, since an object holds one
+  value per key: name each with `AS`.
+- `--sql=<query>`: a query that starts with `-` (an SQL comment) needs
+  the `=` form. The space form reads it as a missing query.
+- `--sql reads only` (exit 1): a write is refused.
+- The query runs with SQLite's `query_only` on, so a `WITH` that hides a
+  write fails too.
+- Nothing else may lead the statement: `ATTACH` would make a file.
+- A query SQLite cannot run is refused with its reason.
+- A second statement after the first is refused: SQLite would run the
+  first alone.
+- `--sql` combines only with `--format` and `--cache-dir`.
+
+</div>
+</details>
 
 ### JSON
 
-`--format json`
-emits `{ invocation, tasks, steps, warnings }` for scripting (`steps`
-and `warnings` only when the run kept some, above); `--list --format json`
-an array of the same `invocation` objects, newest first. A failed task's row adds
-`dir` (its project's directory from the workspace root, `.` for the root,
-where the relative paths in its output start), `output` (its output as plain text, the first 8 KiB and last 56 KiB,
-secrets masked) and `locations` (the existing files it names,
-`{ file, line?, col? }`, file absolute; a file also named with a line
-drops its bare mention, such as bun test's `app.test.js:` header), so an
-agent reads why without the terminal. `fixedIn` names the first later run where that task
-passed, so a replayed failure that is already fixed says so. A
-sandboxed task's row adds `sandboxFix`, the `exec.sandbox.allow`
-entries (`read`, `write`, `network`, `systemInfo`) that would have
-granted its denials, the same grants the terminal prints as `fix:`
-(none for a per-run temp name such as `*.bun-build` or `.bun-pack.*.tmp`, whose `ignore` glob a hint line names);
-`withheld` lists the credential paths it denied and left out (a `.env` file, or a store under home the sandbox denies, `security.md`), and, for
-a cached task, `inputs` the reads of its project no `inputs.files`
-glob matches and `workspaceFiles` its reads elsewhere in the workspace no
-`inputs.workspaceFiles` glob matches (the terminal's `and, if the output
-depends on them, …` lines). A task
-failed by `inputs.stability.severity: 'error'` adds `inputMoved`, the
-input that changed during the run. They live in cache.db's `failures`
-rows, the newest 50 failed runs; past those, or when the write was
-refused, a failed row reads `output: ''` and `locations: []`.
+`--format json` emits `{ invocation, tasks, steps, warnings }` for
+scripts. `--list --format json` prints an array of the same
+`invocation` objects, newest first.
+
+A failed task's row adds its output and the files it names, so an agent
+reads why without the terminal.
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every field</span></summary>
+<div class="vx-deeper-body">
+
+- `steps` and `warnings`: only when the run kept some.
+- `dir`: the failed task's project folder from the root, `.` for the root.
+  Relative paths in its output start there.
+- `output`: its output as plain text, the first 8 KiB and last 56 KiB,
+  secrets masked.
+- `locations`: the existing files it names, `{ file, line?, col? }`,
+  `file` absolute.
+- `app.test.js:`: a file also named with a line drops its bare mention,
+  such as bun test's header.
+- `fixedIn`: the first later run where that task passed, so a replayed
+  failure that is already fixed says so.
+- `sandboxFix`: the `exec.sandbox.allow` entries (`read`, `write`,
+  `network`, `systemInfo`) that would have granted its denials.
+- `sandboxFix` holds the grants the terminal prints as `fix:`.
+- `*.bun-build`, `.bun-pack.*.tmp`: a per-run temp name gets no grant.
+  A hint line names its `ignore` glob.
+- `withheld`: the credential paths it denied and left out, a `.env` file
+  or a store under home the sandbox denies (`security.md`).
+- `inputs`, cached tasks: the reads of its project no `inputs.files` glob
+  matches.
+- `workspaceFiles`: its reads elsewhere in the workspace no
+  `inputs.workspaceFiles` glob matches.
+- Those two are the terminal's `and, if the output depends on them, …`
+  lines.
+- `inputMoved`: the input that changed during the run, for a task failed
+  by `inputs.stability.severity: 'error'`.
+- These live in cache.db's `failures` rows, the newest 50 failed runs.
+- Past those, or when the write was refused, a failed row reads
+  `output: ''` and `locations: []`.
+
+</div>
+</details>
 
 ### `--cache-dir`
 
-`vx why`, `vx last`, `vx info` and `vx cache clean` all read the cache
-a run wrote, so each takes `--cache-dir <path>` with `vx run`'s rules
-(cwd-relative, absolute used as-is): a run that wrote its history
-elsewhere is replayed, explained, reported on and pruned there. Without
-the flag they open the workspace's cache (`defineWorkspace({ cache: { dir } })`
-or `.vx/cache`). A `--cache-dir` that is not there, or is a file, is refused by name
-(`--cache-dir .vx/cahce: no such directory`, `VX_E_USAGE`). In a workspace that never
-ran, `vx why`, `vx last`, `vx info`, `vx show` and `vx cache clean`
-(dry or not) read it as empty and create nothing.
+`vx why`, `vx last`, `vx info` and `vx cache clean` read the cache a run
+wrote. Each takes `--cache-dir <path>`, with `vx run`'s rules.
+
+```sh
+vx run build --cache-dir /tmp/vx-cache
+vx last --cache-dir /tmp/vx-cache
+```
+
+Without the flag they open the workspace's cache:
+`defineWorkspace({ cache: { dir } })`, else `.vx/cache`.
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
+
+- A relative path is from the cwd; an absolute one is used as-is.
+- A run that wrote its history elsewhere is shown, explained, reported
+  on and pruned there.
+- `--cache-dir .vx/cahce: no such directory` (`VX_E_USAGE`): a path that
+  is not there, or is a file, is refused by name.
+- A workspace that never ran: `vx why`, `vx last`, `vx info`, `vx show`
+  and `vx cache clean` (dry or not) read it as empty and create nothing.
+
+</div>
+</details>
 
 ### Exit codes
 
@@ -5689,19 +6342,8 @@ ran, `vx why`, `vx last`, `vx info`, `vx show` and `vx cache clean`
 
 ## `vx docs`
 
-`vx docs <query>` searches vx's reference as this version wrote it:
-every page of `packages/vx/docs` at this vx's release tag on GitHub
-(`v<version>`; a source checkout reads `main`), read online each time,
-so nothing ships inside vx. Each page is cut
-at its headings; a section that holds every word of the query matches,
-and a word in its heading ranks it above any count in its text; a
-one-word query that titles a section, an error code
-(`vx docs VX_E_CYCLE`), prints that section alone. The best
-`--limit` sections (default 3) print whole, each under its page,
-heading and URL on the site. `--format json` prints
-`{query, hits: [{page, heading, url, text}]}` (`schemas/docs.json`).
-The guides live on the site: `https://vznjs.github.io/vx/llms.txt`
-indexes them.
+`vx docs <query>` searches the vx reference for this version and prints
+the best sections.
 
 ```sh
 vx docs VX_E_CYCLE
@@ -5716,6 +6358,27 @@ vx docs VX_E_CYCLE
 [38;2;6;182;212m│[0m `vx lock` refuses it, not a run: a run trusts the graph the lock holds.
 ```
 
+The guides live on the site: `https://vznjs.github.io/vx/llms.txt`
+indexes them.
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
+
+- It reads every page of `packages/vx/docs` at this vx's release tag on
+  GitHub (`v<version>`), online, each time. Nothing ships inside vx.
+- A source checkout reads `main`.
+- Each page is cut at its headings. A section that holds every word of
+  the query matches.
+- A word in a section's heading ranks it above any count in its text.
+- `vx docs VX_E_CYCLE`: a one-word query that titles a section, such as
+  an error code, prints that section alone.
+- The best sections print whole, each under its page, heading and URL on
+  the site.
+
+</div>
+</details>
+
 ### Options
 
 | Option                  | Meaning                                                                            |
@@ -5723,14 +6386,27 @@ vx docs VX_E_CYCLE
 | `--limit N`             | how many sections print, best first (default 3)                                    |
 | `--format pretty\|json` | `json` prints `{query, hits: [{page, heading, url, text}]}` for scripts and agents |
 
-Exit codes: `0` the search ran, a search with no match included (it
-names the tag searched); `1` a missing query or a bad flag
-(`VX_E_USAGE`), or the pages could not be read (`VX_E_NETWORK`, which
-names the site).
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
+
+- `--format json` follows `schemas/docs.json`.
+- Exit `0`: the search ran, a search with no match included. That one
+  names the tag searched.
+- Exit `1`, `VX_E_USAGE`: a missing query or a bad flag.
+- Exit `1`, `VX_E_NETWORK`: the pages could not be read. It names the
+  site.
+
+</div>
+</details>
+
+Exit codes: `0` the search ran; `1` a missing query, a bad flag, or the
+pages could not be read.
 
 ## `vx help`
 
-`vx help` prints every verb's usage line and the run flags. `vx help <verb>` (also `vx <verb> --help` or `-h`) prints that verb's usage and sections:
+`vx help` prints every verb's usage line and the run flags.
+`vx help <verb>` prints that verb's usage and sections.
 
 ```sh
 vx help lock
@@ -5760,7 +6436,20 @@ vx help lock
 Full reference: vx help
 ```
 
-It paints only on a terminal, so a script that greps it reads plain text. On a terminal an entry wider than the terminal, or than 80 columns, refills at spaces, its lines under its description; piped it is as written. A plugin verb answers its own `--help`.
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
+
+- `vx <verb> --help` and `-h` print the same as `vx help <verb>`.
+- It paints only on a terminal, so a script that greps it reads plain
+  text.
+- On a terminal, an entry wider than the terminal or 80 columns refills
+  at spaces, its lines under its description.
+- Piped, it prints as written.
+- A plugin verb answers its own `--help`.
+
+</div>
+</details>
 
 Exit codes: `0` the help printed; `1` a name that is no verb, with the nearest one when close.
 
@@ -5782,7 +6471,8 @@ Exit codes: `0`.
 
 ## `vx completions`
 
-Print a completion script for `bash`, `zsh` or `fish`:
+`vx completions` prints a Tab-completion script for `bash`, `zsh` or
+`fish`.
 
 ```sh
 eval "$(vx completions bash)"                          # this shell
@@ -5790,26 +6480,44 @@ vx completions zsh > ~/.zfunc/_vx                      # zsh, with ~/.zfunc on $
 vx completions fish > ~/.config/fish/completions/vx.fish
 ```
 
-The script completes the verbs — core's, and the plugin verbs the
-workspace around the cwd declares at generation time — and every flag
-of each verb, read from the same help text `vx <verb> --help` prints:
-the verb's own Usage line, and for `run` and `watch` the run option
-lines, less the ones `watch` refuses. So a flag cannot be documented
-and not completed, nor completed and then refused: a flag another
-verb's line names in passing (`--check` in a line about `vx lock`) is
-not one. After a flag with a fixed value set the script offers that
-set: `--format` pretty or json, `--output-logs` full, errors-only,
-hash-only or none, `--cache-download` all, toplevel or none, `--schedule`
-its four rules — each value one
-the flag's parser takes (`tests/completions.test.ts` holds it). A plugin verb completes `--help` only; `vx help` completes the verbs. Task and project
-names are not completed (they are the workspace's, and a completion
-that evaluates configs on every Tab is the wrong price). The zsh script
-works both ways zsh loads one: from `$fpath` it completes on the first
-Tab (it rang the bell there until 2026-10-03 and completed on the
-second), and sourced it registers itself; `tests/completions-shells.test.ts`
-loads the script in zsh both ways and in fish where they are installed. An unknown
-shell is an error naming the three, and the nearest of them when one is
-within two edits (`got bsh). Did you mean bash?`).
+It completes the verbs and every flag of each verb. After a flag that
+takes a fixed set of values, it offers that set.
+
+| After              | Tab offers                                 |
+| ------------------ | ------------------------------------------ |
+| `--format`         | `pretty`, `json`                           |
+| `--output-logs`    | `full`, `errors-only`, `hash-only`, `none` |
+| `--cache-download` | `all`, `toplevel`, `none`                  |
+| `--schedule`       | its four rules                             |
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
+
+- Verbs: core's, and the plugin verbs the workspace around the cwd
+  declares when you generate the script.
+- Flags are read from the help `vx <verb> --help` prints: the verb's own
+  Usage line.
+- For `run` and `watch`, the run option lines too, less the ones `watch`
+  refuses.
+- So a flag cannot be documented and not completed, nor completed and
+  then refused.
+- `--check` in a line about `vx lock`: a flag another verb's line names
+  in passing is not one.
+- Each value offered is one the flag's parser takes
+  (`tests/completions.test.ts`).
+- A plugin verb completes `--help` only. `vx help` completes the verbs.
+- Task and project names are not completed: they are the workspace's,
+  and evaluating configs on every Tab costs too much.
+- zsh from `$fpath`: it completes on the first Tab. Sourced, it registers
+  itself.
+- `tests/completions-shells.test.ts` loads the script in zsh both ways,
+  and in fish, where they are installed.
+- `got bsh). Did you mean bash?`: an unknown shell is an error naming
+  the three, and the nearest within two edits.
+
+</div>
+</details>
 
 Exit codes: `0` the script printed; `1` an unknown shell or flag.
 
@@ -5835,48 +6543,88 @@ export function mcp(): VxPlugin {
 }
 ```
 
-The plugin's name is its package name, which `definePlugin` reads from
-`import.meta`; a plain object is refused when the workspace loads.
-`ctx.cache` reads the plugin's own entries as `setup` writes them (the
-local store, then each remote the workspace's cache plugins supply,
-under the run's scope), read-only, opened on first use.
+Then `vx mcp` runs it. `vx help` lists every plugin verb under "Plugin
+commands", with the plugin's name. `@vzn/vx-history` adds `vx history`
+this way.
 
-(`@vzn/vx-history` ships exactly this: `vx history`, what it
-learned per task and the reservation its `admit` hook packs.) The dispatcher tries core's verbs
-first and consults plugins only for a word core does not know, loading
-the workspace config from the cwd to find them (outside a workspace the
-verb is simply unknown). A plugin verb that names a core verb, or one
-plugins of two packages both declare, is refused when the workspace
-loads — such a verb could never run, or would hide the other plugin's.
-Plugins of one package are one owner (two of its plugins may carry the
-same verb): the first declared runs. A plugin verb's
-return value is the exit code, an integer 0–255 (anything else — nothing,
-a fraction, 256, which the OS would keep as 0 — fails naming the plugin
-and the verb), and a thrown `UserError` prints as
-cleanly as core's own. Anything else thrown fails in one line, no stack:
-`plugin '<p>' failed in command '<verb>': <msg>`. `vx help` lists every plugin verb under "Plugin
-commands", with the plugin's name. When `.vx/workspace.ts` fails to load, it
-lists none and says why on stderr.
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
 
-An unknown verb is answered with what this workspace knows: the "did you
-mean" set is core's verbs AND the ones its plugins declare (the lookup
-that just failed already loaded them, so it costs nothing), and when
-nothing is close enough to guess, a second line says where a verb can
-come from — the verbs declared here, or that `.vx/workspace.ts` is what
-would declare one, or that there is no workspace here at all. Core still
-names no package: it lists what the workspace itself declares.
+- The plugin's name is its package name; `definePlugin` reads it from
+  `import.meta`. A plain object is refused when the workspace loads.
+- `ctx.cache` reads the plugin's own entries as `setup` writes them,
+  read-only, opened on first use.
+- It reads the local store, then each remote the workspace's cache
+  plugins supply, under the run's scope.
+- `vx history` prints what `@vzn/vx-history` learned per task and the
+  reservation its `admit` hook packs.
+- Core's verbs come first. Plugins are asked only for a word core does
+  not know.
+- To find them, vx loads the workspace config from the cwd. Outside a
+  workspace the verb is unknown.
+- A plugin verb that names a core verb is refused when the workspace
+  loads: it could never run.
+- A verb plugins of two packages both declare is refused too: one would
+  hide the other.
+- Plugins of one package are one owner: two of them may carry the same
+  verb, and the first declared runs.
+- The return value is the exit code, an integer 0–255.
+- Anything else fails, naming the plugin and the verb: nothing, a
+  fraction, or 256 (which the OS would keep as 0).
+- A thrown `UserError` prints as cleanly as core's own.
+- Anything else thrown fails in one line, no stack:
+  `plugin '<p>' failed in command '<verb>': <msg>`.
+- When `.vx/workspace.ts` fails to load, `vx help` lists no plugin verb
+  and says why on stderr.
+
+</div>
+</details>
+
+An unknown verb is answered with what this workspace knows: a guess from
+core's verbs and the plugins' verbs.
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
+
+- The failed lookup already loaded the plugins, so the guess costs
+  nothing.
+- With nothing close, a second line says where a verb can come from.
+- That line names the verbs declared here, or says `.vx/workspace.ts`
+  would declare one, or that there is no workspace here.
+- Core names no package: it lists what the workspace itself declares.
+
+</div>
+</details>
 
 ## Environment variables vx reads
 
-Every setting has a variable derived from its path (`run.timeout` →
-`VX_RUN_TIMEOUT`), beating `.vx/workspace` and beaten by the flag; the
-table in `docs/schema.md` § Settings gives each value's form and
-default. Each is checked once before any verb runs: an empty one is
-unset, a value its kind does not take is refused naming the form, and a
-variable vx does not read is ignored, as is one whose flag is given (the
-flag beats it). A
-plugin's own (the REAPI endpoints, the GitHub token) are in its README;
-what a TASK sees is `exec.env` in `docs/schema.md`.
+Every setting has a variable named from its path: `run.timeout` is
+`VX_RUN_TIMEOUT`. The variable beats `.vx/workspace`; a flag beats the
+variable.
+
+```sh
+VX_RUN_CONCURRENCY=4 vx run build --all
+```
+
+`docs/schema.md` § Settings gives each value's form and default.
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
+
+- Each is checked once before any verb runs.
+- An empty variable is unset.
+- A value its kind does not take is refused, naming the form.
+- A variable vx does not read is ignored, as is one whose flag is given:
+  the flag beats it.
+- A plugin's own variables (the REAPI endpoints, the GitHub token) are
+  in its README.
+- What a task sees is `exec.env` in `docs/schema.md`.
+
+</div>
+</details>
 
 <!-- variables table: generated by tests/settings.test.ts -->
 
@@ -5929,37 +6677,64 @@ what a TASK sees is `exec.env` in `docs/schema.md`.
 
 <!-- /variables table -->
 
-vx sets three variables on every task's environment: `VX_RUN_WORKSPACE`
-(the workspace root), `VX_RUN_TASK` (`project#task`) and `VX_RUN_TREE`
-(a token per spawn). A `vx run` (or `vx pipeline`, `vx watch`) a task starts reads the first
-two back: one in the same workspace is refused, naming the verb, since a nested run is invisible to
-the outer graph and a loop back to its own task forks without bound
-(`docs/schema.md` § `env`). A stop (Ctrl-C, `--fail-fast`, a server's end)
-signals every process holding the task's `VX_RUN_TREE`, so a daemon that
-left the task's process group with `setsid` goes with it
-(`docs/execution.md`).
+vx sets three variables on every task it starts:
 
-Colors are the two conventions in § Output format › Colors (`NO_COLOR`,
-`FORCE_COLOR`), and a CI turns them on. A CI picks the CI output flow and
-`GITHUB_ACTIONS` its `::group::` framing (§ Output); the run's
-`invocations` row records the provider, the first truthy of
-`GITHUB_ACTIONS`, `GITLAB_CI`, `BUILDKITE`, `CIRCLECI`, `TF_BUILD` (`azure`),
-`JENKINS_URL` (`jenkins`), `TEAMCITY_VERSION` (`teamcity`), then `CI`
-(`generic`). The same variables decide whether a run is on CI for the remote
-cache's writes. Core never reads `GITHUB_STEP_SUMMARY`; the job summary is
-`@vzn/vx-ci`'s. A sandboxed
-task's temp dir sits under `CLAUDE_CODE_TMPDIR` (else `CLAUDE_TMPDIR`,
-else `/tmp/claude`), the sandbox runtime's own convention
-(`docs/modules/exec.md`). Both it and `TMPDIR` hold sockets
-whose paths pass unquoted through a shell, so a sandboxed task is refused
-unless each is an absolute path of ASCII letters, digits and `. _ - / + @`.
+| Variable           | Holds                  |
+| ------------------ | ---------------------- |
+| `VX_RUN_WORKSPACE` | the workspace root     |
+| `VX_RUN_TASK`      | `project#task`         |
+| `VX_RUN_TREE`      | a token for each spawn |
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
+
+- A `vx run`, `vx pipeline` or `vx watch` a task starts reads the first
+  two back.
+- One in the same workspace is refused, naming the verb
+  (`docs/schema.md` § `env`).
+- A nested run is invisible to the outer graph, and a loop back to its
+  own task forks without bound.
+- A stop (Ctrl-C, `--fail-fast`, a server's end) signals every process
+  that holds the task's `VX_RUN_TREE`.
+- So a daemon that left the task's process group with `setsid` stops too
+  (`docs/execution.md`).
+
+</div>
+</details>
+
+Colors follow `NO_COLOR` and `FORCE_COLOR` (§ Output format › Colors),
+and a CI turns them on.
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Other variables vx reads</span></summary>
+<div class="vx-deeper-body">
+
+- A CI (§ Output format › Colors): the CI output flow and remote cache
+  writes. `GITHUB_ACTIONS`: its `::group::` framing (§ Output).
+- The run's `invocations` row records the CI provider, the first that is
+  on: `GITHUB_ACTIONS`, `GITLAB_CI`, `BUILDKITE`, `CIRCLECI`, `TF_BUILD`,
+  `JENKINS_URL`, `TEAMCITY_VERSION`, then `CI`.
+- They record as `azure`, `jenkins`, `teamcity` and `generic` for the last four.
+- `GITHUB_STEP_SUMMARY`: core never reads it. The job summary is
+  `@vzn/vx-ci`'s.
+- A sandboxed task's temp dir sits under `CLAUDE_CODE_TMPDIR`, else
+  `CLAUDE_TMPDIR`, else `/tmp/claude`: the sandbox runtime's convention.
+- See `docs/modules/exec.md` for that temp dir.
+- That variable and `TMPDIR` hold sockets whose paths pass unquoted
+  through a shell.
+- So a sandboxed task is refused unless each is an absolute path of ASCII
+  letters, digits and `. _ - / + @`.
+
+</div>
+</details>
 
 ## Output format
 
-`vx run` emits framed blocks. Stdout/stderr from each task is
-buffered until completion, then dumped inside the block — so
-concurrent tasks never interleave their lines. A lone requested task
-streams live instead (§ Output).
+`vx run` prints each task's output in a framed block when the task ends.
+Two tasks that run at once never mix their lines.
+
+A lone requested task streams live instead (§ Output).
 
 Frame anatomy:
 
@@ -5981,46 +6756,72 @@ openat(/work/demo/packages/web/notes.txt) = a write no grant covers
 [2m└─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;96;165;250mtest[0m [2m──[0m [2m(2.10s)[0m [1m[38;2;239;68;68mfailed (exit 1, 1 sandbox violation)[0m
 ```
 
-Every section is conditional: the `$ <command>` line only for an
-executed task (success or failed — a hit replays its stored output and
-shows none, unless it is a task you asked for in the focused flow,
-which shows the line whether it ran or not), led by the directory it ran in from the workspace root
-(none for a project at the root), as a shell prompt would be: a task
-names paths from its own directory, so `src/index.ts` in its output is
-`packages/web/src/index.ts`, `OUTPUT` only when the task wrote something,
-`SANDBOX VIOLATIONS (N)` only when the sandbox recorded some (`N`
-counts them) or `SANDBOX` when vx has only a note on a failure. The
-header carries the outcome (`restored-local • abc12345`, `failed (exit
-N)`, …) and the footer repeats it after the duration. A test renders
-this block and checks it against this page, byte for byte.
+| Part                     | Shows                                       |
+| ------------------------ | ------------------------------------------- |
+| header `┌─`              | the task id and its outcome                 |
+| `packages/web $ …`       | the command, after the folder it ran in     |
+| `OUTPUT`                 | what the task printed                       |
+| `SANDBOX VIOLATIONS (N)` | what the sandbox refused, `N` of them       |
+| footer `└─`              | the task id, its time and its outcome again |
 
-`OUTPUT` holds what the task wrote in the order vx read it, so an
-error stays beside the test that printed it: a stderr line renders
-red when colour is on (a line the task coloured itself keeps its own
-colours, and a line takes the stream that began it); without colour
-the lines are the task's bytes.
-The two streams are two pipes, so lines written within the same
-instant may read stdout first; a cache hit replays the same order. A
-persistent task's tail after ready keeps `STDOUT (since ready)` and
-`STDERR (since ready)` apart: its bounded tails hold no order.
+Each part shows only when it has something to say. Content lines are
+raw: no left border, no indent, so long lines wrap cleanly and
+copy/paste yields the verbatim output.
 
-Frame corners and rules render dim, section labels (`├─ …`) bold in
-their state colour; the id keeps its identity coloring. Content lines are **raw** — no left border, no
-indent — so long lines wrap without colliding with frame glyphs and
-copy/paste yields the verbatim output. Every block (and every live
-frame close in focused flow) is followed by a blank line so frames
-never collide with the next one-liner. A persistent task's frame is
-marked with a cyan `▸` after `┌─`/`└─`, and its close reads `running`
-(the child is still alive), `stopped` for the block of what it wrote
-since ready when vx had stopped it before that block printed,
-`success` for a setup step ready by its
-exit 0, or `failed (exit <n>)` for a server that died on its own before
-the run stopped it.
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">The frame</span></summary>
+<div class="vx-deeper-body">
 
-There is **no top-of-run banner** — the run context lives in the
-footer. The task log opens with one blank line before its first row,
-on a terminal or not; a note vx prints before it is not part of it.
-A broad run looks like this; a hit gets no row, only its count in the
+- The `$ <command>` line shows only for an executed task, success or
+  failed.
+- A hit replays its stored output and shows no command line. Except: a
+  task you asked for in the focused flow shows it, run or not.
+- The folder is from the workspace root; none for a project at the root.
+- `src/index.ts` in a task's output is `packages/web/src/index.ts`: a
+  task names paths from its own folder, as a shell prompt would show.
+- `OUTPUT` shows only when the task wrote something.
+- `SANDBOX` (no count) shows when vx has only a note on a failure.
+- Outcomes in the header: `restored-local • abc12345`, `failed (exit N)`,
+  …
+- A test renders this block and checks it against this page, byte for
+  byte.
+- Corners and rules render dim. Section labels (`├─ …`) render bold in
+  their state colour. The id keeps its own colours.
+- Every block, and every live frame close in the focused flow, is
+  followed by a blank line, so frames never touch the next line.
+- A persistent task's frame has a cyan `▸` after `┌─`/`└─`.
+- Its close reads `running` (the child is still alive), or `success` for
+  a setup step ready by its exit 0.
+- Or `stopped` for the block of what it wrote since ready, when vx had
+  stopped it before that block printed.
+- Or `failed (exit <n>)` for a server that died on its own before the run
+  stopped it.
+
+</div>
+</details>
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">OUTPUT order and colour</span></summary>
+<div class="vx-deeper-body">
+
+- `OUTPUT` holds what the task wrote in the order vx read it, so an error
+  stays beside the test that printed it.
+- A stderr line renders red when colour is on.
+- A line the task coloured itself keeps its own colours. A line takes the
+  stream that began it.
+- Without colour, the lines are the task's bytes.
+- stdout and stderr are two pipes, so lines written in the same instant
+  may read stdout first. A cache hit replays the same order.
+- `STDOUT (since ready)`, `STDERR (since ready)`: a persistent task's
+  tail after ready keeps the two apart. Its bounded tails hold no order.
+
+</div>
+</details>
+
+### The footer
+
+There is **no top-of-run banner**: the run's context lives in the
+footer. A broad run looks like this; a hit gets no row, only its count in the
 footer:
 
 ```ansi
@@ -6041,99 +6842,165 @@ footer:
   [2mtime    [0m  5.34s
 ```
 
-The three bars are meters: `projects` is what the run covered against
-the workspace, `tasks` is failed / success / skipped, `cache` has a
-segment per legend state (a skipped task rides it too, yellow, and a hit
-whose restore failed red, so the two bars fill alike; their counts are on
-the tasks legend only: a failed restore is no miss and no `↓`). Its legend reads
-per layer: `local 1✓ 1∅ 2↓ 1↑ · remote 3↓ 4↑ 2✗ 1⇡`. `✓` is a fresh
-hit (the local cache answered and its outputs were already on disk; a
-remote hit is never fresh, outputs or none: it is `↓` from the remote), `∅` a task with no cache, `↓` is restored from that
-layer and `↑` saved to it, `✗` a task a remote read or write failed
-for (not one that turned the remote off for the run, a refused token or
-no answer: that is the run's, on the `warn` row, and its task counts as
-the others), and `⇡` an upload still running (live only, always last).
-A pipe with no colour (an agent's shell) gets no meters: each row holds
-its legend alone (`tasks     1 failed · 3 success · 4 total`). The
-region stays through vx's closing steps, worker rows gone, and the
-final footer replaces it in place. Each task counts once, under its strongest state: a
-failed remote read or write, then an upload running, then saved to a
-remote, then saved here, then restored, then fresh, then no cache; so
-a task saved here and uploaded is a remote `↑`. A key the remote already
-held is not sent, so it is no remote `↑`, unless the run writes no local
-cache: then the remote holding it is the save, a remote `↑`. Each count is painted
-in its segment's colour, number and glyph alike: `✓` green, `∅` dim,
-local blue, remote dark blue, `✗` and a miss red, `⇡` cyan; the
-`local` and `remote` words are dim. A layer shows only when the run's
-`--cache-policy` uses it. `N miss` (ran and saved nothing: it failed,
-or ran elsewhere) is red, `N not saved` (ran, succeeded, saved
-nothing) yellow, each its own segment; `N not downloaded` (outputs left in the remote store) and
-every count show only when non-zero. `vx last` names each remote
-failure on its task's row. A task an executor plugin ran elsewhere
-says where last on its row and after the id on its frame (`@demo/web#build · small#2`), and the plugin may
-add rows of its own above `info` (`workers`), in which case `info`
-names no worker pool. A run that warned (a remote cache's 403, a
-plugin's failed flush) gets a yellow `warn` row above `info`,
-`N warnings above`, counting each distinct warning once; the
-warnings themselves are said once, where they happened. The
-`info` row ends with `run <id>`: the
-run's whole id, as `vx last <id>` takes it; a run a Ctrl-C (or
-SIGTERM, SIGHUP) stopped before any task ended keeps nothing under it,
-so its footer names no id. The
-`time` row is the wall time, from when the run asks for the workspace's run
-lock (a wait for another run counts) through the uploads and the telemetry
-flush it waits on (`vx last` keeps the same; telemetry's own summary, sent
-before its flush, counts the uploads but not that flush), then the spread over executed tasks
-only — a hit's restore time never enters it. The footer never says a
-fact twice: a spread value already on the row is left out, so one
-executed task shows no spread, and there is no closing `result` row
-repeating the tasks, cache and time rows. A task with no `cache: true`,
-or any task of a run whose `--cache-policy` reads and writes nothing
-(`--no-cache`), could never hit, so it is counted apart (`1 no-cache`
-for `vx run dev`), as `--dry` labels it. A test renders this run and
-checks it against this page, byte for byte.
+The task log opens with one blank line before its first row. A note vx
+prints before it is not part of it.
 
-Group tasks emit no framed block by design (they aren't real tasks);
-running a group focused surfaces its real member tasks instead.
+| Row        | Shows                                              |
+| ---------- | -------------------------------------------------- |
+| `projects` | what the run covered, against the whole workspace  |
+| `tasks`    | failed, success and skipped                        |
+| `cache`    | each task's cache state, per layer                 |
+| `warn`     | how many warnings the run printed, when any        |
+| `info`     | workers, cache layers and the run id               |
+| `time`     | the wall time, then the spread over executed tasks |
 
-**Nothing below the footer.** The footer is the run's last word.
-What a run has to say about one task rides that task's row; what it
-says about the run (a server that died, outputs left remote, a file
-`--profile` wrote, a history, upload, plugin or sandbox
-warning) prints above the footer: it prints once the run's closing work
-is done, the `VX_DEBUG_TIMING=1` table included. Only a kept server's own output
-follows it.
+The `cache` legend reads per layer: `local 1✓ 1∅ 2↓ 1↑ · remote 3↓ 4↑ 2✗ 1⇡`.
 
-**Narrow terminals.** The footer is 62 columns: its 12-column gutter
-and 50-cell bars. On a terminal narrower than that the bars shrink, as
-do a frame's section rules, so none wraps onto a second row. Off a terminal they keep their width.
+| Mark | Means                                            |
+| ---- | ------------------------------------------------ |
+| `✓`  | a fresh hit: outputs already on disk             |
+| `∅`  | a task with no cache                             |
+| `↓`  | restored from that layer                         |
+| `↑`  | saved to that layer                              |
+| `✗`  | a remote read or write failed for the task       |
+| `⇡`  | an upload still running (live only, always last) |
 
-**Warnings on stderr.** A run's warnings, such as `[vx] @demo/web#build:
-inputs matched no files …` or a plugin's, go to stderr. Stdout
-carries only the rows, the frames and the footer, so `vx run build >
-log.txt` keeps them out of the log.
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">The bars and legends</span></summary>
+<div class="vx-deeper-body">
 
-**Skipped rows.** A red run lists every task that never started as a
-row naming the failure that blocked it, so the footer's `1 skipped`
-always has a name above it:
+- The `cache` bar has a segment per legend state. A skipped task rides
+  it too, yellow, and a hit whose restore failed red, so the two bars
+  fill alike.
+- Those two counts are on the tasks legend only: a failed restore is no
+  miss and no `↓`.
+- `✓` means the local cache answered. A remote hit is never fresh,
+  outputs or none: it is `↓` from the remote.
+- `✗` is not a remote the run turned off (a refused token, no answer).
+  That is the run's, on the `warn` row, and its tasks count as the others.
+- `tasks     1 failed · 3 success · 4 total`: a pipe with no colour (an
+  agent's shell) gets no bars, only each row's legend.
+- The region stays through vx's closing steps, worker rows gone. The
+  final footer replaces it in place.
+- Each task counts once, under its strongest state, in this order.
+- A failed remote read or write, an upload running, saved to a remote,
+  saved here, restored, fresh, no cache.
+- So a task saved here and uploaded is a remote `↑`.
+- A key the remote already held is not sent, so it is no remote `↑`.
+- Unless the run writes no local cache: then the remote holding it is
+  the save, a remote `↑`.
+- Colours: `✓` green, `∅` dim, local blue, remote dark blue, `✗` and a
+  miss red, `⇡` cyan. The `local` and `remote` words are dim.
+- Each count is painted in its segment's colour, number and glyph alike.
+- A layer shows only when the run's `--cache-policy` uses it.
+- `N miss`, red: ran and saved nothing (it failed, or ran elsewhere).
+- `N not saved`, yellow: ran, succeeded, saved nothing. Each is its own
+  segment.
+- `N not downloaded`: outputs left in the remote store.
+- Every count shows only when non-zero.
+- `1 no-cache` (as for `vx run dev`): a task with no `cache: true`, or
+  any task of a run whose `--cache-policy` reads and writes nothing.
+- Such a task could never hit, so it is counted apart, as `--dry` labels
+  it.
+
+</div>
+</details>
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">The warn, info and time rows</span></summary>
+<div class="vx-deeper-body">
+
+- `vx last` names each remote failure on its task's row.
+- `@demo/web#build · small#2`: a task an executor plugin ran elsewhere
+  says where, last on its row and after the id on its frame.
+- That plugin may add rows of its own above `info` (`workers`). Then
+  `info` names no worker pool.
+- `N warnings above`, yellow, above `info`: the run warned (a remote's
+  403, a plugin's failed flush). Each distinct warning counts once.
+- The warnings themselves are said once, where they happened.
+- `info` ends with `run <id>`: the run's whole id, as `vx last <id>`
+  takes it.
+- A run a Ctrl-C (or SIGTERM, SIGHUP) stopped before any task ended
+  keeps nothing, so its footer names no id.
+- `time` is the wall time from when the run asks for the workspace's run
+  lock (a wait for another run counts) through the uploads and the
+  telemetry flush it waits on. `vx last` keeps the same.
+- Telemetry's own summary, sent before its flush, counts the uploads but
+  not that flush.
+- The spread covers executed tasks only: a hit's restore time never
+  enters it.
+- The footer never says a fact twice. One executed task shows no spread:
+  its value is already on the row.
+- There is no closing `result` row repeating the tasks, cache and time
+  rows.
+- A test renders this run and checks it against this page, byte for
+  byte.
+
+</div>
+</details>
+
+Group tasks print no framed block: they are not real tasks. Running a
+group focused shows its member tasks instead.
+
+**Nothing below the footer.** The footer is the run's last word. Only a
+kept server's own output follows it.
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
+
+- What a run says about one task rides that task's row.
+- What it says about the run prints above the footer: a server that
+  died, outputs left remote, a file `--profile` wrote.
+- Also above it: a history, upload, plugin or sandbox warning.
+- It prints once the run's closing work is done, the `VX_DEBUG_TIMING=1`
+  table included.
+
+</div>
+</details>
+
+**Narrow terminals.** The footer is 62 columns: a 12-column gutter and
+50-cell bars. On a narrower terminal the bars and a frame's section
+rules shrink, so none wraps.
+
+Off a terminal they keep their width.
+
+**Warnings on stderr.** A run's warnings go to stderr, such as
+`[vx] @demo/web#build: inputs matched no files …` or a plugin's.
+Stdout carries only the rows, frames and footer.
+
+```sh
+vx run build > log.txt      # the log holds no warnings
+```
+
+**Skipped rows.** A red run lists every task that never started, with
+the failure that blocked it. So the footer's `1 skipped` always has a
+name above it:
 
 ```ansi
             [38;2;239;68;68mfailed[0m  [2mmiss[0m       [2m−33ms[0m   [38;2;203;213;225m157ms[0m  [2m109%[0m  [2m106MB[0m      [2m0B[0m       [38;2;203;213;225m1[0m [2mlocal[0m          [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m
             [38;2;234;179;8mskipped[0m [2m—[0m              [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2m—[0m              [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m [2m• blocked by @demo/ui#build[0m
 ```
 
-A skip's cause is followed through a chain of skips to the failure at
-its root. A dependency a stop or `--fail-fast` killed is a root too:
-the skip names it (`blocked by @demo/ui#build`, the task that was
-aborted), not the failure that stopped the run. A skip with no failed
-or aborted upstream is fail-fast's and carries no suffix. A blocked group (a task with no command) has no row: it never
-starts by definition and no counter counts it.
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
 
-**Aborted and not-run rows.** A stop (Ctrl-C, a shutdown signal)
-keeps the live view: each running row reads `aborting` with its timer
-until its task exits, and the task list names what the stop cut short
-(`aborted`, with its time so far) and what it reached first (`not
-run`). Neither reached the cache:
+- A skip's cause is followed through a chain of skips to the failure at
+  its root.
+- A dependency a stop or `--fail-fast` killed is a root too: the skip
+  names it (`blocked by @demo/ui#build`), not the failure that stopped the run.
+- A skip with no failed or aborted upstream is fail-fast's and carries no suffix.
+- A blocked group (a task with no command) has no row. It never starts,
+  and no counter counts it.
+
+</div>
+</details>
+
+**Aborted and not-run rows.** A stop (Ctrl-C, a shutdown signal) keeps
+the live view. Each running row reads `aborting` until its task exits.
+
+Then the list names what the stop cut short and what never started:
 
 ```ansi
             [38;2;249;115;22maborted[0m [2m—[0m              [2m—[0m     [38;2;203;213;225m9ms[0m     [2m—[0m      [2m—[0m       [2m—[0m       [38;2;203;213;225m2[0m [2mlocal[0m          [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m
@@ -6142,44 +7009,67 @@ run`). Neither reached the cache:
             [38;2;249;115;22maborted[0m [2m—[0m              [2m—[0m    [38;2;203;213;225m14ms[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2mlocal[0m          [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;96;165;250mtest[0m
 ```
 
-In the task list view (`--all`, a filter) what an aborted task printed
-before the stop is framed above the summary, as a failure's output is.
+Neither `aborted` nor `not run` reached the cache.
 
-The tasks legend counts them in the total as they land, each state its
-own segment of the bar: `2 success · 1 aborted · 2 not run · 5 total`.
-While the run goes it also counts the tasks running now and those an
-executor holds for a machine, then those an unfinished dependency holds
-back, each a dim segment, and how many are left, those included:
-`30 success · 4 running · 12 scheduled · 16 blocked · 32 left · 62 total`.
-The summary then replaces the live view. The total is
-always last on its line. A framed task (focused or `full`) that
-printed while it stopped shows its frame instead of a row. One whose
-frame opened before the stop reached its command (a slow `inputs.runtime`
-probe) closes it `not run`.
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
 
-**Flaky rows.** A task the run just proved nondeterministic says so
-in a dim note on its own row (and its frame's footer) — from the local
-run history alone, no service:
+- `aborting` keeps its timer. `aborted` shows its time so far.
+- In the task list view (`--all`, a filter), what an aborted task printed
+  before the stop is framed above the summary, as a failure's is.
+- `2 success · 1 aborted · 2 not run · 5 total`: the tasks legend counts
+  them as they land, each state its own segment.
+- While the run goes, it also counts the tasks running now, then those an
+  executor holds for a machine.
+- Then those an unfinished dependency holds back, each a dim segment, and
+  how many are left, those included.
+- `30 success · 4 running · 12 scheduled · 16 blocked · 32 left · 62 total`:
+  the live legend.
+- The summary then replaces the live view. The total is always last on
+  its line.
+- A framed task (focused or `full`) that printed while it stopped shows
+  its frame instead of a row.
+- One whose frame opened before the stop reached its command (a slow
+  `inputs.runtime` probe) closes it `not run`.
+
+</div>
+</details>
+
+**Flaky rows.** A task this run proved flaky says so in a dim note
+on its row and its frame's footer. vx learns it from the local run
+history alone:
 
 ```ansi
             [38;2;239;68;68mfailed[0m  [2mmiss[0m      [38;2;239;68;68m+181ms[0m   [38;2;203;213;225m971ms[0m   [2m55%[0m  [2m132MB[0m       [2m—[0m       [2m0[0m [2mlocal[0m          [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;96;165;250mtest[0m [2mflaky - passed 2× before · 2 attempts[0m
             [38;2;34;197;94msuccess[0m [2mmiss[0m      [2m+124ms[0m   [38;2;203;213;225m914ms[0m   [2m60%[0m  [2m132MB[0m      [2m0B[0m       [2m0[0m [2mlocal[0m          [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;96;165;250mtest[0m [2mflaky - failed 1× before · 2 attempts[0m
 ```
 
-A task is flaky when its exact cache key FAILED AFTER IT HAD PASSED
-(this run counted; a cache hit is a pass, it replayed one), or when it
-passed only on a retry (`exec.retries` / `--retries`) this run. A failure on a
-key that never passed is a break and carries no note, every retry of it
-failed too — a changed input
-that fails is what a red run usually means — and the first pass after
-only failures is a recovery (a missing tool installed), not a flake.
-Only tasks with `cache: true` are judged: "same inputs, red after
-green" is a claim
-only declared inputs can back, and a task without them keys on its
-config alone; such a task that needed a retry says only `2 attempts`
-on its row. It is judged as the task finishes, so the row carries
-it: zero cost for a hit or a skip, one probe of the failed-row index
-for a green miss; `vx info` keeps the standing list.
+A task is flaky when the same cache key failed after it had passed, or
+when it passed only on a retry in this run.
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
+
+- This run counts. A cache hit is a pass: it replayed one.
+- A retry: `exec.retries` or `--retries`.
+- A failure on a key that never passed is a break, with no note. Every
+  retry of it failed too.
+- A changed input that fails is what a red run usually means.
+- The first pass after only failures is a recovery (a missing tool
+  installed), not a flake.
+- Only tasks with `cache: true` are judged: "same inputs, red after
+  green" is a claim only declared inputs can back.
+- A task without them keys on its config alone. If it needed a retry,
+  its row says only `2 attempts`.
+- It is judged as the task finishes, so the row carries it.
+- Cost: zero for a hit or a skip; one probe of the failed-row index for a
+  green miss.
+- `vx info` keeps the standing list.
+
+</div>
+</details>
 
 ### Colors
 
@@ -6194,98 +7084,132 @@ ANSI truecolor (`ansi-16m`) sequences, gated by env:
 | (none of these)             | On iff `stdout.isTTY` and not `TERM=dumb`.                |
 | `TERM=dumb`                 | No live region; plain unless a row above turns colour on. |
 
-stdout and stderr decide apart: a run's warnings go to stderr and
-follow its terminal, so `vx run 2> warn.log` writes no escapes to the
-file (`tests/warnings-stderr.test.ts`).
+Every task gets `FORCE_COLOR=1`, so tools colour their output into vx's
+pipe. Where vx's own output is plain, it strips the colours again.
 
-A CI is `CI`, `GITHUB_ACTIONS`, `GITLAB_CI`, `BUILDKITE`, `CIRCLECI`,
-`TF_BUILD`, `JENKINS_URL` or `TEAMCITY_VERSION` set to anything but
-empty, `0`, `false`, `no` or `off` (any case): a CI log gets the terminal's
-colours, the CI output flow and remote cache writes. A viewer
-that shows raw escapes turns them off with `NO_COLOR`.
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
 
-`0` and `false` are `FORCE_COLOR`'s "off" by the convention
-supports-color, chalk and Node follow; until 2026-09-24 vx read every
-non-empty value as "on", so a CI setting `FORCE_COLOR=0` got escape
-sequences in its log (the bug Nx has as nx#35292). An empty `NO_COLOR`
-has no effect (no-color.org).
+- stdout and stderr decide apart. Warnings go to stderr and follow its
+  terminal.
+- `vx run 2> warn.log` writes no escapes to the file
+  (`tests/warnings-stderr.test.ts`).
+- A CI is `CI`, `GITHUB_ACTIONS`, `GITLAB_CI`, `BUILDKITE`, `CIRCLECI`,
+  `TF_BUILD`, `JENKINS_URL` or `TEAMCITY_VERSION`.
+- Set to anything but empty, `0`, `false`, `no` or `off` (any case). A CI
+  log gets the terminal's colours, the CI output flow and remote cache writes.
+- A viewer that shows raw escapes turns them off with `NO_COLOR`.
+- `FORCE_COLOR=0` and `=false` mean off, as supports-color, chalk and
+  Node read them.
+- `NO_COLOR=` (empty) has no effect (no-color.org).
+- vx sets no `FORCE_COLOR` on a task that already sees one (any value,
+  `0` included) or a non-empty `NO_COLOR`.
+- The cache stores the coloured bytes.
+- Plain vx output: a pipe off CI, `NO_COLOR`, `FORCE_COLOR=0`. Escapes
+  are stripped from task output then, live and replayed alike.
+- An escape cut across two chunks is stripped too.
+- `\e]0;title` with no terminator: an unterminated string escape ends at
+  its line, so it never swallows the lines after it.
+- Pinned by `tests/plain-output.test.ts` and
+  `tests/cli-colors-e2e.test.ts`.
+- `env: { define: { FORCE_COLOR: '0' } }`: a task that writes its output
+  to a file and wants it plain.
+- A custom `log` passed to `run()` gets task output as written, and
+  always sees plain text.
+- Only a run's own output (`vx run`, `vx watch`) is painted, and the help
+  on a terminal.
+- Help colours: headings bold, `vx <verb>` and each flag or example in
+  cyan. `NO_COLOR` or `FORCE_COLOR=0` turns it off.
+- See `tests/help-colors.test.ts`.
+- Every other verb prints plain text whatever `FORCE_COLOR` says: `show`,
+  `info`, `why`, `last`, a `--dry` plan, `cache clean`, and help off a
+  terminal.
+- So a script that forces colour for a run's log still parses them
+  (`tests/cli-colors-e2e.test.ts`).
 
-A task's output is a pipe, so a tool would print plain; vx sets
-`FORCE_COLOR=1` on every task, as Nx and Turbo do, unless the task
-already sees a `FORCE_COLOR` (any value, `0` included) or a non-empty
-`NO_COLOR`. The cache stores the coloured bytes, and wherever vx's own
-output is plain (a pipe off CI, `NO_COLOR`, `FORCE_COLOR=0`) it
-strips the escapes from task output, live and replayed alike, an
-escape cut across two chunks included; an unterminated string escape
-(a stray `\e]0;title` with no terminator) ends at its line, so it never
-swallows the lines after it (`tests/plain-output.test.ts`,
-`tests/cli-colors-e2e.test.ts`). A custom `log` passed to `run()` gets
-task output as written. A task that writes its own output to a file
-and wants it plain sets `env: { define: { FORCE_COLOR: '0' } }`.
-
-Programmatic callers passing a custom `log` to the run options always
-see plain text.
-
-Only a run's own output (`vx run`, `vx watch`) is painted, and the
-help on a terminal: headings bold, `vx <verb>` and each flag or example
-in cyan; `NO_COLOR` or `FORCE_COLOR=0` turns it off
-(`tests/help-colors.test.ts`). Every other verb (`show`, `info`, `why`,
-`last`, a `--dry` plan, `cache clean`), and the help off a
-terminal, prints plain text whatever `FORCE_COLOR` says, so a script
-that forces colour for a run's log still parses them
-(`tests/cli-colors-e2e.test.ts`).
+</div>
+</details>
 
 ### Shared by every verb
 
-Two runs on one workspace take turns: the second waits for the first's
-run lock and, after a second, says `[vx] waiting for another vx run
-(pid N) on this workspace to finish…`, naming `a vx watch cycle` or
-`a vx cache clean` when one of those holds it, a status line the footer does
-not count as a warning (see caching.md § Concurrent runs). The lock lives in this user's own directory in the temp
-directory, so two runs take turns only when they are one user's and
-share `TMPDIR`: a `nix develop` shell sets its own.
+Two runs on one workspace take turns. The second waits for the first and,
+after a second, says so:
 
-Every verb: a path vx must write that this user cannot (`EACCES`,
-`EPERM`, `EROFS` — a read-only checkout, another user's files) or that
-the disk has no room for (`ENOSPC`, `EDQUOT`) exits 1 with one line
-naming the path, `vx: EACCES: permission denied, open '…/.vx/projects.lock'
-— a path vx must write is not writable by this user` (or `— the disk
-that path is on is full`), never a stack. A refused listing or stat
-(`scandir`, `stat`, `lstat`) is a read and says so: `— a path vx must
-read is not readable by this user`. Inside a run the task's line
-says the same. A process out of file descriptors (`EMFILE`, `ENFILE`;
-macOS starts a shell at 256) exits 1 with the error and `— the process
-is out of file descriptors; raise the limit (ulimit -n 4096) and re-run`.
+```text
+[vx] waiting for another vx run (pid N) on this workspace to finish…
+```
+
+A path vx cannot write, or a full disk, ends any verb with one line that
+names the path, never a stack.
+
+```text
+vx: EACCES: permission denied, open '…/.vx/projects.lock' — a path vx must write is not writable by this user
+```
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
+
+- The line names `a vx watch cycle` or `a vx cache clean` when one of
+  those holds the lock.
+- The waiting line is a status line. The footer does not count it as a
+  warning (caching.md § Concurrent runs).
+- The run lock lives in this user's own folder in the temp directory.
+- So two runs take turns only when one user runs both with the same
+  `TMPDIR`. A `nix develop` shell sets its own.
+- `EACCES`, `EPERM`, `EROFS`: a read-only checkout, another user's files.
+  Exit 1.
+- `ENOSPC`, `EDQUOT`: `— the disk that path is on is full`. Exit 1.
+- `scandir`, `stat`, `lstat` refused: a read, so `— a path vx must read
+is not readable by this user`.
+- Inside a run, the task's line says the same.
+- `EMFILE`, `ENFILE`: out of file descriptors. macOS starts a shell at 256.
+- That exits 1 with the error and `— the process is out of file
+descriptors; raise the limit (ulimit -n 4096) and re-run`.
+
+</div>
+</details>
 
 ## Remote cache (plugin-driven)
 
-Core ships **no remote-cache wire client** — the remote cache is a
-plugin concern. A `cache` plugin returns a wire client (a
-`RemoteCacheLayer`) and core layers it over the local cache;
-`@vzn/vx-reapi` provides one for any Bazel REAPI server
-(ActionCache + CAS).
+Core ships no remote-cache client: a remote cache is a plugin. A
+`cache` plugin returns a client (a `RemoteCacheLayer`) and core layers
+it over the local cache.
 
-Reads try local first, then remote (hydrating local on remote hit),
-with a background prefetch pass overlapping remote GETs with
-execution. Writes go to local immediately; the remote upload is a
-fire-and-forget background task drained at end of run — failures are
-warned but never fail the build.
+For example, `vxCache()` from `@vzn/vx-cache` in `.vx/workspace.ts`'s
+`plugins`; its README shows the options.
 
-For any OTHER cache server (a Turbo-wire deployment, S3-direct, …),
-implement core's `RemoteCacheLayer` interface in a plugin's `cache`
-capability — the recipe lives in the plugins guide. Embedders
-holding a wire client can inject it per-run via
-`RunOptions.remoteCache` (explicit injection wins over the plugin
-consult).
+Reads try the local cache first, then the remote. Writes go to the local
+cache at once and upload in the background. A remote failure warns and
+never fails the build.
+
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
+
+- A remote hit fills the local cache too.
+- A background prefetch overlaps remote GETs with running tasks.
+- Uploads drain at the end of the run.
+- `@vzn/vx-reapi` is a client for any remote-execution API (REAPI)
+  server: ActionCache + CAS.
+- Any other server (S3-direct, …): implement `RemoteCacheLayer` in a
+  plugin's `cache` capability. The plugins guide has the recipe.
+- `RunOptions.remoteCache`: an embedder holding a client can inject it
+  per run. That beats the plugins.
+- No CLI flag carries remote-cache credentials. The plugin that brings
+  the remote owns its own configuration.
+- Every flag the CLI documents has shipped, `--output-logs hash-only`,
+  `--fail-fast` and `--cache-dir <path>` among them.
+
+</div>
+</details>
 
 ## Run analytics
 
-`vx info` surfaces the aggregate cache stats (entry count, total
-size, runs + hits in the last 24 h). For anything deeper, vx records
-every task to a `runs` table in `cache.db` (UUIDv7 `run_id`, hrtime
-wallclock spans, cpu_ms, peak RSS, status, cache_hit flag) plus one
-`invocations` header row per run (command, git/CI context,
-counts). The SQLite file IS the API:
+`vx info` shows the cache totals: entry count, size, runs and hits in
+the last 24 h. For more, query the history: `cache.db` is a SQLite file
+and is the API.
 
 ```sh
 sqlite3 .vx/cache/cache.db "
@@ -6296,17 +7220,20 @@ sqlite3 .vx/cache/cache.db "
 "
 ```
 
-The schema is documented in
+`vx last --sql` runs the same queries without `sqlite3`. The schema is in
 [`caching.md` § SQLite tables](./caching.md#sqlite-tables).
 
-## What's still missing vs Turbo
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
 
-Tracked in [`comparison.md`](./comparison.md). Nothing visible from the
-CLI is open: `--output-logs hash-only`, `--fail-fast`
-and `--cache-dir <path>` all shipped and are documented above.
-Remote-cache credentials are not core CLI flags at all: core carries no
-HTTP cache client — a remote cache arrives through a plugin's `cache`
-capability, which owns its own configuration.
+- `runs`: one row per task, with a UUIDv7 `run_id`, hrtime wall-clock
+  spans, `cpu_ms`, peak RSS, status and a cache-hit flag.
+- `invocations`: one header row per run, with the command, git and CI
+  context, and counts.
+
+</div>
+</details>
 
 ## Programmatic API
 
@@ -6329,25 +7256,30 @@ const plan = await planRun({
 // plan.tasks: PlannedTask[]
 ```
 
-Surface:
+| Function                           | Does                                                                |
+| ---------------------------------- | ------------------------------------------------------------------- |
+| `run(options)`                     | runs the tasks; returns `Promise<RunSummary>`                       |
+| `planRun(options)`                 | predicts, runs nothing; returns `Promise<RunPlan>`; `--dry` uses it |
+| `prepareRun(options, log)`         | the shared setup: discovery, configs, graph, cache                  |
+| `defineProject`, `defineWorkspace` | identity helpers that type your configs                             |
 
-- `run(options)` — execute. Returns `Promise<RunSummary>`.
-- `planRun(options)` — predict, no execute. Returns
-  `Promise<RunPlan>`. Used by `--dry`.
-- `prepareRun(options, log)` — the shared setup (discovery → configs →
-  graph → cache). What an embedder builds on.
-- `defineProject` / `defineWorkspace` — identity helpers for type
-  inference in user configs.
-- Every one of the three returns a type the façade exports, so an
-  embedder can hold it: `RunOptions` / `RunSummary` / `TaskOutcome`,
-  `RunPlan` / `PlannedTask`, `PreparedRun` — alongside the plugin
-  (`VxPlugin`, `TaskExecutor`, `CacheLayer`) and telemetry
-  (`TelemetrySink`, `RunSummaryRecord`) surfaces. See `src/index.ts`.
+<details class="vx-deeper" data-level="3">
+<summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
+<div class="vx-deeper-body">
 
-A `log: Logger` option lets embedders swap the default framed-block
-logger for a custom one (e.g. JSON-line emission). Custom loggers
-always see plain text (colors are off when a non-default logger is
-provided).
+- `prepareRun` is what an embedder builds on.
+- Each of the three returns a type the package exports: `RunOptions` /
+  `RunSummary` / `TaskOutcome`, `RunPlan` / `PlannedTask`, `PreparedRun`.
+- The plugin types are exported too: `VxPlugin`, `TaskExecutor`,
+  `CacheLayer`.
+- So are the telemetry types: `TelemetrySink`, `RunSummaryRecord`. See
+  `src/index.ts`.
+- `log: Logger`: swap the default framed-block logger for your own, such
+  as JSON lines.
+- A custom logger always sees plain text: colours are off when you pass
+  one.
+- The CLI dispatcher (`run(argv)` in `src/cli/index.ts`) is not exported;
+  `bin.ts` calls it directly.
 
-The CLI dispatcher (`run(argv)` in `src/cli/index.ts`) is not part of
-the public package exports; `bin.ts` calls it directly.
+</div>
+</details>

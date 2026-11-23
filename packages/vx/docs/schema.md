@@ -1055,10 +1055,11 @@ interface ExecEnv {
   from vx's own environment.
 - `npm_execpath` is set to the workspace's package manager unless a layer
   gives one, so a tool that calls the manager back finds it.
-- That manager is the root `package.json`'s `packageManager`, else its
+- That manager is the root `package.json`'s `packageManager`, else the
   lockfile's, found on the root's `node_modules/.bin` or `PATH` for each
-  task, so one an earlier task installed is the one a later task gets. It
-  names a binary on this machine, so it is not in the key.
+  task.
+- So one an earlier task installed is the one a later task gets.
+- It names a binary on this machine, so it is not in the key.
 - Nothing else reaches the task. A host credential (`SSH_AUTH_SOCK`,
   `GITHUB_TOKEN`) arrives only when `passThrough` names it.
 - A sandboxed task with a restricted network also gets the sandbox's own
@@ -1536,7 +1537,8 @@ Default: `[]`, no commands.
 - `node -v` declared in 500 projects spawns once: one run per command across the whole run.
 - It runs at the workspace root, for a value that is the same for every project.
 - Its `PATH` leads with the root's `node_modules/.bin` only, not a project's: every project shares the value.
-- A version manager's shim (nvm, Volta, mise, asdf) picks its version by the directory it runs in. A project with its own `.nvmrc`, `.tool-versions` or Volta pin needs `runtime: ['node -v']`: at the root, the probe answers the root's version while the task runs the project's, and a change to the project's pin replays the old output.
+- A version manager's shim (nvm, Volta, mise, asdf) picks its version by the directory it runs in.
+- So a project with its own `.nvmrc`, `.tool-versions` or Volta pin needs `runtime: ['node -v']`. At the root, the probe answers the root's version, and a change to the project's pin replays the old output.
 - The rest is as in `runtime`: `sh -c`, run every time the key is needed, `vx lock` keeps the text, a non-zero exit fails the task.
 - `runtime: ['node -v']` and `workspaceRuntime: ['node -v']` never collide in the key: each field has its own space.
 
@@ -2940,7 +2942,8 @@ interface CacheSettings {
 
 - `cache: { policy: 'local:rw,remote:r' }`: which layers a run reads and writes. A layer the spec leaves out stays on (`cli.md` § Cache control).
 - `cache.policy` unset on CI: every layer reads and writes.
-- `cache.policy` unset off CI (no CI variable on: `CI`, or a provider's own such as `GITHUB_ACTIONS` or `JENKINS_URL`; `cli.md` § Output format › Colors lists them): `vx run` reads the remote and does not write it. A key holds only declared inputs, so a laptop's write could replay on CI.
+- `cache.policy` unset off CI: `vx run` reads the remote and does not write it. A key holds only declared inputs, so a laptop's write could replay on CI.
+- Off CI means no CI variable is on: `CI`, or a provider's own such as `GITHUB_ACTIONS` or `JENKINS_URL` (`cli.md` § Output format › Colors lists them).
 - `'remote:rw'` names the remote, so it writes it, off CI too.
 - `--cache-policy` beats `VX_CACHE_POLICY`, which beats `cache.policy`. `--no-cache` and `--force` still apply on top.
 - `'remote:x'` is refused before any task, naming `cache.policy`.
