@@ -66,7 +66,7 @@ it('a dependency output a checkout puts back mid-run leaves the dependant unsave
   await writeFile(path.join(marks, 'go'), '')
   expect((await running).ok).toBe(true)
   expect(status.filter((l) => l.includes('changed while it ran'))).toEqual([
-    '[vx] app#build: an output of lib#build changed while it ran (a checkout, a stash, another process) — the result stands, but is not saved under a key that names the bytes it was built from',
+    '[vx] app#build: an output of lib#build changed while it ran (the task itself, a checkout, a stash, another process) — the result stands, but is not saved under a key that names the bytes it was built from',
   ])
 
   // Before the fix: app#build was up-to-date here and kept lib's old bytes.
@@ -173,4 +173,26 @@ it('a --force run still withholds a dependant whose dependency output moved', as
   await writeFile(path.join(marks, 'go'), '')
   expect((await running).ok).toBe(true)
   expect(status.filter((l) => l.includes('changed while it ran'))).toHaveLength(1)
+}, 30_000)
+
+it('a dependant that deletes its dependency output is named among the causes', async () => {
+  await addProject(root, 'lib', {
+    config: `export default { tasks: { build: {
+      exec: { command: 'mkdir -p dist && cat src/a > dist/o && echo j > dist/junk' },
+      inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
+    } } }`,
+    files: { 'src/a': 'A\n' },
+  })
+  await addProject(root, 'app', {
+    config: `export default { tasks: { build: {
+      exec: { command: 'rm ../lib/dist/junk && mkdir -p dist && cat ../lib/dist/o > dist/o' },
+      dependsOn: ['^build'], inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
+    } } }`,
+    files: { 'src/a': 'x\n' },
+  })
+  await writeFile(path.join(root, '.gitignore'), '.vx/cache/\ndist/\n')
+  expect((await run({ cwd: root, tasks: ['build'], log: logger })).ok).toBe(true)
+  expect(status.filter((l) => l.includes('changed while it ran'))).toEqual([
+    '[vx] app#build: an output of lib#build changed while it ran (the task itself, a checkout, a stash, another process) — the result stands, but is not saved under a key that names the bytes it was built from',
+  ])
 }, 30_000)

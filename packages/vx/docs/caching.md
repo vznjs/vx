@@ -1014,8 +1014,10 @@ back a committed output of a dependency while its dependant runs, or a
 sibling task or another process that rewrites an ignored `dist`, would
 file bytes no key names. The save checks each dependency's outputs against
 the stamps its save or restore left, and withholds the entry when one
-moved: `[vx] app#build: an output of lib#build changed while it ran (a
-checkout, a stash, another process) — …`. Each output is `lstat`ed once
+moved: `[vx] app#build: an output of lib#build changed while it ran (the
+task itself, a checkout, a stash, another process) — …`. A dependant
+that deletes or rewrites a dependency's output is withheld the same way,
+on every run. Each output is `lstat`ed once
 per dependant's save, and not again for a dependant whose command ended
 before the last check found them held. So are the inputs of every task the key folds, dependencies of
 dependencies too (`inputs.tasks` decides which): an editor's save or a
