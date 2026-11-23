@@ -1393,7 +1393,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'plugin-hostile-answers',
     'plugin-options-documented.unsafe',
     'plugin-options-explained.unsafe',
-    'reference-readable',
+    'readable-docs.unsafe',
     'readme-imports.unsafe',
     'readme-links.unsafe',
     'readme-words.unsafe',

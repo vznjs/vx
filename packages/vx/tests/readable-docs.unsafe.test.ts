@@ -1,15 +1,17 @@
-// The config and CLI references render as the site's /schema/ and /cli/
+// The config and CLI references, and every package's README (npm's page
+// for it), are read as docs. The references render as the site's /schema/ and /cli/
 // pages (private/vx-docs/scripts/import-docs.ts). M, on a phone screenshot
 // of `inputs.files` (2026-11-23): "What is this? What human can or will
 // read that". So the reference holds the docs' own rules: no paragraph or
 // bullet over five phone lines (200 characters, as it renders), and no
 // internal id a reader cannot look up.
 
-import { readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 
-const DOCS = path.resolve(import.meta.dir, '../docs')
+const ROOT = path.resolve(import.meta.dir, '../../..')
+const README = /^README\.md$/
 const MAX = 200
 const ID = /\b(?:W?D|X|H|M|A|L|C|B)-\d{1,3}\b|\bitem \d{3,4}\b|\(#\d{3,5}\)/
 
@@ -64,9 +66,20 @@ describe('the references read on a phone', () => {
     expect(problems('t.md', '```\n' + 'x'.repeat(300) + ' D-1\n```\n')).toEqual([])
   })
 
-  for (const file of ['schema.md', 'cli.md']) {
+  const files = [
+    'packages/vx/docs/schema.md',
+    'packages/vx/docs/cli.md',
+    'README.md',
+    ...readdirSync(path.join(ROOT, 'packages'))
+      .map((p) => `packages/${p}/README.md`)
+      .filter((f) => existsSync(path.join(ROOT, f))),
+  ]
+  it('reads every README', () => {
+    expect(files.filter((f) => README.test(path.basename(f))).length).toBeGreaterThan(10)
+  })
+  for (const file of files) {
     it(`${file} has no long paragraph and no internal id`, () => {
-      expect(problems(file, readFileSync(path.join(DOCS, file), 'utf8'))).toEqual([])
+      expect(problems(file, readFileSync(path.join(ROOT, file), 'utf8'))).toEqual([])
     })
   }
 })
