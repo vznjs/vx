@@ -6,7 +6,12 @@
 import { describe, expect, it } from 'bun:test'
 import type { TaskOutcome } from '../src/graph/outcome.js'
 import type { TaskNode } from '../src/graph/task-graph.js'
-import { formatTaskBlock, planList } from '../src/report/framed-output.js'
+import {
+  formatRecordedRow,
+  formatTaskBlock,
+  planList,
+  taskList,
+} from '../src/report/framed-output.js'
 import { formatRunSummary } from '../src/report/summary.js'
 import { whatChangedSection } from '../src/cli/why.js'
 
@@ -186,5 +191,44 @@ describe("vx why's What changed table, on a narrow terminal", () => {
   it('CONTROL: off a terminal, and on a wide one, both stay whole', () => {
     for (const lines of [table(), table(200)])
       expect(lines.find((l) => l.includes('src/index.ts'))).toContain(`${a} → ${b}`)
+  })
+})
+
+// `vx last` drew a failed task's `exit 3` (or why it was skipped) beside its
+// row: a 60-column terminal wrapped it into the next row. It goes on its own
+// line there, as a `--dry` reason does.
+describe("vx last's task row with a note, on a narrow terminal", () => {
+  const recorded = {
+    project: 'packages/app',
+    task: 'build',
+    status: 'failed',
+    durationMs: 12,
+    cacheHit: false,
+    restored: null,
+    cached: false,
+    cpuMs: null,
+    peakRssBytes: null,
+    placement: null,
+    outputBytes: null,
+    blocks: null,
+  }
+  const rows = (columns?: number): string[] =>
+    taskList([(c) => formatRecordedRow(recorded, c, 'exit 3')]).lines(
+      columns === undefined ? { enabled: false } : { enabled: false, columns },
+    )
+
+  it('goes under the task name and every line fits 60 columns', () => {
+    const lines = rows(60).flatMap((l) => l.split('\n'))
+    expect(lines.length).toBe(2)
+    expect(lines[0]!.trimEnd().endsWith('packages/app#build')).toBe(true)
+    expect(lines[1]!.indexOf('exit 3')).toBe(lines[0]!.indexOf('packages/app#build'))
+    for (const l of lines) expect(Bun.stringWidth(l)).toBeLessThanOrEqual(60)
+  })
+
+  it('CONTROL: off a terminal, and on a wide one, it stays beside the row', () => {
+    for (const lines of [rows(), rows(200)]) {
+      expect(lines.length).toBe(1)
+      expect(lines[0]!.endsWith('packages/app#build  exit 3')).toBe(true)
+    }
   })
 })

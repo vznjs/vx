@@ -4029,6 +4029,8 @@ ends with its attempts, `2 attempts`, passed or failed (`attempts` in
 write alike: `remote ✗ download: connection refused; upload: 503` (the
 v40 column, `remoteError` in `--format json`). A task an executor
 plugin ran elsewhere carries where after its id: `@demo/web#build@small#1` (v44, `placement`).
+On a terminal too narrow for a row's note beside it, the note goes on
+its own line under the row, as a `--dry` reason does.
 
 **Order and folding.** Rows run failures first, then what executed or was
 skipped, then hits; past sixteen hits the rest fold into one line with

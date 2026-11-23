@@ -632,7 +632,7 @@ export function formatRecordedRow(
         : isCacheHit(o.status)
           ? formatTaskHitLine(node, o, colors, false, blocks)
           : formatTaskExecutedLine(node, o, colors, false, blocks, usualMs)
-  return note === '' ? row : `${row}  ${paint('muted', note, colors)}`
+  return withNote(row, node.id, note, colors).join('\n')
 }
 
 /**
@@ -696,19 +696,26 @@ export function planList(rows: readonly PlannedRow[]): ui.Block {
             worker: r.worker,
           },
         )
-        if (r.note === '') return [row]
-        // A terminal too narrow for the reason beside the row (an `--affected`
-        // chain runs past 130 columns) wraps it into the next row: it goes on
-        // its own line, under the task's name where it fits there, else at the
-        // gutter, where a field's value starts. Off a terminal it stays beside.
-        const width = Bun.stringWidth(Bun.stripANSI(row))
-        if (c.columns === undefined || width + 2 + Bun.stringWidth(r.note) <= c.columns)
-          return [`${row}  ${paint('muted', r.note, c)}`]
-        const name = width - Bun.stringWidth(r.node.id)
-        const under = name + Bun.stringWidth(r.note) <= c.columns ? name : GUTTER
-        return [row, `${' '.repeat(under)}${paint('muted', r.note, c)}`]
+        return withNote(row, r.node.id, r.note, c)
       }),
   }
+}
+
+/**
+ * A row's dim note (a `--dry` reason, `vx last`'s `exit 3`) beside it. A
+ * terminal too narrow for it there (an `--affected` chain runs past 130
+ * columns) wraps it into the next row: it goes on its own line, under the
+ * task's name where it fits there, else at the gutter, where a field's value
+ * starts. Off a terminal it stays beside.
+ */
+function withNote(row: string, id: string, note: string, c: ColorSupport): string[] {
+  if (note === '') return [row]
+  const width = Bun.stringWidth(Bun.stripANSI(row))
+  if (c.columns === undefined || width + 2 + Bun.stringWidth(note) <= c.columns)
+    return [`${row}  ${paint('muted', note, c)}`]
+  const name = width - Bun.stringWidth(id)
+  const under = name + Bun.stringWidth(note) <= c.columns ? name : GUTTER
+  return [row, `${' '.repeat(under)}${paint('muted', note, c)}`]
 }
 
 /** Compact one-liner for a cache hit with nothing to replay. */
