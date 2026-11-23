@@ -100,6 +100,15 @@ function connection(options: ReapiPluginOptions): ReapiOptions | undefined {
     given?.startsWith('unix:') === true ? given : given?.replace(/^(.*[^/:])\/+$/, '$1')
   if (endpoint === undefined || endpoint === '') return undefined
   assertEndpoint(endpoint, from)
+  // An unset variable as a value was sent as an empty one on every action.
+  // Checked once an endpoint is set: with none the plugin declines, and a
+  // laptop that sets neither variable failed every vx command.
+  for (const key of ['platform', 'headers'] as const)
+    for (const [name, value] of Object.entries(options[key] ?? {}))
+      if (typeof value !== 'string')
+        throw new UserError(
+          `reapi() option "${key}.${name}" must be a string, got ${key === 'headers' && value !== undefined ? typeof value : String(value)}`,
+        )
   // A secrets file's trailing newline sent a name no blob is under, and
   // every lookup missed in silence.
   const instanceName = options.instanceName?.trim() || undefined
@@ -230,13 +239,6 @@ function refuseBadNumbers(options: ReapiPluginOptions): void {
 export function reapi(options: ReapiPluginOptions = {}): VxPlugin {
   refuseUnknownOptions('reapi()', options, REAPI_PLUGIN_KEYS)
   refuseBadNumbers(options)
-  // An unset variable as a value was sent as an empty one on every action.
-  for (const key of ['platform', 'headers'] as const)
-    for (const [name, value] of Object.entries(options[key] ?? {}))
-      if (typeof value !== 'string')
-        throw new UserError(
-          `reapi() option "${key}.${name}" must be a string, got ${key === 'headers' && value !== undefined ? typeof value : String(value)}`,
-        )
   let executorClient: ReapiClient | undefined
   let remoteCache: ReapiRemoteCache | undefined
   return definePlugin(import.meta, {
