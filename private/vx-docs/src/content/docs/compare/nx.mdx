@@ -26,7 +26,8 @@ Here is the same `build` target, before and after:
   },
   "dependsOn": ["^build"],
   "inputs": [
-    "{projectRoot}/src/**/*"
+    "{projectRoot}/src/**/*",
+    "{projectRoot}/vite.config.ts"
   ],
   "outputs": [
     "{projectRoot}/dist"
@@ -42,7 +43,9 @@ Here is the same `build` target, before and after:
 build: {
   exec: { command: 'vite build' },
   dependsOn: ['^build'],
-  inputs: { files: ['src/**/*'] },
+  inputs: {
+    files: ['src/**/*', 'vite.config.ts'],
+  },
   outputs: { files: ['dist'] },
   cache: true,
 },
@@ -162,7 +165,7 @@ Pick Nx if one of these decides it for you:
 [4m[58;2;110;118;129m  [1m[38;2;167;139;250mvx-migrate 0.0.659[0m[4m[58;2;110;118;129m                                                                                                    [0m
   [2mfrom    [0m  [38;2;203;213;225mnx graph[0m
   [2mran     [0m  [38;2;203;213;225mbun add -d @vzn/vx@0.0.659 @vzn/vx-lockfile@0.0.659 @vzn/vx-history@0.0.659[0m
-  [2mtasks   [0m  [38;2;34;197;94m4 clean[0m
+  [2mtasks   [0m  [38;2;34;197;94m6 clean[0m
   [2mfiles   [0m  [38;2;203;213;225mpackages/ui/vx.config.ts[0m
             [38;2;203;213;225mpackages/web/vx.config.ts[0m
             [38;2;203;213;225m.vx/workspace.ts[0m
@@ -173,7 +176,7 @@ Pick Nx if one of these decides it for you:
   [2mnext    [0m  [1mvx run build --all[0m
 ```
 
-Read the `tasks` line: **4 clean**. Every target mapped with nothing left to fix by hand.
+Read the `tasks` line: **6 clean**. Every target mapped with nothing left to fix by hand.
 
 </Frame>
 <Frame title="2. Each package gets its own config">
@@ -186,13 +189,19 @@ export default {
     build: {
       exec: { command: 'vite build' },
       dependsOn: ['^build'],
-      inputs: { files: ['src/**/*', 'index.html'] },
+      inputs: { files: ['src/**/*', 'vite.config.ts'] },
       outputs: { files: ['dist'] },
       cache: true,
     },
     test: {
       exec: { command: 'vitest run' },
-      dependsOn: ['build'],
+      dependsOn: ['^build'],
+      inputs: { files: ['src/**/*'] },
+      outputs: { files: [] },
+      cache: true,
+    },
+    lint: {
+      exec: { command: 'oxlint' },
       inputs: { files: ['src/**/*'] },
       outputs: { files: [] },
       cache: true,
