@@ -338,7 +338,11 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
     const writers = inputWriters(db, runId, root, taskId, diff.entries, roots)
 
     if (parsed.format === 'json') {
-      await ui.dataPieces('out', jsonPieces({ taskId, runId, why, diff }, roots, writers))
+      // The note is the verdict the text prints: "(inputs differ)" is for a
+      // diff with no parts to name, and read beside one that named them.
+      const moved = movedVerdict(why, diff)
+      const said = moved === undefined ? why : { ...why, note: moved }
+      await ui.dataPieces('out', jsonPieces({ taskId, runId, why: said, diff }, roots, writers))
       return 0
     }
 
@@ -411,6 +415,13 @@ function firstThree(items: readonly string[]): string {
   return `${items.slice(0, 3).join(', ')}${items.length > 3 ? ` and ${items.length - 3} more` : ''}`
 }
 
+/** A moved key's verdict, naming what moved; undefined when the key held or the diff names nothing. */
+function movedVerdict(why: WhyDidThisRerun, diff: CacheKeyDiff): string | undefined {
+  if (why.previousRun == null || why.hashChanged !== true || diff.entries.length === 0)
+    return undefined
+  return `cache key changed: ${firstThree(diff.entries.map(componentName))}`
+}
+
 /** The "Why" section's rows: this run, the one it is compared with, the verdict. */
 function whyRows(runId: string, why: WhyDidThisRerun, diff: CacheKeyDiff): ui.FieldRow[] {
   const t = why.thisRun!
@@ -428,15 +439,10 @@ function whyRows(runId: string, why: WhyDidThisRerun, diff: CacheKeyDiff): ui.Fi
     // The key moved and the diff says by what: the verdict names it, so
     // an env-only change reads as one line, not "inputs differ" above a
     // table to scan.
-    const moved = diff.entries.map(componentName)
+    const moved = movedVerdict(why, diff)
     rows.push(
       ['previous', runFacts(why.previousRun)],
-      [
-        'verdict',
-        why.hashChanged === true && moved.length > 0
-          ? ui.tone('warn', `cache key changed: ${firstThree(moved)}`)
-          : why.note,
-      ],
+      ['verdict', moved === undefined ? why.note : ui.tone('warn', moved)],
     )
   }
   // The rows below may be against an older run than `previous`: the
