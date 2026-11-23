@@ -369,9 +369,27 @@ function tscTakers(root: string, abs: string): TscJudge | undefined {
     const [i, j] = [first.indexOf(x), first.indexOf(y)]
     return (i < 0 ? first.length : i) - (j < 0 ? first.length : j) || (x < y ? -1 : x > y ? 1 : 0)
   })
+  // A base the directory's other tsconfigs extend, each naming its own
+  // files, is what an editor reads, not what a build compiles: an Angular
+  // app's tsconfig.json under tsconfig.app.json and tsconfig.spec.json
+  // (TanStack/store, TanStack/form: ten false notes).
+  const extenders = (n: string): Record<string, unknown>[] =>
+    names.flatMap((m) => {
+      const c = m === n ? undefined : read(path.join(dir, m))
+      const ext = c?.['extends']
+      if (typeof ext !== 'string' || !ext.startsWith('.')) return []
+      const to = path.resolve(dir, ext.endsWith('.json') ? ext : `${ext}.json`)
+      return to === path.join(dir, n) ? [c!] : []
+    })
+  const base = (n: string): boolean => {
+    const ext = extenders(n)
+    return ext.length > 0 && ext.every((c) => c['files'] !== undefined || c['include'] !== undefined)
+  }
   const takers = names.flatMap((n) => {
     const v = judge(path.join(dir, n))
-    return v === undefined ? [] : [{ file: n, ...v }]
+    return v === undefined || (v.how === 'all' && v.outsideRoot === undefined && base(n))
+      ? []
+      : [{ file: n, ...v }]
   })
   const lead = takers[0]
   if (lead === undefined) return undefined
