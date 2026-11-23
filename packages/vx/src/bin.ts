@@ -12,7 +12,7 @@ async function main(): Promise<void> {
   const argv = process.argv.slice(2)
   const compiled = Bun.main.startsWith('/$bunfs') || (process.argv[1] ?? '').startsWith('/$bunfs')
   // First: the restart takes the environment as the launcher gave it.
-  retierJit(argv, compiled)
+  await retierJit(argv, compiled)
   // Out of the env before anything spawns: no task, and no vx this one hands off to, inherits it.
   takeSignalRelay()
   // A rejection nothing awaited (a plugin verb's floating promise) is a

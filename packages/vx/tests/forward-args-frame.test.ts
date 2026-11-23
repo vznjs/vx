@@ -45,8 +45,8 @@ describe('the $ line under forwarded args', () => {
 
   it("the requested task's frame shows the args it ran with (X-41)", () => {
     expect(commandLines('say', '--output-logs=full', '--', 'two words', '--x')).toEqual([
-      '$ echo dep',
-      "$ echo said 'two words' --x",
+      'packages/a $ echo dep',
+      "packages/a $ echo said 'two words' --x",
     ])
     // The live frame a single focused request opens.
     expect(commandLines('say', '--', 'two words', '--x')).toEqual([

@@ -1536,9 +1536,14 @@ function translation(
  * the migration's TODO for it. Undefined for a line that does not.
  */
 function nxSelfCall(command: string): string | undefined {
-  const m = /(?:^|[\s;&|('"])(?:(?:npx|bunx|pnpm(?: exec)?|yarn)\s+)?nx\s+([a-z][\w:-]*)/.exec(
-    command,
+  // What `echo` / `printf` print is text, not a call: twenty's lint line
+  // ends `echo 'Fix with: npx nx lint --configuration=fix'`, and 21 tasks
+  // that never run Nx carried the TODO.
+  const said = command.replace(
+    /\b(?:echo|printf)\b(?:[ \t]+(?:'[^']*'|"(?:[^"\\]|\\.)*"|[^\s;&|()'"]+))*/g,
+    'echo',
   )
+  const m = /(?:^|[\s;&|('"])(?:(?:npx|bunx|pnpm(?: exec)?|yarn)\s+)?nx\s+([a-z][\w:-]*)/.exec(said)
   if (m === null) return undefined
   return m[1] === 'exec'
     ? 'the command runs under `nx exec --`, which needs Nx installed — drop `nx exec --` and keep the command after it'

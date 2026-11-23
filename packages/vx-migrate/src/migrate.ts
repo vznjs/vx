@@ -55,9 +55,8 @@ import {
 } from './packages.js'
 import { relPosix } from './paths.js'
 import { REMOTE_CACHE, remoteCacheNote } from './remote-cache.js'
-import { migrateNx, NX_GRAPH_REL, nxWorkspaceFields } from './migrate-nx.js'
+import { migrateNx, NX_GRAPH_REL, nxWorkspaceFieldsOf } from './migrate-nx.js'
 import { exportGraph, hasNx } from './nx/export-graph.js'
-import { readNxJson } from './nx/nx-map.js'
 import {
   type AdoptionMode,
   importedPackages,
@@ -74,7 +73,7 @@ import {
   readText,
   uninstall,
 } from './adopt.js'
-import { migrateTurbo } from './migrate-turbo.js'
+import { migrateTurbo, turboWorkspaceFields } from './migrate-turbo.js'
 import { migrateViteTask } from './migrate-vite-task.js'
 import { turboConfigFile } from './turbo/turbo-reads.js'
 import { lockfilePlugin } from './workspace-notes.js'
@@ -338,7 +337,7 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
     }
   } else {
     source = path.basename(turboFile ?? 'turbo.json')
-    plan = await migrateTurbo(root, metas, format)
+    plan = await migrateTurbo(root, metas, format, writesWorkspace)
   }
   // Before the write, so the report's `next:` line runs the installed vx;
   // not when the write will be refused for a config already there.
@@ -366,12 +365,13 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
       : []
   let workspaceText: string | undefined
   if (writesWorkspace) {
-    const fields =
+    const fields = (
       runner === 'nx'
-        ? nxWorkspaceFields((await readNxJson(root).catch(() => null))?.json).flatMap((f) =>
-            f.source === undefined ? [] : [{ field: f.field, source: f.source }],
-          )
-        : []
+        ? await nxWorkspaceFieldsOf(root)
+        : runner === 'turbo'
+          ? await turboWorkspaceFields(root)
+          : []
+    ).flatMap((f) => (f.source === undefined ? [] : [{ field: f.field, source: f.source }]))
     workspaceText = renderWorkspaceFile(plugins, existingFormat ?? format, fields)
     // Drop the notes that told the user to declare the lockfile plugin and
     // to remove turbo() or nx().

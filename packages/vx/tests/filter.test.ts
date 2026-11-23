@@ -147,6 +147,23 @@ describe('applyFilters', () => {
     expect(pick('...b')).toEqual(['a', 'b', 'c'])
   })
 
+  it('a filter matching many projects walks the graph once, not once per match', () => {
+    // At 10,000 projects `...pkg` matched 3,334 dependents, and asking each
+    // one's closure built 12 MB of bitsets and listed 5.5 M names.
+    const asked: string[] = []
+    const counted = {
+      ...graph,
+      transitiveDeps: (n: string) => (asked.push(n), graph.transitiveDeps(n)),
+      transitiveDependents: (n: string) => (asked.push(n), graph.transitiveDependents(n)),
+    }
+    const sel = (raw: string) =>
+      [...applyFilters({ filters: [parseFilter(raw, ROOT)], projects, graph: counted })].sort()
+    expect(sel('u*...')).toEqual(['ui', 'utils'])
+    expect(sel('...u*')).toEqual(['app', 'ui', 'utils'])
+    expect(sel('...u*...')).toEqual(['app', 'ui', 'utils'])
+    expect(asked).toEqual([])
+  })
+
   it('glob name match', () => {
     const filters = [parseFilter('u*', ROOT)]
     expect([...applyFilters({ filters, projects, graph })].sort()).toEqual(['ui', 'utils'])

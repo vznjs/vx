@@ -14,12 +14,17 @@ const RUN_VERBS = new Set(['run', 'pipeline', 'watch', 'dte'])
  * spent 0.7-3.6 s less of vx's own CPU in 3 of 3 paired rounds, a
  * nothing-changed run 13-17 % less, every wall time the same (2026-11-23).
  * JSC reads the option only at start, so it rides the environment; the
- * launcher (npm-launcher.sh) sets it on its `exec`, and the restart (~5 ms)
- * is only for a binary run by hand. `VX_JIT_TIERED` marks it set by vx:
- * both leave the environment here, so no process vx starts inherits them.
- * One the user set is theirs.
+ * launcher (npm-launcher.sh) sets it on its `exec`, and the restart is only
+ * for a binary run by hand, and only in a workspace whose lock is at least
+ * {@link RETIER_LOCK_BYTES}. `VX_JIT_TIERED` marks it set by vx: both leave
+ * the environment here, so no process vx starts inherits them. One the user
+ * set is theirs.
  */
-export function retierJit(argv: readonly string[], compiled: boolean): void {
+export async function retierJit(
+  argv: readonly string[],
+  compiled: boolean,
+  cwd?: string,
+): Promise<void> {
   if (process.env['VX_JIT_TIERED'] === '1') {
     delete process.env['VX_JIT_TIERED']
     if (process.env['BUN_JSC_useFTLJIT'] === 'false') delete process.env['BUN_JSC_useFTLJIT']
@@ -27,6 +32,7 @@ export function retierJit(argv: readonly string[], compiled: boolean): void {
   }
   if (!compiled || !RUN_VERBS.has(argv[0] ?? '') || process.env['BUN_JSC_useFTLJIT'] !== undefined)
     return
+  if (!(await lockAtLeast(cwd, RETIER_LOCK_BYTES))) return
   try {
     process.execve?.(process.execPath, [process.execPath, ...argv], {
       ...process.env,
@@ -36,6 +42,27 @@ export function retierJit(argv: readonly string[], compiled: boolean): void {
   } catch {
     // Not restartable (the binary replaced under it): it runs as it is.
   }
+}
+
+/**
+ * The lock size from which a hand-run binary restarts with the top tier off.
+ * A short run never reaches that tier, so its restart is all cost: ~6 ms of a
+ * 100-project nothing-changed run's 70 (a 16 KB lock), ~3 ms at 300 (47 KB),
+ * and at 1,000 projects (156 KB) the tier off saved 11 ms of 182 and 40 ms of
+ * its CPU, more than the restart (2026-11-23, min of 20-40 interleaved).
+ */
+export const RETIER_LOCK_BYTES = 128 * 1024
+
+/** Whether the workspace `cwd` is in holds a `.vx/projects.lock` of `bytes` or more. */
+async function lockAtLeast(cwd: string | undefined, bytes: number): Promise<boolean> {
+  let file: string | null
+  try {
+    file = await workspaceFile(cwd ?? process.cwd())
+  } catch {
+    return false
+  }
+  // `size` is 0 for a file that is not there.
+  return file !== null && Bun.file(`${workspaceRootOf(file)}/.vx/projects.lock`).size >= bytes
 }
 
 /** `vx upgrade -g`: moves only the global vx, so it never hands off. */

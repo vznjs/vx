@@ -347,6 +347,7 @@ export interface RunFailures {
 }
 export interface TaskFailure {
   taskId: string
+  dir?: string // its project's directory from the workspace root, '.' for the root
   exitCode: number
   timedOut?: true
   inputMoved?: string // the input that changed during the run (inputs.stability 'error')

@@ -724,6 +724,14 @@ describe('persistent task framing', () => {
     expect(close).toBe('└─ ▸ @vzn/vx-docs#dev ── (1.81s) running')
   })
 
+  // `vx watch` keeps a requested server across cycles: its frame read
+  // `(0ms) running` each cycle, as if the server had just restarted.
+  it('a server a watch cycle kept closes as still running, with no time', () => {
+    const n = persistentNode('app#dev', 'vite')
+    const close = formatFrameClose(n, outcome('app#dev', 'success'), undefined, true)
+    expect(close).toBe('└─ ▸ app#dev ── still running')
+  })
+
   // A setup step (migrate, seed) is ready by its clean exit: it closed as
   // `running`, and was pinned so, though nothing ran any more.
   it('a persistent task whose child already exited closes as success', () => {

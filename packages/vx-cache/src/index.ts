@@ -286,7 +286,7 @@ function streamed(res: Response, controller: AbortController, ms: number): Respo
 /** `res` with `body` run through `transformer`. */
 function piped(
   body: ReadableStream<Uint8Array>,
-  res: Response,
+  res: Pick<Response, 'status' | 'statusText' | 'headers'>,
   transformer: Transformer<Uint8Array, Uint8Array>,
 ): Response {
   return new Response(body.pipeThrough(new TransformStream(transformer)), {
@@ -309,16 +309,24 @@ function sized(res: Response): Response {
   if (res.body === null || named === null) return res
   const size = Number(named)
   let seen = 0
-  return piped(res.body, res, {
-    transform(chunk, out) {
-      seen += chunk.byteLength
-      if (seen > size) throw new Error(`the download ran past its ${size} bytes`)
-      out.enqueue(chunk)
+  // Named as its length too: core refuses a body past its artifact ceiling
+  // by its length before reading it, and read 100 MB of a 286 MB one first.
+  const headers = new Headers(res.headers)
+  if (Number.isSafeInteger(size) && size >= 0) headers.set('content-length', named)
+  return piped(
+    res.body,
+    { status: res.status, statusText: res.statusText, headers },
+    {
+      transform(chunk, out) {
+        seen += chunk.byteLength
+        if (seen > size) throw new Error(`the download ran past its ${size} bytes`)
+        out.enqueue(chunk)
+      },
+      flush() {
+        if (seen !== size) throw new Error(`the download ended after ${seen} of ${size} bytes`)
+      },
     },
-    flush() {
-      if (seen !== size) throw new Error(`the download ended after ${seen} of ${size} bytes`)
-    },
-  })
+  )
 }
 
 /**
@@ -877,13 +885,17 @@ export class VxCacheLayer implements RemoteCacheLayer {
    * `retries` + 1 tries: the last answer. A deadline is not retried.
    */
   private async retried(path: string, init: RequestInit): Promise<Response | undefined> {
+    const since = performance.now()
     for (let attempt = 1; ; attempt++) {
+      // Another request found the server gone while this one waited to try again.
+      if (attempt > 1 && this.disabled) return undefined
       let res: Response | undefined
       try {
         res = await this.request(path, init)
       } catch (err) {
-        if (!RESET.has((err as { code?: unknown }).code as string) || attempt > this.config.retries)
-          throw err
+        if (!RESET.has((err as { code?: unknown }).code as string)) throw err
+        if (attempt > this.config.retries)
+          return this.unreachable(err as Error & { code: string }, since)
         await this.wait(1000 * attempt)
         continue
       }
@@ -896,6 +908,22 @@ export class VxCacheLayer implements RemoteCacheLayer {
       await res.body?.cancel()
       await this.wait(1000 * attempt)
     }
+  }
+
+  /**
+   * A download or upload whose every try was refused its connection, with no
+   * answer from the server to any request since it began: no server listens,
+   * so the remote is off for the run, said once. Each of a run's requests
+   * tried it 3 times over 3 s: with the server down a 300-task run took 30 s,
+   * not 1 s. A reset is that request's loss alone: a proxy's body limit or a
+   * stale pooled connection resets one while the server lives.
+   */
+  private unreachable(err: Error & { code: string }, since: number): undefined {
+    if (err.code !== 'ECONNREFUSED' || this.answeredAt > since) throw err
+    const first = !this.disabled
+    this.disabled = true
+    if (!first) return undefined
+    throw new Error(`${err.message}; remote cache off for this run`, { cause: err })
   }
 
   /** An artifact over the server's upload limit is not sent: it is said. */

@@ -96,6 +96,8 @@ function workspace(rnd: () => number): Workspace {
     directDeps: (p) => direct.get(p) ?? [],
     transitiveDeps: () => [],
     transitiveDependents: () => [],
+    depsOf: () => new Set(),
+    dependentsOf: () => new Set(),
   }
   const requested = everywhere
     .filter(() => rnd() < 0.35)

@@ -71,8 +71,10 @@ vx last --log app#build          # one task's output: a failure's, or its cached
 ```
 
 `warnings` holds what the run warned of (absent when nothing).
-A failed row's `output` is the task's output as plain text (secrets masked)
-and `locations` the files it names as `{ file, line?, col? }`. Read those
+A failed row's `output` is the task's output as plain text (secrets masked),
+`locations` the files it names as `{ file, line?, col? }`, and `dir` its
+project's directory: a relative path in the output starts there. In the run's
+own output, a failed command's `$` line names that directory too. Read those
 files, fix, and re-run the same command: cached tasks that passed replay from the cache.
 
 ## When a task re-ran unexpectedly

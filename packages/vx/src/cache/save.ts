@@ -341,10 +341,11 @@ export async function ingest(
   // Bound the compressed bytes too: a remote body that never ends would fill
   // the disk. No artifact under the ceiling compresses past zstd's own bound.
   const cap = ix.artifactCeiling + (ix.artifactCeiling >> 8) + 64 * 1024
-  const past = (): CorruptArtifactError =>
-    new CorruptArtifactError(
-      hash,
-      `remote body runs past ${cap} bytes (the artifact ceiling's bound)`,
+  // No corruption: the remote's copy may be whole for a machine whose ceiling
+  // is higher, so it is kept, not distrusted and sent over (said "corrupt").
+  const past = (): Error =>
+    new Error(
+      `${hash} runs past ${cap} bytes, the bound of this machine's ${formatBytes(ix.artifactCeiling)} cache.artifactCeiling: a miss; every machine sharing a remote needs the same value`,
     )
   // Every refusal releases the remote body: a held response pins its
   // connection, and a layer that settles on the body's end never hears.

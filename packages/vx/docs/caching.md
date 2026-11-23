@@ -1940,7 +1940,12 @@ applies to both: declared size and
 output length for the one-call decode, a running count for the stream.
 An ingest bounds the compressed body first: a remote body past the
 ceiling's zstd bound (a length header, a Blob's size, or a running count
-on a chunked stream) is refused before it can fill the disk.
+on a chunked stream) is refused before it can fill the disk. It is a
+miss, not a corrupt artifact: the remote's copy is kept for machines
+whose ceiling is higher, and the warning names this machine's
+`cache.artifactCeiling`, which every machine sharing a remote needs the
+same. `vxCache()` names a download's length from the server's `vx-size`,
+so one past the bound is refused before its first byte.
 A frame that declares no content size (what a streaming compressor
 writes — vx's own saves above 4 MiB) is always decoded as a stream, so
 a sizeless bomb has nowhere to expand and vx's artifacts ingest
@@ -2187,7 +2192,7 @@ keep). The artifacts stay: each is indexed again from its own bytes
 when its task next asks for its key (below).
 
 ```sql
--- src/index-db/schema.ts (SCHEMA_VERSION = 'v57')
+-- src/index-db/schema.ts (SCHEMA_VERSION = 'v58')
 -- With a shared store, entries, entry_stdout, output_files, entry_inputs,
 -- store_meta, task_durations, task_outcomes, blob_sizes, plugin_blobs and remote_hits live in its store.db, attached as `store`; the rest is
 -- the workspace's cache.db. A named cache dir holds all of them.
@@ -2475,6 +2480,7 @@ CREATE TABLE warnings (             -- what the run warned of, colour stripped
 CREATE TABLE failures (             -- a failed task's output (runFailures, vx last --log)
   run_id      TEXT NOT NULL,
   task_id     TEXT NOT NULL,        -- project#task
+  dir         TEXT,                 -- v58: its project's dir from the root, '.' for the root
   input_moved TEXT,                 -- the input that changed while it ran
   output      TEXT NOT NULL,        -- plain, masked, first 8 KiB + last 56 KiB
   locations   TEXT NOT NULL,        -- JSON [{ file, line?, col? }]
@@ -2797,6 +2803,10 @@ breaking footer).
 
 ### History
 
+- **`SCHEMA_VERSION` v57 → v58** (2026-11-23), `CACHE_VERSION` unmoved:
+  `failures` gained `dir`, the failed task's project directory, so
+  `vx last --format json` says where its output's relative paths start.
+  The index resets once.
 - **`SCHEMA_VERSION` v56 → v57** (2026-11-18), `CACHE_VERSION` unmoved:
   the index gained `run_hits` and `hit_keys`, where a run keeps its cache
   hits packed until a reader asks. A v56 vx reads no hit a v57 run kept

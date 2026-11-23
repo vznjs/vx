@@ -375,6 +375,7 @@ describe('docs/cli.md — the frame sample is what the renderer prints', () => {
           { text: 'error: expected 3, got 2\n', err: true },
           { text: '1 fail\n', err: false },
         ],
+        dir: 'packages/app',
       },
       { enabled: true },
     ).replace(/\n$/, '')
