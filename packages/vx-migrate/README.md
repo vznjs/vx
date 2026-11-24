@@ -1727,18 +1727,18 @@ Below the environment, in Turbo's order, the plugin reads:
 **Signatures.** The signature is Turbo's current scheme, `artifact-signature:v2`.
 
 - Prefix, hash, team id and body are each length-prefixed, under HMAC-SHA256, and sent base64 in `x-artifact-tag`.
-- A signed body is written to a temp file before its tag can be checked.
+- A signed body is copied to a temp file as it passes, for its tag to be checked at the end.
 - So one past core's artifact ceiling (2 GiB, at zstd's bound) is refused as it passes it, and is a miss.
 - A download with no `x-artifact-tag` is a miss that says so. turborepo-remote-cache keeps the tag only with its own `TURBO_REMOTE_CACHE_SIGNATURE_KEY` set; without it, every signed read misses.
 
 **Streaming.** Artifacts stream both ways on both wires.
 
 - An upload sends the local artifact from its file. A download hands vx the response body, to write straight to disk.
-- A signed download must verify before vx sees a byte. So it is written to a temp file in vx's cache directory, and verified from there.
+- A signed download streams to vx as it arrives, and is copied to a temp file in vx's cache directory as it passes.
 - The sandbox walls that directory, unlike the shared temp dir a sandboxed task may read.
-- The tag covers the body's length, which a chunked response does not declare up front.
-- A bad tag deletes the temp, and reads as a miss.
-- A good one is handed over as a stream that deletes the temp once it is read or cancelled.
+- The tag covers the body's length, which a chunked response does not declare up front, so it is checked from the temp once the last byte is in.
+- A bad tag errors that last read: vx keeps nothing of the body, and it reads as a miss.
+- The temp goes once the body is read or cancelled.
 - A process that exits first deletes it on the way out (vx's Ctrl-C exit awaits no stream).
 
 ## `nxCache()` — an Nx self-hosted remote cache

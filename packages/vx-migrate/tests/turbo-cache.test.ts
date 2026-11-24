@@ -503,7 +503,7 @@ describe('TurboRemoteCache against the spec server', () => {
     expect(await (await c.get('cc33'))!.body.bytes()).toEqual(body)
     // Tampered on the server: the tag no longer covers the bytes.
     srv.store.get('cc33')!.body = new TextEncoder().encode('tampered')
-    await expect(c.get('cc33')).rejects.toThrow(/signature did not verify/)
+    await expect((await c.get('cc33'))!.body.bytes()).rejects.toThrow(/signature did not verify/)
     // Unsigned on the server (written without a key, or a server that keeps no
     // tag: turborepo-remote-cache drops it unless it has a key): also a miss,
     // naming the missing tag, not a mismatch.
@@ -515,9 +515,11 @@ describe('TurboRemoteCache against the spec server', () => {
     expect(await cache().get('dd44')).not.toBeNull()
   })
 
-  // A signed download is verified from a temp before core sees a byte; the
-  // temp is the layer's to remove on every path out: a refused tag, a body
-  // read to its end, a body cancelled part-way.
+  // A signed download streams to core as it arrives, kept in a temp the tag
+  // is checked from at the end; a bad tag errors the body's last read, which
+  // core takes as a miss and keeps nothing of. The temp is the layer's to
+  // remove on every path out: a refused tag, a body read to its end, a body
+  // cancelled part-way.
   describe('the signed download’s temp', () => {
     let tempDir: string
     beforeAll(async () => {
@@ -530,11 +532,46 @@ describe('TurboRemoteCache against the spec server', () => {
       const c = cache({ signatureKey: KEY }, tempDir)
       await c.put('ab12', new Blob([body]), { durationMs: 1 })
       srv.store.get('ab12')!.body = body.slice().reverse()
-      await expect(c.get('ab12')).rejects.toThrow(/signature did not verify/)
+      await expect((await c.get('ab12'))!.body.bytes()).rejects.toThrow(/signature did not verify/)
       expect(await readdir(tempDir)).toEqual([])
     })
 
-    it('a verified body is served from the temp, which goes once it is read to the end', async () => {
+    // Core bounds the wait for an answer, then the wait between bytes
+    // (run.pluginTimeout): a signed download held whole inside get() read
+    // as no answer, and a big one that kept streaming was cut to a miss.
+    it('answers at the headers, and hands each chunk on as it arrives', async () => {
+      const tag = await artifactTag(Buffer.from(KEY), 'ab99', 'team_1', new Blob([body]))
+      let release = (): void => {}
+      const held = new Promise<void>((r) => (release = r))
+      const half = body.length / 2
+      const fetchImpl = (async () =>
+        new Response(
+          new ReadableStream<Uint8Array>({
+            async start(c) {
+              c.enqueue(body.slice(0, half))
+              await held
+              c.enqueue(body.slice(half))
+              c.close()
+            },
+          }),
+          { headers: { 'x-artifact-tag': tag } },
+        )) as unknown as typeof fetch
+      const config = resolveTurboCacheConfig(
+        { url: 'http://turbo.invalid', token: TOKEN, teamId: 'team_1', signatureKey: KEY },
+        {},
+      )!
+      const got = await new TurboRemoteCache(config, fetchImpl, tempDir).get('ab99')
+      const reader = got!.body.body!.getReader()
+      const first = await reader.read()
+      expect(first.value?.byteLength).toBe(half)
+      release()
+      const rest: Uint8Array[] = []
+      for (let r = await reader.read(); !r.done; r = await reader.read()) rest.push(r.value)
+      expect(Buffer.concat([first.value!, ...rest])).toEqual(Buffer.from(body))
+      expect(await readdir(tempDir)).toEqual([])
+    })
+
+    it('a verified body is served as it streams, and the temp goes once it is read to the end', async () => {
       const c = cache({ signatureKey: KEY }, tempDir)
       await c.put('ab34', new Blob([body]), { durationMs: 1 })
       const got = await c.get('ab34')
