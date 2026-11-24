@@ -11,7 +11,7 @@ import { Levels, Deeper, Concept, Quiz, Walkthrough, Frame, Takeaway, NextStep }
 Run your tasks on workers on your laptop, before you touch CI.
 
 ```sh
-export VX_DTE_RUN=$(uuidgen)
+export VX_DTE_RUN=$(bun -e 'console.log(crypto.randomUUID())')
 vx run build test lint --all
 ```
 
@@ -83,7 +83,7 @@ Workers see what git tracks, your edits included. So `git add` new files first, 
 
 ```sh
 git add -A
-export VX_DTE_RUN=$(uuidgen)
+export VX_DTE_RUN=$(bun -e 'console.log(crypto.randomUUID())')
 vx run build test lint --all
 ```
 
@@ -251,7 +251,7 @@ workers: {
 
 | Name | What it does |
 | --- | --- |
-| `VX_DTE_RUN` | Names the run and turns distribution on. A random UUID, so no one can guess the run: `uuidgen` prints one. Any other value is refused. Unset, `vx run` stays on this machine. |
+| `VX_DTE_RUN` | Names the run and turns distribution on. A random UUID, so no one can guess the run: `bun -e 'console.log(crypto.randomUUID())'` prints one. Any other value is refused. Unset, `vx run` stays on this machine. |
 
 #### What a worker sees
 

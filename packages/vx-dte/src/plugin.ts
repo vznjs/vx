@@ -1279,7 +1279,7 @@ function givenRun(): string | undefined {
   if (run === undefined || run === '') return undefined
   if (!RUN_ID.test(run)) {
     throw new UserError(
-      `VX_DTE_RUN is a random UUID, such as one \`uuidgen\` prints, so no one can guess the run: not ${JSON.stringify(run)}`,
+      `VX_DTE_RUN is a random UUID, such as one \`bun -e 'console.log(crypto.randomUUID())'\` prints, so no one can guess the run: not ${JSON.stringify(run)}`,
     )
   }
   return run

@@ -196,7 +196,7 @@ dte({
 ```
 
 ```sh
-export VX_DTE_RUN=$(uuidgen)
+export VX_DTE_RUN=$(bun -e 'console.log(crypto.randomUUID())')
 export VX_DTE_SECRET=$(openssl rand -base64 32)
 vx run build --all   # on the machine that starts the run
 vx dte worker        # on each worker, with the same two variables
@@ -254,7 +254,7 @@ Names use letters, digits, `_` and `-`.
 
 | Variable | Read by | Means |
 | --- | --- | --- |
-| `VX_DTE_RUN` | run, worker | the run's id, a random UUID (`uuidgen`). Set, it turns distribution on. GitHub and GitLab name the run themselves |
+| `VX_DTE_RUN` | run, worker | the run's id, a random UUID (`bun -e 'console.log(crypto.randomUUID())'`). Set, it turns distribution on. GitHub and GitLab name the run themselves |
 | `VX_DTE_RELAY` | run, worker | the relay URL; beats `relay` |
 | `VX_DTE_SECRET` | run, worker | the run's shared key. Needed with no adapter and no GitHub |
 | `VX_DTE_TOKEN` | run, worker | the relay's bearer token, when `token` is unset |

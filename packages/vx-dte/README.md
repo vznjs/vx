@@ -164,7 +164,7 @@ export default defineWorkspace({
 ```
 
 ```sh
-VX_DTE_RUN=$(uuidgen) vx run build --all
+VX_DTE_RUN=$(bun -e 'console.log(crypto.randomUUID())') vx run build --all
 ```
 
 `VX_DTE_RUN` names the run and turns distribution on. Without it, `vx run`
@@ -251,7 +251,7 @@ export default defineWorkspace({ plugins: [dte({ relay: 'http://127.0.0.1:8080' 
 ```sh
 bun /path/to/vx/packages/vx-dte-server/src/bun.ts --no-auth --port 8080   # the relay
 export VX_DTE_SECRET=$(openssl rand -base64 32)                          # in each terminal: the same one
-export VX_DTE_RUN=$(uuidgen)                                             # in each terminal: the same one
+export VX_DTE_RUN=$(bun -e 'console.log(crypto.randomUUID())')   # in each terminal: the same one
 vx run build --all                                                       # the run, first
 vx dte worker                                                             # a worker, as many as you like
 ```
