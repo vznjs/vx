@@ -596,7 +596,9 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
     | undefined
   hooks.setup = async (ctx) => {
     remote ??= await serverOf()
-    if (remote?.writes === true) {
+    // Off CI a run only reads, whatever token its shell holds: a copied
+    // one wrote that machine's timings into CI's ref.
+    if (remote?.writes === true && ctx.ci) {
       const { timingOf: timing, outcomeOf } = await import('./history-server.js')
       // Only the run that ran the tasks hears them: under DTE, the
       // orchestrator, with each worker's measurements. Sent while the run

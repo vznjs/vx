@@ -880,6 +880,21 @@ describe('vx run with vxHistory({ url })', () => {
     })
   })
 
+  // A token in a shell off CI (a copied VX_HISTORY_TOKEN) wrote that
+  // machine's timings into CI's ref: a local run only reads.
+  it('sends nothing from a run off CI, whatever token it holds', async () => {
+    const ci = Bun.env.CI
+    delete Bun.env.CI
+    try {
+      const before = seen.length
+      const r = await run({ cwd: root, tasks: ['build'], handleSignals: false })
+      expect(r.outcomes.map((o) => o.status)).toEqual(['success'])
+      expect(seen.slice(before).map((q) => q.path)).toEqual(['/v1/timings/query'])
+    } finally {
+      Bun.env.CI = ci
+    }
+  })
+
   // A plugin's measure (vx-dte's worker warm-up) is timed as a task is:
   // sent with the run's timings, asked for by the next run and kept for
   // the plugin to read back (2026-11-11).

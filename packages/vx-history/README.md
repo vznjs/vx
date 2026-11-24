@@ -87,7 +87,9 @@ A 5xx or 429 from GitHub's endpoint is asked again up to three times. So is a 42
 
 A CI job with no token says so once. On GitHub Actions (`GITHUB_ACTIONS`) it names the permission.
 
-A run with no token (off CI) only reads, from a server whose `READ_ACCESS` is `public`, and sends nothing.
+A run off CI only reads, whatever token its shell holds, and sends nothing.
+
+A run with no token only reads, from a server whose `READ_ACCESS` is `public`, and sends nothing.
 
 A server refusing a run with no token names the fix for the CI it is on (`GITHUB_ACTIONS`, `GITLAB_CI`).
 
