@@ -244,7 +244,7 @@ These are refused the same way:
 - A `pnpm-lock.yaml` whose importer or package names a dependency it has no entry for: `snapshots` in v9, `packages` in v5/v6. A `link:` needs none.
 
   pnpm refuses it too ("Broken lockfile"). Read as a leaf, that package's own dependencies would be in no key.
-- A `pnpm-lock.yaml` cut short: an entry, or its `dependencies`, that is not a mapping. Read as an entry with no dependencies, it left everything below it out of the key.
+- A `pnpm-lock.yaml` or berry `yarn.lock` cut short: an entry, or its `dependencies`, that is not a mapping. Read as an entry with no dependencies, it left everything below it out of the key.
 
 ### The installed tree
 
