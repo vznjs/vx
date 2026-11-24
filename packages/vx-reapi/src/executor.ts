@@ -1884,6 +1884,17 @@ export async function materialiseOutputs(
   const files = (result.output_files ?? []).filter((f) =>
     isDeclared(fence.lexical(req.cwd, f.path)),
   )
+  // One path under two digests was written at once, as a Tree's twice-named
+  // entry was: the file could end up the bytes of neither.
+  const byPath = new Map<string, string>()
+  for (const f of files) {
+    const abs = fence.lexical(req.cwd, f.path)
+    const had = byPath.get(abs)
+    if (had !== undefined && had !== f.digest.hash) {
+      throw new UserError(`the server's result names ${abs} twice — refused`)
+    }
+    byPath.set(abs, f.digest.hash)
+  }
   // Batch the small ones into one round trip; anything larger goes over
   // ByteStream, which is also the only path that can be compressed.
   // A window at a time, as a Tree's files are: one batch read of every
