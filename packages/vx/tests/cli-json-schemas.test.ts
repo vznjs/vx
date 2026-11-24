@@ -218,10 +218,11 @@ beforeAll(async () => {
   })
   await addProject(root, 'kitchen', { config: KITCHEN })
   await addProject(root, 'bare')
-  // A plugin, so \`vx info\` lists one.
+  // A plugin, so \`vx info\` lists one; its config hook sets a setting,
+  // so a setting's source reads \`plugin\` (the schema refused it).
   await Bun.write(
     path.join(root, '.vx/workspace.mjs'),
-    `${PLUGIN_IMPORT}export default { plugins: [${pluginSource('noop', '{ setup() {} }')}, ${edgesSource({ app: ['lib'] })}] }\n`,
+    `${PLUGIN_IMPORT}export default { plugins: [${pluginSource('noop', "{ setup() {}, config(ws) { ws.run = { ...ws.run, timeout: '9m' } } }")}, ${edgesSource({ app: ['lib'] })}] }\n`,
   )
   expect(vx(['run', 'build', '--filter', 'app...']).code).toBe(0)
   expect(vx(['run', 'lib#stamp']).code).toBe(0)

@@ -100,14 +100,18 @@
     },
     "settings": {
       "type": "object",
-      "description": "every setting (docs/schema.md § Settings) by path, as a run with no flags takes it: its variable as written, else .vx/workspace's value, else null with source default",
+      "description": "every setting (docs/schema.md § Settings) by path, as a run with no flags takes it: its variable as written, else .vx/workspace's value (source plugin when a plugin's config hook set it), else null with source default",
       "additionalProperties": {
         "type": "object",
         "additionalProperties": false,
         "required": ["value", "source"],
         "properties": {
           "value": { "type": ["string", "number", "boolean", "null"] },
-          "source": { "enum": ["env", "workspace", "default"] },
+          "source": { "enum": ["env", "workspace", "plugin", "default"] },
+          "plugin": {
+            "type": "string",
+            "description": "the plugin whose config hook set it; only with source plugin"
+          },
           "refused": {
             "type": "string",
             "description": "why a run refuses the variable's value; absent when a run takes it"
