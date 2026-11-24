@@ -136,7 +136,7 @@ async function decomposeOutputDir(
   // depth by recursion.
   const shape = treeShape(tree.root, byDigest)
   const deepest = Buffer.byteLength(path.join(workspaceRoot, entry.path)) + shape.longest
-  if (shape.entries > room || deepest >= PATH_MAX) return whole
+  if (shape.entries > room || deepest >= PATH_MAX || shape.twice !== undefined) return whole
 
   const out: Array<{ path: string; tree_digest: Digest }> = []
   // A match's Tree by its directory's digest: a subtree named under many
@@ -1855,6 +1855,11 @@ export async function materialiseOutputs(
     // Past PATH_MAX the walk made the directories of a path the file system
     // then refused with a raw ENAMETOOLONG.
     const dest = fence.lexical(req.cwd, d.path)
+    if (read.twice !== undefined) {
+      throw new UserError(
+        `the server's Tree for ${dest} names ${read.twice} twice in one directory — refused`,
+      )
+    }
     const longest = Buffer.byteLength(dest) + read.longest
     if (longest >= PATH_MAX) {
       throw new UserError(
@@ -2214,6 +2219,8 @@ async function readTree(
 interface TreeShape {
   entries: number
   longest: number
+  /** A name some directory of the Tree holds more than once. */
+  twice?: string
 }
 
 /** Bytes a path may hold, its terminating NUL included (limits.h). */
@@ -2230,6 +2237,14 @@ const PATH_MAX = process.platform === 'darwin' ? 1024 : 4096
 function treeShape(root: Directory, byDigest: ReadonlyMap<string, Directory>): TreeShape {
   const shapes = new Map<string, TreeShape>()
   const shapeOf = (dir: Directory): TreeShape => {
+    // REAPI holds a Directory's names unique: two entries of one name were
+    // written at once, and the file could end up the bytes of neither.
+    const names = new Set<string>()
+    let twice: string | undefined
+    for (const n of [...dir.files, ...dir.directories, ...dir.symlinks]) {
+      if (names.has(n.name)) twice ??= n.name
+      names.add(n.name)
+    }
     let entries = 1 + dir.files.length + dir.symlinks.length
     let longest = 0
     for (const f of [...dir.files, ...dir.symlinks]) {
@@ -2240,8 +2255,9 @@ function treeShape(root: Directory, byDigest: ReadonlyMap<string, Directory>): T
       if (below === undefined) continue
       entries += below.entries
       longest = Math.max(longest, 1 + Buffer.byteLength(d.name) + below.longest)
+      twice ??= below.twice
     }
-    return { entries, longest }
+    return { entries, longest, ...(twice === undefined ? {} : { twice }) }
   }
   // Each directory after its children: a child under many names is shaped once.
   const stack: Array<{ dir: Directory; hash: string; open: boolean }> = [
