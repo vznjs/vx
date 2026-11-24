@@ -286,7 +286,7 @@ const compileTasks = Object.fromEntries(
       dependsOn: ['install'],
       exec: {
         // A release's version, defined into src/version.ts; empty off a release.
-        command: `bun build --compile --no-compile-autoload-dotenv --no-compile-autoload-bunfig --compile-autoload-package-json --minify --bytecode --format=esm --splitting --target=bun-${target} --define "VX_RELEASE=\\"\${VX_RELEASE_VERSION#v}\\"" src/bin.ts --outfile dist/vx-${target}`,
+        command: `bun build --compile --no-compile-autoload-dotenv --no-compile-autoload-bunfig --compile-autoload-package-json --compile-autoload-tsconfig --minify --bytecode --format=esm --splitting --target=bun-${target} --define "VX_RELEASE=\\"\${VX_RELEASE_VERSION#v}\\"" src/bin.ts --outfile dist/vx-${target}`,
         env: { passThrough: ['VX_RELEASE_VERSION'] },
         sandbox: {
           allow: {

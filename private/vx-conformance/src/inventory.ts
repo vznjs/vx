@@ -60,6 +60,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'committed-case',
     'committed-through-link',
     'compiled-bunfig',
+    'compiled-tsconfig-paths',
     'configless-default-build',
     'crash-recovery',
     'default-build-cycle-key',

@@ -126,7 +126,7 @@ compiled binary no second copy of core transpiled from `node_modules`
    TypeScript directly.
 2. **As a standalone binary** — `bun build --compile
 --no-compile-autoload-dotenv --no-compile-autoload-bunfig
---compile-autoload-package-json --minify --bytecode --format=esm --splitting --target=bun-<target> src/bin.ts
+--compile-autoload-package-json --compile-autoload-tsconfig --minify --bytecode --format=esm --splitting --target=bun-<target> src/bin.ts
 --outfile dist/vx-<target>`. The cross-target binaries are published on
    each GitHub release. Split into ES chunks, the binary loads only the
    code a verb imports: one bundle loaded all of it first, ~4 ms of every
@@ -152,6 +152,10 @@ Bun resolves a package only by its root `index.*`, ignoring `main` and
 `exports`: a config importing `@vzn/vx-reapi` failed on
 `cannot find '@grpc/grpc-js'` (`main: build/src/index.js`), though
 `bun src/bin.ts` loaded it (#1891). `scripts/check-binary.ts` holds it.
+
+`--compile-autoload-tsconfig` makes the binary read `tsconfig.json`
+`paths`: without it a config importing an alias failed on `cannot find`
+(`tests/compiled-tsconfig-paths.test.ts`).
 
 `--no-install` keeps Bun from auto-installing a bare import no
 `node_modules` provides: a helper a config imports fetched the package

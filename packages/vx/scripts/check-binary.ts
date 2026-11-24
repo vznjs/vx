@@ -120,6 +120,7 @@ run(
     '--no-compile-autoload-dotenv',
     '--no-compile-autoload-bunfig',
     '--compile-autoload-package-json',
+    '--compile-autoload-tsconfig',
     '--minify',
     '--bytecode',
     '--format=esm',
