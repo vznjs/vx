@@ -3522,8 +3522,7 @@ When git leaves conflict markers, resolve the configs, then run
 
 - A name line seldom changes, so it sits between two branches' edits to
   neighbouring projects, and git merges both.
-- Hashed project order keeps two new projects apart: 18% of two-branch
-  merges conflict, against version 8's 80%.
+- Hashed project order keeps two new projects apart.
 - After a merge, a run checks the merged digests against the merged
   lockfile. When they differ, it refuses with "run `vx lock`".
 - When both sides changed one task, or lines right beside each other, git
