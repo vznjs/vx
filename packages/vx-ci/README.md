@@ -139,9 +139,9 @@ For example, a push to `feat-x` in `acme/app` names `acme/app:feat-x`.
 - It reads the ref (`GITHUB_REF`, `GITHUB_REF_NAME`, `GITHUB_HEAD_REF`,
   `GITHUB_REPOSITORY`) and the `GITHUB_EVENT_PATH` payload.
 - A push to the default branch names no scope. The default branch is
-  the workspace's `baseBranch`, else the event's. A `schedule` event
-  names none, so its ref is the default branch: GitHub runs a schedule
-  only there.
+  the workspace's `baseBranch`, else the event's.
+- A `schedule` event names none, so its ref is the default branch:
+  GitHub runs a schedule only there.
 - A missing runner variable (`GITHUB_REF`, `GITHUB_REF_NAME`,
   `GITHUB_REPOSITORY`, `GITHUB_EVENT_NAME`, `GITHUB_EVENT_PATH`) or an
   event file it cannot read is named in a warning.

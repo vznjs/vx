@@ -3254,7 +3254,9 @@ That holds for `vx run`, every `vx watch` cycle, `--affected` selection and the 
 - The message: `` <file> changed since the last `vx lock` — run `vx lock` ``.
 - It compares the file's size, mtime and bytes with those `vx lock` read, kept in the cache folder's `config-stamps.json`.
 - A file whose bytes moved is then evaluated, as `vx lock --check` does: one that evaluates as the lock holds (a comment, a config restored with its lock) runs, and is stamped again.
-- Stamps are kept per lock, the last 8, so a branch checked out again keeps its own. A lock with none (a pull, a fresh clone, a branch another `vx lock` left) has the configs the run reads evaluated once, as `vx lock --check` does: an edit is refused, the rest are stamped once the cache folder exists (`--dry` makes none).
+- Stamps are kept per lock, the last 8, so a branch checked out again keeps its own.
+- A lock with none (a pull, a fresh clone, a branch another `vx lock` left) has the configs the run reads evaluated once, as `vx lock --check` does.
+- Then an edit is refused, and the rest are stamped once the cache folder exists (`--dry` makes none).
 - A file a `project` plugin made a config from is checked only beside a lock `vx lock` stamped.
 - A config edit committed without relocking is refused like an uncommitted one.
 - A file a config imports is not checked.
