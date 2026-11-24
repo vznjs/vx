@@ -967,7 +967,9 @@ The key is what Nx computes the graph from:
 - Root files: manifests, lockfiles, `tsconfig*.json`, and the tool configs an inferring `@nx/*` plugin reads.
 - Anything in the directory of a local plugin `nx.json` names by path (`./tools/plugin.js`). At the root, that is the file itself, any extension.
 
-The files an inferred target came from (its `vite.config.ts`) are Nx's `source-maps.json`, in `.nx/workspace-data`, or where `NX_WORKSPACE_DATA_DIRECTORY` (or the older `NX_PROJECT_GRAPH_CACHE_DIRECTORY`) points, as for Nx.
+The files an inferred target came from (its `vite.config.ts`) are Nx's `source-maps.json`, in `.nx/workspace-data`.
+
+Or they are where `NX_WORKSPACE_DATA_DIRECTORY` (or the older `NX_PROJECT_GRAPH_CACHE_DIRECTORY`) points, as for Nx.
 
 <details><summary>Details</summary>
 
@@ -988,7 +990,8 @@ A different key, or no snapshot, runs `node_modules/.bin/nx graph --file=<snapsh
 - Outside a git worktree the plugin falls back to the manifests' mtimes.
 - A run never exports, maps or reads the graph. `vx lock` records the projects the `discover` stage names and the edges Nx derives (`implicitDependencies`, an `import`).
 - So a `project.json` edit, a new edge included, changes what runs only after the next `vx lock`. Until then a run on this machine refuses, naming the file.
-- So does a new `project.json`, or an edit to the file an inferred target came from (`vite.config.ts`), as Nx records it in `.nx/workspace-data/source-maps.json` (or under `NX_WORKSPACE_DATA_DIRECTORY`, as in Nx).
+- So does a new `project.json`, or an edit to the file an inferred target came from (`vite.config.ts`).
+- Nx records that file in `.nx/workspace-data/source-maps.json` (or under `NX_WORKSPACE_DATA_DIRECTORY`, as in Nx).
 - With `graph:` set Nx may record none; then an inferred-config edit needs `vx lock` by hand.
 - A source `import` is not refused; `vx lock --check` names it.
 - That holds under `vx watch` as in a run: a re-lock is the next cycle's event.
