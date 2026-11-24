@@ -5711,17 +5711,20 @@ it('a worker’s reason is its error line, not the hint after it', () => {
 // Main fd9afe0: a Mac's tasks' exits said 1.8 cores and they ran at half
 // their share; the machine's busy cores beside its tasks' trees say where.
 it('reads each running task’s process tree every look: the cores its tree used since the last', async () => {
-  let cpu = 0
+  // One and a half cores of CPU for t1 since it was watched, by the clock:
+  // a fixed 30 ms a look read under a core once a loaded machine's timer
+  // stretched the 20 ms looks past 60 ms.
+  let from = 0
   const trees = treeMeter(async (roots) => {
-    cpu += 30
+    const cpu = 1.5 * (performance.now() - from)
     return new Map(roots.map((r) => [r, { cpuMs: r === 7 ? cpu : 0, rssBytes: 0 }]))
   }, 20)
   try {
+    from = performance.now()
     trees.watch('t1', 7)
     trees.watch('t2', 8)
-    await Bun.sleep(130)
-    // 30 ms of CPU each 20 ms look: about one and a half cores, all t1's.
-    expect(trees.now()).toBeGreaterThan(0.5)
+    for (let i = 0; i < 500 && trees.now() === 0; i++) await Bun.sleep(20)
+    expect(trees.now()).toBeGreaterThan(1)
     trees.drop('t1')
     expect(trees.now()).toBe(0)
   } finally {
