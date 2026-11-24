@@ -208,6 +208,33 @@ describe('a project is a directory with a vx.config', () => {
     TIMEOUT,
   )
 
+  // `vx lock` passed, and `vx show` said "vx.config.mjs not locked — run vx
+  // lock", which a re-run never fixed.
+  it(
+    'a discovered directory at or under a nested workspace is refused, not sent to `vx lock`',
+    async () => {
+      await write(path.join(root, 'kept/vx.config.mjs'), config())
+      await write(path.join(root, 'inner/.vx/workspace.mjs'), 'export default {}\n')
+      await write(path.join(root, 'inner/vx.config.mjs'), config())
+      await write(path.join(root, 'inner/pkg/vx.config.mjs'), config())
+      for (const dir of ['inner', 'inner/pkg']) {
+        await write(
+          path.join(root, '.vx/workspace.mjs'),
+          `${PLUGIN_IMPORT}export default { plugins: [${pluginSource(
+            'vx-test-gen',
+            `{ discover: () => [{ dir: '${dir}' }] }`,
+          )}] }\n`,
+        )
+        const r = vx(root, 'lock')
+        expect([r.code, r.err.trim()]).toEqual([
+          1,
+          `✗ vx lock  lock not written\n\n  plugin 'vx-test-gen' adds project ${dir}, but inner/.vx makes inner a workspace of its own, which this one's lock cannot hold — leave ${dir} out of what the plugin discovers, or delete inner/.vx`,
+        ])
+      }
+    },
+    TIMEOUT,
+  )
+
   it(
     "a config at or under a nested .vx/workspace is that workspace's, not this one's",
     async () => {

@@ -172,7 +172,10 @@ one, the lock failed `--check` on every other checkout. Outside git: a walk that
 as git lists `.github/actions/x`. A config at or under a nested
 `.vx/workspace.*` is that workspace's and is left out: any entry, a
 broken link or a directory too, as the root walk stops at one, but not a
-tracked one deleted from the worktree. Where a directory
+tracked one deleted from the worktree. A `discover` plugin adding a
+project at or under a nested workspace is refused by `vx lock`, naming
+the plugin: locked, it held no config, and every reader asked for the
+`vx lock` that had just run. Where a directory
 holds several, `PROJECT_CONFIG_FILENAMES` order picks the first that is a
 file (git lists a tracked config deleted from the worktree, skipped;
 one a sparse checkout left out, skip-worktree in the index, is

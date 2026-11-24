@@ -285,6 +285,20 @@ async function audit(root: string, warn: (message: string) => void): Promise<Gra
     for (const m of out.all) {
       const why = m.configPath === null ? ignoredConfigRefusal(root, m) : undefined
       if (why !== undefined) throw new UserError(why, 'VX_E_LOCK')
+      // Its configs are the nested workspace's: locked here, it held none, and
+      // every reader said to run the `vx lock` that had just run.
+      const by = addedByPlugin(m)
+      const wall =
+        by === undefined
+          ? undefined
+          : nestedWorkspaces.find((w) => m.dir === w || m.dir.startsWith(w + path.sep))
+      if (wall !== undefined) {
+        const [dir, inner] = [relPosix(root, m.dir), relPosix(root, wall)]
+        throw new UserError(
+          `plugin '${by}' adds project ${dir}, but ${inner}/.vx makes ${inner} a workspace of its own, which this one's lock cannot hold — leave ${dir} out of what the plugin discovers, or delete ${inner}/.vx`,
+          'VX_E_LOCK',
+        )
+      }
     }
     const { projects, stage } = await loadProjects({
       workspaceRoot: root,
