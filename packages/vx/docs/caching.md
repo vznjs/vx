@@ -1732,7 +1732,7 @@ a cache baked read-only into a CI image) serves its hits: the run says
 `[vx] cache directory <path> is not writable (EACCES: …) — serving hits
 from it; this run saves nothing and records no history` once, before
 any task, then restores what it holds and runs the rest without saving
-it. An empty one has nothing to serve and fails the run before any task:
+it. As with `--no-cache`, a miss's outputs are not cleaned before it runs. An empty one has nothing to serve and fails the run before any task:
 `cache directory <path> is not writable (EACCES: …)`, with
 `--cache-dir <path>` as the way out. `vx cache clean` is refused the
 same way (its `--dry` only reads, and reads). The readers (`vx show`, `why`,
