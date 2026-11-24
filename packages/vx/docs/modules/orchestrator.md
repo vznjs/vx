@@ -3174,7 +3174,8 @@ and runs the stage once, as `vx lock --check` does, to verify the lock
 and stamp what matches; it still runs what the lock records. It runs
 `discover` again too: a project a plugin no longer adds refuses, naming the
 workspace file, and a workspace file that holds is stamped, so the next run
-does not evaluate it all again.
+does not evaluate it all again. A mapping that differs there names its
+project, or the workspace file when git says it moved since the lock's commit.
 
 `loadWorkspacePlugins` runs the `config` stage on a copy of the
 workspace file's export (its plugins kept as they are): the export is one

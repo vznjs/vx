@@ -35,6 +35,7 @@ import type { WorkspaceConfig } from '../config.js'
 import { applyWorkspaceLimits, applyWorkspaceTimers, atPath, SETTINGS } from '../settings.js'
 import { lazyGitEnumeration, type LazyGitEnumeration, parseCachePolicy } from '../cache/index.js'
 import {
+  changedSinceCommitOf,
   checkIgnoreSync,
   isUserError,
   listed,
@@ -638,6 +639,21 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
         if (m.configPath !== null) return true
         return mapped && Object.hasOwn(held.projects, lockKey(workspaceRoot, m.dir))
       })
+      // With no stamps an option edit read as every project it maps
+      // otherwise: git, on this failure path only, says whether the
+      // workspace file moved since the lock's commit, and the configs too.
+      if (edited.length > 0 && workspace !== null && mapped) {
+        const rel = relPosix(workspaceRoot, workspace.file)
+        const since = changedSinceCommitOf(workspaceRoot, LOCKFILE_NAME, [rel, ...edited])
+        if (since?.has(rel) === true)
+          edited = [
+            path.relative(workspaceRoot, workspace.file),
+            ...edited.filter((f) => {
+              const p = f.split(path.sep).join('/')
+              return since.has(p) || [...since].some((s) => s.startsWith(`${p}/`))
+            }),
+          ]
+      }
       // The workspace file too, as a run beside stamps asks it once it
       // moved: left unstamped, the next run evaluated every mapping again.
       // A digest that differs is the key path's to name: with no stamp,

@@ -346,3 +346,41 @@ export function ignoredInputLine(task: string, rel: string, glob: string): strin
     `a glob reads only what git lists; name it as a literal input ('${rel}') to key on it`
   )
 }
+
+/**
+ * Of `rels` (relative to `cwd`, POSIX), the paths git says differ in the
+ * working tree from the last commit that changed `anchor`, relative to
+ * `cwd`; null when git cannot say (no repository, `anchor` never committed).
+ */
+export function changedSinceCommitOf(
+  cwd: string,
+  anchor: string,
+  rels: readonly string[],
+): Set<string> | null {
+  const git = (args: readonly string[]): string | null => {
+    const r = Bun.spawnSync({
+      cmd: [executablePath('git'), ...gitCaseArgs(cwd), ...args],
+      env: gitEnv(),
+      cwd,
+      stdout: 'pipe',
+      stderr: 'ignore',
+    })
+    return r.exitCode === 0 ? new TextDecoder().decode(r.stdout) : null
+  }
+  try {
+    const commit = git(['log', '-1', '--format=%H', '--', `:(literal)${anchor}`])?.trim()
+    if (commit === undefined || commit === '') return null
+    const out = git([
+      'diff',
+      '--name-only',
+      '--relative',
+      '-z',
+      commit,
+      '--',
+      ...rels.map((r) => `:(literal)${r}`),
+    ])
+    return out === null ? null : new Set(out.split('\0').filter((p) => p !== ''))
+  } catch {
+    return null
+  }
+}

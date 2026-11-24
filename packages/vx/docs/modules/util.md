@@ -2124,6 +2124,11 @@ export function checkIgnoreSync(
 ): Set<string> | null
 export function listedSync(cwd: string, dirs: readonly string[]): string[] | null
 export function skipWorktreeSync(cwd: string, rel: string): string | null
+export function changedSinceCommitOf(
+  cwd: string,
+  anchor: string,
+  rels: readonly string[],
+): Set<string> | null
 export function ignoreCaseLies(dir: string, probe: string): boolean
 export function gitCaseArgs(cwd: string): readonly string[]
 export function wholeIgnored(
@@ -2166,6 +2171,10 @@ export function ignoredInputLine(task: string, rel: string, glob: string): strin
   repository path when the index flags it skip-worktree (a sparse
   checkout left it out), else null. Asked only when a locked config is
   missing (`orchestrator/projects.ts`), so a run pays no spawn.
+- `changedSinceCommitOf`: of `rels`, the ones `git diff --name-only` lists
+  against the last commit that changed `anchor`; null when git cannot say.
+  Asked only when a run with no stamps refuses a mapping, to name an
+  edited `.vx/workspace.*` instead of the projects it maps.
 - `ignoreCaseLies`: whether `core.ignorecase=true`, which git in `dir`
   reported, is false on disk (a `.git` copied from macOS to Linux): one
   stat of `probe` with its name's case swapped, once per `dir`. Asked

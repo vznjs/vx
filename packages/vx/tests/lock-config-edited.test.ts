@@ -413,15 +413,20 @@ describe('a workspace file edited since vx lock', () => {
 
   for (const stamped of [true, false]) {
     it(`refuses a plugin option edited with no \`vx lock\` ${stamped ? 'beside stamps' : 'with no stamps'}`, async () => {
+      // Committed with its lock, as a clone has it: with no stamps, git says
+      // which file moved since the lock's commit.
+      git(root, 'add', '-A')
+      git(root, 'commit', '-q', '-m', 'locked')
       if (!stamped) await rm(path.join(root, '.vx', 'cache', 'config-stamps.json'), { force: true })
       await workspace('two')
       const { code, out } = await vx(root, ['run', 'core#say'])
-      // With no stamps every mapping is evaluated, and the project it moved is named.
-      const named = stamped ? '.vx/workspace.mjs changed' : 'packages/core changed'
       expect([code, out]).toEqual([
         1,
-        expect.stringContaining(`${named} since the last \`vx lock\` — run \`vx lock\``),
+        expect.stringContaining(
+          '.vx/workspace.mjs changed since the last `vx lock` — run `vx lock`',
+        ),
       ])
+      expect(out).not.toContain('packages/core')
       expect(await readFile(path.join(root, '.vx', 'projects.lock'), 'utf8')).toContain('echo one')
     })
   }

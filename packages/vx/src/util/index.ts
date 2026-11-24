@@ -141,6 +141,7 @@ export {
   ignoredInputLine,
   ignoreProbes,
   listedSync,
+  changedSinceCommitOf,
   skipWorktreeSync,
   wholeIgnored,
 } from './git-ignored.js'
