@@ -880,6 +880,8 @@ export interface PersistentSpawn {
   ready: Promise<void>
   /** ms from spawn to ready, to the readiness timeout giving up, or to now. */
   readyMs: () => number
+  /** ms from spawn to the child's exit, or to now: a crashed server's time. */
+  liveMs: () => number
   /** Whether the readiness timeout fired: `ready` rejects only after the kill grace. */
   gaveUp: () => boolean
 }
@@ -928,6 +930,7 @@ export function serverExited(child: ReturnType<typeof Bun.spawn>): Promise<numbe
 export function runPersistent(opts: PersistentOptions): PersistentSpawn {
   const start = performance.now()
   let readyAt: number | undefined
+  let exitedAt: number | undefined
   // When the readiness wait gave up: the wait's length, not the kill grace
   // a TERM-trapping server runs out after it.
   let gaveUpAt: number | undefined
@@ -1003,6 +1006,7 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
         new PersistentReadyError(`failed to spawn persistent task: ${message}`, 'spawn'),
       ),
       readyMs: () => Math.round(performance.now() - start),
+      liveMs: () => Math.round(performance.now() - start),
       gaveUp: () => false,
     }
   } finally {
@@ -1159,6 +1163,7 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
   // If the child exits BEFORE ready fires, that's a failure to start
   // — reject the ready promise so the caller can surface it.
   void child.exited.then(async (code) => {
+    exitedAt = performance.now()
     opts.liveChildren?.delete(child)
     // A clean exit is a setup step's: what it started is torn down with the run.
     if (code !== 0) sweepDeadShell(child, true)
@@ -1196,6 +1201,7 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
     child,
     ready,
     readyMs: () => Math.round((readyAt ?? gaveUpAt ?? performance.now()) - start),
+    liveMs: () => Math.round((exitedAt ?? performance.now()) - start),
     gaveUp: () => gaveUpAt !== undefined,
   }
 }

@@ -2071,7 +2071,7 @@ async function runOnBus(
       // A stop's own kill is no crash: the user ended the session. Failed
       // before the line naming it: under errors-only that prints its tail.
       const crashed = !stop.signal.aborted && first.code !== 0
-      if (crashed) failServer(outcomes, node.id, first.code)
+      if (crashed) failServer(outcomes, node.id, first.code, keepAlive.children[first.i])
       // Not when the run was stopped: the user ended the server, and "exited
       // with code 130" read as a crash.
       if (!stop.signal.aborted) {

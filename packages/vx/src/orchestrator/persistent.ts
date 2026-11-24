@@ -544,11 +544,23 @@ export function failServer(
   outcomes: ReadonlyMap<string, TaskOutcome>,
   id: string,
   code: number | string,
+  child?: Child,
 ): void {
   const o = outcomes.get(id)
   if (o === undefined) return
   o.status = 'failed'
   o.exitCode = typeof code === 'number' ? code : signalExitCode(code)
+  // Its outcome was timed to ready: a server up 1.5 s read 17ms in the
+  // footer and `vx last`. It ran until it died.
+  const lived = child === undefined ? undefined : liveTimes.get(child)
+  if (lived !== undefined) o.durationMs = lived()
+}
+
+const liveTimes = new WeakMap<Child, () => number>()
+
+/** How to time `child` if it dies on its own: from its spawn to its exit (`PersistentSpawn.liveMs`). */
+export function timeServer(child: Child, liveMs: () => number): void {
+  liveTimes.set(child, liveMs)
 }
 
 function holdAll(
@@ -606,12 +618,12 @@ export async function disposeServers(args: {
   const crashed = (
     await shutdownPersistent(registry, keepAlive.children, undefined, serverUsers(args.nodes))
   ).filter((c) => endedBeforeStop?.has(registry.get(c.id)!) ?? true)
-  for (const c of crashed) failServer(outcomes, c.id, c.code)
+  for (const c of crashed) failServer(outcomes, c.id, c.code, registry.get(c.id))
   keepAlive.nodes.forEach((n, i) => {
     const child = keepAlive.children[i]!
     if (!hasEnded(child) || child.exitCode === 0) return
     if (endedBeforeStop !== undefined && !endedBeforeStop.has(child)) return
-    failServer(outcomes, n.id, child.exitCode ?? child.signalCode ?? 'unknown')
+    failServer(outcomes, n.id, child.exitCode ?? child.signalCode ?? 'unknown', child)
   })
   return { keepAlive, crashed }
 }

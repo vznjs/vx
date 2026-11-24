@@ -688,6 +688,43 @@ describe('a persistent server that dies before the run stops it', () => {
     })
   }, 30_000)
 
+  // A crash after ready was timed to ready: a server up 1.5 s read `17ms`
+  // in the footer's table and `vx last`.
+  it("a crashed server's time runs to its crash, not to ready", async () => {
+    await addProject(
+      root,
+      'app',
+      crashing('echo READY; until [ -f go ]; do sleep 0.02; done; sleep 1.5; touch gone; exit 3'),
+    )
+    const proc = track(
+      Bun.spawn(
+        [process.execPath, BIN, 'run', 'e2e', '--all', '--output-logs=none', '--verbosity', '1'],
+        {
+          cwd: root,
+          stdout: 'pipe',
+          stderr: 'pipe',
+          env: { ...process.env, VX_RUN_KILL_GRACE: '200ms' },
+        },
+      ),
+    )
+    const [out, err] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+    ])
+    expect(await proc.exited).toBe(1)
+    const row = (out + err).split('\n').find((l) => l.startsWith('app#srv '))
+    expect(Number(/(\d+)ms$/.exec(row!)?.[1])).toBeGreaterThanOrEqual(1_500)
+    const last = Bun.spawn([process.execPath, BIN, 'last', '--format', 'json'], {
+      cwd: root,
+      stdout: 'pipe',
+    })
+    const rows = JSON.parse(await new Response(last.stdout).text()).tasks as Array<{
+      task: string
+      durationMs: number
+    }>
+    expect(rows.find((t) => t.task === 'srv')!.durationMs).toBeGreaterThanOrEqual(1_500)
+  }, 30_000)
+
   // Dead within a few ms of its spawn, the server was not yet reaped when
   // the graph ended: nothing gave Bun a turn, so `exitCode` still read
   // null, the footer said `1 success` with the server `running`, over a

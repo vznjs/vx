@@ -863,6 +863,8 @@ agent: {
   note), said once.
 - Its own outcome is `failed` with that exit code, and the footer counts
   it so.
+- Its time runs from its spawn to its crash, in the footer and `vx last`.
+  A server still up, or one vx stopped, shows its time to ready.
 - A task that reaches it through a group or another server (`e2e` on
   `web` on `api`) depends on it too.
 - A cached dependant that was running when it died still passes, but is
