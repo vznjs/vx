@@ -516,7 +516,15 @@ async function classifyExit(
         ? 'killed (SIGKILL after the SIGTERM grace)'
         : 'killed (SIGTERM)'
     const after = policy.timeout === undefined ? '' : ` after ${policy.timeout}ms`
-    log.taskStderr(node, `${stream.nl()}${vxLine(m, `[vx] timed out${after} — ${how}`)}\n`)
+    // Whose limit it was and how to raise it: "after 120000ms" alone sent
+    // the user looking for where it came from.
+    const whose =
+      policy.timeout === undefined
+        ? ''
+        : policy.timeoutFromTask
+          ? "; the task's exec.timeout; raise it to give it longer"
+          : "; the run's timeout (--timeout, VX_RUN_TIMEOUT or run.timeout); raise it, or set the task's exec.timeout"
+    log.taskStderr(node, `${stream.nl()}${vxLine(m, `[vx] timed out${after} — ${how}${whose}`)}\n`)
     // Non-zero even if the child TRAPPED SIGTERM and exited 0 (`trap 'exit
     // 0' TERM`): classified a success, its PARTIAL outputs were cached and
     // replayed forever. A genuinely killed child already reports 143.

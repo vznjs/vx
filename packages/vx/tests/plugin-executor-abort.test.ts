@@ -439,7 +439,9 @@ describe('an executor that ignores the signal', () => {
       "working\nvx: plugin 'org/deaf' (executor 'deaf') did not return within 200ms of the timeout (300ms); abandoned\n",
     )
     // Core killed nothing: the executor's child is its own.
-    expect(stderr.join('')).toContain('[vx] timed out after 300ms — its executor was aborted\n')
+    expect(stderr.join('')).toContain(
+      "[vx] timed out after 300ms — its executor was aborted; the task's exec.timeout; raise it to give it longer\n",
+    )
   }, 30_000)
 
   // An abandoned attempt may still write: core cannot reach what it started,

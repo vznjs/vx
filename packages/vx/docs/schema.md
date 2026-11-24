@@ -446,6 +446,8 @@ Default: no limit, unless the run sets one (`--timeout`, `run.timeout`).
   Time stopped by Ctrl-Z is not run time either.
 - A task that overruns is killed with its whole process group, so what it
   forked goes too. It is reported `failed` (timed out), never cached.
+- Its `[vx] timed out after …` line names whose limit it was, the task's
+  `exec.timeout` or the run's, and how to raise it.
 - A timeout is a real failure. A Ctrl-C teardown is reported `aborted`
   instead.
 - A persistent task: `timeout` bounds the readiness wait instead. If
