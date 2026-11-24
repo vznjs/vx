@@ -267,6 +267,25 @@ describe('renderJobSummary', () => {
     )
     expect(one).toContain('| small#1 | left |  | 1ms |  | 1ms | 0ms | 13 ok, 1 failed |')
     expect(one).not.toContain('this machine')
+    // A Ctrl-C's worker read `0`: the task the stop killed was in no count.
+    const stopped = renderJobSummary(
+      summary([task({ where: 'small#1', status: 'aborted' })], {
+        machines: [
+          {
+            ...m,
+            name: 'small#1',
+            done: 0,
+            failed: 0,
+            aborted: 1,
+            onlineMs: 1,
+            busyMs: 1,
+            cpuAvg: 0,
+            utilization: 0,
+          },
+        ],
+      }),
+    )
+    expect(stopped).toContain('| small#1 | left |  | 1ms |  | 1ms | 0ms | 0 ok, 1 aborted |')
     // The workers line named a task that ran on the run's own machine raw.
     const here = renderJobSummary(
       summary([task({ taskId: 'a#*x*' }), task({ taskId: 'b#y', where: 'w' })], {

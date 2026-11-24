@@ -1489,6 +1489,7 @@ export interface MachineReport {
   memoryBytes: number
   done: number
   failed: number
+  aborted?: number
   onlineMs: number
   busyMs: number
   cpuPeak: number

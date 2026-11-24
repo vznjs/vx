@@ -81,7 +81,7 @@ workers), a Workers table shows, for each one:
 - Its time online after the warm-up, and the part of that with no task
   on it.
 - A task counts from its send to its result, restore and save included.
-- Its tasks.
+- Its tasks: ok, failed, and aborted by the run's stop.
 - The cores its tasks were expected to use (their last run's), beside
   the cores it used.
 - Its peak RAM of its memory.

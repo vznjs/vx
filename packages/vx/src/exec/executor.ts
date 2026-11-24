@@ -569,6 +569,8 @@ export interface MachineReport {
   memoryBytes: number
   done: number
   failed: number
+  /** Tasks the run's stop killed on it; absent when none. */
+  aborted?: number
   /** From when it joined to when it left or the run ended: warm-up not counted. */
   onlineMs: number
   /** Time with at least one task on it, from its send to its result. */

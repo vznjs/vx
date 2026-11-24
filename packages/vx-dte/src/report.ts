@@ -571,6 +571,7 @@ export class RunReport<W extends RecordedWorker> {
         memoryBytes,
         done: u.done,
         failed: u.failed,
+        ...(u.aborted > 0 ? { aborted: u.aborted } : {}),
         onlineMs: st.onlineMs,
         busyMs: st.busyMs,
         cpuPeak: st.cpuPeak,

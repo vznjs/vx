@@ -268,8 +268,14 @@ export function renderJobSummary(summary: RunSummaryRecord, title = 'vx run'): s
 }
 
 // "13 (1 failed)" read as 13 run in all, of 14.
-const tasksCell = (ok: number, failed: number): string =>
-  failed > 0 ? `${ok} ok, ${failed} failed` : `${ok}`
+const tasksCell = (ok: number, failed: number, aborted = 0): string =>
+  failed + aborted > 0
+    ? [
+        `${ok} ok`,
+        ...(failed > 0 ? [`${failed} failed`] : []),
+        ...(aborted > 0 ? [`${aborted} aborted`] : []),
+      ].join(', ')
+    : `${ok}`
 
 const pct = (x: number): string => `${Math.round(x * 100)}%`
 
@@ -341,7 +347,7 @@ function renderWorkers(
         m.warmUpMs === undefined ? '' : fmtMs(m.warmUpMs),
         fmtMs(m.onlineMs),
         fmtMs(Math.max(0, m.onlineMs - m.busyMs)),
-        tasksCell(m.done, m.failed),
+        tasksCell(m.done, m.failed, m.aborted),
         m.bookedAvg === undefined ? '' : `${m.bookedAvg.toFixed(1)} of ${m.cores}`,
         `${m.cpuAvg.toFixed(1)} of ${m.cores}`,
         peakOf(m.memoryPeakBytes, m.memoryBytes),

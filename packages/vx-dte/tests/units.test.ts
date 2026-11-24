@@ -2142,6 +2142,26 @@ it('a worker that left is not failed or replaced when its job then ends', async 
   }
 })
 
+// A Ctrl-C's worker read `0` tasks on the job summary: the one the stop
+// killed was in no count the summary is given.
+it("a worker's report counts the task the stop killed as aborted", async () => {
+  const h = await harness(new Map([node('t1'), node('t2'), node('t3')]))
+  try {
+    const w = await h.worker(4)
+    await Bun.sleep(50)
+    const runs = ['t1', 't2', 't3'].map((id) => h.o.execute(h.req(id)))
+    await w.batches()
+    await w.finish('t1')
+    await w.finish('t2', 'k-t2', { exitCode: 2, durationMs: 1 })
+    await w.finish('t3', 'k-t3', { exitCode: 130, signal: 'SIGTERM', durationMs: 1 })
+    await Promise.allSettled(runs)
+    const [m] = h.o.machines()
+    expect([m!.done, m!.failed, m!.aborted]).toEqual([1, 1, 1])
+  } finally {
+    await h.stop()
+  }
+})
+
 // 2026-10-23: "we need the ideal time possible taking into account actual run numbers".
 it('the perfect end is the longest chain of what each task took', async () => {
   const h = await harness(new Map([node('t1'), node('t2')]))
