@@ -399,7 +399,9 @@ function hiddenGitHint(
     st = lstatSync(path.join(dir, '.git'), { throwIfNoEntry: false })
   }
   const git = path.join(dir, '.git')
-  if (st === undefined || readableUnder(git, granted)) return undefined
+  // A worktree's `.git` file granted is still no repository: the data it
+  // names is walled.
+  if (st === undefined || (st.isDirectory() && readableUnder(git, granted))) return undefined
   const said = `vx: git found no repository: the sandbox hides ${git}, and its probe is not reported.`
   const grantable = st.isDirectory() && walled.some((w) => toRealPath(w) === dir)
   return {

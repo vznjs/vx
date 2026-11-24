@@ -101,6 +101,29 @@ describe.skipIf(!available)('a sandboxed task and a git dir outside the workspac
     expect(named[0]).toMatch(/suggests no grant/)
   })
 
+  // A worktree's `.git` is a file naming its data in the main checkout:
+  // granted, the file is readable and the data still walled, and the
+  // failure got no word of that.
+  it("names a linked worktree's granted .git file as walled, and suggests no grant", async () => {
+    const main = await makeWorkspace({ dir: tmp, git: 'init' })
+    await addProject(main, 'a', {
+      config: `export default { tasks: { t: { exec: {
+        command: 'git rev-parse HEAD',
+        sandbox: { allow: { read: ['.', '../../.git'] } },
+      } } } }\n`,
+    })
+    const git = gitIn(main)
+    git('add', '-A')
+    git('commit', '-qm', 'init')
+    const wt = path.join(tmp, 'wt')
+    git('worktree', 'add', '-q', '--detach', wt)
+    const r = await run({ cwd: wt, tasks: ['a#t'] })
+    expect(r.outcomes[0]?.status).toBe('failed')
+    const named = (r.outcomes[0]?.sandbox?.lines ?? []).filter((l) => l.includes(`${wt}/.git`))
+    expect(named).toHaveLength(1)
+    expect(named[0]).toMatch(/suggests no grant/)
+  })
+
   it('refuses a write grant into the git dir outside the workspace', async () => {
     const repo = path.join(tmp, 'repo')
     await mkdir(repo)
